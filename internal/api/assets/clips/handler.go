@@ -7,9 +7,20 @@
 // receivers on *Handler — there is no longer a need for nested structs.
 // SourcesHandler keeps a single *clips.Handler field and delegates each
 // clip-route registration to clips.Handler.{CreateClip, GetClip, ...}.
+//
+// Splits 1, 2, 4 (June 2026, override ADR 0009): Search / Ingest / Ops
+// sub-handlers own their idiomatic-route band via per-cluster
+// RegisterRoutes. Each sub-handler receiver receives only the deps it
+// consumes (cluster × deps matrix §4, June 2026). The orchestrator
+// *Handler keeps a public Deps bag, applies one idempotency middleware
+// (PR8) for all writes, and calls RegisterRoutes on each sub-handler.
+// The pre-split pattern of inline `r.POST(..., h.<method>)` works only
+// for Action cluster routes (Split 3, not yet landed).
 package clips
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -129,8 +140,8 @@ type Handler struct {
 	Idempotency gin.HandlerFunc
 
 	// assetRepo (Split 1 leftover, June 2026): retained on Handler
-	// because clip_action.go::FindDuplicates (Action cluster, Split 5
-	// = future Commit 5) still references h.assetRepo directly. SearchHandler
+	// because clip_action.go::FindDuplicates (Action cluster, Split 3
+	// = future Commit) still references h.assetRepo directly. SearchHandler
 	// receives the same *asset.Repository instance via SearchDeps.AssetRepo;
 	// both pointers stay valid. This mirror field will be removed when Action
 	// is split out and FindDuplicates migrates onto an ActionReceiver.
@@ -169,16 +180,23 @@ type Handler struct {
 	// POST /:source/clips/:id/status, POST /search/advanced). The 5 deps it
 	// consumes (SourceResolver, AssetRepo, VoiceoverRepo, ImagesRepo,
 	// SearchSvc) are extracted from Deps by NewHandler into a SearchDeps
-	// shape. Future sub-handlers (Ingest/Action/Ops/BulkUpload) follow the
-	// same pattern in subsequent atomic commits (2-6 of Step 5).
+	// shape. Subsequent splits (Ingest/Action/Ops/BulkUpload) follow the
+	// same pattern in their respective atomic commits.
 	search *SearchHandler
 	// ingest (Split 2, June 2026, override ADR 0009): the Ingest
 	// sub-handler owns the 3 ingest routes (POST /:source/clips,
 	// PATCH /:source/clips/:id, POST /upload-video). The 12 deps it
 	// consumes are extracted from Deps by NewHandler into an
-	// IngestDeps shape. ActionReceiver (Split 3) follows the same
-	// pattern.
+	// IngestDeps shape. ActionReceiver (Split 3) follows the
+	// same pattern.
 	ingest *IngestHandler
+	// ops (Split 4, June 2026, override ADR 0009): the Ops sub-handler
+	// owns the 20 ops routes (15 write+idem + 5 read = folder/tree/
+	// bulk-tags/verify/cleanup/reconcile/fix-hash/trash/delete/reprocess/
+	// reindex/enrich). The 12 deps it consumes are extracted from Deps
+	// by NewHandler into an OpsDeps shape. BulkUploadReceiver (Split 5)
+	// follows the same pattern.
+	ops *OpsHandler
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -201,13 +219,15 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
 	}
-	// Split 2 (June 2026, override ADR 0009): construct enrichUC as a
-	// local BEFORE the &Handler literal so it can be shared between
-	// the orchestrator uc mirror and the IngestDeps shape (and, in
-	// Split 3, ActionDeps too). Single source of construction; both
-	// sub-handlers and (transiently) the orchestrator mirror point at
-	// the same *appclips.EnrichUseCase instance.
+
+	// Lift use-case construction out of the struct literal so the same
+	// instances can be shared with the Ops sub-handler (Split 4). Single
+	// source of construction — both the orchestrator mirror fields and
+	// the OpsDeps shape point at the same *appclips.* instances.
 	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log)
+	reprocessUC := appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, d.MutationsDispatcher)
+	downloadUC := appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo)
+	bulkTagsUC := appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc)
 	return &Handler{
 		Idempotency:         idem,
 		assetRepo:           d.AssetRepo,
@@ -232,8 +252,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		// owns 4 routes. The 5 Deps fields below move into the
 		// SearchDeps shape; orchestrator Deps struct keeps the public
 		// API unchanged so the composition root signature is non-breaking.
-		// Future sub-handlers (Ingest/Action/Ops/BulkUpload) follow the
-		// same shape in subsequent atomic splits.
 		search: NewSearchHandler(SearchDeps{
 			SourceResolver: d.SourceResolver,
 			AssetRepo:      d.AssetRepo,
@@ -261,15 +279,37 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			EnrichUC:       enrichUC,
 			Log:            d.Log,
 		}),
+		// Split 4 (June 2026, override ADR 0009): Ops sub-handler
+		// owns 20 routes (15 write+idem + 5 read). The 12 Deps
+		// fields below move into the OpsDeps shape; orchestrator
+		// Deps struct keeps the public API unchanged so the
+		// composition root signature is non-breaking. EnrichUC,
+		// ReprocessUC, BulkTagsUC are shared with the orchestrator
+		// mirror via the local instances above (single source of
+		// construction).
+		ops: NewOpsHandler(OpsDeps{
+			DeletionSvc:    d.DeletionSvc,
+			ClipOpsService: d.ClipOpsService,
+			SourceResolver: d.SourceResolver,
+			AssetTreeSvc:   d.AssetTreeSvc,
+			FolderMemSvc:   d.FolderMemSvc,
+			DriveUploader:  d.DriveUploader,
+			BulkTagsUC:     bulkTagsUC,
+			ReprocessUC:    reprocessUC,
+			EnrichUC:       enrichUC,
+			JobsSvc:        d.JobsSvc,
+			ClipIndexer:    d.ClipIndexer,
+			Log:            d.Log,
+		}),
 
 		// Initialize use cases
 		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass the
 		// SSOT mutations dispatcher to ReprocessUseCase so the
 		// post-process media_assets UPSERT routes through the canonical
 		// outbox+tx writer (QDRANT-002 atomicity invariant).
-		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, d.MutationsDispatcher),
-		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
-		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
+		reprocessUC: reprocessUC,
+		downloadUC:  downloadUC,
+		bulkTagsUC:  bulkTagsUC,
 		// S1a (June 2026): when the composition root supplies a
 		// shared EnrichUC, reuse it — the worker
 		// (clips.MediaEnrichWorker) is wired with the same
@@ -350,6 +390,218 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	h.ingest.UploadVideoClip(c)
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Thin delegators (Split 4, June 2026) — same pattern as Split 2.
+// Canonical impl lives on *OpsHandler (ops.go::RegisterRoutes). These
+// preserve byte-compatible behaviour for callers that wire Handler
+// methods directly as gin.HandlerFunc (legacy test fixtures, sources
+// sub-handler forwarding routes).
+// ──────────────────────────────────────────────────────────────────────
+
+// VerifyClip thin-delegates to OpsHandler.VerifyClip.
+func (h *Handler) VerifyClip(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.VerifyClip(c)
+}
+
+// HandleFixHash thin-delegates to OpsHandler.HandleFixHash.
+func (h *Handler) HandleFixHash(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.HandleFixHash(c)
+}
+
+// TrashClip thin-delegates to OpsHandler.TrashClip.
+func (h *Handler) TrashClip(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.TrashClip(c)
+}
+
+// DeleteClip thin-delegates to OpsHandler.DeleteClip.
+func (h *Handler) DeleteClip(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.DeleteClip(c)
+}
+
+// ReprocessClip thin-delegates to OpsHandler.ReprocessClip.
+func (h *Handler) ReprocessClip(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.ReprocessClip(c)
+}
+
+// ReindexClip thin-delegates to OpsHandler.ReindexClip.
+func (h *Handler) ReindexClip(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.ReindexClip(c)
+}
+
+// BulkAddTags thin-delegates to OpsHandler.BulkAddTags.
+func (h *Handler) BulkAddTags(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.BulkAddTags(c)
+}
+
+// BulkRemoveTags thin-delegates to OpsHandler.BulkRemoveTags.
+func (h *Handler) BulkRemoveTags(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.BulkRemoveTags(c)
+}
+
+// Reconcile thin-delegates to OpsHandler.Reconcile.
+func (h *Handler) Reconcile(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.Reconcile(c)
+}
+
+// Cleanup thin-delegates to OpsHandler.Cleanup.
+func (h *Handler) Cleanup(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.Cleanup(c)
+}
+
+// ListFolders thin-delegates to OpsHandler.ListFolders.
+func (h *Handler) ListFolders(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.ListFolders(c)
+}
+
+// FolderStatus thin-delegates to OpsHandler.FolderStatus.
+func (h *Handler) FolderStatus(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.FolderStatus(c)
+}
+
+// RegenerateManifest thin-delegates to OpsHandler.RegenerateManifest.
+func (h *Handler) RegenerateManifest(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.RegenerateManifest(c)
+}
+
+// TrashFolder thin-delegates to OpsHandler.TrashFolder.
+func (h *Handler) TrashFolder(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.TrashFolder(c)
+}
+
+// DeleteFolder thin-delegates to OpsHandler.DeleteFolder.
+func (h *Handler) DeleteFolder(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.DeleteFolder(c)
+}
+
+// GetFolderChildren thin-delegates to OpsHandler.GetFolderChildren.
+func (h *Handler) GetFolderChildren(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.GetFolderChildren(c)
+}
+
+// GetTree thin-delegates to OpsHandler.GetTree.
+func (h *Handler) GetTree(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.GetTree(c)
+}
+
+// GetBreadcrumb thin-delegates to OpsHandler.GetBreadcrumb.
+func (h *Handler) GetBreadcrumb(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.GetBreadcrumb(c)
+}
+
+// EnrichMedia thin-delegates to OpsHandler.EnrichMedia.
+func (h *Handler) EnrichMedia(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.EnrichMedia(c)
+}
+
+// BatchReindex thin-delegates to OpsHandler.BatchReindex.
+func (h *Handler) BatchReindex(c *gin.Context) {
+	if h.ops == nil {
+		apiutil.Error(c, 503, "ops sub-handler not wired")
+		return
+	}
+	h.ops.BatchReindex(c)
+}
+
+// EnrichAndIndexClip thin-delegator preserves the legacy pre-Split-4
+// public surface. Callers in batch / mixin helpers expect this method
+// on the clips.Handler. Ops is the new owner of the substantive
+// implementation; the orchestrator-level thin delegator forwards to
+// it. Since Ops and the orchestrator mirror both hold the SAME
+// *EnrichUseCase instance (single source of construction via
+// enrichUCOrLocal in NewHandler), a fallback branch would be
+// functionally identical to the forward — we drop it as dead code
+// per Step 5 Split 4 code-review.
+func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
+	if h.ops == nil {
+		return
+	}
+	h.ops.EnrichAndIndexClip(ctx, clip, source)
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Action cluster (Split 3, not yet landed) — these 3 routes stay on
+// *Handler until Split 3 = ActionReceiver lands. Per the discovery
+// matrix DownloadClip / ReuploadClip / FindDuplicates are Action
+// (consume downloadUC / reuploadUC / assetRepo + searchAggregator
+// respectively). They are NOT in OpsDeps by design.
+// ──────────────────────────────────────────────────────────────────────
+
 func (h *Handler) driveRootForSource(source string) (string, string) {
 	spec, ok := map[string]struct {
 		root   func(*config.Config) string
@@ -376,6 +628,11 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 
 // RegisterJobHandlers wires up the bulk-upload worker. SourcesHandler's
 // RegisterJobHandlers delegates here.
+//
+// Split 4 (June 2026): HandleBulkUploadYouTubeClipsJob stays on
+// *Handler (clip_ops_handlers.go) for the bulk_upload_youtube_clips
+// type — Split 5 = BulkUploadTransport will move it onto an
+// *BulkUploadHandler receiver alongside BulkUploadYouTubeClips.
 func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return nil
@@ -402,6 +659,11 @@ func (h *Handler) idemWriter() gin.HandlerFunc {
 // h.Idempotency BEFORE the handler — when present — so Idempotency-Key
 // replay, body-hash conflict (422), and in-flight (409) semantics
 // apply uniformly. Read routes are unchanged.
+//
+// Splits 1/2/4 (June 2026, override ADR 0009): Search/Ingest/Ops
+// sub-handlers own their idiomatic-route band via per-cluster
+// RegisterRoutes. Each sub-handler receiver receives only the deps
+// it consumes; the orchestrator installs idem ONCE and forwards.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 	// Ingest sub-handler (Split 2, June 2026, override ADR 0009):
@@ -415,33 +677,35 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	//   POST /:source/clips/:id/status    -> ClipStatus      (write+idem)
 	//   POST /search/advanced             -> AdvancedSearch  (write+idem)
 	h.search.RegisterRoutes(r, idem)
-	r.POST("/:source/clips/:id/verify", idem, h.VerifyClip)
-	r.POST("/:source/clips/:id/fix-hash", idem, h.HandleFixHash)
-	r.POST("/:source/clips/:id/trash", idem, h.TrashClip)
-	r.POST("/:source/clips/:id/delete", idem, h.DeleteClip)
+	// Ops sub-handler (Split 4, June 2026, override ADR 0009) owns
+	// these 20 routes (15 write+idem + 5 read):
+	//   GET  /:source/folders                          -> ListFolders          (read)
+	//   GET  /:source/folders/:id                      -> FolderStatus         (read)
+	//   GET  /:source/folders/:id/children             -> GetFolderChildren    (read)
+	//   GET  /:source/tree                             -> GetTree              (read)
+	//   GET  /:source/breadcrumb                       -> GetBreadcrumb        (read)
+	//   POST /:source/clips/:id/verify                 -> VerifyClip           (write+idem)
+	//   POST /:source/clips/:id/fix-hash               -> HandleFixHash        (write+idem)
+	//   POST /:source/clips/:id/trash                  -> TrashClip            (write+idem)
+	//   POST /:source/clips/:id/delete                 -> DeleteClip           (write+idem)
+	//   POST /:source/clips/:id/reprocess              -> ReprocessClip        (write+idem)
+	//   POST /:source/clips/:id/reindex                -> ReindexClip          (write+idem)
+	//   POST /:source/bulk/tags/add                    -> BulkAddTags          (write+idem)
+	//   POST /:source/bulk/tags/remove                 -> BulkRemoveTags       (write+idem)
+	//   POST /:source/reconcile                        -> Reconcile            (write+idem)
+	//   POST /:source/cleanup                          -> Cleanup              (write+idem)
+	//   POST /:source/folders/:id/manifest             -> RegenerateManifest   (write+idem)
+	//   POST /:source/folders/:id/trash                -> TrashFolder          (write+idem)
+	//   POST /:source/folders/:id/delete               -> DeleteFolder         (write+idem)
+	//   POST /enrich                                   -> EnrichMedia          (write+idem)
+	//   POST /enrich/batch                             -> BatchReindex         (write+idem)
+	h.ops.RegisterRoutes(r, idem)
+
+	// Action cluster routes stay on *Handler until Split 3 lands:
+	//   POST /:source/clips/:id/download           -> DownloadClip           (write+idem)
+	//   POST /:source/clips/:id/duplicates        -> FindDuplicates         (write+idem)
+	//   POST /:source/clips/:id/reupload          -> ReuploadClip           (write+idem)
 	r.POST("/:source/clips/:id/download", idem, h.DownloadClip)
 	r.POST("/:source/clips/:id/duplicates", idem, h.FindDuplicates)
 	r.POST("/:source/clips/:id/reupload", idem, h.ReuploadClip)
-	r.POST("/:source/clips/:id/reprocess", idem, h.ReprocessClip)
-	r.POST("/:source/clips/:id/reindex", idem, h.ReindexClip)
-
-	// Source-level bulk actions
-	r.POST("/:source/bulk/tags/add", idem, h.BulkAddTags)
-	r.POST("/:source/bulk/tags/remove", idem, h.BulkRemoveTags)
-	r.POST("/:source/reconcile", idem, h.Reconcile)
-	r.POST("/:source/cleanup", idem, h.Cleanup)
-
-	// Folders + tree (writes only)
-	r.GET("/:source/folders", h.ListFolders)
-	r.GET("/:source/folders/:id", h.FolderStatus)
-	r.POST("/:source/folders/:id/manifest", idem, h.RegenerateManifest)
-	r.POST("/:source/folders/:id/trash", idem, h.TrashFolder)
-	r.POST("/:source/folders/:id/delete", idem, h.DeleteFolder)
-	r.GET("/:source/folders/:id/children", h.GetFolderChildren)
-	r.GET("/:source/tree", h.GetTree)
-	r.GET("/:source/breadcrumb", h.GetBreadcrumb)
-
-	// Cross-cutting actions on existing clip contexts
-	r.POST("/enrich", idem, h.EnrichMedia)
-	r.POST("/enrich/batch", idem, h.BatchReindex)
 }
