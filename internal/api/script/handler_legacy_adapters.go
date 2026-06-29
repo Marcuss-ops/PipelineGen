@@ -543,7 +543,7 @@ func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
 	}
 
 	env := req.toEnvelope()
-	h.enqueueDeprecated(c, env)
+	h.enqueueEnvelope(c, env)
 }
 
 // LegacyGenerateWithImages handles POST /api/script/generate-with-images.
@@ -557,7 +557,7 @@ func (h *ScriptFlowHandler) LegacyGenerateWithImages(c *gin.Context) {
 		return
 	}
 	env := req.toEnvelope()
-	h.enqueueDeprecated(c, env)
+	h.enqueueEnvelope(c, env)
 }
 
 // LegacyGenerateBatch handles POST /api/script/generate-batch.
@@ -571,7 +571,7 @@ func (h *ScriptFlowHandler) LegacyGenerateBatch(c *gin.Context) {
 		return
 	}
 	env := req.toEnvelope()
-	h.enqueueDeprecated(c, env)
+	h.enqueueEnvelope(c, env)
 }
 
 // LegacyCurate handles POST /api/script/curate (deprecated — use
@@ -595,11 +595,21 @@ func (h *ScriptFlowHandler) LegacyCurate(c *gin.Context) {
 	}
 
 	env := req.toEnvelope()
-	h.enqueueDeprecated(c, env)
+	h.enqueueEnvelope(c, env)
 }
 
-// enqueueDeprecated is the shared enqueue path for all legacy routes.
-func (h *ScriptFlowHandler) enqueueDeprecated(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
+// enqueueEnvelope is the canonical enqueue path for all script generation
+// routes (both the unified /generate endpoint and all legacy adapters).
+// It validates the envelope, reads the Idempotency-Key header for
+// retry-safe dedup, enqueues a script.generate job, and writes the
+// async response.
+//
+// P0 #4 (June 2026): created from enqueueDeprecated with the addition
+// of Idempotency-Key header propagation. Previously legacy routes used
+// enqueueDeprecated which never read the header → two retries could
+// enqueue two distinct jobs. Both canonical and legacy paths now route
+// through this single method.
+func (h *ScriptFlowHandler) enqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
 	if err := env.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid envelope: " + err.Error()})
 		return
@@ -611,6 +621,13 @@ func (h *ScriptFlowHandler) enqueueDeprecated(c *gin.Context, env domainScript.G
 	}
 
 	req := jobs.NewGenerateEnqueueRequest(env)
+	// P0 #4 (June 2026): read Idempotency-Key header for retry-safe
+	// dedup — same logic as the canonical /generate handler. Header
+	// wins over any body field; trim is defensive so whitespace-only
+	// headers don't produce phantom dedup keys.
+	if idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key")); idempotencyKey != "" {
+		req.ActiveKey = idempotencyKey
+	}
 	// Issue 4 (June 2026, P1): pass h.registry so MaxRetries is sourced
 	// from registry.DefaultMaxRetries(script.generate) instead of the
 	// pre-Issue-4 hard-coded 3-retry fallback.
