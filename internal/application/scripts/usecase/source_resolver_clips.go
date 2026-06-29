@@ -97,33 +97,33 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	}, r.log)
 }
 
-// computeSourceFingerprint builds a deterministic fingerprint from
-// the source spec and resolved evidence.
-//
-// P0 #1 (June 2026): replaced the Phase 1b stub (which always returned
-// "") with a real hash that includes clip IDs, transcript policy,
-// ordering strategy, quality thresholds, and evidence text. This
-// prevents cache-key collisions between requests with different clip
-// sets but identical title/language/model/sizing.
-func computeSourceFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) string {
-	return BuildClipFingerprint(src, ev)
-}
-
 // BuildClipFingerprint computes a deterministic fingerprint from the
-// clip-relevant fields of a SourceSpec and resolved ClipEvidence.
-// Two requests with different clip sets, transcript policies, or
-// ordering strategies MUST produce different fingerprints so the
-// cache key (which includes SourceFingerprint as its first component)
-// does not collide.
+// fields of a SourceSpec and resolved ClipEvidence that ACTUALLY
+// affect the generated script output.
 //
-// Hashed fields (order is fixed for determinism):
-//   - Clip IDs (sorted)
-//   - Transcript policy
-//   - Ordering strategy
-//   - Min quality score
-//   - Min transcript words
-//   - Evidence: ClipIDs (sorted), AssembledText
-//   - Topic + SourceText (for text sources where ev is nil)
+// v2 (June 2026, Step 4 — fingerprint unification): the key is a
+// strict whitelist of the inputs the assembled clip-evidence /
+// script-generation pipeline actually reads. The previous (v1)
+// scheme ad-hoc-included MinQualityScore, MinTranscriptWords,
+// Topic, and SourceText — none of which the clip path applies,
+// so changing the client-side value mutated the fingerprint but
+// NOT the output. Cache-key poison resolved.
+//
+// WHITELIST (apply-only invariant):
+//
+//   - Version tag: fp=v2-apply-only
+//   - Clip IDs (sorted) — request-side clip set
+//   - TranscriptPolicy — forward-looking, A7 will apply it
+//   - OrderingStrategy — applied by BuildClipContext
+//   - Evidence AcceptedClipIDs (sorted) — resolved clip set
+//   - Evidence AssembledText — the actual text fed to the LLM
+//
+// Text path (ev == nil):
+//   - Topic + SourceText — these DO affect text-source output
+//
+// STRUCTURAL EXCLUSIONS:
+//   - MinQualityScore — not applied (A7g pending)
+//   - MinTranscriptWords — not applied (A7h pending)
 func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) string {
 	h := sha256.New()
 	add := func(key, val string) {
@@ -137,6 +137,9 @@ func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) 
 		io.WriteString(h, "|")
 	}
 
+	// Version tag — bump to invalidate all prior caches.
+	add("fp", "v2-apply-only")
+
 	// Clip IDs from the source spec (sorted for determinism).
 	if len(src.ClipIDs) > 0 {
 		sorted := make([]string, len(src.ClipIDs))
@@ -146,16 +149,6 @@ func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) 
 	}
 	add("tp", src.TranscriptPolicy)
 	add("order", src.OrderingStrategy)
-	if src.MinQualityScore != nil && *src.MinQualityScore > 0 {
-		add("minq", strconv.FormatFloat(*src.MinQualityScore, 'f', -1, 64))
-	}
-	if src.MinTranscriptWords != nil && *src.MinTranscriptWords > 0 {
-		add("mintw", strconv.Itoa(*src.MinTranscriptWords))
-	}
-
-	// Text-source fields (when ev is nil — pure text generation).
-	add("topic", src.Topic)
-	add("stext", src.SourceText)
 
 	// Evidence fields (when clips were resolved).
 	// Issue #2 (June 2026): ClipIDs renamed → AcceptedClipIDs.
@@ -167,6 +160,10 @@ func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) 
 			add("evclips", strings.Join(sorted, ","))
 		}
 		add("atext", ev.AssembledText)
+	} else {
+		// Text path: Topic and SourceText DO affect output.
+		add("topic", src.Topic)
+		add("stext", src.SourceText)
 	}
 
 	sum := h.Sum(nil)
