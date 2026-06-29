@@ -37,6 +37,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -57,7 +58,8 @@ import (
 // row. See internal/app/registry_adapters.go::newMutationsDispatcherAdapter
 // for the error sentinel.
 type BulkUploadWorker struct {
-	uploader   ClipDriveUploaderPort
+	uploader   ClipDriveUploaderPort // deprecated: kept for non-Publisher paths
+	publisher  ClipPublisherPort    // canonical Drive upload (FASE 7)
 	repo       ClipRepositoryPort
 	indexer    ClipIndexerPort
 	hasher     ClipHashPort
@@ -78,6 +80,7 @@ type BulkUploadWorker struct {
 // configure-time error if dispatcher is nil.
 func NewBulkUploadWorker(
 	uploader ClipDriveUploaderPort,
+	publisher ClipPublisherPort,
 	repo ClipRepositoryPort,
 	indexer ClipIndexerPort,
 	hasher ClipHashPort,
@@ -90,6 +93,7 @@ func NewBulkUploadWorker(
 	}
 	return &BulkUploadWorker{
 		uploader:   uploader,
+		publisher:  publisher,
 		repo:       repo,
 		indexer:    indexer,
 		hasher:     hasher,
@@ -162,8 +166,8 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	if strings.TrimSpace(payload.LocalFolder) == "" {
 		return nil, fmt.Errorf("local_folder is required")
 	}
-	if w.uploader == nil {
-		return nil, fmt.Errorf("drive uploader not configured")
+	if w.uploader == nil && w.publisher == nil {
+		return nil, fmt.Errorf("drive uploader or publisher not configured")
 	}
 	if w.repo == nil {
 		return nil, fmt.Errorf("clips repository not configured")
@@ -323,7 +327,7 @@ func (w *BulkUploadWorker) processOneClip(
 	uploaded, indexed, pushed, skipped, failed *atomic.Int64,
 	log *zap.Logger,
 ) error {
-	if w == nil || w.hasher == nil || w.uploader == nil || w.repo == nil {
+	if w == nil || w.hasher == nil || (w.uploader == nil && w.publisher == nil) || w.repo == nil {
 		failed.Add(1)
 		return fmt.Errorf("bulk upload not configured correctly")
 	}
@@ -339,8 +343,10 @@ func (w *BulkUploadWorker) processOneClip(
 	log = log.With(zap.String("clip_id", clipID), zap.String("path", cand.LocalPath))
 
 	// Step 2: Drive target folder (with subdir if requested)
+	// When publisher is available, folder resolution is handled internally;
+	// only call resolveSubdirFolderID when using the legacy uploader path.
 	targetFolderID := payload.DriveFolderID
-	if payload.SubdirAsDriveSubdir && cand.Subdir != "" && cand.Subdir != "." {
+	if w.publisher == nil && payload.SubdirAsDriveSubdir && cand.Subdir != "" && cand.Subdir != "." {
 		id, ferr := resolveSubdirFolderID(ctx, cand.Subdir)
 		if ferr != nil {
 			failed.Add(1)
@@ -367,40 +373,97 @@ func (w *BulkUploadWorker) processOneClip(
 			driveName = cand.Name
 		}
 		driveFilename := driveName + ".mp4"
-
 		driveDesc := buildBulkDriveDescription(cand, fileHash, *payload)
-		upRes, err := w.uploader.UploadFileWithDescription(ctx, cand.LocalPath, targetFolderID, driveFilename, driveDesc)
-		if err != nil {
-			failed.Add(1)
-			return fmt.Errorf("drive upload: %w", err)
-		}
-		driveFileID = upRes.FileID
-		driveLink = upRes.WebViewLink
-		downloadLink = upRes.DownloadLink
-		uploaded.Add(1)
-		log.Info("uploaded to drive",
-			zap.String("file_id", driveFileID),
-			zap.String("drive_link", driveLink))
 
-		// Step 3: upload siblings (best effort)
+		// Determine the group for Publisher (subdir maps to group folder)
+		pubGroup := ""
+		if payload.SubdirAsDriveSubdir && cand.Subdir != "" && cand.Subdir != "." {
+			pubGroup = cand.Subdir
+		}
+
+		if w.publisher != nil {
+			// FASE 7: use canonical Publisher
+			pubReq := delivery.PublishRequest{
+				Destination:        delivery.DestinationYouTubeClip,
+				LocalPath:          cand.LocalPath,
+				Filename:           driveFilename,
+				Description:        driveDesc,
+				Group:              pubGroup,
+				RootFolderOverride: payload.DriveFolderID,
+			}
+			pubRes, err := w.publisher.Publish(ctx, pubReq)
+			if err != nil {
+				failed.Add(1)
+				return fmt.Errorf("drive publish: %w", err)
+			}
+			driveFileID = pubRes.FileID
+			driveLink = pubRes.WebViewLink
+			downloadLink = "https://drive.google.com/uc?id=" + pubRes.FileID
+			targetFolderID = pubRes.FolderID
+			uploaded.Add(1)
+			log.Info("published to drive",
+				zap.String("file_id", driveFileID),
+				zap.String("drive_link", driveLink))			// Upload siblings via Publisher (best effort)
+			// Group is empty because the folder is already resolved by the
+			// first Publish call (targetFolderID = pubRes.FolderID). Setting
+			// Group here would create double-nesting.
+			dir := filepath.Dir(cand.LocalPath)
+			baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
+			manifestPath := filepath.Join(dir, "clip_manifest.json")
+			if _, err := os.Stat(manifestPath); err == nil {
+				w.publisher.Publish(ctx, delivery.PublishRequest{
+					Destination:        delivery.DestinationYouTubeClip,
+					LocalPath:          manifestPath,
+					Filename:           baseNoExt + ".clip_manifest.json",
+					Description:        "Clip manifest for " + baseNoExt,
+					RootFolderOverride: targetFolderID,
+				})
+			}
+			for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
+				if _, err := os.Stat(tp); err == nil {
+					w.publisher.Publish(ctx, delivery.PublishRequest{
+						Destination:        delivery.DestinationYouTubeClip,
+						LocalPath:          tp,
+						Filename:           baseNoExt + ".transcript.txt",
+						Description:        "Whisper transcript for " + baseNoExt,
+						RootFolderOverride: targetFolderID,
+					})
+					break
+				}
+			}
+		} else {
+			// Legacy fallback
+			upRes, err := w.uploader.UploadFileWithDescription(ctx, cand.LocalPath, targetFolderID, driveFilename, driveDesc)
+			if err != nil {
+				failed.Add(1)
+				return fmt.Errorf("drive upload: %w", err)
+			}
+			driveFileID = upRes.FileID
+			driveLink = upRes.WebViewLink
+			downloadLink = upRes.DownloadLink
+			uploaded.Add(1)
+			log.Info("uploaded to drive",
+				zap.String("file_id", driveFileID),
+				zap.String("drive_link", driveLink))
+
+			// Step 3: upload siblings (best effort)
 		dir := filepath.Dir(cand.LocalPath)
 		baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
-		// clip_manifest.json
 		manifestPath := filepath.Join(dir, "clip_manifest.json")
 		if _, err := os.Stat(manifestPath); err == nil {
-			mdesc := "Clip manifest for " + baseNoExt
-			if _, e := w.uploader.UploadFileWithDescription(ctx, manifestPath, targetFolderID, baseNoExt+".clip_manifest.json", mdesc); e != nil {
-				log.Warn("manifest.json upload failed (non-fatal)", zap.Error(e))
-			}
-		}
-		// transcript.txt (sibling .txt or named transcript.txt)
-		for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
-			if _, err := os.Stat(tp); err == nil {
-				tdesc := "Whisper transcript for " + baseNoExt
-				if _, e := w.uploader.UploadFileWithDescription(ctx, tp, targetFolderID, baseNoExt+".transcript.txt", tdesc); e != nil {
-					log.Warn("transcript.txt upload failed (non-fatal)", zap.Error(e))
+				mdesc := "Clip manifest for " + baseNoExt
+				if _, e := w.uploader.UploadFileWithDescription(ctx, manifestPath, targetFolderID, baseNoExt+".clip_manifest.json", mdesc); e != nil {
+					log.Warn("manifest.json upload failed (non-fatal)", zap.Error(e))
 				}
-				break
+			}
+			for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
+				if _, err := os.Stat(tp); err == nil {
+					tdesc := "Whisper transcript for " + baseNoExt
+					if _, e := w.uploader.UploadFileWithDescription(ctx, tp, targetFolderID, baseNoExt+".transcript.txt", tdesc); e != nil {
+						log.Warn("transcript.txt upload failed (non-fatal)", zap.Error(e))
+					}
+					break
+				}
 			}
 		}
 	}

@@ -21,6 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -50,6 +51,7 @@ type Handler struct {
 	// "if h.clipsRepo != nil { h.clipsRepo.Upsert }" soft-fallback that
 	// the Wave 22 task-2 handler migration removes.
 	dispatcher             sfxports.DispatcherPort
+	publisher              sfxports.PublisherPort // FASE 7: canonical Drive upload
 	soundEffectsRootFolder string
 	processRunner          appassets.ProcessRunner
 	log                    *zap.Logger
@@ -75,6 +77,7 @@ func NewHandler(
 	metaWriter sfxports.SemanticMetadataWriterPort,
 	resolver sfxports.DestinationResolverPort,
 	dispatcher sfxports.DispatcherPort,
+	publisher sfxports.PublisherPort,
 	soundEffectsRootFolder string,
 	processRunner appassets.ProcessRunner,
 	log *zap.Logger,
@@ -85,6 +88,7 @@ func NewHandler(
 		metaWriter:             metaWriter,
 		resolver:               resolver,
 		dispatcher:             dispatcher,
+		publisher:              publisher,
 		soundEffectsRootFolder: soundEffectsRootFolder,
 		processRunner:          processRunner,
 		log:                    log,
@@ -198,7 +202,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		}
 	}
 
-	// 5. Generate and write semantic metadata.json + upload to Drive
+	// 5. Generate semantic metadata + upload to Drive via Publisher (FASE 7)
 	var driveFileID, driveLink, parentFolderID string
 	tags := []string{"sound_effect", name}
 	searchText := name + " sound effect sfx audio"
@@ -224,39 +228,55 @@ func (h *Handler) Generate(c *gin.Context) {
 			if len(writeRes.Tags) > 0 {
 				tags = writeRes.Tags
 			}
+		}
+	}
 
-			if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
-				parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
-				if err == nil {
-					uploadRes, err := h.driveUploader.UploadFile(ctx, dest.LocalPath, parentFolderID, filepath.Base(dest.LocalPath))
-					if err == nil {
-						driveFileID = uploadRes.FileID
-						driveLink = uploadRes.WebViewLink
-					} else {
-						h.log.Error("failed to upload sound effect to Drive", zap.Error(err))
-					}
+	if h.publisher != nil {
+		pubReq := delivery.PublishRequest{
+			Destination: delivery.DestinationSoundEffect,
+			LocalPath:   dest.LocalPath,
+			Filename:    filepath.Base(dest.LocalPath),
+			Group:       name,
+		}
+		pubResult, err := h.publisher.Publish(ctx, pubReq)
+		if err != nil {
+			h.log.Error("failed to publish sound effect to Drive", zap.Error(err))
+		} else {
+			driveFileID = pubResult.FileID
+			driveLink = pubResult.WebViewLink
+			parentFolderID = pubResult.FolderID
+			h.log.Info("published sound effect to Drive",
+				zap.String("file_id", pubResult.FileID),
+				zap.String("folder_id", pubResult.FolderID))
+		}
 
-					localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
-					if _, err := os.Stat(localMetaPath); err == nil {
-						_, err = h.driveUploader.UploadFile(ctx, localMetaPath, parentFolderID, "metadata.json")
-						if err != nil {
-							h.log.Error("failed to upload metadata.json to Drive", zap.Error(err))
-						} else {
-							h.log.Info("metadata.json uploaded to Drive successfully")
-						}
-					}
+		// Upload metadata.json sidecar (best effort)
+		localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
+		if parentFolderID != "" {
+			if _, err := os.Stat(localMetaPath); err == nil {
+				metaPubReq := delivery.PublishRequest{
+					Destination:       delivery.DestinationSoundEffect,
+					LocalPath:         localMetaPath,
+					Filename:          "metadata.json",
+					Group:             "", // folder already resolved by first publish
+					RootFolderOverride: parentFolderID,
 				}
+			if _, err := h.publisher.Publish(ctx, metaPubReq); err != nil {
+				h.log.Error("failed to publish metadata.json to Drive", zap.Error(err))
+			} else {
+				h.log.Info("metadata.json published to Drive successfully")
+			}
 			}
 		}
-	} else {
-		if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
-			parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
+	} else if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
+		// Legacy fallback
+		var err error
+		parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
+		if err == nil {
+			uploadRes, err := h.driveUploader.UploadFile(ctx, dest.LocalPath, parentFolderID, filepath.Base(dest.LocalPath))
 			if err == nil {
-				uploadRes, err := h.driveUploader.UploadFile(ctx, dest.LocalPath, parentFolderID, filepath.Base(dest.LocalPath))
-				if err == nil { //nolint:revive // preserve original err-shadow
-					driveFileID = uploadRes.FileID
-					driveLink = uploadRes.WebViewLink
-				}
+				driveFileID = uploadRes.FileID
+				driveLink = uploadRes.WebViewLink
 			}
 		}
 	}
