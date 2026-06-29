@@ -3,8 +3,6 @@ package monitor
 import (
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -13,6 +11,8 @@ import (
 
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+
+	"go.uber.org/zap"
 )
 
 // Priority levels for batch channel scheduling.
@@ -103,10 +103,10 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, ch
 		channelsSvc:  channelsSvc,
 		log:          log,
 		stopCh:       make(chan struct{}),
-		ytdlp:        ytdlp,
 		youtubeSvc:   youtubeSvc,
 		ollamaClient: ollamaClient,
 		globalSem:    make(chan struct{}, maxChannels),
+		ytdlp:        ytdlp,
 	}
 }
 
