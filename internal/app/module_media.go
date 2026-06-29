@@ -313,9 +313,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
-		ClipsRepo:      bundle.ClipsRepo,
-		StockRepo:      bundle.ClipsRepo,
-		ArtlistRepo:    bundle.ClipsRepo,
 		DeletionSvc:    deletionSvc,
 		DriveUploader:  driveUploader,
 		MediaProcessor: bundle.MediaProcessor,

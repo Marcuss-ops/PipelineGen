@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.
-func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
+func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bArtlistSchema)
 	t.Cleanup(func() { _ = db.Close() })
