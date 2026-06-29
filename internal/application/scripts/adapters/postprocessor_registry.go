@@ -50,15 +50,22 @@ type SceneImage struct {
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
-	Entities         *scriptpkg.EntityResult
-	VideoMetadata    []scriptpkg.VideoMetadata
-	Voiceovers       []SceneVoiceover
-	Scenes           []SceneImage
-	DocLink          string
-	DocID            string
-	ScriptID         int64
-	AlreadyPersisted bool
-	Warnings         []string
+	Entities          *scriptpkg.EntityResult
+	VideoMetadata     []scriptpkg.VideoMetadata
+	Voiceovers        []SceneVoiceover
+	Scenes            []SceneImage
+	DocLink           string
+	DocID             string
+	ScriptID          int64
+	AlreadyPersisted  bool
+	// SynthesizedScenes mirrors PostProcessResult.SynthesizedScenes
+	// after mergePostProcessResult — the canonical pipeline-level
+	// surface for processors that reconstructed scenes from prose.
+	// FASE 3 (June 2026): added for the clip-bindings prose-fallback
+	// heuristic. omitempty keeps the JSON envelope stable for
+	// callers that did not opt into the heuristic.
+	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
+	Warnings           []string             `json:"warnings,omitempty"`
 }
 
 // ProcessorPolicy classifies a postprocessor's failure mode for
@@ -157,7 +164,20 @@ type PostProcessResult struct {
 	DocID            string
 	ScriptID         int64
 	AlreadyPersisted bool
-	Warnings         []string `json:"warnings,omitempty"`
+	// SynthesizedScenes carries scene bundles constructed by an
+	// individual processor when the canonical SpecScene pipeline
+	// could not produce them. The clip-bindings prose-fallback
+	// heuristic (FASE 3, June 2026) is the canonical emitter —
+	// small local models (gemma2:2b / gemma4:e4b) commonly return
+	// prose without SpecScene.scenes, so the binder synthesises N
+	// scenes from input.Text and binds clips 1:1. Without this
+	// field the binder would be flagged "returned empty output" by
+	// the registry's IsEmpty check, even though meaningful work
+	// happened. omitempty so existing emitters (entities /
+	// metadata / voiceover / images / document / persistence) do
+	// not see a serialisation diff.
+	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
+	Warnings           []string             `json:"warnings,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -183,6 +203,13 @@ func (r *PostProcessResult) IsEmpty() bool {
 		return false
 	}
 	if r.ScriptID > 0 || r.AlreadyPersisted {
+		return false
+	}
+	// FASE 3 (June 2026): SynthesizedScenes counts as observable
+	// work. Without this, the clip_bindings prose-fallback heuristic
+	// is functionally complete but the registry still complains
+	// "returned empty output" — choking the job on a false-positive.
+	if len(r.SynthesizedScenes) > 0 {
 		return false
 	}
 	return true
@@ -507,5 +534,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult) {
 	if src.ScriptID > 0 {
 		dst.ScriptID = src.ScriptID
 		dst.AlreadyPersisted = src.AlreadyPersisted
+	}
+	// FASE 3 (June 2026): prose-fallback clip_bindings emits
+	// SynthesizedScenes. Last-wins semantics: only one processor
+	// synthesises scenes at a time, so a simple overwrite keeps the
+	// invariant simple.
+	if len(src.SynthesizedScenes) > 0 {
+		dst.SynthesizedScenes = src.SynthesizedScenes
 	}
 }
