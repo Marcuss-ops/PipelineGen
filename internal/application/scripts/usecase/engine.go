@@ -49,6 +49,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	"go.uber.org/zap"
 )
@@ -231,11 +232,16 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	if title == "" {
 		title = topic
 	}
+	// cfg is the canonical script-generation SSOT (language, tone, WPM).
+	// All defaults flow from a single call so the intent is visible at a
+	// glance and the struct is stack-allocated once per generation.
+	cfg := defaults.DefaultScriptConfig()
+
 	if language == "" {
-		language = "en"
+		language = cfg.DefaultLanguage
 	}
 	if tone == "" {
-		tone = "documentary"
+		tone = cfg.DefaultTone
 	}
 
 	if e.log != nil {
@@ -295,7 +301,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 					WordCount:    result.WordCount,
 					Model:        result.Model,
 					CacheStatus:  "exact_hit",
-					EstDuration:  (result.WordCount * 60) / 150,
+					EstDuration:  (result.WordCount * 60) / cfg.WordsPerMinute,
 					ClipEvidence: plan.ClipEvidence,
 					// ScriptID intentionally absent: PR 5 moved
 					// persistence to PersistenceProcessor; the cached
