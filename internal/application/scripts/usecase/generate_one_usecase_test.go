@@ -112,7 +112,8 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			GenerateMetadata:   true,
 			// Opt-out of every other postprocessor so
 			// plan.Postprocessors stays to: entities,
-			// metadata, clip_bindings, stock_association —
+			// metadata, clip_bindings, stock_association, voiceover,
+		// images, document, persistence —
 			// (last two are unconditional best-efforts per
 			// buildPostprocessorList and missing-registered
 			// in this test, surfacing as warnings only).

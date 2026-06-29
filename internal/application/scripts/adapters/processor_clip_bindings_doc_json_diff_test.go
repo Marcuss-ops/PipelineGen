@@ -122,7 +122,7 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 	ev := &scriptpkg.ClipEvidence{
 		// PR 6 canonical: URLs keyed by the canonical (Drive file
 		// ID) the user typed, NOT by any internal asset.ID.
-		ClipIDs:   []string{"drive-file-A", "drive-file-B", "drive-file-C", "drive-file-D"},
+		AcceptedClipIDs: []string{"drive-file-A", "drive-file-B", "drive-file-C", "drive-file-D"},
 		ClipCount: 4,
 		ClipNames: map[string]string{
 			"drive-file-A": "Clip A",

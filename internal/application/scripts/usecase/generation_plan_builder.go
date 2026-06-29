@@ -131,19 +131,18 @@ func modeForSource(st scriptpkg.SourceType) string {
 }
 
 // buildPostprocessorList derives the ordered list of postprocessors
-// from OutputSpec flags. Order: entities → metadata → voiceover →
-// images → clip_bindings → document → persistence.
+// from OutputSpec flags.
 //
-// PR 7 (June 2026): inserted "clip_bindings" BEFORE "document". The
-// ordering is critical: DocumentProcessor (processor_document.go
-// line 49-62) renders SpecScene.Scenes into the Google Doc HTML body
-// and READS `scene.Bindings.Clip.DriveLink` per scene. If clip_bindings
-// ran AFTER document, the doc would render the empty-bindings version
-// of the SpecScene and miss the canonical drive links injected by the
-// binder. Same logic applies to the JSON response writer path: result
-// is built AFTER ppReg.Run returns, and `buildGenerationResult` reads
-// the post-walk SpecScene — the binder must run during the walk so
-// both paths see the same final binding set.
+// CRITICAL ordering (P0, June 2026): scene-normalisation stages
+// (clip_bindings + stock_association) MUST run BEFORE artifact
+// producers (voiceover, images, document) so the prose-fallback
+// heuristic synthesised scenes are visible to voiceover/image
+// renderers. Before this fix, voiceover and images ran with zero
+// scenes when the LLM emitted prose-only output; clip_bindings
+// synthesised scenes later but only document + persistence saw them.
+//
+// Order: entities → metadata → clip_bindings → stock_association →
+// voiceover → images → document → persistence.
 //
 // clip_bindings is unconditional (no operator flag) because:
 //   - It is BestEffort, so composition never fails on its absence.
@@ -161,19 +160,20 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []string {
 	if out.GenerateMetadata {
 		pp = append(pp, "metadata")
 	}
+	// Scene-normalisation stages: MUST run before artifact producers
+	// (voiceover, images, document) so prose-fallback synthesised
+	// scenes are visible to downstream renderers.
+	pp = append(pp, "clip_bindings")
+	// stock_association is unconditional (BestEffort, no-op when
+	// Qdrant is unavailable). Runs after clip_bindings so it can
+	// fall back to scene.Bindings.Clip.DriveLink.
+	pp = append(pp, "stock_association")
 	if out.GenerateVoiceover {
 		pp = append(pp, "voiceover")
 	}
 	if out.GenerateSceneImages {
 		pp = append(pp, "images")
 	}
-	// PR 7: clip_bindings MUST run before document so the doc
-	// builder sees the canonical bindings (see comment above).
-	pp = append(pp, "clip_bindings")
-	// stock_association is unconditional (BestEffort, no-op when
-	// Qdrant is unavailable). Runs after clip_bindings so it can
-	// fall back to scene.Bindings.Clip.DriveLink.
-	pp = append(pp, "stock_association")
 	if out.GenerateDocument {
 		pp = append(pp, "document")
 	}

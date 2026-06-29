@@ -6,7 +6,8 @@
 // Each processor is opt-in: it runs only when its name appears
 // in the plan's Postprocessors list. The registry respects the
 // list order, which matches buildPostprocessorList ordering:
-// entities → metadata → voiceover → images → document → persistence.
+// entities → metadata → clip_bindings → stock_association →
+// voiceover → images → document → persistence.
 //
 // PR 7 (June 2026): added Freeze/IsFrozen so composition-time
 // registration is rejected after wiring is complete. The

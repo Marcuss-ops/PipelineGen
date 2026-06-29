@@ -81,7 +81,7 @@ func makeClipSearchHits(ids ...string) []scriptpkg.SearchResultItem {
 
 func makePackForIDs(ids []string) *scriptpkg.ClipEvidence {
 	return &scriptpkg.ClipEvidence{
-		ClipIDs:    ids,
+		AcceptedClipIDs: ids,
 		ClipNames:  make(map[string]string, len(ids)),
 		DriveLinks: map[string]string{},
 		ClipCount:  len(ids),
