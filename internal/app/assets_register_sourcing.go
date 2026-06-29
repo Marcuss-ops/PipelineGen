@@ -139,7 +139,7 @@ func (a *youtubeIndexDispatcherAdapter) EnqueueAndIndex(ctx context.Context, cli
 		now := time.Now().UTC()
 		node := &assetsrepo.AssetNode{
 			ID:        domainAsset.ID,
-			Source:    domainAsset.Source,
+			Source:    string(domainAsset.Source),
 			AssetID:   domainAsset.ID,
 			Name:      domainAsset.Name,
 			Type:      "file",
