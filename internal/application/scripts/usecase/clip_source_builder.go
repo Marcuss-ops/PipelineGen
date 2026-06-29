@@ -10,7 +10,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 )
@@ -37,11 +36,11 @@ type NarrativePlan struct {
 
 // clipsResolverPort is the narrow resolver interface that
 // ClipSourceBuilder consumes. *assets.ClipsRepository satisfies it
-// in production; unit tests inject a hand-rolled stub via
-// NewClipSourceBuilderForTest. Defining the port here (rather than
-// in `ports/`) keeps the package self-contained: the builder
-// has no other port dependency and tests don't need a new import
-// just to wire a stub.
+// in production; unit tests inject a hand-rolled stub.
+//
+// P1 #7 (June 2026): the production constructor now accepts
+// clipsResolverPort instead of the concrete *assets.ClipsRepository,
+// removing the SQLite infra import from the use case layer.
 type clipsResolverPort interface {
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
 	GetByDriveFileID(ctx context.Context, id string) (*asset.Asset, error)
@@ -79,8 +78,17 @@ type ClipGenerationOptions struct {
 	RequireDriveLink bool
 }
 
+// NewClipSourceBuilder creates a ClipSourceBuilder backed by the
+// supplied clip resolver. In production, the concrete
+// *assets.ClipsRepository (satisfying clipsResolverPort) is wired
+// by internal/app/wire_script.go. Unit tests pass a hand-rolled
+// stub directly — no separate test-only constructor is needed.
+//
+// P1 #7 (June 2026): parameter changed from *assets.ClipsRepository
+// to clipsResolverPort, removing the SQLite infra import from the
+// use case layer.
 func NewClipSourceBuilder(
-	clipsRepo *assets.ClipsRepository,
+	clipsRepo clipsResolverPort,
 	ollamaClient interface{},
 	log *zap.Logger,
 ) *ClipSourceBuilder {
@@ -88,24 +96,6 @@ func NewClipSourceBuilder(
 		clipsRepo:    clipsRepo,
 		ollamaClient: ollamaClient,
 		log:          log,
-	}
-}
-
-// NewClipSourceBuilderForTest is the test-only constructor that
-// accepts a clipsResolverPort stub rather than the concrete
-// *assets.ClipsRepository. The canonical NewClipSourceBuilder
-// preserves its production signature so the composition root
-// (internal/app/wire_script.go) keeps wiring the concrete repo
-// unchanged; tests reach for this constructor to inject fakes
-// without dragging SQLite + asset fixtures into the unit-test
-// boundary.
-func NewClipSourceBuilderForTest(
-	clipsRepo clipsResolverPort,
-	log *zap.Logger,
-) *ClipSourceBuilder {
-	return &ClipSourceBuilder{
-		clipsRepo: clipsRepo,
-		log:       log,
 	}
 }
 
