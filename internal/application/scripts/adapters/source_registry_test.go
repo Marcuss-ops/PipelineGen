@@ -539,7 +539,7 @@ func TestCatalogSearchResultType(t *testing.T) {
 // TestCatalogSearchParity_EquivalentFingerprint verifies that Catalog
 // and Search resolvers compute the same fingerprint for the same
 // SourceSpec + evidence pair. The shared buildResolvedClipSource
-// helper (source_resolver_shared.go) calls computeSourceFingerprint
+// helper (source_resolver_shared.go) calls BuildClipFingerprint
 // which uses BuildItemIdentity — excluding SourceType from the hash.
 func TestCatalogSearchParity_EquivalentFingerprint(t *testing.T) {
 	// Two SourceSpecs that differ only in Type should produce the
@@ -562,7 +562,7 @@ func TestCatalogSearchParity_EquivalentFingerprint(t *testing.T) {
 		OrderingStrategy: "relevance",
 	}
 
-	// buildResolvedClipSource calls computeSourceFingerprint(src, evidence).
+	// buildResolvedClipSource calls BuildClipFingerprint(src, evidence).
 	// Since fingerprint uses BuildItemIdentity which includes src.Query,
 	// src.TranscriptPolicy, src.OrderingStrategy etc., the same content
 	// should produce the same fingerprint regardless of Type.

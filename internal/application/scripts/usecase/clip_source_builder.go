@@ -90,8 +90,7 @@ func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 // A4 (June 2026): this constant replaced an inline byte-budget of 500 (the
 // old `excerpt[:500]` cut). Byte-truncation on multi-byte UTF-8 input (CJK
 // ideographs, supplementary-plane emoji, accented Latin) silently splits
-// codepoints and emits invalid bytes downstream. The fingerprint
-// (ComputeFingerprint) is unaffected — it never read this constant — and
+// codepoints and emits invalid bytes downstream. The fingerprint is unaffected — it never read this constant — and
 // BuildClipContext now truncates by RUNES via truncateExcerpt.
 //
 // A7 (forthcoming) will wire opts.TranscriptPolicy to a documented mode
