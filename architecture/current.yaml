@@ -66,10 +66,21 @@
     - id: PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT
       title: "Update ARCHITECTURE.md to document the 6-file ownership split vs generated monolithic view"
       owner_capability: architecture
-      status: pending
+      status: shipped  # flipped from pending post-commit (2026-06-29)
       introduced: 2026-06-29
+      shipped_on: 2026-06-29  # 11 days ahead of deadline 2026-07-10
       deadline: 2026-07-10
       target: "ARCHITECTURE.md conceptually references the legacy monolithic ownership.yaml; update text to reflect the cmd/architecture-aggregate generator chain and the 6 per-section sources."
+      shipped_result: "ARCHITECTURE.md §6 + §9 Authority blocks and §11.5 baseline reference updated to point at architecture/ownership/{modules,jobs,services,application,infrastructure,packages}.yaml + cmd/architecture-aggregate (byte-deterministic stdlib-only concat) + architecture/ownership.generated.yaml + architecture/migrations/baseline-inventory-2026-06-29.yaml. Doc-only commit (no .go files changed; no per-package import path affected). Cross-references downstream docs/ files still mentioning the legacy monolithic ownership.yaml are tracked under PR-DOCS-OWNERSHIP-YAML-MONOLITHIC-REFERENCES (status: pending, see below)."
+    - id: PR-DOCS-OWNERSHIP-YAML-MONOLITHIC-REFERENCES
+      title: "Migrate 17+ downstream docs/ files from legacy monolithic architecture/ownership.yaml pointer to the per-section split sources"
+      owner_capability: architecture
+      status: pending  # pre-existing drift in docs/{,architecture/,migrations/,operations/}/*.md that reference the deleted monolithic ownership.yaml
+      introduced: 2026-06-29
+      deadline: 2026-07-25
+      target: "Update each prose reference from `architecture/ownership.yaml` to the canonical split-source form (per-section file + generated.yaml view). Includes: AGENTS.md §Documentation Map ownership.yaml pointer, README.md §Architecture pointer, architecture/decisions/0001-qdrant-vs-platform-config.md Wave-20 entry, docs/operations/{05,06}-*.md ownership.yaml references, docs/migrations/qdrant-cutover-audit-2026-06-29.md pointer, docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md §One owner per fact link, REPOSITORY_CLEANUP.md, docs/archive/migration-history.md, docs/operations/tickets/MANIFEST-STREAM-RECOVERY.md, docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md, architecture/audits/2026-06-28-cross-capability-imports.md."
+      follow_up_to: PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT
+      extends_scope: "doc-only text edits; no .go files affected"
     - id: PR-KERNEL-EVENT-TRANSLATION
       title: "Phase A scope expansion: extract application/translation into kernel/event/translation"
       owner_capability: internal/kernel/event
