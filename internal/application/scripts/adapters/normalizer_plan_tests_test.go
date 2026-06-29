@@ -18,8 +18,8 @@ import (
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-func defaultCfg() scripts.NormalizationConfig {
-	return scripts.NormalizationConfig{
+func defaultCfg() adapters.NormalizationConfig {
+	return adapters.NormalizationConfig{
 		DefaultLanguage:          "it",
 		DefaultTone:              "documentary",
 		DefaultDurationSeconds:   600,
@@ -63,7 +63,7 @@ func TestNormalizeItemPrecedenceCallerBeatsPreset(t *testing.T) {
 	item := textItem()
 	item.Language = "de" // caller explicit
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != "de" {
 		t.Errorf("caller language should beat preset/config: got %q", item.Language)
@@ -76,7 +76,7 @@ func TestNormalizeItemPrecedencePresetBeatsConfig(t *testing.T) {
 	item := textItem()
 	item.Language = "" // not set by caller
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != "en" {
 		t.Errorf("config should fill unset language: got %q, want %q", item.Language, "en")
@@ -84,11 +84,11 @@ func TestNormalizeItemPrecedencePresetBeatsConfig(t *testing.T) {
 }
 
 func TestNormalizeItemPrecedenceConfigBeatsHardDefault(t *testing.T) {
-	cfg := scripts.NormalizationConfig{} // no config defaults
+	cfg := adapters.NormalizationConfig{} // no config defaults
 	item := textItem()
 	item.Language = ""
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != "en" {
 		t.Errorf("hard safety default should be 'en': got %q", item.Language)
@@ -102,11 +102,11 @@ func TestNormalizeItemIdempotent(t *testing.T) {
 	item := textItem()
 
 	// First normalization.
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 	first := item
 
 	// Second normalization — should not change anything.
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Language != first.Language {
 		t.Errorf("language changed on second pass: %q → %q", first.Language, item.Language)
@@ -127,10 +127,10 @@ func TestNormalizeItemIdempotentWithImages(t *testing.T) {
 	cfg := defaultCfg()
 	item := clipsItem()
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
 	first := item
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
 
 	if item.Output.GenerateSceneImages != first.Output.GenerateSceneImages {
 		t.Error("generate_scene_images changed on second pass")
@@ -157,7 +157,7 @@ func TestNormalizeItemPreservesSourceTopic(t *testing.T) {
 			Topic: "Original Topic",
 		},
 	}
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.Source.Topic != "Original Topic" {
 		t.Errorf("normalizer must not mutate Source.Topic: got %q", item.Source.Topic)
@@ -169,7 +169,7 @@ func TestNormalizeItemPreservesSourceTopic(t *testing.T) {
 }
 
 func TestNormalizeItemNil(t *testing.T) {
-	scripts.NormalizeItem(nil, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(nil, scriptpkg.PresetCustom, defaultCfg())
 	// Must not panic.
 }
 
@@ -195,7 +195,7 @@ func TestNormalizeItemDurationToWords(t *testing.T) {
 	cfg.DefaultDurationSeconds = 300 // 5 minutes
 	item := textItem()
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	// 300 seconds × 150 wpm / 60 = 750 words
 	expected := (300 * 150) / 60
@@ -210,7 +210,7 @@ func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
 	item := textItem()
 	item.ScriptParams.TargetWords = 500 // caller explicit
 
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if item.ScriptParams.TargetWords != 500 {
 		t.Errorf("caller words should beat duration-derived: got %d", item.ScriptParams.TargetWords)
@@ -468,7 +468,7 @@ func TestApplyPresetSearch_PassThrough(t *testing.T) {
 
 func TestValidateItemValidText(t *testing.T) {
 	item := textItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	if err := scripts.ValidateItem(item); err != nil {
 		t.Errorf("valid text item should not error: %v", err)
@@ -477,7 +477,7 @@ func TestValidateItemValidText(t *testing.T) {
 
 func TestValidateItemValidClips(t *testing.T) {
 	item := clipsItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	if err := scripts.ValidateItem(item); err != nil {
 		t.Errorf("valid clips item should not error: %v", err)
@@ -551,7 +551,7 @@ func TestNormalizeItemDefaultOutputFmtIsJSON(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
 	item.Output.OutputFmt = ""
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 	if item.Output.OutputFmt != "json" {
 		t.Fatalf("default OutputFmt: got %q, want %q", item.Output.OutputFmt, "json")
 	}
@@ -571,7 +571,7 @@ func TestValidateItemDuplicateLanguages(t *testing.T) {
 func TestBuildPlanTextFieldMapping(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan := scripts.BuildPlan(item)
 
@@ -601,7 +601,7 @@ func TestBuildPlanTextFieldMapping(t *testing.T) {
 func TestBuildPlanClipsFieldMapping(t *testing.T) {
 	cfg := defaultCfg()
 	item := clipsItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan := scripts.BuildPlan(item)
 
@@ -619,7 +619,7 @@ func TestBuildPlanPostprocessorList(t *testing.T) {
 	item.Output.ExtractEntities = true
 	item.Output.GenerateDocument = true
 	item.Output.SaveToDB = true
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	plan := scripts.BuildPlan(item)
 
@@ -659,7 +659,7 @@ func TestBuildPlanPostprocessorListFull(t *testing.T) {
 	item.Output.GenerateSceneImages = true
 	item.Output.GenerateDocument = true
 	item.Output.SaveToDB = true
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	plan := scripts.BuildPlan(item)
 
@@ -682,7 +682,7 @@ func TestBuildPlanPostprocessorListFull(t *testing.T) {
 func TestBuildPlanDeterministic(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan1 := scripts.BuildPlan(item)
 	plan2 := scripts.BuildPlan(item)
@@ -708,7 +708,7 @@ func TestBuildPlanDeterministic(t *testing.T) {
 func TestBuildPlanNoEndpointNames(t *testing.T) {
 	cfg := defaultCfg()
 	item := textItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	plan := scripts.BuildPlan(item)
 
@@ -736,8 +736,8 @@ func TestBuildPlansMultiple(t *testing.T) {
 	item2 := clipsItem()
 	item1.ID = "one"
 	item2.ID = "two"
-	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, cfg)
-	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, cfg)
 
 	plans := scripts.BuildPlans([]scriptpkg.GenerationItemV2{item1, item2})
 
@@ -766,7 +766,7 @@ func TestSingleBatchParityNormalization(t *testing.T) {
 	item := textItem()
 
 	// Normalize standalone.
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 	single := item
 
 	// Normalize via envelope.
@@ -831,7 +831,7 @@ func TestBuildPlanTopicFromSource(t *testing.T) {
 			Topic: "Climate Change",
 		},
 	}
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	plan := scripts.BuildPlan(item)
 
@@ -854,7 +854,7 @@ func TestBuildPlanTopicFallbackToTitle(t *testing.T) {
 			Topic: "",
 		},
 	}
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	plan := scripts.BuildPlan(item)
 
@@ -874,7 +874,7 @@ func TestBuildPlanTopicBothEmpty(t *testing.T) {
 			Type: scriptpkg.SourceText,
 		},
 	}
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 	// After normalization, item.Title should be "Untitled Script".
 	if item.Title != "Untitled Script" {
 		t.Fatalf("expected normalizer to set Title to 'Untitled Script', got %q", item.Title)
@@ -891,7 +891,7 @@ func TestBuildPlanTopicBothEmpty(t *testing.T) {
 
 func TestBuildItemIdentityDeterministic(t *testing.T) {
 	item := textItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	id1 := scripts.BuildItemIdentity(item)
 	id2 := scripts.BuildItemIdentity(item)
@@ -908,8 +908,8 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 	item1 := textItem()
 	item2 := textItem()
 	item2.Title = "Different Title"
-	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
 	id1 := scripts.BuildItemIdentity(item1)
 	id2 := scripts.BuildItemIdentity(item2)
@@ -932,8 +932,8 @@ func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
 	item2.Output.GenerateDocument = true
 	item2.Output.SaveToDB = true
 
-	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
 	id1 := scripts.BuildItemIdentity(item1)
 	id2 := scripts.BuildItemIdentity(item2)
@@ -952,8 +952,8 @@ func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
 	item2 := clipsItem()
 	item2.Source.ClipIDs = []string{"clip-c", "clip-b", "clip-a"}
 
-	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
 	id1 := scripts.BuildItemIdentity(item1)
 	id2 := scripts.BuildItemIdentity(item2)
@@ -976,7 +976,7 @@ func TestBuildItemIdentityNilSafety(t *testing.T) {
 
 func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
 	item := textItem()
-	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
@@ -997,8 +997,8 @@ func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
 	item1.ID = "a"
 	item2 := clipsItem()
 	item2.ID = "b"
-	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
 	env := &scriptpkg.GenerationEnvelopeV2{
 		Version: 2,
