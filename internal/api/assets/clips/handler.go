@@ -55,7 +55,7 @@ import (
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
 type Deps struct {
-	SourceResolver   *artifacts.SourceResolver
+	ClipsRepo *assets.ClipsRepository
 	AssetRepo        asset.Repository
 	DeletionSvc      *deletion.DeletionService
 	DriveUploader    *drive.Uploader
@@ -141,7 +141,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	// EnrichUC, reuse it; when nil (test fixture, partial deploy),
 	// construct a local fallback copy that preserves pre-lift behaviour.
 	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log)
-	bulkTagsUC := appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc)
+	bulkTagsUC := appclips.NewBulkTagsUseCase(d.ClipsRepo, d.AssetTreeSvc)
 	downloadUC := appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo)
 	reprocessUC := appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, nil)
 
@@ -164,7 +164,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 
 		// Split 1 (June 2026, override ADR 0009): Search sub-handler.
 		search: NewSearchHandler(SearchDeps{
-			SourceResolver: d.SourceResolver,
+			ClipsRepo:      d.ClipsRepo,
 			AssetRepo:      d.AssetRepo,
 			VoiceoverRepo:  d.VoiceoverRepo,
 			ImagesRepo:     d.ImagesRepo,
@@ -175,7 +175,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			Dispatcher:     d.Dispatcher,
 			AssetTreeSvc:   d.AssetTreeSvc,
 			JobsSvc:        d.JobsSvc,
-			SourceResolver: d.SourceResolver,
+			ClipsRepo:      d.ClipsRepo,
 			ArtifactSvc:    d.ArtifactSvc,
 			DriveUploader:  d.DriveUploader,
 			ProcessRunner:  d.ProcessRunner,
@@ -195,7 +195,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			ClipOpsService: d.ClipOpsService,
 			DeletionSvc:    d.DeletionSvc,
 			FolderMemSvc:   d.FolderMemSvc,
-			SourceResolver: d.SourceResolver,
+			ClipsRepo:      d.ClipsRepo,
 			DriveUploader:  d.DriveUploader,
 			AssetTreeSvc:   d.AssetTreeSvc,
 			Log:            d.Log,

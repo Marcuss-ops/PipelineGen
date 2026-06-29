@@ -75,13 +75,16 @@ func NewDeletionService(
 func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID string, permanently bool) error {
 	s.log.Info("deleting clip", zap.String("source", source), zap.String("clip_id", clipID), zap.Bool("permanently", permanently))
 
-	// 1. Get Repo via centralized resolver
+	// 1. Resolve source — all clip-type sources (artlist/clips/stock/sound_effect)
+	// share the same *assets.ClipsRepository in production.
 	canonical := artifacts.CanonicalSource(source)
 	if canonical == "" {
 		return fmt.Errorf("invalid source: %s", source)
 	}
-	resolver := artifacts.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
-	repo := resolver.ResolveRepo(source)
+	var repo *assets.ClipsRepository
+	if artifacts.IsClipsSource(source) {
+		repo = s.clipsRepo
+	}
 	if repo == nil && canonical != "voiceover" && canonical != "images" {
 		return fmt.Errorf("invalid source: %s", source)
 	}

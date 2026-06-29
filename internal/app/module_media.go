@@ -330,7 +330,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// by the Aggregator's 4-key dedup + ranking pipeline.
 
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		ClipsRepo: bundle.ClipsRepo,
 		AssetRepo:      assetRepo,
 		DeletionSvc:    deletionSvc,
 		DriveUploader:  driveUploader,

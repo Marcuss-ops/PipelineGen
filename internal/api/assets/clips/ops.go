@@ -12,11 +12,10 @@
 //   - DeletionSvc     (TrashClip, DeleteClip via DeletionService.DeleteClip)
 //   - FolderMemSvc    (RegenerateManifest — manifest regen heuristic
 //     tracked even when smart-regen is disabled)
-//   - SourceResolver  (ListFolders / FolderStatus / RegenerateManifest
+//   - ClipsRepo  (ListFolders / FolderStatus / RegenerateManifest
 //     / TrashFolder / DeleteFolder / GetFolderChildren
 //     / GetTree / GetBreadcrumb — repoForSource gate
-//     that resolves :source param to the per-source
-//     ClipsRepository)
+//     that resolves :source param to the clips repository)
 //   - DriveUploader   (TrashFolder, DeleteFolder — Drive.TrashFolder /
 //     DeleteFolder; nil-tolerated surfaces 500)
 //   - AssetTreeSvc    (GetFolderChildren, GetTree, GetBreadcrumb —
@@ -86,7 +85,7 @@ type OpsDeps struct {
 	ClipOpsService *appclips.ClipOpsService
 	DeletionSvc    *deletion.DeletionService
 	FolderMemSvc   *foldermemory.Service
-	SourceResolver *artifacts.SourceResolver
+	ClipsRepo *assets.ClipsRepository
 	DriveUploader  *drive.Uploader
 	AssetTreeSvc   *assettree.Service
 	Log            *zap.Logger
@@ -99,7 +98,7 @@ type OpsHandler struct {
 	clipOpsService *appclips.ClipOpsService
 	deletionSvc    *deletion.DeletionService
 	folderMemSvc   *foldermemory.Service
-	sourceResolver *artifacts.SourceResolver
+	clipsRepo *assets.ClipsRepository
 	driveUploader  *drive.Uploader
 	assetTreeSvc   *assettree.Service
 	log            *zap.Logger
@@ -114,7 +113,7 @@ func NewOpsHandler(d OpsDeps) *OpsHandler {
 		clipOpsService: d.ClipOpsService,
 		deletionSvc:    d.DeletionSvc,
 		folderMemSvc:   d.FolderMemSvc,
-		sourceResolver: d.SourceResolver,
+		clipsRepo: d.ClipsRepo,
 		driveUploader:  d.DriveUploader,
 		assetTreeSvc:   d.AssetTreeSvc,
 		log:            d.Log,
@@ -122,15 +121,17 @@ func NewOpsHandler(d OpsDeps) *OpsHandler {
 }
 
 // repoForSource resolves a clip source to its canonical repository
-// via the shared SourceResolver. Used by Ops's folder/clip methods
-// (ListFolders, FolderStatus, GetFolderChildren, TrashFolder, etc.).
-// Each cluster that needs source → repo mapping owns its own private
-// helper (Split 1: Search; Split 2: Ingest; Step 5 Split 2: Ops).
+// via the shared ClipsRepository. Used by Ops's folder/clip methods.
+// All clip-type sources share the same concrete repo in production.
+// Returns nil for voiceover/images (handled separately by callers).
 func (oh *OpsHandler) repoForSource(source string) *assets.ClipsRepository {
-	if oh.sourceResolver == nil {
+	if oh.clipsRepo == nil {
 		return nil
 	}
-	return oh.sourceResolver.ResolveRepo(source)
+	if !artifacts.IsClipsSource(source) {
+		return nil
+	}
+	return oh.clipsRepo
 }
 
 // RegisterRoutes installs the 14 Ops routes on the supplied gin router
