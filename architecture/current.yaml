@@ -75,12 +75,21 @@
     - id: PR-DOCS-OWNERSHIP-YAML-MONOLITHIC-REFERENCES
       title: "Migrate 17+ downstream docs/ files from legacy monolithic architecture/ownership.yaml pointer to the per-section split sources"
       owner_capability: architecture
-      status: pending  # pre-existing drift in docs/{,architecture/,migrations/,operations/}/*.md that reference the deleted monolithic ownership.yaml
+      status: shipped
+      shipped_on: 2026-06-29
+      shipped_result: "Migrated 14 references across 12 docs/ files from the legacy monolithic architecture/ownership.yaml pointer to the per-section split sources (6 per-section files under architecture/ownership/) + the aggregated canonical view at architecture/ownership.generated.yaml. ci-architectural-checks + archcheck green; 9 link-paths re-verified via test -e. Byte-drift fix (32,208 → 27,402 bytes; 77 CONTENT lines including the archcheck_cli section are dropped by the cmd/architecture-aggregate regeneration) DEFERRED to PR-OWNERSHIP-AGGREGATE-ARCHCHECK-CLI-DROPPED (root-cause: regenerator skips certain top-level keys; fix is out of scope for the doc-only PR)."
       introduced: 2026-06-29
       deadline: 2026-07-25
       target: "Update each prose reference from `architecture/ownership.yaml` to the canonical split-source form (per-section file + generated.yaml view). Includes: AGENTS.md §Documentation Map ownership.yaml pointer, README.md §Architecture pointer, architecture/decisions/0001-qdrant-vs-platform-config.md Wave-20 entry, docs/operations/{05,06}-*.md ownership.yaml references, docs/migrations/qdrant-cutover-audit-2026-06-29.md pointer, docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md §One owner per fact link, REPOSITORY_CLEANUP.md, docs/archive/migration-history.md, docs/operations/tickets/MANIFEST-STREAM-RECOVERY.md, docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md, architecture/audits/2026-06-28-cross-capability-imports.md."
       follow_up_to: PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT
       extends_scope: "doc-only text edits; no .go files affected"
+    - id: PR-OWNERSHIP-AGGREGATE-ARCHCHECK-CLI-DROPPED
+      title: "Investigate cmd/architecture-aggregate regeneration byte-drift — 77 content lines dropped including archcheck_cli section"
+      owner_capability: architecture
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-25
+      target: "architecture/ownership.generated.yaml on HEAD is 32,208 bytes; `go run ./cmd/architecture-aggregate -out <path>` regenerates at 27,402 bytes (4,806-byte diff). 77 CONTENT lines (non-header, non-blank) including the entire archcheck_cli section are dropped. Root-cause analysis + fix the regenerator's byte-deterministic concat to preserve the canonical committed view, OR document the deviation and commit the regenerated version explicitly. Why now: blocks PR-DOCS-OWNERSHIP-YAML-MONOLITHIC-REFERENCES (deferred byte-drift fix); without resolution, downstream cmd/architecture-aggregate -dry-run exit-code-1 churn will accumulate. Detection method: diff classification across < and > lines (0 header-only, 0 blank, 77 content-only)."
     - id: PR-KERNEL-EVENT-TRANSLATION
       title: "Phase A scope expansion: extract application/translation into kernel/event/translation"
       owner_capability: internal/kernel/event

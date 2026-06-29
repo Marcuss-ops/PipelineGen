@@ -43,7 +43,7 @@ consume concretes for fixture building.
 | `application/scripts → application/images` | 1 (Alert 5, placeholder) | defer to scene pipeline re-constitution |
 | `application/scripts → application/voiceover` | 7 (Alerts 1, 2, 3, 4, 5, 6, 7) | 1 production-violation (Alert 6); 1 placeholder (Alert 5); 2 ports (Alerts 1, 2); 3 tests (Alerts 3, 4, 7) |
 | `application/assets → application/youtube` | 2 (Alerts 13, 14) | 2 violations (service + DTO) |
-| `application/channels → application/assets` | 0 — **direction not present in code** | The reverse (assets → channels) is what's actually there; the user's expected pair is "channels → assets", which is **empty**. Document this asymmetry in `architecture/ownership.yaml` owner-table. |
+| `application/channels → application/assets` | 0 — **direction not present in code** | The reverse (assets → channels) is what's actually there; the user's expected pair is "channels → assets", which is **empty**. Document this asymmetry in [`architecture/ownership.generated.yaml`](../ownership.generated.yaml) owner-table; (`architecture/ownership/kernel.yaml` subzone not yet materialized; tracked under Phase-A kernel wave per `architecture/current.yaml`). |
 
 ---
 
@@ -121,7 +121,7 @@ Per docstring, this is an explicit placeholder until scene pipeline re-constitut
 
 ## 4. Out-of-scope followups (for visibility)
 
-- `architecture/ownership.yaml` is still missing an entry for the `assets/monitor → channels` direction; add a row so the asymmetry (no `channels → assets`) is documented.
+- `architecture/ownership/` (per-section files, post-dc6add3e) is still missing an entry for the `assets/monitor → channels` direction; add a row in [`architecture/ownership.generated.yaml`](../ownership.generated.yaml) (or directly in [`architecture/ownership/application.yaml`](../ownership/application.yaml) for the per-application view) so the asymmetry (no `channels → assets`) is documented.
 - The `ChannelMonitor.youtubeSvc *youtube.Service` field is a TWO-CAPABILITY coupling in one struct; widening Pattern 0 with a `MonitorYouTubeCapabilityPort` (separate from a possibly-existing `youtube.ClipExtractorPort` if any future refactor extracts one).
 - `books` itself contains a hardcoded `database/sql` import — already a separate P1-8 ticket ("Sposta SQL sotto infrastructure/database") from the plan-of-action. **Do not confuse with audit Alert 8** in §1 above (which is `monitor/job_handler.go → channels`). Defer cross-capability refactor of `books` until the P1-8 SQL-pushdown ticket closes (otherwise we'd refactor a layer that's about to be emptied).
 - `assets/monitor/process_video.go::enqueueClipExtract` indirectly reaches the YouTube pipeline via `yttypes` DTOs; today it bridges through `m.jobsSvc.Enqueue` so the actual YouTube call is downstream. The DTO leak is the cleanup target, not the indirect enqueue.

@@ -38,7 +38,7 @@ The primary SQLite database is the authority for durable PipelineGen metadata. Q
 
 The same fact must not have multiple independent writers.
 
-*(Per-package enforcement of these facts lives in [`architecture/ownership.yaml`](../../architecture/ownership.yaml).)*
+*(Per-package enforcement of these facts lives in the per-section ownership files at [`architecture/ownership/`](../../../architecture/ownership/) — canonical owner for `domain_*` keys is [`architecture/ownership/application.yaml`](../../../architecture/ownership/application.yaml); aggregated canonical view is [`architecture/ownership.generated.yaml`](../../../architecture/ownership.generated.yaml) (byte-deterministic concat of all 6 per-section files via `cmd/architecture-aggregate` — see [`architecture/migrations/baseline-inventory-2026-06-29.yaml`](../../../architecture/migrations/baseline-inventory-2026-06-29.yaml)::`capability_owner_authority.verification_command`).)*
 
 ## Database rules
 
