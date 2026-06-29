@@ -1,24 +1,26 @@
-// Tests for cmd/worker::parseAndValidateCaps — Phase 3 of the W1 specification.
+// Tests for cmd/worker::workerruntime.ParseAndValidateCaps — Phase 3 of the W1 specification.
 //
 // These tests pin the contract between the VELOX_WORKER_CAPABILITIES env var
 // and the registered RemoteWorker handler set. Together with
 // internal/application/jobs/worker/registry_test.go they cover the W1 exit gate:
 // the parse must REFUSE rather than silently emit empty/unknown capabilities.
 //
-// We use `package main` so the tests can touch parseAndValidateCaps directly
+// We use `package main` so the tests can touch workerruntime.ParseAndValidateCaps directly
 // (no public re-export needed for an internal CLI helper).
 package main
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/app/workerruntime"
 )
 
 // ── Capability derivation contract ───────────────────────────────────────
 
 func TestParseAndValidateCaps_EmptyEnvReturnsRegisteredSet(t *testing.T) {
 	registered := []string{"a", "b", "c"}
-	caps, err := parseAndValidateCaps("", registered)
+	caps, err := workerruntime.ParseAndValidateCaps("", registered)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,7 +31,7 @@ func TestParseAndValidateCaps_EmptyEnvReturnsRegisteredSet(t *testing.T) {
 
 func TestParseAndValidateCaps_ValidSubset(t *testing.T) {
 	registered := []string{"a", "b", "c"}
-	caps, err := parseAndValidateCaps(`{"job_types":["a","c"]}`, registered)
+	caps, err := workerruntime.ParseAndValidateCaps(`{"job_types":["a","c"]}`, registered)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -40,7 +42,7 @@ func TestParseAndValidateCaps_ValidSubset(t *testing.T) {
 
 func TestParseAndValidateCaps_UnknownTypeRejected(t *testing.T) {
 	registered := []string{"a", "b"}
-	_, err := parseAndValidateCaps(`{"job_types":["a","z"]}`, registered)
+	_, err := workerruntime.ParseAndValidateCaps(`{"job_types":["a","z"]}`, registered)
 	if err == nil {
 		t.Fatal("expected error for unknown type")
 	}
@@ -51,7 +53,7 @@ func TestParseAndValidateCaps_UnknownTypeRejected(t *testing.T) {
 
 func TestParseAndValidateCaps_MalformedJSONRejected(t *testing.T) {
 	registered := []string{"a"}
-	_, err := parseAndValidateCaps(`{not valid json`, registered)
+	_, err := workerruntime.ParseAndValidateCaps(`{not valid json`, registered)
 	if err == nil {
 		t.Fatal("expected error for malformed JSON")
 	}
@@ -62,14 +64,14 @@ func TestParseAndValidateCaps_MalformedJSONRejected(t *testing.T) {
 
 func TestParseAndValidateCaps_EmptyArrayRejected(t *testing.T) {
 	registered := []string{"a"}
-	if _, err := parseAndValidateCaps(`{"job_types":[]}`, registered); err == nil {
+	if _, err := workerruntime.ParseAndValidateCaps(`{"job_types":[]}`, registered); err == nil {
 		t.Fatal("expected error for empty job_types array (must fail closed)")
 	}
 }
 
 func TestParseAndValidateCaps_DuplicateValuesNormalized(t *testing.T) {
 	registered := []string{"a", "b"}
-	caps, err := parseAndValidateCaps(`{"job_types":["a","a","b","b","a"]}`, registered)
+	caps, err := workerruntime.ParseAndValidateCaps(`{"job_types":["a","a","b","b","a"]}`, registered)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,7 +82,7 @@ func TestParseAndValidateCaps_DuplicateValuesNormalized(t *testing.T) {
 
 func TestParseAndValidateCaps_WhitespaceEntriesNormalized(t *testing.T) {
 	registered := []string{"a"}
-	caps, err := parseAndValidateCaps(`{"job_types":["  a  "],"junk":""}`, registered)
+	caps, err := workerruntime.ParseAndValidateCaps(`{"job_types":["  a  "],"junk":""}`, registered)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,7 +95,7 @@ func TestParseAndValidateCaps_OnlyWhitespaceEmptySetRejected(t *testing.T) {
 	// Spec: "final set sorted and non-empty" — when dedup drops every entry
 	// (all whitespace/empty), the resolved set is empty and must fail closed.
 	registered := []string{"a"}
-	_, err := parseAndValidateCaps(`{"job_types":["   ", "  ", "\t"]}`, registered)
+	_, err := workerruntime.ParseAndValidateCaps(`{"job_types":["   ", "  ", "\t"]}`, registered)
 	if err == nil {
 		t.Fatal("expected error when dedup drops all entries (empty resolved set)")
 	}
@@ -105,7 +107,7 @@ func TestParseAndValidateCaps_FinalSetIsSorted(t *testing.T) {
 	// stops calling sort.Strings surfaces here as a deterministic-shape
 	// assertion failure rather than a silent log-formatting drift.
 	registered := []string{"a", "b", "c", "d", "e"}
-	caps, err := parseAndValidateCaps(`{"job_types":["e","c","a","d","b"]}`, registered)
+	caps, err := workerruntime.ParseAndValidateCaps(`{"job_types":["e","c","a","d","b"]}`, registered)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

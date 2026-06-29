@@ -31,6 +31,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/workerdoctor"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/workerruntime"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -84,11 +85,11 @@ func runDoctor(args []string, log *zap.Logger) int {
 		// uses: env wins over config. resolveMasterURL lives in
 		// cmd/worker/main.go; we re-derive it here so the doctor
 		// stays hermetic.
-		masterURL := resolveMasterURL(cfg)
+		masterURL := workerruntime.ResolveMasterURL(cfg)
 		dcfg := workerdoctor.NewDoctorConfig(cfg)
 		agg = workerdoctor.NewFromConfig(dcfg, masterURL, dp)
-		agg.WorkerID = envOr("VELOX_WORKER_ID", hostnameFallback())
-		agg.WorkerVersion = envOr("VELOX_WORKER_VERSION", "dev")
+		agg.WorkerID = workerruntime.Env("VELOX_WORKER_ID", workerruntime.Hostname("unknown"))
+		agg.WorkerVersion = workerruntime.Env("VELOX_WORKER_VERSION", "dev")
 		agg.MasterURL = masterURL
 		agg.MTLSEnabled = dcfg.MTLSEnabled()
 		agg.ConfigPath = getStringFlag(flags.flagSet, "config", "config.yaml")
