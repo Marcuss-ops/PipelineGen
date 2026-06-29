@@ -544,6 +544,8 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 	aliasCreated := false
 	payloadIndexes := make(map[string]bool)
 
+	schema := DefaultV3Schema()
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -552,9 +554,37 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 		// Alias target check — no alias exists initially.
 		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
 			http.NotFound(w, r)
-		// Physical collection check — doesn't exist.
+		// Physical collection check.
 		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_e5_768_siglip_768":
-			http.NotFound(w, r)
+			if !collectionCreated {
+				http.NotFound(w, r)
+				return
+			}
+			payloadSchema := make(map[string]interface{})
+			for _, idx := range schema.PayloadIndexes {
+				if payloadIndexes[idx.FieldName] {
+					payloadSchema[idx.FieldName] = map[string]interface{}{"data_type": idx.FieldType}
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": map[string]interface{}{
+					"status": "green",
+					"config": map[string]interface{}{
+						"params": map[string]interface{}{
+							"vectors": map[string]interface{}{
+								"text":       map[string]interface{}{"size": float64(768), "distance": "Cosine"},
+								"transcript": map[string]interface{}{"size": float64(768), "distance": "Cosine"},
+								"visual":     map[string]interface{}{"size": float64(768), "distance": "Cosine"},
+								"audio":      map[string]interface{}{"size": float64(512), "distance": "Cosine"},
+							},
+							"sparse_vectors": map[string]interface{}{
+								"bm25_text": map[string]interface{}{},
+							},
+						},
+					},
+					"payload_schema": payloadSchema,
+				},
+			})
 		// Create collection.
 		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_e5_768_siglip_768":
 			collectionCreated = true
@@ -584,7 +614,6 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	schema := DefaultV3Schema()
 	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
 	cm := NewCollectionManager(client, schema, zap.NewNop())
 
