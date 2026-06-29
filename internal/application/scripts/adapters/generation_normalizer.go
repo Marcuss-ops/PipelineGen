@@ -250,8 +250,9 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 //	custom     → pass-through (no overrides)
 //	with_images → GenerateSceneImages=true; SentencesPerImage=8,
 //	               ImagesPerScene=2 only when caller left them at zero
-//	full_media → if caller left BOTH scene_images and voiceover off,
-//	              enable both atomically; otherwise pass-through
+//	full_media → per-field caller precedence: enable scene_images and/or
+//	              voiceover ONLY for fields the caller left at zero;
+//	              caller-set fields stay untouched
 //	catalog    → pass-through (handler binds source.kind=catalog upstream)
 //	search     → pass-through (handler binds source.kind=search upstream)
 //	batch / unknown / empty → pass-through
@@ -282,14 +283,17 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// §6 row 3: full_media | none | images and voiceover enabled
 		// explicitly.
 		//
-		// Atomic enable: only when caller has BOTH scene_images and
-		// voiceover off, the preset flips both on as a coherent
-		// full-media package. If caller set either explicitly, the
-		// preset does not override — caller intent wins (caller >
-		// preset > config > safety). Entities, metadata and document
-		// remain caller-controlled.
-		if !item.Output.GenerateSceneImages && !item.Output.GenerateVoiceover {
+		// Per-field caller precedence: caller wins field-by-field.
+		// If caller left ONLY GenerateSceneImages off, the preset
+		// enables ONLY GenerateSceneImages; if caller left ONLY
+		// GenerateVoiceover off, the preset enables ONLY voiceover;
+		// if both are off, preset enables both. Caller > preset >
+		// config > safety — entities, metadata and document remain
+		// caller-controlled.
+		if !item.Output.GenerateSceneImages {
 			item.Output.GenerateSceneImages = true
+		}
+		if !item.Output.GenerateVoiceover {
 			item.Output.GenerateVoiceover = true
 		}
 	case scriptpkg.PresetCatalog:
