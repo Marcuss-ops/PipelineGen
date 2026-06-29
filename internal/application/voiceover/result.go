@@ -1,0 +1,114 @@
+// Package voiceover — result.go (PR-VOICEOVER-COMMAND-EXTRACT, June 2026).
+//
+// GenerateVoiceoversResult is the canonical singular Result the use case
+// returns. The shape is aggregate-friendly: one summary at the top,
+// per-item detail in PerLanguage[]. The partial-failure semantic is
+// carried via the overall OK + per-item Status fields:
+//
+//   - resp.OK == true  iff SuccessCount == TotalOutputs.
+//   - Per-item Status  is StatusCompleted | StatusFailed.
+//   - Per-item Error   is non-empty ONLY when Status == StatusFailed.
+//
+// Execute returns (*Result, nil) on partial failure so the caller can
+// decide whether to abort or accept the partial output (transport
+// layer surfaces a 200 with `ok:false` body, NOT a 500 — the
+// per-item failures are surfaced in the body so a client can
+// retry just the failed languages).
+package voiceover
+
+import "time"
+
+// Canonical Status values for VoiceoverItemResult. Aggregation:
+// resp.OK = (SuccessCount == TotalOutputs).
+const (
+	StatusCompleted = "completed"
+	StatusFailed    = "failed"
+)
+
+// GenerateVoiceoversResult is the canonical use case result.
+type GenerateVoiceoversResult struct {
+	// OK is the overall success aggregate: true iff every per-item
+	// Status equals StatusCompleted.
+	OK bool
+
+	// RequestID is the per-batch identifier (build/buildRequestID
+	// shape: vo_<timestamp>_<6-hex-suffix>, see types.go). Stable
+	// across the per-language fan-out — same value is written into
+	// every voiceovers row's request_id column for cross-language audit.
+	RequestID string
+
+	// TotalOutputs is the count of Languages requested (snapshot
+	// at the use case entry; never changes after Execute).
+	TotalOutputs int
+
+	// SuccessCount is the count of per-item Status == StatusCompleted.
+	SuccessCount int
+
+	// FailedCount is the count of per-item Status == StatusFailed.
+	// OK is true iff FailedCount == 0.
+	FailedCount int
+
+	// PerLanguage is the per-language detail. Slot i corresponds
+	// to cmd.Languages[i] — language-locked ordering is required so
+	// a client iterating the result can correlate Language ↔ index
+	// without consulting the input.
+	PerLanguage []VoiceoverItemResult
+
+	// StartedAt is the canonical UTC entry timestamp.
+	StartedAt time.Time
+
+	// CompletedAt is the canonical UTC exit timestamp (set even on
+	// partial failure so audit tooling measures end-to-end latency).
+	CompletedAt time.Time
+
+	// Error is the global error (populated ONLY for cross-cutting
+	// failures: validation, destination resolve, no-languages, etc.).
+	// Empty when the per-item fan-out completed (regardless of overall
+	// OK status — per-item errors live in PerLanguage[].Error).
+	Error string
+}
+
+// VoiceoverItemResult carries per-language detail correlated by language
+// code (NOT by index — a safer correlation field for callers iterating
+// the result without preserving the input index ordering).
+type VoiceoverItemResult struct {
+	Language string
+
+	// Voice is the BCP-47-tied voice name reported by TTSProvider
+	// (empty if TTSProvider did not surface a voice field).
+	Voice string
+
+	// Status is the per-item terminal state: StatusCompleted | StatusFailed.
+	Status string
+
+	// Error is populated when Status == StatusFailed. Empty otherwise.
+	Error string
+
+	// DriveFileID is the canonical Drive file id surfaced after upload.
+	DriveFileID string
+
+	// DriveLink is the canonical Drive webViewLink surfaced after upload.
+	DriveLink string
+
+	// LocalPath is the path of the local audio file written by TTSProvider
+	// (CleanedPath empty → LocalPath is the canonical artifact).
+	LocalPath string
+
+	// CleanedPath is the path of the post-processed (silence removal)
+	// audio file. Empty when RemoveSilence was false or post-process
+	// failed before production.
+	CleanedPath string
+
+	// FileHash is the MD5 hex digest of the canonical artifact
+	// (LocalPath or CleanedPath, whichever Lifecycle.ProcessAsset
+	// fingerprints).
+	FileHash string
+
+	// Filename is the sanitised filename written to LocalPath/CleanedPath
+	// and surfaced in the voiceovers.filename SQLite column.
+	Filename string
+
+	// ID is the canonical voiceover row identifier (buildVoiceoverID
+	// shape: vo_<sha256[:16]>) — same value as voiceovers.id column.
+	ID string
+}
