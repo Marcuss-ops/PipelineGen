@@ -178,7 +178,7 @@ api_capabilities:
     concrete_constructors: []
   - name: assets/voiceover
     path: internal/api/assets/voiceover
-    has_build_signature: false
+    has_build_signature: true       # module.go exposes `func Build(deps Dependencies) (api.Descriptor, error)` (Blocco C1-Step 7, June 2026); the existing *Handler (the smallest in the assets tree — 1 route: POST /generate, async-only via the voiceover.generate job per Blocco 4 EXPAND slim) is reused as Descriptor via the Module closure. Pattern parity with `assets/artlist` (C1-Step 3) + `assets/youtube` (C1-Step 4) + `assets/clips` (C1-Step 5) + `assets/stock` (C1-Step 6). The Descriptor surface is the smallest in the tree today (tied with stock) — only `Module` field, no `Handler` / `Service` field (no non-HTTP consumer; the handler stays internal to the package). Module name "voiceover" + prefix "/voiceover" preserved verbatim (zero-change-contract for /api/media/voiceover/generate URL).
     direct_register_calls: []
     concrete_constructors: []
   - name: assets/youtube

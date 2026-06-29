@@ -350,7 +350,34 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// for the tracked closure of the 2026-06-28 → 2026-09-26 Sunset
 	// window. voiceoverSvc + voiceoverSync remain in WireAssets's
 	// signature for the typed-port chain (godlike/07 framework).
-	voiceoverHandler := assetvoice.NewHandler(jobs.Facade, log)
+	//
+	// Blocco C1-Step 7 (June 2026): Voiceover capability is now built
+	// via the canonical voiceover.Build(deps) (api.Descriptor, error)
+	// contract, matching the artlist / youtube / clips / stock
+	// precedent. The Handler is constructed inside Build and captured
+	// by the returned VoiceoverDescriptor's Module closure. The
+	// composition site type-asserts ONCE to
+	// *voiceover.VoiceoverDescriptor (fail-closed) and reuses the
+	// concrete for the assetsapi.NewModule(..., Voiceover: vd, ...)
+	// call (the concrete *VoiceoverDescriptor satisfies api.Descriptor
+	// structurally). The voiceover capability has no non-HTTP
+	// consumer in the codebase (/generate is the entire public
+	// surface, reachable only via HTTP), so the Descriptor surface is
+	// the smallest possible — just `Module` field + forwarder methods
+	// (matches the stock precedent exactly).
+	voiceoverDescriptor, err := assetvoice.Build(assetvoice.Dependencies{
+		Jobs:        jobs.Facade,
+		EnabledFunc: func() bool { return true }, // voiceover is always on in production (no feature flag)
+		ModuleOpts:  nil,                          // no per-feature middleware for the voiceover capability (matches pre-Step-7 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: voiceover.Build: %w", err)
+	}
+	vd, ok := voiceoverDescriptor.(*assetvoice.VoiceoverDescriptor)
+	if !ok || vd == nil {
+		return nil, fmt.Errorf("WireAssets: voiceover.Build returned unexpected descriptor type %T (want *assetvoice.VoiceoverDescriptor)", voiceoverDescriptor)
+	}
 
 	// SoundEffect: wrapped repos + uploader + metaWriter + dispatcher via
 	// sfxports adapters. PG-003 (June 2026) replaced the four concrete
@@ -394,7 +421,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		Diagnostics: diagHandler,
 		Search:      searchHandler,
 		Clips:       clipsDesc,
-		Voiceover:   voiceoverHandler,
+		Voiceover:   vd,
 		SoundEffect: sfxHandler,
 		Register:    registerHandler,
 	}, log)

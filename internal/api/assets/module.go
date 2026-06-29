@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 )
 
 // Dependencies holds the pre-built sub-handlers for the Assets module.
@@ -35,8 +34,16 @@ type Dependencies struct {
 	// package reads *clips.Handler directly anymore.
 	Clips api.Descriptor
 
-	// PR 4: extracted from SourcesHandler
-	Voiceover   *voiceover.Handler
+	// Blocco C1-Step 7 (June 2026): Voiceover is now an api.Descriptor
+	// (the canonical Build contract surface) instead of a raw
+	// *voiceover.Handler. The composition root threads the
+	// *voiceover.VoiceoverDescriptor returned by voiceover.Build(...)
+	// here; the descriptor's RegisterRoutes(rg) forwarder delegates
+	// to the embedded api.Module which captures the Handler in its
+	// closure (the Module prefix "/voiceover" is honored internally,
+	// so the assets module no longer wraps `r.Group("/voiceover")`
+	// around the descriptor's RegisterRoutes call).
+	Voiceover   api.Descriptor
 	SoundEffect *soundeffect.Handler
 	Register    *register.Handler
 }
@@ -76,10 +83,11 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Clips.RegisterRoutes(r)
 	}
 
-	// Voiceover operations (/voiceover/*)
+	// Voiceover operations (/voiceover/*). Blocco C1-Step 7 (June 2026):
+	// the voiceover Module owns its own /voiceover prefix; the assets
+	// module passes the parent /api/media group straight through.
 	if m.deps.Voiceover != nil {
-		voiceover := r.Group("/voiceover")
-		m.deps.Voiceover.RegisterRoutes(voiceover)
+		m.deps.Voiceover.RegisterRoutes(r)
 	}
 
 	// SoundEffect operations (/sound_effect/*)
