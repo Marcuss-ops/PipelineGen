@@ -785,8 +785,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	//   POST /search/advanced             -> AdvancedSearch  (write+idem)
 	h.search.RegisterRoutes(r, idem)
 
-	// Ops sub-handler (Step 5 Split 2, June 2026, override ADR 0009):
-	// 5 read + 9 write+idem = 14 routes (see ops.go doc-comment).
+	// Ops sub-handler (Step 5 Split 2 + Blocco A3, June 2026):
+	// 5 read + 7 write+idem = 12 routes (see ops.go doc-comment).
+	// DELETE /:source/clips/:id  +  DELETE /:source/folders/:id
+	// replace the old POST .../trash + POST .../delete (Blocco A3).
 	h.ops.RegisterRoutes(r, idem)
 
 	// NON-Ops routes (inline on *Handler):

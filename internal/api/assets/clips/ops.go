@@ -37,22 +37,26 @@
 // no idem middleware; write routes (9 of 14) install it before the
 // handler per AGENTS.md Pattern 8.
 //
-// Route table (14 routes = 5 read + 9 write+idem):
+// Route table (12 routes = 5 read + 5 write+idem + 2 DELETE+idem):
 //
-//	GET  /:source/folders                          -> ListFolders          (read)
-//	GET  /:source/folders/:id                      -> FolderStatus         (read)
-//	GET  /:source/folders/:id/children             -> GetFolderChildren    (read)
-//	GET  /:source/tree                             -> GetTree              (read)
-//	GET  /:source/breadcrumb                       -> GetBreadcrumb        (read)
-//	POST /:source/clips/:id/verify                 -> VerifyClip           (write+idem)
-//	POST /:source/clips/:id/fix-hash               -> HandleFixHash        (write+idem)
-//	POST /:source/clips/:id/trash                  -> TrashClip            (write+idem)
-//	POST /:source/clips/:id/delete                 -> DeleteClip           (write+idem)
-//	POST /:source/reconcile                        -> Reconcile            (write+idem)
-//	POST /:source/cleanup                          -> Cleanup              (write+idem)
-//	POST /:source/folders/:id/manifest             -> RegenerateManifest   (write+idem)
-//	POST /:source/folders/:id/trash                -> TrashFolder          (write+idem)
-//	POST /:source/folders/:id/delete               -> DeleteFolder         (write+idem)
+//	GET  /:source/folders                         -> ListFolders          (read)
+//	GET  /:source/folders/:id                     -> FolderStatus         (read)
+//	GET  /:source/folders/:id/children            -> GetFolderChildren    (read)
+//	GET  /:source/tree                            -> GetTree              (read)
+//	GET  /:source/breadcrumb                      -> GetBreadcrumb        (read)
+//	POST /:source/clips/:id/verify                -> VerifyClip           (write+idem)
+//	POST /:source/clips/:id/fix-hash              -> HandleFixHash        (write+idem)
+//	DELETE /:source/clips/:id                     -> TrashClip            (delete+idem)
+//	POST /:source/reconcile                       -> Reconcile            (write+idem)
+//	POST /:source/cleanup                         -> Cleanup              (write+idem)
+//	POST /:source/folders/:id/manifest            -> RegenerateManifest   (write+idem)
+//	DELETE /:source/folders/:id                   -> TrashFolder          (delete+idem)
+//
+// Blocco A3 consolidation (June 2026): the separate POST .../trash and POST .../delete
+// routes for clips and folders are unified into a single DELETE route each.
+// DELETE always performs a soft-delete (Drive trash + SQLite removal).
+// Physical (hard) delete is only available via admin-internal paths,
+// never through capability-facing API handlers.
 package clips
 
 import (
@@ -148,13 +152,11 @@ func (oh *OpsHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc) {
 	// Write routes (idempotency-protected per PR8, June 2026)
 	r.POST("/:source/clips/:id/verify", idem, oh.VerifyClip)
 	r.POST("/:source/clips/:id/fix-hash", idem, oh.HandleFixHash)
-	r.POST("/:source/clips/:id/trash", idem, oh.TrashClip)
-	r.POST("/:source/clips/:id/delete", idem, oh.DeleteClip)
+	r.DELETE("/:source/clips/:id", idem, oh.TrashClip)
 	r.POST("/:source/reconcile", idem, oh.Reconcile)
 	r.POST("/:source/cleanup", idem, oh.Cleanup)
 	r.POST("/:source/folders/:id/manifest", idem, oh.RegenerateManifest)
-	r.POST("/:source/folders/:id/trash", idem, oh.TrashFolder)
-	r.POST("/:source/folders/:id/delete", idem, oh.DeleteFolder)
+	r.DELETE("/:source/folders/:id", idem, oh.TrashFolder)
 }
 
 // ──────────────────────────────────────────────────────────────────────
