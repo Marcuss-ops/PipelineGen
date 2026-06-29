@@ -377,12 +377,12 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// /generate route binds GenerateVoiceoversCommand + enqueues via
 	// jobsSvc). GroupsResolver + VoiceoverRootFolder are no longer
 	// referenced in this module layer — the legacy /groups +
-	// /generate-with-group routes were removed at this commit; future
-	// BACKFILL commits can re-register them via
-	// addVoiceoverDeprecationHeader without wiring groupsResolver back
-	// here. voiceoverSvc + voiceoverSync remain in WireAssets's signature
-	// for forward compatibility with future BACKFILL/CUTOVER migration
-	// waves (godlike/07 EXPAND/BACKFILL/CUTOVER/CONTRACT).
+	// /generate-with-group /batch /promo /sync routes have all been
+	// retired per Wave 21 / PR-VOICEOVER-RECOVERY (V1..V7); see
+	// architecture/deprecations.yaml PR-VO-SUNSET-MACHINERY-RETIRE
+	// for the tracked closure of the 2026-06-28 → 2026-09-26 Sunset
+	// window. voiceoverSvc + voiceoverSync remain in WireAssets's
+	// signature for the typed-port chain (godlike/07 framework).
 	voiceoverHandler := assetvoice.NewHandler(jobs.Facade, log)
 
 	// SoundEffect: wrapped repos + uploader + metaWriter + dispatcher via
