@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"context"
-	"sort"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -10,8 +9,10 @@ import (
 )
 
 // ClipBindingsProcessor assigns clips from ClipEvidence to scenes.
-// Cycles through available clips sequentially, one per scene (top-10
-// compilation style). No-op when ClipEvidence is nil or empty.
+// Each clip maps to exactly one scene, in the canonical order from
+// plan.ClipEvidence.ClipIDs (preserving the resolver's order). Extra
+// scenes beyond the clip count receive no clip binding — this
+// surfaces LLM output mismatches instead of silently cycling clips.
 type ClipBindingsProcessor struct {
 	log *zap.Logger
 }
@@ -40,7 +41,7 @@ func (p *ClipBindingsProcessor) Process(
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
-	if plan.ClipEvidence == nil || len(plan.ClipEvidence.DriveLinks) == 0 {
+	if plan.ClipEvidence == nil || len(plan.ClipEvidence.ClipIDs) == 0 {
 		return &PostProcessResult{}, nil
 	}
 
@@ -49,36 +50,50 @@ func (p *ClipBindingsProcessor) Process(
 		return &PostProcessResult{}, nil
 	}
 
-	// Deterministic ordering so scenes are always assigned the same clip.
-	clipIDs := make([]string, 0, len(plan.ClipEvidence.DriveLinks))
-	for id := range plan.ClipEvidence.DriveLinks {
-		clipIDs = append(clipIDs, id)
-	}
-	sort.Strings(clipIDs)
+	// P0 #2 (June 2026): use the canonical ordered list from
+	// plan.ClipEvidence.ClipIDs instead of iterating the
+	// DriveLinks map + sort.Strings. The resolver's order is
+	// preserved; clips bind to scenes 1:1 in arrival order.
+	clipIDs := plan.ClipEvidence.ClipIDs
 
+	// Respect NumClips limit.
 	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
 		clipIDs = clipIDs[:plan.NumClips]
 	}
-	if len(clipIDs) > len(scenes) {
-		clipIDs = clipIDs[:len(scenes)]
+
+	// One clip per scene — no modulo cycling. Extra scenes beyond
+	// the clip count get no binding. This surfaces LLM output
+	// mismatches (more scenes than clips) instead of silently
+	// reusing clips.
+	bindCount := len(clipIDs)
+	if bindCount > len(scenes) {
+		bindCount = len(scenes)
 	}
 
-	for i := range scenes {
-		scene := &scenes[i]
-		clipID := clipIDs[i%len(clipIDs)]
+	for i := 0; i < bindCount; i++ {
+		clipID := clipIDs[i]
 		driveLink := plan.ClipEvidence.DriveLinks[clipID]
 
-		scene.Bindings.Clip = &scriptpkg.ClipBinding{
+		scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{
 			ClipID:    clipID,
 			DriveLink: driveLink,
 		}
 	}
 
+	// P0 #2: extra scenes beyond the clip count get no binding.
+	// Explicitly nil out any LLM-assigned stale binding so the
+	// mismatch is visible.
+	for i := bindCount; i < len(scenes); i++ {
+		scenes[i].Bindings.Clip = nil
+	}
+
 	if p.log != nil {
 		p.log.Info("clip_bindings: assigned clips to scenes",
 			zap.Int("scenes", len(scenes)),
-			zap.Int("clips", len(clipIDs)),
-			zap.Strings("clip_ids", clipIDs))
+			zap.Int("clips_bound", bindCount),
+			zap.Int("clips_available", len(plan.ClipEvidence.ClipIDs)),
+			zap.Int("scenes_unbound", len(scenes)-bindCount),
+			zap.Strings("clip_ids", clipIDs[:bindCount]))
 	}
 
 	return &PostProcessResult{}, nil

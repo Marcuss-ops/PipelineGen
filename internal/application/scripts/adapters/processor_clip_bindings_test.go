@@ -31,6 +31,11 @@ import (
 // only bind scenes against IDs in ClipEvidence.ClipIDs. IDs
 // in MissingClipIDs are not eligible for binding.
 //
+// P0 #2 (June 2026): updated for the no-cycling model — when
+// there are more scenes than resolved clips, extra scenes get
+// no binding. Previously the binder cycled the single resolved
+// ID across all scenes; now only scene[0] gets "clip-a".
+//
 // Setup:
 //
 //   - Evidence with ONE resolved ID ("clip-a") and TWO missing
@@ -38,14 +43,13 @@ import (
 //     reason drivenotfound).
 //   - Model output with three scenes, two of which point at
 //     the missing IDs and one at the resolved ID.
-//   - Plan requests NumClips=3 so the binder would otherwise
-//     cycle if more than one resolved ID existed.
 //
-// Expectation: after Process runs, every scene's
-// Bindings.Clip.ClipID == "clip-a". The two scenes that
-// pre-PR-5 would have bound to "missing-b"/"missing-c" must
-// not appear in any scene's bound ClipID — those IDs are in
-// MissingClipIDs, not in ClipIDs.
+// Expectation: after Process runs, scene[0].Bindings.Clip.ClipID
+// == "clip-a". Scenes 1 and 2 have NO clip binding (extra scenes
+// beyond clip count are left unbound to surface LLM mismatches).
+// The two scenes that pre-PR-5 would have bound to
+// "missing-b"/"missing-c" must not appear in any scene's bound
+// ClipID — those IDs are in MissingClipIDs, not in ClipIDs.
 func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 	ev := usecase.BuildClipEvidence(map[string]any{
 		"clip_ids":         []string{"clip-a"},
@@ -96,7 +100,7 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 	}
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ClipEvidence: ev,
-		NumClips:     3, // request more than the resolved count → binder cycles the single resolved ID
+		NumClips:     3, // NumClips > resolved count — binder binds the single resolved ID to scene 0 only
 	}
 
 	p := adapters.NewClipBindingsProcessor(zap.NewNop())
@@ -104,36 +108,32 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 		t.Fatalf("process error = %v", err)
 	}
 
-	// All scenes should be bound to "clip-a" because that's the
-	// ONLY ID in ClipEvidence.ClipIDs. Missing IDs cannot leak
-	// into the bound bindings under PR 5.
+	// P0 #2: only scene[0] gets "clip-a" (the sole resolved clip).
+	// Scenes 1 and 2 have no binding — extra scenes beyond clip
+	// count are left unbound to surface LLM mismatches.
 	const wantClipID = "clip-a"
-	gotIDs := make([]string, 0, len(model.SpecScene.Scenes))
 	for i, s := range model.SpecScene.Scenes {
-		if s.Bindings.Clip == nil {
-			t.Fatalf("scene[%d].Bindings.Clip = nil after Process", i)
+		if i == 0 {
+			if s.Bindings.Clip == nil {
+				t.Fatalf("scene[0].Bindings.Clip = nil after Process (expected binding to %q)", wantClipID)
+			}
+			if s.Bindings.Clip.ClipID != wantClipID {
+				t.Errorf("scene[0].Bindings.Clip.ClipID = %q, want %q", s.Bindings.Clip.ClipID, wantClipID)
+			}
+		} else {
+			if s.Bindings.Clip != nil {
+				t.Errorf("scene[%d].Bindings.Clip = %v, want nil (P0 #2: no cycling, extra scenes unbound)",
+					i, s.Bindings.Clip.ClipID)
+			}
 		}
-		if s.Bindings.Clip.ClipID != wantClipID {
-			t.Errorf("scene[%d].Bindings.Clip.ClipID = %q, want %q "+
-				"(PR 5: binder cycles ONLY over resolved ClipIDs; missing IDs "+
-				"in MissingClipIDs MUST NOT appear as bound ClipID)",
-				i, s.Bindings.Clip.ClipID, wantClipID)
-		}
-		gotIDs = append(gotIDs, s.Bindings.Clip.ClipID)
-	}
-	// Also assert that NO missing ID appears anywhere in the
-	// bound set (defensive belt-and-suspenders):
-	if anyInSlice(gotIDs, "missing-b") || anyInSlice(gotIDs, "missing-c") {
-		t.Fatalf("bound ClipIDs leaked missing IDs: got=%v (no missing-b/c allowed)", gotIDs)
 	}
 }
 
 // TestClipBindings_CyclesAllResolvedIDs_PR5 verifies that
-// when there are SEVERAL resolved IDs (instead of one), the
-// binder cycles through them in order. Catches regressions
-// where a refactor accidentally drops a resolved ID from the
-// cycle. Combined with the single-resolved test above, this
-// pins both endpoints of "binder respect resolved set only".
+// when there are SEVERAL resolved IDs, the binder maps them
+// 1:1 to scenes in canonical order. P0 #2 (June 2026): the
+// modulo cycling anti-pattern is removed — extra scenes beyond
+// the clip count get no binding to surface LLM mismatches.
 func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 	ev := usecase.BuildClipEvidence(map[string]any{
 		"clip_ids":   []string{"clip-a", "clip-b", "clip-c"},
@@ -151,7 +151,8 @@ func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 		t.Fatal("evidence = nil")
 	}
 
-	// 5 scenes, 3 resolved → cycle should be a, b, c, a, b
+	// 5 scenes, 3 resolved clips — P0 #2: only first 3 scenes
+	// get bindings (a, b, c); scenes 3-4 are unbound.
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{
 			Scenes: make([]scriptpkg.SpecScene, 5),
@@ -174,29 +175,25 @@ func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 		t.Fatalf("process error = %v", err)
 	}
 
-	want := []string{"clip-a", "clip-b", "clip-c", "clip-a", "clip-b"}
+	// P0 #2: bindings are 1:1, no cycling.
 	for i, s := range model.SpecScene.Scenes {
-		if s.Bindings.Clip == nil {
-			t.Fatalf("scene[%d] missing binding", i)
-		}
-		if s.Bindings.Clip.ClipID != want[i] {
-			t.Errorf("scene[%d] bound to %q, want %q "+
-				"(PR 5: binder cycles resolved ClipIDs in order)",
-				i, s.Bindings.Clip.ClipID, want[i])
+		if i < 3 {
+			want := []string{"clip-a", "clip-b", "clip-c"}[i]
+			if s.Bindings.Clip == nil {
+				t.Fatalf("scene[%d] missing binding, want %q", i, want)
+			}
+			if s.Bindings.Clip.ClipID != want {
+				t.Errorf("scene[%d] bound to %q, want %q", i, s.Bindings.Clip.ClipID, want)
+			}
+		} else {
+			if s.Bindings.Clip != nil {
+				t.Errorf("scene[%d].Bindings.Clip = %v, want nil (P0 #2: no cycling, extra scenes unbound)",
+					i, s.Bindings.Clip.ClipID)
+			}
 		}
 	}
 }
 
-// anyInSlice returns true if needle is in haystack. Tiny
-// helper local to the bindings test.
-func anyInSlice(haystack []string, needle string) bool {
-	for _, v := range haystack {
-		if v == needle {
-			return true
-		}
-	}
-	return false
-}
 
 // TestClipBindings_CanonicalID_DriveFileID_PR6 pins the PR 6
 // canonical-ID contract from the binder's perspective. The user
@@ -207,6 +204,10 @@ func anyInSlice(haystack []string, needle string) bool {
 // same canonical — so the binder reads the Drive URL via the
 // canonical key, not via clip.ID (which would silently miss).
 //
+// P0 #2 (June 2026): updated for 1:1 binding (no cycling).
+// Only scene[0] gets the binding since there's 1 clip for 3
+// scenes; scenes 1-2 are unbound.
+//
 // Setup:
 //
 //   - Evidence: ClipIDs = ["drive-file-id-ABC"], DriveLinks =
@@ -215,11 +216,9 @@ func anyInSlice(haystack []string, needle string) bool {
 //   - 3 model-emitted scenes with Bindings.Clip.ClipID pointing
 //     at the canonical Drive file ID.
 //
-// Expectation: after Process, every scene's binding references
+// Expectation: after Process, scene[0]'s binding references
 // "drive-file-id-ABC" and its DriveLink is the resolved URL.
-// This proves the binder never falls back to asset.ID lookup,
-// because if it did, scene bound IDs would land somewhere
-// outside DriveLinks["drive-file-id-ABC"].
+// Scenes 1-2 have no binding.
 func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 	const (
 		canonicalDriveFileID = "1BxiMVs0XRX5TOXUdv_QQ_E2uALQ7Y_"
@@ -262,9 +261,7 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 			internalAssetID)
 	}
 
-	// 3 scenes, model emitted each Bindings.Clip.ClipID as the
-	// canonical (Drive file ID) — exactly what the grounding
-	// prompt instructs.
+	// 3 scenes, 1 clip — P0 #2: only scene[0] gets binding.
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{
 			Scenes: make([]scriptpkg.SpecScene, 3),
@@ -290,53 +287,47 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		t.Fatalf("process error = %v", err)
 	}
 
+	// P0 #2: scene[0] bound, scenes 1-2 unbound.
 	for i, s := range model.SpecScene.Scenes {
-		if s.Bindings.Clip == nil {
-			t.Fatalf("scene[%d].Bindings.Clip = nil", i)
-		}
-		if s.Bindings.Clip.ClipID != canonicalDriveFileID {
-			t.Errorf("scene[%d].Bindings.Clip.ClipID = %q, want %q "+
-				"(PR 6: binder must drive the canonical Drive file ID, NOT the asset ID)",
-				i, s.Bindings.Clip.ClipID, canonicalDriveFileID)
-		}
-		if s.Bindings.Clip.DriveLink != driveURL {
-			t.Errorf("scene[%d].Bindings.Clip.DriveLink = %q, want %q "+
-				"(PR 6: binder reads DriveLinks[canonical] = url)",
-				i, s.Bindings.Clip.DriveLink, driveURL)
-		}
-		if s.Bindings.Clip.ClipID == internalAssetID {
-			t.Errorf("scene[%d] bound to asset.ID; PR 6 forbids this "+
-				"when caller passed a Drive file ID", i)
+		if i == 0 {
+			if s.Bindings.Clip == nil {
+				t.Fatalf("scene[0].Bindings.Clip = nil")
+			}
+			if s.Bindings.Clip.ClipID != canonicalDriveFileID {
+				t.Errorf("scene[0].Bindings.Clip.ClipID = %q, want %q",
+					s.Bindings.Clip.ClipID, canonicalDriveFileID)
+			}
+			if s.Bindings.Clip.DriveLink != driveURL {
+				t.Errorf("scene[0].Bindings.Clip.DriveLink = %q, want %q",
+					s.Bindings.Clip.DriveLink, driveURL)
+			}
+		} else {
+			if s.Bindings.Clip != nil {
+				t.Errorf("scene[%d].Bindings.Clip = %v, want nil (P0 #2: no cycling)",
+					i, s.Bindings.Clip.ClipID)
+			}
 		}
 	}
 }
 
-// TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6 pins the
-// secondary fallback path in processor_clip_bindings.go: when
-// ClipEvidence.ClipIDs is empty (e.g. an all-missing edge case
-// from BuildClipEvidence) the binder falls back to
-// `for id := range plan.ClipEvidence.DriveLinks` to derive
-// the cycle's source. After PR 6, this iteration MUST yield
-// canonical IDs (whatever the resolver chose), which feed
-// back into DriveLinks lookup. Without explicit pinning, a
-// future refactor could silently swap the order or use a
-// different key source.
+// TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6 verifies
+// the P0 #2 behaviour: when ClipEvidence.ClipIDs is empty, the
+// binder is a no-op (returns early with no bindings). The old
+// fallback path that ranged over DriveLinks is removed — the
+// canonical ClipIDs list is the single source of truth for
+// clip order.
 func TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6(t *testing.T) {
 	const (
 		driveFileA = "drive-file-A"
 		driveFileB = "drive-file-B"
 	)
 	ev := usecase.BuildClipEvidence(map[string]any{
-		"clip_ids": nil, // empty → triggers fallback range over DriveLinks
+		"clip_ids": nil, // empty → P0 #2: binder returns early, no fallback
 		"clip_drive_links": map[string]string{
 			driveFileA: "https://drive.google.com/" + driveFileA,
 			driveFileB: "https://drive.google.com/" + driveFileB,
 		},
 		"missing_clip_ids": []scriptpkg.MissingClipID{
-			// All-missing contract: PR 5 made BuildClipEvidence
-			// return non-nil (with MissingClipIDs populated)
-			// even when ClipIDs is empty. The binder's
-			// fallback range kicks in for ordering.
 			{ClipID: driveFileA, Reason: scriptpkg.MissingClipReasonDriveNotFound},
 		},
 	}, "")
@@ -365,21 +356,11 @@ func TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6(t *testing.T) {
 		t.Fatalf("process error = %v", err)
 	}
 
-	// After the fallback-range sorted cycle, BOTH scenes should
-	// reference canonical Drive file IDs (NOT any internal
-	// asset IDs, which the test fixtures deliberately do NOT
-	// include). The exact ordering depends on Go's map sort
-	// behaviour; both keys must be canonical.
-	gotKeys := make(map[string]bool, 2)
+	// P0 #2: empty ClipIDs → early return, no scenes get bindings.
 	for i, s := range model.SpecScene.Scenes {
-		if s.Bindings.Clip == nil {
-			t.Fatalf("scene[%d] missing binding", i)
+		if s.Bindings.Clip != nil {
+			t.Errorf("scene[%d].Bindings.Clip = %v, want nil (P0 #2: empty ClipIDs → no bindings)",
+				i, s.Bindings.Clip.ClipID)
 		}
-		gotKeys[s.Bindings.Clip.ClipID] = true
-	}
-	if !gotKeys[driveFileA] || !gotKeys[driveFileB] {
-		t.Fatalf("binder range produced %v; want both %q and %q "+
-			"(PR 6: fallback range MUST be canonical-keyed)",
-			gotKeys, driveFileA, driveFileB)
 	}
 }
