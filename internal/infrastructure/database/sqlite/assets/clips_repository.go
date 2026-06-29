@@ -69,6 +69,27 @@ import (
 // qdrant/search_adapter.go::var _ appsearch.VectorStorePort = ...
 var _ jobsoutbox.SourceVersionQuerier = (*ClipsRepository)(nil)
 
+// MediaAssetColumns is the canonical SELECT projection used by every
+// Get / List / Search / Resolve path in this package. The projection
+// is locked to ScanMediaAsset's scan signature in scan_helpers.go;
+// every AS alias here MUST appear at the same positional index in
+// ScanMediaAsset's `s.Scan(&dest...)` argument list.
+//
+// FASE 4 (June 2026): re-aligned from a drifted 38-column version to
+// 40 columns matching ScanMediaAsset. The previous version was missing
+// six columns (media_type, status, drive_folder_id, drive_link,
+// download_link, group_name) and contained three ghost columns no
+// longer in the canonical schema (web_view_link, is_folder, depth —
+// removed by migration 059's json_remove).
+//
+// If you change this constant, update scans in lockstep:
+//   - scan_helpers.go::ScanMediaAsset  (consumes the AS aliases)
+//   - clips_crud_test.go::canonicalMediaAssetColumns  (pins the order)
+//
+// `status` is intentionally KEPT despite migration 101 reportedly
+// removing the DB column — ScanMediaAsset's signature still expects a
+// `status` scan target and SqlNullString makes it NULL-safe; removing
+// it here would require a paired ScanMediaAsset edit.
 const MediaAssetColumns = `
 	id,
 	COALESCE(source, '') AS source,
@@ -78,19 +99,15 @@ const MediaAssetColumns = `
 	COALESCE(embedding_json, '[]') AS embedding_json,
 	COALESCE(duration_ms, 0) AS duration_ms,
 	COALESCE(url, '') AS url,
-	COALESCE(relative_path, '') AS relative_path,
+	COALESCE(media_type, '') AS media_type,
+	COALESCE(status, '') AS status,
 	COALESCE(local_path, '') AS local_path,
-	COALESCE(web_view_link, '') AS web_view_link,
-	COALESCE(download_url, '') AS download_url,
+	COALESCE(relative_path, '') AS relative_path,
 	COALESCE(drive_file_id, '') AS drive_file_id,
+	COALESCE(drive_folder_id, '') AS drive_folder_id,
+	COALESCE(drive_link, '') AS drive_link,
+	COALESCE(download_link, '') AS download_link,
 	COALESCE(file_hash, '') AS file_hash,
-	COALESCE(is_folder, 0) AS is_folder,
-	COALESCE(depth, 0) AS depth,
-	COALESCE(folder_id, '') AS folder_id,
-	COALESCE(parent_folder_id, '') AS parent_folder_id,
-	COALESCE(folder_path, '') AS folder_path,
-	COALESCE(category, '') AS category,
-	COALESCE(filename, '') AS filename,
 	COALESCE(metadata_json, '{}') AS metadata_json,
 	COALESCE(visual_embedding, '[]') AS visual_embedding,
 	COALESCE(transcript_embedding, '[]') AS transcript_embedding,
@@ -100,6 +117,12 @@ const MediaAssetColumns = `
 	COALESCE(height, 0) AS height,
 	COALESCE(lifecycle_state, 'ACTIVE') AS lifecycle_state,
 	COALESCE(deleted_at, '') AS deleted_at,
+	COALESCE(folder_id, '') AS folder_id,
+	COALESCE(parent_folder_id, '') AS parent_folder_id,
+	COALESCE(folder_path, '') AS folder_path,
+	COALESCE(category, '') AS category,
+	COALESCE(group_name, '') AS group_name,
+	COALESCE(filename, '') AS filename,
 	COALESCE(error, '') AS error,
 	COALESCE(thumb_url, '') AS thumb_url,
 	COALESCE(phash, '') AS phash,
