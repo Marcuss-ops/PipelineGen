@@ -283,12 +283,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		UploadUC:            uploadUC,
 	}, idemHandler)
 
-	var drivePort appstorage.DrivePort
-	if driveUploader != nil {
-		drivePort = &storageDriveAdapter{up: driveUploader}
-	}
-	storageSvc := appstorage.NewService(drivePort, &zapLogAdapter{log})
-	storageHandler := assetstorage.NewHandler(storageSvc, jobs.Facade, deps.Core.CatalogSyncService, log)
+	storageHandler := assetstorage.NewHandler(jobs.Facade, deps.Core.CatalogSyncService, log)
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
 	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
