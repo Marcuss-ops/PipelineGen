@@ -43,14 +43,18 @@
 #   - tests/fixtures/zero_legacy/check_*.go                        : canonical negative-example
 #                                                                     fixtures (Check 8 precedent).
 #
-# Pattern anchor:
-#   map[string]*ClipsRepository{    — the bare / unqualified bag
-#                                     literal (matching:
-#                                       map[ string ]*ClipsRepository{
-#                                       map[string] *ClipsRepository{
-#                                       map[string]*ClipsRepository {
-#                                     etc., via ripgrep's flexible
-#                                     whitespace tokenisation).
+# Pattern anchor: STRICT literal — the user-spec-exact bare form only.
+#   map[string]*ClipsRepository{
+# No whitespace tolerance (the user spec called for the EXACT string;
+# ripgrep -E's `\[` and `\]` are LITERAL bracket escapes, not flexible
+# bracket/asterisk tokenisers, so `map[ string ]*...` etc. will NOT
+# match this regex). No package qualifier tolerance either (the
+# canonical site uses `*sqassets.ClipsRepository`; a future
+# `*someAlias.ClipsRepository` pattern would slip past BOTH Check 8
+# (qualified form: `*assets.ClipsRepository`) AND this Check 45 (bare
+# form) — broaden the regex in a follow-up PR if a regression of that
+# shape surfaces. The narrow-scope trade-off is deliberate: keeps the
+# gate tight on the documented regression shape without false-positives.
 #
 # The check uses `set -uo pipefail` and exits non-zero on ANY hit.
 # All output is regenerated every CI run; the gate is fail-closed
