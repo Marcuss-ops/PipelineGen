@@ -63,10 +63,13 @@ gates_baseline:
   - gate_id: C2-A
     name: "Register calls only in capability_registry.go"
     target_zero: true
-    enforce_zero: false
-    current: 23                       # observed via rg \.Register(\W in internal/app + a few legacy corners
+    enforce_zero: true                 # promoted to hard gate by Blocco C1-Step 2 (capability_registry_gate_test.go enforces invocation)
+    current: 0                          # observed via rg \.Registry\.Register\b after type-prefix in internal/app/** excluding capability_registry.go (C1-Step-2 closure, June 2026)
+    legacy_observation: 23              # historical pre-Step-2 inventory total (variable-name + typed-mixed; superseded by canonical hoist)
     scope: "internal/app + capabilities that call Registry.Register"
-    migration_owner: internal/app/capability_registry.go   # C1-Step-2 hoist site
+    migration_owner: internal/app/capability_registry.go
+    enforcing_test: internal/app/capability_registry_gate_test.go::TestRegisterGate_NoDirectRegistryRegisterOutsideCapabilityRegistry
+    ratchet_status: closed_at_step_2  # forward-protection only; PRs that re-introduce typed-punctuated Register calls outside the canonical point fail the gate
   - gate_id: C2-B
     name: "no concrete constructors outside internal/app/"
     target_zero: true

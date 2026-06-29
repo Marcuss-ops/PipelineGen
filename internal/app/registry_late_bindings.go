@@ -1,26 +1,28 @@
-// Package app — late-binding handlers + registry freeze (PR4 split).
+// Package app — late-binding handlers + provider registration queue
+// (Blocco C1-Step 2 refactor, June 2026).
 //
-// PR4 mechanical split (June 2026): relocated from registry.go without
-// signature or behaviour changes. This file owns the LAST two steps of
-// the orchestrator:
+// Replaces the pre-Step-2 shape (Outbox handler + Mediasearch
+// handler + direct pr.RegisterSearch/RegisterFetch inline).
+// Today the file owns ONLY:
+//   - applyLateBindings: builds the QDRANT-002 outbox handler +
+//     QDRANT-004 mediasearch handler + COLLECTS provider
+//     registration entries (artlist + youtube + stock) into a
+//     returned slice, AND publishes the script_assets descriptor
+//     (HTTP module via tryRegisterModuleStrict + the gate-safe
+//     descriptor RegisterProviders slot).
 //
-//   - applyLateBindings constructs the QDRANT-002 outbox handler,
-//     the QDRANT-004 mediasearch handler, and the ProviderRegistry
-//     finalization (RegisterSearch × 2 + RegisterFetch × 1 +
-//     ScriptAssets descriptor publish). These run AFTER all module
-//     registrations because:
-//     1. The outbox handler must NOT be registered through /api/*
-//     (separation-of-routes invariant pinned by
-//     internal/api/routes_test.go).
-//     2. The mediasearch handler depends on
-//     wiring.Assets.SearchAggregator, populated by Step 5.
-//     3. The ProviderRegistry finalization must run AFTER each
-//     provider's primary module registration so the providers
-//     map is non-empty when Freeze is called.
+// The provider entries are passed by the orchestrator
+// (WireRegistry Step 7) into registerCapabilities which is the
+// ONLY function in internal/app/** allowed to call
+// providers.Registry.RegisterSearch/RegisterFetch (gate enforced
+// by capability_registry_gate_test.go).
 //
-//   - freezeRegistries calls ProviderRegistry.Freeze(), the
-//     composition-time close of the registry write side. Reviewer Q8
-//     fix: must be the final mutation in WireRegistry.
+// The pre-Step-2 finalizeProviderRegistry + freezeRegistries were
+// merged into registerProviders inside capability_registry.go:
+// the canonical Freeze() now lands at the absolute last mutation
+// of WireRegistry (right after the last RegisterFetch call),
+// preserving the Reviewer Q8 invariant without an extra
+// orchestrate step in registry.go.
 package app
 
 import (
@@ -36,15 +38,35 @@ import (
 )
 
 // applyLateBindings finalizes the wiring composition surface:
-//   - outbox events handler (QDRANT-002 separation-of-routes)
-//   - mediasearch handler (QDRANT-004 separation-of-routes)
-//   - ProviderRegistry adapter registrations (artlist / youtube +
-//     stock fetch). Must run BEFORE pr.Freeze() so the registry is
-//     still mutable.
+//   - QDRANT-002 outbox events handler (separation-of-routes).
+//   - QDRANT-004 mediasearch handler (separation-of-routes).
+//   - ProviderRegistry adapter entry collection (artlist / youtube
+//     search + stock fetch) — entries are returned to the
+//     orchestrator and registered by registerCapabilities
+//     (capability_registry.go).
+//   - script_assets capability (HTTP module via canonical
+//     tryRegisterModuleStrict + Descriptor.RegisterProviders slot,
+//     gate-safe by design because RegisterProviders is a
+//     Descriptor-level method, NOT a typed providers.Registry
+//     .Register call).
 //
-// Returns nil on notification-only blocks; propagation is per-block
-// because the orchestrator treats late-binding failures as fatal.
-func applyLateBindings(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) error {
+// Returns:
+//   - []TrackedProviderEntry to feed into CapabilityDeps.Providers
+//     (capacity = number of adapters registered; nil-safe when
+//     root.Search.ProviderRegistry is nil).
+//   - error: first non-nil error from any sub-step (composition-time
+//     fail-closed for HTTP route registration + script_assets slot).
+//
+// Run AFTER all module registrations because:
+//   1. The outbox handler must NOT be registered through /api/*
+//      (separation-of-routes invariant pinned by
+//      internal/api/routes_test.go).
+//   2. The mediasearch handler depends on
+//      wiring.Assets.SearchAggregator, populated by Step 5.
+//   3. The script_assets descriptor RegisterProviders publishes
+//      into the providers.Registry; the Freeze gate (from
+//      registerProviders) MUST land AFTER this call.
+func applyLateBindings(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) ([]TrackedProviderEntry, error) {
 	// ── QDRANT-002: build canonical internal outbox handler ─────
 	// Exposes GET /internal/v1/outbox/status and /events for
 	// operator dashboard visibility into the outbox events pipeline.
@@ -87,50 +109,63 @@ func applyLateBindings(registry *module.Registry, log *zap.Logger, root *Compose
 		log.Info("QDRANT-004: mediasearch handler BUILT (mounted on /internal/v1/media/search via AppDeps, NOT via /api)")
 	}
 
-	// ── ProviderRegistry — register adapters + FREEZE at the end
-	// Lives on SearchBundle (PR4 review): it's an asset-search
-	// dispatch registry, not a Drive-sync concern.
+	// ── ProviderRegistry — collect adapter entries (no inline
+	// Register*) so capability_registry.go's registerProviders
+	// remains the canonical single composition point for
+	// providers.Registry mutation surface (capability_registry_gate_test.go
+	// enforces the invariant). Script_assets also lives inside the
+	// same gate so its descriptor-level RegisterProviders slot
+	// lands BEFORE the canonical Freeze() inside registerProviders
+	// (Step 7); the slot is gate-safe by design (RegisterProviders
+	// is a Descriptor-level method, NOT a typed providers.Registry
+	// .Register call).
+	var providerEntries []TrackedProviderEntry
 	if root.Search != nil && root.Search.ProviderRegistry != nil {
-		pr := root.Search.ProviderRegistry
 		if wiring.ArtlistSvc != nil && wiring.ArtlistSvc.Service != nil {
-			if err := pr.RegisterSearch(artlistadapter.NewAdapter(wiring.ArtlistSvc.Service)); err != nil {
-				log.Warn("failed to register artlist provider", zap.Error(err))
-			} else {
-				log.Info("registered artlist provider in providers.Registry")
-			}
+			providerEntries = append(providerEntries, TrackedProviderEntry{
+				Id:     "artlist",
+				Kind:   ProviderKindSearch,
+				Search: artlistadapter.NewAdapter(wiring.ArtlistSvc.Service),
+			})
+			log.Info("queued artlist provider for canonical registration via registerCapabilities")
 		} else {
 			log.Info("artlist service unavailable \u2014 skipping provider registration")
 		}
 		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Service != nil {
-			if err := pr.RegisterSearch(youtubeadapter.NewAdapter(wiring.YouTubeClip.Service)); err != nil {
-				log.Warn("failed to register youtube provider", zap.Error(err))
-			} else {
-				log.Info("registered youtube provider in providers.Registry")
-			}
+			providerEntries = append(providerEntries, TrackedProviderEntry{
+				Id:     "youtube",
+				Kind:   ProviderKindSearch,
+				Search: youtubeadapter.NewAdapter(wiring.YouTubeClip.Service),
+			})
+			log.Info("queued youtube provider for canonical registration via registerCapabilities")
 		} else {
 			log.Info("youtube clip service unavailable \u2014 skipping provider registration")
 		}
 		if wiring.StockPipeline != nil && wiring.StockPipeline.Service != nil {
-			if err := pr.RegisterFetch(stockadapter.NewAdapter(wiring.StockPipeline.Service)); err != nil {
-				log.Warn("failed to register stock fetch provider", zap.Error(err))
-			} else {
-				log.Info("registered stock fetch provider in providers.Registry")
-			}
+			providerEntries = append(providerEntries, TrackedProviderEntry{
+				Id:    "stock",
+				Kind:  ProviderKindFetch,
+				Fetch: stockadapter.NewAdapter(wiring.StockPipeline.Service),
+			})
+			log.Info("queued stock fetch provider for canonical registration via registerCapabilities")
 		} else {
 			log.Info("stock pipeline service unavailable \u2014 skipping fetch provider registration")
 		}
+
 		// ── ScriptAssets capability — RegisterProviders must run
-		// BEFORE pr.Freeze() below; the registry must be mutable
-		// when the descriptor publishes into it. Frozen registries
-		// return ErrFrozen from Register, so ordering matters.
+		// BEFORE the canonical Freeze() inside registerProviders
+		// (Step 7), so this block lands in applyLateBindings (Step 6)
+		// before the orchestrator's final-mutation step. The
+		// gate-safe pattern: HTTP module via the canonical
+		// tryRegisterModuleStrict + descriptor's RegisterProviders
+		// slot (NOT providers.Registry-equivalent surface).
 		//
-		// The script_assets capability is wired via scriptassets.Build(deps).
-		// Build returns a single Descriptor that carries:
-		//   - the api.Module for /script-assets routes, AND
-		//   - the api.DescriptorProviders slot which the composition
-		//     root uses to publish the script_assets catalog entry
-		//     (provider identity + capabilities) into the canonical
-		//     providers.Registry.
+		// scriptassets.Build returns a single Descriptor that
+		// carries both the api.Module (for /script-assets routes)
+		// and the api.DescriptorProviders slot (which the
+		// composition root uses to publish the script_assets
+		// catalog entry — provider identity + capabilities — into
+		// the canonical providers.Registry).
 		scDesc, scErr := scriptassets.Build(scriptassets.Dependencies{
 			Logger: log,
 		})
@@ -138,16 +173,14 @@ func applyLateBindings(registry *module.Registry, log *zap.Logger, root *Compose
 			log.Warn("failed to wire module", zap.String("module", "script-assets"), zap.Error(scErr))
 		} else {
 			if err := tryRegisterModuleStrict(registry, log, scDesc, WithRegistrationPoint("register.ScriptAssets")); err != nil {
-				return err
+				return nil, err
 			}
 			// *ScriptAssetsDescriptor satisfies api.Descriptor via
-			// the three explicit delegation methods (Name/Enabled/
-			// RegisterRoutes), and api.DescriptorProviders via
-			// RegisterProviders (same concrete pointer cast as the
-			// generation block above).
+			// the three explicit delegation methods and
+			// api.DescriptorProviders via RegisterProviders.
 			if dp, ok := scDesc.(*scriptassets.ScriptAssetsDescriptor); ok {
-				if err := dp.RegisterProviders(pr); err != nil {
-					return err
+				if err := dp.RegisterProviders(root.Search.ProviderRegistry); err != nil {
+					return nil, err
 				}
 				log.Info("registered script_assets catalog entry in providers.Registry",
 					zap.String("name", "script_assets"),
@@ -156,34 +189,20 @@ func applyLateBindings(registry *module.Registry, log *zap.Logger, root *Compose
 		}
 	}
 
-	// Register + Freeze live in two distinct functions so the
-	// orchestrator's wireframe stays sequential.
-	return finalizeProviderRegistry(root, log)
+	return providerEntries, nil
 }
 
-// finalizeProviderRegistry calls ProviderRegistry.Freeze() after the
-// late-binding blocks above have populated every adapter slot.
-// Pulled out so the orchestrator's step 6 (applyLateBindings) and
-// step 7 (freezeRegistries) are two distinct function calls, surfacing
-// the Reviewer Q8 invariant that Freeze() is the canonical gate.
-func finalizeProviderRegistry(root *ComposeRoot, log *zap.Logger) error {
-	if root.Search == nil || root.Search.ProviderRegistry == nil {
-		return nil
-	}
-	pr := root.Search.ProviderRegistry
-	// FREEZE here, after all registrations. (Reviewer Q8 fix.)
-	pr.Freeze()
-	log.Info("providers.Registry frozen at end of WireRegistry",
-		zap.Int("providers", len(pr.All())))
-	return nil
-}
-
-// freezeRegistries is the publicly-callable freeze step. The orchestrator
-// in registry.go calls this AFTER applyLateBindings; the implementation
-// is a one-line passthrough so the orchestrator's wireframe stays
-// symmetric (applyLateBindings returns err, freezeRegistries is fire-and-
-// forget — the freeze is best-effort and its result is logged but not
-// propagated to the orchestrator error path).
-func freezeRegistries(root *ComposeRoot) {
-	_ = finalizeProviderRegistry(root, zap.NewNop())
-}
+// ── Pre-Step-2 helpers removed in this PR ──
+//
+// The pre-Step-2 finalizeProviderRegistry + freezeRegistries
+// helpers were deleted and merged into capability_registry.go's
+// registerProviders (the canonical Freeze() lands at the
+// absolute final mutation of WireRegistry via
+// registerCapabilities Step 7). The functions were removed
+// because they would now leak the pr.Freeze() call outside the
+// canonical composition point — a strict-failure-mode hazard
+// for the gate.
+//
+// If a future PR re-introduces a helper for diagnostics (e.g.
+// a "pretend-freeze for boot-time config audit"), it MUST be
+// renamed to avoid confusion with the canonical path.

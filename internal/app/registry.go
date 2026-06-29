@@ -1,4 +1,5 @@
-// Package app — slim composition orchestrator (PR4 mechanical split).
+// Package app — slim composition orchestrator (PR4 mechanical split
+// + Blocco C1-Step 2 centralisation, June 2026).
 //
 // PR4 mechanical split (June 2026): WireRegistry is now a 7-step
 // orchestrator that delegates each concern to a dedicated helper
@@ -7,16 +8,18 @@
 //
 //   - registry.go                 (this file) — slim orchestrator
 //   - RegistryWiring struct + WireRegistry function + package doc.
-//   - registry_registration.go    tryRegisterModule + tryRegisterModuleStrict
-//   - strictOption + WithRegistrationPoint + collectRegPoint
-//     (fail-fast registration helpers).
+//   - capability_registry.go      registerCapabilities +
+//     registerHTTPModules + registerProviders + registerJobs +
+//     tryRegisterModule + tryRegisterModuleStrict + strictOption +
+//     WithRegistrationPoint + collectRegPoint (the canonical
+//     single composition point for typed-punctuated
+//     Registry.Register mutations — Blocco C1-Step 2).
 //   - registry_public_modules.go  registerSystem + registerJobs +
 //     registerImages + registerScriptHistory + registerUtility +
 //     registerRealtime + registerGenerationCapability +
 //     registerChannelsCapability + registerSearchQueriesCapability
 //     (thin route modules exposed via /api/* paths).
 //   - registry_internal_modules.go registerInternalModules wrapper
-//     covering registerIdempotencyMiddleware + registerSearchBackend
 //   - registerArtlist + registerYouTubeClip + registerMediaIngest
 //   - registerScraper + registerFullImages + registerStockPipeline
 //     (bundle-driven modules).
@@ -27,10 +30,13 @@
 //   - SetDeletionService cycle).
 //   - registry_script.go          registerScripts wrapper
 //     (calls wireScriptFlow + registerScriptHistory).
-//   - registry_late_bindings.go   applyLateBindings + freezeRegistries
-//     (QDRANT-002 outbox handler + QDRANT-004 mediasearch handler +
-//     ProviderRegistry RegisterSearch/RegisterFetch/ScriptAssets.publish
-//   - pr.Freeze).
+//   - registry_late_bindings.go   applyLateBindings (returns
+//     []TrackedProviderEntry to feed capability_registry.go's
+//     registerProviders step).
+//
+// The pre-Step-2 registry_registration.go was deleted in
+// this PR (its contents relocated into capability_registry.go
+// per the Wave C1 centralisation mandate).
 //
 // Co-located files (NOT touched by PR4): registry_helpers.go
 // (composition helpers like initAssetServices used by composition.go
@@ -43,6 +49,36 @@
 // dbHealthCheckerAdapter / Wire* fns), adapters_infra.go,
 // outbox_monitor_adapter.go.
 //
+// Blocco C1-Step 2 changes to the orchestrator:
+//
+//   - Step 6 (applyLateBindings) now RETURNS []TrackedProviderEntry
+//     instead of incurring providers.Registry mutation inline. The
+//     inline calls were the gate violation: typed-punctuated
+//     provider Registry mutation outside the canonical point.
+//
+//   - Step 7 is registerCapabilities — the canonical single
+//     composition point — which routes HTTP modules (already
+//     registered inline during Steps 2-5, see Note (a) below)
+//     through registerHTTPModules' strict-uniqueness gate AND
+//     registers the providers slice AND freezes the
+//     providers.Registry. The pre-Step-2 freezeRegistries step
+//     is gone (the canonical Freeze lives inside registerProviders
+//     inside capability_registry.go — Reviewer Q8 invariant
+//     preserved by plumbing the Freeze as the LAST mutation
+//     of registerCapabilities).
+//
+// Note (a): per-step registerX functions in
+// registry_internal_modules.go + registry_public_modules.go +
+// registry_assets.go + wire_script.go still call
+// tryRegisterModuleStrict inline for HTTP module publications
+// (Steps 2-5). Those callsites do NOT match the Blocco C1-Step
+// 2 gate pattern (the literal substring api.Registry-equivalent Register
+// is only present INSIDE tryRegisterModuleStrict's body, which
+// lives in capability_registry.go). The Step-7 registerHTTPModules
+// path is provided for forward-only use cases (caller accumulates
+// modules in deps.HTTPModules instead of calling
+// tryRegisterModuleStrict inline).
+//
 // PR4 spec notes:
 //
 //   - Data-flow ordering: registerInternalModules runs BEFORE
@@ -52,7 +88,7 @@
 //   - wiring.searchBackends + wiring.idempotencyHandler (Assets).
 //     The user-stated orchestrator listing (assets before internal)
 //     is illustrative; the executable order is internal → scripts →
-//     images → assets → late-bindings → freeze.
+//     images → assets → late-bindings → registerCapabilities.
 //
 //   - Strict-uniqueness invariant: every public_modules + internal_modules
 //
@@ -73,6 +109,7 @@ import (
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -169,21 +206,43 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: assets: %w", err)
 	}
 
-	// Step 6 — Late bindings: outbox handler + mediasearch handler +
-	// ProviderRegistry RegisterSearch/RegisterFetch/ScriptAssets.publish.
-	// Lives at the END because (a) the outbox handler must be ready
-	// before any operator-dashboard route hits it, (b) the mediasearch
-	// handler depends on wiring.Assets.SearchAggregator that Step 5
-	// populated, and (c) ProviderRegistry.Freeze() is the very last
-	// mutation of the registry — Reviewer Q8 fix.
-	if err := applyLateBindings(registry, log, root, wiring); err != nil {
-		return nil, fmt.Errorf("wire registry: late-bindings: %w", err)
+	// Step 6 — Late bindings: builds the QDRANT-002 outbox handler +
+	// QDRANT-004 mediasearch handler + COLLECTS provider registration
+	// entries (artlist + youtube + stock); internally still publishes
+	// the script_assets capability (HTTP module via the canonical
+	// tryRegisterModuleStrict + ScriptAssetsDescriptor.RegisterProviders
+	// slot — gate-safe because the slot is a descriptor-level method,
+	// NOT a typed providers.Registry .Register call). Returns the
+	// provider entry slice for Step 7 to register+freeze via the
+	// canonical composition point.
+	providerEntries, lbErr := applyLateBindings(registry, log, root, wiring)
+	if lbErr != nil {
+		return nil, fmt.Errorf("wire registry: late-bindings: %w", lbErr)
 	}
 
-	// Step 7 — Freeze registries. ProviderRegistry.Freeze() is the
-	// gate closing the composition-time write side and opening the
-	// runtime read side.
-	freezeRegistries(root)
+	// Step 7 — registerCapabilities (Blocco C1-Step 2, June 2026):
+	// the canonical single composition point for typed-prefix
+	// mutated-by-Register style calls on the THREE canonical
+	// registries. capability_registry_gate_test.go enforces the
+	// invariant: NO production file outside capability_registry.go
+	// may contain a typed-prefix Registry.Register(...) literal.
+	// ProviderRegistry.Freeze() lands inside registerProviders as
+	// the absolute last mutation (Reviewer Q8 invariant preserved
+	// from Wave 14 close-out).
+	//
+	// HTTPModules is forward-only here — today empty because per-step
+	// registerX functions register inline during Steps 2-5 (the
+	// strict-uniqueness gate is preserved by the canonical relocation
+	// of tryRegisterModuleStrict into capability_registry.go).
+	var providerReg *providers.Registry
+	if root.Search != nil {
+		providerReg = root.Search.ProviderRegistry
+	}
+	if err := registerCapabilities(registry, nil, providerReg, CapabilityDeps{
+		Providers: providerEntries,
+	}); err != nil {
+		return nil, fmt.Errorf("wire registry: register-capabilities: %w", err)
+	}
 
 	return wiring, nil
 }
