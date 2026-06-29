@@ -1,0 +1,367 @@
+// Package clips — module.go: the single canonical Build entrypoint for
+// the Clips HTTP capability.
+//
+// Capability Standard module.go contract:
+//
+//	func Build(deps Dependencies) (api.Descriptor, error)
+//
+// The returned Descriptor is complete: missing mandatory dependencies
+// return an error during composition; the capability does not create
+// partially-initialized services. Once Build returns, the descriptor is
+// ready to be registered into the api.Registry by the composition root.
+//
+// This file is part of Blocco C1-Step 5 (June 2026): every capability
+// in `internal/api/**` and `internal/application/**` MUST expose a
+// Build(d) signature. Direct canonical-registry Calls inside a
+// capability package are forbidden (godlike/07 + the canonical
+// `internal/app/capability_registry.go` hoist site landed in
+// Blocco C1-Step 2). The composition root consumes this Build via
+// `internal/app/module_media.go::WireAssets` and threads the returned
+// Descriptor into `assetsapi.Dependencies.Clips` (route module that
+// mounts /media/clips).
+//
+// Pattern parity with `artlist/module.go` (C1-Step 3),
+// `youtube/module.go` (C1-Step 4), and the rest of the Wave-C1 set.
+//
+// UNIQUE TO CLIPS (vs artlist/youtube): the package already owns a
+// fat-orchestrator *Handler that wires 4 sub-handlers (ingest, search,
+// ops, bulk_upload) + 9 NON-Ops inline methods + 3 Action cluster
+// methods via the canonical Handler.RegisterRoutes. The user hint
+// "riusalo come Descriptor" maps to:
+//
+//   - Build constructs *Handler via NewHandler(deps.toDeps(), idem).
+//   - Build wraps it in api.NewRouteModule("clips", enabledFn, "/clips",
+//     handler, log, opts...) — the Module captures handler.RegisterRoutes
+//     in its closure.
+//   - Build returns *ClipsDescriptor which exposes `Module` (route
+//     surface, api.Descriptor-satisfying via forwarder methods) AND
+//     `Handler` (raw orchestrator, for the ONE non-HTTP consumer in
+//     `internal/app/assets_register_sourcing.go::sourcingEnrichmentAdapter`
+//     that calls `clipsHandler.EnrichAndIndexClip(ctx, clip, source)`).
+//
+// The Descriptor does NOT embed *Handler (to avoid method promotion +
+// to keep the canonical "Descriptor = route surface" shape). The
+// Handler stays the internal worker; callers (composition root,
+// tests, internal services) either go through the Descriptor's
+// Module (for HTTP) or via the explicit `Descriptor.Handler` field
+// (for the single non-HTTP call site).
+package clips
+
+import (
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+)
+
+// Dependencies is the typed narrow input to Build. Mirrors the
+// `Deps` bag that `NewHandler` consumes, plus the Build-time
+// fields the artlist/youtube precedent requires (Idempotency
+// middleware + EnabledFunc + ModuleOpts + Logger).
+//
+// Mandatory fields return an error when nil; optional fields fall
+// through to the handler's existing nil-tolerance (each route
+// short-circuits to 503 or to the appropriate sentinel response —
+// never panic, never NPE).
+//
+// Logger nil → zap.NewNop() (composition-root-friendly default).
+type Dependencies struct {
+	// ── Handler bag (mirrors clipsapi.Deps) ────────────────────────
+	// All 27 fields consumed by NewHandler are mirrored here as
+	// flat fields so the composition root can pass them straight
+	// through without an intermediate Deps literal.
+
+	// ClipsRepo is the canonical SQLite-backed clips store.
+	// MANDATORY — Build returns an error when nil.
+	ClipsRepo *assets.ClipsRepository
+
+	// AssetRepo is the domain asset.Repository (DB-agnostic).
+	// MANDATORY — used by Ingest sub-handler + clip_action.
+	AssetRepo asset.Repository
+
+	// DeletionSvc is the application-layer deletion orchestrator.
+	// MANDATORY — used by Ops sub-handler.
+	DeletionSvc *deletion.DeletionService
+
+	// DriveUploader wraps google.golang.org/api/drive/v3.
+	// MANDATORY — used by Ingest sub-handler for the upload path.
+	DriveUploader *drive.Uploader
+
+	// MediaProcessor is the asset.Processor (ffmpeg pipeline).
+	// MANDATORY — used by ReprocessUseCase inside Handler.
+	MediaProcessor asset.Processor
+
+	// AssetTreeSvc maintains the asset-tree shadow model.
+	// MANDATORY — used by Ingest sub-handler + BulkTagsUC.
+	AssetTreeSvc *assettree.Service
+
+	// MetaWriter handles semantic metadata JSON generation.
+	// MANDATORY — used by Ingest sub-handler + clip_action.
+	MetaWriter *semantic.MetadataWriter
+
+	// ClipIndexer is the qdrant-fed clip indexer.
+	// MANDATORY — used by ReindexClip / BatchReindex.
+	ClipIndexer *clipindexer.Service
+
+	// JobsSvc is the canonical jobs.Service (facade).
+	// MANDATORY — used by EnrichMedia / ReindexClip / BatchReindex
+	// / BulkUpload cluster.
+	JobsSvc jobservice.Service
+
+	// Cfg is the application *config.Config. MANDATORY — used by
+	// Ingest sub-handler + driveRootForSource helper.
+	Cfg *config.Config
+
+	// Log is the structured logger. nil → zap.NewNop() (Build
+	// convenience). MANDATORY-shape only — never blocks Build.
+	Log *zap.Logger
+
+	// VoiceoverRepo is the canonical VoiceoversRepository.
+	// MANDATORY — used by Search sub-handler + Action cluster.
+	VoiceoverRepo *assets.VoiceoversRepository
+
+	// ImagesRepo is the canonical ImagesRepository.
+	// MANDATORY — used by Search sub-handler.
+	ImagesRepo *assets.ImagesRepository
+
+	// ArtifactSvc is the application-layer artifact orchestrator.
+	// MANDATORY — used by Ingest sub-handler.
+	ArtifactSvc *artifacts.Service
+
+	// FolderMemSvc is the foldermemory.Service (folder-cache).
+	// MANDATORY — used by Ops sub-handler.
+	FolderMemSvc *foldermemory.Service
+
+	// SearchSvc is the canonical search.Aggregator (Wave 21 PR 10).
+	// MANDATORY — used by Search sub-handler.
+	SearchSvc *search.Aggregator
+
+	// ProcessRunner is the infrastructure ProcessRunner port.
+	// MANDATORY — used by Ingest sub-handler.
+	ProcessRunner appassets.ProcessRunner
+
+	// Dispatcher is the application-layer ClipIndexDispatcherPort
+	// (PR 7, June 2026, codex/qdrant-app-writers-fail-closed).
+	// MANDATORY — used by Ingest sub-handler (UpdateClip path).
+	Dispatcher appclips.ClipIndexDispatcherPort
+
+	// SearchAggregator is the canonical cross-provider
+	// search.Aggregator (the search.NewAggregator instance from
+	// WireRegistry, aliased to providers.SearchAggregator).
+	// MANDATORY — used by Action cluster (FindDuplicates).
+	SearchAggregator *providers.SearchAggregator
+
+	// ReuploadUC is the application-layer ReuploadUseCase.
+	// MANDATORY — used by Action cluster (ReuploadClip).
+	ReuploadUC *appclips.ReuploadUseCase
+
+	// EnrichUC is the application-layer EnrichUseCase. S1a
+	// (June 2026): the composition root builds a SHARED instance
+	// and threads it through Build so the worker's media.enrich
+	// job and the handler's EnrichMedia path share state.
+	// OPTIONAL — when nil, NewHandler constructs a local fallback
+	// copy that preserves pre-S1a behaviour (enrichUCOrLocal
+	// helper).
+	EnrichUC *appclips.EnrichUseCase
+
+	// BulkUploadWorker is the application-layer BulkUploadWorker
+	// (W14 PR2 slice 3, June 2026).
+	// MANDATORY — used by bulk_upload cluster routes.
+	BulkUploadWorker *appclips.BulkUploadWorker
+
+	// ClipOpsService is the application-layer ClipOpsService
+	// (PR 2, June 2026).
+	// MANDATORY — used by Ops sub-handler (14 routes).
+	ClipOpsService *appclips.ClipOpsService
+
+	// UploadUC is the application-layer upload UseCase
+	// (P1.5, June 2026).
+	// MANDATORY — used by Ingest sub-handler (UploadVideoClip).
+	UploadUC *appupload.UseCase
+
+	// ── Build-time fields (mirrors artlist/youtube) ───────────────
+
+	// Idempotency is the reusable Gin idempotency middleware
+	// (PR8, June 2026). Constructed once at server boot via
+	// WireRegistry → BuildRepoBundle.IdempotencyStore.
+	// nil → Build installs a no-op pass-through (preserves
+	// the test-fixture / dry-run path).
+	Idempotency gin.HandlerFunc
+
+	// EnabledFunc is the closure that decides whether the
+	// module's routes are mounted. The composition root wires
+	// the canonical `func() bool { return true }` closure (clips
+	// are always on in production; the closure shape preserves
+	// the artlist/youtube contract symmetry).
+	// MANDATORY — Build returns an error when nil.
+	EnabledFunc func() bool
+
+	// ModuleOpts are variadic `api.RouteModuleOption` decorators
+	// (typically `api.WithMiddleware(...)`) applied to the
+	// RouteModule at Build time. OPTIONAL — nil produces a plain
+	// RouteModule.
+	ModuleOpts []api.RouteModuleOption
+}
+
+// ClipsDescriptor is the concrete capability Descriptor returned
+// by Build. It satisfies api.Descriptor via the explicit Module
+// field (named, not embedded — no method-promotion surprises from
+// api.Module) and forwarder methods. The pre-built `Handler` is
+// exposed so the ONE non-HTTP caller
+// (`internal/app/assets_register_sourcing.go::sourcingEnrichmentAdapter`)
+// can drive `clipsHandler.EnrichAndIndexClip(ctx, clip, source)`
+// without re-constructing the orchestrator (matches the artlist
+// precedent of exposing Service in the Descriptor).
+//
+// UNIQUE TO CLIPS: the handler is the HTTP orchestrator (not a
+// "use case service" like artlist's *artlistapp.Service). It is
+// the SAME object that owns RegisterRoutes; the Module closure
+// captures it. Exposing it via `Descriptor.Handler` is the
+// pattern-level answer to "I need to call a non-HTTP method
+// (EnrichAndIndexClip) on the same orchestrator that the routes
+// use" — the alternative would be to extract a separate
+// non-HTTP surface, but the codebase has not converged on that
+// extraction yet (a future commit may lift EnrichAndIndexClip
+// into a typed clipEnrichmentPort and consume it via port
+// instead of a raw *Handler reference).
+type ClipsDescriptor struct {
+	// Module is the route-only Module (api.NewRouteModule instance)
+	// the composition root threads into assetsapi.Dependencies.Clips.
+	Module api.Module
+
+	// Handler is the raw orchestrator. Exposed for the
+	// non-HTTP consumer
+	// (sourcingEnrichmentAdapter.EnrichAndIndex → handler.EnrichAndIndexClip).
+	// Future commits may move this to a typed port and drop the
+	// field; the current shape mirrors artlist's Descriptor.Service.
+	Handler *Handler
+}
+
+// ── Module satisfaction (api.Descriptor) ────────────────────────────
+// Descriptor does NOT embed Module. The explicit field form does not
+// promote Name / Enabled / RegisterRoutes via embedding, so we
+// forward them by hand. (Matches the Artlist / Generation /
+// ScriptAssets / Channels precedent.)
+
+// Name returns the module name ("clips").
+func (d *ClipsDescriptor) Name() string {
+	return d.Module.Name()
+}
+
+// Enabled forwards to the Module's closure.
+func (d *ClipsDescriptor) Enabled() bool {
+	return d.Module.Enabled()
+}
+
+// RegisterRoutes forwards to the Module — the Handler is reachable
+// only via the Module's internal closure (and via Descriptor.Handler
+// for the one non-HTTP consumer).
+func (d *ClipsDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
+	d.Module.RegisterRoutes(rg)
+}
+
+// Build composes the Clips HTTP capability from the typed narrow
+// dependencies. Returns a fail-closed error when any mandatory dep
+// is nil. Logger nil → zap.NewNop(). Idempotency nil → no-op
+// pass-through. ModuleOpts nil → no decorators applied.
+//
+// The returned Descriptor carries the Module (routes) + Handler
+// (non-HTTP use cases). The HTTP Handler is constructed here and
+// captured by the Module's RegisterRoutes closure — no caller
+// (composition root, tests, internal services) reads the raw Handler
+// anywhere outside this function.
+func Build(deps Dependencies) (api.Descriptor, error) {
+	// ── Mandatory-shape validation ────────────────────────────────
+	if deps.ClipsRepo == nil {
+		return nil, fmt.Errorf("clips.Build: ClipsRepo is required (composition root must pre-construct *assets.ClipsRepository from the canonical repo bundle)")
+	}
+	if deps.JobsSvc == nil {
+		return nil, fmt.Errorf("clips.Build: JobsSvc is required (EnrichMedia / ReindexClip / BatchReindex / BulkUpload route handlers route through the canonical jobs system)")
+	}
+	if deps.Cfg == nil {
+		return nil, fmt.Errorf("clips.Build: Cfg is required (Ingest sub-handler + driveRootForSource helper read *config.Config at request time)")
+	}
+	if deps.EnabledFunc == nil {
+		return nil, fmt.Errorf("clips.Build: EnabledFunc is required (composition root must wire a closure — typically func() bool { return true } — so this package stays free of platform/config imports)")
+	}
+
+	// Logger: nil → zap.NewNop() (composition-root-friendly default).
+	log := deps.Log
+	if log == nil {
+		log = zap.NewNop()
+	}
+
+	// Idempotency: nil → no-op pass-through (preserves the
+	// test-fixture / dry-run CLI invocation path).
+	idem := deps.Idempotency
+	if idem == nil {
+		idem = func(c *gin.Context) { c.Next() }
+	}
+
+	// Construct the canonical Handler orchestrator. NewHandler has
+	// its own nil-tolerance for EnrichUC (falls back to a local
+	// copy via enrichUCOrLocal); all other fields are passed
+	// straight through.
+	handler := NewHandler(Deps{
+		ClipsRepo:        deps.ClipsRepo,
+		AssetRepo:        deps.AssetRepo,
+		DeletionSvc:      deps.DeletionSvc,
+		DriveUploader:    deps.DriveUploader,
+		MediaProcessor:   deps.MediaProcessor,
+		AssetTreeSvc:     deps.AssetTreeSvc,
+		MetaWriter:       deps.MetaWriter,
+		ClipIndexer:      deps.ClipIndexer,
+		JobsSvc:          deps.JobsSvc,
+		Cfg:              deps.Cfg,
+		Log:              log,
+		VoiceoverRepo:    deps.VoiceoverRepo,
+		ImagesRepo:       deps.ImagesRepo,
+		ArtifactSvc:      deps.ArtifactSvc,
+		FolderMemSvc:     deps.FolderMemSvc,
+		SearchSvc:        deps.SearchSvc,
+		ProcessRunner:    deps.ProcessRunner,
+		Dispatcher:       deps.Dispatcher,
+		SearchAggregator: deps.SearchAggregator,
+		ReuploadUC:       deps.ReuploadUC,
+		EnrichUC:         deps.EnrichUC,
+		BulkUploadWorker: deps.BulkUploadWorker,
+		ClipOpsService:   deps.ClipOpsService,
+		UploadUC:         deps.UploadUC,
+	}, idem)
+
+	// Construct the route Module. The closure inside
+	// api.NewRouteModule calls handler.RegisterRoutes(r) — the
+	// Handler is captured here, not exposed to the composition
+	// root via the Module surface.
+	mod := api.NewRouteModule(
+		"clips",
+		deps.EnabledFunc,
+		"/clips",
+		handler,
+		log,
+		deps.ModuleOpts..., // typically []ModuleOption{api.WithMiddleware(...)}
+	)
+
+	return &ClipsDescriptor{
+		Module:  mod,
+		Handler: handler,
+	}, nil
+}
