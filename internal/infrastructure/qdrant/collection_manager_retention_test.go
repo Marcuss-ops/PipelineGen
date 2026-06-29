@@ -170,14 +170,15 @@ func (f *fakeQdrantServer) URL() string {
 func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 	schema := DefaultV3Schema()
 	prefix := schema.physicalName()
+	activeName := prefix + "__ts_20260601_active"
 	colls := []string{
-		"media_assets_v3",                          // active alias target
-		prefix + "__ts_20260101_120000_aaa",        // oldest
+		activeName,                                // active alias target (has prefix)
+		prefix + "__ts_20260101_120000_aaa",      // oldest
 		prefix + "__ts_20260301_120000_ccc",
 		prefix + "__ts_20260201_120000_bbb",
-		prefix + "__ts_20260401_120000_ddd",        // newest
+		prefix + "__ts_20260401_120000_ddd",      // newest
 	}
-	f := newFakeQdrantServer(colls, "media_assets_v3")
+	f := newFakeQdrantServer(colls, activeName)
 	defer f.Close()
 
 	client := NewClient(&Config{BaseURL: f.URL(), Timeout: 5}, zap.NewNop())
@@ -203,12 +204,13 @@ func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 		t.Fatalf("DroppedNames mismatch:\n got  %v\n want %v", gotDropped, wantDropped)
 	}
 
-	// The newest 2 (c4 + c3) must be in the PROTECTED set verbatim.
-	sort.Strings(res.ProtectedKept)
+	// The newest 2 (ddd + ccc) must be in the PROTECTED set.
 	wantProtected := []string{
 		prefix + "__ts_20260401_120000_ddd",
 		prefix + "__ts_20260301_120000_ccc",
 	}
+	sort.Strings(res.ProtectedKept)
+	sort.Strings(wantProtected)
 	if !reflect.DeepEqual(res.ProtectedKept, wantProtected) {
 		t.Fatalf("ProtectedKept mismatch:\n got  %v\n want %v (the keep_last_n tail MUST be the newest, not the oldest, post-fix)",
 			res.ProtectedKept, wantProtected)
@@ -247,12 +249,13 @@ func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 func TestCleanupWithConfig_KeepLastN2_KeepsOneNewestColl(t *testing.T) {
 	schema := DefaultV3Schema()
 	prefix := schema.physicalName()
+	activeName := prefix + "__ts_20260601_active"
 	colls := []string{
-		"media_assets_v3",
-		prefix + "__ts_20260101_aaa", // oldest eligible
-		prefix + "__ts_20260201_bbb", // middle
+		activeName,                          // active alias target (has prefix)
+		prefix + "__ts_20260101_aaa",        // oldest eligible
+		prefix + "__ts_20260201_bbb",        // middle
 	}
-	f := newFakeQdrantServer(colls, "media_assets_v3")
+	f := newFakeQdrantServer(colls, activeName)
 	defer f.Close()
 
 	client := NewClient(&Config{BaseURL: f.URL(), Timeout: 5}, zap.NewNop())

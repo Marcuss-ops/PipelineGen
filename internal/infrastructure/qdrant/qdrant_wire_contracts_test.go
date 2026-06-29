@@ -164,13 +164,15 @@ func TestGetCollection_FeedIntoCompareSchema_Official(t *testing.T) {
 	t.Parallel()
 
 	body := loadFixture(t, "get_collection_response.json")
-	var envelope struct {
-		Result json.RawMessage `json:"result"`
-	}
-	require.NoError(t, json.Unmarshal(body, &envelope))
 
 	var info CollectionInfo
-	require.NoError(t, json.Unmarshal(envelope.Result, &info))
+	// Pass the full body (with result wrapper) so the decoder
+	// routes through unmarshalQdrantEnvelope, which reads
+	// config.params.vectors and payload_schema. The previous
+	// code stripped the result key and fed the leaf directly,
+	// which triggered unmarshalLegacyLeaf — a path that expects
+	// vectors directly under "config", not "config.params.vectors".
+	require.NoError(t, json.Unmarshal(body, &info))
 
 	// Drive CompareSchema against the canonical schema to confirm
 	// the public surface (VectorConfigs + PayloadIndexes) is enough
