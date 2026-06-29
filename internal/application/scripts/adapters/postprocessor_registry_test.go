@@ -143,7 +143,7 @@ func TestRegistry_FreezeNil(t *testing.T) {
 func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	doc := &countingProcessor{name: "document", docID: "doc-1"}
-	persist := &countingProcessor{name: "persistence"}
+	persist := &countingProcessor{name: "persistence", changed: true}
 	r.Register(doc)
 	r.Register(persist)
 
@@ -406,7 +406,7 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 
 	// Create processors that each return a different field.
-	entitiesProc := &countingProcessor{name: "entities"}
+	entitiesProc := &countingProcessor{name: "entities", changed: true}
 	docProc := &countingProcessor{name: "document", docID: "doc-merged"}
 	r.Register(entitiesProc)
 	r.Register(docProc)

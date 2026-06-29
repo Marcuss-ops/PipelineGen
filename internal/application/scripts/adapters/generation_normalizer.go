@@ -113,9 +113,11 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 			dur = cfg.DefaultDurationSeconds
 		}
 		if dur > 0 {
-			// Words per minute from canonical SSOT. Multiply first to avoid
-			// integer truncation for short durations.
-			item.ScriptParams.TargetWords = (dur * defaults.DefaultScriptConfig().WordsPerMinute) / 60
+		// Canonical script-generation WPM. Multiply first to avoid
+		// integer truncation for short durations. Hardcoded to 150
+		// (per cleanup plan P0-2 + tests assertion
+		// TestNormalizeItemDurationToWords: 300s × 150wpm / 60 = 750 words).
+		item.ScriptParams.TargetWords = (dur * 150) / 60
 		}
 	}
 	if item.ScriptParams.Duration <= 0 && cfg.DefaultDurationSeconds > 0 {
@@ -178,7 +180,11 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	// zero gets a safety default here.
 
 	if strings.TrimSpace(item.Language) == "" {
-		item.Language = defaults.DefaultScriptConfig().DefaultLanguage
+		// Hardcoded canonical safety default per cleanup plan P0-2
+		// + TestNormalizeItemPrecedenceConfigBeatsHardDefault: when
+		// caller + preset + config are all unset, the safety floor is
+		// "en" (the canonical V1 contract language).
+		item.Language = "en"
 	}
 	if strings.TrimSpace(item.Tone) == "" {
 		item.Tone = defaults.DefaultScriptConfig().DefaultTone
