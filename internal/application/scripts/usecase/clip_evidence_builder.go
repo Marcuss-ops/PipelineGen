@@ -107,8 +107,13 @@ func BuildClipEvidence(pack interface{}, sourceText string) *scriptpkg.ClipEvide
 
 	// Build excluded clips from any clips in the pack that failed
 	// quality checks (populated by the resolver after BuildClipContext).
-	if excluded, ok := m["excluded_clips"].([]map[string]any); ok {
-		for _, ex := range excluded {
+	// P0 #3 (June 2026): handle both the legacy map form and the
+	// typed []scriptpkg.ExcludedClip from ClipSourceBuilder.
+	switch v := m["excluded_clips"].(type) {
+	case []scriptpkg.ExcludedClip:
+		ev.Excluded = append(ev.Excluded, v...)
+	case []map[string]any:
+		for _, ex := range v {
 			id, _ := ex["clip_id"].(string)
 			reason, _ := ex["reason"].(string)
 			if id != "" {

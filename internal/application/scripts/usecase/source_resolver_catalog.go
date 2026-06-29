@@ -143,6 +143,9 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 	opts.Model = resCtx.Model
 	opts.Style = resCtx.Style
 	opts.TargetWords = resCtx.TargetWords
+	// P0 #3 (June 2026): DriveLink required only when caller
+	// wants document or scene images.
+	opts.RequireDriveLink = resCtx.RequireDriveLink
 
 	resolved, err := buildResolvedClipSource(ctx, r.clipBuilder, src, resolvedClipParams{
 		sourceType:    scriptpkg.SourceCatalog,

@@ -210,6 +210,9 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		OrderingStrategy:   src.OrderingStrategy,
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
 		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
+		// P0 #3 (June 2026): DriveLink required only when caller
+		// wants document or scene images.
+		RequireDriveLink: resCtx.RequireDriveLink,
 	}
 
 	pack, narrativePlan, sourceText, buildErr := r.clipBuilder.BuildClipContext(ctx, clipIDs, opts)
