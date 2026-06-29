@@ -347,8 +347,11 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 #                                in seconds. MUST fail before any other
 #                                step that costs minutes.
 #   2. `go vet ./...`         — static analysis; semantically cheap.
-#   3. `go test ./...`        — heaviest pre-build step; race detector
-#                                baked in by default.
+#   3. `go test ./...`        — heaviest pre-build step. NO -race flag
+#                                here -- the race detector runs in the
+#                                dedicated CI job only (faster local
+#                                verify-main; race coverage still enforced
+#                                on every push).
 #   4. `go build ./...`       — full project type-check.
 #   5. architecture-aggregate — schema-level cross-check on
 #                                architecture/ownership.generated.yaml.
