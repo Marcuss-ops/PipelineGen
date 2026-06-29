@@ -78,6 +78,44 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("assettree service is nil after construction")
 	}
 
+	// ── clipsRepos: the canonical map[string]*ClipsRepository literal site ──
+	//
+	// Action P1-3 of cleanup plan (June 2026) — canonical resolver
+	// call shape documentation. This file is the ONLY site in the
+	// repository that constructs a `map[string]*sqassets.ClipsRepository`
+	// literal. The CI Check 45 (scripts/ci-architecture-checks.sh)
+	// bans the same literal shape appearing anywhere else under internal/.
+	//
+	// Two canonical resolver patterns for ClipRepository access:
+	//
+	//   1. CONSUMER pattern (handler/service callers):
+	//      - Receive a SINGLE concrete *sqassets.ClipsRepository via
+	//        struct field (e.g. `ClipsRepo *sqassets.ClipsRepository`).
+	//      - If multi-source dispatch is needed, expose a per-handler
+	//        helper like `repoForSource(source) *sqassets.ClipsRepository`
+	//        (see internal/api/assets/clips/{search,ingest,ops}.go).
+	//      - DO NOT receive a map[string]*... repo bag in the consumer's
+	//        constructor signature. Pass single-repo dependencies.
+	//
+	//   2. COMPOSITION-ROOT pattern (THIS file):
+	//      - Build the bag ONCE during composition (clipsRepos below).
+	//      - Inject the bag into the infrastructure-layer adapter
+	//        (assetindex.ResolverConfig{ClipsRepos: clipsRepos}).
+	//      - Adapter's per-source dispatch logic (resolver.go's
+	//        Resolver method) reads the bag.
+	//
+	// Rationale: the typed-port surface in
+	// internal/application/clips/ports.go (ClipRepositoryPort) is the
+	// SSOT for production caller access. Composition root is the ONLY
+	// site responsible for mapping source-name => concrete repo, because
+	// the mapping is a deployment-time concern (the deployed clip-store
+	// backend determines which concrete repo handles which source).
+	//
+	// Future operator action: if a new clip-store backend (e.g.
+	// Qdrant-only or in-memory mock) appears, the change must happen
+	// HERE, NOT in a consumer file. Check 45 will catch any out-of-band
+	// re-introduction.
+
 	clipsRepos := map[string]*sqassets.ClipsRepository{
 		"youtube": repos.ClipsRepo,
 		"stock":   repos.ClipsRepo,
