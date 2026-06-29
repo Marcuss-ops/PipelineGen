@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/gin-gonic/gin"
 )
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────
@@ -299,4 +300,40 @@ type ClipTreeBuilderPort interface {
 // outbox.Dispatcher is non-nil.
 type ClipIndexDispatcherPort interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error
+}
+
+// HTTPHandlerPort is the canonical orchestrator interface for the clips
+// HTTP handler.
+//
+// P1-1 of cleanup plan (June 2026): typed-port adoption for the
+// clips handler orchestrator. Composition root depends on this
+// interface (NOT on the concrete *HTTPHandler) so handler-side
+// file splits (clip_handler / action_handler / ops_handler /
+// maintenance_handler / search_handler / ingest_handler) don't
+// ripple into composition wiring.
+//
+// RegisterRoutes mounts the cluster routes (ingest + search + ops
+// + maintenance + action + NON-Ops inline) on the supplied gin
+// router group.
+//
+// RegisterJobHandlers wires the bulk_upload_youtube_clips job
+// dispatcher into the jobs system. Called from WireRegistry during
+// construction. Tolerates nil jobsSvc (returns nil without
+// registering), preserving the pre-port *Handler behaviour; production
+// wiring always supplies a non-nil jobsSvc via jobs.Facade.
+//
+// The compile-time assertion `var _ HTTPHandlerPort = (*HTTPHandler)(nil)`
+// lives at the implementation site in
+// internal/api/assets/clips/clip_handler.go (Pattern 0: assertions
+// stay at the receiver side, NOT in the port declaration; this
+// file therefore does NOT import the api side).
+//
+// FOLLOW-UP wire-up: slice 8/8 of the same plan swaps
+// module_media.go:262 + assets_register_sourcing.go:47 (both
+// currently type clipsHandler as *clipsapi.Handler) to consume this
+// port. Until that commit lands, this interface is declared but
+// unconsumed.
+type HTTPHandlerPort interface {
+	RegisterRoutes(r *gin.RouterGroup)
+	RegisterJobHandlers() error
 }
