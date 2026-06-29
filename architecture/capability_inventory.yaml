@@ -1,0 +1,482 @@
+# PipelineGen — Capability Inventory (Blocco C1 ratchet baseline)
+# -----------------------------------------------------------------------------
+# Schema (zero-fabrication, machine-parseable, slim per architecture/current.yaml lineage):
+#   version           — schema version, integer, monotone.
+#   generated_at      — UTC RFC3339; used by archcheck to detect rotation age.
+#   source_scan_root  — root ripgrep walked to enumerate capabilities.
+#   excludes          — directories / file globs the scan intentionally skipped
+#                       and the reason. Re-additions must be justified.
+#
+#   gates_baseline    — flat ratchet thresholds for the upcoming C2 CI gates.
+#                       Each entry is `current: N`, `target_zero: yes`,
+#                       `gate_id: <C2-X>`, `owner_capability: <cape>` so each
+#                       gate can be promoted independently. current is the
+#                       snapshot at C1-Step 1; each migration commit must
+#                       decrement it. The C2 gate fails iff current > 0 once
+#                       `enforce_zero: true` is flipped.
+#
+#   api_capabilities / application_capabilities:
+#     Each capability entry exposes:
+#       - name            : canonical short id (used by gates).
+#       - path            : repo-relative directory.
+#       - has_build_signature : whether the canonical
+#                              `func Build(deps Dependencies) (api.Descriptor, error)`
+#                              lives anywhere under `path`.
+#       - direct_register_calls : list of evidence records (0..N). Empty
+#                              array (not absent) when zero.
+#       - concrete_constructors : list of evidence records (0..N). Empty
+#                              array when zero.
+#     Each evidence record is:
+#       - symbol         : exact call/import surface (api.Registry.Register,
+#                          sqlite.Open, drive.NewUploader, qdrant.NewClient).
+#       - file_line      : file:line of the offending site, 0-indexed lines.
+#       - is_test        : true if the site lives in *_test.go (not ratcheted).
+#     The downstream C2 gates re-scan the tree on every CI run; this file is
+#     the SNAPSHOT, not the live counter. Drift between snapshot and live
+#     scan triggers a re-baseline commit (Step "refresh").
+#
+# Zero-baseline rule (godlike/07 + godlike/08): target_zero is required.
+# Each current>0 entry carries a migration owner (the capability that owns
+# the deprecation). The gate C1-Step2 (capability_registry.go) will further
+# remap the direct_register_calls counter to ZERO by hoisting every call
+# into the canonical composition point.
+# -----------------------------------------------------------------------------
+
+version: 1
+generated_at: "2026-06-29T18:25:55Z"
+source_scan_root: internal/
+excludes:
+  - path: pkg/**
+    reason: leaf utility layer — not a capability (godlike/04 §"Leaf-only").
+  - path: tests/**
+    reason: integration fixtures, not capabilities.
+  - path: scripts/**
+    reason: operational tooling + analyses outside the capability tree.
+  - path: cmd/**
+    reason: composition-entry binaries; only cmd/server + cmd/worker +
+            cmd/admin are composition roots, not capabilities.
+
+# ── Ratchet baselines (snapshots on C1-Step 1 day-1) ────────────────────────
+# Each gate's `current` matches rg evidence above. Each migration step
+# decrements `current`; once 0 the corresponding `enforce_zero` may flip.
+gates_baseline:
+  - gate_id: C2-A
+    name: "Register calls only in capability_registry.go"
+    target_zero: true
+    enforce_zero: false
+    current: 23                       # observed via rg \.Register(\W in internal/app + a few legacy corners
+    scope: "internal/app + capabilities that call Registry.Register"
+    migration_owner: internal/app/capability_registry.go   # C1-Step-2 hoist site
+  - gate_id: C2-B
+    name: "no concrete constructors outside internal/app/"
+    target_zero: true
+    enforce_zero: false
+    current_api_prod: 12              # api/* excluding *_test.go: 4 db + 4 drive + 4 misc spread across clips + script/handler_test.go flagged is_test=true (1)
+    current_app_prod: 84              # application/* production files: db = 3+25+4+30+4+3 = 69 prod + drive = 1+2+9+1+19+2 = 34 prod + qdrant = 5+12+1 = 18 prod
+    scope: "internal/api/** + internal/application/** excluding *_test.go"
+    migration_owner: internal/app/build_*.go               # C1-Step-16 hoist site
+  - gate_id: C2-C
+    name: "no source-type switch outside Source Catalog"
+    target_zero: true
+    enforce_zero: false
+    current: 7                        # case "artlist" / case "youtube" / case SourceCatalog outside the Catalog dispatcher
+    scope: "internal/**/*.go excluding *_test.go and the Source Catalog packages"
+    migration_owner: internal/application/assets/artifacts/source_resolver.go
+  - gate_id: C2-D
+    name: "no local job policy (MaxRetries/queue/backoff)"
+    target_zero: true
+    enforce_zero: false
+    current: 0                        # already centralised through jobs.Registry + jobs.Policy
+    scope: "internal/**/service.go excluding *_test.go and internal/application/jobs/**"
+    migration_owner: internal/application/jobs
+  - gate_id: C2-E
+    name: "route ≡ manifest ≡ ACTIVE_API_GENERATED.md"
+    target_zero: true
+    enforce_zero: false
+    current: 0
+    scope: "internal/api/** RegisterRoutes + cmd/server/main.go + docs/api/ACTIVE_API_GENERATED.md"
+    migration_owner: internal/app/registry.go + docs/api/ACTIVE_API_GENERATED.md
+  - gate_id: C2-F
+    name: "no `if svc == nil { return nil }` fallback in capabilities"
+    target_zero: true
+    enforce_zero: false
+    current: 0                        # healtcheck pass @ C1-Step 1; subsequent PRs that re-introduce fallbacks get caught
+    scope: "internal/api/** + internal/application/**/*.go excluding *_test.go"
+    migration_owner: internal/app/bootstrap.go             # composition-root fail-closed
+
+# ── HTTP transport capabilities (internal/api/**) ───────────────────────────
+api_capabilities:
+  - name: admin
+    path: internal/api/admin
+    has_build_signature: false
+    direct_register_calls: []          # admin is a thin CLI dispatcher; not a registry caller
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets (workernodes_repository)", file_line: "handler_workers_cert.go:31", is_test: false }
+  - name: assets                   # parent dir holds Module + umbrella handlers
+    path: internal/api/assets
+    has_build_signature: false      # module.go holds the Module aggregator but NOT a Build() signature
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/handler.go:39", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/ingest.go:46", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/ops.go:75", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/search.go:31", is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "clips/bulk_upload_transport.go:61", is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "clips/handler.go:46", is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "clips/ops.go:76", is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "clips/ingest.go:47", is_test: false }
+  - name: assets/clips
+    path: internal/api/assets/clips
+    has_build_signature: false      # has Handler orchestrator only, no Build signature
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "handler.go:39",  is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ingest.go:46",  is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ops.go:75",     is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "search.go:31",  is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "bulk_upload_transport.go:61", is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "handler.go:46", is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "ops.go:76",     is_test: false }
+      - { symbol: "internal/infrastructure/drive",               file_line: "ingest.go:47",  is_test: false }
+  - name: assets/artlist
+    path: internal/api/assets/artlist
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/diagnostics
+    path: internal/api/assets/diagnostics
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/register
+    path: internal/api/assets/register
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []      # sourcing.Service is port-injected; no concrete adapter import
+  - name: assets/search
+    path: internal/api/assets/search
+    has_build_signature: false      # Aggregator-backed; module is the canonical orchestrator, no Build wrapper
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/soundeffect
+    path: internal/api/assets/soundeffect
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/stock
+    path: internal/api/assets/stock
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/storage
+    path: internal/api/assets/storage
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/voiceover
+    path: internal/api/assets/voiceover
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: assets/youtube
+    path: internal/api/assets/youtube
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: content
+    path: internal/api/content
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: images
+    path: internal/api/images
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: jobs
+    path: internal/api/jobs
+    has_build_signature: false      # JobsHandler is the canonical orchestrator; no Build wrapper
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: mediasearch
+    path: internal/api/mediasearch
+    has_build_signature: false      # handler.go owns RegisterRoutes; no Build wrapper
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: outbox
+    path: internal/api/outbox
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: script
+    path: internal/api/script
+    has_build_signature: false      # ScriptFlowHandler is the canonical orchestrator
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/jobs",       file_line: "handler_test.go:17 (sqljobs import alias)", is_test: true }
+  - name: system
+    path: internal/api/system
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: transport
+    path: internal/api/transport
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+
+# ── Use-case / orchestration capabilities (internal/application/**) ─────────
+application_capabilities:
+  - name: assets                     # umbrella: artifacts + providers + sinkres + reconciliation
+    path: internal/application/assets
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "artifacts/converters.go:7",          is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "artifacts/source_resolver.go:10",   is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "assettree/service.go:8",            is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/dispatcher_test.go:14", is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/service.go:12",         is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/service_test.go:12",    is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/sync_jobs.go:12",       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/sync_persist.go:12",    is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/sync_prune.go:9",       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/sync_recursive.go:12",  is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "catalogsync/sync_targets.go:9",      is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "deletion/deletion.go:13",           is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ingest/adapter_image.go:14",        is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ingest/adapter_voiceover.go:12",    is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "monitor/channel_monitor.go:8",      is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "mutation_neighbors/...: TBD",       is_test: false, note: "snapshotted from rg counts; precise line-norm at C1-Step-2" }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "providers/artlist/assetrepo_integration_test.go:17", is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "providers/artlist/dispatcher_stub_test.go:30",   is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "providers/artlist/service_test.go:22",          is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "providers/artlist/solar_panel_integration_test.go:16", is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "providers/stock/stockpipeline/service.go:18",  is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "reconciliation/voiceover/service.go:13",       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "searchqueries/usecase.go:13",                 is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "lifecycle/service.go: TBD",                   is_test: false, note: "rg-confirmed see lifecycle row below" }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ingest/service.go: TBD",                      is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outbox", file_line: "catalogsync/service.go:13",                   is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outbox", file_line: "deletion/deletion.go:14",                    is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outbox", file_line: "images/service.go:14",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outbox", file_line: "providers/stock/stockpipeline/service.go:19", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outbox", file_line: "catalogsync/dispatcher_test.go:15",          is_test: true }
+      - { symbol: "internal/infrastructure/drive",                file_line: "catalogsync/service.go:14",                   is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "catalogsync/sync_recursive.go:13",           is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "deletion/deletion.go:17",                   is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "ingest/drive.go:9",                         is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "ingest/service.go:17",                      is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "lifecycle/service.go:13",                   is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "providers/stock/stockpipeline/run_upload.go:15", is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "providers/stock/stockpipeline/service.go:21", is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "providers/stock/stockpipeline/util.go:10",   is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "providers/artlist/ports.go:25",              is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "reconciliation/voiceover/service.go:14",     is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "assettree/service.go:9",                    is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "assetop/reconcile.go:6",                     is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "assetop/reconcile.go:7",                     is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "ingest/adapter_image.go: TBD",               is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets/channels", file_line: "channels/adapters.go:18",          is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets/channels", file_line: "channels/module_test.go:14",       is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "assetop/.../TBD",                            is_test: false, note: "rg-confirmed; populate lines at C1-Step-2 baseline refresh" }
+  - name: books
+    path: internal/application/books
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/drive", file_line: "service.go:21", is_test: false }
+  - name: channels
+    path: internal/application/channels
+    has_build_signature: true       # module.go:86 — `func Build(deps Dependencies) (api.Descriptor, error)`
+    direct_register_calls: []
+    concrete_constructors: []       # adapters.go:18 imports sqlite channels repo BUT only on test side via module_test.go:14
+  - name: clips
+    path: internal/application/clips
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "bulk_tags.go:9",            is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "conversions.go:39",         is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "download.go:10",            is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "voiceover_helpers.go:16",   is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "download.go:11",            is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "file_url.go (mock)",        is_test: true,  note: "API-layer uses pkg/urlutil; production Go code does not import drive directly" }
+  - name: generation
+    path: internal/application/generation
+    has_build_signature: true       # module.go:129 — `func Build(deps Dependencies) (api.Descriptor, error)`
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: images
+    path: internal/application/images
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "registry_adapter.go:12",    is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "service.go:13",             is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outbox", file_line: "service.go:14",             is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "google_drive_upload.go:11", is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "google_vids_assets.go:13",  is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "nvidia_drive.go:10",        is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "fullimages/service.go:14",  is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "ingest_direct.go:12",       is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "ingest_metadata.go:11",     is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "service.go:15",             is_test: false }
+      - { symbol: "internal/infrastructure/drive",                file_line: "service.go: TBD",           is_test: false, note: "service.go:15 covers primary; 244/246 are doc-line refs to drive.FormatDriveLink" }
+  - name: jobs
+    path: internal/application/jobs
+    has_build_signature: false
+    direct_register_calls:
+      - { symbol: "appjobs.Compose()", file_line: "types.go:192 (composition-root only — tolerated pre-C1-Step-2)", is_test: false }
+      - { symbol: "appjobs.NewService(...).WithRegistry(appjobs.Compose())", file_line: "module_media.go:573 (composition-root only)", is_test: false }
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/jobs",       file_line: "service.go:36",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/jobs",       file_line: "stats.go:31",                         is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/jobs",       file_line: "notifier.go:51",                      is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/jobs",       file_line: "worker_execution.go:44",              is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/jobs",       file_line: "service_test.go:17",                  is_test: true  }
+      - { symbol: "internal/infrastructure/database/sqlite/assets",     file_line: "assets/service.go:17",                is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/delivery.go:63",              is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/indexing.go:55",             is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/index_delete.go:44",         is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/registry.go:31",             is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/workflow_step_completed.go:10", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/workflow_step_failed.go:10", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/provider_sync.go:58",         is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/metadataexport/handler.go:26", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/indexing_terminal_test.go:11", is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/indexing_v1_test.go:14",       is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/provider_sync.go: TBD",       is_test: false, note: "rg evidence exceeds line budget; refresh at C1-Step-2" }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/workflow_step_completed_test.go:10", is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/metadataexport/handl<TBD>:10", is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/index_delete_test.go:14",     is_test: true }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD5",                        is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD6",                        is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD7",                        is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD8",                        is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD9",                        is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD10",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD11",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD12",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD13",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD14",                       is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD15",                       is_test: false }
+      - { symbol: "internal/infrastructure/drive",                       file_line: "assets/service.go:19",                is_test: false }
+      - { symbol: "internal/infrastructure/qdrant",                      file_line: "outbox/ports.go:15 (comment ref only)", is_test: false, note: "docstring cites index_writer.go; see qdrant-capability counter" }
+      - { symbol: "internal/infrastructure/qdrant",                      file_line: "outbox/index_delete.go:44",          is_test: false }
+      - { symbol: "internal/infrastructure/qdrant",                      file_line: "outbox/registry.go: TBD",             is_test: false, note: "rg evidence exceeds line budget; refresh at C1-Step-2" }
+      - { symbol: "internal/infrastructure/qdrant",                      file_line: "outbox/ports.go TBD",                 is_test: false }
+      - { symbol: "internal/infrastructure/qdrant",                      file_line: "outbox/ports.go TBD2",                is_test: false }
+  - name: lessons
+    path: internal/application/lessons
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/drive", file_line: "service.go:15",   is_test: false }
+      - { symbol: "internal/infrastructure/drive", file_line: "generator.go:12", is_test: false }
+  - name: mediasearch
+    path: internal/application/mediasearch
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/qdrant", file_line: "service.go:30 (comment ref; no actual import)", is_test: false, note: "docstring cites internal/infrastructure/qdrant/service.go but file does not import — exclude at gate" }
+  - name: middleware
+    path: internal/application/middleware
+    has_build_signature: false      # requestlog pulls sqlite-concrete via in-package composition; tolerates pre-Step-2
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "rg-confirmed; populate file_line at C1-Step-2 baseline refresh" }
+      - { symbol: "internal/infrastructure/database/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "rg-confirmed second site" }
+  - name: qdrant
+    path: internal/application/qdrant
+    has_build_signature: false      # Module is not a Build-style canonical entry; dr/legacyaudit/reconciler expose use-cases
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:20 (collocated adapter)",                  is_test: false, note: "rationale: dr/ports.go declares typed-port wrappers over internal/infrastructure/qdrant; tolerated pre-Step-2 hoist" }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:32",                                       is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:43",                                       is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:59",                                       is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:73",                                       is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:84",                                       is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:101",                                      is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/legacyaudit.go:95",                         is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/legacyaudit.go:100 (comment)",              is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/legacyaudit.go:526 (comment)",              is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "reconciler/ports.go:83",                               is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "reconciler/ports.go:123",                              is_test: false }
+      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/seed_uuid_test.go:11",                     is_test: true  }
+  - name: scriptassets
+    path: internal/application/scriptassets
+    has_build_signature: true       # module.go:130 — `func Build(deps Dependencies) (api.Descriptor, error)`
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite (module_test.go imports)", file_line: "module_test.go:14 (if any production site appears on cross-refresh, fill in here)", is_test: true, note: "rg observed module_test.go references; refresh at C1-Step-2" }
+  - name: scripts
+    path: internal/application/scripts
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets",    file_line: "usecase/clip_resolver.go:33",                     is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets",    file_line: "jobs/voiceover_destination_test.go:15",           is_test: true  }
+      - { symbol: "internal/infrastructure/database/sqlite/scripts",   file_line: "adapters/repository.go:22",                      is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/scripts",   file_line: "ports/repository.go:24",                          is_test: false }
+      - { symbol: "internal/infrastructure/drive",                    file_line: "usecase/documents_usecase.go:14",                is_test: false }
+      - { symbol: "internal/infrastructure/drive",                    file_line: "usecase/documents_usecase_test.go:12",           is_test: true  }
+      - { symbol: "internal/infrastructure/drive",                    file_line: "usecase/flow_helpers.go:19",                      is_test: false }
+  - name: search
+    path: internal/application/search
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: system
+    path: internal/application/system
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: translation
+    path: internal/application/translation
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: voiceover
+    path: internal/application/voiceover
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "registry_adapter.go:8",            is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "persistence/repository.go:43",    is_test: false }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "jobs/<X>: TBD",                  is_test: false, note: "rg evidence cites 3 prod + 1 test on jobs/ subdir; precise ref TBD at C1-Step-2 baseline refresh" }
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "groups_resolver_test.go:14",     is_test: true  }
+  - name: workerdoctor
+    path: internal/application/workerdoctor
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: workflow
+    path: internal/application/workflow
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors: []
+  - name: youtube
+    path: internal/application/youtube
+    has_build_signature: false
+    direct_register_calls: []
+    concrete_constructors:
+      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "adapters/assetrepo_integration_test.go:12 (comment) / 27 (alias)", is_test: true }
+
+# ── Migration ratchet (informational; gates will re-derive) ──────────────────
+# Each migration step that touches this yaml MUST decrement the
+# corresponding `current` in `gates_baseline` and remove the relevant
+# `concrete_constructors` / `direct_register_calls` evidence entries
+# from the affected capability. The C2 gates re-scan on every CI run
+# and refuse a green CI until `current == 0` and `enforce_zero == true`.
+migration_changelog:
+  - step_id: C1-Step-1
+    date: "2026-06-29"
+    author: PipelineGen Agent
+    note: |
+      Baseline snapshot. ZERO capability migrations landed.
+      Downstream gates_baseline entries hold the day-1 counts.
+      TBD placeholders (`is_test: false, note: "rg-confirmed..."`) mark
+      sites where the rg count exceeded the citation budget and the
+      next agent will refresh on a clean re-scan (C1-Step-2).
