@@ -506,9 +506,11 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if domains.YoutubeClipService != nil && jobs.Service != nil {
 		domains.YoutubeClipService.RegisterHandler(jobs.Service)
 	}
-	if domains.VoiceoverService != nil && jobs.Service != nil {
-		domains.VoiceoverService.RegisterHandler(jobs.Service)
-	}
+	// Voiceover registration moved to the new GenerateJobHandler path
+	// (P0.1, June 2026) — see buildVoiceoverService + composition.go::wireVoiceoverJobHandler
+	// registered at the post-bundle binding block. The legacy Service.RegisterHandler
+	// hook (which registered voiceover.batch + voiceover.promo) is intentionally
+	// removed here; the legacy codes will be retired in the next refactor (P0.3).
 	if domains.ImageService != nil && jobs.Service != nil {
 		domains.ImageService.RegisterHandler(jobs.Service)
 	}
