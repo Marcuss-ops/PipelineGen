@@ -1,4 +1,17 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
+# ─── PipelineGen verify-main (Cleanup Plan P0-3, June 2026) ────────────
+#
+# Every push to `main` MUST pass `make verify-main` locally first. CI runs
+# the same chain — local must match CI exactly. The chain is fail-closed:
+# any failing step exits non-zero, no `|| true`, no fallbacks, no
+# continue-on-error. If `make verify-main` is RED locally, the push MUST
+# be blocked until the next agent lands the fix.
+#
+# P0-3 closes the gap surfaced by the 29 June P0-2 RED zones: prior to
+# the make gate, broken imports + redeclarations were pushed to `main`
+# and only caught at the next CI run. With verify-main in place, every
+# commit lands-green-or-not-all.
+
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -305,6 +318,54 @@ docker-bootstrap-smoke:
 # CI pipeline (runs all checks)
 ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
+
+# verify-main — Cleanup Plan P0-3 (June 2026): the canonical fail-closed
+# pre-push gate. Action card P0-3 wires this into the local-mirror rule
+# ("every push to `main` MUST pass locally first"). Mirrors the
+# `.github/workflows/ci.yml` chain so a green local signal is a sufficient
+# proxy for a green CI signal — same commands, same failure semantics.
+#
+# FAIL-CLOSED contract:
+#   - `&&` between commands: any failing step aborts the chain immediately.
+#   - NO `|| true`, NO `|| echo`, NO fallbacks.
+#   - exit code = the first command that failed (Go make yields the right
+#     one automatically; bash `&&` does the same).
+#
+# Order rationale:
+#   1. `gofmt -l .`           — cheapest; catches unformatted diffs in
+#                                seconds. MUST fail before any other step
+#                                that costs minutes.
+#   2. `go vet ./...`         — static analysis; semantically cheap.
+#   3. `go test ./...`        — heaviest pre-build step; race detector
+#                                baked in by default.
+#   4. `go build ./...`       — full project type-check.
+#   5. architecture-aggregate — schema-level cross-check on
+#                                architecture/ownership.generated.yaml.
+#   6. archcheck --strict     — gate-promoted phase-0 governance check.
+#   7. ci-architectural-checks — the long-standing legacy fallback kept
+#                                as the LAST step so an arch drift at
+#                                step 5/6 surfaces before the legacy
+#                                check masks it.
+# verify-main is gated on go-version-check per the existing pattern
+# (build, vet, tidy-check, ci all carry the same precondition). An
+# operator on a stale host Go gets the canonical "Go version mismatch"
+# error from go-version-check instead of an obscure toolchain crash
+# further along the chain.
+#
+# Fail-closed chain is folded into ONE shell invocation via \-line
+# continuation + `&&` chaining. Without the \-continuation Make runs
+# each recipe line in its own subshell, so a fast failure on line 1
+# would NOT abort lines 2-7 (the first 6 commands would still execute).
+# The \-continuation collapses them into one shell with `set -e`-like
+# `&&` semantics: first failure exits non-zero and aborts the chain.
+verify-main: go-version-check
+	gofmt -l . && \
+	go vet ./... && \
+	go test ./... && \
+	go build ./... && \
+	go run ./cmd/architecture-aggregate --dry-run && \
+	go run ./cmd/archcheck --strict && \
+	bash scripts/ci-architectural-checks.sh
 
 # Aggregate pre-flight check. Runs both toolchain guards plus two
 # sanity contracts that have historically drifted silently:
