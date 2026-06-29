@@ -1,7 +1,7 @@
 // Package storage — dispatch_helpers.go hosts the shared payload
 // construction for the Drive folder sync job, used by both admin
-// (POST /api/media/sync-drive-folder) and server-to-server
-// (POST /internal/v1/media/sync-drive-folder) handlers.
+// (POST /api/media/sync) and server-to-server
+// (POST /internal/v1/media/sync) handlers.
 //
 // QDRANT-001 (June 2026) closure: extracting this payload builder
 // keeps both handlers in lockstep on the canonical job-type and
@@ -31,7 +31,7 @@ func (s stringError) Error() string { return string(s) }
 func simpleErr(msg string) error { return stringError(msg) }
 
 // SyncPayloadInput is the shared shape used by both admin and
-// server-to-server variants of the sync-drive-folder dispatch.
+// server-to-server variants of the sync dispatch.
 type SyncPayloadInput struct {
 	FolderID  string
 	Source    string
@@ -43,8 +43,8 @@ type SyncPayloadInput struct {
 
 // buildSyncPayload constructs the canonical drive.folder.sync payload
 // map from the given input. This is the single shared payload-
-// construction path used by both /api/media/sync-drive-folder (admin)
-// and /internal/v1/media/sync-drive-folder (server-to-server).
+// construction path used by both /api/media/sync (admin)
+// and /internal/v1/media/sync (server-to-server).
 //
 // Callers pass the returned map as Payload to transport.EnqueueAsync.
 func buildSyncPayload(in *SyncPayloadInput) (map[string]any, string) {

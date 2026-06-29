@@ -319,7 +319,7 @@ func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 }
 
 // SetInternalMediaHandler wires the QDRANT-001 server-to-server media
-// routes (POST /internal/v1/media/sync-drive-folder) into the server's
+// routes (POST /internal/v1/media/sync) into the server's
 // router. Delegates to Router.SetInternalMediaHandler.
 //
 // QDRANT-001 closure: the production binding is supplied by the asset

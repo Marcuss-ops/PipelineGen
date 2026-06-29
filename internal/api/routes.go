@@ -132,7 +132,7 @@ func (r *Router) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 }
 
 // SetInternalMediaHandler wires the QDRANT-001 server-to-server media
-// routes (POST /internal/v1/media/sync-drive-folder) into the router.
+// routes (POST /internal/v1/media/sync) into the router.
 // nil-safe — if no media handler has been wired the routes simply
 // won't register. Wire-up is performed by the composition root.
 func (r *Router) SetInternalMediaHandler(h MediaInternalRouter) {

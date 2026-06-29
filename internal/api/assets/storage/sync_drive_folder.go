@@ -11,7 +11,7 @@ import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// SyncDriveFolderRequest is the JSON body for POST /api/media/sync-drive-folder.
+// SyncDriveFolderRequest is the JSON body for POST /api/media/sync.
 type SyncDriveFolderRequest struct {
 	DriveFolderID string `json:"drive_folder_id"` // Google Drive folder ID (required)
 	Source        string `json:"source"`          // "youtube", "stock", "artlist", "drive" (default "drive")
@@ -19,7 +19,7 @@ type SyncDriveFolderRequest struct {
 	MediaType     string `json:"media_type"`      // "video", "clip", "stock" (default "clip")
 }
 
-// SyncDriveFolder handles POST /api/media/sync-drive-folder.
+// SyncDriveFolder handles POST /api/media/sync.
 //
 // Dispatches an async Drive folder sync job and returns 202 with job_id.
 // The job scans the folder recursively, creates media_assets records, and

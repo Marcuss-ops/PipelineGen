@@ -213,6 +213,33 @@ func (a *driveAdminAdapter) MoveFile(ctx context.Context, fileID, fromFolderID, 
 	return a.uploader.MoveFile(ctx, fileID, fromFolderID, toFolderID)
 }
 
+// ListFiles delegates to *drive.Uploader.ListFiles and converts the
+// infrastructure-level []drive.DriveFileInfo into the api-level
+// []systemapi.DriveFileInfoDTO.
+func (a *driveAdminAdapter) ListFiles(ctx context.Context, folderID string) ([]systemapi.DriveFileInfoDTO, error) {
+	files, err := a.uploader.ListFiles(ctx, folderID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]systemapi.DriveFileInfoDTO, len(files))
+	for i, f := range files {
+		out[i] = systemapi.DriveFileInfoDTO{
+			ID:             f.ID,
+			Name:           f.Name,
+			MimeType:       f.MimeType,
+			WebViewLink:    f.WebViewLink,
+			WebContentLink: f.WebContentLink,
+			Parents:        f.Parents,
+		}
+	}
+	return out, nil
+}
+
+// RenameFile delegates to *drive.Uploader.RenameFile.
+func (a *driveAdminAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
+	return a.uploader.RenameFile(ctx, fileID, newName)
+}
+
 // ResolveFileInfo performs the per-ID Files.Get round-trip that DriveHandler.
 // ResolveByIDs fans out in parallel.
 func (a *driveAdminAdapter) ResolveFileInfo(ctx context.Context, fileID string) (systemapi.ResolveByIDsItem, error) {
