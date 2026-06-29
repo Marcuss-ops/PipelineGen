@@ -20,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	"go.uber.org/zap"
 )
@@ -75,7 +76,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	language := plan.Language
 	if language == "" {
-		language = "en"
+		language = defaults.DefaultScriptConfig().DefaultLanguage
 	}
 
 	voiceovers := make([]SceneVoiceover, 0, len(scenes))

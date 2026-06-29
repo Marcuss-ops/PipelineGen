@@ -11,6 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -181,5 +182,5 @@ func approxReadingSeconds(words int) int {
 	if words <= 0 {
 		return 0
 	}
-	return max(1, (words*60)/150)
+	return max(1, (words*60)/defaults.DefaultScriptConfig().WordsPerMinute)
 }

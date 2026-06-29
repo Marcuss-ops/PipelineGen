@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // NormalizationConfig carries the configuration values that the
@@ -112,9 +113,9 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 			dur = cfg.DefaultDurationSeconds
 		}
 		if dur > 0 {
-			// ~150 words per minute. Multiply first to avoid
+			// Words per minute from canonical SSOT. Multiply first to avoid
 			// integer truncation for short durations.
-			item.ScriptParams.TargetWords = (dur * 150) / 60
+			item.ScriptParams.TargetWords = (dur * defaults.DefaultScriptConfig().WordsPerMinute) / 60
 		}
 	}
 	if item.ScriptParams.Duration <= 0 && cfg.DefaultDurationSeconds > 0 {
@@ -177,10 +178,10 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	// zero gets a safety default here.
 
 	if strings.TrimSpace(item.Language) == "" {
-		item.Language = "en"
+		item.Language = defaults.DefaultScriptConfig().DefaultLanguage
 	}
 	if strings.TrimSpace(item.Tone) == "" {
-		item.Tone = "documentary"
+		item.Tone = defaults.DefaultScriptConfig().DefaultTone
 	}
 	if strings.TrimSpace(item.Model) == "" {
 		item.Model = "llama3.2"
