@@ -1,231 +1,41 @@
-# ============================================
-# Dependencies
-# ============================================
-vendor/
-node_modules/
-**/node_modules/
-web-admin/node_modules/
+# Environment / secrets
+.env*
+!.env.example
 
-# ============================================
-# Logs and temp files
-# ============================================
+# Backups / log / temp scratch artefacts
+*.bak*
 *.log
 *.tmp
-tmp/
-logs/
+
+# Databases + Python bytecode
+*.sqlite*
 **/__pycache__/
 
-# ============================================
-# Environment and Secrets
-# ============================================
-.env
-.env.local
-*.env.*
-credentials.json
-token.json
-token_full.json
-
-# Production config — never commit real credentials, folder IDs, or IPs
-config.yaml
-!config.example.yaml
-
-# ============================================
-# Binaries
-# ============================================
-# These patterns are anchored to the repo root with a leading '/'.
-# Without the anchor, gitignore treats `worker` / `server` / `pipelinegen`
-# as matching any PATH COMPONENT named that way — which would recursively
-# exclude `cmd/worker/`, `cmd/server/`, etc., and all source files under
-# them, including new *_test.go (the W1 batch surfaced this regression).
-# Anchor it so only the root-level build artifact is ignored.
-pipelinegen
-/server
-/admin
-/worker
-*.exe
-*.dll
-*.so
-
-# ============================================
-# Editors
-# ============================================
-.vscode/
-.idea/
-
-# ============================================
-# Build artifacts
-# ============================================
-bin/
-build/
-coverage.out
-coverage.html
-*.test
-web-admin/dist/
-
-# ============================================
-# Runtime output directories (test fixtures, worker downloads)
-# ============================================
-**/completed_videos/
-**/worker_downloads/
-**/script_assets/
-**/test-results/
-
-# ============================================
-# Database
-# ============================================
+# Runtime scratch directories
 data/
-
-# YouTube cookies for yt-dlp authentication (exported from browser)
-# Refresh periodically when cookies expire
-config/youtube_cookies.txt
-*.db
-*.db.sqlite
-*.db.sqlite-wal
-*.db.sqlite-shm
-
-# ============================================
-# Google Accounting local state
-# ============================================
-google-accounting/sessions/
-google-accounting/logs/
-google-accounting/deliverables/
-sessions/
-deliverables/
-
-# ============================================
-# Screenshots (moved to docs/screenshots/)
-# ============================================
-docs/screenshots/
-
-# ============================================
-# Root-level artifacts (binaries, logs, caches)
-# ============================================
-*.bak
-pipelinegen.bak
-config.yaml.server.bak
-final_videoTEMP_MPY_wvf_snd.mp4
-cookies_fresh.txt
-cookies_fresh2.txt
-.qdrant-initialized
-server_debug.log
-monitor.log
-server.log
-
-# ============================================
-# Generated Assets / Scratch
-# ============================================
-Crociata/
-Epica Medievale/
-Notte Gotica/
-Rosone Cattedrale/
-
-# Google Accounting debug/generated files
-google-accounting/debug_*.py
-google-accounting/debug_*.html
-google-accounting/dump_*.py
-google-accounting/login_checker*.py
-google-accounting/test_image_gen.py
-google-accounting/run_direct_generation.py
-google-accounting/docs/generated/
-
-# Google session cookies (contain auth tokens - DO NOT COMMIT)
-google-accounting/sessions/*.json
-# Python cache
-*.pyc
-__pycache__/
-
-# Database backups and backups leak prevention
-**/*.bak
-**/*.sqlite.bak
-**/*.db.bak
-**/*.db.sqlite.bak
-google-accounting/profiles/
-
-# Local state and data
-storage/
-!internal/storage/
-!internal/application/assets/storage/
-!internal/api/assets/storage/
-.qdrant-initialized
-cookies.txt
-debug_output.txt
-eval_results.json
---batch
-
-# ============================================
-# Scratch / Temp Files
-# ============================================
+tmp/
 scratch/
-.tmp-diag/
-
-# ============================================
-# Cache and Book Generation
-# ============================================
 .cache/
-*.cache/
-*_summary.txt
-*_summary.pdf
-*.tmp.txt
-
-# Ollama local model cache (large, auto-downloaded)
-.ollama/
-
-# ============================================
-# PID files and numbered backups
-# ============================================
-*.pid
-*.bak.*
-
-# Local generated docs/scripts
-docs/generated/
-
-
-# Chrome profiles (browser cache, cookies, etc.)
 profiles/
-.blackboxcli/
-comic-video-maker/
-.env
-local.env
 
-# Gemini CLI workspace metadata (local-only)
-.zai/
+# Dependencies (preserve vendor/)
+node_modules/
+**/node_modules/
+vendor/
 
-# Archcheck binary (built locally by scripts/archcheck/).
-# Anchored with leading '/' so the pattern matches only the root-level
-# build artifact. Without the anchor, gitignore treats `archcheck` as
-# matching any PATH COMPONENT named that way, which recursively excludes
-# the entire `scripts/archcheck/` tree (the W1 PR1 regression surfaced this).
+# Anchored root-level build artefacts (PR1: leading '/' prevents cmd/ subtree false positives)
+/admin
+/server
+/worker
+/pipelinegen
 /archcheck
 
-# Docker secrets (never commit tokens)
-secrets/
+# Editor / multi-root workspace configs (preserve)
+.idea/
+.vscode/
 
-# PR1 (Repository truth, June 2026):
-#   * scripts/archcheck/current_report.json is a per-run diagnostic snapshot
-#     of the codebase scan; regenerated cheaply on every `go run ./scripts/archcheck`.
-#   * It is NEVER used as an allowlist (see docs/migrations/api-infrastructure-imports-allowlist.txt
-#     for the single source of truth on the ratchet).
-#   * Keeping it out-of-tree avoids polluting PR diffs with full-repo snapshots.
-scripts/archcheck/current_report.json
-# Validation transient logs (NOT shipped):
-ci_output.txt
-ci_full_output.txt
-/tmp/build.out
-/tmp/vet.out
-/tmp/test.out
+# Preserve canonical go multi-module workspaces
+go.work*
 
-# ci/archcheck-hard-fail: E2E sentinel marker for scripts/ci-archcheck-e2e.sh.
-# The file is created + deleted by the E2E harness; if a run aborts
-# mid-step (SIGINT, OOM, runner network drop) the sentinel is left
-# orphaned on disk. gitignore it so subsequent CI + local pre-commit
-# runs do not see it as an unintended violation.
-internal/api/_dummy_archcheck_regression.go
-
-# Wave staging artefacts: temp splice blocks + python runners used by an
-# operator-only pipeline (e.g. `.wave23_piper.py`) to register a wave
-# entry on origin/main. The artefacts are single-use per wave and SHOULD
-# NOT be committed — `.wave23_*` glob catches the canonical pre-commit
-# state. Was leak-prone in June 2026 when these landed in the working
-# tree between the fast-forward and the conditional cleanup; this entry
-# closes the gap (housekeeping precondition for the next wave).
-.wave23_*
+# VIM swap files (preserve)
+*.swp
