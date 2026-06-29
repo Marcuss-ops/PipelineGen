@@ -42,9 +42,6 @@ type VerifyReport struct {
 	Errors          []string `json:"errors,omitempty"`
 }
 
-	Errors          []string `json:"errors,omitempty"`
-}
-
 // noopMetrics is the default DRMetrics implementation used when
 // deps.Metrics is nil. All methods are no-ops.
 type noopMetrics struct{}
