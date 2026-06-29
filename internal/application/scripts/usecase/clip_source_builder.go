@@ -14,25 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── Narrative plan / section (companions of ClipSourceBuilder) ────────────
-
-// NarrativeSection describes a single section within a NarrativePlan.
-type NarrativeSection struct {
-	Role       string
-	Purpose    string
-	WordBudget int
-}
-
-// NarrativePlan is the per-item plan constructed by ClipSourceBuilder
-// while resolving clip context.
-type NarrativePlan struct {
-	Title      string
-	Style      string
-	TotalWords int
-	Sections   []NarrativeSection
-}
-
-// ── ClipSourceBuilder (unchanged from prior version) ─────────────────────
+// ── ClipSourceBuilder ───────────────────────────────────────────────────
 
 // clipsResolverPort is the narrow resolver interface that
 // ClipSourceBuilder consumes. *assets.ClipsRepository satisfies it
@@ -105,12 +87,12 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
 	clipIDs []string,
 	opts *ClipGenerationOptions,
-) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error) {
+) (*scriptpkg.ClipEvidence, string, string, error) {
 	if c == nil {
-		return nil, nil, "", fmt.Errorf("clip source builder: not constructed")
+		return nil, "", "", fmt.Errorf("clip source builder: not constructed")
 	}
 	if c.clipsRepo == nil {
-		return nil, nil, "", fmt.Errorf("clip source builder: clips repository not configured")
+		return nil, "", "", fmt.Errorf("clip source builder: clips repository not configured")
 	}
 
 	seen := make(map[string]struct{}, len(clipIDs))
@@ -128,12 +110,12 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 
 	if len(uniqueIDs) == 0 {
-		return nil, nil, "", fmt.Errorf("clip source builder: no valid clip IDs provided")
+		return nil, "", "", fmt.Errorf("clip source builder: no valid clip IDs provided")
 	}
 
 	clipsRepo := c.clipsRepo
 	if clipsRepo == nil {
-		return nil, nil, "", fmt.Errorf("clip source builder: clips repository not configured")
+		return nil, "", "", fmt.Errorf("clip source builder: clips repository not configured")
 	}
 
 	clips := make([]*asset.Asset, 0, len(uniqueIDs))
@@ -238,52 +220,23 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	// P0 #3: when DriveLink is required and ALL resolved clips were
 	// excluded (lacked DriveLink), fail with a clear error.
 	if len(clips) == 0 && len(excludedClips) > 0 {
-		return nil, nil, "", fmt.Errorf("clip source builder: all %d resolved clips lack drive links", len(excludedClips))
+		return nil, "", "", fmt.Errorf("clip source builder: all %d resolved clips lack drive links", len(excludedClips))
 	}
 	if len(clips) == 0 {
-		return nil, nil, "", fmt.Errorf("clip source builder: no clips found for the provided IDs")
+		return nil, "", "", fmt.Errorf("clip source builder: no clips found for the provided IDs")
 	}
 
 	title := "script"
-	tone := ""
-	targetWords := 0
 	if opts != nil {
 		if v := strings.TrimSpace(opts.Title); v != "" {
 			title = v
 		}
-		tone = strings.TrimSpace(opts.Tone)
-		targetWords = opts.TargetWords
 	}
 
-	sectionCount := len(clipNames)
-	if opts != nil {
-		if opts.NumClips > 0 && opts.NumClips < sectionCount {
-			sectionCount = opts.NumClips
-		}
-		if sectionCount == 0 && len(opts.SegmentTopics) > 0 {
-			sectionCount = len(opts.SegmentTopics)
-		}
-	}
-	sections := make([]NarrativeSection, 0, sectionCount)
-	for i := 0; i < sectionCount; i++ {
-		name := clipNames[i]
-		purpose := fmt.Sprintf("Cover content from clip: %s", name)
-		if opts != nil && i < len(opts.SegmentTopics) && strings.TrimSpace(opts.SegmentTopics[i]) != "" {
-			purpose = fmt.Sprintf("Cover segment topic: %s", strings.TrimSpace(opts.SegmentTopics[i]))
-		}
-		sections = append(sections, NarrativeSection{
-			Role:       fmt.Sprintf("section_%d", i+1),
-			Purpose:    purpose,
-			WordBudget: targetWords / maxInt(sectionCount, 1),
-		})
-	}
-
-	plan := &NarrativePlan{
-		Title:      title,
-		Sections:   sections,
-		TotalWords: targetWords,
-		Style:      tone,
-	}
+	// P1 #9 (June 2026): NarrativePlan / NarrativeSection removed —
+	// dead code that set plan.Title but was never consumed past
+	// buildResolvedClipSource extracting that single field. The
+	// resolved title is returned directly as a string.
 
 	// P0 #3: build DriveLinks from accepted clips only (all have
 	// DriveLink when requireDriveLink is true).
@@ -332,7 +285,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			zap.Int("source_text_chars", sourceTextBuilder.Len()))
 	}
 
-	return ev, plan, sourceTextBuilder.String(), nil
+	return ev, title, sourceTextBuilder.String(), nil
 }
 
 func (c *ClipSourceBuilder) ComputeFingerprint(
@@ -375,11 +328,4 @@ func NewFingerprintContext(model, promptModel string) interface{} {
 		"model":        strings.TrimSpace(model),
 		"prompt_model": strings.TrimSpace(promptModel),
 	}
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

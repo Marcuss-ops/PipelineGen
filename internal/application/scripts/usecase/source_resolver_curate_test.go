@@ -42,16 +42,16 @@ func (f *fakeClipSearch) SearchClips(_ context.Context, _ ClipSearchQuery) ([]sc
 // fakeClipBuilder implements clipContextBuilder for tests.
 type fakeClipBuilder struct {
 	ev         *scriptpkg.ClipEvidence
-	plan       *NarrativePlan
+	title      string
 	sourceText string
 	returnErr  error
 }
 
-func (f *fakeClipBuilder) BuildClipContext(_ context.Context, _ []string, _ *ClipGenerationOptions) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error) {
+func (f *fakeClipBuilder) BuildClipContext(_ context.Context, _ []string, _ *ClipGenerationOptions) (*scriptpkg.ClipEvidence, string, string, error) {
 	if f.returnErr != nil {
-		return nil, nil, "", f.returnErr
+		return nil, "", "", f.returnErr
 	}
-	return f.ev, f.plan, f.sourceText, nil
+	return f.ev, f.title, f.sourceText, nil
 }
 
 // recordClipBuilder wraps fakeClipBuilder and captures the
@@ -64,7 +64,7 @@ type recordClipBuilder struct {
 	lastOpts *ClipGenerationOptions
 }
 
-func (r *recordClipBuilder) BuildClipContext(_ context.Context, ids []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error) {
+func (r *recordClipBuilder) BuildClipContext(_ context.Context, ids []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, string, string, error) {
 	r.lastOpts = opts
 	return r.fakeClipBuilder.BuildClipContext(context.Background(), ids, opts)
 }
