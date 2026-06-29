@@ -543,7 +543,7 @@ func scanYAML(raw string) (int, []string) {
 		violations []string
 	)
 	for _, b := range topLevelWaveBlocks(raw) {
-		var idv, status, verified string
+		var idv, status, signal string
 		for _, line := range strings.Split(b, "\n") {
 			if idv != "" && subwavePattern.MatchString(line) {
 				break
@@ -563,9 +563,27 @@ func scanYAML(raw string) (int, []string) {
 				if status == "" {
 					status = val
 				}
+			case "exit_signal":
+				// Canonical truth key (action P0-5 slice 3/4). Replaces the
+				// deprecated `verified_zero:` alias; markers should always
+				// emit `exit_signal: true|false|missing`.
+				if signal == "" {
+					signal = val
+				}
 			case "verified_zero":
-				if verified == "" {
-					verified = val
+				// DEPRECATED alias (action P0-5 slice 3/4). Forward-compat:
+				// accept the value as `signal` ONLY if the canonical
+				// `exit_signal:` key was not already seen in this wave
+				// block. Emit a stderr WARNING so operators notice the
+				// drift before slice 4/4 promotes the alias to hard-FAIL
+				// (slice 4/4 will keep the WARNING for backward-compat but
+				// also emit a violation entry, so deprecated aliases
+				// never silently pass).
+				if signal == "" {
+					signal = val
+					if idv != "" {
+						fmt.Fprintf(os.Stderr, "WARNING: wave id=%s uses deprecated 'verified_zero:' field; rename to 'exit_signal:' (slice 4/4 will HARD-fail on this alias)\n", idv)
+					}
 				}
 			}
 		}
@@ -573,12 +591,12 @@ func scanYAML(raw string) (int, []string) {
 			continue
 		}
 		doneTotal++
-		if verified != "true" {
-			verifStr := verified
-			if verifStr == "" {
-				verifStr = "missing"
+		if signal != "true" {
+			signalStr := signal
+			if signalStr == "" {
+				signalStr = "missing"
 			}
-			violations = append(violations, fmt.Sprintf("wave id=%s has status=done but verified_zero=%s", idv, verifStr))
+			violations = append(violations, fmt.Sprintf("wave id=%s has status=done but exit_signal=%s", idv, signalStr))
 		}
 	}
 	sort.Strings(violations)
