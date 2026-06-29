@@ -310,6 +310,160 @@ func TestApplyPresetNilItem(t *testing.T) {
 	// Must not panic.
 }
 
+// ── FullMedia preset tests ────────────────────────────────────────────────
+//
+// Per §6 row 3 of docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md,
+// `full_media` enables scene_images and voiceover explicitly. The canonical
+// implementation applies per-field caller precedence: a caller-set flag is
+// NEVER overwritten; only fields left at zero are filled in. Caller
+// precedence wins field-by-field (caller > preset > config > safety).
+
+// TestApplyPresetFullMedia_DoesNothingWhenExplicit verifies that when the
+// caller has BOTH GenerateSceneImages and GenerateVoiceover set to true,
+// the preset does NOT touch either field — caller precedence is preserved.
+func TestApplyPresetFullMedia_DoesNothingWhenExplicit(t *testing.T) {
+	item := clipsItem()
+	item.Output.GenerateSceneImages = true
+	item.Output.GenerateVoiceover = true
+	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
+	if !item.Output.GenerateSceneImages {
+		t.Error("full_media: caller-set GenerateSceneImages must remain true (caller > preset)")
+	}
+	if !item.Output.GenerateVoiceover {
+		t.Error("full_media: caller-set GenerateVoiceover must remain true (caller > preset)")
+	}
+}
+
+// TestApplyPresetFullMedia_EnablesBothByDefault verifies that when the
+// caller leaves BOTH GenerateSceneImages and GenerateVoiceover at zero, the
+// preset enables both atomic flags per §6 row 3.
+func TestApplyPresetFullMedia_EnablesBothByDefault(t *testing.T) {
+	item := clipsItem()
+	// Both flags are zero (false) by default on a fresh clipsItem.
+	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
+	if !item.Output.GenerateSceneImages {
+		t.Error("full_media: GenerateSceneImages must be enabled when caller left at zero")
+	}
+	if !item.Output.GenerateVoiceover {
+		t.Error("full_media: GenerateVoiceover must be enabled when caller left at zero")
+	}
+}
+
+// TestApplyPresetFullMedia_OverridesOnlyZeroValues verifies the per-field
+// caller precedence contract: caller-set fields stay untouched; only fields
+// the caller left at zero are filled in. Two scenarios are exercised:
+//   - caller sets GenerateSceneImages=true, leaves voiceover=false → preset
+//     enables ONLY voiceover (the zero field), leaves images untouched.
+//   - caller sets GenerateVoiceover=true, leaves images=false → preset
+//     enables ONLY images (the zero field), leaves voiceover untouched.
+func TestApplyPresetFullMedia_OverridesOnlyZeroValues(t *testing.T) {
+	// Scenario A: images=true, voiceover=false → preset enables voiceover only.
+	item := clipsItem()
+	item.Output.GenerateSceneImages = true
+	// GenerateVoiceover deliberately left at zero (false).
+	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
+	if !item.Output.GenerateSceneImages {
+		t.Error("full_media (scenario A): caller-set GenerateSceneImages must remain true")
+	}
+	if !item.Output.GenerateVoiceover {
+		t.Error("full_media (scenario A): preset must enable ONLY the caller-zero field (GenerateVoiceover)")
+	}
+
+	// Scenario B (symmetric): images=false, voiceover=true → preset enables images only.
+	item2 := clipsItem()
+	item2.Output.GenerateSceneImages = false
+	item2.Output.GenerateVoiceover = true
+	scripts.ApplyPreset(&item2, scriptpkg.PresetFullMedia)
+	if !item2.Output.GenerateSceneImages {
+		t.Error("full_media (scenario B): preset must enable GenerateSceneImages when only that field is zero")
+	}
+	if !item2.Output.GenerateVoiceover {
+		t.Error("full_media (scenario B): caller-set GenerateVoiceover must remain true")
+	}
+}
+
+// ── Catalog preset test ───────────────────────────────────────────────────
+
+// TestApplyPresetCatalog_PassThrough verifies that `catalog` is a
+// pass-through preset: it does not touch ANY field on the item, including
+// Source (even when Source.ClipIDs is empty). The HTTP handler binds
+// Source.Kind=SourceCatalog upstream; the preset simply carries the intent.
+// Per §6 row 4: catalog | source.kind=catalog | none.
+func TestApplyPresetCatalog_PassThrough(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{}
+	scripts.ApplyPreset(&item, scriptpkg.PresetCatalog)
+	// Source side: the preset is pass-through (case body is empty),
+	// so Source must remain at its zero value. We check field-by-field
+	// because SourceSpec contains []string slices that are not directly
+	// `==`-comparable in Go.
+	if item.Source.Type != "" {
+		t.Errorf("catalog: source.type must remain zero (preset does not set it; got %q)", item.Source.Type)
+	}
+	if len(item.Source.ClipIDs) != 0 {
+		t.Errorf("catalog: source.clip_ids must remain zero (preset does not set them; got %v)", item.Source.ClipIDs)
+	}
+	if item.Source.Query != "" {
+		t.Errorf("catalog: source.query must remain zero; got %q", item.Source.Query)
+	}
+	// Output side: explicit flag-by-flag check. No struct-level
+	// comparison (OutputSpec contains []string Languages which is
+	// not `==`-comparable).
+	if item.Output.GenerateSceneImages ||
+		item.Output.GenerateVoiceover ||
+		item.Output.GenerateDocument ||
+		item.Output.ExtractEntities ||
+		item.Output.GenerateMetadata {
+		t.Error("catalog: ANY output flag must remain caller-controlled; preset must not set any")
+	}
+	if item.Output.OutputFmt != "" {
+		t.Errorf("catalog: output.output_fmt must remain zero; got %q", item.Output.OutputFmt)
+	}
+	if len(item.Output.Languages) != 0 {
+		t.Errorf("catalog: output.languages must remain zero; got %v", item.Output.Languages)
+	}
+}
+
+// ── Search preset test ────────────────────────────────────────────────────
+
+// TestApplyPresetSearch_PassThrough verifies that `search` is a
+// pass-through preset: it does not touch ANY field on the item, including
+// Source (even when Source.Query is empty). The HTTP handler binds
+// Source.Kind=SourceSearch upstream; the preset simply carries the intent.
+// Per §6 row 5: search | source.kind=search | none.
+func TestApplyPresetSearch_PassThrough(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{}
+	scripts.ApplyPreset(&item, scriptpkg.PresetSearch)
+	// Source side: the preset is pass-through (case body is empty),
+	// so Source must remain at its zero value. We check field-by-field
+	// because SourceSpec contains []string slices that are not directly
+	// `==`-comparable in Go.
+	if item.Source.Type != "" {
+		t.Errorf("search: source.type must remain zero (preset does not set it; got %q)", item.Source.Type)
+	}
+	if len(item.Source.ClipIDs) != 0 {
+		t.Errorf("search: source.clip_ids must remain zero; got %v", item.Source.ClipIDs)
+	}
+	if item.Source.Query != "" {
+		t.Errorf("search: source.query must remain zero (preset does not set it; got %q)", item.Source.Query)
+	}
+	// Output side: explicit flag-by-flag check. No struct-level
+	// comparison (OutputSpec contains []string Languages which is
+	// not `==`-comparable).
+	if item.Output.GenerateSceneImages ||
+		item.Output.GenerateVoiceover ||
+		item.Output.GenerateDocument ||
+		item.Output.ExtractEntities ||
+		item.Output.GenerateMetadata {
+		t.Error("search: ANY output flag must remain caller-controlled; preset must not set any")
+	}
+	if item.Output.OutputFmt != "" {
+		t.Errorf("search: output.output_fmt must remain zero; got %q", item.Output.OutputFmt)
+	}
+	if len(item.Output.Languages) != 0 {
+		t.Errorf("search: output.languages must remain zero; got %v", item.Output.Languages)
+	}
+}
+
 // ── Validator: edge cases ──────────────────────────────────────────
 
 func TestValidateItemValidText(t *testing.T) {
