@@ -202,10 +202,27 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
+	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): construct the
+	// per-language ProcessOneVoiceoverUseCase here so the new
+	// voiceover.generate_item child-job handler has a single source
+	// of truth to dispatch through. The use case delegates the
+	// per-language routine to voService.GenerateBatch (the canonical
+	// production surface wired through the legacy Service bundle),
+	// keeping the wiring footprint minimal — adding a separate
+	// GenerateVoiceoversUseCase (the full 7-port use case) requires
+	// resolving TTSProvider / AudioPostProcessor / etc. independently;
+	// the BACKFILL invariant is to layer that in a follow-up PR.
+	voiceoverProcessOne := voiceover.NewProcessOneVoiceoverUseCase(voiceover.ProcessOneDeps{
+		Service: voiceoverSvc,
+		Logger:  log,
+	})
+	log.Info("P0.3: ProcessOneVoiceoverUseCase wired (per-language child-job handler dispatcher)")
+
 	return &DomainBundle{
 		YoutubeClipService: youtubeClipService,
 		VoiceoverService:   voiceoverSvc,
 		VoiceoverSync:      vosyncSvc,
+		VoiceoverProcessOne: voiceoverProcessOne,
 		ImageService:       imageSvc,
 		IngestService:      ingestSvc,
 		BooksService:       booksSvc,

@@ -14,7 +14,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -81,28 +80,6 @@ func NewSemanticEnricher(
 		dispatcher:   dispatcher,
 		log:          log,
 	}
-}
-
-// EnrichAsync avvia l'enrichment in background (fire-and-forget).
-// Usa context.WithoutCancel per preservare il tracing anche dopo che
-// il contesto HTTP è scaduto, ma con un timeout proprio per evitare leak.
-func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *asset.Asset, term string) {
-	if clip == nil || clip.ID == "" {
-		return
-	}
-	clipCopy := *clip // copia per sicurezza nella goroutine
-	concurrent.SafeGo("artlist-enrich", func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 30*time.Second)
-		defer cancel()
-		if err := e.Enrich(ctx, &clipCopy, term); err != nil {
-			e.log.Warn("artlist semantic enrichment failed",
-				zap.String("clip_id", clipCopy.ID),
-				zap.String("term", term),
-				zap.Duration("timeout", 30*time.Second),
-				zap.Error(err),
-			)
-		}
-	})
 }
 
 // dispatchOrIndexAndUpsert performs UpsertClip + IndexClip atomically via

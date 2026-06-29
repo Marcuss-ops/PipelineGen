@@ -202,10 +202,16 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 				}
 			}
 
-			if s.metadataWriter != nil {
-				s.metadataWriter.EnrichAsync(ctx, clip, normalizedTerm)
-			}
 		}
+		// P0.6 (June 2026): previous in-process metadataWriter.EnrichAsync
+		// fire-and-forget was deleted here. Silent background enrichment
+		// violated the no-fake-availability rule (godlike/07) because
+		// failures could not be surfaced to the search caller. P0.18
+		// reintroduces structured enrichment via the canonical outbox path;
+		// until then, search ingestion stores only raw clip metadata and a
+		// separate /enrich job handles semantic payload population. The
+		// metadataWriter field on SearchService is preserved for the
+		// post-P0.18 wired path (struct init + port binding still active).
 	}
 
 	return resp, nil

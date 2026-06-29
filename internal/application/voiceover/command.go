@@ -30,7 +30,12 @@
 // TestGenerateBatch_RejectsPathTraversalPayload at stages.go).
 package voiceover
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
 
 // GenerateVoiceoversCommand is the canonical singular request to the
 // use case. Mirrors the canonical wire-shape from BatchRequest
@@ -90,4 +95,103 @@ type GenerateVoiceoversCommand struct {
 	// row's metadata column (process_metadata_test.go pins the
 	// collision-drop contract from mergeUserMetadata).
 	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// ── Per-language child command (PR-VOICEOVER-PARENT-CHILD-FANOUT, P0.3) ──
+
+// GenerateVoiceoverItemCommand is the canonical payload of the per-language
+// child job (job type == job.TypeVoiceoverGenerateItem). It carries ONLY
+// the data the child worker needs to execute ONE (lang, voice) pair:
+// the shared batch-level constants (Text, Destination, Strategy,
+// Metadata, FilenameTemplate) and the per-pair derived values
+// (Language, Voice, Filename, TextHash, RequestID, ParentJobID).
+//
+// Why a separate command instead of reusing GenerateVoiceoversCommand
+// with Languages=[lang]: the child worker should NEVER iterate over
+// Languages — the fan-out is the parent's responsibility. Carrying the
+// whole batch struct would leak goroutine-style fan-out semantics into
+// the child surface.
+//
+// Field ownership:
+//   - ParentJobID, RequestID: batch-level IDs the child threads into
+//     its DB row + outbox event so the aggregator can find the parent.
+//   - Language, Voice, Filename: per-pair derived (FanoutUseCase
+//     computes them via buildCommandFilename + voice overrides).
+//   - Text, TextHash: batch-level constants.
+//   - Destination: the OUTPUT DestinationRequest — the child re-resolves
+//     it independently so a child retry that survives a transient
+//     resolver hiccup does not need the parent to re-run.
+//   - Strategy, RemoveSilence, Metadata: pass-through from the parent.
+type GenerateVoiceoverItemCommand struct {
+	// ParentJobID is the dispatcher-assigned job.ID of the parent
+	// voiceover.generate job. Aggregator in Commit 2 reads this from
+	// outbox events to identify siblings.
+	ParentJobID string `json:"parent_job_id"`
+
+	// RequestID is the per-batch identifier (buildRequestID shape:
+	// vo_<timestamp>_<6-hex-suffix>). Stable across all siblings so
+	// cross-language audit can query by request_id and get the full set.
+	RequestID string `json:"request_id"`
+
+	// Text is the source voiceover text (required, validated).
+	Text string `json:"text"`
+
+	// Language is the BCP-47 code for THIS child. Exactly one.
+	Language string `json:"language"`
+
+	// Voice is the BCP-47-tied voice override for THIS child.
+	// Empty falls through to TTSProvider default voice.
+	Voice string `json:"voice,omitempty"`
+
+	// Filename is the pre-computed sanitised filename (same shape
+	// the parent would have computed via buildCommandFilename).
+	Filename string `json:"filename"`
+
+	// TextHash is the per-batch SHA-256(Text). Pre-computed by the
+	// parent so every child writes the same text_hash into its row.
+	TextHash string `json:"text_hash"`
+
+	// Destination is the per-batch routing payload (nullable: if absent,
+	// the child uses the canonical config-level voiceover folder).
+	Destination *DestinationRequest `json:"destination,omitempty"`
+
+	// Strategy is the pipeline strategy (verify / skip / replace).
+	Strategy asset.PipelineStrategy `json:"strategy,omitempty"`
+
+	// RemoveSilence toggles audio post-processing for THIS child.
+	RemoveSilence bool `json:"remove_silence,omitempty"`
+
+	// Metadata is the per-batch user-supplied meta overlay that flows
+	// into the row's metadata column.
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// Validate runs the canonical validation gate ONCE at the child use case
+// boundary. Mirrors GenerateVoiceoversCommand.Validate but enforces
+// single-language semantics.
+func (c *GenerateVoiceoverItemCommand) Validate() error {
+	if c == nil {
+		return fmt.Errorf("nil GenerateVoiceoverItemCommand")
+	}
+	if strings.TrimSpace(c.Text) == "" {
+		return fmt.Errorf("text: must be non-empty")
+	}
+	if !LanguageCodeValid(c.Language) {
+		return fmt.Errorf("language: invalid code %q (only alphanumeric + hyphens allowed)", c.Language)
+	}
+	if strings.TrimSpace(c.Filename) == "" {
+		return fmt.Errorf("filename: must be non-empty (pre-computed by FanoutUseCase)")
+	}
+	if strings.TrimSpace(c.ParentJobID) == "" {
+		return fmt.Errorf("parent_job_id: must be non-empty (dispatcher-assigned at parent enqueue)")
+	}
+	if strings.TrimSpace(c.RequestID) == "" {
+		return fmt.Errorf("request_id: must be non-empty (built by FanoutUseCase)")
+	}
+	if c.Destination != nil {
+		if vErr := c.Destination.Validate(); vErr != nil {
+			return fmt.Errorf("destination: %w", vErr)
+		}
+	}
+	return nil
 }
