@@ -327,7 +327,41 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 			&zapDiagLogAdapter{log: log},
 		)
 	}
-	diagHandler := assetsdiag.NewHandler(diagSvc, log)
+	// Blocco C1-Step 10 (June 2026): Diagnostics capability is
+	// now built via the canonical diagnostics.Build(deps)
+	// (api.Descriptor, error) contract, matching the artlist /
+	// youtube / clips / stock / voiceover / soundeffect /
+	// register precedent. The Handler is constructed inside
+	// Build and captured by the returned DiagnosticsDescriptor's
+	// Module closure. The composition site type-asserts ONCE to
+	// *diagnostics.DiagnosticsDescriptor (fail-closed) and
+	// reuses the concrete for the assetsapi.NewModule(...,
+	// Diagnostics: dd, ...) call (the concrete
+	// *DiagnosticsDescriptor satisfies api.Descriptor
+	// structurally). The diagnostics capability has no non-HTTP
+	// consumer in the codebase (the 3 routes are the entire
+	// public surface, reachable only via HTTP), so the
+	// Descriptor surface is the smallest possible — just
+	// `Module` field + forwarder methods (matches the stock /
+	// voiceover / soundeffect / register precedent exactly).
+	//
+	// The *appdiag.Service is constructed at the composition
+	// root from 3 typed-port adapters (IndexHealthAdapter +
+	// AssetStatsAdapter + ZapLogAdapter) per AGENTS.md
+	// Pattern 0 — the api/ layer never builds it.
+	diagnosticsDescriptor, err := assetsdiag.Build(assetsdiag.Dependencies{
+		Service:     diagSvc,
+		EnabledFunc: func() bool { return true }, // diagnostics is always on in production
+		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-10 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: diagnostics.Build: %w", err)
+	}
+	dd, ok := diagnosticsDescriptor.(*assetsdiag.DiagnosticsDescriptor)
+	if !ok || dd == nil {
+		return nil, fmt.Errorf("WireAssets: diagnostics.Build returned unexpected descriptor type %T (want *assetsdiag.DiagnosticsDescriptor)", diagnosticsDescriptor)
+	}
 
 	// Search handler: now consumes the canonical Aggregator
 	// (constructed above). The legacy cross-provider Service
@@ -497,7 +531,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,
-		Diagnostics: diagHandler,
+		Diagnostics: dd,
 		Search:      searchHandler,
 		Clips:       clipsDesc,
 		Voiceover:   vd,

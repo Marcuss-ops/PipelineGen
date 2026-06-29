@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 )
@@ -17,9 +16,28 @@ import (
 // Dependencies holds the pre-built sub-handlers for the Assets module.
 type Dependencies struct {
 	// PR 2: thin transport handlers
-	Storage     *storage.Handler
-	Diagnostics *diagnostics.Handler
-	Search      *search.Handler
+	Storage *storage.Handler
+	Search  *search.Handler
+
+	// Blocco C1-Step 10 (June 2026): Diagnostics is now an
+	// api.Descriptor (the canonical Build contract surface)
+	// instead of a raw *diagnostics.Handler. The composition
+	// root threads the *diagnostics.DiagnosticsDescriptor
+	// returned by diagnostics.Build(...) here; the descriptor's
+	// RegisterRoutes(rg) forwarder delegates to the embedded
+	// api.Module which captures the Handler in its closure
+	// (the Module name "diagnostics" + empty prefix "" preserve
+	// the pre-Step-10 routing shape — the 3 routes mount
+	// directly on the parent /api/media group, matching
+	// /api/media/diagnostics + /api/media/index-health +
+	// /api/media/qdrant/cleanup URLs verbatim). The diagnostics
+	// capability has no non-HTTP consumer in the codebase (the
+	// 3 routes are the entire public surface, reachable only
+	// via HTTP), so the Descriptor surface is the smallest
+	// possible — just `Module` field + forwarder methods
+	// (matches the stock / voiceover / soundeffect / register
+	// precedent exactly).
+	Diagnostics api.Descriptor
 
 	// Blocco C1-Step 5 (June 2026): Clips is now an api.Descriptor
 	// (the canonical Build contract surface) instead of a raw
@@ -104,7 +122,16 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Storage.RegisterRoutes(r)
 	}
 
-	// Diagnostics operations (index-health, qdrant health)
+	// Diagnostics operations (index-health, qdrant health).
+	// Blocco C1-Step 10 (June 2026): the diagnostics Descriptor
+	// owns its own Module; the assets module passes the parent
+	// /api/media group straight through (no more inline
+	// r.Group("") wrap — the descriptor's DiagnosticsDescriptor
+	// forwarder delegates to the embedded api.Module which
+	// mounts the 3 routes directly on the parent group,
+	// preserving the public URLs /api/media/diagnostics +
+	// /api/media/index-health + /api/media/qdrant/cleanup
+	// verbatim).
 	if m.deps.Diagnostics != nil {
 		m.deps.Diagnostics.RegisterRoutes(r)
 	}
