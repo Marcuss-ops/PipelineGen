@@ -90,7 +90,7 @@ jobs:
 
       - name: Open drift / unexpected-major issue
         if: steps.tidy-check.outputs.tidy == 'dirty' || steps.majors.outputs.major_count > 0
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
