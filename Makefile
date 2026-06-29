@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -342,9 +342,10 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 #     one automatically; bash `&&` does the same).
 #
 # Order rationale:
-#   1. `gofmt -l .`           — cheapest; catches unformatted diffs in
-#                                seconds. MUST fail before any other step
-#                                that costs minutes.
+#   1. `verify-format`        — fail-closed gofmt gate (DEPENDENCY,
+#                                target below). Catches unformatted diffs
+#                                in seconds. MUST fail before any other
+#                                step that costs minutes.
 #   2. `go vet ./...`         — static analysis; semantically cheap.
 #   3. `go test ./...`        — heaviest pre-build step; race detector
 #                                baked in by default.
@@ -368,8 +369,7 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 # would NOT abort lines 2-7 (the first 6 commands would still execute).
 # The \-continuation collapses them into one shell with `set -e`-like
 # `&&` semantics: first failure exits non-zero and aborts the chain.
-verify-main: go-version-check
-	gofmt -l . && \
+verify-main: go-version-check verify-format
 	go vet ./... && \
 	go test ./... && \
 	go build ./... && \
@@ -442,4 +442,16 @@ smoke-dry:
 # Regenerate Google Drive token.json
 regenerate-token:
 	@bash scripts/regenerate_token.sh
-
+# verify-format — Cleanup Plan P0-3 followup (June 2026): the actually
+# FAIL-CLOSED gofmt gate. Used as a dependency of verify-main so a
+# single bad-format file blocks the push attempt with non-zero exit.
+#
+# The bug being fixed: `gofmt -l .` exits 0 EVEN IF unformatted files
+# are present — it just prints them on stdout. Stacking that behind a
+# `&& other-stuff` chain therefore continues to run "other-stuff" even
+# when the formatting check "failed". The corrected check is
+# `test -z "$$(gofmt -l .)"` which exits 1 when the listing is
+# non-empty AND prints the offending files for the operator to fix.
+# Re-run `make fmt` (alias for `go fmt ./...`) after the fix.
+verify-format:
+	@test -z "$$(gofmt -l .)" || { echo "❌ Files not formatted:"; gofmt -l .; exit 1; }
