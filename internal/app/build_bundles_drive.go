@@ -23,6 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -68,6 +69,16 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	var dests = configOnlyDestinations(cfg)
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
+	}
+
+	// FASE 3 (June 2026): construct the canonical Publisher.
+	// The Publisher is the single canal for all Drive writes;
+	// endpoints use it instead of calling driveUploader/folderManager directly.
+	var publisher delivery.Publisher
+	if driveClient != nil && driveUploader != nil {
+		registry := delivery.NewDestinationRegistry(cfg)
+		folderMgr := drive.NewDriveFolderManagerAdapter(driveClient, log)
+		publisher = drive.NewPublisher(registry, folderMgr, driveUploader, log)
 	}
 
 	var mediaStore *drive.Store
@@ -124,5 +135,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		MediaStore:    mediaStore,
 		DestResolver:  destResolver,
 		StyleRegistry: styleRegistry,
+		Publisher:     publisher,
 	}, startClosure, nil
 }

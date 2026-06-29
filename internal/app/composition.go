@@ -18,6 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
@@ -71,6 +72,10 @@ type DriveBundle struct {
 	MediaStore    *drive.Store
 	DestResolver  asset.Resolver
 	StyleRegistry *generation.StyleRegistry
+	// Publisher is the canonical Drive upload canal (FASE 3, June 2026).
+	// All endpoints and jobs that write to Drive MUST use Publisher.Publish
+	// instead of calling DriveUploader or FolderManager directly.
+	Publisher delivery.Publisher
 }
 
 // RepoBundle owns all SQLite-backed repositories not specific to a
