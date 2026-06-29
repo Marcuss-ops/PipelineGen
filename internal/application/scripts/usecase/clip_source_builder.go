@@ -337,7 +337,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 
 func (c *ClipSourceBuilder) ComputeFingerprint(
 	clipIDs []string,
-	pack interface{},
 	opts *ClipGenerationOptions,
 	fpCtx interface{},
 ) string {
