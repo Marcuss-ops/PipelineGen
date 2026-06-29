@@ -236,19 +236,46 @@ func (s *Server) SetLifecycle(lc LifecycleManager) {
 	s.lifecycle = lc
 }
 
-// Start starts the HTTP server. Background services are managed by the
-// LifecycleManager — this method only handles the HTTP lifecycle.
+// Start starts the HTTP server via an internal signal-aware context.
+// Background services are managed by the LifecycleManager — this
+// method only handles the HTTP lifecycle.
+//
+// Retained for back-compat after P2-1 (June 2026) added StartWithContext.
+// New callers should use StartWithContext directly so signal-handling
+// ownership stays unambiguous (cmd/server/main.go owns OS signals and
+// hands the resulting ctx into the runtime; cmd/server no longer relies
+// on this internal-signal path).
 func (s *Server) Start() error {
+	rootCtx, rootCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer rootCancel()
+	return s.StartWithContext(rootCtx)
+}
+
+// StartWithContext drives the HTTP server until ctx is cancelled.
+// Caller is responsible for OS signal handling: cmd/server/main.go
+// (P2-1, June 2026) wraps context.Background() in signal.NotifyContext
+// and passes the resulting ctx here. The ctx is the SINGLE source of
+// cancellation for the entire server lifecycle (HTTP serve loop,
+// lifecycle startup, readiness-barrier provenance, graceful-shutdown
+// drain).
+//
+// The internal signal-aware context that existed pre-P2-1 is preserved
+// in Start() for any caller that doesn't yet pass a context through.
+// Adding StartWithContext does NOT change Start's behaviour; both
+// callers receive identical error semantics + shutdown ordering.
+//
+// Pattern parallels internal/app/workerruntime.Run (P1-3): main owns
+// OS signals, the runtime owns the HTTP+lifecycle driver.
+func (s *Server) StartWithContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	zap.L().Info("Starting HTTP server",
 		zap.String("addr", s.httpServer.Addr),
 	)
 
-	// Single signal-derived parent context for the entire server lifecycle.
-	rootCtx, rootCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer rootCancel()
-
 	// Start lifecycle-managed background services via the composition root.
-	lcCtx, lcCancel := context.WithCancel(rootCtx)
+	lcCtx, lcCancel := context.WithCancel(ctx)
 	if s.lifecycle != nil {
 		if err := s.lifecycle.Start(lcCtx); err != nil {
 			lcCancel()
@@ -275,7 +302,7 @@ func (s *Server) Start() error {
 		// Server failed to start
 		lcCancel()
 		return fmt.Errorf("server listen error: %w", err)
-	case <-rootCtx.Done():
+	case <-ctx.Done():
 		zap.L().Info("Shutting down server...")
 	}
 
@@ -287,11 +314,18 @@ func (s *Server) Start() error {
 		s.appRouter.Stop()
 	}
 
-	// Graceful shutdown with timeout — created from a fresh background
-	// context so it is NOT cancelled when rootCtx is. The 30s deadline
-	// gives in-flight requests time to finish regardless of the signal
-	// that triggered the shutdown.
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Graceful shutdown with timeout — derived from
+	// context.WithoutCancel(ctx) so a caller-driven cancellation
+	// (e.g. SIGINT closes the cmd/server-owned sigCtx) does NOT
+	// short-circuit the 30s drain budget. The parent ctx's VALUES
+	// are preserved; only its cancellation is detached. Without this
+	// decoupling a SIGINT during the drain would collapse the 30s
+	// window to ≈0ms (because context.WithTimeout(ctx, 30s) propagates
+	// the parent's cancellation — the original pre-P2-1 cmd/server
+	// used context.Background() explicitly to dodge this). P2-1
+	// regression fix (June 2026): re-establishes the same decoupling
+	// declaratively via WithoutCancel.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
@@ -300,8 +334,10 @@ func (s *Server) Start() error {
 	}
 
 	// Stop lifecycle-managed background services.
+	// context.WithoutCancel(ctx) here too — the 10s lifecycle stop
+	// must not be force-cancelled the moment a SIGINT arrives.
 	if s.lifecycle != nil {
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stopCtx, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer stopCancel()
 		if err := s.lifecycle.Stop(stopCtx); err != nil {
 			zap.L().Error("lifecycle shutdown error", zap.Error(err))
