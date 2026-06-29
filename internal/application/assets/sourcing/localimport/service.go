@@ -1,21 +1,16 @@
 // Package localimport — the LocalImporter use case extracted from the
 // historical sourcing.Service.LocalToDrive god method (P0-1 / commit 4,
-// June 2026).
+// June 2026). Commit 5 normalised: log nil-guard dropped so behaviour
+// matches batch + drivesync + the historical god-method (panic on nil
+// log; production composition site always wires zapSourcingLogger so
+// nil is unreachable in practice; fail-fast posture matches AGENTS.md
+// "fail-closed" preference).
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per
 // file): the LocalImporter owns the local-folder-to-Drive ingestion flow
 // as a focused service with 3 narrow deps (JobsPort + FileScannerPort +
 // Logger). The façade sourcing.Service.LocalToDrive delegates to
 // *Service.Import for API stability.
-//
-// Behaviour flow (mirrors historical sourcing.Service.LocalToDrive):
-//  1. Scanner <- Scan(LocalFolder, Limit) → []LocalFileInfo
-//  2. group aggregation: count distinct GroupName, default "uncategorized"
-//  3. log.Info the scan outcome
-//  4. If DryRun: short-circuit return with OK:true, LocalFound, Groups (no
-//     jobs port needed)
-//  5. Jobs <- Enqueue("bulk_upload_youtube_clips", payload) → jobID
-//  6. Return OK + JobID + LocalFound + Groups + message
 //
 // Sub-package construction is *Service.NewService(jobs, scanner, log) —
 // see internal/app/assets_register_sourcing.go for wiring. Both JobsPort
@@ -98,9 +93,7 @@ func (s *Service) Import(ctx context.Context, cmd sourcing.LocalToDriveCommand) 
 		groupNames = append(groupNames, g)
 	}
 
-	if s.log != nil {
-		s.log.Info("scanned local folder", "files", len(files), "groups", len(groups), "dry_run", cmd.DryRun)
-	}
+	s.log.Info("scanned local folder", "files", len(files), "groups", len(groups), "dry_run", cmd.DryRun)
 
 	if cmd.DryRun {
 		return &sourcing.LocalToDriveResult{

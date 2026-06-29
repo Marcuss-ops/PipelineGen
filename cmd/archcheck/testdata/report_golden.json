@@ -216,7 +216,7 @@
     },
     {
       "file": "internal/api/assets/clips/handler.go",
-      "actual_lines": 827,
+      "actual_lines": 822,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -248,7 +248,7 @@
     },
     {
       "file": "internal/app/assets_register_sourcing.go",
-      "actual_lines": 582,
+      "actual_lines": 586,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -391,16 +391,16 @@
       "severity": "warn"
     },
     {
-      "package": "internal/app",
-      "actual_count": 56,
+      "package": "internal/infrastructure/qdrant",
+      "actual_count": 46,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
       "severity": "warn"
     },
     {
-      "package": "internal/infrastructure/qdrant",
-      "actual_count": 46,
+      "package": "internal/app",
+      "actual_count": 56,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",

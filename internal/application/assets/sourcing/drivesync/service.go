@@ -1,6 +1,9 @@
 // Package drivesync — the DriveFolderSynchronizer use case extracted from
 // the historical sourcing.Service.SyncDriveFolder god method (P0-1 / commit 3,
-// June 2026).
+// June 2026). Commit 5 normalised: log nil-guard dropped to match batch +
+// historical god-method (panic on nil log; production composition site
+// always wires zapSourcingLogger so this is fail-loud, fail-fast, not
+// fail-silent).
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per
 // file): the DriveFolderSynchronizer owns the per-folder Drive catalog
@@ -36,9 +39,10 @@ type Service struct {
 
 // NewService creates a DriveFolderSynchronizer service. nil jobs is
 // tolerated (matches historical fail-closed behaviour: returns the
-// `jobs port not configured` typed error on Sync). nil log is also
-// tolerated at construction; calls to s.log will panic — composition
-// root always wires the zap-backed Logger.
+// `jobs port not configured` typed error on Sync). log is REQUIRED
+// (composition root always wires the zap-backed Logger; nil causes
+// panic at first call site — fail-loud posture matches batch + the
+// historical god-method, see commit 5 cleanup notes).
 func NewService(jobs sourcing.JobsPort, log sourcing.Logger) *Service {
 	return &Service{jobs: jobs, log: log}
 }
@@ -73,10 +77,8 @@ func (s *Service) Sync(ctx context.Context, cmd sourcing.SyncDriveFolderCommand)
 		mediaType = "clip"
 	}
 
-	if s.log != nil {
-		s.log.Info("dispatching Drive folder sync",
-			"folder_id", folderID, "source", source, "name", cmd.Name, "media_type", mediaType)
-	}
+	s.log.Info("dispatching Drive folder sync",
+		"folder_id", folderID, "source", source, "name", cmd.Name, "media_type", mediaType)
 
 	job, err := s.jobs.Enqueue(ctx, sourcing.EnqueueRequest{
 		Type:       "drive.folder.sync",

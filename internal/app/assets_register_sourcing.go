@@ -90,10 +90,14 @@ func newAssetRegisterService(
 	// dry-run or non-dry-run paths respectively).
 	localSvc := localimport.NewService(nil, nil, &zapSourcingLogger{log: log})
 
-	// 7-arg façade (was 14 historically). JobsPort + FileScannerPort
-	// stay on the façade as proxy for localimport until commit 5 lifts
-	// them to the composition root.
-	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, nil, nil, &zapSourcingLogger{log: log})
+	// P0-1 / commit 5 (this commit): façade di pulizia. 5-arg call:
+	// 4 sub-services + log. The historic 14-dep ctor collapses to 5
+	// typed sub-service handles. Jobs + scanner ports no longer
+	// proxied through the façade — they are owned by drivesync /
+	// localimport sub-packages directly (composition site passes nil
+	// to both today; future sites inject real JobsPort + FileScannerPort
+	// adapters into the respective NewService call sites above).
+	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log})
 }
 
 // ── youtube v2 adapters ───────────────────────────────────────────────────────
