@@ -357,7 +357,15 @@ func mockQdrantForVerifierWithHooks(t *testing.T, hooks mockQdrantHooks) *httpte
 				return
 			}
 			if pageIdx >= len(hooks.PagePayloads) {
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
+				var noffset interface{}
+				if hooks.InfiniteOffset {
+					noffset = fmt.Sprintf("offset-%d", pageIdx)
+				} else {
+					noffset = nil
+				}
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{
+					"next_page_offset": noffset,
+				}})
 				return
 			}
 			body := hooks.PagePayloads[pageIdx]
@@ -381,7 +389,7 @@ func mockQdrantForVerifierWithHooks(t *testing.T, hooks mockQdrantHooks) *httpte
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
 					"points":      []interface{}{pt},
-					"next_offset": nextOffset,
+					"next_page_offset": nextOffset,
 				},
 			})
 		default:
