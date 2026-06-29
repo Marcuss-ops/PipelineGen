@@ -145,7 +145,15 @@ func (p *ClipBindingsProcessor) Process(
 	// synthesis + 1:1 binding below. SynthesizedScenes counts as
 	// observable work in PostProcessResult.IsEmpty() so the empty
 	// warning does not fire.
-	result := &PostProcessResult{}
+	//
+	// P1 #10 (June 2026): set Changed=true even when scenes
+	// pre-existed (heuristic NOT engaged) — the binder mutated
+	// input.SpecScene.Scenes by binding clips and clearing unbound
+	// scenes. Without Changed the registry's IsEmpty() check would
+	// still flag "returned empty output" for the non-heuristic
+	// code path (the normal case where scenes pre-exist and clips
+	// are attached 1:1).
+	result := &PostProcessResult{Changed: true}
 	if heuristicEngaged {
 		result.SynthesizedScenes = scenes
 		result.Warnings = []string{

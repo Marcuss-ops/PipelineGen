@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -58,6 +59,9 @@ type PipelineResult struct {
 	DocID             string
 	ScriptID          int64
 	AlreadyPersisted  bool
+	// StageDurations maps processor name → wall-clock milliseconds
+	// consumed. Populated by Run() before merge. P1 #10 (June 2026).
+	StageDurations map[string]int64 `json:"stage_durations,omitempty"`
 	// SynthesizedScenes mirrors PostProcessResult.SynthesizedScenes
 	// after mergePostProcessResult — the canonical pipeline-level
 	// surface for processors that reconstructed scenes from prose.
@@ -164,6 +168,14 @@ type PostProcessResult struct {
 	DocID            string
 	ScriptID         int64
 	AlreadyPersisted bool
+	// Changed is set by mutative processors (e.g. ClipBindingsProcessor)
+	// that modify input state but don't produce canonical output fields.
+	// When true, IsEmpty() returns false even if all output fields
+	// are zero. P1 #10 (June 2026).
+	Changed bool `json:"changed,omitempty"`
+	// DurationMs is the wall-clock time this processor consumed, set
+	// by the registry's Run() method before merge. P1 #10 (June 2026).
+	DurationMs int64 `json:"duration_ms,omitempty"`
 	// SynthesizedScenes carries scene bundles constructed by an
 	// individual processor when the canonical SpecScene pipeline
 	// could not produce them. The clip-bindings prose-fallback
@@ -184,6 +196,13 @@ type PostProcessResult struct {
 func (r *PostProcessResult) IsEmpty() bool {
 	if r == nil {
 		return true
+	}
+	// P1 #10 (June 2026): Changed flag lets mutative processors
+	// (e.g. ClipBindingsProcessor) signal "I did real work" without
+	// populating canonical output fields. Prevents false "empty
+	// output" warnings.
+	if r.Changed {
+		return false
 	}
 	if r.Entities != nil {
 		if len(r.Entities.Persons) > 0 || len(r.Entities.Places) > 0 || len(r.Entities.Concepts) > 0 {
@@ -410,7 +429,9 @@ func (r *PostProcessorRegistry) Run(
 		return &PipelineResult{}, nil
 	}
 
-	result := &PipelineResult{}
+	result := &PipelineResult{
+	StageDurations: make(map[string]int64),
+}
 	var (
 		warnings          []string
 		requiredRequested int
@@ -439,9 +460,12 @@ func (r *PostProcessorRegistry) Run(
 			continue
 		}
 
+		start := time.Now()
 		ppResult, err := proc.Process(ctx, plan, input)
+		elapsed := time.Since(start).Milliseconds()
 
 		if err != nil {
+			result.StageDurations[name] = elapsed
 			warn := fmt.Sprintf("postprocessor %q failed: %v", name, err)
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
@@ -457,6 +481,7 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		if ppResult == nil {
+			result.StageDurations[name] = elapsed
 			warn := fmt.Sprintf("postprocessor %q returned nil result", name)
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
@@ -465,6 +490,9 @@ func (r *PostProcessorRegistry) Run(
 			}
 			continue
 		}
+
+		ppResult.DurationMs = elapsed
+		result.StageDurations[name] = elapsed
 
 		if ppResult.IsEmpty() {
 			warn := fmt.Sprintf("postprocessor %q returned empty output", name)
@@ -515,6 +543,10 @@ func (r *PostProcessorRegistry) Run(
 // mergePostProcessResult copies non-zero fields from a processor
 // result into the aggregate PipelineResult.
 func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult) {
+	// P1 #10 (June 2026): record per-processor wall-clock timing.
+	if dst.StageDurations == nil {
+		dst.StageDurations = make(map[string]int64)
+	}
 	if src.Entities != nil {
 		dst.Entities = src.Entities
 	}
