@@ -1,410 +1,81 @@
+// Package sourcing — thin façade. Post P0-1 (June 2026) the god Service is
+// split into 4 use case sub-packages (youtube/, batch/, drivesync/,
+// localimport/). The façade holds one handle per sub-service and routes
+// the legacy public methods (RegisterFromYouTube, BatchRegisterFromYouTube,
+// SyncDriveFolder, LocalToDrive) to the corresponding sub-package service.
+//
+// P0-1 / commit 1 (this commit): only YouTube is extracted. BatchRegister
+// loops through the YouTube sub-service (no new sub-package yet).
+// SyncDriveFolder + LocalToDrive stay inline because their sub-package
+// extractions are commits 3+4 of P0-1. The façade ctor has 4 args until
+// commit 5 reduces it to 4 ALL-sub-service handles.
+//
+// Per AGENTS.md Pattern 8 (API package: thin transport only) the façade
+// has no business logic; delegation is one line per method.
 package sourcing
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// Service orchestrates media sourcing operations through narrow ports.
+// Service is the SourcingService façade. After P0-1 / commit 1 the ctor
+// takes 4 args (was 14 historically); by commit 5 it takes 4 SUB-SERVICE
+// handles + Log = 5 args total. The internal struct mirrors the ctor.
 type Service struct {
-	fetcher     FetchProviderPort
-	drive       DrivePort
-	clips       ClipStorePort
-	jobs        JobsPort
-	scanner     FileScannerPort
-	hasher      HashPort
-	transcriber TranscriptionPort
-	assetTree   AssetTreePort
-	search      SearchProviderPort
-	config      ConfigPort
-	enrichment  EnrichmentPort
-	metadataUp  MetadataUploadPort
-	indexDisp   IndexDispatcherPort
-	log         Logger
+	// P0-1 / commit 1: YouTube sub-service is built externally by the
+	// composition root and injected as a YouTubeRegistrar interface.
+	youtube YouTubeRegistrar
+
+	// Shared ports consumed by the not-yet-extracted sub-cases. Will be
+	// removed when Sync (commit 3) and LocalImport (commit 4) move to
+	// their own sub-packages; until then the façade keeps them so the
+	// SyncDriveFolder + LocalToDrive methods still work.
+	jobs    JobsPort
+	scanner FileScannerPort
+
+	log Logger
 }
 
-// NewService creates a SourcingService. Nil ports cause the corresponding
-// sub-operation to be skipped gracefully (best-effort).
+// NewService creates a SourcingService façade. Until P0-1 fully lands
+// (commits 2-4) NewService takes 4 args: the YouTubeRegistrar
+// sub-service, the JobsPort (shared by Sync/Local), the FileScannerPort
+// (Local only), and the Logger. Commit 5 (P0-1 last) reduces the
+// signature to (youtube, batch, drivesync, local, log) — i.e. 5 args
+// where each arg is a sub-service interface.
 func NewService(
-	fetcher FetchProviderPort,
-	drive DrivePort,
-	clips ClipStorePort,
+	yt YouTubeRegistrar,
 	jobs JobsPort,
 	scanner FileScannerPort,
-	hasher HashPort,
-	transcriber TranscriptionPort,
-	assetTree AssetTreePort,
-	search SearchProviderPort,
-	config ConfigPort,
-	enrichment EnrichmentPort,
-	metadataUp MetadataUploadPort,
-	indexDisp IndexDispatcherPort,
 	log Logger,
 ) *Service {
 	return &Service{
-		fetcher:     fetcher,
-		drive:       drive,
-		clips:       clips,
-		jobs:        jobs,
-		scanner:     scanner,
-		hasher:      hasher,
-		transcriber: transcriber,
-		assetTree:   assetTree,
-		search:      search,
-		config:      config,
-		enrichment:  enrichment,
-		metadataUp:  metadataUp,
-		indexDisp:   indexDisp,
-		log:         log,
+		youtube: yt,
+		jobs:    jobs,
+		scanner: scanner,
+		log:     log,
 	}
 }
 
-// RegisterFromYouTube downloads a YouTube clip, uploads to Drive, saves to DB,
-// and triggers enrichment/indexing. All sub-operations are best-effort.
+// RegisterFromYouTube delegates to the YouTube sub-package service.
+// The legacy method body has moved to
+// internal/application/assets/sourcing/youtube/service.go::Service.Register.
+// Behavior is identical — the façade only changes the lookup direction.
 func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipCommand) (*RegisterClipResult, error) {
-	// ── 1. Sanitize URL + extract video ID ──────────────────────────
-	rawURL := cmd.URL
-	videoID := extractVideoIDFromURL(rawURL)
-	if videoID == "" {
-		videoID = fmt.Sprintf("%d", time.Now().UnixNano())
+	if s == nil || s.youtube == nil {
+		return nil, fmt.Errorf("sourcing.RegisterFromYouTube: youtube registrar not wired (compose-time bug — check newAssetRegisterService)")
 	}
-	// Rebuild clean URL
-	if videoID != "" && !strings.HasPrefix(rawURL, "https://www.youtube.com/watch?v="+videoID) {
-		rawURL = "https://www.youtube.com/watch?v=" + videoID
-	}
-
-	// Extract start/end from URL params if not already set
-	if cmd.StartSec == 0 {
-		cmd.StartSec = extractURLParam(rawURL, "start")
-	}
-	if cmd.EndSec == 0 {
-		cmd.EndSec = extractURLParam(rawURL, "end")
-	}
-
-	// ── 2. Basic validation ─────────────────────────────────────────
-	if cmd.EndSec > 0 && cmd.StartSec >= cmd.EndSec {
-		return nil, fmt.Errorf("invalid segment: start (%.1f) must be less than end (%.1f)", cmd.StartSec, cmd.EndSec)
-	}
-	if cmd.StartSec < 0 || cmd.EndSec < 0 {
-		return nil, fmt.Errorf("start and end must be non-negative")
-	}
-
-	source := strings.TrimSpace(cmd.Source)
-	if source == "" {
-		source = "youtube-manual"
-	}
-
-	// ── 3. Dedup pre-check ──────────────────────────────────────────
-	if !cmd.Force && s.clips != nil {
-		if existing, err := s.clips.FindExisting(ctx, videoID, rawURL, cmd.StartSec, cmd.EndSec); err == nil && existing != "" {
-			if existingClip, gerr := s.clips.GetClip(ctx, existing); gerr == nil && existingClip != nil {
-				s.log.Debug("dedup hit", "existing_id", existing, "video_id", videoID)
-				indexed := s.enrichment != nil
-				return &RegisterClipResult{
-					OK: true, Duplicate: true, ClipID: existingClip.ID, VideoID: videoID,
-					Name: existingClip.Name, Filename: existingClip.Filename,
-					DurationSec: int(existingClip.Duration.Seconds()),
-					DriveLink:   existingClip.DriveLink, DriveFileID: existingClip.DriveFileID,
-					FileHash: existingClip.FileHash, Source: existingClip.Source,
-					Category: existingClip.Category, Tags: existingClip.Tags,
-					LocalPath: existingClip.LocalPath, Indexed: indexed,
-					IndexingStatus: indexStatus(indexed),
-					Message:        "clip already registered for this YouTube video",
-				}, nil
-			}
-		}
-	}
-
-	// ── 4. Fetch video via provider ─────────────────────────────────
-	if s.fetcher == nil {
-		return nil, fmt.Errorf("fetch provider not configured")
-	}
-	s.log.Info("fetching YouTube video", "video_id", videoID, "start", cmd.StartSec, "end", cmd.EndSec)
-	fetched, err := s.fetcher.Fetch(ctx, FetchRequest{
-		AssetID:      videoID,
-		SourceRef:    rawURL,
-		SegmentStart: time.Duration(cmd.StartSec * float64(time.Second)),
-		SegmentEnd:   time.Duration(cmd.EndSec * float64(time.Second)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("fetch video: %w", err)
-	}
-
-	// ── 5. Populate metadata ────────────────────────────────────────
-	name := strings.TrimSpace(cmd.Name)
-	if name == "" {
-		name = fetched.Name
-	}
-	if name == "" {
-		name = videoID
-	}
-
-	description := strings.TrimSpace(cmd.Description)
-	if description == "" {
-		if d := fetched.Metadata["youtube_description"]; d != "" {
-			description = textutil.Truncate(d, 1000)
-		}
-	}
-
-	durationSec := 0.0
-	if fetched.Duration > 0 {
-		durationSec = fetched.Duration.Seconds()
-	} else if cmd.EndSec > cmd.StartSec {
-		durationSec = cmd.EndSec - cmd.StartSec
-	}
-	duration := int(durationSec)
-
-	// Post-fetch validation
-	if durationSec > 0 {
-		if cmd.StartSec > 0 && cmd.StartSec >= durationSec {
-			return nil, fmt.Errorf("start (%.1f) exceeds video duration (%.1f)", cmd.StartSec, durationSec)
-		}
-		if cmd.EndSec > durationSec {
-			s.log.Warn("end exceeds video duration, clip was truncated", "end", cmd.EndSec, "duration", durationSec)
-		}
-	}
-
-	// Name collision warning
-	if s.clips != nil {
-		if existingNameID, _ := s.clips.FindByName(ctx, name); existingNameID != "" {
-			s.log.Warn("name collision", "existing_id", existingNameID, "name", name)
-		}
-	}
-
-	// ── 6. Resolve Drive target folder ──────────────────────────────
-	group := strings.TrimSpace(cmd.Group)
-	targetFolderID := strings.TrimSpace(cmd.FolderID)
-	if targetFolderID == "" && s.config != nil {
-		targetFolderID = s.config.ClipsFolder()
-	}
-	if targetFolderID == "" && s.config != nil {
-		targetFolderID = s.config.RootFolder()
-	}
-
-	if group != "" && targetFolderID != "" && s.drive != nil {
-		if existingName, err := s.drive.GetFolderName(ctx, targetFolderID); err == nil && cleanFolderName(existingName) == cleanFolderName(group) {
-			// reuse
-		} else {
-			dirID, err := s.drive.GetOrCreateFolder(ctx, group, targetFolderID)
-			if err != nil {
-				s.log.Warn("failed to create group folder", "group", group, "error", err)
-			} else {
-				targetFolderID = dirID
-			}
-		}
-	}
-	// Per-video subfolder
-	if targetFolderID != "" && videoID != "" && s.drive != nil {
-		videoSlug := videoID
-		if cmd.Name != "" {
-			if titleSlug := textutil.SlugifyWithMax(cmd.Name, 60); titleSlug != "" {
-				videoSlug = videoID + "-" + titleSlug
-			}
-		}
-		videoFolderID, err := s.drive.GetOrCreateFolder(ctx, videoSlug, targetFolderID)
-		if err != nil {
-			s.log.Warn("failed to create video subfolder", "slug", videoSlug, "error", err)
-		} else {
-			targetFolderID = videoFolderID
-		}
-	}
-
-	// ── 7. Compute MD5 hash ─────────────────────────────────────────
-	fileHash := ""
-	if s.hasher != nil {
-		fileHash, err = s.hasher.MD5File(fetched.LocalPath)
-		if err != nil {
-			return nil, fmt.Errorf("hash file: %w", err)
-		}
-	}
-	clipID := fmt.Sprintf("yt_%s_%s", videoID, fileHash[:min(8, len(fileHash))])
-
-	// ── 8. Transcribe audio (best-effort) ───────────────────────────
-	var transcript, detectedLang string
-	if s.transcriber != nil {
-		transcript, detectedLang, _ = s.transcriber.Transcribe(ctx, fetched.LocalPath)
-	}
-
-	// ── 9. Upload to Google Drive ───────────────────────────────────
-	ext := ".mp4"
-	driveFilename := fmt.Sprintf("%s - %s%s", videoID, name, ext)
-	var uploadResult *DriveUploadResult
-	if s.drive != nil {
-		driveDesc := buildDriveDescription(name, cmd.Description, description, cmd.Tags, cmd.Category, source, rawURL, videoID)
-		result, err := s.drive.UploadFileWithDescription(ctx, fetched.LocalPath, targetFolderID, driveFilename, driveDesc)
-		if err != nil {
-			s.log.Warn("Drive upload failed, continuing with local file only", "error", err)
-		} else {
-			uploadResult = result
-			s.log.Info("uploaded to Drive", "file_id", result.FileID, "link", result.WebViewLink)
-		}
-	}
-
-	// ── 10. Upload cumulative metadata.json to Drive ────────────────
-	if s.metadataUp != nil && targetFolderID != "" {
-		clipEntry := map[string]any{
-			"clip_id":       clipID,
-			"name":          name,
-			"description":   description,
-			"category":      cmd.Category,
-			"source":        source,
-			"group":         group,
-			"tags":          cmd.Tags,
-			"youtube_url":   rawURL,
-			"youtube_id":    videoID,
-			"filename":      driveFilename,
-			"file_hash":     fileHash,
-			"duration_sec":  duration,
-			"created_at":    time.Now().UTC().Format(time.RFC3339),
-			"drive_file_id": "",
-			"drive_link":    "",
-		}
-		if title := fetched.Metadata["youtube_title"]; title != "" {
-			clipEntry["youtube_title"] = title
-		}
-		if uploader := fetched.Metadata["youtube_uploader"]; uploader != "" {
-			clipEntry["youtube_uploader"] = uploader
-		}
-		if uploadDate := fetched.Metadata["youtube_upload_date"]; uploadDate != "" {
-			clipEntry["youtube_upload_date"] = uploadDate
-		}
-		if transcript != "" {
-			clipEntry["clean_transcript"] = transcript
-		}
-		if detectedLang != "" {
-			clipEntry["language"] = detectedLang
-		}
-		if cmd.StartSec > 0 {
-			clipEntry["start_sec"] = cmd.StartSec
-		}
-		if cmd.EndSec > 0 {
-			clipEntry["end_sec"] = cmd.EndSec
-		}
-		if uploadResult != nil {
-			clipEntry["drive_file_id"] = uploadResult.FileID
-			clipEntry["drive_link"] = uploadResult.WebViewLink
-		}
-		_ = s.metadataUp.UpdateCumulativeJSON(ctx, "", targetFolderID, clipID, clipEntry)
-	}
-
-	// ── 11. Save to database ────────────────────────────────────────
-	clip := &ExistingClip{
-		ID:        clipID,
-		Name:      name,
-		Filename:  driveFilename,
-		Source:    source,
-		Category:  cmd.Category,
-		Tags:      cmd.Tags,
-		Duration:  time.Duration(duration) * time.Second,
-		LocalPath: fetched.LocalPath,
-		FileHash:  fileHash,
-	}
-	if uploadResult != nil {
-		clip.DriveLink = uploadResult.WebViewLink
-		clip.DriveFileID = uploadResult.FileID
-	}
-
-	// QDRANT-asset-mutation isolation (June 2026): the legacy
-	// `s.clips.UpsertClip` fallback is REMOVED. Sourcing callers
-	// MUST route every media_assets write through IndexDispatcherPort
-	// (which atomically upserts + emits an outbox event in a
-	// single tx). When the dispatcher is not wired (test fixture
-	// with a nil IndexDispatcherPort) we record the failure clearly
-	// rather than silently dropping the write into the legacy
-	// bypass path — fail-closed is the only safe behaviour here.
-	if s.indexDisp == nil {
-		return nil, fmt.Errorf("sourcing.RegisterFromYouTube: dispatcher is required (QDRANT-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
-	}
-	if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-		return nil, fmt.Errorf("save clip via dispatcher: %w", err)
-	}
-	s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", true)
-
-	// ── 12. Update Asset Tree ───────────────────────────────────────
-	if s.assetTree != nil {
-		node := AssetTreeNode{
-			ID:     clipID,
-			Name:   name,
-			Source: source,
-		}
-		if uploadResult != nil {
-			node.DriveLink = uploadResult.WebViewLink
-		}
-		_ = s.assetTree.UpsertNode(ctx, node)
-	}
-
-	// ── 13. Trigger async enrichment + indexing via canonical jobs
-	// system (S1a, June 2026). The previous implementation used
-	// `concurrent.SafeGo` + `context.WithoutCancel` to detach the ctx
-	// from the caller's lifetime, simulating a background job inside
-	// RegisterFromYouTube — forbidden by AGENTS.md §7 + Pattern 8.
-	// Canonical path: enqueue a `media.enrich` job; the worker
-	// registered in internal/application/clips/media_enrich_worker.go
-	// runs the EnrichAndIndex pipeline in the broker pool / remote
-	// worker with the registry's 3-minute hard cap. For backwards
-	// compatibility the legacy EnrichmentPort.EnrichAndIndex call is
-	// preserved as a no-op fallback when the jobs port is not wired
-	// (test fixtures / partial deployments).
-	indexed := s.enrichment != nil
-	if indexed && s.jobs != nil {
-		if _, err := s.jobs.Enqueue(ctx, EnqueueRequest{
-			Type:       "media.enrich",
-			MaxRetries: 1,
-			Payload: JobPayload{
-				"asset_id":   clipID,
-				"source":     source,
-				"local_path": fetched.LocalPath,
-			},
-		}); err != nil {
-			s.log.Warn("failed to enqueue media.enrich job; clip is saved (operator can reindex via POST /api/media/clips/:id/reindex)",
-				"clip_id", clipID, "error", err)
-		}
-	} else if indexed {
-		// jobs port not wired (test fixture): leave indexStatus signalling
-		// but skip the legacy direct call — the goroutine path is gone.
-		s.log.Debug("jobs port not wired; skipping enrichment dispatch (test fixture path)",
-			"clip_id", clipID)
-	}
-
-	// ── 14. Related clips via search providers ──────────────────────
-	relatedClips := map[string]any{}
-	if s.search != nil {
-		query := buildRelatedClipsQuery(name, cmd.Category, cmd.Tags)
-		if candidates, err := s.search.Search(ctx, query, 5); err == nil && len(candidates) > 0 {
-			relatedClips["search"] = map[string]any{
-				"count":   len(candidates),
-				"results": candidates,
-			}
-		}
-	}
-
-	// ── 15. Build result ────────────────────────────────────────────
-	res := &RegisterClipResult{
-		OK: true, ClipID: clipID, VideoID: videoID,
-		Name: name, Filename: driveFilename, DurationSec: duration,
-		FileHash: fileHash, Source: source, Category: cmd.Category,
-		Tags: cmd.Tags, LocalPath: fetched.LocalPath,
-		Indexed: indexed, IndexingStatus: indexStatus(indexed),
-		Transcribed: transcript != "", Language: detectedLang,
-		RelatedClips: relatedClips,
-	}
-	if uploadResult != nil {
-		res.DriveLink = uploadResult.WebViewLink
-		res.DriveFileID = uploadResult.FileID
-	}
-	return res, nil
+	return s.youtube.Register(ctx, cmd)
 }
 
-// BatchRegisterFromYouTube processes a batch of clip registration commands
-// sequentially. For each clip it calls RegisterFromYouTube and aggregates
-// the results. This is the canonical service-level orchestrator — handlers
-// call this single method instead of looping over clips themselves.
+// BatchRegisterFromYouTube processes a batch of clip registration
+// commands sequentially, delegating each to the YouTube sub-package.
+// Behavior matches the historical BatchRegisterFromYouTube. Sub-package
+// extraction (P0-1 / commit 2) will lift this into a focused
+// batch.Service that wraps the YouTubeRegistrar.
 func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []RegisterClipCommand) *BatchRegisterResult {
-	if s == nil {
+	if s == nil || s.youtube == nil {
 		return &BatchRegisterResult{
 			OK:      false,
 			Total:   len(commands),
@@ -419,7 +90,7 @@ func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []Regis
 
 	log.Info("starting batch registration", "service", "sourcing", "clips", len(commands))
 	for i, cmd := range commands {
-		res, err := s.RegisterFromYouTube(ctx, cmd)
+		res, err := s.youtube.Register(ctx, cmd)
 		br := BatchClipResult{Name: cmd.Name}
 		if err != nil {
 			br.Error = err.Error()
@@ -475,9 +146,9 @@ func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []Regis
 	}
 }
 
-// ── SyncDriveFolder ───────────────────────────────────────────────────
-
 // SyncDriveFolder enqueues a catalog sync job for the given Drive folder.
+// Will move to internal/application/assets/sourcing/drivesync/Service in P0-1 /
+// commit 3. Until then stays inline because no sub-package exists yet.
 func (s *Service) SyncDriveFolder(ctx context.Context, cmd SyncDriveFolderCommand) (*SyncDriveFolderResult, error) {
 	folderID := strings.TrimSpace(cmd.DriveFolderID)
 	if folderID == "" {
@@ -520,9 +191,9 @@ func (s *Service) SyncDriveFolder(ctx context.Context, cmd SyncDriveFolderComman
 	}, nil
 }
 
-// ── LocalToDrive ──────────────────────────────────────────────────────
-
 // LocalToDrive scans a local folder and enqueues a bulk upload job.
+// Will move to internal/application/assets/sourcing/localimport/Service in
+// P0-1 / commit 4. Until then stays inline because no sub-package exists yet.
 func (s *Service) LocalToDrive(ctx context.Context, cmd LocalToDriveCommand) (*LocalToDriveResult, error) {
 	if s.scanner == nil {
 		return nil, fmt.Errorf("file scanner not configured")
@@ -536,7 +207,6 @@ func (s *Service) LocalToDrive(ctx context.Context, cmd LocalToDriveCommand) (*L
 		return nil, fmt.Errorf("scan folder: %w", err)
 	}
 
-	// Group by first-level subdir name
 	groups := make(map[string]bool)
 	for _, f := range files {
 		g := f.GroupName
@@ -595,3 +265,16 @@ func (s *Service) LocalToDrive(ctx context.Context, cmd LocalToDriveCommand) (*L
 		LocalFound: len(files), Groups: groupNames,
 	}, nil
 }
+
+// Compile-time assertion: the YouTube sub-package's Service must satisfy
+// the façade-level YouTubeRegistrar interface. Live in the composition
+// root (internal/app/assets_register_sourcing.go) where both packages can
+// be transitively imported without creating a cycle. See Go-1 import
+// cycle rule: the sourcing package itself cannot import youtube without
+// pulling sourcing back through youtube's transitive import of sourcing
+// (the cycle breaks via the YouTubeRegistrar interface declared in this
+// package's contract.go).
+//
+// (no assertion here — see internal/app/assets_register_sourcing.go for the
+// composition-time assertion that catches drift between *youtube.Service.Register
+// and YouTubeRegistrar.Register before the wire.)
