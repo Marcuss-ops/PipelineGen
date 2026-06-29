@@ -166,4 +166,3 @@ type ImageEmbedder interface {
 type AudioEmbedder interface {
 	EmbedAudio(ctx context.Context, audioPaths []string) ([][]float32, error)
 }
-

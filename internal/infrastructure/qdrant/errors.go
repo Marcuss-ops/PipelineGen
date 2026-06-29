@@ -28,10 +28,10 @@ import (
 //     this value.
 //   - Retryable: true iff a caller should retry this exact error. Default
 //     policy:
-//       - 5xx (500/502/503/504)        → retryable
-//       - 408 / 429                    → retryable
-//       - 4xx (except 408/429)         → not retryable (client error)
-//       - Network/IO failures upstream → retryable (we record Status=0).
+//   - 5xx (500/502/503/504)        → retryable
+//   - 408 / 429                    → retryable
+//   - 4xx (except 408/429)         → not retryable (client error)
+//   - Network/IO failures upstream → retryable (we record Status=0).
 //
 // The retry policy is intentionally conservative: the wire-level truth
 // is the *status*, not any heuristic from the body. Retry decisions

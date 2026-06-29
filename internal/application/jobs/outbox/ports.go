@@ -97,7 +97,9 @@ type EventDTO struct {
 //     infra-sounding name.
 //
 // The wiring at composition.go::NewComposition is now:
-//   outboxDeps.VectorPointDeleter = qd.Runtime.Writer
+//
+//	outboxDeps.VectorPointDeleter = qd.Runtime.Writer
+//
 // — direct field assignment, no runtime type assertion: the
 // compile-time `var _` above guarantees QdrantRuntime.Writer fits.
 type VectorPointDeleter interface {

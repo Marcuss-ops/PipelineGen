@@ -1,0 +1,27 @@
+{
+  "worker_id": "velox-worker-01",
+  "hostname": "pipelinegen-worker",
+  "hardware_class": "docker-small",
+  "os": "linux",
+  "arch": "amd64",
+  "cpu_cores": 4,
+  "ram_mb": 8192,
+  "disk_gb": 40,
+  "gpu": "none",
+  "worker_version": "dev",
+  "engine_version": "v3",
+  "bundle_version": "dev",
+  "protocol_version": "2",
+  "image_digest": "unknown",
+  "cert_fingerprint": "N/A — mTLS not configured",
+  "cert_expiry": "N/A",
+  "checked_at": "2026-06-28T00:00:00Z",
+  "status": "BLOCKED",
+  "blocker": "Docker execution environment not available. Worker not deployed.",
+  "notes": [
+    "All 17 RW-PROD tickets are OPEN.",
+    "Barriere 1-10 require Docker + server live for execution.",
+    "Compilation fixes completed (6 packages) — see commit history.",
+    "Pre-existing compilation errors remain in wire_script.go, build_bundles_domain.go."
+  ]
+}

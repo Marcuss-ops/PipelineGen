@@ -145,14 +145,14 @@ type HybridSearchRequest struct {
 	// SparseVector (PR2 legacy): pre-computed sparse vector from the
 	// deprecated client-side bm25.Tokenize. Used only when SparseText
 	// is empty.
-	SparseVector  *bm25.SparseVector
-	Limit         int
-	MinScore      float64
-	Source        string
-	Category      string
-	MediaType     string
-	Language      string
-	WorkspaceID   string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	SparseVector *bm25.SparseVector
+	Limit        int
+	MinScore     float64
+	Source       string
+	Category     string
+	MediaType    string
+	Language     string
+	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
 }
 
 // ── Local search ports ────────────────────────────────────────────────

@@ -5,11 +5,11 @@
 //
 // HYBRID EMBED strategy (validated by prior thinker, June 2026):
 //
-//   type AssetStoreSQLite struct {
-//       *asset.AssetStoreSQLite  // EMBED the domain's legacy struct
-//       db  *sql.DB
-//       log *zap.Logger
-//   }
+//	type AssetStoreSQLite struct {
+//	    *asset.AssetStoreSQLite  // EMBED the domain's legacy struct
+//	    db  *sql.DB
+//	    log *zap.Logger
+//	}
 //
 // The local struct EMBEDS the legacy `*asset.AssetStoreSQLite` so the
 // 71+ method receivers defined in OTHER domain files (clips_core.go,

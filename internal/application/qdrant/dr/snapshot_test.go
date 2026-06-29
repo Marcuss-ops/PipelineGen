@@ -136,9 +136,19 @@ type stubExecutor struct {
 	err   error
 }
 
-func (s *stubExecutor) CleanupWithConfig(_ context.Context, cfg RetentionConfig) (*RetentionResult, error) {
+func (s *stubExecutor) Apply(ctx context.Context, cfg RetentionConfig) (RetentionResult, error) {
+	return s.CleanupWithConfig(ctx, cfg)
+}
+
+func (s *stubExecutor) CleanupWithConfig(_ context.Context, cfg RetentionConfig) (RetentionResult, error) {
 	s.calls = append(s.calls, cfg)
-	return s.resp, s.err
+	if s.err != nil {
+		return RetentionResult{}, s.err
+	}
+	if s.resp == nil {
+		return RetentionResult{}, nil
+	}
+	return *s.resp, nil
 }
 
 // ── SnapshotService tests ───────────────────────────────────────────

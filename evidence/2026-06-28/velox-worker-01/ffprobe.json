@@ -1,0 +1,26 @@
+{
+  "worker_id": "velox-worker-01",
+  "checked_at": "2026-06-28T00:00:00Z",
+  "status": "SKIP",
+  "blocker": "Cannot produce canary artifact without Docker execution environment.",
+  "canary_job_id": null,
+  "canary_task_id": null,
+  "canary_attempt_id": null,
+  "artifact_id": null,
+  "artifact_sha256": null,
+  "artifact_size_bytes": null,
+  "artifact_uri": null,
+  "ffprobe_output": null,
+  "ffprobe_valid": false,
+  "artifact_ready": false,
+  "master_sha256_match": false,
+  "jobs_completed_at": null,
+  "artifacts_verified_at": null,
+  "completion_ordered": false,
+  "notes": [
+    "RW-PROD-007 (Canary mTLS) is OPEN — no canary job executed.",
+    "RW-PROD-008 (Artifact integrity) is OPEN — no artifact to verify.",
+    "Expected fixture: CPU-only deterministic render, short duration.",
+    "Expected output: mp4 with valid ffprobe metadata (codec, resolution, duration, bitrate)."
+  ]
+}

@@ -184,8 +184,8 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
 				log,
 			)
-			channelMon = monitor.NewChannelMonitor(cfg, root.Repos.ClipsRepo, channelsSvc, log,
-				root.Domains.YoutubeClipService, root.AI.OllamaClient)
+		channelMon = monitor.NewChannelMonitor(cfg, root.Repos.ClipsRepo, channelsSvc, log,
+			root.Domains.YoutubeClipService, root.AI.OllamaClient, nil)
 
 			sqRepo := assets.NewSearchQueriesRepository(root.DB.DB)
 			channelMon.SetSearchQueriesRepo(sqRepo)

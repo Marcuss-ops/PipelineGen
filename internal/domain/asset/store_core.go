@@ -12,7 +12,7 @@
 //   - assetRepositoryAdapter + 8 methods  → internal/infrastructure/database/sqlite/assets/repo_queries.go
 //   - listAssetsByFilter + FindByExternalRef → internal/infrastructure/database/sqlite/assets/repo_queries.go
 //   - buildSummaryQuery + scanSummary + getAssetByID
-//                                          → internal/infrastructure/database/sqlite/assets/clip_list_queries.go + asset_store.go
+//     → internal/infrastructure/database/sqlite/assets/clip_list_queries.go + asset_store.go
 //
 // This file now hosts ONLY:
 //
@@ -45,10 +45,10 @@ package asset
 // canonical caller is `Service` — a domain type. Putting the bridge
 // in domain keeps the direction-of-import graph acyclic:
 //
-//   internal/domain/asset/Service → assetStoreAdapter (here)
-//   internal/infrastructure/database/sqlite/assets/AssetStoreSQLite
-//                                 → satisfies assetStoreAdapter
-//                                   (declarations live next to it)
+//	internal/domain/asset/Service → assetStoreAdapter (here)
+//	internal/infrastructure/database/sqlite/assets/AssetStoreSQLite
+//	                              → satisfies assetStoreAdapter
+//	                                (declarations live next to it)
 //
 // Caller-side contract: the value passed to `NewService(Store, log)`
 // MUST additionally implement assetStoreAdapter for the Repository

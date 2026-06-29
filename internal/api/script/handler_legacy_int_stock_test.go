@@ -62,7 +62,8 @@ var jackieSmokeClipLinks = []string{
 // fell back to each scene's clip DriveLink (Qdrant returned no hits).
 //
 // Structure mirrors canonical GenerationItem result shape:
-//   { items: [{ spec_scene: { scenes: [{ bindings: { stock: { fallback, drive_link } } }] } }] }
+//
+//	{ items: [{ spec_scene: { scenes: [{ bindings: { stock: { fallback, drive_link } } }] } }] }
 var jackieSmokeCannedResult string
 
 func init() {
@@ -75,11 +76,11 @@ func init() {
 		Stock *stockBinding `json:"stock,omitempty"`
 	}
 	type scene struct {
-		ID        string   `json:"id"`
-		Index     int      `json:"index"`
-		Kind      string   `json:"kind"`
-		Text      string   `json:"text"`
-		Bindings  bindings `json:"bindings"`
+		ID       string   `json:"id"`
+		Index    int      `json:"index"`
+		Kind     string   `json:"kind"`
+		Text     string   `json:"text"`
+		Bindings bindings `json:"bindings"`
 	}
 	type specSceneShell struct {
 		Version int     `json:"version"`
@@ -146,7 +147,7 @@ func (c *cannedJobService) Get(_ context.Context, id string) (*jobservice.Job, e
 		return nil, fmt.Errorf("fakeJobsService: empty id")
 	}
 	c.fakeJobsService.nextJobID = id // pin so async response matches
-	_ = c.fakeJobsService.nextJobID // keep symbol referenced; result is per-id
+	_ = c.fakeJobsService.nextJobID  // keep symbol referenced; result is per-id
 	status := jobservice.StatusSucceeded
 	return &jobservice.Job{
 		ID:        id,

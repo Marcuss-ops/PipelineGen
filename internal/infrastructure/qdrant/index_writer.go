@@ -36,7 +36,7 @@ type IndexWriter struct {
 // outbox.VectorPointDeleter port that lives in
 // internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.
 var (
-	_ IndexWriterPort             = (*IndexWriter)(nil)
+	_ IndexWriterPort               = (*IndexWriter)(nil)
 	_ jobsoutbox.VectorPointDeleter = (*IndexWriter)(nil)
 )
 

@@ -28,8 +28,8 @@ import (
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 )
 
-// searchAdapter adapts qdrant.Searcher to search.VectorStorePort.
-type searchAdapter struct {
+// SearchAdapter adapts qdrant.Searcher to search.VectorStorePort.
+type SearchAdapter struct {
 	searcher *Searcher
 	log      *zap.Logger
 }
@@ -37,12 +37,12 @@ type searchAdapter struct {
 // NewSearchAdapter creates a search.VectorStorePort implementation backed
 // by the Qdrant Searcher. The caller is responsible for wiring the adapter
 // into the application layer (e.g. search.Service's vectorStore field).
-func NewSearchAdapter(searcher *Searcher, log *zap.Logger) appsearch.VectorStorePort {
-	return &searchAdapter{searcher: searcher, log: log}
+func NewSearchAdapter(searcher *Searcher, log *zap.Logger) *SearchAdapter {
+	return &SearchAdapter{searcher: searcher, log: log}
 }
 
 // Compile-time assertion.
-var _ appsearch.VectorStorePort = (*searchAdapter)(nil)
+var _ appsearch.VectorStorePort = (*SearchAdapter)(nil)
 
 // Search converts an application-level VectorSearchRequest into a qdrant
 // SearchRequest, delegates to the Searcher, and converts results back.
@@ -56,7 +56,7 @@ var _ appsearch.VectorStorePort = (*searchAdapter)(nil)
 // filter is {\"ACTIVE\"} only. Pre-PR1 the waterfall was {\"active\",
 // \"searchable\"} — both legacy values are pruned by migration 101 and
 // no production code path writes a non-ACTIVE searchable value anymore.
-func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
+func (a *SearchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
 	if a.searcher == nil {
 		return nil, fmt.Errorf("qdrant searcher not configured")
 	}
@@ -111,7 +111,7 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 // PR 1 (June 2026, Lifecycle state SSOT): same canonical ACTIVE-only
 // filter as Search() so hybrid results never include DELETED/STAGING/
 // PROCESSING/DELETE_PENDING/ERROR points.
-func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
+func (a *SearchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
 	if a.searcher == nil {
 		return nil, fmt.Errorf("qdrant searcher not configured")
 	}

@@ -1,0 +1,165 @@
+{
+  "evidence_version": "1.0",
+  "checked_at": "2026-06-28T00:00:00Z",
+  "worker_id": "velox-worker-01",
+  "hardware_class": "docker-small",
+  "overall_verdict": "NOT_READY",
+  "blocker": "Docker execution environment not available. Cannot execute Barriere 1-10.",
+  "gates": [
+    {
+      "gate": "bootstrap",
+      "tickets": ["RW-PROD-003", "RW-PROD-002"],
+      "status": "BLOCKED",
+      "detail": "Worker not deployed. Cannot verify engine start, executor registry, FFmpeg self-test, or output directory writability.",
+      "evidence": "evidence/2026-06-28/velox-worker-01/bootstrap-report.json"
+    },
+    {
+      "gate": "mTLS",
+      "tickets": ["RW-PROD-001", "RW-PROD-007"],
+      "status": "BLOCKED",
+      "detail": "Certificates not generated. Cannot verify handshake, CA chain, identity mismatch rejection, or plaintext refusal.",
+      "evidence": "evidence/2026-06-28/velox-worker-01/master-handshake.log"
+    },
+    {
+      "gate": "real_job",
+      "tickets": ["RW-PROD-007"],
+      "status": "BLOCKED",
+      "detail": "Canary job cannot execute without server + worker live. 23 executors enumerated from code (jobs.Compose()), 0 tested.",
+      "evidence": "evidence/2026-06-28/velox-worker-01/bootstrap-report.json"
+    },
+    {
+      "gate": "artifact_integrity",
+      "tickets": ["RW-PROD-008"],
+      "status": "BLOCKED",
+      "detail": "No artifact produced. Cannot verify SHA-256 match, upload integrity, completion ordering, or idempotent finalization.",
+      "evidence": "evidence/2026-06-28/velox-worker-01/ffprobe.json"
+    },
+    {
+      "gate": "recovery",
+      "tickets": ["RW-PROD-009", "RW-PROD-010", "RW-PROD-011", "RW-PROD-012"],
+      "status": "BLOCKED",
+      "detail": "Master restart, worker crash, network partition, and drain/shutdown tests require running Docker containers.",
+      "evidence": null
+    },
+    {
+      "gate": "reboot",
+      "tickets": ["RW-PROD-009"],
+      "status": "UNTESTED",
+      "detail": "VPS reboot test (Barriera 7) requires a remote VPS with Docker. None configured in inventory.",
+      "evidence": null
+    },
+    {
+      "gate": "rollback",
+      "tickets": ["RW-PROD-017"],
+      "status": "BLOCKED",
+      "detail": "Image digest A/B switchover (Barriera 8) requires Docker build + docker-compose up. docker-compose.yml present but not deployed.",
+      "evidence": null
+    },
+    {
+      "gate": "soak",
+      "tickets": ["RW-PROD-015"],
+      "status": "BLOCKED",
+      "detail": "24-72 hour soak test (Barriera 10) requires Docker running continuously. Cannot measure success rate, p50/p95/p99.",
+      "evidence": null
+    },
+    {
+      "gate": "load_test",
+      "tickets": ["RW-PROD-006", "RW-PROD-015"],
+      "status": "BLOCKED",
+      "detail": "3 profiles × 4 capacity levels (Barriera 9) require docker-compose up --scale worker=N. Benchmark tool present (cmd/admin/benchmark.go).",
+      "evidence": null
+    },
+    {
+      "gate": "fault_injection",
+      "tickets": ["RW-PROD-010", "RW-PROD-011", "RW-PROD-012"],
+      "status": "BLOCKED",
+      "detail": "15 fault injection scenarios (Barriera 6) require running server + worker. Test infrastructure exists in codebase.",
+      "evidence": null
+    },
+    {
+      "gate": "multi_worker",
+      "tickets": ["RW-PROD-006"],
+      "status": "BLOCKED",
+      "detail": "3 workers × 20-50 jobs (Barriera 5) require docker-compose with scaled workers. ClaimNext fencing exists in code.",
+      "evidence": null
+    },
+    {
+      "gate": "metrics",
+      "tickets": ["RW-PROD-013"],
+      "status": "BLOCKED",
+      "detail": "Prometheus /metrics endpoint not reachable. Infrastructure exists (observability/metrics.go, alerting_rules.yml).",
+      "evidence": "evidence/2026-06-28/velox-worker-01/metrics-summary.json"
+    },
+    {
+      "gate": "pki",
+      "tickets": ["RW-PROD-014"],
+      "status": "BLOCKED",
+      "detail": "Certificates not generated. Cannot verify rotation, expiry monitoring, or revocation.",
+      "evidence": null
+    },
+    {
+      "gate": "executor_matrix",
+      "tickets": ["RW-PROD-003"],
+      "status": "BLOCKED",
+      "detail": "9-case matrix × 23 executors (Barriera 4) not executed. 23 executors enumerated, 0 tested.",
+      "evidence": null
+    }
+  ],
+  "compilation_status": {
+    "verdict": "PARTIAL",
+    "fixed_packages": [
+      "internal/application/qdrant/dr",
+      "internal/application/assets/monitor",
+      "internal/application/scripts/usecase",
+      "internal/application/assets/providers/artlist",
+      "internal/application/youtube/adapters",
+      "internal/application/scripts/adapters"
+    ],
+    "remaining_errors": [
+      "internal/app/wire_script.go — CheckGate type mismatch",
+      "internal/app/build_bundles_domain.go — memoryCache interface mismatch",
+      "internal/app/wire_script.go — undefined adapters.New*SourceResolver functions",
+      "internal/application/scripts/adapters/processor_images_voiceover_test.go — invalid composite literal",
+      "internal/infrastructure/qdrant/payload_mapper_test.go — assetT conversion"
+    ],
+    "note": "6 target packages fixed. ~5 pre-existing compilation errors remain in wire_script.go and test files."
+  },
+  "rw_prod_tickets": {
+    "total": 17,
+    "open": 17,
+    "in_progress": 0,
+    "blocked": 0,
+    "ready_for_review": 0,
+    "done": 0,
+    "details": {
+      "RW-PROD-001": {"priority": "P0", "topic": "mTLS identity fail-closed", "status": "OPEN"},
+      "RW-PROD-002": {"priority": "P0", "topic": "Config validation", "status": "OPEN"},
+      "RW-PROD-003": {"priority": "P0", "topic": "Bootstrap runtime/executor", "status": "OPEN"},
+      "RW-PROD-004": {"priority": "P0", "topic": "Liveness/readiness separate", "status": "OPEN"},
+      "RW-PROD-005": {"priority": "P0", "topic": "Master worker state canonical", "status": "OPEN"},
+      "RW-PROD-006": {"priority": "P0", "topic": "Resource sizing/admission", "status": "OPEN"},
+      "RW-PROD-007": {"priority": "P0", "topic": "Canary mTLS per worker", "status": "OPEN"},
+      "RW-PROD-008": {"priority": "P0", "topic": "Artifact integrity", "status": "OPEN"},
+      "RW-PROD-009": {"priority": "P0", "topic": "Master restart recovery", "status": "OPEN"},
+      "RW-PROD-010": {"priority": "P0", "topic": "Worker crash recovery", "status": "OPEN"},
+      "RW-PROD-011": {"priority": "P0", "topic": "Network partition", "status": "OPEN"},
+      "RW-PROD-012": {"priority": "P0", "topic": "Drain + SIGTERM", "status": "OPEN"},
+      "RW-PROD-013": {"priority": "P0", "topic": "Metrics/Alerts", "status": "OPEN"},
+      "RW-PROD-014": {"priority": "P0", "topic": "PKI rotation", "status": "OPEN"},
+      "RW-PROD-015": {"priority": "P0", "topic": "Soak test + hardware cert", "status": "OPEN"},
+      "RW-PROD-016": {"priority": "P0", "topic": "Doctor command", "status": "OPEN"},
+      "RW-PROD-017": {"priority": "P0", "topic": "Rollout + rollback", "status": "OPEN"}
+    }
+  },
+  "deroghe": [],
+  "next_steps": [
+    "1. Avviare Docker: docker-compose up in locale o su VPS.",
+    "2. Eseguire Barriere 1-10 in ordine sequenziale (dipendono dal server live).",
+    "3. Fix i 5 errori di compilazione rimanenti in wire_script.go e build_bundles_domain.go.",
+    "4. Riempire i campi evidence (job_id, task_id, attempt_id, SHA-256) con dati reali.",
+    "5. Rilasciare i 17 ticket RW-PROD uno per uno nell'ordine di implementazione obbligatorio.",
+    "6. Ottenere almeno 14 gate PASS prima di dichiarare PRODUCTION_READY."
+  ],
+  "approvato_da": null,
+  "data_approvazione": null
+}
