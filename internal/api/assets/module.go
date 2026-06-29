@@ -10,7 +10,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 )
@@ -61,7 +60,28 @@ type Dependencies struct {
 	// `Module` field + forwarder methods (matches the stock
 	// precedent exactly).
 	SoundEffect api.Descriptor
-	Register    *register.Handler
+
+	// Blocco C1-Step 9 (June 2026): Register is now an
+	// api.Descriptor (the canonical Build contract surface)
+	// instead of a raw *register.Handler. The composition
+	// root threads the *register.RegisterDescriptor returned
+	// by register.Build(...) here; the descriptor's
+	// RegisterRoutes(rg) forwarder delegates to the embedded
+	// api.Module which captures the Handler in its closure
+	// (the Module name "register" + empty prefix "" preserve
+	// the pre-Step-9 routing shape — the two routes mount
+	// directly on the parent /api/media group, matching
+	// /api/media/register-from-youtube + /api/media/register-batch
+	// URLs verbatim). The register capability has no non-HTTP
+	// consumer in the codebase (the YouTubeRegistrar's non-HTTP
+	// surface is the sourcingEnrichmentAdapter which calls
+	// clipsHandler.EnrichAndIndexClip — that consumer is
+	// satisfied by clipsDesc.Handler, not by the register
+	// Handler), so the Descriptor surface is the smallest
+	// possible — just `Module` field + forwarder methods
+	// (matches the stock / voiceover / soundeffect precedent
+	// exactly).
+	Register api.Descriptor
 }
 
 // Module is the unified Assets HTTP module.
@@ -117,7 +137,15 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.SoundEffect.RegisterRoutes(r)
 	}
 
-	// YouTube registration (register-from-youtube, register-batch)
+	// YouTube registration (register-from-youtube, register-batch).
+	// Blocco C1-Step 9 (June 2026): the register Descriptor owns
+	// its own Module; the assets module passes the parent
+	// /api/media group straight through (no more inline
+	// r.Group("") wrap — the descriptor's RegisterDescriptor
+	// forwarder delegates to the embedded api.Module which
+	// mounts the two routes directly on the parent group,
+	// preserving the public URLs /api/media/register-from-youtube
+	// + /api/media/register-batch verbatim).
 	if m.deps.Register != nil {
 		m.deps.Register.RegisterRoutes(r)
 	}

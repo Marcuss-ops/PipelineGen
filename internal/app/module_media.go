@@ -456,8 +456,44 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// still takes *clipsapi.Handler; the descriptor is just a
 	// canonical accessor to the same instance).
 	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher)
-	// PR8: register receives the same shared idempotency handler as clips.
-	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
+
+	// Blocco C1-Step 9 (June 2026): Register capability is now
+	// built via the canonical register.Build(deps)
+	// (api.Descriptor, error) contract, matching the artlist /
+	// youtube / clips / stock / voiceover / soundeffect
+	// precedent. The Handler is constructed inside Build and
+	// captured by the returned RegisterDescriptor's Module
+	// closure. The composition site type-asserts ONCE to
+	// *register.RegisterDescriptor (fail-closed) and reuses the
+	// concrete for the assetsapi.NewModule(..., Register: rd,
+	// ...) call (the concrete *RegisterDescriptor satisfies
+	// api.Descriptor structurally). The register capability has
+	// no non-HTTP consumer in the codebase
+	// (/register-from-youtube + /register-batch are the entire
+	// public surface, reachable only via HTTP), so the
+	// Descriptor surface is the smallest possible — just
+	// `Module` field + forwarder methods (matches the stock /
+	// voiceover / soundeffect precedent exactly).
+	//
+	// Idempotency middleware (PR8): the same shared idemHandler
+	// instance is threaded through Build; the descriptor's
+	// Module installs it on POST /register-from-youtube. Build
+	// nil-tolerates the field (no-op pass-through) for
+	// test-fixture paths.
+	registerDescriptor, err := assetregister.Build(assetregister.Dependencies{
+		Service:     registerSvc,
+		Idempotency: idemHandler,
+		EnabledFunc: func() bool { return true }, // register is always on in production
+		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-9 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: register.Build: %w", err)
+	}
+	rd, ok := registerDescriptor.(*assetregister.RegisterDescriptor)
+	if !ok || rd == nil {
+		return nil, fmt.Errorf("WireAssets: register.Build returned unexpected descriptor type %T (want *assetregister.RegisterDescriptor)", registerDescriptor)
+	}
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,
@@ -466,7 +502,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		Clips:       clipsDesc,
 		Voiceover:   vd,
 		SoundEffect: sd,
-		Register:    registerHandler,
+		Register:    rd,
 	}, log)
 	assetsRouteMod := module.NewRouteModule(
 		"assets",
