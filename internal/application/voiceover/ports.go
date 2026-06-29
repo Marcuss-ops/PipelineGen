@@ -169,6 +169,32 @@ type DestinationResolver interface {
 	Resolve(ctx context.Context, dest *DestinationRequest) (*ResolvedDestination, error)
 }
 
+// VoiceoverDefaultFolderResolver is the canonical port for resolving the
+// default-configured Voiceover folder (PR 6 P0.2, June 2026).
+//
+// Purpose: when a GenerateVoiceoversCommand arrives without
+// cmd.Destination, Execute previously short-circuited to
+// "missing_folder_id" failure at processOneLanguage (PR-VO-A2 contract
+// overload). The fix is a fallback chain at the use case boundary:
+//
+//	cmd.Destination.FolderID → cfg.Drive.VoiceoverFolder()
+//
+// The port is a single-method narrow surface so a test stub can return
+// ("folder-id", true) or ("", false) without faking the wider service.
+// The production concrete is wired in build_bundles_voiceover.go from
+// cfg.Drive.VoiceoverFolder() (which delegates to DriveConfig.ResolveFolder).
+//
+// Resolve semantics:
+//   - ("<folderID>", true) : a default folder IS configured; Execute
+//     should synthesise a ResolvedDestination
+//     with that FolderID and proceed.
+//   - ("", false)            : no default folder is configured; Execute
+//     surfaces a cross-cutting failure mapping
+//     to HTTP 400-equivalent upstream semantics.
+type VoiceoverDefaultFolderResolver interface {
+	Resolve(ctx context.Context) (folderID string, ok bool)
+}
+
 // AudioPostProcessor is the canonical port for post-TTS audio cleanup
 // (silence removal via ffmpeg). Nil-safe at the use case boundary —
 // only invoked when cmd.RemoveSilence == true.

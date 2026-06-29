@@ -10,15 +10,18 @@
 //
 // Adapters populate:
 //
-//	TTSProvider          ← *audioasset.Processor
-//	AudioPostProcessor   ← pkg-level ffmpeg.RemoveSilence closure
-//	AssetLifecycle       ← *lifecycle.Service (ProcessAsset adapter)
-//	VoiceoverRepository  ← direct DB adapter (tx.ExecContext for
-//	                        InsertTx / DeleteByIDTx; PreReadByID stub;
-//	                        column schema mirrors the canonical
-//	                        VoiceoversRepository.Upsert)
-//	DestinationResolver  ← *asset.Resolver (forward Group + StyleGroup,
-//	                        mirror StyleGroup verbatim back)
+//	TTSProvider                   ← *audioasset.Processor
+//	AudioPostProcessor            ← pkg-level ffmpeg.RemoveSilence closure
+//	AssetLifecycle                ← *lifecycle.Service (ProcessAsset adapter)
+//	VoiceoverRepository           ← direct DB adapter (tx.ExecContext for
+//	                                 InsertTx / DeleteByIDTx; PreReadByID stub;
+//	                                 column schema mirrors the canonical
+//	                                 VoiceoversRepository.Upsert)
+//	DestinationResolver           ← *asset.Resolver (forward Group + StyleGroup,
+//	                                 mirror StyleGroup verbatim back)
+//	VoiceoverDefaultFolderResolver ← cfg.Drive.VoiceoverFolder() (resolved at
+//	                                 composition time; PR 6 P0.2 fallback for
+//	                                 cmd.Destination == nil)
 //
 // Two remaining ports (TransactionalOutbox, DB) are passed directly
 // from composition:
@@ -501,6 +504,55 @@ func (a *useCaseDestResolverAdapter) Resolve(ctx context.Context, dest *voiceove
 }
 
 var _ voiceover.DestinationResolver = (*useCaseDestResolverAdapter)(nil)
+
+// ─────────────────────────────────────────────────────────────────────
+// VoiceoverDefaultFolderResolver adapter.
+//
+// PR 6 P0.2 (June 2026): when a GenerateVoiceoversCommand arrives
+// without cmd.Destination, the use case falls back to the configured
+// default Voiceover folder — the same value the legacy
+// *Service.processLanguage folds in via `req.Destination =
+// &DestinationRequest{FolderID: s.cfg.Drive.VoiceoverFolder()}`
+// (process.go:75-79). The adapter takes the resolved folder ID at
+// composition time (one read, deterministic), rather than re-reading
+// cfg on every call, so:
+//   - the wire shape is identical to the legacy path;
+//   - the value is visible to operators via buildVoiceoverService's
+//     constructor call (audit-friendly);
+//   - a future "live re-read" wiring would be a port-method addition,
+//     not an adapter rewrite.
+//
+// Resolve semantics mirror the canonical PR 6 P0.2 contract:
+//   ("<folderID>", true)  → Execute synthesises a ResolvedDestination
+//                            with that FolderID and proceeds.
+//   ("", false)            → Execute surfaces a cross-cutting failure
+//                            mapping to HTTP 400 upstream semantics.
+//
+// Nil-safe: nil receiver returns ("", false) so a partially-wired
+// composition root cannot crash the per-language fan-out.
+// ─────────────────────────────────────────────────────────────────────
+
+type useCaseDefaultFolderResolverAdapter struct {
+	folderID string
+}
+
+func newUseCaseDefaultFolderResolverAdapter(folderID string) *useCaseDefaultFolderResolverAdapter {
+	// No panic: empty folderID is the production case when the
+	// deployment lacks a configured voiceover_root_folder. The
+	// adapter's Resolve returns ("", false) in that case, Execute
+	// maps that to a cross-cutting failure.
+	return &useCaseDefaultFolderResolverAdapter{folderID: folderID}
+}
+
+func (a *useCaseDefaultFolderResolverAdapter) Resolve(_ context.Context) (string, bool) {
+	if a == nil || a.folderID == "" {
+		return "", false
+	}
+	return a.folderID, true
+}
+
+// Compile-time assertion (AGENTS.md Pattern 0).
+var _ voiceover.VoiceoverDefaultFolderResolver = (*useCaseDefaultFolderResolverAdapter)(nil)
 
 // timeutil import is used here for FormatRFC3339 fallback in
 // InsertTx; the canonical timeutil location avoids bringing in
