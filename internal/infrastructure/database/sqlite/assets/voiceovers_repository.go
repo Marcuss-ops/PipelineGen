@@ -236,6 +236,49 @@ func (r *VoiceoversRepository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// DeleteByIDTx deletes a voiceovers row inside a caller-owned transaction.
+// Used by voiceover.GenerateVoiceoversUseCase for the PR-VO-A2 atomic
+// swap (Delete + Insert in one tx).
+func (r *VoiceoversRepository) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, id)
+	return err
+}
+
+// InsertTx inserts a voiceovers row inside a caller-owned transaction
+// (plain INSERT — atomicity is enforced by the caller's
+// DELETE-then-INSERT sequence in the same tx; the caller is the
+// canonical source of truth on swap semantics).
+func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Record) error {
+	if rec.CreatedAt.IsZero() {
+		rec.CreatedAt = time.Now()
+	}
+	rec.UpdatedAt = time.Now()
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO voiceovers (
+			id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
+		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
+		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
+		rec.Status, rec.Error, rec.Strategy, rec.Metadata,
+		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
+	)
+	return err
+}
+
+// PreReadByID reads a voiceovers row without claiming any tx lock.
+// Called BEFORE the atomic swap so the use case can capture the OLD row's
+// orphan paths (Drive file ID + local paths) for the post-commit cleanup
+// goroutine. Thin alias of GetByID; the explicit name surfaces intent
+// at the use-case boundary.
+func (r *VoiceoversRepository) PreReadByID(ctx context.Context, id string) (*Record, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *VoiceoversRepository) GetByDriveFileID(ctx context.Context, fileID string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
