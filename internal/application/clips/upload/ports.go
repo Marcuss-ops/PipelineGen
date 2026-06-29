@@ -50,6 +50,11 @@ type Config = clips.ClipConfigPort
 // clipsAssetTreeAdapter (internal/app/clips_adapters_index.go).
 type TreeBuilder = clips.ClipTreeBuilderPort
 
+// Publisher is the canonical Drive publisher port reused from
+// internal/application/clips.ClipPublisherPort. Adapter wraps
+// delivery.Publisher at the composition root.
+type Publisher = clips.ClipPublisherPort
+
 // ── New upload-scoped port ───────────────────────────────────────────────────
 
 // ArtifactCreateInput is the narrowed input shape for

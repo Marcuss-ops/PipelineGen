@@ -198,6 +198,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// in bulk_upload_worker.go::HandleJob).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		newClipsDriveAdapter(driveUploader),
+		deps.Delivery.Publisher,
 		newClipsRepoAdapter(deps.Core.ClipsRepo),
 		newClipsIndexerAdapter(deps.Search.ClipIndexerService),
 		newClipsHashAdapter(),
@@ -215,6 +216,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	uploadUC := appupload.NewUseCase(appupload.UseCaseDeps{
 		Artifact:      nil, // *artifacts.Service not in bundle yet
 		DriveUploader: newClipsDriveAdapter(driveUploader),
+		Publisher:     deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
 		TreeBuilder:   newClipsAssetTreeAdapter(deps.Core.AssetTreeService),
@@ -400,7 +402,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	}
 	var sfxDispatcher sfxports.DispatcherPort
 	sfxDispatcher = newSfxDispatcherAdapter(dispatcher)
-	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
+	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, deps.Delivery.Publisher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	// Blocco C1-Step 5 (June 2026): the sourcingEnrichmentAdapter

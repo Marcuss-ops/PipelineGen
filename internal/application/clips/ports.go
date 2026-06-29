@@ -20,6 +20,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/gin-gonic/gin"
 )
@@ -274,6 +275,13 @@ type SourceResolverPort interface {
 // use case has zero infra imports.
 type ClipTreeBuilderPort interface {
 	UpsertFromAsset(ctx context.Context, clip *asset.Asset) error
+}
+
+// ClipPublisherPort is the canonical narrow surface of delivery.Publisher
+// consumed by clips use cases (upload, bulk_upload). The concrete adapter
+// wraps the composition-root's delivery.Publisher.
+type ClipPublisherPort interface {
+	Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error)
 }
 
 // ClipIndexDispatcherPort is the canonical narrow surface of

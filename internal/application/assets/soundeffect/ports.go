@@ -12,6 +12,7 @@ package soundeffect
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
@@ -96,6 +97,13 @@ type SemanticMetadataWriterPort interface {
 // internal/app/adapters_soundeffect.go around drive.Resolver.
 type DestinationResolverPort interface {
 	Resolve(req AssetDestinationRequest) (ResolvedDest, error)
+}
+
+// PublisherPort is the narrow surface of delivery.Publisher consumed
+// by the sfx Generate handler. Replaces the legacy GetOrCreateFolder
+// + UploadFile drive calls (FASE 7 migration).
+type PublisherPort interface {
+	Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error)
 }
 
 // DispatcherPort is the canonical narrow surface of

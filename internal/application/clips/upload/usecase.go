@@ -16,6 +16,7 @@ import (
 	"time"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -28,7 +29,8 @@ import (
 // internal/app/clips_adapters_*.go.
 type UseCase struct {
 	artifact       ArtifactServicePort
-	driveUploader  DriveUploader
+	driveUploader  DriveUploader // deprecated: kept for backward compat during migration
+	publisher      Publisher     // canonical Drive upload path (FASE 7)
 	dispatcher     IndexDispatcher
 	cfg            Config
 	treeBuilder    TreeBuilder
@@ -41,7 +43,8 @@ type UseCase struct {
 // Wired once at composition time by the handler constructor.
 type UseCaseDeps struct {
 	Artifact      ArtifactServicePort
-	DriveUploader DriveUploader
+	DriveUploader DriveUploader // deprecated: kept for backward compat during migration
+	Publisher     Publisher     // canonical Drive upload path (FASE 7)
 	Dispatcher    IndexDispatcher
 	Config        Config
 	TreeBuilder   TreeBuilder
@@ -59,6 +62,7 @@ func NewUseCase(d UseCaseDeps) *UseCase {
 	return &UseCase{
 		artifact:      d.Artifact,
 		driveUploader: d.DriveUploader,
+		publisher:     d.Publisher,
 		dispatcher:    d.Dispatcher,
 		cfg:           d.Config,
 		treeBuilder:   d.TreeBuilder,
@@ -129,40 +133,50 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		localPath = ""
 	}
 
-	// ── 2-3. Resolve Drive target folder ─────────────────────────
-	targetFolderID := appclips.ExtractDriveFolderID(cmd.FolderID)
-	if targetFolderID == "" {
-		targetFolderID = uc.cfg.RootFolder()
-		if cmd.Group != "" && targetFolderID != "" {
-			dirID, ferr := uc.driveUploader.GetOrCreateFolder(ctx, cmd.Group, targetFolderID)
-			if ferr != nil {
-				log.Warn("failed to create group folder on Drive, using root",
-					zap.String("group", cmd.Group), zap.Error(ferr))
-			} else {
-				targetFolderID = dirID
-			}
-		}
-	} else if cmd.Group != "" {
-		if existingName, ferr := uc.driveUploader.GetFolderName(ctx, targetFolderID); ferr == nil &&
-			appclips.CleanFolderName(existingName) == appclips.CleanFolderName(cmd.Group) {
-			log.Info("folder_id already points to group folder, reusing it",
-				zap.String("folder_id", targetFolderID),
-				zap.String("name", existingName))
-		} else {
-			dirID, ferr := uc.driveUploader.GetOrCreateFolder(ctx, cmd.Group, targetFolderID)
-			if ferr != nil {
-				log.Warn("failed to create group folder on Drive, using root",
-					zap.String("group", cmd.Group), zap.Error(ferr))
-			} else {
-				targetFolderID = dirID
-			}
-		}
-	}
-
-	// ── 4. Upload to Drive ────────────────────────────────────────
+	// ── 2-4. Upload to Drive via Publisher (FASE 7) ──────────────
 	driveFilename := fmt.Sprintf("%s%s", cmd.Name, ext)
-	var driveFileID, driveLink, downloadLink string
-	if uc.driveUploader != nil && localPath != "" {
+	var driveFileID, driveLink, downloadLink, targetFolderID string
+
+	if uc.publisher != nil && localPath != "" {
+		pubReq := delivery.PublishRequest{
+			Destination:        delivery.DestinationYouTubeClip,
+			LocalPath:          localPath,
+			Filename:           driveFilename,
+			Description:        appclips.BuildDriveDescription(cmd.Name, cmd.Description, "", cmd.Tags, cmd.Category, cmd.Source, "", ""),
+			Group:              cmd.Group,
+			RootFolderOverride: appclips.ExtractDriveFolderID(cmd.FolderID),
+		}
+		pubResult, uerr := uc.publisher.Publish(ctx, pubReq)
+		if uerr != nil {
+			log.Warn("Drive publish failed, continuing with local file only", zap.Error(uerr))
+		} else {
+			driveFileID = pubResult.FileID
+			driveLink = pubResult.WebViewLink
+			downloadLink = "https://drive.google.com/uc?id=" + pubResult.FileID
+			targetFolderID = pubResult.FolderID
+			log.Info("published to Drive",
+				zap.String("file_id", pubResult.FileID),
+				zap.String("drive_link", pubResult.WebViewLink))
+		}
+	} else if uc.driveUploader != nil && localPath != "" {
+		// Legacy fallback — preserve original group-folder logic
+		targetFolderID = appclips.ExtractDriveFolderID(cmd.FolderID)
+		if targetFolderID == "" {
+			targetFolderID = uc.cfg.RootFolder()
+			if cmd.Group != "" && targetFolderID != "" {
+				if dirID, ferr := uc.driveUploader.GetOrCreateFolder(ctx, cmd.Group, targetFolderID); ferr == nil {
+					targetFolderID = dirID
+				} else {
+					log.Warn("failed to create group folder, using root", zap.String("group", cmd.Group), zap.Error(ferr))
+				}
+			}
+		} else if cmd.Group != "" {
+			if dirID, ferr := uc.driveUploader.GetOrCreateFolder(ctx, cmd.Group, targetFolderID); ferr == nil {
+				targetFolderID = dirID
+			} else {
+				log.Warn("failed to create group folder, using override", zap.String("group", cmd.Group), zap.Error(ferr))
+			}
+		}
 		driveDesc := appclips.BuildDriveDescription(cmd.Name, cmd.Description, "", cmd.Tags, cmd.Category, cmd.Source, "", "")
 		result, uerr := uc.driveUploader.UploadFileWithDescription(ctx, localPath, targetFolderID, driveFilename, driveDesc)
 		if uerr != nil {
