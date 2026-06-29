@@ -340,6 +340,28 @@ func buildGenerationResult(
 		scriptIDFromPostprocess = postResult.ScriptID
 	}
 
+	// Issue #1 (June 2026): prefer postResult.FinalSpecScene over
+	// engineResult.Output.SpecScene when populated. The
+	// clip-bindings prose-fallback heuristic (FASE 3) can
+	// synthesise scenes from prose when the model returns no
+	// SpecScene. Pre-fix: buildGenerationResult always read the
+	// pre-walk engineResult.Output.SpecScene, so the canonical
+	// GenerationResult carried an empty SpecScene even when the
+	// registry's PipelineResult.SynthesizedScenes held the
+	// synthesised bundle — the JSON response, document body,
+	// persistence row, image prompts, and voiceover plan all saw
+	// empty scenes. Post-fix: registry.Run captures the post-walk
+	// envelope in PipelineResult.FinalSpecScene; below selects it
+	// when non-empty. The empty-aware guard keeps the
+	// normal-model-output path unaffected (when the engine emits
+	// scenes AND the heuristic does NOT engage, postResult
+	// .FinalSpecScene mirrors input.SpecScene == engineResult
+	// .Output.SpecScene, so the swap is a no-op).
+	specScene := engineResult.Output.SpecScene
+	if postResult != nil && len(postResult.FinalSpecScene.Scenes) > 0 {
+		specScene = postResult.FinalSpecScene
+	}
+
 	result := &scriptpkg.GenerationResult{
 		ItemID:   item.ID,
 		ScriptID: scriptIDFromPostprocess,
@@ -349,7 +371,7 @@ func buildGenerationResult(
 		Output: scriptpkg.ScriptOutput{
 			Text:      engineResult.Output.Text,
 			WordCount: engineResult.WordCount,
-			SpecScene: engineResult.Output.SpecScene,
+			SpecScene: specScene,
 		},
 		Cache: scriptpkg.CacheResult{
 			Status: engineResult.CacheStatus,
