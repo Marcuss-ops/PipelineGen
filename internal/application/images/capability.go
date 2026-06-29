@@ -66,15 +66,11 @@ func (s *Service) CapabilityResolution(cap Capability) CapabilityStatus {
 	}
 	switch cap {
 	case CapImageGenNvidia:
-		if s.nvidiaAPIKey == "" || s.nvidiaAPIKey == nvidiaAPIKeyPlaceholder {
-			return StatusMissingDependency
-		}
-		return StatusAvailable
+		// Disabled/Removed: Chrome/Playwright (Google Slides) is the only provider
+		return StatusNotImplemented
 	case CapRemoteImageGen:
-		if s.remoteImageEndpointURL == "" {
-			return StatusMissingDependency
-		}
-		return StatusAvailable
+		// Disabled/Removed: Chrome/Playwright (Google Slides) is the only provider
+		return StatusNotImplemented
 	case CapImageGenChrome:
 		// Available when an ImageGenerator (ChromeImageProvider) is wired.
 		// No env-var dependency — the provider is injected at composition time.

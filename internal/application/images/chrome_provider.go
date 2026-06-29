@@ -191,7 +191,7 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 		PromptUsed: req.Prompt,
 		Provider:   "google-slides",
 		SourceHash: sourceHash,
-		OutputPath: outputPath,
+		OutputPath: req.OutputPath,
 	}, nil
 }
 

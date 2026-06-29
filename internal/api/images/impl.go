@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -13,8 +14,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -51,9 +52,8 @@ type UploadRequest struct {
 	Tags    []string `json:"tags"`
 }
 
-// GenerateNvidiaRequest is the legacy request type for POST /api/images/generate.
-// REMOVAL: pending Step 5 cleanup — no longer bound by Generate handler (Step 2).
-type GenerateNvidiaRequest struct {
+// GenerateImageRequest is the request type for POST /api/images/generate.
+type GenerateImageRequest struct {
 	Prompt    string   `json:"prompt" binding:"required"`
 	Model     string   `json:"model"`
 	Width     int      `json:"width"`
@@ -200,15 +200,41 @@ func (h *ImagesHandler) Sync(c *gin.Context) {
 	apiutil.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
 }
 
-// Generate genera un'immagine AI.
-// Deprecato: la Google Slides API (slidesSvc.Presentations.Create/BatchUpdate/GetThumbnail)
-// è stata rimossa perché produceva solo thumbnail testuali, non immagini AI.
-// L'endpoint verrà ricostruito come job asincrono image.generate.google (FASE 3-8).
+// Generate genera un'immagine AI tramite Chrome/Playwright (Google Slides).
 func (h *ImagesHandler) Generate(c *gin.Context) {
-	c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
-		"error":   "image generation endpoint has been removed",
-		"message": imgservice.ErrImageGenNotImplemented.Error(),
-	})
+	var req GenerateImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	asset, err := h.service.GenerateSmartImageWithAccount(
+		c.Request.Context(),
+		"", // subject
+		"", // topic
+		req.Style,
+		[]string{req.Prompt},
+		req.Tags,
+		req.Width,
+		req.Height,
+		req.Model,
+		false, // skipDrive = false
+		req.Account,
+		req.ProjectID,
+	)
+	if err != nil {
+		if errors.Is(err, imgservice.ErrImageGenNotImplemented) {
+			c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+				"error":   "image generation endpoint has been removed",
+				"message": err.Error(),
+			})
+			return
+		}
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, asset)
 }
 
 // GenerateBatch accetta un batch di prompt e li trasforma in job asincroni.
