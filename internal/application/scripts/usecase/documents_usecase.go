@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -40,7 +41,7 @@ func NewDocumentsService(docClient interface{}, log interface{}, driveFolderID s
 }
 
 // CreateDoc creates a Google Doc.
-func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder FolderResolver, driveFolderID string) (docLink, docID string) {
+func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder adapters.FolderResolver, driveFolderID string) (docLink, docID string) {
 	if d == nil {
 		return "", ""
 	}
@@ -94,7 +95,7 @@ func (u *DocumentsUseCase) DocumentsService() *DocumentsService {
 func (u *DocumentsUseCase) BuildAndCreate(
 	ctx context.Context,
 	title, content string,
-	resolveFolder FolderResolver,
+	resolveFolder adapters.FolderResolver,
 	driveFolderID string,
 ) (docLink, docID string, err error) {
 	if u == nil {

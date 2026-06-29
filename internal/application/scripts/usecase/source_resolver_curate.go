@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
@@ -81,7 +82,7 @@ func (r *CurateSourceResolver) SetClipSearchPort(port ClipSearchPort) {
 }
 
 // Compile-time assertion: CurateSourceResolver satisfies SourceResolver.
-var _ SourceResolver = (*CurateSourceResolver)(nil)
+var _ adapters.SourceResolver = (*CurateSourceResolver)(nil)
 
 // Resolve implements SourceResolver.
 //

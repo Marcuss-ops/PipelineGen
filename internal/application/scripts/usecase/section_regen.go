@@ -8,6 +8,8 @@ package usecase
 import (
 	"context"
 	"errors"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 )
 
 // ── Repository contract types (PR 4 — scriptado Section regen) ────────────
@@ -36,7 +38,7 @@ type ScriptSectionRecord struct {
 // SectionRegenerator is the use-case for regenerating a single script section.
 // Phase 1b stub: real implementation was in the old mega-package.
 type SectionRegenerator struct {
-	repo ScriptRepository
+	repo adapters.ScriptRepository
 	gen  any
 	doc  any
 	cfg  any
@@ -45,7 +47,7 @@ type SectionRegenerator struct {
 
 // NewSectionRegenerator constructs a SectionRegenerator.
 // Phase 1b stub.
-func NewSectionRegenerator(repo ScriptRepository, gen any, doc any, cfg any, log any) *SectionRegenerator {
+func NewSectionRegenerator(repo adapters.ScriptRepository, gen any, doc any, cfg any, log any) *SectionRegenerator {
 	return &SectionRegenerator{repo: repo, gen: gen, doc: doc, cfg: cfg, log: log}
 }
 
