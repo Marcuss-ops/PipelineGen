@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -114,7 +113,8 @@ type UseCaseDeps struct {
 // the 7 ports; Block 3 wraps the per-language loop in a bounded pool
 // so concurrent languages stay under MaxParallelism.
 type GenerateVoiceoversUseCase struct {
-	deps UseCaseDeps
+	deps     UseCaseDeps
+	executor *Executor
 }
 
 // NewGenerateVoiceoversUseCase constructs the canonical use case.
@@ -148,7 +148,10 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	if deps.MaxParallelism <= 0 || deps.MaxParallelism > 8 {
 		deps.MaxParallelism = 8
 	}
-	return &GenerateVoiceoversUseCase{deps: deps}
+	return &GenerateVoiceoversUseCase{
+		deps:     deps,
+		executor: NewExecutor(deps.Logger),
+	}
 }
 
 // Execute runs the canonical pipeline once per request.
@@ -181,15 +184,14 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 	// process.go / stages.go.
 	cmd.Strategy = asset.NormalizeStrategy(string(cmd.Strategy), false)
 
-	// Step 1c: compute the per-batch request ID once (mirrors
-	// buildRequestID at types.go:301). Threaded through the
-	// per-language orchestrator so every row in this batch shares the
-	// same request_id column value for cross-language audit.
-	requestID := buildRequestID()
-
+	// Step 1c: per-batch requestID is computed once by Plan() so the
+	// value is shared by every Task.RequestID AND by the top-level
+	// result.RequestID below. Single source of truth — no two
+	// independent buildRequestID() calls per batch (auditors correlate
+	// request_id ↔ task IDs via the same value).
 	result := &GenerateVoiceoversResult{
 		OK:           true,
-		RequestID:    requestID,
+		RequestID:    "",
 		TotalOutputs: len(cmd.Languages),
 		PerLanguage:  make([]VoiceoverItemResult, 0, len(cmd.Languages)),
 		StartedAt:    time.Now().UTC(),
@@ -209,14 +211,51 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 		dest = d
 	}
 
-	// Step 2b: compute textHash once for the batch (same value goes
-	// into every voiceover row's text_hash column + every filename
-	// substitution `{hash}` token in the per-language filename).
-	textHash := hashutil.SHA256String(cmd.Text)
+	// Step 2b: textHash is computed lazily by Plan() (one SHA256 per
+	// batch, threaded into every Task.TextHash + every filename
+	// substitution `{hash}` token). The Result ID lineage is owned by
+	// the executor's per-task fn closure; this Execute layer stays
+	// pure orchestrator (Pattern 0).
 
-	// Step 3: sequential fan-out per language (Block 3 wraps in pool).
-	for _, lang := range cmd.Languages {
-		item := u.processOneLanguage(ctx, cmd, requestID, lang, textHash, dest)
+	// Step 3: bounded parallel fan-out per language (Block 3).
+	// Plan materialises []Task (one per language) with all the
+	// per-task side-data pre-computed (filename, ID, voice override,
+	// requestID, textHash). EffectiveParallelism clamps the requested
+	// cap against deps.MaxParallelism and len(tasks) so we never
+	// spawn more workers than languages. The TaskFn closure binds
+	// the executor to processOneTask (Task → TaskResult) so the
+	// per-language fan-out body stays a single implementation in
+	// processOneLanguage (the executor only orchestrates, doesn't
+	// own business logic — Pattern 0).
+	// Step 3 (cont): Plan() returns the per-batch requestID and
+	// textHash it threaded into every Task. Use the SAME requestID
+	// for result.RequestID so audit correlates result ↔ tasks.
+	tasks, requestID, _ := u.Plan(cmd, dest)
+	result.RequestID = requestID
+	requested := cmd.Parallelism
+	if requested <= 0 {
+		// cmd.Parallelism zero/unset → fall back to the constructor's
+		// clamped DefaultParallelism (production: 3 per AGENTS.md
+		// utilities table / voiceover Master Plan).
+		requested = u.deps.DefaultParallelism
+	}
+	concurrency := EffectiveParallelism(requested, u.deps.MaxParallelism, len(tasks))
+	taskFn := func(ctx context.Context, t Task) TaskResult {
+		return u.processOneTask(ctx, t)
+	}
+	results, runErr := u.executor.Run(ctx, tasks, concurrency, taskFn, nil)
+	if runErr != nil {
+		// Composition root did not bind the per-language worker OR
+		// the executor hit a cross-cutting setup error. Surface loudly
+		// so the missing wire-up is fixed before deploy (godlike/07
+		// — no fake availability).
+		result.OK = false
+		result.Error = fmt.Sprintf("executor.Run: %v", runErr)
+		result.CompletedAt = time.Now().UTC()
+		return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: %w", runErr)
+	}
+	result.PerLanguage = results
+	for _, item := range results {
 		switch item.Status {
 		case StatusCompleted:
 			result.SuccessCount++
@@ -224,7 +263,6 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 			result.OK = false
 			result.FailedCount++
 		}
-		result.PerLanguage = append(result.PerLanguage, item)
 	}
 
 	result.CompletedAt = time.Now().UTC()
@@ -410,6 +448,21 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 
 	item.Status = StatusCompleted
 	return item
+}
+
+// processOneTask is the Task-based adapter for the bounded executor
+// (Block 3). It maps the immutable Task fields onto the existing
+// processOneLanguage signature so the per-language fan-out body
+// stays a single implementation — future BACKFILL stages (idempotency
+// cache, post-write save context detachment) layer here without
+// touching processOneLanguage.
+//
+// The adapter pattern keeps the executor's TaskFn pure (no *Service
+// dependency the executor doesn't otherwise need) while preserving
+// the canonical per-language stage sequencing pinned by
+// service_test.go's path-traversal contract.
+func (u *GenerateVoiceoversUseCase) processOneTask(ctx context.Context, t Task) VoiceoverItemResult {
+	return u.processOneLanguage(ctx, t.Command, t.RequestID, t.Language, t.TextHash, t.Destination)
 }
 
 // buildCommandFilename is the use case's filename builder. Block 2 inlines
