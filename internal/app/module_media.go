@@ -349,7 +349,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsHandler, dispatcher)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsHandler, dispatcher, deps.Delivery.Publisher)
 	// PR8: register receives the same shared idempotency handler as clips.
 	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 

@@ -23,20 +23,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// Service is the YouTubeRegistrar implementation. 8-port budget per
-// architecture/policy.yaml::max_constructor_deps.
+// Service is the YouTubeRegistrar implementation. 9-port budget (8 + 1
+// transitional for Publisher migration). The `drive` field is retained
+// as fallback during FASE 5-8 migration; once all callers pass
+// Publisher-only, drive will be removed and the port count returns to 8.
 type Service struct {
 	fetcher     sourcing.FetchProviderPort
 	clips       sourcing.ClipStorePort
-	drive       sourcing.DrivePort
+	drive       sourcing.DrivePort       // Deprecated: fallback during Publisher migration
+	publisher   sourcing.PublisherPort   // FASE 5: canonical Drive upload canal
 	transcriber sourcing.TranscriptionPort
 	metadata    sourcing.MetadataUploadPort
-	indexDisp   IndexDispatcherPort // v2: merges IndexDisp + AssetTree (asset-tree is best-effort post-dispatcher, swallowed in composition root adapter)
+	indexDisp   IndexDispatcherPort // v2: merges IndexDisp + AssetTree
 	enrichment  EnrichmentPort      // v2: merges Jobs + Search + Config + legacy Enrichment
 	log         sourcing.Logger
 }
@@ -49,6 +53,7 @@ func NewService(
 	fetcher sourcing.FetchProviderPort,
 	clips sourcing.ClipStorePort,
 	drive sourcing.DrivePort,
+	publisher sourcing.PublisherPort,
 	transcriber sourcing.TranscriptionPort,
 	metadata sourcing.MetadataUploadPort,
 	indexDisp IndexDispatcherPort,
@@ -59,6 +64,7 @@ func NewService(
 		fetcher:     fetcher,
 		clips:       clips,
 		drive:       drive,
+		publisher:   publisher,
 		transcriber: transcriber,
 		metadata:    metadata,
 		indexDisp:   indexDisp,
@@ -176,43 +182,16 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		}
 	}
 
-	// ── 6. Resolve Drive target folder ────────────────────────────
+	// ── 6+9. Drive: resolve folder + upload via Publisher (FASE 5) ──────
+	// The Publisher replaces the legacy 3-call sequence:
+	//   GetOrCreateFolder(group) → GetOrCreateFolder(videoSlug) → UploadFileWithDescription
+	// with a single Publish call that resolves the path and uploads atomically.
+	// cmd.FolderID (backward compat) is passed as RootFolderOverride.
 	group := strings.TrimSpace(cmd.Group)
-	targetFolderID := strings.TrimSpace(cmd.FolderID)
-	if targetFolderID == "" && s.enrichment != nil {
-		cf, rf := s.enrichment.FolderDefaults()
-		if targetFolderID == "" {
-			targetFolderID = cf
-		}
-		if targetFolderID == "" {
-			targetFolderID = rf
-		}
-	}
-
-	if group != "" && targetFolderID != "" && s.drive != nil {
-		if existingName, err := s.drive.GetFolderName(ctx, targetFolderID); err == nil && CleanFolderName(existingName) == CleanFolderName(group) {
-			// reuse
-		} else {
-			dirID, err := s.drive.GetOrCreateFolder(ctx, group, targetFolderID)
-			if err != nil {
-				s.log.Warn("failed to create group folder", "group", group, "error", err)
-			} else {
-				targetFolderID = dirID
-			}
-		}
-	}
-	if targetFolderID != "" && videoID != "" && s.drive != nil {
-		videoSlug := videoID
-		if cmd.Name != "" {
-			if titleSlug := textutil.SlugifyWithMax(cmd.Name, 60); titleSlug != "" {
-				videoSlug = videoID + "-" + titleSlug
-			}
-		}
-		videoFolderID, err := s.drive.GetOrCreateFolder(ctx, videoSlug, targetFolderID)
-		if err != nil {
-			s.log.Warn("failed to create video subfolder", "slug", videoSlug, "error", err)
-		} else {
-			targetFolderID = videoFolderID
+	videoSlug := videoID
+	if cmd.Name != "" {
+		if titleSlug := textutil.SlugifyWithMax(cmd.Name, 60); titleSlug != "" {
+			videoSlug = videoID + "-" + titleSlug
 		}
 	}
 
@@ -236,14 +215,59 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		transcript, detectedLang, _ = s.transcriber.Transcribe(ctx, fetched.LocalPath)
 	}
 
-	// ── 9. Upload to Google Drive ───────────────────────────────────────────
+	// ── 9. Upload to Google Drive via Publisher (FASE 5) ───────────────
 	ext := ".mp4"
 	driveFilename := fmt.Sprintf("%s - %s%s", videoID, name, ext)
+	driveDesc := BuildDriveDescription(name, cmd.Description, description, cmd.Tags, cmd.Category, source, rawURL, videoID)
+
 	var uploadResult *sourcing.DriveUploadResult
-	if s.drive != nil {
-		driveDesc := BuildDriveDescription(name, cmd.Description, description, cmd.Tags, cmd.Category, source, rawURL, videoID)
-		result, err := s.drive.UploadFileWithDescription(ctx, fetched.LocalPath, targetFolderID, driveFilename, driveDesc)
+	targetFolderID := ""
+
+	if s.publisher != nil {
+		// Canonical path: Publisher resolves folder + uploads.
+		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+			Destination:       delivery.DestinationYouTubeClip,
+			LocalPath:         fetched.LocalPath,
+			Filename:          driveFilename,
+			Description:       driveDesc,
+			AssetID:           clipID,
+			Group:             group,
+			Subject:           videoSlug,
+			RootFolderOverride: strings.TrimSpace(cmd.FolderID),
+		})
 		if err != nil {
+			s.log.Warn("Drive upload via Publisher failed, continuing with local file only", "error", err)
+		} else {
+			targetFolderID = result.FolderID
+			uploadResult = &sourcing.DriveUploadResult{
+				FileID:      result.FileID,
+				WebViewLink: result.WebViewLink,
+			}
+			s.log.Info("uploaded to Drive via Publisher", "file_id", result.FileID, "link", result.WebViewLink)
+		}
+	} else if s.drive != nil {
+		// Legacy fallback: direct DrivePort calls. Will be removed in FASE 9.
+		rootID := strings.TrimSpace(cmd.FolderID)
+		if rootID == "" && s.enrichment != nil {
+			cf, rf := s.enrichment.FolderDefaults()
+			if cf != "" {
+				rootID = cf
+			} else if rf != "" {
+				rootID = rf
+			}
+		}
+		if group != "" && rootID != "" {
+			if dirID, err := s.drive.GetOrCreateFolder(ctx, group, rootID); err == nil {
+				rootID = dirID
+			}
+		}
+		if videoSlug != "" && rootID != "" {
+			if vidID, err := s.drive.GetOrCreateFolder(ctx, videoSlug, rootID); err == nil {
+				rootID = vidID
+			}
+		}
+		targetFolderID = rootID
+		if result, err := s.drive.UploadFileWithDescription(ctx, fetched.LocalPath, rootID, driveFilename, driveDesc); err != nil {
 			s.log.Warn("Drive upload failed, continuing with local file only", "error", err)
 		} else {
 			uploadResult = result

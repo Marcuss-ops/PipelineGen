@@ -90,6 +90,17 @@ type PublishRequest struct {
 	// ConflictPolicy controls duplicate-file behaviour. Zero-value
 	// (ConflictOverwrite) matches legacy behaviour.
 	ConflictPolicy ConflictPolicy `json:"conflict_policy,omitempty"`
+
+	// RootFolderOverride, when non-empty, overrides the root folder ID
+	// that the DestinationRegistry would normally resolve for this
+	// destination. This is a backward-compat escape hatch for callers
+	// that historically passed an explicit FolderID (e.g. script
+	// generation jobs that target a specific Drive folder). New code
+	// SHOULD NOT set this field — let the registry decide.
+	//
+	// Deprecated: will be removed once all callers migrate to
+	// DestinationKey-only routing (FASE 9 cleanup).
+	RootFolderOverride string `json:"root_folder_override,omitempty"`
 }
 
 // PublishResult is returned after a successful publish.

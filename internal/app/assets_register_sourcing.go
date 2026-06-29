@@ -14,6 +14,7 @@ import (
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/drivesync"
@@ -45,6 +46,7 @@ func newAssetRegisterService(
 	providerRegistry *providers.Registry,
 	clipsHandler *clipsapi.Handler,
 	dispatcher *outbox.Dispatcher,
+	publisher delivery.Publisher,
 ) *sourcing.Service {
 	// Build the YouTube sub-service with v2 adapters (June 2026, P0-1 / commit 1).
 	// The 2 v2 adapters absorb 6 legacy ports (IndexDispatcher + AssetTree +
@@ -65,6 +67,7 @@ func newAssetRegisterService(
 		&sourcingFetchAdapter{registry: providerRegistry},
 		&sourcingClipStoreAdapter{repo: clipsRepo},
 		&sourcingDriveAdapter{uploader: driveUploader},
+		&sourcingPublisherAdapter{publisher: publisher},
 		&sourcingTranscriberAdapter{cfg: cfg, log: log},
 		&sourcingMetadataAdapter{cfg: cfg, uploader: driveUploader, log: log},
 		ytIndex,
@@ -132,6 +135,8 @@ var (
 	// the former; sourcing itself never imports localimport, so no
 	// cycle).
 	_ sourcing.LocalImporter = (*localimport.Service)(nil)
+	// FASE 5: sourcingPublisherAdapter satisfies sourcing.PublisherPort.
+	_ sourcing.PublisherPort = (*sourcingPublisherAdapter)(nil)
 )
 
 // youtubeIndexDispatcherAdapter implements youtube.IndexDispatcherPort by
@@ -577,6 +582,22 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 // now inlines pkg/hashutil.MD5File directly). Permits the file's
 // `*sourcingHashAdapter` to be removed in a follow-up cleanup PR if
 // confirmed unused across the production composition chain.
+// sourcingPublisherAdapter implements sourcing.PublisherPort by wrapping
+// delivery.Publisher. FASE 5 (June 2026): this adapter bridges the
+// composition-root's delivery.Publisher (from DriveBundle.Publisher) into
+// the sourcing layer so the YouTubeRegistrar can use the canonical
+// Publisher path instead of direct DrivePort calls.
+type sourcingPublisherAdapter struct {
+	publisher delivery.Publisher
+}
+
+func (a *sourcingPublisherAdapter) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	if a.publisher == nil {
+		return nil, fmt.Errorf("sourcingPublisherAdapter: publisher not wired")
+	}
+	return a.publisher.Publish(ctx, req)
+}
+
 type sourcingHashAdapter struct{}
 
 func (a *sourcingHashAdapter) MD5File(path string) (string, error) {

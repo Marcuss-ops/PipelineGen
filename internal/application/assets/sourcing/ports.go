@@ -5,6 +5,8 @@ package sourcing
 import (
 	"context"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 // ── Fetch ports ────────────────────────────────────────────────────────
@@ -42,10 +44,23 @@ type DriveUploadResult struct {
 }
 
 // DrivePort handles Drive upload and folder operations for sourcing.
+// Deprecated: new code should use PublisherPort instead.
 type DrivePort interface {
 	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*DriveUploadResult, error)
 	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
 	GetFolderName(ctx context.Context, folderID string) (string, error)
+}
+
+// PublisherPort is the canonical Drive publish surface for sourcing.
+// It wraps delivery.Publisher and is the preferred way to upload files
+// to Drive. Callers describe WHAT to publish (DestinationKey + metadata);
+// the Publisher resolves WHERE it lands on Drive.
+//
+// Architecture rule (June 2026): new code MUST use PublisherPort instead
+// of DrivePort. DrivePort is retained only for legacy callers during
+// the incremental migration (FASE 5-8).
+type PublisherPort interface {
+	Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error)
 }
 
 // ── Clip store ports ───────────────────────────────────────────────────

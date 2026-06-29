@@ -90,6 +90,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		},
 		Delivery: DeliveryDeps{
 			DriveClient: root.Drive.DriveClient,
+			Publisher:   root.Drive.Publisher,
 		},
 		Background: BackgroundDeps{
 			IdempotencyStore:        root.Repos.IdempotencyStore,

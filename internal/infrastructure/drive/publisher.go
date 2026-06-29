@@ -79,7 +79,14 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		return nil, err
 	}
 
-	if policy.RootFolderID == "" {
+	// Allow callers to override the root folder (backward compat for
+	// script generation jobs that pass an explicit FolderID).
+	rootFolderID := policy.RootFolderID
+	if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
+		rootFolderID = override
+	}
+
+	if rootFolderID == "" {
 		return nil, fmt.Errorf(
 			"delivery: destination %q has no configured root folder",
 			req.Destination,
@@ -101,9 +108,9 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	}
 
 	// Step 4: Resolve or create the folder hierarchy.
-	folderID := policy.RootFolderID
+	folderID := rootFolderID
 	if len(segments) > 0 {
-		folderID, err = p.folders.EnsureFolder(ctx, policy.RootFolderID, segments...)
+		folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
 		if err != nil {
 			return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
 		}
