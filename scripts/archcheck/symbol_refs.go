@@ -11,18 +11,27 @@
 //
 // How it works:
 //
-//  1. Walk every architecture/**/*.yaml file under the supplied
-//     yamlDir (top-level *.yaml files PLUS yamlDir/archive/**/*.yaml,
-//     recursively). The function deliberately scopes to those two
-//     surfaces and NOT to ownership/*.yaml or migrations/*.yaml —
-//     the latter are aggregate-data sub-trees whose contents are
-//     owned by other tools (cmd/architecture-aggregate, the migration
-//     inventory composer) and whose stale references would surface
-//     as a different class of bug that this check should not chase.
-//  2. Extract leaf-string-scalar values (the right-hand side of
-//     `key: value` lines and `- item` list entries; literal/folded
-//     block-scalar bodies (`|-`, `>-`) are joined and treated as one
-//     leaf). Block-mapping keys are NOT extracted.
+//  1. Walk ONLY the two yamlDir files named in the slice 4/4 spec
+//     (action P0-5 of cleanup plan, June 2026):
+//
+//	yamlDir/current.yaml  — active migration / wave tracker
+//	yamlDir/issues.yaml   — open technical-issues tracker
+//
+//     Other yaml surfaces (policy.yaml, deprecations.yaml,
+//     ownership.generated.yaml, ownership/<split>.yaml,
+//     migrations/*.yaml, archive/**/*.yaml) are deliberately EXCLUDED:
+//     each is owned by different tooling (cmd/archcheck policy rules,
+//     architecture-aggregate generator, migration inventory composer,
+//     snapshot audit) and their stale-reference drift is a different
+//     bug class that symbol_refs.go should not chase.
+//
+//  2. From each scanned file, emit ONLY the leaf scalars whose
+//     ancestor chain (tracked via an indentation-aware stack) includes
+//     one of the canonical ScopedParentKeys (`linked_issues` and
+//     `blocker`). Leaves under `exit_gate`, `description`, `title`,
+//     `status`, etc. — which often contain English prose that freely
+//     mentions `internal/...` paths for documentation — are NOT
+//     emitted, eliminating false-positive violations.
 //  3. Skip full-line comments (lines starting with `#` after
 //     trim). AGENTS.md zero-legacy rule.
 //  4. Find sub-tokens whose FIRST 3+ bytes match one of the
@@ -102,6 +111,27 @@ type Findings []Finding
 // scanned for each prefix in turn; the first hit wins.
 var goPathPrefixes = []string{"internal/", "pkg/", "cmd/"}
 
+// ScopedParentKeys are the YAML parent keys whose descendant leaf
+// scalars MUST be checked for Go-path references per slice 4/4
+// (action P0-5 of cleanup plan, June 2026). Other parent keys
+// (`status`, `owner`, `deadline`, `exit_gate`, `exit_signal`,
+// `title`, `description`, ...) are OFF-LIMITS for this check — they
+// describe qualitative behaviour or narrative prose and freely
+// mention `internal/...` tokens in plain English, which would
+// generate false-positive violations.
+//
+// `linked_issues` and `blocker` are the two canonical cross-
+// reference fields in the architecture current.yaml / issues.yaml
+// schema: every entry under them points at a ticket whose
+// `owner_capability` annotation SHOULD resolve to a real codebase
+// location. Earlier P0-5 slices (1-3) surfaced these fields and
+// slimmed the schema; slice 4/4 promotes resolution of their values
+// to a hard CI gate.
+var ScopedParentKeys = map[string]bool{
+	"linked_issues": true,
+	"blocker":       true,
+}
+
 // CheckSymbolReferences walks yamlDir for *.yaml files
 // (top-level + yamlDir/archive/ recursively) and returns one
 // Finding per Go-like token that does not resolve on the file
@@ -125,7 +155,7 @@ func CheckSymbolReferences(yamlDir string) (Findings, error) {
 
 	out := Findings{}
 	for _, f := range files {
-		leaves, scanErr := scanYAMLLeafScalars(f)
+		leaves, scanErr := scanYAMLScopedLeafScalars(f, ScopedParentKeys)
 		if scanErr != nil {
 			return out, fmt.Errorf("scan %s: %w", f, scanErr)
 		}
@@ -156,45 +186,34 @@ func CheckSymbolReferences(yamlDir string) (Findings, error) {
 	return out, nil
 }
 
-// collectYAMLFiles enumerates the two YAML surfaces that this check
-// owns: yamlDir/*.yaml (top-level) and yamlDir/archive/**/*.yaml
-// (recursive). Both are in-scope per slice 4/4: current.yaml +
-// issues.yaml + ownership.generated.yaml (although generated) live
-// at the top level; the historical/audit snapshot
-// (`architecture/archive/2026-06-29/current-snapshot-*.yaml`) lives
-// under yamlDir/archive. Recursion is intentionally LIMITED to
-// archive/ — the ownership/, migrations/ sub-trees are owned by
-// different tooling and their stale refs would surface as a
-// different bug class.
+// collectYAMLFiles for slice 4/4 of action P0-5 returns ONLY the two
+// specific yamlDir files named in the user spec:
+//
+//	yamlDir/current.yaml   — active migration + wave tracker
+//	yamlDir/issues.yaml    — open technical-issues tracker
+//
+// Other yaml surfaces (policy.yaml, deprecations.yaml,
+// ownership.generated.yaml, ownership/<split>.yaml, migrations/*.yaml,
+// archive/**/*.yaml) are deliberately EXCLUDED: each is owned by
+// different tooling (cmd/archcheck policy rules, cmd/architecture-
+// aggregate generator, migration inventory composer, snapshot audit)
+// and their stale-reference drift is a different bug class that
+// symbol_refs.go should not chase.
+//
+// Each candidate path is os.Stat-checked so the gate stays GREEN
+// when one is briefly absent (e.g. on a fresh clone whose bootstrap
+// step has not yet written issues.yaml), instead of erroring out.
 func collectYAMLFiles(yamlDir string) ([]string, error) {
+	scoped := []string{
+		filepath.Join(yamlDir, "current.yaml"),
+		filepath.Join(yamlDir, "issues.yaml"),
+	}
 	var files []string
-
-	topEntries, err := os.ReadDir(yamlDir)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", yamlDir, err)
-	}
-	for _, e := range topEntries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".yaml") {
-			files = append(files, filepath.Join(yamlDir, e.Name()))
+	for _, p := range scoped {
+		if _, err := os.Stat(p); err == nil {
+			files = append(files, p)
 		}
 	}
-
-	archiveDir := filepath.Join(yamlDir, "archive")
-	if info, err := os.Stat(archiveDir); err == nil && info.IsDir() {
-		err := filepath.Walk(archiveDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if !info.IsDir() && strings.HasSuffix(info.Name(), ".yaml") {
-				files = append(files, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("walk %s: %w", archiveDir, err)
-		}
-	}
-
 	sort.Strings(files)
 	return files, nil
 }
@@ -348,6 +367,194 @@ func trimTrailingPunctuation(s string) string {
 		break
 	}
 	return s
+}
+
+// keyFrame is one (indent, key) entry in the indentation-tracking
+// stack used by scanYAMLScopedLeafScalars. Indent is the column
+// count of the leading whitespace on the line that introduced the
+// frame; key is the bare key name (no colons). The stack is
+// maintained such that deeper-or-equal indent frames are popped
+// before pushing a new frame so the top always points to the
+// most-recent shallower key — that is, the YAML "nearest shallower
+// key" ancestor rule applied to a line-by-line walker.
+type keyFrame struct {
+	indent int
+	key    string
+}
+
+// scanYAMLScopedLeafScalars replaces scanYAMLLeafScalars for the
+// slice 4/4 production path. It walks yamlPath line by line,
+// tracks an indent-aware stack of parent-key frames, and emits a
+// leaf scalar ONLY when its ancestor chain includes one of the
+// scopedParents keys. scanYAMLLeafScalars is retained unchanged for
+// the existing TestScanYAMLLeafScalars_SkipsComments unit-test
+// surface so the leaf-scalar extractor remains testable in
+// isolation.
+//
+// Indent-tracking rules:
+//
+//	`key: value`     at indent I => pop stack[].indent >= I, push (I, key).
+//	`- key: value`   at indent I => the dash sits at column I,
+//	                   the `key:` starts at I+2; push (I+2, key).
+//	`- value`        (bare list item, no sub-key) at indent I =>
+//	                   no stack mutation; ancestor chain preserved.
+//	`key: |` / `key: >`  (block-scalar anchor) at indent I =>
+//	                   push (I, key); body lines inherit.
+//
+// Comments (full-line `#`-prefixed) are skipped per AGENTS.md
+// zero-legacy rule. Bodies within `|-` / `>-` block scalars are
+// collected and joined as a single leaf so prose like
+// `internal/application/voiceover` written across multiple lines
+// is detected as one token. The body inherits the anchor's parent
+// context, so a block scalar under `linked_issues:` is in scope
+// while a block scalar under `exit_gate:` (which contains
+// narrative prose) is intentionally out.
+func scanYAMLScopedLeafScalars(yamlPath string, scopedParents map[string]bool) ([]scannedScalar, error) {
+	raw, err := os.ReadFile(yamlPath)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(raw), "\n")
+
+	// Lazy-compiled per-scan regexes (one per file scan; cheap
+	// relative to file I/O but local to the function so the test
+	// fixture path stays compact).
+	keyOnlyRE := regexp.MustCompile(`^\s*([\w][\w_-]*):`)
+	// keyBareRE matches a key-only line (e.g. `linked_issues:` with
+	// no value after the colon). These open a new parent context
+	// whose descendants must be in-scope under the linked_issues /
+	// blocker filter — without this match, the parent-key stack would
+	// never see `linked_issues:` and every nested leaf would be
+	// silently dropped (parent-context bug surfaced by
+	// TestScanYAMLScopedLeafScalars_FiltersToParentKeys in
+	// symbol_refs_test.go).
+	keyBareRE := regexp.MustCompile(`^\s*([\w][\w_-]*):\s*$`)
+	listItemKeyValueRE := regexp.MustCompile(`^\s*-\s+([\w][\w_-]*):\s+(.+?)\s*$`)
+
+	var stack []keyFrame
+	var out []scannedScalar
+	inBlock := false
+	blockBody := []string{}
+	blockTopLine := 0
+	blockMinIndent := 0
+
+	pushKey := func(indent int, key string) {
+		for len(stack) > 0 && stack[len(stack)-1].indent >= indent {
+			stack = stack[:len(stack)-1]
+		}
+		stack = append(stack, keyFrame{indent: indent, key: key})
+	}
+	isInScope := func() bool {
+		for _, f := range stack {
+			if scopedParents[f.key] {
+				return true
+			}
+		}
+		return false
+	}
+
+	for i, rawLine := range lines {
+		lineNum := i + 1
+		trimmed := strings.TrimSpace(rawLine)
+
+		// Skip full-line comments.
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		indent := len(rawLine) - len(strings.TrimLeft(rawLine, " "))
+
+		// Block-scalar body handling: append body lines until
+		// indentation drops back to the anchor's column. Body
+		// lines inherit the anchor's parent context.
+		if inBlock {
+			stillInBlock := indent > blockMinIndent || rawLine == ""
+			commentLine := strings.HasPrefix(strings.TrimSpace(rawLine), "#")
+			switch {
+			case stillInBlock && !commentLine && rawLine != "":
+				blockBody = append(blockBody, rawLine)
+				continue
+			case stillInBlock:
+				continue
+			default:
+				if isInScope() {
+					out = append(out, scannedScalar{
+						line:  blockTopLine,
+						value: strings.Join(blockBody, "\n"),
+					})
+				}
+				inBlock = false
+				blockBody = nil
+			}
+		}
+
+		// Block-scalar anchor: `key: |`, `key: >`, `key: |-`,
+		// `key: >-`. Push the anchor's key onto the stack.
+		if blockAnchorRE.MatchString(rawLine) {
+			if m := keyOnlyRE.FindStringSubmatch(rawLine); m != nil {
+				pushKey(indent, m[1])
+			}
+			inBlock = true
+			blockTopLine = lineNum
+			blockMinIndent = len(rawLine) - len(strings.TrimLeft(rawLine, " ")) + 1
+			continue
+		}
+
+		// - key: value (list-item entry — the per-ticket fields
+		// under `linked_issues:` arrive in this shape).
+		if m := listItemKeyValueRE.FindStringSubmatch(rawLine); m != nil {
+			key, val := m[1], strings.Trim(m[2], `"'`)
+			pushKey(indent+2, key)
+			if isInScope() {
+				out = append(out, scannedScalar{line: lineNum, value: val})
+			}
+			continue
+		}
+
+		// key:   (bare key-only line — opens a new parent context.
+		// Must be matched BEFORE the `key: value` plain-flow case
+		// so the bare shape is consumed by pushKey (not by the value
+		// extractor, which would fail to match `\s+(.+?)\s*$` and
+		// silently drop the parent context). Examples: `linked_issues:`,
+		// `blocker:`, `description:`, `owner:`.
+		if m := keyBareRE.FindStringSubmatch(rawLine); m != nil {
+			pushKey(indent, m[1])
+			continue
+		}
+
+		// key: value (plain-flow).
+		if m := leafKeyValueRE.FindStringSubmatch(rawLine); m != nil {
+			if km := keyOnlyRE.FindStringSubmatch(rawLine); km != nil {
+				pushKey(indent, km[1])
+			}
+			val := strings.Trim(m[1], `"'`)
+			if isInScope() {
+				out = append(out, scannedScalar{line: lineNum, value: val})
+			}
+			continue
+		}
+
+		// - value (bare list item, e.g. `blocker: ["14"]`).
+		if m := listItemRE.FindStringSubmatch(rawLine); m != nil {
+			val := strings.Trim(m[1], `"'`)
+			if isInScope() {
+				out = append(out, scannedScalar{line: lineNum, value: val})
+			}
+			continue
+		}
+	}
+
+	// Defensive flush of a trailing open block scalar (file ended
+	// on a still-open block).
+	if inBlock {
+		if isInScope() {
+			out = append(out, scannedScalar{
+				line:  blockTopLine,
+				value: strings.Join(blockBody, "\n"),
+			})
+		}
+	}
+	return out, nil
 }
 
 // extractGoPathTokens scans a scalar value for substrings that

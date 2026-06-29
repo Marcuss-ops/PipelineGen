@@ -35,6 +35,12 @@
   title: "Audit stale ClipIDs references in scripts/adapters tests after the ClipEvidence.ClipIDs acceptance rename"
   status: pending
 
+- id: PLATFORM-HTTPSERVER-OWNER-MISMATCH
+  title: "Identify owner_capability for PR-PLATFORM-HTTPSERVER-MIDDLEWARE; internal/platform/httpserver does not exist on trunk (Wave 24 target-tree migration deferred); nearest valid Go sub-package internal/platform/config is semantically distinct (config-loading vs HTTP middleware) so no fallback should be substituted"
+  status: pending
+  linked_issues:
+    - 0
+
 - id: SSOT-script-defaults-drift
   title: "Reconcile pkg/defaults/script.go (WPM=140, DefaultLanguage=it) with generation_normalizer.go (WPM=150, Language=en)"
   status: pending

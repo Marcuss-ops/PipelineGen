@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -140,4 +141,138 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestScanYAMLScopedLeafScalars_FiltersToParentKeys asserts that
+// only leaves whose ancestor chain includes `linked_issues` or
+// `blocker` are emitted by the slice-4/4 scoped walker. Narratives
+// under `description:`, `exit_gate:`, and unrelated top-level keys
+// are NOT emitted so Go-path mentions in prose do not become
+// false-positive violations. The test mirrors the user-spec shape:
+//
+//	- `linked_issues:` list items with sub-fields (id, owner_capability,
+//	  status, deadline) are in scope.
+//	- `blocker:` list items are in scope.
+//	- block-scalar bodies under `linked_issues:` are in scope; bodies
+//	  under `exit_gate:` (or any other ancestry) are filtered out.
+func TestScanYAMLScopedLeafScalars_FiltersToParentKeys(t *testing.T) {
+	const yaml = `
+top_key: "internal/services/pkg_a"
+
+linked_issues:
+  - id: PR-A-ONE
+    owner_capability: internal/capabilities/voiceover
+    status: pending
+    deadline: 2026-07-10
+  - id: PR-B-TWO
+    owner_capability: "internal/application/voiceover"
+
+blocker:
+  - "16"
+
+narrative_under_unrelated_key:
+  internal/not_in_scope: yes
+  exit_gate: |
+    this prose mentions internal/application/voiceover but should be
+    filtered out by the parent-key scope filter.
+`
+	tmp, err := os.CreateTemp("", "symbol_refs_scoped_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(yaml); err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+
+	leaves, err := scanYAMLScopedLeafScalars(tmp.Name(), ScopedParentKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []string
+	for _, leaf := range leaves {
+		got = append(got, leaf.value)
+	}
+
+	mustContain := []string{
+		"PR-A-ONE",
+		"internal/capabilities/voiceover",
+		"internal/application/voiceover",
+		"pending",
+		"16",
+	}
+	for _, want := range mustContain {
+		if !sliceContainsValue(got, want) {
+			t.Errorf("expected leaf value %q in scoped output, got %v", want, got)
+		}
+	}
+
+	mustNotContain := []string{
+		"internal/not_in_scope",
+		"internal/services/pkg_a",
+		"this prose mentions internal/application/voiceover",
+	}
+	for _, ban := range mustNotContain {
+		if sliceContainsValue(got, ban) {
+			t.Errorf("did not expect leaf value %q in scoped output (parent-key filter failed), got %v", ban, got)
+		}
+	}
+}
+
+// TestCollectYAMLFiles_Slice44Scope asserts that the slice-4/4
+// collector returns ONLY architecture/current.yaml and
+// architecture/issues.yaml (the two files named in the user spec),
+// even when other yaml surfaces (policy.yaml, deprecations.yaml,
+// ownership.generated.yaml, archive/...) exist on disk. This
+// prevents the broader pre-scope scan from re-emerging during a
+// future refactor.
+func TestCollectYAMLFiles_Slice44Scope(t *testing.T) {
+	tmp, err := os.MkdirTemp("", "symbol_refs_col_*.d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmp)
+
+	// Create one in-scope file + several out-of-scope files to
+	// confirm the collector drops the out-of-scope ones.
+	mustWrite := func(p string) {
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = f.WriteString("key: internal/anything\n")
+		_ = f.Close()
+	}
+	mustWrite(filepath.Join(tmp, "current.yaml"))
+	mustWrite(filepath.Join(tmp, "issues.yaml"))
+	mustWrite(filepath.Join(tmp, "policy.yaml"))
+	mustWrite(filepath.Join(tmp, "deprecations.yaml"))
+	mustWrite(filepath.Join(tmp, "ownership.generated.yaml"))
+	if err := os.MkdirAll(filepath.Join(tmp, "archive", "2026-06-29"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(filepath.Join(tmp, "archive", "2026-06-29", "current-snapshot-2026-06-29.yaml"))
+
+	got, err := collectYAMLFiles(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(tmp, "current.yaml"),
+		filepath.Join(tmp, "issues.yaml"),
+	}
+	if !equalStringSlices(got, want) {
+		t.Errorf("collectYAMLFiles returned %v, want exactly %v (slice 4/4 scope contract violated)", got, want)
+	}
+}
+
+func sliceContainsValue(s []string, e string) bool {
+	for _, v := range s {
+		if v == e {
+			return true
+		}
+	}
+	return false
 }

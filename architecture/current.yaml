@@ -41,27 +41,33 @@
       status: pending
       deadline: 2026-07-15
     - id: PR-PLATFORM-HTTPSERVER-MIDDLEWARE
-      owner_capability: internal/platform/httpserver
       status: pending
       deadline: 2026-07-25
+      # owner_capability intentionally OMITTED (symbol_refs slice 4/4
+      # sweep, action P0-5 of cleanup plan): internal/platform/httpserver
+      # does not exist on trunk (Wave 24 target-tree migration deferred);
+      # nearest valid Go sub-package internal/platform/config is
+      # semantically distinct (config-loading vs HTTP middleware) so
+      # we deliberately do NOT substitute a fallback. Tracked as
+      # PLATFORM-HTTPSERVER-OWNER-MISMATCH in architecture/issues.yaml.
     - id: PR-CAPABILITIES-VOICEOVER-from-application
-      owner_capability: internal/capabilities/voiceover
+      owner_capability: internal/application/voiceover
       status: pending
       deadline: 2026-07-10
     - id: PR-DOMAIN-VOICEOVER-DEPRECATE
-      owner_capability: internal/capabilities/voiceover
+      owner_capability: internal/application/voiceover
       status: pending
       deadline: 2026-07-25
     - id: PR-APPLICATION-WORKFLOW-PROMO-NEST
-      owner_capability: internal/capabilities/voiceover
+      owner_capability: internal/application/voiceover
       status: pending
       deadline: 2026-07-10
     - id: PR-APPLICATION-CLIPS-NEST-ASSETS
-      owner_capability: internal/capabilities/assets/clips
+      owner_capability: internal/application/clips
       status: pending
       deadline: 2026-07-10
     - id: PR-APPLICATION-MEDIASEARCH-NEST-ASSETS
-      owner_capability: internal/capabilities/assets/mediasearch
+      owner_capability: internal/application/mediasearch
       status: pending
       deadline: 2026-07-10
     - id: PR-PHASE-A2-KERNEL-JOB-MIGRATION
@@ -201,7 +207,7 @@
   # additively; no handler/service call site or response shape changes.
   linked_issues:
     - id: PR-MANIFEST-STREAM-RECOVERY
-      owner_capability: internal/application/assets/manifest
+      owner_capability: internal/application/assets
       status: pending
       deadline: 2026-07-10
     - id: PR-VOICEOVER-RECOVERY
@@ -225,7 +231,7 @@
       deadline: 2026-07-10
       status: pending
     - id: PR-MIGRATIONS-PREFIX-AUDIT-2026-06-28
-      owner_capability: internal/infrastructure/database/sqlite
+      owner_capability: internal/infrastructure/database/sqlite/scripts
       deadline: 2026-07-10
       status: pending
     - id: PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2
