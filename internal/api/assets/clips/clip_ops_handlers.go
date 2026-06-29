@@ -1,54 +1,38 @@
+// Package clips — clip_ops_handlers.go:
+// Legacy home of the bulk_upload_youtube_clips job dispatcher.
+//
+// Split 4 (June 2026, override ADR 0009): HandleFixHash and
+// updateCumulativeMetadataJSON moved into ops.go (Ops cluster).
+// updateCumulativeMetadataJSON is also defined on *IngestHandler
+// (ingest.go Split 2) so the original copy here is strictly
+// orphaned code and was deleted.
+//
+// Split 5 (June 2026, BulkUpload cluster, not yet landed) will
+// move HandleBulkUploadYouTubeClipsJob into a dedicated
+// bulk_upload_transport.go receiver alongside the
+// BulkUploadYouTubeClips HTTP entrypoint and the
+// appclips.BulkUploadWorker. SourcesHandler.RegisterJobHandlers
+// still wires h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips",
+// h.HandleBulkUploadYouTubeClipsJob) directly against the
+// orchestrator *Handler, so the orchestrator surface stays stable
+// for Split 5 to assume.
 package clips
 
 import (
 	"context"
 	"fmt"
-	"net/http"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
+// HandleBulkUploadYouTubeClipsJob is the bulk_upload_youtube_clips
+// job dispatcher. Wired into the jobs system via
+// (*Handler).RegisterJobHandlers. The substantive work lives in
+// appclips.BulkUploadWorker (Split 5 territory).
 func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *domainjob.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	if h.bulkUploadWorker == nil {
 		return nil, fmt.Errorf("bulk upload worker not configured")
 	}
 	return h.bulkUploadWorker.HandleJob(ctx, j, tools)
-}
-
-func (h *Handler) HandleFixHash(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-	if h.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
-	}
-	report, err := h.clipOpsService.FixHash(c.Request.Context(), source, clipID)
-	if err != nil {
-		switch err {
-		case appclips.ErrFixHashVoiceoverUnsupported:
-			apiutil.BadRequest(c, err.Error())
-		case appclips.ErrFixHashMissingDriveLink:
-			apiutil.Error(c, http.StatusConflict, err.Error())
-		case appclips.ErrFixHashDispatcherUnavailable:
-			apiutil.Error(c, http.StatusServiceUnavailable, err.Error())
-		default:
-			apiutil.InternalError(c, err)
-		}
-		return
-	}
-	apiutil.OK(c, gin.H{"ok": true, "report": report})
-}
-
-// updateCumulativeMetadataJSON is a best-effort helper used by the upload flow.
-// The metadata file is maintained elsewhere; keep this call non-fatal so upload
-// progress isn't blocked on sidecar JSON persistence.
-func (h *Handler) updateCumulativeMetadataJSON(_ context.Context, _ string, _ string, _ string, _ map[string]interface{}, log *zap.Logger) {
-	if log != nil {
-		log.Debug("updateCumulativeMetadataJSON called")
-	}
 }
