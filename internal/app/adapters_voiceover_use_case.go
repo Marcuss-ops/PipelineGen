@@ -48,6 +48,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
@@ -228,91 +229,137 @@ var _ voiceover.AssetLifecycle = (*useCaseLifecycleAdapter)(nil)
 // ─────────────────────────────────────────────────────────────────────
 
 type useCaseRepoAdapter struct {
-	db *sql.DB
+	repo *sqassets.VoiceoversRepository
 }
 
-func newUseCaseRepoAdapter(db *sql.DB) *useCaseRepoAdapter {
-	if db == nil {
-		panic("app.adapters_voiceover_use_case: newUseCaseRepoAdapter: db is required (*sql.DB)")
+func newUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository) *useCaseRepoAdapter {
+	if repo == nil {
+		panic("app.adapters_voiceover_use_case: newUseCaseRepoAdapter: repo is required (*sqassets.VoiceoversRepository)")
 	}
-	return &useCaseRepoAdapter{db: db}
+	return &useCaseRepoAdapter{repo: repo}
 }
 
-// voiceoversTableColumns mirrors *assets.VoiceoversRepository.Upsert
-// (single source of truth for the canonical schema). Keep in sync
-// during schema migrations — drift here surfaces as runtime
-// ExecContext errors, not compile errors.
-const voiceoversTableColumns = `
-	id, request_id, text_hash, text_preview, language, voice, filename,
-	local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-	drive_link, download_link, file_hash, duration_seconds, status,
-	error, strategy, metadata, created_at, updated_at`
+// toInfraRecord converts the application-layer VoiceoverRecord
+// (string-form timestamps for JSON round-trip via job.Payload) to
+// the infrastructure-layer Record (time.Time for SQLite-native + a
+// DurationSeconds field for forward-compatibility). The two struct
+// shapes are NOT identical: voiceover.VoiceoverRecord is the wire
+// shape (string timestamps), assets.Record is the SQLite shape
+// (time.Time). Keeping the conversion localized here means a future
+// schema migration does NOT require touching the converter again —
+// the assets.Record surface IS the canonical column set.
+func (a *useCaseRepoAdapter) toInfraRecord(rec *voiceover.VoiceoverRecord) *sqassets.Record {
+	if rec == nil {
+		return nil
+	}
+	return &sqassets.Record{
+		ID:              rec.ID,
+		RequestID:       rec.RequestID,
+		TextHash:        rec.TextHash,
+		TextPreview:     rec.TextPreview,
+		Language:        rec.Language,
+		Voice:           rec.Voice,
+		Filename:        rec.Filename,
+		LocalPath:       rec.LocalPath,
+		CleanedPath:     rec.CleanedPath,
+		FolderID:        rec.FolderID,
+		FolderPath:      rec.FolderPath,
+		DriveFileID:     rec.DriveFileID,
+		DriveLink:       rec.DriveLink,
+		DownloadLink:    rec.DownloadLink,
+		FileHash:        rec.FileHash,
+		Status:          rec.Status,
+		Error:           rec.Error,
+		Strategy:        rec.Strategy,
+		Metadata:        rec.Metadata,
+		DurationSeconds: 0, // canonical use case does not track duration today
+		CreatedAt:       parseRFC3339OrNow(rec.CreatedAt),
+		UpdatedAt:       parseRFC3339OrNow(rec.UpdatedAt),
+	}
+}
+
+// fromInfraRecord is the inverse of toInfraRecord — used by
+// PreReadByID to surface a real (non-stub) row to the use case so
+// the post-commit cleanup goroutine can capture orphan paths.
+func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *voiceover.VoiceoverRecord {
+	if r == nil {
+		return nil
+	}
+	createdAt := ""
+	if !r.CreatedAt.IsZero() {
+		createdAt = timeutil.FormatRFC3339(r.CreatedAt)
+	}
+	updatedAt := ""
+	if !r.UpdatedAt.IsZero() {
+		updatedAt = timeutil.FormatRFC3339(r.UpdatedAt)
+	}
+	return &voiceover.VoiceoverRecord{
+		ID:           r.ID,
+		RequestID:    r.RequestID,
+		TextHash:     r.TextHash,
+		TextPreview:  r.TextPreview,
+		Language:     r.Language,
+		Voice:        r.Voice,
+		Filename:     r.Filename,
+		LocalPath:    r.LocalPath,
+		CleanedPath:  r.CleanedPath,
+		FolderID:     r.FolderID,
+		FolderPath:   r.FolderPath,
+		DriveFileID:  r.DriveFileID,
+		DriveLink:    r.DriveLink,
+		DownloadLink: r.DownloadLink,
+		FileHash:     r.FileHash,
+		Status:       r.Status,
+		Error:        r.Error,
+		Strategy:     r.Strategy,
+		Metadata:     r.Metadata,
+		CreatedAt:    createdAt,
+		UpdatedAt:    updatedAt,
+	}
+}
+
+// parseRFC3339OrNow parses an RFC3339 timestamp string into time.Time,
+// returning time.Now() as a defensive fallback (matches the legacy
+// pattern in *assets.VoiceoversRepository.Upsert). Keeps the helper
+// private to the adapter to avoid spreading date-parsing helpers
+// across packages.
+func parseRFC3339OrNow(s string) time.Time {
+	if s == "" {
+		return time.Now()
+	}
+	t := timeutil.ParseRFC3339(s)
+	if !t.IsZero() {
+		return t
+	}
+	return time.Now()
+}
 
 func (a *useCaseRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *voiceover.VoiceoverRecord) error {
 	if rec == nil {
 		return fmt.Errorf("useCaseRepoAdapter.InsertTx: nil record")
 	}
-	if rec.UpdatedAt == "" {
-		// The use case in usecase.go:271 calls InsertTx AFTER setting
-		// rec.UpdatedAt = now; fall back to time.Now() if it ever forgets.
-		rec.UpdatedAt = timeutil.FormatRFC3339(time.Now())
-	}
-	// Atomic UPSERT guarantees (a) the OLD record is never
-	// observable AFTER the NEW record, and (b) the caller does not
-	// need a separate DeleteByIDTx BEFORE this InsertTx (PR-VO-A2
-	// atomic-swap contract — both DELETE and INSERT collapse into
-	// one UPSERT with ON CONFLICT(id) DO UPDATE).
-	q := `INSERT INTO voiceovers (` + voiceoversTableColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			request_id = excluded.request_id,
-			text_hash = excluded.text_hash,
-			text_preview = excluded.text_preview,
-			language = excluded.language,
-			voice = excluded.voice,
-			filename = excluded.filename,
-			local_path = excluded.local_path,
-			cleaned_path = excluded.cleaned_path,
-			folder_id = excluded.folder_id,
-			folder_path = excluded.folder_path,
-			drive_file_id = excluded.drive_file_id,
-			drive_link = excluded.drive_link,
-			download_link = excluded.download_link,
-			file_hash = excluded.file_hash,
-			status = excluded.status,
-			error = excluded.error,
-			strategy = excluded.strategy,
-			metadata = excluded.metadata,
-			created_at = excluded.created_at,
-			updated_at = excluded.updated_at`
-	_, err := tx.ExecContext(ctx, q,
-		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
-		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
-		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash,
-		rec.Status, rec.Error, rec.Strategy, rec.Metadata,
-		rec.CreatedAt, rec.UpdatedAt,
-	)
-	return err
+	return a.repo.InsertTx(ctx, tx, a.toInfraRecord(rec))
 }
 
 func (a *useCaseRepoAdapter) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
 	if id == "" {
 		return fmt.Errorf("useCaseRepoAdapter.DeleteByIDTx: empty id")
 	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, id)
-	return err
+	return a.repo.DeleteByIDTx(ctx, tx, id)
 }
 
 func (a *useCaseRepoAdapter) PreReadByID(ctx context.Context, id string) (*voiceover.VoiceoverRecord, error) {
-	// No-op per the use case contract at usecase.go:188 — the use
-	// case captures PreReadByID for the eventual Block 7 CONTRACT
-	// migration (post-commit orphan-eviction), but the legacy
-	// Service.cleanupOrphanVoiceover handles the actual eviction
-	// today. Returning (nil, nil) keeps the use case compile-clean
-	// without changing observable behavior.
-	_ = ctx
-	_ = id
-	return nil, nil
+	if id == "" {
+		return nil, fmt.Errorf("useCaseRepoAdapter.PreReadByID: empty id")
+	}
+	r, err := a.repo.PreReadByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("useCaseRepoAdapter.PreReadByID: %w", err)
+	}
+	if r == nil {
+		return nil, nil
+	}
+	return a.fromInfraRecord(r), nil
 }
 
 var _ voiceover.VoiceoverRepository = (*useCaseRepoAdapter)(nil)
