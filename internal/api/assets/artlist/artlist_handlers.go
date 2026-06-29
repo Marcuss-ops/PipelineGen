@@ -107,8 +107,6 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 	internalGroup := r.Group("")
 	{
 		internalGroup.GET("/diagnostics", h.Diagnostics)
-		internalGroup.POST("/search", h.Search)
-		internalGroup.POST("/search/live", h.SearchLive)
 		internalGroup.POST("/recommend", h.Recommend)
 		internalGroup.POST("/sync-catalogs", h.SyncCatalogs)
 	}

@@ -101,8 +101,6 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jo
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Idempotency, h.Extract)
 	r.GET("/info", h.GetVideoInfo)
-	r.GET("/search", h.SearchAdvanced)
-	r.POST("/search", h.SearchAdvanced)
 	r.GET("/diagnostics", h.Diagnostics)
 	r.GET("/stats", h.Stats)
 }
