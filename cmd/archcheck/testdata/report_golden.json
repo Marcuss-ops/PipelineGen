@@ -88,15 +88,15 @@
     ]
   },
   "summary": {
-    "total_violations": 38,
+    "total_violations": 37,
     "by_reason": {
       "constructor_deps": 9,
       "file_size": 25,
       "pkg_size": 2,
-      "thin_command": 2
+      "thin_command": 1
     },
     "by_severity": {
-      "warn": 38
+      "warn": 37
     }
   },
   "violations": [
@@ -405,15 +405,6 @@
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
       "severity": "warn"
-    },
-    {
-      "file": "cmd/archcheck/main.go",
-      "actual_lines": 337,
-      "max_lines": 200,
-      "matched_rule": "cmd_main_max_lines",
-      "rule": "thin_command",
-      "severity": "warn",
-      "note": "command binaries must be thin (root ctx + config + compose + mode + shutdown)"
     },
     {
       "file": "cmd/worker/main.go",
