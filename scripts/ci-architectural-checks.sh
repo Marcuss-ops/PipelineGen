@@ -2167,3 +2167,17 @@ bash "$(dirname "$0")/ci/architecture/checks/15_file_size.sh" || { echo "Step 6 
 bash "$(dirname "$0")/ci/architecture/checks/16_package_size.sh" || { echo "Step 6 check 16 (package size) failed"; exit 1; }
 # Check 43: forbid .DB() chain outside infrastructure (P1.6, June 2026)
 bash "$(dirname "$0")/ci/architecture/checks/43_db_chain_outside_infra.sh" || { echo "Check 43 (DB chain) failed"; exit 1; }
+
+# Check 45: forbid inline bare map[string]*ClipsRepository{...} literals (Wave 23, action P1-3)
+# Companion to Check 8 (S3e) which bans the fully-qualified
+# `"map[string]*assets.ClipsRepository{"` shape. Check 45 catches the
+# BARE / unqualified variant `"map[string]*ClipsRepository{"` -- a
+# likely regression shape if a future contributor imports the canonical
+# type without a package alias (or introduces a new unqualified alias).
+# Canonical-allowed sites (composition root + canonical registry +
+# tests + zero_legacy fixtures) are excluded via rg --glob inside the
+# check script.
+# NOTE: Check 44 (P1-2 application size cap + types_aliases ban) is
+# intentionally deferred to a separate follow-up PR; this slot avoids
+# the number collision and stays monotone-ratchetable.
+bash "$(dirname "$0")/ci/architecture/checks/45_inline_clips_repository_map_ban.sh" || { echo "Check 45 (inline ClipsRepository map ban) failed"; exit 1; }
