@@ -22,6 +22,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -170,6 +172,13 @@ type Handler struct {
 	// shape. Future sub-handlers (Ingest/Action/Ops/BulkUpload) follow the
 	// same pattern in subsequent atomic commits (2-6 of Step 5).
 	search *SearchHandler
+	// ingest (Split 2, June 2026, override ADR 0009): the Ingest
+	// sub-handler owns the 3 ingest routes (POST /:source/clips,
+	// PATCH /:source/clips/:id, POST /upload-video). The 12 deps it
+	// consumes are extracted from Deps by NewHandler into an
+	// IngestDeps shape. ActionReceiver (Split 3) follows the same
+	// pattern.
+	ingest *IngestHandler
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -192,6 +201,13 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
 	}
+	// Split 2 (June 2026, override ADR 0009): construct enrichUC as a
+	// local BEFORE the &Handler literal so it can be shared between
+	// the orchestrator uc mirror and the IngestDeps shape (and, in
+	// Split 3, ActionDeps too). Single source of construction; both
+	// sub-handlers and (transiently) the orchestrator mirror point at
+	// the same *appclips.EnrichUseCase instance.
+	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log)
 	return &Handler{
 		Idempotency:         idem,
 		assetRepo:           d.AssetRepo,
@@ -225,6 +241,26 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			ImagesRepo:     d.ImagesRepo,
 			SearchSvc:      d.SearchSvc,
 		}),
+		// Split 2 (June 2026, override ADR 0009): Ingest sub-handler
+		// owns 3 write+idem routes. The 12 Deps fields below move into
+		// the IngestDeps shape; orchestrator Deps struct keeps the
+		// public API unchanged so the composition root signature is
+		// non-breaking. EnrichUC pointer is shared with the
+		// orchestrator's local (single source of construction).
+		ingest: NewIngestHandler(IngestDeps{
+			Dispatcher:     d.Dispatcher,
+			AssetTreeSvc:   d.AssetTreeSvc,
+			JobsSvc:        d.JobsSvc,
+			SourceResolver: d.SourceResolver,
+			ArtifactSvc:    d.ArtifactSvc,
+			DriveUploader:  d.DriveUploader,
+			ProcessRunner:  d.ProcessRunner,
+			Cfg:            d.Cfg,
+			ClipIndexer:    d.ClipIndexer,
+			MetaWriter:     d.MetaWriter,
+			EnrichUC:       enrichUC,
+			Log:            d.Log,
+		}),
 
 		// Initialize use cases
 		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass the
@@ -242,7 +278,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		// is preserved bit-for-bit. The fallback exists so
 		// legacy test fixtures that construct `NewHandler`
 		// without `Deps.EnrichUC` don't break.
-		enrichUC: enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),
+		enrichUC: enrichUC,
 		// P0.5 (June 2026): ReuploadUseCase wired from Deps;
 		// nil tolerated for test fixtures (returns 500 at call time).
 		reuploadUC: d.ReuploadUC,
@@ -277,6 +313,41 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 		return nil
 	}
 	return h.search.repoForSource(source)
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Thin delegators (Split 2, June 2026) — Pattern mirrors Split 1's
+// repoForSource thin-dispatcher above. These preserve byte-compatible
+// behaviour for callers that wire Handler methods directly as
+// gin.HandlerFunc (e.g. dispatcher_fail_closed_test.go: g.POST("/clips",
+// h.CreateClip)). The canonical impl lives on *IngestHandler.
+// ──────────────────────────────────────────────────────────────────────
+
+// CreateClip thin-delegates to IngestHandler.CreateClip.
+func (h *Handler) CreateClip(c *gin.Context) {
+	if h.ingest == nil {
+		apiutil.Error(c, 503, "ingest sub-handler not wired")
+		return
+	}
+	h.ingest.CreateClip(c)
+}
+
+// UpdateClip thin-delegates to IngestHandler.UpdateClip.
+func (h *Handler) UpdateClip(c *gin.Context) {
+	if h.ingest == nil {
+		apiutil.Error(c, 503, "ingest sub-handler not wired")
+		return
+	}
+	h.ingest.UpdateClip(c)
+}
+
+// UploadVideoClip thin-delegates to IngestHandler.UploadVideoClip.
+func (h *Handler) UploadVideoClip(c *gin.Context) {
+	if h.ingest == nil {
+		apiutil.Error(c, 503, "ingest sub-handler not wired")
+		return
+	}
+	h.ingest.UploadVideoClip(c)
 }
 
 func (h *Handler) driveRootForSource(source string) (string, string) {
@@ -333,15 +404,17 @@ func (h *Handler) idemWriter() gin.HandlerFunc {
 // apply uniformly. Read routes are unchanged.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
-	// Clip-level endpoints
-	r.POST("/:source/clips", idem, h.CreateClip)
+	// Ingest sub-handler (Split 2, June 2026, override ADR 0009):
+	//   POST  /:source/clips           -> CreateClip      (write+idem)
+	//   PATCH /:source/clips/:id       -> UpdateClip      (write+idem)
+	//   POST  /upload-video            -> UploadVideoClip (write+idem)
+	h.ingest.RegisterRoutes(r, idem)
 	// Search sub-handler (Split 1, June 2026) owns these 4 routes:
 	//   GET  /:source/clips               -> ListClips       (read, no idem)
 	//   GET  /:source/clips/:id           -> GetClip         (read, no idem)
 	//   POST /:source/clips/:id/status    -> ClipStatus      (write+idem)
 	//   POST /search/advanced             -> AdvancedSearch  (write+idem)
 	h.search.RegisterRoutes(r, idem)
-	r.PATCH("/:source/clips/:id", idem, h.UpdateClip)
 	r.POST("/:source/clips/:id/verify", idem, h.VerifyClip)
 	r.POST("/:source/clips/:id/fix-hash", idem, h.HandleFixHash)
 	r.POST("/:source/clips/:id/trash", idem, h.TrashClip)
@@ -371,8 +444,4 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	// Cross-cutting actions on existing clip contexts
 	r.POST("/enrich", idem, h.EnrichMedia)
 	r.POST("/enrich/batch", idem, h.BatchReindex)
-
-	// Upload endpoints (multipart body bypasses body-hash; idempotency still
-	// observes in-flight 409 + completed replay).
-	r.POST("/upload-video", idem, h.UploadVideoClip)
 }
