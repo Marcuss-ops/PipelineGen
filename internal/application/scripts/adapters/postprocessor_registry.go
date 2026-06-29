@@ -70,6 +70,23 @@ type PipelineResult struct {
 	// callers that did not opt into the heuristic.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
 	Warnings           []string             `json:"warnings,omitempty"`
+	// FinalSpecScene (Issue #1, June 2026) is the canonical
+	// post-walk SpecScene surface consumed by buildGenerationResult.
+	// Pre-fix: buildGenerationResult read from engineResult.Output
+	// .SpecScene (the pre-walk view). The clip_bindings prose-fallback
+	// synthesised scenes into PipelineResult.SynthesizedScenes, but
+	// the synthesised bundle never reached GenerationResult.Output
+	// .SpecScene — the JSON envelope went out with empty scenes even
+	// when the heuristic engaged. Post-fix: mergePostProcessResult
+	// writes SynthesizedScenes back into the registry-local
+	// ProcessInput.SpecScene.Scenes (so document/persistence see
+	// populated scenes during the same Run) AND captures the
+	// post-walk envelope here. buildGenerationResult prefers
+	// postResult.FinalSpecScene with the empty-aware fallback so
+	// the normal-model-output path is unaffected. omitempty keeps
+	// the JSON envelope stable for calls that did not exercise any
+	// postprocessor.
+	FinalSpecScene scriptpkg.SpecSceneOutput `json:"final_specscene,omitempty"`
 }
 
 // ProcessorPolicy classifies a postprocessor's failure mode for
@@ -426,12 +443,24 @@ func (r *PostProcessorRegistry) Run(
 	r.mu.RUnlock()
 
 	if len(plan.Postprocessors) == 0 {
-		return &PipelineResult{}, nil
+		return &PipelineResult{FinalSpecScene: input.SpecScene}, nil
 	}
 
 	result := &PipelineResult{
-	StageDurations: make(map[string]int64),
-}
+		StageDurations: make(map[string]int64),
+	}
+	// Issue #1 (June 2026): seed FinalSpecScene with the
+	// pre-walk envelope so buildGenerationResult's empty-aware
+	// fallback sees a populated surface even when the loop
+	// short-circuits before calling mergePostProcessResult
+	// (empty-plan early return already covered above; processor
+	// outcomes that IsEmpty()==true also skip merge here). The
+	// mergePostProcessResult hook below overwrites this seed
+	// with the post-walk envelope whenever a processor
+	// successfully returns a non-empty result, so capturing
+	// currentInput.SpecScene acts as the canonical "last writer
+	// wins" snapshot at the post-walk time.
+	result.FinalSpecScene = input.SpecScene
 	var (
 		warnings          []string
 		requiredRequested int
@@ -509,7 +538,7 @@ func (r *PostProcessorRegistry) Run(
 			requiredSucceeded++
 		}
 
-		mergePostProcessResult(result, ppResult)
+		mergePostProcessResult(result, ppResult, &input)
 
 		if len(ppResult.Warnings) > 0 {
 			warnings = append(warnings, ppResult.Warnings...)
@@ -541,8 +570,29 @@ func (r *PostProcessorRegistry) Run(
 }
 
 // mergePostProcessResult copies non-zero fields from a processor
-// result into the aggregate PipelineResult.
-func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult) {
+// mergePostProcessResult copies non-zero fields from a processor
+// result into the aggregate PipelineResult, and writes back the
+// synthesised Scene slice into the registry-local ProcessInput so
+// subsequent postprocessors see the populated input.SpecScene.Scenes
+// (document/persistence stop reading empty scenes downstream of
+// the prose-fallback clip-bindings heuristic).
+//
+// Issue #1 (June 2026): the canonical pipeline-level SpecScene
+// surface lives on PipelineResult.FinalSpecScene. mergePostProcessResult
+// captures the post-walk SpecScene after every processor (in
+// last-writer-wins order — there's only ever one synthesizer at a
+// time so a copy is sufficient) so buildGenerationResult reads the
+// post-walk envelope via the empty-aware fallback in
+// generate_one_usecase.go.
+//
+// P1 #10 (June 2026) wall-clock timing — keep the per-processor
+// StageDurations map hot so the outer use case can stream it into
+// GenerationTimings.PostprocessMs (canonical Issue #3 plumbing).
+//
+// currentInput is the by-value copy of the ProcessInput that Run()
+// passes to processors; nil-safe so callers that pre-Issue-1 wiring
+// (eg. in older tests) keep working.
+func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
 	// P1 #10 (June 2026): record per-processor wall-clock timing.
 	if dst.StageDurations == nil {
 		dst.StageDurations = make(map[string]int64)
@@ -573,5 +623,32 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult) {
 	// invariant simple.
 	if len(src.SynthesizedScenes) > 0 {
 		dst.SynthesizedScenes = src.SynthesizedScenes
+		// Issue #1 (June 2026) WRITE-BACK. The registry passes
+		// the same `input` ProcessInput to every processor in
+		// the loop, so updating its SpecScene.Scenes here means
+		// every subsequent processor (document, persistence,
+		// voiceover, images) sees the synthesised bundle instead
+		// of the original empty specscene. Without this the
+		// prose-fallback heuristic could declare success
+		// (PipelineResult.SynthesizedScenes populated +
+		// IsEmpty == false) while downstream processors still
+		// received an envelope with empty SpecScene.Scenes —
+		// document got an empty storyboard, persistence stored
+		// an empty SpecScene row.
+		if currentInput != nil {
+			currentInput.SpecScene.Scenes = src.SynthesizedScenes
+		}
+	}
+	// Issue #1 (June 2026) FINAL SURFACE. Capture the post-walk
+	// SpecScene envelope so buildGenerationResult can read it
+	// instead of the pre-walk engineResult.Output.SpecScene.
+	// Set unconditionally (NOT inside the SynthesizedScenes
+	// branch) because the post-walk envelope is meaningful even
+	// when no synthesizer ran: in that case currentInput.SpecScene
+	// already mirrors engineResult.Output.SpecScene and the
+	// downstream consumer's empty-aware fallback decides whether
+	// to use it.
+	if currentInput != nil {
+		dst.FinalSpecScene = currentInput.SpecScene
 	}
 }
