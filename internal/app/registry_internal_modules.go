@@ -157,6 +157,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		YoutubeClipService: root.Domains.YoutubeClipService,
 		ClipIndexerService: root.Process.ClipIndexerService,
 		Dispatcher:         root.Outbox.Dispatcher,
+		Publisher:          root.Drive.Publisher,
 	})
 	wiring.StockPipeline = stockW
 	if stockErr != nil {
@@ -185,7 +186,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		Jobs:               root.Jobs,
 		CatalogSyncService: root.Sync.CatalogSync,
 	}
-	aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher)
+	aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher, root.Drive.Publisher)
 	if err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
 		return nil

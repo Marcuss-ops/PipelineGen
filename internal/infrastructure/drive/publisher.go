@@ -150,6 +150,45 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	}, nil
 }
 
+// ResolveFolder resolves the Drive folder for a destination without uploading.
+// Reuses steps 1-4 of Publish (resolve policy, build path, ensure folder).
+func (p *Publisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
+	policy, err := p.registry.Resolve(req.Destination)
+	if err != nil {
+		return "", err
+	}
+
+	rootFolderID := policy.RootFolderID
+	if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
+		rootFolderID = override
+	}
+
+	if rootFolderID == "" {
+		return "", fmt.Errorf("delivery: destination %q has no configured root folder", req.Destination)
+	}
+
+	segments, err := policy.PathBuilder(req)
+	if err != nil {
+		return "", fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
+	}
+
+	folderID := rootFolderID
+	if len(segments) > 0 {
+		folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
+		if err != nil {
+			return "", fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
+		}
+	}
+
+	p.log.Info("delivery: folder resolved",
+		zap.String("destination", string(req.Destination)),
+		zap.String("folder_id", folderID),
+		zap.Strings("segments", segments),
+	)
+
+	return folderID, nil
+}
+
 // normalizeFilename sanitises a filename for Drive upload.
 // Uses textutil.SanitizeFilename which strips path traversal, NUL bytes,
 // and other dangerous characters. Rejects empty results.

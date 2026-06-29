@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -240,9 +241,36 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	s.log.Info("processed clips interleaved", zap.Int("count", len(processedClips)))
 
-	folderID, err := s.resolveFolderTarget(ctx, input.FolderID, input.Subfolder, input.FolderName)
-	if err != nil {
-		return nil, fmt.Errorf("drive folder resolution: %w", err)
+	// FASE 8: resolve folder via canonical Publisher when available.
+	// StockPath returns [group, subject] = [subfolder, folderName] matching
+	// the legacy resolveFolderTarget order.
+	var folderID string
+	if s.publisher != nil && (input.Subfolder != "" || input.FolderName != "") {
+		pubReq := delivery.PublishRequest{
+			Destination: delivery.DestinationStock,
+			Group:       input.Subfolder,
+			Subject:     input.FolderName,
+		}
+		if input.FolderID != "" {
+			pubReq.RootFolderOverride = input.FolderID
+		}
+		fid, ferr := s.publisher.ResolveFolder(ctx, pubReq)
+		if ferr != nil {
+			return nil, fmt.Errorf("drive folder resolution: %w", ferr)
+		}
+		folderID = fid
+	} else if s.publisher == nil {
+		fid, ferr := s.resolveFolderTarget(ctx, input.FolderID, input.Subfolder, input.FolderName)
+		if ferr != nil {
+			return nil, fmt.Errorf("drive folder resolution: %w", ferr)
+		}
+		folderID = fid
+	} else {
+		// Both subfolder and folderName empty — use provided folderID or stock root.
+		folderID = input.FolderID
+		if folderID == "" {
+			folderID = s.cfg.Drive.StockFolder()
+		}
 	}
 	s.log.Info("drive destination resolved",
 		zap.String("folder_id", folderID),
@@ -341,15 +369,39 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	if err := os.WriteFile(metaPath, metaBytes, 0644); err != nil {
 		s.log.Error("failed to write pipeline metadata JSON", zap.Error(err))
 	} else {
-		metaUp, metaErr := s.driveUp.UploadFile(ctx, metaPath, folderID, "metadata.json")
-		if metaErr != nil {
-			s.log.Error("failed to upload pipeline metadata JSON", zap.Error(metaErr))
+		// FASE 8: upload metadata.json via Publisher when available.
+		if s.publisher != nil && (input.Subfolder != "" || input.FolderName != "") {
+			pubReq := delivery.PublishRequest{
+				Destination: delivery.DestinationStock,
+				LocalPath:   metaPath,
+				Filename:    "metadata.json",
+				Group:       input.Subfolder,
+				Subject:     input.FolderName,
+			}
+			if input.FolderID != "" {
+				pubReq.RootFolderOverride = input.FolderID
+			}
+			pubResult, pubErr := s.publisher.Publish(ctx, pubReq)
+			if pubErr != nil {
+				s.log.Error("failed to publish pipeline metadata JSON", zap.Error(pubErr))
+			} else {
+				result.MetadataLink = pubResult.WebViewLink
+				result.MetadataFileID = pubResult.FileID
+				s.log.Info("pipeline metadata JSON published",
+					zap.String("drive_link", pubResult.WebViewLink),
+				)
+			}
 		} else {
-			result.MetadataLink = metaUp.WebViewLink
-			result.MetadataFileID = metaUp.FileID
-			s.log.Info("pipeline metadata JSON uploaded",
-				zap.String("drive_link", metaUp.WebViewLink),
-			)
+			metaUp, metaErr := s.driveUp.UploadFile(ctx, metaPath, folderID, "metadata.json")
+			if metaErr != nil {
+				s.log.Error("failed to upload pipeline metadata JSON", zap.Error(metaErr))
+			} else {
+				result.MetadataLink = metaUp.WebViewLink
+				result.MetadataFileID = metaUp.FileID
+				s.log.Info("pipeline metadata JSON uploaded",
+					zap.String("drive_link", metaUp.WebViewLink),
+				)
+			}
 		}
 	}
 

@@ -19,4 +19,9 @@ import "context"
 //	is the single canal for all Drive writes.
 type Publisher interface {
 	Publish(ctx context.Context, req PublishRequest) (*PublishResult, error)
+
+	// ResolveFolder resolves the Drive folder for a destination without
+	// uploading a file. Used by capabilities that need folder-only
+	// resolution (Artlist, Script). Returns the resolved folder ID.
+	ResolveFolder(ctx context.Context, req PublishRequest) (string, error)
 }

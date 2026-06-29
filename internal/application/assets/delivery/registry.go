@@ -149,13 +149,11 @@ func ArtlistPath(req PublishRequest) ([]string, error) {
 	if group == "" {
 		return nil, fmt.Errorf("delivery: ArtlistPath: group (search term) is required")
 	}
-	if subject == "" {
-		return nil, fmt.Errorf("delivery: ArtlistPath: subject (asset ID) is required")
+	seg := []string{pathutil.SafeFolderName(group)}
+	if subject != "" {
+		seg = append(seg, pathutil.SafeFolderName(subject))
 	}
-	return []string{
-		pathutil.SafeFolderName(group),
-		pathutil.SafeFolderName(subject),
-	}, nil
+	return seg, nil
 }
 
 // StockPath builds the path for stock footage:
@@ -164,10 +162,13 @@ func ArtlistPath(req PublishRequest) ([]string, error) {
 func StockPath(req PublishRequest) ([]string, error) {
 	group := strings.TrimSpace(req.Group)
 	subject := strings.TrimSpace(req.Subject)
-	if group == "" {
-		return nil, fmt.Errorf("delivery: StockPath: group (category) is required")
+	if group == "" && subject == "" {
+		return nil, fmt.Errorf("delivery: StockPath: at least group or subject is required")
 	}
-	seg := []string{pathutil.SafeFolderName(group)}
+	var seg []string
+	if group != "" {
+		seg = append(seg, pathutil.SafeFolderName(group))
+	}
 	if subject != "" {
 		seg = append(seg, pathutil.SafeFolderName(subject))
 	}

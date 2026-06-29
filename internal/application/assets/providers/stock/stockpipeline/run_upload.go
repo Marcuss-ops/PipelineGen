@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -28,30 +28,57 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 		zap.String("local_path", chunkPath),
 	)
 
-	upResult, err := s.driveUp.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
-	if err != nil {
-		s.log.Error("failed to upload chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
-		return
+	var fileID, webViewLink, downloadLink string
+	// FASE 8: upload via canonical Publisher when available.
+	// StockPath returns [group, subject] = [subfolder, folderName].
+	if s.publisher != nil && (input.Subfolder != "" || input.FolderName != "") {
+		pubReq := delivery.PublishRequest{
+			Destination: delivery.DestinationStock,
+			LocalPath:   chunkPath,
+			Filename:    chunkTitle + ".mp4",
+			Group:       input.Subfolder,
+			Subject:     input.FolderName,
+		}
+		if input.FolderID != "" {
+			pubReq.RootFolderOverride = input.FolderID
+		}
+		pubResult, err := s.publisher.Publish(ctx, pubReq)
+		if err != nil {
+			s.log.Error("failed to publish chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
+			return
+		}
+		fileID = pubResult.FileID
+		webViewLink = pubResult.WebViewLink
+		downloadLink = "https://drive.google.com/uc?id=" + pubResult.FileID
+	} else {
+		upResult, err := s.driveUp.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
+		if err != nil {
+			s.log.Error("failed to upload chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
+			return
+		}
+		fileID = upResult.FileID
+		webViewLink = upResult.WebViewLink
+		downloadLink = upResult.DownloadLink
 	}
 
-	chunkRes.DriveLink = upResult.WebViewLink
-	chunkRes.DownloadLink = upResult.DownloadLink
-	chunkRes.DriveFileID = upResult.FileID
+	chunkRes.DriveLink = webViewLink
+	chunkRes.DownloadLink = downloadLink
+	chunkRes.DriveFileID = fileID
 	chunkRes.Title = chunkTitle
 
 	s.log.Info("stock pipeline upload completed",
 		zap.String("file", chunkTitle+".mp4"),
-		zap.String("drive_link", upResult.WebViewLink),
+		zap.String("drive_link", webViewLink),
 	)
 
 	if s.assetIndex != nil {
-		s.indexChunkToAssetIndex(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, upResult, videoCfg)
+		s.indexChunkToAssetIndex(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, fileID, webViewLink, downloadLink, videoCfg)
 	}
 }
 
 // indexChunkToAssetIndex saves the chunk record to the asset_index table.
-func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, upResult *driveup.UploadResult, videoCfg *config.VideoConfig) {
-	assetID := "stock_" + upResult.FileID
+func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, driveFileID, driveLink, downloadLink string, videoCfg *config.VideoConfig) {
+	assetID := "stock_" + driveFileID
 	s.log.Info("upserting chunk into asset_index",
 		zap.Int("chunk", chunkIdx),
 		zap.String("asset_id", assetID),
@@ -86,12 +113,12 @@ func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chun
 		AssetID:      assetID,
 		AssetType:    "stock_clip",
 		Source:       "stock",
-		SourceID:     upResult.FileID,
+		SourceID:     driveFileID,
 		GroupName:    input.FolderName,
 		Subfolder:    input.Subfolder,
 		LocalPath:    chunkPath,
-		DriveLink:    upResult.WebViewLink,
-		DownloadLink: upResult.DownloadLink,
+		DriveLink:    driveLink,
+		DownloadLink: downloadLink,
 		Status:       "ready",
 		Metadata:     string(metaJSON),
 		CreatedAt:    time.Now().UTC(),
@@ -105,12 +132,12 @@ func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chun
 
 	// Save to media_assets (clips DB)
 	if s.clipsRepo != nil {
-		s.indexChunkToClipsDB(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, upResult, videoCfg)
+		s.indexChunkToClipsDB(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, driveFileID, driveLink, downloadLink, videoCfg)
 	}
 }
 
 // indexChunkToClipsDB saves the chunk to the media_assets table for semantic search.
-func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, upResult *driveup.UploadResult, videoCfg *config.VideoConfig) {
+func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, driveFileID, driveLink, downloadLink string, videoCfg *config.VideoConfig) {
 	tags := []string{"stock", "clip"}
 	tags = append(tags, input.FolderName)
 	if input.Subfolder != "" {
@@ -121,7 +148,7 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 	}
 
 	clip := &asset.Asset{
-		ID:         upResult.FileID,
+		ID:         driveFileID,
 		Name:       chunkTitle + ".mp4",
 		Filename:   chunkTitle + ".mp4",
 		Group:      "stock",
@@ -136,9 +163,9 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 	}
 	clip.SetFolderID(folderID)
 	clip.SetFolderPath(input.Subfolder + "/" + input.FolderName)
-	clip.SetDriveLink(upResult.WebViewLink)
-	clip.SetDriveFileID(upResult.FileID)
-	clip.SetDownloadLink(upResult.DownloadLink)
+	clip.SetDriveLink(driveLink)
+	clip.SetDriveFileID(driveFileID)
+	clip.SetDownloadLink(downloadLink)
 	clip.SetLocalPath(chunkPath)
 	clip.SetMetadataString("status", "ready")
 	clip.SetMetadataString("search_text", clip.SearchText)

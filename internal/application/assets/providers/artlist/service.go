@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -36,6 +37,11 @@ type ServicePorts struct {
 	// application layer no longer reaches through a concrete to
 	// call Files.List/Trash/Download/Create.
 	DriveFolderManager DriveFolderManager
+	// Publisher is the canonical Drive upload/folder-resolution canal
+	// (FASE 8, June 2026). Used by DestinationService via PublisherPort
+	// for folder-only resolution. Nil-safe: falls back to legacy
+	// DriveFolderManager when Publisher is nil.
+	Publisher delivery.Publisher
 	// PR2: Searcher implementations injected from infrastructure.
 	// Nil means that level is skipped in the fallback chain.
 	ScraperSearcher Searcher
@@ -156,6 +162,11 @@ type Service struct {
 	// ServiceDeps.ServicePorts.DriveFolderManager.
 	driveFolderManager DriveFolderManager
 
+	// publisher is the canonical Drive upload/folder-resolution canal
+	// (FASE 8, June 2026). Used by DestinationService for folder-only
+	// resolution via PublisherPort.
+	publisher delivery.Publisher
+
 	// PR2: infrastructure Searcher implementations for the fallback chain.
 	scraperSearcher Searcher
 	pixabaySearcher Searcher
@@ -190,6 +201,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		metadataWriter:     deps.MetadataWriter,
 		dispatcher:         deps.Dispatcher,
 		driveFolderManager: deps.DriveFolderManager,
+		publisher:          deps.Publisher,
 		mediaProcessor:     deps.MediaProcessor,
 		lifecycleService:   deps.LifecycleService,
 		assetDestResolver:  deps.AssetDestResolver,
