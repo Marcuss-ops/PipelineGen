@@ -12,8 +12,8 @@
 //
 // This file is part of Blocco C1-Step 3 (June 2026): every capability
 // in `internal/api/**` and `internal/application/**` MUST expose a
-// Build(d) signature. Direct construction of `api.Registry.Register`
-// inside a capability package is forbidden (godlike/07 + future
+// Build(d) signature. Direct canonical-registry Calls inside a
+// capability package are forbidden (godlike/07 + future
 // `internal/app/capability_registry.go` hoist site). The composition
 // root consumes this Build via
 // `internal/app/module_sources.go::wireArtlistModule` and registers
@@ -80,10 +80,11 @@ type Dependencies struct {
 	// error when nil.
 	EnabledFunc func() bool
 
-	// ModuleOpts are variadic `api.ModuleOption` decorators (typically
-	// `api.WithMiddleware(...)`) applied to the RouteModule at Build
-	// time. OPTIONAL — nil produces a plain RouteModule.
-	ModuleOpts []api.ModuleOption
+	// ModuleOpts are variadic `api.RouteModuleOption` decorators
+	// (typically `api.WithMiddleware(...)`) applied to the
+	// RouteModule at Build time. OPTIONAL — nil produces a plain
+	// RouteModule.
+	ModuleOpts []api.RouteModuleOption
 
 	// Logger is the canonical structured logger. nil → zap.NewNop().
 	Logger *zap.Logger
