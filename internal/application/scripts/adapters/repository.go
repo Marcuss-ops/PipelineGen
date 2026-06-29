@@ -1,196 +1,282 @@
+// Package adapters — repository.go holds the canonical ScriptRepository
+// port re-exports (from ports/) plus the canonical adapter implementation
+// (sqliteRepoAdapter) bridging ports.ScriptRepository to the concrete
+// *sqlitescripts.ScriptRepository.
+//
+// P1.6 (June 2026): the canonical interface + record types moved to
+// ports/repository.go. This file re-exports them as type aliases for
+// back-compat and implements the adapter (the sqliteRepoAdapter struct
+// could not live in internal/infrastructure/database/sqlite/assets/
+// because of a pre-existing import cycle through resolver.go →
+// adapters → ports → voiceover → ... → sqlite/assets).
 package adapters
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 )
 
-// ScriptRepository is the canonical persistence contract for scripts.
-// The concrete implementation lives in
-// internal/infrastructure/database/sqlite (path TBD post-66c646b5).
-// Declaring it here decouples the persistence consumer from the
-// concrete repository and makes engine_test.go / persistence_test.go
-// cheap to write.
-//
-// Pre-66c646b5, the contract was inline in engine.go but reproduced
-// here with a minimal method surface so the build closure of the
-// application package doesn't pull in the full infra layer.
-//
-// PR 5 (June 2026): added FindScriptByIdempotencyKey — the single
-// persistence owner (PersistenceProcessor) computes an idempotency
-// key from (item_id, cache_key, prompt_version, target_words, language)
-// and looks up an existing row by it; on hit, the insert is skipped
-// and the existing ScriptID is returned. The Engine no longer
-// touches this interface — the only writer is PersistenceProcessor.
-type ScriptRepository interface {
-	SaveScript(ctx context.Context, rec *ScriptRecord, sections []ScriptSectionRecord, matches []ScriptStockMatchRecord) (int64, error)
-	UpdateScriptFinalContent(ctx context.Context, scriptID int64, outputText string, wordCount int, status, metadata, model, ollamaBaseURL string, version int) error
-	SaveGenerationLog(ctx context.Context, log ScriptGenerationLog) error
-	SaveOutlineSections(ctx context.Context, scriptID int64, sections []ScriptOutlineSectionRecord) error
-	SaveResearchSources(ctx context.Context, scriptID int64, sources []ScriptResearchSource) error
-	NextVersionForTopic(ctx context.Context, topic, language, mode string) (int, error)
-	GetSectionByID(ctx context.Context, sectionID int64) (*ScriptSectionRecord, error)
-	GetScriptByID(id int64) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error)
-	GetAdjacentSections(ctx context.Context, scriptID int64, sortOrder int) (prev, next *ScriptSectionRecord, err error)
-	UpdateSectionContent(ctx context.Context, sectionID int64, content string) error
-	ListScripts(ctx context.Context, filter ScriptListFilter) ([]*ScriptRecord, error)
+// ── Canonical port re-exports (P1.6) ─────────────────────────────────
 
-	// FindScriptByIdempotencyKey returns the existing script row
-	// (if any) whose idempotency key matches the reconciliation
-	// tuple (itemID, cacheKey, promptVersion, targetWords, language).
-	// The bool return is the existence flag — callers do not treat
-	// nil record + false as an error. A nil record with non-nil err
-	// indicates a real lookup failure (e.g. SQL error).
-	//
-	// PR 5 (June 2026): required by PersistenceProcessor for the
-	// single-writer contract. Implementations may use a dedicated
-	// column or an existing slot (current implementation uses the
-	// `template` slot to carry the idem key — PR 6 will introduce
-	// a dedicated idempotency_key column).
-	FindScriptByIdempotencyKey(ctx context.Context, itemID, cacheKey, promptVersion string, targetWords int, language string) (*ScriptRecord, bool, error)
+type ScriptRepository = ports.ScriptRepository
+type ScriptListFilter = ports.ScriptListFilter
+type ScriptSectionRecord = ports.ScriptSectionRecord
+type ScriptStockMatchRecord = ports.ScriptStockMatchRecord
+type ScriptResearchSource = ports.ScriptResearchSource
+type ScriptOutlineSectionRecord = ports.ScriptOutlineSectionRecord
+type ScriptGenerationLog = ports.ScriptGenerationLog
+type ScriptRecord = ports.ScriptRecord
+
+// ── Adapter: sqliteRepoAdapter ───────────────────────────────────────
+
+// sqliteRepoAdapter bridges the concrete *sqlitescripts.ScriptRepository
+// to the ports.ScriptRepository interface. P1.6 (June 2026): moved
+// from the deleted repository_adapter.go into this file; imports
+// ports types + sqlitescripts concrete.
+type sqliteRepoAdapter struct {
+	inner *sqlitescripts.ScriptRepository
 }
 
-// ScriptListFilter is the filter for listing scripts.
-type ScriptListFilter struct {
-	Topic    string
-	Language string
-	Status   string
-	Limit    int
-	Offset   int
+// Compile-time assertion: sqliteRepoAdapter satisfies ports.ScriptRepository.
+var _ ports.ScriptRepository = (*sqliteRepoAdapter)(nil)
+
+// NewRepositoryAdapter wraps a concrete sqlitescripts.ScriptRepository
+// and returns a ports.ScriptRepository.
+func NewRepositoryAdapter(inner *sqlitescripts.ScriptRepository) ScriptRepository {
+	if inner == nil {
+		return nil
+	}
+	return &sqliteRepoAdapter{inner: inner}
 }
 
-// ScriptSectionRecord is one row of the script_sections child table.
-// Kind discriminates ("preamble", "scene_narration", "cta", ...).
-type ScriptSectionRecord struct {
-	ID           int64
-	ScriptID     int64
-	Index        int
-	SectionType  string
-	SectionTitle string
-	Kind         string
-	Content      string
-	ContentText  string
-	WordCount    int
-	SortOrder    int
-	Status       string
+// ── Conversion helpers ─────────────────────────────────────────────
+
+func toSQLiteScriptRecord(rec *ports.ScriptRecord) *sqlitescripts.ScriptRecord {
+	if rec == nil {
+		return nil
+	}
+	var parentID *int64
+	if rec.ParentScriptID != 0 {
+		id := rec.ParentScriptID
+		parentID = &id
+	}
+	createdAt := ""
+	if !rec.CreatedAt.IsZero() {
+		createdAt = rec.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if !rec.UpdatedAt.IsZero() {
+		updatedAt = rec.UpdatedAt.Format(time.RFC3339)
+	}
+	return &sqlitescripts.ScriptRecord{
+		ID: rec.ID, Topic: rec.Topic, Title: rec.Title, Duration: rec.Duration,
+		Language: rec.Language, Template: rec.Template, Mode: rec.Mode, Tone: rec.Tone,
+		TargetWords: rec.TargetWords, FinalWordCount: rec.FinalWordCount,
+		Status: rec.Status, NarrativeText: rec.NarrativeText,
+		TimelineJSON: rec.TimelineJSON, EntitiesJSON: rec.EntitiesJSON,
+		MetadataJSON: rec.MetadataJSON, FullDocument: rec.FullDocument,
+		ModelUsed: rec.ModelUsed, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		Version: rec.Version, ParentScriptID: parentID, IsDeleted: false,
+		IdempotencyKey: rec.IdempotencyKey, SpecScene: rec.SpecScene,
+	}
 }
 
-// ScriptStockMatchRecord maps a script to a stock clip picked from the
-// stock pipeline's picker. Score is the relevance signal from the
-// matcher; Reason is a short human-readable justification.
-type ScriptStockMatchRecord struct {
-	ID           int64
-	ScriptID     int64
-	ClipID       string
-	Score        float64
-	Reason       string
-	SegmentIndex int
-	StockPath    string
-	StockSource  string
-	MatchedTerms string
+func fromSQLiteScriptRecord(rec *sqlitescripts.ScriptRecord) *ports.ScriptRecord {
+	if rec == nil {
+		return nil
+	}
+	var parentID int64
+	if rec.ParentScriptID != nil {
+		parentID = *rec.ParentScriptID
+	}
+	createdAt, _ := time.Parse(time.RFC3339, rec.CreatedAt)
+	updatedAt, _ := time.Parse(time.RFC3339, rec.UpdatedAt)
+	return &ports.ScriptRecord{
+		ID: rec.ID, Topic: rec.Topic, Title: rec.Title, Duration: rec.Duration,
+		Language: rec.Language, Template: rec.Template, Mode: rec.Mode, Tone: rec.Tone,
+		TargetWords: rec.TargetWords, FinalWordCount: rec.FinalWordCount,
+		Status: rec.Status, NarrativeText: rec.NarrativeText,
+		OutputText: rec.NarrativeText, FullDocument: rec.FullDocument,
+		MetadataJSON: rec.MetadataJSON, TimelineJSON: rec.TimelineJSON,
+		EntitiesJSON: rec.EntitiesJSON, ModelUsed: rec.ModelUsed, Model: rec.ModelUsed,
+		WordCount: rec.FinalWordCount, ParentScriptID: parentID, Version: rec.Version,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
+		IdempotencyKey: rec.IdempotencyKey, SpecScene: rec.SpecScene,
+	}
 }
 
-// ScriptResearchSource is one row of the script_research_sources child
-// table — every external source the writer LLM referenced so QA can
-// reproduce the research path.
-type ScriptResearchSource struct {
-	ScriptID       int64
-	Source         string
-	Query          string
-	URL            string
-	Title          string
-	Snippet        string
-	Excerpt        string
-	SourceType     string
-	UsedInSections string
-	RelevanceScore float64
+func buildSectionRows(in []ports.ScriptSectionRecord) *sqlitescripts.SectionRows {
+	b := sqlitescripts.NewSectionRows(len(in))
+	for _, s := range in {
+		b.Add(s.ID, s.ScriptID, s.SectionType, s.SectionTitle, s.Content, s.SortOrder, s.WordCount, s.Status)
+	}
+	return b
 }
 
-// ScriptOutlineSectionRecord is one row of the outline_sections child
-// table — the pre-write structural plan the editor LLM produces, matched
-// 1-1 with ScriptSectionRecord on Index after generation.
-type ScriptOutlineSectionRecord struct {
-	ScriptID      int64
-	SectionIndex  int
-	Index         int
-	Title         string
-	Summary       string
-	Actor         string
-	Purpose       string
-	TargetWords   int
-	KeyPointsJSON string
-	EmotionalRole string
+func buildStockMatchRows(in []ports.ScriptStockMatchRecord) *sqlitescripts.StockMatchRows {
+	b := sqlitescripts.NewStockMatchRows(len(in))
+	for _, m := range in {
+		b.Add(m.ID, m.ScriptID, m.SegmentIndex, m.StockPath, m.StockSource, m.Score, m.MatchedTerms)
+	}
+	return b
 }
 
-// ScriptGenerationLog is one row of the script_generation_logs audit
-// table — every pipeline phase emits a row so operators can correlate
-// retries / cache hits / errors.
-type ScriptGenerationLog struct {
-	ScriptID    int64
-	Phase       string
-	PromptHash  string
-	Model       string
-	InputWords  int
-	OutputWords int
-	DurationMs  int64
-	RetryCount  int
-	CacheStatus string
-	Error       string
+func toSQLiteResearchSources(in []ports.ScriptResearchSource) []sqlitescripts.ScriptResearchSource {
+	out := make([]sqlitescripts.ScriptResearchSource, len(in))
+	for i, s := range in {
+		out[i] = sqlitescripts.ScriptResearchSource{
+			ScriptID: s.ScriptID, Query: s.Query, URL: s.URL,
+			Title: s.Title, Snippet: s.Snippet,
+			SourceType: s.SourceType, UsedInSections: s.UsedInSections,
+			RelevanceScore: s.RelevanceScore,
+		}
+	}
+	return out
 }
 
-// ScriptRecord is the canonical row of the scripts table — identity +
-// final output. Sections/matches live in their own child tables (see
-// ScriptSectionRecord + ScriptStockMatchRecord); they are not embedded
-// in this struct to avoid JSON-array columns on the SQL side.
-//
-// PR 6 (June 2026): dedicated IdempotencyKey + SpecScene fields replace
-// the pre-PR-6 dual-purpose Template / TimelineJSON slots — both
-// fields are written by PersistenceProcessor (the only writer) into
-// the dedicated columns on the SQL side. The Template field is
-// retained for downstream ListScripts filters (semantic-history
-// preservation). The TimelineJSON slot is retained as legacy
-// compatibility (the adapter still passes it through but does not
-// populate it as SpecScene JSON any longer).
-//
-// Note: this struct was previously declared inline in engine.go and
-// in types.go; the closure of Stage 2D consolidates it here as a stable
-// contract for engine_test.go and the future concrete repository.
-type ScriptRecord struct {
-	ID             int64
-	Title          string
-	Topic          string
-	Language       string
-	Tone           string
-	Model          string
-	ModelUsed      string
-	Template       string
-	Mode           string
-	Status         string
-	WordCount      int
-	TargetWords    int
-	FinalWordCount int
-	OutputText     string
-	NarrativeText  string
-	FullDocument   string
-	MetadataJSON   string
-	TimelineJSON   string
-	EntitiesJSON   string
-	ParentScriptID int64
-	Duration       int
-	Version        int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+func buildOutlineSectionRows(in []ports.ScriptOutlineSectionRecord) *sqlitescripts.OutlineSectionRows {
+	b := sqlitescripts.NewOutlineSectionRows(len(in))
+	for _, s := range in {
+		b.Add(s.ScriptID, s.SectionIndex, s.Title, s.Purpose, s.TargetWords, s.KeyPointsJSON, s.EmotionalRole)
+	}
+	return b
+}
 
-	// IdempotencyKey is the 16-hex-char SHA-256 prefix computed by
-	// PersistenceProcessor from the reconciliation tuple
-	// (item_id|cache_key|prompt_version|target_words|language). PR 6:
-	// stored on the dedicated `idempotency_key TEXT` column. The
-	// adapter passes it through transparently.
-	IdempotencyKey string
+func toSQLiteGenerationLog(in ports.ScriptGenerationLog) sqlitescripts.ScriptGenerationLog {
+	return sqlitescripts.ScriptGenerationLog{
+		ScriptID: in.ScriptID, Phase: in.Phase, PromptHash: in.PromptHash,
+		Model: in.Model, InputWords: in.InputWords, OutputWords: in.OutputWords,
+		DurationMs: in.DurationMs, RetryCount: in.RetryCount,
+		CacheStatus: in.CacheStatus, Error: in.Error,
+	}
+}
 
-	// SpecScene is the JSON-serialised SpecSceneOutput emitted by
-	// the engine. PR 6: stored on the dedicated `specscene TEXT`
-	// column; the pre-PR-6 path of stuffing SpecScene JSON into the
-	// TimelineJSON slot is gone.
-	SpecScene string
+// ── Interface methods ───────────────────────────────────────────────
+
+func (a *sqliteRepoAdapter) SaveScript(ctx context.Context, rec *ports.ScriptRecord, sections []ports.ScriptSectionRecord, matches []ports.ScriptStockMatchRecord) (int64, error) {
+	return a.inner.SaveScript(ctx, toSQLiteScriptRecord(rec), buildSectionRows(sections).Slice(), buildStockMatchRows(matches).Slice())
+}
+
+func (a *sqliteRepoAdapter) UpdateScriptFinalContent(ctx context.Context, scriptID int64, outputText string, wordCount int, status, metadata, model, ollamaBaseURL string, version int) error {
+	return a.inner.UpdateScriptFinalContent(ctx, scriptID, outputText, wordCount, status, metadata, model, ollamaBaseURL, version)
+}
+
+func (a *sqliteRepoAdapter) SaveGenerationLog(ctx context.Context, log ports.ScriptGenerationLog) error {
+	return a.inner.SaveGenerationLog(ctx, toSQLiteGenerationLog(log))
+}
+
+func (a *sqliteRepoAdapter) SaveOutlineSections(ctx context.Context, scriptID int64, sections []ports.ScriptOutlineSectionRecord) error {
+	return a.inner.SaveOutlineSections(ctx, scriptID, buildOutlineSectionRows(sections).Slice())
+}
+
+func (a *sqliteRepoAdapter) SaveResearchSources(ctx context.Context, scriptID int64, sources []ports.ScriptResearchSource) error {
+	return a.inner.SaveResearchSources(ctx, scriptID, toSQLiteResearchSources(sources))
+}
+
+func (a *sqliteRepoAdapter) NextVersionForTopic(ctx context.Context, topic, language, mode string) (int, error) {
+	return a.inner.NextVersionForTopic(ctx, topic, language, mode)
+}
+
+func (a *sqliteRepoAdapter) GetSectionByID(ctx context.Context, sectionID int64) (*ports.ScriptSectionRecord, error) {
+	sec, err := a.inner.GetSectionByID(ctx, sectionID)
+	if err != nil || sec == nil {
+		return nil, err
+	}
+	return &ports.ScriptSectionRecord{
+		ID: sec.ID, ScriptID: sec.ScriptID, SectionType: sec.SectionType,
+		SectionTitle: sec.SectionTitle, Content: sec.Content,
+		SortOrder: sec.SortOrder, WordCount: sec.WordCount, Status: sec.Status,
+	}, nil
+}
+
+func (a *sqliteRepoAdapter) GetScriptByID(id int64) (*ports.ScriptRecord, []ports.ScriptSectionRecord, []ports.ScriptStockMatchRecord, error) {
+	rec, sections, matches, err := a.inner.GetScriptByID(id)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	outSections := make([]ports.ScriptSectionRecord, 0, len(sections))
+	sqlitescripts.EachSectionRow(sections, func(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string) {
+		outSections = append(outSections, ports.ScriptSectionRecord{
+			ID: id, ScriptID: scriptID, Index: sortOrder,
+			SectionType: sectionType, SectionTitle: sectionTitle,
+			Content: content, SortOrder: sortOrder,
+			WordCount: wordCount, Status: status,
+		})
+	})
+	outMatches := make([]ports.ScriptStockMatchRecord, 0, len(matches))
+	sqlitescripts.EachStockMatchRow(matches, func(id, scriptID int64, segmentIndex int, stockPath, stockSource string, score float64, matchedTerms string) {
+		outMatches = append(outMatches, ports.ScriptStockMatchRecord{
+			ID: id, ScriptID: scriptID, SegmentIndex: segmentIndex,
+			StockPath: stockPath, StockSource: stockSource,
+			Score: score, MatchedTerms: matchedTerms,
+		})
+	})
+	return fromSQLiteScriptRecord(rec), outSections, outMatches, nil
+}
+
+func (a *sqliteRepoAdapter) GetAdjacentSections(ctx context.Context, scriptID int64, sortOrder int) (prev, next *ports.ScriptSectionRecord, err error) {
+	sp, sn, err := a.inner.GetAdjacentSections(ctx, scriptID, sortOrder)
+	if err != nil {
+		return nil, nil, err
+	}
+	if sp != nil {
+		r := ports.ScriptSectionRecord{
+			ID: sp.ID, ScriptID: sp.ScriptID, SectionType: sp.SectionType,
+			SectionTitle: sp.SectionTitle, Content: sp.Content,
+			SortOrder: sp.SortOrder, WordCount: sp.WordCount, Status: sp.Status,
+		}
+		prev = &r
+	}
+	if sn != nil {
+		r := ports.ScriptSectionRecord{
+			ID: sn.ID, ScriptID: sn.ScriptID, SectionType: sn.SectionType,
+			SectionTitle: sn.SectionTitle, Content: sn.Content,
+			SortOrder: sn.SortOrder, WordCount: sn.WordCount, Status: sn.Status,
+		}
+		next = &r
+	}
+	return prev, next, nil
+}
+
+func (a *sqliteRepoAdapter) UpdateSectionContent(ctx context.Context, sectionID int64, content string) error {
+	return a.inner.UpdateSectionContent(ctx, sectionID, content)
+}
+
+func (a *sqliteRepoAdapter) ListScripts(ctx context.Context, filter ports.ScriptListFilter) ([]*ports.ScriptRecord, error) {
+	recs, _, err := a.inner.ListScripts(filter.Limit, filter.Offset, filter.Language, filter.Topic)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ports.ScriptRecord, len(recs))
+	for i := range recs {
+		out[i] = fromSQLiteScriptRecord(&recs[i])
+	}
+	return out, nil
+}
+
+func (a *sqliteRepoAdapter) FindScriptByIdempotencyKey(ctx context.Context, itemID, cacheKey, promptVersion string, targetWords int, language string) (*ports.ScriptRecord, bool, error) {
+	if a == nil || a.inner == nil {
+		return nil, false, nil
+	}
+	hash := computeAdapterIdempotencyKey(itemID, cacheKey, promptVersion, targetWords, language)
+	rec, err := a.inner.FindByIdempotencyKey(ctx, hash, language)
+	if err != nil {
+		return nil, false, err
+	}
+	if rec == nil {
+		return nil, false, nil
+	}
+	return fromSQLiteScriptRecord(rec), true, nil
+}
+
+func computeAdapterIdempotencyKey(itemID, cacheKey, promptVersion string, targetWords int, language string) string {
+	tuple := fmt.Sprintf("%s|%s|%s|%d|%s", itemID, cacheKey, promptVersion, targetWords, language)
+	sum := sha256.Sum256([]byte(tuple))
+	return hex.EncodeToString(sum[:])[:16]
 }
