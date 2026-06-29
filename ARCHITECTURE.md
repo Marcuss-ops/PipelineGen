@@ -1,23 +1,13 @@
 # PipelineGen — Architecture
 
-> **Status**: canonical; replaces the scattered map previously in
-> `AGENTS.md` (old sections) and the README.
->
-> **Authority carve-out**: this doc covers structure and data flow.
->
-> - For **agent-facing rules** (AI generation policy, admin token, agent
->   instructions) `AGENTS.md` wins.
-> - For **data and configuration ownership** (DB driver lock, FTS5 ban,
->   schema boundaries, table capability ownership, Qdrant projection
->   sequence, Drive authority, configuration boot pipeline,
->   EXPAND/BACKFILL/CUTOVER/CONTRACT) the canonical source is
->   [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md).
-> - For the **target-tree axis** (Phase 0 governance, package-size caps,
->   per-capability directory rules) see `architecture/policy.yaml` and
->   §11.5 below.
->
-> If sources disagree, fix the code; the loader will tell you which
-> rule was violated.
+> For the meta-question *"what's authoritative here?"* — which doc is
+> the canonical source for which topic, and which are read-only
+> historical references — see [**`CANONICAL.md`**](./CANONICAL.md).
+> This file documents the **system structure and data flow** (§1–§14);
+> per-topic meta-claims that conflict with CANONICAL.md (e.g. drift
+> pointers to removed `docs/architecture/godlike/*` paths, removed
+> `docs/cleanup/README.md` references) are stripped in favour of
+> CANONICAL.md as the authoritative override.
 
 ## 1. What it is
 
@@ -193,7 +183,11 @@ Ticker (cfg.Jobs.CatalogSyncInterval, default 6h)
 > `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`), the
 > Qdrant projection carve-out, and future storage-engine migration
 > (EXPAND/BACKFILL/CUTOVER/CONTRACT) live canonically in
-> [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md).
+> [`CANONICAL.md`](./CANONICAL.md) §1; the operational content lives in
+> this file's §6 + `AGENTS.md § Instructions` + `§ Qdrant Entity
+> Associations` + `§ Utilities to prefer / pkg/sqlutil` (the
+> `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md` path
+> itself was removed in June 2026; content folded here).
 >
 > **Package-level enforcement** (which `internal/infrastructure/database/**`
 > package owns which table family, and per-`internal/application/*`
@@ -374,8 +368,10 @@ scraper). Everything else is external.
 > (`input → load → defaults → validate → immutable`), single-points-of
 > -defaults and -validation, the "business services receive narrow
 > capability configuration" rule, and the ban on runtime mutation /
-> duplicated fallbacks live canonically in
-> [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration).
+> duplicated fallbacks live canonically in [`CANONICAL.md`](./CANONICAL.md) §1;
+> the operational content lives in this file's §9 below (the
+> `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration`
+> path itself was removed in June 2026; content folded here).
 >
 > **Package-level ownership** for `internal/platform/config/**` is registered in
 > `architecture/ownership/infrastructure.yaml`; arbitrary capability
