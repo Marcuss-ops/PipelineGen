@@ -104,7 +104,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Clip source builder ────────────────────────────────────────────
 	var clipSourceBuilder *usecase.ClipSourceBuilder
 	if ollamaClient := gen.GetClient(); ollamaClient != nil {
-		clipSourceBuilder = usecase.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+		clipResolver := usecase.NewClipResolver(root.Repos.ClipsRepo, log)
+		clipSourceBuilder = usecase.NewClipSourceBuilder(clipResolver, ollamaClient, log)
 		if cfg.Reranker.Enabled {
 			clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
 				Enabled:   cfg.Reranker.Enabled,
@@ -353,39 +354,67 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
 	}
 
-	// ── Construct handler ──────────────────────────────────────────────
-	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-		Engine:              engine,
-		Section:             sectionRegen,
-		CacheEviction:       cacheEvictionUC,
-		Image:               root.Domains.ImageService,
-		Realtime:            root.Domains.RealtimeSearch,
-		Association:         root.Domains.AssocService,
-		Voiceover:           root.Domains.VoiceoverService,
-		AssetTree:           root.Search.AssetTreeService,
-		ClipSourceBuilder:   clipSourceBuilder,
-		MediaCurator:        mediaCurator,
-		Harvest:             harvestSvc,
-		ScriptsRepo:         scriptsRepoAdapter,
-		Memory:              memorySvc,
-		Jobs:                root.Jobs.Facade,
-		Registry:            appjobs.Compose(),
+	// ── Construct handler via Build contract (Blocco C1-Step 14) ───────
+	// Blocco C1-Step 14 (June 2026): ScriptFlow capability is now
+	// built via the canonical scriptapi.Build(deps)
+	// (api.Descriptor, error) contract, matching the artlist /
+	// youtube / clips / stock / voiceover / soundeffect /
+	// register / diagnostics / search / jobs precedent. The
+	// Handler is constructed inside Build and captured by the
+	// returned ScriptDescriptor's Module closure. The composition
+	// site type-asserts ONCE to *scriptapi.ScriptDescriptor
+	// (fail-closed) and reuses the concrete for the
+	// tryRegisterModule call (the concrete *ScriptDescriptor
+	// satisfies api.Descriptor structurally). The ScriptFlow
+	// capability has 6 non-HTTP methods (EnableAuth /
+	// AdminToken / GetVoiceoverService / GetGroupsResolver /
+	// ResolveDriveFolderID / MaybeCreateGoogleDoc) but ZERO
+	// external callers (verified via code-search 2026-06-29), so
+	// the Descriptor surface is the smallest in the tree today
+	// — just `Module` field + forwarder methods (matches the
+	// stock / voiceover / soundeffect / register / diagnostics /
+	// search / jobs precedent exactly).
+	// Blocco C1-Step 14 (June 2026): declare a local
+	// scriptapi.Dependencies value before calling scriptapi.Build
+	// to keep the wire-up scannable (matches the clips C1-Step 5
+	// precedent in `registerClips`). The 24 ScriptFlowDeps-equivalent
+	// fields are forwarded verbatim from the existing wireScriptFlow
+	// local variables; no field-renaming is performed.
+	scriptDeps := scriptapi.Dependencies{
+		Engine:                engine,
+		Section:               sectionRegen,
+		CacheEviction:         cacheEvictionUC,
+		Image:                 root.Domains.ImageService,
+		Realtime:              root.Domains.RealtimeSearch,
+		Association:           root.Domains.AssocService,
+		Voiceover:             root.Domains.VoiceoverService,
+		AssetTree:             root.Search.AssetTreeService,
+		ClipSourceBuilder:     clipSourceBuilder,
+		MediaCurator:          mediaCurator,
+		Harvest:               harvestSvc,
+		ScriptsRepo:           scriptsRepoAdapter,
+		Memory:                memorySvc,
+		Jobs:                  root.Jobs.Facade,
+		Registry:              appjobs.Compose(),
+		ClipsSearcher:         clipsSearcher,
 		AdminToken:            adminToken,
 		DriveFolderClient:     driveFolderClient,
 		DocumentCreator:       documentCreator,
 		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
 		ClipServices:          clipServices,
-		ClipsSearcher:         clipsSearcher,
-		Log:                   log,
-	})
+		EnabledFunc:           func() bool { return anyScriptFeatureEnabled(cfg) },
+		ModuleOpts:            nil, // no per-feature middleware (matches pre-Step-14 wiring)
+		Logger:                log,
+	}
+	scriptDescriptor, err := scriptapi.Build(scriptDeps)
+	if err != nil {
+		return fmt.Errorf("wireScriptFlow: %w", err)
+	}
+	sd, ok := scriptDescriptor.(*scriptapi.ScriptDescriptor)
+	if !ok || sd == nil {
+		return fmt.Errorf("wireScriptFlow: script.Build returned unexpected descriptor type %T (want *scriptapi.ScriptDescriptor)", scriptDescriptor)
+	}
 
 	// ── Register HTTP module ───────────────────────────────────────────
-	mod := module.NewRouteModule(
-		"script-flow",
-		func() bool { return anyScriptFeatureEnabled(cfg) },
-		"/script",
-		handler,
-		log,
-	)
-	return tryRegisterModule(registry, log, mod)
+	return tryRegisterModule(registry, log, sd)
 }
