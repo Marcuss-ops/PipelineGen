@@ -153,9 +153,9 @@ api_capabilities:
     concrete_constructors: []
   - name: assets/register
     path: internal/api/assets/register
-    has_build_signature: false
-    direct_register_calls: []
-    concrete_constructors: []      # sourcing.Service is port-injected; no concrete adapter import
+    has_build_signature: true       # module.go exposes `func Build(deps Dependencies) (api.Descriptor, error)` (Blocco C1-Step 9, June 2026); the existing *Handler (the YouTube registration orchestrator — 2 routes: POST /register-from-youtube + POST /register-batch) is reused as Descriptor via the Module closure. Pattern parity with `assets/artlist` (C1-Step 3) + `assets/youtube` (C1-Step 4) + `assets/clips` (C1-Step 5) + `assets/stock` (C1-Step 6) + `assets/voiceover` (C1-Step 7) + `assets/soundeffect` (C1-Step 8). The Descriptor surface is the smallest in the tree today (tied with stock / voiceover / soundeffect) — only `Module` field, no `Handler` / `Service` field (no non-HTTP consumer; the YouTubeRegistrar's non-HTTP surface is the `sourcingEnrichmentAdapter` which calls `clipsHandler.EnrichAndIndexClip` — that consumer is satisfied by `clipsDesc.Handler`, not by the register Handler). Module name "register" + empty prefix "" preserve the pre-Step-9 routing shape — the two routes mount directly on the parent /api/media group, matching /api/media/register-from-youtube + /api/media/register-batch URLs verbatim (zero-change-contract). The Dependencies.Service field is a concrete `*sourcing.Service` pointer (built at the composition root via `newAssetRegisterService`) — not a port interface (a future cleanup PR could extract a `sourcing.ServicePort` interface for consistency with the 6 precedents that consume the service-as-port pattern; current shape is the minimal-fabrication choice for Step 9). Gated by gate_test.go::TestStaticGate_NoRegisterAPIInfrastructureLeaks — module.go imports only api / sourcing / gin / zap (no internal/infrastructure/ leaks, no goroutines).
+    direct_register_calls: []      # gated by gate_test.go::TestStaticGate_NoRegisterAPIInfrastructureLeaks — prohibits go func + SafeGo (module.go has no goroutines)
+    concrete_constructors: []      # sourcing.Service is constructed at the composition root (not the api/ layer), per AGENTS.md Pattern 0
   - name: assets/search
     path: internal/api/assets/search
     has_build_signature: false      # Aggregator-backed; module is the canonical orchestrator, no Build wrapper
