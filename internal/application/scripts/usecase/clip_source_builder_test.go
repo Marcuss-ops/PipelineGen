@@ -4,9 +4,13 @@
 // These tests pin the invariant that the resolved IDs in the pack and the
 // keys of clip_drive_links are the canonical = REQUESTED IDs, not the
 // asset's internal ID. Production *assets.ClipsRepository is intentionally
-// NOT wired here — the new clipsResolverPort interface and
-// NewClipSourceBuilderForTest constructor let unit tests inject a stub
-// that returns clips with deliberate clip.ID != DriveFileID mismatches.
+// NOT wired here — the clipsResolverPort interface and
+// NewClipSourceBuilder constructor let unit tests inject a stub
+// (passing nil for ollamaClient) that returns clips with deliberate
+// clip.ID != DriveFileID mismatches.
+//
+// P1 #7 (June 2026): NewClipSourceBuilderForTest removed; tests use
+// the canonical NewClipSourceBuilder with nil ollamaClient.
 //
 // The semantic distinction is:
 //
@@ -22,10 +26,9 @@
 // never typed).
 //
 // PR-G.2 BACKFILL (June 2026): package moved from `scripts` (root facade)
-// to `usecase_test` (external). The NewClipSourceBuilderForTest symbol
-// is no longer reached via the `scripts.` facade; it is imported
-// directly from the canonical `usecase` subpackage. Test assertions
-// unchanged.
+// to `usecase_test` (external). P1 #7: tests use the canonical
+// NewClipSourceBuilder (with nil ollamaClient) instead of the
+// now-removed NewClipSourceBuilderForTest.
 package usecase_test
 
 import (
@@ -117,7 +120,7 @@ func TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6(t *testing.T) {
 		},
 	}
 
-	b := usecase.NewClipSourceBuilderForTest(stub, zap.NewNop())
+	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
 
 	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{driveFileID}, nil)
 	if err != nil {
@@ -176,7 +179,7 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 		},
 	}
 
-	b := usecase.NewClipSourceBuilderForTest(stub, zap.NewNop())
+	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{assetID}, nil)
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
@@ -207,7 +210,7 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 func TestClipSourceBuilder_Missing_NotFound_PR6(t *testing.T) {
 	stub := &stubClipsResolver{} // empty: any lookup returns (nil, err)
 
-	b := usecase.NewClipSourceBuilderForTest(stub, zap.NewNop())
+	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{"ghost"}, nil)
 	if err == nil {
 		t.Fatalf("BuildClipContext returned nil error for an all-missing request; want err")
@@ -232,7 +235,7 @@ func TestClipSourceBuilder_Missing_DriveNotFound_PR6(t *testing.T) {
 		},
 	}
 
-	b := usecase.NewClipSourceBuilderForTest(stub, zap.NewNop())
+	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{orphanID}, nil)
 	if err == nil {
 		t.Fatalf("expected error for all-missing-after-DriveLink-check; got nil")
@@ -262,7 +265,7 @@ func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 		byDrive: map[string]*asset.Asset{canonicalA: a},
 	}
 
-	builder := usecase.NewClipSourceBuilderForTest(stub, zap.NewNop())
+	builder := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	packRaw, _, _, err := builder.BuildClipContext(
 		context.Background(),
 		[]string{canonicalA, "missing-X", "clipB"},
