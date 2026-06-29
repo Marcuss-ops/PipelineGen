@@ -272,18 +272,18 @@ func (a *clipsJobsServiceAdapter) Enqueue(ctx context.Context, req clips.JobsEnq
 
 // ── SourceResolver adapter for ClipOpsService ─────────────────────
 
-// clipOpsSourceResolverAdapter wraps a map of source→ClipRepositoryPort
-// to satisfy clips.SourceResolverPort. Used by ClipOpsService to resolve
-// the correct repository for a given source string.
+// clipOpsSourceResolverAdapter wraps a single clips.ClipRepositoryPort.
+// Collapse (June 2026): SourceResolver eliminated — all clip-type sources
+// share the same concrete repo in production.
 type clipOpsSourceResolverAdapter struct {
-	repos map[string]clips.ClipRepositoryPort
+	clips clips.ClipRepositoryPort
 }
 
 var _ clips.SourceResolverPort = (*clipOpsSourceResolverAdapter)(nil)
 
 func (a *clipOpsSourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryPort {
-	if a == nil || a.repos == nil {
+	if a == nil {
 		return nil
 	}
-	return a.repos[source]
+	return a.clips
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -12,13 +11,13 @@ import (
 
 // BulkTagsUseCase adds or removes tags from multiple clips atomically.
 type BulkTagsUseCase struct {
-	sourceResolver *artifacts.SourceResolver
-	assetTreeSvc   *assettree.Service
+	clipsRepo    *assets.ClipsRepository
+	assetTreeSvc *assettree.Service
 }
 
 // NewBulkTagsUseCase constructs the use case.
-func NewBulkTagsUseCase(resolver *artifacts.SourceResolver, treeSvc *assettree.Service) *BulkTagsUseCase {
-	return &BulkTagsUseCase{sourceResolver: resolver, assetTreeSvc: treeSvc}
+func NewBulkTagsUseCase(clipsRepo *assets.ClipsRepository, treeSvc *assettree.Service) *BulkTagsUseCase {
+	return &BulkTagsUseCase{clipsRepo: clipsRepo, assetTreeSvc: treeSvc}
 }
 
 // BulkTagsRequest contains the input for bulk tag operations.
@@ -36,10 +35,10 @@ type BulkTagsResult struct {
 }
 
 func (uc *BulkTagsUseCase) repoForSource(source string) *assets.ClipsRepository {
-	if uc.sourceResolver == nil {
+	if uc.clipsRepo == nil {
 		return nil
 	}
-	return uc.sourceResolver.ResolveRepo(source)
+	return uc.clipsRepo
 }
 
 // AddTags adds tags to multiple clips.

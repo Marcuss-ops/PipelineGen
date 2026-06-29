@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -113,56 +112,24 @@ func (a *clipsHashAdapter) MD5File(path string) (string, error) {
 
 // ── Source resolver adapter ──────────────────────────────────────
 
-// sourceResolverAdapter wraps the composition-root
-// *artifacts.SourceResolver and re-projects its 3 internal repo
-// pointers through clips.ClipRepositoryPort, so the handler's
-// repoForSource(source string) ClipRepositoryPort stays port-pure.
-// The 3 adapter slots MUST be created from the same concrete repos
-// the resolver holds internally; otherwise the canonical-source
-// mime types desync from the actual repo the resolver returns.
+// sourceResolverAdapter wraps a single *assets.ClipsRepository via
+// clips.ClipRepositoryPort — all clip-type sources share the same
+// concrete repo in production. Collapse (June 2026): SourceResolver
+// eliminated; the 3-way switch is replaced by a single-port passthrough.
 type sourceResolverAdapter struct {
-	artlist clips.ClipRepositoryPort
-	clips   clips.ClipRepositoryPort
-	stock   clips.ClipRepositoryPort
+	clips clips.ClipRepositoryPort
 }
 
 // Compile-time assertion: sourceResolverAdapter satisfies clips.SourceResolverPort.
 var _ clips.SourceResolverPort = (*sourceResolverAdapter)(nil)
 
-func newSourceResolverAdapter(
-	artlistRepo clips.ClipRepositoryPort,
-	clipsRepo clips.ClipRepositoryPort,
-	stockRepo clips.ClipRepositoryPort,
-) clips.SourceResolverPort {
-	return &sourceResolverAdapter{
-		artlist: artlistRepo,
-		clips:   clipsRepo,
-		stock:   stockRepo,
-	}
+func newSourceResolverAdapter(clipsRepo clips.ClipRepositoryPort) clips.SourceResolverPort {
+	return &sourceResolverAdapter{clips: clipsRepo}
 }
 
-// ResolveRepo returns the canonical-source repo as a port.
-// Mirrors *artifacts.SourceResolver.ResolveRepo with one swap:
-// the return type is clips.ClipRepositoryPort (port), not
-// *assets.ClipsRepository (concrete infra). The handoff table maps
-// aliases "youtube"/"clips"/"sound_effect" to the clipsRepo slot and
-// "all"/"unified" to the clipsRepo primary access point. Voiceover
-// and images resolve to nil (the handler deals with those via the
-// separate VoiceoverRepositoryPort + ImageRepositoryPort slots).
+// ResolveRepo returns the canonical clips port for any clip-type source.
 func (r *sourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryPort {
-	canonical := artifacts.CanonicalSource(source)
-	switch canonical {
-	case "artlist":
-		return r.artlist
-	case "clips", "youtube", "sound_effect":
-		return r.clips
-	case "stock":
-		return r.stock
-	case "all", "unified":
-		return r.clips
-	default:
-		return nil
-	}
+	return r.clips
 }
 
 // ── Vector store adapter ─────────────────────────────────────────
@@ -294,7 +261,7 @@ func newClipsAdapterBundle(
 		// through the typed port instead of the pre-HC-1 hard-coded
 		// 2*time.Hour literal in bulk_upload_worker.go.
 		Cfg:            newClipsCfgAdapter(cfg, timeouts),
-		SourceResolver: newSourceResolverAdapter(artPort, clpPort, stockPort),
+		SourceResolver: newSourceResolverAdapter(clpPort),
 		ClipsRepo:      clpPort,
 		StockRepo:      stockPort,
 		ArtlistRepo:    artPort,

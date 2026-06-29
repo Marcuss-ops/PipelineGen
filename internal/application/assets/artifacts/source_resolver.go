@@ -23,7 +23,7 @@ import (
 //                         *asset.ImageAsset -> *asset.Asset via
 //                         ImageAssetToClip; relies on Go's automatic
 //                         string->any boxing for the `id any` param
-//   SourceRegistry        map asset.Source -> SourceRepo dispatcher
+//   SourceCatalog        map asset.Source -> SourceRepo dispatcher (was SourceRegistry)
 //
 // The typed-port shape is intentionally MINIMAL — only the operations
 // that the canonical deletion.go + future cross-capability flows need.
@@ -69,7 +69,7 @@ type SourceRepo interface {
 // The same adapter shape is reused for artlist+clips+stock+sound_effect
 // because all four canonical sources share the canonical
 // ClipsRepository concrete (column-distinguished by source discriminator).
-// The SourceRegistry distinguishes them by canonical name only —
+// The SourceCatalog distinguishes them by canonical name only —
 // every clips-family canonical name maps to a separate adapter
 // constructed per-repository, so a future day when artlist gets its
 // own shaped concrete is a single new adapter, not a reshape of the
@@ -106,7 +106,7 @@ func (a *clipsSourceAdapter) GetByDriveFileID(ctx context.Context, fileID string
 // outbox.Dispatcher.EnqueueAndDelete(ctx, clipID) (QDRANT-002 PR7),
 // which atomically stamps index_state=DELETE_PENDING AND emits an
 // outbox event before the dispatcher-side hard delete. Callers that
-// route through `SourceRegistry.Resolve("artlist").Delete(...)` (or
+// route through `SourceCatalog.Resolve("artlist").Delete(...)` (or
 // the clips/youtube/stock/sound_effect aliases) should FIRST check
 // whether the deletion flow needs the soft-delete-then-drain
 // semantics — if it does, route through the dispatcher; only call
@@ -219,28 +219,26 @@ func (a *imagesSourceAdapter) Delete(ctx context.Context, id string) error {
 	return a.inner.Delete(ctx, id)
 }
 
-// ── SourceRegistry ──────────────────────────────────────────────────
+// ── SourceCatalog ──────────────────────────────────────────────────
 
-// SourceRegistry is the central asset.Source -> SourceRepo dispatcher.
+// SourceCatalog is the central source-metadata + typed-port dispatcher.
 // Construction-time immutable: registered adapters can't be swapped at
-// runtime (no Register method exposed after NewSourceRegistry returns).
+// runtime (no Register method exposed after NewSourceCatalog returns).
 // Falls back to (nil, false) for unknown sources so the call site can
 // branch explicitly (zero-value-tolerant interface returns).
 //
-// Pre-Commit-B history (June 2026): deletion.go::FindClipByDriveFileID
-// carried an inline switch case `"artlist", "clips", "stock" / "voiceover"
-// / "images"`. Commit B defines the typed-port family; deletion.go's
-// switch is FROZEN at this commit and migrated in a follow-up PR
-// (B2) so the migration blast radius is contained to one caller + the
-// composition root (build_bundles_domain.go, module_media.go,
-// service_test.go — three files) per AGENTS.md Git-Lesson-2
-// direct-to-main workflow rules (no force-push; one PR per concern).
-type SourceRegistry struct {
+// Collapse (June 2026): SourceRegistry was renamed to SourceCatalog.
+// SourceResolver + ResolveRepo + NewSourceResolver were DELETED —
+// consumers that need *assets.ClipsRepository should inject it directly
+// (all clip-type sources share the same concrete repo in production).
+// The catalog owns source metadata (Normalize, MediaType, Names) and
+// typed-port dispatch (Resolve → SourceRepo).
+type SourceCatalog struct {
 	byCanonical map[string]SourceRepo
 }
 
-// NewSourceRegistry wires the five canonical source repositories
-// into the canonical-keyed map. Five canonical keys are populated:
+// NewSourceCatalog wires the canonical source repositories into the
+// canonical-keyed map. Canonical keys:
 //
 //   "artlist"        -> clipsSourceAdapter(artlist)
 //   "clips"          -> clipsSourceAdapter(clips)
@@ -249,76 +247,69 @@ type SourceRegistry struct {
 //   "images"         -> imagesSourceAdapter(images)
 //   "sound_effect"   -> clipsSourceAdapter(clips)   <- alias-of-clips
 //
-// The sound_effect alias-to-clips pattern mirrors the legacy
-// SourceResolver.ResolveRepo handling (`"clips", "youtube", "sound_effect"`
-// mapped to the same repository) so visual-effect waveforms
-// inherited from the master clips store continue to resolve under
-// the new canonical surface.
-//
-// Nil-tolerant: a panel of nils (artlist/set/clips/nil/stock/nil
-// voiceover/images) is supported; the adapter covers nil fields
-// with an explicit `if a.inner == nil { return nil, nil }` guard so
-// test fixtures can wire a partial set of repos without panics.
-func NewSourceRegistry(
+// Nil-tolerant: a panel of nils is supported; the adapter covers nil
+// fields with an explicit guard so test fixtures can wire a partial
+// set of repos without panics.
+func NewSourceCatalog(
 	artlist, clips, stock *assets.ClipsRepository,
 	voiceover *assets.VoiceoversRepository,
 	images *assets.ImagesRepository,
-) *SourceRegistry {
-	reg := &SourceRegistry{byCanonical: make(map[string]SourceRepo, 6)}
+) *SourceCatalog {
+	reg := &SourceCatalog{byCanonical: make(map[string]SourceRepo, 6)}
 	reg.byCanonical["artlist"] = newClipsSourceAdapter(artlist)
 	reg.byCanonical["clips"] = newClipsSourceAdapter(clips)
 	reg.byCanonical["stock"] = newClipsSourceAdapter(stock)
 	reg.byCanonical["voiceover"] = newVoiceoverSourceAdapter(voiceover)
 	reg.byCanonical["images"] = newImagesSourceAdapter(images)
-	// sound_effect aliases to the canonical clips repo per the
-	// legacy SourceResolver.ResolveRepo shape; preserves the
-	// pre-Commit-B behaviour (clipsRepo is the visual-effects media
-	// store, sound_effect waveform rows live in the same table).
-	// sound_effect aliases to the canonical `clips` repository because
-	// the sound_effect source was historically an ALIAS-OF-CLIPS:
-	// waveform rows for sound effects share the same media_assets
-	// table discriminator as video clips (source='sound_effect';
-	// NOT source='clips'). Visual-effect assets routed through the
-	// `artlist` repository are NOT subject to this alias — they
-	// keep artlist's shape. The legacy SourceResolver.ResolveRepo
-	// also collapsed "clips", "youtube", "sound_effect" onto the
-	// same clips panel, so the alias pattern is preserved.
 	reg.byCanonical["sound_effect"] = newClipsSourceAdapter(clips)
 	return reg
 }
 
 // Resolve returns the typed SourceRepo for any source-string
 // (canonical name OR alias). Unknown / empty sources return
-// (nil, false) so the call site branches explicitly. CanonicalSource
-// is the SSOT for alias normalisation; Resolve is a thin shape
-// dispatch.
+// (nil, false) so the call site branches explicitly.
 //
-// Receiver-nil-tolerant: a nil *SourceRegistry returns (nil, false)
-// safely so test fixtures can wire `&artifacts.SourceRegistry{}`
-// placeholders without guarding every Resolve call.
-func (r *SourceRegistry) Resolve(source string) (SourceRepo, bool) {
-	if r == nil {
+// Receiver-nil-tolerant: a nil *SourceCatalog returns (nil, false).
+func (c *SourceCatalog) Resolve(source string) (SourceRepo, bool) {
+	if c == nil {
 		return nil, false
 	}
-	canonical := CanonicalSource(source)
+	canonical := c.Normalize(source)
 	if canonical == "" {
 		return nil, false
 	}
-	repo, ok := r.byCanonical[canonical]
+	repo, ok := c.byCanonical[canonical]
 	return repo, ok
 }
 
+// Normalize resolves any source alias to its canonical name.
+// Returns empty string for unknown sources. Delegates to the
+// package-level CanonicalSource which uses the StandardSources
+// alias map.
+func (c *SourceCatalog) Normalize(source string) string {
+	return CanonicalSource(source)
+}
+
+// MediaType returns the media type for a canonical source name.
+// Returns empty string for unknown sources.
+func (c *SourceCatalog) MediaType(source string) string {
+	canonical := CanonicalSource(source)
+	for _, def := range StandardSources {
+		if def.Canonical == canonical {
+			return def.MediaType
+		}
+	}
+	return ""
+}
+
 // Names returns the registered canonical source names in sorted
-// order. Used by the enumeration test (registry_completeness_test.go,
-// Commit C) to assert every registered canonical source maps to a
-// usable adapter. Sorting guarantees deterministic iteration order
-// so tests don't flake on map-iteration nondeterminism.
-func (r *SourceRegistry) Names() []string {
-	if r == nil {
+// order. Sorting guarantees deterministic iteration order.
+func (c *SourceCatalog) Names() []string {
+	if c == nil {
 		return nil
 	}
-	names := make([]string, 0, len(r.byCanonical))
-	for k := range r.byCanonical {
+	names := make([]string, 0, len(c.byCanonical))
+	for k := range c.byCanonical {
 		names = append(names, k)
 	}
 	sort.Strings(names)
@@ -413,40 +404,4 @@ func IsValidSource(source string) bool {
 func IsClipsSource(source string) bool {
 	canonical := CanonicalSource(source)
 	return canonical == "artlist" || canonical == "clips" || canonical == "stock" || canonical == "sound_effect"
-}
-
-// SourceResolver resolves source strings to their assets.ClipsRepository.
-// This replaces all hand-written resolveRepo switch statements.
-type SourceResolver struct {
-	artlistRepo *assets.ClipsRepository
-	clipsRepo   *assets.ClipsRepository
-	stockRepo   *assets.ClipsRepository
-}
-
-// NewSourceResolver creates a resolver with the three standard clip repositories.
-func NewSourceResolver(artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository) *SourceResolver {
-	return &SourceResolver{
-		artlistRepo: artlistRepo,
-		clipsRepo:   clipsRepo,
-		stockRepo:   stockRepo,
-	}
-}
-
-// ResolveRepo returns the assets.ClipsRepository for the given source.
-// Returns nil for voiceover and images (they use different repository types).
-func (r *SourceResolver) ResolveRepo(source string) *assets.ClipsRepository {
-	canonical := CanonicalSource(source)
-	switch canonical {
-	case "artlist":
-		return r.artlistRepo
-	case "clips", "youtube", "sound_effect":
-		return r.clipsRepo
-	case "stock":
-		return r.stockRepo
-	case "all", "unified":
-		// Return clipsRepo as the primary access point for unified media_assets
-		return r.clipsRepo
-	default:
-		return nil
-	}
 }

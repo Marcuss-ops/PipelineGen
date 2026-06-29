@@ -33,6 +33,7 @@ import (
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
@@ -236,6 +237,11 @@ type DomainBundle struct {
 	// Compile-time enforcement replaces the runtime safety net that
 	// build_bundles_domain.go used to need.
 	AssocService scriptcore.AssocSearchService
+	// Catena A P0 (June 2026): the typed-port GenerateJobHandler for
+	// voiceover.generate jobs. Populated by BuildDomainBundle when
+	// the full Drive/destResolver/outbox/lifecycle/repo/audio/db
+	// chain is wired; nil when any link is missing.
+	VoiceoverGenerateHandler *voiceoverjobs.GenerateJobHandler
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and

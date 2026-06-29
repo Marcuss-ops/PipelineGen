@@ -9,7 +9,7 @@
 //   - Dispatcher     (CreateClip + UpdateClip + UploadVideoClip — atomic UPSERT + outbox)
 //   - AssetTreeSvc   (CreateClip + UpdateClip + UploadVideoClip — tree upsert)
 //   - JobsSvc        (CreateClip + UploadVideoClip — media.enrich enqueue)
-//   - SourceResolver (UpdateClip — repoForSource gate)
+//   - ClipsRepo (UpdateClip — repoForSource gate)
 //   - ArtifactSvc    (UploadVideoClip — CreateAndVerify / LocalPath)
 //   - DriveUploader  (UploadVideoClip — group folder + UploadFileWithDescription)
 //   - ProcessRunner  (UploadVideoClip — probeDuration via ffprobe/mediainfo)
@@ -78,7 +78,7 @@ type IngestDeps struct {
 	Dispatcher     appclips.ClipIndexDispatcherPort
 	AssetTreeSvc   *assettree.Service
 	JobsSvc        jobservice.Service
-	SourceResolver *artifacts.SourceResolver
+	ClipsRepo *assets.ClipsRepository
 	ArtifactSvc    *artifacts.Service
 	DriveUploader  *drive.Uploader
 	ProcessRunner  appassets.ProcessRunner
@@ -97,7 +97,7 @@ type IngestHandler struct {
 	dispatcher     appclips.ClipIndexDispatcherPort
 	assetTreeSvc   *assettree.Service
 	jobsSvc        jobservice.Service
-	sourceResolver *artifacts.SourceResolver
+	clipsRepo *assets.ClipsRepository
 	artifactSvc    *artifacts.Service
 	driveUploader  *drive.Uploader
 	processRunner  appassets.ProcessRunner
@@ -118,7 +118,7 @@ func NewIngestHandler(d IngestDeps) *IngestHandler {
 		dispatcher:     d.Dispatcher,
 		assetTreeSvc:   d.AssetTreeSvc,
 		jobsSvc:        d.JobsSvc,
-		sourceResolver: d.SourceResolver,
+		clipsRepo: d.ClipsRepo,
 		artifactSvc:    d.ArtifactSvc,
 		driveUploader:  d.DriveUploader,
 		processRunner:  d.ProcessRunner,
@@ -132,15 +132,16 @@ func NewIngestHandler(d IngestDeps) *IngestHandler {
 }
 
 // repoForSource resolves a clip source to its canonical repository
-// via the shared SourceResolver. Used by UpdateClip; each cluster
-// that needs source → repo mapping owns its own repoForSource method
-// on its receiver (Split 1: Search; Split 2: Ingest; Split 3: Action;
-// future Ops).
+// via the shared ClipsRepository. All clip-type sources share the same
+// concrete repo in production. Returns nil for voiceover/images.
 func (ih *IngestHandler) repoForSource(source string) *assets.ClipsRepository {
-	if ih.sourceResolver == nil {
+	if ih.clipsRepo == nil {
 		return nil
 	}
-	return ih.sourceResolver.ResolveRepo(source)
+	if !artifacts.IsClipsSource(source) {
+		return nil
+	}
+	return ih.clipsRepo
 }
 
 // RegisterRoutes installs the 3 Ingest routes on the supplied gin

@@ -6,7 +6,7 @@
 // *SearchHandler receiver. SearchDeps carries only the 5 deps these
 // routes actually consume (cluster × deps matrix §4):
 //
-//   - SourceResolver (ListClips text-search branch via repoForSource)
+//   - ClipsRepo (ListClips text-search branch via repoForSource)
 //   - AssetRepo      (GetClip / ClipStatus / ListClips default branch)
 //   - VoiceoverRepo  (GetClip + ListClips voiceover source branch; nil-tolerated)
 //   - ImagesRepo     (ListClips images source branch; nil-tolerated)
@@ -38,7 +38,7 @@ import (
 // less. Cluster ownership follows the matrix in the Step 5 discovery
 // report (June 2026, §4 Search cluster).
 type SearchDeps struct {
-	SourceResolver *artifacts.SourceResolver
+	ClipsRepo *assets.ClipsRepository
 	AssetRepo      asset.Repository
 	VoiceoverRepo  *assets.VoiceoversRepository
 	ImagesRepo     *assets.ImagesRepository
@@ -49,7 +49,7 @@ type SearchDeps struct {
 // constructed in NewHandler from a SearchDeps shape extracted from
 // the orchestrator Deps.
 type SearchHandler struct {
-	sourceResolver *artifacts.SourceResolver
+	clipsRepo *assets.ClipsRepository
 	assetRepo      asset.Repository
 	voiceoverRepo  *assets.VoiceoversRepository
 	imagesRepo     *assets.ImagesRepository
@@ -61,7 +61,7 @@ type SearchHandler struct {
 // wiring supplies all 5 via the SearchDeps shape.
 func NewSearchHandler(d SearchDeps) *SearchHandler {
 	return &SearchHandler{
-		sourceResolver: d.SourceResolver,
+		clipsRepo: d.ClipsRepo,
 		assetRepo:      d.AssetRepo,
 		voiceoverRepo:  d.VoiceoverRepo,
 		imagesRepo:     d.ImagesRepo,
@@ -70,13 +70,17 @@ func NewSearchHandler(d SearchDeps) *SearchHandler {
 }
 
 // repoForSource resolves a clip source to its canonical repository
-// via the shared SourceResolver. Authoritative implementation post-
-// Split 1; the orchestrator *Handler.repoForSource delegates here.
+// via the shared ClipsRepository. All clip-type sources share the same
+// concrete repo in production. Returns nil for voiceover/images.
+// Authoritative implementation; orchestrator *Handler.repoForSource delegates here.
 func (sh *SearchHandler) repoForSource(source string) *assets.ClipsRepository {
-	if sh.sourceResolver == nil {
+	if sh.clipsRepo == nil {
 		return nil
 	}
-	return sh.sourceResolver.ResolveRepo(source)
+	if !artifacts.IsClipsSource(source) {
+		return nil
+	}
+	return sh.clipsRepo
 }
 
 // RegisterRoutes installs the 4 Search routes on the supplied gin
