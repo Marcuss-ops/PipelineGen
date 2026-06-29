@@ -22,20 +22,12 @@ pkg/                    leaf utilities
 
 ## Read in order
 
-> **Nota (June 2026)**: i tre documenti storici sotto `docs/architecture/` sono
-> stati consolidati e rimossi. Il loro contenuto è ora distribuito tra i
-> file canonici qui sotto, che vanno letti nell'ordine indicato.
-
-1. `ARCHITECTURE.md` — sistema diagramma, data flow, ownership dei layer,
-   canonical structure definition of done (§1–§13).
-2. `architecture/ownership/*.yaml` + `architecture/ownership.generated.yaml` — mappa canonica (per-section split, dc6add3e; il generated è la concatenazione deterministica dei 6 file per-section via `cmd/architecture-aggregate`)
-   "qual è il proprietario di X?" (single source of truth per capability).
-3. `architecture/current.yaml` — tracker ratchet delle wave di
-   consolidamento (status monotone-decreasing, exit gate per wave).
-4. `AGENTS.md` — regole critiche del sistema + pattern canonici + Git Lessons.
-5. `docs/cleanup/README.md` — roadmap operativa delle attività ancora aperte,
-   con piani dettagliati per Health boundary, Script orchestration,
-   composition, documentazione e configurazione.
+> **Nota (June 2026)**: i tre documenti storici sotto `docs/architecture/`
+> e `docs/cleanup/README.md` sono stati consolidati e rimossi.
+> Per la gerarchia canonica corrente — quali doc sono autorevoli, quali
+> sono read-only storici — vedere [**`CANONICAL.md`**](./CANONICAL.md).
+> Questa pagina preserva solo le *regole operative* della cleanup
+> mission (sotto) per audit.
 
 ## Execution order
 
@@ -99,6 +91,7 @@ Stop and open a focused issue when:
 - a migration is inconsistent across real databases;
 - a move changes public routes, job types or payloads.
 
-Cleanup is complete only when the completion definition in
-`docs/cleanup/README.md` passes on `main` and the architecture trackers match
-the verified code state.
+Cleanup is complete only when the completion definition registered in
+`architecture/current.yaml` (active wave tracker) is satisfied and the
+architecture trackers match the verified code state. The legacy
+`docs/cleanup/README.md` was removed in June 2026.
