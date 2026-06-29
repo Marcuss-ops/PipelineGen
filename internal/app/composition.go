@@ -17,6 +17,7 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -221,6 +222,10 @@ type AIBundle struct {
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.
+//
+// P0.1 (June 2026): ArtifactService added — the concrete content-addressed
+// artifact blob service (CreateAndVerify + LocalPath) constructed by
+// BuildDomainBundle from db + cfg.Storage.DataDir.
 type DomainBundle struct {
 	YoutubeClipService *youtube.Service
 	VoiceoverService   *voiceover.Service
@@ -257,6 +262,11 @@ type DomainBundle struct {
 	// + jobs.Service wire in).
 	VoiceoverProcessOne        *voiceover.ProcessOneVoiceoverUseCase
 	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
+	// P0.1 (June 2026): the content-addressed artifact blob service.
+	// Constructed in BuildDomainBundle from dbs.main.DB +
+	// cfg.Storage.DataDir. Wired into AssetsModuleDeps.Core and
+	// consumed by the upload UseCase via artifactServiceAdapter.
+	ArtifactService *artifacts.Service
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and

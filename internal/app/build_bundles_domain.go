@@ -218,6 +218,20 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	})
 	log.Info("P0.3: ProcessOneVoiceoverUseCase wired (per-language child-job handler dispatcher)")
 
+	// P0.1 (June 2026): construct the content-addressed artifact blob
+	// service so the upload UseCase (UploadVideoClip) can accept real
+	// video uploads instead of returning HTTP 500. The LocalBlobStore
+	// stages blobs under cfg.Storage.DataDir; SQLiteRepository persists
+	// metadata in the unified media.db.sqlite.
+	artifactBlobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("compose domains: artifact blob store: %w", err)
+	}
+	artifactRepo := artifacts.NewSQLiteRepository(dbs.main.DB)
+	artifactService := artifacts.NewService(artifactBlobStore, artifactRepo, log)
+	log.Info("P0.1: artifact blob service wired (content-addressed staging + verify + promote)",
+		zap.String("data_dir", cfg.Storage.DataDir))
+
 	return &DomainBundle{
 		YoutubeClipService: youtubeClipService,
 		VoiceoverService:   voiceoverSvc,
@@ -232,6 +246,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		RealtimeSearch:     realtimeSearch,
 		AutotagService:     autotagSvc,
 		AssocService:       assocService,
+		ArtifactService:    artifactService,
 	}, nil
 }
 
