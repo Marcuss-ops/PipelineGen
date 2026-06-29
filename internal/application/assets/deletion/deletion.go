@@ -210,48 +210,32 @@ func (s *DeletionService) DeleteByDriveFile(ctx context.Context, fileID string, 
 	return s.DeleteClip(ctx, foundSource, clip.ID, permanently)
 }
 
-// FindClipByDriveFileID searches for a clip across repositories.
+// FindClipByDriveFileID searches for a clip across repositories
+// using the canonical SourceCatalog typed-port dispatch. Collapse
+// (June 2026): local repos map + switch source eliminated —
+// SourceCatalog.Resolve→SourceRepo.GetByDriveFileID handles every
+// source uniformly with adapter-side shape conversion.
 func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*asset.Asset, string, error) {
-	repos := map[string]any{
-		"artlist":   s.artlistRepo,
-		"clips":     s.clipsRepo,
-		"stock":     s.stockRepo,
-		"voiceover": s.voiceoverRepo,
-		"images":    s.imagesRepo,
-	}
+	catalog := artifacts.NewSourceCatalog(s.artlistRepo, s.clipsRepo, s.stockRepo, s.voiceoverRepo, s.imagesRepo)
+	sources := catalog.Names()
 
+	// Filter to a single source if requested
 	if sourceLimit != "" && sourceLimit != "all" {
-		if repo, ok := repos[sourceLimit]; ok {
-			repos = map[string]any{sourceLimit: repo}
-		} else {
+		canonical := artifacts.CanonicalSource(sourceLimit)
+		if canonical == "" {
 			return nil, "", fmt.Errorf("invalid source limit: %s", sourceLimit)
 		}
+		sources = []string{canonical}
 	}
 
-	for source, repo := range repos {
-		if repo == nil {
+	for _, source := range sources {
+		repo, ok := catalog.Resolve(source)
+		if !ok || repo == nil {
 			continue
 		}
-
-		switch source {
-		case "artlist", "clips", "stock":
-			clipRepo := repo.(*assets.ClipsRepository)
-			clip, err := clipRepo.GetByDriveFileID(ctx, fileID)
-			if err == nil && clip != nil {
-				return clip, source, nil
-			}
-		case "voiceover":
-			voRepo := repo.(*assets.VoiceoversRepository)
-			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
-			if err == nil && rec != nil {
-				return artifacts.VoiceoverRecordToClip(rec), source, nil
-			}
-		case "images":
-			imgRepo := repo.(*assets.ImagesRepository)
-			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
-			if err == nil && img != nil {
-				return artifacts.ImageAssetToClip(img), source, nil
-			}
+		asset, err := repo.GetByDriveFileID(ctx, fileID)
+		if err == nil && asset != nil {
+			return asset, source, nil
 		}
 	}
 

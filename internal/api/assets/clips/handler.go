@@ -722,28 +722,23 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 // driveRootForSource returns the Drive root folder for a clip source
 // along with the URL marker the source-checker uses. Used by Action
 // cluster methods (DownloadClip / ReuploadClip).
+// Collapse (June 2026): local map eliminated — canonical source
+// routing via artifacts.CanonicalSource + config dispatch.
 func (h *Handler) driveRootForSource(source string) (string, string) {
-	spec, ok := map[string]struct {
-		root   func(*config.Config) string
-		marker string
-	}{
-		"clips": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.ClipsFolder() },
-			marker: "/clips/",
-		},
-		"artlist": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.ArtlistFolder() },
-			marker: "/artlist/",
-		},
-		"stock": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.StockFolder() },
-			marker: "/stock/",
-		},
-	}[artifacts.CanonicalSource(source)]
-	if !ok {
+	if h.cfg == nil {
 		return "", ""
 	}
-	return spec.root(h.cfg), spec.marker
+	canonical := artifacts.CanonicalSource(source)
+	switch canonical {
+	case "clips", "youtube":
+		return h.cfg.Drive.ClipsFolder(), "/clips/"
+	case "artlist":
+		return h.cfg.Drive.ArtlistFolder(), "/artlist/"
+	case "stock":
+		return h.cfg.Drive.StockFolder(), "/stock/"
+	default:
+		return "", ""
+	}
 }
 
 // RegisterJobHandlers wires up the bulk-upload worker. SourcesHandler's

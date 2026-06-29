@@ -85,22 +85,44 @@ func (r *Resolver) SearchByType(ctx context.Context, assetType string) ([]*Asset
 	return records, nil
 }
 
-// resolveFromDB queries the specific repository for an asset
+// resolveFromDB queries the specific repository for an asset.
+// Collapse (June 2026): switch cleaned to use canonical source names
+// without importing application-layer packages (infrastructure boundary).
 func (r *Resolver) resolveFromDB(ctx context.Context, source, sourceID string) (*AssetRecord, error) {
-	switch source {
-	case "youtube", "youtube_clip", "clip":
-		return r.resolveClipFromDB(ctx, "youtube", sourceID)
-	case "stock":
-		return r.resolveClipFromDB(ctx, "stock", sourceID)
-	case "artlist":
-		return r.resolveClipFromDB(ctx, "artlist", sourceID)
-	case "image", "images":
-		return r.resolveImageFromDB(ctx, sourceID)
-	case "voiceover", "audio":
+	canonical := canonicalSource(source)
+	switch canonical {
+	case "artlist", "clips", "stock", "sound_effect":
+		return r.resolveClipFromDB(ctx, canonical, sourceID)
+	case "voiceover":
 		return r.resolveVoiceoverFromDB(ctx, sourceID)
+	case "images":
+		return r.resolveImageFromDB(ctx, sourceID)
 	default:
 		r.log.Warn("unsupported source type", zap.String("source", source))
 		return nil, nil
+	}
+}
+
+// canonicalSource is a local alias normalizer that keeps the
+// infrastructure layer free of application-layer imports.
+// Mirrors artifacts.CanonicalSource for the subset of sources
+// this package knows about.
+func canonicalSource(source string) string {
+	switch strings.ToLower(source) {
+	case "youtube", "youtube_clip", "clip", "clips":
+		return "clips"
+	case "artlist":
+		return "artlist"
+	case "stock":
+		return "stock"
+	case "sound_effect", "sound_effects", "sfx":
+		return "sound_effect"
+	case "voiceover", "audio":
+		return "voiceover"
+	case "image", "images":
+		return "images"
+	default:
+		return ""
 	}
 }
 
@@ -192,16 +214,18 @@ func voiceoverToAssetRecord(rec *assets.Record) *AssetRecord {
 	}
 }
 
-// getAssetTypeFromSource returns the asset type based on the source
+// getAssetTypeFromSource returns the asset type based on the source.
+// Collapse (June 2026): switch cleaned to use canonical source names;
+// returns the canonical name itself (not MediaType) to preserve
+// existing callers that expect source-specific identifiers.
 func getAssetTypeFromSource(source string) string {
-	switch source {
-	case "youtube", "youtube_clip", "clip":
-		return "clip"
-	case "stock":
-		return "stock"
-	case "artlist":
-		return "artlist"
-	default:
-		return source
+	switch canonical := canonicalSource(source); canonical {
+	case "artlist", "clips", "stock", "sound_effect":
+		return canonical
+	case "voiceover":
+		return "voiceover"
+	case "images":
+		return "images"
 	}
+	return source
 }
