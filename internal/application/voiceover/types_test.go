@@ -79,8 +79,9 @@ func TestRandomSuffixLength(t *testing.T) {
 // fix/voiceover-sync-async-strategy at the type layer:
 //
 //  1. The handler /generate async branch MUST set Strategy="replace"
-//     on the BatchRequest (mirrors /generate-with-group and the sync
-//     branch).
+//     on the BatchRequest (mirrors all canonical voiceover async
+//     invocations; legacy route surface retired per Wave 21 /
+//     PR-VOICEOVER-RECOVERY).
 //  2. normalizeBatchRequest MUST preserve explicit Strategy="replace"
 //     (not default it down to "verify").
 //  3. PayloadMap() MUST surface strategy:"replace" so the worker reads
