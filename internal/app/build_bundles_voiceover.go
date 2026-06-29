@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -77,6 +78,13 @@ func buildVoiceoverService(
 
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
+
+	// P1-2 (June 2026): persistence.Repository adapter — wraps the
+	// production *sqassets.VoiceoversRepository + *sql.DB so the
+	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
+	// through a canonical port instead of holding a *sql.DB field
+	// (the previous field was removed in P1-2 commit 1).
+	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.main.DB)
 
 	// Voiceover registry adapter — wraps the SQLite vo repo as a
 	// lifecycle.Registry so NewLifecycleFromDeps accepts it.
@@ -139,8 +147,20 @@ func buildVoiceoverService(
 		log.Warn("voiceover service wired WITHOUT outbox dispatcher — indexing will be SKIPPED (no asset.index.requested events emitted)")
 	}
 
+	// P1-2 (June 2026): the application layer no longer constructs
+	// the production *audioasset.Processor. Construction moves UP to
+	// the composition root (this file) so the voiceover package can
+	// stay free of any internal/infrastructure/* import. The
+	// processor is wrapped by newUseCaseTTSAdapter so the
+	// voiceover.Service only sees the canonical TTSProvider port.
+	if cfg.Paths.PythonScriptsDir == "" {
+		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
+	}
+	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
+	ttsProvider := newUseCaseTTSAdapter(audioProcessor)
+
 	voService := voiceover.NewService(
-		cfg, dbs.main.DB, cfg.Paths.PythonScriptsDir, voDir, log,
+		cfg, voRepoAdapter, ttsProvider, voDir, log,
 		newVoiceoverDriveAdapter(driveUploader), voLifecycle, destResolver,
 		semanticTagger, translator, outboxEnqueuer,
 	)

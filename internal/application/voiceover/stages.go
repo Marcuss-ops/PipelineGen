@@ -46,7 +46,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"go.uber.org/zap"
 )
@@ -168,9 +168,9 @@ func (s *Service) synthesizeStage(
 	filename string,
 	language string,
 ) BatchItem {
-	if s.audioProcessor == nil {
-		return item.fail("audio_processor_unavailable",
-			fmt.Errorf("%s: audioProcessor not wired (composition root)", restoreIdent))
+	if s.ttsProvider == nil {
+		return item.fail("tts_provider_unavailable",
+			fmt.Errorf("%s: ttsProvider not wired (composition root)", restoreIdent))
 	}
 
 	removeSilence := false
@@ -178,15 +178,23 @@ func (s *Service) synthesizeStage(
 		removeSilence = *req.RemoveSilence
 	}
 
-	input := &audioasset.AudioInput{
+	// TTSInput is the canonical voiceover port wire-shape (defined
+	// in voiceover/ports.go). The useCaseTTSAdapter bridge (in
+	// internal/app/adapters_voiceover_use_case.go) maps TTSInput
+	// fields 1-a-1 onto audioasset.AudioInput so the production
+	// *audioasset.Processor receives the same shape it would have
+	// received pre-P1-2. Voice field defaults to empty (legacy
+	// synthesize behavior — auto-detected from TTS script).
+	input := TTSInput{
 		Text:          req.Text,
 		Language:      language,
+		Voice:         "",
 		Filename:      filename,
 		OutputDir:     outputDir,
 		RemoveSilence: removeSilence,
 	}
 
-	result, err := s.audioProcessor.Generate(ctx, input)
+	result, err := s.ttsProvider.Synthesize(ctx, input)
 	if err != nil {
 		if s.log != nil {
 			s.log.Warn("synthesizeStage: TTS failed",
@@ -315,12 +323,12 @@ func (s *Service) finalizeStage(
 	oldLocalPath string,
 	oldCleanedPath string,
 ) BatchItem {
-	if s.db == nil {
+	if s.voiceoverRepo == nil {
 		return item.fail("db_unavailable",
-			fmt.Errorf("%s: db not wired (composition root)", restoreIdent))
+			fmt.Errorf("%s: voiceoverRepo not wired (composition root)", restoreIdent))
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.voiceoverRepo.BeginTx(ctx)
 	if err != nil {
 		return item.fail("tx_begin_failed",
 			fmt.Errorf("%s: BeginTx: %w", restoreIdent, err))
@@ -329,21 +337,25 @@ func (s *Service) finalizeStage(
 
 	// PR-VO-B3 dedupe gate — runs INSIDE the tx so the count query
 	// is consistent with the upcoming INSERT. Defensive: an empty
-	// driveFileID short-circuits to nil (no gate).
+	// driveFileID short-circuits to (matchedID="", count=0, nil)
+	// (no gate fired). P1-2 (June 2026): the previously
+	// inlined applyDedupeByDriveFileID call is replaced by the
+	// persistence.Repository.CountByDriveFileIDTx port method.
 	if item.DriveFileID != "" {
-		if dedupe, count := applyDedupeByDriveFileID(ctx, s.db, tx, item.ID, item.DriveFileID); dedupe != nil {
+		matchedID, count, _ := s.voiceoverRepo.CountByDriveFileIDTx(ctx, tx, item.ID, item.DriveFileID)
+		if matchedID != "" {
 			if s.log != nil {
 				if count > 1 {
 					s.log.Info("PR-VO-B3: ambiguous dedupe match",
 						zap.String("restored", restoreIdent),
 						zap.String("item_id", item.ID),
 						zap.Int("count", count),
-						zap.String("dedupe_id", dedupe.ID))
+						zap.String("dedupe_id", matchedID))
 				} else {
 					s.log.Info("PR-VO-B3: dedupe gate matched prior row",
 						zap.String("restored", restoreIdent),
 						zap.String("item_id", item.ID),
-						zap.String("dedupe_id", dedupe.ID))
+						zap.String("dedupe_id", matchedID))
 				}
 			}
 		}
@@ -351,10 +363,13 @@ func (s *Service) finalizeStage(
 
 	// PR-VO-A2 atomic swap: DELETE any existing row with the same id,
 	// then INSERT the new row, in the same tx. Neither is visible
-	// alone (atomic visibility = single SQLite commit).
-	if _, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, item.ID); err != nil {
+	// alone (atomic visibility = single SQLite commit). The
+	// DELETE and INSERT go through the persistence.Repository port
+	// (P1-2 boundary split, June 2026) so the application layer no
+	// longer references voiceovers schema or *sql.Tx.ExecContext.
+	if err := s.voiceoverRepo.DeleteByIDTx(ctx, tx, item.ID); err != nil {
 		return item.fail("db_delete_failed",
-			fmt.Errorf("%s: DELETE voiceovers: %w", restoreIdent, err))
+			fmt.Errorf("%s: DeleteByIDTx: %w", restoreIdent, err))
 	}
 
 	folderID := ""
@@ -367,21 +382,32 @@ func (s *Service) finalizeStage(
 	now := time.Now().UTC().Format(time.RFC3339)
 	textPreview := truncatePreview(req.Text)
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO voiceovers (
-			id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, status, error, strategy,
-			metadata, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		item.ID, requestID, textHash, textPreview, language, item.Voice, item.Filename,
-		item.LocalPath, item.CleanedPath, folderID, folderPath, item.DriveFileID,
-		item.DriveLink, item.DownloadLink, item.FileHash, "generated", "",
-		req.Strategy, string(metaJSON), now, now,
-	); err != nil {
+	rec := &persistence.VoiceoverRecord{
+		ID:           item.ID,
+		RequestID:    requestID,
+		TextHash:     textHash,
+		TextPreview:  textPreview,
+		Language:     language,
+		Voice:        item.Voice,
+		Filename:     item.Filename,
+		LocalPath:    item.LocalPath,
+		CleanedPath:  item.CleanedPath,
+		FolderID:     folderID,
+		FolderPath:   folderPath,
+		DriveFileID:  item.DriveFileID,
+		DriveLink:    item.DriveLink,
+		DownloadLink: item.DownloadLink,
+		FileHash:     item.FileHash,
+		Status:       "generated",
+		Error:        "",
+		Strategy:     req.Strategy,
+		Metadata:     string(metaJSON),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.voiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
 		return item.fail("db_insert_failed",
-			fmt.Errorf("%s: INSERT voiceovers: %w", restoreIdent, err))
+			fmt.Errorf("%s: InsertTx: %w", restoreIdent, err))
 	}
 
 	// PR-VO-A3 outbox enqueue: inside the same tx so the row INSERT

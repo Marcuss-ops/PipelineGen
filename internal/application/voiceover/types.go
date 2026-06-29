@@ -8,8 +8,35 @@ import (
 
 	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+)
+
+// P1-2 back-compat aliases (June 2026): the canonical wire-shape
+// types moved into internal/application/voiceover/persistence/
+// (Repository interface, VoiceoverRecord struct). Type aliases
+// below keep all pre-P1-2 call sites that imported these names
+// from the voiceover root package compilable without churn.
+//
+// Migration: new code should reference `persistence.Repository`
+// and `persistence.VoiceoverRecord` directly. The aliases below
+// remain only until the next Wave 21 BACKFILL step (CUTOVER)
+// drops them along with the rest of the B-2 typed-port aliases.
+type (
+	// VoiceoverRepository is the legacy export name; the canonical
+	// type lives in the persistence sub-package.
+	//
+	// Deprecated: use persistence.Repository directly. The alias
+	// remains for pre-P1-2 import compatibility; future Wave 21
+	// CUTOVER will drop it.
+	VoiceoverRepository = persistence.Repository
+	// VoiceoverRecord is the legacy export name; the canonical
+	// type lives in the persistence sub-package.
+	//
+	// Deprecated: use persistence.VoiceoverRecord directly. The
+	// alias remains for pre-P1-2 import compatibility.
+	VoiceoverRecord = persistence.VoiceoverRecord
 )
 
 type BatchRequest struct {

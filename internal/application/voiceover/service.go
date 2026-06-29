@@ -2,14 +2,13 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
@@ -28,20 +27,35 @@ type SemanticTaggerResult struct {
 	Mood       []string `json:"mood"`
 }
 
-// AudioProcessor is the port for TTS audio generation.
-// TODO(PR6): move to internal/application/audio/postprocessor when PR 5 use case is restored.
-// Currently bridges the concrete audioasset.Processor used by processLanguage (legacy path).
-type AudioProcessor interface {
-	Generate(ctx context.Context, input *audioasset.AudioInput) (*audioasset.AudioResult, error)
-}
-
-// Ensure concrete processor satisfies the interface.
-var _ AudioProcessor = (*audioasset.Processor)(nil)
+// AudioProcessor interface removed in P1-2 (June 2026).
+// The previous AudioProcessor interface wrapped *audioasset.Processor
+// directly so processLanguage could call Generate(ctx, *AudioInput).
+// P1-2 boundary split: TTSProvider becomes the canonical port for
+// TTS synthesis (already declared in voiceover/ports.go since
+// B-2 BACKFILL — June 2026). The concrete *audioasset.Processor is
+// constructed in the composition root (internal/app/
+// build_bundles_voiceover.go) + wrapped by newUseCaseTTSAdapter
+// (internal/app/adapters_voiceover_use_case.go) so voiceover
+// re-imports neither the concrete nor any *infrastructure/*.
 
 type Service struct {
-	cfg               *config.Config
-	db                *sql.DB
-	pythonScriptsDir  string
+	cfg *config.Config
+	// voiceoverRepo is the canonical persistence port for the
+	// voiceovers SQLite row lifecycle (P1-2 boundary split,
+	// June 2026). Replaces the *sql.DB field previously held by
+	// Service and the raw tx.ExecContext calls in finalizeStage.
+	// Production concrete: useCaseRepoAdapter (in
+	// internal/app/adapters_voiceover_use_case.go) wrapping
+	// *sqassets.VoiceoversRepository.
+	voiceoverRepo persistence.Repository
+	// ttsProvider is the canonical TTS synthesis port (B-2
+	// BACKFILL + P1-2 boundary confirmation, June 2026). Replaces
+	// the legacy `audioProcessor AudioProcessor` field that
+	// wrapped *audioasset.Processor directly. Production
+	// concrete: newUseCaseTTSAdapter (in
+	// internal/app/adapters_voiceover_use_case.go) wrapping
+	// *audioasset.Processor constructed in the composition root.
+	ttsProvider       TTSProvider
 	outputDir         string
 	log               *zap.Logger
 	// driveUploader is a narrow structural port (PR-VO-B1, June 2026):
@@ -51,11 +65,8 @@ type Service struct {
 	// concrete *drive.Uploader is wrapped by app/voiceoverDriveAdapter.
 	driveUploader     DriveUploaderPort
 	assetDestResolver asset.Resolver
-	// audioProcessor holds the TTS audio processor.
-	// TODO(PR6): replace with TTSProvider port from use case when PR 5 is restored.
-	audioProcessor   AudioProcessor
-	lifecycleService *lifecycle.Service
-	semanticTagger   SemanticTaggerFunc
+	lifecycleService  *lifecycle.Service
+	semanticTagger    SemanticTaggerFunc
 	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
 	// previous ClipIndexFunc callback (fire-and-forget goroutine)
 	// is gone. The TxOutboxEnqueuer port replaces it — swapVoiceoverRow
@@ -85,10 +96,19 @@ type TranslatorFunc = translation.TranslatorFunc
 // clipIndexer ClipIndexFunc parameter is gone. The indexing handoff
 // now flows through outboxEnqueuer TxOutboxEnqueuer, which writes
 // inside the same SQLite transaction as swapVoiceoverRow.
+//
+// P1-2 boundary split (June 2026): the previous `*sql.DB` +
+// `pythonScriptsDir` ctor args are gone — the *sql.DB handle is
+// replaced by the canonical voiceoverRepo persistence port
+// (voicedown of the *sql.DB raw usage in stages.go), and the
+// TTS audio processor is constructed at the composition root
+// (`internal/app/build_bundles_voiceover.go`) + injected via
+// the TTSProvider port. `NewService` no longer imports
+// `internal/infrastructure/audio` directly.
 func NewService(
 	cfg *config.Config,
-	db *sql.DB,
-	pythonScriptsDir string,
+	voiceoverRepo persistence.Repository,
+	ttsProvider TTSProvider,
 	outputDir string,
 	log *zap.Logger,
 	driveUploader DriveUploaderPort,
@@ -98,26 +118,14 @@ func NewService(
 	translator TranslatorFunc,
 	outboxEnqueuer TxOutboxEnqueuer,
 ) *Service {
-	// Create audio asset processor. PR-VO-B1 (June 2026): the
-	// driveUploader + assetDestResolver arguments are gone — the
-	// Processor now writes ONLY to local FS, the Drive upload is
-	// Lifecycle's responsibility. See
-	// internal/infrastructure/audio/processor.go for the matching
-	// NewProcessor signature.
-	audioProcessor := audioasset.NewProcessor(
-		pythonScriptsDir,
-		log,
-	)
-
 	return &Service{
 		cfg:               cfg,
-		db:                db,
-		pythonScriptsDir:  pythonScriptsDir,
+		voiceoverRepo:     voiceoverRepo,
+		ttsProvider:       ttsProvider,
 		outputDir:         outputDir,
 		log:               log,
 		driveUploader:     driveUploader,
 		assetDestResolver: assetDestResolver,
-		audioProcessor:    audioProcessor,
 		lifecycleService:  lifecycleService,
 		semanticTagger:    semanticTagger,
 		outboxEnqueuer:    outboxEnqueuer,
@@ -137,10 +145,6 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 
 func (s *Service) Cfg() *config.Config {
 	return s.cfg
-}
-
-func (s *Service) DB() *sql.DB {
-	return s.db
 }
 
 func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
