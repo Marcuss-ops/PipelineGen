@@ -138,7 +138,23 @@
       status: pending
       introduced: 2026-06-29
       deadline: 2026-07-10
-      target: "Wave 21 PR-G must include capability/assets/mediasearch subpkg; OVERRIDES previous default capabilities/system/mediasearch (asset-shape relative wins). Migration blocked_by: [Phase B partial]. Surfaced from owner_resolved_decisions.OQ-6."
+            target: "Wave 21 PR-G must include capability/assets/mediasearch subpkg; OVERRIDES previous default capabilities/system/mediasearch (asset-shape relative wins). Migration blocked_by: [Phase B partial]. Surfaced from owner_resolved_decisions.OQ-6."
+    - id: PR-PHASE-A2-KERNEL-JOB-MIGRATION
+      title: "kernel/job subzone migration (Phase A.2): Service + Store + JobBroker interfaces + 5 referenced types (Status/Filter/Job/Event/EnqueueRequest) migrated to kernel canonical home; internal/domain/job preserved as type aliases"
+      owner_capability: kernel
+      status: shipped
+      shipped_on: 2026-06-29
+      shipped_result: "3 NEW internal/kernel/job/{job,service,store}.go (kernel canonical home for Status lifecycle + Filter/Job/Event entities + Service/Store/JobBroker interfaces). 3 REPLACEMENTS of internal/domain/job/{job,service,store}.go to type aliases (type Service = kerneljob.Service etc.). 107 import sites stable via Go's transparent type-alias semantics; 22+ Type* capability-specific constants + EnqueueTyped generic helper + Worker*/WorkerCertIdentity stay in domain (fail >=2-capability kernel rule). ci-architectural-checks + archcheck + go build ./internal/... + go vet ./internal/... + go test ./internal/{domain,kernel}/job/... all green (EXIT_BUILD/VET/TEST/CI/ARCHCHECK=0). Import paths use full module prefix (github.com/Marcuss-ops/PipelineGen/internal/kernel/job) per Go module-mode resolution. PR-PR-JOB-IMPORT-PATH-WORKAROUND noted in commit body."
+      introduced: 2026-06-29
+      deadline: 2026-07-10
+      target: "Migrate Service + Store + JobBroker interfaces + 5 referenced types (Status/Filter/Job/Event/EnqueueRequest) to internal/kernel/job/; preserve 107 import sites via Go type aliases (type X = kerneljob.X transparent aliasing)."
+    - id: PR-PRE-EXISTING-VET-FAILURES-WAVE-2026-06-29
+      title: "Pre-existing vet failures surfaced under pipefail-authoritative verification (4 files, build still passes)"
+      owner_capability: architecture
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-25
+      target: "Fix 4 vet failures that are PRE-EXISTING on HEAD (independent of Phase A.2; confirmed via git stash + pipefail go vet on clean HEAD):\n\n  1. internal/app/module_media.go:316:3 — `unknown field ClipsRepo in struct literal of type api/assets/clips.Deps` (composition wiring drift between api/assets/clips.Deps and app/module_media.go's UpdateMediaModule composition)\n  2. internal/application/assets/providers/artlist/assetrepo_integration_test.go:69:62 — `undefined: assets` (test file imports a renamed package alias)\n  3. internal/application/channels/module_test.go:75:43 — `*stubRepo does not implement Repository (missing method ClaimDue)` (stub test repo missing newly-added interface method)\n  4. internal/application/youtube/adapters/assetrepo_integration_test.go:60:62 — `undefined: assets` (test file imports a renamed package alias, same root-cause as #2)\n\n  All 4 surface under pipefail-authoritative go vet ./internal/... but NOT under go build ./internal/... (build exit 0). go test ./internal/{domain,kernel,application}/job/... specific packages passes (EXIT=0). Root-cause for each is independent of Phase A.2 kernel/job subzone migration. Why now: Phase A.2 verification used pipefail for the FIRST time, exposing failures that prior basher runs (without pipefail) had masked by capturing tail's exit code instead of the Go tool's exit code."
 
 # ── Wave 14 — API compaction (in_progress) ───────────────────────────────────
 

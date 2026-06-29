@@ -1,61 +1,73 @@
-// Package job defines the canonical domain types for the job system.
+// Package job provides type aliases for the canonical kernel/job types
+// (Phase A.2, June 2026).
 //
-// These are the single source of truth for job status, filtering, and entity
-// representation. Infrastructure implementations (SQLite store, dispatcher,
-// worker) live in internal/application/jobs/ and internal/infrastructure/jobs/.
+// Production definitions live in internal/kernel/job/. This package is
+// preserved for back-compat — 107 import sites in 93 files resolve
+// unchanged because Go type aliases are transparent at the package
+// boundary. Future code should import internal/kernel/job directly.
+//
+// What stayed in domain/job (intentionally NOT migrated to kernel):
+//   - 22 Type* string constants (job.Type discriminator constants).
+//     These are CAPABILITY-SPECIFIC (TypeMediaExtract lives with the
+//     media capability, TypeScriptGenerate with the scripts capability,
+//     etc.) and fail the ≥2-capability kernel eligibility rule. They
+//     remain the SSOT for job.Type values used across the codebase.
 package job
 
 import (
-	"encoding/json"
-	"time"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-// Status is the canonical 7-state job lifecycle.
+// ── Type aliases to canonical kernel/job types (Phase A.2) ──────────
+
+type (
+	// Status is the canonical 7-state job lifecycle (see kernel/job.Status).
+	Status = kerneljob.Status
+	// Filter narrows job queries (see kernel/job.Filter).
+	Filter = kerneljob.Filter
+	// Job is the canonical domain entity for a job in the system.
+	Job = kerneljob.Job
+	// Event represents a discrete event in a job's timeline.
+	Event = kerneljob.Event
+)
+
+// ── Status constant aliases to canonical kernel/job constants ──────
 //
-//	queued → leased → running → completed/failed/retry_wait/cancelled
-type Status string
+// Go permits typed-constant aliases: const X = kerneljob.Y produces a
+// new const of identical type and value. Equality holds both ways:
+//   job.StatusQueued == kerneljob.StatusQueued (true)
+//   var x job.Status = job.StatusQueued         (compiles)
 
 const (
-	StatusQueued    Status = "QUEUED"
-	StatusLeased    Status = "LEASED"
-	StatusRunning   Status = "RUNNING"
-	StatusRetryWait Status = "RETRY_WAIT"
-	StatusSucceeded Status = "SUCCEEDED"
-	StatusFailed    Status = "FAILED"
-	StatusCancelled Status = "CANCELLED"
+	StatusQueued    = kerneljob.StatusQueued
+	StatusLeased    = kerneljob.StatusLeased
+	StatusRunning   = kerneljob.StatusRunning
+	StatusRetryWait = kerneljob.StatusRetryWait
+	StatusSucceeded = kerneljob.StatusSucceeded
+	StatusFailed    = kerneljob.StatusFailed
+	StatusCancelled = kerneljob.StatusCancelled
 )
 
-// IsTerminal returns true if the status is a final state.
-func (s Status) IsTerminal() bool {
-	return s == StatusSucceeded || s == StatusFailed || s == StatusCancelled
-}
-
-// IsActive returns true if a worker currently owns this job.
-func (s Status) IsActive() bool {
-	return s == StatusLeased || s == StatusRunning
-}
-
-// Valid returns true if s is a known job status.
-func (s Status) Valid() bool {
-	switch s {
-	case StatusQueued, StatusLeased, StatusRunning, StatusRetryWait,
-		StatusSucceeded, StatusFailed, StatusCancelled:
-		return true
-	}
-	return false
-}
-
-// Filter narrows job queries. All fields are optional; nil/zero means "don't filter".
-type Filter struct {
-	Status   *Status
-	Type     *string
-	WorkerID string
-	Limit    int
-	Offset   int
-}
-
-// ── Job type string constants (SSOT) ────────────────────────────────
-
+// ── Job type string constants ───────────────────────────────────────
+//
+// Per the godlike/02 ≥2-capability rule, capability-specific job.Type
+// discriminator constants stay in domain/job (canonical). Each
+// constant is owned by exactly one capability:
+//
+//   - media: TypeMediaExtract, TypeMediaStock, TypeArtlistRun,
+//     TypeMediaGenerate, TypeMediaReindex, TypeMediaEnrich,
+//     TypeBulkUploadYouTubeClips, TypeMediaCurate
+//   - voiceover: TypeVoiceoverBatch, TypeVoiceoverPromo
+//   - render/video: TypeRenderVideo, TypeVideoGenerate
+//   - subtitles: TypeSubtitleGenerate
+//   - youtube: TypeYouTubeUpload, TypeYouTubeClipExtract,
+//     TypeYouTubeRebuildST, TypeYouTubeChannelSync
+//   - catalog: TypeCatalogSync
+//   - system: TypeSystemCleanup
+//   - books: TypeBooksProcess
+//   - lessons: TypeLessonsProcess
+//   - scripts: TypeScriptGenerate
+//   - drive: TypeDriveFolderSync
 const (
 	TypeMediaExtract           = "media.extract"
 	TypeMediaStock             = "media.stock"
@@ -82,58 +94,3 @@ const (
 	TypeVoiceoverPromo         = "voiceover.promo"
 	TypeYouTubeChannelSync     = "youtube.channel.sync"
 )
-
-// Job is the canonical domain entity for a job in the system.
-type Job struct {
-	ID             string          `json:"id"`
-	Type           string          `json:"type"`
-	Status         Status          `json:"status"`
-	Priority       int             `json:"priority"`
-	Project        string          `json:"project,omitempty"`
-	VideoName      string          `json:"video_name,omitempty"`
-	ActiveKey      string          `json:"active_key,omitempty"`
-	Payload        json.RawMessage `json:"payload,omitempty"`
-	Result         json.RawMessage `json:"result,omitempty"`
-	Error          string          `json:"error,omitempty"`
-	Progress       int             `json:"progress"`
-	RetryCount     int             `json:"retry_count"`
-	MaxRetries     int             `json:"max_retries"`
-	WorkerID       string          `json:"worker_id,omitempty"`
-	LeaseID        string          `json:"lease_id,omitempty"`
-	LeaseExpiry    *time.Time      `json:"lease_expiry,omitempty"`
-	Revision       int             `json:"revision"`
-	CorrelationID  string          `json:"correlation_id,omitempty"`
-	WorkflowID     string          `json:"workflow_id,omitempty"`
-	WorkflowStepID string          `json:"workflow_step_id,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	StartedAt      *time.Time      `json:"started_at,omitempty"`
-	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
-	CancelledAt    *time.Time      `json:"cancelled_at,omitempty"`
-}
-
-// Event represents a discrete event in a job's timeline.
-type Event struct {
-	ID        string         `json:"id"`
-	JobID     string         `json:"job_id"`
-	Type      string         `json:"type"`
-	Message   string         `json:"message"`
-	Data      map[string]any `json:"data,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-}
-
-// IsTerminal returns true if the job has reached a terminal state.
-func (j *Job) IsTerminal() bool {
-	if j == nil {
-		return false
-	}
-	return j.Status.IsTerminal()
-}
-
-// CanRetry checks if the job can be retried.
-func (j *Job) CanRetry() bool {
-	if j == nil {
-		return false
-	}
-	return j.RetryCount < j.MaxRetries && (j.Status == StatusFailed || j.Status == StatusRetryWait)
-}
