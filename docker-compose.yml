@@ -38,6 +38,8 @@ services:
       args:
         VERSION: dev
         COMMIT:  unknown
+    # Barriera 2 — Image pinning (same contract as worker).
+    # Pinned digest: IMAGE_DIGEST=   ← run `make docker-digest` to capture
     image: pipelinegen-server:latest
     container_name: pipelinegen-server
     restart: unless-stopped
@@ -77,6 +79,14 @@ services:
       args:
         VERSION: dev
         COMMIT:  unknown
+    # Barriera 2 — Image pinning via SHA256 digest (June 2026).
+    # After signing with `make docker-sign`, replace `latest` with the
+    # canonical digest: `image: pipelinegen-worker@sha256:<64-char-hex>`.
+    # The pinned digest is captured end-to-end by scripts/cosign-sign.sh
+    # and verified at deploy time via scripts/verify-image-digest.sh.
+    #
+    # Pinned digest (update after each certified build):
+    # IMAGE_DIGEST=   ← run `make docker-digest` to capture
     image: pipelinegen-worker:latest
     container_name: pipelinegen-worker
     # Worker now registers against the server via /internal/v1/workers/register

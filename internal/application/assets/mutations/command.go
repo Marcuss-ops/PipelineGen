@@ -20,36 +20,36 @@
 // *asset.AssetStoreSQLite embedding from *ClipsRepository. Both those
 // steps are STRUCTURALLY-BLOCKED at the time of writing:
 //
-//   1. upsertClipTx MUST stay public because the canonical
-//      outbox.Dispatcher (internal/infrastructure/database/sqlite/outbox/
-//      repository.go) calls it cross-package inside the dispatcher's tx.
-//      Lowercasing it would break the build.
-//   2. hardDeleteTx / restoreTx are ALREADY removed from *ClipsRepository
-//      and live in the restricted txmutation/ package (Wave 22 task 5 /
-//      PR-CLIP-RAW-MUTATIONS, June 2026). They are no longer on the
-//      receiver — the "limiting-surface" goal is already achieved for
-//      those two via package isolation, not via lowercase visibility.
-//   3. upsertFolder / SoftDeleteFilter live on the embedded
-//      *asset.AssetStoreSQLite. Removing that embedding is PR 1's
-//      deliverable (move SQL primitives out of internal/domain/asset/).
-//      PR 1 was aborted in a prior turn to preserve build green; the
-//      domain still hosts the embedded SQLite primitives, so the
-//      embedding structurally cannot be removed until PR 1 lands.
+//  1. upsertClipTx MUST stay public because the canonical
+//     outbox.Dispatcher (internal/infrastructure/database/sqlite/outbox/
+//     repository.go) calls it cross-package inside the dispatcher's tx.
+//     Lowercasing it would break the build.
+//  2. hardDeleteTx / restoreTx are ALREADY removed from *ClipsRepository
+//     and live in the restricted txmutation/ package (Wave 22 task 5 /
+//     PR-CLIP-RAW-MUTATIONS, June 2026). They are no longer on the
+//     receiver — the "limiting-surface" goal is already achieved for
+//     those two via package isolation, not via lowercase visibility.
+//  3. upsertFolder / SoftDeleteFilter live on the embedded
+//     *asset.AssetStoreSQLite. Removing that embedding is PR 1's
+//     deliverable (move SQL primitives out of internal/domain/asset/).
+//     PR 1 was aborted in a prior turn to preserve build green; the
+//     domain still hosts the embedded SQLite primitives, so the
+//     embedding structurally cannot be removed until PR 1 lands.
 //
 // PR 2 / Blocco 1 sub-PR therefore SHIPS:
-//   • A typed AssetMutationCommand + AssetMutationAction (this file) —
+//   - A typed AssetMutationCommand + AssetMutationAction (this file) —
 //     pure types, zero runtime cost, future-call site shape. Only
 //     AssetMutationUpsert is implemented at the *ClipsRepository.Mutate
 //     layer today; restore / delete return ErrUnsupportedAction and
 //     delegate callers to AssetMutationDispatcher / txmutation (the
 //     canonical paths).
-//   • A *assets.ClipsRepository.Mutate wrapper (clips_repository.go,
+//   - A *assets.ClipsRepository.Mutate wrapper (clips_repository.go,
 //     additive only) — internally dispatches to the existing legitimate
 //     Upsert path. New code can use it; old code keeps working.
-//   • CI Check 10b in scripts/ci-architectural-checks.sh that catches
+//   - CI Check 10b in scripts/ci-architectural-checks.sh that catches
 //     NEW direct callers of r.UpsertFolder / r.SoftDeleteFilter outside
 //     the canonical allowlist.
-//   • docs/migrations/bypass_audit_2026-06-27.md refresh so the obsolete
+//   - docs/migrations/bypass_audit_2026-06-27.md refresh so the obsolete
 //     "clips_repository.go:336 residue" claim is corrected.
 //
 // Removed during code-review (June 2026): the AssetMutationIndex action

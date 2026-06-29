@@ -46,6 +46,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// NowFunc is the package-level clock used by RestoreService.
+// Tests inject a const; production defaults to time.Now.
+var NowFunc = time.Now
+
+// noopMetrics is the default no-op DRMetrics implementation.
+type noopMetrics struct{}
+
+func (noopMetrics) RecordAliasSwitch(string, float64) {}
+func (noopMetrics) SetAliasCurrent(string, string)     {}
+
 // RestoreService owns the verify-then-switch pipeline.
 // Construction via NewRestoreServiceFromDeps (panic-on-nil required
 // ports; optional ports fall back to no-op defaults).

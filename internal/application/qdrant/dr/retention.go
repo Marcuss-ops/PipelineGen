@@ -96,5 +96,5 @@ func (s *RetentionService) Apply(ctx context.Context, cfg RetentionConfig) (*Ret
 		zap.Int("retention_days", cfg.RetentionDays),
 		zap.Int("keep_last_n", cfg.KeepLastN),
 		zap.String("protected_rollback_target", cfg.ProtectedRollbackTarget))
-	return res, nil
+	return &res, nil
 }

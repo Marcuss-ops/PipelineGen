@@ -24,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
@@ -116,7 +117,7 @@ type ProcessBundle struct {
 	// qd.Runtime.Writer. Renamed from qdrant.QdrantDeleter in PR 4
 	// (was a duplicate infra-side interface; consolidated to the
 	// application-layer port per AGENTS.md Pattern 0).
-	QdrantDeleter     jobsoutbox.VectorPointDeleter
+	QdrantDeleter jobsoutbox.VectorPointDeleter
 	// QdrantRuntime is the canonical facade (PR 4, refactor/single-qdrant-runtime).
 	// Exposed as a first-class field on ProcessBundle so callers can read
 	// any subsystem directly via root.Process.QdrantRuntime.{Client,Writer,

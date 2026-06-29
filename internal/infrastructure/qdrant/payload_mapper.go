@@ -296,7 +296,8 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *IndexSchema) *Inde
 
 	// Sparse channels: each declared sparse channel becomes an
 	// EmbeddingArtifact (Model from spec, Values=nil — Qdrant does
-	// server-side inference).
+	// server-side inference). SparseSpec carries no ModelVersion or
+	// PreprocessVer — those fields live on EmbeddingSpec (dense) only.
 	for _, spec := range schema.SparseVectors {
 		channel := VectorChannel(spec.Channel)
 		model := spec.Model

@@ -51,22 +51,22 @@ type mediaAssetScanner interface {
 func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 	var a Asset
 	var (
-		id, sourceStr, name, tags, tagsNorm                                        string
-		embeddingJSON                                                              string
-		duration                                                                   int64
-		urlStr                                                                     string
-		mediaType, status, localPath, relativePath                                 string
-		driveFileID, driveFolderID, driveLink, downloadLink                        string
-		fileHash, metadataStr, visualEmb, transcriptEmb                            string
-		createdAtStr, updatedAtStr                                                 string
-		width, height                                                              int64
-		lifecycle, deletedAtStr                                                    string
-		folderID, parentFolderID, folderPath                                       string
-		category, groupName, filename, errCol, thumbURL, phash                     string
-		searchText, sceneType                                                      string
-		qualityScore                                                               float64
-		reuseCount                                                                 int64
-		lastUsedAt                                                                 string
+		id, sourceStr, name, tags, tagsNorm                    string
+		embeddingJSON                                          string
+		duration                                               int64
+		urlStr                                                 string
+		mediaType, status, localPath, relativePath             string
+		driveFileID, driveFolderID, driveLink, downloadLink    string
+		fileHash, metadataStr, visualEmb, transcriptEmb        string
+		createdAtStr, updatedAtStr                             string
+		width, height                                          int64
+		lifecycle, deletedAtStr                                string
+		folderID, parentFolderID, folderPath                   string
+		category, groupName, filename, errCol, thumbURL, phash string
+		searchText, sceneType                                  string
+		qualityScore                                           float64
+		reuseCount                                             int64
+		lastUsedAt                                             string
 	)
 
 	// Scan target order MUST match mediaAssetColumns in clips_repository.go.

@@ -66,15 +66,17 @@ import (
 // jobs.Service for drive|youtube). nil → drive|youtube events
 // fail-open as retryable errors so the outbox pool retries — no
 // silent ack.
+//
 //	// VectorPointDeleter: outbox.VectorPointDeleter for the
-	// IndexDeleteHandler (real DELETE-points onto Qdrant via the
-	// canonical *qdrant.IndexWriter from QdrantRuntime.Writer).
-	// nil → IndexDeleteHandler is skipped; events then dead-letter
-	// with "no handler for event type X" in the pool's pool log.
-	//
-	// AssetDeleter: AssetDeleter for the IndexDeleteHandler (real
-	// media_assets soft-delete via *assets.ClipsRepository). nil →
-	// IndexDeleteHandler is skipped (same effect as VectorPointDeleter nil).
+//
+// IndexDeleteHandler (real DELETE-points onto Qdrant via the
+// canonical *qdrant.IndexWriter from QdrantRuntime.Writer).
+// nil → IndexDeleteHandler is skipped; events then dead-letter
+// with "no handler for event type X" in the pool's pool log.
+//
+// AssetDeleter: AssetDeleter for the IndexDeleteHandler (real
+// media_assets soft-delete via *assets.ClipsRepository). nil →
+// IndexDeleteHandler is skipped (same effect as VectorPointDeleter nil).
 //
 // SourceVersionQuerier: SourceVersionQuerier for the IndexingHandler
 // pre-flight supersede gate (real media_assets source_version via
@@ -161,20 +163,20 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 // fix/qdrant-outbox-fail-closed). Missing any mandatory dep returns a
 // typed error so BuildOutboxBundle aborts boot instead of warning.
 //
-//	Mandatory deps when cfg.Qdrant.Enabled:
+//		Mandatory deps when cfg.Qdrant.Enabled:
 //
-//   - indexer (IndexClipper; production concrete is *clipindexer.Service).
-//   - deps.SourceVersionQuerier (production concrete is
-//     *assets.ClipsRepository — IndexingHandler source-version
-//     supersede gate cannot run without it).
-//   - deps.VectorPointDeleter (production concrete is
-//     *qdrant.IndexWriter from QdrantRuntime.Writer — PR 4
-//     consolidated the previous QdrantDeleter type into this single
-//     outbox.VectorPointDeleter port; IndexDeleteHandler cannot
-//     issue Qdrant DELETE-points without it).
-//   - deps.AssetDeleter (production concrete is *assets.ClipsRepository
-//     — IndexDeleteHandler cannot tombstone the SQLite row without
-//     it).
+//	  - indexer (IndexClipper; production concrete is *clipindexer.Service).
+//	  - deps.SourceVersionQuerier (production concrete is
+//	    *assets.ClipsRepository — IndexingHandler source-version
+//	    supersede gate cannot run without it).
+//	  - deps.VectorPointDeleter (production concrete is
+//	    *qdrant.IndexWriter from QdrantRuntime.Writer — PR 4
+//	    consolidated the previous QdrantDeleter type into this single
+//	    outbox.VectorPointDeleter port; IndexDeleteHandler cannot
+//	    issue Qdrant DELETE-points without it).
+//	  - deps.AssetDeleter (production concrete is *assets.ClipsRepository
+//	    — IndexDeleteHandler cannot tombstone the SQLite row without
+//	    it).
 //
 // Operators reading the error get the literal name of the missing dep
 // so a grep of the boot log finds it instantly. The handler list is

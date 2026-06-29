@@ -1,0 +1,121 @@
+{
+  "$schema": "https://pipelinegen.codebuff.com/schemas/worker-image-certification-v1.json",
+  "certification_id": "WIC-2026-06-28-001",
+  "certified_at": "2026-06-28T13:28:00Z",
+  "updated_at": "2026-06-28T13:34:00Z",
+  "barriera": 2,
+  "title": "Worker Image Certification — Cosign Signature, Digest Pinning, FFmpeg, Bootstrap",
+  "status": "BLOCKED",
+  "blocker": "Docker daemon not accessible; cannot build, sign, or verify images",
+  "reviewer_feedback_applied": [
+    "Replaced {{.Id}} fallback with explicit error (layer IDs aren't pinnable — only RepoDigests)",
+    "Replaced fragile grep string-matching on cosign verify output with exit-code check",
+    "Added OIDC identity skip when COSIGN_OIDC_ISSUER/IDENTITY env vars unset (local keyless flow)",
+    "Replaced grep -oP with portable grep -oE in verify-image-digest.sh",
+    "Fixed yt-dlp existence check to use --version (two dashes) instead of -version",
+    "Fixed worker-bootstrap-smoke.sh doctor probe to override CMD (avoids missing config.yaml)",
+    "Removed unnecessary --recursive flag from cosign sign commands"
+  ],
+
+  "image": {
+    "name": "pipelinegen-worker",
+    "target": "worker-runtime",
+    "dockerfile": "Dockerfile",
+    "tag_template": "pipelinegen-worker:${VERSION:-latest}",
+    "version": "dev",
+    "commit": "unknown",
+    "digest": null,
+    "digest_note": "Run 'make docker-build-worker && docker push pipelinegen-worker:latest && make docker-digest' to capture"
+  },
+
+  "gates": {
+    "ffmpeg_in_image": {
+      "status": "UNTESTED",
+      "detail": "Dockerfile line 89 installs ffmpeg via apt-get; script scripts/verify-ffmpeg.sh probes all 4 engine binaries",
+      "script": "scripts/verify-ffmpeg.sh",
+      "make_target": "make docker-verify-ffmpeg"
+    },
+    "cosign_signature": {
+      "status": "UNTESTED",
+      "mode": "keyless (default)",
+      "script": "scripts/cosign-sign.sh",
+      "make_target": "make docker-sign",
+      "verification_command": "cosign verify pipelinegen-worker:latest",
+      "note": "Cosign v2.4+ required. Uses exit-code verification (not string-matching). Supports keyless (OIDC) and key-pair modes. Skips OIDC identity binding when env vars unset for local dev."
+    },
+    "digest_pinned": {
+      "status": "PARTIAL",
+      "detail": "docker-compose.yml updated with IMAGE_DIGEST comment anchors; actual digest requires docker push first",
+      "make_target": "make docker-digest",
+      "note": "make docker-digest errors loudly if RepoDigests is empty (image not pushed) — NEVER falls back to {{.Id}}"
+    },
+    "digest_verified": {
+      "status": "UNTESTED",
+      "script": "scripts/verify-image-digest.sh",
+      "make_target": "make docker-verify-digest",
+      "note": "Verifies running container digest matches pinned reference. Uses portable grep -oE (BSD + GNU)."
+    },
+    "bootstrap_preflight": {
+      "status": "UNTESTED",
+      "detail": "Worker pre-flight (cmd/worker/main.go) polls master /health for 30s with 1s interval; not verified at runtime",
+      "script": "scripts/worker-bootstrap-smoke.sh",
+      "make_target": "make docker-bootstrap-smoke"
+    },
+    "doctor_production": {
+      "status": "UNTESTED",
+      "detail": "Worker doctor has 8 probes (config, cert, filesystem, engine, registry, master_reachable, ready, runtime); smoke test overrides CMD to avoid missing config.yaml"
+    },
+    "yt_dlp_in_image": {
+      "status": "UNTESTED",
+      "detail": "Dockerfile downloads yt-dlp v2025.03.20; verify-ffmpeg.sh uses correct --version flag"
+    },
+    "python3_in_image": {
+      "status": "UNTESTED",
+      "detail": "Dockerfile installs python3 via apt-get; verified by verify-ffmpeg.sh"
+    },
+    "multi_stage_build": {
+      "status": "PASS",
+      "detail": "Dockerfile has 4 stages (builder, server-runtime, worker-runtime, admin-runtime); worker-runtime copies only /out/worker binary"
+    },
+    "build_args_versioned": {
+      "status": "PASS",
+      "detail": "Dockerfile accepts VERSION + COMMIT build args; Makefile passes git-derived values via LDFLAGS"
+    },
+    "healthcheck_master": {
+      "status": "PASS",
+      "detail": "server-runtime target has HEALTHCHECK with 10s interval / 3s timeout / 20s start-period"
+    }
+  },
+
+  "infrastructure_added": {
+    "scripts": [
+      {"file": "scripts/cosign-sign.sh", "purpose": "Cosign sign + verify + digest capture"},
+      {"file": "scripts/verify-image-digest.sh", "purpose": "Container digest vs pinned reference"},
+      {"file": "scripts/verify-ffmpeg.sh", "purpose": "Engine binary probe (ffmpeg, ffprobe, yt-dlp, python3)"},
+      {"file": "scripts/worker-bootstrap-smoke.sh", "purpose": "Worker binary smoke (ENTRYPOINT, --help, version, doctor)"}
+    ],
+    "makefile_targets": [
+      "make docker-build-worker — builds worker-runtime target only",
+      "make docker-sign — build + sign with Cosign (keyless or key)",
+      "make docker-digest — print SHA256 digest (warns on missing push)",
+      "make docker-verify-digest — compare running container digest",
+      "make docker-verify-ffmpeg — probe engine binaries in image",
+      "make docker-bootstrap-smoke — smoke test worker binary"
+    ],
+    "docker_compose": "IMAGE_DIGEST= comment anchors for pipelinegen-server and pipelinegen-worker"
+  },
+
+  "next_steps": [
+    "1. Install Docker + Cosign v2.4+",
+    "2. Build:  make docker-build-worker",
+    "3. Push:   docker push pipelinegen-worker:latest",
+    "4. Sign:   make docker-sign",
+    "5. Pin:    make docker-digest  →  update docker-compose.yml image: line",
+    "6. Verify engine:  make docker-verify-ffmpeg",
+    "7. Smoke bootstrap: make docker-bootstrap-smoke",
+    "8. Boot stack: docker compose up -d",
+    "9. Verify digest at runtime: make docker-verify-digest"
+  ],
+
+  "honest_note": "All 8 runtime gates are UNTESTED (Docker inaccessible). 3 static/design gates PASS by code review. 4 new scripts + 6 new Makefile targets added. All reviewer feedback applied (RepoDigests-only, exit-code verify, portable grep, OIDC skip, yt-dlp flag fix, CMD override)."
+}

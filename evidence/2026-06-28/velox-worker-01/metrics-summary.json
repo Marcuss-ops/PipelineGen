@@ -1,0 +1,49 @@
+{
+  "worker_id": "velox-worker-01",
+  "checked_at": "2026-06-28T00:00:00Z",
+  "status": "SKIP",
+  "blocker": "Prometheus /metrics endpoint not reachable. No worker process running.",
+  "metrics": {
+    "session_active": null,
+    "heartbeat_age_seconds": null,
+    "active_tasks": null,
+    "task_slots": null,
+    "cpu_percent": null,
+    "rss_mb": null,
+    "disk_free_gb": null,
+    "temp_bytes": null,
+    "network_rx_bytes": null,
+    "network_tx_bytes": null,
+    "jobs_succeeded": null,
+    "jobs_failed": null,
+    "jobs_timeout": null,
+    "reconnect_count": null,
+    "lease_renewal_failures": null,
+    "artifact_upload_failures": null,
+    "fallback_count": null,
+    "python_emergency_count": null
+  },
+  "alerts": {
+    "worker_disconnected": "not_configured",
+    "heartbeat_stale": "not_configured",
+    "disk_pressure": "not_configured",
+    "memory_pressure": "not_configured",
+    "fallback_gt_0": "not_configured",
+    "emergency_path_gt_0": "not_configured",
+    "failure_rate_over_threshold": "not_configured",
+    "cert_expiring": "not_configured"
+  },
+  "pki_inventory": {
+    "serial": null,
+    "fingerprint": null,
+    "issued_at": null,
+    "expires_at": null
+  },
+  "notes": [
+    "RW-PROD-013 (Metrics and alerts) is OPEN.",
+    "RW-PROD-014 (PKI monitoring) is OPEN.",
+    "Prometheus metrics infrastructure exists in internal/infrastructure/observability/metrics.go.",
+    "Alerting rules defined in config/alerting_rules.yml.",
+    "Cannot validate metrics units without running process."
+  ]
+}

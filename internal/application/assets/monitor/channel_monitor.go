@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -87,12 +88,14 @@ type ChannelMonitor struct {
 	jobsSvc           *jobtools.Service
 	globalSem         chan struct{}
 	searchRateLimiter *tokenBucket
+	ytdlp             *downloader.YTDLPDownloader
+	jobsSvc           *appjobs.Service
 }
 
 // NewChannelMonitor creates a new channel monitor.
 // PR 2 (June 2026): channelsSvc replaces raw *sql.DB as the single source
 // for channel configuration.
-func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, channelsSvc *channels.Service, log *zap.Logger, youtubeSvc *youtube.Service, ollamaClient *client.Client) *ChannelMonitor {
+func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, channelsSvc *channels.Service, log *zap.Logger, youtubeSvc *youtube.Service, ollamaClient *client.Client, ytdlp *downloader.YTDLPDownloader) *ChannelMonitor {
 	maxChannels := cfg.Concurrency.MaxConcurrentChannelChecks
 	if maxChannels <= 0 {
 		maxChannels = 1
@@ -107,6 +110,7 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, ch
 		youtubeSvc:   youtubeSvc,
 		ollamaClient: ollamaClient,
 		globalSem:    make(chan struct{}, maxChannels),
+		ytdlp:        ytdlp,
 	}
 }
 

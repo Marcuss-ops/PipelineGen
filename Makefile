@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -212,14 +212,95 @@ bench:
 
 # Docker build (requires Dockerfile) — image name is `pipelinegen:latest`
 # per the Operational Readiness PR. Image listens on 8000 by default.
+#
+# Multi-target build: use TARGET=server-runtime (default), worker-runtime,
+# or admin-runtime.
 docker-build:
 	@test -f Dockerfile || { echo "❌ Dockerfile not found"; exit 1; }
-	docker build -t pipelinegen:latest .
+	docker build \
+		--target $${TARGET:-server-runtime} \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		-t pipelinegen:latest .
+
+# docker-build-worker: build ONLY the worker image (worker-runtime target)
+# for certification and signing.
+docker-build-worker:
+	@test -f Dockerfile || { echo "❌ Dockerfile not found"; exit 1; }
+	docker build \
+		--target worker-runtime \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		-t pipelinegen-worker:latest .
 
 # Docker run: maps the canonical VELOX_PORT (default 8000) host port
 # onto the container's 8000 listener. Use VELOX_PORT=NNNN to override.
 docker-run: docker-build
 	docker run -p $${VELOX_PORT:-8000}:8000 --env-file .env pipelinegen:latest
+
+# ─── Image certification (Barriera 2, June 2026) ──────────────────────
+
+# docker-sign: Build the worker image and sign it with Cosign.
+#
+# Modes (COSIGN_MODE env):
+#   keyless (default) — OIDC-based keyless signing (GitHub Actions or browser flow)
+#   key               — use cosign.key / cosign.pub key pair
+#
+# Output: prints IMAGE_DIGEST=sha256:... for downstream pinning.
+#
+# Prerequisites:
+#   - cosign v2.4+ installed (go install github.com/sigstore/cosign/v2/cmd/cosign@latest)
+#   - docker available
+#   - (key mode) cosign.key + cosign.pub in project root
+#
+# Usage:
+#   make docker-sign                                    # keyless
+#   make docker-sign COSIGN_MODE=key                    # key pair
+#   make docker-sign IMAGE=ghcr.io/org/worker:v1.0      # custom image ref
+docker-sign: docker-build-worker
+	@bash scripts/cosign-sign.sh $${IMAGE:-pipelinegen-worker:latest}
+
+# docker-digest: Print the SHA256 digest of the worker image for pinning
+# in docker-compose.yml or deployment manifests.
+#
+# WARNING: this target REQUIRES the image to have been pushed to a
+# registry first (docker push). Without a push, RepoDigests is empty
+# and {{.Id}} is a layer/content ID — NOT a pinnable digest.
+# See scripts/cosign-sign.sh for the full signing + digest workflow.
+docker-digest:
+	@echo "→ Worker image digest:"
+	@DIGEST=$$(docker inspect --format='{{index .RepoDigests 0}}' pipelinegen-worker:latest 2>/dev/null); \
+	if [ -n "$$DIGEST" ]; then \
+		echo "$$DIGEST"; \
+	else \
+		echo "ERROR: No RepoDigests found — image has NOT been pushed to a registry." >&2; \
+		echo "" >&2; \
+		echo "  Remediation:" >&2; \
+		echo "    1. Push the image:  docker push pipelinegen-worker:latest" >&2; \
+		echo "    2. Re-run:          make docker-digest" >&2; \
+		echo "" >&2; \
+		echo "  NOTE: docker inspect {{.Id}} is a layer ID — NOT pinnable." >&2; \
+		echo "  Do NOT use it as a docker-compose digest reference." >&2; \
+		exit 1; \
+	fi
+
+# docker-verify-digest: Verify the running container's image matches the
+# pinned SHA256 digest in docker-compose.yml. Fails on mismatch.
+# Usage: make docker-verify-digest CONTAINER=pipelinegen-worker
+docker-verify-digest:
+	@bash scripts/verify-image-digest.sh $${CONTAINER:-pipelinegen-worker} --strict
+
+# docker-verify-ffmpeg: Probe the worker image for engine binaries
+# (ffmpeg, ffprobe, yt-dlp, python3). Part of Barriera 2 image certification.
+# Usage: make docker-verify-ffmpeg IMAGE=pipelinegen-worker:latest
+docker-verify-ffmpeg:
+	@bash scripts/verify-ffmpeg.sh $${IMAGE:-pipelinegen-worker:latest}
+
+# docker-bootstrap-smoke: Quick smoke test of the worker binary in the
+# image — verifies ENTRYPOINT, --help, and version output.
+# Usage: make docker-bootstrap-smoke IMAGE=pipelinegen-worker:latest
+docker-bootstrap-smoke:
+	@bash scripts/worker-bootstrap-smoke.sh $${IMAGE:-pipelinegen-worker:latest}
 
 # CI pipeline (runs all checks)
 ci: go-version-check fmt vet tidy-check lint test coverage-check build

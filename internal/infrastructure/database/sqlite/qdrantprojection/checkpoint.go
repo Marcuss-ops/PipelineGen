@@ -69,19 +69,18 @@ const (
 
 // Checkpoint is the canonical in-memory state for a reindex job.
 // Serialises to the qdrantprojection_checkpoints row.
-//
 type Checkpoint struct {
-	JobID           string
+	JobID            string
 	TargetCollection string
-	LastIndexedID   string
-	IndexedCount    int64
-	ErrorCount      int64
-	SkippedCount    int64
-	StartedAt       time.Time
-	FinishedAt      time.Time // zero = not finished
-	LastBatchAt     time.Time // zero = no batch yet
-	Status          Status
-	LastError       string
+	LastIndexedID    string
+	IndexedCount     int64
+	ErrorCount       int64
+	SkippedCount     int64
+	StartedAt        time.Time
+	FinishedAt       time.Time // zero = not finished
+	LastBatchAt      time.Time // zero = no batch yet
+	Status           Status
+	LastError        string
 }
 
 // ── Write operations ──────────────────────────────────────────────────
@@ -129,10 +128,10 @@ ON CONFLICT(job_id) DO UPDATE SET
 // the wire (this package only owns the SQLite side; Qdrant has no
 // SQLite-bound transaction). When this method returns nil the
 // upsert+checkpoint pair is durable. When this method returns non-nil:
-//   1. The Qdrant upsert for THIS batch has ALREADY succeeded.
-//   2. The checkpoint.cursor is left at the PREVIOUS batch's
-//      last_indexed_id.
-//   3. The next resume call therefore re-upserts the SAME batch.
+//  1. The Qdrant upsert for THIS batch has ALREADY succeeded.
+//  2. The checkpoint.cursor is left at the PREVIOUS batch's
+//     last_indexed_id.
+//  3. The next resume call therefore re-upserts the SAME batch.
 //
 // Qdrant upsert is idempotent by point ID, so a re-upsert is safe on
 // the index side; the side-effect to monitor is that
@@ -146,10 +145,12 @@ ON CONFLICT(job_id) DO UPDATE SET
 // The chosen trade-off (commit-after-upsert, no two-phase commit) was
 // selected because Qdrant's lack of a transactional token API forces
 // the choice between:
-//   (a) commit-after-up — fast, idempotent, counters may drift, OR
-//   (b) commit-before-up — durable cursor, but upsert failures leave
-//       silent gaps that look like "we didn't run this batch" rather
-//       than "we ran it and Qdrant rejected it".
+//
+//	(a) commit-after-up — fast, idempotent, counters may drift, OR
+//	(b) commit-before-up — durable cursor, but upsert failures leave
+//	    silent gaps that look like "we didn't run this batch" rather
+//	    than "we ran it and Qdrant rejected it".
+//
 // (a) is preferred because the explicit DLQ + Prometheus outcome
 // counters give operators a strict superset of (b)'s visibility.
 // PR 9 follow-ups may wrap (a) in a SQLite SAVEPOINT so the cursor
@@ -226,11 +227,11 @@ func (s *CheckpointStore) Get(ctx context.Context, jobID string) (*Checkpoint, e
 		return nil, errors.New("qdrantprojection.CheckpointStore.Get: jobID must not be empty")
 	}
 	var (
-		c              Checkpoint
-		startedAt      string
-		finishedAt     sql.NullString
-		lastBatchAt    sql.NullString
-		status         string
+		c           Checkpoint
+		startedAt   string
+		finishedAt  sql.NullString
+		lastBatchAt sql.NullString
+		status      string
 	)
 	err := s.db.QueryRowContext(ctx, `
 SELECT job_id, target_collection, last_indexed_id, indexed_count, error_count,
@@ -266,11 +267,11 @@ WHERE job_id = ?
 type DLQReason string
 
 const (
-	DLQReasonEmbeddingObsolete DLQReason = "embedding_obsolete"
+	DLQReasonEmbeddingObsolete  DLQReason = "embedding_obsolete"
 	DLQReasonContentHashMissing DLQReason = "content_hash_missing"
-	DLQReasonDimensionMismatch DLQReason = "dimension_mismatch"
-	DLQReasonPayloadInvalid   DLQReason = "payload_invalid"
-	DLQReasonOther            DLQReason = "other"
+	DLQReasonDimensionMismatch  DLQReason = "dimension_mismatch"
+	DLQReasonPayloadInvalid     DLQReason = "payload_invalid"
+	DLQReasonOther              DLQReason = "other"
 )
 
 // DLQEntry is a single failure record. Inserted via DLQ() and visible
@@ -337,8 +338,8 @@ LIMIT ?
 	var out []DLQEntry
 	for rows.Next() {
 		var (
-			e         DLQEntry
-			observed  string
+			e        DLQEntry
+			observed string
 		)
 		if err := rows.Scan(&e.JobID, &e.AssetID, &e.Reason, &e.LastError, &observed); err != nil {
 			return nil, fmt.Errorf("qdrantprojection.CheckpointStore.ListDLQ: scan: %w", err)
@@ -356,7 +357,7 @@ LIMIT ?
 
 // formatRFC3339 returns the canonical SQL-friendly RFC3339Nano string
 // when t is non-zero, otherwise the empty string (so SQL columns
-// with `DEFAULT ''` accept the value without an EXPLICIT NULL flag).
+// with `DEFAULT ”` accept the value without an EXPLICIT NULL flag).
 // Operator convention: zero time == "not set" == empty column.
 func formatRFC3339(t time.Time) string {
 	if t.IsZero() {
