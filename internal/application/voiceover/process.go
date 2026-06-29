@@ -30,9 +30,7 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -126,19 +124,28 @@ func (s *Service) processLanguage(
 	oldLocalPath := ""
 	oldCleanedPath := ""
 	var existingDriveLink string
-	// PR-VO-A2: pre-read captures the orphan-candidate rows in single SELECT
-	// so the post-commit best-effort cleanup goroutine can remove both the
-	// orphaned Drive file and the local audio file in one trip. errors.Is
-	// check on sql.ErrNoRows is the canonical idiom — relying on the
-	// message string of the underlying error (e.g. "sql: no rows in
-	// result set") couples this code to a specific driver / Go version.
-	rowErr := s.db.QueryRowContext(ctx,
-		"SELECT drive_file_id, drive_link, local_path, cleaned_path FROM voiceovers WHERE id = ?", id,
-	).Scan(&oldDriveFileID, &existingDriveLink, &oldLocalPath, &oldCleanedPath)
-	if rowErr != nil && !errors.Is(rowErr, sql.ErrNoRows) {
-		s.log.Warn("processLanguage: pre-read of existing voiceover failed", zap.String("id", id), zap.Error(rowErr))
+	// P1-2 boundary split (June 2026): the previous raw
+	// s.db.QueryRowContext(...).Scan(...) block is replaced by a
+	// PreReadByID call on the persistence.Repository port. The
+	// concrete adapter (useCaseRepoAdapter) handles the sql.ErrNoRows
+	// → (nil, nil) translation internally so the caller doesn't
+	// need errors.Is against database/sql errors.
+	oldRec, preReadErr := s.voiceoverRepo.PreReadByID(ctx, id)
+	if preReadErr != nil {
+		s.log.Warn("processLanguage: pre-read of existing voiceover failed",
+			zap.String("id", id), zap.Error(preReadErr))
+		// Defensive — preserve the pre-PR-VO-A2 "carry on"
+		// semantics so a transient pre-read error doesn't block the
+		// swap stage from running.
+		oldRec = nil
 	}
-	if !shouldSwap && folderID != "" && rowErr == nil && existingDriveLink == "" {
+	if oldRec != nil {
+		oldDriveFileID = oldRec.DriveFileID
+		existingDriveLink = oldRec.DriveLink
+		oldLocalPath = oldRec.LocalPath
+		oldCleanedPath = oldRec.CleanedPath
+	}
+	if !shouldSwap && folderID != "" && oldRec != nil && existingDriveLink == "" {
 		// Existing row with no drive link — force regeneration so the persisted row
 		// catches up to the freshly uploaded file.
 		s.log.Info("processLanguage: existing record has no drive link, forcing swap", zap.String("id", id))

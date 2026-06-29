@@ -41,11 +41,13 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -53,6 +55,8 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
+
+var _ persistence.Repository = (*useCaseRepoAdapter)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
 // TTSProvider adapter.
@@ -230,13 +234,85 @@ var _ voiceover.AssetLifecycle = (*useCaseLifecycleAdapter)(nil)
 
 type useCaseRepoAdapter struct {
 	repo *sqassets.VoiceoversRepository
+	db   *sql.DB
 }
 
-func newUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository) *useCaseRepoAdapter {
+func newUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository, db *sql.DB) *useCaseRepoAdapter {
 	if repo == nil {
 		panic("app.adapters_voiceover_use_case: newUseCaseRepoAdapter: repo is required (*sqassets.VoiceoversRepository)")
 	}
-	return &useCaseRepoAdapter{repo: repo}
+	if db == nil {
+		panic("app.adapters_voiceover_use_case: newUseCaseRepoAdapter: db is required (*sql.DB, used by BeginTx in P1-2)")
+	}
+	return &useCaseRepoAdapter{repo: repo, db: db}
+}
+
+// BeginTx opens a new SQLite transaction on the production database.
+// P1-2 (June 2026): the useCaseRepoAdapter previously only owned
+// InsertTx / DeleteByIDTx / PreReadByID. P1-2 added BeginTx so the
+// voiceover Service can thread the PR-VO-A2 atomic swap tx through
+// the canonical persistence.Repository port instead of holding a
+// bare *sql.DB handle.
+func (a *useCaseRepoAdapter) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	if a == nil || a.db == nil {
+		return nil, fmt.Errorf("useCaseRepoAdapter.BeginTx: db not wired")
+	}
+	return a.db.BeginTx(ctx, nil)
+}
+
+// CountByDriveFileIDTx runs the PR-VO-B3 post-upload dedupe gate
+// INSIDE the caller-owned tx. Returns the matched-row id, the
+// total match count, and any error.
+//
+// P1-2 (June 2026): the application-layer helper
+// applyDedupeByDriveFileID that lived in
+// internal/application/voiceover/dedupe.go and consumed raw
+// *sql.DB + *sql.Tx is NOT re-implemented here. The port
+// method takes the tx parameter from the caller (which is
+// already inside the PR-VO-A2 atomic-swap transaction) so the
+// count runs against the same visibility boundary as the
+// upcoming INSERT.
+//
+// Empty driveFileID short-circuits to (matchedID="", count=0,
+// err=nil) so the Stage 3 caller can detect "no gate" via the
+// empty id without a separate sentinel.
+func (a *useCaseRepoAdapter) CountByDriveFileIDTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	currentID string,
+	driveFileID string,
+) (string, int, error) {
+	if driveFileID == "" || tx == nil {
+		return "", 0, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return "", 0, err
+	}
+	row := tx.QueryRowContext(ctx, `
+		SELECT id, COALESCE(drive_link,''), COALESCE(local_path,''), COALESCE(file_hash,'')
+		  FROM voiceovers
+		 WHERE drive_file_id = ? AND id != ?
+		 LIMIT 1
+	`, driveFileID, currentID)
+	var matchedID, driveLink, localPath, fileHash string
+	if scanErr := row.Scan(&matchedID, &driveLink, &localPath, &fileHash); scanErr != nil {
+		if errors.Is(scanErr, sql.ErrNoRows) {
+			return "", 0, nil
+		}
+		return "", 0, fmt.Errorf("CountByDriveFileIDTx: scan: %w", scanErr)
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM voiceovers WHERE drive_file_id = ? AND id != ?`,
+		driveFileID, currentID,
+	).Scan(&count); err != nil {
+		// Count failed but we DID find the row: degrade to count=1
+		// so the gate still reports the match without ambiguity
+		// inflation (matches the pre-P1-2 applyDedupeByDriveFileID
+		// graceful-degrade contract).
+		return matchedID, 1, nil
+	}
+	return matchedID, count, nil
 }
 
 // toInfraRecord converts the application-layer VoiceoverRecord
@@ -361,8 +437,6 @@ func (a *useCaseRepoAdapter) PreReadByID(ctx context.Context, id string) (*voice
 	}
 	return a.fromInfraRecord(r), nil
 }
-
-var _ voiceover.VoiceoverRepository = (*useCaseRepoAdapter)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
 // DestinationResolver adapter.

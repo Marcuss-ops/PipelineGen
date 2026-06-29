@@ -221,49 +221,6 @@ type AssetUploadOutput struct {
 	FileHash     string
 }
 
-// VoiceoverRepository is the canonical port for the voiceovers SQLite
-// row operations. The use case calls InsertTx + DeleteByIDTx inside
-// the PR-VO-A2 atomic swap tx; the production concrete is
-// *assets.VoiceoversRepository (from
-// internal/infrastructure/database/sqlite/assets/).
-//
-// Why PreReadByID is a SEPARATE method (not part of Validate-then-Upload):
-// the use case calls PreReadByID BEFORE opening the atomic tx so it can
-// capture the OLD row's orphan paths for the post-commit cleanup
-// goroutine that fires after the swap commits.
-type VoiceoverRepository interface {
-	InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error
-	DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error
-	PreReadByID(ctx context.Context, id string) (*VoiceoverRecord, error)
-}
-
-// VoiceoverRecord is the canonical column-set for the voiceovers
-// table (matches registry_adapter.go Record + the INSERT in
-// stages.go::finalizeStage).
-type VoiceoverRecord struct {
-	ID           string
-	RequestID    string
-	TextHash     string
-	TextPreview  string
-	Language     string
-	Voice        string
-	Filename     string
-	LocalPath    string
-	CleanedPath  string
-	FolderID     string
-	FolderPath   string
-	DriveFileID  string
-	DriveLink    string
-	DownloadLink string
-	FileHash     string
-	Status       string
-	Error        string
-	Strategy     string
-	Metadata     string
-	CreatedAt    string
-	UpdatedAt    string
-}
-
 // TransactionalOutbox is the canonical port for emitting the
 // asset.index.requested.v1 envelope inside the caller's tx.
 //
