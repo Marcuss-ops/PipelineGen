@@ -40,4 +40,5 @@ type VerifyReport struct {
 	Errors          []string `json:"errors,omitempty"`
 }
 
-
+// (noopMetrics + NowFunc intentionally moved to restore.go — the canonical home.
+// See restore.go for the live declaration + usage in NewRestoreServiceFromDeps.)
