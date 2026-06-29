@@ -23,6 +23,8 @@
 package voiceover
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -184,6 +186,40 @@ func NewHandler(jobsSvc jobservice.Service, log *zap.Logger) *Handler {
 // BACKFILL commits per godlike/07 §"BACKFILL window".
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
+
+	// PR-VO-CONTRACT Phase 2 (godlike/13 §"Runtime cut", June 2026):
+	// re-bind the legacy routes as 410 Gone stubs so existing clients
+	// discover the migration timer via RFC 8594 Sunset + RFC 8288
+	// successor-version Link headers. The 4 legacy paths were removed
+	// from RegisterRoutes at Blocco 4 EXPAND slim; here we restore them
+	// minimally (no business logic) so the BACKFILL/CUTOVER signal is
+	// observable from any HTTP client. The headers are duplicated
+	// locally from addVoiceoverDeprecationHeader so the Phase 7 deletion
+	// of the Sunset machinery does not strand a 410 stub with no header
+	// payload. r.Any catches GET/POST/PUT/DELETE — legacy callers
+	// may have used any method on these paths.
+	r.Any("/generate-with-group", h.voiceoverGone)
+	r.Any("/batch", h.voiceoverGone)
+	r.Any("/promo", h.voiceoverGone)
+	r.Any("/sync", h.voiceoverGone)
+}
+
+// voiceoverGone (PR-VO-CONTRACT Phase 2, June 2026) emits an
+// RFC 8594 + RFC 8288 410 Gone response for the legacy voiceover
+// routes. Headers are intentionally inlined from the
+// voiceoverSunsetDate constant + a static successor-version Link
+// pointer — this isolates the runtime-cut 410 stub from the
+// Phase 7 deletion of addVoiceoverDeprecationHeader (godlike/07
+// CONTRACT half), so the 410 stub still emits valid Sunset +
+// successor-version headers after the Sunset machinery is gone.
+func (h *Handler) voiceoverGone(c *gin.Context) {
+	c.Header("Sunset", voiceoverSunsetDate)
+	c.Header("Link", `</api/voiceover/generate>; rel="successor-version"`)
+	c.AbortWithStatusJSON(http.StatusGone, gin.H{
+		"error":     "This legacy voiceover endpoint was sunset on 2026-09-26. Use POST /api/voiceover/generate.",
+		"sunset":    voiceoverSunsetDate,
+		"successor": "/api/voiceover/generate",
+	})
 }
 
 // Generate enqueues a voiceover.generate job (Blocco 4 EXPAND job
