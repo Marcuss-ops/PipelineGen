@@ -9,6 +9,46 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ## Unreleased
 
+### Fixed
+
+**[Step 6, b612ae9b]** Qdrant 1.18.2 compatibility — 4 deploy-time bugs fixed:
+  - Collection verification tolerance for newly-created collections
+    (race between `EnsureSchema` and `GetCollection`).
+  - Sparse vector BM25 index rebuild stability (idempotent re-creation
+    after collection drop/recreate).
+  - Point-level upsert error propagation (previously swallowed).
+  - Scroll pagination boundary (NextOffset handling).
+
+**[Step 7]** Script.generate fail-fast composition wiring (Issue 7 / P1):
+  - `internal/app/wire_script.go::wireScriptFlow` — server startup now
+    fails closed when jobs broker is missing or `script.generate`
+    registration fails (previously logged a warning and came up
+    without the handler, causing runtime "no handler for
+    script.generate" on first enqueue).
+  - `internal/app/wire_script.go::validateScriptGenerateWiring` —
+    post-registration composition gate enforcing 3 invariants:
+    (a) job-type registered in `appjobs.Compose()` registry,
+    (b) broker has handler, (c) at least one cluster worker
+    configured for `script.generate`.
+  - `internal/application/jobs/service.go::HasHandler` — nil-tolerant
+    query method on the broker port.
+  - `internal/application/scripts/jobs/generation_job.go::RegisterJobs`
+    — returns typed error when broker is nil instead of silently
+    returning nil.
+
+**[Step 8, 4e1f8e78]** Auth middleware `compareTokens` whitespace injection:
+  - `internal/api/middleware/middleware_middleware.go::compareTokens`
+    now trims whitespace on both `provided` and `expected` tokens.
+    Systemd `Environment=` directive can inject trailing whitespace
+    into the token value; the byte-exact comparison previously rejected
+    every request. Mirrors the `TrimSpace` already applied by
+    `RequireAdminToken`.
+
+**[Step 9, e4698e39]** Qdrant payload mapper nil-logger guard:
+  - `internal/infrastructure/qdrant/payload_mapper.go::IndexDocumentToPoint`
+    added nil-check on `m.log` before `Debug()` call in the sparse-vector
+    path. Prevents panic when logger is nil (common in test fixtures).
+
 ### Deprecated
 
 **[Deprecation, PR-VO-C1]** Unified `/api/voiceover/generate-with-group`
