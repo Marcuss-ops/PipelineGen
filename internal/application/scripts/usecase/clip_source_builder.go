@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -82,6 +83,47 @@ func NewClipSourceBuilder(
 }
 
 func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
+
+// excerptMaxRunes is the rune-budget for the per-clip transcript excerpt
+// appended to the assembled source text.
+//
+// A4 (June 2026): this constant replaced an inline byte-budget of 500 (the
+// old `excerpt[:500]` cut). Byte-truncation on multi-byte UTF-8 input (CJK
+// ideographs, supplementary-plane emoji, accented Latin) silently splits
+// codepoints and emits invalid bytes downstream. The fingerprint
+// (ComputeFingerprint) is unaffected — it never read this constant — and
+// BuildClipContext now truncates by RUNES via truncateExcerpt.
+//
+// A7 (forthcoming) will wire opts.TranscriptPolicy to a documented mode
+// (full | sentence_window | keyword_window) and *replace* this hard-coded
+// budget at the same call site. The constant is the single point of
+// governance until then.
+const excerptMaxRunes = 500
+
+// truncateExcerpt returns s if its rune count is at most maxRunes;
+// otherwise it returns s truncated to exactly maxRunes runes followed by
+// the U+2026 HORIZONTAL ELLIPSIS. Truncation snaps to rune boundaries so
+// the result is always well-formed UTF-8 and never splits a multi-byte
+// codepoint.
+//
+// A4 (June 2026). Bounded iteration (no full []rune(s) materialization) so
+// very large transcripts (multi-MB) stay cheap.
+func truncateExcerpt(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	runes := make([]rune, 0, maxRunes+1)
+	for _, r := range s {
+		if len(runes) == maxRunes {
+			break
+		}
+		runes = append(runes, r)
+	}
+	return string(runes) + "\u2026"
+}
 
 func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
@@ -205,10 +247,11 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			transcript = clip.GetMetadataString("clean_transcript")
 		}
 		if transcript != "" {
-			excerpt := transcript
-			if len(excerpt) > 500 {
-				excerpt = excerpt[:500] + "..."
-			}
+			// A4 (June 2026): rune-safe truncation; the helper snaps to
+			// rune boundaries and appends U+2026, replacing the old
+			// byte-index cut (`excerpt[:500]`) that split multi-byte
+			// codepoints. See truncateExcerpt above.
+			excerpt := truncateExcerpt(transcript, excerptMaxRunes)
 			sourceTextBuilder.WriteString(fmt.Sprintf("  Transcript: %s\n", excerpt))
 		}
 		if len(clip.Tags) > 0 {
