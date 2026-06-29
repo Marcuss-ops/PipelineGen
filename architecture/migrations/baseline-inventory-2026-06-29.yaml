@@ -756,7 +756,14 @@ ratchet_command_post_migration_commit: |
   fi
   echo "MIGRATION_RATCHET_OK: legacy productive $REALTIME <= baseline $CURRENT"
 
-supersedes_drift_baseline: null  # first artifact; no predecessor
+supersedes_drift_baseline:
+  arch_md:
+    status: resolved
+    pre_resolution_state: ARCHITECTURE.md referenced the legacy monolithic `architecture/ownership.yaml` (725 LoC, deleted in dc6add3e) implicitly in §6/§9 + explicitly cross-referenced by 11+ downstream docs/ files
+    resolved_on: 2026-06-29  # same-day close of PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT
+    resolution_commit: TBD_per_commit  # filled after the doc-only commit lands on origin/main
+    tracking_ticket: PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT  # registered in architecture/current.yaml#id-0.follow_up_tickets
+    audit_pointer: architecture/current.yaml#id-0.follow_up_tickets[PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT].shipped_result  # one-way pointer (current.yaml → ARCHITECTURE.md), no circular reference
 superseded_by_future_inventory: TBD_on_migration_completion
 
 open_questions_pending_owner_decision:  # historical record; all 6 resolved 2026-06-29 — see owner_resolved_decisions below

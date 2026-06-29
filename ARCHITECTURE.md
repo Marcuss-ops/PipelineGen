@@ -194,6 +194,20 @@ Ticker (cfg.Jobs.CatalogSyncInterval, default 6h)
 > Qdrant projection carve-out, and future storage-engine migration
 > (EXPAND/BACKFILL/CUTOVER/CONTRACT) live canonically in
 > [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md).
+>
+> **Package-level enforcement** (which `internal/infrastructure/database/**`
+> package owns which table family, and per-`internal/application/*`
+> capability-side repository hand-off) is registered in the per-section
+> ownership files: `architecture/ownership/infrastructure.yaml` (adapters,
+> drivers, table families) and `architecture/ownership/application.yaml`
+> (capability-side repository contracts). The generated canonical view
+> `architecture/ownership.generated.yaml` is rebuilt byte-deterministically
+> by `cmd/architecture-aggregate` (stdlib-only concatenation; no YAML
+> re-parsing round-trip to preserve comments) and consumed by
+> `scripts/archcheck/main.go`. Re-verification path:
+> `go run ./cmd/architecture-aggregate; diff <generated> architecture/ownership.generated.yaml`
+> (canonical form registered in
+> `architecture/migrations/baseline-inventory-2026-06-29.yaml::capability_owner_authority.verification_command`).
 > The physical layout below is the operational view.
 
 **Pattern (codex/db-set-and-paths, June 2026)**: every sqlite database is
@@ -317,6 +331,26 @@ without leaking capability internal state.
 
 `context.Background()` in non-test code: currently **~9 sites** (refactored from ~20). The remaining sites are either intentional post-write save contexts or top-level composition roots where no parent context exists. Lint gate: `bash scripts/ci-architectural-checks.sh`.
 
+
+> **Package ownership**: Job-handler mapping (per-`job.Type*` registration,
+> claim semantics, lease + renewal, dead-letter dispatch) is registered in
+> [`architecture/ownership/jobs.yaml`](architecture/ownership/jobs.yaml);
+> per-capability application-layer facade contracts (`internal/application/*`)
+> are registered in
+> [`architecture/ownership/application.yaml`](architecture/ownership/application.yaml);
+> the generated canonical view at
+> [`architecture/ownership.generated.yaml`](architecture/ownership.generated.yaml)
+> is rebuilt byte-deterministically via
+> [`cmd/architecture-aggregate`](cmd/architecture-aggregate) (stdlib-only
+> concatenation; no YAML re-parsing round-trip; comments preserved verbatim).
+> The twelve `context.Background()` (4 directly mapped to
+> `scripts/ci-architectural-checks.sh::Check 1` + 8 documentation-only
+> composition roots / shutdown drains / background goroutines) and
+> thirteen `context.WithoutCancel` exemption sites registered in
+> `AGENTS.md § `context.Background()` allowlist` are tracked here
+> as INTENTIONAL EXEMPTIONS. Wave 22 promotes them to a dedicated
+> CI gate via PR-CONTEXT-NO-CANCEL-CI-GATE (deadline 2026-07-15).
+
 ## 8. External services
 
 | Service | Port | Purpose | Started by |
@@ -342,6 +376,18 @@ scraper). Everything else is external.
 > capability configuration" rule, and the ban on runtime mutation /
 > duplicated fallbacks live canonically in
 > [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration).
+>
+> **Package-level ownership** for `internal/platform/config/**` is registered in
+> `architecture/ownership/infrastructure.yaml`; arbitrary capability
+> domains MUST NOT parse raw config (godlike/06). Governance keys
+> (lint_gates, cross_project_refs, wave_qdrant_005d_hygiene, etc.) have
+> moved entirely from the legacy monolithic `architecture/ownership.yaml`
+> (725 LoC, deleted in `dc6add3e`) to `architecture/policy.yaml` per the
+> "One owner per fact" rule; the per-section ownership tables (
+> `architecture/ownership/{modules,jobs,services,application,infrastructure,packages}.yaml`)
+> are now the SSOT for *which package owns what*, and
+> `architecture/ownership.generated.yaml` is the byte-deterministic view
+> rebuilt via `cmd/architecture-aggregate`.
 
 The current loader lives at `internal/platform/config/config.go::Get()`
 (target-tree Phase 2, June 2026). The 19 sub-structs of `Config` live
@@ -428,6 +474,16 @@ The repository is converging from the current two-zone
 [`architecture/policy.yaml`](architecture/policy.yaml). The migration is
 multi-phase; this section captures the rules and the tracking tool so
 each phase can be checked objectively.
+
+As of June 2026, the initial reference target is frozen in
+[`architecture/migrations/baseline-inventory-2026-06-29.yaml`](architecture/migrations/baseline-inventory-2026-06-29.yaml)
+(capture date 2026-06-29; produced by the Wave-0 close follow-up). All
+migration phases are tracked there per the godlike/06 SSOT rule
+(architecture docs do not enumerate per-phase state; phases live in the
+ratchet tracker). Re-verification: the BASH-only
+`baseline-inventory.ratchet_command_post_migration_commit` runs in the
+CI container without `yq`/`bc`/`rg` and gates each migration commit
+against the baseline's monotone-invariants table.
 
 ### Target zones
 
