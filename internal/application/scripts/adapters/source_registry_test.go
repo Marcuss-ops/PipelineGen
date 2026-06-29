@@ -114,9 +114,6 @@ func TestSourceRegistryResolveUnknownType(t *testing.T) {
 	_, err := reg.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type: scriptpkg.SourceClips,
 	}, scriptpkg.SourceResolutionContext{ItemID: "item-1"})
-	}, scriptpkg.SourceResolutionContext{
-		ItemID: "item-1",
-	})
 
 	if err == nil {
 		t.Fatal("expected error for unknown source type")
@@ -150,7 +147,6 @@ func TestSourceRegistryNilReceiver(t *testing.T) {
 
 	// Resolve must return error on nil.
 	_, err := reg.Resolve(context.Background(), scriptpkg.SourceSpec{}, scriptpkg.SourceResolutionContext{ItemID: "x"})
-	_, err := reg.Resolve(context.Background(), scriptpkg.SourceSpec{}, scriptpkg.SourceResolutionContext{})
 	if err == nil {
 		t.Error("nil registry: Resolve should return error")
 	}
@@ -375,7 +371,6 @@ func TestCatalogResolverSearchError(t *testing.T) {
 		Type:  scriptpkg.SourceCatalog,
 		Query: "test",
 	}, scriptpkg.SourceResolutionContext{ItemID: "item-err-catalog"})
-	}, scriptpkg.SourceResolutionContext{ItemID: "item-err"})
 	if err == nil {
 		t.Fatal("expected error from catalog port")
 	}
@@ -389,7 +384,6 @@ func TestCatalogResolverNoResults(t *testing.T) {
 		Type:  scriptpkg.SourceCatalog,
 		Query: "nothing matches",
 	}, scriptpkg.SourceResolutionContext{ItemID: "item-noresults-ct"})
-	}, scriptpkg.SourceResolutionContext{ItemID: "item-noresults"})
 	if err == nil {
 		t.Fatal("expected error for zero results")
 	}
