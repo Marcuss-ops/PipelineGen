@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 )
 
@@ -43,8 +42,25 @@ type Dependencies struct {
 	// closure (the Module prefix "/voiceover" is honored internally,
 	// so the assets module no longer wraps `r.Group("/voiceover")`
 	// around the descriptor's RegisterRoutes call).
-	Voiceover   api.Descriptor
-	SoundEffect *soundeffect.Handler
+	Voiceover api.Descriptor
+
+	// Blocco C1-Step 8 (June 2026): SoundEffect is now an
+	// api.Descriptor (the canonical Build contract surface)
+	// instead of a raw *soundeffect.Handler. The composition
+	// root threads the *soundeffect.SoundeffectDescriptor
+	// returned by soundeffect.Build(...) here; the descriptor's
+	// RegisterRoutes(rg) forwarder delegates to the embedded
+	// api.Module which captures the Handler in its closure
+	// (the Module prefix "/sound_effect" is honored internally,
+	// so the assets module no longer wraps
+	// `r.Group("/sound_effect")` around the descriptor's
+	// RegisterRoutes call). The soundeffect capability has no
+	// non-HTTP consumer in the codebase (/generate is the entire
+	// public surface, reachable only via HTTP), so the
+	// Descriptor surface is the smallest possible — just
+	// `Module` field + forwarder methods (matches the stock
+	// precedent exactly).
+	SoundEffect api.Descriptor
 	Register    *register.Handler
 }
 
@@ -90,10 +106,15 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Voiceover.RegisterRoutes(r)
 	}
 
-	// SoundEffect operations (/sound_effect/*)
+	// SoundEffect operations (/sound_effect/*). Blocco C1-Step 8
+	// (June 2026): the soundeffect Module owns its own
+	// /sound_effect prefix; the assets module passes the parent
+	// /api/media group straight through (no more
+	// `r.Group("/sound_effect")` wrap — the descriptor's
+	// SoundeffectDescriptor.RegisterRoutes(rg) forwarder delegates
+	// to the embedded api.Module which routes to handler.Generate).
 	if m.deps.SoundEffect != nil {
-		sfx := r.Group("/sound_effect")
-		m.deps.SoundEffect.RegisterRoutes(sfx)
+		m.deps.SoundEffect.RegisterRoutes(r)
 	}
 
 	// YouTube registration (register-from-youtube, register-batch)

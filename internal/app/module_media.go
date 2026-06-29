@@ -393,6 +393,29 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// composition: when dispatcher is nil (test fixtures, partial
 	// deploys), the handler returns 503 to the operator. Production
 	// wiring in cmd/server always supplies a non-nil dispatcher.
+	// FASE 7 (June 2026): deps.Delivery.Publisher is passed
+	// directly to NewHandler; sfxports.PublisherPort is the narrow
+	// surface of delivery.Publisher (both share
+	// delivery.PublishRequest/PublishResult types), so the concrete
+	// delivery.Publisher satisfies sfxports.PublisherPort
+	// structurally — no explicit sfxPublisherAdapter is needed
+	// (matches the parallel session's b9412605 wiring).
+	//
+	// Blocco C1-Step 8 (June 2026): SoundEffect capability is now
+	// built via the canonical soundeffect.Build(deps) (api.Descriptor,
+	// error) contract, matching the artlist / youtube / clips /
+	// stock / voiceover precedent. The Handler is constructed
+	// inside Build and captured by the returned
+	// SoundeffectDescriptor's Module closure. The composition
+	// site type-asserts ONCE to *soundeffect.SoundeffectDescriptor
+	// (fail-closed) and reuses the concrete for the
+	// assetsapi.NewModule(..., SoundEffect: sd, ...) call (the
+	// concrete *SoundeffectDescriptor satisfies api.Descriptor
+	// structurally). The soundeffect capability has no non-HTTP
+	// consumer in the codebase (/generate is the entire public
+	// surface, reachable only via HTTP), so the Descriptor surface
+	// is the smallest possible — just `Module` field + forwarder
+	// methods (matches the stock / voiceover precedent exactly).
 	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
 	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
@@ -400,9 +423,27 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	if driveUploader != nil {
 		sfxDriveUp = &sfxDriveUploaderAdapter{up: driveUploader}
 	}
-	var sfxDispatcher sfxports.DispatcherPort
-	sfxDispatcher = newSfxDispatcherAdapter(dispatcher)
-	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, deps.Delivery.Publisher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
+	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
+	soundeffectDescriptor, err := assetsfx.Build(assetsfx.Dependencies{
+		ClipsRepo:              sfxClips,
+		DriveUploader:          sfxDriveUp,    // nil-tolerant at request time (legacy fallback path)
+		MetaWriter:             sfxMeta,       // nil-tolerant at request time (default tag/searchText)
+		Resolver:               sfxResolver,   // mandatory — Generate calls unconditionally
+		Dispatcher:             sfxDispatcher, // mandatory — Build is fail-closed on nil
+		Publisher:              deps.Delivery.Publisher, // FASE 7: structural match (delivery.Publisher → sfxports.PublisherPort)
+		SoundEffectsRootFolder: cfg.Drive.SoundEffectsRootFolder,
+		ProcessRunner:          processRunnerAdapter,
+		EnabledFunc:            func() bool { return true }, // soundeffect is always on in production
+		ModuleOpts:             nil,                          // no per-feature middleware (matches pre-Step-8 wiring)
+		Logger:                 log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: soundeffect.Build: %w", err)
+	}
+	sd, ok := soundeffectDescriptor.(*assetsfx.SoundeffectDescriptor)
+	if !ok || sd == nil {
+		return nil, fmt.Errorf("WireAssets: soundeffect.Build returned unexpected descriptor type %T (want *assetsfx.SoundeffectDescriptor)", soundeffectDescriptor)
+	}
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	// Blocco C1-Step 5 (June 2026): the sourcingEnrichmentAdapter
@@ -424,7 +465,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		Search:      searchHandler,
 		Clips:       clipsDesc,
 		Voiceover:   vd,
-		SoundEffect: sfxHandler,
+		SoundEffect: sd,
 		Register:    registerHandler,
 	}, log)
 	assetsRouteMod := module.NewRouteModule(
