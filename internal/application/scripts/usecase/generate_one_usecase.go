@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -109,7 +110,7 @@ func (uc *GenerateOneUseCase) Execute(
 
 	// ── Phase 1: Normalize ──────────────────────────────────────────
 	tracker.PhaseNormalize()
-	NormalizeItem(&item, preset, uc.cfg)
+	adapters.NormalizeItem(&item, preset, uc.cfg)
 
 	// ── Phase 2: Validate ───────────────────────────────────────────
 	tracker.PhaseValidate()
@@ -457,7 +458,7 @@ func buildGenerationResult(
 		// that have not yet migrated to the typed shape.
 		result.Artifacts.Entities = postResult.Entities
 		if postResult.Entities != nil {
-			if raw, err := SerializeEntityResultRoundTrip(postResult.Entities); err == nil {
+			if raw, err := scriptdto.SerializeEntityResultRoundTrip(postResult.Entities); err == nil {
 				result.Artifacts.EntitiesJSON = raw
 			}
 		}
