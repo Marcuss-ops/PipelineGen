@@ -1,6 +1,6 @@
 // Package scripts — generation_identity.go provides a single canonical
 // identity/fingerprint function for generation items. It replaces the
-// duplicated ComputeFingerprint logic in clip_source_builder.go and
+// duplicate fingerprint logic across packages and
 // the sourceFingerprint usage in pipeline_handlers.go.
 //
 // The identity is deterministic and includes every field that affects
