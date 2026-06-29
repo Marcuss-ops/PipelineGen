@@ -75,8 +75,8 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 	if asset == nil {
 		t.Fatal("FetchAsset returned nil asset")
 	}
-	if asset.Status != "ACTIVE" {
-		t.Fatalf("FetchAsset status = %q, want ACTIVE", asset.Status)
+	if asset.LifecycleState != "ACTIVE" {
+		t.Fatalf("FetchAsset lifecycle_state = %q, want ACTIVE", asset.LifecycleState)
 	}
 	if asset.YouTubeVideoID != "yt-123" || asset.YouTubeURL != "https://www.youtube.com/watch?v=yt-123" {
 		t.Fatalf("FetchAsset youtube fields not populated: %+v", asset)
