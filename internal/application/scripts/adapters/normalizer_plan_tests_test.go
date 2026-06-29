@@ -890,7 +890,6 @@ func TestBuildPlanTopicBothEmpty(t *testing.T) {
 // ── Identity: deterministic fingerprint ────────────────────────────
 
 func TestBuildItemIdentityDeterministic(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	item := textItem()
 	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
@@ -906,7 +905,6 @@ func TestBuildItemIdentityDeterministic(t *testing.T) {
 }
 
 func TestBuildItemIdentityDifferentItems(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	item1 := textItem()
 	item2 := textItem()
 	item2.Title = "Different Title"
@@ -922,7 +920,6 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 }
 
 func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	// Output flags control postprocessors, not script text.
 	// The identity must not change when output flags change.
 	item1 := textItem()
@@ -947,7 +944,6 @@ func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
 }
 
 func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	// Clip IDs are sorted for determinism — different input orders
 	// must produce the same identity.
 	item1 := clipsItem()
@@ -968,7 +964,6 @@ func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
 }
 
 func TestBuildItemIdentityNilSafety(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	// BuildItemIdentity is called on a value (not pointer), so nil
 	// isn't possible at the Go level. But empty items should still
 	// produce a stable identity.
@@ -980,7 +975,6 @@ func TestBuildItemIdentityNilSafety(t *testing.T) {
 }
 
 func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	item := textItem()
 	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
@@ -999,7 +993,6 @@ func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
 }
 
 func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
-	t.Skip("Phase 1b stub: BuildItemIdentity returns empty string; canonical implementation pending (TODO #1, June 2026)")
 	item1 := textItem()
 	item1.ID = "a"
 	item2 := clipsItem()

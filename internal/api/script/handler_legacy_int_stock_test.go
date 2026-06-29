@@ -171,9 +171,8 @@ func (c *cannedJobService) Get(_ context.Context, id string) (*jobservice.Job, e
 // The Jackie Chan smoke path is the canonical smoke scenario (5 clips,
 // single DriveLink per scene). The HTTP layer is exercised via
 // httptest.NewServer + pkg/veloxclient.SubmitAsync; the terminal job
-// result is fetched with a one-shot http.Get on the handler's
-// /api/script/jobs/:job_id/full route (veloxclient.GetJobStatus is
-// hardcoded to /api/jobs/... and doesn't match the script route).
+// result is fetched with a one-shot http.Get on the canonical
+// /api/jobs/:id/full route.
 func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	t.Parallel()
 
@@ -185,26 +184,19 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	}
 	parentSvc = svc // satisfy job.Service interface
 
-	// Issue 9 / P2 (June 2026): the script route
-	// /api/script/jobs/:job_id/full now delegates to the
-	// canonical JobsHandler.GetFull via the JobFullStatus
-	// port. A real JobsHandler is constructed with `svc`
-	// for the orchestrator role (Get + ListEvents) and
-	// stubJobStatsReader{} (defined in handler_test.go) for
-	// the stats-reader role — cannedJobService implements
-	// only domainjob.Service methods, NOT appjobs.JobStatsReader.
-	// The pre-Issue-9 test asserted on the script response
-	// shape (`job_id`, `priority`, `retry_count`, …); after
-	// the collapse the assertion must be on the canonical
-	// JobsHandler shape (`id`, `type`, `status`, …).
+	// Blocco B (June 2026): /api/script/jobs/:id/full removed.
+	// The canonical route is /api/jobs/:id/full — the JobsHandler
+	// is mounted on /api/jobs and the test fetches from there.
 	jobsHandler := jobsapi.NewJobsHandler(svc, stubJobStatsReader{}, zap.NewNop())
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
-		Jobs:          parentSvc,
-		JobFullStatus: jobsHandler,
+		Jobs: parentSvc,
 	})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
+	// Mount the canonical JobsHandler so /api/jobs/:id/full is available.
+	jobsRg := router.Group("/api/jobs")
+	jobsHandler.RegisterRoutes(jobsRg)
 
 	server := httptest.NewServer(router)
 	defer server.Close()
@@ -243,12 +235,8 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	assert.Equal(t, "script.generate", fake.lastReq.Type,
 		"deprecation adapter must map to canonical script.generate job type")
 
-	// ── Act 2: GET the terminal job result via the handler route ─
-	// veloxclient.GetJobStatus hardcodes /api/jobs/:id/full; the
-	// handler mounts /api/script/jobs/:id/full. Go direct via the
-	// test server URL — pkg/veloxclient is reused for SubmitAsync
-	// (its primary role here), the follow-up fetch is one-shot GET.
-	getURL := server.URL + "/api/script/jobs/" + async.JobID + "/full"
+	// ── Act 2: GET the terminal job result via canonical /api/jobs/:id/full ─
+	getURL := server.URL + "/api/jobs/" + async.JobID + "/full"
 	httpResp, err := http.Get(getURL)
 	require.NoError(t, err)
 	defer httpResp.Body.Close()
@@ -258,14 +246,9 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	require.NoError(t, err)
 
 	// ── Assert: job shell ───────────────────────────────────────
-	// Issue 9 / P2 (June 2026): the script route
-	// /api/script/jobs/:job_id/full now delegates to the
-	// canonical JobsHandler.GetFull. The pre-Issue-9 script
-	// response shape had `job_id` (script-local snake-case);
-	// the JobsHandler.GetFull response shape has `id`
-	// (the canonical wire name, also used by
-	// /api/jobs/:id/full). The legacy assertion below
-	// reads the canonical field name.
+	// Blocco B (June 2026): the canonical /api/jobs/:id/full
+	// response shape has `id` (not script-local `job_id`),
+	// `type`, `status`, `result` — the canonical wire contract.
 	var jobShell struct {
 		OK     bool            `json:"ok"`
 		ID     string          `json:"id"`
@@ -285,8 +268,8 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	// longer emitted from this endpoint. The veloxclient surface
 	// (pkg/veloxclient/types.go StatusCompleted) still uses
 	// "completed" for client-side comparison, but the
-	// /api/script/jobs/:job_id/full wire shape carries the
-	// canonical "SUCCEEDED" (delegated to JobsHandler.GetFull).
+	// /api/jobs/:id/full wire shape carries the
+	// canonical "SUCCEEDED" (from JobsHandler.GetFull).
 	assert.Equal(t, "SUCCEEDED", jobShell.Status)
 
 	// ── Assert: result.items[0].spec_scene.scenes[*].bindings.stock ─

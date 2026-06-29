@@ -171,11 +171,115 @@ func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) 
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// BuildItemIdentity is a backward-compatible wrapper that computes the
-// fingerprint for a GenerationItemV2 by delegating to BuildClipFingerprint.
-// It preserves the pre-P0#1 call signature for existing callers in the
-// adapters package tests. The canonical identity function with the full
-// item shape lives in adapters/generation_identity.go.
+// BuildItemIdentity computes a deterministic identity string for a
+// generation item. It hashes all item-level fields that affect the
+// generated script output (Title, Language, Tone, Model, source
+// content, sizing, style, guidelines) plus the source fingerprint.
+// Two items with the same identity produce the same script text.
+//
+// Canonical implementation matching the field set in
+// adapters/generation_identity.go. The two functions produce
+// identical hashes for the same input — this copy exists here to
+// avoid a usecase→adapters import.
+//
+// Included: Title, Language, Tone, Model, Source fields (topic,
+// source_text, guidelines, sorted clip IDs, query, transcript_policy,
+// ordering_strategy), script sizing (target_words, duration, min_words,
+// segment_words, segment_topics), prompt versions, style, guidelines.
+//
+// Excluded: Source type (text/clips — doesn't change output), output
+// flags (postprocessors don't affect script text), drive folder IDs
+// (transport concern), ForceRefresh (cache-bypass, not identity).
 func BuildItemIdentity(item scriptpkg.GenerationItemV2) string {
-	return BuildClipFingerprint(item.Source, nil)
+	var parts []string
+	add := func(key, val string) {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return
+		}
+		parts = append(parts, key+"="+val)
+	}
+
+	add("id", item.ID)
+	add("title", item.Title)
+	add("lang", item.Language)
+	add("tone", item.Tone)
+	add("model", item.Model)
+
+	src := item.Source
+	add("topic", src.Topic)
+	add("src_text", src.SourceText)
+	add("guidelines", src.Guidelines)
+
+	if len(src.ClipIDs) > 0 {
+		sorted := make([]string, len(src.ClipIDs))
+		copy(sorted, src.ClipIDs)
+		sort.Strings(sorted)
+		add("clips", strings.Join(sorted, ","))
+	}
+	add("query", src.Query)
+	add("transcript", src.TranscriptPolicy)
+	add("order", src.OrderingStrategy)
+
+	// Script sizing.
+	sp := item.ScriptParams
+	if sp.TargetWords > 0 || sp.Duration > 0 || sp.MinWords > 0 || sp.SegmentWords > 0 || len(sp.SegmentTopics) > 0 {
+		parts = append(parts, "size="+scriptSizeKey(sp))
+	}
+	add("prompt_v", sp.PromptVersion)
+	add("editor_v", sp.EditorPromptVersion)
+	add("qa_v", sp.QAPromptVersion)
+	add("style", item.Style)
+	add("script_guidelines", sp.Guidelines)
+
+	raw := strings.Join(parts, "|")
+	hash := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(hash[:])[:16]
+}
+
+// scriptSizeKey produces a compact size representation for identity.
+func scriptSizeKey(sp scriptpkg.ScriptSpec) string {
+	parts := make([]string, 0, 3)
+	if sp.TargetWords > 0 {
+		parts = append(parts, "tw="+itoa(sp.TargetWords))
+	}
+	if sp.Duration > 0 {
+		parts = append(parts, "dur="+itoa(sp.Duration))
+	}
+	if sp.MinWords > 0 {
+		parts = append(parts, "min="+itoa(sp.MinWords))
+	}
+	if sp.SegmentWords > 0 {
+		parts = append(parts, "segment_words="+itoa(sp.SegmentWords))
+	}
+	if len(sp.SegmentTopics) > 0 {
+		topics := make([]string, len(sp.SegmentTopics))
+		copy(topics, sp.SegmentTopics)
+		for i := range topics {
+			topics[i] = strings.TrimSpace(topics[i])
+		}
+		parts = append(parts, "segment_topics="+strings.Join(topics, ","))
+	}
+	return strings.Join(parts, ",")
+}
+
+// itoa is a tiny int-to-string helper that avoids importing strconv
+// for the few identity fields that carry int values.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	digits := make([]byte, 0, 10)
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	if neg {
+		digits = append([]byte{'-'}, digits...)
+	}
+	return string(digits)
 }
