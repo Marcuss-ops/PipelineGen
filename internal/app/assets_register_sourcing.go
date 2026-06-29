@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/batch"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/drivesync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -75,10 +76,17 @@ func newAssetRegisterService(
 	// sub-package construction.
 	batchSvc := batch.NewService(ytSvc, &zapSourcingLogger{log: log})
 
-	// 5-arg façade (was 14 historically). The JobsPort + FileScannerPort
-	// stay on the façade for the not-yet-extracted SyncDriveFolder +
-	// LocalToDrive methods which are still inline until commits 3-4.
-	return sourcing.NewService(ytSvc, batchSvc, nil, nil, &zapSourcingLogger{log: log})
+	// P0-1 / commit 3: DriveFolderSynchronizer sub-service (this commit).
+	// 2-dep ctor: jobs (currently nil at this composition site; preserves
+	// the historical fail-closed `jobs port not configured` error path)
+	// + log. Future composition sites will inject a real JobsPort adapter.
+	drvSvc := drivesync.NewService(nil, &zapSourcingLogger{log: log})
+
+	// 6-arg façade (was 14 historically). JobsPort + FileScannerPort
+	// stay on the façade until commit 4 lifts them to the localimport
+	// sub-package. The drivesync sub-service (commit 3, this commit)
+	// replaces the SyncDriveFolder inline path.
+	return sourcing.NewService(ytSvc, batchSvc, drvSvc, nil, nil, &zapSourcingLogger{log: log})
 }
 
 // ── youtube v2 adapters ───────────────────────────────────────────────────────
@@ -102,6 +110,11 @@ var (
 	// without re-introducing the cycle (batch is a sub-package of
 	// sourcing; sourcing does not import batch).
 	_ sourcing.BatchRegistrar = (*batch.Service)(nil)
+	// P0-1 / commit 3 (this commit): drivesync.Service implements
+	// sourcing.DriveFolderSynchronizer. Same drift-guard rationale;
+	// composition root is the only place where both sourcing and
+	// drivesync are reachable without a cycle.
+	_ sourcing.DriveFolderSynchronizer = (*drivesync.Service)(nil)
 )
 
 // youtubeIndexDispatcherAdapter implements youtube.IndexDispatcherPort by
