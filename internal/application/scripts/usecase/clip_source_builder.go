@@ -288,6 +288,82 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	return ev, title, sourceTextBuilder.String(), nil
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// AUDIT — P0#5 next iteration (snapshot 2026-06-29, HEAD = 54f47591).
+//
+// ComputeFingerprint (below) is the cache + idempotency key for the clip-
+// evidence path. handler_legacy_adapters.go::warnIgnoredLegacyFields (lines
+// ~616-684) emits a server-only WARN for every row in this table when the
+// client supplies the field but the use case ignores it. This audit pins,
+// for each affected field, exactly four facts:
+//
+//   1. Where the field is DECLARED in the request contract.
+//   2. Where the use case continues to IGNORE the field at runtime.
+//   3. Whether ComputeFingerprint ADMITS the value (cache key impact).
+//   4. The disposition per godlike/07: IMPLEMENT | REJECT 400 | SUNSET-WARN.
+//
+// Per docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md, a "warning-only"
+// field MUST pick exactly ONE of:
+//   * REAL behaviour change — wire the field into BuildClipContext so the
+//     warning becomes a no-op (the cache key may need to bump).
+//   * HARD REJECT 400 — return BadRequest with a clear sunset_date,
+//     to bound the legacy surface in prod.
+//   * SOFT SUNSET — keep client compatibility for one release, but echo
+//     `{field, sunset_date, replacement}` back in the response body
+//     (A6) so the warning reaches the caller, not just the server log.
+//
+// Decision matrix (file:line references pinned at HEAD 54f47591):
+//
+//   Field                JSON              Declared (handler)              Ignored at                                                  v1 fingerprint impact            Candidate
+//   ───────────────────  ────────────────  ─────────────────────────────  ──────────────────────────────────────────────────────────  ──────────────────────────────  ────────────
+//   source_text          source_text       handler_legacy_adapters.go     clip_source_builder.go::ComputeFingerprint EXCLUDES          NOT included.                   IMPLEMENT
+//                                            L116 (LegacyGenerate-         opts.SourceText; BuildClipContext never reads              (Built sourceText is the
+//                                            FromClipsRequest)             opts.SourceText either (clip-evidence text               clip-evidence text only.)
+//                                            + L283 (LegacyGenerate-        is composed from the resolved clips, never
+//                                            BatchItem.SourceText)         from opts.SourceText.)
+//   transcript_policy    transcript_policy handler_legacy_adapters.go     BuildClipContext transcript is hardcoded                   INCLUDED (transcript=v) but    IMPLEMENT
+//                                            L149                          `excerpt[:500] + "..."` regardless of policy                the policy value is NEVER
+//                                                                                                                                    applied to transcript
+//                                                                                                                                    assembly.
+//   min_quality_score    min_quality_score handler_legacy_adapters.go     BuildClipContext accepts clips unconditionally;            NOT included in                  IMPLEMENT
+//                                            L142 (omitempty)               transferred to SourceSpec.MinQualityScore but             clip_source_builder.go         (needs clipsResolverPort
+//                                                                                                                                    fingerprint. INCLUDED in        to expose GetQuality)
+//                                                                                                                                    source_resolver_clips.go
+//                                                                                                                                    via buildFingerprint `minq`.
+//   min_transcript_words min_transcript_   NOT YET in                     Same as min_quality_score — value copied                   NOT included in any             IMPLEMENT
+//                          words            handler_legacy_adapters.go     through SourceSpec but never filters short                fingerprint.
+//                                            (forward-compat gap            transcripts. A5 must wire this declaration
+//                                            introduced in PR1.7;          before sunset-warn semantics become
+//                                            field exists on the           applicable.)
+//                                            SourceSpec directly.)
+//   intro_clip_ids       intro_clip_ids    handler_legacy_adapters.go     Merged into a single `introIDs` slice and stored           NOT a distinct fingerprint      SUNSET-WARN
+//                                            L124                          on SourceSpec.IntroClipIDs (lines ~156-184)               segment — the merged            (becomes deprecated
+//                                                                                                                                    list folds into clipIDs          when P0#X narrative-
+//                                                                                                                                    upstream of ComputeFinger-       plan lands, at which
+//                                                                                                                                    print, callers have no           point the merged
+//                                                                                                                                    model behaviour to opt into.      `introIDs` is dropped.)
+//   intro_clips          intro_clips       handler_legacy_adapters.go     Same as intro_clip_ids (mirror acceptance                  Same as intro_clip_ids.          SUNSET-WARN (mirror)
+//                                            L125                          path).
+//   clips[].title        clips[].title     handler_legacy_adapters.go     BuildClipContext uses clip.Name / clip.Filename            NOT included (fingerprint       REJECT 400
+//                                            L108 (LegacyClipSpec)         from the repo — request title is never                   keyed on clip.ID only.)
+//                                                                                                                                    persisted nor echoed into
+//                                                                                                                                    the assembled prompt.
+//   clips[].url          clips[].url       handler_legacy_adapters.go     BuildClipContext uses clip.DriveLink() from the            NOT included.                   REJECT 400
+//                                            L109 (LegacyClipSpec)         repo — request url is never used; canonical               (DriveLink is the canonical
+//                                                                                                                                    locator.)                       link.
+//
+// Two fingerprints exist in this codebase; this table reflects ONLY the one
+// keyed on the "auto-generate from clip_ids" path. The OTHER fingerprint
+// (source_resolver_clips.go::buildFingerprint, used by the curated envelope
+// that goes through SourceSpec + SourceText) is structurally separate and
+// will be audited in a follow-up bite (tracked alongside A2).
+//
+// When A2 — FINGERPRINT WHITELIST lands, every "NOT included" cell MUST
+// stay not-included (and the cells where the value is "INCLUDED but
+// ignored" must move to "INCLUDED and applied") to honour the cache-
+// invalidation invariant this table pins.
+// ──────────────────────────────────────────────────────────────────────────
+
 func (c *ClipSourceBuilder) ComputeFingerprint(
 	clipIDs []string,
 	opts *ClipGenerationOptions,
