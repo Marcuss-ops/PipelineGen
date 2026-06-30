@@ -359,7 +359,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		uploadPath = item.LocalPath
 	}
 
-	// Step 3: AssetLifecycle.Upload — populates Drive URLs.
+	// Step 3: VoiceoverPublisher.Publish — populates Drive URLs (canonical fileID then URL helpers).
 	metaBuf := map[string]any{
 		"text_hash":    textHash,
 		"text_preview": textutil.Truncate(itemSpec.Text, 100),

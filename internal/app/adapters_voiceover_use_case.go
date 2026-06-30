@@ -48,7 +48,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -160,66 +159,67 @@ func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPos
 var _ voiceover.AudioPostProcessor = (*useCaseAudioAdapter)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
-// AssetLifecycle adapter.
+// VoiceoverPublisher adapter (E1 cutover, June 2026).
 //
-// Bridges *lifecycle.Service.ProcessAsset → voiceover.AssetLifecycle.Upload.
-// ProcessAsset is the canonical "dedupe + Drive upload + persist" entry
-// (PR-VO-B1 hardened: fails-fast on upload failure rather than the
-// legacy log-warn best-effort). The use case already manages identity
-// via the atomic swap tx (InsertTx + DeleteByIDTx inside
-// ProcessOneLanguage), so the adapter disables dedupe (VerifyDB=false)
-// and asserts the use case contract by enabling RequireLocal +
-// RequireHash + RequireDrive on every call. FinalizeResult.OK==false
-// surfaces as an error so the use case Execute path bubbles up the
-// failure rather than silently dropping it.
+// Bridges *drive.Uploader (which satisfies drive.Admin via the
+// compile-time assertion in internal/infrastructure/drive/ports.go)
+// → voiceover.VoiceoverPublisher.Publish. The upload-only port
+// replaces the pre-E1 voiceover.AssetLifecycle.Upload (which
+// delegated to lifecycle.Service.ProcessAsset and bundled Drive
+// upload + dedupe + asset-record persistence). The new Publisher
+// is upload-only:
+//   - no SQLite write (process_voiceover_item.go::Execute owns
+//     the canonical row INSERT inside its atomic-swap tx),
+//   - no dedupe gate (Executor paths already pre-resolve the
+//     canonical voiceover ID via buildVoiceoverID),
+//   - no asset-record projection (media_assets projection is
+//     written by lifecycle.Service.UpsertVoiceoverProjectionTx
+//     inside the same tx).
+//
+// Publish returns the canonical Drive file ID; downstream callers
+// (process_voiceover_item.go::Execute + usecase.go::processOneLanguage)
+// reconstruct DriveLink + DownloadLink via the canonical
+// CanonicalDriveWebURL / CanonicalDriveDownloadURL helpers in
+// voiceover/ports.go.
+//
+// Fail-closed: nil admin panics at construction (fail-fast per
+// AGENTS.md WireUp pattern). The UploadFile retry policy itself
+// is owned by the production drive.Uploader (3-attempt exponential
+// backoff via pkg/retry; see internal/infrastructure/drive/uploader.go).
 // ─────────────────────────────────────────────────────────────────────
 
-type useCaseLifecycleAdapter struct {
-	svc *lifecycle.Service
+type useCasePublisherAdapter struct {
+	admin drive.Admin
 }
 
-func newUseCaseLifecycleAdapter(svc *lifecycle.Service) *useCaseLifecycleAdapter {
-	if svc == nil {
-		panic("app.adapters_voiceover_use_case: newUseCaseLifecycleAdapter: svc is required (*lifecycle.Service)")
+func newUseCasePublisherAdapter(admin drive.Admin) *useCasePublisherAdapter {
+	if admin == nil {
+		panic("app.adapters_voiceover_use_case: newUseCasePublisherAdapter: admin is required (*drive.Uploader implementing drive.Admin)")
 	}
-	return &useCaseLifecycleAdapter{svc: svc}
+	return &useCasePublisherAdapter{admin: admin}
 }
 
-func (a *useCaseLifecycleAdapter) Upload(ctx context.Context, in voiceover.AssetUploadInput) (voiceover.AssetUploadOutput, error) {
-	out, err := a.svc.ProcessAsset(ctx, &lifecycle.FinalizeInput{
-		ID:           in.ID,
-		Name:         in.Name,
-		Filename:     in.Filename,
-		Kind:         lifecycle.AssetKindAudio,
-		Source:       in.Source,
-		LocalPath:    in.LocalPath,
-		FolderID:     in.FolderID,
-		FolderPath:   in.FolderPath,
-		Metadata:     in.Metadata,
-		FileHash:     in.FileHash,
-		RequireLocal: true,  // use-case path guarantees LocalPath
-		RequireHash:  true,  // use-case path supplies FileHash explicitly
-		RequireDrive: true,  // upload intent — fail-fast on Drive failure (PR-VO-B1)
-		VerifyDB:     false, // use case already runs InsertTx in the same tx
-	}, in.FileHash)
+func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.VoiceoverPublishCommand) (string, error) {
+	if cmd.LocalPath == "" {
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty LocalPath (use case supplied no local payload)")
+	}
+	if cmd.FolderID == "" {
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty FolderID (use case supplied no destination folder)")
+	}
+	if cmd.Filename == "" {
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty Filename (use case supplied no display name)")
+	}
+	res, err := a.admin.UploadFile(ctx, cmd.LocalPath, cmd.FolderID, cmd.Filename)
 	if err != nil {
-		return voiceover.AssetUploadOutput{}, fmt.Errorf("voiceover.lifecycle: ProcessAsset: %w", err)
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: drive.UploadFile: %w", err)
 	}
-	if out == nil {
-		return voiceover.AssetUploadOutput{}, fmt.Errorf("voiceover.lifecycle: ProcessAsset: nil FinalizeResult")
+	if res == nil {
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: drive.UploadFile returned nil UploadResult")
 	}
-	if !out.OK {
-		return voiceover.AssetUploadOutput{}, fmt.Errorf("voiceover.lifecycle: ProcessAsset ok=false: %s", out.Error)
-	}
-	return voiceover.AssetUploadOutput{
-		DriveLink:    out.DriveLink,
-		DriveFileID:  out.DriveFileID,
-		DownloadLink: out.DownloadLink,
-		FileHash:     out.FileHash,
-	}, nil
+	return res.FileID, nil
 }
 
-var _ voiceover.AssetLifecycle = (*useCaseLifecycleAdapter)(nil)
+var _ voiceover.VoiceoverPublisher = (*useCasePublisherAdapter)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
 // VoiceoverRepository adapter.

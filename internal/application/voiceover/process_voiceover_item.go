@@ -99,7 +99,7 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 //
 //	Stage 1 (TTS)            → TTSProvider.Synthesize
 //	Stage 2 (audio cleanup)  → AudioPostProcessor (only when RemoveSilence)
-//	Stage 3 (Drive upload)   → AssetLifecycle.Upload
+//	Stage 3 (Drive upload)   → VoiceoverPublisher.Publish
 //	Stage 4 (atomic swap)    → VoiceoverRepository.BeginTx + DeleteByIDTx
 //	                            + InsertTx + TransactionalOutbox.EnqueueIndexEvent
 //
@@ -219,9 +219,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		uploadPath = out.LocalPath
 	}
 
-	// Stage 3: AssetLifecycle.Upload (Drive upload via the canonical
-	// lifecycle Service.ProcessAsset adapter; VerifyDB=false so the
-	// adapter trusts the use case's tx-side insert).
+	// Stage 3: VoiceoverPublisher.Publish — populates Drive URLs (canonical fileID then URL helpers).
 	metaBuf := map[string]any{
 		"text_hash":    itemHash,
 		"text_preview": textutil.Truncate(item.Text, 100),
