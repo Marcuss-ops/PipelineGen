@@ -192,7 +192,7 @@ type DestinationResolver interface {
 //     surfaces a cross-cutting failure mapping
 //     to HTTP 400-equivalent upstream semantics.
 type VoiceoverDefaultFolderResolver interface {
-	Resolve(ctx context.Context) (folderID string, ok bool)
+	Resolve(ctx context.Context) (driveFolderID, localOutputDir string, ok bool)
 }
 
 // AudioPostProcessor is the canonical port for post-TTS audio cleanup
