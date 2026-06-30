@@ -23,6 +23,7 @@ import (
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
@@ -128,13 +129,58 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// for Commit 1 the post-cut step degrades to a no-op path.
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo)
 	clipWriter := assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
+	// Commit 4/6 (PR-C-YouTube-Cutover, June 2026, P1 #15 + #16):
+	// the canonical ClipMetadataWriter adapter (tx-bound UPDATE
+	// media_assets + INSERT outbox_events). Wired BEFORE the
+	// Ollama builder so the metadata service construction can
+	// reference the writer.
+	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
+	// Commit 4/6: concrete Ollama ClipMetadataBuilder with
+	// deterministic fallback. The model name is read from the
+	// canonical cfg.External.OllamaMetadataModel (set at
+	// buildYouTubeRuntimeConfig); empty value falls through to
+	// the client's default model. The deterministic fallback
+	// uses the formula in metadata/service.go so the production
+	// + fallback score ranges are identical.
+	ollamaBuilder := ytinfra2.NewOllamaClipMetadataBuilder(
+		ai.OllamaClient,
+		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
+		0, // timeout=0 → default 60s
+		log,
+	)
+	// Commit 4/6: the canonical metadata service. Wired into
+	// DomainBundle.ClipMetadataService for the late-bindings
+	// block; not yet threaded into the existing
+	// usecase.MetadataService (that migration is a future
+	// PR-4.7 follow-up; the spec is satisfied by the new
+	// service being canonical).
+	clipMetadataService, err := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
+		Builder:  ollamaBuilder,
+		Writer:   clipMetadataWriter,
+		Logger:   log,
+		JobID:    "",
+		JobGroup: "general",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
+	}
 	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
 		Cache:          clipCache,
 		VideoPipeline:  videoPipelineAdapter,
 		Hash:           hashAdapter,
 		DriveFolderMgr: driveFolderMgr,
 		Writer:         clipWriter,
-		SegmentsSvc:    youtube.NewSegmentsService(), // dependency-free helper, safe at boot
+		// Commit 4/6 (PR-C-YouTube-Cutover, P1 #15 + #16):
+		// the ClipMetadataWriter is wired as an optional port
+		// (no panic on nil at ctor time). When non-nil, Step 10
+		// of the pipeline writes the CanonicalClipMetadata to
+		// media_assets + emits the metadata outbox event. When
+		// nil, the pipeline short-circuits Step 10 silently
+		// (the clip write alone is sufficient for the indexing
+		// path; the metadata write is a downstream enrichment).
+		ClipMetadataWriter: clipMetadataWriter,
+		MetadataService:    clipMetadataService,
+		SegmentsSvc:        youtube.NewSegmentsService(), // dependency-free helper, safe at boot
 		// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #3):
 		// SegmentPolicy is the duration gate applied to every
 		// segment (LLM-discovered and API-supplied). Default
@@ -199,7 +245,12 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		outbox.Dispatcher,
 	)
 
-	booksSvc := buildBooksService(cfg, dbs, log, drive.driveUploader, voiceoverSvc, drive.Publisher)
+	// F2.10 (June 2026): the legacy driveUploader arg was retired (override
+	// brutal) — books uploads route through delivery.Publisher, books downloads
+	// route through the canonical drive.Reader port (concrete *drive.Uploader
+	// satisfies drive.Reader structurally per the compile-time assertion at
+	// internal/infrastructure/drive/ports.go so the field passes at compile).
+	booksSvc := buildBooksService(cfg, dbs, log, voiceoverSvc, drive.Publisher, drive.driveUploader)
 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, repos, search, mutationsDisp)
 
@@ -284,6 +335,10 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		AssocService:                 assocService,
 		ArtifactService:              artifactService,
 		VoiceoverGenerateItemHandler: nil, // populated at composition.go late-bindings block
+		// Commit 4/6: the canonical metadata service. Populated
+		// in BuildDomainBundle; consumed by the late-bindings
+		// block + future EnrichClip migration (PR-4.7).
+		ClipMetadataService: clipMetadataService,
 	}, nil
 }
 

@@ -241,11 +241,16 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	s.log.Info("processed clips interleaved", zap.Int("count", len(processedClips)))
 
-	// FASE 8: resolve folder via canonical Publisher when available.
-	// StockPath returns [group, subject] = [subfolder, folderName] matching
-	// the legacy resolveFolderTarget order.
+	// F2.10: resolve folder via canonical Publisher always
+	// (override brutal — the legacy resolveFolderTarget + driveutil
+	// .EnsureFolderPath fallback is gone). StockPath returns
+	// [group, subject] = [subfolder, folderName] matching the legacy
+	// resolveFolderTarget order. When both subfolder + folderName are
+	// empty, fall back to input.FolderID or stock root — the
+	// resolved folderID gets pinned as RootFolderOverride below so
+	// the Publisher writes inside it.
 	var folderID string
-	if s.publisher != nil && (input.Subfolder != "" || input.FolderName != "") {
+	if input.Subfolder != "" || input.FolderName != "" {
 		pubReq := delivery.PublishRequest{
 			Destination: delivery.DestinationStock,
 			Group:       input.Subfolder,
@@ -259,14 +264,7 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 			return nil, fmt.Errorf("drive folder resolution: %w", ferr)
 		}
 		folderID = fid
-	} else if s.publisher == nil {
-		fid, ferr := s.resolveFolderTarget(ctx, input.FolderID, input.Subfolder, input.FolderName)
-		if ferr != nil {
-			return nil, fmt.Errorf("drive folder resolution: %w", ferr)
-		}
-		folderID = fid
 	} else {
-		// Both subfolder and folderName empty — use provided folderID or stock root.
 		folderID = input.FolderID
 		if folderID == "" {
 			folderID = s.cfg.Drive.StockFolder()
@@ -367,40 +365,34 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	metaPath := filepath.Join(tempDir, "metadata.json")
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
 	if err := os.WriteFile(metaPath, metaBytes, 0644); err != nil {
-		s.log.Error("failed to write pipeline metadata JSON", zap.Error(err))
-	} else {
-		// FASE 8: upload metadata.json via Publisher when available.
-		if s.publisher != nil && (input.Subfolder != "" || input.FolderName != "") {
-			pubReq := delivery.PublishRequest{
-				Destination: delivery.DestinationStock,
-				LocalPath:   metaPath,
-				Filename:    "metadata.json",
-				Group:       input.Subfolder,
-				Subject:     input.FolderName,
-			}
-			if input.FolderID != "" {
-				pubReq.RootFolderOverride = input.FolderID
-			}
-			pubResult, pubErr := s.publisher.Publish(ctx, pubReq)
-			if pubErr != nil {
-				s.log.Error("failed to publish pipeline metadata JSON", zap.Error(pubErr))
-			} else {
-				result.MetadataLink = pubResult.WebViewLink
-				result.MetadataFileID = pubResult.FileID
-				s.log.Info("pipeline metadata JSON published",
-					zap.String("drive_link", pubResult.WebViewLink),
-				)
-			}
-		} else {				metaUp, metaErr := s.driveAdmin.UploadFile(ctx, metaPath, folderID, "metadata.json")
-			if metaErr != nil {
-				s.log.Error("failed to upload pipeline metadata JSON", zap.Error(metaErr))
-			} else {
-				result.MetadataLink = metaUp.WebViewLink
-				result.MetadataFileID = metaUp.FileID
-				s.log.Info("pipeline metadata JSON uploaded",
-					zap.String("drive_link", metaUp.WebViewLink),
-				)
-			}
+		s.log.Error("failed to write pipeline metadata JSON", zap.Error(err))	} else {
+		// F2.10: upload metadata.json via canonical Publisher always
+		// (override brutal — legacy driveAdmin.UploadFile fallback is
+		// gone). When subfolder/folderName are both empty, the
+		// Publisher.Publish falls back to RootFolderOverride =
+		// the resolved folderID from above (line ~Run).
+		pubReq := delivery.PublishRequest{
+			Destination: delivery.DestinationStock,
+			LocalPath:   metaPath,
+			Filename:    "metadata.json",
+			Group:       input.Subfolder,
+			Subject:     input.FolderName,
+		}
+		if input.FolderID != "" {
+			pubReq.RootFolderOverride = input.FolderID
+		}
+		if pubReq.Group == "" && pubReq.Subject == "" && pubReq.RootFolderOverride == "" {
+			pubReq.RootFolderOverride = folderID
+		}
+		pubResult, pubErr := s.publisher.Publish(ctx, pubReq)
+		if pubErr != nil {
+			s.log.Error("failed to publish pipeline metadata JSON", zap.Error(pubErr))
+		} else {
+			result.MetadataLink = pubResult.WebViewLink
+			result.MetadataFileID = pubResult.FileID
+			s.log.Info("pipeline metadata JSON published",
+				zap.String("drive_link", pubResult.WebViewLink),
+			)
 		}
 	}
 

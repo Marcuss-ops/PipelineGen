@@ -18,13 +18,12 @@ import (
 
 // ── DTOs (minimal surface — only fields the handler reads) ───────────
 
-// UploadResultDTO mirrors the sfx-relevant subset of
-// drive.UploadResult. The concrete adapter drops MD5Checksum +
-// DownloadLink (NOT consumed by the HTTP transport).
-type UploadResultDTO struct {
-	FileID      string `json:"file_id"`
-	WebViewLink string `json:"web_view_link,omitempty"`
-}
+// F2.10: UploadResultDTO RETIRED (override brutal). The legacy
+// drive.Uploader + sfxports.DriveUploaderPort plumbing is gone;
+// delivery.Publisher.Publish + delivery.PublishResult are the only
+// surfaces for the sfx Generate write path. Handler now reads
+// FileID + WebViewLink + DownloadLink + MD5Checksum + Action from
+// the publisher's PublishResult type directly.
 
 // MetadataWriteRequest mirrors the sfx-relevant subset of
 // semantic.WriteRequest. The concrete adapter drops unused fields
@@ -77,13 +76,13 @@ type ClipRepositoryPort interface {
 	Upsert(ctx context.Context, clip *asset.Asset) error
 }
 
-// DriveUploaderPort is the sfx-side narrowed surface of drive.Uploader.
-// GetOrCreateFolder + UploadFile cover the sfx upload flow (mp3 +
-// generated metadata.json sidecar).
-type DriveUploaderPort interface {
-	GetOrCreateFolder(ctx context.Context, name, parentFolderID string) (string, error)
-	UploadFile(ctx context.Context, localPath, folderID, filename string) (*UploadResultDTO, error)
-}
+// F2.10: DriveUploaderPort RETIRED (override brutal). The sfx
+// Generate write path routes through delivery.Publisher.Publish
+// (PublisherPort below). GetOrCreateFolder + UploadFile are no
+// longer reached from the sfx package — DestinationSoundEffect's
+// PathBuilder provides folder resolution internally on every
+// Publish. The legacy `*drive.Uploader` plumbing is gone from
+// internal/application/assets/soundeffect/.
 
 // SemanticMetadataWriterPort produces the semantic metadata.json for
 // the generated sfx asset. The handler reads only SearchText + Tags;

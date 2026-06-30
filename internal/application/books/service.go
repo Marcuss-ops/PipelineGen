@@ -19,7 +19,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 type Config struct {
@@ -51,15 +51,23 @@ type Service struct {
 	log          *zap.Logger
 	scriptPath   string
 	driveFolder  string
-	driveUpload  *drive.Uploader // deprecated: kept for drive.go download operations
-	publisher    PublisherPort   // canonical Drive upload path (FASE 6)
+	publisher PublisherPort // F2.10: dropped legacy *drive.Uploader field — Publisher is the single canonical Drive-write canal (driveToDrive fallback)
+	reader    drive.Reader  // F2.10+: RE-ADDED reader field for the missed F2.10 sweep on books/drive.go::ProcessBookFromDrive (download path uses Reader.GetFileMeta + Reader.DownloadFile per DRIVE-005 closure ports)
 	voiceoverSvc voiceover.VoiceoverGenerator
 }
 
-// NewService constructs a books.Service. Drive uploader is wired via
-// constructor injection; the post-construction SetDriveUploader setter was
-// removed in PR4-H Commit 3.
-func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc voiceover.VoiceoverGenerator, driveUploader *drive.Uploader, publisher PublisherPort) *Service {
+// NewService constructs a books.Service. Publisher + Reader are wired via
+// constructor injection; the post-construction SetDrive* setters were
+// removed (F2.10). The legacy `driveUploader *drive.Uploader` arg
+// was dropped in F2.10 — `*drive.Uploader` is no longer referenced
+// from the books capability (AGENTS.md godlike/06 "one owner per fact"
+// — every Drive write fans out through delivery.Publisher; every Drive
+// read fans out through drive.Reader). Both fields are tolerant of nil
+// so partial deployments (Drive disabled) keep the local-file path
+// ProcessBook alive; the Drive-dependent paths (driveToDrive,
+// ProcessBookFromDrive) surface the canonical "drive not configured"
+// error on demand.
+func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc voiceover.VoiceoverGenerator, publisher PublisherPort, reader drive.Reader) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -79,8 +87,8 @@ func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, vo
 		scriptPath:   scriptPath,
 		driveFolder:  driveFolder,
 		voiceoverSvc: voiceoverSvc,
-		driveUpload:  driveUploader,
 		publisher:    publisher,
+		reader:       reader,
 	}
 }
 

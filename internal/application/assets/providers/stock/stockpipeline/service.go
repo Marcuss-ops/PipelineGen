@@ -18,7 +18,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -50,7 +49,11 @@ func DefaultPipelineConfig() PipelineConfig {
 var (
 	ErrStockPipelineNilCfg            = errors.New("stockpipeline.NewService: cfg is required")
 	ErrStockPipelineNilLog            = errors.New("stockpipeline.NewService: log is required")
-	ErrStockPipelineNilDriveSvc       = errors.New("stockpipeline.NewService: driveSvc is required")
+	// F2.10: ErrStockPipelineNilDriveSvc RETIRED. The legacy
+	// DriveSvc surface (driveup.Admin + its upload/folder-resolution
+	// methods) was dropped entirely (override brutal). Every Drive
+	// write from the stock pipeline now routes through
+	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
 	ErrStockPipelineNilClipsRepo      = errors.New("stockpipeline.NewService: storage.ClipsRepo is required (production path)")
 	ErrStockPipelineNilAssetIndex     = errors.New("stockpipeline.NewService: storage.AssetIndex is required (production path)")
 	ErrStockPipelineNilDispatcher     = errors.New("stockpipeline.NewService: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
@@ -105,9 +108,14 @@ type MediaDeps struct {
 // hazard that swapped the canonical ingestion path on every
 // composition-time race in WireStockPipeline.
 type Deps struct {
+	// F2.10: Drive field dropped — every Drive write routes through
+	// delivery.Publisher (Publisher field below). The legacy
+	// driveup.Admin surface (UploadFile + GetOrCreateFolder + Trash +
+	// Delete etc.) was retired (override brutal). Folder resolution
+	// inside the pipeline run uses publisher.ResolveFolder
+	// (DestinationStock policy) instead of driveutil.EnsureFolderPath.
 	Cfg       *config.Config
 	Log       *zap.Logger
-	Drive     driveup.Admin
 	Publisher delivery.Publisher
 	Storage   StorageDeps
 	Media     MediaDeps
@@ -144,7 +152,6 @@ type Deps struct {
 type Service struct {
 	cfg      *config.Config
 	log      *zap.Logger
-	driveAdmin driveup.Admin
 	publisher delivery.Publisher
 	ytdlp    *downloader.YTDLPDownloader
 	// cutter + renderer are the PR6 ports. Initialised at ctor time so
@@ -193,9 +200,9 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Log == nil {
 		return nil, ErrStockPipelineNilLog
 	}
-	if deps.Drive == nil {
-		return nil, ErrStockPipelineNilDriveSvc
-	}
+	// F2.10: Drive validation dropped — see Deps doc-comment. The
+	// legacy DriveSvc plumbing (driveup.Admin.UploadFile + friend
+	// methods) is gone; Publisher is the only Drive-write canal.
 	if deps.Storage.ClipsRepo == nil {
 		return nil, ErrStockPipelineNilClipsRepo
 	}
@@ -235,7 +242,6 @@ func NewService(deps Deps) (*Service, error) {
 	return &Service{
 		cfg:       deps.Cfg,
 		log:       deps.Log,
-		driveAdmin: deps.Drive,
 		publisher: deps.Publisher,
 		ytdlp:    downloader.NewYTDLP(deps.Cfg),
 		cutter:   deps.Media.Cutter,

@@ -248,7 +248,18 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 }
 
 // buildBooksService (moved from build_bundles_books.go, Phase 5 consolidation, June 2026).
-func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driveUploader *drive.Uploader, voiceoverSvc *voiceover.Service, publisher delivery.Publisher) *books.Service {
+//
+// F2.10 (June 2026): the `driveUploader *drive.Uploader` arg was dropped.
+// Per AGENTS.md godlike/06 "one owner per fact" + F2.7/F2.8/F2.9
+// closure precedent, every Drive write from the books capability
+// routes through `delivery.Publisher` and every Drive read fans out
+// through `drive.Reader` (refactored from the missed F2.10 file
+// `books/drive.go::ProcessBookFromDrive` — the download path used the
+// legacy `s.driveUpload` surface that `service.go` retired). Composition
+// root threads only the Publisher + the Reader into books.NewService —
+// the legacy `*drive.Uploader` plumbing is retired from
+// internal/application/books/ entirely (override brutal).
+func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voiceoverSvc *voiceover.Service, publisher delivery.Publisher, reader drive.Reader) *books.Service {
 	booksSvc := books.NewService(
 		&books.Config{
 			Enabled:       cfg.Books.Enabled,
@@ -257,7 +268,7 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driv
 			DriveFolderID: cfg.Drive.BooksFolder(),
 		},
 		dbs.main.DB, cfg.Drive.BooksFolder(), log,
-		voiceoverSvc, driveUploader, publisher,
+		voiceoverSvc, publisher, reader,
 	)
 	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
 	return booksSvc

@@ -122,11 +122,10 @@ func newTestHandler(t *testing.T, disp sfxports.DispatcherPort, finalDir string)
 	t.Helper()
 	return &Handler{
 		clipsRepo:              nil, // replaced by dispatcher — see PR 6 fail-closed comment
-		driveUploader:          nil, // nil-tolerated per branch in Generate
 		metaWriter:             nil, // nil-tolerated per branch in Generate
 		resolver:               stubResolver{finalDir: finalDir},
 		dispatcher:             disp,
-		soundEffectsRootFolder: "", // keep driveUploader nil branch inactive
+		soundEffectsRootFolder: "", // F2.10: soundEffectsRootFolder is read-only tombstone field (no legacy fallback)
 		processRunner:          stubProcessRunner{},
 		log:                    zap.NewNop(),
 	}

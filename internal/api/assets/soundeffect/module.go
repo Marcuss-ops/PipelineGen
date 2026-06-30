@@ -97,14 +97,13 @@ type Dependencies struct {
 	// instead.
 	ClipsRepo sfxports.ClipRepositoryPort
 
-	// DriveUploader is the canonical sfxports.DriveUploaderPort
-	// (PG-003, June 2026). In production, the
-	// sfxDriveUploaderAdapter wraps *drive.Uploader.
-	// OPTIONAL — the handler nil-checks at request time and
-	// skips the legacy Drive upload fallback when nil
-	// (useful for local-only test fixtures; the publisher
-	// is the canonical path today).
-	DriveUploader sfxports.DriveUploaderPort
+	// F2.10: DriveUploader field RETIRED (override brutal).
+	// The legacy `*drive.Uploader` plumbing via
+	// sfxports.DriveUploaderPort + sfxDriveUploaderAdapter
+	// is gone; the sfx Generate write path routes through
+	// delivery.Publisher.Publish exclusively (Publisher field
+	// below). Composition root drops the sfxDriveUploader
+	// variable + the matching Build-deps field.
 
 	// MetaWriter is the canonical
 	// sfxports.SemanticMetadataWriterPort (PG-003, June 2026).
@@ -133,19 +132,24 @@ type Dependencies struct {
 	// Publisher is the canonical sfxports.PublisherPort
 	// (FASE 7, June 2026, books FASE 6 → sfx FASE 7
 	// migration to the canonical delivery.Publisher
-	// surface). In production, the sfxPublisherAdapter
-	// (or equivalent typed-port wrapper) wraps
-	// delivery.Publisher. OPTIONAL — the handler
-	// nil-checks at request time and falls back to the
-	// legacy driveUploader path when nil (preserved for
-	// local-only test fixtures).
+	// surface; F2.10: now the sole Drive-write canal after
+	// the brutal-override retirement of the legacy
+	// driveUploader fallback). In production, the
+	// delivery.Publisher concrete satisfies sfxports.PublisherPort
+	// structurally (no sfx-specific adapter wrapper needed —
+	// see module_media.go composition site). OPTIONAL —
+	// the handler nil-checks at request time (publisher=nil
+	// skips the Drive write path silently).
 	Publisher sfxports.PublisherPort
 
 	// SoundEffectsRootFolder is the Drive folder ID under
-	// which synthesized sound effects are uploaded. OPTIONAL
-	// — empty string skips the legacy Drive upload fallback
-	// path (the publisher path is folder-agnostic; it
-	// resolves via delivery.DestinationSoundEffect routing).
+	// which synthesized sound effects were uploaded via
+	// the legacy driveUploader path. F2.10: RETIRED —
+	// empty string is now the only valid value; the sfx
+	// Build ignores it; the publisher path resolves via
+	// delivery.DestinationSoundEffect routing instead.
+	// Kept in the struct for backwards-compat with any
+	// downstream wiring that still sets it (no-op read).
 	SoundEffectsRootFolder string
 
 	// ProcessRunner is the canonical appassets.ProcessRunner
@@ -259,18 +263,16 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// direct callers that bypass Build); Build's checks above
 	// are the new defensive layer.
 	//
-	// FASE 7 (June 2026): Publisher is now passed to NewHandler
-	// per the parallel session's sfx FASE 7 migration. The
-	// Build contract consumes deps.Publisher (optional) and
-	// forwards it verbatim — the handler's nil-tolerance
-	// preserves the legacy driveUploader fallback.
+	// F2.10 (June 2026): the `deps.DriveUploader` arg was dropped
+	// from NewHandler (override brutal). Publisher is now the
+	// sole Drive-write canal — there is no legacy fallback
+	// branch in the handler's Generate path.
 	handler := NewHandler(
 		deps.ClipsRepo,
-		deps.DriveUploader, // nil-tolerant at request time
-		deps.MetaWriter,    // nil-tolerant at request time
+		deps.MetaWriter, // nil-tolerant at request time
 		deps.Resolver,
 		deps.Dispatcher,
-		deps.Publisher, // FASE 7: nil-tolerant at request time
+		deps.Publisher, // F2.10: nil-tolerant at request time (skips Drive write silently)
 		deps.SoundEffectsRootFolder,
 		deps.ProcessRunner,
 		log,

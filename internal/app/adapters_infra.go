@@ -49,27 +49,19 @@ func (a *sfxClipsRepoAdapter) Upsert(ctx context.Context, clip *asset.Asset) err
 // from *drive.Uploader to drive.Admin (Pattern 0 port). Only the
 // fields used by sfx are mapped; MD5Checksum + DownloadLink from
 // concrete drive.UploadResult are deliberately dropped.
-type sfxDriveUploaderAdapter struct {
-	drive drive.Admin // FASE 9: was *drive.Uploader; field named 'drive' matches port type name
-}
 
-// Compile-time assertion: sfxDriveUploaderAdapter satisfies sfxports.DriveUploaderPort.
-var _ sfxports.DriveUploaderPort = (*sfxDriveUploaderAdapter)(nil)
-
-func (a *sfxDriveUploaderAdapter) GetOrCreateFolder(ctx context.Context, name, parentFolderID string) (string, error) {
-	return a.drive.GetOrCreateFolder(ctx, name, parentFolderID)
-}
-
-func (a *sfxDriveUploaderAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*sfxports.UploadResultDTO, error) {
-	res, err := a.drive.UploadFile(ctx, localPath, folderID, filename)
-	if err != nil {
-		return nil, err
-	}
-	if res == nil {
-		return &sfxports.UploadResultDTO{}, nil
-	}
-	return &sfxports.UploadResultDTO{FileID: res.FileID, WebViewLink: res.WebViewLink}, nil
-}
+// F2.10: sfxDriveUploaderAdapter + its assertion + methods were
+// retired (override brutal). The sfx capability no longer reaches
+// into the legacy drive.Admin.UploadFile + GetOrCreateFolder surface;
+// every Drive write from sfx routes through delivery.Publisher.Publish
+// (DestinationSoundEffect). The matching sfxports.DriveUploaderPort
+// interface was removed from
+// internal/application/assets/soundeffect/ports.go in the same
+// commit — the structural compatibility check
+// `var _ sfxports.DriveUploaderPort = (*sfxDriveUploaderAdapter)(nil)`
+// would now fail to compile because the interface is gone.
+//
+// (per `97e6b71a`-era deletion): see git log for the exact diff.
 
 // ── Semantic writer adapter ──────────────────────────────────────────
 
