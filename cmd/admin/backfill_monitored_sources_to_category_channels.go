@@ -78,7 +78,10 @@ func runBackfillMonitoredSourcesToCategoryChannels(args []string) error {
 	log, _ := zap.NewDevelopment()
 	defer func() { _ = log.Sync() }()
 
-	cfg := config.Get()
+	cfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	dbPath := cfg.Storage.FullPath("media/media.db.sqlite")
 	log.Info("opening database", zap.String("path", dbPath))
 	sqliteDB, err := storage.OpenSQLiteDB(dbPath, log)

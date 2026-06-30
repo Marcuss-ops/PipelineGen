@@ -26,7 +26,10 @@ func runDBStatus(ctx context.Context, args []string) error {
 	backupDir := fs.String("backup-dir", "", "override backup directory (defaults to <DataDir>/backups)")
 	fs.Parse(args)
 
-	fullCfg := config.Get()
+	fullCfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	if *dataDir != "" && *dataDir != "./data" {
 		fullCfg.Storage.DataDir = *dataDir
 	}

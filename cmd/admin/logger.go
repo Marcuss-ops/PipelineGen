@@ -28,7 +28,10 @@ import (
 // internal/platform/config, which provides `func Get() *Config`
 // — the right replacement.
 func appLogger() (*config.Config, *zap.Logger, func(), error) {
-	cfg := config.Get()
+	cfg, err := config.Get()
+	if err != nil {
+		return nil, nil, func() {}, err
+	}
 	log, err := zap.NewProduction()
 	if err != nil {
 		return nil, nil, func() {}, err

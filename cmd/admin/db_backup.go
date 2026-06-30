@@ -30,7 +30,10 @@ func runDBBackup(ctx context.Context, args []string) error {
 		return fmt.Errorf("-out is required")
 	}
 
-	fullCfg := config.Get()
+	fullCfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	if *dataDir != "" && *dataDir != "./data" {
 		fullCfg.Storage.DataDir = *dataDir
 	}

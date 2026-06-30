@@ -26,7 +26,10 @@ func runUploadT5Pre(_ []string) error {
 	}
 	defer cleanup()
 
-	cfg := config.Get()
+	cfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 
 	ctx := cmdContext()
 	driveSvc, err := drive.NewDriveServiceFromFiles(ctx, cfg)
