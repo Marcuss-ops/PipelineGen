@@ -24,7 +24,6 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -84,8 +83,13 @@ func (u *GenerateVoiceoverUseCase) Execute(ctx context.Context, text, language, 
 // ────────────────────────────────────────────────────────────────────────
 
 // UseCaseDeps wires dependencies for the canonical GenerateVoiceoversUseCase
-// (Blocco 2). All 7 ports + DB are mandatory; pass non-nil concretes at
-// the composition root. Logger is the only optional dep.
+// (Blocco 2). All 6 ports are mandatory; pass non-nil concretes at the
+// composition root. Logger is the only optional dep.
+//
+// P1.6 (June 2026): removed DB *sql.DB — the use case now calls
+// VoiceoverRepository.BeginTx() to open the atomic swap transaction
+// instead of reaching through a raw *sql.DB handle. The Repository
+// port already declares BeginTx per persistence/repository.go.
 //
 // AudioPostProcessor is nil-safe — the use case guards at the call site
 // (only invoked when cmd.RemoveSilence == true). Composition roots can
@@ -97,7 +101,6 @@ type UseCaseDeps struct {
 	AssetLifecycle      AssetLifecycle
 	VoiceoverRepository VoiceoverRepository
 	TransactionalOutbox TransactionalOutbox
-	DB                  *sql.DB
 	Logger              *zap.Logger
 
 	// DefaultParallelism is the fallback when cmd.Parallelism == 0.
@@ -135,9 +138,6 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	}
 	if deps.TransactionalOutbox == nil {
 		panic("GenerateVoiceoversUseCase: TransactionalOutbox is required (UseCaseDeps.TransactionalOutbox)")
-	}
-	if deps.DB == nil {
-		panic("GenerateVoiceoversUseCase: DB is required (UseCaseDeps.DB) — the use case threads the atomic swap tx")
 	}
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
@@ -393,7 +393,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	// never removed until the NEW one is durably persisted; we
 	// thread DELETE+INSERT+outbox-ENQUEUE into one BeginTx/Commit
 	// cycle so neither is observable alone.
-	tx, err := u.deps.DB.BeginTx(ctx, nil)
+	tx, err := u.deps.VoiceoverRepository.BeginTx(ctx)
 	if err != nil {
 		item.Error = fmt.Sprintf("tx_begin_failed: %v", err)
 		return item

@@ -1,5 +1,10 @@
 // Package channels — handler.go: thin HTTP transport for the channels
-// capability. Capability Standard rule:
+// capability. P1.6 (June 2026): moved from internal/application/channels/
+// to internal/api/channels/ to honour the api → application layering.
+// The handler depends ONLY on application-layer types (Service, commands,
+// results) and has zero business logic.
+//
+// Capability Standard rule:
 //
 //	"Handlers may bind input, validate transport syntax, translate
 //	 to a command/query, invoke one use case, map typed errors,
@@ -8,19 +13,12 @@
 // i.e. no SQL, no asset.CategoryChannel construction, no default-policy
 // logic — those all live in Service (service.go) and the SQLite
 // adapter (adapters.go).
-//
-// This file previously lived at internal/api/channels/{impl,bulk}.go;
-// it moved to the application package as part of the Capability
-// Standard migration so the application layer owns its full
-// vertical and the import direction becomes one-way
-// (registry → channels.Build → channels.Handler → channels.Service).
-// The legacy internal/api/channels/ package was deleted in the same
-// PR.
 package channels
 
 import (
 	"net/http"
 
+	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -28,13 +26,13 @@ import (
 
 // Handler is the thin HTTP transport for the channels capability.
 type Handler struct {
-	svc *Service
+	svc *appchannels.Service
 	log *zap.Logger
 }
 
 // NewHandler creates a new channels HTTP handler. Used by Build
 // (composition root path) and direct tests.
-func NewHandler(svc *Service, log *zap.Logger) *Handler {
+func NewHandler(svc *appchannels.Service, log *zap.Logger) *Handler {
 	if svc == nil {
 		panic("channels.NewHandler: Service is required")
 	}
@@ -138,7 +136,7 @@ func (h *Handler) Upsert(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-	out, err := h.svc.Upsert(c.Request.Context(), UpsertChannelCommand{
+	out, err := h.svc.Upsert(c.Request.Context(), appchannels.UpsertChannelCommand{
 		ID:               req.ID,
 		Category:         req.Category,
 		ChannelURL:       req.ChannelURL,
@@ -208,9 +206,9 @@ func (h *Handler) BulkUpsert(c *gin.Context) {
 		return
 	}
 
-	cmds := make([]UpsertChannelCommand, 0, len(req.Channels))
+	cmds := make([]appchannels.UpsertChannelCommand, 0, len(req.Channels))
 	for _, ch := range req.Channels {
-		cmds = append(cmds, UpsertChannelCommand{
+		cmds = append(cmds, appchannels.UpsertChannelCommand{
 			ID:               ch.ID,
 			Category:         ch.Category,
 			ChannelURL:       ch.ChannelURL,
@@ -231,7 +229,7 @@ func (h *Handler) BulkUpsert(c *gin.Context) {
 		})
 	}
 
-	res, err := h.svc.UpsertBulk(c.Request.Context(), BulkUpsertChannelsCommand{
+	res, err := h.svc.UpsertBulk(c.Request.Context(), appchannels.BulkUpsertChannelsCommand{
 		Channels: cmds,
 	})
 	if err != nil {
