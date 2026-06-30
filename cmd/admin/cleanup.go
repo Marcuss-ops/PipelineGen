@@ -39,7 +39,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 func runCleanupOrphans(args []string) error {
@@ -75,10 +74,6 @@ func runCleanupOrphans(args []string) error {
 		assetsDir = absDir
 	}
 
-	var driveUploader *drive.Uploader
-	if root.Drive != nil && root.Drive.DriveClient != nil {
-		driveUploader = root.Drive.DriveUploader
-	}
 
 	// The canonical DeletionService is pre-built by the composition
 	// root (BuildMaintBundle). The old code constructed a one-off
@@ -96,7 +91,7 @@ func runCleanupOrphans(args []string) error {
 	// all three responsibilities. Maint.DeletionSvc is itself built
 	// with the right collapsed shape in BuildMaintBundle — no further
 	// constructor adaptation is required at this site.
-	_ = driveUploader
+
 
 	if *apply {
 		fmt.Printf("Starting DEEP ORPHAN CLEANUP in %s (APPLY mode - files WILL be deleted)\n", assetsDir)
@@ -144,7 +139,7 @@ func runCleanupAllOrphans(args []string) error {
 		return fmt.Errorf("drive client is not available")
 	}
 	driveClient := root.Drive.DriveClient
-	driveUploader := root.Drive.DriveUploader
+	driveAdmin := root.Drive.Admin
 
 	targets := []struct {
 		name     string
@@ -202,11 +197,11 @@ func runCleanupAllOrphans(args []string) error {
 
 		for _, f := range orphans {
 			fmt.Printf("  - Deleting %s (%s)... ", f.name, f.id)
-			if driveUploader == nil {
+			if driveAdmin == nil {
 				fmt.Println("SKIPPED (no drive uploader)")
 				continue
 			}
-			err := driveUploader.DeleteFolder(ctx, f.id)
+			err := driveAdmin.DeleteFolder(ctx, f.id)
 			if err != nil {
 				fmt.Printf("FAILED: %v\n", err)
 			} else {
@@ -243,7 +238,7 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 		return fmt.Errorf("drive client is not available")
 	}
 	driveClient := root.Drive.DriveClient
-	driveUploader := root.Drive.DriveUploader
+	driveAdmin := root.Drive.Admin
 
 	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
@@ -279,13 +274,13 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 		return nil
 	}
 
-	if driveUploader == nil {
+	if driveAdmin == nil {
 		return fmt.Errorf("drive uploader not available for apply mode")
 	}
 	fmt.Println("Deleting orphan folders from Drive...")
 	for _, f := range orphanFolders {
 		fmt.Printf("Deleting %s (%s)... ", f.name, f.id)
-		err := driveUploader.DeleteFolder(ctx, f.id)
+		err := driveAdmin.DeleteFolder(ctx, f.id)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)
 		} else {
@@ -322,7 +317,7 @@ func runCleanupStockOrphans(args []string) error {
 		return fmt.Errorf("drive client is not available")
 	}
 	driveClient := root.Drive.DriveClient
-	driveUploader := root.Drive.DriveUploader
+	driveAdmin := root.Drive.Admin
 
 	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
@@ -358,13 +353,13 @@ func runCleanupStockOrphans(args []string) error {
 		return nil
 	}
 
-	if driveUploader == nil {
+	if driveAdmin == nil {
 		return fmt.Errorf("drive uploader not available for apply mode")
 	}
 	fmt.Println("Deleting orphan folders from Drive...")
 	for _, f := range orphanFolders {
 		fmt.Printf("Deleting %s (%s)... ", f.name, f.id)
-		err := driveUploader.DeleteFolder(ctx, f.id)
+		err := driveAdmin.DeleteFolder(ctx, f.id)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)
 		} else {
@@ -397,7 +392,7 @@ func runDeleteSpecificFolders(args []string) error {
 	if root.Drive == nil || root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := root.Drive.DriveUploader
+	driveAdmin := root.Drive.Admin
 	deletionSvc := root.Maint.DeletionSvc
 
 	ctx := cmdContext()
@@ -458,11 +453,11 @@ func runDeleteSpecificFolders(args []string) error {
 			}
 		}
 
-		if driveUploader == nil {
+		if driveAdmin == nil {
 			fmt.Println("FAILED (drive uploader unavailable)")
 			continue
 		}
-		err := driveUploader.DeleteFolder(ctx, id)
+		err := driveAdmin.DeleteFolder(ctx, id)
 		if err == nil {
 			fmt.Println("OK (Drive only)")
 		} else {

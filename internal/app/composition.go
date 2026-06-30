@@ -90,9 +90,18 @@ type DriveBundle struct {
 	// handle was retired (P0.1 closure).
 	Publisher delivery.Publisher
 
-	// Deprecated raw SDK / concrete handles — back-compat for admin tools and legacy callsites.
-	DriveClient   *gdrive.Service
-	DriveUploader *drive.Uploader
+	// Wave B (June 2026): DriveBundle.DriveUploader deprecated field
+	// removed. The 5 cmd/admin/cleanup.go callers + 1 cmd/admin/list_drive_folder.go
+	// caller now reach drive.Admin / drive.Reader via root.Drive.Admin
+	// and root.Drive.Reader directly (the Pattern 0 canonical ports).
+	// Wave C will perform the same migration for DriveClient (1 caller
+	// in cmd/admin/cleanup.go + several in other cmd/admin tools).
+
+	// Deprecated raw SDK handle — back-compat for admin tools and legacy
+	// callsites. Removal planned for Wave C (target: drive.Admin /
+	// drive.Reader / drive.DocClient consumers — no further raw SDK
+	// reach-through from cmd/admin/).
+	DriveClient *gdrive.Service
 
 	// driveUploader is unexported for internal wiring only. *drive.Uploader
 	// is the SINGLE source-of-truth concrete exposed via Admin / Reader ports.
