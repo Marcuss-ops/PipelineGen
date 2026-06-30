@@ -42,6 +42,8 @@
 //	go run ./scripts/archcheck/gates/gate_c2_registry_only.go [root_dir]
 //
 // where root_dir defaults to "." (the repo root).
+//go:build c2_registry_only
+
 package main
 
 import (
@@ -193,25 +195,25 @@ func main() {
 // discoverGoFiles walks <root>/internal recursively and returns the
 // path of every production .go file. The set excludes:
 //   - *_test.go                          — test fixtures may freely
-//                                          reference the typed-prefix
-//                                          patterns for documentation;
-//                                          the gate's purpose is to
-//                                          catch production drift, not
-//                                          test fixtures.
+//     reference the typed-prefix
+//     patterns for documentation;
+//     the gate's purpose is to
+//     catch production drift, not
+//     test fixtures.
 //   - generated/ subdirectories          — generated code is exempt
-//                                          (mirrors capability_inventory.yaml's
-//                                          excludes block).
+//     (mirrors capability_inventory.yaml's
+//     excludes block).
 //   - files outside <root>/internal      — the gate scopes to the
-//                                          canonical source tree only.
-//                                          cmd/admin/*, scripts/*.go,
-//                                          and tests/* are out of scope
-//                                          for THIS gate; they are
-//                                          governed by other gates
-//                                          (Check 19 for the api layer
-//                                          infrastructure-import lint,
-//                                          Check 41 for the
-//                                          internal/api/common/ ban,
-//                                          etc.).
+//     canonical source tree only.
+//     cmd/admin/*, scripts/*.go,
+//     and tests/* are out of scope
+//     for THIS gate; they are
+//     governed by other gates
+//     (Check 19 for the api layer
+//     infrastructure-import lint,
+//     Check 41 for the
+//     internal/api/common/ ban,
+//     etc.).
 //
 // The walker is fail-loud: a filesystem error mid-walk is returned to
 // the caller (main()) which surfaces it on stderr and exits 2.

@@ -1203,7 +1203,7 @@ fi
 # gate's discoverGoFiles walker (mirrors capability_inventory.yaml's
 # `excludes` section).
 echo "=== Check 46: C2-A registry-call-only-in-capability-registry (Blocco C2, June 2026) ==="
-c2a_out=$(go run ./scripts/archcheck/gates/gate_c2_registry_only.go . 2>&1) || c2a_rc=$?
+c2a_out=$(go run -tags=c2_registry_only ./scripts/archcheck/gates/gate_c2_registry_only_main.go . 2>&1) || c2a_rc=$?
 c2a_rc=${c2a_rc:-0}
 if [ "$c2a_rc" -ne 0 ]; then
     printf '%s\n' "$c2a_out" | sed 's/^/  /'
@@ -1255,7 +1255,7 @@ printf '%s\n' "$c2a_out" | grep -E '^C2-A gate:' || true
 # --baseline by the count of sites migrated, until --baseline=0 enables
 # enforce_zero promotion. The yaml entry mirrors this count.
 echo "=== Check 47: C2-C no-source-switch-outside-catalog (Blocco C2, June 2026) ==="
-c2c_out=$(go run ./scripts/archcheck/gates/gate_c2_source_catalog_only.go . --baseline=33 2>&1) || c2c_rc=$?
+c2c_out=$(go run -tags=c2_source_catalog_only ./scripts/archcheck/gates/gate_c2_source_catalog_only_main.go . --baseline=33 2>&1) || c2c_rc=$?
 c2c_rc=${c2c_rc:-0}
 if [ "$c2c_rc" -ne 0 ]; then
     printf '%s\n' "$c2c_out" | sed 's/^/  /'
@@ -1359,7 +1359,7 @@ if [ ! -f "${manifest_path}" ]; then
     cat /tmp/c2e_prestep.stderr | sed 's/^/  [pre-step] /'
 fi
 
-c2e_out=$(go run ./scripts/archcheck/gates/gate_c2_route_manifest.go "${REPO_ROOT}" 2>&1) || c2e_rc=$?
+c2e_out=$(go run -tags=c2_route_manifest ./scripts/archcheck/gates/gate_c2_route_manifest_main.go "${REPO_ROOT}" 2>&1) || c2e_rc=$?
 c2e_rc=${c2e_rc:-0}
 if [ "$c2e_rc" -ne 0 ]; then
     printf '%s\n' "$c2e_out" | sed 's/^/  /'
