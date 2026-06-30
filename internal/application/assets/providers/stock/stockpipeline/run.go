@@ -391,8 +391,7 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 					zap.String("drive_link", pubResult.WebViewLink),
 				)
 			}
-		} else {
-			metaUp, metaErr := s.driveUp.UploadFile(ctx, metaPath, folderID, "metadata.json")
+		} else {				metaUp, metaErr := s.driveAdmin.UploadFile(ctx, metaPath, folderID, "metadata.json")
 			if metaErr != nil {
 				s.log.Error("failed to upload pipeline metadata JSON", zap.Error(metaErr))
 			} else {

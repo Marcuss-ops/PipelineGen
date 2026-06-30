@@ -424,9 +424,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Cfg:       cfg,
 		Log:       log,
-		// FASE 9: .Service access necessary — stockpipeline.Deps.Drive is typed
-		// as *gdrive.Service. Future migration: change Deps.Drive to a port interface.
-		Drive:     bundle.DriveUploader.Service,
+		Drive:     bundle.DriveUploader,
 		Publisher: bundle.Publisher,
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:  bundle.ClipsRepo,

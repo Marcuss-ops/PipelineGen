@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -31,19 +30,19 @@ type Service struct {
 	cfg       *config.Config
 	log       *zap.Logger
 	client    *http.Client
-	driveUp   *drive.Uploader
+	driveAdmin drive.Admin
 	pipelines map[Kind]*Pipeline
 	imagesDir string
 	tempDir   string
 }
 
-func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service, pipelines map[Kind]*Pipeline) *Service {
+func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, pipelines map[Kind]*Pipeline) *Service {
 	return &Service{
-		cfg:       cfg,
-		log:       log,
-		client:    &http.Client{Timeout: 90 * time.Second},
-		driveUp:   &drive.Uploader{Service: driveSvc, Log: log},
-		pipelines: pipelines,
+		cfg:        cfg,
+		log:        log,
+		client:     &http.Client{Timeout: 90 * time.Second},
+		driveAdmin: driveAdmin,
+		pipelines:  pipelines,
 		imagesDir: cfg.Storage.ImagesPath(),
 		tempDir:   cfg.Storage.TempPath(),
 	}

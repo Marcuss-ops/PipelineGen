@@ -14,7 +14,7 @@ func (s *Service) resolveDriveFolder(ctx context.Context, kind Kind, rootFolderI
 		return strings.TrimSpace(req.FolderID), strings.TrimSpace(req.FolderPath), nil
 	}
 
-	if s.driveUp == nil {
+	if s.driveAdmin == nil {
 		return "", "", nil
 	}
 
@@ -37,7 +37,7 @@ func (s *Service) resolveDriveFolder(ctx context.Context, kind Kind, rootFolderI
 		}
 	}
 
-	folderID, err := driveutil.EnsureFolderPath(ctx, s.driveUp, strings.TrimSpace(rootFolderID), parts...)
+	folderID, err := driveutil.EnsureFolderPath(ctx, s.driveAdmin, strings.TrimSpace(rootFolderID), parts...)
 	if err != nil {
 		return "", "", err
 	}

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -108,7 +107,7 @@ type MediaDeps struct {
 type Deps struct {
 	Cfg       *config.Config
 	Log       *zap.Logger
-	Drive     *gdrive.Service
+	Drive     driveup.Admin
 	Publisher delivery.Publisher
 	Storage   StorageDeps
 	Media     MediaDeps
@@ -145,8 +144,7 @@ type Deps struct {
 type Service struct {
 	cfg      *config.Config
 	log      *zap.Logger
-	driveSvc  *gdrive.Service
-	driveUp   *driveup.Uploader
+	driveAdmin driveup.Admin
 	publisher delivery.Publisher
 	ytdlp    *downloader.YTDLPDownloader
 	// cutter + renderer are the PR6 ports. Initialised at ctor time so
@@ -237,8 +235,7 @@ func NewService(deps Deps) (*Service, error) {
 	return &Service{
 		cfg:       deps.Cfg,
 		log:       deps.Log,
-		driveSvc:  deps.Drive,
-		driveUp:   &driveup.Uploader{Service: deps.Drive, Log: deps.Log},
+		driveAdmin: deps.Drive,
 		publisher: deps.Publisher,
 		ytdlp:    downloader.NewYTDLP(deps.Cfg),
 		cutter:   deps.Media.Cutter,

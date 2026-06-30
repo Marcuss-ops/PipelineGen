@@ -39,7 +39,7 @@ func (s *Service) resolveFolderTarget(ctx context.Context, folderID, subfolder, 
 		return currentID, nil
 	}
 
-	return driveutil.EnsureFolderPath(ctx, s.driveUp, currentID, segs...)
+	return driveutil.EnsureFolderPath(ctx, s.driveAdmin, currentID, segs...)
 }
 
 // formatDuration converts a float64 seconds value to HH:MM:SS.mmm format.
