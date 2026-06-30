@@ -341,24 +341,30 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 #   - exit code = the first command that failed (Go make yields the right
 #     one automatically; bash `&&` does the same).
 #
+# P0.3 fixes (June 2026):
+#   - verify-format already fail-closed via `test -z "$(gofmt -l .)"`
+#     (gofmt -l exits 0 even with unformatted files — the test -z guard
+#     catches them).
+#   - Added -race to go test (previously only in dedicated CI job).
+#   - Added tidy-check (go mod tidy + git diff --exit-code) to catch
+#     stale go.mod/go.sum before push.
+#
 # Order rationale:
 #   1. `verify-format`        — fail-closed gofmt gate (DEPENDENCY,
 #                                target below). Catches unformatted diffs
 #                                in seconds. MUST fail before any other
 #                                step that costs minutes.
-#   2. `go vet ./...`         — static analysis; semantically cheap.
-#   3. `go test ./...`        — heaviest pre-build step. NO -race flag
-#                                here -- the race detector runs in the
-#                                dedicated CI job only (faster local
-#                                verify-main; race coverage still enforced
-#                                on every push).
-#   4. `go build ./...`       — full project type-check.
-#   5. architecture-aggregate — schema-level cross-check on
+#   2. `tidy-check`           — go.mod/go.sum correctness; cheap.
+#   3. `go vet ./...`         — static analysis; semantically cheap.
+#   4. `go test -race ./...`  — heaviest pre-build step with race
+#                                detector enabled.
+#   5. `go build ./...`       — full project type-check.
+#   6. architecture-aggregate — schema-level cross-check on
 #                                architecture/ownership.generated.yaml.
-#   6. archcheck --strict     — gate-promoted phase-0 governance check.
-#   7. ci-architectural-checks — the long-standing legacy fallback kept
+#   7. archcheck --strict     — gate-promoted phase-0 governance check.
+#   8. ci-architectural-checks — the long-standing legacy fallback kept
 #                                as the LAST step so an arch drift at
-#                                step 5/6 surfaces before the legacy
+#                                step 6/7 surfaces before the legacy
 #                                check masks it.
 # verify-main is gated on go-version-check per the existing pattern
 # (build, vet, tidy-check, ci all carry the same precondition). An
@@ -372,9 +378,9 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 # would NOT abort lines 2-7 (the first 6 commands would still execute).
 # The \-continuation collapses them into one shell with `set -e`-like
 # `&&` semantics: first failure exits non-zero and aborts the chain.
-verify-main: go-version-check verify-format
+verify-main: go-version-check verify-format tidy-check
 	go vet ./... && \
-	go test ./... && \
+	go test -race ./... && \
 	go build ./... && \
 	go run ./cmd/architecture-aggregate --dry-run && \
 	go run ./cmd/archcheck --strict && \
