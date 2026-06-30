@@ -1075,6 +1075,171 @@ deprecations:
       would drift on every refactor.
 
 
+  # ───────────────────────────────────────────────────────────────────────
+  # 17. QDRANT-005A-VECDRIFT — legacy `vector_search:` yaml block superseded
+  #   by the canonical `qdrant:` block shipped in commit 60a73183
+  #   (QDRANT-005A, June 2026, Wave 9 post-FASE 9 shipping window).
+  #   The legacy block currently lives in `config.yaml` lines 182-185
+  #   (post-QDRANT-005A layout, after the 9-line `qdrant:` preamble above
+  #   it; `grep -n '^vector_search:' config.yaml` returns 182) and uses
+  #   `url:` as the key name; the canonical Go struct field (QdrantConfig
+  #   in `internal/platform/config/types.go:144-157`) is `base_url:`
+  #   (yaml tag). The 3 legacy yaml keys — enabled, url, collection —
+  #   are unclaimed by any Go callsite: `rg 'VectorSearch|vector_search\\.'
+  #   --type go internal/` returns zero hits. Status: EXPAND / in_progress.
+  #   Removal target: Wave 14 `internal/app/` mega-package split gate
+  #   (architecture/current.yaml), Q3 2026, aligned with DRIVE-005-FIELDS
+  #   sibling whose removal_date is the same gate. The CHANGELOG QDRANT-005A
+  #   row cross-references this manifest record.
+  # ───────────────────────────────────────────────────────────────────────
+  - id: QDRANT-005A-VECDRIFT
+    owner_capability: internal/platform/config + internal/infrastructure/qdrant
+    exact_symbol: |
+      config.yaml `vector_search:` block (lines 182-185, current post-QDRANT-005A layout):
+        - enabled: true
+        - url: "http://127.0.0.1:6333"
+        - collection: "media_assets"
+      The `VectorSearch` Go struct + the `vector_search.` struct field
+      namespace do not exist in the canonical `config.QdrantConfig`
+      struct (internal/platform/config/types.go:144-157). The legacy
+      block's `url:` key does not match the canonical yaml tag
+      `base_url:` (silent drift — no Go callsite reads the block).
+    file: config.yaml
+    file_line: "182-185 (post-QDRANT-005A canonical block shipped in commit 60a73183; vector_search: now at line 182 after the 9-line qdrant: preamble above it)"
+    replacement: |
+      config.yaml canonical `qdrant:` block (lines ~165-171, shipped
+      in commit 60a73183 — QDRANT-005A, June 2026). Maps to Go via
+      the QdrantConfig struct:
+        - enabled  -> QdrantConfig.Enabled (yaml: "enabled",  env: VELOX_QDRANT_ENABLED)
+        - base_url -> QdrantConfig.BaseURL (yaml: "base_url", env: VELOX_QDRANT_URL)
+        - api_key  -> QdrantConfig.APIKey  (yaml: "api_key",  env: VELOX_QDRANT_API_KEY)
+      supply-side defaults: enabled=false, base_url=http://127.0.0.1:6333,
+      api_key="". Runtime precedence per viper: env > yaml > struct-default.
+      The canonical block + CHANGELOG row are the SSOT; the legacy
+      `vector_search:` block is removed at the Wave 14 mega-package
+      split gate per godlike/07 §"No fake availability" (a silent
+      drift block, even if unclaimed, is operator foot-gun).
+    introduction_date: 2026-04
+    removal_date: 2026-Q3
+    tracking_issue: |
+      QDRANT-005A (canonical surface, shipped in commit 60a73183,
+      June 2026). Removal target: Wave 14 mega-package split gate
+      per architecture/current.yaml (deadline aligns with
+      architecture/ownership.generated.yaml's `internal/app/`
+      capability consolidation cycle — same gate as
+      DRIVE-005-FIELDS). Documentation evidence: CROSS-REF under
+      the CHANGELOG.md QDRANT-005A `### Added` row (second
+      `## Unreleased` block, line ~80).
+    compatibility_test: |
+      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS / DRIVE-005-FIELDS:
+        (a) `rg 'VectorSearch|vector_search\.' --type go internal/`
+            returns zero hits — the legacy block has no Go readers
+            (confirmed at 60a73183 ship time + this manifest
+            registration; future drift would surface as a non-zero
+            count and trigger a follow-up record update).
+        (b) `yaml.safe_load` of `config.yaml` populates
+            `cfg.Qdrant` (QdrantConfig struct) successfully; the
+            legacy `vector_search:` key either raises an
+            unknown-field warning (viper default) or is silently
+            dropped — neither is observable by the application.
+            The viper integration tests at
+            `internal/platform/config/types_test.go` (if extant)
+            cover the canonical keys byte-for-byte; check
+            test pass before-and-after the legacy removal.
+        (c) `rg 'vector_search' config.yaml` returns 1 hit (the
+            legacy block itself); after Wave 14 CONTRACT deletion
+            (Q3 2026) the same ripgrep returns zero. The
+            CI `scripts/archcheck/deprecations_validator.go` gate
+            is expected to flip this record to `status: removed`
+            automatically when the ripgrep count trends to 0.
+        (d) `bash scripts/ci-architectural-checks.sh` (CI Check 15
+            / QDRANT-005A clause) continues to assert that every
+            `qdrant.NewClient(&qdrant.Config{...})` call site
+            propagates `APIKey: cfg.Qdrant.APIKey`. This gate is
+            independent of the legacy block's fate — the canonical
+            `qdrant:` block is the only path the gate enforces.
+    usage_metric: |
+      Today (audit baseline, 2026-06-30 = 60a73183 ship time + this
+      manifest registration):
+        - `rg 'VectorSearch' --type go internal/`         : 0 hits (no Go reader).
+        - `rg 'vector_search\.' --type go internal/`       : 0 hits (no Go reader).
+        - `rg '^vector_search:' config.yaml`               : 1 hit (the block itself).
+        - `rg '^qdrant:' config.yaml config.example.yaml`  : 2 hits (canonical,
+          one per file; replaced the silent-drift path).
+        - `rg 'root.Drive\|cfg\.Qdrant\.' --type go internal/`
+          readsites for the canonical field set: 5 cmd/admin callers
+          + 1 zero-legacy fixture at tests/fixtures/zero_legacy/
+          check_15_qdrant_config_apikey.go.
+      Pre-removal (Wave 14 CUTOVER/ CONTRACT, Q3 2026): the legacy
+      block is removed in a single direct-to-main commit. After
+      removal:
+        - `rg '^vector_search:' --type yaml`               : 0 hits.
+        - `rg '^qdrant:' config.yaml config.example.yaml`  : 2 hits (unchanged).
+        - Net delta = -1 yaml block, +0 canonical keys added (the
+          canonical keys were already present), +1 deprecation
+          record flip to `status: removed`.
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      Multi-file scope: this deprecation record tracks two parallel
+      surfaces that collapse at the Wave 14 gate:
+        (1) the legacy `vector_search:` yaml block in `config.yaml`
+            (lines 172-175 — drift, no Go callsite);
+        (2) the absence of a `vector_search` Go namespace. The Go
+            side is already canonical — QdrantConfig lives at
+            `internal/platform/config/types.go:144-157` with the
+            yaml tags `base_url / enabled / api_key` matching the
+            canonical block shipped in commit 60a73183. There is no
+            Go-side deprecation work; the EXPAND phase is purely
+            about the yaml surface.
+
+      Why EXPAND (not CUTOVER / CONTRACT) per godlike/07: the
+      canonical replacement (`qdrant:` block) ships in commit
+      60a73183 alongside this manifest's registration. Per the
+      godlike/07 §"Migration sequence" rule, when the canonical
+      replacement exists AND the legacy surface is silent drift
+      (zero Go readers), the migration enters at EXPAND with
+      the canonical surface live + the legacy surface marked for
+      eventual deletion. BACKFILL / CUTOVER / CONTRACT unfold
+      over successive waves as the legacy block is removed.
+
+      Operator experience during the EXPAND window:
+        - The legacy block continues to load (viper reads it as
+          an unknown key, discards it with a warning in verbose
+          mode, or silently if warnings are suppressed — neither
+          path is observable by the application).
+        - The canonical block supplies all runtime values.
+        - Operators who did not migrate to the canonical block
+          observe no behavioural change: legacy was silent drift
+          already.
+
+      Cross-refs:
+        - godlike/06 §"One owner per fact" : the canonical
+          `qdrant:` block owns the vec-search configuration fact.
+          The legacy `vector_search:` block is configuration drift
+          (different key `url:` vs canonical `base_url:`) and
+          does not represent an independent owner of the fact.
+        - godlike/07 §"No fake availability" : the silent drift
+          is a fossil; registration ratchets it so operators
+          reading the config.yaml see an explicit godlike/07
+          deprecation comment alongside the canonical block
+          (added in this commit's drift-comment edit to
+          config.yaml block).
+        - godlike/07 §"Historical information" : preserves the
+          audit-purpose of the drift comment + this manifest
+          record across the EXPAND-to-CONTRACT window.
+        - CHANGELOG.md QDRANT-005A `### Added` row (under the
+          second `## Unreleased` block): cross-references this
+          manifest record after the EXPAND registration.
+
+      Wave 14 mega-package split gate: the natural removal cycle
+      for this record aligns with DRIVE-005-FIELDS sibling whose
+      `removal_date` is also 2026-Q3 tied to Wave 14. Both config
+      field + drift records fold into the same gate, which keeps
+      the gate-side audit footprint compact (1 PR at gate time
+      removes both fields of drift + their manifest records).
+
+
 # ── Open Questions (read-write; voting-enabled; deferred naming/scope decisions) ──
 # Per AGENTS.md §8 zero-baseline rule, "open questions" carry owner + deadline + team-vote
 # outcome. Each entry cites evidence (file:line + comment quote) so future agents
@@ -1165,17 +1330,17 @@ open_questions:
 
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
 audit:
-  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026)"
-  total_records: 16
+  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026) + QDRANT-005A-VECDRIFT EXPAND registration (2026-06-30)"
+  total_records: 19
   by_status:
-    removed: 11
-    in_progress: 4
+    removed: 12
+    in_progress: 6
     keep: 1
   by_migration_phase:
-    CONTRACT: 10
+    CONTRACT: 11
     CUTOVER: 2
     BACKFILL: 1
-    EXPAND: 2
+    EXPAND: 4
     not applicable: 1
   ci_gate_impact: |
     Records with removal_date in the past AND status != "removed" fail CI.
