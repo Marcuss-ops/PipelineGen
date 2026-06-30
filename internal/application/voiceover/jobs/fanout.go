@@ -29,13 +29,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
+
+// voiceover.FilenameSpec is referenced through the voiceover package
+// import above (BuildVoiceoverFilename at filename.go).
 
 // Enqueuer is the narrow port used by FanoutVoiceoversUseCase to
 // enqueue per-language child jobs. Per AGENTS.md Pattern 0, the
@@ -125,14 +127,19 @@ func NewFanoutVoiceoversUseCase(deps FanoutDeps) *FanoutVoiceoversUseCase {
 	return &FanoutVoiceoversUseCase{deps: deps}
 }
 
-// Execute fans out N per-language children via the canonical job
-// broker. Dispatch contract (P0.3, godlike/07 — no fake availability):
+// Execute fans out N per-item children via the canonical job broker.
+// Dispatch contract (P0.3, godlike/07 — no fake availability):
 //   - nil cmd → return (nil, error).
 //   - cmd.Validate failure → return (nil, error).
 //   - ANY child Enqueue failure → (result, error) with result.OK=false
 //     and the partial enqueue counts populated (operators see exactly
 //     which siblings landed + which failed).
 //   - Full Enqueue success → (result, nil).
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the loop iterates
+// cmd.Items (not cmd.Languages — that field was removed from
+// GenerateVoiceoversCommand). Each item has its own text/lang/voice/
+// filename so each child carries the exact per-item payload.
 //
 // Payload shape: EnqueueRequest.Payload is `any` (internal/application/
 // jobs/types.go). We pass the struct directly so the dispatcher can
@@ -147,7 +154,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		return nil, fmt.Errorf("FanoutVoiceoversUseCase.Execute: validate (parent_job_id=%s): %w", parentJobID, err)
 	}
 
-	total := len(cmd.Languages)
+	total := len(cmd.Items)
 	// P0.6 request_id threading: use the caller-supplied request_id
 	// when available (threaded from API → CorrelationID by
 	// GenerateJobHandler). Fall back to parentJobID (the only stable
@@ -159,7 +166,6 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 	if requestID == "" {
 		requestID = parentJobID
 	}
-	textHash := textHashSHA256(cmd.Text)
 	result := &FanoutResult{
 		OK:           true,
 		ParentJobID:  parentJobID,
@@ -169,20 +175,37 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		PerLanguage:  make([]string, 0, total),
 	}
 
-	for idx, lang := range cmd.Languages {
-		voice := ""
-		if cmd.VoiceOverrides != nil {
-			voice = cmd.VoiceOverrides[lang]
+	for idx, itemSpec := range cmd.Items {
+		// Per-item textHash: each item may have a different text so the
+		// hash is NOT shared across siblings. This protects per-item
+		// dedupe (Step 5 invariant: never merge items with different
+		// texts into the same ActiveKey footprint).
+		itemTextHash := textHashSHA256(itemSpec.Text)
+
+		// E4: per-item filename via canonical BuildVoiceoverFilename with
+		// the per-item textHash threaded into the {hash} token slot (so
+		// two items with same lang+voice but different text get different
+		// filenames, no sibling collision). cmd.Validate already gates
+		// Text/Language non-empty above, so the error path is unreachable
+		// in production; panic surfaces regressions loud-fast.
+		filename, ferr := voiceover.BuildVoiceoverFilename(voiceover.FilenameSpec{
+			Text:     itemSpec.Text,
+			Language: itemSpec.Language,
+			TextHash: itemTextHash,
+		})
+		if ferr != nil {
+			panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (FanoutUseCase.Execute): %v (item=%+v, parent_job_id=%s)",
+				ferr, itemSpec, parentJobID))
 		}
 
 		item := voiceover.GenerateVoiceoverItemCommand{
 			ParentJobID:   parentJobID,
 			RequestID:     requestID,
-			Text:          cmd.Text,
-			TextHash:      textHash,
-			Language:      lang,
-			Voice:         voice,
-			Filename:      buildItemFilename(cmd.FilenameTemplate, cmd.Text, lang),
+			Text:          itemSpec.Text,
+			TextHash:      itemTextHash,
+			Language:      itemSpec.Language,
+			Voice:         itemSpec.Voice,
+			Filename:      filename,
 			Destination:   cmd.Destination,
 			Strategy:      cmd.Strategy,
 			RemoveSilence: cmd.RemoveSilence,
@@ -191,21 +214,24 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		if err := item.Validate(); err != nil {
 			u.deps.Logger.Warn("FanoutUseCase: child command validation failed",
 				zap.String("parent_job_id", parentJobID),
-				zap.String("language", lang),
+				zap.Int("item_index", idx),
+				zap.String("language", itemSpec.Language),
 				zap.Error(err))
 			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, lang)
+			result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
 			result.ChildJobIDs = append(result.ChildJobIDs, "")
 			result.OK = false
 			continue
 		}
 
 		// P0.5 idempotency: child ActiveKey covers parentJobID + index +
-		// text hash + language + voice so the broker's FindActiveByKey
-		// returns the existing child instead of enqueuing a duplicate
-		// when the parent is retried after a partial fan-out.
+		// item textHash + item language + item voice so the broker's
+		// FindActiveByKey returns the existing child instead of enqueuing
+		// a duplicate when the parent is retried after a partial fan-out.
+		// Per-item text hash means two items with identical (lang, voice)
+		// but different texts are NOT folded into one key (Step 5 fix).
 		childActiveKey := fmt.Sprintf("voiceover:item:%s:%d:%s:%s:%s",
-			parentJobID, idx, textHash, lang, voice)
+			parentJobID, idx, itemTextHash, itemSpec.Language, itemSpec.Voice)
 
 		enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
 			Type:      job.TypeVoiceoverGenerateItem,
@@ -215,16 +241,17 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		if err != nil {
 			u.deps.Logger.Warn("FanoutUseCase: enqueue child failed",
 				zap.String("parent_job_id", parentJobID),
-				zap.String("language", lang),
+				zap.Int("item_index", idx),
+				zap.String("language", itemSpec.Language),
 				zap.Error(err))
 			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, lang)
+			result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
 			result.ChildJobIDs = append(result.ChildJobIDs, "")
 			result.OK = false
 			continue
 		}
 		result.EnqueuedCount++
-		result.PerLanguage = append(result.PerLanguage, lang)
+		result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
 		result.ChildJobIDs = append(result.ChildJobIDs, enqueued.ID)
 	}
 
@@ -243,42 +270,12 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 	return result, nil
 }
 
-// buildItemFilename computes a default filename for the per-language
-// child job when FilenameTemplate is empty. Mirrors the
-// {slug}_{lang}.mp3 grammar pinned by voiceover.GenerateVoiceoversCommand
-// default behaviour; the slug uses ASCII-safe characters only so
-// filesystem writes never produce an unencoded path.
-func buildItemFilename(template, text, language string) string {
-	if template != "" {
-		return template
-	}
-	return fmt.Sprintf("%s_%s_%d.mp3", slug(text), language, time.Now().UTC().Unix())
-}
-
-// slug is the safe-text slug used in default filenames. Mirrors
-// textutil.SlugifyWithMax's ASCII-alphanumeric + underscore grammar
-// so the filename survives re-hydration. textutil.SlugifyWithMax is
-// not inlined here because voiceover/jobs must stay free of pkg/
-// imports only when absolutely necessary — the deterministic local
-// implementation keeps tests deterministic too.
-func slug(s string) string {
-	out := make([]rune, 0, len(s))
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			out = append(out, r)
-		case r == ' ' || r == '-' || r == '_':
-			out = append(out, '_')
-		}
-	}
-	if len(out) > 30 {
-		out = out[:30]
-	}
-	if len(out) == 0 {
-		return "voiceover"
-	}
-	return string(out)
-}
+// buildItemFilenameCanonical — REMOVED in E4 (June 2026). The
+// per-language fanout now calls voiceover.BuildVoiceoverFilename
+// directly inline at the loop top with the per-item textHash
+// threaded into the {hash} token slot. The one-line canonical call
+// absorbs both the previous buildItemFilename+slug pair AND the
+// per-item uniqueness invariant (text+lang+hash triplet).
 
 // textHashSHA256 returns the first 16 hex chars of SHA-256(Text).
 // Used as the stable per-batch identifier so every child writes the

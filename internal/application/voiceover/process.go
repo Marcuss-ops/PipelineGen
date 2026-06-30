@@ -120,7 +120,25 @@ func (s *Service) processLanguage(
 	req *BatchRequest,
 	dest *ResolvedDestination,
 ) BatchItem {
-	filename := s.buildFilename(req, language, textHash)
+	// E4: Service.buildFilename → canonical BuildVoiceoverFilename.
+	// Inputs are pre-validated by req via the higher-layer
+	// BatchRequest normalization (~line 472 in types.go).
+	//
+	// `item` is pre-declared so the early-return paths below
+	// (filename build failure, subfolder sanitisation failure,
+	// buffer-overflow rejection) can route via item.fail(...) — the
+	// original PR8 extracted processLanguage from a monolithic
+	// function and missed the var-declaration reorder.
+	var item BatchItem
+	filename, err := BuildVoiceoverFilename(FilenameSpec{
+		Text:     req.Text,
+		Language: language,
+		TextHash: textHash,
+		Template: req.FilenameTemplate,
+	})
+	if err != nil {
+		return item.fail(FailureInvalidFilename, fmt.Errorf("filename build: %w", err))
+	}
 
 	folderID := ""
 	if dest != nil {
@@ -168,7 +186,7 @@ func (s *Service) processLanguage(
 		shouldSwap = true
 	}
 
-	item := BatchItem{
+	item = BatchItem{
 		ID:       id,
 		Language: language,
 		Filename: filename,
