@@ -96,6 +96,8 @@ func Load(path string) (*Policy, error) {
 			p.CmdMainMaxLines = atoiOrDefault(val, 200)
 		case "max_constructor_deps":
 			p.MaxConstructorDeps = atoiOrDefault(val, 8)
+		case "max_struct_deps":
+			p.MaxStructDeps = atoiOrDefault(val, 8)
 		case "forbidden_top_level_dirs":
 			p.ForbiddenTopLevelDirs = splitTrim(val)
 		case "kernel_subzones":

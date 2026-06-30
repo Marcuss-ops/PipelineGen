@@ -83,6 +83,7 @@ type CheckSpec struct {
 func DefaultChecks() []CheckSpec {
 	return []CheckSpec{
 		{"constructors", scan.ScanConstructors},
+		{"struct_deps", scan.ScanStructDeps},
 		{"forbidden_dirs", scan.ScanForbiddenDirs},
 		{"kernel_subzone_hints", scan.ScanKernelSubzoneHints},
 		{"unknown_internal_roots", scan.ScanUnknownInternalRoots},
