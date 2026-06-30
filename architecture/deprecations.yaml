@@ -1074,6 +1074,21 @@ deprecations:
       ripgrep at removal time, not a long-lived enumeration that
       would drift on every refactor.
 
+      Nil-panic risk closed (CARD-1, June 2026): NewPublisher in
+      internal/infrastructure/drive/publisher.go returns
+      (*Publisher, error). Three composition-time fail-fast guards
+      surface the missing dependency at startup instead of crashing
+      the first Publish call:
+        - ErrMissingDestinationRegistry (registry == nil)
+        - ErrMissingFolderManager       (folders == nil)
+        - ErrMissingFileUploader        (files == nil)
+      BuildDriveBundle (internal/app/build_bundles_drive.go) handles
+      the new error via `log.Error + return nil, err`, ratcheting
+      the composition-root readiness barrier across the Drive
+      surface (no silent panic if a port is not wired). Companion
+      tests: TestNewPublisher_NilRegistry / NilFolders / NilFiles
+      in publisher_test.go assert errors.Is + pub == nil.
+
 
   # ───────────────────────────────────────────────────────────────────────
   # 17. QDRANT-005A-VECDRIFT — legacy `vector_search:` yaml block superseded
