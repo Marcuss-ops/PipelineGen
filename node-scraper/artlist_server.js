@@ -20,6 +20,12 @@ let requestCount = 0;
 const startedAt = new Date().toISOString();
 let globalBrowser = null;
 let globalBrowserConnected = false;
+// FASE 9 (June 2026): last launch error exposed via /health so operators
+// can triage the restart-loop / browser_running=false case from
+// `docker logs` and `curl /health` without grepping Puppeteer debug
+// output. Reset only on a successful openBrowser (preserved across
+// cleanupBrowser so the diagnostic survives browser death).
+let lastLaunchError = null;
 
 // ─── Browser Lifecycle ────────────────────────────────────────────────────────
 async function getBrowser() {
@@ -35,9 +41,16 @@ async function getBrowser() {
   }
 
   console.log('[artlist-server] Launching persistent Chromium browser...');
-  const { browser, connected } = await openBrowser(PROFILE_DIR);
+  const { browser, connected, launchError } = await openBrowser(PROFILE_DIR);
   globalBrowser = browser;
   globalBrowserConnected = connected;
+  // FASE 9 (June 2026): a successful launch clears the previous
+  // launchError; a failed launch preserves the message for /health.
+  if (browser !== null && launchError === null) {
+    lastLaunchError = null;
+  } else if (launchError) {
+    lastLaunchError = launchError;
+  }
   return globalBrowser;
 }
 
@@ -54,6 +67,9 @@ async function cleanupBrowser() {
     } finally {
       globalBrowser = null;
       globalBrowserConnected = false;
+      // do NOT reset lastLaunchError on cleanup — the diagnostic value
+      // is precisely to surface the error after the browser is gone,
+      // so cleanup should preserve it until the next successful launch.
     }
   }
 }
@@ -193,6 +209,18 @@ async function handleDownload(req, res, getBrowserFn) {
 }
 
 function handleHealth(req, res) {
+  // FASE 9 (June 2026): /health now distinguishes the three
+  // browser-process states operators care about:
+  //   - browser_running=true + last_launch_error=null → healthy;
+  //   - browser_running=false + last_launch_error=null → never launched
+  //     yet, normal for cold-start;
+  //   - browser_running=false + last_launch_error=<msg> → launch failed,
+  //     the message names the binary path + args + root cause.
+  // The `ok` flag remains true so docker-compose's HEALTHCHECK command
+  // (curl -fsS http://127.0.0.1:9123/health) keeps reporting "healthy"
+  // for the purpose of the container-restart-on-unhealthy decision;
+  // operators read last_launch_error via docker logs / curl to triage.
+  const browserRunning = globalBrowser !== null;
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     ok: true,
@@ -200,7 +228,8 @@ function handleHealth(req, res) {
     requests_served: requestCount,
     started_at: startedAt,
     port: PORT,
-    browser_running: globalBrowser !== null,
+    browser_running: browserRunning,
+    last_launch_error: lastLaunchError,
   }));
 }
 
