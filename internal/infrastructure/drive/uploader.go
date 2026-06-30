@@ -2,6 +2,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -44,6 +45,38 @@ type RemoteFile struct {
 	WebViewLink string
 	MD5Checksum string
 }
+
+// ExistingFileLookup is the multi-match result of FindFileByName.
+// Pre-Wave B2 (June 2026) FindFileByName returned only the first match,
+// silently truncating the second/third/... matches — which made
+// overwrite/skip non-deterministic when multiple files shared the same
+// name+parent (e.g. a user manually uploaded a sibling copy and the
+// pipeline then uploaded another). Wave B2 makes the surface
+// exhaustive: callers MUST branch on len(Matches) to distinguish
+//
+//	0 matches → no existing file, take the Create branch
+//	1 match   → apply the chosen ConflictPolicy against Matches[0]
+//	>1 match  → fail-closed: surface ErrAmbiguousDriveFile
+//	            (NEVER silently pick the first match on ambiguous state)
+//
+// The zero value (len(Matches) == 0) is the canonical "no match" surface,
+// matching the pre-Wave B2 (nil, nil) return contract semantically.
+type ExistingFileLookup struct {
+	Matches []RemoteFile
+}
+
+// ErrAmbiguousDriveFile is the canonical sentinel returned when
+// FindFileByName reports more than one non-trashed match for the
+// (folderID, filename) tuple. Callers errors.Is against this sentinel
+// to distinguish "multiple omonimi on Drive" from other lookup
+// failures (rate limit, network timeout, malformed query). Surfacing
+// the sentinel at the port boundary is the Wave B2 contract change —
+// pre-Wave B2 the truncation to first-match hid this case entirely.
+//
+// Mirrors the per-package sentinels already defined in publisher.go
+// (ErrMissingDestinationRegistry, ErrMissingFolderManager,
+// ErrMissingFileUploader) — exported, errors.Is-friendly, surface-stable.
+var ErrAmbiguousDriveFile = errors.New("drive: ambiguous file match: multiple non-trashed files with the same name+parent exist on Drive")
 
 // UploadFile uploads a file to the specified Drive folder.
 // This properly uses .Media(f) to upload the file content (unlike the broken artlist/drive_uploader.go).
@@ -93,10 +126,25 @@ func (u *Uploader) doUploadFile(ctx context.Context, localPath, folderID, filena
 	}
 	defer f.Close()
 
-	// Check if a file with the same name already exists in this folder to avoid duplicates
-	existing, err := u.FindFileByName(ctx, folderID, filename)
+	// Check if a file with the same name already exists in this folder to avoid duplicates.
+	//
+	// Wave B2 (June 2026): FindFileByName now returns ExistingFileLookup
+	// with ALL non-trashed matches. We branch on len(Matches) for 0/1/>1:
+	//   0 matches → existing stays nil → next branch Creates
+	//   1 match   → existing = &lookup.Matches[0] → next branch Updates
+	//   >1 match  → fail-closed: return ErrAmbiguousDriveFile wrapped
+	//               with the filename. Never fall through to Create on
+	//               ambiguous state (silently truncating was the
+	//               pre-Wave B2 bug).
+	lookup, err := u.FindFileByName(ctx, folderID, filename)
 	if err != nil {
 		u.Log.Warn("failed to check for existing file on Drive", zap.String("name", filename), zap.Error(err))
+	} else if len(lookup.Matches) > 1 {
+		return nil, fmt.Errorf("doUploadFile lookup %q: %w", filename, ErrAmbiguousDriveFile)
+	}
+	var existing *RemoteFile
+	if len(lookup.Matches) == 1 {
+		existing = &lookup.Matches[0]
 	}
 
 	var created *driveapi.File
@@ -160,13 +208,31 @@ func (u *Uploader) doUploadFile(ctx context.Context, localPath, folderID, filena
 	}, nil
 }
 
-// FindFileByName returns the first non-trashed file in a folder with the given name.
-func (u *Uploader) FindFileByName(ctx context.Context, folderID, filename string) (*RemoteFile, error) {
+// FindFileByName returns ALL non-trashed files in a folder with the
+// given name. Pre-Wave B2 (June 2026) this returned the first match
+// only — silently truncating the second/third/... matches, which made
+// overwrite/skip non-deterministic when multiple files shared the
+// same name+parent (e.g. a user manually uploaded a sibling copy and
+// the pipeline uploaded another).
+//
+// Wave B2 makes the surface exhaustive: callers MUST branch on
+// len(ExistingFileLookup.Matches) to distinguish 0/1/>1 matches per
+// the routing table documented on the ExistingFileLookup type. The
+// zero-value ExistingFileLookup (len(Matches) == 0) is the canonical
+// "no match" surface, matching the pre-Wave B2 (nil, nil) return
+// contract semantically.
+//
+// The >1 case is NOT signalled here — FindFileByName returns all
+// matches; it is the CALLER's job to detect len > 1 and surface
+// ErrAmbiguousDriveFile (fail-closed). This split is intentional:
+// the port method is a pure read, while the ambiguous-state error is
+// a policy decision owned by the caller.
+func (u *Uploader) FindFileByName(ctx context.Context, folderID, filename string) (ExistingFileLookup, error) {
 	if u.Service == nil {
-		return nil, fmt.Errorf("drive service not configured")
+		return ExistingFileLookup{}, fmt.Errorf("drive service not configured")
 	}
 	if strings.TrimSpace(folderID) == "" || strings.TrimSpace(filename) == "" {
-		return nil, nil
+		return ExistingFileLookup{}, nil
 	}
 
 	query := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", strings.ReplaceAll(filename, "'", "\\'"), folderID)
@@ -176,19 +242,19 @@ func (u *Uploader) FindFileByName(ctx context.Context, folderID, filename string
 		Context(ctx).
 		Do()
 	if err != nil {
-		return nil, err
-	}
-	if len(list.Files) == 0 {
-		return nil, nil
+		return ExistingFileLookup{}, err
 	}
 
-	file := list.Files[0]
-	return &RemoteFile{
-		FileID:      file.Id,
-		Name:        file.Name,
-		WebViewLink: file.WebViewLink,
-		MD5Checksum: file.Md5Checksum,
-	}, nil
+	lookup := ExistingFileLookup{Matches: make([]RemoteFile, 0, len(list.Files))}
+	for _, file := range list.Files {
+		lookup.Matches = append(lookup.Matches, RemoteFile{
+			FileID:      file.Id,
+			Name:        file.Name,
+			WebViewLink: file.WebViewLink,
+			MD5Checksum: file.Md5Checksum,
+		})
+	}
+	return lookup, nil
 }
 
 // UploadFileIfChanged uploads a file only when the Drive file does not already exist with the same hash.
@@ -198,9 +264,20 @@ func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID,
 		return nil, false, fmt.Errorf("failed to hash local file: %w", err)
 	}
 
-	existing, err := u.FindFileByName(ctx, folderID, filename)
+	lookup, err := u.FindFileByName(ctx, folderID, filename)
 	if err != nil {
 		return nil, false, err
+	}
+	// Wave B2 (June 2026): 0/1/>1 branch logic on ExistingFileLookup.
+	// >1 match is fail-closed — surfaces ErrAmbiguousDriveFile wrapped
+	// with the filename. Pre-Wave B2 this case was silently hidden by
+	// the first-match truncation in FindFileByName.
+	if len(lookup.Matches) > 1 {
+		return nil, false, fmt.Errorf("UploadFileIfChanged lookup %q: %w", filename, ErrAmbiguousDriveFile)
+	}
+	var existing *RemoteFile
+	if len(lookup.Matches) == 1 {
+		existing = &lookup.Matches[0]
 	}
 	if existing != nil && existing.MD5Checksum != "" && strings.EqualFold(existing.MD5Checksum, localHash) {
 		return &UploadResult{

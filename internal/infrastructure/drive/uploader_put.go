@@ -1,4 +1,4 @@
-// Package drive — uploader_put.go (P0 #1 fix, June 2026)
+// Package drive — uploader_put.go (P0 #1 fix, June 2026; Wave B1+B2, June 2026)
 //
 // *Uploader.PutFile is the conflict-aware single entry point for Drive
 // uploads. It supersedes the pre-refactor UploadFileWithDescription
@@ -20,11 +20,31 @@
 //
 // Retries on transient Drive errors (429, 503, timeouts, network blips)
 // via pkg/retry — same exponential backoff policy (3 attempts, 2s → 4s)
-// as the legacy UploadFileWithDescription path. The lookup step
-// (FindFileByName) follows the soft-error-on-miss pattern: a transient
-// lookup failure is logged and treated as "no match" so the retry of
-// the Create/Update step can succeed. The P0 #4 fix on
-// findOrCreateFolder is orthogonal and lands in a separate commit.
+// as the legacy UploadFileWithDescription path.
+//
+// Lookup step (FindFileByName) follows TWO fail-closed rules applied
+// in order (Wave B1 + Wave B2, June 2026):
+//
+//  1. Wave B1 — lookup *error* (rate-limit, timeout, 403, malformed
+//     query, ctx.Canceled) is wrapped via fmt.Errorf %w and returned
+//     hard. pkg/retry's IsRetryable predicate recognises the inner
+//     transient signal and retries; non-retryable errors short-circuit
+//     immediately. The previous "warn-and-fall-through" behaviour was
+//     a silent-duplicate-create bug: a transient lookup failure
+//     produced `existing == nil`, which then took the Create branch
+//     on the next line — yielding a Drive file duplicate.
+//
+//  2. Wave B2 — lookup *ambiguity* (more than one non-trashed match
+//     in the same parent folder) is also fail-closed: the typed
+//     sentinel ErrAmbiguousDriveFile is returned wrapped with the
+//     filename. The pre-Wave B2 first-match truncation silently
+//     hid this case, which made overwrite/skip non-deterministic
+//     when users manually uploaded sibling copies. Callers can
+//     errors.Is(err, drive.ErrAmbiguousDriveFile) to detect the
+//     ambiguous-state case specifically (vs a generic lookup error).
+//
+// The P0 #4 fix on findOrCreateFolder is orthogonal and lands in a
+// separate commit.
 package drive
 
 import (
@@ -51,9 +71,18 @@ import (
 // path. Reusing the existing helper keeps behaviour consistent and
 // avoids re-implementing the query-construction logic.
 //
-// The retry wrapper covers Create / Update operations only — FindFileByName
-// runs once per attempt and is soft-failed on transient errors so a
-// race between lookup and write doesn't surface as a hard error.
+// The retry wrapper covers Create / Update operations AND
+// the lookup step (Wave B1 + Wave B2, June 2026). FindFileByName is
+// re-run on each retry attempt because race conditions between
+// attempt N and attempt N+1 are real — a sibling worker may have
+// created the file in between. Lookup errors are FAIL-CLOSED on
+// TWO axes: (a) lookup *error* (Wave B1) wrapped via fmt.Errorf %w
+// so pkg/retry's IsRetryable predicate surfaces the inner retryable
+// signal; non-retryable lookups short-circuit immediately and yield
+// the typed error to the caller. (b) lookup *ambiguity* (Wave B2) —
+// more than one non-trashed match in the same parent — surfaces
+// ErrAmbiguousDriveFile wrapped with the filename; pre-Wave B2 the
+// first-match truncation silently hid this case.
 func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileResult, error) {
 	if u.Service == nil {
 		return nil, fmt.Errorf("drive service not configured")
@@ -69,13 +98,29 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	}
 
 	result, err := retry.DoWithValue(ctx, func() (*PutFileResult, error) {
-		// Step 1: lookup existing (soft-fail on transient errors).
-		existing, lookupErr := u.FindFileByName(ctx, req.FolderID, req.Filename)
+		// Step 1: lookup existing. FAIL-CLOSED on BOTH axes (Wave B1 + Wave B2).
+		//   - lookup *error* (Wave B1): wrapped via fmt.Errorf %w so
+		//     pkg/retry's IsRetryable predicate surfaces the inner
+		//     transient signal (429/503/timeout) and retries; non-
+		//     retryable errors (context.Canceled, 403 forbidden,
+		//     malformed query) short-circuit immediately. The previous
+		//     "warn-and-proceed" path was the silent-duplicate-create
+		//     bug.
+		//   - lookup *ambiguity* (Wave B2): if more than one match
+		//     comes back, surface ErrAmbiguousDriveFile wrapped with
+		//     the filename. The pre-Wave B2 first-match truncation
+		//     silently hid this case, which made overwrite/skip
+		//     non-deterministic on sibling copies.
+		lookup, lookupErr := lookupFunc(u, ctx, req.FolderID, req.Filename)
 		if lookupErr != nil {
-			u.Log.Warn("putFile: lookup failed, falling through to create-or-update",
-				zap.String("filename", req.Filename),
-				zap.String("folder_id", req.FolderID),
-				zap.Error(lookupErr))
+			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", req.Filename, lookupErr)
+		}
+		if len(lookup.Matches) > 1 {
+			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", req.Filename, ErrAmbiguousDriveFile)
+		}
+		var existing *RemoteFile
+		if len(lookup.Matches) == 1 {
+			existing = &lookup.Matches[0]
 		}
 		return u.doPutFile(ctx, req, existing)
 	}, retry.Options{
@@ -236,3 +281,19 @@ func renameWithTimestamp(name string, ts int64) string {
 // survive compiler-side import pruning.
 var _ = zap.NewNop
 var _ retry.Options
+
+// lookupFunc is the test seam for *Uploader.PutFile. Production
+// code delegates to Uploader.FindFileByName; tests inject overrides
+// to simulate lookup failures and ambiguous-match responses without
+// spinning up a fake Drive HTTP server. Mirrors the openFile seam
+// in uploader.go (line ~188) and TestOpenFileInjection in
+// uploader_test.go.
+//
+// Wave B2 (June 2026) changed the return type from (*RemoteFile, error)
+// to (ExistingFileLookup, error) so the seam can carry the full match
+// set including the >1 ambiguity case. The default implementation
+// still delegates to Uploader.FindFileByName — the signature change
+// is the only thing that needs to propagate.
+var lookupFunc = func(u *Uploader, ctx context.Context, folderID, filename string) (ExistingFileLookup, error) {
+	return u.FindFileByName(ctx, folderID, filename)
+}
