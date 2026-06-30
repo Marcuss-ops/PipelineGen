@@ -9,15 +9,24 @@ import (
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
+	"golang.org/x/sync/singleflight"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // Uploader handles Google Drive file operations.
+//
+// F1.6 (June 2026, P0 #4 + #5 + #6): folderOps is the in-process race-safety
+// keyed lock applied to GetOrCreateFolder. The zero value is ready to use;
+// concurrent calls for the same (parentID, canonicalName) pair are
+// deduplicated by singleflight.Group.Do(key=parentID+":"+canonicalName, ...).
+// The shared call observes only ONE List/Create pair; concurrent callers
+// receive the same result without racing through Create.
 type Uploader struct {
-	Service *driveapi.Service
-	Log     *zap.Logger
+	Service   *driveapi.Service
+	Log       *zap.Logger
+	folderOps singleflight.Group // F1.6 P0 #5 keyed lock: parentID+":"+canonicalName
 }
 
 // UploadResult holds the result of a file upload.
