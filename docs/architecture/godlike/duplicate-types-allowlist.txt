@@ -12,7 +12,7 @@
 # explicit owner + deadline. New entries WITHOUT those columns fail the
 # governance gate.
 #
-# Current baseline (origin/main, June 2026): 14 entries.
+# Current baseline (origin/main, June 2026): 17 entries.
 #   - 7 legacy QDRANT-hygiene entries (sqlite-vs-application mirror, cross-module
 #     search mirror, jobs broker port)
 #   - 7 PR-check-5 baseline-closure entries (cross-package-NAME false
@@ -56,17 +56,22 @@ voiceoversync:Service                  # alias-shim mirror — `voiceover/sync/s
 voiceoversync:Summary                  # same package-collision as voiceoversync:Service — alias-shim mirror for Summary struct — owner: @voiceover-reconciliation, deadline: 2026-09-01
 adapters:Service                       # cross-directory `package adapters` collision — `scripts/adapters/gemmamemory.go` (module-local mem-cache Service) + `youtube/adapters/service.go` (shared Service struct for youtube extraction helpers) — owner: @scripts-adapters, deadline: 2026-09-01
 images:GenerateImageRequest            # port-pattern domain-vs-transport — `application/images/ports.go` (canonical domain DTO) + `api/images/impl.go` (HTTP-handler request binding DTO); both declare `package images` — owner: @images-team, deadline: 2026-09-01
+engine:Generate                        # cross-package-NAME false positive — `engine.go` (definition) + `generate_one_usecase.go` (canonical sole permitted caller per Check 3) both declare `package engine`; Check 5 scanner groups by package-NAME so the cross-file surface is over-counted; mitigated by Check 3 ownership gate (allowlisted `!**/engine.go --glob '!**/generate_one_usecase.go'`) — owner: @jobs-core, deadline: 2026-09-01
+health:DriveChecker                    # port-pattern canonical-vs-impl mirror — `application/system/health/ports.go` (interface DBChecker/DriveChecker/QdrantChecker/JobsChecker) + `infrastructure/health/drive_checker.go` (struct impl `DriveChecker`); both declare `package health`; same cross-directory port-pattern shape as health:JobsChecker (already allowlisted above) — owner: @system-health-team, deadline: 2026-09-01
+jobs:QueueNotifier                     # type-alias port-pattern — `application/jobs/notifier.go` declares `type QueueNotifier = sqljobs.QueueNotifier` (a Go type ALIAS, not a redeclaration) + `infrastructure/database/sqlite/jobs/queue_notifier.go` declares the canonical interface; both declare `package jobs`; the application-tier entry is structurally identical to the canonical via the alias — owner: @jobs-core, deadline: 2026-09-01
 #
 # ── OUT-OF-SCOPE DEFERRED PAIRS (PR-check-5 follow-up, June 2026) ──
 # The Check 5 lint also flagged 3 additional pairs that are NOT in the
 # user's PR-check-5 scope. Each requires its own owner + deadline + a
 # future-blocco disposition; tracking as separate follow-up tickets:
 #
-#   engine:Generate                  — `engine.go` define + `generate_one_usecase.go` sole permitted caller produce 2 hits; resolved by separate PR-6 contract (already in place per Check 3). VERIFY: cross-check with the Check 3 allowlist glob (`!**/engine.go --glob '!**/generate_one_usecase.go'`) — if Check 3 gloss suppresses this, PR-check-5 OOS may collapse to 0.
-#   health:DriveChecker              — `application/system/health/ports.go` (interface) + `infrastructure/health/drive_checker.go` (struct impl) — same port-pattern shape as health:JobsChecker; should follow the same disposition. Future PR: owner @system-health-team, deadline 2026-09-01.
-#   jobs:QueueNotifier               — `application/jobs/notifier.go` + `infrastructure/database/sqlite/jobs/queue_notifier.go` — port-pattern canonical vs impl; future PR: owner @jobs-core, deadline 2026-09-01.
+#   [none remaining — three OOS pairs above have been migrated into the
+#    active allowlist proper as of June 2026 PR-check-5 follow-up closure.
+#    The OOS section is retained as a marker for churn history.]
 #
-# These three OOS pairs are intentionally NOT added to this baseline —
-# they require per-pair code-or-allowlist resolution in a future PR and
-# adding them under the same owner@handle as the 7 in-scope entries
-# would muddy the audit trail.
+# These three OOS pairs were intentionally NOT added in the original
+# baseline — they required per-pair code-or-allowlist resolution in a
+# future PR and adding them under the same owner@handle as the 7 in-scope
+# entries would muddy the audit trail. Migration to active allowlist
+# (with owner + deadline per godlike-08 zero-baseline rule) completes the
+# PR-check-5 deferred-work disposition.
