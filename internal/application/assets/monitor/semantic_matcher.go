@@ -79,10 +79,6 @@ func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string,
 		}
 
 		if vttPath == "" {
-			reason := SkipSubtitleUnavailable
-			m.log.Debug("no subtitle file found for video",
-				zap.String("video_id", videoID),
-				zap.String("skip_reason", string(reason)))
 			return 0, "", fmt.Errorf("no subtitle file found for video: %s", videoURL)
 		}
 
@@ -116,11 +112,6 @@ func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string,
 	}
 
 	if len(strings.Fields(transcript)) < 10 {
-		reason := SkipTranscriptTooShort
-		m.log.Debug("transcript too short for semantic analysis",
-			zap.String("video_id", videoID),
-			zap.Int("word_count", len(strings.Fields(transcript))),
-			zap.String("skip_reason", string(reason)))
 		return 0, "", fmt.Errorf("transcript too short (%d words), skipping", len(strings.Fields(transcript)))
 	}
 
@@ -147,11 +138,6 @@ Rules:
 
 	responseStr, err := m.ollamaClient.SimpleGenerate(ctx, model, prompt, 60*time.Second, map[string]any{"format": "json"})
 	if err != nil {
-		reason := SkipOllamaFailed
-		m.log.Debug("ollama semantic-match call failed",
-			zap.String("video_id", videoID),
-			zap.Error(err),
-			zap.String("skip_reason", string(reason)))
 		return 0, "", fmt.Errorf("ollama call: %w", err)
 	}
 
@@ -165,17 +151,9 @@ Rules:
 		// Sometimes Ollama wraps in markdown, try to extract JSON
 		if jsonMatch := jsonRegexFind([]byte(responseStr)); jsonMatch != nil {
 			if err2 := json.Unmarshal(jsonMatch, &result); err2 != nil {
-				reason := SkipOllamaFailed
-				m.log.Debug("failed to parse ollama semantic-match response (fallback also failed)",
-					zap.String("video_id", videoID),
-					zap.String("skip_reason", string(reason)))
 				return 0, "", fmt.Errorf("parse ollama response (fallback also failed): %w, raw: %s", err, responseStr)
 			}
 		} else {
-			reason := SkipOllamaFailed
-			m.log.Debug("failed to parse ollama semantic-match response",
-				zap.String("video_id", videoID),
-				zap.String("skip_reason", string(reason)))
 			return 0, "", fmt.Errorf("parse ollama response: %w, raw: %s", err, responseStr)
 		}
 	}
