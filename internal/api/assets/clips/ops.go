@@ -56,7 +56,7 @@ type OpsDeps struct {
 	DeletionSvc    *deletion.DeletionService
 	FolderMemSvc   *foldermemory.Service
 	ClipsRepo      *assets.ClipsRepository
-	DriveUploader  *drive.Uploader
+	DriveAdmin  drive.Admin
 	AssetTreeSvc   *assettree.Service
 	Log            *zap.Logger
 }
@@ -69,7 +69,7 @@ type OpsHandler struct {
 	deletionSvc    *deletion.DeletionService
 	folderMemSvc   *foldermemory.Service
 	clipsRepo      *assets.ClipsRepository
-	driveUploader  *drive.Uploader
+	driveAdmin  drive.Admin
 	assetTreeSvc   *assettree.Service
 	log            *zap.Logger
 }
@@ -81,7 +81,7 @@ func NewOpsHandler(d OpsDeps) *OpsHandler {
 		deletionSvc:    d.DeletionSvc,
 		folderMemSvc:   d.FolderMemSvc,
 		clipsRepo:      d.ClipsRepo,
-		driveUploader:  d.DriveUploader,
+		driveAdmin:  d.DriveAdmin,
 		assetTreeSvc:   d.AssetTreeSvc,
 		log:            d.Log,
 	}

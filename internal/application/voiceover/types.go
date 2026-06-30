@@ -4,11 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
-	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
+	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
@@ -43,6 +44,7 @@ type BatchRequest struct {
 	Text             string              `json:"text"`
 	Languages        []string            `json:"languages"`
 	FilenameTemplate string              `json:"filename_template"`
+	VoiceOverrides   map[string]string   `json:"voice_overrides,omitempty"`
 	RemoveSilence    *bool               `json:"remove_silence,omitempty"`
 	Strategy         string              `json:"strategy"`
 	Destination      *DestinationRequest `json:"destination,omitempty"`
@@ -62,6 +64,9 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 	}
 	if r.RemoveSilence != nil {
 		payload["remove_silence"] = *r.RemoveSilence
+	}
+	if len(r.VoiceOverrides) > 0 {
+		payload["voice_overrides"] = r.VoiceOverrides
 	}
 	if r.Destination != nil {
 		// PR-VO-B2 (June 2026): style_group is serialised into the
@@ -202,10 +207,10 @@ type VoiceoverResult struct {
 }
 
 type ResolvedDestination struct {
-	Group         string
-	FolderID      string
-	FolderPath    string
-	DriveLink     string
+	Group      string
+	FolderID   string
+	FolderPath string
+	DriveLink  string
 	// SubfolderName is the optional subfolder to create/use within
 	// the resolved folder. Used by the Drive uploader to create a
 	// per-script subfolder and upload the voiceover into it.
@@ -281,6 +286,10 @@ func (i *BatchItem) fail(status string, err error) BatchItem {
 	return *i
 }
 
+func (i BatchItem) isSuccessful() bool {
+	return strings.TrimSpace(i.Status) == "completed" && strings.TrimSpace(i.Error) == ""
+}
+
 func normalizeBatchRequest(req *BatchRequest) *BatchRequest {
 	if req.FilenameTemplate == "" {
 		req.FilenameTemplate = "{slug}_{lang}.mp3"
@@ -294,7 +303,44 @@ func normalizeBatchRequest(req *BatchRequest) *BatchRequest {
 	if len(req.Languages) == 0 {
 		req.Languages = []string{"en"}
 	}
+	if len(req.VoiceOverrides) == 0 {
+		if hydrated := voiceOverridesFromMetadata(req.Metadata); len(hydrated) > 0 {
+			req.VoiceOverrides = hydrated
+		}
+	}
 	return req
+}
+
+func voiceOverridesFromMetadata(metadata map[string]any) map[string]string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	raw, ok := metadata["voice_overrides"]
+	if !ok || raw == nil {
+		return nil
+	}
+	out := map[string]string{}
+	switch typed := raw.(type) {
+	case map[string]string:
+		for lang, voice := range typed {
+			if lang == "" || voice == "" {
+				continue
+			}
+			out[lang] = voice
+		}
+	case map[string]any:
+		for lang, value := range typed {
+			voice, ok := value.(string)
+			if !ok || lang == "" || voice == "" {
+				continue
+			}
+			out[lang] = voice
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func buildRequestID() string {

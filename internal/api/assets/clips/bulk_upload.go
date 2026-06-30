@@ -140,7 +140,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// Resolve target Drive folder once so the worker doesn't have to.
 	targetDriveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if targetDriveFolderID == "" {
-		if h.driveUploader == nil {
+		if h.driveAdmin == nil {
 			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured; drive_folder_id is required"))
 			return
 		}
@@ -156,7 +156,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 			apiutil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))
 			return
 		}
-		dirID, err := h.driveUploader.GetOrCreateFolder(ctx, req.DriveFolderName, root)
+		dirID, err := h.driveAdmin.GetOrCreateFolder(ctx, req.DriveFolderName, root)
 		if err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to resolve drive_folder_name: %w", err))
 			return

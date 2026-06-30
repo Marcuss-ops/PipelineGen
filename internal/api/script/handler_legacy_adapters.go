@@ -279,31 +279,39 @@ func (r *LegacyGenerateFromClipsRequest) resolveAliases() []string {
 // LegacyGenerateWithImagesRequest is the deprecated request for
 // POST /api/script/generate-with-images.
 type LegacyGenerateWithImagesRequest struct {
-	Topic             string   `json:"topic"`
-	SourceText        string   `json:"source_text"`
-	Title             string   `json:"title"`
-	Language          string   `json:"language"`
-	Tone              string   `json:"tone"`
-	Model             string   `json:"model"`
-	Style             string   `json:"style"`
-	ClipIDs           []string `json:"clip_ids"`
-	NumClips          int      `json:"num_clips"`
-	TargetWords       int      `json:"target_words"`
-	Duration          int      `json:"duration"`
-	SegmentWords      int      `json:"segment_words"`
-	SegmentTopics     []string `json:"segment_topics"`
-	SaveToDB          bool     `json:"save_to_db"`
-	ForceRefresh      bool     `json:"force_refresh"`
-	DriveFolderID     string   `json:"drive_folder_id"`
-	StyleInstructions string   `json:"style_instructions"`
-	VoiceoverGroup    string   `json:"voiceover_group"`
-	VoiceoverFolderID string   `json:"voiceover_folder_id"`
-	TranscriptPolicy  string   `json:"transcript_policy"`
-	PromptVersion     string   `json:"prompt_version"`
+	Topic         string   `json:"topic"`
+	SourceText    string   `json:"source_text"`
+	Title         string   `json:"title"`
+	Language      string   `json:"language"`
+	Tone          string   `json:"tone"`
+	Model         string   `json:"model"`
+	Style         string   `json:"style"`
+	ClipIDs       []string `json:"clip_ids"`
+	NumClips      int      `json:"num_clips"`
+	TargetWords   int      `json:"target_words"`
+	Duration      int      `json:"duration"`
+	SegmentWords  int      `json:"segment_words"`
+	SegmentTopics []string `json:"segment_topics"`
+	SaveToDB      bool     `json:"save_to_db"`
+	ForceRefresh  bool     `json:"force_refresh"`
+	DriveFolderID string   `json:"drive_folder_id"`
+	// Defaults to true for this legacy route so the Google Doc artifact
+	// is visible alongside the generated scene images.
+	GenerateDocument  *bool  `json:"generate_document,omitempty"`
+	StyleInstructions string `json:"style_instructions"`
+	VoiceoverGroup    string `json:"voiceover_group"`
+	VoiceoverFolderID string `json:"voiceover_folder_id"`
+	TranscriptPolicy  string `json:"transcript_policy"`
+	PromptVersion     string `json:"prompt_version"`
 }
 
 // toEnvelope translates a legacy generate-with-images request.
 func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
+	generateDocument := true
+	if r.GenerateDocument != nil {
+		generateDocument = *r.GenerateDocument
+	}
+
 	item := domainScript.GenerationItemV2{
 		ID:       r.Title,
 		Title:    r.Title,
@@ -329,6 +337,7 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 		},
 		Output: domainScript.OutputSpec{
 			SaveToDB:            r.SaveToDB,
+			GenerateDocument:    generateDocument,
 			GenerateSceneImages: true,
 			VoiceoverGroup:      r.VoiceoverGroup,
 			VoiceoverFolderID:   r.VoiceoverFolderID,

@@ -5,7 +5,7 @@
 // ops.go (Ops cluster — uses only reprocessUC). DownloadClip,
 // ReuploadClip, FindDuplicates remain on *Handler until Split 3 = ActionReceiver
 // lands; per the discovery matrix: DownloadClip uses downloadUC +
-// driveUploader; ReuploadClip uses reuploadUC; FindDuplicates uses
+// driveAdmin; ReuploadClip uses reuploadUC; FindDuplicates uses
 // assetRepo + searchAggregator. None of those three uc instances
 // are in OpsDeps, so they do not migrate here.
 package clips
@@ -19,6 +19,7 @@ import (
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -48,13 +49,21 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	}
 
 	// 2. Try to proxy from Google Drive
-	if result.Source == appclips.DownloadSourceDrive && h.driveUploader != nil {
+	if result.Source == appclips.DownloadSourceDrive && h.driveAdmin != nil {
+		// GetFileMeta + DownloadFile are drive.Reader methods;
+		// type-assert from drive.Admin (both satisfied by *drive.Uploader).
+		reader, ok := h.driveAdmin.(drive.Reader)
+		if !ok {
+			apiutil.InternalError(c, fmt.Errorf("drive admin does not support file downloads (Reader interface not satisfied)"))
+			return
+		}
+
 		h.log.Info("local file missing, proxying from drive",
 			zap.String("clip_id", clipID),
 			zap.String("drive_id", result.DriveID))
 
 		// Check mime type first
-		meta, metaErr := h.driveUploader.GetFileMeta(c.Request.Context(), result.DriveID)
+		meta, metaErr := reader.GetFileMeta(c.Request.Context(), result.DriveID)
 		if metaErr != nil {
 			h.log.Error("failed to get drive file metadata", zap.Error(metaErr), zap.String("id", result.DriveID))
 			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", metaErr))
@@ -68,7 +77,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			return
 		}
 
-		body, contentType, dlErr := h.driveUploader.DownloadFile(c.Request.Context(), result.DriveID)
+		body, contentType, dlErr := reader.DownloadFile(c.Request.Context(), result.DriveID)
 		if dlErr != nil {
 			h.log.Error("failed to download from drive", zap.Error(dlErr), zap.String("id", result.DriveID))
 			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", dlErr))

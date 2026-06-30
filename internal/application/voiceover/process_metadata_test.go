@@ -1,21 +1,21 @@
 // Package voiceover — PR-VO-B2 (June 2026) round-trip tests.
 //
 // Scope (PR-VO-B2 metadata + StyleGroup propagation):
-//   1. mergeUserMetadata preserves user-supplied keys when they do
-//      not collide with the core key set.
-//   2. mergeUserMetadata DROPS user-supplied keys on collision with
-//      a core key (with a warn log line; we verify the warn fires).
-//   3. mergeUserMetadata injects StyleGroup from ResolvedDestination
-//      into the meta map only when non-empty.
-//   4. asset.ResolveRequest carries StyleGroup verbatim from the
-//      voiceover caller through the resolver (sanity pin).
-//   5. BatchRequest round-trips StyleGroup + Metadata verbatim
-//      through JSON marshal + unmarshal (worker payload path).
-//   6. resolveDestination forwards StyleGroup into asset.ResolveRequest
-//      AND mirrors it back into ResolvedDestination (function-body
-//      drift pin).
-//   7. resolveDestination empty-StyleGroup case still forwards +
-//      mirrors zero-value.
+//  1. mergeUserMetadata preserves user-supplied keys when they do
+//     not collide with the core key set.
+//  2. mergeUserMetadata DROPS user-supplied keys on collision with
+//     a core key (with a warn log line; we verify the warn fires).
+//  3. mergeUserMetadata injects StyleGroup from ResolvedDestination
+//     into the meta map only when non-empty.
+//  4. asset.ResolveRequest carries StyleGroup verbatim from the
+//     voiceover caller through the resolver (sanity pin).
+//  5. BatchRequest round-trips StyleGroup + Metadata verbatim
+//     through JSON marshal + unmarshal (worker payload path).
+//  6. resolveDestination forwards StyleGroup into asset.ResolveRequest
+//     AND mirrors it back into ResolvedDestination (function-body
+//     drift pin).
+//  7. resolveDestination empty-StyleGroup case still forwards +
+//     mirrors zero-value.
 package voiceover
 
 import (
@@ -67,7 +67,8 @@ func TestMergeUserMetadata_NoCollisionPreservesAllKeys(t *testing.T) {
 // a caller-supplied key colliding with a core key is dropped (NOT
 // silently merged), with a warn log line. The test exercises the
 // exact attack vector mentioned in the design doc:
-//   {"language": "hacked", "voice": "hacked"}.
+//
+//	{"language": "hacked", "voice": "hacked"}.
 func TestMergeUserMetadata_CollisionDropsUserKey(t *testing.T) {
 	meta := map[string]any{
 		"language": "it",
@@ -154,6 +155,7 @@ func TestBatchRequest_RoundTripsStyleGroupAndMetadata(t *testing.T) {
 		Text:             "Hello world",
 		Languages:        []string{"it", "en"},
 		FilenameTemplate: "{slug}_{lang}.mp3",
+		VoiceOverrides:   map[string]string{"it": "it-IT-Voice"},
 		Strategy:         "replace",
 		Destination: &DestinationRequest{
 			Group:         "boxe",
@@ -173,6 +175,16 @@ func TestBatchRequest_RoundTripsStyleGroupAndMetadata(t *testing.T) {
 	}
 	if destPayload["style_group"] != "cinematic" {
 		t.Errorf("payload destination.style_group = %v; want %q", destPayload["style_group"], "cinematic")
+	}
+	voiceOverrides, ok := payload["voice_overrides"].(map[string]string)
+	if !ok {
+		if raw, exists := payload["voice_overrides"]; exists {
+			t.Fatalf("payload voice_overrides has unexpected type %T", raw)
+		}
+		t.Fatalf("payload voice_overrides missing")
+	}
+	if voiceOverrides["it"] != "it-IT-Voice" {
+		t.Errorf("payload voice_overrides.it = %v; want %q", voiceOverrides["it"], "it-IT-Voice")
 	}
 	metaPayload, ok := payload["metadata"].(map[string]any)
 	if !ok {

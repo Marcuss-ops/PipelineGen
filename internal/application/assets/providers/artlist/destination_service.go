@@ -71,13 +71,6 @@ func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootF
 	folderName := textutil.SafeName(term)
 	folderPath := path.Join("/Artlist", folderName)
 
-	if d.driveManager == nil {
-		return &DestinationInfo{
-			FolderID:   rootFolderID,
-			FolderPath: folderPath,
-		}, nil
-	}
-
 	// FASE 8: use canonical Publisher.ResolveFolder when available.
 	// The DestinationArtlist registry policy maps to cfg.Drive.ArtlistFolder()
 	// as root + [term] as path segments. When rootFolderID is the media root

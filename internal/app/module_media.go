@@ -223,7 +223,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	var uploadUC *appupload.UseCase
 	uploadUC, err = appupload.NewUseCase(appupload.UseCaseDeps{
 		Artifact:      NewArtifactServiceAdapter(deps.Core.ArtifactService),
-		DriveUploader: newClipsDriveAdapter(driveUploader, driveUploader),
+		DriveAdmin: newClipsDriveAdapter(driveUploader, driveUploader),
 		Publisher:     deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),

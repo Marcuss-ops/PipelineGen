@@ -55,9 +55,9 @@ type Service struct {
 	// concrete: newUseCaseTTSAdapter (in
 	// internal/app/adapters_voiceover_use_case.go) wrapping
 	// *audioasset.Processor constructed in the composition root.
-	ttsProvider       TTSProvider
-	outputDir         string
-	log               *zap.Logger
+	ttsProvider TTSProvider
+	outputDir   string
+	log         *zap.Logger
 	// driveUploader is a narrow structural port (PR-VO-B1, June 2026):
 	// voiceover no longer imports infrastructure/drive. DeleteFile
 	// is the only method the service uses today (post-commit cleanup
@@ -173,8 +173,12 @@ func (s *Service) GenerateWithDestination(ctx context.Context, text, language, f
 	}
 
 	item := resp.Items[0]
-	if item.Error != "" {
-		return nil, fmt.Errorf("%s (status: %s)", item.Error, item.Status)
+	if !item.isSuccessful() {
+		msg := item.Error
+		if msg == "" {
+			msg = "voiceover generation did not complete"
+		}
+		return nil, fmt.Errorf("%s (status: %s)", msg, item.Status)
 	}
 
 	return &VoiceoverResult{

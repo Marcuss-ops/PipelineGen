@@ -56,9 +56,10 @@ func main() {
 	}
 
 	// Payload — minimal shape that /api/script/generate-with-images accepts.
-	// The endpoint forces extract_entities=false, generate_scene_images=true,
-	// generate_metadata=false regardless of what we send; the only fields the
-	// handler actually reads are video_name, language, sentences_per_image.
+	// The endpoint forces generate_scene_images=true and now defaults
+	// generate_document=true so the Google Doc artifact is created as well.
+	// The only fields the handler actually reads from this payload are the
+	// documented request fields below; any extra worker-only keys are ignored.
 	// Note: the handler expects `topic` (singular string) — NOT `topics`
 	// (array, which the legacy clip-extraction path accepted). Use the
 	// singular form; the handler rejects `topics` with HTTP 400.
@@ -68,6 +69,7 @@ func main() {
 		"topic":               *topic,
 		"language":            *language,
 		"sentences_per_image": *sentences,
+		"generate_document":   true,
 	}
 
 	// Deterministic reqID: same inputs => same job_id on the server, so a

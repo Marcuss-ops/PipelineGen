@@ -15,7 +15,7 @@
 // CreateClip is the minimal handler (no upstream file/drive guards before
 // the dispatcher check fires), so it pins the contract here. UploadVideoClip
 // and ReuploadClip mirror the same dispatcher block and add upstream
-// assetRepo / driveUploader guards; their behaviour is covered by the
+// assetRepo / driveAdmin guards; their behaviour is covered by the
 // dispatcher unit-test surface (recorder count + propagated error) which
 // is the relevant invariant — adding three additional handler tests for
 // the same contract would only duplicate the dispatcher block.
@@ -75,7 +75,7 @@ var _ appclips.ClipIndexDispatcherPort = (*recordingDispatcher)(nil)
 // fail-closed surface since the dispatcher check fires before any
 // upstream guards (no assetRepo.Get, no multipart parse, no Drive
 // upload). UploadVideoClip / ReuploadClip use the same dispatcher
-// block but require assetRepo + driveUploader state to reach it; the
+// block but require assetRepo + driveAdmin state to reach it; the
 // fail-closed contract is identical so we exercise it here once
 // instead of replicating the pre-conditions per handler.
 func routerFor(t *testing.T, h *Handler) *gin.Engine {

@@ -8,10 +8,13 @@
 //
 //  2. func (s *Service) processLanguage — per-language orchestrator
 //     that calls the 3 PR8 stages in order:
-//        1. synthesizeStage (TTS via audioProcessor)
-//        2. destinationStage (Drive upload via Lifecycle)
-//        3. finalizeStage (PR-VO-B3 dedupe gate + PR-VO-A2 atomic
-//           swap + post-commit cleanup goroutine)
+//
+//  1. synthesizeStage (TTS via audioProcessor)
+//
+//  2. destinationStage (Drive upload via Lifecycle)
+//
+//  3. finalizeStage (PR-VO-B3 dedupe gate + PR-VO-A2 atomic
+//     swap + post-commit cleanup goroutine)
 //     Each stage call is wrapped in pipeline_stage_started /
 //     pipeline_stage_completed telemetry per AGENTS.md Pattern 3.
 //
@@ -93,8 +96,12 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 	}
 
 	item := resp.Items[0]
-	if item.Error != "" {
-		return nil, fmt.Errorf("%s (status: %s)", item.Error, item.Status)
+	if !item.isSuccessful() {
+		msg := item.Error
+		if msg == "" {
+			msg = "voiceover generation did not complete"
+		}
+		return nil, fmt.Errorf("%s (status: %s)", msg, item.Status)
 	}
 
 	return &VoiceoverResult{
@@ -204,7 +211,7 @@ func (s *Service) processLanguage(
 	emitSynthesizeCompleted := stageLog(s.log, requestID, "synthesize", language)
 	item = s.synthesizeStage(ctx, item, req, outputDir, filename, language)
 	emitSynthesizeCompleted()
-	if strings.TrimSpace(item.Status) == "failed" {
+	if strings.TrimSpace(item.Error) != "" {
 		return item
 	}
 
@@ -238,7 +245,7 @@ func (s *Service) processLanguage(
 	emitDestinationCompleted := stageLog(s.log, requestID, "destination", language)
 	item = s.destinationStage(ctx, item, req, dest, metaJSON)
 	emitDestinationCompleted()
-	if strings.TrimSpace(item.Status) == "failed" {
+	if strings.TrimSpace(item.Error) != "" {
 		return item
 	}
 

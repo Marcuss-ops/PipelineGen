@@ -58,7 +58,7 @@ type Deps struct {
 	ClipsRepo *assets.ClipsRepository
 	AssetRepo        asset.Repository
 	DeletionSvc      *deletion.DeletionService
-	DriveUploader    *drive.Uploader
+	DriveAdmin    drive.Admin
 	MediaProcessor   asset.Processor
 	AssetTreeSvc     *assettree.Service
 	MetaWriter       *semantic.MetadataWriter
@@ -107,7 +107,7 @@ type Handler struct {
 	// Action cluster mirror fields (split 3 TBD).
 	assetRepo        asset.Repository
 	searchAggregator *providers.SearchAggregator
-	driveUploader    *drive.Uploader
+	driveAdmin    drive.Admin
 	downloadUC       *appclips.DownloadUseCase
 	reuploadUC       *appclips.ReuploadUseCase
 	log              *zap.Logger
@@ -156,7 +156,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 
 		assetRepo:        d.AssetRepo,
 		searchAggregator: d.SearchAggregator,
-		driveUploader:    d.DriveUploader,
+		driveAdmin:    d.DriveAdmin,
 		downloadUC:       downloadUC,
 		reuploadUC:       d.ReuploadUC,
 		log:              d.Log,
@@ -177,7 +177,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			JobsSvc:        d.JobsSvc,
 			ClipsRepo:      d.ClipsRepo,
 			ArtifactSvc:    d.ArtifactSvc,
-			DriveUploader:  d.DriveUploader,
+			DriveAdmin:  d.DriveAdmin,
 			ProcessRunner:  d.ProcessRunner,
 			Cfg:            d.Cfg,
 			ClipIndexer:    d.ClipIndexer,
@@ -196,7 +196,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			DeletionSvc:    d.DeletionSvc,
 			FolderMemSvc:   d.FolderMemSvc,
 			ClipsRepo:      d.ClipsRepo,
-			DriveUploader:  d.DriveUploader,
+			DriveAdmin:  d.DriveAdmin,
 			AssetTreeSvc:   d.AssetTreeSvc,
 			Log:            d.Log,
 		}),

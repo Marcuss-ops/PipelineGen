@@ -193,7 +193,7 @@ the sync endpoint.
 | Endpoint | Handler | Job type | Preset del payload |
 |----------|---------|----------|--------------------|
 | `POST /api/script/generate-from-clips` | `ScriptFlowHandler.GenerateFromClips` (`handler_clip_source.go`) | `script.generate_from_clips` | Rispettano i flag del body. `generate_metadata=true` implies `extract_entities=true`. Default `sentences_per_image=10`. |
-| `POST /api/script/generate-with-images` | `ScriptFlowHandler.GenerateWithImages` (`handler_generate_with_images.go`) | `script.generate_from_clips` (stesso) | **Forza** `extract_entities=false`, `generate_scene_images=true`, `generate_metadata=false`. Default `sentences_per_image=8`. |
+| `POST /api/script/generate-with-images` | `ScriptFlowHandler.GenerateWithImages` (`handler_generate_with_images.go`) | `script.generate_from_clips` (stesso) | **Forza** `extract_entities=false`, `generate_scene_images=true`, `generate_document=true`, `generate_metadata=false`. Default `sentences_per_image=8`. |
 
 I due endpoint **non sono alias**: hanno handler e request type distinti
 (`GenerateFromClipsRequest` vs `GenerateWithImagesRequest`); condividono

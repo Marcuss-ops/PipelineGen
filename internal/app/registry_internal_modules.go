@@ -179,6 +179,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		Assets:             root.Repos.Assets,
 		ClipsRepo:          root.Repos.ClipsRepo,
 		DriveUploader:      root.Drive.driveUploader,
+		DriveClient:        root.Drive.DriveClient,
 		AssetIndexService:  root.Search.AssetIndexService,
 		ClipIndexerService: root.Process.ClipIndexerService,
 		MediaProcessor:     root.Process.MediaProcessor,
