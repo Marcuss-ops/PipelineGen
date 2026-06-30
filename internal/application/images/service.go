@@ -3,7 +3,6 @@ package images
 import (
 	"context"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
@@ -15,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -53,8 +53,11 @@ type Service struct {
 	// HTTP client for external API calls
 	client *http.Client
 
-	// Mutex per evitare download duplicati dello stesso soggetto
-	mu sync.Mutex
+	// dedup prevents duplicate downloads of the same subject key.
+	// Replaces the global sync.Mutex with a singleflight.Group so
+	// concurrent requests for different subjects are NOT serialised
+	// (Fase 3, June 2026).
+	dedup singleflight.Group
 
 	// Semaphore for concurrent NVIDIA image generation, configured via ConcurrencyConfig.
 	nvidiaSem chan struct{}
