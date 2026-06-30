@@ -2,7 +2,8 @@
 //
 // FileLifecycleAdapter wraps the concrete *driveapi.Service to satisfy
 // the drive.FileLifecycle port (declared below). It owns the raw SDK
-// for file-level lifecycle commands: Trash, Move, Rename, Cleanup.
+// for file-level lifecycle commands: Trash, AddParent, Rename,
+// Cleanup, plus Delete (Wave C preparation, June 2026).
 //
 // The Trash implementation is migrated out of folder_manager.go
 // (DriveFolderManagerAdapter) per godlike/06 "one owner per fact":
@@ -32,13 +33,16 @@ import (
 )
 
 // FileLifecycle is the canonical port for file-lifecycle Drive
-// operations: trash a single file, move a file to a new parent,
-// rename a file, bulk-cleanup files matching a query.
+// operations: trash a single file, permanently delete a file, add a
+// parent to a file (multi-parent semantics), rename a file,
+// bulk-cleanup files matching a query.
 //
-// Consumers: artlist.SemanticEnricher (Trash), future move/rename/cleanup
-// orchestrators. The composition root exposes this port as
-// root.Drive.Lifecycle alongside root.Drive.Admin (folder ops) and
-// root.Drive.Reader (read-only).
+// Consumers: artlist.SemanticEnricher (Trash), job/cleanup_handler
+// (Delete), YouTube/storage.moveFile use cases (Move), system handler
+// rename endpoint (Rename), future move/rename/cleanup orchestrators.
+// The composition root exposes this port as root.Drive.Lifecycle
+// alongside root.Drive.Admin (folder ops) and root.Drive.Reader
+// (read-only).
 //
 // Pattern 0 (AGENTS.md): structural port interface so the application
 // layer never imports google.golang.org/api/drive/v3 or sees the
@@ -46,21 +50,46 @@ import (
 //
 // All methods are user-triggered / idempotent at the Drive API level —
 // no retry-with-jitter policy inherited from folder_lookupRetry*
-// (P0.4 lesson) because Trash is a one-shot command, Move/Rename are
-// rare-user-driven, and Cleanup's pagination loop is bounded by
-// explicit page tokens (no silent retry-deferral drift).
+// (P0.4 lesson) because Trash/Delete are one-shot commands,
+// AddParent/Rename are rare-user-driven, and Cleanup's pagination
+// loop is bounded by explicit page tokens (no silent retry-deferral
+// drift).
+//
+// Wave C (June 2026): DeleteFile removed from drive.Admin (per the
+// P0 Admin port-tightening), reallocated to FileLifecycle.Delete.
+// Delete is a hard-delete (Drive Files.Delete); it is conceptually
+// distinct from Trash (Drive Files.Update{Trashed:true}). Callers
+// that need a recoverable state MUST use Trash; callers that need
+// permanent removal MUST use Delete.
 type FileLifecycle interface {
 	// Trash moves a file to Drive's trash (idempotent — re-trashing a
 	// trashed file succeeds). Safer than permanent DeleteFile because
 	// the user can recover from the Drive UI.
 	Trash(ctx context.Context, fileID string) error
 
-	// Move moves a file to a new parent folder. Multi-parent semantics:
-	// Drive allows a file in multiple folders; the caller does NOT
-	// specify the old parent — Move only ADDS newParentID. To remove a
-	// parent, callers use the Admin port's RemoveParent invocation
-	// (out of scope for this port per the user's spec literal).
-	Move(ctx context.Context, fileID, newParentID string) error
+	// Delete permanently removes a file from Drive. Wave C (June
+	// 2026) reallocation target for the pre-Wave-C Admin.DeleteFile
+	// method. NOT idempotent: a second call on an already-deleted
+	// fileID returns 404 from the Drive SDK, which the adapter wraps
+	// in a typed error. Callers that need recoverable state should
+	// use Trash instead.
+	Delete(ctx context.Context, fileID string) error
+
+	// AddParent adds newParentID as an additional parent of a file.
+	// Multi-parent semantics: Drive allows a file in multiple folders;
+	// AddParent only ADDS newParentID without removing any existing
+	// parents. To remove a parent, callers use the Admin port's
+	// RemoveParent invocation (out of scope for this port per the
+	// user's spec literal).
+	//
+	// Wave D (June 2026) D1: renamed from Move to AddParent. The
+	// original name was misleading because the implementation never
+	// removed the old parent — it was always a multi-parent add.
+	// Zero production callers existed at rename time so the rename
+	// is a pure port-contract tightening. True "move" semantics
+	// (read parents + add new + remove old) can be added as a
+	// separate MoveTo method if a future capability requires it.
+	AddParent(ctx context.Context, fileID, newParentID string) error
 
 	// Rename updates a file's display name.
 	Rename(ctx context.Context, fileID, newName string) error
@@ -119,17 +148,41 @@ func (a *FileLifecycleAdapter) Trash(ctx context.Context, fileID string) error {
 	return nil
 }
 
-// Move relocates a file to a new parent folder. The Drive API
-// semantics: AddParents adds the new parent without removing the
-// existing ones (multi-parent files). The caller manages the old-parent
-// removal via the Admin port's RemoveParent invocation (NOT in scope
-// for FileLifecycle per the user spec).
-func (a *FileLifecycleAdapter) Move(ctx context.Context, fileID, newParentID string) error {
+// Delete permanently removes a fileID from Drive. Wave C (June 2026)
+// reallocation target for the pre-Wave-C Admin.DeleteFile method.
+// Files.Delete is the SDK primitive; a 404 on an already-deleted
+// fileID surfaces as a wrapped error. Empty fileID short-circuits
+// with the same precedence as Trash.
+func (a *FileLifecycleAdapter) Delete(ctx context.Context, fileID string) error {
 	if strings.TrimSpace(fileID) == "" {
-		return fmt.Errorf("move: file id is required")
+		return fmt.Errorf("delete: file id is required")
+	}
+	if a.svc == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	if err := a.svc.Files.Delete(fileID).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("drive delete: %w", err)
+	}
+	return nil
+}
+
+// AddParent adds newParentID as an additional parent of a file. The
+// Drive API semantics: AddParents adds the new parent without
+// removing the existing ones (multi-parent files). The caller
+// manages the old-parent removal via the Admin port's RemoveParent
+// invocation (NOT in scope for FileLifecycle per the user spec).
+//
+// Wave D (June 2026) D1: renamed from Move to AddParent to match
+// the actual semantics. The old name was misleading because the
+// implementation never removed the old parent — it was always a
+// multi-parent add. Validation precedence mirrors Trash / Delete /
+// Rename: input checks first, then nil-svc check.
+func (a *FileLifecycleAdapter) AddParent(ctx context.Context, fileID, newParentID string) error {
+	if strings.TrimSpace(fileID) == "" {
+		return fmt.Errorf("addParent: file id is required")
 	}
 	if strings.TrimSpace(newParentID) == "" {
-		return fmt.Errorf("move: new parent id is required")
+		return fmt.Errorf("addParent: new parent id is required")
 	}
 	if a.svc == nil {
 		return fmt.Errorf("drive service not configured")
@@ -140,7 +193,7 @@ func (a *FileLifecycleAdapter) Move(ctx context.Context, fileID, newParentID str
 		Context(ctx).
 		Do()
 	if err != nil {
-		return fmt.Errorf("drive move: %w", err)
+		return fmt.Errorf("drive addParent: %w", err)
 	}
 	return nil
 }
