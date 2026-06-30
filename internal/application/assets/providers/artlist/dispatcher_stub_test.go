@@ -55,6 +55,20 @@ func (s *stubDispatcherForArtlist) EnqueueAndIndex(ctx context.Context, clip *as
 	return s.repo.UpsertClip(ctx, clip)
 }
 
+// SaveDiscoveredAsset implements the dispatcher port's discovery-only
+// upsert path (chip 2, June 2026). Mirrors EnqueueAndIndex's stub
+// behaviour: persists the row via repo.UpsertClip with no outbox event
+// emission (test isolation — production behaviour is also "no outbox
+// event" so the stub matches semantics, not just the call surface).
+func (s *stubDispatcherForArtlist) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error {
+	if s == nil || s.repo == nil || clip == nil {
+		return nil
+	}
+	clip.LifecycleState = lifecycle
+	clip.SetMetadataString("index_state", string(idx))
+	return s.repo.UpsertClip(ctx, clip)
+}
+
 // EnqueueAndRestore is the test-stub counterpart for the
 // mutations.AssetMutationDispatcher.EnqueueAndRestore call site.
 // The stub is a no-op so tests that don't exercise the restore path

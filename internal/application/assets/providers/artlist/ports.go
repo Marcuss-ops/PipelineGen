@@ -270,6 +270,27 @@ type MetadataWriter interface {
 // provides a non-nil implementation.
 type Dispatcher interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, hash string) error
+
+	// SaveDiscoveredAsset is the discovery-only upsert path (chip 2,
+	// June 2026 fix-FASE9 followups plan). It UPSERTs the clip row in
+	// media_assets with the supplied lifecycle_state and index_state
+	// (canonical call from SearchLiveAndSave: StateStaging +
+	// StateDiscovered) WITHOUT emitting any outbox event.
+	//
+	// The downstream artlist.run job emits the canonical
+	// asset.index.requested event AFTER the post-processing finalizer
+	// produces a fully-populated clip (real hash, Drive file id,
+	// upload completed). This removes the "premature Qdrant indexing
+	// of an incomplete asset" failure mode that the previous
+	// EnqueueAndIndex-on-discovery wiring produced (Qdrant saw a
+	// half-built asset for some seconds between discovery and
+	// upload-commit).
+	//
+	// Lifecycle + IndexState are explicit args (not read from clip
+	// fields) so callers cannot accidentally stamp a state they did
+	// not intend — the method explicitly writes both onto the clip
+	// before the upsert so production readers see a coherent row.
+	SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error
 }
 
 // ArtlistConfigPort is the minimal typed port that exposes the
