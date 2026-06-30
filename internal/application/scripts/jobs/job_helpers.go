@@ -1,4 +1,14 @@
-// Package scripts — job helpers extracted from api/script/handler_jobs.go (PR2, June 2026).
+// Package scripts - job helpers extracted from api/script/handler_jobs.go (PR2, June 2026).
+//
+// Refactor 1 of the cross-capability cleanup plan (June 2026, audit at
+// architecture/audits/2026-06-28-cross-capability-imports.md): swaps out
+// direct imports of clips (ClipsFolderExtPort now supplied as a parameter)
+// and *voiceover.Service / *voiceover.GroupsResolver (now narrowed to the
+// voiceover.VoiceoverGenerator + scripts/ports.VoiceoverGroupResolver
+// ports respectively). The voiceover package is still imported for the
+// *voiceover.DestinationRequest wire-shape return type (Result types
+// deliberately stay typed per Step 7 / M2 canonical pattern; refactor is
+// intentionally NOT a Result-type rewrite).
 package jobs
 
 import (
@@ -9,14 +19,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ── Pipeline stage logger
+// - Pipeline stage logger
+
 func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	t := time.Now()
 	log.Info("pipeline_stage_started",
@@ -32,19 +43,23 @@ func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	}
 }
 
-// ── buildVoiceoverDestination ────────────────────────────────────────────────
+// - BuildVoiceoverDestination -
 
 // BuildVoiceoverDestination builds a *voiceover.DestinationRequest from the
-// provided parameters.
+// provided parameters. Cross-capability cleanup Refactor 1 (June 2026):
+// the function depends on the ClipsFolderExtPort (formerly clips.ExtractDriveFolderID
+// direct call) and the VoiceoverGroupResolver port (formerly *voiceover.GroupsResolver
+// concrete). The voiceover wire-shape *DestinationRequest return type is unchanged.
 func BuildVoiceoverDestination(
 	ctx context.Context,
+	folderExt ClipsFolderExtPort,
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
 	log *zap.Logger,
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
-	groupsResolver *voiceover.GroupsResolver,
+	groupsResolver ports.VoiceoverGroupResolver,
 ) *voiceover.DestinationRequest {
-	voiceoverFolderID = clips.ExtractDriveFolderID(strings.TrimSpace(voiceoverFolderID))
-	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
+	voiceoverFolderID = folderExt.ExtractDriveFolderID(voiceoverFolderID)
+	voRootID = folderExt.ExtractDriveFolderID(voRootID)
 	subfolderName := textutil.SlugifyWithMax(title, 40)
 
 	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {
@@ -56,21 +71,21 @@ func BuildVoiceoverDestination(
 	}
 
 	if groupsResolver != nil && strings.TrimSpace(voiceoverGroup) != "" {
-		entry, err := groupsResolver.ResolveByName(ctx, voRootID, voiceoverGroup)
+		folderID, err := groupsResolver.ResolveGroup(ctx, voRootID, voiceoverGroup)
 		switch {
-		case err == nil && entry.FolderID != "":
+		case err == nil && folderID != "":
 			if log != nil {
 				log.Info("routed voiceover via DB groups_resolver",
 					zap.String("voiceover_group", voiceoverGroup),
-					zap.String("folder_id", entry.FolderID),
+					zap.String("folder_id", folderID),
 					zap.String("parent_id", voRootID))
 			}
 			return &voiceover.DestinationRequest{
-				FolderID:        entry.FolderID,
+				FolderID:        folderID,
 				SubfolderName:   subfolderName,
 				CreateSubfolder: true,
 			}
-		case err != nil && !errors.Is(err, voiceover.ErrGroupNotFound):
+		case err != nil && !errors.Is(err, ports.ErrVoiceoverGroupNotFound):
 			if log != nil {
 				log.Warn("groups_resolver lookup failed unexpectedly, falling back to Drive deep-search",
 					zap.String("voiceover_group", voiceoverGroup),
@@ -116,19 +131,22 @@ func BuildVoiceoverDestination(
 	}
 }
 
-// ── Voiceover scene item ────────────────────────────────────────────────────
+// - Voiceover scene item -
 
 type VoiceoverSceneItem struct {
 	Text       string
 	SceneIndex int
 }
 
-// ── generateSceneVoiceovers ──────────────────────────────────────────────────
+// - GenerateSceneVoiceovers -
 
-// GenerateSceneVoiceovers generates voiceovers for each scene item.
+// GenerateSceneVoiceovers generates voiceovers for each scene item. Cross-capability
+// cleanup Refactor 1 (June 2026): takes voiceover.VoiceoverGenerator port
+// (formerly *voiceover.Service concrete). The VoiceoverResult return type is
+// unchanged (typed port-shape; *Service satisfies the port structurally).
 func GenerateSceneVoiceovers(
 	ctx context.Context,
-	voService *voiceover.Service,
+	voGenerator voiceover.VoiceoverGenerator,
 	scenes []VoiceoverSceneItem,
 	language string,
 	destReq *voiceover.DestinationRequest,
@@ -136,10 +154,10 @@ func GenerateSceneVoiceovers(
 	onProgress func(pct int, msg string),
 	basePct, pctRange int,
 ) int {
-	if voService == nil || destReq == nil || len(scenes) == 0 {
+	if voGenerator == nil || destReq == nil || len(scenes) == 0 {
 		return 0
 	}
-	// AGENTS.md §7 post-write save ctx — voiceover job helper writes
+	// AGENTS.md §7 post-write save ctx - voiceover job helper writes
 	// must survive the request ctx cancel; the save-context is bounded
 	// by the script-job lifetime, not the request that triggered it.
 	voCtx := context.WithoutCancel(ctx)
@@ -156,7 +174,7 @@ func GenerateSceneVoiceovers(
 			onProgress(basePct+(i*pctRange/len(scenes)), "")
 		}
 
-		voRes, voErr := voService.GenerateWithDestination(voCtx, sceneText, language, filename, destReq)
+		voRes, voErr := voGenerator.GenerateWithDestination(voCtx, sceneText, language, filename, destReq)
 		if voErr != nil {
 			if log != nil {
 				log.Warn("voiceover generation failed for scene",
@@ -172,7 +190,7 @@ func GenerateSceneVoiceovers(
 	return successCount
 }
 
-// ── Text helpers ─────────────────────────────────────────────────────────────
+// - Text helpers -
 
 func countWords(text string) int {
 	return len(strings.Fields(text))

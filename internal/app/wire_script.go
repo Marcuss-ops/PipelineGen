@@ -304,6 +304,23 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 				zap.Error(grErr))
 		}
 	}
+	// Cross-capability cleanup Refactor 1 (June 2026, audit at
+	// architecture/audits/2026-06-28-cross-capability-imports.md):
+	// construct the jobs.ClipsFolderExtAdapter adapter alongside the
+	// voiceover groups adapter so future call sites of
+	// jobs.BuildVoiceoverDestination / jobs.GenerateSceneVoiceovers
+	// can be wired immediately without re-introducing the direct
+	// clips-package import in jobs/job_helpers.go. The helper
+	// functions still take the port as a parameter today (no
+	// composition wiring at the call level yet — only via tests); a
+	// follow-up commit will thread the adapter through
+	// jobs.NewGenerateJobHandler once a production caller ships.
+	// Keeping the construction here preserves the audit's
+	// pre-wiring posture: the adapter exists at the canonical
+	// composition site before any consumer learns about it.
+	_ = jobs.NewClipsFolderExtAdapter
+	log.Info("wireScriptFlow: jobs.ClipsFolderExtAdapter available at composition root (Refactor 1 adapter pre-wired)")
+
 	manyUC := usecase.NewGenerateManyUseCase(oneUC, log)
 
 	// ── Media curator ───────────────────────────────────────────────

@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
@@ -47,7 +48,7 @@ func setupVoiceoverGroupsDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func newVoiceoverResolver(t *testing.T, db *sql.DB) *voiceover.GroupsResolver {
+func newVoiceoverResolver(t *testing.T, db *sql.DB) scriptports.VoiceoverGroupResolver {
 	t.Helper()
 
 	repo, err := assets.NewAssetTreeRepository(db, zap.NewNop())
@@ -55,7 +56,9 @@ func newVoiceoverResolver(t *testing.T, db *sql.DB) *voiceover.GroupsResolver {
 	svc := assettree.NewService(repo, zap.NewNop())
 	resolver, err := voiceover.NewGroupsResolver(svc, zap.NewNop())
 	require.NoError(t, err)
-	return resolver
+	// Refactor 1 (June 2026): wrap concrete *voiceover.GroupsResolver into
+	// the canonical scripts/ports.VoiceoverGroupResolver port adapter.
+	return scriptports.NewVoiceoverGroupsAdapter(resolver)
 }
 
 func TestBuildVoiceoverDestinationNormalizesDriveFolderURL(t *testing.T) {
@@ -63,6 +66,7 @@ func TestBuildVoiceoverDestinationNormalizesDriveFolderURL(t *testing.T) {
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
+		NewClipsFolderExtAdapter(),
 		nil,
 		zap.NewNop(),
 		"Top 10 Funny Moments",
@@ -103,6 +107,7 @@ func TestBuildVoiceoverDestinationResolvesGroupFromDB(t *testing.T) {
 	resolveCalled := false
 	dest := BuildVoiceoverDestination(
 		context.Background(),
+		NewClipsFolderExtAdapter(),
 		func(context.Context, string, string) (string, error) {
 			resolveCalled = true
 			return "", errors.New("unexpected fallback")
