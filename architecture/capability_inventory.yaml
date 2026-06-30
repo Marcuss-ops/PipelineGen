@@ -81,10 +81,15 @@ gates_baseline:
   - gate_id: C2-C
     name: "no source-type switch outside Source Catalog"
     target_zero: true
-    enforce_zero: false
-    current: 7                        # case "artlist" / case "youtube" / case SourceCatalog outside the Catalog dispatcher
-    scope: "internal/**/*.go excluding *_test.go and the Source Catalog packages"
-    migration_owner: internal/application/assets/artifacts/source_resolver.go
+    enforce_zero: false                # promoted to enforce_zero=true once baseline_current == 0 (per godlike/08 + AGENTS.md zero-baseline rule); forcing the flip before baseline reaches zero blocks CI on the transitional count, defeating the goal.
+    current: 33                       # AST gate baseline (Blocco C2-C, June 2026) — observed live via scripts/archcheck/gates/gate_c2_source_catalog_only.go on the production tree at landing time. Pre-walker-scope count was 57 (raw ripgrep; included internal/infrastructure/ adapter-decoding cases); post-walker-scope count is 33 (only internal/application + internal/api + internal/domain).
+    baseline_initial: 33               # snapshot at C2-C landing; CI runner Check 47 invokes with --baseline=33 to absorb the transitional allowance.
+    baseline_target: "0 by 2026-07-20" # monotonically decreasing per AGENTS.md "transitional baselines" convention (canonical precedent: WithoutCancel gate, 8 unlisted sites → 0 by 2026-07-15).
+    scope: "internal/application/** + internal/api/** + internal/domain/**/*.go excluding *_test.go and the Source Catalog allowlist (2 files)"
+    migration_owner: internal/application/assets/artifacts/source_resolver.go + internal/application/scripts/adapters/source_registry.go
+    enforcing_test: scripts/archcheck/gates/gate_c2_source_catalog_only.go (AST-based; invoked via `go run` from CI runner Check 47 with --baseline=33)
+    ratchet_status: closed_at_step_C2-C  # baseline ratchet only (forward-protection); each migration PR must decrement --baseline until it reaches 0.
+    walker_scope_rationale: internal/infrastructure/ excluded as adapter-decoding (qdrant payload-mapping, drive destination-resolution, ai semantic-decoding — not canonical dispatch); pkg/ excluded as leaf utility (no source-kind dispatch surface); cmd/ excluded as one-shot operator tooling (operational batch tools, not production dispatch sites). Codebase share: ~25% of pre-scope violations were infra adapter-decoding cases that didn't fit the Source Catalog framing.
   - gate_id: C2-D
     name: "no local job policy (MaxRetries/queue/backoff)"
     target_zero: true
