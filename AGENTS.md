@@ -447,6 +447,125 @@ unchanged by the workflow switch: the *body* of the commit carries the audit
 provenance that PR descriptions used to summarise.
 
 
+## Git-Lesson-4 (June 2026) — Recovery from non-fast-forward push race
+
+The companion case to [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
+That lesson covers *conflicting* rebase (two agents edit the same lines in
+incompatible ways). This lesson covers the **non-conflicting** race case
+where your unpushed local commit's content has been **cleanly re-applied by
+another process on `origin/main`'s tip** while you were about to push.
+
+**Canonical case (June 2026, channel-monitor Blocco 1)**:
+
+- Local commit: `ff7a5579 fix(monitor): thread checkChannel error into scheduler backoff path`
+  (six files: `monitor_ports.go` NEW + five modifications to
+  `internal/application/assets/monitor/*.go` and `CHANGELOG.md`).
+- Push rejected: `git push origin main` returned
+  `[rejected]         main -> main (non-fast-forward)`
+  because `origin/main` had advanced underneath the local commit during
+  a parallel agent window.
+- Resolution: a byte-equivalent replay of the same files landed as
+  `960a3fb6 fix(monitor): thread checkChannel error into scheduler backoff path`
+  on `origin/main`'s development line (`ca75f8e0 → bb18544e → 1e09a762 → 960a3fb6 → 51e41bf4 → 8c5ce7d1 → 0488a5ef`).
+  Local `ff7a5579` is reachable only via `git reflog`, on a divergent
+  history line (`889a1a7e → … → 6b67f2be → 879d5637 → ff7a5579`) that
+  no longer reaches `origin/main`.
+- Byte-equivalence verified with
+  `diff <(git.show --name-only --format='' ff7a5579) <(git.show --name-only --format='' 960a3fb6)`
+  returning empty. Both commits touch the same six files; the SHA on
+  `origin/main` is canonical, the local SHA is superseded.
+
+**Diagnosis procedure** when `git push origin main` returns
+`[rejected] (non-fast-forward)`:
+
+1. `git fetch origin` to refresh the remote-tracking refs.
+2. `git log --oneline HEAD..@{u}` — commits present on the upstream
+   tracking branch that are not yet in your local `HEAD`.
+3. `git log --oneline @{u}..HEAD` — your unpushed local commits.
+4. If step 2 is **non-empty** with commits newer than your local
+   branch AND step 6 (below) returns a *non-empty* diff (the newer
+   upstream commits touch the same files as your step 3 commits but
+   with different content), this is the textual-conflict case — read
+   [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026) and
+   rebase / cherry-pick manually. (Conflict markers will surface
+   during the rebase.)
+5. If step 2 is **empty** (the upstream tracking branch has no commits
+   past your local `HEAD`) but a recent `git log origin/main -5` shows
+   the **same subject** your local commit carries — e.g.
+   `git log origin/main -5` shows
+   `fix(monitor): thread checkChannel error into scheduler backoff path`
+   while your local `git log HEAD -1` shows the same subject on a
+   different SHA — you are in the **race state**: another process
+   re-applied your work on `origin/main`'s tip during your
+   commit-to-push window. Confirm via step 6 below. **Do NOT fight
+   this** — both intents are satisfied on the canonical tree; the
+   canonical SHA is the one on `origin/main`.
+6. Verify byte-equivalence of your local commit and the canonical
+   commit on `origin/main`:
+   `diff <(git.show --name-only --format='' <local-sha>) <(git.show --name-only --format='' origin/main)`.
+   Empty diff → clean replay → your local commit has been superseded.
+   Non-empty diff → see the fallback below.
+7. **Canonicality check**: `git branch -r --contains <local-sha>` should
+   return empty (your SHA does not reach any remote branch); conversely
+   `git branch -r --contains <origin-sha>` should return `origin/main`.
+   Only the SHA whose ancestry reaches `origin/main` is canonical.
+8. **Push is unnecessary** once step 6 + 7 pass: the canonical work
+   is already on `origin/main`. Verify with
+   `git log --oneline origin/main -3` showing the same subject.
+   Mark your local SHA as superseded mentally (still in reflog for
+   audit per [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026)).
+
+**Fallback** (the non-trivial case): if byte-equivalence in step 6
+is NOT empty, i.e. the upstream re-applied your files but with a
+different intent than yours intended, this is a **merge-conflict case**
+with no human-readable conflict marker (the files are independent
+re-applications of the same logical surface). Open a three-way diff,
+re-read each side's intent, and merge hunks manually per the
+[`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026) — but
+note you cannot `git rebase --abort` here because there is no
+half-applied rebase state; you have to merge on top of the canonical
+SHA and produce a new atomic commit on `origin/main`'s tip.
+
+**Anti-pattern**: `git push --force-with-lease origin main` from your
+local `ff7a5579` commit to "win" the race. That rewrites remote
+history (from `960a3fb6 → …` to your `ff7a5579`-based tree) and
+silently clobbers the canonical commit's content + every downstream
+commit that depended on it (in the canonical case: `1e09a762`,
+`51e41bf4`, `8c5ce7d1`, `0488a5ef` would all be invalidated).
+The downstream agent who landed `960a3fb6` lost their build + test
+invariants; the next round of agents fights the divergence.
+
+This anti-pattern is **distinct** from
+[`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow)'s
+`force-with-lease` exit hatch on the amend-loop anti-pattern. That
+exit only applies when **no other process has landed on `origin/main`
+while you were amending on the same branch tip**. Once `origin/main`
+has moved past your local SHA — whether via a parallel agent commit
+or a CI-side rewrite — force-push becomes destructive: the canonical
+SHA on `origin/main` and every downstream commit would be clobbered
+in one stroke. The discriminator is `git fetch && git log --oneline @{u}..HEAD`
+returning **non-empty output**: if anyone else's work is ahead on
+`origin/main`, your local SHA is on a divergent lineage and any
+force-push is an anti-pattern. (**Auditability hint**: `git reflog`
+still preserves the superseded SHA after the race; the diff between
+your reflog entry and the canonical SHA on `origin/main` is the
+irrefutable receipt for the supersession — see step 8 above.)
+
+**Decision rule**: never `force-push` from a superseded commit; either
+(a) declare the work canonical on `origin/main` (steps 5–8 above) or
+(b) merge manually per the fallback. There is no third option —
+clobbering canonical history with `force-push` is a hard anti-pattern
+per [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow).
+
+See also:
+- [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026) for the
+  textual-conflict case.
+- [`Git-Lesson-1`](#git-lesson-1-june-2026--git-rebase--i-vs--autosquash)
+  for the squash-once-already-clean case.
+- [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow) for
+  the canonical direct-to-main workflow.
+
+
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 `context.Background()` in `internal/api/` handlers. Per ARCHITECTURE.md §7,
 a small number of sites legitimately detach from the parent-context lifetime
