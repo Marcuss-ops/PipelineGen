@@ -135,3 +135,49 @@ func applyDedupeByDriveFileID(
 	}
 	return &dr, count
 }
+
+// Step 7/12 (June 2026, dedupe gate operativo): canonical PR-VO-B3
+// dedupe verdict type. The finalizeStage gate now ACTS on the
+// decision (Continue/Reuse/Conflict) rather than logging and
+// continuing into the PR-VO-A2 atomic-swap.
+//
+// Semantics:
+//
+//   - DedupeContinue : 0 matches → gate is a no-op, fall through
+//     to the canonical DELETE+INSERT+Outbox+Commit sequence.
+//   - DedupeReuse    : 1 match   → REUSE the matched (canonical)
+//     row; skip INSERT (matched row already represents the
+//     DriveFileID). item.ID is reassigned to matchedID so the
+//     response references the canonical record.
+//   - DedupeConflict : >1 matches → AMBIGUOUS — fail-closed per
+//     godlike/07's no-fake-availability policy. Surface
+//     FailureDedupeAmbiguous + deferred tx.Rollback().
+type DedupeDecision string
+
+const (
+	DedupeContinue DedupeDecision = "continue"
+	DedupeReuse    DedupeDecision = "reuse"
+	DedupeConflict DedupeDecision = "conflict"
+)
+
+// String implements fmt.Stringer so the decision logs cleanly via
+// zap.String without manual conversion (operators grep `decision=`
+// in pipeline audit logs).
+func (d DedupeDecision) String() string { return string(d) }
+
+// DecideDedupe projects CountByDriveFileIDTx's `count` signal into
+// the typed DedupeDecision. Pure function (no I/O) so the boundary
+// semantics are pinned by table-driven tests in dedupe_test.go.
+//
+// Contract: count==0 → Continue, count==1 → Reuse, count>1 → Conflict.
+// Negative (defensive) collapses to Continue.
+func DecideDedupe(count int) DedupeDecision {
+	switch {
+	case count == 1:
+		return DedupeReuse
+	case count > 1:
+		return DedupeConflict
+	default:
+		return DedupeContinue
+	}
+}

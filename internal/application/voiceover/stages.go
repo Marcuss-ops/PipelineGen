@@ -400,28 +400,49 @@ func (s *Service) finalizeStage(
 	}
 	defer func() { _ = tx.Rollback() }() // safe after successful Commit
 
-	// PR-VO-B3 dedupe gate — runs INSIDE the tx so the count query
-	// is consistent with the upcoming INSERT. Defensive: an empty
-	// driveFileID short-circuits to (matchedID="", count=0, nil)
-	// (no gate fired). P1-2 (June 2026): the previously
-	// inlined applyDedupeByDriveFileID call is replaced by the
+	// PR-VO-B3 dedupe gate (Step 7/12, June 2026 — gate operativo).
+	// Runs INSIDE the tx so the count query is consistent with the
+	// upcoming INSERT. Defensive: an empty driveFileID short-circuits
+	// to (matchedID="", count=0, nil) (no gate fired). The
+	// previously-inlined log-and-fall-through block has been
+	// replaced by a `switch DecideDedupe(count)` that ACTS on the
+	// canonical DedupeDecision verdict (Continue/Reuse/Conflict)
+	// rather than logging and continuing into the PR-VO-A2
+	// atomic-swap. P1-2 (June 2026): the previously-inlined
+	// applyDedupeByDriveFileID call was replaced by the
 	// persistence.Repository.CountByDriveFileIDTx port method.
 	if item.DriveFileID != "" {
 		matchedID, count, _ := s.voiceoverRepo.CountByDriveFileIDTx(ctx, tx, item.ID, item.DriveFileID)
-		if matchedID != "" {
+		switch DecideDedupe(count) {
+		case DedupeConflict:
 			if s.log != nil {
-				if count > 1 {
-					s.log.Info("PR-VO-B3: ambiguous dedupe match",
-						zap.String("restored", restoreIdent),
-						zap.String("item_id", item.ID),
-						zap.Int("count", count),
-						zap.String("dedupe_id", matchedID))
-				} else {
-					s.log.Info("PR-VO-B3: dedupe gate matched prior row",
-						zap.String("restored", restoreIdent),
-						zap.String("item_id", item.ID),
-						zap.String("dedupe_id", matchedID))
-				}
+				s.log.Warn("PR-VO-B3 dedupe conflict — FAIL-CLOSED, NOT inserting duplicate",
+					zap.String("restored", restoreIdent),
+					zap.String("item_id", item.ID),
+					zap.Int("count", count),
+					zap.String("dedupe_id", matchedID),
+					zap.String("decision", string(DedupeConflict)))
+			}
+			return item.fail(FailureDedupeAmbiguous,
+				fmt.Errorf("%s: PR-VO-B3 ambiguous dedupe (count=%d, dedupe_id=%s) — refusing to insert duplicate row against established DriveFileID",
+					restoreIdent, count, matchedID))
+		case DedupeReuse:
+			if s.log != nil {
+				s.log.Info("PR-VO-B3 dedupe reuse — matched single prior row, skipping insert",
+					zap.String("restored", restoreIdent),
+					zap.String("item_id", item.ID),
+					zap.String("dedupe_id", matchedID),
+					zap.String("decision", string(DedupeReuse)))
+			}
+			item.ID = matchedID
+			item.Status = StatusCompleted
+			return item
+		case DedupeContinue:
+			if s.log != nil {
+				s.log.Debug("PR-VO-B3 dedupe continue — no match, proceeding with insert",
+					zap.String("restored", restoreIdent),
+					zap.String("item_id", item.ID),
+					zap.String("decision", string(DedupeContinue)))
 			}
 		}
 	}

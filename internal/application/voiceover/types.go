@@ -138,6 +138,17 @@ const (
 	FailureOutboxEnqueue FailureCode = "outbox_enqueue_failed"
 	// FailureTxCommit — finalizeStage: tx.Commit returned an error.
 	FailureTxCommit FailureCode = "tx_commit_failed"
+	// FailureDedupeAmbiguous (Step 7/12, June 2026) — finalizeStage:
+	// the PR-VO-B3 dedupe gate observed >1 rows sharing the same
+	// drive_file_id (the dedupe invariant — one canonical row per
+	// DriveFileID — is broken). Fail-closed per godlike/07's
+	// no-fake-availability policy: do NOT insert a duplicate row,
+	// surface this code so operators investigate the ambiguous
+	// state. Positioned here alongside the other finalizeStage
+	// DB-scope failures (FailureDBUnavailable / FailureTxBegin /
+	// FailureDBDelete / FailureDBInsert / FailureOutboxEnqueue /
+	// FailureTxCommit) for semantic clustering.
+	FailureDedupeAmbiguous FailureCode = "dedupe_ambiguous"
 	// FailureInvalidSubfolder — processLanguage: SubfolderName path
 	// traversal rejected by pathutil.SanitizeSubfolderSegment.
 	FailureInvalidSubfolder FailureCode = "invalid_subfolder_name"
