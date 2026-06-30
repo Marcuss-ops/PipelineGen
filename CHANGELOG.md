@@ -772,11 +772,16 @@ Files touched (5):
   + structured log line; new `recordCheckOutcome` helper.
 - `internal/application/assets/monitor/monitor_scheduler_test.go` —
   NEW; same-package tests with `*fakeLister` (MonitorDownloaderPort)
-  and `*recordingRepo` (channels.Repository).
+  and `*recordingRepo` (channels.Repository).No production-wiring change beyond the ytdlp interface swap (which Go boxes
+transparently); no SQLite migration, no DB schema touch, no config.yaml keys added.
 
-No production-wiring change beyond the ytdlp interface swap (which Go boxes
-transparently); no SQLite migration, no DB schema touch, no config.yaml
-keys added.
+**[Channel-monitor Blocco 1 — housekeeping (June 2026)]** `docs` — closure of two pre-existing items that surfaced during Blocco 1's landing plane, plus a docs follow-up:
+
+- **`types_outcome.go` already canonical on `main`** via `51e41bf4 feat(monitor): introduce SkipReason type and EnqueueOutcome struct`. No branch split is necessary: the file at `internal/application/assets/monitor/types_outcome.go` documents in its header comment that it's a *"Plan: Channel Monitor Blocchi 4+5"* stub. The file lands with `SkipReason` constants + `EnqueueOutcome` struct already consumed by downstream `0488a5ef refactor(monitor): split acceptedCount into analysisReservations and successfulEnqueues`, so Blocco 4+5 work can extend it directly on `main` without a dedicated branch. **Decision**: leave the file on `main`; do not open a cleanup PR.
+
+- **`module_media.go:334` `MutationsDispatcher` regression is RESOLVED**. The obsolete literal flagged in Blocco 1's CHANGELOG caveat has been cleaned up by follow-up commits (no obsolete `MutationsDispatcher` field on `clips.Deps`; `go build ./internal/app/...` builds clean; `go build ./...` builds clean across the full Go tree). Future agents should no longer need to scope monitor-package validation to `./internal/application/assets/monitor/...` only — direct compilation across the full tree works. The Blocco 1 entry's "tech-notes" bullet pointing readers at the targeted-build workaround is therefore obsolete and is superseded by this notice.
+
+- **Push-race `ff7a5579 → 960a3fb6` byte-equivalent replay** is documented as a recovery pattern in `AGENTS.md` § *Git-Lesson-4 (June 2026) — Recovery from non-fast-forward push race*. Local `ff7a5579` is reachable only via `git reflog` and is **superseded** by `960a3fb6` (canonical on `origin/main`). Both SHAs cover the same six files (`internal/application/assets/monitor/{monitor_ports.go, channel_monitor.go, monitor_channel_check.go, monitor_scheduler.go, monitor_scheduler_test.go}` + `CHANGELOG.md`). Verifiable via `diff <(git show --name-only --format='' ff7a5579) <(git show --name-only --format='' 960a3fb6)` returning empty. The canonical recovery rule: "accept the re-application; do NOT `force-push`" — see `AGENTS.md Git-Lesson-4` for the full diagnosis procedure and the anti-pattern.
 
 ## Unreleased
 
