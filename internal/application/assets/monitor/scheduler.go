@@ -36,8 +36,6 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -62,9 +60,7 @@ type ChannelMonitor struct {
 	// `&ChannelMonitor{channelsSvc, log, ytdlp}` test pattern; the new
 	// ctor copies fields from CompositionDeps).
 	cfg         *config.Config
-	clipsRepo   *assets.ClipsRepository // forward-compat; currently unused
-	channelsSvc *channels.Service       // canonical channel source authority
-	youtubeSvc  *youtube.Service        // legacy; reserved for forward-compat
+	channelsSvc *channels.Service // canonical channel source authority
 	log         *zap.Logger
 
 	// Port surfaces (Pattern 0). The 3 new ports (Transcript / Analyzer /
@@ -128,9 +124,7 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 
 	return &ChannelMonitor{
 		cfg:         deps.Cfg,
-		clipsRepo:   deps.ClipsRepo,
 		channelsSvc: deps.ChannelsSvc,
-		youtubeSvc:  deps.YoutubeSvc,
 		log:         deps.Log,
 
 		ytdlp:      deps.Ytdlp,

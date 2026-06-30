@@ -32,8 +32,6 @@ import (
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -54,31 +52,19 @@ const DefaultPlaylistEnd = 50
 // ── CompositionDeps (the new ctor signature) ─────────────────────────────
 
 // CompositionDeps is the ctor payload for NewChannelMonitor. Replaces
-// the pre-Step-9 7-parameter signature (cfg, clipsRepo, channelsSvc,
-// log, youtubeSvc, ollamaClient, ytdlp) which exposed concrete Ollama
+// the pre-Step-9 7-parameter signature which exposed concrete Ollama
 // and yt-dlp dependencies. With this struct, the only concrete
-// dependencies the monitor holds are domain-shaped (cfg + repos +
-// services + log); all AI/VTT/subprocess concerns cross through ports.
+// dependencies the monitor holds are domain-shaped (cfg + the channels
+// service); all AI/VTT/subprocess concerns cross through ports.
 type CompositionDeps struct {
 	// Cfg drives monitor-level defaults (CheckInterval, MaxConcurrentChannelChecks,
 	// the global OllamaModel for fallback). The per-channel fields live in
 	// channels.Channel + ChannelConfig; the monitor reads what it needs.
 	Cfg *config.Config
 
-	// ClipsRepo is kept for forward-compat with the channels cursor view
-	// (currently unused by the scheduler; reserved for future per-clip
-	// discovery flows).
-	ClipsRepo *assets.ClipsRepository
-
 	// ChannelsSvc is the canonical authority for category_channels.
 	// ClaimDue / GetByID / MarkChecked / UpdateCursor flow through here.
 	ChannelsSvc *channels.Service
-
-	// YoutubeSvc is the per-channel youtube clip service. Currently held
-	// for forward-compat; not yet consumed by the discovery or analyzer
-	// paths. The asset-side enrichment goes through VideoAnalyzer.FindSegments
-	// instead.
-	YoutubeSvc *youtube.Service
 
 	// Log is the zap logger. Cannot be nil at ctor time (panic-safe guard
 	// below).

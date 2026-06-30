@@ -243,9 +243,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 			channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
 				Cfg:         cfg,
-				ClipsRepo:   root.Repos.ClipsRepo,
 				ChannelsSvc: channelsSvc,
-				YoutubeSvc:  root.Domains.YoutubeClipService,
 				Log:         log,
 				// Ytdlp wires the concrete *downloader.YTDLPDownloader so
 				// monitor/discovery.go::discoverChannelVideos can call
