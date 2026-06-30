@@ -38,7 +38,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -109,7 +109,7 @@ func TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6(t *testing.T) {
 		},
 	}
 
-	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
 
 	ev, _, _, err := b.BuildClipContext(context.Background(), []string{driveFileID}, nil)
 	if err != nil {
@@ -158,7 +158,7 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 		},
 	}
 
-	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	ev, _, _, err := b.BuildClipContext(context.Background(), []string{assetID}, nil)
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
@@ -184,7 +184,7 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 func TestClipSourceBuilder_Missing_NotFound_PR6(t *testing.T) {
 	stub := &stubClipsResolver{} // empty: any lookup returns (nil, err)
 
-	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	ev, _, _, err := b.BuildClipContext(context.Background(), []string{"ghost"}, nil)
 	if err == nil {
 		t.Fatalf("BuildClipContext returned nil error for an all-missing request; want err")
@@ -208,7 +208,7 @@ func TestClipSourceBuilder_Missing_DriveNotFound_PR6(t *testing.T) {
 		},
 	}
 
-	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	ev, _, _, err := b.BuildClipContext(context.Background(), []string{orphanID}, nil)
 	if err == nil {
 		t.Fatalf("expected error for all-missing-after-DriveLink-check; got nil")
@@ -238,7 +238,7 @@ func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 		byDrive: map[string]*asset.Asset{canonicalA: a},
 	}
 
-	builder := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	builder := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
 	ev, _, _, err := builder.BuildClipContext(
 		context.Background(),
 		[]string{canonicalA, "missing-X", "clipB"},
@@ -373,7 +373,7 @@ func TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4(t *testing.T) {
 			stub := &stubClipsResolver{
 				byID: map[string]*asset.Asset{clipID: clip},
 			}
-			b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+			b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
 			ev, _, _, err := b.BuildClipContext(context.Background(), []string{clipID}, nil)
 			if err != nil {
 				t.Fatalf("BuildClipContext: %v", err)
