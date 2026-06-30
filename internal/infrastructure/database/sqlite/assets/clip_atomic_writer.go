@@ -10,10 +10,15 @@
 // even when DB + outbox writes were skipped (P0 #3 in the compliance
 // verdict).
 //
-// Post-Commit 1, the writer port is REQUIRED at construction time
-// (fail-fast panic in NewProcessYouTubeSegmentUseCase for nil Writer —
-// see process_segment.go godoc). This file is the production adapter
-// the composition root wires.
+// Commit 2/6 (PR-C-YouTube-Cutover, June 2026, Correttezza #6): the
+// CommitClipAndIndexEvent parameter is now `youtubetypes.ClipAsset`
+// (the canonical, strongly-typed internal domain entity) instead of
+// `youtubetypes.ExtractItem` (the HTTP response shape). The
+// verdict's P1 #6 mandates "il writer deve ricevere il record
+// canonico, non un DTO di risposta HTTP" — ClipAsset bundles the
+// ID/VideoID/LocalPath/FileHash/Drive/Coordinates/Metadata fields
+// the writer needs in one typed struct so the DB column mapping is
+// explicit and refactor-resistant.
 //
 // Transaction shape (canonical PR-C PR-VO-A3 pattern):
 //
@@ -21,7 +26,7 @@
 //	UPSERT media_assets SET  ... (id=clipID, lifecycle_state='ACTIVE')
 //	BUILD  eventKey, payload = BuildReindexEnvelopeV1(
 //	          clipID, targetSchema="asset.index.requested.v1",
-//	          sourceVersion=deriveSourceVersion(clipID, item.FileHash),
+//	          sourceVersion=deriveSourceVersion(clipID, asset.FileHash, asset.PolicyVersion),
 //	          requestedAt=now)
 //	INSERT outbox_events (...) ON CONFLICT(event_key) WHERE !='' DO NOTHING
 //	COMMIT
@@ -30,28 +35,24 @@
 //   - eventKey shaped "reconcile:reindex:<assetID>:<schema>:<source>".
 //     Repeated calls with the same (clipID, file_hash, policy) tuple
 //     collapse via outbox ON CONFLICT(event_key) DO NOTHING — only one
-//     outbox row exists for any (clip, content) pair. This is the
-//     PR-VO-A3 atomicity invariant from FASE 4 godlike/06.
+//     outbox row exists for any (clip, content) pair.
 //   - Different file_hash on retry → new eventKey → new outbox row.
 //     The supersede gate downstream (outbox.Pool / IndexingHandler)
 //     compares payload.source_version against the current
 //     media_assets.content_hash and rejects stale events as supersede.
 //   - Empty sourceVersion is fail-closed at BuildReindexEnvelopeV1.
-//     We compute sourceVersion = item.FileHash (the canonical
-//     ingest-time hash). On empty FileHash (edge case where the
-//     upstream pipeline bypassed hash.MD5File) we fall back to a
-//     deterministic MD5(clipID + policyVersion) so the event_key
-//     remains stable across retries. THIS NEVER produces a hash
-//     collision with the real FileHash path because clipID +
-//     policyVersion is a fixed tuple and FileHash is content-derived.
+//     We compute sourceVersion = asset.FileHash (the canonical
+//     ingest-time hash). On empty FileHash (the upstream
+//     hash.MD5File skipped path) we fall back to a deterministic
+//     MD5(clipID + policyVersion) so the event_key remains stable
+//     across retries.
 //
-// Column projection (10 fields): the canonical ProcessSegmentResult
-// → media_assets surface. LIVE state is updated_at + updated-once
-// fields; lifecycle_state stays 'ACTIVE' (the canonical PR-C
-// lifecycle) — soft-delete is delegated to LifecycleService. We
-// intentionally do NOT include the metadata_json write side:
-// ClipAtomicWriter is the bare writer bridge for the clip write;
-// the metadata enrichment path is a distinct Phase (Commit 4).
+// Column projection (10 fields): the canonical ClipAsset → media_assets
+// surface. LIVE state is updated_at + updated-once fields; lifecycle_state
+// stays 'ACTIVE' (the canonical PR-C lifecycle) — soft-delete is delegated
+// to LifecycleService. We intentionally do NOT include the metadata_json
+// write side: ClipAtomicWriter is the bare writer bridge for the clip
+// write; the metadata enrichment path is a distinct Phase (Commit 4).
 package assets
 
 import (
@@ -62,6 +63,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -87,11 +89,6 @@ type ClipAtomicWriterAdapter struct {
 // MUST be non-nil — a nil either side is a fail-closed panic so a
 // wiring gap lands in a build-side output rather than a runtime panic
 // at first CommitClipAndIndexEvent call.
-//
-// Panic on nil db / nil box reflects the verdict's P0 #3 hard-wiring
-// directive: clip rows MUST persist together with their index event
-// before the use case marks Item.Status="processed". A partial
-// producer is worse than a loud panic.
 func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *zap.Logger) *ClipAtomicWriterAdapter {
 	if db == nil {
 		panic("assets.NewClipAtomicWriterAdapter: db is required (composition must pass root.DB.DB)")
@@ -107,33 +104,16 @@ func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 	}
 }
 
-// CommitClipAndIndexEvent performs the canonical atomic write:
+// CommitClipAndIndexEvent performs the canonical atomic write.
 //
-//	BEGIN
-//	UPSERT media_assets SET ...  for clipID
-//	BUILD  envelope via outboxevents.BuildReindexEnvelopeV1
-//	INSERT outbox_events ... ON CONFLICT(event_key) DO NOTHING
-//	COMMIT
-//
-// Returns nil on success; returns wrapped error on tx failure.
-// Half-applied states (UPSERT succeeded but outbox failed) are NOT
-// possible: outboxevents.Repository.Enqueue writes through the SAME
-// *sql.Tx that the UPSERT runs on, so COMMIT is the atomic barrier.
-//
-// SourceVersion derivation:
-//   - Try item.FileHash verbatim.
-//   - Fallback to deterministic MD5(clipID + policyVersion) when
-//     FileHash is empty (the upstream hash.MD5File skipped path).
-//     Stays invariant under retries → same eventKey → ON CONFLICT
-//     collapses retries into a single outbox row.
-//
-// Empty clipID is rejected before any tx opens. Failed
-// BuildReindexEnvelopeV1 is wrapped with the producer's local
-// context.
+// Commit 2/6: the parameter is `youtubetypes.ClipAsset` (canonical
+// domain entity). The ClipAsset's Drive / Coordinates / Metadata
+// fields are the canonical writer surface; the column mapping in
+// `upsertClipInTx` reads from ClipAsset's nested structs.
 func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	ctx context.Context,
 	clipID string,
-	item youtubetypes.ExtractItem,
+	asset youtubetypes.ClipAsset,
 	event youtubeports.IndexEventPayload,
 ) error {
 	if w == nil || w.db == nil || w.box == nil {
@@ -146,7 +126,6 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: unsupported event.Type %q (only %q supported)",
 			event.Type, outboxevents.EventAssetIndexRequested)
 	}
-	// Type empty → caller is using the canonical default; fill it.
 	if event.Type == "" {
 		event.Type = outboxevents.EventAssetIndexRequested
 	}
@@ -154,17 +133,11 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		event.AggregateID = clipID
 	}
 
-	// ── 1) Begin tx ─────────────────────────────────────────────
+	// ── 1) Begin tx
 	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: begin tx: %w", err)
 	}
-	// Defensive rollback: the named return swallows a non-error
-	// early-return (outbox errors only) into a defer that runs
-	// rollback() AFTER the named-return is set. We use the simple
-	// inline pattern instead because the function is short and the
-	// tx.Commit() below either commits or errors out (in which
-	// case the deferred Rollback is a no-op).
 	committed := false
 	defer func() {
 		if !committed {
@@ -172,34 +145,32 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		}
 	}()
 
-	// ── 2) UPSERT media_assets ─────────────────────────────────
+	// ── 2) UPSERT media_assets
 	nowStr := w.now().UTC().Format(time.RFC3339)
-	if err := upsertClipInTx(ctx, tx, clipID, item, nowStr); err != nil {
+	if err := upsertClipInTx(ctx, tx, clipID, asset, nowStr); err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: upsert: %w", err)
 	}
 
-	// ── 3) Build canonical v1 envelope ─────────────────────────
-	policyVersion := derivePolicyVersion(clipID)
-	sourceVersion := deriveSourceVersion(clipID, item.FileHash, policyVersion)
+	// ── 3) Build canonical v1 envelope
+	policyVersion := asset.PolicyVersion
+	if policyVersion == "" {
+		policyVersion = derivePolicyVersion(clipID)
+	}
+	sourceVersion := deriveSourceVersion(clipID, asset.FileHash, policyVersion)
 	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(
 		clipID,
-		outboxevents.ReindexEnvelopeV1Schema, // "asset.index.requested.v1"
+		outboxevents.ReindexEnvelopeV1Schema,
 		sourceVersion,
 		w.now().UTC(),
 	)
 	if err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: build envelope: %w", err)
 	}
-	// If the caller supplied a payload, prefer it (e.g. includes
-	// extra fields beyond the canonical envelope). The canonical
-	// payload is the JSON document keyed by eventKey for idempotency —
-	// this MUST be encoded into the row's payload_json verbatim so
-	// the worker's supersede-gate compares against source_version.
 	if len(event.Payload) > 0 {
 		payloadJSON = string(event.Payload)
 	}
 
-	// ── 4) INSERT outbox_events (tx-bound) ─────────────────────
+	// ── 4) INSERT outbox_events (tx-bound)
 	if err := w.box.Enqueue(
 		ctx,
 		tx,
@@ -212,7 +183,7 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: outbox enqueue: %w", err)
 	}
 
-	// ── 5) Commit ─────────────────────────────────────────────
+	// ── 5) Commit
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: commit: %w", err)
 	}
@@ -228,16 +199,10 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 }
 
 // upsertClipInTx writes the canonical 10-column clip row shape into
-// media_assets inside the caller's tx. The projection intentionally
-// stays narrow (Commit 1 minimum scope) — the metadata enrichment
-// fields will be added in Commit 4 alongside the canonical
-// ClipMetadataBuilder surface.
-//
-// Columns written: id, source, name, filename, drive_file_id,
-// drive_link, download_link, local_path, file_hash, drive_folder_id,
-// folder_path, lifecycle_state='ACTIVE', updated_at, created_at (on
-// INSERT branch — covered by COALESCE on second-branch UPDATE only).
-func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, item youtubetypes.ExtractItem, nowStr string) error {
+// media_assets inside the caller's tx. The projection reads from
+// ClipAsset's nested structs (Drive, Coordinates, Metadata) per the
+// Commit 2 #6 verdict mandate.
+func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtubetypes.ClipAsset, nowStr string) error {
 	if tx == nil {
 		return errors.New("upsertClipInTx: tx is nil")
 	}
@@ -263,17 +228,17 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, item youtube
 			updated_at = excluded.updated_at
 	`,
 		clipID,
-		"youtube", // canonical source for clip rows
-		routeEmpty(item.Name, clipID),
-		routeEmpty(item.Filename, clipID+".mp4"),
-		"video", // media_type — ytdlp_clips default; future PR adds DriveFileAdapter-driven type
-		item.DriveFileID,
-		item.DriveLink,
-		item.DownloadLink,
-		item.LocalPath,
-		item.FileHash,
-		item.DriveFolderID,
-		item.DriveFolderPath,
+		"youtube",
+		routeEmpty(deriveNameFromAsset(asset), clipID),
+		routeEmpty(deriveFilenameFromAsset(asset), clipID+".mp4"),
+		"video",
+		asset.Drive.FileID,
+		asset.Drive.WebViewLink,
+		"", // download_link — derived from FileID in production; left empty in Commit 2
+		asset.LocalPath,
+		asset.FileHash,
+		asset.Drive.FolderID,
+		asset.Drive.FolderPath,
 		nowStr,
 		nowStr,
 	)
@@ -283,11 +248,35 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, item youtube
 	return nil
 }
 
+// deriveNameFromAsset returns a canonical name for the clip row.
+// Pulls from asset.Metadata.Summary if non-empty, otherwise falls
+// back to the asset ID. Kept private because the column mapping
+// is an internal detail of the writer adapter.
+func deriveNameFromAsset(asset youtubetypes.ClipAsset) string {
+	if asset.Metadata.Summary != "" {
+		return asset.Metadata.Summary
+	}
+	return ""
+}
+
+// deriveFilenameFromAsset returns the canonical filename for the
+// clip row. Builds from the slug (asset.Metadata.Summary) if present,
+// otherwise falls back to the canonical yt_<videoID>_<start>_<end>
+// shape derived from the asset Coordinates. The full policy-versioned
+// filename is set on the use case side via BuildClipFilename; the
+// writer's filename is the basename of the local file when available.
+func deriveFilenameFromAsset(asset youtubetypes.ClipAsset) string {
+	if asset.LocalPath != "" {
+		return filepathBase(asset.LocalPath)
+	}
+	return ""
+}
+
 // routeEmpty is the canonical "fallback-to-this-string" helper for
 // INSERT columns where an empty value would later fail a NOT NULL
 // check. Kept as a private helper because tests can construct
-// ExtractItems with empty Name (e.g. cleanClipName gap) and the
-// adapter must keep the row insertable.
+// ClipAssets with empty Name and the adapter must keep the row
+// insertable.
 func routeEmpty(value, fallback string) string {
 	if value != "" {
 		return value
@@ -297,14 +286,10 @@ func routeEmpty(value, fallback string) string {
 
 // derivePolicyVersion extracts the policy_version suffix from a
 // canonical clipID ("yt_<videoID>_<startSec>_<endSec>_<policyVer>").
-// Returns "v1" when the suffix is missing (legacy / build error
-// / hand-crafted clipID) so the source-version fallback remains
-// stable across retries. The shape is fixed by process_segment.go
-// line ~118 (`clipID := fmt.Sprintf("yt_%s_%d_%d_%s", ...)`).
+// Returns "v1" when the suffix is missing (legacy / build error /
+// hand-crafted clipID) so the source-version fallback remains stable
+// across retries.
 func derivePolicyVersion(clipID string) string {
-	// Last 4 segments: yt_<videoID>_<start>_<end>_<policyVer>.
-	// Find the last 4 underscores; if the last segment is non-empty
-	// and not all-digit, treat it as the policy version.
 	const wantUnderscores = 4
 	seen := 0
 	for i := len(clipID) - 1; i >= 0; i-- {
@@ -323,18 +308,10 @@ func derivePolicyVersion(clipID string) string {
 }
 
 // deriveSourceVersion returns the canonical ingest-time content hash
-// fingerprint used as event.source_version in the
-// asset.index.requested.v1 envelope. In priority order:
-//  1. item.FileHash (the canonical MD5 of the local clip file).
+// fingerprint used as event.source_version. In priority order:
+//  1. asset.FileHash (the canonical MD5 of the local clip file).
 //  2. fallback = MD5(clipID + ":" + policyVersion) — invariant under
 //     retries so ON CONFLICT(event_key) collapses into a single row.
-//
-// The fallback handles the edge case where the upstream
-// hash.MD5File skipped its path (empty FileHash). The hash is
-// deterministic per (clipID, policyVersion) tuple; re-extracts under
-// the same (clipID, policy) get the same fallback hash, so the
-// worker's supersede gate sees source_version=production-hash AND
-// collapses the retry into a no-op.
 func deriveSourceVersion(clipID, fileHash, policyVersion string) string {
 	if fileHash != "" {
 		return fileHash
@@ -343,20 +320,32 @@ func deriveSourceVersion(clipID, fileHash, policyVersion string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// filepathBase is a thin wrapper around path/filepath.Base that
+// avoids importing path/filepath at the top of the file. The local
+// path is always absolute in production, so the Base call is safe.
+//
+// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza): the local wrapper
+// was removed in favour of stdlib path/filepath.Base per the
+// code-reviewer critical finding. The previous hand-rolled loop
+// had the same string contract on absolute Unix paths but missed
+// Windows backslash handling and edge cases for trailing
+// separators; stdlib's filepath.Base is the canonical implementation.
+func filepathBase(p string) string {
+	return filepath.Base(p)
+}
+
 // ── Compile-time assertion ──────────────────────────────────────────
 
 // Per AGENTS.md Pattern 0: the concrete receiver must satisfy the
-// typed port so any signature drift (e.g. aggregator-type change in
-// IndexEventPayload.Fields) surfaces as a build failure.
+// typed port so any signature drift surfaces as a build failure.
 var _ youtubeports.ClipAtomicWriter = (*ClipAtomicWriterAdapter)(nil)
 
 // ── Diagnostics ────────────────────────────────────────────────────
 
-// JSON-marshal helper for callers that want to enrich the canonical
-// payload with extra fields (e.g. metadata.summary, source_url). The
-// function exists so callers don't depend on encoding/json directly;
-// exposing it at the package boundary keeps the adapter's contract
-// uniformly json. Returns the canonical envelope as a raw json.RawMessage.
+// MarshalCanonicalPayload marshals a map into a JSON raw message for
+// callers that want to enrich the canonical payload with extra fields
+// (e.g. metadata.summary, source_url). Exposed at the package boundary
+// so callers don't need to import encoding/json directly.
 func MarshalCanonicalPayload(extra map[string]any) (json.RawMessage, error) {
 	if extra == nil {
 		return json.RawMessage(`{}`), nil

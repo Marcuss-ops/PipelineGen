@@ -3,6 +3,11 @@
 // ON CONFLICT(event_key) DO NOTHING → COMMIT) of the new
 // ClipAtomicWriterAdapter.
 //
+// Commit 2/6 (PR-C-YouTube-Cutover, June 2026, Correttezza #6): the
+// adapter now takes `youtubetypes.ClipAsset` (the canonical, strongly-
+// typed internal domain entity) instead of `youtubetypes.ExtractItem`
+// (the HTTP response shape). Tests updated to the new signature.
+//
 // What this test asserts:
 //  1. Happy path: CommitClipAndIndexEvent on a fresh ledger inserts
 //     exactly ONE media_assets row + ONE outbox_events row in one
@@ -130,15 +135,29 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	adapter := NewClipAtomicWriterAdapter(db, box, nil)
 
 	const clipID = "yt_abc123_10_60_v1"
-	item := youtubetypes.ExtractItem{
-		ID:           clipID,
-		Name:         "Funny Moment",
-		Filename:     "yt_abc123_10_60_v1.mp4",
-		FileHash:     sha256Hex("happy-path"),
-		LocalPath:    "/tmp/clips/yt_abc123_10_60_v1.mp4",
-		DriveFileID:  "drive_xyz",
-		DriveLink:    "https://drive.google.com/file/d/drive_xyz/view",
-		DownloadLink: "https://drive.google.com/uc?id=drive_xyz",
+	item := youtubetypes.ClipAsset{
+		ID:        clipID,
+		VideoID:   "abc123",
+		FileHash:  sha256Hex("happy-path"),
+		LocalPath: "/tmp/clips/yt_abc123_10_60_v1.mp4",
+		Drive: youtubetypes.ClipAssetDrive{
+			FolderID:    "folder_xyz",
+			FolderPath:  "youtube/abc123",
+			FileID:      "drive_xyz",
+			WebViewLink: "https://drive.google.com/file/d/drive_xyz/view",
+		},
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: 10,
+			EndSec:   60,
+			Duration: 50,
+		},
+		Metadata: youtubetypes.ClipMetadata{
+			Summary:         "Funny Moment",
+			Topics:          []string{"humor"},
+			SourceURL:       "https://www.youtube.com/watch?v=abc123",
+			NormalizedGroup: "general",
+		},
+		PolicyVersion: "v1",
 	}
 	if err := adapter.CommitClipAndIndexEvent(context.Background(), clipID, item, canonicalEnvelopePayload()); err != nil {
 		t.Fatalf("CommitClipAndIndexEvent happy path: %v", err)
@@ -155,8 +174,8 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	if err := row.Scan(&gotName, &gotFileHash, &gotLocalPath, &gotDriveFileID, &gotDriveLink, &gotLifecycle); err != nil {
 		t.Fatalf("scan media_assets row: %v", err)
 	}
-	if gotName != item.Name {
-		t.Errorf("name: want %q got %q", item.Name, gotName)
+	if gotName != item.Metadata.Summary {
+		t.Errorf("name: want %q got %q", item.Metadata.Summary, gotName)
 	}
 	if gotFileHash != item.FileHash {
 		t.Errorf("file_hash: want %q got %q", item.FileHash, gotFileHash)
@@ -164,11 +183,11 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	if gotLocalPath != item.LocalPath {
 		t.Errorf("local_path: want %q got %q", item.LocalPath, gotLocalPath)
 	}
-	if gotDriveFileID != item.DriveFileID {
-		t.Errorf("drive_file_id: want %q got %q", item.DriveFileID, gotDriveFileID)
+	if gotDriveFileID != item.Drive.FileID {
+		t.Errorf("drive_file_id: want %q got %q", item.Drive.FileID, gotDriveFileID)
 	}
-	if gotDriveLink != item.DriveLink {
-		t.Errorf("drive_link: want %q got %q", item.DriveLink, gotDriveLink)
+	if gotDriveLink != item.Drive.WebViewLink {
+		t.Errorf("drive_link: want %q got %q", item.Drive.WebViewLink, gotDriveLink)
 	}
 	if gotLifecycle != "ACTIVE" {
 		t.Errorf("lifecycle_state: want ACTIVE got %q", gotLifecycle)
@@ -223,12 +242,22 @@ func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 
 	const clipID = "yt_idem_001_5_30_v1"
 	fileHash := sha256Hex("idem-content")
-	item := youtubetypes.ExtractItem{
+	item := youtubetypes.ClipAsset{
 		ID:        clipID,
-		Name:      "Idempotent Clip",
-		Filename:  clipID + ".mp4",
+		VideoID:   "idem_001",
 		FileHash:  fileHash,
 		LocalPath: "/tmp/" + clipID + ".mp4",
+		Drive:     youtubetypes.ClipAssetDrive{},
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: 5,
+			EndSec:   30,
+			Duration: 25,
+		},
+		Metadata: youtubetypes.ClipMetadata{
+			Summary:         "Idempotent Clip",
+			NormalizedGroup: "general",
+		},
+		PolicyVersion: "v1",
 	}
 	ctx := context.Background()
 
@@ -270,19 +299,23 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	adapter := NewClipAtomicWriterAdapter(db, box, nil)
 
 	const clipID = "yt_supersede_001_10_60_v1"
-	itemA := youtubetypes.ExtractItem{
-		ID:        clipID,
-		Name:      "Supersede A",
-		Filename:  clipID + ".mp4",
-		FileHash:  sha256Hex("content-A"),
-		LocalPath: "/tmp/" + clipID + ".mp4",
+	itemA := youtubetypes.ClipAsset{
+		ID:            clipID,
+		VideoID:       "supersede_001",
+		FileHash:      sha256Hex("content-A"),
+		LocalPath:     "/tmp/" + clipID + ".mp4",
+		Metadata:      youtubetypes.ClipMetadata{Summary: "Supersede A", NormalizedGroup: "general"},
+		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
+		PolicyVersion: "v1",
 	}
-	itemB := youtubetypes.ExtractItem{
-		ID:        clipID,
-		Name:      "Supersede B",
-		Filename:  clipID + ".mp4",
-		FileHash:  sha256Hex("content-B"),
-		LocalPath: "/tmp/" + clipID + ".mp4",
+	itemB := youtubetypes.ClipAsset{
+		ID:            clipID,
+		VideoID:       "supersede_001",
+		FileHash:      sha256Hex("content-B"),
+		LocalPath:     "/tmp/" + clipID + ".mp4",
+		Metadata:      youtubetypes.ClipMetadata{Summary: "Supersede B", NormalizedGroup: "general"},
+		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
+		PolicyVersion: "v1",
 	}
 	ctx := context.Background()
 
@@ -361,12 +394,14 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 	adapter := NewClipAtomicWriterAdapter(dbWriter, box, nil)
 
 	const clipID = "yt_closed_db_001_10_60_v1"
-	item := youtubetypes.ExtractItem{
-		ID:        clipID,
-		Name:      "Closed DB Probe",
-		Filename:  clipID + ".mp4",
-		FileHash:  sha256Hex("closed-db-content"),
-		LocalPath: "/tmp/" + clipID + ".mp4",
+	item := youtubetypes.ClipAsset{
+		ID:            clipID,
+		VideoID:       "closed_db_001",
+		FileHash:      sha256Hex("closed-db-content"),
+		LocalPath:     "/tmp/" + clipID + ".mp4",
+		Metadata:      youtubetypes.ClipMetadata{Summary: "Closed DB Probe", NormalizedGroup: "general"},
+		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
+		PolicyVersion: "v1",
 	}
 
 	err := adapter.CommitClipAndIndexEvent(context.Background(), clipID, item, canonicalEnvelopePayload())

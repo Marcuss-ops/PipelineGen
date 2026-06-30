@@ -135,7 +135,15 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		DriveFolderMgr: driveFolderMgr,
 		Writer:         clipWriter,
 		SegmentsSvc:    youtube.NewSegmentsService(), // dependency-free helper, safe at boot
-		Log:            log,
+		// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #3):
+		// SegmentPolicy is the duration gate applied to every
+		// segment (LLM-discovered and API-supplied). Default
+		// Min=2s / Max=60s matches the legacy extraction block
+		// (the verdict's P1 #9 explicit numeric choice). A
+		// future config-driven value can flow through here via
+		// cfg.YouTube.MinSegmentDuration / MaxSegmentDuration.
+		SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
+		Log:           log,
 	})
 
 	youtubeDeps := youtube.ServiceDeps{

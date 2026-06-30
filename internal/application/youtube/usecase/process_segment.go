@@ -1,22 +1,34 @@
 // Package usecase — process_segment.go: canonical ProcessYouTubeSegmentUseCase.
 //
 // Commit C (PR-C-YouTube-Cutover, June 2026) lifts the legacy per-segment
-// orchestration out of
-// `internal/application/youtube/adapters/segment_processor.go::processSegment`
-// into a typed use case that:
-//   - declares all required ports as struct fields (Pattern 0, test-injectable);
-//   - exposes a deterministic clip ID
-//     `yt_<videoID>_<startSec>_<endSec>_<policyVersion>`
-//     that supports re-processing under bumped policy versions;
-//   - performs the canonical 9-step sequence in order;
-//   - surfaces a typed Result that the extraction fan-out collects into
-//     ExtractResponse for back-compat with the existing job handler.
+// orchestration out of the youtube/adapters/ package into a typed use case.
 //
-// Until Commit H (DELETE legacy) the legacy adapters.processSegment is
-// annotated `// TODO wave delete: legacy inline` and remains the production
-// path for callers that have not yet wired the new ports. Once all callers
-// move to the canonical use case, adapters.SegmentProcessor + adapters.Service
-// are removed in Commit H.
+// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the use case became the
+// production path. 5 required ports panic on nil at ctor time
+// (Cache/VideoPipeline/Hash/Writer/SegmentsSvc).
+//
+// Commit 2/6 (PR-C-YouTube-Cutover, June 2026, Correttezza): 5 fail-closed
+// corrections landed:
+//   - #2 StrategyReplace cache-bypass: when cmd.Strategy == "replace",
+//     the cache lookup is skipped so a re-extract under the same clipID
+//     always re-runs the full 9-step pipeline.
+//   - #3 SegmentPolicy: a Min/Max duration gate (defaults 2s/60s) is
+//     applied at Step 1. Out-of-range segments fail with
+//     FailureCodeDurationOutOfRange.
+//   - #4 policyVersion in filename: BuildClipFilename takes a 5th
+//     parameter (policyVersion) so two policy versions of the same
+//     (videoID, start, end) tuple produce different files.
+//   - #5 runtime fail-closed at Step 5: localPath == "" →
+//     FailureCodeEmptyLocalPath; os.Stat size == 0 →
+//     FailureCodeInvalidLocalArtifact; hash.MD5File err/empty →
+//     FailureCodeHashFailed. Pre-Commit-2 silently swallowed all
+//     three.
+//   - #6 ClipAsset canonical: Step 9 builds a `youtubetypes.ClipAsset`
+//     (the canonical domain entity — ID/VideoID/LocalPath/FileHash/
+//     Drive/Coordinates/Metadata) and passes it to the writer. The
+//     writer no longer sees the HTTP-shaped ExtractItem.
+//
+// The 9-step sequence is preserved.
 package usecase
 
 import (
@@ -36,17 +48,16 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ProcessSegmentPolicyVersion is stamped into the deterministic clip ID.
-// Bump it when the metadata enrichment prompt, semantic keywords, embedding
-// model, or segment policy change. The bump forces re-processing under the
-// same clipID, so the YouTube discovery ledger (Commit D) re-emits the
-// segment once the user opts into the new policy version.
+// ProcessSegmentPolicyVersion is the canonical "v1" policy version
+// stamped into the deterministic clip ID + filename. Bump it when
+// the metadata enrichment prompt, semantic keywords, embedding
+// model, or segment policy change.
 const ProcessSegmentPolicyVersion = "v1"
 
-// ProcessSegmentDeps bundles every port ProcessYouTubeSegmentUseCase touches.
-// nil-port tolerance matches the rest of the youtube package — a nil port is
-// logged + no-op'd, never panicked, so partial test fixtures still drive
-// the full sequence behind the new wiring path.
+// ProcessSegmentDeps bundles every port ProcessYouTubeSegmentUseCase
+// touches. nil-port tolerance matches the rest of the youtube package
+// for the OPTIONAL ports (Subtitles/Transcriber/DriveFolderMgr); the
+// REQUIRED ports panic on nil at ctor time.
 type ProcessSegmentDeps struct {
 	Cache          youtubeports.ClipCachePort
 	VideoPipeline  youtubeports.VideoPipelinePort
@@ -56,7 +67,10 @@ type ProcessSegmentDeps struct {
 	DriveFolderMgr youtubeports.DriveFolderManagerPort
 	Writer         youtubeports.ClipAtomicWriter
 	SegmentsSvc    *SegmentsService
-	Log            *zap.Logger
+	// SegmentPolicy is the duration gate (Min/Max in seconds).
+	// Zero values default to {Min: 2, Max: 60}. Commit 2/6 #3.
+	SegmentPolicy youtubetypes.SegmentPolicy
+	Log           *zap.Logger
 }
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
@@ -65,26 +79,8 @@ type ProcessYouTubeSegmentUseCase struct {
 }
 
 // NewProcessYouTubeSegmentUseCase constructs the canonical use case.
-//
-// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): fail-fast posture for
-// required ports. Per the verdict's P0 #3 fail-closed directive, the
-// use case MUST NOT silently accept nil ports — a nil Cache /
-// VideoPipeline / Hash / Writer / SegmentsSvc means the canonical
-// pipeline CANNOT complete and the use case will surface "processed"
-// anyway (the pre-fix silent-success bug). Production composition
-// wires every required port via the new wired-up adapter pair
-// (ClipCacheAdapter + ClipAtomicWriterAdapter); the ctor panic here
-// surfaces a wiring gap at boot rather than at first segment.
-//
-// Nil-tolerance is preserved for the optional DriveFolderMgr (per the
-// verdict's \"Drive solo quando destination policy lo richiede\"
-// directive): the use case runtime-checks DriveFolderMgr == nil and
-// short-circuits the upload step, returning a non-canonical
-// \"skipped-no-drive\" outcome rather than panicking on nil.
-//
-// SegmentsSvc is constructed via NewSegmentsService() when nil is
-// supplied — the canonical helper is dependency-free, so this default
-// is safe across all environments including partial-deploy tests.
+// 5 required ports panic on nil. Subtitles/Transcriber/DriveFolderMgr
+// are runtime-gated (no panic).
 func NewProcessYouTubeSegmentUseCase(d ProcessSegmentDeps) *ProcessYouTubeSegmentUseCase {
 	if d.Cache == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go)")
@@ -107,28 +103,7 @@ func NewProcessYouTubeSegmentUseCase(d ProcessSegmentDeps) *ProcessYouTubeSegmen
 	return &ProcessYouTubeSegmentUseCase{deps: d}
 }
 
-// Execute runs the canonical 9-step pipeline for one segment:
-//
-//  1. Deterministic clip ID + timestamp validation.
-//  2. CheckExistingClip — early-return when cached (idempotent re-runs).
-//  3. Coordinates + retry-download via VideoPipeline port (3 attempts).
-//  4. MD5File after cut.
-//  5. SliceSubtitles (cache hit per Commit G) → Whisper fallback.
-//  6. BuildClipMetadata via SegmentsSvc internal helper.
-//  7. ProcessLifecycle (kept on ExtractionCallbacks path — Commit H
-//     folds it into LifecycleServicePort if composition needs it).
-//  8. DestinationResolver → DriveUploadFileIfChanged.
-//  9. ClipAtomicWriter (DB write + outbox row in same tx; Commit F
-//     implements the concrete adapter).
-//
-// Status semantics:
-//   - "skipped" → Item has Drive* filled but no video pipeline or writer
-//     side-effects. Idempotent re-run on already-processed clip.
-//   - "processed" → full 9-step sequence completed without error.
-//   - "failed" → any step returned an error; out.Error carries the cause.
-//
-// The use case does NOT set resp.OK or resp.Stats — that is the
-// job handler's classifier (jobs/classify.go) responsibility.
+// Execute runs the canonical 9-step pipeline for one segment.
 func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubetypes.ProcessSegmentCommand) (youtubetypes.ProcessSegmentResult, error) {
 	out := youtubetypes.ProcessSegmentResult{
 		Status: "failed",
@@ -142,32 +117,39 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		},
 	}
 
-	// Step 1 — deterministic clip ID + timestamp validation.
+	// Step 1 — deterministic clip ID + timestamp validation +
+	// SegmentPolicy bounds (Commit 2/6 #3) + filename with policyVersion
+	// (Commit 2/6 #4).
 	startSec, err := textutil.ParseTimestamp(out.Item.Start)
 	if err != nil {
-		out.Item.Error = fmt.Sprintf("invalid start timestamp: %v", err)
-		out.Error = err
-		return out, fmt.Errorf("invalid start: %w", err)
+		return u.failInvalidTimestamp(out, "start", err)
 	}
 	endSec, err := textutil.ParseTimestamp(out.Item.End)
 	if err != nil {
-		out.Item.Error = fmt.Sprintf("invalid end timestamp: %v", err)
-		out.Error = err
-		return out, fmt.Errorf("invalid end: %w", err)
+		return u.failInvalidTimestamp(out, "end", err)
 	}
 	if startSec >= endSec {
-		msg := fmt.Sprintf(
-			"start time (%s) must be before end time (%s)",
-			cmd.Segment.Start, cmd.Segment.End,
-		)
-		out.Item.Error = msg
-		out.Error = fmt.Errorf("%s", msg)
-		return out, fmt.Errorf("%s", msg)
+		msg := fmt.Sprintf("start time (%s) must be before end time (%s)", cmd.Segment.Start, cmd.Segment.End)
+		typed := NewExtractionError(FailureCodeInvalidTimestamp, false, msg, nil)
+		return u.fail(out, typed)
 	}
 	duration := endSec - startSec
 	policyVer := cmd.PolicyVersion
 	if policyVer == "" {
 		policyVer = ProcessSegmentPolicyVersion
+	}
+	// Commit 2/6 #3: SegmentPolicy duration gate.
+	if !u.deps.SegmentPolicy.ValidDuration(duration) {
+		policy := u.deps.SegmentPolicy
+		if policy.MinDuration == 0 {
+			policy.MinDuration = youtubetypes.DefaultSegmentPolicy().MinDuration
+		}
+		if policy.MaxDuration == 0 {
+			policy.MaxDuration = youtubetypes.DefaultSegmentPolicy().MaxDuration
+		}
+		msg := fmt.Sprintf("duration %ds out of range [%d, %d]", duration, policy.MinDuration, policy.MaxDuration)
+		typed := NewExtractionError(FailureCodeDurationOutOfRange, false, msg, nil)
+		return u.fail(out, typed)
 	}
 	clipID := fmt.Sprintf("yt_%s_%d_%d_%s", cmd.VideoID, startSec, endSec, policyVer)
 	out.ID = clipID
@@ -175,12 +157,16 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	out.Item.StartSeconds = startSec
 	out.Item.EndSeconds = endSec
 	out.Item.Duration = duration
+	// Commit 2/6 #4: filename carries the policyVersion.
 	out.Item.Filename = u.deps.SegmentsSvc.BuildClipFilename(
-		cmd.VideoID, startSec, endSec, out.Item.Name,
+		cmd.VideoID, startSec, endSec, out.Item.Name, policyVer,
 	)
 
-	// Step 2 — cache hit short-circuit.
-	if u.deps.Cache != nil {
+	// Step 2 — cache hit short-circuit. Commit 2/6 #2:
+	// StrategyReplace bypasses the cache lookup entirely so a
+	// re-extract under the same clipID always re-runs the full
+	// pipeline.
+	if u.deps.Cache != nil && cmd.Strategy != youtubetypes.StrategyReplace {
 		existingItem, exists, cacheErr := u.deps.Cache.GetExisting(ctx, clipID)
 		if cacheErr == nil && exists && existingItem != nil {
 			out.Item.Status = "skipped"
@@ -215,16 +201,14 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		ForceKeyframes: cmd.ForceKeyframes,
 		KeepAudio:      keepAudio,
 		Normalize:      normalize,
-		Strategy:       cmd.Strategy,
+		Strategy:       string(cmd.Strategy),
 		OutputDir:      cmd.OutDir,
 	}
 
 	// Step 4 — retry download with exponential backoff.
 	if u.deps.VideoPipeline == nil {
-		err := fmt.Errorf("video pipeline port not wired")
-		out.Item.Error = err.Error()
-		out.Error = err
-		return out, err
+		typed := NewExtractionError(FailureCodeVideoProcessingFailed, false, "video pipeline port not wired", nil)
+		return u.fail(out, typed)
 	}
 	var dlResult *youtubeports.VideoCutResult
 	err = retry.Do(ctx, func() error {
@@ -236,27 +220,49 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		MaxAttempts:    3,
 		InitialBackoff: 2 * time.Second,
 		MaxBackoff:     30 * time.Second,
-		IsRetryable:    isTransientExtractionError,
+		IsRetryable:    IsTransientExtractionError,
 	})
 	if err != nil {
-		out.Item.Error = fmt.Sprintf("video processing failed: %v", err)
-		out.Error = err
-		return out, err
+		typed := NewExtractionError(
+			FailureCodeVideoProcessingFailed,
+			IsTransientExtractionError(err),
+			fmt.Sprintf("video processing failed: %v", err),
+			err,
+		)
+		return u.fail(out, typed)
 	}
 
-	// Step 5 — MD5File after cut.
+	// Step 5 — runtime fail-closed (Commit 2/6 #5): empty path,
+	// missing/zero-size file, and hash failure all fail-closed
+	// with the typed ExtractionError taxonomy.
 	localPath := ""
 	if dlResult != nil {
 		localPath = dlResult.LocalPath
 	}
-	out.Item.LocalPath = localPath
-	if localPath != "" {
-		out.Item.Filename = filepath.Base(localPath)
+	if localPath == "" {
+		typed := NewExtractionError(FailureCodeEmptyLocalPath, false,
+			"video pipeline returned empty LocalPath", nil)
+		return u.fail(out, typed)
+	}
+	if stat, statErr := os.Stat(localPath); statErr != nil || stat.Size() == 0 {
+		typed := NewExtractionError(FailureCodeInvalidLocalArtifact, false,
+			fmt.Sprintf("local artifact %q missing or zero-size (stat_err=%v)", localPath, statErr),
+			statErr)
+		return u.fail(out, typed)
 	}
 	var fileHash string
-	if u.deps.Hash != nil && localPath != "" {
-		fileHash, _ = u.deps.Hash.MD5File(localPath)
+	if u.deps.Hash != nil {
+		var hashErr error
+		fileHash, hashErr = u.deps.Hash.MD5File(localPath)
+		if hashErr != nil || fileHash == "" {
+			typed := NewExtractionError(FailureCodeHashFailed, false,
+				fmt.Sprintf("hash.MD5File failed for %q (err=%v)", localPath, hashErr),
+				hashErr)
+			return u.fail(out, typed)
+		}
 	}
+	out.Item.LocalPath = localPath
+	out.Item.Filename = filepath.Base(localPath)
 	out.Item.FileHash = fileHash
 	out.FileHash = fileHash
 
@@ -267,7 +273,7 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		); subErr != nil {
 			u.deps.Log.Warn("subtitle slice failed, falling back to Whisper",
 				zap.String("clip_id", clipID), zap.Error(subErr))
-			// Step 7 — Whisper fallback when subtitles empty.
+			// Step 7 — Whisper fallback.
 			if u.deps.Transcriber != nil {
 				transcript, wErr := u.deps.Transcriber.TranscribeAudio(ctx, localPath)
 				if wErr == nil && transcript != "" {
@@ -284,13 +290,7 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		}
 	}
 
-	// Step 8 — DriveUploadFileIfChanged. Drive upload failure flips
-	// Item.Status to "failed" so the classifier (jobs/classify.go) sees
-	// it; the audit roadmap explicitly calls this out (P0 #2: "the item
-	// restituito normalmente NON ha DriveFileID/DriveLink/non ha
-	// persistenza DB garantita"). A retry-on-503 retryable substring
-	// (timeout/429/503 etc) surfaces to the parent classifier as
-	// retryable; otherwise terminal.
+	// Step 8 — DriveUploadFileIfChanged.
 	if u.deps.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {
 		if upRes, _, upErr := u.deps.DriveFolderMgr.UploadFileIfChanged(
 			ctx, localPath, cmd.DriveFolderID, out.Item.Filename,
@@ -298,24 +298,31 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 			out.Item.DriveFileID = upRes.FileID
 			out.Item.DriveLink = upRes.WebViewLink
 		} else if upErr != nil {
-			if isTransientExtractionError(upErr) {
+			retryable := IsTransientExtractionError(upErr)
+			if retryable {
 				u.deps.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
 					zap.String("clip_id", clipID), zap.Error(upErr))
 			} else {
 				u.deps.Log.Error("drive upload terminal failure (will be classified terminal by parent)",
 					zap.String("clip_id", clipID), zap.Error(upErr))
 			}
-			out.Item.Status = "failed"
-			out.Item.Error = fmt.Sprintf("drive upload failed: %v", upErr)
-			out.Error = fmt.Errorf("drive upload failed: %w", upErr)
-			return out, fmt.Errorf("drive upload failed: %w", upErr)
+			typed := NewExtractionError(
+				FailureCodeDriveUploadFailed,
+				retryable,
+				fmt.Sprintf("drive upload failed: %v", upErr),
+				upErr,
+			)
+			return u.fail(out, typed)
 		}
 	}
 	out.DriveFileID = out.Item.DriveFileID
 	out.DriveLink = out.Item.DriveLink
 
-	// Step 9 — ClipAtomicWriter (DB write + outbox row in same tx).
+	// Step 9 — ClipAtomicWriter. Commit 2/6 #6: build the canonical
+	// ClipAsset (the typed domain entity) instead of passing the
+	// HTTP-shaped ExtractItem.
 	if u.deps.Writer != nil {
+		asset := buildClipAsset(clipID, cmd, out, fileHash, policyVer)
 		outboxPayload, _ := json.Marshal(map[string]any{
 			"clip_id":       clipID,
 			"video_id":      cmd.VideoID,
@@ -330,11 +337,11 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 			CreatedAt:   time.Now().UTC(),
 		}
 		if wErr := u.deps.Writer.CommitClipAndIndexEvent(
-			ctx, clipID, out.Item, event,
+			ctx, clipID, asset, event,
 		); wErr != nil {
-			out.Item.Error = fmt.Sprintf("writer failed: %v", wErr)
-			out.Error = fmt.Errorf("writer: %w", wErr)
-			return out, fmt.Errorf("writer: %w", wErr)
+			typed := NewExtractionError(FailureCodeWriterFailed, false,
+				fmt.Sprintf("writer failed: %v", wErr), wErr)
+			return u.fail(out, typed)
 		}
 		out.IndexedRequestID = event.AggregateID
 	}
@@ -344,11 +351,96 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	return out, nil
 }
 
-// isTransientExtractionError mirrors the retryable-error taxonomy
-// `internal/application/youtube/dto.IsTransientDownloadError` uses for
-// retry.Do predicates. It accepts substring matches against the canonical
-// list (timeout, 429/5xx, network errors, drive transient errors).
-func isTransientExtractionError(err error) bool {
+// buildClipAsset is the Commit 2/6 #6 helper: it constructs the
+// canonical `youtubetypes.ClipAsset` from the use case's per-segment
+// state. The ClipAsset bundles ID/VideoID/LocalPath/FileHash/Drive/
+// Coordinates/Metadata in one typed struct so the writer's column
+// mapping is explicit and refactor-resistant.
+//
+// Metadata fields are populated from the segment DTO + the use case
+// state we already have access to (drive folder, video URL,
+// normaliser). The full Ollama-backed enrichment builder is Commit 4
+// scope; this helper ships the typed shape + a deterministic
+// fallback (segment-level summary/topics/speakers when present,
+// otherwise derived from the segment name + video ID).
+func buildClipAsset(
+	clipID string,
+	cmd youtubetypes.ProcessSegmentCommand,
+	out youtubetypes.ProcessSegmentResult,
+	fileHash string,
+	policyVersion string,
+) youtubetypes.ClipAsset {
+	md := youtubetypes.ClipMetadata{
+		SourceURL:       cmd.VideoURL,
+		TranscriptPath:  "", // populated by Step 6/7 when Whisper fallback fires
+		NormalizedGroup: deriveNormalizedGroup(cmd),
+	}
+	// Segment is a VALUE type (Commit C/1 design, not a pointer),
+	// so the field assignments are unconditional.
+	md.Summary = cmd.Segment.Summary
+	md.Topics = cmd.Segment.Topics
+	md.Speakers = cmd.Segment.Speakers
+	md.MentionedPeople = cmd.Segment.MentionedPeople
+	return youtubetypes.ClipAsset{
+		ID:            clipID,
+		VideoID:       cmd.VideoID,
+		LocalPath:     out.Item.LocalPath,
+		FileHash:      fileHash,
+		PolicyVersion: policyVersion,
+		Drive: youtubetypes.ClipAssetDrive{
+			FolderID:    cmd.DriveFolderID,
+			FolderPath:  cmd.DriveFolderPath,
+			FileID:      out.Item.DriveFileID,
+			WebViewLink: out.Item.DriveLink,
+		},
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: out.Item.StartSeconds,
+			EndSec:   out.Item.EndSeconds,
+			Duration: out.Item.Duration,
+		},
+		Metadata: md,
+	}
+}
+
+// deriveNormalizedGroup returns the canonical normalized group for
+// the asset. The destination's Group is the primary source; when
+// absent, the segment's normalized value is "general".
+func deriveNormalizedGroup(cmd youtubetypes.ProcessSegmentCommand) string {
+	if cmd.Destination != nil && strings.TrimSpace(cmd.Destination.Group) != "" {
+		return strings.TrimSpace(cmd.Destination.Group)
+	}
+	return "general"
+}
+
+// fail is the typed-error fast-return. Updates the out's error
+// fields, then returns.
+func (u *ProcessYouTubeSegmentUseCase) fail(out youtubetypes.ProcessSegmentResult, typed *ExtractionError) (youtubetypes.ProcessSegmentResult, error) {
+	out.Item.Status = "failed"
+	if typed != nil {
+		out.Item.Error = typed.Error()
+		out.Error = typed
+	}
+	return out, typed
+}
+
+// failInvalidTimestamp wraps a timestamp parse error as a typed
+// FailureCodeInvalidTimestamp ExtractionError.
+func (u *ProcessYouTubeSegmentUseCase) failInvalidTimestamp(out youtubetypes.ProcessSegmentResult, which string, err error) (youtubetypes.ProcessSegmentResult, error) {
+	typed := NewExtractionError(
+		FailureCodeInvalidTimestamp,
+		false,
+		fmt.Sprintf("invalid %s timestamp: %v", which, err),
+		err,
+	)
+	return u.fail(out, typed)
+}
+
+// isTransientExtractionErrorLegacy is the legacy substring-match
+// fallback used by IsTransientExtractionError when errors.As
+// cannot find a *ExtractionError. Kept as a private helper because
+// raw port errors (e.g. yt-dlp subprocess output) bubble up through
+// retry.Do before the use case can wrap them.
+func isTransientExtractionErrorLegacy(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -368,10 +460,10 @@ func isTransientExtractionError(err error) bool {
 	return false
 }
 
-// cleanSegmentName trims + SafeName + falls back to segment_NNN on empty.
-// Mirrors the helper in adapters/segment_processor.go (kept here so the
-// canonical use case is self-contained; the adapters copy is removed in
-// Commit H).
+// cleanSegmentName trims + SafeName + falls back to segment_NNN on
+// empty. Mirrors the helper in adapters/segment_processor.go (kept
+// here so the canonical use case is self-contained; the adapters
+// copy is removed in Commit H).
 func cleanSegmentName(name string, idx int) string {
 	name = strings.TrimSpace(name)
 	name = textutil.SafeName(name)

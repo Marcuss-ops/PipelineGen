@@ -11,6 +11,56 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
+**[YouTube cutover Commit 2/6, Correttezza P1 #8–#14, June 2026]** `feat(youtube) + fix(monitor)` — eight correctness fixes layered on top of Commit 1/6. The verdict's P1 batch lands in one atomic commit:
+
+- **P1 #8 — `outcomeCounters` budget accounting + tryReserve semantics.** `internal/application/assets/monitor/discovery.go::outcomeCounters` gains a dedicated `budgetUsed atomic.Int32` counter. The legacy form `outcomes.rejected.Add(outcomes.enqueued.Add(-1))` was a silent semantic bug (atomic.Int32.Add returns `int32` — the inner Add(-1) ran on enqueued and its result was passed to rejected.Add as a plain int32). New shape: `tryReserve(&outcomes.budgetUsed, max)` increments a dedicated reserved-slot counter; classification decrements it (AlreadyScheduled + Rejected) or holds it (Enqueued). The MaxVideosPerRun cap (in both the outer `for video := range videos` loop and the inner per-goroutine gate) now reads `outcomes.budgetUsed.Load()` directly — the cap no longer regresses on leader-election loss. 5 TDD tests in `discovery_budget_test.go` pin the budget contract (happy path, AlreadyScheduled release, Rejected release, Enqueued hold, 50-goroutine concurrent CAS).
+
+- **P1 #9 — `ExtractionStrategy` enum + cache-bypass on `StrategyReplace`.** New typed `ExtractionStrategy string` in `dto/types.go` with `StrategyVerify | StrategySkip | StrategyReplace` constants. `ExtractRequest.Strategy` and `ProcessSegmentCommand.Strategy` are now typed. The use case's Step 2 short-circuits the cache lookup when `cmd.Strategy == StrategyReplace` so a re-extraction under the same clipID always re-runs the 9-step pipeline (used by the metadata-policy-bump flow). Test: `TestProcessSegment_StrategyReplaceBypassesCache` asserts `ClipCachePort.GetExisting` is called 0 times under StrategyReplace.
+
+- **P1 #9 — `SegmentPolicy{MinDuration, MaxDuration}` duration gate.** New typed `SegmentPolicy` struct in `dto/types.go`; `DefaultSegmentPolicy()` returns the canonical `Min=2s / Max=60s` (matches the legacy extraction block). `ProcessSegmentDeps.SegmentPolicy` is the new field; composition root wires `youtubetypes.DefaultSegmentPolicy()`. The use case's Step 1 enforces the gate before any expensive download happens; out-of-range segments fail with `FailureCodeDurationOutOfRange` (typed, non-retryable). Tests: `TestProcessSegment_SegmentPolicyEnforced` (2-hour segment → rejected) + `TestProcessSegment_SegmentPolicyTooShort` (1-second segment → rejected).
+
+- **P1 #10 — `policyVersion` in filename.** `SegmentsService.BuildClipFilename` signature changed from 4 args to 5 (added `policyVersion`). New format: `yt_<videoID>_<start>_<end>_<policyVersion>_<slug>.mp4`. The process use case stamps the resolved `policyVer` (defaults to `ProcessSegmentPolicyVersion = "v1"`). Two policy versions of the same (videoID, start, end) tuple now produce different files (no silent Drive-overwrite on a metadata-policy bump). Tests: `TestBuildClipFilename_IncludesPolicyVersion` + `TestBuildClipFilename_DefaultsPolicyVersionWhenEmpty`.
+
+- **P1 #11 — runtime fail-closed at Step 5.** The use case's pre-Commit-2 silently produced `processed` with empty LocalPath / missing file / empty hash. Post-Commit-2:
+  - `localPath == ""` → `FailureCodeEmptyLocalPath` (terminal, not retryable).
+  - `os.Stat` error or `stat.Size() == 0` → `FailureCodeInvalidLocalArtifact`.
+  - `hash.MD5File` error or empty hash → `FailureCodeHashFailed`.
+  All three wrap the underlying `error` for log scraping and surface the typed `*ExtractionError` to the job handler (no silent success). Tests: `TestProcessSegment_FailsOnEmptyLocalPath` + `TestProcessSegment_FailsOnZeroSizeFile` + `TestProcessSegment_FailsOnHashError`.
+
+- **P1 #12 — canonical `ClipAsset` domain entity.** The writer port now takes `youtubetypes.ClipAsset` (the typed, strongly-typed internal domain entity) instead of `youtubetypes.ExtractItem` (the HTTP response shape). `ClipAsset` bundles `ID / VideoID / LocalPath / FileHash / Drive{...} / Coordinates{...} / Metadata{...} / PolicyVersion` in one struct. `process_segment.go::buildClipAsset` is the typed helper that constructs it from per-segment state. The `clip_atomic_writer.go` UPSERT projects from the nested struct (no more DTO-of-response leaking to DB column mapping). All 4 tests in `clip_atomic_writer_test.go` updated to the new signature; the 5-commit-shape contract (BEGIN → UPSERT → BUILD envelope → INSERT outbox → COMMIT) is unchanged. New test: `TestBuildClipAsset_CanonicalShape` asserts the typed surface.
+
+- **P1 #13 — classifier `failed == 0 && (processed+skipped) == requested → success`.** The legacy classifier `failed == 0 && processed > 0` incorrectly flagged a 100% cache-hit re-run as failure. Post-Commit-2: a cache-hit on every segment is a successful idempotent re-run (the canonical "verify" strategy short-circuit). Extracted as `classifyExtractionRun(*ExtractStats) bool` helper (testable without the 11-field ExtractionService fixture). Vacuously true for `Requested == 0`. 6 tests in `extraction_classifier_test.go` pin every branch (vacuously true, all processed, all skipped, mixed, any failed, accounting drift).
+
+- **P1 #14 — typed `ExtractionError` + remove `strings.Contains` retryability.** New typed error `*ExtractionError{Code FailureCode, Retryable bool, Cause error, Message string}` in `internal/application/youtube/usecase/errors.go` with 8 `FailureCode` constants (`empty_local_path`, `invalid_local_artifact`, `hash_failed`, `duration_out_of_range`, `invalid_timestamp`, `video_processing_failed`, `drive_upload_failed`, `writer_failed`). `IsTransientExtractionError(err)` uses `errors.As(err, &ee)` first (typed path); falls back to substring match ONLY for raw port errors not yet ported to the typed taxonomy. The pre-Commit-2 `strings.Contains(err.Error(), "timeout")`-style classifier in the job handler is replaced with a typed `switch ee.Code` lookup. 7 tests in `errors_test.go` pin the typed unwrap, the wrapped-typed traversal, the substring fallback, the nil-error case, and the stable string literals.
+
+- **P1 #14 — `KeepAudio *bool` typed-pointer + nil-check.** `ExtractRequest.KeepAudio` is now `*bool` (was `bool`). The legacy form `if !req.KeepAudio` was a Go syntax error on a `*bool`. The dereference is delegated to `resolveKeepAudio(*ExtractRequest) bool` helper (nil → canonical default true; non-nil → *req.KeepAudio). 3 tests in `extraction_classifier_test.go` pin the nil-default, the explicit-true, and the explicit-false paths. The PR-C flip from silent-default-false to silent-default-true is preserved; the JSON boundary now round-trips the explicit-caller choice without defaulting.
+
+New canonical surface:
+
+- **NEW** `internal/application/youtube/usecase/errors.go` — typed `ExtractionError` + 8 `FailureCode` constants + `IsTransientExtractionError` classifier (typed-path with substring fallback) + `NewExtractionError` constructor. Compile-time interface conformance: `*ExtractionError` satisfies `error`; `errors.Is(ee, cause)` traverses via `Unwrap()`.
+- **NEW** `internal/application/youtube/dto/types.go` (extended) — `ExtractionStrategy` + `SegmentPolicy` + `DefaultSegmentPolicy()` + `ValidDuration(int) bool` + `ClipAsset{...}` + `ClipAssetDrive{...}` + `ClipAssetCoordinates{...}` + `ClipMetadata{...}`. `ExtractRequest.KeepAudio` and `ProcessSegmentCommand.KeepAudio` are now `*bool` (was `bool`).
+- **NEW** `internal/application/assets/monitor/discovery_budget_test.go` — 5 TDD tests pinning the budget counter.
+- **NEW** `internal/application/youtube/usecase/process_segment_correttezza_test.go` — 9 TDD tests pinning StrategyReplace + SegmentPolicy + filename + 3 fail-closed cases + ClipAsset.
+- **NEW** `internal/application/youtube/usecase/errors_test.go` — 7 TDD tests pinning the typed error taxonomy.
+- **NEW** `internal/application/youtube/usecase/extraction_classifier_test.go` — 9 TDD tests pinning classifyExtractionRun + resolveKeepAudio.
+
+Files touched (8):
+
+- `internal/application/youtube/dto/types.go` — new types + KeepAudio *bool.
+- `internal/application/youtube/ports/ports.go` — `ClipAtomicWriter.CommitClipAndIndexEvent` takes `youtubetypes.ClipAsset`.
+- `internal/application/youtube/usecase/process_segment.go` — fail-fast + StrategyReplace cache-bypass + SegmentPolicy gate + policyVersion in filename + 3 fail-closed checks at Step 5 + buildClipAsset helper + IsTransientExtractionError with errors.As.
+- `internal/application/youtube/usecase/segments_service.go` — BuildClipFilename 5-arg signature.
+- `internal/application/youtube/usecase/extraction_service.go` — classifyExtractionRun + resolveKeepAudio helpers + classifier update + KeepAudio *bool nil-check.
+- `internal/application/assets/monitor/discovery.go` — budgetUsed counter + tryReserve on budgetUsed + explicit rejected.Add(1) after budgetUsed.Add(-1) (bugfix for the silent Add-returning-int32 semantic).
+- `internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go` — ClipAsset parameter + nested-struct UPSERT projection.
+- `internal/app/build_bundles_domain.go` — wires `SegmentPolicy: youtubetypes.DefaultSegmentPolicy()` into the use case ctor.
+- `internal/infrastructure/database/sqlite/assets/clip_atomic_writer_test.go` — ClipAsset literal updates (4 tests).
+- `internal/application/youtube/usecase/process_segment_failfast_test.go` — stubAtomicWriter takes ClipAsset.
+
+**Forward-pointer (Commit 3, deferred):** the canonical metadata-enrichment (Ollama-backed `metadataBuilder.Build` with summary/topics/speakers/mentioned_people/transcript_path/source_url/normalized_group) lands in Commit 3. Commit 2 ships the typed `ClipMetadata` shape; Commit 3 fills it with the real builder. The `buildClipAsset` helper currently stamps segment-level + destination-derived fields; the full enrichment is a separate wave.
+
+---
+
 **[YouTube cutover Commit 1/6, P0 #1 + #2 + #3, June 2026]** `feat(youtube) + feat(drive)` — real wiring of the canonical per-segment pipeline. Three runtime-blockers closed in one atomic commit:
 
 - **P0 #1 — `youtube_discoveries` ledger wired into the Channel Monitor.** `CompositionDeps.Discoveries` is now populated with `assets.NewYoutubeDiscoveriesRepository(root.DB.DB)` at `internal/app/lifecycle.go::startBackgroundJobs`. Pre-fix the field was empty; every per-video classification collapsed to `OutcomeAlreadyScheduled` in `discovery.go::recordDiscoveryAndClassify` and no video ever reached the broker. Fail-fast guard: `NewChannelMonitor` panics when `deps.Cfg != nil && deps.Discoveries == nil` (production signal), so a future wiring gap surfaces at boot rather than at first scheduler tick. Test path (Cfg=nil) is preserved via the bare-literal pattern `&ChannelMonitor{...}` / `CompositionDeps{Log: ...}` that the existing test fixtures use.

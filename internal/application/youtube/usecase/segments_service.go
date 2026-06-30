@@ -41,16 +41,32 @@ func (s *SegmentsService) FileSizeFromPath(path string) int64 {
 }
 
 // BuildClipFilename constructs a canonical YouTube clip filename from video ID,
-// timestamps, and a human-readable name.
-func (s *SegmentsService) BuildClipFilename(videoID string, startSec, endSec int, name string) string {
+// timestamps, a human-readable name, AND the policy version.
+//
+// Commit 2/6 (PR-C-YouTube-Cutover, June 2026, Correttezza #4): the
+// policyVersion is stamped into the filename so two policy versions
+// of the same (videoID, start, end) tuple produce different files
+// (different local paths + different Drive names). Without the stamp,
+// re-extraction under a bumped policy version would silently overwrite
+// the previous clip file in Drive. Format:
+//
+//	yt_<videoID>_<startSec>_<endSec>_<policyVersion>_<slug>.mp4
+//
+// The clipID (yt_<videoID>_<start>_<end>_<policyVer>) is the canonical
+// primary key; the filename adds the slug so operators can locate
+// clips by name in Drive.
+func (s *SegmentsService) BuildClipFilename(videoID string, startSec, endSec int, name, policyVersion string) string {
 	slug := textutil.SlugifyWithMax(name, 40)
 	if slug == "" {
 		slug = "clip"
 	}
-	if slug[0] >= '0' && slug[0] <= '9' {
+	if len(slug) > 0 && slug[0] >= '0' && slug[0] <= '9' {
 		slug = "c_" + slug
 	}
-	return fmt.Sprintf("yt_%s_%d_%d_%s.mp4", videoID, startSec, endSec, slug)
+	if policyVersion == "" {
+		policyVersion = ProcessSegmentPolicyVersion
+	}
+	return fmt.Sprintf("yt_%s_%d_%d_%s_%s.mp4", videoID, startSec, endSec, policyVersion, slug)
 }
 
 // SanitizeTimestamp validates a timestamp string format (SS, MM:SS, or HH:MM:SS).

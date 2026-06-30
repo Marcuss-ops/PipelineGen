@@ -23,7 +23,7 @@
 //   - processVideo: per-video dispatch. Cheap lexical filters
 //     (MinViews / MaxClipDuration / title-keyword) + the AI gate
 //     (analyzer.go) + MaxVideosPerRun CAS + the ledger TryReserve dance
-//     + EnqueueExtract + outcome classification. The outcome
+//   - EnqueueExtract + outcome classification. The outcome
 //     (enqueued | already_scheduled | rejected) increments exactly one
 //     of three atomic counters; only enqueued increments VideosEnqueued.
 //
@@ -101,6 +101,7 @@ func (m *ChannelMonitor) discoverSearchQueries(_ context.Context, _ string) ([]Q
 // checkChannel runs the per-cycle loop with bounded concurrency.
 //
 // Returns (ChannelCheckResult, error):
+//
 //   - err is non-nil ONLY when the yt-dlp structured listing itself failed
 //     (network, parse, subprocess error, etc.). In-process filter
 //     rejections (below min_views, title-keyword miss, semantic budget
@@ -111,7 +112,8 @@ func (m *ChannelMonitor) discoverSearchQueries(_ context.Context, _ string) ([]Q
 //     every policy rejection, which is wrong.
 //
 //   - VideosSkipped = VideosDiscovered - VideosEnqueued
-//     - VideosAlreadyScheduled - VideosRejected: legacy aggregate of
+//
+//   - VideosAlreadyScheduled - VideosRejected: legacy aggregate of
 //     "did NOT become a job that we recorded as enqueued". Kept for
 //     back-compat with pre-Commit-D scheduler logs; the new counters
 //     split it per-outcome for operator observability.
@@ -160,11 +162,23 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 	// Commit D: replace the legacy acceptedCount (single CAS counter)
 	// with a typed outcome-counter triple: each video classifies
 	// into exactly one of enqueued | already_scheduled | rejected.
+	//
+	// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #1): added
+	// budgetUsed (atomic Int32) so the MaxVideosPerRun cap counts
+	// the live "reserved" budget slots — not the snapshot of
+	// (enqueued + rejected). Pre-Commit-2 the cap regressed on
+	// alreadyScheduled outcomes because enqueued was decremented
+	// after the leader-election INSERT lost, and the new
+	// (enqueued+rejected) aggregate dropped by 1, allowing more
+	// parallel goroutines to slip past the gate than the cap
+	// intended. budgetUsed is incremented on tryReserve success
+	// and decremented on outcome classification (Enqueued keeps
+	// the slot; AlreadyScheduled + Rejected release it).
 	var outcomes outcomeCounters
 
 	for _, video := range videos {
 		video := video
-		if channel.MaxVideosPerRun > 0 && (outcomes.enqueued.Load()+outcomes.rejected.Load()) >= int32(channel.MaxVideosPerRun) {
+		if channel.MaxVideosPerRun > 0 && outcomes.budgetUsed.Load() >= int32(channel.MaxVideosPerRun) {
 			break
 		}
 		sem <- struct{}{}
@@ -172,10 +186,12 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			defer func() { if r := recover(); r != nil {
-				m.log.Error("panic in video processing worker", zap.Any("recover", r), zap.String("video_id", video.ID))
-			} }()
-			if channel.MaxVideosPerRun > 0 && (outcomes.enqueued.Load()+outcomes.rejected.Load()) >= int32(channel.MaxVideosPerRun) {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error("panic in video processing worker", zap.Any("recover", r), zap.String("video_id", video.ID))
+				}
+			}()
+			if channel.MaxVideosPerRun > 0 && outcomes.budgetUsed.Load() >= int32(channel.MaxVideosPerRun) {
 				return
 			}
 			m.processVideo(ctx, video, channel, &outcomes, cycleNow)
@@ -250,11 +266,31 @@ func (m *ChannelMonitor) recordCycleEndWatermark(ctx context.Context, channel ch
 // (already_scheduled), and post-INSERT failures (rejected). Each is
 // a separate atomic counter so dedupe lost vs. filter-rejected are
 // distinguishable in operators' dashboards.
+//
+// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #1): added
+// budgetUsed — the canonical "reserved-slot" counter for the
+// MaxVideosPerRun cap. The pre-Commit-2 cap regressed on
+// alreadyScheduled outcomes because enqueued was decremented
+// after the leader-election INSERT lost; the new
+// (enqueued+rejected) aggregate dropped by 1, allowing more
+// parallel goroutines to slip past the gate than the cap intended.
+// budgetUsed is incremented on tryReserve success and decremented
+// on AlreadyScheduled / Rejected outcomes; Enqueued keeps the
+// slot. The enqueued / alreadyScheduled / rejected counters stay
+// non-cumulative outcome tallies (caller-visible; they don't
+// participate in the cap check).
 type outcomeCounters struct {
 	enqueued         atomic.Int32
 	alreadyScheduled atomic.Int32
 	rejected         atomic.Int32
+	budgetUsed       atomic.Int32
 }
+
+// tryReserve is now defined in enqueue.go (pre-existing — the budget
+// CAS helper lived there before Commit 2/6). The single source of
+// truth for the per-channel budget gate. processVideo in this file
+// calls the same function via the package-level scope (enqueue.go
+// and discovery.go share the same `monitor` package).
 
 // processVideo runs the per-video flow:
 //   - cheap lexical filter chain (MinViews → MaxClipDuration → title-keyword)
@@ -337,12 +373,17 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	}
 
 	// ── MaxVideosPerRun budget reserve (after AI gate) ────────────────
+	//
+	// Commit 2/6 (Correttezza #1): budgetUsed is the canonical
+	// "reserved slot" counter. Incremented on tryReserve success
+	// (defined in enqueue.go); decremented on AlreadyScheduled /
+	// Rejected outcomes; unchanged on Enqueued. Separating it from
+	// the enqueued / rejected outcome counters eliminates the
+	// pre-Commit-2 cap-regressed-on-alreadyScheduled bug (where
+	// enqueued decrement after a leader-election loss opened the
+	// gate to more parallel goroutines than the cap intended).
 	if outcomes != nil && channel.MaxVideosPerRun > 0 {
-		// Budget now counts post-broker outcomes (enqueued + rejected).
-		// A previously-already_scheduled video never consumes a slot
-		// because it short-circuited before tryReserve. This matches
-		// the pre-Commit-D "consumed on AI gate pass" intent.
-		if !tryReserve(&outcomes.enqueued, channel.MaxVideosPerRun) {
+		if !tryReserve(&outcomes.budgetUsed, channel.MaxVideosPerRun) {
 			m.log.Debug("max_videos_per_run reached, skipping",
 				zap.String("video_id", videoID),
 				zap.Int("max", channel.MaxVideosPerRun))
@@ -375,9 +416,11 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	switch outcome {
 	case OutcomeAlreadyScheduled:
 		outcomes.alreadyScheduled.Add(1)
-		// Roll back the enqueued-budget CAS so a subsequent cycle's
-		// new (channel_id, video_id) pair can claim the slot.
-		outcomes.enqueued.Add(-1)
+		// Roll back the budget reservation: a leader-election loss
+		// means we DIDN'T claim a broker slot for this cycle. The
+		// budgetUsed CAS is the canonical reserved-slot counter; the
+		// alreadyScheduled counter is a non-cumulative outcome tally.
+		outcomes.budgetUsed.Add(-1)
 		m.log.Debug("dedupe loss: video already scheduled in a previous cycle; no broker record this cycle",
 			zap.String("video_id", videoID),
 			zap.String("channel_id", channel.ID))
@@ -385,17 +428,31 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	case OutcomeRejected:
 		// Post-broker rejection: enqueueFromAnalysis returned non-nil.
 		// enqueue.go's helper already called m.discoveries.MarkRejected
-		// with the rejection reason; here we just roll back the
-		// budget CAS so a subsequent cycle's new (channel_id, video_id)
-		// pair can claim the slot.
-		outcomes.rejected.Add(outcomes.enqueued.Add(-1))
+		// with the rejection reason. Here we:
+		//   1) Roll back the budget CAS (the slot is open for the next
+		//      cycle's new (channel_id, video_id) pair).
+		//   2) Increment the rejected outcome counter.
+		// Commit 2/6 (Correttezza #1) bugfix: the pre-Commit-2 form
+		// `outcomes.rejected.Add(outcomes.enqueued.Add(-1))` was a
+		// silent semantic bug because `atomic.Int32.Add` returns
+		// `int32` (a value), so the inner Add(-1) ran on enqueued
+		// AND its result was then passed to rejected.Add as a plain
+		// int32 — the enqueued counter never actually decremented in
+		// the way the original author intended. The new shape is
+		// two explicit statements: enqueued side-effect + rejected
+		// outcome +1. The pre-Commit-2 enqueued counter decrement
+		// is no longer needed because budgetUsed is the reserved-
+		// slot counter and is the one we release.
+		outcomes.budgetUsed.Add(-1)
+		outcomes.rejected.Add(1)
 		m.log.Debug("video rejected post-INSERT", zap.String("video_id", videoID))
 		return
 	case OutcomeEnqueued:
 		// Successful flow: enqueueFromAnalysis ran the broker side AND
 		// MarkEnqueued flipped the ledger row's outcome to 'enqueued'.
-		// The enqueued counter is already incremented via the budget
-		// CAS above.
+		// The enqueued counter is incremented here (budgetUsed was
+		// already incremented in the pre-INSERT tryReserve above).
+		outcomes.enqueued.Add(1)
 		m.log.Info("video enqueued",
 			zap.String("video_id", videoID),
 			zap.String("title", title),
