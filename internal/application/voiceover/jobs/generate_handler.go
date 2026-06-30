@@ -36,15 +36,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// FanoutUseCase aliases voiceover.Jobs.FanoutVoiceoversUseCase
-// (stage-typed-port: parent handlers reference the fan-out use case
-// from the canonical sub-package; no infrastructure imports leak
-// here).
-type FanoutUseCase = FanoutVoiceoversUseCase
-
 // GenerateJobHandler is the dedicated handler for the
 // voiceover.generate parent job type. Holds the typed-port
-// FanoutUseCase and dispatches ONLY to its
+// FanoutVoiceoversUseCase and dispatches ONLY to its
 // Execute(ctx, parentJobID, *cmd) method. NO goroutines are spawned
 // here (PR-VOICEOVER-PARENT-CHILD-FANOUT P0.3 invariant).
 //
