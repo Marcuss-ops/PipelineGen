@@ -95,6 +95,13 @@ type GenerateVoiceoversCommand struct {
 	// row's metadata column (process_metadata_test.go pins the
 	// collision-drop contract from mergeUserMetadata).
 	Metadata map[string]any `json:"metadata,omitempty"`
+
+	// RequestID is the stable correlation identifier threaded from the
+	// API caller through the parent job and into every child. When
+	// non-empty, FanoutVoiceoversUseCase.Execute uses this value
+	// instead of generating a new BuildRequestID(). Populated by
+	// GenerateJobHandler.HandleJob from j.CorrelationID.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // ── Per-language child command (PR-VOICEOVER-PARENT-CHILD-FANOUT, P0.3) ──

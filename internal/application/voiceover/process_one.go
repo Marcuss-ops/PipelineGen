@@ -112,6 +112,7 @@ func (u *ProcessOneVoiceoverUseCase) Execute(ctx context.Context, item *Generate
 		Strategy:         string(item.Strategy),
 		Destination:      item.Destination,
 		Metadata:         item.Metadata,
+		RequestID:        item.RequestID, // P0.6: thread stable ID → GenerateBatch
 	}
 	if item.RemoveSilence {
 		tru := true

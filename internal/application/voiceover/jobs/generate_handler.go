@@ -144,6 +144,20 @@ func (h *GenerateJobHandler) HandleJob(
 		return nil, fmt.Errorf("voiceover.generate: unmarshal payload: %w", err)
 	}
 
+	// P0.6 request_id threading: if the API caller supplied a
+	// CorrelationID, thread it into the command so the fan-out and
+	// every child use the SAME request_id. Without this, the fan-out
+	// generates a new BuildRequestID() and the chain diverges:
+	// API request_id (A) → correlation (A) → fanout generates B →
+	// child ignores B → GenerateBatch generates C.
+	if cmd.RequestID == "" {
+		if j.CorrelationID != "" {
+			cmd.RequestID = j.CorrelationID
+		} else {
+			cmd.RequestID = j.ID // fallback: parent job ID is stable
+		}
+	}
+
 	res, err := h.useCase.Execute(ctx, j.ID, &cmd)
 	if err != nil {
 		// PR-VO-AUDIT-P06 (June 2026): GUARD against FanoutVoiceoversUseCase
@@ -226,6 +240,7 @@ func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 		return map[string]any{
 			"ok":            false,
 			"parent_job_id": parentJobID,
+			"request_id":    parentJobID,
 			"enqueued_count": 0,
 			"parent_state":  string(voiceover.ParentFailed),
 		}

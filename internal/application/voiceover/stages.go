@@ -140,7 +140,15 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		}
 	}
 
-	requestID := buildRequestID()
+	// P0.6 request_id threading: use the caller-supplied request_id
+	// when available (threaded from API → CorrelationID → fanout →
+	// child cmd.RequestID → BatchRequest.RequestID). Only generate a
+	// new buildRequestID() when no caller ID is present (legacy
+	// batch/promo paths that don't thread the ID yet).
+	requestID := req.RequestID
+	if requestID == "" {
+		requestID = buildRequestID()
+	}
 	textHash := hashutil.SHA256String(req.Text)
 
 	// PR-VO-AUDIT-P02 (June 2026): the legacy gate
