@@ -1,23 +1,21 @@
-// Package jobs — generate_item_handler.go (PR-VOICEOVER-PARENT-CHILD-FANOUT, P0.3, June 2026).
+// Package jobs — generate_item_handler.go (BLOC5.3 commit-2-child-canonical, June 2026).
 //
-// Restored after origin/main drift: the cleanup commits removed this
-// file even though internal/app/composition.go::NewComposition
-// (late-bindings block) still constructs and registers
+// Child handler for voiceover.generate_item jobs scheduled by
+// FanoutVoiceoversUseCase (fanout.go). Reaches the canonical
+// 7-port pipeline via the narrow VoiceoverItemExecutor interface
+// (port abstraction layer, AGENTS.md Pattern 0) rather than the
+// legacy ProcessOneVoiceoverUseCase bridge (which converted
+// GenerateVoiceoverItemCommand → BatchRequest → Service.GenerateBatch).
 //
-//	childHandler := voiceoverjobs.NewGenerateItemJobHandler(
-//	    domains.VoiceoverProcessOne, log)
-//	childHandler.Register(jobs.Service)
+// BLOC5.3 audit-pin invariants (P0.6 — pass-through, no recalc):
+//   - item.TextHash, item.Voice, item.Filename, item.RequestID,
+//     item.ParentJobID are all pre-populated by fanout; Execute
+//     trusts them verbatim. NO re-derivation in the child handler.
+//   - the handler dispatches useCase.Execute(ctx, &item) directly
+//     with no BatchRequest conversion at any layer.
 //
-// alongside the parent fan-out. Without this file, the wire smoke
-// test at internal/app/voiceover_wiring_test.go fails (child job
-// type TypeVoiceoverGenerateItem never sees its handler bound).
-//
-// This handler is the canonical consumer of voiceover.generate_item
-// jobs scheduled by FanoutVoiceoversUseCase (fanout.go). Per
-// PR-VOICEOVER-PARENT-CHILD-FANOUT P0.3 invariant: NO goroutines are
-// spawned inside the handler; the work delegates 1-a-1 to the
-// ProcessOneVoiceoverUseCase.Execute method which forwards to the
-// legacy Service.GenerateBatch pipeline.
+// NO goroutines are spawned inside the handler; sibling dispatch is
+// regulated by the worker pool's per-job-type Concurrency field.
 package jobs
 
 import (
@@ -32,21 +30,23 @@ import (
 
 // GenerateItemJobHandler is the canonical per-language child handler
 // for voiceover.generate_item jobs (job.TypeVoiceoverGenerateItem).
-// It holds a typed-port ProcessOneVoiceoverUseCase (Pattern 0) and
-// dispatches to its Execute method with the unmarshalled child
-// command. NO goroutines are spawned here — sibling dispatch is
-// regulated by the worker pool's per-job-type Concurrency field.
+// The useCase field is typed as the narrow VoiceoverItemExecutor port
+// (Pattern 0 — AGENTS.md) so test fixtures can inject a recording
+// stub without instantiating the full 7-port ProcessVoiceoverItemUseCase.
+// Production wires *ProcessVoiceoverItemUseCase (concrete satisfies
+// the port via Go implicit interface rules; compile-time assertion
+// in process_voiceover_item.go pins the conformance).
 type GenerateItemJobHandler struct {
-	useCase *voiceover.ProcessOneVoiceoverUseCase
+	useCase voiceover.VoiceoverItemExecutor
 	logger  *zap.Logger
 }
 
 // NewGenerateItemJobHandler constructs the handler. useCase is
 // MANDATORY (panic on nil — fail-fast per AGENTS.md WireUp pattern).
 // Logger is OPTIONAL (nil-safe via zap.NewNop()).
-func NewGenerateItemJobHandler(useCase *voiceover.ProcessOneVoiceoverUseCase, logger *zap.Logger) *GenerateItemJobHandler {
+func NewGenerateItemJobHandler(useCase voiceover.VoiceoverItemExecutor, logger *zap.Logger) *GenerateItemJobHandler {
 	if useCase == nil {
-		panic("voiceover.Jobs.NewGenerateItemJobHandler: useCase is required (ProcessOneVoiceoverUseCase)")
+		panic("voiceover.Jobs.NewGenerateItemJobHandler: useCase is required (VoiceoverItemExecutor port)")
 	}
 	if logger == nil {
 		logger = zap.NewNop()

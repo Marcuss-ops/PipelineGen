@@ -72,7 +72,7 @@ func (b *voiceoverGenBridge) Generate(ctx context.Context, cmd domainvo.Generate
 	textHash := sha256Hex(normalized.Text)
 	itemCmd := &GenerateVoiceoverItemCommand{
 		ParentJobID: "", // promo is sync-via-bridge; no parent aggregator; child row stands alone
-		RequestID:   BuildRequestID(),
+		RequestID:   buildRequestID(), // package-private from types.go (was re-exported from process_one.go before its deletion in BLOC5.3 commit-2)
 		Text:        normalized.Text,
 		Language:    normalized.Locale,
 		Voice:       normalized.Voice,

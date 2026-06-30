@@ -145,7 +145,17 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
-	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
+	// BLOC5.3 commit-2-child-canonical (June 2026): buildVoiceoverService
+	// returns the canonical 7-port ProcessVoiceoverItemUseCase as the
+	// 3rd return value (processItemUseCase). The child handler
+	// (jobs/generate_item_handler.go) consumes it via the narrow
+	// VoiceoverItemExecutor port; the field type is the interface so
+	// Go's implicit conversion handles the concrete-to-port cast on
+	// assignment. The legacy voiceoverProcessOne bridge
+	// (ProcessOneVoiceoverUseCase → BatchRequest → Service.GenerateBatch)
+	// is REMOVED; the canonical per-item pipeline below handles the
+	// same fanout → TTS → upload → SQLite tx + outbox path.
+	voiceoverSvc, voiceoverRepo, processItemUseCase := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.driveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
@@ -202,21 +212,13 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
-	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): construct the
-	// per-language ProcessOneVoiceoverUseCase here so the new
-	// voiceover.generate_item child-job handler has a single source
-	// of truth to dispatch through. The use case delegates the
-	// per-language routine to voService.GenerateBatch (the canonical
-	// production surface wired through the legacy Service bundle),
-	// keeping the wiring footprint minimal — adding a separate
-	// GenerateVoiceoversUseCase (the full 7-port use case) requires
-	// resolving TTSProvider / AudioPostProcessor / etc. independently;
-	// the BACKFILL invariant is to layer that in a follow-up PR.
-	voiceoverProcessOne := voiceover.NewProcessOneVoiceoverUseCase(voiceover.ProcessOneDeps{
-		Service: voiceoverSvc,
-		Logger:  log,
-	})
-	log.Info("P0.3: ProcessOneVoiceoverUseCase wired (per-language child-job handler dispatcher)")
+	// BLOC5.3 commit-2 (June 2026): the canonical
+	// ProcessVoiceoverItemUseCase was constructed inside
+	// buildVoiceoverService (3rd return) — assigning it to the field
+	// below wires the canonical 7-port per-item pipeline to the child
+	// handler. No BACKFILL bridge (the legacy ProcessOneVoiceoverUseCase
+	// is REMOVED; see process_one.go deletion in this commit).
+	log.Info("BLOC5.3 commit-2: ProcessVoiceoverItemUseCase wired (per-language child-job handler dispatcher — canonical 7-port pipeline)")
 
 	// P0.1 (June 2026): construct the content-addressed artifact blob
 	// service so the upload UseCase (UploadVideoClip) can accept real
@@ -233,20 +235,21 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		zap.String("data_dir", cfg.Storage.DataDir))
 
 	return &DomainBundle{
-		YoutubeClipService:  youtubeClipService,
-		VoiceoverService:    voiceoverSvc,
-		VoiceoverSync:       vosyncSvc,
-		VoiceoverProcessOne: voiceoverProcessOne,
-		ImageService:        imageSvc,
-		IngestService:       ingestSvc,
-		BooksService:        booksSvc,
-		LessonsService:      lessonsS,
-		MetaWriter:          metaWriter,
-		RealtimeMatcher:     realtimeMatcher,
-		RealtimeSearch:      realtimeSearch,
-		AutotagService:      autotagSvc,
-		AssocService:        assocService,
-		ArtifactService:     artifactService,
+		YoutubeClipService:       youtubeClipService,
+		VoiceoverService:         voiceoverSvc,
+		VoiceoverSync:            vosyncSvc,
+		VoiceoverProcessItem:     processItemUseCase, // BLOC5.3 commit-2: narrow VoiceoverItemExecutor port
+		ImageService:             imageSvc,
+		IngestService:            ingestSvc,
+		BooksService:             booksSvc,
+		LessonsService:           lessonsS,
+		MetaWriter:               metaWriter,
+		RealtimeMatcher:          realtimeMatcher,
+		RealtimeSearch:           realtimeSearch,
+		AutotagService:           autotagSvc,
+		AssocService:             assocService,
+		ArtifactService:          artifactService,
+		VoiceoverGenerateItemHandler: nil, // populated at composition.go late-bindings block
 	}, nil
 }
 

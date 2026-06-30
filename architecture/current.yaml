@@ -579,6 +579,37 @@ wave_status:
     risk: limited — narrow-port extraction + 1 bridge rewrite. Composition root reorders processItemUseCase construction BEFORE voiceover.NewService so VoiceoverGenerationDeps.ProcessItemUseCase can be populated at construction (avoids late-bound private-field assignment).
     exit_gate: "rg 'Service\\.GenerateBatch|ProcessOneVoiceoverUseCase' --type go: only definitions remain (zero productive call sites for these). All 3 audit-pinned tests green."
 
+  BLOC5.3_commit-2-child_canonical:
+    status: in_progress
+    shipped_in_commit: pending_micro_commit_BLOC5.3_commit-2
+    # Commit-2 surface: child handler (jobs/generate_item_handler.go) now
+    # consumes *voiceover.ProcessVoiceoverItemUseCase directly via the
+    # narrow VoiceoverItemExecutor port (Pattern 0). The legacy bridge
+    # (ProcessOneVoiceoverUseCase → BatchRequest → Service.GenerateBatch)
+    # is REMOVED: process_one.go deleted, TestProcessOneVoiceoverUseCase_*
+    # removed from voice_override_test.go. The canonical 7-port per-item
+    # pipeline replaces it (process_voiceover_item.go). Composition root
+    # wires: BuildDomainBundle captures buildVoiceoverService's 3rd
+    # return → DomainBundle.VoiceoverProcessItem (typed as the narrow
+    # port) → late-bindings NewGenerateItemJobHandler. The
+    # FilenameBuilder port is held by ProcessVoiceoverItemUseCase for
+    # future BACKFILL stages (idempotency / namespace derivation);
+    # current per-item Execute TRUSTS item.Filename from fanout (P0.6
+    # invariant — no recalc). DefaultFilenameBuilder is the production
+    # concrete (filename_builder.go).
+    audit_pins:
+      - TestChild_DoesNotRegenerateRequestID # item.RequestID forwarded verbatim
+      - TestChild_PreservesVoiceOverrideFromParent # item.Voice forwarded verbatim
+      - TestChild_PreservesFilenameFromParent # item.Filename forwarded verbatim
+      - TestChild_DoesNotConvertToBatchRequest # no BatchRequest at any layer; canonical port-driven pipeline
+      - TestChild_NilUseCase_Panics # constructor fail-fast on nil (Pattern 0 WireUp)
+    risk: medium — file deletion (process_one.go) + handler type swap to narrow port + 2 new files (canonical use case + filename builder) + 5-file composition impact. No production behavior change at per-item Execute (the canonical pipeline mirrors usecase.go::processOneLanguage stages 1:1).
+    exit_gate: |
+      rg 'ProcessOneVoiceoverUseCase|NewProcessOneVoiceoverUseCase' --type go returns ZERO productive call sites (only definitions / comments may remain).
+      rg 'BatchRequest' --type go restricts productive callers to legacy Service.GenerateBatch paths (commit-3 scope; deferred).
+      go vet ./... exits 0; go test ./internal/application/voiceover/... ./internal/app/... exits 0.
+      All 5 audit-pinned tests (4 cross-check + 1 nil-panic) green. Commit 3 (legacy Service.GenerateBatch pipeline elim) is the follow-up.
+
   BLOC4_ssot_cutover:
     status: shipped
     shipped_in_commit: pending_micro_commit_6_BLOC4
