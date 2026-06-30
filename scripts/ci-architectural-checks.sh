@@ -2381,4 +2381,4 @@ bash "$(dirname "$0")/ci/architecture/checks/43_db_chain_outside_infra.sh" || { 
 # NOTE: Check 44 (P1-2 application size cap + types_aliases ban) is
 # intentionally deferred to a separate follow-up PR; this slot avoids
 # the number collision and stays monotone-ratchetable.
-bash "$(dirname "$0")/ci/architecture/checks/45_inline_clips_repository_map_ban.sh" || { echo "Check 45 (inline ClipsRepository map ban) failed"; exit 1; }
+bash "$(dirname "$0")/ci/architecture/checks/46_inline_clips_repository_map_ban.sh" || { echo "Check 46 (inline ClipsRepository map ban) failed"; exit 1; }
