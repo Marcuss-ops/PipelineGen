@@ -104,8 +104,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Clip source builder ────────────────────────────────────────────
 	var clipSourceBuilder *usecase.ClipSourceBuilder
 	if ollamaClient := gen.GetClient(); ollamaClient != nil {
-		clipResolver := usecase.NewClipResolver(root.Repos.ClipsRepo, log)
-		clipSourceBuilder = usecase.NewClipSourceBuilder(clipResolver, ollamaClient, log)
+		clipSourceBuilder = usecase.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
 		if cfg.Reranker.Enabled {
 			clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
 				Enabled:   cfg.Reranker.Enabled,
@@ -137,7 +136,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	artlistFolder := cfg.Drive.ArtlistFolder()
 	clipServices := usecase.ClipServices{
 		Logger:        log,
-		DriveSvc:      root.Drive.DriveUploader,
+		DriveSvc:      root.Drive.Reader,
 		Translator:    gen,
 		ArtlistFolder: artlistFolder,
 		MetadataModel: metaModel,
@@ -145,7 +144,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Drive folder client adapter (impl in wire_script_adapters.go) ─
 	driveFolderClient := &driveFolderAdapterImpl{
-		uploader: root.Drive.DriveUploader,
+		admin: root.Drive.Admin,
 	}
 
 	// ── Document creator adapter (impl in wire_script_adapters.go) ───
