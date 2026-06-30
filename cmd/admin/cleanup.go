@@ -135,10 +135,10 @@ func runCleanupAllOrphans(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Reader == nil {
+		return fmt.Errorf("drive reader port is not available")
 	}
-	driveClient := root.Drive.DriveClient
+	driveReader := root.Drive.Reader
 	driveAdmin := root.Drive.Admin
 
 	targets := []struct {
@@ -160,25 +160,25 @@ func runCleanupAllOrphans(args []string) error {
 
 		fmt.Printf("\n--- Checking %s (Root: %s) ---\n", t.name, t.rootID)
 		query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", t.rootID)
-		list, err := driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+		list, err := driveReader.SearchFiles(ctx, query)
 		if err != nil {
 			fmt.Printf("Error listing %s: %v\n", t.name, err)
 			continue
 		}
 
-		fmt.Printf("Found %d folders on Drive.\n", len(list.Files))
+		fmt.Printf("Found %d folders on Drive.\n", len(list))
 
 		var orphans []struct{ id, name string }
-		for _, f := range list.Files {
+		for _, f := range list {
 			var dummy int
 			var dbErr error
 			switch t.dbPrefix {
 			case "artlist", "stock", "clips":
-				dbErr = root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ?", f.Id).Scan(&dummy)
+				dbErr = root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ?", f.ID).Scan(&dummy)
 			}
 
 			if dbErr != nil {
-				orphans = append(orphans, struct{ id, name string }{f.Id, f.Name})
+				orphans = append(orphans, struct{ id, name string }{f.ID, f.Name})
 			}
 		}
 
@@ -234,29 +234,29 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Reader == nil {
+		return fmt.Errorf("drive reader port is not available")
 	}
-	driveClient := root.Drive.DriveClient
+	driveReader := root.Drive.Reader
 	driveAdmin := root.Drive.Admin
 
 	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
-	list, err := driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := driveReader.SearchFiles(ctx, query)
 	if err != nil {
 		log.Fatal("Failed to list folders on Drive", zap.Error(err))
 	}
 
-	fmt.Printf("Found %d folders on Drive.\n", len(list.Files))
+	fmt.Printf("Found %d folders on Drive.\n", len(list))
 
 	var orphanFolders []struct{ id, name string }
-	for _, f := range list.Files {
+	for _, f := range list {
 		var dummy int
-		err := root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
+		err := root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.ID).Scan(&dummy)
 		if err != nil {
-			orphanFolders = append(orphanFolders, struct{ id, name string }{f.Id, f.Name})
+			orphanFolders = append(orphanFolders, struct{ id, name string }{f.ID, f.Name})
 		}
 	}
 
@@ -313,29 +313,27 @@ func runCleanupStockOrphans(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Reader == nil {
+		return fmt.Errorf("drive reader port is not available")
 	}
-	driveClient := root.Drive.DriveClient
+	driveReader := root.Drive.Reader
 	driveAdmin := root.Drive.Admin
 
 	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
-	list, err := driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err != nil {
-		log.Fatal("Failed to list folders on Drive", zap.Error(err))
+	list, err := driveClient.Files.List().Q(q	list, err := driveReader.SearchFiles(ctx, query)ist folders on Drive", zap.Error(err))
 	}
 
-	fmt.Printf("Found %d folders on Drive.\n", len(list.Files))
+	fmt.Printf("Found %d folders on Drive.\n", len(list))
 
 	var orphanFolders []struct{ id, name string }
-	for _, f := range list.Files {
+	for _, f := range list {
 		var dummy int
-		err := root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
+		err := root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.ID).Scan(&dummy)
 		if err != nil {
-			orphanFolders = append(orphanFolders, struct{ id, name string }{f.Id, f.Name})
+			orphanFolders = append(orphanFolders, struct{ id, name string }{f.ID, f.Name})
 		}
 	}
 
@@ -389,8 +387,8 @@ func runDeleteSpecificFolders(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Admin == nil {
+		return fmt.Errorf("drive admin port is not available")
 	}
 	driveAdmin := root.Drive.Admin
 	deletionSvc := root.Maint.DeletionSvc

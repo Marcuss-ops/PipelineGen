@@ -76,14 +76,14 @@ func runSummarizeBook(args []string) error {
 	targetFilePath := *filePath
 
 	if isDriveFile {
-		if root.Drive.DriveClient == nil {
-			return fmt.Errorf("google drive client is not authenticated or configured. Please authenticate first")
+		if root.Drive == nil || root.Drive.Reader == nil {
+			return fmt.Errorf("google drive reader port is not authenticated or configured. Please authenticate first")
 		}
 
 		fmt.Printf("Detecting Google Drive File ID: %s...\n", fileID)
 
 		// Get metadata to resolve original filename
-		meta, err := root.Drive.DriveClient.Files.Get(fileID).Fields("name, mimeType").Context(ctx).Do()
+		meta, err := root.Drive.Reader.GetFileMeta(ctx, fileID)
 		if err != nil {
 			return fmt.Errorf("failed to retrieve Google Drive file metadata: %w", err)
 		}
@@ -100,11 +100,11 @@ func runSummarizeBook(args []string) error {
 		fmt.Printf("Downloading file to: %s...\n", targetFilePath)
 
 		// Perform Download
-		res, err := root.Drive.DriveClient.Files.Get(fileID).Context(ctx).Download()
+		res, _, err := root.Drive.Reader.DownloadFile(ctx, fileID)
 		if err != nil {
 			return fmt.Errorf("failed to initiate Google Drive download: %w", err)
 		}
-		defer res.Body.Close()
+		defer res.Close()
 
 		out, err := os.Create(targetFilePath)
 		if err != nil {

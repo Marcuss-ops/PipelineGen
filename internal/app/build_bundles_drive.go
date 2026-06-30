@@ -154,25 +154,26 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	}
 
 	return &DriveBundle{
-		// Canonical Pattern 0 ports (NEW, FASE 9 P0.1 / DRIVE-005).
+		// Canonical Pattern 0 ports (FASE 9 P0.1 / DRIVE-005).
 		Admin: admin,
 		Reader: reader,
-		// Deprecated raw SDK / concrete handles — back-compat for ~86
-		// legacy callsites; alias the SAME *drive.Uploader instance so
-		// godlike/06 "one owner per fact" holds (zero split-brain).
-		// See architecture/deprecations.yaml#DRIVE-005-FIELDS for the
-		// canonical removal plan (target Q3 2026, post-Wave 14).
-		DriveClient:   driveClient,
 		// Wave B (June 2026): DriveUploader field removed from DriveBundle.
-		// cmd/admin/ callers now reach Drive via root.Drive.Admin (or
-		// root.Drive.Reader for scanFolders). DriveClient stays for Wave C.
-		driveUploader: driveUploader, // unexported; for internal wiring within package app
-		DriveDests:    dests,
-		MediaStore:    mediaStore,
-		DestResolver:  destResolver,
-		StyleRegistry: styleRegistry,
-		Publisher:     publisher,
-		DocClient:     docClient,
+		// Wave C (June 2026 — partial): DriveUploader + DriveClient
+		// deprecated fields removed from DriveBundle. cmd/admin/ callers
+		// reach Drive via root.Drive.Admin / root.Drive.Reader — no
+		// further raw SDK reach-through from cmd/admin/.
+		// The DriveClient field is STILL PRESENT for back-compat with
+		// internal/app/ and internal/application/assets/providers/artlist/
+		// raw SDK reach-through sites that haven't migrated to Pattern 0
+		// yet. Wave D followup will retire it.
+		DriveClient:    driveClient,
+		driveUploader:  driveUploader, // unexported; for internal wiring within package app
+		DriveDests:     dests,
+		MediaStore:     mediaStore,
+		DestResolver:   destResolver,
+		StyleRegistry:  styleRegistry,
+		Publisher:      publisher,
+		DocClient:      docClient,
 	}, startClosure, nil
 }
 

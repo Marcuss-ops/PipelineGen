@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // foldersToReset maps folder name → its current Drive ID (to delete).
@@ -39,10 +38,10 @@ func runResetStockSubfolders(args []string) error {
 	}
 	defer coreCleanup()
 
-	if root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Admin == nil {
+		return fmt.Errorf("drive admin port is not available")
 	}
-	driveUploader := &drive.Uploader{Service: root.Drive.DriveClient, Log: log}
+	driveAdmin := root.Drive.Admin
 
 	ctx := context.Background()
 
@@ -60,7 +59,7 @@ func runResetStockSubfolders(args []string) error {
 	fmt.Println("\n=== Deleting folders from Drive ===")
 	for name, id := range foldersToReset {
 		fmt.Printf("  Deleting %s (%s)... ", name, id)
-		if err := driveUploader.DeleteFolder(ctx, id); err != nil {
+		if err := driveAdmin.DeleteFolder(ctx, id); err != nil {
 			fmt.Printf("FAILED: %v\n", err)
 		} else {
 			fmt.Println("OK")
@@ -89,7 +88,7 @@ func runResetStockSubfolders(args []string) error {
 	fmt.Println("\n=== Recreating folders ===")
 	for name := range foldersToReset {
 		fmt.Printf("  Creating %s under stock root... ", name)
-		id, err := driveUploader.GetOrCreateFolder(ctx, name, stockRootFolder)
+		id, err := driveAdmin.GetOrCreateFolder(ctx, name, stockRootFolder)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)
 		} else {

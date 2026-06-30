@@ -9,10 +9,9 @@
 //     app.InitComposition(cfg, log) to obtain *ComposeRoot. The
 //     Drive client and Uploader are reached through
 //     root.Drive.DriveClient / root.Drive.DriveUploader.
-//   - Internal driveapi.File calls (Files.List/Delete/Create) remain
-//     direct because the operator-driven flow needs raw SDK shape
-//     (`Trashed:true` semantics, mime-type folder detection) not yet
-//     wrapped by *drive.Uploader.
+//   - The Drive is reached through the canonical Pattern 0 ports
+//     (drive.Admin + drive.Reader); raw driveapi.File calls are no
+//     longer needed at this layer (Wave C, June 2026).
 package main
 
 import (
@@ -52,36 +51,33 @@ func runResetVideoAI(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
+		return fmt.Errorf("drive admin/reader ports are not available")
 	}
 
 	ctx := cmdContext()
-	driveClient := root.Drive.DriveClient
+	driveReader := root.Drive.Reader
+	driveAdmin := root.Drive.Admin
 	stockRootFolder := cfg.Drive.RootFolder()
 
 	// Step 1: List and delete all items in the source folder
 	fmt.Printf("📂 Source folder: %s\n", *sourceFolder)
 	query := fmt.Sprintf("'%s' in parents and trashed = false", *sourceFolder)
-	list, err := driveClient.Files.List().Q(query).
-		Fields("files(id, name, mimeType)").
-		PageSize(1000).
-		Context(ctx).
-		Do()
+	list, err := driveReader.SearchFiles(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to list folder: %w", err)
 	}
 
-	fmt.Printf("Found %d items to delete:\n", len(list.Files))
-	for _, f := range list.Files {
-		fmt.Printf("  🗑  %s (%s) [%s]\n", f.Name, f.Id, f.MimeType)
+	fmt.Printf("Found %d items to delete:\n", len(list))
+	for _, f := range list {
+		fmt.Printf("  🗑  %s (%s) [%s]\n", f.Name, f.ID, f.MimeType)
 	}
 
-	if *apply && len(list.Files) > 0 {
+	if *apply && len(list) > 0 {
 		fmt.Println("\nDeleting items...")
-		for _, f := range list.Files {
-			if err := driveClient.Files.Delete(f.Id).Context(ctx).Do(); err != nil {
-				log.Warn("Failed to delete file", zap.String("name", f.Name), zap.String("id", f.Id), zap.Error(err))
+		for _, f := range list {
+			if err := driveAdmin.DeleteFile(ctx, f.ID); err != nil {
+				log.Warn("Failed to delete file", zap.String("name", f.Name), zap.String("id", f.ID), zap.Error(err))
 			} else {
 				fmt.Printf("  ✅ Deleted: %s\n", f.Name)
 			}
@@ -91,7 +87,7 @@ func runResetVideoAI(args []string) error {
 	// Step 2: Create "video ai" folder on Drive under stock root
 	var videoAIFolderID string
 	if *apply {
-		videoAIFolderID, err = getOrCreateDriveFolder(ctx, driveClient, videoAIFolderName, stockRootFolder)
+		videoAIFolderID, err = driveAdmin.GetOrCreateFolder(ctx, videoAIFolderName, stockRootFolder)
 		if err != nil {
 			return fmt.Errorf("failed to create video ai folder: %w", err)
 		}
@@ -121,8 +117,8 @@ func getOrCreateDriveFolder(ctx context.Context, svc *driveapi.Service, name, pa
 	if err != nil {
 		return "", fmt.Errorf("search folder: %w", err)
 	}
-	if len(list.Files) > 0 {
-		return list.Files[0].Id, nil
+	if len(list) > 0 {
+		return list[0].Id, nil
 	}
 
 	folder := &driveapi.File{
