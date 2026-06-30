@@ -49,25 +49,18 @@ type ChannelCounters struct {
 // false if the budget is saturated (caller MUST NOT consume more
 // capacity).
 //
-// In Step 2 the increment is lockstep on both counters — every
-// successful reservation is also a SuccessfulEnqueues++. Step 3
-// will:
-//
-//  1. Remove the lockstep SuccessfulEnqueues++ from this method.
-//  2. Add a ChannelCounters.RecordEnqueue() that only bumps
-//     SuccessfulEnqueues and is called after enqueueClipExtract
-//     returns Enqueued=true.
-//  3. Add a ChannelCounters.ReleaseReservation() that decrements
-//     AnalysisReservations and is called when the enqueue tail
-//     fails or decides not to queue.
+// Step 3 contract — the lockstep SuccessfulEnqueues++ that Step 2
+// added is REMOVED here. The slot consumption is now tracked ONLY
+// in AnalysisReservations. The matching successful enqueue must
+// call RecordEnqueue() to bump SuccessfulEnqueues; the matching
+// rollback must call ReleaseReservation() to undo the slot
+// consumption. Mismatched calls leak capacity.
 //
 // Behaviour parity with the previous free-function
 // `(m *ChannelMonitor).tryReserve(*atomic.Int32, int) bool` from
-// process_video.go is preserved: the call site becomes
-// `counters.TryReserve(channel.MaxVideosPerRun)` instead of
-// `m.tryReserve(uint32(counters.AnalysisReservations.Load()), ...)`,
-// with the CAS dance moved INSIDE the struct so process_video.go no
-// longer imports sync/atomic.
+// process_video.go is preserved: the call site is still
+// `counters.TryReserve(channel.MaxVideosPerRun)` with the CAS
+// dance INSIDE the struct.
 func (c *ChannelCounters) TryReserve(limit int) bool {
 	for {
 		cur := c.AnalysisReservations.Load()
@@ -75,13 +68,62 @@ func (c *ChannelCounters) TryReserve(limit int) bool {
 			return false
 		}
 		if c.AnalysisReservations.CompareAndSwap(cur, cur+1) {
-			// Step 2: lockstep increment — preserved for parity.
-			// Step 3 replaces this with a RecordEnqueue() call from
-			// the enqueueClipExtract success path.
-			c.SuccessfulEnqueues.Add(1)
 			return true
 		}
 	}
+}
+
+// RecordEnqueue bumps SuccessfulEnqueues by 1. Called from
+// ChannelMonitor.enqueueClipExtract AFTER
+// jobs.Service.Enqueue returns a non-nil *job.Job (the enqueue
+// succeeded).
+//
+// Pair contract: every RecordEnqueue matches exactly one TryReserve
+// success — the prior TryReserve that gated the entry into
+// enqueueClipExtract's enqueue tail for THIS video. NEVER call
+// RecordEnqueue without a corresponding TryReserve on the same
+// logical call chain. NEVER call RecordEnqueue on an enqueue that
+// failed (use ReleaseReservation instead for the rollback path).
+//
+// SuccessfulEnqueues is a "cumulative successes" counter; it never
+// decrements. The gap between AnalysisReservations (current
+// reserved) and SuccessfulEnqueues (cumulative enqueued) is the
+// "in flight or rolled back" delta — operators monitoring this gap
+// can spot enqueue tail regressions (allocation that never landed).
+func (c *ChannelCounters) RecordEnqueue() {
+	c.SuccessfulEnqueues.Add(1)
+}
+
+// ReleaseReservation decrements AnalysisReservations by 1. Called
+// from enqueueClipExtract on every rollback path:
+//   - jobsSvc is not wired
+//   - findInterestingSegments returned an empty slice (SkipNoSegments)
+//   - json.Marshal of the ExtractRequest failed (SkipEnqueueFailed)
+//   - jobs.Service.Enqueue returned an error (SkipEnqueueFailed)
+//   - jobs.Service.Enqueue returned nil *job.Job without an error
+//     (ActiveKey collision: SkipAlreadyActive)
+//
+// Pair contract: ReleaseReservation <-> TryReserve success (on the
+// same logical call chain). NEVER call ReleaseReservation BEFORE
+// the matching TryReserve has returned true on the same video — that
+// would underflow AnalysisReservations into negative territory and
+// corrupt the MaxVideosPerRun gate (the wrap would re-open the
+// budget after each release).
+//
+// Rollback is intentionally idempotent at the SystemTap layer:
+// ReleaseReservation cannot bring AnalysisReservations below 0 in
+// the CAS-correct usage path. If it does go negative, the caller
+// has a bug — the surrounding logs will surface it via the
+// AnalysisReservations counter wrap.
+//
+// SuccessfulEnqueues is intentionally NOT decremented: jobs that
+// landed earlier remain historically accurate (you cannot
+// un-enqueue a job). After ReleaseReservation,
+// AnalysisReservations may be SMALLER than SuccessfulEnqueues; that
+// is a healthy "rollback happened" signal that operators can
+// read off the two Prometheus counters' difference.
+func (c *ChannelCounters) ReleaseReservation() {
+	c.AnalysisReservations.Add(-1)
 }
 
 // Reservations returns AnalysisReservations as int — convenient for
