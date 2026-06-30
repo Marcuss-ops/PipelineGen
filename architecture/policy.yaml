@@ -126,83 +126,54 @@ known_grandfathered:
   - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
   - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
 
+# ── Prometheus boundary (generic pkg-layer governance, June 2026) ─────────────
+# Hoisted out of the now-removed pkg_workerstats governance block
+# (Blocco 2.B, 2026-06-30: chore(workerstats): eliminate non-compiling
+# package) so future leaf-pkg introductions reference a self-standing
+# rule rather than re-discovering the lesson from scratch. The rule
+# codifies Option B (the now-architected "metric definitions stay in
+# internal/infrastructure/observability/; caller bridges POJO into
+# metric values field-by-field at the application boundary").
+prometheus_boundary:
+  rule: |
+    ANY leaf pkg (`pkg/<x>/`) MUST NOT IMPORT `github.com/prometheus/client_golang`
+    and MUST NOT define Prometheus metric var collectors (Gauge/Counter/Histogram
+    struct literals tagged for auto-registration). The leaf pkg layer is for
+    pure-data utilities (math, hashing, file I/O, defaults, retry, BM25, etc.)
+    and must not couple to the global `prometheus.DefaultRegisterer`; doing so
+    would leak OS-coupled concerns (system-level polling, globally-stateful
+    metric emission, test-fixture auto-registration, etc.) into the facade code
+    paths consumed by every other pkg + every application pass.
+
+    Metric definitions (collector name, label cardinality, help text, label
+    values) live canonically in `internal/infrastructure/observability/`.
+    The application-layer caller bridges a leaf pkg's pure-data POJO into
+    metric values field-by-field (one section per Collector, projecting
+    POJO fields onto GaugeVec.WithLabelValues calls at the bridge).
+
+    Historical case the rule was extracted from: pkg/workerstats
+    (eliminated 2026-06-30, Blocco 2.B, deprecation record
+    `architecture/deprecations.yaml#PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL`)
+    was the FIRST detailed entry under leaf pkg governance because Option
+    A (aliasing metric vars into the sampler pkg) was a tempting shim.
+    The Option B decision codified here forecloses Option A permanently.
+
+    Enforcement: phase-0 documentation-only; no Check 22 / archcheck
+    family enforces this rule today. Promotion to a hard CI gate
+    (`rg -n 'prometheus/client_golang' pkg/` returning zero hits, or
+    equivalent in scripts/ci-architectural-checks.sh) is a future wave
+    entry to be tracked via architecture/current.yaml#follow_up_tickets.
+  cross_refs:
+    origin_record: architecture/deprecations.yaml#PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL
+    metrics_home: internal/infrastructure/observability/worker_metrics.go
+    pkg_layer:    pkg/ (the leaf-utility gate per `pkg:` rule above)
+
 # ── Governance entries moved from ownership.yaml (Step 5 Commit A) ──────
 # These three sections: cross_project_refs, lint_gates, wave_qdrant_005d_hygiene
 # are policy entries, not ownership mappings. They live next to the rest
 # of policy.yaml so a single read surfaces "all the rules". Per the
 # canonical 'One owner per fact' principle (godlike/06_DATA_AND_CONFIG_OWNERSHIP.md)
 # each rule family has exactly one owner and one location.
-
-# metric definitions stay in internal/infrastructure/observability.
-pkg_workerstats:
-  owner: pkg/workerstats
-  rule: |
-    pkg/workerstats MUST NOT define prometheus metric vars or import
-    prometheus/client_golang: the package is a leaf utility whose only
-    concern is Linux /proc polling + the canonical POJO shape. Metric
-    definitions (names, labels, help text, cardinality) live in
-    internal/infrastructure/observability/worker_metrics.go. The caller
-    (heartbeat handler) bridges the POJO into metric values
-    field-by-field.
-    Enforcement: phase-0 documentation-only; no Check 22 / archcheck gate
-    enforces this rule today. Promotion to an enforced gate (e.g. a
-    "pkg may not import prometheus/client_golang" check in
-    scripts/ci-architectural-checks.sh) is a future wave entry to be
-    tracked via architecture/current.yaml.
-  rationale: |
-    Linux /proc sampler (RW-PROD-013, June 2026). Provides
-    pkg/workerstats.Get(cfg) returning a *domain/job.WorkerHardwareStats
-    POJO sampled from /proc/stat, /proc/net/dev, syscall.Statfs, and
-    runtime.MemStats.
-
-    Three packages, three concerns:
-
-      | Surface       | Owner                                              |
-      |---------------|----------------------------------------------------|
-      | Sampling POJO | internal/domain/job.WorkerHardwareStats            |
-      | Sampling impl | pkg/workerstats.Get                                |
-      | Metric vars   | internal/infrastructure/observability.Worker*      |
-      | Metric emit   | heartbeat handler (caller-side bridge)             |
-
-    Aliasing metric vars into pkg/workerstats (the alternative
-    shim: define WorkerSessionActive inside the sampler, expose it
-    as workerstats.WorkerSessionActive, and let observability import
-    it) would conflate sampling (concern: /proc polling) with
-    emission (concern: prometheus registration), leak the
-    globally-stateful prometheus/client_golang dependency into the
-    leaf pkg layer, and force observability to re-import pkg/workerstats
-    purely to satisfy its own TestWorkerMetricsRegistered contract.
-    The TestWorkerMetricsRegistered test asserts the canonical
-    "the metric is registered with prometheus.DefaultGatherer"
-    invariant today via same-package access; an aliased re-export
-    would couple that test to a third-party /proc utility.
-
-    Units contract (forward-looking): when `WorkerHardwareStats` lands,
-    its godoc must preserve verbatim the units rule this sampler's own
-    godoc inherits (raw bytes / 0.0-1.0 ratios; no seconds-vs-bytes
-    confusion). The canonical POJO is the authoritative reference for
-    byte-vs-ratio semantics — the sampler and the metric emission site
-    (heartbeat caller's `observability.Worker*` projection) both refer
-    readers to the type's godoc rather than re-documenting the units
-    locally.    Drift between sampler's units docstring and POJO godoc is
-    a reading-order hazard for operators; both must agree.
-
-    File-name choice: the POJO landing PR author chooses between two
-    file names (`worker.go` existing vs `worker_hardware_stats.go`
-    new); both are acceptable per the directory-level cross_ref
-    (resolved at landing time).
-  cross_refs:
-    pojo:           internal/domain/job/WorkerHardwareStats
-    pojo_file_tbd:  true
-    sampler:        pkg/workerstats/stats.go::Get
-    metrics:        internal/infrastructure/observability/worker_metrics.go
-    test:           internal/infrastructure/observability/worker_metrics_test.go::TestWorkerMetricsRegistered
-    ticket:         docs/operations/04-remote-worker-production-readiness-tickets.md#rw-prod-013
-  current_drift: |
-    Package cannot currently compile (`go build ./pkg/workerstats/...`
-    fails with `undefined: job.WorkerHardwareStats`) — canonical POJO
-    does not yet exist on `main` HEAD; must land before sampler can
-    be wired into the heartbeat handler.
 
 cross_project_refs:
   heyavatar:

@@ -123,7 +123,7 @@ type Constraint struct {
 // when the policy-driven family lands.
 type OwnerRef struct {
 	// Path is the codebase-relative path the owner is responsible
-	// for (e.g. "internal/application/scripts", "pkg/workerstats",
+	// for (e.g. "internal/application/scripts", "pkg/defaults",
 	// "cmd/archcheck"). Slash-separated (forward-slash on all OSes
 	// per report.Violation.Directory's convention).
 	Path string

@@ -90,3 +90,58 @@
   status: pending
   owner: internal/application/voiceover/jobs
   blocker: true
+
+- id: Q10-WORKERSTATS-REINTRODUCE
+  title: "Reintroduce pkg/workerstats/ Linux /proc sampler if/when RW-PROD-013 needs live /proc polling on the worker heartbeat path (now blocked on having a real consumer)"
+  status: pending
+  owner: internal/domain/job  # canonical POJO owner has veto rights on the re-introduction PR (POJO shape must remain byte-stable)
+  linked_issues:
+    - Q11-WORKERSTATS-FOLLOWUP  # see notes below
+  notes: |
+    Tracked replacement for pkg/workerstats (eliminated 2026-06-30 in
+    Blocco 2.B, commit chore(workerstats): eliminate non-compiling
+    package (fake availability fix); deprecation record
+    architecture/deprecations.yaml#PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL
+    documents the removal in godlike/07 schema). Pre-P0-5 cleanup
+    pass had dropped a /proc sampler with zero Go consumers into
+    pkg/workerstats as forward-looking WIP; godlike/07 §"No fake
+    availability" forbids that pattern. Ticket stays open for future
+    RW-PROD-013 demand (e.g. "the heartbeat payload now needs to
+    surface /proc-derived CPU/network/disk state in real time");
+    when that demand lands, reopening this ticket carries the
+    compatibility contract:
+
+    (a) pkg/workerstats MUST compile (the canonical POJO at
+        internal/domain/job/worker.go::WorkerHardwareStats lines 122-159
+        exists on main HEAD since Wave 4B close; any reintroduced
+        sampler imports it).
+    (b) pkg/workerstats MUST populate the POJO field-by-field (no
+        copies, no JSON-tag renames).
+    (c) pkg/workerstats MUST NOT import prometheus/client_golang
+        (Option B governance; metric definitions stay in
+        internal/infrastructure/observability/worker_metrics.go).
+    (d) cmd/architecture-aggregate MUST regenerate
+        architecture/ownership.generated.yaml after the reintroduced
+        pkg/workerstats is added back to
+        architecture/ownership/packages.yaml::pkg.packages list (CI
+        gate invariants: dedup-effectiveness comparison vs the
+        post-removal state recorded in
+        architecture/deprecations.yaml#PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL.compatibility_test).
+    (e) At least 1 Go binding site in the heartbeat handler (cmd/worker
+        or internal/infrastructure/jobs/local/broker.go equivalent)
+        MUST be wired and tested against the heartbeating fleet; the
+        zero-consumer dead-on-arrival pattern that triggered the
+        elimination MUST NOT recur.
+
+    Sibling ticket slot Q11-WORKERSTATS-FOLLOWUP is reserved for the
+    ABI/JSON-tag drift audit called out by the original
+    pkg_workerstats governance block (the "drift between sampler's
+    units docstring and POJO godoc is a reading-order hazard"
+    footnote); if the sampler is reintroduced without a unit-test
+    asserting the drift invariant, Q11 opens and tracks the drift
+    closure.
+
+    Linked wave ref: architecture/current.yaml#follow_up_tickets
+    (subject to be added in the first reintroduction PR). Until then
+    the canonical tracker for "have we ever had pkg/workerstats?" is
+    the deprecation record above.
