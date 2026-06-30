@@ -666,6 +666,15 @@ separately, not in this closure.
 
 ### Fixed
 
+Full P1-2 chain: `021c38ce` → `4306b97f` → `4270dcf7` → `732628a4` → `c33ae3d3`; post-chain follow-ups: `1cd9c3c9`,
+`03813593`. Mirrors the precedent of PR-VO-A (`e149e1ab` →
+`602114bc`) and PR-VO-B1-C1 (`73c44aca` → `c2867b90`); the
+chain end-SHA `c33ae3d3` is the last commit that flipped
+`wave_status.P1-2.current_state: deferred` → `active`, and
+the two post-chain commits are slim-schema forward-pointer
+additions for `PR-BARE-ONLY-MAP-LITERAL-COVERAGE` (covered
+inline below).
+
 **[P1-2 of cleanup plan, June 2026]** `arch(current)` + `feat(ci)` +
 `chore(ci)` — Check 44 (application 40-file size cap +
 `usecase/types_aliases.go` filename ban, target 40, transitional 66)
