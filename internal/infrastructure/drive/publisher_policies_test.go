@@ -150,3 +150,133 @@ func TestPublisher_ResolveFolder_SuccessWhenSubpathProvided(t *testing.T) {
 	require.Len(t, folders.ensureCalls, 1)
 	require.Equal(t, []string{"NBA News", "video-xyz"}, folders.ensureCalls[0].segments)
 }
+
+// TestPublisher_SymmetricRequireSubpath_AcrossDestinations is the F1.2
+// table-driven regression pin for the P0 #2 (June 2026) symmetric
+// RequireSubpath enforcement. The companion tests above pin the
+// invariant for ONE destination (DestinationYouTubeClip); this test
+// table-drives across all 8 canonical destinations so a future
+// regression that reverts RequireSubpath enforcement for a subset
+// (e.g. ResolveFolder only enforces it for YouTube and stops
+// enforcing it for Book) is caught immediately.
+//
+// It exercises both directions:
+//   - RequireSubpath=true + empty segments  → both Publish and
+//     ResolveFolder MUST reject with a "forbidden" error containing
+//     the destination key.
+//   - RequireSubpath=false + empty segments → BOTH Publish and
+//     ResolveFolder MUST succeed (root upload is permitted when the
+//     policy explicitly opts in).
+//
+// Build tag: //go:build drivepolicypkgtest (gated; see
+// registry_test_factories.go for the pairing rationale and the
+// pipeline's `-tags drivepolicypkgtest` opt-in convention).
+func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
+	dests := []delivery.DestinationKey{
+		delivery.DestinationYouTubeClip,
+		delivery.DestinationArtlist,
+		delivery.DestinationStock,
+		delivery.DestinationImage,
+		delivery.DestinationVoiceover,
+		delivery.DestinationBook,
+		delivery.DestinationScript,
+		delivery.DestinationSoundEffect,
+	}
+
+	for _, dest := range dests {
+		dest := dest
+		// ── Direction A: RequireSubpath=true + empty segments → REJECT ──
+		t.Run(string(dest)+"/reject", func(t *testing.T) {
+			reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+				dest: {
+					RootFolderID:   "root-" + string(dest),
+					PathBuilder:    degenerateEmptyPathBuilder,
+					RequireSubpath: true,
+				},
+			})
+			// `result` intentionally left as zero value — the
+			// RequireSubpath check fires inside resolveDestination
+			// before the `len(segments) > 0` branch, so EnsureFolder
+			// is unreachable on this path. (See /accept subtest for
+			// the symmetric rationale.)
+			folders := &fakeFolderManager{}
+			files := &fakeFileUploader{}
+			pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+			require.NoError(t, err)
+
+			req := delivery.PublishRequest{
+				Destination: dest,
+				LocalPath:   "/tmp/x.bin",
+				Filename:    "x.bin",
+			}
+
+			_, publishErr := pub.Publish(context.Background(), req)
+			require.Error(t, publishErr,
+				"Publish must reject empty segments when RequireSubpath=true for destination %q", dest)
+			require.Contains(t, publishErr.Error(), "forbidden",
+				"Publish error must come from the symmetric RequireSubpath check (destination %q)", dest)
+			require.Contains(t, publishErr.Error(), string(dest),
+				"Publish error must identify the destination (destination %q)", dest)
+
+			got, resolveErr := pub.ResolveFolder(context.Background(), req)
+			require.Error(t, resolveErr,
+				"ResolveFolder must reject empty segments when RequireSubpath=true for destination %q (was the Pre-P0#2 bypass — must NOT regress)", dest)
+			require.Contains(t, resolveErr.Error(), "forbidden",
+				"ResolveFolder error must come from the symmetric RequireSubpath check (destination %q)", dest)
+			require.Contains(t, resolveErr.Error(), string(dest),
+				"ResolveFolder error must identify the destination (destination %q)", dest)
+			require.Empty(t, got,
+				"ResolveFolder must return empty folder ID on rejection (destination %q)", dest)
+
+			require.Empty(t, folders.ensureCalls,
+				"ResolveFolder must reject BEFORE EnsureFolder is called (destination %q)", dest)
+			require.Empty(t, files.uploadCalls,
+				"Publish must reject BEFORE PutFile is called (destination %q)", dest)
+		})
+
+		// ── Direction B: RequireSubpath=false + empty segments → ACCEPT ──
+		// Catches a future regression that flips the symmetric check to
+		// "reject when len(0)" unconditionally (which would over-block
+		// root-upload destinations that intentionally opt out).
+		//
+		// `fakeFolderManager.result` is intentionally left as the zero
+		// value ("") because EnsureFolder is NOT called on this path
+		// (the `len(segments) > 0` short-circuit in resolveDestination
+		// skips it). Initialising `result` here would mislead readers
+		// into expecting EnsureFolder to be exercised.
+		t.Run(string(dest)+"/accept", func(t *testing.T) {
+			reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+				dest: {
+					RootFolderID:   "root-" + string(dest),
+					PathBuilder:    degenerateEmptyPathBuilder,
+					RequireSubpath: false,
+				},
+			})
+			folders := &fakeFolderManager{}
+			files := &fakeFileUploader{}
+			pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+			require.NoError(t, err)
+
+			req := delivery.PublishRequest{
+				Destination: dest,
+				LocalPath:   "/tmp/x.bin",
+				Filename:    "x.bin",
+			}
+
+			got, resolveErr := pub.ResolveFolder(context.Background(), req)
+			require.NoError(t, resolveErr,
+				"ResolveFolder must succeed with empty segments when RequireSubpath=false (destination %q) — root upload is permitted by policy", dest)
+			require.Equal(t, "root-"+string(dest), got,
+				"ResolveFolder must return the root folder ID when segments are empty and RequireSubpath is opt-out (destination %q) — proves the use-root branch was taken", dest)
+			// EnsureFolder must NOT have been called (empty segments ⇒ root folder used).
+			require.Empty(t, folders.ensureCalls,
+				"ResolveFolder must skip EnsureFolder when segments are empty (destination %q)", dest)
+
+			_, publishErr := pub.Publish(context.Background(), req)
+			require.NoError(t, publishErr,
+				"Publish must succeed with empty segments when RequireSubpath=false (destination %q)", dest)
+			require.Len(t, files.uploadCalls, 1,
+				"Publish must call PutFile exactly once when explicitly allowed (destination %q)", dest)
+		})
+	}
+}
