@@ -620,7 +620,7 @@ the snapshot table above.
   and forward-pointer to PR-VO-D1/D2/D3 + E1.
 
 - **P1-2 of cleanup plan, Check 44 promotion + P1-3 NIT closure
-  (`1cd9c3c9`, `03813593`)** — Check 44 application size cap +
+  (chain `021c38ce` → `4306b97f` → `4270dcf7` → `732628a4` → `c33ae3d3`; post-chain follow-ups `1cd9c3c9`, `03813593`)** — Check 44 application size cap +
   `usecase/types_aliases.go` filename ban actively enforced via
   `scripts/ci-architectural-checks.sh` (wave-tracker P1-2 flipped
   from `current_state: deferred` to `active`); the new forward-
