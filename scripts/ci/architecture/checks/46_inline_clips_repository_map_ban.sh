@@ -43,18 +43,21 @@
 #   - tests/fixtures/zero_legacy/check_*.go                        : canonical negative-example
 #                                                                     fixtures (Check 8 precedent).
 #
-# Pattern anchor: STRICT literal — the user-spec-exact bare form only.
-#   map[string]*ClipsRepository{
-# No whitespace tolerance (the user spec called for the EXACT string;
-# ripgrep -E's `\[` and `\]` are LITERAL bracket escapes, not flexible
-# bracket/asterisk tokenisers, so `map[ string ]*...` etc. will NOT
-# match this regex). No package qualifier tolerance either (the
-# canonical site uses `*sqassets.ClipsRepository`; a future
-# `*someAlias.ClipsRepository` pattern would slip past BOTH Check 8
-# (qualified form: `*assets.ClipsRepository`) AND this Check 45 (bare
-# form) — broaden the regex in a follow-up PR if a regression of that
-# shape surfaces. The narrow-scope trade-off is deliberate: keeps the
-# gate tight on the documented regression shape without false-positives.
+# Pattern anchor: literal — bare form OR any-package-qualified form.
+#   map[string]*ClipsRepository{                    (bare; package name empty)
+#   map[string]*<pkg>.ClipsRepository{             (qualified; e.g. *sqassets., *assets., *someAlias.)
+# Regex: ([A-Za-z0-9_]+\.)? makes the package-name+dot optional, so any
+# future contributor-introduced package alias (e.g. `*appsq.ClipsRepository`)
+# is caught alongside the canonical site (`*sqassets.ClipsRepository`) and
+# the existing bare shorthand (`*ClipsRepository{`). Whitespace-tolerant
+# between `*` / `<pkg>` / `ClipsRepository`. The previous narrow-scope
+# documentation explicitly anticipated this broadening: a future
+# `*someAlias.ClipsRepository` would have slipped past BOTH Check 8
+# (package-exact `*assets.ClipsRepository`) AND the bare-only Check 45 —
+# this commit closes that gap. ripgrep -E bracket escapes `\[` / `\]` stay
+# LITERAL (not flexible), so `map[ string ]*...` stylistic variants still
+# need a follow-up if ever introduced; the bare-and-qualified forms are
+# the documented regression shapes and the gate is tight on those.
 #
 # The check uses `set -uo pipefail` and exits non-zero on ANY hit.
 # All output is regenerated every CI run; the gate is fail-closed
@@ -70,7 +73,7 @@ fail_messages=""
 # --glob) is used for consistency with the other ci-architecture checks;
 # the failure set is then filtered to drop full-line `//`-comments
 # (descriptive prose that mentions the pattern is not a violation).
-all_hits=$(rg -nE 'map\[string\][ ]*\*[ ]*[A-Za-z0-9_]*ClipsRepository\{' \
+all_hits=$(rg -nE 'map\[string\][ ]*\*[ ]*([A-Za-z0-9_]+\.)?[ ]*ClipsRepository\{' \
     --type go \
     --glob '!**/internal/app/**' \
     --glob '!**/infrastructure/database/assetindex/resolver.go' \

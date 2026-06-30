@@ -374,5 +374,9 @@ wave_status:
     linked_issues:
       - id: PR-BARE-ONLY-MAP-LITERAL-COVERAGE
         owner_capability: scripts/ci/architecture/checks/46_inline_clips_repository_map_ban.sh maintainer (ratchet-renamed from Check 45)
-        status: pending
+        status: shipped_through
         deadline: 2026-07-25
+      - id: PR-CHECK-46-PACKAGE-QUALIFIED-BROADEN
+        owner_capability: scripts/ci/architecture/checks/46_inline_clips_repository_map_ban.sh maintainer
+        status: shipped_through
+        deadline: 2026-07-20
