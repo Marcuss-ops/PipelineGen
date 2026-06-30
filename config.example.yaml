@@ -165,3 +165,13 @@ google_accounting:
   download_dir: "./data/google_vids"
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
+# QDRANT-005A canonical configuration (see ARCHITECTURE.md §Qdrant +
+# AGENTS.md "Qdrant Entity Associations"). The Go struct field names
+# (BaseURL / Enabled / APIKey) bind to the canonical yaml keys below
+# via the yaml tags in `internal/platform/config/types.go::QdrantConfig`.
+# Secrets NEVER go inline per AGENTS.md secrets policy — the api_key
+# placeholder is empty and overridden at runtime via VELOX_QDRANT_API_KEY.
+qdrant:
+  enabled: true   # default false (Go zero); true in the example to match local pipeline runs
+  base_url: "http://127.0.0.1:6333"
+  api_key: ""     # override via VELOX_QDRANT_API_KEY env var
