@@ -619,6 +619,18 @@ the snapshot table above.
   + RFC 8594 Sunset), tests pinned, architectural patterns reaffirmed,
   and forward-pointer to PR-VO-D1/D2/D3 + E1.
 
+- **P1-2 of cleanup plan, Check 44 promotion + P1-3 NIT closure
+  (`1cd9c3c9`, `03813593`)** — Check 44 application size cap +
+  `usecase/types_aliases.go` filename ban actively enforced via
+  `scripts/ci-architectural-checks.sh` (wave-tracker P1-2 flipped
+  from `current_state: deferred` to `active`); the new forward-
+  pointer entry `PR-BARE-ONLY-MAP-LITERAL-COVERAGE` (owner
+  `architecture`, deadline 2026-07-25) lives at the canonical
+  anchor `architecture/current.yaml#wave_status.P1-2.linked_issues[PR-BARE-ONLY-MAP-LITERAL-COVERAGE]`
+  per godlike/06 §Slim-schema + zero-baseline rule, surfacing
+  the bare-only Coverage gap of Check 46. CHANGELOG entry under
+  `## Unreleased → ### Fixed` mirrors this closure.
+
 ---
 
 ## Core Contracts
