@@ -44,13 +44,12 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 		// 3. Stop services in parallel
 		var wg sync.WaitGroup
 
-		if jobs != nil && jobs.channelMonitor != nil {
-			wg.Add(1)
-			concurrent.SafeGo("cleanup-channel-monitor", func() {
-				defer wg.Done()
-				jobs.channelMonitor.Stop()
-			})
-		}
+		// Channel monitor shutdown (June 2026, Wave B): the scheduler loop
+		// exits naturally via the parent ctx cancel in step 1 above (its
+		// Start select has `<-ctx.Done()` as one of its cases). No explicit
+		// Stop side-channel is needed — the cancellation-driven path is the
+		// canonical lifecycle.
+		//
 		// PR4.E-followup-2: explicit Stop for the outbox-events pool started
 		// in lifecycle.go. We do NOT rely on outboxevents.Pool's internal
 		// ctx.Done handling so in-flight work is drained gracefully even if
