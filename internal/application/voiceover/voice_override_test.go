@@ -39,7 +39,7 @@ func TestVoiceOverrideFor_Present_ReturnsValue(t *testing.T) {
 			"it": "it-IT-IsabellaNeural",
 		},
 	}
-	got := voiceOverrideFor("en", req)
+	got := voiceOverrideFor(req, "en")
 	assert.Equal(t, "en-US-RogerNeural", got,
 		"P0.4: lookup hit must return the canonical voice identifier")
 }
@@ -50,20 +50,20 @@ func TestVoiceOverrideFor_AbsentKey_ReturnsEmpty(t *testing.T) {
 			"en": "en-US-RogerNeural",
 		},
 	}
-	got := voiceOverrideFor("fr", req)
+	got := voiceOverrideFor(req, "fr")
 	assert.Equal(t, "", got,
 		"P0.4: missing key must return \"\" (default-voice path downstream)")
 }
 
 func TestVoiceOverrideFor_NilMap_ReturnsEmpty(t *testing.T) {
 	req := &BatchRequest{}
-	got := voiceOverrideFor("en", req)
+	got := voiceOverrideFor(req, "en")
 	assert.Equal(t, "", got,
 		"P0.4: nil VoiceOverrides map must return \"\" (nil-safety)")
 }
 
 func TestVoiceOverrideFor_NilReq_ReturnsEmptyNoPanic(t *testing.T) {
-	got := voiceOverrideFor("en", nil)
+	got := voiceOverrideFor(nil, "en")
 	assert.Equal(t, "", got,
 		"P0.4: nil BatchRequest must not panic (nil-safety)")
 }

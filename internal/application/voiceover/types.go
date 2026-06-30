@@ -153,7 +153,6 @@ type BatchRequest struct {
 	Text             string              `json:"text"`
 	Languages        []string            `json:"languages"`
 	FilenameTemplate string              `json:"filename_template"`
-	VoiceOverrides   map[string]string   `json:"voice_overrides,omitempty"`
 	RemoveSilence    *bool               `json:"remove_silence,omitempty"`
 	Strategy         string              `json:"strategy"`
 	Destination      *DestinationRequest `json:"destination,omitempty"`
@@ -192,9 +191,6 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 	}
 	if r.RemoveSilence != nil {
 		payload["remove_silence"] = *r.RemoveSilence
-	}
-	if len(r.VoiceOverrides) > 0 {
-		payload["voice_overrides"] = r.VoiceOverrides
 	}
 	if r.Destination != nil {
 		// PR-VO-B2 (June 2026): style_group is serialised into the
@@ -461,7 +457,7 @@ func (i *BatchItem) fail(code FailureCode, err error) BatchItem {
 }
 
 func (i BatchItem) isSuccessful() bool {
-	return strings.TrimSpace(i.Status) == "completed" && strings.TrimSpace(i.Error) == ""
+	return strings.TrimSpace(string(i.Status)) == "completed" && strings.TrimSpace(i.Error) == ""
 }
 
 func normalizeBatchRequest(req *BatchRequest) *BatchRequest {
