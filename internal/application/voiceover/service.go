@@ -83,53 +83,60 @@ type Service struct {
 
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.
 // Deprecated: use translation.TranslatorFunc directly.
+// Removal plan: 15 consumer sites verified (2026-06-30). Migrate callers
+// in Wave 23, then remove the alias. Tracked in architecture/deprecations.yaml.
 type TranslatorFunc = translation.TranslatorFunc
 
-// NewService constructs a voiceover.Service. The optional dependencies
-// (semanticTagger, translator, outboxEnqueuer) are wired at construction
-// time. Pass nil for any dependency that the caller does not need — the
-// service guards nil at every call site so the optional behaviour degrades
-// gracefully (the IGnPath test path explicitly covers the no-outbox
-// case in service_test.go).
-//
-// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
-// clipIndexer ClipIndexFunc parameter is gone. The indexing handoff
-// now flows through outboxEnqueuer TxOutboxEnqueuer, which writes
-// inside the same SQLite transaction as swapVoiceoverRow.
-//
-// P1-2 boundary split (June 2026): the previous `*sql.DB` +
-// `pythonScriptsDir` ctor args are gone — the *sql.DB handle is
-// replaced by the canonical voiceoverRepo persistence port
-// (voicedown of the *sql.DB raw usage in stages.go), and the
-// TTS audio processor is constructed at the composition root
-// (`internal/app/build_bundles_voiceover.go`) + injected via
-// the TTSProvider port. `NewService` no longer imports
-// `internal/infrastructure/audio` directly.
-func NewService(
-	cfg *config.Config,
-	voiceoverRepo persistence.Repository,
-	ttsProvider TTSProvider,
-	outputDir string,
-	log *zap.Logger,
-	driveUploader DriveUploaderPort,
-	lifecycleService *lifecycle.Service,
-	assetDestResolver asset.Resolver,
-	semanticTagger SemanticTaggerFunc,
-	translator TranslatorFunc,
-	outboxEnqueuer TxOutboxEnqueuer,
-) *Service {
+// VoiceoverDeps groups constructor dependencies by real capability.
+// Replaces the 11-param flat constructor with 4 grouped bundles.
+type VoiceoverDeps struct {
+	Core        VoiceoverCoreDeps
+	Persistence VoiceoverPersistenceDeps
+	Generation  VoiceoverGenerationDeps
+	Integration VoiceoverIntegrationDeps
+}
+
+// VoiceoverCoreDeps — config, logger, output directory.
+type VoiceoverCoreDeps struct {
+	Cfg       *config.Config
+	Log       *zap.Logger
+	OutputDir string
+}
+
+// VoiceoverPersistenceDeps — voiceover repository port.
+type VoiceoverPersistenceDeps struct {
+	Repo persistence.Repository
+}
+
+// VoiceoverGenerationDeps — TTS provider + semantic tagger.
+type VoiceoverGenerationDeps struct {
+	TTSProvider    TTSProvider
+	SemanticTagger SemanticTaggerFunc
+}
+
+// VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator.
+type VoiceoverIntegrationDeps struct {
+	DriveUploader     DriveUploaderPort
+	LifecycleService  *lifecycle.Service
+	AssetDestResolver asset.Resolver
+	OutboxEnqueuer    TxOutboxEnqueuer
+	Translator        TranslatorFunc
+}
+
+// NewService constructs a voiceover.Service from grouped dependency bundles.
+func NewService(deps VoiceoverDeps) *Service {
 	return &Service{
-		cfg:               cfg,
-		voiceoverRepo:     voiceoverRepo,
-		ttsProvider:       ttsProvider,
-		outputDir:         outputDir,
-		log:               log,
-		driveUploader:     driveUploader,
-		assetDestResolver: assetDestResolver,
-		lifecycleService:  lifecycleService,
-		semanticTagger:    semanticTagger,
-		outboxEnqueuer:    outboxEnqueuer,
-		translator:        translator,
+		cfg:               deps.Core.Cfg,
+		voiceoverRepo:     deps.Persistence.Repo,
+		ttsProvider:       deps.Generation.TTSProvider,
+		outputDir:         deps.Core.OutputDir,
+		log:               deps.Core.Log,
+		driveUploader:     deps.Integration.DriveUploader,
+		assetDestResolver: deps.Integration.AssetDestResolver,
+		lifecycleService:  deps.Integration.LifecycleService,
+		semanticTagger:    deps.Generation.SemanticTagger,
+		outboxEnqueuer:    deps.Integration.OutboxEnqueuer,
+		translator:        deps.Integration.Translator,
 	}
 }
 

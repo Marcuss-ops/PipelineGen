@@ -159,11 +159,18 @@ func buildVoiceoverService(
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
 	ttsProvider := newUseCaseTTSAdapter(audioProcessor)
 
-	voService := voiceover.NewService(
-		cfg, voRepoAdapter, ttsProvider, voDir, log,
-		newVoiceoverDriveAdapter(driveUploader), voLifecycle, destResolver,
-		semanticTagger, translator, outboxEnqueuer,
-	)
+	voService := voiceover.NewService(voiceover.VoiceoverDeps{
+		Core:        voiceover.VoiceoverCoreDeps{Cfg: cfg, Log: log, OutputDir: voDir},
+		Persistence: voiceover.VoiceoverPersistenceDeps{Repo: voRepoAdapter},
+		Generation:  voiceover.VoiceoverGenerationDeps{TTSProvider: ttsProvider, SemanticTagger: semanticTagger},
+		Integration: voiceover.VoiceoverIntegrationDeps{
+			DriveUploader:     newVoiceoverDriveAdapter(driveUploader),
+			LifecycleService:  voLifecycle,
+			AssetDestResolver: destResolver,
+			OutboxEnqueuer:    outboxEnqueuer,
+			Translator:        translator,
+		},
+	})
 	// pylint: disable=unused
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))

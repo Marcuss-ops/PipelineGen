@@ -34,23 +34,15 @@ func (fakeMediaSearchHandler) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 // TestNewServerWithHealth_RegistersInternalMediaRoutes is the pre-PR-3
-// canonical test. Updated to the 9-arg NewServerWithHealth signature
-// (outboxHandler + mediasearchHandler are nil here; the dedicated
-// PR 3 test below covers their positive case).
+// canonical test. Updated to the ServerDeps bundle constructor (outbox +
+// mediasearch handlers are nil here; the dedicated PR 3 test covers their
+// positive case).
 func TestNewServerWithHealth_RegistersInternalMediaRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	server := NewServerWithHealth(
-		nil, // cfg — fallback branch is OK; structural assertion only
-		nil, // registry
-		nil, // workerHandler
-		fakeInternalMediaHandler{},
-		nil, // outboxHandler — covered by the dedicated PR 3 test
-		nil, // mediasearchHandler — covered by the dedicated PR 3 test
-		nil, // lifecycle
-		nil, // healthSvc
-		nil, // readyChecker
-	)
+	server := NewServerWithHealth(ServerDeps{
+		Handlers: InternalHandlers{Media: fakeInternalMediaHandler{}},
+	})
 
 	routes := server.GetRouter().Routes()
 	for _, route := range routes {
@@ -113,17 +105,12 @@ func TestNewServerWithHealth_RegistersInternalMediaRoutes(t *testing.T) {
 func TestNewServerWithHealth_RegistersOutboxAndMediaSearchRoutes_ProductionShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	server := NewServerWithHealth(
-		nil,                      // cfg — fallback branch; structural + 500-on-WA assertions
-		nil,                      // registry
-		nil,                      // workerHandler
-		nil,                      // internalMediaHandler — not in scope for PR 3
-		fakeOutboxHandler{},      // outboxHandler     — QDRANT-002
-		fakeMediaSearchHandler{}, // mediasearchHandler — QDRANT-004
-		nil,                      // lifecycle
-		nil,                      // healthSvc
-		nil,                      // readyChecker
-	)
+	server := NewServerWithHealth(ServerDeps{
+		Handlers: InternalHandlers{
+			Outbox:      fakeOutboxHandler{},
+			MediaSearch: fakeMediaSearchHandler{},
+		},
+	})
 
 	engine := server.GetRouter()
 

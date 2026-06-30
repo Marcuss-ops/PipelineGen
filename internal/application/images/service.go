@@ -125,47 +125,50 @@ type DiagnosticsReport struct {
 	Capabilities map[Capability]CapabilityStatus `json:"capabilities"`
 }
 
-// NewService constructs an images.Service with all optional dependencies
-// wired at construction time. The 8 post-construction setters
-// (SetNvidiaConfig, SetRemoteImageEndpointURL, SetVeloxBaseURL,
-// SetGoogleAccountingConfig, SetMediaStore, SetLLMGenerator,
-// SetVectorStore, SetMetadataWriter) have been removed in PR4-H Commit 3 —
-// their fields are initialised directly in this ctor. PR4.D (June 2026) then
-// collapsed the loose `nvidiaAPIKey/nvidiaModel/gaServerURL/gaDownloadDir/
-// vidsProjectID` scalars into two group structs (NvidiaConfig +
-// GoogleAccountingConfig) so the ctor signature stays readable as
-// integrations grow.
-//
-// PR3 (June 2026): ingestSvc is now wired via constructor injection.
-// The SetIngestService setter has been removed — ingestService is built
-// during BuildDomainBundle and passed directly to NewService.
-//
-// PR-12d (June 2026): dispatcher is wired via constructor injection.
-// SetDispatcher has been removed — the late-bind created an ordering
-// hazard where ImageService calls between BuildDomainBundle returning
-// and SetDispatcher's call in NewComposition silently fell back to raw
-// stockRepo.Upsert. Construction-time injection closes that window.
-// Composition root responsibility: build outbox bundle BEFORE the
-// domain bundle (reorder in composition.go::NewComposition) so the
-// dispatcher is available when NewService runs.
-func NewService(
-	cfg *config.Config,
-	repo *assets.ImagesRepository,
-	stockRepo *assets.ClipsRepository,
-	driveSvc *driveapi.Service,
-	styleRegistry *generation.StyleRegistry,
-	nvidiaCfg NvidiaConfig,
-	remoteImageEndpointURL string,
-	veloxBaseURL string,
-	gaCfg GoogleAccountingConfig,
-	mediaStore *drive.Store,
-	llmGen *ollama.Generator,
-	metaWriter *semantic.MetadataWriter,
-	ingestSvc *ingest.Service,
-	dispatcher *outbox.Dispatcher,
-	imageGen ImageGenerator,
-	log *zap.Logger,
-) *Service {
+// ImagesDeps groups constructor dependencies by real capability.
+// Replaces the 16-param flat constructor with 4 grouped bundles.
+type ImagesDeps struct {
+	Core     ImagesCoreDeps
+	Storage  ImagesStorageDeps
+	GenAI    ImagesGenAIDeps
+	External ImagesExternalDeps
+}
+
+// ImagesCoreDeps — config + logging + concurrency config.
+type ImagesCoreDeps struct {
+	Cfg *config.Config
+	Log *zap.Logger
+}
+
+// ImagesStorageDeps — repositories + Drive client + media store.
+type ImagesStorageDeps struct {
+	ImageRepo  *assets.ImagesRepository
+	ClipsRepo  *assets.ClipsRepository
+	DriveSvc   *driveapi.Service
+	MediaStore *drive.Store
+}
+
+// ImagesGenAIDeps — AI generation: LLM, metadata, style, image generator.
+type ImagesGenAIDeps struct {
+	LLMGen        *ollama.Generator
+	MetaWriter    *semantic.MetadataWriter
+	StyleRegistry *generation.StyleRegistry
+	ImageGen      ImageGenerator
+	NvidiaCfg     NvidiaConfig
+	RemoteImageURL string
+}
+
+// ImagesExternalDeps — ingest, dispatcher, Velox, Google Accounting.
+type ImagesExternalDeps struct {
+	IngestSvc   *ingest.Service
+	Dispatcher  *outbox.Dispatcher
+	VeloxBaseURL string
+	GACfg       GoogleAccountingConfig
+}
+
+// NewService constructs an images.Service from grouped dependency bundles.
+func NewService(deps ImagesDeps) *Service {
+	cfg := deps.Core.Cfg
 	maxNvidia := cfg.Concurrency.MaxConcurrentNvidiaGenerations
 	if maxNvidia <= 0 {
 		maxNvidia = 1
@@ -173,35 +176,35 @@ func NewService(
 
 	s := &Service{
 		cfg:           cfg,
-		repo:          repo,
-		stockRepo:     stockRepo,
-		driveSvc:      driveSvc,
+		repo:          deps.Storage.ImageRepo,
+		stockRepo:     deps.Storage.ClipsRepo,
+		driveSvc:      deps.Storage.DriveSvc,
 		driveFolderID: cfg.Drive.RootFolder(),
-		log:           log,
+		log:           deps.Core.Log,
 		imagesDir:     cfg.Storage.ImagesPath(),
 		tempDir:       cfg.Storage.TempPath(),
 		client: &http.Client{
-			Timeout: 10 * time.Minute, // AI generation and browser automation can be slow
+			Timeout: 10 * time.Minute,
 		},
 		nvidiaSem: make(chan struct{}, maxNvidia),
 
 		scriptsDir:             cfg.Paths.PythonScriptsDir,
-		nvidiaAPIKey:           nvidiaCfg.APIKey,
-		nvidiaModel:            nvidiaCfg.Model,
+		nvidiaAPIKey:           deps.GenAI.NvidiaCfg.APIKey,
+		nvidiaModel:            deps.GenAI.NvidiaCfg.Model,
 		nvidiaLocalNIMURL:      cfg.External.NvidiaLocalNIMURL,
-		remoteImageEndpointURL: remoteImageEndpointURL,
-		veloxBaseURL:           veloxBaseURL,
-		gaServerURL:            gaCfg.ServerURL,
-		gaDownloadDir:          gaCfg.DownloadDir,
-		vidsProjectID:          gaCfg.VidsProjectID,
+		remoteImageEndpointURL: deps.GenAI.RemoteImageURL,
+		veloxBaseURL:           deps.External.VeloxBaseURL,
+		gaServerURL:            deps.External.GACfg.ServerURL,
+		gaDownloadDir:          deps.External.GACfg.DownloadDir,
+		vidsProjectID:          deps.External.GACfg.VidsProjectID,
 		animationsDir:          cfg.Storage.AnimationsPath(),
-		styleRegistry:          styleRegistry,
-		mediaStore:             mediaStore,
-		llmGen:                 llmGen,
-		metaWriter:             metaWriter,
-		ingestSvc:              ingestSvc,
-		dispatcher:             dispatcher,
-		imageGen:               imageGen,
+		styleRegistry:          deps.GenAI.StyleRegistry,
+		mediaStore:             deps.Storage.MediaStore,
+		llmGen:                 deps.GenAI.LLMGen,
+		metaWriter:             deps.GenAI.MetaWriter,
+		ingestSvc:              deps.External.IngestSvc,
+		dispatcher:             deps.External.Dispatcher,
+		imageGen:               deps.GenAI.ImageGen,
 	}
 
 	return s
