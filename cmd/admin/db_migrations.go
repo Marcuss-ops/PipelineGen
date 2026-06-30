@@ -23,7 +23,10 @@ func runDBMigrations(ctx context.Context, args []string) error {
 	dataDir := fs.String("data-dir", "./data", "root data directory")
 	fs.Parse(args)
 
-	fullCfg := config.Get()
+	fullCfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	if *dataDir != "" && *dataDir != "./data" {
 		fullCfg.Storage.DataDir = *dataDir
 	}

@@ -13,7 +13,10 @@ import (
 )
 
 func runUnifyCatalogs(args []string) error {
-	cfg := config.Get()
+	cfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	dataDir := cfg.Storage.DataDir
 
 	mediaPath := dataDir + "/" + storage.DBMedia

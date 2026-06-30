@@ -56,16 +56,13 @@ func IsPlaceholderValue(v string) bool {
 	return false
 }
 
-func Get() *Config {
-	cfg, err := GetFromPath("config.yaml")
-	if err != nil {
-		// If the file is missing, return defaults+env (this is the legacy
-		// behavior for tests and minimal deployments).
-		cfg = &Config{}
-		applyDefaults(cfg)
-		applyEnvVars(cfg)
-	}
-	return cfg
+// Get loads configuration from the canonical config.yaml file.
+// Errors are propagated — no silent fallback. If the file is
+// missing, GetFromPath returns defaults+env with a nil error;
+// every other error (corrupted YAML, bad permissions, read
+// failures) is an inescapable boot failure.
+func Get() (*Config, error) {
+	return GetFromPath("config.yaml")
 }
 
 // GetFromPath loads configuration from an explicit file path.
