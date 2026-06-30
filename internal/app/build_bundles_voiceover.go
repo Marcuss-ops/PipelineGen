@@ -193,9 +193,13 @@ func buildVoiceoverService(
 		// mirror StyleGroup verbatim on the returned ResolvedDestination.
 		destResolverAdapter := newUseCaseDestResolverAdapter(destResolver)
 
-		// Adapter: AssetLifecycle port — wraps the lifecycle.Service that
-		// own voLifecycle already constructed above.
-		lifecycleAdapter := newUseCaseLifecycleAdapter(voLifecycle)
+		// Adapter (E1 cutover): VoiceoverPublisher port — wraps
+		// driveUploader.Admin() directly. The legacy AssetLifecycle
+		// adapter (useCaseLifecycleAdapter wrapping voLifecycle) is
+		// retired; Publisher does NOT write to SQLite, does NOT run a
+		// dedupe gate, does NOT touch media_assets (finalizeStage
+		// owns the per-item tx).
+		publisherAdapter := newUseCasePublisherAdapter(driveUploader)
 
 		// Adapter: AudioPostProcessor port — silence-removal bridge
 		// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe
@@ -220,7 +224,7 @@ func buildVoiceoverService(
 			TTSProvider:         ttsProvider,
 			DestinationResolver: destResolverAdapter,
 			AudioPostProcessor:  audioAdapter,
-			AssetLifecycle:      lifecycleAdapter,
+			Publisher:           publisherAdapter,
 			VoiceoverRepository: voRepoAdapter,
 			TransactionalOutbox: txOutbox,
 			FilenameBuilder:     filenameBuilder,

@@ -118,6 +118,14 @@ type VoiceoverItemResult struct {
 	// and surfaced in the voiceovers.filename SQLite column.
 	Filename string
 
+	// DownloadLink is the canonical Drive download URL produced by
+	// CanonicalDriveDownloadURL(fileID). Populated by the publish
+	// stage (usecase.go::processOneLanguage +
+	// process_voiceover_item.go::Execute) so downstream consumers
+	// (scripts/jobs consumers, admin UI, retention sweeps) can
+	// reach the file binary without re-deriving from DriveLink.
+	DownloadLink string
+
 	// ID is the canonical voiceover row identifier (buildVoiceoverID
 	// shape: vo_<sha256[:16]>) — same value as voiceovers.id column.
 	ID string
