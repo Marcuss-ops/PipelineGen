@@ -718,8 +718,8 @@ deprecations:
       outputs `ok` with zero FAIL line prefixes. ApplyPreset regression sweep
       continues to PASS (9 ApplyPreset tests + 5 TDD tests from 5c3b1faf).
       Net delta = -4 FAIL lines, +0 new failures.
-    migration_phase: BACKFILL
-    status: in_progress
+    migration_phase: CONTRACT
+    status: removed
     notes: |
       ADAPTERS-FAIL-PRE9-12 deployment sequence per godlike/07
       §“Migration sequence”:
