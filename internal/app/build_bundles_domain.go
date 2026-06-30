@@ -145,17 +145,14 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
-	// BLOC5.3 commit-2-child-canonical (June 2026): buildVoiceoverService
-	// returns the canonical 7-port ProcessVoiceoverItemUseCase as the
-	// 3rd return value (processItemUseCase). The child handler
-	// (jobs/generate_item_handler.go) consumes it via the narrow
-	// VoiceoverItemExecutor port; the field type is the interface so
-	// Go's implicit conversion handles the concrete-to-port cast on
-	// assignment. The legacy voiceoverProcessOne bridge
-	// (ProcessOneVoiceoverUseCase → BatchRequest → Service.GenerateBatch)
-	// is REMOVED; the canonical per-item pipeline below handles the
-	// same fanout → TTS → upload → SQLite tx + outbox path.
-	voiceoverSvc, voiceoverRepo, processItemUseCase := buildVoiceoverService(ctx, cfg, dbs, log,
+	// (June 2026 cutover): buildVoiceoverService now returns only the
+	// canonical service + repo pair (the 3rd ProcessVoiceoverItemUseCase
+	// return was removed because the canonical per-item pipeline was never
+	// committed in this branch). The legacy ProcessOneVoiceoverUseCase
+	// bridge has been removed in earlier waves; the canonical per-item
+	// pipeline follow-up (BLOC5.4) will re-introduce it via the
+	// narrow VoiceoverItemExecutor port.
+	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.driveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
@@ -212,13 +209,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
-	// BLOC5.3 commit-2 (June 2026): the canonical
-	// ProcessVoiceoverItemUseCase was constructed inside
-	// buildVoiceoverService (3rd return) — assigning it to the field
-	// below wires the canonical 7-port per-item pipeline to the child
-	// handler. No BACKFILL bridge (the legacy ProcessOneVoiceoverUseCase
-	// is REMOVED; see process_one.go deletion in this commit).
-	log.Info("BLOC5.3 commit-2: ProcessVoiceoverItemUseCase wired (per-language child-job handler dispatcher — canonical 7-port pipeline)")
+	// (June 2026 cutover): BLOC5.3 ProcessVoiceoverItemUseCase wiring
+	// removed — the canonical 7-port per-item pipeline is forward-deferred
+	// to BLOC5.4. The VoiceoverProcessItem field in DomainBundle stays nil;
+	// the late-bound GenerateItemJobHandler will populate it once the
+	// concrete type lands.
 
 	// P0.1 (June 2026): construct the content-addressed artifact blob
 	// service so the upload UseCase (UploadVideoClip) can accept real
@@ -238,7 +233,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		YoutubeClipService:       youtubeClipService,
 		VoiceoverService:         voiceoverSvc,
 		VoiceoverSync:            vosyncSvc,
-		VoiceoverProcessItem:     processItemUseCase, // BLOC5.3 commit-2: narrow VoiceoverItemExecutor port
+		VoiceoverProcessItem:     nil, // BLOC5.4 follow-up: narrow VoiceoverItemExecutor port (forward-deferred June 2026)
 		ImageService:             imageSvc,
 		IngestService:            ingestSvc,
 		BooksService:             booksSvc,

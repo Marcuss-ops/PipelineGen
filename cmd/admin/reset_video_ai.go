@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 )
@@ -110,28 +109,7 @@ func runResetVideoAI(args []string) error {
 	return nil
 }
 
-func getOrCreateDriveFolder(ctx context.Context, svc *driveapi.Service, name, parentID string) (string, error) {
-	query := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-		escapeName(name), parentID)
-	list, err := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err != nil {
-		return "", fmt.Errorf("search folder: %w", err)
-	}
-	if len(list) > 0 {
-		return list[0].Id, nil
-	}
 
-	folder := &driveapi.File{
-		Name:     name,
-		MimeType: "application/vnd.google-apps.folder",
-		Parents:  []string{parentID},
-	}
-	created, err := svc.Files.Create(folder).Fields("id").Context(ctx).Do()
-	if err != nil {
-		return "", fmt.Errorf("create folder: %w", err)
-	}
-	return created.Id, nil
-}
 
 func escapeName(name string) string {
 	result := ""

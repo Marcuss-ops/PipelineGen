@@ -111,7 +111,7 @@ func runSummarizeBook(args []string) error {
 			return fmt.Errorf("failed to create local file: %w", err)
 		}
 
-		_, err = io.Copy(out, res.Body)
+		_, err = io.Copy(out, res)
 		out.Close() // Close before using
 		if err != nil {
 			return fmt.Errorf("failed to write file content: %w", err)

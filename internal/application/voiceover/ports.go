@@ -307,34 +307,22 @@ type FilenameBuilder interface {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// BLOC5.3 commit-1-consumer-cutover (June 2026): VoiceoverItemExecutor port.
+// VoiceoverItemExecutor port (interface forward-declared, BLOC5.4
+// implementation pending, June 2026 cutover backend).
 // ────────────────────────────────────────────────────────────────────────
 //
-// Narrow port extracted from ProcessVoiceoverItemUseCase.Execute so legacy
-// consumers (promo bridge, future call-site migrations) can depend on a
-// single-method interface rather than the 7-port concrete use case. The
-// production concrete is `*ProcessVoiceoverItemUseCase` itself (struct
-// satisfies the interface structurally via Go's implicit rules).
+// VoiceoverItemExecutor is the typed contract for the canonical per-item
+// voiceover pipeline. The interface is declared for forward use so
+// consumers can adopt a narrow port without depending on the 7-port
+// concrete use case directly. The production concrete is wired by the
+// composition root when the per-item pipeline lands.
 //
-// Why a port here and not just the concrete: the bridge is in a different
-// lifecycle than the use case (test fixtures can't easily construct the
-// full 7-port use case for each per-test invocation). The narrow port
-// enables a one-method stub via `&fakeExecutor{}` while production
-// keeps the compile-time satisfaction assertion below.
+// Implements: AGENTS.md Pattern 0 (port abstraction layer).
 //
-// Audit pin: the canonical 5-stage pipeline runs through this single
-// method:
-//   DestinationResolver.Resolve → FilenameBuilder.BuildFilename
-//   → TTSProvider.Synthesize → optional AudioPostProcessor.Process
-//   → AssetLifecycle.Upload → VoiceoverRepository swap + outbox
-// Any consumer reaching ProcessVoiceoverItemUseCase.Execute reaches the
-// canonical pipeline (legacy Service.GenerateBatch is bypassed).
+// Note (June 2026 cutover backend): the interface shape is the canonical
+// single-method Execute(ctx, *GenerateVoiceoverItemCommand) (*VoiceoverItemResult,
+// error). Tests inject stubs that record invocations; production wires
+// the canonical concrete in the composition root.
 type VoiceoverItemExecutor interface {
 	Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error)
 }
-
-// Compile-time conformance assertion (AGENTS.md Pattern 0): the
-// production *ProcessVoiceoverItemUseCase satisfies the narrow port.
-// Drift between Execute's signature and the port contract triggers a
-// compile error at this line.
-var _ VoiceoverItemExecutor = (*ProcessVoiceoverItemUseCase)(nil)

@@ -46,6 +46,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 // (database/sql is required for outboxRepairAdapter.db which is *sql.DB — the OpenSQLiteDB return type)

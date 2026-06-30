@@ -70,10 +70,10 @@ func runResetStockDrive(args []string) error {
 	fmt.Println("\n=== Deleting non-kept items from Drive ===")
 	for _, f := range list {
 		if keepFolders[f.Name] {
-			fmt.Printf("  KEPT: %s (%s)\n", f.Name, f.Id)
+			fmt.Printf("  KEPT: %s (%s)\n", f.Name, f.ID)
 			continue
 		}
-		fmt.Printf("  Deleting %s (%s)... ", f.Name, f.Id)
+		fmt.Printf("  Deleting %s (%s)... ", f.Name, f.ID)
 		err := driveAdmin.DeleteFolder(ctx, f.ID)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)

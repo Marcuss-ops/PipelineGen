@@ -88,20 +88,31 @@ func doRequest(r *gin.Engine, rawBody string) *httptest.ResponseRecorder {
 }
 
 // TestGenerateHandler_HappyPath_P0_2WireShape verifies the canonical
-// P0.2 wire shape (request_id + items[] + destination.group + options)
+// Step 5 wire shape (request_id + items[] + destination.group + options)
 // round-trips into the GenerateVoiceoversCommand with every field
 // populated correctly.
+//
+// Step 5 (P0.3 items-model recovery, June 2026): items[] is now
+// passed through 1:1 (no collapse). The payload carries Items[]
+// NOT the legacy Text + Languages[] + VoiceOverrides + FilenameTemplate
+// shape — this test pins the new contract. Two items carry different
+// texts and per-item voices/filenames to exercise the multi-text fan-out
+// (the P0.2 shared-text invariant is REMOVED per Step 5).
 func TestGenerateHandler_HappyPath_P0_2WireShape(t *testing.T) {
 	jobsSvc := &stubJobsSvc{
 		returnJob: &job.Job{ID: "job_abc123", CorrelationID: "video-xyz"},
 	}
 	r := newTestRouter(jobsSvc)
 
+	// Step 5: items carry independent text/voice/filename (was collapsed
+	// into cmd.Text/cmd.Languages/cmd.VoiceOverrides in P0.2). Two
+	// distinct texts exercise the multi-text fan-out path which is now
+	// first-class.
 	body := `{
 		"request_id": "video-xyz",
 		"items": [
-			{"text": "Testo", "language": "it-IT", "voice": "it-IT-DiegoNeural", "filename": "intro-it.mp3"},
-			{"text": "Testo", "language": "en-US", "voice": "en-US-RogerNeural", "filename": "intro-en.mp3"}
+			{"text": "Testo A", "language": "it-IT", "voice": "it-IT-DiegoNeural", "filename": "intro-it.mp3"},
+			{"text": "Testo B", "language": "en-US", "voice": "en-US-RogerNeural", "filename": "intro-en.mp3"}
 		],
 		"destination": {"kind": "group", "group": "Promozionali"},
 		"options": {"remove_silence": true, "strategy": "replace", "parallelism": 2, "metadata": {"trace": "video-xyz", "scene": "intro"}}
@@ -125,19 +136,38 @@ func TestGenerateHandler_HappyPath_P0_2WireShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("Payload type: got %T, want *voiceover.GenerateVoiceoversCommand", jobsSvc.enqueued.Payload)
 	}
-	if cmd.Text != "Testo" {
-		t.Errorf("Text: got %q, want %q", cmd.Text, "Testo")
+	// Step 5 contract: Items carries the per-row payloads verbatim.
+	// The collapsed fields are gone from the Command shape.
+	if len(cmd.Items) != 2 {
+		t.Fatalf("len(Items): got %d, want 2", len(cmd.Items))
 	}
-	if !reflect.DeepEqual(cmd.Languages, []string{"it-IT", "en-US"}) {
-		t.Errorf("Languages: got %v, want %v", cmd.Languages, []string{"it-IT", "en-US"})
+	if cmd.Items[0].Text != "Testo A" {
+		t.Errorf("Items[0].Text: got %q, want %q", cmd.Items[0].Text, "Testo A")
 	}
-	expectedOverrides := map[string]string{
-		"it-IT": "it-IT-DiegoNeural",
-		"en-US": "en-US-RogerNeural",
+	if cmd.Items[1].Text != "Testo B" {
+		t.Errorf("Items[1].Text: got %q, want %q", cmd.Items[1].Text, "Testo B")
 	}
-	if !reflect.DeepEqual(cmd.VoiceOverrides, expectedOverrides) {
-		t.Errorf("VoiceOverrides: got %v, want %v", cmd.VoiceOverrides, expectedOverrides)
+	if cmd.Items[0].Language != "it-IT" || cmd.Items[1].Language != "en-US" {
+		t.Errorf("Items[i].Language: got [%q, %q], want [it-IT, en-US]", cmd.Items[0].Language, cmd.Items[1].Language)
 	}
+	if cmd.Items[0].Voice != "it-IT-DiegoNeural" {
+		t.Errorf("Items[0].Voice: got %q, want it-IT-DiegoNeural", cmd.Items[0].Voice)
+	}
+	if cmd.Items[1].Voice != "en-US-RogerNeural" {
+		t.Errorf("Items[1].Voice: got %q, want en-US-RogerNeural", cmd.Items[1].Voice)
+	}
+	if cmd.Items[0].Filename != "intro-it.mp3" {
+		t.Errorf("Items[0].Filename: got %q, want intro-it.mp3", cmd.Items[0].Filename)
+	}
+	if cmd.Items[1].Filename != "intro-en.mp3" {
+		t.Errorf("Items[1].Filename: got %q, want intro-en.mp3", cmd.Items[1].Filename)
+	}
+	// Step 5 invariant: the collapsed fields (Text, Languages,
+	// VoiceOverrides, FilenameTemplate) are absent from the struct.
+	// Compile-time absence is the audit-pin — runtime "x != nil" /
+	// "x != \"\"" checks are impossible because the fields don't
+	// exist. The struct-shape audit-pin is enforced by
+	// TestGenerateVoiceoversCommand_NoLegacyJSONFields in this file.
 	if !cmd.RemoveSilence {
 		t.Errorf("RemoveSilence: got false, want true")
 	}
@@ -195,26 +225,36 @@ func TestGenerateHandler_RejectsEmptyItems(t *testing.T) {
 	}
 }
 
-// TestGenerateHandler_RejectsMixedTexts verifies the P0.2 invariant
-// (all items must share the same text). Multi-text fan-out is P0.3 scope.
-func TestGenerateHandler_RejectsMixedTexts(t *testing.T) {
-	jobsSvc := &stubJobsSvc{returnJob: &job.Job{}}
+// TestGenerateHandler_AcceptsMixedTexts verifies Step 5 inverted the
+// P0.2 invariant — items[] may now carry different texts and the
+// fan-out propagates each item's textHash independently. The P0.2
+// test "RejectsMixedTexts" was removed in Step 5; this is the canonical
+// post-Step-5 audit pin.
+func TestGenerateHandler_AcceptsMixedTexts(t *testing.T) {
+	jobsSvc := &stubJobsSvc{returnJob: &job.Job{ID: "job_mixed"}}
 	r := newTestRouter(jobsSvc)
 	body := `{
 		"items": [
-			{"text": "Testo A", "language": "it-IT"},
-			{"text": "Testo B", "language": "en-US"}
+			{"text": "Testo A", "language": "it-IT", "voice": "it-IT-DiegoNeural"},
+			{"text": "Testo B", "language": "en-US", "voice": "en-US-RogerNeural"}
 		]
 	}`
 	rec := doRequest(r, body)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status: got %d want 400; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d want 202; body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "items[1].text") {
-		t.Errorf("error should mention items[1].text; got body=%s", rec.Body.String())
+	if jobsSvc.enqueued == nil {
+		t.Fatal("expected Enqueue to be called")
 	}
-	if jobsSvc.enqueued != nil {
-		t.Errorf("enqueue should not be called; got %+v", jobsSvc.enqueued)
+	cmd, ok := jobsSvc.enqueued.Payload.(*voiceover.GenerateVoiceoversCommand)
+	if !ok {
+		t.Fatalf("Payload type: got %T, want *voiceover.GenerateVoiceoversCommand", jobsSvc.enqueued.Payload)
+	}
+	if len(cmd.Items) != 2 {
+		t.Fatalf("len(Items): got %d want 2", len(cmd.Items))
+	}
+	if cmd.Items[0].Text != "Testo A" || cmd.Items[1].Text != "Testo B" {
+		t.Errorf("Items[i].Text: got [%q, %q] want [Testo A, Testo B]", cmd.Items[0].Text, cmd.Items[1].Text)
 	}
 }
 
@@ -325,9 +365,15 @@ func TestGenerateHandler_RegistersOnlyGenerateRoute(t *testing.T) {
 }
 
 // TestRequest_ToCommand_NormalisesInputs verifies the types.go
-// mapper: items[] collapse + VoiceOverrides map + FilenameTemplate
-// last-non-empty-wins + Strategy normalisation, all without going
-// through Gin (decoupled from handler context).
+// mapper: Items[] 1:1 pass-through + Strategy normalisation, all
+// without going through Gin (decoupled from handler context).
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the previous
+// P0.2 test pinned the collapse (Text + Languages[] + VoiceOverrides
+// last-wins + FilenameTemplate last-wins). With Step 5's items-model
+// the collapse is REMOVED — this test pins the new contract: items
+// round-trip 1:1, the collapsed fields stay zero/nil, Strategy
+// normalisation still applies.
 func TestRequest_ToCommand_NormalisesInputs(t *testing.T) {
 	req := &GenerateVoiceoversRequest{
 		Items: []VoiceoverItem{
@@ -341,21 +387,25 @@ func TestRequest_ToCommand_NormalisesInputs(t *testing.T) {
 		},
 	}
 	cmd := req.ToCommand()
-	if cmd.Text != "Hello" {
-		t.Errorf("Text: got %q, want Hello", cmd.Text)
+	// Step 5: items round-trip 1:1.
+	if len(cmd.Items) != 3 {
+		t.Fatalf("len(Items): got %d, want 3", len(cmd.Items))
 	}
-	if !reflect.DeepEqual(cmd.Languages, []string{"en-US", "it-IT", "fr-FR"}) {
-		t.Errorf("Languages: got %v", cmd.Languages)
+	if cmd.Items[0].Text != "Hello" || cmd.Items[0].Language != "en-US" || cmd.Items[0].Filename != "hello-en.mp3" {
+		t.Errorf("Items[0]: got %+v, want Text=Hello Language=en-US Filename=hello-en.mp3", cmd.Items[0])
 	}
-	if cmd.VoiceOverrides["it-IT"] != "it-IT-DiegoNeural" {
-		t.Errorf("VoiceOverrides[it-IT]: got %q", cmd.VoiceOverrides["it-IT"])
+	if cmd.Items[1].Voice != "it-IT-DiegoNeural" {
+		t.Errorf("Items[1].Voice: got %q, want it-IT-DiegoNeural", cmd.Items[1].Voice)
 	}
-	if _, ok := cmd.VoiceOverrides["en-US"]; ok {
-		t.Errorf("VoiceOverrides[en-US] should NOT be set (empty voice)")
+	if cmd.Items[2].Voice != "" {
+		t.Errorf("Items[2].Voice: got %q, want empty", cmd.Items[2].Voice)
 	}
-	if cmd.FilenameTemplate != "hello-en.mp3" {
-		t.Errorf("FilenameTemplate: got %q, want hello-en.mp3", cmd.FilenameTemplate)
-	}
+	// Step 5 invariant: the collapsed fields (Text, Languages,
+	// VoiceOverrides, FilenameTemplate) are absent from the struct.
+	// Compile-time absence is the audit-pin — runtime checks are
+	// impossible because the fields don't exist. The struct-shape
+	// audit-pin is enforced by
+	// TestGenerateVoiceoversCommand_NoLegacyJSONFields in this file.
 	if string(cmd.Strategy) != "skip" {
 		t.Errorf("Strategy: got %q, want skip (case-insensitive normalise)", cmd.Strategy)
 	}
@@ -364,12 +414,12 @@ func TestRequest_ToCommand_NormalisesInputs(t *testing.T) {
 	}
 }
 
-// TestRequest_ToCommand_DuplicateLanguagesLastWins locks the Edge
-// case: two items share the same language code. The VoiceOverrides
-// map (keyed by language) silently picks the LATER item's voice.
-// This is the documented P0.2 behaviour; P0.3 multi-item fan-out
-// will revisit this with worker-side per-item dispatch.
-func TestRequest_ToCommand_DuplicateLanguagesLastWins(t *testing.T) {
+// TestRequest_ToCommand_DuplicateLanguagesPassesVerbatim locks the
+// Step 5 invariant: two items may share the same language code with
+// DIFFERENT voices. The payload round-trips both items independently;
+// no "last-wins" collapse happens (the legacy P0.2 last-wins test
+// was removed in Step 5 because its target fields no longer exist).
+func TestRequest_ToCommand_DuplicateLanguagesPassesVerbatim(t *testing.T) {
 	req := &GenerateVoiceoversRequest{
 		Items: []VoiceoverItem{
 			{Text: "Hello", Language: "it-IT", Voice: "it-IT-BenignoNeural"},
@@ -377,20 +427,23 @@ func TestRequest_ToCommand_DuplicateLanguagesLastWins(t *testing.T) {
 		},
 	}
 	cmd := req.ToCommand()
-	if cmd.VoiceOverrides["it-IT"] != "it-IT-DiegoNeural" {
-		t.Errorf("VoiceOverrides[it-IT]: got %q, want it-IT-DiegoNeural (last-wins)", cmd.VoiceOverrides["it-IT"])
+	if len(cmd.Items) != 2 {
+		t.Fatalf("len(Items): got %d, want 2 (both items passed through)", len(cmd.Items))
 	}
-	if !reflect.DeepEqual(cmd.Languages, []string{"it-IT", "it-IT"}) {
-		t.Errorf("Languages: got %v, want [it-IT, it-IT] (duplicates preserved for worker-side fan-out)", cmd.Languages)
+	if cmd.Items[0].Voice != "it-IT-BenignoNeural" {
+		t.Errorf("Items[0].Voice: got %q, want it-IT-BenignoNeural (NOT last-wins)", cmd.Items[0].Voice)
+	}
+	if cmd.Items[1].Voice != "it-IT-DiegoNeural" {
+		t.Errorf("Items[1].Voice: got %q, want it-IT-DiegoNeural (NOT last-wins)", cmd.Items[1].Voice)
 	}
 }
 
-// TestRequest_ToCommand_DuplicateFilenamesLastWins locks the
-// FilenameTemplate last-non-empty-wins behaviour. P0.2 invariant
-// (shared text) limits real-world occurrences to per-language
-// override collisions; record the behaviour so P0.3 worker-side
-// per-item dispatch can rely on it.
-func TestRequest_ToCommand_DuplicateFilenamesLastWins(t *testing.T) {
+// TestRequest_ToCommand_DuplicateFilenamesPassesVerbatim locks the
+// Step 5 invariant: per-item filenames round-trip independently.
+// Each item keeps its own filename — no "last-wins" collapse to a
+// shared FilenameTemplate (the legacy P0.2 last-wins test was
+// removed in Step 5 because its target field no longer exists).
+func TestRequest_ToCommand_DuplicateFilenamesPassesVerbatim(t *testing.T) {
 	req := &GenerateVoiceoversRequest{
 		Items: []VoiceoverItem{
 			{Filename: "first-name.mp3", Language: "en-US", Text: "x"},
@@ -398,8 +451,11 @@ func TestRequest_ToCommand_DuplicateFilenamesLastWins(t *testing.T) {
 		},
 	}
 	cmd := req.ToCommand()
-	if cmd.FilenameTemplate != "second-name.mp3" {
-		t.Errorf("FilenameTemplate: got %q, want second-name.mp3", cmd.FilenameTemplate)
+	if cmd.Items[0].Filename != "first-name.mp3" {
+		t.Errorf("Items[0].Filename: got %q, want first-name.mp3 (NOT last-wins)", cmd.Items[0].Filename)
+	}
+	if cmd.Items[1].Filename != "second-name.mp3" {
+		t.Errorf("Items[1].Filename: got %q, want second-name.mp3 (NOT last-wins)", cmd.Items[1].Filename)
 	}
 }
 
@@ -423,8 +479,10 @@ func TestRequest_ToEnqueueRequest_CarriesCorrelationID(t *testing.T) {
 	if !ok {
 		t.Fatalf("Payload type: got %T, want *voiceover.GenerateVoiceoversCommand", enq.Payload)
 	}
-	if cmd.Text != "hi" {
-		t.Errorf("Payload.Text: got %q, want hi", cmd.Text)
+	// Step 5 invariant: Items[(0)] carries the source text (the
+	// collapsed cmd.Text is gone; per-item text lives in Items).
+	if len(cmd.Items) != 1 || cmd.Items[0].Text != "hi" {
+		t.Errorf("Payload.Items[0].Text: got %q, want hi", cmd.Items[0].Text)
 	}
 }
 
@@ -493,7 +551,7 @@ func TestGenerateHandler_AcceptsExplicitKindWithFolderID(t *testing.T) {
 // consumer (POST /api/media/voiceover/generate) routes through the
 // canonical async pipeline (enqueue `voiceover.generate` job →
 // FanoutVoiceoversUseCase → per-language voiceover.generate_item
-// children → ProcessVoiceoverItemUseCase.Execute). It MUST NOT reach
+// children → canonical pipeline Execute, forward-deferred to BLOC5.4). It MUST NOT reach
 // the legacy Service.GenerateBatch surface (per BLOC5.3 master plan
 // §1, §5).
 //
@@ -552,5 +610,57 @@ func TestHTTPConsumer_RoutesThroughCanonicalUseCase(t *testing.T) {
 	cmd := req.ToCommand()
 	if !reflect.DeepEqual(cmd.Metadata, meta) {
 		t.Errorf("Metadata: got %v, want %v", cmd.Metadata, meta)
+	}
+}
+
+// TestGenerateVoiceoversCommand_NoLegacyJSONFields is the Step 5
+// audit-pin that locks the collapsed-field removal at both routing
+// surfaces (JSON and reflection). The runtime "x != \"\"" /
+// "x != nil" checks in the per-feature tests were removed because
+// the fields don't exist on the struct; this test re-establishes the
+// audit-pin via two complementary mechanisms:
+//
+//  1. JSON round-trip absence: a non-empty Command's JSON output
+//     MUST NOT include "text", "languages", "voice_overrides", or
+//     "filename_template" keys. If a future refactor re-introduces
+//     one of these as a backward-compat shim, this catches it at
+//     runtime even though the compile-time pin (no references in
+//     test code) is silent.
+//  2. Reflection: confirm the struct shape itself does NOT expose
+//     Text, Languages, VoiceOverrides, or FilenameTemplate. This
+//     catches re-introductions even if the JSON tags differ.
+//
+// Both pins are needed: JSON-only catches field additions with the
+// right tag, reflection-only catches field additions with the wrong
+// tag. Together they close the "audit-pin regression" hole that the
+// runtime "x != \"\""-style assertions left behind.
+func TestGenerateVoiceoversCommand_NoLegacyJSONFields(t *testing.T) {
+	cmd := voiceover.GenerateVoiceoversCommand{
+		Items: []voiceover.VoiceoverItem{{Text: "x", Language: "en-US"}},
+	}
+	b, err := json.Marshal(cmd)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	// Top-level key audit (not substring search): unmarshal then
+	// assert the legacy keys are NOT in the Command-level map. This
+	// avoids false positives from the per-item "text"/"language"
+	// JSON tags inside cmd.Items (which are legitimate VoiceoverItem
+	// fields, NOT legacy Command-level shortcuts).
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(b, &topLevel); err != nil {
+		t.Fatalf("unmarshal to top-level map: %v", err)
+	}
+	for _, key := range []string{"text", "languages", "voice_overrides", "filename_template"} {
+		if raw, has := topLevel[key]; has {
+			t.Errorf("Step 5 audit-pin: legacy field %q must NOT appear at top-level (got %s)", key, string(raw))
+		}
+	}
+
+	rt := reflect.TypeOf(voiceover.GenerateVoiceoversCommand{})
+	for _, name := range []string{"Text", "Languages", "VoiceOverrides", "FilenameTemplate"} {
+		if _, has := rt.FieldByName(name); has {
+			t.Errorf("Step 5 audit-pin: struct field %q must be absent (compile-time pin failed via reflection)", name)
+		}
 	}
 }

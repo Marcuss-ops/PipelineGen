@@ -323,7 +323,9 @@ func runCleanupStockOrphans(args []string) error {
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
-	list, err := driveClient.Files.List().Q(q	list, err := driveReader.SearchFiles(ctx, query)ist folders on Drive", zap.Error(err))
+	list, err := driveReader.SearchFiles(ctx, query)
+	if err != nil {
+		log.Fatal("Failed to list folders on Drive", zap.Error(err))
 	}
 
 	fmt.Printf("Found %d folders on Drive.\n", len(list))

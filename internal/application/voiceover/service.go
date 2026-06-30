@@ -58,15 +58,12 @@ type Service struct {
 	ttsProvider       TTSProvider
 	outputDir         string
 	log               *zap.Logger
-	// processItemUseCase (BLOC5.3 commit-1-consumer-cutover, June 2026):
-	// the canonical per-item voiceover orchestrator. Held by Service
-	// purely so legacy consumers (e.g. promo.voiceoverGenBridge) can
-	// reach the canonical pipeline WITHOUT going through Service.Generate
-	// (the legacy entry that routed to Service.GenerateBatch). The
-	// bridge calls processItemUseCase.Execute(ctx, singleItemCmd)
-	// synchronously. Add via VoiceoverGenerationDeps.ProcessItemUseCase
-	// in the composition root.
-	processItemUseCase VoiceoverItemExecutor
+	// (BLOC5.3 processItemUseCase field REMOVED June 2026 cutover:
+	// the canonical per-item voiceover pipeline was never committed
+	// in this branch — voiceover/promo.go now routes via legacy
+	// Service.GenerateWithDestination. The VoiceoverItemExecutor
+	// interface in ports.go is retained for the BLOC5.4 follow-up
+	// that will land the concrete pipeline.)
 	// driveUploader is a narrow structural port (PR-VO-B1, June 2026):
 	// voiceover no longer imports infrastructure/drive. DeleteFile
 	// is the only method the service uses today (post-commit cleanup
@@ -117,20 +114,16 @@ type VoiceoverPersistenceDeps struct {
 	Repo persistence.Repository
 }
 
-// VoiceoverGenerationDeps — TTS provider + semantic tagger + canonical per-item use case.
+// VoiceoverGenerationDeps — TTS provider + semantic tagger.
 //
-// BLOC5.3 commit-1-consumer-cutover (June 2026): ProcessItemUseCase is
-// the canonical single-item voiceover pipeline exposed here so legacy
-// consumers (promo bridge, scripts fan-out, books integration) can
-// reach the canonical pipeline WITHOUT going through Service.Generate
-// (the legacy in-process route that called Service.GenerateBatch).
-// Optional — the service tolerates nil at construction for backward
-// compat with pre-cutover composition roots; consumers route through
-// Service.GenerateBatch only when this is nil.
+// (June 2026 cutover): the BLOC5.3 ProcessItemUseCase field was
+// removed because the canonical per-item pipeline was never landed
+// in this branch. The VoiceoverItemExecutor interface in ports.go is
+// retained for the BLOC5.4 follow-up. The promo workflow
+// (voiceover/promo.go) routes through legacy Service.GenerateWithDestination.
 type VoiceoverGenerationDeps struct {
-	TTSProvider        TTSProvider
-	SemanticTagger     SemanticTaggerFunc
-	ProcessItemUseCase VoiceoverItemExecutor
+	TTSProvider    TTSProvider
+	SemanticTagger SemanticTaggerFunc
 }
 
 // VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator.
@@ -154,9 +147,8 @@ func NewService(deps VoiceoverDeps) *Service {
 		assetDestResolver: deps.Integration.AssetDestResolver,
 		lifecycleService:  deps.Integration.LifecycleService,
 		semanticTagger:    deps.Generation.SemanticTagger,
-		outboxEnqueuer:    deps.Integration.OutboxEnqueuer,
-		translator:        deps.Integration.Translator,
-		processItemUseCase: deps.Generation.ProcessItemUseCase,
+		outboxEnqueuer: deps.Integration.OutboxEnqueuer,
+		translator:     deps.Integration.Translator,
 	}
 }
 
@@ -168,10 +160,6 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverPromo, s.HandleJob)
 		s.log.Info("registered voiceover job handlers (batch + promo)")
 	}
-}
-
-func (s *Service) Cfg() *config.Config {
-	return s.cfg
 }
 
 func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
