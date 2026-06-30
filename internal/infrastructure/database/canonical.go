@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     transcript_embedding TEXT,
     updated_at TEXT NOT NULL DEFAULT '',
     media_type TEXT NOT NULL DEFAULT '',
+    status TEXT,
     local_path TEXT,
     relative_path TEXT,
     drive_file_id TEXT,
