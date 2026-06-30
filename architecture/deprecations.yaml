@@ -50,7 +50,7 @@ deprecations:
       the consumption seam per AGENTS.md Pattern 0.
     introduction_date: 2026-04
     removal_date: 2026-06-28
-    tracking_issue: "PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2, owner: internal/application/voiceover); sibling to PR-VOICEOVER-RECOVERY V1..V7 sequence (deadline 2026-07-10)"
+    tracking_issue: "PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (architecture/current.yaml#id-26 follow_up_tickets.PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2, owner: internal/application/voiceover); sibling to PR-VOICEOVER-RECOVERY V1..V7 sequence (deadline 2026-07-10)"
     compatibility_test: |
       Triple-defence mirroring PR-CLIP-RAW-MUTATIONS:
         (a) `voiceoverSvcAdapter` type removed from wire_script.go — any
@@ -137,14 +137,14 @@ deprecations:
           seam, NOT an HTTP route).
 
         - PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (architecture/current.yaml
-          #id-21 follow_up_tickets): WAVE-PROGRESS tracker entry recording
+          #id-26 follow_up_tickets): WAVE-PROGRESS tracker entry recording
           the B-2 BACKFILL → B-3 CUTOVER → B-4 CONTRACT sequence of the
           voiceover typed-port recovery. This deprecation record is the
           godlike/07 schema companion — godlike/07 owns deprecation-records,
           wave-tracker owns wave-progress; the two are complementary, not
           redundant (per AGENTS.md §Documentation Map).
 
-        - PR-VOICEOVER-RECOVERY (architecture/current.yaml #id-21
+        - PR-VOICEOVER-RECOVERY (architecture/current.yaml #id-26
           follow_up_tickets, sibling): V1..V7 typed-port chain (deadline
           2026-07-10). Different scope — the V-chain is the deep typed-port
           push through Go canonical types; this deprecation record is the

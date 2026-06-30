@@ -1,7 +1,7 @@
 # MANIFEST-STREAM-RECOVERY — Manifest cutover PR 1–8 · recovery plan
 
 > **Status**: `pending` · **Owner capability**: `internal/application/assets/manifest` · **Deadline**: `2026-07-10`
-> **Tracking issue**: `architecture/current.yaml#id-21 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY`
+> **Tracking issue**: `architecture/current.yaml#id-26 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY`
 > **Auto cross-refs**: AGENTS.md Agent Execution Playbook (§"One task solves one responsibility"); godlike/07 §"Temporary deprecation record"; godlike/11 §"Scope discipline".
 
 ---
@@ -15,7 +15,7 @@
 | **owner_capability** | `internal/application/assets/manifest` (future canonical home; today the surface is split between `internal/application/clips/`, `voiceover`, scripts post-processors, etc.) |
 | **status** | `pending` |
 | **deadline** | `2026-07-10` (allineata a Wave 21 PR-G mega-package split) |
-| **tracking_issue** | `architecture/current.yaml#id-21 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY` |
+| **tracking_issue** | `architecture/current.yaml#id-26 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY` |
 | **linked extinct ref** | branch tip `26562107` (deleted June 2026; blueprint cache in `/tmp/voiceover-blueprint/`) |
 
 ---
@@ -113,7 +113,7 @@ Equivalente al voiceover V-cycle (V1..V7), ma con scope strettamente manifest-st
 
 ## Cross-reference al wave-tracker canonico
 
-`architecture/current.yaml#id-21 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY` — entry esterna (NON Wave 21 stessa), popolata con:
+`architecture/current.yaml#id-26 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY` — entry esterna (NON Wave 21 stessa), popolata con:
 
 ```yaml
 - id: PR-MANIFEST-STREAM-RECOVERY
@@ -152,7 +152,7 @@ Quando `MANIFEST-V5` atterra e gli e2e test sono verdi, l'entry sopra viene ruot
 ## Link utili
 
 - Blueprint cache reference: `/tmp/voiceover-blueprint/` (read-only, post Land non più considerato source-of-truth).
-- Wave tracker canonical pointer: `architecture/current.yaml#id-21 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY`.
+- Wave tracker canonical pointer: `architecture/current.yaml#id-26 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY`.
 - Ownership canonical pointer: `architecture/ownership/application.yaml::application_assets_manifest.canonical_files` (post-dc6add3e; a V1 EXPAND).
 - AGENTS.md Agent Execution Playbook: §"One task solves one responsibility".
 - godlike/07 §"Migration sequence" (EXPAND → BACKFILL → CUTOVER → CONTRACT).

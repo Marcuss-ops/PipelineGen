@@ -80,7 +80,7 @@ func (r *Result) AddWarning(msg string) {
 
 // VoiceoverResult is the canonical typed alias of Result, introduced to fix
 // the undefined: domain.VoiceoverResult build break at services.go:97 per
-// architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.
+// architecture/current.yaml#id-26 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.
 // Wave 21 PR-G.2 BACKFILL (deadline 2026-07-10) is the planned window for
 // the deep typed-port push; this alias is a tactical unblock while PR-G.2 ships.
 type VoiceoverResult = Result

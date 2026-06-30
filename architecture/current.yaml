@@ -17,7 +17,6 @@
 # (canonical pre-P0-5 byte-equivalent, established by slice 1/4).
 #
 # Zero-fabrication policy: owner / deadline / linked_issues OMITTED when absent in source.
-# Duplicate id:21 (pre-existing in source) is preserved as two separate entries.
 # Doc #2 (post_cascade_followups) and Doc #3 (legacy_fallback_cleanup) DROPPED - see footer pointer.
 
 - id: 0
@@ -187,7 +186,7 @@
       status: shipped_through
     - id: PR-CONTEXT-DOC-ONLY-BG-EXTRAS
       owner_capability: scripts/ci-architectural-checks.sh + AGENTS.md maintainer
-- id: 21
+- id: 26
   status: in_progress
   exit_signal: false
   blocker: ["16"]

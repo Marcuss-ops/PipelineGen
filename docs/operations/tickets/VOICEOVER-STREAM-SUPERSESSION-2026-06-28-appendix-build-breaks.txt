@@ -42,7 +42,7 @@ Stato REALE (post-Option-X alias unblock + Step 3 qdrant/dr verified):
     - build_bundles_process.go:423:  non-interface mismatch
     - build_bundles_domain.go:315: memorySvc type assignment contrarian
     Follow-up: PR-APP-BUNDLES-COMPILE-RECOVERY
-    (architecture/current.yaml#id-21 follow_up_tickets.PR-APP-BUNDLES-COMPILE-RECOVERY)
+    (architecture/current.yaml#id-26 follow_up_tickets.PR-APP-BUNDLES-COMPILE-RECOVERY)
 
   RED ZONE 2: tests/fixtures/zero_legacy/check_*.go
     - check_14_buildpayload_status_key.go:11 + check_12_payload_mapper_status.go:11:
@@ -51,7 +51,7 @@ Stato REALE (post-Option-X alias unblock + Step 3 qdrant/dr verified):
     - check_08_setter.go:19,20:  +
        (campi mancanti su serverShim struct)
     Follow-up: PR-TEST-FIXTURES-RED-RECOVERY
-    (architecture/current.yaml#id-21 follow_up_tickets.PR-TEST-FIXTURES-RED-RECOVERY)
+    (architecture/current.yaml#id-26 follow_up_tickets.PR-TEST-FIXTURES-RED-RECOVERY)
 
 ## Next step (pre-push prerequisite)
 
@@ -120,4 +120,4 @@ Questi tre confini GREEN (qdrant/dr + assets/monitor + migrations) si aggiungono
 
 La UNICA RED zone attuale (post-Option-X) resta PR-APP-BUNDLES-COMPILE-RECOVERY + PR-TEST-FIXTURES-RED-RECOVERY scope.
 
-Tracking: architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.
+Tracking: architecture/current.yaml#id-26 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.
