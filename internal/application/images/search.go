@@ -61,10 +61,25 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 		}
 	}
 
-	// Lock per evitare download duplicati dello stesso soggetto
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Dedup via singleflight: previene download duplicati per lo stesso
+	// soggetto SENZA serializzare richieste per soggetti diversi (Fase 3,
+	// June 2026 — replaces the global sync.Mutex).
+	key := "search:" + slug + ":" + lang
+	result, err, _ := s.dedup.Do(key, func() (interface{}, error) {
+		return s.searchAndDownloadInner(ctx, slug, displayName, query, lang, tags, subject)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if asset, ok := result.(*asset.ImageAsset); ok {
+		return asset, nil
+	}
+	return nil, fmt.Errorf("singleflight: unexpected result type")
+}
 
+// searchAndDownloadInner is the body of SearchAndDownload, extracted so
+// singleflight can wrap it per subject key.
+func (s *Service) searchAndDownloadInner(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject) (*asset.ImageAsset, error) {
 	// 2. Disambiguazione con Wikidata
 	s.log.Info("Disambiguating with Wikidata", zap.String("query", query), zap.String("lang", lang))
 	wikiTitle, qid, _ := s.searchWikidata(query, lang)
