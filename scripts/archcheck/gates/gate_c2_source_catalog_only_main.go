@@ -110,6 +110,8 @@
 // where root_dir defaults to "." (repo root) and baseline defaults
 // to 0 (strict — used for verifications during the pre-landing
 // testing of this gate; the CI runner sets baseline explicitly).
+//go:build c2_source_catalog_only
+
 package main
 
 import (

@@ -60,6 +60,8 @@
 //	Walker scope: none (this gate is purely artifact-to-artifact).
 //
 //	Exit codes: 0 (no violations), 1 (mismatches found), 2 (invocation error).
+//go:build c2_route_manifest
+
 package main
 
 import (
