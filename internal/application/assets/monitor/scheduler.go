@@ -13,7 +13,10 @@
 //   - The exponential backoff math (nextCheckTime 5min → 24h cap).
 //   - parseCheckInterval (time.Duration parser; lives here because it's
 //     a time-utility, no VTT / Ollama / exec coupling).
-//   - Lifecycle (Stop, stopCh).
+//   - Lifecycle: Start runs until the parent ctx cancels (no Stop()
+//     method, no stopCh side-channel). Shutdown propagates through the
+//     startCtx passed to Start — serverLifecycle.Stop orchestrates the
+//     cancel, see internal/app/lifecycle.go::startBackgroundJobs.
 //
 // The scheduler never touches os/exec, OllamaClient, or VTT regex
 // directly — those concerns cross the package boundary through:
@@ -76,7 +79,6 @@ type ChannelMonitor struct {
 	enqueuer   JobEnqueuer
 
 	// Internal primitives.
-	stopCh chan struct{}
 	// globalSem is the rate-limiter semaphore per monitor: it bounds the
 	// number of per-channel goroutines the scheduler can spin up at once.
 	// Width comes from cfg.Concurrency.MaxConcurrentChannelChecks (fallback 1).
@@ -136,15 +138,8 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 		analyzer:   deps.Analyzer,
 		enqueuer:   deps.Enqueuer,
 
-		stopCh:    make(chan struct{}),
 		globalSem: make(chan struct{}, maxChannels),
 	}
-}
-
-// Stop ends the scheduler loop. Dereferencing a closed channel panics;
-// callers must invoke Stop at most once.
-func (m *ChannelMonitor) Stop() {
-	close(m.stopCh)
 }
 
 // Start begins the channel monitoring process.
@@ -175,9 +170,6 @@ func (m *ChannelMonitor) Start(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			m.runSchedulerCycle(ctx)
-		case <-m.stopCh:
-			m.log.Info("Channel monitor stopped")
-			return
 		case <-ctx.Done():
 			m.log.Info("Channel monitor context cancelled")
 			return

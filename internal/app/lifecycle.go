@@ -243,7 +243,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 					log.Info("Channel monitor started")
 					return nil
 				},
-				Stop: func(_ context.Context) error { cm.Stop(); return nil },
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 	}
