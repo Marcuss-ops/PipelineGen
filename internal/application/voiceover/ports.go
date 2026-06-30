@@ -109,6 +109,20 @@ type DriveUploaderPort interface {
 // Wave 21 PR-G artefacts).
 type VoiceoverGenerator interface {
 	Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error)
+	// GenerateWithDestination is the canonical narrow-port surface for
+	// destination-aware voiceover generation. Production *Service and
+	// any future implementations MUST satisfy this signature exactly; the
+	// compile-time assertion below catches drift.
+	//
+	// Cross-capability cleanup Refactor 1 (June 2026, audit at
+	// architecture/audits/2026-06-28-cross-capability-imports.md):
+	// internal/application/scripts/jobs/job_helpers.go previously depended
+	// on the concrete *voiceover.Service for this call site; the
+	// dependency is now narrowed to this port-method, so the consumer
+	// (scripts/jobs) compiles without importing the Service concrete
+	// other than for the wire-shape *DestinationRequest / *VoiceoverResult
+	// types returned.
+	GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error)
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0): *Service must
