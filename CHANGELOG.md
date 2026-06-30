@@ -707,6 +707,77 @@ the Check 44 standalone reads the live YAML SSOT and reports
 
 (See-also canonical anchor: `audit-trail-anchors_P1-2-of-cleanup-plan`; mirrored in AGENTS.md `Recent cross-cutting closures (June 2026)`.)
 
+**[Channel-monitor Blocco 1]** `fix(monitor)` — backoff is finally real. Three
+bugs closed in one commit:
+
+- **checkChannel now returns `(ChannelCheckResult, error)`** instead of bare `()`.
+  The previous `func (m *ChannelMonitor) checkChannel(ctx, channel)` swallowed
+  `m.ytdlp.ListChannel` errors into a log line. The scheduler then wired
+  `success := true` to `nextCheckTime`, so a flapping yt-dlp (network blip,
+  bot challenge, playlist-end drift) NEVER tripped the 5min → 10min → 20min
+  → … → 24h exponential backoff. After: the err is returned, the scheduler
+  feeds it into `recordCheckOutcome`, and `MarkChecked(Success=false,
+  LastError=<err>, NextCheckAt=backoff)` is the steady-state failure outcome.
+
+- **`recordCheckOutcome` extracted as a small helper** that computes
+  `success := checkErr == nil`, the matching `nextCheckTime`, and forwards
+  everything to `channels.MarkChecked`. Pulled out of the goroutine body in
+  `checkDueChannels` so the error-path propagation can be unit-tested
+  without spinning a real yt-dlp subprocess.
+
+- **`Start()` no longer runs an initial `ListEnabled` cold-start check.**
+  The previous code path printed a stale pre-PR-7 comment ("Initial check:
+  run immediately for any enabled channels") and called
+  `m.channelsSvc.ListEnabled` followed by `m.checkDueChannels` — OUTSIDE
+  the `ClaimDue → lease → MarkChecked` chain. That meant the very first
+  check of every process cold-start had no worker_id, no lease, no
+  failure-counter increment, and no NextCheckAt writeback. Bringing the
+  cold start into the same `runSchedulerCycle` cadence means a cold-start
+  failure now drives backoff identically to a warm-cycle failure.
+
+- **Pattern 0 port `MonitorDownloaderPort`** declared in
+  `internal/application/assets/monitor/monitor_ports.go` (ListsChannel +
+  Path), with compile-time assertion
+  `var _ MonitorDownloaderPort = (*downloader.YTDLPDownloader)(nil)`.
+  `ChannelMonitor.ytdlp` field type is now this port rather than
+  `*downloader.YTDLPDownloader`. Production callers in
+  `internal/app/lifecycle.go::lifecycle` pass the concrete value;
+  Go auto-boxes it. Unit tests inject `*fakeLister` and exercise the
+  failure path with no subprocess.
+
+- **New `ChannelCheckResult` type** (VideosDiscovered / VideosEnqueued /
+  VideosSkipped) — typed payload for the connection scheduling boundary.
+  The scheduler uses `.VideosEnqueued` + `.VideosSkipped` (where
+  Skipped = Discovered − Enqueued, covering both MaxVideosPerRun budget
+  breakouts and in-process filter rejections: min_views, duration,
+  title-keyword, semantic budget, semantic-score threshold).
+
+- **New `monitor_scheduler_test.go`** pinning all four invariants
+  (5 cases covering error→Success=false / success→CheckInterval / backoff
+  progression / checkChannel ytdlp-failure / nextCheckTime full curve).
+  Locked via `parseCheckInterval` fallback band (24h on unparseable
+  interval) and 23h→25h windows on the 24h cap so a clock drift of a
+  minute doesn't produce a flaky CI.
+
+Files touched (5):
+
+- `internal/application/assets/monitor/monitor_ports.go` — NEW port type
+  + compile-time assertion + `ChannelCheckResult` type.
+- `internal/application/assets/monitor/channel_monitor.go` — ytdlp
+  field type swap to the port interface; `NewChannelMonitor` signature.
+- `internal/application/assets/monitor/monitor_channel_check.go` —
+  checkChannel signature + path; `fmt.Errorf` wrap of ytdlp errors.
+- `internal/application/assets/monitor/monitor_scheduler.go` — `Start()`
+  drops the ListEnabled shortcut; `checkDueChannels` uses returned err
+  + structured log line; new `recordCheckOutcome` helper.
+- `internal/application/assets/monitor/monitor_scheduler_test.go` —
+  NEW; same-package tests with `*fakeLister` (MonitorDownloaderPort)
+  and `*recordingRepo` (channels.Repository).
+
+No production-wiring change beyond the ytdlp interface swap (which Go boxes
+transparently); no SQLite migration, no DB schema touch, no config.yaml
+keys added.
+
 ## Unreleased
 
 ### Added
