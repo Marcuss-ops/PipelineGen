@@ -22,17 +22,11 @@
 //   - Periodic page recycle (every 20 generations) to prevent DOM bloat
 //   - Transparent recovery: fresh page on timeout
 //
-// Multiple profiles (FASE 8, June 2026):
+// Single profile:
 //
-// The provider launches slide_worker.py with --profiles N, each profile
-// being a persistent browser context with its own dedicated queue (max 1
-// job at a time). The Python worker distributes requests round-robin across
-// free profiles. The Go-side mutex serialises stdin/stdout; the Python
-// worker handles internal parallelism across profiles.
-//
-// This replaces the old ThreadPoolExecutor + worker_id % concurrency
-// pattern from batch_generate_slides.py with explicit per-profile queues.
-//
+// The provider launches slide_worker.py in enforced single-profile mode.
+// The Go-side mutex serialises stdin/stdout and the Python worker keeps one
+// persistent Slides session alive for the whole process.
 package images
 
 import (
@@ -58,17 +52,14 @@ var _ ImageGenerator = (*ChromeImageProvider)(nil)
 // persistent Playwright-based Python worker that automates Google Slides AI
 // (Nano Banana Pro).
 //
-// The provider launches slide_worker.py as a long-running subprocess with
-// --profiles N, each profile being a separate browser context. Communication
-// is newline-delimited JSON over stdin/stdout. The Python worker distributes
-// requests across profiles round-robin; each profile processes at most 1
-// job at a time (enforced by per-profile queue.Queue(maxsize=1)).
+// The provider launches slide_worker.py as a long-running subprocess with a
+// single persistent browser context. Communication is newline-delimited
+// JSON over stdin/stdout.
 //
 // Thread safety: a single mutex serialises stdin/stdout access.
 type ChromeImageProvider struct {
-	scriptsDir  string
-	numProfiles int
-	log         *zap.Logger
+	scriptsDir string
+	log        *zap.Logger
 
 	mu      sync.Mutex
 	cmd     *exec.Cmd
@@ -83,18 +74,13 @@ type ChromeImageProvider struct {
 }
 
 // NewChromeImageProvider creates a new ChromeImageProvider.
-// numProfiles is the number of concurrent Chrome profiles (1 = single browser,
-// N = N parallel browsers). Each profile processes at most 1 job at a time.
 // The worker is NOT started until the first Generate() call (lazy init).
 func NewChromeImageProvider(scriptsDir string, numProfiles int, log *zap.Logger) *ChromeImageProvider {
-	if numProfiles < 1 {
-		numProfiles = 1
-	}
+	_ = numProfiles
 	return &ChromeImageProvider{
-		scriptsDir:  scriptsDir,
-		numProfiles: numProfiles,
-		log:         log,
-		cooldowns:   make(map[int]int64),
+		scriptsDir: scriptsDir,
+		log:        log,
+		cooldowns:  make(map[int]int64),
 	}
 }
 
@@ -212,10 +198,10 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	p.log.Info("ChromeImageProvider: launching persistent worker",
 		zap.String("script", scriptPath))
 
-	// Create the subprocess with --profiles N for multi-profile concurrency.
+	// Create the subprocess in single-profile mode.
 	// We use exec.Command (not CommandContext) because the worker outlives
 	// individual request contexts.
-	p.cmd = exec.Command("python3", scriptPath, "--profiles", fmt.Sprintf("%d", p.numProfiles))
+	p.cmd = exec.Command("python3", scriptPath, "--profiles", "1")
 
 	var err error
 	p.stdin, err = p.cmd.StdinPipe()
@@ -384,8 +370,6 @@ func mapToStruct(m map[string]any, v any) error {
 	}
 	return json.Unmarshal(data, v)
 }
-
-
 
 // Stop gracefully shuts down the persistent worker. Sends the quit command
 // over stdin, waits up to 5 seconds for the process to exit, then kills it.
