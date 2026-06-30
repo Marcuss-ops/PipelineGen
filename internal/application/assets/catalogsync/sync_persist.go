@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
@@ -47,42 +44,18 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 	// Folders go through the dispatcher; Dispatcher handles IsFolder by
 	// skipping the outbox enqueue, so embedding is never requested for
 	// folder metadata rows.
+	//
+	// Wave G (June 2026) DECOUPLING — the post-commit writeAssetIndex
+	// call is removed. The asset_index row was a best-effort mirror
+	// of media_assets; media_assets + outbox_events are now the single
+	// source of truth. Callers that need the asset_index view should
+	// derive it from media_assets (the canonical projection), not
+	// duplicate the write here.
 	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
 		return fmt.Errorf("dispatcher.EnqueueAndIndex %s: %w", clip.ID, err)
 	}
 
-	s.writeAssetIndex(ctx, clip)
-
 	return nil
-}
-
-// writeAssetIndex writes a unified asset_index record (best-effort, runs
-// after the canonical media_assets / outbox_events commit). Failure
-// is logged but never propagated: a stale asset_index row is preferable
-// to rolling back the canonical outbox state. Identical payload across
-// dispatcher + legacy paths — extracted here so the two branches in
-// upsertPreservingExisting stay in lockstep.
-func (s *Service) writeAssetIndex(ctx context.Context, clip *asset.Asset) {
-	if s.assetIndex == nil {
-		return
-	}
-	rec := &assetindex.AssetRecord{
-		AssetID:   string(clip.Source) + "_" + clip.ID,
-		AssetType: string(clip.MediaType),
-		Source:    string(clip.Source),
-		SourceID:  clip.ID,
-		GroupName: clip.Group,
-		LocalPath: clip.LocalPath(),
-		DriveLink: clip.DriveLink(),
-		FileHash:  clip.FileHash(),
-		Status:    "ready",
-		Metadata:  clip.MetadataJSON(),
-		CreatedAt: clip.CreatedAt,
-		UpdatedAt: clip.UpdatedAt,
-	}
-	if err := s.assetIndex.Upsert(ctx, rec); err != nil {
-		s.log.Warn("failed to write clip to asset_index", zap.Error(err))
-	}
 }
 
 func mergeTags(base, extra []string) []string {

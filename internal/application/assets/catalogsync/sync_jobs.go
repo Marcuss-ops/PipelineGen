@@ -149,13 +149,19 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job
 }
 
 // resolveRepo returns the assets.ClipsRepository for the given source name.
-// Falls back to s.defaultClipsRepo (set from the first configured target)
-// for ad-hoc sources like "drive" that don't have a pre-configured target.
+//
+// Wave G (June 2026) DECOUPLING — the legacy `s.defaultClipsRepo`
+// fallback is REMOVED. Ad-hoc sources like "drive" must now be
+// pre-listed in Targets; unknown sources surface an explicit error
+// to the async job handler instead of silently falling back to a
+// guessed repo. The targets-loop is preserved because the async
+// job payload carries only a Source string (not a repo pointer) and
+// the job handler must resolve the repo at execution time.
 func (s *Service) resolveRepo(source string) *assets.ClipsRepository {
 	for _, t := range s.targets {
 		if strings.EqualFold(t.Source, source) {
 			return t.Repo
 		}
 	}
-	return s.defaultClipsRepo
+	return nil
 }
