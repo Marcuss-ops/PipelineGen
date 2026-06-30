@@ -96,6 +96,32 @@ func TestFileLifecycleAdapter_Cleanup_RequiresAtLeastOneFilter(t *testing.T) {
 	}
 }
 
+// TestFileLifecycleAdapter_Cleanup_AtLeastOneFilter_ReturnsEmptyResult
+// pins the early-rejection behavior (Wave D D3, June 2026): when the
+// at-least-one-filter guard fires, the returned CleanupResult is the
+// zero value (Matched=0, Trashed=0, Failed=0, FailedIDs=[]).
+// FailedIDs is initialised to an empty slice (NOT nil) so JSON
+// marshalling produces "failed_ids": [] rather than "failed_ids":
+// null — a small but operationally-meaningful detail for API
+// consumers that branch on the slice's length or pass it to other
+// serialisers.
+func TestFileLifecycleAdapter_Cleanup_AtLeastOneFilter_ReturnsEmptyResult(t *testing.T) {
+	a := NewFileLifecycleAdapter(nil, nil)
+	res, err := a.Cleanup(context.Background(), CleanupRequest{})
+	if err == nil {
+		t.Fatal("Cleanup(empty request) should reject")
+	}
+	if res.Matched != 0 || res.Trashed != 0 || res.Failed != 0 {
+		t.Errorf("Cleanup(empty request) counts should be zero, got: %+v", res)
+	}
+	if res.FailedIDs == nil {
+		t.Errorf("Cleanup(empty request) FailedIDs should be empty slice (not nil) for JSON correctness, got: %v", res.FailedIDs)
+	}
+	if len(res.FailedIDs) != 0 {
+		t.Errorf("Cleanup(empty request) FailedIDs should be empty, got: %v", res.FailedIDs)
+	}
+}
+
 // TestCleanupRequest_BuildQuery_AllFieldsCombines pins the Drive
 // query construction (Wave D D2, June 2026): all 4 fields set → the
 // query contains "trashed = false" + all 4 filter parts joined by

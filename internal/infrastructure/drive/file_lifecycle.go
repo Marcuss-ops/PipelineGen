@@ -109,10 +109,42 @@ type FileLifecycle interface {
 	// raw-query shape is removed; callers now describe the cleanup
 	// target via the structured CleanupRequest fields (ParentFolderID,
 	// Name, MimeType, OlderThan). The Drive query string is
-	// constructed internally from the request. D3 (next commit)
-	// changes the return type to CleanupResult (Matched/Trashed/
-	// Failed/FailedIDs).
-	Cleanup(ctx context.Context, req CleanupRequest) (deletedCount int, err error)
+	// constructed internally from the request.
+	//
+	// Wave D (June 2026) D3: return type changed from `(int, error)`
+	// to `(CleanupResult, error)`. The CleanupResult surfaces the
+	// matched/trashed/failed counts + a FailedIDs slice so callers
+	// can branch on outcome (retry failed IDs, audit per-file
+	// failures, surface to ops dashboards) without re-issuing a
+	// Files.List to count what happened.
+	Cleanup(ctx context.Context, req CleanupRequest) (CleanupResult, error)
+}
+
+// CleanupResult is the structured return value for FileLifecycle.Cleanup
+// (Wave D D3, June 2026). Surfaces the per-page iteration outcome so
+// callers can audit partial-failure patterns without re-issuing a
+// Files.List.
+//
+// Field semantics:
+//   - Matched: total files found by the Drive query (counted BEFORE
+//     trashing). Equal to len(FailedIDs) + Trashed on a fully-iterated
+//     cleanup; may be larger if a page request failed mid-loop and
+//     the iterator returned early.
+//   - Trashed: count of files successfully moved to trash.
+//   - Failed: count of files that failed to trash (e.g. transient
+//     Drive error, 429, 503). The IDs of the failed files are in
+//     FailedIDs.
+//   - FailedIDs: file IDs that failed. Caller can retry these via
+//     Trash in a follow-up loop. Empty when all files were trashed
+//     successfully OR when the cleanup was rejected upfront
+//     (at-least-one-filter guard). Initialised to an empty slice
+//     (NOT nil) so JSON marshalling produces `"failed_ids": []`
+//     rather than `"failed_ids": null`.
+type CleanupResult struct {
+	Matched   int
+	Trashed   int
+	Failed    int
+	FailedIDs []string
 }
 
 // FileLifecycleAdapter is the only direct caller of Files.Update /
@@ -290,24 +322,36 @@ func (req CleanupRequest) buildQuery() (string, error) {
 // filter is always included so the loop never re-processes
 // already-trashed entries (Trash is idempotent, so re-trashing is
 // harmless but wastes quota). Partial failures during the loop are
-// logged and counted as missing from the return value rather than
-// aborting the operation.
+// logged AND surfaced in the returned CleanupResult.FailedIDs so
+// callers can retry or audit them.
 //
 // Wave D (June 2026) D2: signature changed from
 // `Cleanup(ctx, query string) (int, error)` to
 // `Cleanup(ctx, req CleanupRequest) (int, error)`. The Drive query
-// is now built from the request via CleanupRequest.buildQuery. D3
-// (next commit) changes the return type to CleanupResult.
-func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, req CleanupRequest) (int, error) {
+// is built from the request via CleanupRequest.buildQuery.
+//
+// Wave D (June 2026) D3: return type changed to
+// `(CleanupResult, error)`. The Matched counter is bumped BEFORE
+// the Trash attempt so callers can distinguish "found N but failed
+// to trash all of them" from "found N and trashed all of them"
+// without re-issuing a Files.List.
+func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, req CleanupRequest) (CleanupResult, error) {
 	query, err := req.buildQuery()
 	if err != nil {
-		return 0, err
+		// Early-rejection path: FailedIDs is initialised to an
+		// empty slice (NOT nil) so the CleanupResult JSON-marshals
+		// as `{"failed_ids": []}` rather than `{"failed_ids": null}`.
+		// Matches the Wave D D3 contract on CleanupResult.FailedIDs.
+		return CleanupResult{FailedIDs: []string{}}, err
 	}
 	if a.svc == nil {
-		return 0, fmt.Errorf("drive service not configured")
+		return CleanupResult{FailedIDs: []string{}}, fmt.Errorf("drive service not configured")
 	}
 
-	var deletedCount int
+	// FailedIDs initialised to an empty slice (NOT nil) so JSON
+	// marshals as `[]` rather than `null` — matches the early-rejection
+	// path's JSON-correctness invariant.
+	result := CleanupResult{FailedIDs: []string{}}
 	var pageToken string
 	for {
 		listReq := a.svc.Files.List().Q(query).
@@ -318,24 +362,27 @@ func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, req CleanupRequest) 
 		}
 		res, err := listReq.Do()
 		if err != nil {
-			return deletedCount, fmt.Errorf("cleanup list (page=%q): %w", pageToken, err)
+			return result, fmt.Errorf("cleanup list (page=%q): %w", pageToken, err)
 		}
 		for _, f := range res.Files {
+			result.Matched++
 			if err := a.Trash(ctx, f.Id); err != nil {
 				a.log.Warn("cleanup: failed to trash file",
 					zap.String("file_id", f.Id),
 					zap.String("query", query),
 					zap.Error(err))
+				result.Failed++
+				result.FailedIDs = append(result.FailedIDs, f.Id)
 				continue
 			}
-			deletedCount++
+			result.Trashed++
 		}
 		if res.NextPageToken == "" {
 			break
 		}
 		pageToken = res.NextPageToken
 	}
-	return deletedCount, nil
+	return result, nil
 }
 
 // Compile-time assertion: *FileLifecycleAdapter must implement
