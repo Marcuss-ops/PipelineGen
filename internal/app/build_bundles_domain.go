@@ -515,24 +515,16 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 		uploader = &driveutil.Uploader{Log: log}
 		log.Warn("BuildSyncBundle: drive uploader missing; using nil-service placeholder for disabled-drive bootstrap")
 	}
-	if search.AssetIndexService == nil {
-		return nil, fmt.Errorf("BuildSyncBundle: search.AssetIndexService is required (asset_index write side)")
-	}
-	if process.ClipIndexerService == nil {
-		return nil, fmt.Errorf("BuildSyncBundle: process.ClipIndexerService is required (Qdrant indexer wiring)")
-	}
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("BuildSyncBundle: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 
 	catalogSync, err := catalogsync.NewService(catalogsync.Deps{
-		Uploader:    uploader,
-		Targets:     syncTargets,
-		AssetIndex:  search.AssetIndexService,
-		AssetTree:   search.AssetTreeService,
-		ClipIndexer: process.ClipIndexerService,
-		Dispatcher:  outbox.Dispatcher,
-		Log:         log,
+		Uploader:   uploader,
+		Targets:    syncTargets,
+		AssetTree:  search.AssetTreeService,
+		Dispatcher: outbox.Dispatcher,
+		Log:        log,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("BuildSyncBundle: catalogsync.NewService: %w", err)

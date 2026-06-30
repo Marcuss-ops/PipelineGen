@@ -8,11 +8,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
 type Target struct {
@@ -50,12 +48,27 @@ type Summary struct {
 // can assert the precise missing dep without unwrapping the chain.
 // Sentinel errors returned by NewService validation. PR-D (June 2026):
 // the ctor validates only the fields that are referenced UNCONDITIONALLY
-// at runtime. Fields that have document-ed nil-safe guards in call sites
-// (s.assetIndex in sync_persist.go::writeAssetIndex; s.assetTree in
-// sync_prune.go::pruneMissingFolders + sync_recursive.go:79,175) are
-// ACCEPTED as nil at ctor time — the optionality is part of the contract.
+// at runtime. Fields that have documented nil-safe guards in call sites
+// (s.assetTree in sync_prune.go::pruneMissingFolders +
+// sync_recursive.go:79,175) are ACCEPTED as nil at ctor time — the
+// optionality is part of the contract.
 // Required at ctor: Uploader, Dispatcher, Log.
-// Optional at ctor: AssetIndex, AssetTree, ClipIndexer, Targets.
+// Optional at ctor: AssetTree, Targets.
+//
+// Wave G (June 2026) DECOUPLING — three legacy fields removed:
+//   - AssetIndex  : writeAssetIndex was the sole reader of
+//     internal/infrastructure/database/assetindex.Service and a
+//     post-commit best-effort writer of an `asset_index` row. The
+//     media_assets + outbox_events commit in upsertPreservingExisting
+//     is now the single source of truth; asset_index is a derived
+//     projection that no longer needs to be eagerly mirrored here.
+//   - ClipIndexer : legacy field; not currently referenced in any
+//     catalogsync method. Removed entirely (the canonical clip
+//     indexing lives in the outbox dispatcher pipeline).
+//   - defaultClipsRepo : fallback ClipsRepository for ad-hoc sources
+//     like "drive" that don't have a pre-configured target. The
+//     async drive.folder.sync job now errors on unknown source
+//     instead of silently falling back to a guessed repo.
 var (
 	ErrCatalogSyncNilUploader   = errors.New("catalogsync.NewService: uploader is required (Drive uploader for canonical sync — sync_targets.go:23 + sync_recursive.go dereference unconditionally)")
 	ErrCatalogSyncNilDispatcher = errors.New("catalogsync.NewService: dispatcher is required (QDRANT-002 PR7 — production canonical ingest; sync_persist.go::upsertPreservingExisting dereferences unconditionally)")
@@ -63,13 +76,17 @@ var (
 )
 
 // Deps is the canonical constructor input for catalogsync.Service
-// (PR-D, Wave 22 §D3, June 2026). Seven flat fields — under the
+// (PR-D, Wave 22 §D3, June 2026). Five flat fields — well under the
 // AGENTS.md 8-per-bundle cap. The legacy signature took 6 positional
 // arguments + a SetDispatcher late-bind; both styles are removed.
 //
 // Targets is a slice so it stays 1 field regardless of how many
-// pre-configured targets the caller passes; defaultClipsRepo is
-// derived inside NewService from the first non-nil Target.Repo.
+// pre-configured targets the caller passes. The legacy
+// `defaultClipsRepo` fallback for ad-hoc sources was removed in
+// Wave G (June 2026) — the async drive.folder.sync job now errors
+// on unknown source instead of silently falling back to a guessed
+// repo. Caller-side wiring of Targets is the single, explicit
+// source of truth for source→repo mapping.
 //
 // PR-D: SetDispatcher setter REMOVED. Concurrency hazard eliminated
 // — the s.dispatcher field is now set in the ctor and read directly
@@ -88,46 +105,37 @@ var (
 //	                  transport integration point).
 //	  - Dispatcher  : sync_persist.go::upsertPreservingExisting calls
 //	                  s.dispatcher.EnqueueAndIndex unconditionally
-//	                  (QDRANT-002 PR7 \u2014 production canonical ingest).
+//	                  (QDRANT-002 PR7 — production canonical ingest).
 //	  - Log         : every warn/error path dereferences s.log.
 //
 //	OPTIONAL (nil-safe guarded at every call site):
 //	  - Targets     : empty slice == no pre-configured targets; ad-hoc
-//	                  SyncFolderID paths still work via repo arg.
-//	  - AssetIndex  : sync_persist.go:66 \u2014 `if s.assetIndex == nil { return }`.
-//	                  TESTS may pass nil.
-//	  - AssetTree   : sync_prune.go:35 + sync_recursive.go:79,175 \u2014
+//	                  SyncFolderID paths still work via the explicit
+//	                  repo arg supplied by the caller. The async
+//	                  drive.folder.sync job, however, requires the
+//	                  source to be pre-listed in Targets (no fallback
+//	                  repo as of Wave G, June 2026).
+//	  - AssetTree   : sync_prune.go:35 + sync_recursive.go:79,175 —
 //	                  `if s.assetTree != nil { ... }`. nil falls back to
 //	                  flat folder-id sync (no tree-bounded walks).
-//	  - ClipIndexer : legacy field; not currently referenced in any
-//	                  catalogsync method \u2014 retained on the Service
-//	                  struct for the historical api surface; nil-safe.
 //
-// The 5 optional fields do NOT have typed sentinels because they don't
+// The 2 optional fields do NOT have typed sentinels because they don't
 // fail at any documented runtime path. Adding Err*s for them would be
 // a false-positive: composition wiring that legitimately wants a
 // minimal-Deps Service (e.g. test fixtures) could not pass.
 type Deps struct {
-	Uploader    *uploaddrive.Uploader
-	Targets     []Target
-	AssetIndex  *assetindex.Service
-	AssetTree   *assettree.Service
-	ClipIndexer *clipindexer.Service
-	Dispatcher  *outbox.Dispatcher
-	Log         *zap.Logger
+	Uploader   *uploaddrive.Uploader
+	Targets    []Target
+	AssetTree  *assettree.Service
+	Dispatcher *outbox.Dispatcher
+	Log        *zap.Logger
 }
 
 type Service struct {
-	uploader    *uploaddrive.Uploader
-	log         *zap.Logger
-	targets     []Target
-	assetIndex  *assetindex.Service
-	assetTree   *assettree.Service
-	clipIndexer *clipindexer.Service
-	// defaultClipsRepo is the fallback ClipsRepository for ad-hoc sync
-	// requests (e.g. source="drive") that don't have a pre-configured target.
-	// Initialised from the first target's Repo in NewService.
-	defaultClipsRepo *assets.ClipsRepository
+	uploader   *uploaddrive.Uploader
+	log        *zap.Logger
+	targets    []Target
+	assetTree  *assettree.Service
 	// dispatcher is the canonical ingestion entry point. Routes media_assets
 	// upserts + outbox enqueues through Dispatcher.EnqueueAndIndex (atomic),
 	// replacing the legacy `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)`
@@ -138,6 +146,14 @@ type Service struct {
 	// Wired at composition time via Deps.Dispatcher (PR-D, June 2026).
 	// See internal/infrastructure/database/sqlite/outbox (package) for
 	// the integration contract; BuildSyncBundle is the canonical owner.
+	//
+	// Wave G (June 2026) DECOUPLING — the legacy `assetIndex` and
+	// `clipIndexer` fields are removed: writeAssetIndex (the only
+	// reader of assetIndex) was extracted away as a redundant
+	// best-effort post-commit mirror; clipIndexer was never wired
+	// into any catalogsync method. The `defaultClipsRepo` fallback
+	// is also removed — async drive.folder.sync now requires the
+	// source to be pre-listed in Targets.
 	dispatcher *outbox.Dispatcher
 	mu         sync.Mutex
 }
@@ -148,9 +164,12 @@ type Service struct {
 // late-bind SetDispatcher ordering hazard is gone because the dispatcher is
 // captured at construction time.
 //
-// Validation order: transport (Uploader, ClipIndexer) → storage
-// (AssetIndex, Dispatcher) → Log. Targets validates as a slice (non-nil);
-// empty Targets is allowed (ad-hoc SyncFolderID still works).
+// Validation order: transport (Uploader) → storage (Dispatcher) → Log.
+// Targets is NOT validated at ctor time — an empty slice is allowed
+// (ad-hoc SyncFolderID still works because the explicit repo arg is
+// supplied by the caller; the async drive.folder.sync job requires
+// the source to be pre-listed in Targets, enforced at execution time
+// in sync_jobs.go::HandleDriveFolderSyncJob).
 //
 // Production wiring: BuildSyncBundle in
 // internal/app/build_bundles_domain.go::BuildSyncBundle constructs
@@ -169,21 +188,11 @@ func NewService(deps Deps) (*Service, error) {
 		return nil, ErrCatalogSyncNilLog
 	}
 
-	s := &Service{
-		uploader:    deps.Uploader,
-		log:         deps.Log,
-		targets:     deps.Targets,
-		assetIndex:  deps.AssetIndex,
-		assetTree:   deps.AssetTree,
-		clipIndexer: deps.ClipIndexer,
-		dispatcher:  deps.Dispatcher,
-	}
-	// Use the first non-nil target repo as the default fallback repo
-	for _, t := range deps.Targets {
-		if t.Repo != nil {
-			s.defaultClipsRepo = t.Repo
-			break
-		}
-	}
-	return s, nil
+	return &Service{
+		uploader:   deps.Uploader,
+		log:        deps.Log,
+		targets:    deps.Targets,
+		assetTree:  deps.AssetTree,
+		dispatcher: deps.Dispatcher,
+	}, nil
 }

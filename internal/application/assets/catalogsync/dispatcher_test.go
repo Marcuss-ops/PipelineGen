@@ -15,7 +15,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
 // dispatcherTestSchema composes the canonical media_assets CREATE TABLE
@@ -80,25 +79,21 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// time, mirroring the production wiring in BuildSyncBundle.
 	//
 	// Required-by-ctor fields that are NOT exercised by the dispatcher
-	// path are passed as zero-valued struct pointers (Uploader,
-	// AssetTree, ClipIndexer) to satisfy NewService's nil-checks
-	// without invoking any method on them.
+	// path are passed as zero-valued struct pointers (Uploader, AssetTree)
+	// to satisfy NewService's nil-checks without invoking any method on
+	// them.
 	//
-	// AssetIndex is passed as nil specifically because the test
-	// deliberately bypasses writeAssetIndex — the nil-safe guard
-	// (`if s.assetIndex == nil { return }` in sync_persist.go) makes
-	// the no-op explicit. Passing a `&assetindex.Service{}` zero-struct
-	// here would invoke `assetIndex.Upsert` which panics on the
-	// uninitialised internal repository (SIGSEGV; reproduced in the
-	// prior test fix iteration). nil AssetIndex is the only safe shape.
+	// Wave G (June 2026): AssetIndex and ClipIndexer are REMOVED from
+	// Deps. The legacy `&clipindexer.Service{}` zero-struct is gone —
+	// the field no longer exists on the struct literal. The test
+	// continues to pass the AssetTree zero-struct because the recursive
+	// walker dereferences it (the dispatcher path itself does not).
 	svc, err := NewService(Deps{
-		Uploader:    &uploaddrive.Uploader{},
-		Targets:     nil, // no pre-configured targets
-		AssetIndex:  nil, // nil-safe per writeAssetIndex guard; bypassed
-		AssetTree:   &assettree.Service{},
-		ClipIndexer: &clipindexer.Service{},
-		Dispatcher:  dispatcher,
-		Log:         zap.NewNop(),
+		Uploader:   &uploaddrive.Uploader{},
+		Targets:    nil, // no pre-configured targets
+		AssetTree:  &assettree.Service{},
+		Dispatcher: dispatcher,
+		Log:        zap.NewNop(),
 	})
 	require.NoError(t, err)
 
@@ -153,13 +148,11 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc, err := NewService(Deps{
-		Uploader:    &uploaddrive.Uploader{},
-		Targets:     nil,
-		AssetIndex:  nil, // nil-safe per writeAssetIndex guard; bypassed
-		AssetTree:   &assettree.Service{},
-		ClipIndexer: &clipindexer.Service{},
-		Dispatcher:  dispatcher,
-		Log:         zap.NewNop(),
+		Uploader:   &uploaddrive.Uploader{},
+		Targets:    nil,
+		AssetTree:  &assettree.Service{},
+		Dispatcher: dispatcher,
+		Log:        zap.NewNop(),
 	})
 	require.NoError(t, err)
 
@@ -226,14 +219,17 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 // TestNewService_NilDepsRejected verifies the PR-D ctor validation surface:
 // every REQUIRED dep (Uploader / Dispatcher / Log) is rejected with its own
 // typed sentinel error so composition wiring + tests can assert the precise
-// missing dep. The 3 OPTIONAL deps (AssetIndex / AssetTree / ClipIndexer)
-// are accepted as nil at ctor time because every catalogsync call site
-// nil-safe-guards them (verified via code-searcher audit, June 2026).
+// missing dep. The single OPTIONAL dep (AssetTree) is accepted as nil at
+// ctor time because every catalogsync call site nil-safe-guards it
+// (verified via code-searcher audit, June 2026).
+//
+// Wave G (June 2026): AssetIndex and ClipIndexer are no longer on Deps
+// (the legacy fields were unused and removed); the test surface is
+// updated to reflect the 5-field struct.
 //
 // Mirrors the stockpipeline sentinel matrix in deps_struct_smoke_test.go;
 // this file holds the catalogsync half. Subtests mirror the ctor
-// validation order: Uploader first, then Dispatcher (after the Oct 2026
-// right-sizing of optional vs required), then Log.
+// validation order: Uploader first, then Dispatcher, then Log.
 func TestNewService_NilDepsRejected(t *testing.T) {
 	log := zap.NewNop() // shared fixture: every subtest constructs Deps{Log: log}
 
@@ -242,11 +238,10 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		require.ErrorIs(t, err, ErrCatalogSyncNilUploader)
 	})
 	t.Run("nil dispatcher returns ErrCatalogSyncNilDispatcher", func(t *testing.T) {
-		// AssetIndex / AssetTree / ClipIndexer are accepted as nil here:
-		// they are optional per the post-review right-sizing (nil-safe guards
-		// in sync_persist.go::writeAssetIndex + sync_prune.go::pruneMissingFolders
-		// + sync_recursive.go:79,175). Only the absence of Uploader / Dispatcher /
-		// Log triggers a sentinel.
+		// AssetTree is accepted as nil here: it is optional per the
+		// post-review right-sizing (nil-safe guards in
+		// sync_prune.go::pruneMissingFolders + sync_recursive.go:79,175).
+		// Only the absence of Uploader / Dispatcher / Log triggers a sentinel.
 		_, err := NewService(Deps{Uploader: &uploaddrive.Uploader{}, Log: log})
 		require.ErrorIs(t, err, ErrCatalogSyncNilDispatcher)
 	})
@@ -259,26 +254,23 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 	})
 	t.Run("all-non-nil happy path", func(t *testing.T) {
 		_, err := NewService(Deps{
-			Uploader:    &uploaddrive.Uploader{},
-			Targets:     nil,
-			AssetIndex:  nil, // optional, nil-safe guarded
-			AssetTree:   nil, // optional, nil-safe guarded
-			ClipIndexer: nil, // optional, no usages in catalogsync package
-			Dispatcher:  &outbox.Dispatcher{},
-			Log:         log,
+			Uploader:   &uploaddrive.Uploader{},
+			Targets:    nil,
+			AssetTree:  nil, // optional, nil-safe guarded
+			Dispatcher: &outbox.Dispatcher{},
+			Log:        log,
 		})
 		require.NoError(t, err)
 	})
 	t.Run("optional deps nil is accepted", func(t *testing.T) {
-		// AssetIndex / AssetTree / ClipIndexer all nil — ctor accepts
-		// because they're nil-safe guarded at every catalogsync call site.
-		// Documenting this explicitly so future maintainers see the
-		// optionality contract.
+		// AssetTree nil — ctor accepts because it's nil-safe guarded
+		// at every catalogsync call site. Documenting this explicitly
+		// so future maintainers see the optionality contract.
 		_, err := NewService(Deps{
 			Uploader:   &uploaddrive.Uploader{},
 			Dispatcher: &outbox.Dispatcher{},
 			Log:        log,
 		})
-		require.NoError(t, err, "optional deps (AssetIndex / AssetTree / ClipIndexer) must be acceptable as nil")
+		require.NoError(t, err, "optional dep (AssetTree) must be acceptable as nil")
 	})
 }
