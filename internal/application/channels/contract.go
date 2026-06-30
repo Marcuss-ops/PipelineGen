@@ -62,29 +62,29 @@ type Repository interface {
 // so future fields that callers receive can diverge from the domain
 // model without breaking persistence.
 type Channel struct {
-	ID               string `json:"ID"`
-	Category         string `json:"Category"`
-	ChannelURL       string `json:"ChannelURL"`
-	ChannelName      string `json:"ChannelName,omitempty"`
-	Keywords         string `json:"Keywords,omitempty"`
-	MinViews         int    `json:"MinViews"`
-	MaxClipDuration  int    `json:"MaxClipDuration"`
-	DriveFolderID    string `json:"DriveFolderID,omitempty"`
-	SemanticKeywords string `json:"SemanticKeywords,omitempty"`
-	MinSemanticScore int    `json:"MinSemanticScore"`
-	PlaylistEnd      int    `json:"PlaylistEnd"`
-	CheckInterval    string `json:"CheckInterval,omitempty"`
-	MaxVideosPerRun  int    `json:"MaxVideosPerRun"`
-	Priority         int    `json:"Priority"`
-	LookbackDays     int    `json:"LookbackDays"`
-	MaxSegments      int    `json:"MaxSegments"`
-	SegmentPrompt    string `json:"SegmentPrompt,omitempty"`
-	Enabled          int    `json:"Enabled,omitempty"`
-	NextCheckAt      string `json:"NextCheckAt,omitempty"`
-	LastCheckedAt    string `json:"LastCheckedAt,omitempty"`
+	ID                  string `json:"ID"`
+	Category            string `json:"Category"`
+	ChannelURL          string `json:"ChannelURL"`
+	ChannelName         string `json:"ChannelName,omitempty"`
+	Keywords            string `json:"Keywords,omitempty"`
+	MinViews            int    `json:"MinViews"`
+	MaxClipDuration     int    `json:"MaxClipDuration"`
+	DriveFolderID       string `json:"DriveFolderID,omitempty"`
+	SemanticKeywords    string `json:"SemanticKeywords,omitempty"`
+	MinSemanticScore    int    `json:"MinSemanticScore"`
+	PlaylistEnd         int    `json:"PlaylistEnd"`
+	CheckInterval       string `json:"CheckInterval,omitempty"`
+	MaxVideosPerRun     int    `json:"MaxVideosPerRun"`
+	Priority            int    `json:"Priority"`
+	LookbackDays        int    `json:"LookbackDays"`
+	MaxSegments         int    `json:"MaxSegments"`
+	SegmentPrompt       string `json:"SegmentPrompt,omitempty"`
+	Enabled             int    `json:"Enabled,omitempty"`
+	NextCheckAt         string `json:"NextCheckAt,omitempty"`
+	LastCheckedAt       string `json:"LastCheckedAt,omitempty"`
 	ConsecutiveFailures int    `json:"ConsecutiveFailures,omitempty"`
-	CreatedAt        string `json:"CreatedAt,omitempty"`
-	UpdatedAt        string `json:"UpdatedAt,omitempty"`
+	CreatedAt           string `json:"CreatedAt,omitempty"`
+	UpdatedAt           string `json:"UpdatedAt,omitempty"`
 }
 
 // ListAllResult is the result payload of Service.ListAll.

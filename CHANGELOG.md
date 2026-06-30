@@ -113,10 +113,35 @@ QdrantConfig struct in `internal/platform/config/types.go` (lines 144-157).
   remains green. The 5 cmd/admin callers (reconcile_qdrant.go,
   reindex_qdrant.go, dr_qdrant.go, qdrant_maintenance.go,
   qdrant_readiness.go) + the zero-legacy fixture under
-  `tests/fixtures/zero_legacy/check_15_qdrant_config_apikey.go` already
+  `  tests/fixtures/zero_legacy/check_15_qdrant_config_apikey.go` already
   propagate the canonical field correctly.
 
 
+
+### Removed
+
+**[Channel Monitor Blocco 3 + 4 rollback, June 2026]** Layered Channel Monitor plan reverted in one atomic commit (per user instruction "tutto il legacy mio"). The 4-commit Blocco 4 work built `SkipReason` / `EnqueueOutcome` / `ChannelCounters.TryReserve+rollback` / dual-Prometheus pair + explicit skip_reason logging on top of the channel-monitor filter chain without converging end-to-end: Steps 5 (final consolidated log line) and 6 (Prometheus counter) failed to land, leaving a partially-typed observability surface that conflicted with `internal/app/` composition-root wiring. The cleanup rolls `main` back to the pre-Plan state.
+
+- **Reverted (4 commits, single `git revert --no-commit` squash)** in reverse chronological order:
+  1. `19ca1114` — `refactor(monitor): assign explicit SkipReason on every skip branch` (Step 4)
+  2. `8357a8d9` — `refactor(monitor): enqueueClipExtract returns EnqueueOutcome with tryReserve rollback` (Step 3)
+  3. `0488a5ef` — `refactor(monitor): split acceptedCount into analysisReservations and successfulEnqueues` (Step 2)
+  4. `51e41bf4` — `feat(monitor): introduce SkipReason type and EnqueueOutcome struct` (Step 1)
+  - Files restored: `internal/application/assets/monitor/{process_video.go, semantic_matcher.go, segment_finder.go, monitor_channel_check.go}`. Files deleted: `internal/application/assets/monitor/{counters.go, types_outcome.go}`. `internal/infrastructure/observability/metrics_workers.go` reverted to 4 metrics (`VideosChecked`, `VideosWithSegments`, `SegmentsFound`, `SegmentsPerVideo`); `ChannelMonitorAnalysisReservations` + `ChannelMonitorSuccessfulEnqueues` no longer exist.
+  - Net diff: −594 lines (Steps 1–4 build-up undone atomically; no `git reset --force` per AGENTS.md Git-Lesson-2).
+
+- **Removed (Blocco 3 uncommitted additions + untracked migration)**:
+  - `MaxSemanticAnalysesPerRun int` field on `internal/domain/asset/types_media.go::CategoryChannel` (deleted with the Blocco 3 doc-comment block).
+  - `MaxSemanticAnalysesPerRun int` field on `internal/application/channels/contract.go::Channel` DTO.
+  - `MaxSemanticAnalysesPerRun *int` field on `internal/application/channels/contract.go::UpsertChannelCommand`.
+  - `MaxSemanticAnalysesPerRun int` field in `DefaultPolicy` + `0` initial value in `Default` at `internal/application/channels/service.go` (and the accompanying Blocco 3 doc comment).
+  - `migrations/sqlite/109_add_max_semantic_analyses_per_run_to_category_channels.sql` (untracked, never landed — deleted).
+
+- **Audit gate** (post-commit, expected 0 hits):
+  `rg '\b(EnqueueOutcome|SkipReason|ChannelMonitorAnalysisReservations|ChannelMonitorSuccessfulEnqueues|MaxSemanticAnalysesPerRun)\b' internal/ pkg/ cmd/`
+  returns 0. The legacy `category_channels.max_videos_per_run` column is preserved at its pre-Plan value; only the `MaxSemanticAnalysesPerRun` companion column is removed. Channel-monitor budget observability reverts to the legacy `acceptedCount atomic.Int32` + `ChannelMonitorVideosChecked` per-channel counter.
+
+- **No replacement slated**: the Plan Channel Monitor Blocchi 4+5 is abandoned. Future re-introduction of Ollama-budget binding requires a fresh EXPAND plan per `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md` §Slim-schema + zero-baseline rule.
 
 ### Fixed
 
