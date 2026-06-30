@@ -165,11 +165,6 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 		}
 
-		// QDRANT-002: canonical path through dispatcher when wired.
-		contentHash := clip.FileHash()
-		if contentHash == "" {
-			contentHash = clip.ID
-		}
 		// PR1 (User directive, June 2026): the legacy `if dispatcher != nil ...
 		// else assetStore.Upsert` fallback is REMOVED. SearchLiveAndSave
 		// MUST route every ingested asset through the canonical outbox
@@ -182,7 +177,15 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		if ss.dispatcher == nil {
 			return nil, ErrAssetMutationDispatcherUnavailable
 		}
-		upsertErr := ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
+		// Chip 2 (June 2026, fix-FASE9 followups plan): discovery saves the
+		// row with STAGING + DISCOVERED states WITHOUT dispatching to Qdrant.
+		// The downstream artlist.run processing path emits the canonical
+		// asset.index.requested envelope via EnqueueAndIndex once the asset
+		// is fully populated (real hash, Drive file id, upload complete).
+		// This removes the "premature Qdrant indexing of an incomplete
+		// asset" failure mode that the previous discovery-time EnqueueAndIndex
+		// call produced (Qdrant saw a half-built asset for some seconds).
+		upsertErr := ss.dispatcher.SaveDiscoveredAsset(ctx, clip, asset.StateStaging, asset.StateDiscovered)
 
 		if upsertErr == nil {
 			if a := toDomain(clip); a != nil {

@@ -115,6 +115,76 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	})
 }
 
+// SaveDiscoveredAsset is the discovery-only upsert path. It writes the
+// clip row into media_assets with the supplied lifecycle_state + index_state
+// (canonical signature from artlist: StateStaging + StateDiscovered) but
+// does NOT enqueue any outbox event. The canonical asset.index.requested
+// event arrives later, AFTER the artlist.run processing post-processing
+// finalizer produces a fully-populated clip (real hash, Drive file id,
+// upload completed). See artlist.Dispatcher.SaveDiscoveredAsset for the
+// rationale.
+//
+// Behavioural invariants:
+//   1. Atomic single-tx UPSERT — commits or returns the wrapped error;
+//      no partial-row state is observable on failure.
+//   2. NO outbox_events row is written — explicit invariant for the
+//      "discovery does not prematurely index" property. Tests assert this
+//      via the integration_test.go fixture (no row appears in
+//      outbox_events after a SaveDiscoveredAsset call).
+//   3. lifecycle_state + index_state are stamped on the clip BEFORE the
+//      UpsertClipTx call so the dispatcher ships a coherent row to the
+//      infra writer; callers do not need to pre-set them.
+//   4. Empty clip.ID is rejected up-front, mirroring EnqueueAndIndex's
+//      pre-tx guard so failures never reach the SQL layer.
+//
+// Future evolvability: a future "Re-Save Discovered" path (e.g. for
+// metadata reconciliation) can extend this method to optionally emit a
+// metadata_export.requested outbox event WITHOUT emitting
+// asset.index.requested — keeping the discovery/processing split
+// intact. For now the bare-Unbox path is the only thing SearchLiveAndSave
+// needs.
+func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset, lifecycle asset.LifecycleState, idx asset.IndexState) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.clips == nil {
+		return errors.New("outbox.Dispatcher: clips repo not configured")
+	}
+	if clip == nil || clip.ID == "" {
+		return errors.New("clip with non-empty ID is required")
+	}
+	if !lifecycle.Valid() {
+		return fmt.Errorf("dispatcher.SaveDiscoveredAsset(%q): lifecycle_state %q is not canonical (Valid()=false)", clip.ID, lifecycle)
+	}
+	if !idx.Valid() {
+		return fmt.Errorf("dispatcher.SaveDiscoveredAsset(%q): index_state %q is not canonical (Valid()=false)", clip.ID, idx)
+	}
+	// Stamp lifecycle_state + index_state directly on the clip so
+	// UpsertClipTx persists them in the same UPSERT. The two typed setters
+	// above guarantee Valid(); further invariants (LifecycleState column
+	// NOT NULL, index_state stored in metadata_json column) are enforced
+	// by clips_transactions.go::UpsertClipTx — no additional wiring here.
+	clip.LifecycleState = lifecycle
+	clip.SetMetadataString("index_state", string(idx))
+
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
+			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
+		}
+		if d.log != nil {
+			d.log.Debug("dispatcher saved discovered asset (no outbox event)",
+				zap.String("asset_id", clip.ID),
+				zap.String("lifecycle_state", string(lifecycle)),
+				zap.String("index_state", string(idx)),
+			)
+		}
+		return nil
+	})
+}
+
 // EnqueueIndexEvent emits the canonical asset.index.requested.v1
 // envelope INSIDE a caller-owned *sql.Tx. PR-VO-A3 (Outbox-based
 // Qdrant indexing, June 2026): this method is the Voiceover path's
