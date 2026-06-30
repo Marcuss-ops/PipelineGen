@@ -158,6 +158,16 @@ type BatchRequest struct {
 	Strategy         string              `json:"strategy"`
 	Destination      *DestinationRequest `json:"destination,omitempty"`
 	Metadata         map[string]any      `json:"metadata,omitempty"`
+	// VoiceOverrides is the canonical per-language voice override map
+	// keyed by BCP-47 code (mapped to voice identifiers like
+	// "it-IT-IsabellaNeural"). nil-safe (synthesizeStage reads this map
+	// via voiceOverrideFor() and falls back to "" when missing). The
+	// previous pre-P0.4 implementation forwarded the same map via
+	// req.Metadata["voice_overrides"] inside ProcessOneVoiceoverUseCase
+	// (a metadata-hack envelope) but synthesizeStage never read it;
+	// post-P0.4 micro-commit #3 (June 2026) the field is canonical at the
+	// struct level.
+	VoiceOverrides map[string]string `json:"voice_overrides,omitempty"`
 }
 
 func (r *BatchRequest) PayloadMap() map[string]any {
@@ -170,6 +180,15 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 		"languages":         r.Languages,
 		"filename_template": r.FilenameTemplate,
 		"strategy":          r.Strategy,
+	}
+	if len(r.VoiceOverrides) > 0 {
+		// PR-VO-AUDIT-P04 micro-commit #3 (June 2026): VoiceOverrides
+		// is the canonical per-language voice map and belongs in the
+		// top-level payload (NOT inside metadata — the previous
+		// metadata-hack envelope collided with the merge-user-metadata
+		// collision-drop contract). Round-trips on the consumer side
+		// via the BufferRequest.VoiceOverrides field.
+		payload["voice_overrides"] = r.VoiceOverrides
 	}
 	if r.RemoveSilence != nil {
 		payload["remove_silence"] = *r.RemoveSilence

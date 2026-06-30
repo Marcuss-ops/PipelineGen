@@ -56,6 +56,26 @@ import (
 // to enumerate all restored surfaces.
 const restoreIdent = "PR-VOICEOVER-RESTORE"
 
+// voiceOverrideFor returns the canonical per-language voice override
+// for a single language key from a BatchRequest's VoiceOverrides map.
+// nil-safe (returns "" when req is nil, the map is nil, the key is
+// missing, OR the value is empty). The empty-string return propagates
+// downstream to TTSInput.Voice as the default-voice signal — the
+// Python tts_edge.py --voice flag is only set when the override is
+// present, so an empty Voice preserves the tts script's local
+// voice-per-language defaulting path.
+//
+// PR-VO-AUDIT-P04 micro-commit #3 (June 2026): replaces the previous
+// synthesizeStage hard-coded `Voice: ""` literal that dropped every
+// per-language override silently. Audit-pin:
+//   - TestProcessOneVoiceoverUseCase_PropagatesVoiceOverrideToTTSInput
+//     (asserts end-to-end propagation from the item's scalar voice
+//     through req.VoiceOverrides into TTSInput.Voice);
+//   - TestTTSBridge_UsesPerLanguageVoice (asserts the synthesizeStage
+//     lookup hits the canonical map);
+//   - TestE2E_VoiceOverrideReachesPython (asserts the resolved voice
+//     flows through to the Python tts_edge.py --voice flag).
+
 // truncatePreview caps the text_preview metadata field at 100 chars
 // to limit row size. Inline here (no textutil import) so stages.go
 // keeps a tight import surface.
@@ -199,10 +219,26 @@ func (s *Service) synthesizeStage(
 	// *audioasset.Processor receives the same shape it would have
 	// received pre-P1-2. Voice field defaults to empty (legacy
 	// synthesize behavior — auto-detected from TTS script).
+	// TTSInput is the canonical voiceover port wire-shape (defined
+	// in voiceover/ports.go). The useCaseTTSAdapter bridge (in
+	// internal/app/adapters_voiceover_use_case.go) maps TTSInput
+	// fields 1-a-1 onto audioasset.AudioInput so the production
+	// *audioasset.Processor receives the same shape it would have
+	// received pre-P1-2.
+	//
+	// PR-VO-AUDIT-P04 micro-commit #3 (June 2026): the Voice field is
+	// populated from the canonical req.VoiceOverrides[language] lookup
+	// (via voiceOverrideFor helper at the bottom of this file). nil-safe:
+	// voiceOverrideFor returns "" when the map is missing or the
+	// language key is missing, which propagates downstream to the
+	// tts_edge.py --voice flag as the default-voice path. Pre-P0.4
+	// this lookup was missing — the legacy code hard-coded
+	// `Voice: ""`, so per-language voice overrides in
+	// req.VoiceOverrides were silently dropped at Stage 1 before
+	// reaching the Python bridge.
 	input := TTSInput{
 		Text:          req.Text,
-		Language:      language,
-		Voice:         voiceOverrideFor(req, language),
+		Language:      language,		Voice: voiceOverrideFor(req, language),
 		Filename:      filename,
 		OutputDir:     outputDir,
 		RemoveSilence: removeSilence,
