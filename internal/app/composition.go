@@ -599,8 +599,8 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// double-Register protection.
 	if jobs.Service != nil && domains.VoiceoverProcessOne != nil {
 		fanout := voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{
-			JobsService: jobs.Service,
-			Logger:      log,
+			Enqueuer: jobs.Service,
+			Logger:   log,
 		})
 		parentHandler := voiceoverjobs.NewGenerateJobHandler(fanout, log)
 		parentHandler.Register(jobs.Service)

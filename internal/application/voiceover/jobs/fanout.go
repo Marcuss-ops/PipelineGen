@@ -35,14 +35,33 @@ import (
 	"go.uber.org/zap"
 )
 
+// Enqueuer is the narrow port used by FanoutVoiceoversUseCase to
+// enqueue per-language child jobs. Per AGENTS.md Pattern 0, the
+// application layer depends on a typed interface rather than the
+// concrete *appjobs.Service — the composition root satisfies the
+// port implicitly by passing *appjobs.Service (whose Enqueue method
+// matches the signature exactly).
+//
+// Test injectability: handlers under internal/application/voiceover/
+// jobs/generate_handler_test.go can now construct a FanoutUseCase
+// with a stub Enqueuer, without standing up a full
+// appjobs.NewService(repo, dispatcher, logger) (the heavyweight
+// production wiring needed for dispatcher + lease semantics).
+type Enqueuer interface {
+	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
+}
+
 // FanoutDeps wires dependencies for FanoutVoiceoversUseCase per
 // AGENTS.md Pattern 0: typed ports, concrete adapter injected at
-// the composition root (composition.go::NewComposition).
+// the composition root (composition.go::NewComposition — wires
+// `Enqueuer: jobs.Service` because *appjobs.Service satisfies
+// Enqueuer implicitly).
 type FanoutDeps struct {
-	// JobsService is the canonical job broker used to enqueue child
+	// Enqueuer is the canonical narrow port used to enqueue child
 	// voiceover.generate_item jobs (one per (language, voice) pair).
-	// MANDATORY — fail-fast per AGENTS.md WireUp pattern.
-	JobsService *appjobs.Service
+	// MANDATORY — fail-fast per AGENTS.md WireUp pattern. The
+	// composition root satisfies this port with *appjobs.Service.
+	Enqueuer Enqueuer
 
 	// Logger is OPTIONAL (nil-safe via zap.NewNop() in the constructor).
 	Logger *zap.Logger
@@ -65,6 +84,15 @@ type FanoutResult struct {
 	PerLanguage        []string `json:"per_language"`
 }
 
+// Compile-time assertion: *appjobs.Service satisfies Enqueuer.
+// Compile-time assertion (Pattern 0 narrow-port conformance):
+// *appjobs.Service (the canonical job broker wired into FanoutDeps.Enqueuer
+// by composition.go) MUST satisfy the Enqueuer interface. If the
+// canonical broker's Enqueue() signature drifts, the compiler fails
+// this assertion and composition wiring breaks loudly. The import
+// is unused at runtime — kept only to anchor the assertion.
+var _ Enqueuer = (*appjobs.Service)(nil)
+
 // FanoutVoiceoversUseCase is the typed-port P0.3 parent-child-fanout
 // use case. Execute iterates cmd.Languages, builds one
 // GenerateVoiceoverItemCommand per (language, voice) pair, and
@@ -76,12 +104,18 @@ type FanoutVoiceoversUseCase struct {
 	deps FanoutDeps
 }
 
-// NewFanoutVoiceoversUseCase constructs the use case. JobsService is
+// NewFanoutVoiceoversUseCase constructs the use case. Enqueuer is
 // MANDATORY (panic on nil — fail-fast per AGENTS.md WireUp pattern).
 // Logger is OPTIONAL (nil-safe via zap.NewNop()).
+//
+// Why Enqueuer-not-JobsService (Pattern 0 narrow port, June 2026):
+// the use case only needs the Enqueue method. Taking the full
+// *appjobs.Service would force tests to construct the dispatcher +
+// lease machinery — invasive. The narrow port keeps the use case
+// dependency surface just-above-zero.
 func NewFanoutVoiceoversUseCase(deps FanoutDeps) *FanoutVoiceoversUseCase {
-	if deps.JobsService == nil {
-		panic("voiceover.Jobs.NewFanoutVoiceoversUseCase: JobsService is required (FanoutDeps.JobsService)")
+	if deps.Enqueuer == nil {
+		panic("voiceover.Jobs.NewFanoutVoiceoversUseCase: Enqueuer is required (FanoutDeps.Enqueuer)")
 	}
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
@@ -152,7 +186,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			continue
 		}
 
-		enqueued, err := u.deps.JobsService.Enqueue(ctx, &job.EnqueueRequest{
+		enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
 			Type:    job.TypeVoiceoverGenerateItem,
 			Payload: item,
 		})

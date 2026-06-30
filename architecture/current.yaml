@@ -290,6 +290,37 @@
       owner_capability: internal/application/voiceover
       status: shipped
       deadline: 2026-07-10
+    # PR-VO-AUDIT-P05 micro-commit #4 (June 2026): parent reflects real
+    # completion (MVP). The parent GenerateJobHandler no longer
+    # falsely reports SUCCEEDED at the application level just because
+    # fan-out completed enqueueing children. Instead the result map
+    # carries a typed `parent_state` enum (ParentWaitingChildren /
+    # ParentPartialSuccess / ParentFailed / ParentSucceeded) which the
+    # dispatcher writes to job.Result["parent_state"]. Micro-commit #4
+    # pins the post-enqueue emit only (waiting_children on full success;
+    # partial_success on partial/all-failed fanout; failed on
+    # validation-failure). The flip to "succeeded" is deferred to
+    # micro-commit #5's durable aggregator (outbox-driven
+    # parent→child correlation) so operator views no longer surface
+    # "parent SUCCEEDED + child FAILED" as a false-success case.
+    # Backed by:
+    #   - typed ParentState enum + 4 constants (parent_state.go)
+    #   - SnapshotAccessor port + FanoutResultSnapshotAccessor impl
+    #   - AggregateByParent(parentID, accessor) ParentState wrapper
+    #     (parentID-taking per user-spec contract; pure classifier
+    #     underneath)
+    #   - Pure AggregateChildOutcomes(children) ParentState classifier
+    #     with no-children-partial branch pinned by audit
+    #   - Enqueuer narrow port on FanoutVoiceoversUseCase
+    #     (replaces JobsService concrete per AGENTS.md Pattern 0)
+    #   - toFanoutResultMap emits parent_state on every branch
+    #   - 4 audit-pinned HandleJob integration tests via stub Enqueuer
+    #   - 2 AggregateByParent wiring tests + 6 AggregateChildOutcomes
+    #     classification tests + 1 nil-accessor panic pin
+    - id: P0.5_parent_aggregation_mvp
+      owner_capability: internal/application/voiceover
+      status: shipped
+      deadline: 2026-07-10
 - id: 23
   status: in_progress
   exit_signal: false

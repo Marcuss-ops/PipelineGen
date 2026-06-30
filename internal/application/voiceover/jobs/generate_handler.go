@@ -103,21 +103,30 @@ func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) {
 
 // HandleJob processes a voiceover.generate parent job from the queue.
 //
-// P0.3 dispatch contract:
+// Dispatch contract (P0.3 → P0.5, June 2026):
 //   - json.Unmarshal failure → (nil, err): dispatcher marks job FAILED.
 //   - cmd.Validate failure → (resultMap, err): dispatcher marks job FAILED.
+//     The resultMap carries parent_state="failed" so operators / the
+//     #5 aggregator can read it from job.Result.
 //   - Fanout partial enqueue failure → (resultMap, err): dispatcher
 //     marks job FAILED (godlike/07 — partial fan-out = parent failure,
-//     NO silent success). The resultMap still carries the per-language
-//     status so operators see which siblings enqueued + which failed.
+//     NO silent success). The resultMap carries parent_state=
+//     "partial_success" — fan-out completed for some children but
+//     not all; operators see which siblings enqueued + which failed.
 //   - Fanout full enqueue success → (resultMap, nil): dispatcher
-//     marks job SUCCEEDED. Commit 2's aggregator then RE-finalises
-//     the parent based on outbox events from the children.
+//     marks job SUCCEEDED at the terminal-state level. BUT the
+//     resultMap carries parent_state="waiting_children" — the
+//     application-level state reflects "children in flight" rather
+//     than "all children succeeded" (PR-VO-AUDIT-P05 micro-commit
+//     #4). The micro-commit #5 aggregator will read parent_state
+//     from job.Result and compute the durable terminal state.
 //
 // Progress: tools.Progress is called once at start (5%) and once at
 // end (100%). Per-child progress wiring lives in the new child
 // handler (GenerateItemJobHandler) — the parent no longer iterates
-// languages in-process.
+// languages in-process. The parent_state emit replaces the prior
+// "Dispatcher SUCCEEDED = parent succeeded" invariant with
+// "Dispatcher SUCCEEDED = fan-out done; re-finalise on children".
 func (h *GenerateJobHandler) HandleJob(
 	ctx context.Context,
 	j *appjobs.Job,
@@ -189,19 +198,45 @@ func (h *GenerateJobHandler) hasProgress(tools *appjobs.JobTools) bool {
 // toFanoutResultMap serialises a FanoutResult into the
 // map[string]any shape the jobs.Dispatcher writes into job.Result
 // JSON. Field names mirror the FanoutResult struct's JSON tags so
-// the Commit 2 aggregator can unmarshal a parent job's result back
-// into a typed FanoutResult.
+// the micro-commit #5 aggregator can unmarshal a parent job's
+// result back into a typed FanoutResult.
+//
+// PR-VO-AUDIT-P05 micro-commit #4 (June 2026): the result map now
+// carries parent_state under the canonical key "parent_state"
+// (string-encoded voiceover.ParentState). The emit shapes:
+//
+//   - res == nil   → "failed"       (validation-failure / nil-fanout
+//                                     paths; aggregator branch-inactive)
+//   - res.OK == false → "partial_success"
+//                                  (per-language partial fan-out; some
+//                                   children could not be enqueued but
+//                                   the ones that did are in flight)
+//   - res.OK == true  → "waiting_children"
+//                                  (full enqueue success — children
+//                                   are in flight; aggregator will
+//                                   re-finalise on terminal)
+//
+// The dispatcher still marks the parent SUCCEEDED when (resultMap,
+// nil) is returned. The application-level state is in result
+// ["parent_state"] — the operative invariant this micro-commit
+// establishes: "Dispatcher SUCCEEDED != parent succeeded; we always
+// emit parent_state never == succeeded here in micro-commit #4.
 func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 	if res == nil {
 		return map[string]any{
-			"ok":           false,
+			"ok":            false,
 			"parent_job_id": parentJobID,
 			"enqueued_count": 0,
+			"parent_state":  string(voiceover.ParentFailed),
 		}
 	}
 	pid := res.ParentJobID
 	if pid == "" {
 		pid = parentJobID
+	}
+	ps := voiceover.ParentWaitingChildren
+	if !res.OK {
+		ps = voiceover.ParentPartialSuccess
 	}
 	m := map[string]any{
 		"ok":                   res.OK,
@@ -212,6 +247,7 @@ func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 		"failed_enqueue_count": res.FailedEnqueueCount,
 		"child_job_ids":        res.ChildJobIDs,
 		"per_language":         res.PerLanguage,
+		"parent_state":         string(ps),
 	}
 	return m
 }
