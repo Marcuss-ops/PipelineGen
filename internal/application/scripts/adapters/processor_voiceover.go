@@ -79,9 +79,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		language = defaults.DefaultScriptConfig().DefaultLanguage
 	}
 
-	voiceovers := make([]SceneVoiceover, 0, len(scenes))
-	var warnings []string
-
+	items := make([]VoiceoverSceneInput, 0, len(scenes))
 	for i, scene := range scenes {
 		sceneText := scene.Text
 		if sceneText == "" {
@@ -109,65 +107,41 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			safeTitle = "scene"
 		}
 		filename := fmt.Sprintf("%s_%s_%s.mp3", safeTitle, safeSceneID, language)
-
-		// Use GenerateWithDestination when the plan carries a
-		// voiceover destination (folder_id or resolved group).
-		// Otherwise fall back to the default Generate (which
-		// honours the configured voiceover folder).
-		var result *voiceover.VoiceoverResult
-		var voErr error
+		var dest *voiceover.DestinationRequest
 		if plan.VoiceoverFolderID != "" {
-			dest := &voiceover.DestinationRequest{
-				FolderID: plan.VoiceoverFolderID,
-			}
-			result, voErr = p.gen.GenerateWithDestination(ctx, sceneText, language, filename, dest)
-		} else {
-			if plan.VoiceoverGroup != "" && p.log != nil {
-				p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
-					zap.String("voiceover_group", plan.VoiceoverGroup))
-			}
-			result, voErr = p.gen.Generate(ctx, sceneText, language, filename)
+			dest = &voiceover.DestinationRequest{FolderID: plan.VoiceoverFolderID}
+		} else if plan.VoiceoverGroup != "" && p.log != nil {
+			p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
+				zap.String("voiceover_group", plan.VoiceoverGroup))
 		}
-
-		if voErr != nil {
-			warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d: %v", i, voErr))
-			voiceovers = append(voiceovers, SceneVoiceover{SceneIndex: i, Status: "failed"})
-			continue
-		}
-
-		// Step 7 (June 2026) — M2 typed-port remediation: process
-		// the typed *voiceover.VoiceoverResult directly. Path and
-		// DriveLink are direct struct field reads (no type assertion,
-		// no extractVoiceoverPaths). Result is nil-tolerant in case
-		// the underlying service returns (nil, nil) — status flips to
-		// "empty_result" matching pre-Step-7 behaviour. The "empty_result"
-		// sentinel is preserved because the canonical envelope in
-		// PostProcessResult.Voiceovers[i].Status needs a distinct value
-		// from "completed" (with a real DriveLink/Path pair) AND from
-		// "failed" (when Generate returned a non-nil err).
-		link, path := "", ""
-		if result != nil {
-			link = result.DriveLink
-			path = result.Path
-		}
-		status := "completed"
-		if link == "" && path == "" {
-			status = "empty_result"
-		}
-
-		voiceovers = append(voiceovers, SceneVoiceover{
-			SceneIndex: i,
-			Status:     status,
-			Link:       link,
-			LocalPath:  path,
+		items = append(items, VoiceoverSceneInput{
+			SceneIndex:  i,
+			Text:        sceneText,
+			Filename:    filename,
+			Destination: dest,
 		})
+	}
+
+	outcomes := RunVoiceoverSceneFanout(ctx, p.gen, language, items, 4)
+	voiceovers := make([]SceneVoiceover, 0, len(outcomes))
+	var warnings []string
+	for _, out := range outcomes {
+		voiceovers = append(voiceovers, SceneVoiceover{
+			SceneIndex: out.SceneIndex,
+			Status:     out.Status,
+			Link:       out.Link,
+			LocalPath:  out.LocalPath,
+		})
+		if out.Status == "failed" {
+			warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d: %s", out.SceneIndex, out.Error))
+		}
 	}
 
 	if len(warnings) > 0 && p.log != nil {
 		p.log.Warn("voiceover processor: partial failures",
-			zap.Int("total", len(scenes)),
+			zap.Int("total", len(items)),
 			zap.Int("failed", len(warnings)),
-			zap.Int("succeeded", len(voiceovers)-len(warnings)),
+			zap.Int("succeeded", CountCompletedSceneOutcomes(outcomes)),
 			zap.Strings("warnings", warnings))
 	}
 

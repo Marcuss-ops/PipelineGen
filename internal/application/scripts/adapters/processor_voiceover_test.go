@@ -35,6 +35,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,27 +47,22 @@ import (
 )
 
 // stubVoiceoverService is a VoiceoverService implementation
-// controlled by a per-call map. The processor iterates scenes
-// in index order (0..N-1), so the N-th entry in failOnCall is
-// the error returned for scene index N. Mapping by call
-// position (rather than by scene text or filename) decouples
-// the stub from any sanitization in the production code path
-// upstream of Generate — a future commit that adds text
-// escaping, unicode normalisation, or filename migration
-// cannot silently disarm this test.
-//
-// GenerateWithDestination mirrors the same logic so callers
-// that route through the folder-id path see the same per-call
-// controls.
+// controlled by a per-scene callback. The processor now fans out
+// scenes concurrently, so the stub must key off stable inputs
+// (scene text / filename) rather than call order.
 type stubVoiceoverService struct {
-	failOnCall map[int]error
-	callCount  int
+	fn    func(text, lang, filename string) (*voiceover.VoiceoverResult, error)
+	calls atomic.Int32
 }
 
 func (s *stubVoiceoverService) Generate(_ context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error) {
-	s.callCount++
-	if err, ok := s.failOnCall[s.callCount-1]; ok && err != nil {
-		return nil, err
+	return s.GenerateWithDestination(context.Background(), text, lang, filename, nil)
+}
+
+func (s *stubVoiceoverService) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
+	s.calls.Add(1)
+	if s.fn != nil {
+		return s.fn(text, lang, filename)
 	}
 	// Step 7 (June 2026) — typed stub: returns the canonical
 	// *voiceover.VoiceoverResult struct directly instead of a
@@ -76,10 +72,6 @@ func (s *stubVoiceoverService) Generate(_ context.Context, text, lang, filename 
 		Path:      "/tmp/" + filename,
 		DriveLink: "https://drive.example.test/" + filename,
 	}, nil
-}
-
-func (s *stubVoiceoverService) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
-	return s.Generate(context.Background(), text, lang, filename)
 }
 
 // basePartialFailuresPlan returns a ResolvedGenerationPlan with
@@ -109,9 +101,18 @@ func basePartialFailuresPlan() (*scriptpkg.ResolvedGenerationPlan, *scriptpkg.Sp
 // refactor is caught by the distinct-error assertions.
 func partialFailuresProc() (*VoiceoverProcessor, *stubVoiceoverService) {
 	stub := &stubVoiceoverService{
-		failOnCall: map[int]error{
-			1: errors.New("tts python socket closed"),
-			2: errors.New("voiceover service rate-limited"),
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverResult, error) {
+			switch text {
+			case "scene one":
+				return nil, errors.New("tts python socket closed")
+			case "scene two":
+				return nil, errors.New("voiceover service rate-limited")
+			default:
+				return &voiceover.VoiceoverResult{
+					Path:      "/tmp/" + filename,
+					DriveLink: "https://drive.example.test/" + filename,
+				}, nil
+			}
 		},
 	}
 	return NewVoiceoverProcessor(stub, zap.NewNop()), stub
@@ -186,7 +187,7 @@ func TestVoiceoverProcessor_AllSuccess_HasEmptyWarnings(t *testing.T) {
 	t.Parallel()
 
 	plan, spec := basePartialFailuresPlan()
-	stub := &stubVoiceoverService{failOnCall: map[int]error{}}
+	stub := &stubVoiceoverService{}
 	proc := NewVoiceoverProcessor(stub, zap.NewNop())
 
 	result, err := proc.Process(context.Background(), plan, ProcessInput{

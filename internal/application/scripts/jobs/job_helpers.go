@@ -1,14 +1,4 @@
-// Package scripts - job helpers extracted from api/script/handler_jobs.go (PR2, June 2026).
-//
-// Refactor 1 of the cross-capability cleanup plan (June 2026, audit at
-// architecture/audits/2026-06-28-cross-capability-imports.md): swaps out
-// direct imports of clips (ClipsFolderExtPort now supplied as a parameter)
-// and *voiceover.Service / *voiceover.GroupsResolver (now narrowed to the
-// voiceover.VoiceoverGenerator + scripts/ports.VoiceoverGroupResolver
-// ports respectively). The voiceover package is still imported for the
-// *voiceover.DestinationRequest wire-shape return type (Result types
-// deliberately stay typed per Step 7 / M2 canonical pattern; refactor is
-// intentionally NOT a Result-type rewrite).
+// Package scripts — job helpers extracted from api/script/handler_jobs.go (PR2, June 2026).
 package jobs
 
 import (
@@ -19,15 +9,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// - Pipeline stage logger
-
+// ── Pipeline stage logger
 func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	t := time.Now()
 	log.Info("pipeline_stage_started",
@@ -43,23 +33,19 @@ func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	}
 }
 
-// - BuildVoiceoverDestination -
+// ── buildVoiceoverDestination ────────────────────────────────────────────────
 
 // BuildVoiceoverDestination builds a *voiceover.DestinationRequest from the
-// provided parameters. Cross-capability cleanup Refactor 1 (June 2026):
-// the function depends on the ClipsFolderExtPort (formerly clips.ExtractDriveFolderID
-// direct call) and the VoiceoverGroupResolver port (formerly *voiceover.GroupsResolver
-// concrete). The voiceover wire-shape *DestinationRequest return type is unchanged.
+// provided parameters.
 func BuildVoiceoverDestination(
 	ctx context.Context,
-	folderExt ClipsFolderExtPort,
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
 	log *zap.Logger,
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
-	groupsResolver ports.VoiceoverGroupResolver,
+	groupsResolver *voiceover.GroupsResolver,
 ) *voiceover.DestinationRequest {
-	voiceoverFolderID = folderExt.ExtractDriveFolderID(voiceoverFolderID)
-	voRootID = folderExt.ExtractDriveFolderID(voRootID)
+	voiceoverFolderID = clips.ExtractDriveFolderID(strings.TrimSpace(voiceoverFolderID))
+	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
 	subfolderName := textutil.SlugifyWithMax(title, 40)
 
 	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {
@@ -71,21 +57,21 @@ func BuildVoiceoverDestination(
 	}
 
 	if groupsResolver != nil && strings.TrimSpace(voiceoverGroup) != "" {
-		folderID, err := groupsResolver.ResolveGroup(ctx, voRootID, voiceoverGroup)
+		entry, err := groupsResolver.ResolveByName(ctx, voRootID, voiceoverGroup)
 		switch {
-		case err == nil && folderID != "":
+		case err == nil && entry.FolderID != "":
 			if log != nil {
 				log.Info("routed voiceover via DB groups_resolver",
 					zap.String("voiceover_group", voiceoverGroup),
-					zap.String("folder_id", folderID),
+					zap.String("folder_id", entry.FolderID),
 					zap.String("parent_id", voRootID))
 			}
 			return &voiceover.DestinationRequest{
-				FolderID:        folderID,
+				FolderID:        entry.FolderID,
 				SubfolderName:   subfolderName,
 				CreateSubfolder: true,
 			}
-		case err != nil && !errors.Is(err, ports.ErrVoiceoverGroupNotFound):
+		case err != nil && !errors.Is(err, voiceover.ErrGroupNotFound):
 			if log != nil {
 				log.Warn("groups_resolver lookup failed unexpectedly, falling back to Drive deep-search",
 					zap.String("voiceover_group", voiceoverGroup),
@@ -131,22 +117,19 @@ func BuildVoiceoverDestination(
 	}
 }
 
-// - Voiceover scene item -
+// ── Voiceover scene item ────────────────────────────────────────────────────
 
 type VoiceoverSceneItem struct {
 	Text       string
 	SceneIndex int
 }
 
-// - GenerateSceneVoiceovers -
+// ── generateSceneVoiceovers ──────────────────────────────────────────────────
 
-// GenerateSceneVoiceovers generates voiceovers for each scene item. Cross-capability
-// cleanup Refactor 1 (June 2026): takes voiceover.VoiceoverGenerator port
-// (formerly *voiceover.Service concrete). The VoiceoverResult return type is
-// unchanged (typed port-shape; *Service satisfies the port structurally).
+// GenerateSceneVoiceovers generates voiceovers for each scene item.
 func GenerateSceneVoiceovers(
 	ctx context.Context,
-	voGenerator voiceover.VoiceoverGenerator,
+	voService *voiceover.Service,
 	scenes []VoiceoverSceneItem,
 	language string,
 	destReq *voiceover.DestinationRequest,
@@ -154,43 +137,48 @@ func GenerateSceneVoiceovers(
 	onProgress func(pct int, msg string),
 	basePct, pctRange int,
 ) int {
-	if voGenerator == nil || destReq == nil || len(scenes) == 0 {
+	if voService == nil || destReq == nil || len(scenes) == 0 {
 		return 0
 	}
-	// AGENTS.md §7 post-write save ctx - voiceover job helper writes
+	// AGENTS.md §7 post-write save ctx — voiceover job helper writes
 	// must survive the request ctx cancel; the save-context is bounded
 	// by the script-job lifetime, not the request that triggered it.
 	voCtx := context.WithoutCancel(ctx)
-	successCount := 0
-	for i, sc := range scenes {
+	inputs := make([]adapterspkg.VoiceoverSceneInput, 0, len(scenes))
+	for _, sc := range scenes {
 		sceneText := strings.TrimSpace(sc.Text)
 		if sceneText == "" {
 			continue
 		}
 		sceneSlug := textutil.SlugifyWithMax(sceneText, 30)
-		filename := sceneSlug
-
-		if onProgress != nil && len(scenes) > 0 {
-			onProgress(basePct+(i*pctRange/len(scenes)), "")
-		}
-
-		voRes, voErr := voGenerator.GenerateWithDestination(voCtx, sceneText, language, filename, destReq)
-		if voErr != nil {
-			if log != nil {
-				log.Warn("voiceover generation failed for scene",
-					zap.Int("scene_index", sc.SceneIndex),
-					zap.Error(voErr))
+		inputs = append(inputs, adapterspkg.VoiceoverSceneInput{
+			SceneIndex:  sc.SceneIndex,
+			Text:        sceneText,
+			Filename:    sceneSlug,
+			Destination: destReq,
+		})
+	}
+	outcomes := adapterspkg.RunVoiceoverSceneFanout(voCtx, voService, language, inputs, 4)
+	successCount := adapterspkg.CountCompletedSceneOutcomes(outcomes)
+	if log != nil {
+		for _, out := range outcomes {
+			if out.Status != "failed" {
+				continue
 			}
-			continue
+			log.Warn("voiceover generation failed for scene",
+				zap.Int("scene_index", out.SceneIndex),
+				zap.String("error", out.Error))
 		}
-		if voRes != nil {
-			successCount++
+	}
+	if onProgress != nil && len(outcomes) > 0 {
+		for i := range outcomes {
+			onProgress(basePct+((i+1)*pctRange/len(outcomes)), "")
 		}
 	}
 	return successCount
 }
 
-// - Text helpers -
+// ── Text helpers ─────────────────────────────────────────────────────────────
 
 func countWords(text string) int {
 	return len(strings.Fields(text))

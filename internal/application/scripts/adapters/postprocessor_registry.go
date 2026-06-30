@@ -606,9 +606,36 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	}
 	if len(src.Voiceovers) > 0 {
 		dst.Voiceovers = append(dst.Voiceovers, src.Voiceovers...)
+		if currentInput != nil {
+			for _, v := range src.Voiceovers {
+				if v.SceneIndex < 0 || v.SceneIndex >= len(currentInput.SpecScene.Scenes) {
+					continue
+				}
+				sc := &currentInput.SpecScene.Scenes[v.SceneIndex]
+				if sc.Bindings.Voiceover == nil {
+					sc.Bindings.Voiceover = &scriptpkg.VoiceoverBinding{}
+				}
+				sc.Bindings.Voiceover.Status = v.Status
+				sc.Bindings.Voiceover.Link = v.Link
+				sc.Bindings.Voiceover.LocalPath = v.LocalPath
+			}
+		}
 	}
 	if len(src.SceneImages) > 0 {
 		dst.Scenes = append(dst.Scenes, src.SceneImages...)
+		if currentInput != nil {
+			for _, s := range src.SceneImages {
+				if s.Index < 0 || s.Index >= len(currentInput.SpecScene.Scenes) {
+					continue
+				}
+				sc := &currentInput.SpecScene.Scenes[s.Index]
+				if sc.Bindings.Image == nil {
+					sc.Bindings.Image = &scriptpkg.ImageBinding{}
+				}
+				sc.Bindings.Image.URL = s.URL
+				sc.Bindings.Image.Status = "generated"
+			}
+		}
 	}
 	if src.DocLink != "" {
 		dst.DocLink = src.DocLink

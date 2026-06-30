@@ -60,9 +60,8 @@ internal/application/scripts/adapters/gemmamemory.go  # Wave 19 PR-Wave19-MIGRAT
 # Same dependency for process.go (PR-F follows PR-E in the voiceover
 # cluster): the processLanguage pre-read on s.db cannot change until
 # the field type is the typed port.
-internal/application/voiceover/service.go  # Wave 19 PR-Wave19-MIGRATE-E: VoiceoverService embeds VoiceoverDedupeQuerier + VoiceoverTxEnqueuer ports (drop direct s.db); owner: agent/Codebuff; deadline: 2026-07-31; DEPENDS-ON: none
 internal/application/voiceover/dedupe.go  # Wave 19 PR-Wave19-MIGRATE-B: parametrize applyDedupeByDriveFileID with VoiceoverDedupeQuerier interface + adapt callers; this PR lands AFTER PR-E; owner: agent/Codebuff; deadline: 2026-07-31; DEPENDS-ON: PR-Wave19-MIGRATE-E (voiceover/service.go field swap to VoiceoverDedupeQuerier port)
-internal/application/voiceover/process.go  # Wave 19 PR-Wave19-MIGRATE-F: processLanguage reads through VoiceoverQueryPort (QueryRowContext → field-typed interface); this PR lands AFTER PR-E; owner: agent/Codebuff; deadline: 2026-07-31; DEPENDS-ON: PR-Wave19-MIGRATE-E (voiceover/service.go field swap to VoiceoverQueryPort)
+internal/application/voiceover/persistence/repository.go  # Wave 19 PR-Wave19-MIGRATE-VO-REP: Voiceover Repository persistence direct SQL access; owner: agent/Codebuff; deadline: 2026-07-31
 
 internal/application/jobs/outbox/registry.go  # Wave 19 PR-Wave19-MIGRATE-G: OutboxRegistryPort + outbox/registry adapter (single repo hold); owner: agent/Codebuff; deadline: 2026-07-31
 internal/application/jobs/outbox/indexing.go  # Wave 19 PR-Wave19-MIGRATE-H: OutboxIndexingPort + outbox/indexing adapter (tx-emit on the swap path); owner: agent/Codebuff; deadline: 2026-07-31

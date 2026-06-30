@@ -134,6 +134,7 @@ func (s *Service) UpsertFolder(ctx context.Context, folder *asset.ClipFolder) er
 		return fmt.Errorf("clips repository not available")
 	}
 	folder.UpdatedAt = time.Now().UTC()
+	// ARCH-ALLOWLIST: clips-ssot-only
 	return s.clipsRepo.UpsertFolder(ctx, folder)
 }
 

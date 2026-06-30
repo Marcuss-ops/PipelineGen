@@ -182,6 +182,10 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// a stuck DB write from blocking shutdown indefinitely.
 	finalizationCtx, finalCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer finalCancel()
+	finalRevision := revision
+	if jFresh, err := w.repo.Get(finalizationCtx, j.ID); err == nil && jFresh != nil && jFresh.Revision > 0 {
+		finalRevision = jFresh.Revision
+	}
 
 	if dispatchErr != nil {
 		w.log.Error("job failed",
@@ -200,7 +204,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			// ScheduleRetry does running→queued atomically with
 			// server-side backoff via available_at. No intermediate
 			// "failed" state — avoids false alerting.
-			if retryErr := w.repo.ScheduleRetry(finalizationCtx, j.ID, workerID, leaseID, revision, backoff); retryErr != nil {
+			if retryErr := w.repo.ScheduleRetry(finalizationCtx, j.ID, workerID, leaseID, finalRevision, backoff); retryErr != nil {
 				if errors.Is(retryErr, sqljobs.ErrLeaseLost) {
 					w.log.Warn("lease lost during ScheduleRetry — another worker claimed this job",
 						zap.String("job_id", j.ID))
@@ -213,7 +217,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			return
 		}
 
-		if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, revision, dispatchErr.Error()); failErr != nil {
+		if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision, dispatchErr.Error()); failErr != nil {
 			if errors.Is(failErr, sqljobs.ErrLeaseLost) {
 				w.log.Warn("lease lost during fail (exhausted retries)",
 					zap.String("job_id", j.ID))
@@ -234,7 +238,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		return
 	}
 
-	if completeErr := w.repo.Complete(finalizationCtx, j.ID, workerID, leaseID, revision, mapToRawMessage(result)); completeErr != nil {
+	if completeErr := w.repo.Complete(finalizationCtx, j.ID, workerID, leaseID, finalRevision, mapToRawMessage(result)); completeErr != nil {
 		if errors.Is(completeErr, sqljobs.ErrLeaseLost) {
 			w.log.Warn("lease lost during complete — another worker claimed this job",
 				zap.String("job_id", j.ID))

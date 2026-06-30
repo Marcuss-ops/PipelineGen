@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS voiceovers (
     drive_link TEXT NOT NULL DEFAULT '',
     download_link TEXT NOT NULL DEFAULT '',
     file_hash TEXT NOT NULL DEFAULT '',
+    fingerprint TEXT NOT NULL DEFAULT '',
     duration_seconds REAL NOT NULL DEFAULT 0.0,
     status TEXT NOT NULL DEFAULT 'pending',
     error TEXT NOT NULL DEFAULT '',
@@ -27,3 +28,4 @@ CREATE TABLE IF NOT EXISTS voiceovers (
 CREATE INDEX IF NOT EXISTS idx_voiceovers_request_id ON voiceovers(request_id);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_text_hash ON voiceovers(text_hash);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_folder_id ON voiceovers(folder_id);
+CREATE INDEX IF NOT EXISTS idx_voiceovers_fingerprint ON voiceovers(fingerprint);

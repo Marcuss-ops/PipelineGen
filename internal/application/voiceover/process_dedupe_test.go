@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS voiceovers (
     drive_link TEXT,
     local_path TEXT,
     file_hash TEXT,
+    fingerprint TEXT,
     request_id TEXT,
     text_hash TEXT,
     language TEXT,

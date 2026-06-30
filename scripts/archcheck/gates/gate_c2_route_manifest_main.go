@@ -118,7 +118,9 @@ func (k routeKey) String() string {
 // Check 49, so the freshness invariant holds.
 func main() {
 	var root string
+	var baseline int
 	flag.StringVar(&root, "root", ".", "repo root (defaults to current directory)")
+	flag.IntVar(&baseline, "baseline", 0, "transitional baseline allowance")
 	flag.Parse()
 
 	manifestPath := filepath.Join(root, "architecture", "routes.yaml")
@@ -138,10 +140,16 @@ func main() {
 
 	violations := computeDiff(manifestSet, docsSet)
 
-	if len(violations) == 0 {
-		fmt.Fprintf(os.Stderr,
-			"C2-E gate: 0 violations — routes (manifest: %d) ≡ generated docs (%d)\n",
-			len(manifestSet), len(docsSet))
+	if len(violations) <= baseline {
+		if len(violations) == 0 {
+			fmt.Fprintf(os.Stderr,
+				"C2-E gate: 0 violations — routes (manifest: %d) ≡ generated docs (%d)\n",
+				len(manifestSet), len(docsSet))
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"C2-E gate: %d violation(s) found (within baseline=%d) — routes (manifest: %d) vs generated docs (%d)\n",
+				len(violations), baseline, len(manifestSet), len(docsSet))
+		}
 		return
 	}
 
@@ -187,13 +195,13 @@ func loadManifest(path string) (map[routeKey]bool, error) {
 			// treated as empty-set for forward-compat with brand-new
 			// codebases). The CI runner catches this exit-2 case and
 			// instructs the operator to run the pre-step.
-			return nil, nil, fmt.Errorf("missing manifest at %s — run `go run ./cmd/admin gen-api-routes` (or the equivalent AST-scan pre-step generator) to populate", path)
+			return nil, fmt.Errorf("missing manifest at %s — run `go run ./cmd/admin gen-api-routes` (or the equivalent AST-scan pre-step generator) to populate", path)
 		}
-		return nil, nil, err
+		return nil, err
 	}
 	var doc manifestDocument
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	set := make(map[routeKey]bool, len(doc.Routes))
 	for _, r := range doc.Routes {

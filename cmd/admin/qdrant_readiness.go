@@ -744,26 +744,25 @@ func (s qdrantReconcileAssetStore) ListForReconcile(ctx context.Context, include
 // through the production middleware chain — not stubs.
 func buildRouterWithProductionWiring(deps readinessDeps) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	authPort := &cfgAuthPort{Cfg: deps.Cfg}
-	ratePort := &cfgRatePort{Cfg: deps.Cfg}
-	featPort := &cfgFeaturesPort{Cfg: deps.Cfg}
-	router := api.NewRouter(&api.RouterConfig{
-		Auth:          authPort,
-		Rate:          ratePort,
-		Features:      featPort,
-		Log:           deps.Log,
-		ServerGinMode: gin.TestMode,
-		DataDir:       ".",
-		DownloadDir:   ".",
-		CORSOrigins:   []string{},
-	})
-	if deps.Root != nil && deps.Root.OutboxHandler != nil {
-		router.SetOutboxHandler(deps.Root.OutboxHandler)
+	var outboxHandler api.InternalOutboxRouter
+	var mediasearchHandler api.InternalMediaSearchRouter
+	if deps.Root != nil {
+		outboxHandler = deps.Root.OutboxHandler
+		mediasearchHandler = deps.Root.MediasearchHandler
 	}
-	if deps.Root != nil && deps.Root.MediasearchHandler != nil {
-		router.SetMediasearchHandler(deps.Root.MediasearchHandler)
-	}
-	return router.Setup()
+
+	server := api.NewServerWithHealth(
+		deps.Cfg,
+		nil, // registry
+		nil, // workerHandler
+		nil, // internalMediaHandler
+		outboxHandler,
+		mediasearchHandler,
+		nil, // lifecycle
+		nil, // health
+		nil, // docClient
+	)
+	return server.GetRouter()
 }
 
 // cfg-derived ports (no stubs). The auth/rate/feature shape matches

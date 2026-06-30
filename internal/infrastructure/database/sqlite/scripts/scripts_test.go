@@ -34,6 +34,8 @@ const testSchema = `
 		version INTEGER NOT NULL DEFAULT 1,
 		parent_script_id INTEGER,
 		is_deleted INTEGER NOT NULL DEFAULT 0,
+		idempotency_key TEXT NOT NULL DEFAULT '',
+		specscene TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
 		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 	);

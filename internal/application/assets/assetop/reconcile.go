@@ -4,35 +4,33 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	driveupload "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 // ReconcileService provides Drive reconciliation for asset records.
+//
+// FASE 9 Step 7 (June 2026): migrated from *gdrive.Service + *drive.Uploader
+// to drive.Reader port. Uses FileIsNotTrashed (semantically better: a trashed
+// file IS effectively missing from the user's perspective).
 type ReconcileService struct {
-	store    AssetRecordStore
-	uploader *driveupload.Uploader
-	policy   ReconcilePolicy
-	log      *zap.Logger
+	store   AssetRecordStore
+	reader  drive.Reader
+	policy  ReconcilePolicy
+	log     *zap.Logger
 }
 
 // NewReconcileService creates a new ReconcileService.
 func NewReconcileService(
 	store AssetRecordStore,
-	driveSvc *gdrive.Service,
+	reader drive.Reader,
 	policy ReconcilePolicy,
 	log *zap.Logger,
 ) *ReconcileService {
-	var uploader *driveupload.Uploader
-	if driveSvc != nil {
-		uploader = &driveupload.Uploader{Service: driveSvc, Log: log}
-	}
 	return &ReconcileService{
-		store:    store,
-		uploader: uploader,
-		policy:   policy,
-		log:      log,
+		store:  store,
+		reader: reader,
+		policy: policy,
+		log:    log,
 	}
 }
 
@@ -94,13 +92,13 @@ func (s *ReconcileService) ReconcileDriveMissing(ctx context.Context, source str
 	return missingCount, nil
 }
 
-// checkDriveFileExists checks if a file exists in Drive.
+// checkDriveFileExists checks if a file exists in Drive and is not trashed.
 func (s *ReconcileService) checkDriveFileExists(ctx context.Context, fileID string) (bool, error) {
-	if s.uploader == nil {
+	if s.reader == nil {
 		return false, nil
 	}
 
-	return s.uploader.FileExists(ctx, fileID)
+	return s.reader.FileIsNotTrashed(ctx, fileID)
 }
 
 // SyncDriveFileID synces Drive file IDs from Drive to DB for all records.
