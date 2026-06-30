@@ -89,6 +89,14 @@ type DriveBundle struct {
 	// All new upload callers MUST go through Publisher; ServiceDeps concrete
 	// handle was retired (P0.1 closure).
 	Publisher delivery.Publisher
+	// CARD-3 (June 2026): Lifecycle is the canonical Pattern 0 port for
+	// file-lifecycle Drive ops (Trash/Move/Rename/Cleanup). Owned by
+	// *drive.FileLifecycleAdapter (file_lifecycle.go); the previous
+	// DriveFolderManagerAdapter.Trash method was retired per godlike/06
+	// "one owner per fact": folder-management and file-lifecycle are
+	// distinct seams. Reuses driveUploader.Service so credentials load
+	// exactly once at composition.
+	Lifecycle drive.FileLifecycle
 
 	// Wave B (June 2026): DriveBundle.DriveUploader deprecated field removed.
 	// The 5 cleanup.go callers + 1 list_drive_folder.go caller now reach
@@ -104,10 +112,18 @@ type DriveBundle struct {
 	// reset_video_ai.go, backfill_hash.go::runBackfillHashV2) DO NOT
 	// touch root.Drive.DriveClient anymore — they reach drive.Admin /
 	// drive.Reader / drive.DocClient via Pattern 0 ports.
-	// Wave D followup: migrate the remaining internal/app/ and
-	// internal/application/assets/providers/artlist/ consumers (registry_internal_modules.go
-	// line 182, module_sources.go ArtlistBundle wiring, artlist/types.go
-	// diagnostic field), then remove DriveClient + drop gdrive import.
+	//
+	// Wave D Commit 1 (June 2026 — mechanical migration): the residual
+	// 13 sites now consume the DriveFolderManager port instead of the
+	// raw SDK — registry_internal_modules.go::registerArtlist still
+	// threads root.Drive.DriveClient into ArtlistBundle as the
+	// plumbing channel that feeds the *drive.DriveFolderManagerAdapter
+	// in WireArtlist, but the diagnostic API field has been renamed
+	// (HasDriveClient → HasDriveFolderManager, see artlist/types.go)
+	// and every comment that referenced the raw SDK reach-through now
+	// points at the port. DriveClient REMAINS on the bundle per the
+	// Wave D Commit 1 back-compat mandate (operator signal will
+	// determine Wave D Commit 2/3 retirement).
 	DriveClient *gdrive.Service
 
 	// driveUploader is unexported for internal wiring only. *drive.Uploader
