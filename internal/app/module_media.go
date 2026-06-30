@@ -272,7 +272,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		ClipsRepo:        deps.Core.ClipsRepo,
 		AssetRepo:        assetRepo,
 		DeletionSvc:      deletionSvc,
-		DriveAdmin:       driveUploader,
+		DriveAdmin:    driveUploader,
 		MediaProcessor:   deps.Core.MediaProcessor,
 		AssetTreeSvc:     deps.Core.AssetTreeService,
 		MetaWriter:       metaWriter,

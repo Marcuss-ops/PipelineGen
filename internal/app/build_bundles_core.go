@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -32,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	gdrive "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -149,13 +149,12 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // BuildUtilityBundle constructs the lightweight utility handlers
 // and the health-check Service (PR1 Health boundary, June 2026).
 //
-// codex/health-ready-contract (June 2026): driveClient is optional.
-// When non-nil (production path), the DriveChecker is wired with a
-// DriveProbe wrapping *gdrive.Service.About.Get — canonical OAuth
-// client with automatic token refresh. When nil (admin CLI path),
-// the legacy token-file approach is used as fallback.
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveClient *gdrive.Service) *UtilityBundle {
-	svc := buildHealthService(cfg, db, driveClient)
+// Wave A (June 2026): driveClient (*gdrive.Service) replaced by
+// driveAdmin (drive.Admin port). The DriveProbe now delegates to
+// drive.Admin.Ping() which wraps About.Get internally. When nil
+// (admin CLI path), the legacy token-file approach is used as fallback.
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin) *UtilityBundle {
+	svc := buildHealthService(cfg, db, driveAdmin)
 	return &UtilityBundle{
 		Utility:       transport.NewUtilityHandler(),
 		HealthService: svc,
@@ -176,23 +175,18 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveClient *g
 // `database/sql` import from this file. The `db` arg may itself be
 // nil — infrahealth.Checker constructors accept nil and the zero
 // value remains safe.
-func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveClient *gdrive.Service) *systemhealth.Service {
+func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin) *systemhealth.Service {
 	if cfg == nil {
 		return nil
 	}
 
 	var driveChecker systemhealth.DriveChecker
 
-	// codex/health-ready-contract (June 2026): prefer the canonical
-	// OAuth Drive client when available. The DriveProbe wraps
-	// gdrive.Service.About.Get().Fields("user") for a lightweight
-	// liveness check with automatic token refresh.
-	if driveClient != nil {
+	// Wave A (June 2026): the DriveProbe now delegates to
+	// drive.Admin.Ping() which wraps About.Get internally.
+	if driveAdmin != nil {
 		dc := infrahealth.NewDriveChecker("", "")
-		dc.DriveProbe = func(ctx context.Context) error {
-			_, err := driveClient.About.Get().Fields("user").Context(ctx).Do()
-			return err
-		}
+		dc.DriveProbe = driveAdmin.Ping
 		driveChecker = dc
 	} else {
 		credsPath := cfg.GetCredentialsPath()
@@ -269,6 +263,18 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driv
 	return booksSvc
 }
 
+// extractDriveService extracts *gdrive.Service from a drive.Admin via type assertion.
+// Returns nil when driveAdmin is nil or not a *drive.Uploader (the production concrete).
+func extractDriveService(driveAdmin drive.Admin) *gdrive.Service {
+	if driveAdmin == nil {
+		return nil
+	}
+	if up, ok := driveAdmin.(*drive.Uploader); ok && up != nil {
+		return up.Service
+	}
+	return nil
+}
+
 // buildImagesService (moved from build_bundles_images.go, Phase 5 consolidation, June 2026).
 func buildImagesService(
 	ctx context.Context, cfg *config.Config, log *zap.Logger,
@@ -288,7 +294,7 @@ func buildImagesService(
 		Storage: imgservice.ImagesStorageDeps{
 			ImageRepo:  imageRepo,
 			ClipsRepo:  clipsRepo,
-			DriveSvc:   driveSvc,
+			DriveSvc:   extractDriveService(driveAdmin),
 			MediaStore: mediaStore,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
