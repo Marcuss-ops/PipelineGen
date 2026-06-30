@@ -34,7 +34,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -387,7 +387,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 // LifecycleDeps holds the dependencies needed to create a lifecycle service
 type LifecycleDeps struct {
 	Registry      artifacts.Registry
-	DriveClient   *gdrive.Service
+	DriveUploader *drive.Uploader
 	AssetIndex    *assetindex.Service
 	DriveVerifier artifacts.DriveVerifier
 	Finalizer     *artifacts.Finalizer
@@ -399,8 +399,8 @@ func NewLifecycleFromDeps(
 	deps *LifecycleDeps,
 	log *zap.Logger,
 ) *lifecycle.Service {
-	if deps.DriveVerifier == nil && deps.DriveClient != nil {
-		deps.DriveVerifier = drive.NewDriveVerifierAdapter(deps.DriveClient)
+	if deps.DriveVerifier == nil && deps.DriveUploader != nil {
+		deps.DriveVerifier = drive.NewDriveVerifierAdapter(deps.DriveUploader.Service)
 	}
 
 	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
@@ -416,9 +416,15 @@ func NewLifecycleFromDeps(
 		deps.Store = lifecycle.NewRegistryStoreAdapter(deps.Registry)
 	}
 
+	// FASE 9: nil-safe extraction — DriveUploader.Service panics when nil.
+	var rawDriveSvc *gdrive.Service
+	if deps.DriveUploader != nil {
+		rawDriveSvc = deps.DriveUploader.Service
+	}
+
 	return lifecycle.NewService(
 		deps.Store,
-		deps.DriveClient,
+		rawDriveSvc,
 		deps.Registry,
 		deps.AssetIndex,
 		deps.Finalizer,
