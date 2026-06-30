@@ -882,6 +882,71 @@ deprecated in favour of the typed-pattern ports
 
 ## Earlier (June 2026 wave)
 
+### Added
+
+**[PUTFILE-001, June 2026]** Conflict-aware Drive uploads — replaces
+legacy silent-overwrite with explicit `delivery.ConflictPolicy`.
+
+- **New port** `FileUploaderPort.PutFile(ctx, req PutFileRequest) (*PutFileResult, error)` in
+  `internal/infrastructure/drive/publisher.go`, with
+  `var _ FileUploaderPort = (*Uploader)(nil)` compile-time assertion per
+  AGENTS.md Pattern 0. Signature drift between port surface and
+  `*drive.Uploader.PutFile` is a build failure.
+
+- **New types** `PutFileRequest` (+ `ConflictPolicy` field),
+  `PutFileResult` (`Action` + `FileID` + `FileName`), and `PutAction`
+  enum (`Created`/`Updated`/`Skipped`) in
+  `internal/infrastructure/drive/publisher.go`. Wired through
+  `delivery.ConflictPolicy` (3 values: `Overwrite` | `Skip` |
+  `Rename`) in `internal/application/assets/delivery/types.go`. Zero
+  value preserves legacy `Overwrite` semantics — no silent
+  availability loss for callers that haven't explicitly opted in.
+
+- **`*Uploader.PutFile` impl** in
+  `internal/infrastructure/drive/uploader_put.go` (~250 LoC) —
+  conflict-aware, retry-wrapped via `pkg/retry.DoWithValue`. Routing
+  table:
+  - existing match + `Overwrite` → `Files.Update` → `PutActionUpdated`
+  - existing match + `Skip` → no-op → `PutActionSkipped` + existing
+    file metadata (idempotent on lookup, no upload side-effect)
+  - existing match + `Rename` → derive free slot
+    (`name-1.ext`, ...; `name-N.ext` after N collisions) → Create
+  - missing → `Files.Create` (idempotent path) → `PutActionCreated`
+
+- **`NewPublisher` fail-fast composition guard** in `publisher.go` —
+  returns `(publisher, error)` so `BuildDriveBundle` (composition
+  root) can fail-close on misconfigured uploader. Adds 3 typed sentinel
+  errors (`ErrMissingDestinationRegistry`,
+  `ErrMissingFolderManager`, `ErrMissingFileUploader`) so the caller
+  surfaces a typed error instead of the classic Go "interface-nil
+  panic" trap.
+
+- **`folderLookupFunc` test seam** in `folder_manager.go` — production
+  lookup includes retry, but the seam accepts a stub
+  `func(ctx, name) (*RemoteFile, error)` so
+  `folder_manager_internal_test.go` drives success/failure paths
+  without a live Drive API (closes P0.4 duplicate-folder regression:
+  transient lookup errors were falling through to `Files.Create` and
+  producing duplicate folders).
+
+- **4 plumbing tests** in `internal/infrastructure/drive/publisher_test.go`:
+  `TestPublisher_PublishForwardsConflictPolicy_{ZeroValue,Overwrite,Skip,Rename}`
+  pin the publisher-to-uploader forwarding path end-to-end, asserting
+  the `req.ConflictPolicy` value flows verbatim into `PutFileRequest`
+  and the `PutAction` is propagated back to the result.
+
+- **godlike/07 closure**: the silent-overwrite failure mode is no
+  longer the only behaviour — explicit per-call policy is the
+  canonical path. All callers MUST pick (zero-value preserves legacy);
+  no fake availability per godlike/07 §"No fake availability".
+
+Pattern 0 port abstraction; godlike/06 — `delivery.ConflictPolicy` is
+the canonical enum owner; `PutAction` is the canonical return enum
+owner. Cross-references:
+[`architecture/current.yaml#id-26.linked_issues[PR-PUTFILE-P0-1]`](../architecture/current.yaml).
+
+## Earlier (June 2026 wave)
+
 See ARCHITECTURE.md §"Migration Status (Brutal Care Plan)" for the
 historical record. Cross-references:
 

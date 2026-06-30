@@ -17,6 +17,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,51 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
+
+// ── Composition-time fail-fast sentinels (P0 #3, June 2026) ────────────────
+//
+// NewPublisher used to nil-deref any unset Pattern 0 port at the first
+// downstream call (`p.registry.Resolve(...)` from Publish, etc.). The
+// composition root (internal/app/build_bundles_drive.go) had no way to
+// distinguish "deps wired correctly" from "deps wired to nil because
+// Drive auth failed at boot". Pre-P0 #3, a `driveClient == nil` Drive
+// block at composition would still produce a `var publisher delivery.Publisher
+// = drive.NewPublisher(registry, folderMgr, driveUploader, log)` literal
+// at build_bundles_drive.go:85 — the typed-NIL interface trap from
+// godlike/06 would hand callers a non-nil interface holding a nil
+// concrete, whose first call site exploded at runtime without a clean
+// composition-time indicator.
+//
+// The three sentinels below close that gap. Each is exported so callers
+// (cmd/admin/, internal/app/composition.go, future health-barrier checks)
+// can errors.Is / errors.As against the verbatim sentinel — the same
+// pattern godlike/07 §"Compatibility test" uses for the pre-existing
+// outbox typed-port contract.
+
+// ErrMissingDestinationRegistry is the fail-fast sentinel when the
+// composition root hands a nil DestinationRegistry to NewPublisher.
+// Per AGENTS.md Pattern 8 (thin API transport only) + godlike/06
+// "one owner per fact", the registry MUST be non-nil at construction
+// time so downstream code paths (`p.registry.Resolve(...)` from Publish,
+// ResolveFolder, resolveDestination) can dereference the pointer without
+// producing a runtime nil-panic at first call site.
+var ErrMissingDestinationRegistry = errors.New("drive: NewPublisher: DestinationRegistry dependency is required (composition-time fail-fast)")
+
+// ErrMissingFolderManager is the fail-fast sentinel when the
+// FolderManagerPort dependency is nil. Per AGENTS.md Pattern 0
+// (port abstraction layer), the FolderManagerPort is the canonical
+// compile-time boundary between Publisher and DriveFolderManagerAdapter;
+// a nil port at construction indicates a ComposeRoot misconfiguration
+// (typed-nil interface trap that would otherwise surface only at first
+// EnsureFolder call site).
+var ErrMissingFolderManager = errors.New("drive: NewPublisher: FolderManagerPort dependency is required (composition-time fail-fast)")
+
+// ErrMissingFileUploader is the fail-fast sentinel when the
+// FileUploaderPort dependency is nil. Per AGENTS.md Pattern 0, the
+// FileUploaderPort is the canonical boundary for FileUploaderPort.PutFile
+// (the P0 #1 conflict-aware uploader seam); a nil port at construction
+// indicates a ComposeRoot misconfiguration.
+var ErrMissingFileUploader = errors.New("drive: NewPublisher: FileUploaderPort dependency is required (composition-time fail-fast)")
 
 // FolderManagerPort is the narrow port for creating nested Drive folders.
 // Satisfied by *DriveFolderManagerAdapter.EnsureFolder.
@@ -99,13 +145,34 @@ type Publisher struct {
 // Compile-time assertion: Publisher satisfies delivery.Publisher.
 var _ delivery.Publisher = (*Publisher)(nil)
 
-// NewPublisher constructs the canonical Drive publisher.
+// NewPublisher constructs the canonical Drive publisher. Fails-fast at
+// composition time on any nil Pattern 0 dependency (the three sentinels
+// ErrMissingDestinationRegistry, ErrMissingFolderManager,
+// ErrMissingFileUploader are returned verbatim so composition-root callers
+// can errors.Is them and emit a typed-NIL-safe audit message).
+//
+// The nil-check order is: registry → folders → files (typed-discovery order:
+// the resolve helper p.registry.Resolve(...) is the FIRST downstream call
+// site a Publish request exercises, so the registry check must come first
+// to surface the most-likely-to-fail dependency at the top of the error
+// stream). `log` separately tolerates a nil value (defaults to zap.NewNop)
+// because adapter constructors typically receive a logger from the same
+// parent root and a nil logger shouldn't block a fail-fast path.
 func NewPublisher(
 	registry *delivery.DestinationRegistry,
 	folders FolderManagerPort,
 	files FileUploaderPort,
 	log *zap.Logger,
-) *Publisher {
+) (*Publisher, error) {
+	if registry == nil {
+		return nil, ErrMissingDestinationRegistry
+	}
+	if folders == nil {
+		return nil, ErrMissingFolderManager
+	}
+	if files == nil {
+		return nil, ErrMissingFileUploader
+	}
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -114,7 +181,7 @@ func NewPublisher(
 		folders:  folders,
 		files:    files,
 		log:      log,
-	}
+	}, nil
 }
 
 // ResolvedDriveDestination is the outcome of the canonical destination

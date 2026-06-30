@@ -349,6 +349,16 @@
       owner_capability: internal/application/voiceover
       status: closed
       deadline: 2026-07-10
+    # PR-PUTFILE-P0-1 (June 2026): conflict-aware Drive uploads
+    # replace legacy silent-overwrite with explicit per-call
+    # ConflictPolicy (Overwrite | Skip | Rename). Port boundary
+    # FileUploaderPort.PutFile(...) → uploader_put.go adapter; 4
+    # plumbing tests pin end-to-end through Publisher. Closes
+    # godlike/07 fake-availability for the always-overwrite path.
+    - id: PR-PUTFILE-P0-1
+      owner_capability: internal/infrastructure/drive
+      status: shipped_through
+      deadline: 2026-07-15
 - id: 23
   status: in_progress
   exit_signal: false

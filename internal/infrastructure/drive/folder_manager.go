@@ -47,6 +47,11 @@ import (
 type DriveFolderManagerAdapter struct {
 	svc *driveapi.Service
 	log *zap.Logger
+	// lookup is the P0.4 seam (folderLookupFunc). Production wiring
+	// wraps Files.List in retry-with-jitter; tests inject a stub via
+	// WithLookup to verify the no-duplicate contract without spinning
+	// up an httptest server.
+	lookup folderLookupFunc
 }
 
 // NewDriveFolderManagerAdapter constructs the adapter from a configured
@@ -58,7 +63,11 @@ func NewDriveFolderManagerAdapter(svc *driveapi.Service, log *zap.Logger) *Drive
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &DriveFolderManagerAdapter{svc: svc, log: log}
+	return &DriveFolderManagerAdapter{
+		svc:    svc,
+		log:    log,
+		lookup: newDefaultFolderLookup(svc, log),
+	}
 }
 
 // EnsureFolder creates (or reuses) a folder whose path is composed from
@@ -104,25 +113,136 @@ func (a *DriveFolderManagerAdapter) EnsureFolder(ctx context.Context, parent str
 	return leafID, nil
 }
 
+// folderLookupFunc is the seam through which findOrCreateFolder
+// resolves "is there already a Drive folder with this name under
+// parent?".
+//
+// The contract:
+//   - (id, nil):       folder exists; id is the existing folder ID
+//   - ("", nil):       folder does not exist; caller MUST create
+//   - ("", err):       lookup failed; findOrCreateFolder propagates err
+//     WITHOUT falling through to Create (P0.4 fix)
+//
+// Production wiring wraps the SDK's Files.List call with pkg/retry
+// (3 attempts, ±30% jitter, 200ms initial backoff, IsRetryable gating
+// on transient errors). Tests inject a stub via WithLookup to drive
+// transient / retry-failure / non-retryable failure modes.
+//
+// P0.4 (June 2026): the pre-fix implementation called Files.List
+// directly and fell through to Files.Create on ANY error, producing
+// duplicate folders on Drive when a transient error masked an
+// existing-folder match. The seam makes that race structurally
+// impossible because the contract puts the "does it exist?" decision
+// in a single retry-aware function.
+type folderLookupFunc func(ctx context.Context, parent, name string) (id string, err error)
+
+// folderLookupRetry* constants are the P0.4 production retry policy
+// for the lookup pre-create step. Tighter than upload/download
+// (200ms vs 2s) because the lookup is a lightweight metadata query
+// (1 quota unit) — upload/download backoff must accommodate multi-MB
+// content delivery.
+const (
+	folderLookupInitialBackoff = 200 * time.Millisecond
+	folderLookupMaxBackoff     = 2 * time.Second
+	folderLookupMaxAttempts    = 3
+	folderLookupJitterFraction = 0.3
+)
+
+// WithLookup overrides the default folder lookup function. Production
+// code never calls this method.
+//
+// Tests use this seam to inject transient-error stubs and verify the
+// no-duplicate contract without spinning up an httptest server. The
+// seam is small enough that its invariant ("returns id-or-empty, with
+// err-on-failure") is easy to assert in tests.
+func (a *DriveFolderManagerAdapter) WithLookup(fn folderLookupFunc) *DriveFolderManagerAdapter {
+	a.lookup = fn
+	return a
+}
+
+// newDefaultFolderLookup returns the production-default folderLookupFunc
+// wiring the SDK's Files.List through pkg/retry with the P0.4 spec
+// (retry-with-jitter on transient errors, abort-on-error-after-retry).
+// Tests that need to inject custom lookup behaviour use WithLookup;
+// this default is what production code runs.
+//
+// The closure captures (svc, log) so the seam-signature stays context-only.
+func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookupFunc {
+	return func(ctx context.Context, parent, name string) (string, error) {
+		queryParts := []string{
+			fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
+			"trashed = false",
+			"mimeType = 'application/vnd.google-apps.folder'",
+		}
+		if parent != "" {
+			queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parent))
+		}
+		query := strings.Join(queryParts, " and ")
+
+		// result is the first match ID; the retry-loop's second return
+		// carries the SDK error so pkg/retry.DoWithValue predicates on
+		// it via isRetryableDriveErr. Returning ("", nil) on a successful
+		// empty List is what surfaces "doesn't exist" to the caller.
+		id, err := retry.DoWithValue(ctx, func() (string, error) {
+			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+			return firstFolderID(list), lerr
+		}, retry.Options{
+			MaxAttempts:    folderLookupMaxAttempts,
+			InitialBackoff: folderLookupInitialBackoff,
+			MaxBackoff:     folderLookupMaxBackoff,
+			BackoffFactor:  2.0,
+			JitterFraction: folderLookupJitterFraction,
+			IsRetryable:    isRetryableDriveErr,
+			OnRetry: func(attempt int, err error) {
+				if log != nil {
+					log.Warn("transient drive list error, retrying (P0.4: no fallback-to-create)",
+						zap.String("folder_name", name),
+						zap.Int("attempt", attempt+1),
+						zap.Error(err))
+				}
+			},
+		})
+		if err != nil {
+			return "", fmt.Errorf("lookup existing folder %q under %q: %w", name, parent, err)
+		}
+		return id, nil
+	}
+}
+
+// firstFolderID returns the first folder ID from a Drive List result,
+// or "" when the list is nil/empty. Used by newDefaultFolderLookup to
+// map a *driveapi.FileList to the seam's string return value ("" =
+// "doesn't exist", non-empty = "exists with this ID").
+func firstFolderID(list *driveapi.FileList) string {
+	if list == nil || len(list.Files) == 0 {
+		return ""
+	}
+	return list.Files[0].Id
+}
+
 // findOrCreateFolder looks for a folder under parentID with the given
 // name and returns its ID, creating it if absent. Internal helper used
 // by EnsureFolder.
+//
+// P0.4 (June 2026): the lookup is the folderseam (folderLookupFunc)
+// wired to a retry-with-jitter production implementation. Crucially,
+// a lookup error is propagated without falling through to Create —
+// the pre-fix soft-error fallback racing with concurrent EnsureFolder
+// calls produced duplicate folders on Drive when the genuine folder
+// existed but a transient error masked the lookup success.
 func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, parentID, name string) (string, error) {
-	queryParts := []string{
-		fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
-		"trashed = false",
-		"mimeType = 'application/vnd.google-apps.folder'",
+	existingID, err := a.lookup(ctx, parentID, name)
+	if err != nil {
+		return "", fmt.Errorf("findOrCreateFolder: lookup %q under %q failed after retries (P0.4 contract: NO fallback-to-create): %w", name, parentID, err)
 	}
-	if parentID != "" {
-		queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parentID))
-	}
-	query := strings.Join(queryParts, " and ")
-
-	list, err := a.svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err == nil && len(list.Files) > 0 {
-		return list.Files[0].Id, nil
+	if existingID != "" {
+		return existingID, nil
 	}
 
+	// Genuine "does not exist" path: only reached when the lookup
+	// returned ("", nil). Pre-P0.4, transient errors masked
+	// existing-folder matches into this branch — that misroute is
+	// structurally eliminated now.
 	folder := &driveapi.File{
 		Name:     name,
 		MimeType: "application/vnd.google-apps.folder",
@@ -132,7 +252,7 @@ func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, pare
 	}
 	created, err := a.svc.Files.Create(folder).Fields("id").Context(ctx).Do()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("findOrCreateFolder: create %q under %q: %w", name, parentID, err)
 	}
 	return created.Id, nil
 }
