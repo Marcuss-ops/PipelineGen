@@ -124,7 +124,14 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 
 	m.log.Info("Fetched channel videos", zap.String("url", channel.ChannelURL), zap.Int("count", len(videos)))
 
-	concurrency := 5
+	// Commit A (June 2026, P1 #10): inner per-video goroutine concurrency
+	// comes from the typed MonitorRuntimePolicy (was previously hardcoded
+	// to 5 inline). policy.MaxConcurrentVideos bounds the parallel
+	// processVideo fan-out per channel.
+	concurrency := m.policyOrDefault().MaxConcurrentVideos
+	if concurrency <= 0 {
+		concurrency = DefaultMonitorRuntimePolicy().MaxConcurrentVideos
+	}
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	var acceptedCount atomic.Int32

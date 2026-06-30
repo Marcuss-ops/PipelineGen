@@ -83,6 +83,16 @@ type Channel struct {
 	NextCheckAt         string `json:"NextCheckAt,omitempty"`
 	LastCheckedAt       string `json:"LastCheckedAt,omitempty"`
 	ConsecutiveFailures int    `json:"ConsecutiveFailures,omitempty"`
+	// LeaseOwner + LeaseUntil + LastCursor are monitor-state fields
+	// (Commit A, June 2026): the monitor's recordCheckOutcome reads
+	// LeaseOwner to fence the eventual MarkChecked UPDATE; the cursor
+	// lives on the same row so a single fetched Channel carries both.
+	// omitempty: hidden on wire for handlers that don't surface
+	// monitor state; visible when the Channel is returned by
+	// Service.ClaimDue (the monitor's canonical entry point).
+	LeaseOwner          string `json:"LeaseOwner,omitempty"`
+	LeaseUntil          string `json:"LeaseUntil,omitempty"`
+	LastCursor          string `json:"LastCursor,omitempty"`
 	CreatedAt           string `json:"CreatedAt,omitempty"`
 	UpdatedAt           string `json:"UpdatedAt,omitempty"`
 }
@@ -183,8 +193,17 @@ type UpdateCursorCommand struct {
 // MarkCheckedCommand records the outcome of a channel-sync check.
 // PR 3 (June 2026): the monitor + job handler call Service.MarkChecked
 // after each channel sync to update scheduling state.
+// PR A.June-2026 (Commit A): LeaseToken added so the SQLite repository
+// can fence the UPDATE `WHERE id=? AND lease_owner=?` and surface
+// ErrLeaseLost via errors.Is when the worker lost its lease between
+// ClaimDue and MarkChecked. Empty LeaseToken means "no fence, fire
+// the un-fenced UPDATE" and is the back-compat path for any caller
+// that doesn't hold a lease (e.g., admin CLIs replaying state).
+// Production callers (the ChannelMonitor's recordCheckOutcome) always
+// pass ch.LeaseOwner, so the fence is always active in practice.
 type MarkCheckedCommand struct {
 	ID          string
+	LeaseToken  string
 	NextCheckAt string
 	Success     bool
 	LastError   string
