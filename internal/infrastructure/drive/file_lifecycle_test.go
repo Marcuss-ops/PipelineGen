@@ -35,15 +35,34 @@ func TestFileLifecycleAdapter_Trash_RequiresFileID(t *testing.T) {
 	}
 }
 
-// TestFileLifecycleAdapter_Move_RequiresFileIDAndParent pins both Move
-// validation branches in one test: empty fileID AND empty newParentID.
-func TestFileLifecycleAdapter_Move_RequiresFileIDAndParent(t *testing.T) {
+// TestFileLifecycleAdapter_Delete_RequiresFileID pins the Delete
+// early-rejection branch (Wave C preparation, June 2026). Mirrors
+// the Trash test pattern above; the error prefix is "delete: file id
+// is required". Delete is the C1 file-lifecycle reallocation target
+// for the pre-Wave-C drive.Admin.DeleteFile method.
+func TestFileLifecycleAdapter_Delete_RequiresFileID(t *testing.T) {
 	a := NewFileLifecycleAdapter(nil, nil)
-	if err := a.Move(context.Background(), "", "p"); err == nil {
-		t.Error("Move(empty fileID) should reject")
+	err := a.Delete(context.Background(), "")
+	if err == nil {
+		t.Fatal("Delete(empty fileID) should reject")
 	}
-	if err := a.Move(context.Background(), "f", ""); err == nil {
-		t.Error("Move(empty newParentID) should reject")
+	if !strings.Contains(err.Error(), "delete: file id is required") {
+		t.Errorf("Delete: unexpected error: %v", err)
+	}
+}
+
+// TestFileLifecycleAdapter_AddParent_RequiresFileIDAndParent pins both
+// AddParent validation branches in one test: empty fileID AND empty
+// newParentID. Wave D (June 2026) D1: renamed from Move to AddParent
+// to match the actual multi-parent-add semantics; the validation
+// contract is unchanged.
+func TestFileLifecycleAdapter_AddParent_RequiresFileIDAndParent(t *testing.T) {
+	a := NewFileLifecycleAdapter(nil, nil)
+	if err := a.AddParent(context.Background(), "", "p"); err == nil {
+		t.Error("AddParent(empty fileID) should reject")
+	}
+	if err := a.AddParent(context.Background(), "f", ""); err == nil {
+		t.Error("AddParent(empty newParentID) should reject")
 	}
 }
 
