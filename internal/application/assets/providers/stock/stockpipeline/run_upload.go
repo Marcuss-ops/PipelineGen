@@ -51,7 +51,7 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 		webViewLink = pubResult.WebViewLink
 		downloadLink = "https://drive.google.com/uc?id=" + pubResult.FileID
 	} else {
-		upResult, err := s.driveUp.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
+		upResult, err := s.driveAdmin.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
 		if err != nil {
 			s.log.Error("failed to upload chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
 			return

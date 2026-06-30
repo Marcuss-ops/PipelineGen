@@ -294,6 +294,11 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 	return result, nil
 }
 
+// Admin returns the Uploader itself as a drive.Admin interface.
+// Convenience method so callers holding *Uploader can pass it to
+// functions accepting drive.Admin without a separate variable.
+func (u *Uploader) Admin() Admin { return u }
+
 // Ping verifies the Drive service is reachable by calling About.Get.
 // Implemented as a single canonical API call so the readiness barrier
 // can exercise the liveness contract without touching the file surface.
