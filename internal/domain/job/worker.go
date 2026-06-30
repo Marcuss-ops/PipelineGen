@@ -121,23 +121,22 @@ type FailCommand struct {
 	Error            string `json:"error"`
 }
 
-// WorkerHardwareStats is the canonical sampling output of
-// pkg/workerstats.Sample. It is the SINGLE AUTHORITATIVE POJO for
-// per-worker Linux /proc telemetry — the sampler, the heartbeat
-// command, the broker session, the admin cert-report endpoint, and
-// the observability metric-emission site ALL project this struct
-// verbatim (no field copies, no JSON-tag renames).
+// WorkerHardwareStats is the SINGLE AUTHORITATIVE POJO for per-worker
+// Linux /proc telemetry. The heartbeat command, the broker session,
+// the admin cert-report endpoint, and the observability metric-emission
+// site ALL project this struct verbatim (no field copies, no JSON-tag
+// renames). Any future /proc sampler (governed by
+// architecture/issues.yaml#Q10-WORKERSTATS-REINTRODUCE; pkg/workerstats
+// was eliminated 2026-06-30 in Blocco 2.B for fake-availability) MUST
+// populate this struct field-by-field.
 //
-// Units rule (verbatim; mirrors pkg/workerstats/stats.go package doc):
+// Units rule (verbatim; canonical reference):
 //   - Raw bytes (uint64) for storage + network fields.
 //   - 0.0-1.0 ratio (float32) for CPU usage fields.
 //   - No seconds-vs-bytes confusion. Timestamps in Unix milliseconds.
-//
-// Drift between this godoc and the sampler's units documentation is a
-// reading-order hazard for operators; both must agree.
 type WorkerHardwareStats struct {
 	// SampledAtUnixMs is the wall-clock time (UnixMilli) at which
-	// pkg/workerstats.Sample populated the struct. Cross-server stable.
+	// the sampler populated the struct. Cross-server stable.
 	SampledAtUnixMs int64 `json:"sampled_at_unix_ms"`
 
 	// CPUUsageRatio is (user+nice+system) / (busy + idle) over the

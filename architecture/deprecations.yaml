@@ -617,7 +617,196 @@ deprecations:
         - destination.kind == anything else   : legacy auto-detect (unrecognized values are valid).
 
 
-  # ── 15. ADAPTERS-FAIL-PRE9-12 — 4 pre-existing Go test FAILs invented in commit 72e1d5c9 ──
+    # ── 15. PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL — git-rm of pkg/workerstats (zero consumers) ──
+  # The pkg/workerstats package was added during the pre-P0-5 cleanup
+  # pass as a forward-looking /proc sampler for the heartbeat path.
+  # On 2026-06-30 it sat on `main` with zero Go consumers (only
+  # doc-only references in architecture/ownership/* + the canonical
+  # POJO's godoc) and a `current_drift` note advertising the broken
+  # build state. Per AGENTS.md §"Simplicity & Minimalism" +
+  # godlike/07 §"No fake availability" + the user's Blocco 2.B
+  # verdict ("mai lasciare package 'futuri' che rompono il build"),
+  # this is the canonical zero-fake-availability fix: ship the
+  # canonical POJO (which Wave 4B already landed on main as
+  # internal/domain/job.WorkerHardwareStats), drop the dead sampler,
+  # and gate any reintroduced sampler behind Q10-WORKERSTATS-REINTRODUCE
+  # with a populated consumer so the dead-on-arrival pattern cannot
+  # recur.
+  # ──────────────────────────────────────────────────────────────────
+  - id: PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL
+    owner_capability: pkg/workerstats (re-introduced, gated by Q10)
+    exact_symbol: |
+      package pkg/workerstats (whole-package git-rm) + its two
+      product files:
+        - pkg/workerstats/stats.go (`Sample`, `Config`, `sampleCPU`,
+          `sampleNetwork`, `sampleDisk`, `nowUnixMs` helpers)
+        - pkg/workerstats/stats_test.go (`TestSample_*` family — 8
+          test functions exercising CPU ratio / network excl-loopback
+          / device filter / all-lo sentinel / partial-failure paths)
+      The canonical POJO at internal/domain/job/worker.go::
+      WorkerHardwareStats lines 122-159 is the SINGLE AUTHORITATIVE
+      shape; the sampler was a CONSTRUCTOR-only consumer and is
+      slated for reintroduction when RW-PROD-013 actually needs live
+      /proc polling (Q10-WORKERSTATS-REINTRODUCE).
+    file: pkg/workerstats/stats.go + pkg/workerstats/stats_test.go (deleted)
+    file_line: "ALL (whole-package git-rm)"
+    replacement: |
+      Reintroduction contract (gated by Q10-WORKERSTATS-REINTRODUCE):
+        (a) pkg/workerstats compiles on `main` HEAD at landing time
+            (no symbol drift from the internal/domain/job POJO;
+            CPUUsageRatio, Memory*, Net*, Disk* json tags byte-stable).
+        (b) pkg/workerstats populates *domain/job.WorkerHardwareStats
+            (POJO is the SINGLE AUTHORITATIVE wire shape; the sampler
+            entry function name + signature is the re-introduction PR
+            author's choice — `Sample`, `Get`, `Poll`, etc. — as long
+            as the POJO is populated field-by-field with byte-stable
+            JSON tags).
+        (c) pkg/workerstats does NOT import prometheus/client_golang
+            and does NOT define Prometheus metric var collectors
+            (Option B governance, generalized —
+            architecture/policy.yaml::prometheus_boundary for the
+            canonical pkg-layer boundary; metric vars stay in
+            internal/infrastructure/observability/worker_metrics.go).
+        (d) At least 1 in-tree binding site consumes the sampler
+            output (e.g. internal/infrastructure/jobs/local/broker.go::
+            Heartbeat fills HeartbeatCommand.Hardware with the POJO;
+            the re-introduction PR author picks the binding site based
+            on actual RW-PROD-013 demand). Zero-consumers-dead-on-
+            arrival is the failure mode this deprecation explicitly
+            rules out.
+    introduction_date: 2026-06
+    removal_date: 2026-06-30
+    tracking_issue: "Q10-WORKERSTATS-REINTRODUCE (architecture/issues.yaml — gates the reintroduction PR with a populated consumer; sibling drift audit at Q11-WORKERSTATS-FOLLOWUP)"
+    compatibility_test: |
+      Five-layer defence mirroring PR-SEARCH-LEGACY-CLIPSSEARCH
+      (whole-package git-rm precedent):
+        (a) `git ls-files pkg/workerstats/ returns 0` — the directory
+            is fully git-rm'd; no live Go file references can remain.
+        (b) `rg 'pkg/workerstats' internal/ cmd/ pkg/ docs/ --include='*.go'
+            --include='*.yaml' --include='*.md' --include='*.sh'
+            --include='*.txt' --exclude-dir architecture/archive`
+            returns zero hits. The `--exclude-dir architecture/archive`
+            is mandatory because the byte-equivalent snapshot at
+            `architecture/archive/2026-06-29/current-snapshot-2026-06-29.yaml`
+            INTENTIONALLY preserves the pre-removal pkg/workerstats
+            surface (manifesting at lines 780, 1087, 1424-1517) per the
+            freeze policy documented in ARCHITECTURE.md §"Archive
+            policy"; DO NOT retroactively rewrite the archive snapshot.
+            Audit baseline (audited in Blocco 2.B pre-commit grep,
+            scope covered .go/.sh/.yaml/.yml/.json/.md/.txt files; no
+            live Go consumer existed today, only the doc-only
+            references deleted in this commit).
+        (c) `rg -n 'pkg/workerstats|WorkerHardwareStats' cmd/archcheck/policy/model.go`
+            returns zero hits after the line 126 OwnerRef example
+            update ("pkg/workerstats" -> "pkg/defaults"); the syntactic
+            example no longer references the deleted pkg.
+        (d) `go build ./pkg/...` exits 0 (no leaf-pkg compile error
+            attributable to this deprecation; pkg/workerstats was the
+            only deleted leaf pkg in the post-Wave-22 leaf list).
+        (e) `go test ./internal/infrastructure/observability/...` exits 0
+            (TestWorkerMetricsRegistered still passes — observability
+            was NEVER dependent on pkg/workerstats; the "aliasing
+            metric vars into pkg/workerstats" anti-pattern flagged in
+            the OLD pkg_workerstats governance block and now
+            generalized as architecture/policy.yaml::prometheus_boundary
+            ruled out such coupling from day 1).
+    usage_metric: |
+      Audit baseline (HEAD = cf3a5037, pre-removal, 2026-06-30):
+        - `git ls-files pkg/workerstats/`          : 2 (stats.go + stats_test.go).
+        - `rg 'pkg/workerstats' --include='*.go'`  : 0 hits live (1 hit in
+          internal/domain/job/worker.go::WorkerHardwareStats godoc
+          comment — REMOVED in this same commit per the godlike/07
+          §"Historical information" pattern; 1 hit in
+          cmd/archcheck/policy/model.go::OwnerRef.Path godoc
+          example — REMOVED in this same commit).
+        - `rg 'pkg/workerstats' --include='*.yaml'` : 3 source files
+          (architecture/ownership/packages.yaml leaf-list bullet +
+          pkg_workerstats: governance block, removed in this commit;
+          architecture/policy.yaml duplicated pkg_workerstats: block,
+          removed in this commit; architecture/ownership.generated.yaml
+          aggregated view, regenerated deterministically in this
+          commit) + 1 archive snapshot (`architecture/archive/2026-06-29/current-snapshot-2026-06-29.yaml`
+          — INTENTIONALLY PRESERVED, mirror of HEAD-7d state per the
+          pkg/workerstats entry that was live as of 2026-06-29;
+          archive snapshots are byte-equivalent to their snapshot
+          day and MUST NOT be retroactively edited per
+          ARCHITECTURE.md §"Archive policy").
+        - `rg 'pkg/workerstats' --include='*.md' --include='*.sh' --include='*.txt'` : 0 hits live.
+      Post-removal metric (this commit lands on `main`):
+        `git ls-files pkg/workerstats/        : 0`
+        `rg 'pkg/workerstats' internal/ cmd/ : 0 hits`
+        `rg 'pkg/workerstats' docs/          : 0 hits live (only archive snapshot)`
+        `go build ./pkg/...                   : exit 0`
+        Net delta = -2 files git-rm'd, -3 YAML block deletions,
+        -1 ownership.generated.yaml regen (deterministic aggregator),
+        +1 Q10 follow-up tracker, -1 doc-only fossil in worker.go godoc,
+        -1 documentation example in cmd/archcheck/policy/model.go.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Single-package-git-rm per the user's Blocco 2.B verdict
+      (option α confirmed). Per godlike/07 §"Migration sequence",
+      with 0 pre-removal callers AND canonical replacement
+      (the POJO at internal/domain/job/WorkerHardwareStats) already
+      present on `main` HEAD, the migration jumps directly to CONTRACT.
+
+      The "no fake availability" rule violation context:
+      pkg/workerstats was added during the pre-P0-5 cleanup pass as
+      forward-looking infrastructure for RW-PROD-013 (worker
+      heartbeat telemetry). It compiled (the POJO exists on main
+      since Wave 4B close), but had ZERO Go consumers. The
+      YAML-declared pkg_workerstats governance block was correct in
+      shape (Option B boundary contract) but yielded no live value
+      because nothing called it from production code. Per the user:
+      "mai lasciare package 'futuri' che rompono il build (fake
+      availability)" — fake availability is broader than compile
+      errors; an unused pkg with no production wiring IS fake
+      availability (operators cannot observe telemetry that doesn't
+      flow end to end).
+
+      The pkg/workerstats deletion is NOT a permanent ban: it is a
+      "gated reintroduction" pattern via Q10. When RW-PROD-013
+      surfaces a real consumer demand (e.g. the cert-report endpoint
+      wants live /proc state instead of caching the last heartbeat),
+      the Q10 ticket closes via a fresh PR that ships the sampler
+      AND its first binding site simultaneously — the dead-on-arrival
+      pattern cannot recur because the compat-test (d) above remains.
+
+      Architecture/ownership.generated.yaml handling: regenerated
+      via `go run ./cmd/architecture-aggregate` post-source-edit in
+      the same commit (the generated file is deterministic from the
+      6 per-section splits per its file header); the per-section
+      split at architecture/ownership/packages.yaml has its leaf
+      list trimmed (-1: pkg/workerstats) and the pkg_workerstats
+      governance block replaced with a 1-line forward-pointer to
+      Q10 + the canonical POJO location.
+
+      Archive snapshot policy: the byte-equivalent snapshot at
+      architecture/archive/2026-06-29/current-snapshot-2026-06-29.yaml
+      INTENTIONALLY preserves this registry as it was on June 29
+      (3 days before this deletion). Future agents auditing "what did
+      the pkg/workerstats governance block look like before it was
+      removed?" read the archive snapshot, not the live
+      architecture/ownership.generated.yaml. Do NOT retroactively
+      rewrite the archive.
+
+      Sibling-record delineation (read each entry independently):
+        - PR-SEARCH-LEGACY-CLIPSSEARCH (record #11 above): git-rm of
+          a different whole-package (internal/application/assets/clipssearch).
+          This entry follows the same single-package-git-rm shape.
+        - PR-SEARCH-LEGACY-CROSSPROVIDER (record #12 above): git-rm
+          of a third whole-package (internal/application/assets/search),
+          similar shape, different capability. Both are valid
+          precedents for the PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL
+          deletion pattern.
+        - Q10-WORKERSTATS-REINTRODUCE (architecture/issues.yaml):
+          WAVE-TRACKER entry recording the (re-)introduction
+          follow-up. This deprecation record is the godlike/07
+          schema companion — godlike/07 owns deprecation-records,
+          issues.yaml owns issue-tickets; the two are complementary,
+          not redundant (per AGENTS.md §"Documentation Map").
+
+  # ── 16. ADAPTERS-FAIL-PRE9-12 — 4 pre-existing Go test FAILs invented in commit 72e1d5c9 ──
   # Single-orphan bug ticket per godlike/07 §“Migration sequence” (BACKFILL).
   # The 4 failing tests are PRE-EXISTING on `main` (acknowledged out-of-scope
   # for Issue 8 ApplyPreset closure) and were ALL authored in commit 72e1d5c9
@@ -976,14 +1165,14 @@ open_questions:
 
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
 audit:
-  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + audit-summary resync (June 2026)"
-  total_records: 15
+  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026)"
+  total_records: 16
   by_status:
-    removed: 10
+    removed: 11
     in_progress: 4
     keep: 1
   by_migration_phase:
-    CONTRACT: 9
+    CONTRACT: 10
     CUTOVER: 2
     BACKFILL: 1
     EXPAND: 2

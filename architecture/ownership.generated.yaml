@@ -646,81 +646,16 @@ pkg:
     - pkg/timeutil
     - pkg/urlutil
     - pkg/veloxclient
-    - pkg/workerstats
 
-# ── pkg/workerstats ownership (canonical leaf, RW-PROD-013, June 2026) ────────
-# pkg/workerstats is the FIRST detailed entry under the leaf pkg governance
-# block: every other leaf pkg is governed only by the bullet above; this one
-# is special because option-A (move metric vars into pkg/workerstats) was a
-# tempting shim that would have leaked the Prometheus registration contract
-# into the leaf pkg layer. The decision codified below is "Option B":
-# metric definitions stay in internal/infrastructure/observability.
-pkg_workerstats:
-  owner: pkg/workerstats
-  rule: |
-    pkg/workerstats MUST NOT define prometheus metric vars or import
-    prometheus/client_golang: the package is a leaf utility whose only
-    concern is Linux /proc polling + the canonical POJO shape. Metric
-    definitions (names, labels, help text, cardinality) live in
-    internal/infrastructure/observability/worker_metrics.go. The caller
-    (heartbeat handler) bridges the POJO into metric values
-    field-by-field.
-    Enforcement: phase-0 documentation-only; no Check 22 / archcheck gate
-    enforces this rule today. Promotion to an enforced gate (e.g. a
-    "pkg may not import prometheus/client_golang" check in
-    scripts/ci-architectural-checks.sh) is a future wave entry to be
-    tracked via architecture/current.yaml.
-  rationale: |
-    Linux /proc sampler (RW-PROD-013, June 2026). Provides
-    pkg/workerstats.Get(cfg) returning a *domain/job.WorkerHardwareStats
-    POJO sampled from /proc/stat, /proc/net/dev, syscall.Statfs, and
-    runtime.MemStats.
-
-    Three packages, three concerns:
-
-      | Surface       | Owner                                              |
-      |---------------|----------------------------------------------------|
-      | Sampling POJO | internal/domain/job.WorkerHardwareStats            |
-      | Sampling impl | pkg/workerstats.Get                                |
-      | Metric vars   | internal/infrastructure/observability.Worker*      |
-      | Metric emit   | heartbeat handler (caller-side bridge)             |
-
-    Aliasing metric vars into pkg/workerstats (the alternative
-    shim: define WorkerSessionActive inside the sampler, expose it
-    as workerstats.WorkerSessionActive, and let observability import
-    it) would conflate sampling (concern: /proc polling) with
-    emission (concern: prometheus registration), leak the
-    globally-stateful prometheus/client_golang dependency into the
-    leaf pkg layer, and force observability to re-import pkg/workerstats
-    purely to satisfy its own TestWorkerMetricsRegistered contract.
-    The TestWorkerMetricsRegistered test asserts the canonical
-    "the metric is registered with prometheus.DefaultGatherer"
-    invariant today via same-package access; an aliased re-export
-    would couple that test to a third-party /proc utility.
-
-    Units contract (forward-looking): when `WorkerHardwareStats` lands,
-    its godoc must preserve verbatim the units rule this sampler's own
-    godoc inherits (raw bytes / 0.0-1.0 ratios; no seconds-vs-bytes
-    confusion). The canonical POJO is the authoritative reference for
-    byte-vs-ratio semantics — the sampler and the metric emission site
-    (heartbeat caller's `observability.Worker*` projection) both refer
-    readers to the type's godoc rather than re-documenting the units
-    locally.    Drift between sampler's units docstring and POJO godoc is
-    a reading-order hazard for operators; both must agree.
-
-    File-name choice: the POJO landing PR author chooses between two
-    file names (`worker.go` existing vs `worker_hardware_stats.go`
-    new); both are acceptable per the directory-level cross_ref
-    (resolved at landing time).
-  cross_refs:
-    pojo:           internal/domain/job/WorkerHardwareStats
-    pojo_file_tbd:  true
-    sampler:        pkg/workerstats/stats.go::Get
-    metrics:        internal/infrastructure/observability/worker_metrics.go
-    test:           internal/infrastructure/observability/worker_metrics_test.go::TestWorkerMetricsRegistered
-    ticket:         docs/operations/04-remote-worker-production-readiness-tickets.md#rw-prod-013
-  current_drift: |
-    Package cannot currently compile (`go build ./pkg/workerstats/...`
-    fails with `undefined: job.WorkerHardwareStats`) — canonical POJO
-    does not yet exist on `main` HEAD; must land before sampler can
-    be wired into the heartbeat handler.
+# (Removed 2026-06-30, Blocco 2.B, commit chore(workerstats): eliminate
+# non-compiling package (fake availability fix)). The pkg_workerstats
+# governance block previously documented here was deleted in the same
+# commit. Should the sampler be reintroduced in a future wave to back
+# the heartbeat payload with live /proc polling (Q10-WORKERSTATS-REINTRODUCE
+# in architecture/issues.yaml), the canonical POJO at
+# internal/domain/job/worker.go::WorkerHardwareStats (lines 122-159)
+# remains the authoritative contract; any reintroduced sampler MUST
+# project the POJO verbatim (no field copies, no JSON-tag renames) and
+# MUST NOT import prometheus/client_golang (the import boundary stays
+# in internal/infrastructure/observability — metric var definitions
+# per the now-cleaned Option B governance).
