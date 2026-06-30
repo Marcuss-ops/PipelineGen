@@ -237,8 +237,11 @@ func TestHardDeleteTx_RollsBackOnChildError(t *testing.T) {
 		t.Fatalf("HardDeleteTx must return error when a child table is missing (no such table); got nil — the loop should fail on the first iteration (asset_locations) BEFORE the parent probe advances to the parent DELETE step")
 	}
 
-	// After HardDeleteTx returned an error and the deferred
-	// tx.Rollback() ran, the post-state must reflect: parent present,
+	// Explicitly rollback the transaction here so we don't hold database locks
+	// when querying the database in the verification loop below.
+	_ = tx.Rollback()
+
+	// After HardDeleteTx returned an error and the tx rollback ran, the post-state must reflect: parent present,
 	// surviving children present (asset_processing + asset_versions).
 	//
 	// The asset_processing row's tx-bound delete was attempted
