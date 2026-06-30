@@ -1,0 +1,237 @@
+package images
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"go.uber.org/zap"
+)
+
+// MetadataService handles semantic metadata tagging and upload to Drive.
+// It is the canonical owner of metaWriter (semantic.MetadataWriter) and
+// all metadata-related operations for images, videos, and audio clips.
+type MetadataService struct {
+	metaWriter *semantic.MetadataWriter
+	mediaStore *drive.Store
+	tempDir    string
+	log        *zap.Logger
+}
+
+var ccLicenseRegex = regexp.MustCompile(`(?i)(cc-by|creative\s*commons|public\s*domain|pd|gfdl|copyright\s*free|creative-commons)`)
+
+// tagImageMetadata calls metaWriter.Write() ONCE to produce semantic metadata.
+func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, generator, hash, localPath string, width, height int) (*semantic.WriteResult, error) {
+	if m.metaWriter == nil {
+		return nil, nil
+	}
+
+	cleanPrompt := prompt
+	if strings.Contains(prompt, "for prompt: ") {
+		parts := strings.SplitN(prompt, "for prompt: ", 2)
+		if len(parts) == 2 {
+			cleanPrompt = parts[1]
+		}
+	}
+
+	sourceType := "generated"
+	if val, ok := ctx.Value(SourceTypeKey).(string); ok {
+		sourceType = val
+	} else {
+		if generator == "wikipedia" || generator == "duckduckgo" || generator == "searxng" || generator == "web-download" {
+			sourceType = "retrieved"
+		}
+	}
+
+	retriever := ""
+	if val, ok := ctx.Value(RetrieverKey).(string); ok {
+		retriever = val
+	} else if sourceType == "retrieved" {
+		retriever = generator
+	}
+
+	pageURL := ""
+	if val, ok := ctx.Value(PageURLKey).(string); ok {
+		pageURL = val
+	}
+
+	imageURL := ""
+	if val, ok := ctx.Value(ImageURLKey).(string); ok {
+		imageURL = val
+	}
+
+	license := ""
+	if val, ok := ctx.Value(LicenseKey).(string); ok {
+		license = val
+	}
+
+	author := ""
+	if val, ok := ctx.Value(AuthorKey).(string); ok {
+		author = val
+	}
+
+	if sourceType == "retrieved" {
+		lowerImgURL := strings.ToLower(imageURL)
+		validExts := []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".tiff", ".bmp", ".svg"}
+		isValidImgURL := false
+		for _, ext := range validExts {
+			if strings.Contains(lowerImgURL, ext) {
+				isValidImgURL = true
+				break
+			}
+		}
+		if !isValidImgURL && (strings.Contains(lowerImgURL, "/image") || strings.Contains(lowerImgURL, "/photo") || strings.Contains(lowerImgURL, "/upload")) {
+			isValidImgURL = true
+		}
+		if !isValidImgURL {
+			return nil, fmt.Errorf("invalid image_url: does not point to a direct image file (URL: %s)", imageURL)
+		} else {
+			if license == "" || !ccLicenseRegex.MatchString(license) {
+				m.log.Warn("tagImageMetadata: license unrecognized or empty, falling back to 'None'", zap.String("license", license))
+				license = "None"
+			}
+		}
+	}
+
+	req := semantic.WriteRequest{
+		AssetID:    hash,
+		AssetType:  "image",
+		MediaType:  "image",
+		Source:     generator,
+		SourceType: sourceType,
+		Generator:  generator,
+		Retriever:  retriever,
+		PageURL:    pageURL,
+		ImageURL:   imageURL,
+		License:    license,
+		Author:     author,
+		Style:      style,
+		Prompt:     cleanPrompt,
+		LocalPath:  localPath,
+		TempDir:    m.tempDir,
+		Extensions: semantic.BuildImageExtension(width, height, "", "", 0),
+	}
+
+	if sourceType == "retrieved" {
+		req.Generator = ""
+	}
+
+	result, err := m.metaWriter.Write(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
+func (m *MetadataService) uploadImageMetadata(ctx context.Context, req drive.AssetDestinationRequest, result *semantic.WriteResult) {
+	if result == nil || result.LocalPath == "" {
+		m.log.Warn("uploadImageMetadata: nil result or empty local path")
+		return
+	}
+	if m.mediaStore == nil {
+		m.log.Warn("uploadImageMetadata: media store not configured")
+		return
+	}
+
+	metaReq := req
+	metaReq.Ext = ".json"
+	metaReq.Hash = "metadata"
+
+	if _, _, err := m.mediaStore.UploadToDrive(ctx, metaReq, result.LocalPath); err != nil {
+		m.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
+		return
+	}
+	m.log.Info("uploadImageMetadata: metadata.json uploaded",
+		zap.String("prompt", result.Payload.PromptOriginal),
+		zap.String("style", strings.Join(result.Payload.Style, ", ")),
+		zap.Int("tags", len(result.Payload.Tags)),
+	)
+}
+
+// UploadBatchMetadata writes a single metadata.json for a group of assets.
+func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*asset.ImageAsset) {
+	m.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
+	if m.metaWriter == nil {
+		m.log.Warn("UploadBatchMetadata: metadata writer not configured")
+		return
+	}
+	if m.mediaStore == nil {
+		m.log.Warn("UploadBatchMetadata: mediaStore is nil")
+		return
+	}
+	if genID == "" {
+		m.log.Warn("UploadBatchMetadata: genID is empty")
+		return
+	}
+
+	assetInfos := make([]map[string]any, len(assets))
+	for i, a := range assets {
+		assetInfos[i] = map[string]any{
+			"hash":          a.Hash,
+			"path":          a.PathRel,
+			"width":         a.Width,
+			"height":        a.Height,
+			"drive_id":      a.DriveFileID,
+			"variant_index": i + 1,
+		}
+	}
+
+	result, err := m.metaWriter.Write(ctx, semantic.WriteRequest{
+		AssetID:    genID,
+		AssetType:  "image_group",
+		MediaType:  "image",
+		Source:     "generated",
+		Generator:  generator,
+		Style:      style,
+		Prompt:     prompt,
+		GroupID:    genID,
+		Assets:     assetInfos,
+		TempDir:    m.tempDir,
+		Extensions: nil,
+	})
+	if err != nil {
+		m.log.Warn("UploadBatchMetadata: metadata writer failed", zap.Error(err))
+		return
+	}
+
+	req := drive.AssetDestinationRequest{
+		Source:       drive.SourceImage,
+		MediaType:    drive.MediaTypeImage,
+		Subject:      slug,
+		GenerationID: genID,
+		Style:        style,
+		Ext:          ".json",
+		Hash:         "metadata",
+	}
+
+	if _, _, err := m.mediaStore.UploadToDrive(ctx, req, result.LocalPath); err != nil {
+		m.log.Warn("UploadBatchMetadata: failed to upload metadata.json", zap.Error(err))
+		return
+	}
+	m.log.Info("UploadBatchMetadata: metadata.json uploaded for group",
+		zap.String("gen_id", genID),
+		zap.Int("assets_count", len(assets)),
+		zap.Int("tags", len(result.Payload.Tags)),
+	)
+}
+
+// indexAssetInVectorStore is a no-op kept for compilation compatibility.
+func (m *MetadataService) indexAssetInVectorStore(ctx context.Context, assetID, source, name, localPath, driveLink, style, mediaType, searchText string, tags []string) {
+	if m.log != nil {
+		m.log.Debug("indexAssetInVectorStore noop",
+			zap.String("asset_id", assetID),
+			zap.String("media_type", mediaType))
+	}
+	_ = source
+	_ = name
+	_ = localPath
+	_ = driveLink
+	_ = style
+	_ = searchText
+	_ = tags
+}

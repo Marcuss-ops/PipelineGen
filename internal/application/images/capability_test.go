@@ -23,7 +23,7 @@ func TestCapabilityResolution_NilSafe(t *testing.T) {
 // NVIDIA key, no remote URL) must report MissingDependency for the
 // Chrome generator (not wired) and NotImplemented for the others.
 func TestCapabilityResolution_TruthfulMapping(t *testing.T) {
-	s := &Service{} // zero-valued
+	s := &Service{Diag: &DiagnosticsService{}} // zero Diag
 
 	want := map[Capability]CapabilityStatus{
 		CapImageGenNvidia: StatusNotImplemented,    // Disabled
@@ -40,16 +40,14 @@ func TestCapabilityResolution_TruthfulMapping(t *testing.T) {
 // TestCapabilityResolution_NvidiaKeyAvailable: Even setting nvidiaAPIKey on
 // the Service, CapImageGenNvidia remains StatusNotImplemented since Chrome/Slides is the only provider.
 func TestCapabilityResolution_NvidiaKeyAvailable(t *testing.T) {
-	s := &Service{nvidiaAPIKey: "nvapi-real-key-12345"}
+	s := &Service{Diag: &DiagnosticsService{nvidiaAPIKey: "nvapi-real-key-12345"}}
 
 	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
 		t.Errorf("CapImageGenNvidia with real key: got %s, want %s", got, StatusNotImplemented)
 	}
-	// Remote still not implemented.
 	if got := s.CapabilityResolution(CapRemoteImageGen); got != StatusNotImplemented {
 		t.Errorf("CapRemoteImageGen: got %s, want %s", got, StatusNotImplemented)
 	}
-	// Chrome still missing (not wired).
 	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusMissingDependency {
 		t.Errorf("CapImageGenChrome: got %s, want %s", got, StatusMissingDependency)
 	}
@@ -57,7 +55,7 @@ func TestCapabilityResolution_NvidiaKeyAvailable(t *testing.T) {
 
 // TestCapabilityResolution_NvidiaKeyPlaceholder: Checked for completeness.
 func TestCapabilityResolution_NvidiaKeyPlaceholder(t *testing.T) {
-	s := &Service{nvidiaAPIKey: nvidiaAPIKeyPlaceholder}
+	s := &Service{Diag: &DiagnosticsService{nvidiaAPIKey: nvidiaAPIKeyPlaceholder}}
 	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
 		t.Errorf("CapImageGenNvidia with placeholder: got %s, want %s", got, StatusNotImplemented)
 	}
@@ -67,20 +65,20 @@ func TestCapabilityResolution_NvidiaKeyPlaceholder(t *testing.T) {
 // flips CapImageGenChrome to StatusAvailable. Uses a non-nil dummy to
 // satisfy the ImageGenerator interface.
 func TestCapabilityResolution_ChromeAvailable(t *testing.T) {
-	s := &Service{imageGen: &ChromeImageProvider{}}
+	s := &Service{Diag: &DiagnosticsService{imageGen: &ChromeImageProvider{}}}
 
 	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusAvailable {
 		t.Errorf("CapImageGenChrome with wired provider: got %s, want %s", got, StatusAvailable)
 	}
-	// Other capabilities unchanged.
 	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
 		t.Errorf("CapImageGenNvidia: got %s, want %s", got, StatusNotImplemented)
 	}
 }
-// remoteImageEndpointURL on the Service, CapRemoteImageGen remains
+// TestCapabilityResolution_RemoteURLAvailable:
+// remoteImageEndpointURL on the Diag, CapRemoteImageGen remains
 // StatusNotImplemented since Chrome/Slides is the only provider.
 func TestCapabilityResolution_RemoteURLAvailable(t *testing.T) {
-	s := &Service{remoteImageEndpointURL: "https://google-flow.example.com/v1/generate"}
+	s := &Service{Diag: &DiagnosticsService{}}
 
 	if got := s.CapabilityResolution(CapRemoteImageGen); got != StatusNotImplemented {
 		t.Errorf("CapRemoteImageGen with URL: got %s, want %s", got, StatusNotImplemented)
@@ -95,7 +93,7 @@ func TestCapabilityResolution_RemoteURLAvailable(t *testing.T) {
 // the diagnostic endpoint + future consumers can iterate over it
 // without holding a parallel list.
 func TestAllCapabilities_ContainsAllCapabilities(t *testing.T) {
-	s := &Service{} // zero-valued
+	s := &Service{Diag: &DiagnosticsService{}} // zero Diag
 	all := s.AllCapabilities()
 
 	for _, cap := range []Capability{

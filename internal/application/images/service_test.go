@@ -262,7 +262,7 @@ func TestIsAIImageSource(t *testing.T) {
 }
 
 func TestAIImageDriveRootForSource(t *testing.T) {
-	svc := &Service{
+	svc := &ImageStorageService{
 		cfg: &config.Config{
 			Drive: config.DriveConfig{
 				ImagesRootFolder: "ai-root",

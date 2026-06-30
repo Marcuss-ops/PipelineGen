@@ -49,49 +49,4 @@ const (
 // key don't accidentally report Available.
 const nvidiaAPIKeyPlaceholder = "PASTE_YOUR_NVIDIA_API_KEY_HERE"
 
-// CapabilityResolution returns CapabilityStatus for the given Capability.
-// The mapping is computed at the call site from the receiver's wiring
-// so the API layer always sees fresh results after composition roots
-// swap dependencies. Caching here would risk stale diagnostic reports.
-//
-// Single source of truth — the route handlers and the Diagnostics
-// method both consult this rather than reading env vars or feature
-// booleans in multiple places (Rule: do not duplicate feature flag in
-// multiple places).
-func (s *Service) CapabilityResolution(cap Capability) CapabilityStatus {
-	if s == nil {
-		// Nil-safe: a nil receiver returns NotImplemented for every
-		// capability so handlers cannot panic on a mis-wired service.
-		return StatusNotImplemented
-	}
-	switch cap {
-	case CapImageGenNvidia:
-		// Disabled/Removed: Chrome/Playwright (Google Slides) is the only provider
-		return StatusNotImplemented
-	case CapRemoteImageGen:
-		// Disabled/Removed: Chrome/Playwright (Google Slides) is the only provider
-		return StatusNotImplemented
-	case CapImageGenChrome:
-		// Available when an ImageGenerator (ChromeImageProvider) is wired.
-		// No env-var dependency — the provider is injected at composition time.
-		if s.imageGen == nil {
-			return StatusMissingDependency
-		}
-		return StatusAvailable
-	default:
-		return StatusNotImplemented
-	}
-}
 
-// AllCapabilities returns the resolved status for every known capability.
-// Used by the diagnostic endpoint to surface truthful availability
-// without leaking placeholder / env-var state to the caller — every
-// value here is a single CapabilityStatus result derived from
-// CapabilityResolution.
-func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
-	return map[Capability]CapabilityStatus{
-		CapImageGenNvidia: s.CapabilityResolution(CapImageGenNvidia),
-		CapRemoteImageGen: s.CapabilityResolution(CapRemoteImageGen),
-		CapImageGenChrome: s.CapabilityResolution(CapImageGenChrome),
-	}
-}

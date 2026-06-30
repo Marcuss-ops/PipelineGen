@@ -2,11 +2,16 @@ package images
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -14,122 +19,37 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
-	"golang.org/x/sync/singleflight"
-
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
-type Service struct {
-	cfg        *config.Config
-	repo       *assets.ImagesRepository
-	stockRepo  *assets.ClipsRepository
-	driveAdmin drive.Admin
-	log        *zap.Logger
-	tempDir    string
-	scriptsDir string
+// ── Public types ──────────────────────────────────────────────────────
 
-	// NVIDIA AI image generation
-	nvidiaAPIKey      string
-	nvidiaModel       string
-	nvidiaLocalNIMURL string
-
-	// Remote image generation (Google Flow)
-	remoteImageEndpointURL string
-	veloxBaseURL           string
-
-	// Ingest pipeline (optional, fallback to direct)
-	ingestSvc *ingest.Service
-
-	// Google Accounting integration
-	gaServerURL   string
-	gaDownloadDir string
-	vidsProjectID string
-
-	// Image storage
-	imagesDir     string
-	driveFolderID string
-
-	// HTTP client for external API calls
-	client *http.Client
-
-	// dedup prevents duplicate downloads of the same subject key.
-	// Replaces the global sync.Mutex with a singleflight.Group so
-	// concurrent requests for different subjects are NOT serialised
-	// (Fase 3, June 2026).
-	dedup singleflight.Group
-
-	// Semaphore for concurrent NVIDIA image generation, configured via ConcurrencyConfig.
-	nvidiaSem chan struct{}
-
-	// Animations directory
-	animationsDir string
-
-	// Unified media store for Drive operations (replaces raw driveSvc calls)
-	mediaStore *drive.Store
-
-	// NEW: Intelligence & Search
-	llmGen *ollama.Generator
-	// vectorSvc removed from this service.
-	// Callers index embeddings through the Python embedding server only
-	// (s.repo.UpdateEmbeddingData persists them in SQLite so they survive
-	// even without a vector-store backend).
-
-	// Centralized style registry
-	styleRegistry *generation.StyleRegistry
-
-	// Unified metadata writer for ALL media types
-	// Replaces separate callSemanticTagger + fallback + upload logic per file
-	metaWriter *semantic.MetadataWriter
-
-	// QDRANT-002: canonical ingestion dispatcher — wired via constructor
-	// argument (PR-12d, June 2026) to eliminate the late-bind ordering
-	// hazard that previously kept RegisterVideoAsset / registerAudioClip
-	// on the raw stockRepo.Upsert path between BuildDomainBundle and
-	// SetDispatcher's post-construction call in NewComposition. Nil at
-	// construction time means "dispatcher not wired (tests, partial
-	// deployments)" and the write methods fall back to raw stockRepo
-	// upserts — no more silent window between BuildDomainBundle and
-	// SetDispatcher, since the field is now set in the ctor.
-	dispatcher *outbox.Dispatcher
-
-	// imageGen is the canonical port for AI image generation (FASE 2, June 2026).
-	// Injected at construction time; nil means "no provider wired" and
-	// GenerateSmartImage returns ErrImageGenNotImplemented.
-	// Concrete implementations: ChromeImageProvider (Playwright → Chrome →
-	// slides.new → Nano Banana Pro), NvidiaImageProvider (future).
-	imageGen ImageGenerator
-}
-
+// DiagnosticsReport is the health report for the images subsystem.
 type DiagnosticsReport struct {
-	OK               bool     `json:"ok"`
-	Services         []string `json:"services"`
-	RepoConfigured   bool     `json:"repo_configured"`
-	DriveConfigured  bool     `json:"drive_configured"`
-	NvidiaConfigured bool     `json:"nvidia_configured"`
-	IngestConfigured bool     `json:"ingest_configured"`
-	WikidataWorks    bool     `json:"wikidata_works"`
-	// ImageGenWired is true when an ImageGenerator port is injected
-	// (FASE 2, June 2026). False means GenerateSmartImage returns 501.
-	ImageGenWired bool `json:"image_gen_wired"`
-	// ImageGenHealthy is true when the wired ImageGenerator responds to
-	// a health ping (FASE 10, June 2026). False when the worker is down
-	// or not started. Only meaningful when ImageGenWired is true.
-	ImageGenHealthy bool `json:"image_gen_healthy"`
-	// ImageGenCooldownProfiles is the count of profiles currently in
-	// cooldown due to quota/auth errors (FASE 10).
-	ImageGenCooldownProfiles int `json:"image_gen_cooldown_profiles"`
-	// Capabilities is the truthful per-capability availability map
-	// surfaced for /api/images/diagnostics. Single source of truth:
-	// each entry is derived from Service.CapabilityResolution; HTTP
-	// routes and this diagnostic field never read env vars or feature
-	// booleans in parallel (per fix(images): expose truthful capability
-	// availability).
-	Capabilities map[Capability]CapabilityStatus `json:"capabilities"`
+	OK                        bool                            `json:"ok"`
+	Services                  []string                        `json:"services"`
+	RepoConfigured            bool                            `json:"repo_configured"`
+	DriveConfigured           bool                            `json:"drive_configured"`
+	NvidiaConfigured          bool                            `json:"nvidia_configured"`
+	IngestConfigured          bool                            `json:"ingest_configured"`
+	WikidataWorks             bool                            `json:"wikidata_works"`
+	ImageGenWired             bool                            `json:"image_gen_wired"`
+	ImageGenHealthy           bool                            `json:"image_gen_healthy"`
+	ImageGenCooldownProfiles  int                             `json:"image_gen_cooldown_profiles"`
+	Capabilities              map[Capability]CapabilityStatus `json:"capabilities"`
 }
+
+// SemanticMetadataPayload is the cross-package carrier for video metadata.
+type SemanticMetadataPayload = semantic.Payload
+
+// ErrImageGenNotImplemented is returned when imageGen is not wired.
+var ErrImageGenNotImplemented = fmt.Errorf("image generation via Google Slides API has been removed")
+
+// ── Dependency bundles ────────────────────────────────────────────────
 
 // ImagesDeps groups constructor dependencies by real capability.
-// Replaces the 16-param flat constructor with 4 grouped bundles.
 type ImagesDeps struct {
 	Core     ImagesCoreDeps
 	Storage  ImagesStorageDeps
@@ -147,163 +67,196 @@ type ImagesCoreDeps struct {
 type ImagesStorageDeps struct {
 	ImageRepo  *assets.ImagesRepository
 	ClipsRepo  *assets.ClipsRepository
-	DriveAdmin drive.Admin
+	DriveSvc   *driveapi.Service
 	MediaStore *drive.Store
 }
 
 // ImagesGenAIDeps — AI generation: LLM, metadata, style, image generator.
 type ImagesGenAIDeps struct {
-	LLMGen        *ollama.Generator
-	MetaWriter    *semantic.MetadataWriter
-	StyleRegistry *generation.StyleRegistry
-	ImageGen      ImageGenerator
-	NvidiaCfg     NvidiaConfig
+	LLMGen         *ollama.Generator
+	MetaWriter     *semantic.MetadataWriter
+	StyleRegistry  *generation.StyleRegistry
+	ImageGen       ImageGenerator
+	NvidiaCfg      NvidiaConfig
 	RemoteImageURL string
 }
 
 // ImagesExternalDeps — ingest, dispatcher, Velox, Google Accounting.
 type ImagesExternalDeps struct {
-	IngestSvc   *ingest.Service
-	Dispatcher  *outbox.Dispatcher
+	IngestSvc    *ingest.Service
+	Dispatcher   *outbox.Dispatcher
 	VeloxBaseURL string
-	GACfg       GoogleAccountingConfig
+	GACfg        GoogleAccountingConfig
 }
 
-// NewService constructs an images.Service from grouped dependency bundles.
+// ── Facade ────────────────────────────────────────────────────────────
+
+// Service is the thin facade over the four sub-services. All public API
+// methods delegate to the appropriate sub-service.
+type Service struct {
+	Gen   *GenerationService
+	Store *ImageStorageService
+	Meta  *MetadataService
+	Diag  *DiagnosticsService
+}
+
+// NewService constructs the four sub-services and returns the facade.
 func NewService(deps ImagesDeps) *Service {
 	cfg := deps.Core.Cfg
+	log := deps.Core.Log
+
 	maxNvidia := cfg.Concurrency.MaxConcurrentNvidiaGenerations
 	if maxNvidia <= 0 {
 		maxNvidia = 1
 	}
 
-	s := &Service{
-		cfg:           cfg,
+	// 1. DiagnosticsService (no cross-deps)
+	diag := &DiagnosticsService{
+		repo:         deps.Storage.ImageRepo,
+		driveSvc:     deps.Storage.DriveSvc,
+		imageGen:     deps.GenAI.ImageGen,
+		ingestSvc:    deps.External.IngestSvc,
+		log:          log,
+		nvidiaAPIKey: deps.GenAI.NvidiaCfg.APIKey,
+	}
+
+	// 2. MetadataService (no cross-deps)
+	meta := &MetadataService{
+		metaWriter: deps.GenAI.MetaWriter,
+		mediaStore: deps.Storage.MediaStore,
+		tempDir:    cfg.Storage.TempPath(),
+		log:        log,
+	}
+
+	// 3. ImageStorageService (depends on MetadataService)
+	store := &ImageStorageService{
 		repo:          deps.Storage.ImageRepo,
 		stockRepo:     deps.Storage.ClipsRepo,
-		driveAdmin:    deps.Storage.DriveAdmin,
-		driveFolderID: cfg.Drive.RootFolder(),
-		log:           deps.Core.Log,
+		mediaStore:    deps.Storage.MediaStore,
+		driveSvc:      deps.Storage.DriveSvc,
+		cfg:           cfg,
 		imagesDir:     cfg.Storage.ImagesPath(),
 		tempDir:       cfg.Storage.TempPath(),
+		driveFolderID: cfg.Drive.RootFolder(),
 		client: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
-		nvidiaSem: make(chan struct{}, maxNvidia),
-
-		scriptsDir:             cfg.Paths.PythonScriptsDir,
-		nvidiaAPIKey:           deps.GenAI.NvidiaCfg.APIKey,
-		nvidiaModel:            deps.GenAI.NvidiaCfg.Model,
-		nvidiaLocalNIMURL:      cfg.External.NvidiaLocalNIMURL,
-		remoteImageEndpointURL: deps.GenAI.RemoteImageURL,
-		veloxBaseURL:           deps.External.VeloxBaseURL,
-		gaServerURL:            deps.External.GACfg.ServerURL,
-		gaDownloadDir:          deps.External.GACfg.DownloadDir,
-		vidsProjectID:          deps.External.GACfg.VidsProjectID,
-		animationsDir:          cfg.Storage.AnimationsPath(),
-		styleRegistry:          deps.GenAI.StyleRegistry,
-		mediaStore:             deps.Storage.MediaStore,
-		llmGen:                 deps.GenAI.LLMGen,
-		metaWriter:             deps.GenAI.MetaWriter,
-		ingestSvc:              deps.External.IngestSvc,
-		dispatcher:             deps.External.Dispatcher,
-		imageGen:               deps.GenAI.ImageGen,
+		dispatcher:    deps.External.Dispatcher,
+		nvidiaSem:     make(chan struct{}, maxNvidia),
+		log:           log,
+		gaServerURL:   deps.External.GACfg.ServerURL,
+		gaDownloadDir: deps.External.GACfg.DownloadDir,
+		vidsProjectID: deps.External.GACfg.VidsProjectID,
+		meta:          meta,
 	}
 
-	return s
+	// 4. GenerationService (depends on ImageStorageService)
+	gen := &GenerationService{
+		imageGen: deps.GenAI.ImageGen,
+		log:      log,
+		storage:  store,
+	}
+
+	return &Service{
+		Gen:   gen,
+		Store: store,
+		Meta:  meta,
+		Diag:  diag,
+	}
 }
+
+// ── Delegate methods: Generation ──────────────────────────────────────
+
+func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
+	if s == nil || s.Gen == nil {
+		return nil, ErrImageGenNotImplemented
+	}
+	return s.Gen.GenerateSmartImage(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive)
+}
+
+func (s *Service) GenerateSmartImageWithAccount(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool, account, projectID string) (*asset.ImageAsset, error) {
+	if s == nil || s.Gen == nil {
+		return nil, ErrImageGenNotImplemented
+	}
+	return s.Gen.GenerateSmartImageWithAccount(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive, account, projectID)
+}
+
+func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
+	s.Gen.TriggerPrewarm(ctx, jobID, count)
+}
+
+func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
+	return s.Gen.HandleJob(ctx, j, tools)
+}
+
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
+	s.Gen.RegisterHandler(jobsSvc)
+}
+
+// ── Delegate methods: Storage ─────────────────────────────────────────
+
+func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error) {
+	return s.Store.SearchAndDownload(ctx, subjectSlug, displayName, query, lang, tags)
+}
+
+func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {
+	return s.Store.SearchWebImage(ctx, prompt, slug, tags)
+}
+
+func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
+	return s.Store.IngestImage(ctx, slug, style, genID, data, filename, sourceURL, description, tags, skipDrive, skipMetadata)
+}
+
+func (s *Service) UploadToStyleDrive(ctx context.Context, asset *asset.ImageAsset, style string) (string, string, error) {
+	return s.Store.UploadToStyleDrive(ctx, asset, style)
+}
+
+func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description, source, style string, durationSec int, existingDriveFileID, existingDriveLink string) error {
+	return s.Store.RegisterVideoAsset(ctx, filePath, description, source, style, durationSec, existingDriveFileID, existingDriveLink)
+}
+
+func (s *Service) SyncFromDrive(ctx context.Context) error {
+	return s.Store.SyncFromDrive(ctx)
+}
+
+func (s *Service) FormatDriveLink(id string) string {
+	return s.Store.FormatDriveLink(id)
+}
+
+// ── Delegate methods: Metadata ────────────────────────────────────────
+
+func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*asset.ImageAsset) {
+	s.Meta.UploadBatchMetadata(ctx, genID, slug, style, prompt, generator, assets)
+}
+
+// ── Delegate methods: Diagnostics ─────────────────────────────────────
 
 func (s *Service) Diagnostics() DiagnosticsReport {
-	// Single source of truth: NvidiaConfigured is derived from
-	// CapabilityResolution so HTTP routes and the diagnostic field do
-	// not duplicate the nvidiaAPIKey / placeholder check. See
-	// capability.go for the resolver.
-	report := DiagnosticsReport{
-		OK:               s.repo != nil,
-		Services:         []string{"repo", "drive", "nvidia", "remote_image_gen", "chrome_playwright"},
-		RepoConfigured:   s.repo != nil,
-		DriveConfigured:  s.driveAdmin != nil,
-		NvidiaConfigured: s.CapabilityResolution(CapImageGenNvidia) == StatusAvailable,
-		IngestConfigured: s.ingestSvc != nil,
-		ImageGenWired:    s.imageGen != nil,
-		Capabilities:     s.AllCapabilities(),
-	}
-
-	// FASE 10: health check and cooldown tracking for ChromeImageProvider.
-	if cp, ok := s.imageGen.(*ChromeImageProvider); ok {
-		report.ImageGenHealthy = cp.Health() == nil
-		report.ImageGenCooldownProfiles = cp.ActiveCooldownProfiles()
-	}
-	return report
+	return s.Diag.Diagnostics()
 }
 
-// Log restituisce il logger interno per logging da altre componenti.
+func (s *Service) CapabilityResolution(cap Capability) CapabilityStatus {
+	if s == nil || s.Diag == nil {
+		return StatusNotImplemented
+	}
+	return s.Diag.CapabilityResolution(cap)
+}
+
+func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
+	if s == nil || s.Diag == nil {
+		return nil
+	}
+	return s.Diag.AllCapabilities()
+}
+
 func (s *Service) Log() *zap.Logger {
-	return s.log
+	return s.Diag.Log()
 }
 
-// Repo returns the underlying images repository.
 func (s *Service) Repo() *assets.ImagesRepository {
-	return s.repo
+	return s.Diag.Repo()
 }
 
-// FormatDriveLink mirrors internal/infrastructure/drive.FileURLFromID —
-// the API layer used to call drive.FileURLFromID directly, which kept
-// `internal/infrastructure/drive` in the API imports. Per PG-002 the
-// formatting helper is now exposed here so the handler only depends on
-// the application-level service contract. Output is byte-identical to
-// the previous behaviour so the public HTTP contract is unchanged
-// (zero-change fix for /api/images/generate responses).
-func (s *Service) FormatDriveLink(id string) string {
-	if id == "" {
-		return ""
-	}
-	return "https://drive.google.com/file/d/" + id
+func (s *Service) SyncAssets() error {
+	return s.Diag.SyncAssets()
 }
-
-// SemanticMetadataPayload is the cross-package carrier returned by
-// uploadVideoMetadata. google_vids_assets.go mixes `semantic.Payload` and
-// the legacy `SemanticMetadataPayload` identifier at the same call site
-// (line 71 assigns, lines 159+167 return), so they MUST be the same
-// underlying type. We declare this as a Go type alias of semantic.Payload
-// rather than a parallel struct to avoid any field-drift footgun: if
-// semantic.Payload gains a new column tomorrow, both names pick it up.
-type SemanticMetadataPayload = semantic.Payload
-
-// generateGoogleSlidesImage has been removed (PR cleanup June 2026).
-// Google Slides image integration was never implemented and the stub
-// always returned an error. Callers should fail with an explicit
-// message at the point of invocation.
-
-// TriggerPrewarm satisfies the ImageSearchService interface so the script
-// job handler can request a pre-warm of the Playwright tab pool before the
-// first AI-image call. The actual tab-pool wiring lives behind a future PR
-// (the pool is not yet plumbed to this service); today this is a no-op that
-// logs at debug so operators can see when prewarm requests are flowing.
-//
-// Behaviour notes:
-//   - Best-effort: returns immediately on context cancellation so callers that
-//     race the pipeline shutdown do not block.
-//   - Nil-safe so tests / partial wiring can call it without a panic.
-//   - The Playwright-side cache saves ~30s first-scene cold-start per
-//     AGENTS.md. Until the pool is plumbed, this stub returns straight away
-//     and the cold-start cost stays — that's acceptable; the build break is
-//     not.
-func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
-	if s == nil {
-		return
-	}
-	select {
-	case <-ctx.Done():
-		return
-	default:
-	}
-	if s.log == nil {
-		return
-	}
-	s.log.Info("Google Slides: automation session tab pool prewarmed", zap.String("job_id", jobID), zap.Int("count", count))
-}
-
-// GenerateVideoAI has been removed (PR cleanup June 2026).
-// Video-from-prompt generation was never implemented. The fullimages
-// pipeline already has a ken-burns fallback that continues to work.
