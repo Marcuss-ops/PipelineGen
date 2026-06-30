@@ -81,7 +81,18 @@ import (
 //
 // Fail-closed: a nil qd fails composition immediately (composition forgot
 // to call buildQdrantDeps first?).
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle) (*OutboxBundle, IOpaqueStartFunc, error) {
+//
+// P0.7 Wave 21 Step 10/12 (June 2026) — voiceover cleanup handler
+// wiring: the new voiceoverCleanup arg threads the *voiceoverDriveAdapter
+// (production concrete for jobsoutbox.VoiceoverCleanupDriver, satisfied
+// structurally by the same struct that already satisfies
+// voiceover.DriveUploaderPort.DeleteFile) into the outbox Deps so
+// VoiceoverCleanupHandler.register runs with a non-nil Drive delete
+// surface. nil voiceoverCleanup is tolerated — the handler still
+// handles local file removal (stdlib os.Remove, no port ceremony)
+// and logs+skips the Drive delete branch with an operator-visible
+// warning. Production wiring always supplies a non-nil adapter.
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver) (*OutboxBundle, IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
@@ -182,6 +193,19 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// when cfg.Qdrant.Enabled AND ClipsRepo is present.
 	if cfg.Qdrant.Enabled && repos.ClipsRepo != nil {
 		outboxDeps.AssetDeleter = repos.ClipsRepo
+	}
+	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
+	// driver (production concrete = *voiceoverDriveAdapter from
+	// adapters_voiceover_use_case.go, which saturates the narrow
+	// VoiceoverCleanupDriver port via its DeleteFile method). nil is
+	// tolerated — RegisterOptionalHandlers unconditionally registers
+	// the handler, and the handler's driver==nil branch logs+skips
+	// the Drive delete step (local file removal still runs via
+	// stdlib os.Remove, no port ceremony). Production wiring always
+	// supplies a non-nil adapter via composition.go (built from
+	// driveBundle.Admin).
+	if voiceoverDriver != nil {
+		outboxDeps.VoiceoverCleanupDriver = voiceoverDriver
 	}
 	// PR 3 fix/qdrant-outbox-fail-closed (#4 + #5): core handlers are
 	// fail-closed when Qdrant is enabled. The previous

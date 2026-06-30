@@ -88,15 +88,29 @@ import (
 // consumer-side (this handler) priority chains now share that single
 // function so future drift is structurally impossible. nil →
 // IndexingHandler is wired WITHOUT the source_version supersede gate.
+//
+// VoiceoverCleanupDriver: VoiceoverCleanupDriver for the
+// VoiceoverCleanupHandler (P0.7 Wave 21 Step 10/12, June 2026) —
+// consumes voiceover.cleanup.requested events durably emitted from
+// voiceover.finalizeStage's caller-owned tx and translates them
+// into Drive file delete + local file remove side-effects.
+// Production concrete is *voiceoverDriveAdapter (structurally
+// satisfies both voiceover.DriveUploaderPort.DeleteFile and the
+// handler's local port — same instance is shared between both
+// surfaces, no double-adapter). nil → VoiceoverCleanupHandler
+// registered WITHOUT Drive delete capability (test-path-only; the
+// local file removal branch still runs because os.Remove is
+// stdlib, no port ceremony needed).
 type Deps struct {
-	DB                   *sql.DB
-	HTTPClient           *http.Client
-	HMACSecrets          [][]byte
-	InsecureDev          bool
-	Jobs                 JobsEnqueuer
-	VectorPointDeleter   VectorPointDeleter
-	AssetDeleter         AssetDeleter
-	SourceVersionQuerier SourceVersionQuerier
+	DB                     *sql.DB
+	HTTPClient             *http.Client
+	HMACSecrets            [][]byte
+	InsecureDev            bool
+	Jobs                   JobsEnqueuer
+	VectorPointDeleter     VectorPointDeleter
+	AssetDeleter           AssetDeleter
+	SourceVersionQuerier   SourceVersionQuerier
+	VoiceoverCleanupDriver VoiceoverCleanupDriver
 }
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
@@ -269,6 +283,14 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		}
 	}
 	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs))
+	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
+	// handler. Registered unconditionally — the handler itself is
+	// nil-safe (driver == nil → log+skip the Drive delete branch,
+	// still runs local file removal via stdlib os.Remove). This
+	// keeps the handler's leak-free contract alive on every
+	// deployment regardless of whether a Drive admin is wired at
+	// composition time.
+	optional = append(optional, NewVoiceoverCleanupHandler(depsOrNil(deps).VoiceoverCleanupDriver, log))
 	for _, h := range optional {
 		if err := registry.Register(h); err != nil {
 			return err
@@ -279,6 +301,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		zap.Bool("metadata_export_wired", metadataExportHandler != nil),
 		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs != nil),
+		zap.Bool("voiceover_cleanup_driver_wired", deps != nil && deps.VoiceoverCleanupDriver != nil),
 	)
 	return nil
 }

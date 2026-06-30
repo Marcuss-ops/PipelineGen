@@ -59,7 +59,7 @@ type UseCaseDeps struct {
 	TTSProvider           TTSProvider
 	DestinationResolver   DestinationResolver
 	AudioPostProcessor    AudioPostProcessor
-	AssetLifecycle        AssetLifecycle
+	Publisher             VoiceoverPublisher
 	VoiceoverRepository   VoiceoverRepository
 	TransactionalOutbox   TransactionalOutbox
 	Logger                *zap.Logger
@@ -92,8 +92,8 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	if deps.DestinationResolver == nil {
 		panic("GenerateVoiceoversUseCase: DestinationResolver is required (UseCaseDeps.DestinationResolver)")
 	}
-	if deps.AssetLifecycle == nil {
-		panic("GenerateVoiceoversUseCase: AssetLifecycle is required (UseCaseDeps.AssetLifecycle)")
+	if deps.Publisher == nil {
+		panic("GenerateVoiceoversUseCase: Publisher is required (UseCaseDeps.Publisher)")
 	}
 	if deps.VoiceoverRepository == nil {
 		panic("GenerateVoiceoversUseCase: VoiceoverRepository is required (UseCaseDeps.VoiceoverRepository)")
@@ -374,24 +374,19 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	mergeUserMetadata(metaBuf, dest, cmd.Metadata, u.deps.Logger)
 	metaJSON, _ := json.Marshal(metaBuf)
 
-	uploadOut, err := u.deps.AssetLifecycle.Upload(ctx, AssetUploadInput{
-		ID:         id,
-		LocalPath:  uploadPath,
-		Filename:   filename,
-		FolderID:   dest.FolderID,
-		FolderPath: dest.FolderPath,
-		Metadata:   string(metaJSON),
-		FileHash:   item.FileHash,
-		Source:     "voiceover",
-		Name:       textutil.Truncate(itemSpec.Text, 100),
+	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
+		ID:        id,
+		LocalPath: uploadPath,
+		Filename:  filename,
+		FolderID:  dest.FolderID,
 	})
 	if err != nil {
 		item.Error = fmt.Sprintf("upload_failed: %v", err)
 		return item
 	}
-	item.DriveLink = uploadOut.DriveLink
-	item.DriveFileID = uploadOut.DriveFileID
-	item.FileHash = uploadOut.FileHash
+	item.DriveFileID = fileID
+	item.DriveLink = CanonicalDriveWebURL(fileID)
+	item.DownloadLink = CanonicalDriveDownloadURL(fileID)
 
 	// Step 4a: pre-read the OLD row to capture orphan paths for the
 	// post-commit cleanup goroutine (lazy-deferred to Block 7). The
@@ -435,7 +430,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		FolderPath:   dest.FolderPath,
 		DriveFileID:  item.DriveFileID,
 		DriveLink:    item.DriveLink,
-		DownloadLink: uploadOut.DownloadLink,
+		DownloadLink: item.DownloadLink,
 		FileHash:     item.FileHash,
 		// PR-VO-AUDIT-P01: cast typed Status to plain string for the
 		// SQLite voiceovers.status column. The persistence layer keeps

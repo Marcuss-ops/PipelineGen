@@ -32,6 +32,21 @@ const (
 	EventProviderSyncRequested        = "provider.sync.requested"
 	EventWorkflowStepCompleted        = "workflow.step.completed"
 	EventWorkflowStepFailed           = "workflow.step.failed"
+
+	// EventVoiceoverCleanupRequested (P0.7 Wave 21, Step 10/12, June 2026).
+	// Replaces the pre-fix fire-and-forget `cleanupOrphanVoiceover`
+	// goroutine (detached via context.Background) with a durable
+	// outbox event that survives handler cancel + server restart.
+	// Producer (voiceover.finalizeStage) enqueues this event INSIDE
+	// the same SQL tx as the voiceovers UPSERT + media_assets
+	// projection UPSERT, so all four writes commit atomically; a
+	// rollback discards all four. The consumer
+	// (voiceover.outbox.VoiceoverCleanupHandler) deletes OLD Drive
+	// files ONLY when `old_drive_file_id != new_drive_file_id`,
+	// removes old local files, and returns retryable errors on
+	// transient Drive failures so the pool's exponential backoff
+	// retries per its config.
+	EventVoiceoverCleanupRequested = "voiceover.cleanup.requested"
 )
 
 type Handler interface {
