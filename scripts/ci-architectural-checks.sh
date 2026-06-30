@@ -536,9 +536,12 @@ echo "=== Check 5: same-package duplicate-type-declarations (QDRANT-RECOVERY-001
 # Step 1: extract every exported type declaration as TSV: package<TAB>Type<TAB>file:line
 decls=""
 while IFS= read -r -d '' f; do
-  # extract package name from the first `package X` line (guard against empty)
-  pkg_line=$(awk '/^package / {print; exit}' "$f" 2>/dev/null || true)
-  pkg="${pkg_line#package }"
+  # extract package name from the first `package X` line (guard against empty).
+  # Canonical awk $2 field-extraction rather than the prior brittle shell
+  # prefix-strip — the prior `${pkg_line#package }` collapsed to empty pkg
+  # for every file, grouping 381 type declarations under one empty-pkg bucket
+  # and producing a false-positive `(count=381 in same package)`.
+  pkg=$(awk '/^package[[:space:]]+/ {print $2; exit}' "$f" 2>/dev/null || true)
   [ -z "$pkg" ] && continue
   per_file=$(awk -v pkg="$pkg" -v file="$f" '
     /^type[[:space:]]+[A-Z]/ {
