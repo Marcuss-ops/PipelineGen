@@ -27,6 +27,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -51,8 +52,9 @@ import (
 // All methods are user-triggered / idempotent at the Drive API level —
 // no retry-with-jitter policy inherited from folder_lookupRetry*
 // (P0.4 lesson) because Trash/Delete are one-shot commands,
-// AddParent/Rename are rare-user-driven, and Cleanup's pagination
-// loop is bounded by explicit page tokens (no silent retry-deferral
+// AddParent/Rename are rare-user-driven, and Cleanup (with the
+// Wave D D2 structured CleanupRequest — at-least-one-filter safety
+// guard) is bounded by explicit page tokens (no silent retry-deferral
 // drift).
 //
 // Wave C (June 2026): DeleteFile removed from drive.Admin (per the
@@ -94,12 +96,23 @@ type FileLifecycle interface {
 	// Rename updates a file's display name.
 	Rename(ctx context.Context, fileID, newName string) error
 
-	// Cleanup bulk-trashes all non-trashed files matching the supplied
-	// Drive search query. Pagination is exhaustive (driven by
-	// nextPageToken). Caller MUST supply a query that excludes
-	// 'trashed = true' to avoid re-processing already-trashed entries.
-	// Returns the count of files successfully trashed.
-	Cleanup(ctx context.Context, query string) (deletedCount int, err error)
+	// Cleanup bulk-trashes all non-trashed files matching the
+	// structured CleanupRequest. Pagination is exhaustive (driven by
+	// nextPageToken). Caller MUST supply at least one filter in the
+	// request — a request with all-zero fields would match every
+	// non-trashed file on Drive (a Drive-wide wipe) and is rejected
+	// upfront with a typed error.
+	//
+	// Wave D (June 2026) D2: signature changed from
+	// `Cleanup(ctx, query string) (int, error)` to
+	// `Cleanup(ctx, req CleanupRequest) (int, error)`. The legacy
+	// raw-query shape is removed; callers now describe the cleanup
+	// target via the structured CleanupRequest fields (ParentFolderID,
+	// Name, MimeType, OlderThan). The Drive query string is
+	// constructed internally from the request. D3 (next commit)
+	// changes the return type to CleanupResult (Matched/Trashed/
+	// Failed/FailedIDs).
+	Cleanup(ctx context.Context, req CleanupRequest) (deletedCount int, err error)
 }
 
 // FileLifecycleAdapter is the only direct caller of Files.Update /
@@ -219,16 +232,76 @@ func (a *FileLifecycleAdapter) Rename(ctx context.Context, fileID, newName strin
 	return nil
 }
 
-// Cleanup bulk-trashes files matching the supplied query, paginating
-// exhaustively via nextPageToken. Caller MUST include
-// "and trashed = false" in the query to avoid reprocessing trashed
-// entries (Trash is idempotent, so re-trashing is harmless but wastes
-// quota). Returns the count of files successfully trashed; partial
-// failures during the loop are logged and counted as missing from
-// the return value rather than aborting the operation.
-func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, query string) (int, error) {
-	if strings.TrimSpace(query) == "" {
-		return 0, fmt.Errorf("cleanup: query is required")
+// CleanupRequest is the structured request for FileLifecycle.Cleanup
+// (Wave D D2, June 2026). All fields are optional (zero value = no
+// filter on that dimension) but at least one filter MUST be set —
+// a request with all-zero fields would match every non-trashed file
+// on Drive (a Drive-wide wipe) and is rejected upfront with a typed
+// error so a misconfigured caller never accidentally trashes the
+// whole Drive.
+//
+// Field semantics:
+//   - ParentFolderID: scope the cleanup to a single parent folder
+//     ('<id>' in parents). Empty = no parent filter.
+//   - Name: exact-name match (case-sensitive Drive API). Empty = no
+//     name filter.
+//   - MimeType: MIME type filter (e.g. "application/vnd.google-apps.folder"
+//     for folder-only cleanup, "image/png" for PNG-only cleanup).
+//     Empty = no MIME filter.
+//   - OlderThan: filter on modifiedTime < OlderThan. Zero = no time
+//     filter. UTC is enforced for the RFC3339 Drive query format.
+type CleanupRequest struct {
+	ParentFolderID string
+	Name           string
+	MimeType       string
+	OlderThan      time.Time
+}
+
+// buildQuery constructs the Drive Files.List Q string from the
+// CleanupRequest. Always includes "trashed = false" so the loop never
+// re-processes already-trashed entries. Escapes single quotes in
+// user-supplied strings (Drive query syntax requires it for literal
+// apostrophes inside quoted values).
+func (req CleanupRequest) buildQuery() (string, error) {
+	if strings.TrimSpace(req.ParentFolderID) == "" &&
+		strings.TrimSpace(req.Name) == "" &&
+		strings.TrimSpace(req.MimeType) == "" &&
+		req.OlderThan.IsZero() {
+		return "", fmt.Errorf("cleanup: at least one filter is required (ParentFolderID, Name, MimeType, or OlderThan)")
+	}
+	parts := []string{"trashed = false"}
+	if req.ParentFolderID != "" {
+		parts = append(parts, fmt.Sprintf("'%s' in parents", strings.ReplaceAll(req.ParentFolderID, "'", "\\'")))
+	}
+	if req.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = '%s'", strings.ReplaceAll(req.Name, "'", "\\'")))
+	}
+	if req.MimeType != "" {
+		parts = append(parts, fmt.Sprintf("mimeType = '%s'", strings.ReplaceAll(req.MimeType, "'", "\\'")))
+	}
+	if !req.OlderThan.IsZero() {
+		parts = append(parts, fmt.Sprintf("modifiedTime < '%s'", req.OlderThan.UTC().Format(time.RFC3339)))
+	}
+	return strings.Join(parts, " and "), nil
+}
+
+// Cleanup bulk-trashes files matching the structured CleanupRequest,
+// paginating exhaustively via nextPageToken. The "trashed = false"
+// filter is always included so the loop never re-processes
+// already-trashed entries (Trash is idempotent, so re-trashing is
+// harmless but wastes quota). Partial failures during the loop are
+// logged and counted as missing from the return value rather than
+// aborting the operation.
+//
+// Wave D (June 2026) D2: signature changed from
+// `Cleanup(ctx, query string) (int, error)` to
+// `Cleanup(ctx, req CleanupRequest) (int, error)`. The Drive query
+// is now built from the request via CleanupRequest.buildQuery. D3
+// (next commit) changes the return type to CleanupResult.
+func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, req CleanupRequest) (int, error) {
+	query, err := req.buildQuery()
+	if err != nil {
+		return 0, err
 	}
 	if a.svc == nil {
 		return 0, fmt.Errorf("drive service not configured")
@@ -237,13 +310,13 @@ func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, query string) (int, 
 	var deletedCount int
 	var pageToken string
 	for {
-		req := a.svc.Files.List().Q(query).
+		listReq := a.svc.Files.List().Q(query).
 			Fields("nextPageToken, files(id)").
 			Context(ctx)
 		if pageToken != "" {
-			req = req.PageToken(pageToken)
+			listReq = listReq.PageToken(pageToken)
 		}
-		res, err := req.Do()
+		res, err := listReq.Do()
 		if err != nil {
 			return deletedCount, fmt.Errorf("cleanup list (page=%q): %w", pageToken, err)
 		}

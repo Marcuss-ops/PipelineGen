@@ -15,6 +15,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -78,12 +79,54 @@ func TestFileLifecycleAdapter_Rename_RequiresFileIDAndName(t *testing.T) {
 	}
 }
 
-// TestFileLifecycleAdapter_Cleanup_RequiresQuery pins Cleanup's required-
-// query validation (no point in paginating on an empty Drive search).
-func TestFileLifecycleAdapter_Cleanup_RequiresQuery(t *testing.T) {
+// TestFileLifecycleAdapter_Cleanup_RequiresAtLeastOneFilter pins
+// Cleanup's at-least-one-filter safety guard (Wave D D2, June 2026).
+// A request with all-zero fields would match every non-trashed file
+// on Drive (a Drive-wide wipe) and is rejected upfront. The legacy
+// TestFileLifecycleAdapter_Cleanup_RequiresQuery was renamed +
+// re-shaped to the new CleanupRequest contract.
+func TestFileLifecycleAdapter_Cleanup_RequiresAtLeastOneFilter(t *testing.T) {
 	a := NewFileLifecycleAdapter(nil, nil)
-	if _, err := a.Cleanup(context.Background(), ""); err == nil {
-		t.Error("Cleanup(empty query) should reject")
+	_, err := a.Cleanup(context.Background(), CleanupRequest{})
+	if err == nil {
+		t.Fatal("Cleanup(empty request) should reject — at least one filter is required")
+	}
+	if !strings.Contains(err.Error(), "at least one filter is required") {
+		t.Errorf("Cleanup: unexpected error: %v", err)
+	}
+}
+
+// TestCleanupRequest_BuildQuery_AllFieldsCombines pins the Drive
+// query construction (Wave D D2, June 2026): all 4 fields set → the
+// query contains "trashed = false" + all 4 filter parts joined by
+// " and ". The RFC3339 UTC format for OlderThan is asserted
+// explicitly so future timezone-handling drift surfaces in a test
+// failure rather than silently producing a Drive-wide-wipe query.
+func TestCleanupRequest_BuildQuery_AllFieldsCombines(t *testing.T) {
+	req := CleanupRequest{
+		ParentFolderID: "folder123",
+		Name:           "test.mp4",
+		MimeType:       "video/mp4",
+		OlderThan:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	q, err := req.buildQuery()
+	if err != nil {
+		t.Fatalf("buildQuery: unexpected error: %v", err)
+	}
+	if !strings.Contains(q, "trashed = false") {
+		t.Errorf("buildQuery: missing trashed filter: %q", q)
+	}
+	if !strings.Contains(q, "'folder123' in parents") {
+		t.Errorf("buildQuery: missing parent filter: %q", q)
+	}
+	if !strings.Contains(q, "name = 'test.mp4'") {
+		t.Errorf("buildQuery: missing name filter: %q", q)
+	}
+	if !strings.Contains(q, "mimeType = 'video/mp4'") {
+		t.Errorf("buildQuery: missing mimeType filter: %q", q)
+	}
+	if !strings.Contains(q, "modifiedTime < '2026-01-01T00:00:00Z'") {
+		t.Errorf("buildQuery: missing OlderThan filter (RFC3339 UTC): %q", q)
 	}
 }
 
