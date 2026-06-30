@@ -186,16 +186,28 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
 				log,
 			)
-		channelMon = monitor.NewChannelMonitor(cfg, root.Repos.ClipsRepo, channelsSvc, log,
-			root.Domains.YoutubeClipService, root.AI.OllamaClient, nil)
-
-			sqRepo := assets.NewSearchQueriesRepository(root.DB.DB)
-			channelMon.SetSearchQueriesRepo(sqRepo)
-			log.Info("Search queries repo wired to channel monitor")
-
-			if cfg.Jobs.SearchRateLimit > 0 {
-				channelMon.SetSearchRateLimit(cfg.Jobs.SearchRateLimit)
-			}
+		channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
+			Cfg:         cfg,
+			ClipsRepo:   root.Repos.ClipsRepo,
+			ChannelsSvc: channelsSvc,
+			YoutubeSvc:  root.Domains.YoutubeClipService,
+			Log:         log,
+			// Ytdlp is intentionally nil at this commit: the next Step-9
+			// wires the concrete *downloader.YTDLPDownloader here. The
+			// monitor package treats a nil Ytdlp port as
+			// discoverChannelVideos error per the discovery.go contract
+			// (loud failure; never a silent zero-result).
+			Ytdlp: nil,
+			// Transcript + Analyzer + Enqueuer are filled with the
+			// unbound stub constructors so production wiring crashes
+			// loudly at the FIRST analyzer/enqueuer call rather than
+			// nil-deref panicking inside the worker. The next Step-9
+			// commit installs the real YTDLPSubtitleAdapter +
+			// OllamaAnalyzer + jobs.Service binding.
+			Transcript: monitor.NewUnboundTranscriptProvider(),
+			Analyzer:   monitor.NewUnboundVideoAnalyzer(),
+			Enqueuer:   monitor.NewUnboundJobEnqueuer(),
+		})
 
 			// Channel monitor: optional background service.
 			cm := channelMon

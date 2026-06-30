@@ -275,12 +275,18 @@ func TestCheckChannel_YtdlpEmptySuccessReturnsZeroResult(t *testing.T) {
 }
 
 // TestCheckChannel_YtdlpSuccessCountsDiscovered ensures that when the
-// lister returns N videos, ChannelCheckResult.VideosDiscovered == N.
-// (No enqueueing occurs because processVideo panics without cfg/jobsSvc;
-// we exercise only the count side of the loop without invoking
-// processVideo by setting MaxVideosPerRun to 0 and giving the lister
-// an empty VideoInfo — the loop still iterates, but processVideo
-// exits early due to nil cfg.)
+// lister returns an empty VideoInfo slice, ChannelCheckResult has all
+// counters at 0: VideosDiscovered == 0, VideosEnqueued == 0,
+// VideosSkipped == 0. The per-video loop in checkChannel iterates over
+// the slice; with an empty slice the loop never runs, so processVideo
+// is not invoked and no analyze/enqueue port is touched.
+//
+// Test fixture note (Step 9, June 2026): the ctor now falls back to
+// unbound stubs for analyze/enqueue ports rather than panicking on
+// nil; a non-empty lister output in this test would exercise the
+// unbound-stub error path instead of panicking, which is why the test
+// uses an empty VideoInfo slice to keep the assertion focused on the
+// LIST side of checkChannel.
 func TestCheckChannel_YtdlpSuccessCountsDiscovered(t *testing.T) {
 	repo := &recordingRepo{}
 	svc := channels.NewService(repo, zap.NewNop())
@@ -355,5 +361,3 @@ func TestNextCheckTime_BackoffProgression(t *testing.T) {
 		})
 	}
 }
-
-
