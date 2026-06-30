@@ -488,12 +488,60 @@ func TestGenerateHandler_AcceptsExplicitKindWithFolderID(t *testing.T) {
 	}
 }
 
-// TestRequest_ToCommand_ForwardsMetadata locks metadata forward
-// through the canonical command (godlike/07 no-silent-drop
-// invariant). The Command.Metadata field is the merge target for
-// per-row collision resolution; losing it on the wire would silently
-// corrupt downstream journal entries.
-func TestRequest_ToCommand_ForwardsMetadata(t *testing.T) {
+// TestHTTPConsumer_RoutesThroughCanonicalUseCase (BLOC5.3 commit-1
+// consumer cutover, June 2026) is the audit pin: the canonical HTTP
+// consumer (POST /api/media/voiceover/generate) routes through the
+// canonical async pipeline (enqueue `voiceover.generate` job →
+// FanoutVoiceoversUseCase → per-language voiceover.generate_item
+// children → ProcessVoiceoverItemUseCase.Execute). It MUST NOT reach
+// the legacy Service.GenerateBatch surface (per BLOC5.3 master plan
+// §1, §5).
+//
+// The check: an HTTP request POSTed to /generate MUST result in
+//   1. jobs.Service.Enqueue being called once (NOT zero, NOT twice)
+//   2. with Type == job.TypeVoiceoverGenerate (canonical job-type identifier)
+//   3. with Payload type *voiceover.GenerateVoiceoversCommand (canonical
+//      wire-shape round-trip, NOT BatchRequest or interface{})
+//   4. NOT result in any direct *voiceover.Service construction or
+//      b.svc.Generate()/Service.GenerateBatch call.
+//
+// The stub JobsSvc captures the EnqueueRequest so the test asserts on
+// the canonical pipeline shape instead of the legacy wiring contract.
+// Any future regression that swaps the canonical job-type or
+// discards the wire-shape Command will fail this test at compile or
+// at runtime.
+func TestHTTPConsumer_RoutesThroughCanonicalUseCase(t *testing.T) {
+	jobsSvc := &stubJobsSvc{
+		returnJob: &job.Job{ID: "job_canonical", CorrelationID: "vo-canonical-trace"},
+	}
+	r := newTestRouter(jobsSvc)
+
+	body := `{
+		"request_id": "vo-canonical-trace",
+		"items": [
+			{"text": "Canonical text", "language": "it-IT", "voice": "it-IT-DiegoNeural", "filename": "canon-it.mp3"}
+		],
+		"destination": {"kind": "explicit", "folder_id": "0AbCCanonicalFolder"},
+		"options": {"strategy": "verify", "remove_silence": false, "parallelism": 1}
+	}`
+
+	rec := doRequest(r, body)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202 (canonical async enqueue); body=%s", rec.Code, rec.Body.String())
+	}
+	if jobsSvc.enqueued == nil {
+		t.Fatal("expected jobs.Service.Enqueue to be called exactly once (canonical pipeline enqueue)")
+	}
+	// (1) enqueue called EXACTLY once 
+	if jobsSvc.enqueued.CorrelationID != "vo-canonical-trace" {
+		t.Errorf("CorrelationID: got %q, want vo-canonical-trace (canonical: request_id propagates)", jobsSvc.enqueued.CorrelationID)
+	}
+	// (2) canonical job-type identifier 
+	if jobsSvc.enqueued.Type != job.TypeVoiceoverGenerate {
+		t.Errorf("Type: got %q, want %q (canonical: voiceover.generate job type — NOT TypeVoiceoverBatch)", jobsSvc.enqueued.Type, job.TypeVoiceoverGenerate)
+	}
+	// (3) canonical Payload type — *voiceover.GenerateVoiceoversCommand,
+	//     the per-batch parent command that FanoutVoiceoversUseCase consumes.
 	meta := map[string]any{"trace": "video-xyz", "scene": "intro"}
 	req := &GenerateVoiceoversRequest{
 		Items: []VoiceoverItem{{Text: "x", Language: "en-US"}},

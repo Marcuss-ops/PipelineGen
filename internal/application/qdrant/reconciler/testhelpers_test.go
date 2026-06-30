@@ -7,7 +7,7 @@ package reconciler
 
 // canonicalPointID is the canonical AssetIDToQdrantPointID mapping
 // (= assetID with "pt-" prefix) used by every reconciler test
-// fixture. Mirrors production qdrant.AssetIDToQdrantPointID.
+// fixture. Mirrors production schema.AssetIDToQdrantPointID.
 //
 // Why this is a sealed helper:
 //

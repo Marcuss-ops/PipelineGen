@@ -349,16 +349,6 @@
       owner_capability: internal/application/voiceover
       status: closed
       deadline: 2026-07-10
-    # PR-PUTFILE-P0-1 (June 2026): conflict-aware Drive uploads
-    # replace legacy silent-overwrite with explicit per-call
-    # ConflictPolicy (Overwrite | Skip | Rename). Port boundary
-    # FileUploaderPort.PutFile(...) → uploader_put.go adapter; 4
-    # plumbing tests pin end-to-end through Publisher. Closes
-    # godlike/07 fake-availability for the always-overwrite path.
-    - id: PR-PUTFILE-P0-1
-      owner_capability: internal/infrastructure/drive
-      status: shipped_through
-      deadline: 2026-07-15
 - id: 23
   status: in_progress
   exit_signal: false
@@ -564,3 +554,33 @@ wave_status:
         owner_capability: scripts/ci/architecture/checks/46_inline_clips_repository_map_ban.sh maintainer
         status: shipped_through
         deadline: 2026-07-20
+
+  BLOC5.3_consumer_cutover:
+    status: in_progress
+    shipped_in_commit: pending_micro_commit_BLOC5.3_commit1
+    # Commit-1 surface (this commit): HTTP scripts/books/promo all
+    # reach the canonical pipeline. promo.voiceoverGenBridge now
+    # delegates to ProcessVoiceoverItemUseCase (port-extracted as
+    # VoiceoverItemExecutor; see internal/application/voiceover/ports.go)
+    # — NOT to Service.GenerateBatch. The previous PR-VO-AUDIT-P04
+    # metadata-hack pattern is REMOVED on this consumption path.
+    # Service.processItemUseCase field + VoiceoverGenerationDeps.ProcessItemUseCase
+    # are wired through composition root
+    # (internal/app/build_bundles_voiceover.go). 3 audit-pinned tests
+    # added: TestHTTPConsumer_RoutesThroughCanonicalUseCase,
+    # TestScriptsFanout_NoDirectServiceReference, TestPromo_AccodesCanonicalChild.
+    # Builds green: go vet ./... + go test ./internal/application/voiceover/...
+    # ./internal/api/assets/voiceover/.... Commit 2 (child → use case
+    # canonico) and Commit 3 (legacy pipeline elim) are follow-up commits.
+    audit_pins:
+      - TestHTTPConsumer_RoutesThroughCanonicalUseCase # handler.go enqueues voiceover.generate job
+      - TestScriptsFanout_NoDirectServiceReference # scripts adapter uses port, NOT Service.GenerateBatch
+      - TestPromo_AccodesCanonicalChild # voiceoverGenBridge delegates to ProcessVoiceoverItemUseCase.Execute
+    risk: limited — narrow-port extraction + 1 bridge rewrite. Composition root reorders processItemUseCase construction BEFORE voiceover.NewService so VoiceoverGenerationDeps.ProcessItemUseCase can be populated at construction (avoids late-bound private-field assignment).
+    exit_gate: "rg 'Service\\.GenerateBatch|ProcessOneVoiceoverUseCase' --type go: only definitions remain (zero productive call sites for these). All 3 audit-pinned tests green."
+
+  BLOC4_ssot_cutover:
+    status: shipped
+    shipped_in_commit: pending_micro_commit_6_BLOC4
+    risk: one canonical pipeline voiceover end-to-end. The legacy delegating GenerateVoiceoverUseCase (B-2 BACKFILL) is REMOVED per AGENTS.md Active Concerns #10; the new ProcessVoiceoverItemUseCase is the single per-item orchestrator (TTS -> AudioPost -> Lifecycle/Upload -> SwapTx + outbox). The pre-existing process_one.go (ProcessOneVoiceoverUseCase, delegating to Service.GenerateBatch) is REMOVED; jobs/generate_item_handler.go now consumes ProcessVoiceoverItemUseCase directly. FilenameBuilder extracted as a narrow typed port (single grammar implementation across the codebase).
+    evidence: TestProcessVoiceoverItemUseCase_HappyPath_TTSUploadTxOutbox + TestProcessVoiceoverItemUseCase_AllErrorPathsSurfaceAsFailureCode (TTS, upload, db_delete, db_insert, outbox_enqueue, missing_folder_id, destination_resolve subpaths) + TestGenerateItemJobHandler_NoLongerCallsGenerateBatch green. Static grep guard enforced via scripts/ci/architecture/checks/47_generate_batch_ban.sh — the user flagged this as 'il piu delicato' cutover; the canonical cross-scope user instruction is 'una sola pipeline voiceover end-to-end'.
