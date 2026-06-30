@@ -93,18 +93,26 @@ func runListDriveFolder(args []string) error {
 		return fmt.Errorf("drive client is not available")
 	}
 
-	uploader := root.Drive.DriveUploader
+	// Wave B (June 2026): split the legacy `root.Drive.DriveUploader`
+	// (single concrete *drive.Uploader) into the canonical Pattern 0
+	// port pair — drive.Admin for folder/file lifecycle ops (passed
+	// to the polluted-folder cleanup), drive.Reader for read-only
+	// listing ops (passed to scanFolders). Both reference the same
+	// concrete uploader in production (Bundle.Admin and Bundle.Reader
+	// are populated side-by-side in BuildDriveBundle).
+	driveAdmin := root.Drive.Admin
+	driveReader := root.Drive.Reader
 	ctx := cmdContext()
 
 	if *cleanupPolluted {
-		return runListDriveFolderCleanupPolluted(ctx, root.DB.DB, uploader, log)
+		return runListDriveFolderCleanupPolluted(ctx, root.DB.DB, driveAdmin, log)
 	}
 
 	fmt.Printf("=== Scanning Google Drive Folder Hierarchy ===\n")
 	fmt.Printf("Root Folder ID: %s\n", *folder)
 	fmt.Printf("Sync to Database: %t\n\n", *syncDB)
 
-	count, err := scanFolders(ctx, uploader, root.DB.DB, *folder, "", "", *syncDB, log)
+	count, err := scanFolders(ctx, driveReader, root.DB.DB, *folder, "", "", *syncDB, log)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
@@ -113,7 +121,11 @@ func runListDriveFolder(args []string) error {
 	return nil
 }
 
-func runListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, uploader *drive.Uploader, log *zap.Logger) error {
+// runListDriveFolderCleanupPolluted now takes the canonical drive.Admin
+// port (Wave B, June 2026) — DeleteFolder is an Admin method; reading
+// from root.Drive.Reader is unnecessary here. Caller (runListDriveFolder)
+// passes root.Drive.Admin from the DriveBundle composition.
+func runListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, driveAdmin drive.Admin, log *zap.Logger) error {
 	fmt.Printf("=== Cleaning Up Polluted Style Folders Under Media Root ===\n")
 	for _, id := range strings.Split(pollutedStyleFolderIDs, ",") {
 		id = strings.TrimSpace(id)
@@ -121,11 +133,11 @@ func runListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, uploader
 			continue
 		}
 		fmt.Printf("Deleting polluted folder %s... ", id)
-		if uploader == nil {
-			fmt.Println("SKIPPED (no drive uploader)")
+		if driveAdmin == nil {
+			fmt.Println("SKIPPED (no drive admin port)")
 			continue
 		}
-		if err := uploader.DeleteFolder(ctx, id); err != nil {
+		if err := driveAdmin.DeleteFolder(ctx, id); err != nil {
 			fmt.Printf("failed: %v\n", err)
 			continue
 		}
@@ -149,18 +161,24 @@ func runListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, uploader
 // folder_path, group_name, search_key, created_at, updated_at) matches
 // migration 011_create_characters.sql and the runtime INSERT pattern
 // used by internal/app/bootstrap.go::resolveDynamicDriveFolders.
+// scanFolders now takes the canonical drive.Reader port (Wave B,
+// June 2026) — ListFiles is a Reader method. Caller (runListDriveFolder)
+// passes root.Drive.Reader from the DriveBundle composition.
+//
+// The recursive `scanFolders` passes the same `drive.Reader` along,
+// so a single declared port threads the whole subtree traversal.
 func scanFolders(
 	ctx context.Context,
-	uploader *drive.Uploader,
+	reader drive.Reader,
 	db *sql.DB,
 	folderID, currentPath, source string,
 	syncDB bool,
 	log *zap.Logger,
 ) (int, error) {
-	if uploader == nil {
-		return 0, fmt.Errorf("drive uploader not available")
+	if reader == nil {
+		return 0, fmt.Errorf("drive reader port not available")
 	}
-	files, err := uploader.ListFiles(ctx, folderID)
+	files, err := reader.ListFiles(ctx, folderID)
 	if err != nil {
 		return 0, err
 	}
@@ -232,7 +250,7 @@ func scanFolders(
 			}
 		}
 
-		subCount, err := scanFolders(ctx, uploader, db, file.ID, childPath, childSource, syncDB, log)
+		subCount, err := scanFolders(ctx, reader, db, file.ID, childPath, childSource, syncDB, log)
 		if err != nil {
 			log.Warn("Failed to scan subfolder", zap.String("name", file.Name), zap.Error(err))
 		}

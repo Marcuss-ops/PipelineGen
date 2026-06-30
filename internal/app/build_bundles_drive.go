@@ -163,7 +163,9 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// See architecture/deprecations.yaml#DRIVE-005-FIELDS for the
 		// canonical removal plan (target Q3 2026, post-Wave 14).
 		DriveClient:   driveClient,
-		DriveUploader: driveUploader,
+		// Wave B (June 2026): DriveUploader field removed from DriveBundle.
+		// cmd/admin/ callers now reach Drive via root.Drive.Admin (or
+		// root.Drive.Reader for scanFolders). DriveClient stays for Wave C.
 		driveUploader: driveUploader, // unexported; for internal wiring within package app
 		DriveDests:    dests,
 		MediaStore:    mediaStore,
