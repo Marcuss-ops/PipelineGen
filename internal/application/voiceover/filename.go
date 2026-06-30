@@ -10,19 +10,94 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func (s *Service) buildFilename(req *BatchRequest, language, textHash string) string {
-	slug := textutil.SlugifyWithMax(req.Text, 30)
-	template := req.FilenameTemplate
+// FilenameSpec is the canonical input for BuildVoiceoverFilename. It
+// captures the minimum data the canonical token substitution needs:
+// source text (sluggified), the BCP-47 language, an optional per-batch
+// text hash, an optional user template, and an optional Now (zero →
+// time.Now() at call). Callers MUST pre-validate Text and Language
+// non-empty per the higher-layer Validate() gates; the error return
+// on BuildVoiceoverFilename exists for the forward-stability of the
+// public surface + tests that drive edge cases outside the validated
+// path.
+type FilenameSpec struct {
+	// Text is the source text (sluggified via textutil.SlugifyWithMax
+	// under the {slug} token; max length 30).
+	Text string
+
+	// Language is the BCP-47 language code (inserted under the {lang}
+	// token; non-empty by Validate() contract).
+	Language string
+
+	// TextHash is the per-batch SHA-256 prefix (inserted under the
+	// {hash} token, first 8 chars; if shorter than 8 the empty string
+	// is inserted — no panic).
+	TextHash string
+
+	// Template is the optional user template (with {slug}/{lang}/{hash}/
+	// {time} tokens). Empty string falls back to "{slug}_{lang}.mp3"
+	// so the canonical default grammar always applies.
+	Template string
+
+	// Now is the optional clock for tests + reproducibility. Zero
+	// value → time.Now() at call. Tests should pin Now via a known
+	// epoch to assert exact filename strings.
+	Now time.Time
+}
+
+// BuildVoiceoverFilename returns the canonical voiceover filename per
+// the standard {slug}/{lang}/{hash}/{time} token grammar:
+//
+//	{slug} -> textutil.SlugifyWithMax(Text, 30)
+//	{lang} -> Language (verbatim)
+//	{hash} -> first 8 chars of TextHash (empty string if shorter)
+//	{time} -> Now.Format("150405") (HHMMSS in 24h format)
+//
+// Returns an error if Text or Language is empty — the higher-layer
+// Validate() gates (GenerateVoiceoversCommand.Validate,
+// GenerateVoiceoverItemCommand.Validate) already enforce non-empty
+// Text + Language, so the error path is unreachable in production.
+// The return type exists for forward-stability of the canonical
+// surface and for tests that probe edge cases outside the validated
+// path.
+//
+// E4 (June 2026): replaces the three duplicate helpers
+// (Service.buildFilename, GenerateVoiceoversUseCase.buildCommandFilenameForItem,
+// jobs.buildItemFilename+jobs.slug) with one canonical implementation.
+// The {slug}/{lang}/{hash}/{time} token grammar is invariant across
+// all call sites — the slug helper is textutil.SlugifyWithMax (the
+// canonical pillper, also used elsewhere in the voiceover package);
+// the local pkg-imports-free slug() implementation in jobs/fanout.go
+// is absorbed because pkg imports here are 1-line and deterministic.
+func BuildVoiceoverFilename(spec FilenameSpec) (string, error) {
+	if strings.TrimSpace(spec.Text) == "" {
+		return "", fmt.Errorf("BuildVoiceoverFilename: Text must be non-empty")
+	}
+	if strings.TrimSpace(spec.Language) == "" {
+		return "", fmt.Errorf("BuildVoiceoverFilename: Language must be non-empty")
+	}
+
+	template := spec.Template
 	if template == "" {
 		template = "{slug}_{lang}.mp3"
 	}
 
+	slug := textutil.SlugifyWithMax(spec.Text, 30)
 	filename := strings.ReplaceAll(template, "{slug}", slug)
-	filename = strings.ReplaceAll(filename, "{lang}", language)
-	filename = strings.ReplaceAll(filename, "{hash}", textHash[:8])
-	filename = strings.ReplaceAll(filename, "{time}", time.Now().Format("150405"))
+	filename = strings.ReplaceAll(filename, "{lang}", spec.Language)
 
-	return filename
+	hashPrefix := spec.TextHash
+	if len(hashPrefix) > 8 {
+		hashPrefix = hashPrefix[:8]
+	}
+	filename = strings.ReplaceAll(filename, "{hash}", hashPrefix)
+
+	now := spec.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	filename = strings.ReplaceAll(filename, "{time}", now.Format("150405"))
+
+	return filename, nil
 }
 
 func buildVoiceoverID(textHash, language, folderID string) string {

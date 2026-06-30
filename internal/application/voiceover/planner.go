@@ -17,13 +17,27 @@
 package voiceover
 
 import (
+	"fmt"
+
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
-// Plan materialises []Task for the per-language fan-out. Returns the
-// tasks slice, the per-batch requestID, and the per-batch textHash.
+// Plan materialises []Task for the per-item fan-out. Returns the
+// tasks slice, the per-batch requestID, and an empty string for the
+// legacy per-batch textHash slot (Step 5: textHash is now per-item,
+// threaded into each Task.TextHash).
 //
-// Empty cmd.Languages returns (nil, "", "") — the executor's Run
+// Step 5 (P0.3 items-model recovery, June 2026): Plan iterates
+// cmd.Items (not cmd.Languages — that field was removed from
+// GenerateVoiceoversCommand). Each item carries its own
+// text/language/voice/filename so per-task data is sourced from
+// the item directly. textHash is computed per-item (mixed-text
+// invariant: each row's text_hash column reflects THAT item's text,
+// not the batch's text). requestID remains a batch-level constant
+// (the same value threads into every child row so audit queries
+// correlate the batch by request_id).
+//
+// Empty cmd.Items returns (nil, "", "") — the executor's Run
 // short-circuits cleanly when len(tasks)==0 (no sem channel alloc).
 //
 // Plan is the canonical planning hook for Blocco 7 — adding a
@@ -33,37 +47,75 @@ func (u *GenerateVoiceoversUseCase) Plan(
 	cmd *GenerateVoiceoversCommand,
 	dest *ResolvedDestination,
 ) ([]Task, string, string) {
-	if cmd == nil || len(cmd.Languages) == 0 {
+	if cmd == nil || len(cmd.Items) == 0 {
 		return nil, "", ""
 	}
 
 	requestID := buildRequestID()
-	textHash := hashutil.SHA256String(cmd.Text)
 
 	folderID := ""
 	if dest != nil {
 		folderID = dest.FolderID
 	}
 
-	tasks := make([]Task, len(cmd.Languages))
-	for i, lang := range cmd.Languages {
-		voice := ""
-		if cmd.VoiceOverrides != nil {
-			voice = cmd.VoiceOverrides[lang]
+	tasks := make([]Task, len(cmd.Items))
+	for i, itemSpec := range cmd.Items {
+		// Per-item textHash: each item's text is independent so the
+		// hash reflects THIS item's text (Step 5 invariant — mixed
+		// texts are first-class and each row's text_hash must match).
+		//
+		// IMPORTANT: this MUST stay in lock-step with
+		// internal/application/voiceover/jobs/fanout.go::textHashSHA256
+		// (16 hex chars / 64-bit SHA-256 prefix). Two paths produce
+		// text_hash column values for the same item — fanout.go writes
+		// the child's JSON TextHash field, this Planner path writes the
+		// Task.TextHash that processOneLanguage persists into the row.
+		// A length drift here makes the voiceovers.text_hash column
+		// inconsistent (16 chars vs 64 chars) and silently breaks the
+		// Step 4 aggregator's dedupe. Step 5 audit-pin.
+		perItemTextHash := truncationHash(itemSpec.Text)
+		// E4: buildCommandFilenameForItem → canonical BuildVoiceoverFilename.
+		// Inputs are pre-validated by itemSpec via the higher-layer
+		// GenerateVoiceoversCommand.Validate gate.
+		filename, err := BuildVoiceoverFilename(FilenameSpec{
+			Text:     itemSpec.Text,
+			Language: itemSpec.Language,
+			TextHash: perItemTextHash,
+			Template: itemSpec.Filename,
+		})
+		if err != nil {
+			panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (Plan): %v (item=%+v)", err, itemSpec))
 		}
-		filename := u.buildCommandFilename(cmd, lang, textHash)
-		id := buildVoiceoverID(textHash, lang, folderID)
+		id := buildVoiceoverID(perItemTextHash, itemSpec.Language, folderID)
 		tasks[i] = Task{
 			Index:         i,
-			Language:      lang,
-			VoiceOverride: voice,
+			Language:      itemSpec.Language,
+			VoiceOverride: itemSpec.Voice,
 			Filename:      filename,
 			ID:            id,
 			RequestID:     requestID,
-			TextHash:      textHash,
+			TextHash:      perItemTextHash,
 			Destination:   dest,
 			Command:       cmd,
 		}
 	}
-	return tasks, requestID, textHash
+	return tasks, requestID, ""
+}
+
+// truncationHash returns the first 16 hex chars of SHA-256(text).
+// MUST stay byte-identical with
+// internal/application/voiceover/jobs/fanout.go::textHashSHA256 so
+// the per-child text_hash column is consistent across paths.
+//
+// INTERNAL CONTRACT: hashutil.SHA256String returns lowercase hex
+// (Go stdlib encoding/hex.EncodeToString default). If that ever
+// changes, this helper MUST produce uppercase OR the cross-package
+// equality breaks silently. The reviewer-flagged duplication is
+// closed by Step 12 cleanup (extract to voiceover/texthash.go) —
+// until then this comment is the audit-pin.
+//
+// 16 hex chars = 64 bits of entropy, sufficient for collision
+// resistance at expected row counts (~10^5 distinct texts).
+func truncationHash(text string) string {
+	return hashutil.SHA256String(text)[:16]
 }

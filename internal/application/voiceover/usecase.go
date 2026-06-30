@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -152,11 +151,15 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 	// result.RequestID below. Single source of truth — no two
 	// independent buildRequestID() calls per batch (auditors correlate
 	// request_id ↔ task IDs via the same value).
+	//
+	// Step 5 (P0.3 items-model recovery, June 2026): TotalOutputs and
+	// PerLanguage capacity are now sourced from len(cmd.Items) (one
+	// output per VoiceoverItem, NOT one output per language code).
 	result := &GenerateVoiceoversResult{
 		OK:           true,
 		RequestID:    "",
-		TotalOutputs: len(cmd.Languages),
-		PerLanguage:  make([]VoiceoverItemResult, 0, len(cmd.Languages)),
+		TotalOutputs: len(cmd.Items),
+		PerLanguage:  make([]VoiceoverItemResult, 0, len(cmd.Items)),
 		StartedAt:    time.Now().UTC(),
 	}
 
@@ -265,21 +268,28 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 	return result, nil
 }
 
-// processOneLanguage is the per-language orchestrator. Block 2 uses
+// processOneLanguage is the per-item orchestrator. Block 2 uses
 // the sequential fan-out; Block 3 introduces the bounded pool around
-// slice of these calls. Per-language ordering of PerLanguage[] matches
-// the input Languages[] order so callers can correlate Language ↔
-// index without re-processing.
+// slice of these calls. Per-item ordering of PerLanguage[] matches
+// the input Items[] order so callers can correlate item ↔ index
+// without re-processing.
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the function takes
+// a VoiceoverItem directly (not (cmd, language)) so each invocation
+// uses the item's own text/language/voice/filename. The linked
+// *GenerateVoiceoversCommand still carries the batch-level
+// configuration (Strategy, RemoveSilence, Metadata, Destination)
+// — those fields are shared across the whole batch.
 func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	ctx context.Context,
 	cmd *GenerateVoiceoversCommand,
+	itemSpec VoiceoverItem,
 	requestID string,
-	language string,
 	textHash string,
 	dest *ResolvedDestination,
 ) VoiceoverItemResult {
 	item := VoiceoverItemResult{
-		Language: language,
+		Language: itemSpec.Language,
 		Status:   StatusFailed,
 	}
 
@@ -288,20 +298,29 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		return item
 	}
 
-	id := buildVoiceoverID(textHash, language, dest.FolderID)
-	filename := u.buildCommandFilename(cmd, language, textHash)
+	id := buildVoiceoverID(textHash, itemSpec.Language, dest.FolderID)
+	// E4: buildCommandFilenameForItem → canonical BuildVoiceoverFilename.
+	// Inputs are pre-validated by itemSpec via the higher-layer
+	// GenerateVoiceoversCommand.Validate / GenerateVoiceoverItemCommand.Validate
+	// gates, so the error path is unreachable in production; panic
+	// surfaces regressions loud-fast in tests.
+	filename, err := BuildVoiceoverFilename(FilenameSpec{
+		Text:     itemSpec.Text,
+		Language: itemSpec.Language,
+		TextHash: textHash,
+		Template: itemSpec.Filename,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (processOneLanguage): %v (item=%+v)", err, itemSpec))
+	}
 	item.Filename = filename
 	item.ID = id
 
-	// Step 1: TTSProvider.Synthesize
-	voice := ""
-	if cmd.VoiceOverrides != nil {
-		voice = cmd.VoiceOverrides[language]
-	}
+	// Step 1: TTSProvider.Synthesize — uses the item's text/voice.
 	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
-		Text:          cmd.Text,
-		Language:      language,
-		Voice:         voice,
+		Text:          itemSpec.Text,
+		Language:      itemSpec.Language,
+		Voice:         itemSpec.Voice,
 		Filename:      filename,
 		OutputDir:     dest.FolderPath, // composition-root derived output dir
 		RemoveSilence: cmd.RemoveSilence,
@@ -343,8 +362,8 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	// Step 3: AssetLifecycle.Upload — populates Drive URLs.
 	metaBuf := map[string]any{
 		"text_hash":    textHash,
-		"text_preview": textutil.Truncate(cmd.Text, 100),
-		"language":     language,
+		"text_preview": textutil.Truncate(itemSpec.Text, 100),
+		"language":     itemSpec.Language,
 		"voice":        item.Voice,
 		"strategy":     string(cmd.Strategy),
 		"cleaned_path": item.CleanedPath,
@@ -364,7 +383,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		Metadata:   string(metaJSON),
 		FileHash:   item.FileHash,
 		Source:     "voiceover",
-		Name:       textutil.Truncate(cmd.Text, 100),
+		Name:       textutil.Truncate(itemSpec.Text, 100),
 	})
 	if err != nil {
 		item.Error = fmt.Sprintf("upload_failed: %v", err)
@@ -406,8 +425,8 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		ID:           id,
 		RequestID:    requestID,
 		TextHash:     textHash,
-		TextPreview:  textutil.Truncate(cmd.Text, 100),
-		Language:     language,
+		TextPreview:  textutil.Truncate(itemSpec.Text, 100),
+		Language:     itemSpec.Language,
 		Voice:        item.Voice,
 		Filename:     filename,
 		LocalPath:    item.LocalPath,
@@ -452,37 +471,58 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 
 // processOneTask is the Task-based adapter for the bounded executor
 // (Block 3). It maps the immutable Task fields onto the existing
-// processOneLanguage signature so the per-language fan-out body
+// processOneLanguage signature so the per-item fan-out body
 // stays a single implementation — future BACKFILL stages (idempotency
 // cache, post-write save context detachment) layer here without
 // touching processOneLanguage.
 //
+// Step 5 (P0.3 items-model recovery, June 2026): the adapter sources
+// the VoiceoverItem from t.Command.Items[t.Index] (per-item fan-out
+// — each task carries its slice index back to the original command's
+// Items array). The pre-Step-5 implementation extracted text/lang/
+// voice/filename from the now-removed cmd.Languages/cmd.VoiceOverrides/
+// cmd.FilenameTemplate flat shape; the new shape reads directly from
+// the same underlying item the fanout produced.
+//
 // The adapter pattern keeps the executor's TaskFn pure (no *Service
 // dependency the executor doesn't otherwise need) while preserving
-// the canonical per-language stage sequencing pinned by
-// service_test.go's path-traversal contract.
+// the canonical per-item stage sequencing pinned by
+// service_test.go's path-traversal contract. Defensive bounds-check
+// on t.Index surfaces a stale Task (out-of-range index after a
+// concurrent re-plan) as StatusFailed rather than a runtime panic.
 func (u *GenerateVoiceoversUseCase) processOneTask(ctx context.Context, t Task) VoiceoverItemResult {
-	return u.processOneLanguage(ctx, t.Command, t.RequestID, t.Language, t.TextHash, t.Destination)
+	if t.Command == nil {
+		// Defensive: Plan always populates Command, so a nil here means
+		// a stale executor task. Surface the failure with the task's
+		// recorded Language (Plan-derived) for log readability.
+		return VoiceoverItemResult{
+			Language: t.Language,
+			Status:   StatusFailed,
+			Error:    "task.Command is nil (plan produced an orphan task)",
+		}
+	}
+	if t.Index < 0 || t.Index >= len(t.Command.Items) {
+		// Defensive bounds-check: source the displayed Language from
+		// Task.Language (Plan-derived from itemSpec.Language) so the
+		// error path's item↔index mapping is consistent with the happy
+		// path's display.
+		return VoiceoverItemResult{
+			Language: t.Language,
+			Status:   StatusFailed,
+			Error:    fmt.Sprintf("task item index %d out of bounds (len(Items)=%d)", t.Index, len(t.Command.Items)),
+		}
+	}
+	// Step 5 invariant: pull text/lang/voice/filename from THIS item,
+	// not from the now-removed cmd.Languages/cmd.VoiceOverrides/cmd.
+	// FilenameTemplate flat fields. processOneLanguage takes the item
+	// directly so the per-item payload is honoured end-to-end.
+	item := t.Command.Items[t.Index]
+	return u.processOneLanguage(ctx, t.Command, item, t.RequestID, t.TextHash, t.Destination)
 }
 
-// buildCommandFilename is the use case's filename builder. Block 2 inlines
-// the template-substitution logic (the existing buildFilename helper is a
-// method on Service, so the use case can't call it without a Service
-// instance). The grammar mirrors buildFilename: {slug}, {lang}, {hash},
-// {time}. Default template: "{slug}_{lang}.mp3".
-func (u *GenerateVoiceoversUseCase) buildCommandFilename(cmd *GenerateVoiceoversCommand, language, textHash string) string {
-	slug := textutil.SlugifyWithMax(cmd.Text, 30)
-	template := cmd.FilenameTemplate
-	if template == "" {
-		template = "{slug}_{lang}.mp3"
-	}
-	filename := strings.ReplaceAll(template, "{slug}", slug)
-	filename = strings.ReplaceAll(filename, "{lang}", language)
-	hashPrefix := textHash
-	if len(hashPrefix) > 8 {
-		hashPrefix = hashPrefix[:8]
-	}
-	filename = strings.ReplaceAll(filename, "{hash}", hashPrefix)
-	filename = strings.ReplaceAll(filename, "{time}", time.Now().Format("150405"))
-	return filename
-}
+// buildCommandFilenameForItem — REMOVED in E4 (June 2026). The
+// per-item filename grammar now lives in BuildVoiceoverFilename at
+// filename.go (one canonical implementation across the three call
+// sites: process.go processLanguage, planner.go Plan, usecase.go
+// processOneLanguage). The migration is one line of BuildVoiceoverFilename
+// per callsite; no Surface below this line is touched.

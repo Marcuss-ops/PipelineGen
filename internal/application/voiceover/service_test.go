@@ -184,8 +184,16 @@ func TestBuildVoiceoverID(t *testing.T) {
 	assert.NotEqual(t, id1, id3, "different inputs should produce different ID")
 }
 
+// TestBuildFilename keeps the canonical filename-construction
+// coverage after E4 (June 2026) collapsed Service.buildFilename +
+// buildCommandFilenameForItem + jobs.buildItemFilename into the
+// single free function voiceover.BuildVoiceoverFilename(FilenameSpec).
+// The receiver-less free function is the new canonical surface;
+// tests that need Service state would belong in the filename_test.go
+// family, but the {slug}/{lang}/{hash}/{time} token grammar is
+// purely a function of FilenameSpec so no Service dependency is
+// needed.
 func TestBuildFilename(t *testing.T) {
-	s := &Service{}
 	tests := []struct {
 		name     string
 		template string
@@ -214,13 +222,15 @@ func TestBuildFilename(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := &BatchRequest{
-				Text:             tc.text,
-				FilenameTemplate: tc.template,
-			}
-			filename := s.buildFilename(req, tc.lang, tc.hash)
+			filename, err := BuildVoiceoverFilename(FilenameSpec{
+				Text:     tc.text,
+				Language: tc.lang,
+				TextHash: tc.hash,
+				Template: tc.template,
+			})
+			assert.NoError(t, err, "BuildVoiceoverFilename must accept the validated spec")
 			for _, check := range tc.checks {
-				assert.Contains(t, filename, check)
+				assert.Contains(t, filename, check, "filename=%q must contain %q", filename, check)
 			}
 		})
 	}
