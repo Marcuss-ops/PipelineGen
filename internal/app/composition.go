@@ -580,7 +580,14 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.driveUploader, outbox, qdrantDeps)
+	// F2.8 (June 2026): thread driveBundle.Publisher (the canonical
+	// delivery.Publisher port) instead of the unexported driveUploader.
+	// The pre-F2.8 raw-uploader bypass is closed. Publisher is
+	// fail-populated in BuildDriveBundle (build_bundles_drive.go) — a
+	// nil publisher surfaces in processor.NewProcessor as a typed
+	// panic at composition time (loud in operator log) rather than
+	// silent nil-deref on first upload.
+	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
 	}

@@ -41,6 +41,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
@@ -48,7 +49,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -309,12 +309,19 @@ func startOutboxEventsPool(
 
 // ── Media-processor wiring (moved from build_media_processor.go, Phase 5 consolidation, June 2026) ──
 
+// F2.8 (June 2026): the trailing arg swaps from `*drive.Uploader`
+// to `delivery.Publisher`. The Publisher is the canonical canal for
+// every Drive write from the processor; the legacy direct-uploader
+// bypass is closed. Compile-time assertion
+// `var _ delivery.Publisher = (*drive.Uploader)(nil)` lives in
+// internal/infrastructure/drive/publisher.go (already pinned there)
+// so this wiring is type-safe.
 func wireMediaProcessor(
 	outbox *OutboxBundle,
 	repos *RepoBundle,
 	dbs *databases,
 	cfg *config.Config,
-	driveUploader *drive.Uploader,
+	publisher delivery.Publisher,
 	log *zap.Logger,
 ) (asset.Processor, error) {
 	if outbox == nil || outbox.Dispatcher == nil {
@@ -334,9 +341,9 @@ func wireMediaProcessor(
 		repos.Assets.ProcessingRepository(),
 		mutationsDisp,
 		log,
-		driveUploader,
+		publisher,
 	)
-	log.Info("PR 8: MediaProcessor constructed inline with canonical mutations.AssetMutationDispatcher")
+	log.Info("PR 8: MediaProcessor constructed inline with canonical mutations.AssetMutationDispatcher (F2.8: publisher wired)")
 	return mp, nil
 }
 
