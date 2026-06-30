@@ -1,0 +1,152 @@
+//go:build drivepolicypkgtest
+
+package drive
+
+// publisher_policies_test.go (June 2026)
+//
+// The 3 P0 #2 tests in this file exercise NewDestinationRegistryWithPolicies
+// (the test-only seam in internal/application/assets/delivery/registry_test_factories.go).
+// Both files share the //go:build drivepolicypkgtest tag so:
+//
+//   - Default `go test ./internal/infrastructure/drive/...` does NOT compile
+//     these tests (the test affordance is hidden from production code paths).
+//   - `go test -tags drivepolicypkgtest ./internal/infrastructure/drive/...`
+//     compiles them along with the factory and pins the P0 #2 invariants.
+//
+// The helper `degenerateEmptyPathBuilder` lived in publisher_test.go before
+// this refactor; it moved here to co-locate with the (only) callers — keeping
+// the production `go doc` and `go vet` surface clean when -tags is off.
+
+import (
+	"context"
+	"testing"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/stretchr/testify/require"
+)
+
+// degenerateEmptyPathBuilder is the canonical test-only PathBuilder that
+// silently returns an empty segment slice. It mirrors what a malformed
+// or even maliciously crafted policy could do at runtime, and only
+// RequireSubpath=true callers can catch it. Used by P0 #2 regression
+// tests to verify that resolveDestination (and therefore both Publish
+// AND ResolveFolder) rejects it symmetrically.
+func degenerateEmptyPathBuilder(_ delivery.PublishRequest) ([]string, error) {
+	return []string{}, nil
+}
+
+// TestPublisher_PublishRejectsRequireSubpath is the P0 #2 paired test
+// for the Publish side of the symmetric enforcement. Uses a degenerate
+// registry where RequireSubpath=true and the PathBuilder returns an
+// empty segment slice. Without the centralised resolveDestination
+// helper, this would have been caught inside Publish's Step 3; with
+// the refactor, the check lives in the helper so this test verifies
+// the Publish path still rejects (which it does, via the helper).
+func TestPublisher_PublishRejectsRequireSubpath(t *testing.T) {
+	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+		delivery.DestinationYouTubeClip: {
+			RootFolderID:   "clips-root",
+			PathBuilder:    degenerateEmptyPathBuilder,
+			RequireSubpath: true,
+		},
+	})
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/video.mp4",
+		Filename:    "video.mp4",
+		// Group/Subject omitted on purpose: degenerateEmptyPathBuilder
+		// accepts them and returns []string{}, forcing the helper to
+		// trigger the RequireSubpath check.
+	})
+	require.Error(t, err, "Publish must reject when PathBuilder returns []string{} and RequireSubpath=true")
+	require.Contains(t, err.Error(), "forbidden", "Publish error must come from the RequireSubpath check")
+}
+
+// TestPublisher_ResolveFolder_HonorsRequireSubpath is the P0 #2 regression
+// catch for the symmetric enforcement. Before P0 #2, ResolveFolder
+// skipped the RequireSubpath check entirely (it had a near-duplicate
+// of Steps 1-4 but dropped Step 3), so this test would have FAILED:
+// ResolveFolder would have returned the rootFolderID without error,
+// even though the SAME request would have been rejected by Publish.
+//
+// With P0 #2 both Publish and ResolveFolder go through
+// resolveDestination so the check fires symmetrically. This test
+// would silently PASS today but still serves as a guard against
+// future drift — if a developer reverts the refactor and ResolveFolder
+// gets a duplicated Steps-1-4 block again, this test catches them.
+func TestPublisher_ResolveFolder_HonorsRequireSubpath(t *testing.T) {
+	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+		delivery.DestinationYouTubeClip: {
+			RootFolderID:   "clips-root",
+			PathBuilder:    degenerateEmptyPathBuilder,
+			RequireSubpath: true,
+		},
+	})
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	got, err := pub.ResolveFolder(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/video.mp4",
+		Filename:    "video.mp4",
+		// Group/Subject omitted — degenerateEmptyPathBuilder returns
+		// []string{} on purpose so the helper triggers the check.
+	})
+	require.Error(t, err, "ResolveFolder must reject when PathBuilder returns []string{} and RequireSubpath=true (was the Pre-P0#2 bypass — must NOT regress)")
+	require.Contains(t, err.Error(), "forbidden", "ResolveFolder error must come from the RequireSubpath check, not from a uploader/folder error")
+	require.Empty(t, got, "ResolveFolder must return empty folder ID on rejection")
+
+	// Sanity: the symmetric Publish call must ALSO reject with the
+	// SAME error class. This proves both paths flow through the same
+	// helper and the user-facing surface is now consistent.
+	_, publishErr := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/video.mp4",
+		Filename:    "video.mp4",
+	})
+	require.Error(t, publishErr, "Publish must reject symmetrically with ResolveFolder")
+	require.Contains(t, publishErr.Error(), "forbidden")
+
+	// Sanity: EnsureFolder must NOT have been called. The check fires
+	// before folder hierarchy creation, so no Drive writes can leak.
+	require.Empty(t, folders.ensureCalls, "ResolveFolder must reject BEFORE EnsureFolder (no Drive writes on rejection)")
+	require.Empty(t, files.uploadCalls, "ResolveFolder must reject BEFORE PutFile (no upload considerations)")
+}
+
+// TestPublisher_ResolveFolder_SuccessWhenSubpathProvided is the positive
+// counterpart. With a degenerate registry but a real PathBuilder that
+// returns segments, both Publish and ResolveFolder should succeed.
+func TestPublisher_ResolveFolder_SuccessWhenSubpathProvided(t *testing.T) {
+	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+		delivery.DestinationYouTubeClip: {
+			RootFolderID: "clips-root",
+			PathBuilder: func(_ delivery.PublishRequest) ([]string, error) {
+				return []string{"NBA News", "video-xyz"}, nil
+			},
+			RequireSubpath: true,
+		},
+	})
+	folders := &fakeFolderManager{result: "video-folder-id"}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	got, err := pub.ResolveFolder(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/video.mp4",
+		Filename:    "video.mp4",
+	})
+	require.NoError(t, err, "ResolveFolder should succeed when PathBuilder returns non-empty segments")
+	require.Equal(t, "video-folder-id", got, "ResolveFolder should return the leaf folder ID from EnsureFolder")
+	require.Len(t, folders.ensureCalls, 1)
+	require.Equal(t, []string{"NBA News", "video-xyz"}, folders.ensureCalls[0].segments)
+}
