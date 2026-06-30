@@ -288,15 +288,19 @@ type DomainBundle struct {
 	// the full Drive/destResolver/outbox/lifecycle/repo/audio/db
 	// chain is wired; nil when any link is missing.
 	VoiceoverGenerateHandler *voiceoverjobs.GenerateJobHandler
-	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): the
-	// per-language child use case (ProcessOneVoiceoverUseCase) and
-	// the per-job-type child handler (GenerateItemJobHandler for
-	// job.TypeVoiceoverGenerateItem). ProcessOneUseCase is populated
-	// in BuildDomainBundle; the child handler is constructed and
-	// registered at the late-bindings block in NewComposition
-	// (alongside the parent GenerateJobHandler that FanoutVoiceoversUseCase
-	// + jobs.Service wire in).
-	VoiceoverProcessOne          *voiceover.ProcessOneVoiceoverUseCase
+	// BLOC5.3 commit-2-child-canonical (June 2026): the per-language
+	// child use case (ProcessVoiceoverItemUseCase) is held as the
+	// narrow VoiceoverItemExecutor port (Pattern 0, AGENTS.md) so the
+	// composition layer survives a future BACKFILL that swaps the
+	// concrete use case for a different implementation without
+	// touching the late-bindings block. The concrete
+	// *ProcessVoiceoverItemUseCase is constructed in BuildDomainBundle
+	// (build_bundles_domain.go) via buildVoiceoverService's 3rd return
+	// value (processItemUseCase) and assigned here. The
+	// GenerateItemJobHandler (per-job-type child handler for
+	// job.TypeVoiceoverGenerateItem) is constructed and registered at
+	// the late-bindings block below.
+	VoiceoverProcessItem         voiceover.VoiceoverItemExecutor
 	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
 	// P0.1 (June 2026): the content-addressed artifact blob service.
 	// Constructed in BuildDomainBundle from dbs.main.DB +
@@ -604,7 +608,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// the late-binding Register calls. Idempotent — second pass logs the
 	// `already registered` warning via the existing Dispatcher
 	// double-Register protection.
-	if jobs.Service != nil && domains.VoiceoverProcessOne != nil {
+	if jobs.Service != nil && domains.VoiceoverProcessItem != nil {
 		fanout := voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{
 			Enqueuer: jobs.Service,
 			Logger:   log,
@@ -613,10 +617,10 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		parentHandler.Register(jobs.Service)
 		domains.VoiceoverGenerateHandler = parentHandler
 
-		childHandler := voiceoverjobs.NewGenerateItemJobHandler(domains.VoiceoverProcessOne, log)
+		childHandler := voiceoverjobs.NewGenerateItemJobHandler(domains.VoiceoverProcessItem, log)
 		childHandler.Register(jobs.Service)
 		domains.VoiceoverGenerateItemHandler = childHandler
-		log.Info("P0.3 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
+		log.Info("BLOC5.3 commit-2 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
 	}
 	if domains.ImageService != nil && jobs.Service != nil {
 		domains.ImageService.RegisterHandler(jobs.Service)
