@@ -376,6 +376,68 @@ wave_status:
         owner_capability: architecture
         status: shipped_through
         deadline: 2026-07-25
+
+# ── Cross-capability Import Cleanup (June 2026) ────────────────────────────────────────────
+# Audit at architecture/audits/2026-06-28-cross-capability-imports.md
+# found 16 cross-capability imports (§1 Findings) classified. Four
+# planned refactors (§2) total 5 commits (Refactor 1 = 1 commit,
+# Refactor 2 = 3 commits A/B/C, Refactor 3 = 1 commit, Refactor 4 =
+# DEFERRED — per audit §2.4). Each refactor lands independently
+# green: `go build` + `go vet` + `bash scripts/ci-architectural-checks.sh`.
+# No script_slug or cap value — this is a multi-shot refactor plan, not a
+# CI gate.
+  P1-8:
+    id: P1-8
+    topic: Cross-capability import cleanup (5 commits) per architecture/audits/2026-06-28-cross-capability-imports.md
+    current_state: in_progress
+    owner: architecture (refactor lead)
+    audit_anchor: architecture/audits/2026-06-28-cross-capability-imports.md
+    exit_gate: |
+      * Each of the 4 refactors lands independently green
+        (go build + go vet + ci-architectural-checks).
+      * `rg '"database/sql"' internal/application internal/api internal/domain`
+        count non-decreasing (Refactor 3 pairs with P1-8 SQL-pushdown
+        to drop `books` off this list — tracked separately).
+      * `rg 'internal/application/(scripts|images|voiceover|assets|youtube|channels)' internal/application`
+        count drops by at least 4 (Alert 1 stays as canonical port);
+        target = below 10 post-Refactor-2.
+    refactors:
+      - id: PR-CC-REFACTOR-1-scripts-jobs-clips-voiceover-ports
+        scope: Refactor 1 (1 commit, MEDIUM risk)
+        consumer: scripts/jobs
+        producers: clips + voiceover
+        anchored_files:
+          - internal/application/scripts/jobs/job_helpers.go
+          - internal/application/scripts/jobs/ports.go            (NEW)
+          - internal/application/voiceover/ports.go                (widening GenerateWithDestination on VoiceoverGenerator)
+          - internal/app/wire_script.go                            (composition: clipsFolderExtAdapter wire)
+          - internal/application/scripts/jobs/job_helpers_test.go  (NEW: 3 round-trip cases)
+        deadline: 2026-07-15
+        status: pending
+      - id: PR-CC-REFACTOR-2-assets-monitor-3-ports
+        scope: Refactor 2 (3 commits A/B/C, HIGH risk)
+        consumer: assets/monitor
+        producers: channels + youtube + jobs
+        anchored_files:
+          - internal/application/assets/monitor/ports.go           (NEW: 3 ports — reuse existing JobEnqueuer)
+          - internal/application/assets/monitor/{job_handler,process_video,monitor_channel_check,channel_monitor,monitor_scheduler}.go
+          - internal/app/monitor_adapters.go                       (NEW: 3 adapters w/ compile-time assertions)
+        deadline: 2026-07-25
+        status: pending
+      - id: PR-CC-REFACTOR-3-books-voiceover-generator
+        scope: Refactor 3 (1 commit, LOW risk) — coordinates w/ Refactor 1 widen
+        consumer: books
+        producers: voiceover (reuses widened VoiceoverGenerator)
+        anchored_files:
+          - internal/application/books/service.go
+          - internal/application/books/drive.go
+        deadline: 2026-07-25
+        status: pending
+      - id: PR-CC-REFACTOR-4-scene-pipeline-placeholder
+        scope: DO NOT REFACTOR — per audit §2.4; deferred to scene-pipeline reconstitution ticket
+        consumer: scripts/usecase
+        deadline: 2026-07-15
+        status: deferred
       - id: PR-CHECK-46-PACKAGE-QUALIFIED-BROADEN
         owner_capability: scripts/ci/architecture/checks/46_inline_clips_repository_map_ban.sh maintainer
         status: shipped_through
