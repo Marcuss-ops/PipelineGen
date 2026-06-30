@@ -835,8 +835,11 @@ decls=$(while IFS= read -r -d '' f; do
   case "$f" in
     *_test.go) continue ;;
   esac
-  pkg_line=$(awk '/^package / {print; exit}' "$f" 2>/dev/null || true)
-  pkg="${pkg_line#package }"
+  # extract package name (Check 23, parallel fix to 8fa8a501's Check 5 hardening).
+  # Canonical `awk $2` field-extraction; the prior `${pkg_line#package }` shell-strip
+  # collapses to empty pkg on non-canonical separators and would surface the same
+  # `(count=N in same package)` false-positive shape here too.
+  pkg=$(awk '/^package[[:space:]]+/ {print $2; exit}' "$f" 2>/dev/null || true)
   [ -z "$pkg" ] && continue
   awk -v pkg="$pkg" -v file="$f" -v max="$max_fields" '
     function flush_field(    line, lines, n, i, k) {
