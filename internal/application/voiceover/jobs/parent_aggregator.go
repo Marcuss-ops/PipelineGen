@@ -19,6 +19,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -60,6 +61,11 @@ var _ AggregatorJobsService = (*appjobs.Service)(nil)
 // jobs once all their children have reached terminal status.
 type ParentAggregator struct {
 	deps AggregatorDeps
+	// started is an idempotency guard: calling Start more than once
+	// would otherwise spawn a second ticker goroutine that races on the
+	// SQLite read-modify-write path in aggregateOne. atomic.Bool keeps
+	// the guard lock-free on the hot path.
+	started atomic.Bool
 }
 
 // NewParentAggregator constructs the poller. JobsSvc is mandatory
@@ -80,9 +86,15 @@ func NewParentAggregator(deps AggregatorDeps) *ParentAggregator {
 
 // Start launches the background ticker goroutine. The ticker runs
 // Tick() once per PollInterval. The goroutine exits when ctx is
-// cancelled. Idempotent across multiple calls (the ticker owns its
-// lifecycle independently).
+// cancelled. Idempotent: subsequent calls are no-ops (atomic guard
+// prevents double-spawning the ticker goroutine).
 func (a *ParentAggregator) Start(ctx context.Context) {
+	if !a.started.CompareAndSwap(false, true) {
+		// Already started — do not spawn a second ticker. The first
+		// goroutine still owns the lifecycle and will exit on ctx.Done().
+		a.deps.Logger.Info("voiceover parent aggregator Start called twice; ignoring (idempotency guard)")
+		return
+	}
 	go func() {
 		ticker := time.NewTicker(a.deps.PollInterval)
 		defer ticker.Stop()
