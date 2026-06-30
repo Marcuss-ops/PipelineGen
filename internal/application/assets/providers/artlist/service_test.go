@@ -123,7 +123,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 			Cfg:        cfg,
 			MainDB:     db,
 			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{},
+			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	if err != nil {
@@ -153,7 +153,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 			Cfg:        cfg,
 			MainDB:     db,
 			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{},
+			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 
