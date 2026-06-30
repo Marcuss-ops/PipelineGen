@@ -533,22 +533,28 @@ var _ voiceover.DestinationResolver = (*useCaseDestResolverAdapter)(nil)
 // ─────────────────────────────────────────────────────────────────────
 
 type useCaseDefaultFolderResolverAdapter struct {
-	folderID string
+	driveFolderID  string
+	localOutputDir string
 }
 
-func newUseCaseDefaultFolderResolverAdapter(folderID string) *useCaseDefaultFolderResolverAdapter {
-	// No panic: empty folderID is the production case when the
+func newUseCaseDefaultFolderResolverAdapter(driveFolderID, localOutputDir string) *useCaseDefaultFolderResolverAdapter {
+	// No panic: empty driveFolderID is the production case when the
 	// deployment lacks a configured voiceover_root_folder. The
-	// adapter's Resolve returns ("", false) in that case, Execute
-	// maps that to a cross-cutting failure.
-	return &useCaseDefaultFolderResolverAdapter{folderID: folderID}
+	// adapter's Resolve returns ("", "", false) in that case, Execute
+	// maps that to the canonical missing_folder_id short-circuit.
+	// Empty localOutputDir is OK (audio stage may fail differently,
+	// but missing_folder_id is no longer the failure mode).
+	return &useCaseDefaultFolderResolverAdapter{
+		driveFolderID:  driveFolderID,
+		localOutputDir: localOutputDir,
+	}
 }
 
-func (a *useCaseDefaultFolderResolverAdapter) Resolve(_ context.Context) (string, bool) {
-	if a == nil || a.folderID == "" {
-		return "", false
+func (a *useCaseDefaultFolderResolverAdapter) Resolve(_ context.Context) (string, string, bool) {
+	if a == nil || a.driveFolderID == "" {
+		return "", "", false
 	}
-	return a.folderID, true
+	return a.driveFolderID, a.localOutputDir, true
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0).

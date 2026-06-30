@@ -94,14 +94,27 @@ func (u *GenerateVoiceoverUseCase) Execute(ctx context.Context, text, language, 
 // AudioPostProcessor is nil-safe — the use case guards at the call site
 // (only invoked when cmd.RemoveSilence == true). Composition roots can
 // supply a no-op processor if audio cleanup is not desired.
+//
+// DefaultFolderResolver (PR 6 P0.2, June 2026) is OPTIONAL by design:
+// nil-safe at the use case boundary. When cmd.Destination is nil AND the
+// resolver returns a configured folder, Execute synthesises a
+// ResolvedDestination and proceeds (mirrors the legacy
+// *Service.processLanguage fallback at process.go:75-79). When
+// DefaultFolderResolver is nil OR returns ok=false, Execute degrades to
+// the canonical missing_folder_id short-circuit at processOneLanguage
+// (line 283) — same behavior as the pre-P0.2 implementation. This keeps
+// the "no fake availability" rule (godlike/07) intact for deployments
+// without a configured voiceover_root_folder: those requests still fail
+// loudly with missing_folder_id rather than silently writing to /tmp.
 type UseCaseDeps struct {
-	TTSProvider         TTSProvider
-	DestinationResolver DestinationResolver
-	AudioPostProcessor  AudioPostProcessor
-	AssetLifecycle      AssetLifecycle
-	VoiceoverRepository VoiceoverRepository
-	TransactionalOutbox TransactionalOutbox
-	Logger              *zap.Logger
+	TTSProvider           TTSProvider
+	DestinationResolver   DestinationResolver
+	AudioPostProcessor    AudioPostProcessor
+	AssetLifecycle        AssetLifecycle
+	VoiceoverRepository   VoiceoverRepository
+	TransactionalOutbox   TransactionalOutbox
+	Logger                *zap.Logger
+	DefaultFolderResolver VoiceoverDefaultFolderResolver
 
 	// DefaultParallelism is the fallback when cmd.Parallelism == 0.
 	// Clamped to >= 1. Production: 3.
@@ -199,8 +212,24 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 
 	// Step 2: resolve destination once. Cross-cutting failure path —
 	// bubble up so the caller short-circuits (no per-item fan-out).
+	//
+	// PR 6 P0.2 (June 2026) destination-fallback chain:
+	//   1. cmd.Destination supplied → resolve via DestinationResolver
+	//      (the canonical explicit/Kind-based routing per PR-VO-C1).
+	//   2. cmd.Destination nil AND DefaultFolderResolver wired AND
+	//      returns ("<folderID>", true) → synthesise ResolvedDestination
+	//      with the configured folder (mirrors legacy
+	//      *Service.processLanguage fallback at process.go:75-79) and
+	//      log "destination fallback to voiceover default folder" so
+	//      operators see the fallback in audit logs.
+	//   3. cmd.Destination nil AND DefaultFolderResolver nil OR
+	//      returns ("", false) → leave dest = nil; processOneLanguage
+	//      short-circuits with `missing_folder_id` (pre-P0.2 behavior
+	//      preserved per godlike/07 — no fake availability for
+	//      deployments without voiceover_root_folder configured).
 	var dest *ResolvedDestination
-	if cmd.Destination != nil {
+	switch {
+	case cmd.Destination != nil:
 		d, err := u.deps.DestinationResolver.Resolve(ctx, cmd.Destination)
 		if err != nil {
 			result.OK = false
@@ -209,6 +238,23 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 			return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: resolve destination: %w", err)
 		}
 		dest = d
+	case u.deps.DefaultFolderResolver != nil:
+		// Top-down switch semantics: at this point cmd.Destination is
+		// verifiably nil (case-1 was false). The redundant
+		// `cmd.Destination == nil` half is dropped per idiomatic
+		// Go-switch practice.
+		driveFolderID, localOutputDir, ok := u.deps.DefaultFolderResolver.Resolve(ctx)
+		if ok && driveFolderID != "" {
+			dest = &ResolvedDestination{
+				FolderID:   driveFolderID,
+				FolderPath: localOutputDir,
+			}
+			if u.deps.Logger != nil {
+				u.deps.Logger.Info("destination fallback to voiceover default folder",
+					zap.String("folder_id", driveFolderID),
+					zap.String("output_dir", localOutputDir))
+			}
+		}
 	}
 
 	// Step 2b: textHash is computed lazily by Plan() (one SHA256 per
