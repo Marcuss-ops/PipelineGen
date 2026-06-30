@@ -127,28 +127,43 @@ func (s *stubMetrics) SetAliasCurrent(alias, collection string) {
 	s.aliasBindings = append(s.aliasBindings, stubAliasBinding{alias: alias, collection: collection})
 }
 
-// stubExecutor captures RetentionConfig; returns canned RetentionResult.
-// Cycle break (June 2026): executor takes/receives dr-local types
-// (RetentionConfig + RetentionResult), mirroring the port interface.
+// stubExecutor captures RetentionConfig; returns the canned *RetentionResult
+// (pointer-mirroring the canonical port signature).
+//
+// BLOC-2.B QDRANT-DR-FIX (June 2026, PR-check-5 follow-up): the canonical
+// RetentionExecutor port expects a pointer return (*qdrantdr.RetentionResult,
+// error), not the (RetentionResult, error) value-return the stub originally
+// used. This drift surfaced as a `go vet ./...` failure at snapshot_test.go:432
+// the first time the test was wired against the post-QDRANT-DR-WIRE-MIRROR
+// port surface. Aligning the stub to match the canonical interface signature
+// (structurally *qdrantdr.RetentionResult via the
+// `type RetentionResult = qdrantdr.RetentionResult` alias declared in
+// internal/application/qdrant/dr/types.go) unblocks the vet failure without
+// changing test semantics:
+//   - test caller at line 425 supplies &stubExecutor{resp: &RetentionResult{...}},
+//     so the success branch returns s.resp (a non-nil *RetentionResult);
+//   - callers of executor.CleanupWithConfig already either dereference or
+//     nil-check the result; returning nil on err is the conventional
+//     Go error-pattern.
 type stubExecutor struct {
 	calls []RetentionConfig
 	resp  *RetentionResult
 	err   error
 }
 
-func (s *stubExecutor) Apply(ctx context.Context, cfg RetentionConfig) (RetentionResult, error) {
+func (s *stubExecutor) Apply(ctx context.Context, cfg RetentionConfig) (*RetentionResult, error) {
 	return s.CleanupWithConfig(ctx, cfg)
 }
 
-func (s *stubExecutor) CleanupWithConfig(_ context.Context, cfg RetentionConfig) (RetentionResult, error) {
+func (s *stubExecutor) CleanupWithConfig(_ context.Context, cfg RetentionConfig) (*RetentionResult, error) {
 	s.calls = append(s.calls, cfg)
 	if s.err != nil {
-		return RetentionResult{}, s.err
+		return nil, s.err
 	}
 	if s.resp == nil {
-		return RetentionResult{}, nil
+		return &RetentionResult{}, nil
 	}
-	return *s.resp, nil
+	return s.resp, nil
 }
 
 // ── SnapshotService tests ───────────────────────────────────────────
