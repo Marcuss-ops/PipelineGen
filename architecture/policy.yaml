@@ -19,6 +19,13 @@ cmd_main_max_lines: 200
 # exception exists. Default 8 per the CI-gates doc; operators can tune.
 max_constructor_deps: 8
 
+# Struct dependency cap — Phase 1+ extension (P1.7, June 2026): counts
+# fields in Dependencies / Deps / Options structs. Mega-structs that
+# bundle >8 mandatory ports circumvent the constructor-parameter gate;
+# this rule catches them at the type level. Defaults to max_constructor_deps
+# when unset. Zero opts out.
+max_struct_deps: 8
+
 # Generic dumping-ground dirs forbidden as top-level package names
 # (per the proposal §"internal/capabilities").
 forbidden_top_level_dirs: service, repository, models, utils, helpers

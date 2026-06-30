@@ -44,6 +44,7 @@ type Policy struct {
 	MaxLinesPerFile       int
 	CmdMainMaxLines       int
 	MaxConstructorDeps    int
+	MaxStructDeps         int
 	ForbiddenTopLevelDirs []string
 	KernelSubzones        []string
 	Capabilities          []string
