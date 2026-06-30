@@ -173,18 +173,12 @@ func buildVoiceoverService(
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	// Wave 21 / B-2 BACKFILL typed-port wire-up (PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2):
-	// voService structurally satisfies voiceover.VoiceoverGenerator
-	// (compile-time assertion in voiceover/ports.go). Materialise
-	// GenerateVoiceoverUseCase here so CUTOVER (B-3) can flip
-	// scripts/ call sites through this typed-port without further
-	// wire-up changes. Currently unused (`_`): zero call-site changes
-	// per B-2 BACKFILL scope (scripts/ untouched, handlers untouched).
-	_ = voiceover.NewGenerateVoiceoverUseCase(voiceover.ServiceDeps{
-		Generator: voService,
-		Logger:    log,
-	})
-	log.Info("Voiceover use case wired up (B-2 BACKFILL typed-port)", zap.String("port_type", "VoiceoverGenerator"))
+	// A1 (June 2026): the B-2 BACKFILL typed-port scaffold
+	// (voiceover.NewGenerateVoiceoverUseCase) was a 1-a-1 delegate to
+	// VoiceoverGenerator with zero call sites — removed. voService
+	// still structurally satisfies voiceover.VoiceoverGenerator
+	// (compile-time assertion in voiceover/ports.go); callers
+	// (books, scripts/jobs, workflow/promo) inject the port directly.
 
 	return voService, voRepo
 }
