@@ -62,6 +62,19 @@ func stageLog(log *zap.Logger, requestID, stage, language string) func() {
 	}
 }
 
+// PR-VO-AUDIT-P02 (June 2026): the inline cfg.Drive.VoiceoverFolder()
+// fallback that used to pre-populate req.Destination here has been
+// REMOVED. The fallback now lives in the canonical destination
+// resolver (destination_resolver.go::ResolveVoiceoverDestination)
+// so Service.Generate → Service.GenerateBatch → Service.resolveDestination
+// route identically with the worker-side call paths. Pre-refactor
+// behaviour: nil req.Destination was a hard missing_folder_id in
+// stages.go::GenerateBatch (the gate `if req.Destination != nil`)
+// — the cfg-fallback surfaced only via THIS single-language wrapper
+// which silently diverged from the worker-side path. The audit calls
+// that the BACKFILL/CUTOVER-incomplete state of the voiceover module.
+// Post-refactor: nil req.Destination is a valid input that the
+// canonical resolver handles via its nil-dest branch.
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	req := &BatchRequest{
 		Text:             text,
@@ -69,11 +82,6 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 		FilenameTemplate: filename,
 		RemoveSilence:    ptrutil.Bool(false),
 		Strategy:         "replace",
-	}
-	if s.cfg.Drive.VoiceoverFolder() != "" {
-		req.Destination = &DestinationRequest{
-			FolderID: s.cfg.Drive.VoiceoverFolder(),
-		}
 	}
 	resp, err := s.GenerateBatch(ctx, req)
 	if err != nil {

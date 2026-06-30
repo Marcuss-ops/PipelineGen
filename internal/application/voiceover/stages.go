@@ -117,19 +117,27 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	requestID := buildRequestID()
 	textHash := hashutil.SHA256String(req.Text)
 
+	// PR-VO-AUDIT-P02 (June 2026): the legacy gate
+	// `if req.Destination != nil` is REMOVED. The canonical destination
+	// resolver (destination_resolver.go::ResolveVoiceoverDestination)
+	// handles nil dest via its nil-dest branch which falls back to the
+	// configured cfg.Drive.VoiceoverFolder() (or surfaces
+	// ErrMissingFolder when no default is configured). Keeping the
+	// gate here would silently restore the pre-PR8 bug where a
+	// nil-Destination request fell through the worker-side path with
+	// `dest = nil` and failed at Stage 2 with `missing_folder_id` even
+	// though the cfg had a valid voiceover folder configured.
 	var dest *ResolvedDestination
-	if req.Destination != nil {
-		d, err := s.resolveDestination(ctx, req.Destination)
-		if err != nil {
-			if s.log != nil {
-				s.log.Warn("GenerateBatch: resolveDestination failed",
-					zap.String("restored", restoreIdent),
-					zap.Error(err))
-			}
-			return nil, fmt.Errorf("GenerateBatch: resolve destination: %w", err)
+	d, err := s.resolveDestination(ctx, req.Destination)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("GenerateBatch: resolveDestination failed",
+				zap.String("restored", restoreIdent),
+				zap.Error(err))
 		}
-		dest = d
+		return nil, fmt.Errorf("GenerateBatch: resolve destination: %w", err)
 	}
+	dest = d
 
 	items := make([]BatchItem, 0, len(req.Languages))
 	ok := true
