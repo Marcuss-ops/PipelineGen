@@ -230,11 +230,12 @@ func TestBatchItemFail(t *testing.T) {
 	item := BatchItem{
 		ID:       "test-id",
 		Language: "en",
-		Status:   "processing",
+		Status:   StatusProcessing,
 	}
 
-	result := item.fail("download_failed", assert.AnError)
-	assert.Equal(t, "download_failed", result.Status)
+	result := item.fail(FailureDownload, assert.AnError)
+	assert.Equal(t, StatusFailed, result.Status, "PR-VO-AUDIT-P01: fail() normalises any failure code to StatusFailed")
+	assert.Equal(t, []FailureCode{FailureDownload}, result.Errors, "PR-VO-AUDIT-P01: fail() appends the FailureCode to Errors[]")
 	assert.Contains(t, result.Error, "assert.AnError")
 	assert.Equal(t, "test-id", result.ID)
 }
@@ -244,8 +245,8 @@ func TestBatchResponseConstruction(t *testing.T) {
 		OK:        true,
 		RequestID: "vo_20250101_120000_abc123",
 		Items: []BatchItem{
-			{ID: "item-1", Language: "en", Status: "processed"},
-			{ID: "item-2", Language: "it", Status: "processed"},
+			{ID: "item-1", Language: "en", Status: StatusCompleted},
+			{ID: "item-2", Language: "it", Status: StatusCompleted},
 		},
 	}
 
@@ -259,14 +260,14 @@ func TestBatchResponseWithError(t *testing.T) {
 		OK:    false,
 		Error: "some batch items failed",
 		Items: []BatchItem{
-			{ID: "item-1", Language: "en", Status: "processed"},
-			{ID: "item-2", Language: "it", Status: "failed", Error: "tts error"},
+			{ID: "item-1", Language: "en", Status: StatusCompleted},
+			{ID: "item-2", Language: "it", Status: StatusFailed, Error: "tts error"},
 		},
 	}
 
 	assert.False(t, resp.OK)
 	assert.Len(t, resp.Items, 2)
-	assert.Equal(t, "failed", resp.Items[1].Status)
+	assert.Equal(t, StatusFailed, resp.Items[1].Status, "PR-VO-AUDIT-P01: failed item must surface typed StatusFailed")
 	assert.Contains(t, resp.Items[1].Error, "tts")
 }
 

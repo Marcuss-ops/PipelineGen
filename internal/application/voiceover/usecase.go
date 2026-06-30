@@ -468,7 +468,11 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		DriveLink:    item.DriveLink,
 		DownloadLink: uploadOut.DownloadLink,
 		FileHash:     item.FileHash,
-		Status:       "generated",
+		// PR-VO-AUDIT-P01: cast typed Status to plain string for the
+		// SQLite voiceovers.status column. The persistence layer keeps
+		// its DB wire shape unchanged; the in-process state machine is
+		// typed so the aggregate check is exhaustive at compile time.
+		Status:       string(StatusGenerated),
 		Strategy:     string(cmd.Strategy),
 		Metadata:     string(metaJSON),
 		CreatedAt:    now,

@@ -261,6 +261,35 @@
       owner_capability: internal/application/voiceover
       status: shipped
       deadline: 2026-07-10
+    # PR-VO-AUDIT-P01 (June 2026): typed state-machine hardening.
+    # Replaces the legacy string-literal Status + ad-hoc failure codes
+    # with two distinct types (Status / FailureCode). All failure paths
+    # (tts_failed, upload_failed, missing_folder_id, etc.) now flow
+    # through BatchItem.fail() which ALWAYS normalises to typed
+    # Status=StatusFailed; the structured FailureCode is appended to
+    # item.Errors so the forensic trail survives. The aggregate check
+    # `item.Status == StatusFailed` is exhaustive at compile time — no
+    # substring matching, no legacy-literal gap. Closes audit P0.1
+    # (the silent-false-success bug where a TTS-failed item fell
+    # through Stage 2 with Status="tts_failed" and finalizeStage
+    # committed with Status="completed").
+    - id: P0.1_status_machine
+      owner_capability: internal/application/voiceover
+      status: shipped
+      deadline: 2026-07-10
+    # PR-VO-AUDIT-P06 (June 2026): parent-handler nil-guard.
+    # GenerateJobHandler.HandleJob previously dereferenced
+    # res.EnqueuedCount + res.FailedEnqueueCount unconditionally when
+    # FanoutVoiceoversUseCase.Execute returned (nil, err) on cmd==nil,
+    # cmd.Validate() failure, or panic-recovered paths. Post-P06 a
+    # local var extraction (`enq, failEnq := 0, 0; if res != nil { ... }`)
+    # nil-guards both calls; toFanoutResultMap stays nil-safe (returns
+    # a well-formed partial-failure map) so the dispatcher's result-
+    # payload contract stays intact on validation-failure paths.
+    - id: P0.6_nil_deref_parent
+      owner_capability: internal/application/voiceover
+      status: shipped
+      deadline: 2026-07-10
 - id: 23
   status: in_progress
   exit_signal: false

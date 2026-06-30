@@ -40,6 +40,115 @@ type (
 	VoiceoverRecord = persistence.VoiceoverRecord
 )
 
+// ────────────────────────────────────────────────────────────────────────
+// PR-VO-AUDIT-P01 (June 2026): typed state-machine for voiceover.
+//
+// REPLACES the legacy string-literal status + ad-hoc failure codes with
+// two distinct types (Status / FailureCode). Both underlying strings
+// remain identical to the legacy wire shape so JSON consumers see no
+// change. The compile-time typed comparison is the whole point: legacy
+// checks `if item.Status == "failed"` silently missed every failure
+// literal that wasn't exactly "failed" (tts_failed, upload_failed,
+// missing_folder_id, etc.), allowing a TTS-failed item to reach the
+// finalizeStage and commit a record with Status="completed".
+//
+// After the typed-enum refactor, ANY failure code flows through the
+// canonical fail() helper which normalises to Status=StatusFailed;
+// downstream aggregate check `if item.Status == StatusFailed` is
+// exhaustive by construction — no substring matching, no "*/_failed"
+// gap, no silent false-success.
+//
+// JSON wire compat: `type Status string` + `type FailureCode string`
+// both serialise into the same byte-for-byte strings as the pre-P01
+// literal fields. omitempty on Errors[] keeps happy-path rows compact.
+// ────────────────────────────────────────────────────────────────────────
+
+// Status is the per-item terminal/active state. Typed so the runtime
+// aggregate check (Status == StatusFailed) is exhaustive at compile time
+// and cannot silently miss any "*_failed" sub-state.
+type Status string
+
+const (
+	// StatusProcessing is the initial state set by process.go right
+	// after ID + filename build. Visible to API consumers while a
+	// pipeline is in-flight; finalizeStage closes with StatusCompleted
+	// before commit.
+	StatusProcessing Status = "processing"
+	// StatusGenerated is the post-synthesize state. Stage 1 success.
+	StatusGenerated Status = "generated"
+	// StatusUploaded is the post-Lifecycle.ProcessAsset state.
+	// Stage 2 success — Drive link + file ID populated.
+	StatusUploaded Status = "uploaded"
+	// StatusCompleted is the post-finalize state. Stage 3 success —
+	// commit succeeded, row in SQLite + index event enqueued in
+	// the outbox (atomic, single tx).
+	StatusCompleted Status = "completed"
+	// StatusFailed is the canonical aggregate failure state. ALL
+	// failure codes (FailureCode consts below) normalise to this
+	// Status via the BatchItem.fail helper, which preserves the
+	// specific FailureCode in item.Errors so the forensic trail
+	// survives without breaking the aggregate OK=false contract.
+	StatusFailed Status = "failed"
+)
+
+// FailureCode is the structured per-failure-mode code. fail() appends
+// the call's FailureCode to item.Errors so callers can correlate the
+// canonical StatusFailed with the specific failure mode. Each constant
+// maps 1-a-1 to the pre-P01 literal status string; the refactor replaces
+// the literal with the typed constant without disturbing the JSON wire
+// shape.
+type FailureCode string
+
+const (
+	// FailureTTSProviderUnavailable — synthesizeStage: ttsProvider
+	// is nil (composition root did not wire it).
+	FailureTTSProviderUnavailable FailureCode = "tts_provider_unavailable"
+	// FailureTTS — synthesizeStage: TTSProvider.Synthesize returned
+	// an error (Python crash, edge-tts bridge failure, FFmpeg
+	// post-process error, etc.).
+	FailureTTS FailureCode = "tts_failed"
+	// FailureLifecycleUnavailable — destinationStage: lifecycleService
+	// is nil (composition root did not wire it).
+	FailureLifecycleUnavailable FailureCode = "lifecycle_unavailable"
+	// FailureMissingFolder — destinationStage: destination.FolderID
+	// is empty (resolver short-circuit; canonical destination
+	// resolver surfaces ErrMissingFolder at the resolve step too).
+	FailureMissingFolder FailureCode = "missing_folder_id"
+	// FailureNoLocalPayload — destinationStage: synthesizeStage
+	// produced no local path (Stage 2 cannot upload).
+	FailureNoLocalPayload FailureCode = "no_local_payload"
+	// FailureUpload — destinationStage: lifecycleService.ProcessAsset
+	// returned an error (Drive upload failed, dedupe gate hard-
+	// rejected, etc.).
+	FailureUpload FailureCode = "upload_failed"
+	// FailureDBUnavailable — finalizeStage: voiceoverRepo is nil
+	// (composition root did not wire it).
+	FailureDBUnavailable FailureCode = "db_unavailable"
+	// FailureTxBegin — finalizeStage: voiceoverRepo.BeginTx returned
+	// an error (sqlite lock, schema drift, etc.).
+	FailureTxBegin FailureCode = "tx_begin_failed"
+	// FailureDBDelete — finalizeStage: DeleteByIDTx returned an
+	// error (swap-mode preconditions).
+	FailureDBDelete FailureCode = "db_delete_failed"
+	// FailureDBInsert — finalizeStage: InsertTx returned an error.
+	FailureDBInsert FailureCode = "db_insert_failed"
+	// FailureOutboxEnqueue — finalizeStage:
+	// outboxEnqueuer.EnqueueIndexEvent returned an error (indexing
+	// deferred; row already in tx).
+	FailureOutboxEnqueue FailureCode = "outbox_enqueue_failed"
+	// FailureTxCommit — finalizeStage: tx.Commit returned an error.
+	FailureTxCommit FailureCode = "tx_commit_failed"
+	// FailureInvalidSubfolder — processLanguage: SubfolderName path
+	// traversal rejected by pathutil.SanitizeSubfolderSegment.
+	FailureInvalidSubfolder FailureCode = "invalid_subfolder_name"
+	// FailureInvalidFilename — processLanguage: SanitizeFilename
+	// rejected the caller-supplied filename.
+	FailureInvalidFilename FailureCode = "invalid_filename"
+	// FailureDownload — preserved for back-compat with the legacy
+	// service_test.go fixture at line 236.
+	FailureDownload FailureCode = "download_failed"
+)
+
 type BatchRequest struct {
 	Text             string              `json:"text"`
 	Languages        []string            `json:"languages"`
@@ -182,19 +291,40 @@ type BatchResponse struct {
 }
 
 type BatchItem struct {
-	ID           string `json:"id"`
-	Language     string `json:"language"`
-	Voice        string `json:"voice,omitempty"`
-	Filename     string `json:"filename"`
-	LocalPath    string `json:"local_path,omitempty"`
-	CleanedPath  string `json:"cleaned_path,omitempty"`
-	DriveLink    string `json:"drive_link,omitempty"`
-	DriveFileID  string `json:"drive_file_id,omitempty"`
-	DownloadLink string `json:"download_link,omitempty"`
-	FileHash     string `json:"file_hash,omitempty"`
-	Status       string `json:"status"`
-	Error        string `json:"error,omitempty"`
-	SearchText   string `json:"search_text,omitempty"`
+	ID           string   `json:"id"`
+	Language     string   `json:"language"`
+	Voice        string   `json:"voice,omitempty"`
+	Filename     string   `json:"filename"`
+	LocalPath    string   `json:"local_path,omitempty"`
+	CleanedPath  string   `json:"cleaned_path,omitempty"`
+	DriveLink    string   `json:"drive_link,omitempty"`
+	DriveFileID  string   `json:"drive_file_id,omitempty"`
+	DownloadLink string   `json:"download_link,omitempty"`
+	FileHash     string   `json:"file_hash,omitempty"`
+	// Status is the canonical per-item terminal/active state. Typed
+	// (Status) so the runtime aggregate check (Status == StatusFailed)
+	// is exhaustively typed at compile time. The JSON wire shape
+	// serialises the underlying string ("processing"/"generated"/
+	// "uploaded"/"completed"/"failed") so API consumers see no change.
+	//
+	// PR-VO-AUDIT-P01 (June 2026): the legacy checks
+	// `if strings.TrimSpace(item.Status) == "failed"` (process.go)
+	// + `if item.Status == "failed"` (stages.go) silently missed
+	// every "*/_failed" legacy literal — tts_failed, upload_failed,
+	// missing_folder_id, no_local_payload, lifecycle_unavailable,
+	// db_*, tx_*, outbox_*. After the audit fix, the canonical
+	// fail() helper ALWAYS normalises any failure code to Status=StatusFailed
+	// + appends the specific FailureCode to item.Errors so the
+	// forensic trail is preserved without affecting the aggregate
+	// OK=false contract (ok = ok && item.Status == StatusCompleted && item.Error == "").
+	Status       Status     `json:"status"`
+	Error        string     `json:"error,omitempty"`
+	// Errors is the structured failure history. fail() appends the
+	// call's FailureCode so callers can correlate the canonical
+	// StatusFailed with the specific failure mode. omitempty so
+	// happy-path JSON is byte-equivalent to the pre-P01 wire shape.
+	Errors       []FailureCode `json:"errors,omitempty"`
+	SearchText   string        `json:"search_text,omitempty"`
 }
 
 type VoiceoverResult struct {
@@ -280,9 +410,34 @@ func PromoRequestPayloadMap(r *PromoRequest) map[string]any {
 	return payload
 }
 
-func (i *BatchItem) fail(status string, err error) BatchItem {
-	i.Status = status
-	i.Error = err.Error()
+// PR-VO-AUDIT-P01 (June 2026): the canonical fail() helper. The
+// previous implementation forward-stored the literal status (e.g.
+// "tts_failed", "upload_failed", "missing_folder_id") and relied on
+// downstream checks `if item.Status == "failed"` to gate the
+// pipeline. Those checks missed every failure literal that wasn't
+// exactly "failed", so a tts_failed in synthesizeStage could fall
+// through Stage 2 with `Status == "tts_failed"`, then finalizeStage
+// committed the record with `Status = "completed"` — silent false-
+// success (the canonical audit P0.1 bug).
+//
+// The fix normalises every failure to Status(StatusFailed)
+// regardless of the specific code, then records the code in
+// item.Errors (omitempty-driven) so the forensic trail survives.
+// The downstream aggregate check at stages.go::GenerateBatch
+// becomes `if item.Status == StatusFailed { ok = false }` and
+// process.go's check short-circuits on the same typed comparison —
+// no more `strings.TrimSpace ==  "failed"` substring matching.
+//
+// Nil err case: the helper tolerates nil err (Error stays empty) so
+// callers that want to mark a StatusFailed without a concrete
+// message (e.g. cancel race) can still surface the failure code in
+// Errors[] without lying about an empty message string.
+func (i *BatchItem) fail(code FailureCode, err error) BatchItem {
+	i.Status = Status(StatusFailed)
+	if err != nil {
+		i.Error = err.Error()
+	}
+	i.Errors = append(i.Errors, code)
 	return *i
 }
 
