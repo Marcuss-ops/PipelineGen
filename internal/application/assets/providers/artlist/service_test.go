@@ -401,7 +401,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 			Cfg:            cfg,
 			MainDB:         db,
 			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{},
+			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
 			MediaProcessor: processor,
 		},
 	})
@@ -483,7 +483,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 			Cfg:            cfg,
 			MainDB:         db,
 			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{},
+			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
 			MediaProcessor: processor,
 		},
 	})
@@ -571,7 +571,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 			Cfg:            cfg,
 			MainDB:         db,
 			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{},
+			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
 			MediaProcessor: processor,
 		},
 	})
