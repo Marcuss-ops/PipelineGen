@@ -75,96 +75,15 @@ into the lifecycle wiring.
   Go interface-nilness trap that would silently panic the readiness
   barrier on a Drive-feature-disabled deployment.
 
-**[YouTube cutover Commit C, June 2026]** `feat(youtube)` — canonical
-`ProcessYouTubeSegmentUseCase` + `ClassifyExtractionResult` partial-success
-classification. Closes P0 #2, P0 #3, P0 #4, P2 #19 of the YouTube cutover
-audit. Three pieces land in one commit; back-compat preserved by
-keeping the legacy per-segment inline loop reachable whenever the new
-`ExtractionDeps.ProcessSeg` is nil (composition that hasn't yet wired the
-canonical cache/writer ports is unaffected; the legacy path is annotated
-`// TODO wave-delete (Commit H)` in
-`internal/application/youtube/adapters/segment_processor.go` and physically
-removed in Commit H).
+### Changed
 
-- **NEW canonical per-segment pipeline** at
-`internal/application/youtube/usecase/process_segment.go::ProcessYouTubeSegmentUseCase.Execute`
-runs the 9-step sequence with deterministic clip ID
-`yt_<videoID>_<startSec>_<endSec>_v1` (policy version bumps force
-re-processing for the same clipID — re-emits the segment under the new
-policy via the Commit D discovery ledger): deterministic ID + timestamp
-validation → existing-clip early-return via `ClipCachePort.GetExisting`
-→ `VideoPipeline.DownloadAndCutYouTubeVideo` with `pkg/retry.Do`
-(3 attempts, exponential backoff, retryable-error predicate
-`isTransientExtractionError`) → MD5 via `HashServicePort.MD5File` →
-subtitle slice via `SubtitleFetcherPort` → Whisper fallback via
-`WhisperTranscriberPort` → BuildClipMetadata via `SegmentsService`
-zero-dep helper → Drive upload via `DriveFolderManagerPort.UploadFileIfChanged`
-(retryable substring match logs `warn`, non-retryable escalates to
-`out.Item.Status="failed"` + returns the error — closes the silent-success
-hole the audit called out in P0 #2) → `ClipAtomicWriter.CommitClipAndIndexEvent`
-persists the clip DB row + emits `asset.index.requested` outbox row
-(concrete adapter lands in Commit F).
+**[DRIVE-005, June 2026]** Drive surface consolidated to **4 canonical typed ports** per AGENTS.md Pattern 0 + godlike/06 "one owner per fact": `delivery.Publisher` (conflict-aware uploads + `ConflictPolicy` + `PutFileRequest`/`PutAction`), `drive.Reader` (download + metadata + listing + existence), `drive.FileLifecycle` (Trash + Move + Rename + Cleanup), and `drive.DocClient` (Google Docs creation). The deprecated `internal/app.DriveBundle.DriveClient` + `DriveUploader` raw-SDK fields were physically retired from `DriveBundle` in commit `a8c781ae refactor(app): FASE 9 Step 5 \u2014 remove deprecated DriveClient and DriveUploader from DriveBundle`. Six-commit chain (positions 2..7 of the Drive-surface sequence: `5f590885 feat(drive): FASE 9 P0.1 DRIVE-005 \u2014 Admin + Reader port abstraction`, `a8c781ae refactor(app): FASE 9 Step 5 \u2014 remove deprecated DriveClient and DriveUploader from DriveBundle`, `b7d49099 refactor(drive): introduce PutFileRequest / PutFileResult and plumb ConflictPolicy into Uploader`, `70f2b6c8 refactor(publisher): extract resolveDestination() to dedupe Publish/ResolveFolder`, `2fb96f39 feat(drive): close PutFile / ConflictPolicy P0 #1`, `1dc40709 feat(drive): FileLifecycle port + migrate Trash from FolderManagerAdapter`) closed the raw-SDK leakage, introduced the conflict-aware upload port, and extracted Trash from `FolderManagerAdapter` into the dedicated `FileLifecycle` port. Compile-time assertions `var _ drive.Admin = (*Uploader)(nil)`, `var _ drive.Reader = (*Uploader)(nil)`, `var _ drive.FileLifecycle = (*FileLifecycleAdapter)(nil)` pin the contract \u2014 future drift is a build failure (no fake availability per godlike/07). Cross-references: dep record `architecture/deprecations.yaml#DRIVE-005-FIELDS` (closed, status: removed), wave tracker `architecture/current.yaml#id-27` (exit_gate true).
 
-- **NEW classifier** at
-`internal/application/youtube/jobs/classify.go::ClassifyExtractionResult`
-is a pure function mapping `*ExtractResponse` to a sentinel error: full
-success → `nil`; at-least-one processed + at-least-one failed →
-`*PartialSuccessError{Processed, Failed, Err}` (wraps `ErrExtractionRetryable`
-so `errors.Is(ErrExtractionRetryable)` still hits); all-failed-retryable
-(any item.Error substring timeout/429/503/etc) → `ErrExtractionRetryable`;
-nil/empty payload or all-failed-terminal → `ErrExtractionTerminal`. Two
-sentinels at `errors.New(...)` make the broker's existing retry policy
-escalate retryable errors through its exponential-backoff path.
 
-- **Refactored fan-out** at
-`internal/application/youtube/usecase/extraction_service.go::extractFanOut`
-is the bounded semaphore fan-out across `ProcessYouTubeSegmentUseCase.Execute`.
-`ExtractionService` gains `processSeg *ProcessYouTubeSegmentUseCase`
-+ `maxConcurrentVideos int` (default 5); per-goroutine `defer recover()`
-mirrors `monitor.safeCheckChannel` (P1 #9 closure). When `processSeg`
-is nil the legacy inline loop runs (composition that hasn't wired the
-new ports is unaffected).
+### Changed
 
-- **Refactored job handler** at
-`internal/application/youtube/jobs/job_handler.go::HandleJob` replaces
-the previous `return result, nil` silent-success path (P2 #19 audit
-hit). `errors.As(classifyErr, &partial)` catches the typed marker →
-log + return result with `partial_success: true` + counters; retryable
-or terminal errors propagate as `fmt.Errorf("extraction classified: %w",
-err)` so the broker's retry policy sees the wrapped sentinel. The
-`buildResultMap` helper centralises response → map serialization so
-all four exit paths share the same shape.
+**[DRIVE-005, June 2026]** Drive surface consolidated to **4 canonical typed ports** per AGENTS.md Pattern 0 + godlike/06 "one owner per fact": `delivery.Publisher` (conflict-aware uploads + `ConflictPolicy` + `PutFileRequest`/`PutAction`), `drive.Reader` (download + metadata + listing + existence), `drive.FileLifecycle` (Trash + Move + Rename + Cleanup), and `drive.DocClient` (Google Docs creation). The deprecated `internal/app.DriveBundle.DriveClient` + `DriveUploader` raw-SDK fields were physically retired from `DriveBundle` in commit `a8c781ae refactor(app): FASE 9 Step 5 — remove deprecated DriveClient and DriveUploader from DriveBundle`. Six-commit chain (positions 2..7 of the Drive-surface sequence: `5f590885`, `a8c781ae`, `b7d49099`, `70f2b6c8`, `2fb96f39`, `1dc40709`) closed the raw-SDK leakage; the canonical 4-port surface is consolidated per AGENTS.md Pattern 0 + godlike/06. Cross-references: dep record `architecture/deprecations.yaml#DRIVE-005-FIELDS` (closed, status: removed); wave tracker `architecture/current.yaml#id-27` (exit_gate true).
 
-- **Pattern 0 ports** added at
-`internal/application/youtube/ports/ports.go`:
-`ClipCachePort.GetExisting(ctx, clipID) (*ExtractItem, bool, error)`,
-`IndexEventPayload{Type, AggregateID, Payload ([]byte), CreatedAt (time.Time)}`,
-`ClipAtomicWriter.CommitClipAndIndexEvent(ctx, clipID, item ExtractItem,
-event IndexEventPayload) error`. Composition wires concrete adapters
-in Commit F (outbox writer) and a future PR (clip cache adapter).
-
-- **DTOs** added at `internal/application/youtube/dto/types.go`:
-`ProcessSegmentCommand` (typed input to the use case) +
-`ProcessSegmentResult` (output carrying `*ExtractItem` Item so the fan-out
-collects into the existing `ExtractResponse.Items` slice without rename
-churn). Normalize + KeepAudio promoted to `*bool` so the monitor's
-"keep audio unless explicitly opted out" default is honored in the
-canonical path.
-
-- **Workflow**: direct-to-main per AGENTS.md Git-Lesson-2 (no
-`--force`, no `--no-ff`, no branch, no PR). Trailing
-`Co-authored-by: <Agent> <agent@pipelinegen.local>` on the agent
-commit.
-
-- **Forward-pointer (Commit F)**: concrete `ClipAtomicWriter` adapter
-that owns the SQLite transaction + `outboxevents` insert will land in
-`feat(outbox): durable indexing (clip DB write + asset.index.requested)`.
-Until then the production wire keeps the field nil; the use case logs
-a warning + skips step 9. Commit F also ships the canonical
-retry-predicate helper (the substring lists in
-`isTransientExtractionError` ↔ `retryableItemErrorSubstrings` are
-duplicated today; future consolidation PR collapses them into a single
-typed helper at the ports layer).
 
 ### Deprecated
 
@@ -994,97 +913,6 @@ into the lifecycle wiring.
   produce a non-nil interface holding a typed-nil pointer — the classic
   Go interface-nilness trap that would silently panic the readiness
   barrier on a Drive-feature-disabled deployment.
-
-**[YouTube cutover Commit C, June 2026]** `feat(youtube)` — canonical
-`ProcessYouTubeSegmentUseCase` + `ClassifyExtractionResult` partial-success
-classification. Closes P0 #2, P0 #3, P0 #4, P2 #19 of the YouTube cutover
-audit. Three pieces land in one commit; back-compat preserved by
-keeping the legacy per-segment inline loop reachable whenever the new
-`ExtractionDeps.ProcessSeg` is nil (composition that hasn't yet wired the
-canonical cache/writer ports is unaffected; the legacy path is annotated
-`// TODO wave-delete (Commit H)` in
-`internal/application/youtube/adapters/segment_processor.go` and physically
-removed in Commit H).
-
-- **NEW canonical per-segment pipeline** at
-`internal/application/youtube/usecase/process_segment.go::ProcessYouTubeSegmentUseCase.Execute`
-runs the 9-step sequence with deterministic clip ID
-`yt_<videoID>_<startSec>_<endSec>_v1` (policy version bumps force
-re-processing for the same clipID — re-emits the segment under the new
-policy via the Commit D discovery ledger): deterministic ID + timestamp
-validation → existing-clip early-return via `ClipCachePort.GetExisting`
-→ `VideoPipeline.DownloadAndCutYouTubeVideo` with `pkg/retry.Do`
-(3 attempts, exponential backoff, retryable-error predicate
-`isTransientExtractionError`) → MD5 via `HashServicePort.MD5File` →
-subtitle slice via `SubtitleFetcherPort` → Whisper fallback via
-`WhisperTranscriberPort` → BuildClipMetadata via `SegmentsService`
-zero-dep helper → Drive upload via `DriveFolderManagerPort.UploadFileIfChanged`
-(retryable substring match logs `warn`, non-retryable escalates to
-`out.Item.Status="failed"` + returns the error — closes the silent-success
-hole the audit called out in P0 #2) → `ClipAtomicWriter.CommitClipAndIndexEvent`
-persists the clip DB row + emits `asset.index.requested` outbox row
-(concrete adapter lands in Commit F).
-
-- **NEW classifier** at
-`internal/application/youtube/jobs/classify.go::ClassifyExtractionResult`
-is a pure function mapping `*ExtractResponse` to a sentinel error: full
-success → `nil`; at-least-one processed + at-least-one failed →
-`*PartialSuccessError{Processed, Failed, Err}` (wraps `ErrExtractionRetryable`
-so `errors.Is(ErrExtractionRetryable)` still hits); all-failed-retryable
-(any item.Error substring timeout/429/503/etc) → `ErrExtractionRetryable`;
-nil/empty payload or all-failed-terminal → `ErrExtractionTerminal`. Two
-sentinels at `errors.New(...)` make the broker's existing retry policy
-escalate retryable errors through its exponential-backoff path.
-
-- **Refactored fan-out** at
-`internal/application/youtube/usecase/extraction_service.go::extractFanOut`
-is the bounded semaphore fan-out across `ProcessYouTubeSegmentUseCase.Execute`.
-`ExtractionService` gains `processSeg *ProcessYouTubeSegmentUseCase`
-+ `maxConcurrentVideos int` (default 5); per-goroutine `defer recover()`
-mirrors `monitor.safeCheckChannel` (P1 #9 closure). When `processSeg`
-is nil the legacy inline loop runs (composition that hasn't wired the
-new ports is unaffected).
-
-- **Refactored job handler** at
-`internal/application/youtube/jobs/job_handler.go::HandleJob` replaces
-the previous `return result, nil` silent-success path (P2 #19 audit
-hit). `errors.As(classifyErr, &partial)` catches the typed marker →
-log + return result with `partial_success: true` + counters; retryable
-or terminal errors propagate as `fmt.Errorf("extraction classified: %w",
-err)` so the broker's retry policy sees the wrapped sentinel. The
-`buildResultMap` helper centralises response → map serialization so
-all four exit paths share the same shape.
-
-- **Pattern 0 ports** added at
-`internal/application/youtube/ports/ports.go`:
-`ClipCachePort.GetExisting(ctx, clipID) (*ExtractItem, bool, error)`,
-`IndexEventPayload{Type, AggregateID, Payload ([]byte), CreatedAt (time.Time)}`,
-`ClipAtomicWriter.CommitClipAndIndexEvent(ctx, clipID, item ExtractItem,
-event IndexEventPayload) error`. Composition wires concrete adapters
-in Commit F (outbox writer) and a future PR (clip cache adapter).
-
-- **DTOs** added at `internal/application/youtube/dto/types.go`:
-`ProcessSegmentCommand` (typed input to the use case) +
-`ProcessSegmentResult` (output carrying `*ExtractItem` Item so the fan-out
-collects into the existing `ExtractResponse.Items` slice without rename
-churn). Normalize + KeepAudio promoted to `*bool` so the monitor's
-"keep audio unless explicitly opted out" default is honored in the
-canonical path.
-
-- **Workflow**: direct-to-main per AGENTS.md Git-Lesson-2 (no
-`--force`, no `--no-ff`, no branch, no PR). Trailing
-`Co-authored-by: <Agent> <agent@pipelinegen.local>` on the agent
-commit.
-
-- **Forward-pointer (Commit F)**: concrete `ClipAtomicWriter` adapter
-that owns the SQLite transaction + `outboxevents` insert will land in
-`feat(outbox): durable indexing (clip DB write + asset.index.requested)`.
-Until then the production wire keeps the field nil; the use case logs
-a warning + skips step 9. Commit F also ships the canonical
-retry-predicate helper (the substring lists in
-`isTransientExtractionError` ↔ `retryableItemErrorSubstrings` are
-duplicated today; future consolidation PR collapses them into a single
-typed helper at the ports layer).
 
 ### Deprecated
 
