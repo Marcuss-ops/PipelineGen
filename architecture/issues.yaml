@@ -70,8 +70,23 @@
   title: "Resolve TestArtlistPR12b_DispatcherRoutesWritesThroughRepo, TestArtlistSearchRequest and related dispatcher-route failures in internal/application/assets/providers/artlist"
   status: pending
   owner: internal/application/assets/providers/artlist
+  linked_issues:
+    - Q8-ARTLIST-SqlSchemaStatus
 
 - id: Q7-YOUTUBE-ExtractionPhase1c
   title: "Port full extraction pipeline to ExtractionService (Phase 1c) to fix TestExtract_ReturnsContextDeadlineExceededIfContextExpired in internal/application/youtube/usecase"
   status: pending
   owner: internal/application/youtube/usecase
+
+- id: Q8-ARTLIST-SqlSchemaStatus
+  title: "Resolve 'no such column: status' SQL error surfacing in artlist test suite (TestSolarPanelSearch, residual of TestArtlistSearchRequest / TestArtlistRunTagMediaProcessorFailure / TestArtlistPR12b_DispatcherRoutesWritesThroughRepo after Q6 dispatcher-path stub-repo fix uncovered the schema/query mismatch)"
+  status: pending
+  owner: internal/application/assets/providers/artlist
+  linked_issues:
+    - Q6-ARTLIST-DispatcherRoutes
+
+- id: Q9-VOICEOVER-FanoutUseCase
+  title: "Resolve undefined FanoutVoiceoversUseCase / FanoutResult symbols in internal/application/voiceover/jobs/generate_handler.go (pre-existing build-break blocker that prevents go build ./... / verify-main)"
+  status: pending
+  owner: internal/application/voiceover/jobs
+  blocker: true
