@@ -56,7 +56,19 @@ type Reader interface {
 	GetFileMD5(ctx context.Context, fileID string) (string, error)
 	GetFileMeta(ctx context.Context, fileID string) (*FileMeta, error)
 	ListFiles(ctx context.Context, parentID string) ([]DriveFileInfo, error)
-	FindFileByName(ctx context.Context, folderID, filename string) (*RemoteFile, error)
+	// FindFileByName returns ALL non-trashed files matching
+	// (folderID, filename). Callers MUST branch on
+	// len(ExistingFileLookup.Matches):
+	//   0 matches → no existing file, take the Create path
+	//   1 match   → apply the chosen ConflictPolicy against Matches[0]
+	//   >1 match  → caller MUST treat as ambiguous and surface
+	//               ErrAmbiguousDriveFile (fail-closed; never silently
+	//               pick the first match). Pre-Wave B2 (June 2026) the
+	//               method returned only (*RemoteFile, error) and
+	//               silently truncated to the first match — Wave B2
+	//               closes that ambiguity hole by surfacing the full
+	//               match set so callers can detect >1.
+	FindFileByName(ctx context.Context, folderID, filename string) (ExistingFileLookup, error)
 	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
 	FileExists(ctx context.Context, fileID string) (bool, error)
 	// SearchFiles lists files matching an arbitrary Drive query string.
