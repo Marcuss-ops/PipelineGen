@@ -159,11 +159,17 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		} else {
 			driveFileID = pubResult.FileID
 			driveLink = pubResult.WebViewLink
-			downloadLink = "https://drive.google.com/uc?id=" + pubResult.FileID
+			// F1.5 (P0 #9): read DownloadLink from the canonical
+			// PublishResult instead of reconstructing it. Reconstructing
+			// risks format drift (e.g. ?export=download vs plain uc?id=)
+			// and produces different URLs for the same underlying
+			// FileID depending on call site.
+			downloadLink = pubResult.DownloadLink
 			targetFolderID = pubResult.FolderID
 			log.Info("published to Drive",
 				zap.String("file_id", pubResult.FileID),
-				zap.String("drive_link", pubResult.WebViewLink))
+				zap.String("drive_link", pubResult.WebViewLink),
+				zap.String("publish_action", string(pubResult.Action)))
 		}
 	} else if uc.driveUploader != nil && localPath != "" {
 		// Legacy fallback — preserve original group-folder logic
