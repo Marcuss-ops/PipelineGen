@@ -48,21 +48,10 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server with module registry support.
-// workerHandler (optional) is wired into /internal/v1 routes and must be
-// set *before* Setup() runs so the gin engine registers the routes.
+// workerHandler (optional) is wired into /internal/v1 routes.
 // lifecycle (optional) is used for Start/Stop of background services.
 // healthSvc (optional) is the application-layer health.Service; when nil,
 // health endpoints return 503.
-//
-// QDRANT-route-constructor (June 2026, PR 3): outboxHandler and
-// mediasearchHandler are passed as nil to preserve the original 5-arg
-// signature; callers that need the /internal/v1/{outbox,media/search}
-// routes registered MUST use NewServerWithHealth directly with the
-// two new params populated. Production server passes them — see
-// cmd/server/main.go. The legacy Server.SetOutboxHandler /
-// Server.SetMediasearchHandler setters delegate to appRouter and are
-// kept for back-compat but are NOT used by the production binary
-// anymore.
 func NewServer(
 	cfg *config.Config,
 	registry *Registry,
@@ -70,55 +59,47 @@ func NewServer(
 	internalMediaHandler MediaInternalRouter,
 	lifecycle LifecycleManager,
 ) *Server {
-	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, nil, nil, lifecycle, nil, nil)
+	return NewServerWithHealth(ServerDeps{
+		Config:   cfg,
+		Registry: registry,
+		Handlers: InternalHandlers{Worker: workerHandler, Media: internalMediaHandler},
+		Lifecycle: lifecycle,
+	})
 }
 
-// NewServerWithHealth creates a new HTTP server with an optional
-// health-check service (PR1 Health boundary, June 2026).
-// codex/health-ready-contract (June 2026): added readyChecker parameter
-// so /ready receives the real ReadyChecker instead of nil.
-//
-// QDRANT-route-constructor (June 2026, PR 3 in the post-Qdrant landing
-// series): added outboxHandler + mediasearchHandler parameters. Both MUST
-// be wired before router.Setup() runs so the WorkerAuth-protected
-// /internal/v1/* routes register at construction time. The previous
-// flow (cmd/server/main.go calling SetOutboxHandler/SetMediasearchHandler
-// after NewServerWithHealth returned) silently dropped the routes
-// because Setup() had already executed and would never run again.
-//
-// 8-dep-cap note: this constructor now takes 9 parameters, exceeding
-// the canonical 8-dep cap enforced by scripts/ci-architectural-checks.sh
-// (8.4 server constructor > 8 deps). Refactor candidate: a Handlers
-// bundle struct (Worker/Media/Outbox/MediaSearch). Tracked per the
-// canonical ratchet in architecture/current.yaml. The overage is
-// accepted here because all new params are typed-port interfaces
-// (zero-value/nil-friendly) and the alternative (re-introducing
-// post-Setup setters) re-introduces the bug.
-//
-// PG-006 (June 2026): every typed-port field on RouterConfig must be
-// constructed via an adapter because the api package cannot import
-// `internal/app` (the canonical composition root for the adapters).
-// server.go is the single production caller that lives OUTSIDE the
-// app-root composition boundary, so it bridges via local inline
-// adapters (5 lines each) that mirror the production wrappers in
-// internal/app/middleware_security_adapter.go. The duplication is
-// accepted by PG-006's "no compatibility layer" rule: there is no
-// shared interface — the production adapter is the wire root, the
-// server.go adapters are transport bridges. Drift between the two
-// must be caught by a unit-test cross-comparison; a follow-up PR
-// could promote the adapters to a more shareable location, but doing
-// so would require lifting the layering rule.
-func NewServerWithHealth(
-	cfg *config.Config,
-	registry *Registry,
-	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
-	internalMediaHandler MediaInternalRouter,
-	outboxHandler InternalOutboxRouter,
-	mediasearchHandler InternalMediaSearchRouter,
-	lifecycle LifecycleManager,
-	healthSvc interface{},
-	readyChecker *systemhealth.ReadyChecker,
-) *Server {
+// InternalHandlers bundles the optional typed-port internal-route handlers.
+// MUST be wired before router.Setup() runs — the QDRANT-route-constructor
+// bug (June 2026) proved that post-Setup setters silently drop routes.
+// All 4 handlers are nil-friendly; zero-valued fields are skipped.
+type InternalHandlers struct {
+	Worker      interface{ RegisterRoutes(*gin.RouterGroup) }
+	Media       MediaInternalRouter
+	Outbox      InternalOutboxRouter
+	MediaSearch InternalMediaSearchRouter
+}
+
+// ServerDeps groups constructor dependencies by real capability.
+// Replaces the 9-param flat constructor with 3 grouped bundles.
+type ServerDeps struct {
+	Config    *config.Config
+	Registry  *Registry
+	Handlers  InternalHandlers
+	Lifecycle LifecycleManager
+	Health    interface{}
+	Ready     *systemhealth.ReadyChecker
+}
+
+// NewServerWithHealth creates a new HTTP server from grouped dependency bundles.
+func NewServerWithHealth(deps ServerDeps) *Server {
+	cfg := deps.Config
+	registry := deps.Registry
+	workerHandler := deps.Handlers.Worker
+	internalMediaHandler := deps.Handlers.Media
+	outboxHandler := deps.Handlers.Outbox
+	mediasearchHandler := deps.Handlers.MediaSearch
+	lifecycle := deps.Lifecycle
+	healthSvc := deps.Health
+	readyChecker := deps.Ready
 	if cfg != nil {
 		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
 		// — the canonical concrete is

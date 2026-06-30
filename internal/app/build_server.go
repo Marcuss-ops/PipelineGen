@@ -113,17 +113,19 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 	// mediasearchHandler MUST be passed INTO NewServerWithHealth
 	// (not set via setter post-Setup) so the WorkerAuth-protected
 	// /internal/v1 routes register before Setup() executes.
-	server := api.NewServerWithHealth(
-		cfg,
-		deps.Registry,
-		deps.WorkerHandler,
-		deps.InternalMediaHandler,
-		deps.OutboxHandler,
-		deps.MediasearchHandler,
-		deps.Lifecycle,
-		deps.HealthService,
-		deps.ReadyChecker,
-	)
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config:   cfg,
+		Registry: deps.Registry,
+		Handlers: api.InternalHandlers{
+			Worker:      deps.WorkerHandler,
+			Media:       deps.InternalMediaHandler,
+			Outbox:      deps.OutboxHandler,
+			MediaSearch: deps.MediasearchHandler,
+		},
+		Lifecycle: deps.Lifecycle,
+		Health:    deps.HealthService,
+		Ready:     deps.ReadyChecker,
+	})
 	return &ServerRuntime{Server: server, Deps: deps}, nil
 }
 

@@ -47,27 +47,33 @@ func buildImagesService(
 ) (*imgservice.Service, *semantic.MetadataWriter) {
 	// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
 
-	imageService := imgservice.NewService(
-		cfg,
-		imageRepo, clipsRepo,
-		driveClient,
-		styleRegistry,
-		imgservice.NvidiaConfig{APIKey: cfg.External.NvidiaAPIKey, Model: cfg.External.NvidiaModel},
-		cfg.External.RemoteImageEndpointURL,
-		cfg.External.VeloxBaseURL,
-		imgservice.GoogleAccountingConfig{
-			ServerURL:     cfg.GoogleAccounting.ServerURL,
-			DownloadDir:   cfg.GoogleAccounting.DownloadDir,
-			VidsProjectID: cfg.GoogleAccounting.VidsProjectID,
+	imageService := imgservice.NewService(imgservice.ImagesDeps{
+		Core: imgservice.ImagesCoreDeps{Cfg: cfg, Log: log},
+		Storage: imgservice.ImagesStorageDeps{
+			ImageRepo:  imageRepo,
+			ClipsRepo:  clipsRepo,
+			DriveSvc:   driveClient,
+			MediaStore: mediaStore,
 		},
-		mediaStore,
-		scriptGen,
-		voMetaWriter,
-		ingestSvc,
-		dispatcher,
-		imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, 3, log), // FASE 8: 3 persistent profiles, per-profile queue
-		log,
-	)
+		GenAI: imgservice.ImagesGenAIDeps{
+			LLMGen:        scriptGen,
+			MetaWriter:    voMetaWriter,
+			StyleRegistry: styleRegistry,
+			ImageGen:      imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, 3, log),
+			NvidiaCfg:     imgservice.NvidiaConfig{APIKey: cfg.External.NvidiaAPIKey, Model: cfg.External.NvidiaModel},
+			RemoteImageURL: cfg.External.RemoteImageEndpointURL,
+		},
+		External: imgservice.ImagesExternalDeps{
+			IngestSvc:    ingestSvc,
+			Dispatcher:   dispatcher,
+			VeloxBaseURL: cfg.External.VeloxBaseURL,
+			GACfg: imgservice.GoogleAccountingConfig{
+				ServerURL:     cfg.GoogleAccounting.ServerURL,
+				DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+				VidsProjectID: cfg.GoogleAccounting.VidsProjectID,
+			},
+		},
+	})
 
 	if cfg.External.RemoteImageEndpointURL != "" {
 		log.Info("Remote image endpoint configured", zap.String("url", cfg.External.RemoteImageEndpointURL))
