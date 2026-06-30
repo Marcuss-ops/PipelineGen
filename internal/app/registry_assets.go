@@ -90,8 +90,8 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 			SearchBackendRegistry: wiring.searchBackends,
 		},
 		Delivery: DeliveryDeps{
-			DriveClient: root.Drive.DriveClient,
-			Publisher:   root.Drive.Publisher,
+			Admin:     root.Drive.Admin,
+			Publisher: root.Drive.Publisher,
 		},
 		Background: BackgroundDeps{
 			IdempotencyStore:        root.Repos.IdempotencyStore,

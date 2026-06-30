@@ -45,7 +45,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 // processRunnerAdapter is a package-level adapter for the infrastructure ProcessRunner port.
@@ -95,9 +94,14 @@ type AssetsWiring struct {
 // and the future Wave 22 follow-ups may reuse catalogRepo.
 func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
+	// FASE 9 Step 2: extract concrete *drive.Uploader from Admin port.
+	// Type assertion is safe — DriveBundle.Admin is always *drive.Uploader
+	// (or nil when Drive is not configured).
 	var driveUploader *driveutil.Uploader
-	if deps.Delivery.DriveClient != nil {
-		driveUploader = &driveutil.Uploader{Service: deps.Delivery.DriveClient, Log: log}
+	if deps.Delivery.Admin != nil {
+		if up, ok := deps.Delivery.Admin.(*driveutil.Uploader); ok {
+			driveUploader = up
+		}
 	}
 	var assetRepo asset.Repository
 	if deps.Core.Assets != nil {

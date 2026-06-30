@@ -40,7 +40,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 // ArtlistWiring holds the Artlist module wiring.
@@ -305,7 +304,8 @@ func wireArtlistService(
 	}
 	if artlistSvc != nil && bundle.Jobs.Service != nil {
 		bundle.Jobs.Service.RegisterHandler(svcjobs.TypeArtlistRun, artlistSvc.HandleJob)
-		log.Info("registered artlist job handler")
+		bundle.Jobs.Service.RegisterHandler("artlist.run", artlistSvc.HandleJob)
+		log.Info("registered artlist job handlers")
 	}
 	return artlistSvc, nil
 }

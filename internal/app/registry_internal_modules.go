@@ -105,7 +105,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
 		DB:                root.DB,
 		Assets:            root.Repos.Assets,
-		DriveClient:       root.Drive.DriveClient,
+		DriveUploader:     root.Drive.DriveUploader,
 		ImageRepo:         root.Repos.ImageRepo,
 		VoiceoverRepo:     root.Repos.VoiceoverRepo,
 		ClipsRepo:         root.Repos.ClipsRepo,
@@ -149,7 +149,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 
 	// Step 8 — StockPipeline (bundle-driven).
 	stockW, stockErr := WireStockPipeline(cfg, log, &StockBundle{
-		DriveClient:        root.Drive.DriveClient,
+		DriveUploader:      root.Drive.DriveUploader,
 		Jobs:               root.Jobs.Service,
 		JobFacade:          root.Jobs.Facade,
 		AssetIndexService:  root.Search.AssetIndexService,
@@ -178,7 +178,6 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		DB:                 root.DB,
 		Assets:             root.Repos.Assets,
 		ClipsRepo:          root.Repos.ClipsRepo,
-		DriveClient:        root.Drive.DriveClient,
 		DriveUploader:      root.Drive.DriveUploader,
 		AssetIndexService:  root.Search.AssetIndexService,
 		ClipIndexerService: root.Process.ClipIndexerService,

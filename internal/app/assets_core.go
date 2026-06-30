@@ -43,7 +43,6 @@ package app
 
 import (
 	"github.com/gin-gonic/gin"
-	"google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
@@ -106,16 +105,14 @@ type SearchDeps struct {
 	SearchBackendRegistry *search.BackendRegistry
 }
 
-// DeliveryDeps is the Assets-module delivery sub-system bundle (1 field).
+// DeliveryDeps is the Assets-module delivery sub-system bundle.
 //
-// The DriveClient is the SINGLE shared Drive *gdrive.Service that the
-// clips upload + sfx upload + asset delivery paths consume (via
-// driveutil.Uploader adapters). Other delivery ports (uploader port,
-// index dispatcher, asset tree builder) are CONSTRUCTED inside
-// WireAssets from these base deps — they don't need to be in the bundle
-// because they're cheap to construct and have no cross-module sharing.
+// FASE 9 Step 2 (June 2026): DriveClient (*gdrive.Service) removed.
+// Admin is the canonical Pattern 0 port for Drive operations;
+// WireAssets extracts the concrete *drive.Uploader via type assertion
+to construct the legacy adapters that still need it.
 type DeliveryDeps struct {
-	DriveClient *drive.Service
+	Admin drive.Admin
 	// Publisher is the canonical Drive upload canal (FASE 5, June 2026).
 	// All endpoints and jobs that write to Drive MUST use Publisher.Publish
 	// instead of calling DriveUploader or FolderManager directly.
