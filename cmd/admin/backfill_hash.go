@@ -8,9 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"golang.org/x/oauth2/google"
-	driveapi "google.golang.org/api/drive/v3"
 )
 
 func runBackfillHash(args []string) error {
@@ -80,44 +79,43 @@ func runBackfillHash(args []string) error {
 func runBackfillHashV2(args []string) error {
 	fs := flag.NewFlagSet("backfill-hash-v2", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	dbPath := fs.String("db", "", "Path to SQLite database (absolute)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *dbPath == "" {
-		return fmt.Errorf("usage: admin backfill-hash-v2 --db <absolute-path-to-sqlite>")
-	}
 
-	log, cleanup, err := productionLogger()
+	// Wave C (June 2026): runBackfillHashV2 retires the legacy `--db`
+	// flag and the inline `google.DefaultClient + driveapi.New` setup.
+	// The subcommand now uses the canonical composition root
+	// (app.InitComposition) so authentication, logging, and Drive
+	// lifecycle match the rest of the admin tool surface. The canonical
+	// Reader.GetFileMD5 port serves the same query (Files.Get with the
+	// md5Checksum field) but with the unified auth footprint.
+	cfg, log, cleanup, err := appLogger()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 	slog := log.Sugar()
 
-	sqliteDB, err := storage.OpenSQLiteDB(*dbPath, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return fmt.Errorf("failed to initialize composition root: %w", err)
 	}
-	defer sqliteDB.Close()
-	db := sqliteDB.DB
+	defer rootCleanup()
 
-	ctx := cmdContext()
-	client, err := google.DefaultClient(ctx, driveapi.DriveScope)
-	if err != nil {
-		return fmt.Errorf("failed to create drive client: %w", err)
+	if root.Drive == nil || root.Drive.Reader == nil {
+		return fmt.Errorf("drive reader port is not available (Drive auth failed or disabled)")
 	}
 
-	driveService, err := driveapi.New(client)
+	db := root.DB.DB
+	rows, err := db.Query("SELECT id, drive_link FROM media_assets WHERE file_hash IS NULL OR file_hash = '' AND drive_link IS NOT NULL AND drive_link != ''")
 	if err != nil {
-		return fmt.Errorf("failed to create drive service: %w", err)
-	}
-
-	rows, err := db.Query("SELECT id, drive_link FROM clips WHERE file_hash='' AND drive_link!=''")
-	if err != nil {
-		return fmt.Errorf("failed to query clips: %w", err)
+		return fmt.Errorf("failed to query media_assets: %w", err)
 	}
 	defer rows.Close()
+
+	ctx := cmdContext()
+	driveReader := root.Drive.Reader
 
 	updated := 0
 	for rows.Next() {
@@ -131,16 +129,16 @@ func runBackfillHashV2(args []string) error {
 			continue
 		}
 
-		file, err := driveService.Files.Get(fileID).Fields("md5Checksum").Context(ctx).Do()
+		md5sum, err := driveReader.GetFileMD5(ctx, fileID)
 		if err != nil {
-			slog.Errorf("failed to get checksum for %s: %v", id, err)
+			slog.Errorf("failed to get MD5 for %s: %v", id, err)
 			continue
 		}
-		if file.Md5Checksum == "" {
+		if md5sum == "" {
 			continue
 		}
 
-		if _, err := db.Exec("UPDATE clips SET file_hash=? WHERE id=?", file.Md5Checksum, id); err != nil {
+		if _, err := db.Exec("UPDATE media_assets SET file_hash=? WHERE id=?", md5sum, id); err != nil {
 			slog.Errorf("failed to update hash for %s: %v", id, err)
 			continue
 		}

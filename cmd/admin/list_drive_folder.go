@@ -89,8 +89,8 @@ func runListDriveFolder(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Reader == nil {
+		return fmt.Errorf("drive reader port is not available")
 	}
 
 	// Wave B (June 2026): split the legacy `root.Drive.DriveUploader`

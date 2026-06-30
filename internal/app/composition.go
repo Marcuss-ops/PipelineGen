@@ -90,17 +90,24 @@ type DriveBundle struct {
 	// handle was retired (P0.1 closure).
 	Publisher delivery.Publisher
 
-	// Wave B (June 2026): DriveBundle.DriveUploader deprecated field
-	// removed. The 5 cmd/admin/cleanup.go callers + 1 cmd/admin/list_drive_folder.go
-	// caller now reach drive.Admin / drive.Reader via root.Drive.Admin
-	// and root.Drive.Reader directly (the Pattern 0 canonical ports).
-	// Wave C will perform the same migration for DriveClient (1 caller
-	// in cmd/admin/cleanup.go + several in other cmd/admin tools).
-
-	// Deprecated raw SDK handle — back-compat for admin tools and legacy
-	// callsites. Removal planned for Wave C (target: drive.Admin /
-	// drive.Reader / drive.DocClient consumers — no further raw SDK
-	// reach-through from cmd/admin/).
+	// Wave B (June 2026): DriveBundle.DriveUploader deprecated field removed.
+	// The 5 cleanup.go callers + 1 list_drive_folder.go caller now reach
+	// drive.Admin / drive.Reader via root.Drive.Admin and root.Drive.Reader
+	// directly (the Pattern 0 canonical ports).
+	//
+	// Wave C (June 2026 — partial): DriveBundle.DriveClient deprecated
+	// field STILL PRESENT for back-compat with internal/app/ and
+	// internal/application/assets/providers/artlist/ raw SDK reach-through
+	// sites that haven't migrated to Pattern 0 ports yet. The 8 cmd/admin/
+	// raw callers (cleanup.go, list_drive_folder.go, stock_reset.go,
+	// stock_subfolders_reset.go, summarize_book.go, sync_outros.go,
+	// reset_video_ai.go, backfill_hash.go::runBackfillHashV2) DO NOT
+	// touch root.Drive.DriveClient anymore — they reach drive.Admin /
+	// drive.Reader / drive.DocClient via Pattern 0 ports.
+	// Wave D followup: migrate the remaining internal/app/ and
+	// internal/application/assets/providers/artlist/ consumers (registry_internal_modules.go
+	// line 182, module_sources.go ArtlistBundle wiring, artlist/types.go
+	// diagnostic field), then remove DriveClient + drop gdrive import.
 	DriveClient *gdrive.Service
 
 	// driveUploader is unexported for internal wiring only. *drive.Uploader

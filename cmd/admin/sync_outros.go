@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 )
 
@@ -40,8 +38,8 @@ func runSyncOutros(args []string) error {
 	}
 	defer coreCleanup()
 
-	if root.Drive.DriveClient == nil {
-		return fmt.Errorf("drive client is not available")
+	if root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
+		return fmt.Errorf("drive admin/reader ports are not available")
 	}
 
 	ctx := cmdContext()
@@ -60,19 +58,19 @@ func runSyncOutros(args []string) error {
 
 	// Step 1: List subfolders of the Outro root folder
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", outroRootID)
-	list, err := root.Drive.DriveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := root.Drive.Reader.SearchFiles(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to list outro folders: %w", err)
 	}
 
-	fmt.Printf("Found %d base outro folders on Drive.\n", len(list.Files))
+	fmt.Printf("Found %d base outro folders on Drive.\n", len(list))
 
-	for _, folder := range list.Files {
-		fmt.Printf("\nProcessing folder: %s (%s)\n", folder.Name, folder.Id)
+	for _, folder := range list {
+		fmt.Printf("\nProcessing folder: %s (%s)\n", folder.Name, folder.ID)
 
 		// Sync this base folder to clip_folders
 		if *apply {
-			err := upsertFolderToDB(ctx, root.DB.DB, folder.Id, folder.Name, "outro", "outro", "")
+			err := upsertFolderToDB(ctx, root.DB.DB, folder.ID, folder.Name, "outro", "outro", "")
 			if err != nil {
 				log.Error("failed to upsert base folder to DB", zap.String("folder", folder.Name), zap.Error(err))
 			} else {
@@ -81,8 +79,8 @@ func runSyncOutros(args []string) error {
 		}
 
 		// List current children of this folder
-		childQuery := fmt.Sprintf("'%s' in parents and trashed = false", folder.Id)
-		childList, err := root.Drive.DriveClient.Files.List().Q(childQuery).Fields("files(id, name, mimeType, webViewLink, webContentLink)").Context(ctx).Do()
+		childQuery := fmt.Sprintf("'%s' in parents and trashed = false", folder.ID)
+		childList, err := root.Drive.Reader.SearchFiles(ctx, childQuery)
 		if err != nil {
 			log.Error("failed to list children", zap.String("folder", folder.Name), zap.Error(err))
 			continue
@@ -90,9 +88,9 @@ func runSyncOutros(args []string) error {
 
 		// Map existing folders by lowercase name
 		existingFolders := make(map[string]string) // name -> id
-		for _, f := range childList.Files {
+		for _, f := range childList {
 			if f.MimeType == "application/vnd.google-apps.folder" {
-				existingFolders[strings.ToLower(f.Name)] = f.Id
+				existingFolders[strings.ToLower(f.Name)] = f.ID
 			}
 		}
 
@@ -100,28 +98,26 @@ func runSyncOutros(args []string) error {
 		for _, lang := range supportedLanguages {
 			langLower := strings.ToLower(lang)
 			langFolderID, exists := existingFolders[langLower]
-
-			if !exists {
-				if *apply {
-					// Create folder on Drive
-					newFolder := &driveapi.File{
-						Name:     lang,
-						MimeType: "application/vnd.google-apps.folder",
-						Parents:  []string{folder.Id},
+		if !exists {
+					if *apply {
+						// Wave C (June 2026): idempotent lookup-or-create replaces strict Files.Create.
+						// GetOrCreateFolder returns the existing folder if a folder with the same
+						// name already exists under parent — semantically slightly more lenient than
+						// the previous strict create (which would 409 on duplicates). The call is
+						// already gated behind `if !exists` so the semantic shift is benign.
+						created, err := root.Drive.Admin.GetOrCreateFolder(ctx, lang, folder.ID)
+						if err != nil {
+							log.Error("failed to create language folder on Drive", zap.String("lang", lang), zap.Error(err))
+							continue
+						}
+						langFolderID = created
+						fmt.Printf("  📁 Created language folder: %s (%s)\n", lang, langFolderID)
+					} else {
+						fmt.Printf("  [DRY RUN] Would create language folder: %s\n", lang)
 					}
-					created, err := root.Drive.DriveClient.Files.Create(newFolder).Fields("id").Context(ctx).Do()
-					if err != nil {
-						log.Error("failed to create language folder on Drive", zap.String("lang", lang), zap.Error(err))
-						continue
-					}
-					langFolderID = created.Id
-					fmt.Printf("  📁 Created language folder: %s (%s)\n", lang, langFolderID)
 				} else {
-					fmt.Printf("  [DRY RUN] Would create language folder: %s\n", lang)
+					fmt.Printf("  📁 Language folder already exists: %s (%s)\n", lang, langFolderID)
 				}
-			} else {
-				fmt.Printf("  📁 Language folder already exists: %s (%s)\n", lang, langFolderID)
-			}
 
 			// Sync language folder to DB
 			if *apply && langFolderID != "" {
@@ -134,10 +130,10 @@ func runSyncOutros(args []string) error {
 
 				// Scan files inside this language folder and add them to media_assets
 				fileQuery := fmt.Sprintf("'%s' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false", langFolderID)
-				fileList, err := root.Drive.DriveClient.Files.List().Q(fileQuery).Fields("files(id, name, webViewLink, webContentLink)").Context(ctx).Do()
+				fileList, err := root.Drive.Reader.SearchFiles(ctx, fileQuery)
 				if err == nil {
-					for _, file := range fileList.Files {
-						err := upsertFileToDB(ctx, root.DB.DB, file.Id, file.Name, folder.Name, lang, file.WebViewLink, file.WebContentLink)
+					for _, file := range fileList {
+						err := upsertFileToDB(ctx, root.DB.DB, file.ID, file.Name, folder.Name, lang, file.WebViewLink, file.WebContentLink)
 						if err != nil {
 							log.Error("failed to upsert file to DB", zap.String("file", file.Name), zap.Error(err))
 						} else {
@@ -149,9 +145,9 @@ func runSyncOutros(args []string) error {
 				// Dry run: list existing files inside the existing language folder if it exists
 				if langFolderID != "" {
 					fileQuery := fmt.Sprintf("'%s' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false", langFolderID)
-					fileList, err := root.Drive.DriveClient.Files.List().Q(fileQuery).Fields("files(name)").Context(ctx).Do()
-					if err == nil && len(fileList.Files) > 0 {
-						for _, file := range fileList.Files {
+					fileList, err := root.Drive.Reader.SearchFiles(ctx, fileQuery)
+					if err == nil && len(fileList) > 0 {
+						for _, file := range fileList {
 							fmt.Printf("      [DRY RUN] Would sync file: %s\n", file.Name)
 						}
 					}
