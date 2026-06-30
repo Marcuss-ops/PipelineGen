@@ -121,6 +121,27 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 		panic("monitor.NewChannelMonitor: Log is required")
 	}
 
+	// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): fail-fast posture
+	// for the discoveries port. Per the verdict's P0 #1 directive,
+	// production composition MUST supply a concrete YoutubeDiscoveries
+	// adapter (the *assets.YoutubeDiscoveriesRepository over the canonical
+	// media.db.sqlite). A missing wiring collapses every video's
+	// outcome classification to OutcomeAlreadyScheduled in
+	// discovery.go::recordDiscoveryAndClassify (the defensive nil-port
+	// path). That defeats the per-video dedupe ledger AND the cycle-end
+	// MAX(discovered_at) → category_channels.last_cursor watermark.
+	//
+	// Fail-fast proxy: `deps.Cfg != nil` distinguishes production
+	// composition (cfg always injected by lifecycle.go) from the
+	// test-fixture path (constructed by struct-literal with bare
+	// CompositionDeps in scheduler_test.go, monitor_scheduler_test.go,
+	// and similar fixtures). Panicking on production composition is
+	// the right signal; tolerating nil in tests preserves the test
+	// pattern that PR1 / PR2 / PR3 were built on.
+	if deps.Cfg != nil && deps.Discoveries == nil {
+		panic("monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire *assets.YoutubeDiscoveriesRepository from internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)")
+	}
+
 	// Apply default-unbound placeholder stubs if the caller left them nil.
 	// This keeps production crash-fast at the FIRST analyzer/enqueuer call
 	// rather than nil-deref panicking inside the worker.
@@ -185,6 +206,7 @@ func channelSemWidth(deps CompositionDeps) int {
 	}
 	return 1
 }
+
 // Start begins the channel monitoring process.
 //
 // PR 5 (June 2026): job-based sync via ClaimDue/MarkChecked.

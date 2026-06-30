@@ -65,32 +65,61 @@ type ProcessYouTubeSegmentUseCase struct {
 }
 
 // NewProcessYouTubeSegmentUseCase constructs the canonical use case.
-// nil ports are tolerated — the use case logs + no-ops them at call time
-// rather than panicking, so tests with partial fixture wiring still drive
-// the full sequence. Empty SegmentsSvc defaults to a no-op helper.
+//
+// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): fail-fast posture for
+// required ports. Per the verdict's P0 #3 fail-closed directive, the
+// use case MUST NOT silently accept nil ports — a nil Cache /
+// VideoPipeline / Hash / Writer / SegmentsSvc means the canonical
+// pipeline CANNOT complete and the use case will surface "processed"
+// anyway (the pre-fix silent-success bug). Production composition
+// wires every required port via the new wired-up adapter pair
+// (ClipCacheAdapter + ClipAtomicWriterAdapter); the ctor panic here
+// surfaces a wiring gap at boot rather than at first segment.
+//
+// Nil-tolerance is preserved for the optional DriveFolderMgr (per the
+// verdict's \"Drive solo quando destination policy lo richiede\"
+// directive): the use case runtime-checks DriveFolderMgr == nil and
+// short-circuits the upload step, returning a non-canonical
+// \"skipped-no-drive\" outcome rather than panicking on nil.
+//
+// SegmentsSvc is constructed via NewSegmentsService() when nil is
+// supplied — the canonical helper is dependency-free, so this default
+// is safe across all environments including partial-deploy tests.
 func NewProcessYouTubeSegmentUseCase(d ProcessSegmentDeps) *ProcessYouTubeSegmentUseCase {
-	if d.Log == nil {
-		d.Log = zap.NewNop()
+	if d.Cache == nil {
+		panic("usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go)")
+	}
+	if d.VideoPipeline == nil {
+		panic("usecase.NewProcessYouTubeSegmentUseCase: VideoPipeline port is required (composition must wire the YouTube pipeline adapter)")
+	}
+	if d.Hash == nil {
+		panic("usecase.NewProcessYouTubeSegmentUseCase: Hash port is required (composition must wire hashutil.NewHashAdapter)")
+	}
+	if d.Writer == nil {
+		panic("usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire ClipAtomicWriterAdapter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')")
 	}
 	if d.SegmentsSvc == nil {
-		d.SegmentsSvc = NewSegmentsService()
+		panic("usecase.NewProcessYouTubeSegmentUseCase: SegmentsSvc port is required (composition must construct *SegmentsService via youtube.NewSegmentsService())")
+	}
+	if d.Log == nil {
+		d.Log = zap.NewNop()
 	}
 	return &ProcessYouTubeSegmentUseCase{deps: d}
 }
 
 // Execute runs the canonical 9-step pipeline for one segment:
 //
-//	1. Deterministic clip ID + timestamp validation.
-//	2. CheckExistingClip — early-return when cached (idempotent re-runs).
-//	3. Coordinates + retry-download via VideoPipeline port (3 attempts).
-//	4. MD5File after cut.
-//	5. SliceSubtitles (cache hit per Commit G) → Whisper fallback.
-//	6. BuildClipMetadata via SegmentsSvc internal helper.
-//	7. ProcessLifecycle (kept on ExtractionCallbacks path — Commit H
-//	   folds it into LifecycleServicePort if composition needs it).
-//	8. DestinationResolver → DriveUploadFileIfChanged.
-//	9. ClipAtomicWriter (DB write + outbox row in same tx; Commit F
-//	   implements the concrete adapter).
+//  1. Deterministic clip ID + timestamp validation.
+//  2. CheckExistingClip — early-return when cached (idempotent re-runs).
+//  3. Coordinates + retry-download via VideoPipeline port (3 attempts).
+//  4. MD5File after cut.
+//  5. SliceSubtitles (cache hit per Commit G) → Whisper fallback.
+//  6. BuildClipMetadata via SegmentsSvc internal helper.
+//  7. ProcessLifecycle (kept on ExtractionCallbacks path — Commit H
+//     folds it into LifecycleServicePort if composition needs it).
+//  8. DestinationResolver → DriveUploadFileIfChanged.
+//  9. ClipAtomicWriter (DB write + outbox row in same tx; Commit F
+//     implements the concrete adapter).
 //
 // Status semantics:
 //   - "skipped" → Item has Drive* filled but no video pipeline or writer

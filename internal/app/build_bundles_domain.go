@@ -20,8 +20,8 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -261,20 +261,20 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		zap.String("data_dir", cfg.Storage.DataDir))
 
 	return &DomainBundle{
-		YoutubeClipService:       youtubeClipService,
-		VoiceoverService:         voiceoverSvc,
-		VoiceoverSync:            vosyncSvc,
-		VoiceoverProcessItem:     voiceoverProcessItem, // Step 8/12: narrow VoiceoverItemExecutor port (BLOC5.4 closer)
-		ImageService:             imageSvc,
-		IngestService:            ingestSvc,
-		BooksService:             booksSvc,
-		LessonsService:           lessonsS,
-		MetaWriter:               metaWriter,
-		RealtimeMatcher:          realtimeMatcher,
-		RealtimeSearch:           realtimeSearch,
-		AutotagService:           autotagSvc,
-		AssocService:             assocService,
-		ArtifactService:          artifactService,
+		YoutubeClipService:           youtubeClipService,
+		VoiceoverService:             voiceoverSvc,
+		VoiceoverSync:                vosyncSvc,
+		VoiceoverProcessItem:         voiceoverProcessItem, // Step 8/12: narrow VoiceoverItemExecutor port (BLOC5.4 closer)
+		ImageService:                 imageSvc,
+		IngestService:                ingestSvc,
+		BooksService:                 booksSvc,
+		LessonsService:               lessonsS,
+		MetaWriter:                   metaWriter,
+		RealtimeMatcher:              realtimeMatcher,
+		RealtimeSearch:               realtimeSearch,
+		AutotagService:               autotagSvc,
+		AssocService:                 assocService,
+		ArtifactService:              artifactService,
 		VoiceoverGenerateItemHandler: nil, // populated at composition.go late-bindings block
 	}, nil
 }
