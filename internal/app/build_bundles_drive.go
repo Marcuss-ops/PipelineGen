@@ -172,7 +172,15 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	var reader drive.Reader
 	var lifecycle drive.FileLifecycle
 	if driveUploader != nil {
-		admin = driveUploader
+		// P0.4 admin scope (June 2026): Admin port goes through
+		// *AdminAdapter (folderLookupFunc seam applied to GetOrCreateFolder).
+		// Production callers reach GetOrCreateFolder via drive.EnsureFolderPath
+		// from stock/stockpipeline/util.go:42 and application/assets/ingest/drive.go:40.
+		// Reader + Lifecycle retain the *Uploader backing (same seam shape
+		// doesn't apply to them). drive.NewAdminAdapter is typed-nil-safe
+		// (returns nil only if driveUploader is nil — and the `if driveUploader != nil`
+		// guard above already screens that path).
+		admin = drive.NewAdminAdapter(driveUploader, log)
 		reader = driveUploader
 		// CARD-3 (June 2026): Lifecycle is the canonical Pattern 0 port for
 		// file-lifecycle Drive ops (Trash/Move/Rename/Cleanup). Reuses
