@@ -327,20 +327,45 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		return nil, fmt.Errorf("delivery: publish to %q: %w", req.Destination, err)
 	}
 
+	// ── Translate drive.PutAction → delivery.PublishAction ───────────────────
+	// The conversion lives here (and is exposed as a private method
+	// `(*Publisher).actionFor` below) rather than in delivery/types.go
+	// because delivery MUST NOT import the drive package (Pattern 0
+	// layering — the application layer has zero outward dependencies
+	// on infrastructure). drive.PutAction is in the same package as
+	// Publisher, so the conversion stays at the boundary. If a future
+	// PutAction constant is added to drive and forgotten here, unknown
+	// values fall through to delivery.PublishActionUnknown — a
+	// conservative no-op state that downstream callers can detect
+	// and refuse to treat as a fresh "created" outcome.
+	action := p.actionFor(result.Action)
+
+	// FolderPath is the slash-joined form of PathSegments. Empty when
+	// PathSegments is empty (the root-folder case). PathSegments
+	// remains the authoritative ordered view; FolderPath is the
+	// derived single-string surface for auditing and display.
+	folderPath := strings.Join(resolved.PathSegments, "/")
+
 	p.log.Info("delivery: file published",
 		zap.String("destination", string(req.Destination)),
 		zap.String("folder_id", resolved.FolderID),
 		zap.String("file_id", result.FileID),
 		zap.String("action", string(result.Action)),
+		zap.String("publish_action", string(action)),
 		zap.Strings("segments", resolved.PathSegments),
+		zap.String("folder_path", folderPath),
 	)
 
 	return &delivery.PublishResult{
 		FileID:       result.FileID,
 		WebViewLink:  result.WebViewLink,
+		DownloadLink: result.DownloadLink,
+		MD5Checksum:  result.MD5Checksum,
 		FolderID:     resolved.FolderID,
+		FolderPath:   folderPath,
 		Destination:  req.Destination,
 		PathSegments: resolved.PathSegments,
+		Action:       action,
 	}, nil
 }
 
@@ -366,6 +391,33 @@ func (p *Publisher) ResolveFolder(ctx context.Context, req delivery.PublishReque
 	)
 
 	return resolved.FolderID, nil
+}
+
+// actionFor translates a drive.PutAction (low-level uploader outcome)
+// to a delivery.PublishAction (cross-package surface value). This is
+// the canonical boundary conversion; tests pin each arm via
+// TestPublisher_TranslatePutAction_Table in publisher_test.go so
+// adding a future drive.PutAction constant without updating this
+// switch surfaces as a failing test, not a silent fall-through to
+// PublishActionUnknown in production callsites.
+//
+// The method is exposed (lowercase; same-package access) rather than
+// inlined so the test can call it directly and avoid duplicating the
+// switch arm-by-arm. If a future refactor moves the switch elsewhere,
+// the test breaks immediately and pin coverage migrates automatically.
+func (p *Publisher) actionFor(input PutAction) delivery.PublishAction {
+	switch input {
+	case PutActionCreated:
+		return delivery.PublishActionCreated
+	case PutActionUpdated:
+		return delivery.PublishActionUpdated
+	case PutActionSkipped:
+		return delivery.PublishActionSkipped
+	case PutActionRenamed:
+		return delivery.PublishActionRenamed
+	default:
+		return delivery.PublishActionUnknown
+	}
 }
 
 // normalizeFilename sanitises a filename for Drive upload.

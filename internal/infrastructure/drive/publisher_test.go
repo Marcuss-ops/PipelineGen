@@ -54,6 +54,11 @@ type fakeFileUploader struct {
 	// tests for the skip/rename branches can pin the exact action
 	// the underlying uploader would have produced.
 	putAction PutAction
+	// md5Checksum, if set, is returned verbatim by PutFile as the
+	// MD5Checksum field of PutFileResult. Drives the P0 #9 test that
+	// verifies Publisher.Publish propagates MD5Checksum through to
+	// delivery.PublishResult without reconstruction.
+	md5Checksum string
 }
 
 type uploadCall struct {
@@ -87,6 +92,7 @@ func (f *fakeFileUploader) PutFile(_ context.Context, req PutFileRequest) (*PutF
 		FileID:       "fake-file-id",
 		WebViewLink:  "https://drive.google.com/file/d/fake-file-id",
 		DownloadLink: "https://drive.google.com/uc?id=fake-file-id",
+		MD5Checksum:  f.md5Checksum,
 		Action:       action,
 	}, nil
 }
@@ -493,4 +499,102 @@ func TestPublisher_PublishForwardsConflictPolicy_Rename(t *testing.T) {
 	require.Len(t, files.uploadCalls, 1)
 	require.Equal(t, delivery.ConflictRename, files.uploadCalls[0].policy)
 }
+
+// ── P0 #9 tests (June 2026) — PublishResult enrichment ─────────────
+//
+// Pre-P0-#9 the publisher dropped DownloadLink / MD5Checksum / Action
+// from the underlying PutFileResult, forcing every consumer to
+// reconstruct the download URL via string interpolation. The test
+// below pins the contract: PublishResult carries all four metadata
+// fields verbatim from PutFileResult and the resolved PathSegments,
+// so no consumer can fall back to reconstruction without first
+// deleting this test or breaking it.
+
+// TestPublisher_PublishEnrichesPublishResult_F1_5_P0_9 pins the P0
+// #9 surface: PublishResult must expose DownloadLink, MD5Checksum,
+// FolderPath, and a translated Action so no consumer reconstructs
+// the download URL via string interpolation. Uses a non-default
+// PutActionUpdated so the Action translation is observably distinct
+// from the zero value.
+func TestPublisher_PublishEnrichesPublishResult_F1_5_P0_9(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "video-folder-id"}
+	files := &fakeFileUploader{
+		putAction:   PutActionUpdated, // non-default to observe translation
+		md5Checksum: "abc123def456",  // non-empty to observe propagation
+	}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/clip.mp4",
+		Filename:    "clip_abc.mp4",
+		Group:       "NBA News",
+		Subject:     "video-xyz",
+	})
+	require.NoError(t, err)
+
+	// (1) DownloadLink propagated verbatim from PutFileResult —
+	//     verifies the no-reconstruction contract.
+	require.Equal(t, "https://drive.google.com/uc?id=fake-file-id", result.DownloadLink,
+		"Publish must propagate PutFileResult.DownloadLink verbatim — consumers MUST never reconstruct via uc?id=")
+
+	// (2) MD5Checksum propagated verbatim — closes the re-FindFileByName
+	//     surface that pre-P0-#9 callers used to recover the hash.
+	require.Equal(t, "abc123def456", result.MD5Checksum,
+		"Publish must propagate PutFileResult.MD5Checksum verbatim")
+
+	// (3) Action translated at the delivery/drive boundary via the
+	//     SAME method that Publish calls (single source of truth).
+	require.Equal(t, pub.actionFor(PutActionUpdated), result.Action,
+		"Publish must translate drive.PutActionUpdated → delivery.PublishActionUpdated at the boundary")
+	require.NotEqual(t, delivery.PublishActionUnknown, result.Action,
+		"PublishActionUnknown must NOT silently swallow a real action")
+
+	// (4) FolderPath = strings.Join(PathSegments, "/") — the derived
+	//     single-string view that consumers downstream want.
+	require.Equal(t, "NBA News/video-xyz", result.FolderPath,
+		"Publish must compute FolderPath as strings.Join(PathSegments, \"/\")")
+
+	// (5) PathSegments remains authoritative: FolderPath and
+	//     PathSegments coexist; PathSegments preserves order and
+	//     is the canonical ordered view (FolderPath is derived).
+	require.Equal(t, []string{"NBA News", "video-xyz"}, result.PathSegments,
+		"PathSegments remains the authoritative ordered view; FolderPath is the derived display string")
+}
+
+// TestPublisher_TranslatePutAction_Table pins the boundary switch
+// arm-by-arm, calling the SAME Publisher.actionFor method that
+// production uses (single source of truth). Adding a future
+// drive.PutAction constant without updating the switch surfaces as
+// a failing test, not a silent fall-through to PublishActionUnknown.
+func TestPublisher_TranslatePutAction_Table(t *testing.T) {
+	reg := testRegistry()
+	pub, err := NewPublisher(reg, &fakeFolderManager{}, &fakeFileUploader{}, zap.NewNop())
+	require.NoError(t, err)
+
+	cases := []struct {
+		name     string
+		input    PutAction
+		expected delivery.PublishAction
+	}{
+		{"created", PutActionCreated, delivery.PublishActionCreated},
+		{"updated", PutActionUpdated, delivery.PublishActionUpdated},
+		{"skipped", PutActionSkipped, delivery.PublishActionSkipped},
+		{"renamed", PutActionRenamed, delivery.PublishActionRenamed},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			require.Equal(t, c.expected, pub.actionFor(c.input),
+				"drive.PutAction%q must translate to delivery.PublishAction%q at the boundary", c.input, c.expected)
+		})
+	}
+}
+
+// (Root-upload FolderPath empty + P0 #9 enriched-fields pin lives in
+// publisher_policies_test.go alongside the other policy tests; it
+// requires delivery.NewDestinationRegistryWithPolicies which is
+// itself build-tag gated.)
 

@@ -49,7 +49,13 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 		}
 		fileID = pubResult.FileID
 		webViewLink = pubResult.WebViewLink
-		downloadLink = "https://drive.google.com/uc?id=" + pubResult.FileID
+		// F1.5 (P0 #9): read DownloadLink from the canonical
+		// PublishResult instead of reconstructing via string
+		// interpolation. Stock pipeline consumers downstream read
+		// this into chunkRes.DownloadLink → assetindex.AssetRecord.DownloadLink
+		// → Qdrant projection, so centralising the URL here closes
+		// the format-drift failure surface end-to-end.
+		downloadLink = pubResult.DownloadLink
 	} else {
 		upResult, err := s.driveAdmin.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
 		if err != nil {

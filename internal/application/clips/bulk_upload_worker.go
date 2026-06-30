@@ -398,12 +398,19 @@ func (w *BulkUploadWorker) processOneClip(
 			}
 			driveFileID = pubRes.FileID
 			driveLink = pubRes.WebViewLink
-			downloadLink = "https://drive.google.com/uc?id=" + pubRes.FileID
+			// F1.5 (P0 #9): read DownloadLink from the canonical
+			// PublishResult instead of reconstructing via string
+			// interpolation. Recomputing uc?id= on the consumer side
+			// risks drift against the URL format Drive returns and
+			// prevents the canonical Publisher from centralising URL
+			// formatting (e.g. for ?export=download variants).
+			downloadLink = pubRes.DownloadLink
 			targetFolderID = pubRes.FolderID
 			uploaded.Add(1)
 			log.Info("published to drive",
 				zap.String("file_id", driveFileID),
-				zap.String("drive_link", driveLink))			// Upload siblings via Publisher (best effort)
+				zap.String("drive_link", driveLink),
+				zap.String("publish_action", string(pubRes.Action)))			// Upload siblings via Publisher (best effort)
 			// Group is empty because the folder is already resolved by the
 			// first Publish call (targetFolderID = pubRes.FolderID). Setting
 			// Group here would create double-nesting.

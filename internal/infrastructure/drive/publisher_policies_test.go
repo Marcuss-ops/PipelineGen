@@ -280,3 +280,58 @@ func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
 		})
 	}
 }
+
+// TestPublisher_FolderPathEmptyForRootUpload closes the audit
+// “root upload vietato anche tramite ResolveFolder” gap observed in
+// Phase 1 step 13: when RequireSubpath=false and PathBuilder returns
+// empty segments (root-folder upload), FolderPath (the derived
+// single-string surface) must be empty — NOT a stray "/" sentinel.
+// Also pins the P0 #9 enriched fields (DownloadLink + Action) on
+// the root-upload branch so the no-reconstruction contract holds
+// end-to-end, not just for subpath destinations.
+//
+// This test lives in publisher_policies_test.go (alongside the
+// other /accept and /reject policy tests) because it requires
+// `delivery.NewDestinationRegistryWithPolicies`, which is itself
+// build-tag gated via internal/application/assets/delivery/registry_test_factories.go.
+func TestPublisher_FolderPathEmptyForRootUpload(t *testing.T) {
+	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+		delivery.DestinationYouTubeClip: {
+			RootFolderID:   "clips-root",
+			PathBuilder:    degenerateEmptyPathBuilder,
+			RequireSubpath: false, // root-upload opt-in
+		},
+	})
+	folders := &fakeFolderManager{result: "clips-root"}
+	files := &fakeFileUploader{putAction: PutActionCreated}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/clip.mp4",
+		Filename:    "clip_at_root.mp4",
+		// Group + Subject omitted so degenerateEmptyPathBuilder
+		// returns []string{} → root-folder upload surface.
+	})
+	require.NoError(t, err)
+	// Path/Folder invariants for the root-upload branch.
+	require.Empty(t, result.FolderPath,
+		"FolderPath must be empty when PathSegments is empty (root-folder upload) — strings.Join of []string{} is \"\", NOT a stray \"/\" sentinel")
+	require.Empty(t, result.PathSegments,
+		"PathSegments must remain empty for root-folder upload")
+	require.Equal(t, "clips-root", result.FolderID,
+		"FolderID must collapse to RootFolderID when no segments are built")
+	// P0 #9 enriched fields MUST also land on the root-upload branch.
+	// Equal (not NotEmpty) pins BOTH presence AND format — closes the
+	// no-reconstruction contract end-to-end.
+	require.Equal(t, "https://drive.google.com/uc?id=fake-file-id", result.DownloadLink,
+		"DownloadLink must be populated verbatim on the root-upload branch (P0 #9 contract is end-to-end, NOT just for subpath destinations)")
+	require.Equal(t, pub.actionFor(PutActionCreated), result.Action,
+		"Action must translate to PublishActionCreated on the root-upload branch via the SAME Publisher.actionFor that Publish uses (single source of truth)")
+	// Drive write-surface invariants for the root-upload branch.
+	require.Empty(t, folders.ensureCalls,
+		"EnsureFolder MUST NOT be called on the root-folder upload branch")
+	require.Len(t, files.uploadCalls, 1,
+		"PutFile MUST be called exactly once on the root-folder upload branch")
+}
