@@ -664,6 +664,38 @@ search ingestion stores only the raw clip metadata and a separate
 `/enrich` job handles semantic payload population. Filed
 separately, not in this closure.
 
+### Fixed
+
+**[P1-2 of cleanup plan, June 2026]** `arch(current)` + `feat(ci)` +
+`chore(ci)` — Check 44 (application 40-file size cap +
+`usecase/types_aliases.go` filename ban, target 40, transitional 66)
+actively enforced via `scripts/ci-architectural-checks.sh`. Wave
+tracker `architecture/current.yaml::wave_status.P1-2` flipped from
+`current_state: deferred` to `current_state: active`; cap values
+(`target: 40`, `transitional_cap: 66`) now live as the YAML SSOT
+read by the gate script through `python3 -c "import yaml; ..."`
+(zero inlining — a regression in `application/current.yaml` on
+line 369 had blocked every downstream consumer; fixed in the
+follow-up commit). Check 45 inline ClipsRepository map ban
+re-numbered to Check 46 via `git mv`; the original wire-slot
+reserved for Check 44 in the prior P1-2 deferred entry is now
+filled, restoring the canonical numeric sequence 43 → 44 → 46 →
+47+. Commit `1cd9c3c9 arch(current): fix YAML corruption + add
+bare-only map-literal coverage FP` populated
+`wave_status.P1-2.linked_issues[PR-BARE-ONLY-MAP-LITERAL-COVERAGE]`
+(id / `owner_capability: architecture` / status=pending /
+deadline=2026-07-25) as a slim-schema forward-pointer for the
+bare-only coverage gap of Check 46, per godlike/06 §Slim-schema
++ zero-baseline rule. Follow-up commit `03813593 arch(current):
+tighten owner_capability to architecture namespace` aligned the
+owner field with the wave‑tracker `owner:` two lines above for
+self-consistency. Forward-pointer entry lives at the canonical
+anchor `architecture/current.yaml#wave_status.P1-2.linked_issues[PR-BARE-ONLY-MAP-LITERAL-COVERAGE]`
+(mirror documented in AGENTS.md `Recent cross-cutting closures`).
+Gates green: `bash scripts/ci-architectural-checks.sh` exits 0;
+the Check 44 standalone reads the live YAML SSOT and reports
+0 violations against `transitional_cap=66`.
+
 ## Unreleased
 
 ### Added
