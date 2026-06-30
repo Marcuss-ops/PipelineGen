@@ -76,6 +76,17 @@ type ChannelMonitor struct {
 	analyzer   VideoAnalyzer
 	enqueuer   JobEnqueuer
 
+	// discoveries (Commit D, June 2026) is the typed port over the
+	// youtube_discoveries ledger (table created in
+	// migrations/sqlite/113_youtube_discoveries.sql). Composition wires
+	// the concrete *assets.YoutubeDiscoveriesRepository (declared in
+	// internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go)
+	// via the CompositionDeps.Discoveries field. Nil-tolerant at runtime:
+	// processVideo's recordDiscoveryAndClassify classifies already_scheduled
+	// defensively when m.discoveries is nil so a missing wire forces an
+	// operator-visible misconfiguration rather than silently losing dedupe.
+	discoveries YoutubeDiscoveriesPort
+
 	// policy is the per-instance MonitorRuntimePolicy (Commit A, P1 #10).
 	// Nil falls back to DefaultMonitorRuntimePolicy via policyOrDefault().
 	// Optional so existing tests that construct the struct by literal
@@ -131,11 +142,12 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 		channelsSvc: deps.ChannelsSvc,
 		log:         deps.Log,
 
-		ytdlp:      deps.Ytdlp,
-		transcript: deps.Transcript,
-		analyzer:   deps.Analyzer,
-		enqueuer:   deps.Enqueuer,
-		policy:     deps.Policy,
+		ytdlp:       deps.Ytdlp,
+		transcript:  deps.Transcript,
+		analyzer:    deps.Analyzer,
+		enqueuer:    deps.Enqueuer,
+		discoveries: deps.Discoveries,
+		policy:      deps.Policy,
 
 		// globalSem width comes from the typed policy first (Commit A,
 		// P1 #10), then cfg.Concurrency.MaxConcurrentChannelChecks

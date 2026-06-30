@@ -244,27 +244,21 @@ func (e *ExtractionEnqueuer) EnqueueExtract(ctx context.Context, req EnqueueExtr
 		zap.String("destination_group", req.Group),
 		zap.String("destination_folder_id", req.DriveFolderID))
 
-	// ── 5. Best-effort cursor update (contracts 2 + 3) ─────────────
-	// Nil-tolerant degrade: a nil channelsSvc means the broker-side
-	// enqueue is still recorded (the durable-jobs system is the source
-	// of truth), but the channel cursor stays where it was. The next
-	// scheduler tick will retry and complete the cursor update —
-	// best-effort semantics, no contract violation.
-	if e.channelsSvc == nil {
-		e.log.Warn("extraction_enqueuer: channelsSvc is nil, skipping cursor update (best-effort degrade)",
-			zap.String("video_id", req.VideoID))
-		return nil
-	}
-	if err := e.channelsSvc.UpdateCursor(ctx, channels.UpdateCursorCommand{
-		ID:     req.Channel.ID,
-		Cursor: req.VideoID,
-	}); err != nil {
-		// Contract 3: cursor failure MUST NOT surface to caller.
-		e.log.Warn("extraction_enqueuer: cursor update failed (best-effort tolerance per contract 3)",
-			zap.String("channel_id", req.Channel.ID),
-			zap.String("video_id", req.VideoID),
-			zap.Error(err))
-	}
+	// ── 5. Cursor update — REMOVED in Commit D ──────────────────────
+	// Pre-Commit-D contracts 2 + 3 activated a per-video channels.UpdateCursor
+	// call right after the broker-side Enqueue succeeded. Commit D (June 2026,
+	// PR-D YouTube Channel Monitor cutover) replaces this best-effort
+	// per-video write with the cycle-end watermark: discovery.go::recordCycleEndWatermark
+	// (defer in checkChannel) writes category_channels.last_cursor to
+	// MAX(discovered_at) from the youtube_discoveries ledger exactly ONCE
+	// per scheduler cycle. The new path is durable at the table level
+	// (no per-row best-effort degrade), and a SQLite transient error
+	// there is a single, observable ledger write rather than N per-video
+	// silent degrades.
+	//
+	// The channelsSvc field on this struct is RETAINED for backward compat
+	// (lifecycle.go + extraction_enqueuer_test.go still wire it). Removal is
+	// tracked as a follow-up so this commit lands as a focused diff.
 	return nil
 }
 

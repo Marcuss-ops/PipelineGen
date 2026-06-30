@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -40,7 +41,9 @@ import (
 )
 
 // enqueueFromAnalysis builds the canonical ExtractRequest-shaped payload
-// and delegates emission to the JobEnqueuer port.
+// and delegates emission to the JobEnqueuer port, then records the
+// per-outcome ledger state. Returns nil on the enqueued path; returns
+// the underlying error on the rejected path.
 //
 // DriveFolderID resolution rule (preserved verbatim from the pre-Step-9
 // process_video.go::enqueueClipExtract):
@@ -49,17 +52,21 @@ import (
 //   - empty string is also OK (extraction service will route via
 //     category-root + group subfolder as before).
 //
-// The metric labels are read off the channel handle (via
-// extractChannelHandle, which lives in scheduler.go); an empty handle
-// degrades to "unknown" so the Prometheus series never sees a blank label.
-//
-// Errors from the JobEnqueuer port are logged and swallowed: the
-// channel-monitor's contract is best-effort per video, with retry
-// driven by the next scheduler tick (cursor advancement is gated on
-// the enqueue success, so a non-enqueued video gets re-discovered on
-// the next run unless the user adds a "MaxVideosPerRun consume on
-// enqueue-only" refinement in Blocco 7).
-func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, analysis Analysis) {
+// Commit D (June 2026, PR-D YouTube Channel Monitor cutover):
+// - The function now returns error so recordDiscoveryAndClassify can
+//   classify the outcome as Enqueued vs Rejected strictly.
+// - ledgerID is the row id from the canonical TryReserve that won
+//   the (channel_id, video_id) leader-election INSERT. The MarkEnqueued
+//   / MarkRejected updates are issued here so the ledger row's outcome
+//   arrives at `enqueued` only when the broker-side emit succeeds.
+//   This eliminates silent-success paths where the broker emitted but
+//   the ledger stayed at `pending` (pre-Commit D) or where the broker
+//   failed but the ledger still showed `pending` (no audit trail).
+// - The per-video channels.UpdateCursor (extraction_enqueuer contract 3)
+//   is REMOVED. Cycle-end MAX(discovered_at) → category_channels.
+//   last_cursor is the new monotonic write path; see
+//   discovery.go::recordCycleEndWatermark.
+func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, analysis Analysis, ledgerID string) error {
 	videoID := info.ID
 	title := info.Title
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
@@ -78,13 +85,20 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 	m.log.Debug("enqueueFromAnalysis: dispatching via JobEnqueuer",
 		zap.String("video_id", videoID),
 		zap.String("channel_handle", channelHandle),
-		zap.Int("segments", len(analysis.Segments)))
+		zap.Int("segments", len(analysis.Segments)),
+		zap.String("ledger_id", ledgerID))
 
 	// ── Delegate to the JobEnqueuer port ─────────────────────────────
 	if m.enqueuer == nil {
 		m.log.Warn("enqueueFromAnalysis: enqueuer port not wired, cannot emit extract job",
 			zap.String("video_id", videoID))
-		return
+		// Defensive ledger update on missing composition: record the
+		// misconfiguration as a rejection so the ledger's audit trail
+		// reflects the missing-emit case.
+		if m.discoveries != nil && ledgerID != "" {
+			_ = m.discoveries.MarkRejected(ctx, ledgerID, "enqueuer port not wired")
+		}
+		return fmt.Errorf("enqueueFromAnalysis: enqueuer port not wired for video=%q ledger_id=%q", videoID, ledgerID)
 	}
 	if emitErr := m.enqueuer.EnqueueExtract(ctx, EnqueueExtractRequest{
 		VideoID:       videoID,
@@ -95,17 +109,40 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 		Segments:      analysis.Segments,
 		Channel:       channel,
 	}); emitErr != nil {
-		m.log.Error("enqueueFromAnalysis: JobEnqueuer.EnqueueExtract failed",
+		m.log.Error("enqueueFromAnalysis: JobEnqueuer.EnqueueExtract failed, recording rejection on ledger",
 			zap.String("video_id", videoID),
+			zap.String("ledger_id", ledgerID),
 			zap.Error(emitErr))
-		return
+		if m.discoveries != nil && ledgerID != "" {
+			if markErr := m.discoveries.MarkRejected(ctx, ledgerID, emitErr.Error()); markErr != nil {
+				m.log.Error("enqueueFromAnalysis: MarkRejected failed",
+					zap.String("ledger_id", ledgerID),
+					zap.Error(markErr))
+			}
+		}
+		return fmt.Errorf("enqueueFromAnalysis: emit failed for video=%q ledger_id=%q: %w", videoID, ledgerID, emitErr)
 	}
 
+	// Successful broker emit → flip the ledger row from `pending` to
+	// `enqueued` so the cycle-end MAX(discovered_at) query + the audit
+	// trail both reflect that the broker side reached. Idempotent on
+	// repeat: a row with enqueued=1 stays 1.
+	if m.discoveries != nil && ledgerID != "" {
+		if markErr := m.discoveries.MarkEnqueued(ctx, ledgerID, time.Now().UTC().Format(time.RFC3339)); markErr != nil {
+			// The job IS emitted; the ledger row's outcome just didn't
+			// flip. Loud log so an operator can reconcile.
+			m.log.Error("enqueueFromAnalysis: MarkEnqueued failed (broker emitted, ledger stuck in pending)",
+				zap.String("ledger_id", ledgerID),
+				zap.Error(markErr))
+		}
+	}
 	m.log.Info("enqueued youtube_clip.extract job",
 		zap.String("video_id", videoID),
 		zap.String("title", title),
 		zap.Int("segments", len(analysis.Segments)),
-		zap.String("destination_group", analysis.Category))
+		zap.String("destination_group", analysis.Category),
+		zap.String("ledger_id", ledgerID))
+	return nil
 }
 
 // HandleChannelSyncJob is the durable youtube.channel.sync handler.
