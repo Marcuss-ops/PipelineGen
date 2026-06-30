@@ -1,4 +1,4 @@
-// Package drive — verifier_adapter.go (PR2.7)
+// Package drive — verifier_adapter.go (PR2.7, updated FASE 9 Step 7)
 //
 // DriveVerifierAdapter is the infrastructure-side implementation of the
 // artifacts.DriveVerifier port. It is functionally equivalent to the
@@ -23,12 +23,14 @@
 // and place the SDK-wired concrete here in infrastructure where the SDK
 // is naturally referenced. The verifier port stays in the application
 // layer per the AGENTS.md "Application owns interfaces" rule.
+//
+// FASE 9 Step 7 (June 2026): migrated from *driveapi.Service to Reader
+// port. Uses FileIsNotTrashed instead of FileExists — semantically better
+// for verification (a trashed file should not be considered "verified").
 package drive
 
 import (
 	"context"
-
-	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 )
@@ -37,20 +39,15 @@ import (
 // More reliable than HTTP HEAD requests for Google Drive links because
 // the API checks file ID existence + not-trashed state.
 type DriveVerifierAdapter struct {
-	uploader *Uploader
+	reader Reader
 }
 
 // NewDriveVerifierAdapter constructs the adapter from a configured
-// Drive SDK service. Composition root in `internal/app/lifecycle.go`
+// Reader port. Composition root in `internal/app/lifecycle.go`
 // wires this where the legacy `artifacts.NewAPIDriveVerifier` was
-// called (the surface swap is mechanical — same input, same port
-// interface, just labelled an "adapter" instead of a "verifier").
-func NewDriveVerifierAdapter(driveSvc *driveapi.Service) *DriveVerifierAdapter {
-	var uploader *Uploader
-	if driveSvc != nil {
-		uploader = &Uploader{Service: driveSvc}
-	}
-	return &DriveVerifierAdapter{uploader: uploader}
+// called.
+func NewDriveVerifierAdapter(reader Reader) *DriveVerifierAdapter {
+	return &DriveVerifierAdapter{reader: reader}
 }
 
 // VerifyDriveLink returns true when the Drive link points to a file
@@ -60,7 +57,7 @@ func NewDriveVerifierAdapter(driveSvc *driveapi.Service) *DriveVerifierAdapter {
 // means "link is empty or syntactically invalid", and a non-nil error
 // is reserved for transport failures.
 func (v *DriveVerifierAdapter) VerifyDriveLink(ctx context.Context, driveLink string) (bool, error) {
-	if driveLink == "" || v.uploader == nil {
+	if driveLink == "" || v.reader == nil {
 		return false, nil
 	}
 
@@ -69,7 +66,7 @@ func (v *DriveVerifierAdapter) VerifyDriveLink(ctx context.Context, driveLink st
 		return false, nil
 	}
 
-	return v.uploader.FileExists(ctx, fileID)
+	return v.reader.FileIsNotTrashed(ctx, fileID)
 }
 
 // Compile-time assertion: DriveVerifierAdapter satisfies the

@@ -37,7 +37,6 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -384,10 +383,15 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 }
 
-// LifecycleDeps holds the dependencies needed to create a lifecycle service
+// LifecycleDeps holds the dependencies needed to create a lifecycle service.
+//
+// FASE 9 Step 7 (June 2026): DriveUploader (*drive.Uploader) migrated to
+// DriveAdmin (drive.Admin port). Callers pass *drive.Uploader which satisfies
+// drive.Admin structurally. NewLifecycleFromDeps extracts a drive.Reader via
+// safe type-assertion for the verifier + reconcile services.
 type LifecycleDeps struct {
 	Registry      artifacts.Registry
-	DriveUploader *drive.Uploader
+	DriveAdmin    drive.Admin
 	AssetIndex    *assetindex.Service
 	DriveVerifier artifacts.DriveVerifier
 	Finalizer     *artifacts.Finalizer
@@ -395,12 +399,24 @@ type LifecycleDeps struct {
 }
 
 // NewLifecycleFromDeps creates a lifecycle Service using the provided dependencies.
+//
+// FASE 9 Step 7: DriveAdmin (drive.Admin) replaces the former *drive.Uploader.
+// A drive.Reader is extracted via safe type-assertion for verifier + reconcile.
+// All production callers pass *drive.Uploader which satisfies both interfaces.
 func NewLifecycleFromDeps(
 	deps *LifecycleDeps,
 	log *zap.Logger,
 ) *lifecycle.Service {
-	if deps.DriveVerifier == nil && deps.DriveUploader != nil {
-		deps.DriveVerifier = drive.NewDriveVerifierAdapter(deps.DriveUploader.Service)
+	// Extract drive.Reader for verifier + reconcile (safe: *drive.Uploader satisfies both Admin and Reader).
+	var driveReader drive.Reader
+	if deps.DriveAdmin != nil {
+		if r, ok := deps.DriveAdmin.(drive.Reader); ok {
+			driveReader = r
+		}
+	}
+
+	if deps.DriveVerifier == nil && driveReader != nil {
+		deps.DriveVerifier = drive.NewDriveVerifierAdapter(driveReader)
 	}
 
 	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
@@ -416,15 +432,10 @@ func NewLifecycleFromDeps(
 		deps.Store = lifecycle.NewRegistryStoreAdapter(deps.Registry)
 	}
 
-	// FASE 9: nil-safe extraction — DriveUploader.Service panics when nil.
-	var rawDriveSvc *gdrive.Service
-	if deps.DriveUploader != nil {
-		rawDriveSvc = deps.DriveUploader.Service
-	}
-
 	return lifecycle.NewService(
 		deps.Store,
-		rawDriveSvc,
+		deps.DriveAdmin,
+		driveReader,
 		deps.Registry,
 		deps.AssetIndex,
 		deps.Finalizer,

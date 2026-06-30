@@ -177,9 +177,13 @@ func TestStartCancelWatcher_ExitsOnCtxDone(t *testing.T) {
 type mockCancelBroker struct {
 	mu             sync.Mutex
 	jobStatus      job.Status
+	revision       int
 	progressCalls  int
 	eventCalls     int
 	finalizeOp     string // last finalize mutation observed
+	completeRev    int
+	getCalls       int
+	lastGetRev     int
 }
 
 func newMockCancelBroker() *mockCancelBroker {
@@ -190,10 +194,13 @@ func (m *mockCancelBroker) Create(_ context.Context, _ *job.Job) error { return 
 func (m *mockCancelBroker) Get(_ context.Context, id string) (*job.Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.getCalls++
+	m.lastGetRev = m.revision
 	return &job.Job{
 		ID:         id,
 		Type:       job.TypeScriptGenerate,
 		Status:     m.jobStatus,
+		Revision:   m.revision,
 		MaxRetries: 2,
 	}, nil
 }
@@ -255,10 +262,11 @@ func (m *mockCancelBroker) DeadLetter(_ context.Context, _ string, _ string) err
 	m.finalizeOp = "DeadLetter"
 	return nil
 }
-func (m *mockCancelBroker) Complete(_ context.Context, _ string, _ string, _ string, _ int, _ json.RawMessage) error {
+func (m *mockCancelBroker) Complete(_ context.Context, _ string, _ string, _ string, expectedRevision int, _ json.RawMessage) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.finalizeOp = "Complete"
+	m.completeRev = expectedRevision
 	return nil
 }
 
@@ -364,4 +372,77 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 	// ensures the watcher polled IsCancelled at least once.
 	assert.NotEmpty(t, broker.finalizeOp,
 		"worker finalisation should have been called (Cancel / Fail / Complete / ScheduleRetry / DeadLetter)")
+}
+
+// Regression: the worker must finalise with the latest DB revision
+// after the lease loop stops, not the stale claim-time snapshot.
+func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
+	t.Parallel()
+
+	broker := newMockCancelBroker()
+	broker.jobStatus = job.StatusRunning
+	broker.revision = 7
+
+	handler := HandlerFunc(func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
+		return map[string]any{"ok": true}, nil
+	})
+
+	dispatcher := NewDispatcher()
+	if err := dispatcher.Register(job.TypeScriptGenerate, handler); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	worker := NewWorker(
+		"revision-test-worker",
+		broker,
+		dispatcher,
+		nil,
+		zap.NewNop(),
+		5*time.Minute,
+		2*time.Second,
+		BackoffConfig{
+			MaxBackoff:                30 * time.Second,
+			JitterFraction:            0,
+			ConsecutiveEmptyThreshold: 0,
+		},
+		[]string{job.TypeScriptGenerate},
+	)
+
+	parentCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.runJob(parentCtx, &job.Job{
+			ID:         "revision-test-job",
+			Type:       job.TypeScriptGenerate,
+			Status:     job.StatusRunning,
+			WorkerID:   "worker-1",
+			LeaseID:    "lease-1",
+			Revision:   1,
+			MaxRetries: 2,
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(8 * time.Second):
+		t.Fatal("runJob did not complete")
+	}
+
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	if broker.finalizeOp != "Complete" {
+		t.Fatalf("finalizeOp = %q, want Complete", broker.finalizeOp)
+	}
+	if broker.getCalls == 0 {
+		t.Fatal("expected runJob to read the current job revision via Get before finalization")
+	}
+	if broker.lastGetRev != 7 {
+		t.Fatalf("Get saw revision = %d, want 7", broker.lastGetRev)
+	}
+	if broker.completeRev != 7 {
+		t.Fatalf("Complete expectedRevision = %d, want 7", broker.completeRev)
+	}
 }

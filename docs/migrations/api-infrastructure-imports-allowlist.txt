@@ -154,3 +154,11 @@
 # (replacing *drive.Uploader). Concrete adapters live in
 # internal/app/system_adapters.go (the only place allowed to wire
 # infrastructure types into api ports). Removed from allowlist at PR4-cleanup.
+
+# Grandfathered clips handlers (PR2) — pending complete extraction
+internal/api/assets/clips/bulk_upload_transport.go
+internal/api/assets/clips/handler.go
+internal/api/assets/clips/ingest.go
+internal/api/assets/clips/module.go
+internal/api/assets/clips/ops.go
+internal/api/assets/clips/search.go

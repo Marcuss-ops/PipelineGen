@@ -69,6 +69,30 @@ func (p *synthesisingProcessor) Process(_ context.Context, _ *scriptpkg.Resolved
 	}, nil
 }
 
+type voiceoverEmittingProcessor struct {
+	lastInputScenes []scriptpkg.SpecScene
+	policy          adapterspkg.ProcessorPolicy
+}
+
+func (p *voiceoverEmittingProcessor) Name() string { return "voiceover" }
+func (p *voiceoverEmittingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapterspkg.ProcessorPolicy {
+	if p.policy == "" {
+		return adapterspkg.ProcessorBestEffort
+	}
+	return p.policy
+}
+func (p *voiceoverEmittingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, input adapterspkg.ProcessInput) (*adapterspkg.PostProcessResult, error) {
+	p.lastInputScenes = append([]scriptpkg.SpecScene(nil), input.SpecScene.Scenes...)
+	return &adapterspkg.PostProcessResult{
+		Voiceovers: []adapterspkg.SceneVoiceover{{
+			SceneIndex: 0,
+			Status:     "completed",
+			Link:       "https://drive.google.com/file/d/voice-0",
+			LocalPath:  "/tmp/voice-0.mp3",
+		}},
+	}, nil
+}
+
 // Issue #1 regression: a processor that emits SynthesizedScenes
 // must propagate them via the registry-local ProcessInput so
 // every subsequent processor in the same Run sees the
@@ -140,6 +164,58 @@ func TestRegistry_Run_SynthesizedScenesWriteBack(t *testing.T) {
 	//    that prefer the explicit field (eg. telemetry).
 	if len(result.SynthesizedScenes) != 3 {
 		t.Fatalf("SynthesizedScenes = %d, want 3", len(result.SynthesizedScenes))
+	}
+}
+
+// Regression: voiceover outputs must be written back into the
+// registry-local ProcessInput so downstream processors can persist
+// the per-scene link before GenerateOneUseCase builds the final
+// result envelope.
+func TestRegistry_Run_VoiceoverWriteBack(t *testing.T) {
+	log := zap.NewNop()
+	r := adapterspkg.NewPostProcessorRegistry(log)
+	vo := &voiceoverEmittingProcessor{policy: adapterspkg.ProcessorBestEffort}
+	downstream := &synthesisingProcessor{name: "document", policy: adapterspkg.ProcessorBestEffort}
+	r.Register(vo)
+	r.Register(downstream)
+	r.Freeze()
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:             "item-voiceover-writeback",
+		Postprocessors: []string{"voiceover", "document"},
+	}
+	input := adapterspkg.ProcessInput{
+		Text: "voiceover payload",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{
+				ID:    "scene-0",
+				Index: 0,
+				Kind:  scriptpkg.SceneClip,
+				Text:  "Hello world",
+			}},
+		},
+	}
+
+	result, err := r.Run(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if len(downstream.lastInputScenes) != 1 {
+		t.Fatalf("downstream processor saw %d scenes, want 1", len(downstream.lastInputScenes))
+	}
+	if downstream.lastInputScenes[0].Bindings.Voiceover == nil {
+		t.Fatal("downstream processor did not receive a voiceover binding")
+	}
+	if got := downstream.lastInputScenes[0].Bindings.Voiceover.Link; got != "https://drive.google.com/file/d/voice-0" {
+		t.Fatalf("downstream voiceover link = %q, want %q", got, "https://drive.google.com/file/d/voice-0")
+	}
+	if result.FinalSpecScene.Scenes[0].Bindings.Voiceover == nil {
+		t.Fatal("FinalSpecScene did not retain the voiceover binding")
+	}
+	if got := result.FinalSpecScene.Scenes[0].Bindings.Voiceover.LocalPath; got != "/tmp/voice-0.mp3" {
+		t.Fatalf("FinalSpecScene voiceover local path = %q, want %q", got, "/tmp/voice-0.mp3")
 	}
 }
 

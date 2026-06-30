@@ -28,6 +28,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // Compile-time assertion: *Adapter satisfies providers.FetchProvider.
@@ -75,7 +76,6 @@ type stockRunner interface {
 // keeping them adapter-internal for now (YAGNI) avoids API churn.
 const (
 	stockDefaultTotalMinutes  = 5
-	stockDefaultChunkDuration = 25
 	stockDefaultClipDuration  = 5
 )
 
@@ -167,7 +167,7 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 	input := &stockpipeline.RunInput{
 		DirectURLs:    []string{req.SourceRef},
 		TotalMinutes:  stockDefaultTotalMinutes,
-		ChunkDuration: stockDefaultChunkDuration,
+		ChunkDuration: defaults.DefaultVideoConfig().ChunkDuration,
 		ClipDuration:  stockDefaultClipDuration,
 		// NoAudio/NoEffects/NoTransitions intentionally false so the
 		// output is the unaltered staged payload. Future waves can

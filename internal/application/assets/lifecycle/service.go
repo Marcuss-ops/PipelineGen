@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
@@ -15,11 +14,14 @@ import (
 
 // Service orchestrates the full asset lifecycle:
 // duplicate checking, upload, persistence, and reconciliation.
+//
+// FASE 9 Step 7 (June 2026): migrated from *gdrive.Service + *drive.Uploader
+// to drive.Admin (UploadFile) + drive.Reader (reconcile/verifier) ports.
 type Service struct {
 	store         AssetRecordStore
 	dedupe        *assetop.DedupeService
 	reconcile     *assetop.ReconcileService
-	driveUploader *drive.Uploader
+	driveAdmin    drive.Admin
 	finalizer     *artifacts.Finalizer
 	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
@@ -37,9 +39,14 @@ type Config struct {
 }
 
 // NewService creates a new lifecycle Service.
+//
+// FASE 9 Step 7: driveAdmin is used for UploadFile; driveReader is used
+// for FileIsNotTrashed in the reconcile service. Both are satisfied by
+// the same *drive.Uploader concrete in production wiring.
 func NewService(
 	store AssetRecordStore,
-	driveSvc *gdrive.Service,
+	driveAdmin drive.Admin,
+	driveReader drive.Reader,
 	registry artifacts.Registry,
 	assetIndex *assetindex.Service,
 	finalizer *artifacts.Finalizer,
@@ -49,15 +56,15 @@ func NewService(
 	dedupe := assetop.NewDedupeService(store, cfg.DuplicatePolicy, log)
 
 	var reconcile *assetop.ReconcileService
-	if cfg.ReconcilePolicy.Enabled {
-		reconcile = assetop.NewReconcileService(store, driveSvc, cfg.ReconcilePolicy, log)
+	if cfg.ReconcilePolicy.Enabled && driveReader != nil {
+		reconcile = assetop.NewReconcileService(store, driveReader, cfg.ReconcilePolicy, log)
 	}
 
 	return &Service{
 		store:         store,
 		dedupe:        dedupe,
 		reconcile:     reconcile,
-		driveUploader: &drive.Uploader{Service: driveSvc, Log: log},
+		driveAdmin:    driveAdmin,
 		finalizer:     finalizer,
 		uploadPolicy:  cfg.UploadPolicy,
 		persistPolicy: cfg.PersistPolicy,
@@ -110,8 +117,8 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	downloadLink := input.DownloadLink
 
 	if s.uploadPolicy.Enabled && driveLink == "" && input.FolderID != "" {
-		if s.driveUploader != nil && s.driveUploader.Service != nil {
-			result, err := s.driveUploader.UploadFile(ctx, input.LocalPath, input.FolderID, filepath.Base(input.LocalPath))
+		if s.driveAdmin != nil {
+			result, err := s.driveAdmin.UploadFile(ctx, input.LocalPath, input.FolderID, filepath.Base(input.LocalPath))
 			if err != nil {
 				s.log.Warn("drive upload failed", zap.Error(err))
 			} else {

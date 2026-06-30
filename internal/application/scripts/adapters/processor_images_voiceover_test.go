@@ -54,29 +54,20 @@ func (f *fakeImageGen) SearchAndDownload(_ context.Context, _, _, _, _ string, _
 // ── Voiceover processor fakes ─────────────────────────────────────
 
 type fakeVoiceoverGen struct {
-	// Step 7 (June 2026) — M2 typed-port remediation: results is
-	// now []*voiceover.VoiceoverResult (canonical typed shape) instead
-	// of []map[string]any. Both production concrete *voiceover.Service
-	// and the test fakes return the same typed pointer — the processor
-	// reads Path + DriveLink as struct fields with no type assertion.
-	results []*voiceover.VoiceoverResult
-	errs    []error
-	calls   atomic.Int32
+	fn    func(text, lang, filename string) (*voiceover.VoiceoverResult, error)
+	calls atomic.Int32
 }
 
-func (f *fakeVoiceoverGen) Generate(_ context.Context, _, _, _ string) (*voiceover.VoiceoverResult, error) {
-	i := int(f.calls.Add(1) - 1)
-	if i >= len(f.results) {
-		return nil, errors.New("unexpected call index")
-	}
-	if i < len(f.errs) && f.errs[i] != nil {
-		return nil, f.errs[i]
-	}
-	return f.results[i], nil
+func (f *fakeVoiceoverGen) Generate(_ context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error) {
+	return f.GenerateWithDestination(context.Background(), text, lang, filename, nil)
 }
 
-func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, _, _, _ string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
-	return f.Generate(context.Background(), "", "", "")
+func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
+	f.calls.Add(1)
+	if f.fn != nil {
+		return f.fn(text, lang, filename)
+	}
+	return &voiceover.VoiceoverResult{DriveLink: "http://default.example/" + filename, Path: "/tmp/" + filename}, nil
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -226,7 +217,7 @@ func TestVoiceoverProcessorNilGen(t *testing.T) {
 
 func TestVoiceoverProcessorNoScenes(t *testing.T) {
 	t.Parallel()
-	gen := &fakeVoiceoverGen{results: []*voiceover.VoiceoverResult{{DriveLink: "http://vo1", Path: "/tmp/vo1.mp3"}}}
+	gen := &fakeVoiceoverGen{}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(0)
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(model))
@@ -239,7 +230,7 @@ func TestVoiceoverProcessorNoScenes(t *testing.T) {
 
 func TestVoiceoverProcessorNilModel(t *testing.T) {
 	t.Parallel()
-	gen := &fakeVoiceoverGen{results: []*voiceover.VoiceoverResult{{DriveLink: "http://vo1", Path: "/tmp/vo1.mp3"}}}
+	gen := &fakeVoiceoverGen{}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nil))
 	if err != nil {
@@ -253,7 +244,12 @@ func TestVoiceoverProcessorNilModel(t *testing.T) {
 func TestVoiceoverProcessorSuccess(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		results: []*voiceover.VoiceoverResult{{DriveLink: "http://vo.mp3", Path: "/tmp/scene-1.mp3"}},
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverResult, error) {
+			return &voiceover.VoiceoverResult{
+				DriveLink: "http://vo.mp3",
+				Path:      "/tmp/" + filename,
+			}, nil
+		},
 	}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(1)
@@ -265,17 +261,21 @@ func TestVoiceoverProcessorSuccess(t *testing.T) {
 	require.Len(t, result.Voiceovers, 1)
 	assert.Equal(t, "completed", result.Voiceovers[0].Status)
 	assert.Equal(t, "http://vo.mp3", result.Voiceovers[0].Link)
-	assert.Equal(t, "/tmp/scene-1.mp3", result.Voiceovers[0].LocalPath)
+	assert.Equal(t, "/tmp/unnamed_scene-0_en.mp3", result.Voiceovers[0].LocalPath)
 }
 
 func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		results: []*voiceover.VoiceoverResult{
-			{DriveLink: "http://vo1.mp3", Path: "/tmp/s1.mp3"},
-			nil,
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverResult, error) {
+			if text == "Second scene narration." {
+				return nil, errors.New("synthesis timeout")
+			}
+			return &voiceover.VoiceoverResult{
+				DriveLink: "http://vo1.mp3",
+				Path:      "/tmp/" + filename,
+			}, nil
 		},
-		errs: []error{nil, errors.New("synthesis timeout")},
 	}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(2)

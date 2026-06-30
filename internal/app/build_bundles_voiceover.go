@@ -92,7 +92,7 @@ func buildVoiceoverService(
 
 	voLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    voRegistryAdapter,
-		DriveUploader: driveUploader,
+		DriveAdmin:  driveUploader,
 		AssetIndex:  assetIndexService,
 	}, log)
 
