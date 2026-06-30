@@ -3,39 +3,19 @@
 // OVERRIDE ADR 0009 (clips.Handler capability-split) — user override
 // recorded in commit body; this commit extracts the 14 Ops-cluster
 // routes into a dedicated *OpsHandler receiver. OpsDeps carries ONLY
-// the 7 deps these methods consume (cluster × deps matrix §4, June
-// 2026, Step 5 Split 2 spec):
+// the 7 deps these methods consume.
 //
-//   - ClipOpsService  (VerifyClip, HandleFixHash, Cleanup, Reconcile
-//     via appclips.ClipOpsService.Verify/FixHash/
-//     Cleanup/Reconcile)
-//   - DeletionSvc     (TrashClip, DeleteClip via DeletionService.DeleteClip)
-//   - FolderMemSvc    (RegenerateManifest — manifest regen heuristic
-//     tracked even when smart-regen is disabled)
-//   - ClipsRepo  (ListFolders / FolderStatus / RegenerateManifest
-//     / TrashFolder / DeleteFolder / GetFolderChildren
-//     / GetTree / GetBreadcrumb — repoForSource gate
-//     that resolves :source param to the clips repository)
-//   - DriveUploader   (TrashFolder, DeleteFolder — Drive.TrashFolder /
-//     DeleteFolder; nil-tolerated surfaces 500)
-//   - AssetTreeSvc    (GetFolderChildren, GetTree, GetBreadcrumb —
-//     tree fan-out; nil → repo fallback)
-//   - Log             (all 14 methods)
+// Fase 2 (June 2026): handler methods split into 4 focused files:
+//   - folder_query_handler.go    (ListFolders, FolderStatus, GetFolderChildren,
+//                                  GetTree, GetBreadcrumb, repoForSource)
+//   - folder_command_handler.go  (RegenerateManifest, TrashFolder, DeleteFolder)
+//   - clip_integrity_handler.go  (VerifyClip, HandleFixHash, Cleanup, Reconcile,
+//                                  buildCleanupResponse, buildVerifyResponse,
+//                                  mapClipOpsError)
+//   - clip_maintenance_handler.go (deleteClip, TrashClip, DeleteClip)
 //
-// OUT OF CLUSTER (per Step 5 Split 2 spec, these will get their own
-// dedicated sub-handlers in later commits):
-//
-//   - BulkAddTags / BulkRemoveTags   (BulkTagsUC cluster — Split 3+ TBD)
-//   - ReprocessClip                  (ReprocessUC cluster — Split 3+ TBD)
-//   - EnrichMedia / ReindexClip /    (EnrichUC + JobsSvc + ClipIndexer
-//     BatchReindex                    cluster — Split 4+ TBD)
-//   - HandleBulkUploadYouTubeClipsJob (BulkUpload cluster — Split 5 TBD)
-//
-// Pattern B (per-cluster RegisterRoutes with idem fn as parameter):
-// the orchestrator Handler.RegisterRoutes single-calls
-// oh.RegisterRoutes(r, h.idemWriter()). Read routes (5 of 14) install
-// no idem middleware; write routes (9 of 14) install it before the
-// handler per AGENTS.md Pattern 8.
+// This file retains: OpsDeps, OpsHandler, NewOpsHandler, RegisterRoutes,
+// cleanupRequest type, and isEmptyJSONErr utility.
 //
 // Route table (12 routes = 5 read + 5 write+idem + 2 DELETE+idem):
 //
@@ -51,32 +31,18 @@
 //	POST /:source/cleanup                         -> Cleanup              (write+idem)
 //	POST /:source/folders/:id/manifest            -> RegenerateManifest   (write+idem)
 //	DELETE /:source/folders/:id                   -> TrashFolder          (delete+idem)
-//
-// Blocco A3 consolidation (June 2026): the separate POST .../trash and POST .../delete
-// routes for clips and folders are unified into a single DELETE route each.
-// DELETE always performs a soft-delete (Drive trash + SQLite removal).
-// Physical (hard) delete is only available via admin-internal paths,
-// never through capability-facing API handlers.
 package clips
 
 import (
-	"errors"
-	"fmt"
-	"net/http"
-	"os"
-	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -89,7 +55,7 @@ type OpsDeps struct {
 	ClipOpsService *appclips.ClipOpsService
 	DeletionSvc    *deletion.DeletionService
 	FolderMemSvc   *foldermemory.Service
-	ClipsRepo *assets.ClipsRepository
+	ClipsRepo      *assets.ClipsRepository
 	DriveUploader  *drive.Uploader
 	AssetTreeSvc   *assettree.Service
 	Log            *zap.Logger
@@ -102,40 +68,23 @@ type OpsHandler struct {
 	clipOpsService *appclips.ClipOpsService
 	deletionSvc    *deletion.DeletionService
 	folderMemSvc   *foldermemory.Service
-	clipsRepo *assets.ClipsRepository
+	clipsRepo      *assets.ClipsRepository
 	driveUploader  *drive.Uploader
 	assetTreeSvc   *assettree.Service
 	log            *zap.Logger
 }
 
 // NewOpsHandler constructs an OpsHandler with the supplied OpsDeps.
-// Nil fields are tolerated for test fixtures (each method does its own
-// nil-check); production wiring supplies all 7 via the orchestrator
-// Deps shape.
 func NewOpsHandler(d OpsDeps) *OpsHandler {
 	return &OpsHandler{
 		clipOpsService: d.ClipOpsService,
 		deletionSvc:    d.DeletionSvc,
 		folderMemSvc:   d.FolderMemSvc,
-		clipsRepo: d.ClipsRepo,
+		clipsRepo:      d.ClipsRepo,
 		driveUploader:  d.DriveUploader,
 		assetTreeSvc:   d.AssetTreeSvc,
 		log:            d.Log,
 	}
-}
-
-// repoForSource resolves a clip source to its canonical repository
-// via the shared ClipsRepository. Used by Ops's folder/clip methods.
-// All clip-type sources share the same concrete repo in production.
-// Returns nil for voiceover/images (handled separately by callers).
-func (oh *OpsHandler) repoForSource(source string) *assets.ClipsRepository {
-	if oh.clipsRepo == nil {
-		return nil
-	}
-	if !artifacts.IsClipsSource(source) {
-		return nil
-	}
-	return oh.clipsRepo
 }
 
 // RegisterRoutes installs the 14 Ops routes on the supplied gin router
@@ -159,25 +108,14 @@ func (oh *OpsHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc) {
 	r.DELETE("/:source/folders/:id", idem, oh.TrashFolder)
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// MOVED FROM clip_ops.go (deleted in Step 5 Split 2, June 2026)
-// ──────────────────────────────────────────────────────────────────────
-
-// cleanupRequest is the typed request body for POST
-// /api/clips/:source/cleanup. Mirrors the JSON keys production
-// callers send (dry_run, check_drive, deep). Empty bodies are
-// accepted with zero-value defaults (preserved pre-PR2 lenient
-// behaviour via the isEmptyJSONErr sentinel).
+// cleanupRequest is the typed request body for POST /api/clips/:source/cleanup.
 type cleanupRequest struct {
 	DryRun     bool `json:"dry_run"`
 	CheckDrive bool `json:"check_drive"`
 	Deep       bool `json:"deep"`
 }
 
-// toCommand translates the request body into the canonical
-// application-side CleanupInput. The "deep=true" query parameter
-// (?deep=true) is OR'd with the body's Deep field so callers have
-// both interfaces.
+// toCommand translates the request body into the canonical application-side CleanupInput.
 func (r cleanupRequest) toCommand(source string, deepFromQuery bool) appclips.CleanupInput {
 	return appclips.CleanupInput{
 		Source:     source,
@@ -187,665 +125,10 @@ func (r cleanupRequest) toCommand(source string, deepFromQuery bool) appclips.Cl
 	}
 }
 
-// Cleanup POST + /api/clips/:source/cleanup — thin transport over
-// ClipOpsService.Cleanup.
-//
-// Request body: {"dry_run": bool, "check_drive": bool, "deep": bool} +
-// optional ?deep=true query param.
-//
-// Response shape (200): {"ok": true, "source": ..., "job_id": ...,
-// "dry_run": ..., "check_drive": ..., "checked": ..., "deleted": ...,
-// "summary": ..., "message": ..., "items": [...]}. Empty "items"
-// slice for deep-batch enqueu (job_id polls the broker for results).
-//
-// Status codes:
-//
-//	200 — cleanup finished (sync or job enqueued).
-//	400 — invalid JSON body OR invalid source value.
-//	500 — service error.
-//	503 — clip ops service not wired (composition bug).
-func (oh *OpsHandler) Cleanup(c *gin.Context) {
-	source := c.Param("source")
-	var req cleanupRequest
-	if err := c.ShouldBindJSON(&req); err != nil && !isEmptyJSONErr(err) {
-		apiutil.BadRequest(c, "invalid request body: "+err.Error())
-		return
-	}
-	input := req.toCommand(source, c.Query("deep") == "true")
-
-	if oh.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
-	}
-	report, err := oh.clipOpsService.Cleanup(c.Request.Context(), input)
-	if err != nil {
-		mapClipOpsError(c, err)
-		return
-	}
-	apiutil.OK(c, buildCleanupResponse(report))
-}
-
-// VerifyClip POST + /api/clips/:source/clips/:id/verify — thin
-// transport over ClipOpsService.Verify. The application's
-// report.OK bool is independent of HTTP status — verify always
-// returns 200; the caller inspects report fields (issues,
-// coherent, has_drive_link) for the verdict.
-//
-// Status codes:
-//
-//	200 — verify ran (see report fields).
-//	503 — clip ops service not wired.
-func (oh *OpsHandler) VerifyClip(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-
-	if oh.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
-	}
-	report := oh.clipOpsService.Verify(c.Request.Context(), source, clipID)
-	apiutil.OK(c, buildVerifyResponse(report))
-}
-
-// Reconcile POST + /api/clips/:source/reconcile — placeholder for
-// PR 4 (codex/clips-reconcile-real). The current implementation
-// delegates to ClipOpsService.Reconcile which logs a typed entry,
-// then returns stub-OK. PR 4 will replace this with a durable
-// catalog.sync job enqueue + queue-absent 503 mapping.
-func (oh *OpsHandler) Reconcile(c *gin.Context) {
-	source := c.Param("source")
-	var req struct {
-		FolderID string `json:"folder_id"`
-		Fix      bool   `json:"fix"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
-		return
-	}
-	if oh.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
-	}
-	oh.clipOpsService.Reconcile(c.Request.Context(), source, req.FolderID)
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"source":  source,
-		"message": "reconciliation started (catalogSync is configured on SourcesHandler, not clips.Handler)",
-	})
-}
-
-// buildCleanupResponse converts a *CleanupReport into a gin.H
-// response. Field set matches the pre-PR2 keys verbatim (the
-// historical client contract).
-func buildCleanupResponse(report *appclips.CleanupReport) gin.H {
-	if report == nil {
-		return gin.H{"ok": false, "items": []gin.H{}}
-	}
-	items := make([]gin.H, 0, len(report.Items))
-	for _, item := range report.Items {
-		items = append(items, gin.H{
-			"id":     item.ID,
-			"name":   item.Name,
-			"reason": item.Reason,
-		})
-	}
-	return gin.H{
-		"ok":          report.OK,
-		"source":      report.Source,
-		"job_id":      report.JobID,
-		"dry_run":     report.DryRun,
-		"check_drive": report.CheckDrive,
-		"checked":     report.Checked,
-		"deleted":     report.Deleted,
-		"summary":     report.Summary,
-		"message":     report.Message,
-		"items":       items,
-	}
-}
-
-// buildVerifyResponse converts a *VerifyReport into a gin.H
-// response. Field set matches the pre-PR2 keys verbatim.
-func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
-	if report == nil {
-		return gin.H{"ok": false, "issues": []string{"nil_verify_report"}}
-	}
-	issues := report.Issues
-	if issues == nil {
-		issues = []string{}
-	}
-	return gin.H{
-		"ok":               report.OK,
-		"source":           report.Source,
-		"clip_id":          report.ClipID,
-		"issues":           issues,
-		"db":               report.DB,
-		"local_file":       report.LocalFile,
-		"local_path":       report.LocalPath,
-		"local_error":      report.LocalError,
-		"has_drive_link":   report.HasDriveLink,
-		"drive_link":       report.DriveLink,
-		"drive_file_id":    report.DriveFileID,
-		"drive_link_valid": report.DriveLinkValid,
-		"hash":             report.Hash,
-		"has_hash":         report.HasHash,
-		"hash_verified":    report.HashVerified,
-		"hash_recovered":   report.HashRecovered,
-		// S1d: project the typed HashInfo channel; canonical
-		// SCOPE BOUNDARY rationale lives on the application-side
-		// HashInfo godoc: see internal/application/clips/clip_ops.go::HashInfo.
-		"hash_info": gin.H{
-			"recoverable":    report.HashInfo.Recoverable,
-			"candidate_hash": report.HashInfo.CandidateHash,
-		},
-		"folder_id":   report.FolderID,
-		"folder_path": report.FolderPath,
-		"status":      report.Status,
-		"coherent":    report.Coherent,
-		"issue_count": report.IssueCount,
-	}
-}
-
-// mapClipOpsError translates a ClipOps domain error into the
-// corresponding HTTP response. The "invalid source" sentinel is
-// promoted to 400 Bad Request; everything else is 500. PR 4 will
-// add the 503 + RECONCILE_QUEUE_UNAVAILABLE mapping when
-// ClipOpsService.Reconcile returns ErrQueueUnavailable.
-func mapClipOpsError(c *gin.Context, err error) {
-	if err == nil {
-		return
-	}
-	// Wave 22 PR-5 polish: discriminate the typed
-	// appclips.ErrJobsUnavailable sentinel into a 503 with the
-	// body sourced from .Error() itself, so a future tweak of the
-	// sentinel's text propagates here without duplication drift.
-	if errors.Is(err, appclips.ErrJobsUnavailable) {
-		apiutil.Error(c, http.StatusServiceUnavailable, appclips.ErrJobsUnavailable.Error())
-		return
-	}
-	if errors.Is(err, appclips.ErrInvalidSource) {
-		apiutil.BadRequest(c, err.Error())
-		return
-	}
-	apiutil.InternalError(c, err)
-}
-
-// isEmptyJSONErr returns true when ShouldBindJSON finds an empty
-// request body (treated as zero-value defaults). EOF covers both
-// "no body" and "all whitespace" cases.
+// isEmptyJSONErr returns true when ShouldBindJSON finds an empty request body.
 func isEmptyJSONErr(err error) bool {
 	if err == nil {
 		return false
 	}
 	return strings.Contains(err.Error(), "EOF")
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// MOVED FROM clip_ops_handlers.go (Step 5 Split 2, June 2026):
-// HandleFixHash moves into Ops cluster (uses ClipOpsService.FixHash).
-// HandleBulkUploadYouTubeClipsJob STAYS in clip_ops_handlers.go
-// for Split 5 = BulkUpload cluster.
-// ──────────────────────────────────────────────────────────────────────
-
-// HandleFixHash POST + /api/clips/:source/clips/:id/fix-hash —
-// thin transport over ClipOpsService.FixHash. Maps the typed
-// FixHash error sentinels to HTTP status codes (BadRequest 400 /
-// Conflict 409 / ServiceUnavailable 503 / Internal 500).
-//
-// Status codes:
-//
-//	200 — fix-hash completed (see report).
-//	400 — voiceover source unsupported.
-//	409 — missing drive_link (cannot recover hash without it).
-//	503 — clip ops FixHash dispatcher unavailable.
-//	500 — any other FixHash failure.
-func (oh *OpsHandler) HandleFixHash(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-	if oh.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
-	}
-	report, err := oh.clipOpsService.FixHash(c.Request.Context(), source, clipID)
-	if err != nil {
-		switch err {
-		case appclips.ErrFixHashVoiceoverUnsupported:
-			apiutil.BadRequest(c, err.Error())
-		case appclips.ErrFixHashMissingDriveLink:
-			apiutil.Error(c, http.StatusConflict, err.Error())
-		case appclips.ErrFixHashDispatcherUnavailable:
-			apiutil.Error(c, http.StatusServiceUnavailable, err.Error())
-		default:
-			apiutil.InternalError(c, err)
-		}
-		return
-	}
-	apiutil.OK(c, gin.H{"ok": true, "report": report})
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// MOVED FROM clip_delete.go (deleted in Step 5 Split 2, June 2026)
-// ──────────────────────────────────────────────────────────────────────
-
-// deleteClip is the shared body for both Trash and Delete endpoints.
-// hardDelete=false mirrors TrashClip; hardDelete=true mirrors DeleteClip.
-func (oh *OpsHandler) deleteClip(c *gin.Context, hardDelete bool) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-	action := "trashed"
-	if hardDelete {
-		action = "deleted"
-	}
-	if err := oh.deletionSvc.DeleteClip(c.Request.Context(), source, clipID, hardDelete); err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"action":  action,
-		"source":  source,
-		"clip_id": clipID,
-	})
-}
-
-// TrashClip moves a clip to Drive trash and removes SQLite record.
-//   - POST /:source/clips/:id/trash
-func (oh *OpsHandler) TrashClip(c *gin.Context) { oh.deleteClip(c, false) }
-
-// DeleteClip permanently deletes a clip from Drive and SQLite.
-//   - POST /:source/clips/:id/delete
-func (oh *OpsHandler) DeleteClip(c *gin.Context) { oh.deleteClip(c, true) }
-
-// ──────────────────────────────────────────────────────────────────────
-// MOVED FROM folder.go (deleted in Step 5 Split 2, June 2026)
-// ──────────────────────────────────────────────────────────────────────
-
-// ListFolders lists all folders for a source.
-func (oh *OpsHandler) ListFolders(c *gin.Context) {
-	source := c.Param("source")
-
-	repo := oh.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 500 {
-		limit = 500
-	}
-
-	folders, err := repo.ListFolders(c.Request.Context(), "")
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	// Apply limit
-	if limit > 0 && limit < len(folders) {
-		folders = folders[:limit]
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"source":  source,
-		"count":   len(folders),
-		"folders": folders,
-	})
-}
-
-// FolderStatus returns the status of a folder.
-func (oh *OpsHandler) FolderStatus(c *gin.Context) {
-	source := c.Param("source")
-	folderID := c.Param("id")
-
-	repo := oh.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	ctx := c.Request.Context()
-
-	// Get folder
-	folder, err := repo.GetFolder(ctx, folderID)
-	if err != nil {
-		// Try by folder_id (Drive ID)
-		folders, err2 := repo.ListFolders(ctx, "")
-		if err2 != nil {
-			apiutil.InternalError(c, err2)
-			return
-		}
-		found := false
-		for _, f := range folders {
-			if f.FolderID == folderID {
-				folder = f
-				found = true
-				break
-			}
-		}
-		if !found {
-			apiutil.NotFound(c, "folder not found")
-			return
-		}
-	}
-
-	// Get clips in folder
-	clipList, _ := repo.ListByFolderID(ctx, folder.FolderID)
-	if len(clipList) == 0 {
-		clipList, _ = repo.ListByFolderPath(ctx, folder.FolderPath)
-	}
-
-	// Compute stats (inline — buildFolderStats lives as method body only)
-	stats := asset.ClipFolderStats{}
-	for _, clip := range clipList {
-		stats.ClipCount++
-		if clip.DriveLink() != "" || clip.DownloadLink() != "" {
-			stats.ProcessedCount++
-		}
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"source":     source,
-		"folder":     folder,
-		"stats":      stats,
-		"clip_count": len(clipList),
-	})
-}
-
-// RegenerateManifest regenerates manifest files for a folder.
-func (oh *OpsHandler) RegenerateManifest(c *gin.Context) {
-	source := c.Param("source")
-	folderID := c.Param("id")
-
-	repo := oh.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	if oh.folderMemSvc == nil {
-		apiutil.InternalError(c, nil)
-		return
-	}
-
-	oh.log.Info("regenerating manifest for folder", zap.String("id", folderID))
-
-	apiutil.OK(c, gin.H{
-		"ok":     true,
-		"source": source,
-		"folder": folderID,
-	})
-}
-
-// TrashFolder moves a folder to Drive trash.
-func (oh *OpsHandler) TrashFolder(c *gin.Context) {
-	source := c.Param("source")
-	folderID := c.Param("id")
-
-	repo := oh.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	var driveFolderID string
-	var dbFolderID string
-	ctx := c.Request.Context()
-
-	folder, err := repo.GetFolder(ctx, folderID)
-	if err == nil && folder != nil {
-		driveFolderID = folder.FolderID
-		dbFolderID = folder.ID
-		if folder.FolderPath != "" {
-			if err := os.RemoveAll(folder.FolderPath); err != nil {
-				oh.log.Error("failed to remove local folder path", zap.String("path", folder.FolderPath), zap.Error(err))
-			}
-		}
-	} else {
-		driveFolderID = folderID
-		folders, err2 := repo.ListFolders(ctx, "")
-		if err2 == nil {
-			for _, f := range folders {
-				if f.FolderID == folderID {
-					dbFolderID = f.ID
-					if f.FolderPath != "" {
-						if err := os.RemoveAll(f.FolderPath); err != nil {
-							oh.log.Error("failed to remove local folder path", zap.String("path", f.FolderPath), zap.Error(err))
-						}
-					}
-					break
-				}
-			}
-		}
-	}
-
-	if driveFolderID != "" {
-		if oh.driveUploader == nil {
-			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
-			return
-		}
-		if err := oh.driveUploader.TrashFolder(ctx, driveFolderID); err != nil {
-			oh.log.Error("failed to trash folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
-			apiutil.InternalError(c, err)
-			return
-		}
-	}
-
-	if dbFolderID != "" {
-		if err := repo.DeleteFolder(ctx, dbFolderID); err != nil {
-			oh.log.Error("failed to delete folder from database", zap.String("id", dbFolderID), zap.Error(err))
-		}
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":     true,
-		"action": "trashed",
-		"source": source,
-		"folder": folderID,
-	})
-}
-
-// DeleteFolder permanently deletes a folder.
-func (oh *OpsHandler) DeleteFolder(c *gin.Context) {
-	source := c.Param("source")
-	folderID := c.Param("id")
-
-	repo := oh.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	var driveFolderID string
-	var dbFolderID string
-	ctx := c.Request.Context()
-
-	folder, err := repo.GetFolder(ctx, folderID)
-	if err == nil && folder != nil {
-		driveFolderID = folder.FolderID
-		dbFolderID = folder.ID
-		if folder.FolderPath != "" {
-			if err := os.RemoveAll(folder.FolderPath); err != nil {
-				oh.log.Error("failed to remove local folder path", zap.String("path", folder.FolderPath), zap.Error(err))
-			}
-		}
-	} else {
-		driveFolderID = folderID
-		folders, err2 := repo.ListFolders(ctx, "")
-		if err2 == nil {
-			for _, f := range folders {
-				if f.FolderID == folderID {
-					dbFolderID = f.ID
-					if f.FolderPath != "" {
-						if err := os.RemoveAll(f.FolderPath); err != nil {
-							oh.log.Error("failed to remove local folder path", zap.String("path", f.FolderPath), zap.Error(err))
-						}
-					}
-					break
-				}
-			}
-		}
-	}
-
-	if driveFolderID != "" {
-		if oh.driveUploader == nil {
-			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
-			return
-		}
-		if err := oh.driveUploader.DeleteFolder(ctx, driveFolderID); err != nil {
-			oh.log.Error("failed to delete folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
-			apiutil.InternalError(c, err)
-			return
-		}
-	}
-
-	if dbFolderID != "" {
-		if err := repo.DeleteFolder(ctx, dbFolderID); err != nil {
-			oh.log.Error("failed to delete folder from database", zap.String("id", dbFolderID), zap.Error(err))
-		}
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":     true,
-		"action": "deleted",
-		"source": source,
-		"folder": folderID,
-	})
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// MOVED FROM folder_tree.go (deleted in Step 5 Split 2, June 2026)
-// ──────────────────────────────────────────────────────────────────────
-
-// GetFolderChildren returns the children of a specific folder.
-func (oh *OpsHandler) GetFolderChildren(c *gin.Context) {
-	source := c.Param("source")
-	folderID := c.Param("id")
-
-	if folderID == "root" {
-		folderID = ""
-	}
-
-	repo := oh.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	ctx := c.Request.Context()
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	var children []*asset.AssetNode
-	var err error
-
-	if oh.assetTreeSvc != nil {
-		treeNodes, treeErr := oh.assetTreeSvc.ListChildrenPaged(ctx, source, folderID, limit, offset)
-		if treeErr == nil {
-			for _, tn := range treeNodes {
-				children = append(children, appclips.TreeNodeToAssetNode(tn))
-			}
-		} else {
-			err = treeErr
-		}
-	} else {
-		children = []*asset.AssetNode{}
-		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
-		if clipErr == nil {
-			for _, clip := range clipChildren {
-				children = append(children, appclips.TreeNodeToAssetNode(appclips.ClipToAssetNode(clip)))
-			}
-		} else {
-			err = clipErr
-		}
-	}
-
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":       true,
-		"source":   source,
-		"count":    len(children),
-		"children": children,
-	})
-}
-
-// GetTree returns the direct children of a given parent folder.
-func (oh *OpsHandler) GetTree(c *gin.Context) {
-	source := c.Param("source")
-	parentID := c.Query("parent_id")
-
-	if parentID == "root" {
-		parentID = ""
-	}
-
-	if oh.assetTreeSvc == nil {
-		apiutil.InternalError(c, nil)
-		return
-	}
-
-	treeNodes, err := oh.assetTreeSvc.ListChildren(c.Request.Context(), source, parentID)
-	if err != nil {
-		oh.log.Error("failed to list children", zap.Error(err), zap.String("source", source), zap.String("parent_id", parentID))
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	var children []*asset.AssetNode
-	for _, tn := range treeNodes {
-		children = append(children, appclips.TreeNodeToAssetNode(tn))
-	}
-
-	if len(children) == 0 {
-		// Fallback to clips repository if asset tree is empty
-		if repo := oh.repoForSource(source); repo != nil {
-			clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
-			if clipErr == nil {
-				for _, clip := range clipChildren {
-					children = append(children, appclips.TreeNodeToAssetNode(appclips.ClipToAssetNode(clip)))
-				}
-			}
-		}
-	}
-	apiutil.OK(c, gin.H{
-		"ok":       true,
-		"source":   source,
-		"children": children,
-	})
-}
-
-// GetBreadcrumb returns the path from root down to the specified node ID.
-func (oh *OpsHandler) GetBreadcrumb(c *gin.Context) {
-	source := c.Param("source")
-	id := c.Query("id")
-
-	if id == "" {
-		apiutil.BadRequest(c, "missing id parameter")
-		return
-	}
-
-	if oh.assetTreeSvc == nil {
-		apiutil.InternalError(c, nil)
-		return
-	}
-
-	breadcrumb, err := oh.assetTreeSvc.GetBreadcrumb(c.Request.Context(), id)
-	if err != nil {
-		oh.log.Error("failed to get breadcrumb", zap.Error(err), zap.String("source", source), zap.String("id", id))
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"source":     source,
-		"breadcrumb": breadcrumb,
-	})
 }
