@@ -1,5 +1,7 @@
 // Package channels — module.go: the single canonical Build entrypoint
-// for the channels capability.
+// for the channels capability. P1.6 (June 2026): moved from
+// internal/application/channels/ to internal/api/channels/ to honour
+// the api → application layering.
 //
 // Capability Standard module.go contract:
 //
@@ -23,6 +25,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -38,7 +41,7 @@ type Dependencies struct {
 	// job — internal/application/* never imports
 	// internal/infrastructure/*). Passing nil here is an explicit
 	// error: the capability cannot operate without persistence.
-	Repository Repository
+	Repository appchannels.Repository
 
 	// Logger is the canonical structured logger. nil is replaced
 	// with zap.NewNop() so wiring sites do not need to nil-check.
@@ -52,10 +55,10 @@ type Dependencies struct {
 // so they can drive the capability without re-constructing the use
 // case layer.
 type ChannelsDescriptor struct {
-	Module api.Module
+	Module  api.Module
 	// Service exposes the canonical use-case orchestrator to typed,
 	// non-HTTP callers registered by the composition root.
-	Service *Service
+	Service *appchannels.Service
 }
 
 // ── Module satisfaction (api.Descriptor interface) ───────────
@@ -92,7 +95,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	svc := NewService(deps.Repository, log)
+	svc := appchannels.NewService(deps.Repository, log)
 	handler := NewHandler(svc, log)
 
 	return &ChannelsDescriptor{

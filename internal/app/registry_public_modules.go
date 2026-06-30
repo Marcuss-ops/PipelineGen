@@ -26,7 +26,8 @@ import (
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
+	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -218,8 +219,8 @@ func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root
 	if root.DB == nil || root.DB.DB == nil {
 		return nil
 	}
-	d, err := channels.Build(channels.Dependencies{
-		Repository: channels.NewRepositoryAdapter(sqliteassets.NewChannelsRepository(root.DB.DB)),
+	d, err := channelsapi.Build(channelsapi.Dependencies{
+		Repository: appchannels.NewRepositoryAdapter(sqliteassets.NewChannelsRepository(root.DB.DB)),
 		Logger:     log,
 	})
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -59,13 +60,13 @@ func (s *stubRepo) Delete(_ context.Context, id string) error {
 	delete(s.stored, id)
 	return nil
 }
-func (s *stubRepo) MarkChecked(_ context.Context, _ MarkCheckedCommand) error {
+func (s *stubRepo) MarkChecked(_ context.Context, _ appchannels.MarkCheckedCommand) error {
 	return nil
 }
-func (s *stubRepo) ClaimDue(_ context.Context, _ ClaimDueCommand) ([]*asset.CategoryChannel, error) {
+func (s *stubRepo) ClaimDue(_ context.Context, _ appchannels.ClaimDueCommand) ([]*asset.CategoryChannel, error) {
 	return nil, nil
 }
-func (s *stubRepo) UpdateCursor(_ context.Context, _ UpdateCursorCommand) error {
+func (s *stubRepo) UpdateCursor(_ context.Context, _ appchannels.UpdateCursorCommand) error {
 	return nil
 }
 
@@ -148,9 +149,9 @@ func TestBuild_HandlerRoutesAreRegistered(t *testing.T) {
 
 func TestService_UpsertAppliesDefaultsAndDerivesID(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo, zap.NewNop())
+	svc := appchannels.NewService(repo, zap.NewNop())
 
-	out, err := svc.Upsert(context.Background(), UpsertChannelCommand{
+	out, err := svc.Upsert(context.Background(), appchannels.UpsertChannelCommand{
 		Category:   "tech",
 		ChannelURL: "https://youtube.com/@example",
 	})
@@ -165,14 +166,14 @@ func TestService_UpsertAppliesDefaultsAndDerivesID(t *testing.T) {
 		t.Fatalf("upsertCalls len = %d, want 1", len(repo.upsertCalls))
 	}
 	got := repo.upsertCalls[0]
-	if got.MaxClipDuration != Default.MaxClipDuration {
-		t.Errorf("MaxClipDuration = %d, want %d", got.MaxClipDuration, Default.MaxClipDuration)
+	if got.MaxClipDuration != appchannels.Default.MaxClipDuration {
+		t.Errorf("MaxClipDuration = %d, want %d", got.MaxClipDuration, appchannels.Default.MaxClipDuration)
 	}
-	if got.Priority != Default.Priority {
-		t.Errorf("Priority = %d, want %d", got.Priority, Default.Priority)
+	if got.Priority != appchannels.Default.Priority {
+		t.Errorf("Priority = %d, want %d", got.Priority, appchannels.Default.Priority)
 	}
-	if got.CheckInterval != Default.CheckInterval {
-		t.Errorf("CheckInterval = %q, want %q", got.CheckInterval, Default.CheckInterval)
+	if got.CheckInterval != appchannels.Default.CheckInterval {
+		t.Errorf("CheckInterval = %q, want %q", got.CheckInterval, appchannels.Default.CheckInterval)
 	}
 	if got.Keywords != "[]" {
 		t.Errorf("Keywords = %q, want %q", got.Keywords, "[]")
@@ -181,7 +182,7 @@ func TestService_UpsertAppliesDefaultsAndDerivesID(t *testing.T) {
 
 func TestService_DeleteRequiresID(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo, zap.NewNop())
+	svc := appchannels.NewService(repo, zap.NewNop())
 	if _, err := svc.Delete(context.Background(), ""); err == nil {
 		t.Fatal("expected error when id is empty")
 	}
@@ -189,17 +190,17 @@ func TestService_DeleteRequiresID(t *testing.T) {
 
 func TestService_UpsertRejectsEmptyFields(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo, zap.NewNop())
-	if _, err := svc.Upsert(context.Background(), UpsertChannelCommand{}); err == nil {
+	svc := appchannels.NewService(repo, zap.NewNop())
+	if _, err := svc.Upsert(context.Background(), appchannels.UpsertChannelCommand{}); err == nil {
 		t.Fatal("expected error when category and channel_url are empty")
 	}
 }
 
 func TestService_UpsertBulkPartitionsCreatedAndUpdated(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo, zap.NewNop())
-	res, err := svc.UpsertBulk(context.Background(), BulkUpsertChannelsCommand{
-		Channels: []UpsertChannelCommand{
+	svc := appchannels.NewService(repo, zap.NewNop())
+	res, err := svc.UpsertBulk(context.Background(), appchannels.BulkUpsertChannelsCommand{
+		Channels: []appchannels.UpsertChannelCommand{
 			{Category: "tech", ChannelURL: "https://youtube.com/@new"},
 		},
 	})
