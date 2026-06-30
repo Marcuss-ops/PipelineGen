@@ -170,9 +170,15 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// keep the interface value true-nil).
 	var admin drive.Admin
 	var reader drive.Reader
+	var lifecycle drive.FileLifecycle
 	if driveUploader != nil {
 		admin = driveUploader
 		reader = driveUploader
+		// CARD-3 (June 2026): Lifecycle is the canonical Pattern 0 port for
+		// file-lifecycle Drive ops (Trash/Move/Rename/Cleanup). Reuses
+		// driveUploader.Service so Drive credentials are loaded exactly
+		// once at composition time (godlike/06 split from Admin).
+		lifecycle = drive.NewFileLifecycleAdapter(driveUploader.Service, log)
 	}
 
 	return &DriveBundle{
@@ -184,10 +190,17 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// deprecated fields removed from DriveBundle. cmd/admin/ callers
 		// reach Drive via root.Drive.Admin / root.Drive.Reader — no
 		// further raw SDK reach-through from cmd/admin/.
-		// The DriveClient field is STILL PRESENT for back-compat with
-		// internal/app/ and internal/application/assets/providers/artlist/
-		// raw SDK reach-through sites that haven't migrated to Pattern 0
-		// yet. Wave D followup will retire it.
+		//
+		// Wave D Commit 1 (June 2026 — mechanical migration): the
+		// residual 13 sites (artlist package diagnostic field rename,
+		// internal/app/ docs refresh) now consume the DriveFolderManager
+		// port; DriveClient REMAINS on DriveBundle as the back-compat
+		// plumbing channel that feeds the ArtlistBundle.DriveClient
+		// threading path (registry_internal_modules.go::registerArtlist)
+		// and the *drive.DriveFolderManagerAdapter construction in
+		// WireArtlist. Future Wave D Commits may retire the field +
+		// drop the gdrive import pending operator signal on whether
+		// the back-compat affordance is still load-bearing.
 		DriveClient:    driveClient,
 		driveUploader:  driveUploader, // unexported; for internal wiring within package app
 		DriveDests:     dests,
@@ -196,6 +209,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		StyleRegistry:  styleRegistry,
 		Publisher:      publisher,
 		DocClient:      docClient,
+		Lifecycle:      lifecycle,
 	}, startClosure, nil
 }
 

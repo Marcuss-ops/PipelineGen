@@ -14,6 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -48,6 +49,13 @@ type SemanticEnricher struct {
 	// a constructor argument (no SetDispatcher setter anymore).
 	// PR2.4: typed as Dispatcher port (was *outbox.Dispatcher concrete).
 	dispatcher Dispatcher
+	// CARD-3 (June 2026): file-lifecycle port split out from
+	// DriveFolderManagerAdapter per godlike/06 "one owner per fact".
+	// Owns Trash/Move/Rename/Cleanup; previously driveManager.Trash
+	// lived on the folder manager and violated the seam.
+	// *drivepkg.FileLifecycleAdapter is constructed in
+	// module_sources.go::WireArtlist and threaded in via the constructor.
+	lifecycle drivepkg.FileLifecycle
 }
 
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
@@ -70,6 +78,7 @@ func NewSemanticEnricher(
 	metaWriter *semantic.MetadataWriter,
 	driveManager DriveFolderManager,
 	dispatcher Dispatcher,
+	lifecycle drivepkg.FileLifecycle,
 	log *zap.Logger,
 ) *SemanticEnricher {
 	return &SemanticEnricher{
@@ -78,6 +87,7 @@ func NewSemanticEnricher(
 		metaWriter:   metaWriter,
 		driveManager: driveManager,
 		dispatcher:   dispatcher,
+		lifecycle:    lifecycle,
 		log:          log,
 	}
 }
@@ -327,7 +337,7 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 				existing = raw
 			}
 		}
-		if trashErr := e.driveManager.Trash(ctx, existingFileID); trashErr != nil {
+		if trashErr := e.lifecycle.Trash(ctx, existingFileID); trashErr != nil {
 			e.log.Warn("failed to trash old metadata.json", zap.Error(trashErr))
 		}
 	}

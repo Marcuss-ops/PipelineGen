@@ -98,6 +98,15 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	if bundle.DriveClient != nil {
 		driveManager = drive.NewDriveFolderManagerAdapter(bundle.DriveClient, log)
 	}
+	// CARD-3 (June 2026): fileLifecycle port split from DriveFolderManager.
+	// thread into SemanticEnricher (the only consumer today — Trash on the
+	// old metadata.json).
+	// godlike/06 "one owner per fact": file-lifecycle and folder-mgmt are
+	// distinct seams and each owns its raw SDK calls.
+	var fileLifecycle drive.FileLifecycle
+	if bundle.DriveClient != nil {
+		fileLifecycle = drive.NewFileLifecycleAdapter(bundle.DriveClient, log)
+	}
 
 	// PR2.5: build the SemanticEnricher BEFORE NewService so its
 	// Dispatcher constructor argument captures the canonical
@@ -129,7 +138,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	var enricher artlistPkg.MetadataWriter
 	if bundle.ClipsRepo != nil {
 		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, log)
+		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, fileLifecycle, log)
 		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7)")
 	}
 

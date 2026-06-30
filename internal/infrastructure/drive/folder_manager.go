@@ -280,24 +280,17 @@ func (a *DriveFolderManagerAdapter) ListByQuery(ctx context.Context, query strin
 	return out, nil
 }
 
-// Trash moves a file to Drive's trash. Empty fileID is rejected.
-// Files.Update{Trashed:true} is idempotent at the Drive API level —
-// re-trashing an already-trashed file succeeds. Safer than permanent
-// DeleteFile because the user can recover from the Drive trash UI.
-func (a *DriveFolderManagerAdapter) Trash(ctx context.Context, fileID string) error {
-	if a.svc == nil {
-		return fmt.Errorf("drive service not configured")
-	}
-	if strings.TrimSpace(fileID) == "" {
-		return fmt.Errorf("trash: file id is required")
-	}
-	_, err := a.svc.Files.Update(fileID, &driveapi.File{Trashed: true}).
-		Fields("id", "trashed").Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("drive trash: %w", err)
-	}
-	return nil
-}
+// Trash is intentionally NOT exposed on DriveFolderManagerAdapter
+// (CARD-3, June 2026). The file-lifecycle surface (Files.Update{Trashed:true},
+// File.Move / File.Rename / File.Cleanup) is the canonical owner of the
+// raw SDK call, and it lives behind the drive.FileLifecycle port at
+// internal/infrastructure/drive/file_lifecycle.go (see *FileLifecycleAdapter).
+// godlike/06 §Data and Configuration Ownership — one owner per fact:
+// the folder manager owns folder operations (EnsureFolder, ListByQuery,
+// Download, Upload); the lifecycle adapter owns file-lifecycle commands
+// (Trash, Move, Rename, Cleanup). Callers that previously called
+// DriveFolderManagerAdapter.Trash (e.g. artlist semantic_enricher) now
+// take a drive.FileLifecycle port directly from the composition root.
 
 // Download fetches a file's content as a stream. The caller MUST close
 // the returned io.ReadCloser. Retries on transient errors (429, 503,

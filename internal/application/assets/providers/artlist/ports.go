@@ -195,6 +195,16 @@ type DriveFileRef = drivepkg.DriveFileRef
 // held in ServiceDeps.DriveClient (a concrete SDK leak) and (b) the
 // narrow *drive.Uploader concrete previously held by SemanticEnricher.
 //
+// Wave D Commit 1 (June 2026) updates the surrounding composition:
+// the *google.golang.org/api/drive/v3 concrete never lived directly
+// in the artlist package — it lived only on ArtlistBundle.DriveClient
+// as the plumbing channel that fed the *drive.DriveFolderManagerAdapter
+// in WireArtlist. ServiceDeps.DriveClient was retired by PR2.7 and
+// remains retired (the application package no longer holds the raw
+// SDK concrete); the bundle-level DriveClient is the back-compat
+// affordance Wave D Commit 1 retained per operator signal pending
+// the Wave D Commit 2/3 retirement decision.
+//
 // Application decides WHAT (which file, which folder); infrastructure
 // owns HOW (the SDK, retries, transport). Domain shape (DriveFileRef +
 // io.ReadCloser) hides the SDK types from callers.
@@ -218,11 +228,6 @@ type DriveFolderManager interface {
 	// "and trashed = false" in the query). The domain result shape
 	// avoids leaking *assetsapi.File into business logic.
 	ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error)
-
-	// Trash moves a file to Drive's trash. Safer than permanent
-	// deletion — the user can recover. Empty fileID is rejected.
-	Trash(ctx context.Context, fileID string) error
-
 	// Download fetches a file's content as a stream. The caller MUST
 	// close the returned io.ReadCloser. Content-type is returned as a
 	// convenience for callers that branch on MIME (rare; metadata.json
