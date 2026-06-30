@@ -354,3 +354,21 @@
 # moved verbatim to:
 #   architecture/archive/2026-06-29/current-snapshot-2026-06-29.yaml
 # (see INDEX.md). Slim current.yaml is doc #1 (wave tracker) only.
+
+---
+# Schema is forward-ratchet-friendly — additive growth supported.
+# Tracks ratchets and baselines missing/deferred from current disk tracking.
+# Read by future PRs that wire the deferred Check 44 script slug; the cap
+# value comes from architecture/current.yaml::wave_status.P1-2.transitional_cap
+# rather than being inline in the gate script. The "of cleanup plan" pattern
+# appears throughout this file; forward ratchets inherit the convention.
+wave_status:
+  P1-2:
+    id: P1-2
+    topic: Check 44 application size cap + usecase/types_aliases.go filename ban
+    transitional_cap: 66
+    target: 40
+    current_state: deferred
+    owner: architecture
+    script_slug: scripts/ci/architecture/checks/44_application_size_cap_and_aliases_ban.sh
+    linked_issues: []
