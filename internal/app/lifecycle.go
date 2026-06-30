@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
@@ -255,6 +256,15 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				Transcript: ytdlpSubtitleAdapter,
 				Analyzer:   ollamaAnalyzer,
 				Enqueuer:   monitor.NewExtractionEnqueuer(root.Jobs.Service, channelsSvc, log),
+				// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the per-video
+				// discovery ledger (TryReserve + MarkEnqueued + MarkRejected +
+				// MaxDiscoveredAt) is now wired from the canonical
+				// *assets.YoutubeDiscoveriesRepository. NewChannelMonitor
+				// panics on nil Discoveries when Cfg is wired (per the fail-
+				// fast guard added in scheduler.go alongside this commit),
+				// so a wiring gap surfaces at boot rather than at first
+				// scheduler tick.
+				Discoveries: assets.NewYoutubeDiscoveriesRepository(root.DB.DB),
 			})
 
 			// Channel monitor: optional background service.
@@ -452,11 +462,18 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 // DriveAdmin (drive.Admin port). Callers pass *drive.Uploader which satisfies
 // drive.Admin structurally. NewLifecycleFromDeps extracts a drive.Reader via
 // safe type-assertion for the verifier + reconcile services.
+//
+// F2.7 (June 2026): DriveAdmin REMOVED. Publisher (delivery.Publisher) is
+// the canonical Pattern 0 port for Drive writes; DriveReader
+// (drive.Reader) is the canonical read-side port for the reconcile
+// service's DriveIsNotTrashed check. The composition root threads
+// both directly — no unsafe type-assertion needed.
 type LifecycleDeps struct {
 	Registry      artifacts.Registry
-	DriveAdmin    drive.Admin
+	Publisher     delivery.Publisher
 	AssetIndex    *assetindex.Service
 	DriveVerifier artifacts.DriveVerifier
+	DriveReader   drive.Reader
 	Finalizer     *artifacts.Finalizer
 	Store         lifecycle.AssetRecordStore
 }
@@ -466,17 +483,17 @@ type LifecycleDeps struct {
 // FASE 9 Step 7: DriveAdmin (drive.Admin) replaces the former *drive.Uploader.
 // A drive.Reader is extracted via safe type-assertion for verifier + reconcile.
 // All production callers pass *drive.Uploader which satisfies both interfaces.
+//
+// F2.7 (June 2026): DriveAdmin REMOVED. NewLifecycleFromDeps now takes
+// Publisher (delivery.Publisher) + DriveReader (drive.Reader) — the
+// application-layer holds ZERO references to the legacy drive.Admin
+// port. lifecycle.Service uses Publisher for Drive writes (closes P0
+// #7) and DriveReader for the read-only reconcile/verify surface.
 func NewLifecycleFromDeps(
 	deps *LifecycleDeps,
 	log *zap.Logger,
 ) *lifecycle.Service {
-	// Extract drive.Reader for verifier + reconcile (safe: *drive.Uploader satisfies both Admin and Reader).
-	var driveReader drive.Reader
-	if deps.DriveAdmin != nil {
-		if r, ok := deps.DriveAdmin.(drive.Reader); ok {
-			driveReader = r
-		}
-	}
+	driveReader := deps.DriveReader
 
 	if deps.DriveVerifier == nil && driveReader != nil {
 		deps.DriveVerifier = drive.NewDriveVerifierAdapter(driveReader)
@@ -497,7 +514,7 @@ func NewLifecycleFromDeps(
 
 	return lifecycle.NewService(
 		deps.Store,
-		deps.DriveAdmin,
+		deps.Publisher,
 		driveReader,
 		deps.Registry,
 		deps.AssetIndex,
