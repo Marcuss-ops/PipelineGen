@@ -33,17 +33,27 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // BuildProcessBundle builds the media-processing adapters and assembles
-// the canonical *ProcessBundle. driveUploader is passed in directly.
+// the canonical *ProcessBundle. publisher is passed in directly —
+// the Publisher is the canonical Drive upload canal, and
+// processor.NewProcessor panics on nil publisher so a wiring gap is
+// loud at boot.
+//
+// F2.8 (June 2026): the trailing arg swaps from `*drive.Uploader` to
+// `delivery.Publisher`. The Publisher routes every Drive write from
+// the processor through the DestinationRegistry + RequireSubpath +
+// ConflictPolicy belt; the legacy direct-uploader bypass is closed.
+// See DriveBundle.Publisher doc for the canonical one-owner-per-fact
+// story (godlike/06).
 //
 // The body is intentionally thin: it calls the 3 cross-file helpers
 // (wireMediaProcessor, newVLMClient, initQdrantProcessSubsystems) and
@@ -72,14 +82,17 @@ import (
 // MediaProcessor=nil so worker / reprocess / ingest paths surface the
 // missing dep rather than silently defaulting to the legacy path. A
 // nil qd fails composition immediately (composition forgot to call
-// buildQdrantDeps first?).
+// buildQdrantDeps first?). F2.8 widens this to a nil publisher — a
+// missing publisher surfaces in processor.NewProcessor as a typed
+// panic at composition time (loud in operator log) rather than
+// silent nil-deref on first upload.
 func BuildProcessBundle(
 	ctx context.Context,
 	cfg *config.Config,
 	dbs *databases,
 	log *zap.Logger,
 	repos *RepoBundle,
-	driveUploader *drive.Uploader,
+	publisher delivery.Publisher,
 	outbox *OutboxBundle,
 	qd *QdrantDeps,
 ) (*ProcessBundle, error) {
@@ -89,7 +102,7 @@ func BuildProcessBundle(
 		return nil, fmt.Errorf("BuildProcessBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
 
-	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, driveUploader, log)
+	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, publisher, log)
 	if err != nil {
 		return nil, err
 	}

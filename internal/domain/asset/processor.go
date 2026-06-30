@@ -91,16 +91,37 @@ type ProcessInput struct {
 }
 
 // ProcessResult contains the result of processing an asset.
+//
+// F2.8 (June 2026): MD5 + PublishAction added. The pre-F2.8 processor
+// ran the upload path through drive.Uploader.UploadFile which
+// returned only {FileID, WebViewLink, DownloadLink}. With the
+// migration to delivery.Publisher.Publish the canonical PublishResult
+// additionally surfaces {MD5Checksum, Action} — the
+// Drive-calculated MD5 (the canonical "this is what Drive has stored"
+// checksum, distinct from the locally-computed FileHash used for
+// pre-upload dedup) AND the PublishAction enum (created/updated/
+// skipped/renamed) so downstream consumers can tell whether a row
+// already existed on Drive.
+//
+// Both fields are net-new (no omitempty since ProcessResult DTOs are
+// not serialised). Pre-F2.8 callers that only relied on FileHash +
+// DriveLink/DriveFileID/DownloadLink keep working unchanged. MD5 is
+// "string" so delivery.PublishResult.MD5Checksum maps 1-a-1;
+// PublishAction is "string" (NOT typed delivery.PublishAction) so
+// the domain layer stays free of delivery-package imports (AGENTS.md
+// Pattern 8: domain is the bottom of the import graph).
 type ProcessResult struct {
-	ID           string
-	Filename     string
-	LocalPath    string
-	FileHash     string
-	ContentHash  string
-	DriveLink    string
-	DriveFileID  string
-	DownloadLink string
-	Status       string
-	Error        string
-	DuplicateOf  string
+	ID            string
+	Filename      string
+	LocalPath     string
+	FileHash      string
+	ContentHash   string
+	DriveLink     string
+	DriveFileID   string
+	DownloadLink  string
+	MD5           string // drive-returned md5Checksum (canonical "what Drive has")
+	PublishAction string // created | updated | skipped | renamed | "" (unknown)
+	Status        string
+	Error         string
+	DuplicateOf   string
 }

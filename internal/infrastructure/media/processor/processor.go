@@ -2,39 +2,45 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-var driveMetaMu sync.Mutex
-
 // Processor orchestrates download via yt-dlp or HTTP, optional ffmpeg
-// normalization, perceptual deduplication, file hashing, and Drive upload.
-// It implements the canonical core/asset.Processor contract directly.
+// normalization, perceptual deduplication, file hashing, and canonical
+// Drive upload via delivery.Publisher. It implements the canonical
+// domain/asset.Processor contract directly.
+//
+// F2.8 (June 2026): the legacy `driveUploader *drive.Uploader` field
+// is REMOVED. Every Drive write goes through delivery.Publisher.Publish —
+// the DestinationRegistry + RequireSubpath + ConflictPolicy belt is
+// the single canal for assets. The pre-F2.8 cumulative metadata.json
+// sidecar (which used raw Drive SDK List/Download/Trash/Upload) is
+// REMOVED entirely: the canonical metadata ledger is the
+// artifacts.Registry → media_assets SQLite table (Wave C SSOT). The
+// Drive-side JSON manifest was a parallel-struct anti-pattern that has
+// no analogue after the Wave-C consolidation.
 type Processor struct {
-	dl            YTDLP
-	httpDL        HTTPDownloader
-	ffmpeg        VideoProcessor
-	log           *zap.Logger
-	dataDir       string
-	tempDir       string
-	videoCfg      ffmpeg.NormalizeOptions
-	scraperURL    string
-	embeddingURL  string
-	registry      artifacts.Registry
-	driveUploader *drive.Uploader
+	dl           YTDLP
+	httpDL       HTTPDownloader
+	ffmpeg       VideoProcessor
+	log          *zap.Logger
+	dataDir      string
+	tempDir      string
+	videoCfg     ffmpeg.NormalizeOptions
+	scraperURL   string
+	embeddingURL string
+	registry     artifacts.Registry
+	publisher    delivery.Publisher
 }
 
 var _ asset.Processor = (*Processor)(nil)
@@ -49,6 +55,12 @@ type ProcessorConfig struct {
 }
 
 // NewProcessor creates a new media processor with the given dependencies.
+//
+// F2.8 (June 2026): the trailing arg swaps from `*drive.Uploader` to
+// `delivery.Publisher`. Composition-time fail-fast: a nil publisher
+// surfaces at the construction site (boot) rather than at first
+// upload — a wiring gap is loud in the operator log instead of silent
+// in a worker failure. mirror of NewPublisher (F1.4) fail-fast pattern.
 func NewProcessor(
 	dl YTDLP,
 	httpDL HTTPDownloader,
@@ -56,8 +68,11 @@ func NewProcessor(
 	log *zap.Logger,
 	cfg ProcessorConfig,
 	registry artifacts.Registry,
-	driveUploader *drive.Uploader,
+	publisher delivery.Publisher,
 ) *Processor {
+	if publisher == nil {
+		panic("processor.NewProcessor: publisher is required (composition root must inject delivery.Publisher from DriveBundle.Publisher)")
+	}
 	scraperURL := cfg.ScraperServerURL
 	if scraperURL == "" {
 		scraperURL = "http://127.0.0.1:9123"
@@ -67,23 +82,24 @@ func NewProcessor(
 		embeddingURL = "http://127.0.0.1:8001"
 	}
 	return &Processor{
-		dl:            dl,
-		httpDL:        httpDL,
-		ffmpeg:        ff,
-		log:           log,
-		dataDir:       cfg.DataDir,
-		tempDir:       cfg.TempDir,
-		videoCfg:      cfg.VideoCfg,
-		scraperURL:    scraperURL,
-		embeddingURL:  embeddingURL,
-		registry:      registry,
-		driveUploader: driveUploader,
+		dl:           dl,
+		httpDL:       httpDL,
+		ffmpeg:       ff,
+		log:          log,
+		dataDir:      cfg.DataDir,
+		tempDir:      cfg.TempDir,
+		videoCfg:     cfg.VideoCfg,
+		scraperURL:   scraperURL,
+		embeddingURL: embeddingURL,
+		registry:     registry,
+		publisher:    publisher,
 	}
 }
 
 // Process orchestrates the full pipeline: download, process, hash, and upload.
 // It validates inputs, downloads the asset, optionally normalizes via ffmpeg,
-// checks for perceptual duplicates, computes the file hash, and returns metadata.
+// checks for perceptual duplicates, computes the file hash, and uploads to
+// Drive via the canonical delivery.Publisher.
 func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	if input == nil {
 		err := fmt.Errorf("asset.ProcessInput is required")
@@ -162,80 +178,110 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	result.LocalPath = processedPath
 	result.Filename = filepath.Base(processedPath)
 
-	// Step 4: Upload to Google Drive (if configured).
-	if p.driveUploader != nil && input.FolderID != "" {
-		uploadResult, uploadErr := p.driveUploader.UploadFile(ctx, processedPath, input.FolderID, result.Filename)
-		if uploadErr != nil {
-			p.log.Warn("Drive upload failed (continuing with local only)",
+	// Step 4: Canonical Drive upload via delivery.Publisher.
+	//
+	// F2.8 (June 2026): pre-F2.8 the upload went through the
+	// legacy `p.driveUploader.UploadFile(ctx, localPath, FolderID,
+	// filename)` bypass which skipped the DestinationRegistry +
+	// RequireSubpath + ConflictPolicy belt. Post-migration every
+	// Drive write from the asset processor routes through the
+	// canonical Publisher — the sidecar metadata.json upload
+	// (which used raw Drive SDK List/Download/Trash/Upload) is
+	// REMOVED entirely: the canonical metadata ledger is the
+	// artifacts.Registry → media_assets SQLite table (Wave C SSOT).
+	// The pre-F2.8 step "build metaData + write local metadata.json
+	// + update cumulative Drive metadata.json" is gone.
+	//
+	// DestinationKey defaulting: input has no Destination field today
+	// (asset.ProcessInput is the canonical DTO and is owned by the
+	// domain layer — adding Destination is a follow-up wave when a
+	// non-artlist caller emerges). The processor's canonical caller
+	// is the artlist ingest pipeline, so DestinationArtlist is the
+	// correct default. ConflictPolicy is left zero-value
+	// (ConflictOverwrite = legacy behaviour). RootFolderOverride is
+	// input.FolderID so callers that explicitly target a specific
+	// Drive folder (e.g. legacy pipeline scripts) keep working.
+	//
+	// Subject defaulting (reviewer-feedback Q1): Subject defaults to
+	// empty string, NOT input.ID. The pre-F2.7 implementation had no
+	// Subject concept (this is greenfield). Defaulting Subject to the
+	// media_assets.id leaks an opaque UUID into Drive-side folder
+	// metadata that humans see via PathSegments. Empty Subject lets
+	// the Publisher derive uniqueness from PublisherRequest alone
+	// per the canonical resolution rules (Publisher must handle
+	// empty Subject). A real caller that knows a meaningful Subject
+	// (artlist asset UUID, YouTube video ID) populates it explicitly
+	// via a follow-up F2.9 field plumb (TODO tracked in
+	// architecture/current.yaml).
+	//
+	// DownloadLink strict policy (reviewer-feedback Q2): NO
+	// fallback interpolation. F2.7 closure made PublishResult.
+	// DownloadLink the canonical single-source-of-truth URL per
+	// godlike/06 "one owner per fact". A Publisher that returns
+	// empty DownloadLink on success is a Publisher BUG and MUST
+	// surface loudly (already pinned at
+	// internal/infrastructure/drive/publisher_policies_test.go,
+	// the F1.6 Canon-URL test). Allowing a silent reconstruction
+	// via "https://drive.google.com/uc?id="+FileID would produce a
+	// URL Drive never actually surfaced — a worse outcome than the
+	// visible failure. Empty DownloadLink ⇄ Result.DownloadLink=""
+	// ⇄ downstream can branch on the empty value.
+	//
+	// Fail-closed semantics on Publish failure: the processor is
+	// UPSTREAM of the lifecycle.Service / assets/lifecycle.Finalize
+	// layer, which is where RequireDrive is enforced. The processor's
+	// job is to ATTEMPT the canonical upload and surface success or
+	// warn+continue on failure; the lifecycle layer decides whether
+	// to persist. To avoid silent lossy uploads (where a caller
+	// looks at Result.Status=="processed"+empty DriveLink and has to
+	// grep the log to find why), the processor ALSO stamps
+	// Result.Error with the publisher error message at non-zero status.
+	// Status itself stays "processed" so the lifecycle layer's
+	// RequireDrive gate is the single canonical place that flips
+	// to UPLOAD_FAILED (per F2.7 closure contract).
+	if input.FolderID != "" {
+		destKey := delivery.DestinationArtlist
+		pubReq := delivery.PublishRequest{
+			Destination:        destKey,
+			LocalPath:          processedPath,
+			Filename:           result.Filename,
+			Description:        fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
+			AssetID:            input.ID,
+			Group:              input.Term, // artlist search term (PathBuilder input)
+			Subject:            "",          // empty by design — see doc above (TODO F2.9: explicit Subject plumb)
+			RootFolderOverride: input.FolderID,
+		}
+		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
+		if pubErr != nil {
+			p.log.Warn("Drive upload failed (continuing with local only; lifecycle.Finalize.RequireDrive will fail-closed in UPLOAD_FAILED)",
 				zap.String("id", input.ID),
-				zap.Error(uploadErr),
+				zap.String("destination", string(destKey)),
+				zap.Error(pubErr),
 			)
+			// Failure stamping so a caller surfacing Result.Status=="processed"
+			// doesn't have to grep the log to discover why Drive fields are empty.
+			// Status stays "processed" so the lifecycle.RequireDrive gate is
+			// the SINGLE canonical authority that flips to UPLOAD_FAILED.
+			result.Error = fmt.Sprintf("drive upload failed: %v", pubErr)
 		} else {
-			result.DriveLink = uploadResult.WebViewLink
-			result.DriveFileID = uploadResult.FileID
-			result.DownloadLink = uploadResult.DownloadLink
-			p.log.Info("File uploaded to Drive",
+			result.DriveLink = pubRes.WebViewLink
+			result.DriveFileID = pubRes.FileID
+			// Strict canonical-URL policy (F2.7): PublishResult.DownloadLink
+			// is the single source of truth for the drive download URL.
+			// Empty if Publisher didn't surface one — that is a Publisher
+			// bug, NOT an opportunity for silent reconstruction.
+			result.DownloadLink = pubRes.DownloadLink
+			result.MD5 = pubRes.MD5Checksum
+			result.PublishAction = string(pubRes.Action)
+			p.log.Info("File uploaded to Drive via Publisher (F2.8)",
 				zap.String("id", input.ID),
-				zap.String("file_id", uploadResult.FileID),
+				zap.String("file_id", pubRes.FileID),
 				zap.String("folder_id", input.FolderID),
+				zap.String("destination", string(destKey)),
+				zap.String("publish_action", string(pubRes.Action)),
+				zap.String("md5", pubRes.MD5Checksum),
 			)
 		}
-
-		sourceVal := "artlist"
-		if s, ok := input.Metadata["source"].(string); ok {
-			sourceVal = s
-		}
-
-		metaData := map[string]any{
-			"clip_id":       input.ID,
-			"name":          input.Name,
-			"source":        sourceVal,
-			"term":          input.Term,
-			"filename":      result.Filename,
-			"file_hash":     result.FileHash,
-			"duration_sec":  input.Duration,
-			"created_at":    time.Now().UTC().Format(time.RFC3339),
-			"drive_file_id": result.DriveFileID,
-			"drive_link":    result.DriveLink,
-			"download_link": result.DownloadLink,
-			"clip_page_url": input.ClipPageURL,
-			"source_url":    input.SourceURL,
-			"duplicate_of":  result.DuplicateOf,
-		}
-		// Merge any extra metadata provided in the input.
-		for k, v := range input.Metadata {
-			if _, exists := metaData[k]; !exists {
-				metaData[k] = v
-			}
-		}
-
-		// Maintain a single metadata.json locally under lock to avoid concurrency races.
-		driveMetaMu.Lock()
-		localMetaPath := filepath.Join(filepath.Dir(processedPath), "metadata.json")
-		var localExisting []map[string]any
-		if data, err := os.ReadFile(localMetaPath); err == nil {
-			_ = json.Unmarshal(data, &localExisting)
-		}
-		foundLocal := false
-		for i, entry := range localExisting {
-			if id, ok := entry["clip_id"].(string); ok && id == input.ID {
-				localExisting[i] = metaData
-				foundLocal = true
-				break
-			}
-		}
-		if !foundLocal {
-			localExisting = append(localExisting, metaData)
-		}
-		if data, err := json.MarshalIndent(localExisting, "", "  "); err == nil {
-			if writeErr := os.WriteFile(localMetaPath, data, 0o644); writeErr != nil {
-				p.log.Warn("failed to write metadata JSON locally", zap.String("id", input.ID), zap.Error(writeErr))
-			}
-		}
-
-		// Maintain and upload a single cumulative metadata.json to Google Drive.
-		p.updateCumulativeMetadataJSON(ctx, input.FolderID, input.ID, metaData)
-		driveMetaMu.Unlock()
 	}
 
 	// Cleanup raw file after processing.
@@ -249,7 +295,10 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 func (p *Processor) setupDirectories(input *asset.ProcessInput) (tmpDir, saveDir string) {
 	tmpDir = filepath.Join(p.dataDir, p.tempDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		p.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))
+		// Fallback to os.TempDir() so the rest of the pipeline can
+		// still proceed even on permission/FS failures; the operator
+		// log captures the actual MkdirAll error for triage.
+		p.log.Error("failed to create temp directory; falling back to os.TempDir", zap.String("dir", tmpDir), zap.Error(err))
 		tmpDir = os.TempDir()
 	}
 
@@ -258,64 +307,9 @@ func (p *Processor) setupDirectories(input *asset.ProcessInput) (tmpDir, saveDir
 		saveDir = filepath.Join(p.dataDir, "mediaassets", textutil.SafeName(input.Term))
 	}
 	if err := os.MkdirAll(saveDir, 0o755); err != nil {
-		p.log.Error("failed to create save directory", zap.String("dir", saveDir), zap.Error(err))
+		p.log.Error("failed to create save directory; falling back to tmpDir", zap.String("dir", saveDir), zap.Error(err))
 		saveDir = tmpDir
 	}
 
 	return tmpDir, saveDir
-}
-
-// updateCumulativeMetadataJSON maintains a single metadata.json per folder on Google Drive.
-func (p *Processor) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) {
-	const metaFilename = "metadata.json"
-
-	var existing []map[string]any
-	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-	list, err := p.driveUploader.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err != nil {
-		p.log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(list.Files) > 0 {
-		existingFileID := list.Files[0].Id
-		body, _, dlErr := p.driveUploader.DownloadFile(ctx, existingFileID)
-		if dlErr == nil && body != nil {
-			defer body.Close()
-			var raw []map[string]any
-			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-				existing = raw
-			}
-		}
-		if err := p.driveUploader.TrashFile(ctx, existingFileID); err != nil {
-			p.log.Warn("failed to trash old metadata.json", zap.Error(err))
-		}
-	}
-
-	found := false
-	for i, entry := range existing {
-		if id, ok := entry["clip_id"].(string); ok && id == clipID {
-			existing[i] = newEntry
-			found = true
-			break
-		}
-	}
-	if !found {
-		existing = append(existing, newEntry)
-	}
-
-	jsonBytes, err := json.MarshalIndent(existing, "", "  ")
-	if err != nil {
-		p.log.Warn("failed to marshal cumulative metadata json", zap.Error(err))
-		return
-	}
-	metaTempPath := filepath.Join(os.TempDir(), fmt.Sprintf("meta_%s_%d.json", clipID, time.Now().UnixNano()))
-	if err := os.WriteFile(metaTempPath, jsonBytes, 0o644); err != nil {
-		p.log.Warn("failed to write metadata json temp file", zap.Error(err))
-		return
-	}
-	defer os.Remove(metaTempPath)
-
-	if _, err := p.driveUploader.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
-		p.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-	} else {
-		p.log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
-	}
 }
