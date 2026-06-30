@@ -247,7 +247,7 @@ type TranscriptProvider interface {
 //   - JSON response parsing (primary + markdown fallback via jsonRegexFind)
 //   - score clamping / matched-keyword selection
 //   - segment duration validation (10s .. 60s clamp)
-//   - chapter-fallback logic via yt-dlp metadata (subtitles miss → chapters)
+//   - (Step 9 commit 2, June 2026: chapters fallback dropped; see ollama_analyzer.go header)
 //   - OllamaModel selection from cfg.External.OllamaModel (default: "gemma4:e2b")
 //
 // Three methods, not three ports, because the concrete adapter shares
@@ -268,7 +268,13 @@ type VideoAnalyzer interface {
 	// FindSegments extracts up to maxSegments from the transcript.
 	// The segmentPrompt customizes the "what makes a good clip here" guidance.
 	// Returns nil if no segments meet the duration threshold (10s..60s).
-	FindSegments(ctx context.Context, transcript string, prompt string, maxSegments int) (segments []ytdomain.Segment, err error)
+	//
+	// The videoURL argument is required because the analyzer constructs
+	// its prompt from the timed VTT entries (which carry the [MM:SS]
+	// markers Ollama needs to output timestamped segments); without the
+	// URL, the analyzer cannot re-fetch the VTT. analyzer.go orchestrator
+	// passes the same videoURL it already uses for GetTranscript + Score.
+	FindSegments(ctx context.Context, videoURL string, transcript string, prompt string, maxSegments int) (segments []ytdomain.Segment, err error)
 }
 
 // ── JobEnqueuer (Step 9 new port) ────────────────────────────────────────
@@ -357,7 +363,7 @@ func (u *unboundVideoAnalyzer) Score(_ context.Context, _ string, _ []string) (i
 func (u *unboundVideoAnalyzer) Classify(_ context.Context, _, _ string) (string, error) {
 	return "", u.err
 }
-func (u *unboundVideoAnalyzer) FindSegments(_ context.Context, _, _ string, _ int) ([]ytdomain.Segment, error) {
+func (u *unboundVideoAnalyzer) FindSegments(_ context.Context, _, _, _ string, _ int) ([]ytdomain.Segment, error) {
 	return nil, u.err
 }
 

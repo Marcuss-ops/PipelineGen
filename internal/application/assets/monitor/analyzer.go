@@ -132,7 +132,7 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info downloader.Video
 		if maxSegments <= 0 {
 			maxSegments = 3
 		}
-		segs, serr := m.analyzer.FindSegments(ctx, transcript, channel.SegmentPrompt, maxSegments)
+		segs, serr := m.analyzer.FindSegments(ctx, videoURL, transcript, channel.SegmentPrompt, maxSegments)
 		if serr != nil {
 			return Analysis{}, fmt.Errorf("analyzeVideo: FindSegments(%s): %w", videoID, serr)
 		}

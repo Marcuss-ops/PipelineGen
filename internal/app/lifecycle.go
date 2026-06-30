@@ -26,9 +26,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
+	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -186,26 +189,41 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
 				log,
 			)
+		// Step 9 commit 2 (June 2026): wire the concrete YTDLPSubtitleAdapter
+		// (os/exec + VTT regex) and OllamaAnalyzer (Score + Classify +
+		// FindSegments) as the monitor's Transcript + Analyzer ports.
+		// JobEnqueuer remains an unbound stub pending the P1 follow-up
+		// that wires *jobtools.Service (per architecture/current.yaml
+		// follow-up ticket PR-MONITOR-ENQUEUER-WIRE).
+		ytdlpForSubtitles := downloader.NewYTDLP(cfg)
+		ytdlpSubtitleAdapter := transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
+			Ytdlp: ytdlpForSubtitles,
+			Log:   log,
+		})
+		ollamaAnalyzer := semantic.NewOllamaAnalyzer(semantic.Deps{
+			OllamaClient: root.AI.OllamaClient,
+			Subtitles:    ytdlpSubtitleAdapter,
+			Log:          log,
+			Model:        cfg.External.OllamaModel,
+			DataDir:      cfg.Storage.DataDir,
+			DefaultCategory: "general",
+		})
+
 		channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
 			Cfg:         cfg,
 			ClipsRepo:   root.Repos.ClipsRepo,
 			ChannelsSvc: channelsSvc,
 			YoutubeSvc:  root.Domains.YoutubeClipService,
 			Log:         log,
-			// Ytdlp is intentionally nil at this commit: the next Step-9
-			// wires the concrete *downloader.YTDLPDownloader here. The
-			// monitor package treats a nil Ytdlp port as
-			// discoverChannelVideos error per the discovery.go contract
-			// (loud failure; never a silent zero-result).
-			Ytdlp: nil,
-			// Transcript + Analyzer + Enqueuer are filled with the
-			// unbound stub constructors so production wiring crashes
-			// loudly at the FIRST analyzer/enqueuer call rather than
-			// nil-deref panicking inside the worker. The next Step-9
-			// commit installs the real YTDLPSubtitleAdapter +
-			// OllamaAnalyzer + jobs.Service binding.
-			Transcript: monitor.NewUnboundTranscriptProvider(),
-			Analyzer:   monitor.NewUnboundVideoAnalyzer(),
+			// Ytdlp wires the concrete *downloader.YTDLPDownloader so
+			// monitor/discovery.go::discoverChannelVideos can call
+			// ListChannel per scheduler tick. Same instance is re-used in
+			// transcripts/YTDLPSubtitleAdapter for the subtitle
+			// subprocess, keeping a single downloader binary+cookies
+			// config across the two adapters.
+			Ytdlp:      ytdlpForSubtitles,
+			Transcript: ytdlpSubtitleAdapter,
+			Analyzer:   ollamaAnalyzer,
 			Enqueuer:   monitor.NewUnboundJobEnqueuer(),
 		})
 
