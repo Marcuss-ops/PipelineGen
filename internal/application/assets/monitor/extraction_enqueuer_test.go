@@ -220,15 +220,12 @@ func TestExtractionEnqueuer_HappyPath_CursorOnSuccess(t *testing.T) {
 		t.Errorf("Payload.Destination.FolderID = %q, want %q",
 			payload.Destination.FolderID, req.DriveFolderID)
 	}
-	// Cursor update exactness
-	if csvc.updateCursorCalls != 1 {
-		t.Errorf("UpdateCursor should be called exactly once on success, got %d", csvc.updateCursorCalls)
-	}
-	if csvc.lastCursorCommand.ID != req.Channel.ID {
-		t.Errorf("UpdateCursor.ID = %q, want %q", csvc.lastCursorCommand.ID, req.Channel.ID)
-	}
-	if csvc.lastCursorCommand.Cursor != req.VideoID {
-		t.Errorf("UpdateCursor.Cursor = %q, want %q", csvc.lastCursorCommand.Cursor, req.VideoID)
+	// Commit D (PR-D YouTube Channel Monitor cutover, June 2026):
+	// per-video UpdateCursor is REMOVED from extraction_enqueuer.go.
+	// Cycle-end MAX(discovered_at) → category_channels.last_cursor is
+	// the new path (see discovery.go::recordCycleEndWatermark).
+	if csvc.updateCursorCalls != 0 {
+		t.Errorf("UpdateCursor MUST NOT be called post-Commit-D (cycle-end watermark replaced it), got %d calls", csvc.updateCursorCalls)
 	}
 }
 
@@ -261,13 +258,11 @@ func TestExtractionEnqueuer_CursorUpdateFailureTolerance(t *testing.T) {
 	if jsvc.lastEnqueueReq == nil {
 		t.Fatal("Enqueue was called but lastEnqueueReq is nil")
 	}
-	if csvc.updateCursorCalls != 1 {
-		t.Errorf("UpdateCursor should be ATTEMPTED once even when it will fail, got %d", csvc.updateCursorCalls)
-	}
-	if csvc.lastCursorCommand.ID != req.Channel.ID || csvc.lastCursorCommand.Cursor != req.VideoID {
-		t.Errorf("UpdateCursor command = (%q, %q), want (%q, %q)",
-			csvc.lastCursorCommand.ID, csvc.lastCursorCommand.Cursor,
-			req.Channel.ID, req.VideoID)
+	// Commit D: per-video UpdateCursor is REMOVED from
+	// extraction_enqueuer.go. Even under broker-error tolerance
+	// (contract 3 pre-Commit-D), the cursor must NOT be touched.
+	if csvc.updateCursorCalls != 0 {
+		t.Errorf("UpdateCursor MUST NOT be called post-Commit-D (even on broker-error tolerance), got %d calls", csvc.updateCursorCalls)
 	}
 }
 

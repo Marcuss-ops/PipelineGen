@@ -95,6 +95,15 @@ type CompositionDeps struct {
 	// next commit installs the real JobsEnqueuer binding.
 	Enqueuer JobEnqueuer
 
+	// Discoveries (Commit D, June 2026) is the typed port over the
+	// youtube_discoveries ledger (migrations/sqlite/113_youtube_discoveries.sql
+	// + internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go).
+	// Composition wires the concrete adapter via Compose (lifecycle.go).
+	// Optional so partial-deploy + test fixtures without a yoga-discoveries
+	// migration keep compiling (nil port → defensive
+	// OutcomeAlreadyScheduled classification in processVideo).
+	Discoveries YoutubeDiscoveriesPort
+
 	// Policy is the per-instance runtime configuration (TickInterval,
 	// LeaseDuration, ClaimLimit, MaxConcurrentChannels,
 	// MaxConcurrentVideos, PerChannelTimeout, WorkerIDPrefix,
@@ -173,20 +182,62 @@ type MonitorConfig struct {
 // VideosDiscovered = number of entries yt-dlp returned for the channel
 // (regardless of subsequent filter outcome).
 //
-// VideosEnqueued = number of jobs posted onto the broker
-// (i.e. extracted + segments + accepted by the per-channel MaxVideosPerRun
-// budget).
+// VideosEnqueued = number of jobs posted onto the broker on the `Enqueued`
+// outcome path (Commit D, June 2026). Strictly excludes
+// `AlreadyScheduled` (ledger-dedupe lost the race) and `Rejected`
+// (passed entry filters but failed the AI gate / MaxVideosPerRun slot);
+// those flow into VideosAlreadyScheduled + VideosRejected for operator
+// observability.
 //
-// VideosSkipped = number of entries that did NOT become a job, split sum:
-// already-processed ActiveKey, below min_views, exceeded max duration,
-// title-keyword miss, semantic-budget reached, Ollama score below threshold.
-// The per-reason breakdown lives in the structured log stream
-// (Debug-level lines on processVideo).
+// VideosSkipped = legacy aggregate of "did NOT become a job" — preserved
+// for backward-compat with the pre-Commit-D scheduler logs:
+// VideosSkipped == VideosDiscovered - VideosEnqueued - VideosAlreadyScheduled
+// - VideosRejected + VideosRejected (conceptually the same set, just
+// split per-outcome for the new counters).
+//
+// VideosAlreadyScheduled = the per-video dedupe ledger's "lost the race"
+// counter — a previous cycle already INSERT'd youtube_discoveries for
+// these (channel_id, video_id) pairs, so this cycle classifies them as
+// AlreadyScheduled and does NOT re-emit a durable job.
+//
+// VideosRejected = the per-video outcome for videos that passed the
+// cheap lexical entry filters but failed the AI gate, hit the
+// MaxVideosPerRun budget, or otherwise exited the pipeline without a
+// broker record. Persisted to youtube_discoveries.outcome='rejected'
+// with rejection_reason in metadata for audit.
 type ChannelCheckResult struct {
-	VideosDiscovered int
-	VideosEnqueued   int
-	VideosSkipped    int
+	VideosDiscovered       int
+	VideosEnqueued         int
+	VideosSkipped          int
+	VideosAlreadyScheduled int
+	VideosRejected         int
 }
+
+// EnqueueOutcome is the typed label for a single video's per-cycle
+// disposition (Commit D, June 2026). One of Enqueued, AlreadyScheduled,
+// or Rejected. Lives in monitor/ports.go so it can be a port method
+// return type without leaking ledger internals.
+type EnqueueOutcome string
+
+const (
+	// OutcomeEnqueued: this cycle's TryReserve INSERT won the
+	// (channel_id, video_id) race AND the durable youtube_clip.extract
+	// job was successfully emitted. Only Enqueued increments the
+	// canonical VideosEnqueued counter.
+	OutcomeEnqueued EnqueueOutcome = "enqueued"
+
+	// OutcomeAlreadyScheduled: this cycle's TryReserve INSERT lost
+	// the race to a previous cycle's INSERT for the same
+	// (channel_id, video_id). No job is emitted; the existing ledger
+	// row's discovered_at still advances the cycle-end watermark.
+	OutcomeAlreadyScheduled EnqueueOutcome = "already_scheduled"
+
+	// OutcomeRejected: this cycle passed TryReserve but the post-INSERT
+	// path failed (EnqueueExtract returned a non-nil error, the
+	// MaxVideosPerRun slot was already filled, the semantic score was
+	// below threshold, etc.). Persisted to youtube_discoveries.outcome.
+	OutcomeRejected EnqueueOutcome = "rejected"
+)
 
 // ── MonitorDownloaderPort (the legacy yt-dlp slice) ──────────────────────
 
@@ -376,3 +427,50 @@ var _ MonitorDownloaderPort = (*downloader.YTDLPDownloader)(nil)
 // port methods change signature without also updating the unbound stub.
 var _ VideoAnalyzer = (*unboundVideoAnalyzer)(nil)
 var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
+
+// ── YoutubeDiscoveriesPort (Commit D new port) ─────────────────────────────
+
+// YoutubeDiscoveriesPort is the typed surface the channel monitor reads
+// against the youtube_discoveries ledger (table created in
+// migrations/sqlite/113_youtube_discoveries.sql; infra adapter in
+// internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go).
+//
+// The ledger implements the canonical leader-election-by-INSERT dedupe
+// pattern (Commit D, June 2026):
+//   - The per-video worker calls TryReserve BEFORE EnqueueExtract.
+//     The UNIQUE(channel_id, video_id) constraint means only one
+//     goroutine's INSERT effects a row insert; the rest get won=false
+//     and classify outcome as AlreadyScheduled.
+//   - On a successful EnqueueExtract, the same worker calls
+//     MarkEnqueued to flip the row's outcome to 'enqueued'.
+//   - On a rejected path (EnqueueExtract error, MaxVideosPerRun slot
+//     exhausted post-INSERT), MarkRejected records the rejection_reason.
+//   - At cycle end, the defer in checkChannel reads MaxDiscoveredAt
+//     and persists it as category_channels.last_cursor (the column is
+//     repurposed from "last video id" to "RFC3339 timestamp of the
+//     high-water mark").
+//
+// The port is the typed projection of the SQLite adapter; tests inject
+// a stub that counts TryReserve/MarkEnqueued/MarkRejected invocations
+// for the 5-videos × 2-invocations dedupe contract.
+type YoutubeDiscoveriesPort interface {
+	// TryReserve performs the leader-election INSERT with
+	// ON CONFLICT(channel_id, video_id) DO NOTHING RETURNING id.
+	// Returns (id, won=true) on win, (id, won=false) on loss.
+	// Empty channelID+videoID is a hard validation error.
+	TryReserve(ctx context.Context, channelID, videoID, sourceURL, title, discoveredAt string) (id string, won bool, err error)
+
+	// MarkEnqueued flips the row from pending → enqueued. Idempotent
+	// on repeat (a row with enqueued=1 stays 1).
+	MarkEnqueued(ctx context.Context, id, enqueuedAt string) error
+
+	// MarkRejected records an explicit rejection outcome with the
+	// human-readable rejection_reason. No-op on rows already at
+	// enqueued or rejected outcome.
+	MarkRejected(ctx context.Context, id, rejectionReason string) error
+
+	// MaxDiscoveredAt returns the largest discovered_at for the
+	// channel (or empty string for an empty ledger). Cycle-end
+	// watermark.
+	MaxDiscoveredAt(ctx context.Context, channelID string) (string, error)
+}

@@ -753,7 +753,33 @@ the snapshot table above.
 
 (See-also canonical anchor: `audit-trail-anchors_P1-2-of-cleanup-plan`; mirrored in CHANGELOG.md `## Unreleased → ### Fixed`.)
 
-- **PR-C-YouTube-Cutover Commit C (`7df4b5f9`)** — YouTube Channel Monitor cutover, Commit C.
+- **PR-D YouTube Channel Monitor cutover, Commit D (commit-sha pending)** —
+  youtube_discoveries ledger + ListChannelVideos dedupe + EnqueueOutcome enum +
+  cycle-end watermark replaces per-video UpdateCursor (godlike/07 compliant).
+  Closes: **(a)** leader-election INSERT ... ON CONFLICT(channel_id, video_id)
+  DO NOTHING RETURNING id gates which per-video goroutine emits the durable
+  job (defense-in-depth on top of the ActiveKey dedup at the broker level);
+  **(b)** cycle-end `MAX(discovered_at)` → `category_channels.last_cursor`
+  is now the single durable channel-state write per scheduler cycle (the
+  pre-Commit-D per-video `UpdateCursor(Cursor=videoID)` was a best-effort
+  silent-degrade path); **(c)** VideosEnqueued counter is now strict-typed:
+  only `EnqueueOutcome::Enqueued` increments it, with
+  `VideosAlreadyScheduled` + `VideosRejected` partitioning the legacy
+  `VideosSkipped` aggregate; **(d)** keyword `containsAny` rewritten via
+  `strings.ToLower + TrimSpace + strings.Contains` (stdlib-only, drops the
+  bespoke ASCII loop); `(e)` `decodeJSONStrings` returns a non-nil error
+  on malformed JSON (logged + treated as keyword-less per cycle, no silent
+  drop).
+  New canonical surface: migration `113_youtube_discoveries.sql` +
+  `internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go`
+  (TryReserve leader-election + MarkEnqueued + MarkRejected + MaxDiscoveredAt
+  watermark) + `internal/application/assets/monitor/ports.go::EnqueueOutcome`
+  + `YoutubeDiscoveriesPort` (4 methods) + `internal/application/assets/monitor/discovery.go::recordDiscoveryAndClassify`
+  (TryReserve + delegate to enqueueFromAnalysis) + `recordCycleEndWatermark`
+  (defer in checkChannel). Forward-pointer: `architecture/current.yaml#YouTube-Cutover-D`
+  for the residual hardening items (5-EnqueueExtract-port-calls assertion
+  in the 5×2 test; dead `ChannelsCursorSvc` interface on extraction_enqueuer.go).
+
   Closes audit points **P0 #2** (ExtractionService now delegates to a single canonical
   per-segment use case — no inline 9-step orchestration in the service layer),
   **P0 #3** (no third implementation: `internal/application/youtube/adapters/segment_processor.go`

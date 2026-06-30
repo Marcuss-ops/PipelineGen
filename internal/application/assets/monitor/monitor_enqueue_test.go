@@ -82,7 +82,7 @@ func TestEnqueueFromAnalysis_ActiveKeyCollisionNoOp(t *testing.T) {
 	info := downloader.VideoInfo{ID: "vid-collision", Title: "Title"}
 	analysis := enqueueAnalysisFixture()
 
-	m.enqueueFromAnalysis(context.Background(), info, ch, analysis)
+	m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "")
 
 	// EnqueueExtract IS called once (the stub itself decides whether
 	// to record or no-op); the CANONICAL behavior of the stub is
@@ -123,7 +123,7 @@ func TestEnqueueFromAnalysis_CursorUpdateOnSuccess(t *testing.T) {
 	info := enqueueVideoFixture()
 	analysis := enqueueAnalysisFixture()
 
-	m.enqueueFromAnalysis(context.Background(), info, ch, analysis)
+	m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "")
 
 	if stub.enqueueCalls != 1 {
 		t.Fatalf("EnqueueExtract should be invoked exactly once, got %d", stub.enqueueCalls)
@@ -188,7 +188,7 @@ func TestEnqueueFromAnalysis_CursorUpdateFailureTolerance(t *testing.T) {
 
 	// The monitor must NOT panic, NOT log error, NOT return any
 	// outside-facing error indication — best-effort semantics.
-	m.enqueueFromAnalysis(context.Background(), info, ch, analysis)
+	m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "")
 
 	if stub.enqueueCalls != 1 {
 		t.Errorf("EnqueueExtract should be invoked exactly once, got %d", stub.enqueueCalls)
