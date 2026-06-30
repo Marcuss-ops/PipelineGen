@@ -11,10 +11,12 @@
 //   - SQLite holds the canonical index version per asset.
 //   - No synthetic/fake vectors are ever written.
 //
-// File layout (PR3 mechanical split, June 2026):
+// File layout (PR3 mechanical split, June 2026; consolidated Phase 5 June 2026):
 //
-//	types.go                 Package doc only (this file). Historical home
-//	                          of the package's type families.
+//	types.go                 Package doc + Point struct + DR type aliases
+//	                          + PointPayload (consolidated from canonical.go,
+//	                          point_types.go, types_dr.go, filter_types.go,
+//	                          snapshot_types.go, api_errors.go — Phase 5).
 //	schema_types.go          EmbeddingSpec + SparseSpec + PayloadIndexSpec
 //	                          + IndexSchema (+ physicalName) + manifest constants
 //	                          + IndexHealthReport + IndexWriterPort
@@ -25,23 +27,47 @@
 //	collection_wire.go       CollectionInfo.UnmarshalJSON + result-shape
 //	                          decode helpers (unmarshalQdrantEnvelope,
 //	                          unmarshalLegacyLeaf) + json.Unmarshaler assertion
-//	point_types.go           Point (the upsert wire shape). PointPayload lives
-//	                          in types_dr.go (infra-only, QDRANT-005C PR3)
 //	search_types.go          SearchRequest + HybridSearchRequest + SparseQueryVector
 //	                          + SearchResult + ScrollResult + ScrollPoint
 //	                          + DeadLetterChecker + GoldenQueryRunner
-//	filter_types.go          (doc-only marker — no dedicated Filter/Condition/Match
-//	                          types; filters are inline map[string]interface{})
-//	snapshot_types.go        (doc-only marker — SnapshotDescription is a type
-//	                          alias in types_dr.go since QDRANT-005C PR3)
-//	api_errors.go            (doc-only marker — APIError + sentinel errors live
-//	                          in errors.go since PR1)
+//	                          + Filter marker (inline map[string]interface{})
+//	error types:             APIError + sentinel errors → errors.go (PR1)
 //
-// Co-located files (NOT touched by PR3): client.go + client_*.go (PR2 split),
-// errors.go (PR1 wire-level error DTO), types_dr.go (QDRANT-005C PR3 DR shapes),
-// dr_adapter.go (QDRANT-005C PR3 port adapters), client_dr.go (snapshot methods).
+// Co-located files: client.go + client_*.go (PR2), errors.go (PR1),
+// dr_adapter.go, client_dr.go (snapshot+restore methods).
 //
 // All types stay in the same package `qdrant`; PR3 is a relocation pass — every
 // type body, JSON tag, and method receiver is preserved 1:1 against the
 // pre-split types.go.
 package qdrant
+
+import "github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+
+// ── Point (canonical upsert wire shape) ────────────────────────────────
+// Relocated from point_types.go (Phase 5 consolidation, June 2026).
+
+// Point is a single Qdrant point ready for upsert.
+// Note: the Vectors field uses the Qdrant REST API key "vector" (singular).
+type Point struct {
+	ID      string                 `json:"id"`
+	Vectors map[string]interface{} `json:"vector"`
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// ── DR type aliases + PointPayload ─────────────────────────────────────
+// Relocated from types_dr.go (Phase 5 consolidation, June 2026).
+
+// SnapshotDescription is the canonical DR snapshot shape (type alias).
+type SnapshotDescription = qdrantdr.SnapshotDescription
+
+// PointPayload is the per-point payload write shape used by the
+// Qdrant REST /points/payload endpoint with `merge=true`. Distinct
+// from Point: Point carries vectors, PointPayload does NOT. The
+// canonical use is the reaper service which needs to overwrite a
+// subset of payload keys without touching vectors (UpsertPoints
+// would null vectors on partial payload, which was the prior bug
+// the reaper commit 07292503 fixed in the qdrant.reaper path).
+type PointPayload struct {
+	ID      string                 `json:"id"`
+	Payload map[string]interface{} `json:"payload"`
+}

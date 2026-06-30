@@ -3,6 +3,15 @@
 // Extends qdrant.Client with the REST surface for /snapshots plus
 // the merge-payload helper consumed by the reaper.
 //
+// The snapshot marker doc previously lived in client_snapshots.go
+// (Phase 5 consolidation, June 2026). RC reference (Qdrant spec):
+//
+//	POST   /collections/{n}/snapshots              → CreateSnapshot
+//	GET    /collections/{n}/snapshots              → ListSnapshots
+//	GET    /collections/{n}/snapshots/{name}       → GetSnapshotURL
+//	DELETE /collections/{n}/snapshots/{name}       → DeleteSnapshot
+//	PUT    /collections/{n}/snapshots/recover      → RestoreSnapshot
+//
 // RC references (Qdrant spec):
 //
 //	POST   /collections/{n}/snapshots              → CreateSnapshot

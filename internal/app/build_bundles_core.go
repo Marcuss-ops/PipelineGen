@@ -10,7 +10,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
@@ -22,6 +28,10 @@ import (
 	idemsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/idempotency"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -241,4 +251,61 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveClient *g
 		Qdrant: qdrantChecker,
 		Jobs:   jobsChecker,
 	})
+}
+
+// buildBooksService (moved from build_bundles_books.go, Phase 5 consolidation, June 2026).
+func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driveUploader *drive.Uploader, voiceoverSvc *voiceover.Service, publisher delivery.Publisher) *books.Service {
+	booksSvc := books.NewService(
+		&books.Config{
+			Enabled:       cfg.Books.Enabled,
+			ScriptPath:    cfg.Books.ScriptPath,
+			PythonBin:     cfg.Books.PythonBin,
+			DriveFolderID: cfg.Drive.BooksFolder(),
+		},
+		dbs.main.DB, cfg.Drive.BooksFolder(), log,
+		voiceoverSvc, driveUploader, publisher,
+	)
+	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
+	return booksSvc
+}
+
+// buildImagesService (moved from build_bundles_images.go, Phase 5 consolidation, June 2026).
+func buildImagesService(
+	ctx context.Context, cfg *config.Config, log *zap.Logger,
+	driveClient *gdrive.Service, clipsRepo *sqassets.ClipsRepository, artlistRepo *sqassets.ClipsRepository,
+	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
+	mediaStore *drive.Store, imageRepo *sqassets.ImagesRepository,
+	voMetaWriter *semantic.MetadataWriter,
+	ingestSvc *ingest.Service,
+	dispatcher *outbox.Dispatcher,
+) (*imgservice.Service, *semantic.MetadataWriter) {
+	imageService := imgservice.NewService(imgservice.ImagesDeps{
+		Core: imgservice.ImagesCoreDeps{Cfg: cfg, Log: log},
+		Storage: imgservice.ImagesStorageDeps{
+			ImageRepo:  imageRepo,
+			ClipsRepo:  clipsRepo,
+			DriveSvc:   driveClient,
+			MediaStore: mediaStore,
+		},
+		GenAI: imgservice.ImagesGenAIDeps{
+			LLMGen:        scriptGen,
+			MetaWriter:    voMetaWriter,
+			StyleRegistry: styleRegistry,
+			ImageGen:      imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, 3, log),
+			NvidiaCfg:     imgservice.NvidiaConfig{APIKey: cfg.External.NvidiaAPIKey, Model: cfg.External.NvidiaModel},
+			RemoteImageURL: cfg.External.RemoteImageEndpointURL,
+		},
+		External: imgservice.ImagesExternalDeps{
+			IngestSvc:    ingestSvc,
+			Dispatcher:   dispatcher,
+			VeloxBaseURL: cfg.External.VeloxBaseURL,
+			GACfg: imgservice.GoogleAccountingConfig{
+				ServerURL:     cfg.GoogleAccounting.ServerURL,
+				DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+				VidsProjectID: cfg.GoogleAccounting.VidsProjectID,
+			},
+		},
+	})
+	_ = ctx
+	return imageService, voMetaWriter
 }

@@ -20,14 +20,18 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
@@ -168,4 +172,52 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		Publisher:     publisher,
 		DocClient:     docClient,
 	}, startClosure, nil
+}
+
+// startDriveBackgroundFolders (moved from build_drive_startup.go, Phase 5 consolidation, June 2026).
+// Performs side-effecting Drive init: pre-creates style folders, validates
+// critical Drive folder paths, and ensures local storage directories exist.
+func startDriveBackgroundFolders(
+	ctx context.Context,
+	cfg *config.Config,
+	driveClient *gdrive.Service,
+	driveUploader *drive.Uploader,
+	dests *DriveDestinations,
+	styleRegistry *generation.StyleRegistry,
+	log *zap.Logger,
+) error {
+	if driveClient != nil && dests.ImagesFolder() != "" && dests.ImagesFolder() != dests.MediaRoot {
+		concurrent.SafeGo("drive-style-folders", func() {
+			ensureStyleDriveFolders(ctx, driveUploader, dests.ImagesFolder(), styleRegistry, log)
+		})
+		log.Info("Style Drive folders using Images root", zap.String("folder_id", dests.ImagesFolder()))
+	}
+	if driveClient != nil {
+		for name, folderID := range map[string]string{
+			"images": dests.ImagesFolder(),
+		} {
+			if folderID == "" {
+				continue
+			}
+			if _, err := driveClient.Files.Get(folderID).Fields("id, name").Context(ctx).Do(); err != nil {
+				return fmt.Errorf("required Drive folder %q (id=%s) validation failed: %w", name, folderID, err)
+			}
+			log.Info("Drive folder validated",
+				zap.String("folder_name", name), zap.String("folder_id", folderID))
+		}
+	}
+	for _, dir := range []string{
+		cfg.Storage.DataDir, cfg.Storage.VoiceoversPath(), cfg.Storage.AssetsPath(),
+		cfg.Storage.DownloadsPath(), cfg.Storage.BackupsPath(), cfg.Storage.TempPath(),
+		cfg.Storage.AnimationsPath(), cfg.Storage.YoutubeClipsPath(),
+		cfg.Storage.ArtlistPath(), cfg.Storage.ImagesPath(),
+	} {
+		if dir == "" {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
+		}
+	}
+	return nil
 }

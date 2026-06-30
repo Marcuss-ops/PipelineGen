@@ -128,3 +128,28 @@ func (c *Client) ListCollections(ctx context.Context) ([]string, error) {
 	}
 	return names, nil
 }
+
+// ── Payload index ────────────────────────────────────────────────────
+// Relocated from client_payload_indexes.go (Phase 5 consolidation, June 2026).
+// CreatePayloadIndex registers a payload field as indexable.
+// Distinct from DeletePayloadKeys (client_points.go) which targets
+// /points/payload/delete and is a point-mutation endpoint.
+
+// CreatePayloadIndex creates a payload field index.
+func (c *Client) CreatePayloadIndex(ctx context.Context, collection, field, fieldType string) error {
+	body := map[string]interface{}{
+		"field_name": field,
+		"field_type": fieldType,
+	}
+	url := fmt.Sprintf("%s/collections/%s/index", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPut, url, body)
+	if err != nil {
+		return fmt.Errorf("create index %q on %q: %w", field, collection, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.parseError(resp)
+	}
+	return nil
+}

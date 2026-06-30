@@ -53,6 +53,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -559,6 +560,35 @@ func (a *useCaseDefaultFolderResolverAdapter) Resolve(_ context.Context) (string
 
 // Compile-time assertion (AGENTS.md Pattern 0).
 var _ voiceover.VoiceoverDefaultFolderResolver = (*useCaseDefaultFolderResolverAdapter)(nil)
+
+// ─────────────────────────────────────────────────────────────────────
+// voiceoverDriveAdapter - Drive port adapter for voiceover (moved from
+// voiceover_adapters_drive.go, Phase 5 consolidation, June 2026).
+// Wraps drive.Admin to satisfy voiceover.DriveUploaderPort.
+// ─────────────────────────────────────────────────────────────────────
+
+type voiceoverDriveAdapter struct {
+	drive drive.Admin
+}
+
+var _ voiceover.DriveUploaderPort = (*voiceoverDriveAdapter)(nil)
+
+func newVoiceoverDriveAdapter(admin drive.Admin) voiceover.DriveUploaderPort {
+	if admin == nil {
+		return nil
+	}
+	return &voiceoverDriveAdapter{drive: admin}
+}
+
+func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
+	if fileID == "" {
+		return fmt.Errorf("voiceoverDriveAdapter.DeleteFile: fileID is required")
+	}
+	if a == nil || a.drive == nil {
+		return fmt.Errorf("voiceoverDriveAdapter: drive not wired")
+	}
+	return a.drive.DeleteFile(ctx, fileID)
+}
 
 // timeutil import is used here for FormatRFC3339 fallback in
 // InsertTx; the canonical timeutil location avoids bringing in

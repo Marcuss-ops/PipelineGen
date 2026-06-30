@@ -434,3 +434,23 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Register HTTP module ───────────────────────────────────────────
 	return tryRegisterModule(registry, log, sd)
 }
+
+// anyScriptFeatureEnabled returns true when at least one script feature flag
+// is on. Moved from script_feature_flags.go (Phase 5 consolidation, June 2026).
+func anyScriptFeatureEnabled(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	return cfg.Features.ScriptClipsEnabled || cfg.Features.ScriptDocsEnabled || cfg.Features.ImagesEnabled
+}
+
+// registerScripts orchestrates the /api/script/* routing surface.
+// Moved from registry_script.go (Phase 5 consolidation, June 2026).
+// Calls wireScriptFlow for the canonical use-case delegation and
+// registerScriptHistory for the script-history route module.
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+	if err := wireScriptFlow(ctx, cfg, log, root, registry); err != nil {
+		return err
+	}
+	return registerScriptHistory(registry, log, cfg, root)
+}

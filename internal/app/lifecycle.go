@@ -34,11 +34,14 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // StartupStep defines a service that the server lifecycle manages.
@@ -442,4 +445,58 @@ func NewLifecycleFromDeps(
 		lifecycle.DefaultConfig(),
 		log,
 	)
+}
+
+// ── OutboxMonitorAdapter (moved from outbox_monitor_adapter.go, Phase 5 consolidation, June 2026) ──
+
+type outboxMonitorAdapter struct {
+	repo *outboxevents.Repository
+}
+
+var _ outbox.MonitorPort = (*outboxMonitorAdapter)(nil)
+
+func newOutboxMonitorAdapter(repo *outboxevents.Repository) outbox.MonitorPort {
+	if repo == nil {
+		return nil
+	}
+	return &outboxMonitorAdapter{repo: repo}
+}
+
+func (a *outboxMonitorAdapter) CountByStatus(ctx context.Context, status string) (int64, error) {
+	if a == nil || a.repo == nil {
+		return 0, nil
+	}
+	return a.repo.CountByStatus(ctx, status)
+}
+
+func (a *outboxMonitorAdapter) ListPending(ctx context.Context) ([]outbox.EventDTO, error) {
+	if a == nil || a.repo == nil {
+		return nil, nil
+	}
+	events, err := a.repo.ListPending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]outbox.EventDTO, len(events))
+	for i, e := range events {
+		dtos[i] = outbox.EventDTO{
+			ID:            e.ID,
+			EventType:     e.EventType,
+			AggregateID:   e.AggregateID,
+			AggregateType: e.AggregateType,
+			PayloadJSON:   e.PayloadJSON,
+			Status:        e.Status,
+			AttemptCount:  e.AttemptCount,
+			MaxAttempts:   e.MaxAttempts,
+			LastError:     e.LastError,
+			EventKey:      e.EventKey,
+			WorkerID:      e.WorkerID,
+			LeaseID:       e.LeaseID,
+			LeaseExpiry:   e.LeaseExpiry,
+			CompletedAt:   e.CompletedAt,
+			CreatedAt:     e.CreatedAt,
+			UpdatedAt:     e.UpdatedAt,
+		}
+	}
+	return dtos, nil
 }

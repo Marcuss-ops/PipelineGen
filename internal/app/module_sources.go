@@ -26,7 +26,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/clipcatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -39,8 +41,27 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
+	gdrive "google.golang.org/api/drive/v3"
 	"go.uber.org/zap"
 )
+
+// ArtlistBundle is the capability bundle for the Artlist module.
+// Moved from artlist_bundle.go (Phase 5 consolidation, June 2026).
+//
+// PR4d-chunk2 (June 2026): wraps the 25 cross-bundle reads of WireArtlist
+// into 10 typed fields.
+type ArtlistBundle struct {
+	DB                 *storage.SQLiteDB
+	Assets             *asset.Service
+	ClipsRepo          *assets.ClipsRepository
+	DriveClient        *gdrive.Service
+	DriveUploader      *driveup.Uploader
+	AssetIndexService  *assetindex.Service
+	ClipIndexerService *clipindexer.Service
+	MediaProcessor     asset.Processor
+	Jobs               *JobsBundle
+	CatalogSyncService *catalogsync.Service
+}
 
 // ArtlistWiring holds the Artlist module wiring.
 //
