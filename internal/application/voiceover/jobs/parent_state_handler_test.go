@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -36,10 +37,13 @@ type stubEnqueuer struct {
 	returnErr error
 	callCount int
 	lastReq   *job.EnqueueRequest
+	requests  []*job.EnqueueRequest
 }
 
 func (s *stubEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	s.callCount++
+	s.lastReq = req
+	s.requests = append(s.requests, req)
 	if s.returnErr != nil {
 		return nil, s.returnErr
 	}
@@ -49,11 +53,20 @@ func (s *stubEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*j
 // makeValidCmd builds a JSON-marshalled GenerateVoiceoversCommand
 // payload that passes cmd.Validate() so HandleJob reaches the
 // use case Execute path.
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the payload
+// carries Items[] instead of Text + Languages[]. The two items
+// share the same text (allowed under Step 5 — sharing is no longer
+// required, but the audit pins stay compatible with the legacy
+// shared-text shape so a regression in the Items fan-out path is
+// still caught by the 2-call-count assertion below).
 func makeValidCmd(t *testing.T) []byte {
 	t.Helper()
 	cmd := voiceover.GenerateVoiceoversCommand{
-		Text:      "hello world",
-		Languages: []string{"en", "it"},
+		Items: []voiceover.VoiceoverItem{
+			{Text: "hello world", Language: "en"},
+			{Text: "hello world", Language: "it"},
+		},
 	}
 	payload, err := json.Marshal(cmd)
 	require.NoError(t, err)
@@ -94,9 +107,9 @@ func TestGenerateJobHandler_ParentEntersWaitingChildren(t *testing.T) {
 	assert.Equal(t, "waiting_children", ps,
 		"P0.5 audit pin: HandleJob full-enqueue success → parent_state=\"waiting_children\" (NEVER \"succeeded\" in micro-commit #4)")
 
-	// Sanity: stub Enqueuer was called once per language (2 languages).
+	// Sanity: stub Enqueuer was called once per item (2 items).
 	assert.Equal(t, 2, stub.callCount,
-		"P0.5: FanoutUseCase must enqueue one child per language in cmd.Languages")
+		"P0.5: FanoutUseCase must enqueue one child per item in cmd.Items (Step 5: per-item fan-out)")
 }
 
 // Audit-pinned: parent_state is NEVER "succeeded" in micro-commit #4.
@@ -128,13 +141,18 @@ func TestGenerateJobHandler_DoesNotMarkSucceededBeforeChildrenTerminal(t *testin
 	})
 
 	t.Run("validation_failure", func(t *testing.T) {
-		// Empty Languages → cmd.Validate() returns err → res==nil →
+		// Empty Items → cmd.Validate() returns err → res==nil →
 		// toFanoutResultMap(nil, ...) emits parent_state=\"failed\".
+		// Step 5 invariant: empty Items is the canonical validation
+		// trigger (the P0.2 Text-empty check is gone — Step 5
+		// collapsed Text into per-item text).
 		stub := &stubEnqueuer{returnJob: &job.Job{ID: "x"}}
 		uc := NewFanoutVoiceoversUseCase(FanoutDeps{Enqueuer: stub, Logger: zap.NewNop()})
 		h := NewGenerateJobHandler(uc, zap.NewNop())
-		cmdEmptyLangs := voiceover.GenerateVoiceoversCommand{Text: "hi", Languages: []string{}}
-		payload, _ := json.Marshal(cmdEmptyLangs)
+		cmdEmptyItems := voiceover.GenerateVoiceoversCommand{
+			Items: []voiceover.VoiceoverItem{},
+		}
+		payload, _ := json.Marshal(cmdEmptyItems)
 		result, _ := h.HandleJob(context.Background(), &jobs.Job{ID: "p3", Payload: payload}, nil)
 		require.NotNil(t, result, "P0.5: toFanoutResultMap is nil-safe — nil-res still returns a map")
 		ps, _ := result["parent_state"].(string)
@@ -162,4 +180,51 @@ func TestGenerateJobHandler_AllEnqueueFailsEmitsPartialSuccess(t *testing.T) {
 	ps, _ := result["parent_state"].(string)
 	assert.Equal(t, "partial_success", ps,
 		"P0.5: all-enqueue-fails (res.OK=false, FailedEnqueueCount==total, 0 enqueued) → parent_state=\"partial_success\"")
+}
+
+// TestGenerateJobHandler_MixedTextsEnqueueDistinctActiveKeys is the
+// Step 5 E2E audit-pin that locks per-item textHash propagation into
+// the child ActiveKey. Pre-Step-5 (under the items-collapse), all
+// children shared the same text hash because they all derived from
+// cmd.Text. Step 5 makes each item carry its own textHash, so two
+// items with distinct texts MUST produce distinct child ActiveKeys —
+// this test pins the invariant end-to-end through HandleJob.
+//
+// Without this pin, a future regression that drops per-item textHash
+// (e.g. a fanout.go refactor that reverts to a shared hash) would
+// silently merge distinct items into the same dedupe key, and the
+// broker would deduplicate siblings as if they were retries.
+func TestGenerateJobHandler_MixedTextsEnqueueDistinctActiveKeys(t *testing.T) {
+	stub := &stubEnqueuer{
+		returnJob: &job.Job{ID: "child-x", Type: job.TypeVoiceoverGenerateItem},
+		returnErr: nil,
+	}
+	uc := NewFanoutVoiceoversUseCase(FanoutDeps{Enqueuer: stub, Logger: zap.NewNop()})
+	h := NewGenerateJobHandler(uc, zap.NewNop())
+
+	cmd := voiceover.GenerateVoiceoversCommand{
+		Items: []voiceover.VoiceoverItem{
+			{Text: "Ciao", Language: "it-IT"},
+			{Text: "Hello", Language: "en-US"},
+		},
+	}
+	payload, err := json.Marshal(cmd)
+	require.NoError(t, err)
+
+	_, err = h.HandleJob(context.Background(), &jobs.Job{ID: "p-mixed", Payload: payload}, nil)
+	require.NoError(t, err, "Step 5: mixed-text fan-out must succeed (no validation failure)")
+
+	require.Equal(t, 2, stub.callCount,
+		"Step 5: 2 cmd.Items → 2 fan-out children (per-item fan-out, NOT per-language)")
+	require.Len(t, stub.requests, 2,
+		"Step 5: stub captured 2 EnqueueRequest records for assertion")
+
+	assert.NotEqual(t, stub.requests[0].ActiveKey, stub.requests[1].ActiveKey,
+		"Step 5 audit-pin: distinct item texts must produce distinct child ActiveKeys (per-item textHash in the ActiveKey format protects against phantom-retry dedup)")
+
+	for i, req := range stub.requests {
+		if !strings.Contains(req.ActiveKey, cmd.Items[i].Language) {
+			t.Errorf("Step 5: child[%d] ActiveKey missing language %q (got %q)", i, cmd.Items[i].Language, req.ActiveKey)
+		}
+	}
 }
