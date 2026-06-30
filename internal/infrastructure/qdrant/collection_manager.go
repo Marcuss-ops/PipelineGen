@@ -87,7 +87,7 @@ func (cm *CollectionManager) EnsureSchema(ctx context.Context) (*EnsureResult, e
 	if err := cm.schema.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid schema: %w", err)
 	}
-	candidate := cm.schema.physicalName()
+	candidate := cm.schema.CanonicalName()
 
 	target, diff, err := cm.InspectRuntime(ctx)
 	if err != nil {

@@ -169,7 +169,7 @@ func (f *fakeQdrantServer) URL() string {
 //   - Drop set == {c1, c2} exactly (order irrelevant; sorted compare).
 func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 	schema := DefaultV3Schema()
-	prefix := schema.physicalName()
+	prefix := schema.CanonicalName()
 	activeName := prefix + "__ts_20260601_active"
 	colls := []string{
 		activeName,                                // active alias target (has prefix)
@@ -248,7 +248,7 @@ func TestCleanupWithConfig_DescendingSort_LastNKeptIsCorrect(t *testing.T) {
 // (the oldest 1 dropped).
 func TestCleanupWithConfig_KeepLastN2_KeepsOneNewestColl(t *testing.T) {
 	schema := DefaultV3Schema()
-	prefix := schema.physicalName()
+	prefix := schema.CanonicalName()
 	activeName := prefix + "__ts_20260601_active"
 	colls := []string{
 		activeName,                          // active alias target (has prefix)

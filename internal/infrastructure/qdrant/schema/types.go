@@ -39,7 +39,7 @@
 // All types stay in the same package `qdrant`; PR3 is a relocation pass — every
 // type body, JSON tag, and method receiver is preserved 1:1 against the
 // pre-split types.go.
-package qdrant
+package schema
 
 import "github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
 

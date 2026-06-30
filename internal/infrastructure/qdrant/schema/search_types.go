@@ -15,7 +15,7 @@
 // `map[string]interface{}` — there is no dedicated Filter/Condition/Match
 // type in the codebase, hence filter_types.go is a (separate) doc-only
 // marker pointing at the inline shape.
-package qdrant
+package schema
 
 import "context"
 

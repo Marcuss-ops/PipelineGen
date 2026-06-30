@@ -167,7 +167,7 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 // the given target collection (usually a new physical collection before alias switch).
 func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, limit int) (*ReindexResult, error) {
 	if targetCollection == "" {
-		targetCollection = w.schema.physicalName()
+		targetCollection = w.schema.CanonicalName()
 	}
 
 	assetIDs, err := w.mapper.ListAllAssetIDs(ctx)
