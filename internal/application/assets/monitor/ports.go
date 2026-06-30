@@ -94,6 +94,16 @@ type CompositionDeps struct {
 	// + cursor persistence. THIS COMMIT ships a no-op unbound stub; the
 	// next commit installs the real JobsEnqueuer binding.
 	Enqueuer JobEnqueuer
+
+	// Policy is the per-instance runtime configuration (TickInterval,
+	// LeaseDuration, ClaimLimit, MaxConcurrentChannels,
+	// MaxConcurrentVideos, PerChannelTimeout, WorkerIDPrefix,
+	// BackoffInitial, BackoffCap). Nil falls back to
+	// DefaultMonitorRuntimePolicy (Commit A, P1 #10 — extracted from
+	// the previous scheduler.go constant block). Optional so existing
+	// tests that construct ChannelMonitor by struct literal without
+	// going through CompositionDeps keep working.
+	Policy *MonitorRuntimePolicy
 }
 
 // ── ChannelConfig + MonitorConfig (DTO types) ────────────────────────────

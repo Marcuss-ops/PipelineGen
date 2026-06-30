@@ -9,6 +9,34 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ## Unreleased
 
+### Fixed
+
+**[Channel Monitor Commit A, June 2026]** `fix(monitor)` — SQL projection bug + fenced MarkChecked + panic-safe scheduler + typed runtime policy. Four P0/P1 bites closed in one commit:
+
+- **P0 #1 — `category_channels` SELECT projection bug closed.** All 4 read paths (`GetByID`, `ListEnabled`, `ListAll`, `ListByCategory`) now reuse the canonical `channelSelectColumns` constant at `internal/infrastructure/database/sqlite/assets/channels_repository.go`. The pre-fix bug: queries listed 27 columns while `scanFields` scanned 28 destinations (missing `last_cursor`), so every read tripped `rows.Scan` with "expected 27 destination arguments, not 28". The constant is now the single source of truth — adding a column requires touching the const + `scanFields` + the `CategoryChannel` domain struct in lockstep.
+
+- **P1 #8 — `MarkChecked` fenced on `lease_owner`.** The leaf UPDATE in `ChannelsRepository.MarkChecked` now branches on `leaseToken`: empty token → un-fenced UPDATE (admin back-compat path); non-empty token → fenced `WHERE id=? AND lease_owner=?` clearing `lease_owner=NULL, lease_until=NULL` so the next `ClaimDue` can re-claim cleanly. `RowsAffected==0` on a fenced UPDATE returns the new sentinel `ErrLeaseLost`, surfaced via `errors.Is` so callers (the monitor's `recordCheckOutcome`) can react. `MarkCheckedCommand.LeaseToken` field added in `internal/application/channels/contract.go`; `RepositoryAdapter.MarkChecked` propagates it; the monitor's `recordCheckOutcome` populates it from `ch.LeaseOwner`.
+
+- **P1 #9 — `safeCheckChannel` panic-recovery wrapper.** The previous in-goroutine `defer recover()` swallowed panics into a log line, leaving the lease idle until expiry. New wrapper converts panicked execution into a typed error so `recordCheckOutcome` always fires; the channel transitions to `Success=false` with the synthesized panic message in `LastError`, triggering the exponential backoff. `discovery.go`'s concurrent `processVideo` worker retains its own recover (different scope: per-video, not per-channel).
+
+- **P1 #10 — typed `MonitorRuntimePolicy` extracted.** New sibling file `internal/application/assets/monitor/policy.go` declares `MonitorRuntimePolicy{TickInterval, LeaseDuration, ClaimLimit, MaxConcurrentChannels, MaxConcurrentVideos, PerChannelTimeout, WorkerIDPrefix, BackoffInitial, BackoffCap}` and a `DefaultMonitorRuntimePolicy()` factory. `CompositionDeps` gains optional `Policy *MonitorRuntimePolicy`; the constructor's precedence is policy > cfg > default (1). `scheduler.go` reads all runtime knobs through `m.policyOrDefault()`. The previous `schedulerTick=30s + defaultLeaseDuration=30min + claimLimit=10 + video-concurrency=5 + per-channel-timeout=30min + initialBackoff=5min + maxBackoff=24h` const block lives only in `policy.go` now; tests can drive the backoff curve in O(seconds) by injecting a custom policy.
+
+- **P1 #10 — `ClaimDue` `ORDER BY priority ASC, next_check_at ASC`.** Hot-priority channels (Priority=1) are now claimed before normal (Priority=2) before cold (Priority=3) inside a single scheduler tick, with `next_check_at ASC` as the secondary sort so the most-overdue channel in each priority bucket is preferred.
+
+Files touched:
+
+- **NEW** `internal/application/assets/monitor/policy.go` — `MonitorRuntimePolicy` + `DefaultMonitorRuntimePolicy` + `policyOrDefault()`.
+- `internal/application/assets/monitor/ports.go` — `CompositionDeps.Policy` field.
+- `internal/application/assets/monitor/scheduler.go` — const block removed; `Start` reads `policy.TickInterval`; `runSchedulerCycle` reads `policy.LeaseDuration + ClaimLimit + WorkerIDPrefix`; `checkDueChannels` reads `policy.MaxConcurrentChannels + PerChannelTimeout` and calls `safeCheckChannel`; `nextCheckTime` reads `policy.BackoffInitial + BackoffCap`; `recordCheckOutcome` populates `LeaseToken`.
+- `internal/application/assets/monitor/discovery.go` — `checkChannel` reads `policy.MaxConcurrentVideos` for the inner goroutine fan-out.
+- `internal/infrastructure/database/sqlite/assets/channels_repository.go` — `channelSelectColumns` + `channelSelectColumnsForListing` constants; `ErrLeaseLost` sentinel; 4 SELECTs now use the constant; `MarkChecked` fenced with `leaseToken` + sentinel; `ClaimDue` ORDER BY priority.
+- `internal/application/channels/contract.go` — `MarkCheckedCommand.LeaseToken` field.
+- `internal/application/channels/adapters.go` — `RepositoryAdapter.MarkChecked` propagates `cmd.LeaseToken`.
+- **NEW** `internal/infrastructure/database/sqlite/assets/channels_repository_test.go` — 6 tests against a real in-memory SQLite schema mirroring the consolidated `category_channels`: projection round-trip via all 4 SELECTs (`last_cursor` populated correctly), `MarkChecked` happy path under fence, `MarkChecked` wrong token → `ErrLeaseLost`, `MarkChecked` empty token → back-compat, `ClaimDue` priority ordering.
+- **NEW** `internal/application/assets/monitor/monitor_policy_test.go` — 4 tests: `safeCheckChannel` panic → `recordCheckOutcome(::Success=false)`, `DefaultMonitorRuntimePolicy` matches previous literal values, `policyOrDefault` nil fallback, `recordCheckOutcome` propagates `ch.LeaseOwner` → `cmd.LeaseToken`.
+
+No production-wiring change beyond the ytdlp interface swap (which Go boxes transparently); no SQLite migration, no `config.yaml` keys added.
+
 ### Added
 
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
@@ -809,6 +837,34 @@ transparently); no SQLite migration, no DB schema touch, no config.yaml keys add
 - **Push-race `ff7a5579 → 960a3fb6` byte-equivalent replay** is documented as a recovery pattern in `AGENTS.md` § *Git-Lesson-4 (June 2026) — Recovery from non-fast-forward push race*. Local `ff7a5579` is reachable only via `git reflog` and is **superseded** by `960a3fb6` (canonical on `origin/main`). Both SHAs cover the same six files (`internal/application/assets/monitor/{monitor_ports.go, channel_monitor.go, monitor_channel_check.go, monitor_scheduler.go, monitor_scheduler_test.go}` + `CHANGELOG.md`). Verifiable via `diff <(git show --name-only --format='' ff7a5579) <(git show --name-only --format='' 960a3fb6)` returning empty. The canonical recovery rule: "accept the re-application; do NOT `force-push`" — see `AGENTS.md Git-Lesson-4` for the full diagnosis procedure and the anti-pattern.
 
 ## Unreleased
+
+### Fixed
+
+**[Channel Monitor Commit A, June 2026]** `fix(monitor)` — SQL projection bug + fenced MarkChecked + panic-safe scheduler + typed runtime policy. Four P0/P1 bites closed in one commit:
+
+- **P0 #1 — `category_channels` SELECT projection bug closed.** All 4 read paths (`GetByID`, `ListEnabled`, `ListAll`, `ListByCategory`) now reuse the canonical `channelSelectColumns` constant at `internal/infrastructure/database/sqlite/assets/channels_repository.go`. The pre-fix bug: queries listed 27 columns while `scanFields` scanned 28 destinations (missing `last_cursor`), so every read tripped `rows.Scan` with "expected 27 destination arguments, not 28". The constant is now the single source of truth — adding a column requires touching the const + `scanFields` + the `CategoryChannel` domain struct in lockstep.
+
+- **P1 #8 — `MarkChecked` fenced on `lease_owner`.** The leaf UPDATE in `ChannelsRepository.MarkChecked` now branches on `leaseToken`: empty token → un-fenced UPDATE (admin back-compat path); non-empty token → fenced `WHERE id=? AND lease_owner=?` clearing `lease_owner=NULL, lease_until=NULL` so the next `ClaimDue` can re-claim cleanly. `RowsAffected==0` on a fenced UPDATE returns the new sentinel `ErrLeaseLost`, surfaced via `errors.Is` so callers (the monitor's `recordCheckOutcome`) can react. `MarkCheckedCommand.LeaseToken` field added in `internal/application/channels/contract.go`; `RepositoryAdapter.MarkChecked` propagates it; the monitor's `recordCheckOutcome` populates it from `ch.LeaseOwner`.
+
+- **P1 #9 — `safeCheckChannel` panic-recovery wrapper.** The previous in-goroutine `defer recover()` swallowed panics into a log line, leaving the lease idle until expiry. New wrapper converts panicked execution into a typed error so `recordCheckOutcome` always fires; the channel transitions to `Success=false` with the synthesized panic message in `LastError`, triggering the exponential backoff. `discovery.go`'s concurrent `processVideo` worker retains its own recover (different scope: per-video, not per-channel).
+
+- **P1 #10 — typed `MonitorRuntimePolicy` extracted.** New sibling file `internal/application/assets/monitor/policy.go` declares `MonitorRuntimePolicy{TickInterval, LeaseDuration, ClaimLimit, MaxConcurrentChannels, MaxConcurrentVideos, PerChannelTimeout, WorkerIDPrefix, BackoffInitial, BackoffCap}` and a `DefaultMonitorRuntimePolicy()` factory. `CompositionDeps` gains optional `Policy *MonitorRuntimePolicy`; the constructor's precedence is policy > cfg > default (1). `scheduler.go` reads all runtime knobs through `m.policyOrDefault()`. The previous `schedulerTick=30s + defaultLeaseDuration=30min + claimLimit=10 + video-concurrency=5 + per-channel-timeout=30min + initialBackoff=5min + maxBackoff=24h` const block lives only in `policy.go` now; tests can drive the backoff curve in O(seconds) by injecting a custom policy.
+
+- **P1 #10 — `ClaimDue` `ORDER BY priority ASC, next_check_at ASC`.** Hot-priority channels (Priority=1) are now claimed before normal (Priority=2) before cold (Priority=3) inside a single scheduler tick, with `next_check_at ASC` as the secondary sort so the most-overdue channel in each priority bucket is preferred.
+
+Files touched:
+
+- **NEW** `internal/application/assets/monitor/policy.go` — `MonitorRuntimePolicy` + `DefaultMonitorRuntimePolicy` + `policyOrDefault()`.
+- `internal/application/assets/monitor/ports.go` — `CompositionDeps.Policy` field.
+- `internal/application/assets/monitor/scheduler.go` — const block removed; `Start` reads `policy.TickInterval`; `runSchedulerCycle` reads `policy.LeaseDuration + ClaimLimit + WorkerIDPrefix`; `checkDueChannels` reads `policy.MaxConcurrentChannels + PerChannelTimeout` and calls `safeCheckChannel`; `nextCheckTime` reads `policy.BackoffInitial + BackoffCap`; `recordCheckOutcome` populates `LeaseToken`.
+- `internal/application/assets/monitor/discovery.go` — `checkChannel` reads `policy.MaxConcurrentVideos` for the inner goroutine fan-out.
+- `internal/infrastructure/database/sqlite/assets/channels_repository.go` — `channelSelectColumns` + `channelSelectColumnsForListing` constants; `ErrLeaseLost` sentinel; 4 SELECTs now use the constant; `MarkChecked` fenced with `leaseToken` + sentinel; `ClaimDue` ORDER BY priority.
+- `internal/application/channels/contract.go` — `MarkCheckedCommand.LeaseToken` field.
+- `internal/application/channels/adapters.go` — `RepositoryAdapter.MarkChecked` propagates `cmd.LeaseToken`.
+- **NEW** `internal/infrastructure/database/sqlite/assets/channels_repository_test.go` — 6 tests against a real in-memory SQLite schema mirroring the consolidated `category_channels`: projection round-trip via all 4 SELECTs (`last_cursor` populated correctly), `MarkChecked` happy path under fence, `MarkChecked` wrong token → `ErrLeaseLost`, `MarkChecked` empty token → back-compat, `ClaimDue` priority ordering.
+- **NEW** `internal/application/assets/monitor/monitor_policy_test.go` — 4 tests: `safeCheckChannel` panic → `recordCheckOutcome(::Success=false)`, `DefaultMonitorRuntimePolicy` matches previous literal values, `policyOrDefault` nil fallback, `recordCheckOutcome` propagates `ch.LeaseOwner` → `cmd.LeaseToken`.
+
+No production-wiring change beyond the ytdlp interface swap (which Go boxes transparently); no SQLite migration, no `config.yaml` keys added.
 
 ### Added
 

@@ -60,8 +60,12 @@ func (a *RepositoryAdapter) Delete(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, id)
 }
 
+// MarkChecked delegates to the SQLite repository. Commit A
+// (June 2026, P1 #8): forwards cmd.LeaseToken so the leaf UPDATE can
+// fence on lease_owner and surface ErrLeaseLost via errors.Is when
+// RowsAffected==0. Empty LeaseToken means no fence (back-compat).
 func (a *RepositoryAdapter) MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error {
-	return a.repo.MarkChecked(ctx, cmd.ID, cmd.NextCheckAt, cmd.LastError, cmd.Success)
+	return a.repo.MarkChecked(ctx, cmd.ID, cmd.LeaseToken, cmd.NextCheckAt, cmd.LastError, cmd.Success)
 }
 
 func (a *RepositoryAdapter) ClaimDue(ctx context.Context, cmd ClaimDueCommand) ([]*asset.CategoryChannel, error) {

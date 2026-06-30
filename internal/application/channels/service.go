@@ -361,8 +361,16 @@ func fromDomain(ch *asset.CategoryChannel) Channel {
 		NextCheckAt:         ch.NextCheckAt,
 		LastCheckedAt:       ch.LastCheckedAt,
 		ConsecutiveFailures: ch.ConsecutiveFailures,
-		CreatedAt:           ch.CreatedAt,
-		UpdatedAt:           ch.UpdatedAt,
+		// Commit A: surface monitor-state fields so the monitor's
+		// recordCheckOutcome can read LeaseOwner (the lease token
+		// fencing acquired by the prior ClaimDue call) without an
+		// extra round-trip. LeaseUntil + LastCursor travel with it
+		// to keep the DTO round-trip consistent.
+		LeaseOwner: ch.LeaseOwner,
+		LeaseUntil: ch.LeaseUntil,
+		LastCursor: ch.LastCursor,
+		CreatedAt:  ch.CreatedAt,
+		UpdatedAt:  ch.UpdatedAt,
 	}
 }
 
