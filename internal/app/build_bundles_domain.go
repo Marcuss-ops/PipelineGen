@@ -145,14 +145,14 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
-	// (June 2026 cutover): buildVoiceoverService now returns only the
-	// canonical service + repo pair (the 3rd ProcessVoiceoverItemUseCase
-	// return was removed because the canonical per-item pipeline was never
-	// committed in this branch). The legacy ProcessOneVoiceoverUseCase
-	// bridge has been removed in earlier waves; the canonical per-item
-	// pipeline follow-up (BLOC5.4) will re-introduce it via the
-	// narrow VoiceoverItemExecutor port.
-	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
+	// Step 8/12 (June 2026, child use case on the new 7-port boundary):
+	// buildVoiceoverService now returns a 3rd value — the canonical
+	// *voiceover.ProcessVoiceoverItemUseCase constructed on top of the
+	// 7-port typed seam (Pattern 0). The use case is the canonical
+	// per-item pipeline that GenerateItemJobHandler dispatches when
+	// voiceover.generate_item jobs arrive (replacing the legacy
+	// ProcessOneVoiceoverUseCase bridge for Step 12 retirement).
+	voiceoverSvc, voiceoverRepo, voiceoverProcessItem := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.driveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
@@ -209,11 +209,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
-	// (June 2026 cutover): BLOC5.3 ProcessVoiceoverItemUseCase wiring
-	// removed — the canonical 7-port per-item pipeline is forward-deferred
-	// to BLOC5.4. The VoiceoverProcessItem field in DomainBundle stays nil;
-	// the late-bound GenerateItemJobHandler will populate it once the
-	// concrete type lands.
+	// Step 8/12 (June 2026): the canonical per-item use case is wired
+	// here so the late-bindings block in composition.go can construct
+	// GenerateItemJobHandler on top of the typed VoiceoverItemExecutor
+	// port (Pattern 0, AGENTS.md). The previous forward-deferred comment
+	// (BLOC5.4) is closed by this assignment.
 
 	// P0.1 (June 2026): construct the content-addressed artifact blob
 	// service so the upload UseCase (UploadVideoClip) can accept real
@@ -233,7 +233,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		YoutubeClipService:       youtubeClipService,
 		VoiceoverService:         voiceoverSvc,
 		VoiceoverSync:            vosyncSvc,
-		VoiceoverProcessItem:     nil, // BLOC5.4 follow-up: narrow VoiceoverItemExecutor port (forward-deferred June 2026)
+		VoiceoverProcessItem:     voiceoverProcessItem, // Step 8/12: narrow VoiceoverItemExecutor port (BLOC5.4 closer)
 		ImageService:             imageSvc,
 		IngestService:            ingestSvc,
 		BooksService:             booksSvc,

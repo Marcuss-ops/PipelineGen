@@ -72,7 +72,7 @@ func buildVoiceoverService(
 	metaWriter *semantic.MetadataWriter,
 	scriptGen *ollama.Generator,
 	outboxDispatcher *outbox.Dispatcher,
-) (*voiceover.Service, *assets.VoiceoversRepository) {
+) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor) {
 
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
@@ -155,16 +155,81 @@ func buildVoiceoverService(
 		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
 	}
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
-	ttsProvider := newUseCaseTTSAdapter(audioProcessor)
+	ttsProvider := newUseCaseTTSAdapter(audioProcessor)// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
+// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
+// top of the same adapter surface the legacy service consumes.
+// All 7 ports are mandatory (panic on nil per AGENTS.md WireUp
+// pattern); the composition root owns this construction so any
+// missing wire-up fails fast at boot rather than mid-job.	// Step 8/12 closure (June 2026 — BLOC5.4): wire the canonical
+	// per-item use case ProcessVoiceoverItemUseCase on top of the
+	// 7-port typed seam (Pattern 0 — AGENTS.md). The 7 mandatory deps
+	// mirror the surface the legacy Service consumes (TTSProvider for
+	// Stage 1, DestinationResolver for Stage 0, AudioPostProcessor for
+	// Stage 2, AssetLifecycle for Stage 3 Drive upload, VoiceoverRepository
+	// for Stage 4 atomic-swap tx, TransactionalOutbox for Stage 4
+	// matching outbox enqueue, FilenameBuilder for forward BACKFILL
+	// surface stability). NewProcessVoiceoverItemUseCase panics on nil
+	// per fail-fast WireUp pattern so a partial wire-up surfaces at
+	// boot, not at handler dispatch.
+	//
+	// Nil-tolerant construction (mirrors the in-file outboxDispatcher
+	// block above: ~line 110). When destResolver is NOT supplied (typical
+	// of `internal/app/*_test.go` stub-bootstrap helpers, which exercise
+	// the composition root without standing up the full asset.Resolver
+	// chain), the use case construction is SKIPPED and processItemUseCase
+	// returns nil; the canonical fail-fast contracts of
+	// newUseCaseDestResolverAdapter + voiceover.NewProcessVoiceoverItemUseCase
+	// are preserved (no adapter-side nil-tolerance). The handler
+	// (voiceoverjobs.NewGenerateItemJobHandler) is bound to the typed
+	// VoiceoverItemExecutor port — a nil use case surfaces as a
+	// Handler-Register-time error, not a mid-dispatch panic. This is
+	// the minimum-scope fix for Step 8/12 wiring: the production
+	// composition root path supplies a real destResolver so the warning
+	// never fires in operator environments.
+	var processItemUseCase voiceover.VoiceoverItemExecutor
+	if destResolver != nil {
+		// Adapter: DestinationResolver port — wraps destResolver
+		// (asset.Resolver). Forward Group + StyleGroup to the resolver;
+		// mirror StyleGroup verbatim on the returned ResolvedDestination.
+		destResolverAdapter := newUseCaseDestResolverAdapter(destResolver)
 
-	// (BLOC4_ssot_cutover REMOVED June 2026 cutover): the canonical
-	// per-item voiceover pipeline ProcessVoiceoverItemUseCase was never
-	// committed in this branch — wiring the promotion-bridge via the
-	// canonical pipeline would have failed at compile time. The
-	// VoiceoverItemExecutor interface in ports.go is retained for the
-	// BLOC5.4 follow-up that will land the concrete pipeline. Promo
-	// routes through legacy Service.GenerateWithDestination via the
-	// voiceoverGenBridge in voiceover/promo.go.
+		// Adapter: AssetLifecycle port — wraps the lifecycle.Service that
+		// own voLifecycle already constructed above.
+		lifecycleAdapter := newUseCaseLifecycleAdapter(voLifecycle)
+
+		// Adapter: AudioPostProcessor port — silence-removal bridge
+		// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe
+		// at the use case boundary (only invoked when RemoveSilence == true).
+		audioAdapter := newUseCaseAudioAdapter(log)
+
+		// Concrete: FilenameBuilder port (single shared stateless instance).
+		filenameBuilder := voiceover.NewDefaultFilenameBuilder()
+
+		// Cast: TransactionalOutbox is a type-alias for TxOutboxEnqueuer;
+		// the production *outbox.Dispatcher satisfies the structural
+		// contract without a wrapper. See process_voiceover_item.go.
+		var txOutbox voiceover.TransactionalOutbox
+		if outboxDispatcher != nil {
+			txOutbox = outboxDispatcher
+		}
+
+		// The use case satisfies voiceover.VoiceoverItemExecutor
+		// structurally — compile-time assertion in process_voiceover_item.go
+		// pins the conformance.
+		processItemUseCase = voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
+			TTSProvider:         ttsProvider,
+			DestinationResolver: destResolverAdapter,
+			AudioPostProcessor:  audioAdapter,
+			AssetLifecycle:      lifecycleAdapter,
+			VoiceoverRepository: voRepoAdapter,
+			TransactionalOutbox: txOutbox,
+			FilenameBuilder:     filenameBuilder,
+			Logger:              log,
+		})
+		log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
+	} else {
+		log.Warn("voiceover: skipping ProcessVoiceoverItemUseCase wire-up (Step 8/12); destResolver is nil — VoiceoverItemExecutor port returns nil; handler registration will fail-fast (NewGenerateItemJobHandler panic-on-nil useCase) at composition time in production paths that exercise the typed port")
+	}
 
 	voService := voiceover.NewService(voiceover.VoiceoverDeps{
 		Core:        voiceover.VoiceoverCoreDeps{Cfg: cfg, Log: log, OutputDir: voDir},
@@ -185,5 +250,5 @@ func buildVoiceoverService(
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	return voService, voRepo
+	return voService, voRepo, processItemUseCase
 }
