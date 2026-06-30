@@ -28,6 +28,7 @@ import (
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // ── Local port stubs (different package from application/clips) ───────────────
