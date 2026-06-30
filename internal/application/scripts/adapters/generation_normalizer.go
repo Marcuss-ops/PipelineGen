@@ -114,10 +114,14 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		}
 		if dur > 0 {
 		// Canonical script-generation WPM. Multiply first to avoid
-		// integer truncation for short durations. Hardcoded to 150
-		// (per cleanup plan P0-2 + tests assertion
-		// TestNormalizeItemDurationToWords: 300s × 150wpm / 60 = 750 words).
-		item.ScriptParams.TargetWords = (dur * 150) / 60
+		// integer truncation for short durations. Reads from the
+		// SSOT (pkg/defaults::ScriptConfig.WordsPerMinute = 150 as
+		// of June 2026 — promoted from the legacy 140 default to
+		// match the active path truth). Pre-unification this was
+		// a hardcoded `150` literal; the SSOT now matches and
+		// the test TestNormalizeItemDurationToWords (300s × 150wpm
+		// / 60 = 750 words) continues to pass.
+		item.ScriptParams.TargetWords = (dur * defaults.DefaultScriptConfig().WordsPerMinute) / 60
 		}
 	}
 	if item.ScriptParams.Duration <= 0 && cfg.DefaultDurationSeconds > 0 {
@@ -180,11 +184,15 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	// zero gets a safety default here.
 
 	if strings.TrimSpace(item.Language) == "" {
-		// Hardcoded canonical safety default per cleanup plan P0-2
-		// + TestNormalizeItemPrecedenceConfigBeatsHardDefault: when
-		// caller + preset + config are all unset, the safety floor is
-		// "en" (the canonical V1 contract language).
-		item.Language = "en"
+		// Safety floor: when caller + preset + config are all unset,
+		// read from the SSOT (pkg/defaults::ScriptConfig.SafetyLanguage
+		// = "en" as of June 2026 — the V1 contract language).
+		// Semantically distinct from DefaultLanguage ("it") which is
+		// the Step-2 config-default fallback; the safety floor must
+		// remain exploitable even when per-locale overrides change
+		// DefaultLanguage. Test TestNormalizeItemPrecedenceConfigBeatsHardDefault
+		// pins this precedence contract.
+		item.Language = defaults.DefaultScriptConfig().SafetyLanguage
 	}
 	if strings.TrimSpace(item.Tone) == "" {
 		item.Tone = defaults.DefaultScriptConfig().DefaultTone
@@ -193,9 +201,14 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 		item.Model = "llama3.2"
 	}
 
-	// Ensure at least 100 target words.
+	// Ensure at least the SSOT WordsPerMinute floor (defaults to
+	// 150 as of June 2026 — promoted from the legacy literal to
+	// match the pkg/defaults registry). The 150 ceiling is the
+	// floor for the case where caller + config + duration ALL
+	// landed at zero; the normalizer still emits a non-empty
+	// bundle so downstream postprocessors don't trip Required-empty.
 	if item.ScriptParams.TargetWords <= 0 {
-		item.ScriptParams.TargetWords = 150
+		item.ScriptParams.TargetWords = defaults.DefaultScriptConfig().WordsPerMinute
 	}
 
 	// Title defaults to topic.

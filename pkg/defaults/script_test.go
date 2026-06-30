@@ -9,8 +9,8 @@ import "testing"
 func TestDefaultScriptConfig_RoundTrip(t *testing.T) {
 	cfg := DefaultScriptConfig()
 
-	if cfg.WordsPerMinute != 140 {
-		t.Fatalf("WordsPerMinute: got %d, want 140", cfg.WordsPerMinute)
+	if cfg.WordsPerMinute != 150 {
+		t.Fatalf("WordsPerMinute: got %d, want 150", cfg.WordsPerMinute)
 	}
 	if cfg.DefaultDuration != 600 {
 		t.Fatalf("DefaultDuration: got %d, want 600", cfg.DefaultDuration)
@@ -23,6 +23,9 @@ func TestDefaultScriptConfig_RoundTrip(t *testing.T) {
 	}
 	if cfg.DefaultTone != "documentary" {
 		t.Fatalf("DefaultTone: got %q, want %q", cfg.DefaultTone, "documentary")
+	}
+	if cfg.SafetyLanguage != "en" {
+		t.Fatalf("SafetyLanguage: got %q, want %q", cfg.SafetyLanguage, "en")
 	}
 }
 
@@ -47,8 +50,8 @@ func TestDefaultScriptConfig_ReturnsCopyPerCall(t *testing.T) {
 	a.DefaultLanguage = "es"
 
 	b := DefaultScriptConfig()
-	if b.WordsPerMinute != 140 {
-		t.Fatalf("leak across calls: b.WordsPerMinute = %d, want 140", b.WordsPerMinute)
+	if b.WordsPerMinute != 150 {
+		t.Fatalf("leak across calls: b.WordsPerMinute = %d, want 150", b.WordsPerMinute)
 	}
 	if b.DefaultLanguage != "it" {
 		t.Fatalf("leak across calls: b.DefaultLanguage = %q, want %q", b.DefaultLanguage, "it")
