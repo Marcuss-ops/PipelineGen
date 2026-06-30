@@ -1,7 +1,128 @@
 # PipelineGen API Documentation (Auto-Generated)
 
-**Status:** GENERATED - Auto-generated from live router.
-**Base URL:** `http://127.0.0.1:8080`
+**Status:** GENERATED — auto-generated from live router.
+**Base URL:** `{BASE_URL}` (overridable via `VELOX_PORT` env var)
+
+## /
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | API root (redirects or 404) |
+| GET | `/health` | Unified health check (?deep=true for component checks) |
+| GET | `/metrics` | Prometheus metrics endpoint |
+| GET | `/ready` | Readiness probe |
+
+## /api/artlist
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/artlist/diagnostics` | Artlist diagnostics |
+| GET | `/api/artlist/runs/:run_id` | Get Artlist pipeline run status |
+| GET | `/api/artlist/stats` | Get Artlist statistics |
+| POST | `/api/artlist/recommend` | Get Artlist recommendations for a term |
+| POST | `/api/artlist/run` | Start Artlist pipeline for a term |
+| POST | `/api/artlist/sync-catalogs` | Sync Artlist catalogs to media DB |
+
+## /api/clips
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/clips/diagnostics` | Clips diagnostics |
+| GET | `/api/clips/info` | Get YouTube video metadata |
+| GET | `/api/clips/stats` | Get clips statistics |
+| POST | `/api/clips/process` | Download and process clips |
+
+## /api/drive
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/drive/files` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/drive/cleanup` | Clean up empty Drive folders |
+| POST | `/api/drive/folders` | List Drive folders |
+| POST | `/api/drive/move` | Move Drive files |
+| POST | `/api/drive/reconcile` | Reconcile Drive metadata |
+| POST | `/api/drive/rename` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/drive/resolve-by-id` | Resolve Drive folder by ID |
+
+## /api/fullimages
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/fullimages/video/generate` | Generate full video images |
+
+## /api/images
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/images/diagnostics` | Images diagnostics |
+| GET | `/api/images/search` | Search images |
+| POST | `/api/images/animate` | Animate an image |
+| POST | `/api/images/generate` | Generate AI images |
+| POST | `/api/images/generate-batch` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/images/sync` | Sync images to Drive |
+| POST | `/api/images/upload` | Upload an image |
+| POST | `/api/images/webhook/remote` | Remote image webhook |
+
+## /api/media
+
+| Method | Path | Description |
+|--------|------|-------------|
+| DELETE | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
+| DELETE | `/api/media/clips/:source/folders/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/breadcrumb` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/clips` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/folders` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/folders/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/folders/:id/children` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/clips/:source/tree` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media/diagnostics` | Media diagnostics |
+| GET | `/api/media/index-health` | Media index health check |
+| PATCH | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/bulk/tags/add` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/bulk/tags/remove` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/cleanup` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/download` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/duplicates` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/fix-hash` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/reindex` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/reprocess` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/reupload` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/status` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/verify` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/folders/:id/manifest` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/reconcile` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/enrich` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/enrich/batch` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/upload-video` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
+| POST | `/api/media/register-batch` | Batch register assets |
+| POST | `/api/media/register-from-youtube` | Register asset from YouTube URL |
+| POST | `/api/media/search` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/sound_effect/generate` | Generate sound effect |
+| POST | `/api/media/sync` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/voiceover/generate` | Generate voiceover |
+
+## /api/script
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/script/clips/search` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/script/jobs/:id` | Get script job status |
+| POST | `/api/script/:id/sections/:section_id/regenerate` | Regenerate a script section |
+| POST | `/api/script/cache/evict` | Evict script cache entries |
+| POST | `/api/script/curate` | Curate generated content |
+| POST | `/api/script/generate` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/script/generate-batch` | Generate scripts in batch |
+| POST | `/api/script/generate-from-clips` | Generate script from clips |
+| POST | `/api/script/generate-with-images` | Generate script with AI scene images |
+
+## /api/script-assets
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/script-assets/catalog` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/scripts
 
@@ -16,193 +137,17 @@
 |--------|------|-------------|
 | GET | `/api/system/doctor` | System diagnostics |
 
-## /api/scraper
+## /assets/*filepath
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/scraper/search` | Search using scraper |
-
-## /api/drive
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/drive/reconcile` | endpoint |
-| POST | `/api/drive/resolve-by-id` | endpoint |
-| POST | `/api/drive/cleanup` | endpoint |
-| POST | `/api/drive/folders` | endpoint |
-| POST | `/api/drive/move` | endpoint |
-
-## /
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | endpoint |
-| GET | `/metrics` | endpoint |
-| GET | `/health` | Unified health check (?deep=true for component checks) |
-| GET | `/ready` | endpoint |
-
-## /api/jobs
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/jobs` | List jobs or enqueue new job |
-| GET | `/api/jobs/stats` | Get job by ID |
-| GET | `/api/jobs/:id` | Get job by ID |
-| GET | `/api/jobs/:id/full` | Get full job details |
-| GET | `/api/jobs/:id/events` | endpoint |
-| POST | `/api/jobs` | List jobs or enqueue new job |
-| POST | `/api/jobs/:id/cancel` | Cancel a job |
-| POST | `/api/jobs/:id/retry` | Retry a failed job |
-
-## /api/artlist
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/artlist/runs/:run_id` | endpoint |
-| GET | `/api/artlist/stats` | Get Artlist statistics |
-| GET | `/api/artlist/diagnostics` | endpoint |
-| POST | `/api/artlist/search` | Search Artlist catalog |
-| POST | `/api/artlist/search/live` | endpoint |
-| POST | `/api/artlist/sync-catalogs` | endpoint |
-| POST | `/api/artlist/run` | Start Artlist pipeline for a term |
-| POST | `/api/artlist/recommend` | endpoint |
-
-## /api/images
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/images/search` | Search images |
-| GET | `/api/images/diagnostics` | endpoint |
-| POST | `/api/images/upload` | endpoint |
-| POST | `/api/images/sync` | Sync images |
-| POST | `/api/images/generate` | endpoint |
-| POST | `/api/images/animate` | endpoint |
-| POST | `/api/images/webhook/remote` | endpoint |
-
-## /api/internal
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/internal/slug` | Generate URL slug from text |
+| GET | `/assets/*filepath` | Serve static assets from data dir |
+| HEAD | `/assets/*filepath` | HEAD check for static assets |
 
 ## /media/google-accounting
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/media/google-accounting/*filepath` | endpoint |
-| HEAD | `/media/google-accounting/*filepath` | endpoint |
-
-## /api/script
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/script/jobs/:job_id` | endpoint |
-| GET | `/api/script/jobs/:job_id/full` | endpoint |
-| GET | `/api/script/generate-batch/progress` | endpoint |
-| POST | `/api/script/generate-from-clips` | endpoint |
-| POST | `/api/script/generate-from-catalog` | endpoint |
-| POST | `/api/script/generate-with-images` | endpoint |
-| POST | `/api/script/generate-batch` | endpoint |
-| POST | `/api/script/curate` | endpoint |
-| POST | `/api/script/cache/evict` | endpoint |
-| POST | `/api/script/:id/sections/:section_id/regenerate` | endpoint |
-
-## /api/search-queries
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/search-queries` | endpoint |
-| GET | `/api/search-queries/active` | endpoint |
-| GET | `/api/search-queries/:id` | endpoint |
-| GET | `/api/search-queries/:id/results` | endpoint |
-| POST | `/api/search-queries` | endpoint |
-| DELETE | `/api/search-queries/:id` | endpoint |
-
-## /api/channels
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/channels` | endpoint |
-| GET | `/api/channels/categories` | endpoint |
-| GET | `/api/channels/:id` | endpoint |
-| POST | `/api/channels` | endpoint |
-| POST | `/api/channels/bulk-upsert` | endpoint |
-| DELETE | `/api/channels/:id` | endpoint |
-
-## /assets/*filepath
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/assets/*filepath` | endpoint |
-| HEAD | `/assets/*filepath` | endpoint |
-
-## /api/media
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/media/search` | endpoint |
-| GET | `/api/media/semantic-search` | endpoint |
-| GET | `/api/media/diagnostics` | endpoint |
-| GET | `/api/media/index-health` | endpoint |
-| GET | `/api/media/voiceover/groups` | endpoint |
-| GET | `/api/media/:source/folders` | List media folders |
-| GET | `/api/media/:source/folders/:id` | endpoint |
-| GET | `/api/media/:source/folders/:id/children` | endpoint |
-| GET | `/api/media/:source/clips` | List clips |
-| GET | `/api/media/:source/clips/:id` | endpoint |
-| GET | `/api/media/:source/tree` | endpoint |
-| GET | `/api/media/:source/breadcrumb` | endpoint |
-| POST | `/api/media/voiceover/generate` | Generate voiceover |
-| POST | `/api/media/voiceover/generate-with-group` | **DEPRECATED** — sunset `Sat, 26 Sep 2026 00:00:00 GMT` (RFC 8594). Use `POST /api/media/voiceover/generate` with `destination: {kind: "group", group: "<topic>"}` instead (successor endpoint). See architecture/deprecations.yaml#PR-VO-C1. |
-| POST | `/api/media/voiceover/batch` | Batch generate voiceovers |
-| POST | `/api/media/voiceover/promo` | endpoint |
-| POST | `/api/media/voiceover/sync` | endpoint |
-| POST | `/api/media/sync-drive-folder` | endpoint |
-| POST | `/api/media/search/advanced` | endpoint |
-| POST | `/api/media/sound_effect/generate` | endpoint |
-| POST | `/api/media/register-from-youtube` | endpoint |
-| POST | `/api/media/register-batch` | endpoint |
-| POST | `/api/media/recommend` | endpoint |
-| POST | `/api/media/drive/move-files` | endpoint |
-| POST | `/api/media/drive/create-folders` | endpoint |
-| POST | `/api/media/enrich` | endpoint |
-| POST | `/api/media/enrich/batch` | endpoint |
-| POST | `/api/media/local-to-drive` | endpoint |
-| POST | `/api/media/qdrant/cleanup` | endpoint |
-| POST | `/api/media/upload-video` | endpoint |
-| POST | `/api/media/:source/clips` | List clips |
-| POST | `/api/media/:source/clips/:id/delete` | endpoint |
-| POST | `/api/media/:source/clips/:id/download` | endpoint |
-| POST | `/api/media/:source/clips/:id/duplicates` | endpoint |
-| POST | `/api/media/:source/clips/:id/reupload` | endpoint |
-| POST | `/api/media/:source/clips/:id/reprocess` | endpoint |
-| POST | `/api/media/:source/clips/:id/reindex` | endpoint |
-| POST | `/api/media/:source/clips/:id/status` | endpoint |
-| POST | `/api/media/:source/clips/:id/verify` | endpoint |
-| POST | `/api/media/:source/clips/:id/trash` | endpoint |
-| POST | `/api/media/:source/cleanup` | endpoint |
-| POST | `/api/media/:source/folders/:id/manifest` | endpoint |
-| POST | `/api/media/:source/folders/:id/trash` | endpoint |
-| POST | `/api/media/:source/folders/:id/delete` | endpoint |
-| POST | `/api/media/:source/bulk/tags/add` | endpoint |
-| POST | `/api/media/:source/bulk/tags/remove` | endpoint |
-| POST | `/api/media/:source/reconcile` | endpoint |
-| PATCH | `/api/media/:source/clips/:id` | endpoint |
-
-## /api/clips
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/clips/search` | Search and rank YouTube videos by topic |
-| GET | `/api/clips/stats` | endpoint |
-| GET | `/api/clips/info` | Get YouTube video metadata |
-| GET | `/api/clips/diagnostics` | endpoint |
-| POST | `/api/clips/process` | Download and process clips |
-| POST | `/api/clips/search` | Search and rank YouTube videos by topic |
-
-## /api/fullimages
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/fullimages/video/generate` | endpoint |
+| GET | `/media/google-accounting/*filepath` | Serve Google Accounting media files |
+| HEAD | `/media/google-accounting/*filepath` | HEAD check for Google Accounting media |
 
