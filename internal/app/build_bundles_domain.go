@@ -257,7 +257,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, drive.Publisher, repos, search, mutationsDisp)
 
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
-		drive.driveUploader, repos.ClipsRepo, repos.ClipsRepo,
+		drive.driveUploader.Service, repos.ClipsRepo, repos.ClipsRepo,
 		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, repos.ImageRepo,
 		voMetaWriter, ingestSvc,
