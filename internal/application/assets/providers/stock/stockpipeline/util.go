@@ -1,46 +1,22 @@
 package stockpipeline
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
-// resolveFolderTarget resolves the Google Drive folder ID for upload.
-// It walks from the configured stock root folder through subfolder and folderName.
-func (s *Service) resolveFolderTarget(ctx context.Context, folderID, subfolder, folderName string) (string, error) {
-	currentID := folderID
-	if currentID == "" {
-		currentID = s.cfg.Drive.StockFolder()
-	}
-	if currentID == "" {
-		return "", fmt.Errorf("no drive folder configured (media_root_folder)")
-	}
-
-	// Build segment list: only prepend "Stock" when resolving from the media root.
-	var segs []string
-	isMediaRoot := s.cfg != nil && currentID == s.cfg.Drive.MediaRootFolder
-	if isMediaRoot {
-		segs = append(segs, "Stock")
-	}
-	if subfolder != "" {
-		segs = append(segs, subfolder)
-	}
-	if folderName != "" {
-		segs = append(segs, folderName)
-	}
-
-	if len(segs) == 0 {
-		return currentID, nil
-	}
-
-	return driveutil.EnsureFolderPath(ctx, s.driveAdmin, currentID, segs...)
-}
+// F2.10: resolveFolderTarget RETIRED (override brutal). Folder
+// resolution now goes through `s.publisher.ResolveFolder(ctx,
+// delivery.PublishRequest{Group: seg, RootFolderOverride: currentID})`
+// in stockpipeline.run.go, which uses DestinationStock's PathBuilder
+// to compute the canonical folder hierarchy. The legacy
+// driveutil.EnsureFolderPath walking is gone; the legacy
+// `s.driveAdmin driveup.Admin` surface is gone (see
+// `internal/infrastructure/drive` import).
 
 // formatDuration converts a float64 seconds value to HH:MM:SS.mmm format.
 func formatDuration(sec float64) string {

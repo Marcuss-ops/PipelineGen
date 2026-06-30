@@ -29,43 +29,39 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 	)
 
 	var fileID, webViewLink, downloadLink string
-	// FASE 8: upload via canonical Publisher when available.
-	// StockPath returns [group, subject] = [subfolder, folderName].
-	if s.publisher != nil && (input.Subfolder != "" || input.FolderName != "") {
-		pubReq := delivery.PublishRequest{
-			Destination: delivery.DestinationStock,
-			LocalPath:   chunkPath,
-			Filename:    chunkTitle + ".mp4",
-			Group:       input.Subfolder,
-			Subject:     input.FolderName,
-		}
-		if input.FolderID != "" {
-			pubReq.RootFolderOverride = input.FolderID
-		}
-		pubResult, err := s.publisher.Publish(ctx, pubReq)
-		if err != nil {
-			s.log.Error("failed to publish chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
-			return
-		}
-		fileID = pubResult.FileID
-		webViewLink = pubResult.WebViewLink
-		// F1.5 (P0 #9): read DownloadLink from the canonical
-		// PublishResult instead of reconstructing via string
-		// interpolation. Stock pipeline consumers downstream read
-		// this into chunkRes.DownloadLink → assetindex.AssetRecord.DownloadLink
-		// → Qdrant projection, so centralising the URL here closes
-		// the format-drift failure surface end-to-end.
-		downloadLink = pubResult.DownloadLink
-	} else {
-		upResult, err := s.driveAdmin.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
-		if err != nil {
-			s.log.Error("failed to upload chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
-			return
-		}
-		fileID = upResult.FileID
-		webViewLink = upResult.WebViewLink
-		downloadLink = upResult.DownloadLink
+	// F2.10: upload via canonical Publisher ALWAYS (override brutal —
+	// legacy driveAdmin.UploadFile fallback is gone). When subfolder
+	// and folderName are both empty, the Publisher.Publish falls back
+	// to the resolved folderID passed into this function via the
+	// RootFolderOverride, ensuring the chunk lands in the right
+	// folder regardless of which path the caller used.
+	pubReq := delivery.PublishRequest{
+		Destination: delivery.DestinationStock,
+		LocalPath:   chunkPath,
+		Filename:    chunkTitle + ".mp4",
+		Group:       input.Subfolder,
+		Subject:     input.FolderName,
 	}
+	if input.FolderID != "" {
+		pubReq.RootFolderOverride = input.FolderID
+	}
+	if pubReq.Group == "" && pubReq.Subject == "" && pubReq.RootFolderOverride == "" && folderID != "" {
+		pubReq.RootFolderOverride = folderID
+	}
+	pubResult, err := s.publisher.Publish(ctx, pubReq)
+	if err != nil {
+		s.log.Error("failed to publish chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
+		return
+	}
+	fileID = pubResult.FileID
+	webViewLink = pubResult.WebViewLink
+	// F1.5 (P0 #9): read DownloadLink from the canonical
+	// PublishResult instead of reconstructing via string
+	// interpolation. Stock pipeline consumers downstream read
+	// this into chunkRes.DownloadLink → assetindex.AssetRecord.DownloadLink
+	// → Qdrant projection, so centralising the URL here closes
+	// the format-drift failure surface end-to-end.
+	downloadLink = pubResult.DownloadLink
 
 	chunkRes.DriveLink = webViewLink
 	chunkRes.DownloadLink = downloadLink

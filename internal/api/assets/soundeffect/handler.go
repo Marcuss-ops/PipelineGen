@@ -40,7 +40,6 @@ const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMut
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
 	clipsRepo     sfxports.ClipRepositoryPort
-	driveUploader sfxports.DriveUploaderPort
 	metaWriter    sfxports.SemanticMetadataWriterPort
 	resolver      sfxports.DestinationResolverPort
 	// dispatcher (PR 6, June 2026, codex/qdrant-api-writers-fail-closed):
@@ -51,7 +50,7 @@ type Handler struct {
 	// "if h.clipsRepo != nil { h.clipsRepo.Upsert }" soft-fallback that
 	// the Wave 22 task-2 handler migration removes.
 	dispatcher             sfxports.DispatcherPort
-	publisher              sfxports.PublisherPort // FASE 7: canonical Drive upload
+	publisher              sfxports.PublisherPort // F2.10: legacy driveUploader field RETIRED (override brutal) — Publisher is the single canonical Drive-write canal
 	soundEffectsRootFolder string
 	processRunner          appassets.ProcessRunner
 	log                    *zap.Logger
@@ -73,7 +72,6 @@ type Handler struct {
 // nil dispatcher.
 func NewHandler(
 	clipsRepo sfxports.ClipRepositoryPort,
-	driveUploader sfxports.DriveUploaderPort,
 	metaWriter sfxports.SemanticMetadataWriterPort,
 	resolver sfxports.DestinationResolverPort,
 	dispatcher sfxports.DispatcherPort,
@@ -84,7 +82,6 @@ func NewHandler(
 ) *Handler {
 	return &Handler{
 		clipsRepo:              clipsRepo,
-		driveUploader:          driveUploader,
 		metaWriter:             metaWriter,
 		resolver:               resolver,
 		dispatcher:             dispatcher,
@@ -250,7 +247,13 @@ func (h *Handler) Generate(c *gin.Context) {
 				zap.String("folder_id", pubResult.FolderID))
 		}
 
-		// Upload metadata.json sidecar (best effort)
+		// Upload metadata.json sidecar (best effort). F2.10:
+		// the legacy `else if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
+		// GetOrCreateFolder + UploadFile }` fallback is RETIRED
+		// (override brutal); Publisher is the single canonical
+		// canal. When publisher is nil, the sidecar is skipped
+		// silently (the parent function fails-closed via the
+		// dispatcher's 503 path regardless).
 		localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
 		if parentFolderID != "" {
 			if _, err := os.Stat(localMetaPath); err == nil {
@@ -266,17 +269,6 @@ func (h *Handler) Generate(c *gin.Context) {
 			} else {
 				h.log.Info("metadata.json published to Drive successfully")
 			}
-			}
-		}
-	} else if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
-		// Legacy fallback
-		var err error
-		parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
-		if err == nil {
-			uploadRes, err := h.driveUploader.UploadFile(ctx, dest.LocalPath, parentFolderID, filepath.Base(dest.LocalPath))
-			if err == nil {
-				driveFileID = uploadRes.FileID
-				driveLink = uploadRes.WebViewLink
 			}
 		}
 	}

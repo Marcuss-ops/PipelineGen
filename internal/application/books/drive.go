@@ -13,6 +13,8 @@ import (
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
+var ErrBookReaderNotConfigured = fmt.Errorf("drive reader not configured — cannot download from Drive")
+
 type ProcessFromDriveRequest struct {
 	DriveFileURL      string `json:"drive_file_url"`
 	Instruction       string `json:"instruction,omitempty"`
@@ -47,8 +49,14 @@ func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriv
 	if !s.cfg.Enabled {
 		return nil, fmt.Errorf("books service is disabled")
 	}
-	if s.driveUpload == nil {
-		return nil, fmt.Errorf("drive uploader not configured — cannot download from Drive")
+	// F2.10+: driveUpload (concrete *drive.Uploader) was retired in
+	// favour of the canonical drive.Reader port per DRIVE-005
+	// closure. A nil reader keeps the error contract that the
+	// pre-F2.10 driveUpload check enforced ("Drive not configured")
+	// — tests that exercise ProcessBookFromDrive with Drive disabled
+	// stay green.
+	if s.reader == nil {
+		return nil, ErrBookReaderNotConfigured
 	}
 
 	fileID, err := urlutil.FileIDFromDriveLink(req.DriveFileURL)
@@ -64,12 +72,12 @@ func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriv
 		zap.String("url", req.DriveFileURL),
 	)
 
-	meta, err := s.driveUpload.GetFileMeta(ctx, fileID)
+	meta, err := s.reader.GetFileMeta(ctx, fileID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get drive file metadata: %w", err)
 	}
 
-	body, _, err := s.driveUpload.DownloadFile(ctx, fileID)
+	body, _, err := s.reader.DownloadFile(ctx, fileID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file from drive: %w", err)
 	}

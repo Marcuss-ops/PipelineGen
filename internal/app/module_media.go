@@ -16,7 +16,6 @@ import (
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -556,14 +555,10 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
 	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
-	var sfxDriveUp sfxports.DriveUploaderPort
-	if driveUploader != nil {
-		sfxDriveUp = &sfxDriveUploaderAdapter{drive: driveUploader}
-	}
+
 	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
 	soundeffectDescriptor, err := assetsfx.Build(assetsfx.Dependencies{
 		ClipsRepo:              sfxClips,
-		DriveUploader:          sfxDriveUp,              // nil-tolerant at request time (legacy fallback path)
 		MetaWriter:             sfxMeta,                 // nil-tolerant at request time (default tag/searchText)
 		Resolver:               sfxResolver,             // mandatory — Generate calls unconditionally
 		Dispatcher:             sfxDispatcher,           // mandatory — Build is fail-closed on nil
