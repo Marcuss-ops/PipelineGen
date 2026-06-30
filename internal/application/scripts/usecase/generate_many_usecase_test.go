@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -20,17 +20,17 @@ import (
 // test fixtures in scriptflow_usecase_test.go and the rest of the
 // usecase test surface).
 type (
-	GenerateManyResult     = usecase.GenerateManyResult
-	GenerateManyItemResult = usecase.GenerateManyItemResult
-	GenerateManySummary    = usecase.GenerateManySummary
-	GenerateManyUseCase    = usecase.GenerateManyUseCase
+	GenerateManyResult     =scripts.GenerateManyResult    
+	GenerateManyItemResult = scripts.GenerateManyItemResult
+	GenerateManySummary    =scripts.GenerateManySummary   
+	GenerateManyUseCase    =scripts.GenerateManyUseCase   
 	NormalizationConfig    = adapters.NormalizationConfig
 )
 
 var (
 	NewSourceRegistry     = adapters.NewSourceRegistry
-	NewGenerateOneUseCase = usecase.NewGenerateOneUseCase
-	NewTextSourceResolver = usecase.NewTextSourceResolver
+	NewGenerateOneUseCase = scripts.NewGenerateOneUseCase
+	NewTextSourceResolver = scripts.NewTextSourceResolver
 )
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ func makeItem(id string) scriptpkg.GenerationItemV2 {
 
 func TestGenerateManyEmptyEnvelope(t *testing.T) {
 	t.Parallel()
-	uc := usecase.NewGenerateManyUseCase(nil, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(nil, zap.NewNop())
 	result, err := uc.Execute(context.Background(), makeManyEnv(), NormalizationConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -72,7 +72,7 @@ func TestGenerateManyEmptyEnvelope(t *testing.T) {
 
 func TestGenerateManyNilEnvelope(t *testing.T) {
 	t.Parallel()
-	uc := usecase.NewGenerateManyUseCase(nil, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(nil, zap.NewNop())
 	result, err := uc.Execute(context.Background(), nil, NormalizationConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -108,7 +108,7 @@ func TestGenerateManySequentialParity(t *testing.T) {
 		nil, // no postprocessors
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := makeItem("a")
 	env := makeManyEnv(items)
@@ -152,7 +152,7 @@ func TestGenerateManyCancellation(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	// Three items, cancel immediately.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -194,7 +194,7 @@ func TestGenerateManyWorkersDefault(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		makeItem("a"), makeItem("b"), makeItem("c"),
@@ -227,7 +227,7 @@ func TestGenerateManyItemOrder(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	// Items with IDs that would sort differently from input order.
 	items := []scriptpkg.GenerationItemV2{
@@ -270,7 +270,7 @@ func TestGenerateManyMixedResults(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		{ID: "ok-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "t1"}},
@@ -351,7 +351,7 @@ func TestGenerateManyWithSourceRegistry(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		{ID: "text-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic 1"}},
@@ -392,7 +392,7 @@ func TestGenerateManyUnregisteredSourceType(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		{ID: "cat-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceCatalog, Query: "test"}},
@@ -428,7 +428,7 @@ func TestGenerateManyProgressCallback(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	var calls atomic.Int32
 	progressFn := func(percent int, message string) {
@@ -465,7 +465,7 @@ func TestGenerateManySingleItem(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	env := makeManyEnv(makeItem("solo"))
 	cfg := NormalizationConfig{
@@ -503,7 +503,7 @@ func TestGenerateManyConcurrencyLimit(t *testing.T) {
 		nil,
 		zap.NewNop(),
 	)
-	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		makeItem("a"), makeItem("b"), makeItem("c"),
