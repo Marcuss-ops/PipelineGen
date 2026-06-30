@@ -7,7 +7,10 @@
 // ExtractionCallbacks interface so the service stays focused on orchestration.
 //
 // PR5 Phase 3 (June 2026): extracted from the root youtube package.
-// ExtractionDeps is capped at 8 fields per PR5 ≤8 rule.
+// ExtractionDeps is capped at 8 fields per PR5 ≤8 rule. The two
+// cutover-extension fields (ProcessSeg + MaxConcurrentVideos) live
+// alongside as Commit C introduces the canonical
+// ProcessYouTubeSegmentUseCase.
 package usecase
 
 import (
@@ -15,6 +18,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -26,7 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
-// ── Dependencies (≤8 fields per PR5 rule) ────────────────────────────────
+// ── Dependencies (≤8 fields per PR5 rule + 2 cutover extension) ──────────
 
 // ExtractionDeps holds the 8 direct dependencies the extraction pipeline
 // requires. External operations not listed here (metadata enrichment,
@@ -43,6 +47,15 @@ type ExtractionDeps struct {
 	AssetDestResolver asset.Resolver
 	FolderMemory      youtubeports.FolderMemoryPort
 	SegmentsSvc       *SegmentsService
+
+	// Commit C cutover: when non-nil, Extract fans out through the
+	// canonical ProcessYouTubeSegmentUseCase. Legacy inline loop
+	// remains as fallback for compositions that haven't yet wired the
+	// new cache/writer ports — slated for removal in Commit H.
+	ProcessSeg *ProcessYouTubeSegmentUseCase
+	// MaxConcurrentVideos bounds the per-Extract fan-out. Defaults to
+	// 5 if zero (matches monitor.MonitorRuntimePolicy's default).
+	MaxConcurrentVideos int
 }
 
 // ── Callbacks interface ──────────────────────────────────────────────────
@@ -101,44 +114,53 @@ type ExtractionCallbacks interface {
 
 // ── Service ──────────────────────────────────────────────────────────────
 
-// Service orchestrates the YouTube clip extraction pipeline.
+// ExtractionService orchestrates the YouTube clip extraction pipeline.
 type ExtractionService struct {
-	cfg               youtubetypes.RuntimeConfig
-	log               *zap.Logger
-	videoPipeline     youtubeports.VideoPipelinePort
-	clips             youtubeports.ClipStorePort
-	cache             youtubeports.CachePort
-	monitors          youtubeports.MonitorsStorePort
-	assetDestResolver asset.Resolver
-	folderMemory      youtubeports.FolderMemoryPort
-	segmentsSvc       *SegmentsService
+	cfg                 youtubetypes.RuntimeConfig
+	log                 *zap.Logger
+	videoPipeline       youtubeports.VideoPipelinePort
+	clips               youtubeports.ClipStorePort
+	cache               youtubeports.CachePort
+	monitors            youtubeports.MonitorsStorePort
+	assetDestResolver   asset.Resolver
+	folderMemory        youtubeports.FolderMemoryPort
+	segmentsSvc         *SegmentsService
+	processSeg          *ProcessYouTubeSegmentUseCase
+	maxConcurrentVideos int
 
 	callbacks ExtractionCallbacks
 }
 
-// NewService constructs the extraction service. All deps and callbacks
-// are required; nil checks at call sites surface missing wiring explicitly.
+// NewExtractionService constructs the extraction service. All deps and
+// callbacks are required; nil checks at call sites surface missing
+// wiring explicitly. MaxConcurrentVideos defaults to 5 when zero so
+// the canonical fan-out always enters a working bounded state.
 func NewExtractionService(deps ExtractionDeps, cb ExtractionCallbacks) *ExtractionService {
+	maxV := deps.MaxConcurrentVideos
+	if maxV <= 0 {
+		maxV = 5
+	}
 	return &ExtractionService{
-		cfg:               deps.Cfg,
-		log:               deps.Log,
-		videoPipeline:     deps.VideoPipeline,
-		clips:             deps.Clips,
-		cache:             deps.Cache,
-		monitors:          deps.Monitors,
-		assetDestResolver: deps.AssetDestResolver,
-		folderMemory:      deps.FolderMemory,
-		segmentsSvc:       deps.SegmentsSvc,
-		callbacks:         cb,
+		cfg:                 deps.Cfg,
+		log:                 deps.Log,
+		videoPipeline:       deps.VideoPipeline,
+		clips:               deps.Clips,
+		cache:               deps.Cache,
+		monitors:            deps.Monitors,
+		assetDestResolver:   deps.AssetDestResolver,
+		folderMemory:        deps.FolderMemory,
+		segmentsSvc:         deps.SegmentsSvc,
+		processSeg:          deps.ProcessSeg,
+		maxConcurrentVideos: maxV,
+		callbacks:           cb,
 	}
 }
 
-// Extract runs a minimal but real YouTube extraction pipeline:
-// it validates the request, derives the clip filenames, invokes the
-// configured video pipeline, and records per-segment outcomes.
-// External enrichment and Drive-side work still route through the
-// callback surface, so the service can grow without reintroducing
-// transport-layer coupling.
+// Extract runs a minimal but real YouTube extraction pipeline.
+// Commit C cutover: when ProcessSeg is non-nil the canonical fan-out
+// runs through ProcessYouTubeSegmentUseCase. When nil, the legacy
+// per-segment inline loop runs (annotated `// TODO wave delete: legacy
+// inline` in adapters/segment_processor.go — removed in Commit H).
 func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -148,9 +170,6 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	}
 	if req == nil {
 		return nil, fmt.Errorf("youtube extraction: request is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
 	}
 
 	if s.videoPipeline == nil {
@@ -187,7 +206,19 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	}
 	folderSlug := "yt_" + videoID
 	outDir := filepath.Join(s.cfg.DataDir, "media", "clips", group, folderSlug)
+	driveFolderID := ""
+	driveFolderPath := ""
+	if req.Destination != nil {
+		driveFolderID = strings.TrimSpace(req.Destination.FolderID)
+		driveFolderPath = strings.TrimSpace(req.Destination.FolderPath)
+	}
 
+	// Commit C — canonical fan-out via ProcessYouTubeSegmentUseCase.
+	if s.processSeg != nil {
+		return s.extractFanOut(ctx, req, videoID, outDir, driveFolderID, driveFolderPath)
+	}
+
+	// ── Legacy fallback: TODO wave-delete (Commit H) ─────────────────
 	for i, seg := range req.Segments {
 		if ctx.Err() != nil {
 			resp.OK = false
@@ -297,6 +328,104 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 		})
 	}
 
+	resp.Stats.Skipped = len(resp.Items) - resp.Stats.Processed - resp.Stats.Failed
+	resp.OK = resp.Stats.Failed == 0 && resp.Stats.Processed > 0
+	if !resp.OK && resp.Error == "" {
+		resp.Error = "one or more segments failed"
+	}
+	return resp, nil
+}
+
+// extractFanOut is the Commit C canonical path: bounded semaphore fan-out
+// across ProcessYouTubeSegmentUseCase.Execute calls. Use case is
+// responsible for the per-segment 9-step sequence (cache → retry → hash
+// → subs → metadata → lifecycle → drive → atomic writer) and populates
+// ProcessSegmentResult.Item which we collect here.
+func (s *ExtractionService) extractFanOut(
+	ctx context.Context,
+	req *youtubetypes.ExtractRequest,
+	videoID, outDir, driveFolderID, driveFolderPath string,
+) (*youtubetypes.ExtractResponse, error) {
+	resp := &youtubetypes.ExtractResponse{
+		OK:        true,
+		SourceURL: req.URL,
+		VideoID:   videoID,
+		Stats: &youtubetypes.ExtractStats{
+			Requested: len(req.Segments),
+		},
+		Items:           make([]youtubetypes.ExtractItem, 0, len(req.Segments)),
+		DriveFolderID:   driveFolderID,
+		DriveFolderPath: driveFolderPath,
+	}
+
+	// PR-C YouTube Cutover (Commit C): default keep_audio=true. The
+	// Channel Monitor pipeline writes keep_audio=true into every monitor
+	// payload (Commit B); non-monitor callers who omit keep_audio inherit
+	// the canonical true default — the legacy silent-default-false
+	// behaviour is intentionally flipped here. An explicit keep_audio=false
+	// still strips audio.
+	keepAudio := true
+	if !req.KeepAudio {
+		keepAudio = false
+	}
+	keepAudioPtr := keepAudio
+
+	sem := make(chan struct{}, s.maxConcurrentVideos)
+	results := make([]youtubetypes.ProcessSegmentResult, len(req.Segments))
+	var wg sync.WaitGroup
+	for i, seg := range req.Segments {
+		i, seg := i, seg
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// PR-C YouTube Cutover (Commit C): panic-recovery per goroutine.
+			// Without this, a panic in ProcessYouTubeSegmentUseCase.Execute
+			// would crash the broker. Mirrors monitor.safeCheckChannel
+			// (P1 #9 closure): recover → log → leave the result slot zero,
+			// the classifier sees Item.Status=failed.
+			defer func() {
+				if r := recover(); r != nil {
+					s.log.Error("panic in segment goroutine (extractFanOut recovered)",
+						zap.Int("segment_index", i),
+						zap.String("video_id", videoID),
+						zap.Any("recover", r))
+				}
+			}()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			cmd := youtubetypes.ProcessSegmentCommand{
+				VideoID:         videoID,
+				Segment:         seg,
+				Index:           i,
+				PolicyVersion:   ProcessSegmentPolicyVersion,
+				OutDir:          outDir,
+				DriveFolderID:   driveFolderID,
+				DriveFolderPath: driveFolderPath,
+				VideoURL:        req.URL,
+				ForceKeyframes:  req.ForceKeyframes,
+				Normalize:       req.Normalize,
+				KeepAudio:       &keepAudioPtr,
+				Strategy:        req.Strategy,
+				Destination:     req.Destination,
+			}
+			res, _ := s.processSeg.Execute(ctx, cmd)
+			results[i] = res
+		}()
+	}
+	wg.Wait()
+
+	for _, res := range results {
+		resp.Items = append(resp.Items, res.Item)
+		switch res.Item.Status {
+		case "processed":
+			resp.Stats.Processed++
+		case "skipped":
+			resp.Stats.Skipped++
+		case "failed":
+			resp.Stats.Failed++
+		}
+	}
 	resp.Stats.Skipped = len(resp.Items) - resp.Stats.Processed - resp.Stats.Failed
 	resp.OK = resp.Stats.Failed == 0 && resp.Stats.Processed > 0
 	if !resp.OK && resp.Error == "" {

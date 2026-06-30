@@ -17,6 +17,7 @@ import (
 	"context"
 	"time"
 
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
@@ -188,4 +189,42 @@ type CachePort interface {
 	SetSegments(ctx context.Context, videoID, segmentsJSON string)
 	GetCategory(ctx context.Context, videoTitle string) (string, bool)
 	SetCategory(ctx context.Context, videoTitle, category string)
+}
+
+// ── Commit C ports (PR-C-YouTube-Cutover, June 2026) ────────────────────
+
+// ClipCachePort is the high-level cache check the ProcessYouTubeSegmentUseCase
+// uses to detect already-processed segments and short-circuit the
+// download/cut/enrich pipeline. It folds the existing CachePort +
+// ClipStorePort + ClipFilesPort trio behind a single typed call so the use
+// case stays at the application-layer surface and tests can drive all three
+// independently via a single mock.
+//
+// Returns (nil, false, nil) when no cached clip exists. Returns
+// (item, true, nil) when the clip is cached and authoritative for the given
+// clipID. Returns (nil, false, err) when the underlying store failed.
+type ClipCachePort interface {
+	GetExisting(ctx context.Context, clipID string) (item *youtubetypes.ExtractItem, exists bool, err error)
+}
+
+// IndexEventPayload is the typed payload that travels alongside the clip DB
+// write in the ClipAtomicWriter transaction. The outbox dispatcher (see
+// internal/application/jobs/outbox/) is the eventual consumer; the field
+// names mirror the existing outboxevents row shape.
+//
+// Commit F implements the concrete dispatcher; this commit introduces the
+// port only so the new use case does not depend on the outbox package.
+type IndexEventPayload struct {
+	Type        string // e.g. "asset.index.requested"
+	AggregateID string
+	Payload     []byte
+	CreatedAt   time.Time
+}
+
+// ClipAtomicWriter is the transactional DB write + outbox-insert pair the
+// ProcessYouTubeSegmentUseCase performs as its terminal step. The concrete
+// implementation lives in infrastructure and owns the SQLite transaction;
+// composition wires it to the new writer adapter (Commit F).
+type ClipAtomicWriter interface {
+	CommitClipAndIndexEvent(ctx context.Context, clipID string, item youtubetypes.ExtractItem, event IndexEventPayload) error
 }

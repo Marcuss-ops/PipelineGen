@@ -21,6 +21,18 @@ import (
 // MaxSegmentDuration is the maximum allowed duration for a single clip segment (60 seconds)
 const MaxSegmentDuration = 60
 
+// TODO wave-delete (Commit H — PR-C-YouTube-Cutover, June 2026):
+// processSegment is the legacy per-segment orchestration. The canonical
+// equivalent now lives at
+// `internal/application/youtube/usecase/process_segment.go::ProcessYouTubeSegmentUseCase.Execute`
+// and is reachable from ExtractionService.Extract via the bounded fan-out.
+// Once all compositions wire the new cache/writer ports (Commit F installs
+// the concrete writer adapter), this function + adapters.Service are
+// physically removed. For now, the inline loop is reachable only when
+// `ExtractionDeps.ProcessSeg == nil`, so compositions that haven't yet
+// migrated keep working. Until then, the new file owns the canonical
+// implementation; this one is read-only + deprecated.
+//
 // processSegment processes a single segment: validates timestamps, checks cache,
 // downloads via video pipeline, runs lifecycle, and enriches with YouTube metadata.
 func (s *Service) processSegment(
