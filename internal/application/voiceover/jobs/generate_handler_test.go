@@ -50,13 +50,13 @@ func TestGenerateJobHandler_NilFanoutResultNoPanic(t *testing.T) {
 	useCase := &FanoutVoiceoversUseCase{}
 	h := NewGenerateJobHandler(useCase, zap.NewNop())
 
-	// Empty-Languages payload → cmd.Validate() returns err →
+	// Empty-Items payload → cmd.Validate() returns err →
 	// FanoutUseCase.Execute returns (nil, err) (per fanout.go:113
-	// validation guard). Text non-empty so the validation isolates
-	// on Languages (not on Text — which has its own empty-check).
+	// validation guard). Item text non-empty so the validation
+	// isolates on Items-empty (per Step 5 invariant: empty Items
+	// is the canonical trigger; P0.2's Text-empty check is gone).
 	cmd := voiceover.GenerateVoiceoversCommand{
-		Languages: []string{},
-		Text:      "hello world",
+		Items: []voiceover.VoiceoverItem{},
 	}
 	cmdJSON, _ := json.Marshal(cmd)
 	j := &jobs.Job{ID: "test-parent-job", Payload: cmdJSON}
