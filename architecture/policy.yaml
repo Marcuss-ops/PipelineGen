@@ -127,7 +127,7 @@ target_internal_roots: app, kernel, capabilities, platform
 # entry is a free-form comment consumed by the human reviewer; the binary
 # only checks the structural rules above.
 known_grandfathered:
-  - "internal/application/scripts (55 files) — in_progress to capability/scripts split"
+  - "internal/application/scripts — RESOLVED June 2026: split into 8 subpackages (adapters/ contracts/ dto/ events/ jobs/ jsonextract/ ports/ usecase/). Retired from transitional baselines; see audit_ledger in docs/migrations/archcheck-strict-baseline.json."
   - "internal/application/images (25 files) — in_progress to capability/images split"
   - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
   - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
