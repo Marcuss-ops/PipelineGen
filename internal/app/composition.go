@@ -546,11 +546,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	var rawDriveSvc *gdrive.Service
-	if driveBundle.driveUploader != nil {
-		rawDriveSvc = driveBundle.driveUploader.Service
-	}
-	utility := BuildUtilityBundle(cfg, dbs.main, rawDriveSvc)
+	// Wave A (June 2026): BuildUtilityBundle now takes the canonical
+	// drive.Admin port. The legacy `rawDriveSvc *gdrive.Service`
+	// extraction from `driveBundle.driveUploader.Service` is gone —
+	// pass `driveBundle.Admin` (the Pattern 0 port) directly so the
+	// health probe can call driveAdmin.Ping() which wraps the raw
+	// About.Get internally.
+	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Admin)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {

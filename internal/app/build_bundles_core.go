@@ -263,18 +263,6 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driv
 	return booksSvc
 }
 
-// extractDriveService extracts *gdrive.Service from a drive.Admin via type assertion.
-// Returns nil when driveAdmin is nil or not a *drive.Uploader (the production concrete).
-func extractDriveService(driveAdmin drive.Admin) *gdrive.Service {
-	if driveAdmin == nil {
-		return nil
-	}
-	if up, ok := driveAdmin.(*drive.Uploader); ok && up != nil {
-		return up.Service
-	}
-	return nil
-}
-
 // buildImagesService (moved from build_bundles_images.go, Phase 5 consolidation, June 2026).
 func buildImagesService(
 	ctx context.Context, cfg *config.Config, log *zap.Logger,
@@ -294,7 +282,7 @@ func buildImagesService(
 		Storage: imgservice.ImagesStorageDeps{
 			ImageRepo:  imageRepo,
 			ClipsRepo:  clipsRepo,
-			DriveSvc:   extractDriveService(driveAdmin),
+			DriveSvc:   driveSvc,
 			MediaStore: mediaStore,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
