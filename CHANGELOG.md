@@ -674,7 +674,7 @@ tracker `architecture/current.yaml::wave_status.P1-2` flipped from
 `current_state: deferred` to `current_state: active`; cap values
 (`target: 40`, `transitional_cap: 66`) now live as the YAML SSOT
 read by the gate script through `python3 -c "import yaml; ..."`
-(zero inlining — a regression in `application/current.yaml` on
+(zero inlining — a regression in `architecture/current.yaml` on
 line 369 had blocked every downstream consumer; fixed in the
 follow-up commit). Check 45 inline ClipsRepository map ban
 re-numbered to Check 46 via `git mv`; the original wire-slot
