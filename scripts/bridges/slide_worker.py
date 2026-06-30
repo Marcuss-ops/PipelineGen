@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Persistent Chrome/Playwright worker for AI image generation via Google Slides
-Nano Banana Pro. Multi-profile: N concurrent profiles, each with its own
-browser context and dedicated queue (max 1 job at a time per profile).
+Nano Banana Pro.
 
 Protocol (stdin → stdout, one JSON object per line, newline-delimited):
 
@@ -18,12 +17,10 @@ Protocol (stdin → stdout, one JSON object per line, newline-delimited):
     {"status": "ready", "profiles": 3}         # warmup response
     {"status": "ok", "profiles": {"0":"ok","1":"ok","2":"ok"}}  # health
 
-Concurrency model (replaces the old ThreadPoolExecutor + worker_id % concurrency):
-  - N ProfileWorker threads, each owning one persistent browser context.
-  - Each profile has a queue.Queue(maxsize=1) — at most 1 pending request.
-  - Main thread distributes incoming requests round-robin to free profiles.
-  - Main thread blocks on the profile's out_queue until the result is ready.
-  - No ThreadPoolExecutor, no submit(), no as_completed().
+Single-profile model:
+  - One ProfileWorker thread owns one persistent browser context.
+  - Requests are processed serially through a single queue.
+  - No legacy profile cloning, no round-robin, no multi-profile routing.
 """
 
 import argparse
@@ -40,7 +37,7 @@ from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 MASTER_STORAGE = "data/google_slides_storage.json"
-PROFILE_DIR_BASE = "data/google_slides_worker_profile"
+PROFILE_DIR = "data/google_slides_session_profile"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -77,7 +74,7 @@ class ProfileWorker(threading.Thread):
     def __init__(self, profile_id: int, headful: bool = False) -> None:
         super().__init__(daemon=True, name=f"profile-{profile_id}")
         self.profile_id = profile_id
-        self.profile_dir = f"{PROFILE_DIR_BASE}_{profile_id}"
+        self.profile_dir = PROFILE_DIR
         self.headful = headful
 
         # in_queue: max 1 pending request — enforces "1 job at a time per profile"
@@ -418,55 +415,32 @@ class ProfileWorker(threading.Thread):
 # ── Dispatcher (main thread) ───────────────────────────────────────────────
 
 class SlideDispatcher:
-    """Manages N ProfileWorker threads and distributes stdin requests."""
+    """Manages the single ProfileWorker thread and stdin requests."""
 
     def __init__(self, num_profiles: int, headful: bool = False) -> None:
-        self.num_profiles = num_profiles
+        self.num_profiles = 1
         self.headful = headful
         self.profiles: list[ProfileWorker] = []
-        self._next_profile = 0  # round-robin cursor
         self._shutdown_called = False
 
     def warmup_all(self) -> dict:
-        """Start all profile workers and wait for them to be ready."""
-        self.profiles = [
-            ProfileWorker(i, headful=self.headful)
-            for i in range(self.num_profiles)
-        ]
+        """Start the single profile worker and wait for it to be ready."""
+        self.profiles = [ProfileWorker(0, headful=self.headful)]
         for pw in self.profiles:
             pw.start()
-        # Wait for all profiles to warm up (30s timeout per profile)
-        for pw in self.profiles:
-            if not pw._warmed.wait(timeout=30):
-                _log(f"slide_worker: profile-{pw.profile_id} warmup timed out")
-                return {"status": "error", "error": f"profile-{pw.profile_id} warmup timed out"}
-        _log(f"slide_worker: all {self.num_profiles} profiles ready")
-        return {"status": "ready", "profiles": self.num_profiles}
+        if not self.profiles[0]._warmed.wait(timeout=30):
+            _log("slide_worker: profile-0 warmup timed out")
+            return {"status": "error", "error": "profile-0 warmup timed out"}
+        _log("slide_worker: profile ready")
+        return {"status": "ready", "profiles": 1}
 
     def dispatch_generate(self, request_id: str, prompt: str, output_path: str) -> dict:
-        """Find a free profile, enqueue the request, and block for the result."""
+        """Enqueue the request on the single profile and block for the result."""
         req = {"id": request_id, "prompt": prompt, "output": output_path}
-
-        # Try to find a free profile (round-robin, non-blocking put)
-        for _ in range(self.num_profiles):
-            pw = self.profiles[self._next_profile]
-            self._next_profile = (self._next_profile + 1) % self.num_profiles
-            try:
-                pw.in_queue.put_nowait(req)
-                _log(f"slide_worker: [{request_id}] dispatched to profile-{pw.profile_id}")
-                # Block until the result is ready
-                result = pw.out_queue.get()
-                return result
-            except queue.Full:
-                continue  # profile busy, try next
-
-        # All profiles busy — block on the next one in round-robin order
-        pw = self.profiles[self._next_profile]
-        self._next_profile = (self._next_profile + 1) % self.num_profiles
-        _log(f"slide_worker: [{request_id}] all profiles busy, blocking on profile-{pw.profile_id}")
+        pw = self.profiles[0]
         pw.in_queue.put(req)
-        result = pw.out_queue.get()
-        return result
+        _log(f"slide_worker: [{request_id}] dispatched to profile-{pw.profile_id}")
+        return pw.out_queue.get()
 
     def health_all(self) -> dict:
         """Check all profiles."""
