@@ -12,6 +12,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -43,23 +44,24 @@ func (a *sfxClipsRepoAdapter) Upsert(ctx context.Context, clip *asset.Asset) err
 
 // ── Drive uploader adapter ───────────────────────────────────────────
 
-// sfxDriveUploaderAdapter wraps *drive.Uploader to satisfy
-// sfxports.DriveUploaderPort. Only the fields used by sfx are mapped;
-// MD5Checksum + DownloadLink from concrete drive.UploadResult are
-// deliberately dropped (NOT consumed by the HTTP transport).
+// sfxDriveUploaderAdapter wraps drive.Admin to satisfy
+// sfxports.DriveUploaderPort. FASE 9 Step 4 (June 2026): migrated
+// from *drive.Uploader to drive.Admin (Pattern 0 port). Only the
+// fields used by sfx are mapped; MD5Checksum + DownloadLink from
+// concrete drive.UploadResult are deliberately dropped.
 type sfxDriveUploaderAdapter struct {
-	up *drive.Uploader
+	drive drive.Admin // FASE 9: was *drive.Uploader; field named 'drive' matches port type name
 }
 
 // Compile-time assertion: sfxDriveUploaderAdapter satisfies sfxports.DriveUploaderPort.
 var _ sfxports.DriveUploaderPort = (*sfxDriveUploaderAdapter)(nil)
 
 func (a *sfxDriveUploaderAdapter) GetOrCreateFolder(ctx context.Context, name, parentFolderID string) (string, error) {
-	return a.up.GetOrCreateFolder(ctx, name, parentFolderID)
+	return a.drive.GetOrCreateFolder(ctx, name, parentFolderID)
 }
 
 func (a *sfxDriveUploaderAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*sfxports.UploadResultDTO, error) {
-	res, err := a.up.UploadFile(ctx, localPath, folderID, filename)
+	res, err := a.drive.UploadFile(ctx, localPath, folderID, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -180,44 +182,37 @@ func (a *sfxDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *asset.
 	return a.disp.EnqueueAndIndex(ctx, clip, contentHash)
 }
 
-// ── DriveAdminOps adapter ────────────────────────────────────────────────────
-
-// driveAdminAdapter wraps *drive.Uploader and satisfies systemapi.DriveAdminOps.
-// The previous handler_drive.go inlined the Google Files.Get round-trip; that
-// logic now lives here so the api package never reaches into the Google Drive
-// SDK directly.
+// ── DriveAdminOps adapter ────────────────────────────────────────────────────// driveAdminAdapter wraps drive.Admin + drive.Reader and satisfies
+// systemapi.DriveAdminOps. FASE 9 Step 4 (June 2026): migrated from
+// *drive.Uploader to Pattern 0 ports. ResolveFileInfo now uses
+// Reader.GetFileMeta (eliminates raw SDK access).
 type driveAdminAdapter struct {
-	uploader *drive.Uploader
-	log      *zap.Logger
+	admin  drive.Admin
+	reader drive.Reader
+	log    *zap.Logger
 }
 
 // newDriveAdminAdapter constructs the DriveAdminOps port adapter. If the
-// underlying drive.Uploader is nil (e.g. Drive OAuth not configured), this
+// underlying admin port is nil (e.g. Drive OAuth not configured), this
 // returns nil so the handler-side `h.driveOps == nil` check fires the
-// documented 503 "drive uploader not configured" — preserving the original
-// handler semantics that the previous all-nil-guards version broke.
-func newDriveAdminAdapter(u *drive.Uploader, log *zap.Logger) systemapi.DriveAdminOps {
-	if u == nil {
+// documented 503 "drive uploader not configured".
+func newDriveAdminAdapter(admin drive.Admin, reader drive.Reader, log *zap.Logger) systemapi.DriveAdminOps {
+	if admin == nil {
 		return nil
 	}
-	return &driveAdminAdapter{uploader: u, log: log}
+	return &driveAdminAdapter{admin: admin, reader: reader, log: log}
 }
 
-// GetOrCreateFolder delegates to *drive.Uploader.GetOrCreateFolder.
 func (a *driveAdminAdapter) GetOrCreateFolder(ctx context.Context, folderName, parentID string) (string, error) {
-	return a.uploader.GetOrCreateFolder(ctx, folderName, parentID)
+	return a.admin.GetOrCreateFolder(ctx, folderName, parentID)
 }
 
-// MoveFile delegates to *drive.Uploader.MoveFile.
 func (a *driveAdminAdapter) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error {
-	return a.uploader.MoveFile(ctx, fileID, fromFolderID, toFolderID)
+	return a.admin.MoveFile(ctx, fileID, fromFolderID, toFolderID)
 }
 
-// ListFiles delegates to *drive.Uploader.ListFiles and converts the
-// infrastructure-level []drive.DriveFileInfo into the api-level
-// []systemapi.DriveFileInfoDTO.
 func (a *driveAdminAdapter) ListFiles(ctx context.Context, folderID string) ([]systemapi.DriveFileInfoDTO, error) {
-	files, err := a.uploader.ListFiles(ctx, folderID)
+	files, err := a.reader.ListFiles(ctx, folderID)
 	if err != nil {
 		return nil, err
 	}
@@ -235,37 +230,36 @@ func (a *driveAdminAdapter) ListFiles(ctx context.Context, folderID string) ([]s
 	return out, nil
 }
 
-// RenameFile delegates to *drive.Uploader.RenameFile.
 func (a *driveAdminAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
-	return a.uploader.RenameFile(ctx, fileID, newName)
+	return a.admin.RenameFile(ctx, fileID, newName)
 }
 
-// ResolveFileInfo performs the per-ID Files.Get round-trip that DriveHandler.
-// ResolveByIDs fans out in parallel.
+// ResolveFileInfo performs a metadata lookup via Reader.GetFileMeta
+// (FASE 9: eliminates raw SDK *gdrive.Service access). The Reader
+// returns *drive.FileMeta which carries all needed fields.
 func (a *driveAdminAdapter) ResolveFileInfo(ctx context.Context, fileID string) (systemapi.ResolveByIDsItem, error) {
-	file, err := a.uploader.Service.Files.Get(fileID).
-		Fields("id, name, mimeType, parents, trashed, webViewLink, size").
-		Context(ctx).
-		Do()
+	if a.reader == nil {
+		return systemapi.ResolveByIDsItem{}, fmt.Errorf("driveAdminAdapter: reader not wired")
+	}
+	meta, err := a.reader.GetFileMeta(ctx, fileID)
 	if err != nil {
 		if a.log != nil {
-			a.log.Warn("system_adapters driveAdminAdapter.ResolveFileInfo: Files.Get failed",
-				zap.String("file_id", fileID),
-				zap.Error(err))
+			a.log.Warn("system_adapters driveAdminAdapter.ResolveFileInfo: GetFileMeta failed",
+				zap.String("file_id", fileID), zap.Error(err))
 		}
 		return systemapi.ResolveByIDsItem{}, err
 	}
-	if file == nil {
+	if meta == nil {
 		return systemapi.ResolveByIDsItem{}, nil
 	}
 	return systemapi.ResolveByIDsItem{
-		ID:          file.Id,
-		Name:        file.Name,
-		MimeType:    file.MimeType,
-		Parents:     file.Parents,
-		WebViewLink: file.WebViewLink,
-		Size:        file.Size,
-		Trashed:     file.Trashed,
+		ID:          meta.ID,
+		Name:        meta.Name,
+		MimeType:    meta.MimeType,
+		Parents:     meta.Parents,
+		WebViewLink: meta.WebViewLink,
+		Size:        meta.Size,
+		Trashed:     meta.Trashed,
 	}, nil
 }
 

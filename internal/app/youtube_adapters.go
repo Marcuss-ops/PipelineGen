@@ -158,29 +158,29 @@ func (a *ollamaClientAdapter) SimpleGenerate(ctx context.Context, model, prompt 
 // DTO at the seam.
 
 type driveFolderMgrAdapter struct {
-	uploader *drive.Uploader
-	log      *zap.Logger
+	drive drive.Admin
+	log   *zap.Logger
 }
 
-func newDriveFolderMgrAdapter(uploader *drive.Uploader, log *zap.Logger) youtubeports.DriveFolderManagerPort {
-	if uploader == nil {
+func newDriveFolderMgrAdapter(admin drive.Admin, log *zap.Logger) youtubeports.DriveFolderManagerPort {
+	if admin == nil {
 		return nil
 	}
-	return &driveFolderMgrAdapter{uploader: uploader, log: log}
+	return &driveFolderMgrAdapter{drive: admin, log: log}
 }
 
 func (a *driveFolderMgrAdapter) GetOrCreateFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
-	if a.uploader == nil {
-		return parentFolderID, fmt.Errorf("driveFolderMgr: uploader not wired")
+	if a.drive == nil {
+		return parentFolderID, fmt.Errorf("driveFolderMgr: drive not wired")
 	}
-	return a.uploader.GetOrCreateFolder(ctx, channelName, parentFolderID)
+	return a.drive.GetOrCreateFolder(ctx, channelName, parentFolderID)
 }
 
 func (a *driveFolderMgrAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {
-	if a.uploader == nil {
-		return nil, false, fmt.Errorf("driveFolderMgr: uploader not wired")
+	if a.drive == nil {
+		return nil, false, fmt.Errorf("driveFolderMgr: drive not wired")
 	}
-	res, skipped, err := a.uploader.UploadFileIfChanged(ctx, localPath, folderID, filename)
+	res, skipped, err := a.drive.UploadFileIfChanged(ctx, localPath, folderID, filename)
 	if err != nil {
 		return nil, skipped, err
 	}

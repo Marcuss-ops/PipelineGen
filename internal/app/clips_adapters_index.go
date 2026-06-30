@@ -267,7 +267,7 @@ func newClipsAdapterBundle(
 		ArtlistRepo:    artPort,
 		VoiceoverRepo:  newVoiceoverRepoAdapter(voiceoverRepo),
 		ImagesRepo:     newImageRepoAdapter(imagesRepo),
-		DriveUploader:  newClipsDriveAdapter(driveUp),
+		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp),
 		MetaWriter:     newClipMetaWriterAdapter(metaWriter),
 		ClipIndexer:    newClipsIndexerAdapter(clipIndexer),
 		FolderMemSvc:   newClipsFolderMemoryAdapter(folderMemSvc),

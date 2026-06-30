@@ -54,7 +54,7 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		doctorConfigFrom(cfg),
 		log,
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
-		newDriveAdminAdapter(driveUploaderAdapter, log),
+		newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, log),
 		&noopReconciler{},
 	), WithRegistrationPoint("register.System"))
 }

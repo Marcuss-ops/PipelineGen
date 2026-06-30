@@ -10,59 +10,60 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
-// clipsDriveAdapter wraps *drive.Uploader to satisfy
-// clips.ClipDriveUploaderPort. ListFiles propagates the raw Drive
-// query string and projects the SDK File slice into the narrower
-// ClipDriveFileDTO shape (only ID + Name consumed by the handler).
-// GetFileMeta projects the SDK File into ClipDriveFileMetaDTO
-// (only MimeType consumed).
+// clipsDriveAdapter wraps drive.Admin + drive.Reader to satisfy
+// clips.ClipDriveUploaderPort. FASE 9 Step 4 (June 2026): migrated
+// from *drive.Uploader to Pattern 0 ports. GetFileMeta now uses
+// Reader.GetFileMeta (returns *FileMeta with MimeType). ListFiles
+// now uses Reader.SearchFiles (query-based listing). Both eliminate
+// raw *gdrive.Service SDK access.
 type clipsDriveAdapter struct {
-	up *drive.Uploader
+	admin  drive.Admin
+	reader drive.Reader
 }
 
 // Compile-time assertion: clipsDriveAdapter satisfies clips.ClipDriveUploaderPort.
 var _ clips.ClipDriveUploaderPort = (*clipsDriveAdapter)(nil)
 
-func newClipsDriveAdapter(up *drive.Uploader) clips.ClipDriveUploaderPort {
-	if up == nil {
+func newClipsDriveAdapter(admin drive.Admin, reader drive.Reader) clips.ClipDriveUploaderPort {
+	if admin == nil {
 		return nil
 	}
-	return &clipsDriveAdapter{up: up}
+	return &clipsDriveAdapter{admin: admin, reader: reader}
 }
 
 func (a *clipsDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentFolderID string) (string, error) {
-	if a.up == nil {
-		return "", fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return "", fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	return a.up.GetOrCreateFolder(ctx, name, parentFolderID)
+	return a.admin.GetOrCreateFolder(ctx, name, parentFolderID)
 }
 
 func (a *clipsDriveAdapter) GetFolderName(ctx context.Context, folderID string) (string, error) {
-	if a.up == nil {
-		return "", fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return "", fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	return a.up.GetFolderName(ctx, folderID)
+	return a.admin.GetFolderName(ctx, folderID)
 }
 
 func (a *clipsDriveAdapter) TrashFolder(ctx context.Context, folderID string) error {
-	if a.up == nil {
-		return fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	return a.up.TrashFolder(ctx, folderID)
+	return a.admin.TrashFolder(ctx, folderID)
 }
 
 func (a *clipsDriveAdapter) DeleteFolder(ctx context.Context, folderID string) error {
-	if a.up == nil {
-		return fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	return a.up.DeleteFolder(ctx, folderID)
+	return a.admin.DeleteFolder(ctx, folderID)
 }
 
 func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*clips.ClipUploadResultDTO, error) {
-	if a.up == nil {
-		return nil, fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return nil, fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	res, err := a.up.UploadFile(ctx, localPath, folderID, filename)
+	res, err := a.admin.UploadFile(ctx, localPath, folderID, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -70,10 +71,10 @@ func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID,
 }
 
 func (a *clipsDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*clips.ClipUploadResultDTO, error) {
-	if a.up == nil {
-		return nil, fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return nil, fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	res, err := a.up.UploadFileWithDescription(ctx, localPath, folderID, filename, description)
+	res, err := a.admin.UploadFileWithDescription(ctx, localPath, folderID, filename, description)
 	if err != nil {
 		return nil, err
 	}
@@ -81,58 +82,56 @@ func (a *clipsDriveAdapter) UploadFileWithDescription(ctx context.Context, local
 }
 
 func (a *clipsDriveAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
-	if a.up == nil {
-		return nil, "", fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.reader == nil {
+		return nil, "", fmt.Errorf("clipsDriveAdapter: reader not wired")
 	}
-	return a.up.DownloadFile(ctx, fileID)
+	return a.reader.DownloadFile(ctx, fileID)
 }
 
 func (a *clipsDriveAdapter) GetFileMD5(ctx context.Context, fileID string) (string, error) {
-	if a.up == nil {
-		return "", fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.reader == nil {
+		return "", fmt.Errorf("clipsDriveAdapter: reader not wired")
 	}
-	return a.up.GetFileMD5(ctx, fileID)
+	return a.reader.GetFileMD5(ctx, fileID)
 }
 
 func (a *clipsDriveAdapter) GetFileMeta(ctx context.Context, fileID string) (*clips.ClipDriveFileMetaDTO, error) {
-	if a.up == nil || a.up.Service == nil {
-		return nil, fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.reader == nil {
+		return nil, fmt.Errorf("clipsDriveAdapter: reader not wired")
 	}
-	f, err := a.up.Service.Files.Get(fileID).Context(ctx).Fields("mimeType").Do()
+	meta, err := a.reader.GetFileMeta(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
-	if f == nil {
+	if meta == nil {
 		return &clips.ClipDriveFileMetaDTO{}, nil
 	}
-	return &clips.ClipDriveFileMetaDTO{MimeType: f.MimeType}, nil
+	return &clips.ClipDriveFileMetaDTO{MimeType: meta.MimeType}, nil
 }
 
 func (a *clipsDriveAdapter) TrashFile(ctx context.Context, fileID string) error {
-	if a.up == nil {
-		return fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.admin == nil {
+		return fmt.Errorf("clipsDriveAdapter: drive not wired")
 	}
-	return a.up.TrashFile(ctx, fileID)
+	return a.admin.TrashFile(ctx, fileID)
 }
 
-// ListFiles projects drive.Service.Files.List().Q(query)
-// .Fields("files(id, name)").Context(ctx).Do() into the narrower
-// ClipDriveFileDTO shape. The handler caller is responsible for
-// including `trashed = false` in the query string.
+// ListFiles uses Reader.SearchFiles (query-based listing) and projects
+// the result into ClipDriveFileDTO (only ID + Name consumed by handler).
 func (a *clipsDriveAdapter) ListFiles(ctx context.Context, query string) ([]clips.ClipDriveFileDTO, error) {
-	if a.up == nil || a.up.Service == nil {
-		return nil, fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	if a.reader == nil {
+		return nil, fmt.Errorf("clipsDriveAdapter: reader not wired")
 	}
-	list, err := a.up.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	files, err := a.reader.SearchFiles(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	if list == nil {
+	if files == nil {
 		return []clips.ClipDriveFileDTO{}, nil
 	}
-	out := make([]clips.ClipDriveFileDTO, len(list.Files))
-	for i, f := range list.Files {
-		out[i] = clips.ClipDriveFileDTO{ID: f.Id, Name: f.Name}
+	out := make([]clips.ClipDriveFileDTO, len(files))
+	for i, f := range files {
+		out[i] = clips.ClipDriveFileDTO{ID: f.ID, Name: f.Name}
 	}
 	return out, nil
 }
