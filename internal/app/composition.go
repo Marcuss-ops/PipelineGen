@@ -36,7 +36,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
-	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
+	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
@@ -265,7 +265,7 @@ type AIBundle struct {
 type DomainBundle struct {
 	YoutubeClipService *youtube.Service
 	VoiceoverService   *voiceover.Service
-	VoiceoverSync      *voiceoversync.Service
+	VoiceoverSync      *voiceoverreconcile.Service
 	ImageService       *imgservice.Service
 	IngestService      *ingest.Service
 	BooksService       *books.Service

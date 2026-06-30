@@ -21,7 +21,7 @@ import (
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
+	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -196,9 +196,9 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	)
 	log.Info("Lessons service initialized", zap.Bool("enabled", cfg.Lessons.Enabled))
 
-	var vosyncSvc *voiceoversync.Service
+	var vosyncSvc *voiceoverreconcile.Service
 	if voFolder := cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
-		vosyncSvc = voiceoversync.NewService(drive.driveUploader, voiceoverRepo, search.AssetTreeService, voFolder, log)
+		vosyncSvc = voiceoverreconcile.NewService(drive.driveUploader, voiceoverRepo, search.AssetTreeService, voFolder, log)
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 

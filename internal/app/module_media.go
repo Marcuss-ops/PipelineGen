@@ -22,7 +22,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
+	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
@@ -80,7 +80,7 @@ type AssetsWiring struct {
 // remain in the signature because BuildSearchBackends consumes
 // providerRegistry (cross-capability bridge to providers.Registry),
 // and the future Wave 22 follow-ups may reuse catalogRepo.
-func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoverreconcile.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	// FASE 9 Step 2: extract concrete *drive.Uploader from Admin port.
 	// Type assertion is safe — DriveBundle.Admin is always *drive.Uploader
