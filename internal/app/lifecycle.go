@@ -37,7 +37,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	drive	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
 
@@ -189,43 +189,50 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
 				log,
 			)
-		// Step 9 commit 2 (June 2026): wire the concrete YTDLPSubtitleAdapter
-		// (os/exec + VTT regex) and OllamaAnalyzer (Score + Classify +
-		// FindSegments) as the monitor's Transcript + Analyzer ports.
-		// JobEnqueuer remains an unbound stub pending the P1 follow-up
-		// that wires *jobtools.Service (per architecture/current.yaml
-		// follow-up ticket PR-MONITOR-ENQUEUER-WIRE).
-		ytdlpForSubtitles := downloader.NewYTDLP(cfg)
-		ytdlpSubtitleAdapter := transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
-			Ytdlp: ytdlpForSubtitles,
-			Log:   log,
-		})
-		ollamaAnalyzer := semantic.NewOllamaAnalyzer(semantic.Deps{
-			OllamaClient: root.AI.OllamaClient,
-			Subtitles:    ytdlpSubtitleAdapter,
-			Log:          log,
-			Model:        cfg.External.OllamaModel,
-			DataDir:      cfg.Storage.DataDir,
-			DefaultCategory: "general",
-		})
+			// Step 9 commit 2 (June 2026): wire the concrete YTDLPSubtitleAdapter
+			// (os/exec + VTT regex) and OllamaAnalyzer (Score + Classify +
+			// FindSegments) as the monitor's Transcript + Analyzer ports.
+			//
+			// Step 9 follow-up (commit pending, June 2026): wire the concrete
+			// ExtractionEnqueuer (jobs.Service + channels.Service binding) as
+			// the monitor's Enqueuer port. Port placements match the Blocco 6
+			// "external concern packages stay siblings" rule — YTDLPSubtitle
+			// (yt-dlp subprocess) and OllamaAnalyzer (Ollama HTTP) live as
+			// siblings; ExtractionEnqueuer (internal-to-internal binding) lives
+			// inside monitor to avoid the monitor↔jobs import cycle. See
+			// internal/application/assets/monitor/extraction_enqueuer.go for the
+			// architectural note.
+			ytdlpForSubtitles := downloader.NewYTDLP(cfg)
+			ytdlpSubtitleAdapter := transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
+				Ytdlp: ytdlpForSubtitles,
+				Log:   log,
+			})
+			ollamaAnalyzer := semantic.NewOllamaAnalyzer(semantic.Deps{
+				OllamaClient:    root.AI.OllamaClient,
+				Subtitles:       ytdlpSubtitleAdapter,
+				Log:             log,
+				Model:           cfg.External.OllamaModel,
+				DataDir:         cfg.Storage.DataDir,
+				DefaultCategory: "general",
+			})
 
-		channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
-			Cfg:         cfg,
-			ClipsRepo:   root.Repos.ClipsRepo,
-			ChannelsSvc: channelsSvc,
-			YoutubeSvc:  root.Domains.YoutubeClipService,
-			Log:         log,
-			// Ytdlp wires the concrete *downloader.YTDLPDownloader so
-			// monitor/discovery.go::discoverChannelVideos can call
-			// ListChannel per scheduler tick. Same instance is re-used in
-			// transcripts/YTDLPSubtitleAdapter for the subtitle
-			// subprocess, keeping a single downloader binary+cookies
-			// config across the two adapters.
-			Ytdlp:      ytdlpForSubtitles,
-			Transcript: ytdlpSubtitleAdapter,
-			Analyzer:   ollamaAnalyzer,
-			Enqueuer:   monitor.NewUnboundJobEnqueuer(),
-		})
+			channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
+				Cfg:         cfg,
+				ClipsRepo:   root.Repos.ClipsRepo,
+				ChannelsSvc: channelsSvc,
+				YoutubeSvc:  root.Domains.YoutubeClipService,
+				Log:         log,
+				// Ytdlp wires the concrete *downloader.YTDLPDownloader so
+				// monitor/discovery.go::discoverChannelVideos can call
+				// ListChannel per scheduler tick. Same instance is re-used in
+				// transcripts/YTDLPSubtitleAdapter for the subtitle
+				// subprocess, keeping a single downloader binary+cookies
+				// config across the two adapters.
+				Ytdlp:      ytdlpForSubtitles,
+				Transcript: ytdlpSubtitleAdapter,
+				Analyzer:   ollamaAnalyzer,
+				Enqueuer:   monitor.NewExtractionEnqueuer(root.Jobs.Service, channelsSvc, log),
+			})
 
 			// Channel monitor: optional background service.
 			cm := channelMon
