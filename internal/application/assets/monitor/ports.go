@@ -328,24 +328,6 @@ type Analysis struct {
 
 // ── Unbound placeholder stubs (this commit only) ──────────────────────────
 
-// NewUnboundTranscriptProvider returns a TranscriptProvider that surfaces a
-// loud failure on every call. This is the Step 9 placeholder until the
-// YTDLPSubtitleAdapter concrete lands in internal/application/transcripts/.
-//
-// The error is deliberately typesafe (operators can grep the operator
-// log for "transcript provider not wired" to identify this exact gap).
-func NewUnboundTranscriptProvider() TranscriptProvider {
-	return &unboundTranscriptProvider{
-		err: errors.New("monitor: transcript provider not wired (P1 follow-up installs the YTDLPSubtitleAdapter at internal/application/transcripts/)"),
-	}
-}
-
-type unboundTranscriptProvider struct{ err error }
-
-func (u *unboundTranscriptProvider) GetTranscript(_ context.Context, _ string) (string, error) {
-	return "", u.err
-}
-
 // NewUnboundVideoAnalyzer returns a VideoAnalyzer that surfaces a loud
 // failure on every call. This is the Step 9 placeholder until the
 // OllamaAnalyzer concrete lands in internal/application/semantic/.
@@ -396,6 +378,5 @@ var _ MonitorDownloaderPort = (*downloader.YTDLPDownloader)(nil)
 // Compile-time assertions: every unbound placeholder must satisfy its
 // own port. These intentionally fail to compile if the NextPageOffset
 // port methods change signature without also updating the unbound stub.
-var _ TranscriptProvider = (*unboundTranscriptProvider)(nil)
 var _ VideoAnalyzer = (*unboundVideoAnalyzer)(nil)
 var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
