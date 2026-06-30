@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -76,7 +77,10 @@ func runGenAPIDocs(args []string) error {
 	engine := router.Setup()
 
 	routes := engine.Routes()
-	md := generateMarkdown(routes)
+	md, missing := generateMarkdown(routes)
+	if missing > 0 {
+		fmt.Printf("⚠️  %d route(s) have no description — add them to routeDescriptions in cmd/admin/gen_api_docs.go\n", missing)
+	}
 
 	outputPath := "docs/api/ACTIVE_API_GENERATED.md"
 	if len(args) > 0 {
@@ -91,42 +95,194 @@ func runGenAPIDocs(args []string) error {
 	return nil
 }
 
+// descMissing is the sentinel rendered when a route has no entry in
+// routeDescriptions.
+const descMissing = "\u26a0\ufe0f MISSING DESCRIPTION"
+
+// routeDescriptions maps "METHOD path" (or "METHOD path/with/:param") to
+// a human-readable description.  The key format is exactly
+// METHOD + SPACE + PATH — one space, no alignment padding — because
+// getDescription splits on the first space to separate method from pattern.
+// Pattern segments (e.g. `:id`) are matched via matchRoutePattern.
+//
+// Every public route MUST have an entry here.  Routes without a
+// description render as descMissing in the generated output and the
+// generator prints a count to stderr.
 var routeDescriptions = map[string]string{
-	"/health":                       "Unified health check (?deep=true for component checks)",
-	"/api/internal/slug":            "Generate URL slug from text",
-	"/api/artlist/run":              "Start Artlist pipeline for a term",
-	"/api/artlist/run-smart":        "Start Artlist pipeline (smart mode)",
-	"/api/artlist/search":           "Search Artlist catalog",
-	"/api/artlist/stats":            "Get Artlist statistics",
-	"/api/jobs":                     "List jobs or enqueue new job",
-	"/api/jobs/:id":                 "Get job by ID",
-	"/api/jobs/:id/cancel":          "Cancel a job",
-	"/api/jobs/:id/retry":           "Retry a failed job",
-	"/api/jobs/:id/full":            "Get full job details",
-	"/api/clips/process":            "Download and process clips",
-	"/api/clips/info":               "Get YouTube video metadata",
-	"/api/clips/search":             "Search and rank YouTube videos by topic",
-	"/api/media/voiceover/generate": "Generate voiceover (canonical P0.2 wire shape: request_id + items[] + destination + options)",
-	"/api/scripts":                  "List scripts",
-	"/api/scripts/:id":              "Get script by ID",
-	"/api/scripts/:id/delete":       "Delete script",
-	"/api/images/search":            "Search images",
-	"/api/images/sync":              "Sync images",
-	"/api/media/manifest/export":    "Export media manifest",
-	"/api/media/:source/folders":    "List media folders",
-	"/api/media/:source/clips":      "List clips",
-	"/api/assets/search":            "Search assets",
-	"/api/assets/stats":             "Get asset statistics",
-	"/api/scraper/search":           "Search using scraper",
-	"/api/system/doctor":            "System diagnostics",
+	// ── Health / metrics / readiness ──────────────────────────
+	"GET /health":  "Unified health check (?deep=true for component checks)",
+	"GET /ready":   "Readiness probe",
+	"GET /metrics": "Prometheus metrics endpoint",
+
+	// ── Root ──────────────────────────────────────────────────
+	"GET /": "API root (redirects or 404)",
+
+	// ── Internal ──────────────────────────────────────────────
+	"GET /api/internal/slug": "Generate URL slug from text",
+
+	// ── Artlist ───────────────────────────────────────────────
+	"POST /api/artlist/run":           "Start Artlist pipeline for a term",
+	"POST /api/artlist/search":        "Search Artlist catalog (cached)",
+	"POST /api/artlist/search/live":   "Search Artlist catalog (live, no cache)",
+	"GET /api/artlist/stats":          "Get Artlist statistics",
+	"GET /api/artlist/runs/:run_id":   "Get Artlist pipeline run status",
+	"GET /api/artlist/diagnostics":    "Artlist diagnostics",
+	"POST /api/artlist/sync-catalogs": "Sync Artlist catalogs to media DB",
+	"POST /api/artlist/recommend":     "Get Artlist recommendations for a term",
+
+	// ── Jobs ──────────────────────────────────────────────────
+	"GET /api/jobs":              "List jobs",
+	"POST /api/jobs":             "Enqueue a new job",
+	"GET /api/jobs/stats":        "Get job statistics",
+	"GET /api/jobs/:id":          "Get job by ID",
+	"GET /api/jobs/:id/full":     "Get full job details",
+	"GET /api/jobs/:id/events":   "Get job event stream",
+	"POST /api/jobs/:id/cancel":  "Cancel a job",
+	"POST /api/jobs/:id/retry":   "Retry a failed job",
+
+	// ── Clips ─────────────────────────────────────────────────
+	"POST /api/clips/process":     "Download and process clips",
+	"GET /api/clips/info":         "Get YouTube video metadata",
+	"GET /api/clips/search":       "Search and rank YouTube videos by topic",
+	"POST /api/clips/search":      "Search and rank YouTube videos by topic (POST variant)",
+	"GET /api/clips/stats":        "Get clips statistics",
+	"GET /api/clips/diagnostics":  "Clips diagnostics",
+
+	// ── Images ────────────────────────────────────────────────
+	"GET /api/images/search":        "Search images",
+	"POST /api/images/sync":         "Sync images to Drive",
+	"POST /api/images/upload":       "Upload an image",
+	"POST /api/images/generate":     "Generate AI images",
+	"POST /api/images/animate":      "Animate an image",
+	"GET /api/images/diagnostics":   "Images diagnostics",
+	"POST /api/images/webhook/remote": "Remote image webhook",
+
+	// ── Scripts ───────────────────────────────────────────────
+	"GET /api/scripts":             "List scripts",
+	"GET /api/scripts/:id":         "Get script by ID",
+	"POST /api/scripts/:id/delete": "Delete script",
+
+	// ── Script generation ─────────────────────────────────────
+	"GET /api/script/jobs/:job_id":                         "Get script job status",
+	"GET /api/script/jobs/:job_id/full":                    "Get full script job details",
+	"GET /api/script/generate-batch/progress":              "Get batch generation progress",
+	"POST /api/script/generate-from-clips":                 "Generate script from clips",
+	"POST /api/script/generate-from-catalog":               "Generate script from catalog",
+	"POST /api/script/generate-with-images":                "Generate script with AI scene images",
+	"POST /api/script/generate-batch":                      "Generate scripts in batch",
+	"POST /api/script/curate":                              "Curate generated content",
+	"POST /api/script/cache/evict":                         "Evict script cache entries",
+	"POST /api/script/:id/sections/:section_id/regenerate": "Regenerate a script section",
+
+	// ── Media — voiceover ────────────────────────────────────
+	"POST /api/media/voiceover/generate":             "Generate voiceover",
+	"POST /api/media/voiceover/generate-with-group":  "Generate voiceover with style group",
+	"POST /api/media/voiceover/batch":                "Batch generate voiceovers",
+	"POST /api/media/voiceover/promo":                "Generate voiceover promo",
+	"POST /api/media/voiceover/sync":                 "Sync voiceover state",
+	"GET /api/media/voiceover/groups":                "List voiceover style groups",
+
+	// ── Media — sound effect ─────────────────────────────────
+	"POST /api/media/sound_effect/generate": "Generate sound effect",
+
+	// ── Media — general ──────────────────────────────────────
+	"GET /api/media/search":                  "Search media assets",
+	"GET /api/media/semantic-search":         "Semantic search across media assets",
+	"GET /api/media/diagnostics":             "Media diagnostics",
+	"GET /api/media/index-health":            "Media index health check",
+	"POST /api/media/search/advanced":        "Advanced media search",
+	"POST /api/media/sync-drive-folder":      "Sync a Drive folder into media index",
+	"POST /api/media/recommend":              "Get media recommendations",
+	"POST /api/media/enrich":                 "Enrich a media asset with AI metadata",
+	"POST /api/media/enrich/batch":           "Batch enrich media assets",
+	"POST /api/media/local-to-drive":         "Upload local media to Drive",
+	"POST /api/media/qdrant/cleanup":         "Clean up stale Qdrant points",
+	"POST /api/media/upload-video":           "Upload video clip",
+	"POST /api/media/register-from-youtube":  "Register asset from YouTube URL",
+	"POST /api/media/register-batch":         "Batch register assets",
+	"POST /api/media/manifest/export":        "Export media manifest",
+
+	// ── Media — Drive operations ─────────────────────────────
+	"POST /api/media/drive/move-files":    "Move files within Drive",
+	"POST /api/media/drive/create-folders": "Create Drive folders",
+
+	// ── Media — source-scoped (YouTube, stock, artlist) ──────
+	"GET /api/media/:source/folders":               "List media folders by source",
+	"GET /api/media/:source/folders/:id":           "Get media folder by ID",
+	"GET /api/media/:source/folders/:id/children":  "List child folders",
+	"GET /api/media/:source/clips":                 "List clips by source",
+	"GET /api/media/:source/clips/:id":             "Get clip by ID",
+	"GET /api/media/:source/tree":                  "Get folder tree by source",
+	"GET /api/media/:source/breadcrumb":            "Get breadcrumb path to folder",
+	"POST /api/media/:source/clips":                "Create clip under source",
+	"POST /api/media/:source/clips/:id/delete":     "Delete clip",
+	"POST /api/media/:source/clips/:id/download":   "Download clip",
+	"POST /api/media/:source/clips/:id/duplicates": "Find duplicate clips",
+	"POST /api/media/:source/clips/:id/reupload":   "Re-upload clip to Drive",
+	"POST /api/media/:source/clips/:id/reprocess":  "Re-process clip",
+	"POST /api/media/:source/clips/:id/reindex":    "Re-index clip in Qdrant",
+	"POST /api/media/:source/clips/:id/status":     "Get clip processing status",
+	"POST /api/media/:source/clips/:id/verify":     "Verify clip integrity",
+	"POST /api/media/:source/clips/:id/trash":      "Trash clip",
+	"PATCH /api/media/:source/clips/:id":           "Update clip metadata",
+	"POST /api/media/:source/cleanup":              "Clean up source artifacts",
+	"POST /api/media/:source/folders/:id/manifest": "Get folder manifest",
+	"POST /api/media/:source/folders/:id/trash":    "Trash folder",
+	"POST /api/media/:source/folders/:id/delete":   "Delete folder",
+	"POST /api/media/:source/bulk/tags/add":        "Bulk-add tags",
+	"POST /api/media/:source/bulk/tags/remove":     "Bulk-remove tags",
+	"POST /api/media/:source/reconcile":            "Reconcile source metadata",
+
+	// ── Assets ───────────────────────────────────────────────
+	"GET /api/assets/search": "Search assets",
+	"GET /api/assets/stats":  "Get asset statistics",
+
+	// ── Scraper ──────────────────────────────────────────────
+	"POST /api/scraper/search": "Search using scraper",
+
+	// ── System ───────────────────────────────────────────────
+	"GET /api/system/doctor": "System diagnostics",
+
+	// ── Search queries ───────────────────────────────────────
+	"GET /api/search-queries":            "List search queries",
+	"POST /api/search-queries":           "Create a search query",
+	"GET /api/search-queries/active":     "List active search queries",
+	"GET /api/search-queries/:id":        "Get search query by ID",
+	"DELETE /api/search-queries/:id":     "Delete search query",
+	"GET /api/search-queries/:id/results": "Get search query results",
+
+	// ── Channels ─────────────────────────────────────────────
+	"GET /api/channels":             "List channels",
+	"POST /api/channels":            "Create channel",
+	"GET /api/channels/categories":  "List channel categories",
+	"GET /api/channels/:id":         "Get channel by ID",
+	"DELETE /api/channels/:id":      "Delete channel",
+	"POST /api/channels/bulk-upsert": "Bulk upsert channels",
+
+	// ── Drive ────────────────────────────────────────────────
+	"POST /api/drive/reconcile":     "Reconcile Drive metadata",
+	"POST /api/drive/resolve-by-id": "Resolve Drive folder by ID",
+	"POST /api/drive/cleanup":       "Clean up empty Drive folders",
+	"POST /api/drive/folders":       "List Drive folders",
+	"POST /api/drive/move":          "Move Drive files",
+
+	// ── Fullimages ───────────────────────────────────────────
+	"POST /api/fullimages/video/generate": "Generate full video images",
+
+	// ── Static file serving ──────────────────────────────────
+	"GET /assets/*filepath":                   "Serve static assets from data dir",
+	"HEAD /assets/*filepath":                  "HEAD check for static assets",
+	"GET /media/google-accounting/*filepath":  "Serve Google Accounting media files",
+	"HEAD /media/google-accounting/*filepath": "HEAD check for Google Accounting media",
 }
 
-func generateMarkdown(routes []gin.RouteInfo) string {
+func generateMarkdown(routes []gin.RouteInfo) (string, int) {
 	var sb strings.Builder
+	missing := 0
 
 	sb.WriteString("# PipelineGen API Documentation (Auto-Generated)\n\n")
-	sb.WriteString("**Status:** GENERATED - Auto-generated from live router.\n")
-	sb.WriteString("**Base URL:** `http://127.0.0.1:8080`\n\n")
+	sb.WriteString("**Status:** GENERATED — auto-generated from live router.\n")
+	sb.WriteString("**Base URL:** `{BASE_URL}` (overridable via `VELOX_PORT` env var)\n\n")
 
 	groups := make(map[string][]gin.RouteInfo)
 	for _, r := range routes {
@@ -134,18 +290,37 @@ func generateMarkdown(routes []gin.RouteInfo) string {
 		groups[group] = append(groups[group], r)
 	}
 
-	for group, rt := range groups {
+	// Sort group names for deterministic output.
+	groupNames := make([]string, 0, len(groups))
+	for g := range groups {
+		groupNames = append(groupNames, g)
+	}
+	sort.Strings(groupNames)
+
+	for _, group := range groupNames {
+		rt := groups[group]
+		// Sort routes within group by (Method, Path) for deterministic output.
+		sort.Slice(rt, func(i, j int) bool {
+			if rt[i].Method != rt[j].Method {
+				return rt[i].Method < rt[j].Method
+			}
+			return rt[i].Path < rt[j].Path
+		})
+
 		sb.WriteString(fmt.Sprintf("## %s\n\n", group))
 		sb.WriteString("| Method | Path | Description |\n")
 		sb.WriteString("|--------|------|-------------|\n")
 		for _, r := range rt {
 			desc := getDescription(r.Path, r.Method)
+			if desc == descMissing {
+				missing++
+			}
 			sb.WriteString(fmt.Sprintf("| %s | `%s` | %s |\n", r.Method, r.Path, desc))
 		}
 		sb.WriteString("\n")
 	}
 
-	return sb.String()
+	return sb.String(), missing
 }
 
 func extractGroup(path string) string {
@@ -156,16 +331,36 @@ func extractGroup(path string) string {
 	return "/"
 }
 
+// getDescription looks up a human-readable description for a route.
+// It checks the METHOD+PATH exact match first, then falls back to
+// pattern matching (where the map key contains `:param` segments).
+// Routes without any match return the sentinel string
+// "⚠️ MISSING DESCRIPTION".
 func getDescription(path, method string) string {
-	if desc, ok := routeDescriptions[path]; ok {
+	key := method + " " + path
+
+	// 1. Exact match on METHOD PATH
+	if desc, ok := routeDescriptions[key]; ok {
 		return desc
 	}
-	for routePattern, desc := range routeDescriptions {
-		if matchRoutePattern(routePattern, path) {
+
+	// 2. Pattern match with method
+	for routeKey, desc := range routeDescriptions {
+		// routeKey is "METHOD path/pattern"
+		parts := strings.SplitN(routeKey, " ", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		keyMethod, keyPattern := parts[0], parts[1]
+		if keyMethod != method {
+			continue
+		}
+		if matchRoutePattern(keyPattern, path) {
 			return desc
 		}
 	}
-	return "endpoint"
+
+	return descMissing
 }
 
 func matchRoutePattern(pattern, path string) bool {
@@ -175,7 +370,7 @@ func matchRoutePattern(pattern, path string) bool {
 		return false
 	}
 	for i, pp := range patternParts {
-		if strings.HasPrefix(pp, ":") {
+		if strings.HasPrefix(pp, ":") || strings.HasPrefix(pp, "*") {
 			continue
 		}
 		if pp != pathParts[i] {
@@ -214,3 +409,6 @@ func (a *genDocsFeatureFlagsAdapter) ScriptDocsEnabled() bool {
 func (a *genDocsFeatureFlagsAdapter) ScriptClipsEnabled() bool {
 	return a.cfg.Features.ScriptClipsEnabled
 }
+
+// generateMarkdown is also callable from golden-file tests via
+// the gen_api_docs_test.go file in the same package.
