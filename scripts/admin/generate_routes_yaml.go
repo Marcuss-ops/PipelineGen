@@ -358,11 +358,19 @@ func inspectAssignStmt(
 	}
 
 	// Chained-group pattern: outerSel.X is itself a CallExpr whose Fun
-	// is `.Group`. Fire the warning and return EARLY so we do NOT
-	// populate groupPrefixByIdent with the OUTERMOST prefix only
-	// (which would silently half-fold children).
+	// is `.Group` AND the outer Sel is ALSO `.Group` (true multi-level
+	// group chain, e.g. `g2 := g1.Group("/a").Group("/b")`). Fire the
+	// warning and return EARLY. The outer-Sel-also-Group check matters:
+	// single-statement Group+Method chains like `chained := rg.Group("/a")
+	// .POST("/b", h)` ALSO have innerSel = Group, but they should be
+	// FOLDED (not warned + skipped) because the OUTER method is a
+	// registered route, not another group prefix. Without the second
+	// `sel.Sel.Name == "Group"` check, this pattern would mis-fire the
+	// warning AND skip emission -> silent manifest drift. Tightening
+	// to require both inner + outer .Group narrows the trigger to the
+	// genuine multi-level-group case.
 	if innerCall, ok := sel.X.(*ast.CallExpr); ok {
-		if innerSel, ok := innerCall.Fun.(*ast.SelectorExpr); ok && innerSel.Sel.Name == "Group" {
+		if innerSel, ok := innerCall.Fun.(*ast.SelectorExpr); ok && innerSel.Sel.Name == "Group" && sel.Sel.Name == "Group" {
 			*warnings = append(*warnings, fmt.Sprintf(`%s: chained Group assignment on line %d (e.g. g2 := g1.Group("/a").Group("/b")); the walker does NOT fold multi-level prefixes — children emit without the cumulative prefix and will surface as drift in the C2-E gate`,
 				relPath, fset.Position(call.Pos()).Line))
 			return

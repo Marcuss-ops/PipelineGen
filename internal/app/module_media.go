@@ -323,7 +323,51 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: clips.Build returned unexpected descriptor type %T (want *clipsapi.ClipsDescriptor)", clipsDescriptor)
 	}
 
-	storageHandler := assetstorage.NewHandler(jobs.Facade, deps.Core.CatalogSyncService, log)
+	// Blocco C1-Step 12 (June 2026; user-documented Step 11):
+	// Storage capability is now built via the canonical
+	// assetstorage.Build(deps) (api.Descriptor, error) contract,
+	// matching the artlist / youtube / clips / stock / voiceover /
+	// soundeffect / register precedent. The Handler is constructed
+	// inside Build and captured by the returned StorageDescriptor's
+	// Module closure. The composition site type-asserts ONCE to
+	// *assetstorage.StorageDescriptor (fail-closed) and reuses the
+	// concrete for both consumers:
+	//
+	//  (a) the assetsapi.NewModule(..., Storage: storageDesc, ...)
+	//      call (the concrete *StorageDescriptor satisfies
+	//      api.Descriptor structurally — its RegisterRoutes
+	//      forwarder delegates to the embedded api.Module
+	//      which mounts POST /api/media/sync on the parent
+	//      /api/media group); AND
+	//
+	//  (b) the AssetsWiring.InternalMediaHandler forwarder
+	//      (storageDesc.Handler) — the QDRANT-001 closure kept a
+	//      narrow api.MediaInternalRouter port at
+	//      internal/api/routes.go::Setup(). The Router binds
+	//      this via Router.SetInternalMediaHandler, which calls
+	//      storageDesc.Handler.RegisterInternalMediaRoutes(...) for
+	//      the /internal/v1/media/sync server-to-server surface.
+	//
+	// The storage capability is unique in the assets tree today:
+	// exposure of a raw Handler alongside the Module is needed
+	// because RegisterInternalMediaRoutes is a Handler-level method
+	// (not a Module-level one). Mirrors the clips precedent
+	// exactly. See internal/api/assets/storage/module.go godoc for
+	// the canonical rationale + pattern parity list.
+	storageDescriptor, err := assetstorage.Build(assetstorage.Dependencies{
+		Jobs:        jobs.Facade,
+		CatalogSync: deps.Core.CatalogSyncService,
+		EnabledFunc: func() bool { return true }, // storage is always on in production
+		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-12 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: storage.Build: %w", err)
+	}
+	storageDesc, ok := storageDescriptor.(*assetstorage.StorageDescriptor)
+	if !ok || storageDesc == nil {
+		return nil, fmt.Errorf("WireAssets: storage.Build returned unexpected descriptor type %T (want *assetstorage.StorageDescriptor)", storageDescriptor)
+	}
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
 	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
@@ -363,7 +407,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	diagnosticsDescriptor, err := assetsdiag.Build(assetsdiag.Dependencies{
 		Service:     diagSvc,
 		EnabledFunc: func() bool { return true }, // diagnostics is always on in production
-		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-10 wiring)
+		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-10 wiring)
 		Logger:      log,
 	})
 	if err != nil {
@@ -404,7 +448,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	searchDescriptor, err := assetsearch.Build(assetsearch.Dependencies{
 		Aggregator:  searchAggregator,
 		EnabledFunc: func() bool { return true }, // search is always on in production
-		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-11 wiring)
+		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-11 wiring)
 		Logger:      log,
 	})
 	if err != nil {
@@ -450,7 +494,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	voiceoverDescriptor, err := assetvoice.Build(assetvoice.Dependencies{
 		Jobs:        jobs.Facade,
 		EnabledFunc: func() bool { return true }, // voiceover is always on in production (no feature flag)
-		ModuleOpts:  nil,                          // no per-feature middleware for the voiceover capability (matches pre-Step-7 wiring)
+		ModuleOpts:  nil,                         // no per-feature middleware for the voiceover capability (matches pre-Step-7 wiring)
 		Logger:      log,
 	})
 	if err != nil {
@@ -506,15 +550,15 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
 	soundeffectDescriptor, err := assetsfx.Build(assetsfx.Dependencies{
 		ClipsRepo:              sfxClips,
-		DriveUploader:          sfxDriveUp,    // nil-tolerant at request time (legacy fallback path)
-		MetaWriter:             sfxMeta,       // nil-tolerant at request time (default tag/searchText)
-		Resolver:               sfxResolver,   // mandatory — Generate calls unconditionally
-		Dispatcher:             sfxDispatcher, // mandatory — Build is fail-closed on nil
+		DriveUploader:          sfxDriveUp,              // nil-tolerant at request time (legacy fallback path)
+		MetaWriter:             sfxMeta,                 // nil-tolerant at request time (default tag/searchText)
+		Resolver:               sfxResolver,             // mandatory — Generate calls unconditionally
+		Dispatcher:             sfxDispatcher,           // mandatory — Build is fail-closed on nil
 		Publisher:              deps.Delivery.Publisher, // FASE 7: structural match (delivery.Publisher → sfxports.PublisherPort)
 		SoundEffectsRootFolder: cfg.Drive.SoundEffectsRootFolder,
 		ProcessRunner:          processRunnerAdapter,
 		EnabledFunc:            func() bool { return true }, // soundeffect is always on in production
-		ModuleOpts:             nil,                          // no per-feature middleware (matches pre-Step-8 wiring)
+		ModuleOpts:             nil,                         // no per-feature middleware (matches pre-Step-8 wiring)
 		Logger:                 log,
 	})
 	if err != nil {
@@ -564,7 +608,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		Service:     registerSvc,
 		Idempotency: idemHandler,
 		EnabledFunc: func() bool { return true }, // register is always on in production
-		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-9 wiring)
+		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-9 wiring)
 		Logger:      log,
 	})
 	if err != nil {
@@ -576,7 +620,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	}
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
-		Storage:     storageHandler,
+		Storage:     storageDesc,
 		Diagnostics: dd,
 		Search:      sd,
 		Clips:       clipsDesc,
@@ -601,7 +645,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	return &AssetsWiring{
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
-		InternalMediaHandler: storageHandler,
+		InternalMediaHandler: storageDesc.Handler,
 		SearchAggregator:     searchAggregator,
 		SearchFanOut:         searchFanOut,
 	}, nil
