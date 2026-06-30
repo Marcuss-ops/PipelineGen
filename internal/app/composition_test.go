@@ -5,7 +5,7 @@
 //   - wire_test.go: end-to-end smoke via WireServices (no per-bundle field
 //     assertions, no goroutine assertions, no ordering assertions).
 //   - TestBuildJobsBundle_FieldsAreNonNil: focused BuildJobsBundle field
-//     + nil-input checks (cross-validates the canary assertions below).
+//   - nil-input checks (cross-validates the canary assertions below).
 //
 // What this file adds:
 //  1. TestComposition_NilObligatory_NewComposition — every bundle in the
@@ -555,14 +555,11 @@ func TestComposition_FrozenQdrantHealthProbeAny(t *testing.T) {
 func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
 	chdirToProjectRoot(t)
 
-	files := compositionBundleSourceFiles(t)
-	matches := 0
-	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		matches += strings.Count(string(src), "type VectorPointDeleter interface")
-	}
+	src, err := os.ReadFile("internal/application/jobs/outbox/ports.go")
+	require.NoError(t, err, "read canonical VectorPointDeleter port file")
+	matches := strings.Count(string(src), "type VectorPointDeleter interface")
 	require.Equalf(t, 1, matches,
-		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/app/*.go; found %d. The canonical port lives in internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.",
+		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/application/jobs/outbox/ports.go; found %d. The canonical port lives in the application layer per AGENTS.md Pattern 0.",
 		matches)
 }
 
@@ -802,18 +799,12 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 	}
 
 	// BuildPayloadFromDocument (the canonical writer-side payload
-	// emitter) must exist exactly once in the qdrant package.
-	files := compositionBundleSourceFiles(t)
-	emitterCount := 0
-	for _, f := range files {
-		if !strings.Contains(f, "internal/infrastructure/qdrant/") {
-			continue
-		}
-		b, _ := os.ReadFile(f)
-		emitterCount += strings.Count(string(b), "func BuildPayloadFromDocument")
-	}
+	// emitter) must exist exactly once in payload_mapper.go.
+	b, err := os.ReadFile("internal/infrastructure/qdrant/payload_mapper.go")
+	require.NoError(t, err, "read canonical qdrant payload mapper")
+	emitterCount := strings.Count(string(b), "func BuildPayloadFromDocument")
 	require.Equalf(t, 1, emitterCount,
-		"PR 6 #1: exactly 1 `func BuildPayloadFromDocument` declaration expected in internal/infrastructure/qdrant/*.go; found %d. The canonical writer-side payload emitter lives in payload_mapper.go.",
+		"PR 6 #1: exactly 1 `func BuildPayloadFromDocument` declaration expected in internal/infrastructure/qdrant/payload_mapper.go; found %d. The canonical writer-side payload emitter lives in payload_mapper.go.",
 		emitterCount)
 
 	// The forbidden-fields SSOT slice must contain EXACTLY the SSOT

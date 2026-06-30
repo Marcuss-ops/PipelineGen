@@ -21,7 +21,7 @@
 //     invokes registerScriptPostProcessors immediately after ppReg
 //     construction).
 //   - internal/application/scripts/adapters: NewPostProcessorRegistry
-//     + 7 New*Processor constructors + ProcessorRequired /
+//   - 7 New*Processor constructors + ProcessorRequired /
 //     ProcessorBestEffort policy classification.
 //   - internal/application/scripts/usecase: NewDocumentsService
 //     (per processor's service-side collaborator).
@@ -76,18 +76,19 @@ func registerScriptPostProcessors(
 		return fmt.Errorf("registerScriptPostProcessors: ppReg is nil (composition bug)")
 	}
 
-	// Document processor — best-effort: DocClient missing means the
-	// runtime preflight warns and the processor is a no-op for any
-	// plan that requests documents. Done FIRST so the
-	// PostProcessorRegistry.Register alias-resolution sees
-	// "document" before any sibling postprocessor (matching the
-	// pre-PR3 alias-resolution order).
+	// Document processor is always registered so the canonical
+	// required-processor set stays stable across minimal and
+	// production bootstraps. When Drive is unavailable the processor
+	// remains in the registry and will fail explicitly at runtime if
+	// a plan requests document output.
 	var genDocsSvc *usecase.DocumentsService
 	if root.Drive.DocClient != nil {
 		genDocsSvc = usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
-		if !ppReg.Register(adapters.NewDocumentProcessor(genDocsSvc, nil)) {
-			return fmt.Errorf("register document processor: composition bug or duplicate name")
-		}
+	} else if log != nil {
+		log.Warn("document processor registered without Drive client; runtime document generation will fail if requested")
+	}
+	if !ppReg.Register(adapters.NewDocumentProcessor(genDocsSvc, nil)) {
+		return fmt.Errorf("register document processor: composition bug or duplicate name")
 	}
 
 	// Persistence processor (PR 5: now the single persistence
