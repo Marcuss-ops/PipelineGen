@@ -66,10 +66,10 @@ func newAssetRegisterService(
 	ytSvc := youtube.NewService(
 		&sourcingFetchAdapter{registry: providerRegistry},
 		&sourcingClipStoreAdapter{repo: clipsRepo},
-		&sourcingDriveAdapter{uploader: driveUploader},
+		&sourcingDriveAdapter{drive: driveUploader},
 		&sourcingPublisherAdapter{publisher: publisher},
 		&sourcingTranscriberAdapter{cfg: cfg, log: log},
-		&sourcingMetadataAdapter{cfg: cfg, uploader: driveUploader, log: log},
+		&sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, log: log},
 		ytIndex,
 		ytEnrich,
 		&zapSourcingLogger{log: log},
@@ -297,14 +297,14 @@ func (a *sourcingFetchAdapter) Fetch(ctx context.Context, req sourcing.FetchRequ
 }
 
 type sourcingDriveAdapter struct {
-	uploader *driveutil.Uploader
+	drive driveutil.Admin
 }
 
 func (a *sourcingDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*sourcing.DriveUploadResult, error) {
-	if a.uploader == nil {
-		return nil, fmt.Errorf("drive uploader not configured")
+	if a.drive == nil {
+		return nil, fmt.Errorf("drive not configured")
 	}
-	res, err := a.uploader.UploadFileWithDescription(ctx, localPath, folderID, filename, description)
+	res, err := a.drive.UploadFileWithDescription(ctx, localPath, folderID, filename, description)
 	if err != nil || res == nil {
 		return nil, err
 	}
@@ -316,17 +316,17 @@ func (a *sourcingDriveAdapter) UploadFileWithDescription(ctx context.Context, lo
 }
 
 func (a *sourcingDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	if a.uploader == nil {
-		return parentID, fmt.Errorf("drive uploader not configured")
+	if a.drive == nil {
+		return parentID, fmt.Errorf("drive not configured")
 	}
-	return a.uploader.GetOrCreateFolder(ctx, name, parentID)
+	return a.drive.GetOrCreateFolder(ctx, name, parentID)
 }
 
 func (a *sourcingDriveAdapter) GetFolderName(ctx context.Context, folderID string) (string, error) {
-	if a.uploader == nil {
-		return "", fmt.Errorf("drive uploader not configured")
+	if a.drive == nil {
+		return "", fmt.Errorf("drive not configured")
 	}
-	return a.uploader.GetFolderName(ctx, folderID)
+	return a.drive.GetFolderName(ctx, folderID)
 }
 
 type sourcingClipStoreAdapter struct {
@@ -486,16 +486,17 @@ func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, 
 }
 
 type sourcingMetadataAdapter struct {
-	cfg      *config.Config
-	uploader *driveutil.Uploader
-	log      *zap.Logger
+	cfg    *config.Config
+	admin  driveutil.Admin
+	reader driveutil.Reader
+	log    *zap.Logger
 }
 
 func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
-	if a.uploader == nil || a.cfg == nil {
+	if a.admin == nil || a.cfg == nil {
 		return nil
 	}
-	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.uploader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
+	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
 	return nil
 }
 

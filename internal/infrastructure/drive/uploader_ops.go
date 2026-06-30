@@ -218,6 +218,7 @@ type FileMeta struct {
 	Size        int64
 	WebViewLink string
 	Parents     []string
+	Trashed     bool
 }
 
 // GetFileMeta retrieves metadata for a Drive file.
@@ -225,7 +226,7 @@ func (u *Uploader) GetFileMeta(ctx context.Context, fileID string) (*FileMeta, e
 	if u.Service == nil {
 		return nil, fmt.Errorf("drive service not configured")
 	}
-	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size, webViewLink, parents").Context(ctx).Do()
+	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size, webViewLink, parents, trashed").Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +237,7 @@ func (u *Uploader) GetFileMeta(ctx context.Context, fileID string) (*FileMeta, e
 		Size:        f.Size,
 		WebViewLink: f.WebViewLink,
 		Parents:     f.Parents,
+		Trashed:     f.Trashed,
 	}, nil
 }
 
@@ -351,6 +353,33 @@ func (u *Uploader) FileIsNotTrashed(ctx context.Context, fileID string) (bool, e
 }
 
 // FileExists checks if a file exists on Google Drive.
+// SearchFiles lists files matching an arbitrary Drive query string.
+// Unlike ListFiles (which filters by parent folder), SearchFiles
+// passes the raw query directly to Files.List().Q().
+func (u *Uploader) SearchFiles(ctx context.Context, query string) ([]DriveFileInfo, error) {
+	if u.Service == nil {
+		return nil, fmt.Errorf("drive service not configured")
+	}
+	list, err := u.Service.Files.List().Q(query).
+		Fields("files(id, name, mimeType, webViewLink, webContentLink, parents)").
+		Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]DriveFileInfo, 0, len(list.Files))
+	for _, f := range list.Files {
+		result = append(result, DriveFileInfo{
+			ID:             f.Id,
+			Name:           f.Name,
+			MimeType:       f.MimeType,
+			WebViewLink:    f.WebViewLink,
+			WebContentLink: f.WebContentLink,
+			Parents:        f.Parents,
+		})
+	}
+	return result, nil
+}
+
 func (u *Uploader) FileExists(ctx context.Context, fileID string) (bool, error) {
 	if u.Service == nil {
 		return false, fmt.Errorf("drive service not configured")

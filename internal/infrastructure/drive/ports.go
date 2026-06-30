@@ -59,6 +59,10 @@ type Reader interface {
 	FindFileByName(ctx context.Context, folderID, filename string) (*RemoteFile, error)
 	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
 	FileExists(ctx context.Context, fileID string) (bool, error)
+	// SearchFiles lists files matching an arbitrary Drive query string.
+	// Unlike ListFiles (which filters by parent folder), SearchFiles
+	// passes the raw query directly to Files.List().Q().
+	SearchFiles(ctx context.Context, query string) ([]DriveFileInfo, error)
 }
 
 // Compile-time assertions: *Uploader satisfies both Admin and Reader.

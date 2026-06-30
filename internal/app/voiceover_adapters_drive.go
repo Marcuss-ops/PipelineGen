@@ -21,44 +21,36 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
-// voiceoverDriveAdapter wraps *drive.Uploader so it satisfies
-// voiceover.DriveUploaderPort. Today's port exposes a single method
-// (DeleteFile) used by processLanguage's post-commit cleanup
-// goroutine to evict the OLD voiceover's Drive file in replace-mode.
-// Future ports follow the same narrow-target practice.
+// voiceoverDriveAdapter wraps drive.Admin so it satisfies
+// voiceover.DriveUploaderPort. FASE 9 Step 4 (June 2026): migrated
+// from *drive.Uploader to drive.Admin (Pattern 0 port).
+// Today's port exposes a single method (DeleteFile) used by
+// processLanguage's post-commit cleanup goroutine to evict the
+// OLD voiceover's Drive file in replace-mode.
 type voiceoverDriveAdapter struct {
-	up *drive.Uploader
+	drive drive.Admin
 }
 
 // Compile-time assertion: voiceoverDriveAdapter satisfies
-// voiceover.DriveUploaderPort. Drift in either signature causes a
-// build break at the gate, not a runtime panic on the first cleanup.
+// voiceover.DriveUploaderPort.
 var _ voiceover.DriveUploaderPort = (*voiceoverDriveAdapter)(nil)
 
-// newVoiceoverDriveAdapter wraps the production concrete. Returns
-// nil when the underlying *drive.Uploader is unwired so callers can
-// keep their pre-existing nil-guards (processLanguage's
-// `if uploader != nil` shorthand); the adapter itself does NOT
-// silently swallow nil at the port interface — if a caller
-// mistakenly invokes DeleteFile on a wrapped-nil instance, they get
-// an unwired-error rather than a no-op.
-func newVoiceoverDriveAdapter(up *drive.Uploader) voiceover.DriveUploaderPort {
-	if up == nil {
+// newVoiceoverDriveAdapter wraps the production port. Returns nil
+// when the underlying drive.Admin is unwired so callers can keep
+// their pre-existing nil-guards.
+func newVoiceoverDriveAdapter(admin drive.Admin) voiceover.DriveUploaderPort {
+	if admin == nil {
 		return nil
 	}
-	return &voiceoverDriveAdapter{up: up}
+	return &voiceoverDriveAdapter{drive: admin}
 }
 
-// DeleteFile forwards to the concrete *drive.Uploader. voiceover
-// post-commit cleanup only invokes this method through a
-// context.WithoutCancel goroutine (PR-VO-A2 lesson), so the second
-// ctx parameter is the cleanup context, not the request context.
 func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
 	if fileID == "" {
 		return fmt.Errorf("voiceoverDriveAdapter.DeleteFile: fileID is required")
 	}
-	if a == nil || a.up == nil {
-		return fmt.Errorf("voiceoverDriveAdapter: uploader not wired")
+	if a == nil || a.drive == nil {
+		return fmt.Errorf("voiceoverDriveAdapter: drive not wired")
 	}
-	return a.up.DeleteFile(ctx, fileID)
+	return a.drive.DeleteFile(ctx, fileID)
 }

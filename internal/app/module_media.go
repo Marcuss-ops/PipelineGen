@@ -201,7 +201,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// (replaces the pre-HC-1 hard-coded context.WithTimeout(ctx, 2*time.Hour)
 	// in bulk_upload_worker.go::HandleJob).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
-		newClipsDriveAdapter(driveUploader),
+		newClipsDriveAdapter(driveUploader, driveUploader),
 		deps.Delivery.Publisher,
 		newClipsRepoAdapter(deps.Core.ClipsRepo),
 		newClipsIndexerAdapter(deps.Search.ClipIndexerService),
@@ -223,7 +223,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	var uploadUC *appupload.UseCase
 	uploadUC, err = appupload.NewUseCase(appupload.UseCaseDeps{
 		Artifact:      NewArtifactServiceAdapter(deps.Core.ArtifactService),
-		DriveUploader: newClipsDriveAdapter(driveUploader),
+		DriveUploader: newClipsDriveAdapter(driveUploader, driveUploader),
 		Publisher:     deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
@@ -545,7 +545,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
 	var sfxDriveUp sfxports.DriveUploaderPort
 	if driveUploader != nil {
-		sfxDriveUp = &sfxDriveUploaderAdapter{up: driveUploader}
+		sfxDriveUp = &sfxDriveUploaderAdapter{drive: driveUploader}
 	}
 	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
 	soundeffectDescriptor, err := assetsfx.Build(assetsfx.Dependencies{
