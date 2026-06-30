@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -35,6 +36,18 @@ func NewJobHandler(svc YouTubeExtractor, log *zap.Logger) *JobHandler {
 }
 
 // HandleJob processes a youtube_clip.extract job.
+//
+// Commit C (PR-C-YouTube-Cutover, June 2026): the previous implementation
+// returned `result, nil` whenever the extractor returned without a Go error,
+// even when `resp.OK==false && resp.Error!=""`. This produced the silent
+// broker-success-on-all-failed bug (P2 #19, P0 #4 in the cutover
+// roadmap). The new path runs every response through
+// ClassifyExtractionResult and returns:
+//   - nil          → full success (resp.Stats.Failed == 0 && Processed > 0);
+//   - nil          → partial_success (typed PartialSuccessError caught via
+//     errors.As, then logged + returned as result, nil);
+//   - err          → terminal / retryable classification surfaced to the
+//     broker so its retry/timeout policy can react.
 func (h *JobHandler) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	h.log.Info("handling youtube_clip.extract job",
 		zap.String("job_id", job.ID),
@@ -65,36 +78,42 @@ func (h *JobHandler) HandleJob(ctx context.Context, job *jobservice.Job, tools *
 
 	resp, err := h.svc.Extract(ctx, &req)
 	if err != nil {
-		h.log.Warn("YouTube extract job failed",
+		h.log.Warn("YouTube extract job failed at higher layer",
 			zap.String("job_id", job.ID),
 			zap.String("url", req.URL),
 			zap.Error(err))
 		return nil, fmt.Errorf("extraction failed: %w", err)
 	}
 
-	if tools.Progress != nil {
-		pct := 100
-		msg := "YouTube clip extraction completed"
-		if !resp.OK && resp.Error != "" {
-			msg = "YouTube clip extraction finished with errors"
+	// Commit C — classify every response. Removes the silent-success hole.
+	classifyErr := ClassifyExtractionResult(resp)
+	if classifyErr != nil {
+		var partial *PartialSuccessError
+		if errors.As(classifyErr, &partial) {
+			h.log.Info("YouTube extract job finished with partial_success",
+				zap.String("job_id", job.ID),
+				zap.Int("processed", partial.Processed),
+				zap.Int("failed", partial.Failed),
+				zap.String("url", req.URL))
+			result := h.buildResultMap(resp, "YouTube clip extraction finished with partial_success")
+			result["partial_success"] = true
+			result["processed"] = partial.Processed
+			result["failed"] = partial.Failed
+			return result, nil
 		}
-		tools.Progress(pct, msg)
+		// Retryable / terminal — propagate to broker so its retry policy can react.
+		h.log.Warn("YouTube extract job classified as failed",
+			zap.String("job_id", job.ID),
+			zap.String("classification", classifyErr.Error()),
+			zap.Bool("retryable", errors.Is(classifyErr, ErrExtractionRetryable)))
+		return nil, fmt.Errorf("extraction classified: %w", classifyErr)
 	}
 
-	result := map[string]any{
-		"ok":              resp.OK,
-		"source_url":      resp.SourceURL,
-		"video_id":        resp.VideoID,
-		"folder":          resp.Folder,
-		"stats":           resp.Stats,
-		"items":           resp.Items,
-		"drive_folder_id": resp.DriveFolderID,
-		"message":         "YouTube clip extraction completed",
-	}
-	if !resp.OK && resp.Error != "" {
-		result["error"] = resp.Error
+	if tools.Progress != nil {
+		tools.Progress(100, "YouTube clip extraction completed")
 	}
 
+	result := h.buildResultMap(resp, "YouTube clip extraction completed")
 	h.log.Info("YouTube extract job result",
 		zap.String("job_id", job.ID),
 		zap.Bool("ok", resp.OK),
@@ -104,6 +123,26 @@ func (h *JobHandler) HandleJob(ctx context.Context, job *jobservice.Job, tools *
 		zap.String("drive_folder", resp.DriveFolderPath),
 		zap.String("error", resp.Error),
 	)
-
 	return result, nil
+}
+
+// buildResultMap centralises the response → map[string]any mapping that
+// the broker serialises as the job result. Extracted from HandleJob so
+// the full-success, partial-success, and classifier-return paths can
+// share the same shape without duplicating keys.
+func (h *JobHandler) buildResultMap(resp *youtubetypes.ExtractResponse, message string) map[string]any {
+	result := map[string]any{
+		"ok":              resp.OK,
+		"source_url":      resp.SourceURL,
+		"video_id":        resp.VideoID,
+		"folder":          resp.Folder,
+		"stats":           resp.Stats,
+		"items":           resp.Items,
+		"drive_folder_id": resp.DriveFolderID,
+		"message":         message,
+	}
+	if resp.Error != "" {
+		result["error"] = resp.Error
+	}
+	return result
 }

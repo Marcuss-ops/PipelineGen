@@ -154,3 +154,42 @@ type ExtractItem struct {
 	DriveFolderID   string `json:"drive_folder_id,omitempty"`
 	DriveFolderPath string `json:"drive_folder_path,omitempty"`
 }
+
+// ── Commit C DTOs (PR-C-YouTube-Cutover, June 2026) ───────────────────────
+//
+// ProcessSegmentCommand is the typed input to the ProcessYouTubeSegmentUseCase.
+// It carries only the per-segment fields the use case needs — the existing
+// ExtractRequest is intentionally NOT reused to keep the use case decoupled
+// from any URL-level aggregation the caller might perform.
+//
+// ProcessSegmentResult is the typed output. Item is the same ExtractItem the
+// existing handlers already serialize, so back-compat is preserved without
+// naming churn. The remaining fields (ID/FileHash/DriveFileID/DriveLink/
+// IndexedRequestID) pre-populate the most-promoted clip record fields for
+// callers that want to skip the Items deserialization.
+type ProcessSegmentCommand struct {
+	VideoID        string
+	Segment        Segment
+	Index          int
+	PolicyVersion  string
+	OutDir         string
+	DriveFolderID  string
+	DriveFolderPath string
+	VideoURL       string
+	ForceKeyframes bool
+	Normalize      *bool
+	KeepAudio      *bool
+	Strategy       string
+	Destination    *DestinationRequest
+}
+
+type ProcessSegmentResult struct {
+	ID               string
+	FileHash         string
+	DriveFileID      string
+	DriveLink        string
+	IndexedRequestID string
+	Status           string // "processed" | "skipped" | "failed"
+	Error            error
+	Item             ExtractItem
+}
