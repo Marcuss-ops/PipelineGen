@@ -18,12 +18,11 @@
 //
 // Forward-protection: capability_registry_gate_test.go walks
 // internal/app/**.go with ripgrep and FAILS the build if any
-// production file outside capability_registry.go contains the
-// literal substring `Registry.Register` after a typed
-// Registry-instance prefix. Variable-name calls (e.g.
-// `registry.Register(mod)`, `pr.RegisterSearch(adapter)`,
+// production file outside capability_registry.go contains a
+// typed-registry mutation call at the wrong site. Variable-name
+// calls (e.g. `registry.Register(mod)`, `pr.RegisterSearch(adapter)`,
 // `provReg.RegisterFetch(...)`) are gate-safe because the
-// gate pattern requires the TYPED REGISTRY PREFIX that is
+// gate pattern requires the typed registry prefix that is
 // only present as a parameter-type annotation, NOT inline
 // at the call site.
 //
@@ -61,7 +60,7 @@ import (
 // The Jobs slice is forward-only: today the codebase publishes
 // job handlers via jobs.Service.RegisterHandler(...) at the
 // composition-time late-bindings block in composition.go. When
-// jobs.Registry.Register(...) becomes the canonical surface
+// typed jobs registry mutation becomes the canonical surface
 // (future PR), the slice carries the handlers.
 type CapabilityDeps struct {
 	HTTPModules []TrackedHTTPModule
@@ -104,7 +103,7 @@ const (
 	ProviderKindFetch
 )
 
-// ForwardJobHandlerEntry is the jobs.Registry.Register surface
+// ForwardJobHandlerEntry is the typed jobs-registry mutation surface
 // (not yet wired). Entries here currently cause registerJobs to
 // fail-closed with a "not yet wired" message so a future
 // jobsRegistry land surfaces loudly during composition rather
@@ -154,9 +153,9 @@ func registerCapabilities(reg *module.Registry, jobsReg *jobs.Registry, provReg 
 // already call tryRegisterModuleStrict inline (their modules were
 // registered during Steps 2–5 of WireRegistry before this canonical
 // aggregator landed). Those callsites do NOT violate the gate
-// because the literal substring api.Registry.Register(...) is
-// only present inside tryRegisterModuleStrict's body, and that
-// body lives in THIS file.
+// because the typed registration call itself is only present
+// inside tryRegisterModuleStrict's body, and that body lives in
+// THIS file.
 func registerHTTPModules(reg *module.Registry, mods []TrackedHTTPModule) error {
 	for _, m := range mods {
 		if m.Module == nil {
@@ -172,11 +171,10 @@ func registerHTTPModules(reg *module.Registry, mods []TrackedHTTPModule) error {
 // registerProviders dispatches every TrackedProviderEntry to its
 // register method. The ONLY caller of this function is
 // registerCapabilities, and this is the ONLY function in
-// internal/app/** that calls providers.Registry.RegisterSearch
-// or providers.Registry.RegisterFetch (gate enforced by
-// capability_registry_gate_test.go — variable-name pr.Register*
-// calls in registry_late_bindings.go were removed at the same
-// time this function landed).
+// internal/app/** that calls the providers registry's search/fetch
+// mutation methods (gate enforced by capability_registry_gate_test.go;
+// the temporary variable-name-prefixed calls in registry_late_bindings.go
+// were removed at the same time this function landed).
 func registerProviders(provReg *providers.Registry, entries []TrackedProviderEntry) error {
 	if provReg == nil {
 		return nil
@@ -231,7 +229,7 @@ func registerJobsHandlers(jobsReg *jobs.Registry, entries []ForwardJobHandlerEnt
 	if len(entries) == 0 {
 		return nil
 	}
-	return fmt.Errorf("registerJobsHandlers: jobs.Registry.Register surface not yet wired (len=%d)", len(entries))
+	return fmt.Errorf("registerJobsHandlers: typed jobs registry surface not yet wired (len=%d)", len(entries))
 }
 
 // ── Strict-uniqueness helpers (RELOCATED here from

@@ -54,11 +54,11 @@ func newVoiceoverDriveAdapter(up *drive.Uploader) voiceover.DriveUploaderPort {
 // context.WithoutCancel goroutine (PR-VO-A2 lesson), so the second
 // ctx parameter is the cleanup context, not the request context.
 func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
-	if a == nil || a.up == nil {
-		return fmt.Errorf("voiceoverDriveAdapter: uploader not wired")
-	}
 	if fileID == "" {
 		return fmt.Errorf("voiceoverDriveAdapter.DeleteFile: fileID is required")
+	}
+	if a == nil || a.up == nil {
+		return fmt.Errorf("voiceoverDriveAdapter: uploader not wired")
 	}
 	return a.up.DeleteFile(ctx, fileID)
 }

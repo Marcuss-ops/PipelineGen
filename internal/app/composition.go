@@ -19,17 +19,17 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -84,7 +84,7 @@ type DriveBundle struct {
 	Admin drive.Admin
 	// Reader is the canonical Pattern 0 port for read-only Drive ops
 	// (download, metadata, listing, existence checks).
-	Reader drive.Reader
+	Reader        drive.Reader
 	DocClient     drive.DocClient
 	DriveDests    *DriveDestinations
 	MediaStore    *drive.Store
@@ -217,7 +217,7 @@ type ProcessBundle struct {
 // *qdrant.QdrantRuntime is exposed via qd.Runtime so BuildProcessBundle
 // can wire its ProcessBundle fields (CollectionManager, VectorSvc,
 // QdrantSearcher, LocatorCleaner) from the SAME *Client and *IndexSchema
-// that the outbox used. There is exactly ONE qdrant.NewClient(...) call
+// that the outbox used. There is exactly ONE Qdrant client construction call
 // per process — see composition_test.go::TestComposition_FrozenClientConstructionSites.
 //
 // QdrantDeleter is the canonical typed port per AGENTS.md Pattern 0.
@@ -292,7 +292,7 @@ type DomainBundle struct {
 	// registered at the late-bindings block in NewComposition
 	// (alongside the parent GenerateJobHandler that FanoutVoiceoversUseCase
 	// + jobs.Service wire in).
-	VoiceoverProcessOne        *voiceover.ProcessOneVoiceoverUseCase
+	VoiceoverProcessOne          *voiceover.ProcessOneVoiceoverUseCase
 	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
 	// P0.1 (June 2026): the content-addressed artifact blob service.
 	// Constructed in BuildDomainBundle from dbs.main.DB +
