@@ -59,6 +59,17 @@ type fakeFileUploader struct {
 	// verifies Publisher.Publish propagates MD5Checksum through to
 	// delivery.PublishResult without reconstruction.
 	md5Checksum string
+	// existingFilenames, if non-nil and a PutFile call's filename is
+	// present in the set, simulates a Drive-side existing-match and
+	// routes the PutAction per req.ConflictPolicy (mimicking the
+	// production Uploader.doPutFile routing table). When the filename
+	// is NOT in the set (or existingFilenames is nil), the action
+	// falls through to putAction/PutActionCreated as before.
+	//
+	// Drives the P0 #1 audit pin tests #5 + #6 (ConflictSkip /
+	// ConflictRename on existing-match) without requiring a mock
+	// Google Drive API client.
+	existingFilenames map[string]bool
 }
 
 type uploadCall struct {
@@ -71,22 +82,60 @@ type uploadCall struct {
 	// matches legacy behaviour, so legacy tests that omit the field
 	// still see the same result shape.
 	policy delivery.ConflictPolicy
+	// routedAction (P0 #1, June 2026) is the PutAction that the fake's
+	// routing table decided for this specific call (AFTER the
+	// existingFilenames branch). Per-call capture — not a top-level
+	// mutable on the fake — so multi-call tests can assert per index
+	// (e.g. files.uploadCalls[0].routedAction) without last-write-wins
+	// footguns. Populated on BOTH success AND error paths: the routing
+	// decision is independent of whether the underlying PutFile later
+	// failed (e.g. f.err set) — assertors that need the post-error
+	// suppression pattern must NOT rely on routedAction being zero.
+	routedAction PutAction
 }
 
 func (f *fakeFileUploader) PutFile(_ context.Context, req PutFileRequest) (*PutFileResult, error) {
-	f.uploadCalls = append(f.uploadCalls, uploadCall{
-		localPath:   req.LocalPath,
-		folderID:    req.FolderID,
-		filename:    req.Filename,
-		description: req.Description,
-		policy:      req.ConflictPolicy,
-	})
-	if f.err != nil {
-		return nil, f.err
-	}
+	// Behavioral routing mode (P0 #1 audit pins #5 + #6): when
+	// existingFilenames is non-nil and contains the filename being
+	// PUT, route the outcome through the same env-decision table as
+	// Uploader.doPutFile. The actual Drive SDK call shapes are local
+	// to the production uploader; this fake pins the Publisher-side
+	// contract that a PutAction of Skipped/Renamed/Updated flows
+	// through to delivery.PublishAction correctly.
 	action := f.putAction
 	if action == "" {
 		action = PutActionCreated
+	}
+	if f.existingFilenames != nil && f.existingFilenames[req.Filename] {
+		switch req.ConflictPolicy {
+		case delivery.ConflictSkip:
+			action = PutActionSkipped
+		case delivery.ConflictRename:
+			action = PutActionRenamed
+		case delivery.ConflictOverwrite:
+			action = PutActionUpdated
+		default:
+			// Zero-value ConflictPolicy also maps to (matches
+			// production: zero == ConflictOverwrite).
+			action = PutActionUpdated
+		}
+	}
+	// Record the call WITH the routed action so callers can assert
+	// per-index routedAction. Per-call capture (NOT a top-level field
+	// on the fake) avoids last-write-wins footguns on multi-call tests.
+	// On the error branch routedAction is "" — the routing decision
+	// was suppressed, and tests that exercise the error path don't
+	// pin routedAction (they assert the error message + policy field).
+	f.uploadCalls = append(f.uploadCalls, uploadCall{
+		localPath:    req.LocalPath,
+		folderID:     req.FolderID,
+		filename:     req.Filename,
+		description:  req.Description,
+		policy:       req.ConflictPolicy,
+		routedAction: action,
+	})
+	if f.err != nil {
+		return nil, f.err
 	}
 	return &PutFileResult{
 		FileID:       "fake-file-id",
@@ -597,4 +646,117 @@ func TestPublisher_TranslatePutAction_Table(t *testing.T) {
 // publisher_policies_test.go alongside the other policy tests; it
 // requires delivery.NewDestinationRegistryWithPolicies which is
 // itself build-tag gated.)
+
+// ── P0 #1 tests (June 2026) — audit pins #5 + #6 ──────────────────────
+//
+// Pre-P0-#1 ConflictPolicy was a dead enum — every caller passed the
+// zero value and Uploader.UploadFileWithDescription always overwrote.
+// F1.1 (commit 70f2b6c8) introduced the PutFileRequest/PutFileResult
+// seam so policy + outcomes are explicit. The two tests below pin
+// the end-to-end behavior at the Publisher translation layer:
+// ConflictSkip + an existing-match on Drive must surface as
+// PublishActionSkipped (audit pin #5 — "no upload happened"); and
+// ConflictRename + existing-match must surface as
+// PublishActionRenamed (audit pin #6 — "a new file gets created
+// under the new name"). The fakeFileUploader's behavioral routing
+// mode mimics Uploader.doPutFile's table without needing a mock
+// Google Drive API client.
+
+// TestPublisher_Publish_P0_1_ConflictSkip_ExistingMatch pins audit pin #5:
+// when ConflictSkip propagates through Publisher and the underlying
+// uploader reports an existing match (PutActionSkipped), the resulting
+// PublishResult must surface PublishActionSkipped. The audit pin
+// "no upload happened" is enforced at the Uploader layer by
+// Uploader.doPutFile's ConflictSkip short-circuit (return existing
+// metadata WITHOUT opening the local file); this publisher-layer
+// pin proves the conflict outcome reaches the consumer without
+// being reshaped or demoted to Created.
+func TestPublisher_Publish_P0_1_ConflictSkip_ExistingMatch(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "video-folder-id"}
+	files := &fakeFileUploader{
+		existingFilenames: map[string]bool{"clip_abc.mp4": true},
+	}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip_abc.mp4",
+		Group:          "NBA News",
+		Subject:        "video-xyz",
+		ConflictPolicy: delivery.ConflictSkip,
+	})
+	require.NoError(t, err)
+
+	// (1) Policy was forwarded to the Uploader seam correctly.
+	require.Equal(t, delivery.ConflictSkip, files.uploadCalls[0].policy,
+		"Publisher must forward ConflictSkip to PutFileRequest verbatim")
+
+	// (2) Audit pin #5: the underlying Uploader routed the existing-match
+	// through ConflictSkip → PutActionSkipped (no Drive write), and
+	// Publisher translated that to PublishActionSkipped at the
+	// delivery/drive boundary. End-to-end pin: result.Action is the
+	// "no upload happened" signal that downstream ledger / dedupe /
+	// no-op branches depend on.
+	//
+	// The fake's routed action is captured in lastAction by
+	// fakeFileUploader.PutFile; the publisher's translation is captured
+	// by pub.actionFor (single source of truth across prod and table
+	// tests). Asserting both — and requiring that result.Action equals
+	// the translation of lastAction — proves the chain end-to-end.
+	require.Equal(t, PutActionSkipped, files.uploadCalls[0].routedAction,
+		"behavioral fake must route to PutActionSkipped when filename exists + policy Skip — audit pin #5 closure")
+	require.Equal(t, pub.actionFor(files.uploadCalls[0].routedAction), result.Action,
+		"Publish must translate the routed PutAction to delivery.PublishAction at the boundary — no-reconstruction contract")
+	require.NotEqual(t, delivery.PublishActionCreated, result.Action,
+		"PublishActionCreated must NOT be assumed for an explicit skip; the no-reconstruction contract requires the actual action class")
+}
+
+// TestPublisher_Publish_P0_1_ConflictRename_ExistingMatch pins audit pin #6:
+// when ConflictRename propagates through Publisher and the underlying
+// uploader reports an existing match (PutActionRenamed), the resulting
+// PublishResult must surface PublishActionRenamed. The audit pin
+// "a new file is created under the new name" is enforced at the
+// Uploader layer by Uploader.doPutFile's ConflictRename branch
+// (Files.Create with renameWithTimestamp(original, UnixNano)); this
+// publisher-layer pin proves the renamed-file outcome reaches the
+// consumer.
+func TestPublisher_Publish_P0_1_ConflictRename_ExistingMatch(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "video-folder-id"}
+	files := &fakeFileUploader{
+		existingFilenames: map[string]bool{"clip_abc.mp4": true},
+	}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip_abc.mp4",
+		Group:          "NBA News",
+		Subject:        "video-xyz",
+		ConflictPolicy: delivery.ConflictRename,
+	})
+	require.NoError(t, err)
+
+	// (1) Policy was forwarded correctly.
+	require.Equal(t, delivery.ConflictRename, files.uploadCalls[0].policy,
+		"Publisher must forward ConflictRename to PutFileRequest verbatim")
+
+	// (2) Audit pin #6: the underlying Uploader routed the existing-match
+	// through ConflictRename → PutActionRenamed (a new file is created
+	// under the new timestamped name), and Publisher translated that
+	// to PublishActionRenamed at the delivery/drive boundary. The
+	// "treat-as-sibling-row" branches downstream depend on this
+	// exact Action class.
+	require.Equal(t, PutActionRenamed, files.uploadCalls[0].routedAction,
+		"behavioral fake must route to PutActionRenamed when filename exists + policy Rename — audit pin #6 closure")
+	require.Equal(t, pub.actionFor(files.uploadCalls[0].routedAction), result.Action,
+		"Publish must translate the routed PutAction to delivery.PublishAction at the boundary — no-reconstruction contract")
+	require.NotEqual(t, delivery.PublishActionCreated, result.Action,
+		"PublishActionCreated must NOT be assumed for a renamed conflict; the no-reconstruction contract requires the actual rename action class")
+}
 
