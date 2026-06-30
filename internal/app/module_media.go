@@ -210,8 +210,10 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// at boot time instead of silently producing HTTP 500 at request time.
 	var uploadUC *appupload.UseCase
 	uploadUC, err = appupload.NewUseCase(appupload.UseCaseDeps{
+		// F2.9 (June 2026): DriveUploader dropped — Publisher is the
+		// single canonical Drive-write canal. Composition-time ARG
+		// signature of UseCaseDeps no longer has DriveUploader.
 		Artifact:      NewArtifactServiceAdapter(deps.Core.ArtifactService),
-		DriveUploader: newClipsDriveAdapter(driveUploader, driveUploader),
 		Publisher:     deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
@@ -223,6 +225,28 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: upload.NewUseCase: %w", err)
 	}
+	// F2.9 (June 2026): construct the application-layer ReuploadUseCase
+	// wired to the canonical delivery.Publisher. The legacy composition
+	// wired driveUploader (ClipDriveUploaderPort) which has been
+	// retired; NewReuploadUseCase panics on nil publisher as a
+	// composition-time fail-fast (mirrors processor.NewProcessor,
+	// F2.8 closure). Folder-root mapping is config-driven; the artlist
+	// + stock path markers use the Storage methods discovered via
+	// cfg audit — empty PathMarker for a source disables dynamic
+	// resolution for that source (clip.FolderID() is then required).
+	reuploadFolderRoots := map[string]appclips.ReuploadFolderRoot{
+		"clips":   {RootID: cfg.Drive.ClipsFolder(), PathMarker: cfg.Storage.YoutubeClipsPath()},
+		"youtube": {RootID: cfg.Drive.ClipsFolder(), PathMarker: cfg.Storage.YoutubeClipsPath()},
+		"artlist": {RootID: cfg.Drive.ArtlistFolder(), PathMarker: cfg.Storage.ArtlistPath()},
+		"stock":   {RootID: cfg.Drive.StockFolder(), PathMarker: cfg.Storage.FullPath("stock")},
+	}
+	reuploadUC := appclips.NewReuploadUseCase(
+		assetRepo,
+		deps.Delivery.Publisher,
+		clipsDispatcherPort,
+		reuploadFolderRoots,
+		log,
+	)
 	// PR 2 (June 2026): construct the application-layer ClipOpsService so
 	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
 	// single canonical service instead of duplicating the business logic
@@ -290,6 +314,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		BulkUploadWorker: bulkUploadWorker,
 		ClipOpsService:   clipOpsSvc,
 		UploadUC:         uploadUC,
+		ReuploadUC:       reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
 		Idempotency:      idemHandler,
 		EnabledFunc:      func() bool { return true },
 	})

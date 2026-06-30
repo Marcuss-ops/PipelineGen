@@ -27,24 +27,34 @@ import (
 // declared in ports.go. Zero infrastructure imports — every dependency
 // is a typed port. The concrete wiring lives in
 // internal/app/clips_adapters_*.go.
+//
+// F2.9 (June 2026): the legacy `driveUploader DriveUploader` field is
+// REMOVED. Publisher is the single canonical Drive upload canal; the
+// pre-F2.9 `else if uc.driveUploader != nil` fallback path is dropped
+// entirely. Composition-time fail-fast (no panic on nil Publisher —
+// the legacy field was nil-tolerant by design; FASE 9 hardening
+// surfaces elsewhere if Publisher is nil).
 type UseCase struct {
-	artifact       ArtifactServicePort
-	driveUploader  DriveUploader // deprecated: kept for backward compat during migration
-	publisher      Publisher     // canonical Drive upload path (FASE 7)
-	dispatcher     IndexDispatcher
-	cfg            Config
-	treeBuilder    TreeBuilder
-	jobsSvc        jobservice.Service
-	processRunner  appassets.ProcessRunner
-	log            *zap.Logger
+	artifact      ArtifactServicePort
+	publisher     Publisher
+	dispatcher    IndexDispatcher
+	cfg           Config
+	treeBuilder   TreeBuilder
+	jobsSvc       jobservice.Service
+	processRunner appassets.ProcessRunner
+	log           *zap.Logger
 }
 
 // UseCaseDeps carries every dependency the upload use case needs.
 // Wired once at composition time by the handler constructor.
+//
+// F2.9 (June 2026): the `DriveUploader` deps field is REMOVED.
+// Publisher is the only Drive-write canal. The pre-F2.9 wiring site
+// passed `newClipsDriveAdapter(driveUploader, driveUploader)`; that
+// line at internal/app/module_media.go is now deleted.
 type UseCaseDeps struct {
 	Artifact      ArtifactServicePort
-	DriveUploader DriveUploader // deprecated: kept for backward compat during migration
-	Publisher     Publisher     // canonical Drive upload path (FASE 7)
+	Publisher     Publisher
 	Dispatcher    IndexDispatcher
 	Config        Config
 	TreeBuilder   TreeBuilder
@@ -68,7 +78,6 @@ func NewUseCase(d UseCaseDeps) (*UseCase, error) {
 	}
 	return &UseCase{
 		artifact:      d.Artifact,
-		driveUploader: d.DriveUploader,
 		publisher:     d.Publisher,
 		dispatcher:    d.Dispatcher,
 		cfg:           d.Config,
@@ -140,9 +149,20 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		localPath = ""
 	}
 
-	// ── 2-4. Upload to Drive via Publisher (FASE 7) ──────────────
+	// ── 2-4. Upload to Drive via Publisher (F2.9: canonical only) ─
+	// F2.9 (June 2026): the pre-F2.9 `else if uc.driveUploader != nil`
+	// legacy fallback is DROPPED. Publisher is the single canonical
+	// Drive upload canal; the destination folder is resolved
+	// internally by Publisher via DestinationRegistry + PathBuilder.
 	driveFilename := fmt.Sprintf("%s%s", cmd.Name, ext)
 	var driveFileID, driveLink, downloadLink, targetFolderID string
+	// F2.9 (June 2026): hoist PublishResult.MD5Checksum + PublishResult.Action
+	// outside the publisher.Publish block so they can propagate to the
+	// constructed clip below (parity with reupload_usecase.go::Execute per
+	// user F2.9 spec "DB has drive_file_id/drive_link/download_link/md5/
+	// publish_action populated"). Pre-F2.9 asymmetry: the upload path left
+	// FileHash(pubRes.MD5Checksum) and publish_action unrecorded on the clip.
+	var publishMD5, publishAction string
 
 	if uc.publisher != nil && localPath != "" {
 		pubReq := delivery.PublishRequest{
@@ -166,61 +186,26 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 			// FileID depending on call site.
 			downloadLink = pubResult.DownloadLink
 			targetFolderID = pubResult.FolderID
+			// F2.9: hoist MD5 + action for clip metadata propagation below.
+			publishMD5 = pubResult.MD5Checksum
+			publishAction = string(pubResult.Action)
 			log.Info("published to Drive",
 				zap.String("file_id", pubResult.FileID),
 				zap.String("drive_link", pubResult.WebViewLink),
 				zap.String("publish_action", string(pubResult.Action)))
 		}
-	} else if uc.driveUploader != nil && localPath != "" {
-		// Legacy fallback — preserve original group-folder logic
-		targetFolderID = appclips.ExtractDriveFolderID(cmd.FolderID)
-		if targetFolderID == "" {
-			targetFolderID = uc.cfg.RootFolder()
-			if cmd.Group != "" && targetFolderID != "" {
-				if dirID, ferr := uc.driveUploader.GetOrCreateFolder(ctx, cmd.Group, targetFolderID); ferr == nil {
-					targetFolderID = dirID
-				} else {
-					log.Warn("failed to create group folder, using root", zap.String("group", cmd.Group), zap.Error(ferr))
-				}
-			}
-		} else if cmd.Group != "" {
-			if dirID, ferr := uc.driveUploader.GetOrCreateFolder(ctx, cmd.Group, targetFolderID); ferr == nil {
-				targetFolderID = dirID
-			} else {
-				log.Warn("failed to create group folder, using override", zap.String("group", cmd.Group), zap.Error(ferr))
-			}
-		}
-		driveDesc := appclips.BuildDriveDescription(cmd.Name, cmd.Description, "", cmd.Tags, cmd.Category, cmd.Source, "", "")
-		result, uerr := uc.driveUploader.UploadFileWithDescription(ctx, localPath, targetFolderID, driveFilename, driveDesc)
-		if uerr != nil {
-			log.Warn("Drive upload failed, continuing with local file only", zap.Error(uerr))
-		} else {
-			driveFileID = result.FileID
-			driveLink = result.WebViewLink
-			downloadLink = result.DownloadLink
-			log.Info("uploaded to Drive",
-				zap.String("file_id", result.FileID),
-				zap.String("drive_link", result.WebViewLink))
-		}
 	}
 
-	// ── 5. Upload cumulative metadata.json (best effort) ──────────
-	if uc.driveUploader != nil && targetFolderID != "" {
-		clipEntry := map[string]interface{}{
-			"clip_id":     clipID,
-			"name":        cmd.Name,
-			"description": cmd.Description,
-			"category":    cmd.Category,
-			"source":      cmd.Source,
-			"tags":        cmd.Tags,
-			"created_at":  time.Now().UTC().Format(time.RFC3339),
-		}
-		if driveFileID != "" {
-			clipEntry["drive_file_id"] = driveFileID
-			clipEntry["drive_link"] = driveLink
-		}
-		uc.updateCumulativeMetadataJSON(ctx, uc.cfg.TempPath(), targetFolderID, clipID, clipEntry, log)
-	}
+	// ── 5. Upload cumulative metadata.json (F2.9: REMOVED) ────────
+	// F2.9 (June 2026): the metadata.json sidecar maintenance that
+	// pre-F2.9 lived here (via the no-op updateCumulativeMetadataJSON
+	// method shim + an `if uc.driveUploader != nil` guard) is REMOVED.
+	// The canonical metadata ledger is the artifacts.Registry +
+	// dispatcher.EnqueueAndIndex pair (Step 8 below) — the Wave C
+	// SSOT. The legacy metadata.json sidecar in upload_helpers.go
+	// stays available as a package-private helper for callers that
+	// still need it (no production caller today), but the upload
+	// use case no longer threads the sidecar from here.
 
 	// ── 6. Build the MediaAsset record ────────────────────────────
 	now := time.Now().UTC()
@@ -245,6 +230,18 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		clip.SetDriveLink(driveLink)
 		clip.SetDownloadLink(downloadLink)
 		clip.SetDriveFileID(driveFileID)
+	}
+	// F2.9 (June 2026): propagate Publisher-returned MD5 + action onto
+	// the constructed clip for upload-path symmetry with reupload.
+	// Empty values are skipped (preserve pre-F2.9 behaviour when the
+	// Publisher surfaces no MD5/action). Per user F2.9 spec, upload + 
+	// reupload must BOTH populate MD5 + publish_action so the dispatched
+	// clip + DB row carries the 5-field audit contract.
+	if publishMD5 != "" {
+		clip.SetFileHash(publishMD5)
+	}
+	if publishAction != "" {
+		clip.SetMetadataString("publish_action", publishAction)
 	}
 
 	// ── 7. Probe video duration ───────────────────────────────────
@@ -319,13 +316,15 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 
 // ── Moved helpers (from ingest.go) ──────────────────────────────────
 
-// updateCumulativeMetadataJSON is a best-effort helper. Originally a
-// no-op shim; preserved as-is for zero behaviour change.
-func (uc *UseCase) updateCumulativeMetadataJSON(_ context.Context, _ string, _ string, _ string, _ map[string]interface{}, log *zap.Logger) {
-	if log != nil {
-		log.Debug("updateCumulativeMetadataJSON called")
-	}
-}
+// F2.9 (June 2026): updateCumulativeMetadataJSON (no-op shim)
+// REMOVED. Its single caller at Step 5 above is gone; the
+// metadata.json sidecar maintenance is no longer threaded from
+// the upload UseCase. The canonical helper still lives at
+// appclips.UpdateCumulativeMetadataJSON (upload_helpers.go) for
+// legacy callers, but the upload UseCase no longer calls it.
+// CONTRACTS this closes:
+//   - the duplicate stub (canonical lives in upload_helpers.go)
+//   - the DriveUploader field dependency that drove the duplicate
 
 // probeDuration probes the video file for duration using ffprobe.
 // Falls back to 0 if unavailable.
