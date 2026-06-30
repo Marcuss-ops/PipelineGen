@@ -1,11 +1,11 @@
-// Package drive — publisher.go (FASE 3, June 2026)
+// Package drive — publisher.go (FASE 3, June 2026; P0 #1 fix June 2026)
 //
 // Publisher is the concrete implementation of delivery.Publisher. It is the
 // ONLY point in the system that:
 //  1. Resolves a DestinationKey to a root folder + path segments via the
 //     DestinationRegistry.
 //  2. Creates nested Drive folders via FolderManager.EnsureFolder.
-//  3. Uploads files via Uploader.UploadFileWithDescription.
+//  3. Uploads files via Uploader.PutFile (conflict-aware, P0 #1).
 //
 // All other code paths (YouTube, Books, Images, SFX, Clips, Artlist, Stock,
 // Voiceover, Script) MUST go through delivery.Publisher.Publish rather than
@@ -33,10 +33,58 @@ type FolderManagerPort interface {
 	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
 }
 
+// PutAction describes what the uploader actually did on Drive. It is
+// the typed replacement for unspecified "did we overwrite or create?"
+// return values — callers can branch on Action to update their audit
+// trail, emit events, or skip DB writes for skips. Mirrors the
+// project convention of typed string enums (delivery.ConflictPolicy,
+// delivery.DeliveryStatus, asset.LifecycleState).
+type PutAction string
+
+const (
+	PutActionCreated PutAction = "created" // fresh Drive file (no existing match)
+	PutActionUpdated PutAction = "updated" // existing Drive file updated in place
+	PutActionSkipped PutAction = "skipped" // existing Drive file preserved (ConflictSkip; no upload performed)
+	PutActionRenamed PutAction = "renamed" // new Drive file with conflict-rename suffix
+)
+
+// PutFileRequest is the single low-level op the Publisher must route
+// conflict-aware uploads through. Carrying ConflictPolicy at this
+// seam eliminates the dead-enum failure mode (P0 #1): every caller
+// MUST pick Overwrite/Skip/Rename explicitly. Zero-value policy
+// resolves to delivery.ConflictOverwrite to match legacy behaviour.
+type PutFileRequest struct {
+	LocalPath      string
+	FolderID       string
+	Filename       string
+	Description    string // optional; empty means "no description"
+	ConflictPolicy delivery.ConflictPolicy // zero = ConflictOverwrite (legacy default)
+}
+
+// PutFileResult is the structured return value. Action tells callers
+// what actually happened on Drive; all metadata fields are present in
+// every successful case (including the skip branch, where the
+// existing file's metadata is returned so the caller does not have
+// to re-issue FindFileByName).
+type PutFileResult struct {
+	FileID       string
+	WebViewLink  string
+	DownloadLink string
+	MD5Checksum  string
+	Action       PutAction
+}
+
 // FileUploaderPort is the narrow port for uploading files to Drive.
-// Satisfied by *Uploader.UploadFileWithDescription.
+// Satisfied by *Uploader.PutFile (see uploader_put.go).
+//
+// P0 #1 (June 2026): the legacy UploadFileWithDescription method was
+// removed from this port. The PutFile method carries the
+// ConflictPolicy at the seam so callers cannot bypass it. Raw callers
+// that need the unconditional-overwrite shape should depend on
+// drive.Admin.UploadFileWithDescription (kept for cmd/admin and
+// similar raw contexts).
 type FileUploaderPort interface {
-	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error)
+	PutFile(ctx context.Context, req PutFileRequest) (*PutFileResult, error)
 }
 
 // Publisher implements delivery.Publisher. It resolves the destination,
@@ -122,22 +170,26 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		return nil, fmt.Errorf("delivery: normalise filename: %w", err)
 	}
 
-	// Step 6: Upload the file.
-	result, err := p.files.UploadFileWithDescription(
-		ctx,
-		req.LocalPath,
-		folderID,
-		filename,
-		req.Description,
-	)
+	// Step 6: Upload the file (conflict-aware, P0 #1 fix).
+	// req.ConflictPolicy flows through PutFileRequest so the uploader
+	// picks created/updated/skipped/renamed based on the explicit
+	// policy rather than silently overwriting.
+	result, err := p.files.PutFile(ctx, PutFileRequest{
+		LocalPath:      req.LocalPath,
+		FolderID:       folderID,
+		Filename:       filename,
+		Description:    req.Description,
+		ConflictPolicy: req.ConflictPolicy,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("delivery: upload to %q: %w", req.Destination, err)
+		return nil, fmt.Errorf("delivery: publish to %q: %w", req.Destination, err)
 	}
 
 	p.log.Info("delivery: file published",
 		zap.String("destination", string(req.Destination)),
 		zap.String("folder_id", folderID),
 		zap.String("file_id", result.FileID),
+		zap.String("action", string(result.Action)),
 		zap.Strings("segments", segments),
 	)
 

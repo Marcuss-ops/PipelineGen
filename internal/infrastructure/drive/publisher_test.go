@@ -38,33 +38,56 @@ func (f *fakeFolderManager) EnsureFolder(_ context.Context, parent string, segme
 	return f.result, nil
 }
 
+// fakeFileUploader impl Pattern-0 FileUploaderPort (P0 #1, June 2026):
+// the only method on the port is PutFile; the fake records incoming
+// PutFileRequest values into uploadCalls and returns a configured
+// PutAction so tests for the overwrite/skip/rename branches can pin
+// the exact outcome the uploader would have produced.
 type fakeFileUploader struct {
-	// uploadCalls records each UploadFileWithDescription invocation.
+	// uploadCalls records each PutFile invocation. Field name preserved
+	// from the legacy UploadFileWithDescription fake so existing tests
+	// keep their assertion shape (files.uploadCalls[0].localPath etc.).
 	uploadCalls []uploadCall
-	// err, if set, is returned by UploadFileWithDescription.
+	// err, if set, is returned by PutFile.
 	err error
+	// putAction, if set, overrides the default PutActionCreated so
+	// tests for the skip/rename branches can pin the exact action
+	// the underlying uploader would have produced.
+	putAction PutAction
 }
 
 type uploadCall struct {
-	localPath  string
-	folderID   string
-	filename   string
+	localPath   string
+	folderID    string
+	filename    string
 	description string
+	// policy (P0 #1, June 2026) is the ConflictPolicy the publisher
+	// forward through PutFileRequest. Zero value == ConflictOverwrite
+	// matches legacy behaviour, so legacy tests that omit the field
+	// still see the same result shape.
+	policy delivery.ConflictPolicy
 }
 
-func (f *fakeFileUploader) UploadFileWithDescription(_ context.Context, localPath, folderID, filename, description string) (*UploadResult, error) {
+func (f *fakeFileUploader) PutFile(_ context.Context, req PutFileRequest) (*PutFileResult, error) {
 	f.uploadCalls = append(f.uploadCalls, uploadCall{
-		localPath:   localPath,
-		folderID:    folderID,
-		filename:    filename,
-		description: description,
+		localPath:   req.LocalPath,
+		folderID:    req.FolderID,
+		filename:    req.Filename,
+		description: req.Description,
+		policy:      req.ConflictPolicy,
 	})
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &UploadResult{
-		FileID:      "fake-file-id",
-		WebViewLink: "https://drive.google.com/file/d/fake-file-id",
+	action := f.putAction
+	if action == "" {
+		action = PutActionCreated
+	}
+	return &PutFileResult{
+		FileID:       "fake-file-id",
+		WebViewLink:  "https://drive.google.com/file/d/fake-file-id",
+		DownloadLink: "https://drive.google.com/uc?id=fake-file-id",
+		Action:       action,
 	}, nil
 }
 
@@ -284,7 +307,7 @@ func TestPublisher_UploaderError(t *testing.T) {
 		Subject:     "abc",
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "upload to")
+	require.Contains(t, err.Error(), "publish to")
 }
 
 func TestPublisher_NormalizeFilename(t *testing.T) {
@@ -323,4 +346,89 @@ func TestPublisher_FolderManagerError(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve drive path")
+}
+
+// ── P0 #1 tests (June 2026) — ConflictPolicy plumbing ─────────────────
+
+// TestPublisher_PublishForwardsConflictPolicy_ZoomValue pins the
+// end-to-end ConflictPolicy forward: the Publisher must pass
+// req.ConflictPolicy through publishers' PutFileRequest and the
+// underlying uploader returns PutActionCreated by default (matching
+// legacy zero-value behaviour for callers that omitted the field).
+func TestPublisher_PublishForwardsConflictPolicy_ZeroValue(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "folder-id"}
+	files := &fakeFileUploader{}
+	pub := NewPublisher(reg, folders, files, zap.NewNop())
+
+	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/video.mp4",
+		Filename:    "video.mp4",
+		Group:       "test",
+		Subject:     "abc",
+		// ConflictPolicy omitted — zero value should default to
+		// ConflictOverwrite, exactly the legacy semantics.
+	})
+	require.NoError(t, err)
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, delivery.ConflictOverwrite, files.uploadCalls[0].policy,
+		"zero-value ConflictPolicy must flow through as ConflictOverwrite (default legacy behaviour)")
+}
+
+func TestPublisher_PublishForwardsConflictPolicy_Overwrite(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "folder-id"}
+	files := &fakeFileUploader{putAction: PutActionUpdated}
+	pub := NewPublisher(reg, folders, files, zap.NewNop())
+
+	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/video.mp4",
+		Filename:       "video.mp4",
+		Group:          "test",
+		Subject:        "abc",
+		ConflictPolicy: delivery.ConflictOverwrite,
+	})
+	require.NoError(t, err)
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, delivery.ConflictOverwrite, files.uploadCalls[0].policy)
+}
+
+func TestPublisher_PublishForwardsConflictPolicy_Skip(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "folder-id"}
+	files := &fakeFileUploader{putAction: PutActionSkipped}
+	pub := NewPublisher(reg, folders, files, zap.NewNop())
+
+	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/video.mp4",
+		Filename:       "video.mp4",
+		Group:          "test",
+		Subject:        "abc",
+		ConflictPolicy: delivery.ConflictSkip,
+	})
+	require.NoError(t, err)
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, delivery.ConflictSkip, files.uploadCalls[0].policy)
+}
+
+func TestPublisher_PublishForwardsConflictPolicy_Rename(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "folder-id"}
+	files := &fakeFileUploader{putAction: PutActionRenamed}
+	pub := NewPublisher(reg, folders, files, zap.NewNop())
+
+	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/video.mp4",
+		Filename:       "video.mp4",
+		Group:          "test",
+		Subject:        "abc",
+		ConflictPolicy: delivery.ConflictRename,
+	})
+	require.NoError(t, err)
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, delivery.ConflictRename, files.uploadCalls[0].policy)
 }
