@@ -117,23 +117,69 @@ func NewPublisher(
 	}
 }
 
-// Publish resolves the destination, builds the folder path, creates folders,
-// normalises the filename, and uploads the file. This is the single canal
-// for all Drive writes.
-func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
-	// Step 1: Resolve the destination policy.
+// ResolvedDriveDestination is the outcome of the canonical destination
+// resolution pipeline shared by Publish and ResolveFolder. It marks the
+// boundary between registration-time resolution (registry + overrides
+// + path builder + RequireSubpath enforcement) and Drive-time mutation
+// (folder hierarchy creation).
+//
+// Both Publish AND ResolveFolder MUST go through resolveDestination so
+// RequireSubpath is enforced symmetrically across callers. P0 #2 (June
+// 2026) identified that ResolveFolder used a near-duplicate of the
+// Steps 1-4 block but skipped the RequireSubpath check, allowing a
+// caller to "resolve" a folder that Publish would have rejected.
+// Centralising the pipeline makes that misroute impossible.
+type ResolvedDriveDestination struct {
+	// Destination echoes the requested DestinationKey for audit /
+	// projection layers (so callers don't need to thread req through
+	// alongside the result).
+	Destination delivery.DestinationKey
+	// RootFolderID is the resolved root folder after RootFolderOverride
+	// has been applied. Empty iff registry.RootFolderID is also empty
+	// (callers should treat that as an upstream misconfiguration,
+	// already rejected by resolveDestination itself).
+	RootFolderID string
+	// FolderID is the leaf folder ID after FolderManager.EnsureFolder
+	// has built the segment hierarchy. If PathSegments was empty,
+	// FolderID == RootFolderID; otherwise it is the deepest nested ID.
+	FolderID string
+	// PathSegments are the resolved segments used to build the
+	// hierarchy. Empty iff the resolved policy's RequireSubpath is
+	// false; resolveDestination rejects such a state when the policy
+	// requires a subpath so downstream code never sees an empty
+	// PathSegments when one was contractually required.
+	PathSegments []string
+}
+
+// resolveDestination executes the canonical destination resolution
+// pipeline shared by Publish and ResolveFolder (P0 #2, June 2026).
+//
+// Steps (canonical order — see ARCHITECTURE.md §6):
+//  1. registry.Resolve(req.Destination)
+//  2. Apply RootFolderOverride (back-compat escape hatch)
+//  3. Reject empty root folder (misconfiguration surface)
+//  4. policy.PathBuilder(req)
+//  5. RequireSubpath enforcement (was previously only in Publish;
+//     extracted here so ResolveFolder gets the same surface)
+//  6. FolderManager.EnsureFolder (only if PathSegments is non-empty)
+//
+// This method does NOT call PutFile — that remains exclusively
+// Publisher.Publish's responsibility.
+func (p *Publisher) resolveDestination(ctx context.Context, req delivery.PublishRequest) (*ResolvedDriveDestination, error) {
+	// Step 1: Registry resolve.
 	policy, err := p.registry.Resolve(req.Destination)
 	if err != nil {
 		return nil, err
 	}
 
-	// Allow callers to override the root folder (backward compat for
-	// script generation jobs that pass an explicit FolderID).
+	// Step 2: Root override (back-compat for script generation jobs
+	// that historically passed an explicit FolderID).
 	rootFolderID := policy.RootFolderID
 	if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
 		rootFolderID = override
 	}
 
+	// Step 3: Empty-root rejection.
 	if rootFolderID == "" {
 		return nil, fmt.Errorf(
 			"delivery: destination %q has no configured root folder",
@@ -141,27 +187,56 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		)
 	}
 
-	// Step 2: Build the path segments.
+	// Step 4: Path builder.
 	segments, err := policy.PathBuilder(req)
 	if err != nil {
 		return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
 	}
 
-	// Step 3: Enforce RequireSubpath.
+	// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
+	// Before P0 #2, only Publish checked RequireSubpath; ResolveFolder
+	// could resolve a folder that Publish would have rejected. Now both
+	// paths go through this helper so the surface is consistent.
 	if policy.RequireSubpath && len(segments) == 0 {
 		return nil, fmt.Errorf(
 			"delivery: direct upload into root %q is forbidden for destination %q",
-			policy.RootFolderID, req.Destination,
+			rootFolderID, req.Destination,
 		)
 	}
 
-	// Step 4: Resolve or create the folder hierarchy.
+	// Step 6: Folder hierarchy creation.
 	folderID := rootFolderID
 	if len(segments) > 0 {
 		folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
 		if err != nil {
 			return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
 		}
+	}
+
+	return &ResolvedDriveDestination{
+		Destination:  req.Destination,
+		RootFolderID: rootFolderID,
+		FolderID:     folderID,
+		PathSegments: segments,
+	}, nil
+}
+
+// Publish resolves the destination, builds the folder path, creates folders,
+// normalises the filename, and uploads the file. This is the single canal
+// for all Drive writes.
+//
+// Steps 1–4 (registry resolve + root override + empty-root reject +
+// path builder + RequireSubpath enforce + EnsureFolder) are delegated
+// to resolveDestination so the resolution pipeline is shared with
+// ResolveFolder (P0 #2, June 2026). Publish's added responsibilities
+// are: Step 5 (filename normalise) and Step 6 (PutFile upload).
+func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	// Steps 1–4: resolution pipeline (delegated, P0 #2). The helper
+	// enforces RequireSubpath symmetrically across Publish and
+	// ResolveFolder, eliminating the previous ResolveFolder bypass.
+	resolved, err := p.resolveDestination(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	// Step 5: Normalise the filename.
@@ -176,7 +251,7 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	// policy rather than silently overwriting.
 	result, err := p.files.PutFile(ctx, PutFileRequest{
 		LocalPath:      req.LocalPath,
-		FolderID:       folderID,
+		FolderID:       resolved.FolderID,
 		Filename:       filename,
 		Description:    req.Description,
 		ConflictPolicy: req.ConflictPolicy,
@@ -187,58 +262,43 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 
 	p.log.Info("delivery: file published",
 		zap.String("destination", string(req.Destination)),
-		zap.String("folder_id", folderID),
+		zap.String("folder_id", resolved.FolderID),
 		zap.String("file_id", result.FileID),
 		zap.String("action", string(result.Action)),
-		zap.Strings("segments", segments),
+		zap.Strings("segments", resolved.PathSegments),
 	)
 
 	return &delivery.PublishResult{
 		FileID:       result.FileID,
 		WebViewLink:  result.WebViewLink,
-		FolderID:     folderID,
+		FolderID:     resolved.FolderID,
 		Destination:  req.Destination,
-		PathSegments: segments,
+		PathSegments: resolved.PathSegments,
 	}, nil
 }
 
 // ResolveFolder resolves the Drive folder for a destination without uploading.
-// Reuses steps 1-4 of Publish (resolve policy, build path, ensure folder).
+//
+// Delegates to resolveDestination so the resolution pipeline (including
+// the RequireSubpath check) is shared with Publish (P0 #2, June 2026).
+// Before P0 #2, ResolveFolder skipped the RequireSubpath check and
+// could return a root-folder ID that Publish would have rejected —
+// callers that delta-resolve-then-publish could observe a folder ID
+// upstream of a publish-time rejection with no obvious cause. Now both
+// flows go through the same helper, so the surface is identical.
 func (p *Publisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
-	policy, err := p.registry.Resolve(req.Destination)
+	resolved, err := p.resolveDestination(ctx, req)
 	if err != nil {
 		return "", err
 	}
 
-	rootFolderID := policy.RootFolderID
-	if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
-		rootFolderID = override
-	}
-
-	if rootFolderID == "" {
-		return "", fmt.Errorf("delivery: destination %q has no configured root folder", req.Destination)
-	}
-
-	segments, err := policy.PathBuilder(req)
-	if err != nil {
-		return "", fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
-	}
-
-	folderID := rootFolderID
-	if len(segments) > 0 {
-		folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
-		if err != nil {
-			return "", fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
-		}
-	}
-
 	p.log.Info("delivery: folder resolved",
 		zap.String("destination", string(req.Destination)),
-		zap.String("folder_id", folderID),
-		zap.Strings("segments", segments),
+		zap.String("folder_id", resolved.FolderID),
+		zap.Strings("segments", resolved.PathSegments),
 	)
 
-	return folderID, nil
+	return resolved.FolderID, nil
 }
 
 // normalizeFilename sanitises a filename for Drive upload.

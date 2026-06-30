@@ -88,6 +88,16 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 	}
 }
 
+// NewDestinationRegistryWithPolicies constructs a registry with caller-
+// supplied policies. Production code MUST use NewDestinationRegistry;
+// this constructor exists so tests can inject degenerate PathBuilders
+// (e.g. an "always returns empty segments" stub) without registering
+// a new canonical destination. Each entry's RequireSubpath is honoured
+// exactly the way it would be in the canonical registry.
+func NewDestinationRegistryWithPolicies(policies map[DestinationKey]DestinationPolicy) *DestinationRegistry {
+	return &DestinationRegistry{policies: policies}
+}
+
 // Has reports whether the registry contains a policy for the given key.
 func (r *DestinationRegistry) Has(key DestinationKey) bool {
 	_, ok := r.policies[key]
