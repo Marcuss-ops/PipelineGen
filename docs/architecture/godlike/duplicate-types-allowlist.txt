@@ -12,11 +12,35 @@
 # explicit owner + deadline. New entries WITHOUT those columns fail the
 # governance gate.
 #
-# Current baseline (origin/main, June 2026): 7 entries.
-# Owner group: @qdrant-hygiene. Deadline (whole block): 2026-09-01.
+# Current baseline (origin/main, June 2026): 14 entries.
+#   - 7 legacy QDRANT-hygiene entries (sqlite-vs-application mirror, cross-module
+#     search mirror, jobs broker port)
+#   - 7 PR-check-5 baseline-closure entries (cross-package-NAME false
+#     positives — see Check 5 log section below; awk regex `^type[[:space:]]+
+#     [A-Z]` matches type aliases alongside struct declarations when both
+#     files declare the same package name)
+# Deadline (whole block): 2026-09-01.
 # After 2026-09-01 these MUST migrate per godlike/07 §"Migration sequence"
 # (EXPAND → BACKFILL → CUTOVER → CONTRACT); the allowlist may NOT shrink
 # via silent expiry — each entry is ratcheted individually.
+#
+# Owner groups used below:
+#   @qdrant-hygiene           — legacy QDRANT-projection mirrors
+#   @jobs-core                — application/jobs + scripts/jobs + voiceover/jobs job-system handlers
+#   @system-health-team       — application/system/health (port) + infrastructure/health (impl)
+#   @voiceover-team           — application/voiceover canonical sync/types surface
+#   @voiceover-reconciliation — reconstruction deprecation shims (PR 6 + reconciliation/voiceover)
+#   @scripts-adapters         — application/scripts/adapters module-local service structs
+#   @images-team              — application/images (canonical DTO) + api/images (HTTP transport DTO)
+#
+# ◷ CHECK 5 LOG SECTION (PR-check-5 baseline closure, June 2026) ◷
+# At PR-check-5 closure time the lint scanner flagged 10 same-package
+# redeclarations across the internal/ tree. All 10 are cross-package-NAME
+# false positives (the scanner groups by Go-package NAME; distinct
+# directories that share a package name produce collisions the scanner
+# cannot distinguish from true redeclarations). The 7 entries below
+# resolve the user's PR scope; the 3 deferred to a future PR (OOS)
+# are documented at the bottom of this file with their owners + deadlines.
 #
 scripts:ScriptSectionRecord            # legacy sqlite scripts-vs-application mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
 outbox:IndexClipper                    # legacy outbox direct-indexer mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
@@ -25,3 +49,24 @@ scripts:ScriptOutlineSectionRecord     # legacy sqlite scripts-vs-application mi
 jobs:Broker                            # api/jobs vs application/jobs broker port — owner: @qdrant-hygiene, deadline: 2026-09-01
 search:Logger                          # cross-module search.Logger mirror (assets/search vs search) — owner: @qdrant-hygiene, deadline: 2026-09-01
 scripts:ScriptStockMatchRecord         # legacy sqlite scripts-vs-application mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
+voiceover:VoiceoverResult              # scanner-flagged alias — `types.go:195` struct + `domain/voiceover/result.go:86` type alias `VoiceoverResult = Result`; both declare `package voiceover` — owner: @voiceover-team, deadline: 2026-09-01
+jobs:GenerateJobHandler                # port-pattern canonical — `scripts/jobs/generation_job.go` (canonical script.generate handler) + `voiceover/jobs/generate_handler.go` (typed-port voiceover.generate sub-handler) both declare `package jobs` — owner: @jobs-core, deadline: 2026-09-01
+health:JobsChecker                     # port-pattern intentional dual-decl — `application/system/health/ports.go` (interface) + `infrastructure/health/jobs_checker.go` (struct impl) both declare `package health` — owner: @system-health-team, deadline: 2026-09-01
+voiceoversync:Service                  # alias-shim mirror — `voiceover/sync/service.go` (alias shim re-exporting canonical) + `assets/reconciliation/voiceover/service.go` (canonical impl); both declare `package voiceoversync` — owner: @voiceover-reconciliation, deadline: 2026-09-01
+voiceoversync:Summary                  # same package-collision as voiceoversync:Service — alias-shim mirror for Summary struct — owner: @voiceover-reconciliation, deadline: 2026-09-01
+adapters:Service                       # cross-directory `package adapters` collision — `scripts/adapters/gemmamemory.go` (module-local mem-cache Service) + `youtube/adapters/service.go` (shared Service struct for youtube extraction helpers) — owner: @scripts-adapters, deadline: 2026-09-01
+images:GenerateImageRequest            # port-pattern domain-vs-transport — `application/images/ports.go` (canonical domain DTO) + `api/images/impl.go` (HTTP-handler request binding DTO); both declare `package images` — owner: @images-team, deadline: 2026-09-01
+#
+# ── OUT-OF-SCOPE DEFERRED PAIRS (PR-check-5 follow-up, June 2026) ──
+# The Check 5 lint also flagged 3 additional pairs that are NOT in the
+# user's PR-check-5 scope. Each requires its own owner + deadline + a
+# future-blocco disposition; tracking as separate follow-up tickets:
+#
+#   engine:Generate                  — `engine.go` define + `generate_one_usecase.go` sole permitted caller produce 2 hits; resolved by separate PR-6 contract (already in place per Check 3). VERIFY: cross-check with the Check 3 allowlist glob (`!**/engine.go --glob '!**/generate_one_usecase.go'`) — if Check 3 gloss suppresses this, PR-check-5 OOS may collapse to 0.
+#   health:DriveChecker              — `application/system/health/ports.go` (interface) + `infrastructure/health/drive_checker.go` (struct impl) — same port-pattern shape as health:JobsChecker; should follow the same disposition. Future PR: owner @system-health-team, deadline 2026-09-01.
+#   jobs:QueueNotifier               — `application/jobs/notifier.go` + `infrastructure/database/sqlite/jobs/queue_notifier.go` — port-pattern canonical vs impl; future PR: owner @jobs-core, deadline 2026-09-01.
+#
+# These three OOS pairs are intentionally NOT added to this baseline —
+# they require per-pair code-or-allowlist resolution in a future PR and
+# adding them under the same owner@handle as the 7 in-scope entries
+# would muddy the audit trail.
