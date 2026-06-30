@@ -111,9 +111,12 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// Apply default-unbound placeholder stubs if the caller left them nil.
 	// This keeps production crash-fast at the FIRST analyzer/enqueuer call
 	// rather than nil-deref panicking inside the worker.
-	if deps.Transcript == nil {
-		deps.Transcript = NewUnboundTranscriptProvider()
-	}
+	//
+	// The Transcript stub was lifted in a follow-up commit (Wave B, June 2026):
+	// `internal/app/lifecycle.go::startBackgroundJobs` now wires a concrete
+	// `transcripts.YTDLPSubtitleAdapter` directly into CompositionDeps.Transcript,
+	// so a nil deps.Transcript can only happen in partial-deploy / test-fixture
+	// paths and the analyzer's `if m.transcript != nil` discipline catches it.
 	if deps.Analyzer == nil {
 		deps.Analyzer = NewUnboundVideoAnalyzer()
 	}
