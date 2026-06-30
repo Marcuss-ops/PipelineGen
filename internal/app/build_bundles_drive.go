@@ -20,6 +20,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -82,7 +83,28 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	if driveClient != nil && driveUploader != nil {
 		registry := delivery.NewDestinationRegistry(cfg)
 		folderMgr := drive.NewDriveFolderManagerAdapter(driveClient, log)
-		publisher = drive.NewPublisher(registry, folderMgr, driveUploader, log)
+		// P0 #3 fail-fast (June 2026): NewPublisher now returns
+		// (*Publisher, error) with ErrMissingXxx sentinels. The
+		// composition root treats a nil-port misconfiguration as a
+		// hard process-startup failure (gated as a checked error
+		// rather than a runtime panic) so operators see a typed
+		// sentinel + audit message instead of a deferred nil-deref
+		// at the first Publish call site. Note: the surrounding
+		// `if driveClient != nil && driveUploader != nil` guard
+		// already covers the typed-NIL interface trap (godlike/06);
+		// the explicit error check below is a defence-in-depth
+		// against future call-site regressions that bypass the guard.
+		var pub *drive.Publisher
+		pub, err = drive.NewPublisher(registry, folderMgr, driveUploader, log)
+		if err != nil {
+			log.Error("drive.Publisher: composition-time fail-fast barrier hit (Pattern 0 port is nil — typed-NIL interface trap averted)",
+				zap.Bool("registry_nil", errors.Is(err, drive.ErrMissingDestinationRegistry)),
+				zap.Bool("folders_nil", errors.Is(err, drive.ErrMissingFolderManager)),
+				zap.Bool("files_nil", errors.Is(err, drive.ErrMissingFileUploader)),
+				zap.Error(err))
+			return nil, nil, err
+		}
+		publisher = pub
 	}
 
 	var mediaStore *drive.Store

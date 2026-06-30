@@ -162,9 +162,10 @@ func TestPublisher_RejectsDirectRootUpload(t *testing.T) {
 	// PathBuilder level (which is the correct error path).
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
@@ -178,9 +179,10 @@ func TestPublisher_UnknownDestinationRejected(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: "nonexistent",
 		LocalPath:   "/tmp/file.txt",
 		Filename:    "file.txt",
@@ -209,7 +211,8 @@ func TestPublisher_PublishYouTubeClip(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "video-folder-id"}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
 	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
@@ -243,7 +246,8 @@ func TestPublisher_PublishBook(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "book-folder-id"}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
 	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationBook,
@@ -263,7 +267,8 @@ func TestPublisher_PublishSoundEffect(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "sfx-folder-id"}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
 	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationSoundEffect,
@@ -290,9 +295,10 @@ func TestPublisher_EmptyRootFolderRejected(t *testing.T) {
 	reg := delivery.NewDestinationRegistry(cfg)
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
@@ -307,9 +313,10 @@ func TestPublisher_UploaderError(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "folder-id"}
 	files := &fakeFileUploader{err: context.DeadlineExceeded}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
@@ -324,7 +331,8 @@ func TestPublisher_NormalizeFilename(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "folder-id"}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
 	// Path traversal in filename should be sanitised.
 	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
@@ -345,9 +353,10 @@ func TestPublisher_FolderManagerError(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{err: context.DeadlineExceeded}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
@@ -356,6 +365,54 @@ func TestPublisher_FolderManagerError(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve drive path")
+}
+
+// ── P0 #3 tests (June 2026) — fail-fast NewPublisher nil-dep sentinels ───────
+
+// TestNewPublisher_NilRegistry pins the composition-time fail-fast
+// sentinel for a nil DestinationRegistry. Without this barrier, a
+// nil registry would surface only at first Publish call site as a
+// nil-deref panic (`p.registry.Resolve(...)`). The Composition root
+// at internal/app/build_bundles_drive.go gates on this sentinel to
+// halt process start-up cleanly.
+func TestNewPublisher_NilRegistry(t *testing.T) {
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(nil, folders, files, zap.NewNop())
+	require.Error(t, err, "NewPublisher must fail-fast on nil registry")
+	require.ErrorIs(t, err, ErrMissingDestinationRegistry,
+		"nil-registry error must wrap ErrMissingDestinationRegistry verbatim (audit-trail grep)")
+	require.Nil(t, pub, "publisher pointer must be nil on error return (composition-time safety)")
+}
+
+// TestNewPublisher_NilFolders pins the composition-time fail-fast
+// sentinel for a nil FolderManagerPort. Same typed-NIL interface
+// trap pattern as TestNewPublisher_NilRegistry: a nil port would
+// otherwise surface at first EnsureFolder call site.
+func TestNewPublisher_NilFolders(t *testing.T) {
+	reg := testRegistry()
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, nil, files, zap.NewNop())
+	require.Error(t, err, "NewPublisher must fail-fast on nil FolderManagerPort")
+	require.ErrorIs(t, err, ErrMissingFolderManager,
+		"nil-folders error must wrap ErrMissingFolderManager verbatim")
+	require.Nil(t, pub)
+}
+
+// TestNewPublisher_NilFiles pins the composition-time fail-fast
+// sentinel for a nil FileUploaderPort. A nil port would otherwise
+// surface at first PutFile call site, post P0 #1 conflict-policy
+// plumbing that the FileUploaderPort.PutFile field is the ONLY
+// method on the port (no fallthrough UploadFileWithDescription
+// escape hatch).
+func TestNewPublisher_NilFiles(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	pub, err := NewPublisher(reg, folders, nil, zap.NewNop())
+	require.Error(t, err, "NewPublisher must fail-fast on nil FileUploaderPort")
+	require.ErrorIs(t, err, ErrMissingFileUploader,
+		"nil-files error must wrap ErrMissingFileUploader verbatim")
+	require.Nil(t, pub)
 }
 
 // ── P0 #1 tests (June 2026) — ConflictPolicy plumbing ─────────────────
@@ -369,9 +426,10 @@ func TestPublisher_PublishForwardsConflictPolicy_ZeroValue(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "folder-id"}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
@@ -390,9 +448,10 @@ func TestPublisher_PublishForwardsConflictPolicy_Overwrite(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "folder-id"}
 	files := &fakeFileUploader{putAction: PutActionUpdated}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination:    delivery.DestinationYouTubeClip,
 		LocalPath:      "/tmp/video.mp4",
 		Filename:       "video.mp4",
@@ -409,9 +468,10 @@ func TestPublisher_PublishForwardsConflictPolicy_Skip(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "folder-id"}
 	files := &fakeFileUploader{putAction: PutActionSkipped}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination:    delivery.DestinationYouTubeClip,
 		LocalPath:      "/tmp/video.mp4",
 		Filename:       "video.mp4",
@@ -428,9 +488,10 @@ func TestPublisher_PublishForwardsConflictPolicy_Rename(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "folder-id"}
 	files := &fakeFileUploader{putAction: PutActionRenamed}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination:    delivery.DestinationYouTubeClip,
 		LocalPath:      "/tmp/video.mp4",
 		Filename:       "video.mp4",
@@ -460,9 +521,10 @@ func TestPublisher_PublishRejectsRequireSubpath(t *testing.T) {
 	})
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
-	_, err := pub.Publish(context.Background(), delivery.PublishRequest{
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
@@ -496,7 +558,8 @@ func TestPublisher_ResolveFolder_HonorsRequireSubpath(t *testing.T) {
 	})
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
 	got, err := pub.ResolveFolder(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
@@ -541,7 +604,8 @@ func TestPublisher_ResolveFolder_SuccessWhenSubpathProvided(t *testing.T) {
 	})
 	folders := &fakeFolderManager{result: "video-folder-id"}
 	files := &fakeFileUploader{}
-	pub := NewPublisher(reg, folders, files, zap.NewNop())
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
 
 	got, err := pub.ResolveFolder(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
