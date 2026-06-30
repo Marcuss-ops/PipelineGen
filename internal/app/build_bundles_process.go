@@ -44,8 +44,11 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -278,4 +281,47 @@ func startOutboxEventsPool(
 	})
 	log.Info("outbox events pool started", zap.Duration("poll_interval", cfg.PollInterval))
 	return nil
+}
+
+// ── Media-processor wiring (moved from build_media_processor.go, Phase 5 consolidation, June 2026) ──
+
+func wireMediaProcessor(
+	outbox *OutboxBundle,
+	repos *RepoBundle,
+	dbs *databases,
+	cfg *config.Config,
+	driveUploader *drive.Uploader,
+	log *zap.Logger,
+) (asset.Processor, error) {
+	if outbox == nil || outbox.Dispatcher == nil {
+		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
+		return nil, nil
+	}
+	mutationsDisp, err := newMutationsDispatcherAdapter(outbox.Dispatcher)
+	if err != nil {
+		return nil, fmt.Errorf("wireMediaProcessor: mutations dispatcher adapter: %w", err)
+	}
+	mp := initMediaProcessor(
+		cfg,
+		dbs.main,
+		repos.Assets.Repository(),
+		repos.Assets,
+		repos.Assets.LocationRepository(),
+		repos.Assets.ProcessingRepository(),
+		mutationsDisp,
+		log,
+		driveUploader,
+	)
+	log.Info("PR 8: MediaProcessor constructed inline with canonical mutations.AssetMutationDispatcher")
+	return mp, nil
+}
+
+func newVLMClient(cfg *config.Config) *vlm.Client {
+	return vlm.NewClient(vlm.Config{
+		Enabled:   cfg.VLM.Enabled,
+		Endpoint:  cfg.VLM.URL,
+		Model:     cfg.VLM.Model,
+		TimeoutMs: cfg.VLM.TimeoutMs,
+		Weight:    cfg.VLM.Weight,
+	})
 }

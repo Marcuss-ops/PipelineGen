@@ -33,7 +33,12 @@ import (
 
 	"go.uber.org/zap"
 
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -106,4 +111,40 @@ func BuildProcessBundle(
 		LocatorCleaner:     locatorCleaner,
 		QdrantSearcher:     qdrantSearcher,
 	}, nil
+}
+
+// ── Qdrant port assertions + subsystem init (moved from build_qdrant_runtime.go, Phase 5 consolidation, June 2026) ──
+
+var (
+	_ clipindexer.VectorStoreIndexer = (*qdrant.IndexWriter)(nil)
+	_ jobsoutbox.AssetDeleter        = (*sqassets.ClipsRepository)(nil)
+)
+
+func initQdrantProcessSubsystems(
+	qd *QdrantDeps,
+	cfg *config.Config,
+	log *zap.Logger,
+) (
+	collectionMgr *qdrant.CollectionManager,
+	vectorSvc assetsearch.VectorStorePort,
+	qdrantClient *qdrant.Client,
+	qdrantHealthProbe *qdrant.HealthProbe,
+	locatorCleaner *qdrant.LocatorCleaner,
+	qdrantSearcher *qdrant.Searcher,
+) {
+	if qd.Runtime == nil {
+		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired (BuildProcessBundle)")
+		return
+	}
+	collectionMgr = qd.Runtime.Manager
+	vectorSvc = qd.Runtime.SearchAdapter
+	qdrantClient = qd.Runtime.Client
+	qdrantHealthProbe = qd.Runtime.Health
+	locatorCleaner = qd.Runtime.Cleaner
+	qdrantSearcher = qd.Runtime.Searcher
+	log.Info("QDRANT-005 PR4: HealthProbe + LocatorCleaner + Searcher + CollectionManager sourced from single QdrantRuntime (BuildProcessBundle)",
+		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
+		zap.String("schema_version", qd.Runtime.Schema.Version))
+	log.Info("QDRANT-004 PR4: VectorStorePort sourced from single QdrantRuntime.SearchAdapter (BuildProcessBundle)")
+	return
 }
