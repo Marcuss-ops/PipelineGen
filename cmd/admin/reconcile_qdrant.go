@@ -193,7 +193,7 @@ func runReconcileQdrant(args []string) error {
 		schemaVersion: schema.Version,
 	}
 	sqliteAdapter := &reconcileReaderAdapter{store: assetStore}
-	pointIDFor := qdrant.AssetIDToQdrantPointID
+	pointIDFor := qdrantschema.AssetIDToQdrantPointID
 
 	// 5. Derive schema for the scanner.
 	perChannel := map[string]string{}

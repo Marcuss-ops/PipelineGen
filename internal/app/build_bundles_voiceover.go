@@ -72,7 +72,7 @@ func buildVoiceoverService(
 	metaWriter *semantic.MetadataWriter,
 	scriptGen *ollama.Generator,
 	outboxDispatcher *outbox.Dispatcher,
-) (*voiceover.Service, *assets.VoiceoversRepository) {
+) (*voiceover.Service, *assets.VoiceoversRepository, *voiceover.ProcessVoiceoverItemUseCase) {
 
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
@@ -157,10 +157,45 @@ func buildVoiceoverService(
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
 	ttsProvider := newUseCaseTTSAdapter(audioProcessor)
 
+	// BLOC4_ssot_cutover (micro-commit #6, June 2026): the canonical
+	// per-item voiceover pipeline is ProcessVoiceoverItemUseCase
+	// (process_voiceover_item.go). It holds the canonical 7-port typed
+	// surface + the new FilenameBuilder port extracted in micro-commit
+	// #6. The pre-BLOC4 B-2 BACKFILL GenerateVoiceoverUseCase (a 1-a-1
+	// delegate to VoiceoverGenerator) is REMOVED — closure of AGENTS.md
+	// Active Concerns #10 + the user's "il più delicato" cutover
+	// invariant: una sola pipeline voiceover end-to-end.
+	//
+	// BLOC5.3 commit-1-consumer-cutover (June 2026): processItemUseCase
+	// is built BEFORE voiceover.NewService so the canonical per-item
+	// use case can be threaded into VoiceoverGenerationDeps.ProcessItemUseCase
+	// (avoids a late-bound private-field assignment from package app —
+	// voiceover.processItemUseCase is package-private by design).
+	// The construction order: processItemUseCase first (depends on
+	// ttsProvider, destResolver, voLifecycle, voRepoAdapter, outboxEnqueuer
+	// — all built above) → voService next (depends on processItemUseCase
+	// AND semanticTagger/translator built above).
+	processItemUseCase := voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
+		TTSProvider:         ttsProvider,
+		DestinationResolver: newUseCaseDestResolverAdapter(destResolver),
+		AudioPostProcessor:  newUseCaseAudioAdapter(log),
+		AssetLifecycle:      newUseCaseLifecycleAdapter(voLifecycle),
+		VoiceoverRepository: voRepoAdapter,
+		TransactionalOutbox: outboxEnqueuer,
+		FilenameBuilder:     voiceover.NewDefaultFilenameBuilder(),
+		Logger:              log,
+	})
+	log.Info("Voiceover ProcessVoiceoverItemUseCase wired up (BLOC4 SSoT cutover)",
+		zap.String("pipeline", "TTS->AudioPost->LifecycleUpload->SwapTx+Outbox"))
+
 	voService := voiceover.NewService(voiceover.VoiceoverDeps{
 		Core:        voiceover.VoiceoverCoreDeps{Cfg: cfg, Log: log, OutputDir: voDir},
 		Persistence: voiceover.VoiceoverPersistenceDeps{Repo: voRepoAdapter},
-		Generation:  voiceover.VoiceoverGenerationDeps{TTSProvider: ttsProvider, SemanticTagger: semanticTagger},
+		Generation: voiceover.VoiceoverGenerationDeps{
+			TTSProvider:        ttsProvider,
+			SemanticTagger:     semanticTagger,
+			ProcessItemUseCase: processItemUseCase, // BLOC5.3 commit-1: typed port for legacy consumer cutover (promo bridge, future CallSites)
+		},
 		Integration: voiceover.VoiceoverIntegrationDeps{
 			DriveUploader:     newVoiceoverDriveAdapter(driveUploader),
 			LifecycleService:  voLifecycle,
@@ -173,12 +208,5 @@ func buildVoiceoverService(
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	// A1 (June 2026): the B-2 BACKFILL typed-port scaffold
-	// (voiceover.NewGenerateVoiceoverUseCase) was a 1-a-1 delegate to
-	// VoiceoverGenerator with zero call sites — removed. voService
-	// still structurally satisfies voiceover.VoiceoverGenerator
-	// (compile-time assertion in voiceover/ports.go); callers
-	// (books, scripts/jobs, workflow/promo) inject the port directly.
-
-	return voService, voRepo
+	return voService, voRepo, processItemUseCase
 }

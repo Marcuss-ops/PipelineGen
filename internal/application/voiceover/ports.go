@@ -278,3 +278,63 @@ type TransactionalOutbox = TxOutboxEnqueuer
 // at this layer would only add drift surface; we keep the canonical
 // concrete type so the use case is consistent with the rest of the
 // codebase.
+
+// ────────────────────────────────────────────────────────────────────────
+// BLOC4_ssot_cutover (micro-commit #6, June 2026): FilenameBuilder port.
+// ────────────────────────────────────────────────────────────────────────
+//
+// Extracted from the legacy *Service.buildFilename + the inline
+// buildCommandFilename in usecase.go so the new canonical per-item
+// use case ProcessVoiceoverItemUseCase (process_voiceover_item.go)
+// composes it via a narrow typed port (AGENTS.md Pattern 0).
+//
+// The production concrete DefaultFilenameBuilder lives in
+// filename_builder.go (single implementation for the deployment).
+// Tests inject stubs that record invocations.
+//
+// Signature: BuildFilename(text, language, textHash, template).
+//
+// Grammar (mirrors the legacy inline logic in filename.go:12 + the
+// inline copy in usecase.go's buildCommandFilename):
+//
+//   {slug} → textutil.SlugifyWithMax(text, 30)
+//   {lang} → language (verbatim)
+//   {hash} → textHash first 8 chars (or "" when shorter)
+//   {time} → time.Now().Format("150405")
+//   default template (when empty) → "{slug}_{lang}.mp3"
+type FilenameBuilder interface {
+	BuildFilename(text, language, textHash, template string) string
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// BLOC5.3 commit-1-consumer-cutover (June 2026): VoiceoverItemExecutor port.
+// ────────────────────────────────────────────────────────────────────────
+//
+// Narrow port extracted from ProcessVoiceoverItemUseCase.Execute so legacy
+// consumers (promo bridge, future call-site migrations) can depend on a
+// single-method interface rather than the 7-port concrete use case. The
+// production concrete is `*ProcessVoiceoverItemUseCase` itself (struct
+// satisfies the interface structurally via Go's implicit rules).
+//
+// Why a port here and not just the concrete: the bridge is in a different
+// lifecycle than the use case (test fixtures can't easily construct the
+// full 7-port use case for each per-test invocation). The narrow port
+// enables a one-method stub via `&fakeExecutor{}` while production
+// keeps the compile-time satisfaction assertion below.
+//
+// Audit pin: the canonical 5-stage pipeline runs through this single
+// method:
+//   DestinationResolver.Resolve → FilenameBuilder.BuildFilename
+//   → TTSProvider.Synthesize → optional AudioPostProcessor.Process
+//   → AssetLifecycle.Upload → VoiceoverRepository swap + outbox
+// Any consumer reaching ProcessVoiceoverItemUseCase.Execute reaches the
+// canonical pipeline (legacy Service.GenerateBatch is bypassed).
+type VoiceoverItemExecutor interface {
+	Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error)
+}
+
+// Compile-time conformance assertion (AGENTS.md Pattern 0): the
+// production *ProcessVoiceoverItemUseCase satisfies the narrow port.
+// Drift between Execute's signature and the port contract triggers a
+// compile error at this line.
+var _ VoiceoverItemExecutor = (*ProcessVoiceoverItemUseCase)(nil)
