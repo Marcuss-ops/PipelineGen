@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
@@ -80,6 +81,112 @@ func (r *recordingRepo) UpdateCursor(_ context.Context, _ channels.UpdateCursorC
 
 // Compile-time assertion: recordingRepo must satisfy channels.Repository.
 var _ channels.Repository = (*recordingRepo)(nil)
+
+// ── Step 9 port stubs ───────────────────────────────────────────────────
+//
+// Per AGENTS.md Pattern 0 (port abstraction layer): the monitor's runtime
+// code reads TranscriptProvider / VideoAnalyzer / JobEnqueuer via tiny
+// interfaces; tests inject these stubs directly. Compile-time assertions
+// below pin the stubs to the same upgrade contract the production
+// concrete adapters satisfy.
+
+// stubTranscriptProvider implements TranscriptProvider for tests. Returns
+// canned transcript + err; tracks call count so tests can verify call
+// sequencing (call count == 1 after one analyzeVideo run; 0 after the
+// analyzer short-circuits on a transcript failure).
+type stubTranscriptProvider struct {
+	transcript         string
+	err                error
+	getTranscriptCalls int
+}
+
+func (s *stubTranscriptProvider) GetTranscript(_ context.Context, _ string) (string, error) {
+	s.getTranscriptCalls++
+	return s.transcript, s.err
+}
+
+// Compile-time assertion: stubTranscriptProvider must satisfy TranscriptProvider.
+var _ TranscriptProvider = (*stubTranscriptProvider)(nil)
+
+// stubVideoAnalyzer implements VideoAnalyzer for tests. Each method
+// returns canned outputs configured via fields; tracks call counts so
+// tests can verify call ordering (e.g. "Score should be skipped when
+// transcript fails" asserts scoreCalls == 0).
+type stubVideoAnalyzer struct {
+	score             int
+	scoreKeyword      string
+	scoreErr          error
+	scoreCalls        int
+	category          string
+	classifyErr       error
+	classifyCalls     int
+	segments          []ytdomain.Segment
+	findSegmentsErr   error
+	findSegmentsCalls int
+}
+
+func (s *stubVideoAnalyzer) Score(_ context.Context, _ string, _ []string) (int, string, error) {
+	s.scoreCalls++
+	return s.score, s.scoreKeyword, s.scoreErr
+}
+
+func (s *stubVideoAnalyzer) Classify(_ context.Context, _, _ string) (string, error) {
+	s.classifyCalls++
+	return s.category, s.classifyErr
+}
+
+func (s *stubVideoAnalyzer) FindSegments(_ context.Context, _, _, _ string, _ int) ([]ytdomain.Segment, error) {
+	s.findSegmentsCalls++
+	return s.segments, s.findSegmentsErr
+}
+
+// Compile-time assertion: stubVideoAnalyzer must satisfy VideoAnalyzer.
+var _ VideoAnalyzer = (*stubVideoAnalyzer)(nil)
+
+// stubJobEnqueuer implements JobEnqueuer for tests. Simulates the
+// ActiveKey-collision short-circuit + cursor-update phase that the
+// concrete *jobtools.Service binding will own in production. Tracks
+// enqueue attempts + cursor-update count independently so tests can
+// pin the no-op-on-collision contract and the best-effort
+// cursor-failure-tolerance contract.
+type stubJobEnqueuer struct {
+	enqueuedRequests []EnqueueExtractRequest
+	enqueueCalls     int // every EnqueueExtract entry, including no-op collisions
+	cursorUpdates    int // only incremented on the post-collision path (cursor attempted)
+	lastCursorCmd    EnqueueExtractRequest
+
+	returnErr error // EnqueueExtract's terminal return (simulating enqueue failure)
+	cursorErr error // simulated cursor-update failure (best-effort: tolerated)
+
+	// collisions: videoIDs that should short-circuit EnqueueExtract as a
+	// no-op (ActiveKey collision semantics). The collision path does NOT
+	// record an enqueue, does NOT invoke the cursor update, returns nil.
+	collisions map[string]bool
+}
+
+func (s *stubJobEnqueuer) EnqueueExtract(_ context.Context, req EnqueueExtractRequest) error {
+	s.enqueueCalls++
+	if s.collisions != nil && s.collisions[req.VideoID] {
+		// ActiveKey collision → canonical no-op. The durable-jobs system
+		// knows this video is already in flight; the monitor's contract
+		// is to drop duplicate enqueues silently and let the existing
+		// job's outcome propagate. Cursor is NOT advanced (the cursor
+		// update is gated on a successful new enqueue, matching the
+		// pre-Step-9 process_video.go::enqueueClipExtract contract).
+		return nil
+	}
+	s.enqueuedRequests = append(s.enqueuedRequests, req)
+	s.lastCursorCmd = req
+	// Attempt cursor update regardless of cursorErr; the best-effort
+	// tolerance semantic lives in the returnErr path below. cursorUpdates
+	// tracks "we tried to update", distinct from "we tried and the job
+	// went through to the broker".
+	s.cursorUpdates++
+	return s.returnErr
+}
+
+// Compile-time assertion: stubJobEnqueuer must satisfy JobEnqueuer.
+var _ JobEnqueuer = (*stubJobEnqueuer)(nil)
 
 // TestRecordCheckOutcome_ErrorPropagatesAsSuccessFalse is the CANONICAL
 // regression for Blocco 1: a non-nil checkErr fed into recordCheckOutcome
