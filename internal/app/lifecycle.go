@@ -35,6 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -177,14 +178,13 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				Stop: func(_ context.Context) error { return nil },
 			})
 		}
-	}
 
-	if runScheduler {
-		// Voiceover parent aggregator: optional background poller that
-		// re-finalises parent jobs once all children have reached
-		// terminal status (Step 4 / micro-commit #5, June 2026).
-		// Requires the jobs service (for List/Get/Complete) and the
-		// parent job type to be registered at composition time.
+		// Voiceover parent aggregator (Step 4 / micro-commit #5, June 2026):
+		// re-finalises parent jobs once all children have reached terminal
+		// status. MUST live under runWorker (NOT runScheduler) because the
+		// child job's terminal status only transitions when the job runner
+		// processes it — placing the aggregator under runScheduler would
+		// orphan parents on mode=worker machines (no aggregator ticks).
 		if root.Jobs.Service != nil {
 			voAgg := voiceoverjobs.NewParentAggregator(voiceoverjobs.AggregatorDeps{
 				JobsSvc:      root.Jobs.Service,
@@ -201,6 +201,9 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				Stop: func(_ context.Context) error { return nil },
 			})
 		}
+	}
+
+	if runScheduler {
 
 		if cfg.Jobs.EnableChannelMonitor {
 			// PR 2 (June 2026): channels are loaded exclusively from
