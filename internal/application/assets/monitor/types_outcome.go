@@ -34,6 +34,16 @@ const (
 	SkipAlreadyActive SkipReason = "already_active"
 	// SkipEnqueueFailed — jobs.Service.Enqueue returned an error.
 	SkipEnqueueFailed SkipReason = "enqueue_failed"
+	// SkipMaxVideosPerRun — the per-channel MaxVideosPerRun budget was
+	// already saturated when enqueueClipExtract entered its TryReserve
+	// gate; no slot was consumed. This is a CAPACITY decision, not a
+	// system error: the returned error MUST be nil (Recording this as
+	// err != nil would feed the scheduler's exponential backoff and
+	// drive nextCheckTime to 24h on a budget-exhausted channel — the
+	// WRONG response for a transient capacity signal). Use
+	// ThisReason with the dedicated Prometheus label so operators can
+	// distinguish "budget exhausted" from "enqueue tail failed".
+	SkipMaxVideosPerRun SkipReason = "max_videos_per_run"
 	// SkipUnknown — defensive sentinel: callers MUST set Reason on every
 	// EnqueueOutcome {Enqueued: false}; if a caller forgets, the zero value
 	// is "" which leaks into the Prometheus label

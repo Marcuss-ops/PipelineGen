@@ -106,26 +106,20 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 			zap.Int("score", score))
 	}
 
-	// ── MaxVideosPerRun (Blocco 4 Step 2: dual counter lockstep) ───────
-	if counters != nil && channel.MaxVideosPerRun > 0 {
-		if !counters.TryReserve(channel.MaxVideosPerRun) {
-			m.log.Debug("max_videos_per_run reached, skipping",
-				zap.String("video_id", videoID),
-				zap.Int("max", channel.MaxVideosPerRun))
-			return
-		}
-		// Step 2 lockstep: every successful reservation also bumps the
-		// dual Prometheus metric pair (parity with the previous single
-		// acceptedCount semantics). Step 3 will move the
-		// SuccessfulEnqueues bump to AFTER enqueueClipExtract returns
-		// Enqueued=true, so the two metrics will diverge on the
-		// no-jobs-enqueued path.
-		metrics.ChannelMonitorAnalysisReservations.WithLabelValues(channelHandle).Inc()
-		metrics.ChannelMonitorSuccessfulEnqueues.WithLabelValues(channelHandle).Inc()
-	}
-
+	// ── MaxVideosPerRun gate ──────────────────────────────────────────
+	// Step 3: the TryReserve and the rollback path moved INTO
+	// enqueueClipExtract so the enqueue tail owns its own reservation
+	// lifecycle. processVideo does not bump the dual Prometheus
+	// metric pair any more — only enqueueClipExtract does, on the
+	// success (RecordEnqueue) or on every rollback (no release
+	// metric; Prometheus counters cannot decrement).
+	//
+	// processVideo still drives the VideosChecked counter so the
+	// `did the filter chain permit this video to enter the enqueue
+	// tail?` observability stays here; the budget observability
+	// (grants + successes) moves to enqueueClipExtract.
 	metrics.ChannelMonitorVideosChecked.WithLabelValues(channelHandle).Inc()
-	m.enqueueClipExtract(ctx, videoID, title, channel)
+	_, _ = m.enqueueClipExtract(ctx, videoID, title, channel, counters)
 }
 
 // decodeJSONStrings decodes a JSON-encoded string array (as stored in
@@ -163,15 +157,65 @@ func extractChannelHandle(url string) string {
 // PR 5 (June 2026): replaces the synchronous m.youtubeSvc.Extract() call.
 // PR 6 (June 2026): Drive folder resolution moved inside extraction pipeline; dedup via job ActiveKey.
 // PR 7 (June 2026): uses channels.Channel DTO directly; MonitorConfig removed.
-func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string, title string, channel channels.Channel) {
+// PR (June 2026, Blocco 4 Step 3): signature changed from
+// (ctx, videoID, title, channel) to add `counters *ChannelCounters`
+// and return `(EnqueueOutcome, error)`. The TryReserve gate moved
+// here from processVideo so the enqueue tail owns its own
+// reservation lifecycle. On every rollback path
+// (noSegments / marshalErr / jobsSvc==nil / Enqueue err / ActiveKey
+// collision) counters.ReleaseReservation() is called BEFORE the
+// return so MaxVideosPerRun reflects the true current slot usage.
+func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string, title string, channel channels.Channel, counters *ChannelCounters) (EnqueueOutcome, error) {
+	channelHandle := extractChannelHandle(channel.ChannelURL)
+	metricsLabel := channelHandle
+	if metricsLabel == "" {
+		metricsLabel = "unknown"
+	}
+
+	// ── MaxVideosPerRun TryReserve (Blocco 4 Step 3) ──────────────────
+	// Returns WITHOUT touching counters (no slot was consumed):
+	// SkipMaxVideosPerRun is a capacity decision, not a system error,
+	// so err MUST be nil — otherwise the scheduler would feed this
+	// into the exponential backoff in monitor_scheduler.go and drive
+	// nextCheckTime to 24h on a budget-exhausted channel.
+	if counters != nil && channel.MaxVideosPerRun > 0 {
+		if !counters.TryReserve(channel.MaxVideosPerRun) {
+			m.log.Debug("max_videos_per_run reached, skipping",
+				zap.String("video_id", videoID),
+				zap.Int("max", channel.MaxVideosPerRun))
+			return EnqueueOutcome{Enqueued: false, Reason: SkipMaxVideosPerRun}, nil
+		}
+		// Slot consumed: bump the grants counter, NOT the successes.
+		metrics.ChannelMonitorAnalysisReservations.WithLabelValues(metricsLabel).Inc()
+	}
+
+	// rollback centralises the ReleaseReservation + structured-log +
+	// outcome-return pattern so every failure path below has one
+	// consistent shape and SkipReason is always set.
+	rollback := func(reason SkipReason, err error, msg string) (EnqueueOutcome, error) {
+		if counters != nil {
+			counters.ReleaseReservation()
+		}
+		if err != nil {
+			m.log.Error(msg,
+				zap.String("video_id", videoID),
+				zap.String("title", title),
+				zap.Error(err))
+		} else {
+			m.log.Info(msg,
+				zap.String("video_id", videoID),
+				zap.String("title", title))
+		}
+		return EnqueueOutcome{Enqueued: false, Reason: reason}, err
+	}
+
+	// ── Drive folder resolution (PR 6) ────────────────────────────────
 	var category string
 	if channel.DriveFolderID != "" && channel.Category != "" {
 		category = channel.Category
 	} else {
 		category = m.classifyCategory(ctx, title, channel.Category, nil)
 	}
-
-	channelHandle := extractChannelHandle(channel.ChannelURL)
 
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
 
@@ -181,17 +225,10 @@ func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string,
 	}
 	segments := m.findInterestingSegments(ctx, videoURL, maxSegments, channel.SegmentPrompt)
 
-	metricsLabel := channelHandle
-	if metricsLabel == "" {
-		metricsLabel = "unknown"
-	}
 	metrics.ChannelMonitorSegmentsPerVideo.WithLabelValues(metricsLabel).Observe(float64(len(segments)))
 
 	if len(segments) == 0 {
-		m.log.Info("no interesting segments found, skipping video",
-			zap.String("video_id", videoID),
-			zap.String("title", title))
-		return
+		return rollback(SkipNoSegments, nil, "no interesting segments found, skipping video")
 	}
 
 	metrics.ChannelMonitorVideosWithSegments.WithLabelValues(metricsLabel).Inc()
@@ -201,18 +238,15 @@ func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string,
 		segments[idx].Name = category + " " + segments[idx].Name
 	}
 
-	// PR 6 (June 2026): Drive folder resolution moved inside extraction.
-	// The monitor passes the channel's DriveFolderID (with ClipsFolder fallback)
-	// through; the extraction service resolves per-channel subfolders internally.
 	driveFolderID := channel.DriveFolderID
 	if driveFolderID == "" && m.cfg != nil {
 		driveFolderID = m.cfg.Drive.ClipsFolder()
 	}
 
 	if m.jobsSvc == nil {
-		m.log.Warn("jobsSvc not wired, cannot enqueue extract job",
-			zap.String("video_id", videoID))
-		return
+		return rollback(SkipEnqueueFailed,
+			fmt.Errorf("jobsSvc not wired"),
+			"jobsSvc not wired, cannot enqueue extract job")
 	}
 
 	extractReq := yttypes.ExtractRequest{
@@ -228,11 +262,10 @@ func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string,
 
 	payload, err := json.Marshal(extractReq)
 	if err != nil {
-		m.log.Error("failed to marshal extract request", zap.Error(err))
-		return
+		return rollback(SkipEnqueueFailed, err, "failed to marshal extract request")
 	}
 
-	_, err = m.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
+	jobResp, err := m.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:       job.TypeYouTubeClipExtract,
 		Priority:   2,
 		Payload:    json.RawMessage(payload),
@@ -241,27 +274,44 @@ func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string,
 		VideoName:  title,
 	})
 	if err != nil {
-		m.log.Error("failed to enqueue youtube_clip.extract job",
-			zap.String("video_id", videoID),
-			zap.Error(err))
-		return
+		return rollback(SkipEnqueueFailed, err, "failed to enqueue youtube_clip.extract job")
+	}
+
+	// ── Success path: RecordEnqueue + SuccessfulEnqueues metric ───────
+	if counters != nil {
+		counters.RecordEnqueue()
+	}
+	metrics.ChannelMonitorSuccessfulEnqueues.WithLabelValues(metricsLabel).Inc()
+
+	jobID := ""
+	if jobResp != nil {
+		jobID = jobResp.ID
 	}
 
 	m.log.Info("enqueued youtube_clip.extract job",
 		zap.String("video_id", videoID),
 		zap.String("title", title),
 		zap.Int("segments", len(segments)),
-		zap.String("destination_group", category))
+		zap.String("destination_group", category),
+		zap.String("job_id", jobID))
 
 	if channel.ID != "" {
 		if err := m.channelsSvc.UpdateCursor(ctx, channels.UpdateCursorCommand{
 			ID:     channel.ID,
 			Cursor: videoID,
 		}); err != nil {
+			// Cursor update failure is LOGGED ONLY — NOT a rollback
+			// trigger. The job already landed in the broker and a
+			// second video handling cycle would either resume past
+			// the cursor or the next ClaimDue tick would re-scan
+			// from the cursor point. Rolling back here would lose
+			// the work done by the enqueue tail.
 			m.log.Warn("failed to update cursor",
 				zap.String("channel_id", channel.ID),
 				zap.String("cursor", videoID),
 				zap.Error(err))
 		}
 	}
+
+	return EnqueueOutcome{Enqueued: true, JobID: jobID, Reason: ""}, nil
 }
