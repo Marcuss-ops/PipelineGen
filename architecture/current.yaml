@@ -366,9 +366,8 @@ wave_status:
   P1-2:
     id: P1-2
     topic: Check 44 application size cap + usecase/types_aliases.go filename ban
-    transitional_cap: 66
-    target: 40
-    current_state: deferred
+    transitional_cap: 66    target: 40
+    current_state: active
     owner: architecture
     script_slug: scripts/ci/architecture/checks/44_application_size_cap_and_aliases_ban.sh
-    linked_issues: []
+    linked_issues: [] 
