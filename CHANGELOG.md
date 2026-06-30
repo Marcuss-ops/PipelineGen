@@ -9,6 +9,74 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ## Unreleased
 
+### Added
+
+**[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
+port abstractions (Pattern 0) — the composition root's readiness barrier
+now consumes a typed port instead of leaking the raw `*gdrive.Service`
+into the lifecycle wiring.
+
+- **New port interfaces** declared at
+  `internal/infrastructure/drive/ports.go` (`Admin` for folder management
+  + file lifecycle + uploads + liveness probe via `Ping`; `Reader` for
+  download + metadata + listing + existence checks). Compile-time
+  assertions at the bottom of the file: `var _ Admin = (*Uploader)(nil)`
+  and `var _ Reader = (*Uploader)(nil)` — a signature drift between the
+  port surface and the concrete `*drive.Uploader` is a build failure per
+  AGENTS.md Pattern 0.
+
+- **New `Uploader.Ping(ctx) error` method** in
+  `internal/infrastructure/drive/uploader_ops.go` (line ~295) — calls
+  `u.Service.About.Get().Fields("user").Context(ctx).Do()`. Nil-service
+  guard: returns `fmt.Errorf("drive service not configured")` so the
+  readiness barrier fails closed on misconfigured Drive.
+
+- **Composition-layer wiring** (the canonical consumer) — the
+  `internal/app/wire_services.go` `driveProbe` closure now reads
+  `root.Drive.Admin.Ping(ctx)` instead of
+  `root.Drive.DriveClient.About.Get().Fields("user")`. Bit-for-bit
+  behavioural parity; the only difference is the consumer surface
+  (typed port vs raw SDK).
+
+- **Typed-nil-safe guard** at
+  `internal/app/build_bundles_drive.go::BuildDriveBundle` — uses the
+  canonical `var admin drive.Admin` + `if driveUploader != nil { admin =
+  driveUploader }` pattern so the interface value stays true-nil when
+  the uploader is nil. Without this guard, `Admin: driveUploader` would
+  produce a non-nil interface holding a typed-nil pointer — the classic
+  Go interface-nilness trap that would silently panic the readiness
+  barrier on a Drive-feature-disabled deployment.
+
+### Deprecated
+
+**[DRIVE-005, June 2026]** `internal/app.DriveBundle.DriveClient` and
+`internal/app.DriveBundle.DriveUploader` (the raw `*gdrive.Service` and
+`*drive.Uploader` handles on the composition-root bundle) are
+deprecated in favour of the typed-pattern ports
+(`internal/app.DriveBundle.Admin` + `internal/app.DriveBundle.Reader`).
+
+- **Canonical replacement**: `Admin` (liveness probe `Ping(ctx)`,
+  folder management, file lifecycle, raw uploads) and `Reader`
+  (download, metadata, listing, existence checks). All new code MUST
+  consume via the typed ports per Pattern 0 + godlike/06 "one owner
+  per fact".
+
+- **Back-compat path**: the deprecated fields are retained for Wave 14+
+  back-compat across the existing ~86 legacy callsites (`cmd/admin/*`,
+  `internal/app/{build_bundles_*,lifecycle,module_*,registry_*}`,
+  `internal/application/assets/ingest/sync/*`, the storage_wiring_test,
+  and many others). The fields alias the SAME `*drive.Uploader`
+  instance so **zero split-brain** — godlike/06 holds.
+
+- **Deprecation record**: `architecture/deprecations.yaml#DRIVE-005-FIELDS`
+  per godlike/07. Removal target: 2026-Q3 (aligned with the Wave 14
+  mega-package split gate which is the natural deletion boundary).
+  Status: EXPAND / in_progress as of FASE 9 landing.
+
+- **Audit gate**: `rg 'root\.Drive\.DriveClient|root\.Drive\.DriveUploader'
+  internal/` returns the current ~86 readsite count — the
+  EXPAND-phase usage_metric baseline for `DRIVE-005-FIELDS`.
+
 ### Fixed
 
 **[Issue 8, ApplyPreset closure]** `fix(script)` — `ApplyPreset` now
@@ -554,6 +622,76 @@ enrichment replaces the deleted `EnrichAsync` capability. Until then,
 search ingestion stores only the raw clip metadata and a separate
 `/enrich` job handles semantic payload population. Filed
 separately, not in this closure.
+
+## Unreleased
+
+### Added
+
+**[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
+port abstractions (Pattern 0) — the composition root's readiness barrier
+now consumes a typed port instead of leaking the raw `*gdrive.Service`
+into the lifecycle wiring.
+
+- **New port interfaces** declared at
+  `internal/infrastructure/drive/ports.go` (`Admin` for folder management
+  + file lifecycle + uploads + liveness probe via `Ping`; `Reader` for
+  download + metadata + listing + existence checks). Compile-time
+  assertions at the bottom of the file: `var _ Admin = (*Uploader)(nil)`
+  and `var _ Reader = (*Uploader)(nil)` — a signature drift between the
+  port surface and the concrete `*drive.Uploader` is a build failure per
+  AGENTS.md Pattern 0.
+
+- **New `Uploader.Ping(ctx) error` method** in
+  `internal/infrastructure/drive/uploader_ops.go` (line ~295) — calls
+  `u.Service.About.Get().Fields("user").Context(ctx).Do()`. Nil-service
+  guard: returns `fmt.Errorf("drive service not configured")` so the
+  readiness barrier fails closed on misconfigured Drive.
+
+- **Composition-layer wiring** (the canonical consumer) — the
+  `internal/app/wire_services.go` `driveProbe` closure now reads
+  `root.Drive.Admin.Ping(ctx)` instead of
+  `root.Drive.DriveClient.About.Get().Fields("user")`. Bit-for-bit
+  behavioural parity; the only difference is the consumer surface
+  (typed port vs raw SDK).
+
+- **Typed-nil-safe guard** at
+  `internal/app/build_bundles_drive.go::BuildDriveBundle` — uses the
+  canonical `var admin drive.Admin` + `if driveUploader != nil { admin =
+  driveUploader }` pattern so the interface value stays true-nil when
+  the uploader is nil. Without this guard, `Admin: driveUploader` would
+  produce a non-nil interface holding a typed-nil pointer — the classic
+  Go interface-nilness trap that would silently panic the readiness
+  barrier on a Drive-feature-disabled deployment.
+
+### Deprecated
+
+**[DRIVE-005, June 2026]** `internal/app.DriveBundle.DriveClient` and
+`internal/app.DriveBundle.DriveUploader` (the raw `*gdrive.Service` and
+`*drive.Uploader` handles on the composition-root bundle) are
+deprecated in favour of the typed-pattern ports
+(`internal/app.DriveBundle.Admin` + `internal/app.DriveBundle.Reader`).
+
+- **Canonical replacement**: `Admin` (liveness probe `Ping(ctx)`,
+  folder management, file lifecycle, raw uploads) and `Reader`
+  (download, metadata, listing, existence checks). All new code MUST
+  consume via the typed ports per Pattern 0 + godlike/06 "one owner
+  per fact".
+
+- **Back-compat path**: the deprecated fields are retained for Wave 14+
+  back-compat across the existing ~86 legacy callsites (`cmd/admin/*`,
+  `internal/app/{build_bundles_*,lifecycle,module_*,registry_*}`,
+  `internal/application/assets/ingest/sync/*`, the storage_wiring_test,
+  and many others). The fields alias the SAME `*drive.Uploader`
+  instance so **zero split-brain** — godlike/06 holds.
+
+- **Deprecation record**: `architecture/deprecations.yaml#DRIVE-005-FIELDS`
+  per godlike/07. Removal target: 2026-Q3 (aligned with the Wave 14
+  mega-package split gate which is the natural deletion boundary).
+  Status: EXPAND / in_progress as of FASE 9 landing.
+
+- **Audit gate**: `rg 'root\.Drive\.DriveClient|root\.Drive\.DriveUploader'
+  internal/` returns the current ~86 readsite count — the
+  EXPAND-phase usage_metric baseline for `DRIVE-005-FIELDS`.
 
 ---
 

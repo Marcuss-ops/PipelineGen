@@ -284,23 +284,28 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		dbProbe = func(ctx context.Context) error { return conn.PingContext(ctx) }
 	}
 	var driveProbe func(ctx context.Context) error
-	if root.Drive != nil && root.Drive.DriveClient != nil {
-		dc := root.Drive.DriveClient
-		// Drive probe uses About.Get (canonical Drive liveness endpoint).
-		// Files.Get("root") is NOT a valid Drive API alias — it does not
-		// resolve to the user's root folder — so using it as a probe
-		// would make the readiness barrier fail on every healthy Drive.
-		// About.Get is what production token validation does in
-		// internal/infrastructure/drive/uploader.go (canonical contract).
-		//
-		// Note: the parent ctx already carries the per-probe timeout
-		// (serverLifecycle.Start wraps each probe in a 5s context.WithTimeout
-		// before invoking the barrier), so this fn does not need to derive
-		// its own. The barrier's first-error-wins semantics propagate
-		// ctx.DeadlineExceeded back to the caller as a clean error.
+	// FASE 9 (June 2026, P0.1 / DRIVE-005): the canonical Pattern 0 port
+	// for the Drive readiness probe is drive.Admin (Ping method). Replace
+	// the raw *gdrive.Service.About.Get call site in wire_services: the
+	// composition root now hands out a typed port per Pattern 0 instead
+	// of leaking the gdrive SDK into the readiness-builder closure.
+	//
+	// Typed-nil-safe: root.Drive.Admin is a DRIVE.Admin interface value;
+	// when the uploader is nil (Drive feature disabled) admin is a true
+	// nil interface, not a typed-nil (Build*Bundle guards the assignment
+	// explicitly). The `root.Drive.Admin != nil` check is therefore the
+	// correct "Drive feature configured" gate. The barrier's first-error
+	// semantics propagate ctx.DeadlineExceeded back to the caller cleanly.
+	//
+	// Equality with previous contract: (*drive.Uploader).Ping(ctx) calls
+	// u.Service.About.Get().Fields("user").Context(ctx).Do() — bit-for-bit
+	// identical to the legacy probe implementation above. No observable
+	// behaviour change; only the consumer surface moves from raw SDK to
+	// typed port.
+	if root.Drive != nil && root.Drive.Admin != nil {
+		admin := root.Drive.Admin
 		driveProbe = func(ctx context.Context) error {
-			_, err := dc.About.Get().Fields("user").Context(ctx).Do()
-			return err
+			return admin.Ping(ctx)
 		}
 	}
 	lifecycle := NewServerLifecycleWithProbes(

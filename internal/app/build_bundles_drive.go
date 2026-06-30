@@ -127,14 +127,45 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		return startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, styleRegistry, log)
 	}
 
+	// FASE 9 (June 2026, P0.1 / DRIVE-005): wire the canonical Pattern 0
+	// ports (Admin / Reader) alongside the deprecated DriveClient /
+	// DriveUploader fields. *drive.Uploader satisfies both ports
+	// structurally — the compile-time asserts at the bottom of
+	// internal/infrastructure/drive/ports.go pin conformance.
+	//
+	// Typed-nil-safety: assigning a nil *drive.Uploader directly to a
+	// drive.Admin field produces a non-nil interface holding a nil
+	// pointer (Go interface nilness trap). The probe is precisely the
+	// site that needs to distinguish "not configured" (Drive disabled)
+	// from "configured but unreachable" (auth failure), so we must hand
+	// back a TRUE nil interface when the uploader is nil. The explicit
+	// `var admin drive.Admin` + `if driveUploader != nil { admin = ... }`
+	// pattern is required (an inline ternary or direct assignment won't
+	// keep the interface value true-nil).
+	var admin drive.Admin
+	var reader drive.Reader
+	if driveUploader != nil {
+		admin = driveUploader
+		reader = driveUploader
+	}
+
 	return &DriveBundle{
+		// Canonical Pattern 0 ports (NEW, FASE 9 P0.1 / DRIVE-005).
+		Admin: admin,
+		Reader: reader,
+		// Deprecated raw SDK / concrete handles — back-compat for ~86
+		// legacy callsites; alias the SAME *drive.Uploader instance so
+		// godlike/06 "one owner per fact" holds (zero split-brain).
+		// See architecture/deprecations.yaml#DRIVE-005-FIELDS for the
+		// canonical removal plan (target Q3 2026, post-Wave 14).
 		DriveClient:   driveClient,
 		DriveUploader: driveUploader,
-		DocClient:     docClient,
+		driveUploader: driveUploader, // unexported; used by rawDriveService()
 		DriveDests:    dests,
 		MediaStore:    mediaStore,
 		DestResolver:  destResolver,
 		StyleRegistry: styleRegistry,
 		Publisher:     publisher,
+		DocClient:     docClient,
 	}, startClosure, nil
 }
