@@ -438,8 +438,9 @@ func (a *SearchAggregator) Aggregate(
 	var wg sync.WaitGroup
 	var cursorMerge sync.Mutex
 
-	for _, e := range sps {
+	for idx, e := range sps {
 		entry := e
+		outIdx := idx
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -518,6 +519,7 @@ func (a *SearchAggregator) Aggregate(
 				cursor:  searchResult.NextPageToken,
 				latency: elapsed,
 			}
+			outcomes[outIdx] = out
 			a.recordOutcome(entry.Name, out)
 
 			// Cursor checkpoint: under first-page (decodedOK == false),
@@ -953,6 +955,31 @@ func (c *cursorPayload) LimitHintForProvider(_ string) int {
 		return 0
 	}
 	return c.lastSeenOffset
+}
+
+func (c cursorPayload) MarshalJSON() ([]byte, error) {
+	type payload struct {
+		LastSeenProvider string `json:"last_seen_provider"`
+		LastSeenOffset   int    `json:"last_seen_offset"`
+	}
+	return json.Marshal(payload{
+		LastSeenProvider: c.lastSeenProvider,
+		LastSeenOffset:   c.lastSeenOffset,
+	})
+}
+
+func (c *cursorPayload) UnmarshalJSON(data []byte) error {
+	type payload struct {
+		LastSeenProvider string `json:"last_seen_provider"`
+		LastSeenOffset   int    `json:"last_seen_offset"`
+	}
+	var p payload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	c.lastSeenProvider = p.LastSeenProvider
+	c.lastSeenOffset = p.LastSeenOffset
+	return nil
 }
 
 // encodeCursor returns a base64(JSON) opaque string. Decode failures
