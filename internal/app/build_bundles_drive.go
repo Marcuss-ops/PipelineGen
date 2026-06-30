@@ -160,7 +160,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// canonical removal plan (target Q3 2026, post-Wave 14).
 		DriveClient:   driveClient,
 		DriveUploader: driveUploader,
-		driveUploader: driveUploader, // unexported; used by rawDriveService()
+		driveUploader: driveUploader, // unexported; for internal wiring within package app
 		DriveDests:    dests,
 		MediaStore:    mediaStore,
 		DestResolver:  destResolver,

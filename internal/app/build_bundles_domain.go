@@ -78,7 +78,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	)
 	youtubeLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:      clipsRegistry,
-		DriveUploader: drive.DriveUploader,
+		DriveUploader: drive.driveUploader,
 		AssetIndex:    search.AssetIndexService,
 	}, log)
 
@@ -96,7 +96,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
-	driveFolderMgr := newDriveFolderMgrAdapter(drive.DriveUploader, log)
+	driveFolderMgr := newDriveFolderMgrAdapter(drive.driveUploader, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
@@ -148,24 +148,24 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	// FASE 9: nil-safe extraction — DriveUploader.Service panics when nil.
 	var rawDriveSvc *gdrive.Service
-	if drive.DriveUploader != nil {
-		rawDriveSvc = drive.DriveUploader.Service
+	if drive.driveUploader != nil {
+		rawDriveSvc = drive.driveUploader.Service
 	}
 	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
-		rawDriveSvc, drive.DriveUploader,
+		rawDriveSvc, drive.driveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
 		voMetaWriter, ai.ScriptGen,
 		outbox.Dispatcher,
 	)
 
-	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc, drive.Publisher)
+	booksSvc := buildBooksService(cfg, dbs, log, drive.driveUploader, voiceoverSvc, drive.Publisher)
 
-	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveUploader, repos, search, mutationsDisp)
+	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, repos, search, mutationsDisp)
 
 	var driveClient *gdrive.Service
-	if drive.DriveUploader != nil {
-		driveClient = drive.DriveUploader.Service
+	if drive.driveUploader != nil {
+		driveClient = drive.driveUploader.Service
 	}
 
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
@@ -209,7 +209,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	var vosyncSvc *voiceoversync.Service
 	if voFolder := cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
-		vosyncSvc = voiceoversync.NewService(drive.DriveUploader, voiceoverRepo, search.AssetTreeService, voFolder, log)
+		vosyncSvc = voiceoversync.NewService(drive.driveUploader, voiceoverRepo, search.AssetTreeService, voFolder, log)
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
@@ -383,7 +383,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	deletionSvc := deletion.NewDeletionService(
 		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo,
 		repos.VoiceoverRepo, repos.ImageRepo,
-		drive.DriveUploader, search.AssetTreeService, search.AssetIndexService,
+		drive.driveUploader, search.AssetTreeService, search.AssetIndexService,
 		outboxBundle.Dispatcher,
 		log,
 	)
@@ -429,7 +429,7 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// with a nil-service uploader so the bootstrap tests can complete.
 	// The catalogsync service itself remains fail-closed if it is ever
 	// invoked without a real Drive client.
-	uploader := drive.DriveUploader
+	uploader := drive.driveUploader
 	if uploader == nil {
 		uploader = &driveutil.Uploader{Log: log}
 		log.Warn("BuildSyncBundle: drive uploader missing; using nil-service placeholder for disabled-drive bootstrap")

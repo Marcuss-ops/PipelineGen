@@ -67,15 +67,10 @@ import (
 // MediaStore/DestResolver + StyleRegistry.
 //
 // FASE 9 (June 2026, P0.1 / DRIVE-005): the canonical Pattern 0 ports
-// (Admin + Reader) are the public surface for ALL new code. The raw
-// *gdrive.Service (DriveClient) and *drive.Uploader (DriveUploader)
-// fields are RETAINED for Wave 14+ back-compat across ~86 legacy
-// callsites and will be removed following a planned EXPAND →
-// BACKFILL → CUTOVER → CONTRACT migration in a successive wave
-// (tracked under architecture/current.yaml monkey-patch scope).
-// New code MUST use Admin / Reader / Publisher per Pattern 0; the raw
-// fields are deprecated and exist solely so this scoped commit does
-// not break the wider codebase.
+// (Admin + Reader) are the public surface. The unexported driveUploader
+// field is for internal wiring only (BuildDomainBundle, BuildProcessBundle,
+// etc.) within package app. New code MUST use Admin / Reader / Publisher
+// per Pattern 0.
 type DriveBundle struct {
 	// Admin is the canonical Pattern 0 port for administrative Drive
 	// ops (folder management, file lifecycle, raw uploads, liveness
@@ -95,19 +90,12 @@ type DriveBundle struct {
 	// handle was retired (P0.1 closure).
 	Publisher delivery.Publisher
 
-	// Deprecated: use Admin / Reader / Publisher. RETAINED for Wave 14+
-	// back-compat across ~86 legacy callsites (cmd/admin/*,
-	// internal/app/module_*.go, build_bundles_*.go, lifecycle.go,
-	// registry_*.go). Future migration removes both fields once the
-	// legacy paths are rewritten against the typed ports.
-	DriveClient *gdrive.Service
-	// Deprecated: use Admin / Reader / Publisher.
+	// Deprecated raw SDK / concrete handles — back-compat for admin tools and legacy callsites.
+	DriveClient   *gdrive.Service
 	DriveUploader *drive.Uploader
 
 	// driveUploader is unexported for internal wiring only. *drive.Uploader
-	// is the SINGLE source-of-truth concrete; DriveClient (when set) and
-	// DriveUploader both alias the SAME instance so godlike/06 "one owner
-	// per fact" holds — there is no split-brain between the two paths.
+	// is the SINGLE source-of-truth concrete exposed via Admin / Reader ports.
 	driveUploader *drive.Uploader
 }
 
@@ -365,22 +353,6 @@ type IOpaqueStartFunc func() error
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-// rawDriveService returns the underlying *gdrive.Service for internal
-// wiring (BuildUtilityBundle health probe, BuildProcessBundle, etc.).
-// Returns nil when Drive is not configured. Unexported — external
-// consumers MUST use Admin / Reader / Publisher.
-func (b *DriveBundle) rawDriveService() *gdrive.Service {
-	if b == nil {
-		return nil
-	}
-	// Prefer the canonical driveUploader (the SINGLE source-of-truth).
-	if b.driveUploader != nil {
-		return b.driveUploader.Service
-	}
-	// Fallback to deprecated field during EXPAND phase.
-	return b.DriveClient
-}
-
 // configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
 func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
@@ -574,7 +546,11 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.rawDriveService())
+	var rawDriveSvc *gdrive.Service
+	if driveBundle.driveUploader != nil {
+		rawDriveSvc = driveBundle.driveUploader.Service
+	}
+	utility := BuildUtilityBundle(cfg, dbs.main, rawDriveSvc)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {
