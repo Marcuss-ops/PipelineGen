@@ -50,7 +50,7 @@ type ProcessVoiceoverItemDeps struct {
 	TTSProvider         TTSProvider
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
-	AssetLifecycle      AssetLifecycle
+	Publisher           VoiceoverPublisher
 	VoiceoverRepository VoiceoverRepository
 	TransactionalOutbox TransactionalOutbox // nil-safe (skip indexing)
 	FilenameBuilder     FilenameBuilder
@@ -80,8 +80,8 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	if deps.DestinationResolver == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: DestinationResolver is required")
 	}
-	if deps.AssetLifecycle == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: AssetLifecycle is required")
+	if deps.Publisher == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Publisher is required (E1 cutover: drive-only upload)")
 	}
 	if deps.VoiceoverRepository == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: VoiceoverRepository is required")
@@ -238,30 +238,23 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	}
 	metaJSON, _ := json.Marshal(metaBuf)
 
-	uploadOut, err := u.deps.AssetLifecycle.Upload(ctx, AssetUploadInput{
-		ID:         id,
-		LocalPath:  uploadPath,
-		Filename:   item.Filename,
-		FolderID:   dest.FolderID,
-		FolderPath: dest.FolderPath,
-		Metadata:   string(metaJSON),
-		FileHash:   out.FileHash,
-		Source:     "voiceover",
-		Name:       textutil.Truncate(item.Text, 100),
+	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
+		ID:        id,
+		LocalPath: uploadPath,
+		Filename:  item.Filename,
+		FolderID:  dest.FolderID,
 	})
 	if err != nil {
 		out.Error = fmt.Sprintf("upload_failed: %v", err)
-		u.deps.Logger.Warn("voiceover.processItem: stage 3 lifecycle upload failed",
+		u.deps.Logger.Warn("voiceover.processItem: stage 3 publisher.Publish failed",
 			zap.String("language", item.Language),
 			zap.String("request_id", item.RequestID),
 			zap.Error(err))
 		return out, nil
 	}
-	out.DriveLink = uploadOut.DriveLink
-	out.DriveFileID = uploadOut.DriveFileID
-	if uploadOut.FileHash != "" {
-		out.FileHash = uploadOut.FileHash
-	}
+	out.DriveFileID = fileID
+	out.DriveLink = CanonicalDriveWebURL(fileID)
+	out.DownloadLink = CanonicalDriveDownloadURL(fileID)
 
 	// Stage 4: SQLite atomic swap + outbox enqueue (single tx).
 	// PR-VO-A2 atomicity invariant: DELETE OLD + INSERT NEW +
@@ -299,7 +292,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		FolderPath:   dest.FolderPath,
 		DriveFileID:  out.DriveFileID,
 		DriveLink:    out.DriveLink,
-		DownloadLink: uploadOut.DownloadLink,
+		DownloadLink: out.DownloadLink,
 		FileHash:     out.FileHash,
 		Status:       string(StatusGenerated),
 		Strategy:     string(item.Strategy),

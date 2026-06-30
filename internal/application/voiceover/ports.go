@@ -1,7 +1,7 @@
 // Package voiceover — narrow port interfaces for out-of-package
 // dependencies (AGENTS.md Pattern 0, June 2026).
 //
-// Two ports live here:
+// Three ports live here:
 //
 //  1. TxOutboxEnqueuer — PR-VO-A3 (June 2026, outbox-based Qdrant
 //     indexing). The canonical `asset.index.requested` enqueue site
@@ -15,6 +15,15 @@
 //     port. Processor writes local FS only; Lifecycle owns the upload;
 //     voiceover uses the port exclusively for the post-commit cleanup
 //     DeleteFile.
+//
+//  3. VoiceoverPublisher — E1 cutover (June 2026, drive-only upload
+//     port). Replaces the legacy AssetLifecycle.Upload port which
+//     delegated to lifecycle.Service.ProcessAsset (bundling Drive
+//     upload + dedupe + asset-record persistence). The Publisher is
+//     upload-ONLY: Publish(ctx, cmd) returns the canonical Drive
+//     fileID; callers reconstruct the canonical DriveLink +
+//     DownloadLink from the fileID via CanonicalDriveWebURL /
+//     CanonicalDriveDownloadURL (defined below).
 //
 // Layout note: voiceover never imports the SDK. Production concretes
 // satisfy these ports by structural conformance (Go's implicit
@@ -51,6 +60,33 @@ type TxOutboxEnqueuer interface {
 	// non-empty; the canonical dispatcher rejects empty hashes
 	// because the supersede gate cannot function without them.
 	EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, contentHash string) error
+
+	// EnqueueCleanupEvent emits the canonical
+	// voiceover.cleanup.requested envelope inside the caller-owned
+	// transaction. P0.7 Wave 21 Step 10/12 (June 2026) replaces
+	// the pre-fix fire-and-forget `cleanupOrphanVoiceover`
+	// goroutine (detached via context.Background) with this durable
+	// outbox event. Producer (voiceover.finalizeStage) calls this
+	// INSIDE the same SQL tx as the voiceovers UPSERT +
+	// media_assets projection UPSERT, so the cleanup event commits
+	// atomically with the canonical swap; a tx rollback discards
+	// it (no orphan cleanup records survive a rolled-back
+	// finalize).
+	//
+	// voiceoverID — the canonical voiceovers.id (also
+	// media_assets.id — shared primary key).
+	//
+	// oldDriveFileID — the Drive file id of the row being replaced
+	// (pre-swap). May be empty if no prior row existed.
+	//
+	// newDriveFileID — the Drive file id of the new row (post-swap).
+	// The handler deletes oldDriveFileID ONLY when this differs
+	// from it (i.e. a real swap happened; else no-op).
+	//
+	// oldLocalPaths — the local file paths of the OLD audio
+	// (LocalPath + CleanedPath). The handler removes each; an
+	// os.IsNotExist error is swallowed for idempotency.
+	EnqueueCleanupEvent(ctx context.Context, tx *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error
 }
 
 // DriveUploaderPort is the narrow Drive surface the voiceover service
@@ -228,37 +264,64 @@ type AudioPostOutput struct {
 	CleanedPath string
 }
 
-// AssetLifecycle is the canonical port for the Drive upload +
-// persistence flow. The production concrete is *lifecycle.Service
-// (PR-VO-B1 hardened; ProcessAsset rejects on upload failure).
+// ────────────────────────────────────────────────────────────────────────
+// E1 cutover (June 2026): VoiceoverPublisher replaces AssetLifecycle.
+// ────────────────────────────────────────────────────────────────────────
 //
-// We surface a narrower Upload entry (NOT the full ProcessAsset) so
-// the use case only needs the upload+persist return — the
-// duplicate-check step is owned by Lifecycle and the use case trusts
-// its result.
-type AssetLifecycle interface {
-	Upload(ctx context.Context, input AssetUploadInput) (AssetUploadOutput, error)
+// VoiceoverPublisher is the canonical narrow upload-only port. The
+// E1 cutover is a structural simplification: the legacy
+// AssetLifecycle.Upload (delegating to lifecycle.Service.ProcessAsset)
+// bundled Drive upload + dedupe + asset-record persistence. The new
+// Publisher is upload-ONLY — it does NOT write to SQLite, does NOT
+// run a dedupe gate, does NOT touch the asset-record index.
+//
+// Publish(ctx, cmd) returns the canonical Drive fileID. Callers
+// reconstruct DriveLink + DownloadLink via CanonicalDriveWebURL /
+// CanonicalDriveDownloadURL (defined at the bottom of this file) —
+// the two helpers are public so usecase.go (processOneLanguage) and
+// process_voiceover_item.go (Execute) and any future owner of the
+// upload shape can share the canonical URL form without duplicating
+// format strings.
+//
+// In-process pipeline invariant (P0.7 2-PHASE SPLIT, Step 9/12):
+// VoiceoverPublisher does NOT hold a tx handle; the per-item
+// finalizeStage owns the *sql.Tx and persists the voiceover row
+// AFTER Publish returns, so the upload-then-row-write ordering is
+// preserved without coupling the publisher to the tx lifetime.
+//
+// Test-injectable (AGENTS.md Pattern 0): production concrete is
+// useCasePublisherAdapter (in internal/app/adapters_voiceover_use_case.go)
+// wrapping drive.Admin. Tests inject stubs via UseCaseDeps.Publisher.
+type VoiceoverPublisher interface {
+	Publish(ctx context.Context, cmd VoiceoverPublishCommand) (fileID string, err error)
 }
 
-// AssetUploadInput is the canonical wire-shape.
-type AssetUploadInput struct {
-	ID         string
-	LocalPath  string
-	Filename   string
-	FolderID   string
-	FolderPath string
-	Metadata   string
-	FileHash   string
-	Source     string
-	Name       string
-}
-
-// AssetUploadOutput carries the post-upload Drive surface.
-type AssetUploadOutput struct {
-	DriveLink    string
-	DriveFileID  string
-	DownloadLink string
-	FileHash     string
+// VoiceoverPublishCommand is the canonical wire-shape for the upload
+// call. Only the 4 fields the upload needs — ID + payload path +
+// display filename + destination folder ID. NO metadata/folderPath/
+// name/fileHash/source — those concerns live in finalizeStage's per-item
+// row OR in the per-style voiceover metadata JSON downstream.
+//
+// Field semantics:
+//   - ID        — caller-derived canonical row ID (buildVoiceoverID
+//                 of textHash + lang + folderID); the publisher does
+//                 NOT use it for Drive-side identity, but the
+//                 downstream finalizeStage uses it for the per-row
+//                 insert. This is the value the caller threads
+//                 through so a future audit trail can correlate
+//                 upload ↔ row.
+//   - LocalPath — the post-TTS + post-AudioPostProcessor canonical
+//                 audio file on local FS. Publisher does NOT check
+//                 file existence; drive.UploadFile returns a clear
+//                 error message on a missing payload.
+//   - Filename  — the Display Name surfaced on Drive (post-Slugify).
+//                 Used as the canonical file label.
+//   - FolderID  — the canonical Drive folder ID (post-DestinationResolver).
+type VoiceoverPublishCommand struct {
+	ID        string
+	LocalPath string
+	Filename  string
+	FolderID  string
 }
 
 // TransactionalOutbox is the canonical port for emitting the
@@ -325,4 +388,40 @@ type FilenameBuilder interface {
 // the canonical concrete in the composition root.
 type VoiceoverItemExecutor interface {
 	Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error)
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// E1 cutover (June 2026): canonical Drive URL helpers.
+// ────────────────────────────────────────────────────────────────────────
+//
+// Public so usecase.go (processOneLanguage), process_voiceover_item.go
+// (Execute), and any future publisher caller share ONE URL form.
+// Duplicating this format string in N call sites would drift over
+// time (the legacy inline `drive.google.com/file/d/<id>` literal
+// already had two divergent variants in production); centralising
+// here kills the drift surface.
+//
+// Pattern provenance: the canonical webViewLink format is the
+// pre-PR-VO-DriveHelper `https://drive.google.com/file/d/<id>/view`
+// literal that the lifecycle.Service.ProcessAsset surface returned.
+// The download URL pattern is the matching `https://drive.google.com/
+// uc?id=<id>&export=download` form that pre-existing
+// scripts/handlers used as a download link alt-text. Both match
+// the canonical Drive V3 web URL grammar.
+
+// CanonicalDriveWebURL returns the canonical human-facing Drive
+// webViewLink for an uploaded Drive file. The result is a verifiable
+// URL — clicking in a browser navigates to Drive's preview page for
+// the file. Tests pin the form via
+// TestVoiceoverPublisher_CanonicalDriveWebURL below.
+func CanonicalDriveWebURL(fileID string) string {
+	return "https://drive.google.com/file/d/" + fileID + "/view"
+}
+
+// CanonicalDriveDownloadURL returns the canonical Drive download
+// link for an uploaded Drive file. The result is a verifiable URL
+// that, when fetched, returns the file binary. Tests pin the form
+// via TestVoiceoverPublisher_CanonicalDriveDownloadURL.
+func CanonicalDriveDownloadURL(fileID string) string {
+	return "https://drive.google.com/uc?id=" + fileID + "&export=download"
 }

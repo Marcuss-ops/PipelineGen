@@ -12,15 +12,16 @@
 //     populates LocalPath/CleanedPath/
 //     Voice/FileHash
 //   - destinationStage (Stage 2)      — Drive upload via
-//     lifecycle.Service.ProcessAsset,
+//     lifecycle.Service.UploadOnly,
 //     populates DriveLink/DriveFileID/
 //     DownloadLink
-//   - finalizeStage    (Stage 3)      — atomic SQLite INSERT inside a
-//     single tx, PR-VO-A3 Outbox
-//     enqueue inside the same tx,
-//     PR-VO-B3 dedupe gate, then
-//     post-commit cleanup goroutine
-//     for replace-mode orphans
+//   - finalizeStage    (Stage 3)      — atomic SQLite writes inside a
+//     single tx (voiceovers UPSERT +
+//     media_assets projection
+//     UPSERT + asset.index.requested
+//     outbox + voiceover.cleanup.
+//     requested outbox for replace-
+//     mode orphans)
 //
 // The 4 symbols replace the PR-VOICEOVER-PROCESS-GO-FIX build-pass-only
 // stub layer. process.go's processLanguage already wires the stage
@@ -32,17 +33,18 @@
 // the restoration scope and verify which stage actually executed.
 //
 // Site-detachment contracts (godlike/05 / AGENTS.md table):
-//   - cleanupOrphanVoiceover uses context.Background — post-commit
-//     save operations are exempt from the request-lifetime context
-//     (the swap has committed; cleanup MUST survive handler cancel
-//     and client disconnect so the orphan Drive file and old local
-//     audio files are released).
+//   - voiceover.cleanup.requested outbox handler (consumed by
+//     internal/application/voiceover/outbox.VoiceoverCleanupHandler)
+//     is the durable replacement for the pre-fix
+//     `cleanupOrphanVoiceover` context.Background goroutine. The
+//     durable event survives handler cancel and server restart so
+//     orphan cleanup is never lost; the pool's exponential backoff
+//     retries transient Drive failures.
 package voiceover
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
@@ -246,7 +248,8 @@ func (s *Service) synthesizeStage(
 	// reaching the Python bridge.
 	input := TTSInput{
 		Text:          req.Text,
-		Language:      language,		Voice: voiceOverrideFor(req, language),
+		Language:      language,
+		Voice:         voiceOverrideFor(req, language),
 		Filename:      filename,
 		OutputDir:     outputDir,
 		RemoveSilence: removeSilence,
@@ -357,10 +360,10 @@ func (s *Service) destinationStage(
 
 // finalizeStage is Stage 3 (PR-VO-B3 dedupe gate + PR-VO-A2 atomic
 // swap + PR-VO-A3 outbox + media_assets projection UPSERT +
-// post-commit cleanup). Wired between the stageLog("finalize")
-// wrappers in process.go.
+// voiceover.cleanup.requested durable orphan cleanup). Wired
+// between the stageLog("finalize") wrappers in process.go.
 //
-// RESTORED body:
+// RESTORED body (June 2026, Step 9/12 + Step 10/12):
 //
 //  1. Open sqlite tx (BeginTx with parent ctx so a request cancel
 //     aborts the tx cleanly).
@@ -370,12 +373,12 @@ func (s *Service) destinationStage(
 //  3. PR-VO-A2 atomic swap: DELETE existing same-id row, INSERT
 //     new row in the same tx. The pre-read in processLanguage
 //     already captured oldDriveFileID / oldLocalPath /
-//     oldCleanedPath for the cleanup goroutine.
+//     oldCleanedPath for the durable cleanup event.
 //  4. P0.7 2-PHASE SPLIT (Step 9/12): UPSERT the media_assets
 //     projection row INSIDE the same tx via
 //     lifecycle.Service.UpsertVoiceoverProjectionTx. This is the
 //     canonical projection of the canonical voiceover row, with
-//     `source='voiceover'` discriminator. a SQL verification query
+//     `source='voiceover'` discriminator. A SQL verification query
 //     at `internal/application/voiceover/verify_media_assets.go`
 //     pins the contract: SELECT 1 FROM media_assets WHERE id=? AND
 //     source='voiceover'.
@@ -383,13 +386,15 @@ func (s *Service) destinationStage(
 //     and the index event INSERT commit atomically. Nil-safe so
 //     the indexing degrades gracefully if the composition root
 //     didn't wire the outbox.
-//  6. Commit.
-//  7. Post-commit cleanup goroutine (Strategy=="replace" ONLY) —
-//     detached from the request ctx via context.Background
-//     (per AGENTS.md post-write save exemption table) so the
-//     orphan Drive file + old local audio files are released even
-//     after the handler has cancelled or the client has
-//     disconnected.
+//  6. P0.7 Step 10/12 (June 2026): durable orphan cleanup via the
+//     voiceover.cleanup.requested outbox event INSIDE the same tx.
+//     Replaces the pre-fix `go s.cleanupOrphanVoiceover(...)`
+//     goroutine (lost on handler cancel or server restart). The
+//     outbox handler (VoiceoverCleanupHandler) deletes the OLD
+//     Drive file ONLY when old_drive_file_id != new_drive_file_id
+//     and removes the old local audio files; the outbox pool's
+//     exponential backoff retries transient Drive failures.
+//  7. Commit.
 //
 // Why a single tx: PR-VO-A2 (Replace-Safe pipeline) requires that
 // the OLD voiceover record is never removed UNTIL the NEW one is
@@ -406,7 +411,7 @@ func (s *Service) destinationStage(
 // UpsertVoiceoverProjectionTx here produces a SINGLE-TX atomic
 // write that covers voiceovers + media_assets + outbox; any tx
 // failure aborts ALL three writes; the orphan Drive file is then
-// handled by the replace-mode cleanup goroutine.
+// handled by the durable voiceover.cleanup.requested event.
 func (s *Service) finalizeStage(
 	ctx context.Context,
 	item BatchItem,
@@ -576,57 +581,65 @@ func (s *Service) finalizeStage(
 		}
 	}
 
+	// P0.7 Wave 21 — Step 10/12 (June 2026): durable orphan cleanup
+	// via the voiceover.cleanup.requested outbox event INSIDE the
+	// caller-owned tx (atomically with the canonical swap). The
+	// pre-fix `go s.cleanupOrphanVoiceover(...)` goroutine detached
+	// via context.Background could be lost on handler cancel or
+	// server restart; the durable event survives both. Enqueue
+	// semantics:
+	//   - MUST happen INSIDE the tx so a rollback discards the
+	//     cleanup event too (no orphan records survive a rolled-
+	//     back finalize).
+	//   - Nil-safe via `s.outboxEnqueuer != nil` — when the
+	//     composition root didn't wire the outbox, the canonical
+	//     row wins and the orphan Drive + local files linger
+	//     (operator-tier issue, never auto-cleaned).
+	//   - Filter `shouldSwap` so non-replace strategies never queue
+	//     cleanup events for non-swap rows.
+	//   - Filter empty / duplicate paths so the handler's
+	//     `for _, p := range oldLocalPaths` iteration is safe and
+	//     idempotent (dedup'ing oldLocalPath == oldCleanedPath).
+	if shouldSwap && s.outboxEnqueuer != nil {
+		var oldLocalPaths []string
+		if oldLocalPath != "" {
+			oldLocalPaths = append(oldLocalPaths, oldLocalPath)
+		}
+		if oldCleanedPath != "" && oldCleanedPath != oldLocalPath {
+			oldLocalPaths = append(oldLocalPaths, oldCleanedPath)
+		}
+		if oldDriveFileID != "" || len(oldLocalPaths) > 0 {
+			if err := s.outboxEnqueuer.EnqueueCleanupEvent(ctx, tx,
+				item.ID,
+				oldDriveFileID,
+				item.DriveFileID,
+				oldLocalPaths,
+			); err != nil {
+				return item.fail(FailureOutboxEnqueue,
+					fmt.Errorf("%s: EnqueueCleanupEvent: %w", restoreIdent, err))
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return item.fail(FailureTxCommit,
 			fmt.Errorf("%s: Commit: %w", restoreIdent, err))
-	}
-
-	// Post-commit cleanup for replace-mode orphans. Detached from
-	// the request ctx (per AGENTS.md post-write save exemption) so
-	// the cleanup survives handler cancel + client disconnect.
-	if shouldSwap && (oldDriveFileID != "" || oldLocalPath != "" || oldCleanedPath != "") {
-		go s.cleanupOrphanVoiceover(oldDriveFileID, oldLocalPath, oldCleanedPath)
 	}
 
 	item.Status = StatusCompleted
 	return item
 }
 
-// cleanupOrphanVoiceover removes the OLD Drive file + OLD local
-// audio files for a replace-mode voiceover swap. Detached from any
-// request context (per AGENTS.md post-write save exemption table
-// — internal/application/assets/providers/artlist/search_cache.go
-// documents the same pattern for the search-cache bump).
-//
-// Failures are logged but never propagated — the swap has already
-// committed so the canonical state is the NEW row, not the orphan.
-// Background timeout 60s covers the slowest Drive file delete
-// plus both local file removes.
-func (s *Service) cleanupOrphanVoiceover(driveFileID, oldLocalPath, oldCleanedPath string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	if driveFileID != "" && s.driveUploader != nil {
-		if err := s.driveUploader.DeleteFile(ctx, driveFileID); err != nil {
-			if s.log != nil {
-				s.log.Warn("cleanupOrphanVoiceover: Drive file delete failed",
-					zap.String("restored", restoreIdent),
-					zap.String("drive_file_id", driveFileID),
-					zap.Error(err))
-			}
-		}
-	}
-	for _, p := range []string{oldLocalPath, oldCleanedPath} {
-		if p == "" {
-			continue
-		}
-		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			if s.log != nil {
-				s.log.Warn("cleanupOrphanVoiceover: local file remove failed",
-					zap.String("restored", restoreIdent),
-					zap.String("path", p),
-					zap.Error(err))
-			}
-		}
-	}
-}
+// NOTE (P0.7 Step 10/12, June 2026): the pre-fix
+// `func (s *Service) cleanupOrphanVoiceover(driveFileID, oldLocalPath, oldCleanedPath string)`
+// method has been REMOVED. Orphan cleanup is now durable via the
+// voiceover.cleanup.requested.v1 outbox event consumed by
+// `internal/application/voiceover/outbox.VoiceoverCleanupHandler`.
+// The handler drives the eventual Drive file delete (only when
+// old_drive_file_id != new_drive_file_id) plus local file removal.
+// Failure modes are retryable via the outbox pool's exponential
+// backoff; the `os.IsNotExist` short-circuit on local file remove
+// is idempotent. A future step can migrate the durable event into a
+// dedicated `cleanup_requests` table if on-the-spot auditability
+// becomes a requirement (separate ticket, NOT in Step 10/12 scope
+// per AGENTS.md scope discipline).

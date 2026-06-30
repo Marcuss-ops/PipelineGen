@@ -557,7 +557,25 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// canonical mutations dispatcher used in MediaProcessor). The
 	// dispatcher is wired into images.Service via constructor injection
 	// in BuildDomainBundle.
-	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs)
+	//
+	// P0.7 Wave 21 Step 10/12 (June 2026): construct the voiceover
+	// cleanup driver inline BEFORE BuildOutboxBundle because the
+	// outbox bundle now expects a jobsoutbox.VoiceoverCleanupDriver
+	// arg (the canonical narrow port for orphan Drive file delete).
+	// The same *voiceoverDriveAdapter instance (defined in
+	// adapters_voiceover_use_case.go, package app) is shared between
+	// voiceover.DriveUploaderPort (legacy port; satisfied by the
+	// same DeleteFile method) and the new jobsoutbox.VoiceoverCleanupDriver
+	// surface — Go's implicit-interface rule pins conformance at
+	// compile time. nil Drive admin → nil cleanup driver → handler
+	// registered but skips the Drive delete branch (local-remove
+	// branch still runs via stdlib; logs operator-visible warning).
+	driveAdmin := driveBundle.Admin
+	var voiceoverDriver jobsoutbox.VoiceoverCleanupDriver
+	if driveAdmin != nil {
+		voiceoverDriver = &voiceoverDriveAdapter{drive: driveAdmin}
+	}
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
