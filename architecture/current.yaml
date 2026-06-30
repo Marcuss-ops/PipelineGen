@@ -321,6 +321,34 @@
       owner_capability: internal/application/voiceover
       status: shipped
       deadline: 2026-07-10
+    # PR-VO-AUDIT-P04 micro-commit #3 (June 2026): voice override
+    # preserved end-to-end (MVP). Pre-P04 the child's resolved voice
+    # was projected through process_one.go as
+    # req.Metadata["voice_overrides"] (a metadata-hack envelope) and
+    # synthesizeStage never read it — so per-language voice overrides
+    # were silently dropped at Stage 1 before reaching the Python
+    # tts_edge.py bridge. Post-P04 the field is structural on
+    # BatchRequest (types.go), projected by ProcessOneVoiceoverUseCase
+    # Execute's canonical item.Voice → req.VoiceOverrides [language]
+    # assignment, and read by synthesizeStage via the new
+    # voiceOverrideFor(language, req) helper. The metadata-hack block
+    # is REMOVED. Wire-shape round-trip via BatchRequest.PayloadMap
+    # carries the snake_case `voice_overrides` key so the Python
+    # tts_edge.py --voice flag surface stays intact. Backed by:
+    #   - VoiceOverrides map[string]string field on BatchRequest
+    #     (types.go, canonical struct surface)
+    #   - PayloadMap wire-shape serialisation under `voice_overrides`
+    #   - voiceOverrideFor helper in stages.go (nil-safe: returns ""
+    #     when req/map/key missing — propagates as default-voice
+    #     downstream)
+    #   - 3 audit-pinned tests:
+    #     TestProcessOneVoiceoverUseCase_PropagatesVoiceOverrideToTTSInput,
+    #     TestTTSBridge_UsesPerLanguageVoice,
+    #     TestE2E_VoiceOverrideReachesPython
+    - id: P0.4_voice_override
+      owner_capability: internal/application/voiceover
+      status: closed
+      deadline: 2026-07-10
 - id: 23
   status: in_progress
   exit_signal: false
