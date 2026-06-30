@@ -674,7 +674,7 @@ deprecations:
             on actual RW-PROD-013 demand). Zero-consumers-dead-on-
             arrival is the failure mode this deprecation explicitly
             rules out.
-    introduction_date: 2026-06
+    introduction_date: 2026-06-27
     removal_date: 2026-06-30
     tracking_issue: "Q10-WORKERSTATS-REINTRODUCE (architecture/issues.yaml — gates the reintroduction PR with a populated consumer; sibling drift audit at Q11-WORKERSTATS-FOLLOWUP)"
     compatibility_test: |
@@ -689,7 +689,7 @@ deprecations:
             is mandatory because the byte-equivalent snapshot at
             `architecture/archive/2026-06-29/current-snapshot-2026-06-29.yaml`
             INTENTIONALLY preserves the pre-removal pkg/workerstats
-            surface (manifesting at lines 780, 1087, 1424-1517) per the
+            surface (manifesting at lines 780, 1087, 1424, 1466, 1471, 1491, 1516, 1517) per the
             freeze policy documented in ARCHITECTURE.md §"Archive
             policy"; DO NOT retroactively rewrite the archive snapshot.
             Audit baseline (audited in Blocco 2.B pre-commit grep,
