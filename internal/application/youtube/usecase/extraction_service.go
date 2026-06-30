@@ -13,6 +13,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -20,6 +22,8 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ── Dependencies (≤8 fields per PR5 rule) ────────────────────────────────
@@ -129,14 +133,184 @@ func NewExtractionService(deps ExtractionDeps, cb ExtractionCallbacks) *Extracti
 	}
 }
 
-// Extract is a stub for Phase 1b. The full extraction pipeline
-// (segment discovery, video download/cut, lifecycle processing,
-// manifest management, Drive upload) was previously inline in
-// extract.go but referenced private methods from adapters/Service.
-//
-// Phase 1c TODO: move the full implementation from
-// adapters/manifest_mgr.go + adapters/segment_processor.go into this
-// method, routing through ExtractionCallbacks for external ops.
+// Extract runs a minimal but real YouTube extraction pipeline:
+// it validates the request, derives the clip filenames, invokes the
+// configured video pipeline, and records per-segment outcomes.
+// External enrichment and Drive-side work still route through the
+// callback surface, so the service can grow without reintroducing
+// transport-layer coupling.
 func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
-	return nil, fmt.Errorf("youtube extraction: full pipeline not yet ported to ExtractionService (Phase 1c) — the adapters implementation remains canonical")
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if s == nil {
+		return nil, fmt.Errorf("youtube extraction: service not initialized")
+	}
+	if req == nil {
+		return nil, fmt.Errorf("youtube extraction: request is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if s.videoPipeline == nil {
+		return nil, fmt.Errorf("youtube extraction: video pipeline not wired")
+	}
+
+	videoID, err := urlutil.ExtractVideoID(req.URL)
+	if err != nil {
+		return nil, fmt.Errorf("youtube extraction: invalid url: %w", err)
+	}
+
+	resp := &youtubetypes.ExtractResponse{
+		OK:        true,
+		SourceURL: req.URL,
+		VideoID:   videoID,
+		Stats: &youtubetypes.ExtractStats{
+			Requested: len(req.Segments),
+		},
+		Items: make([]youtubetypes.ExtractItem, 0, len(req.Segments)),
+	}
+
+	if len(req.Segments) == 0 {
+		resp.OK = false
+		resp.Error = "youtube extraction: at least one segment is required"
+		return resp, nil
+	}
+	if s.segmentsSvc == nil {
+		s.segmentsSvc = NewSegmentsService()
+	}
+
+	group := "general"
+	if req.Destination != nil && strings.TrimSpace(req.Destination.Group) != "" {
+		group = strings.TrimSpace(req.Destination.Group)
+	}
+	folderSlug := "yt_" + videoID
+	outDir := filepath.Join(s.cfg.DataDir, "media", "clips", group, folderSlug)
+
+	for i, seg := range req.Segments {
+		if ctx.Err() != nil {
+			resp.OK = false
+			resp.Error = ctx.Err().Error()
+			resp.Stats.Failed++
+			resp.Items = append(resp.Items, youtubetypes.ExtractItem{
+				Name:   cleanClipName(seg.Name, i),
+				Start:  strings.TrimSpace(seg.Start),
+				End:    strings.TrimSpace(seg.End),
+				Status: "failed",
+				Error:  ctx.Err().Error(),
+			})
+			continue
+		}
+
+		startSec, err := textutil.ParseTimestamp(strings.TrimSpace(seg.Start))
+		if err != nil {
+			resp.OK = false
+			resp.Stats.Failed++
+			resp.Items = append(resp.Items, youtubetypes.ExtractItem{
+				Name:   cleanClipName(seg.Name, i),
+				Start:  strings.TrimSpace(seg.Start),
+				End:    strings.TrimSpace(seg.End),
+				Status: "failed",
+				Error:  fmt.Sprintf("invalid start timestamp: %v", err),
+			})
+			continue
+		}
+		endSec, err := textutil.ParseTimestamp(strings.TrimSpace(seg.End))
+		if err != nil {
+			resp.OK = false
+			resp.Stats.Failed++
+			resp.Items = append(resp.Items, youtubetypes.ExtractItem{
+				Name:   cleanClipName(seg.Name, i),
+				Start:  strings.TrimSpace(seg.Start),
+				End:    strings.TrimSpace(seg.End),
+				Status: "failed",
+				Error:  fmt.Sprintf("invalid end timestamp: %v", err),
+			})
+			continue
+		}
+		if startSec >= endSec {
+			resp.OK = false
+			resp.Stats.Failed++
+			resp.Items = append(resp.Items, youtubetypes.ExtractItem{
+				Name:   cleanClipName(seg.Name, i),
+				Start:  strings.TrimSpace(seg.Start),
+				End:    strings.TrimSpace(seg.End),
+				Status: "failed",
+				Error:  fmt.Sprintf("start time (%s) must be before end time (%s)", seg.Start, seg.End),
+			})
+			continue
+		}
+
+		itemName := cleanClipName(seg.Name, i)
+		outputName := s.segmentsSvc.BuildClipFilename(videoID, startSec, endSec, itemName)
+		normalize := true
+		if req.Normalize != nil {
+			normalize = *req.Normalize
+		}
+		cutReq := youtubeports.VideoCutRequest{
+			URL:            req.URL,
+			VideoID:        videoID,
+			Start:          float64(startSec),
+			Duration:       float64(endSec - startSec),
+			OutputName:     strings.TrimSuffix(outputName, ".mp4"),
+			ForceKeyframes: req.ForceKeyframes,
+			KeepAudio:      req.KeepAudio,
+			Normalize:      normalize,
+			Strategy:       req.Strategy,
+			OutputDir:      outDir,
+		}
+
+		result, cutErr := s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, cutReq)
+		if cutErr != nil {
+			resp.OK = false
+			resp.Stats.Failed++
+			resp.Items = append(resp.Items, youtubetypes.ExtractItem{
+				Name:   itemName,
+				Start:  strings.TrimSpace(seg.Start),
+				End:    strings.TrimSpace(seg.End),
+				Status: "failed",
+				Error:  fmt.Sprintf("video processing failed: %v", cutErr),
+			})
+			continue
+		}
+
+		localPath := ""
+		if result != nil {
+			localPath = result.LocalPath
+		}
+		filename := outputName
+		if localPath != "" {
+			filename = filepath.Base(localPath)
+		}
+		resp.Stats.Processed++
+		resp.Items = append(resp.Items, youtubetypes.ExtractItem{
+			Name:         itemName,
+			Start:        strings.TrimSpace(seg.Start),
+			End:          strings.TrimSpace(seg.End),
+			StartSeconds: startSec,
+			EndSeconds:   endSec,
+			Duration:     endSec - startSec,
+			Filename:     filename,
+			LocalPath:    localPath,
+			Status:       "processed",
+		})
+	}
+
+	resp.Stats.Skipped = len(resp.Items) - resp.Stats.Processed - resp.Stats.Failed
+	resp.OK = resp.Stats.Failed == 0 && resp.Stats.Processed > 0
+	if !resp.OK && resp.Error == "" {
+		resp.Error = "one or more segments failed"
+	}
+	return resp, nil
+}
+
+func cleanClipName(name string, idx int) string {
+	name = strings.TrimSpace(name)
+	name = textutil.SafeName(name)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = fmt.Sprintf("segment_%03d", idx+1)
+	}
+	return name
 }
