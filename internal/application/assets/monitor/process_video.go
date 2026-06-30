@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync/atomic"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -30,11 +29,26 @@ func effectivePlaylistEnd(channel channels.Channel, globalDefault int) int {
 // PR 4 (June 2026): signature changed from (line string) to (info downloader.VideoInfo).
 // PR 5 (June 2026): added min_views and duration canonical filters; enqueues jobs.
 // PR 7 (June 2026): uses channels.Channel DTO directly; MonitorConfig removed.
-func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, acceptedCount *atomic.Int32) {
+// PR (June 2026, Blocco 4 Step 2): signature changed from
+// (..., *atomic.Int32) to (..., *ChannelCounters); the tryReserve CAS
+// race is now inside counters.TryReserve so process_video.go no longer
+// imports sync/atomic. Step 3 will move the SuccessfulEnqueues++ out
+// of TryReserve and pair it with ReleaseReservation() on the enqueue
+// tail.
+func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, counters *ChannelCounters) {
 	videoID := info.ID
 	title := info.Title
 
 	m.log.Debug("Found video", zap.String("video_id", videoID), zap.String("title", title))
+
+	// Hoisted before the reservation block so the dual Prometheus metric
+	// pair (analysisReservations + successfulEnqueues) can label by
+	// channel on the success path. Falls back to "unknown" if the
+	// channel handle cannot be extracted from the channel URL.
+	channelHandle := extractChannelHandle(channel.ChannelURL)
+	if channelHandle == "" {
+		channelHandle = "unknown"
+	}
 
 	// ── PR 5: canonical filter policy ──────────────────────────────────
 
@@ -92,20 +106,24 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 			zap.Int("score", score))
 	}
 
-	// ── MaxVideosPerRun ────────────────────────────────────────────────
-	if acceptedCount != nil && channel.MaxVideosPerRun > 0 {
-		if !m.tryReserve(acceptedCount, channel.MaxVideosPerRun) {
+	// ── MaxVideosPerRun (Blocco 4 Step 2: dual counter lockstep) ───────
+	if counters != nil && channel.MaxVideosPerRun > 0 {
+		if !counters.TryReserve(channel.MaxVideosPerRun) {
 			m.log.Debug("max_videos_per_run reached, skipping",
 				zap.String("video_id", videoID),
 				zap.Int("max", channel.MaxVideosPerRun))
 			return
 		}
+		// Step 2 lockstep: every successful reservation also bumps the
+		// dual Prometheus metric pair (parity with the previous single
+		// acceptedCount semantics). Step 3 will move the
+		// SuccessfulEnqueues bump to AFTER enqueueClipExtract returns
+		// Enqueued=true, so the two metrics will diverge on the
+		// no-jobs-enqueued path.
+		metrics.ChannelMonitorAnalysisReservations.WithLabelValues(channelHandle).Inc()
+		metrics.ChannelMonitorSuccessfulEnqueues.WithLabelValues(channelHandle).Inc()
 	}
 
-	channelHandle := extractChannelHandle(channel.ChannelURL)
-	if channelHandle == "" {
-		channelHandle = "unknown"
-	}
 	metrics.ChannelMonitorVideosChecked.WithLabelValues(channelHandle).Inc()
 	m.enqueueClipExtract(ctx, videoID, title, channel)
 }
@@ -244,18 +262,6 @@ func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string,
 				zap.String("channel_id", channel.ID),
 				zap.String("cursor", videoID),
 				zap.Error(err))
-		}
-	}
-}
-
-func (m *ChannelMonitor) tryReserve(counter *atomic.Int32, limit int) bool {
-	for {
-		current := counter.Load()
-		if current >= int32(limit) {
-			return false
-		}
-		if counter.CompareAndSwap(current, current+1) {
-			return true
 		}
 	}
 }
