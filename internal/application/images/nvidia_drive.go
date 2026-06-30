@@ -17,7 +17,7 @@ func (s *Service) SyncAssets() error {
 }
 
 func (s *Service) SyncFromDrive(ctx context.Context) error {
-	if s.driveSvc == nil || s.driveFolderID == "" {
+	if s.driveAdmin == nil || s.driveFolderID == "" {
 		return fmt.Errorf("drive service or folder ID not configured")
 	}
 
@@ -26,8 +26,11 @@ func (s *Service) SyncFromDrive(ctx context.Context) error {
 }
 
 func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath string) error {
-	uploader := &driveupload.Uploader{Service: s.driveSvc}
-	files, err := uploader.ListFiles(ctx, folderID)
+	reader, ok := s.driveAdmin.(driveupload.Reader)
+	if !ok {
+		return fmt.Errorf("drive admin does not support ListFiles (Reader interface not satisfied)")
+	}
+	files, err := reader.ListFiles(ctx, folderID)
 	if err != nil {
 		return err
 	}

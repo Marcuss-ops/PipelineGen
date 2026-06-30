@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -66,7 +65,6 @@ func buildVoiceoverService(
 	cfg *config.Config,
 	dbs *databases,
 	log *zap.Logger,
-	driveClient *gdrive.Service,
 	driveUploader *drive.Uploader,
 	assetIndexService *assetindex.Service,
 	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
