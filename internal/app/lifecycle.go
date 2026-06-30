@@ -180,6 +180,28 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 
 	if runScheduler {
+		// Voiceover parent aggregator: optional background poller that
+		// re-finalises parent jobs once all children have reached
+		// terminal status (Step 4 / micro-commit #5, June 2026).
+		// Requires the jobs service (for List/Get/Complete) and the
+		// parent job type to be registered at composition time.
+		if root.Jobs.Service != nil {
+			voAgg := voiceoverjobs.NewParentAggregator(voiceoverjobs.AggregatorDeps{
+				JobsSvc:      root.Jobs.Service,
+				Logger:       log,
+				PollInterval: 30 * time.Second,
+			})
+			steps = append(steps, StartupStep{
+				Name: "voiceover-parent-aggregator", Required: false,
+				Start: func(startCtx context.Context) error {
+					voAgg.Start(startCtx)
+					log.Info("Voiceover parent aggregator started (interval=30s)")
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
+		}
+
 		if cfg.Jobs.EnableChannelMonitor {
 			// PR 2 (June 2026): channels are loaded exclusively from
 			// category_channels via channels.Service. The raw *sql.DB is
