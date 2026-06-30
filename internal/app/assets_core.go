@@ -54,6 +54,7 @@ import (
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
@@ -110,7 +111,7 @@ type SearchDeps struct {
 // FASE 9 Step 2 (June 2026): DriveClient (*gdrive.Service) removed.
 // Admin is the canonical Pattern 0 port for Drive operations;
 // WireAssets extracts the concrete *drive.Uploader via type assertion
-to construct the legacy adapters that still need it.
+// to construct the legacy adapters that still need it.
 type DeliveryDeps struct {
 	Admin drive.Admin
 	// Publisher is the canonical Drive upload canal (FASE 5, June 2026).

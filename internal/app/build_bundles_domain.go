@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
@@ -77,7 +78,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	)
 	youtubeLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
-		DriveClient: drive.DriveClient,
+		DriveUploader: drive.DriveUploader,
 		AssetIndex:  search.AssetIndexService,
 	}, log)
 
@@ -145,8 +146,13 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
+	// FASE 9: nil-safe extraction — DriveUploader.Service panics when nil.
+	var rawDriveSvc *gdrive.Service
+	if drive.DriveUploader != nil {
+		rawDriveSvc = drive.DriveUploader.Service
+	}
 	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
-		drive.DriveClient, drive.DriveUploader,
+		rawDriveSvc, drive.DriveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
 		voMetaWriter, ai.ScriptGen,
@@ -155,10 +161,10 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc, drive.Publisher)
 
-	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search, mutationsDisp)
+	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveUploader, repos, search, mutationsDisp)
 
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
-		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
+		drive.DriveUploader.Service, repos.ClipsRepo, repos.ClipsRepo,
 		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, repos.ImageRepo,
 		voMetaWriter, ingestSvc,
@@ -264,8 +270,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // drops the previously-threaded *OutboxBundle arg (it was never read
 // inside the function body) — the caller still constructs mutationsDisp
 // from outbox.Dispatcher, so the Site-1 wiring is unchanged.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveClient *gdrive.Service, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
-	if driveClient == nil {
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
+	if driveUploader == nil {
 		return nil
 	}
 	if repos.ImageRepo == nil || repos.VoiceoverRepo == nil || repos.ClipsRepo == nil || search.AssetIndexService == nil {
@@ -275,14 +281,14 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
 	}
 	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
-	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
+	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveUploader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
-	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
+	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveUploader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
 	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveUploader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
-	return ingest.NewService(cfg, log, driveClient, map[ingest.Kind]*ingest.Pipeline{
+	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveUploader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	return ingest.NewService(cfg, log, driveUploader.Service, map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
 		ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},

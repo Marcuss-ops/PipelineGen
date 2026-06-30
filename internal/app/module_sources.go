@@ -225,13 +225,13 @@ func wireArtlistModule(cfg *config.Config, artlistSvc *artlistPkg.Service, bundl
 // UPSERT routes through the dispatcher (QDRANT-002 atomicity invariant).
 func wireArtlistLifecycle(bundle *ArtlistBundle, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger) *lifecycle.Service {
 	clipsRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService}, log)
+	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveUploader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService}, log)
 }
 
 func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log *zap.Logger) asset.Resolver {
-	if bundle.DriveClient != nil {
+	if bundle.DriveUploader != nil {
 		storageResolver := drive.NewResolver(drive.MediaRoot(cfg.Storage.MediaPath()), drive.DriveRoot(cfg.Drive.RootFolder()))
-		mediaStore := drive.NewStore(storageResolver, &driveutil.Uploader{Service: bundle.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
+		mediaStore := drive.NewStore(storageResolver, bundle.DriveUploader, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
 		return drive.NewDestinationResolver(mediaStore)
 	}
 	return nil
@@ -333,7 +333,7 @@ func wireArtlistCatalog(ctx context.Context, cfg *config.Config, bundle *Artlist
 //
 // PR4d-chunk2 (June 2026): wraps the 7 cross-bundle reads of WireStockPipeline.
 type StockBundle struct {
-	DriveClient        *gdrive.Service
+	DriveUploader      *driveutil.Uploader
 	Jobs               *appjobs.Service
 	JobFacade          jobdomain.Service
 	AssetIndexService  *assetindex.Service
@@ -376,7 +376,7 @@ type StockPipelineWiring struct {
 // canonical ingestion path between BuildDomainBundle returning and
 // the per-setter call is closed.
 func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle) (*StockPipelineWiring, error) {
-	if bundle.DriveClient == nil {
+	if bundle.DriveUploader == nil {
 		log.Warn("stock pipeline not wired: missing drive client")
 		return nil, nil
 	}
@@ -424,7 +424,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Cfg:       cfg,
 		Log:       log,
-		Drive:     bundle.DriveClient,
+		Drive:     bundle.DriveUploader.Service,
 		Publisher: bundle.Publisher,
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:  bundle.ClipsRepo,
