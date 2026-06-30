@@ -74,10 +74,17 @@ func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) {
 }
 
 // MediaIngestBundle is the capability bundle for the media-ingest module.
+//
+// F2.7 (June 2026): Publisher (delivery.Publisher) added. The legacy
+// driveUploader.Admin() upload path is dead — ingest lifecycle services
+// route Drive writes through Publisher, the canonical Pattern 0 port,
+// and use driveUploader only as a drive.Reader for the reconcile /
+// verify read surface.
 type MediaIngestBundle struct {
 	DB                *storage.SQLiteDB
 	Assets            *asset.Service
 	DriveUploader     *driveutil.Uploader
+	Publisher         delivery.Publisher
 	ImageRepo         *sqassets.ImagesRepository
 	VoiceoverRepo     *sqassets.VoiceoversRepository
 	ClipsRepo         *sqassets.ClipsRepository
@@ -94,6 +101,12 @@ type MediaIngestWiring struct {
 }
 
 // WireMediaIngest creates the Mediaingest handler and module.
+//
+// F2.7 (June 2026): ingest lifecycle services receive the canonical
+// delivery.Publisher instead of bundle.DriveUploader.Admin() —
+// Drive uploads flow through DestinationRegistry + RequireSubpath +
+// ConflictPolicy. bundle.DriveUploader stays as the DriveReader
+// for the reconcile / verify read surface.
 func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBundle, idempotencyMiddleware gin.HandlerFunc) (*MediaIngestWiring, error) {
 	if bundle == nil || bundle.DriveUploader == nil {
 		return nil, nil
@@ -108,13 +121,13 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	svc := bundle.PrebuiltService
 	if svc == nil {
 		imagesRegistry := imgapp.NewRegistryAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath(), log)
-		imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
+		imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
-		voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
+		voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
 		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
+		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
 		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
+		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
 		svc = ingest.NewService(cfg, log, bundle.DriveUploader.Admin(), map[ingest.Kind]*ingest.Pipeline{
 			ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 			ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},

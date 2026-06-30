@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -17,13 +18,22 @@ import (
 // Service orchestrates the full asset lifecycle:
 // duplicate checking, upload, persistence, and reconciliation.
 //
-// FASE 9 Step 7 (June 2026): migrated from *gdrive.Service + *drive.Uploader
-// to drive.Admin (UploadFile) + drive.Reader (reconcile/verifier) ports.
+// FASE 9 Step 7 (June 2026): drive.Admin (UploadFile) + drive.Reader.
+//
+// F2.7 (June 2026): driveAdmin REMOVED. The Drive write path now goes
+// through delivery.Publisher (canonical Pattern 0 port) — every upload
+// flows through DestinationRegistry + RequireSubpath + ConflictPolicy
+// instead of bypassing them via the raw drive.Admin.UploadFile port.
+//
+// driveReader (drive.Reader) is retained for the read-only reconcile
+// path (DriveIsNotTrashed); it is the only Drive-side touch left on
+// service-side callers.
 type Service struct {
 	store         AssetRecordStore
 	dedupe        *assetop.DedupeService
 	reconcile     *assetop.ReconcileService
-	driveAdmin    drive.Admin
+	publisher     delivery.Publisher
+	driveReader   drive.Reader
 	finalizer     *artifacts.Finalizer
 	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
@@ -45,9 +55,16 @@ type Config struct {
 // FASE 9 Step 7: driveAdmin is used for UploadFile; driveReader is used
 // for FileIsNotTrashed in the reconcile service. Both are satisfied by
 // the same *drive.Uploader concrete in production wiring.
+//
+// F2.7 (June 2026): driveAdmin (drive.Admin) replaced by publisher
+// (delivery.Publisher). driveReader stays — reconcile touches the read-
+// only drive surface (DriveIsNotTrashed). NewLifecycleFromDeps at the
+// composition root is the only place drive.Admin lives; the lifecycle
+// service itself NEVER holds a drive.Admin handle (P0 #7 invariant: no
+// raw SDK / legacy port access from application code).
 func NewService(
 	store AssetRecordStore,
-	driveAdmin drive.Admin,
+	publisher delivery.Publisher,
 	driveReader drive.Reader,
 	registry artifacts.Registry,
 	assetIndex *assetindex.Service,
@@ -66,7 +83,8 @@ func NewService(
 		store:         store,
 		dedupe:        dedupe,
 		reconcile:     reconcile,
-		driveAdmin:    driveAdmin,
+		publisher:     publisher,
+		driveReader:   driveReader,
 		finalizer:     finalizer,
 		uploadPolicy:  cfg.UploadPolicy,
 		persistPolicy: cfg.PersistPolicy,
@@ -118,18 +136,73 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	driveFileID := input.DriveFileID
 	downloadLink := input.DownloadLink
 
-	if s.uploadPolicy.Enabled && driveLink == "" && input.FolderID != "" {
-		if s.driveAdmin != nil {
-			result, err := s.driveAdmin.UploadFile(ctx, input.LocalPath, input.FolderID, filepath.Base(input.LocalPath))
-			if err != nil {
-				s.log.Warn("drive upload failed", zap.Error(err))
-			} else {
-				driveLink = result.WebViewLink
-				downloadLink = "https://drive.google.com/uc?id=" + result.FileID
-				driveFileID = result.FileID
-				s.log.Info("asset uploaded to drive",
+	if s.uploadPolicy.Enabled && driveLink == "" && input.LocalPath != "" {
+		if s.publisher == nil {
+			// F2.7: publisher unwired means the composition root fell
+			// through without constructing delivery.Publisher. This is
+			// a code defect — surface the gap loudly so operators see
+			// it at first invocation. With RequireDrive=true, the
+			// caller demands a Drive URL; bail out as UPLOAD_FAILED
+			// instead of silently producing a local-only record.
+			if input.RequireDrive {
+				out.Status = "UPLOAD_FAILED"
+				out.Error = fmt.Sprintf("lifecycle.ProcessAsset: publisher not wired (composition root); RequireDrive=true cannot proceed")
+				s.log.Error("lifecycle.ProcessAsset: publisher not wired + RequireDrive=true — abort without persistence",
+					zap.String("id", input.ID))
+				return out, nil
+			}
+			s.log.Warn("lifecycle.ProcessAsset: publisher not wired (composition root) — RequireDrive=false, proceeding without Drive upload",
+				zap.String("id", input.ID))
+		} else {
+			// F2.7: build the canonical delivery.PublishRequest. The
+			// Publisher routes through DestinationRegistry +
+			// RequireSubpath + ConflictPolicy — the legacy
+			// drive.Admin.UploadFile bypass is closed. FolderID passes
+			// through RootFolderOverride (back-compat escape hatch for
+			// callers with an explicit folder target).
+			filename := input.Filename
+			if filename == "" {
+				filename = filepath.Base(input.LocalPath)
+			}
+			pubReq := delivery.PublishRequest{
+				Destination:        input.Destination,
+				LocalPath:          input.LocalPath,
+				Filename:           filename,
+				AssetID:            input.ID,
+				Group:              input.Group,
+				Subject:            input.Subject,
+				ProjectID:          input.ProjectID,
+				Language:           input.Language,
+				Style:              input.Style,
+				RootFolderOverride: input.FolderID,
+			}
+			pubRes, pubErr := s.publisher.Publish(ctx, pubReq)
+			if pubErr != nil {
+				if input.RequireDrive {
+					out.Status = "UPLOAD_FAILED"
+					out.Error = fmt.Sprintf("lifecycle.ProcessAsset: publisher.Publish failed and RequireDrive=true: %v", pubErr)
+					s.log.Error("lifecycle.ProcessAsset: publisher.Publish failed + RequireDrive=true — abort without persistence",
+						zap.String("id", input.ID),
+						zap.String("destination", string(input.Destination)),
+						zap.Error(pubErr))
+					return out, nil
+				}
+				s.log.Warn("lifecycle.ProcessAsset: publisher.Publish failed (RequireDrive=false — best-effort, proceeding without Drive URL)",
 					zap.String("id", input.ID),
-					zap.String("file_id", result.FileID))
+					zap.Error(pubErr))
+			} else {
+				driveLink = pubRes.WebViewLink
+				if pubRes.DownloadLink != "" {
+					downloadLink = pubRes.DownloadLink
+				} else if pubRes.FileID != "" {
+					downloadLink = "https://drive.google.com/uc?id=" + pubRes.FileID
+				}
+				driveFileID = pubRes.FileID
+				s.log.Info("lifecycle.ProcessAsset: asset uploaded to drive (via Publisher, F2.7)",
+					zap.String("id", input.ID),
+					zap.String("file_id", pubRes.FileID),
+					zap.String("destination", string(input.Destination)),
+					zap.String("action", string(pubRes.Action)))
 			}
 		}
 	}
@@ -227,40 +300,68 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 // Returns nil error + empty DriveLink when upload is disabled
 // (s.uploadPolicy.Enabled == false) so callers can still
 // proceed through finalizeStage with the local-only path.
+//
+// F2.7 (June 2026): replaced drive.Admin.UploadFile with
+// delivery.Publisher.Publish — every Drive write goes through
+// the canonical DestinationRegistry/RequireSubpath/ConflictPolicy
+// belt instead of bypassing it via the raw drive.Admin port.
+// Caller-failure semantics preserved (UploadOnly returns err on
+// any publisher failure; the caller surfaces FailureUpload on the
+// voiceover BatchItem path).
 func (s *Service) UploadOnly(ctx context.Context, input *FinalizeInput) (*UploadOnlyResult, error) {
 	if input == nil {
 		return nil, fmt.Errorf("lifecycle.UploadOnly: FinalizeInput is required (nil input)")
 	}
-	if s.driveAdmin == nil {
-		return nil, fmt.Errorf("lifecycle.UploadOnly: driveAdmin not wired (composition root)")
+	if s.publisher == nil {
+		return nil, fmt.Errorf("lifecycle.UploadOnly: publisher not wired (composition root)")
 	}
 
 	driveLink := input.DriveLink
 	driveFileID := input.DriveFileID
 	downloadLink := input.DownloadLink
 
-	if s.uploadPolicy.Enabled && driveLink == "" && input.FolderID != "" && input.LocalPath != "" {
-		// Drive.Admin.UploadFile is the PR-VO-B1 hardened entry —
-		// failures do NOT propagate false-success (the previous
-		// log-warn best-effort surface for upload errors). The
-		// caller surfaces a FailureUpload on err.
-		result, err := s.driveAdmin.UploadFile(ctx, input.LocalPath, input.FolderID, filepath.Base(input.LocalPath))
+	if s.uploadPolicy.Enabled && driveLink == "" && input.LocalPath != "" {
+		// F2.7: build the canonical delivery.PublishRequest. Routed
+		// through DestinationRegistry + RequireSubpath + ConflictPolicy.
+		filename := input.Filename
+		if filename == "" {
+			filename = filepath.Base(input.LocalPath)
+		}
+		pubReq := delivery.PublishRequest{
+			Destination:        input.Destination,
+			LocalPath:          input.LocalPath,
+			Filename:           filename,
+			AssetID:            input.ID,
+			Group:              input.Group,
+			Subject:            input.Subject,
+			ProjectID:          input.ProjectID,
+			Language:           input.Language,
+			Style:              input.Style,
+			RootFolderOverride: input.FolderID,
+		}
+		pubRes, err := s.publisher.Publish(ctx, pubReq)
 		if err != nil {
 			if s.log != nil {
 				s.log.Warn("lifecycle.UploadOnly: Drive upload failed (caller surfaces FailureUpload)",
 					zap.String("id", input.ID),
+					zap.String("destination", string(input.Destination)),
 					zap.Error(err))
 			}
-			return nil, fmt.Errorf("lifecycle.UploadOnly: driveAdmin.UploadFile: %w", err)
+			return nil, fmt.Errorf("lifecycle.UploadOnly: publisher.Publish: %w", err)
 		}
-		driveLink = result.WebViewLink
-		downloadLink = "https://drive.google.com/uc?id=" + result.FileID
-		driveFileID = result.FileID
+		driveLink = pubRes.WebViewLink
+		downloadLink = pubRes.DownloadLink
+		if downloadLink == "" && pubRes.FileID != "" {
+			downloadLink = "https://drive.google.com/uc?id=" + pubRes.FileID
+		}
+		driveFileID = pubRes.FileID
 
 		if s.log != nil {
 			s.log.Info("lifecycle.UploadOnly: Drive upload OK (Phase 1 of new 2-phase split)",
 				zap.String("id", input.ID),
-				zap.String("file_id", result.FileID))
+				zap.String("file_id", pubRes.FileID),
+				zap.String("destination", string(input.Destination)),
+				zap.String("action", string(pubRes.Action)))
 		}
 	}
 

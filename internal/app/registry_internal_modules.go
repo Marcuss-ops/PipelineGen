@@ -102,10 +102,17 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// so the 4 NewClipStoreAdapter + NewClipsRegistry ctor calls in
 	// module_media.go get a non-nil mutations SSOT (production
 	// canonical path).
+	//
+	// F2.7 (June 2026): Publisher (root.Drive.Publisher) wired in.
+	// The 4 NewLifecycleFromDeps calls inside WireMediaIngest
+	// thread Publisher + DriveReader to the lifecycle service —
+	// Drive writes go through DestinationRegistry/RequireSubpath/
+	// ConflictPolicy, Drive reads (reconcile) via DriveReader.
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
 		DB:                root.DB,
 		Assets:            root.Repos.Assets,
 		DriveUploader:     root.Drive.driveUploader,
+		Publisher:         root.Drive.Publisher,
 		ImageRepo:         root.Repos.ImageRepo,
 		VoiceoverRepo:     root.Repos.VoiceoverRepo,
 		ClipsRepo:         root.Repos.ClipsRepo,

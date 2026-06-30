@@ -5,6 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 type AssetKind string
@@ -23,8 +24,28 @@ type FinalizeInput struct {
 	Kind      AssetKind
 	Source    string
 	SourceID  string
-	Group     string
-	Subfolder string
+
+	// Destination is the canonical Drive destination key. Required
+	// post-F2.7 so the lifecycle service can route the upload
+	// through the delivery.Publisher + DestinationRegistry belt (so
+	// it gets RequireSubpath + ConflictPolicy enforcement). Each
+	// caller sets the matching key (lifecycle.DestinationVoiceover
+	// for voiceover callers, lifecycle.DestinationYouTubeClip for
+	// youtube callers, etc.).
+	Destination delivery.DestinationKey
+	Group       string
+	Subfolder   string
+	// Subject is used by path builders that key off an asset ID
+	// (YouTubeClipPath / ArtlistPath / StockPath / ImagePath).
+	Subject string
+	// ProjectID is used by VoiceoverPath / BookPath / ScriptPath
+	// (project-level grouping).
+	ProjectID string
+	// Language is the BCP-47 tag consumed by VoiceoverPath /
+	// ScriptPath (per-project-language folders).
+	Language string
+	// Style is consumed by ImagePath (image style folder).
+	Style string
 
 	LocalPath  string
 	FolderID   string

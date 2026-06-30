@@ -30,6 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
@@ -76,9 +77,10 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		mutationsDisp,
 	)
 	youtubeLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
-		Registry:      clipsRegistry,
-		DriveAdmin:    drive.driveUploader,
-		AssetIndex:    search.AssetIndexService,
+		Registry:    clipsRegistry,
+		Publisher:   drive.Publisher,
+		DriveReader: drive.driveUploader,
+		AssetIndex:  search.AssetIndexService,
 	}, log)
 
 	voMetaWriter := semantic.NewMetadataWriter(
@@ -112,6 +114,30 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 
 	hashAdapter := hashutil.NewHashAdapter()
+
+	// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): construct the
+	// ClipCacheAdapter + ClipAtomicWriterAdapter pair (the bare DB
+	// halves of the canonical 2-port surface) and the
+	// ProcessYouTubeSegmentUseCase that consumes them.
+	//
+	// Subtitles / Transcriber are intentionally NOT wired here —
+	// the use case's runtime path tolerates nil on both (steps 6 + 7
+	// are gated by `if u.deps.Subtitles != nil` / `if u.deps.Transcriber != nil`
+	// in process_segment.go). A future commit wires YTDLPSubtitleAdapter
+	// for Subtitles and the canonical Whisper bridge for Transcriber;
+	// for Commit 1 the post-cut step degrades to a no-op path.
+	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo)
+	clipWriter := assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
+	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
+		Cache:          clipCache,
+		VideoPipeline:  videoPipelineAdapter,
+		Hash:           hashAdapter,
+		DriveFolderMgr: driveFolderMgr,
+		Writer:         clipWriter,
+		SegmentsSvc:    youtube.NewSegmentsService(), // dependency-free helper, safe at boot
+		Log:            log,
+	})
+
 	youtubeDeps := youtube.ServiceDeps{
 		Cfg:               buildYouTubeRuntimeConfig(cfg),
 		Log:               log,
@@ -130,6 +156,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
 		SearchRunner:      searchRunnerAdapter,
 		HashSvc:           hashAdapter,
+		// Commit 1/6: ProcessSeg is wired from the canonical use case
+		// constructed above. Wired into NewExtractionService via
+		// NewService so Extract fans out through the 9-step
+		// pipeline + ClipAtomicWriter.CommitClipAndIndexEvent.
+		ProcessSeg: processSeg,
 	}
 	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
 		return nil, fmt.Errorf("compose youtube: %w", err)
@@ -273,13 +304,13 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
 	}
 	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
-	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveAdmin: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
+	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
-	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveAdmin: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
+	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
 	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveAdmin: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveAdmin: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	return ingest.NewService(cfg, log, driveUploader.Admin(), map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},

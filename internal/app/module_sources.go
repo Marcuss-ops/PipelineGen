@@ -213,9 +213,14 @@ func wireArtlistModule(cfg *config.Config, artlistSvc *artlistPkg.Service, bundl
 // PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
 // is the 2nd positional arg so artifacts.NewClipsRegistry's media_assets
 // UPSERT routes through the dispatcher (QDRANT-002 atomicity invariant).
+//
+// F2.7 (June 2026): DriveAdmin replaced by Publisher (delivery.Publisher).
+// The Artlist lifecycle no longer touches the legacy drive.Admin
+// upload surface — every Drive write from ProcessAsset / UploadOnly
+// routes through Publisher + DestinationRegistry.
 func wireArtlistLifecycle(bundle *ArtlistBundle, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger) *lifecycle.Service {
 	clipsRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService}, log)
+	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService}, log)
 }
 
 func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log *zap.Logger) asset.Resolver {
