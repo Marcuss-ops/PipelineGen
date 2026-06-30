@@ -80,23 +80,27 @@ import (
 	"go.uber.org/zap"
 )
 
-// driveFolderAdapterImpl wraps *drive.Uploader as scriptapi.DriveFolderClient.
+// driveFolderAdapterImpl wraps drive.Admin as scriptapi.DriveFolderClient.
+// FASE 9 Step 3 (June 2026): migrated from *drive.Uploader to drive.Admin
+// (Pattern 0 port). GetOrCreateFolder is an Admin operation; the concrete
+// *drive.Uploader satisfies drive.Admin structurally.
+//
 // Lives in this file (composition-root-local infra bridge) per PR3 split;
 // wire_script.go consumes it via the *ScriptFlowHandler ScriptFlowDeps.DriveFolderClient
 // field at the bottom of the wireScriptFlow orchestrator.
 type driveFolderAdapterImpl struct {
-	uploader *drive.Uploader
+	admin drive.Admin
 }
 
 // GetOrCreateFolder implements scriptapi.DriveFolderClient. Receiver is
-// pointer-nil-tolerant so a missing uploader (test fixture / partial
+// pointer-nil-tolerant so a missing admin (test fixture / partial
 // composition) returns ("", nil) without panicking, matching the pre-PR3
 // gating contract in wireScriptFlow.
 func (a *driveFolderAdapterImpl) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	if a == nil || a.uploader == nil {
+	if a == nil || a.admin == nil {
 		return "", nil
 	}
-	return a.uploader.GetOrCreateFolder(ctx, name, parentID)
+	return a.admin.GetOrCreateFolder(ctx, name, parentID)
 }
 
 // docCreatorImpl wraps drive.DocClient as scriptapi.DocumentCreator.
