@@ -292,7 +292,48 @@ func TestResolvedDestinationDefaults(t *testing.T) {
 	assert.Empty(t, d.DriveLink)
 }
 
-// PR-VO-A4 (path-traversal fix, June 2026): pinning the GenerateBatch
+// PR-VO-AUDIT-P02 (June 2026): the canonical destination resolver
+// (destination_resolver.go) replaces the legacy
+// `if req.Destination != nil` gate in stages.go::GenerateBatch.
+// The new contract: every GenerateBatch call goes through the
+// resolver, even when req.Destination is nil. This boundary test
+// pins the new behaviour end-to-end: nil-Destination + empty
+// (zero-value) cfg.Drive.VoiceoverFolder() =
+// ErrMissingFolder. Pre-refactor, the same input silently fell
+// through with `dest=nil` and surfaced at Stage 2 with
+// `missing_folder_id` per-item. Post-refactor, the canonical
+// resolver short-circuits at the resolve step.
+func TestGenerateBatch_NilDestination_NoDefault_ReturnsMissingFolder(t *testing.T) {
+	s := &Service{
+		log: zap.NewNop(),
+		// cfg intentionally nil: DoCompose or similar test fixtures
+		// must not panic on a nil cfg receiver (the wrapper reads
+		// s.cfg.Drive nil-safe).
+		// assetDestResolver intentionally nil: Resolver is NOT consulted
+		// for nil-dest + no-default (canonical resolver short-circuits).
+	}
+	req := &BatchRequest{
+		Text:      "hello world",
+		Languages: []string{"en"},
+		Strategy:  "replace",
+		// Destination intentionally nil.
+	}
+
+	resp, err := s.GenerateBatch(context.Background(), req)
+	assert.Error(t, err, "GenerateBatch must error on nil-dest when no default folder is configured")
+	if err == nil {
+		return
+	}
+	// The wrapped error must carry the canonical log-marker so it
+	// survives the existing `missing_folder_id` telemetry surface.
+	assert.Contains(t, err.Error(), "missing_folder_id",
+		"error must surface missing_folder_id for fleet monitoring parity")
+	if resp != nil {
+		t.Errorf("GenerateBatch must return nil response on resolve error; got %#v", resp)
+	}
+}
+
+// PR-VO-AUDIT-P02 (June 2026): pinning the GenerateBatch
 // fail-fast contract for the path-traversal attack vector set.
 // Service{} zero-value is sufficient because the path-traversal
 // rejection in DestinationRequest.Validate runs BEFORE any field

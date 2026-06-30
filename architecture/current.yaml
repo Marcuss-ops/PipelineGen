@@ -237,6 +237,30 @@
       owner_capability: internal/application/voiceover
       deadline: 2026-07-10
       status: shipped_through_B3_cutover_pending_B4_contract
+    # PR-VO-AUDIT-P02 (June 2026): centralised destination fallback.
+    # Replaces the inline cfg.Drive.VoiceoverFolder() pre-population in
+    # process.go::Service.Generate with a single canonical resolver
+    # (destination_resolver.go::ResolveVoiceoverDestination). All legacy
+    # routes (Service.Generate / Service.GenerateBatch / GenerateJobHandler)
+    # now route through the same resolver with nil-safe semantics, so
+    # worker-side nil-destination requests no longer diverge from the
+    # HTTP-side path (audit P0.2 closure).
+    - id: P0.2_destination_routing
+      owner_capability: internal/application/voiceover
+      status: shipped
+      deadline: 2026-07-10
+    # PR-VO-AUDIT-P03 (June 2026): typed DestinationKind routing.
+    # DestinationRequest.Kind is now respected end-to-end via the
+    # canonical resolver: explicit → FolderID verbatim (no resolver call);
+    # group → asset.Resolver with Group as key; auto (or empty, back-compat)
+    # → Group → FolderID → cfg.Drive.VoiceoverFolder(). The audit's
+    # Kind-ignoring implementation in metadata.go::resolveDestination
+    # has been replaced by a thin wrapper that delegates to the canonical
+    # function.
+    - id: P0.3_destination_kind
+      owner_capability: internal/application/voiceover
+      status: shipped
+      deadline: 2026-07-10
 - id: 23
   status: in_progress
   exit_signal: false

@@ -1,38 +1,42 @@
 // Package voiceover — metadata.go (PR-VO-B2 metadata + StyleGroup
-// restoration, June 2026).
+// restoration, June 2026; PR-VO-AUDIT-P02-P03 wrapper refactor, June 2026).
 //
-// Owns the two PR-VO-B2 production bodies that the pre-PR8 voiceover
-// code contained before the PR8 slim-orchestrator extraction stripped
-// them along with the rest of the 695-line pre-PR8 process.go:
+// Owns two production bodies:
 //
 //   1. mergeUserMetadata — meta-build bridge that injects
 //      ResolvedDestination.StyleGroup (omitempty) and overlays
 //      user-supplied metadata onto the meta map (dropping on
 //      collision with a WARN log so callers learn about the drop).
 //
-//   2. resolveDestination — *Service method that wraps
-//      assetDestResolver.Resolve(ctx, &asset.ResolveRequest{...}) with
-//      the canonical voiceover forwarding pattern: StyleGroup is
-//      passed FORWARD into the resolver's ResolveRequest and then
-//      mirrored BACK into ResolvedDestination verbatim, because the
-//      resolver is a folder-mapping layer (it does not own
-//      StyleGroup routing).
+//   2. resolveDestination — *Service thin WRAPPER over the canonical
+//      ResolveVoiceoverDestination function (declared in
+//      `destination_resolver.go`, June 2026 P0.2+P0.3 closure). The
+//      wrapper exists only to read
+//      `s.cfg.Drive.VoiceoverFolder()` nil-safe and forward it as
+//      `defaultFolderID`. All routing semantics (KindExplicit /
+//      KindGroup / KindAuto precedence, StyleGroup forwarding + MIRROR
+//      on the KindGroup branch, nil-dest fallback) live in the
+//      canonical function. See that file for the production behaviour
+//      and the audit-mandated precedence rules.
 //
 // File-placement rationale (AGENTS.md Pattern 5): metadata.go owns
-// PR-VO-B2's metadata-layer concerns; stages.go stays a stub layer
-// for the orchestrator entrypoint shells (GenerateBatch + 3 stage
-// methods). The split is per-capability-stable, not per-line-count.
+// metadata-layer concerns (mergeUserMetadata + the cfg→resolver
+// bridge), stages.go owns the orchestrator entrypoint shells
+// (GenerateBatch + 3 stage methods), and destination_resolver.go
+// owns the destination routing decision surface. The split is
+// per-capability-stable, not per-line-count.
 //
 // Identifier convention: the magic string "PR-VO-B2" surfaces in the
 // WARN log message inside mergeUserMetadata so an operator can
 // grep production logs to find dropped-user-meta events.
+// PR-VO-AUDIT-P02-P03 markers surface in destination_resolver.go
+// (canonical precedence + sentinel errors) so an operator can grep
+// production logs to find central-fallback or Kind-routing events.
 package voiceover
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
 
@@ -114,45 +118,34 @@ func mergeUserMetadata(
 //   4. Folder:  resolver's FolderID / FolderPath / DriveLink
 //               pass through into the returned ResolvedDestination.
 //
-// Defensive early-outs: nil dest and nil assetDestResolver return
-// errors so the caller can surface a 400/500 instead of panicking
-// at the resolver call site.
+// PR-VO-AUDIT-P02-P03 (June 2026): Service.resolveDestination is now a
+// thin wrapper over the canonical ResolveVoiceoverDestination function
+// (declared in `destination_resolver.go`). The cfg.Drive.VoiceoverFolder()
+// fallback is read nil-safe here and forwarded as defaultFolderID; the
+// resolver itself never reads cfg, so a future composition root that
+// supplies the default folder via a different channel (e.g. a typed
+// RuntimeConfig surface, per Wave 5 #3) just needs to swap the
+// service-side read without touching the canonical function.
+//
+// Behaviour pinned by tests (process_metadata_test.go +
+// destination_resolver_test.go):
+//
+//   1. The legacy `ForwardsAndMirrorsStyleGroup` +
+//      `StyleGroupEmpty_NoForwardOrMirror` pins continue to fire —
+//      empty Kind → auto-detect → resolver call (Group is set in
+//      those tests) → MIRROR verbatim. Back-compat preserved.
+//   2. Nil cfg is tolerated (the wrapper reads s.cfg.Drive
+//      nil-safe so test doubles and minimal Service{log:…} fixtures
+//      keep compiling without spurious panics).
+//   3. Nil dest is delegated to the resolver's nil-dest branch
+//      which consults defaultFolderID (empty in tests = ErrMissingFolder).
 func (s *Service) resolveDestination(
 	ctx context.Context,
 	dest *DestinationRequest,
 ) (*ResolvedDestination, error) {
-	if dest == nil {
-		return nil, fmt.Errorf("resolveDestination: nil DestinationRequest")
+	defaultFolderID := ""
+	if s != nil && s.cfg != nil {
+		defaultFolderID = s.cfg.Drive.VoiceoverFolder()
 	}
-	if s.assetDestResolver == nil {
-		return nil, fmt.Errorf("resolveDestination: nil assetDestResolver (composition root did not wire asset.Resolver)")
-	}
-
-	// FORWARD: build the resolver request with the canonical voiceover
-	// Source marker + StyleGroup pass-through.
-	req := &asset.ResolveRequest{
-		Source:     "voiceover",
-		Group:      dest.Group,
-		StyleGroup: dest.StyleGroup,
-	}
-
-	result, err := s.assetDestResolver.Resolve(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("resolveDestination: resolver failed: %w", err)
-	}
-	if result == nil {
-		// Defensive: a misbehaving resolver might return (nil, nil).
-		// Substitute an empty result so the rest of the merge can
-		// proceed with zero-valued folder fields.
-		result = &asset.ResolveResult{}
-	}
-
-	// MIRROR + Folder field pass-through.
-	return &ResolvedDestination{
-		Group:      dest.Group,
-		FolderID:   result.FolderID,
-		FolderPath: result.FolderPath,
-		DriveLink:  result.DriveLink,
-		StyleGroup: dest.StyleGroup, // verbatim mirror (NOT from resolver result)
-	}, nil
+	return ResolveVoiceoverDestination(ctx, dest, s.assetDestResolver, defaultFolderID)
 }
