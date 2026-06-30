@@ -9,13 +9,37 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 )
+
+// (June 2026) the Storage field type migrated from *storage.Handler to
+// api.Descriptor (Blocco C1-Step 12), so the `internal/api/assets/storage`
+// import is no longer needed in this file — the type is referenced
+// indirectly via the api.Descriptor interface and the canonical binding
+// is constructed by the composition root via assetstorage.Build(...).
+// The previous import was removed in the same commit.
 
 // Dependencies holds the pre-built sub-handlers for the Assets module.
 type Dependencies struct {
-	// PR 2: thin transport handlers
-	Storage *storage.Handler
+	// Blocco C1-Step 12 (June 2026; user-documented Step 11):
+	// Storage is now an api.Descriptor (the canonical Build
+	// contract surface) instead of a raw *storage.Handler. The
+	// composition root threads the *assetstorage.StorageDescriptor
+	// returned by assetstorage.Build(...) here; the descriptor's
+	// RegisterRoutes(rg) forwarder delegates to the embedded
+	// api.Module which captures the Handler in its closure (the
+	// Module name "storage" + empty prefix "" preserve the
+	// pre-Step-12 routing shape — the single admin route POST
+	// /sync mounts directly on the parent /api/media group,
+	// matching /api/media/sync URL verbatim). The storage
+	// capability has a non-HTTP consumer at the Router level
+	// (the QDRANT-001 server-to-server /internal/v1/media/sync
+	// surface invoked via api.MediaInternalRouter.RegisterInternalMediaRoutes
+	// — see internal/api/routes.go::Setup() and the canonical
+	// Router.SetInternalMediaHandler binding); therefore the
+	// StorageDescriptor keeps a Handler field (matches the clips
+	// precedent exactly — register / soundeffect / stock / voiceover
+	// drop the Handler field because they have no such consumer).
+	Storage api.Descriptor
 
 	// Blocco C1-Step 10 (June 2026): Diagnostics is now an
 	// api.Descriptor (the canonical Build contract surface)
