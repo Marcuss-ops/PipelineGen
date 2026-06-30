@@ -100,7 +100,11 @@ QdrantConfig struct in `internal/platform/config/types.go` (lines 144-157).
   `rg 'VectorSearch|vector_search\.' --type go` returns 0 hits — the
   block is configuration drift rather than a live codepath). Removal
   is tracked separately as a follow-up deprecation cycle that will
-  collapse both blocks into the single canonical entry.
+  collapse both blocks into the single canonical entry. See
+  `architecture/deprecations.yaml#QDRANT-005A-VECDRIFT` (status:
+  EXPAND / in_progress, removal target: Wave 14 mega-package split
+  gate, Q3 2026) for the canonical godlike/07 audit record of the
+  drift + the triple-defence compatibility test footprint.
 
 - **CI Check 15 verified**: `bash scripts/ci-architectural-checks.sh`
   asserts that every `qdrant.NewClient(&qdrant.Config{...})` call propagates
