@@ -47,30 +47,35 @@ func (stubHashService) MD5File(_ string) (string, error) { return "", nil }
 // stubAtomicWriter satisfies ClipAtomicWriter (single method). Returns
 // nil unconditionally; tests only exercise ctor panic shape, not
 // the writer runtime.
+//
+// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #6): the port
+// signature now takes `youtubetypes.ClipAsset` (the canonical, typed
+// internal domain entity) instead of `youtubetypes.ExtractItem` (the
+// HTTP response shape). The stub signature mirrors that.
 type stubAtomicWriter struct{}
 
-func (stubAtomicWriter) CommitClipAndIndexEvent(_ context.Context, _ string, _ youtubetypes_extractItem, _ youtubeports.IndexEventPayload) error {
+func (stubAtomicWriter) CommitClipAndIndexEvent(_ context.Context, _ string, _ youtubetypes.ClipAsset, _ youtubeports.IndexEventPayload) error {
 	return nil
 }
 
-// youtubetypes_extractItem is a local alias for youtubetypes.ExtractItem
-// to avoid an inline import in the stub signature above. (The package
-// alias `youtubetypes "internal/application/youtube/dto"` IS already
-// imported in production via process_segment.go; the test re-imports
-// it under the same alias name.)
-type youtubetypes_extractItem = youtubetypes.ExtractItem
+// youtubetypes_clipAsset is a local alias for youtubetypes.ClipAsset
+// kept for legacy readers; the production alias `youtubetypes.ClipAsset`
+// is used inline above.
+type youtubetypes_clipAsset = youtubetypes.ClipAsset
 
 // stubClipCache satisfies ClipCachePort (single method). The hash-map
 // shape is intentionally bare — tests only exercise ctor panic.
 type stubClipCache struct{}
 
-func (stubClipCache) GetExisting(_ context.Context, _ string) (*youtubetypes_extractItem, bool, error) {
+func (stubClipCache) GetExisting(_ context.Context, _ string) (*youtubetypes.ExtractItem, bool, error) {
 	return nil, false, nil
 }
 
-// validDeps post-Commit-1 fix: SegmentsSvc MUST be wired
+// validProcessSegmentDeps post-Commit-1 fix: SegmentsSvc MUST be wired
 // (fail-fast panic for nil). DriveFolderMgr / Subtitles /
-// Transcriber are runtime-gated (no panic).
+// Transcriber are runtime-gated (no panic). SegmentPolicy is the
+// duration gate (Commit 2/6 #3); defaults to Min=2s/Max=60s when
+// zero-valued, so tests don't need to set it.
 func validProcessSegmentDeps() ProcessSegmentDeps {
 	return ProcessSegmentDeps{
 		Cache:         stubClipCache{},

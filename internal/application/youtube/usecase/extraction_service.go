@@ -274,7 +274,14 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 		}
 
 		itemName := cleanClipName(seg.Name, i)
-		outputName := s.segmentsSvc.BuildClipFilename(videoID, startSec, endSec, itemName)
+		// Commit 2/6 (Correttezza #4): BuildClipFilename now takes
+		// a 5th argument (policyVersion) so two policy versions of
+		// the same (videoID, start, end) tuple produce different
+		// files. The legacy inline loop here uses the canonical
+		// ProcessSegmentPolicyVersion ("v1"); the canonical fan-out
+		// path in process_segment.go::Execute uses the resolved
+		// policyVer from cmd.PolicyVersion.
+		outputName := s.segmentsSvc.BuildClipFilename(videoID, startSec, endSec, itemName, ProcessSegmentPolicyVersion)
 		normalize := true
 		if req.Normalize != nil {
 			normalize = *req.Normalize
@@ -286,9 +293,9 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 			Duration:       float64(endSec - startSec),
 			OutputName:     strings.TrimSuffix(outputName, ".mp4"),
 			ForceKeyframes: req.ForceKeyframes,
-			KeepAudio:      req.KeepAudio,
+			KeepAudio:      resolveKeepAudio(req),
 			Normalize:      normalize,
-			Strategy:       req.Strategy,
+			Strategy:       string(req.Strategy),
 			OutputDir:      outDir,
 		}
 
@@ -364,11 +371,13 @@ func (s *ExtractionService) extractFanOut(
 	// the canonical true default — the legacy silent-default-false
 	// behaviour is intentionally flipped here. An explicit keep_audio=false
 	// still strips audio.
-	keepAudio := true
-	if !req.KeepAudio {
-		keepAudio = false
-	}
-	keepAudioPtr := keepAudio
+	//
+	// Commit 2/6 (Correttezza #8): KeepAudio is now `*bool` (per the
+	// verdict's typed-pointer policy) so nil-marshal round-trips through
+	// the JSON boundary without defaulting to false. The dereference is
+	// delegated to resolveKeepAudio (testable helper): nil → canonical
+	// default (true); non-nil → *req.KeepAudio.
+	keepAudio := resolveKeepAudio(req)
 
 	sem := make(chan struct{}, s.maxConcurrentVideos)
 	results := make([]youtubetypes.ProcessSegmentResult, len(req.Segments))
@@ -405,7 +414,7 @@ func (s *ExtractionService) extractFanOut(
 				VideoURL:        req.URL,
 				ForceKeyframes:  req.ForceKeyframes,
 				Normalize:       req.Normalize,
-				KeepAudio:       &keepAudioPtr,
+				KeepAudio:       &keepAudio,
 				Strategy:        req.Strategy,
 				Destination:     req.Destination,
 			}
@@ -427,11 +436,68 @@ func (s *ExtractionService) extractFanOut(
 		}
 	}
 	resp.Stats.Skipped = len(resp.Items) - resp.Stats.Processed - resp.Stats.Failed
-	resp.OK = resp.Stats.Failed == 0 && resp.Stats.Processed > 0
+	// Commit 2/6 (Correttezza #7): success includes the
+	// "cache hit → skipped" path. A cache-hit on every segment is
+	// a successful idempotent re-run (the canonical "verify" strategy
+	// short-circuit), so the classifier treats (processed + skipped)
+	// == requested as success. The legacy classifier required
+	// processed > 0, which incorrectly flagged a 100% cache-hit
+	// re-run as failure. Vacuously true for requested==0 (no work
+	// requested → nothing to fail). Helper extracted so it can be
+	// unit-tested without the full 11-field ExtractionService fixture.
+	resp.OK = classifyExtractionRun(resp.Stats)
 	if !resp.OK && resp.Error == "" {
 		resp.Error = "one or more segments failed"
 	}
 	return resp, nil
+}
+
+// classifyExtractionRun is the canonical success/failure classifier
+// for an extraction run. Extracted from extractFanOut so it can be
+// unit-tested without the full 11-field ExtractionService fixture
+// (Commit 2/6 Correttezza #7).
+//
+// Returns true when the run is successful:
+//   - Vacuously true when no segments were requested (Requested == 0).
+//   - True when no segment failed AND (processed + skipped) == requested.
+//     The (processed + skipped) == requested branch is the canonical
+//     "idempotent re-run" path: a 100% cache-hit re-run classifies
+//     as success (the previous form required processed > 0, which
+//     incorrectly flagged all-skipped re-runs as failure).
+//
+// Returns false when any segment failed (Failed > 0) OR the
+// processed+skipped+failed accounting does not sum to requested
+// (defensive: a counter that drifts is itself a fail-closed signal).
+func classifyExtractionRun(stats *youtubetypes.ExtractStats) bool {
+	if stats == nil {
+		return false
+	}
+	if stats.Requested == 0 {
+		return true
+	}
+	if stats.Failed > 0 {
+		return false
+	}
+	return stats.Processed+stats.Skipped == stats.Requested
+}
+
+// resolveKeepAudio is the canonical nil-check for the KeepAudio
+// *bool DTO field. Commit 2/6 Correttezza #8 — extracted as a
+// helper so it can be unit-tested without driving a full
+// Extract call through the 11-field ExtractionService fixture.
+//
+// Behaviour:
+//   - nil req.KeepAudio → true (the canonical default; PR-C flip
+//     from the legacy silent-default-false).
+//   - non-nil req.KeepAudio → *req.KeepAudio (caller's explicit
+//     choice; the typed-pointer round-trip preserves the original
+//     JSON value without the previous `if !req.KeepAudio` syntax
+//     bug on a *bool).
+func resolveKeepAudio(req *youtubetypes.ExtractRequest) bool {
+	if req == nil || req.KeepAudio == nil {
+		return true
+	}
+	return *req.KeepAudio
 }
 
 func cleanClipName(name string, idx int) string {

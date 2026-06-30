@@ -94,7 +94,7 @@ func (s *Service) processSegment(
 		return item
 	}
 
-	item.Filename = s.segmentsSvc.BuildClipFilename(videoID, startSec, endSec, item.Name)
+	item.Filename = s.segmentsSvc.BuildClipFilename(videoID, startSec, endSec, item.Name, segments.ProcessSegmentPolicyVersion)
 	item.Status = "running"
 	clipID := item.ID
 

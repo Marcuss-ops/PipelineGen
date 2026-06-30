@@ -225,6 +225,15 @@ type IndexEventPayload struct {
 // ProcessYouTubeSegmentUseCase performs as its terminal step. The concrete
 // implementation lives in infrastructure and owns the SQLite transaction;
 // composition wires it to the new writer adapter (Commit F).
+//
+// Commit 2/6 (PR-C-YouTube-Cutover, June 2026, Correttezza #6): the
+// signature now takes `youtubetypes.ClipAsset` (the canonical, strongly-
+// typed internal domain entity) instead of `youtubetypes.ExtractItem` (the
+// HTTP response shape). The verdict's P1 #6 mandates "il writer deve ricevere
+// il record canonico, non un DTO di risposta HTTP" — ClipAsset bundles the
+// ID/VideoID/LocalPath/FileHash/Drive/Coordinates/Metadata fields the writer
+// needs in one typed struct so the DB column mapping is explicit and
+// refactor-resistant.
 type ClipAtomicWriter interface {
-	CommitClipAndIndexEvent(ctx context.Context, clipID string, item youtubetypes.ExtractItem, event IndexEventPayload) error
+	CommitClipAndIndexEvent(ctx context.Context, clipID string, asset youtubetypes.ClipAsset, event IndexEventPayload) error
 }

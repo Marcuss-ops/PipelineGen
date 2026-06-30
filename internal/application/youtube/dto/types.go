@@ -70,9 +70,9 @@ type ExtractRequest struct {
 	Segments       []Segment           `json:"segments"`
 	ForceKeyframes bool                `json:"force_keyframes"`
 	Normalize      *bool               `json:"normalize,omitempty"`
-	KeepAudio      bool                `json:"keep_audio"`
+	KeepAudio      *bool               `json:"keep_audio,omitempty"`
 	WriteSummary   *bool               `json:"write_summary,omitempty"`
-	Strategy       string              `json:"strategy,omitempty"`
+	Strategy       ExtractionStrategy  `json:"strategy,omitempty"`
 	Concurrency    int                 `json:"concurrency,omitempty"`
 	Destination    *DestinationRequest `json:"destination,omitempty"`
 	Shuffle        bool                `json:"shuffle,omitempty"`
@@ -167,20 +167,27 @@ type ExtractItem struct {
 // naming churn. The remaining fields (ID/FileHash/DriveFileID/DriveLink/
 // IndexedRequestID) pre-populate the most-promoted clip record fields for
 // callers that want to skip the Items deserialization.
+
 type ProcessSegmentCommand struct {
-	VideoID        string
-	Segment        Segment
-	Index          int
-	PolicyVersion  string
-	OutDir         string
-	DriveFolderID  string
+	VideoID         string
+	Segment         Segment
+	Index           int
+	PolicyVersion   string
+	OutDir          string
+	DriveFolderID   string
 	DriveFolderPath string
-	VideoURL       string
-	ForceKeyframes bool
-	Normalize      *bool
-	KeepAudio      *bool
-	Strategy       string
-	Destination    *DestinationRequest
+	VideoURL        string
+	ForceKeyframes  bool
+	Normalize       *bool
+	KeepAudio       *bool
+	// Strategy is the typed ExtractionStrategy (Commit 2/6 #2).
+	// The legacy `string` alias was promoted to a typed enum so
+	// `cmd.Strategy == StrategyReplace` is a typed comparison
+	// (no more string-literal typos). VideoCutRequest.Strategy
+	// is still a string; the use case casts `string(cmd.Strategy)`
+	// at the port boundary (process_segment.go::Execute).
+	Strategy    ExtractionStrategy
+	Destination *DestinationRequest
 }
 
 type ProcessSegmentResult struct {
@@ -192,4 +199,124 @@ type ProcessSegmentResult struct {
 	Status           string // "processed" | "skipped" | "failed"
 	Error            error
 	Item             ExtractItem
+}
+
+// ── Commit 2/6 (PR-C-YouTube-Cutover, June 2026) ───────────────────────
+//
+// ExtractionStrategy, SegmentPolicy, ClipAsset, and FailureCode are
+// the typed ports / DTOs the Correttezza commit introduces. They live
+// here (not in the use case package) so the application-layer ports
+// and the infrastructure-side adapters reference the same canonical
+// types without an import cycle (usecase → dto → ports → adapters).
+//
+// The full clip metadata builder is Commit 4 scope; Commit 2 ships
+// the typed shape + the canonical fields so the ClipAtomicWriter
+// port can move to ClipAsset end-to-end without further churn.
+
+// ExtractionStrategy is the typed value the use case reads to decide
+// cache bypass / replacement semantics. The constants below are the
+// only recognised values; the handler normalises unknown strings
+// to StrategyVerify at the API boundary.
+type ExtractionStrategy string
+
+const (
+	// StrategyVerify is the default. Cache hit short-circuits the
+	// pipeline (idempotent re-run on already-processed clips).
+	StrategyVerify ExtractionStrategy = "verify"
+	// StrategySkip skips re-processing even on cache miss (used by
+	// the channel monitor when a video is already in the broker
+	// pipeline for another reason).
+	StrategySkip ExtractionStrategy = "skip"
+	// StrategyReplace bypasses the cache lookup entirely so a
+	// re-extract under the same clipID always re-runs the full
+	// 9-step pipeline (used by the metadata-policy bump flow).
+	StrategyReplace ExtractionStrategy = "replace"
+)
+
+// SegmentPolicy is the duration gate applied to every segment
+// (LLM-discovered or API-supplied). MinDuration/MaxDuration are
+// seconds; zero means "use default" (the canonical defaults are
+// 2s / 60s, matching the legacy extraction block).
+type SegmentPolicy struct {
+	MinDuration int
+	MaxDuration int
+}
+
+// DefaultSegmentPolicy returns the canonical Min=2s / Max=60s
+// bounds. Both the LLM-discovered path and the API-supplied path
+// in ProcessYouTubeSegmentUseCase.Execute apply this when the
+// caller-supplied SegmentPolicy has zero values on either field.
+func DefaultSegmentPolicy() SegmentPolicy {
+	return SegmentPolicy{MinDuration: 2, MaxDuration: 60}
+}
+
+// ValidDuration applies Min/Max duration bounds to a derived
+// segment duration (endSec - startSec). Returns nil on pass,
+// typed *usecase.ExtractionError with FailureCodeDurationOutOfRange
+// on fail. The caller is the use case's Step 1; the helper lives
+// here so the policy is enforced in one place.
+func (p SegmentPolicy) ValidDuration(duration int) bool {
+	policy := p
+	if policy.MinDuration == 0 {
+		policy.MinDuration = DefaultSegmentPolicy().MinDuration
+	}
+	if policy.MaxDuration == 0 {
+		policy.MaxDuration = DefaultSegmentPolicy().MaxDuration
+	}
+	return duration >= policy.MinDuration && duration <= policy.MaxDuration
+}
+
+// ClipAssetDrive bundles the Drive-side fields the ClipAtomicWriter
+// needs in one nested struct. Keeping these out of ClipAsset's top
+// level makes the DB column mapping (10 columns) explicit and
+// refactor-resistant.
+type ClipAssetDrive struct {
+	FolderID    string
+	FolderPath  string
+	FileID      string
+	WebViewLink string
+}
+
+// ClipAssetCoordinates bundles the timestamp-derived fields the
+// ClipAtomicWriter needs (start/end in seconds + total duration).
+// Kept nested to match the verdict's canonical shape (commit 2 #6).
+type ClipAssetCoordinates struct {
+	StartSec int
+	EndSec   int
+	Duration int
+}
+
+// ClipMetadata is the canonical rich-metadata struct the use case
+// builds before calling the writer. Commit 2 ships the typed shape
+// (summary/topics/speakers/mentioned_people/transcript_path/
+// source_url/normalized_group per the verdict's P1 #15 + #16
+// canonical list). The full metadata enrichment (Ollama-backed
+// builder) is Commit 4 scope; Commit 2 stamps the values the
+// use case already has access to (segment-level input, drive
+// folder path, video URL, normaliser) and leaves the Ollama
+// fallback for the next wave.
+type ClipMetadata struct {
+	Summary         string
+	Topics          []string
+	Speakers        []string
+	MentionedPeople []string
+	TranscriptPath  string
+	SourceURL       string
+	NormalizedGroup string
+}
+
+// ClipAsset is the canonical, strongly-typed internal domain entity
+// the use case passes to the ClipAtomicWriter. The verdict's P1 #6
+// mandates "il writer deve ricevere il record canonico, non un DTO
+// di risposta HTTP" — ClipAsset is that record. ExtractItem stays
+// the HTTP response shape; ClipAsset is the writer-bound canonical.
+type ClipAsset struct {
+	ID            string
+	VideoID       string
+	LocalPath     string
+	FileHash      string
+	Drive         ClipAssetDrive
+	Coordinates   ClipAssetCoordinates
+	Metadata      ClipMetadata
+	PolicyVersion string
 }
