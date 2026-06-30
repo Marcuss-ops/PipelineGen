@@ -36,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	artlistScraper "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"

@@ -102,6 +102,8 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/run", h.RunTagPipeline)
 	r.GET("/runs/:run_id", h.RunStatus)
 	r.GET("/stats", h.Stats)
+	r.POST("/search", h.Search)
+	r.GET("/search/live", h.SearchLive)
 
 	// Internal routes already protected by parent group Auth middleware
 	internalGroup := r.Group("")

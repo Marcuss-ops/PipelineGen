@@ -3,10 +3,10 @@
 //
 // Owns two production bodies:
 //
-//   1. mergeUserMetadata — meta-build bridge that injects
-//      ResolvedDestination.StyleGroup (omitempty) and overlays
-//      user-supplied metadata onto the meta map (dropping on
-//      collision with a WARN log so callers learn about the drop).
+//  1. mergeUserMetadata — meta-build bridge that injects
+//     ResolvedDestination.StyleGroup (omitempty) and overlays
+//     user-supplied metadata onto the meta map (dropping on
+//     collision with a WARN log so callers learn about the drop).
 //
 //   2. resolveDestination — *Service thin WRAPPER over the canonical
 //      ResolveVoiceoverDestination function (declared in
@@ -47,16 +47,16 @@ import (
 //
 // Behaviour pinned by tests:
 //
-//   1. No-collision: every userMeta key lands in meta unchanged.
-//   2. Collision:    a userMeta key colliding with an existing meta
-//                    key is DROPPED (core value wins) and a WARN log
-//                    line is emitted.
-//   3. Style inject: when dest.StyleGroup is non-empty, the meta
-//                    map gains a "style_group" entry.
-//   4. Style omit:   when dest.StyleGroup is empty, no
-//                    "style_group" entry is created (omitempty
-//                    contract so empty StyleGroup does not shadow
-//                    real defaults downstream).
+//  1. No-collision: every userMeta key lands in meta unchanged.
+//  2. Collision:    a userMeta key colliding with an existing meta
+//     key is DROPPED (core value wins) and a WARN log
+//     line is emitted.
+//  3. Style inject: when dest.StyleGroup is non-empty, the meta
+//     map gains a "style_group" entry.
+//  4. Style omit:   when dest.StyleGroup is empty, no
+//     "style_group" entry is created (omitempty
+//     contract so empty StyleGroup does not shadow
+//     real defaults downstream).
 //
 // Step ordering matters: StyleGroup injection happens before the
 // userMeta overlay so a caller who supplies their own "style_group"
@@ -107,16 +107,16 @@ func mergeUserMetadata(
 //
 // Behaviour pinned by tests:
 //
-//   1. FORWARD: caller-supplied dest.Group + dest.StyleGroup land
-//               in the asset.ResolveRequest the resolver sees
-//               (Source = "voiceover" hardcoded).
-//   2. MIRROR:  dest.StyleGroup is mirrored onto the returned
-//               ResolvedDestination verbatim (resolver is a folder-
-//               mapping layer; it does NOT echo StyleGroup back).
-//   3. Empty:   empty StyleGroup propagates as zero through both
-//               directions (forward + mirror).
-//   4. Folder:  resolver's FolderID / FolderPath / DriveLink
-//               pass through into the returned ResolvedDestination.
+//  1. FORWARD: caller-supplied dest.Group + dest.StyleGroup land
+//     in the asset.ResolveRequest the resolver sees
+//     (Source = "voiceover" hardcoded).
+//  2. MIRROR:  dest.StyleGroup is mirrored onto the returned
+//     ResolvedDestination verbatim (resolver is a folder-
+//     mapping layer; it does NOT echo StyleGroup back).
+//  3. Empty:   empty StyleGroup propagates as zero through both
+//     directions (forward + mirror).
+//  4. Folder:  resolver's FolderID / FolderPath / DriveLink
+//     pass through into the returned ResolvedDestination.
 //
 // PR-VO-AUDIT-P02-P03 (June 2026): Service.resolveDestination is now a
 // thin wrapper over the canonical ResolveVoiceoverDestination function

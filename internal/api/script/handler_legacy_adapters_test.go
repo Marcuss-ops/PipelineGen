@@ -870,6 +870,44 @@ func TestLegacyGenerateFromClipsRequest_ToEnvelope_AliasPassThrough(t *testing.T
 	})
 }
 
+func TestLegacyGenerateWithImagesRequest_ToEnvelope_GeneratesDocumentByDefault(t *testing.T) {
+	t.Run("default_enables_generate_document", func(t *testing.T) {
+		req := &LegacyGenerateWithImagesRequest{
+			Title:    "with-images-doc-default",
+			Topic:    "doc default",
+			Language: "en",
+			Tone:     "informative",
+			Model:    "gemma2:2b",
+		}
+		env := req.toEnvelope()
+		if env.Preset != domainScript.PresetWithImages {
+			t.Fatalf("preset = %q, want %q", env.Preset, domainScript.PresetWithImages)
+		}
+		if !env.Items[0].Output.GenerateDocument {
+			t.Fatal("generate_document should default to true for generate-with-images")
+		}
+		if !env.Items[0].Output.GenerateSceneImages {
+			t.Fatal("generate_scene_images should remain true")
+		}
+	})
+
+	t.Run("explicit_false_is_respected", func(t *testing.T) {
+		falseVal := false
+		req := &LegacyGenerateWithImagesRequest{
+			Title:            "with-images-doc-off",
+			Topic:            "doc override",
+			Language:         "en",
+			Tone:             "informative",
+			Model:            "gemma2:2b",
+			GenerateDocument: &falseVal,
+		}
+		env := req.toEnvelope()
+		if env.Items[0].Output.GenerateDocument {
+			t.Fatal("generate_document=false should be respected when explicitly provided")
+		}
+	})
+}
+
 // TestLegacyGenerateFromClips_LegacyAliasWarnEmitted pins the PR 4
 // warn-emission contract end-to-end through the HTTP handler. A
 // payload carrying any of the three documented alias fields MUST

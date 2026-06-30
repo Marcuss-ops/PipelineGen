@@ -4,23 +4,23 @@
 // process.go's processLanguage calls into:
 //
 //   - GenerateBatch    (orchestrator) — validate, normalize,
-//                                       resolve destination once,
-//                                       fan out to processLanguage
-//                                       per language, aggregate
-//                                       response
+//     resolve destination once,
+//     fan out to processLanguage
+//     per language, aggregate
+//     response
 //   - synthesizeStage  (Stage 1)      — TTS via audioProcessor,
-//                                       populates LocalPath/CleanedPath/
-//                                       Voice/FileHash
+//     populates LocalPath/CleanedPath/
+//     Voice/FileHash
 //   - destinationStage (Stage 2)      — Drive upload via
-//                                       lifecycle.Service.ProcessAsset,
-//                                       populates DriveLink/DriveFileID/
-//                                       DownloadLink
+//     lifecycle.Service.ProcessAsset,
+//     populates DriveLink/DriveFileID/
+//     DownloadLink
 //   - finalizeStage    (Stage 3)      — atomic SQLite INSERT inside a
-//                                       single tx, PR-VO-A3 Outbox
-//                                       enqueue inside the same tx,
-//                                       PR-VO-B3 dedupe gate, then
-//                                       post-commit cleanup goroutine
-//                                       for replace-mode orphans
+//     single tx, PR-VO-A3 Outbox
+//     enqueue inside the same tx,
+//     PR-VO-B3 dedupe gate, then
+//     post-commit cleanup goroutine
+//     for replace-mode orphans
 //
 // The 4 symbols replace the PR-VOICEOVER-PROCESS-GO-FIX build-pass-only
 // stub layer. process.go's processLanguage already wires the stage
@@ -114,6 +114,12 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 
 	normalizeBatchRequest(req)
 
+	if req.Destination == nil && s.cfg != nil && s.cfg.Drive.VoiceoverFolder() != "" {
+		req.Destination = &DestinationRequest{
+			FolderID: s.cfg.Drive.VoiceoverFolder(),
+		}
+	}
+
 	requestID := buildRequestID()
 	textHash := hashutil.SHA256String(req.Text)
 
@@ -143,7 +149,7 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	ok := true
 	for _, lang := range req.Languages {
 		item := s.processLanguage(ctx, requestID, textHash, lang, req, dest)
-		if item.Status == "failed" {
+		if !item.isSuccessful() {
 			ok = false
 		}
 		items = append(items, item)
@@ -196,7 +202,7 @@ func (s *Service) synthesizeStage(
 	input := TTSInput{
 		Text:          req.Text,
 		Language:      language,
-		Voice:         "",
+		Voice:         voiceOverrideFor(req, language),
 		Filename:      filename,
 		OutputDir:     outputDir,
 		RemoveSilence: removeSilence,
@@ -219,6 +225,13 @@ func (s *Service) synthesizeStage(
 	item.FileHash = result.FileHash
 	item.Status = "generated"
 	return item
+}
+
+func voiceOverrideFor(req *BatchRequest, language string) string {
+	if req == nil || len(req.VoiceOverrides) == 0 {
+		return ""
+	}
+	return req.VoiceOverrides[language]
 }
 
 // destinationStage is Stage 2 (Drive upload via Lifecycle). Wired

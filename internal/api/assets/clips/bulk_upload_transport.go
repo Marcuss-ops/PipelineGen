@@ -29,7 +29,7 @@
 // reach full Pattern 8 compliance):
 //
 //   - JobsSvc          (bulk-upload enqueue + idem bypass)
-//   - DriveUploader    (Drive folder-name resolution when caller
+//   - DriveAdmin    (Drive folder-name resolution when caller
 //                       omits drive_folder_id but provides
 //                       drive_folder_name)
 //   - Cfg              (storage base paths for IsLocalFolderAllowed;
@@ -72,7 +72,7 @@ import (
 // follows the matrix in the Step 5 discovery report (June 2026).
 type BulkTransportDeps struct {
 	JobsSvc          jobservice.Service
-	DriveUploader    *drive.Uploader
+	DriveAdmin    drive.Admin
 	Cfg              *config.Config
 	BulkUploadWorker *appclips.BulkUploadWorker
 	Log              *zap.Logger
@@ -85,7 +85,7 @@ type BulkTransportDeps struct {
 // orchestrator Deps.
 type BulkUploadTransport struct {
 	jobsSvc          jobservice.Service
-	driveUploader    *drive.Uploader
+	driveAdmin    drive.Admin
 	cfg              *config.Config
 	bulkUploadWorker *appclips.BulkUploadWorker
 	log              *zap.Logger
@@ -101,7 +101,7 @@ func NewBulkUploadTransport(d BulkTransportDeps) *BulkUploadTransport {
 	}
 	return &BulkUploadTransport{
 		jobsSvc:          d.JobsSvc,
-		driveUploader:    d.DriveUploader,
+		driveAdmin:    d.DriveAdmin,
 		cfg:              d.Cfg,
 		bulkUploadWorker: d.BulkUploadWorker,
 		log:              d.Log,
@@ -245,7 +245,7 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 	// Resolve target Drive folder once so the worker doesn't have to.
 	targetDriveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if targetDriveFolderID == "" {
-		if bt.driveUploader == nil {
+		if bt.driveAdmin == nil {
 			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured; drive_folder_id is required"))
 			return
 		}
@@ -261,7 +261,7 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 			apiutil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))
 			return
 		}
-		dirID, err := bt.driveUploader.GetOrCreateFolder(ctx, req.DriveFolderName, root)
+		dirID, err := bt.driveAdmin.GetOrCreateFolder(ctx, req.DriveFolderName, root)
 		if err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to resolve drive_folder_name: %w", err))
 			return
@@ -276,7 +276,7 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 	// to prevent the endpoint from being used to walk arbitrary
 	// directories (e.g. /etc) and upload their contents to Drive.
 	// Path resolution lives in the application tier (Pattern 8 in
-	// progress; full Cfg/DriveUploader migration to follow-up PR).
+	// progress; full Cfg/DriveAdmin migration to follow-up PR).
 	if !appclips.IsLocalFolderAllowed(abs,
 		bt.cfg.Storage.MediaPath(),
 		bt.cfg.Storage.TempPath(),

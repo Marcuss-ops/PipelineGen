@@ -174,23 +174,25 @@ rebuild: clean build
 run: build
 	./bin/pipelinegen --mode all
 
-# Run system doctor check. The port is read from $VELOX_PORT (canonical
-# default 8000) so the same Makefile works whether the operator runs on the
-# canonical port or overrides at runtime. Fails explicitly if the
-# server is not running.
+# Run system doctor check. Port/port override same as artlist target.
+# Admin token is read from $ADMIN_TOKEN (default matches config.yaml).
+# Fails explicitly if the server is not running.
 doctor:
-	@curl -sS -f http://127.0.0.1:$${VELOX_PORT:-8000}/api/system/doctor | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
+	@curl -sS -f -H "Authorization: Bearer $(ADMIN_TOKEN)" http://127.0.0.1:$${VELOX_PORT:-8000}/api/system/doctor | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
 
-# Run artlist with smart presets
-# Usage: make artlist TERM=technology LIMIT=10 PRESET=youtube_1080p_7s
+# Run artlist pipeline via POST /api/artlist/run.
+# Usage: make artlist TERM=technology LIMIT=10 STRATEGY=default
 # Port is read from $VELOX_PORT (canonical default 8000).
+# Admin token is read from $ADMIN_TOKEN (default matches config.yaml).
 TERM ?= technology
 LIMIT ?= 10
-PRESET ?= youtube_1080p_7s
+STRATEGY ?= default
+ADMIN_TOKEN ?= test-admin-token-12345
 artlist:
-	@curl -sS -f -X POST http://127.0.0.1:$${VELOX_PORT:-8000}/api/artlist/run-smart \
+	@curl -sS -f -X POST http://127.0.0.1:$${VELOX_PORT:-8000}/api/artlist/run \
 		-H "Content-Type: application/json" \
-		-d '{"term":"$(TERM)","limit":$(LIMIT),"preset":"$(PRESET)"}' | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
+		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
+		-d '{"term":"$(TERM)","limit":$(LIMIT),"strategy":"$(STRATEGY)"}' | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
 
 # Development mode with hot reload (requires air)
 dev:

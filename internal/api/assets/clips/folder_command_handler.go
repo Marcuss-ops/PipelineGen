@@ -1,7 +1,7 @@
 // Package clips — folder command sub-handler (Fase 2 split, June 2026).
 //
 // Extracted from ops.go: write folder operations (RegenerateManifest, TrashFolder, DeleteFolder).
-// Depends on: ClipsRepository, DriveUploader, FolderMemSvc.
+// Depends on: ClipsRepository, DriveAdmin, FolderMemSvc.
 package clips
 
 import (
@@ -81,11 +81,11 @@ func (oh *OpsHandler) TrashFolder(c *gin.Context) {
 	}
 
 	if driveFolderID != "" {
-		if oh.driveUploader == nil {
+		if oh.driveAdmin == nil {
 			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 			return
 		}
-		if err := oh.driveUploader.TrashFolder(ctx, driveFolderID); err != nil {
+		if err := oh.driveAdmin.TrashFolder(ctx, driveFolderID); err != nil {
 			oh.log.Error("failed to trash folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
 			apiutil.InternalError(c, err)
 			return
@@ -149,11 +149,11 @@ func (oh *OpsHandler) DeleteFolder(c *gin.Context) {
 	}
 
 	if driveFolderID != "" {
-		if oh.driveUploader == nil {
+		if oh.driveAdmin == nil {
 			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 			return
 		}
-		if err := oh.driveUploader.DeleteFolder(ctx, driveFolderID); err != nil {
+		if err := oh.driveAdmin.DeleteFolder(ctx, driveFolderID); err != nil {
 			oh.log.Error("failed to delete folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
 			apiutil.InternalError(c, err)
 			return

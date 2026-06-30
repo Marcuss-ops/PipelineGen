@@ -11,7 +11,7 @@
 //   - JobsSvc        (CreateClip + UploadVideoClip — media.enrich enqueue)
 //   - ClipsRepo (UpdateClip — repoForSource gate)
 //   - ArtifactSvc    (UploadVideoClip — CreateAndVerify / LocalPath)
-//   - DriveUploader  (UploadVideoClip — group folder + UploadFileWithDescription)
+//   - DriveAdmin  (UploadVideoClip — group folder + UploadFileWithDescription)
 //   - ProcessRunner  (UploadVideoClip — probeDuration via ffprobe/mediainfo)
 //   - Cfg            (UploadVideoClip — Drive.RootFolder, Storage.TempPath)
 //   - ClipIndexer    (UploadVideoClip — null-check pre media.enrich gate)
@@ -80,7 +80,7 @@ type IngestDeps struct {
 	JobsSvc        jobservice.Service
 	ClipsRepo *assets.ClipsRepository
 	ArtifactSvc    *artifacts.Service
-	DriveUploader  *drive.Uploader
+	DriveAdmin  drive.Admin
 	ProcessRunner  appassets.ProcessRunner
 	Cfg            *config.Config
 	ClipIndexer    *clipindexer.Service
@@ -99,7 +99,7 @@ type IngestHandler struct {
 	jobsSvc        jobservice.Service
 	clipsRepo *assets.ClipsRepository
 	artifactSvc    *artifacts.Service
-	driveUploader  *drive.Uploader
+	driveAdmin  drive.Admin
 	processRunner  appassets.ProcessRunner
 	cfg            *config.Config
 	clipIndexer    *clipindexer.Service
@@ -120,7 +120,7 @@ func NewIngestHandler(d IngestDeps) *IngestHandler {
 		jobsSvc:        d.JobsSvc,
 		clipsRepo: d.ClipsRepo,
 		artifactSvc:    d.ArtifactSvc,
-		driveUploader:  d.DriveUploader,
+		driveAdmin:  d.DriveAdmin,
 		processRunner:  d.ProcessRunner,
 		cfg:            d.Cfg,
 		clipIndexer:    d.ClipIndexer,

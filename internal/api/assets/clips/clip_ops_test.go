@@ -122,36 +122,36 @@ func (r *handlerImagesRepo) ListAll(_ context.Context) ([]*asset.ImageAsset, err
 	return r.images, nil
 }
 
-type handlerDriveUploader struct{ md5ByFileID map[string]string }
+type handlerDriveAdmin struct{ md5ByFileID map[string]string }
 
-func (d *handlerDriveUploader) GetOrCreateFolder(_ context.Context, _, _ string) (string, error) {
+func (d *handlerDriveAdmin) GetOrCreateFolder(_ context.Context, _, _ string) (string, error) {
 	return "", nil
 }
-func (d *handlerDriveUploader) GetFolderName(_ context.Context, _ string) (string, error) {
+func (d *handlerDriveAdmin) GetFolderName(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
-func (d *handlerDriveUploader) TrashFolder(_ context.Context, _ string) error  { return nil }
-func (d *handlerDriveUploader) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (d *handlerDriveUploader) UploadFile(_ context.Context, _, _, _ string) (*appclips.ClipUploadResultDTO, error) {
+func (d *handlerDriveAdmin) TrashFolder(_ context.Context, _ string) error  { return nil }
+func (d *handlerDriveAdmin) DeleteFolder(_ context.Context, _ string) error { return nil }
+func (d *handlerDriveAdmin) UploadFile(_ context.Context, _, _, _ string) (*appclips.ClipUploadResultDTO, error) {
 	return &appclips.ClipUploadResultDTO{}, nil
 }
-func (d *handlerDriveUploader) UploadFileWithDescription(_ context.Context, _, _, _, _ string) (*appclips.ClipUploadResultDTO, error) {
+func (d *handlerDriveAdmin) UploadFileWithDescription(_ context.Context, _, _, _, _ string) (*appclips.ClipUploadResultDTO, error) {
 	return &appclips.ClipUploadResultDTO{}, nil
 }
-func (d *handlerDriveUploader) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
+func (d *handlerDriveAdmin) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
 	return nil, "", nil
 }
-func (d *handlerDriveUploader) GetFileMD5(_ context.Context, fileID string) (string, error) {
+func (d *handlerDriveAdmin) GetFileMD5(_ context.Context, fileID string) (string, error) {
 	if d == nil || d.md5ByFileID == nil {
 		return "", nil
 	}
 	return d.md5ByFileID[fileID], nil
 }
-func (d *handlerDriveUploader) GetFileMeta(_ context.Context, _ string) (*appclips.ClipDriveFileMetaDTO, error) {
+func (d *handlerDriveAdmin) GetFileMeta(_ context.Context, _ string) (*appclips.ClipDriveFileMetaDTO, error) {
 	return &appclips.ClipDriveFileMetaDTO{}, nil
 }
-func (d *handlerDriveUploader) TrashFile(_ context.Context, _ string) error { return nil }
-func (d *handlerDriveUploader) ListFiles(_ context.Context, _ string) ([]appclips.ClipDriveFileDTO, error) {
+func (d *handlerDriveAdmin) TrashFile(_ context.Context, _ string) error { return nil }
+func (d *handlerDriveAdmin) ListFiles(_ context.Context, _ string) ([]appclips.ClipDriveFileDTO, error) {
 	return nil, nil
 }
 

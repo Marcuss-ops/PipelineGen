@@ -241,16 +241,7 @@ func (s *DBSearcher) Search(ctx context.Context, req SearchRequest) ([]Candidate
 	if term == "" {
 		return nil, nil
 	}
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 8
-	}
-	if limit > 50 {
-		limit = 50
-	}
-
-	keywords := strings.Fields(term)
-	dbClips, err := s.store.SearchByTerms(ctx, "artlist", keywords, limit)
+	dbClips, err := s.store.SearchClips(ctx, "artlist", term)
 	if err != nil {
 		return nil, err
 	}

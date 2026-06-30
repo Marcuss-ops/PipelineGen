@@ -93,9 +93,9 @@ func NewProcessOneVoiceoverUseCase(deps ProcessOneDeps) *ProcessOneVoiceoverUseC
 //   - FilenameTemplate uses the pre-computed item.Filename so the
 //     child never re-derives the same name.
 //
-// Voice overrides via the per-language VoiceOverride map so the
-// legacy path applies the override the same way it does for the
-// multi-language case.
+// Voice overrides are forwarded via BatchRequest.VoiceOverrides so
+// the legacy multi-language path can apply the same per-language
+// TTS voice as the typed fan-out path.
 func (u *ProcessOneVoiceoverUseCase) Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error) {
 	if item == nil {
 		return nil, fmt.Errorf("ProcessOneVoiceoverUseCase.Execute: nil item command")
@@ -104,33 +104,21 @@ func (u *ProcessOneVoiceoverUseCase) Execute(ctx context.Context, item *Generate
 		return nil, fmt.Errorf("ProcessOneVoiceoverUseCase.Execute: validate: %w", err)
 	}
 
-	voiceOverrides := map[string]string{}
-	if item.Voice != "" {
-		voiceOverrides[item.Language] = item.Voice
-	}
 	req := &BatchRequest{
 		Text:             item.Text,
 		Languages:        []string{item.Language},
 		FilenameTemplate: item.Filename,
+		VoiceOverrides:   map[string]string{},
 		Strategy:         string(item.Strategy),
 		Destination:      item.Destination,
 		Metadata:         item.Metadata,
-		// VoiceOverrides field kept omitted; the per-language voice is
-		// instead passed through the BatchRequest's canonical VoiceOverrides
-		// map so the legacy path applies it correctly.
 	}
 	if item.RemoveSilence {
 		tru := true
 		req.RemoveSilence = &tru
 	}
-	if len(voiceOverrides) > 0 {
-		// BatchRequest has no canonical VoiceOverrides field in the
-		// public shape; forward via the Metadata envelope so the legacy
-		// GenerateBatch can recognise it without a struct revision.
-		if req.Metadata == nil {
-			req.Metadata = map[string]any{}
-		}
-		req.Metadata["voice_overrides"] = voiceOverrides
+	if item.Voice != "" {
+		req.VoiceOverrides[item.Language] = item.Voice
 	}
 
 	resp, err := u.deps.Service.GenerateBatch(ctx, req)
@@ -149,6 +137,28 @@ func (u *ProcessOneVoiceoverUseCase) Execute(ctx context.Context, item *Generate
 	// request; map it onto the canonical VoiceoverItemResult shape so
 	// the aggregator (P0.3 commit 2) reads a uniform struct.
 	out := resp.Items[0]
+	if !out.isSuccessful() {
+		result := &VoiceoverItemResult{
+			Language: out.Language,
+			Status:   StatusFailed,
+			Voice:    out.Voice,
+		}
+		if out.Error != "" {
+			result.Error = out.Error
+		} else {
+			result.Error = "GenerateBatch returned a non-completed status"
+		}
+		if out.DriveLink != "" {
+			result.DriveLink = out.DriveLink
+		}
+		if out.DriveFileID != "" {
+			result.DriveFileID = out.DriveFileID
+		}
+		if out.LocalPath != "" {
+			result.LocalPath = out.LocalPath
+		}
+		return result, nil
+	}
 	result := &VoiceoverItemResult{
 		Language: out.Language,
 		Status:   out.Status,

@@ -101,9 +101,9 @@ type Dependencies struct {
 	// MANDATORY — used by Ops sub-handler.
 	DeletionSvc *deletion.DeletionService
 
-	// DriveUploader wraps google.golang.org/api/drive/v3.
+	// DriveAdmin wraps google.golang.org/api/drive/v3.
 	// MANDATORY — used by Ingest sub-handler for the upload path.
-	DriveUploader *drive.Uploader
+	DriveAdmin drive.Admin
 
 	// MediaProcessor is the asset.Processor (ffmpeg pipeline).
 	// MANDATORY — used by ReprocessUseCase inside Handler.
@@ -324,7 +324,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		ClipsRepo:        deps.ClipsRepo,
 		AssetRepo:        deps.AssetRepo,
 		DeletionSvc:      deps.DeletionSvc,
-		DriveUploader:    deps.DriveUploader,
+		DriveAdmin:    deps.DriveAdmin,
 		MediaProcessor:   deps.MediaProcessor,
 		AssetTreeSvc:     deps.AssetTreeSvc,
 		MetaWriter:       deps.MetaWriter,
