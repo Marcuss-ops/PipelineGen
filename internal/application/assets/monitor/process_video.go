@@ -53,18 +53,22 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	// ── PR 5: canonical filter policy ──────────────────────────────────
 
 	if channel.MinViews > 0 && info.Views < int64(channel.MinViews) {
+		reason := SkipBelowMinViews
 		m.log.Debug("video below min_views, skipping",
 			zap.String("video_id", videoID),
 			zap.Int64("views", info.Views),
-			zap.Int("min_views", channel.MinViews))
+			zap.Int("min_views", channel.MinViews),
+			zap.String("skip_reason", string(reason)))
 		return
 	}
 
 	if channel.MaxClipDuration > 0 && info.Duration > float64(channel.MaxClipDuration) {
+		reason := SkipOverDuration
 		m.log.Debug("video exceeds max_clip_duration, skipping",
 			zap.String("video_id", videoID),
 			zap.Float64("duration_sec", info.Duration),
-			zap.Int("max_duration", channel.MaxClipDuration))
+			zap.Int("max_duration", channel.MaxClipDuration),
+			zap.String("skip_reason", string(reason)))
 		return
 	}
 
@@ -72,9 +76,11 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	keywords := decodeJSONStrings(channel.Keywords)
 	if len(keywords) > 0 {
 		if !containsAny(title, keywords) {
+			reason := SkipKeywordMismatch
 			m.log.Debug("title keyword no match, skipping",
 				zap.String("video_id", videoID),
-				zap.Strings("keywords", keywords))
+				zap.Strings("keywords", keywords),
+				zap.String("skip_reason", string(reason)))
 			return
 		}
 		m.log.Debug("title keyword match", zap.String("video_id", videoID))
@@ -86,17 +92,21 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 		videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
 		score, matchedKeyword, err := m.matchSemantically(ctx, videoURL, semanticKeywords, channel.MinSemanticScore)
 		if err != nil {
+			reason := SkipOllamaFailed
 			m.log.Warn("semantic matching failed, skipping video",
 				zap.String("video_id", videoID),
-				zap.Error(err))
+				zap.Error(err),
+				zap.String("skip_reason", string(reason)))
 			return
 		}
 		if score < semanticScoreThreshold(channel.MinSemanticScore) {
+			reason := SkipSemanticRejected
 			m.log.Info("video does not match semantic keywords",
 				zap.String("video_id", videoID),
 				zap.String("title", title),
 				zap.Int("score", score),
-				zap.Int("threshold", semanticScoreThreshold(channel.MinSemanticScore)))
+				zap.Int("threshold", semanticScoreThreshold(channel.MinSemanticScore)),
+				zap.String("skip_reason", string(reason)))
 			return
 		}
 		m.log.Info("semantic match",

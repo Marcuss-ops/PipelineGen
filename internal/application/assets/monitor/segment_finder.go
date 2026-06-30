@@ -26,14 +26,20 @@ func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL
 
 	videoID, _ := urlutil.ExtractVideoID(videoURL)
 	if videoID == "" {
-		m.log.Debug("could not extract video ID from URL", zap.String("url", videoURL))
+		reason := SkipSubtitleUnavailable
+		m.log.Debug("could not extract video ID from URL",
+			zap.String("url", videoURL),
+			zap.String("skip_reason", string(reason)))
 		return nil
 	}
 
 	// Download subtitles via yt-dlp
 	tempDir, err := os.MkdirTemp("", "subs_segments_*")
 	if err != nil {
-		m.log.Debug("failed to create temp dir for subtitles", zap.Error(err))
+		reason := SkipSubtitleUnavailable
+		m.log.Debug("failed to create temp dir for subtitles",
+			zap.Error(err),
+			zap.String("skip_reason", string(reason)))
 		return nil
 	}
 	defer os.RemoveAll(tempDir)
@@ -61,9 +67,11 @@ func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL
 		}
 	}
 	if vttPath == "" {
+		reason := SkipSubtitleUnavailable
 		m.log.Debug("no VTT subtitle file found for video",
 			zap.String("url", videoURL),
-			zap.String("yt_output", strings.TrimSpace(string(out))))
+			zap.String("yt_output", strings.TrimSpace(string(out))),
+			zap.String("skip_reason", string(reason)))
 		return nil
 	}
 
@@ -128,9 +136,11 @@ func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL
 	}
 
 	if len(timedEntries) < 5 {
+		reason := SkipSubtitleUnavailable
 		m.log.Debug("too few subtitle entries for analysis",
 			zap.String("url", videoURL),
-			zap.Int("entries", len(timedEntries)))
+			zap.Int("entries", len(timedEntries)),
+			zap.String("skip_reason", string(reason)))
 		return nil
 	}
 
@@ -224,7 +234,10 @@ Format:
 
 	responseStr, err := m.ollamaClient.SimpleGenerate(ctx, model, prompt, 60*time.Second, map[string]any{"format": "json"})
 	if err != nil {
-		m.log.Debug("ollama call failed for segment analysis", zap.Error(err))
+		reason := SkipOllamaFailed
+		m.log.Debug("ollama call failed for segment analysis",
+			zap.Error(err),
+			zap.String("skip_reason", string(reason)))
 		return nil
 	}
 	segmentsJSON := responseStr
@@ -243,9 +256,11 @@ Format:
 		MentionedPeople []string `json:"mentioned_people,omitempty"`
 	}
 	if err := json.Unmarshal([]byte(segmentsJSON), &ollamaSegments); err != nil {
+		reason := SkipOllamaFailed
 		m.log.Debug("failed to parse ollama segments JSON",
 			zap.Error(err),
-			zap.String("raw", responseStr))
+			zap.String("raw", responseStr),
+			zap.String("skip_reason", string(reason)))
 		return nil
 	}
 
@@ -333,7 +348,14 @@ func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL s
 	// ── Priority 2: YouTube Chapters ─────────────────────────────────────
 	ytDlp := downloader.NewYTDLP(m.cfg)
 	meta, err := ytDlp.GetVideoMetadata(ctx, videoURL)
-	if err == nil && meta != nil && len(meta.Chapters) > 0 {
+	chaptersUsable := err == nil && meta != nil && len(meta.Chapters) > 0
+	if !chaptersUsable {
+		reason := SkipNoChapters
+		m.log.Debug("no usable YouTube chapters on this video, falling back to nil",
+			zap.String("url", videoURL),
+			zap.String("skip_reason", string(reason)))
+	}
+	if chaptersUsable {
 		m.log.Info("found YouTube chapters, using them as segments",
 			zap.String("url", videoURL),
 			zap.Int("chapters", len(meta.Chapters)))
@@ -379,8 +401,10 @@ func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL s
 	}
 
 	// No segments found from any source — return nil
+	reason := SkipNoSegments
 	m.log.Debug("no segments found via subtitles or chapters",
-		zap.String("url", videoURL))
+		zap.String("url", videoURL),
+		zap.String("skip_reason", string(reason)))
 	return nil
 }
 
