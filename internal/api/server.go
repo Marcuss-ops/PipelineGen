@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -288,9 +289,8 @@ func (s *Server) StartWithContext(ctx context.Context) error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				zap.L().Error("panic in server listen goroutine", zap.Any("recover", r))
+				srvErr <- fmt.Errorf("panic in server listen goroutine: %v\n%s", r, debug.Stack())
 			}
-			close(srvErr)
 		}()
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			srvErr <- err
