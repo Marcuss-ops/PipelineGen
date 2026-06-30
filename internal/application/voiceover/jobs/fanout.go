@@ -26,6 +26,8 @@ package jobs
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -147,6 +149,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 
 	total := len(cmd.Languages)
 	requestID := voiceover.BuildRequestID()
+	textHash := textHashSHA256(cmd.Text)
 	result := &FanoutResult{
 		OK:           true,
 		ParentJobID:  parentJobID,
@@ -156,7 +159,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		PerLanguage:  make([]string, 0, total),
 	}
 
-	for _, lang := range cmd.Languages {
+	for idx, lang := range cmd.Languages {
 		voice := ""
 		if cmd.VoiceOverrides != nil {
 			voice = cmd.VoiceOverrides[lang]
@@ -166,6 +169,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			ParentJobID:   parentJobID,
 			RequestID:     requestID,
 			Text:          cmd.Text,
+			TextHash:      textHash,
 			Language:      lang,
 			Voice:         voice,
 			Filename:      buildItemFilename(cmd.FilenameTemplate, cmd.Text, lang),
@@ -186,9 +190,17 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			continue
 		}
 
+		// P0.5 idempotency: child ActiveKey covers parentJobID + index +
+		// text hash + language + voice so the broker's FindActiveByKey
+		// returns the existing child instead of enqueuing a duplicate
+		// when the parent is retried after a partial fan-out.
+		childActiveKey := fmt.Sprintf("voiceover:item:%s:%d:%s:%s:%s",
+			parentJobID, idx, textHash, lang, voice)
+
 		enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
-			Type:    job.TypeVoiceoverGenerateItem,
-			Payload: item,
+			Type:      job.TypeVoiceoverGenerateItem,
+			Payload:   item,
+			ActiveKey: childActiveKey,
 		})
 		if err != nil {
 			u.deps.Logger.Warn("FanoutUseCase: enqueue child failed",
@@ -256,4 +268,14 @@ func slug(s string) string {
 		return "voiceover"
 	}
 	return string(out)
+}
+
+// textHashSHA256 returns the first 16 hex chars of SHA-256(Text).
+// Used as the stable per-batch identifier so every child writes the
+// same text_hash into its row, and as a component of the child
+// ActiveKey for idempotent fan-out.
+func textHashSHA256(text string) string {
+	h := sha256.New()
+	h.Write([]byte(text))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }

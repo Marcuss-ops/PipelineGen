@@ -32,8 +32,11 @@
 package voiceover
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -188,14 +191,41 @@ func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCom
 }
 
 // ToEnqueueRequest builds the canonical kernel EnqueueRequest with
-// CorrelationID populated from RequestID. The use case Execute path
-// reads only the Payload; the worker log stream and the dispatcher
-// audit both read CorrelationID so request-scoped tracing works
-// across the async boundary end-to-end.
+// CorrelationID populated from RequestID and ActiveKey populated from
+// a deterministic fingerprint of the request contents so the broker's
+// per-ActiveKey idempotency dedupes across retry windows.
+//
+// Parent ActiveKey shape: voiceover:parent:<hex-sha256-prefix>
+// covering (Text + Languages + Destination.FolderID). Two identical
+// POSTs produce the same ActiveKey; the broker's FindActiveByKey
+// returns the existing non-terminal job instead of enqueuing a
+// duplicate.
 func (r *GenerateVoiceoversRequest) ToEnqueueRequest() *jobservice.EnqueueRequest {
 	return &jobservice.EnqueueRequest{
 		Type:          jobservice.TypeVoiceoverGenerate,
 		Payload:       r.ToCommand(),
 		CorrelationID: r.RequestID,
+		ActiveKey:     r.parentActiveKey(),
 	}
+}
+
+// parentActiveKey builds the deterministic dedup key for the parent
+// voiceover.generate job. Covers the three fields that uniquely
+// identify a generation request: the source text, the target language
+// set, and the destination folder.
+func (r *GenerateVoiceoversRequest) parentActiveKey() string {
+	if len(r.Items) == 0 {
+		return "voiceover:parent:empty"
+	}
+	h := sha256.New()
+	h.Write([]byte(r.Items[0].Text))
+	for _, it := range r.Items {
+		h.Write([]byte("|"))
+		h.Write([]byte(strings.ToLower(it.Language)))
+	}
+	if r.Destination != nil && r.Destination.FolderID != "" {
+		h.Write([]byte("|"))
+		h.Write([]byte(r.Destination.FolderID))
+	}
+	return "voiceover:parent:" + hex.EncodeToString(h.Sum(nil))[:16]
 }
