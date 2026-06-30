@@ -782,6 +782,110 @@ deprecations:
       regressions.
 
 
+  # ───────────────────────────────────────────────────────────────────────
+  # 16. DRIVE-005-FIELDS — DriveBundle.DriveClient + DriveBundle.DriveUploader
+  #   fields are DEPRECATED in favour of the canonical Pattern 0 ports
+  #   (DriveBundle.Admin + DriveBundle.Reader) introduced in FASE 9
+  #   (June 2026, P0.1 / DRIVE-005). The degenerate raw SDK handles are
+  #   retained for Wave 14+ back-compat across ~86 legacy callsites; the
+  #   Plan 0 typed-port surface is the new contract.
+  # ───────────────────────────────────────────────────────────────────────
+  - id: DRIVE-005-FIELDS
+    owner_capability: internal/app (composition root) + internal/infrastructure/drive
+    exact_symbol: |
+      internal/app.DriveBundle.DriveClient (*google.golang.org/api/drive/v3.Service)
+      + internal/app.DriveBundle.DriveUploader (*internal/infrastructure/drive.Uploader)
+    file: internal/app/composition.go
+    file_line: |
+      DriveBundle struct (composition.go:54-92, post-FASE 9 layout)
+      + the 86 reads of root.Drive.DriveClient / root.Drive.DriveUploader
+        across cmd/admin/*.go, internal/app/{build_bundles_*,lifecycle,module_*,
+        registry_*,storage_wiring_test,assets_core}, internal/application/
+        assets/ingest/sync/*, etc.
+    replacement: |
+      internal/app.DriveBundle.Admin (pattern 0 port, drive.Admin interface)
+      + internal/app.DriveBundle.Reader (pattern 0 port, drive.Reader interface).
+      The *drive.Uploader concrete satisfies both ports structurally
+      (var _ Admin = (*Uploader)(nil) and var _ Reader = (*Uploader)(nil)
+      compile-time assertions at internal/infrastructure/drive/ports.go).
+      New code MUST consume via Admin / Reader / Publisher per AGENTS.md
+      Pattern 0 / Godlike 06 "one owner per fact".
+    introduction_date: 2026-06-30
+    removal_date: 2026-Q3
+    tracking_issue: |
+      FASE 9 (June 2026, P0.1 / DRIVE-005) — composition root typed-port
+      seam for the Drive readiness barrier (Ping via drive.Admin). Future
+      waves consume the canonical ports and fold the ~86 legacy callsites
+      incrementally. Tracked in architecture/current.yaml under Wave 14+
+      `internal/app/` capability consolidation (deadline aligns with the
+      mega-package split gate).
+    compatibility_test: |
+      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS:
+        (a) The 2 Deprecated fields carry `// Deprecated:` doc-comments at
+            composition.go:78-80 (DriveClient) + :82-83 (DriveUploader).
+            A future refactor that removes them WITHOUT replacing every
+            external readsite breaks the build.
+        (b) DriveBundle.Admin / DriveBundle.Reader compile-time port
+            satisfaction is locked at internal/infrastructure/drive/
+            ports.go:75-78. Drift between the port surface and the
+            concrete *Uploader methods is a build failure.
+        (c) wire_services.go driveProbe MUST consume root.Drive.Admin
+            (typed-nil-safe pattern: `if root.Drive.Admin != nil`).
+            Drift back to the raw-SDK `root.Drive.DriveClient.About.Get`
+            reference is caught by the typed-port contract precedent
+            (no `*gdrive.Service` admits to the readiness-barrier
+            closure beyond this commit; future PRs that reintroduce it
+            are forbidden by the canonical-pattern enforcement).
+        (d) `rg 'root\.Drive\.DriveClient|root\.Drive\.DriveUploader'
+            internal/` returns current count = ~86 readsites — the
+            EXPAND-phase usage_metric baseline. CONTRACT-phase
+            metric when the fields are physically removed: the same
+            ripgrep returns zero hits.
+    usage_metric: |
+      Pre-removal (audit baseline, 2026-06-30, immediately after FASE 9):
+        - root.Drive.DriveClient readsites   : 86 (cmd/admin/* + internal/app/*).
+        - root.Drive.DriveUploader readsites : 11 (subset of the 86; many
+          sites reference both or just DriveClient).
+        - root.Drive.Admin readsites         : 1 (the wire_services.go
+          driveProbe closure, line 309).
+        - root.Drive.Reader readsites        : 0 (introduced for symmetry;
+          future consumers use it).
+      Post-CUTOVER (Q3 2026): the ripgrep count trends to 0 as the
+      legacy sites migrate to Admin / Reader / Publisher. Post-CONTRACT
+      (final removal): zero readsites of the Deprecated fields. Per
+      godlike/07 §"Migration sequence", with the canonical replacement
+      already present (Admin, Reader) the migration lands DIRECTLY at
+      the EXPAND phase for the COMPATIBILITY surface (current commit)
+      and BACKFILL / CUTOVER / CONTRACT follow as the legacy sites are
+      rewritten.
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      EXPAND phase: the new canonical surface (Admin, Reader) ships
+      alongside the deprecated legacy fields. Readers of the legacy
+      fields receive a static `// Deprecated:` doc comment plus a
+      pointer to this manifest record. The FASE 9 commitment per
+      Godlike 06 is that the deprecated fields are NEVER expanded
+      (no new methods, no new consumers) between now and their removal;
+      they exist solely to keep the existing ~86 readsites compilable.
+
+      Status flag rationale: `in_progress` because the canonical
+      replacement is now present and the EXPAND phase is complete at
+      landing; the BACKFILL / CUTOVER / CONTRACT phases unfold over
+      successive waves as legacy sites migrate. Removal date 2026-Q3
+      aligns with the mega-package split gate (architecture/current.yaml
+      Wave 14) which is the natural boundary for the final field
+      deletion.
+
+      The deprecation record intentionally DOES NOT enumerate the
+      86 individual readsites — that exhaustive list lives in the
+      `compatibility_test` ripgrep command above. Per godlike/07
+      §"Historical information", the canonical record tracks the
+      contract and the gate; the per-callsite audit is a one-shot
+      ripgrep at removal time, not a long-lived enumeration that
+      would drift on every refactor.
+
+
 # ── Open Questions (read-write; voting-enabled; deferred naming/scope decisions) ──
 # Per AGENTS.md §8 zero-baseline rule, "open questions" carry owner + deadline + team-vote
 # outcome. Each entry cites evidence (file:line + comment quote) so future agents

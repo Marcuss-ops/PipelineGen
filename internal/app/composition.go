@@ -65,18 +65,50 @@ import (
 
 // DriveBundle owns all Google Drive adapters + the derivation of the
 // MediaStore/DestResolver + StyleRegistry.
+//
+// FASE 9 (June 2026, P0.1 / DRIVE-005): the canonical Pattern 0 ports
+// (Admin + Reader) are the public surface for ALL new code. The raw
+// *gdrive.Service (DriveClient) and *drive.Uploader (DriveUploader)
+// fields are RETAINED for Wave 14+ back-compat across ~86 legacy
+// callsites and will be removed following a planned EXPAND →
+// BACKFILL → CUTOVER → CONTRACT migration in a successive wave
+// (tracked under architecture/current.yaml monkey-patch scope).
+// New code MUST use Admin / Reader / Publisher per Pattern 0; the raw
+// fields are deprecated and exist solely so this scoped commit does
+// not break the wider codebase.
 type DriveBundle struct {
-	DriveClient   *gdrive.Service
-	DriveUploader *drive.Uploader
+	// Admin is the canonical Pattern 0 port for administrative Drive
+	// ops (folder management, file lifecycle, raw uploads, liveness
+	// probe via Ping). *drive.Uploader satisfies Admin structurally —
+	// see internal/infrastructure/drive/ports.go compile-time assert.
+	Admin drive.Admin
+	// Reader is the canonical Pattern 0 port for read-only Drive ops
+	// (download, metadata, listing, existence checks).
+	Reader drive.Reader
 	DocClient     drive.DocClient
 	DriveDests    *DriveDestinations
 	MediaStore    *drive.Store
 	DestResolver  asset.Resolver
 	StyleRegistry *generation.StyleRegistry
 	// Publisher is the canonical Drive upload canal (FASE 3, June 2026).
-	// All endpoints and jobs that write to Drive MUST use Publisher.Publish
-	// instead of calling DriveUploader or FolderManager directly.
+	// All new upload callers MUST go through Publisher; ServiceDeps concrete
+	// handle was retired (P0.1 closure).
 	Publisher delivery.Publisher
+
+	// Deprecated: use Admin / Reader / Publisher. RETAINED for Wave 14+
+	// back-compat across ~86 legacy callsites (cmd/admin/*,
+	// internal/app/module_*.go, build_bundles_*.go, lifecycle.go,
+	// registry_*.go). Future migration removes both fields once the
+	// legacy paths are rewritten against the typed ports.
+	DriveClient *gdrive.Service
+	// Deprecated: use Admin / Reader / Publisher.
+	DriveUploader *drive.Uploader
+
+	// driveUploader is unexported for internal wiring only. *drive.Uploader
+	// is the SINGLE source-of-truth concrete; DriveClient (when set) and
+	// DriveUploader both alias the SAME instance so godlike/06 "one owner
+	// per fact" holds — there is no split-brain between the two paths.
+	driveUploader *drive.Uploader
 }
 
 // RepoBundle owns all SQLite-backed repositories not specific to a
@@ -333,6 +365,22 @@ type IOpaqueStartFunc func() error
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
+// rawDriveService returns the underlying *gdrive.Service for internal
+// wiring (BuildUtilityBundle health probe, BuildProcessBundle, etc.).
+// Returns nil when Drive is not configured. Unexported — external
+// consumers MUST use Admin / Reader / Publisher.
+func (b *DriveBundle) rawDriveService() *gdrive.Service {
+	if b == nil {
+		return nil
+	}
+	// Prefer the canonical driveUploader (the SINGLE source-of-truth).
+	if b.driveUploader != nil {
+		return b.driveUploader.Service
+	}
+	// Fallback to deprecated field during EXPAND phase.
+	return b.DriveClient
+}
+
 // configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
 func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
@@ -506,7 +554,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.DriveUploader, outbox, qdrantDeps)
+	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.driveUploader, outbox, qdrantDeps)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
@@ -526,7 +574,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.DriveClient)
+	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.rawDriveService())
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {

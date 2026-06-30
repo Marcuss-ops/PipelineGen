@@ -292,6 +292,17 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 	return result, nil
 }
 
+// Ping verifies the Drive service is reachable by calling About.Get.
+// Implemented as a single canonical API call so the readiness barrier
+// can exercise the liveness contract without touching the file surface.
+func (u *Uploader) Ping(ctx context.Context) error {
+	if u.Service == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	_, err := u.Service.About.Get().Fields("user").Context(ctx).Do()
+	return err
+}
+
 // MoveFile moves a file from one folder to another by updating its parents.
 func (u *Uploader) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error {
 	if u.Service == nil {
