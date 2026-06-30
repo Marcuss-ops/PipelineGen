@@ -149,7 +149,7 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	ok := true
 	for _, lang := range req.Languages {
 		item := s.processLanguage(ctx, requestID, textHash, lang, req, dest)
-		if !item.isSuccessful() {
+		if item.Status == StatusFailed {
 			ok = false
 		}
 		items = append(items, item)
@@ -183,7 +183,7 @@ func (s *Service) synthesizeStage(
 	language string,
 ) BatchItem {
 	if s.ttsProvider == nil {
-		return item.fail("tts_provider_unavailable",
+		return item.fail(FailureTTSProviderUnavailable,
 			fmt.Errorf("%s: ttsProvider not wired (composition root)", restoreIdent))
 	}
 
@@ -216,14 +216,14 @@ func (s *Service) synthesizeStage(
 				zap.String("language", language),
 				zap.Error(err))
 		}
-		return item.fail("tts_failed", err)
+		return item.fail(FailureTTS, err)
 	}
 
 	item.LocalPath = result.LocalPath
 	item.CleanedPath = result.CleanedPath
 	item.Voice = result.Voice
 	item.FileHash = result.FileHash
-	item.Status = "generated"
+	item.Status = StatusGenerated
 	return item
 }
 
@@ -251,15 +251,15 @@ func (s *Service) destinationStage(
 	metaJSON []byte,
 ) BatchItem {
 	if s.lifecycleService == nil {
-		return item.fail("lifecycle_unavailable",
+		return item.fail(FailureLifecycleUnavailable,
 			fmt.Errorf("%s: lifecycleService not wired (composition root)", restoreIdent))
 	}
 	if dest == nil || dest.FolderID == "" {
-		return item.fail("missing_folder_id",
+		return item.fail(FailureMissingFolder,
 			fmt.Errorf("%s: destination has no FolderID (Stage 2 cannot upload)", restoreIdent))
 	}
 	if item.CleanedPath == "" && item.LocalPath == "" {
-		return item.fail("no_local_payload",
+		return item.fail(FailureNoLocalPayload,
 			fmt.Errorf("%s: synthesizeStage produced no local path (Stage 2 cannot upload)", restoreIdent))
 	}
 
@@ -288,13 +288,13 @@ func (s *Service) destinationStage(
 				zap.String("language", item.Language),
 				zap.Error(err))
 		}
-		return item.fail("upload_failed", err)
+		return item.fail(FailureUpload, err)
 	}
 
 	item.DriveLink = result.DriveLink
 	item.DriveFileID = result.DriveFileID
 	item.DownloadLink = result.DownloadLink
-	item.Status = "uploaded"
+	item.Status = StatusUploaded
 	return item
 }
 
@@ -345,13 +345,13 @@ func (s *Service) finalizeStage(
 	oldCleanedPath string,
 ) BatchItem {
 	if s.voiceoverRepo == nil {
-		return item.fail("db_unavailable",
+		return item.fail(FailureDBUnavailable,
 			fmt.Errorf("%s: voiceoverRepo not wired (composition root)", restoreIdent))
 	}
 
 	tx, err := s.voiceoverRepo.BeginTx(ctx)
 	if err != nil {
-		return item.fail("tx_begin_failed",
+		return item.fail(FailureTxBegin,
 			fmt.Errorf("%s: BeginTx: %w", restoreIdent, err))
 	}
 	defer func() { _ = tx.Rollback() }() // safe after successful Commit
@@ -389,7 +389,7 @@ func (s *Service) finalizeStage(
 	// (P1-2 boundary split, June 2026) so the application layer no
 	// longer references voiceovers schema or *sql.Tx.ExecContext.
 	if err := s.voiceoverRepo.DeleteByIDTx(ctx, tx, item.ID); err != nil {
-		return item.fail("db_delete_failed",
+		return item.fail(FailureDBDelete,
 			fmt.Errorf("%s: DeleteByIDTx: %w", restoreIdent, err))
 	}
 
@@ -419,7 +419,7 @@ func (s *Service) finalizeStage(
 		DriveLink:    item.DriveLink,
 		DownloadLink: item.DownloadLink,
 		FileHash:     item.FileHash,
-		Status:       "generated",
+		Status:       string(StatusGenerated),
 		Error:        "",
 		Strategy:     req.Strategy,
 		Metadata:     string(metaJSON),
@@ -427,7 +427,7 @@ func (s *Service) finalizeStage(
 		UpdatedAt:    now,
 	}
 	if err := s.voiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
-		return item.fail("db_insert_failed",
+		return item.fail(FailureDBInsert,
 			fmt.Errorf("%s: InsertTx: %w", restoreIdent, err))
 	}
 
@@ -437,13 +437,13 @@ func (s *Service) finalizeStage(
 	// didn't wire the outbox.
 	if s.outboxEnqueuer != nil && item.FileHash != "" {
 		if err := s.outboxEnqueuer.EnqueueIndexEvent(ctx, tx, item.ID, item.FileHash); err != nil {
-			return item.fail("outbox_enqueue_failed",
+			return item.fail(FailureOutboxEnqueue,
 				fmt.Errorf("%s: EnqueueIndexEvent: %w", restoreIdent, err))
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return item.fail("tx_commit_failed",
+		return item.fail(FailureTxCommit,
 			fmt.Errorf("%s: Commit: %w", restoreIdent, err))
 	}
 
@@ -454,7 +454,7 @@ func (s *Service) finalizeStage(
 		go s.cleanupOrphanVoiceover(oldDriveFileID, oldLocalPath, oldCleanedPath)
 	}
 
-	item.Status = "completed"
+	item.Status = StatusCompleted
 	return item
 }
 

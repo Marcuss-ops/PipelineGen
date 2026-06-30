@@ -51,7 +51,9 @@ func (b *voiceoverGenBridge) Generate(ctx context.Context, cmd domainvo.Generate
 		LocalPath:   result.Path,
 		DriveLink:   result.DriveLink,
 		DriveFileID: result.DriveFileID,
-		Status:      "generated",
+		// PR-VO-AUDIT-P01: cast typed Status to plain string for the
+		// SQLite voiceovers.status column (same rationale as usecase.go).
+		Status:      string(StatusGenerated),
 		Warnings:    []string{},
 	}, nil
 }

@@ -137,17 +137,35 @@ func (h *GenerateJobHandler) HandleJob(
 
 	res, err := h.useCase.Execute(ctx, j.ID, &cmd)
 	if err != nil {
+		// PR-VO-AUDIT-P06 (June 2026): GUARD against FanoutVoiceoversUseCase
+		// returning (nil, err) — happens on cmd==nil, cmd.Validate()
+		// failure, or a panic-recovered use case. Pre-P06 the next two
+		// lines dereferenced res.EnqueuedCount unconditionally, which
+		// panicked the worker whenever the use case returned a nil
+		// result with a non-nil err. The handler must tolerate both
+		// shapes (validation failure returns nil; partial-fanout returns
+		// a partial result with err) AND keep the result-map contract
+		// intact (toFanoutResultMap is nil-safe so the same call
+		// returns a well-formed partial-failure map for both shapes).
+		enq, failEnq := 0, 0
+		if res != nil {
+			enq = res.EnqueuedCount
+			failEnq = res.FailedEnqueueCount
+		}
 		h.logger.Error("voiceover.generate fan-out failure",
 			zap.String("job_id", j.ID),
-			zap.Int("enqueued", res.EnqueuedCount),
-			zap.Int("failed_enqueue", res.FailedEnqueueCount),
+			zap.Int("enqueued", enq),
+			zap.Int("failed_enqueue", failEnq),
 			zap.Error(err))
 		if h.hasProgress(tools) {
 			tools.Progress(100, "voiceover.generate fan-out failed")
 		}
 		// Surface the partial-success result map so operators can
-		// correlate which siblings enqueued + which failed. The
-		// dispatcher still marks the parent job FAILED because err != nil.
+		// correlate which siblings enqueued + which failed. toFanoutResultMap
+		// is nil-safe (it returns a well-formed partial-failure map
+		// when res is nil), so the dispatcher writes the right shape
+		// even on validation-failure paths. The dispatcher still
+		// marks the parent job FAILED because err != nil.
 		return toFanoutResultMap(res, j.ID), fmt.Errorf("voiceover.generate: fanout: %w", err)
 	}
 

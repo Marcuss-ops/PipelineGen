@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
@@ -141,10 +140,12 @@ func (s *Service) processLanguage(
 	var existingDriveLink string
 	// P1-2 boundary split (June 2026): the previous raw
 	// s.db.QueryRowContext(...).Scan(...) block is replaced by a
-	// PreReadByID call on the persistence.Repository port. The
-	// concrete adapter (useCaseRepoAdapter) handles the sql.ErrNoRows
-	// → (nil, nil) translation internally so the caller doesn't
-	// need errors.Is against database/sql errors.
+	// PreReadByID call on the persistence.Repository port. Test
+	// fixtures inject a stub persistence.Repository (see `stubRepo`
+	// in service_p01_state_machine_test.go) satisfying
+	// `var _ persistence.Repository = stubRepo{}` so the per-test
+	// path threads the canonical surface without poking the
+	// production SQLite layer.
 	oldRec, preReadErr := s.voiceoverRepo.PreReadByID(ctx, id)
 	if preReadErr != nil {
 		s.log.Warn("processLanguage: pre-read of existing voiceover failed",
@@ -171,27 +172,27 @@ func (s *Service) processLanguage(
 		ID:       id,
 		Language: language,
 		Filename: filename,
-		Status:   "processing",
+		Status:   StatusProcessing,
 	}
 
 	outputDir := s.outputDir
 	if req.Destination != nil && req.Destination.CreateSubfolder && req.Destination.SubfolderName != "" {
 		// PR-VO-A4 (path-traversal fix, June 2026): defense in depth.
 		safeSub, subErr := pathutil.SanitizeSubfolderSegment(req.Destination.SubfolderName)
-		if subErr != nil {
-			s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
-				zap.String("language", language),
-				zap.String("subfolder_name", req.Destination.SubfolderName),
-				zap.Error(subErr))
-			return item.fail("invalid_subfolder_name", fmt.Errorf("path traversal rejected: %w", subErr))
-		}
+			if subErr != nil {
+				s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
+					zap.String("language", language),
+					zap.String("subfolder_name", req.Destination.SubfolderName),
+					zap.Error(subErr))
+				return item.fail(FailureInvalidSubfolder, fmt.Errorf("path traversal rejected: %w", subErr))
+			}
 		outputDir = filepath.Join(s.outputDir, safeSub)
 		if werr := pathutil.EnsureWithinDir(s.outputDir, outputDir); werr != nil {
 			s.log.Error("PR-VO-A4: filepath.Rel guard tripped (sanitizer and Rel disagree — investigate)",
 				zap.String("output_dir", outputDir),
 				zap.String("root", s.outputDir),
 				zap.Error(werr))
-			return item.fail("invalid_subfolder_name", fmt.Errorf("path escape rejected: %w", werr))
+			return item.fail(FailureInvalidSubfolder, fmt.Errorf("path escape rejected: %w", werr))
 		}
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			s.log.Warn("failed to create local subfolder for voiceover", zap.String("dir", outputDir), zap.Error(err))
@@ -202,7 +203,7 @@ func (s *Service) processLanguage(
 	// Sanitize the filename against path traversal and enforce .mp3.
 	safePath, err := SanitizeFilename(outputDir, filename)
 	if err != nil {
-		return item.fail("invalid_filename", err)
+		return item.fail(FailureInvalidFilename, err)
 	}
 	filename = filepath.Base(safePath)
 	item.Filename = filename // keep persisted metadata in sync with sanitized path
@@ -211,7 +212,7 @@ func (s *Service) processLanguage(
 	emitSynthesizeCompleted := stageLog(s.log, requestID, "synthesize", language)
 	item = s.synthesizeStage(ctx, item, req, outputDir, filename, language)
 	emitSynthesizeCompleted()
-	if strings.TrimSpace(item.Error) != "" {
+	if item.Status == StatusFailed {
 		return item
 	}
 
@@ -245,7 +246,7 @@ func (s *Service) processLanguage(
 	emitDestinationCompleted := stageLog(s.log, requestID, "destination", language)
 	item = s.destinationStage(ctx, item, req, dest, metaJSON)
 	emitDestinationCompleted()
-	if strings.TrimSpace(item.Error) != "" {
+	if item.Status == StatusFailed {
 		return item
 	}
 

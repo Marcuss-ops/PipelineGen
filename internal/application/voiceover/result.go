@@ -18,12 +18,17 @@ package voiceover
 
 import "time"
 
-// Canonical Status values for VoiceoverItemResult. Aggregation:
-// resp.OK = (SuccessCount == TotalOutputs).
-const (
-	StatusCompleted = "completed"
-	StatusFailed    = "failed"
-)
+// Status values for VoiceoverItemResult now live in types.go as the
+// typed `Status` enum (PR-VO-AUDIT-P01, June 2026). See:
+//   - types.go::Status / StatusCompleted / StatusFailed / ...
+//   - types.go::FailureCode / FailureTTS / FailureUpload / ...
+//
+// The untyped `const (StatusCompleted = "completed"; ...)` literal
+// constants previously declared here were REMOVED in favour of the
+// typed enum so the aggregate check
+// `item.Status == StatusFailed` is exhaustive at compile time.
+// The VoiceoverItemResult.Status field is now `Status` (typed)
+// instead of plain `string`.
 
 // GenerateVoiceoversResult is the canonical use case result.
 type GenerateVoiceoversResult struct {
@@ -79,7 +84,12 @@ type VoiceoverItemResult struct {
 	Voice string
 
 	// Status is the per-item terminal state: StatusCompleted | StatusFailed.
-	Status string
+	// Typed (Status) so the aggregate use case check
+	// `result.OK = (SuccessCount == TotalOutputs)` is exhaustive at
+	// compile time — pre-P01 the literal `"completed"` / `"failed"`
+	// allowed freeform string drift across stages, which is the
+	// canonical audit P0.1 bug (see types.go::Status enum doc).
+	Status Status
 
 	// Error is populated when Status == StatusFailed. Empty otherwise.
 	Error string
