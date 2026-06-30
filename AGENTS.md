@@ -752,6 +752,40 @@ the snapshot table above.
 
 (See-also canonical anchor: `audit-trail-anchors_P1-2-of-cleanup-plan`; mirrored in CHANGELOG.md `## Unreleased → ### Fixed`.)
 
+- **PR-C-YouTube-Cutover Commit C (`7df4b5f9`)** — YouTube Channel Monitor cutover, Commit C.
+  Closes audit points **P0 #2** (ExtractionService now delegates to a single canonical
+  per-segment use case — no inline 9-step orchestration in the service layer),
+  **P0 #3** (no third implementation: `internal/application/youtube/adapters/segment_processor.go`
+  is now redundant; carries a TODO wave-delete marker pending the next cutover wave),
+  **P0 #4** (job handler classifies the per-batch `ExtractResponse` via
+  `internal/application/youtube/jobs/classify.go::ClassifyExtractionResult` —
+  `nil` for all-OK, `*PartialSuccessError` for some-failed-still-recoverable,
+  `ErrExtractionRetryable` for retryable batch failure, `ErrExtractionTerminal`
+  for terminal batch failure, dispatched via `errors.As` in job_handler.go),
+  and **P2 #19** (the durable per-segment shape ships as a typed application-
+  layer use case + ports rather than imperative driver code).
+  New canonical surface:
+  `internal/application/youtube/usecase/process_segment.go::ProcessYouTubeSegmentUseCase`
+  performs the deterministic-clipID (yt_<videoID>_<startSec>_<endSec>_v1 hash
+  including policyVersion) → cache short-circuit → retry-download via
+  `pkg/retry.Do` with `isTransientExtractionError` predicate → MD5 hash →
+  subtitles → Whisper fallback → destination resolve → Drive upload →
+  `ClipAtomicWriter.CommitClipAndIndexEvent` (DB+outbox transactional
+  pair, Commit F dependency). Two new ports in
+  `internal/application/youtube/ports/ports.go`: `ClipCachePort`
+  (`GetExisting(ctx, clipID) → (*dto.ExtractItem, bool, error)`) and
+  `ClipAtomicWriter` (`CommitClipAndIndexEvent(ctx, clipID, item, event)
+  → error`). New DTOs in `internal/application/youtube/dto/types.go`:
+  `ProcessSegmentCommand` + `ProcessSegmentResult`. Fan-out in
+  `extraction_service.go::extractFanOut` is bounded by
+  `MonitorRuntimePolicy.MaxConcurrentVideos` via a semaphore channel
+  + WaitGroup + `defer recover()` for panic isolation (mirrors
+  `monitor.safeCheckChannel` precedent). CHANGELOG entry under
+  `## Unreleased → ### Added` mirrors this closure.
+  Forward-pointer: `architecture/current.yaml#YouTube-Cutover-C` for
+  the residual admin-token / port-mock / spoke-shutdown hardening
+  items (out-of-scope for Commit C; see CHANGELOG follow-up notes).
+
 ---
 
 ## Core Contracts
