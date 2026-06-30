@@ -26,7 +26,7 @@
 // declaration of AssetIDToQdrantPointID across the qdrant package.
 // Add a G8 gate (see ../architecture/qdrant/001-sidecar-and-pointid.md)
 // that asserts EXACTLY 1 declaration in pointid.go.
-package qdrant
+package schema
 
 import "github.com/google/uuid"
 

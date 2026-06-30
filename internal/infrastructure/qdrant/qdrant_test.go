@@ -1191,11 +1191,11 @@ func TestIndexSchema_PhysicalName(t *testing.T) {
 	t.Parallel()
 
 	s := DefaultV3Schema()
-	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", s.physicalName())
+	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", s.CanonicalName())
 
 	// When PhysicalName is empty, derive from version.
 	s2 := &IndexSchema{Version: "v4"}
-	assert.Equal(t, "media_assets_v4", s2.physicalName())
+	assert.Equal(t, "media_assets_v4", s2.CanonicalName())
 }
 
 // ── Schema valid-distance and valid-field-type ───────────────────────
@@ -1203,23 +1203,23 @@ func TestIndexSchema_PhysicalName(t *testing.T) {
 func TestIsValidDistance(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, isValidDistance("Cosine"))
-	assert.True(t, isValidDistance("Euclid"))
-	assert.True(t, isValidDistance("Dot"))
-	assert.False(t, isValidDistance(""))
-	assert.False(t, isValidDistance("Manhattan"))
-	assert.False(t, isValidDistance("cosine"))
+	assert.True(t, IsValidDistance("Cosine"))
+	assert.True(t, IsValidDistance("Euclid"))
+	assert.True(t, IsValidDistance("Dot"))
+	assert.False(t, IsValidDistance(""))
+	assert.False(t, IsValidDistance("Manhattan"))
+	assert.False(t, IsValidDistance("cosine"))
 }
 
 func TestIsValidFieldType(t *testing.T) {
 	t.Parallel()
 
 	for _, ft := range []string{"keyword", "integer", "float", "datetime", "geo", "text", "bool"} {
-		assert.True(t, isValidFieldType(ft), "expected %q to be valid", ft)
+		assert.True(t, IsValidFieldType(ft), "expected %q to be valid", ft)
 	}
-	assert.False(t, isValidFieldType(""))
-	assert.False(t, isValidFieldType("binary"))
-	assert.False(t, isValidFieldType("uuid"))
+	assert.False(t, IsValidFieldType(""))
+	assert.False(t, IsValidFieldType("binary"))
+	assert.False(t, IsValidFieldType("uuid"))
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

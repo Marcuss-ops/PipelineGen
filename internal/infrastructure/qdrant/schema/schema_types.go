@@ -11,7 +11,7 @@
 // index specs all live here. The companion Config holds only the
 // runtime cross-cutting fields (BaseURL, APIKey, Timeout, Enabled,
 // CollectionVersion, retention). In sync with collection_types.go.
-package qdrant
+package schema
 
 import (
 	"context"
@@ -110,6 +110,9 @@ type IndexSchema struct {
 	// PayloadIndexes lists payload field indexes to create on the collection.
 	PayloadIndexes []PayloadIndexSpec `json:"payload_indexes,omitempty"`
 }
+
+// CanonicalName derives the deterministic physical collection name. Exported for cross-package access.
+func (s *IndexSchema) CanonicalName() string { return s.physicalName() }
 
 // physicalName derives the deterministic physical collection name from the schema.
 func (s *IndexSchema) physicalName() string {

@@ -22,7 +22,7 @@
 // CompareSchema path and the typed-error ErrSchemaIncompatible
 // (which lives in errors.go — same package, so cross-file type
 // reference resolves cleanly).
-package qdrant
+package schema
 
 // ── Config ───────────────────────────────────────────────────────────
 

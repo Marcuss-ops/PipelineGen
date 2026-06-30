@@ -17,7 +17,7 @@
 // some surfaces). Both shapes decode into the same public CollectionInfo
 // fields so consumers (CompareSchema, CollectionManager, readiness,
 // admin CLI) keep their call sites.
-package qdrant
+package schema
 
 import (
 	"bytes"

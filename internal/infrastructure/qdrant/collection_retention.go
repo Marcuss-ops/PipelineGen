@@ -61,7 +61,7 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 		return nil, fmt.Errorf("list collections: %w", err)
 	}
 	activeTarget, _ := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
-	prefix := cm.schema.physicalName()
+	prefix := cm.schema.CanonicalName()
 
 	// Eligible: matching prefix + NOT active.
 	eligible := make([]string, 0, len(names))

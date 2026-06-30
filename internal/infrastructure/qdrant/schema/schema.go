@@ -1,4 +1,4 @@
-package qdrant
+package schema
 
 import (
 	"fmt"
@@ -128,7 +128,7 @@ func (s *IndexSchema) Validate() error {
 		if v.Dimensions <= 0 {
 			return fmt.Errorf("dense vector %q: dimensions must be positive, got %d", v.Channel, v.Dimensions)
 		}
-		if !isValidDistance(v.Distance) {
+		if !IsValidDistance(v.Distance) {
 			return fmt.Errorf("dense vector %q: unsupported distance metric %q", v.Channel, v.Distance)
 		}
 	}
@@ -148,7 +148,7 @@ func (s *IndexSchema) Validate() error {
 		if idx.FieldName == "" {
 			return fmt.Errorf("payload index[%d]: field_name must not be empty", i)
 		}
-		if !isValidFieldType(idx.FieldType) {
+		if !IsValidFieldType(idx.FieldType) {
 			return fmt.Errorf("payload index %q: unsupported field_type %q", idx.FieldName, idx.FieldType)
 		}
 	}
@@ -272,7 +272,8 @@ func (s *IndexSchema) GetDense(channel string) *EmbeddingSpec {
 	return nil
 }
 
-func isValidDistance(d string) bool {
+// IsValidDistance checks if a distance metric is valid. Exported for test access.
+func IsValidDistance(d string) bool {
 	switch d {
 	case "Cosine", "Euclid", "Dot":
 		return true
@@ -280,7 +281,8 @@ func isValidDistance(d string) bool {
 	return false
 }
 
-func isValidFieldType(t string) bool {
+// IsValidFieldType checks if a payload field type is valid. Exported for test access.
+func IsValidFieldType(t string) bool {
 	switch t {
 	case "keyword", "integer", "float", "datetime", "geo", "text", "bool":
 		return true
