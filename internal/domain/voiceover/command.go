@@ -21,7 +21,8 @@ import (
 
 // GenerateVoiceoverCommand is the canonical command for a single voiceover
 // generation. Every call site — HTTP handler, script postprocessor, or
-// worker — builds this struct and passes it to GenerateVoiceoverUseCase.
+// worker — forwards this struct to the voiceover service layer's typed
+// Generator port (see internal/application/voiceover/ports.go).
 type GenerateVoiceoverCommand struct {
 	// Text is the exact string to convert to speech. Required.
 	Text string

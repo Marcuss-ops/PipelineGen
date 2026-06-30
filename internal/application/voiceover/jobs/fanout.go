@@ -148,7 +148,17 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 	}
 
 	total := len(cmd.Languages)
-	requestID := voiceover.BuildRequestID()
+	// P0.6 request_id threading: use the caller-supplied request_id
+	// when available (threaded from API → CorrelationID by
+	// GenerateJobHandler). Fall back to parentJobID (the only stable
+	// identifier always available). Never call BuildRequestID() —
+	// generating a new random ID at every layer is the root cause of
+	// the audit finding: "API request_id (A) → correlation (A) →
+	// fanout generates B → child ignores B → GenerateBatch generates C".
+	requestID := cmd.RequestID
+	if requestID == "" {
+		requestID = parentJobID
+	}
 	textHash := textHashSHA256(cmd.Text)
 	result := &FanoutResult{
 		OK:           true,

@@ -167,6 +167,13 @@ type BatchRequest struct {
 	// post-P0.4 micro-commit #3 (June 2026) the field is canonical at the
 	// struct level.
 	VoiceOverrides map[string]string `json:"voice_overrides,omitempty"`
+
+	// RequestID is the stable correlation identifier threaded from the
+	// API caller through the parent job and into the child handler. When
+	// non-empty, GenerateBatch uses this value instead of generating a
+	// new buildRequestID(). Populated by ProcessOneVoiceoverUseCase from
+	// the child command's RequestID.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 func (r *BatchRequest) PayloadMap() map[string]any {
