@@ -272,19 +272,23 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driv
 // buildImagesService (moved from build_bundles_images.go, Phase 5 consolidation, June 2026).
 func buildImagesService(
 	ctx context.Context, cfg *config.Config, log *zap.Logger,
-	driveAdmin drive.Admin, clipsRepo *sqassets.ClipsRepository, artlistRepo *sqassets.ClipsRepository,
+	driveUploader *drive.Uploader, clipsRepo *sqassets.ClipsRepository, artlistRepo *sqassets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
 	mediaStore *drive.Store, imageRepo *sqassets.ImagesRepository,
 	voMetaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
 	dispatcher *outbox.Dispatcher,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
+	var driveSvc *gdrive.Service
+	if driveUploader != nil {
+		driveSvc = driveUploader.Service
+	}
 	imageService := imgservice.NewService(imgservice.ImagesDeps{
 		Core: imgservice.ImagesCoreDeps{Cfg: cfg, Log: log},
 		Storage: imgservice.ImagesStorageDeps{
 			ImageRepo:  imageRepo,
 			ClipsRepo:  clipsRepo,
-			DriveAdmin: driveAdmin,
+			DriveSvc:   driveSvc,
 			MediaStore: mediaStore,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{

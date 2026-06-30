@@ -1,9 +1,7 @@
 package app
 
 import (
-	"context"
 	"fmt"
-	"strings"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
@@ -14,31 +12,21 @@ import (
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
-	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
@@ -223,7 +211,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	var uploadUC *appupload.UseCase
 	uploadUC, err = appupload.NewUseCase(appupload.UseCaseDeps{
 		Artifact:      NewArtifactServiceAdapter(deps.Core.ArtifactService),
-		DriveAdmin: newClipsDriveAdapter(driveUploader, driveUploader),
+		DriveUploader: newClipsDriveAdapter(driveUploader, driveUploader),
 		Publisher:     deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
@@ -284,7 +272,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		ClipsRepo:        deps.Core.ClipsRepo,
 		AssetRepo:        assetRepo,
 		DeletionSvc:      deletionSvc,
-		DriveUploader:    driveUploader,
+		DriveAdmin:       driveUploader,
 		MediaProcessor:   deps.Core.MediaProcessor,
 		AssetTreeSvc:     deps.Core.AssetTreeService,
 		MetaWriter:       metaWriter,
@@ -651,200 +639,4 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	}, nil
 }
 
-// storageDriveAdapter adapts drive.Uploader to storage.DrivePort.
-type storageDriveAdapter struct {
-	up *driveutil.Uploader
-}
 
-// Compile-time assertion: storageDriveAdapter satisfies appstorage.DrivePort.
-var _ appstorage.DrivePort = (*storageDriveAdapter)(nil)
-
-func (a *storageDriveAdapter) ListFiles(ctx context.Context, folderID string) ([]appstorage.DriveFile, error) {
-	files, err := a.up.ListFiles(ctx, folderID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]appstorage.DriveFile, len(files))
-	for i, f := range files {
-		out[i] = appstorage.DriveFile{ID: f.ID, Name: f.Name, MimeType: f.MimeType}
-	}
-	return out, nil
-}
-
-func (a *storageDriveAdapter) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error {
-	return a.up.MoveFile(ctx, fileID, fromFolderID, toFolderID)
-}
-
-func (a *storageDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	return a.up.GetOrCreateFolder(ctx, name, parentID)
-}
-
-func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
-	return a.up.RenameFile(ctx, fileID, newName)
-}
-
-// zapLogAdapter adapts *zap.Logger to storage.Logger.
-type zapLogAdapter struct{ log *zap.Logger }
-
-func (a *zapLogAdapter) Info(msg string, keysAndValues ...any) {
-	a.log.Sugar().Infow(msg, keysAndValues...)
-}
-func (a *zapLogAdapter) Warn(msg string, keysAndValues ...any) {
-	a.log.Sugar().Warnw(msg, keysAndValues...)
-}
-func (a *zapLogAdapter) Error(msg string, keysAndValues ...any) {
-	a.log.Sugar().Errorw(msg, keysAndValues...)
-}
-func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) {
-	a.log.Sugar().Debugw(msg, keysAndValues...)
-}
-
-// MediaIngestBundle is the capability bundle for the media-ingest module.
-//
-// PR4d-chunk2 (June 2026): wraps the 11 cross-bundle reads of WireMediaIngest
-// into 7 typed fields. PR3 (June 2026): PrebuiltService added so
-// BuildDomainBundle can pre-build the service and pass it via the bundle.
-// PG-011 (June 2026): DB typed as *storage.SQLiteDB instead of *sql.DB so
-// the composition layer never holds raw sqlite handles.
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): Dispatcher
-// added so WireMediaIngest can construct the canonical mutations SSOT
-// for NewClipStoreAdapter / NewClipsRegistry (the 4 ctor calls in
-// buildIngestService clone paths).
-type MediaIngestBundle struct {
-	DB                *storage.SQLiteDB
-	Assets            *asset.Service
-	DriveUploader     *driveutil.Uploader
-	ImageRepo         *sqassets.ImagesRepository
-	VoiceoverRepo     *sqassets.VoiceoversRepository
-	ClipsRepo         *sqassets.ClipsRepository
-	AssetIndexService *assetindex.Service
-	PrebuiltService   *ingest.Service
-	Dispatcher        *outbox.Dispatcher
-}
-
-// MediaIngestWiring holds the Mediaingest module wiring.
-type MediaIngestWiring struct {
-	Handler *assetsapi.MediaingestHandler
-	Module  module.Module
-	Service *ingest.Service
-}
-
-// WireMediaIngest creates the Mediaingest handler and module.
-//
-// PR4d-chunk2 (June 2026): takes *MediaIngestBundle.
-// PR3 (June 2026): if PrebuiltService is set, reuses it instead of creating
-// a new service (avoids double construction when BuildDomainBundle already
-// built the ingest service).
-// PR8 (June 2026): added idempotencyMiddleware (reusable Gin idempotency
-// middleware instance) — installed by MediaingestHandler on POST /ingest.
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct the
-// canonical mutations.AssetMutationDispatcher SSOT once here so both the
-// clip + stock registries (and their ingest lifecycle stores) route
-// media_assets UPSERT through the same outbox+tx writer.
-func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBundle, idempotencyMiddleware gin.HandlerFunc) (*MediaIngestWiring, error) {
-	if bundle == nil || bundle.DriveUploader == nil {
-		return nil, nil
-	}
-	if bundle.ImageRepo == nil || bundle.VoiceoverRepo == nil || bundle.ClipsRepo == nil || bundle.AssetIndexService == nil {
-		return nil, nil
-	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(bundle.Dispatcher)
-	if err != nil {
-		return nil, fmt.Errorf("WireMediaIngest: %w", err)
-	}
-	svc := bundle.PrebuiltService
-	if svc == nil {
-		imagesRegistry := imgapp.NewRegistryAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath(), log)
-		imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
-		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
-		voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
-		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
-		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveAdmin: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
-		svc = ingest.NewService(cfg, log, bundle.DriveUploader.Admin(), map[ingest.Kind]*ingest.Pipeline{
-			ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
-			ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
-			ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},
-			ingest.KindStock:     {Kind: ingest.KindStock, DefaultSource: "stock", RootFolderID: cfg.Drive.StockFolder(), Lifecycle: stockLifecycle},
-		})
-	}
-	handler := assetsapi.NewMediaingestHandler(svc, idempotencyMiddleware)
-	mod := module.NewRouteModule(
-		"media-ingest",
-		func() bool { return handler != nil },
-		"/media",
-		handler,
-		log,
-	)
-	return &MediaIngestWiring{Handler: handler, Module: mod, Service: svc}, nil
-}
-
-func isAIImageIngestSource(req *ingest.Request) bool {
-	if req == nil {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(req.Source)) {
-	case "google-vids", "google-vids-image", "google-slides", "google-flow", "nvidia", "nvidia-local", "local-nim", "flux-1-dev", "flux-1-schnell", "flux.1-schnell", "flux1-schnell", "flux-2-klein", "flux.2-klein-4b", "flux-2-klein-4b":
-		return true
-	default:
-		return false
-	}
-}
-
-// JobsBundle is the Job module's *owned* runtime surface.
-//
-// Phase-B ownership inversion (June 2026): these objects are constructed
-// once by BuildJobsBundle, returned as a typed bundle, and consumed by
-// composeIntegration for cross-module handler registration.
-type JobsBundle struct {
-	Repo       *sqljobs.SQLiteStore
-	Dispatcher *appjobs.Dispatcher
-	Service    *appjobs.Service
-	Facade     job.Service // canonical domain interface satisfied by *appjobs.Service
-}
-
-// BuildJobsBundle constructs the Job runtime pieces in the canonical order:
-//
-//  1. SQLite-backed job Store.
-//  2. In-process Dispatcher (handler registry; kept nil-free until Freeze).
-//  3. The application Service that orchestrates enqueue / list / cancel /
-//     status propagation.
-//  4. The domain job.Service interface satisfied by *appjobs.Service.
-//
-// Returns a JobsBundle. The bundle is fully constructed but its Dispatcher
-// is NOT frozen yet — freezing is performed by WireServices in bootstrap.go
-// *after* WireRegistry, so that no new module can register a handler while
-// workers are claiming jobs.
-//
-// Returning `(nil, error)` is reserved for unrecoverable construction errors
-// (nil db / nil logger). All four fields are required to be non-nil on success.
-func BuildJobsBundle(db *storage.SQLiteDB, log *zap.Logger) (*JobsBundle, error) {
-	if db == nil {
-		return nil, fmt.Errorf("build jobs bundle: db is nil")
-	}
-	if log == nil {
-		return nil, fmt.Errorf("build jobs bundle: log is nil")
-	}
-
-	repo := sqljobs.NewSQLiteStore(db.DB, log)
-	dispatcher := appjobs.NewDispatcher()
-	// Issue 4 (June 2026, P1): attach the canonical job-type Registry
-	// so Enqueue() routes the MaxRetries fallback through the registry
-	// for REGISTERED job types (script.generate -> DefaultMaxRetries=2)
-	// and keeps the legacy hard-coded 3-retry safety net only for
-	// UNREGISTERED types. Mirrors the HC-1 Runner.WithRegistry(reg) and
-	// Worker.WithRegistry(reg) plumbing that landed in Issues 2 + the
-	// existing HC-1 typed-port chain (TimeoutResolver for worker timeouts).
-	svc := appjobs.NewService(repo, dispatcher, log).WithRegistry(appjobs.Compose())
-
-	// *appjobs.Service satisfies the domain job.Service interface directly.
-	// No facade needed — consumers declare their dependency as job.Service
-	// (interface value) and the composition root injects this concrete pointer.
-	return &JobsBundle{
-		Repo:       repo,
-		Dispatcher: dispatcher,
-		Service:    svc,
-		Facade:     svc,
-	}, nil
-}
