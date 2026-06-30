@@ -32,19 +32,30 @@ import (
 // The use case MUST call cmd.Validate() BEFORE any port invocation
 // (mirrors the path-traversal-rejection-before-field-access pattern
 // pinned by TestGenerateBatch_RejectsPathTraversalPayload).
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the P0.2 shared-text
+// invariant is REMOVED. Each item is validated independently — mixed
+// texts, duplicate languages with different voices, and per-item
+// filenames are all first-class. The pre-step "all items must share
+// the same text" rule is gone: every item's text is independently
+// required; every item's language is independently required.
 func (c *GenerateVoiceoversCommand) Validate() error {
 	if c == nil {
 		return fmt.Errorf("nil GenerateVoiceoversCommand")
 	}
-	if strings.TrimSpace(c.Text) == "" {
-		return fmt.Errorf("text: must be non-empty")
+	if len(c.Items) == 0 {
+		return fmt.Errorf("items: must contain at least one item")
 	}
-	if len(c.Languages) == 0 {
-		return fmt.Errorf("languages: must contain one or more BCP-47 codes")
-	}
-	for _, lang := range c.Languages {
-		if !LanguageCodeValid(lang) {
-			return fmt.Errorf("languages: invalid code %q (only alphanumeric + hyphens allowed)", lang)
+	for i, it := range c.Items {
+		// VoiceoverItem is a value-type struct (not a pointer), so an
+		// item slot can never be nil — only a zero-value struct, which
+		// the text/language checks below already reject (empty Text and
+		// invalid Language are surfaced with a clearer error).
+		if strings.TrimSpace(it.Text) == "" {
+			return fmt.Errorf("items[%d].text: must be non-empty", i)
+		}
+		if !LanguageCodeValid(it.Language) {
+			return fmt.Errorf("items[%d].language: invalid code %q (only alphanumeric + hyphens allowed)", i, it.Language)
 		}
 	}
 	if c.Destination != nil {

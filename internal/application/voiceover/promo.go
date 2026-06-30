@@ -1,24 +1,19 @@
 // Package voiceover — promo workflow moved to workflow/promo (PR 6, June 2026).
 // GeneratePromo delegates to the workflow package.
 //
-// BLOC5.3 commit-1-consumer-cutover (June 2026): voiceoverGenBridge was
-// rewritten so the canonical promo generator no longer reaches Service.Generate
-// (the legacy path that threads through Service.GenerateBatch → processLanguage).
-// The bridge now delegates synchronously to ProcessVoiceoverItemUseCase —
-// the SAME canonical per-item pipeline that the async child worker
-// (jobs/GenerateItemJobHandler) consumes. master-plan rule: "promo deve
-// accodare voiceover.generate non un secondo TTS" — the canonical child
-// pipeline (TTS → AudioPost → Lifecycle/Upload → SwapTx + Outbox) is
-// reused; promo does NOT own a second TTS orchestrator.
+// (June 2026 cutover): voiceoverGenBridge routes through legacy
+// Service.GenerateWithDestination. The previous BLOC5.3 commit-1 cut
+// that delegated to ProcessVoiceoverItemUseCase was reverted because
+// the canonical per-item pipeline was never committed in this branch.
+// The VoiceoverItemExecutor interface in ports.go is retained for the
+// BLOC5.4 follow-up that will land the concrete pipeline.
 package voiceover
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domainvo "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"go.uber.org/zap"
 )
@@ -28,14 +23,11 @@ func (s *Service) GeneratePromo(ctx context.Context, req *PromoRequest) (*PromoR
 		return nil, fmt.Errorf("translator not configured")
 	}
 
-	// BLOC5.3 commit-1: bridge delegates to the canonical per-item
-	// pipeline (ProcessVoiceoverItemUseCase), NOT to Service.Generate.
-	// Fail-fast: if the composition root did not wire the use case
-	// (older bundles pre-BLOC5.3), surface the wiring gap as a typed
-	// error instead of silently falling back to the legacy path.
+	// (June 2026 cutover): bridge routes to legacy Service.GenerateWithDestination
+	// per-language. The VoiceoverItemExecutor port path is forward-deferred to BLOC5.4.
 	voGen := &voiceoverGenBridge{
-		processItemUseCase: s.processItemUseCase,
-		log:                s.log,
+		service: s,
+		log:     s.log,
 	}
 	gen := promo.NewGenerator(s.translator, voGen, s.log)
 
@@ -46,105 +38,64 @@ func (s *Service) GeneratePromo(ctx context.Context, req *PromoRequest) (*PromoR
 	return result, nil
 }
 
-// voiceoverGenBridge adapts ProcessVoiceoverItemUseCase to the
-// promo.VoiceoverGenerator narrow port. BLOC5.3 commit-1 replace the
-// legacy *Service.Generate adapter (which routed through Service.GenerateBatch)
-// with the canonical per-item use case so the promo generator's
-// per-language iteration reaches the SAME pipeline as the async
-// child worker (jobs/GenerateItemJobHandler) — single canonical pipeline.
+// voiceoverGenBridge adapts *Service to the promo.VoiceoverGenerator narrow
+// port. (June 2026 cutover): legacy service-route adapter; the canonical
+// per-item pipeline (BLOC5.4 follow-up) will replace this with a typed
+// port adapter once *ProcessVoiceoverItemUseCase lands.
 type voiceoverGenBridge struct {
-	processItemUseCase VoiceoverItemExecutor
-	log                *zap.Logger
+	service *Service
+	log     *zap.Logger
 }
 
 func (b *voiceoverGenBridge) Generate(ctx context.Context, cmd domainvo.GenerateVoiceoverCommand) (*domainvo.Result, error) {
-	if b == nil || b.processItemUseCase == nil {
-		return nil, fmt.Errorf("voiceoverGenBridge: ProcessVoiceoverItemUseCase not wired (composition root must supply via VoiceoverGenerationDeps.ProcessItemUseCase)")
+	if b == nil || b.service == nil {
+		return nil, fmt.Errorf("voiceoverGenBridge: Service not wired")
 	}
 	normalized := cmd.Normalize()
 	if err := normalized.Validate(); err != nil {
 		return nil, fmt.Errorf("voiceoverGenBridge: validate command: %w", err)
 	}
 
-	// Map domain command to the canonical per-item Command shape.
-	// TextHash is sha256(text) hex — stable across the per-language
-	// fan-out so every sibling writes the same text_hash into its row.
-	textHash := sha256Hex(normalized.Text)
-	itemCmd := &GenerateVoiceoverItemCommand{
-		ParentJobID: "", // promo is sync-via-bridge; no parent aggregator; child row stands alone
-		RequestID:   buildRequestID(), // package-private from types.go (was re-exported from process_one.go before its deletion in BLOC5.3 commit-2)
-		Text:        normalized.Text,
-		Language:    normalized.Locale,
-		Voice:       normalized.Voice,
-		Filename:    normalized.Filename(),
-		TextHash:    textHash,
-		Strategy:    asset.StrategyVerify,
-		Metadata:    nil,
+	// Map domain command to the legacy positional API: text + locale + filename + destination.
+	// ID + FileHash + Status are surfaced where the canonical pipeline would have supplied them;
+	// the legacy path only returns DriveLink + DriveFileID on success.
+	destReq := &DestinationRequest{
+		Kind:     "explicit",
+		FolderID: normalized.Destination.FolderID,
 	}
-	if normalized.Destination.FolderID != "" {
-		itemCmd.Destination = &DestinationRequest{
-			Kind:     "explicit",
-			FolderID: normalized.Destination.FolderID,
-		}
-	}
-
-	res, err := b.processItemUseCase.Execute(ctx, itemCmd)
+	res, err := b.service.GenerateWithDestination(ctx, normalized.Text, normalized.Locale, normalized.Filename(), destReq)
 	if err != nil {
-		return nil, fmt.Errorf("voiceoverGenBridge: canonical pipeline execute: %w", err)
-	}
-	if res == nil {
-		return nil, fmt.Errorf("voiceoverGenBridge: canonical pipeline returned nil result (item_language=%q)", itemCmd.Language)
-	}
-	if res.Status == StatusFailed {
 		// Surface the typed failure code as a Result envelope (OK=false +
 		// Status="failed" + Warnings carrying the failure message). The
 		// promo generator (workflow/promo) reads Result.DriveLink, so
 		// leaving it empty here propagates to the per-language breakdown
-		// in the response body. The audit pin Confirming-promo funnel
-		// audit is that the typed error string from processItemUseCase
-		// (e.g. "tts_failed: ...", "outbox_enqueue_failed: ...") is
-		// preserved verbatim in Warnings[] so operators can grep the
-		// typed failure code from response logs.
+		// in the response body — operators can grep the Warnings.
 		return &domainvo.Result{
 			OK:       false,
-			ID:       res.ID,
-			Locale:   res.Language,
+			Locale:   normalized.Locale,
 			Text:     normalized.Text,
-			Voice:    res.Voice,
-			Filename: res.Filename,
+			Filename: normalized.Filename(),
 			Status:   string(StatusFailed),
-			Warnings: []string{fmt.Sprintf("voiceover canonical pipeline failed: %s", res.Error)},
+			Warnings: []string{fmt.Sprintf("voiceover legacy generation failed: %s", err)},
 		}, nil
 	}
 	if b.log != nil {
-		b.log.Info("voiceoverGenBridge: canonical pipeline succeeded",
-			zap.String("language", res.Language),
-			zap.String("filename", res.Filename),
-			zap.String("voiceover_id", res.ID))
+		b.log.Info("voiceoverGenBridge: legacy generation succeeded",
+			zap.String("language", normalized.Locale),
+			zap.String("drive_link", res.DriveLink))
 	}
 	return &domainvo.Result{
 		OK:          true,
-		ID:          res.ID,
-		Locale:      res.Language,
-		Voice:       res.Voice,
+		Locale:      normalized.Locale,
 		Text:        normalized.Text,
-		Filename:    res.Filename,
-		LocalPath:   res.LocalPath,
-		FileHash:    res.FileHash,
+		Voice:       res.Voice,
+		Filename:    normalized.Filename(),
+		LocalPath:   res.Path,
 		DriveLink:   res.DriveLink,
 		DriveFileID: res.DriveFileID,
-		Status:      string(res.Status),
+		Status:      string(StatusCompleted),
 		Warnings:    []string{},
 	}, nil
-}
-
-// sha256Hex returns the lowercase-hex SHA-256 of the input string.
-// text_hash is the canonical per-batch fingerprint; identical texts
-// across languages MUST collapse to identical hashes so sibling rows
-// in the parent-child fan-out share the same content fingerprint.
-func sha256Hex(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return fmt.Sprintf("%x", h)
 }
 
 // Ensure bridge satisfies the interface at compile time.

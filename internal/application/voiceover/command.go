@@ -37,63 +37,92 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// GenerateVoiceoversCommand is the canonical singular request to the
-// use case. Mirrors the canonical wire-shape from BatchRequest
-// (types.go) but uses asset.PipelineStrategy for type-safe strategy
-// (the three canonical values are verify / skip / replace; the
-// canonical normaliser is asset.NormalizeStrategy).
+// VoiceoverItem is the canonical per-item shape: one (text, language,
+// voice, filename) row that becomes one child voiceover.generate_item
+// job at fan-out. Items are independent — text may vary across items,
+// voice and filename override the per-item defaults.
 //
-// JSON tags pin the canonical wire shape mirror of
-// BatchRequest.PayloadMap() — the same snake_case keys used in the
-// legacy BatchRequest wire path. Round-tripping this struct into
-// job.Payload and back via json.Unmarshal reproduces an identical
-// GenerateVoiceoversCommand on the consumer side (jobs/generate_handler.go).
-type GenerateVoiceoversCommand struct {
-	// Text is the source voiceover text. Required (Validate enforces
-	// non-empty).
+// Step 5 (P0.3 items-model recovery, June 2026): the legacy P0.2
+// wire-shape collapsed items[] into a flat GenerateVoiceoversCommand
+// (1 Text + N Languages[] + VoiceOverrides map + FilenameTemplate).
+// The collapse dropped information when two items shared a language
+// (later-wins VoiceOverrides, later-wins FilenameTemplate) and
+// forced identical texts across items. The Item-ROM model restores
+// per-item independence so mixed-text requests, two voices for the
+// same language, and per-item filenames are all first-class.
+//
+// JSON tags mirror the canonical API wire shape so unmarshalling a
+// request payload directly into a VoiceoverItem list produces the
+// same field set the HTTP handler binds to GenerateVoiceoversRequest.
+type VoiceoverItem struct {
+	// Text is the source voiceover text for THIS item. Required
+	// (Validate enforces non-empty per item).
 	Text string `json:"text"`
 
-	// Languages is the list of BCP-47 codes to generate. Required
-	// non-empty; each code must pass LanguageCodeValid.
-	Languages []string `json:"languages"`
+	// Language is the BCP-47 code for THIS item. Required; must pass
+	// LanguageCodeValid (alphanumeric + hyphens only).
+	Language string `json:"language"`
 
-	// FilenameTemplate is the optional template; falls back to
-	// "{slug}_{lang}.mp3" via BuildFilename if empty.
-	FilenameTemplate string `json:"filename_template,omitempty"`
+	// Voice is the per-item voice override. Empty falls through to
+	// TTSProvider's default voice (nil-safe at every layer).
+	Voice string `json:"voice,omitempty"`
 
-	// VoiceOverrides is the per-language voice override map keyed by
-	// BCP-47 code. nil-safe (use case falls through to TTSProvider
-	// default voice when the key is missing).
-	VoiceOverrides map[string]string `json:"voice_overrides,omitempty"`
+	// Filename is the per-item sanitised filename. Empty triggers the
+	// {slug}_{lang}_{unix}.mp3 fallback in the fan-out (buildItemFilename).
+	Filename string `json:"filename,omitempty"`
+}
+
+// GenerateVoiceoversCommand is the canonical singular request to the
+// use case. Step 5 drops the P0.2 collapsed shape (1 Text + N Languages
+// + VoiceOverrides map + FilenameTemplate) in favour of an Items[]
+// model where each VoiceoverItem carries its own text/language/voice/
+// filename. The use case fans out one child GenerateVoiceoverItemCommand
+// per item — the per-language iteration at the parent layer is gone.
+//
+// Field ownership after Step 5:
+//   - Items: per-row work (one child job per item).
+//   - Destination: batch-level routing (shared across all items).
+//   - Strategy, RemoveSilence, Parallelism, Metadata: batch-level
+//     configuration (shared across all items).
+//   - RequestID: batch-level correlation (parent → every child).
+//
+// Round-tripping the struct into job.Payload and back via json.Unmarshal
+// reproduces an identical GenerateVoiceoversCommand on the consumer
+// side (jobs/generate_handler.go).
+type GenerateVoiceoversCommand struct {
+	// Items is the list of independent (text, language, voice, filename)
+	// rows. Each item becomes one voiceover.generate_item child job at
+	// fan-out (micro-commit #2 of PR-VOICEOVER-PARENT-CHILD-FANOUT).
+	// Items MAY have different texts, voices with the same language, or
+	// per-item filenames — no P0.2 shared-text invariant.
+	Items []VoiceoverItem `json:"items"`
 
 	// Destination is the optional routing payload. nil means "use the
 	// config-level voiceover folder" (deferred to composition root;
-	// reserved for Block 4 / composition root wiring).
+	// reserved for Block 4 / composition root wiring). When non-nil,
+	// the same Destination applies to EVERY item in the batch.
 	Destination *DestinationRequest `json:"destination,omitempty"`
 
 	// Strategy is the pipeline strategy (verify / skip / replace).
 	// asset.NormalizeStrategy (lifecycle_core.go:118) is the canonical
-	// normaliser invoked by the use case at the boundary.
+	// normaliser invoked by the use case at the boundary. The same
+	// Strategy is applied to every item in the batch.
 	Strategy asset.PipelineStrategy `json:"strategy,omitempty"`
 
 	// RemoveSilence toggles AudioPostProcessor.PostProcess after TTS.
 	// Wire semantics: JSON `null` / omitted maps to false (no
-	// post-processing). Explicit `true` enables post-processing. The
-	// legacy BatchRequest.RemoveSilence used `*bool` to distinguish
-	// "not set" from "false"; the canonical Command uses plain `bool`
-	// because the per-language worker (processOneLanguage) gates on
-	// truthy only — the three-state nuance is not worth a typed
-	// dangling-pointer for the new async use case. Valid JSON
-	// round-trips cleanly via omitempty.
+	// post-processing). Explicit `true` enables post-processing for
+	// every item in the batch.
 	RemoveSilence bool `json:"remove_silence,omitempty"`
 
 	// Parallelism is the requested fan-out concurrency. Clamped by the
-	// use case to min(requested, MaxParallelism, len(Languages)).
+	// use case to min(requested, MaxParallelism, len(Items)).
 	Parallelism int `json:"parallelism,omitempty"`
 
 	// Metadata is the user-supplied meta overlay that flows into the
 	// row's metadata column (process_metadata_test.go pins the
-	// collision-drop contract from mergeUserMetadata).
+	// collision-drop contract from mergeUserMetadata). Applied to every
+	// child row in the batch — per-item metadata overlays are P1 scope.
 	Metadata map[string]any `json:"metadata,omitempty"`
 
 	// RequestID is the stable correlation identifier threaded from the

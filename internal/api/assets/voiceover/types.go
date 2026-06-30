@@ -69,12 +69,13 @@ type GenerateVoiceoversRequest struct {
 
 // VoiceoverItem is a single (text, language, voice, filename) row
 // in the request items[] array.
-type VoiceoverItem struct {
-	Text     string `json:"text"`
-	Language string `json:"language"`
-	Voice    string `json:"voice,omitempty"`
-	Filename string `json:"filename,omitempty"`
-}
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the wire-shape and
+// the application payload now share the SAME struct via a type
+// alias — voiceover.VoiceoverItem is canonical, this alias keeps
+// the existing `voiceover.VoiceoverItem` literal usage in handler
+// tests compiling without renaming. No field-set drift.
+type VoiceoverItem = voiceover.VoiceoverItem
 
 // VoiceoverOptions is the options sub-map. Mirrors the canonical
 // Command's optional fields that callers want as a sub-map (the
@@ -104,6 +105,12 @@ type VoiceoverOptions struct {
 //
 // PR-VO-C1 / godlike/07 invariant: destination.kind="group" + empty
 // group is a hard 400 ("no fake availability" rule).
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the P0.2 shared-text
+// invariant is REMOVED (mixed-text requests are first-class). Each
+// item is validated independently — items MAY have different texts,
+// duplicate languages with different voices, and per-item filenames.
+// The P0.2 rule "items[i].text: differs from items[0].text" is gone.
 func (r *GenerateVoiceoversRequest) Validate() error {
 	if r == nil {
 		return errors.New("nil request")
@@ -111,21 +118,12 @@ func (r *GenerateVoiceoversRequest) Validate() error {
 	if len(r.Items) == 0 {
 		return errors.New("items: must contain at least one item")
 	}
-
-	text0 := r.Items[0].Text
 	for i, it := range r.Items {
 		if it.Text == "" {
 			return fmt.Errorf("items[%d].text: must be non-empty", i)
 		}
 		if it.Language == "" {
 			return fmt.Errorf("items[%d].language: must be non-empty (BCP-47 code)", i)
-		}
-		if i > 0 && it.Text != text0 {
-			return fmt.Errorf(
-				"items[%d].text: differs from items[0].text (multi-text per-item fan-out is P0.3 scope; "+
-					"all items must share the same text in P0.2)",
-				i,
-			)
 		}
 	}
 
@@ -150,39 +148,33 @@ func (r *GenerateVoiceoversRequest) Validate() error {
 	return nil
 }
 
-// ToCommand collapses items[] into the canonical
-// GenerateVoiceoversCommand shape (1 Text + N Languages + VoiceOverrides map).
-// Strategy is normalised via asset.NormalizeStrategy(force=false:
-// unknown values coerce to "verify").
+// ToCommand converts the wire-shape request to the canonical
+// application Command. Step 5 (P0.3 items-model recovery, June 2026):
+// the conversion is now a 1:1 pass-through of Items — no text/languages
+// collapse, no voice-override map, no last-wins filename. Each
+// VoiceoverItem in the wire carries text/language/voice/filename
+// independently; the application layer fans out one child per item.
 //
-// Per-item filename overrides the FilenameTemplate (last non-empty wins).
-// Under the shared-text invariant in P0.2, at most one item carries a
-// non-empty filename so the loop ends with the right value.
+// Strategy is normalised via asset.NormalizeStrategy(force=false:
+// unknown values coerce to "verify"). Destination, RemoveSilence,
+// Parallelism, Metadata forward verbatim (batch-level fields).
 func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCommand {
-	items := r.Items
-	text := items[0].Text
-	languages := make([]string, 0, len(items))
-	voiceOverrides := make(map[string]string, len(items))
-	filenameTemplate := ""
-	for _, it := range items {
-		languages = append(languages, it.Language)
-		if it.Voice != "" {
-			voiceOverrides[it.Language] = it.Voice
-		}
-		if it.Filename != "" {
-			filenameTemplate = it.Filename
+	items := make([]voiceover.VoiceoverItem, len(r.Items))
+	for i, it := range r.Items {
+		items[i] = voiceover.VoiceoverItem{
+			Text:     it.Text,
+			Language: it.Language,
+			Voice:    it.Voice,
+			Filename: it.Filename,
 		}
 	}
 
 	return &voiceover.GenerateVoiceoversCommand{
-		Text:             text,
-		Languages:        languages,
-		FilenameTemplate: filenameTemplate,
-		VoiceOverrides:   voiceOverrides,
-		Destination:      r.Destination,
-		Strategy:         asset.NormalizeStrategy(r.Options.Strategy, false),
-		RemoveSilence:    r.Options.RemoveSilence,
-		Parallelism:      r.Options.Parallelism,
+		Items:         items,
+		Destination:   r.Destination,
+		Strategy:      asset.NormalizeStrategy(r.Options.Strategy, false),
+		RemoveSilence: r.Options.RemoveSilence,
+		Parallelism:   r.Options.Parallelism,
 		// Metadata is forwarded verbatim through the canonical Command
 		// (the worker's journal mergeUserMetadata uses it for collision
 		// resolution on the voiceovers row's metadata column).
@@ -210,21 +202,30 @@ func (r *GenerateVoiceoversRequest) ToEnqueueRequest() *jobservice.EnqueueReques
 }
 
 // parentActiveKey builds the deterministic dedup key for the parent
-// voiceover.generate job. Covers the three fields that uniquely
-// identify a generation request: the source text, the target language
-// set, and the destination folder.
+// voiceover.generate job. Covers every item's (text + language) and
+// the destination folder. Two POSTs producing the same items set +
+// same destination collide on the same ActiveKey; the broker's
+// FindActiveByKey returns the existing non-terminal job instead of
+// enqueuing a duplicate.
+//
+// Step 5 (P0.3 items-model recovery, June 2026): the P0.2 key
+// fingerprint was based on items[0].Text + every language code; with
+// mixed texts that contract collapses equivalent mixed-text requests
+// to the same key. The new fingerprint hashes EVERY item's text +
+// language independently so two structurally-different batch requests
+// produce distinct ActiveKeys.
 func (r *GenerateVoiceoversRequest) parentActiveKey() string {
 	if len(r.Items) == 0 {
 		return "voiceover:parent:empty"
 	}
 	h := sha256.New()
-	h.Write([]byte(r.Items[0].Text))
 	for _, it := range r.Items {
+		h.Write([]byte(it.Text))
 		h.Write([]byte("|"))
 		h.Write([]byte(strings.ToLower(it.Language)))
+		h.Write([]byte("|"))
 	}
 	if r.Destination != nil && r.Destination.FolderID != "" {
-		h.Write([]byte("|"))
 		h.Write([]byte(r.Destination.FolderID))
 	}
 	return "voiceover:parent:" + hex.EncodeToString(h.Sum(nil))[:16]
