@@ -461,6 +461,32 @@
       owner_capability: cmd/admin + internal/application/channels
       status: removed
 
+# ── Wave 27 ── DRIVE-005 consolidation: 4-port Drive surface (CLOSED, June 2026) ──
+# Six-commit chain (5f590885, a8c781ae, b7d49099, 70f2b6c8, 2fb96f39, 1dc40709)
+# consolidated the Drive surface into 4 canonical Pattern 0 ports per
+# AGENTS.md Pattern 0 + godlike/06 "one owner per fact":
+#   1. delivery.Publisher  (conflict-aware uploads + ConflictPolicy + PutFileRequest)
+#   2. drive.Reader        (download + metadata + listing + existence)
+#   3. drive.FileLifecycle (Trash + Move + Rename + Cleanup)
+#   4. drive.DocClient     (Google Docs creation)
+# Commit a8c781ae physically retired DriveClient + DriveUploader from
+# DriveBundle. Dep record architecture/deprecations.yaml#DRIVE-005-FIELDS
+# reaches status: removed today (2026-06-30).
+- id: 27
+  status: done
+  exit_signal: true
+  exit_gate: |
+    Drive surface is consolidated to 4 canonical Pattern 0 ports.
+    All raw `root.Drive.DriveClient` + `root.Drive.DriveUploader` readsites
+    physically retired from `internal/app.DriveBundle` in commit `a8c781ae`.
+    DRIVE-005-FIELDS deprecation record closed (status: removed,
+    migration_phase: CONTRACT, removal_date: 2026-06-30).
+  linked_issues:
+    - id: DRIVE-005-FIELDS
+      owner_capability: internal/app (composition root) + internal/infrastructure/drive
+      status: removed
+      deadline: 2026-06-30
+
 # ---------------------------------------------------------------------------
 # Doc #2 (post_cascade_followups) + Doc #3 (legacy_fallback_cleanup)
 # moved verbatim to:

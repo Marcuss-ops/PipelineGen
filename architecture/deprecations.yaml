@@ -1000,8 +1000,14 @@ deprecations:
       New code MUST consume via Admin / Reader / Publisher per AGENTS.md
       Pattern 0 / Godlike 06 "one owner per fact".
     introduction_date: 2026-06-30
-    removal_date: 2026-Q3
+    removal_date: 2026-06-30
     tracking_issue: |
+      DRIVE-005 (June 2026, FASE 9 + Wave B + Wave C + CARD-3 + PutFile
+      + FileLifecycle chain) \u2014 composition root typed-port seam for the
+      Drive surface, physically closed by commit `a8c781ae refactor(app):
+      FASE 9 Step 5 \u2014 remove deprecated DriveClient and DriveUploader
+      from DriveBundle` (FASE 9 Step 5). Wave tracker entry
+      `architecture/current.yaml#id-27` carries the closure exit_gate.
       FASE 9 (June 2026, P0.1 / DRIVE-005) — composition root typed-port
       seam for the Drive readiness barrier (Ping via drive.Admin). Future
       waves consume the canonical ports and fold the ~86 legacy callsites
@@ -1047,8 +1053,8 @@ deprecations:
       the EXPAND phase for the COMPATIBILITY surface (current commit)
       and BACKFILL / CUTOVER / CONTRACT follow as the legacy sites are
       rewritten.
-    migration_phase: EXPAND
-    status: in_progress
+    migration_phase: CONTRACT
+    status: removed
     notes: |
       EXPAND phase: the new canonical surface (Admin, Reader) ships
       alongside the deprecated legacy fields. Readers of the legacy
