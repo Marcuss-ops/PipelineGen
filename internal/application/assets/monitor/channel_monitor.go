@@ -6,7 +6,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -80,7 +79,12 @@ type ChannelMonitor struct {
 	channelsSvc       *channels.Service
 	log               *zap.Logger
 	stopCh            chan struct{}
-	ytdlp             *downloader.YTDLPDownloader
+	// ytdlp is held as the narrow MonitorDownloaderPort surface (Pattern 0)
+	// rather than the concrete *downloader.YTDLPDownloader so unit tests
+	// can inject a fake ListChannel / Path without spawning a real
+	// yt-dlp subprocess. The concrete *downloader.YTDLPDownloader
+	// satisfies the port (compile-time assertion in monitor_ports.go).
+	ytdlp             MonitorDownloaderPort
 	youtubeSvc        *youtube.Service
 	searchQueriesRepo *assets.SearchQueriesRepository
 	ollamaClient      *client.Client
@@ -92,7 +96,12 @@ type ChannelMonitor struct {
 // NewChannelMonitor creates a new channel monitor.
 // PR 2 (June 2026): channelsSvc replaces raw *sql.DB as the single source
 // for channel configuration.
-func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, channelsSvc *channels.Service, log *zap.Logger, youtubeSvc *youtube.Service, ollamaClient *client.Client, ytdlp *downloader.YTDLPDownloader) *ChannelMonitor {
+// PR (June 2026, Blocco 1 of the channel-monitor hardening): the ytdlp
+// parameter is now typed as the MonitorDownloaderPort interface (Pattern 0)
+// rather than the concrete *downloader.YTDLPDownloader. Production callers
+// (internal/app/lifecycle.go) keep passing the concrete value — Go auto-
+// boxes it under the interface — while tests inject a fake.
+func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, channelsSvc *channels.Service, log *zap.Logger, youtubeSvc *youtube.Service, ollamaClient *client.Client, ytdlp MonitorDownloaderPort) *ChannelMonitor {
 	maxChannels := cfg.Concurrency.MaxConcurrentChannelChecks
 	if maxChannels <= 0 {
 		maxChannels = 1
