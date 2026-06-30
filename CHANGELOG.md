@@ -77,6 +77,43 @@ deprecated in favour of the typed-pattern ports
   internal/` returns the current ~86 readsite count — the
   EXPAND-phase usage_metric baseline for `DRIVE-005-FIELDS`.
 
+**[QDRANT-005A, June 2026]** Canonical `qdrant:` block in `config.yaml` /
+`config.example.yaml` matching the yaml tags of the
+QdrantConfig struct in `internal/platform/config/types.go` (lines 144-157).
+
+- **Canonical keys**: `enabled` (default `false`), `base_url` (default
+  `http://127.0.0.1:6333`), `api_key` (default `""`). The first 3 keys are
+  documented in `internal/platform/config/types.go::QdrantConfig` with
+  matching `yaml:` tags — the config file format is now byte-aligned with
+  the Go struct; no dual-init conflict (the yaml unmarshaller binds keys
+  to the struct independently of any sibling block).
+
+- **Secrets policy**: `api_key:` is an empty string placeholder. Operators
+  MUST supply the production key via the `VELOX_QDRANT_API_KEY` env var
+  per AGENTS.md secrets handling (precedent: `VELOX_ADMIN_TOKEN`). The
+  inline literal is never committed; the field is omitted in
+  checked-in diffs and set at deployment time.
+
+- **Legacy `vector_search:` block**: preserved below the canonical block
+  with a drift comment. The legacy block uses `url:` (not `base_url:`)
+  and was unclaimed by any Go callsite (verified via
+  `rg 'VectorSearch|vector_search\.' --type go` returns 0 hits — the
+  block is configuration drift rather than a live codepath). Removal
+  is tracked separately as a follow-up deprecation cycle that will
+  collapse both blocks into the single canonical entry.
+
+- **CI Check 15 verified**: `bash scripts/ci-architectural-checks.sh`
+  asserts that every `qdrant.NewClient(&qdrant.Config{...})` call propagates
+  `APIKey: cfg.Qdrant.APIKey` from `QdrantConfig.APIKey` (QDRANT-005A
+  hardening). The new canonical block does not alter Go code; Check 15
+  remains green. The 5 cmd/admin callers (reconcile_qdrant.go,
+  reindex_qdrant.go, dr_qdrant.go, qdrant_maintenance.go,
+  qdrant_readiness.go) + the zero-legacy fixture under
+  `tests/fixtures/zero_legacy/check_15_qdrant_config_apikey.go` already
+  propagate the canonical field correctly.
+
+
+
 ### Fixed
 
 **[Issue 8, ApplyPreset closure]** `fix(script)` — `ApplyPreset` now
