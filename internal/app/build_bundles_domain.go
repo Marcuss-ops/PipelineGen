@@ -6,7 +6,6 @@ import (
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -146,13 +145,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
-	// FASE 9: nil-safe extraction — DriveUploader.Service panics when nil.
-	var rawDriveSvc *gdrive.Service
-	if drive.driveUploader != nil {
-		rawDriveSvc = drive.driveUploader.Service
-	}
 	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
-		rawDriveSvc, drive.driveUploader,
+		drive.driveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
 		voMetaWriter, ai.ScriptGen,
@@ -163,13 +157,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, repos, search, mutationsDisp)
 
-	var driveClient *gdrive.Service
-	if drive.driveUploader != nil {
-		driveClient = drive.driveUploader.Service
-	}
-
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
-		driveClient, repos.ClipsRepo, repos.ClipsRepo,
+		drive.driveUploader, repos.ClipsRepo, repos.ClipsRepo,
 		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, repos.ImageRepo,
 		voMetaWriter, ingestSvc,

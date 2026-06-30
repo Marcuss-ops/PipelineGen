@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
-	driveapi "google.golang.org/api/drive/v3"
+
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -24,7 +24,7 @@ type Service struct {
 	cfg        *config.Config
 	repo       *assets.ImagesRepository
 	stockRepo  *assets.ClipsRepository
-	driveSvc   *driveapi.Service
+	driveAdmin drive.Admin
 	log        *zap.Logger
 	tempDir    string
 	scriptsDir string
@@ -147,7 +147,7 @@ type ImagesCoreDeps struct {
 type ImagesStorageDeps struct {
 	ImageRepo  *assets.ImagesRepository
 	ClipsRepo  *assets.ClipsRepository
-	DriveSvc   *driveapi.Service
+	DriveAdmin drive.Admin
 	MediaStore *drive.Store
 }
 
@@ -181,7 +181,7 @@ func NewService(deps ImagesDeps) *Service {
 		cfg:           cfg,
 		repo:          deps.Storage.ImageRepo,
 		stockRepo:     deps.Storage.ClipsRepo,
-		driveSvc:      deps.Storage.DriveSvc,
+		driveAdmin:    deps.Storage.DriveAdmin,
 		driveFolderID: cfg.Drive.RootFolder(),
 		log:           deps.Core.Log,
 		imagesDir:     cfg.Storage.ImagesPath(),
@@ -222,7 +222,7 @@ func (s *Service) Diagnostics() DiagnosticsReport {
 		OK:               s.repo != nil,
 		Services:         []string{"repo", "drive", "nvidia", "remote_image_gen", "chrome_playwright"},
 		RepoConfigured:   s.repo != nil,
-		DriveConfigured:  s.driveSvc != nil,
+		DriveConfigured:  s.driveAdmin != nil,
 		NvidiaConfigured: s.CapabilityResolution(CapImageGenNvidia) == StatusAvailable,
 		IngestConfigured: s.ingestSvc != nil,
 		ImageGenWired:    s.imageGen != nil,
