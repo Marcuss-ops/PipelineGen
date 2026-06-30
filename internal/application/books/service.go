@@ -53,13 +53,13 @@ type Service struct {
 	driveFolder  string
 	driveUpload  *drive.Uploader // deprecated: kept for drive.go download operations
 	publisher    PublisherPort   // canonical Drive upload path (FASE 6)
-	voiceoverSvc *voiceover.Service
+	voiceoverSvc voiceover.VoiceoverGenerator
 }
 
 // NewService constructs a books.Service. Drive uploader is wired via
 // constructor injection; the post-construction SetDriveUploader setter was
 // removed in PR4-H Commit 3.
-func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc *voiceover.Service, driveUploader *drive.Uploader, publisher PublisherPort) *Service {
+func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc voiceover.VoiceoverGenerator, driveUploader *drive.Uploader, publisher PublisherPort) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -373,7 +373,7 @@ func (s *Service) ProcessBookAsync(ctx context.Context, req *ProcessRequest) (st
 	return fmt.Sprintf("book_sync_%d", time.Now().UnixNano()), nil
 }
 
-func (s *Service) SetVoiceoverService(v *voiceover.Service) {
+func (s *Service) SetVoiceoverService(v voiceover.VoiceoverGenerator) {
 	s.voiceoverSvc = v
 }
 
