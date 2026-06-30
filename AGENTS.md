@@ -631,6 +631,8 @@ the snapshot table above.
   the bare-only Coverage gap of Check 46. CHANGELOG entry under
   `## Unreleased → ### Fixed` mirrors this closure.
 
+(See-also canonical anchor: `audit-trail-anchors_P1-2-of-cleanup-plan`; mirrored in CHANGELOG.md `## Unreleased → ### Fixed`.)
+
 ---
 
 ## Core Contracts

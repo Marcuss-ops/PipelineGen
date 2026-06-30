@@ -696,6 +696,8 @@ Gates green: `bash scripts/ci-architectural-checks.sh` exits 0;
 the Check 44 standalone reads the live YAML SSOT and reports
 0 violations against `transitional_cap=66`.
 
+(See-also canonical anchor: `audit-trail-anchors_P1-2-of-cleanup-plan`; mirrored in AGENTS.md `Recent cross-cutting closures (June 2026)`.)
+
 ## Unreleased
 
 ### Added
