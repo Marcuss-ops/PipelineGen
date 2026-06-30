@@ -52,28 +52,6 @@ func NewCollectionManager(client *Client, schema *IndexSchema, log *zap.Logger) 
 // PromoteCandidate when verifyLedger[candidate] is missing.
 var ErrPromoteWithoutVerify = errors.New("qdrant: PromoteCandidate requires a prior VerifyCandidate success (PR 6 §#5/§#6.3)")
 
-// ── verifyLedger helpers ─────────────────────────────────────────────
-
-func (cm *CollectionManager) markVerified(name string) {
-	cm.verifyLedgerMu.Lock()
-	cm.verifyLedger[name] = true
-	cm.verifyLedgerMu.Unlock()
-}
-
-func (cm *CollectionManager) consumeVerified(name string) bool {
-	cm.verifyLedgerMu.Lock()
-	defer cm.verifyLedgerMu.Unlock()
-	ok := cm.verifyLedger[name]
-	delete(cm.verifyLedger, name)
-	return ok
-}
-
-func (cm *CollectionManager) resetVerified(name string) {
-	cm.verifyLedgerMu.Lock()
-	delete(cm.verifyLedger, name)
-	cm.verifyLedgerMu.Unlock()
-}
-
 // EnsureSchema guarantees the runtime alias points to a ready
 // candidate. PR 6 §#5: EnsureSchema is a thin orchestrator that
 // delegates to the ops in sequence:
@@ -216,83 +194,5 @@ func (cm *CollectionManager) CreateCollection(ctx context.Context, name string) 
 	if err := cm.createPayloadIndexes(ctx, name); err != nil {
 		return fmt.Errorf("create payload indexes for %q: %w", name, err)
 	}
-	return nil
-}
-
-// SwitchAlias atomically switches the runtime alias from oldTarget to newTarget.
-// DEPRECATED: use PromoteCandidate or RollbackCandidate directly.
-func (cm *CollectionManager) SwitchAlias(ctx context.Context, oldTarget, newTarget string) error {
-	return cm.RollbackCandidate(ctx, oldTarget, newTarget)
-}
-
-// RollbackAlias switches the alias back to oldTarget.
-// DEPRECATED: use RollbackCandidate directly.
-func (cm *CollectionManager) RollbackAlias(ctx context.Context, currentTarget, rollbackTarget string) error {
-	return cm.RollbackCandidate(ctx, currentTarget, rollbackTarget)
-}
-
-// ── Rollback ───────────────────────────────────────────────────────────
-// Relocated from collection_rollback.go (Phase 5 consolidation, June 2026).
-
-// RollbackCandidate switches the alias back to `rollbackTarget`.
-// Used by `cmd/admin/reconcile_qdrant.go` to undo a failed reindex
-// promote. PR 6 §#5: RollbackCandidate is also a (re)writer; it is
-// the ONLY safe counterpart to PromoteCandidate.
-func (cm *CollectionManager) RollbackCandidate(ctx context.Context, currentTarget, rollbackTarget string) error {
-	cm.log.Warn("rolling back alias",
-		zap.String("alias", cm.schema.RuntimeAlias),
-		zap.String("from", currentTarget),
-		zap.String("to", rollbackTarget))
-	return cm.client.SwitchAlias(ctx, cm.schema.RuntimeAlias, currentTarget, rollbackTarget)
-}
-
-// ── Verify ─────────────────────────────────────────────────────────────
-// Relocated from collection_verify.go (Phase 5 consolidation, June 2026).
-
-// VerifyCandidate ensures the candidate's schema matches cm.schema
-// via CompareSchema. On success, sets verifyLedger[candidate] = true
-// so PromoteCandidate can run. Returns ErrSchemaIncompatible wrapped
-// when the candidate's schema doesn't match.
-func (cm *CollectionManager) VerifyCandidate(ctx context.Context, candidate string) error {
-	info, err := cm.client.GetCollection(ctx, candidate)
-	if err != nil {
-		return fmt.Errorf("get collection %q: %w", candidate, err)
-	}
-	diff := CompareSchema(cm.schema, info)
-	if !diff.Compatible {
-		return fmt.Errorf("%w for %q: missing_vectors=%v dimension_mismatches=%d distance_mismatches=%v",
-			NewErrSchemaIncompatible(diff), candidate,
-			diff.MissingVectors, len(diff.DimensionMismatches), diff.DistanceMismatches)
-	}
-	cm.markVerified(candidate)
-	return nil
-}
-
-// ── Promote + Reindex ──────────────────────────────────────────────────
-// Relocated from collection_promote.go (Phase 5 consolidation, June 2026).
-
-// PromoteCandidate writes the runtime alias to point at `candidate`.
-// This is the ONLY method in CollectionManager that writes the
-// alias (no other function in the collection_manager_* files calls
-// cm.client.CreateAlias or cm.client.SwitchAlias outside
-// RollbackCandidate's switch-back). Fails with ErrPromoteWithoutVerify
-// if verifyLedger[candidate] is missing (PR 6 §#6.3 invariant).
-func (cm *CollectionManager) PromoteCandidate(ctx context.Context, candidate string) error {
-	if !cm.consumeVerified(candidate) {
-		return fmt.Errorf("%w: candidate %q (call VerifyCandidate first)", ErrPromoteWithoutVerify, candidate)
-	}
-	cm.log.Info("promoting candidate to runtime alias",
-		zap.String("alias", cm.schema.RuntimeAlias),
-		zap.String("target", candidate))
-	return cm.client.CreateAlias(ctx, cm.schema.RuntimeAlias, candidate)
-}
-
-// ReindexCandidate is the orchestrator marker step in EnsureSchema's
-// chain. In this PR it's a no-op stub because the actual reindex
-// is owned by the admin `cmd/admin/reindex_qdrant.go` command.
-// EnsureSchema keeps the call so the contract is explicit.
-func (cm *CollectionManager) ReindexCandidate(ctx context.Context, candidate string) error {
-	cm.log.Debug("ReindexCandidate is a no-op stub in EnsureSchema orchestrator; explicit reindex lives in cmd/admin/reindex_qdrant.go",
-		zap.String("candidate", candidate))
 	return nil
 }
