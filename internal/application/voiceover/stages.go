@@ -281,12 +281,20 @@ func voiceOverrideFor(req *BatchRequest, language string) string {
 // destinationStage is Stage 2 (Drive upload via Lifecycle). Wired
 // between the stageLog("destination") wrappers in process.go.
 //
-// RESTORED body: invokes s.lifecycleService.ProcessAsset with the
-// canonical FinalizeInput so the upload runs through the dedupe
-// gate + Drive uploader + persistence layer that's owned by
-// Lifecycle. On success populates DriveLink/DriveFileID.
-// DownloadLink. On error the item.fail plumbing surfaces a
-// BatchItem with Status="upload_failed".
+// P0.7 Wave 21 (June 2026) — Step 9/12 finalizer unification: this
+// stage now calls lifecycle.Service.UploadOnly (Drive only, NO DB
+// writes). The previous ProcessAsset call wrote media_assets at
+// Stage 2 and finalizeStage then ALSO wrote voiceovers in a SECOND
+// tx — the partial-save bug pattern. Removing ProcessAsset from
+// the Stage-2 surface eliminates the partial-save because NOTHING
+// is persisted until finalizeStage's tx commits; a tx failure aborts
+// the entire atomic-write, and the replace-mode cleanup goroutine
+// handles the orphan Drive file downstream.
+//
+// On success populates DriveLink/DriveFileID/DownloadLink and
+// advances Status to StatusUploaded. On error the item.fail
+// plumbing surfaces a BatchItem with typed FailureUpload (matches
+// the audit-P01 fail() contract — typed status, NOT legacy literal).
 func (s *Service) destinationStage(
 	ctx context.Context,
 	item BatchItem,
@@ -324,10 +332,15 @@ func (s *Service) destinationStage(
 		RequireDrive: true,
 	}
 
-	result, err := s.lifecycleService.ProcessAsset(ctx, finalInput, item.FileHash)
+	// P0.7 2-PHASE SPLIT (Step 9/12): UploadOnly uploads to Drive
+	// without writing to the DB. The phase-2 writes (voiceovers +
+	// media_assets projection + outbox event) happen inside
+	// finalizeStage's caller-owned tx. See lifecycle.Service.UploadOnly
+	// for the atomicity rationale.
+	result, err := s.lifecycleService.UploadOnly(ctx, finalInput)
 	if err != nil {
 		if s.log != nil {
-			s.log.Warn("destinationStage: lifecycle.ProcessAsset failed",
+			s.log.Warn("destinationStage: lifecycle.UploadOnly failed (Phase 1)",
 				zap.String("restored", restoreIdent),
 				zap.String("language", item.Language),
 				zap.Error(err))
@@ -343,8 +356,9 @@ func (s *Service) destinationStage(
 }
 
 // finalizeStage is Stage 3 (PR-VO-B3 dedupe gate + PR-VO-A2 atomic
-// swap + PR-VO-A3 outbox + post-commit cleanup). Wired between the
-// stageLog("finalize") wrappers in process.go.
+// swap + PR-VO-A3 outbox + media_assets projection UPSERT +
+// post-commit cleanup). Wired between the stageLog("finalize")
+// wrappers in process.go.
 //
 // RESTORED body:
 //
@@ -357,12 +371,20 @@ func (s *Service) destinationStage(
 //     new row in the same tx. The pre-read in processLanguage
 //     already captured oldDriveFileID / oldLocalPath /
 //     oldCleanedPath for the cleanup goroutine.
-//  4. PR-VO-A3 outbox enqueue inside the same tx so the row INSERT
+//  4. P0.7 2-PHASE SPLIT (Step 9/12): UPSERT the media_assets
+//     projection row INSIDE the same tx via
+//     lifecycle.Service.UpsertVoiceoverProjectionTx. This is the
+//     canonical projection of the canonical voiceover row, with
+//     `source='voiceover'` discriminator. a SQL verification query
+//     at `internal/application/voiceover/verify_media_assets.go`
+//     pins the contract: SELECT 1 FROM media_assets WHERE id=? AND
+//     source='voiceover'.
+//  5. PR-VO-A3 outbox enqueue inside the same tx so the row INSERT
 //     and the index event INSERT commit atomically. Nil-safe so
 //     the indexing degrades gracefully if the composition root
 //     didn't wire the outbox.
-//  5. Commit.
-//  6. Post-commit cleanup goroutine (Strategy=="replace" ONLY) —
+//  6. Commit.
+//  7. Post-commit cleanup goroutine (Strategy=="replace" ONLY) —
 //     detached from the request ctx via context.Background
 //     (per AGENTS.md post-write save exemption table) so the
 //     orphan Drive file + old local audio files are released even
@@ -374,6 +396,17 @@ func (s *Service) destinationStage(
 // durably persisted — a separate DELETE-then-INSERT pair would
 // leave a data-loss window if TTS or Drive or Lifecycle failed
 // downstream.
+//
+// P0.7 2-PHASE SPLIT history: pre-Step 9/12 the same canonical
+// content was written TWICE (lifecycle.ProcessAsset's media_assets
+// UPSERT at Stage 2 + finalizeStage's voiceovers INSERT/outbox +
+// Commit) across TWO transactions; a Drive upload success followed
+// by an InsertTx failure would leave an orphan media_assets row.
+// Removing ProcessAsset from destinationStage + adding
+// UpsertVoiceoverProjectionTx here produces a SINGLE-TX atomic
+// write that covers voiceovers + media_assets + outbox; any tx
+// failure aborts ALL three writes; the orphan Drive file is then
+// handled by the replace-mode cleanup goroutine.
 func (s *Service) finalizeStage(
 	ctx context.Context,
 	item BatchItem,
@@ -494,6 +527,42 @@ func (s *Service) finalizeStage(
 	if err := s.voiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
 		return item.fail(FailureDBInsert,
 			fmt.Errorf("%s: InsertTx: %w", restoreIdent, err))
+	}
+
+	// P0.7 2-PHASE SPLIT (Step 9/12): UPSERT the canonical
+	// media_assets projection row in the SAME caller-owned tx. The
+	// projection uses `source='voiceover'` as the canonical
+	// discriminator so the SQL verification helper at
+	// `verify_media_assets.go::HasVoiceoverProjection` can pin the
+	// contract (SELECT 1 FROM media_assets WHERE id=? AND
+	// source='voiceover'). The UPSERT is idempotent — a re-run of
+	// finalizeStage updates the projected columns in place, no
+	// double-insert. PipelineGen upgrade note: pre-Step 9/12 the
+	// lifecycle.ProcessAsset call at destinationStage wrote this row
+	// in a SEPARATE earlier tx; a Drive upload success followed by
+	// an InsertTx failure left an orphan media_assets row. With
+	// ProcessAsset removed (calling UploadOnly instead) + this
+	// UPSERT added, all persistence is in a SINGLE tx — partial-save
+	// is impossible.
+	if err := s.lifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
+		ID:           item.ID,
+		Source:       "voiceover",
+		Name:         textPreview,
+		Filename:     item.Filename,
+		FolderID:     folderID,
+		FolderPath:   folderPath,
+		MediaType:    "audio",
+		LocalPath:    item.LocalPath,
+		DriveFileID:  item.DriveFileID,
+		DriveLink:    item.DriveLink,
+		DownloadLink: item.DownloadLink,
+		FileHash:     item.FileHash,
+		Language:     language,
+		Status:       string(StatusGenerated),
+		Metadata:     string(metaJSON),
+	}); err != nil {
+		return item.fail(FailureDBInsert,
+			fmt.Errorf("%s: UpsertVoiceoverProjectionTx (media_assets): %w", restoreIdent, err))
 	}
 
 	// PR-VO-A3 outbox enqueue: inside the same tx so the row INSERT
