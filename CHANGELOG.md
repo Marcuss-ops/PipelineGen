@@ -11,6 +11,54 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
+**[Audit P0 #5 — CompletionState typed enum, July 2026]** `refactor(voiceover)` — surface post-commit verification divergence as a typed 3-state enum on `FinalizeResult.CompletionState`. Closes the silent-success class where finalizeStage's log-and-continue post-commit verifier was the only signal of a missing canonical row.
+
+**Site closed (1/1 of audit-P0.5):**
+
+- **`internal/application/voiceover/finalizer.go::FinalizeResult`** gains a typed `CompletionState CompletionState \`json:"completion_state,omitempty"\`` field. The pre-P0.5 surface exposed only `Reused bool` + `SkippedSteps []string` — a caller that did not read those two fields had zero visibility into the post-commit verification outcome. Post-P0.5 the typed CompletionState is the canonical typed sink (godlike/06 one-canonical-owner-per-fact).
+
+- **`internal/application/voiceover/types.go`** gains the typed enum `CompletionState string` with 3 constants: `StateCompleted` (`"completed"`), `StateCompletedUnverified` (`"completed_unverified"`), `StateReconciliationRequired` (`"reconciliation_required"`). JSON wire values mirror the typed string values; omitempty preserves the pre-P0.5 wire shape for legacy consumers.
+
+- **`internal/application/voiceover/ports.go`** gains the typed severity sentinel `var ErrReconciliationRequired = errors.New(...)` + updated `VoiceoverPostCommitVerifier` Go-doc with the 3-arm severity contract. The match is `errors.Is(err, ErrReconciliationRequired)` (NOT `==`) so wrapped errors (with `%w`) round-trip correctly across adapter boundaries (godlike/07 typed-port contract).
+
+- **`internal/application/voiceover/types.go`** gains the typed `FailureCode` constant `FailureReconciliationRequired FailureCode = "reconciliation_required"` positioned immediately after `FailureTxCommit` for cognitive locality (per code-review recommendation: both surface from finalizeStage's post-tx-execution scope; grep targets cluster). This is the audit-mandated surface — NOT a reuse of `FailureTxCommit` (the tx DID commit successfully; the divergence is post-commit). API consumers reading `BatchItem.Errors[]` can now distinguish reconciliation-required from actually-failed-commit via the typed literal.
+
+- **`internal/application/voiceover/stages.go::finalizeStage`** reads the verifier outcome post-Commit and writes the typed `finalizeRes.CompletionState` via a 3-arm map (nil → StateCompleted; `errors.Is(wrap ErrReconciliationRequired)` → StateReconciliationRequired; bare err → StateCompletedUnverified). All 3 writes are nil-guarded with `if finalizeRes != nil` so a future finalizer returning `(nil, nil)` cannot crash the post-Commit wiring. The reconcile-required branch ALSO surfaces the audit-mandated typed `FailureReconciliationRequired` to `item.Errors[]`, sets `item.Status = StatusFailed` (NOT completed — the canonical row is missing post-commit), and writes a forensic `item.Error = "post_commit_reconciliation_required: <verifyErr>"`.
+
+- **`internal/app/adapters_voiceover_use_case.go::voiceoverPostCommitVerifierAdapter.Verify`** now wraps the voiceovers-row-missing branch with `voiceover.ErrReconciliationRequired` via `%w` (severe divergence); the media_assets-projection-missing branch stays a bare error (warn-level). The adapter now references the sentinel with the `voiceover.` package prefix (no unprefixed `ErrReconciliationRequired` — the adapter is in `package app` and needs the explicit package qualifier to resolve the voiceover-package identifier).
+
+**3-state mapping contract (single source of truth in `stages.go::finalizeStage`):**
+
+| Verifier outcome | `finalizeRes.CompletionState` | `item.Status` | `item.Errors[]` |
+|------------------|-------------------------------|---------------|------------------|
+| nil | `StateCompleted` | `StatusCompleted` | (no append) |
+| `errors.Is(err, ErrReconciliationRequired)` | `StateReconciliationRequired` | `StatusFailed` | `FailureReconciliationRequired` |
+| bare err (other non-nil) | `StateCompletedUnverified` | `StatusCompleted` (warn) | (no append) |
+| verifier unwired | `""` (omitempty hides) | `StatusCompleted` | (no append) |
+
+**Files modified (6) + new TDD (3):**
+
+- `internal/application/voiceover/types.go` (+~74 LoC): `CompletionState` typed enum + 3 constants + `FailureReconciliationRequired` constant placed adjacent to `FailureTxCommit`.
+- `internal/application/voiceover/ports.go` (~+25 LoC): `ErrReconciliationRequired` sentinel + 3-arm severity contract in `VoiceoverPostCommitVerifier` Go-doc + `errors` import.
+- `internal/application/voiceover/finalizer.go` (~+18 LoC): `CompletionState CompletionState \`json:"completion_state,omitempty"\`` field after `SkippedSteps` with audit-pinning doc-comment.
+- `internal/application/voiceover/stages.go` (~+30 LoC net): nil-guarded 3-arm mapping + reconcile-required branch with `FailureReconciliationRequired` typed literal + Status=StatusFailed override + `errors` import.
+- `internal/app/adapters_voiceover_use_case.go` (~+5 LoC): voiceovers-row-missing wrap with `voiceover.ErrReconciliationRequired`; comment block clarifying the warn-level vs severe-divergence branch.
+- `internal/application/voiceover/finalizer_test.go` (~+165 LoC): 3 new TDD tests pinning the audit-P0.5 contract.
+  - `TestFinalizeStage_PostCommitVerificationOK_StateCompleted` — verifier err=nil → `item.Status=StatusCompleted` + `cannedRes.CompletionState=StateCompleted`.
+  - `TestFinalizeStage_PostCommitVerificationWarnOnly_StateCompletedUnverified` — verifier err=bare → `item.Status=StatusCompleted` (canonical row IS present) + `cannedRes.CompletionState=StateCompletedUnverified`.
+  - `TestFinalizeStage_PostCommitVerificationCanonicalRowMissing_StateReconciliationRequired` — verifier err wrapping `ErrReconciliationRequired` → `item.Status=StatusFailed` (audit-mandated "must NOT report StatusCompleted") + `cannedRes.CompletionState=StateReconciliationRequired` + `item.Error` contains `post_commit_reconciliation_required` + `item.Errors` contains `FailureReconciliationRequired` (NEW typed constant; NOT `FailureTxCommit`).
+
+**Pre-existing build issues (out of scope, NOT regressions from audit-P0.5):**
+
+Same five items as the prior CHANGELOG entries carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
+- `monitor/enqueue.go`: `strings.ToLower` undefined (in `isTransientEnqueueError`).
+- `monitor/scheduler.go`: `NewUnboundJobEnqueuer` undefined.
+- `internal/application/assets/providers/stock/stockpipeline/run_upload.go`: syntax error (legacy upload path).
+- `internal/app/module_media.go`: pre-existing `clips.Deps.MutationsDispatcher` literal.
+
+**Wave-tracker cross-reference (per godlike/07):** no formal `architecture/current.yaml` entry filed for this P0.5 closure (verified `grep -E 'P0\.5|Audit.P0.\#5' architecture/current.yaml` returns 0 hits). The closure is audit-logged via this CHANGELOG entry only; a future wave-tracker entry should be filed under a `wave_status` row citing the post-land SHA.
+
+
 **[Commit I — Phase 1c TODO closure, Commit 3b/4 (June 2026)]** `chore(youtube)` — semantic-shift pass v2 (supersedes prior Commit 3/4 canonical-delegation `e62bb65a`). In-file deterministic `isSponsorSegment` + `calculateQualityScore` per user spec: substring match (case-insensitive) against 4 canonical sponsor-segment phrases + literal linear quality blend `(transcript_len/2000) + (tag_count/10) + (duration/600) + (title_len/100)` clamped [0,1]. This COMMIT supersedes the prior canonical-delegation `e62bb65a` per the user-spec substitution.
 
 **SUPERSEDES (godlike/06 honest audit)**: prior Commit 3/4 (`e62bb65a chore(youtube): Commit 3/4 Phase 1c TODO closure (semantic-shift pass)`) shipped with a canonical-delegation impl (`isSponsorSegment → ytmeta.IsSponsorSegment(transcript)` regex match against an expanded taxonomy of 9 patterns; `calculateQualityScore → ytmeta.CalculateQualityScore(...)` weighted 40/40/20 blend + caller-side sponsor penalty + math.Round bucketing). The user spec required an IN-FILE deterministic impl with substring match for sponsor detection + literal linear-formula blend for quality scoring — the prior canonical delegation satisfied neither constraint. This commit (3b/4) implements the user spec literally, replacing both functions with local algorithms. The canonical `metadata/service.go` helpers remain as exported building blocks for callers that opt into the broader-scoring path; the user-spec contract for the ym=nil fallback in `usecase/metadata_service.go` is owned by this file's local impls (godlike/06: one canonical owner per fact).

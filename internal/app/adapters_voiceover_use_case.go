@@ -686,7 +686,14 @@ func (a *voiceoverPostCommitVerifierAdapter) Verify(ctx context.Context, voiceov
 	).Scan(&voStatus)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("post-commit verification: voiceovers row missing for id=%q", voiceoverID)
+			// Audit P0.5 (July 2026): severe divergence — the canonical
+			// voiceovers row itself is missing after the tx committed.
+			// Wrap with voiceover.ErrReconciliationRequired so
+			// finalizeStage can react via errors.Is and surface
+			// CompletionState=StateReconciliationRequired on
+			// FinalizeResult (godlike/07 honest signal; godlike/06
+			// typed-port contract).
+			return fmt.Errorf("post-commit verification: voiceovers row missing for id=%q: %w", voiceoverID, voiceover.ErrReconciliationRequired)
 		}
 		return fmt.Errorf("post-commit verification: voiceovers SELECT error for id=%q: %w", voiceoverID, err)
 	}
@@ -698,6 +705,11 @@ func (a *voiceoverPostCommitVerifierAdapter) Verify(ctx context.Context, voiceov
 	).Scan(&mediaSource)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Warn-level divergence: the canonical voiceovers row IS
+			// present (verified above) but the secondary media_assets
+			// projection is missing. Bare error (not wrapping
+			// ErrReconciliationRequired) so finalizeStage maps this to
+			// CompletionState=StateCompletedUnverified (audit P0.5).
 			return fmt.Errorf("post-commit verification: media_assets projection missing for id=%q (source='voiceover')", voiceoverID)
 		}
 		return fmt.Errorf("post-commit verification: media_assets SELECT error for id=%q: %w", voiceoverID, err)

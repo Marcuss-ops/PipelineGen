@@ -33,6 +33,7 @@ package voiceover
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
 // TxOutboxEnqueuer is the canonical narrow port for transactional
@@ -397,9 +398,14 @@ type VoiceoverFinalizer interface {
 // VoiceoverPostCommitVerifier is the optional narrow port for post-commit
 // SQL verification (P0.4 Fase 4a, July 2026). After the tx commits,
 // finalizeStage calls Verify(ctx, voiceoverID) to confirm both the
-// voiceovers row AND the media_assets projection exist. If either
-// is missing, the verifier logs a WARN — the tx committed successfully
-// but the durable row is absent, indicating a silent schema/driver bug.
+// voiceovers row AND the media_assets projection exist. The verifier
+// outcome drives the FinalizeResult.CompletionState typed field
+// (audit P0.5, July 2026) so callers can react without parsing log
+// lines:
+//
+//   - nil                                                → CompletionState = StateCompleted
+//   - errors.Is(err, ErrReconciliationRequired) == true → CompletionState = StateReconciliationRequired
+//   - any other err                                      → CompletionState = StateCompletedUnverified
 //
 // Nil-safe: when unwired, finalizeStage skips the verification entirely.
 // The production concrete queries voiceovers + media_assets via a *sql.DB
@@ -408,12 +414,32 @@ type VoiceoverPostCommitVerifier interface {
 	// Verify confirms that the voiceovers row (id) and the
 	// media_assets projection (id, source='voiceover') both exist.
 	// Returns nil when both rows are present; returns an error with
-	// details about which row is missing. The caller (finalizeStage)
-	// only logs the error — it does NOT fail the item or roll back.
-	// The tx has already committed, so the verification is purely
-	// diagnostic.
+	// details about which row is missing — wrap with
+	// ErrReconciliationRequired when the voiceovers row itself is
+	// missing (severe divergence) so finalizeStage can surface
+	// CompletionState=StateReconciliationRequired on FinalizeResult.
+	// A bare error (not wrapping ErrReconciliationRequired) signals a
+	// warn-level divergence (the projection missing but the canonical
+	// row present); finalizeStage maps that to StateCompletedUnverified.
 	Verify(ctx context.Context, voiceoverID string) error
 }
+
+// ErrReconciliationRequired is the typed severity sentinel a
+// VoiceoverPostCommitVerifier.Verify implementer wraps around its
+// severe-divergence return values (audit P0.5, July 2026). The
+// production adapter wraps the "voiceovers row missing" case with
+// this sentinel via fmt.Errorf("...: %w", ErrReconciliationRequired)
+// so finalizeStage can react via errors.Is without parsing error
+// strings (godlike/07 honest signal; godlike/06 typed-port contract).
+//
+// Severity contract:
+//   - err == nil                                          → StateCompleted
+//   - errors.Is(err, ErrReconciliationRequired) == true  → StateReconciliationRequired
+//   - any other non-nil err                              → StateCompletedUnverified
+//
+// Callers MUST NOT compare to this sentinel via == ; the canonical
+// match is errors.Is so wrapped errors (with %w) round-trip correctly.
+var ErrReconciliationRequired = errors.New("voiceover post-commit verification: reconciliation required (canonical row missing after commit)")
 
 // ────────────────────────────────────────────────────────────────────────
 // VoiceoverItemExecutor port (interface forward-declared, BLOC5.4

@@ -105,6 +105,27 @@ type FinalizeResult struct {
 	//   "cleanup_outbox: ShouldSwap=false"     — Step 6 not run
 	//   "cleanup_outbox: unwired"              — Step 6 not run
 	SkippedSteps []string
+
+	// CompletionState records the post-commit SQL verification
+	// outcome (audit P0.5, July 2026). Surface on the canonical
+	// result struct so callers can react without parsing log lines.
+	// Only the legacy batch finalizeStage populates this field
+	// (the child pipeline ProcessVoiceoverItemUseCase does not run
+	// the verifier today; a future BLOC5.4 expansion can wire the
+	// canonical verifier-port into the per-item use case).
+	//
+	// Mapping contract (single source of truth in finalizeStage):
+	//
+	//   verifier returns nil                                       → StateCompleted
+	//   verifier returns nil + finalizeStage post-commit guard nil → StateCompleted
+	//   verifier returns err wrapping ErrReconciliationRequired    → StateReconciliationRequired
+	//   verifier returns any other non-nil err                     → StateCompletedUnverified
+	//   verifier unwired (Service.postCommitVerifier == nil)       → "" (omitempty hides the wire)
+	//
+	// omitempty on JSON because the pre-P0.5 wire shape was
+	// Reused/SkippedSteps/ID only; legacy consumers continue to
+	// observe byte-equivalent wire output.
+	CompletionState CompletionState `json:"completion_state,omitempty"`
 }
 
 // ─────────────────────────────────────────────────────────────────────
