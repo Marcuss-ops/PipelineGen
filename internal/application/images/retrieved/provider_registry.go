@@ -522,3 +522,35 @@ func (r *RetrievalProviderRegistry) Resolve(ids []string) ([]RetrievalProvider, 
 	}
 	return out, nil
 }
+
+// Stop halts any background workers managed by the registry.
+//
+// FASE 7 (July 2026, image-territories action plan): the
+// RetrievalProviderRegistry does not spawn goroutines today — every
+// provider.Search is invoked synchronously from the caller goroutine.
+// The Stop method is present so the compose-side lifecycle surface
+// (internal/api/server.go::Server.StartWithContext calling
+// lifecycle.Stop after GracefulShutdown) has a forward-compatible
+// endpoint for future background workers (planned: health probes,
+// provider-list refresh tick, etc.) without every owner re-adding
+// the contract on each new addition.
+//
+// Both nil-receiver (defensive against typed-nil registry handles
+// passed through composition) and nil-ctx (defensive against startup
+// paths that haven't yet bound a parent context) are safe: Stop
+// returns nil so the compose-side shutdown chain stays tight.
+func (r *RetrievalProviderRegistry) Stop(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	if ctx != nil {
+		// Honour the ctx by probing Done — today this is purely
+		// a contract assertion (no goroutines to interrupt); a
+		// future worker will respect this signal here.
+		_ = ctx.Done()
+	}
+	if r.log != nil {
+		r.log.Debug("retrieval registry Stop() — no background goroutines to interrupt today (FASE 7 forward-compatible surface)")
+	}
+	return nil
+}

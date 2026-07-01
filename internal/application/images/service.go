@@ -112,6 +112,23 @@ type Service struct {
 	Diag  *DiagnosticsService
 }
 
+// RetrievalRegistry exposes the canonical *retrieved.RetrievalProviderRegistry
+// owned by the ImageStorageService sub-service. Used by FASE 7 wiring
+// (composition.BuildDomainBundle) to instantiate routing.ImageSearchResolver
+// without re-constructing the provider list (so the resolver and the
+// store-side fallback chain share the same Wikipedia → SearXNG →
+// DuckDuckGo → Drive order).
+//
+// FASE 7 (July 2026): introduced alongside the routing.ImageSearchResolver
+// composition. Nil-safe when the image service was constructed without a
+// retrieval registry (the per-Server.NewDefaultProviderRegistry fallback).
+func (s *Service) RetrievalRegistry() *retrieved.RetrievalProviderRegistry {
+	if s == nil || s.Store == nil {
+		return nil
+	}
+	return s.Store.retrievalRegistry
+}
+
 // NewService constructs the four sub-services and returns the facade.
 func NewService(deps ImagesDeps) *Service {
 	cfg := deps.Core.Cfg

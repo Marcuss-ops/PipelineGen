@@ -11,6 +11,7 @@ import (
 	"time"
 
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -40,11 +41,12 @@ type LifecycleManager interface {
 // Background services (maintenance, watchers, etc.) are managed externally
 // by a LifecycleManager — not by the Server.
 type Server struct {
-	cfg        *config.Config
-	router     *gin.Engine
-	appRouter  *Router // reference to the Router for cleanup
-	httpServer *http.Server
-	lifecycle  LifecycleManager
+	cfg                *config.Config
+	router             *gin.Engine
+	appRouter          *Router // reference to the Router for cleanup
+	httpServer         *http.Server
+	lifecycle          LifecycleManager
+	imageSearchResolver routing.ImageSearchResolver // FASE 7 singleton (server-side)
 }
 
 // NewServer creates a new HTTP server with module registry support.
@@ -87,6 +89,13 @@ type ServerDeps struct {
 	Lifecycle LifecycleManager
 	Health    interface{}
 	Ready     *systemhealth.ReadyChecker
+	// ImageSearchResolver (FASE 7, July 2026): the canonical routing
+	// singleton reached from app.DomainBundle.ImageSearchResolver.
+	// Server holds it for downstream handler injection (the
+	// /api/images/search?territory=&subject= handler is a follow-up
+	// commit that consumes this field; today it is exposed for
+	// composition-side consumers and lifecycle Stop()).
+	ImageSearchResolver routing.ImageSearchResolver
 }
 
 // NewServerWithHealth creates a new HTTP server from grouped dependency bundles.
@@ -166,6 +175,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 				WriteTimeout:      time.Duration(cfg.Server.WriteTimeout) * time.Second,
 				IdleTimeout:       120 * time.Second,
 			},
+			imageSearchResolver: deps.ImageSearchResolver, // FASE 7: canonical routing singleton
 		}
 	}
 
@@ -209,6 +219,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 			WriteTimeout: 300 * time.Second,
 			IdleTimeout:  120 * time.Second,
 		},
+		imageSearchResolver: deps.ImageSearchResolver, // FASE 7: canonical routing singleton
 	}
 }
 

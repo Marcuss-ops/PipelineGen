@@ -334,6 +334,16 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	log.Info("P0.1: artifact blob service wired (content-addressed staging + verify + promote)",
 		zap.String("data_dir", cfg.Storage.DataDir))
 
+	// FASE 7 (July 2026, image-territories action plan): wire the
+	// routing.ImageSearchResolver from imageSvc.RetrievalRegistry() +
+	// repos.ImageRepo. Fail-closed per godlike/07; if either input is
+	// missing the composition error aborts NewComposition (no
+	// half-wired resolver on DomainBundle).
+	imageSearchResolver, err := buildImageSearchResolver(imageSvc, repos.ImageRepo, log)
+	if err != nil {
+		return nil, fmt.Errorf("compose images: %w", err)
+	}
+
 	return &DomainBundle{
 		YoutubeClipService:           youtubeClipService,
 		VoiceoverService:             voiceoverSvc,
@@ -353,7 +363,32 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// Commit 4/6: the canonical metadata service. Populated
 		// in BuildDomainBundle; consumed by the late-bindings
 		// block + future EnrichClip migration (PR-4.7).
+		ImageSearchResolver: imageSearchResolver, // FASE 7
 	}, nil
+}
+
+// buildImageSearchResolver wires the FASE 7 routing layer
+// (routing.ImageSearchResolver) from the canonical image-side deps.
+// Fail-closed (godlike/07): if either input is nil we surface the
+// composition error so NewComposition aborts rather than silently
+// mounting a half-wired resolver.
+func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *assets.ImagesRepository, log *zap.Logger) (routing.ImageSearchResolver, error) {
+	if imageSvc == nil || imageSvc.RetrievalRegistry() == nil {
+		return nil, fmt.Errorf("routing.NewImageSearchResolver: retrieval backend is nil \u2014 image service must be constructed first")
+	}
+	if imageRepo == nil {
+		return nil, fmt.Errorf("routing.NewImageSearchResolver: image list repository is nil \u2014 repos.ImageRepo required")
+	}
+	resolver, err := routing.NewImageSearchResolver(
+		routing.WithRetrievalBackend(imageSvc.RetrievalRegistry()),
+		routing.WithImageListRepository(imageRepo),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("routing.NewImageSearchResolver: %w", err)
+	}
+	log.Info("FASE 7: ImageSearchResolver wired (retrieval backend + image list repo)")
+	return resolver, nil
+}
 }
 
 // buildIngestService constructs the ingest.Service from the same deps
