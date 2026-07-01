@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -29,6 +30,12 @@ import (
 // one place (PromptComposer is the single source of truth for prompt
 // composition).
 //
+// Step 8 (July 2026): when `registry` is non-nil, the Generate call
+// routes through GenerationProviderRegistry and dispatches by
+// `req.Model`. When nil, falls back to the legacy imageGen.Generate
+// direct call — preserves Step 4 behaviour for tests that pre-date
+// Step 8.
+//
 // Cross-boundary ingestion: ingestGeneratedImage calls
 // ImageStorageService.IngestImage to persist generated images through
 // the canonical media_assets pipeline.
@@ -37,6 +44,10 @@ type GenerationService struct {
 	styles   generation.StyleResolver // Step 4: fail-closed style resolution
 	log      *zap.Logger
 	storage  *ImageStorageService // for ingestGeneratedImage → IngestImage
+	// registry (Step 8) dispatches GenerationProvider implementations
+	// (GoogleSlidesProvider / FluxProvider / NvidiaProvider) by Model.
+	// nil = legacy direct imageGen.Generate (back-compat path).
+	registry *generated.GenerationProviderRegistry
 }
 
 // ── PromptComposer (Step 4) ────────────────────────────────────────────
@@ -132,7 +143,7 @@ func (g *GenerationService) GenerateSmartImageWithAccount(
 		finalHeight = 1080
 	}
 
-	result, err := g.imageGen.Generate(ctx, GenerateImageRequest{
+	result, err := g.generateThroughRegistry(ctx, GenerateImageRequest{
 		Prompt:         finalPrompt,
 		NegativePrompt: resolved.NegativePrompt,
 		Style:          style,
@@ -146,6 +157,40 @@ func (g *GenerationService) GenerateSmartImageWithAccount(
 	}
 
 	return g.ingestGeneratedImage(ctx, result, style, tags, skipDrive)
+}
+
+// generateThroughRegistry routes the request through the Step 8
+// GenerationProviderRegistry when wired, falling back to the
+// canonical imageGen port for tests + pre-Step-8 wiring. The
+// registry dispatches by Model to the right provider
+// (GoogleSlides / Flux / Nvidia) — see generated/provider_registry.go.
+func (g *GenerationService) generateThroughRegistry(ctx context.Context, req GenerateImageRequest) (*GeneratedImage, error) {
+	if g.registry != nil {
+		out, err := g.registry.Generate(ctx, generated.GenerateRequest{
+			Prompt:         req.Prompt,
+			Style:          req.Style,
+			Width:          req.Width,
+			Height:         req.Height,
+			Model:          req.Model,
+			Tags:           req.Tags,
+			NegativePrompt: req.NegativePrompt,
+			OutputPath:     req.OutputPath,
+		}, generated.GenerateOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &GeneratedImage{
+			Data:       out.Data,
+			Format:     out.Format,
+			Width:      out.Width,
+			Height:     out.Height,
+			PromptUsed: out.PromptUsed,
+			Provider:   string(out.Provider),
+			SourceHash: out.SourceHash,
+			OutputPath: out.OutputPath,
+		}, nil
+	}
+	return g.imageGen.Generate(ctx, req)
 }
 
 // resolveStyle is the internal helper that calls StyleResolver.Resolve
@@ -313,7 +358,7 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 		finalHeight = resolved.Height
 	}
 
-	result, err := g.imageGen.Generate(ctx, GenerateImageRequest{
+	result, err := g.generateThroughRegistry(ctx, GenerateImageRequest{
 		Prompt:         finalPrompt,
 		NegativePrompt: resolved.NegativePrompt,
 		Style:          payload.Style,

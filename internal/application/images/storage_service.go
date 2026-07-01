@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -43,4 +44,9 @@ type ImageStorageService struct {
 	// path — the BACKFILL commit introduces dual-read verification,
 	// and CUTOVER switches the call site over.
 	destResolver destinations.DestinationResolver
+
+	// retrievalRegistry (Step 8) composes Wikipedia/SearXNG/DuckDuckGo/Drive
+	// providers in fallback order. nil = fetch via the legacy inline cascade
+	// (preserved for back-compat with existing tests that pre-date Step 8).
+	retrievalRegistry *retrieved.RetrievalProviderRegistry
 }
