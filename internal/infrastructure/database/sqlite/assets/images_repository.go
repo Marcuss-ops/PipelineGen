@@ -305,7 +305,7 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 }
 
 // DEPRECATED (FASE 6, July 2026, image-territories action plan).
-// Canonical replacement: ListImages(ctx, routing.ImageFilter).
+// Canonical replacement: ListImages(ctx, routing.RepositoryListFilter).
 // Forward-to-ListImages conversion queued at CONTRACT phase
 // (deprecation record PR-IMAGE-LISTIMAGESBYSUBJECT in
 // architecture/deprecations.yaml).
@@ -575,7 +575,12 @@ func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, emb
 
 // FASE 6 (July 2026, image-territories action plan): ListImages is the
 // FASE 6 canonical replacement for ListImagesBySubject. Takes a
-// routing.ImageFilter and returns routing.ImageSearchResult rows.
+// routing.RepositoryListFilter and returns routing.RepositoryImageRow
+// rows (FASE 8: renamed from routing.ImageFilter/routing.ImageSearchResult
+// to disambiguate from the canonical routing-layer DTOs that the
+// ImageSearcher interface returns — the SQLite adapter needs the
+// underlying Subject/Slug/Description columns to populate the join
+// projection, so the read-model shape carries extra fields).
 // See deprecation record PR-IMAGE-LISTIMAGESBYSUBJECT for the migration
 // narrative; the physical removal of ListImagesBySubject is queued at
 // the Wave 14 mega-package split gate, NOT in this commit.
@@ -586,11 +591,18 @@ func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, emb
 // media_assets.origin — when called from the generated-territory
 // searcher (searcher_generated.go), Origins is pre-narrowed to
 // [OriginGenerated], so no retrieved rows leak into the result.
-func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.RepositoryListFilter) ([]routing.RepositoryImageRow, error) {
 	if r == nil {
 		return nil, nil
 	}
-	limit := routing.ResolvedLimit(filter.Limit)
+	limit := filter.Limit
+	if limit <= 0 || limit > routing.MaxListImagesLimit {
+		if limit > routing.MaxListImagesLimit {
+			limit = routing.MaxListImagesLimit
+		} else {
+			limit = routing.DefaultResolvedLimit
+		}
+	}
 
 	var sb strings.Builder
 	sb.WriteString(`SELECT ma.id, ma.origin, ma.provider_id, ma.subject_id, ma.preview_url, ma.width, ma.height, gid.prompt_resolved, gid.style_id, gid.style_version FROM media_assets ma LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id WHERE 1=1`)
@@ -644,7 +656,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.ImageF
 	}
 	defer rows.Close()
 
-	out := make([]routing.ImageSearchResult, 0, limit)
+	out := make([]routing.RepositoryImageRow, 0, limit)
 	for rows.Next() {
 		var (
 			id, originStr, providerID, subjectID, previewURL sql.NullString
@@ -671,7 +683,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.ImageF
 		if height.Valid {
 			h = int(height.Int64)
 		}
-		out = append(out, routing.ImageSearchResult{
+		out = append(out, routing.RepositoryImageRow{
 			AssetID:      id.String,
 			Origin:       asset.ImageOrigin(originStr.String),
 			Provider:     providerID.String,

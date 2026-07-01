@@ -17,6 +17,12 @@
 // the registry orchestrate the Wikipedia → SearXNG → DuckDuckGo →
 // Drive fallback chain. Step 8 replaces the imperative if-cascade
 // in storage_search.go with this registry.
+//
+// FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
+// RetrievalSearchResult) moved to internal/application/images/routing
+// to break the routing↔retrieved import cycle. The retrieved
+// subpackage keeps the concrete provider implementations and the
+// registry; provider Search methods now accept routing types directly.
 package retrieved
 
 import (
@@ -27,52 +33,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 	nethttp "net/http"
 )
 
-// RetrievalSearchOptions are the per-call options that control how
-// each RetrievalProvider executes a query. Carried instead of inline
-// parameters so providers remain signature-stable when new options
-// are added.
-type RetrievalSearchOptions struct {
-	// Lang is the BCP-47 language tag used by Wikipedia/SearXNG/etc.
-	// Empty means the provider default ("en").
-	Lang string
-	// Limit caps the number of details returned per provider (0 = no cap).
-	Limit int
-	// Timeout is the per-provider HTTP round-trip timeout (0 = use default 10s).
-	Timeout time.Duration
-}
-
-// RetrievalSearchResult is a single candidate image produced by a
-// provider. PreviewURL is the source image URL; the storage layer
-// (storage_service.go) is responsible for downloading + ingesting it
-// into media_assets. Provider, License, Author are populated from
-// provider-specific knowledge (e.g. Wikipedia → CC-BY-SA-4.0).
-type RetrievalSearchResult struct {
-	Provider   asset.ImageProvider
-	Origin     asset.ImageOrigin
-	PreviewURL string
-	PageURL    string
-	Title      string
-	License    string
-	Author     string
-	// StyleID is reserved for Step 9 (ImageAsset.Style) and is empty
-	// for all current retrieval providers.
-	StyleID string
-}
-
 // RetrievalProvider is one named retrieval source. Implementations
 // live in this package (WikipediaProvider, SearXNGProvider,
 // DuckDuckGoProvider, DriveImageProvider) and are wired via
 // NewDefaultProviderRegistry at composition time.
+//
+// FASE 8: Search takes routing.RetrievalSearchOptions + returns
+// []routing.RetrievalSearchResult (the canonical home of those types
+// after the routing↔retrieved cycle break).
 type RetrievalProvider interface {
 	// Search runs the provider-specific query and returns the
 	// candidates for ingestion. Returns nil + nil when the source
 	// is unconfigured or produces no hits (NOT an error).
-	Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error)
+	Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error)
 	// Name returns the ImageProvider taxonomy constant for this provider.
 	Name() asset.ImageProvider
 	// Healthy reports whether the provider is reachable in the current
@@ -151,7 +130,7 @@ func (p *WikipediaProvider) Healthy(ctx context.Context) error {
 	return nil
 }
 
-func (p *WikipediaProvider) Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
+func (p *WikipediaProvider) Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
@@ -169,7 +148,7 @@ func (p *WikipediaProvider) Search(ctx context.Context, query string, opts Retri
 	if wikiTitle != "" {
 		pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
 	}
-	return []RetrievalSearchResult{{
+	return []routing.RetrievalSearchResult{{
 		Provider:   asset.ProviderWikipedia,
 		Origin:     asset.ImageOriginRetrieved,
 		PreviewURL: imgURL,
@@ -226,7 +205,7 @@ func (p *SearXNGProvider) Healthy(ctx context.Context) error {
 	return nil
 }
 
-func (p *SearXNGProvider) Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
+func (p *SearXNGProvider) Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
 	if p.baseURL == "" || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
@@ -234,7 +213,7 @@ func (p *SearXNGProvider) Search(ctx context.Context, query string, opts Retriev
 	if imgURL == "" {
 		return nil, nil
 	}
-	return []RetrievalSearchResult{{
+	return []routing.RetrievalSearchResult{{
 		Provider:   asset.ProviderSearXNG,
 		Origin:     asset.ImageOriginRetrieved,
 		PreviewURL: imgURL,
@@ -277,7 +256,7 @@ func (p *DuckDuckGoProvider) Healthy(_ context.Context) error {
 	return nil
 }
 
-func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
+func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
@@ -285,7 +264,7 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 	if imgURL == "" {
 		return nil, nil
 	}
-	return []RetrievalSearchResult{{
+	return []routing.RetrievalSearchResult{{
 		Provider:   asset.ProviderDuckDuckGo,
 		Origin:     asset.ImageOriginRetrieved,
 		PreviewURL: imgURL,
@@ -318,15 +297,15 @@ func (p *DriveImageProvider) Name() asset.ImageProvider { return asset.ProviderD
 
 func (p *DriveImageProvider) Healthy(_ context.Context) error { return nil }
 
-func (p *DriveImageProvider) Search(_ context.Context, query string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
+func (p *DriveImageProvider) Search(_ context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
 	slug := strings.TrimSpace(query)
 	if slug == "" {
 		return nil, nil
 	}
 	hits := p.bridge.SearchBySlug(context.Background(), slug, 1)
-	out := make([]RetrievalSearchResult, 0, len(hits))
+	out := make([]routing.RetrievalSearchResult, 0, len(hits))
 	for _, url := range hits {
-		out = append(out, RetrievalSearchResult{
+		out = append(out, routing.RetrievalSearchResult{
 			Provider:   asset.ProviderDrive,
 			Origin:     asset.ImageOriginRetrieved,
 			PreviewURL: url,
@@ -382,7 +361,9 @@ func NewDefaultProviderRegistry(bridge StorageBridge, client httpDoer, log *zap.
 // first non-empty result. Returns nil + nil when every source is
 // exhausted. Errors are logged and skipped — a Wikipedia 404 must not
 // abort the DuckDuckGo fallback.
-func (r *RetrievalProviderRegistry) SearchAll(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
+//
+// FASE 8: opts/result types relocated to routing (cycle break).
+func (r *RetrievalProviderRegistry) SearchAll(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
 	if r == nil || len(r.providers) == 0 {
 		return nil, nil
 	}
