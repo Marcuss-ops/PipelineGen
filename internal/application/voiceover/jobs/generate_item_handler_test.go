@@ -260,6 +260,93 @@ func TestChild_NilUseCase_Panics(t *testing.T) {
 	_ = NewGenerateItemJobHandler(nil, zap.NewNop())
 }
 
+// ────────────────────────────────────────────────────────────────────
+// P0.1 Audit Test: TestGenerateItemHandler_FailedResultReturnsError
+// ────────────────────────────────────────────────────────────────────
+
+// Pins the canonical P0.1 false-success fix (July 2026): when
+// useCase.Execute returns (res, nil) with res.Status != StatusCompleted
+// (the per-item pipeline's pattern for stage failures like TTS crash,
+// upload timeout, DB commit error), the handler MUST return an error
+// to the dispatcher so the worker retries (DefaultMaxRetries: 2) or
+// marks FAILED. Pre-P0.1 the handler returned (resultMap, nil) here,
+// producing a silent false-success: broker marked SUCCEEDED, parent
+// aggregator saw SUCCEEDED, user never knew the voiceover was never
+// created. This test locks the new contract at the handler boundary.
+func TestGenerateItemHandler_FailedResultReturnsError(t *testing.T) {
+	// Simulate a TTS failure: Execute returns (result with
+	// Status=StatusFailed + Error="tts_failed: ...", nil).
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language: "en",
+			Status:   voiceover.StatusFailed,
+			Error:    "tts_failed: Edge TTS connection timeout",
+		},
+		cannedErr: nil, // key: no Go error, only the result.Status signals failure
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+	item := makeItemCmd("parent-job-005", "vo_20260101_120400_ddd444", "en", "en-US-RogerNeural", "hello_en.mp3", "ddd444hash")
+
+	tools := &appjobs.JobTools{Progress: func(int, string) {}}
+	j := &appjobs.Job{ID: "child-job-005", Payload: marshalItemCmd(t, item)}
+	resultMap, err := h.HandleJob(context.Background(), j, tools)
+
+	// P0.1 gate: the handler MUST return an error when the result
+	// status is not completed, even though the use case returned nil.
+	require.Error(t, err, "P0.1: handler must return error on non-completed result (false-success gate)")
+	assert.Contains(t, err.Error(), "tts_failed",
+		"P0.1: error message must carry the per-stage failure string so operators see which stage failed")
+
+	// The result map must carry ok=false so the parent aggregator can
+	// re-read the child result and see it was a failure (defense in
+	// depth on top of the broker status).
+	assert.NotNil(t, resultMap, "P0.1: result map must be non-nil even on failure (operators need per-language detail)")
+	ok, hasOK := resultMap["ok"].(bool)
+	assert.True(t, hasOK, "P0.1: result map must have 'ok' field")
+	assert.False(t, ok, "P0.1: result map 'ok' must be false on non-completed status")
+	assert.Equal(t, voiceover.StatusFailed, resultMap["status"],
+		"P0.1: result map must surface the exact status the use case returned")
+	assert.Equal(t, "tts_failed: Edge TTS connection timeout", resultMap["error"],
+		"P0.1: result map must surface the per-stage error string verbatim")
+
+	require.Len(t, exec.calls, 1, "recorder: handle dispatched exactly once")
+}
+
+// ────────────────────────────────────────────────────────────────────
+// P0.1 Variant: handler still succeeds when result.Status == StatusCompleted
+// ────────────────────────────────────────────────────────────────────
+
+// Locks the complementary contract: when Execute returns a genuinely
+// successful result (StatusCompleted, err==nil), the handler MUST
+// return (resultMap, nil) — the P0.1 gate must NOT false-positive
+// on legitimate successes.
+func TestGenerateItemHandler_CompletedResultReturnsSuccess(t *testing.T) {
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language:    "en",
+			Status:      voiceover.StatusCompleted,
+			DriveLink:   "https://drive.google.com/file/d/abc123/view",
+			DriveFileID: "abc123",
+		},
+		cannedErr: nil,
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+	item := makeItemCmd("parent-job-006", "vo_20260101_120500_eee555", "en", "en-US-RogerNeural", "hello_en.mp3", "eee555hash")
+
+	tools := &appjobs.JobTools{Progress: func(int, string) {}}
+	j := &appjobs.Job{ID: "child-job-006", Payload: marshalItemCmd(t, item)}
+	resultMap, err := h.HandleJob(context.Background(), j, tools)
+
+	require.NoError(t, err, "P0.1 gate: handler must NOT error on StatusCompleted (no false-positive)")
+	ok, hasOK := resultMap["ok"].(bool)
+	assert.True(t, hasOK, "P0.1 gate: result map must have 'ok' field on success")
+	assert.True(t, ok, "P0.1 gate: result map 'ok' must be true on StatusCompleted")
+	assert.Equal(t, voiceover.StatusCompleted, resultMap["status"],
+		"P0.1 gate: result map must surface StatusCompleted")
+	assert.Equal(t, "https://drive.google.com/file/d/abc123/view", resultMap["drive_link"],
+		"P0.1 gate: result map must carry DriveLink on success")
+}
+
 // roleMarker is a thin compile-time pin: assert that the recorder
 // stays satisfying the narrow port. Drift detection requires this
 // explicit type assertion so the next refactor of RecordingExecutor
