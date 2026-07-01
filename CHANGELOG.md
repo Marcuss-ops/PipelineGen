@@ -562,6 +562,26 @@ Files: `internal/app/worker_registry.go` (MODIFIED — +`BuildProfileWorkerRegis
 `internal/app/worker_registry_test.go` (MODIFIED — +7 tests),
 `internal/app/workerruntime/run.go` (MODIFIED — profile-gated registry path).
 
+**[Creator Blocco 2.1, July 2026]** `ArtifactManifest` domain type introduced
+in `internal/domain/job/artifact_manifest.go`. This is the canonical
+serialisable representation of artefacts produced by a worker job. Key
+components:
+- `ArtifactManifest` — top-level container (SchemaVersion, WorkflowID,
+  JobID, Artifacts).
+- `Artifact` — per-file descriptor (ID, Kind, Path, Filename, MIMEType,
+  SizeBytes, SHA256, Required).
+- `Validate()` — enforces required-artefact invariants.
+- `Decode(result map[string]any)` — extracts a manifest from a handler
+  result map, accepting `*ArtifactManifest`, `json.RawMessage`, `[]byte`,
+  `string`, or `map[string]any`.
+- 8 kind constants (`ArtifactKindScriptJSON`, `ArtifactKindVoiceover`, etc.)
+  and the canonical manifest key (`ManifestKey = "__artifact_manifest"`).
+- 20 unit tests covering JSON round-trip, validation edge cases, required-
+  artefact filtering, and all 5 Decode input shapes.
+
+Files: `internal/domain/job/artifact_manifest.go` (NEW),
+`internal/domain/job/artifact_manifest_test.go` (NEW).
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`
