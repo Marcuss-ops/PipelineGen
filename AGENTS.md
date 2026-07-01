@@ -393,6 +393,51 @@ pulled. Use `git push --force-with-lease origin main` only as the explicit
 exit from the amend-loop anti-pattern documented in the
 [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
 
+### Image-territories workflow (FASE 8 cutover, July 2026)
+
+**Regola di routing**: Tutti i commit del action plan **image-territories**
+devono essere **commit diretto su `origin main`** con trailer
+`Co-authored-by:`. **NO** topic branches, **NO** PRs, **NO** `--force`.
+**Push incrementale** dopo ogni commit auto-sufficiente.
+
+```bash
+# Ogni commit del piano image-territories:
+git -c user.email='agent@pipelinegen.local' \
+    -c user.name='PipelineGen Agent' \
+    commit -m '<subject>
+
+<body>
+
+Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>'
+git fetch origin         # race-protection (AGENTS.md Git-Lesson-4/5)
+git push origin main     # direct-to-main; nessun branch intermedio
+```
+
+**Anti-patterns** (rifiutare in code review):
+- ❌ Topic branch dedicato (`feat/image-territories-fase-8` o simili) — il default è direct-on-main.
+- ❌ PR aperto su `origin/main` per qualsiasi sub-task di image-territories.
+- ❌ `--force` o `--force-with-lease` per "vincere" una race con un agent parallelo (il
+  fast-forward exit è sempre possibile; vedi [`Git-Lesson-4`](#git-lesson-4-june-2026--recovery-from-non-fast-forward-push-race)
+  + [`Git-Lesson-5`](#git-lesson-5-june-2026--byte-equivalent-replay-race-recovery)).
+- ❌ Squash-onto-main dopo una fase intermedia — ogni commit auto-sufficiente atterra
+  sul suo SHA canonico, audit-trail pulito.
+
+**Worked example** (image-territories FASE 8 cutover, July 2026):
+- `a130bb9a feat(images): FASE 8 routing↔retrieved cycle break` — cycle break
+  auto-sufficiente, push diretto, trailer `Co-authored-by:` presente.
+- `55394443 chore(architecture): image-territories-cutover wave tracker entry` —
+  closure bookkeeping (report + wave-tracker + CHANGELOG), commit separato,
+  push diretto, trailer `Co-authored-by:` presente.
+- Nessun branch intermedio. Nessun merge commit. Nessun force-push.
+
+**Rationale** (per [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow)):
+il default direct-on-main elimina il merge commit e l'extra host round-trip senza
+perdere audit signal (il body del commit + il trailer `Co-authored-by:` portano
+l'audit provenance che PR descriptions usava riassumere). Le race condition
+con agent paralleli sono gestite da [`Git-Lesson-4`](#git-lesson-4-june-2026--recovery-from-non-fast-forward-push-race)
+(rebase + ff-push) o [`Git-Lesson-5`](#git-lesson-5-june-2026--byte-equivalent-replay-race-recovery)
+(byte-equivalence check + accept), non da `--force`.
+
 
 ## Git-Lesson-3 (June 2026) — `Co-authored-by:` trailers for agent commits
 
