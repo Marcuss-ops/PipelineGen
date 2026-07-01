@@ -27,6 +27,24 @@ const (
 	// substring search finds the producer + consumer + tests on the
 	// same grep pass.
 	EventAssetIndexRestoreRequested   = "asset.index.restore_requested"
+
+	// EventAssetDriveDeleteRequested (Blocco 3.1, June 2026) — first
+	// hop of the deletion state machine
+	// (ACTIVE → DELETE_REQUESTED → DRIVE_DELETE_PENDING → INDEX_DELETE_PENDING → DELETED).
+	//
+	// Producer: outbox.Dispatcher.EnqueueDriveDelete (replaces the
+	// pre-Blocco 3.1 atomic EnqueueAndDelete which was a best-effort
+	// single-shot). Consumer: application/jobs/outbox.DriveDeleteHandler
+	// calls drive.FileLifecycle.Trash (or .Delete for hard-delete),
+	// then transitions lifecycle_state → INDEX_DELETE_PENDING and
+	// emits EventAssetIndexDeleteRequested in the same tx so a
+	// worker crash mid-flow is recoverable.
+	//
+	// Naming follows the established asset.* family — substring
+	// search for `asset.drive.delete_requested` finds producer +
+	// consumer + tests in one grep pass.
+	EventAssetDriveDeleteRequested = "asset.drive.delete_requested"
+
 	EventDeliveryRequested            = "delivery.requested"
 	EventAssetMetadataExportRequested = "asset.metadata_export.requested"
 	EventProviderSyncRequested        = "provider.sync.requested"

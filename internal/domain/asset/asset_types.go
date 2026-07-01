@@ -44,11 +44,33 @@ const (
 	// This is the canonical payload value at Qdrant and the only state
 	// returned by the /internal/v1/media/search endpoint.
 	StateActive LifecycleState = "ACTIVE"
-	// StateDeletePending — soft-delete initiated but Qdrant drain
-	// not yet acknowledged. Visible to operators; not returned by
-	// search. The countdown from DELETE_PENDING → DELETED is owned by
-	// outbox/index_delete.go.
+	// StateDeletePending — LEGACY broad intent state (pre-Blocco 3.1,
+	// June 2026). Reads that previously matched DELETE_PENDING as a
+	// single "soft-delete initiated" intent must now distinguish
+	// between the three explicit deletion steps; new producers MUST
+	// write StateDeleteRequested and follow the chain. Kept here so
+	// in-flight rows that predate the state-machine migration stay
+	// visible to operators + the reconciler can rewrite them on its
+	// next pass.
 	StateDeletePending LifecycleState = "DELETE_PENDING"
+	// StateDeleteRequested (Blocco 3.1, June 2026) — first hop of
+	// the chain. Set by Dispatcher.EnqueueDriveDelete in the same tx
+	// that emits the asset.drive.delete_requested.v1 outbox event.
+	// The DriveDeleteHandler pre-flight accepts {DELETE_REQUESTED,
+	// DRIVE_DELETE_PENDING} so a re-enqueue on the same asset
+	// doesn't reset the chain.
+	StateDeleteRequested LifecycleState = "DELETE_REQUESTED"
+	// StateDriveDeletePending — Drive Trash (or Delete for hard-
+	// deletion) is in flight or retrying. DriveDeleteHandler stamps
+	// this BEFORE the Drive API call and leaves the row in this
+	// state on transient failure. The reconciler picks the row up
+	// if the state has been stuck > reconciliationThreshold.
+	StateDriveDeletePending LifecycleState = "DRIVE_DELETE_PENDING"
+	// StateLifecycleIndexDeletePending — Drive delete succeeded; the
+	// Qdrant DeletePoints + media_assets SoftDelete chain is in
+	// flight or retrying. IndexDeleteHandler pre-flights on this
+	// state and stamps DELETED on success.
+	StateLifecycleIndexDeletePending LifecycleState = "INDEX_DELETE_PENDING"
 	// StateDeleted — terminal tombstone. The SoftDeleteFilter and
 	// the Qdrant lifecycle waterfall exclude this state from all
 	// reads.
@@ -61,24 +83,79 @@ const (
 // CanonicalLifecycleStateValues returns the closed enumeration of
 // canonical lifecycle_state strings. Callers use this as the
 // single-source-of-truth list for migrations, dashboards, and
-// qdrant payload validation.
+// qdrant payload validation. StateDeletePending is the legacy
+// broad-intent value kept for in-flight migration; new writes use
+// the 3 explicit deletion states added in Blocco 3.1.
 func CanonicalLifecycleStateValues() []LifecycleState {
 	return []LifecycleState{
 		StateStaging,
 		StateProcessing,
 		StateActive,
 		StateDeletePending,
+		StateDeleteRequested,
+		StateDriveDeletePending,
+		StateLifecycleIndexDeletePending,
 		StateDeleted,
 		StateError,
 	}
 }
 
-// Valid returns true if s is a known canonical lifecycle state.
+// Valid returns true if s is a known canonical lifecycle state
+// (Blocco 3.1: includes the 3 explicit deletion states).
 func (s LifecycleState) Valid() bool {
 	switch s {
 	case StateStaging, StateProcessing, StateActive,
-		StateDeletePending, StateDeleted, StateError:
+		StateDeletePending, StateDeleteRequested,
+		StateDriveDeletePending, StateLifecycleIndexDeletePending,
+		StateDeleted, StateError:
 		return true
+	}
+	return false
+}
+
+// IsValidTransition reports whether moving from `from` to `to` is
+// one of the allowed edges of the deletion state machine (Blocco 3.1,
+// June 2026).
+//
+// Strict-machine contract:
+//
+//	ACTIVE              → DELETE_REQUESTED        (user-initiated delete)
+//	DELETE_REQUESTED    → DRIVE_DELETE_PENDING    (DriveDeleteHandler pre-flip)
+//	DRIVE_DELETE_PENDING→ INDEX_DELETE_PENDING    (DriveDeleteHandler post-success flip)
+//	INDEX_DELETE_PENDING→ DELETED                 (IndexDeleteHandler post-success flip)
+//	*                   → ACTIVE                  (restore path is symmetric; see
+//	                                               Restore handler + IsValidRestoreTransition)
+//
+// Self-loops are allowed and idempotent (writing the same state
+// twice in a row is harmless). StateDeletePending is the LEGACY
+// broad-intent value; transitions FROM it are allowed into the new
+// chain so the legacy migration path stays valid:
+//
+//	DELETE_PENDING      → DRIVE_DELETE_PENDING    (legacy rewrite path)
+//
+// All other transitions (including the terminal DELETED state) are
+// rejected. Callers using SetLifecycleStateTx + an explicit
+// transition check get a typed error rather than a silent row flip;
+// the write itself is gated by IsValidTransition so a programmer
+// error becomes a build-time constraint rather than a runtime
+// tombstone of an ACTIVE row.
+func (s LifecycleState) IsValidTransition(to LifecycleState) bool {
+	if s == to {
+		return true // idempotent self-loop
+	}
+	switch s {
+	case StateActive:
+		return to == StateDeleteRequested || to == StateDeletePending
+	case StateDeleteRequested:
+		return to == StateDriveDeletePending
+	case StateDeletePending:
+		// Legacy broad-intent → Drive-pending rewrite path. Drives
+		// the reconciler's rewrite of pre-Blocco 3.1 rows.
+		return to == StateDriveDeletePending || to == StateDeleteRequested
+	case StateDriveDeletePending:
+		return to == StateLifecycleIndexDeletePending
+	case StateLifecycleIndexDeletePending:
+		return to == StateDeleted
 	}
 	return false
 }
