@@ -1,35 +1,379 @@
+# =============================================================================
+# PipelineGen Generation Styles — canonical registry (Step 3, July 2026).
+# =============================================================================
+# Each style defines a visual preset for AI image generation. Fields:
+#
+#   name              — canonical ID (required).
+#   display_name      — human-readable label for UIs.
+#   description       — legacy free-text suffix (superseded by prompt_suffix).
+#   version           — integer, bumped when prompt_suffix or negative_prompt change.
+#   prompt_suffix     — appended to the user prompt after a comma separator.
+#   negative_prompt   — injected as negative prompt for providers that support it.
+#   default_width     — output width override (0 = use caller value).
+#   default_height    — output height override (0 = use caller value).
+#   allowed_providers — restrict to these providers (empty = all allowed).
+#   allowed_models    — restrict to these models (empty = all allowed).
+#   destination_key   — logical Drive destination key (e.g. "ai-images/cinematic").
+#   tags              — metadata labels for search and filtering.
+#   enabled           — whether the style is active (omit = enabled).
+# =============================================================================
+
 styles:
+  # ── realistic ──────────────────────────────────────────────────────────
   - name: "realistic"
-    description: "extremely detailed, realistic, 8k, photorealistic, cinematic lighting"
+    display_name: "Realistic"
+    version: 1
+    prompt_suffix: >-
+      extremely detailed, realistic, 8k, photorealistic, cinematic lighting
+    negative_prompt: >-
+      text, watermark, logo, blurry, low resolution, cartoon, anime
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+      - nvidia
+    destination_key: "ai-images/realistic"
+    tags:
+      - realistic
+      - photorealistic
+      - 8k
+    enabled: true
+
+  # ── cartoon ────────────────────────────────────────────────────────────
   - name: "cartoon"
-    description: "cartoon style, 2d, colorful, high quality animation, vibrant"
+    display_name: "Cartoon"
+    version: 1
+    prompt_suffix: >-
+      cartoon style, 2d, colorful, high quality animation, vibrant
+    negative_prompt: >-
+      realistic, photorealistic, 3d, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/cartoon"
+    tags:
+      - cartoon
+      - 2d
+      - colorful
+    enabled: true
+
+  # ── medieval ───────────────────────────────────────────────────────────
   - name: "medieval"
-    description: "medieval style, fantasy, historical, detailed oil painting, epic atmosphere"
+    display_name: "Medieval"
+    version: 1
+    prompt_suffix: >-
+      medieval style, fantasy, historical, detailed oil painting, epic atmosphere
+    negative_prompt: >-
+      modern, futuristic, sci-fi, text, watermark, blurry
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/medieval"
+    tags:
+      - medieval
+      - fantasy
+      - historical
+    enabled: true
+
+  # ── cyberpunk ──────────────────────────────────────────────────────────
   - name: "cyberpunk"
-    description: "cyberpunk aesthetic, neon lights, futuristic, dark atmosphere, high tech"
+    display_name: "Cyberpunk"
+    version: 1
+    prompt_suffix: >-
+      cyberpunk aesthetic, neon lights, futuristic, dark atmosphere, high tech
+    negative_prompt: >-
+      medieval, historical, bright daylight, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+      - nvidia
+    destination_key: "ai-images/cyberpunk"
+    tags:
+      - cyberpunk
+      - neon
+      - futuristic
+    enabled: true
+
+  # ── watercolor ─────────────────────────────────────────────────────────
   - name: "watercolor"
-    description: "watercolor painting style, soft colors, artistic, fluid textures"
+    display_name: "Watercolor"
+    version: 1
+    prompt_suffix: >-
+      watercolor painting style, soft colors, artistic, fluid textures
+    negative_prompt: >-
+      realistic, 3d render, digital art, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/watercolor"
+    tags:
+      - watercolor
+      - artistic
+      - soft
+    enabled: true
+
+  # ── 3d-render ──────────────────────────────────────────────────────────
   - name: "3d-render"
-    description: "3d render, octane render, unreal engine 5 style, volumetric lighting, masterpiece"
+    display_name: "3D Render"
+    version: 1
+    prompt_suffix: >-
+      3d render, octane render, unreal engine 5 style, volumetric lighting, masterpiece
+    negative_prompt: >-
+      2d, cartoon, sketch, text, watermark, low poly
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - flux
+      - nvidia
+    destination_key: "ai-images/3d-render"
+    tags:
+      - 3d
+      - render
+      - octane
+    enabled: true
+
+  # ── sketch ─────────────────────────────────────────────────────────────
   - name: "sketch"
-    description: "hand-drawn sketch, pencil drawing, monochrome, detailed lines, artistic"
+    display_name: "Sketch"
+    version: 1
+    prompt_suffix: >-
+      hand-drawn sketch, pencil drawing, monochrome, detailed lines, artistic
+    negative_prompt: >-
+      realistic, 3d, color, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/sketch"
+    tags:
+      - sketch
+      - pencil
+      - monochrome
+    enabled: true
+
+  # ── cinematic ──────────────────────────────────────────────────────────
   - name: "cinematic"
-    description: "cinematic lighting, movie shot, 35mm lens, highly detailed, dramatic"
+    display_name: "Cinematic"
+    version: 1
+    prompt_suffix: >-
+      cinematic movie still, dramatic natural lighting, realistic depth,
+      35mm lens, detailed composition
+    negative_prompt: >-
+      text, watermark, logo, blurry, low resolution, cartoon, sketch
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+      - nvidia
+    destination_key: "ai-images/cinematic"
+    tags:
+      - cinematic
+      - dramatic
+      - realistic
+    enabled: true
+
+  # ── whiteboard ─────────────────────────────────────────────────────────
   - name: "whiteboard"
-    description: "clean whiteboard animation frame, bold black marker strokes on pure white background, infographic style, simple icon drawings, numbered steps layout, arrows connecting concepts, geometric shapes, no text or words, flat 2d illustration, high contrast black on white, educational diagram aesthetic, single concept per frame"
+    display_name: "Whiteboard"
+    version: 1
+    prompt_suffix: >-
+      clean whiteboard animation frame, bold black marker strokes on pure
+      white background, infographic style, simple icon drawings, numbered
+      steps layout, arrows connecting concepts, geometric shapes, no text
+      or words, flat 2d illustration, high contrast black on white,
+      educational diagram aesthetic, single concept per frame
+    negative_prompt: >-
+      text, words, letters, realistic, 3d, shadows, gradients, color
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/whiteboard"
+    tags:
+      - whiteboard
+      - educational
+      - diagram
+      - infographic
+    enabled: true
+
+  # ── kawaii ─────────────────────────────────────────────────────────────
   - name: "kawaii"
-    description: "cute kawaii style, chibi characters, pastel colors, soft lighting, 2d vector art, minimalist, adorable"
+    display_name: "Kawaii"
+    version: 1
+    prompt_suffix: >-
+      cute kawaii style, chibi characters, pastel colors, soft lighting,
+      2d vector art, minimalist, adorable
+    negative_prompt: >-
+      realistic, 3d, dark, gothic, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/kawaii"
+    tags:
+      - kawaii
+      - cute
+      - pastel
+    enabled: true
+
+  # ── anime ──────────────────────────────────────────────────────────────
   - name: "anime"
-    description: "modern anime style, cinematic lighting, vibrant colors, cel-shaded, highly detailed 2d digital art"
+    display_name: "Anime"
+    version: 1
+    prompt_suffix: >-
+      modern anime style, cinematic lighting, vibrant colors, cel-shaded,
+      highly detailed 2d digital art
+    negative_prompt: >-
+      realistic, photorealistic, 3d, text, watermark, low quality
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+      - nvidia
+    destination_key: "ai-images/anime"
+    tags:
+      - anime
+      - cel-shaded
+      - vibrant
+    enabled: true
+
+  # ── retro-print ────────────────────────────────────────────────────────
   - name: "retro-print"
-    description: "retro print illustration, vintage poster style, 1970s aesthetic, risograph texture, muted warm colors, bold graphic design"
+    display_name: "Retro Print"
+    version: 1
+    prompt_suffix: >-
+      retro print illustration, vintage poster style, 1970s aesthetic,
+      risograph texture, muted warm colors, bold graphic design
+    negative_prompt: >-
+      photorealistic, 3d, modern, sleek, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/retro-print"
+    tags:
+      - retro
+      - vintage
+      - print
+    enabled: true
+
+  # ── heritage ───────────────────────────────────────────────────────────
   - name: "heritage"
-    description: "heritage style, 19th-century encyclopedia illustration, fine ink cross-hatching, vintage etching, muted natural colors, classical drawing"
+    display_name: "Heritage"
+    version: 1
+    prompt_suffix: >-
+      heritage style, 19th-century encyclopedia illustration, fine ink
+      cross-hatching, vintage etching, muted natural colors, classical drawing
+    negative_prompt: >-
+      modern, 3d, color photo, cartoon, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/heritage"
+    tags:
+      - heritage
+      - etching
+      - classical
+    enabled: true
+
+  # ── papercraft ─────────────────────────────────────────────────────────
   - name: "papercraft"
-    description: "papercraft style, layered paper art, 3d paper cutout, sharp drop shadows, textured cardstock, diorama aesthetic"
+    display_name: "Papercraft"
+    version: 1
+    prompt_suffix: >-
+      papercraft style, layered paper art, 3d paper cutout, sharp drop
+      shadows, textured cardstock, diorama aesthetic
+    negative_prompt: >-
+      photorealistic, smooth, digital, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/papercraft"
+    tags:
+      - papercraft
+      - diorama
+      - layered
+    enabled: true
+
+  # ── professional-doc ───────────────────────────────────────────────────
   - name: "professional-doc"
-    description: "professional documentary photography, national geographic style, high detail, realistic, sharp focus, natural lighting"
+    display_name: "Professional Documentary"
+    version: 1
+    prompt_suffix: >-
+      professional documentary photography, national geographic style,
+      high detail, realistic, sharp focus, natural lighting
+    negative_prompt: >-
+      cartoon, sketch, artificial lighting, text, watermark, blurry
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+      - nvidia
+    destination_key: "ai-images/professional-doc"
+    tags:
+      - documentary
+      - professional
+      - realistic
+    enabled: true
+
+  # ── gothic ─────────────────────────────────────────────────────────────
   - name: "gothic"
-    description: "gothic aesthetic, dark, moody, detailed architecture, mysterious atmosphere, Victorian influence"
+    display_name: "Gothic"
+    version: 1
+    prompt_suffix: >-
+      gothic aesthetic, dark, moody, detailed architecture, mysterious
+      atmosphere, Victorian influence
+    negative_prompt: >-
+      bright, cheerful, modern, cartoon, text, watermark
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/gothic"
+    tags:
+      - gothic
+      - dark
+      - victorian
+    enabled: true
+
+  # ── oil-painting ───────────────────────────────────────────────────────
   - name: "oil-painting"
-    description: "classic oil painting style, rich textures, visible brushstrokes, masterpiece, artistic depth"
+    display_name: "Oil Painting"
+    version: 1
+    prompt_suffix: >-
+      classic oil painting style, rich textures, visible brushstrokes,
+      masterpiece, artistic depth
+    negative_prompt: >-
+      digital, 3d, cartoon, text, watermark, flat
+    default_width: 1920
+    default_height: 1080
+    allowed_providers:
+      - google-slides
+      - flux
+    destination_key: "ai-images/oil-painting"
+    tags:
+      - oil-painting
+      - classical
+      - artistic
+    enabled: true
