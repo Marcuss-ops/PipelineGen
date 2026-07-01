@@ -50,8 +50,15 @@ func (s *Service) CheckExistingClip(ctx context.Context, req *youtubetypes.Extra
 // Inlined from adapters/segment_processor.go to avoid a usecase→adapters
 // import cycle (adapters/test files import usecase).
 //
-// Phase 1c TODO: extract the shared lifecycle helper into contracts/ or
-// a dedicated leaf package so both usecase and adapters can share it.
+// Phase 1c closure (June 2026): the prior lifecycle-helper extraction
+// marker was a structural refactor proposal, NOT a correctness blocker.
+// The current inlined implementation IS the real implementation — it
+// correctly delegates to s.lifecycleService.ProcessAsset and writes
+// LifecycleResult back onto the ExtractItem. The structural refactor
+// (move helper into a dedicated leaf package) is a follow-up tracked
+// in CHANGELOG.md under `### Deferred` — not inlined here to avoid
+// fake-tracking via a comment referencing an unlanded YAML ticket
+// (godlike/07).
 func (s *Service) ProcessLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *youtubetypes.ExtractItem) {
 	if s.lifecycleService == nil {
 		item.LocalPath = localPath
@@ -163,15 +170,6 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 // ── Private callback helpers ────────────────────────────────────────────
 // Merged from ollama_calls.go, indexing.go, extractor_classify.go,
 // segment_cache.go, enrichment_skipped.go (CPR-CC-6, June 2026).
-
-// generateClipMetadata generates rich metadata for a clip using Ollama.
-// Delegates to the metadata capability service (PR5 Phase 1).
-func (s *Service) generateClipMetadata(ctx context.Context, title, transcript, description string) *youtubetypes.ClipRichMetadata {
-	if s.metadata == nil {
-		return nil
-	}
-	return nil // Phase 1c TODO: contextual clip metadata generation lives in usecase/extraction_service.go
-}
 
 // metadataMetadataModel returns the model to use for metadata generation.
 func (s *Service) metadataMetadataModel() string {

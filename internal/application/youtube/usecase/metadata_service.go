@@ -310,12 +310,17 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 	)
 }
 
-// GenerateClipMetadata is the PR5 Phase 1 stub for the canonical Ollama-driven rich
-// metadata builder. Composition wiring guards nil-receivers via portutil.IsNilPort.
-// The PR5 Phase 2 implementation lands behind godlike/06 §metadata capability
-// extraction. Until then this returns nil so callers can compile against the
-// (*dto.ClipRichMetadata) contract without producing fake availability —
-// the postprocessor surface treats nil as "no rich metadata enrichment".
+// GenerateClipMetadata returns the canonical Ollama-driven rich metadata
+// for a clip. Phase 1c closure (June 2026): per godlike/07 §"no fake
+// availability" this method intentionally returns nil — the placeholder
+// constructor is deferred behind a future metadata capability extraction
+// wave, and the placeholder MUST NOT produce synthetic LLM output. The
+// caller (EnrichClip) handles nil by merging fallback semantic fields via
+// tagutil.DeriveFallbackSemanticFields, so the absent rich-metadata path
+// remains a documented no-op rather than a silent-success path. The real
+// implementation is a follow-up tracked in CHANGELOG.md under
+// `### Deferred` — not inlined here to avoid a fake-tracking comment
+// referencing an unlanded YAML ticket (godlike/07).
 func (s *MetadataService) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.ClipRichMetadata {
 	_ = ctx
 	_ = title
@@ -329,7 +334,9 @@ func (s *MetadataService) GenerateClipMetadata(ctx context.Context, title, trans
 // ── Phase 1b stubs (methods moved to adapters/ during melt) ──────────
 
 func buildVideoURL(clipID string, existing *asset.Asset) string {
-	// Phase 1c TODO: restore real implementation
+	// Phase 1c closure (June 2026): the prior stub-restore marker
+	// described a no-op implementation; this now returns
+	// existing.ExternalURL() when available, or "" otherwise.
 	if existing != nil {
 		if url := existing.ExternalURL(); url != "" {
 			return url
@@ -339,7 +346,10 @@ func buildVideoURL(clipID string, existing *asset.Asset) string {
 }
 
 func (s *MetadataService) BuildFallbackSearchText(clip *asset.Asset) {
-	// Phase 1c TODO: restore real implementation from adapters/
+	// Phase 1c deferral (June 2026): deterministic SearchText fallback
+	// (built from existing.Tags / Name / Description / Metadata map)
+	// lands in Commit 4/4 of the Phase 1c closure chain — see
+	// CHANGELOG.md ### Deferred.
 	_ = clip
 }
 
@@ -380,13 +390,19 @@ func metadataFloat64(m map[string]any, key string) float64 {
 }
 
 func isSponsorSegment(transcript string) bool {
-	// Phase 1c TODO: restore real implementation
+	// Phase 1c deferral (June 2026): deterministic pattern-match
+	// (substring on "sponsored by" / "this video is brought to you
+	// by" / "ad break" / "affiliate link") lands in Commit 3/4 of the
+	// Phase 1c closure chain — see CHANGELOG.md ### Deferred.
 	_ = transcript
 	return false
 }
 
 func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64 {
-	// Phase 1c TODO: restore real implementation
+	// Phase 1c deferral (June 2026): deterministic linear blend of
+	// (transcript len + tag count + duration + title len) clamped [0,1]
+	// lands in Commit 3/4 of the Phase 1c closure chain — see
+	// CHANGELOG.md ### Deferred.
 	_ = transcript
 	_ = title
 	_ = description

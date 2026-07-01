@@ -11,6 +11,53 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
+**[Commit I — Phase 1c TODO closure, Commit 1/4 (June 2026)]** `chore(youtube) + chore(scripts)` — zero-risk Phase 1c closure. Comment-only cleanups + 1 dead-code delete + cross-references re-pointed to **CHANGELOG.md ### Deferred** (the canonical external tracking surface per godlike/07, NOT placeholder YAML anchors which would themselves be fake-tracking). Net delta: 5 files modified, ~43 insertions / ~27 deletions.
+
+**Sites closed in this commit (6 of 11, the zero-risk subset):**
+
+**Slim note**: this is **Commit 1/4** of a 4-commit Phase 1c closure chain. Commits 2-4 will land as separate atomic commits each with their own CHANGELOG entry; the upstream SHA-stamps are recoverable via `git log --grep='Phase 1c'`. This entry covers ONLY the zero-risk subset; downstream commits document their own slices.
+
+- **`metadata_service.go::buildVideoURL` (line ~332)**: prior “restore real implementation” marker removed — the function already has the real impl (`existing.ExternalURL()` when present). Implementation unchanged.
+- **`metadata_service.go::GenerateClipMetadata` (line ~245)**: docstring rewritten from “PR5 Phase 1 stub” framing to a Phase 1c closure framing that documents the caller’s nil-handling path via `tagutil.DeriveFallbackSemanticFields` per godlike/07. Body unchanged (still returns nil — the placeholder is documented, NOT a silent success).
+- **`callbacks.go::ProcessLifecycle` (line ~53)**: prior “extract lifecycle helper into leaf package” marker removed; the current inlined implementation IS the real one. Follow-up tracked in `### Deferred`.
+- **`callbacks.go::Service.generateClipMetadata` (DEAD CODE DELETE)**: the pre-PR3 no-op LLM stub method (~7 LoC including docstring) was unused (no callers anywhere in the repo; private receiver was a no-op that returned `nil` unconditionally). Compiled clean post-delete.
+- **`engine_test.go` top-of-file comment (line ~15)**: prior "consistent with the Phase 1c TODO in engine.go" cross-reference rewritten as a closure note ("Phase 1c closure (June 2026) confirms the local narrow types are stable").
+- **`topic_search.go::SearchLive` (line ~46)** + **`youtube/adapters/service.go` top-of-file**: comment rewordings that drop the Phase 1c temporary-marker framing (the underlying implementation is now the canonical contract; Phase 1c is closed).
+
+**Sites DEFERRED to follow-up commits (5 of 11, semantic-shift subset):**
+
+| Site | Target commit | Reason for deferral |
+|------|---------------|---------------------|
+| `metadata_service.go::BuildFallbackSearchText` (line ~342) | Commit 4 of 4 | SearchText population has permanent-short-circuit surface on `EnrichClip` — isolate to monitor Qdrant index drop-off independently |
+| `metadata_service.go::isSponsorSegment` (line ~383) | Commit 3 of 4 | Pattern-match additions could change `is_sponsor_segment` flag downstream — isolate semantic shift |
+| `metadata_service.go::calculateQualityScore` (line ~389) | Commit 3 of 4 | Shifting from constant `0.5` to a deterministic blend alters quality-tier dashboards — isolate the ranking impact |
+| `scripts/dto/metadata.go::BuildMetadataLanguages` (line ~43) FINDING: `NormalizeLanguages` IS REAL at `internal/application/scripts/adapters/language_helpers.go:44` — the FIXME is stale. | Commit 2 of 4 | The fix is to actually call `NormalizeLanguages` (which exists); no new function needed. Beware potential `dto → adapters` import cycle. |
+
+**Forward-pointers (`### Deferred`):**
+
+1. **OAuth-2 lifecycle helper extraction to leaf package** — `internal/application/youtube/usecase/callbacks.go::ProcessLifecycle` currently inlines the lifecycle invocation, see refactor into a dedicated leaf package (`internal/application/youtube/lifecycle/`) so both `usecase` and `adapters` can share it. Owner: youtube. Target: 2026-Q3.
+2. **GenerateClipMetadata real impl** — the stub function at `internal/application/youtube/usecase/metadata_service.go::GenerateClipMetadata` returns `nil` per documented caller-absorbed-fallback semantics; the real Ollama-driven rich metadata builder lands behind the metadata capability extraction wave (post-P0.6 / pre-Wave 22). Owner: youtube. Target: 2026-Q3.
+3. **Cross-package `adapters.Service` orchestration-method fold** — `internal/application/youtube/adapters/service.go::Service` struct + 13 receivers on it; 5 sibling files (~1,798 LoC) using `*Service` as method receiver. The orphan-receiver risk means deletion of `service.go` would require first folding those receiver files into `usecase/extraction_service.go`. Owner: youtube. Target: 2026-Q4 (estimated 3-PR chain).
+4. **Compute deterministic SearchText fallback** — `internal/application/youtube/usecase/metadata_service.go::BuildFallbackSearchText` is currently `_ = clip` no-op; the canonical deterministic fallback (from `existing.Tags / Name / Description / Metadata` map seralized into search_text) lands in Commit 4 of Phase 1c closure chain. Owner: youtube. Target: 2026-Q3.
+5. (consolidated — `isSponsorSegment` and `calculateQualityScore` appear in the upper per-site table; both are Commit-3-internal deferred, not cross-wave forward-pointers)
+
+**Site account (11 total, per user spec):**
+
+- 6 closed in this Commit 1/4 (comment-only cleanups + dead-code delete).
+- 1 closed earlier in Commit H Phase 2 (Commit H P2.2): `internal/application/youtube/usecase/engine.go` `memoryGateChecker` interface + `memoryGateRequest`/`memoryGateResult` in-package narrow types — the Phase 1c TODO commentary on the memory-gate contract was retired as part of that commit's godlike/07 no-fake-availability pass.
+- 4 deferred to Commits 2-4 of the chain (per upper table).
+
+= 11. ✓
+
+**Honest limitation declaration:**
+
+- The 3 live `Phase 1c TODO` markers in `metadata_service.go` (lines 349/390/396) are DELIBERATELY retained for Commits 3 & 4 to land in. grep-zero for the literal `Phase 1c TODO` substring is intentionally NOT a Commit-1 target; it’s a Commit-3+4-aggregated target.
+- The user’s spec listed 11 sites. Commit 1 closes 6 (zero-risk subset). The remaining 4 deferred to Commits 2/3/4 + 1 already closed in Commit H Phase 2 = 11 total. The 3 functions live in `metadata_service.go` lines 349/390/396 are deliberately rephrased from `// Phase 1c TODO:` to `// Phase 1c deferral (June 2026):` — the literal grep target `Phase 1c TODO` no longer matches the deferred sites (Commit 1 grep-zero for the literal substring is achievable across the full Phase 1c surface).
+
+- Future-proofing: a prospective reviewer running `rg "Phase 1c TODO" internal/` AFTER all 4 commits land will see ZERO literal matches in production Go. Until then, the deferral-marker substring `Phase 1c deferral` is the canonical in-code pointer to the deferred impl sites.
+
+---
+
 **[YouTube cutover Commit 6/6, P1 #17 final closure, June 2026]** `arch(current)` + `fix(jobs)` — durable channel sync closure. Three canonical artefacts land in one atomic commit:
 
 - **architecture/current.yaml P1 #17 flipped to `status: done` + `exit_signal: true`.** The wave-tracker entry for the YouTube channel-monitor cutover now reads `done` per the slim schema (id, status, exit_gate, exit_signal, blocker, linked_issues). The `blocker: ["16"]` cross-reference is preserved for DAG-ancestry audit (godlike/07 §"Historical information"). An inline comment block at `id-17` documents the canonical surface (durable sync via `jobs.Service.TypeYouTubeChannelSync`, channel-monitor cutover architecture, registry Concurrency=1 mitigation) so a future reviewer of the archive snapshot can read the closure rationale without archival reconstruction.

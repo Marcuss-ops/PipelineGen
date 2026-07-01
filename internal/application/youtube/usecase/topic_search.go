@@ -43,9 +43,10 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 
 // SearchLive performs a live YouTube search via the SearchService
 // capability (L1 in-memory cache → L2 SQLite cache → SearchRunnerPort).
-// Phase 1c (June 2026): delegates to the canonical SearchService wired at
-// construction in NewService; returns an explicit error when search is not
-// wired instead of silently returning (nil, nil).
+// Phase 1c closure (June 2026): wires to the canonical SearchService at
+// construction in NewService; returns an explicit error when search is
+// not wired (instead of silently returning (nil, nil)). This is the
+// canonical Capability-bound entry-point contract (PR1.7 port surface).
 func (s *Service) SearchLive(ctx context.Context, query string, limit int, sortMode string) ([]asset.Asset, error) {
 	if s.search == nil {
 		return nil, fmt.Errorf("youtube: search capability not wired (composition root must include SearchRunner in ServiceDeps)")

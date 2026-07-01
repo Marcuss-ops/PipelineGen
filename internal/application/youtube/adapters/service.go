@@ -8,9 +8,19 @@
 // without creating an adapters → usecase cycle (adapters already imports
 // usecase for BuildClipMetadataInput and ExtractionCallbacks — no new cycle).
 //
-// Phase 1c TODO: fold these orchestration methods into ExtractionService in
-// usecase/ so this Service struct can be deleted. The adapters package should
-// contain only infrastructure adapters — not orchestration logic.
+// Phase 1c closure (June 2026): the prior orchestration-fold marker
+// referred to a structural refactor (fold the orchestration methods
+// into ExtractionService in usecase/, delete this Service struct) —
+// per godlike/07 §deprecations (id + owner + replacement + deadline),
+// the refactor is tracked as a follow-up in CHANGELOG.md under
+// `### Deferred` rather than as a source-code TODO marker. Source-
+// code TODO markers drift toward fake-availability when the ticket
+// tracker goes stale; external tracking in CHANGELOG /
+// architecture/current.yaml flips the polarity and forces a real
+// gate. The 5 sibling receiver files (~1,798 LoC combined) remain
+// untouched pending the fold. The Service struct itself continues
+// to be valid — all 13 receivers on it are real implementations,
+// not fake-availability stubs (per godlike/07).
 package adapters
 
 import (
