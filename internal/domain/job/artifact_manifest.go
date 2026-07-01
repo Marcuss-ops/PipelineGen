@@ -16,12 +16,15 @@
 //      required-artefact invariants, then uploads each artefact.
 //   5. After upload, WithRemoteLocations() replaces local paths with
 //      remote references so the Sender never sees local filesystem paths.
-//      TODO (Blocco 2.2): implement WithRemoteLocations + UploadedManifest.
 package job
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 )
 
@@ -203,4 +206,107 @@ func Decode(result map[string]any) (*ArtifactManifest, error) {
 		return nil, fmt.Errorf("artifact manifest: unmarshal: %w", err)
 	}
 	return &m, nil
+}
+
+// ── Upload-safe types ──────────────────────────────────────────────
+
+// RemoteAsset is the result of uploading a single artefact to the Sender.
+// The RemoteAssetID is the identifier the Sender uses to serve the file
+// to downstream consumers.
+type RemoteAsset struct {
+	RemoteAssetID string `json:"remote_asset_id"`
+	SHA256        string `json:"sha256"`
+}
+
+// UploadedManifest is the Sender-safe representation of a job's artefacts
+// after all uploads have completed. It contains no local filesystem paths
+// — every artefact references a RemoteAssetID that the Sender can resolve.
+type UploadedManifest struct {
+	SchemaVersion string             `json:"schema_version"`
+	WorkflowID    string             `json:"workflow_id"`
+	JobID         string             `json:"job_id"`
+	Artifacts     []UploadedArtifact `json:"artifacts"`
+}
+
+// ── Upload status constants ──────────────────────────────────────
+
+const (
+	StatusReady   = "ready"
+	StatusSkipped = "skipped"
+)
+
+// UploadedArtifact is a single artefact in the Sender-safe manifest.
+// Path and SizeBytes are intentionally omitted — the Sender resolves
+// the file via RemoteAssetID.
+type UploadedArtifact struct {
+	ID            string `json:"id"`
+	Kind          string `json:"kind"`
+	Filename      string `json:"filename"`
+	MIMEType      string `json:"mime_type"`
+	SHA256        string `json:"sha256"`
+	RemoteAssetID string `json:"remote_asset_id"`
+	Status        string `json:"status"` // StatusReady | StatusSkipped
+}
+
+// WithRemoteLocations replaces every Artifact's local Path with the
+// corresponding RemoteAsset reference from the uploaded map, keyed by
+// Artifact.ID. The returned UploadedManifest contains no local filesystem
+// paths and is suitable for serialisation into the job's Complete result.
+//
+// Required artefacts that are missing from the uploaded map trigger an
+// error. Non-required artefacts not in the map receive status "skipped".
+func (m *ArtifactManifest) WithRemoteLocations(uploaded map[string]RemoteAsset) (*UploadedManifest, error) {
+	if m == nil {
+		return nil, fmt.Errorf("manifest is nil")
+	}
+
+	result := &UploadedManifest{
+		SchemaVersion: m.SchemaVersion,
+		WorkflowID:    m.WorkflowID,
+		JobID:         m.JobID,
+		Artifacts:     make([]UploadedArtifact, 0, len(m.Artifacts)),
+	}
+
+	for _, a := range m.Artifacts {
+		remote, ok := uploaded[a.ID]
+		if a.Required && !ok {
+			return nil, fmt.Errorf("artifact %q (%s) is required but was not uploaded", a.ID, a.Kind)
+		}
+
+		ua := UploadedArtifact{
+			ID:       a.ID,
+			Kind:     a.Kind,
+			Filename: a.Filename,
+			MIMEType: a.MIMEType,
+			SHA256:   a.SHA256,
+		}
+
+		if ok {
+			ua.RemoteAssetID = remote.RemoteAssetID
+			ua.Status = StatusReady
+		} else {
+			ua.Status = StatusSkipped
+		}
+
+		result.Artifacts = append(result.Artifacts, ua)
+	}
+
+	return result, nil
+}
+
+// ComputeSHA256 reads the file at path and returns its hex-encoded
+// SHA-256 digest. Used by the runner before upload to populate
+// Artifact.SHA256.
+func ComputeSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("sha256: open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("sha256: read %s: %w", path, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

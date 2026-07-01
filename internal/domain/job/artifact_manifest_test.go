@@ -420,3 +420,185 @@ func TestDecode_MalformedJSON(t *testing.T) {
 		t.Fatal("expected error for malformed JSON")
 	}
 }
+
+// ── WithRemoteLocations ──────────────────────────────────────────────
+
+func TestWithRemoteLocations_AllReady(t *testing.T) {
+	m := &ArtifactManifest{
+		SchemaVersion: SchemaVersionArtifactManifestV1,
+		WorkflowID:    "wf_1",
+		JobID:         "job_1",
+		Artifacts: []Artifact{
+			{ID: "job_1:script", Kind: ArtifactKindScriptJSON, Filename: "script.json", MIMEType: "application/json", SHA256: "abc123", Required: true},
+			{ID: "job_1:voiceover:it", Kind: ArtifactKindVoiceover, Filename: "voiceover-it.mp3", MIMEType: "audio/mpeg", SHA256: "def456", Required: true},
+		},
+	}
+	uploaded := map[string]RemoteAsset{
+		"job_1:script":       {RemoteAssetID: "asset_789", SHA256: "abc123"},
+		"job_1:voiceover:it": {RemoteAssetID: "asset_790", SHA256: "def456"},
+	}
+	result, err := m.WithRemoteLocations(uploaded)
+	if err != nil {
+		t.Fatalf("WithRemoteLocations: %v", err)
+	}
+	if len(result.Artifacts) != 2 {
+		t.Fatalf("artifact count = %d, want 2", len(result.Artifacts))
+	}
+
+	// First artefact: ready
+	if result.Artifacts[0].RemoteAssetID != "asset_789" {
+		t.Errorf("artifact[0].RemoteAssetID = %q, want asset_789", result.Artifacts[0].RemoteAssetID)
+	}
+	if result.Artifacts[0].Status != "ready" {
+		t.Errorf("artifact[0].Status = %q, want ready", result.Artifacts[0].Status)
+	}
+
+	// Second artefact: ready
+	if result.Artifacts[1].RemoteAssetID != "asset_790" {
+		t.Errorf("artifact[1].RemoteAssetID = %q, want asset_790", result.Artifacts[1].RemoteAssetID)
+	}
+	if result.Artifacts[1].Status != "ready" {
+		t.Errorf("artifact[1].Status = %q, want ready", result.Artifacts[1].Status)
+	}
+
+	// Verify no local paths leak
+	data, _ := json.Marshal(result)
+	if strings.Contains(string(data), "/tmp/") {
+		t.Error("UploadedManifest contains local paths — must not leak")
+	}
+}
+
+func TestWithRemoteLocations_RequiredMissing_Error(t *testing.T) {
+	m := &ArtifactManifest{
+		SchemaVersion: SchemaVersionArtifactManifestV1,
+		Artifacts: []Artifact{
+			{ID: "job_1:script", Kind: ArtifactKindScriptJSON, Filename: "script.json", Required: true},
+		},
+	}
+	// Script artefact is required but not in the uploaded map.
+	_, err := m.WithRemoteLocations(map[string]RemoteAsset{})
+	if err == nil {
+		t.Fatal("expected error for required artefact not uploaded")
+	}
+	if !strings.Contains(err.Error(), "required but was not uploaded") {
+		t.Errorf("error should mention required + not uploaded, got: %v", err)
+	}
+}
+
+func TestWithRemoteLocations_NonRequiredSkipped(t *testing.T) {
+	m := &ArtifactManifest{
+		SchemaVersion: SchemaVersionArtifactManifestV1,
+		Artifacts: []Artifact{
+			{ID: "job_1:script", Kind: ArtifactKindScriptJSON, Filename: "script.json", Required: true, SHA256: "abc"},
+			{ID: "job_1:image:0", Kind: ArtifactKindImage, Filename: "image.png", Required: false, SHA256: "def"},
+		},
+	}
+	// Only the required script was uploaded; image is best-effort and missing.
+	uploaded := map[string]RemoteAsset{
+		"job_1:script": {RemoteAssetID: "asset_1", SHA256: "abc"},
+	}
+	result, err := m.WithRemoteLocations(uploaded)
+	if err != nil {
+		t.Fatalf("WithRemoteLocations: %v", err)
+	}
+	if len(result.Artifacts) != 2 {
+		t.Fatalf("artifact count = %d, want 2", len(result.Artifacts))
+	}
+	if result.Artifacts[0].Status != "ready" {
+		t.Errorf("required artifact should be ready, got %q", result.Artifacts[0].Status)
+	}
+	if result.Artifacts[1].Status != "skipped" {
+		t.Errorf("non-required missing artifact should be skipped, got %q", result.Artifacts[1].Status)
+	}
+	if result.Artifacts[1].RemoteAssetID != "" {
+		t.Errorf("skipped artifact should have empty RemoteAssetID, got %q", result.Artifacts[1].RemoteAssetID)
+	}
+}
+
+func TestWithRemoteLocations_NilManifest(t *testing.T) {
+	var m *ArtifactManifest
+	_, err := m.WithRemoteLocations(nil)
+	if err == nil {
+		t.Fatal("expected error for nil manifest")
+	}
+}
+
+func TestWithRemoteLocations_PreservesMetadata(t *testing.T) {
+	m := &ArtifactManifest{
+		SchemaVersion: SchemaVersionArtifactManifestV1,
+		WorkflowID:    "wf_meta",
+		JobID:         "job_meta",
+		Artifacts: []Artifact{
+			{ID: "x:script", Kind: ArtifactKindScriptJSON, Filename: "s.json", MIMEType: "application/json", SHA256: "sha", Required: true},
+		},
+	}
+	uploaded := map[string]RemoteAsset{"x:script": {RemoteAssetID: "r1", SHA256: "sha"}}
+	result, _ := m.WithRemoteLocations(uploaded)
+	if result.SchemaVersion != m.SchemaVersion {
+		t.Errorf("SchemaVersion = %q, want %q", result.SchemaVersion, m.SchemaVersion)
+	}
+	if result.WorkflowID != m.WorkflowID {
+		t.Errorf("WorkflowID = %q, want %q", result.WorkflowID, m.WorkflowID)
+	}
+	if result.JobID != m.JobID {
+		t.Errorf("JobID = %q, want %q", result.JobID, m.JobID)
+	}
+	if result.Artifacts[0].Kind != ArtifactKindScriptJSON {
+		t.Errorf("Kind = %q, want %q", result.Artifacts[0].Kind, ArtifactKindScriptJSON)
+	}
+	if result.Artifacts[0].Filename != "s.json" {
+		t.Errorf("Filename = %q, want s.json", result.Artifacts[0].Filename)
+	}
+	if result.Artifacts[0].MIMEType != "application/json" {
+		t.Errorf("MIMEType = %q, want application/json", result.Artifacts[0].MIMEType)
+	}
+	if result.Artifacts[0].SHA256 != "sha" {
+		t.Errorf("SHA256 = %q, want sha", result.Artifacts[0].SHA256)
+	}
+}
+
+// ── UploadedManifest JSON round-trip ─────────────────────────────────
+
+func TestUploadedManifest_JSONRoundTrip(t *testing.T) {
+	original := UploadedManifest{
+		SchemaVersion: SchemaVersionArtifactManifestV1,
+		WorkflowID:    "wf_1",
+		JobID:         "job_1",
+		Artifacts: []UploadedArtifact{
+			{ID: "job_1:script", Kind: ArtifactKindScriptJSON, Filename: "script.json", MIMEType: "application/json", SHA256: "abc", RemoteAssetID: "asset_1", Status: "ready"},
+			{ID: "job_1:image:0", Kind: ArtifactKindImage, Filename: "img.png", MIMEType: "image/png", SHA256: "def", RemoteAssetID: "", Status: "skipped"},
+		},
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var decoded UploadedManifest
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if len(decoded.Artifacts) != 2 {
+		t.Fatalf("artifact count = %d, want 2", len(decoded.Artifacts))
+	}
+	if decoded.Artifacts[0].RemoteAssetID != "asset_1" {
+		t.Errorf("artifact[0].RemoteAssetID = %q, want asset_1", decoded.Artifacts[0].RemoteAssetID)
+	}
+	if decoded.Artifacts[0].Status != "ready" {
+		t.Errorf("artifact[0].Status = %q, want ready", decoded.Artifacts[0].Status)
+	}
+	if decoded.Artifacts[1].Status != "skipped" {
+		t.Errorf("artifact[1].Status = %q, want skipped", decoded.Artifacts[1].Status)
+	}
+
+	// Verify no Path or SizeBytes fields leak
+	rawJSON := string(data)
+	if strings.Contains(rawJSON, "\"path\"") {
+		t.Error("UploadedManifest JSON should not contain 'path' field")
+	}
+	if strings.Contains(rawJSON, "\"size_bytes\"") {
+		t.Error("UploadedManifest JSON should not contain 'size_bytes' field")
+	}
+}
