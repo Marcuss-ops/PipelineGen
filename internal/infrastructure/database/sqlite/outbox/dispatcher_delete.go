@@ -156,6 +156,116 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 	})
 }
 
+// EnqueueIndexDelete re-emits an asset.index.delete_requested outbox
+// event WITHOUT advancing the lifecycle state. Used by the Blocco 3.2
+// DeletionReconciler for rows stuck in {DRIVE_DELETE_PENDING,
+// INDEX_DELETE_PENDING}: the reconciler re-emits the event so a fresh
+// lease-fenced worker can pick it up; the IndexDeleteHandler does the
+// actual Qdrant-delete + SoftDelete + DELETED state flip on its own.
+//
+// Unlike EnqueueDriveDelete + AdvanceAndEmit (which ATOMICALLY stamp
+// lifecycle_state + emit), this method is emit-only. The signature
+// is intentionally distinct from EnqueueDriveDelete(assetID, bool)
+// because re-emitting an index-delete from the reconciler is a
+// recovery operation, not a user-initiated one:
+//
+//	tx body:
+//	  UPDATE media_assets SET updated_at = ?
+//	   WHERE id = ?
+//	  INSERT outbox_events (event_type=EventAssetIndexDeleteRequested,
+//	                        aggregate_id=assetID,
+//	                        aggregate_type="media_asset",
+//	                        event_key=delete:<assetID>)
+//
+// updated_at re-stamp policy (CIRCUIT-BREAKER pattern, June 2026):
+//
+// The UPDATE re-stamps `updated_at = <now>` so the row exits the
+// stuck-threshold window immediately after re-emission. This is a
+// deliberate rate-limit on retries:
+//
+//   - Without the re-stamp: the row stays "stuck" (updated_at
+//     unchanged), so the NEXT reconciler tick (typically 15 min later)
+//     re-emits the same row, amplifying any underlying failure into
+//     a hot loop. A permanently-failing Drive API would get hammered
+//     every 15 min with no operator-visible backoff.
+//
+//   - With the re-stamp: the row exits the stuck-threshold window for
+//     `threshold` minutes (default 30). If the worker succeeds within
+//     that window, the row transitions to DELETED and never re-surfaces.
+//     If the worker fails, the row's updated_at goes stale again
+//     after `threshold` minutes and the reconciler picks it up — a
+//     explicit circuit-breaker with bounded retry rate.
+//
+// The downside: if the worker processes the event PARTIALLY
+// (e.g. Qdrant delete succeeded, SoftDelete write crashed mid-flight),
+// the row remains in INDEX_DELETE_PENDING with fresh updated_at and
+// won't be re-emitted for `threshold` minutes. This is an accepted
+// trade-off — the 30-min rate-limit applies uniformly and partial
+// failures are caught by the IndexDeleteHandler's idempotent clip_id
+// ledger on the next genuine re-emission. See
+// internal/application/jobs/outbox/index_delete.go::Handle for the
+// pre-flight idempotency contract.
+//
+// v1 conflation invariant: payload.IdempotencyKey MUST equal the
+// canonical event_key `delete:<assetID>` — same host as
+// delete_envelope.go::deleteEventKey. Mismatch surfaces as a runtime
+// error rather than silently corrupting the dedup layer.
+func (d *Dispatcher) EnqueueIndexDelete(ctx context.Context, assetID string) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	}
+	if assetID == "" {
+		return errors.New("outbox.Dispatcher.EnqueueIndexDelete: assetID is required")
+	}
+
+	payload := buildDeleteRequestV1(assetID)
+	eventKey := deleteEventKey(assetID)
+	if payload.IdempotencyKey != eventKey {
+		return fmt.Errorf("dispatcher: index-delete payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("dispatcher marshal v1 index-delete payload %s: %w", assetID, err)
+	}
+
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Re-stamp updated_at (no lifecycle_state change): keeps the
+		// row's timestamp fresh for the next reconciler tick so the
+		// same row doesn't re-surface immediately. Mirrors the
+		// updated_at stamping convention from Blocco 3.2 commit 1/2.
+		nowStr := timeutil.FormatRFC3339(time.Now())
+		if _, err := tx.ExecContext(ctx, `UPDATE media_assets SET updated_at = ? WHERE id = ?`,
+			nowStr, assetID); err != nil {
+			return fmt.Errorf("dispatcher index-delete: re-stamp updated_at %s: %w", assetID, err)
+		}
+
+		if _, err := d.outboxEventsRepo.Enqueue(
+			ctx, tx,
+			outboxevents.EventAssetIndexDeleteRequested,
+			assetID,
+			"media_asset",
+			string(payloadJSON),
+			eventKey,
+		); err != nil {
+			return fmt.Errorf("dispatcher enqueue outbox index-delete event %s: %w", assetID, err)
+		}
+
+		if d.log != nil {
+			d.log.Debug("dispatcher enqueued asset for outbox index-delete (v1 envelope — reconciler recovery path)",
+				zap.String("asset_id", assetID),
+				zap.String("outbox_event_id", payload.EventID),
+			)
+		}
+		return nil
+	})
+}
+
 // EnqueueAndRestore performs the canonical DISPATCH step of an
 // asset.restore flow (Wave 22, June 2026 — task 1 of 5 foundation).
 //

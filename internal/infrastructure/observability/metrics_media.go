@@ -100,4 +100,61 @@ var (
 		Name: "clip_dedup_merged_total",
 		Help: "Total number of duplicate clips merged/soft-deleted by the post-hoc dedup sweeper",
 	}, []string{"source", "reason"})
+
+	// Deletion Reconciler Metrics (Blocco 3.2 commit 2/2, June 2026)
+	//
+	// The deletion-reconciler scans media_assets for rows stuck in
+	// {DELETE_REQUESTED, DRIVE_DELETE_PENDING, INDEX_DELETE_PENDING}
+	// past a configurable threshold (default 30min), then re-emits
+	// the canonical outbox event to advance the chain. These counters
+	// surface the dispatch rate per (action, from_state) combination
+	// for operator dashboards.
+	DeletionReconcilerActionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "deletion_reconciler_actions_total",
+		Help: "Total number of deletion-reconciler dispatches by action and from_state (action=requeue_drive|requeue_index, from_state=one of 3 deletion-chain states)",
+	}, []string{"action", "from_state"})
+
+	DeletionReconcilerSkippedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "deletion_reconciler_skipped_total",
+		Help: "Total number of deletion-reconciler rows skipped per tick, by reason (drift sentinel — production rows should rarely surface)",
+	}, []string{"reason"})
+
+	DeletionReconcilerErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "deletion_reconciler_errors_total",
+		Help: "Total number of deletion-reconciler failures (Phase 1 SQL scan errors + per-row dispatch errors)",
+	})
+
+	DeletionReconcilerLastSuccess = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "deletion_reconciler_last_success_timestamp_seconds",
+		Help: "Unix timestamp of the most recent successful deletion-reconciler tick",
+	})
+
+	DeletionReconcilerDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "deletion_reconciler_duration_seconds",
+		Help:    "Duration of deletion-reconciler ticks (Phase 1 + Phase 2 + Phase 3 + Phase 4)",
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	})
 )
+
+// Note (Blocco 3.2 commit 2/2 — package boundary)
+// ─────────────────────────────────────────────────
+// The deletion_reconciler_* Prometheus counters declared above
+// (DeletionReconcilerActionsTotal / SkippedTotal / ErrorsTotal /
+// LastSuccess / Duration) are consumed via the canonical Pattern 0
+// adapter at
+//
+//	internal/infrastructure/database/sqlite/deletion/metrics_adapter.go
+//
+// type ReconcilerMetricsAdapter struct{}
+//
+// which exposes them against the application-layer
+// reconciler.Metrics port. The composition root wires
+// `deletion.ReconcilerMetricsAdapter{}` into
+// reconciler.NewServiceFromDeps — see internal/app/lifecycle.go.
+//
+// Earlier iterations of this commit placed an unexported
+// `deletionReconcilerMetricsAdapter` directly in this file; that
+// shape conflicted with the canonical deletion-package adapter
+// (two concretes satisfying the same port = Pattern 0 violation).
+// The unexported adapter has been removed in favour of the
+// deletion-package adapter as the single owner of the port.

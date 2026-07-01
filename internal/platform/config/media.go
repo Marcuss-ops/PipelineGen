@@ -187,4 +187,30 @@ type JobsConfig struct {
 	// EnableTestJobHandlers registers test-only job handlers (echo, slow, fail).
 	// Default false; set via env VELOX_ENABLE_TEST_JOB_HANDLERS=true for dev/testing.
 	EnableTestJobHandlers bool `yaml:"enable_test_job_handlers" env:"VELOX_ENABLE_TEST_JOB_HANDLERS" default:"false"`
+
+	// PR-Deletion-Reconciler / Blocco 3.2 (June 2026): two knobs
+	// gate the DeletionReconciler ticker.
+	//
+	// DeletionReconcilerInterval is the periodic tick that scans
+	// media_assets for deletion-stuck rows + re-emits the appropriate
+	// outbox event. Default 15min balances operator visibility against
+	// per-tick DB scan load (the query is bounded by batchSize=100,
+	// see internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go).
+	//
+	// DeletionReconcilerStuckThreshold is the age cutoff: rows whose
+	// updated_at is older than now-threshold are eligible for
+	// re-emission. Default 30min matches the Blocco 5 outbox-pool
+	// backoff cap (90s × ~20 retries = 30min) — a row stuck beyond
+	// this is a worker-crash or infra-fault that the pool cannot
+	// self-recover from, not a transient retry storm.
+	//
+	// Operators alert on:
+	//   rate(deletion_reconciler_actions_total[5m]) > 0  (reconciler
+	//   is dispatching; expected only on recovery from bumps/crashes)
+	//   AND
+	//   rate(deletion_reconciler_actions_total[1h]) == 0
+	// (reconciler is healthy when no actions are emitted; sustained
+	// non-zero rate indicates a recurring bug).
+	DeletionReconcilerInterval       string `yaml:"deletion_reconciler_interval" env:"VELOX_DELETION_RECONCILER_INTERVAL" default:"15m"`
+	DeletionReconcilerStuckThreshold string `yaml:"deletion_reconciler_stuck_threshold" env:"VELOX_DELETION_RECONCILER_STUCK_THRESHOLD" default:"30m"`
 }
