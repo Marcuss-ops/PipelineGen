@@ -8,11 +8,9 @@
 //     are the new ports that hide os/exec, OllamaClient, VTT parsing,
 //     and the jobs.Service broker behind typed boundaries).
 //   - The CompositionDeps struct (the new NewChannelMonitor signature).
-//   - ChannelConfig + MonitorConfig + ChannelCheckResult +
-//     Analysis + EnqueueExtractRequest — DTO types used across files.
+//   - ChannelCheckResult + Analysis + EnqueueExtractRequest — DTO types used across files.
 //   - The compile-time assertions pinning the concrete YTDLPDownloader
-//     satisfies MonitorDownloaderPort, and the temporary *unbound*Xyz
-//     stubs satisfy their respective ports.
+//     satisfies MonitorDownloaderPort.
 //
 // Per AGENTS.md / godlike/06 §"Database and config ownership": every new
 // dependency crosses the boundary through a typed port (no direct
@@ -26,7 +24,6 @@ package monitor
 import (
 	"context"
 	"errors"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -62,7 +59,7 @@ const DefaultPlaylistEnd = 50
 type CompositionDeps struct {
 	// Cfg drives monitor-level defaults (CheckInterval, MaxConcurrentChannelChecks,
 	// the global OllamaModel for fallback). The per-channel fields live in
-	// channels.Channel + ChannelConfig; the monitor reads what it needs.
+	// channels.Channel; the monitor reads what it needs.
 	Cfg *config.Config
 
 	// ChannelsSvc is the canonical authority for category_channels.
@@ -78,24 +75,21 @@ type CompositionDeps struct {
 	Ytdlp MonitorDownloaderPort
 
 	// Transcript abstracts "given a YouTube URL, return the plain-text
-	// transcript". The concrete adapter owns os/exec + yt-dlp subprocess
-	// invocation + temp-file lifecycle + VTT regex parsing. THIS COMMIT
-	// ships a no-op unbound stub; the next commit installs the actual
-	// YTDLPSubtitleAdapter under internal/application/transcripts/.
+	// transcript". The concrete adapter (YTDLPSubtitleAdapter at
+	// internal/application/transcripts/) owns os/exec + yt-dlp subprocess
+	// invocation + temp-file lifecycle + VTT regex parsing.
 	Transcript TranscriptProvider
 
 	// Analyzer abstracts "given a transcript, return relevance score +
 	// matched keyword + category + best segments". The concrete adapter
-	// owns Ollama SimpleGenerate + JSON parse + category fallback. THIS
-	// COMMIT ships a no-op unbound stub; the next commit installs the
-	// OllamaAnalyzer under internal/application/semantic/.
+	// (OllamaAnalyzer at internal/application/semantic/) owns Ollama
+	// SimpleGenerate + JSON parse + category fallback.
 	Analyzer VideoAnalyzer
 
 	// Enqueuer abstracts "given an analysis, build the ExtractRequest +
 	// emit a job via the broker + update the channel cursor". The
-	// concrete adapter owns *jobtools.Service + ActiveKey construction
-	// + cursor persistence. THIS COMMIT ships a no-op unbound stub; the
-	// next commit installs the real JobsEnqueuer binding.
+	// concrete adapter (*ExtractionEnqueuer) owns *jobtools.Service +
+	// ActiveKey construction + cursor persistence.
 	Enqueuer JobEnqueuer
 
 	// Discoveries (Commit D, June 2026) is the typed port over the
@@ -116,63 +110,6 @@ type CompositionDeps struct {
 	// tests that construct ChannelMonitor by struct literal without
 	// going through CompositionDeps keep working.
 	Policy *MonitorRuntimePolicy
-}
-
-// ── ChannelConfig + MonitorConfig (DTO types) ────────────────────────────
-
-// ChannelConfig represents a monitored YouTube channel.
-// PR 2 (June 2026): the JSON list of channels is removed; channels are now
-// loaded exclusively from category_channels via channels.Service.ListEnabled().
-// This struct remains the runtime config the monitor uses per channel.
-//
-// NOTE (Step 9): after the port extraction, ChannelConfig fields are read
-// at specific call sites rather than as a single struct on ChannelMonitor.
-// Kept as a public type for documentation + back-compat with code that still
-// references the field shape (no current callers do — listed here for
-// future grep auditability).
-type ChannelConfig struct {
-	ID               string        `json:"id"`
-	URL              string        `json:"url"`
-	Category         string        `json:"category"`
-	Keywords         []string      `json:"keywords"`
-	MinViews         int           `json:"min_views"`
-	MaxClipDuration  int           `json:"max_clip_duration"`
-	DriveFolderID    string        `json:"drive_folder_id,omitempty"`
-	PlaylistEnd      int           `json:"playlist_end,omitempty"`
-	SemanticKeywords []string      `json:"semantic_keywords,omitempty"`
-	MinSemanticScore int           `json:"min_semantic_score,omitempty"`
-	CheckInterval    time.Duration `json:"check_interval,omitempty"`
-	MaxVideosPerRun  int           `json:"max_videos_per_run,omitempty"`
-	LookbackDays     int           `json:"lookback_days,omitempty"`
-	MaxSegments      int           `json:"max_segments,omitempty"`
-	SegmentPrompt    string        `json:"segment_prompt,omitempty"`
-	Priority         int           `json:"priority,omitempty"`
-}
-
-// EffectivePriority returns the channel's priority, defaulting to normal.
-func (c *ChannelConfig) EffectivePriority() int {
-	if c.Priority > 0 {
-		return c.Priority
-	}
-	return PriorityNormal
-}
-
-// MonitorConfig holds global monitor configuration (yt-dlp path, cookies, etc.).
-// PR 2 (June 2026): the Channels field is removed — channels come exclusively
-// from category_channels via channels.Service. This struct only holds global
-// technical defaults.
-//
-// NOTE (Step 9): kept as a public DTO for legacy call sites; monitor/ no
-// longer reads from a concrete MonitorConfig field — it derives per-channel
-// behavior from channels.Channel + cfg.* globals directly.
-type MonitorConfig struct {
-	CheckInterval   time.Duration `json:"check_interval"`
-	YtdlpPath       string        `json:"ytdlp_path"`
-	CookiesPath     string        `json:"cookies_path"`
-	MaxClipDuration int           `json:"max_clip_duration"`
-	PlaylistEnd     int           `json:"playlist_end"`
-	MaxFilesize     string        `json:"max_filesize"`
-	OllamaURL       string        `json:"ollama_url"`
 }
 
 // ── ChannelCheckResult (scheduler return type) ────────────────────────────
@@ -495,33 +432,6 @@ type AnalyzeOptions struct {
 	// channel.MinSemanticScore is unset). 0 disables the gate.
 	MinScore int
 }
-
-// ── Unbound placeholder stubs (this commit only) ──────────────────────────
-
-// unboundJobEnqueuer is the nil-safe stub that returns "not wired" for every
-// EnqueueExtract call. Used as the fallback when CompositionDeps.Enqueuer is nil
-// (partial-deploy / test-fixture paths). Production wiring replaces this
-// with a concrete *ExtractionEnqueuer via lifecycle.go.
-type unboundJobEnqueuer struct{}
-
-// NewUnboundJobEnqueuer returns a stub that satisfies JobEnqueuer. Every
-// EnqueueExtract call returns ErrJobEnqueuerNotWired so the monitor's
-// per-video error log captures the missing-wire gap rather than nil-deref
-// panicking.
-func NewUnboundJobEnqueuer() JobEnqueuer {
-	return &unboundJobEnqueuer{}
-}
-
-// ErrJobEnqueuerNotWired is the sentinel returned by the unbound stub.
-var ErrJobEnqueuerNotWired = errors.New("monitor: JobEnqueuer not wired (composition root must inject *ExtractionEnqueuer from internal/app/lifecycle.go)")
-
-func (u *unboundJobEnqueuer) EnqueueExtract(ctx context.Context, req EnqueueExtractRequest) error {
-	return ErrJobEnqueuerNotWired
-}
-
-// Compile-time assertion: the unbound stub satisfies JobEnqueuer so a signature
-// drift on the interface becomes a build failure.
-var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
 
 // ── CategoryChannelsPort (Commit G migration adapter, June 2026) ────────
 
