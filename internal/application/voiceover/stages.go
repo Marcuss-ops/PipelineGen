@@ -502,6 +502,28 @@ func (s *Service) finalizeStage(
 			fmt.Errorf("%s: Commit: %w", restoreIdent, err))
 	}
 
+	// P0.4 Fase 4a (July 2026): post-commit SQL verification.
+	// The tx has committed — this is purely diagnostic. We confirm
+	// that both the voiceovers row and the media_assets projection
+	// are durably present. A missing row after a successful commit
+	// signals a silent schema/driver bug (e.g. a trigger that
+	// drops rows, a WAL checkpoint race, a silent constraint
+	// violation). The warning is surfaced to operators but does
+	// NOT fail the item — the tx succeeded, the Drive file exists,
+	// and the caller already received StatusCompleted.
+	if s.postCommitVerifier != nil {
+		if verifyErr := s.postCommitVerifier.Verify(ctx, item.ID); verifyErr != nil {
+			if s.log != nil {
+				s.log.Warn("finalizeStage: post-commit verification failed — row(s) missing after successful commit",
+					zap.String("restored", restoreIdent),
+					zap.String("voiceover_id", item.ID),
+					zap.String("language", language),
+					zap.String("request_id", requestID),
+					zap.Error(verifyErr))
+			}
+		}
+	}
+
 	item.Status = StatusCompleted
 	return item
 }

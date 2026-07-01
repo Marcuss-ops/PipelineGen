@@ -272,6 +272,12 @@ func buildVoiceoverService(
 		log.Warn("voiceover: skipping ProcessVoiceoverItemUseCase wire-up (Step 8/12); destResolver is nil — VoiceoverItemExecutor port returns nil; handler registration will fail-fast (NewGenerateItemJobHandler panic-on-nil useCase) at composition time in production paths that exercise the typed port")
 	}
 
+	// P0.4 Fase 4a (July 2026): wire the post-commit SQL verifier.
+	// After the tx commits, finalizeStage calls Verify to confirm both
+	// the voiceovers row and the media_assets projection are durably
+	// present. The adapter uses dbs.main.DB for post-commit SELECTs.
+	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.main.DB)
+
 	voService := voiceover.NewService(voiceover.VoiceoverDeps{
 		Core:        voiceover.VoiceoverCoreDeps{Cfg: cfg, Log: log, OutputDir: voDir},
 		Persistence: voiceover.VoiceoverPersistenceDeps{Repo: voRepoAdapter},
@@ -280,12 +286,13 @@ func buildVoiceoverService(
 			SemanticTagger: semanticTagger,
 		},
 		Integration: voiceover.VoiceoverIntegrationDeps{
-			DriveUploader:     newVoiceoverDriveAdapter(driveUploader),
-			LifecycleService:  voLifecycle,
-			AssetDestResolver: destResolver,
-			OutboxEnqueuer:    outboxEnqueuer,
-			Translator:        translator,
-			Finalizer:         finalizer,
+			DriveUploader:      newVoiceoverDriveAdapter(driveUploader),
+			LifecycleService:   voLifecycle,
+			AssetDestResolver:  destResolver,
+			OutboxEnqueuer:     outboxEnqueuer,
+			Translator:         translator,
+			Finalizer:          finalizer,
+			PostCommitVerifier: postCommitVerifier,
 		},
 	})
 	// pylint: disable=unused
