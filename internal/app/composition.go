@@ -29,6 +29,7 @@ import (
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -329,6 +330,13 @@ type DomainBundle struct {
 	// cfg.Storage.DataDir. Wired into AssetsModuleDeps.Core and
 	// consumed by the upload UseCase via artifactServiceAdapter.
 	ArtifactService *artifacts.Service
+	// FASE 7 (July 2026, image-territories action plan): the routing-
+	// layer ImageSearchResolver (routing.ImageSearchResolver) wired in
+	// composition.BuildDomainBundle from imageSvc.RetrievalRegistry() +
+	// repos.ImageRepo. Canonical singleton surface for downstream
+	// handlers + lifecycle Stop consumers. Reaches the HTTP layer
+	// via api.ServerDeps.ImageSearchResolver (composition → server).
+	ImageSearchResolver routing.ImageSearchResolver
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and
