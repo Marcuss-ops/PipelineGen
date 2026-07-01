@@ -146,7 +146,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 	}
 
 	// 4) INSERT outbox_events (tx-bound).
-	if _, err := w.box.Enqueue(
+	enqResult, err := w.box.Enqueue(
 		ctx,
 		tx,
 		outboxevents.EventAssetIndexRequested,
@@ -154,7 +154,8 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 		"media_asset",
 		payload,
 		eventKey,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: outbox enqueue: %w", err)
 	}
 
@@ -165,22 +166,32 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 	committed = true
 
 	if w.log != nil {
-		w.log.Debug("ClipMetadataWriterAdapter: metadata + index event committed",
-			zap.String("clip_id", clipID),
-			zap.String("event_key", eventKey),
-			zap.String("source_version", m.SourceVersion),
-			zap.Float64("quality_score", m.QualityScore),
-			zap.Bool("sponsor_segment", m.SponsorSegment))
+		// Blocco 2.1: surface ON CONFLICT suppression by an existing
+		// terminal row (dead_letter/superseded). A new
+		// metadata_enrichment write was committed, but its
+		// re-index event was silently squelched — the writer
+		// MUST raise a warning so operator/cron can spot the
+		// dead_letter pinned row.
+		if !enqResult.Inserted && isTerminalOutboxStatus(enqResult.ExistingStatus) {
+			w.log.Warn("ClipMetadataWriterAdapter: metadata outbox event suppressed by existing terminal row",
+				zap.String("clip_id", clipID),
+				zap.String("event_key", eventKey),
+				zap.Int64("existing_event_id", enqResult.EventID),
+				zap.String("existing_status", enqResult.ExistingStatus))
+		} else {
+			w.log.Debug("ClipMetadataWriterAdapter: metadata + index event committed",
+				zap.String("clip_id", clipID),
+				zap.String("event_key", eventKey),
+				zap.String("source_version", m.SourceVersion),
+				zap.Float64("quality_score", m.QualityScore),
+				zap.Bool("sponsor_segment", m.SponsorSegment),
+				zap.Bool("outbox_inserted", enqResult.Inserted))
+		}
 	}
 	return nil
 }
 
-// updateMediaAssetsMetadataTx performs the UPDATE statement that
-// writes the 11 metadata fields (9 verdict-canonical + quality_score
-// + sponsor_segment + the optional Hook + SearchVisibility) to
-// media_assets.metadata_json via json_set. The 9 base keys are
-// always written; Hook + SearchVisibility are appended to the
-// json_set chain only when their CanonicalClipMetadata fields
+// isEnqueueTerminalStatus reports whether an outbox row's status is
 // are non-empty (so the indexing layer never sees an empty
 // semantic marker).
 //

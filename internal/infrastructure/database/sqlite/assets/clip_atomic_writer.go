@@ -174,7 +174,7 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	// IndexingHandler consumer rejected as terminal (dead_letter).
 
 	// ── 4) INSERT outbox_events (tx-bound)
-	if _, err := w.box.Enqueue(
+	enqResult, err := w.box.Enqueue(
 		ctx,
 		tx,
 		outboxevents.EventAssetIndexRequested,
@@ -182,7 +182,8 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		"media_asset",
 		payloadJSON,
 		eventKey,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: outbox enqueue: %w", err)
 	}
 
@@ -193,12 +194,34 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	committed = true
 
 	if w.log != nil {
-		w.log.Debug("ClipAtomicWriterAdapter: clip + index event committed",
-			zap.String("clip_id", clipID),
-			zap.String("event_key", eventKey),
-			zap.String("source_version", sourceVersion))
+		// Blocco 2.1: surface ON CONFLICT suppression by an existing
+		// terminal row (dead_letter/superseded). The producer must
+		// react — a freshly-completed tx that "succeeded" but silently
+		// squelched the index request is exactly the silent-success
+		// regression the audit called out.
+		if !enqResult.Inserted && isTerminalOutboxStatus(enqResult.ExistingStatus) {
+			w.log.Warn("ClipAtomicWriterAdapter: outbox event suppressed by existing terminal row",
+				zap.String("clip_id", clipID),
+				zap.String("event_key", eventKey),
+				zap.Int64("existing_event_id", enqResult.EventID),
+				zap.String("existing_status", enqResult.ExistingStatus))
+		} else {
+			w.log.Debug("ClipAtomicWriterAdapter: clip + index event committed",
+				zap.String("clip_id", clipID),
+				zap.String("event_key", eventKey),
+				zap.String("source_version", sourceVersion),
+				zap.Bool("outbox_inserted", enqResult.Inserted))
+		}
 	}
 	return nil
+}
+
+// isTerminalOutboxStatus reports whether an outbox row's status is
+// terminal — useful for deciding whether a fresh INSERT was squelched
+// by an already-completed/failed event, vs the more benign case
+// where the same key was already in pending/processing.
+func isTerminalOutboxStatus(status string) bool {
+	return status == "dead_letter" || status == outboxevents.SupersedeStatus
 }
 
 // upsertClipInTx writes the canonical 10-column clip row shape into
