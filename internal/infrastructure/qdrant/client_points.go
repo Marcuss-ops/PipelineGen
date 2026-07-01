@@ -17,6 +17,11 @@ import (
 )
 
 // UpsertPoints upserts a batch of points into a collection.
+//
+// Blocco 4e (July 2026): this method MUST only be called by IndexWriter —
+// the single source of truth for Qdrant writes. No other type in the
+// codebase may call this directly; all writes route through the canonical
+// SSOT (IndexWriter.UpsertFromClip / UpsertFromClips / ReindexAll).
 func (c *Client) UpsertPoints(ctx context.Context, collection string, points []Point) error {
 	if len(points) == 0 {
 		return nil
@@ -39,6 +44,11 @@ func (c *Client) UpsertPoints(ctx context.Context, collection string, points []P
 }
 
 // DeletePoints deletes points by ID from a collection.
+//
+// Blocco 4e (July 2026): this method MUST only be called by IndexWriter —
+// the single source of truth for Qdrant writes. No other type in the
+// codebase may call this directly; all deletes route through the canonical
+// SSOT (IndexWriter.DeletePoints).
 func (c *Client) DeletePoints(ctx context.Context, collection string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
