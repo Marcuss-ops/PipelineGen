@@ -27,6 +27,7 @@ import (
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
@@ -261,7 +262,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				Ytdlp:      ytdlpForSubtitles,
 				Transcript: ytdlpSubtitleAdapter,
 				Analyzer:   ollamaAnalyzer,
-				Enqueuer:   monitor.NewExtractionEnqueuer(root.Jobs.Service, channelsSvc, log),
+				Enqueuer:   monitoradapter.NewExtractionIntentAdapter(root.Jobs.Service, channelsSvc, log),
 				// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the per-video
 				// discovery ledger (TryReserve + MarkEnqueued + MarkRejected +
 				// MaxDiscoveredAt) is now wired from the canonical

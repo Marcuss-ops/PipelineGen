@@ -64,10 +64,15 @@
 //     are an observability convenience, not a correctness gate.
 //     Pinning: cursor-failure path emits `enqueueCalls==1 &&
 //     enqueuedRequests==1 && cursorUpdates==1 && returnErr==nil`.
-//
-// ActiveKey construction is delegated to a const so a future caller
+////ActiveKey construction is delegated to a const so a future caller
 // (e.g. a CLI backfill tool) can re-use the exact same prefix
 // without grepping for the literal string.
+//
+// Fase 8 (July 2026, Spina Dorsale — monitoradapter consolidation):
+// ActiveKeyPrefix was relocated to monitor/ports.go (the canonical
+// load-bearing surface co-located with the JobEnqueuer port); see
+// Commit B of the Fase 8 wire cutover. This file remains the
+// legacy concrete adapter pending Commit C (git-rm).
 package monitor
 
 import (
@@ -81,17 +86,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-// ActiveKeyPrefix is the canonical job.ActiveKey prefix for
-// channel-sync extraction jobs. Per the Channel Monitor Step 9 design
-// spec: every durable extraction job enqueued by the Channel Monitor
-// uses "channel_sync_<VideoID>" so the broker's per-ActiveKey
-// idempotency dedupes across the monitor's per-tick retry window.
-//
-// Exported so future tooling (admin CLIs, bulk re-enqueue scripts,
-// the Wave 15 remote-worker fallback path for channel-sync) can
-// re-use the same prefix without duplicating the literal.
-const ActiveKeyPrefix = "channel_sync_"
 
 // JobsEnqueuerSvc is the minimum-surface port the ExtractionEnqueuer
 // needs from jobs.Service. The concrete *jobtools.Service satisfies
