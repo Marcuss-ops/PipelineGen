@@ -20,7 +20,13 @@ import (
 // uploadAndIndexChunk uploads a rendered chunk to Drive, saves metadata to
 // asset_index and media_assets, and triggers vector indexing via the
 // canonical outbox dispatcher (atomic upsert + outbox enqueue).
-func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPath, chunkTitle, folderID string, chunkRes *ChunkResult, input *RunInput, videoCfg *config.VideoConfig) {
+//
+// Blocco 1b (July 2026): now returns error instead of void. The caller
+// MUST NOT append the chunk to PipelineResult.Chunks when error != nil.
+// On success the chunk's Uploaded is set to true; Indexed tracks whether
+// the asset_index + outbox dispatch completed without error (best-effort
+// — a false Indexed does not block the chunk from the result).
+func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPath, chunkTitle, folderID string, chunkRes *ChunkResult, input *RunInput, videoCfg *config.VideoConfig) error {
 	s.log.Info("uploading chunk to drive",
 		zap.Int("chunk", chunkIdx),
 		zap.String("chunk_title", chunkTitle),
@@ -51,8 +57,9 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 	pubResult, err := s.publisher.Publish(ctx, pubReq)
 	if err != nil {
 		s.log.Error("failed to publish chunk to drive", zap.Int("chunk", chunkIdx), zap.Error(err))
-		return
+		return fmt.Errorf("publish chunk %d: %w", chunkIdx, err)
 	}
+	chunkRes.Uploaded = true
 	fileID = pubResult.FileID
 	webViewLink = pubResult.WebViewLink
 	// F1.5 (P0 #9): read DownloadLink from the canonical
@@ -73,13 +80,23 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 		zap.String("drive_link", webViewLink),
 	)
 
+	// Track indexing outcome. Failures in asset_index / outbox dispatch
+	// are best-effort (logged but not returned as errors — the chunk is
+	// already on Drive and the operator can backfill). Indexed=false is
+	// an operator-visible signal, not a hard failure.
+	indexed := true
 	if s.assetIndex != nil {
-		s.indexChunkToAssetIndex(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, fileID, webViewLink, downloadLink, videoCfg)
+		if ok := s.indexChunkToAssetIndex(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, fileID, webViewLink, downloadLink, videoCfg); !ok {
+			indexed = false
+		}
 	}
-}
+	chunkRes.Indexed = indexed
+	return nil
 
 // indexChunkToAssetIndex saves the chunk record to the asset_index table.
-func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, driveFileID, driveLink, downloadLink string, videoCfg *config.VideoConfig) {
+// Returns true when all indexing steps (asset_index upsert + clips DB
+// upsert + outbox dispatch) completed without error.
+func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, driveFileID, driveLink, downloadLink string, videoCfg *config.VideoConfig) bool {
 	assetID := "stock_" + driveFileID
 	s.log.Info("upserting chunk into asset_index",
 		zap.Int("chunk", chunkIdx),
@@ -128,18 +145,23 @@ func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chun
 	}
 	if err := s.assetIndex.Upsert(ctx, rec); err != nil {
 		s.log.Warn("failed to save chunk to asset_index", zap.Int("chunk", chunkIdx), zap.Error(err))
+		return false
 	} else {
 		s.log.Info("chunk saved to asset_index", zap.String("asset_id", assetID))
 	}
 
 	// Save to media_assets (clips DB)
 	if s.clipsRepo != nil {
-		s.indexChunkToClipsDB(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, driveFileID, driveLink, downloadLink, videoCfg)
+		if !s.indexChunkToClipsDB(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, driveFileID, driveLink, downloadLink, videoCfg) {
+			return false
+		}
 	}
+	return true
 }
 
 // indexChunkToClipsDB saves the chunk to the media_assets table for semantic search.
-func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, driveFileID, driveLink, downloadLink string, videoCfg *config.VideoConfig) {
+// Returns true when the upsert + outbox dispatch completed without error.
+func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTitle, folderID, chunkPath string, chunkRes *ChunkResult, input *RunInput, driveFileID, driveLink, downloadLink string, videoCfg *config.VideoConfig) bool {
 	tags := []string{"stock", "clip"}
 	tags = append(tags, input.FolderName)
 	if input.Subfolder != "" {
@@ -183,7 +205,9 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 
 	if err := s.upsertChunkAndDispatch(ctx, clip); err != nil {
 		s.log.Warn("failed to upsert/dispatch chunk", zap.String("clip_id", clip.ID), zap.Error(err))
+		return false
 	}
+	return true
 }
 
 // upsertChunkAndDispatch writes the chunk to media_assets and routes it

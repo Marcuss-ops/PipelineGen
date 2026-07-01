@@ -424,6 +424,11 @@ type PipelineResult struct {
 }
 
 // ChunkResult represents a single rendered and uploaded video chunk.
+//
+// Blocco 1b (July 2026): added Rendered / Uploaded / Indexed outcome
+// bools so callers can distinguish which stages completed. Pre-fix
+// callers had no way to know whether the chunk's DriveLink was real
+// or empty-because-upload-failed.
 type ChunkResult struct {
 	Index         int      `json:"index"`
 	TimelineStart float64  `json:"timeline_start"`
@@ -434,6 +439,14 @@ type ChunkResult struct {
 	DriveFileID   string   `json:"drive_file_id"`
 	Title         string   `json:"title"`
 	SourceIDs     []string `json:"source_ids,omitempty"`
+	// Rendered is true when the FFmpeg render step completed and the
+	// chunk file exists on disk.
+	Rendered bool `json:"rendered"`
+	// Uploaded is true when Publisher.Publish wrote the chunk to Drive.
+	Uploaded bool `json:"uploaded"`
+	// Indexed is true when the asset_index upsert + outbox dispatch
+	// both succeeded (best-effort; false does not block the chunk).
+	Indexed bool `json:"indexed"`
 }
 
 // VideoSource represents a single video to be downloaded and processed.

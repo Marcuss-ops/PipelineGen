@@ -339,14 +339,23 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 			LocalPath:     chunkPath,
 			Title:         chunkTitle,
 			SourceIDs:     processedSourceIDs[startClip:endClip],
+			Rendered:      true, // FFmpeg render completed successfully above
 		}
 
-		s.uploadAndIndexChunk(ctx, chunkIdx, chunkPath, chunkTitle, folderID, &chunkRes, input, &videoCfg)
+		if err := s.uploadAndIndexChunk(ctx, chunkIdx, chunkPath, chunkTitle, folderID, &chunkRes, input, &videoCfg); err != nil {
+			s.log.Error("failed to upload and index chunk",
+				zap.Int("chunk", chunkIdx),
+				zap.String("local_path", chunkPath),
+				zap.Error(err))
+			// Blocco 1b: don't add failed chunks to the result — the
+			// chunk was rendered to disk but never reached Drive.
+			continue
+		}
 
 		result.Chunks = append(result.Chunks, chunkRes)
 
 		if input.Progress != nil {
-			pct := 55 + int(float64(chunkIdx+1)/float64(numChunks)*35)
+			pct := 55 + int(float64(len(result.Chunks))/float64(numChunks)*35)
 			input.Progress(pct, fmt.Sprintf("Rendered chunk %d/%d, uploaded to Drive", chunkIdx+1, numChunks))
 		}
 
