@@ -1046,8 +1046,10 @@ func TestTryReserve_RetryableState_ExactlyOneWinner(t *testing.T) {
 		t.Fatalf("step 2: MarkRejected(retryable): %v", err)
 	}
 
-	// Step 3: Advance clock 31s → next_retry_at is now eligible.
-	repo.SetNowForTests(func() time.Time { return baseTime.Add(31 * time.Second) })
+	// Step 3: Advance clock 61s → next_retry_at (baseTime+60s) is now eligible.
+	// INSERT sets attempt_count=1, MarkRejected bumps to 2,
+	// ComputeRetryBackoffSeconds(2) = 60s, so we need >60s advance.
+	repo.SetNowForTests(func() time.Time { return baseTime.Add(61 * time.Second) })
 
 	// 50 goroutines race — exactly 1 reclaims.
 	var wg sync.WaitGroup
@@ -1059,7 +1061,7 @@ func TestTryReserve_RetryableState_ExactlyOneWinner(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, won, _, err := repo.TryReserve(ctx, channelID, videoID, "v1", "https://x", "t", baseTime.Add(31*time.Second).Format(time.RFC3339))
+			_, won, _, err := repo.TryReserve(ctx, channelID, videoID, "v1", "https://x", "t", baseTime.Add(61*time.Second).Format(time.RFC3339))
 			if err != nil {
 				t.Errorf("TryReserve error: %v", err)
 			}
