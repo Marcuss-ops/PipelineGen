@@ -303,7 +303,7 @@ type e2eDriveAdmin struct {
 func (s *e2eDriveAdmin) UploadFile(_ context.Context, _ string, _ string, _ string) (*drive.UploadResult, error) {
 	return &drive.UploadResult{
 		FileID:       s.fileID,
-		WebViewLink:  "https://drive.google.com/file/d/" + s.fileID + "/view",
+		WebViewLink:  CanonicalDriveWebURL(s.fileID),
 		DownloadLink: "https://drive.google.com/uc?id=" + s.fileID + "&export=download",
 		MD5Checksum:  "",
 	}, nil
@@ -342,7 +342,7 @@ func (s *e2eDriveAdmin) Ping(_ context.Context) error                          {
 func (s *e2eDriveAdmin) Publish(_ context.Context, _ delivery.PublishRequest) (*delivery.PublishResult, error) {
 	return &delivery.PublishResult{
 		FileID:       s.fileID,
-		WebViewLink:  "https://drive.google.com/file/d/" + s.fileID + "/view",
+		WebViewLink:  CanonicalDriveWebURL(s.fileID),
 		DownloadLink: "https://drive.google.com/uc?id=" + s.fileID + "&export=download",
 	}, nil
 }
