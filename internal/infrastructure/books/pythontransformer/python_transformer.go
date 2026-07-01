@@ -32,6 +32,22 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 )
 
+// Config is the canonical pythontransformer configuration
+// surface. Fase 7 review-fix #3 BACKFILL (July 2026): the
+// ScriptPath / PythonBin / Enabled fields have been moved OUT of
+// books.Config (apply layer) and INTO this concrete-owned
+// Config (godlike/06 "one canonical owner per fact" — Python
+// subprocess details belong with the Python-aware concrete, not
+// with the apply-layer Service). Before BACKFILL, books.Config
+// carried these fields as a duplicate-fact; after BACKFILL, this
+// Config is the SSOT for any caller that needs to spawn the
+// book_summarizer.py subprocess.
+type Config struct {
+	ScriptPath string `yaml:"script_path"`
+	PythonBin  string `yaml:"python_bin"`
+	Enabled    bool   `yaml:"enabled"`
+}
+
 // SubprocessTransformer is the canonical books.BookTransformer
 // implementation. It spawns scripts/bridges/book_summarizer.py via
 // the configured Python interpreter and parses the canonical
@@ -39,14 +55,14 @@ import (
 //
 // Build:
 //
-//	NewSubprocessTransformer(books.Config{ScriptPath, PythonBin, Enabled}, log)
+//	NewSubprocessTransformer(&pythontransformer.Config{ScriptPath, PythonBin, Enabled}, log)
 //
 // The constructor ABS-ifies ScriptPath so the working directory
 // for the subprocess (filepath.Dir(t.scriptPath)) is stable
 // regardless of caller CWD. matches books/service.go pre-Fase-7
 // semantics (legacy buildArgs() helper).
 type SubprocessTransformer struct {
-	cfg        *books.Config
+	cfg        *Config
 	scriptPath string
 	log        *zap.Logger
 }
@@ -58,11 +74,24 @@ type SubprocessTransformer struct {
 var _ books.BookTransformer = (*SubprocessTransformer)(nil)
 
 // NewSubprocessTransformer constructs the canonical concrete.
-// Fails closed at boot if cfg or log are nil, or if ScriptPath
-// is empty (per godlike/07 §"No fake availability" — the
-// transformer must never be instantiated in a half-configured
-// state that would silently fail at first Transform call).
-func NewSubprocessTransformer(cfg *books.Config, log *zap.Logger) (*SubprocessTransformer, error) {
+// Fails closed at boot if cfg or log are nil, or if ScriptPath,
+// PythonBin, or Enabled is false (per godlike/07 §"No fake
+// availability" — the transformer must never be instantiated in
+// a half-configured or disabled state that would silently fail at
+// first Transform call).
+//
+// Enabled fail-closed (added in the reviewer-feedback #2 round
+// post the initial BACKFILL commit): the pythontransformer.Config
+// Enabled field was previously write-only at runtime — composition
+// root set it but the constructor didn't gate on it, leaving the
+// apply-layer Service.enabled field as the only runtime guard.
+// The fail-closed here consolidates the gate: a disabled
+// transformer cannot be constructed at all, so the booksService
+// wired by BuildDomainBundle cannot be invoked via the
+// composition-time path. The apply-layer Service.enabled
+// remains as the runtime per-request gate (orthogonal concern:
+// future dynamic-config-reload use cases).
+func NewSubprocessTransformer(cfg *Config, log *zap.Logger) (*SubprocessTransformer, error) {
 	if cfg == nil {
 		return nil, errors.New("pythontransformer: cfg is required")
 	}
@@ -70,10 +99,13 @@ func NewSubprocessTransformer(cfg *books.Config, log *zap.Logger) (*SubprocessTr
 		return nil, errors.New("pythontransformer: log is required")
 	}
 	if cfg.ScriptPath == "" {
-		return nil, errors.New("pythontransformer: cfg.ScriptPath is empty")
+		return nil, errors.New("pythontransformer: cfg.ScriptPath is empty — fail-closed per godlike/07 no-fake-availability")
 	}
 	if cfg.PythonBin == "" {
-		return nil, errors.New("pythontransformer: cfg.PythonBin is empty")
+		return nil, errors.New("pythontransformer: cfg.PythonBin is empty — fail-closed per godlike/07 no-fake-availability")
+	}
+	if !cfg.Enabled {
+		return nil, errors.New("pythontransformer: cfg.Enabled is false — fail-closed per godlike/07 no-fake-availability")
 	}
 	scriptPath := cfg.ScriptPath
 	if !filepath.IsAbs(scriptPath) {
