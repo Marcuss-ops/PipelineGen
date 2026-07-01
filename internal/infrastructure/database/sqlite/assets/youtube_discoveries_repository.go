@@ -129,7 +129,8 @@ const DefaultLeaseDurationSeconds = 300
 // already_scheduled, retryable, or lease-reclaim-eligible per the
 // rules above.
 type YoutubeDiscoveriesRepository struct {
-	db *sql.DB
+	db  *sql.DB
+	now func() time.Time // injectable clock for tests; production = time.Now
 }
 
 // NewYoutubeDiscoveriesRepository constructs the repository on the
@@ -141,7 +142,23 @@ func NewYoutubeDiscoveriesRepository(db *sql.DB) *YoutubeDiscoveriesRepository {
 	if db == nil {
 		panic("assets.NewYoutubeDiscoveriesRepository: db is nil")
 	}
-	return &YoutubeDiscoveriesRepository{db: db}
+	return &YoutubeDiscoveriesRepository{db: db, now: time.Now}
+}
+
+// SetNowForTests replaces the internal clock with the supplied function.
+// Intended for test fixtures that need to simulate time passing (lease
+// expiry, crash recovery) without real-time waits. Call with nil to
+// restore the production default (time.Now).
+//
+// FASE 1.1 (July 2026): injectable clock so TestTryReserve_CrashAfter
+// Reservation_Reclaimable can advance the clock past the lease without
+// waiting 5 real minutes.
+func (r *YoutubeDiscoveriesRepository) SetNowForTests(fn func() time.Time) {
+	if fn == nil {
+		r.now = time.Now
+		return
+	}
+	r.now = fn
 }
 
 // DB returns the underlying *sql.DB; needed by ad-hoc admin CLIs.
@@ -171,14 +188,14 @@ func (r *YoutubeDiscoveriesRepository) TryReserve(
 		return "", false, 0, fmt.Errorf("youtube_discoveries.TryReserve: channelID and videoID are required")
 	}
 	if discoveredAt == "" {
-		discoveredAt = time.Now().UTC().Format(time.RFC3339)
+		discoveredAt = r.now().UTC().Format(time.RFC3339)
 	}
 	if policyVersion == "" {
 		policyVersion = "v1"
 	}
 	id = deriveDiscoveryID(channelID, videoID, policyVersion)
-	nowStr := time.Now().UTC().Format(time.RFC3339)
-	leaseUntil := time.Now().UTC().Add(time.Duration(DefaultLeaseDurationSeconds) * time.Second).Format(time.RFC3339)
+	nowStr := r.now().UTC().Format(time.RFC3339)
+	leaseUntil := r.now().UTC().Add(time.Duration(DefaultLeaseDurationSeconds) * time.Second).Format(time.RFC3339)
 
 	// Step 1 — leader-election INSERT. UNIQUE(channel_id, video_id,
 	// policy_version) gates the candidate row; ON CONFLICT DO NOTHING
@@ -193,8 +210,9 @@ func (r *YoutubeDiscoveriesRepository) TryReserve(
 	row := r.db.QueryRowContext(ctx, `
 		INSERT INTO youtube_discoveries (
 			id, channel_id, video_id, policy_version, state,
-			discovered_at, source_url, title, lease_until, updated_at
-		) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+			discovered_at, source_url, title, lease_until,
+			attempt_count, updated_at
+		) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 1, ?)
 		ON CONFLICT(channel_id, video_id, policy_version) DO NOTHING
 		RETURNING id
 	`, id, channelID, videoID, policyVersion, discoveredAt, sourceURL, title, leaseUntil, nowStr)
@@ -230,7 +248,7 @@ func (r *YoutubeDiscoveriesRepository) tryReserveConflict(
 	ctx context.Context,
 	channelID, videoID, policyVersion, id, nowStr string,
 ) (string, bool, int, error) {
-	leaseUntil := time.Now().UTC().Add(time.Duration(DefaultLeaseDurationSeconds) * time.Second).Format(time.RFC3339)
+	leaseUntil := r.now().UTC().Add(time.Duration(DefaultLeaseDurationSeconds) * time.Second).Format(time.RFC3339)
 
 	// (a) Atomic reclaim: pending + expired lease → retry with NEW lease.
 	// The WHERE clause compares lease_until against nowStr — if another
@@ -332,9 +350,9 @@ func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enq
 		return fmt.Errorf("youtube_discoveries.MarkEnqueued: id is required")
 	}
 	if enqueuedAt == "" {
-		enqueuedAt = time.Now().UTC().Format(time.RFC3339)
+		enqueuedAt = r.now().UTC().Format(time.RFC3339)
 	}
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	nowStr := r.now().UTC().Format(time.RFC3339)
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE youtube_discoveries
 		SET state = 'enqueued',
@@ -387,7 +405,7 @@ func (r *YoutubeDiscoveriesRepository) MarkRejected(ctx context.Context, id, rej
 	if id == "" {
 		return fmt.Errorf("youtube_discoveries.MarkRejected: id is required")
 	}
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	nowStr := r.now().UTC().Format(time.RFC3339)
 	if retryable {
 		// Atomic UPDATE: bump attempt_count in SQL (no separate SELECT).
 		// RETURNING gives us the post-increment value so we can compute
@@ -422,12 +440,20 @@ func (r *YoutubeDiscoveriesRepository) MarkRejected(ctx context.Context, id, rej
 		`, rejectionReason, rejectionReason, nowStr, id)
 		if err := row.Scan(&newAttempt); err != nil {
 			if err == sql.ErrNoRows {
+				// Distinguish not-found from state conflict.
+				var exists int
+				if scanErr := tx.QueryRowContext(ctx, `SELECT 1 FROM youtube_discoveries WHERE id = ?`, id).Scan(&exists); scanErr != nil {
+					if scanErr == sql.ErrNoRows {
+						return fmt.Errorf("%w: MarkRejected(retryable) row not found for id=%q", ErrNotFound, id)
+					}
+					return fmt.Errorf("youtube_discoveries.MarkRejected: existence check: %w", scanErr)
+				}
 				return fmt.Errorf("%w: MarkRejected(retryable) expected state IN ('pending','analyzing') for id=%q", ErrStateConflict, id)
 			}
 			return fmt.Errorf("youtube_discoveries.MarkRejected: retryable update: %w", err)
 		}
 		// Set next_retry_at from the atomically-returned count.
-		retryAtStr := time.Now().UTC().Add(time.Duration(ComputeRetryBackoffSeconds(int(newAttempt.Int64))) * time.Second).Format(time.RFC3339)
+		retryAtStr := r.now().UTC().Add(time.Duration(ComputeRetryBackoffSeconds(int(newAttempt.Int64))) * time.Second).Format(time.RFC3339)
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE youtube_discoveries
 			SET next_retry_at = ?
@@ -459,6 +485,14 @@ func (r *YoutubeDiscoveriesRepository) MarkRejected(ctx context.Context, id, rej
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
+		// Distinguish not-found from state conflict.
+		var exists int
+		if scanErr := r.db.QueryRowContext(ctx, `SELECT 1 FROM youtube_discoveries WHERE id = ?`, id).Scan(&exists); scanErr != nil {
+			if scanErr == sql.ErrNoRows {
+				return fmt.Errorf("%w: MarkRejected(terminal) row not found for id=%q", ErrNotFound, id)
+			}
+			return fmt.Errorf("youtube_discoveries.MarkRejected: existence check: %w", scanErr)
+		}
 		return fmt.Errorf("%w: MarkRejected(terminal) expected state IN ('pending','analyzing','rejected_retryable') for id=%q", ErrStateConflict, id)
 	}
 	return nil
@@ -512,7 +546,7 @@ func (r *YoutubeDiscoveriesRepository) MarkReclaimByLease(
 		return 0, fmt.Errorf("youtube_discoveries.MarkReclaimByLease: leaseOwner is required")
 	}
 	if nowStr == "" {
-		nowStr = time.Now().UTC().Format(time.RFC3339)
+		nowStr = r.now().UTC().Format(time.RFC3339)
 	}
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE youtube_discoveries
