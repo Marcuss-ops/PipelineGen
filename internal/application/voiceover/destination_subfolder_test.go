@@ -155,7 +155,7 @@ func TestDestinationStageCreatesAndPersistsSubfolder(t *testing.T) {
 	finalizer := newVoiceoverFinalizer(voiceoverFinalizerDeps{
 		VoiceoverRepo:    &testVoiceoverRepo{db: db},
 		Outbox:           nil,               // nil-safe (skip index + cleanup)
-		LifecycleService: lifecycleSvc,      // wired for media_assets projection
+		LifecycleService: &e2eLifecycleAdapter{svc: lifecycleSvc}, // wrap lifecycle.Service (compile-time bridge between lifecycle.VoiceoverProjectionInput and voiceover.VoiceoverProjectionInput; same adapter pattern as qdrant_indexing_e2e_test.go::e2eLifecycleAdapter)
 		Logger:           zap.NewNop(),
 	})
 
