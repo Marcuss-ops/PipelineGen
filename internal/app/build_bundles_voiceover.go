@@ -220,15 +220,28 @@ func buildVoiceoverService(
 		// The use case satisfies voiceover.VoiceoverItemExecutor
 		// structurally — compile-time assertion in process_voiceover_item.go
 		// pins the conformance.
+
+		// P0.2 nil-destination fallback (July 2026): wire the
+		// DefaultFolderResolver from the configured Voiceover folder
+		// so a nil-Destination request resolves to the operator-
+		// configured default rather than failing with missing_
+		// destination. Nil-safe: newUseCaseDefaultFolderResolverAdapter
+		// returns ("", "", false) when no folder is configured.
+		defaultFolderResolver := newUseCaseDefaultFolderResolverAdapter(
+			cfg.Drive.VoiceoverFolder(),
+			voDir,
+		)
+
 		processItemUseCase = voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
-			TTSProvider:         ttsProvider,
-			DestinationResolver: destResolverAdapter,
-			AudioPostProcessor:  audioAdapter,
-			Publisher:           publisherAdapter,
-			VoiceoverRepository: voRepoAdapter,
-			TransactionalOutbox: txOutbox,
-			FilenameBuilder:     filenameBuilder,
-			Logger:              log,
+			TTSProvider:           ttsProvider,
+			DestinationResolver:   destResolverAdapter,
+			AudioPostProcessor:    audioAdapter,
+			Publisher:             publisherAdapter,
+			VoiceoverRepository:   voRepoAdapter,
+			TransactionalOutbox:   txOutbox,
+			FilenameBuilder:       filenameBuilder,
+			DefaultFolderResolver: defaultFolderResolver,
+			Logger:                log,
 		})
 		log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
 	} else {
