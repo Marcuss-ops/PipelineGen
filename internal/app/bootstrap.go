@@ -14,13 +14,19 @@
 // Concrete wiring — file map after PG-006:
 //
 //	initDatabases + runAllMigrations → databases_helpers.go
-//	resolveDynamicDriveFolders + migrateLegacyScriptDocs → drive_folders_resolve.go
+//	resolveDynamicFoldersPaths (Drive folder validation, pre-creation, storage dirs)
+//	    → build_drive_startup.go (PR9-A deferred-start closure from BuildDriveBundle)
 //	InitComposition + initCompositionMinimal* + WireServices + WireMinimal → wire_services.go
 //	Build*Bundle / NewComposition → composition.go + build_*_bundle.go
 //	startBackgroundJobs + lifecycle.NewServerLifecycleWithProbes → lifecycle.go
 //	buildJobRunner + buildJobRunnerStep (PR4.8 job-runner typed lifecycle) → lifecycle_job_runner.go
 //	buildCleanup (LIFO teardown) → shutdown.go
 //	InitWorkerComposition → worker_composition.go (cmd/worker entry-point)
+//
+// Wave A Item 1 (June 2026): the legacy `resolveDynamicDriveFolders` +
+// `migrateLegacyScriptDocs` helpers (drive_folders_resolve.go) were
+// dead code — only doc-comment references in cmd/admin/* + bootstrap,
+// no production callers — and have been removed.
 //
 // PR4d-final (June 2026): the legacy *CoreDeps projection was removed.
 // `type services struct` (in dependencies.go) was removed in the same

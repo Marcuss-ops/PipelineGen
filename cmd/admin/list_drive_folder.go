@@ -15,8 +15,7 @@
 //   - internal/repository/clips is removed; the canonical
 //     *assets.ClipsRepository (root.Repos.ClipsRepo) only knows about
 //     `media_assets`, not the `clip_folders` table. We use raw SQL on
-//     root.DB.DB to upsert rows to `clip_folders` (matches the pattern
-//     used in internal/app/bootstrap.go::resolveDynamicDriveFolders).
+//     root.DB.DB to upsert rows to `clip_folders` directly.
 //   - internal/upload/drive is removed; root.Drive.DriveUploader is the
 //     canonical (internal/infrastructure/drive) replacement.
 package main
@@ -52,8 +51,7 @@ const (
 )
 
 // folderRec mirrors the columns of `clip_folders` used by the canonical
-// listing + Drive folder sync code (see internal/app/bootstrap.go:240
-// for the canonical INSERT shape). Used purely to (de)serialise a
+// listing + Drive folder sync code. Used purely to (de)serialise a
 // folder before issuing the SQL upsert.
 type folderRec struct {
 	ID         string
@@ -159,8 +157,7 @@ func runListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, driveAdm
 // which lived in the deleted internal/repository/clips package. The
 // upward-compatible column shape (id, source, source_url, folder_id,
 // folder_path, group_name, search_key, created_at, updated_at) matches
-// migration 011_create_characters.sql and the runtime INSERT pattern
-// used by internal/app/bootstrap.go::resolveDynamicDriveFolders.
+// migration 011_create_characters.sql.
 // scanFolders now takes the canonical drive.Reader port (Wave B,
 // June 2026) — ListFiles is a Reader method. Caller (runListDriveFolder)
 // passes root.Drive.Reader from the DriveBundle composition.
@@ -260,9 +257,8 @@ func scanFolders(
 }
 
 // upsertClipFolder writes a single folderRec into the `clip_folders`
-// table using the canonical INSERT OR REPLACE shape. Mirrors
-// internal/app/bootstrap.go::resolveDynamicDriveFolders and migration
-// 011_create_characters.sql column set.
+// table using the canonical INSERT OR REPLACE shape. Column set
+// mirrors migration 011_create_characters.sql.
 func upsertClipFolder(ctx context.Context, db *sql.DB, cf folderRec) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT OR REPLACE INTO clip_folders
