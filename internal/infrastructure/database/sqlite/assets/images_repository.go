@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-)
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	)
 
 type ImagesRepository struct {
 	db *sql.DB
@@ -187,6 +187,12 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 	return scanImageAsset(row)
 }
 
+// DEPRECATED (FASE 6, July 2026, image-territories action plan).
+// Canonical replacement: ListImages(ctx, routing.ImageFilter).
+// Forward-to-ListImages conversion queued at CONTRACT phase
+// (deprecation record PR-IMAGE-LISTIMAGESBYSUBJECT in
+// architecture/deprecations.yaml).
+//
 // ListImagesBySubject recupera tutte le immagini per un soggetto.
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]asset.ImageAsset, error) {
@@ -448,4 +454,118 @@ func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, emb
 		WHERE id = ?
 	`, status, assetID)
 	return err
+}
+
+// FASE 6 (July 2026, image-territories action plan): ListImages is the
+// FASE 6 canonical replacement for ListImagesBySubject. Takes a
+// routing.ImageFilter and returns routing.ImageSearchResult rows.
+// See deprecation record PR-IMAGE-LISTIMAGESBYSUBJECT for the migration
+// narrative; the physical removal of ListImagesBySubject is queued at
+// the Wave 14 mega-package split gate, NOT in this commit.
+//
+// Implementation: routes against media_assets LEFT OUTER JOIN
+// generated_image_details (gid) so StyleID/StyleVersion are populated
+// for generated rows. Filter.Origins filtering hard-filters by
+// media_assets.origin — when called from the generated-territory
+// searcher (searcher_generated.go), Origins is pre-narrowed to
+// [OriginGenerated], so no retrieved rows leak into the result.
+func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+	if r == nil {
+		return nil, nil
+	}
+	limit := routing.ResolvedLimit(filter.Limit)
+
+	var sb strings.Builder
+	sb.WriteString(`SELECT ma.id, ma.origin, ma.provider_id, ma.subject_id, ma.preview_url, ma.width, ma.height, gid.prompt_resolved, gid.style_id, gid.style_version FROM media_assets ma LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id WHERE 1=1`)
+	args := []any{}
+
+	if filter.SubjectID != "" {
+		sb.WriteString(" AND ma.subject_id = ?")
+		args = append(args, filter.SubjectID)
+	}
+
+	if len(filter.Origins) > 0 {
+		ph := make([]string, len(filter.Origins))
+		for i, o := range filter.Origins {
+			ph[i] = "?"
+			args = append(args, string(o))
+		}
+		sb.WriteString(" AND ma.origin IN (" + strings.Join(ph, ",") + ")")
+	}
+
+	if len(filter.Providers) > 0 {
+		ph := make([]string, len(filter.Providers))
+		for i, p := range filter.Providers {
+			ph[i] = "?"
+			args = append(args, p)
+		}
+		sb.WriteString(" AND ma.provider_id IN (" + strings.Join(ph, ",") + ")")
+	}
+
+	if len(filter.StyleIDs) > 0 {
+		ph := make([]string, len(filter.StyleIDs))
+		for i, s := range filter.StyleIDs {
+			ph[i] = "?"
+			args = append(args, s)
+		}
+		sb.WriteString(" AND gid.style_id IN (" + strings.Join(ph, ",") + ")")
+	}
+
+	if len(filter.Tags) > 0 {
+		for _, tag := range filter.Tags {
+			sb.WriteString(" AND ma.tags LIKE ?")
+			args = append(args, "%"+tag+"%")
+		}
+	}
+
+	sb.WriteString(" ORDER BY ma.id DESC LIMIT ?")
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, sb.String(), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]routing.ImageSearchResult, 0, limit)
+	for rows.Next() {
+		var (
+			id, originStr, providerID, subjectID, previewURL sql.NullString
+			width, height                                     sql.NullInt64
+			promptResolved, styleID, styleVersion             sql.NullString
+		)
+		err := rows.Scan(&id, &originStr, &providerID, &subjectID, &previewURL, &width, &height, &promptResolved, &styleID, &styleVersion)
+		if err != nil {
+			return nil, err
+		}
+		name := ""
+		if promptResolved.Valid {
+			runes := []rune(promptResolved.String)
+			if len(runes) > 80 {
+				name = string(runes[:80])
+			} else {
+				name = promptResolved.String
+			}
+		}
+		var w, h int
+		if width.Valid {
+			w = int(width.Int64)
+		}
+		if height.Valid {
+			h = int(height.Int64)
+		}
+		out = append(out, routing.ImageSearchResult{
+			AssetID:      id.String,
+			Origin:       routing.ImageOrigin(originStr.String),
+			Provider:     providerID.String,
+			Name:         name,
+			PreviewURL:   previewURL.String,
+			Width:        w,
+			Height:       h,
+			Score:        1.0,
+			StyleID:      styleID.String,
+			StyleVersion: styleVersion.String,
+		})
+	}
+	return out, rows.Err()
 }
