@@ -7,6 +7,7 @@
 //   config.go       — LoadConfig (cfgPath -> *config.Config, error)
 //   identity.go     — WorkerIdentity tuple (id/name/version/hostname)
 //   capabilities.go — ParseAndValidateCaps (env-raw JSON -> WorkerCapabilities)
+//   profiles.go     — WorkerProfile, WorkerProfileRegistry, ResolveCapabilities
 //   preflight.go    — master URL resolve + /health pre-flight loop
 //   heartbeat.go    — HeartbeatLoop (background broker.Heartbeat ticker)
 //   registration.go — broker + asset-client wire-up + the register call
@@ -30,6 +31,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 )
@@ -106,7 +108,29 @@ func Run(ctx context.Context, cfgPath string) error {
 	)
 
 	identity := WorkerIdentity()
-	caps, err := ParseAndValidateCaps(Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+
+	// Creator Blocco 1.1: when $VELOX_WORKER_PROFILE is set, resolve
+	// capabilities through the profile registry (profile ceiling →
+	// env narrowing can't expand → registration gate). Without a
+	// profile, fall through to the legacy ParseAndValidateCaps path.
+	profileName := Env("VELOX_WORKER_PROFILE", "")
+	var caps appjobs.WorkerCapabilities
+	if profileName != "" {
+		reg := NewProfileRegistry()
+		profile, lookupErr := reg.Lookup(profileName)
+		if lookupErr != nil {
+			log.Error("invalid worker profile", zap.String("profile", profileName), zap.Error(lookupErr))
+			return fmt.Errorf("worker profile: %w", lookupErr)
+		}
+		log.Info("worker profile loaded",
+			zap.String("profile", profile.Name),
+			zap.Strings("allowed_job_types", profile.AllowedJobTypes),
+			zap.Int("max_parallel", profile.MaxParallel),
+		)
+		caps, err = ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+	} else {
+		caps, err = ParseAndValidateCaps(Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+	}
 	if err != nil {
 		log.Error("invalid worker capabilities", zap.Error(err))
 		return fmt.Errorf("worker capabilities: %w", err)
