@@ -497,6 +497,31 @@ type AnalyzeOptions struct {
 
 // ── Unbound placeholder stubs (this commit only) ──────────────────────────
 
+// unboundJobEnqueuer is the nil-safe stub that returns "not wired" for every
+// EnqueueExtract call. Used as the fallback when CompositionDeps.Enqueuer is nil
+// (partial-deploy / test-fixture paths). Production wiring replaces this
+// with a concrete *ExtractionEnqueuer via lifecycle.go.
+type unboundJobEnqueuer struct{}
+
+// NewUnboundJobEnqueuer returns a stub that satisfies JobEnqueuer. Every
+// EnqueueExtract call returns ErrJobEnqueuerNotWired so the monitor's
+// per-video error log captures the missing-wire gap rather than nil-deref
+// panicking.
+func NewUnboundJobEnqueuer() JobEnqueuer {
+	return &unboundJobEnqueuer{}
+}
+
+// ErrJobEnqueuerNotWired is the sentinel returned by the unbound stub.
+var ErrJobEnqueuerNotWired = errors.New("monitor: JobEnqueuer not wired (composition root must inject *ExtractionEnqueuer from internal/app/lifecycle.go)")
+
+func (u *unboundJobEnqueuer) EnqueueExtract(ctx context.Context, req EnqueueExtractRequest) error {
+	return ErrJobEnqueuerNotWired
+}
+
+// Compile-time assertion: the unbound stub satisfies JobEnqueuer so a signature
+// drift on the interface becomes a build failure.
+var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
+
 // ── CategoryChannelsPort (Commit G migration adapter, June 2026) ────────
 
 // CategoryChannelsPort decouples monitor from internal/application/channels
