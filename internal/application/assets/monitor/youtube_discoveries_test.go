@@ -912,6 +912,98 @@ func TestMarkEnqueuedVsMarkRejected_OnlyOneTransitionWins(t *testing.T) {
 	}
 }
 
+// TestMarkRejected_NotFound verifies that calling MarkRejected with a
+// non-existent id returns ErrNotFound (not ErrStateConflict, not nil).
+// Covers both retryable=true and retryable=false paths.
+func TestMarkRejected_NotFound(t *testing.T) {
+	repo, _, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// retryable=true path.
+	err := repo.MarkRejected(ctx, "disc_nonexistent_id", "test error", true)
+	if err == nil {
+		t.Fatal("MarkRejected(retryable) on nonexistent id should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrNotFound) {
+		t.Errorf("MarkRejected(retryable) on nonexistent id should return ErrNotFound, got: %v", err)
+	}
+
+	// retryable=false path.
+	err = repo.MarkRejected(ctx, "disc_nonexistent_id", "test error", false)
+	if err == nil {
+		t.Fatal("MarkRejected(terminal) on nonexistent id should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrNotFound) {
+		t.Errorf("MarkRejected(terminal) on nonexistent id should return ErrNotFound, got: %v", err)
+	}
+}
+
+// TestMarkRejected_StateConflict verifies that calling MarkRejected
+// on a row that is already in a terminal/incompatible state returns
+// ErrStateConflict (not nil, not ErrNotFound). Covers both
+// retryable=true and retryable=false paths.
+func TestMarkRejected_StateConflict(t *testing.T) {
+	repo, _, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Create a row and MarkEnqueued it (state='enqueued').
+	id, won, _, err := repo.TryReserve(ctx, "ch-conflict", "vid-conflict", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err != nil || !won {
+		t.Fatalf("TryReserve: err=%v won=%v", err, won)
+	}
+	if err := repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("MarkEnqueued: %v", err)
+	}
+
+	// retryable=true on 'enqueued' row → ErrStateConflict.
+	err = repo.MarkRejected(ctx, id, "should fail", true)
+	if err == nil {
+		t.Fatal("MarkRejected(retryable) on enqueued row should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrStateConflict) {
+		t.Errorf("MarkRejected(retryable) on enqueued row should return ErrStateConflict, got: %v", err)
+	}
+
+	// retryable=false on 'enqueued' row → ErrStateConflict.
+	err = repo.MarkRejected(ctx, id, "should fail", false)
+	if err == nil {
+		t.Fatal("MarkRejected(terminal) on enqueued row should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrStateConflict) {
+		t.Errorf("MarkRejected(terminal) on enqueued row should return ErrStateConflict, got: %v", err)
+	}
+
+	// Also test on 'rejected_terminal' row (already terminal).
+	id2, won2, _, err2 := repo.TryReserve(ctx, "ch-conflict", "vid-conflict-2", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err2 != nil || !won2 {
+		t.Fatalf("TryReserve: err=%v won=%v", err2, won2)
+	}
+	if err := repo.MarkRejected(ctx, id2, "terminal", false); err != nil {
+		t.Fatalf("first MarkRejected(terminal): %v", err)
+	}
+	// Second MarkRejected(terminal) on same row → ErrStateConflict
+	// (state is 'rejected_terminal', not in ('pending','analyzing','rejected_retryable')).
+	err = repo.MarkRejected(ctx, id2, "double terminal", false)
+	if err == nil {
+		t.Fatal("MarkRejected(terminal) on rejected_terminal row should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrStateConflict) {
+		t.Errorf("MarkRejected(terminal) on rejected_terminal row should return ErrStateConflict, got: %v", err)
+	}
+
+	// MarkRejected(retryable=true) on rejected_terminal row → ErrStateConflict
+	// (retryable path WHERE is IN ('pending','analyzing'), stricter than terminal).
+	err = repo.MarkRejected(ctx, id2, "retryable on terminal", true)
+	if err == nil {
+		t.Fatal("MarkRejected(retryable) on rejected_terminal row should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrStateConflict) {
+		t.Errorf("MarkRejected(retryable) on rejected_terminal row should return ErrStateConflict, got: %v", err)
+	}
+}
+
 // TestIsTransientEnqueueError covers the enqueue.go predicate that
 // maps (error → retryable bool). It is a sibling to the repository
 // retry tests; the predicate MUST decide retryable correctly so the
