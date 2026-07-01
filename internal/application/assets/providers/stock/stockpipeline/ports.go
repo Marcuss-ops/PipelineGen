@@ -223,6 +223,24 @@ type CutResult struct {
 	ProducedPaths []string
 }
 
+// CutItemResult is the per-job typed result for partial-success
+// tracking (Blocco 4, July 2026 — audit P0 #4). When the cutter
+// reports partial failure (some clips produced, some failed),
+// CutItemResult carries the outcome of each individual job so the
+// application layer can align clipTitles with ProducedPaths
+// without guessing which job failed.
+//
+// Forward-declaration: the VideoCutter.Cut port still returns
+// (CutResult, error); CutItemResult is the target shape for a
+// future port cutover where Cut returns []CutItemResult. Until
+// then, processSingleVideo aligns titles via the producedSet map
+// (see process.go Blocco 4).
+type CutItemResult struct {
+	JobID      string // OutputPath from the original CutJob
+	OutputPath string // same as JobID when successful, empty on failure
+	Err        error  // nil on success, the per-job failure reason otherwise
+}
+
 // ── Compile-time anchors ────────────────────────────────────────────────
 
 // _ ensures StockRenderer stays a true interface (no accidental struct

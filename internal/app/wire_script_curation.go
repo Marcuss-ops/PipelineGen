@@ -40,6 +40,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -48,21 +49,14 @@ import (
 // imageGenSvcAdapter adapts *imgservice.Service →
 // usecase.ImageGenService.
 //
-// The concrete SearchAndDownload takes tags []string; the typed
-// interface takes extra interface{}. The bridge unwraps
-// extra.([]string) (silently drops other carrier types — the
-// use case only ever sends []string from the script pipeline).
-//
-// TODO #8 (drift-fix PR, June 2026): the previous
-// `(ctx, …) (*asset.ImageAsset, error)` return shape satisfies
-// the wrong interface — *adapters.ImageResult is the canonical
-// typed result for ImageGenService downstream of the line-248
-// NewImageProcessor call. The bridge here is the contained seam:
-// any future schema drift on either side is caught at this
-// single method.
+// The adapter tries AI image generation (GenerateSmartImage) first,
+// and returns an error if it fails — NO web search fallback.
+// The concrete SearchAndDownload path (Wikipedia/SearXNG/DuckDuckGo)
+// is intentionally NOT used: the caller wants AI-generated images.
 type imageGenSvcAdapter struct {
 	svc interface {
 		SearchAndDownload(ctx context.Context, name, description, query, language string, tags []string) (*asset.ImageAsset, error)
+		GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
 	}
 }
 
@@ -76,24 +70,34 @@ type imageGenSvcAdapter struct {
 // ImageProcessor gets a typed non-nil pointer — matching the
 // existing processor code path in
 // internal/application/scripts/adapters/processor_images.go::Process.
+//
+// AI-first: GenerateSmartImage is called with the scene query as
+// prompt. On failure the error is propagated — no web search fallback.
 func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*adapters.ImageResult, error) {
+	if a == nil || a.svc == nil {
+		return nil, nil
+	}
+
 	var tags []string
 	if extra != nil {
 		if t, ok := extra.([]string); ok {
 			tags = t
 		}
 	}
-	if a == nil || a.svc == nil {
-		return nil, nil
-	}
-	imgAsset, err := a.svc.SearchAndDownload(ctx, name, description, query, language, tags)
+
+	imgAsset, err := a.svc.GenerateSmartImage(ctx, name, query, "", []string{query}, tags, 1920, 1080, "", false)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("AI image generation failed for %q: %w", name, err)
 	}
 	if imgAsset == nil {
 		return &adapters.ImageResult{}, nil
 	}
-	return &adapters.ImageResult{SourceURL: imgAsset.SourceURL}, nil
+
+	url := imgAsset.SourceURL
+	if !strings.HasPrefix(url, "http") && imgAsset.DriveFileID != "" {
+		url = fmt.Sprintf("https://drive.google.com/file/d/%s/view", imgAsset.DriveFileID)
+	}
+	return &adapters.ImageResult{SourceURL: url}, nil
 }
 
 // GenerateSmartImage is the second method on usecase.ImageGenService.

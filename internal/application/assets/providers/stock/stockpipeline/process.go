@@ -162,22 +162,51 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		Logger:     s.log,
 		SourceIdx:  idx,
 	})
+
+	// Blocco 4 (July 2026, audit P0 #4): the pre-Blocco-4 code
+	// accepted a cutter error as a warning and returned nil (false
+	// success) even when zero clips were produced. Fix:
+	//   - cutErr != nil && len(res.ProducedPaths) == 0 → hard error
+	//     (the cutter failed completely — caller must skip this video)
+	//   - cutErr != nil && len(res.ProducedPaths) > 0 → partial success
+	//     (some clips produced — continue with what we have)
+	//   - clipTitles is now filtered to match ProducedPaths so the
+	//     two slices stay aligned (pre-Blocco-4, clipTitles contained
+	//     entries for ALL planned jobs regardless of cutter outcome).
 	if cutErr != nil {
-		// Partial success (some clips produced, some failed) is allowed
-		// by the port contract: a non-nil error here coexists with
-		// non-empty res.ProducedPaths. We continue with whatever was
-		// produced and surface only as a warning.
+		if len(res.ProducedPaths) == 0 {
+			return nil, nil, nil, fmt.Errorf("cutter failed for %q with zero clips produced: %w", vs.URL, cutErr)
+		}
+		// Partial success — align clipTitles with produced paths.
 		s.log.Warn("stock extractor: cutter reported partial / error",
 			zap.Int("video_index", idx),
+			zap.Int("clips_planned", len(jobs)),
 			zap.Int("clips_produced", len(res.ProducedPaths)),
 			zap.Error(cutErr),
 		)
 	}
 
+	// Build a set of produced paths for O(1) lookup when filtering
+	// clipTitles. The pre-Blocco-4 code returned clipTitles for ALL
+	// planned jobs regardless of which OutputPaths the cutter actually
+	// produced; this misalignment broke downstream InterleaveClips
+	// when ProducedPaths was shorter than clipTitles.
+	producedSet := make(map[string]bool, len(res.ProducedPaths))
+	for _, p := range res.ProducedPaths {
+		producedSet[p] = true
+	}
+	alignedTitles := make([]string, 0, len(res.ProducedPaths))
+	for i, job := range jobs {
+		if producedSet[job.OutputPath] {
+			alignedTitles = append(alignedTitles, clipTitles[i])
+		}
+	}
+
 	s.log.Info("video processing finished",
 		zap.Int("video_index", idx),
+		zap.Int("clips_planned", len(jobs)),
 		zap.Int("clips_created", len(res.ProducedPaths)),
 		zap.String("source_url", vs.URL),
 	)
-	return res.ProducedPaths, clipTitles, uniqueRepeat(extractVideoID(vs.URL), len(res.ProducedPaths)), nil
+	return res.ProducedPaths, alignedTitles, uniqueRepeat(extractVideoID(vs.URL), len(res.ProducedPaths)), nil
 }
