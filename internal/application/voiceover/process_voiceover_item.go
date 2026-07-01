@@ -30,7 +30,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -60,6 +59,13 @@ type ProcessVoiceoverItemDeps struct {
 	// returns ok=false, Execute surfaces a permanent missing-destination
 	// error (P0.2 nil-destination fallback, July 2026).
 	DefaultFolderResolver VoiceoverDefaultFolderResolver
+	// Finalizer is the unified finalization port (P0.4 Fase 3a, July 2026).
+	// MANDATORY — the per-item pipeline delegates all 6 finalization steps
+	// (dedupe, delete, insert, media_assets projection, index outbox,
+	// cleanup outbox) to the finalizer inside a caller-owned tx.
+	// Pre-Fase-3a only steps 2-3 + index outbox were executed; dedupe,
+	// media_assets, and cleanup were missing from the child pipeline.
+	Finalizer VoiceoverFinalizer
 	Logger              *zap.Logger // nil-safe via zap.NewNop()
 }
 
@@ -94,6 +100,9 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	}
 	if deps.FilenameBuilder == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: FilenameBuilder is required (port surface kept stable for future BACKFILL stages)")
+	}
+	if deps.Finalizer == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)")
 	}
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
@@ -279,11 +288,17 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	out.DriveLink = CanonicalDriveWebURL(fileID)
 	out.DownloadLink = CanonicalDriveDownloadURL(fileID)
 
-	// Stage 4: SQLite atomic swap + outbox enqueue (single tx).
-	// PR-VO-A2 atomicity invariant: DELETE OLD + INSERT NEW +
-	// OUTBOX ENQUEUE all commit in one tx. The use case holds the
-	// *sql.Tx across the 3 calls; LifecycleService does NOT touch
-	// the DB (VerifyDB=false on the adapter).
+	// Stage 4: Unified atomic finalization via VoiceoverFinalizer
+	// (P0.4 Fase 3a, July 2026). Replaces the previous inline
+	// BeginTx → DeleteByIDTx → InsertTx → outbox → Commit sequence
+	// with a single call to the finalizer which runs all 6 steps
+	// (dedupe, delete, insert, media_assets projection, index
+	// outbox, cleanup outbox) inside a caller-owned tx.
+	//
+	// Pre-Fase-3a: steps 1 (dedupe), 4 (media_assets), and 6
+	// (cleanup) were MISSING from the child pipeline. The legacy
+	// batch path (finalizeStage) had all 6. Post-Fase-3a both
+	// paths share the same finalizer.
 	tx, err := u.deps.VoiceoverRepository.BeginTx(ctx)
 	if err != nil {
 		out.Error = fmt.Sprintf("tx_begin_failed: %v", err)
@@ -295,44 +310,46 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	}
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
-	if err := u.deps.VoiceoverRepository.DeleteByIDTx(ctx, tx, id); err != nil {
-		out.Error = fmt.Sprintf("db_delete_failed: %v", err)
-		return out, newPipelineError(StageDBDelete, false, err)
+	finalizeCmd := &FinalizeCommand{
+		ID:             id,
+		RequestID:      item.RequestID,
+		TextHash:       itemHash,
+		Text:           item.Text,
+		Language:       item.Language,
+		Voice:          out.Voice,
+		Filename:       item.Filename,
+		Strategy:       string(item.Strategy),
+		MetaJSON:       metaJSON,
+		LocalPath:      out.LocalPath,
+		CleanedPath:    out.CleanedPath,
+		FileHash:       out.FileHash,
+		FolderID:       dest.FolderID,
+		FolderPath:     dest.FolderPath,
+		DriveFileID:    out.DriveFileID,
+		DriveLink:      out.DriveLink,
+		DownloadLink:   out.DownloadLink,
+		// Per-item path (child pipeline): no old-row swap context.
+		// ShouldSwap stays false (no cleanup event).
+		ShouldSwap:     false,
+		OldDriveFileID: "",
+		OldLocalPath:   "",
+		OldCleanedPath: "",
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	rec := &VoiceoverRecord{
-		ID:           id,
-		RequestID:    item.RequestID,
-		TextHash:     itemHash,
-		TextPreview:  textutil.Truncate(item.Text, 100),
-		Language:     item.Language,
-		Voice:        out.Voice,
-		Filename:     item.Filename,
-		LocalPath:    out.LocalPath,
-		CleanedPath:  out.CleanedPath,
-		FolderID:     dest.FolderID,
-		FolderPath:   dest.FolderPath,
-		DriveFileID:  out.DriveFileID,
-		DriveLink:    out.DriveLink,
-		DownloadLink: out.DownloadLink,
-		FileHash:     out.FileHash,
-		Status:       string(StatusGenerated),
-		Strategy:     string(item.Strategy),
-		Metadata:     string(metaJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if err := u.deps.VoiceoverRepository.InsertTx(ctx, tx, rec); err != nil {
-		out.Error = fmt.Sprintf("db_insert_failed: %v", err)
-		return out, newPipelineError(StageDBInsert, true, err)
+	finalizeRes, err := u.deps.Finalizer.Finalize(ctx, tx, finalizeCmd)
+	if err != nil {
+		out.Error = fmt.Sprintf("finalize_failed: %v", err)
+		u.deps.Logger.Warn("voiceover.processItem: stage 4 finalize failed",
+			zap.String("language", item.Language),
+			zap.String("request_id", item.RequestID),
+			zap.Error(err))
+		return out, newPipelineError(StageTxCommit, true, err)
 	}
 
-	if out.FileHash != "" && u.deps.TransactionalOutbox != nil {
-		if err := u.deps.TransactionalOutbox.EnqueueIndexEvent(ctx, tx, id, out.FileHash); err != nil {
-			out.Error = fmt.Sprintf("outbox_enqueue_failed: %v", err)
-			return out, newPipelineError(StageOutboxEnqueue, true, err)
-		}
+	// If the dedupe gate matched an existing row (Reused=true),
+	// adopt the matched ID as the canonical identifier.
+	if finalizeRes != nil && finalizeRes.Reused {
+		out.ID = finalizeRes.ID
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -344,7 +361,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	u.deps.Logger.Info("voiceover.processItem: success",
 		zap.String("language", item.Language),
 		zap.String("request_id", item.RequestID),
-		zap.String("id", id),
+		zap.String("id", out.ID),
 		zap.String("drive_link", out.DriveLink))
 	return out, nil
 }

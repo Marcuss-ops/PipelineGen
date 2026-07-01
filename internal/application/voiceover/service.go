@@ -85,6 +85,13 @@ type Service struct {
 	// (same pattern as the previous ClipIndexFunc callback).
 	outboxEnqueuer TxOutboxEnqueuer
 	translator     translation.TranslatorFunc // Deprecated: moved to translation pkg, kept for GeneratePromo compat
+	// finalizer is the unified finalization port (P0.4 Fase 3a, July 2026).
+	// Replaces the inline 6-step finalizeStage tx body with a single
+	// Finalize(ctx, tx, cmd) call. The production concrete is wired in
+	// build_bundles_voiceover.go from voRepoAdapter + outboxEnqueuer +
+	// lifecycleProjectionAdapter + log. Nil-safe: finalizeStage guards
+	// nil and returns a typed failure when unwired.
+	finalizer VoiceoverFinalizer
 }
 
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.
@@ -126,13 +133,19 @@ type VoiceoverGenerationDeps struct {
 	SemanticTagger SemanticTaggerFunc
 }
 
-// VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator.
+// VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator, finalizer.
 type VoiceoverIntegrationDeps struct {
 	DriveUploader     DriveUploaderPort
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
 	OutboxEnqueuer    TxOutboxEnqueuer
 	Translator        TranslatorFunc
+	// Finalizer is the unified finalization port (P0.4 Fase 3a, July 2026).
+	// Nil-safe: finalizeStage guards nil and surfaces a typed failure so
+	// a partially-wired composition root fails at the per-language boundary
+	// rather than mid-tx. Production wiring in build_bundles_voiceover.go
+	// always supplies a non-nil finalizer.
+	Finalizer VoiceoverFinalizer
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
@@ -149,6 +162,7 @@ func NewService(deps VoiceoverDeps) *Service {
 		semanticTagger:    deps.Generation.SemanticTagger,
 		outboxEnqueuer: deps.Integration.OutboxEnqueuer,
 		translator:     deps.Integration.Translator,
+		finalizer:      deps.Integration.Finalizer,
 	}
 }
 

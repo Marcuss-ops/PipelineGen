@@ -418,8 +418,38 @@ func parseTimeOrNow(s string) time.Time {
 	return time.Now()
 }
 
+// e2eLifecycleAdapter bridges *lifecycle.Service → voiceover.LifecycleProjectionUpserter.
+// Used by the E2E test to wire the unified VoiceoverFinalizer without
+// pulling the app-layer adapter (internal/app/adapters_voiceover_use_case.go)
+// into the test surface. The two VoiceoverProjectionInput types have identical
+// field sets; the adapter copies fields 1:1.
+type e2eLifecycleAdapter struct {
+	svc *lifecycle.Service
+}
+
+func (a *e2eLifecycleAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *VoiceoverProjectionInput) error {
+	return a.svc.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
+		ID:           in.ID,
+		Source:       in.Source,
+		Name:         in.Name,
+		Filename:     in.Filename,
+		FolderID:     in.FolderID,
+		FolderPath:   in.FolderPath,
+		MediaType:    in.MediaType,
+		LocalPath:    in.LocalPath,
+		DriveFileID:  in.DriveFileID,
+		DriveLink:    in.DriveLink,
+		DownloadLink: in.DownloadLink,
+		FileHash:     in.FileHash,
+		Language:     in.Language,
+		Status:       in.Status,
+		Metadata:     in.Metadata,
+	})
+}
+
+var _ LifecycleProjectionUpserter = (*e2eLifecycleAdapter)(nil)
+
 // ─────────────────────────────────────────────────────────────────────
-// The E2E test.
 //
 //   voiceover.GenerateBatch
 //     → voiceovers row
@@ -472,10 +502,25 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 
 	// Build the Service under test.
 	outputDir := t.TempDir()
+
+	// P0.4 Fase 3a (July 2026): wire the unified VoiceoverFinalizer
+	// so finalizeStage delegates to the canonical 6-step sequence.
+	// The e2eLifecycleAdapter bridges *lifecycle.Service →
+	// voiceover.LifecycleProjectionUpserter so the finalizer can
+	// write the media_assets projection through the same real
+	// lifecycleSvc used by the test.
+	e2eFinalizer := newVoiceoverFinalizer(voiceoverFinalizerDeps{
+		VoiceoverRepo: voiceoverRepo,
+		Outbox:        outboxDispatcher,
+		LifecycleService: &e2eLifecycleAdapter{svc: lifecycleSvc},
+		Logger:        zap.NewNop(),
+	})
+
 	svc := &Service{
 		log:               zap.NewNop(),
 		outputDir:         outputDir,
 		voiceoverRepo:     voiceoverRepo,
+		finalizer:         e2eFinalizer,
 		lifecycleService:  lifecycleSvc,
 		outboxEnqueuer:    outboxDispatcher,
 		ttsProvider:       &e2eTTSProvider{localPath: filepath.Join(outputDir, "stub.mp3"), fileHash: fileHash},
