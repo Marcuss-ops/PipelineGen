@@ -55,6 +55,14 @@ func (r *ImagesRepository) CreateSubject(ctx context.Context, s *asset.Subject) 
 // media_assets must be accompanied by an outbox_events INSERT so the
 // vector index stays in sync. Callers should route through
 // outbox.Dispatcher.EnqueueAndIndex or a future ImageDispatcher.
+//
+// FASE 1B (July 2026): origin and provider columns are now persisted
+// as first-class columns (migration 115). They previously lived inside
+// metadata_json (unreliable; see FASE 0 audit §1.4). Callers that
+// populate ImageAsset.Origin / .Provider will see those values land
+// in the dedicated columns; callers that don't populate them get the
+// DEFAULT '' (unclassified) and are eligible for FASE 4 backfill to
+// promote them to a canonical territory.
 func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) (int64, error) {
 	id := img.Hash
 	if id == "" {
@@ -84,13 +92,8 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 	metaJSON, _ := json.Marshal(metaMap)
 
 	now := timeutil.FormatRFC3339(time.Now())
-	origin := string(img.Origin)
-	if origin == "" {
-		origin = "retrieved"
-	}
-	provider := string(img.Provider)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, lifecycle_state, origin, provider, metadata_json, created_at, updated_at)
+		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, lifecycle_state, metadata_json, origin, provider, created_at, updated_at)
 		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'STAGING', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
@@ -105,14 +108,13 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 			relative_path=excluded.relative_path,
 			drive_file_id=excluded.drive_file_id,
 			lifecycle_state=excluded.lifecycle_state,
+			metadata_json=excluded.metadata_json,
 			origin=excluded.origin,
 			provider=excluded.provider,
-			metadata_json=excluded.metadata_json,
 			updated_at=excluded.updated_at
 	`, id, img.Description, img.SourceURL, string(tagsJSON), tagsNorm,
 		img.Width, img.Height, img.Hash, img.PathRel, img.PathRel, img.DriveFileID,
-		origin, provider,
-		string(metaJSON), now, now)
+		string(metaJSON), string(img.Origin), string(img.Provider), now, now)
 
 	return 0, err
 }
@@ -138,11 +140,12 @@ func normalizeTags(tags []string) string {
 	return b.String()
 }
 
-// GetImageByHash recupera un'immagine tramite il suo hash
+// GetImageByHash recupera un'immagine tramite il suo hash.
+// FASE 1B: reads origin + provider first-class columns (migration 115).
 func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
-		FROM media_assets 
+		FROM media_assets
 		WHERE source = 'image' AND file_hash = ?
 		LIMIT 1
 	`
@@ -150,11 +153,12 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*as
 	return scanImageAsset(row)
 }
 
-// GetByID recupera un'immagine tramite il suo ID stringa
+// GetByID recupera un'immagine tramite il suo ID stringa.
+// FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
-		FROM media_assets 
+		FROM media_assets
 		WHERE source = 'image' AND id = ?
 		LIMIT 1
 	`
@@ -171,6 +175,7 @@ func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
 // GetByDriveFileID recupera un'immagine tramite Drive file ID. drive_file_id
 // Ã¨ una colonna canonica (migration 059): lettura diretta invece di
 // json_extract(metadata_json, '$.drive_file_id').
+// FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
@@ -182,11 +187,12 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 	return scanImageAsset(row)
 }
 
-// ListImagesBySubject recupera tutte le immagini per un soggetto
+// ListImagesBySubject recupera tutte le immagini per un soggetto.
+// FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
-		FROM media_assets 
+		FROM media_assets
 		WHERE source = 'image' AND json_extract(metadata_json, '$.subject_id') = ?
 		ORDER BY created_at DESC
 	`
@@ -208,11 +214,12 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 	return images, nil
 }
 
-// ListAll lists all image assets
+// ListAll lists all image assets.
+// FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
-		FROM media_assets 
+		FROM media_assets
 		WHERE source = 'image'
 		ORDER BY created_at DESC
 	`
@@ -233,15 +240,18 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, er
 	return images, rows.Err()
 }
 
+// scanImageAsset scans one *sql.Row into an ImageAsset. FASE 1B reads
+// origin and provider as first-class columns (added by migration 115),
+// surfacing them on ImageAsset.Origin / ImageProvider for downstream
+// ImageSearchResolver routing (FASE 6).
 func scanImageAsset(row interface {
 	Scan(dest ...any) error
 }) (*asset.ImageAsset, error) {
 	var img asset.ImageAsset
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
-	var name sql.NullString
+	var name, origin, provider sql.NullString
 	var url sql.NullString
 	var fileHash, localPath, driveFileID sql.NullString
-	var origin, provider sql.NullString
 
 	err := row.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
 	if err != nil {
@@ -283,10 +293,9 @@ func scanImageAsset(row interface {
 func scanImageAssetRows(rows *sql.Rows) (*asset.ImageAsset, error) {
 	var img asset.ImageAsset
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
-	var name sql.NullString
+	var name, origin, provider sql.NullString
 	var url sql.NullString
 	var fileHash, localPath, driveFileID sql.NullString
-	var origin, provider sql.NullString
 
 	err := rows.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
 	if err != nil {
