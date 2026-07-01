@@ -1,18 +1,42 @@
-// Package drive — folder_manager.go (PR2.7)
+// Package drive — folder_manager.go (PR2.7, F3.14)
 //
-// DriveFolderManagerAdapter wraps the concrete *driveapi.Service to
-// satisfy the artlist.DriveFolderManager port declared at
-// internal/application/assets/providers/artlist/ports.go. The adapter owns the raw SDK;
-// the port hides it from callers. PR2.7 introduced this adapter so the
-// application layer no longer reaches through a concrete dependency
-// (*drive.Uploader.Service.Files.List...) to call raw Google Drive SDK
-// methods.
+// DriveFolderManagerAdapter wraps the concrete *driveapi.Service to satisfy
+// the narrow drive.FolderManagerPort defined in publisher.go (the
+// composition-time contract that *delivery.Publisher* consumes via
+// `folders FolderManagerPort`). After the F3.14 (June 2026) dead-method
+// retirement, the adapter is intentionally single-method on the public
+// surface — `EnsureFolder` is the only method callers exercise.
 //
-// The adapter lives in internal/infrastructure because Drive IS a
-// transport/storage mechanism, not part of the artlist "chain" pipeline
-// (scraper → downloader → indexer → searcher) that the chain policy
-// keeps in internal/application/assets/providers/artlist/. Chain policy therefore does
-// NOT apply here.
+// F2.11 (June 2026) + F3.14: this adapter is the only point in the system
+// that calls Files.Create + Files.List for folder operations; all file
+// operations (ListByQuery / Download / Upload) were retired and migrated to
+// their canonical owners per godlike/06 "one owner per fact":
+//
+//   - drive.Reader       — read surface (Files.List, Files.Get.Download)
+//     owned by *drive.Uploader
+//   - delivery.Publisher — write surface (folder-ensure + PutFile),
+//     published here via FolderManagerPort
+//   - drive.FileLifecycle — Trash / Move / Rename / Cleanup
+//     owned by *FileLifecycleAdapter
+//
+// The PR2.7 wide-port surface (EnsureFolder + ListByQuery + Download +
+// Upload) that confl ated those three is gone. Compile-time assertion in
+// folder_manager_test.go pins the narrow contract:
+//
+//	var _ drivepkg.FolderManagerPort = (*drivepkg.DriveFolderManagerAdapter)(nil)
+//
+// Pattern 0 (port abstraction layer) — the application layer does not
+// import this adapter. Instead, delivery.Publisher's composition-time
+// contract is the narrow FolderManagerPort interface declared in
+// publisher.go; *DriveFolderManagerAdapter happens to satisfy it via
+// its EnsureFolder method. drive.Reader is a SEPARATE interface (the
+// read surface — ListByQuery + DownloadFile) owned by *drive.Uploader;
+// it does NOT satisfy FolderManagerPort (the two are intentionally
+// distinct: FolderManagerPort owns folder operations, drive.Reader
+// owns file reads, drive.FileLifecycle owns file-lifecycle commands,
+// and delivery.Publisher owns the write surface). DRIVE-005 pinned
+// these four canonical ports per Pattern 0 + godlike/06 "one owner
+// per fact".
 //
 // Retry policy mirrors the existing drive.Uploader behaviour: 3
 // attempts on transient errors (429, 503, timeout) with exponential
@@ -23,8 +47,6 @@ package drive
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -35,15 +57,23 @@ import (
 )
 
 // DriveFolderManagerAdapter wraps *driveapi.Service to satisfy the
-// artlist.DriveFolderManager port. It is the only point in the system
-// that calls Files.List / Files.Trash / Files.Get.Download /
-// Files.Create.Media for artlist purposes; all other code paths use
-// *drive.Uploader (the legacy narrow adapter) or this adapter via the
-// port.
+// narrow drive.FolderManagerPort. On the FolderManagerPort surface
+// (the only contract consumers import) the adapter exposes exactly ONE
+// method — EnsureFolder — per the F2.11 + F3.14 narrow-port commitment.
+// Folder operations only — the read surface (ListByQuery + Download)
+// and the write surface (Upload + PutFile) live on different adapters
+// (drive.Reader for read, delivery.Publisher for write).
 //
-// PR2.7: introduced alongside the artlist.DriveFolderManager port to
-// retire the raw SDK reach-through previously done in
+// PR2.7: introduced alongside the retired-wide-port artlist.DriveFolderManager
+// to retire the raw SDK reach-through previously done in
 // semantic_enricher.go::updateCumulativeMetadataJSON.
+//
+// F3.14 (June 2026): the wide-port methods (ListByQuery, Download, Upload,
+// findFileByName) were retired — zero callers remain after F2.11 closed
+// the artlist + voiceover + cards paths to drive.Reader + delivery.Publisher.
+// The single-method surface here is the canonical F3.14 end-state; future
+// additions should be justified against drive.Reader / delivery.Publisher
+// / drive.FileLifecycle ownerships before they land here.
 type DriveFolderManagerAdapter struct {
 	svc *driveapi.Service
 	log *zap.Logger
@@ -78,6 +108,12 @@ func NewDriveFolderManagerAdapter(svc *driveapi.Service, log *zap.Logger) *Drive
 //
 // Special case: a single segment under an empty parent creates a
 // top-level folder. Empty segments slice is rejected.
+//
+// F3.14 + DRIVE-005: this method is the SINGLE public surface on the
+// narrow FolderManagerPort. delivery.Publisher.Publish + ResolveFolder
+// route exclusively through here for folder-hierarchy creation; the
+// file-level operations (read / write / lifecycle) are owned by separate
+// adapters per godlike/06.
 //
 // PR2.7 narrowing note: this adapter matches folder names *exactly*.
 // The legacy *drive.Uploader.GetOrCreateFolder fallback used
@@ -255,166 +291,4 @@ func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, pare
 		return "", fmt.Errorf("findOrCreateFolder: create %q under %q: %w", name, parentID, err)
 	}
 	return created.Id, nil
-}
-
-// ListByQuery runs the supplied raw Drive search query and returns
-// DriveFileRef entries. Trashed-entry filtering is the caller's
-// responsibility (caller MUST include "and trashed = false" in the
-// query when needed). Domain shape (DriveFileRef) keeps
-// *driveapi.File out of the application layer.
-func (a *DriveFolderManagerAdapter) ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error) {
-	if a.svc == nil {
-		return nil, fmt.Errorf("drive service not configured")
-	}
-	if strings.TrimSpace(query) == "" {
-		return nil, fmt.Errorf("listByQuery: query is required")
-	}
-	list, err := a.svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("drive list: %w", err)
-	}
-	out := make([]DriveFileRef, 0, len(list.Files))
-	for _, f := range list.Files {
-		out = append(out, DriveFileRef{ID: f.Id, Name: f.Name})
-	}
-	return out, nil
-}
-
-// Trash is intentionally NOT exposed on DriveFolderManagerAdapter
-// (CARD-3, June 2026). The file-lifecycle surface (Files.Update{Trashed:true},
-// File.Move / File.Rename / File.Cleanup) is the canonical owner of the
-// raw SDK call, and it lives behind the drive.FileLifecycle port at
-// internal/infrastructure/drive/file_lifecycle.go (see *FileLifecycleAdapter).
-// godlike/06 §Data and Configuration Ownership — one owner per fact:
-// the folder manager owns folder operations (EnsureFolder, ListByQuery,
-// Download, Upload); the lifecycle adapter owns file-lifecycle commands
-// (Trash, Move, Rename, Cleanup). Callers that previously called
-// DriveFolderManagerAdapter.Trash (e.g. artlist semantic_enricher) now
-// take a drive.FileLifecycle port directly from the composition root.
-
-// Download fetches a file's content as a stream. The caller MUST close
-// the returned io.ReadCloser. Retries on transient errors (429, 503,
-// timeout) via pkg/retry. Returns body + content-type string for
-// callers that need to branch on MIME.
-func (a *DriveFolderManagerAdapter) Download(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
-	if a.svc == nil {
-		return nil, "", fmt.Errorf("drive service not configured")
-	}
-	if strings.TrimSpace(fileID) == "" {
-		return nil, "", fmt.Errorf("download: file id is required")
-	}
-	type dlResult struct {
-		body io.ReadCloser
-		ct   string
-	}
-	res, err := retry.DoWithValue(ctx, func() (dlResult, error) {
-		resp, err := a.svc.Files.Get(fileID).Context(ctx).Download()
-		if err != nil {
-			return dlResult{}, err
-		}
-		return dlResult{body: resp.Body, ct: resp.Header.Get("Content-Type")}, nil
-	}, retry.Options{
-		MaxAttempts:    3,
-		InitialBackoff: 2 * time.Second,
-		IsRetryable:    isRetryableDriveErr,
-		OnRetry: func(attempt int, err error) {
-			a.log.Warn("transient drive download error, retrying",
-				zap.String("file_id", fileID), zap.Int("attempt", attempt+1), zap.Error(err))
-		},
-	})
-	if err != nil {
-		return nil, "", fmt.Errorf("drive download failed after 3 attempts: %w", err)
-	}
-	return res.body, res.ct, nil
-}
-
-// Upload uploads a local file to a Drive folder. Returns the
-// webViewLink of the new/updated file. When a file with the same name
-// already exists in the folder, the implementation updates it in
-// place rather than creating a duplicate (matches legacy behaviour
-// callers depend on). Retries on transient errors via pkg/retry.
-//
-// Soft error on the "find existing" lookup: when the lookup fails,
-// the adapter logs WARN and tries Create anyway, which will produce
-// a clearer Drive-side error if it really conflicts.
-func (a *DriveFolderManagerAdapter) Upload(ctx context.Context, localPath, folderID, filename string) (string, error) {
-	if a.svc == nil {
-		return "", fmt.Errorf("drive service not configured")
-	}
-	if strings.TrimSpace(localPath) == "" {
-		return "", fmt.Errorf("upload: local path is required")
-	}
-	if strings.TrimSpace(filename) == "" {
-		return "", fmt.Errorf("upload: filename is required")
-	}
-	type upResult struct {
-		link string
-	}
-	res, err := retry.DoWithValue(ctx, func() (upResult, error) {
-		f, err := os.Open(localPath)
-		if err != nil {
-			return upResult{}, fmt.Errorf("open local file: %w", err)
-		}
-		defer f.Close()
-
-		existing, err := a.findFileByName(ctx, folderID, filename)
-		if err != nil {
-			a.log.Warn("failed to check for existing file", zap.String("name", filename), zap.Error(err))
-		}
-
-		file := &driveapi.File{Name: filename}
-		if folderID != "" {
-			file.Parents = []string{folderID}
-		}
-		var created *driveapi.File
-		if existing != "" {
-			created, err = a.svc.Files.Update(existing, file).
-				Fields("id,webViewLink").
-				Media(f).
-				Context(ctx).
-				Do()
-		} else {
-			created, err = a.svc.Files.Create(file).
-				Fields("id,webViewLink").
-				Media(f).
-				Context(ctx).
-				Do()
-		}
-		if err != nil {
-			return upResult{}, err
-		}
-		return upResult{link: created.WebViewLink}, nil
-	}, retry.Options{
-		MaxAttempts:    3,
-		InitialBackoff: 2 * time.Second,
-		IsRetryable:    isRetryableDriveErr,
-		OnRetry: func(attempt int, err error) {
-			a.log.Warn("transient drive upload error, retrying",
-				zap.String("filename", filename), zap.Int("attempt", attempt+1), zap.Error(err))
-		},
-	})
-	if err != nil {
-		return "", fmt.Errorf("drive upload failed after 3 attempts: %w", err)
-	}
-	return res.link, nil
-}
-
-// findFileByName returns the file ID of a non-trashed file in folderID
-// with the given name, or empty string if none found. Private helper
-// used by Upload to detect "same name already exists" → update flow.
-// Callers that need richer metadata should use ListByQuery.
-func (a *DriveFolderManagerAdapter) findFileByName(ctx context.Context, folderID, filename string) (string, error) {
-	if folderID == "" || filename == "" {
-		return "", nil
-	}
-	query := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false",
-		strings.ReplaceAll(filename, "'", "\\'"), folderID)
-	list, err := a.svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err != nil {
-		return "", err
-	}
-	if len(list.Files) == 0 {
-		return "", nil
-	}
-	return list.Files[0].Id, nil
 }
