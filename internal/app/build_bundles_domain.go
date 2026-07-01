@@ -252,7 +252,20 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// route through the canonical drive.Reader port (concrete *drive.Uploader
 	// satisfies drive.Reader structurally per the compile-time assertion at
 	// internal/infrastructure/drive/ports.go so the field passes at compile).
-	booksSvc := buildBooksService(cfg, dbs, log, voiceoverSvc, drive.Publisher, drive.driveUploader)
+	//
+	// Fase 7 review-fix #2 (July 2026): composition-root hard-fail on the
+	// books.BookTransformer construction. buildBooksService signature
+	// changed from `*books.Service` to `(*books.Service, error)` so a
+	// transformer-construction failure aborts NewComposition rather than
+	// silently returning a half-wired Service (godlike/07 §"No fake
+	// availability" closure). The error taxonomy matches the surrounding
+	// pattern (`compose domains: <surface>: %w`, mirrors `compose domains:
+	// youtube SearchRunnerPort typed-nil` + `compose domains: clip
+	// metadata service` + `compose domains: outbox.Dispatcher is required`).
+	booksSvc, err := buildBooksService(cfg, dbs, log, voiceoverSvc, drive.Publisher, drive.driveUploader)
+	if err != nil {
+		return nil, fmt.Errorf("compose domains: books transformer: %w", err)
+	}
 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, drive.Publisher, repos, search, mutationsDisp)
 
