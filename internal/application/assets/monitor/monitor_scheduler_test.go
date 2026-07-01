@@ -10,6 +10,7 @@ import (
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
 )
@@ -108,6 +109,43 @@ func (s *stubTranscriptProvider) GetTranscript(_ context.Context, _ string) (str
 	return s.transcript, s.err
 }
 
+// Fetch (Commit G, June 2026) — minimal stub satisfying the new
+// TranscriptProvider port method. Wraps the canned text + err into a
+// leaf transcript.Document. The real fetch path (yt-dlp subprocess)
+// lives on YTDLPSubtitleAdapter in production; this stub exists so
+// commit G passes compile without forcing a behavior rewrite of
+// every monitor_scheduler_test test body.
+func (s *stubTranscriptProvider) Fetch(_ context.Context, videoURL string) (transcript.Document, error) {
+	if s.err != nil {
+		return transcript.Document{}, s.err
+	}
+	return transcript.Document{
+		VideoID:  extractVideoIDStub(videoURL),
+		Language: "en",
+		Source:   "asr",
+		Text:     s.transcript,
+	}, nil
+}
+
+// extractVideoIDStub is the scheduler-test-local helper for splitting
+// a YouTube URL's v= parameter. Deliberately minimal: returns the
+// raw URL when extraction fails so production-grade urlutil helpers
+// are not pulled across the test-only dependency boundary.
+func extractVideoIDStub(rawURL string) string {
+	const prefix = "v="
+	idx := strings.Index(rawURL, prefix)
+	if idx < 0 {
+		return rawURL
+	}
+	rest := rawURL[idx+len(prefix):]
+	for i, c := range rest {
+		if c == '&' || c == '#' {
+			return rest[:i]
+		}
+	}
+	return rest
+}
+
 // Compile-time assertion: stubTranscriptProvider must satisfy TranscriptProvider.
 var _ TranscriptProvider = (*stubTranscriptProvider)(nil)
 
@@ -141,6 +179,14 @@ func (s *stubVideoAnalyzer) Classify(_ context.Context, _, _ string) (string, er
 func (s *stubVideoAnalyzer) FindSegments(_ context.Context, _, _, _ string, _ int) ([]ytdomain.Segment, error) {
 	s.findSegmentsCalls++
 	return s.segments, s.findSegmentsErr
+}
+
+// AnalyzeFull (Commit G, June 2026) — minimal stub returning
+// ErrAnalyzeFullNotImplemented so the orchestrator (analyzeVideo)
+// can detect a non-upgraded analyzer and fall back to the legacy
+// 3-call flow. The real JSON one-shot impl lands in Commit H.
+func (s *stubVideoAnalyzer) AnalyzeFull(_ context.Context, _ transcript.Document, _ AnalyzeOptions) (Analysis, error) {
+	return Analysis{}, ErrAnalyzeFullNotImplemented
 }
 
 // Compile-time assertion: stubVideoAnalyzer must satisfy VideoAnalyzer.

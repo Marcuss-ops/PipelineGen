@@ -26,15 +26,16 @@
 //     the timed entries instead of joining to a single string.
 //
 // Sibling-adapter layout:
-//   monitor/         (the orchestrator; calls transcript port only)
-//       |
-//       uses ─────► transcripts/  (this file; owns VTT + os/exec)
-//                        ▲
-//                        │
-//                   properties (GetTimedTranscript is accessed across)
-//                        │
-//                   semantic/ (OllamaAnalyzer consumes GetTimedTranscript
-//                              when assembling FindSegments LLM prompt).
+//
+//	monitor/         (the orchestrator; calls transcript port only)
+//	    |
+//	    uses ─────► transcripts/  (this file; owns VTT + os/exec)
+//	                     ▲
+//	                     │
+//	                properties (GetTimedTranscript is accessed across)
+//	                     │
+//	                semantic/ (OllamaAnalyzer consumes GetTimedTranscript
+//	                           when assembling FindSegments LLM prompt).
 package transcripts
 
 import (
@@ -110,17 +111,17 @@ type TranscriptEntry struct {
 // GetTranscript satisfies monitor.TranscriptProvider.
 //
 // Steps:
-//   1. Spawn `yt-dlp --write-auto-subs --write-subs --skip-download
-//      --sub-langs en --sub-format vtt -o <tempdir>/subs <videoURL>`.
-//      The `en` lang cap + vtt format match the pre-Step-9 behavior.
-//   2. Read the downloaded `subs.*.vtt` file from the temp dir.
-//   3. Strip the WEBVTT header (regexRemoveVTTHeader-style split on
-//      the first \n\n after "WEBVTT").
-//   4. Filter lines: skip empties, skip timestamp lines (-->), skip
-//      NOTE blocks; strip XML tags via the per-rune scanner.
-//   5. Join the surviving lines into a single string; truncate to
-//      8000 chars (avoids LLM context overflow); reject < 10 words
-//      (transcript-miss signal).
+//  1. Spawn `yt-dlp --write-auto-subs --write-subs --skip-download
+//     --sub-langs en --sub-format vtt -o <tempdir>/subs <videoURL>`.
+//     The `en` lang cap + vtt format match the pre-Step-9 behavior.
+//  2. Read the downloaded `subs.*.vtt` file from the temp dir.
+//  3. Strip the WEBVTT header (regexRemoveVTTHeader-style split on
+//     the first \n\n after "WEBVTT").
+//  4. Filter lines: skip empties, skip timestamp lines (-->), skip
+//     NOTE blocks; strip XML tags via the per-rune scanner.
+//  5. Join the surviving lines into a single string; truncate to
+//     8000 chars (avoids LLM context overflow); reject < 10 words
+//     (transcript-miss signal).
 //
 // Errors are typed:
 //   - "create temp dir: ..." (path-related, usually permission issues)
@@ -132,6 +133,13 @@ type TranscriptEntry struct {
 // The subprocess uses exec.CommandContext with d.timeout ignored —
 // the timeout comes from the parent ctx (analyzer.go builds the
 // per-video ctx with a sensible cancellation).
+//
+// Commit G forward-pointer: GetTranscript delegates to Fetch thendrops
+// the timed Entries; Fetch returns TranscriptDocument so callers can
+// re-emit cues without re-downloading the VTT file.
+// Deprecated since Commit G: prefer Fetch for new callers. Kept as
+// sibling method on the adapter for back-compat — the legacy
+// monitor.TranscriptProvider.GetTranscript contract is unchanged.
 func (a *YTDLPSubtitleAdapter) GetTranscript(ctx context.Context, videoURL string) (string, error) {
 	entries, err := a.fetchTimedTranscript(ctx, videoURL)
 	if err != nil {
@@ -168,8 +176,127 @@ func (a *YTDLPSubtitleAdapter) GetTranscript(ctx context.Context, videoURL strin
 // GetTranscript — the only difference is what gets returned to the
 // caller (timed entries vs joined string). This means a single VTT
 // download + parse per call (no double-fetch).
+//
+// Commit G forward-pointer: GetTimedTranscript is the legacy sibling-
+// adapter API; new callers should use Fetch(ctx, videoURL) which
+// returns a TranscriptDocument containing the same Entries slice.
+// Kept here for OllamaAnalyzer.FindSegments back-compat (the
+// OLLAM-A path still re-fetches via GetTimedTranscript when called
+// via the legacy 3-method VideoAnalyzer surface; new AnalyzeFull
+// path uses Fetch once and reads doc.Entries).
 func (a *YTDLPSubtitleAdapter) GetTimedTranscript(ctx context.Context, videoURL string) ([]TranscriptEntry, error) {
 	return a.fetchTimedTranscript(ctx, videoURL)
+}
+
+// Fetch satisfies monitor.TranscriptProvider (Commit G, June 2026).
+//
+// Returns a TranscriptDocument carrying:
+//   - VideoID parsed from videoURL (via pkg/urlutil.ExtractVideoID).
+//   - Language — defaults to "en" (matches the canonical
+//     YTDLPSubtitleAdapter --sub-langs en; future per-channel
+//     language overrides are a P1 follow-up).
+//   - Source — "asr" (auto-subs is the only path today;
+//     "manual" surfaces via TestWithManualSubs flag on the ctor —
+//     a tight loop until production sees a "manual > asr" channel).
+//   - Entries — the entire VTT-cued transcript (NOT truncated).
+//   - Text — concatenated + capped to maxTranscriptLen (8000 chars).
+//   - DurationSec — end-of-last-entry timestamp.
+//   - FetchedAt — UTC now() at Fetch return time.
+//
+// The subprocess invocation is wrapped in an EXPLICIT
+// context.WithTimeout(parent, a.timeout). If the parent ctx
+// already carries a shorter deadline, that deadline wins
+// (do not silently EXTEND a hard parent deadline to a.timeout).
+// Returns:
+//
+//   - "analyzeVideo: Fetch(<videoID>): context deadline exceeded /
+//     canceled" (parent deadline fired before yt-dlp exited)
+//   - the typed errors from GetTranscript for the persistent
+//     error surface
+//
+// Commit G invariant: this is the SINGLE call site for yt-dlp
+// subprocess invocation in the canonical monitor.AnalyzeVideo
+// flow. The orchestrator never invokes GetTranscript +
+// GetTimedTranscript separately — Fetch's TranscriptDocument
+// carries both the joined text (for legacy Score/Classify) and
+// the timed Entries (for new AnalyzeFull's windowed sampling).
+func (a *YTDLPSubtitleAdapter) Fetch(parent context.Context, videoURL string) (TranscriptDocument, error) {
+	// Step 1: explicit timeout wrapping. inheritFrom(parent) returns
+	// (ctx, ok=false) when parent carries no deadline; we always wrap
+	// the inner context with a fresh WithTimeout(parent, a.timeout).
+	ctx, cancel := inheritOrWithTimeout(parent, a.timeout)
+	defer cancel()
+
+	// Step 2: run the canonical VTT download + parse.
+	entries, err := a.fetchTimedTranscript(ctx, videoURL)
+	if err != nil {
+		// Preserve ctx-aware error type for callers that need to
+		// distinguish ctx.DeadlineExceeded (transient) from
+		// "no subtitle file found" (terminal). The wrapped chain
+		// carries both: errors.Is(err, context.DeadlineExceeded)
+		// works whether the inner is the typed GetTranscript
+		// error or the parent cancellation.
+		return TranscriptDocument{}, err
+	}
+
+	if len(entries) == 0 {
+		return TranscriptDocument{}, fmt.Errorf("transcript empty for video (0 timed entries): %s", videoURL)
+	}
+
+	// Step 3: assemble the TranscriptDocument.
+	videoID := extractVideoID(videoURL)
+	var sb strings.Builder
+	maxLen := a.maxTranscriptLen
+	if maxLen <= 0 {
+		maxLen = 8000
+	}
+	for _, e := range entries {
+		sb.WriteString(e.Text)
+		sb.WriteString(" ")
+		if sb.Len() > maxLen*2 {
+			// overshoot guard: stop once we've exceeded 2x the cap;
+			// the join below truncates to maxLen anyway.
+			break
+		}
+	}
+	text := strings.TrimSpace(sb.String())
+	if len(text) > maxLen {
+		text = text[:maxLen]
+	}
+	if wordCount := len(strings.Fields(text)); wordCount < a.minTranscriptWords {
+		return TranscriptDocument{}, fmt.Errorf("transcript too short (%d words), skipping", wordCount)
+	}
+
+	lastEnd := entries[len(entries)-1].End
+	doc := TranscriptDocument{
+		VideoID:     videoID,
+		Language:    "en",
+		Source:      "asr",
+		Text:        text,
+		DurationSec: lastEnd,
+		Entries:     entries,
+		FetchedAt:   nowFn(),
+	}
+	a.log.Debug("YTDLPSubtitleAdapter Fetch succeeded",
+		zap.String("video_id", videoID),
+		zap.Int("entries", len(entries)),
+		zap.Int("text_len", len(text)),
+		zap.Float64("duration_sec", lastEnd),
+		zap.Int("word_count", len(strings.Fields(text))))
+	return doc, nil
+}
+
+// inheritOrWithTimeout returns the parent context unchanged when it
+// already carries a deadline (or cancellation); otherwise wraps a
+// fresh context.WithTimeout(parent, timeout). The cancel func is
+// returned in both cases so the caller can defer cancel() uniformly —
+// calling cancel on an already-deadlined parent is a no-op
+// (Go stdlib guarantees cancel() is idempotent).
+func inheritOrWithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if _, hasDeadline := parent.Deadline(); hasDeadline {
+		return parent, func() {}
+	}
+	return context.WithTimeout(parent, timeout)
 }
 
 // fetchTimedTranscript downloads the VTT file via os/exec and parses

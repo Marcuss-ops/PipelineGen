@@ -173,6 +173,18 @@ func (m *mockTranscriptProvider) GetTranscript(_ context.Context, _ string) (str
 	return "FAKE_TRANSCRIPT lorem ipsum dolor sit amet.", nil
 }
 
+// Fetch (Commit G, June 2026) — minimal stub on the e2e mock so the
+// new transcript.Document port method is satisfied. Returns a
+// canned document so the orchestrator (analyzeVideo) sees the
+// same transcript text on both GetTranscript and Fetch paths.
+func (m *mockTranscriptProvider) Fetch(_ context.Context, _ string) (transcript.Document, error) {
+	return transcript.Document{
+		Language: "en",
+		Source:   "asr",
+		Text:     "FAKE_TRANSCRIPT lorem ipsum dolor sit amet.",
+	}, nil
+}
+
 // mockVideoAnalyzer returns Score=90 (> most semantic thresholds) and
 // one heuristic segment so per-video processVideo never early-outs on
 // `len(analysis.Segments) == 0`.
