@@ -97,14 +97,20 @@ const DefaultBatchConcurrency = 3
 // RegisterJobHandler registers the batch reindex job handler with the
 // jobs service.
 //
-// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026):
-// signature changed to error-return so composition-root fail-closed
-// posture applies (the validator's Bind closure re-invokes this method
-// verbatim; a nil-dispatcher or duplicate-bind rejection surfaces as
-// a typed error instead of silent log-Info).
+// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
+//
+// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
+// regardless of which handler-specific prefix the future maintainer
+// adds or removes. The handler-specific diagnostic prefix is preserved
+// for operator logs. The error-return signature (refactored in
+// Audit P0 #2 cont. — PR-VALIDATOR-LITERAL-REGISTER, July 2026)
+// closes the silent-success class of "if jobsSvc != nil { log.Info }"
+// that pre-P0 #2 swallowed nil-typed-dispatcher + duplicate-bind
+// failures.
 func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(job.TypeMediaReindex, s.HandleJob); err != nil {
 		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", job.TypeMediaReindex, err)

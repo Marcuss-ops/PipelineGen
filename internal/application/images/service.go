@@ -235,14 +235,20 @@ func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobT
 // RegisterHandler registers the image-generation job handler with the
 // jobs system.
 //
-// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): signature
-// changed to error-return so composition-root fail-closed posture applies.
-// Pre-PR-VALIDATOR-LITERAL-REGISTER this delegated silently to
-// GenerationService.RegisterHandler which itself logged-and-continued on
-// dispatcher rejection — the silent-success class closed by audit-P0.2-cont.
+// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
+//
+// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
+// regardless of which handler-specific prefix the future maintainer
+// adds or removes. The handler-specific diagnostic prefix is preserved
+// for operator logs. The error-return signature (refactored in
+// Audit P0 #2 cont. — PR-VALIDATOR-LITERAL-REGISTER, July 2026)
+// closes the silent-success class of "if jobsSvc != nil { log.Info }"
+// that pre-P0 #2 swallowed nil-typed-dispatcher + duplicate-bind
+// failures.
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := s.Gen.RegisterHandler(jobsSvc); err != nil {
 		return fmt.Errorf("images.Service.RegisterHandler: bind via GenerationService: %w", err)

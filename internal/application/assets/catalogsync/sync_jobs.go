@@ -75,7 +75,11 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 // closes for all silent-Warn critical handlers.
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("catalogsync.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+		// composition root + tests can assert via
+		// errors.Is(err, appjobs.ErrMissingDeps) regardless of the
+		// handler prefix.
+		return fmt.Errorf("catalogsync.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, s.HandleJob); err != nil {
 		return fmt.Errorf("catalogsync.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeCatalogSync, err)
@@ -90,7 +94,11 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 // signature change as RegisterHandler.
 func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+		// composition root + tests can assert via
+		// errors.Is(err, appjobs.ErrMissingDeps) regardless of the
+		// handler prefix.
+		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, s.HandleDriveFolderSyncJob); err != nil {
 		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: bind %q to dispatcher: %w", appjobs.TypeDriveFolderSync, err)

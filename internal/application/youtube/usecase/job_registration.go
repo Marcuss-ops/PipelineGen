@@ -20,15 +20,19 @@ import (
 // RegisterHandler wires the orchestrator's two job-type handlers into the
 // central jobtools.Service. Call once at composition time.
 //
-// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): Register
-// now returns error so composition-root fall-back nil-typed-dispatcher
-// + duplicate-bind failures surface as a typed error. Pre-PR-VALIDATOR-
-// LITERAL-REGISTER the silent `if jobsSvc == nil { return }` early-exit
-// masked wiring gaps (the silent-success class audit-P0.2 closed for
-// voiceover).
+// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
+//
+// P1 #1 (July 2026): wraps jobtools.ErrMissingDeps via %w so the
+// composition root + tests can assert via errors.Is(err, jobtools.ErrMissingDeps)
+// regardless of which handler-specific prefix the future maintainer
+// adds or removes. The handler-specific diagnostic prefix is preserved
+// for operator logs. The error-return signature (refactored in
+// Audit P0 #2 cont. — PR-VALIDATOR-LITERAL-REGISTER, July 2026)
+// closes the silent-success class of "if jobsSvc == nil { return }"
+// that pre-P0 #2 swallowed wiring gaps.
 func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("youtube.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		return fmt.Errorf("youtube.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", jobtools.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, ytjobs.NewJobHandler(s, s.log).HandleJob); err != nil {
 		return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobservice.TypeYouTubeClipExtract, err)
