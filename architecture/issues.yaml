@@ -145,3 +145,27 @@
     (subject to be added in the first reintroduction PR). Until then
     the canonical tracker for "have we ever had pkg/workerstats?" is
     the deprecation record above.
+
+- id: Q12-MONITOR-ENQUEUE-stringsToLower-resolved
+  title: "Resolved monitor/enqueue.go line 222 isTransientEnqueueError strings.ToLower call site (Phase 1c honesty note flagged as undefined-symbol build error; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — strings package imported at enqueue.go:47 + strings.ToLower call site present at enqueue.go:222 + go build ./internal/application/assets/monitor/... exit 0 per PIPESTATUS[0] verifier)"
+  status: done
+  owner: internal/application/assets/monitor
+  linked_issues:
+    - Q7-YOUTUBE-ExtractionPhase1c
+
+- id: Q13-MONITOR-SCHEDULER-JobEnqueuer-Wire-resolved
+  title: "Resolved monitor JobEnqueuer concrete binding (Phase 1c honesty note flagged NewUnboundJobEnqueuer undefined in scheduler.go; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — unboundJobEnqueuer stub + ErrJobEnqueuerNotWired sentinel + 511 JobEnqueuer port declared in ports.go + concrete adapter wired at extraction_enqueuer.go:5 + :136 + go build ./internal/application/assets/monitor/... exit 0 per PIPESTATUS[0] verifier)"
+  status: done
+  owner: internal/application/assets/monitor
+  linked_issues:
+    - Q12-MONITOR-ENQUEUE-stringsToLower-resolved
+
+- id: Q14-STOCKPIPELINE-RunUpload-syntax-resolved
+  title: "Resolved stockpipeline/run_upload.go line-165 syntax build break concern (Phase 1c honesty note flagged pre-existing build error; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — line 165 is clean func indexChunkToClipsDB signature + full file compiles + go build ./internal/application/assets/providers/stock/... exit 0 per PIPESTATUS[0] verifier)"
+  status: done
+  owner: internal/application/assets/providers/stock/stockpipeline
+
+- id: Q15-APP-MODULE-MEDIA-MutationsDispatcherAdapter-resolved
+  title: "Resolved app/module_media.go line 162 newMutationsDispatcherAdapter obsolete-literal concern (Phase 1c honesty note flagged Wave 7 unification residue per clips.Deps field removal; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — newMutationsDispatcherAdapter defined in registry_adapters.go with full Wave 27 DRIVE-005 unification signature + module_media.go:162 call site valid + go build ./internal/app/... exit 0 per PIPESTATUS[0] verifier)"
+  status: done
+  owner: internal/app
