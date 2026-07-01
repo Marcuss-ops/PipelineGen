@@ -15,32 +15,30 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// ServicePorts collects the four canonical ports PR2.1-PR2.7 lifted out
-// of the legacy concrete dependencies. Sized at 4 fields — well under
-// the AGENTS.md 10-per-bundle cap.
+// ServicePorts collects the canonical ports PR2.1-PR2.7+lifted out
+// of the legacy concrete dependencies. Sized at 3 fields (post-F2.11
+// DriveFolderManager retirement) — well under the AGENTS.md 10-per-bundle cap.
 //
-// The composition root in module_sources.go::WireArtlist builds the SemanticEnricher
-// first (so its dispatcher hookup is captured at creation) and wires it
-// here as MetadataWriter. AssetStore is satisfied by *assets.ClipsRepository;
-// Indexer is satisfied by *clipindexer.Service directly (the port declares
-// IndexClip + IsEnabled which both implementations provide);
-// DriveFolderManager (PR2.7) is satisfied by *drive.DriveFolderManagerAdapter
-// which wraps *assetsapi.Service so callers never see SDK types.
+// F2.11 (June 2026): DriveFolderManager port field was RETIRED
+// (override brutal). The composition root no longer constructs
+// *drive.DriveFolderManagerAdapter; every Drive write from artlist
+// routes through delivery.Publisher (the canonical write canal per
+// DRIVE-005 closure). The legacy `else if driveManager != nil` branch
+// in DestinationService.ResolveDestination + the silent
+// `folderID = rootFolderID` fallback are gone — a missing Publisher
+// at composition is now the fail-closed wiring error
+// ErrPublisherUnavailable (mirrors QDRANT-002 PR7 composition-time
+// dispatcher guard).
 type ServicePorts struct {
 	AssetStore     AssetStore
 	Indexer        Indexer
 	MetadataWriter MetadataWriter
-	// DriveFolderManager is the wide Drive port (PR2.7). Replaces
-	// the raw *assetsapi.Service concrete that previously lived in
-	// ServiceDependencies as "DriveClient". Hides the SDK from
-	// callers (semantic_enricher, destination_service) so the
-	// application layer no longer reaches through a concrete to
-	// call Files.List/Trash/Download/Create.
-	DriveFolderManager DriveFolderManager
 	// Publisher is the canonical Drive upload/folder-resolution canal
-	// (FASE 8, June 2026). Used by DestinationService via PublisherPort
-	// for folder-only resolution. Nil-safe: falls back to legacy
-	// DriveFolderManager when Publisher is nil.
+	// (FASE 8, June 2026; F2.11: now MANDATORY at composition per the
+	// brutal-override user spec). Used by DestinationService via
+	// PublisherPort for folder-only resolution. A nil Publisher fails
+	// NewService with ErrPublisherUnavailable (composition-time fail-
+	// closed; defense-in-depth with the WireArtlist pre-rejection).
 	Publisher delivery.Publisher
 	// PR2: Searcher implementations injected from infrastructure.
 	// Nil means that level is skipped in the fallback chain.
@@ -126,6 +124,12 @@ type ServiceDeps struct {
 //
 // PR2.6: artlistDB field dropped — after the media.db.sqlite
 // consolidation it equals MainDB and the extra pointer duplicated state.
+//
+// PR2.7 → F2.11 (June 2026): driveFolderManager field RETIRED
+// (override brutal). The legacy DriveFolderManager port's
+// EnsureFolder / ListByQuery / Download / Upload methods now fan out
+// through delivery.Publisher (write surface) + drive.Reader (read
+// surface) per DRIVE-005 closure's "one owner per fact" rule.
 type Service struct {
 	cfg    *config.Config
 	mainDB *sql.DB
@@ -153,18 +157,14 @@ type Service struct {
 	// pair (see dispatch_bridge.go). Wired via ServiceDeps.Dispatcher.
 	dispatcher Dispatcher
 
-	// driveFolderManager is the canonical DriveFolderManager port
-	// (PR2.7). Replaces the raw *assetsapi.Service concrete that
-	// lived here pre-PR2.7. The adapter
-	// (DriveFolderManagerAdapter in internal/infrastructure/drive)
-	// wraps the SDK so callers (semantic_enricher,
-	// destination_service) never see *driveapi types. Wired via
-	// ServiceDeps.ServicePorts.DriveFolderManager.
-	driveFolderManager DriveFolderManager
-
 	// publisher is the canonical Drive upload/folder-resolution canal
-	// (FASE 8, June 2026). Used by DestinationService for folder-only
-	// resolution via PublisherPort.
+	// (FASE 8 → F2.11). F2.11 made it mandatory at composition
+	// time: a nil Publisher fails NewService with ErrPublisherUnavailable
+	// (composition-time fail-closed). The legacy driveFolderManager
+	// field (DriveFolderManager port) was retired from this struct
+	// entirely; folder-only resolution routes through this Publisher
+	// via PublisherPort in DestinationService, and Drive writes
+	// elsewhere use Publisher.Publish directly.
 	publisher delivery.Publisher
 
 	// PR2: infrastructure Searcher implementations for the fallback chain.
@@ -191,7 +191,20 @@ type Service struct {
 // from ServicePorts + ServiceDependencies, so callers can construct it
 // either with terse flat construction (tests) or explicit named
 // sub-structs (production wiring in module_sources.go::WireArtlist).
+//
+// F2.11 (June 2026): Publisher is now a mandatory composition-time
+// dependency. A nil Publisher returns ErrPublisherUnavailable (the
+// brutal-override fail-closed sentinel); the legacy fallback path
+// that tolerated a missing Publisher (route through DriveFolderManager,
+// then silently fall back to `folderID = rootFolderID`) is gone. The
+// WireArtlist composition site in module_sources.go::WireArtlist
+// pre-rejects the nil Publisher at the composition boundary; NewService
+// is the second line of defence so accidental misuse from tests still
+// fails loud at construction time rather than at first request.
 func NewService(deps ServiceDeps) (*Service, error) {
+	if deps.Publisher == nil {
+		return nil, ErrPublisherUnavailable
+	}
 	s := &Service{
 		cfg:                deps.Cfg,
 		mainDB:             deps.MainDB,
@@ -200,7 +213,6 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		indexer:            deps.Indexer,
 		metadataWriter:     deps.MetadataWriter,
 		dispatcher:         deps.Dispatcher,
-		driveFolderManager: deps.DriveFolderManager,
 		publisher:          deps.Publisher,
 		mediaProcessor:     deps.MediaProcessor,
 		lifecycleService:   deps.LifecycleService,
