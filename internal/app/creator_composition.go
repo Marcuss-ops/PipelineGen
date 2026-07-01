@@ -31,6 +31,7 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -127,6 +128,15 @@ func InitCreatorComposition(cfg *config.Config, log *zap.Logger) (*CreatorRoot, 
 
 	log.Info("creator: script engine constructed")
 
+	// ── Postprocessor registry (Creator Blocco 3.2) ───────────────
+	// Creator postprocessors write outputs as files in the workspace.
+	// Forbidden: PersistenceProcessor (SQLite), DocumentProcessor
+	// (Google Drive), StockAssociation (Qdrant).
+	ppReg := registerCreatorPostProcessors(log)
+
+	log.Info("creator: postprocessor registry built",
+		zap.Int("processors", ppReg.Len()))
+
 	// ── Script generate handler ───────────────────────────────────
 	// Build the minimal dependency chain for script.generate:
 	//   Engine → GenerateOneUseCase → GenerateManyUseCase → GenerateJobHandler
@@ -141,7 +151,7 @@ func InitCreatorComposition(cfg *config.Config, log *zap.Logger) (*CreatorRoot, 
 		MaxBatchWorkers:          4,
 	}
 	sourceReg := adapters.NewSourceRegistry(log)
-	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, nil, log)
+	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	generateMany := usecase.NewGenerateManyUseCase(generateOne, log)
 	genJobHandler := scriptjobs.NewGenerateJobHandler(generateOne, generateMany, normCfg, log)
 
@@ -201,4 +211,91 @@ func InitCreatorComposition(cfg *config.Config, log *zap.Logger) (*CreatorRoot, 
 		Log:          log,
 	}
 	return root, cleanup, nil
+}
+
+// ── Creator postprocessor registry (Blocco 3.2) ────────────────────
+//
+// registerCreatorPostProcessors builds a PostProcessorRegistry with
+// Creator-safe postprocessors that write files instead of talking to
+// SQLite, Google Drive, or Qdrant.
+//
+//   - entities_file → noop EntityExtractor (returns empty result, no
+//     backend call). The noop is safe — the Creator's
+//     buildAndInjectManifest writes entities.json only when real
+//     entities are present.
+//   - metadata_file → noop MetadataGenerator (returns nil, no backend
+//     call). Same safe-contract.
+//   - clip_bindings → canonical ClipBindingsProcessor. No-op when
+//     ClipEvidence is nil/empty (pure-text generation).
+//
+// FORBIDDEN (never registered):
+//   - persistence (SQLite)
+//   - document (Google Drive)
+//   - stock_association (Qdrant)
+//
+// voiceover and images are NOT registered yet — the Creator's
+// VoiceoverEngine and ImageGenerator are typed-nil placeholders
+// until Blocco 3.x wires real services.
+func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegistry {
+	ppReg := adapters.NewPostProcessorRegistry(log)
+
+	// entities → Creator-safe noop with BestEffort policy.
+	// The noop adapter returns an empty EntityResult — since the
+	// standard EntitiesProcessor is ProcessorRequired, an empty
+	// result would fail the pipeline. The BestEffort wrapper
+	// downgrades the policy so empty output is a warning, not a
+	// hard failure.
+	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
+	entityProc := adapters.NewEntitiesProcessor(entityAdapter)
+	if !ppReg.Register(&creatorBestEffort{inner: entityProc, name: "entities"}) {
+		if log != nil {
+			log.Warn("creator: failed to register entities processor")
+		}
+	}
+
+	// metadata → Creator-safe noop with BestEffort policy.
+	// Same reasoning as entities — noop MetadataGenerationAdapter
+	// returns nil VideoMetadata, which triggers the Required empty-
+	// output gate on the standard processor.
+	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, "")
+	metadataProc := adapters.NewMetadataProcessor(metadataAdapter)
+	if !ppReg.Register(&creatorBestEffort{inner: metadataProc, name: "metadata"}) {
+		if log != nil {
+			log.Warn("creator: failed to register metadata processor")
+		}
+	}
+
+	// clip_bindings → canonical processor (in-memory, no external deps).
+	// Already BestEffort — no wrapper needed. No-op when ClipEvidence
+	// is nil/empty.
+	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
+		if log != nil {
+			log.Warn("creator: failed to register clip_bindings processor")
+		}
+	}
+
+	// Freeze prevents further registration (matches standard worker pattern).
+	ppReg.Freeze()
+
+	return ppReg
+}
+
+// creatorBestEffort wraps a PostProcessor to downgrade its policy to
+// ProcessorBestEffort. Used for Creator postprocessors backed by noop
+// adapters — the noop returns empty output, which would trigger the
+// Required empty-output gate on the standard processor. BestEffort
+// downgrades this to a warning.
+type creatorBestEffort struct {
+	inner adapters.PostProcessor
+	name  string
+}
+
+func (p *creatorBestEffort) Name() string { return p.name }
+
+func (p *creatorBestEffort) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapters.ProcessorPolicy {
+	return adapters.ProcessorBestEffort
+}
+
+func (p *creatorBestEffort) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input adapters.ProcessInput) (*adapters.PostProcessResult, error) {
+	return p.inner.Process(ctx, plan, input)
 }
