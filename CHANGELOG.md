@@ -593,8 +593,10 @@ components:
   `string`, or `map[string]any`.
 - 8 kind constants (`ArtifactKindScriptJSON`, `ArtifactKindVoiceover`, etc.)
   and the canonical manifest key (`ManifestKey = "__artifact_manifest"`).
-- 20 unit tests covering JSON round-trip, validation edge cases, required-
-  artefact filtering, and all 5 Decode input shapes.
+- 20 unit tests covering JSON round-trip (both ArtifactManifest and
+  UploadedManifest), validation, required-artefact filtering, Decode
+  input shapes, and WithRemoteLocations (ready/skipped/error paths).
+  Status constants exported (StatusReady, StatusSkipped).
 
 Files: `internal/domain/job/artifact_manifest.go` (NEW),
 `internal/domain/job/artifact_manifest_test.go` (NEW).
