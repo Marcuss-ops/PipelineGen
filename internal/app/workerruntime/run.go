@@ -93,31 +93,24 @@ func Run(ctx context.Context, cfgPath string) error {
 	}
 	defer cleanup()
 
-	registry, registeredCaps, err := app.BuildWorkerRegistry(compositionRoot)
-	if err != nil {
-		log.Error("failed to build worker registry", zap.Error(err))
-		return fmt.Errorf("worker registry: %w", err)
-	}
-	if registry.Len() == 0 {
-		log.Error("worker has no registered handlers — aborting startup")
-		return fmt.Errorf("worker registry empty (no registered handlers)")
-	}
-	log.Info("worker registry built",
-		zap.Int("handlers", registry.Len()),
-		zap.Strings("capabilities", registeredCaps),
+	// Creator Blocco 1.3: when $VELOX_WORKER_PROFILE is set, build a
+	// filtered registry via BuildProfileWorkerRegistry BEFORE resolving
+	// capabilities. This ensures the registry only contains handlers
+	// the profile permits, and capabilities are derived from that
+	// filtered set (single source of truth). Without a profile, the
+	// legacy BuildWorkerRegistry path is used.
+	profileName := Env("VELOX_WORKER_PROFILE", "")
+	var (
+		registry       *worker.Registry
+		registeredCaps []string
+		caps           appjobs.WorkerCapabilities
 	)
 
 	identity := WorkerIdentity()
 
-	// Creator Blocco 1.1: when $VELOX_WORKER_PROFILE is set, resolve
-	// capabilities through the profile registry (profile ceiling →
-	// env narrowing can't expand → registration gate). Without a
-	// profile, fall through to the legacy ParseAndValidateCaps path.
-	profileName := Env("VELOX_WORKER_PROFILE", "")
-	var caps appjobs.WorkerCapabilities
 	if profileName != "" {
-		reg := NewProfileRegistry()
-		profile, lookupErr := reg.Lookup(profileName)
+		profileReg := NewProfileRegistry()
+		profile, lookupErr := profileReg.Lookup(profileName)
 		if lookupErr != nil {
 			log.Error("invalid worker profile", zap.String("profile", profileName), zap.Error(lookupErr))
 			return fmt.Errorf("worker profile: %w", lookupErr)
@@ -127,14 +120,48 @@ func Run(ctx context.Context, cfgPath string) error {
 			zap.Strings("allowed_job_types", profile.AllowedJobTypes),
 			zap.Int("max_parallel", profile.MaxParallel),
 		)
+
+		registry, registeredCaps, err = app.BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
+		if err != nil {
+			log.Error("failed to build profile worker registry", zap.Error(err))
+			return fmt.Errorf("profile worker registry: %w", err)
+		}
+		if registry.Len() == 0 {
+			log.Error("profile worker has no registered handlers — aborting startup")
+			return fmt.Errorf("profile worker registry empty (no registered handlers)")
+		}
+		log.Info("profile worker registry built",
+			zap.Int("handlers", registry.Len()),
+			zap.Strings("capabilities", registeredCaps),
+		)
+
 		caps, err = ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+		if err != nil {
+			log.Error("invalid worker capabilities", zap.Error(err))
+			return fmt.Errorf("worker capabilities: %w", err)
+		}
 	} else {
+		registry, registeredCaps, err = app.BuildWorkerRegistry(compositionRoot)
+		if err != nil {
+			log.Error("failed to build worker registry", zap.Error(err))
+			return fmt.Errorf("worker registry: %w", err)
+		}
+		if registry.Len() == 0 {
+			log.Error("worker has no registered handlers — aborting startup")
+			return fmt.Errorf("worker registry empty (no registered handlers)")
+		}
+		log.Info("worker registry built",
+			zap.Int("handlers", registry.Len()),
+			zap.Strings("capabilities", registeredCaps),
+		)
+
 		caps, err = ParseAndValidateCaps(Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+		if err != nil {
+			log.Error("invalid worker capabilities", zap.Error(err))
+			return fmt.Errorf("worker capabilities: %w", err)
+		}
 	}
-	if err != nil {
-		log.Error("invalid worker capabilities", zap.Error(err))
-		return fmt.Errorf("worker capabilities: %w", err)
-	}
+
 	// Freeze the registry after capabilities are resolved — no more
 	// registrations are possible from this point.
 	registry.Freeze()

@@ -9,6 +9,72 @@ import (
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
+// BuildProfileWorkerRegistry creates a remote-worker Registry populated only
+// with handlers whose job types are present in allowedTypes. This is the
+// profile-gated variant of BuildWorkerRegistry (Creator Blocco 1.3, July 2026).
+//
+// Three invariants are enforced:
+//  1. Every allowedType MUST have a handler in the Dispatcher.
+//  2. The resulting registry MUST include script.generate (Creator invariant).
+//  3. The returned capability slice is derived from the registry — single
+//     source of truth, no manual copies.
+//
+// Returns worker.ErrNoHandlers if the filtered registry is empty.
+func BuildProfileWorkerRegistry(root *ComposeRoot, allowedTypes []string) (*worker.Registry, []string, error) {
+	if root == nil || root.Jobs == nil || root.Jobs.Dispatcher == nil {
+		return nil, nil, fmt.Errorf("compose root or jobs dispatcher is nil")
+	}
+	if len(allowedTypes) == 0 {
+		return nil, nil, fmt.Errorf("allowedTypes is empty — profile must declare at least one allowed job type")
+	}
+
+	// Build a lookup set for O(1) membership checks.
+	allowed := make(map[string]struct{}, len(allowedTypes))
+	for _, t := range allowedTypes {
+		allowed[t] = struct{}{}
+	}
+
+	allHandlers := root.Jobs.Dispatcher.AllHandlers()
+
+	// Gate: every allowed type MUST have a registered handler.
+	// A profile that declares a type the Dispatcher doesn't know
+	// about is a misconfiguration — fail at startup.
+	var missing []string
+	for _, t := range allowedTypes {
+		if _, ok := allHandlers[t]; !ok {
+			missing = append(missing, t)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, nil, fmt.Errorf("profile requires job type(s) with no registered handler: %v", missing)
+	}
+
+	// Register only handlers whose types are in the allowed set.
+	reg := worker.NewRegistry()
+	for jobType, h := range allHandlers {
+		if _, ok := allowed[jobType]; !ok {
+			continue
+		}
+		if err := reg.Register(jobType, adaptHandler(h)); err != nil {
+			return nil, nil, fmt.Errorf("register handler for %s: %w", jobType, err)
+		}
+	}
+
+	if reg.Len() == 0 {
+		return nil, nil, worker.ErrNoHandlers
+	}
+
+	// Creator invariant: script.generate MUST be present.
+	// A profile that omits script generation is a composition-level
+	// misconfiguration and must fail closed.
+	if !reg.Has("script.generate") {
+		return nil, nil, fmt.Errorf("profile requires script.generate handler but it was not registered")
+	}
+
+	caps := reg.JobTypes()
+	return reg, caps, nil
+}
+
 // BuildWorkerRegistry creates a remote-worker Registry populated with the
 // same handlers wired into the in-process Dispatcher. Each handler is
 // adapted so that worker.Tools is translated into appjobs.JobTools.

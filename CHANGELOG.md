@@ -499,6 +499,22 @@ behaviour: empty env → error, whitespace-only → error, non-empty valid
 Files: `internal/app/workerruntime/capabilities.go` (MODIFIED),
 `internal/app/workerruntime/profiles_test.go` (MODIFIED — +5 tests).
 
+**[Creator Blocco 1.3, July 2026]** `BuildProfileWorkerRegistry` filters the
+worker handler registry by profile-allowed job types (Creator Blocco 1.3).
+When `$VELOX_WORKER_PROFILE` is set, the worker now builds its registry via
+`BuildProfileWorkerRegistry(root, profile.AllowedJobTypes)` instead of the
+full `BuildWorkerRegistry`. The function enforces three gates:
+(1) every allowed type must have a dispatcher handler (pre-registration),
+(2) `script.generate` must be present in the resulting registry
+(post-registration Creator invariant), (3) the returned capability slice is
+derived from the registry (single source of truth, no manual copies).
+`run.go` was refactored to load the profile before building the registry,
+so handlers outside the profile are never registered in the first place.
+
+Files: `internal/app/worker_registry.go` (MODIFIED — +`BuildProfileWorkerRegistry`),
+`internal/app/worker_registry_test.go` (MODIFIED — +7 tests),
+`internal/app/workerruntime/run.go` (MODIFIED — profile-gated registry path).
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`
