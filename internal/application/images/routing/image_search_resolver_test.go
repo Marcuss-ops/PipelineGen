@@ -1,6 +1,10 @@
 // Package routing — search_resolver_test.go locks the FASE 6
 // strong invariant: territory=retrieved returns ZERO rows with
 // origin=generated (and vice versa).
+//
+// FASE 8 (July 2026): the fake backend now uses routing-local
+// RetrievalSearchOptions/Result types (the canonical home after the
+// cycle break). No more retrieved-package imports in routing tests.
 package routing
 
 import (
@@ -8,16 +12,15 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 type fakeRetrievalBackend struct {
-	hits []retrieved.RetrievalSearchResult
+	hits []RetrievalSearchResult
 	err  error
 }
 
-func (f *fakeRetrievalBackend) SearchAll(_ context.Context, _ string, _ retrieved.RetrievalSearchOptions) ([]retrieved.RetrievalSearchResult, error) {
+func (f *fakeRetrievalBackend) SearchAll(_ context.Context, _ string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -83,7 +86,7 @@ func TestNewImageSearchResolver_MissingBackend_FailsClosed(t *testing.T) {
 // every emitted row regardless of upstream domain.
 func TestSearch_Retrieved_NoGeneratedLeak(t *testing.T) {
 	backend := &fakeRetrievalBackend{
-		hits: []retrieved.RetrievalSearchResult{
+		hits: []RetrievalSearchResult{
 			{Provider: asset.ProviderWikipedia, Title: "wiki-1", PreviewURL: "https://wiki/1"},
 			{Provider: asset.ProviderDuckDuckGo, Title: "duck-1", PreviewURL: "https://duck/1"},
 			{Provider: asset.ProviderSearXNG, Title: "searx-1", PreviewURL: "https://searx/1"},
@@ -147,7 +150,7 @@ func TestSearch_Generated_NoRetrievedLeak(t *testing.T) {
 // Territory=all merge covers BOTH retrieved and generated.
 func TestSearch_All_ReturnsBothOrigins(t *testing.T) {
 	backend := &fakeRetrievalBackend{
-		hits: []retrieved.RetrievalSearchResult{
+		hits: []RetrievalSearchResult{
 			{Provider: asset.ProviderWikipedia, Title: "wiki-1", PreviewURL: "https://wiki/1"},
 		},
 	}
@@ -228,7 +231,7 @@ func TestIntersectOrigins(t *testing.T) {
 
 func TestResult_FieldsPerTerritory(t *testing.T) {
 	backend := &fakeRetrievalBackend{
-		hits: []retrieved.RetrievalSearchResult{
+		hits: []RetrievalSearchResult{
 			{Provider: asset.ProviderWikipedia, Title: "wiki", PreviewURL: "https://wiki/x"},
 		},
 	}

@@ -1,12 +1,13 @@
 // Package routing — searcher_retrieved.go bridges the canonical
 // RetrievalSearchBackend into a territory-scoped ImageSearcher.
+//
+// FASE 8 (July 2026): no longer imports the retrieved subpackage —
+// the shared DTOs (RetrievalSearchOptions, RetrievalSearchResult) live
+// in the routing package itself, breaking the routing→retrieved
+// import edge that completed the pre-FASE-8 import cycle.
 package routing
 
-import (
-	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
-)
+import "context"
 
 type retrievedSearcher struct {
 	backend RetrievalSearchBackend
@@ -23,7 +24,7 @@ func (s *retrievedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 		return nil, nil
 	}
 	limit := ResolvedLimit(filter.Limit)
-	opts := retrieved.RetrievalSearchOptions{Limit: limit}
+	opts := RetrievalSearchOptions{Limit: limit}
 	hits, err := s.backend.SearchAll(ctx, filter.SubjectID, opts)
 	if err != nil {
 		return nil, err

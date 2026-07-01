@@ -6,9 +6,13 @@
 // RetrievalProvider              Provider                  type alias
 // RetrievalProviderRegistry      Registry (interface)      struct implements via Resolve method in provider_registry.go
 // RetrievalProviderRegistry      RetrievalRegistryImpl    type alias (literal *RetrievalRegistryImpl)
-// RetrievalSearchOptions         RetrievalSearchRequest    type alias
-// RetrievalSearchResult          RetrievedCandidate        type alias
+// routing.RetrievalSearchOptions RetrievalSearchRequest    type alias
+// routing.RetrievalSearchResult  RetrievedCandidate        type alias
 // — (new)                        ErrProviderNotFound       sentinel errors.New
+//
+// FASE 8 (July 2026): the DTO types moved to the routing package
+// (the canonical home of the port side). The user-spec aliases now
+// forward to routing.* so the FASE 5 surface shape is preserved.
 //
 // All type aliases preserve identity under reflect.TypeOf, so compile-time
 // assertions using either name land on the SAME concrete type. Existing
@@ -16,7 +20,11 @@
 // new callers (FASE 6 ImageSearchResolver) read via the spec shape.
 package retrieved
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+)
 
 // Provider aliases the canonical RetrievalProvider interface.
 type Provider = RetrievalProvider
@@ -35,11 +43,27 @@ type Registry interface {
 // read naturally.
 type RetrievalRegistryImpl = RetrievalProviderRegistry
 
-// RetrievalSearchRequest aliases RetrievalSearchOptions.
-type RetrievalSearchRequest = RetrievalSearchOptions
+// RetrievalSearchRequest aliases routing.RetrievalSearchOptions
+// (FASE 8: relocated to routing to break the import cycle).
+type RetrievalSearchRequest = routing.RetrievalSearchOptions
 
-// RetrievedCandidate aliases RetrievalSearchResult.
-type RetrievedCandidate = RetrievalSearchResult
+// RetrievedCandidate aliases routing.RetrievalSearchResult
+// (FASE 8: relocated to routing to break the import cycle).
+type RetrievedCandidate = routing.RetrievalSearchResult
+
+// RetrievalSearchOptions aliases routing.RetrievalSearchOptions
+// (FASE 8: relocated to routing to break the import cycle). The
+// bare-name alias preserves the pre-cycle-break test surface
+// (provider_registry_test.go references the bare type) while
+// keeping a single canonical home in the routing package.
+type RetrievalSearchOptions = routing.RetrievalSearchOptions
+
+// RetrievalSearchResult aliases routing.RetrievalSearchResult
+// (FASE 8: relocated to routing to break the import cycle). The
+// bare-name alias preserves the pre-cycle-break test surface
+// (provider_registry_test.go references the bare type) while
+// keeping a single canonical home in the routing package.
+type RetrievalSearchResult = routing.RetrievalSearchResult
 
 // ErrProviderNotFound is the user-spec sentinel returned by the
 // Registry.Resolve method when at least one requested id is missing.
