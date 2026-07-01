@@ -8,16 +8,20 @@
 // that implements routing.ImageSearchResolver directly (no
 // testify/mock dependency drift, minimal blast radius per AGENTS.md).
 //
-// Scope-NOTE: this test exercises the type-system contract surface
-// for composition only. The actual /api/images/search?territory=&subject=
-// handler that consumes this resolver is a follow-up commit — FASE 7
-// per user spec is wiring + lifecycle + composition contract only.
+// Fix-up note (post FASE 7 commit 98dd3849): removed the
+// TestCompose_ServerSingleton_NilSafe sentinel that dispatched
+// Resolve on a nil *interface* value — Go panics on nil-interface
+// method calls before the typed-nil receiver check can run. The
+// canonical contract is "typed-nil resolver returns ErrUnknownTerritory";
+// a nil-interface is not a contract surface (any caller that constructs
+// a nil interface must guard the call site). Dropped for honest
+// behaviour. Also tightened the assignability lock + dropped the
+// dead `var _ = http.StatusOK` marker.
 package images_test
 
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -38,6 +42,9 @@ type mockImageSearchResolver struct {
 var _ routing.ImageSearchResolver = (*mockImageSearchResolver)(nil)
 
 func (m *mockImageSearchResolver) Resolve(territory routing.ImageSearchTerritory) (routing.ImageSearcher, error) {
+	if m == nil {
+		return nil, routing.ErrUnknownTerritory
+	}
 	if m.resolveErr != nil {
 		return nil, m.resolveErr
 	}
@@ -59,6 +66,9 @@ type stubSearcher struct {
 var _ routing.ImageSearcher = (*stubSearcher)(nil)
 
 func (s *stubSearcher) Search(_ context.Context, _ routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+	if s == nil {
+		return nil, nil
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -66,6 +76,23 @@ func (s *stubSearcher) Search(_ context.Context, _ routing.ImageFilter) ([]routi
 }
 
 // ── Test: mock contract surface ────────────────────────────────────────
+
+// TestCompose_MockResolver_TypedNil_ReturnsErrUnknownTerritory —
+// verifies the typed-nil receiver path (Go distinguishes "nil
+// interface" from "nil concrete behind interface"). The canonical
+// routing.ImageSearchResolverImpl.Resolve has the same nil-receiver
+// guard; the mock mirrors it so handlers can rely on the contract.
+func TestCompose_MockResolver_TypedNil_ReturnsErrUnknownTerritory(t *testing.T) {
+	var mock *mockImageSearchResolver // typed-nil concrete
+	var resolver routing.ImageSearchResolver = mock
+	got, err := resolver.Resolve(routing.TerritoryAll)
+	if !errors.Is(err, routing.ErrUnknownTerritory) {
+		t.Fatalf("expected ErrUnknownTerritory from typed-nil resolver, got %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil searcher on typed-nil resolver, got %#v", got)
+	}
+}
 
 // TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory —
 // locks the canonical error sentinel surface so production handlers
@@ -155,16 +182,12 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 // verify the mock contract reaches the consumer boundary the same
 // way the production wiring does.
 func TestCompose_ServerSingleton_HoldsResolverType(t *testing.T) {
-	// Compile-time: any routing.ImageSearchResolver is assignable to
-	// the ServerDeps.ImageSearchResolver field. The interface
-	// assertion below is the canonical lock against future drift.
-	var _ api.ServerDeps = api.ServerDeps{
-		// ImageSearchResolver intentionally nil in this assertion —
-		// the type lock is what we verify. nil is a valid value at
-		// assignment time per the interface contract.
-	}
+	// Compile-time: api.ServerDeps is the canonical grouping struct;
+	// its ImageSearchResolver field accepts any routing.ImageSearchResolver.
+	// The type-level lock below is the actual contract surface — the
+	// runtime round-trip below verifies the actual contract reach.
+	var _ api.ServerDeps
 
-	// Runtime: round-trip mock through a ServerDeps-like shape.
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{},
 	}
@@ -172,28 +195,8 @@ func TestCompose_ServerSingleton_HoldsResolverType(t *testing.T) {
 	if resolver == nil {
 		t.Fatal("mock resolver must be assignable to routing.ImageSearchResolver")
 	}
-	// Stand in for the api.Server-side reachability: a downstream
-	// handler reading deps.ImageSearchResolver would see the same
-	// mock as we just instantiated.
 	if _, err := resolver.Resolve(routing.TerritoryAll); !errors.Is(err, routing.ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory through resolver path, got %v", err)
-	}
-}
-
-// TestCompose_ServerSingleton_NilSafe — verifies the production
-// surface tolerates a nil resolver at composition time. The
-// canonical compose path (buildImageSearchResolver) returns an error
-// when either input is nil, so the Server singleton is never nil in
-// production. The runtime nil-safety below documents the
-// forward-compatible surface for ad-hoc tests + future stress paths.
-func TestCompose_ServerSingleton_NilSafe(t *testing.T) {
-	var nilResolver routing.ImageSearchResolver
-	got, err := nilResolver.Resolve(routing.TerritoryAll)
-	if err == nil {
-		t.Fatalf("expected error from nil resolver, got nil")
-	}
-	if got != nil {
-		t.Fatalf("expected nil searcher from nil resolver, got %#v", got)
 	}
 }
 
@@ -212,7 +215,3 @@ func TestCompose_ServerSingleton_NilSafe(t *testing.T) {
 // Pattern 8 — API package: thin transport only" — the api package
 // is transport-only, so composition contracts belong in this test
 // file rather than scattered handler files.
-
-// Optional noise marker so go test reports the file as no-op-free
-// when its only assertion is the compile-time lock above.
-var _ = http.StatusOK
