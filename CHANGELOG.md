@@ -188,6 +188,9 @@ The pre-Phase-1c behavior (committed `return false` + `return 0.5`) was a docume
 | Commit 4b/4 (search-text shift v2) | `067ff3a5` | 1 site (BuildFallbackSearchText deterministic in-file) |
 | Commit 4/4 canonical-delegation — SUPERSEDED | `10110e03` | (supersede-path updated by Commit 4b/4; canonical helper still exported in `metadata/service.go`) |
 | Commit H Phase 2 (earlier closure) | `1ea5de01` | 1 site (engine.go memoryGateChecker) |
+
+Tally note: 11 logical sites closed across 7 on-origin/main SHAs (5 chain-canonical: 73c30027, 48775cf6, 4174bb87 (was 3b/4), e62bb65a (was 3/4, superseded), 067ff3a5 (was 4b/4); 2 superseded predecessors: e62bb65a (3/4) + 10110e03 (4/4); 1 Phase 2 earlier closure: 1ea5de01)
+
 | **TOTAL UNIQUE SITES CLOSED** | | **11 ✓** (per original user spec) |
 
 **Wave-tracker cross-reference (per godlike/07):** no formal `architecture/current.yaml` entry exists for this Phase 1c chain (verified via `grep -E 'PHASE.1C|Phase 1c' architecture/current.yaml` returning 0 hits). The closure is audit-logged via this CHANGELOG entry only; a future wave-tracker entry should be filed under a `wave_status` row citing SHAs `73c30027` / `48775cf6` / `e62bb65a` (superseded) / `10110e03` (superseded) / `067ff3a5` / `067ff3a5+1` (this Commit 3b/4, `067ff3a5` rebased). Until filed, these CHANGELOG entries are the authoritative audit surface for the Phase 1c closure.
