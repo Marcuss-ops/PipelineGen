@@ -27,6 +27,8 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -352,3 +354,123 @@ func TestGenerateItemHandler_CompletedResultReturnsSuccess(t *testing.T) {
 // explicit type assertion so the next refactor of RecordingExecutor
 // cannot accidentally break the conformance without a compile error.
 var _ voiceover.VoiceoverItemExecutor = (*recordingVoiceoverItemExecutor)(nil)
+
+// ────────────────────────────────────────────────────────────────────
+// P0.1 Fase 1b: TestVoiceoverChild_RetriesOnTTSFailure
+// ────────────────────────────────────────────────────────────────────
+
+// Pins the PipelineError retryability contract: a TTS failure
+// (connection timeout, Edge TTS overload) must produce a PipelineError
+// with Retryable=true so the worker retries (DefaultMaxRetries: 2).
+// Pre-Fase-1b the use case returned (out, nil) here — no error at
+// all, so the worker never retried and the job was falsely SUCCEEDED.
+func TestVoiceoverChild_RetriesOnTTSFailure(t *testing.T) {
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language: "en",
+			Status:   voiceover.StatusFailed,
+			Error:    "tts_failed: Edge TTS connection timeout",
+		},
+		cannedErr: voiceover.NewPipelineError(
+			voiceover.StageTTS,
+			true, // Retryable: TTS connection timeouts are transient
+			fmt.Errorf("Edge TTS connection timeout"),
+		),
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+	item := makeItemCmd("parent-tts-retry", "vo_tts_retry", "en", "en-US-RogerNeural", "hello_en.mp3", "tts-hash-01")
+
+	tools := &appjobs.JobTools{Progress: func(int, string) {}}
+	j := &appjobs.Job{ID: "child-tts-retry", Payload: marshalItemCmd(t, item)}
+	_, err := h.HandleJob(context.Background(), j, tools)
+
+	require.Error(t, err, "Fase 1b: TTS failure must return an error (not silent nil)")
+
+	var pipelineErr *voiceover.PipelineError
+	require.True(t, errors.As(err, &pipelineErr),
+		"Fase 1b: TTS error must be a PipelineError (typed stage + retryability)")
+	assert.True(t, pipelineErr.Retryable,
+		"Fase 1b: TTS failures must be Retryable=true (worker should retry)")
+	assert.Equal(t, voiceover.StageTTS, pipelineErr.Stage,
+		"Fase 1b: TTS error must carry Stage='tts'")
+}
+
+// ────────────────────────────────────────────────────────────────────
+// P0.1 Fase 1b: TestVoiceoverChild_FailsPermanentOnInvalidLanguage
+// ────────────────────────────────────────────────────────────────────
+
+// Pins the PipelineError permanence contract: a validation failure
+// (invalid language, nil item, unsupported BCP-47 code) must produce
+// a PipelineError with Retryable=false so the worker does NOT retry
+// (retrying a permanent failure wastes lease cycles and delays
+// terminal failure visibility). The error must still be surfaced so
+// the dispatcher marks the job FAILED on the first attempt.
+func TestVoiceoverChild_FailsPermanentOnInvalidLanguage(t *testing.T) {
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language: "xx",
+			Status:   voiceover.StatusFailed,
+			Error:    "invalid_language: unsupported BCP-47 code",
+		},
+		cannedErr: voiceover.NewPipelineError(
+			voiceover.StageValidate,
+			false, // Permanent: invalid language won't become valid on retry
+			fmt.Errorf("unsupported BCP-47 code"),
+		),
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+	item := makeItemCmd("parent-perm", "vo_perm", "xx", "", "hello_xx.mp3", "perm-hash-01")
+
+	tools := &appjobs.JobTools{Progress: func(int, string) {}}
+	j := &appjobs.Job{ID: "child-perm", Payload: marshalItemCmd(t, item)}
+	_, err := h.HandleJob(context.Background(), j, tools)
+
+	require.Error(t, err, "Fase 1b: validation failure must return an error (not silent nil)")
+
+	var pipelineErr *voiceover.PipelineError
+	require.True(t, errors.As(err, &pipelineErr),
+		"Fase 1b: validation error must be a PipelineError (typed stage + retryability)")
+	assert.False(t, pipelineErr.Retryable,
+		"Fase 1b: validation failures must be Retryable=false (worker should NOT retry)")
+	assert.Equal(t, voiceover.StageValidate, pipelineErr.Stage,
+		"Fase 1b: validation error must carry Stage='validate'")
+}
+
+// ────────────────────────────────────────────────────────────────────
+// P0.1 Fase 1b: TestVoiceoverChild_DriveUploadIsRetryable
+// ────────────────────────────────────────────────────────────────────
+
+// Pins the Drive upload retryability: upload failures (network
+// timeout, Drive rate limit, transient API error) must be
+// Retryable=true. A permanent upload failure (e.g. invalid folder)
+// would be caught at the destination_resolve stage instead.
+func TestVoiceoverChild_DriveUploadIsRetryable(t *testing.T) {
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language: "en",
+			Status:   voiceover.StatusFailed,
+			Error:    "upload_failed: Drive API rate limit exceeded",
+		},
+		cannedErr: voiceover.NewPipelineError(
+			voiceover.StageUpload,
+			true, // Retryable: Drive rate limits clear after backoff
+			fmt.Errorf("Drive API rate limit exceeded"),
+		),
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+	item := makeItemCmd("parent-drive", "vo_drive", "en", "en-US-RogerNeural", "hello_en.mp3", "drive-hash")
+
+	tools := &appjobs.JobTools{Progress: func(int, string) {}}
+	j := &appjobs.Job{ID: "child-drive", Payload: marshalItemCmd(t, item)}
+	_, err := h.HandleJob(context.Background(), j, tools)
+
+	require.Error(t, err, "Fase 1b: Drive upload failure must return an error")
+
+	var pipelineErr *voiceover.PipelineError
+	require.True(t, errors.As(err, &pipelineErr),
+		"Fase 1b: Drive upload error must be a PipelineError")
+	assert.True(t, pipelineErr.Retryable,
+		"Fase 1b: Drive upload failures must be Retryable=true")
+	assert.Equal(t, voiceover.StageUpload, pipelineErr.Stage,
+		"Fase 1b: Drive error must carry Stage='upload'")
+}

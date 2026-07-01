@@ -115,9 +115,12 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 //
 // The handler dispatches (result, error) per the godlike/07 contract:
 // Stage 0 failures (nil item, validate) return (nil, error). All
-// other stages return (result, nil) with a typed Status + Error string
-// on the per-item result so the upstream dispatcher marks the job
-// FAILED when error != "" without dropping the partial metadata.
+// other stages return (out, *PipelineError) with Retryable flag so
+// the handler/worker can distinguish transient (TTS/Drive/SQLite busy)
+// from permanent (validation, missing destination, bad payload).
+// P0.1 Fase 1b (July 2026): every stage failure now returns a typed
+// PipelineError instead of (out, nil) — pre-Fase-1b the handler saw
+// err==nil and returned (resultMap, nil) → silent false-success.
 func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error) {
 	// Pre-flight: nil-safe + validate gate.
 	if item == nil {
@@ -146,16 +149,16 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// regression in audit logs).
 	if item.Destination == nil {
 		out.Error = "missing_destination: GenerateVoiceoverItemCommand.Destination is nil (fanout should populate it from cmd.Destination)"
-		return out, nil
+		return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
 	}
 	dest, err := u.deps.DestinationResolver.Resolve(ctx, item.Destination)
 	if err != nil {
 		out.Error = fmt.Sprintf("destination_resolve_failed: %v", err)
-		return out, nil
+		return out, newPipelineError(StageDestinationResolve, false, err)
 	}
 	if dest == nil || dest.FolderID == "" {
 		out.Error = "missing_folder_id: voiceover destination has no FolderID for upload"
-		return out, nil
+		return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
 	}
 
 	// Trust item.TextHash from fanout (P0.6 invariant — no re-derive).
@@ -180,7 +183,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 			zap.String("language", item.Language),
 			zap.String("request_id", item.RequestID),
 			zap.Error(err))
-		return out, nil
+		return out, newPipelineError(StageTTS, true, err)
 	}
 	out.LocalPath = ttsOut.LocalPath
 	out.CleanedPath = ttsOut.CleanedPath
@@ -203,7 +206,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 				zap.String("language", item.Language),
 				zap.String("request_id", item.RequestID),
 				zap.Error(err))
-			return out, nil
+			return out, newPipelineError(StageAudioPost, false, err)
 		}
 		if postOut.CleanedPath != "" {
 			out.CleanedPath = postOut.CleanedPath
@@ -212,7 +215,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 
 	if out.LocalPath == "" && out.CleanedPath == "" {
 		out.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
-		return out, nil
+		return out, newPipelineError(StageTTS, false, fmt.Errorf("%s", out.Error))
 	}
 	uploadPath := out.CleanedPath
 	if uploadPath == "" {
@@ -248,7 +251,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 			zap.String("language", item.Language),
 			zap.String("request_id", item.RequestID),
 			zap.Error(err))
-		return out, nil
+		return out, newPipelineError(StageUpload, true, err)
 	}
 	out.DriveFileID = fileID
 	out.DriveLink = CanonicalDriveWebURL(fileID)
@@ -266,13 +269,13 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 			zap.String("language", item.Language),
 			zap.String("request_id", item.RequestID),
 			zap.Error(err))
-		return out, nil
+		return out, newPipelineError(StageTxBegin, true, err)
 	}
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
 	if err := u.deps.VoiceoverRepository.DeleteByIDTx(ctx, tx, id); err != nil {
 		out.Error = fmt.Sprintf("db_delete_failed: %v", err)
-		return out, nil
+		return out, newPipelineError(StageDBDelete, false, err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -300,19 +303,19 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	}
 	if err := u.deps.VoiceoverRepository.InsertTx(ctx, tx, rec); err != nil {
 		out.Error = fmt.Sprintf("db_insert_failed: %v", err)
-		return out, nil
+		return out, newPipelineError(StageDBInsert, true, err)
 	}
 
 	if out.FileHash != "" && u.deps.TransactionalOutbox != nil {
 		if err := u.deps.TransactionalOutbox.EnqueueIndexEvent(ctx, tx, id, out.FileHash); err != nil {
 			out.Error = fmt.Sprintf("outbox_enqueue_failed: %v", err)
-			return out, nil
+			return out, newPipelineError(StageOutboxEnqueue, true, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		out.Error = fmt.Sprintf("tx_commit_failed: %v", err)
-		return out, nil
+		return out, newPipelineError(StageTxCommit, true, err)
 	}
 
 	out.Status = StatusCompleted
