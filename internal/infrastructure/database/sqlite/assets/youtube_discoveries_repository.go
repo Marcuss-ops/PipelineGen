@@ -76,14 +76,36 @@ import (
 // ErrStateConflict is returned by state-transition methods (MarkEnqueued,
 // MarkRejected) when the row's current state does not match the expected
 // source state(s). The caller can use errors.Is(err, ErrStateConflict) to
-// distinguish a genuine row-not-found / state-precondition failure from a
-// transient SQLite I/O error.
+// distinguish a genuine state-precondition failure from a transient SQLite
+// I/O error.
 //
 // Blocco 2 (July 2026) — audit P0 #3: every state transition now checks
 // RowsAffected; a zero-row UPDATE (excluding explicitly idempotent paths)
 // surfaces this sentinel so the caller can decide to retry, dead-letter,
 // or reconcile.
 var ErrStateConflict = errors.New("youtube_discoveries: state conflict — row state does not match expected source state")
+
+// ErrNotFound is returned by state-transition methods when the row does
+// not exist (0 rows match the id filter). Distinct from ErrStateConflict
+// which means the row EXISTS but its state is incompatible with the
+// requested transition.
+//
+// Blocco 2 (July 2026) — FASE 1.3 typed-transition audit: pre-fix,
+// MarkEnqueued wrapped sql.ErrNoRows in ErrStateConflict, conflating
+// "row not found" with "row in wrong state". The two sentinels are
+// now separate so callers can distinguish not-found (missing data)
+// from conflict (data exists, state is incompatible).
+var ErrNotFound = errors.New("youtube_discoveries: entity not found")
+
+// ErrAlreadyApplied is returned by idempotent state-transition methods
+// when the transition was already applied in a prior call. This is NOT
+// an error — it signals the caller that the desired state is already
+// reached, and no further action is needed.
+//
+// Blocco 2 (July 2026) — FASE 1.3: separated from nil-success so
+// callers can distinguish "I just applied the transition" from
+// "someone else already applied it (idempotent)".
+var ErrAlreadyApplied = errors.New("youtube_discoveries: transition already applied")
 
 // RetryableBackoffCapSeconds is the canonical cap for the backoff
 // formula. Exposed so monitor package and tests can lock the value
@@ -292,13 +314,19 @@ func (r *YoutubeDiscoveriesRepository) tryReserveConflict(
 // enqueue's timestamp — guarantees the watermark doesn't oscillate
 // between cycles on retry-after-transient-error paths.
 //
-// Blocco 2 (July 2026): RowsAffected check. If the UPDATE matches
-// zero rows, the method checks whether the row is already 'enqueued'
-// (idempotent — return nil) or in an unexpected state (return
-// ErrStateConflict). The audit P0 #3 identified that pre-Blocco-2
-// the ExecContext error was returned directly; a row in a terminal
-// state or an id-mismatch surfaced as a nil error, indistinguishable
-// from a successful transition.
+// Returns:
+//   - nil: TransitionApplied — the row was in 'pending'/'analyzing'
+//     and is now 'enqueued'.
+//   - ErrAlreadyApplied: the row is already 'enqueued' — idempotent,
+//     not an error.
+//   - ErrNotFound: no row exists with the given id.
+//   - ErrStateConflict: the row exists but its state is not
+//     'pending'/'analyzing' (e.g. 'rejected_terminal').
+//
+// Blocco 2 (July 2026) — FASE 1.3: ErrNotFound is now surfaced
+// distinctly from ErrStateConflict. Pre-fix, the sql.ErrNoRows from
+// the state-check query was wrapped as ErrStateConflict, making
+// "row not found" indistinguishable from "wrong state".
 func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enqueuedAt string) error {
 	if id == "" {
 		return fmt.Errorf("youtube_discoveries.MarkEnqueued: id is required")
@@ -320,13 +348,17 @@ func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enq
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		// Idempotent path: row already marked as enqueued.
+		// RowsAffected == 0 — the row is either already enqueued,
+		// in a conflicting state, or doesn't exist.
 		var gotState string
 		if scanErr := r.db.QueryRowContext(ctx, `SELECT state FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotState); scanErr != nil {
-			return fmt.Errorf("%w: MarkEnqueued row not found for id=%q: %w", ErrStateConflict, id, scanErr)
+			if scanErr == sql.ErrNoRows {
+				return fmt.Errorf("%w: MarkEnqueued row not found for id=%q", ErrNotFound, id)
+			}
+			return fmt.Errorf("youtube_discoveries.MarkEnqueued: state lookup for id=%q: %w", id, scanErr)
 		}
 		if gotState == "enqueued" {
-			return nil
+			return ErrAlreadyApplied
 		}
 		return fmt.Errorf("%w: MarkEnqueued expected state IN ('pending','analyzing'), got %q for id=%q", ErrStateConflict, gotState, id)
 	}

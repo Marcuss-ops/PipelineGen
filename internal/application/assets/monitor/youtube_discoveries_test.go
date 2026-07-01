@@ -723,6 +723,195 @@ func TestMarkRejected_TerminalAfterRetryable_StaysTerminal(t *testing.T) {
 	}
 }
 
+// ── FASE 1.3: Typed transition result tests ────────────────────────────────
+
+// TestMarkEnqueued_AppliesFromPending verifies that MarkEnqueued on a
+// 'pending' row returns nil (TransitionApplied — the row was updated).
+func TestMarkEnqueued_AppliesFromPending(t *testing.T) {
+	repo, db, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	id, won, _, err := repo.TryReserve(ctx, "ch-test", "vid-test", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err != nil || !won {
+		t.Fatalf("TryReserve: err=%v won=%v", err, won)
+	}
+
+	err = repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("MarkEnqueued on pending row should succeed (TransitionApplied), got: %v", err)
+	}
+
+	// Verify the row is now 'enqueued'.
+	var gotState string
+	if scanErr := db.QueryRowContext(ctx, `SELECT state FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotState); scanErr != nil {
+		t.Fatalf("SELECT state: %v", scanErr)
+	}
+	if gotState != "enqueued" {
+		t.Errorf("state after MarkEnqueued = %q, want enqueued", gotState)
+	}
+}
+
+// TestMarkEnqueued_IsIdempotent verifies that calling MarkEnqueued twice
+// on the same 'enqueued' row returns ErrAlreadyApplied on the second call
+// — not nil (which would indicate "I just applied it").
+func TestMarkEnqueued_IsIdempotent(t *testing.T) {
+	repo, db, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	id, won, _, err := repo.TryReserve(ctx, "ch-test", "vid-test", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err != nil || !won {
+		t.Fatalf("TryReserve: err=%v won=%v", err, won)
+	}
+
+	enqueuedAt := time.Now().UTC().Format(time.RFC3339)
+
+	// First call: TransitionApplied (nil).
+	if err := repo.MarkEnqueued(ctx, id, enqueuedAt); err != nil {
+		t.Fatalf("first MarkEnqueued should succeed: %v", err)
+	}
+
+	// Second call: ErrAlreadyApplied (idempotent).
+	err2 := repo.MarkEnqueued(ctx, id, enqueuedAt)
+	if !errors.Is(err2, sqlassets.ErrAlreadyApplied) {
+		t.Fatalf("second MarkEnqueued should return ErrAlreadyApplied, got: %v", err2)
+	}
+
+	// enqueued_at must still be the FIRST timestamp.
+	var gotAt string
+	if scanErr := db.QueryRowContext(ctx, `SELECT enqueued_at FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotAt); scanErr != nil {
+		t.Fatalf("SELECT enqueued_at: %v", scanErr)
+	}
+	if gotAt != enqueuedAt {
+		t.Errorf("enqueued_at changed on idempotent call: got %q, want %q", gotAt, enqueuedAt)
+	}
+}
+
+// TestMarkEnqueued_RejectsTerminalRejection verifies that calling
+// MarkEnqueued on a row with state='rejected_terminal' returns
+// ErrStateConflict (not nil, not ErrNotFound).
+func TestMarkEnqueued_RejectsTerminalRejection(t *testing.T) {
+	repo, _, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	id, won, _, err := repo.TryReserve(ctx, "ch-test", "vid-test", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err != nil || !won {
+		t.Fatalf("TryReserve: err=%v won=%v", err, won)
+	}
+
+	// Mark as terminal rejected first.
+	if err := repo.MarkRejected(ctx, id, "terminal reject", false); err != nil {
+		t.Fatalf("MarkRejected(terminal): %v", err)
+	}
+
+	err = repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
+	if err == nil {
+		t.Fatal("MarkEnqueued on rejected_terminal should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrStateConflict) {
+		t.Errorf("MarkEnqueued on rejected_terminal should return ErrStateConflict, got: %v", err)
+	}
+}
+
+// TestMarkEnqueued_NotFound verifies that calling MarkEnqueued with a
+// non-existent id returns ErrNotFound (not ErrStateConflict).
+func TestMarkEnqueued_NotFound(t *testing.T) {
+	repo, _, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	err := repo.MarkEnqueued(ctx, "disc_nonexistent_id", time.Now().UTC().Format(time.RFC3339))
+	if err == nil {
+		t.Fatal("MarkEnqueued on nonexistent id should fail, got nil")
+	}
+	if !errors.Is(err, sqlassets.ErrNotFound) {
+		t.Errorf("MarkEnqueued on nonexistent id should return ErrNotFound, got: %v", err)
+	}
+}
+
+// TestMarkEnqueuedVsMarkRejected_OnlyOneTransitionWins verifies the
+// concurrent-transition contract: when two goroutines race — one
+// calls MarkEnqueued, the other calls MarkRejected — exactly one
+// transition is applied (RowsAffected==1) and the other gets
+// ErrStateConflict.
+//
+// FASE 1.3 (July 2026): the WHERE clause on each UPDATE gates on
+// state IN ('pending','analyzing'), so only one of the two concurrent
+// UPDATEs matches a row; the loser gets RowsAffected==0 and returns
+// ErrStateConflict.
+func TestMarkEnqueuedVsMarkRejected_OnlyOneTransitionWins(t *testing.T) {
+	repo, db, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Force single-connection mode so goroutines share the same
+	// in-memory SQLite database (default pool gives each goroutine
+	// its own isolated in-memory world).
+	db.SetMaxOpenConns(1)
+
+	id, won, _, err := repo.TryReserve(ctx, "ch-race", "vid-race", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err != nil || !won {
+		t.Fatalf("TryReserve: err=%v won=%v", err, won)
+	}
+
+	// Run 50 iterations to amplify race detection.
+	// Each iteration resets to 'pending', then two goroutines race.
+	applied := 0 // exactly one winner per iteration
+	for i := 0; i < 50; i++ {
+		// Reset the row back to 'pending' for each iteration.
+		if _, resetErr := db.ExecContext(ctx, `UPDATE youtube_discoveries SET state='pending', enqueued_at=NULL, outcome='pending' WHERE id=?`, id); resetErr != nil {
+			t.Fatalf("reset to pending: %v", resetErr)
+		}
+
+		done := make(chan struct{}, 2)
+		var enqErr, rejErr error
+
+		go func() {
+			defer func() { done <- struct{}{} }()
+			enqErr = repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
+		}()
+		go func() {
+			defer func() { done <- struct{}{} }()
+			rejErr = repo.MarkRejected(ctx, id, "race-reject", false)
+		}()
+
+		<-done
+		<-done
+
+		// Exactly one must be nil (TransitionApplied), the other must be
+		// ErrStateConflict.
+		enqOk := enqErr == nil
+		rejOk := rejErr == nil
+		if enqOk == rejOk {
+			t.Errorf("iteration %d: expected exactly one nil, got enqErr=%v rejErr=%v", i, enqErr, rejErr)
+		}
+		if enqOk != rejOk {
+			applied++ // exactly one winner
+		}
+		if enqOk && !errors.Is(rejErr, sqlassets.ErrStateConflict) && rejErr != nil {
+			t.Errorf("iteration %d: reject error is not ErrStateConflict: %v", i, rejErr)
+		}
+		if rejOk && !errors.Is(enqErr, sqlassets.ErrStateConflict) && enqErr != nil {
+			t.Errorf("iteration %d: enqueue error is not ErrStateConflict: %v", i, enqErr)
+		}
+	}
+
+	if applied != 50 {
+		t.Errorf("applied transitions = %d, want 50 (one winner per iteration)", applied)
+	}
+
+	// Verify final state is one of {enqueued, rejected_terminal}.
+	var gotState string
+	if scanErr := db.QueryRowContext(ctx, `SELECT state FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotState); scanErr != nil {
+		t.Fatalf("SELECT state: %v", scanErr)
+	}
+	if gotState != "enqueued" && gotState != "rejected_terminal" {
+		t.Errorf("final state = %q, want enqueued or rejected_terminal", gotState)
+	}
+}
+
 // TestIsTransientEnqueueError covers the enqueue.go predicate that
 // maps (error → retryable bool). It is a sibling to the repository
 // retry tests; the predicate MUST decide retryable correctly so the
