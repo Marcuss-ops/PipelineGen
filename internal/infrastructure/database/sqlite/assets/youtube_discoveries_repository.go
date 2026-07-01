@@ -77,6 +77,14 @@ import (
 // without re-reasoning it.
 const RetryableBackoffCapSeconds = 300
 
+// DefaultLeaseDurationSeconds is the lease_until offset written into
+// every new TryReserve row. A pending row with an expired lease is
+// reclaimable by the next cycle's TryReserve gate. Set to 5 min —
+// long enough for EnqueueExtract + MarkEnqueued to complete under
+// normal load, short enough that a stuck row won't block the channel
+// for an entire scheduler cycle. Blocco 3b (July 2026).
+const DefaultLeaseDurationSeconds = 300
+
 // YoutubeDiscoveriesRepository owns the youtube_discoveries ledger.
 //
 // Concurrency: TryReserve is the only method that races under
@@ -135,19 +143,26 @@ func (r *YoutubeDiscoveriesRepository) TryReserve(
 	}
 	id = deriveDiscoveryID(channelID, videoID, policyVersion)
 	nowStr := time.Now().UTC().Format(time.RFC3339)
+	leaseUntil := time.Now().UTC().Add(time.Duration(DefaultLeaseDurationSeconds) * time.Second).Format(time.RFC3339)
 
 	// Step 1 — leader-election INSERT. UNIQUE(channel_id, video_id,
 	// policy_version) gates the candidate row; ON CONFLICT DO NOTHING
 	// + RETURNING yields the id only when this caller WON.
+	//
+	// Blocco 3b (July 2026): lease_until is set at INSERT time so
+	// a pending row with an expired lease is reclaimable by the next
+	// cycle's TryReserve gate. Pre-fix the INSERT created pending
+	// rows without a lease, so a MarkEnqueued failure left the row
+	// permanently stuck in 'pending' (not reclaimable, not terminal).
 	var returnedID sql.NullString
 	row := r.db.QueryRowContext(ctx, `
 		INSERT INTO youtube_discoveries (
 			id, channel_id, video_id, policy_version, state,
-			discovered_at, source_url, title, updated_at
-		) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+			discovered_at, source_url, title, lease_until, updated_at
+		) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
 		ON CONFLICT(channel_id, video_id, policy_version) DO NOTHING
 		RETURNING id
-	`, id, channelID, videoID, policyVersion, discoveredAt, sourceURL, title, nowStr)
+	`, id, channelID, videoID, policyVersion, discoveredAt, sourceURL, title, leaseUntil, nowStr)
 	if scanErr := row.Scan(&returnedID); scanErr != nil {
 		if scanErr == sql.ErrNoRows {
 			// Conflict: existing row. Step 2 — eligibility check.
