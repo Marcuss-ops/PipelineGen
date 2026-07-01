@@ -29,6 +29,7 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -293,10 +294,81 @@ func (m *ChannelMonitor) runSchedulerCycle(ctx context.Context) {
 // from MonitorRuntimePolicy (governed by m.globalSem, the per-monitor
 // rate-limiter semaphore). The per-channel ctx timeout is
 // policy.PerChannelTimeout.
+// validateChannelConfig checks that the channel's JSON-encoded fields
+// (Keywords, SemanticKeywords) are syntactically valid before the
+// channel enters the check queue. Malformed JSON is classified as
+// a hard config error: the channel is skipped for this cycle, and
+// MarkChecked(Success=false) fires so exponential backoff applies.
+//
+// Blocco 3c (July 2026): pre-fix, malformed JSON was silently treated
+// as keyword-less and the channel ran the full video scan without
+// any filter — a small misconfiguration in one column could
+// amplify processing 100× per cycle.
+func (m *ChannelMonitor) validateChannelConfig(ch channels.Channel) error {
+	if ch.Keywords != "" {
+		if err := validateJSONArray(ch.Keywords, "Keywords"); err != nil {
+			return err
+		}
+	}
+	if ch.SemanticKeywords != "" {
+		if err := validateJSONArray(ch.SemanticKeywords, "SemanticKeywords"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateJSONArray checks that s is a valid JSON array. Returns nil
+// for empty string or "[]" (valid empty array).
+func validateJSONArray(s, fieldName string) error {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var arr []string
+	if err := json.Unmarshal([]byte(s), &arr); err != nil {
+		return fmt.Errorf("channel config %s is not a valid JSON array: %w", fieldName, err)
+	}
+	return nil
+}
+
+// checkDueChannels spawns bounded goroutines (one per channel), each of
+// which runs safeCheckChannel + records the outcome via recordCheckOutcome.
+//
+// Commit A (June 2026, P1 #9): the per-goroutine recover-and-log defer
+// previously LOGGED the panic but did NOT call recordCheckOutcome. The
+// lease was held until expiry (typically 30 min). The fix is to route
+// every per-channel panic through safeCheckChannel, which converts the
+// panic into a typed error that recordCheckOutcome always sees — so the
+// channel ends up Success=false with a synthesized panic message and the
+// exponential backoff can apply. The bound is policy.MaxConcurrentChannels
+// from MonitorRuntimePolicy (governed by m.globalSem, the per-monitor
+// rate-limiter semaphore). The per-channel ctx timeout is
+// policy.PerChannelTimeout.
+//
+// Blocco 3c (July 2026): validateChannelConfig runs BEFORE the first
+// yt-dlp call. A channel with malformed Keywords/SemanticKeywords JSON
+// is rejected immediately — no video listing, no Ollama calls, no
+// wasted cycle budget.
 func (m *ChannelMonitor) checkDueChannels(ctx context.Context, chs []channels.Channel) {
 	policy := m.policyOrDefault()
 	for _, ch := range chs {
 		ch := ch
+
+		// Blocco 3c: validate JSON config BEFORE spawning the goroutine.
+		// A malformed Keywords/SemanticKeywords field is a hard error —
+		// skip the check entirely and record the failure immediately.
+		if valErr := m.validateChannelConfig(ch); valErr != nil {
+			m.log.Warn("skipping channel with invalid config",
+				zap.String("channel_id", ch.ID),
+				zap.Error(valErr))
+			if recErr := m.recordCheckOutcome(ctx, ch, valErr); recErr != nil {
+				m.log.Error("failed to record validation failure",
+					zap.String("channel_id", ch.ID),
+					zap.Error(recErr))
+			}
+			continue
+		}
 
 		m.globalSem <- struct{}{}
 		go func() {
