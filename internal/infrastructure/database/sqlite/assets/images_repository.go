@@ -84,9 +84,14 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 	metaJSON, _ := json.Marshal(metaMap)
 
 	now := timeutil.FormatRFC3339(time.Now())
+	origin := string(img.Origin)
+	if origin == "" {
+		origin = "retrieved"
+	}
+	provider := string(img.Provider)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, lifecycle_state, metadata_json, created_at, updated_at)
-		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'STAGING', ?, ?, ?)
+		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, lifecycle_state, origin, provider, metadata_json, created_at, updated_at)
+		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'STAGING', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			url=excluded.url,
@@ -100,10 +105,13 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 			relative_path=excluded.relative_path,
 			drive_file_id=excluded.drive_file_id,
 			lifecycle_state=excluded.lifecycle_state,
+			origin=excluded.origin,
+			provider=excluded.provider,
 			metadata_json=excluded.metadata_json,
 			updated_at=excluded.updated_at
 	`, id, img.Description, img.SourceURL, string(tagsJSON), tagsNorm,
 		img.Width, img.Height, img.Hash, img.PathRel, img.PathRel, img.DriveFileID,
+		origin, provider,
 		string(metaJSON), now, now)
 
 	return 0, err
@@ -133,7 +141,7 @@ func normalizeTags(tags []string) string {
 // GetImageByHash recupera un'immagine tramite il suo hash
 func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
 		FROM media_assets 
 		WHERE source = 'image' AND file_hash = ?
 		LIMIT 1
@@ -145,7 +153,7 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*as
 // GetByID recupera un'immagine tramite il suo ID stringa
 func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
 		FROM media_assets 
 		WHERE source = 'image' AND id = ?
 		LIMIT 1
@@ -165,7 +173,7 @@ func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
 // json_extract(metadata_json, '$.drive_file_id').
 func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
 		FROM media_assets
 		WHERE source = 'image' AND (drive_file_id = ? OR url LIKE ?)
 		LIMIT 1
@@ -177,7 +185,7 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 // ListImagesBySubject recupera tutte le immagini per un soggetto
 func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
 		FROM media_assets 
 		WHERE source = 'image' AND json_extract(metadata_json, '$.subject_id') = ?
 		ORDER BY created_at DESC
@@ -203,7 +211,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 // ListAll lists all image assets
 func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
 		FROM media_assets 
 		WHERE source = 'image'
 		ORDER BY created_at DESC
@@ -233,8 +241,9 @@ func scanImageAsset(row interface {
 	var name sql.NullString
 	var url sql.NullString
 	var fileHash, localPath, driveFileID sql.NullString
+	var origin, provider sql.NullString
 
-	err := row.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID)
+	err := row.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +253,8 @@ func scanImageAsset(row interface {
 	img.Hash = fileHash.String
 	img.PathRel = localPath.String
 	img.DriveFileID = driveFileID.String
+	img.Origin = asset.ImageOrigin(origin.String)
+	img.Provider = asset.ImageProvider(provider.String)
 
 	if createdAtStr.Valid {
 		img.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
@@ -275,8 +286,9 @@ func scanImageAssetRows(rows *sql.Rows) (*asset.ImageAsset, error) {
 	var name sql.NullString
 	var url sql.NullString
 	var fileHash, localPath, driveFileID sql.NullString
+	var origin, provider sql.NullString
 
-	err := rows.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID)
+	err := rows.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
 	if err != nil {
 		return nil, err
 	}
@@ -286,6 +298,8 @@ func scanImageAssetRows(rows *sql.Rows) (*asset.ImageAsset, error) {
 	img.Hash = fileHash.String
 	img.PathRel = localPath.String
 	img.DriveFileID = driveFileID.String
+	img.Origin = asset.ImageOrigin(origin.String)
+	img.Provider = asset.ImageProvider(provider.String)
 
 	if createdAtStr.Valid {
 		img.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)

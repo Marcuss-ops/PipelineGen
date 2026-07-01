@@ -61,6 +61,8 @@ func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genI
 			SourceURL:   sourceURL,
 			Hash:        legacyHash,
 			Status:      "ready",
+			Origin:      asset.ImageOriginRetrieved,
+			Provider:    asset.ProviderUnknown,
 		}, nil
 	}
 
@@ -208,6 +210,8 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		Status:       "ready",
 		MetadataJSON: string(metaJSON),
 		Tags:         tags,
+		Origin:       classifyImageOrigin(source, generator),
+		Provider:     classifyImageProvider(source, generator),
 	}
 
 	if _, err := s.repo.AddImage(ctx, imgAsset); err != nil {
@@ -228,4 +232,83 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	return imgAsset, nil
+}
+
+// ── Origin / Provider classification (Step 2, July 2026) ──────────────
+
+// classifyImageOrigin determines the ImageOrigin from the source string.
+//
+// Mapping:
+//   - google-slides, google-flow, flux, nvidia → generated
+//   - wikipedia, duckduckgo, searxng, drive → retrieved
+//   - upload → uploaded
+//   - default → retrieved (safe fallback for unknown sources)
+func classifyImageOrigin(source, generator string) asset.ImageOrigin {
+	lower := strings.ToLower(source)
+
+	// AI generation providers → generated.
+	if isAIImageSource(source) || isAIImageSource(generator) {
+		return asset.ImageOriginGenerated
+	}
+
+	// Manual upload → uploaded.
+	if lower == "upload" {
+		return asset.ImageOriginUploaded
+	}
+
+	// Web retrieval providers → retrieved.
+	if strings.Contains(lower, "wikipedia") ||
+		strings.Contains(lower, "duckduckgo") ||
+		strings.Contains(lower, "searxng") ||
+		strings.Contains(lower, "drive") {
+		return asset.ImageOriginRetrieved
+	}
+
+	// Fallback: URL sources (http/https) are retrieved.
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return asset.ImageOriginRetrieved
+	}
+
+	return asset.ImageOriginRetrieved
+}
+
+// classifyImageProvider maps the source string to the canonical ImageProvider.
+func classifyImageProvider(source, generator string) asset.ImageProvider {
+	lower := strings.ToLower(source)
+
+	switch {
+	case strings.Contains(lower, "wikipedia"):
+		return asset.ProviderWikipedia
+	case strings.Contains(lower, "duckduckgo"):
+		return asset.ProviderDuckDuckGo
+	case strings.Contains(lower, "searxng"):
+		return asset.ProviderSearXNG
+	case lower == "drive":
+		return asset.ProviderDrive
+	case strings.Contains(lower, "google-slides") || strings.Contains(lower, "google-flow"):
+		return asset.ProviderGoogleSlides
+	case strings.Contains(lower, "flux"):
+		return asset.ProviderFlux
+	case strings.Contains(lower, "nvidia"):
+		return asset.ProviderNvidia
+	case lower == "upload":
+		return asset.ProviderUpload
+	default:
+		// Try the generator as fallback.
+		genLower := strings.ToLower(generator)
+		switch {
+		case strings.Contains(genLower, "wikipedia"):
+			return asset.ProviderWikipedia
+		case strings.Contains(genLower, "duckduckgo"):
+			return asset.ProviderDuckDuckGo
+		case strings.Contains(genLower, "google-slides") || strings.Contains(genLower, "google-flow"):
+			return asset.ProviderGoogleSlides
+		case strings.Contains(genLower, "flux"):
+			return asset.ProviderFlux
+		case strings.Contains(genLower, "nvidia"):
+			return asset.ProviderNvidia
+		}
+	}
+
+	return asset.ProviderUnknown
 }
