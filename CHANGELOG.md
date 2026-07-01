@@ -1727,3 +1727,20 @@ historical record. Cross-references:
   through `processLanguage` + `resolveDestination`).
 - **PR-VO-B3** — sync dedupe by `drive_file_id` + BCP-47 / compact
   locale parser (`pkg/localeutil/locale.go`).
+
+### Removed
+
+**[Wave 1.1, QDRANT-004 backend git-rm, June 2026]** `refactor(mediasearch) + refactor(app)` — the QDRANT-004 single-tenant semantic search orchestrator is git-rm'd. The canonical `search.Aggregator` (provider + local backends, both typed via Pattern 0) is the SOLE wire for media-search results; workspace-gated semantic routing now lives in per-scope `search.Aggregator` paths, never in dedicated Service composition. Files touched (7):
+
+- **DELETED** `internal/application/mediasearch/service.go` (−552 LoC: `*Service` struct + `NewService` ctor + `Search` orchestrator + 9 helpers + 2 constants).
+- **DELETED** `internal/application/mediasearch/service_test.go`.
+- `internal/app/search_backends.go` — removed `semanticSearchBackend` struct + 3 methods + `var _` assertion + `MediasearchSvc` field on `SearchBackendBuildOpts` + `WorkspaceID` field on same opts (sole consumer was the deleted semanticSearchBackend).
+- `internal/app/assets_core.go` — removed `MediasearchService *mediasearch.Service` field from `SearchDeps` + `SearchWorkspaceID` field (historical diagnostic-only) + `mediasearch` import.
+- `internal/app/registry_search.go` — replaced stale `search_backends.go:346` line-number pin with a drift-resilient note.
+- `internal/app/registry_assets.go` — `SearchDeps` literal already passes only the canonical fields; no construction change beyond bundle-field drops above.
+- `internal/application/search/ports.go` — replaced the `semanticBackendAdapter wraps mediasearch.Service (cross-cap port bridge)` god-comment with the PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL marker describing the surviving thin re-export surface.
+
+**Retained as thin re-exports** (4 real callers compile against these canonical types): `mediasearch.WorkspaceContext`, `mediasearch.AssetDeliveryService`, `mediasearch.MediaSearchRequest{Response,Filter}`, `mediasearch.SearchMode` (alias of `search.SearchMode`). The QDRANT-004 `/internal/v1/media/search` handler at `internal/api/mediasearch/handler.go` still wires via canonical `search.Aggregator` (the per-scope workspace gate consumer — distinct from the git-rm'd orchestrator).
+
+**Deprecation record:** `architecture/deprecations.yaml#PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL` (status: `removed`, introduction_date=2026-06-30, replacement=`search.Aggregator`).
+

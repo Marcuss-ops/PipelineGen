@@ -49,7 +49,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -85,23 +84,23 @@ type CoreDeps struct {
 	ArtifactService    *artifacts.Service
 }
 
-// SearchDeps is the Assets-module search sub-system bundle (5 fields).
+// SearchDeps is the Assets-module search sub-system bundle (3 fields).
 //
 // PR-2 (June 2026): SearchFanOut + BackendRegistry are stamped by
 // WireRegistry's BuildCanonicalSearchFanOut BEFORE WireAssets runs;
 // WireAssets CONSUMES the pre-built slots — the single shared
 // instance invariant guarantees stats counters aggregate across every
-// search entry-point (YouTube + Assets + Mediasearch + FindDuplicates)
-// instead of fragmenting per-handler.
+// search entry-point (YouTube + Assets + FindDuplicates) instead of
+// fragmenting per-handler.
 //
-// Wave 21 PR 9/10 (June 2026): MediasearchService + SearchWorkspaceID
-// are composition inputs for the canonical SearchAggregator. The
-// semantic backend activates only when SearchWorkspaceID is non-empty
-// (QDRANT-004 tenant-isolation gate).
+// PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL (June 2026): the
+// historical MediasearchService + SearchWorkspaceID fields are
+// git-rm'd alongside the underlying *mediasearch.Service orchestrator.
+// Workspace-gated semantic routing now lives directly inside
+// search.Aggregator paths (per-scope), not as dedicated Service-level
+// bundle fields.
 type SearchDeps struct {
 	ClipIndexerService    *clipindexer.Service
-	MediasearchService    *mediasearch.Service
-	SearchWorkspaceID     string
 	SearchFanOut          search.SearchFanOut
 	SearchBackendRegistry *search.BackendRegistry
 }
