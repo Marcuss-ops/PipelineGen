@@ -339,6 +339,59 @@ func (r *ImagesRepository) UpdateSubject(ctx context.Context, s *asset.Subject) 
 	return err
 }
 
+// GetGeneratedDetails returns the per-asset generated_image_details row
+// for the given asset_id, or (nil, nil) iff no row exists. The (nil, nil)
+// branch mirrors the LEFT-OUTER-JOIN semantics that FASE 4B BACKFILL
+// relies on for pre-FASE-4 legacy rows.
+//
+// FASE 4A EXPAND (July 2026, image-territories action plan): the read
+// path is separate from the GetImage* methods. BACKFILL (4B) will JOIN
+// this row in via LEFT OUTER; CUTOVER (4C) will invert precedence.
+// CONTRACT (4D, deferred) will drop this standalone method once JOIN
+// reads become canonical.
+func (r *ImagesRepository) GetGeneratedDetails(ctx context.Context, assetID string) (*asset.GeneratedImageDetail, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT asset_id, prompt_original, prompt_resolved, style_id, style_version,
+		       model, seed, generation_job_id, source_hash
+		FROM generated_image_details
+		WHERE asset_id = ?
+	`, assetID)
+	var d asset.GeneratedImageDetail
+	err := row.Scan(&d.AssetID, &d.PromptOriginal, &d.PromptResolved,
+		&d.StyleID, &d.StyleVersion, &d.Model, &d.Seed,
+		&d.GenerationJobID, &d.SourceHash)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// GetRetrievedDetails mirrors GetGeneratedDetails for the
+// retrieved_image_details row. Same (nil, nil) semantics for pre-FASE-4
+// legacy rows.
+func (r *ImagesRepository) GetRetrievedDetails(ctx context.Context, assetID string) (*asset.RetrievedImageDetail, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT asset_id, source_image_url, source_page_url, license, author,
+		       search_query, retrieved_at, provider
+		FROM retrieved_image_details
+		WHERE asset_id = ?
+	`, assetID)
+	var d asset.RetrievedImageDetail
+	err := row.Scan(&d.AssetID, &d.SourceImageURL, &d.SourcePageURL,
+		&d.License, &d.Author, &d.SearchQuery, &d.RetrievedAt,
+		&d.Provider)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
 // UpdateImageMetadata aggiorna i metadati JSON di un'immagine esistente.
 func (r *ImagesRepository) UpdateImageMetadata(ctx context.Context, hash, metadataJSON string) error {
 	_, err := r.db.ExecContext(ctx, `
