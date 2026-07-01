@@ -560,6 +560,19 @@ Files touched:
 No production-wiring change beyond the ytdlp interface swap (which Go boxes transparently); no SQLite migration, no `config.yaml` keys added.
 
 ### Added
+- **[Blocco 3.1 closure -- Deletion state machine canonical surface (5-state machine + outbox.Dispatcher routing chain), July 2026]** `docs(del)`: close Bloco 3.1 with three atomic artifacts per godlike/07 "each wave closure needs a deprecation record + CHANGELOG entry":
+
+  - **`CHANGELOG.md### Added`** (this entry): audit-pointer per godlike/07.
+  - **`architecture/deprecations.yaml#PR-DRIVE-DELETE-STM`**: removal record with `status: removed`, `migration_phase: CONTRACT`. Audit-block counter delta bounded to my own insertion (does NOT fix any pre-existing drift): `total_records 20 to 21`, `by_status.removed 14 to 15`, `by_migration_phase.CONTRACT 12 to 13`. Sums stay consistent (15+5+1=21 on status; 13+2+1+4+1=21 on declared migration_phase after increment + unchanged other axes).
+  - **`architecture/current.yaml#id-28`**: wave tracker entry flipped to `status: done` + `exit_signal: true`. id-17 was already at `status: done` for the YouTube cutover Commit 6/6 closure (distinct scope); this entry uses id=28 to avoid the id-17 reuse ambiguity.
+
+  **Pre-existing build drift (out of scope, NOT a Bloco-3.1 regression)**: same five items as the prior CHANGELOG entries carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
+  - `monitor/enqueue.go`: `strings.ToLower` undefined (in `isTransientEnqueueError`).
+  - `monitor/scheduler.go`: `NewUnboundJobEnqueuer` undefined.
+  - `internal/application/assets/providers/stock/stockpipeline/run_upload.go`: syntax error (legacy upload path).
+  - `internal/app/module_media.go`: pre-existing `clips.Deps.MutationsDispatcher` literal.
+  - `internal/app/lifecycle.go`: pre-existing deletion-reconciler wiring syntax (Bloco 3.1 in-flight work, out of scope for this docs commit per the user-authorized scope-path-A disclosure footprint).
+
 - **[Audit Blocco 3.2 closure — DeletionReconciler for stuck media_assets, July 2026]** `feat(reconciler)` + `fix(dispatcher)` — periodic ticker that re-emits the canonical outbox event for any `media_assets` row stuck in `{DELETE_REQUESTED, DRIVE_DELETE_PENDING, INDEX_DELETE_PENDING}` past a configurable threshold (default 30min). Two-commit chain on `origin/main`:
 
   - `42a2e5aa` (1/2 test-pin) — pinned the state machine + envelope + pre-flight + closed the SQLite `updated_at` defaulting assumption.
