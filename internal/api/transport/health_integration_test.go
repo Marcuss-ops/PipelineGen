@@ -67,8 +67,8 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 	// Build the health Service with infra checkers pointing at the temp DB.
 	svc := healthapp.NewService(healthapp.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker("", ""), // no Drive creds → applicable=false
-		Qdrant: nil,                                 // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
+		Drive:  infrahealth.NewDriveChecker(), // no probe wired → applicable=false
+		Qdrant: nil,                          // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
 		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 
@@ -312,7 +312,7 @@ func TestHealth_DBUnreachable(t *testing.T) {
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker("", ""),
+		Drive:  infrahealth.NewDriveChecker(),
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
 		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
@@ -464,7 +464,7 @@ func TestRouter_WiringWithoutReadyChecker_Returns503(t *testing.T) {
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker("", ""),
+		Drive:  infrahealth.NewDriveChecker(),
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
 		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
