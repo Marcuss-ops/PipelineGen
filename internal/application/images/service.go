@@ -10,6 +10,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -52,10 +54,12 @@ var ErrImageGenNotImplemented = fmt.Errorf("image generation via Google Slides A
 
 // ImagesDeps groups constructor dependencies by real capability.
 type ImagesDeps struct {
-	Core     ImagesCoreDeps
-	Storage  ImagesStorageDeps
-	GenAI    ImagesGenAIDeps
-	External ImagesExternalDeps
+	Core      ImagesCoreDeps
+	Storage   ImagesStorageDeps
+	GenAI     ImagesGenAIDeps
+	External  ImagesExternalDeps
+	Retrieval *retrieved.RetrievalProviderRegistry // Step 8: optional; default built if nil
+	Generated *generated.GenerationProviderRegistry  // Step 8: optional; default built if nil
 }
 
 // ImagesCoreDeps — config + logging + concurrency config.
@@ -159,12 +163,41 @@ func NewService(deps ImagesDeps) *Service {
 		destResolver:  deps.Storage.DestResolver, // FASE 2D EXPAND: wired but not yet called
 	}
 
-	// 4. GenerationService (depends on ImageStorageService + StyleResolver)
+	// 4. Step 8 — Provider registries. Build defaults if caller didn't
+	// inject them. Both registries are nil-tolerant so tests + ad-hoc
+	// wiring can run with partial deps.
+	//
+	// RetrievalRegistry uses the just-built ImageStorageService as its
+	// StorageBridge — that's the only data dependency between the
+	// registry and the parent package.
+	retrievalRegistry := deps.Retrieval
+	if retrievalRegistry == nil {
+		retrievalRegistry = retrieved.NewDefaultProviderRegistry(
+			store, store.client, log, "en", cfg.External.SearxngURL,
+		)
+	}
+	store.retrievalRegistry = retrievalRegistry
+
+	// GeneratedRegistry uses the parent ImageGenerator (ChromeImageProvider
+	// today) wrapped as a generated.ImageGeneratorPort via
+	// ImageGeneratorAdapter. nil ImageGen keeps GoogleSlidesProvider in
+	// "unwired but registered" mode — flux + nvidia providers remain
+	// stubs.
+	generatedRegistry := deps.Generated
+	if generatedRegistry == nil {
+		generatedRegistry = generated.NewDefaultProviderRegistry(
+			log, NewImageGeneratorAdapter(deps.GenAI.ImageGen), deps.GenAI.NvidiaCfg.APIKey,
+		)
+	}
+
+	// 5. GenerationService (depends on ImageStorageService + StyleResolver +
+	//    Step 8 generation registry).
 	gen := &GenerationService{
-		imageGen: deps.GenAI.ImageGen,
-		styles:   deps.GenAI.StyleRegistry, // Step 4: StyleResolver for fail-closed style resolution
-		log:      log,
-		storage:  store,
+		imageGen:      deps.GenAI.ImageGen,
+		styles:        deps.GenAI.StyleRegistry, // Step 4: StyleResolver for fail-closed style resolution
+		log:           log,
+		storage:       store,
+		registry:      generatedRegistry, // Step 8: routes through GenerationProviderRegistry when non-nil
 	}
 
 	return &Service{

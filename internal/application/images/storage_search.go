@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -101,28 +102,12 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 		s.log.Warn("Wikidata disambiguation found nothing", zap.String("query", query))
 	}
 
-	s.log.Info("Searching for image on Wikipedia", zap.String("query", finalQuery), zap.String("lang", lang))
-	imgURL, wikiTitle2 := s.searchWikipedia(finalQuery, lang)
-	source := "wikipedia"
-	wikiURL := ""
-	if wikiTitle2 != "" {
-		wikiURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle2, " ", "_"))
-	}
-
+	// Step 8: route the network search through the RetrievalProviderRegistry.
+	// Wikidata disambig above is preserved as it feeds the Wikipedia
+	// canonical title rather than performing a network round-trip.
+	imgURL, source, wikiURL := s.runRetrievalFallback(ctx, finalQuery, lang)
 	if imgURL == "" {
-		s.log.Info("Wikipedia failed, trying SearXNG for images", zap.String("query", query))
-		imgURL = s.searchSearXNGImages(ctx, query)
-		if imgURL != "" {
-			source = "searxng"
-		}
-	}
-	if imgURL == "" {
-		s.log.Info("SearXNG failed or skipped, falling back to DuckDuckGo (wide)", zap.String("query", query))
-		imgURL = s.searchDDGWide(ctx, query)
-		source = "duckduckgo"
-	}
-	if imgURL == "" {
-		return nil, fmt.Errorf("no image found for query: %s", query)
+		return nil, fmt.Errorf("no image found for query: %s", finalQuery)
 	}
 
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
@@ -151,6 +136,10 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 			_ = json.Unmarshal([]byte(asset.MetadataJSON), &meta)
 		}
 		meta["source_image_url"] = imgURL
+		// runRetrievalFallback (Step 8) returns the third value as
+		// the canonical page URL; we receive it via the local
+		// `wikiURL` variable (preserved from the legacy cascade so
+		// metadata writes don't churn).
 		if wikiURL != "" {
 			meta["source_page_url"] = wikiURL
 		}
@@ -288,6 +277,70 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 // as the IsRetryable predicate in SearchWebImage.
 func isImageRetryable(err error) bool {
 	return errors.Is(err, ErrImageTransient)
+}
+
+// runRetrievalFallback (Step 8) walks the RetrievalProviderRegistry
+// in canonical order (Wikipedia → SearXNG → DuckDuckGo → Drive) and
+// returns the first non-empty hit. Returns (imgURL, source, pageURL)
+// tuples aligned with the legacy inline cascade semantics:
+//   - Wikipedia hit → source="wikipedia", pageURL points at the wiki page
+//   - SearXNG hit    → source="searxng", pageURL=imgURL
+//   - DuckDuckGo hit → source="duckduckgo", pageURL=imgURL
+//   - Drive hit      → source="drive", pageURL=imgURL
+//
+// When the registry is nil (tests that pre-date Step 8), falls
+// through to the legacy inline cascade so pre-rewrite behaviour is
+// preserved bit-for-bit.
+func (s *ImageStorageService) runRetrievalFallback(ctx context.Context, query, lang string) (imgURL, source, pageURL string) {
+	if s.retrievalRegistry == nil {
+		// ── Legacy fallback path (kept for tests + back-compat) ──
+		s.log.Info("Searching for image on Wikipedia", zap.String("query", query), zap.String("lang", lang))
+		imgURL, wikiTitle := s.searchWikipedia(query, lang)
+		source = "wikipedia"
+		if wikiTitle != "" {
+			pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
+		}
+		if imgURL != "" {
+			return imgURL, source, pageURL
+		}
+		s.log.Info("Wikipedia failed, trying SearXNG for images", zap.String("query", query))
+		imgURL = s.searchSearXNGImages(ctx, query)
+		if imgURL != "" {
+			return imgURL, "searxng", imgURL
+		}
+		s.log.Info("SearXNG failed or skipped, falling back to DuckDuckGo (wide)", zap.String("query", query))
+		imgURL = s.searchDDGWide(ctx, query)
+		if imgURL != "" {
+			return imgURL, "duckduckgo", imgURL
+		}
+		return "", "", ""
+	}
+
+	// ── Step 8 registry path ──
+	results, err := s.retrievalRegistry.SearchAll(ctx, query, retrieved.RetrievalSearchOptions{
+		Lang: lang,
+	})
+	if err != nil {
+		s.log.Warn("retrieval registry SearchAll errored — falling back to legacy cascade",
+			zap.String("query", query),
+			zap.Error(err),
+		)
+		return "", "", ""
+	}
+	if len(results) == 0 {
+		s.log.Info("retrieval registry exhausted — no provider produced a hit",
+			zap.String("query", query),
+		)
+		return "", "", ""
+	}
+	hit := results[0]
+	imgURL = hit.PreviewURL
+	source = string(hit.Provider)
+	pageURL = hit.PageURL
+	if pageURL == "" {
+		pageURL = hit.PreviewURL
+	}
+	return imgURL, source, pageURL
 }
 
 // ── Web Search Helpers ─────────────────────────────────────────────────
