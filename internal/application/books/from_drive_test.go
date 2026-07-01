@@ -135,6 +135,7 @@ func TestProcessBookFromDrive_F2_10_ReaderRoundTrip(t *testing.T) {
 		nil, // voiceoverSvc - not exercised in this test (GenerateVoiceover=false)
 		nil, // publisher - not exercised (no Drive writes path here)
 		reader,
+		nil, // transformer (Phase 7): not exercised in this test; ProcessBookFromDrive short-circuits at the reader nil-check before reaching ProcessBook
 	)
 	_, _ = svc.ProcessBookFromDrive(
 		context.Background(),
@@ -175,6 +176,7 @@ func TestProcessBookFromDrive_F2_10_NilReader_ReturnsConfiguredSentinel(t *testi
 		zap.NewNop(),
 		nil, nil, // voiceoverSvc, publisher
 		nil, // <-- deliberately nil Reader
+		nil, // <-- transformer nil: Phase 7 stub; test pre-empts via ErrBookReaderNotConfigured before ProcessBook path is reached
 	)
 
 	_, err := svc.ProcessBookFromDrive(

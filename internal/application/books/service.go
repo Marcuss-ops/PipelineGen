@@ -1,17 +1,42 @@
+// Package books — books.Service is the apply-layer orchestrator
+// for the book-summarisation pipeline (Fase 7 Spina Dorsale,
+// July 2026). All Python-execution responsibility moved OUT of
+// this file into internal/infrastructure/books/pythontransformer/.
+// The Service now routes the summarisation work through the
+// canonical BookTransformer port (godlike/06 "one owner per
+// fact" — apply layer has zero Python subprocess dependency).
+//
+// What lives here now:
+//
+//	- Service struct: holds the narrow PublisherPort + drive.Reader
+//	  + voiceover.VoiceoverGenerator + books.BookTransformer ports.
+//	- ProcessRequest / ProcessResult: stable JSON types for the
+//	  /api/books/{process,generate}/{process-from-drive} wire
+//	  surface.
+//	- ProcessBook / ProcessBookWithProgress: maps the public
+//	  ProcessRequest shape to the internal TransformRequest
+//	  shape and delegates to the transformer port.
+//	- ProcessBookFromDrive (drive.go): live in drive.go for
+//	  historical reasons; downloads via drive.Reader, then calls
+//	  back into ProcessBook.
+//
+// What used to live here (pre-Fase-7) and was MOVED:
+//
+//	- exec.CommandContext(s.cfg.PythonBin, args...)         →
+//	  pythontransformer.SubprocessTransformer.Transform
+//	- buildArgs / parseOutput / parseProgressLine         →
+//	  pythontransformer (private helpers of the concrete)
+//
+// The user-visible pipeline behaviour is unchanged; the only
+// externally visible delta is the port boundary (apply layer
+// no longer imports os/exec).
 package books
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"math"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +47,13 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
+// Config controls the books capability at construction time.
+// Pre-Fase-7 fields (ScriptPath, PythonBin) are retained as noop
+// fields — the Python-aware concrete lives at
+// internal/infrastructure/books/pythontransformer and reads the
+// same shape. EXPAND window: future versions of books.Config
+// will move these fields into the pythontransformer concrete
+// (the apply-layer Config shrinks to DriveFolderID + Enabled).
 type Config struct {
 	Enabled       bool   `yaml:"enabled"`
 	ScriptPath    string `yaml:"script_path"`
@@ -38,57 +70,72 @@ func DefaultConfig() *Config {
 	}
 }
 
-// PublisherPort is the narrow dependency for Drive uploads in the books
-// capability. Satisfied by delivery.Publisher (via an adapter in the
-// composition root). nil means Drive is disabled.
+// PublisherPort is the narrow dependency for Drive uploads in
+// the books capability. Satisfied by delivery.Publisher (via an
+// adapter in the composition root). nil means Drive is disabled.
 type PublisherPort interface {
 	Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error)
 }
 
+// ErrBookTransformerMissing is surfaced by ProcessBook +
+// ProcessBookWithProgress when the Service was constructed with
+// a nil BookTransformer port (the composition root never wired
+// pythontransformer.SubprocessTransformer). Behaviourally a
+// "service not initialised" failure: tests + production callers
+// branch via errors.Is(err, ErrBookTransformerMissing). Maps
+// to 503 in the books ErrorMappers.
+var ErrBookTransformerMissing = errors.New("books transformer port not wired — cannot run book pipeline")
+
+// Service is the apply-layer orchestrator for book processing.
+// Phase 7 Spina Dorsale: the Python-execution responsibility
+// moved to a BookTransformer port (wired by composition root to
+// pythontransformer.SubprocessTransformer); Service no longer
+// imports os/exec.
+//
+// Constructor: NewService. Either transformer or publisher may
+// be nil so partial deployments (Drive disabled) keep the
+// local-file path ProcessBook alive; the Drive-dependent paths
+// (driveToDrive, ProcessBookFromDrive) surface the canonical
+// "drive not configured" error on demand; the transformer-
+// dependent paths (ProcessBook + ProcessBookWithProgress) surface
+// ErrBookTransformerMissing on nil.
 type Service struct {
-	db           *sql.DB
-	cfg          *Config
-	log          *zap.Logger
-	scriptPath   string
-	driveFolder  string
-	publisher PublisherPort // F2.10: dropped legacy *drive.Uploader field — Publisher is the single canonical Drive-write canal (driveToDrive fallback)
-	reader    drive.Reader  // F2.10+: RE-ADDED reader field for the missed F2.10 sweep on books/drive.go::ProcessBookFromDrive (download path uses Reader.GetFileMeta + Reader.DownloadFile per DRIVE-005 closure ports)
+	db          *sql.DB
+	cfg         *Config
+	log         *zap.Logger
+	driveFolder string
+	publisher   PublisherPort
+	reader      drive.Reader
 	voiceoverSvc voiceover.VoiceoverGenerator
+	transformer BookTransformer // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
 }
 
-// NewService constructs a books.Service. Publisher + Reader are wired via
-// constructor injection; the post-construction SetDrive* setters were
-// removed (F2.10). The legacy `driveUploader *drive.Uploader` arg
-// was dropped in F2.10 — `*drive.Uploader` is no longer referenced
-// from the books capability (AGENTS.md godlike/06 "one owner per fact"
-// — every Drive write fans out through delivery.Publisher; every Drive
-// read fans out through drive.Reader). Both fields are tolerant of nil
-// so partial deployments (Drive disabled) keep the local-file path
-// ProcessBook alive; the Drive-dependent paths (driveToDrive,
-// ProcessBookFromDrive) surface the canonical "drive not configured"
-// error on demand.
-func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc voiceover.VoiceoverGenerator, publisher PublisherPort, reader drive.Reader) *Service {
+// NewService constructs a books.Service. Publisher + Reader +
+// Transformer are wired via constructor injection (godlike/06
+// Pattern 0 + F2.10 closure precedent). The post-construction
+// SetDrive* setters were removed (F2.10). The legacy
+// `driveUploader *drive.Uploader` arg was dropped in F2.10.
+//
+// Phase 7 update: NewService now takes a BookTransformer port
+// (8th positional arg, last) — composition root threads the
+// pythontransformer.SubprocessTransformer concrete in via
+// internal/app/build_bundles_core.go::buildBooksService. Tests
+// pass nil (the ProcessBook + ProcessBookWithProgress paths
+// fail-closed with ErrBookTransformerMissing; tests asserting
+// ProcessBookFromDrive behaviour do not exercise ProcessBook).
+func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc voiceover.VoiceoverGenerator, publisher PublisherPort, reader drive.Reader, transformer BookTransformer) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-
-	scriptPath := cfg.ScriptPath
-	if !filepath.IsAbs(scriptPath) {
-		absPath, err := filepath.Abs(scriptPath)
-		if err == nil {
-			scriptPath = absPath
-		}
-	}
-
 	return &Service{
 		db:           db,
 		cfg:          cfg,
 		log:          log,
-		scriptPath:   scriptPath,
 		driveFolder:  driveFolder,
 		voiceoverSvc: voiceoverSvc,
 		publisher:    publisher,
 		reader:       reader,
+		transformer:  transformer,
 	}
 }
 
@@ -123,250 +170,133 @@ type ProcessResult struct {
 	Error           string `json:"error,omitempty"`
 }
 
-func (s *Service) buildArgs(req *ProcessRequest) ([]string, error) {
-	if req.FilePath == "" && req.GoogleDocURL == "" {
-		return nil, fmt.Errorf("file_path or google_doc_url is required")
+// ProcessBook runs the book-summarisation pipeline against the
+// supplied request. Pre-Fase-7, this method called exec and
+// parsed stdout inline; Phase 7 routes the work through
+// s.transformer.Transform (the BookTransformer port). Composition
+// root threads pythontransformer.SubprocessTransformer so the
+// production wire-shape matches the legacy (Python script)
+// behaviour 1:1; future concrete adapters (in-process LLM
+// pipeline, REST summariser, etc.) plug into the same port
+// without changing this method.
+func (s *Service) ProcessBook(ctx context.Context, req *ProcessRequest) (*ProcessResult, error) {
+	if !s.cfg.Enabled {
+		return nil, fmt.Errorf("books service is disabled")
+	}
+	if s.transformer == nil {
+		return nil, ErrBookTransformerMissing
 	}
 
-	args := []string{filepath.Base(s.scriptPath)}
+	transformReq, err := s.processRequestToTransform(req)
+	if err != nil {
+		return nil, err
+	}
+
+	transformOut, err := s.transformer.Transform(ctx, transformReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process book: %w", err)
+	}
+	return s.transformResultToProcess(transformOut, req), nil
+}
+
+// ProcessBookWithProgress is the streaming variant of
+// ProcessBook. The onProgress callback is invoked by the
+// transformer with [pct int, msg string] per [PROGRESS] %d %s
+// line emitted by the Python subprocess (or by the future
+// in-process pipeline). The implementation reaches the
+// Python-aware concrete via the BookTransformer port's
+// TransformWithProgress method.
+func (s *Service) ProcessBookWithProgress(ctx context.Context, req *ProcessRequest, onProgress func(int, string)) (*ProcessResult, error) {
+	if !s.cfg.Enabled {
+		return nil, fmt.Errorf("books service is disabled")
+	}
+	if s.transformer == nil {
+		return nil, ErrBookTransformerMissing
+	}
+
+	transformReq, err := s.processRequestToTransform(req)
+	if err != nil {
+		return nil, err
+	}
+
+	transformOut, err := s.transformer.TransformWithProgress(ctx, transformReq, onProgress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process book: %w", err)
+	}
+	return s.transformResultToProcess(transformOut, req), nil
+}
+
+// processRequestToTransform maps the apply-layer ProcessRequest
+// shape to the internal TransformRequest shape the port expects.
+// Pre-Fase-7 the equivalent logic was inline in
+// buildArgs (CLI args) + parseOutput (stdout parsing). The
+// translation now lives here so the apply-layer Service is the
+// only surface that knows about both wire shapes.
+func (s *Service) processRequestToTransform(req *ProcessRequest) (*TransformRequest, error) {
+	source := BookSourceDescription{}
 
 	if req.GoogleDocURL != "" {
 		docID := extractGoogleDocID(req.GoogleDocURL)
 		if docID == "" {
 			return nil, fmt.Errorf("invalid google_doc_url: could not extract document ID")
 		}
-		args = append(args, "--google-doc-id", docID)
+		source.GoogleDocID = docID
 	} else {
-		args = append(args, "--file", req.FilePath)
-	}
-
-	model := req.Model
-	if model == "" {
-		model = "gemma4:e4b"
-	}
-	args = append(args, "--model", model)
-
-	if req.PagesPerChunk > 0 {
-		args = append(args, "--pages-per-chunk", fmt.Sprintf("%d", req.PagesPerChunk))
-	}
-	chunkSize := req.ChunkSize
-	if chunkSize <= 0 {
-		chunkSize = 12000
-	}
-	args = append(args, "--chunk-size", fmt.Sprintf("%d", chunkSize))
-	if req.MaxChunks > 0 {
-		args = append(args, "--max-chunks", fmt.Sprintf("%d", req.MaxChunks))
-	}
-
-	if req.OverlapSize > 0 {
-		args = append(args, "--overlap-size", fmt.Sprintf("%d", req.OverlapSize))
-	} else {
-		args = append(args, "--overlap-size", "2000")
-	}
-
-	ollamaURL := req.OllamaURL
-	if ollamaURL == "" {
-		ollamaURL = "http://127.0.0.1:11434"
-	}
-	args = append(args, "--ollama-url", ollamaURL)
-
-	if req.Instruction != "" {
-		args = append(args, "--instruction", req.Instruction)
-	}
-	if req.OutputPath != "" {
-		args = append(args, "--output", req.OutputPath)
+		source.LocalPath = req.FilePath
 	}
 
 	driveFolderID := req.DriveFolderID
 	if driveFolderID == "" {
 		driveFolderID = s.driveFolder
 	}
-	if driveFolderID != "" {
-		args = append(args, "--drive-folder-id", driveFolderID)
-	}
-	if req.Language != "" {
-		args = append(args, "--language", req.Language)
-	}
-	if req.TranslateOnly {
-		args = append(args, "--translate-only")
-	}
-	if req.GeneratePDF {
-		args = append(args, "--generate-pdf")
-	}
-	if req.PDFStyle != "" {
-		args = append(args, "--pdf-style", req.PDFStyle)
-	}
 
-	return args, nil
+	return &TransformRequest{
+		Source:        source,
+		Instruction:   req.Instruction,
+		Model:         req.Model,
+		PagesPerChunk: req.PagesPerChunk,
+		ChunkSize:     req.ChunkSize,
+		OverlapSize:   req.OverlapSize,
+		MaxChunks:     req.MaxChunks,
+		OllamaURL:     req.OllamaURL,
+		DriveFolderID: driveFolderID,
+		Language:      req.Language,
+		TranslateOnly: req.TranslateOnly,
+		GeneratePDF:   req.GeneratePDF,
+		PDFStyle:      req.PDFStyle,
+		OutputPath:    req.OutputPath,
+	}, nil
 }
 
-func (s *Service) ProcessBook(ctx context.Context, req *ProcessRequest) (*ProcessResult, error) {
-	if !s.cfg.Enabled {
-		return nil, fmt.Errorf("books service is disabled")
-	}
-
-	args, err := s.buildArgs(req)
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := exec.CommandContext(ctx, s.cfg.PythonBin, args...)
-	cmd.Dir = filepath.Dir(s.scriptPath)
-
-	s.log.Info("processing book via script",
-		zap.String("file", req.FilePath),
-		zap.String("script", s.scriptPath),
-	)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return &ProcessResult{
-			Success: false,
-			Error:   fmt.Errorf("book processing failed: %w, output: %s", err, strings.TrimSpace(string(output))).Error(),
-		}, fmt.Errorf("failed to process book: %w", err)
-	}
-
-	return s.parseOutput(string(output), req), nil
-}
-
-func (s *Service) ProcessBookWithProgress(ctx context.Context, req *ProcessRequest, onProgress func(int, string)) (*ProcessResult, error) {
-	if !s.cfg.Enabled {
-		return nil, fmt.Errorf("books service is disabled")
-	}
-
-	args, err := s.buildArgs(req)
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := exec.CommandContext(ctx, s.cfg.PythonBin, args...)
-	cmd.Dir = filepath.Dir(s.scriptPath)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start book processor: %w", err)
-	}
-
-	var fullOutput strings.Builder
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		fullOutput.WriteString(line)
-		fullOutput.WriteString("\n")
-
-		if strings.HasPrefix(line, "[PROGRESS] ") {
-			trimmed := strings.TrimPrefix(line, "[PROGRESS] ")
-			if pct, msg, ok := parseProgressLine(trimmed); ok {
-				if onProgress != nil {
-					onProgress(pct, msg)
-				}
-				continue
-			}
-		}
-
-		s.log.Debug("book script output", zap.String("line", line))
-	}
-
-	stderrBytes, _ := io.ReadAll(stderr)
-
-	if err := cmd.Wait(); err != nil {
-		errOutput := fullOutput.String() + "\n" + string(stderrBytes)
-		return &ProcessResult{
-			Success: false,
-			Error:   fmt.Errorf("book processing failed: %w, output: %s", err, strings.TrimSpace(errOutput)).Error(),
-		}, fmt.Errorf("failed to process book: %w", err)
-	}
-
-	return s.parseOutput(fullOutput.String(), req), nil
-}
-
-func parseProgressLine(s string) (int, string, bool) {
-	parts := strings.SplitN(strings.TrimSpace(s), "%", 2)
-	if len(parts) != 2 {
-		return 0, "", false
-	}
-	pct, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-	if err != nil || pct < 0 || pct > 100 {
-		return 0, "", false
-	}
-	return pct, strings.TrimSpace(parts[1]), true
-}
-
-func (s *Service) parseOutput(outputStr string, req *ProcessRequest) *ProcessResult {
-	s.log.Info("book processed", zap.String("output_preview", outputStr[:min(len(outputStr), 300)]))
-
+// transformResultToProcess maps the internal TransformResult
+// shape back to the apply-layer ProcessResult wire shape.
+// Mirrors the canonical ProcessResult field set (Success +
+// Error + OutputPath + PDF URLs + counters); the canonical
+// ProcessResult Success=true/Error="" envelope mirrors the
+// pre-Fase-7 buildArgs / parseOutput happy-path.
+func (s *Service) transformResultToProcess(in *TransformResult, req *ProcessRequest) *ProcessResult {
 	result := &ProcessResult{
 		Success:  true,
-		Language: req.Language,
+		Language: in.Language,
 	}
 
-	if idx := strings.Index(outputStr, "[RESULT]"); idx >= 0 {
-		rawJSON := outputStr[idx+8:]
-		if closeIdx := strings.LastIndex(rawJSON, "}"); closeIdx >= 0 {
-			rawJSON = rawJSON[:closeIdx+1]
-		}
-		jsonStr := strings.TrimSpace(rawJSON)
-		var resultJSON map[string]any
-		if json.Unmarshal([]byte(jsonStr), &resultJSON) == nil {
-			if v, ok := resultJSON["output_file"].(string); ok && v != "" {
-				result.OutputPath = v
-			}
-			if v, ok := resultJSON["pdf_file"].(string); ok && v != "" {
-				result.PDFPath = v
-			}
-			if v, ok := resultJSON["language"].(string); ok && v != "" {
-				result.Language = v
-			}
-			if v, ok := resultJSON["chunks_processed"].(float64); ok {
-				result.ChunksProcessed = int(math.Round(v))
-			}
-			if drive, ok := resultJSON["drive"].(map[string]any); ok {
-				if v, ok := drive["folder"].(string); ok && v != "" {
-					result.DriveFolderURL = v
-				}
-				if v, ok := drive["document"].(string); ok && v != "" {
-					result.DriveDocURL = v
-				}
-				if v, ok := drive["pdf"].(string); ok && v != "" {
-					result.DrivePDFURL = v
-				}
-			}
-		}
-	} else {
-		lines := strings.Split(outputStr, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "Saved summary to:") {
-				if parts := strings.Split(line, "Saved summary to:"); len(parts) > 1 {
-					result.OutputPath = strings.TrimSpace(parts[1])
-				}
-			}
-			if strings.Contains(line, "Generated PDF:") {
-				if parts := strings.Split(line, "Generated PDF:"); len(parts) > 1 {
-					result.PDFPath = strings.TrimSpace(parts[1])
-				}
-			}
-			if strings.Contains(line, "Uploaded to Google Docs:") {
-				if parts := strings.Split(line, "Uploaded to Google Docs:"); len(parts) > 1 {
-					result.DriveDocURL = strings.TrimSpace(parts[1])
-				}
-			}
-		}
-	}
-
-	if result.OutputPath == "" && req.OutputPath != "" {
+	if in.OutputPath != "" {
+		result.OutputPath = in.OutputPath
+	} else if req.OutputPath != "" {
+		// Fallback preserved from pre-Fase-7 parseOutput: the
+		// Python script may have written to req.OutputPath but the
+		// [RESULT] block didn't include output_file (defensive).
 		result.OutputPath = req.OutputPath
 	}
-
+	result.PDFPath = in.PDFPath
+	result.DriveFolderURL = in.DriveFolderURL
+	result.DriveDocURL = in.DriveDocURL
+	result.DrivePDFURL = in.DrivePDFURL
+	result.WordCount = in.WordCount
+	result.ChunksProcessed = in.ChunksProcessed
+	if result.Language == "" {
+		result.Language = req.Language
+	}
 	return result
 }
 
@@ -389,6 +319,17 @@ func (s *Service) IsEnabled() bool {
 	return s.cfg.Enabled
 }
 
+// extractGoogleDocID walks a Google Docs URL and returns the
+// bare document ID. Pure URL parsing — kept here (apply layer)
+// because the URL shape is part of the public wire contract
+// (ProcessRequest.GoogleDocURL) and the transformer expects a
+// bare ID at TransformRequest.Source.GoogleDocID. The mapping
+// is the only place that knows both shapes.
+//
+// Pre-Fase-7: same helper existed in service.go::extractGoogleDocID.
+// Phase 7 retained here because the apply Layer is the canonical
+// place to convert IDs from external wire shapes into internal
+// canonical IDs (godlike/06 "one owner per fact" per ID).
 func extractGoogleDocID(url string) string {
 	if url == "" {
 		return ""
