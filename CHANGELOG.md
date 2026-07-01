@@ -661,6 +661,20 @@ preserved. `OutputArtifact` struct retained for backward compat.
 Files: `internal/application/jobs/worker/runner.go` (MODIFIED),
 `internal/application/jobs/worker/runner_test.go` (MODIFIED — renamed + new test).
 
+**[Creator Blocco 2.3, July 2026]** `script.generate` handler now builds and
+injects an `ArtifactManifest` into the single-item success result under
+`__artifact_manifest`. Artifact files (script.json, script.txt, scenes.json,
+metadata.json) are written to the job workspace (`/tmp/pipelinegen/jobs/
+<jobID>/output/`); voiceover and image files are referenced from their
+existing SpecScene binding LocalPaths. Entities are best-effort. The
+manifest is additive/optional — write failures and validation errors are
+logged but do not break the handler. Multi-item and failure paths are
+unchanged.
+
+Files: `internal/application/scripts/jobs/generation_job.go` (MODIFIED —
++`os`, `path/filepath` imports; +`logWarn`, `workspaceOutputDir`,
+`injectManifestIntoEnvelope`, `buildAndInjectManifest` helpers).
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`

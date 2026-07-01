@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -194,7 +196,7 @@ func (h *GenerateJobHandler) Handle(
 			}
 			return mapped, fmt.Errorf("script generation failed: %w", err)
 		}
-		return toMap(buildSingleSuccessEnvelope(env.Items[0].ID, single))
+		return h.injectManifestIntoEnvelope(j.ID, single, buildSingleSuccessEnvelope(env.Items[0].ID, single))
 	}
 
 	// Multi-item path. Three outcomes (P0, Issue 1):
@@ -450,4 +452,230 @@ func toMap(r domainScript.GenerationEnvelopeResult) (map[string]any, error) {
 		return nil, fmt.Errorf("generate job handler: unmarshal envelope: %w", err)
 	}
 	return out, nil
+}
+
+// injectManifestIntoEnvelope serialises the envelope, injects the
+// ArtifactManifest, and returns the result map. This is the single
+// entry point for adding the manifest to a single-item success result.
+func (h *GenerateJobHandler) injectManifestIntoEnvelope(jobID string, result *domainScript.GenerationResult, envelope domainScript.GenerationEnvelopeResult) (map[string]any, error) {
+	mapped, mapErr := toMap(envelope)
+	if mapErr != nil {
+		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
+	}
+	h.buildAndInjectManifest(jobID, result, mapped)
+	return mapped, nil
+}
+
+// ── Artifact manifest (Creator Blocco 2.3) ──────────────────────────
+
+// logWarn logs a warning when log is non-nil. Convenience helper so
+// per-artifact write paths don't repeat the nil-check.
+func logWarn(log *zap.Logger, msg, jobID string, err error) {
+	if log != nil {
+		log.Warn(msg, zap.String("job_id", jobID), zap.Error(err))
+	}
+}
+
+// workspaceOutputDir returns the job workspace output directory.
+// Matches the convention used by worker.Workspace.Prepare:
+//   /tmp/pipelinegen/jobs/<jobID>/output/
+func workspaceOutputDir(jobID string) string {
+	return filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID, "output")
+}
+
+// buildAndInjectManifest writes generation artifacts to the workspace
+// and injects an ArtifactManifest into handlerResult under
+// scriptpkg.ManifestKey. Errors are silent (logged) — the manifest is
+// additive/optional per the Blocco 2.3 contract.
+func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domainScript.GenerationResult, handlerResult map[string]any) {
+	if result == nil || handlerResult == nil {
+		return
+	}
+
+	// Compute workspace.
+	outDir := workspaceOutputDir(jobID)
+	_ = os.MkdirAll(outDir, 0755) // best-effort; runner already created workspace
+
+	artifacts := make([]scriptpkg.Artifact, 0, 8)
+	lang := result.Language
+
+	// ── script.json (required) ───────────────────────────────────
+	scriptJSONPath := filepath.Join(outDir, "script.json")
+	scriptData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		logWarn(h.log, "failed to marshal script.json", jobID, err)
+	} else if writeErr := os.WriteFile(scriptJSONPath, scriptData, 0644); writeErr != nil {
+		logWarn(h.log, "failed to write script.json", jobID, writeErr)
+	} else {
+		artifacts = append(artifacts, scriptpkg.Artifact{
+			ID:       jobID + ":script_json",
+			Kind:     scriptpkg.ArtifactKindScriptJSON,
+			Path:     scriptJSONPath,
+			Filename: "script.json",
+			MIMEType: "application/json",
+			Required: true,
+		})
+	}
+
+	// ── script.txt (required) ────────────────────────────────────
+	if result.Output.Text != "" {
+		scriptTxtPath := filepath.Join(outDir, "script.txt")
+		if writeErr := os.WriteFile(scriptTxtPath, []byte(result.Output.Text), 0644); writeErr != nil {
+			logWarn(h.log, "failed to write script.txt", jobID, writeErr)
+		} else {
+			artifacts = append(artifacts, scriptpkg.Artifact{
+				ID:       jobID + ":script_text",
+				Kind:     scriptpkg.ArtifactKindScriptText,
+				Path:     scriptTxtPath,
+				Filename: "script.txt",
+				MIMEType: "text/plain",
+				Required: true,
+			})
+		}
+	}
+
+	// ── scenes.json (required if scenes exist) ───────────────────
+	if len(result.Output.SpecScene.Scenes) > 0 {
+		scenesJSONPath := filepath.Join(outDir, "scenes.json")
+		scenesData, err := json.MarshalIndent(result.Output.SpecScene, "", "  ")
+		if err != nil {
+			logWarn(h.log, "failed to marshal scenes.json", jobID, err)
+		} else if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0644); writeErr != nil {
+			logWarn(h.log, "failed to write scenes.json", jobID, writeErr)
+		} else {
+			artifacts = append(artifacts, scriptpkg.Artifact{
+				ID:       jobID + ":scenes",
+				Kind:     scriptpkg.ArtifactKindScenes,
+				Path:     scenesJSONPath,
+				Filename: "scenes.json",
+				MIMEType: "application/json",
+				Required: true,
+			})
+		}
+	}
+
+	// ── metadata.json (required) ─────────────────────────────────
+	if len(result.Artifacts.Metadata) > 0 {
+		metaPath := filepath.Join(outDir, "metadata.json")
+		metaData, err := json.MarshalIndent(result.Artifacts.Metadata, "", "  ")
+		if err != nil {
+			logWarn(h.log, "failed to marshal metadata.json", jobID, err)
+		} else if writeErr := os.WriteFile(metaPath, metaData, 0644); writeErr != nil {
+			logWarn(h.log, "failed to write metadata.json", jobID, writeErr)
+		} else {
+			artifacts = append(artifacts, scriptpkg.Artifact{
+				ID:       jobID + ":metadata",
+				Kind:     scriptpkg.ArtifactKindMetadata,
+				Path:     metaPath,
+				Filename: "metadata.json",
+				MIMEType: "application/json",
+				Required: true,
+			})
+		}
+	}
+
+	// ── entities.json (best-effort) ──────────────────────────────
+	if result.Artifacts.Entities != nil && (len(result.Artifacts.Entities.Persons) > 0 || len(result.Artifacts.Entities.Places) > 0 || len(result.Artifacts.Entities.Concepts) > 0) {
+		entPath := filepath.Join(outDir, "entities.json")
+		entData, err := json.MarshalIndent(result.Artifacts.Entities, "", "  ")
+		if err == nil {
+			if writeErr := os.WriteFile(entPath, entData, 0644); writeErr == nil {
+				artifacts = append(artifacts, scriptpkg.Artifact{
+					ID:       jobID + ":entities",
+					Kind:     scriptpkg.ArtifactKindEntities,
+					Path:     entPath,
+					Filename: "entities.json",
+					MIMEType: "application/json",
+					Required: false,
+				})
+			}
+		}
+	}
+
+	// ── voiceover-{lang}.mp3 (required if generated) ─────────────
+	// Scan SpecScene bindings for voiceover LocalPaths.
+	// Per-language counting prevents filename disambiguation from
+	// firing cross-language; the artifact ID includes the scene
+	// index so the runner's upload map never collides on duplicate
+	// IDs (same language, different scenes).
+	voiceoverPerLang := make(map[string]int)
+	voiceoverPathSeen := make(map[string]bool)
+	for _, scene := range result.Output.SpecScene.Scenes {
+		if scene.Bindings.Voiceover == nil || scene.Bindings.Voiceover.LocalPath == "" {
+			continue
+		}
+		voPath := scene.Bindings.Voiceover.LocalPath
+		if voiceoverPathSeen[voPath] {
+			continue
+		}
+		voiceoverPathSeen[voPath] = true
+		voiceoverPerLang[lang]++
+
+		voFilename := "voiceover.mp3"
+		if lang != "" {
+			if voiceoverPerLang[lang] > 1 {
+				voFilename = fmt.Sprintf("voiceover-%s-scene-%d.mp3", lang, scene.Index)
+			} else {
+				voFilename = "voiceover-" + lang + ".mp3"
+			}
+		}
+
+		// Include scene index in the ID so every voiceover gets a
+		// unique key in the runner's upload map — two scenes in the
+		// same language must not share the same asset ID.
+		artifacts = append(artifacts, scriptpkg.Artifact{
+			ID:       fmt.Sprintf("%s:voiceover:%s:%d", jobID, lang, scene.Index),
+			Kind:     scriptpkg.ArtifactKindVoiceover,
+			Path:     voPath,
+			Filename: voFilename,
+			MIMEType: "audio/mpeg",
+			Required: true,
+		})
+	}
+
+	// ── images (best-effort if generated) ───────────────────────
+	for _, scene := range result.Output.SpecScene.Scenes {
+		if scene.Bindings.Image == nil || scene.Bindings.Image.LocalPath == "" {
+			continue
+		}
+		imgPath := scene.Bindings.Image.LocalPath
+		imgFilename := filepath.Base(imgPath)
+		if imgFilename == "" || imgFilename == "." {
+			imgFilename = fmt.Sprintf("scene-%d.png", scene.Index)
+		}
+		artifacts = append(artifacts, scriptpkg.Artifact{
+			ID:       fmt.Sprintf("%s:image:%d", jobID, scene.Index),
+			Kind:     scriptpkg.ArtifactKindImage,
+			Path:     imgPath,
+			Filename: imgFilename,
+			MIMEType: "image/png",
+			Required: false,
+		})
+	}
+
+	// ── Build and inject manifest ────────────────────────────────
+	manifest := &scriptpkg.ArtifactManifest{
+		SchemaVersion: scriptpkg.SchemaVersionArtifactManifestV1,
+		WorkflowID:    "",
+		JobID:         jobID,
+		Artifacts:     artifacts,
+	}
+
+	// Validate the manifest; silently skip on failure (manifest is additive).
+	if err := manifest.Validate(); err != nil {
+		if h.log != nil {
+			h.log.Warn("artifact manifest validation failed — skipping manifest injection",
+				zap.String("job_id", jobID),
+				zap.Error(err))
+		}
+		return
+	}
+
+	handlerResult[scriptpkg.ManifestKey] = manifest
+
+	if h.log != nil {
+		h.log.Info("artifact manifest injected",
+			zap.String("job_id", jobID),
+			zap.Int("artifacts", len(manifest.Artifacts)))
+	}
 }
