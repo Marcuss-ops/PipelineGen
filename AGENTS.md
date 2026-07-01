@@ -813,6 +813,32 @@ the snapshot table above.
   the residual admin-token / port-mock / spoke-shutdown hardening
   items (out-of-scope for Commit C; see CHANGELOG follow-up notes).
 
+- **PR-C-YouTube-Cutover, P1 #17 final closure (June 2026, Commit 6/6)**
+  — `arch(current)` + `fix(jobs)` — durable channel-monitor sync closes
+  P1 deck. `architecture/current.yaml` wave-tracker entry `id-17` flipped
+  from `status: in_progress / exit_signal: false` to
+  `status: done / exit_signal: true` per the slim schema, with the
+  `blocker: ["16"]` cross-reference preserved for DAG-ancestry audit
+  (godlike/07 §"Historical information"). `internal/application/jobs/registry.go`
+  locks `Concurrency: 1` explicit on `TypeYouTubeChannelSync` (matches
+  the canonical `e2e_no_duplicates_test.go` harness's `Policy.MaxConcurrentVideos=1`
+  invariant; byte-stable against the typed-accessor `Registry.Concurrency(t)`
+  which already normalises <=0 to `DefaultConcurrency=1` via `applyDefaults()`).
+  No new code surface; Commits 1/6 → 5/6 already landed on origin/main during
+  the wave per AGENTS.md §Git-Lesson-4 byte-equivalent-replay pace (the
+  in-flight push race is documented in AGENTS.md §Git-Lesson-4; the
+  canonical SHA on `origin/main` is upstream). Commit 6/6 is the canonical
+  closure marker that flips the wave-tracker entry on top of `origin/main`'s
+  tip. Forward-pointer for the parallel-mode `4/5 MarkEnqueued-loss` race:
+  tracked separately in `architecture/issues.yaml` (`Concurrency=1` is
+  the cutover-aligned mitigation until the follow-up ticket ships). The
+  `ChannelsCursorSvc` interface at
+  `internal/application/assets/monitor/extraction_enqueuer.go:115`
+  remains a deliberate test-surface sentinel per Commit D (6 test assertions
+  in `extraction_enqueuer_test.go` pin the no-`UpdateCursor` contract) —
+  NOT a dead leftover, NOT removed by this commit. CHANGELOG entry under
+  `## Unreleased → ### Fixed` mirrors this closure.
+
 ---
 
 ## Core Contracts

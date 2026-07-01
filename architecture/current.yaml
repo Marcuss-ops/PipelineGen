@@ -108,9 +108,21 @@
     - id: PR-JOB-STATUS-UPPERCASE-MIGRATION
       owner_capability: internal/infrastructure/database/sqlite/jobs
 - id: 17
-  status: in_progress
-  exit_signal: false
+  status: done
+  exit_signal: true
   blocker: ["16"]
+  # PR-C-YouTube-Cutover P1 #17 final closure (Commit 6/6, June 2026):
+  # durable channel sync flows through jobs.Service.TypeYouTubeChannelSync
+  # (HandleChannelSyncJob rewrite + safeCheckChannel + recordCheckOutcome +
+  # top-level defer recover + nested func{} recover + tryMarkFailed +
+  # section 4b defensive lease-token re-override). Registry Concurrency
+  # locked to 1 on TypeYouTubeChannelSync so the canonical serial-mode
+  # dedupe contract holds in production (matches the e2e_no_duplicates_test.go
+  # harness's Policy.MaxConcurrentVideos=1 invariant; mitigates the
+  # PR-MONITOR-FANOUT-MARKENQUEUED-RACE parallel-mode regression until
+  # the follow-up ticket ships). ChannelsCursorSvc is intentionally
+  # preserved as a test-surface sentinel per Commit D (6 test assertions
+  # in extraction_enqueuer_test.go pin the no-UpdateCursor contract).
 - id: 18
   status: done
   exit_signal: true
