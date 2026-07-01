@@ -45,6 +45,11 @@ type GenerateImageRequest struct {
 	// Tags are metadata labels to attach to the generated asset.
 	Tags []string `json:"tags,omitempty"`
 
+	// NegativePrompt is the negative prompt for providers that support it
+	// (Flux, NVIDIA, etc.). Empty = no negative prompt.
+	// Step 4 (July 2026): populated from StyleResolver.ResolvedStyle.
+	NegativePrompt string `json:"negative_prompt,omitempty"`
+
 	// OutputPath is the canonical file path where the provider should save
 	// the generated image. When set, the provider writes directly to this
 	// path instead of a temporary location, enabling direct file-based
