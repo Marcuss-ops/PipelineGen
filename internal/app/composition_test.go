@@ -170,11 +170,12 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.Search.AssetResolver, "root.Search.AssetResolver")
 	require.NotNil(t, root.Search.ProviderRegistry, "root.Search.ProviderRegistry")
 
-	// AIBundle canaries (5 fields, includes PR4.A-relocated MemoryRepo).
+	// AIBundle canaries (4 fields, includes PR4.A-relocated MemoryRepo).
+	// Commit H Phase 2 (June 2026): MemoryService field was removed
+	// (gemmamemory gate service + its narrow-cache wrapper gone).
 	require.NotNil(t, root.AI.OllamaClient, "root.AI.OllamaClient")
 	require.NotNil(t, root.AI.ScriptGen, "root.AI.ScriptGen")
 	require.NotNil(t, root.AI.MemoryRepo, "root.AI.MemoryRepo (PR4.A)")
-	require.NotNil(t, root.AI.MemoryService, "root.AI.MemoryService")
 	require.NotNil(t, root.AI.ScriptEngine, "root.AI.ScriptEngine")
 
 	// JobsBundle canaries (4 fields; cross-validated by

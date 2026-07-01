@@ -32,11 +32,15 @@
 //     `internal/application/jobs/extraction_enqueuer.go` and
 //     importing monitor for the interface — would create a
 //     monitor↔jobs import cycle (monitor/enqueue.go already imports
-//     jobtools.Service for HandleChannelSyncJob and is therefore
 //     downstream of jobs/). Doc'd here so a future split of
-//     HandleChannelSyncJob out of monitor/ into a `jobs.monitor`
 //     sub-package (a hypothetical Blocco 7 cleanup) becomes the
 //     natural moment to relocate this adapter too.
+//
+// 
+// Commit H Phase 2 (June 2026): the the durable channel-sync method method +
+// its job-type binding binding were removed from monitor/enqueue.go.
+// The canonical channel-sync path now goes through monitor.scheduler.go
+// directly (no durable channel-sync job round-trip).
 //
 // Three contracts this adapter MUST implement.
 //

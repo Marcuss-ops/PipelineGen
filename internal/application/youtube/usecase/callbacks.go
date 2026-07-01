@@ -170,7 +170,7 @@ func (s *Service) generateClipMetadata(ctx context.Context, title, transcript, d
 	if s.metadata == nil {
 		return nil
 	}
-	return nil // Phase 1c TODO: GenerateClipMetadata moved to adapters.Service
+	return nil // Phase 1c TODO: contextual clip metadata generation lives in usecase/extraction_service.go
 }
 
 // metadataMetadataModel returns the model to use for metadata generation.

@@ -65,7 +65,7 @@ type Dependencies struct {
 	MediaCurator      *scriptdto.MediaCurator
 	Harvest           AutoHarvestService
 	ScriptsRepo       adapters.ScriptRepository
-	Memory            *adapters.Service
+	// Commit H Phase 2 (June 2026): Memory field dropped.
 	Jobs              jobservice.Service
 	// Registry is the canonical job-type registry (appjobs.Compose())
 	// used by EnqueueGenerationJob to source MaxRetries via
@@ -186,7 +186,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		MediaCurator:          deps.MediaCurator,
 		Harvest:               deps.Harvest,
 		ScriptsRepo:           deps.ScriptsRepo,
-		Memory:                deps.Memory,
+		// Commit H Phase 2 (June 2026): Memory: deps.Memory dropped.
 		Jobs:                  deps.Jobs,
 		Registry:              deps.Registry,
 		ClipsSearcher:         deps.ClipsSearcher,

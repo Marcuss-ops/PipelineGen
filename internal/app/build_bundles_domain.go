@@ -430,31 +430,22 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
-	memoryRepo := adapters.NewRepository(dbs.main.DB)
-	memorySvc := adapters.NewService(memoryRepo, log)
-	log.Info("Gemma Memory Gate service initialized")
-
-	// PR 5 (June 2026): NewEngine no longer takes a ScriptRepository
-	// arg — engine persistence is gone; the single-writer is
-	// PersistenceProcessor. RepositoryAdapter is still constructed
-	// here because wireScriptFlow(BuildRepoBundle) uses it for
-	// PersistenceProcessor registration (see wire_script.go).
-	//
-	// TODO #8 (drift-fix PR): wrap *adapters.Service in the local
-	// MemoryCacheAdapter so it satisfies the narrow memoryCache
-	// interface (memoryCache uses LOCAL lowercase memoryGateRequest /
-	// memoryGateResult types in engine.go; adapters.Service uses
-	// the uppercase MemoryGateRequest / GateResult types). The
-	// wrapper is the contained seam for this cross-package type
-	// mismatch — see memory_cache_adapter.go for rationale.
-	engine := usecase.NewEngine(scriptGen, usecase.NewMemoryCacheAdapter(memorySvc), log)
+	// Commit H Phase 2 (June 2026): gemmamemory gemmamemory gate service + the
+	// MemoryCacheAdapter wrapper are gone. The canonical engine no
+	// longer consumes the gemmamemory cross-package type — the in-package
+	// memoryCache interface (defined in cache_eviction_usecase.go) is
+	// satisfied by nil here so the engine's `memoryGateChecker` type
+	// assertion returns false at runtime and the cache path is skipped.
+	// MemoryRepo (Repository struct, still in gemmamemory.go) is retained
+	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
+	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
+	engine := usecase.NewEngine(scriptGen, nil, log)
 
 	return &AIBundle{
-		OllamaClient:  ollamaClient,
-		ScriptGen:     scriptGen,
-		MemoryRepo:    memoryRepo,
-		MemoryService: memorySvc,
-		ScriptEngine:  engine,
+		OllamaClient: ollamaClient,
+		ScriptGen:    scriptGen,
+		MemoryRepo:   adapters.NewRepository(dbs.main.DB),
+		ScriptEngine: engine,
 	}, nil
 }
 

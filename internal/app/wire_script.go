@@ -90,11 +90,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return nil
 	}
 
-	memorySvc := root.AI.MemoryService
+	// Commit H Phase 2 (June 2026): gemmamemory.MemoryService dropped from
+	// AIBundle. The engine's in-package memoryCache interface is
+	// satisfied by nil at composition (BuildAIBundle passes nil to
+	// usecase.NewEngine); the engine's runtime check
+	// `if useMemory && !skipMemory && e.memorySvc != nil` short-
+	// circuits the cache check. CacheEvictionUseCase receives a nil
+	// memoryCache and the handler maps ErrCacheEvictionMissing to 503.
 	engine := root.AI.ScriptEngine
 	gen := root.AI.ScriptGen
 
-	if memorySvc == nil || engine == nil {
+	if engine == nil {
 		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
 		return nil
 	}
@@ -165,8 +171,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		scriptsRepoAdapter, gen,
 		root.Drive.DocClient, cfg, log,
 	)
+	// Commit H Phase 2 (June 2026): nil memoryCache passed in (gemmamemory
+	// gemmamemory wrapper gone). ErrCacheEvictionMissing emitted
+	// when caller supplies titles + no Memory wired (handler maps to 503).
 	cacheEvictionUC := usecase.NewCacheEvictionUseCase(
-		gen, usecase.NewMemoryCacheAdapter(memorySvc), log,
+		gen, nil, log,
 	)
 
 	// ── Unified generation pipeline (PR8, June 2026; PR3 orchestration) ─
@@ -409,7 +418,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		MediaCurator:          mediaCurator,
 		Harvest:               harvestSvc,
 		ScriptsRepo:           scriptsRepoAdapter,
-		Memory:                memorySvc,
+		// Commit H Phase 2 (June 2026): Memory field dropped (no
+		// gemmamemory service wiring candidate).
 		Jobs:                  root.Jobs.Facade,
 		Registry:              appjobs.Compose(),
 		ClipsSearcher:         clipsSearcher,

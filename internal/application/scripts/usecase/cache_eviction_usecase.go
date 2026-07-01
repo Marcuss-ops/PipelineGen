@@ -5,7 +5,7 @@
 // memory-cache eviction, nil-memory fallback, response shaping) lived
 // inline in api/script/handler_flow_ops.go::ScriptFlowHandler.EvictCache.
 // This 60-LOC handler mixed LLM-side concerns (ResetCircuitBreakers)
-// with cache-side concerns (gemmamemory.Service.EvictExactOutputs) and
+// with cache-side concerns (memoryCache (in-package interface).EvictExactOutputs) and
 // branched three different ways on memorySvc presence. Moving the use
 // case here makes the orchestration unit-testable without an HTTP
 // context and removes the last imperative business branch from

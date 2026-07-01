@@ -262,15 +262,21 @@ type QdrantDeps struct {
 	QdrantDeleter jobsoutbox.VectorPointDeleter
 }
 
-// AIBundle owns script generation, engine, and memory.
-// StyleRegistry lives on DriveBundle (PR4.A). MemoryRepo is constructed
-// in BuildAIBundle. ScriptFlowHandler lives in registry.go::WireRegistry.
+// AIBundle owns script generation, engine, and gemmamemory Repository.
+//
+// Commit H Phase 2 (June 2026): the gemmamemory gate service field (gemma
+// memory gate service) is dropped from the bundle — gemmamemory.Service
+// + its MemoryCacheAdapter wrapper are no longer wired at composition.
+// MemoryRepo (canonical *adapters.Repository) stays for the
+// gemma-memory-sweeper background job (lifecycle.go:393).
+//
+// StyleRegistry lives on DriveBundle (PR4.A). ScriptFlowHandler lives
+// in registry.go::WireRegistry.
 type AIBundle struct {
-	OllamaClient  *client.Client
-	ScriptGen     *ollama.Generator
-	MemoryRepo    *adapters.Repository
-	MemoryService *adapters.Service
-	ScriptEngine  *scriptcore.Engine
+	OllamaClient *client.Client
+	ScriptGen    *ollama.Generator
+	MemoryRepo   *adapters.Repository
+	ScriptEngine *scriptcore.Engine
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.

@@ -18,7 +18,7 @@ import (
 // This facade delegates to the extraction capability service.
 //
 // Phase 1b (June 2026): the inline implementation was removed from
-// usecase/ because it referenced 7+ private methods from adapters.Service.
+// usecase/ because it referenced 7+ private methods from Service (same package).
 // The thin facade preserves the call-site contract; the extraction service
 // owns the real pipeline.
 func (s *Service) Extract(ctx context.Context, req *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
