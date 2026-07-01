@@ -17,17 +17,72 @@ import (
 )
 
 // EnqueueAndDelete performs the canonical DISPATCH step of an
-// asset.delete flow (QDRANT-002 PR7):
+// asset.delete flow (QDRANT-002 PR7, Blocco 3.1):
 //
 //	tx body:
-//	  1. SET lifecycle_state=DELETE_PENDING on media_assets
-//	  2. INSERT outbox_events (event_type='asset.index.delete_requested')
+//	  1. SET lifecycle_state=DELETE_REQUESTED on media_assets
+//	  2. INSERT outbox_events (event_type='asset.drive.delete_requested')
 //
 // Both writes commit atomically. After commit, the outboxevents
-// Pool picks up the event and runs IndexDeleteHandler.Handle.
+// Pool picks up the event and runs DriveDeleteHandler.Handle, which
+// performs the actual Drive API call (Trash or Delete) and stamps
+// the next hop (INDEX_DELETE_PENDING) plus emits the second event.
 //
-// IMPORTANT: this function does NOT call repo.SoftDelete.
+// IMPORTANT: this function does NOT call repo.SoftDelete and does
+// NOT call any external API (Drive or Qdrant). Every step is
+// durable, retryable on outbox-pool lease-fence, and individually
+// reconcilable by deletion.DeletionReconciler.
+//
+// Blocco 3.1: this is the BACKWARD-COMPATIBILITY SHIM for the
+// pre-Blocco 3.1 EnqueueAndDelete(assetID) signature. New callers
+// MUST use EnqueueDriveDelete(assetID, permanently) to express
+// intent (permanent delete vs. recoverable trash). The shim
+// routes Trashed=false so legacy callers (the AssetMutationDispatcher
+// port surface in internal/application/assets/mutations/dispatcher.go,
+// admin tooling in cmd/admin/qdrant_maintenance.go, test stubs in
+// internal/application/assets/artifacts/dispatcher_fail_closed_test.go
+// etc.) continue to operate under the new chain.
 func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error {
+	return d.EnqueueDriveDelete(ctx, assetID, false)
+}
+
+// EnqueueDriveDelete performs the FIRST HOP of the Blocco 3.1
+// deletion state machine:
+//
+//	tx body:
+//	  1. SET lifecycle_state='DELETE_REQUESTED' on media_assets
+//	  2. INSERT outbox_events (event_type=EventAssetDriveDeleteRequested)
+//
+// Both writes commit atomically. After commit, the outboxevents
+// Pool picks up the event and runs DriveDeleteHandler.Handle (in
+// application/jobs/outbox/drive_delete.go), which performs the
+// actual Drive API call (Trash or Delete depending on the
+// permanently flag in the envelope) and stamps the second hop
+// (INDEX_DELETE_PENDING) plus emits EventAssetIndexDeleteRequested.
+//
+// Per-step retryability: on a transient Drive API failure, the
+// handler leaves the row in DRIVE_DELETE_PENDING and returns a
+// retryable error so the outbox pool retries with exponential
+// backoff. Idempotency is enforced at TWO layers:
+//   - (a) outbox_events.event_key ON CONFLICT DO NOTHING absorbs
+//     repeated enqueues of the same {asset_id, permanently}.
+//   - (b) DriveDeleteHandler pre-flight skips if lifecycle_state
+//     has already advanced past DRIVE_DELETE_PENDING.
+//
+// Per-step reconcilability: DeletionReconciler runs every
+// reconciliationInterval (e.g. 15 min) and re-enqueues the correct
+// event for any row that's stuck in DELETE_REQUESTED or
+// DRIVE_DELETE_PENDING beyond a stuck threshold — picking up where
+// a crashed worker left off.
+//
+// Blocco 3.1: production deletion (deletion.DeletionService.DeleteClip)
+// now routes exclusively through this method; EnqueueAndDelete is
+// preserved only for the AssetMutationDispatcher port compat shim.
+//
+// IMPORTANT: this function does NOT call drive.FileLifecycle.Trash,
+// drive.FileLifecycle.Delete, qdrant.DeletePoints, or
+// repo.SoftDelete. Every side-effect lives in a later outbox handler.
+func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, permanently bool) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
@@ -38,43 +93,51 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 		return errors.New("outbox.Dispatcher: outbox events repo not configured")
 	}
 	if assetID == "" {
-		return errors.New("outbox.Dispatcher.EnqueueAndDelete: assetID is required")
+		return errors.New("outbox.Dispatcher.EnqueueDriveDelete: assetID is required")
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Stamp lifecycle_state=DELETE_REQUESTED only on rows that
+		// are NOT already in a deletion chain (idempotency envelope
+		// at the state-machine layer). DELETE_PENDING is part of the
+		// legacy enum and is treated as "already in flight" so the
+		// reconciler picks it up via the legacy rewrite path
+		// (asset.IsValidTransition handles DELETE_PENDING →
+		// DRIVE_DELETE_PENDING on a future re-enqueue).
 		if _, err := tx.ExecContext(ctx, `
-		UPDATE media_assets
-		   SET lifecycle_state = 'DELETE_PENDING'
-		 WHERE id = ?
-		   AND lifecycle_state NOT IN ('DELETE_PENDING', 'DELETED')
+	UPDATE media_assets
+	   SET lifecycle_state = 'DELETE_REQUESTED'
+	 WHERE id = ?
+	   AND lifecycle_state NOT IN ('DELETE_REQUESTED', 'DELETE_PENDING', 'DRIVE_DELETE_PENDING', 'INDEX_DELETE_PENDING', 'DELETED')
 	`, assetID); err != nil {
-			return fmt.Errorf("dispatcher delete: stamp lifecycle_state=DELETE_PENDING %s: %w", assetID, err)
+			return fmt.Errorf("dispatcher drive-delete: stamp lifecycle_state=DELETE_REQUESTED %s: %w", assetID, err)
 		}
 
-		payload := buildDeleteRequestV1(assetID)
-		eventKey := deleteEventKey(assetID)
+		payload := buildDriveDeleteRequestV1(assetID, permanently)
+		eventKey := driveDeleteEventKey(assetID, permanently)
 		if payload.IdempotencyKey != eventKey {
-			return fmt.Errorf("dispatcher: delete payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
+			return fmt.Errorf("dispatcher: drive-delete payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
 		}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
-			return fmt.Errorf("dispatcher marshal v1 delete payload %s: %w", assetID, err)
+			return fmt.Errorf("dispatcher marshal v1 drive-delete payload %s: %w", assetID, err)
 		}
 
 		if _, err := d.outboxEventsRepo.Enqueue(
 			ctx, tx,
-			outboxevents.EventAssetIndexDeleteRequested,
+			outboxevents.EventAssetDriveDeleteRequested,
 			assetID,
 			"media_asset",
 			string(payloadJSON),
 			eventKey,
 		); err != nil {
-			return fmt.Errorf("dispatcher enqueue outbox delete event %s: %w", assetID, err)
+			return fmt.Errorf("dispatcher enqueue outbox drive-delete event %s: %w", assetID, err)
 		}
 
 		if d.log != nil {
-			d.log.Debug("dispatcher enqueued asset for outbox_events deletion (v1 envelope)",
+			d.log.Debug("dispatcher enqueued asset for outbox drive-delete (v1 envelope)",
 				zap.String("asset_id", assetID),
+				zap.Bool("permanently", permanently),
 				zap.String("outbox_event_id", payload.EventID),
 			)
 		}
