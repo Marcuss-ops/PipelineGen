@@ -11,7 +11,70 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
-**[Commit I — Phase 1c TODO closure, Commit 4b/4 (June 2026)]** `chore(youtube)` — search-text shift v2 (supersedes prior Commit 4/4 canonical-delegation `10110e03`). In-file deterministic `BuildFallbackSearchText(clip *asset.Asset)` per user spec: assembles `clip.SearchText` from `clip.Name` + `clip.Tags` + (Description-via-metadata) + `clip.Metadata` with skip-empties, case-insensitive dedup, lower-bound 150 chars, upper-bound 1024 bytes + word-boundary trim, plus a deny-list for 5 long-content metadata keys to protect the byte budget. Safety-of-shape comment confirms the contract: this fallback writes `SearchText` but NOT `youtube_title`, so EnrichClip's later `force + youtube_title + SearchText` short-circuit guard (which requires BOTH) cannot fire prematurely.
+**[Commit I — Phase 1c TODO closure, Commit 3b/4 (June 2026)]** `chore(youtube)` — semantic-shift pass v2 (supersedes prior Commit 3/4 canonical-delegation `e62bb65a`). In-file deterministic `isSponsorSegment` + `calculateQualityScore` per user spec: substring match (case-insensitive) against 4 canonical sponsor-segment phrases + literal linear quality blend `(transcript_len/2000) + (tag_count/10) + (duration/600) + (title_len/100)` clamped [0,1]. This COMMIT supersedes the prior canonical-delegation `e62bb65a` per the user-spec substitution.
+
+**SUPERSEDES (godlike/06 honest audit)**: prior Commit 3/4 (`e62bb65a chore(youtube): Commit 3/4 Phase 1c TODO closure (semantic-shift pass)`) shipped with a canonical-delegation impl (`isSponsorSegment → ytmeta.IsSponsorSegment(transcript)` regex match against an expanded taxonomy of 9 patterns; `calculateQualityScore → ytmeta.CalculateQualityScore(...)` weighted 40/40/20 blend + caller-side sponsor penalty + math.Round bucketing). The user spec required an IN-FILE deterministic impl with substring match for sponsor detection + literal linear-formula blend for quality scoring — the prior canonical delegation satisfied neither constraint. This commit (3b/4) implements the user spec literally, replacing both functions with local algorithms. The canonical `metadata/service.go` helpers remain as exported building blocks for callers that opt into the broader-scoring path; the user-spec contract for the ym=nil fallback in `usecase/metadata_service.go` is owned by this file's local impls (godlike/06: one canonical owner per fact).
+
+**Site closed (1 of 11 — semantic-shift subset; re-implements the Commit 3/4 `e62bb65a` site per user-spec verbatim):**
+
+- **`usecase/metadata_service.go::isSponsorSegment(transcript string) bool`** replaced from `return ytmeta.IsSponsorSegment(transcript)` (canonical regex match against `(?i)\b(sponsored\s+by|advertisement|provided\s+by|brought\s+to\s+you\s+by|partner\s+with|special\s+thanks|promo\s+code|use\s+code|affiliate)\b`) to a local substring match (case-insensitive via `strings.ToLower` + `strings.Contains`) against 4 canonical phrases per user spec: `"sponsored by"`, `"this video is brought to you by"`, `"ad break"`, `"affiliate link"`. **Behavior shift**: transcripts containing only `"advertisement"` (NOT in the user spec list) will now match `false` whereas the prior canonical regex matched `true`. The semantics are narrower but match the user spec literally.
+
+- **`usecase/metadata_service.go::calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64`** replaced from canonical-delegation signature adapter (extracted `wordCount = ytmeta.CountWords(transcript)`, `durationInt = int(math.Round(duration))`, `(topicCount, speakerCount, mentionedCount)` from `meta;` delegated to `ytmeta.CalculateQualityScore(wordCount, durationInt, topicCount, speakerCount, mentionedCount)` for the weighted 40/40/20 blend; applied caller-side `-0.20` sponsor penalty when `isSponsorSegment(transcript)` matched; clamped `[0,1]`) to the user-spec literal linear blend: `score = (transcript_len/2000) + (tag_count/10) + (duration/600) + (title_len/100)`, clamped `[0,1]`. `description` and `meta` parameters are signature-only per the user-spec formula (verbatim: only `transcript + tags + duration + title`); the `_ = description; _ = meta` discards mark them as a deliberate spec-literal interpretation, not silent omissions. **Behavior shift**: a 2000-char transcript + 10 tags + 600s duration + 100-char title now scores `4.0 → clamped to 1.0`; the formula saturates trivially to 1.0 for any well-resourced clip (a user-spec choice, not a bug). The canonical weighted-blend formula + sponsor penalty remain in `metadata/service.go` for callers that opt into the broader scoring path.
+
+**Honest semantic-shift note (per godlike/07 § "no fake availability"):**
+
+The pre-Phase-1c behavior (committed `return false` + `return 0.5`) was a documented no-op returning constant values regardless of transcript content. Under godlike/07 strict reading, that was fake-availability: the function signature IMPLIES a real score / flag, the result was a constant. Post-Commit-3 (`e62bb65a`) the result was a real per-clip signal via the canonical weight blend. THIS Commit 3b/4 further re-specifies the formula to the user-spec literal linear blend — the saturation semantics are a user-spec choice. The downstream caller `EnrichClip` writes the score into `existing.Metadata["quality_score"]` + computes `["quality_tier"]` + `["search_visibility"]` from the result, and writes `["is_sponsor_segment"]=true` + `["sponsor_confidence"]="high"` on the `isSponsorSegment(clipTranscript) == true` branch. Both downstream paths now receive a different per-clip signal than either pre-Commit-3 constant or canonical weighed blend — reviewer audits need to know this is a USER-SPEC substitution, not a regression.
+
+**Implementation cleanup (godlike/06 single-canonical-owner hygiene):**
+
+- IMPORT `"math"` dropped from `metadata_service.go` (no longer needed — formula uses raw `duration`, not `math.Round(duration)`).
+- IMPORT `ytmeta `github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata`` dropped (no longer needed — both `isSponsorSegment` + `calculateQualityScore` are in-file deterministic impls per user spec; canonical helpers remain unchanged in `metadata/service.go` for callers that opt into the broader scoring path).
+- CONST `const sponsorPenalty = 0.20` REMOVED (the user-spec formula has no sponsor penalty; a single-line audit-anchor comment "Removed in Phase 1c Commit 3b/4 per user-spec formula change." replaces the prior constant for future grep audits).
+
+**Phase 1c closure chain tally (11 total, per user spec, audited):**
+
+| Commit | SHA | Sites closed |
+|---|---|---|
+| Commit 1/4 (zero-risk subset) | `73c30027` | 7 sites (buildVideoURL+impl, GenerateClipMetadata docstring, ProcessLifecycle, `Service.generateClipMetadata` DELETE, engine_test.go, topic_search.go, youtube/adapters/service.go) |
+| Commit 2/4 (BuildMetadataLanguages → NormalizeLanguages) | `48775cf6` | 1 site + 10 TDD tests |
+| **Commit 3b/4 (semantic-shift, deterministic linear blend — THIS COMMIT)** | `(pending)` | **1 site (re-implements the Commit 3/4 `e62bb65a` site per user-spec literal)** |
+| Commit 3/4 canonical-delegation — SUPERSEDED | `e62bb65a` | (supersede-path updated by Commit 3b/4; canonical helper still exported in `metadata/service.go`) |
+| Commit 4b/4 (search-text shift v2) | `067ff3a5` | 1 site (BuildFallbackSearchText deterministic in-file) |
+| Commit 4/4 canonical-delegation — SUPERSEDED | `10110e03` | (supersede-path updated by Commit 4b/4; canonical helper still exported in `metadata/service.go`) |
+| Commit H Phase 2 (earlier closure) | `1ea5de01` | 1 site (engine.go memoryGateChecker) |
+| **TOTAL UNIQUE SITES CLOSED** | | **11 ✓** (per original user spec) |
+
+**Wave-tracker cross-reference (per godlike/07):** no formal `architecture/current.yaml` entry exists for this Phase 1c chain (verified via `grep -E 'PHASE.1C|Phase 1c' architecture/current.yaml` returning 0 hits). The closure is audit-logged via this CHANGELOG entry only; a future wave-tracker entry should be filed under a `wave_status` row citing SHAs `73c30027` / `48775cf6` / `e62bb65a` (superseded) / `10110e03` (superseded) / `067ff3a5` / `067ff3a5+1` (this Commit 3b/4, `067ff3a5` rebased). Until filed, these CHANGELOG entries are the authoritative audit surface for the Phase 1c closure.
+
+**FULL Phase 1c surface grep-zero-complete (per user spec):**
+
+| Subset | Sites | Status |
+|---|---|---|
+| `Phase 1c TODO` literals (production Go) | 11 originally | **0 remaining** |
+| `Phase 1c deferral` literals (production Go) | 4 deferral markers at chain start | **0 remaining** |
+
+The 5-commit Phase 1c chain on `origin/main` (after this Commit 3b/4 lands): Commits 1/4 → 2/4 → 3b/4 (this) → 4b/4 + Commit H Phase 2 closes 11 sites per the user spec. The 2 superseded canonical-delegation predecessors (3/4 `e62bb65a`, 4/4 `10110e03`) are retained in history for audit per AGENTS.md `no fake-availability` principle; the canonical `metadata/service.go` helpers (`IsSponsorSegment`, `BuildFallbackSearchText`) remain as exported building blocks for callers that opt into the broader-scoring path.
+
+**Files modified (1):**
+
+- `internal/application/youtube/usecase/metadata_service.go` (+~50 / −~81 LoC net):
+  - REPLACED `isSponsorSegment` body → literal substring match per user spec (4 canonical phrases).
+  - REPLACED `calculateQualityScore` body → literal linear blend per user spec (sum-then-clamp).
+  - DROPPED `math` import (no longer used).
+  - DROPPED `ytmeta` import (no longer used).
+  - DROPPED `const sponsorPenalty = 0.20` (replaced with single-line audit-anchor comment).
+  - RETAINED the existing `BuildFallbackSearchText` (deterministic in-file impl per Commit 4b/4 `067ff3a5`) — semantic-shift isolated from search-text shift per user spec's "isolate it from the SearchText work" instruction.
+
+**Pre-existing build issues (out of scope, NOT regressions from Commit 3b/4):**
+
+Same five items as the prior Phase 1c CHANGELOG entries carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
+- `monitor/enqueue.go`: `strings.ToLower` undefined.
+- `monitor/scheduler.go`: `NewUnboundJobEnqueuer` undefined.
+- `internal/application/assets/providers/stock/stockpipeline/run_upload.go`: syntax error.
+- `internal/app/module_media.go`: pre-existing `clips.Deps.MutationsDispatcher` literal.
+
+--
+ `chore(youtube)` — search-text shift v2 (supersedes prior Commit 4/4 canonical-delegation `10110e03`). In-file deterministic `BuildFallbackSearchText(clip *asset.Asset)` per user spec: assembles `clip.SearchText` from `clip.Name` + `clip.Tags` + (Description-via-metadata) + `clip.Metadata` with skip-empties, case-insensitive dedup, lower-bound 150 chars, upper-bound 1024 bytes + word-boundary trim, plus a deny-list for 5 long-content metadata keys to protect the byte budget. Safety-of-shape comment confirms the contract: this fallback writes `SearchText` but NOT `youtube_title`, so EnrichClip's later `force + youtube_title + SearchText` short-circuit guard (which requires BOTH) cannot fire prematurely.
 
 **SUPERSEDES (godlike/06 honest audit)**: prior Commit 4/4 (`10110e03 chore(youtube): Commit 4/4 Phase 1c TODO closure (search-text shift)`) shipped with a canonical-delegation impl (`clip.SearchText = ytmeta.BuildFallbackSearchText(title, summary, topics, "")`). The user spec required an IN-FILE deterministic impl with lower-bound `~150` chars + short-circuit-guard safety comment — the canonical delegation satisfied neither constraint (no lower-bound, multi-line doc rather than the spec's "2-3 line contract"). The canonical `metadata/service.go::BuildFallbackSearchText` remains as an exported helper for other consumers (its doc-comment explicitly identifies it as "currently has no production caller" — i.e. its post-Commit-4 callers in `usecase/metadata_service.go` are now consolidated into the in-file impl). No production regression from this supersede: the canonical helper was never the canonical OWNER of the user-spec contract for the ym=nil fallback path (godlike/06: one canonical owner per fact).
 
