@@ -143,6 +143,19 @@ func (a *ParentAggregator) Tick(ctx context.Context) {
 // to extract child IDs, queries each child's terminal status, computes
 // the aggregate ParentState, and updates the parent when the state
 // transitions to a terminal value.
+//
+// P0.1 false-success gate (Step 4 child-result audit, July 2026):
+// a child job may be marked SUCCEEDED by the broker even though the
+// per-item pipeline failed (ProcessVoiceoverItemUseCase returned
+// result.Status=StatusFailed but err==nil → the handler now returns
+// an error via the P0.1 gate in GenerateItemJobHandler, but for
+// children completed BEFORE the P0.1 gate landed, the broker status
+// may still say SUCCEEDED while result.ok=false). The aggregator
+// MUST inspect each child's result.ok before classifying — a child
+// with result.ok=false is treated as FAILED regardless of broker
+// status. This is defense-in-depth: even if the P0.1 handler gate
+// misses a case, the aggregator's re-read of the result map catches
+// it at the parent-finalisation boundary.
 func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// Step 1: unmarshal parent result to read current parent_state
 	// and child_job_ids.
@@ -180,6 +193,11 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	}
 
 	// Step 4: query each child's terminal status from the broker.
+	// P0.1 false-success gate: the broker status is the primary signal
+	// but the child's result.ok is the authoritative secondary signal.
+	// A child broker:Succeeded + result.ok:false MUST be treated as
+	// FAILED — the per-item pipeline failed but the handler (pre-P0.1)
+	// returned (resultMap, nil), so the broker saw success.
 	children := make([]voiceover.LanguageOutcome, 0, len(childIDs))
 	allTerminal := true
 	for _, childID := range childIDs {
@@ -196,9 +214,35 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		if status == job.StatusQueued || status == job.StatusLeased || status == job.StatusRunning || status == job.StatusRetryWait {
 			allTerminal = false
 		}
+
+		// P0.1 gate: inspect the child's result.ok field as the
+		// authoritative secondary signal. If result.ok == false, the
+		// per-item pipeline failed even if the broker says SUCCEEDED.
+		// Record the failure in the LanguageOutcome so
+		// AggregateChildOutcomes correctly counts this child as
+		// failed (not succeeded).
+		childErr := ""
+		if len(childJob.Result) > 0 {
+			var childResult map[string]any
+			if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
+				if ok, hasOK := childResult["ok"].(bool); hasOK && !ok {
+					if status == job.StatusSucceeded {
+						a.deps.Logger.Warn("ParentAggregator: child broker-succeeded but result.ok=false (P0.1 gate override)",
+							zap.String("parent_job_id", j.ID),
+							zap.String("child_job_id", childID))
+						status = job.StatusFailed
+					}
+					if errStr, _ := childResult["error"].(string); errStr != "" {
+						childErr = errStr
+					}
+				}
+			}
+		}
+
 		children = append(children, voiceover.LanguageOutcome{
 			ChildJobID: childID,
 			Status:     status,
+			Error:      childErr,
 		})
 	}
 
