@@ -52,7 +52,6 @@ import (
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
 // enqueueFromAnalysis builds the canonical ExtractRequest-shaped payload
@@ -81,7 +80,7 @@ import (
 //     is REMOVED. Cycle-end MAX(discovered_at) → category_channels.
 //     last_cursor is the new monotonic write path; see
 //     discovery.go::recordCycleEndWatermark.
-func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, analysis Analysis, ledgerID string) error {
+func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info VideoInfo, channel channels.Channel, analysis Analysis, ledgerID string) error {
 	videoID := info.ID
 	title := info.Title
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)

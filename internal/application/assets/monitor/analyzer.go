@@ -36,110 +36,70 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
-// analyzeVideo runs the AI gate for a single video. Returns:
+// analyzeVideo runs the AI gate for a single video using the one-shot
+// Fetch + AnalyzeFull flow (cutover completed Step 6, June 2026).
 //
+// Returns:
 //   - (Analysis{}, err) — a hard failure (transcript unavailable,
-//     Score error, FindSegments error). Caller logs + skips.
+//     AnalyzeFull error). Caller logs + skips.
 //   - (Analysis{Segments: nil}, nil) — soft skip: score below threshold,
-//     no segments met the duration cut, etc. Caller logs cheaply + skips
+//     no segments met the duration cut, etc. Caller cheap-logs + skips
 //     without consuming a budget slot.
 //   - (Analysis{Score, MatchedKeyword, Category, Segments}, nil) — full
 //     success: enqueueFromAnalysis receives this.
 //
-// The order of operations is significant:
-//   - GetTranscript runs FIRST so a missing transcript short-circuits
-//     the whole pipeline (no Ollama call for a video we cannot analyze).
-//   - Score is gated by len(semanticKeywords) > 0 — many channels have
-//     no SemanticKeywords configured, and we don't want to pay the
-//     LLM-call latency on every video just to confirm "no keywords".
-//   - Classify runs only if the channel has no pre-set Category (the
-//     call is best-effort; fallback uses channel.Category verbatim).
-//   - FindSegments runs LAST and is the actual cliper — without segments,
-//     there is no job to enqueue regardless of score.
-func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, semanticKeywords []string) (Analysis, error) {
+// The legacy GetTranscript + Score + Classify + FindSegments flow was
+// removed in Step 6. The one-shot flow calls Fetch ONCE per video
+// (yt-dlp subprocess at most once) and AnalyzeFull ONCE (single Ollama
+// JSON call), reducing per-video latency by 2-3×.
+func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, channel channels.Channel, semanticKeywords []string) (Analysis, error) {
 	videoID := info.ID
 	title := info.Title
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
 
-	// ── Step 1: GetTranscript (cheap if cached; download otherwise) ───
+	// ── Step 1: Fetch transcript (cheap if cached; download otherwise) ──
 	if m.transcript == nil {
 		return Analysis{}, fmt.Errorf("analyzeVideo: transcript provider not wired")
 	}
-	transcript, err := m.transcript.GetTranscript(ctx, videoURL)
+	doc, err := m.transcript.Fetch(ctx, videoURL)
 	if err != nil {
-		return Analysis{}, fmt.Errorf("analyzeVideo: GetTranscript(%s): %w", videoID, err)
+		return Analysis{}, fmt.Errorf("analyzeVideo: Fetch(%s): %w", videoID, err)
 	}
 
-	// ── Step 2: Semantic score (gating — only if keywords set) ────────
-	var (
-		score          int
-		matchedKeyword string
-	)
-	if len(semanticKeywords) > 0 {
-		if m.analyzer == nil {
-			return Analysis{}, fmt.Errorf("analyzeVideo: analyzer not wired (semanticKeywords set but Analyzer is nil)")
-		}
-		threshold := semanticScoreThreshold(channel.MinSemanticScore)
-		var scoreErr error
-		score, matchedKeyword, scoreErr = m.analyzer.Score(ctx, transcript, semanticKeywords)
-		if scoreErr != nil {
-			return Analysis{}, fmt.Errorf("analyzeVideo: Score(%s): %w", videoID, scoreErr)
-		}
-		if score < threshold {
-			m.log.Info("video does not match semantic keywords",
-				zap.String("video_id", videoID),
-				zap.String("title", title),
-				zap.Int("score", score),
-				zap.Int("threshold", threshold))
-			// Soft skip — return empty Segments, nil error. Caller
-			// (processVideo) recognizes an empty analysis.Segments and
-			// skips without consuming a budget slot.
-			return Analysis{}, nil
-		}
-		m.log.Info("semantic match",
-			zap.String("video_id", videoID),
-			zap.String("title", title),
-			zap.String("matched_keyword", matchedKeyword),
-			zap.Int("score", score))
+	// ── Step 2: One-shot AnalyzeFull (Score + Classify + FindSegments) ──
+	if m.analyzer == nil {
+		return Analysis{}, fmt.Errorf("analyzeVideo: analyzer not wired")
+	}
+	opts := AnalyzeOptions{
+		SemanticKeywords: semanticKeywords,
+		CategoryFallback: channel.Category,
+		MaxSegments:      channel.MaxSegments,
+		SegmentPrompt:    channel.SegmentPrompt,
+		MinScore:         semanticScoreThreshold(channel.MinSemanticScore),
+	}
+	// Default MaxSegments when unset (pre-Step-9 behaviour).
+	if opts.MaxSegments <= 0 {
+		opts.MaxSegments = 3
+	}
+	// Only disable the score gate when NO semantic keywords are
+	// configured — Analytics agree this is the correct optimization
+	// for "wide net" channels.
+	if len(semanticKeywords) == 0 {
+		opts.MinScore = 0
 	}
 
-	// ── Step 3: Category (best-effort; falls back to channel.Category) ─
-	category := channel.Category
-	// Only call the LLM-driven classify when there is no pre-set category
-	// or the channel does not have a Drive folder bound (channel-only
-	// category + Drive folder = pre-bound, no LLM call required).
-	if category == "" || channel.DriveFolderID == "" {
-		if m.analyzer != nil {
-			classified, cerr := m.analyzer.Classify(ctx, title, category)
-			if cerr == nil && classified != "" {
-				category = classified
-			} else if cerr != nil {
-				m.log.Debug("analyzeVideo: Classify failed, using channel.Category fallback",
-					zap.String("video_id", videoID), zap.Error(cerr))
-			}
-		}
+	analysis, analyzeErr := m.analyzer.AnalyzeFull(ctx, doc, opts)
+	if analyzeErr != nil {
+		return Analysis{}, fmt.Errorf("analyzeVideo: AnalyzeFull(%s): %w", videoID, analyzeErr)
 	}
 
-	// ── Step 4: FindSegments (the actual clip-discovery drive) ───────
-	var segments []ytdomain.Segment
-	if m.analyzer != nil {
-		maxSegments := channel.MaxSegments
-		if maxSegments <= 0 {
-			maxSegments = 3
-		}
-		segs, serr := m.analyzer.FindSegments(ctx, videoURL, transcript, channel.SegmentPrompt, maxSegments)
-		if serr != nil {
-			return Analysis{}, fmt.Errorf("analyzeVideo: FindSegments(%s): %w", videoID, serr)
-		}
-		segments = segs
-	}
+	// ── Step 3: Check segments — soft-skip if empty ───────────────────
+	segments := analysis.Segments
 
-	// ── Metrics observations for the per-channel-handle Prometheus counters
+	// Metrics observations
 	channelHandle := extractChannelHandle(channel.ChannelURL)
 	metricsLabel := channelHandle
 	if metricsLabel == "" {
@@ -151,26 +111,27 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info downloader.Video
 		m.log.Info("no interesting segments found, skipping video",
 			zap.String("video_id", videoID),
 			zap.String("title", title))
-		// Soft skip: empty Segments + nil error; caller (processVideo)
-		// short-circuits without consuming the per-channel budget slot.
 		return Analysis{}, nil
 	}
 
 	metrics.ChannelMonitorVideosWithSegments.WithLabelValues(metricsLabel).Inc()
 	metrics.ChannelMonitorSegmentsFound.WithLabelValues(metricsLabel).Add(float64(len(segments)))
 
-	// Prefix the category to the segment name so the extraction pipeline
-	// downstream can render "Comedy: Funny bit about X" instead of bare
-	// "Funny bit about X" — matches the pre-Step-9 behavior at
-	// segment_finder.go.
+	// ── Step 4: Prefix category to segment names ──────────────────────
+	// So the extraction pipeline downstream renders "Comedy: Funny bit
+	// about X" instead of bare "Funny bit about X" (pre-Step-9 behaviour).
+	category := analysis.Category
+	if category == "" {
+		category = channel.Category
+	}
 	for idx := range segments {
 		segments[idx].Name = category + " " + segments[idx].Name
 	}
 
 	return Analysis{
 		Category:       category,
-		Score:          score,
-		MatchedKeyword: matchedKeyword,
+		Score:          analysis.Score,
+		MatchedKeyword: analysis.MatchedKeyword,
 		Segments:       segments,
 	}, nil
 }

@@ -36,6 +36,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+// ── VideoInfo (monitor-owned DTO) ──────────────────────────────────────
+
+// VideoInfo is the monitor-owned projection of a YouTube video's
+// listing metadata. Replaces downloader.VideoInfo so the monitor never
+// leaks an infrastructure DTO through its port surfaces or internal
+// call paths. The concrete *downloader.YTDLPDownloader maps its native
+// []downloader.VideoInfo to []VideoInfo inside the adapter.
+type VideoInfo struct {
+	ID       string  `json:"id"`
+	Title    string  `json:"title"`
+	Views    int64   `json:"view_count"`
+	Duration float64 `json:"duration"`
+}
+
 // ── Priority + global-defaults ────────────────────────────────────────────
 
 // Priority levels for batch channel scheduling.
@@ -199,127 +213,57 @@ const (
 //   - ListChannelVideos — used by checkChannel to enumerate a channel's
 //     videos (the first step of every scheduler tick). The request
 //     shape is the canonical downloader.ListChannelVideosRequest;
-//     checkChannel fills DateAfter from
-//     ResolveDateAfter(channel.LastCursor, channel.LookbackDays) so the
-//     next cycle starts at the previous cycle's high-water mark when
-//     the LastCursor is parseable, or falls back to LookbackDays when
-//     the cursor is empty. Failure here is the primary signal that
-//     drives the exponential backoff in scheduler.nextCheckTime.
+//     returns monitor-owned VideoInfo (not downloader.VideoInfo) so
+//     the monitor package never leaks infrastructure DTOs.
 //
-// PR-4 deprecation note: the legacy ListChannel(url, limit) surface is
-// REMOVED per Commit 3/6. ListChannelVideos is a strict superset (the
-// ListChannelVideosRequest.ChannelURL + PlaylistEnd fields reproduce
-// the old arguments; DateAfter is the new field). Tests + stubs
-// must be updated to call ListChannelVideos. The downloader's
-// *YTDLPDownloader.ListChannel method remains in the infra package for
-// any callers outside the monitor surface (the bulk of the codebase
-// routes through the YouTube pipeline, not the monitor), so the
-// removal here is bounded to MonitorDownloaderPort.
-//
-//   - Path — historically used by semantic_matcher to build the yt-dlp
-//     command line for transcript download. After Step 9, this call site
-//     moves to the YTDLPSubtitleAdapter concrete (next commit). The port
-//     keeps Path() because the new adapter will need it.
-//
-// The concrete *downloader.YTDLPDownloader already implements both methods; tests
-// inject a stub that satisfies the same interface so unit tests can
-// drive the failure path without spawning a real subprocess.
+//   - Path — the yt-dlp binary path, consumed by the transcript adapter.
 type MonitorDownloaderPort interface {
-	ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error)
+	ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]VideoInfo, error)
 	Path() string
 }
 
-// ── TranscriptProvider (Step 9 new port) ──────────────────────────────────
+// ── TranscriptProvider (Step 9 port, cutover completed Step 6) ──────────
 
 // TranscriptProvider abstracts the "given a YouTube URL, return the
-// plain-text transcript for the video" capability. The concrete adapter
-// (next commit: YTDLPSubtitleAdapter at internal/application/transcripts/) owns:
+// structured transcript" capability. The concrete adapter
+// (YTDLPSubtitleAdapter at internal/application/transcripts/) owns
+// os/exec + yt-dlp subprocess invocation + temp-file lifecycle + VTT
+// parsing.
 //
-//   - the os/exec invocation of yt-dlp with --write-auto-subs
-//   - the temp-file lifecycle (MkdirTemp + defer RemoveAll)
-//   - VTT regex/file parsing (regexRemoveVTTHeader, regexRemoveXMLTags)
-//   - the 8000-char truncation guard before returning
-//
-// Per AGENTS.md Pattern 8, this port is consumed through the analyzer flow
-// and the analyzer.go orchestrator owns the lifecycle. Returning a non-nil
-// error short-circuits the semantic-score path (treated as "should
-// skip this video", not as a retryable failure).
+// Fetch is the single canonical method. The legacy GetTranscript
+// method was removed in Step 6 (June 2026) when the analyzer was
+// cut over to the one-shot AnalyzeFull flow.
 type TranscriptProvider interface {
-	// GetTranscript returns the concatenated plain-text transcript for the
-	// given videoURL. Returns an error if the subtitles are unavailable, the
-	// subprocess fails, or the transcript is too short (< 10 words).
-	GetTranscript(ctx context.Context, videoURL string) (transcript string, err error)
-
-	// Fetch (Commit G, June 2026) returns the structured transcript.Document
-	// (entries + text + duration + language + source). The orchestrator
-	// (analyzeVideo) calls Fetch ONCE per video; the returned Document is
-	// both the scored transcript (legacy flow) AND the windowed sampling
-	// source for the new AnalyzeFull one-shot flow. Subsumes the
-	// GetTranscript + GetTimedTranscript pair so the underlying yt-dlp
-	// subprocess runs at most once per video.
+	// Fetch returns the structured transcript.Document (entries + text +
+	// duration + language + source). Called ONCE per video by the
+	// orchestrator (analyzeVideo); the returned Document is passed
+	// directly to VideoAnalyzer.AnalyzeFull for one-shot scoring.
 	Fetch(ctx context.Context, videoURL string) (transcript.Document, error)
 }
 
-// ── VideoAnalyzer (Step 9 new port) ──────────────────────────────────────
+// ── VideoAnalyzer (Step 9 port, cutover completed Step 6) ───────────────
 
-// VideoAnalyzer abstracts the "given a transcript + channel config,
-// score relevance, classify category, and extract best segments" capability.
-// The concrete adapter (next commit: OllamaAnalyzer at
-// internal/application/semantic/) owns:
+// VideoAnalyzer abstracts the "given a transcript document + channel
+// config, score relevance, classify category, and extract best segments"
+// capability through a single one-shot call. The concrete adapter
+// (OllamaAnalyzer at internal/application/semantic/) owns Ollama
+// prompt assembly, JSON parsing, and segment duration validation.
 //
-//   - Ollama SimpleGenerate invocations (3 prompt templates)
-//   - JSON response parsing (primary + markdown fallback via jsonRegexFind)
-//   - score clamping / matched-keyword selection
-//   - segment duration validation (10s .. 60s clamp)
-//   - (Step 9 commit 2, June 2026: chapters fallback dropped; see ollama_analyzer.go header)
-//   - OllamaModel selection from cfg.External.OllamaModel (default: "gemma4:e2b")
-//
-// Three methods, not three ports, because the concrete adapter shares
-// Ollama client init, retry, and JSON merge — splitting into 3 ports
-// would mean 3× the wiring for zero production benefit.
+// The legacy Score / Classify / FindSegments methods were removed in
+// Step 6 (June 2026) when the orchestrator was cut over to the
+// one-shot AnalyzeFull flow.
 type VideoAnalyzer interface {
-	// Score returns the semantic relevance of the transcript against the
-	// keywords. Returns (score 0-100, the single best-matched keyword,
-	// error). Errors here abort the per-video analyze path; they are NOT
-	// retryable (already retried inside the Ollama adapter).
-	Score(ctx context.Context, transcript string, keywords []string) (score int, matchedKeyword string, err error)
-
-	// Classify picks a Drive group / category for the given title.
-	// Returns (category, error). The fallback value is used if no LLM-driven
-	// classification succeeds.
-	Classify(ctx context.Context, title string, fallback string) (category string, err error)
-
-	// FindSegments extracts up to maxSegments from the transcript.
-	// The segmentPrompt customizes the "what makes a good clip here" guidance.
-	// Returns nil if no segments meet the duration threshold (10s..60s).
-	//
-	// The videoURL argument is required because the analyzer constructs
-	// its prompt from the timed VTT entries (which carry the [MM:SS]
-	// markers Ollama needs to output timestamped segments); without the
-	// URL, the analyzer cannot re-fetch the VTT. analyzer.go orchestrator
-	// passes the same videoURL it already uses for GetTranscript + Score.
-	FindSegments(ctx context.Context, videoURL string, transcript string, prompt string, maxSegments int) (segments []ytdomain.Segment, err error)
-
-	// AnalyzeFull (Commit G, June 2026) is the canonical one-shot Analysis
-	// entry point. Subsumes Score + Classify + FindSegments into a single
-	// Ollama JSON call that returns {relevance_score, matched_keyword,
-	// category, segments[]} via windowed sampling on the supplied
-	// TranscriptDocument. Implementations MUST:
+	// AnalyzeFull is the canonical one-shot Analysis entry point.
+	// Subsumes the legacy Score + Classify + FindSegments into a
+	// single Ollama JSON call that returns {relevance_score,
+	// matched_keyword, category, segments[]} via windowed sampling
+	// on the supplied TranscriptDocument. Implementations MUST:
 	//
 	//   - return ErrLLMResponseInvalid when the JSON parse fails
-	//     (primary + markdown fallback both fail, OR response is missing
-	//     one of the 4 required fields)
-	//   - bound Ollama concurrency via a pkg/concurrent.Semaphore with
-	//     width = cfg.Concurrency.MaxConcurrentOllamaCalls
-	//     (configurable; default 1 per the GPU-tuning PR in June 2026)
+	//   - bound Ollama concurrency via a pkg/concurrent.Semaphore
 	//   - apply the score gate via opts.MinScore; segments are STILL
-	//     returned when the score is below threshold so the caller can
-	//     decide on the exact metric for diagnostics
-	//
-	// Unbound stub implementations return ErrAnalyzeFullNotImplemented
-	// so the orchestrator can fall back to the legacy 3-call flow.
-	// This staged-rollout shape keeps test fixtures operational
-	// without the OneShot JSON path being live.
+	//     returned when the score is below threshold so the caller
+	//     can decide on the exact metric for diagnostics
 	AnalyzeFull(ctx context.Context, doc transcript.Document, opts AnalyzeOptions) (Analysis, error)
 }
 
@@ -384,18 +328,6 @@ type Analysis struct {
 // sentinel lets the orchestrator (analyzeVideo) classify the failure
 // without string-matching: errors.Is(err, monitor.ErrLLMResponseInvalid).
 var ErrLLMResponseInvalid = errors.New("monitor: malformed LLM JSON response")
-
-// ErrAnalyzeFullNotImplemented is returned by the unbound VideoAnalyzer
-// stub's AnalyzeFull method. The orchestrator (analyzeVideo) uses
-// errors.Is(err, ErrAnalyzeFullNotImplemented) to detect a non-
-// upgraded analyzer and fall back to the legacy 3-call flow
-// (Score + Classify + FindSegments) for staged rollout.
-//
-// Sentinel shape mirrors godlike/zero-baseline: defined once at the
-// port surface; the stub returns it via the same path. Tests
-// compile-time pin the stub to satisfy VideoAnalyzer so a signature
-// drift becomes a build failure, not a runtime missing-method panic.
-var ErrAnalyzeFullNotImplemented = errors.New("monitor: AnalyzeFull not implemented (fall back to legacy 3-call path)")
 
 // AnalyzeOptions is the input shape for VideoAnalyzer.AnalyzeFull.
 // Replaces the 3 positional keyword/fallback/maxSegments/segmentPrompt

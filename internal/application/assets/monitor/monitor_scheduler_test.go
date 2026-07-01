@@ -8,7 +8,6 @@ import (
 	"time"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -28,10 +27,10 @@ import (
 // `ListChannel(url, limit)` (3-arg) to `ListChannelVideos(req)`
 // (1-arg struct) so DateAfter can flow from ResolveDateAtfer.
 type fakeLister struct {
-	listChannelVideosFunc func(ctx context.Context, req downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error)
+	listChannelVideosFunc func(ctx context.Context, req downloader.ListChannelVideosRequest) ([]VideoInfo, error)
 }
 
-func (f *fakeLister) ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
+func (f *fakeLister) ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]VideoInfo, error) {
 	if f.listChannelVideosFunc != nil {
 		return f.listChannelVideosFunc(ctx, req)
 	}
@@ -94,28 +93,18 @@ var _ channels.Repository = (*recordingRepo)(nil)
 // below pin the stubs to the same upgrade contract the production
 // concrete adapters satisfy.
 
-// stubTranscriptProvider implements TranscriptProvider for tests. Returns
-// canned transcript + err; tracks call count so tests can verify call
-// sequencing (call count == 1 after one analyzeVideo run; 0 after the
-// analyzer short-circuits on a transcript failure).
+// stubTranscriptProvider implements TranscriptProvider for tests.
+// The legacy GetTranscript method was removed in Step 6 (June 2026);
+// Fetch is the single canonical method.
 type stubTranscriptProvider struct {
-	transcript         string
-	err                error
-	getTranscriptCalls int
+	transcript string
+	err        error
+	fetchCalls int
 }
 
-func (s *stubTranscriptProvider) GetTranscript(_ context.Context, _ string) (string, error) {
-	s.getTranscriptCalls++
-	return s.transcript, s.err
-}
-
-// Fetch (Commit G, June 2026) — minimal stub satisfying the new
-// TranscriptProvider port method. Wraps the canned text + err into a
-// leaf transcript.Document. The real fetch path (yt-dlp subprocess)
-// lives on YTDLPSubtitleAdapter in production; this stub exists so
-// commit G passes compile without forcing a behavior rewrite of
-// every monitor_scheduler_test test body.
+// Fetch returns the structured transcript.Document from canned text + err.
 func (s *stubTranscriptProvider) Fetch(_ context.Context, videoURL string) (transcript.Document, error) {
+	s.fetchCalls++
 	if s.err != nil {
 		return transcript.Document{}, s.err
 	}
@@ -149,44 +138,18 @@ func extractVideoIDStub(rawURL string) string {
 // Compile-time assertion: stubTranscriptProvider must satisfy TranscriptProvider.
 var _ TranscriptProvider = (*stubTranscriptProvider)(nil)
 
-// stubVideoAnalyzer implements VideoAnalyzer for tests. Each method
-// returns canned outputs configured via fields; tracks call counts so
-// tests can verify call ordering (e.g. "Score should be skipped when
-// transcript fails" asserts scoreCalls == 0).
+// stubVideoAnalyzer implements VideoAnalyzer for tests.
+// The legacy Score / Classify / FindSegments methods were removed
+// in Step 6 (June 2026); AnalyzeFull is the single canonical method.
 type stubVideoAnalyzer struct {
-	score             int
-	scoreKeyword      string
-	scoreErr          error
-	scoreCalls        int
-	category          string
-	classifyErr       error
-	classifyCalls     int
-	segments          []ytdomain.Segment
-	findSegmentsErr   error
-	findSegmentsCalls int
+	analysis        Analysis
+	analyzeFullErr  error
+	analyzeFullCalls int
 }
 
-func (s *stubVideoAnalyzer) Score(_ context.Context, _ string, _ []string) (int, string, error) {
-	s.scoreCalls++
-	return s.score, s.scoreKeyword, s.scoreErr
-}
-
-func (s *stubVideoAnalyzer) Classify(_ context.Context, _, _ string) (string, error) {
-	s.classifyCalls++
-	return s.category, s.classifyErr
-}
-
-func (s *stubVideoAnalyzer) FindSegments(_ context.Context, _, _, _ string, _ int) ([]ytdomain.Segment, error) {
-	s.findSegmentsCalls++
-	return s.segments, s.findSegmentsErr
-}
-
-// AnalyzeFull (Commit G, June 2026) — minimal stub returning
-// ErrAnalyzeFullNotImplemented so the orchestrator (analyzeVideo)
-// can detect a non-upgraded analyzer and fall back to the legacy
-// 3-call flow. The real JSON one-shot impl lands in Commit H.
 func (s *stubVideoAnalyzer) AnalyzeFull(_ context.Context, _ transcript.Document, _ AnalyzeOptions) (Analysis, error) {
-	return Analysis{}, ErrAnalyzeFullNotImplemented
+	s.analyzeFullCalls++
+	return s.analysis, s.analyzeFullErr
 }
 
 // Compile-time assertion: stubVideoAnalyzer must satisfy VideoAnalyzer.
@@ -349,7 +312,7 @@ func TestCheckChannel_YtdlpErrorReturnsFailure(t *testing.T) {
 	svc := channels.NewService(repo, zap.NewNop())
 	expectedErr := errors.New("fake yt-dlp: connection refused")
 	fakeDL := &fakeLister{
-		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
+		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]VideoInfo, error) {
 			return nil, expectedErr
 		},
 	}
@@ -401,7 +364,7 @@ func TestCheckChannel_YtdlpEmptySuccessReturnsZeroResult(t *testing.T) {
 	repo := &recordingRepo{}
 	svc := channels.NewService(repo, zap.NewNop())
 	fakeDL := &fakeLister{
-		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
+		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]VideoInfo, error) {
 			return nil, nil
 		},
 	}
@@ -446,9 +409,9 @@ func TestCheckChannel_YtdlpEmptySuccessReturnsZeroResult(t *testing.T) {
 func TestCheckChannel_YtdlpSuccessCountsDiscovered(t *testing.T) {
 	repo := &recordingRepo{}
 	svc := channels.NewService(repo, zap.NewNop())
-	videos := []downloader.VideoInfo{}
+	videos := []VideoInfo{}
 	fakeDL := &fakeLister{
-		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
+		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]VideoInfo, error) {
 			return videos, nil
 		},
 	}
