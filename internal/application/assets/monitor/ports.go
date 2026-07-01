@@ -497,67 +497,6 @@ type AnalyzeOptions struct {
 
 // ── Unbound placeholder stubs (this commit only) ──────────────────────────
 
-// NewUnboundVideoAnalyzer returns a VideoAnalyzer that surfaces a loud
-// failure on every call. This is the Step 9 placeholder until the
-// OllamaAnalyzer concrete lands in internal/application/semantic/.
-func NewUnboundVideoAnalyzer() VideoAnalyzer {
-	return &unboundVideoAnalyzer{
-		err: errors.New("monitor: video analyzer not wired (P1 follow-up installs the OllamaAnalyzer at internal/application/semantic/)"),
-	}
-}
-
-type unboundVideoAnalyzer struct{ err error }
-
-func (u *unboundVideoAnalyzer) Score(_ context.Context, _ string, _ []string) (int, string, error) {
-	return 0, "", u.err
-}
-func (u *unboundVideoAnalyzer) Classify(_ context.Context, _, _ string) (string, error) {
-	return "", u.err
-}
-func (u *unboundVideoAnalyzer) FindSegments(_ context.Context, _, _, _ string, _ int) ([]ytdomain.Segment, error) {
-	return nil, u.err
-}
-
-// AnalyzeFull on the unbound stub returns ErrAnalyzeFullNotImplemented
-// so the orchestrator (analyzeVideo) can detect a non-upgraded analyzer
-// and fall back to the legacy 3-call path without throwing a loud
-// "Loud failure on every call" panic per the diagnostic-style stub.
-func (u *unboundVideoAnalyzer) AnalyzeFull(_ context.Context, _ transcript.Document, _ AnalyzeOptions) (Analysis, error) {
-	return Analysis{}, ErrAnalyzeFullNotImplemented
-}
-
-// NewUnboundJobEnqueuer returns a JobEnqueuer that surfaces a loud
-// failure on every call. This is the Step 9 placeholder until the
-// concrete *jobtools.Service binding is built in the next commit
-// (the binding itself is straightforward: EnqueueExtract marshals
-// ExtractRequest, calls jobsSvc.Enqueue with ActiveKey
-// "channel_sync_<videoID>", and updates the channel cursor).
-func NewUnboundJobEnqueuer() JobEnqueuer {
-	return &unboundJobEnqueuer{
-		err: errors.New("monitor: job enqueuer not wired (P1 follow-up installs the binding in internal/app/lifecycle.go or via the next PR-PORTS-2 commit)"),
-	}
-}
-
-type unboundJobEnqueuer struct{ err error }
-
-func (u *unboundJobEnqueuer) EnqueueExtract(_ context.Context, _ EnqueueExtractRequest) error {
-	return u.err
-}
-
-// ── Compile-time assertions (Pattern 0 invariant) ─────────────────────────
-
-// Production compile-time assertion: *downloader.YTDLPDownloader must
-// satisfy MonitorDownloaderPort. Signature drift becomes a build failure
-// here, not a runtime panic — the canonical Pattern 0 invariant from
-// AGENTS.md godlike/06 §"Database and config ownership".
-var _ MonitorDownloaderPort = (*downloader.YTDLPDownloader)(nil)
-
-// Compile-time assertions: every unbound placeholder must satisfy its
-// own port. These intentionally fail to compile if the NextPageOffset
-// port methods change signature without also updating the unbound stub.
-var _ VideoAnalyzer = (*unboundVideoAnalyzer)(nil)
-var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
-
 // ── CategoryChannelsPort (Commit G migration adapter, June 2026) ────────
 
 // CategoryChannelsPort decouples monitor from internal/application/channels
