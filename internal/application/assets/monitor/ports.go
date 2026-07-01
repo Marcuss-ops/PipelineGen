@@ -63,6 +63,25 @@ const (
 // per channel check when no channel-level override is set.
 const DefaultPlaylistEnd = 50
 
+// ── ActiveKey (canonical channel-sync prefix) ───────────────────────────
+
+// ActiveKeyPrefix is the canonical job.ActiveKey prefix for
+// channel-sync extraction jobs. Per the Channel Monitor Step 9 design
+// spec: every durable extraction job enqueued by the Channel Monitor
+// uses "channel_sync_<VideoID>" so the broker's per-ActiveKey
+// idempotency dedupes across the monitor's per-tick retry window.
+//
+// Exported so future tooling (admin CLIs, bulk re-enqueue scripts,
+// the Wave 15 remote-worker fallback path for channel-sync) can
+// re-use the same prefix without duplicating the literal.
+//
+// Fase 8 (July 2026, Spina Dorsale — monitoradapter consolidation):
+// relocated from internal/application/assets/monitor/extraction_enqueuer.go
+// to the canonical port surface package (here) so the const + the
+// monitor.JobEnqueuer port + the ExtractionSegment alias declaration
+// share the same canonical ownership boundary (monitor capability).
+const ActiveKeyPrefix = "channel_sync_"
+
 // ── CompositionDeps (the new ctor signature) ─────────────────────────────
 
 // CompositionDeps is the ctor payload for NewChannelMonitor. Replaces
