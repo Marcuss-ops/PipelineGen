@@ -1637,6 +1637,140 @@ deprecations:
       retroactively rewrite the archive.
 
 
+  # ── 21. MONITOR-YOUTUBE-DIRECT-IMPORT — monitor↔youtube canonical seam (ytdomain import surface) ──
+  #
+  # Fase 8 (July 2026, Spina Dorsale — monitoradapter consolidation):
+  # the canonical concrete emission adapter for the Channel Monitor's
+  # durable-emission path was relocated from
+  # internal/application/assets/monitor/extraction_enqueuer.go
+  # (legacy *ExtractionEnqueuer wrapper) to
+  # internal/application/youtube/adapters/monitoradapter/extraction_intent_adapter.go
+  # (canonical *ExtractionIntentAdapter wrapper). This record tracks
+  # the ytdomain import surface in package monitor/ports.go as the
+  # godlike/06 SSOT alias-declaration pin owner — the canonical home
+  # for ExtractionSegment (= ytdomain.Segment) and the typed surface
+  # for ExtractionIntent.Segments. Records a godlike/07 deprecation event
+  # so a future cross-domain marshal surface cannot land without an
+  # explicit schema entry + compatibility test footprint.
+  # ──────────────────────────────────────────────────────────────────
+  - id: MONITOR-YOUTUBE-DIRECT-IMPORT
+    owner_capability: internal/application/assets/monitor
+    exact_symbol: |
+      import ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+      (the ytdomain import in monitor/ports.go — pins the canonical
+      ExtractionSegment type alias = ytdomain.Segment AND owns the
+      ExtractionIntent.Segments typed surface for monitor.JobEnqueuer;
+      the godlike/06 SSOT one-owner-per-fact contract between
+      canonical youtube/dto Segment semantics and monitor's typed
+      surface).
+    file: internal/application/assets/monitor/ports.go
+    file_line: "31 (ytdomain import statement in monitor/ports.go; ssot-shaped as the canonical alias-declaration pin owner per godlike/06)."
+    replacement: |
+      Direct package-to-package import of
+      internal/application/youtube/adapters/monitoradapter
+      (canonical concrete adapter; *monitoradapter.ExtractionIntentAdapter
+      satisfies monitor.JobEnqueuer via compile-time assertion at
+      extraction_intent_adapter.go ~line 265). Pre-Fase-8 dual-import
+      pattern (monitor imports youtubetypes directly + monitoradapter
+      imports youtubetypes locally) collapses to a single canonical
+      home inside monitoradapter; monitor keeps only the load-bearing
+      monitor.JobEnqueuer port surface that monitoradapter satisfies.
+    introduction_date: 2026-07
+    removal_date: 2026-08
+    tracking_issue: "Fase-8-monitoradapter-consolidation (architecture/current.yaml#id-28 pending Monday wave-tracker entry; tracks the structural collapse of *ExtractionEnqueuer → *ExtractionIntentAdapter across the monitor↔youtube canonical seam over 3 commits = deprecation-doc → wire+const-move → git-rm)."
+    compatibility_test: |
+      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS:
+        (a) `rg 'ytdomain' internal/application/assets/monitor/*.go`
+            returns ONLY the historical alias-declaration pin in ports.go
+            (godlike/06 SSOT lock). Zero live production imports after
+            Commit C of the Fase 8 wire cutover ships to origin/main.
+        (b) `var _ monitor.JobEnqueuer = (*monitoradapter.ExtractionIntentAdapter)(nil)`
+            compile-time assertion at extraction_intent_adapter.go
+            ~line 265; future drift in either surface is a build failure.
+        (c) `internal/application/assets/monitor/extraction_intent_test.go::TestExtractionSegment_FieldParityWithYtdomainSegment`
+            locks field-count + JSON-tag parity of ExtractionSegment
+            (= ytdomain.Segment via type alias) against canonical
+            ytdomain semantics. Failure here means contract drift at
+            the marshal site in *ExtractionIntentAdapter.EnqueueExtract.
+        (d) `rg 'monitor.NewExtractionEnqueuer|monitor\\.ExtractionEnqueuer\\b' internal/`
+            returns zero hits after Commit C lands. Legacy concrete
+            adapter is physically removed; only monitor.JobEnqueuer
+            port surface remains in monitor/.
+    usage_metric: |
+      Pre-cutover audit baseline (HEAD = 4cf5abb1, 2026-07):
+        - `rg 'ytdomain' internal/application/assets/monitor/*.go`  : 7 hits
+          (ports.go line 31 import + line 298/312/320 doc-only fossil
+          comments + line 365 production field decl;
+          extraction_enqueuer_test.go line 8 import; 2 legacy
+          fixtures at extraction_enqueuer.go).
+        - `rg 'monitor.NewExtractionEnqueuer' internal/app/`       : 1 hit
+          (the wire at internal/app/lifecycle.go:264 — collapses to
+          0 after Commit B lands).
+        - `rg 'monitor.ExtractionEnqueuer\\b' internal/`           : 2 hits
+          (lifecycle.go:264 wire + the struct type decl in
+          extraction_enqueuer.go).
+      Post-Cutover (Commit C lands on origin/main, Q3 2026):
+        - ytdomain import in monitor/ports.go                       : 1
+          (godlike/06 alias-declaration SSOT).
+        - monitor.NewExtractionEnqueuer callsites                   : 0.
+        - monitoradapter.NewExtractionIntentAdapter callsites      : 1
+          (wire at internal/app/lifecycle.go:264 after Commit B).
+        - Pinned contract tests at
+          monitoradapter/extraction_intent_adapter_test.go           : 5
+          (CollisionNoOp + HappyPath_TranslationLocksAndCursorOmits +
+          FindActiveByKeyErrorIsConservative + JobsSvcNilGuard +
+          ChannelsSvcNilDegradesOrError).
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      Fase 8 cutover sequenced as 3 commits per the user's
+      "scegli tu in base alla pulizia" choice: Commit A (this entry)
+      + Commit B (wire reroute + ActiveKeyPrefix move from
+      extraction_enqueuer.go to monitor/ports.go) + Commit C
+      (git-rm of extraction_enqueuer.go + extraction_enqueuer_test.go).
+      migration_phase flips EXPAND → CUTOVER once Commit C lands
+      on origin/main; this entry tracks the ytdomain-import surface
+      as the godlike/06 alias-declaration SSOT that survives the
+      git-rm of the legacy concrete adapter (the alias declaration
+      enforces that monitor.ExtractionIntent stays semantically
+      pinned to canonical youtube/dto across future refactors).
+
+      ActiveKeyPrefix is the canonical const co-locating with the
+      canonical port surface: declared in monitor/ports.go after
+      Commit B reshapes the canonical home (from
+      extraction_enqueuer.go ~line 94 to ports.go's `const
+      (Priority*, ...)` block area). The alias-declaration pin +
+      the const share the same canonical ownership boundary (monitor
+      capability, owned by internal/application/assets/monitor).
+
+      Per godlike/07 §"Migration sequence", with canonical surface
+      (*monitoradapter.ExtractionIntentAdapter) already in place AND
+      no production caller of legacy *ExtractionEnqueuer remaining
+      after Commit C, the migration enters CUTOVER at the Commit C
+      landing moment. Recorded as EXPAND/in_progress here because
+      Commit C is part of the same direct-to-main wave but lands as
+      a separate atomic commit per user-specified pulizia preference.
+
+      Cross-refs:
+        - godlike/06 §"One canonical owner per fact" :
+          ExtractionSegment=ytdomain.Segment remains the SSOT lock
+          between canonical youtube/dto semantics and monitor's
+          typed surface; mirror the SSOT ownership boundary by
+          routing the marshal concern through monitoradapter.
+        - godlike/07 §"No fake availability" : Commit C physically
+          removes the legacy extraction_enqueuer.go; no fake
+          "we'll handle it later" without CONTRACT-phase audit-pin
+          on the deprecated ytdomain surface.
+        - godlike/07 §"Migration sequence" : EXPAND with canonical
+          replacement already present + in-flight BACKFILL/CUTOVER
+          unfolds across Commit B (BACKFILL) + Commit C (CUTOVER);
+          the ytdomain alias remains the EXPAND-phase load-bearing
+          surface (godlike/06 SSOT) even through CUTOVER — a future
+          CONTRACT phase will gate the ytdomain surface itself on
+          the alias-parity test in extraction_intent_test.go trended
+          to zero drift.
+
+
 # ── Open Questions (read-write; voting-enabled; deferred naming/scope decisions) ──
 # Per AGENTS.md §8 zero-baseline rule, "open questions" carry owner + deadline + team-vote
 # outcome. Each entry cites evidence (file:line + comment quote) so future agents
