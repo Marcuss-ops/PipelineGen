@@ -3,142 +3,82 @@ package health
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
-// DriveAboutProbe is an optional port for a canonical OAuth Drive client.
-// When set on a DriveChecker, CheckDrive calls Probe(ctx) instead of
-// manually reading the token file and issuing a raw HTTP GET to the Drive
-// About API. The production composition wires a *gdrive.Service.About.Get
-// adapter here so the health probe uses automatic token refresh and the
-// canonical OAuth flow.
+// DriveAboutProbe is the canonical port for a canonical OAuth Drive client.
+// When set on a DriveChecker, CheckDrive calls Probe(ctx) directly,
+// which reuses the production OAuth client with automatic token refresh
+// and the canonical OAuth flow.
 //
-// codex/health-ready-contract (June 2026): resolves the TODO at the
-// original line 22 — "prefer reusing a probe on the canonical OAuth
-// Drive client".
+// Wave A Item 31 (June 2026): DriveChecker now holds ONLY this probe
+// field. The legacy credsPath/tokenPath/aboutURL/client fields and the
+// drive.ParseTokenFile + raw HTTP GET fallback have been REMOVED —
+// the canonical composition wires drive.Admin.Ping (the production
+// OAuth client) into DriveProbe, and the legacy token-file + raw HTTP
+// GET path was the wrong boundary (it duplicated OAuth state, ignored
+// token refresh, and forced the health check to depend on filesystem
+// state rather than the production client). Deployments that do not
+// wire a probe simply report applicable=false on /health — the canonical
+// "capability is not configured" reporting contract.
 type DriveAboutProbe func(ctx context.Context) error
 
-// DriveChecker verifies Google Drive connectivity.
+// DriveChecker verifies Google Drive connectivity via the canonical
+// DriveAboutProbe.
 //
-// When DriveProbe is non-nil, CheckDrive uses it for the liveness check
-// (canonical OAuth client with automatic token refresh). When nil, the
-// legacy token-file + raw HTTP approach is used as a fallback.
-//
-// fix(health) close-out (June 2026, problem #2 final cleanup): the
-// inline JSON token parse was extracted to drive.ParseTokenFile
-// (internal/infrastructure/drive/tokensource.go) so the parsing logic
-// has its own testable surface independent of the HTTP request path.
+// Wave A Item 31 (June 2026): the legacy token-file + raw HTTP GET
+// fallback has been removed. DriveChecker is now a thin wrapper around
+// the typed DriveAboutProbe port. The production composition wires
+// drive.Admin.Ping (which wraps About.Get internally with the
+// canonical OAuth client + automatic token refresh) into DriveProbe;
+// the admin CLI path simply leaves DriveProbe nil and surfaces
+// applicable=false on the /health endpoint.
 type DriveChecker struct {
-	credsPath  string
-	tokenPath  string
-	aboutURL   string // overridable for tests via direct struct literal (httptest.Server URL)
-	client     *http.Client
-	DriveProbe DriveAboutProbe // optional: canonical OAuth Drive client probe (nil → fall back to token-file HTTP)
+	DriveProbe DriveAboutProbe
 }
 
-// defaultDriveAboutURL is the canonical Google Drive "about" probe.
-const defaultDriveAboutURL = "https://www.googleapis.com/drive/v3/about?fields=user"
-
-func NewDriveChecker(credsPath, tokenPath string) *DriveChecker {
-	return &DriveChecker{
-		credsPath: credsPath,
-		tokenPath: tokenPath,
-		aboutURL:  defaultDriveAboutURL,
-		client:    &http.Client{Timeout: 3 * time.Second},
-	}
+// NewDriveChecker returns a DriveChecker with no probe wired. The
+// caller (composition root) is responsible for setting DriveProbe if
+// a Drive capability is configured. The ctor takes no arguments
+// because the legacy credsPath/tokenPath discovery has been
+// REMOVED (Wave A Item 31) — the canonical probe is the only
+// supported way to verify Drive, and the OAuth client is loaded
+// exactly once at composition time (godlike/06 single-source rule).
+func NewDriveChecker() *DriveChecker {
+	return &DriveChecker{}
 }
 
+// CheckDrive reports the Drive capability status.
+//
+//   - DriveProbe == nil → {ok: true, applicable: false, note: "Drive
+//     credentials not configured"}. This is the canonical "capability
+//     not configured" reporting contract; /health does not 503 on
+//     Drive-disabled deployments (matches the pre-Wave-A semantic for
+//     the no-credentials path).
+//   - DriveProbe != nil, returns nil → {ok: true, configured: true,
+//     duration_ms}.
+//   - DriveProbe != nil, returns error → {ok: false, error: "Drive
+//     probe failed: <err>", duration_ms}.
 func (c *DriveChecker) CheckDrive(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 
-	// codex/health-ready-contract (June 2026): when a canonical
-	// DriveAboutProbe is wired, use it instead of the token-file path.
-	// This reuses the production OAuth client with automatic token
-	// refresh and eliminates the manual token-file read + raw HTTP GET.
-	if c.DriveProbe != nil {
-		if err := c.DriveProbe(ctx); err != nil {
-			return healthport.CheckResult{
-				"ok":          false,
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       fmt.Sprintf("Drive probe failed: %v", err),
-			}
-		}
+	if c.DriveProbe == nil {
 		return healthport.CheckResult{
 			"ok":          true,
-			"duration_ms": time.Since(start).Milliseconds(),
-			"configured":  true,
-		}
-	}
-
-	if c.credsPath == "" || c.tokenPath == "" {
-		return healthport.CheckResult{
-			"ok": true, "applicable": false,
+			"applicable":  false,
 			"duration_ms": time.Since(start).Milliseconds(),
 			"note":        "Drive credentials not configured",
 		}
 	}
 
-	accessToken, err := drive.ParseTokenFile(c.tokenPath)
-	if err != nil {
-		switch {
-		case errors.Is(err, drive.ErrTokenUnreadable):
-			return healthport.CheckResult{
-				"ok":          false,
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       drive.ErrTokenUnreadable.Error(),
-			}
-		case errors.Is(err, drive.ErrTokenInvalidAccessToken):
-			return healthport.CheckResult{
-				"ok":          false,
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       drive.ErrTokenInvalidAccessToken.Error(),
-			}
-		case errors.Is(err, drive.ErrTokenUnavailable):
-			return healthport.CheckResult{
-				"ok":          false,
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       err.Error(),
-			}
-		}
+	if err := c.DriveProbe(ctx); err != nil {
 		return healthport.CheckResult{
 			"ok":          false,
 			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       fmt.Sprintf("token unavailable: %v", err),
-		}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET",
-		c.aboutURL, nil)
-	if err != nil {
-		return healthport.CheckResult{
-			"ok":          false,
-			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       "failed to create Drive request",
-		}
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return healthport.CheckResult{
-			"ok":          false,
-			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       "Drive API unreachable",
-		}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return healthport.CheckResult{
-			"ok":          false,
-			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       fmt.Sprintf("Drive API returned HTTP %d", resp.StatusCode),
+			"error":       fmt.Sprintf("Drive probe failed: %v", err),
 		}
 	}
 

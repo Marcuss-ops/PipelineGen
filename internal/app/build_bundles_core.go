@@ -149,10 +149,11 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // BuildUtilityBundle constructs the lightweight utility handlers
 // and the health-check Service (PR1 Health boundary, June 2026).
 //
-// Wave A (June 2026): driveClient (*gdrive.Service) replaced by
-// driveAdmin (drive.Admin port). The DriveProbe now delegates to
-// drive.Admin.Ping() which wraps About.Get internally. When nil
-// (admin CLI path), the legacy token-file approach is used as fallback.
+// Wave A Item 31 (June 2026): driveAdmin is the only canonical path
+// for the DriveProbe. The legacy token-file + raw HTTP GET fallback
+// is REMOVED — when driveAdmin is nil (admin CLI path or Drive
+// feature disabled), the DriveChecker is left nil and the health
+// Service reports "applicable=false" for the Drive capability.
 func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin) *UtilityBundle {
 	svc := buildHealthService(cfg, db, driveAdmin)
 	return &UtilityBundle{
@@ -182,23 +183,9 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 
 	var driveChecker systemhealth.DriveChecker
 
-	// Wave A (June 2026): the DriveProbe now delegates to
-	// drive.Admin.Ping() which wraps About.Get internally.
-	if driveAdmin != nil {
-		dc := infrahealth.NewDriveChecker("", "")
-		dc.DriveProbe = driveAdmin.Ping
-		driveChecker = dc
-	} else {
-		credsPath := cfg.GetCredentialsPath()
-		tokenPath := cfg.GetTokenPath()
-		if credsPath != "" && tokenPath != "" {
-			driveChecker = infrahealth.NewDriveChecker(credsPath, tokenPath)
-		}
-	}
 
 	// QDRANT-005 Blocker 3 (June 2026): consolidated health+readiness.
 	// HealthProbe satisfies BOTH the /health QdrantChecker contract AND the
-	// /ready lifecycle Probe contract — no more duplicated HTTP client, timeout,
 	// auth wiring, or semantic drift between the two code paths.
 	// When qdrant.enabled=false, the checker is nil (ServiceDeps handles nil
 	// checkers gracefully — returns "not applicable").
