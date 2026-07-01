@@ -479,3 +479,31 @@ func (r *GenerationProviderRegistry) Diagnostics(ctx context.Context) map[asset.
 // (no exported helpers at this layer — providers carry their own
 // HTTP client construction; future Flux/Nvidia HTTP adapters will
 // add their own package-private helpers as needed.)
+
+// ── FASE 5 spec alignment (July 2026) ────────────────────────────────
+//
+// Appends ID() string on each concrete generation provider + the
+// literal-spec Registry.Resolve(providerID string) (GenerationProvider, error)
+// method on *GenerationProviderRegistry.
+
+func (p *GoogleSlidesProvider) ID() string { return string(p.Name()) }
+func (p *FluxProvider) ID() string         { return string(p.Name()) }
+func (p *NvidiaProvider) ID() string       { return string(p.Name()) }
+
+// Resolve implements the user-spec'd Registry.Resolve: single-id
+// lookup. Fail-closed: missing id → (nil, ErrProviderNotFound wrapping
+// the missing id).
+func (r *GenerationProviderRegistry) Resolve(providerID string) (GenerationProvider, error) {
+	if r == nil {
+		return nil, errors.New("generated: nil registry")
+	}
+	if providerID == "" {
+		return nil, fmt.Errorf("%w (id=\"\")", ErrProviderNotFound)
+	}
+	for _, p := range r.providers {
+		if string(p.Name()) == providerID {
+			return p, nil
+		}
+	}
+	return nil, fmt.Errorf("%w (id=%q)", ErrProviderNotFound, providerID)
+}
