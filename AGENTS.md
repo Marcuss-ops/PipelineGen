@@ -565,7 +565,127 @@ See also:
   for the squash-once-already-clean case.
 - [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow) for
   the canonical direct-to-main workflow.
+- [`Git-Lesson-5`](#git-lesson-5-june-2026--byte-equivalent-replay-race-recovery)
+  for the byte-equivalent-replay case (the canonical case this umbrella
+  entry describes at the top — parallel agent landed equivalent work
+  during the commit-to-push window; "no fight" recovery via acceptance,  not force-push).
 
+
+## Git-Lesson-5 (June 2026) — byte-equivalent-replay race recovery
+
+A **byte-equivalent-replay race** is a non-conflicting case of
+[`Git-Lesson-4`](#git-lesson-4-june-2026--recovery-from-non-fast-forward-push-race):
+your unpushed local commit's content has been **cleanly re-applied** by a
+parallel agent on `origin/main`'s tip while you were about to push.
+A safe recovery exists — `git push --force` is the wrong move.
+
+### Detection (3 indicators — all THREE must be true)
+
+1. `git push origin main` returns `[rejected] (non-fast-forward)`.
+2. `git log --oneline HEAD..@{u}` is **not empty** (`origin/main` has commits you don't have).
+3. `git log origin/main -5` shows the **same subject** your local commit carries, but on a different SHA.
+
+The third indicator distinguishes this case from the textual-conflict
+race covered by [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026):
+same subject on different SHA = the parallel agent addressed the same
+intent on `origin/main`'s development line.
+
+### Canonical case (June 2026, channel-monitor Blocco 1)
+
+- Local commit: `ff7a5579 fix(monitor): thread checkChannel error into scheduler backoff path`
+  (six files: `monitor_ports.go` NEW + five modifications to
+  `internal/application/assets/monitor/*.go` and `CHANGELOG.md`).
+- Push rejected: `git push origin main` returned
+  `[rejected]         main -> main (non-fast-forward)`
+  because `origin/main` advanced underneath the local commit during a
+  parallel agent window.
+- Resolution: a byte-equivalent replay of the same files landed as
+  commit `960a3fb6 fix(monitor): thread checkChannel error into scheduler backoff path`
+  on `origin/main`'s development line (`ca75f8e0 → bb18544e → 1e09a762 → 960a3fb6 → 51e41bf4 → 8c5ce7d1 → 0488a5ef`).
+- Local `ff7a5579` is reachable only via `git reflog`, on a divergent
+  history line (`889a1a7e → … → 6b67f2be → 879d5637 → ff7a5579`) that
+  no longer reaches `origin/main`.
+- Byte-equivalence verified with
+  `diff <(git show --name-only --format='' ff7a5579) <(git show --name-only --format='' 960a3fb6)`
+  returning empty.
+
+### Recovery procedure (4 mandatory steps; no force-push)
+
+1. **Byte-equivalence check.**
+   `diff <(git show --name-only --format='' <local-sha>) <(git show --name-only --format='' origin/main)`
+   must return empty. If **non-empty** → drop into the textual-conflict
+   fallback of [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026)
+   instead (PARALLEL AGENT rewrote your intent).
+2. **Canonicality check.**
+   `git branch -r --contains <local-sha>` returns empty (your SHA has
+   been superseded); `git branch -r --contains <origin-sha>` returns
+   `origin/main` (confirms the parallel-agent SHA is canonical).
+3. **Accept without force-push.**
+   Run **NOTHING** to clean up the local SHA. The canonical work is
+   already on `origin/main`; pushing from the superseded local SHA will
+   be a non-fast-forward no-op (unless you force-push, which is the
+   anti-pattern below).
+4. **Audit trail.** `git reflog` retains the local SHA. The diff between
+   the reflog entry and the canonical SHA on `origin/main` is the
+   irrefutable receipt for the supersession (refs survive 30+ days by
+   default; `git reflog expire --expire-unreachable=now --all` is NOT
+   needed).
+
+### Anti-pattern: force-push from the superseded SHA
+
+`git push --force-with-lease origin main` from your local `ff7a5579`
+commit to "win" the race rewrites remote history (from `960a3fb6 → …`
+to your `ff7a5579`-based tree). That silently clobbers the canonical
+commit's content AND every downstream commit that depended on it (in
+the canonical case: `1e09a762`, `51e41bf4`, `8c5ce7d1`, `0488a5ef`
+would all be invalidated). The downstream agent who landed `960a3fb6`
+loses their build + test invariants; the next round of agents fights
+the divergence.
+
+This anti-pattern is **distinct** from
+[`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow)'s
+`force-with-lease` exit hatch on the amend-loop anti-pattern. That exit
+only applies when **no other process has landed on `origin/main`** while
+you were amending on the same branch tip. Once `origin/main` has moved
+past your local SHA — whether via a parallel agent commit or a CI-side
+rewrite — force-push becomes destructive.
+
+The discriminator: `git fetch && git log --oneline @{u}..HEAD` returning
+**non-empty** (any unseen upstream commits = parallel work ahead =
+force-push is destructive). If the upstream tracking branch is empty
+beyond your local HEAD, you are NOT in the byte-equivalent-replay race —
+force-push is safe as the amend-loop exit hatch.
+
+### Why this isn't a race failure
+
+A byte-equivalent-replay race is a **correct coordination signal**:
+two agents independently arrived at the same fix via parallel paths.
+The scope-creep risk (manually re-merge divergent content) is greater
+than the wasted-work risk (replay) — the canonical SHA on `origin/main`
+already encodes the same intent. The Playbook rule "Don't surprise the
+user. Don't surprise yourself. Don't surprise downstream commits" is
+preserved by accepting the replay rather than fighting it.
+
+### Future-agent checklist (when you encounter this)
+
+Before declaring victory on a `git push` rejection, run the
+byte-equivalence check FIRST (step 1 of recovery). Only after the diff
+returns empty, accept the canonicality. If diff returns non-empty, you
+ARE in the textual-conflict case — read [`Rebase-Conflict
+Lesson`](#rebase-conflict-lesson-june-2026) instead.
+
+In CI workflows: byte-equivalent-replay races are **invisible** to CI
+(the canonical SHA on `origin/main` already has the lint+test work
+that would have failed on a divergent replay). Don't add CI guards
+that detect "duplicate commits" — that's an anti-pattern that disables
+the canonical-coordination signal.
+
+### Cross-refs
+
+- [`Git-Lesson-4`](#git-lesson-4-june-2026--recovery-from-non-fast-forward-push-race) — umbrella entry; covers BOTH the byte-equivalent-replay case (this entry's focus) AND the textual-conflict case (`Rebase-Conflict Lesson`'s focus) under a single "non-fast-forward recovery" framing.
+- [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026) — the textual-conflict sibling (diff returns NON-empty; parallel agents applied the same files with different intent).
+- [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow) — direct-to-main baseline that prevents most other race modes (the `amend-loop` escape hatch is NOT a byte-equivalent-replay escape hatch).
+- [`Git-Lesson-3`](#git-lesson-3-june-2026--co-authored-by-trailers-for-agent-commits) — agent identity trailers that make the reflog audit trail easy to read post-race.
 
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 `context.Background()` in `internal/api/` handlers. Per ARCHITECTURE.md §7,
