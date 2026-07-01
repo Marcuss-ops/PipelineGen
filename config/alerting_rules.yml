@@ -319,3 +319,49 @@ groups:
           summary: "🚨 CANARY ALERT: Error rate > 5%"
           description: "Canary error rate: {{ $value | humanizePercentage }}"
           action: "ROLLBACK IMMEDIATO: ./scripts/emergency_rollback.sh"
+
+  - name: velox_orphan_sweeper
+    interval: 5m
+    rules:
+      # WARNING (P0 #4 commit B/2, July 2026) — OrphanSweeper is the
+      # background reconciliation loop for upload_intents stale rows.
+      # A non-zero rate is a rare-but-real signal: the canonical path
+      # is ZERO (the voiceover pipeline should complete every upload
+      # without leaving rows at 'pending'/'uploaded' beyond their
+      # TTLs). A persistent non-zero rate means upstream flakiness
+      # in the voiceover pipeline stage — investigate the stage
+      # failure logs.
+      - alert: OrphanSweeperModerateReconcile
+        expr: increase(orphan_sweeper_reconciled_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "⚠️ Orphan sweeper reconciliations > 5/h"
+          description: |
+            orphan_sweeper_reconciled_total increased by {{ $value }} in the
+            past hour. The voiceover pipeline is leaving intent rows
+            stale past their TTL — investigate the pipeline stage
+            failure logs. Outcome label: {{ $labels.outcome }}.
+
+      # CRITICAL (P0 #4 commit B/2, July 2026) — Sustained high rate
+      # indicates a systemic issue (Drive API outage / DB write
+      # stall). Page on-call immediately.
+      - alert: OrphanSweeperHighReconcile
+        expr: increase(orphan_sweeper_reconciled_total[1h]) > 50
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "🚨 Orphan sweeper reconciliations > 50/h"
+          description: |
+            orphan_sweeper_reconciled_total increased by {{ $value }} in the
+            past hour — sustained high rate. The voiceover pipeline is
+            in a recovery loop. Pattern hints: outcome="pending_timeout"
+            suggests DB writes are failing; outcome="uploaded_cleanup"
+            suggests Drive API is flapping. Outcome label:
+            {{ $labels.outcome }}. Page on-call.
