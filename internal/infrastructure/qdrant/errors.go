@@ -265,11 +265,13 @@ func (e *ErrSparseRequired) Error() string {
 //  3. errors.As into the lower-case sentinel errors mapped via
 //     isPermanent (schema mismatches, NaN, dimension mismatches,
 //     channel-unavailable, empty vector) → false
+//  3a. sentinel errors matching isRetryableSentinel (collection/alias
+//     not found, switch not ready) → true
 //  4. everything else → false (unknown errors are terminal)
 //     — Blocco 4d (July 2026): pre-fix returned true, treating any
 //     unrecognised error as retryable. Per godlike/07 (no unknown
 //     retryability), the default is now terminal: only explicitly
-//     classified errors (APIError with Retryable=true) trigger retry.
+//     classified errors trigger retry.
 func IsRetryable(err error) bool {
 	if err == nil {
 		return false
@@ -281,6 +283,9 @@ func IsRetryable(err error) bool {
 	if isPermanent(err) {
 		return false
 	}
+	if isRetryableSentinel(err) {
+		return true
+	}
 	// Blocco 4d: unknown errors default to terminal. Pre-fix returned
 	// true (retryable), creating a catch-all retry policy for every
 	// unrecognised error type — the opposite of fail-safe.
@@ -291,6 +296,19 @@ func isPermanent(err error) bool {
 	switch err.(type) {
 	case *ErrSchemaIncompatible, *ErrVectorDimensionMismatch, *ErrNaNOrInf,
 		*ErrEmptyVector, *ErrChannelUnavailable:
+		return true
+	}
+	return false
+}
+
+// isRetryableSentinel returns true for sentinel errors that represent
+// transient/operator-fixable conditions (collection/alias not found,
+// pre-switch verification not ready). These are explicitly retryable
+// so the catch-all terminal default doesn't swallow them.
+// Blocco 4d follow-up (July 2026).
+func isRetryableSentinel(err error) bool {
+	switch err.(type) {
+	case *ErrCollectionNotFound, *ErrAliasNotFound, *ErrAliasSwitchNotReady:
 		return true
 	}
 	return false
