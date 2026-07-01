@@ -11,7 +11,37 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
-**[Commit I — Phase 1c TODO closure, Commit 2/4 (June 2026)]** `chore(scripts)` — `BuildMetadataLanguages` (dto/metadata.go) calls canonical `NormalizeLanguages` (now in dto/language_helpers.go). One site closed; one forward-pointer surfaced + 4 direct TDD tests added.
+**[Commit I — Phase 1c TODO closure, Commit 3/4 (June 2026)]** `chore(youtube)` — semantic-shift pass. `isSponsorSegment` + `calculateQualityScore` (usecase/metadata_service.go) delegate to canonical `metadata/service.go::IsSponsorSegment` + `CalculateQualityScore`. Behavior shift: sponsor flag propagates real regex matches (was hardcoded `false`); quality score uses weighted 40/40/20 blend + caller-side sponsor penalty (was hardcoded `0.5`). One site closed: real impl lands; 1 forward-pointer remains for Commit 4/4.
+
+**Site closed (1 of 11 — semantic-shift subset; the 2nd deferred site is the search-text shift in Commit 4/4):**
+
+- **`ytmeta.IsSponsorSegment(transcript string) bool` (canonical) ↔ `usecase/metadata_service.go::isSponsorSegment(transcript string) bool` (delegate).** Local wrapper reduced to one-liner `return ytmeta.IsSponsorSegment(transcript)`. The canonical regex per godlike/06 §"one canonical owner per capability" is anchored at `internal/application/youtube/metadata/service.go`: `regexp.MustCompile(\`(?i)\b(sponsored\s+by|advertisement|provided\s+by|brought\s+to\s+you\s+by|partner\s+with|special\s+thanks|promo\s+code|use\s+code|affiliate)\b\`)`. **Behavior shift**: previously `return false` regardless of transcript content; now propagates real matches. Caller-surface contracts honored: `EnrichClip`'s `if clipTranscript != "" && isSponsorSegment(clipTranscript)` branch (which writes `existing.Metadata["is_sponsor_segment"]=true` + `["sponsor_confidence"]="high"`) now produces real signal instead of `never`. Forward-pointer for sponsor propagation to the indexing layer's downrank is unchanged (still caller-side composition per `metadata/service.go::CalculateQualityScore`'s contract).
+
+- **`ytmeta.CalculateQualityScore(wordCount, durationInt, topicCount, speakerCount, mentionedCount int) float64` (canonical) ↔ `usecase/metadata_service.go::calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64` (signature adapter).** Adapter body: extract `wordCount = ytmeta.CountWords(transcript)`, `durationInt = int(math.Round(duration))` (round, NOT truncate, to avoid silent bucketing for clips just under a 25-second boundary), `(topicCount, speakerCount, mentionedCount)` from `meta.Topics/Speakers/MentionedPeople` with nil-guard; delegate; apply caller-side `-0.20` penalty when `isSponsorSegment(transcript)`; clamp `[0.0, 1.0]`. **Behavior shift**: previously `return 0.5` regardless of content (constant "medium" tier); now real per-clip signal in `[0.0, 1.0]` reflecting transcript word count, clip duration sweet spot (25–180s full credit), and semantic coverage. Local `const sponsorPenalty = 0.20` pins the canonical magnitude (audit-grep anchor).
+
+**Honest semantic-shift note** (per godlike/07 §"no fake availability"):
+
+The pre-Commit-3 behavior was a documented no-op returning `0.5` (quality) and `false` (sponsor) — i.e., an aliased "always medium / never sponsor" result regardless of clip content. Under godlike/07 strict reading, that was fake availability: the function signature IMPLIES a real score / flag, the result was constant. Post-Commit-3 the result is real per-clip signal. Downstream callers (the indexing layer's `quality_tier` + `search_visibility` derivations, the Qdrant downrank tie-breaker) receive different results for clips whose transcript features sponsor markers OR whose duration falls outside the sweet-spot window. No production-call surface breakage — the legacy constant `0.5` no longer satisfies any clip, and the new `[0.0, 1.0]` continuous range is more restrictive on low-quality edges (a 5-second no-transcript clip now scores ~`0.1`, was `0.5`) and more permissive on well-formed clips (a 30-second transcript + 3 semantic items now scores ~`0.7`, was `0.5`).
+
+**Files modified (1):**
+
+- `internal/application/youtube/usecase/metadata_service.go` (+~75 LoC, −~25 LoC):
+  - ADDED import `ytmeta "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"`.
+  - ADDED import `"math"`.
+  - ADDED file-level constant `const sponsorPenalty = 0.20` (canonical magnitude anchor per godlike/06 + godlike/07 audit-grep surface).
+  - REPLACED `isSponsorSegment(transcript)` stub → one-liner delegate.
+  - REPLACED `calculateQualityScore(...)` stub → signature adapter + caller-side sponsor penalty + score clamp.
+
+**Pre-existing build issues (out of scope, NOT regressions from Commit 3/4):**
+
+Same five items as the Commit 1/4 / Commit 2/4 / Commit H Phase 2 closure notes carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
+- `monitor/enqueue.go`: `strings.ToLower` undefined (in `isTransientEnqueueError`).
+- `monitor/scheduler.go`: `NewUnboundJobEnqueuer` undefined.
+- `internal/application/assets/providers/stock/stockpipeline/run_upload.go`: syntax error (legacy upload path).
+- `internal/app/module_media.go`: pre-existing `clips.Deps.MutationsDispatcher` literal flagged in Commit H Phase 2 closure entry.
+
+--
+ `chore(scripts)` — `BuildMetadataLanguages` (dto/metadata.go) calls canonical `NormalizeLanguages` (now in dto/language_helpers.go). One site closed; one forward-pointer surfaced + 4 direct TDD tests added.
 
 **Site closed (1 of 11, with a forward-pointer for the shadow stub):**
 

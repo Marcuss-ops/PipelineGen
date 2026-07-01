@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,9 +21,19 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmeta "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
+
+// sponsorPenalty is the magnitude of the canonical sponsor
+// penalty applied caller-side per metadata/service.go
+// ::CalculateQualityScore's contract ("sponsor penalty is
+// applied by the caller"). Pinned locally so reviewer
+// audits can grep one constant instead of re-reading the
+// canonical source on every code-review pass — adjust when
+// the indexing layer's downrank contract changes.
+const sponsorPenalty = 0.20
 
 // MetadataDeps holds dependencies for the metadata enrichment service (max 8 fields).
 // PR5 Phase 1 target: ≤8 fields — currently 6.
@@ -389,27 +400,92 @@ func metadataFloat64(m map[string]any, key string) float64 {
 	return 0
 }
 
+// isSponsorSegment returns true when the transcript contains a
+// canonical sponsor-segment marker (e.g. "sponsored by",
+// "advertisement", "use code", "affiliate", …). The pattern is
+// implemented centrally by metadata/service.go::IsSponsorSegment
+// (one canonical owner per godlike/06 § "single-table-per-
+// -capability ownership"). This file is a thin delegate so the
+// caller contract (single bool, no error) is preserved.
+//
+// Phase 1c closure (Commit 3/4, June 2026): replaced the prior
+// `_ = transcript; return false` stub with a delegation to the
+// canonical regex. The pre-Commit-1/4 hardcoded false returned
+// regardless of transcript content; the canonical match
+// propagates real sponsor markers into existing.Metadata
+// (EnrichClip's "is_sponsor_segment" branch) and feeds the
+// -0.20 caller-side quality-score penalty below.
 func isSponsorSegment(transcript string) bool {
-	// Phase 1c deferral (June 2026): deterministic pattern-match
-	// (substring on "sponsored by" / "this video is brought to you
-	// by" / "ad break" / "affiliate link") lands in Commit 3/4 of the
-	// Phase 1c closure chain — see CHANGELOG.md ### Deferred.
-	_ = transcript
-	return false
+	return ytmeta.IsSponsorSegment(transcript)
 }
 
+// calculateQualityScore produces the canonical deterministic
+// quality score in [0.0, 1.0] for a YouTube clip, derived from
+// transcript word count, clip duration, and the count of
+// topics/speakers/mentioned-people surfaced by the metadata
+// builder. The blended formula and clamping live in
+// metadata/service.go::CalculateQualityScore — this file is the
+// signature adapter (the usecase-side signature carries the
+// ClipRichMetadata envelope + DownloaderMetadata fields the
+// application layer actually has on hand; the canonical impl
+// operates on int counts only).
+//
+// Per metadata/service.go::CalculateQualityScore's contract the
+// sponsor penalty is applied caller-side; we apply the
+// canonical -0.20 penalty when the transcript contains a
+// sponsor marker (the same threshold the indexing layer uses
+// for downrank).
+//
+// Phase 1c closure (Commit 3/4, June 2026): replaced the prior
+// `_ = ... ; return 0.5` stub (which always produced the
+// "medium" tier regardless of content) with the canonical
+// weighted 40/40/20 blend + sponsor penalty, then clamped
+// to [0.0, 1.0]. Callers downstream (EnrichClip writes the
+// result into existing.Metadata["quality_score"] and the
+// adjacently-computed ["quality_tier"] + ["search_visibility"]
+// fields) now receive a real per-clip signal instead of a
+// constant.
 func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64 {
-	// Phase 1c deferral (June 2026): deterministic linear blend of
-	// (transcript len + tag count + duration + title len) clamped [0,1]
-	// lands in Commit 3/4 of the Phase 1c closure chain — see
-	// CHANGELOG.md ### Deferred.
-	_ = transcript
 	_ = title
 	_ = description
 	_ = tags
-	_ = duration
-	_ = meta
-	return 0.5
+
+	wordCount := ytmeta.CountWords(transcript)
+	// Round (not truncate) so clips just under a bucket
+	// boundary don't silently fall into the lower sub-score
+	// bucket. math.Round(24.4) → 24 (still 0.5 sub-score),
+	// math.Round(24.6) → 25 (1.0 sub-score). int(duration)
+	// would round 24.6 → 24 incorrectly.
+	durationInt := int(math.Round(duration))
+
+	topicCount, speakerCount, mentionedCount := 0, 0, 0
+	if meta != nil {
+		topicCount = len(meta.Topics)
+		speakerCount = len(meta.Speakers)
+		mentionedCount = len(meta.MentionedPeople)
+	}
+
+	score := ytmeta.CalculateQualityScore(
+		wordCount,
+		durationInt,
+		topicCount,
+		speakerCount,
+		mentionedCount,
+	)
+
+	// Sponsor penalty is caller-side per metadata/service.go
+	// doc-comment (the canonical formula is the raw weighted
+	// sum; the penalty propagates from the regex).
+	if isSponsorSegment(transcript) {
+		score -= sponsorPenalty
+		if score < 0 {
+			score = 0
+		}
+	}
+	if score > 1.0 {
+		score = 1.0
+	}
+	return score
 }
 
 func getQualityTier(score float64) string {
