@@ -162,6 +162,12 @@ func (s *Scanner) Scan(raw []byte, source string) (*scriptpkg.ModelScriptOutputV
 
 // decodeV1 unmarshals JSON bytes into ModelScriptOutputV1 and
 // validates the result.
+//
+// If the outer specscene has zero scenes but the text field contains
+// valid V1 JSON with non-empty scenes (double-wrapped output — a known
+// LLM pattern with certain models), the inner scenes are promoted into
+// the outer specscene. This preserves the structured scene data that
+// postprocessors (images, voiceover) depend on.
 func decodeV1(jsonBytes []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 	var output scriptpkg.ModelScriptOutputV1
 	if err := json.Unmarshal(jsonBytes, &output); err != nil {
@@ -170,5 +176,23 @@ func decodeV1(jsonBytes []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 	if err := output.Validate(); err != nil {
 		return nil, err
 	}
+
+	// Double-wrapped JSON recovery: outer specscene is empty, but
+	// the text field contains valid JSON with real scenes.
+	if len(output.SpecScene.Scenes) == 0 && len(output.Text) > 0 {
+		first := output.Text[0]
+		if first == '{' || first == '[' {
+			var inner scriptpkg.ModelScriptOutputV1
+			if err := json.Unmarshal([]byte(output.Text), &inner); err == nil {
+				if len(inner.SpecScene.Scenes) > 0 {
+					output.SpecScene = inner.SpecScene
+					if inner.Text != "" {
+						output.Text = inner.Text
+					}
+				}
+			}
+		}
+	}
+
 	return &output, nil
 }

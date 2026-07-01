@@ -29,16 +29,14 @@ package monitor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 

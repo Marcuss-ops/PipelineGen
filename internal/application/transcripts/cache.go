@@ -200,7 +200,7 @@ func parseVideoURLComponents(videoURL string) (videoID, language, source string)
 // the raw URL string so a misconfigured URL still gets a stable
 // cache key (and a single Fetch per process, no thrashing).
 func extractVideoID(rawURL string) string {
-	if id := urlutil.ExtractVideoID(rawURL); id != "" {
+	if id, err := urlutil.ExtractVideoID(rawURL); err == nil && id != "" {
 		return id
 	}
 	return rawURL

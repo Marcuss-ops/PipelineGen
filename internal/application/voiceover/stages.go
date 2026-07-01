@@ -45,7 +45,9 @@ package voiceover
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"go.uber.org/zap"
@@ -55,6 +57,17 @@ import (
 // per-stage log messages. Operators can `rg restoreIdent internal/`
 // to enumerate all restored surfaces.
 const restoreIdent = "PR-VOICEOVER-RESTORE"
+
+func voiceoverProjectID(filename string) string {
+	name := strings.TrimSpace(filename)
+	if name == "" {
+		return ""
+	}
+	if idx := strings.Index(name, "_scene-"); idx > 0 {
+		return strings.TrimSpace(name[:idx])
+	}
+	return strings.TrimSuffix(name, ".mp3")
+}
 
 // voiceOverrideFor returns the canonical per-language voice override
 // for a single language key from a BatchRequest's VoiceOverrides map.
@@ -326,9 +339,12 @@ func (s *Service) destinationStage(
 		Name:         truncatePreview(req.Text),
 		Filename:     item.Filename,
 		LocalPath:    localPath,
+		Destination:  delivery.DestinationVoiceover,
 		FolderID:     dest.FolderID,
 		FolderPath:   dest.FolderPath,
 		Source:       "voiceover",
+		ProjectID:    voiceoverProjectID(item.Filename),
+		Language:     item.Language,
 		Metadata:     string(metaJSON),
 		RequireDrive: true,
 	}

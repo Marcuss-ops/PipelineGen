@@ -177,6 +177,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: system: %w", err)
 	}
 
+	if err := registerJobsRoute(registry, log, root); err != nil {
+		return nil, fmt.Errorf("wire registry: jobs: %w", err)
+	}
+
 	// Step 2 — Internal modules (bundle-driven). MUST run before
 	// registerImages (consumes wiring.MediaIngest.Service) and
 	// registerAssets (consumes wiring.searchFanOut + wiring.searchBackends

@@ -21,6 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -66,6 +67,7 @@ func buildVoiceoverService(
 	dbs *databases,
 	log *zap.Logger,
 	driveUploader *drive.Uploader,
+	publisher delivery.Publisher,
 	assetIndexService *assetindex.Service,
 	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
@@ -90,7 +92,8 @@ func buildVoiceoverService(
 
 	voLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    voRegistryAdapter,
-		DriveAdmin:  driveUploader,
+		Publisher:   publisher,
+		DriveReader: driveUploader,
 		AssetIndex:  assetIndexService,
 	}, log)
 
@@ -135,14 +138,6 @@ func buildVoiceoverService(
 	//   - voLifecycle:     *lifecycle.Service → LifecycleProjectionUpserter
 	//                       via voiceoverProjectionAdapter
 	//   - log:             *zap.Logger
-	projectionAdapter := newVoiceoverProjectionAdapter(voLifecycle)
-	finalizer := voiceover.NewVoiceoverFinalizer(
-		voRepoAdapter,         // VoiceoverRepository
-		outboxEnqueuer,        // TxOutboxEnqueuer (nil-safe in finalizer)
-		projectionAdapter,     // LifecycleProjectionUpserter
-		log,                   // *zap.Logger
-	)
-
 	// Build translator closure from scriptGen (used by promo generation
 	// to translate voiceover text into target language). Graceful
 	// degradation: if scriptGen is nil, return input unchanged so promo
@@ -168,6 +163,14 @@ func buildVoiceoverService(
 		log.Warn("voiceover service wired WITHOUT outbox dispatcher — indexing will be SKIPPED (no asset.index.requested events emitted)")
 	}
 
+	projectionAdapter := newVoiceoverProjectionAdapter(voLifecycle)
+	finalizer := voiceover.NewVoiceoverFinalizer(
+		voRepoAdapter,     // VoiceoverRepository
+		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)
+		projectionAdapter, // LifecycleProjectionUpserter
+		log,               // *zap.Logger
+	)
+
 	// P1-2 (June 2026): the application layer no longer constructs
 	// the production *audioasset.Processor. Construction moves UP to
 	// the composition root (this file) so the voiceover package can
@@ -178,12 +181,12 @@ func buildVoiceoverService(
 		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
 	}
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
-	ttsProvider := newUseCaseTTSAdapter(audioProcessor)// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
-// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
-// top of the same adapter surface the legacy service consumes.
-// All 7 ports are mandatory (panic on nil per AGENTS.md WireUp
-// pattern); the composition root owns this construction so any
-// missing wire-up fails fast at boot rather than mid-job.	// Step 8/12 closure (June 2026 — BLOC5.4): wire the canonical
+	ttsProvider := newUseCaseTTSAdapter(audioProcessor) // (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
+	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
+	// top of the same adapter surface the legacy service consumes.
+	// All 7 ports are mandatory (panic on nil per AGENTS.md WireUp
+	// pattern); the composition root owns this construction so any
+	// missing wire-up fails fast at boot rather than mid-job.	// Step 8/12 closure (June 2026 — BLOC5.4): wire the canonical
 	// per-item use case ProcessVoiceoverItemUseCase on top of the
 	// 7-port typed seam (Pattern 0 — AGENTS.md). The 7 mandatory deps
 	// mirror the surface the legacy Service consumes (TTSProvider for

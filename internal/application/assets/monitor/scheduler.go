@@ -152,9 +152,9 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// `transcripts.YTDLPSubtitleAdapter` directly into CompositionDeps.Transcript,
 	// so a nil deps.Transcript can only happen in partial-deploy / test-fixture
 	// paths and the analyzer's `if m.transcript != nil` discipline catches it.
-	
+
 	if deps.Enqueuer == nil {
-		deps.Enqueuer = NewUnboundJobEnqueuer()
+		deps.Enqueuer = NewExtractionEnqueuer(nil, nil, deps.Log)
 	}
 
 	return &ChannelMonitor{

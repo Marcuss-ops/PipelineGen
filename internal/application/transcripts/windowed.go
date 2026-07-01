@@ -143,7 +143,7 @@ func (s *WindowSampler) Sample(doc transcript.Document, keywords []string) []Win
 	}
 	binTexts := make([][]string, numWindows)
 	for _, e := range doc.Entries {
-		idx := int(e.StartSec / windowSize)
+		idx := int(e.Start / windowSize)
 		if idx < 0 {
 			idx = 0
 		}

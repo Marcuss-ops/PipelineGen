@@ -109,13 +109,13 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 
 		query := scene.Title
 		if query == "" {
+			query = sceneText
+		}
+		if query == "" {
 			query = plan.Topic
 		}
 		if query == "" {
 			query = plan.Title
-		}
-		if query == "" {
-			query = sceneText
 		}
 
 		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, query, language, nil)
