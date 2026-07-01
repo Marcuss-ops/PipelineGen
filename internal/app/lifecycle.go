@@ -24,8 +24,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
 	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
@@ -434,6 +436,75 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				},
 				Stop: func(_ context.Context) error { return nil },
 			})
+		}
+
+		// ── Deletion Reconciler (Blocco 3.2 commit 2/2, June 2026) ──
+		// Periodic ticker that re-emits the canonical outbox event
+		// for any media_assets row stuck in {DELETE_REQUESTED,
+		// DRIVE_DELETE_PENDING, INDEX_DELETE_PENDING} past the
+		// configurable stuck threshold. Configured via
+		// cfg.Jobs.DeletionReconcilerInterval + DeletionReconcilerStuckThreshold
+		// (default 15m tick + 30min threshold).
+		//
+		// Wire condition: requires (a) the SQLite database handle +
+		// (b) the outbox.Dispatcher + (c) the deletion-scanner adapter.
+		// Production wiring always supplies all three; partial wires
+		// log a WARN + skip the step (mirrors the clip-dedup-sweeper
+		// above).
+		if root.DB != nil && root.DB.DB != nil {
+			reconcilerInterval := 15 * time.Minute
+			if cfg.Jobs.DeletionReconcilerInterval != "" {
+				if parsed, err := time.ParseDuration(cfg.Jobs.DeletionReconcilerInterval); err == nil && parsed > 0 {
+					reconcilerInterval = parsed
+				}
+			}
+			reconcilerThreshold := 30 * time.Minute
+			if cfg.Jobs.DeletionReconcilerStuckThreshold != "" {
+				if parsed, err := time.ParseDuration(cfg.Jobs.DeletionReconcilerStuckThreshold); err == nil && parsed > 0 {
+					reconcilerThreshold = parsed
+				}
+			}
+
+				// Look up the outbox.Dispatcher via root.Outbox; if absent
+			// (e.g. partial deploy), log WARN + skip.
+			if root.Outbox != nil && root.Outbox.Dispatcher != nil {
+				disp := root.Outbox.Dispatcher
+				stuckScanner := deletion.NewScanner(root.DB.DB, 100)
+				// Metrics adapter: deletion.ReconcilerMetricsAdapter
+				// (defined in internal/infrastructure/database/sqlite/
+				// deletion/metrics_adapter.go) is the canonical Pattern
+				// 0 concrete for the application-layer
+				// reconciler.Metrics port. The observability package's
+				// package-level Prometheus counters are referenced
+				// indirectly through this adapter.
+				recSvc := deletionreconciler.NewServiceFromDeps(deletionreconciler.ServiceDeps{
+					Scanner:          stuckScanner,
+					OutboxEnqueuer:   disp,
+					Metrics:          deletion.ReconcilerMetricsAdapter{},
+					DefaultInterval:  reconcilerInterval,
+					DefaultThreshold: reconcilerThreshold,
+					Log:              log,
+				})
+
+				steps = append(steps, StartupStep{
+					Name: "deletion-reconciler", Required: false,
+					Start: func(startCtx context.Context) error {
+						log.Info("deletion-reconciler starting (interval=15m)",
+							zap.Duration("interval", reconcilerInterval),
+							zap.Duration("threshold", reconcilerThreshold),
+						)
+						concurrent.SafeGo("deletion-reconciler", func() {
+							recSvc.Run(startCtx)
+						})
+						return nil
+					},
+					Stop: func(_ context.Context) error { return nil },
+				})
+			} else {
+				log.Warn("deletion-reconciler skipped: outbox.Dispatcher not wired (composition-root partial deploy)")
+			}
+		} else {
+			log.Warn("deletion-reconciler skipped: root.DB.DB not wired")
 		}
 
 		// Qdrant-ghost-sweeper step removed.
