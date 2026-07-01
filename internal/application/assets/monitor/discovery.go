@@ -44,6 +44,7 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
@@ -70,12 +71,28 @@ func effectivePlaylistEnd(channel channels.Channel, globalDefault int) int {
 // because nothing further down can succeed without a real ListChannel
 // result — failing fast at the discovery layer avoids silent zero-result
 // channels that would otherwise be reported as Success=true.
+// ChannelMonitorPolicyVersion is the canonical `policy_version`
+// stamped on every youtube_discoveries row produced by the channel
+// monitor. Bumping this constant (e.g. "v2_retryable") produces a
+// fresh row under UNIQUE(channel_id, video_id, policy_version)
+// alongside the historical one — both coexist for audit; only the
+// new policy_version participates in the live TryReserve+drain loop.
+// Commit 3/6 (June 2026, P1 #5+#6+#7): constant lives here so a
+// future Commit 4+/5+ can bump it without touching enqueue.go or the
+// repository.
+const ChannelMonitorPolicyVersion = "v1"
+
 func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel channels.Channel) ([]downloader.VideoInfo, error) {
 	if m.ytdlp == nil {
 		return nil, fmt.Errorf("discoverChannelVideos: ytdlp port not wired")
 	}
 	playlistEnd := effectivePlaylistEnd(channel, DefaultPlaylistEnd)
-	return m.ytdlp.ListChannel(ctx, channel.ChannelURL, playlistEnd)
+	dateAfter := sqlassets.ResolveDateAfter(channel.LastCursor, channel.LookbackDays)
+	return m.ytdlp.ListChannelVideos(ctx, downloader.ListChannelVideosRequest{
+		ChannelURL:  channel.ChannelURL,
+		DateAfter:   dateAfter,
+		PlaylistEnd: playlistEnd,
+	})
 }
 
 // QueryResult is the canonical return-type for the (currently stubbed)
@@ -494,8 +511,15 @@ func (m *ChannelMonitor) recordDiscoveryAndClassify(ctx context.Context, info do
 
 	// ① Leader-election INSERT. won=false → previous cycle won, this
 	//    cycle classifies already_scheduled and skips the broker side.
+	//
+	// Commit 3/6 (P1 #5+#6+#7): TryReserve signature is now 7-arg —
+	// policyVersion is the auditor-friendly gate that lets a future
+	// v2-retryable bump coexist with the historical v1 rows under
+	// UNIQUE(channel_id, video_id, policy_version). Use the canonical
+	// `ChannelMonitorPolicyVersion` constant (default "v1"); an
+	// envelope-level future bump drops in via this single call site.
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
-	id, won, err := m.discoveries.TryReserve(ctx, channel.ID, videoID, videoURL, title, cycleNow)
+	id, won, _, err := m.discoveries.TryReserve(ctx, channel.ID, videoID, ChannelMonitorPolicyVersion, videoURL, title, cycleNow)
 	if err != nil {
 		m.log.Error("recordDiscoveryAndClassify: TryReserve failed, classifying as rejected (ledger error)",
 			zap.String("video_id", videoID),

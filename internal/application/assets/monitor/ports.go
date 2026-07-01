@@ -239,15 +239,31 @@ const (
 	OutcomeRejected EnqueueOutcome = "rejected"
 )
 
-// ── MonitorDownloaderPort (the legacy yt-dlp slice) ──────────────────────
+// ── MonitorDownloaderPort (yt-dlp slice, PR-4 DateAfter) ───────────────
 
 // MonitorDownloaderPort is the minimum-surface slice of
 // *downloader.YTDLPDownloader that the channel monitor needs.
 //
-//   - ListChannel — used by checkChannel to enumerate a channel's
-//     videos (the first step of every scheduler tick). Failure here is
-//     the primary signal that drives the exponential backoff in
-//     scheduler.nextCheckTime.
+//   - ListChannelVideos — used by checkChannel to enumerate a channel's
+//     videos (the first step of every scheduler tick). The request
+//     shape is the canonical downloader.ListChannelVideosRequest;
+//     checkChannel fills DateAfter from
+//     ResolveDateAfter(channel.LastCursor, channel.LookbackDays) so the
+//     next cycle starts at the previous cycle's high-water mark when
+//     the LastCursor is parseable, or falls back to LookbackDays when
+//     the cursor is empty. Failure here is the primary signal that
+//     drives the exponential backoff in scheduler.nextCheckTime.
+//
+// PR-4 deprecation note: the legacy ListChannel(url, limit) surface is
+// REMOVED per Commit 3/6. ListChannelVideos is a strict superset (the
+// ListChannelVideosRequest.ChannelURL + PlaylistEnd fields reproduce
+// the old arguments; DateAfter is the new field). Tests + stubs
+// must be updated to call ListChannelVideos. The downloader's
+// *YTDLPDownloader.ListChannel method remains in the infra package for
+// any callers outside the monitor surface (the bulk of the codebase
+// routes through the YouTube pipeline, not the monitor), so the
+// removal here is bounded to MonitorDownloaderPort.
+//
 //   - Path — historically used by semantic_matcher to build the yt-dlp
 //     command line for transcript download. After Step 9, this call site
 //     moves to the YTDLPSubtitleAdapter concrete (next commit). The port
@@ -257,7 +273,7 @@ const (
 // inject a stub that satisfies the same interface so unit tests can
 // drive the failure path without spawning a real subprocess.
 type MonitorDownloaderPort interface {
-	ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
+	ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error)
 	Path() string
 }
 
@@ -432,45 +448,69 @@ var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
 
 // YoutubeDiscoveriesPort is the typed surface the channel monitor reads
 // against the youtube_discoveries ledger (table created in
-// migrations/sqlite/113_youtube_discoveries.sql; infra adapter in
+// migrations/sqlite/114_youtube_discoveries_v2.sql; v2 RETIRES the
+// 113 schema via clean-break table swap. Infra adapter in
 // internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go).
 //
 // The ledger implements the canonical leader-election-by-INSERT dedupe
-// pattern (Commit D, June 2026):
+// pattern + the Commit 3/6 retryable state machine (P1 #5 + #6 + #7):
 //   - The per-video worker calls TryReserve BEFORE EnqueueExtract.
-//     The UNIQUE(channel_id, video_id) constraint means only one
-//     goroutine's INSERT effects a row insert; the rest get won=false
-//     and classify outcome as AlreadyScheduled.
+//     The UNIQUE(channel_id, video_id, policy_version) constraint means
+//     only one goroutine's INSERT effects a row insert; the rest get
+//     won=false and classify outcome as AlreadyScheduled.
+//   - policyVersion differentiates ledger rows so a policy_version bump
+//     (e.g. transcript segmentation logic v2) produces a fresh row
+//     alongside the historical v1 row — both coexist for audit, only
+//     the new policy_version is in the active TryReserve+drain loop.
+//   - retryable rejections (transient timeout / 429) carry
+//     next_retry_at + attempt_count and re-enter TryReserve when
+//     next_retry_at <= now (the canonical retry-eligibility rule).
 //   - On a successful EnqueueExtract, the same worker calls
-//     MarkEnqueued to flip the row's outcome to 'enqueued'.
-//   - On a rejected path (EnqueueExtract error, MaxVideosPerRun slot
-//     exhausted post-INSERT), MarkRejected records the rejection_reason.
+//     MarkEnqueued to flip the row's state to 'enqueued'.
+//   - On a rejected path (MarkRejected(retryable=true) for transient
+//     errors, retryable=false for terminal), the row is recorded with
+//     the rejection_reason + last_error.
 //   - At cycle end, the defer in checkChannel reads MaxDiscoveredAt
-//     and persists it as category_channels.last_cursor (the column is
-//     repurposed from "last video id" to "RFC3339 timestamp of the
-//     high-water mark").
+//     (state-filtered watermark) and persists it as
+//     category_channels.last_cursor.
 //
 // The port is the typed projection of the SQLite adapter; tests inject
 // a stub that counts TryReserve/MarkEnqueued/MarkRejected invocations
 // for the 5-videos × 2-invocations dedupe contract.
 type YoutubeDiscoveriesPort interface {
 	// TryReserve performs the leader-election INSERT with
-	// ON CONFLICT(channel_id, video_id) DO NOTHING RETURNING id.
-	// Returns (id, won=true) on win, (id, won=false) on loss.
-	// Empty channelID+videoID is a hard validation error.
-	TryReserve(ctx context.Context, channelID, videoID, sourceURL, title, discoveredAt string) (id string, won bool, err error)
+	// ON CONFLICT(channel_id, video_id, policy_version) DO NOTHING
+	// RETURNING id. Returns:
+	//   - (id, won=true,  attempt+1, nil) on a fresh win → caller
+	//     proceeds to emit a durable job.
+	//   - (id, won=true,  attempt+1, nil) on a retryable-lease reclaim
+	//     OR a retryable-retry path → caller proceeds to re-emit on
+	//     the same ledger row (attempt_count incremented).
+	//   - (id, won=false, attempt, nil) on already-scheduled (terminal
+	//     state: 'enqueued' / 'completed' / etc.) → caller classifies
+	//     OutcomeAlreadyScheduled and skips broker emit.
+	// policyVersion is required ("" defaults to "v1"). Empty
+	// channelID+videoID is a hard validation error.
+	TryReserve(ctx context.Context, channelID, videoID, policyVersion, sourceURL, title, discoveredAt string) (id string, won bool, attempt int, err error)
 
 	// MarkEnqueued flips the row from pending → enqueued. Idempotent
-	// on repeat (a row with enqueued=1 stays 1).
+	// on repeat (a row with state='enqueued' stays 'enqueued').
 	MarkEnqueued(ctx context.Context, id, enqueuedAt string) error
 
-	// MarkRejected records an explicit rejection outcome with the
-	// human-readable rejection_reason. No-op on rows already at
-	// enqueued or rejected outcome.
-	MarkRejected(ctx context.Context, id, rejectionReason string) error
+	// MarkRejected records an explicit rejection outcome. retryable=true
+	// → state='rejected_retryable', next_retry_at = now + exponential
+	// backoff(attempt_count), attempt_count+=1, last_error pinned.
+	// retryable=false → state='rejected_terminal', last_error pinned,
+	// no retry. Caller (enqueue.go) computes retryable from a typed
+	// isTransientErr predicate, so the repository stays pure
+	// (no domain error knowledge leaked into persistence).
+	MarkRejected(ctx context.Context, id, rejectionReason string, retryable bool) error
 
 	// MaxDiscoveredAt returns the largest discovered_at for the
-	// channel (or empty string for an empty ledger). Cycle-end
-	// watermark.
+	// channel across ALL terminal states (enqueued, completed,
+	// already_scheduled, rejected_terminal, rejected_retryable).
+	// Excludes 'pending'/'analyzing' so an in-progress cycle's partial
+	// row doesn't leak a non-monotonic watermark. Cycle-end
+	// canonical-write path. Empty string for an empty ledger.
 	MaxDiscoveredAt(ctx context.Context, channelID string) (string, error)
 }

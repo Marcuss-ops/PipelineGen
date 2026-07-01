@@ -53,19 +53,19 @@ import (
 //     category-root + group subfolder as before).
 //
 // Commit D (June 2026, PR-D YouTube Channel Monitor cutover):
-// - The function now returns error so recordDiscoveryAndClassify can
-//   classify the outcome as Enqueued vs Rejected strictly.
-// - ledgerID is the row id from the canonical TryReserve that won
-//   the (channel_id, video_id) leader-election INSERT. The MarkEnqueued
-//   / MarkRejected updates are issued here so the ledger row's outcome
-//   arrives at `enqueued` only when the broker-side emit succeeds.
-//   This eliminates silent-success paths where the broker emitted but
-//   the ledger stayed at `pending` (pre-Commit D) or where the broker
-//   failed but the ledger still showed `pending` (no audit trail).
-// - The per-video channels.UpdateCursor (extraction_enqueuer contract 3)
-//   is REMOVED. Cycle-end MAX(discovered_at) → category_channels.
-//   last_cursor is the new monotonic write path; see
-//   discovery.go::recordCycleEndWatermark.
+//   - The function now returns error so recordDiscoveryAndClassify can
+//     classify the outcome as Enqueued vs Rejected strictly.
+//   - ledgerID is the row id from the canonical TryReserve that won
+//     the (channel_id, video_id) leader-election INSERT. The MarkEnqueued
+//     / MarkRejected updates are issued here so the ledger row's outcome
+//     arrives at `enqueued` only when the broker-side emit succeeds.
+//     This eliminates silent-success paths where the broker emitted but
+//     the ledger stayed at `pending` (pre-Commit D) or where the broker
+//     failed but the ledger still showed `pending` (no audit trail).
+//   - The per-video channels.UpdateCursor (extraction_enqueuer contract 3)
+//     is REMOVED. Cycle-end MAX(discovered_at) → category_channels.
+//     last_cursor is the new monotonic write path; see
+//     discovery.go::recordCycleEndWatermark.
 func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, analysis Analysis, ledgerID string) error {
 	videoID := info.ID
 	title := info.Title
@@ -96,7 +96,7 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 		// misconfiguration as a rejection so the ledger's audit trail
 		// reflects the missing-emit case.
 		if m.discoveries != nil && ledgerID != "" {
-			_ = m.discoveries.MarkRejected(ctx, ledgerID, "enqueuer port not wired")
+			_ = m.discoveries.MarkRejected(ctx, ledgerID, "enqueuer port not wired", false)
 		}
 		return fmt.Errorf("enqueueFromAnalysis: enqueuer port not wired for video=%q ledger_id=%q", videoID, ledgerID)
 	}
@@ -109,18 +109,31 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 		Segments:      analysis.Segments,
 		Channel:       channel,
 	}); emitErr != nil {
+		// Commit 3/6 (P1 #5/#6/#7): compute retryable from a typed
+		// transient-error predicate. A transient error (timeout,
+		// 429, connection refused, EOF) → retryable=true, the ledger
+		// row will re-enter TryReserve when next_retry_at fires. A
+		// terminal error (validation reject, payload marshal failure,
+		// missing channel-id from the jobs.broker) → retryable=false,
+		// the row's state is rejected_terminal and no further retries.
+		//
+		// The repository must NOT know the transient taxonomy
+		// (domain purity); the caller (this file) is the boundary.
+		retryable := isTransientEnqueueError(emitErr)
 		m.log.Error("enqueueFromAnalysis: JobEnqueuer.EnqueueExtract failed, recording rejection on ledger",
 			zap.String("video_id", videoID),
 			zap.String("ledger_id", ledgerID),
+			zap.Bool("retryable", retryable),
 			zap.Error(emitErr))
 		if m.discoveries != nil && ledgerID != "" {
-			if markErr := m.discoveries.MarkRejected(ctx, ledgerID, emitErr.Error()); markErr != nil {
+			if markErr := m.discoveries.MarkRejected(ctx, ledgerID, emitErr.Error(), retryable); markErr != nil {
 				m.log.Error("enqueueFromAnalysis: MarkRejected failed",
 					zap.String("ledger_id", ledgerID),
 					zap.Error(markErr))
 			}
 		}
-		return fmt.Errorf("enqueueFromAnalysis: emit failed for video=%q ledger_id=%q: %w", videoID, ledgerID, emitErr)
+		return fmt.Errorf("enqueueFromAnalysis: emit failed for video=%q ledger_id=%q retryable=%v: %w",
+			videoID, ledgerID, retryable, emitErr)
 	}
 
 	// Successful broker emit → flip the ledger row from `pending` to
@@ -235,4 +248,46 @@ func tryReserve(counter *atomic.Int32, limit int) bool {
 			return true
 		}
 	}
+}
+
+// isTransientEnqueueError returns true when the EnqueueExtract error
+// is a transient infrastructure failure (timeout / 429 / 5xx /
+// connection-class errors) that warrants a retry on a later cycle.
+//
+// Commit 3/6 (P1 #5/#6/#7): the predicate runs at the repository
+// boundary (monitor package enqueue.go) so the persistence layer
+// (YoutubeDiscoveriesRepository) stays free of domain knowledge.
+// Any error not matching the transient taxonomy is treated as terminal:
+// a lease-rejection, payload-marshal failure, or business-rule reject
+// will simply re-fail on retry, so the row is marked rejected_terminal
+// with retryable=false to avoid wasting scheduler cycles on it.
+//
+// The substring taxonomy mirrors the one used in
+// pkg/retry.DoWithValue + the Channel Monitor's own retry.Do policy
+// (scheduler.go::checkChannel) so retries behave consistently across
+// the pipeline.
+func isTransientEnqueueError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	for _, s := range []string{
+		"timeout",
+		"connection refused",
+		"connection reset",
+		"eof",
+		"429",
+		"503",
+		"502",
+		"504",
+		"rate limit",
+		"quota exceeded",
+		"temporarily unavailable",
+		"resource temporarily unavailable",
+	} {
+		if strings.Contains(lower, s) {
+			return true
+		}
+	}
+	return false
 }

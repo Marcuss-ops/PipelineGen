@@ -22,16 +22,19 @@ import (
 // and contract.go (channels.Repository).
 
 // fakeLister implements MonitorDownloaderPort for tests.
-// ListChannelFunc drives the failure / empty / populated paths.
+// ListChannelVideosFunc drives the failure / empty / populated paths.
+// Commit 3/6 (PR-4 DateAfter): the port surface switched from
+// `ListChannel(url, limit)` (3-arg) to `ListChannelVideos(req)`
+// (1-arg struct) so DateAfter can flow from ResolveDateAtfer.
 type fakeLister struct {
-	listChannelFunc func(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
+	listChannelVideosFunc func(ctx context.Context, req downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error)
 }
 
-func (f *fakeLister) ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error) {
-	if f.listChannelFunc != nil {
-		return f.listChannelFunc(ctx, channelURL, limit)
+func (f *fakeLister) ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
+	if f.listChannelVideosFunc != nil {
+		return f.listChannelVideosFunc(ctx, req)
 	}
-	return nil, errors.New("fakeLister.ListChannel: not configured")
+	return nil, errors.New("fakeLister.ListChannelVideos: not configured")
 }
 
 func (f *fakeLister) Path() string { return "/tmp/fake-yt-dlp" }
@@ -300,7 +303,7 @@ func TestCheckChannel_YtdlpErrorReturnsFailure(t *testing.T) {
 	svc := channels.NewService(repo, zap.NewNop())
 	expectedErr := errors.New("fake yt-dlp: connection refused")
 	fakeDL := &fakeLister{
-		listChannelFunc: func(_ context.Context, _ string, _ int) ([]downloader.VideoInfo, error) {
+		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
 			return nil, expectedErr
 		},
 	}
@@ -352,7 +355,7 @@ func TestCheckChannel_YtdlpEmptySuccessReturnsZeroResult(t *testing.T) {
 	repo := &recordingRepo{}
 	svc := channels.NewService(repo, zap.NewNop())
 	fakeDL := &fakeLister{
-		listChannelFunc: func(_ context.Context, _ string, _ int) ([]downloader.VideoInfo, error) {
+		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
 			return nil, nil
 		},
 	}
@@ -399,7 +402,7 @@ func TestCheckChannel_YtdlpSuccessCountsDiscovered(t *testing.T) {
 	svc := channels.NewService(repo, zap.NewNop())
 	videos := []downloader.VideoInfo{}
 	fakeDL := &fakeLister{
-		listChannelFunc: func(_ context.Context, _ string, _ int) ([]downloader.VideoInfo, error) {
+		listChannelVideosFunc: func(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
 			return videos, nil
 		},
 	}

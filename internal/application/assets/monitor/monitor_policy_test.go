@@ -169,12 +169,14 @@ func TestRecordCheckOutcome_PropagatesLeaseOwnerAsLeaseToken(t *testing.T) {
 }
 
 // panicLister is a MonitorDownloaderPort double that panics on
-// ListChannel. Drives the P1 #9 safeCheckChannel test path.
+// ListChannelVideos. Drives the P1 #9 safeCheckChannel test path.
+// Commit 3/6 (PR-4 DateAfter): surface switched from ListChannel
+// (3-arg) to ListChannelVideos (1-arg struct).
 type panicLister struct {
 	panicValue any
 }
 
-func (p *panicLister) ListChannel(_ context.Context, _ string, _ int) ([]downloader.VideoInfo, error) {
+func (p *panicLister) ListChannelVideos(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
 	panic(p.panicValue)
 }
 
