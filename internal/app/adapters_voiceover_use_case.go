@@ -200,6 +200,11 @@ func newUseCasePublisherAdapter(admin drive.Admin) *useCasePublisherAdapter {
 	return &useCasePublisherAdapter{admin: admin}
 }
 
+// TODO(Fase 3.5): migrate from drive.Admin.UploadFile to delivery.Publisher.Publish.
+// The useCasePublisherAdapter currently calls a.admin.UploadFile() through the
+// drive.Admin Pattern 0 port. The canonical upload path is
+// delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationVoiceover, ...})
+// which adds conflict policy, filename normalisation, and structured PublishResult.
 func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.VoiceoverPublishCommand) (string, error) {
 	if cmd.LocalPath == "" {
 		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty LocalPath (use case supplied no local payload)")

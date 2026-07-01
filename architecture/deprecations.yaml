@@ -230,6 +230,32 @@ deprecations:
 
   # ──────────────────────────────────────────────────────────────────
 
+  # ── Fase 3 Spina Dorsale (July 2026): drive/store.go UploadToDrive bypass ──
+  # drive.Store.UploadToDrive calls driveUploader.UploadFile directly instead
+  # of routing through delivery.Publisher.Publish. The legacy store is used
+  # by the images package. Migration: replace Store.UploadToDrive with
+  # delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationImage, ...}).
+  # The Publisher adds conflict policy, folder resolution, and filename
+  # normalisation that Store.UploadToDrive bypasses.
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: DRIVE-STORE-UPLOAD-TO-DRIVE
+    owner_capability: internal/infrastructure/drive
+    exact_symbol: "(*Store).UploadToDrive — calls s.driveUploader.UploadFile() directly"
+    file: internal/infrastructure/drive/store.go
+    file_line: 180
+    replacement: "delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationImage, LocalPath: filePath, Filename: filename, ...})"
+    introduction_date: 2026-07-01
+    removal_date: 2026-Q3
+    tracking_issue: "Spina Dorsale Fase 3 — Piano d'Azione § Fase 3"
+    compatibility_test: "rg 'Store\\.UploadToDrive' internal/application/images/ returns 0 hits after migration. Images package uses delivery.Publisher.Publish exclusively."
+    usage_metric: "Pre-migration: 6 call sites in images package (storage_drive.go x5, storage_ingest.go x1, metadata_service.go x2). Post-migration: 0."
+    migration_phase: EXPAND
+    status: in_progress
+    notes: "The Store.UploadToDrive legacy path is kept during the EXPAND window to avoid breaking existing image upload flows. TODO(Fase 3.3) markers point callers to delivery.Publisher."
+
+  # ──────────────────────────────────────────────────────────────────
+
   # ── 1. PR-CLIP-RESTORE — alias method removed from sqlite/assets repository ──
   - id: PR-CLIP-RESTORE
     owner_capability: internal/infrastructure/database/sqlite/assets

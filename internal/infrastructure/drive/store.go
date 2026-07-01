@@ -162,6 +162,18 @@ func (s *Store) EnsureDriveFolder(_ context.Context, req AssetDestinationRequest
 // then calls s.driveUploader.UploadFile on the local filePath. Returns the
 // (fileID, webViewLink) pair from the Drive API.
 //
+// Deprecated: Fase 3 Spina Dorsale (July 2026). This method calls
+// s.driveUploader.UploadFile() directly instead of going through the
+// canonical delivery.Publisher.Publish() canal. Migration path:
+// callers (images/storage_drive.go, images/storage_ingest.go,
+// images/metadata_service.go) should adopt delivery.Publisher with
+// DestinationImage / DestinationVoiceover keys and let the Publisher
+// resolve the folder + normalise the filename + apply ConflictPolicy.
+//
+// TODO(Fase 3.3): replace Store.UploadToDrive with delivery.Publisher.Publish
+// in the images package. The legacy Store is kept during the EXPAND
+// window to avoid breaking existing image upload flows.
+//
 // Behaviour contract:
 //
 //   - Store nil  → silent no-op (`"", "", nil`). Callers explicitly nil-check
