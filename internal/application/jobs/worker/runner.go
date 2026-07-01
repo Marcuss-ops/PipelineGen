@@ -309,17 +309,36 @@ func (r *Runner) fail(ctx context.Context, lease *appjobs.Lease, err error) erro
 	})
 }
 
+// OutputArtifact is the typed per-output declaration a job handler
+// may return in handlerResult["output_files"]. Blocco 2.2: when
+// Required=true and the file is missing on disk (post-cleanup or
+// post-rollback), the runner fails the job BEFORE the deferred
+// workspace cleanup permanently deletes the artefact. The
+// previous silent `continue` allowed jobs to be reported
+// SUCCEEDED while the output was already gone.
+//
+// Path is the on-disk absolute path the runner should upload.
+// AssetID is the optional identifier the runner hands to
+// assetClient.UploadFile — empty falls back to a job-derived
+// default.
+type OutputArtifact struct {
+	AssetID  string `json:"asset_id,omitempty"`
+	Path     string `json:"path"`
+	Required bool   `json:"required,omitempty"`
+}
+
 func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult map[string]any) error {
 	if r.assetClient == nil || len(handlerResult) == 0 {
 		return nil
 	}
 	type outputFile struct {
-		assetID string
-		path    string
+		assetID  string
+		path     string
+		required bool
 	}
 	var files []outputFile
 	seen := make(map[string]struct{})
-	add := func(assetID, path string) {
+	add := func(assetID, path string, required bool) {
 		assetID = strings.TrimSpace(assetID)
 		path = strings.TrimSpace(path)
 		if path == "" {
@@ -333,12 +352,16 @@ func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult 
 			return
 		}
 		seen[key] = struct{}{}
-		files = append(files, outputFile{assetID: assetID, path: path})
+		files = append(files, outputFile{assetID: assetID, path: path, required: required})
 	}
 
+	// Legacy single-string keys are backward-compat optional:
+	// PDF / markdown generators frequently return empty paths when
+	// the optional sub-render is skipped. Treating them as required
+	// would cause regression in the existing handler surface.
 	for _, key := range []string{"output_path", "pdf_path", "markdown_path"} {
 		if v, ok := handlerResult[key].(string); ok {
-			add(jobID+":"+key, v)
+			add(jobID+":"+key, v, false)
 		}
 	}
 
@@ -346,20 +369,23 @@ func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult 
 		switch list := raw.(type) {
 		case []string:
 			for _, path := range list {
-				add("", path)
+				add("", path, false)
 			}
 		case []any:
 			for i, item := range list {
 				switch v := item.(type) {
 				case string:
-					add("", v)
+					add("", v, false)
+				case OutputArtifact:
+					add(v.AssetID, v.Path, v.Required)
 				case map[string]any:
 					path, _ := v["path"].(string)
 					assetID, _ := v["asset_id"].(string)
+					required, _ := v["required"].(bool)
 					if assetID == "" {
 						assetID = fmt.Sprintf("%s:output_files:%d", jobID, i)
 					}
-					add(assetID, path)
+					add(assetID, path, required)
 				}
 			}
 		}
@@ -368,6 +394,13 @@ func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult 
 	for _, file := range files {
 		if _, err := os.Stat(file.path); err != nil {
 			if os.IsNotExist(err) {
+				if file.required {
+					// Required output missing on disk. Bail loudly
+					// so the deferred Cleanup can't silently drop it;
+					// the job classifier marks the run as failed and
+					// surfaces the missing file to the operator.
+					return fmt.Errorf("required output file missing on disk: job=%s asset=%s path=%s", jobID, file.assetID, file.path)
+				}
 				continue
 			}
 			return err
