@@ -71,10 +71,12 @@ func (b *voiceoverGenBridge) Generate(ctx context.Context, cmd domainvo.Generate
 		// leaving it empty here propagates to the per-language breakdown
 		// in the response body — operators can grep the Warnings.
 		return &domainvo.Result{
-			OK:       false,
-			Locale:   normalized.Locale,
-			Text:     normalized.Text,
-			Filename: normalized.Filename(),
+			OK: false,
+			VoiceoverSynthesisResult: domainvo.VoiceoverSynthesisResult{
+				Locale:   normalized.Locale,
+				Text:     normalized.Text,
+				Filename: normalized.Filename(),
+			},
 			Status:   string(StatusFailed),
 			Warnings: []string{fmt.Sprintf("voiceover legacy generation failed: %s", err)},
 		}, nil
@@ -85,12 +87,14 @@ func (b *voiceoverGenBridge) Generate(ctx context.Context, cmd domainvo.Generate
 			zap.String("drive_link", res.DriveLink))
 	}
 	return &domainvo.Result{
-		OK:          true,
-		Locale:      normalized.Locale,
-		Text:        normalized.Text,
-		Voice:       res.Voice,
-		Filename:    normalized.Filename(),
-		LocalPath:   res.Path,
+		OK: true,
+		VoiceoverSynthesisResult: domainvo.VoiceoverSynthesisResult{
+			Locale:    normalized.Locale,
+			Text:      normalized.Text,
+			Voice:     res.Voice,
+			Filename:  normalized.Filename(),
+			LocalPath: res.Path,
+		},
 		DriveLink:   res.DriveLink,
 		DriveFileID: res.DriveFileID,
 		Status:      string(StatusCompleted),

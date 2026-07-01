@@ -69,8 +69,10 @@ func (s *stubVO) Generate(_ context.Context, cmd domainvo.GenerateVoiceoverComma
 		return nil, err
 	}
 	return &domainvo.Result{
-		OK:          true,
-		Locale:      locale,
+		OK: true,
+		VoiceoverSynthesisResult: domainvo.VoiceoverSynthesisResult{
+			Locale: locale,
+		},
 		DriveLink:   "https://drive.google.com/file/d/" + locale,
 		DriveFileID: "stub-drive-" + locale,
 		Status:      "generated",

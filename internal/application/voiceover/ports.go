@@ -1,29 +1,33 @@
 // Package voiceover — narrow port interfaces for out-of-package
 // dependencies (AGENTS.md Pattern 0, June 2026).
 //
-// Three ports live here:
+// Fase 4 Spina Dorsale (July 2026): ports are organised into three
+// territories matching the domain separation:
 //
-//  1. TxOutboxEnqueuer — PR-VO-A3 (June 2026, outbox-based Qdrant
-//     indexing). The canonical `asset.index.requested` enqueue site
-//     moved INTO swapVoiceoverRow's SQLite transaction. The metadata
-//     UPSERT (voiceovers row) and the outbox event INSERT
-//     (asset.index.requested) now commit atomically — no orphan
-//     events, no orphan embeddings, no async goroutine race.
+//   ┌─ VoiceoverSynthesis ───────────────────────────────────────┐
+//   │  TTSProvider       — text→speech (NO database/sql, NO     │
+//   │  AudioPostProcessor  drive, NO qdrant imports)              │
+//   │  TTSInput / TTSOutput — application-layer wire shapes       │
+//   └────────────────────────────────────────────────────────────┘
+//   ┌─ VoiceoverPublication ────────────────────────────────────┐
+//   │  VoiceoverPublisher — Drive upload via delivery.Publisher  │
+//   │  VoiceoverPublishCommand — upload-only wire shape          │
+//   │  CanonicalDriveWebURL / CanonicalDriveDownloadURL helpers  │
+//   │  DestinationResolver — folder resolution (pre-upload)      │
+//   │  VoiceoverDefaultFolderResolver — config-level fallback    │
+//   └────────────────────────────────────────────────────────────┘
+//   ┌─ VoiceoverFinalization ───────────────────────────────────┐
+//   │  VoiceoverFinalizer — 6-step atomic commit (DB+lifecycle+ │
+//   │  VoiceoverPostCommitVerifier  outbox) inside caller-owned tx│
+//   │  TxOutboxEnqueuer — asset.index.requested outbox event     │
+//   │  DriveUploaderPort — post-commit cleanup (DeleteFile only) │
+//   │  VoiceoverItemExecutor — per-item pipeline orchestrator    │
+//   └────────────────────────────────────────────────────────────┘
 //
-//  2. DriveUploaderPort — PR-VO-B1 (June 2026, Drive upload split).
-//     voiceover.Service now reaches Drive only through this narrowed
-//     port. Processor writes local FS only; Lifecycle owns the upload;
-//     voiceover uses the port exclusively for the post-commit cleanup
-//     DeleteFile.
-//
-//  3. VoiceoverPublisher — E1 cutover (June 2026, drive-only upload
-//     port). Replaces the legacy AssetLifecycle.Upload port which
-//     delegated to lifecycle.Service.ProcessAsset (bundling Drive
-//     upload + dedupe + asset-record persistence). The Publisher is
-//     upload-ONLY: Publish(ctx, cmd) returns the canonical Drive
-//     fileID; callers reconstruct the canonical DriveLink +
-//     DownloadLink from the fileID via CanonicalDriveWebURL /
-//     CanonicalDriveDownloadURL (defined below).
+// The package-level `database/sql` import exists ONLY for
+// Finalization-territory ports (VoiceoverFinalizer, TxOutboxEnqueuer,
+// VoiceoverPostCommitVerifier). Synthesis-territory ports (TTSProvider,
+// AudioPostProcessor) carry ZERO sql/drive/qdrant imports.
 //
 // Layout note: voiceover never imports the SDK. Production concretes
 // satisfy these ports by structural conformance (Go's implicit

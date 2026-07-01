@@ -1,19 +1,33 @@
+// Package voiceover defines the canonical domain types for
+// voiceover generation.
+//
+// Fase 4 Spina Dorsale (July 2026): three territories separated —
+//
+//  1. VoiceoverSynthesis    — TTS only (no database/sql, no drive, no qdrant)
+//  2. VoiceoverPublication  — Drive upload via delivery.Publisher
+//  3. VoiceoverFinalization  — SQLite persistence + lifecycle projection + outbox
 package voiceover
 
 import "time"
 
-// Result is the canonical, fully-typed output of a voiceover generation.
-// Every call site receives this struct — no interface{}, no map[string]any.
+// ────────────────────────────────────────────────────────────────────
+// VoiceoverSynthesisResult — TTS-only output (Fase 4 Spina Dorsale)
+// ────────────────────────────────────────────────────────────────────
 //
-// Fields map 1:1 to the lifecycle steps of the use case:
+// VoiceoverSynthesisResult captures everything the TTS synthesizer
+// produces. It carries ZERO Drive fields, ZERO lifecycle fields —
+// only the local audio payload, its identity, and basic acoustic
+// metadata.
 //
-//	TTS → file write → hash → (optional) Drive upload → lifecycle finalize
-type Result struct {
-	// OK is true when the generation completed without error.
-	OK bool
-
-	// ID is the deterministic command ID (matches GenerateVoiceoverCommand.ID()).
-	ID string
+// Territory: VoiceoverSynthesis (TTS only).
+//   - NO database/sql import
+//   - NO drive import
+//   - NO qdrant import
+//
+// Callers obtain this from TTSProvider.Synthesize (application layer).
+type VoiceoverSynthesisResult struct {
+	// Text is the input text that was converted (echoed for traceability).
+	Text string
 
 	// Locale is the BCP-47 language tag used (normalized).
 	Locale string
@@ -21,14 +35,15 @@ type Result struct {
 	// Voice is the resolved TTS voice name actually used.
 	Voice string
 
-	// Text is the input text that was converted (echoed for traceability).
-	Text string
-
-	// Filename is the computed filename (matches GenerateVoiceoverCommand.Filename()).
+	// Filename is the computed filename.
 	Filename string
 
 	// LocalPath is the absolute path to the generated audio file on disk.
 	LocalPath string
+
+	// CleanedPath is the post-AudioPostProcessor silence-removed path.
+	// Empty when no audio cleanup was performed.
+	CleanedPath string
 
 	// FileHash is the SHA-256 hash of the generated audio file.
 	FileHash string
@@ -38,8 +53,36 @@ type Result struct {
 
 	// Duration is the audio duration in seconds, if measured.
 	Duration float64
+}
 
-	// ── Drive fields (populated only when Destination.FolderID is non-empty) ──
+// ────────────────────────────────────────────────────────────────────
+// Result — composite canonical output (Fase 4 Spina Dorsale)
+// ────────────────────────────────────────────────────────────────────
+//
+// Result is the canonical, fully-typed output of a voiceover generation.
+// Every call site receives this struct — no interface{}, no map[string]any.
+//
+// Fields map 1:1 to the lifecycle steps of the use case:
+//
+//	TTS → file write → hash → (optional) Drive upload → lifecycle finalize
+//
+// Fase 4 (July 2026): embeds VoiceoverSynthesisResult as a promoted
+// sub-field. Callers can access synthesis fields directly (result.LocalPath,
+// result.Voice, etc.) OR via the named field (result.Synthesis.LocalPath).
+type Result struct {
+	// ── Identity ──
+
+	// OK is true when the generation completed without error.
+	OK bool
+
+	// ID is the deterministic command ID (matches GenerateVoiceoverCommand.ID()).
+	ID string
+
+	// ── Synthesis territory (embedded; fields promoted to Result) ──
+
+	VoiceoverSynthesisResult
+
+	// ── Publication territory (Drive fields) ──
 
 	// DriveLink is the Google Drive web view link.
 	DriveLink string
@@ -53,7 +96,7 @@ type Result struct {
 	// UploadedToDrive is true when the file was successfully uploaded.
 	UploadedToDrive bool
 
-	// ── Lifecycle ──
+	// ── Finalization territory (Lifecycle) ──
 
 	// Status is the canonical lifecycle state (e.g. "generated", "uploaded").
 	Status string
@@ -61,7 +104,7 @@ type Result struct {
 	// CreatedAt is the time the voiceover record was created.
 	CreatedAt time.Time
 
-	// ── Warnings ──
+	// ── Cross-cutting ──
 
 	// Warnings carries non-fatal observations (e.g. "hash computation skipped",
 	// "drive upload timed out but local file is fine"). Never nil.
