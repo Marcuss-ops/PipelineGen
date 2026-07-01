@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -96,7 +97,7 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 	}
 	if imgURL == "" {
 		s.log.Info("SearXNG failed or skipped, falling back to DuckDuckGo (wide)", zap.String("query", query))
-		imgURL = s.searchDDGWide(query)
+		imgURL = s.searchDDGWide(ctx, query)
 		source = "duckduckgo"
 	}
 	if imgURL == "" {
@@ -150,7 +151,7 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	}
 	s.log.Info("Searching web image", zap.String("prompt", prompt), zap.String("slug", slug))
 
-	imgURL := s.searchDDGWide(prompt)
+	imgURL := s.searchDDGWide(ctx, prompt)
 	if imgURL == "" {
 		return nil, fmt.Errorf("no image found on DuckDuckGo for: %s", prompt)
 	}
@@ -210,7 +211,7 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 
 // ── Web Search Helpers ─────────────────────────────────────────────────
 
-func (s *ImageStorageService) searchDDGWide(query string) string {
+func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) string {
 	vqdURL := fmt.Sprintf("https://duckduckgo.com/?q=%s&iax=images&ia=images", url.QueryEscape(query))
 	req, _ := http.NewRequest("GET", vqdURL, nil)
 	req.Header.Set("User-Agent", userAgent)
@@ -227,14 +228,27 @@ func (s *ImageStorageService) searchDDGWide(query string) string {
 	for attempt := 0; attempt < 5; attempt++ {
 		apiURL := fmt.Sprintf("https://duckduckgo.com/i.js?l=en-us&o=json&q=%s&vqd=%s&f=,,,&p=%d",
 			url.QueryEscape(query), vqd, attempt)
-		req, _ = http.NewRequest("GET", apiURL, nil)
-		req.Header.Set("User-Agent", userAgent)
-		resp, err = s.client.Do(req)
+
+		// Retry the per-page HTTP call up to 3 times on transient errors.
+		var resp *http.Response
+		err := retry.Do(ctx, func() error {
+			req, reqErr := http.NewRequest("GET", apiURL, nil)
+			if reqErr != nil {
+				return reqErr
+			}
+			req.Header.Set("User-Agent", userAgent)
+			var doErr error
+			resp, doErr = s.client.Do(req)
+			return doErr
+		}, retry.Options{
+			MaxAttempts:    3,
+			InitialBackoff: 200 * time.Millisecond,
+			IsRetryable:    retry.IsTransient,
+		})
 		if err != nil {
 			if attempt == 4 {
 				return ""
 			}
-			time.Sleep(200 * time.Millisecond)
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
