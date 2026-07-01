@@ -87,8 +87,9 @@ type ScriptFlowHandler struct {
 	// wire the registry keep working — EnqueueGenerationJob leaves
 	// MaxRetries=0 in that case and the JobsService fallback (now
 	// registry-aware) becomes the safety net.
-	registry *appjobs.Registry
-	memorySvc         *adapters.Service
+	registry          *appjobs.Registry
+	// Commit H Phase 2 (June 2026): memorySvc field dropped (gemmamemory
+	// gemmamemory wrapper gone).
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
@@ -123,7 +124,8 @@ type ScriptFlowDeps struct {
 	Harvest           AutoHarvestService
 
 	ScriptsRepo adapters.ScriptRepository
-	Memory      *adapters.Service
+	// Commit H Phase 2 (June 2026): Memory field dropped (gemmamemory
+	// gemmamemory gate service gone).
 	Jobs        jobservice.Service
 		// Issue 4 (June 2026, P1): optional canonical job-type registry
 		// used by EnqueueGenerationJob to source MaxRetries from
@@ -177,7 +179,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,
 		scriptsRepo:       deps.ScriptsRepo,
-		memorySvc:         deps.Memory,
 		harvestSvc:        deps.Harvest,
 		driveFolderID:     deps.DriveScriptsGenFolder,
 		adminToken:        deps.AdminToken,

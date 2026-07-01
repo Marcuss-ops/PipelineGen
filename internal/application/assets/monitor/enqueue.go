@@ -7,15 +7,17 @@
 //   - enqueueFromAnalysis: builds the EnqueueExtractRequest from the
 //     analyzeVideo result, resolves the DriveFolderID (channel-level
 //     override + ClipsFolder global fallback), and delegates the actual
-//     marshal + jobs.Enqueue + channels.UpdateCursor call to the
-//     JobEnqueuer port.
-//   - HandleChannelSyncJob: the durable youtube.channel.sync handler.
-//     Registered via jobsSvc.RegisterHandler(TypeYouTubeChannelSync, ...)
-//     so a queued channel-sync tick goes through this rather than inline.
-//   - RegisterChannelSyncHandler: the public binding the lifecycle
-//     calls after NewChannelMonitor.
+//     marshal + jobs.Enqueue call to the JobEnqueuer port.
 //   - tryReserve: the per-channel budget CAS, only consumed after
 //     passing the AI gate (see discovery.go processVideo).
+//
+// Commit H Phase 2 (June 2026): the durable channel-sync method method + the
+// its job-type binding binding were removed. jobs of type
+// TypeYouTubeChannelSync still register in jobs/registry.go but have
+// no handler — the canonical scheduler uses the channels_service +
+// monitor.tick path (see scheduler.go) and emits youtube_clip.extract
+// jobs directly via the JobEnqueuer port, bypassing the durable
+// channel_sync indirection.
 //
 // Why a port? Splitting the Enqueue logic out of the analyzer lets the
 // analyzer nonchalantly return "no segments → skip" without paying for
@@ -156,99 +158,6 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 		zap.String("destination_group", analysis.Category),
 		zap.String("ledger_id", ledgerID))
 	return nil
-}
-
-// HandleChannelSyncJob is the durable youtube.channel.sync handler.
-//
-// PR 3 (June 2026): the monitor enqueues one sync job per channel instead
-// of processing channels inline. The job handler performs the channel
-// check, video filtering, and clip extraction enqueue.
-//
-// Blocco 1a (July 2026): the handler now routes through safeCheckChannel +
-// recordCheckOutcome — the same single canonical outcome path the
-// scheduler uses. Pre-fix the handler discarded checkChannel's return
-// values and unconditionally wrote MarkChecked(Success=true), hiding
-// yt-dlp failures, panics, and SQLite errors from the job status. Now:
-//   - checkErr != nil → job returns error + status:"failed", and
-//     recordCheckOutcome writes Success=false with the error message
-//     so the exponential backoff curve applies.
-//   - checkErr == nil → job returns status:"synced" as before.
-func (m *ChannelMonitor) HandleChannelSyncJob(ctx context.Context, j *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
-	var payload struct {
-		ChannelID string `json:"channel_id"`
-	}
-	if len(j.Payload) > 0 {
-		if err := json.Unmarshal(j.Payload, &payload); err != nil {
-			return nil, fmt.Errorf("channel_sync: invalid payload: %w", err)
-		}
-	}
-	if payload.ChannelID == "" {
-		return nil, fmt.Errorf("channel_sync: missing channel_id in payload")
-	}
-
-	ch, err := m.channelsSvc.GetByID(ctx, payload.ChannelID)
-	if err != nil {
-		return nil, fmt.Errorf("channel_sync: channel lookup failed for %q: %w", payload.ChannelID, err)
-	}
-
-	m.log.Info("handling youtube.channel.sync job",
-		zap.String("job_id", j.ID),
-		zap.String("channel_id", payload.ChannelID),
-		zap.String("channel_url", ch.ChannelURL))
-
-	// Route through safeCheckChannel (panic-recovery → typed error) +
-	// recordCheckOutcome (MarkChecked with Success/LastError/backoff).
-	// This is the same canonical outcome path the scheduler uses in
-	// checkDueChannels; the job handler no longer duplicates the logic.
-	result, checkErr := m.safeCheckChannel(ctx, ch)
-	m.log.Info("channel sync job check completed",
-		zap.String("channel_id", payload.ChannelID),
-		zap.Bool("success", checkErr == nil),
-		zap.Int("videos_discovered", result.VideosDiscovered),
-		zap.Int("videos_enqueued", result.VideosEnqueued),
-		zap.Int("infra_failures", result.InfraFailures))
-
-	// Persist the outcome through the canonical recordCheckOutcome path.
-	// On recordCheckOutcome failure, we still return checkErr so the job
-	// status reflects the real infra outcome; the MarkChecked write
-	// failure is surfaced as a secondary error.
-	if recErr := m.recordCheckOutcome(ctx, ch, checkErr); recErr != nil {
-		m.log.Error("failed to mark channel checked after sync job",
-			zap.String("channel_id", ch.ID),
-			zap.Error(recErr))
-		if checkErr != nil {
-			return map[string]any{
-				"channel_id": payload.ChannelID,
-				"status":     "failed",
-				"error":      checkErr.Error(),
-			}, fmt.Errorf("channel_sync: check failed AND recordCheckOutcome failed: check=%w, record=%w", checkErr, recErr)
-		}
-		return nil, fmt.Errorf("channel_sync: recordCheckOutcome failed for %q: %w", payload.ChannelID, recErr)
-	}
-
-	if checkErr != nil {
-		return map[string]any{
-			"channel_id": payload.ChannelID,
-			"status":     "failed",
-			"error":      checkErr.Error(),
-		}, checkErr
-	}
-
-	return map[string]any{
-		"channel_id": payload.ChannelID,
-		"status":     "synced",
-	}, nil
-}
-
-// RegisterChannelSyncHandler registers the youtube.channel.sync job handler
-// with the job service. Called from the lifecycle after the monitor is
-// initialized (PR 3, June 2026).
-func (m *ChannelMonitor) RegisterChannelSyncHandler(jobsSvc *jobtools.Service) {
-	if jobsSvc == nil || m == nil {
-		return
-	}
-	jobsSvc.RegisterHandler(jobservice.TypeYouTubeChannelSync, m.HandleChannelSyncJob)
-	m.log.Info("registered youtube.channel.sync job handler")
 }
 
 // tryReserve is the per-channel budget check (atomic CAS). It is

@@ -76,22 +76,22 @@ type scriptOllamaGenerator interface {
 	GenerateScript(ctx context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error)
 }
 
-// memoryGateChecker is the narrow interface satisfied by both
-// *adapters.Service (production) and fakeMemoryGate (tests).
+// memoryGateChecker is the narrow interface satisfied by the in-package
+// memoryCache interface; the canonical fakeMemoryGate type in the test
+// suite also satisfies it directly.
 //
-// Phase 1c TODO: the adapters package defines MemoryGateRequest and
-// GateResult; defining local copies here means the type assertion
-// e.memorySvc.(memoryGateChecker) will always fail against the
-// concrete *adapters.Service (Go treats structs from different
-// packages as distinct types even with identical fields). Extract
-// these types into scripts/contracts/ so both packages share one
-// canonical definition.
+// Commit H Phase 2 (June 2026): the gemmamemory gemmamemory gate service +
+// MemoryCacheAdapter wrapper were removed from the cross-package
+// surface. The engine now passes nil memoryCache to the ctor; the
+// runtime `useMemory && !skipMemory && e.memorySvc != nil` check
+// short-circuits the cache path. Local types memoryGateRequest +
+// memoryGateResult remain as the in-package narrow-type contract.
 type memoryGateChecker interface {
 	CheckGate(ctx context.Context, req memoryGateRequest) (*memoryGateResult, error)
 }
 
-// memoryGateRequest is a local copy of adapters.MemoryGateRequest.
-// See Phase 1c TODO on memoryGateChecker.
+// memoryGateRequest: in-package narrow type for the memoryCache interface.
+// See Commit H Phase 2 note on memoryGateChecker.
 type memoryGateRequest struct {
 	ChannelID    string
 	Title        string
@@ -103,8 +103,8 @@ type memoryGateRequest struct {
 	ForceRefresh bool
 }
 
-// memoryGateResult is a local copy of adapters.GateResult.
-// See Phase 1c TODO on memoryGateChecker.
+// memoryGateResult: in-package narrow type for the memoryCache interface.
+// See Commit H Phase 2 note on memoryGateChecker.
 type memoryGateResult struct {
 	Hit       bool
 	Output    string

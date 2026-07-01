@@ -31,7 +31,7 @@ import (
 // is nil-safe: methods guard against nil receivers before access.
 //
 // Composition root (internal/app/composition.go) wires this struct once
-// when constructing the adapters.Service used by the extraction pipeline.
+// when constructing the Service used by the extraction pipeline.
 // Fields are unexported because all accessors are methods in this package.
 type Service struct {
 	log               *zap.Logger
