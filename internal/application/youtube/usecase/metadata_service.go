@@ -356,12 +356,38 @@ func buildVideoURL(clipID string, existing *asset.Asset) string {
 	return ""
 }
 
+// BuildFallbackSearchText populates `clip.SearchText` with a
+// 1 KB-bounded canonical concatenation of title + summary +
+// topics (transcript is empty in this fallback path because
+// the ym=nil branch never reads <LocalPath>.txt — the
+// canonical signature treats transcripts as nullable).
+//
+// Phase 1c closure (Commit 4/4, June 2026): replaced the prior
+// `_ = clip` no-op stub with a delegation to the canonical
+// ytmeta.BuildFallbackSearchText helper. The pre-Commit-1
+// stub left clip.SearchText empty, which silently degraded
+// the semantic-search indexer's BM25-recall surface when
+// ym=nil (yt-dlp failure path). Post-commit-4 the same
+// fallback path writes a real search surface; downstream
+// Qdrant indexing sees an actual signal instead of an
+// empty string.
 func (s *MetadataService) BuildFallbackSearchText(clip *asset.Asset) {
-	// Phase 1c deferral (June 2026): deterministic SearchText fallback
-	// (built from existing.Tags / Name / Description / Metadata map)
-	// lands in Commit 4/4 of the Phase 1c closure chain — see
-	// CHANGELOG.md ### Deferred.
-	_ = clip
+	if clip == nil {
+		return
+	}
+	// Defensive precedence: future post-write-save paths that
+	// re-run this method after a partial enrichment may have
+	// `youtube_title` stamped in metadata; honor that over
+	// `clip.Name` in that case. The current ym=nil fallback
+	// in EnrichClip never stamps `youtube_title`, so this
+	// branch is observably inert today.
+	title := clip.Name
+	if v := clip.GetMetadataString("youtube_title"); v != "" {
+		title = v
+	}
+	summary := clip.GetMetadataString("clip_summary")
+	topics := metadataStringSlice(clip.Metadata, "topics")
+	clip.SearchText = ytmeta.BuildFallbackSearchText(title, summary, topics, "")
 }
 
 func metadataStringSlice(m map[string]any, key string) []string {
