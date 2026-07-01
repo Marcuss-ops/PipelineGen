@@ -7,8 +7,8 @@
 // the orchestrator. Extracting it to a dedicated helper function
 // returns the orchestrator to a pure-routing shape (use cases →
 // job handler → handler → module.Register) and groups the canonical
-// 7 postprocessors (persistence, document, entities, metadata,
-// images, voiceover, clip_bindings, stock_association) into a single
+// 5 postprocessors (persistence, entities, metadata,
+// clip_bindings, stock_association) into a single
 // testable seam.
 //
 // Package boundary: same `package app` as wire_script.go, exactly
@@ -37,7 +37,6 @@ import (
 	"fmt"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -76,20 +75,9 @@ func registerScriptPostProcessors(
 		return fmt.Errorf("registerScriptPostProcessors: ppReg is nil (composition bug)")
 	}
 
-	// Document processor is always registered so the canonical
-	// required-processor set stays stable across minimal and
-	// production bootstraps. When Drive is unavailable the processor
-	// remains in the registry and will fail explicitly at runtime if
-	// a plan requests document output.
-	var genDocsSvc *usecase.DocumentsService
-	if root.Drive.DocClient != nil {
-		genDocsSvc = usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
-	} else if log != nil {
-		log.Warn("document processor registered without Drive client; runtime document generation will fail if requested")
-	}
-	if !ppReg.Register(adapters.NewDocumentProcessor(genDocsSvc, nil)) {
-		return fmt.Errorf("register document processor: composition bug or duplicate name")
-	}
+	// Fase 2 Spina Dorsale (July 2026): document processor removed.
+	// Google Doc creation is now a separate document.generate
+	// downstream job (see internal/domain/job/job.go TypeDocumentGenerate).
 
 	// Persistence processor (PR 5: now the single persistence
 	// owner; engine no longer writes to SQLite). Constructor takes
@@ -103,27 +91,13 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// Image processor — adapted from *imgservice.Service to
-	// usecase.ImageGenService via imageGenSvcAdapter (composition-
-	// root-local adapter, lives in wire_script_curation.go). Best-
-	// effort: missing ImageService means runtime preflight warns.
-	if root.Domains != nil && root.Domains.ImageService != nil {
-		imgAdapter := &imageGenSvcAdapter{svc: root.Domains.ImageService}
-		if !ppReg.Register(adapters.NewImageProcessor(imgAdapter, log)) {
-			return fmt.Errorf("register image processor: composition bug")
-		}
-	}
+	// Fase 2 Spina Dorsale (July 2026): image processor removed.
+	// Scene images are now produced by a separate images.generate
+	// downstream job (see internal/domain/job/job.go TypeImagesGenerate).
 
-	// Voiceover processor — direct inject *voiceover.Service into
-	// the scripts.VoiceoverService port (Step 9 / B-3 CUTOVER). The
-	// typed-port contract is locked at compile time by
-	// `var _ adapters.VoiceoverService = (*voiceover.Service)(nil)`
-	// in processor_voiceover.go (catches signature drift at build).
-	if root.Domains != nil && root.Domains.VoiceoverService != nil {
-		if !ppReg.Register(adapters.NewVoiceoverProcessor(root.Domains.VoiceoverService, log)) {
-			return fmt.Errorf("register voiceover processor: composition bug")
-		}
-	}
+	// Fase 2 Spina Dorsale (July 2026): voiceover processor removed.
+	// Voiceovers are now produced by a separate voiceover.generate
+	// downstream job (see internal/domain/job/job.go TypeVoiceoverGenerate).
 
 	// PR 3 (June 2026): Entities + Metadata are now
 	// ProcessorRequired per the user spec. Adapters are nil-

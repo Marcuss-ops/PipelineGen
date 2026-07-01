@@ -161,6 +161,75 @@ deprecations:
       status=removed AND removal_date=2026-06-28 (today)?" should consult
       this paragraph.
 
+  # ── Fase 2 Spina Dorsale (July 2026): script postprocessor → downstream jobs ──
+  # Four deprecation records for the transition from inline postprocessors
+  # (voiceover, images, document within script.generate) to independent
+  # downstream jobs. The deprecated OutputSpec flags and ArtifactResult.Document
+  # field remain for backward compatibility during the EXPAND→CUTOVER window.
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: OUTPUT_SPEC_VOICEOVER_FLAG
+    owner_capability: internal/domain/script
+    exact_symbol: "OutputSpec.GenerateVoiceover (bool flag, json: generate_voiceover)"
+    file: internal/domain/script/output_spec.go
+    file_line: 131
+    replacement: "Voiceover is now produced by a separate voiceover.generate downstream job (internal/domain/job/job.go TypeVoiceoverGenerate). Set voiceover requirements via sceneplan.AssetRequirements instead."
+    introduction_date: 2026-07-01
+    removal_date: 2026-Q3
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "rg 'GenerateVoiceover' internal/domain/script/output_spec.go returns the deprecated field declaration + the deprecation comment only. Runtime: setting the flag has no effect on script.generate pipeline."
+    usage_metric: "Pre-removal: flag read by preset_resolver, generation_normalizer, handler_legacy_adapters. Post-CUTOVER: zero readers of the flag in application code."
+    migration_phase: EXPAND
+    status: in_progress
+    notes: "Flag retained for backward compatibility. Setting it has no effect on the script.generate pipeline post-Fase 2."
+
+  - id: OUTPUT_SPEC_IMAGES_FLAG
+    owner_capability: internal/domain/script
+    exact_symbol: "OutputSpec.GenerateSceneImages (bool flag, json: generate_scene_images)"
+    file: internal/domain/script/output_spec.go
+    file_line: 138
+    replacement: "Scene images are now produced by a separate images.generate downstream job (internal/domain/job/job.go TypeImagesGenerate). Set image requirements via sceneplan.AssetRequirements instead."
+    introduction_date: 2026-07-01
+    removal_date: 2026-Q3
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "rg 'GenerateSceneImages' internal/domain/script/output_spec.go returns the deprecated field declaration + the deprecation comment only. Runtime: setting the flag has no effect on script.generate pipeline."
+    usage_metric: "Pre-removal: flag read by preset_resolver, generation_normalizer, handler_legacy_adapters. Post-CUTOVER: zero readers of the flag in application code."
+    migration_phase: EXPAND
+    status: in_progress
+    notes: "Flag retained for backward compatibility. Setting it has no effect on the script.generate pipeline post-Fase 2."
+
+  - id: OUTPUT_SPEC_DOCUMENT_FLAG
+    owner_capability: internal/domain/script
+    exact_symbol: "OutputSpec.GenerateDocument (bool flag, json: generate_document)"
+    file: internal/domain/script/output_spec.go
+    file_line: 145
+    replacement: "Google Doc creation is now produced by a separate document.generate downstream job (internal/domain/job/job.go TypeDocumentGenerate). Set document requirements via sceneplan.AssetRequirements instead."
+    introduction_date: 2026-07-01
+    removal_date: 2026-Q3
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "rg 'GenerateDocument' internal/domain/script/output_spec.go returns the deprecated field declaration + the deprecation comment only. Runtime: setting the flag has no effect on script.generate pipeline."
+    usage_metric: "Pre-removal: flag read by preset_resolver, generation_normalizer, handler_legacy_adapters. Post-CUTOVER: zero readers of the flag in application code."
+    migration_phase: EXPAND
+    status: in_progress
+    notes: "Flag retained for backward compatibility. Setting it has no effect on the script.generate pipeline post-Fase 2."
+
+  - id: ARTIFACT_RESULT_DOCUMENT_FIELD
+    owner_capability: internal/domain/script
+    exact_symbol: "ArtifactResult.Document (*DocumentArtifact field, json: document)"
+    file: internal/domain/script/generation_result.go
+    file_line: 110
+    replacement: "Google Doc metadata is now returned by the document.generate downstream job result, not by the script.generate envelope."
+    introduction_date: 2026-07-01
+    removal_date: 2026-Q3
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "rg 'ArtifactResult.*Document|Artifacts\.Document' internal/domain/script/ returns the deprecated field declaration + the deprecation comment only."
+    usage_metric: "Pre-removal: field populated by DocumentProcessor within script.generate postprocessor chain. Post-Fase 2: field always nil when served by the new pipeline."
+    migration_phase: EXPAND
+    status: in_progress
+    notes: "Field retained for backward compatibility. Always nil when served by the new pipeline."
+
+  # ──────────────────────────────────────────────────────────────────
+
   # ── 1. PR-CLIP-RESTORE — alias method removed from sqlite/assets repository ──
   - id: PR-CLIP-RESTORE
     owner_capability: internal/infrastructure/database/sqlite/assets

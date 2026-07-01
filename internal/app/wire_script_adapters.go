@@ -228,9 +228,13 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 // validator fails closed if they are not registered; the runtime
 // preflight fails closed if a plan requests them and the registry
 // has no adapter.
+//
+// Fase 2 Spina Dorsale (July 2026): "document" removed from
+// requiredProcessorNames. Document generation is now a downstream
+// job (document.generate), not an inline postprocessor. The
+// document processor is no longer registered in the script pipeline.
 var requiredProcessorNames = []string{
 	"persistence",
-	"document",
 	"entities",
 	"metadata",
 }

@@ -98,11 +98,29 @@ type ScriptSpec struct {
 // to bool via Toggle.AsBool() at the boundary.
 type OutputSpec struct {
 	// ── Postprocessors (bool — fully compatible with prior contracts) ──
-	ExtractEntities     bool `json:"extract_entities,omitempty"`
-	GenerateMetadata    bool `json:"generate_metadata,omitempty"`
-	GenerateVoiceover   bool `json:"generate_voiceover,omitempty"`
+	ExtractEntities  bool `json:"extract_entities,omitempty"`
+	GenerateMetadata bool `json:"generate_metadata,omitempty"`
+
+	// Deprecated: GenerateVoiceover is no longer an inline postprocessor.
+	// Fase 2 Spina Dorsale (July 2026): voiceovers are now produced by
+	// a separate voiceover.generate downstream job. This flag is kept
+	// for backward compatibility; setting it has no effect on the
+	// script.generate pipeline.
+	GenerateVoiceover bool `json:"generate_voiceover,omitempty"`
+
+	// Deprecated: GenerateSceneImages is no longer an inline postprocessor.
+	// Fase 2 Spina Dorsale (July 2026): scene images are now produced by
+	// a separate images.generate downstream job. This flag is kept
+	// for backward compatibility; setting it has no effect on the
+	// script.generate pipeline.
 	GenerateSceneImages bool `json:"generate_scene_images,omitempty"`
-	GenerateDocument    bool `json:"generate_document,omitempty"`
+
+	// Deprecated: GenerateDocument is no longer an inline postprocessor.
+	// Fase 2 Spina Dorsale (July 2026): Google Doc creation is now
+	// produced by a separate document.generate downstream job. This
+	// flag is kept for backward compatibility; setting it has no
+	// effect on the script.generate pipeline.
+	GenerateDocument bool `json:"generate_document,omitempty"`
 
 	// ── Persistence ──────────────────────────────────────────────────
 	SaveToDB         bool `json:"save_to_db,omitempty"`
@@ -125,10 +143,12 @@ type OutputSpec struct {
 
 // HasAnyPostprocessor returns true when at least one postprocessor
 // flag is enabled.
+//
+// Fase 2 Spina Dorsale (July 2026): GenerateVoiceover, GenerateSceneImages,
+// and GenerateDocument are no longer inline postprocessors — they are
+// produced by separate downstream jobs. Only script-internal transformations
+// (entities, metadata) are checked here.
 func (o *OutputSpec) HasAnyPostprocessor() bool {
 	return o.ExtractEntities ||
-		o.GenerateMetadata ||
-		o.GenerateVoiceover ||
-		o.GenerateSceneImages ||
-		o.GenerateDocument
+		o.GenerateMetadata
 }

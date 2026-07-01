@@ -204,3 +204,80 @@ type RenderManifest struct {
 	// BackgroundMusicPath is an optional path to background audio.
 	BackgroundMusicPath string `json:"background_music_path,omitempty"`
 }
+
+// ── AssetRequirements (Fase 2 Spina Dorsale, July 2026) ─────────────
+
+// AssetRequirements is the canonical downstream-work descriptor
+// emitted by script.generate. It describes what each scene needs
+// without materialising any artifact — images, voiceover, and
+// documents are produced by separate downstream jobs.
+//
+// AssetRequirements replaces the inline postprocessor chain for
+// voiceover, images, and document generation. The script generator
+// emits one AssetRequirements envelope per generation; downstream
+// jobs (assets.resolve, images.generate, voiceover.generate,
+// document.generate) each consume the relevant subset.
+type AssetRequirements struct {
+	// ScriptID is the canonical script row identifier (populated
+	// by the persistence postprocessor).
+	ScriptID int64 `json:"script_id,omitempty"`
+
+	// CorrelationID links all downstream jobs to the same workflow
+	// invocation.
+	CorrelationID string `json:"correlation_id"`
+
+	// Scenes holds per-scene asset requirements. One entry per
+	// scene that needs visual or audio assets.
+	Scenes []SceneAssetRequirement `json:"scenes,omitempty"`
+
+	// DocumentRequest, when non-nil, signals that a Google Doc
+	// should be produced from the generated script.
+	DocumentRequest *DocumentGenerationRequest `json:"document_request,omitempty"`
+
+	// Metadata carries multilingual metadata for downstream
+	// publication (title, description, tags per language).
+	Metadata []AssetMetadata `json:"metadata,omitempty"`
+}
+
+// SceneAssetRequirement pairs a scene index with its visual and
+// audio requirements, derived from the generated SpecScene.
+type SceneAssetRequirement struct {
+	// SceneIndex is the zero-based position in the SpecScene.Scenes array.
+	SceneIndex int `json:"scene_index"`
+
+	// SceneID matches SpecScene.ID.
+	SceneID string `json:"scene_id"`
+
+	// Text is the scene narration text (used as voiceover input).
+	Text string `json:"text"`
+
+	// Visual describes what visual assets this scene needs.
+	// Zero value means no visual requirement.
+	Visual VisualRequirement `json:"visual,omitempty"`
+
+	// Audio describes what audio assets this scene needs.
+	// Zero value means no audio requirement.
+	Audio AudioRequirement `json:"audio,omitempty"`
+}
+
+// DocumentGenerationRequest carries the parameters needed to
+// produce a Google Doc from the generated script.
+type DocumentGenerationRequest struct {
+	// DriveFolderID is the target Google Drive folder.
+	DriveFolderID string `json:"drive_folder_id"`
+
+	// Title is the document title.
+	Title string `json:"title,omitempty"`
+
+	// Language is the BCP-47 language tag of the script.
+	Language string `json:"language,omitempty"`
+}
+
+// AssetMetadata carries per-language title, description, and tags
+// for downstream publication (e.g. YouTube video metadata).
+type AssetMetadata struct {
+	Language    string   `json:"language"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+}

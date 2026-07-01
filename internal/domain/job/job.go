@@ -99,4 +99,22 @@ const (
 	TypeMediaCurate            = "media.curate"
 	TypeVoiceoverPromo         = "voiceover.promo"
 	TypeYouTubeChannelSync     = "youtube.channel.sync"
+
+	// ── Spina Dorsale Fase 2 (July 2026): downstream artifact jobs ──
+
+	// TypeImagesGenerate is the canonical job type for AI image
+	// generation. Scheduled by the workflow coordinator after
+	// script.generate completes.
+	TypeImagesGenerate = "images.generate"
+
+	// TypeAssetsResolve is the canonical job type for semantic
+	// asset resolution. Scheduled by the workflow coordinator
+	// after script.generate completes. Reads AssetRequirements
+	// and resolves clips/stock via Qdrant.
+	TypeAssetsResolve = "assets.resolve"
+
+	// TypeDocumentGenerate is the canonical job type for Google
+	// Doc creation. Scheduled by the workflow coordinator after
+	// script.generate completes.
+	TypeDocumentGenerate = "document.generate"
 )
