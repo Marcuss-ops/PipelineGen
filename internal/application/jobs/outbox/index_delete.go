@@ -80,6 +80,22 @@ type AssetDeleter interface {
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
 	SoftDelete(ctx context.Context, id string) error
 	SetIndexState(ctx context.Context, id string, state asset.IndexState) error
+	// SetLifecycleState writes the Blocco 3.1 canonical
+	// media_assets.lifecycle_state column (5-state deletion
+	// machine ACTIVE → DELETE_REQUESTED → DRIVE_DELETE_PENDING →
+	// INDEX_DELETE_PENDING → DELETED). The IndexDeleteHandler
+	// calls this method ONLY on the terminal hop — after Qdrant
+	// delete + SQLite SoftDelete + index_state=DELETED — to close
+	// the state machine so an operator dashboard reads
+	// 'lifecycle_state=DELETED' (not stuck at 'INDEX_DELETE_PENDING')
+	// for a fully retired asset. Production concrete
+	// *assets.ClipsRepository satisfies it directly (added in
+	// Blocco 3.1 commit 2/3 at
+	// internal/infrastructure/database/sqlite/assets/clips_lifecycle_state.go).
+	// Pattern 0 narrowness: ONLY SetLifecycleState — not the
+	// broader CRUD port — so IndexDeleteHandler cannot accidentally
+	// UPSERT other columns.
+	SetLifecycleState(ctx context.Context, id string, state asset.LifecycleState) error
 }
 
 // indexDeleteRequestV1 is the canonical envelope for
@@ -304,23 +320,41 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			)
 			return fmt.Errorf("asset.index.delete_requested SoftDelete(%s): %w", req.AssetID, err)
 		}
-		// Final canonical state flip — index_state = 'DELETED' runs
-		// AFTER SoftDelete so the column-side and lifecycle-side
-		// tombstones settle in the same write batch. SQLite's per-row
-		// write is implicit so a transient state where
-		// lifecycle_state='deleted' AND index_state='DELETE_PENDING'
-		// is briefly observable to a concurrent reader; the
-		// idempotency pre-flight tolerates both (no false dead-letter
-		// risk), and an operator dashboard sees a 1-row window on a
-		// freshly-DELETED asset. The setIndexState failure here is
-		// retryable: on the next lease the pre-flight catches
-		// lifecycle_state='deleted' → early success; the wasted
-		// transition is one column flip.
+		// Final canonical index_state flip — index_state = 'DELETED'
+		// runs AFTER SoftDelete so the column-side and lifecycle-side
+		// tombstones settle together. SQLite's per-row write is
+		// implicit so a transient state where lifecycle_state=
+		// 'INDEX_DELETE_PENDING' AND index_state='DELETE_PENDING' is
+		// briefly observable to a concurrent reader; the idempotency
+		// pre-flight tolerates both (no false dead-letter risk).
+		// SetIndexState failure is retryable: on the next lease the
+		// pre-flight catches lifecycle_state='DELETED' → early
+		// success; the wasted transition is one column flip.
 		if err := h.assetDeleter.SetIndexState(ctx, req.AssetID, asset.StateDELETED); err != nil {
 			log.Warn("asset.index.delete_requested: SetIndexState(DELETED) failed (retryable)",
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested SetIndexState(DELETED, %s): %w", req.AssetID, err)
+		}
+		// Terminal lifecycle_state hop — closes the Blocco 3.1
+		// 5-state deletion state machine on its last edge so an
+		// operator dashboard reads 'lifecycle_state=DELETED' (not
+		// stuck at 'INDEX_DELETE_PENDING') for a fully retired asset.
+		// Idempotent: re-running on a row already at DELETED is a
+		// no-op write (ClipsRepository.SetLifecycleState is
+		// idempotent per its docstring). Retryable on transient
+		// SQLite failures — the next pool attempt picks up the
+		// (Qdrant-already-deleted + SoftDelete-already-done +
+		// index_state-already-DELETED) state via the pre-flight but
+		// the lifecycle_state column itself is the literal operator-
+		// dashboard signal so we MUST re-try the write; the pre-
+		// flight's lifecycle_state=='DELETED' guard absorbs a
+		// successful retry that landed between attempts.
+		if err := h.assetDeleter.SetLifecycleState(ctx, req.AssetID, asset.StateDeleted); err != nil {
+			log.Warn("asset.index.delete_requested: SetLifecycleState(DELETED) failed (retryable — Qdrant+SoftDelete+index_state already done)",
+				append(reqLog, zap.Error(err))...,
+			)
+			return fmt.Errorf("asset.index.delete_requested SetLifecycleState(DELETED, %s): %w", req.AssetID, err)
 		}
 	}
 

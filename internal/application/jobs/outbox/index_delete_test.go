@@ -37,18 +37,30 @@ func (m *mockQdrantDeleter) DeletePoints(ctx context.Context, ids []string) erro
 
 func (m *mockQdrantDeleter) callCount() int { return len(m.deleteCalls) }
 
+// indexStateCall records a SetIndexState call (IndexState column).
 type indexStateCall struct {
 	ID    string
 	State asset.IndexState
 }
 
+// lifecycleStateCall records a SetLifecycleState call (LilycleState
+// column). Kept structurally separate from indexStateCall so a future
+// regression that mixes the two is a build failure (different concrete
+// types in State field).
+type lifecycleStateCall struct {
+	ID    string
+	State asset.LifecycleState
+}
+
 type mockAssetDeleter struct {
-	getResult       *asset.Asset
-	getErr          error
-	softDeleteIDs   []string
-	softErr         error
-	indexStateCalls []indexStateCall
-	setStateErr     error
+	getResult            *asset.Asset
+	getErr               error
+	softDeleteIDs        []string
+	softErr              error
+	indexStateCalls      []indexStateCall
+	setStateErr          error
+	lifecycleStateCalls  []lifecycleStateCall
+	setLifecycleStateErr error
 }
 
 func (m *mockAssetDeleter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
@@ -81,6 +93,24 @@ func (m *mockAssetDeleter) SetIndexState(ctx context.Context, id string, state a
 
 func (m *mockAssetDeleter) indexStateTransitions() []indexStateCall {
 	return m.indexStateCalls
+}
+
+// SetLifecycleState records the (id, state) pair so tests can assert
+// the canonical terminal hop lifecycle_state=INDEX_DELETE_PENDING →
+// DELETED that closes the Blocco 3.1 deletion state machine. Mirrors
+// the "always record, optionally error" pattern used by SoftDelete
+// and SetIndexState so a call is observable even when
+// setLifecycleStateErr is non-nil.
+func (m *mockAssetDeleter) SetLifecycleState(ctx context.Context, id string, state asset.LifecycleState) error {
+	m.lifecycleStateCalls = append(m.lifecycleStateCalls, lifecycleStateCall{ID: id, State: state})
+	if m.setLifecycleStateErr != nil {
+		return m.setLifecycleStateErr
+	}
+	return nil
+}
+
+func (m *mockAssetDeleter) lifecycleStateTransitions() []lifecycleStateCall {
+	return m.lifecycleStateCalls
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -195,7 +225,9 @@ func TestIndexDeleteHandler_EmptyAssetIDIsTerminal(t *testing.T) {
 // row is already gone (deleted elsewhere; or never existed). The
 // handler MUST return nil so the pool MarksCompleted, and MUST NOT
 // call either deleter — Qdrant call would be cheap but pointless
-// (and SoftDelete would no-op the same way).
+// (and SoftDelete would no-op the same way). The terminal
+// lifecycle_state=DELETED hop must also NOT fire (no asset row to
+// write to).
 func TestIndexDeleteHandler_MissingAssetIdempotentSuccess(t *testing.T) {
 	assets := &mockAssetDeleter{getResult: nil}
 	qdrant := &mockQdrantDeleter{}
@@ -211,11 +243,16 @@ func TestIndexDeleteHandler_MissingAssetIdempotentSuccess(t *testing.T) {
 	if assets.softDeleteCount() != 0 {
 		t.Errorf("SoftDelete must NOT be called when asset row is absent (got %d)", assets.softDeleteCount())
 	}
+	if len(assets.lifecycleStateCalls) != 0 {
+		t.Errorf("SetLifecycleState must NOT be called when asset row is absent (got %d calls)", len(assets.lifecycleStateCalls))
+	}
 }
 
 // TestIndexDeleteHandler_AlreadyDeletedCanonicalSuccess: lifecycle_state
 // is already 'DELETED' (canonical post-PR4). Return idempotent
-// success; no deleter calls.
+// success; no deleter calls. The terminal lifecycle_state=DELETED
+// hop must also NOT fire (the row is already in DELETED, writing
+// again would be observed as a redundant state flip).
 func TestIndexDeleteHandler_AlreadyDeletedCanonicalSuccess(t *testing.T) {
 	assets := &mockAssetDeleter{
 		getResult: &asset.Asset{
@@ -235,6 +272,9 @@ func TestIndexDeleteHandler_AlreadyDeletedCanonicalSuccess(t *testing.T) {
 	}
 	if assets.softDeleteCount() != 0 {
 		t.Errorf("already-deleted asset must NOT trigger SoftDelete (got %d)", assets.softDeleteCount())
+	}
+	if len(assets.lifecycleStateCalls) != 0 {
+		t.Errorf("SetLifecycleState must NOT fire on already-DELETED pre-flight (got %d calls)", len(assets.lifecycleStateCalls))
 	}
 }
 
@@ -262,7 +302,10 @@ func TestIndexDeleteHandler_AlreadyDeletedLegacySuccess(t *testing.T) {
 
 // TestIndexDeleteHandler_HappyPathTransitionsToDeleted: live asset
 // (state = 'ready'). Verify BOTH the Qdrant call AND the SoftDelete
-// call happen in this exact order, with the right asset_id.
+// call happen in this exact order, with the right asset_id. The
+// terminal lifecycle_state=DELETED hop must fire AFTER Qdrant
+// delete + SoftDelete + index_state=DELETED — pinning the full
+// state-machine close for the Blocco 3.1 audit.
 func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 	assets := &mockAssetDeleter{
 		getResult: &asset.Asset{
@@ -288,6 +331,90 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 	}
 	if assets.softDeleteIDs[0] != "clip-to-delete" {
 		t.Errorf("SoftDelete called with wrong id: %q", assets.softDeleteIDs[0])
+	}
+	// index_state must reach DELETED exactly once.
+	if len(assets.indexStateCalls) != 2 {
+		t.Fatalf("expected 2 index_state flips on happy path (DELETE_PENDING + DELETED); got %d", len(assets.indexStateCalls))
+	}
+	if assets.indexStateCalls[0].State != asset.StateIndexDeletePending {
+		t.Errorf("first index_state flip must be DELETE_PENDING; got %q", assets.indexStateCalls[0].State)
+	}
+	if assets.indexStateCalls[1].State != asset.StateDELETED {
+		t.Errorf("second index_state flip must be DELETED; got %q", assets.indexStateCalls[1].State)
+	}
+	// Lifecycle_state must reach DELETED exactly once (terminal hop).
+	if len(assets.lifecycleStateCalls) != 1 {
+		t.Fatalf("lifecycle_state must flip to DELETED exactly once on success (terminal hop); got %d calls", len(assets.lifecycleStateCalls))
+	}
+	if assets.lifecycleStateCalls[0].State != asset.StateDeleted {
+		t.Errorf("lifecycle_state terminal hop must be DELETED; got %q", assets.lifecycleStateCalls[0].State)
+	}
+	if assets.lifecycleStateCalls[0].ID != "clip-to-delete" {
+		t.Errorf("lifecycle_state terminal hop called with wrong id: %q", assets.lifecycleStateCalls[0].ID)
+	}
+}
+
+// TestIndexDeleteHandler_LifecycleStateAdvancesToDeleted: a
+// narrower-form mirror of the happy-path test that focuses the
+// assertion on the lifecycle_state hop. Future regressions that
+// drop the terminal flip will fail this test loudly even if they
+// preserve all other invariants.
+func TestIndexDeleteHandler_LifecycleStateAdvancesToDeleted(t *testing.T) {
+	assets := &mockAssetDeleter{
+		getResult: &asset.Asset{
+			ID:             "clip-terminal-hop",
+			LifecycleState: asset.StateLifecycleIndexDeletePending, // mid-flight — handler must close
+		},
+	}
+	qdrant := &mockQdrantDeleter{}
+	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+
+	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-terminal-hop", "idem-terminal-hop"))); err != nil {
+		t.Fatalf("terminal-hop happy path should succeed; got: %v", err)
+	}
+	if got := len(assets.lifecycleStateCalls); got != 1 {
+		t.Fatalf("expected exactly 1 lifecycle_state call (terminal hop); got %d", got)
+	}
+	if got := assets.lifecycleStateCalls[0].State; got != asset.StateDeleted {
+		t.Errorf("terminal hop must write DELETED; got %q", got)
+	}
+}
+
+// TestIndexDeleteHandler_LifecycleStateSetErrorIsRetryable: when
+// SetLifecycleState returns a transient SQLite error (e.g. database
+// is locked), the handler MUST classify the error as retryable
+// (NOT terminal) so the outbox pool retries per its backoff. The
+// retry is safe because the Qdrant delete + SoftDelete + index_state
+// flips are all idempotent at the API/repo layer; the
+// lifecycle_state write will re-attempt and succeed on the next
+// pool attempt.
+func TestIndexDeleteHandler_LifecycleStateSetErrorIsRetryable(t *testing.T) {
+	assets := &mockAssetDeleter{
+		getResult:            &asset.Asset{ID: "clip-setlsc-fail", LifecycleState: asset.StateActive},
+		setLifecycleStateErr: errors.New("sqlite: database is locked"),
+	}
+	qdrant := &mockQdrantDeleter{}
+	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+
+	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-setlsc-fail", "idem-setlsc-fail")))
+	if err == nil {
+		t.Fatal("expected error from SetLifecycleState failure; got nil")
+	}
+	if outboxevents.IsTerminal(err) {
+		t.Fatalf("SetLifecycleState transient error must be RETRYABLE; got terminal: %v", err)
+	}
+	if !strings.Contains(err.Error(), "SetLifecycleState") {
+		t.Errorf("retryable error lost the diagnostic marker: %q", err.Error())
+	}
+	// Qdrant + SoftDelete + index_state=DELETED must have completed
+	// (these are the prerequisites for the failing SetLifecycleState
+	// call). A future regression that reorders and skips the
+	// earlier writes when SetLifecycleState fails must break here.
+	if qdrant.callCount() != 1 {
+		t.Errorf("Qdrant.DeletePoints should have completed before SetLifecycleState(DELETED); got %d calls", qdrant.callCount())
+	}
+	if assets.softDeleteCount() != 1 {
+		t.Errorf("SoftDelete should have completed before SetLifecycleState(DELETED); got %d calls", assets.softDeleteCount())
 	}
 }
 
