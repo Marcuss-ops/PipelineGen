@@ -6,8 +6,88 @@ package retry
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 )
+
+// ── TransientInfrastructureError ────────────────────────────────────────────
+
+// TransientInfrastructureError wraps an error to mark it as
+// transient (retryable) at a typed level. Callers that know an
+// error is infrastructure-level (e.g. SQLite locked, HTTP 503,
+// DNS timeout) can wrap the original error with this type so
+// downstream IsTransient predicates don't need substring matching.
+//
+// Usage:
+//
+//	if isSQLiteLocked(err) {
+//	    return &retry.TransientInfrastructureError{Err: err}
+//	}
+//
+// The Unwrap method surfaces the inner error for errors.Is / errors.As.
+type TransientInfrastructureError struct {
+	Err error
+}
+
+func (e *TransientInfrastructureError) Error() string {
+	if e.Err == nil {
+		return "transient infrastructure error"
+	}
+	return e.Err.Error()
+}
+
+func (e *TransientInfrastructureError) Unwrap() error {
+	return e.Err
+}
+
+// ── IsTransient ─────────────────────────────────────────────────────────────
+
+// transientSubstrings is the canonical taxonomy of transient-infrastructure
+// error substrings. Mirrors the taxonomy previously duplicated in
+// monitor/enqueue.go::isTransientEnqueueError (removed Step 7, July 2026).
+var transientSubstrings = []string{
+	"timeout",
+	"connection refused",
+	"connection reset",
+	"eof",
+	"429",
+	"503",
+	"502",
+	"504",
+	"rate limit",
+	"quota exceeded",
+	"temporarily unavailable",
+	"resource temporarily unavailable",
+}
+
+// IsTransient returns true when err is non-nil AND either:
+//   - err is (or wraps) a *TransientInfrastructureError, OR
+//   - err.Error() contains one of the canonical transient-infrastructure
+//     substrings (timeout, connection refused, 429, 503, etc.).
+//
+// This is the single canonical "should I retry this?" predicate for
+// the whole codebase. Callers that previously implemented their own
+// substring matcher (monitor.isTransientEnqueueError,
+// tagutil.IsTransientDownloadError, youtube/usecase.IsTransientExtractionError)
+// should migrate to this function and, where typed wrapping is feasible,
+// use TransientInfrastructureError.
+func IsTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	var te *TransientInfrastructureError
+	if errors.As(err, &te) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	for _, s := range transientSubstrings {
+		if strings.Contains(lower, s) {
+			return true
+		}
+	}
+	return false
+}
 
 // Options configures the retry loop behaviour.
 // All fields are optional — zero values fall back to sensible defaults.

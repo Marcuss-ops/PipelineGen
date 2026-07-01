@@ -44,7 +44,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -52,6 +51,7 @@ import (
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // enqueueFromAnalysis builds the canonical ExtractRequest-shaped payload
@@ -159,7 +159,7 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info VideoInfo
 			zap.Error(commitErr))
 		// If the error is an ErrStateConflict (row not in pending/analyzing),
 		// record as terminal — the row is in an unexpected state.
-		retryable := isTransientEnqueueError(commitErr)
+		retryable := retry.IsTransient(commitErr)
 		if errors.Is(commitErr, sqlassets.ErrStateConflict) {
 			retryable = false
 		}
@@ -198,44 +198,6 @@ func tryReserve(counter *atomic.Int32, limit int) bool {
 	}
 }
 
-// isTransientEnqueueError returns true when the EnqueueExtract error
-// is a transient infrastructure failure (timeout / 429 / 5xx /
-// connection-class errors) that warrants a retry on a later cycle.
-//
-// Commit 3/6 (P1 #5/#6/#7): the predicate runs at the repository
-// boundary (monitor package enqueue.go) so the persistence layer
-// (YoutubeDiscoveriesRepository) stays free of domain knowledge.
-// Any error not matching the transient taxonomy is treated as terminal:
-// a lease-rejection, payload-marshal failure, or business-rule reject
-// will simply re-fail on retry, so the row is marked rejected_terminal
-// with retryable=false to avoid wasting scheduler cycles on it.
-//
-// The substring taxonomy mirrors the one used in
-// pkg/retry.DoWithValue + the Channel Monitor's own retry.Do policy
-// (scheduler.go::checkChannel) so retries behave consistently across
-// the pipeline.
-func isTransientEnqueueError(err error) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Error())
-	for _, s := range []string{
-		"timeout",
-		"connection refused",
-		"connection reset",
-		"eof",
-		"429",
-		"503",
-		"502",
-		"504",
-		"rate limit",
-		"quota exceeded",
-		"temporarily unavailable",
-		"resource temporarily unavailable",
-	} {
-		if strings.Contains(lower, s) {
-			return true
-		}
-	}
-	return false
-}
+// isTransientEnqueueError was removed in Step 7 (July 2026) — migrated to
+// pkg/retry.IsTransient. The canonical transient-error taxonomy now lives
+// in pkg/retry/retry.go::transientSubstrings.
