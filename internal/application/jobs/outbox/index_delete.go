@@ -36,6 +36,7 @@ package outbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -43,6 +44,32 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
+
+// indexLifecycleTerminalErr is the typed-terminal error sentinel
+// raised on envelope failures. The wrap path stamps every string
+// with a recognisable prefix so the production pool's
+// IsTerminal classifier (outboxevents.NewTerminalError consumer)
+// dead-letters immediately rather than spinning through
+// max_attempts. Every Handle-returned terminal error wraps this
+// via outboxevents.NewTerminalError.
+//
+// Blocco 3.1 commit 2/3 invariant: any return path that detects a
+// malformed envelope, schema mismatch, missing field, or
+// lifecycle-state inconsistency (Drive-block guard) MUST route
+// through this sentinel + NewTerminalError wrap. Pragmatic
+// envelope-validation loops (e.g. "missing lifecycle_state hop")
+// belong here, NOT in handler-side transient error returns.
+var indexLifecycleTerminalErr = errors.New("index_delete: terminal envelope error")
+
+// assetErrTerminalEnvelope is a sub-sentinel used on Drive-block
+// guard rejections. The wrapped error message explicitly mentions
+// (a) the guard identifier ("drive_file_alive_block"), (b) the
+// Italian "ancora vivo" diagnostic hint per the user spec ("errore
+// chiaro" — file Drive ancora vivo blocks INDEX_DELETED), and
+// (c) the retry guidance ("re-enqueue only after DriveDeleteHandler
+// stamps DRIVE_DELETED"). Pinning all three in a sentinel-wrapped
+// error keeps the operator log greps + dashboards operational.
+var assetErrTerminalEnvelope = fmt.Errorf("%w: drive_file_alive_block guard", indexLifecycleTerminalErr)
 
 // DeleteRequestSchemaVersion is the canonical, EXACT string the handler
 // accepts. Producers MUST send "asset.index.delete_requested.v1"
@@ -254,47 +281,80 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			)
 			return nil
 		}
-		// Idempotency pre-flight #2: terminal-state short-circuit.
-		// Blocco 3.1 commit 4/3 (June 2026): canonical "DELETED"
-		// (from PR4) + legacy lowercase "deleted" (from the existing
-		// SoftDelete call) BOTH short-circuit to nil; this is the
-		// same pair the SoftDeleteFilter accepts so future
-		// canonicalisation is non-breaking.
-		switch string(existing.LifecycleState) {
-		case string(asset.StateDeleted), "deleted":
-			log.Info("asset.index.delete_requested: asset already in deleted state — treat as success (idempotent)",
-				append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
-			)
-			return nil
-		}
-		// Blocco 3.1 commit 4/3 (June 2026): explicit in-flight
-		// acknowledgment. A row already at INDEX_DELETE_PENDING means
-		// the deletion chain is mid-flight (Drive side-effect done,
-		// the dispatcher emitted the index-delete event, and THIS
-		// handler is processing it). The handler proceeds with the
-		// chain so the work reaches terminal DELETED — all five
-		// steps ahead (SetIndexState(DELETE_PENDING) → Qdrant →
-		// SoftDelete → SetIndexState(DELETED) → SetLifecycleState(DELETED))
-		// are idempotent at their respective layers.
-		//
-		// Pre-fix pre-flight did not distinguish this state from a
-		// fresh entry (it fell through to the work with no log). The
-		// new explicit case makes the in-flight semantic observable
-		// so an operator investigating "why is my row stuck at
-		// INDEX_DELETE_PENDING" via dashboards can confirm "yes,
-		// the handler saw it, the work is running".
-		if existing.LifecycleState == asset.StateLifecycleIndexDeletePending {
-			log.Info("asset.index.delete_requested: asset in INDEX_DELETE_PENDING — closing the chain (pre-flight does NOT skip; all 5 closing steps are idempotent)",
-				append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
-			)
-			// fall through — SetIndexState(DELETE_PENDING) is a
-			// no-op write on the same-state column; Qdrant.DeletePoints
-			// returns deleted_count:0 on an absent point; SoftDelete
-			// is gated by the SoftDeleteFilter pre-flight; the terminal
-			// hops SetIndexState(DELETED) + SetLifecycleState(DELETED)
-			// are repo-idempotent (same-state writes are no-ops).
-		}
+	// Idempotency pre-flight #2: terminal-state short-circuit.
+	// Blocco 3.1 commit 4/3 (June 2026): canonical "DELETED"
+	// (from PR4) + legacy lowercase "deleted" (from the existing
+	// SoftDelete call) BOTH short-circuit to nil; this is the
+	// same pair the SoftDeleteFilter accepts so future
+	// canonicalisation is non-breaking.
+	//
+	// Blocco 3.1 commit 2/3 (July 2026) extends the idempotent
+	// skip set with StateIndexDeleted (the new post-Qdrant
+	// confirmation hop), so re-running the index-delete on a row
+	// already at the intermediate confirmation state is a free
+	// no-op rather than a redundant Qdrant call.
+	switch string(existing.LifecycleState) {
+	case string(asset.StateDeleted), "deleted", string(asset.StateIndexDeleted):
+		log.Info("asset.index.delete_requested: asset already past INDEX_DELETED — treat as success (idempotent)",
+			append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
+		)
+		return nil
 	}
+	// Blocco 3.1 commit 2/3 (July 2026): the chain entry is now
+	// {StateDriveDeleted (new), StateLifecycleIndexDeletePending
+	// (legacy forward-compat)}. StateDriveDeleted is what
+	// DriveDeleteHandler stamps AFTER successful Drive.Trash /
+	// Drive.Delete via StateAdvancer.AdvanceAndEmit
+	// (DRIVE_DELETE_PENDING → DRIVE_DELETED same tx as the emit).
+	// The handler proceeds with the index-hop chain so the work
+	// reaches the new confirmation hop (INDEX_DELETED) and
+	// terminal DELETED.
+	//
+	// Pre-fix pre-flight did NOT distinguish the various Drive
+	// vs Index states — a row at StateDriveDeletePending
+	// (Drive side-effect in flight or retried) fell through to
+	// the work and ran Qdrant on an asset whose Drive file was
+	// still alive (the silent-success class the user spec calls
+	// out as "asset con proiezione" being Qdrant-deleted while
+	// the Drive copy is still alive in user's Drive account).
+	// The new explicit cases below close that gap.
+	switch existing.LifecycleState {
+	case asset.StateDriveDeleted:
+		log.Info("asset.index.delete_requested: asset in DRIVE_DELETED — Drive side-effect confirmed; closing the index chain",
+			append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
+		)
+		// fall through — ready to do the Qdrant+SoftDelete work.
+	case asset.StateLifecycleIndexDeletePending:
+		log.Info("asset.index.delete_requested: asset in INDEX_DELETE_PENDING (legacy forward-compat post-July 2026 or in-flight) — closing the chain",
+			append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
+		)
+		// fall through — pre-commit 2/3 rows already at this state
+		// have the Drive file gone (the upstream DriveDeleteHandler
+		// emitted the index-delete event from its post-Drive success
+		// path); the index-hop chain still runs to completion.
+	default:
+		// Drive-block guard: any unexpected lifecycle_state —
+		// including the canonical DRIVE_DELETE_PENDING (Drive
+		// side-effect in flight or failed), the legacy
+		// DELETE_PENDING / DELETE_REQUESTED, and ACTIVE / STAGING
+		// / PROCESSING / ERROR rows — blocks the index hop. The
+		// asset's Drive file is NOT yet confirmed-deleted (the
+		// user spec calls this "file Drive fosse ancora vivo");
+		// proceeding to Qdrant.DeletePoints on an alive-Drive
+		// asset would silently orphan the Drive copy per
+		// godlike/07 "no fake availability". Return terminal:
+		// re-enqueueing won't help, only DriveDeleteHandler
+		// completing the Drive side-effect AND stamping
+		// DRIVE_DELETED unblocks this handler.
+		log.Warn("asset.index.delete_requested: Drive-block guard fired — asset in unexpected lifecycle_state; file may still be alive in Drive",
+			append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
+		)
+		return terminalWrap(fmt.Errorf(
+			"%w: drive_file_alive_block (asset row at %q instead of the expected post-Drive-confirmation state); the asset.index.delete_requested event arrived before DriveDeleteHandler confirmed the Drive side-effect (file ancora vivo / file still alive in user's Drive account); re-enqueue the index-delete event ONLY after DriveDeleteHandler has stamped DRIVE_DELETED — a retry against the current lifecycle_state will keep firing this guard",
+			indexLifecycleTerminalErr, existing.LifecycleState,
+		))
+	}
+}
 
 	// Mark delete-intent on media_assets.index_state BEFORE any
 	// external side-effect (Qdrant delete) — QDRANT-002 PR6 column
@@ -364,22 +424,35 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			)
 			return fmt.Errorf("asset.index.delete_requested SetIndexState(DELETED, %s): %w", req.AssetID, err)
 		}
+		// Blocco 3.1 commit 2/3 (July 2026): intermediate
+		// confirmation hop lifecycle_state = INDEX_DELETED runs
+		// AFTER SoftDelete + index_state=DELETED + BEFORE the
+		// terminal DELETED flip. This is the post-Qdrant+SoftDelete
+		// confirmation hop — an operator dashboard can now
+		// distinguish "Qdrant projection removed confirmed" (the new
+		// INDEX_DELETED state) from "fully retired" (terminal
+		// DELETED) AND from "Drive side-effect confirmed but index
+		// work still in flight" (INDEX_DELETE_PENDING). Idempotent
+		// same-state writes are no-ops at the repo layer; a
+		// transient SQLite failure here is retryable — the next
+		// pool attempt's pre-flight catches lifecycle_state =
+		// INDEX_DELETED (idempotent skip) or DELETED (terminal
+		// idempotent skip) and the write path is re-attempted.
+		if err := h.assetDeleter.SetLifecycleState(ctx, req.AssetID, asset.StateIndexDeleted); err != nil {
+			log.Warn("asset.index.delete_requested: SetLifecycleState(INDEX_DELETED) failed (retryable — Qdrant+SoftDelete+index_state already done)",
+				append(reqLog, zap.Error(err))...,
+			)
+			return fmt.Errorf("asset.index.delete_requested SetLifecycleState(INDEX_DELETED, %s): %w", req.AssetID, err)
+		}
 		// Terminal lifecycle_state hop — closes the Blocco 3.1
-		// 5-state deletion state machine on its last edge so an
-		// operator dashboard reads 'lifecycle_state=DELETED' (not
-		// stuck at 'INDEX_DELETE_PENDING') for a fully retired asset.
-		// Idempotent: re-running on a row already at DELETED is a
-		// no-op write (ClipsRepository.SetLifecycleState is
-		// idempotent per its docstring). Retryable on transient
-		// SQLite failures — the next pool attempt picks up the
-		// (Qdrant-already-deleted + SoftDelete-already-done +
-		// index_state-already-DELETED) state via the pre-flight but
-		// the lifecycle_state column itself is the literal operator-
-		// dashboard signal so we MUST re-try the write; the pre-
-		// flight's lifecycle_state=='DELETED' guard absorbs a
-		// successful retry that landed between attempts.
+		// commit 2/3 6-state deletion state machine on its last
+		// edge so an operator dashboard reads 'lifecycle_state=
+		// DELETED' (not stuck at 'INDEX_DELETED') for a fully
+		// retired asset. Idempotent: re-running on a row already
+		// at DELETED is a no-op write (ClipsRepository.
+		// SetLifecycleState is idempotent per its docstring).
 		if err := h.assetDeleter.SetLifecycleState(ctx, req.AssetID, asset.StateDeleted); err != nil {
-			log.Warn("asset.index.delete_requested: SetLifecycleState(DELETED) failed (retryable — Qdrant+SoftDelete+index_state already done)",
+			log.Warn("asset.index.delete_requested: SetLifecycleState(DELETED) failed (retryable — Qdrant+SoftDelete+index_state+INDEX_DELETED already done)",
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested SetLifecycleState(DELETED, %s): %w", req.AssetID, err)
