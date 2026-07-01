@@ -82,28 +82,17 @@ func Run(ctx context.Context, cfgPath string) error {
 	}
 	log.Info("master /health pre-flight passed", zap.String("master_url", masterURL))
 
-	// Build the local service graph so the worker can execute handlers.
-	// The remote worker shares the same DB (via shared volume) and the
-	// same service code; it only differs in how it claims jobs (HTTP
-	// broker instead of in-process repo polling).
-	compositionRoot, cleanup, err := app.InitWorkerComposition(cfg, log)
-	if err != nil {
-		log.Error("failed to build worker composition", zap.Error(err))
-		return fmt.Errorf("worker composition: %w", err)
-	}
-	defer cleanup()
-
-	// Creator Blocco 1.3: when $VELOX_WORKER_PROFILE is set, build a
-	// filtered registry via BuildProfileWorkerRegistry BEFORE resolving
-	// capabilities. This ensures the registry only contains handlers
-	// the profile permits, and capabilities are derived from that
-	// filtered set (single source of truth). Without a profile, the
-	// legacy BuildWorkerRegistry path is used.
+	// Detect profile BEFORE building composition — the Creator uses a
+	// minimal graph (no DB, Drive, Qdrant, Repos).
 	profileName := Env("VELOX_WORKER_PROFILE", "")
 	var (
 		registry       *worker.Registry
 		registeredCaps []string
 		caps           appjobs.WorkerCapabilities
+		ws             *worker.Workspace
+		workspaceRoot  string
+		cleanup        func()
+		err            error
 	)
 
 	identity := WorkerIdentity()
@@ -121,26 +110,67 @@ func Run(ctx context.Context, cfgPath string) error {
 			zap.Int("max_parallel", profile.MaxParallel),
 		)
 
-		registry, registeredCaps, err = app.BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
-		if err != nil {
-			log.Error("failed to build profile worker registry", zap.Error(err))
-			return fmt.Errorf("profile worker registry: %w", err)
-		}
-		if registry.Len() == 0 {
-			log.Error("profile worker has no registered handlers — aborting startup")
-			return fmt.Errorf("profile worker registry empty (no registered handlers)")
-		}
-		log.Info("profile worker registry built",
-			zap.Int("handlers", registry.Len()),
-			zap.Strings("capabilities", registeredCaps),
-		)
+		switch profile.Name {
+		case "creator":
+			// Creator Blocco 3.1: minimal composition without DB,
+			// Drive, Qdrant, or Repos. Registry + workspace are
+			// pre-built by InitCreatorComposition.
+			creatorRoot, creatorCleanup, creatorErr := app.InitCreatorComposition(cfg, log)
+			if creatorErr != nil {
+				log.Error("failed to build creator composition", zap.Error(creatorErr))
+				return fmt.Errorf("creator composition: %w", creatorErr)
+			}
+			cleanup = creatorCleanup
+			registry = creatorRoot.Registry
+			caps = creatorRoot.Caps
+			ws = creatorRoot.Workspace
+			workspaceRoot = creatorRoot.Workspace.Root
+			registeredCaps = caps.JobTypes
 
-		caps, err = ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
-		if err != nil {
-			log.Error("invalid worker capabilities", zap.Error(err))
-			return fmt.Errorf("worker capabilities: %w", err)
+			log.Info("creator composition ready",
+				zap.Int("handlers", registry.Len()),
+				zap.Strings("capabilities", registeredCaps),
+				zap.String("workspace_root", workspaceRoot),
+			)
+
+		default:
+			// Standard worker: full ComposeRoot with DB, Drive, etc.
+			compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
+			if workerErr != nil {
+				log.Error("failed to build worker composition", zap.Error(workerErr))
+				return fmt.Errorf("worker composition: %w", workerErr)
+			}
+			cleanup = workerCleanup
+
+			registry, registeredCaps, err = app.BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
+			if err != nil {
+				log.Error("failed to build profile worker registry", zap.Error(err))
+				return fmt.Errorf("profile worker registry: %w", err)
+			}
+			if registry.Len() == 0 {
+				log.Error("profile worker has no registered handlers — aborting startup")
+				return fmt.Errorf("profile worker registry empty (no registered handlers)")
+			}
+			log.Info("profile worker registry built",
+				zap.Int("handlers", registry.Len()),
+				zap.Strings("capabilities", registeredCaps),
+			)
+
+			caps, err = ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+			if err != nil {
+				log.Error("invalid worker capabilities", zap.Error(err))
+				return fmt.Errorf("worker capabilities: %w", err)
+			}
 		}
 	} else {
+		// Legacy path (no profile): full ComposeRoot.
+		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
+		if workerErr != nil {
+			log.Error("failed to build worker composition", zap.Error(workerErr))
+			return fmt.Errorf("worker composition: %w", workerErr)
+		}
+		cleanup = workerCleanup
+
 		registry, registeredCaps, err = app.BuildWorkerRegistry(compositionRoot)
 		if err != nil {
 			log.Error("failed to build worker registry", zap.Error(err))
@@ -161,15 +191,19 @@ func Run(ctx context.Context, cfgPath string) error {
 			return fmt.Errorf("worker capabilities: %w", err)
 		}
 	}
+	defer cleanup()
 
 	// Freeze the registry after capabilities are resolved — no more
 	// registrations are possible from this point.
 	registry.Freeze()
 
-	workspaceRoot, ws, err := initWorkspace()
-	if err != nil {
-		log.Error("workspace init failed", zap.Error(err))
-		return fmt.Errorf("worker workspace: %w", err)
+	// Creator workspace is pre-built; standard workers create it now.
+	if ws == nil {
+		workspaceRoot, ws, err = initWorkspace()
+		if err != nil {
+			log.Error("workspace init failed", zap.Error(err))
+			return fmt.Errorf("worker workspace: %w", err)
+		}
 	}
 	log.Info("worker workspace ready", zap.String("workspace_root", workspaceRoot))
 
