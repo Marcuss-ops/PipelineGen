@@ -12,9 +12,9 @@
 // referenced by the dead fake). Local memory-gate type names lowercased
 // to memoryGateRequest / memoryGateResult so fakeMemoryGate.CheckGate
 // satisfies the narrow interface declared in engine.go (memoryGateChecker).
-// This is consistent with the Phase 1c TODO in engine.go that flagged
-// the package-local types as the canonical contract for the usecase
-// package; aligning the test unblocks production wiring when the
+// The contract is the canonical TypeScript CLI surface for the usecase
+// package; Phase 1c closure (June 2026) confirms the local narrow types
+// are stable and the test alignment unblocks production wiring when the
 // memory gate adapter lands.
 //
 // AGENT-3 (June 2026): Engine uses narrow interfaces (scriptOllamaGenerator,
