@@ -415,9 +415,17 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 
 // RegisterHandler registers the image.generate.google handler with the
 // job service. Called from composition.go late-bindings.
+//
+// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
+//
+// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
+// regardless of which handler-specific prefix the future maintainer
+// adds or removes. The handler-specific diagnostic prefix is preserved
+// for operator logs.
 func (g *GenerationService) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("images.GenerationService.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		return fmt.Errorf("images.GenerationService.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeImageGenerateGoogle, g.HandleJob); err != nil {
 		return fmt.Errorf("images.GenerationService.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeImageGenerateGoogle, err)

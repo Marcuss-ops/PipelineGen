@@ -89,9 +89,16 @@ func NewGenerateJobHandler(useCase *FanoutVoiceoversUseCase, logger *zap.Logger)
 // failure mode that triggered audit-P0 1 month prior. Returning the
 // error lets NewComposition abort with a typed message that
 // operators can grep on.
+// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
+//
+// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
+// regardless of which handler-specific prefix the future maintainer
+// adds or removes. The handler-specific diagnostic prefix is preserved
+// for operator logs.
 func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("GenerateJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		return fmt.Errorf("GenerateJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerate, h.HandleJob); err != nil {
 		return fmt.Errorf("GenerateJobHandler.Register: bind %q to dispatcher: %w",

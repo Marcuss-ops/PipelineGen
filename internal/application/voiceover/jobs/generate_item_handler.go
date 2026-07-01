@@ -70,9 +70,16 @@ func NewGenerateItemJobHandler(useCase voiceover.VoiceoverItemExecutor, logger *
 // migration that splits BuildDomainBundle) crashes NewComposition
 // loudly rather than silently dropping per-language jobs onto an
 // unsigned dispatcher.
+// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
+//
+// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
+// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
+// regardless of which handler-specific prefix the future maintainer
+// adds or removes. The handler-specific diagnostic prefix is preserved
+// for operator logs.
 func (h *GenerateItemJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("GenerateItemJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+		return fmt.Errorf("GenerateItemJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerateItem, h.HandleJob); err != nil {
 		return fmt.Errorf("GenerateItemJobHandler.Register: bind %q to dispatcher: %w",
