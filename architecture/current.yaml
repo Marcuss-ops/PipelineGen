@@ -700,13 +700,6 @@ wave_status:
         the 11th site (engine.go memoryGateChecker) closed earlier in
         Phase 1/2 workstream via 1ea5de01 (out-of-scope for this
         Phase 1c chain listing; cited only for tally completeness).
-      * Local-only SHA `4174bb87` (Commit 3b/4) landed the user-spec
-        supersede of Commit 3/4 (e62bb65a) per git reflog, then was
-        itself superseded in a subsequent rebase; the canonical
-        on-origin/main epoch for the Commit 3b/4 surface is recorded
-        in CHANGELOG.md. NOT cited in `linked_issues` here because
-        not currently reachable via `git branch -r --contains
-        4174bb87` (per AGENTS.md §7 NO_FAKE_AVAILABILITY).
     linked_issues:
       - id: 73c30027
         owner_capability: internal/application/youtube/usecase
@@ -725,6 +718,10 @@ wave_status:
         status: superseded
         deadline: 2026-07-01
       - id: 067ff3a5
+        owner_capability: internal/application/youtube/usecase
+        status: shipped
+        deadline: 2026-07-01
+      - id: PHASE-1C-COMMIT-3B
         owner_capability: internal/application/youtube/usecase
         status: shipped
         deadline: 2026-07-01
