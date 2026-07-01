@@ -30,8 +30,8 @@ func helperEvidence(ids ...string) *scriptpkg.ClipEvidence {
 	}
 	return &scriptpkg.ClipEvidence{
 		AcceptedClipIDs: ids,
-		ClipCount:  len(ids),
-		DriveLinks: driveLinks,
+		ClipCount:       len(ids),
+		DriveLinks:      driveLinks,
 	}
 }
 
@@ -180,6 +180,35 @@ func TestValidateSpecScene_DriveLinkEnriched(t *testing.T) {
 	}
 	if clip.ClipTitle == "" {
 		t.Error("expected ClipTitle auto-derived as placeholder")
+	}
+}
+
+func TestValidateSpecScene_OmittedTemporalRangeAccepted(t *testing.T) {
+	ev := helperEvidence("A")
+	output := &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          "Text",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{
+				ID: "s1", Index: 0, Text: "scene", Kind: scriptpkg.SceneClip,
+				Bindings: scriptpkg.SceneBindings{
+					Clip: &scriptpkg.ClipBinding{
+						ClipID: "A",
+					},
+				},
+			}},
+		},
+	}
+	enriched, warnings, err := scripts.ValidateAndEnrichSpecScene(context.Background(), output, ev)
+	if err != nil {
+		t.Fatalf("expected omitted timestamps to be accepted, got: %v", err)
+	}
+	if enriched == nil {
+		t.Fatal("expected enriched output")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings for omitted timestamps, got %v", warnings)
 	}
 }
 

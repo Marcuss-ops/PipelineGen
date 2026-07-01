@@ -2,39 +2,37 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
 )
 
-// monitor_enqueue_test.go — Step 9 (June 2026) durable-emission tests.
+// monitor_enqueue_test.go — Blocco 3 (July 2026) outbox-based emission tests.
 //
-// enqueueFromAnalysis (enqueue.go) is the post-AI-gate dispatch to the
-// JobEnqueuer port. The 3 cases below pin the canonical contract:
+// enqueueFromAnalysis (enqueue.go) now delegates to the YoutubeDiscoveriesPort
+// via CommitEnqueueOutbox (atomic MarkEnqueued + INSERT outbox). The
+// JobEnqueuer port is called asynchronously by the outbox drainer
+// (startOutboxDrainer in scheduler.go), NOT directly from enqueueFromAnalysis.
 //
-//   1. ActiveKey collision → NO-OP: an enqueue for a VideoID already
-//      in flight silently returns nil without recording or cursor-updating
-//      (durable-jobs semantics: duplicate enqueues from the channel
-//      monitor's per-tick retry window must not double-post jobs).
+// The 2 cases below pin the canonical contract on the outbox path:
 //
-//   2. Cursor update on success: when EnqueueExtract records the enqueue
-//      AND attempts the cursor update, the monitor receives a populated
-//      EnqueueExtractRequest with all fields echoed correctly
-//      (VideoID, Title, URL, Group, DriveFolderID, Segments, Channel).
+//  1. Happy path: enqueueFromAnalysis builds the correct payload, commits
+//     the outbox entry atomically, and returns nil.
 //
-//   3. Cursor update failure tolerance: when the cursor update fails
-//      internally but EnqueueExtract returns nil (best-effort), the
-//      monitor MUST NOT propagate the cursor error. The contract is:
-//      the broker-side enqueue is the source of truth; cursor updates
-//      are an operator-observability convenience, not a correctness gate.
+//  2. Outbox commit failure: when CommitEnqueueOutbox returns an error,
+//     enqueueFromAnalysis records a rejection on the ledger (MarkRejected)
+//     and returns the error so the orchestrator classifies OutcomeRejected.
 //
-// The stub JobEnqueuer (in monitor_scheduler_test.go) simulates the
-// ActiveKey collision short-circuit + cursor-update phase that the
-// concrete *jobtools.Service binding will own in production.
+// Note: idempotent retry (duplicate idempotency_key) is tested at the
+// SQLite integration level (see monitor_outbox_test.go and
+// youtube_discoveries_test.go).
 
 func enqueueChannelFixture() channels.Channel {
 	return channels.Channel{
@@ -60,150 +58,170 @@ func enqueueAnalysisFixture() Analysis {
 	}
 }
 
-// TestEnqueueFromAnalysis_ActiveKeyCollisionNoOp verifies that a
-// configured collision (JobEnqueuer knows this VideoID is already in
-// flight from a prior tick) is a hard NO-OP: EnqueueExtract IS still
-// called (the canonical no-op path lives inside the port), but nothing
-// is recorded and the cursor is NOT advanced.
-//
-// Why this matters: the channel monitor's per-tick ClaimDue lease can
-// re-emit a video multiple times across exp-backoff retries. Without
-// the collision short-circuit, every retry would re-post the durable
-// job → broker fan-out blow-up under transient failure storms.
-func TestEnqueueFromAnalysis_ActiveKeyCollisionNoOp(t *testing.T) {
-	stub := &stubJobEnqueuer{
-		collisions: map[string]bool{"vid-collision": true},
+// stubDiscoveriesForEnqueue records CommitEnqueueOutbox calls and
+// returns the configured error. Satisfies YoutubeDiscoveriesPort.
+type stubDiscoveriesForEnqueue struct {
+	commitCalls    int
+	committedIDs   []string
+	committedKeys  []string
+	committedJSONs []string
+	rejectedIDs    []string
+	rejectedErrors []string
+
+	// commitErr, if set, is returned by CommitEnqueueOutbox.
+	commitErr error
+}
+
+func (s *stubDiscoveriesForEnqueue) TryReserve(_ context.Context, _, _, _, _, _, _ string) (string, bool, int, error) {
+	return "", false, 0, nil
+}
+func (s *stubDiscoveriesForEnqueue) MarkEnqueued(_ context.Context, _, _ string) error { return nil }
+func (s *stubDiscoveriesForEnqueue) MarkRejected(_ context.Context, id, reason string, _ bool) error {
+	s.rejectedIDs = append(s.rejectedIDs, id)
+	s.rejectedErrors = append(s.rejectedErrors, reason)
+	return nil
+}
+func (s *stubDiscoveriesForEnqueue) MaxDiscoveredAt(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (s *stubDiscoveriesForEnqueue) CommitEnqueueOutbox(_ context.Context, discoveryID, enqueuedAt, idempotencyKey, payloadJSON string) error {
+	s.commitCalls++
+	s.committedIDs = append(s.committedIDs, discoveryID)
+	s.committedKeys = append(s.committedKeys, idempotencyKey)
+	s.committedJSONs = append(s.committedJSONs, payloadJSON)
+	if s.commitErr != nil {
+		return s.commitErr
 	}
+	return nil
+}
+func (s *stubDiscoveriesForEnqueue) DrainPendingOutbox(_ context.Context, _ int) ([]assetsdb.OutboxEntry, error) {
+	return nil, nil
+}
+func (s *stubDiscoveriesForEnqueue) MarkOutboxDispatched(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+func (s *stubDiscoveriesForEnqueue) MarkOutboxFailed(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+
+// TestEnqueueFromAnalysis_CommitsOutboxWithCorrectPayload verifies
+// that on the happy path, enqueueFromAnalysis:
+//   - Calls CommitEnqueueOutbox exactly once
+//   - Passes the correct discovery_id (ledgerID)
+//   - Builds the idempotency key = "youtube-extract:{ledgerID}:{policyVersion}"
+//   - Marshals a valid EnqueueExtractRequest with all fields populated
+//   - Returns nil
+func TestEnqueueFromAnalysis_CommitsOutboxWithCorrectPayload(t *testing.T) {
+	stub := &stubDiscoveriesForEnqueue{}
 	m := &ChannelMonitor{
-		log:     zap.NewNop(),
-		enqueuer: stub,
+		log:         zap.NewNop(),
+		discoveries: stub,
 	}
 	ch := enqueueChannelFixture()
-	info := downloader.VideoInfo{ID: "vid-collision", Title: "Title"}
+	info := enqueueVideoFixture()
 	analysis := enqueueAnalysisFixture()
+	ledgerID := "disc_test123"
 
-	m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "")
+	err := m.enqueueFromAnalysis(context.Background(), info, ch, analysis, ledgerID)
+	if err != nil {
+		t.Fatalf("enqueueFromAnalysis returned error on happy path: %v", err)
+	}
 
-	// EnqueueExtract IS called once (the stub itself decides whether
-	// to record or no-op); the CANONICAL behavior of the stub is
-	// "EnqueueExtract returns nil, no recording, no cursor update".
-	if stub.enqueueCalls != 1 {
-		t.Errorf("EnqueueExtract should be invoked exactly once on collision, got %d", stub.enqueueCalls)
+	if stub.commitCalls != 1 {
+		t.Fatalf("CommitEnqueueOutbox should be called exactly once, got %d", stub.commitCalls)
 	}
-	if len(stub.enqueuedRequests) != 0 {
-		t.Errorf("enqueuedRequests should be EMPTY on collision (no-op), got %d entries", len(stub.enqueuedRequests))
+	if stub.committedIDs[0] != ledgerID {
+		t.Errorf("committed discovery_id = %q, want %q", stub.committedIDs[0], ledgerID)
 	}
-	if stub.cursorUpdates != 0 {
-		t.Errorf("cursorUpdates should be 0 on collision (no-op path skips cursor), got %d", stub.cursorUpdates)
+
+	// Verify idempotency key format.
+	wantKey := fmt.Sprintf("youtube-extract:%s:%s", ledgerID, ChannelMonitorPolicyVersion)
+	if stub.committedKeys[0] != wantKey {
+		t.Errorf("idempotency_key = %q, want %q", stub.committedKeys[0], wantKey)
+	}
+
+	// Verify the marshaled payload.
+	var gotReq EnqueueExtractRequest
+	if err := json.Unmarshal([]byte(stub.committedJSONs[0]), &gotReq); err != nil {
+		t.Fatalf("failed to unmarshal committed payload: %v", err)
+	}
+	if gotReq.VideoID != info.ID {
+		t.Errorf("VideoID = %q, want %q", gotReq.VideoID, info.ID)
+	}
+	if gotReq.Title != info.Title {
+		t.Errorf("Title = %q, want %q", gotReq.Title, info.Title)
+	}
+	if want := "https://www.youtube.com/watch?v=" + info.ID; gotReq.URL != want {
+		t.Errorf("URL = %q, want %q", gotReq.URL, want)
+	}
+	if gotReq.Group != analysis.Category {
+		t.Errorf("Group = %q, want %q (analysis.Category)", gotReq.Group, analysis.Category)
+	}
+	if gotReq.DriveFolderID != ch.DriveFolderID {
+		t.Errorf("DriveFolderID = %q, want %q", gotReq.DriveFolderID, ch.DriveFolderID)
+	}
+	if len(gotReq.Segments) != len(analysis.Segments) {
+		t.Errorf("Segments len = %d, want %d", len(gotReq.Segments), len(analysis.Segments))
+	}
+	if gotReq.Channel.ID != ch.ID {
+		t.Errorf("Channel.ID = %q, want %q", gotReq.Channel.ID, ch.ID)
 	}
 }
 
-// TestEnqueueFromAnalysis_CursorUpdateOnSuccess verifies that on the
-// happy path (no collision, EnqueueExtract succeeds), the monitor
-// passes through a fully-populated EnqueueExtractRequest to the port:
-//
-//   VideoID = info.ID
-//   Title = info.Title
-//   URL = "https://www.youtube.com/watch?v=<VideoID>"
-//   Group = analysis.Category
-//   DriveFolderID = channel.DriveFolderID (or cfg.Drive.ClipsFolder() fallback)
-//   Segments = analysis.Segments
-//   Channel = channel (back-reference for downstream port impls)
-//
-// And the cursor is updated exactly once.
-func TestEnqueueFromAnalysis_CursorUpdateOnSuccess(t *testing.T) {
-	stub := &stubJobEnqueuer{
-		returnErr: nil, // best-effort happy path
+// TestEnqueueFromAnalysis_CommitFailureMarksRejected verifies that
+// when CommitEnqueueOutbox returns an error, enqueueFromAnalysis:
+//   - Calls MarkRejected on the ledger with the error message
+//   - Returns the error so the orchestrator classifies OutcomeRejected
+func TestEnqueueFromAnalysis_CommitFailureMarksRejected(t *testing.T) {
+	commitErr := errors.New("sqlite: database is locked")
+	stub := &stubDiscoveriesForEnqueue{
+		commitErr: commitErr,
 	}
 	m := &ChannelMonitor{
-		log:     zap.NewNop(),
-		enqueuer: stub,
+		log:         zap.NewNop(),
+		discoveries: stub,
+	}
+	ch := enqueueChannelFixture()
+	info := enqueueVideoFixture()
+	analysis := enqueueAnalysisFixture()
+	ledgerID := "disc_test456"
+
+	err := m.enqueueFromAnalysis(context.Background(), info, ch, analysis, ledgerID)
+	if err == nil {
+		t.Fatal("enqueueFromAnalysis should return error on CommitEnqueueOutbox failure")
+	}
+
+	// Verify CommitEnqueueOutbox was called.
+	if stub.commitCalls != 1 {
+		t.Fatalf("CommitEnqueueOutbox should be called once, got %d", stub.commitCalls)
+	}
+
+	// Verify MarkRejected was called.
+	if len(stub.rejectedIDs) != 1 {
+		t.Fatalf("MarkRejected should be called once on commit failure, got %d", len(stub.rejectedIDs))
+	}
+	if stub.rejectedIDs[0] != ledgerID {
+		t.Errorf("rejected discovery_id = %q, want %q", stub.rejectedIDs[0], ledgerID)
+	}
+	if stub.rejectedErrors[0] == "" {
+		t.Error("rejection error should not be empty")
+	}
+}
+
+// TestEnqueueFromAnalysis_NilDiscoveriesReturnsError verifies that
+// when discoveries port is not wired, enqueueFromAnalysis returns
+// an error early (no panic, no nil deref).
+func TestEnqueueFromAnalysis_NilDiscoveriesReturnsError(t *testing.T) {
+	m := &ChannelMonitor{
+		log: zap.NewNop(),
+		// discoveries nil
 	}
 	ch := enqueueChannelFixture()
 	info := enqueueVideoFixture()
 	analysis := enqueueAnalysisFixture()
 
-	m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "")
-
-	if stub.enqueueCalls != 1 {
-		t.Fatalf("EnqueueExtract should be invoked exactly once, got %d", stub.enqueueCalls)
-	}
-	if stub.cursorUpdates != 1 {
-		t.Errorf("cursorUpdates should be 1 on success, got %d", stub.cursorUpdates)
-	}
-	if len(stub.enqueuedRequests) != 1 {
-		t.Fatalf("enqueuedRequests should have 1 entry, got %d", len(stub.enqueuedRequests))
-	}
-	got := stub.enqueuedRequests[0]
-	if got.VideoID != info.ID {
-		t.Errorf("VideoID = %q, want %q", got.VideoID, info.ID)
-	}
-	if got.Title != info.Title {
-		t.Errorf("Title = %q, want %q", got.Title, info.Title)
-	}
-	if want := "https://www.youtube.com/watch?v=" + info.ID; got.URL != want {
-		t.Errorf("URL = %q, want %q", got.URL, want)
-	}
-	if got.Group != analysis.Category {
-		t.Errorf("Group = %q, want %q (analysis.Category)", got.Group, analysis.Category)
-	}
-	if got.DriveFolderID != ch.DriveFolderID {
-		t.Errorf("DriveFolderID = %q, want %q (channel.DriveFolderID precedence)", got.DriveFolderID, ch.DriveFolderID)
-	}
-	if len(got.Segments) != len(analysis.Segments) {
-		t.Errorf("Segments len = %d, want %d", len(got.Segments), len(analysis.Segments))
-	}
-	if got.Channel.ID != ch.ID {
-		t.Errorf("Channel back-reference lost: Channel.ID = %q, want %q", got.Channel.ID, ch.ID)
-	}
-}
-
-// TestEnqueueFromAnalysis_CursorUpdateFailureTolerance verifies that
-// when the cursor update FAILS but the broker-side enqueue succeeds,
-// the monitor does NOT surface the cursor error.
-//
-// The contract (per enqueue.go header comment): "Errors from the
-// JobEnqueuer port are logged and swallowed: the channel-monitor's
-// contract is best-effort per video, with retry driven by the next
-// scheduler tick." A cursor-update failure must therefore not poison
-// the per-video success state.
-//
-// The stub is configured so EnqueueExtract returns nil even though
-// the cursor attempt failed internally — this is the production
-// semantic the concrete *jobtools.Service binding must implement.
-// The monitor sees nil, treats it as success, and the orchestrator's
-// next scheduler tick resumes naturally.
-func TestEnqueueFromAnalysis_CursorUpdateFailureTolerance(t *testing.T) {
-	stub := &stubJobEnqueuer{
-		returnErr: nil,                                                       // best-effort: monitor sees no error
-		cursorErr: errors.New("sqlite: database is locked (test simulation)"), // simulated cursor failure
-	}
-	m := &ChannelMonitor{
-		log:     zap.NewNop(),
-		enqueuer: stub,
-	}
-	ch := enqueueChannelFixture()
-	info := downloader.VideoInfo{ID: "vid-cursor-fail", Title: "Title"}
-	analysis := enqueueAnalysisFixture()
-
-	// The monitor must NOT panic, NOT log error, NOT return any
-	// outside-facing error indication — best-effort semantics.
-	m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "")
-
-	if stub.enqueueCalls != 1 {
-		t.Errorf("EnqueueExtract should be invoked exactly once, got %d", stub.enqueueCalls)
-	}
-	if len(stub.enqueuedRequests) != 1 {
-		t.Errorf("enqueuedRequests should have 1 entry (enqueue succeeded despite cursor failure), got %d", len(stub.enqueuedRequests))
-	}
-	if stub.cursorUpdates != 1 {
-		t.Errorf("cursorUpdates should be 1 (cursor was ATTEMPTED despite simulated failure), got %d", stub.cursorUpdates)
-	}
-	// The consistent contract: the EnqueueExtractRequest IS queued
-	// for the broker (stub recorded it), even though the cursor
-	// attempt failed. The monitor's contract is per-video best-effort,
-	// not strong consistency — the next scheduler tick will retry.
-	if got := stub.enqueuedRequests[0].VideoID; got != "vid-cursor-fail" {
-		t.Errorf("recorded request VideoID = %q, want vid-cursor-fail", got)
+	err := m.enqueueFromAnalysis(context.Background(), info, ch, analysis, "disc_test")
+	if err == nil {
+		t.Fatal("enqueueFromAnalysis should return error when discoveries port is nil")
 	}
 }

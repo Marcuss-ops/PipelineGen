@@ -16,6 +16,7 @@ package adapters_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -37,7 +38,7 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 	t.Run("engages_when_scenes_empty_and_text_present_N3", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
 			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-			ClipNames: map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
+			ClipNames:       map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
 			DriveLinks: map[string]string{
 				"clip-a": "https://drive.google.com/a",
 				"clip-b": "https://drive.google.com/b",
@@ -97,6 +98,49 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 		}
 	})
 
+	t.Run("strips_json_envelope_noise_and_keeps_sentence_boundaries", func(t *testing.T) {
+		ev := &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
+			ClipNames:       map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
+			DriveLinks: map[string]string{
+				"clip-a": "https://drive.google.com/a",
+				"clip-b": "https://drive.google.com/b",
+				"clip-c": "https://drive.google.com/c",
+			},
+		}
+		plan := &scriptpkg.ResolvedGenerationPlan{
+			ClipEvidence: ev,
+			NumClips:     3,
+		}
+		text := `{"schema_version":1,"text":"noise","specscene":{"version":1,"scenes":[]}}
+Jackie Chan lands a joke with precision. He pivots into another physical beat without breaking rhythm. The audience reacts immediately.`
+		p := adapters.NewClipBindingsProcessor(zap.NewNop())
+		result, err := p.Process(context.Background(), plan, adapters.ProcessInput{
+			SpecScene: scriptpkg.SpecSceneOutput{Scenes: nil},
+			Text:      text,
+		})
+		if err != nil {
+			t.Fatalf("process error = %v", err)
+		}
+		if got := len(result.SynthesizedScenes); got != 3 {
+			t.Fatalf("len(SynthesizedScenes) = %d, want 3", got)
+		}
+		for i, s := range result.SynthesizedScenes {
+			if strings.Contains(s.Text, "schema_version") || strings.Contains(s.Text, "specscene") {
+				t.Fatalf("scene[%d].Text still contains JSON envelope noise: %q", i, s.Text)
+			}
+		}
+		if !strings.HasSuffix(result.SynthesizedScenes[0].Text, ".") {
+			t.Fatalf("scene[0] should end on a sentence boundary, got %q", result.SynthesizedScenes[0].Text)
+		}
+		if !strings.Contains(result.SynthesizedScenes[0].Text, "Jackie Chan lands a joke with precision.") {
+			t.Fatalf("scene[0] missing first sentence, got %q", result.SynthesizedScenes[0].Text)
+		}
+		if !strings.Contains(result.SynthesizedScenes[1].Text, "He pivots into another physical beat without breaking rhythm.") {
+			t.Fatalf("scene[1] missing second sentence, got %q", result.SynthesizedScenes[1].Text)
+		}
+	})
+
 	t.Run("distributes_intro_clip_outro_for_N10", func(t *testing.T) {
 		clipIDs := []string{
 			"c1", "c2", "c3", "c4", "c5",
@@ -108,8 +152,8 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 		}
 		ev := &scriptpkg.ClipEvidence{
 			AcceptedClipIDs: clipIDs,
-			ClipNames:  make(map[string]string),
-			DriveLinks: drvLinks,
+			ClipNames:       make(map[string]string),
+			DriveLinks:      drvLinks,
 		}
 		if ev == nil {
 			t.Fatal("BuildClipEvidence returned nil")
@@ -146,9 +190,9 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 
 	t.Run("N2_both_clips_no_intro_outro_bleed", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			AcceptedClipIDs:   []string{"clip-a", "clip-b"},
-			ClipNames: map[string]string{},
-			DriveLinks: map[string]string{"clip-a": "u1", "clip-b": "u2"},
+			AcceptedClipIDs: []string{"clip-a", "clip-b"},
+			ClipNames:       map[string]string{},
+			DriveLinks:      map[string]string{"clip-a": "u1", "clip-b": "u2"},
 		}
 		plan := &scriptpkg.ResolvedGenerationPlan{
 			ClipEvidence: ev,
@@ -180,9 +224,9 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 
 	t.Run("skips_when_text_empty_preserves_noop", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			AcceptedClipIDs:   []string{"clip-a"},
-			ClipNames: map[string]string{},
-			DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
+			AcceptedClipIDs: []string{"clip-a"},
+			ClipNames:       map[string]string{},
+			DriveLinks:      map[string]string{"clip-a": "https://drive.google.com/a"},
 		}
 		plan := &scriptpkg.ResolvedGenerationPlan{
 			ClipEvidence: ev,
@@ -230,9 +274,9 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 
 	t.Run("preserves_existing_scenes_no_heuristic", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			AcceptedClipIDs:   []string{"clip-a"},
-			ClipNames: map[string]string{},
-			DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
+			AcceptedClipIDs: []string{"clip-a"},
+			ClipNames:       map[string]string{},
+			DriveLinks:      map[string]string{"clip-a": "https://drive.google.com/a"},
 		}
 		plan := &scriptpkg.ResolvedGenerationPlan{
 			ClipEvidence: ev,

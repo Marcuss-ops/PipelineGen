@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -70,7 +71,8 @@ func (p *ClipBindingsProcessor) Process(
 	// original (empty) SpecScene.Scenes; clip_bindings' local
 	// synthesis is enough to silence the empty-output warning.
 	if len(scenes) == 0 {
-		if input.Text == "" {
+		cleanedText := cleanProseFallbackText(input.Text)
+		if cleanedText == "" {
 			return &PostProcessResult{}, nil
 		}
 		// Issue #2 (June 2026): ClipIDs renamed → AcceptedClipIDs.
@@ -78,7 +80,7 @@ func (p *ClipBindingsProcessor) Process(
 		if plan.NumClips > 0 && plan.NumClips < n {
 			n = plan.NumClips
 		}
-		synthesized := buildScenesFromProse(input.Text, n)
+		synthesized := buildScenesFromProse(cleanedText, n)
 		if len(synthesized) == 0 {
 			return &PostProcessResult{}, nil
 		}
@@ -171,8 +173,10 @@ func (p *ClipBindingsProcessor) Process(
 
 // buildScenesFromProse is the prose-fallback helper for
 // ClipBindingsProcessor. It heuristically partitions the supplied
-// prose into N scenes using word-level balanced distribution
-// (strings.Fields → contiguous slices of size ceil(len(words)/N)).
+// prose into N scenes using sentence-aware balanced distribution
+// (sentences are grouped into contiguous chunks sized by word
+// count, with a word-level fallback only when the input has no
+// recognizable sentence breaks).
 //
 // The helper is unexported and lives next to its only caller; tests
 // in processor_clip_bindings_test.go cover its invariants directly.
@@ -194,7 +198,7 @@ func buildScenesFromProse(text string, n int) []scriptpkg.SpecScene {
 	if n <= 0 {
 		return nil
 	}
-	trimmed := strings.TrimSpace(text)
+	trimmed := cleanProseFallbackText(text)
 	if trimmed == "" {
 		return nil
 	}
@@ -203,17 +207,50 @@ func buildScenesFromProse(text string, n int) []scriptpkg.SpecScene {
 		return nil
 	}
 
+	sentences := splitProseSentences(trimmed)
+	segments := sentences
+	if len(segments) == 0 {
+		segments = []string{trimmed}
+	}
 	perChunk := (len(words) + n - 1) / n // ceil division
 	scenes := make([]scriptpkg.SpecScene, n)
-	for i := 0; i < n; i++ {
-		start := i * perChunk
-		end := start + perChunk
-		if end > len(words) {
-			end = len(words)
+	chunks := make([]string, 0, n)
+	current := make([]string, 0, len(segments))
+	currentWords := 0
+	for idx, segment := range segments {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
 		}
-		var chunk string
-		if start < len(words) {
-			chunk = strings.Join(words[start:end], " ")
+		segmentWords := len(strings.Fields(segment))
+		if len(chunks) < n-1 && currentWords > 0 && currentWords+segmentWords > perChunk {
+			chunks = append(chunks, strings.Join(current, " "))
+			current = current[:0]
+			currentWords = 0
+		}
+		current = append(current, segment)
+		currentWords += segmentWords
+		if idx == len(segments)-1 && len(current) > 0 {
+			chunks = append(chunks, strings.Join(current, " "))
+		}
+	}
+	if len(chunks) == 0 {
+		chunks = []string{trimmed}
+	}
+	for len(chunks) < n {
+		chunks = append(chunks, "")
+	}
+	for i := 0; i < n; i++ {
+		chunk := strings.TrimSpace(chunks[i])
+		if chunk == "" && i < len(words) {
+			start := i * perChunk
+			end := start + perChunk
+			if end > len(words) {
+				end = len(words)
+			}
+			if start < len(words) {
+				chunk = strings.Join(words[start:end], " ")
+			}
 		}
 		if chunk == "" {
 			chunk = fmt.Sprintf("Scene %d", i+1)
@@ -226,6 +263,123 @@ func buildScenesFromProse(text string, n int) []scriptpkg.SpecScene {
 		}
 	}
 	return scenes
+}
+
+// cleanProseFallbackText strips an obvious JSON wrapper from prose
+// fallback input when the model emitted structured-output noise and
+// the compatibility path preserved only the raw text.
+//
+// It is intentionally conservative: if the content does not look like
+// a JSON envelope, it returns the input unchanged.
+func cleanProseFallbackText(text string) string {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return ""
+	}
+	if unquoted, ok := tryUnquoteJSONString(trimmed); ok {
+		trimmed = strings.TrimSpace(unquoted)
+	}
+	if trimmed == "" {
+		return ""
+	}
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		return trimmed
+	}
+	if end := findMatchingJSONDelim(trimmed); end > 0 {
+		head := strings.TrimSpace(trimmed[:end+1])
+		tail := strings.TrimSpace(trimmed[end+1:])
+		if tail != "" && isJSONEnvelopeNoise(head) {
+			return tail
+		}
+	}
+	return trimmed
+}
+
+func tryUnquoteJSONString(text string) (string, bool) {
+	var unquoted string
+	if err := json.Unmarshal([]byte(text), &unquoted); err != nil {
+		return "", false
+	}
+	return unquoted, true
+}
+
+func isJSONEnvelopeNoise(text string) bool {
+	return strings.Contains(text, `"schema_version"`) ||
+		strings.Contains(text, `"specscene"`) ||
+		strings.Contains(text, `"text"`)
+}
+
+func findMatchingJSONDelim(s string) int {
+	open := s[0]
+	close := byte('}')
+	if open == '[' {
+		close = ']'
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// splitProseSentences returns sentence-like segments for balanced
+// chunking. It uses a minimal punctuation heuristic to avoid cutting
+// scenes in the middle of obvious sentence boundaries.
+func splitProseSentences(text string) []string {
+	var sentences []string
+	var current strings.Builder
+
+	flush := func() {
+		segment := strings.TrimSpace(current.String())
+		if segment != "" {
+			sentences = append(sentences, segment)
+		}
+		current.Reset()
+	}
+
+	runes := []rune(strings.TrimSpace(text))
+	for i, r := range runes {
+		current.WriteRune(r)
+		if r != '.' && r != '!' && r != '?' {
+			continue
+		}
+		next := rune(0)
+		if i+1 < len(runes) {
+			next = runes[i+1]
+		}
+		if next == 0 || next == ' ' || next == '\n' || next == '\t' {
+			flush()
+		}
+	}
+	flush()
+	return sentences
 }
 
 // kindForPosition encodes the position-to-kind policy used by the

@@ -18,6 +18,7 @@ package jsonextract
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -173,26 +174,77 @@ func decodeV1(jsonBytes []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 	if err := json.Unmarshal(jsonBytes, &output); err != nil {
 		return nil, fmt.Errorf("%w: invalid JSON: %w", scriptpkg.ErrModelOutputMalformed, err)
 	}
+	normalizeOutput(&output)
 	if err := output.Validate(); err != nil {
 		return nil, err
+	}
+
+	return &output, nil
+}
+
+func normalizeOutput(output *scriptpkg.ModelScriptOutputV1) {
+	if output == nil {
+		return
+	}
+
+	output.Text = normalizeTextField(output.Text)
+	for i := range output.SpecScene.Scenes {
+		output.SpecScene.Scenes[i].Text = normalizeTextField(output.SpecScene.Scenes[i].Text)
 	}
 
 	// Double-wrapped JSON recovery: outer specscene is empty, but
 	// the text field contains valid JSON with real scenes.
 	if len(output.SpecScene.Scenes) == 0 && len(output.Text) > 0 {
-		first := output.Text[0]
-		if first == '{' || first == '[' {
-			var inner scriptpkg.ModelScriptOutputV1
-			if err := json.Unmarshal([]byte(output.Text), &inner); err == nil {
-				if len(inner.SpecScene.Scenes) > 0 {
-					output.SpecScene = inner.SpecScene
-					if inner.Text != "" {
-						output.Text = inner.Text
-					}
+		scanner := &Scanner{Mode: ModeCompatibility}
+		if inner, err := scanner.Scan([]byte(output.Text), "double-wrap-recovery"); err == nil {
+			if len(inner.SpecScene.Scenes) > 0 {
+				output.SpecScene = inner.SpecScene
+				for i := range output.SpecScene.Scenes {
+					output.SpecScene.Scenes[i].Text = normalizeTextField(output.SpecScene.Scenes[i].Text)
 				}
+				output.Text = normalizeTextField(inner.Text)
 			}
 		}
 	}
+}
 
-	return &output, nil
+func normalizeTextField(text string) string {
+	current := strings.TrimSpace(text)
+	for i := 0; i < 2; i++ {
+		if current == "" {
+			return ""
+		}
+
+		if unquoted, ok := tryUnquoteJSONString(current); ok {
+			current = strings.TrimSpace(unquoted)
+			continue
+		}
+
+		if looksLikeJSON(current) {
+			var inner scriptpkg.ModelScriptOutputV1
+			if err := json.Unmarshal([]byte(current), &inner); err == nil && strings.TrimSpace(inner.Text) != "" {
+				current = strings.TrimSpace(inner.Text)
+				continue
+			}
+		}
+
+		break
+	}
+	return current
+}
+
+func looksLikeJSON(text string) bool {
+	text = strings.TrimSpace(text)
+	return len(text) > 0 && (text[0] == '{' || text[0] == '[')
+}
+
+func tryUnquoteJSONString(text string) (string, bool) {
+	if len(text) < 2 || text[0] != '"' || text[len(text)-1] != '"' {
+		return "", false
+	}
+	var unquoted string
+	if err := json.Unmarshal([]byte(text), &unquoted); err != nil {
+		return "", false
+	}
+	return unquoted, true
 }

@@ -187,6 +187,58 @@ func TestScannerStrictMissingText(t *testing.T) {
 	}
 }
 
+// ── ModeStrict: JSON-string wrapped text is unwrapped ──────────────
+
+func TestScannerStrictUnwrapsNestedJSONStringText(t *testing.T) {
+	raw := []byte(`{
+		"schema_version": 1,
+		"text": "{\"schema_version\":1,\"text\":\"The global recognition of Jackie Chan is a tapestry woven from physical comedy and resilience.\",\"specscene\":{\"version\":1,\"scenes\":[]}}",
+		"specscene": {
+			"version": 1,
+			"scenes": []
+		}
+	}`)
+
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
+	if err != nil {
+		t.Fatalf("expected nested JSON-string text to decode, got: %v", err)
+	}
+	want := "The global recognition of Jackie Chan is a tapestry woven from physical comedy and resilience."
+	if output.Text != want {
+		t.Fatalf("text = %q, want %q", output.Text, want)
+	}
+}
+
+// ── ModeStrict: nested scene text is unwrapped ──────────────────────
+
+func TestScannerStrictUnwrapsNestedSceneText(t *testing.T) {
+	raw := []byte(`{
+		"schema_version": 1,
+		"text": "Complete script text.",
+		"specscene": {
+			"version": 1,
+			"scenes": [
+				{
+					"id": "scene-1",
+					"index": 0,
+					"text": "{\"schema_version\":1,\"text\":\"Jackie Chan lands a perfect stunt without the wrapper noise.\",\"specscene\":{\"version\":1,\"scenes\":[]}}",
+					"kind": "narration",
+					"bindings": {}
+				}
+			]
+		}
+	}`)
+
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
+	if err != nil {
+		t.Fatalf("expected nested scene text to decode, got: %v", err)
+	}
+	want := "Jackie Chan lands a perfect stunt without the wrapper noise."
+	if got := output.SpecScene.Scenes[0].Text; got != want {
+		t.Fatalf("scene text = %q, want %q", got, want)
+	}
+}
+
 // ── ModeStrict: duplicate scene IDs rejected ────────────────────────
 
 func TestScannerStrictDuplicateSceneIDs(t *testing.T) {

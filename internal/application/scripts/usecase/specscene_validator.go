@@ -137,14 +137,16 @@ func ValidateAndEnrichSpecScene(
 		if scene.Bindings.Clip != nil {
 			startMs := scene.Bindings.Clip.StartMs
 			endMs := scene.Bindings.Clip.EndMs
-			if startMs < 0 || endMs < 0 {
-				badBindings = true
-				warnings = append(warnings,
-					fmt.Sprintf("scene[%d]: negative temporal range (start_ms=%d end_ms=%d)", i, startMs, endMs))
-			} else if endMs <= startMs {
-				badBindings = true
-				warnings = append(warnings,
-					fmt.Sprintf("scene[%d]: invalid temporal range (end_ms=%d <= start_ms=%d)", i, endMs, startMs))
+			if startMs != 0 || endMs != 0 {
+				if startMs < 0 || endMs < 0 {
+					badBindings = true
+					warnings = append(warnings,
+						fmt.Sprintf("scene[%d]: negative temporal range (start_ms=%d end_ms=%d)", i, startMs, endMs))
+				} else if endMs <= startMs {
+					badBindings = true
+					warnings = append(warnings,
+						fmt.Sprintf("scene[%d]: invalid temporal range (end_ms=%d <= start_ms=%d)", i, endMs, startMs))
+				}
 			}
 			if badBindings && len(badIndices) == 0 || (len(badIndices) > 0 && badIndices[len(badIndices)-1] != i) {
 				badIndices = append(badIndices, i)
