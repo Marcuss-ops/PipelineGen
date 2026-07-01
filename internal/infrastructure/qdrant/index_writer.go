@@ -185,6 +185,7 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 	}
 
 	points := make([]Point, 0, 100)
+	var batchCount int // points accumulated since last flush
 	for _, assetID := range assetIDs {
 		asset, err := w.mapper.FetchAsset(ctx, assetID)
 		if err != nil {
@@ -199,13 +200,20 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 			continue
 		}
 		points = append(points, *point)
-		result.IndexedAssets++
+		batchCount++
 
 		// Flush every 100 points.
 		if len(points) >= 100 {
 			if err := w.client.UpsertPoints(ctx, targetCollection, points); err != nil {
 				return result, fmt.Errorf("reindex batch upsert: %w", err)
 			}
+			// Blocco 4c (July 2026): only count as indexed AFTER the
+			// batch commit to Qdrant succeeds. Pre-fix, IndexedAssets
+			// was incremented per-point during accumulation — a failed
+			// batch commit left the counter stale (reporting points
+			// that were never actually written).
+			result.IndexedAssets += batchCount
+			batchCount = 0
 			points = points[:0]
 		}
 	}
@@ -215,6 +223,7 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 		if err := w.client.UpsertPoints(ctx, targetCollection, points); err != nil {
 			return result, fmt.Errorf("reindex final batch upsert: %w", err)
 		}
+		result.IndexedAssets += batchCount
 	}
 
 	w.log.Info("reindex complete",
