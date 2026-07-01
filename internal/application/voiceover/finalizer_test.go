@@ -279,6 +279,87 @@ func TestFinalizeStage_NilFinalizer(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// P0.4 Fase 4a: PostCommitVerifier
+// ─────────────────────────────────────────────────────────────────────
+
+type stubPostCommitVerifier struct {
+	verified []string
+	err      error
+}
+
+func (s *stubPostCommitVerifier) Verify(_ context.Context, voiceoverID string) error {
+	s.verified = append(s.verified, voiceoverID)
+	return s.err
+}
+
+var _ VoiceoverPostCommitVerifier = (*stubPostCommitVerifier)(nil)
+
+func TestFinalizeStage_PostCommitVerification(t *testing.T) {
+	db := openFinalizerTestDB(t)
+	verifier := &stubPostCommitVerifier{}
+
+	svc := &Service{
+		finalizer: &stubFinalizer{
+			cannedRes: &FinalizeResult{ID: "vo-verify", Reused: false},
+		},
+		voiceoverRepo:      &finalizerTestRepo{db: db},
+		postCommitVerifier: verifier,
+		log:                zap.NewNop(),
+	}
+
+	item := BatchItem{
+		ID:         "vo-verify",
+		Status:     StatusUploaded,
+		DriveFileID: "drive-1",
+	}
+	req := &BatchRequest{Text: "test", Strategy: "replace"}
+
+	result := svc.finalizeStage(
+		context.Background(),
+		item,
+		"req-1", "hash-1", "en",
+		req,
+		&ResolvedDestination{FolderID: "f1"},
+		[]byte(`{}`),
+		false, "", "", "",
+	)
+
+	assert.Equal(t, StatusCompleted, result.Status)
+	assert.Len(t, verifier.verified, 1, "PostCommitVerifier.Verify must be called after commit")
+	assert.Equal(t, "vo-verify", verifier.verified[0])
+}
+
+func TestFinalizeStage_PostCommitVerificationNilSafe(t *testing.T) {
+	db := openFinalizerTestDB(t)
+
+	// Unwired verifier — should not panic.
+	svc := &Service{
+		finalizer: &stubFinalizer{
+			cannedRes: &FinalizeResult{ID: "vo-nil", Reused: false},
+		},
+		voiceoverRepo:      &finalizerTestRepo{db: db},
+		postCommitVerifier: nil, // unwired
+		log:                zap.NewNop(),
+	}
+
+	item := BatchItem{ID: "vo-nil", Status: StatusUploaded}
+	req := &BatchRequest{Text: "test", Strategy: "replace"}
+
+	result := svc.finalizeStage(
+		context.Background(),
+		item,
+		"req-1", "hash-1", "en",
+		req,
+		&ResolvedDestination{FolderID: "f1"},
+		[]byte(`{}`),
+		false, "", "", "",
+	)
+
+	assert.Equal(t, StatusCompleted, result.Status,
+		"Unwired PostCommitVerifier must not block success")
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // P0.4 Fase 3b: SkippedSteps tracking
 // ─────────────────────────────────────────────────────────────────────
 

@@ -394,6 +394,28 @@ type VoiceoverFinalizer interface {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// VoiceoverPostCommitVerifier is the optional narrow port for post-commit
+// SQL verification (P0.4 Fase 4a, July 2026). After the tx commits,
+// finalizeStage calls Verify(ctx, voiceoverID) to confirm both the
+// voiceovers row AND the media_assets projection exist. If either
+// is missing, the verifier logs a WARN — the tx committed successfully
+// but the durable row is absent, indicating a silent schema/driver bug.
+//
+// Nil-safe: when unwired, finalizeStage skips the verification entirely.
+// The production concrete queries voiceovers + media_assets via a *sql.DB
+// handle passed at composition time.
+type VoiceoverPostCommitVerifier interface {
+	// Verify confirms that the voiceovers row (id) and the
+	// media_assets projection (id, source='voiceover') both exist.
+	// Returns nil when both rows are present; returns an error with
+	// details about which row is missing. The caller (finalizeStage)
+	// only logs the error — it does NOT fail the item or roll back.
+	// The tx has already committed, so the verification is purely
+	// diagnostic.
+	Verify(ctx context.Context, voiceoverID string) error
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // VoiceoverItemExecutor port (interface forward-declared, BLOC5.4
 // implementation pending, June 2026 cutover backend).
 // ────────────────────────────────────────────────────────────────────────

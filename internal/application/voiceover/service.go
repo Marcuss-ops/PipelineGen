@@ -92,6 +92,12 @@ type Service struct {
 	// lifecycleProjectionAdapter + log. Nil-safe: finalizeStage guards
 	// nil and returns a typed failure when unwired.
 	finalizer VoiceoverFinalizer
+	// postCommitVerifier is the optional post-commit SQL verification
+	// port (P0.4 Fase 4a, July 2026). After the tx commits, finalizeStage
+	// calls Verify(ctx, voiceoverID) to confirm both the voiceovers row
+	// and the media_assets projection exist. Nil-safe: when unwired,
+	// verification is skipped entirely.
+	postCommitVerifier VoiceoverPostCommitVerifier
 }
 
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.
@@ -133,7 +139,7 @@ type VoiceoverGenerationDeps struct {
 	SemanticTagger SemanticTaggerFunc
 }
 
-// VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator, finalizer.
+// VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator, finalizer, verifier.
 type VoiceoverIntegrationDeps struct {
 	DriveUploader     DriveUploaderPort
 	LifecycleService  *lifecycle.Service
@@ -146,6 +152,10 @@ type VoiceoverIntegrationDeps struct {
 	// rather than mid-tx. Production wiring in build_bundles_voiceover.go
 	// always supplies a non-nil finalizer.
 	Finalizer VoiceoverFinalizer
+	// PostCommitVerifier is the optional post-commit SQL verification
+	// port (P0.4 Fase 4a, July 2026). After tx commit, finalizeStage
+	// calls Verify to confirm durability. Nil-safe: skip verification.
+	PostCommitVerifier VoiceoverPostCommitVerifier
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
@@ -160,9 +170,10 @@ func NewService(deps VoiceoverDeps) *Service {
 		assetDestResolver: deps.Integration.AssetDestResolver,
 		lifecycleService:  deps.Integration.LifecycleService,
 		semanticTagger:    deps.Generation.SemanticTagger,
-		outboxEnqueuer: deps.Integration.OutboxEnqueuer,
-		translator:     deps.Integration.Translator,
-		finalizer:      deps.Integration.Finalizer,
+		outboxEnqueuer:    deps.Integration.OutboxEnqueuer,
+		translator:        deps.Integration.Translator,
+		finalizer:         deps.Integration.Finalizer,
+		postCommitVerifier: deps.Integration.PostCommitVerifier,
 	}
 }
 

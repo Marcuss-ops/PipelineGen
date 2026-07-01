@@ -656,3 +656,54 @@ func (a *voiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Con
 }
 
 var _ voiceover.LifecycleProjectionUpserter = (*voiceoverProjectionAdapter)(nil)
+
+// ─────────────────────────────────────────────────────────────────────
+// PostCommitVerifier adapter (P0.4 Fase 4a, July 2026).
+//
+// Bridges *sql.DB → voiceover.VoiceoverPostCommitVerifier.Verify.
+// Runs two SELECT queries outside any tx (post-commit) to confirm
+// both the voiceovers row and the media_assets projection exist.
+// Returns nil when both rows are present; returns a descriptive
+// error when either is missing.
+// ─────────────────────────────────────────────────────────────────────
+
+type voiceoverPostCommitVerifierAdapter struct {
+	db *sql.DB
+}
+
+func newVoiceoverPostCommitVerifierAdapter(db *sql.DB) *voiceoverPostCommitVerifierAdapter {
+	if db == nil {
+		panic("app.adapters_voiceover_use_case: newVoiceoverPostCommitVerifierAdapter: db is required (*sql.DB)")
+	}
+	return &voiceoverPostCommitVerifierAdapter{db: db}
+}
+
+func (a *voiceoverPostCommitVerifierAdapter) Verify(ctx context.Context, voiceoverID string) error {
+	// Check voiceovers row.
+	var voStatus string
+	err := a.db.QueryRowContext(ctx,
+		`SELECT status FROM voiceovers WHERE id = ?`, voiceoverID,
+	).Scan(&voStatus)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("post-commit verification: voiceovers row missing for id=%q", voiceoverID)
+		}
+		return fmt.Errorf("post-commit verification: voiceovers SELECT error for id=%q: %w", voiceoverID, err)
+	}
+
+	// Check media_assets projection.
+	var mediaSource string
+	err = a.db.QueryRowContext(ctx,
+		`SELECT source FROM media_assets WHERE id = ? AND source = 'voiceover'`, voiceoverID,
+	).Scan(&mediaSource)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("post-commit verification: media_assets projection missing for id=%q (source='voiceover')", voiceoverID)
+		}
+		return fmt.Errorf("post-commit verification: media_assets SELECT error for id=%q: %w", voiceoverID, err)
+	}
+
+	return nil
+}
+
+var _ voiceover.VoiceoverPostCommitVerifier = (*voiceoverPostCommitVerifierAdapter)(nil)
