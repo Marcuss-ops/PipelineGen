@@ -11,42 +11,63 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
-// DeletionService handles synchronized deletion between database and cloud drive.
+// DispatcherPort is the application-layer port for DeletionService's
+// outbox emit (Pattern 0 — declared at the consumer side, satisfied
+// by *outbox.Dispatcher in production. Structural satisfaction means
+// callers don't need to import outbox — they pass the production
+// concrete directly).
+//
+// Blocco 3.1 commit 4/3 (June 2026): the port is intentionally
+// NARROW (single method). The wider outbox.Dispatcher surface is
+// available elsewhere in the composition root — DeletionService
+// itself only ever needs the drive-delete emission path. Consumers
+// that need EnqueueIndexDelete / EnqueueAndRestore etc wire those
+// directly via their own ports.
+type DispatcherPort interface {
+	EnqueueDriveDelete(ctx context.Context, assetID string, permanently bool) error
+}
+
+// DeletionService handles deletion routing.
+// Blocco 3.1 commit 4/3 (June 2026): the service no longer accepts
+// synchronous Drive side-effects — every deletion route (Drive Trash
+// or permanent Delete, Qdrant DeletePoints, SQLite SoftDelete, all
+// lifecycle_state hops on the canonical state machine) is delegated
+// to the outbox dispatcher. See the dispatcher's EnqueueDriveDelete
+// docstring (internal/infrastructure/database/sqlite/outbox/
+// dispatcher_delete.go) for the full state-machine sequence.
 type DeletionService struct {
 	artlistRepo   *assets.ClipsRepository
 	clipsRepo     *assets.ClipsRepository
 	stockRepo     *assets.ClipsRepository
 	voiceoverRepo *assets.VoiceoversRepository
 	imagesRepo    *assets.ImagesRepository
+	// driveUploader is RETIRED at Blocco 3.1 commit 4/3 (June 2026).
+	// The field + ctor parameter are retained for back-compat with
+	// 3 production callers (internal/app/build_bundles_domain.go,
+	// internal/app/module_media.go, internal/application/assets/
+	// maintenance/service_test.go) but ignored by DeleteClip. Future
+	// commit retires the field; tracked under the Blocco 3.1 commit
+	// 4/3 forward-pointer in architecture/current.yaml.
 	driveUploader *drive.Uploader
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service
-	// dispatcher is the canonical outbox.Dispatcher used by DeleteClip
-	// to atomically (1) stamp media_assets.index_state=DELETE_PENDING
-	// and (2) emit an asset.index.delete_requested.v1 event in a single
-	// tx — the IndexDeleteHandler completes the picture with Qdrant
-	// delete + SoftDelete + DELETED state flip. QDRANT-002 PR7 close-out
-	// for the producer migration ticket item D (every direct
-	// repo.SoftDelete path routes through Dispatcher.EnqueueAndDelete).
-	dispatcher *outbox.Dispatcher
-	log        *zap.Logger
+	dispatcher    DispatcherPort
+	log           *zap.Logger
 }
 
 // NewDeletionService creates a new deletion service.
 //
 // QDRANT-002 PR7: dispatcher is the canonical outbox.Dispatcher.
-// Production wiring always supplies it; nil is allowed only in test
-// fixtures that exercise the legacy direct SoftDelete path (the
-// caller MUST opt-in via the dispatcherNilAllowed=true flag when
-// wiring test fixtures so a regression that touches production
-// wiring shows up at build time, not at runtime).
+// Blocco 3.1 commit 4/3 (June 2026): dispatcher's type is the
+// port interface DispatcherPort so test fixtures can substitute a
+// recording mock without spinning up an in-memory SQLite + txmgr
+// fixture. Production wiring passes *outbox.Dispatcher which
+// satisfies the port structurally.
 func NewDeletionService(
 	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
 	voiceoverRepo *assets.VoiceoversRepository,
@@ -54,7 +75,7 @@ func NewDeletionService(
 	driveUploader *drive.Uploader,
 	assetTreeSvc *assettree.Service,
 	assetIndexSvc *assetindex.Service,
-	dispatcher *outbox.Dispatcher,
+	dispatcher DispatcherPort,
 	log *zap.Logger,
 ) *DeletionService {
 	return &DeletionService{
@@ -72,6 +93,26 @@ func NewDeletionService(
 }
 
 // DeleteClip deletes a clip by its ID and source.
+//
+// Blocco 3.1 commit 4/3 (June 2026): every side-effect (Drive Trash/Delete,
+// Qdrant DeletePoints, SQLite SoftDelete, all 5 lifecycle_state hops on
+// the canonical state machine) routes through the outbox dispatcher.
+// There is NO synchronous Drive call here — the dispatcher's
+// EnqueueDriveDelete atomically stamps lifecycle_state=DELETE_REQUESTED
+// AND emits asset.drive.delete_requested.v1 in a single tx; the
+// DriveDeleteHandler runs the actual Drive API call asynchronously
+// (Trash or permanent Delete honours the `permanently` flag) + emits
+// the next outbox event; IndexDeleteHandler closes the chain on Qdrant
+// DeletePoints + SoftDelete + terminal lifecycle_state=DELETED hop.
+//
+// Defence-in-depth (legacy code path): if dispatcher is nil, we return
+// a wiring-error rather than silently falling back to sync Drive
+// delete — the previous "best-effort warn-and-continue" behaviour was
+// the canonical regression that hid Drive-API failures from operators
+// (QDRANT-002 ticket item D retro). The voiceover/images tables still
+// use repo.Delete directly because those tables are NOT watched by
+// the Qdrant indexer (QDRANT-002 PR8 followup will retrofit a
+// DeleteEnqueue for those tables).
 func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID string, permanently bool) error {
 	s.log.Info("deleting clip", zap.String("source", source), zap.String("clip_id", clipID), zap.Bool("permanently", permanently))
 
@@ -89,90 +130,46 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		return fmt.Errorf("invalid source: %s", source)
 	}
 
-	// 2. Get Clip Data to find Drive file ID
-	var driveFileID string
+	// 2. Validate the source row exists so callers get a "not found" error
+	// before the dispatcher emits a no-op outbox event for a missing id.
+	// Drive file IDs are NOT needed here — the dispatcher-side
+	// DriveDeleteHandler reads them from the SQLite row when the event
+	// is processed.
 	var err error
-
-	if canonical == "voiceover" && s.voiceoverRepo != nil {
-		rec, voErr := s.voiceoverRepo.GetByID(ctx, clipID)
+	switch {
+	case canonical == "voiceover" && s.voiceoverRepo != nil:
+		_, voErr := s.voiceoverRepo.GetByID(ctx, clipID)
 		if voErr != nil {
 			return fmt.Errorf("voiceover not found: %w", voErr)
 		}
-		clip := artifacts.VoiceoverRecordToClip(rec)
-		driveFileID = clip.DriveFileID()
-		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DriveLink())
-		}
-		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
-		}
-	} else if canonical == "images" && s.imagesRepo != nil {
-		img, imgErr := s.imagesRepo.GetByID(ctx, clipID)
+	case canonical == "images" && s.imagesRepo != nil:
+		_, imgErr := s.imagesRepo.GetByID(ctx, clipID)
 		if imgErr != nil {
 			return fmt.Errorf("image not found: %w", imgErr)
 		}
-		clip := artifacts.ImageAssetToClip(img)
-		driveFileID = clip.DriveFileID()
-		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DriveLink())
-		}
-		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
-		}
-	} else if repo != nil {
-		var clip *asset.Asset
-		clip, err = repo.Get(ctx, clipID)
+	case repo != nil:
+		_, err = repo.Get(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("clip not found: %w", err)
 		}
-		driveFileID = driveutil.FileIDFromLink(clip.DriveLink())
-		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
-		}
-	} else {
+	default:
 		return fmt.Errorf("repository for %s not available", source)
 	}
 
-	// 3. Delete from Drive
-	if s.driveUploader != nil && driveFileID != "" {
-		var driveErr error
-		if permanently {
-			driveErr = s.driveUploader.DeleteFile(ctx, driveFileID)
-		} else {
-			driveErr = s.driveUploader.TrashFile(ctx, driveFileID)
-		}
-		if driveErr != nil {
-			s.log.Warn("failed to delete drive file", zap.String("file_id", driveFileID), zap.Error(driveErr))
-		}
-	}
-
-	// 4. Delete from DB
-	//
-	// QDRANT-002 PR7: route through Dispatcher.EnqueueAndDelete for
-	// the media_asset source. The Dispatcher's tx atomically stamps
-	// index_state=DELETE_PENDING AND emits outbox_events asset.index.
-	// delete_requested.v1 — IndexDeleteHandler.Handle completes the
-	// delete (Qdrant DeletePoints → SoftDelete in SQLite → final
-	// state flip to DELETED). For voiceover and images sources the
-	// tables are NOT watched by the Qdrant indexer, so the direct
-	// repo.Delete path is still correct (QDRANT-002 PR8 followup
-	// will retrofit a DeleteEnqueue for those tables).
+	// 3. Emit through dispatcher (Blocco 3.1 state machine entrypoint).
+	// For voiceover/images the direct repo.Delete is correct because those
+	// tables have no Qdrant index (QDRANT-002 PR8 follow-up will retrofit
+	// a DeleteEnqueue for them); for media_asset the dispatcher is the
+	// canonical path.
 	if canonical == "voiceover" && s.voiceoverRepo != nil {
 		err = s.voiceoverRepo.Delete(ctx, clipID)
 	} else if canonical == "images" && s.imagesRepo != nil {
 		err = s.imagesRepo.Delete(ctx, clipID)
 	} else if repo != nil {
 		if s.dispatcher == nil {
-			// Defense-in-depth: production wiring must supply a
-			// non-nil dispatcher. The error here shows up at the
-			// first delete attempt in a misconfigured deployment,
-			// not at boot time — that's intentional. Test fixtures
-			// that exercise the legacy SoftDelete path already opt
-			// out of Dispatcher routing through a sentinel value, so
-			// this branch is reachable only via a wiring mistake.
-			err = fmt.Errorf("deletion: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher (QDRANT-002 PR7 producer migration)")
+			err = fmt.Errorf("deletion: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher (Blocco 3.1 commit 4/3 producer migration)")
 		} else {
-			err = s.dispatcher.EnqueueAndDelete(ctx, clipID)
+			err = s.dispatcher.EnqueueDriveDelete(ctx, clipID, permanently)
 		}
 	}
 
@@ -180,7 +177,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		return fmt.Errorf("failed to delete from database: %w", err)
 	}
 
-	// 5. Cleanup Asset Tree
+	// 4. Cleanup Asset Tree
 	if s.assetTreeSvc != nil {
 		_ = s.assetTreeSvc.DeleteByAssetID(ctx, source, clipID)
 		_ = s.assetTreeSvc.DeleteNode(ctx, clipID)

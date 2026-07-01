@@ -254,17 +254,45 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			)
 			return nil
 		}
-		// Idempotency pre-flight #2: lifecycle_state already in a
-		// deleted state. Both casings match (canonical "DELETED" from
-		// PR4 + legacy lowercase "deleted" from the existing SoftDelete
-		// call). This is the same pair the SoftDeleteFilter accepts,
-		// so future canonicalisation is non-breaking.
+		// Idempotency pre-flight #2: terminal-state short-circuit.
+		// Blocco 3.1 commit 4/3 (June 2026): canonical "DELETED"
+		// (from PR4) + legacy lowercase "deleted" (from the existing
+		// SoftDelete call) BOTH short-circuit to nil; this is the
+		// same pair the SoftDeleteFilter accepts so future
+		// canonicalisation is non-breaking.
 		switch string(existing.LifecycleState) {
-		case "DELETED", "deleted":
+		case string(asset.StateDeleted), "deleted":
 			log.Info("asset.index.delete_requested: asset already in deleted state — treat as success (idempotent)",
 				append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
 			)
 			return nil
+		}
+		// Blocco 3.1 commit 4/3 (June 2026): explicit in-flight
+		// acknowledgment. A row already at INDEX_DELETE_PENDING means
+		// the deletion chain is mid-flight (Drive side-effect done,
+		// the dispatcher emitted the index-delete event, and THIS
+		// handler is processing it). The handler proceeds with the
+		// chain so the work reaches terminal DELETED — all five
+		// steps ahead (SetIndexState(DELETE_PENDING) → Qdrant →
+		// SoftDelete → SetIndexState(DELETED) → SetLifecycleState(DELETED))
+		// are idempotent at their respective layers.
+		//
+		// Pre-fix pre-flight did not distinguish this state from a
+		// fresh entry (it fell through to the work with no log). The
+		// new explicit case makes the in-flight semantic observable
+		// so an operator investigating "why is my row stuck at
+		// INDEX_DELETE_PENDING" via dashboards can confirm "yes,
+		// the handler saw it, the work is running".
+		if existing.LifecycleState == asset.StateLifecycleIndexDeletePending {
+			log.Info("asset.index.delete_requested: asset in INDEX_DELETE_PENDING — closing the chain (pre-flight does NOT skip; all 5 closing steps are idempotent)",
+				append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
+			)
+			// fall through — SetIndexState(DELETE_PENDING) is a
+			// no-op write on the same-state column; Qdrant.DeletePoints
+			// returns deleted_count:0 on an absent point; SoftDelete
+			// is gated by the SoftDeleteFilter pre-flight; the terminal
+			// hops SetIndexState(DELETED) + SetLifecycleState(DELETED)
+			// are repo-idempotent (same-state writes are no-ops).
 		}
 	}
 
