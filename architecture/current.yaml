@@ -584,6 +584,10 @@
       owner_capability: scripts/ci-architectural-checks.sh
       status: shipped
       deadline: 2026-07-01
+    - id: 2d09f3e8
+      owner_capability: pkg/retry
+      status: shipped
+      deadline: 2026-07-25
     - id: PR-RETRY-CLASSIFIER-DOWNLOADER-MIGRATION
       owner_capability: internal/infrastructure/artlist/downloader
       status: pending
