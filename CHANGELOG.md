@@ -7,6 +7,12 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ---
 
+
+
+### Documentation
+
+- **[S7-Step-7 snapshot, July 2026]** documentation(md) + arch(current) + retry(pkg) -- Wave-7 canonical closeout audit-pin. pkg/retry typed-path transient classifier (IsTransient + WrapTransient) replaces 3 duplicate substring-match predicates (monitor.isTransientEnqueueError, tagutil.IsTransientDownloadError, youtube/usecase.IsTransientExtractionError). Production-default JitterFraction=0.25 enables bounded retry desynchronisation across fleet contention (kills thundering-herd retry storms). Wave-tracker entry S7-Step-7 -> status:done, exit_signal:true (ExitGate=true), deadline:2026-07-25. Cross-reference SHAs: chain 8bdb9a8d, accb090b, 6f327b10, c1cf33d3; taxonomy extension 2d09f3e8; Check 50 retry-classifier gate ef09b732; wave-tracker update 60e3e5f4.
+
 ## Unreleased
 
 ### Added
