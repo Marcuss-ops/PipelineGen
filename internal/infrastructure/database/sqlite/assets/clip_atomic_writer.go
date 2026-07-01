@@ -166,9 +166,12 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	if err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: build envelope: %w", err)
 	}
-	if len(event.Payload) > 0 {
-		payloadJSON = string(event.Payload)
-	}
+	// Blocco 1.1: the canonical envelope built by BuildReindexEnvelopeV1
+	// always wins. The caller MUST NOT supply a custom payload — the
+	// IndexEventPayload carries only routing fields (Type, AggregateID,
+	// CreatedAt). The previous `if len(event.Payload) > 0` override path
+	// replaced the canonical envelope with an ad-hoc payload that the
+	// IndexingHandler consumer rejected as terminal (dead_letter).
 
 	// ── 4) INSERT outbox_events (tx-bound)
 	if err := w.box.Enqueue(
