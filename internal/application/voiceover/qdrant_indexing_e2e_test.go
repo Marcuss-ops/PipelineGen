@@ -48,6 +48,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -331,6 +332,24 @@ func (s *e2eDriveAdmin) MoveFile(_ context.Context, _ string, _ string, _ string
 func (s *e2eDriveAdmin) RenameFile(_ context.Context, _ string, _ string) error { return nil }
 func (s *e2eDriveAdmin) Ping(_ context.Context) error                          { return nil }
 
+// Publish + ResolveFolder (F2.7 / Wave 21, June 2026): added to
+// e2eDriveAdmin so it satisfies the canonical delivery.Publisher interface
+// (required by lifecycle.NewService's 2nd arg after the DriveAdmin→Publisher
+// cutover). The E2E test path never exercises ResolveFolder, so it returns
+// a stub folder ID and the canonical Publish returns the test's driveFileID
+// with the canonical web-view URL form so the final media_assets row carries
+// a populated drive_link.
+func (s *e2eDriveAdmin) Publish(_ context.Context, _ delivery.PublishRequest) (*delivery.PublishResult, error) {
+	return &delivery.PublishResult{
+		FileID:       s.fileID,
+		WebViewLink:  "https://drive.google.com/file/d/" + s.fileID + "/view",
+		DownloadLink: "https://drive.google.com/uc?id=" + s.fileID + "&export=download",
+	}, nil
+}
+func (s *e2eDriveAdmin) ResolveFolder(_ context.Context, _ delivery.PublishRequest) (string, error) {
+	return "e2e-stub-folder-id", nil
+}
+
 // e2eAssetResolver returns a fixed folder for any resolve request.
 type e2eAssetResolver struct {
 	folderID   string
@@ -458,7 +477,7 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 		outputDir:         outputDir,
 		voiceoverRepo:     voiceoverRepo,
 		lifecycleService:  lifecycleSvc,
-		outbox:            outboxDispatcher,
+		outboxEnqueuer:    outboxDispatcher,
 		ttsProvider:       &e2eTTSProvider{localPath: filepath.Join(outputDir, "stub.mp3"), fileHash: fileHash},
 		assetDestResolver: &e2eAssetResolver{folderID: folderID, folderPath: outputDir},
 	}
