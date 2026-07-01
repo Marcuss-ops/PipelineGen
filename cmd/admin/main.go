@@ -22,7 +22,6 @@
 //   - reset-video-ai              (cmd/admin/reset_video_ai.go)
 //   - sync-all-drive              (cmd/admin/cleanup.go)
 //   - test-youtube                (cmd/admin/cleanup.go)
-//   - upload-t5pre                (cmd/admin/upload_t5pre.go)
 //   - verify-artlist-pipeline     (cmd/admin/verify.go)
 //   - stock-reset, stock-subfolders-reset,
 //     summarize-book, sync-outros, unify-catalogs,
@@ -76,7 +75,6 @@ var availableCommands = []string{
 	"sync-outros",
 	"test-youtube",
 	"unify-catalogs",
-	"upload-t5pre",
 	"backfill-visual-embeddings",
 	"verify-artlist-pipeline",
 }
@@ -123,8 +121,6 @@ func main() {
 		err = runSyncAllDrive(args)
 	case "test-youtube":
 		err = runTestYouTube(args)
-	case "upload-t5pre":
-		err = runUploadT5Pre(args)
 	case "verify-artlist-pipeline":
 		err = runVerifyArtlistPipeline(args)
 

@@ -125,8 +125,7 @@ func escapeName(name string) string {
 
 // createClipFolderEntry upserts the canonical `clip_folders` row for the
 // "video ai" sub-folder. Column shape matches migration
-// 011_create_characters.sql + the canonical INSERT in
-// internal/app/bootstrap.go::resolveDynamicDriveFolders.
+// 011_create_characters.sql.
 func createClipFolderEntry(ctx context.Context, db *sql.DB, folderID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.ExecContext(ctx, `

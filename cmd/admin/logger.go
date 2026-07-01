@@ -41,9 +41,12 @@ func appLogger() (*config.Config, *zap.Logger, func(), error) {
 }
 
 // productionLogger returns a zap production logger without loading the
-// global config. Used by upload-t5pre, which reads config directly via
-// config.Get() inside its command body (no need to thread it through
-// the helper signature).
+// global config. Kept as a helper for future admin commands that want
+// to read config directly via config.Get() inside their command body
+// without threading it through the helper signature (the upload-t5pre
+// command that used this helper was deleted in Wave A commit 1, June
+// 2026 — productionLogger remains for zero-config audit utilities
+// that may be reintroduced).
 func productionLogger() (*zap.Logger, func(), error) {
 	log, err := zap.NewProduction()
 	if err != nil {
