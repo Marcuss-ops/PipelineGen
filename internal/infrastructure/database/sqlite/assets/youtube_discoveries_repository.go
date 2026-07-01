@@ -178,67 +178,98 @@ func (r *YoutubeDiscoveriesRepository) TryReserve(
 // 4-value tuple the outer TryReserve returns.
 //
 // The eligibility rules mirror the doc-comment on TryReserve (a/b/c).
-// We use one UPDATE per eligible condition so the SQL is auditable
-// from a single sqlite3 query log; a single UPDATE-with-CASE mixes
-// the predicates and complicates audit, so the per-conditional UPDATE
-// shape wins on readability / whitebox test surface.
+//
+// Blocco 1 (July 2026) — atomic compare-and-swap rewrite:
+// The pre-fix shape (SELECT state/lease/attempt → decide in Go →
+// UPDATE without checking old values) was a classic TOCTOU race:
+// two goroutines could both read an expired lease, both UPDATE the
+// same row, and both return won=true. The fix uses atomic
+// UPDATE...WHERE...RETURNING: the WHERE clause pins the old state +
+// lease; only ONE row matches the predicate per (channel_id,
+// video_id, policy_version). A RETURNING id on zero matching rows
+// surfaces sql.ErrNoRows → won=false. lease_until is now SET to a
+// NEW lease (not NULL) so a MarkEnqueued failure doesn't leave the
+// row permanently stuck in 'pending' — the next cycle's TryReserve
+// can reclaim it after the new lease expires.
 func (r *YoutubeDiscoveriesRepository) tryReserveConflict(
 	ctx context.Context,
 	channelID, videoID, policyVersion, id, nowStr string,
 ) (string, bool, int, error) {
-	// Lookup the existing row's state + lease_until + next_retry_at
-	// + attempt_count so we can decide eligibility + compute the
-	// new attempt_count on retry.
-	var (
-		state        string
-		leaseUntil   sql.NullString
-		nextRetryAt  sql.NullString
-		attemptCount int
-	)
-	if err := r.db.QueryRowContext(ctx, `
-		SELECT state, lease_until, next_retry_at, attempt_count
-		FROM youtube_discoveries
-		WHERE channel_id = ? AND video_id = ? AND policy_version = ?
-	`, channelID, videoID, policyVersion).Scan(&state, &leaseUntil, &nextRetryAt, &attemptCount); err != nil {
-		return "", false, 0, fmt.Errorf("youtube_discoveries.TryReserve: lookup: %w", err)
-	}
+	leaseUntil := time.Now().UTC().Add(time.Duration(DefaultLeaseDurationSeconds) * time.Second).Format(time.RFC3339)
 
-	// (a) state='pending' + lease expired → reclaim + retry.
-	if state == "pending" && leaseUntil.Valid && leaseUntil.String != "" && leaseUntil.String < nowStr {
-		newAttempt := attemptCount + 1
-		if _, err := r.db.ExecContext(ctx, `
-			UPDATE youtube_discoveries
-			SET state = 'pending',
-			    lease_owner = NULL,
-			    lease_until = NULL,
-			    attempt_count = ?,
-			    discovered_at = ?,
-			    updated_at = ?
-			WHERE channel_id = ? AND video_id = ? AND policy_version = ?
-		`, newAttempt, nowStr, nowStr, channelID, videoID, policyVersion); err != nil {
+	// (a) Atomic reclaim: pending + expired lease → retry with NEW lease.
+	// The WHERE clause compares lease_until against nowStr — if another
+	// goroutine already reclaimed (and wrote a fresh lease_until in the
+	// future), this UPDATE matches zero rows → ErrNoRows → won=false.
+	// lease_until is SET to a fresh value (NOT NULL) so the row remains
+	// reclaimable on the next cycle if MarkEnqueued never fires.
+	var returnedID sql.NullString
+	var newAttempt sql.NullInt64
+	row := r.db.QueryRowContext(ctx, `
+		UPDATE youtube_discoveries
+		SET state = 'pending',
+		    lease_owner = NULL,
+		    lease_until = ?,
+		    attempt_count = attempt_count + 1,
+		    discovered_at = ?,
+		    updated_at = ?
+		WHERE channel_id = ? AND video_id = ? AND policy_version = ?
+		  AND state = 'pending'
+		  AND lease_until IS NOT NULL
+		  AND lease_until < ?
+		RETURNING id, attempt_count
+	`, leaseUntil, nowStr, nowStr, channelID, videoID, policyVersion, nowStr)
+	if err := row.Scan(&returnedID, &newAttempt); err != nil {
+		if err != sql.ErrNoRows {
 			return "", false, 0, fmt.Errorf("youtube_discoveries.TryReserve: lease-reclaim: %w", err)
 		}
-		return id, true, newAttempt, nil
+		// Zero rows matched → try (b).
+	} else {
+		return returnedID.String, true, int(newAttempt.Int64), nil
 	}
 
-	// (b) state='rejected_retryable' + retry-eligible → retry.
-	if state == "rejected_retryable" && nextRetryAt.Valid && nextRetryAt.String != "" && nextRetryAt.String <= nowStr {
-		newAttempt := attemptCount + 1
-		if _, err := r.db.ExecContext(ctx, `
-			UPDATE youtube_discoveries
-			SET state = 'pending',
-			    next_retry_at = NULL,
-			    attempt_count = ?,
-			    discovered_at = ?,
-			    updated_at = ?
-			WHERE channel_id = ? AND video_id = ? AND policy_version = ?
-		`, newAttempt, nowStr, nowStr, channelID, videoID, policyVersion); err != nil {
+	// (b) Atomic reclaim: rejected_retryable + retry-eligible → retry
+	// with NEW lease. Same compare-and-swap shape as (a): the WHERE
+	// clause includes the old state + next_retry_at gate; only one
+	// goroutine's UPDATE wins the row.
+	row = r.db.QueryRowContext(ctx, `
+		UPDATE youtube_discoveries
+		SET state = 'pending',
+		    next_retry_at = NULL,
+		    lease_until = ?,
+		    attempt_count = attempt_count + 1,
+		    discovered_at = ?,
+		    updated_at = ?
+		WHERE channel_id = ? AND video_id = ? AND policy_version = ?
+		  AND state = 'rejected_retryable'
+		  AND next_retry_at IS NOT NULL
+		  AND next_retry_at <= ?
+		RETURNING id, attempt_count
+	`, leaseUntil, nowStr, nowStr, channelID, videoID, policyVersion, nowStr)
+	if err := row.Scan(&returnedID, &newAttempt); err != nil {
+		if err != sql.ErrNoRows {
 			return "", false, 0, fmt.Errorf("youtube_discoveries.TryReserve: retry-retryable: %w", err)
 		}
-		return id, true, newAttempt, nil
+		// Zero rows matched → already-scheduled (c).
+	} else {
+		return returnedID.String, true, int(newAttempt.Int64), nil
 	}
 
-	// (c) active lease or already-terminal: already-scheduled.
+	// (c) Already-scheduled: row exists but is not reclaimable (active
+	// lease, terminal state, or retry not yet due). Return the derived
+	// id + the row's current attempt_count so the caller can log it.
+	var attemptCount int
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT attempt_count FROM youtube_discoveries
+		WHERE channel_id = ? AND video_id = ? AND policy_version = ?
+	`, channelID, videoID, policyVersion).Scan(&attemptCount); err != nil {
+		if err == sql.ErrNoRows {
+			// Row was deleted between INSERT conflict and now — treat
+			// as already-scheduled with the derived id.
+			return id, false, 0, nil
+		}
+		return "", false, 0, fmt.Errorf("youtube_discoveries.TryReserve: final lookup: %w", err)
+	}
 	return id, false, attemptCount, nil
 }
 
