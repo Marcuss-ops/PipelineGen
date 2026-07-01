@@ -979,31 +979,29 @@ All modules must use canonical contracts:
 
 Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni utility è leaf-only (zero import da `internal/`); `pkg/` è dove cerchi prima di replicare logica. Regola pratica: se stai per incollare 20+ righe di helper, prima `grep` qui sotto.
 
-| Scenario | Pacchetto | Helper chiave (preferisci questo invece di custom) |
-|---|---|---|
-| Default coalesce (string/int/float) | `pkg/defaults` | `String(val, fallback)`, `Int(val, fallback)`, `Float64(val, fallback)` |
-| Retry con backoff esponenziale + transient error classification (Step 7 closed, June 2026) | `pkg/retry` | `Do(ctx, fn, opts)`, `DoWithValue[T](ctx, fn, opts)`, `IsTransient(err)`, `WrapTransient(err)`, `&TransientInfrastructureError{Err: err}`, `DefaultOptions()` (production-default `JitterFraction=0.25` ±25%) — see `pkg/retry/retry.go::sleepDuration` for the typed-path vs substring-fallback contract |
-| Hash content / ID generation | `pkg/hashutil` | `SHA256String(s)`, `RandomString(n)`, `MD5File(path)`, `HashFile(path, h)` |
-| Correlation ID propagation (job/script) | `pkg/corid` | `WithCorrelationID(ctx, id)`, `FromContext(ctx)` — usalo nel middleware request ID e nell'enqueue job |
-| Pointer utilities | `pkg/ptrutil` | `Ptr[T](v)`, `DerefOr[T](p, fallback)` |
-| Text/slug/voiceover cleanup | `pkg/textutil` | `Slugify`, `SlugifyWithMax`, `CountWords`, `Truncate`, `CleanForVoiceover`, `FirstNonEmpty(...)`, `ParseVTTTimestamp`, `SplitScriptSentences` |
-| File I/O JSON + filesystem | `pkg/fileutil` | `WriteJSON(path, v, indent)`, `ReadJSON(path, v)`, `CopyFile`, `CleanFolderName(s)`, `UsableCachedClip(path)` |
-| Gin HTTP helpers (handler) | `pkg/apiutil` | `BindJSON[T](c)`, `OK(c, data)`, `BadRequest(c, msg)`, `InternalError(c, err)`, `NotFound`, `Error(c, status, msg)`, `ClampLimit(v, def, max)` |
-| Pagination & job utilities | `pkg/handlerutil` | `ParsePagination(defaultLimit, maxLimit)`, `AsyncJobResponse(c, job, msg)`, `EnqueueAsync`, `ParseJobStatusFilter` |
-| Concurrency / errgroup+panic | `pkg/concurrent` | `WithContext(parent)`, `ParallelMap[T,U]`, `SafeGo(name, fn)` (sostituisce WaitGroup+Mutex+recover custom) |
-| Slice primitives | `pkg/sliceutil` | `UniqueStrings`, `UniqueStringsCI`, `MinInt(a, b)`, `Clamp(v, lo, hi)`, `GroupSentences`, `NormalizeAndDedupe`, `MergeNormalizedLists` |
-| SQL fallbacks (FTS5 bandito) | `pkg/sqlutil` | `BuildFallbackLikeConditions(tokens, cols)`, `BuildFallbackLikeConditionsOR` |
-| YouTube URL / Drive link parse | `pkg/urlutil` | `ExtractVideoID(raw)`, `FileIDFromDriveLink(raw)` |
-| Path/folder naming | `pkg/pathutil` | `SafeFolderName(name)`, `BuildTimestampedSlug`, `ExtractStyleFromPath(relPath)` |
-| Term/name parsing + topic match | `pkg/termutil` | `SubjectMatchesTopic`, `ExtractLikelyNames`, `TermsFromText`, `TopicTokens` |
-| Similarity math | `pkg/similarity` | `Jaccard(a, b)`, `TokenSet(text)`, `OverlapRatio(startA, endA, startB, endB)` |
-| Matching thresholds config | `pkg/matchingconfig` | `LoadMatchingConfig(path)` — **nicho**, solo se tocchi semantic/similarity scoring |
-
-| Test helpers | `pkg/testutil` | `MustMarshalJSON(t, v)` |
-| Job HTTP client riusabile | `pkg/veloxclient` | `New(baseURL, token)` → `SubmitAsync`, `GetJobStatus`, `IsTerminal` |
-| Time RFC3339 | `pkg/timeutil` | `ParseRFC3339`, `FormatNow`, `ParseRFC3339PtrString` |
-| External process exec | `pkg/executil` | `Run(ctx, name, args, opts)`, `RunSimple`, `LookPath`, `CommandExists` |
-
+| Pacchetto & Scenario | Helper chiave (preferisci questo invece di custom) |
+|---|---|
+| **`pkg/defaults`**<br>Default coalesce (string/int/float) | `String(val, fallback)`, `Int(val, fallback)`, `Float64(val, fallback)` |
+| **`pkg/retry`**<br>Retry con backoff esponenziale + transient error classification (Step 7 closed, June 2026) | `IsTransient(err error) bool`, `WrapTransient(err error) error (TypedInfrastructureError carrier)`, `TransientInfrastructureError typed carrier (errors.As probe + idempotent on re-wrap)`, `DefaultOptions() returning BaseDelay=500ms / MaxBackoff=30s / MaxAttempts=5 / JitterFraction=0.25` |
+| **`pkg/hashutil`**<br>Hash content / ID generation | `SHA256String(s)`, `RandomString(n)`, `MD5File(path)`, `HashFile(path, h)` |
+| **`pkg/corid`**<br>Correlation ID propagation (job/script) | `WithCorrelationID(ctx, id)`, `FromContext(ctx)` - usalo nel middleware request ID e nell'enqueue job |
+| **`pkg/ptrutil`**<br>Pointer utilities | `Ptr[T](v)`, `DerefOr[T](p, fallback)` |
+| **`pkg/textutil`**<br>Text/slug/voiceover cleanup | `Slugify`, `SlugifyWithMax`, `CountWords`, `Truncate`, `CleanForVoiceover`, `FirstNonEmpty(...)`, `ParseVTTTimestamp`, `SplitScriptSentences` |
+| **`pkg/fileutil`**<br>File I/O JSON + filesystem | `WriteJSON(path, v, indent)`, `ReadJSON(path, v)`, `CopyFile`, `CleanFolderName(s)`, `UsableCachedClip(path)` |
+| **`pkg/apiutil`**<br>Gin HTTP helpers (handler) | `BindJSON[T](c)`, `OK(c, data)`, `BadRequest(c, msg)`, `InternalError(c, err)`, `NotFound`, `Error(c, status, msg)`, `ClampLimit(v, def, max)` |
+| **`pkg/handlerutil`**<br>Pagination & job utilities | `ParsePagination(defaultLimit, maxLimit)`, `AsyncJobResponse(c, job, msg)`, `EnqueueAsync`, `ParseJobStatusFilter` |
+| **`pkg/concurrent`**<br>Concurrency / errgroup+panic | `WithContext(parent)`, `ParallelMap[T,U]`, `SafeGo(name, fn)` (sostituisce WaitGroup+Mutex+recover custom) |
+| **`pkg/sliceutil`**<br>Slice primitives | `UniqueStrings`, `UniqueStringsCI`, `MinInt(a, b)`, `Clamp(v, lo, hi)`, `GroupSentences`, `NormalizeAndDedupe`, `MergeNormalizedLists` |
+| **`pkg/sqlutil`**<br>SQL fallbacks (FTS5 bandito) | `BuildFallbackLikeConditions(tokens, cols)`, `BuildFallbackLikeConditionsOR` |
+| **`pkg/urlutil`**<br>YouTube URL / Drive link parse | `ExtractVideoID(raw)`, `FileIDFromDriveLink(raw)` |
+| **`pkg/pathutil`**<br>Path/folder naming | `SafeFolderName(name)`, `BuildTimestampedSlug`, `ExtractStyleFromPath(relPath)` |
+| **`pkg/termutil`**<br>Term/name parsing + topic match | `SubjectMatchesTopic`, `ExtractLikelyNames`, `TermsFromText`, `TopicTokens` |
+| **`pkg/similarity`**<br>Similarity math | `Jaccard(a, b)`, `TokenSet(text)`, `OverlapRatio(startA, endA, startB, endB)` |
+| **`pkg/matchingconfig`**<br>Matching thresholds config | `LoadMatchingConfig(path)` - **nicho**, solo se tocchi semantic/similarity scoring |
+| **`pkg/testutil`**<br>Test helpers | `MustMarshalJSON(t, v)` |
+| **`pkg/veloxclient`**<br>Job HTTP client riusabile | `New(baseURL, token)` → `SubmitAsync`, `GetJobStatus`, `IsTerminal` |
+| **`pkg/timeutil`**<br>Time RFC3339 | `ParseRFC3339`, `FormatNow`, `ParseRFC3339PtrString` |
+| **`pkg/executil`**<br>External process exec | `Run(ctx, name, args, opts)`, `RunSimple`, `LookPath`, `CommandExists` |
 **Servizi interni riusabili** (non reinventare la ruota — vietato duplicare logica):
 
 | Scenario | Servizio | Path |
