@@ -267,8 +267,8 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 	assert.Equal(t, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", pipeline.url)
 	assert.Equal(t, float64(10), pipeline.start)
 	assert.Equal(t, float64(10), pipeline.duration)
-	// OutputName follows the new unique format: yt_{videoID}_{start}_{end}_{slug}
-	assert.Equal(t, "yt_dQw4w9WgXcQ_10_20_clip-one", pipeline.outputName)
+	// OutputName follows the new unique format: yt_{videoID}_{start}_{end}_{policyVer}_{slug}
+	assert.Equal(t, "yt_dQw4w9WgXcQ_10_20_v1_clip-one", pipeline.outputName)
 }
 
 func TestYouTubeClipValidSegmentCount(t *testing.T) {
