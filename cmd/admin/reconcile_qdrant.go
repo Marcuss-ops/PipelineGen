@@ -447,7 +447,7 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID, conte
 	if err != nil {
 		return fmt.Errorf("build reindex envelope: %w", err)
 	}
-	if err := a.outboxRepo.Enqueue(
+	if _, err := a.outboxRepo.Enqueue(
 		ctx, tx,
 		outboxevents.EventAssetIndexRequested,
 		assetID, "media_asset",
@@ -497,7 +497,7 @@ func (a *outboxRepairAdapter) EnqueueDelete(ctx context.Context, assetID string)
 	if err != nil {
 		return fmt.Errorf("marshal v1 delete payload: %w", err)
 	}
-	if err := a.outboxRepo.Enqueue(
+	if _, err := a.outboxRepo.Enqueue(
 		ctx, tx,
 		outboxevents.EventAssetIndexDeleteRequested,
 		assetID, "media_asset",

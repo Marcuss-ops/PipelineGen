@@ -101,7 +101,7 @@ func TestEnvelope_DedupAcrossTwoAppliesOpenMock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build 1: %v", err)
 	}
-	if err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p1, k1); err != nil {
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p1, k1); err != nil {
 		t.Fatalf("enqueue 1: %v", err)
 	}
 	if c := countRows(t, db, k1); c != 1 {
@@ -118,7 +118,7 @@ func TestEnvelope_DedupAcrossTwoAppliesOpenMock(t *testing.T) {
 	if k2 != k1 {
 		t.Fatalf("builder must produce identical event_key across applies: k1=%q k2=%q", k1, k2)
 	}
-	if err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p2, k2); err != nil {
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p2, k2); err != nil {
 		t.Fatalf("enqueue 2: %v", err)
 	}
 	if c := countRows(t, db, k1); c != 1 {
@@ -140,7 +140,7 @@ func TestEnvelope_NewRowOnHashChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build 1: %v", err)
 	}
-	if err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p1, k1); err != nil {
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p1, k1); err != nil {
 		t.Fatalf("enqueue 1: %v", err)
 	}
 
@@ -153,7 +153,7 @@ func TestEnvelope_NewRowOnHashChange(t *testing.T) {
 	if k1 == k2 {
 		t.Fatalf("hash change must produce a different event_key")
 	}
-	if err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p2, k2); err != nil {
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p2, k2); err != nil {
 		t.Fatalf("enqueue 2: %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestEnvelope_NewRowOnSchemaChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build 1: %v", err)
 	}
-	if err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p1, k1); err != nil {
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p1, k1); err != nil {
 		t.Fatalf("enqueue 1: %v", err)
 	}
 
@@ -191,7 +191,7 @@ func TestEnvelope_NewRowOnSchemaChange(t *testing.T) {
 	if k1 == k2 {
 		t.Fatalf("schema change must produce a different event_key")
 	}
-	if err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p2, k2); err != nil {
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-1", "media_asset", p2, k2); err != nil {
 		t.Fatalf("enqueue 2: %v", err)
 	}
 

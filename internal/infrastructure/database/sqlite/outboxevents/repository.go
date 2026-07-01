@@ -80,21 +80,59 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// EnqueueResult is the typed feedback from Enqueue. Before Blocco 2.0,
+// ON CONFLICT(event_key) DO NOTHING silently suppressed duplicate
+// inserts with zero feedback — the producer had no way to know
+// whether the event was freshly inserted or silently ignored
+// (potentially because a completed/dead_letter/superseded row
+// already existed with the same event_key).
+//
+// Inserted=true means the INSERT landed (no conflict existed).
+// Inserted=false means ON CONFLICT fired; ExistingStatus carries
+// the existing row's status so the producer can decide whether
+// to retry with a new event_key, surface a warning, or move on.
+type EnqueueResult struct {
+	EventID        int64  // ID of the row (new or existing)
+	Inserted       bool   // true if INSERT landed, false if ON CONFLICT suppressed
+	ExistingStatus string // existing row's status when Inserted=false; empty when Inserted=true
+}
+
 // Enqueue inserts a new outbox event. Call this inside a transaction.
 // Uses ON CONFLICT(event_key) DO NOTHING for idempotency.
-func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) error {
+//
+// Returns EnqueueResult with Inserted=true + EventID when the INSERT
+// lands. When ON CONFLICT suppresses the insert, returns Inserted=false
+// with the existing row's ID and status so the producer can distinguish
+// "fresh event" from "suppressed by existing completed/dead_letter/
+// superseded row".
+func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
 	now := timeutil.FormatRFC3339(time.Now())
 	exec := r.exec(ctx, tx)
-	_, err := exec(ctx,
+	result, err := exec(ctx,
 		`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING`,
 		eventType, aggregateID, aggregateType, payloadJSON, eventKey, now, now,
 	)
 	if err != nil {
-		return fmt.Errorf("outboxevents.Enqueue(%s, %s): %w", eventType, aggregateID, err)
+		return nil, fmt.Errorf("outboxevents.Enqueue(%s, %s): %w", eventType, aggregateID, err)
 	}
-	return nil
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		id, _ := result.LastInsertId()
+		return &EnqueueResult{EventID: id, Inserted: true}, nil
+	}
+	// ON CONFLICT suppressed the insert — query the existing row's
+	// status so the producer knows whether the event was squelched
+	// by a completed, dead_letter, or superseded row.
+	var existingID int64
+	var existingStatus string
+	if scanErr := r.db.QueryRowContext(ctx,
+		`SELECT id, status FROM outbox_events WHERE event_key = ?`, eventKey,
+	).Scan(&existingID, &existingStatus); scanErr != nil {
+		return nil, fmt.Errorf("outboxevents.Enqueue(%s, %s): ON CONFLICT suppressed, but query existing row: %w", eventType, aggregateID, scanErr)
+	}
+	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus}, nil
 }
 
 // ClaimNext claims the oldest pending event atomically using CTE.
