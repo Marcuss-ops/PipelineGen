@@ -297,6 +297,60 @@ func TestResolveCapabilities_EnvDeduplicatesDuplicates(t *testing.T) {
 	}
 }
 
+// ── ParseAndValidateCaps: empty env → error (Blocco 1.2) ────────────
+
+func TestParseAndValidateCaps_EmptyEnv_ReturnsError(t *testing.T) {
+	registered := []string{"script.generate", "voiceover.generate_item", "youtube.upload"}
+	_, err := ParseAndValidateCaps("", registered)
+	if err == nil {
+		t.Fatal("expected error for empty VELOX_WORKER_CAPABILITIES with no profile")
+	}
+	if !strings.Contains(err.Error(), "empty and no worker profile") {
+		t.Errorf("error should mention empty capabilities + no profile, got: %v", err)
+	}
+}
+
+func TestParseAndValidateCaps_WhitespaceOnlyEnv_ReturnsError(t *testing.T) {
+	registered := []string{"script.generate"}
+	_, err := ParseAndValidateCaps("   ", registered)
+	if err == nil {
+		t.Fatal("expected error for whitespace-only VELOX_WORKER_CAPABILITIES")
+	}
+}
+
+func TestParseAndValidateCaps_NonEmptyEnv_ParsesAndValidates(t *testing.T) {
+	registered := []string{"script.generate", "voiceover.generate_item"}
+	caps, err := ParseAndValidateCaps(`{"job_types": ["script.generate"]}`, registered)
+	if err != nil {
+		t.Fatalf("ParseAndValidateCaps: %v", err)
+	}
+	expected := []string{"script.generate"}
+	if !stringSlicesEqual(caps.JobTypes, expected) {
+		t.Errorf("JobTypes = %v, want %v", caps.JobTypes, expected)
+	}
+}
+
+func TestParseAndValidateCaps_UnknownType_ReturnsError(t *testing.T) {
+	registered := []string{"script.generate"}
+	_, err := ParseAndValidateCaps(`{"job_types": ["youtube.upload"]}`, registered)
+	if err == nil {
+		t.Fatal("expected error for unknown job type")
+	}
+	if !strings.Contains(err.Error(), "unknown job type") {
+		t.Errorf("error should mention unknown job type, got: %v", err)
+	}
+}
+
+func TestParseAndValidateCaps_MalformedJSON_ReturnsError(t *testing.T) {
+	_, err := ParseAndValidateCaps(`{bad`, []string{"script.generate"})
+	if err == nil {
+		t.Fatal("expected error for malformed JSON")
+	}
+	if !strings.Contains(err.Error(), "malformed") {
+		t.Errorf("error should mention malformed JSON, got: %v", err)
+	}
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 func stringSlicesEqual(a, b []string) bool {
