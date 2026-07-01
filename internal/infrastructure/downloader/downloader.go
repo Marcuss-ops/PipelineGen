@@ -14,17 +14,22 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.
 type YTDLPDownloader struct {
-	path          string
-	cookiesPath   string
-	jsRuntimePath string
+	path       string
+	cookiesPath string
+	cmdBuilder *ytdlp.CommandBuilder
+	verifier   *ytdlp.OutputVerifier
 }
 
 // NewYTDLP creates a new yt-dlp downloader.
+// Blocco 5 (July 2026): constructs the shared ytdlp.CommandBuilder once
+// so YouTube-specific args (cookies, JS runtime, extractor-args) are
+// centralized instead of duplicated.
 func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	path := cfg.External.ResolvedYtdlpPath()
 	cookiesPath := cfg.External.YouTubeCookiesPath
@@ -32,65 +37,16 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		cookiesPath = "cookies.txt"
 	}
 	return &YTDLPDownloader{
-		path:          path,
-		cookiesPath:   cookiesPath,
-		jsRuntimePath: cfg.External.YouTubeJSRuntimePath,
+		path:       path,
+		cookiesPath: cookiesPath,
+		cmdBuilder: ytdlp.NewCommandBuilder(cfg),
+		verifier:   &ytdlp.OutputVerifier{},
 	}
 }
 
 // Path returns the configured yt-dlp binary path.
 func (d *YTDLPDownloader) Path() string {
 	return d.path
-}
-
-// addYouTubeArgs appends YouTube-specific args for fast, lightweight downloads.
-// The key optimizations:
-//   - Forces pre-muxed MP4 ≤1080p (avoids ffmpeg remuxing, ~1000x faster)
-//   - Uses android+web player clients (faster server-side extraction)
-//   - Suppresses Python deprecation warnings that contaminate stderr
-//
-// useCookies should be true only for age-restricted/auth-required videos.
-// When cookies are passed, yt-dlp skips the android client (it doesn't support
-// cookies) and falls back to web-only extraction, which may fail n-challenge.
-//
-// addFormat controls whether the -f format string is added. It should be false
-// for metadata-only calls (--dump-json) where format selection is irrelevant
-// and may conflict.
-func (d *YTDLPDownloader) addYouTubeArgs(args []string, url string, useCookies bool, addFormat bool) []string {
-	if !strings.Contains(url, "youtube.com") && !strings.Contains(url, "youtu.be") {
-		return args
-	}
-	// Cookies for authenticated videos (age-restricted, etc.)
-	// Only passed when explicitly requested — android client is skipped when
-	// cookies are present, leaving only web extraction which may fail.
-	if useCookies && d.cookiesPath != "" {
-		args = append(args, "--cookies", d.cookiesPath)
-	}
-	// JS runtime for signature solving (YouTube's n-challenge / SABR enforcement)
-	// Defaults to "node" but can be set to absolute path for systemd compatibility
-	if d.jsRuntimePath != "" {
-		args = append(args, "--js-runtime", d.jsRuntimePath)
-		args = append(args, "--remote-components", "ejs:github")
-	}
-
-	// Suppress Python deprecation warnings that contaminate stderr
-	args = append(args, "--no-warnings")
-
-	// When cookies are enabled, yt-dlp typically falls back to web-only extraction.
-	// Android client and cookies are a brittle combination for YouTube.
-	if useCookies {
-		args = append(args, "--extractor-args", "youtube:player_client=web")
-	} else {
-		args = append(args, "--extractor-args", "youtube:player_client=android,web")
-	}
-
-	if addFormat {
-		// Prioritize separate video (mp4, <=1080p) + audio (m4a), then pre-muxed,
-		// falling back to best available.
-		args = append(args, "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best")
-	}
-
-	return args
 }
 
 // DownloadRequest configures a download operation.
@@ -163,9 +119,11 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 
 	args := []string{"--no-playlist"}
 
-	// Add YouTube-specific args (JS runtime, format selection)
-	// Cookies only passed when req.UseCookies is true (age-restricted videos)
-	args = d.addYouTubeArgs(args, req.URL, req.UseCookies, true)
+	// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
+	// --no-warnings, and --extractor-args. Format selection is via
+	// FormatArg so the downloader doesn't inline the -f string.
+	args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
+	args = append(args, d.cmdBuilder.FormatArg(true)...)
 
 	// Dynamically use aria2c to accelerate downloads if available
 	args = d.addExternalDownloaderArgs(args)
@@ -214,7 +172,21 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		Timeout:        timeout,
 		CombinedOutput: true,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Blocco 5 (July 2026): verify the output file exists and is
+	// non-empty after a successful yt-dlp exit (yt-dlp can exit zero
+	// but leave no output).
+	resolvedPath, resolveErr := ResolveDownloadedSegmentPath(outputTemplate)
+	if resolveErr != nil {
+		return fmt.Errorf("download succeeded but output file not found: %w", resolveErr)
+	}
+	if verifyErr := d.verifier.VerifyFile(resolvedPath); verifyErr != nil {
+		return verifyErr
+	}
+	return nil
 }
 
 // DownloadRange downloads a single contiguous time range from a video.
@@ -244,7 +216,8 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	}
 
 	args := []string{"--no-playlist"}
-	args = d.addYouTubeArgs(args, req.URL, req.UseCookies, true)
+	args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
+	args = append(args, d.cmdBuilder.FormatArg(true)...)
 	args = d.addExternalDownloaderArgs(args)
 
 	if req.Format != "" {
@@ -325,9 +298,8 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 			outputTemplate = fmt.Sprintf("%s_%03d.%%(ext)s", basePath, i+1)
 		}
 		args := []string{"--no-playlist"}
-
-		// Add YouTube-specific args (JS runtime, format selection)
-		args = d.addYouTubeArgs(args, req.URL, req.UseCookies, true)
+		args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
+		args = append(args, d.cmdBuilder.FormatArg(true)...)
 		args = d.addExternalDownloaderArgs(args)
 
 		if req.Format != "" {

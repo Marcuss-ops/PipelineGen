@@ -110,16 +110,17 @@ func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string)
 		"--dump-json",
 	}
 
-	// Add YouTube-specific args (JS runtime, no cookies for --dump-json)
-	// Use cookies when available to reduce bot-check failures on high-traffic videos.
-	// Metadata calls are lightweight enough that losing the android client is acceptable here.
+	// Blocco 5 (July 2026): use the centralized cmdBuilder for YouTube-
+	// specific args (cookies, JS runtime, --no-warnings, --extractor-args).
+	// Metadata calls use addFormat=false (format selection would conflict
+	// with --dump-json).
 	useCookies := false
 	if d.cookiesPath != "" {
 		if _, err := os.Stat(d.cookiesPath); err == nil {
 			useCookies = true
 		}
 	}
-	args = d.addYouTubeArgs(args, videoURL, useCookies, false)
+	args = append(args, d.cmdBuilder.BaseArgs(videoURL, useCookies)...)
 
 	args = append(args, videoURL)
 

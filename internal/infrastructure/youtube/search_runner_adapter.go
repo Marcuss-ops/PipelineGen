@@ -40,6 +40,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -62,12 +63,16 @@ type SearchRunnerAdapter struct {
 // composition root can short-circuit before any service tries to use it
 // (fail-closed at composition time). A nil inner is filled in with a fresh
 // YTDLPAdapter for unit-test convenience.
+//
+// Blocco 5 (July 2026): the adapter now constructs the shared
+// ytdlp.CommandBuilder and ProcessRunnerAdapter once and passes them to
+// NewYTDLPAdapter — the YTDLPAdapter no longer owns its own os/exec plumbing.
 func NewSearchRunnerAdapter(cfg *ytcfg.Config, log *zap.Logger) *SearchRunnerAdapter {
 	if cfg == nil || log == nil {
 		return nil
 	}
 	return &SearchRunnerAdapter{
-		inner: NewYTDLPAdapter(cfg, log),
+		inner: NewYTDLPAdapter(cfg, log, NewProcessRunnerAdapter(), ytdlp.NewCommandBuilder(cfg)),
 		log:   log,
 	}
 }

@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -51,14 +50,18 @@ type VideoChapter struct {
 // wired in internal/app/dependencies.go and injected into the
 // application layer via SetSearchRunner.
 type YTDLPAdapter struct {
-	cfg *ytcfg.Config
-	log *zap.Logger
+	cfg        *ytcfg.Config
+	log        *zap.Logger
+	runner     ProcessRunnerPort
+	cmdBuilder *ytdlp.CommandBuilder
 }
 
 // NewYTDLPAdapter constructs the adapter. cfg.External.ResolvedYtdlpPath()
-// must be set (composition root guarantees it).
-func NewYTDLPAdapter(cfg *ytcfg.Config, log *zap.Logger) *YTDLPAdapter {
-	return &YTDLPAdapter{cfg: cfg, log: log}
+// must be set (composition root guarantees it). The caller must supply
+// a ProcessRunnerPort (production: ProcessRunnerAdapter) and a
+// *ytdlp.CommandBuilder — both are created by NewSearchRunnerAdapter.
+func NewYTDLPAdapter(cfg *ytcfg.Config, log *zap.Logger, runner ProcessRunnerPort, cmdBuilder *ytdlp.CommandBuilder) *YTDLPAdapter {
+	return &YTDLPAdapter{cfg: cfg, log: log, runner: runner, cmdBuilder: cmdBuilder}
 }
 
 // SearchLive implements SearchRunner.SearchLive. ytsearchN:query for
@@ -73,31 +76,29 @@ func (a *YTDLPAdapter) SearchLive(ctx context.Context, query string, limit int, 
 		limit = 50
 	}
 
-	path := a.cfg.External.ResolvedYtdlpPath()
 	var args []string
 	if sort == "views" {
 		u := fmt.Sprintf("https://www.youtube.com/results?search_query=%s&sp=CAM%%253D", url.QueryEscape(query))
-		args = []string{u, "--dump-json", "--flat-playlist", "--no-warnings", "--playlist-end", strconv.Itoa(limit)}
+		args = append(args, u, "--dump-json", "--flat-playlist", "--playlist-end", strconv.Itoa(limit))
+		// Blocco 5 (July 2026): for views-sorted search, pass the
+		// constructed YouTube URL to BaseArgs so cookies/JS runtime/
+		// extractor-args are applied (old code did this via os.Stat).
+		args = append(a.cmdBuilder.BaseArgs(u, false), args...)
 	} else {
-		args = []string{
-			fmt.Sprintf("ytsearch%d:%s", limit, query),
-			"--dump-json",
-			"--flat-playlist",
-			"--no-warnings",
-		}
-	}
-	cookiesPath := a.cfg.External.YouTubeCookiesPath
-	if cookiesPath == "" {
-		cookiesPath = "cookies.txt"
-	}
-	if _, err := os.Stat(cookiesPath); err == nil {
-		args = append(args, "--cookies", cookiesPath)
+		args = append(args, fmt.Sprintf("ytsearch%d:%s", limit, query), "--dump-json", "--flat-playlist")
+		// ytsearchN: queries are handled by yt-dlp internally; BaseArgs
+		// is called without cookies (Android client + cookies = brittle).
+		args = append(a.cmdBuilder.BaseArgs(query, false), args...)
 	}
 
-	stdout, stderr, err := a.run(ctx, path, args...)
+	stdout, stderr, err := a.runner.Run(ctx, a.cmdBuilder.Path, args)
 	if err != nil {
 		a.log.Error("yt-dlp search failed", zap.Error(err), zap.String("stderr", stderr))
 		return nil, fmt.Errorf("search failed: %w", err)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		a.log.Warn("yt-dlp search returned empty stdout")
+		return nil, fmt.Errorf("search returned no output")
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
@@ -147,22 +148,22 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 		return VideoInfo{}, err
 	}
 
-	path := a.cfg.External.ResolvedYtdlpPath()
-	args := []string{
+	// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
+	// --no-warnings, and --extractor-args. Cookies are intentionally OFF
+	// for info (disables the Android client and breaks n-challenge solving).
+	args := append(a.cmdBuilder.BaseArgs(videoURL, false),
 		videoURL,
 		"--dump-json",
 		"--no-playlist",
-		"--no-warnings",
-	}
-	if a.cfg.External.YouTubeJSRuntimePath != "" {
-		args = append(args, "--js-runtime", a.cfg.External.YouTubeJSRuntimePath)
-	}
-	args = append(args, "--extractor-args", "youtube:player_client=android,web")
+	)
 
-	stdout, stderr, err := a.run(ctx, path, args...)
+	stdout, stderr, err := a.runner.Run(ctx, a.cmdBuilder.Path, args)
 	if err != nil {
 		a.log.Error("yt-dlp info failed", zap.Error(err), zap.String("stderr", stderr))
 		return VideoInfo{}, fmt.Errorf("failed to get video info: %w", err)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return VideoInfo{}, fmt.Errorf("video info returned no output")
 	}
 
 	var raw struct {
@@ -214,15 +215,4 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 	return out, nil
 }
 
-// run is the private helper for invoking yt-dlp. Kept here so callers
-// inside this package don't repeat the same os/exec plumbing.
-func (a *YTDLPAdapter) run(ctx context.Context, path string, args ...string) (string, string, error) {
-	cmd := exec.CommandContext(ctx, path, args...)
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return stdout.String(), stderr.String(), err
-	}
-	return stdout.String(), stderr.String(), nil
-}
+
