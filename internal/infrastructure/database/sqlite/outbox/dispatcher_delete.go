@@ -104,12 +104,23 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 		// reconciler picks it up via the legacy rewrite path
 		// (asset.IsValidTransition handles DELETE_PENDING →
 		// DRIVE_DELETE_PENDING on a future re-enqueue).
+		//
+		// Blocco 3.2 commit 1/2 prerequisite fix: also stamp
+		// `updated_at = <now>` on the flip. SQLite does NOT
+		// auto-update updated_at on UPDATE; without this stamp
+		// the DeletionReconciler's `WHERE updated_at < now-threshold`
+		// stuck-row query returns EVERY deletion-chain row
+		// regardless of when the flip happened (the column would
+		// still reflect the original INSERT timestamp). Mirrors the
+		// repository-layer SetLifecycleState at clips_lifecycle_state.go.
+		nowStr := timeutil.FormatRFC3339(time.Now())
 		if _, err := tx.ExecContext(ctx, `
 	UPDATE media_assets
-	   SET lifecycle_state = 'DELETE_REQUESTED'
+	   SET lifecycle_state = 'DELETE_REQUESTED',
+	       updated_at = ?
 	 WHERE id = ?
 	   AND lifecycle_state NOT IN ('DELETE_REQUESTED', 'DELETE_PENDING', 'DRIVE_DELETE_PENDING', 'INDEX_DELETE_PENDING', 'DELETED')
-	`, assetID); err != nil {
+	`, nowStr, assetID); err != nil {
 			return fmt.Errorf("dispatcher drive-delete: stamp lifecycle_state=DELETE_REQUESTED %s: %w", assetID, err)
 		}
 

@@ -1,4 +1,15 @@
-// Package outbox — dispatcher_advance.go (Blocco 3.1, June 2026)
+// Package outbox — dispatcher_advance.go (Blocco 3.1 commit 3/3; updated Blocco 3.2 commit 1/2, June 2026)
+//
+// Blocco 3.2 commit 1/2 prerequisite fix: the UPDATE now stamps
+// `updated_at = '<now>'` alongside the lifecycle_state flip.
+// SQLite does NOT auto-update `updated_at` on UPDATE (the
+// `CURRENT_TIMESTAMP` default only fires on INSERT); without the
+// explicit stamp the Blocco 3.2 DeletionReconciler's
+// `WHERE updated_at < now-threshold` stuck-row query returns every
+// deletion-chain row regardless of when the flip happened. See
+// `clips_lifecycle_state.go::SetLifecycleState` for the repository
+// precedent (which has always stamped updated_at — this fix
+// brings the dispatcher paths into the same agreement).
 //
 // AdvanceAndEmit is the canonical primitive for state-machine
 // transitions that REQUIRE atomic coupling between a lifecycle_state
@@ -55,10 +66,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // AdvanceAndEmit atomically transitions a media_assets row from
@@ -88,9 +101,14 @@ import (
 // Side-effects on the media_assets row:
 //
 //   - lifecycle_state flipped from expectedState to newState.
-//   - updated_at column set to the current RFC3339 timestamp via
-//     the underlying driver (no explicit set needed — current
-//     schema defaulting in `media_assets` covers it).
+//   - updated_at column stamped to the current RFC3339 timestamp.
+//     Blocco 3.2 commit 1/2 fix: SQLite does NOT auto-update
+//     `updated_at` on UPDATE; the explicit stamp is required for
+//     the DeletionReconciler's stuck-row threshold query
+//     (`WHERE updated_at < now-threshold`) to be meaningful.
+//     This mirrors the repository-layer SetLifecycleState precedent
+//     at clips_lifecycle_state.go (which has always stamped
+//     updated_at).
 //
 // Side-effects on the outbox_events row:
 //
@@ -138,12 +156,22 @@ func (d *Dispatcher) AdvanceAndEmit(
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Blocco 3.2 commit 1/2 prerequisite fix: explicit `updated_at = <now>`
+		// stamp alongside the lifecycle_state flip. SQLite does not
+		// auto-update updated_at on UPDATE (the column default
+		// CURRENT_TIMESTAMP only fires on INSERT), so without this
+		// stamp the DeletionReconciler's `WHERE updated_at < now-threshold`
+		// query would return every deletion-chain row regardless of
+		// when the flip actually happened. Mirrors the repository-layer
+		// SetLifecycleState at clips_lifecycle_state.go.
+		nowStr := timeutil.FormatRFC3339(time.Now())
 		res, err := tx.ExecContext(ctx, `
 			UPDATE media_assets
-			   SET lifecycle_state = ?
+			   SET lifecycle_state = ?,
+			       updated_at = ?
 			 WHERE id = ?
 			   AND lifecycle_state = ?
-		`, string(newState), assetID, string(expectedState))
+		`, string(newState), nowStr, assetID, string(expectedState))
 		if err != nil {
 			return fmt.Errorf("advance-and-emit: stamp %s -> %s for %s: %w",
 				expectedState, newState, assetID, err)
