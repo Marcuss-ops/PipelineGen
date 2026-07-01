@@ -982,7 +982,7 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 | Scenario | Pacchetto | Helper chiave (preferisci questo invece di custom) |
 |---|---|---|
 | Default coalesce (string/int/float) | `pkg/defaults` | `String(val, fallback)`, `Int(val, fallback)`, `Float64(val, fallback)` |
-| Retry con backoff esponenziale | `pkg/retry` | `Do(ctx, fn, opts)`, `DoWithValue[T](ctx, fn, opts)`, `DefaultOptions()` |
+| Retry con backoff esponenziale + transient error classification (Step 7 closed, June 2026) | `pkg/retry` | `Do(ctx, fn, opts)`, `DoWithValue[T](ctx, fn, opts)`, `IsTransient(err)`, `WrapTransient(err)`, `&TransientInfrastructureError{Err: err}`, `DefaultOptions()` (production-default `JitterFraction=0.25` ±25%) — see `pkg/retry/retry.go::sleepDuration` for the typed-path vs substring-fallback contract |
 | Hash content / ID generation | `pkg/hashutil` | `SHA256String(s)`, `RandomString(n)`, `MD5File(path)`, `HashFile(path, h)` |
 | Correlation ID propagation (job/script) | `pkg/corid` | `WithCorrelationID(ctx, id)`, `FromContext(ctx)` — usalo nel middleware request ID e nell'enqueue job |
 | Pointer utilities | `pkg/ptrutil` | `Ptr[T](v)`, `DerefOr[T](p, fallback)` |
