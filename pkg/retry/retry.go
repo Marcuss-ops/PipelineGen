@@ -1,7 +1,132 @@
-// Package retry provides a unified retry primitive with exponential backoff,
-// context awareness, and configurable retryable-error predicates.
+// Package retry is the canonical repository-wide primitive for two
+// intertwined concerns:
 //
-// Replaces duplicated retry implementations across the codebase.
+//  1. Transient-infrastructure error classification — "should I retry
+//     this?" should always be answered with the same predicate.
+//  2. Bounded retry loops with exponential backoff + jitter — long-running
+//     operations on flaky infrastructure (HTTP, SQLite, eSDK, broker)
+//     route through this package instead of bespoke retry loops.
+//
+// Step 7 (July 2026) consolidated three previously-duplicated retry
+// implementations into this single package:
+//
+//   - monitor.isTransientEnqueueError            (deleted)
+//   - tagutil.IsTransientDownloadError           (deleted)
+//   - youtube/usecase.IsTransientExtractionError (kept as a thin wrapper
+//     that delegates to retry.IsTransient so the typed-path
+//     authoritativeness from *ExtractionError is preserved)
+//
+// Anything that needs a transient-classifier or a retry-loop MUST route
+// through this package. CI gate (Azione 8/8D) bans substring-match
+// retry-classifiers outside pkg/retry.
+//
+// ═══════════ Components ═════════════════════════════════════════════════════
+//
+// (1) TransientInfrastructureError — typed carrier for transient errors.
+//
+//   - Marks an error as transient at a typed level (not via substring).
+//   - errors.As(err, &TransientInfrastructureError{}) is the canonical
+//     "is this transient?" probe: preferred over string-matching because
+//     the typed path is robust to upstream message-format changes.
+//   - Unwrap surfaces the inner error for errors.Is / errors.As chains.
+//
+// (2) IsTransient — canonical "should I retry this?" predicate.
+//
+//   - Returns true when err is non-nil AND either:
+//     (a) err is or wraps a *TransientInfrastructureError (typed path), OR
+//     (b) err.Error() contains one of the canonical transient-substrings
+//         in (4) below (substring fallback).
+//   - Pass it to retry.Do as the IsRetryable Option. This is the SINGLE
+//     canonical retry-classifier for the whole codebase.
+//
+// (3) WrapTransient — canonical typed-wrapping helper at infra boundaries.
+//
+//   - Returns err wrapped in *TransientInfrastructureError when err matches
+//     the canonical taxonomy; otherwise returns err unchanged.
+//   - Idempotent: already-typed errors pass through (no double-wrap).
+//   - Nil-safe: returns nil for nil.
+//   - Use at SQLite / HTTP / SDK boundaries so the typed path reaches
+//     retry.IsTransient authoritatively on farther-up retry loops.
+//
+// (4) transientSubstrings taxonomy — canonical substring fallback.
+//
+//   timeout, connection refused, connection reset, connection is already
+//   closed, eof, 429, 503, 502, 504, rate limit, quota exceeded,
+//   temporarily unavailable, resource temporarily unavailable,
+//   database is locked, sqlite busy.
+//
+//   These are the substring-path fallback. Where possible, prefer typed
+//   wrapping (1+3) for new code; the substring path is retained as a
+//   safety net for raw SDK errors not yet tagged at the typed layer.
+//
+// (5) DefaultOptions + bounded jitter.
+//
+//   - MaxAttempts:     3
+//   - InitialBackoff:  1 * time.Second
+//   - MaxBackoff:      30 * time.Second
+//   - BackoffFactor:   2.0 (exponential)
+//   - JitterFraction:  0.25 (±25% uniform randomisation)
+//
+//   The default ±25% jitter kills thundering-herd retry storms when many
+//   goroutines converge on the same transient error (e.g. N workers
+//   enqueuing from a SQLite-locked hot row in lockstep). With
+//   JitterFraction=0 every retry attempt would sleep the same interval —
+//   defeating the "spread out" intent of retry. JitterFraction is clamped
+//   to [0, 1] defensively (negative or >1 values become 0 / 1 respectively).
+//
+// ═══════════ Usage Examples ═════════════════════════════════════════════════════════
+//
+// Example 1 — monitor/enqueue.go (channel-monitor discovery lease commit).
+// Canonical pattern: retry.DoWithValue wraps the broker call, retry.IsTransient
+// gates on transient classification at the typed path.
+//
+//	// internal/application/assets/monitor/enqueue.go
+//	err := retry.DoWithValue(ctx, func() (int64, error) {
+//	    return m.repo.MarkEnqueued(ctx, id, "committed")
+//	}, retry.Options{
+//	    MaxAttempts:    5,
+//	    InitialBackoff: 100 * time.Millisecond,
+//	    MaxBackoff:     2 * time.Second,
+//	    IsRetryable:    retry.IsTransient,  // canonical predicate
+//	})
+//
+// Example 2 — images/storage_search.go (DuckDuckGo page retrieval).
+// Canonical pattern: HTTP fetch wrapped in retry.Do, retry.IsTransient as the
+// IsRetryable predicate, transient classification centralized in pkg/retry.
+//
+//	// internal/application/images/storage_search.go
+//	err := retry.Do(ctx, func() error {
+//	    req, reqErr := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
+//	    if reqErr != nil {
+//	        return fmt.Errorf("%w: create request: %v", ErrImageTransient, reqErr)
+//	    }
+//	    resp, doErr := s.client.Do(req)
+//	    if doErr != nil {
+//	        return fmt.Errorf("%w: download: %v", ErrImageTransient, doErr)
+//	    }
+//	    // ... classify HTTP status, return ErrImageTransient on retryable ...
+//	    return nil
+//	}, retry.Options{
+//	    MaxAttempts:    3,
+//	    InitialBackoff: 200 * time.Millisecond,
+//	    IsRetryable:    retry.IsTransient,  // canonical predicate
+//	})
+//
+// Example 3 — Drive SDK error wrapping at the adapter exit (Azione 5/8).
+// Canonical pattern: retry.WrapTransient at the raw SDK exit promotes any
+// transient-classified googleapi.Error to a typed carrier. Farther-up retry
+// loops that query retry.IsTransient hit the typed path FIRST (via errors.As)
+// and short-circuit on terminal errors without substring matching.
+//
+//	// internal/infrastructure/drive/uploader.go
+//	created, err := u.Service.Files.Create(file).Context(ctx).Do()
+//	if err != nil {
+//	    // typed wrap: transient googleapi.Error (429, 503, timeout) becomes
+//	    // *TransientInfrastructureError; terminal errors (404, 403) pass through.
+//	    return nil, fmt.Errorf("drive put failed: %w", retry.WrapTransient(err))
+//	}
+//
+// ═══════════════════════════════════════════════════════════════════════════════════════
 package retry
 
 import (
