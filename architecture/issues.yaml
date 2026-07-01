@@ -30,9 +30,143 @@
 - id: PR-CONTEXT-NO-CANCEL-CI-GATE
   title: "Promote context.Background/WithoutCancel exemption families to a dedicated CI gate"
   status: pending
+  owner: scripts/ci-architectural-checks.sh + AGENTS.md maintainer
   deadline: 2026-07-15
   linked_issues:
     - 22
+  notes: |
+    Promotes the 13 documented AGENTS.md context.WithoutCancel rows
+    (plus the 8 documentation-only entries currently in scope) to a
+    dedicated enforced-fail CI gate (scripts/ci-architectural-checks.sh
+    Check 22, per architecture/current.yaml#id-22). Currently those
+    rows are documentation-only — a future contributor adding a
+    context.WithoutCancel outside the allowlist has no compiler
+    feedback. This ticket ships the AST-based gate that fail-closes on
+    undocumented sites (the "unmarked basher-surfaced sites that did
+    not carry ARCH-ALLOWLIST" semantics defined in
+    architecture/current.yaml#id-22 exit_gate).
+
+    Forward-pointer for the 8 currently-unlisted sites: each must
+    either join the AGENTS.md allowlist table with a reason OR carry
+    the inline `// ARCH-ALLOWLIST: no-cancel` marker per AGENTS.md §7
+    zero-baseline rule; deadline 2026-07-15 (mirrors id-22).
+
+- id: PR-REGISTER-CI-GATE
+  title: "Promote scripts/ci-architectural-checks.sh::Check 50 from voluntary fail-closed to enforced exit-1 in default CI mode (audit P1 #1 closure follow-up)"
+  status: pending
+  owner: scripts/ci-architectural-checks.sh
+  deadline: 2026-07-25
+  linked_issues:
+    - bd7a44bb  # audit P1 #1 fail-fast refactor (canoncial SHA on origin/main)
+    - 155c5dfa  # byte-equivalent replay canonical on origin/main
+  notes: |
+    Audit P1 #1 (commit `bd7a44bb refactor(jobs): make JobHandler.Register
+    fail-fast (audit P1 #1)`) closed the silent-success class on
+    JobHandler.Register* failures (nil-typed-dispatcher + duplicate-bind
+    case) — 10 production handlers now return `error` and wrap nil-bind
+    cases with `appjobs.ErrMissingDeps` via `%w`. Check 50 was introduced
+    in scripts/ci-architectural-checks.sh to forward-prevent the
+    regression by fail-closed regex-matching every
+    `func (h *X) Register(svc *jobs.Service) {` shape outside the
+    allowlist.
+
+    Current default CI invocation runs
+    `bash scripts/ci-architectural-checks.sh` without an
+    opt-in flag — Check 50 emits an INFO marker line and continues,
+    deferring to per-site `// ARCH-ALLOWLIST: register-void-allowed`
+    magic-marker opt-in. This ticket promotes Check 50 to default
+    CI mode (exit 1 on violations outside allowlist) so the fail-fast
+    invariant from P1 #1 is enforced at every CI run, not only when
+    an operator opts in. Mirrors the Check 5 promotion pattern
+    (QDRANT-RECOVERY-001 follow-up) for the void-Register shape.
+
+- id: PR-ORPHAN-SWEEPER-TUNING
+  title: "Make OrphanSweeper Tick + PendingTTL + UploadedTTL config-driven via YAML (currently hardcoded constants at internal/app/lifecycle.go wiring site)"
+  status: pending
+  owner: internal/app + config
+  deadline: 2026-07-25
+  linked_issues:
+    - ff09087a  # feat(voiceover): orphan sweeper for upload_intents (commit B/2)
+    - P0 #4.B   # P0 #4 commit B/2 wave-tracker reference
+  notes: |
+    Audit P0 #4.B (commit `ff09087a feat(voiceover): orphan sweeper for
+    upload_intents (commit B/2)`) landed OrphanSweeper with TTLs
+    injected via OrphanSweeperDeps. The current DEFAULT values are
+    HARDCODED constants at the composition root
+    (internal/app/lifecycle.go:545-547, the NewOrphanSweeper
+    constructor wiring site):
+
+        Tick:        10 * time.Minute
+        PendingTTL:  30 * time.Minute
+        UploadedTTL: 60 * time.Minute
+
+    Operators can NOT currently tune these values without a rebuild —
+    field tuning (e.g. pulsing the 30m pending window down to 5m
+    during a Voiceover outage) is not possible. This ticket makes
+    the three values config-driven via
+    `internal/platform/config/types.go::Server.OrphanSweeper` field
+    group (env `VELOX_ORPHAN_SWEEPER_*` override + YAML fallback,
+    mirroring the existing `PollMaxBackoff` precedent).
+
+    Defaults remain at the canonical 10/30/60 min constants (no
+    behaviour drift on unconfigured deployments). Per godlike/07
+    NO_FAKE_AVAILABILITY: defaults are PRESERVED as code-level
+    fallback constants so a missing YAML entry falls back to the
+    canonical values rather than zero (which would re-introduce the
+    "0 duration = panic in NewOrphanSweeper" surface B/2 documented).
+
+- id: PR-STATUS-ENFORCE-TYPED
+  title: "Tighten typed-enum JSON unmarshalling + add compile-time canonical-enum validators for CompletionState + IndexingStatus (audit-closure residue: IndexingStatus.UnmarshalJSON is permissive)"
+  status: pending
+  owner: internal/application/voiceover + internal/application/assets/providers/stock/stockpipeline
+  deadline: 2026-07-25
+  linked_issues:
+    - P0.5  # PR-VO-AUDIT-P05 typed-state-machine (CompletionState)
+    - P0.1  # PR-VO-AUDIT-P01 typed state machine
+  notes: |
+    Audit-closure residue (godlike/07 NO_FAKE_AVAILABILITY):
+    IndexingStatus.UnmarshalJSON in
+    `internal/application/assets/providers/stock/stockpipeline/types_status.go`
+    assigns the raw JSON string WITHOUT validating against the 4
+    canonical enum constants (IndexingPending / IndexingSkipped /
+    IndexingCompleted / IndexingFailed) — production callers MAY
+    unmarshal arbitrary strings into the typed field, defeating the
+    compile-time type-safety invariant. A future DB column rename
+    or forward-compatibility issue could silently re-introduce.
+
+    CompletionState has NO JSON UnmarshalJSON guard today; the typed
+    surface is preserved because all writes are funnelled through the
+    typed constructor (no string-interpolation paths in
+    voiceover/stages.go finalizeStage) — but a symmetric guard
+    closes the JSON-read path gap.
+
+    Proposal:
+      (a) Tighten IndexingStatus.UnmarshalJSON to validate
+          `raw ∈ {IndexingPending, IndexingSkipped, IndexingCompleted,
+          IndexingFailed}` and return a typed error on unknown
+          strings. All existing callers pass canonical values (4
+          dedicated state paths in stockpipeline/run_upload.go);
+          tightening has zero regression risk.
+      (b) Add a symmetric MarshalJSON/UnmarshalJSON guard on
+          CompletionState (currently omitempty hides the field,
+          but a JSON read with non-canonical CompletionState would
+          silently pass through).
+      (c) Add helpers `MustValidateCompletionState(s string)
+          (CompletionState, error)` and `MustValidateIndexingStatus
+          (s string) (IndexingStatus, error)` in the typed-enum
+          packages so DB column reads bypassing the JSON path
+          (legacy adapters reading raw strings from stringly-typed
+          columns) can validate against the canonical enum at the
+          call site.
+      (d) Optional build-tag variant `//go:build typed_status_enforce`
+          gates a stricter-mode Constructor that returns
+          `(CompletionState, error)` from any unvalidated string entry;
+          production builds default to the gated path.
+
+    Test scope: 4 ok cases + 5 reject cases per enum (empty, garbage,
+    near-miss, lowercase, case-mismatch). TDD pattern matches the
+    pkg/retry/errors.go::Classify precedent (typed-enum + binary
+    Retryable helper, test driven by boundary conditions).
 
 - id: Q1-noopMetrics-NowFunc-orphan
   title: "Re-home noopMetrics and NowFunc out of internal/application/qdrant/dr/types.go (declarations used only by dr/restore.go)"
