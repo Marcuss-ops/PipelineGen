@@ -17,6 +17,14 @@ import (
 // `qdrant.QdrantDeleter` interface was deleted in favour of the
 // canonical application-layer port).
 //
+// SINGLE TRUTH (Blocco 4e, July 2026): IndexWriter is the ONLY
+// code path that calls Client.UpsertPoints / Client.DeletePoints.
+// All Qdrant writes MUST route through this type. The outbox
+// (Dispatcher.EnqueueAndIndex → outbox event → IndexWriter) is
+// the canonical write trigger; ReindexAll is the documented admin
+// bypass for blue-green operations. No other type in the codebase
+// may call Client write methods directly.
+//
 // All writes go through the runtime alias so callers never need to know
 // the physical collection name.
 type IndexWriter struct {
