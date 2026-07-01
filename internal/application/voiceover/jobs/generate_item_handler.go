@@ -82,6 +82,13 @@ func (h *GenerateItemJobHandler) Register(jobsSvc *appjobs.Service) {
 //   - useCase.Execute failure → (resultMap, err): dispatcher marks
 //     job FAILED. The resultMap carries the per-language status so
 //     operators see exactly which sibling failed + why.
+//   - useCase.Execute returns (res, nil) with res.Status != StatusCompleted
+//     (P0.1 false-success fix, July 2026): the per-item pipeline
+//     returned a failed result without a Go error (e.g. TTS failed,
+//     upload timeout, DB commit error). The handler MUST surface this
+//     as a dispatcher error so the worker retries or marks FAILED —
+//     returning (resultMap, nil) here would produce a silent
+//     false-success at the job layer (the canonical audit P0.1 bug).
 //   - useCase.Execute success → (resultMap, nil): dispatcher marks
 //     job SUCCEEDED.
 //
@@ -123,6 +130,33 @@ func (h *GenerateItemJobHandler) HandleJob(
 			tools.Progress(100, "voiceover.generate_item execution failed")
 		}
 		return toItemResultMap(res, &item, j.ID), fmt.Errorf("voiceover.generate_item: execute: %w", err)
+	}
+
+	// P0.1 false-success fix (July 2026): ProcessVoiceoverItemUseCase
+	// returns (result, nil) even when a stage fails (TTS, upload, DB).
+	// The result carries Status=StatusFailed + Error=... but err==nil.
+	// The handler MUST surface this as a dispatcher error so the worker
+	// retries or marks FAILED. Returning (resultMap, nil) here produces
+	// a silent false-success: the broker marks the job SUCCEEDED, the
+	// parent aggregator sees SUCCEEDED, the user never knows the
+	// voiceover was never created. The check below closes this gap:
+	// when the result exists and its Status is not completed, the
+	// handler returns an error (with the result map so operators see
+	// which stage failed + the per-language Error string).
+	if res != nil && res.Status != voiceover.StatusCompleted {
+		errMsg := fmt.Sprintf("voiceover.generate_item: %s", res.Error)
+		if res.Error == "" {
+			errMsg = "voiceover.generate_item: pipeline returned non-completed status"
+		}
+		h.logger.Error("voiceover.generate_item pipeline failure (P0.1 false-success gate)",
+			zap.String("job_id", j.ID),
+			zap.String("language", item.Language),
+			zap.String("status", string(res.Status)),
+			zap.String("error", res.Error))
+		if h.hasProgress(tools) {
+			tools.Progress(100, "voiceover.generate_item pipeline failed: "+string(res.Status))
+		}
+		return toItemResultMap(res, &item, j.ID), fmt.Errorf("%s", errMsg)
 	}
 
 	if h.hasProgress(tools) {
