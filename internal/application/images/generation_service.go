@@ -269,16 +269,21 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 
 // RegisterHandler registers the image.generate.google handler with the
 // job service. Called from composition.go late-bindings.
-func (g *GenerationService) RegisterHandler(jobsSvc *appjobs.Service) {
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): signature
+// changed to error-return so composition-root fail-closed posture applies.
+// Pre-PR-VALIDATOR-LITERAL-REGISTER the silent log.Warn on nil-jobsSvc
+// + log.Error on dispatcher-reject masked duplicate-bind and nil-typed-
+// dispatcher failures — the silent-success class closed by audit-P0.2-cont.
+func (g *GenerationService) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		g.log.Warn("images.RegisterHandler: jobsSvc is nil — handler not registered")
-		return
+		return fmt.Errorf("images.GenerationService.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeImageGenerateGoogle, g.HandleJob); err != nil {
-		g.log.Error("failed to register image.generate.google handler", zap.Error(err))
-		return
+		return fmt.Errorf("images.GenerationService.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeImageGenerateGoogle, err)
 	}
 	g.log.Info("registered image.generate.google job handler")
+	return nil
 }
 
 // pickImagePrompt extracts the most specific prompt from a list.

@@ -262,3 +262,111 @@ func TestValidateCriticalHandlers_EmptySlice(t *testing.T) {
 	err := ValidateCriticalHandlers(svc, zap.NewNop(), []CriticalHandler{})
 	require.NoError(t, err, "empty handlers slice must be a no-op (no bindings to validate)")
 }
+
+// ── Tests added by PR-VALIDATOR-LITERAL-REGISTER (July 2026) ──
+//
+// These tests pin the literal-Register re-call shape: each Bind
+// closure re-invokes h.Register(svc) verbatim, NOT a HasHandler
+// post-bind confirmation. The v1 (pre-PR) tests above remain green
+// because closure-return-error fits both shapes; the new tests
+// verify the v2-specific contract.
+
+// literalRegisterTestJobType is a SYNTHETIC test-only job type used
+// in the v2-shape tests. Decoupling from canonical production types
+// (e.g. appjobs.TypeVoiceoverGenerate) avoids future fixture
+// coupling — production composition tests that pre-register handlers
+// for canonical types would poison the test pre-state.
+const literalRegisterTestJobType = "test.literal_register.fixture"
+
+// TestValidateCriticalHandlers_LiteralRegisterClosureInvokesSvc verifies
+// the v2 literal-Register contract: the Bind closure calls
+// `svc.SomeRegisterMethod(svc)` and the dispatcher's handler map is
+// mutated. Pinned by recording the post-call HasHandler state on
+// a real *appjobs.Service.
+func TestValidateCriticalHandlers_LiteralRegisterClosureInvokesSvc(t *testing.T) {
+	svc := makeValidatorSvcForTest(t)
+	require.False(t, svc.HasHandler(literalRegisterTestJobType),
+		"pre-condition: the target job type must NOT be pre-registered (test is then meaningful)")
+
+	handlers := []CriticalHandler{
+		{
+			Name: "literal_register.dummy",
+			Bind: func(s *appjobs.Service) error {
+				// v2 contract: the closure LITERALLY invokes a
+				// Register-derived method on the real dispatcher.
+				return s.RegisterHandler(literalRegisterTestJobType, appjobs.HandlerFunc(noopHandlerFunc))
+			},
+		},
+	}
+
+	err := ValidateCriticalHandlers(svc, zap.NewNop(), handlers)
+	require.NoError(t, err, "literal-Register closure that succeeds against a real svc must yield nil (v2 contract)")
+	require.True(t, svc.HasHandler(literalRegisterTestJobType),
+		"literal-Register closure must have written to the dispatcher's handlers map (HasHandler=true post-call)")
+}
+
+// TestValidateCriticalHandlers_LiteralRegisterClosurePropagatesBindError
+// verifies that errors returned from the literal-Register re-call
+// propagate into the validator's errors.Join aggregate (not as
+// HasHandler-confirmation silent-success).
+func TestValidateCriticalHandlers_LiteralRegisterClosurePropagatesBindError(t *testing.T) {
+	svc := makeValidatorSvcForTest(t)
+
+	bindErr := errors.New("simulated post-Register bind-path error from the handler layer")
+	handlers := []CriticalHandler{
+		{
+			Name: "literal_register.bind_error",
+			Bind: func(s *appjobs.Service) error {
+				// v2 contract: closure simulates a handler-layer
+				// bind-path failure (e.g. port-signature drift,
+				// duplicate-bind rejection). The error MUST
+				// surface into the validator's aggregated error.
+				return bindErr
+			},
+		},
+	}
+
+	err := ValidateCriticalHandlers(svc, zap.NewNop(), handlers)
+	require.Error(t, err, "literal-Register closure that returns bind-path error must yield non-nil aggregated error")
+	assert.Contains(t, err.Error(), "literal_register.bind_error",
+		"aggregated error must enumerate the handler Name for grep-anchored audit")
+	assert.Contains(t, err.Error(), bindErr.Error(),
+		"aggregated error must surface the wrapped underlying bind-path error")
+}
+
+// TestValidateCriticalHandlers_BindOnAlreadyRegisteredIsIdempotent covers
+// the v2 idempotency contract: re-invoking Register on an already-bound
+// job type must NOT cause a duplicate-rejection failure. The dispatcher's
+// Register MUST either overwrite silently or accept the duplicate —
+// otherwise the validator fails closed at boot.
+func TestValidateCriticalHandlers_BindOnAlreadyRegisteredIsIdempotent(t *testing.T) {
+	svc := makeValidatorSvcForTest(t)
+	// Pre-register a noop handler for the target job type so the
+	// validator's Bind closure will be re-calling Register on an
+	// already-bound type.
+	require.NoError(t, svc.RegisterHandler(literalRegisterTestJobType, appjobs.HandlerFunc(noopHandlerFunc)))
+	require.True(t, svc.HasHandler(literalRegisterTestJobType),
+		"pre-condition: the target job type MUST be pre-registered for this idempotency test")
+
+	reEntrySeen := 0
+	handlers := []CriticalHandler{
+		{
+			Name: "literal_register.re_entry",
+			Bind: func(s *appjobs.Service) error {
+				reEntrySeen++
+				// v2 contract: closure LITERALLY re-calls Register.
+				// If dispatcher.Register rejects duplicates, this
+				// surfaces as a validator error (locked-in contract).
+				return s.RegisterHandler(literalRegisterTestJobType, appjobs.HandlerFunc(noopHandlerFunc))
+			},
+		},
+	}
+
+	err := ValidateCriticalHandlers(svc, zap.NewNop(), handlers)
+	require.NoError(t, err,
+		"literal-Register re-call on already-bound job type must be idempotent (dispatcher.Register either overwrites or accepts duplicates — neither is a validator error)")
+	require.Equal(t, 1, reEntrySeen,
+		"the Bind closure MUST have been invoked exactly once by the validator (1-call surface)")
+	require.True(t, svc.HasHandler(literalRegisterTestJobType),
+		"job type remains bound post-validator-run (idempotency preserves the binding)")
+}

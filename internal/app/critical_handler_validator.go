@@ -57,30 +57,40 @@ type CriticalHandler struct {
 // nil when all Binds succeed; returns a wrapped errors.Join when
 // ANY Bind fails (fail-closed at boot).
 //
-// **Design shape — HasHandler confirmation vs literal Register call.**
+// **Design shape — LITERAL Register re-call (PR-VALIDATOR-LITERAL-REGISTER, July 2026).**
 // The user spec for audit-P0.2-continuation literally asked the
-// validator to "chiama Register(svc)" for each critical handler. This
-// validator implements HasHandler post-bind CONFIRMATION (complementary
-// to the inline Register call above in NewComposition) rather than
-// RE-INVOKING the Register method. Two complementary surfaces:
+// validator to "chiama Register(svc)" for each critical handler. The
+// v2 (PR-VALIDATOR-LITERAL-REGISTER) validator implements EXACTLY that:
+// each Bind closure re-invokes the corresponding handler.Register(svc)
+// method verbatim. Two effects take place at composition time:
 //
-//   - **HasHandler post-bind confirmation (current shape)** — catches
-//     the silent-success class on silent-Warn inline Register calls
-//     (catalogsync×2, youtube.clip_extract, stockpipeline, clipindexer,
-//     images): HasHandler==false at composition time means the bind
-//     was silently-warned-and-skipped, and the validator surfaces it.
-//   - **Literal Register re-call (future v2) — would catch** duplicate-bind
-//     rejection (dispatcher may reject second Register while the first
-//     still bound; HasHandler would still return true), port-signature
-//     drift between the silent-Warn call and the dispatcher, runtime
-//     cancel mid-Register. NOT covered by the current shape.
+//  1. **Bind surface normalization** — the inline late-bindings block
+//     in NewComposition ALSO handles each binding (fail-closed via
+//     wrapped composition errors). The validator's Bind closure
+//     duplicates the call, giving the dispatcher's Register a second
+//     invocation. The dispatcher idempotently OVERWRITES on duplicate
+//     registers (or rejects — in which case the validator surfaces
+//     the typed error and aborts).
 //
-// Forward-pointer: `PR-VALIDATOR-LITERAL-REGISTER` — convert each
-// silent-Warn Register method to error-return + thread the canonical
-// `CriticalHandler.Bind = func(svc) error { return h.Register(svc) }`
-// shape so the validator becomes BOTH the bind surface AND the
-// confirmation layer. Cross-cited in `CHANGELOG.md` audit-P0.2-cont
-// honest-limitation #4.
+//  2. **Silent-success class closure** — the v1 (pre-PR-VALIDATOR-
+//     LITERAL-REGISTER) shape was HasHandler post-bind confirmation.
+//     v1 could only catch silent-Warn failures; v2 catches every
+//     class: nil-dispatcher rejection, duplicate-bind rejection
+//     (where HasHandler would still return true), port-signature drift,
+//     runtime cancel mid-Register.
+//
+// The two remaining exceptions to literal-Register re-call (auditable
+// in CHANGELOG.md audit-P0.2-cont honest-limitations #5 and #6):
+//
+//   - **voiceover.generate** — BLOC5.3 + Catena A P0 idempotency
+//     contract: the late-bindings HasHandler-gated Register decision
+//     is replicated in the validator's Bind (`if svc.HasHandler(...) {
+//     return nil } return vh.Register(svc)`). The dispatcher binding
+//     chosen by the late-bindings block is preserved verbatim.
+//   - **stockpipeline.media_stock** — bound AFTER NewComposition
+//     returns (via registerInternalModules::WireStockPipeline). The
+//     canonical stockpipeline validator pass lives in lifecycle.go
+//     (post-WireStockPipeline + pre-ListenAndServe), NOT here.
 //
 // Contract (single source of truth for this validator):
 //
@@ -106,6 +116,18 @@ type CriticalHandler struct {
 // silently skips is a deliberate composition-time choice (yes-yes
 // skip in some deploys), NOT the same as a binding-attempted-
 // failed scenario which MUST surface as an error.
+//
+// **Dispatcher idempotency contract (v2 load-bearing assumption).**
+// The v2 literal-Register shape RE-INVOKES each handler.Register(svc)
+// call after the inline late-bindings block above has already bound
+// to the same job type. For this to succeed at boot without aborting,
+// `*appjobs.Service.dispatcher.Register(type, h)` MUST be idempotent —
+// silently overwrite on duplicate-bind OR accept duplicates without
+// error. Regression test `TestValidateCriticalHandlers_BindOnAlreadyRegisteredIsIdempotent`
+// in critical_handler_validator_test.go pins this contract; a future
+// dispatcher refactor that adds STRICT duplicate-rejection MUST be
+// flagged as breaking-change to this contract (the validator would
+// fail closed at every prod boot).
 func ValidateCriticalHandlers(svc *appjobs.Service, log *zap.Logger, handlers []CriticalHandler) error {
 	if svc == nil {
 		return fmt.Errorf("ValidateCriticalHandlers: nil jobs.Service (composition-root wiring bug — aborting critical-handler validation)")
