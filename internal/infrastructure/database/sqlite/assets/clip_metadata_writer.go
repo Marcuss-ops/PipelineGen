@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -304,8 +305,17 @@ func buildMetadataPayload(
 	m youtubetypes.CanonicalClipMetadata,
 	nowStr string,
 ) (string, error) {
+	// Blocco 1.2: schema_version aligned to the canonical
+	// outboxevents.ReindexEnvelopeV1Schema ("asset.index.requested.v1")
+	// so the IndexingHandler consumer matches it against the event_type
+	// "asset.index.requested". The previous literal
+	// "asset.metadata.requested.v1" caused every metadata event to be
+	// classified terminal (dead_letter). Also added the required
+	// event_id field (UUID) that the handler validates.
+	eventID := uuid.NewString()
 	payload := map[string]any{
-		"schema_version":   "asset.metadata.requested.v1",
+		"schema_version":   outboxevents.ReindexEnvelopeV1Schema,
+		"event_id":         eventID,
 		"clip_id":          clipID,
 		"asset_id":         m.AssetID,
 		"source_version":   m.SourceVersion,
