@@ -207,17 +207,17 @@ type ClipCachePort interface {
 	GetExisting(ctx context.Context, clipID string) (item *youtubetypes.ExtractItem, exists bool, err error)
 }
 
-// IndexEventPayload is the typed payload that travels alongside the clip DB
-// write in the ClipAtomicWriter transaction. The outbox dispatcher (see
-// internal/application/jobs/outbox/) is the eventual consumer; the field
-// names mirror the existing outboxevents row shape.
-//
-// Commit F implements the concrete dispatcher; this commit introduces the
-// port only so the new use case does not depend on the outbox package.
+// IndexEventPayload is the typed envelope that travels alongside the clip DB
+// write in the ClipAtomicWriter transaction. It carries only routing fields
+// (Type, AggregateID, CreatedAt). The outbox payload (schema_version,
+// event_id, asset_id, source_version, idempotency_key) is built exclusively
+// by the ClipAtomicWriter concrete adapter via BuildReindexEnvelopeV1 — the
+// caller MUST NOT supply a custom payload (Blocco 1.1: the previous ad-hoc
+// payload path caused every indexing event to land in dead_letter because
+// the consumer rejected non-canonical payloads).
 type IndexEventPayload struct {
 	Type        string // e.g. "asset.index.requested"
 	AggregateID string
-	Payload     []byte
 	CreatedAt   time.Time
 }
 

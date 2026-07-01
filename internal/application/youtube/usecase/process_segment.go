@@ -33,7 +33,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -330,22 +329,17 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	out.DriveFileID = out.Item.DriveFileID
 	out.DriveLink = out.Item.DriveLink
 
-	// Step 9 — ClipAtomicWriter. Commit 2/6 #6: build the canonical
-	// ClipAsset (the typed domain entity) instead of passing the
-	// HTTP-shaped ExtractItem.
+	// Step 9 — ClipAtomicWriter. Build the canonical ClipAsset
+	// and delegate to the writer, which owns the outbox envelope
+	// exclusively. The caller MUST NOT supply a custom payload
+	// (Blocco 1.1: the previous ad-hoc payload caused every
+	// indexing event to land in dead_letter because the consumer
+	// requires the canonical BuildReindexEnvelopeV1 shape).
 	if u.deps.Writer != nil {
 		asset := buildClipAsset(clipID, cmd, out, fileHash, policyVer)
-		outboxPayload, _ := json.Marshal(map[string]any{
-			"clip_id":       clipID,
-			"video_id":      cmd.VideoID,
-			"drive_link":    out.Item.DriveLink,
-			"drive_file_id": out.Item.DriveFileID,
-			"file_hash":     fileHash,
-		})
 		event := youtubeports.IndexEventPayload{
 			Type:        "asset.index.requested",
 			AggregateID: clipID,
-			Payload:     outboxPayload,
 			CreatedAt:   time.Now().UTC(),
 		}
 		if wErr := u.deps.Writer.CommitClipAndIndexEvent(
