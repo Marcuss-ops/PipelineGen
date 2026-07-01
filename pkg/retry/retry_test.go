@@ -1,10 +1,12 @@
 package retry
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 )
 
 // transientMessage returns a string constructed from substrings NOT in
@@ -131,6 +133,52 @@ func TestIsTransient_HTTPStatusMap(t *testing.T) {
 		}
 	}
 }
+
+// ─── SQLite transient markers (Azione 4/8 di Step 7) ───────────────────────
+
+// TestIsTransient_SQLiteMarkers locks the canonical SQLite transient markers
+// added to transientSubstrings in Azione 4/8:
+//
+//   - "database is locked"    — SQLite BUSY (5.x: SQLITE_BUSY/SQLITE_LOCKED)
+//   - "sqlite busy"           — mattn/go-sqlite3 prefix
+//   - "connection is already closed" — sql.ErrConnDone.Error()
+//
+// Each case mirrors the marker shape produced by the canonical driver
+// (mattn/go-sqlite3 per AGENTS.md driver lock) plus a hand-rolled
+// `errors.New("sqlite: database is locked")`-style label used by the
+// test corpus throughout the monitor / outbox packages.
+func TestIsTransient_SQLiteMarkers(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"mattn/go-sqlite3 locked", errors.New("sqlite: database is locked"), true},
+		{"mattn/go-sqlite3 busy prefix", errors.New("sqlite busy"), true},
+		{"wrapped sqlite locked via fmt.Errorf", fmt.Errorf("repo: %w", errors.New("sqlite: database is locked")), true},
+		{"sql.ErrConnDone literal", fmt.Errorf("query row: %w", errConnDone), true}, // wrapped; substring matcher hits "connection is already closed"
+		{"simulated busy from monitor_enqueue_test", errors.New("sqlite busy (simulated)"), true},
+		{"non-transient sqlite error: schema", errors.New("sqlite: no such table: assets"), false},
+		{"non-transient sqlite error: constraint", errors.New("sqlite: UNIQUE constraint failed"), false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsTransient(tc.err); got != tc.want {
+				t.Errorf("IsTransient(%q) err=%v got=%v want=%v",
+					tc.name, tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// errConnDone is the standard library sql.ErrConnDone, used in the
+// wrapped-ErrConnDone test case below.
+var errConnDone = sql.ErrConnDone
+
 
 // ─── TransientInfrastructureError ───────────────────────────────────────────
 
@@ -273,6 +321,108 @@ func TestTransientInfrastructureError_DoubleWrap(t *testing.T) {
 	}
 }
 
+// ─── WrapTransient ────────────────────────────────────────────────────────────
+
+// TestWrapTransient locks the WrapTransient contract: idempotent, nil-safe,
+// wraps only when IsTransient is true, leaves non-transient errors alone,
+// and never double-wraps an already-typed TransientInfrastructureError.
+func TestWrapTransient(t *testing.T) {
+	t.Parallel()
+
+	nonTransient := errors.New("validation: missing channel_id")
+	transient503 := errors.New("503 service unavailable")
+
+	t.Run("nil in → nil out", func(t *testing.T) {
+		t.Parallel()
+		if got := WrapTransient(nil); got != nil {
+			t.Errorf("WrapTransient(nil) = %v, want nil", got)
+		}
+	})
+
+	t.Run("non-transient → unchanged", func(t *testing.T) {
+		t.Parallel()
+		got := WrapTransient(nonTransient)
+		if got != nonTransient {
+			t.Errorf("WrapTransient(nonTransient) returned different pointer: got %p want %p", got, nonTransient)
+		}
+	})
+
+	t.Run("transient substring → wrapped in TransientInfrastructureError", func(t *testing.T) {
+		t.Parallel()
+		got := WrapTransient(transient503)
+		var te *TransientInfrastructureError
+		if !errors.As(got, &te) {
+			t.Fatalf("WrapTransient(transient503) did not produce *TransientInfrastructureError, got %T (%v)", got, got)
+		}
+		if te.Err != transient503 {
+			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, transient503)
+		}
+		// Original message preserved through Error().
+		if got.Error() != transient503.Error() {
+			t.Errorf("WrapTransient Error() = %q, want %q", got.Error(), transient503.Error())
+		}
+	})
+
+	t.Run("typed passed in → unchanged (no double wrap)", func(t *testing.T) {
+		t.Parallel()
+		typed := &TransientInfrastructureError{Err: transient503}
+		got := WrapTransient(typed)
+		if got != typed {
+			t.Errorf("WrapTransient(typed) returned different pointer: got %p want %p", got, typed)
+		}
+	})
+
+	t.Run("typed wrapped via fmt.Errorf → unchanged (no double wrap)", func(t *testing.T) {
+		t.Parallel()
+		typed := &TransientInfrastructureError{Err: transient503}
+		wrapped := fmt.Errorf("rpc: %w", typed)
+		got := WrapTransient(wrapped)
+		if got != wrapped {
+			t.Errorf("WrapTransient(fmt.Errorf wrap of typed) returned different pointer: got %p want %p", got, wrapped)
+		}
+	})
+
+	t.Run("SQLite locked → wrapped", func(t *testing.T) {
+		t.Parallel()
+		sqliteLocked := errors.New("sqlite: database is locked")
+		got := WrapTransient(sqliteLocked)
+		var te *TransientInfrastructureError
+		if !errors.As(got, &te) {
+			t.Fatalf("WrapTransient(sqliteLocked) did not wrap: got %T (%v)", got, got)
+		}
+		if te.Err != sqliteLocked {
+			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, sqliteLocked)
+		}
+	})
+
+	t.Run("sql.ErrConnDone → wrapped", func(t *testing.T) {
+		t.Parallel()
+		got := WrapTransient(sql.ErrConnDone)
+		var te *TransientInfrastructureError
+		if !errors.As(got, &te) {
+			t.Fatalf("WrapTransient(sql.ErrConnDone) did not wrap: got %T (%v)", got, got)
+		}
+	})
+
+	t.Run("IsTransient composes after WrapTransient", func(t *testing.T) {
+		t.Parallel()
+		raw := errors.New("sqlite: database is locked")
+		wrapped := WrapTransient(raw)
+		if !IsTransient(wrapped) {
+			t.Error("IsTransient should match wrapped SQLite locked via typed path")
+		}
+		// Also: the typed path is what IsTransient uses (errors.As),
+		// not substring matching, which means the wrapping promoted
+		// the error from non-transient to transient in the typed layer.
+		// Note: with canonical taxonomy extended, IsTransient also
+		// matches "database is locked" via substring, so this is
+		// belt-and-suspenders.
+		if !IsTransient(raw) {
+			t.Error("IsTransient should match raw SQLite locked via substring path now that taxonomy includes 'database is locked'")
+		}
+	})
+}
+
 // ─── Stringer / formatted output ─────────────────────────────────────────────
 
 // TestTransientInfrastructureError_Format verifies it implements the
@@ -297,3 +447,223 @@ func TestTransientInfrastructureError_Format(t *testing.T) {
 		t.Errorf("%%w did not preserve Unwrap chain")
 	}
 }
+
+// ─── sleepDuration / jitter (Azione 4/8 di Step 7) ──────────────────────────
+
+// TestSleepDuration_NoJitter_Deterministic verifies that JitterFraction=0
+// produces the exact canonical exponential backoff sequence (no random
+// variance). This is the regression for callers that explicitly opt out
+// of jitter (e.g. CI latency assertions, deterministic-test harnesses).
+func TestSleepDuration_NoJitter_Deterministic(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    5,
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0,
+	}
+	// Expected sequence: 100ms, 200ms, 400ms, 800ms, 1600ms (capped at 10s).
+	wantSeq := []time.Duration{
+		100 * time.Millisecond,
+		200 * time.Millisecond,
+		400 * time.Millisecond,
+		800 * time.Millisecond,
+		1600 * time.Millisecond,
+	}
+	for i, want := range wantSeq {
+		if got := sleepDuration(i, opts); got != want {
+			t.Errorf("sleepDuration(%d) = %v, want %v", i, got, want)
+		}
+	}
+}
+
+// TestSleepDuration_Jitter25_Envelope verifies the canonical ±25%
+// jitter envelope: every sample must land within [base*0.75, base*1.25].
+// Run 1000 iterations to flush warm-up effects and catch the rare edge
+// where rand.Float64() returns near-0 or near-1.
+func TestSleepDuration_Jitter25_Envelope(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    3,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0.25,
+	}
+	// attempt=0 → base = InitialBackoff = 1s.
+	// Envelope: [0.75s, 1.25s].
+	envelope := struct{ lo, hi time.Duration }{750 * time.Millisecond, 1250 * time.Millisecond}
+	for i := 0; i < 1000; i++ {
+		got := sleepDuration(0, opts)
+		if got < envelope.lo || got > envelope.hi {
+			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v]",
+				i, got, envelope.lo, envelope.hi)
+		}
+	}
+}
+
+// TestSleepDuration_Jitter50_Envelope verifies ±50% bounds: every sample
+// lands in [base*0.5, base*1.5]. Wider envelope than ±25% → stricter
+// bound on the implementation having the right formula.
+func TestSleepDuration_Jitter50_Envelope(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    3,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0.50,
+	}
+	envelope := struct{ lo, hi time.Duration }{500 * time.Millisecond, 1500 * time.Millisecond}
+	for i := 0; i < 1000; i++ {
+		got := sleepDuration(0, opts)
+		if got < envelope.lo || got > envelope.hi {
+			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v]",
+				i, got, envelope.lo, envelope.hi)
+		}
+	}
+}
+
+// TestSleepDuration_Jitter_Variability confirms that with JitterFraction=0.25
+// the implementation actually varies (i.e. it doesn't accidentally short-circuit
+// to a fixed value). Over 1000 samples the spread should comfortably exceed
+// half the envelope width — that's both a stability check and a regression
+// for "jitter broke and silently disabled itself".
+func TestSleepDuration_Jitter_Variability(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    3,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0.25,
+	}
+	const N = 1000
+	minD, maxD := time.Duration(1<<62), time.Duration(0)
+	for i := 0; i < N; i++ {
+		got := sleepDuration(0, opts)
+		if got < minD {
+			minD = got
+		}
+		if got > maxD {
+			maxD = got
+		}
+	}
+	// Envelope half-width = 250ms; we require at least 80% of that in
+	// observed spread (200ms) which gives margin for a low-variance
+	// draw while still catching a "stuck at base" regression.
+	spread := maxD - minD
+	const minSpread = 200 * time.Millisecond
+	if spread < minSpread {
+		t.Errorf("jitter produced insufficient spread over %d iterations: min=%v max=%v spread=%v (want ≥ %v)",
+			N, minD, maxD, spread, minSpread)
+	}
+}
+
+// TestSleepDuration_Jitter_ClampBelowZero defends the contract: a
+// negative JitterFraction (e.g. set by a typo or a misconfigured env
+// var) does NOT produce negative delays. The implementation clamps f<0
+// to f=0 → no jitter, exact base returned.
+func TestSleepDuration_Jitter_ClampBelowZero(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    3,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: -0.25,
+	}
+	for i := 0; i < 100; i++ {
+		if got, want := sleepDuration(0, opts), 1*time.Second; got != want {
+			t.Errorf("iter %d: JitterFraction=-0.25 produced %v, want exactly %v (negative jitter must clamp to no-jitter)", i, got, want)
+		}
+		if got := sleepDuration(0, opts); got <= 0 {
+			t.Errorf("iter %d: sleepDuration %v must be > 0 even after clamping negative jitter", i, got)
+		}
+	}
+}
+
+// TestSleepDuration_Jitter_ClampAboveOne defends the contract: a
+// JitterFraction > 1.0 means "I want jitter up to ±100%" — anything
+// higher is clamped to 1.0 so the impl cannot produce a >2x delay
+// from a vanilla caller's miscoufiguration.
+func TestSleepDuration_Jitter_ClampAboveOne(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    3,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 2.0, // impl clamps to 1.0
+	}
+	// With f=1.0: delay * (1 - 1 + 2*r) = 2*delay*r where r ∈ [0, 1].
+	// Envelope: [0, 2*base] = [0, 2s].
+	envelope := struct{ lo, hi time.Duration }{0, 2 * time.Second}
+	for i := 0; i < 1000; i++ {
+		got := sleepDuration(0, opts)
+		if got < envelope.lo || got > envelope.hi {
+			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v] (JitterFraction=2.0 must clamp to 1.0)",
+				i, got, envelope.lo, envelope.hi)
+		}
+	}
+}
+
+// TestSleepDuration_JitterOnMaxBackoffCap verifies the contract: jitter
+// applies AFTER MaxBackoff cap, not before. A sequence that has saturated
+// the cap must still be jittered within [cap*0.75, cap*1.25].
+func TestSleepDuration_JitterOnMaxBackoffCap(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		MaxAttempts:    5,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     500 * time.Millisecond, // cap kicks in immediately
+		BackoffFactor:  2.0,
+		JitterFraction: 0.25,
+	}
+	// attempt=4 → delay = 16s (1*2^4) but capped at 500ms. Jitter applies
+	// on top of 500ms. Envelope: [375ms, 625ms].
+	envelope := struct{ lo, hi time.Duration }{375 * time.Millisecond, 625 * time.Millisecond}
+	for i := 0; i < 1000; i++ {
+		got := sleepDuration(4, opts)
+		if got < envelope.lo || got > envelope.hi {
+			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v] (jitter must apply AFTER MaxBackoff cap)",
+				i, got, envelope.lo, envelope.hi)
+		}
+	}
+}
+
+// TestDefaultOptions_Jitter25Enabled locks the canonical default: the
+// `DefaultOptions()` helper ships `JitterFraction: 0.25`. Any change
+// to this constant requires revisiting the production retry behaviour
+// (e.g. CI latency assertions that depend on the default envelope).
+func TestDefaultOptions_Jitter25Enabled(t *testing.T) {
+	t.Parallel()
+
+	opts := DefaultOptions()
+	const want = 0.25
+	if opts.JitterFraction != want {
+		t.Errorf("DefaultOptions().JitterFraction = %v, want %v (changing this is a behavioural change for ALL callers that use DefaultOptions)", opts.JitterFraction, want)
+	}
+	// Sanity-check the rest of the defaults while we're here.
+	if opts.MaxAttempts != 3 {
+		t.Errorf("DefaultOptions().MaxAttempts = %d, want 3", opts.MaxAttempts)
+	}
+	if opts.InitialBackoff != 1*time.Second {
+		t.Errorf("DefaultOptions().InitialBackoff = %v, want 1s", opts.InitialBackoff)
+	}
+	if opts.MaxBackoff != 30*time.Second {
+		t.Errorf("DefaultOptions().MaxBackoff = %v, want 30s", opts.MaxBackoff)
+	}
+	if opts.BackoffFactor != 2.0 {
+		t.Errorf("DefaultOptions().BackoffFactor = %v, want 2.0", opts.BackoffFactor)
+	}
+}
+

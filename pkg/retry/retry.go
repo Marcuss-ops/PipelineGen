@@ -7,6 +7,7 @@ package retry
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"strings"
 	"time"
 )
@@ -24,6 +25,10 @@ import (
 //	if isSQLiteLocked(err) {
 //	    return &retry.TransientInfrastructureError{Err: err}
 //	}
+//
+// Better: use the in-package `WrapTransient(err)` helper which
+// idempotently wraps based on the canonical taxonomy, so callers
+// don't need their own ad-hoc predicate.
 //
 // The Unwrap method surfaces the inner error for errors.Is / errors.As.
 type TransientInfrastructureError struct {
@@ -46,10 +51,23 @@ func (e *TransientInfrastructureError) Unwrap() error {
 // transientSubstrings is the canonical taxonomy of transient-infrastructure
 // error substrings. Mirrors the taxonomy previously duplicated in
 // monitor/enqueue.go::isTransientEnqueueError (removed Step 7, July 2026).
+// Azione 4/8 (July 2026) added the SQLite-canonical markers below:
+//
+//   - "database is locked"   — SQLite busy marker (5.x: SQLITE_BUSY)
+//   - "sqlite busy"          — mattn/go-sqlite3 prefix
+//   - "connection is already closed" — sql.ErrConnDone.Error()
+//
+// NOTE on sqlassets.ErrStateConflict: it is a typed *logical* sentinel
+// ("row state is in conflict"). The canonical contract today is that
+// this error remains TERMINAL (callers explicitly force retryable=false
+// after `errors.Is(err, sqlassets.ErrStateConflict)`). It is therefore
+// not added to transientSubstrings — doing so would silently flip a
+// terminal logical error to a transient infra error.
 var transientSubstrings = []string{
 	"timeout",
 	"connection refused",
 	"connection reset",
+	"connection is already closed",
 	"eof",
 	"429",
 	"503",
@@ -59,6 +77,8 @@ var transientSubstrings = []string{
 	"quota exceeded",
 	"temporarily unavailable",
 	"resource temporarily unavailable",
+	"database is locked",
+	"sqlite busy",
 }
 
 // IsTransient returns true when err is non-nil AND either:
@@ -71,7 +91,7 @@ var transientSubstrings = []string{
 // substring matcher (monitor.isTransientEnqueueError,
 // tagutil.IsTransientDownloadError, youtube/usecase.IsTransientExtractionError)
 // should migrate to this function and, where typed wrapping is feasible,
-// use TransientInfrastructureError.
+// use WrapTransient.
 func IsTransient(err error) bool {
 	if err == nil {
 		return false
@@ -87,6 +107,41 @@ func IsTransient(err error) bool {
 		}
 	}
 	return false
+}
+
+// ── WrapTransient ───────────────────────────────────────────────────────────
+
+// WrapTransient returns err wrapped in *TransientInfrastructureError
+// when err is already transient (per IsTransient), otherwise returns
+// err unchanged. Idempotency: if err is already or wraps a
+// *TransientInfrastructureError, returns err unchanged (no double
+// wrap). Nil-safe: returns nil for nil input.
+//
+// Typical usage at SQLite / HTTP / DB boundary:
+//
+//	if err := db.Exec(...); err != nil {
+//	    return retry.WrapTransient(err)  // typed-transient only if transient
+//	}
+//
+// Pair with IsTransient for retry control flow:
+//
+//	err = retry.WrapTransient(rawErr)
+//	if retry.IsTransient(err) { ... }
+//
+// WrapTransient is the canonical migration target for ad-hoc inline
+// substring matchers at infra boundaries (Azione 4/8 di Step 7).
+func WrapTransient(err error) error {
+	if err == nil {
+		return nil
+	}
+	var te *TransientInfrastructureError
+	if errors.As(err, &te) {
+		return err
+	}
+	if IsTransient(err) {
+		return &TransientInfrastructureError{Err: err}
+	}
+	return err
 }
 
 // Options configures the retry loop behaviour.
@@ -127,12 +182,20 @@ type Options struct {
 type RetryOptions = Options
 
 // DefaultOptions returns a reasonable starting point for most use-cases.
+//
+// The default `JitterFraction: 0.25` enables ±25% randomization on top of
+// the computed exponential backoff, reducing thundering-herd retry waves
+// when many goroutines converge on the same transient error (e.g. the
+// SQLite-locked retry storms when a hot row is enqueued from N workers
+// in lockstep). Callers that need deterministic timing (e.g. CI latency
+// assertions) can override with `JitterFraction: 0`.
 func DefaultOptions() Options {
 	return Options{
 		MaxAttempts:    3,
 		InitialBackoff: 1 * time.Second,
 		MaxBackoff:     30 * time.Second,
 		BackoffFactor:  2.0,
+		JitterFraction: 0.25,
 	}
 }
 
@@ -221,11 +284,24 @@ func sleepDuration(attemptCount int, opts Options) time.Duration {
 	if time.Duration(delay) > opts.MaxBackoff {
 		delay = float64(opts.MaxBackoff)
 	}
-	// Apply jitter: random fraction of the current delay.
-	// JitterFraction of 0 means no jitter; 0.3 means up to ±30% random variance.
-	if opts.JitterFraction > 0 && opts.JitterFraction <= 1.0 {
-		jitter := delay * opts.JitterFraction
-		delay = delay - jitter + jitter*2.0*float64(time.Now().UnixNano()%1000000)/1000000.0
+	// Apply bounded jitter: a uniform random factor in [1 - f, 1 + f]
+	// multiplies the (already capped) delay. JitterFraction=0 disables
+	// jitter; values outside [0, 1.0] are clamped (defensive: prevents
+	// negative or super-multiplicative delays from a typo'd option).
+	//
+	// math/rand global Float64 is safe for concurrent use as of Go 1.20+
+	// and is sufficient for jitter (this is not a security primitive).
+	// Thunderbolt-fleet retry storms desynchronize via this factor.
+	f := opts.JitterFraction
+	if f < 0 {
+		f = 0
+	}
+	if f > 1.0 {
+		f = 1.0
+	}
+	if f > 0 {
+		jitter := delay * f
+		delay = delay - jitter + jitter*2.0*rand.Float64()
 	}
 	return time.Duration(delay)
 }
