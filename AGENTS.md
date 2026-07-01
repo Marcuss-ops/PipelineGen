@@ -961,6 +961,10 @@ the snapshot table above.
 
 ---
 
+- **PHASE-1C wave-tracker** (Phase 1c TODO closure chain, 5 commits → 7 SHAs after Fix #1, 11 sites closed): `architecture/current.yaml#wave_status.PHASE-1C` — see `CHANGELOG.md ## Unreleased → ### Fixed` for end-to-end audit trail.
+
+---
+
 ## Core Contracts
 
 All modules must use canonical contracts:
