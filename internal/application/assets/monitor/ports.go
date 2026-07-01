@@ -207,12 +207,19 @@ type MonitorConfig struct {
 // MaxVideosPerRun budget, or otherwise exited the pipeline without a
 // broker record. Persisted to youtube_discoveries.outcome='rejected'
 // with rejection_reason in metadata for audit.
+//
+// InfraFailures = count of per-video infra errors (panics, analyzer
+// timeouts, SQLite errors, broker failures) within the cycle. Distinct
+// from policy rejections; a non-zero InfraFailures signals degraded
+// infra health independent of the channel's policy config.
+// Blocco 3a (July 2026).
 type ChannelCheckResult struct {
 	VideosDiscovered       int
 	VideosEnqueued         int
 	VideosSkipped          int
 	VideosAlreadyScheduled int
 	VideosRejected         int
+	InfraFailures          int
 }
 
 // EnqueueOutcome is the typed label for a single video's per-cycle
@@ -239,6 +246,11 @@ const (
 	// MaxVideosPerRun slot was already filled, the semantic score was
 	// below threshold, etc.). Persisted to youtube_discoveries.outcome.
 	OutcomeRejected EnqueueOutcome = "rejected"
+
+	// OutcomeInfraFailure: TryReserve itself failed (SQLite error).
+	// Counts as both Rejected + InfraFailure — the video couldn't be
+	// processed due to infra, not policy. Blocco 3a (July 2026).
+	OutcomeInfraFailure EnqueueOutcome = "infra_failure"
 )
 
 // ── MonitorDownloaderPort (yt-dlp slice, PR-4 DateAfter) ───────────────
