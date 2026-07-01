@@ -19,10 +19,8 @@ package artlist
 import (
 	"context"
 	"errors"
-	"io"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // Sentinel errors that ports must return. Implementations map transport
@@ -53,6 +51,19 @@ var (
 	// belt-and-suspenders check inside SearchLiveAndSave itself
 	// (catches tampering via SetDispatcher post-construction).
 	ErrAssetMutationDispatcherUnavailable = errors.New("artlist: asset mutation dispatcher unavailable (production must wire outbox dispatcher at composition)")
+	// ErrPublisherUnavailable is the typed sentinel NewService and
+	// DestinationService return when the canonical delivery.Publisher
+	// port is nil at construction time. Per F2.11 brutal override, every
+	// Drive write from artlist routes through Publisher; the legacy
+	// fallback path (DriveFolderManager.EnsureFolder + the silent
+	// folderID = rootFolderID branch) has been retired. Production
+	// composition rejects nil in module_sources.go::WireArtlist so this
+	// sentinel should never reach the operators' eyes — it's here as a
+	// composition-time fail-closed (mirrors the QDRANT-002 dispatcher
+	// guard) and as a runtime belt-and-suspenders check inside
+	// DestinationService itself (catches tampering via late-bound
+	// service mutation).
+	ErrPublisherUnavailable = errors.New("artlist: delivery.Publisher port unavailable at composition — production must wire delivery.Publisher (F2.11: brutal override retired the legacy DriveFolderManager fallback; silent folderID = rootFolderID fallback is gone)")
 )
 
 // Candidate is the application-level representation of a search hit.
@@ -147,101 +158,49 @@ type AssetStore interface {
 	UpdateSearchTerms(ctx context.Context, clipID string, source string, name string, tags []string, searchText string) error
 }
 
-// Uploader uploads a local file to a destination folder. The application
-// decides *where* to upload (which Drive folder); infrastructure owns the
-// Drive SDK.
-//
-// PR2.7 cross-reference: the wider DriveFolderManager port (above) also
-// satisfies this interface — *DriveFolderManagerAdapter implements both
-// Uploader (EnsureFolder + Upload) and DriveFolderManager (the full
-// 5-method Drive surface). When a consumer needs only upload/folder
-// ensure (e.g. composition-root bundle assembly), prefer Uploader for
-// the narrower contract. When a consumer needs List/Trash/Download as
-// well (e.g. semantic_enricher metadata.json flow, destination_service
-// folder resolution with pre-existence checks), prefer
-// DriveFolderManager. Kept as separate interfaces to avoid forcing
-// callers to stub methods they don't use — the adapter satisfies both,
-// so wiring at the composition root can hand out the wider port and
-// the narrower consumers simply ignore the extra methods. In practice
-// the composition root instantiates one DriveFolderManager and passes
-// it to consumers needing narrower views via a compile-time widening
-// (the adapter satisfies Uploader too).
-type Uploader interface {
-	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
-	Upload(ctx context.Context, localPath, folderID, filename string) (string, error)
-}
+// Uploader was the narrow port for folder-ensure + upload. F2.11
+// (June 2026) retired the interface entirely (override brutal): the
+// service's destination_service.go::ResolveDestination now routes
+// ONLY through delivery.Publisher (the canonical write canal per
+// DRIVE-005 closure), and semantic_enricher.go's
+// updateCumulativeMetadataJSON uses drive.Reader for ListByQuery +
+// Download and delivery.Publisher.Publish for upload. There is no
+// remaining consumer of the Uploader interface (no callers in this
+// package, no callers outside this package). The dual surface
+// (Uploader + DriveFolderManager) that PR2.7 introduced as a
+// layering compromise is gone — all Drive writes fan out through
+// delivery.Publisher per the AGENTS.md godlike/06 'one owner per
+// fact' rule.
 
-// DriveFileRef is the application-level reference to a Drive file.
-// PR2.7 declares it as a Go type alias to the canonical struct in
-// infrastructure/drive (drivepkg.DriveFileRef) so the DriveFolderManager
-// port can return []DriveFileRef without the infrastructure adapter
-// importing the application package. Callers continue to write
-// artlist.DriveFileRef — the alias is transparent; method sets, struct
-// fields, and interface-style return values stay interchangeable.
+// DriveFolderManager was the wide port (EnsureFolder + ListByQuery +
+// Download + Upload) PR2.7 introduced to retire the raw
+// *google.golang.org/api/drive/v3 leak from ServiceDeps.DriveClient.
+// F2.11 (June 2026) retired the interface entirely:
 //
-// Why an alias and not a parallel struct: a parallel struct would either
-// (a) duplicate the field set and require conversion at every seam
-// (expensive to maintain, easy to drift) or (b) be imported into
-// ports.go anyway (no cycle benefit). The alias keeps a single source of
-// truth (drive.DriveFileRef) while preserving the developer-facing
-// name callers expect. The "Name" field is currently used only by
-// diagnostic logging; semantic_enricher reads .ID — kept broad enough
-// for future callers that need to identify siblings by filename.
-type DriveFileRef = drivepkg.DriveFileRef
-
-// DriveFolderManager is the wide port covering all Drive folder/file
-// operations the application needs. PR2.7 introduced this port to
-// replace (a) the raw *google.golang.org/api/drive/v3 Service previously
-// held in ServiceDeps.DriveClient (a concrete SDK leak) and (b) the
-// narrow *drive.Uploader concrete previously held by SemanticEnricher.
+//   - DestinationService uses delivery.Publisher.ResolveFolder only
+//     (the canonical folder-resolution path). The legacy `else if
+//     driveManager != nil` branch + the silent `folderID = rootFolderID`
+//     fallback are gone — a nil Publisher at composition is now the
+//     fail-closed wiring error ErrPublisherUnavailable.
 //
-// Wave D Commit 1 (June 2026) updates the surrounding composition:
-// the *google.golang.org/api/drive/v3 concrete never lived directly
-// in the artlist package — it lived only on ArtlistBundle.DriveClient
-// as the plumbing channel that fed the *drive.DriveFolderManagerAdapter
-// in WireArtlist. ServiceDeps.DriveClient was retired by PR2.7 and
-// remains retired (the application package no longer holds the raw
-// SDK concrete); the bundle-level DriveClient is the back-compat
-// affordance Wave D Commit 1 retained per operator signal pending
-// the Wave D Commit 2/3 retirement decision.
+//   - SemanticEnricher's updateCumulativeMetadataJSON now uses
+//     drive.Reader for the read-modify-write path (ListByQuery →
+//     SearchFiles; Download → DownloadFile) and delivery.Publisher.Publish
+//     for the upload. The TRASH on the previous metadata.json still
+//     routes through drive.FileLifecycle (the CARD-3 port split out
+//     from DriveFolderManager in PR2.7).
 //
-// Application decides WHAT (which file, which folder); infrastructure
-// owns HOW (the SDK, retries, transport). Domain shape (DriveFileRef +
-// io.ReadCloser) hides the SDK types from callers.
+// Per AGENTS.md godlike/06 'one owner per fact': drive.Reader owns the
+// read surface, drive.FileLifecycle owns the lifecycle surface, and
+// delivery.Publisher owns the write surface. The composite
+// DriveFolderManager adapter (which conflated those three) is gone.
 //
-// All errors must map to the package's sentinel errors (ErrEmpty,
-// ErrUnavailable, ErrTimeout, ErrInvalidResponse) so callers can't leak
-// transport jargon. Where SDK errors don't fit a sentinel cleanly, the
-// wrapped error chain keeps the SDK message accessible via errors.Is/
-// errors.As for diagnostic logging.
-type DriveFolderManager interface {
-	// EnsureFolder creates (or reuses) a folder whose path is
-	// composed from parent + segments. Idempotent: when a folder
-	// already exists at any level of the path, it is reused rather
-	// than creating a duplicate. Returns the resolved folder ID.
-	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
-
-	// ListByQuery returns DriveFileRef entries matching the supplied
-	// raw query string (e.g. "'XYZ' in parents and trashed = false and
-	// name = 'metadata.json'"). Server-side filtering of trashed
-	// entries is the caller's responsibility (include
-	// "and trashed = false" in the query). The domain result shape
-	// avoids leaking *assetsapi.File into business logic.
-	ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error)
-	// Download fetches a file's content as a stream. The caller MUST
-	// close the returned io.ReadCloser. Content-type is returned as a
-	// convenience for callers that branch on MIME (rare; metadata.json
-	// downloads don't need this).
-	Download(ctx context.Context, fileID string) (io.ReadCloser, string, error)
-
-	// Upload uploads a local file to a Drive folder. Returns the
-	// webViewLink of the new/updated file (callers that just want
-	// "did it work" discard it). When a file with the same name
-	// already exists in the folder, the implementation MUST update
-	// in place rather than create a duplicate (matches the legacy
-	// upload-on-conflict behaviour callers depended on).
-	Upload(ctx context.Context, localPath, folderID, filename string) (string, error)
-}
+// The DriveFileRef alias to drivepkg.DriveFileRef was RETIRED together
+// with this interface in F2.11 (zero remaining callers — the alias
+// only existed to support the now-defunct ListByQuery return type).
+// Per AGENTS.md Code Hygiene ("remove unused variables, functions,
+// and files as a result of your changes"), the alias was deleted from
+// this file in the F2.11 commit.
 
 // Indexer publishes a clip embedding into Qdrant (or whatever vector store).
 // Implementations may be no-op in tests.

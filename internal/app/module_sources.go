@@ -32,6 +32,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	// drive.Reader exposure for artlist semantic_enricher (F2.11): the
+	// composition root must thread a drive.Reader concrete (the
+	// bundled *drive.Uploader) into wireArtlistSemanticEnricher so
+	// updateCumulativeMetadataJSON's SearchFiles + DownloadFile
+	// calls map to the canonical Pattern 0 Reader port per
+	// DRIVE-005 closure.
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
@@ -85,64 +91,70 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 		log.Warn("failed to load artlist presets, using defaults")
 	}
 
-	// PR2.7: build the DriveFolderManager adapter BEFORE the
-	// SemanticEnricher so the enricher can receive the canonical
-	// port instead of the legacy *drive.Uploader concrete. The
-	// adapter wraps *bundle.DriveClient (the raw *driveapi.Service)
-	// so callers (semantic_enricher as well as anyone reading
-	// Service.driveFolderManager) never see SDK types. When
-	// bundle.DriveClient is nil (e.g. test fixtures), the adapter
-	// stays nil and the enricher's updateCumulativeMetadataJSON is
-	// a no-op (dropDriveManager nil-tolerance path).
-	var driveManager artlistPkg.DriveFolderManager
-	if bundle.DriveClient != nil {
-		driveManager = drive.NewDriveFolderManagerAdapter(bundle.DriveClient, log)
-	}
-	// CARD-3 (June 2026): fileLifecycle port split from DriveFolderManager.
-	// thread into SemanticEnricher (the only consumer today — Trash on the
-	// old metadata.json).
-	// godlike/06 "one owner per fact": file-lifecycle and folder-mgmt are
-	// distinct seams and each owns its raw SDK calls.
+	// F2.11 (June 2026): the DriveFolderManagerAdapter construction +
+	// the driveManager variable are RETIRED entirely (override brutal).
+	// The artlist package no longer reaches through to a DriveFolderManager
+	// port — every Drive write (DestinationService.ResolveFolder +
+	// SemanticEnricher.updateCumulativeMetadataJSON Publish) routes
+	// through delivery.Publisher (the canonical write canal), and the
+	// metadata.json read path uses drive.Reader (the canonical read canal
+	// per DRIVE-005 closure). The *drive.DriveFolderManagerAdapter
+	// factory in internal/infrastructure/drive/folder_manager.go has
+	// zero remaining callers (audit-pin search) and is deleted in this
+	// commit together with the file.
+	//
+	// bundle.DriveClient remains ONLY for the CARD-3 file-lifecycle
+	// path (drive.NewFileLifecycleAdapter) so the legacy SDK leak
+	// disappears for artlist while the trash/move/rename surface lives
+	// on for admin ops (kept for Wave D Commit 2/3 retirement).
+	//
+	// F2.11 (June 2026, brutal override): the legacy FolderManagerAdapter
+	// was retired from the artlist wiring here (no NewDriveFolderManagerAdapter
+	// call + no driveManager variable). The bundle.DriveClient retention
+	// is for FileLifecycleAdapter (Trash / Move / Rename / Cleanup per
+	// CARD-3) ONLY — NOT for the FolderManagerAdapter that fed the
+	// retired DriveFolderManager port. The next decommissioning agent
+	// must NOT remove bundle.DriveClient wholesale; it's load-bearing
+	// for the lifecycle surface, distinct from the (now-retired) folder
+	// manager surface.
 	var fileLifecycle drive.FileLifecycle
 	if bundle.DriveClient != nil {
 		fileLifecycle = drive.NewFileLifecycleAdapter(bundle.DriveClient, log)
+	}
+	// F2.11: drive.Reader exposure to SemanticEnricher so
+	// updateCumulativeMetadataJSON's SearchFiles + DownloadFile
+	// calls map to the canonical Pattern 0 Reader port per DRIVE-005.
+	// Concrete *drive.Uploader satisfies drive.Reader (compile-time
+	// assertion at internal/infrastructure/drive/ports.go).
+	var driveReader drive.Reader
+	if bundle.DriveUploader != nil {
+		driveReader = bundle.DriveUploader
 	}
 
 	// PR2.5: build the SemanticEnricher BEFORE NewService so its
 	// Dispatcher constructor argument captures the canonical
 	// outbox.Dispatcher at composition time. No setter is called
 	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
-	// PR2.7: the enricher now takes the DriveFolderManager port
-	// (driveManager) instead of the narrow *drive.Uploader concrete.
-	// PR2.5: build the SemanticEnricher BEFORE NewService so its
-	// Dispatcher constructor argument captures the canonical
-	// outbox.Dispatcher at composition time. No setter is called
-	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
-	// PR2.7: the enricher now takes the DriveFolderManager port
-	// (driveManager) instead of the narrow *drive.Uploader concrete.
+	// F2.11: the enricher now takes delivery.Publisher + drive.Reader
+	// (the canonical write + read canals per the brutal-override
+	// user spec), instead of the legacy DriveFolderManager port.
 	// Dispatcher is the canonical media_index_outbox dispatcher from
 	// root.Outbox (already built by BuildOutboxBundle before WireRegistry
 	// runs).
 	//
 	// QDRANT-002 PR7: dispatcher is now an unconditional requirement.
-	// The legacy "UpsertClip + IndexClip fallback when dispatcher is
-	// nil" was wrong-by-design: a nil dispatcher at runtime means the
-	// canonical ingest atomically lost any half-state between the two
-	// ops (PR1 retain window). Treat a nil dispatcher at composition
-	// time as a code defect — explicit error beats silent fallback
-	// that surfaces only at first ingest.
-	//
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
-	// constructed at top of WireArtlist (declared before its first use);
-	// this block retains the dispatcher's role for the SemanticEnricher.
+	// F2.11: publisher is now an unconditional requirement — the legacy
+	// `else if driveManager != nil { EnsureFolder(...) }` branch and
+	// the silent `folderID = rootFolderID` fallback are gone (override
+	// brutal; per user spec).
 	var enricher artlistPkg.MetadataWriter
 	if bundle.ClipsRepo != nil {
 		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, fileLifecycle, log)
-		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7)")
+		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, publisher, driveReader, dispatcher, fileLifecycle, log)
+		log.Info("wired semantic enricher (Publisher + Reader ports) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7 + F2.11)")
 	}
 
-	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, driveManager, dispatcher, publisher, log)
+	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, dispatcher, publisher, log)
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
@@ -259,32 +271,36 @@ func wireArtlistService(
 	assetDestResolver asset.Resolver,
 	clipIndexerSvc *clipindexer.Service,
 	enricher artlistPkg.MetadataWriter,
-	driveManager artlistPkg.DriveFolderManager,
 	dispatcher *outbox.Dispatcher,
 	publisher delivery.Publisher,
 	log *zap.Logger,
 ) (*artlistPkg.Service, error) {
-	// PR2.6: wireArtlistService uses the named-sub-structs shape for
-	// ServiceDeps (ServicePorts + ServiceDependencies). Production
-	// wiring receives root.Outbox.Dispatcher which feeds both Service
-	// (via ServiceDependencies.Dispatcher) and the SemanticEnricher
-	// (via the upstream NewSemanticEnricher(... dispatcher ...)).
-	// PR2.7: DriveFolderManager joins ServicePorts (was 3 → 4 fields);
-	// DriveClient is dropped from ServiceDependencies (was 12 → 11 fields).
+	// F2.11 (June 2026): the driveManager parameter was RETIRED from
+	// wireArtlistService's signature. The DriveFolderManager port (and
+	// the *drive.DriveFolderManagerAdapter behind it) has zero
+	// remaining callers in this file or anywhere else in the artlist
+	// composition. Drive writes fan out through delivery.Publisher
+	// (the canonical write canal per DRIVE-005); Drive reads through
+	// drive.Reader (the canonical read canal). The Publisher field
+	// stays; the cardinality drops from 4 → 3 fields on ServicePorts.
+	//
+	// Fail-closed on Publisher: Service.NewService returns
+	// ErrPublisherUnavailable when Publisher is nil (composition-
+	// time wiring error). The composition root here also wires the
+	// publisher arg non-nil-or-error path so operators see the missing
+	// dep at startup rather than racing the late-bind setter sequence.
 	artlistSvc, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
 		ServicePorts: artlistPkg.ServicePorts{
-			AssetStore:         bundle.ClipsRepo, // *assets.ClipsRepository implements AssetStore
-			Indexer:            clipIndexerSvc,   // *clipindexer.Service implements Indexer
-			MetadataWriter:     enricher,
-			DriveFolderManager: driveManager, // *drive.DriveFolderManagerAdapter wraps bundle.DriveClient
-			Publisher:          publisher,    // canonical Drive publisher (FASE 8)
+			AssetStore:     bundle.ClipsRepo, // *assets.ClipsRepository implements AssetStore
+			Indexer:        clipIndexerSvc,   // *clipindexer.Service implements Indexer
+			MetadataWriter: enricher,
+			Publisher:      publisher, // F2.11: Publisher is mandatory (ErrPublisherUnavailable on nil)
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     bundle.DB.DB, // ArtlistDB removed PR2.6: == MainDB post-consolidation
-			Log:        log,
-			Dispatcher: dispatcher,
-			// DriveClient removed PR2.7: replaced by DriveFolderManager port in ServicePorts
+			Cfg:               cfg,
+			MainDB:            bundle.DB.DB, // ArtlistDB removed PR2.6: == MainDB post-consolidation
+			Log:               log,
+			Dispatcher:        dispatcher,
 			MediaProcessor:    bundle.MediaProcessor,
 			LifecycleService:  artlistLifecycle,
 			AssetDestResolver: assetDestResolver,
@@ -343,10 +359,14 @@ func wireArtlistCatalog(ctx context.Context, cfg *config.Config, bundle *Artlist
 // canonical ingestion path between BuildDomainBundle returning and
 // the per-setter call is closed.
 func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle) (*StockPipelineWiring, error) {
-	if bundle.DriveUploader == nil {
-		log.Warn("stock pipeline not wired: missing drive client")
-		return nil, nil
-	}
+	// F2.10: the bundle.DriveUploader check is RETIRED. The stock
+	// pipeline no longer reaches into the Drive SDK directly; every
+	// Drive write routes through bundle.Publisher (delivery.Publisher).
+	// The bundle.DriveUploader field on StockBundle remains in the
+	// type for legacy callers (Teardown + outbound callers) but is
+	// no longer a prerequisite of WireStockPipeline.
+	_ = log
+	_ = bundle
 
 	// PR6 port wiring: render adapter + cutter adapter. The application
 	// layer talks to the canonical stock ports; this composition root is
@@ -388,10 +408,11 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 		return nil, fmt.Errorf("WireStockPipeline: bundle.ClipIndexerService is required for production stock pipeline")
 	}
 
+	// F2.10: Drive field dropped from stockpipeline.Deps (override
+	// brutal). The bundle.Publisher is the sole Drive-write canal.
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Cfg:       cfg,
 		Log:       log,
-		Drive:     bundle.DriveUploader,
 		Publisher: bundle.Publisher,
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:  bundle.ClipsRepo,

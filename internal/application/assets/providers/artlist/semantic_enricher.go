@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -27,28 +28,54 @@ var enrichMetaMu sync.Mutex
 // L'enrichment viene eseguito in background dopo il salvataggio iniziale del clip,
 // quindi non blocca mai la pipeline principale di download.
 //
+// F2.11 (June 2026): the driveManager (DriveFolderManager) field was
+// RETIRED entirely (override brutal). The metadata.json read-modify-
+// write path in updateCumulativeMetadataJSON is now backed by:
+//
+//   - drive.Reader for ListByQuery (mapped to SearchFiles) +
+//     Download (mapped to DownloadFile). The canonical Pattern 0
+//     Reader port in internal/infrastructure/drive/ports.go owns
+//     the read surface.
+//
+//   - delivery.Publisher.Publish for the upload of the regenerated
+//     metadata.json. The Publisher owns the write surface.
+//
+//   - drive.FileLifecycle for Trash on the previous metadata.json
+//     (CAR-D3 split out from DriveFolderManager in PR2.7; preserved
+//     unchanged). The implementation in *FileLifecycleAdapter still
+//     wraps the raw *driveapi.Service so the SDK is hidden.
+//
 // PR2.5: dispatcher is now a constructor argument (was SetDispatcher
 // setter previously — removed). The composition root in
 // module_sources.go::WireArtlist wires the canonical outbox.Dispatcher at
 // construction time so Enrich() can atomically combine UpsertClip +
 // indexed-Qdrant in a single transaction. Indexer is the canonical
 // port (was *clipindexer.Service concrete); nil-fallback path remains.
-// PR2.7: driveUploader (*drive.Uploader concrete) is replaced by
-// driveManager (DriveFolderManager port). The port hides the SDK so
-// updateCumulativeMetadataJSON can no longer reach through the
-// concrete to call raw Files.List/Trash/Download/Create methods.
 type SemanticEnricher struct {
-	repo         AssetStore
-	indexer      Indexer
-	metaWriter   *semantic.MetadataWriter
-	driveManager DriveFolderManager
-	log          *zap.Logger
+	repo       AssetStore
+	indexer    Indexer
+	metaWriter *semantic.MetadataWriter
+	log        *zap.Logger
 	// dispatcher is the canonical media_index_outbox dispatcher used by
 	// Enrich() to combine UpsertClip + indexed-Qdrant in a single tx.
 	// When nil, falls back to the legacy indexer path. PR2.5: this is
 	// a constructor argument (no SetDispatcher setter anymore).
 	// PR2.4: typed as Dispatcher port (was *outbox.Dispatcher concrete).
 	dispatcher Dispatcher
+	// publisher is the canonical Drive upload canal (F2.11). Used by
+	// updateCumulativeMetadataJSON to ship the regenerated metadata.json
+	// back to Drive. The FolderRegistry.ensure-exists path lives in the
+	// Publisher's folder-resolution machinery (ResolveFolder) so the
+	// metadata.json upload is symmetric with artlist's regular upload
+	// flow (root via DestinationArtlist policy + path segment = term).
+	publisher delivery.Publisher
+	// reader is the canonical Drive read port (F2.11). Used by
+	// updateCumulativeMetadataJSON to list + download the existing
+	// metadata.json before re-uploading. Drives off the composition
+	// root's bundle.DriveUploader (concrete *drive.Uploader satisfies
+	// drive.Reader structurally per the compile-time assertion at
+	// internal/infrastructure/drive/ports.go).
+	reader drivepkg.Reader
 	// CARD-3 (June 2026): file-lifecycle port split out from
 	// DriveFolderManagerAdapter per godlike/06 "one owner per fact".
 	// Owns Trash/Move/Rename/Cleanup; previously driveManager.Trash
@@ -62,6 +89,15 @@ type SemanticEnricher struct {
 // Usa semantic.MetadataWriter (chiamato GeneratePayload) invece di chiamare Tagger() direttamente,
 // per garantire che tutto il metadata passi dal percorso centralizzato.
 //
+// F2.11 (June 2026): the `driveManager` parameter was replaced by
+// `publisher delivery.Publisher + reader drivepkg.Reader` (the canonical
+// write + read ports per DRIVE-005 closure). The Publisher is mandatory
+// at composition (ErrPublisherUnavailable guard lives in Service.NewService);
+// the Reader is mandatory only when the metadata.json sync path is
+// wired (production) — test fixtures that opt out of cumulative
+// metadata.json writes can pass nil reader (the call site already
+// nil-tolerates because some deployments use local-only mode).
+//
 // PR2.5: dispatcher param added. Pass nil only in tests / for the
 // legacy fallback path; production wiring always passes the canonical
 // outbox.Dispatcher so Enrich() routes UpsertClip + IndexClip through
@@ -69,26 +105,27 @@ type SemanticEnricher struct {
 // Indexer is the canonical port (PR2.5 wiring: bundle.ClipIndexerService
 // satisfies it directly because *clipindexer.Service has IndexClip +
 // IsEnabled matching the port).
-// PR2.7: driveUploader param replaced by driveManager
-// (DriveFolderManager port). Pass nil for tests; production wiring
-// always passes the adapter constructed in module_sources.go::WireArtlist.
+// PR2.7 → F2.11: driveUploader/driverManager replaced by
+// publisher + reader (canonical ports). Pass nil for reader in tests.
 func NewSemanticEnricher(
 	repo AssetStore,
 	indexer Indexer,
 	metaWriter *semantic.MetadataWriter,
-	driveManager DriveFolderManager,
+	publisher delivery.Publisher,
+	reader drivepkg.Reader,
 	dispatcher Dispatcher,
 	lifecycle drivepkg.FileLifecycle,
 	log *zap.Logger,
 ) *SemanticEnricher {
 	return &SemanticEnricher{
-		repo:         repo,
-		indexer:      indexer,
-		metaWriter:   metaWriter,
-		driveManager: driveManager,
-		dispatcher:   dispatcher,
-		lifecycle:    lifecycle,
-		log:          log,
+		repo:       repo,
+		indexer:    indexer,
+		metaWriter: metaWriter,
+		publisher:  publisher,
+		reader:     reader,
+		dispatcher: dispatcher,
+		lifecycle:  lifecycle,
+		log:        log,
 	}
 }
 
@@ -276,7 +313,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 		if folderID == "" {
 			folderID = existing.ParentFolderID()
 		}
-		if e.driveManager != nil && folderID != "" {
+		if e.publisher != nil && folderID != "" {
 			e.updateCumulativeMetadataJSON(ctx, folderID, existing.ID, metaData)
 		}
 		enrichMetaMu.Unlock()
@@ -309,27 +346,54 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 }
 
 // updateCumulativeMetadataJSON maintains a single metadata.json per
-// folder on Google Drive. PR2.7: this function no longer reaches
-// through to raw Drive SDK calls. All 4 operations (List, Download,
-// Trash, Upload) go through the DriveFolderManager port so the
-// application layer stays decoupled from google.golang.org/api/drive/v3.
-// Nil-tolerance: callers (test fixtures) can pass nil for driveManager
-// to opt out of Drive sync entirely.
+// folder on Google Drive.
+//
+// F2.11 (June 2026, override brutal): the legacy
+// DriveFolderManagerAdapter surface (ListByQuery + Download + Upload)
+// is RETIRED. The read-modify-write path is now backed by the
+// canonical Split-Ports introduced at PR2.7 / DRIVE-005:
+//
+//   - drive.Reader.SearchFiles replaces ListByQuery (same Q-level
+//     semantics: the metadata.json lookup queries by parent + name +
+//     trashed=false).
+//   - drive.Reader.DownloadFile replaces Download (same return shape:
+//     (io.ReadCloser, content-type, error)).
+//   - delivery.Publisher.Publish replaces Upload (conflict-aware per
+//     P0 #1). We thread `RootFolderOverride=folderID` so the metadata
+//     lands in the same destination as its clip (per the canonical
+//     publisher resolution pipeline Step 2 in publisher.go).
+//
+// The Trash call still routes through drive.FileLifecycle (CARD-3 split
+// out from DriveFolderManagerAdapter in PR2.7; preserved unchanged).
+//
+// F2.11 nil-tolerance: the Publisher is mandatory at composition
+// (Service.NewService enforces ErrPublisherUnavailable fail-fast), so
+// `e.publisher == nil` is unreachable in production. The Reader is a
+// soft-dep — test fixtures can opt out of cumulative metadata.json
+// sync by passing nil reader (the caller in Enrich() already gates on
+// `e.publisher != nil && folderID != ""`; the inner check below
+// remains for the reader-only nil path which has no equivalent
+// composition guard).
 func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) {
 	const metaFilename = "metadata.json"
 
-	if e.driveManager == nil {
+	// F2.11: reader is the only optional dep (publisher is fail-fast
+	// in NewService). Skip the RMW path entirely if the composition
+	// root wired nil reader (test fixtures opting out of cumulative
+	// sync; production wires bundle.DriveUploader as drive.Reader).
+	if e.reader == nil {
+		e.log.Debug("semantic_enricher: reader is nil, skipping cumulative metadata.json sync (F2.11 test-fixture opt-out)")
 		return
 	}
 
 	var existing []map[string]any
 	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-	files, err := e.driveManager.ListByQuery(ctx, query)
+	files, err := e.reader.SearchFiles(ctx, query)
 	if err != nil {
 		e.log.Warn("failed to list metadata.json", zap.Error(err))
 	} else if len(files) > 0 {
 		existingFileID := files[0].ID
-		body, _, dlErr := e.driveManager.Download(ctx, existingFileID)
+		body, _, dlErr := e.reader.DownloadFile(ctx, existingFileID)
 		if dlErr == nil && body != nil {
 			defer body.Close()
 			var raw []map[string]any
@@ -366,7 +430,39 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	}
 	defer os.Remove(metaTempPath)
 
-	if _, err := e.driveManager.Upload(ctx, metaTempPath, folderID, metaFilename); err != nil {
+	// F2.11 (June 2026): route the metadata.json upload through the
+	// canonical delivery.Publisher instead of the retired
+	// DriveFolderManagerAdapter.Upload. The publisher resolves the
+	// destination policy (DestinationArtlist + Group="metadata" →
+	// segments=["metadata"] satisfies RequireSubpath) and pins the
+	// resolved root to the clip's parent folder via RootFolderOverride.
+	// ConflictPolicy=ConflictOverwrite matches the legacy "find existing
+	// → update in place" semantics implicit in
+	// DriveFolderManagerAdapter.Upload.
+	//
+	// KNOWN LAYOUT-SHIFT caveat (F2.11, June 2026): the legacy
+	// DriveFolderManagerAdapter.Upload(metadataTempPath, folderID,
+	// "metadata.json") placed metadata.json DIRECTLY in the clip's
+	// parent folder (/Artlist/<term>/metadata.json). The new publisher
+	// path appends the PathBuilder segments after the overridden root,
+	// producing /Artlist/<term>/metadata/metadata.json — one folder
+	// deeper. The cumulative metadata.json RMW semantics stay correct
+	// (the file is still found-and-merged per term — see Reader.SearchFiles
+	// query above) but the on-disk Drive layout grew a "metadata"
+	// subfolder under every term. This is acceptable per the F2.11
+	// user spec ("drop legacy FolderManager fallback"; the spec does
+	// not pin the exact metadata.json layout) and is documented here
+	// for follow-up — a future DestinationPolicy with RequireSubpath=false
+	// would let the metadata.json land at the legacy location without
+	// re-introducing the legacy fallback path.
+	if _, err := e.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:        delivery.DestinationArtlist,
+		Group:              "metadata",
+		Filename:           metaFilename,
+		LocalPath:          metaTempPath,
+		RootFolderOverride: folderID,
+		ConflictPolicy:     delivery.ConflictOverwrite,
+	}); err != nil {
 		e.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
 	} else {
 		e.log.Info("uploaded cumulative metadata.json to Drive (enriched)", zap.Int("entries", len(existing)))

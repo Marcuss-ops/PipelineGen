@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -118,6 +119,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
+			Publisher:  &stubPublisherForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:        cfg,
@@ -148,6 +150,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
+			Publisher:  &stubPublisherForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:        cfg,
@@ -305,6 +308,36 @@ func TestSearchNormalizationLimitsToFourWords(t *testing.T) {
 	}
 }
 
+// stubPublisherForArtlist is the F2.11 Publisher stub for artlist test
+// fixtures. Implements delivery.Publisher with deterministic returns so
+// the 5 NewService call sites in this file can construct Service
+// post-F2.11 (Service.NewService fails closed on nil Publisher via
+// ErrPublisherUnavailable; see f2_11_publisher_only_test.go for the
+// audit pin). Production code paths never reach this stub — it is a
+// QDRANT-002-style fail-closed fixture that lets the test focus on
+// the Search / RunTag / HandleJob surfaces without exercising the
+// Drive write path.
+type stubPublisherForArtlist struct{}
+
+func (s *stubPublisherForArtlist) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	return &delivery.PublishResult{
+		FileID:      "stub-publish-file-id",
+		WebViewLink: "https://drive.google.com/file/d/stub-publish-file-id/view",
+		FolderID:    "stub-publish-folder-id",
+		Destination: req.Destination,
+	}, nil
+}
+
+func (s *stubPublisherForArtlist) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
+	// Use RootFolderOverride if threaded (matches production under-cfg
+	// branch); otherwise return a deterministic ID so the test's
+	// downstream assertions stay stable.
+	if req.RootFolderOverride != "" {
+		return req.RootFolderOverride, nil
+	}
+	return "stub-resolve-folder-id", nil
+}
+
 type fakeMediaProcessor struct {
 	called bool
 	err    error
@@ -396,6 +429,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
+			Publisher:  &stubPublisherForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:            cfg,
@@ -478,6 +512,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
+			Publisher:  &stubPublisherForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:            cfg,
@@ -566,6 +601,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
+			Publisher:  &stubPublisherForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:            cfg,
