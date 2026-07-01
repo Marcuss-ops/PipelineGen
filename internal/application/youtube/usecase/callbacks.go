@@ -23,7 +23,6 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── ExtractionCallbacks interface satisfaction ────────────────────────────
@@ -182,35 +181,46 @@ func (s *Service) metadataMetadataModel() string {
 	return s.cfg.OllamaMetadataModel
 }
 
-// triggerAutoIndexing fires a background goroutine to:
-//  1. First enrich the clip with YouTube metadata (title, description, tags, language)
-//     if missing — this ensures search_text is available for embedding generation.
-//     The metadata capability service fetches via yt-dlp if the original metadata
-//     wasn't available during extraction.
-//  2. Then generate embeddings and upsert to Qdrant vector store.
+// triggerAutoIndexing is preserved as an interface method for ExtractionCallbacks
+// compatibility, but the body is intentionally a no-op as of Commit F (June 2026).
+//
+// Rationale: the canonical durable indexing pipeline is:
+//
+//	process_segment.go::Step 9 → youtubeports.ClipAtomicWriter.CommitClipAndIndexEvent
+//	  → outbox_events row (event_key = clipID)
+//	    → outboxevents.Pool.ClaimNext → IndexingHandler.Handle
+//	      → IndexClip → Qdrant upsert
+//
+// This handler chain is async (worker), idempotent on aggregate_id (UNIQUE
+// event_key), retryable via outbox backoff, and terminal failures dead-letter
+// via MaxAttempts (godlike/07 §"no fake availability"). The legacy
+// fire-and-forget path that this method used to take — concurrent.SafeGoFunc
+// + direct indexer.IndexClip — duplicated work the canonical pipeline already
+// covers, with a guaranteed-to-lose race against the worker's MarkFailed path on
+// transient Qdrant errors (the goroutine would log+swallow; the worker would
+// also retry, leading to two concurrent IndexClip calls + duplicate outbox
+// events if EnrichClip was reached via this path, since metadata.EnrichClip
+// emits its own asset.index.requested outbox event).
+//
+// Eliminating the SafeGoFunc + direct IndexClip here removes the
+// duplicate/double-emit hazard. Callers that invoke the method (e.g.
+// enrichSkippedClip, the ExtractionCallbacks interface) compile against the
+// unchanged signature; the contract is now "covered by the durable pipeline".
+//
+// Idempotency proof: directory_test.go commit F regression
+// (internal/application/jobs/outbox/durable_indexing_test.go) verifies that
+// 2 enqueues of the SAME event_key produce 1 outbox row and 1 IndexClip
+// callback — structure-driven (UNIQUE constraint), no goroutine required.
 func (s *Service) triggerAutoIndexing(ctx context.Context, clipID string) {
-	if s.indexer == nil || !s.indexer.IsEnabled() {
+	if s.log == nil {
 		return
 	}
-
-	concurrent.SafeGoFunc("youtube-auto-indexing", clipID, func(id string) {
-		// AGENTS.md §7 post-write save ctx — YouTube auto-indexing
-		// background callback detached from the request ctx; survives
-		// the post-callback response write so the Qdrant index emits
-		// even if the request is cancelled.
-		bgCtx := context.WithoutCancel(ctx)
-		indexCtx, cancel := context.WithTimeout(bgCtx, 3*time.Minute)
-		defer cancel()
-
-		// Step 1: Enrich with YouTube metadata if missing (resilient — fetches via yt-dlp if needed)
-		s.metadata.EnrichClip(indexCtx, id, nil, false)
-
-		// Step 2: Generate embeddings and upsert to Qdrant
-		s.log.Info("triggering automatic indexing for YouTube clip", zap.String("clip_id", id))
-		if err := s.indexer.IndexClip(indexCtx, id); err != nil {
-			s.log.Error("failed to automatically index YouTube clip", zap.String("clip_id", id), zap.Error(err))
-		}
-	})
+	s.log.Debug("triggerAutoIndexing is a no-op: durable indexing is owned by the canonical outbox pipeline (ClipAtomicWriter → IndexingHandler → IndexClip)",
+		zap.String("clip_id", clipID))
+	// Explicit no-op body. The function remains on the struct solely to
+	// preserve the ExtractionCallbacks interface contract — callers
+	// (e.g. enrichSkippedClip) compile against the unchanged signature
+	// but no longer fork a goroutine + direct indexer.IndexClip call.
 }
 
 // youtubeCategoryCache implements classifier.CategoryCache backed by the cache service.
