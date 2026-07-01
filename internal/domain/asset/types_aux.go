@@ -3,6 +3,8 @@ package asset
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -117,6 +119,42 @@ func (s GenerationStyle) IsEnabled() bool {
 		return true
 	}
 	return *s.Enabled
+}
+
+// ── Validation (FASE 1C+1D closure, July 2026) ──────────────────────────
+
+// ErrStyleMissingDisplayName is returned by Validate when
+// DisplayName is unset. DisplayName is required for any
+// modern (post-Step-1) style — the label is surfaced to operators and
+// used as a fallback human-readable key in admin tooling, so an empty
+// value is treated as a hard error.
+var ErrStyleMissingDisplayName = errors.New("GenerationStyle.DisplayName is empty")
+
+// ErrStyleMissingSuffix is returned by Validate when BOTH PromptSuffix
+// AND Description are unset (i.e. EffectiveSuffix() == ""). At least one
+// must be populated so StyleResolver has something to compose into the
+// final prompt.
+var ErrStyleMissingSuffix = errors.New("GenerationStyle has no PromptSuffix and no Description (EffectiveSuffix() is empty)")
+
+// Validate returns nil if the style is well-formed for use by
+// StyleResolver + PromptComposer. Fail-closed rules:
+//
+//   - DisplayName == ""                  -> ErrStyleMissingDisplayName
+//   - EffectiveSuffix() == ""            -> ErrStyleMissingSuffix
+//     (legacy: Description still satisfies the suffix requirement so
+//      existing "name + description only" YAML entries pass)
+//
+// Validate does NOT touch the Enabled flag — disabled styles are still
+// well-formed (operators may keep them on disk for archival / A-B
+// testing). The Enabled check happens at StyleResolver.Resolve-time.
+func (s GenerationStyle) Validate() error {
+	if strings.TrimSpace(s.DisplayName) == "" {
+		return fmt.Errorf("%w (style %q)", ErrStyleMissingDisplayName, s.Name)
+	}
+	if strings.TrimSpace(s.EffectiveSuffix()) == "" {
+		return fmt.Errorf("%w (style %q)", ErrStyleMissingSuffix, s.Name)
+	}
+	return nil
 }
 
 // GenerationStyles is a container for multiple styles (YAML on-disk shape).
