@@ -265,8 +265,11 @@ func (e *ErrSparseRequired) Error() string {
 //  3. errors.As into the lower-case sentinel errors mapped via
 //     isPermanent (schema mismatches, NaN, dimension mismatches,
 //     channel-unavailable, empty vector) → false
-//  4. everything else → true (caller-declared "transient" errors)
-//     — same behaviour as pre-PR1 to avoid breaking existing tiers
+//  4. everything else → false (unknown errors are terminal)
+//     — Blocco 4d (July 2026): pre-fix returned true, treating any
+//     unrecognised error as retryable. Per godlike/07 (no unknown
+//     retryability), the default is now terminal: only explicitly
+//     classified errors (APIError with Retryable=true) trigger retry.
 func IsRetryable(err error) bool {
 	if err == nil {
 		return false
@@ -278,7 +281,10 @@ func IsRetryable(err error) bool {
 	if isPermanent(err) {
 		return false
 	}
-	return true
+	// Blocco 4d: unknown errors default to terminal. Pre-fix returned
+	// true (retryable), creating a catch-all retry policy for every
+	// unrecognised error type — the opposite of fail-safe.
+	return false
 }
 
 func isPermanent(err error) bool {
