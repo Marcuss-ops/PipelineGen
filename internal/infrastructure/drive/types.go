@@ -1,35 +1,30 @@
-// Package drive — types.go (PR2.7)
+// Package drive — types.go (PR2.7, F3.14 follow-up)
 //
-// Cross-package Drive file reference type. PR2.7 places DriveFileRef
-// here (in internal/infrastructure/drive) so that the DriveFolderManager
-// adapter in folder_manager.go can return a domain-shaped slice
-// ([]drive.DriveFileRef) WITHOUT importing the artlist application
-// package. Without this, the import graph becomes:
+// Cross-package Drive value types. After F2.11 + F3.14 (June 2026)
+// retired the artlist.DriveFolderManager wide port and the
+// DriveFolderManagerAdapter's ListByQuery / Download / Upload dead-code
+// surface, the only reason DriveFileRef existed (the PR2.7 cycle-break
+// type shared between folder_manager.go and artlist) is gone. Per
+// AGENTS.md Code Hygiene ("remove unused variables, functions, and
+// files as a result of your changes"), the DriveFileRef type definition
+// was deleted in this F3.14 follow-up commit; the only remaining type
+// here is Doc, which is still actively produced by DocClient
+// (Doc.Create / Doc.ListRecentDocs / Doc.Update).
 //
-//	artlist → ... → assets/assetop → drive → artlist  (cycle, rejected)
+// Cycle-break rationale (PR2.7, now historical only):
 //
-// The artlist application package uses a Go 1.9+ type alias
-// (`type DriveFileRef = drive.DriveFileRef` in ports.go) so that
-// callers see `artlist.DriveFileRef` as a name while the underlying
-// type lives here. Method sets, struct access, and interface-style
-// return values remain interchangeable — only the package qualifier
-// differs. DriveFileRef is intentionally minimal: just enough metadata
-// for application-level consumers to identify a sibling file by name
-// when iterating over listing results. The "Name" field is currently
-// unused by the only consumer (semantic_enricher reads only .ID) but
-// kept for future callers and to keep the adapter's Drive query
-// fields stay self-documenting (`files(id, name)`).
+//\tartlist → ... → assets/assetop → drive → artlist  (cycle, rejected)
+//
+// PR2.7 placed the DriveFileRef struct in internal/infrastructure/drive
+// (this file) so the folder_manager.go adapter could return a
+// domain-shaped slice ([]DriveFileRef) without importing the artlist
+// application package. The artlist package aliased the type via
+// `type DriveFileRef = drive.DriveFileRef` (also deleted in F2.11).
+// F2.11 + F3.14 closed the consumers (DestinationService →
+// delivery.Publisher; SemanticEnricher → drive.Reader; etc.) per godlike/06
+// 'one owner per fact', so the underlying type itself has no remaining
+// direct callers and is retired.
 package drive
-
-// DriveFileRef is the canonical cross-package representation of a
-// Google Drive file reference. Returned by DriveFolderManagerAdapter
-// (and may be returned by any future Drive port). Application layer
-// ports alias this type so callers can write `artlist.DriveFileRef`
-// while the underlying struct lives here.
-type DriveFileRef struct {
-	ID   string
-	Name string
-}
 
 // Doc is the canonical Google Docs reference returned by DocClient
 // (internal/infrastructure/drive/doc_client.go). It bundles the IDs

@@ -4,25 +4,20 @@
 // artifacts.DriveVerifier port. It is functionally equivalent to the
 // legacy `APIDriveVerifier` that lived in
 // internal/application/assets/artifacts/verifier.go — PR2.7 moved it
-// here to break the App → Infra back-edge of the import cycle:
-//
-//	artlist (folder_manager.go) ← artlist port for DriveFileRef
-//	    ↑                                                   │
-//	    │                                                   ▼
-//	verifier.go (legacy APIDriveVerifier) → drive.Uploader → driveapi.Service
-//
-// The flow used to be:
-//
-//	artlist → assets/artifacts/verifier.go → drive → artlist
-//
-// which Go rejected as a cycle once folder_manager.go started importing
-// artlist for `[]artlist.DriveFileRef` (PR2.7's port return type).
+// here to break the App → Infra back-edge of the import cycle that the
+// drive <-> artlist cycle had historically introduced (folder_manager.go
+// once imported artlist for `[]artlist.DriveFileRef` return type on
+// ListByQuery). F2.11 + F3.14 (June 2026) closed that cycle by retiring
+// the wide DriveFolderManager port and its ListByQuery / Download /
+// Upload dead-code surface; this architectural split remains so future
+// port-widening cannot accidentally re-introduce the App→Infra back-edge.
 //
 // Fix: strip the concrete out of verifier.go (which now holds ONLY the
-// `DriveVerifier` interface + `HTTPDriveVerifier` HTTP-based fallback),
-// and place the SDK-wired concrete here in infrastructure where the SDK
-// is naturally referenced. The verifier port stays in the application
-// layer per the AGENTS.md "Application owns interfaces" rule.
+// `DriveVerifier` interface; the HTTPDriveVerifier HTTP-based fallback
+// was retired in Wave A Item 32), and place the SDK-wired concrete
+// here in infrastructure where the SDK is naturally referenced. The
+// verifier port stays in the application layer per the AGENTS.md
+// "Application owns interfaces" rule.
 //
 // FASE 9 Step 7 (June 2026): migrated from *driveapi.Service to Reader
 // port. Uses FileIsNotTrashed instead of FileExists — semantically better

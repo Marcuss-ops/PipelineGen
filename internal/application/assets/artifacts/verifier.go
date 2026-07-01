@@ -9,13 +9,19 @@ package artifacts
 // import. The DriveVerifierAdapter in drive/ implements this interface
 // and is wired in internal/app/lifecycle.go::NewLifecycleFromDeps.
 //
-// The cycle that PR2.7 broke was:
+// The cycle that PR2.7 broke (now historical only) was:
 //   artlist → assets/artifacts/verifier.go → drive → artlist
-// triggered by folder_manager.go (in drive pkg) importing artlist for
-// the []artlist.DriveFileRef return type on ListByQuery. Moving
-// APIDriveVerifier to drive/ is a one-direction ⊆ (the new
-// verifier_adapter.go imports artifacts for the port interface, but
-// artifacts no longer imports drive) so Go's import checker accepts it.
+// triggered historically by folder_manager.go (in drive pkg) importing
+// artlist for the []artlist.DriveFileRef return type on ListByQuery.
+// F3.14 (June 2026) retired both the wide-port ListByQuery method AND
+// the DriveFileRef type itself (zero remaining direct callers after
+// F2.11's brutal-override consolidation routed artlist callers through
+// drive.Reader / delivery.Publisher / drive.FileLifecycle per godlike/06
+// 'one owner per fact'). The architectural split here remains so future
+// port-widening cannot accidentally re-introduce the App->Infra
+// back-edge. The new verifier_adapter.go imports artifacts for the
+// port interface, but artifacts no longer imports drive; one-direction
+// subset keeps Go's import checker happy.
 //
 // Wave A Item 32 (June 2026): the legacy HTTPDriveVerifier concrete
 // (an HTTP-based fallback that did a raw HEAD request to the Drive

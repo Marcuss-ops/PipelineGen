@@ -196,11 +196,20 @@ type AssetStore interface {
 // DriveFolderManager adapter (which conflated those three) is gone.
 //
 // The DriveFileRef alias to drivepkg.DriveFileRef was RETIRED together
-// with this interface in F2.11 (zero remaining callers — the alias
-// only existed to support the now-defunct ListByQuery return type).
-// Per AGENTS.md Code Hygiene ("remove unused variables, functions,
-// and files as a result of your changes"), the alias was deleted from
-// this file in the F2.11 commit.
+// with the wide DriveFolderManager interface in F2.11 (zero remaining
+// callers — the alias only existed to support the now-defunct
+// ListByQuery return type). Per AGENTS.md Code Hygiene ("remove unused
+// variables, functions, and files as a result of your changes"), the
+// alias was deleted from this file in the F2.11 commit.
+//
+// F3.14 follow-up (June 2026): the underlying drivepkg.DriveFileRef
+// type definition in internal/infrastructure/drive/types.go was also
+// retired (zero direct callers after the F2.11 + F3.14 brutal-override
+// route-through drive.Reader / delivery.Publisher / drive.FileLifecycle
+// per godlike/06 'one owner per fact'). The audit-only doc-comment
+// references in verifier_adapter.go, artifacts/verifier.go, and this
+// file are updated to point at the post-F3.14 surface rather than the
+// retired type name.
 
 // Indexer publishes a clip embedding into Qdrant (or whatever vector store).
 // Implementations may be no-op in tests.
