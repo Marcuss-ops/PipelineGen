@@ -11,6 +11,53 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
+**[Audit P0 #2 — split Required/Optional steps in finalizer, July 2026]** `refactor(voiceover)` — split the production-required deps (LifecycleService + Outbox) from the optional data-state guards in the voiceover finalizer. Pre-P0 #2 the surface conflated two semantically-distinct failure modes in `SkippedSteps []string` (optional Step 1 data-state guard-skips vs. required-dep-not-wired wiring failures), making silent-success indistinguishable from a legitimate guard-skip; pre-P0 #2 the `GenerateJobHandler.Register` + `GenerateItemJobHandler.Register` methods logged-and-continued on registration failure (the silent-Warn path that previously dead-lettered every parent job).
+
+- **`internal/application/voiceover/finalizer.go::FinalizeResult`** splits `SkippedSteps []string` into `OptionalSteps []string` (`json:"optional_steps,omitempty"`) + `RequiredSteps []string` (`json:"required_steps,omitempty"`). `OptionalSteps` tracks ONLY Step 1 dedupe data-state guards. `RequiredSteps` tracks Steps 4/5/6 with `": executed"` / `": guarded (...)"` execution-state markers (constants `requiredStateExecuted` + `requiredStateGuarded` + `formatRequiredState` helper). The pre-P0 #2 surface conflated optional Step 1 data-state guard-skips with required-dep-not-wired wiring failures — a silent-success pattern that hid the wiring fallback from operators. Post-P0 #2 the required-deps fail-fast at Finalize() entry with typed `voiceoverFinalizer: required step %q not wired (LifecycleService / ...)` error; only data-state guard-skips surface as recordable entries. godlike/07 ZERO LEGACY + "no fake availability" applies: a wiring failure at composition time MUST surface as a Go error, not a recordable stepping-stone.
+
+- **`internal/application/voiceover/finalizer.go::Finalize`** adds a fail-fast wiring gate at the top: `if f.deps.LifecycleService == nil` → typed error mentioning `required step "media_assets_projection" not wired (LifecycleService / UpsertVoiceoverProjectionTx missing at composition)`. Same shape for `f.deps.Outbox == nil` mentioning `required step "index_outbox" not wired (Outbox / TxOutboxEnqueuer missing at composition; BOTH index + cleanup outbox steps fatal)`. Both errors are typed message-prefixed (the constant `errRequiredStepNotWired`) so log scanners / future tests can grep on the canonical surface. Production wiring failures cannot lie the operator by recording `": executed"` on a step that never ran — that corruption would mask the wiring failure as a verifier warn-level on the downstream post-commit SQL verifier (audit-P0.5).
+
+- **`internal/application/voiceover/finalizer.go::Finalize`** renames runtime-applied state to two distinct slices: `optional []string` (Step 1 only) and `required []string` (Steps 4/5/6 with execution markers). Dedupe-reuse early-return path now reports `OptionalSteps: []string{"dedupe: reuse existing row"}` with empty `RequiredSteps` (Steps 2-6 didn't run on the short-circuit). Wire-format JSON shape changed (field rename + split); legacy `SkippedSteps` consumers must migrate. **Step-name strings are wire-stable byte-equivalent with the pre-P0 #2 surface** (`"media_assets_projection"`, `"index_outbox"`, `"cleanup_outbox"`) so log-grep anchors and operator alerting rules keyed on these substrings continue to fire — only the SEMANTIC split into OptionalSteps vs RequiredSteps is new.
+
+- **`internal/application/voiceover/jobs/generate_handler.go::GenerateJobHandler.Register(jobsSvc *appjobs.Service) error`** — changes signature to return error. Pre-P0 #2 the silent-Warn path meant a future CallSite regression (e.g. jobs.Service receiving a different registry mid-migration) would silently dead-letter every parent job. Post-P0 #2 the error returns immediately on `jobsSvc == nil` or `jobsSvc.RegisterHandler(...) failure`, propagating typed context.
+
+- **`internal/application/voiceover/jobs/generate_item_handler.go::GenerateItemJobHandler.Register(jobsSvc *appjobs.Service) error`** — same signature change as the parent handler (parent-child handler pair share the same fail-fast contract). Pre-P0 #2 a missing child registration (e.g. via a future migration that splits BuildDomainBundle) silently dropped per-language jobs onto an unsigned dispatcher.
+
+- **`internal/app/composition.go::NewComposition`** wraps all 3 `.Register()` call sites with `if err := ...; err != nil { return nil, fmt.Errorf("compose ...: %w", err) }` — fail-closed at boot for both the legacy late-bindings block (Catena A P0) and the BLOC5.3 commit-2 fanout block. The BLOC5.3 fanout block ALSO gains a `jobs.Service.HasHandler(appjobs.TypeVoiceoverGenerate)` guard that pre-checks whether Catena A P0's earlier Register succeeded — if so, the re-Register is skipped (the dispatcher may reject duplicate-bind) but the `domains.VoiceoverGenerateHandler` field reference is still overwritten with the BLOC5.3 fanout-bound handler for downstream state-tracking consumers. The child handler `GenerateItemJobHandler.Register` is NOT guarded (its job type `TypeVoiceoverGenerateItem` is only registered by this block — no duplicate risk).
+
+**3-state mapping contract (single source of truth in `finalizer.go::Finalize`):**
+
+| Production dep state | Finalize() result | `OptionalSteps` | `RequiredSteps` |
+|----------------------|-------------------|------------------|------------------|
+| `LifecycleService=nil` OR `Outbox=nil` | `(nil, error)` — required-step-not-wired | (n/a) | (n/a) |
+| All deps wired + DriveFileID populated + FileHash populated + ShouldSwap=true with prior artefacts | `(result, nil)` | empty | 3 entries: `media_assets_projection: executed`, `index_outbox: executed`, `cleanup_outbox: executed` |
+| All deps wired + DriveFileID empty | `(result, nil)` | `["dedupe: empty DriveFileID"]` | 3 entries: `media_assets_projection: executed`, `index_outbox: executed`, `cleanup_outbox: guarded (ShouldSwap=false)` |
+| All deps wired + FileHash empty | `(result, nil)` | empty (or populated if DriveFileID empty) | 3 entries with `index_outbox: guarded (empty FileHash)` |
+| ShouldSwap=true with no prior artefacts | `(result, nil)` | empty (or populated) | 3 entries with `cleanup_outbox: guarded (no prior artefacts)` |
+
+**Files modified (5) + new TDD (4 sub-tests in 2 funcs):**
+
+- `internal/application/voiceover/finalizer.go` (~+90 LoC, including doc-comments): `OptionalSteps` + `RequiredSteps` field on `FinalizeResult` with audit-pinning doc-comment + fail-fast wiring gate at top of `Finalize()` + per-step execution-state assignment (`requiredStateExecuted` / `requiredStateGuarded` constants + `formatRequiredState` helper). Step-name constants (`requiredStepMediaAssetsProjection="media_assets_projection"`, `requiredStepIndexOutbox="index_outbox"`, `requiredStepCleanupOutbox="cleanup_outbox"`) are byte-equivalent with the pre-P0 #2 SkippedSteps values so log-grep anchors are preserved.
+- `internal/application/voiceover/jobs/generate_handler.go` (~+10 LoC net): `Register(jobsSvc *appjobs.Service) error` signature change + fail-loud error wrapping.
+- `internal/application/voiceover/jobs/generate_item_handler.go` (~+10 LoC net): same Register signature change + fail-loud error wrapping.
+- `internal/app/composition.go` (~+30 LoC + HasHandler guard): 3 Register call sites wrapped with `if err := ...; err != nil { return nil, fmt.Errorf(...) }` + `HasHandler` probe in the BLOC5.3 fanout block to preserve idempotency under Catena A P0 / BLOC5.3 dual-Register scenarios.
+- `internal/application/voiceover/finalizer_test.go` (~+~280 LoC, replacing prior SkippedSteps suite): `TestFinalizeResult_TracksOptionalAndRequiredSteps` (4 sub-tests) + `TestFinalize_RequiredStepNotWired_FailsFast` (3 sub-tests). The pre-P0 #2 `TestFinalizeResult_TracksSkippedSteps` is replaced because the pre-P0 #2 assertions conflated the now-distinct audit surface (OptionalSteps / RequiredSteps / fail-fast error). The fail-fast suite pins the audit-mandated contract:
+  - `unwired LifecycleService returns required-step-not-wired error` — error MUST mention `required step "media_assets_projection" not wired` + result MUST be nil.
+  - `unwired Outbox returns required-step-not-wired error` — error MUST mention `required step "index_outbox" not wired` + result MUST be nil.
+  - `all required deps wired + no data-state guards → no fail-fast error` — sanity tail: fail-fast must NOT over-trigger when both required deps are wired.
+
+**Pre-existing build issues (out of scope, NOT regressions from audit-P0.2):**
+
+Same five items as the prior audit-P0.5 and Phase 1c CHANGELOG entries carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
+- `monitor/enqueue.go`: `strings.ToLower` undefined (in `isTransientEnqueueError`).
+- `monitor/scheduler.go`: `NewUnboundJobEnqueuer` undefined.
+- `internal/application/assets/providers/stock/stockpipeline/run_upload.go`: syntax error (legacy upload path).
+- `internal/app/module_media.go`: pre-existing `clips.Deps.MutationsDispatcher` literal.
+
+**Wave-tracker cross-reference (per godlike/07):** no formal `architecture/current.yaml` entry filed for this P0 #2 closure (verified `grep -E 'P0\\.2|Audit.P0.\\#2' architecture/current.yaml` returns 0 hits). The closure is audit-logged via this CHANGELOG entry only; a future wave-tracker entry should be filed under a `wave_status` row citing the post-land SHA.
+
+---
+
 **[Audit P0 #5 — CompletionState typed enum, July 2026]** `refactor(voiceover)` — surface post-commit verification divergence as a typed 3-state enum on `FinalizeResult.CompletionState`. Closes the silent-success class where finalizeStage's log-and-continue post-commit verifier was the only signal of a missing canonical row.
 
 **Site closed (1/1 of audit-P0.5):**

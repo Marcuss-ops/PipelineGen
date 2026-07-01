@@ -61,19 +61,26 @@ func NewGenerateItemJobHandler(useCase voiceover.VoiceoverItemExecutor, logger *
 // Register binds the handler to the canonical jobs.Service dispatcher
 // for the voiceover.generate_item job type. Idempotent via the
 // dispatcher double-Register protection.
-func (h *GenerateItemJobHandler) Register(jobsSvc *appjobs.Service) {
+//
+// Audit P0 #2 (July 2026): Register now returns error so the
+// composition root can fail-closed at boot if the dispatcher rejects
+// the binding. Mirrors GenerateJobHandler.Register's signature
+// change — the parent-child handler pair shares the same fail-fast
+// contract so a missing child registration (e.g. via a future
+// migration that splits BuildDomainBundle) crashes NewComposition
+// loudly rather than silently dropping per-language jobs onto an
+// unsigned dispatcher.
+func (h *GenerateItemJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		h.logger.Warn("GenerateItemJobHandler.Register: jobsSvc is nil; handler not bound to dispatcher")
-		return
+		return fmt.Errorf("GenerateItemJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerateItem, h.HandleJob); err != nil {
-		h.logger.Error("GenerateItemJobHandler.Register: RegisterHandler failed",
-			zap.String("job_type", appjobs.TypeVoiceoverGenerateItem),
-			zap.Error(err))
-		return
+		return fmt.Errorf("GenerateItemJobHandler.Register: bind %q to dispatcher: %w",
+			appjobs.TypeVoiceoverGenerateItem, err)
 	}
 	h.logger.Info("registered voiceover.generate_item handler",
 		zap.String("job_type", appjobs.TypeVoiceoverGenerateItem))
+	return nil
 }
 
 // HandleJob processes a voiceover.generate_item child job from the
