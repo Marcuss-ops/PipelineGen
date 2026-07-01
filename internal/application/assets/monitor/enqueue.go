@@ -19,16 +19,30 @@
 // jobs directly via the JobEnqueuer port, bypassing the durable
 // channel_sync indirection.
 //
-// Why a port? Splitting the Enqueue logic out of the analyzer lets the
-// analyzer nonchalantly return "no segments → skip" without paying for
-// marshal + enqueue. The actual marshaling + jobs.Enqueue + cursor
-// update + metrics observation go through m.enqueuer.EnqueueExtract so
-// the concrete adapter can own ActiveKey construction + payload shape
-// in the cleanest place.
+// FASE 1.2 (July 2026): Outbox transazionale. Il percorso non chiama più
+// direttamente broker + MarkEnqueued in due passi non atomici. Invece:
+//
+//   1. TryReserve vince → row è in stato 'pending'
+//   2. discoverys.ReserveAndEnqueueOutbox atomicamente:
+//      UPDATE youtube_discoveries SET state='pending-delivery'
+//      INSERT INTO job_outbox (discovery_id, event_key, payload_json)
+//      COMMIT
+//   3. JobOutboxDispatcher (background goroutine) polla job_outbox:
+//      claim → chiama broker.Enqueue → on success MarkCompleted
+//      (outbox+discovery atomici) → on failure MarkFailed con backoff
+//
+// L'idempotency key è deterministica:
+//   "youtube-extract:{discovery_id}:{policy_version}"
+//
+// Questo garantisce che anche se il dispatcher crasha tra broker publish
+// e outbox ACK, il retry userà la stessa event_key e l'ActiveKey dedup
+// del broker previene la creazione di job duplicati.
 package monitor
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -37,6 +51,7 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
@@ -82,25 +97,27 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 	if channelHandle == "" {
 		channelHandle = "unknown"
 	}
-	m.log.Debug("enqueueFromAnalysis: dispatching via JobEnqueuer",
-		zap.String("video_id", videoID),
-		zap.String("channel_handle", channelHandle),
-		zap.Int("segments", len(analysis.Segments)),
-		zap.String("ledger_id", ledgerID))
 
-	// ── Delegate to the JobEnqueuer port ─────────────────────────────
-	if m.enqueuer == nil {
-		m.log.Warn("enqueueFromAnalysis: enqueuer port not wired, cannot emit extract job",
+	// ── Blocco 3 (July 2026, audit P0 #2): transactional outbox ─────
+	// Replaces the pre-Blocco-3 two-step flow:
+	//   1. EnqueueExtract (broker emit)
+	//   2. MarkEnqueued (ledger flip)
+	// with a single atomic CommitEnqueueOutbox that does BOTH in
+	// one SQLite transaction: MarkEnqueued + INSERT outbox entry.
+	// The outbox drainer goroutine (startOutboxDrainer in scheduler.go)
+	// picks up the entry and dispatches it to the durable-jobs broker
+	// asynchronously. This eliminates the torn-write path where the
+	// broker had the job but the ledger stayed 'pending'.
+
+	if m.discoveries == nil {
+		m.log.Warn("enqueueFromAnalysis: discoveries port not wired, cannot commit outbox",
 			zap.String("video_id", videoID))
-		// Defensive ledger update on missing composition: record the
-		// misconfiguration as a rejection so the ledger's audit trail
-		// reflects the missing-emit case.
-		if m.discoveries != nil && ledgerID != "" {
-			_ = m.discoveries.MarkRejected(ctx, ledgerID, "enqueuer port not wired", false)
-		}
-		return fmt.Errorf("enqueueFromAnalysis: enqueuer port not wired for video=%q ledger_id=%q", videoID, ledgerID)
+		return fmt.Errorf("enqueueFromAnalysis: discoveries port not wired for video=%q", videoID)
 	}
-	if emitErr := m.enqueuer.EnqueueExtract(ctx, EnqueueExtractRequest{
+
+	// Build the EnqueueExtractRequest that the outbox drainer will
+	// deserialize and dispatch.
+	extractReq := EnqueueExtractRequest{
 		VideoID:       videoID,
 		Title:         title,
 		URL:           videoURL,
@@ -108,48 +125,57 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 		DriveFolderID: driveFolderID,
 		Segments:      analysis.Segments,
 		Channel:       channel,
-	}); emitErr != nil {
-		// Commit 3/6 (P1 #5/#6/#7): compute retryable from a typed
-		// transient-error predicate. A transient error (timeout,
-		// 429, connection refused, EOF) → retryable=true, the ledger
-		// row will re-enter TryReserve when next_retry_at fires. A
-		// terminal error (validation reject, payload marshal failure,
-		// missing channel-id from the jobs.broker) → retryable=false,
-		// the row's state is rejected_terminal and no further retries.
-		//
-		// The repository must NOT know the transient taxonomy
-		// (domain purity); the caller (this file) is the boundary.
-		retryable := isTransientEnqueueError(emitErr)
-		m.log.Error("enqueueFromAnalysis: JobEnqueuer.EnqueueExtract failed, recording rejection on ledger",
+	}
+	payloadJSON, marshalErr := json.Marshal(extractReq)
+	if marshalErr != nil {
+		m.log.Error("enqueueFromAnalysis: failed to marshal extract request",
+			zap.String("video_id", videoID),
+			zap.Error(marshalErr))
+		if ledgerID != "" {
+			_ = m.discoveries.MarkRejected(ctx, ledgerID, marshalErr.Error(), false)
+		}
+		return fmt.Errorf("enqueueFromAnalysis: marshal payload for video=%q: %w", videoID, marshalErr)
+	}
+
+	// Idempotency key: youtube-extract:{discovery_id}:{policy_version}
+	// The UNIQUE constraint on idempotency_key prevents duplicate
+	// outbox entries for the same (discovery_id, policy_version).
+	idempotencyKey := fmt.Sprintf("youtube-extract:%s:%s", ledgerID, ChannelMonitorPolicyVersion)
+
+	enqueuedAt := time.Now().UTC().Format(time.RFC3339)
+	m.log.Debug("enqueueFromAnalysis: committing outbox entry",
+		zap.String("video_id", videoID),
+		zap.String("channel_handle", channelHandle),
+		zap.Int("segments", len(analysis.Segments)),
+		zap.String("ledger_id", ledgerID),
+		zap.String("idempotency_key", idempotencyKey))
+
+	// Atomic MarkEnqueued + outbox INSERT. On success, the ledger is
+	// flipped to 'enqueued' and the outbox entry is pending.
+	// On duplicate idempotency_key, returns nil (idempotent).
+	if commitErr := m.discoveries.CommitEnqueueOutbox(ctx, ledgerID, enqueuedAt, idempotencyKey, string(payloadJSON)); commitErr != nil {
+		m.log.Error("enqueueFromAnalysis: CommitEnqueueOutbox failed",
 			zap.String("video_id", videoID),
 			zap.String("ledger_id", ledgerID),
-			zap.Bool("retryable", retryable),
-			zap.Error(emitErr))
-		if m.discoveries != nil && ledgerID != "" {
-			if markErr := m.discoveries.MarkRejected(ctx, ledgerID, emitErr.Error(), retryable); markErr != nil {
-				m.log.Error("enqueueFromAnalysis: MarkRejected failed",
+			zap.Error(commitErr))
+		// If the error is an ErrStateConflict (row not in pending/analyzing),
+		// record as terminal — the row is in an unexpected state.
+		retryable := isTransientEnqueueError(commitErr)
+		if errors.Is(commitErr, sqlassets.ErrStateConflict) {
+			retryable = false
+		}
+		if ledgerID != "" {
+			if markErr := m.discoveries.MarkRejected(ctx, ledgerID, commitErr.Error(), retryable); markErr != nil {
+				m.log.Error("enqueueFromAnalysis: MarkRejected failed after CommitEnqueueOutbox failure",
 					zap.String("ledger_id", ledgerID),
 					zap.Error(markErr))
 			}
 		}
-		return fmt.Errorf("enqueueFromAnalysis: emit failed for video=%q ledger_id=%q retryable=%v: %w",
-			videoID, ledgerID, retryable, emitErr)
+		return fmt.Errorf("enqueueFromAnalysis: commit outbox for video=%q ledger_id=%q: %w",
+			videoID, ledgerID, commitErr)
 	}
 
-	// Successful broker emit → flip the ledger row from `pending` to
-	// `enqueued` so the cycle-end MAX(discovered_at) query + the audit
-	// trail both reflect that the broker side reached. Idempotent on
-	// repeat: a row with enqueued=1 stays 1.
-	if m.discoveries != nil && ledgerID != "" {
-		if markErr := m.discoveries.MarkEnqueued(ctx, ledgerID, time.Now().UTC().Format(time.RFC3339)); markErr != nil {
-			// The job IS emitted; the ledger row's outcome just didn't
-			// flip. Loud log so an operator can reconcile.
-			m.log.Error("enqueueFromAnalysis: MarkEnqueued failed (broker emitted, ledger stuck in pending)",
-				zap.String("ledger_id", ledgerID),
-				zap.Error(markErr))
-		}
-	}
-	m.log.Info("enqueued youtube_clip.extract job",
+	m.log.Info("committed outbox entry for youtube_clip.extract",
 		zap.String("video_id", videoID),
 		zap.String("title", title),
 		zap.Int("segments", len(analysis.Segments)),
