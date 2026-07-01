@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -91,6 +92,14 @@ func (stubDiscoveries) TryReserve(_ context.Context, _, _, _, _, _, _ string) (s
 func (stubDiscoveries) MarkEnqueued(_ context.Context, _, _ string) error               { return nil }
 func (stubDiscoveries) MarkRejected(_ context.Context, _, _ string, _ bool) error       { return nil }
 func (stubDiscoveries) MaxDiscoveredAt(_ context.Context, _ string) (string, error)     { return "", nil }
+
+// Blocco 3 (July 2026): outbox surface methods.
+func (stubDiscoveries) CommitEnqueueOutbox(_ context.Context, _, _, _, _ string) error  { return nil }
+func (stubDiscoveries) DrainPendingOutbox(_ context.Context, _ int) ([]assetsdb.OutboxEntry, error) {
+	return nil, nil
+}
+func (stubDiscoveries) MarkOutboxDispatched(_ context.Context, _ int64, _ string) error { return nil }
+func (stubDiscoveries) MarkOutboxFailed(_ context.Context, _ int64, _ string) error     { return nil }
 
 // context import alias — required for method signature but a separate
 // import block keeps the test surface small. (The stub's signature

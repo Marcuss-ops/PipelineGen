@@ -34,6 +34,7 @@ import (
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -582,6 +583,14 @@ type CategoryChannelsPort interface {
 //     (state-filtered watermark) and persists it as
 //     category_channels.last_cursor.
 //
+// Blocco 3 (July 2026): adds the outbox surface. CommitEnqueueOutbox
+// atomically runs MarkEnqueued + INSERT into monitor_enqueue_outbox
+// in a single SQLite transaction, eliminating the torn-write path
+// between broker emit and ledger update (audit P0 #2). The outbox
+// drainer (startOutboxDrainer in scheduler.go) polls
+// DrainPendingOutbox and dispatches entries to the durable-jobs
+// broker.
+//
 // The port is the typed projection of the SQLite adapter; tests inject
 // a stub that counts TryReserve/MarkEnqueued/MarkRejected invocations
 // for the 5-videos × 2-invocations dedupe contract.
@@ -621,4 +630,21 @@ type YoutubeDiscoveriesPort interface {
 	// row doesn't leak a non-monotonic watermark. Cycle-end
 	// canonical-write path. Empty string for an empty ledger.
 	MaxDiscoveredAt(ctx context.Context, channelID string) (string, error)
+
+	// ── Blocco 3 outbox surface ──────────────────────────────────
+
+	// CommitEnqueueOutbox atomically marks the discovery as enqueued
+	// AND inserts a pending outbox entry. The outbox drainer picks up
+	// the entry and dispatches it to the durable-jobs broker. Returns
+	// nil on idempotent retry (duplicate idempotency_key).
+	CommitEnqueueOutbox(ctx context.Context, discoveryID, enqueuedAt, idempotencyKey, payloadJSON string) error
+
+	// DrainPendingOutbox returns up to limit pending outbox entries.
+	DrainPendingOutbox(ctx context.Context, limit int) ([]assetsdb.OutboxEntry, error)
+
+	// MarkOutboxDispatched marks an outbox entry as dispatched.
+	MarkOutboxDispatched(ctx context.Context, outboxID int64, jobID string) error
+
+	// MarkOutboxFailed marks an outbox entry as failed.
+	MarkOutboxFailed(ctx context.Context, outboxID int64, errMsg string) error
 }
