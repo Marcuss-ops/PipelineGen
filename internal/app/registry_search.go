@@ -26,8 +26,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// SearchBackendBuildOpts is owned by search_backends.go:346 — this
-// helper references the canonical struct via same-package visibility.
+// SearchBackendBuildOpts is owned by search_backends.go (the
+// "current line number" drifts with refactors; this helper reaches
+// the struct via same-package visibility without an explicit import).
 // Do NOT redeclare the struct here (would re-introduce the
 // "redeclared in this block" build error this PR fix removed).
 

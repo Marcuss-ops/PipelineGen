@@ -1261,6 +1261,181 @@ deprecations:
       removes both fields of drift + their manifest records).
 
 
+
+  # ----------------------------------------------------------------------
+  # 20. PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL — git-rm of QDRANT-004 single-tenant *mediasearch.Service
+  #   Wave 1.1 (June 2026, Wave 1.1 final closure). The QDRANT-004
+  #   single-tenant *mediasearch.Service orchestrator that powered
+  #   `semanticSearchBackend` is git-rm'd alongside the composition-root
+  #   wiring. The canonical *internal/application/search.Aggregator
+  #   (provider + local backends via Pattern 0 ports) is the SOLE wire for
+  #   media-search results; workspace-gated semantic routing lives in
+  #   per-scope search.Aggregator paths, not as a dedicated Service
+  #   composition. Files touched (4):
+  #     - deleted: internal/application/mediasearch/service.go (-552 LoC)
+  #       + service_test.go (whole-file git-rm)
+  #     - modified: internal/app/search_backends.go (-122 LoC:
+  #       semanticSearchBackend struct + 3 methods + var _ assertion)
+  #     - modified: internal/app/assets_core.go (-2 fields:
+  #       SearchDeps.MediasearchService + SearchDeps.SearchWorkspaceID)
+  #     - modified: internal/app/registry_search.go (line-number ref)
+  #     - modified: internal/application/search/ports.go (god-comment
+  #       drift on SearchBackend interface)
+  #   The 4 thin re-export consumers (signer.go, mediasearch/handler.go,
+  #   types_alias_test.go, application/search/ports.go DTO mentions)
+  #   survive the slim-down since they touch only the retained interface
+  #   + DTO surface, not the deleted *Service.
+  # ----------------------------------------------------------------------
+  - id: PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL
+    owner_capability: internal/app (composition root) + internal/application/mediasearch
+    exact_symbol: |
+      *internal/application/mediasearch.Service + NewService(...) +
+      Search(ctx, req) orchestrator + the 9 service helpers (signer,
+      normaliser, batchFilter, dedupeByID, ...) + the 2 service constants
+      (defaultWorkspacePrefix, workspaceSuffixLength) shipped in
+      service.go (whole-file git-rm, -552 LoC).
+      Companion composition-root surface:
+        - *internal/app.semanticSearchBackend struct + Name/Capabilities/Search
+          methods + var _ = assertion (search_backends.go, -122 LoC)
+        - SearchBackendBuildOpts.MediasearchSvc + SearchBackendBuildOpts.WorkspaceID
+          fields (search_backends.go: removed)
+        - SearchDeps.MediasearchService + SearchDeps.SearchWorkspaceID
+          fields (assets_core.go: removed; + the `mediasearch` import dropped)
+    file: |
+      internal/application/mediasearch/service.go (deleted) +
+      internal/application/mediasearch/service_test.go (deleted) +
+      internal/app/search_backends.go +
+      internal/app/assets_core.go +
+      internal/app/registry_search.go (comment-only god-comment anchor) +
+      internal/application/search/ports.go (comment-only god-comment anchor)
+    file_line: |
+      service.go: ALL (whole-file git-rm at 2026-06-30) +
+      service_test.go: ALL (whole-file git-rm at 2026-06-30) +
+      search_backends.go: semanticSearchBackend struct (line ~47 pre-delete),
+        3 methods (lines ~95-130 pre-delete), var _ assertion (line ~117),
+        SearchBackendBuildOpts.MediasearchSvc + WorkspaceID fields (line ~150),
+        BuildSearchBackends registration block (line ~165 pre-delete) +
+      assets_core.go: SearchDeps.MediasearchService (line ~95 pre-delete),
+        SearchDeps.SearchWorkspaceID (line ~96 pre-delete), mediasearch import.
+    replacement: |
+      internal/application/search.Aggregator (Pattern 0 typed-port
+      aggregator for media-search results; provider + local backends).
+      Workspace-gated per-scope semantic routing lives in search.Aggregator
+      handlers (per-scope), not in a dedicated Service composition.
+      The 4 thin re-export consumers (mediasearch/internal/signer.go,
+      mediasearch/handler.go, types_alias_test.go, application/search/ports.go
+      DTO mentions) keep their narrow type-level touch-points through the
+      surviving mediasearch package (WorkspaceContext + AssetDeliveryService
+      + MediaSearchRequest re-exports).
+    introduction_date: 2026-04
+    removal_date: 2026-06-30
+    tracking_issue: |
+      Wave 1.1 closure of PR-SEARCH-LEGACY-MEDIASEARCH (#13 above,
+      the in_progress API-layer translator + X-Deprecation headers +
+      legacy MediaSearchResponse envelope). Wave 1.1 takes the next
+      step — physically git-rm'ing the orchestrator + composition-root
+      wrapper — to retire the QDRANT-004 single-tenant surface.
+      Cross-refs: Wave 21 PR 10 (the CUTOVER that introduced
+      resultToMediaSearchResponse translator), QDRANT-004 (the single-
+      tenant constrained re-design), Blocco 1.1 (the canonical
+      search.Aggregator).
+    compatibility_test: |
+      Five-layer defence mirroring PR-SEARCH-LEGACY-CLIPSSEARCH /
+      PR-SEARCH-LEGACY-CROSSPROVIDER:
+        (a) `git ls-files internal/application/mediasearch/service*.go`
+            returns 0 (whole-package git-rm; no live Go file references
+            can remain).
+        (b) `rg '\*mediasearch\.Service' internal/ cmd/ pkg/` returns
+            zero hits outside documentation comments (the comment-only
+            fossil is the godlike/07 §"Historical information"
+            intentional footprint; live references are zero).
+        (c) `rg 'semanticSearchBackend' internal/` returns zero hits
+            outside documentation comments.
+        (d) `rg 'MediasearchService|MediasearchSvc|SearchWorkspaceID'
+              internal/ architecture/` returns zero hits outside
+              documentation comments and this manifest record.
+        (e) `go build ./internal/application/mediasearch/...
+              ./internal/application/search/... ./internal/app/...`
+            exits 0 (the 3 packages whose surface Wave 1.1 touched
+            compile clean post-deletion).
+            §NARROW-BUILD-SCOPE (2026-06-30, user scope decision path A):
+            At Wave 1.1 landing, only the 2-package narrow build
+            `go build ./internal/application/mediasearch/...
+            ./internal/application/search/...` is verified
+            (both packages compile clean). The broader
+            `./internal/app/...` surface has a pre-existing Blocco 3.1
+            syntax error at `internal/app/lifecycle.go:476`
+            (missing comma after
+            `Metrics: deletion.ReconcilerMetricsAdapter{}` in
+            `deletionreconciler.NewServiceFromDeps`); this is Blocco 3.1
+            deletion state machine in-flight work, OUT OF SCOPE for Wave 1.1
+            per the user-authorized scope decision documented in the
+            PR body. Forward-pointer: architecture/current.yaml#Blocco 3.1
+            ticket queue. Pre-existing build break is disclosed per
+            godlike/07 §"No fake availability" — landing Wave 1.1
+            does NOT introduce the lifecycle.go break, and Wave 1.1
+            narrow-build assertions are sufficient to verify the Wave 1.1
+            surface (per scope path A).
+    usage_metric: |
+      Pre-Wave 1.1 (audit baseline, 2026-06-30):
+        - *mediasearch.Service                   : 1 ctor site
+          (NewService in deleted service.go).
+        - semanticSearchBackend                  : 1 register site in
+          BuildSearchBackends (deleted).
+        - SearchBackendBuildOpts.MediasearchSvc  : 1 opt-in site (deleted).
+        - SearchBackendBuildOpts.WorkspaceID     : 1 opt-in site (deleted).
+        - SearchDeps.MediasearchService          : 1 dep-slice site (deleted).
+        - SearchDeps.SearchWorkspaceID           : 1 dep-slice site (deleted).
+        - Thin re-exports (WorkspaceContext +
+          AssetDeliveryService + MediaSearchRequest) : 4 alive
+          (intentionally preserved for the 4 backward-compat DTO
+          consumers — signer.go + mediasearch/handler.go +
+          types_alias_test.go + application/search/ports.go).
+      Post-Wave 1.1 (this commit lands on `main`):
+        - All 6 deleted-symbol readsites collapse to 0 (rg gate above).
+        - 4 thin re-export consumers continue to consume the narrow
+          re-export surface only.
+        Net delta = -2 files git-rm'd, -4 fields removed from
+        composition-root structs, -1 type assertion deleted, -3
+        methods deleted, -1 `mediasearch` import dropped from
+        search_backends.go, -1 from assets_core.go.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Single-pulse CONTRACT jump per godlike/07 §"Migration sequence":
+      with 0 pre-removal callers of the deleted *Service AND canonical
+      replacement (search.Aggregator) already present on `main` HEAD,
+      the migration jumps directly to CONTRACT.
+      PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL is the CONTRACT-
+      phase companion record to PR-SEARCH-LEGACY-MEDIASEARCH (#13,
+      which remains in `status: in_progress` to track the API-layer
+      translator + X-Deprecation headers still in place). Wave 1.2
+      closure (where Wave 1.2 collapses resultToMediaSearchResponse
+      + removes X-Deprecation headers) will flip both records to
+      `status: removed`. Wave 1.1 takes the dependency-removal half
+      of that future closure today; Wave 1.2 takes the API-layer half.
+
+      Sibling-record delineation (read each entry independently):
+        - PR-SEARCH-LEGACY-MEDIASEARCH (#13): the API-layer
+          translator + X-Deprecation headers + legacy
+          MediaSearchResponse envelope. distinct surface from THIS
+          record (which covers the composition-root seam at the
+          mediator level); parent is API-layer; this entry is
+          composition-root.
+        - PR-SEARCH-LEGACY-CROSSPROVIDER (#12): git-rm of legacy
+          cross-provider *Service (Wave 21 PR 10 CUTOVER). This entry
+          follows the same single-package-git-rm shape, different
+          capability.
+        - PR-SEARCH-LEGACY-CLIPSSEARCH (#11): git-rm of legacy
+          multi-source AdvancedSearch (Wave 21 PR 10 CUTOVER). Same
+          shape, different capability.
+
+      Archive snapshot policy: architecture/archive/2026-06-29/
+      current-snapshot-2026-06-29.yaml INTENTIONALLY preserves the
+      pre-Wave 1.1 architecture/ownership surface; do NOT
+      retroactively rewrite the archive.
+
+
 # ── Open Questions (read-write; voting-enabled; deferred naming/scope decisions) ──
 # Per AGENTS.md §8 zero-baseline rule, "open questions" carry owner + deadline + team-vote
 # outcome. Each entry cites evidence (file:line + comment quote) so future agents
@@ -1351,14 +1526,14 @@ open_questions:
 
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
 audit:
-  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026) + QDRANT-005A-VECDRIFT EXPAND registration (2026-06-30)"
-  total_records: 19
+  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026) + QDRANT-005A-VECDRIFT EXPAND registration (2026-06-30) + Wave 1.1 PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL closure (2026-06-30) + audit-summary drift correction (in_progress: 6 → 5, pre-existing inconsistency inherited from HEAD) (2026-06-30)"
+  total_records: 20
   by_status:
-    removed: 12
-    in_progress: 6
+    removed: 14
+    in_progress: 5
     keep: 1
   by_migration_phase:
-    CONTRACT: 11
+    CONTRACT: 12
     CUTOVER: 2
     BACKFILL: 1
     EXPAND: 4

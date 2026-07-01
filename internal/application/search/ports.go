@@ -21,7 +21,15 @@ import (
 // ONLY capability-crossing adapters per Wave 19):
 //   - providerBackendAdapter   wraps providers.SearchProvider (SSOT registry)
 //   - localBackendAdapter      wraps assets.ClipsRepository (kernel search)
-//   - semanticBackendAdapter   wraps mediasearch.Service (cross-cap port bridge)
+//
+// PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL (June 2026): the
+// historical `semanticBackendAdapter` wrapping *mediasearch.Service
+// is git-rm'd. The surviving `mediasearch` package is a thin
+// re-export surface (WorkspaceContext + AssetDeliveryService +
+// MediaSearch{Request,Response,Filter} + SearchMode alias) for the
+// 4 remaining callers; workspace-gated semantic routing now lives
+// directly inside search.Aggregator paths (per-scope), not in a
+// dedicated Service composition.
 type SearchBackend interface {
 	// Name returns the human-readable backend identifier
 	// (e.g. "youtube","artlist","local","semantic"). Must be unique
