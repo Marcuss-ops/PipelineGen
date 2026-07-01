@@ -89,7 +89,7 @@ func effectivePlaylistEnd(channel channels.Channel, globalDefault int) int {
 // repository.
 const ChannelMonitorPolicyVersion = "v1"
 
-func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel channels.Channel) ([]downloader.VideoInfo, error) {
+func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel channels.Channel) ([]VideoInfo, error) {
 	if m.ytdlp == nil {
 		return nil, fmt.Errorf("discoverChannelVideos: ytdlp port not wired")
 	}
@@ -108,7 +108,7 @@ func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel chan
 // return QueryResult, not invent a new shape.
 type QueryResult struct {
 	Query  string
-	Videos []downloader.VideoInfo
+	Videos []VideoInfo
 }
 
 // discoverSearchQueries is a Step 9 STUB. The previous search_queries.go
@@ -334,7 +334,7 @@ type outcomeCounters struct {
 //   - enqueueExtract (delegated to enqueue.go via the JobEnqueuer port).
 //     On success, MarkEnqueued; on error, MarkRejected.
 //   - Outcome counter update: exactly one of three counters incremented.
-func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, outcomes *outcomeCounters, cycleNow string) {
+func (m *ChannelMonitor) processVideo(ctx context.Context, info VideoInfo, channel channels.Channel, outcomes *outcomeCounters, cycleNow string) {
 	videoID := info.ID
 	title := info.Title
 	m.log.Debug("Found video", zap.String("video_id", videoID), zap.String("title", title))
@@ -529,7 +529,7 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 //   - (OutcomeAlreadyScheduled, "") when m.discoveries is nil (defensive;
 //     no dedupe possible — flagged loudly so a missing wire surfaces in
 //     the per-video warn log rather than silently losing dedupe).
-func (m *ChannelMonitor) recordDiscoveryAndClassify(ctx context.Context, info downloader.VideoInfo, channel channels.Channel, analysis Analysis, cycleNow string) (EnqueueOutcome, string) {
+func (m *ChannelMonitor) recordDiscoveryAndClassify(ctx context.Context, info VideoInfo, channel channels.Channel, analysis Analysis, cycleNow string) (EnqueueOutcome, string) {
 	videoID := info.ID
 	title := info.Title
 

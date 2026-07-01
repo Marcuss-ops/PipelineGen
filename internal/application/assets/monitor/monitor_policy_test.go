@@ -176,7 +176,7 @@ type panicLister struct {
 	panicValue any
 }
 
-func (p *panicLister) ListChannelVideos(_ context.Context, _ downloader.ListChannelVideosRequest) ([]downloader.VideoInfo, error) {
+func (p *panicLister) ListChannelVideos(_ context.Context, _ downloader.ListChannelVideosRequest) ([]VideoInfo, error) {
 	panic(p.panicValue)
 }
 

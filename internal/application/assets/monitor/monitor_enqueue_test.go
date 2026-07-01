@@ -10,7 +10,6 @@ import (
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
 )
 
@@ -43,8 +42,8 @@ func enqueueChannelFixture() channels.Channel {
 	}
 }
 
-func enqueueVideoFixture() downloader.VideoInfo {
-	return downloader.VideoInfo{ID: "vid-1", Title: "Test Title"}
+func enqueueVideoFixture() VideoInfo {
+	return VideoInfo{ID: "vid-1", Title: "Test Title"}
 }
 
 func enqueueAnalysisFixture() Analysis {
