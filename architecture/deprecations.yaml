@@ -1952,7 +1952,7 @@ audit:
         +1 deprecation record + +1 sentinel error
         (ErrBookTransformerMissing).
     migration_phase: EXPAND
-    status: in_progress
+    status: contract-back-half
     notes: |
       godlike/07 EXPAND phase: the canonical Python-aware concrete
       lands alongside the port declaration. The legacy inline

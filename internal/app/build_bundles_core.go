@@ -249,8 +249,29 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 // the legacy `*drive.Uploader` plumbing is retired from
 // internal/application/books/ entirely (override brutal).
 //
-// Fase 7 (July 2026, Spina Dorsale): BooksService construction also
-// threads the books.BookTransformer port via
+// Fase 7 review-fix #2 (July 2026): composition-root hard-fail on
+// transformer construction. Pre-fix, the function caught the
+// NewSubprocessTransformer error via log.Warn + transformer=nil and
+// returned *books.Service — a soft-fail pattern that surfaced at
+// runtime as ErrBookTransformerMissing (mapped to HTTP 503 in
+// review-fix #1). The soft-fail pattern violates godlike/07 §"No
+// fake availability": the books capability advertised as wired but
+// silently failed at first request. Post-fix, the function returns
+// (*books.Service, error) and propagates construction failures to
+// the composition root, which aborts NewComposition.
+//
+// Design decision (Option A, validated by thinker-with-files-gemini):
+//   - Composition root hard-fails (this function).
+//   - NewService retains BookTransformer-nil-tolerant signature:
+//     the FakeBookProcessor in process_usecase_test.go doesn't go
+//     through books.NewService, so the nil-tolerant path is a test
+//     affordance + preserves the review-fix #1 503 mapping rationale.
+//   - Rejected alternative (Option B): drop the NewService nil-tolerant
+//     fallback → revives dead code (process_usecase.go::ProcessBook
+//     + ProcessBookWithProgress ErrBookTransformerMissing branches),
+//     invalidating review-fix #1's 503 audit.
+//
+// Composition root threads the books.BookTransformer port via
 // pythontransformer.NewSubprocessTransformer. The Python-aware
 // subprocess concrete + buildArgs + parseOutput + exec.CommandContext
 // moved OUT of books/service.go into the infrastructure layer
@@ -258,12 +279,9 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 // implementation detail, not a domain concern). Composition root is
 // the only place that constructs the concrete SubprocessTransformer;
 // production callers inject it implicitly via the 8th positional
-// arg of books.NewService. A nil ScriptPath in cfg is treated as a
-// hard fail (godlike/07 §"No fake availability" — books capability
-// must never be half-configured); the constructor returns (*Service,
-// nil) on Transformer construction failure (with a Warn log so ops
-// can see the cause).
-func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voiceoverSvc *voiceover.Service, publisher delivery.Publisher, reader drive.Reader) *books.Service {
+// arg of books.NewService. A nil ScriptPath in cfg fails closed at
+// NewSubprocessTransformer (godlike/07 §"No fake availability").
+func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voiceoverSvc *voiceover.Service, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
 	transformer, err := pythontransformer.NewSubprocessTransformer(&books.Config{
 		Enabled:       cfg.Books.Enabled,
 		ScriptPath:    cfg.Books.ScriptPath,
@@ -271,13 +289,15 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voic
 		DriveFolderID: cfg.Drive.BooksFolder(),
 	}, log)
 	if err != nil {
-		log.Warn("Books BookTransformer init failed; ProcessBook will surface ErrBookTransformerMissing",
-			zap.Error(err),
-			zap.String("script_path", cfg.Books.ScriptPath),
-			zap.String("python_bin", cfg.Books.PythonBin),
-		)
-		transformer = nil
+		return nil, fmt.Errorf("books service compose failed (transformer): %w", err)
 	}
+	// TODO(Fase 7 review-fix #3 BACKFILL): books.Config is constructed
+	// twice in this function — once for NewSubprocessTransformer above
+	// and once for books.NewService below. The two literal sites must
+	// stay byte-stable in lockstep; a future drift silently breaks the
+	// canonical surface. The review-fix #3 BACKFILL sweep moves
+	// books.Config into the pythontransformer package (apply-layer
+	// Config shrinks to DriveFolderID + Enabled per godlike/06).
 	booksSvc := books.NewService(
 		&books.Config{
 			Enabled:       cfg.Books.Enabled,
@@ -290,9 +310,8 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voic
 	)
 	log.Info("Books service initialized",
 		zap.Bool("enabled", cfg.Books.Enabled),
-		zap.Bool("transformer_wired", transformer != nil),
 	)
-	return booksSvc
+	return booksSvc, nil
 }
 
 // buildImagesService (moved from build_bundles_images.go, Phase 5 consolidation, June 2026).
