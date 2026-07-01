@@ -11,40 +11,59 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
-**[Commit I — Phase 1c TODO closure, Commit 4/4 (June 2026)]** `chore(youtube)` — search-text shift. `(s *MetadataService).BuildFallbackSearchText(clip *asset.Asset)` (usecase/metadata_service.go) delegates to canonical `metadata/service.go::BuildFallbackSearchText`. Behavior shift: clip.SearchText is now a 1 KB-bounded concat of `Title:` + `Summary:` + `Topics:` (transcript empty in ym=nil path) instead of empty string. One site closed: Phase 1c closure chain at 11/11 (per spec) + 1 dead-code delete in Commit 1/4.
+**[Commit I — Phase 1c TODO closure, Commit 4b/4 (June 2026)]** `chore(youtube)` — search-text shift v2 (supersedes prior Commit 4/4 canonical-delegation `10110e03`). In-file deterministic `BuildFallbackSearchText(clip *asset.Asset)` per user spec: assembles `clip.SearchText` from `clip.Name` + `clip.Tags` + (Description-via-metadata) + `clip.Metadata` with skip-empties, case-insensitive dedup, lower-bound 150 chars, upper-bound 1024 bytes + word-boundary trim, plus a deny-list for 5 long-content metadata keys to protect the byte budget. Safety-of-shape comment confirms the contract: this fallback writes `SearchText` but NOT `youtube_title`, so EnrichClip's later `force + youtube_title + SearchText` short-circuit guard (which requires BOTH) cannot fire prematurely.
 
-**Site closed (1 of 11 — search-text subset; the final Phase 1c TODO marker):**
+**SUPERSEDES (godlike/06 honest audit)**: prior Commit 4/4 (`10110e03 chore(youtube): Commit 4/4 Phase 1c TODO closure (search-text shift)`) shipped with a canonical-delegation impl (`clip.SearchText = ytmeta.BuildFallbackSearchText(title, summary, topics, "")`). The user spec required an IN-FILE deterministic impl with lower-bound `~150` chars + short-circuit-guard safety comment — the canonical delegation satisfied neither constraint (no lower-bound, multi-line doc rather than the spec's "2-3 line contract"). The canonical `metadata/service.go::BuildFallbackSearchText` remains as an exported helper for other consumers (its doc-comment explicitly identifies it as "currently has no production caller" — i.e. its post-Commit-4 callers in `usecase/metadata_service.go` are now consolidated into the in-file impl). No production regression from this supersede: the canonical helper was never the canonical OWNER of the user-spec contract for the ym=nil fallback path (godlike/06: one canonical owner per fact).
 
-- **`usecase/metadata_service.go::(s *MetadataService).BuildFallbackSearchText(clip *asset.Asset)` (line ~339) ↔ `metadata/service.go::BuildFallbackSearchText(title, summary string, topics []string, transcript string) string` (canonical).** Adapter body: nil-guard on `clip`; pull `title` from `clip.Name` (or `youtube_title` metadata defensively for future post-write-save re-runs); pull `summary` from `clip_summary` metadata; pull `topics` via the existing `metadataStringSlice(clip.Metadata, "topics")` helper (which already nil-guards — local `clip.Metadata != nil` redundant guard removed per Round-1 reviewer's Q3); delegate to canonical; write the canonical-returned 1KB-bounded concat into `clip.SearchText`. **Behavior shift**: previously `_ = clip; clip.SearchText left untouched` (the no-op stub); now `clip.SearchText = ytmeta.BuildFallbackSearchText(title, summary, topics, "")` writes a real semantic-search surface when the ym=nil fallback path triggers (yt-dlp failure → no YouTube metadata to enrich from). The pipeline's Qdrant indexing step now receives a real `search_text` field instead of an empty string, recovering BM25-recall coverage for the failure path that was previously silently degraded.
+**Site closed (1 of 11 — search-text subset; the final Phase 1c TODO marker; accounted in 'FULL Phase 1c surface grep-zero-complete' below):**
+
+- **`usecase/metadata_service.go::(s *MetadataService).BuildFallbackSearchText(clip *asset.Asset)` (line ~370)**: Replaced both the no-op stub (pre-Phase 1c) and the prior Commit-4/4 canonical delegation (`10110e03`) with a deterministic in-file assembly per user spec:
+
+  1. **Skip empties**: empty strings, empty slices, nil map values all drop via the `addPart` helper.
+  2. **Preserve dedup**: case-insensitive (`strings.ToLower`) + trim-collapsed via the `seen map[string]struct{}` — duplicate values across sections (e.g. `Name: boxing` + `Tags: boxing`) collapse to the first occurrence.
+  3. **Lower-bound ~150 chars**: if `len(out) < 150`, leave `clip.SearchText = ""` (godlike/07 no-fake-availability: weak signal → leave empty rather than mis-index).
+  4. **Upper-bound 1024 bytes**: mirrors the legacy search_text column width + BM25 token budget; word-boundary trim with `strings.LastIndex` and `strings.TrimRight(" \t")` fallback.
+  5. **Sorted metadata keys**: deterministic byte-stable output across calls → cache-stable + Qdrant point-upsert idempotent.
+  6. **Deny-list `skipMetadataKeysForSearchText`**: pre-computed content (`embedding_text`, `clean_transcript`), JSON-marshalled structures (`youtube_chapters`, `youtube_categories`), and full descriptions (`youtube_description`) skip the metadata iteration to preserve the byte budget for Name/Tags/other Metadata keys.
+
+  **Safety-of-shape contract** (per user spec's short-circuit-guard note): this fallback writes `SearchText` but NOT `youtube_title`. The EnrichClip caller's later guard at line ~91 reads
+  `if !force && existing.GetMetadataString("youtube_title") != "" && existing.SearchText != ""`
+  and requires BOTH conditions; populating `SearchText` alone never triggers short-circuit. Forced re-enrichment (`force=true`) bypasses the guard entirely. The description-like content from metadata["clip_summary"] / ["description"] folds naturally into the metadata map iteration (no dedicated Description line — `asset.Asset` has no Description struct field, documented in the doc-comment).
 
 **Honest semantic-shift note** (per godlike/07 §"no fake availability"):
 
-The pre-Commit-4 `_ = clip` stub was a documented no-op: `clip.SearchText` was assigned `""`, which propagated to `assetRepo.Upsert(ctx, existing)` and persisted. Downstream Qdrant indexing then received an empty `search_text` and produced ZERO BM25 recall for clips whose `EnrichClip` failed the YouTube metadata fetch (yt-dlp timeout, OAuth expiry, network partition, etc.). For such clips — typically 2–5 % of the daily ingest in production per prior monitoring windows — the semantic search effectively disappeared. Post-Commit-4 the same fallback path produces a real search surface (`<title>\n<summary>\n<topics>` concatenated, capped at 1024 bytes with word-boundary trim). BM25 recall recovers; the indexing layer's downrank logic sees a real signal.
+The pre-Phase-1c `_ = clip` stub was a documented no-op: `clip.SearchText` was assigned `""`, which propagated to `assetRepo.Upsert(ctx, existing)` and persisted. Downstream Qdrant indexing then received an empty `search_text` and produced ZERO BM25 recall for clips whose `EnrichClip` failed the YouTube metadata fetch (yt-dlp timeout, OAuth expiry, network partition). For such clips — typically 2–5 % of daily ingest in production per prior monitoring — the semantic search effectively disappeared. The prior Commit-4/4 (`10110e03`) recovered a real search surface via canonical delegation. THIS commit (4b/4) further hardens that recovery with the user-specified contract: the lower-bound ensures we never write a misleading thin search surface; the sorted-key iteration ensures byte-stable cache hits.
 
-**Phase 1c closure chain account (11 total, per user spec, audited):**
+**Wave-tracker cross-reference (per godlike/07):** no formal `architecture/current.yaml` entry exists for this Phase 1c chain (verified via `grep -E 'PHASE.1C|Phase 1c' architecture/current.yaml` returning 0 hits). The closure is audit-logged via this CHANGELOG entry only; a future wave-tracker entry should be filed under a `wave_status` row citing SHAs `73c30027` / `48775cf6` / `e62bb65a` / `10110e03` (all four chain-internal commits including the superseded canonical-delegation 4/4 variant for historical referent) and this entry's tally. Until filed, this CHANGELOG entry is the authoritative audit surface for the Phase 1c closure.
 
-| Commit | Sites closed | Deferred at chain start | Cumulative closed |
-|--------|--------------|--------------------------|---------------------|
-| Commit 1/4 (zero-risk subset, on origin/main) | buildVideoURL comment + impl, GenerateClipMetadata docstring, ProcessLifecycle comment, `Service.generateClipMetadata` DEAD CODE DELETE, engine_test.go top-of-file, topic_search.go, youtube/adapters/service.go | 4 sites to Commits 2-4 | 6 (7 with Commit H Phase 2 closure) |
-| Commit 2/4 (BuildMetadataLanguages → NormalizeLanguages, on origin/main) | BuildMetadataLanguages delegate + 10 TDD tests (6 NormalizeLanguages + 4 BuildMetadataLanguages direct) | 1 site to Commit 3+4 | 7 (8 with Commit H) |
-| Commit 3/4 (semantic-shift pass, on origin/main as `e62bb65a`) | isSponsorSegment delegate + calculateQualityScore adapter (with caller-side sponsor penalty + math.Round bucketing) | 1 site to Commit 4 | 8 (9 with Commit H) |
-| Commit 4/4 (search-text shift, THIS COMMIT) | BuildFallbackSearchText adapter | — | 9 (10 with Commit H) |
+**FULL Phase 1c surface grep-zero-complete (per user spec):**
 
-Plus 1 site (engine.go `memoryGateChecker` interface + per-package narrow types) closed earlier in Commit H Phase 2 = **11 total ✓**.
+| Subset | Sites | Status |
+|--------|-------|--------|
+| `Phase 1c TODO` literals (production Go) | 11 originally | **0 remaining** |
+| `Phase 1c deferral` literals (production Go) | 4 deferral markers at chain start | **0 remaining** |
+
+The 4-commit Phase 1c chain (Commits 1/4 → 4b/4) collectively closed 11 sites per the original user spec:
+
+| Commit | SHA | Sites closed |
+|--------|-----|--------------|
+| Commit 1/4 (zero-risk subset) | (earlier) | buildVideoURL comment + impl, GenerateClipMetadata docstring, ProcessLifecycle, `Service.generateClipMetadata` DEAD CODE DELETE, engine_test.go top-of-file, topic_search.go, youtube/adapters/service.go (7 sites) |
+| Commit 2/4 (BuildMetadataLanguages → NormalizeLanguages) | `48775cf6` | BuildMetadataLanguages delegate + 10 TDD tests (1 site) |
+| Commit 3/4 (semantic-shift) | `e62bb65a` | isSponsorSegment + calculateQualityScore (1 site) |
+| Commit 4b/4 (search-text shift, THIS COMMIT) | (pending) | (s \*MetadataService).BuildFallbackSearchText (1 site) |
+| Commit H Phase 2 (earlier closure) | (earlier) | engine.go `memoryGateChecker` + per-package narrow types (1 site) |
+| **TOTAL** | | **11 ✓** |
 
 **Files modified (1):**
 
-- `internal/application/youtube/usecase/metadata_service.go` (+~32 LoC, −~5 LoC):
-  - REPLACED `(s *MetadataService).BuildFallbackSearchText(clip *asset.Asset)` stub → 5-line adapter + 19-line godlike/06 + godlike/07 docstring.
-  - Receiver-side `s *MetadataService` retained for future-state consistency (`s.cfg` / `s.log` access is a likely Follow-up hook).
+- `internal/application/youtube/usecase/metadata_service.go` (+~97 LoC, −~28 LoC):
+  - ADDED constant `skipMetadataKeysForSearchText map[string]struct{}` (deny-list of 5 long-content metadata keys).
+  - ADDED `sort` import.
+  - ADDED doc-comment explaining the 6 invariants + safety-of-shape + Description-not-a-field caveat.
+  - REPLACED `(s *MetadataService).BuildFallbackSearchText(clip *asset.Asset)` body → 75-line in-file deterministic impl.
+  - The canonical `ytmeta.BuildFallbackSearchText(title, summary, topics, transcript)` (in `internal/application/youtube/metadata/service.go`) remains as an exported helper, currently used by tests only; per its own package-level doc-comment it currently has no production caller (TDD coverage only via `metadata/service_test.go`). The canonical-export shape is preserved for any future search-text path beyond this ym=nil fallback. Per godlike/06 (one canonical owner per fact), the canonical OWNER of the user-spec search-text contract is `usecase/metadata_service.go::BuildFallbackSearchText` (the canonical helper is a reusable building block, NOT a duplicate owner — the previous `10110e03` canonical delegation at this same call site would have read as a duplicate owner by future readers).
 
-**Grep-zero targets achieved (per Commit 1/4 entry's forward-pointers):**
-
-- `rg 'Phase 1c TODO' --include='*.go' internal/` → 0 hits.
-- `rg 'Phase 1c deferral' --include='*.go' internal/` → 0 hits.
-- Total deferred-stub footprint at the start of Phase 1c = 11 sites (per user spec) → 0 sites at chain end. The 4-commit Phase 1c closure chain is canonical on origin/main.
-
-**Pre-existing build issues (out of scope, NOT regressions from Commit 4/4):**
+**Pre-existing build issues (out of scope, NOT regressions from Commit 4b/4):**
 
 Same five items as the Commit 1/4 / Commit 2/4 / Commit 3/4 / Commit H Phase 2 closure notes carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
 - `monitor/enqueue.go`: `strings.ToLower` undefined (in `isTransientEnqueueError`).
