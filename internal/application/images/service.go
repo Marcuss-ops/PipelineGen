@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -69,6 +70,13 @@ type ImagesStorageDeps struct {
 	ClipsRepo  *assets.ClipsRepository
 	DriveSvc   *driveapi.Service
 	MediaStore *drive.Store
+
+	// DestResolver (FASE 2D EXPAND, July 2026) is the canonical
+	// destinationKey -> Drive folder ID lookup. May be nil in tests
+	// where the new resolver is not yet exercised; production wiring
+	// in internal/app/build_bundles_core.go::buildImagesService
+	// constructs it from config/image_destinations.yaml at boot.
+	DestResolver destinations.DestinationResolver
 }
 
 // ImagesGenAIDeps — AI generation: LLM, metadata, style, image generator.
@@ -148,6 +156,7 @@ func NewService(deps ImagesDeps) *Service {
 		gaDownloadDir: deps.External.GACfg.DownloadDir,
 		vidsProjectID: deps.External.GACfg.VidsProjectID,
 		meta:          meta,
+		destResolver:  deps.Storage.DestResolver, // FASE 2D EXPAND: wired but not yet called
 	}
 
 	// 4. GenerationService (depends on ImageStorageService + StyleResolver)

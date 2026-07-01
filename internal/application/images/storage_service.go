@@ -1,14 +1,17 @@
 package images
 
 import (
+	"net/http"
+
+	"go.uber.org/zap"
+	driveapi "google.golang.org/api/drive/v3"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
-	"golang.org/x/sync/singleflight"
-	"net/http"
 )
 
 // ImageStorageService handles image storage, retrieval, Drive operations,
@@ -32,4 +35,12 @@ type ImageStorageService struct {
 	gaDownloadDir string
 	vidsProjectID string
 	meta          *MetadataService
+
+	// destResolver (FASE 2D EXPAND, July 2026) maps a logical
+	// destinationKey (e.g. "ai-images/cinematic") to a concrete Google
+	// Drive folder ID. Wired in NewService via
+	// ImagesStorageDeps.DestResolver. NOT YET CALLED by the ingest
+	// path — the BACKFILL commit introduces dual-read verification,
+	// and CUTOVER switches the call site over.
+	destResolver destinations.DestinationResolver
 }

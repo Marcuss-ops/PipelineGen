@@ -1,3 +1,46 @@
+// Package search — narrow port interfaces + canonical domain types for
+// the MediaSearch capability. The package is organised into three
+// territories that mirror godlike/06 "one owner per fact" rule:
+//
+//   ┌─ SemanticEnrichment ───────────────────────────────────────────┐
+//   │  Asset → SearchDocument                                       │
+//   │   Owners: artlist/semantic_enricher.go (Artlist provider),    │
+//   │           images/metadata_service.go (pipeline images),       │
+//   │           clipindexer (YouTube clips).                        │
+//   │   Output: SearchDocument{AssetID, QdrantPointID, Payload...} │
+//   └────────────────────────────────────────────────────────────────┘
+//
+//   ┌─ IndexProjection ──────────────────────────────────────────────┐
+//   │  SearchDocument → Qdrant payload                               │
+//   │   Owner: infrastructure/qdrant/index_writer.go                 │
+//   │           (implements clipindexer.VectorStoreIndexer)          │
+//   │   Bridge: SearchDocument is a typed envelope that mirrors the  │
+//   │           Qdrant IndexSchema fields 1:1 (no Locator leak).    │
+//   └────────────────────────────────────────────────────────────────┘
+//
+//   ┌─ MediaSearch ───────────────────────────────────────────────────┐
+//   │  SearchRequest → []SearchHit                                   │
+//   │   Orchestrator: search.Aggregator (registered SearchBackends). │
+//   │   Ports consumed per backend path:                             │
+//   │     - QueryEmbedder   (Fase 6: NEW, separates from store)     │
+//   │     - VectorStorePort (assets/search, locator-free, ANN+RRF)  │
+//   │     - MediaReadRepository + AssetDeliveryService (hydratation) │
+//   │   Surface: GET /internal/v1/media/search (mediasearch handler) │
+//   └────────────────────────────────────────────────────────────────┘
+//
+// Fase 6 Spina Dorsale (July 2026):
+//   - Introduces canonical SearchDocument type that ALL three territories
+//     share. Enrichers produce it, the indexer consumes it, the search
+//     surface returns hits derived from it.
+//   - Promotes embedding generation from the historical merged
+//     VectorSearchPort mediator into a dedicated QueryEmbedder port.
+//     VectorStorePort (locator-free ANN/hybrid) remains the sole
+//     retrieval surface.
+//   - mediasearch.VectorSearchPort is marked Deprecated: with the new
+//     two-port composition (QueryEmbedder + VectorStorePort) as
+//     migration target. Removal is deferred to Fase 7 / Fase 8 once
+//     e2e test stubs migrate (see architecture/deprecations.yaml
+//     #SEARCH-VECTORSEARCHPORT-MERGE).
 package search
 
 import (
@@ -224,3 +267,135 @@ func (noopLogger) Info(string, ...any)  {}
 func (noopLogger) Warn(string, ...any)  {}
 func (noopLogger) Debug(string, ...any) {}
 func (noopLogger) Error(string, ...any) {}
+
+// ── Three-territory surface (Fase 6 Spina Dorsale) ───────────────────────────
+
+// SearchDocument is the canonical typed envelope that bridges the three
+// search territories (SemanticEnrichment, IndexProjection, MediaSearch).
+//
+// Shape rationale (godlike/06 "one owner per fact" + the QDRANT-001
+// locator-leak rule): the struct is the SSOT for the Qdrant IndexSchema
+// payload — every field except QdrantPointID is mirrored 1:1 to a
+// payload key by internal/infrastructure/qdrant/payload_mapper.go.
+// No server-internal locator (LocalPath, DriveLink, DriveFileID,
+// InternalRootURL, FileSystemPath, raw collection/vector names) is
+// allowed in this struct; a locator leak here would flow through every
+// downstream surface and break the QDRANT-004 acceptance criterion
+// ("Nessun path locale o secret esposto").
+//
+// Producers (SemanticEnrichment territory) MUST populate all payload
+// fields they expect to be filterable on; consumers (IndexProjection +
+// MediaSearch) MUST treat missing fields as zero-value gracefully.
+// SchemaVersion tracks forward-compatible evolution of the payload —
+// readers reject unknown versions.
+type SearchDocument struct {
+	// SchemaVersion is the version of this document contract. Currently
+	// always 1. Bumped if a structural field is added.
+	SchemaVersion int
+
+	// AssetID is the canonical asset identifier (UUID). Mirrors the
+	// media_assets.id column.
+	AssetID string
+
+	// QdrantPointID is the per-asset Qdrant point identifier (set by
+	// the IndexProjection territory after a successful Upsert). It is
+	// the read-side correlation key for retrievals + cleanups; absent
+	// from freshly-produced SearchDocuments (no Qdrant write yet).
+	QdrantPointID string
+
+	// Payload fields (every key mirrors the Qdrant IndexSchema's
+	// payload) — see infra/qdrant/schema/schema.go for the canonical
+	// names. All fields are json-stable strings / string-lists so the
+	// payload_mapper conversion is lossless.
+	Source         string   // "youtube" | "artlist" | "local" | ...
+	Name           string   // human-readable asset name
+	Category       string   // taxonomy category slug
+	MediaType      string   // "video" | "image" | "audio"
+	Style          string   // visual style (optional)
+	Language       string   // BCP-47 (optional, drive by content)
+	YouTubeVideoID string   // canonical YouTube video identifier (optional)
+	YouTubeURL     string   // canonical YouTube web URL (optional)
+	StartTime      string   // HH:MM:SS(.mmm) — for clip-style assets
+	EndTime        string   // HH:MM:SS(.mmm) — for clip-style assets
+	Tags           []string // free-form tags (lowercased, deduped)
+	SearchText     string   // semantic-search text (title+summary+topics)
+}
+
+// AsPayloadMap flattens a SearchDocument into the canonical Qdrant
+// payload map. Mirrors the field-to-key contract — same string for
+// each name as in infra/qdrant/schema/schema.go (canonical truth) and
+// infra/qdrant/payload_mapper.go (read-side). The SchemaVersion is
+// NOT included (Qdrant does not version its payload; version is
+// tracked separately in infra indexer logs).
+//
+// Use this from IndexProjection producers (artlist/semantic_enricher,
+// images/metadata_service) so the write surface and read surface
+// agree byte-for-byte. The MediaSearch side reads payload via the
+// infra qdrant/payload_mapper.go's read path — never via this
+// function (the direction is wrong for retrieval).
+func (d SearchDocument) AsPayloadMap() map[string]any {
+	out := map[string]any{
+		"asset_id": d.AssetID,
+	}
+	if d.Source != "" {
+		out["source"] = d.Source
+	}
+	if d.Name != "" {
+		out["name"] = d.Name
+	}
+	if d.Category != "" {
+		out["category"] = d.Category
+	}
+	if d.MediaType != "" {
+		out["media_type"] = d.MediaType
+	}
+	if d.Style != "" {
+		out["style"] = d.Style
+	}
+	if d.Language != "" {
+		out["language"] = d.Language
+	}
+	if d.YouTubeVideoID != "" {
+		out["youtube_video_id"] = d.YouTubeVideoID
+	}
+	if d.YouTubeURL != "" {
+		out["youtube_url"] = d.YouTubeURL
+	}
+	if d.StartTime != "" {
+		out["start_time"] = d.StartTime
+	}
+	if d.EndTime != "" {
+		out["end_time"] = d.EndTime
+	}
+	if len(d.Tags) > 0 {
+		out["tags"] = d.Tags
+	}
+	if d.SearchText != "" {
+		out["search_text"] = d.SearchText
+	}
+	return out
+}
+
+// QueryEmbedder is the application-layer port owned by the MediaSearch
+// territory. It performs textual query embedding for live retrieval.
+//
+// Fase 6 (July 2026, Spina Dorsale): extracted from the historical
+// merged VectorSearchPort mediator which combined embedding + retrieval
+// behind a single interface. The split unblocks Phase 7 / Phase 8
+// (off-line batch indexers no longer need to wire an embedder; the
+// IndexProjection territory uses producers' pre-computed embeddings
+// directly via clipindexer.VectorStoreIndexer.UpsertFromClip).
+//
+// Method shape mirrors internal/infrastructure/qdrant.TextEmbedder
+// (single `Embed(ctx, text) ([]float32, error)`) so the existing
+// qdrant.NewTextEmbedderAdapter concrete satisfies this port with no
+// adapter translation — the compile-time assertion lives in
+// internal/app/adapters_infra.go::var _ search.QueryEmbedder = ...
+//
+// Future evolution: a typed EmbedQueryForVector(vname string) variant
+// is NOT added here; the orchestrator picks the canonical text vector
+// (search.VectorConfig.TextVectorName) before calling Embed, so the
+// port stays an embedding mechanism, not a vector-routing router.
+type QueryEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
