@@ -431,30 +431,31 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	defer os.Remove(metaTempPath)
 
 	// F2.11 (June 2026): route the metadata.json upload through the
-	// canonical delivery.Publisher instead of the retired
-	// DriveFolderManagerAdapter.Upload. The publisher resolves the
-	// destination policy (DestinationArtlist + Group="metadata" →
-	// segments=["metadata"] satisfies RequireSubpath) and pins the
+	// canonical delivery.Publisher.Publish (the F2.11 successor to the
+	// pre-F2.11 wide-port FolderManager path; F3.14 retired the
+	// underlying DriveFolderManagerAdapter entirely). The publisher
+	// resolves the destination policy (DestinationArtlist + Group="metadata"
+	// → segments=["metadata"] satisfies RequireSubpath) and pins the
 	// resolved root to the clip's parent folder via RootFolderOverride.
 	// ConflictPolicy=ConflictOverwrite matches the legacy "find existing
-	// → update in place" semantics implicit in
-	// DriveFolderManagerAdapter.Upload.
+	// → update in place" semantics that the pre-F2.11 folder-write
+	// path implicitly had (preserved intentionally so existing
+	// metadata.json siblings survive F2.11 → current-state reruns).
 	//
-	// KNOWN LAYOUT-SHIFT caveat (F2.11, June 2026): the legacy
-	// DriveFolderManagerAdapter.Upload(metadataTempPath, folderID,
-	// "metadata.json") placed metadata.json DIRECTLY in the clip's
-	// parent folder (/Artlist/<term>/metadata.json). The new publisher
-	// path appends the PathBuilder segments after the overridden root,
-	// producing /Artlist/<term>/metadata/metadata.json — one folder
-	// deeper. The cumulative metadata.json RMW semantics stay correct
-	// (the file is still found-and-merged per term — see Reader.SearchFiles
-	// query above) but the on-disk Drive layout grew a "metadata"
-	// subfolder under every term. This is acceptable per the F2.11
-	// user spec ("drop legacy FolderManager fallback"; the spec does
-	// not pin the exact metadata.json layout) and is documented here
-	// for follow-up — a future DestinationPolicy with RequireSubpath=false
-	// would let the metadata.json land at the legacy location without
-	// re-introducing the legacy fallback path.
+	// KNOWN LAYOUT-SHIFT caveat (F2.11, June 2026): the pre-F2.11
+	// folder-write path placed metadata.json DIRECTLY in the clip's
+	// parent folder (/Artlist/<term>/metadata.json). The new
+	// Publisher.Publish path appends the PathBuilder segments after
+	// the overridden root, producing /Artlist/<term>/metadata/metadata.json
+	// — one folder deeper. The cumulative metadata.json RMW semantics
+	// stay correct (the file is still found-and-merged per term — see
+	// Reader.SearchFiles query above) but the on-disk Drive layout grew
+	// a "metadata" subfolder under every term. This is acceptable per
+	// the F2.11 user spec ("drop legacy FolderManager fallback"; the
+	// spec does not pin the exact metadata.json layout) and is documented
+	// here for follow-up — a future DestinationPolicy with
+	// RequireSubpath=false would let the metadata.json land at the
+	// legacy location without re-introducing the legacy fallback path.
 	if _, err := e.publisher.Publish(ctx, delivery.PublishRequest{
 		Destination:        delivery.DestinationArtlist,
 		Group:              "metadata",
