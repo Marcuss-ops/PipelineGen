@@ -218,7 +218,19 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// Runs INSIDE the tx so the count query is consistent with the
 	// upcoming INSERT. Skipped when DriveFileID is empty.
 	if cmd.DriveFileID != "" {
-		matchedID, count, _ := f.deps.VoiceoverRepo.CountByDriveFileIDTx(ctx, tx, cmd.ID, cmd.DriveFileID)
+		// Audit P0 #3 (July 2026): a SQLite transient failure
+		// during the dedupe lookup MUST propagate. A swallowed err
+		// here would silently degrade to count==0 ⇒ DedupeContinue,
+		// letting the finalizer proceed with DeleteByIDTx + InsertTx
+		// + UpsertVoiceoverProjectionTx + EnqueueIndexEvent +
+		// EnqueueCleanupEvent even though the dedupe gate's
+		// semantics were never validated. The caller would then
+		// observe a successful StatusCompleted against a partially-
+		// verified guarantee. We fail-closed here.
+		matchedID, count, err := f.deps.VoiceoverRepo.CountByDriveFileIDTx(ctx, tx, cmd.ID, cmd.DriveFileID)
+		if err != nil {
+			return nil, fmt.Errorf("voiceoverFinalizer: dedupe lookup: %w", err)
+		}
 		switch DecideDedupe(count) {
 		case DedupeConflict:
 			return nil, fmt.Errorf("voiceoverFinalizer: PR-VO-B3 ambiguous dedupe (count=%d, dedupe_id=%s) — refusing to insert duplicate row against established DriveFileID",
