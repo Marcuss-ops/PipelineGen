@@ -117,7 +117,123 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 		img.Width, img.Height, img.Hash, img.PathRel, img.PathRel, img.DriveFileID,
 		string(metaJSON), string(img.Origin), string(img.Provider), now, now)
 
-	return 0, err
+	if err != nil {
+		return 0, err
+	}
+	// FASE 4 CUTOVER (July 2026, image-territories action plan): dual-write
+	// to the matching detail table when origin is set. Per godlike/07
+	// fail-closed, an UPSERT error after a successful media_assets INSERT
+	// is propagated to the caller; the operator audit-gazette surfaces
+	// the asymmetry and the caller can re-run UpsertGeneratedDetails /
+	// UpsertRetrievedDetails idempotently.
+	if err := r.dualWriteImageDetails(ctx, id, img); err != nil {
+		return 0, fmt.Errorf("dual-write image details: %w", err)
+	}
+	return 0, nil
+}
+
+// dualWriteImageDetails reads img.Origin and routes the asset to the
+// matching detail table with best-effort field mapping. Caller can call
+// UpsertGeneratedDetails / UpsertRetrievedDetails subsequently to
+// refine the row with full provenance (style_id, prompt_resolved, seed,
+// generation_job_id for generated; license, author, search_query for
+// retrieved).
+//
+// FASE 4 CUTOVER: when origin='' or origin=ImageOriginUploaded the
+// function returns nil silently (unclassified rows are eligible for the
+// FASE 4 step-4D backfill later).
+func (r *ImagesRepository) dualWriteImageDetails(ctx context.Context, assetID string, img *asset.ImageAsset) error {
+	if r == nil || img == nil {
+		return nil
+	}
+	switch img.Origin {
+	case asset.ImageOriginGenerated:
+		return r.UpsertGeneratedDetails(ctx, &asset.GeneratedImageDetail{
+			AssetID:    assetID,
+			SourceHash: img.Hash,
+			Model:      string(img.Provider),
+		})
+	case asset.ImageOriginRetrieved:
+		return r.UpsertRetrievedDetails(ctx, &asset.RetrievedImageDetail{
+			AssetID:        assetID,
+			SourceImageURL: img.SourceURL,
+			License:        img.License,
+			Provider:       string(img.Provider),
+		})
+	}
+	// origin='' (unclassified) OR origin=ImageOriginUploaded → skip silently.
+	return nil
+}
+
+// UpsertGeneratedDetails writes per-asset provenance for an AI-generated
+// image. ON CONFLICT(asset_id) DO UPDATE so re-running for the same
+// asset is idempotent. FASE 4 CUTOVER.
+func (r *ImagesRepository) UpsertGeneratedDetails(ctx context.Context, d *asset.GeneratedImageDetail) error {
+	if d == nil {
+		return nil
+	}
+	if d.AssetID == "" {
+		return fmt.Errorf("UpsertGeneratedDetails: AssetID is empty")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO generated_image_details
+			(asset_id, prompt_original, prompt_resolved, style_id, style_version, model, seed, generation_job_id, source_hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(asset_id) DO UPDATE SET
+			prompt_original = excluded.prompt_original,
+			prompt_resolved = excluded.prompt_resolved,
+			style_id = excluded.style_id,
+			style_version = excluded.style_version,
+			model = excluded.model,
+			seed = excluded.seed,
+			generation_job_id = excluded.generation_job_id,
+			source_hash = excluded.source_hash
+	`, d.AssetID, d.PromptOriginal, d.PromptResolved, d.StyleID, d.StyleVersion,
+		d.Model, d.Seed, d.GenerationJobID, d.SourceHash)
+	return err
+}
+
+// UpsertRetrievedDetails writes per-asset provenance for a web-retrieved
+// image. ON CONFLICT(asset_id) DO UPDATE so re-running for the same
+// asset is idempotent. FASE 4 CUTOVER.
+func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *asset.RetrievedImageDetail) error {
+	if d == nil {
+		return nil
+	}
+	if d.AssetID == "" {
+		return fmt.Errorf("UpsertRetrievedDetails: AssetID is empty")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO retrieved_image_details
+			(asset_id, source_image_url, source_page_url, license, author, search_query, retrieved_at, provider)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(asset_id) DO UPDATE SET
+			source_image_url = excluded.source_image_url,
+			source_page_url = excluded.source_page_url,
+			license = excluded.license,
+			author = excluded.author,
+			search_query = excluded.search_query,
+			retrieved_at = excluded.retrieved_at,
+			provider = excluded.provider
+	`, d.AssetID, d.SourceImageURL, d.SourcePageURL, d.License, d.Author,
+		d.SearchQuery, d.RetrievedAt, d.Provider)
+	return err
+}
+
+// UpdateOrigin updates media_assets.origin and media_assets.provider for
+// the row keyed by file_hash. Used by the FASE 4 step-4D backfill admin
+// command to promote unclassified rows (origin='') to a canonical
+// territory. FASE 4 CUTOVER.
+func (r *ImagesRepository) UpdateOrigin(ctx context.Context, hash, origin, provider string) error {
+	if hash == "" {
+		return fmt.Errorf("UpdateOrigin: hash is empty")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE media_assets
+		SET origin = ?, provider = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE source = 'image' AND file_hash = ?
+	`, origin, provider, hash)
+	return err
 }
 
 // normalizeTags converte una lista di tag in una stringa normalizzata per ricerca full-text.
