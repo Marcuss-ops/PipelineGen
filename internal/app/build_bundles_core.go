@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -275,13 +276,33 @@ func buildImagesService(
 	if driveUploader != nil {
 		driveSvc = driveUploader.Service
 	}
+
+	// FASE 2D EXPAND (July 2026): construct the YamlResolver and wire
+	// it into ImageStorageService.DestResolver. The resolver is NOT
+	// yet called by the ingest path (BACKFILL introduces the dual-read
+	// verification; CUTOVER switches the call site over). If
+	// config/image_destinations.yaml is missing or malformed, log a
+	// warning + pass nil so the existing hardcoded
+	// aiImageDriveRootForSource() map remains the only source of truth
+	// until CUTOVER commits land.
+	const destinationsYAMLPath = "config/image_destinations.yaml"
+	destResolver, err := destinations.NewYamlResolver(destinationsYAMLPath, cfg.Drive.ImagesFolder())
+	if err != nil {
+		log.Warn("destinations.NewYamlResolver failed; ImageStorageService.destResolver will be nil",
+			zap.String("yaml_path", destinationsYAMLPath),
+			zap.Error(err),
+		)
+		destResolver = nil
+	}
+
 	imageService := imgservice.NewService(imgservice.ImagesDeps{
 		Core: imgservice.ImagesCoreDeps{Cfg: cfg, Log: log},
 		Storage: imgservice.ImagesStorageDeps{
-			ImageRepo:  imageRepo,
-			ClipsRepo:  clipsRepo,
-			DriveSvc:   driveSvc,
-			MediaStore: mediaStore,
+			ImageRepo:    imageRepo,
+			ClipsRepo:    clipsRepo,
+			DriveSvc:     driveSvc,
+			MediaStore:   mediaStore,
+			DestResolver: destResolver,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen:        scriptGen,

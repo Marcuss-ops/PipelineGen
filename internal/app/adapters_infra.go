@@ -18,11 +18,13 @@ import (
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -303,7 +305,48 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 var (
 	_ systemapi.DriveAdminOps = (*driveAdminAdapter)(nil)
 	_ systemapi.Reconciler    = (*noopReconciler)(nil)
+	_ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)
 )
+
+// ── Search query embedder adapter (Fase 6 Spina Dorsale) ───────────────────
+//
+// searchEmbedAdapter bridges the infrastructure-layer qdrant.TextEmbedder
+// to the application-layer search.QueryEmbedder port. The shape is
+// identical (`Embed(ctx, text) -> ([]float32, error)`), so the adapter
+// is a one-method delegation.
+//
+// Until compositions-everywhere migration (BACKFILL phase of
+// architecture/deprecations.yaml#SEARCH-VECTORSEARCHPORT-MERGE), the
+// legacy mediator `mediasearch.VectorSearchPort` continues to expose
+// EmbedTextForVector directly via the qdrant concrete. THIS adapter
+// is the Fase 6 path: orchestrator code that asks for
+// `search.QueryEmbedder` will get this adapter wrapped around the
+// same qdrant.TextEmbedder concrete — zero behavioural drift, plus
+// the canonical split.
+type searchEmbedAdapter struct {
+	embedder qdrant.TextEmbedder
+}
+
+// Embed delegates to the underlying qdrant.TextEmbedder. The method
+// name matches the application port shape so compile-time assertion
+// `var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)` is
+// non-trivial — drift in either signature is a build failure.
+func (a *searchEmbedAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
+	if a == nil || a.embedder == nil {
+		return nil, fmt.Errorf("searchEmbedAdapter: underlying qdrant embedder not wired")
+	}
+	return a.embedder.Embed(ctx, text)
+}
+
+// newSearchEmbedAdapter is the canonical composition-root constructor.
+// Returns a nil interface when embedder is nil so the wiring site
+// preserves the `embedPort != nil` discipline callers can rely on.
+func newSearchEmbedAdapter(embedder qdrant.TextEmbedder) searchpkg.QueryEmbedder {
+	if embedder == nil {
+		return nil
+	}
+	return &searchEmbedAdapter{embedder: embedder}
+}
 
 // artlistConfigAdapter wraps *config.Config to satisfy
 // artlistPkg.ArtlistConfigPort. The composition-root keeps the

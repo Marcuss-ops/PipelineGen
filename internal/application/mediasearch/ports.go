@@ -143,6 +143,21 @@ type AssetDeliveryService interface {
 // access (VectorStore) so the service doesn't need to manage two
 // separate dependencies.  The production concrete is wired at the
 // composition root; test stubs implement both methods.
+//
+// Deprecated: migration target is the canonical Fase 6 split:
+//
+//   - EmbedTextForVector → search.QueryEmbedder (Embed(ctx, text))
+//     (defined at internal/application/search/ports.go::QueryEmbedder;
+//     production concrete: ollama embedder via qdrant.TextEmbedder;
+//     wiring: internal/app/adapters_infra.go::searchEmbedAdapter).
+//
+//   - VectorStore() → assets/search.VectorStorePort (unchanged; this
+//     is already the canonical ANN/hybrid store surface — Qdrant-004).
+//
+// Migration deadline: 2026-08-15 (BACKFILL of architecture/deprecations.yaml
+// #SEARCH-VECTORSEARCHPORT-MERGE). Removal will follow once every caller
+// (e2e regression tests + composition wiring routes) is migrated; the
+// EXPAND→BACKFILL→CUTOVER sequence per godlike/07 §Zero-Legacy Policy.
 type VectorSearchPort interface {
 	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
 	VectorStore() search.VectorStorePort

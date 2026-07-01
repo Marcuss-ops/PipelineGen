@@ -264,9 +264,7 @@ deprecations:
   # VoiceoverSynthesisResult: VoiceoverSynthesisResult{Locale: "en-US", ...}}).
   # Read-access (result.Locale, result.Voice) is unchanged — Go promotes
   # embedded fields automatically.
-  # ──────────────────────────────────────────────────────────────────
-
-  - id: VOICEOVER-RESULT-FLAT-SYNTHESIS
+  # ──────────────────────────────────────────────────────────────────  - id: VOICEOVER-RESULT-FLAT-SYNTHESIS
     owner_capability: internal/domain/voiceover
     exact_symbol: "Result struct flat synthesis fields (Locale, Text, Voice, Filename, LocalPath, FileHash, FileSize, Duration) moved to VoiceoverSynthesisResult embedded sub-field"
     file: internal/domain/voiceover/result.go
@@ -281,8 +279,88 @@ deprecations:
     status: in_progress
     notes: "VoiceoverSynthesisResult carries ZERO database/sql, drive, or qdrant imports. Territory markers in ports.go clarify Synthesis/Publication/Finalization boundaries."
 
+  # ── Fase 6 Spina Dorsale (July 2026): mediator VectorSearchPort split ──
+  # The historical VectorSearchPort bundled two concerns (EmbedTextForVector
+  # + VectorStore access) behind one interface. Fase 6 splits them into
+  # two distinct ports per godlike/06 "one owner per fact":
+  #   1. search.QueryEmbedder (Embed(ctx, text) -> ([]float32, error))
+  #      — Fase 6 NEW; bridges via internal/app/adapters_infra.go::
+  #      searchEmbedAdapter (compile-time assertion on the qdrant concrete).
+  #   2. assets/search.VectorStorePort (Search + HybridSearch) — unchanged,
+  #      already the canonical ANN/hybrid store surface (QDRANT-004).
+  # VectorSearchPort is kept as Deprecated: during the migration window so
+  # existing callers (mediasearch orchestrator + e2e regression test
+  # stubs) compile unchanged. Removal deadline 2026-08-15 per the EXPAND→
+  # BACKFILL → CUTOVER sequence (godlike/07 §"Migration sequence").
+  # ──────────────────────────────────────────────────────────────────────
+  - id: SEARCH-VECTORSEARCHPORT-MERGE
+    owner_capability: internal/application/search
+    exact_symbol: "mediasearch.VectorSearchPort — single interface combining EmbedTextForVector + VectorStore()"
+    file: internal/application/mediasearch/ports.go
+    file_line: 146
+    replacement: |
+      Two distinct ports (mediator split per Fase 6):
+        (a) search.QueryEmbedder (Embed(ctx, text) ([]float32, error)) —
+            NEW per Fase 6, defined in internal/application/search/ports.go.
+            Production concrete: ollama embedder via qdrant.TextEmbedder;
+            composition wiring: internal/app/adapters_infra.go::newSearchEmbedAdapter
+            returning search.QueryEmbedder + compile-time assertion
+            `var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)`.
+        (b) assets/search.VectorStorePort (Search + HybridSearch) — unchanged
+            (canonical ANN/hybrid store surface from QDRANT-004). Implementer:
+            internal/infrastructure/qdrant/search_adapter.go::SearchAdapter.
+    introduction_date: 2026-07-01
+    removal_date: 2026-08-15
+    tracking_issue: "Spina Dorsale Fase 6 — Piano d'Azione § Fase 6 (SemanticEnrichment / IndexProjection / MediaSearch three-territory separation)"
+    compatibility_test: |
+      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS / DRIVE-005-FIELDS:
+        (a) `internal/application/search/ports.go::QueryEmbedder` exists
+            with the canonical method shape (single Embed(ctx, text)
+            ([]float32, error)); counterpart qdrant.TextEmbedder shares
+            the same shape so adapters_infra.go's compile-time assertion
+            is non-trivial.
+        (b) `internal/application/search/ports.go::SearchDocument` exists
+            with the canonical Qdrant payload fields (SchemaVersion,
+            AssetID, QdrantPointID, Source, Name, Category, MediaType,
+            Style, Language, YouTubeVideoID, YouTubeURL, StartTime, EndTime,
+            Tags, SearchText); NO server-internal locator (LocalPath,
+            DriveLink, DriveFileID) is allowed.
+        (c) `var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)` at
+            internal/app/adapters_infra.go compiles; future drift in either
+            side of the port ↔ adapter contract is a build failure.
+        (d) legacy VectorSearchPort is kept alive (Deprecated: marker at
+            mediasearch/ports.go) until every caller + e2e stub migrates;
+            removal follows EXPAND→BACKFILL→CUTOVER sequence per
+            godlike/07 §"Migration sequence".
+    usage_metric: |
+      Pre-split: 1 interface bundling 2 concerns, used by the historical
+      mediasearch orchestrator (now Phase 0 git-rm'd) + e2e regression
+      test stubs. Post-split: 2 specialised ports (QueryEmbedder +
+      VectorStorePort); orchestrator code that asks for `search.QueryEmbedder`
+      gets the adapter-wrapped qdrant.TextEmbedder, no behavioural drift.
+      Back-compat path remains open via Deprecated VectorSearchPort until
+      2026-08-15; fail-fast no-fake-availability per godlike/07.
+    migration_phase: BACKFILL
+    status: in_progress
+    notes: |
+      Fase 6 introduces canonical SearchDocument type + QueryEmbedder port
+      + adapter companion; VectorSearchPort kept as Deprecated for the
+      migration window so no forced churn on existing callers. Removal
+      deadline 2026-08-15 per architecture/current.yaml wave-tracker
+      forward-pointer; the next Wave (Fase 7 / Fase 8) will physically
+      git-rm the deprecated port + its 2 production consumers once the
+      BACKFILL counter trends to zero (no production caller still uses
+      the merged mediator).
+
+      Cross-reference to godlike/06 (Command Field Architecture): the
+      SearchDocument type is the SSOT for the Qdrant IndexSchema payload.
+      Every enrichment write surface, every index-projection read surface,
+      and every retrieval surface goes through the same struct shape
+      (payload_mapper.go's read path reads it; SearchDocument.AsPayloadMap
+      produces it 1:1 from the IndexProjection territory).
 
   # ──────────────────────────────────────────────────────────────────
+
 
   # ── 1. PR-CLIP-RESTORE — alias method removed from sqlite/assets repository ──
   - id: PR-CLIP-RESTORE
