@@ -325,6 +325,9 @@ func ProcessBookErrMapper(err error) (int, string) {
 	if errors.Is(err, ErrEnqueueFailed) {
 		return http.StatusServiceUnavailable, "job enqueue failed"
 	}
+	if errors.Is(err, ErrBookTransformerMissing) {
+		return http.StatusServiceUnavailable, "books transformer port not wired"
+	}
 	var procErr ErrProcessFailed
 	if errors.As(err, &procErr) {
 		return http.StatusInternalServerError, procErr.Message

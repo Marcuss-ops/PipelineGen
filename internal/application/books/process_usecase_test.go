@@ -288,6 +288,57 @@ func TestProcessBookUseCase_EmptyBooksService(t *testing.T) {
 	}
 }
 
+// TestProcessBookUseCase_TransformerNil — covers ErrBookTransformerMissing
+// (Fase 7 review-fix #1). The sync branch surfaces the canonical sentinel
+// when books.Service.ProcessBook returns the "transformer port not wired"
+// error (composition root failed to wire pythontransformer.SubprocessTransformer,
+// e.g. bad Python env or disabled books capability).
+//
+// Mapper contract: ErrBookTransformerMissing → 503 (NOT 500). godlike/07
+// no-fake-availability: a nil-transformer wiring failure is a server-side
+// configuration gap, semantically equivalent to "service not initialised".
+// 503 is the canonical HTTP code per RFC 9110 §15.5.3; matches the
+// ErrBooksServiceUnavailable / ErrJobsSystemUnavailable mappings already
+// enforced by arm-1 of this test matrix.
+func TestProcessBookUseCase_TransformerNil(t *testing.T) {
+	// Decorate the fake with ErrBookTransformerMissing — the use case's
+	// handleSync branch propagates svc errors verbatim (no fmt.Errorf
+	// wrapping) so errors.Is reaches the canonical sentinel.
+	fakeSvc := &FakeBookProcessor{
+		Err: ErrBookTransformerMissing,
+	}
+	uc := NewProcessBookUseCase(fakeSvc, &FakeAsyncEnqueuer{}, zap.NewNop())
+
+	_, err := uc.Handle(context.Background(), ProcessBookRequest{
+		FilePath: "/tmp/in.pdf",
+		Async:    false,
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrBookTransformerMissing) {
+		t.Fatalf("want ErrBookTransformerMissing wrapped, got %v", err)
+	}
+	// Sanity: error string is byte-equal to the sentinel. Pins the
+	// use-case's propagate-verbatim contract — a future refactor that
+	// wraps with fmt.Errorf("...%w", ErrBookTransformerMissing) would
+	// change the .Error() string (visible in JSON API responses) even
+	// though errors.Is still walks the chain via Unwrap. The byte-
+	// equality assertion catches that wire-contract drift before it
+	// reaches a client.
+	if err.Error() != ErrBookTransformerMissing.Error() {
+		t.Fatalf("error string drift: got %q, want %q", err.Error(), ErrBookTransformerMissing.Error())
+	}
+
+	status, msg := ProcessBookErrMapper(err)
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("status: want 503, got %d (msg=%q)", status, msg)
+	}
+	if !contains(msg, "transformer") {
+		t.Fatalf("msg should mention transformer, got: %q", msg)
+	}
+}
+
 // TestProcessBookErrMapper — pin the use-case → HTTP status mapping.
 // Keep this mapper test as a separation-of-concerns check so future
 // refactors that swap Handle's internal branches don't accidentally
@@ -316,6 +367,12 @@ func TestProcessBookErrMapper(t *testing.T) {
 			err:        ErrEnqueueFailed,
 			wantStatus: http.StatusServiceUnavailable,
 			wantMsgSub: "enqueue",
+		},
+		{
+			name:       "book transformer missing → 503 (Fase 7 review-fix #1)",
+			err:        ErrBookTransformerMissing,
+			wantStatus: http.StatusServiceUnavailable,
+			wantMsgSub: "transformer",
 		},
 		{
 			name:       "wrap-aware sentinel — errors.As matches the inner ErrProcessFailed",
