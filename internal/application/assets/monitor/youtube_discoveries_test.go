@@ -320,12 +320,12 @@ func TestYoutubeDiscoveries_MaxDiscoveredAt_EmptyChannel(t *testing.T) {
 // Sequence under test:
 //  1. TryReserve(key, "v1") → won=true, attempt=1.
 //  2. MarkRejected(id, "connection refused", retryable=true) →
-//     state='rejected_retryable', next_retry_at = now + backoff(2)=60s,
-//     attempt_count=2.
+//     state='rejected_retryable', next_retry_at = now + backoff(1)=30s,
+//     attempt_count=1.
 //  3. TryReserve(key, "v1") → won=false (retry not yet due; current
 //     time < next_retry_at). Caller classifies already_scheduled.
 //  4. SQL-level check: state='rejected_retryable', next_retry_at
-//     matches the contract, attempt_count=2.
+//     matches the contract, attempt_count=1.
 //  5. MarkRejected again with retryable=true → attempt_count=3,
 //     next_retry_at advances per the next backoff(3)=120s.
 //  6. MarkRejected(retryable=false) → state='rejected_terminal'.
@@ -356,7 +356,7 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 	// Step 2: MarkRejected(retryable=true) — simulate a transient
 	// emit-side failure (timeout). The repository must set
 	// state='rejected_retryable', pin last_error, compute
-	// next_retry_at = now + backoff(2) = 60s (= attempt 2's delay).
+	// next_retry_at = now + backoff(1) = 30s.
 	rejection := "emit: connection refused (transient)"
 	if err := repo.MarkRejected(ctx, id, rejection, true); err != nil {
 		t.Fatalf("step 2 MarkRejected(retryable=true): %v", err)
@@ -419,16 +419,28 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 		t.Errorf("step 4 next_retry_at delta = %v, want in [10s, 50s] (backoff(1)=30s)", delta)
 	}
 
-	// Step 5: MarkRejected(retryable=true) again — attempt_count
-	// increments to 2, next_retry_at advances to backoff(2)=60s.
-	if err := repo.MarkRejected(ctx, id, "transient again", true); err != nil {
-		t.Fatalf("step 5 second MarkRejected(retryable=true): %v", err)
+	// Step 5: simulate a second retry-reclaim by directly bumping
+	// attempt_count via SQL — Blocco 2 blocks MarkRejected(retryable)
+	// on a 'rejected_retryable' row (the tighter WHERE prevents
+	// double-increment in production). The retry flow goes through
+	// tryReserveConflict(b) which reclaims the row back to 'pending'
+	// with attempt_count+1; here we simulate that by bumping the
+	// counter directly so the remainder of the test (Step 6 terminal
+	// escalation) observes the incremented count.
+	if _, err := db.ExecContext(ctx, `
+		UPDATE youtube_discoveries
+		SET attempt_count = attempt_count + 1,
+		    next_retry_at = ?,
+		    last_error = ?
+		WHERE id = ?
+	`, time.Now().UTC().Add(60*time.Second).Format(time.RFC3339), "transient again", id); err != nil {
+		t.Fatalf("step 5 direct SQL bump: %v", err)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT attempt_count FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotAttemptCount); err != nil {
 		t.Fatalf("step 5 attempt_count SELECT: %v", err)
 	}
 	if gotAttemptCount != 2 {
-		t.Errorf("step 5 attempt_count = %d, want 2 (DB starts at 0; 0+1=1 on first MarkRejected, 1+1=2 on second)", gotAttemptCount)
+		t.Errorf("step 5 attempt_count = %d, want 2 (1 + 1 via direct SQL bump)", gotAttemptCount)
 	}
 
 	// Step 6: MarkRejected(retryable=false) → state='rejected_terminal'.
@@ -668,8 +680,8 @@ func TestMarkRejected_RetryableFlagLock(t *testing.T) {
 
 // TestMarkRejected_TerminalAfterRetryable_StaysTerminal pins the
 // "attempt_count" monotonicity: a row that went
-// pending → rejected_retryable (attempt=2) → rejected_terminal must
-// KEEP attempt_count=2 in the terminal state (terminal is final; no
+// pending → rejected_retryable (attempt=1) → rejected_terminal must
+// KEEP attempt_count=1 in the terminal state (terminal is final; no
 // further attempts).
 func TestMarkRejected_TerminalAfterRetryable_StaysTerminal(t *testing.T) {
 	repo, db, cleanup := newInMemoryLedger(t)
@@ -678,11 +690,11 @@ func TestMarkRejected_TerminalAfterRetryable_StaysTerminal(t *testing.T) {
 
 	id, _, _, _ := repo.TryReserve(ctx, "ch-monotonic", "vid-monotonic", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
 
-	// Retryable path: attempt_count → 2.
+	// Retryable path: attempt_count → 1.
 	if err := repo.MarkRejected(ctx, id, "transient 1", true); err != nil {
 		t.Fatalf("retryable MarkRejected: %v", err)
 	}
-	// Terminal path: attempt_count stays at 2.
+	// Terminal path: attempt_count stays at 1.
 	if err := repo.MarkRejected(ctx, id, "terminal after retry", false); err != nil {
 		t.Fatalf("terminal MarkRejected after retryable: %v", err)
 	}
