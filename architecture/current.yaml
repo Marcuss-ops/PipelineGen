@@ -498,6 +498,21 @@
       owner_capability: internal/app (composition root) + internal/infrastructure/drive
       status: removed
       deadline: 2026-06-30
+- id: 28
+  status: done
+  exit_signal: true
+  exit_gate: |
+    Bloco 3.1 deletion state machine is canonical: 5-state machine (ACTIVE
+    -> DELETE_REQUESTED -> DRIVE_DELETE_PENDING -> INDEX_DELETE_PENDING ->
+    DELETED) with tx-bound advance + emit primitive on *outbox.Dispatcher
+    :: AdvanceAndEmit. Drive side-effects (Trash/Delete) are dispatched
+    through the canonical drive.FileLifecycle pattern-0 port.
+  linked_issues:
+    - id: PR-DRIVE-DELETE-STM
+      owner_capability: internal/application/jobs/outbox + internal/infrastructure/drive
+      status: removed
+      deadline: 2026-07-01
+
 
 # ---------------------------------------------------------------------------
 # Doc #2 (post_cascade_followups) + Doc #3 (legacy_fallback_cleanup)
