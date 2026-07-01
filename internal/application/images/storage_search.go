@@ -1,8 +1,10 @@
 package images
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -16,6 +18,25 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
+
+// ── Typed image-operation errors (FASE 2.3, July 2026) ───────────────
+//
+// Each sentinel wraps a specific failure category so callers can
+// distinguish transient (retryable) from permanent failures without
+// string-matching HTTP status codes.
+
+// ErrImageNotFound is returned when the remote server responds with
+// HTTP 404 — the image does not exist at the given URL. NOT retryable.
+var ErrImageNotFound = errors.New("image: not found (HTTP 404)")
+
+// ErrImageTransient is returned for transient HTTP errors (429, 5xx,
+// timeout, connection refused). Retryable with backoff.
+var ErrImageTransient = errors.New("image: transient error (retryable)")
+
+// ErrImageInvalidResponse is returned when the HTTP response body is
+// not a valid image or JSON (malformed, empty, wrong content-type).
+// NOT retryable.
+var ErrImageInvalidResponse = errors.New("image: invalid or corrupt response")
 
 // ── Search & Download ─────────────────────────────────────────────────
 
@@ -135,8 +156,15 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 		}
 		meta["source_name"] = source
 		meta["source_query"] = finalQuery
-		metaJSON, _ := json.Marshal(meta)
-		_ = s.repo.UpdateImageMetadata(ctx, asset.Hash, string(metaJSON))
+		metaJSON, marshalErr := json.Marshal(meta)
+		if marshalErr != nil {
+			s.log.Error("searchAndDownloadInner: failed to marshal metadata", zap.Error(marshalErr))
+			return asset, fmt.Errorf("marshal image metadata: %w", marshalErr)
+		}
+		if updateErr := s.repo.UpdateImageMetadata(ctx, asset.Hash, string(metaJSON)); updateErr != nil {
+			s.log.Error("searchAndDownloadInner: UpdateImageMetadata failed", zap.Error(updateErr))
+			return asset, fmt.Errorf("update image metadata: %w", updateErr)
+		}
 		asset.MetadataJSON = string(metaJSON)
 	}
 	return asset, err
@@ -144,7 +172,13 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 
 // ── Web Search ─────────────────────────────────────────────────────────
 
-// SearchWebImage searches for a real image matching the prompt via DuckDuckGo.
+// SearchWebImage searches for a real image matching the prompt via DuckDuckGo
+// and downloads+ingests it with retry on transient HTTP errors (429, 5xx).
+//
+// FASE 2.3 (July 2026): uses retry.Do via pkg/retry for transient errors;
+// returns typed ErrImageNotFound on 404, ErrImageInvalidResponse on corrupt
+// bodies, and ErrImageTransient on 429/5xx/timeout. Binary content passes
+// via bytes.NewReader, not string(body).
 func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {
 	if slug == "" {
 		slug = textutil.Slugify(prompt)
@@ -157,40 +191,72 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	}
 	s.log.Info("Found image URL on DuckDuckGo", zap.String("url", imgURL))
 
-	req, err := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
+	// Check context cancellation before attempting download.
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	// Download and ingest with retry on transient errors (429, 5xx, timeout).
+	// Uses bytes.NewReader for binary content — no string(body) conversion.
+	var asset *asset.ImageAsset
+	err := retry.Do(ctx, func() error {
+		// Context check inside retry loop: abort immediately if cancelled.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		req, reqErr := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
+		if reqErr != nil {
+			return fmt.Errorf("%w: create download request: %v", ErrImageTransient, reqErr)
+		}
+		req.Header.Set("User-Agent", userAgent)
+
+		resp, doErr := s.client.Do(req)
+		if doErr != nil {
+			return fmt.Errorf("%w: download: %v", ErrImageTransient, doErr)
+		}
+		defer resp.Body.Close()
+
+		// Classify HTTP status.
+		switch {
+		case resp.StatusCode == http.StatusNotFound:
+			return fmt.Errorf("%w: url=%s", ErrImageNotFound, imgURL)
+		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+			return fmt.Errorf("%w: HTTP %d", ErrImageTransient, resp.StatusCode)
+		case resp.StatusCode != http.StatusOK:
+			return fmt.Errorf("%w: unexpected HTTP %d", ErrImageInvalidResponse, resp.StatusCode)
+		}
+
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
+		if readErr != nil {
+			return fmt.Errorf("%w: read body: %v", ErrImageTransient, readErr)
+		}
+		if len(body) == 0 {
+			return fmt.Errorf("%w: downloaded image is empty", ErrImageInvalidResponse)
+		}
+
+		s.log.Info("Image downloaded", zap.Int("size_bytes", len(body)), zap.String("url", imgURL))
+
+		filename := extractFilename(imgURL, prompt)
+		description := fmt.Sprintf("Web image for: %s", prompt)
+
+		// FASE 2.3: bytes.NewReader — nessuna conversione string(body).
+		var ingestErr error
+		asset, ingestErr = s.IngestImage(ctx, slug, "", "", bytes.NewReader(body), filename, imgURL, description, tags, false, false)
+		if ingestErr != nil {
+			return fmt.Errorf("ingest image: %w", ingestErr)
+		}
+		return nil
+	}, retry.Options{
+		MaxAttempts:    3,
+		InitialBackoff: 500 * time.Millisecond,
+		IsRetryable:    isImageRetryable,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create download request: %w", err)
-	}
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download image: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download failed with status %d", resp.StatusCode)
+		return nil, err
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read image body: %w", err)
-	}
-	if len(body) == 0 {
-		return nil, fmt.Errorf("downloaded image is empty")
-	}
-
-	s.log.Info("Image downloaded", zap.Int("size_bytes", len(body)), zap.String("url", imgURL))
-
-	filename := extractFilename(imgURL, prompt)
-	description := fmt.Sprintf("Web image for: %s", prompt)
-
-	asset, err := s.IngestImage(ctx, slug, "", "", strings.NewReader(string(body)), filename, imgURL, description, tags, false, false)
-	if err != nil {
-		return nil, fmt.Errorf("ingest image: %w", err)
-	}
-
+	// Metadata enrichment — surface failure rather than silently ignoring it.
 	meta := make(map[string]any)
 	if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {
 		_ = json.Unmarshal([]byte(asset.MetadataJSON), &meta)
@@ -198,7 +264,15 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	meta["source_image_url"] = imgURL
 	meta["source_name"] = "duckduckgo"
 	meta["source_query"] = prompt
-	metaJSON, _ := json.Marshal(meta)
+	metaJSON, marshalErr := json.Marshal(meta)
+	if marshalErr != nil {
+		s.log.Error("SearchWebImage: failed to marshal metadata", zap.Error(marshalErr))
+		return asset, fmt.Errorf("marshal image metadata: %w", marshalErr)
+	}
+	if updateErr := s.repo.UpdateImageMetadata(ctx, asset.Hash, string(metaJSON)); updateErr != nil {
+		s.log.Error("SearchWebImage: UpdateImageMetadata failed", zap.Error(updateErr))
+		return asset, fmt.Errorf("update image metadata: %w", updateErr)
+	}
 	asset.MetadataJSON = string(metaJSON)
 
 	s.log.Info("Web image ingested successfully",
@@ -207,6 +281,13 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 		zap.String("path", asset.PathRel),
 	)
 	return asset, nil
+}
+
+// isImageRetryable reports whether an error from the image download
+// pipeline is transient (retryable) or permanent. Used by retry.Do
+// as the IsRetryable predicate in SearchWebImage.
+func isImageRetryable(err error) bool {
+	return errors.Is(err, ErrImageTransient)
 }
 
 // ── Web Search Helpers ─────────────────────────────────────────────────
