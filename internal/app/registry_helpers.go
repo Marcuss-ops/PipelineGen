@@ -2,28 +2,32 @@
 //
 // Per AGENTS.md Pattern 5 (June 2026): one concept per file. This file holds
 // standalone helpers used by WireRegistry: asset service initialisation,
-// media processor construction, sync target building, Drive folder definition,
-// and style-folder pre-creation.
+// media processor construction, sync target building, and Drive folder
+// definition.
+//
+// Wave A Item 15 (June 2026): ensureStyleDriveFolders + style-folder
+// pre-creation REMOVED — the canonical StyleRegistry already serves
+// style metadata at the composition boundary, and the legacy
+// drive-side pre-creation step was a hard-coded single point of
+// failure that masked style discovery drift. The driveup + generation
+// imports are no longer needed here (this file's remaining helpers
+// never reach the Drive SDK directly or the StyleRegistry).
 package app
 
 import (
-	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	ffmpegtypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
@@ -83,9 +87,9 @@ func (d *DriveDestinations) ImagesFolder() string { return d.imagesFolder }
 // loud at boot rather than silent on first upload. The Publisher
 // canonically routes every Drive write through the DestinationRegistry
 // + RequireSubpath + ConflictPolicy belt; the legacy direct-uploader
-// bypass is closed. driveup is still imported because
-// ensureStyleDriveFolders (below) takes the concrete Uploader for
-// Style folder pre-creation — that surface is OUT OF SCOPE for F2.8.
+// bypass is closed. The driveup import is no longer needed in this
+// file (Wave A Item 15, June 2026) — the ensureStyleDriveFolders
+// helper that used it has been removed.
 func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, publisher delivery.Publisher) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
@@ -105,18 +109,12 @@ func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository,
 }
 
 // ── Style Drive folder pre-creation ─────────────────────────────────────────
-
-func ensureStyleDriveFolders(ctx context.Context, uploader *driveup.Uploader, rootID string, styleRegistry *generation.StyleRegistry, log *zap.Logger) {
-	if uploader == nil || strings.TrimSpace(rootID) == "" || styleRegistry == nil {
-		return
-	}
-	for _, st := range styleRegistry.List() {
-		name := strings.TrimSpace(st.Name)
-		if name == "" {
-			continue
-		}
-		if _, err := uploader.GetOrCreateFolder(ctx, name, rootID); err != nil && log != nil {
-			log.Warn("failed to pre-create style folder", zap.String("style", name), zap.String("root_id", rootID), zap.Error(err))
-		}
-	}
-}
+//
+// Wave A Item 15 (June 2026): REMOVED. The legacy ensureStyleDriveFolders
+// helper (which called uploader.GetOrCreateFolder in a loop for every
+// registered style) has been deleted from this file. The corresponding
+// concurrent.SafeGo("drive-style-folders", ...) call site in
+// build_bundles_drive.go::startDriveBackgroundFolders is also removed.
+// Composition's role is to wire deps; per-style Drive folder creation
+// is the operator's responsibility post-deploy via the canonical
+// `reset-video-ai` admin command (which uses the drive.Admin port).
