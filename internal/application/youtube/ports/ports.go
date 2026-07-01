@@ -237,3 +237,16 @@ type IndexEventPayload struct {
 type ClipAtomicWriter interface {
 	CommitClipAndIndexEvent(ctx context.Context, clipID string, asset youtubetypes.ClipAsset, event IndexEventPayload) error
 }
+
+// ClipMetadataWriter is the port for metadata-enrichment writes. The
+// concrete ClipMetadataWriterAdapter (internal/infrastructure/database/
+// sqlite/assets/clip_metadata_writer.go) performs an atomic SQLite
+// transaction: UPDATE media_assets.metadata_json + INSERT outbox_events
+// in a single tx.
+//
+// Commit 4/6 (PR-C-YouTube-Cutover, June 2026, P1 #15 + #16): added
+// as the canonical metadata writer port. The previous direct-assetRepo-
+// -Upsert path is removed per the fail-closed posture.
+type ClipMetadataWriter interface {
+	UpdateClipMetadataAndRequestIndex(ctx context.Context, clipID string, m youtubetypes.CanonicalClipMetadata) error
+}

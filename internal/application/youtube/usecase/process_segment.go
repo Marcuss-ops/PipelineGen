@@ -43,6 +43,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -70,6 +71,17 @@ type ProcessSegmentDeps struct {
 	// SegmentPolicy is the duration gate (Min/Max in seconds).
 	// Zero values default to {Min: 2, Max: 60}. Commit 2/6 #3.
 	SegmentPolicy youtubetypes.SegmentPolicy
+	// ClipMetadataWriter is the optional metadata-enrichment writer
+	// (Commit 4/6, P1 #15). When non-nil, Step 10 of the pipeline
+	// writes CanonicalClipMetadata to media_assets + emits the
+	// metadata outbox event. When nil, Step 10 short-circuits
+	// silently. Type: youtubeports.ClipMetadataWriter.
+	ClipMetadataWriter youtubeports.ClipMetadataWriter
+	// MetadataService is the optional metadata-enrichment orchestrator
+	// (Commit 4/6, P1 #15 + #16). When non-nil, Step 10 calls
+	// EnrichClip to build + persist metadata. When nil, Step 10
+	// is a no-op.
+	MetadataService *ytmetadata.MetadataService
 	Log           *zap.Logger
 }
 
