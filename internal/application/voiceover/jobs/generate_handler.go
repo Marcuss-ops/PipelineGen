@@ -80,19 +80,26 @@ func NewGenerateJobHandler(useCase *FanoutVoiceoversUseCase, logger *zap.Logger)
 // Godlike/07: registering alongside the legacy voiceover.batch +
 // voiceover.promo handlers is the EXPAND shape — no removal. Both
 // paths coexist until CUTOVER flips the call sites.
-func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) {
+//
+// Audit P0 #2 (July 2026): Register now returns error so the
+// composition root can fail-closed at boot if the dispatcher rejects
+// the binding. Pre-P0 #2 the silent-Warn path meant a future CallSite
+// regression (e.g. jobs.Service receives a different registry mid-
+// migration) would silently dead-letter every parent job — the same
+// failure mode that triggered audit-P0 1 month prior. Returning the
+// error lets NewComposition abort with a typed message that
+// operators can grep on.
+func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
-		h.logger.Warn("GenerateJobHandler.Register: jobsSvc is nil; handler not bound to dispatcher")
-		return
+		return fmt.Errorf("GenerateJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
 	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerate, h.HandleJob); err != nil {
-		h.logger.Error("GenerateJobHandler.Register: RegisterHandler failed",
-			zap.String("job_type", appjobs.TypeVoiceoverGenerate),
-			zap.Error(err))
-		return
+		return fmt.Errorf("GenerateJobHandler.Register: bind %q to dispatcher: %w",
+			appjobs.TypeVoiceoverGenerate, err)
 	}
 	h.logger.Info("registered voiceover.generate handler",
 		zap.String("job_type", appjobs.TypeVoiceoverGenerate))
+	return nil
 }
 
 // HandleJob processes a voiceover.generate parent job from the queue.

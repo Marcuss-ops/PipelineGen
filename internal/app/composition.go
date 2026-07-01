@@ -641,7 +641,14 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		// fails closed if this registration is absent — the failure mode
 		// of HEAD pre-Catena-A was /api/voiceover/generate → 202 → job
 		// queued → no consumer → silence.
-		domains.VoiceoverGenerateHandler.Register(jobs.Service)
+		//
+		// Audit P0 #2 (July 2026): Register now returns error so this
+		// wiring step fails loud at boot instead of silently dropping
+		// jobs onto an unsigned dispatcher (the pre-P0 #2 silent-Warn
+		// pattern was the audit-mandated fix surface).
+		if err := domains.VoiceoverGenerateHandler.Register(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose voiceover.generate handler wiring (Catena A P0): %w", err)
+		}
 		log.Info("voiceover.generate handler registered (Catena A P0 wiring complete)")
 	} else {
 		log.Warn("voiceover.generate handler NOT registered (typed-port chain incomplete — Drive / destResolver / outbox / lifecycle / repo / audio / db must all be wired)",
@@ -655,17 +662,48 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// the late-binding Register calls. Idempotent — second pass logs the
 	// `already registered` warning via the existing Dispatcher
 	// double-Register protection.
+	//
+	// Audit P0 #2 (July 2026): both Register calls now return error;
+	// NewComposition aborts if either fails (fail-closed at boot).
+	// Pre-P0 #2 a silent-Warn here would lose the parent-child wiring
+	// and the parent fan-out would dead-letter every N children.
 	if jobs.Service != nil && domains.VoiceoverProcessItem != nil {
 		fanout := voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{
 			Enqueuer: jobs.Service,
 			Logger:   log,
 		})
 		parentHandler := voiceoverjobs.NewGenerateJobHandler(fanout, log)
-		parentHandler.Register(jobs.Service)
+		// Audit P0 #2 (July 2026): the dispatcher's duplicate-
+		// Register contract is not part of its surface (verify either
+		// errors on a second Register call or silently overwrites).
+		// Block A above may have already bound a handler for
+		// TypeVoiceoverGenerate when BuildDomainBundle succeeded.
+		// The pre-P0 #2 silent-Warn path masked this; Post-P0 #2
+		// must explicitly preserve idempotency via dispatcher's
+		// HasHandler probe (canonical per internal/app/
+		// voiceover_wiring_test.go::TestVoiceoverGenerateHandler_RequiresRegistration).
+		// If already bound, skip the re-Register — the domains field
+		// is still overwritten with the BLOC5.3 fanout-bound handler
+		// for downstream state-tracking consumers.
+		if !jobs.Service.HasHandler(appjobs.TypeVoiceoverGenerate) {
+			if err := parentHandler.Register(jobs.Service); err != nil {
+				return nil, fmt.Errorf("compose voiceover.generate parent handler Register (BLOC5.3 commit-2): %w", err)
+			}
+		} else {
+			log.Info("voiceover.generate handler already bound (Catena A P0 wiring succeeded) — preserving dispatcher binding; BLOC5.3 fanout-bound handler canonicals the domains.VoiceoverGenerateHandler field reference for downstream state-tracking",
+				zap.String("job_type", appjobs.TypeVoiceoverGenerate))
+		}
 		domains.VoiceoverGenerateHandler = parentHandler
 
+		// TypeVoiceoverGenerateItem is NOT pre-registered by Block A
+		// (Block A only touches TypeVoiceoverGenerate). Per-language
+		// child handler registration is uniquely owned by this block;
+		// any failure surfaces as a typed error and aborts composition
+		// (fail-closed at boot, audit P0.2).
 		childHandler := voiceoverjobs.NewGenerateItemJobHandler(domains.VoiceoverProcessItem, log)
-		childHandler.Register(jobs.Service)
+		if err := childHandler.Register(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose voiceover.generate_item child handler Register (BLOC5.3 commit-2): %w", err)
+		}
 		domains.VoiceoverGenerateItemHandler = childHandler
 		log.Info("BLOC5.3 commit-2 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
 	}
