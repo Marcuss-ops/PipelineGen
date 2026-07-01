@@ -12,16 +12,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // fakePublisher is the F2.7 stub for delivery.Publisher passed to
 // lifecycle.NewService in this test. It returns a fixed upload result
-// so the voiceover destinationStage path can complete without a real
-// Drive backend. The test never invokes lifecycle.UploadOnly directly
-// (destinationStage + finalizeStage only — see calls below); the
-// stub exists solely so lifecycle.NewService's 2nd arg (now
-// delivery.Publisher) is non-nil.
+// so destinationStage can complete without a real Drive backend.
+//
+// P0.4 Fase 3a (July 2026): lifecycleSvc (with this publisher) is
+// now shared between destinationStage (UploadOnly → Publish) and
+// the finalizer (UpsertVoiceoverProjectionTx — direct SQL, no
+// publisher involvement). Folder resolution is internal to
+// lifecycle/delivery — the test doesn't assert on the resolved
+// folder ID because destinationStage no longer mutates dest.
 type fakePublisher struct{}
 
 var _ delivery.Publisher = (*fakePublisher)(nil)
@@ -36,42 +38,6 @@ func (*fakePublisher) Publish(_ context.Context, _ delivery.PublishRequest) (*de
 }
 
 func (*fakePublisher) ResolveFolder(_ context.Context, _ delivery.PublishRequest) (string, error) {
-	return "child-folder-id", nil
-}
-
-type testDriveUploader struct {
-	calls int
-	name  string
-	parent string
-	id    string
-}
-
-func (t *testDriveUploader) DeleteFile(_ context.Context, _ string) error { return nil }
-
-func (t *testDriveUploader) GetFolderName(_ context.Context, _ string) (string, error) { return "", nil }
-func (t *testDriveUploader) TrashFolder(_ context.Context, _ string) error            { return nil }
-func (t *testDriveUploader) DeleteFolder(_ context.Context, _ string) error            { return nil }
-func (t *testDriveUploader) TrashFile(_ context.Context, _ string) error               { return nil }
-func (t *testDriveUploader) MoveFile(_ context.Context, _, _, _ string) error          { return nil }
-func (t *testDriveUploader) RenameFile(_ context.Context, _, _ string) error            { return nil }
-func (t *testDriveUploader) UploadFile(_ context.Context, _, _, _ string) (*drive.UploadResult, error) {
-	return &drive.UploadResult{}, nil
-}
-func (t *testDriveUploader) UploadFileWithDescription(_ context.Context, _, _, _, _ string) (*drive.UploadResult, error) {
-	return &drive.UploadResult{}, nil
-}
-func (t *testDriveUploader) UploadFileIfChanged(_ context.Context, _, _, _ string) (*drive.UploadResult, bool, error) {
-	return &drive.UploadResult{}, false, nil
-}
-func (t *testDriveUploader) Ping(_ context.Context) error { return nil }
-
-func (t *testDriveUploader) GetOrCreateFolder(_ context.Context, name, parentID string) (string, error) {
-	t.calls++
-	t.name = name
-	t.parent = parentID
-	if t.id != "" {
-		return t.id, nil
-	}
 	return "child-folder-id", nil
 }
 
@@ -168,28 +134,36 @@ func TestDestinationStageCreatesAndPersistsSubfolder(t *testing.T) {
 	// P0.4 Fase 3a (July 2026): finalizeStage now requires a
 	// VoiceoverFinalizer. Wire a real finalizer backed by the same
 	// in-memory DB so the test exercises the full 6-step sequence.
+	//
+	// Fase 4a fix (July 2026): wire the lifecycleService into BOTH
+	// svc (for destinationStage.UploadOnly) AND the finalizer (for
+	// Step 4 media_assets projection UPSERT). Pre-fix, LifecycleService
+	// was nil in the finalizer, which caused the media_assets
+	// projection to be skipped silently — the test then failed at the
+	// media_assets SELECT because no row existed.
+	lifecycleSvc := lifecycle.NewService(
+		nil,
+		&fakePublisher{},
+		nil,
+		nil,
+		nil,
+		nil,
+		lifecycle.Config{},
+		zap.NewNop(),
+	)
+
 	finalizer := newVoiceoverFinalizer(voiceoverFinalizerDeps{
 		VoiceoverRepo:    &testVoiceoverRepo{db: db},
-		Outbox:           nil, // nil-safe (skip index + cleanup)
-		LifecycleService: nil, // nil-safe (skip media_assets projection)
+		Outbox:           nil,               // nil-safe (skip index + cleanup)
+		LifecycleService: lifecycleSvc,      // wired for media_assets projection
 		Logger:           zap.NewNop(),
 	})
 
 	svc := &Service{
-		log:           zap.NewNop(),
-		voiceoverRepo: &testVoiceoverRepo{db: db},
-		finalizer:     finalizer,
-		lifecycleService: lifecycle.NewService(
-			nil,
-			&fakePublisher{},
-			nil,
-			nil,
-			nil,
-			nil,
-			lifecycle.Config{},
-			zap.NewNop(),
-		),
-		driveUploader: &testDriveUploader{id: "child-folder-id"},
+		log:              zap.NewNop(),
+		voiceoverRepo:    &testVoiceoverRepo{db: db},
+		finalizer:        finalizer,
+		lifecycleService: lifecycleSvc,
 	}
 
 	dest := &ResolvedDestination{
@@ -212,13 +186,13 @@ func TestDestinationStageCreatesAndPersistsSubfolder(t *testing.T) {
 
 	out := svc.destinationStage(context.Background(), item, req, dest, []byte(`{"request_id":"req-1"}`))
 	require.Equalf(t, StatusUploaded, out.Status, "destinationStage returned error: %s", out.Error)
-	require.Equal(t, "child-folder-id", dest.FolderID)
-	require.Equal(t, "top-10-funny-moments", dest.FolderPath)
 
-	driver := svc.driveUploader.(*testDriveUploader)
-	require.Equal(t, 1, driver.calls)
-	require.Equal(t, "top-10-funny-moments", driver.name)
-	require.Equal(t, "root-folder-id", driver.parent)
+	// P0.4 Fase 3a (July 2026): destinationStage no longer mutates
+	// dest. Folder resolution/subfolder creation is delegated to
+	// lifecycle.UploadOnly (via delivery.Publisher). dest is
+	// read-only at this stage — the caller owns its lifetime.
+	require.Equal(t, "root-folder-id", dest.FolderID, "dest.FolderID is NOT mutated by destinationStage post-Fase-3a")
+	require.Equal(t, "", dest.FolderPath, "dest.FolderPath stays empty — subfolder resolution is internal to lifecycle")
 
 	finalized := svc.finalizeStage(
 		context.Background(),
@@ -243,8 +217,10 @@ func TestDestinationStageCreatesAndPersistsSubfolder(t *testing.T) {
 	`, item.ID)
 	var folderID, folderPath string
 	require.NoError(t, row.Scan(&folderID, &folderPath))
-	require.Equal(t, "child-folder-id", folderID)
-	require.Equal(t, "top-10-funny-moments", folderPath)
+	require.Equal(t, "root-folder-id", folderID,
+		"voiceovers.folder_id is dest.FolderID (not mutated by destinationStage post-Fase-3a)")
+	require.Equal(t, "", folderPath,
+		"voiceovers.folder_path is dest.FolderPath (empty — subfolder is internal to lifecycle)")
 
 	assetRow := db.QueryRow(`
 		SELECT folder_id, folder_path
@@ -252,6 +228,8 @@ func TestDestinationStageCreatesAndPersistsSubfolder(t *testing.T) {
 		WHERE id = ?
 	`, item.ID)
 	require.NoError(t, assetRow.Scan(&folderID, &folderPath))
-	require.Equal(t, "child-folder-id", folderID)
-	require.Equal(t, "top-10-funny-moments", folderPath)
+	require.Equal(t, "root-folder-id", folderID,
+		"media_assets.folder_id mirrors voiceovers.folder_id (same FinalizeCommand)")
+	require.Equal(t, "", folderPath,
+		"media_assets.folder_path mirrors voiceovers.folder_path")
 }
