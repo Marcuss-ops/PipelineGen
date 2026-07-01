@@ -200,13 +200,20 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	out.ID = id
 
 	// Stage 1: TTSProvider.Synthesize (Stage 0 uses ttsProvider, Stage 1+ runs).
+	// P0.2 Fase 2c (July 2026): RemoveSilence is ALWAYS false here.
+	// The TTS provider must never handle silence removal — only
+	// AudioPostProcessor.Process (Stage 2) owns that responsibility.
+	// Passing item.RemoveSilence=true to Synthesize would cause the
+	// TTS bridge (Python tts_edge.py) to strip silence inline,
+	// and then AudioPostProcessor would re-process an already-cleaned
+	// file — double-processing that wastes CPU and risks audio artifacts.
 	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
 		Text:          item.Text,
 		Language:      item.Language,
 		Voice:         item.Voice,
 		Filename:      item.Filename,
 		OutputDir:     dest.FolderPath,
-		RemoveSilence: item.RemoveSilence,
+		RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS
 	})
 	if err != nil {
 		out.Error = fmt.Sprintf("tts_failed: %v", err)
