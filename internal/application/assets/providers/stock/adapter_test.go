@@ -18,19 +18,27 @@ import (
 var _ providers.FetchProvider = (*stock.Adapter)(nil)
 
 // fakeRunner is a minimal stub of stockpipeline.stockRunner. It captures the
-// most-recent RunInput and returns canned outputs so unit tests can
-// verify dispatch + happy-path mapping without standing up a real
+// most-recent RunInput / stagedURL and returns canned outputs so unit tests
+// can verify dispatch + happy-path mapping without standing up a real
 // *stockpipeline.Service (which carries a heavy Drive+Jobs+AssetIndex
 // dependency chain).
 type fakeRunner struct {
-	lastInput *stockpipeline.RunInput
-	result    *stockpipeline.PipelineResult
-	err       error
+	lastInput  *stockpipeline.RunInput
+	result     *stockpipeline.PipelineResult
+	err        error
+	stagedURL  string
+	staged     *stockpipeline.StagedSource
+	stageErr   error
 }
 
 func (f *fakeRunner) Run(_ context.Context, in *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error) {
 	f.lastInput = in
 	return f.result, f.err
+}
+
+func (f *fakeRunner) StageSource(_ context.Context, url string) (*stockpipeline.StagedSource, error) {
+	f.stagedURL = url
+	return f.staged, f.stageErr
 }
 
 // TestAdapter_NameReturnsStock verifies the canonical identifier.
@@ -100,20 +108,18 @@ func TestFetch_EmptySourceRef_ReturnsError(t *testing.T) {
 	}
 }
 
-// TestFetch_DispatchesViaDirectURLsOnly verifies the adapter routes
-// ONLY via the DirectURLs path (Stock is fetch-only, NEVER search).
-// The captured lastInput must have SearchQueries empty and exactly
-// one entry in DirectURLs matching the request.
-func TestFetch_DispatchesViaDirectURLsOnly(t *testing.T) {
+// TestFetch_DispatchesViaStageSource verifies the adapter routes
+// through StageSource (NOT Run — Blocco 2a). The captured stagedURL
+// must match the request SourceRef.
+func TestFetch_DispatchesViaStageSource(t *testing.T) {
 	staged := filepath.Join(t.TempDir(), "staged.mp4")
 	if err := os.WriteFile(staged, []byte("payload"), 0644); err != nil {
 		t.Fatalf("stage fixture: %v", err)
 	}
 	fr := &fakeRunner{
-		result: &stockpipeline.PipelineResult{
-			Chunks: []stockpipeline.ChunkResult{
-				{LocalPath: staged},
-			},
+		staged: &stockpipeline.StagedSource{
+			LocalPath: staged,
+			Bytes:     int64(len("payload")),
 		},
 	}
 	a := stock.NewAdapter(fr)
@@ -135,57 +141,51 @@ func TestFetch_DispatchesViaDirectURLsOnly(t *testing.T) {
 	if got.FetchedAt.IsZero() {
 		t.Error("FetchedAsset.FetchedAt is zero; expected now()")
 	}
-	if fr.lastInput == nil {
-		t.Fatal("runner.lastInput not captured — Fetch did not invoke runner.Run")
+	if fr.stagedURL != "https://example.com/a.mp4" {
+		t.Errorf("StageSource url = %q, want https://example.com/a.mp4", fr.stagedURL)
 	}
-	if len(fr.lastInput.DirectURLs) != 1 || fr.lastInput.DirectURLs[0] != "https://example.com/a.mp4" {
-		t.Errorf("RunInput.DirectURLs = %v, want [https://example.com/a.mp4]", fr.lastInput.DirectURLs)
-	}
-	if len(fr.lastInput.SearchQueries) != 0 {
-		t.Errorf("RunInput.SearchQueries must be empty for Fetch, got %v", fr.lastInput.SearchQueries)
+	if fr.lastInput != nil {
+		t.Errorf("runner.Run must NOT be called from Fetch after Blocco 2a; lastInput = %v", fr.lastInput)
 	}
 }
 
-// TestFetch_NoChunks_ReturnsError protects against silent-empty
-// success when the pipeline emitted zero chunks. Operator should
-// see an explicit error rather than a zero-value FetchedAsset.
-func TestFetch_NoChunks_ReturnsError(t *testing.T) {
-	fr := &fakeRunner{result: &stockpipeline.PipelineResult{Chunks: nil}}
+// TestFetch_NilStaged_ReturnsError protects against nil StagedSource
+// returned by StageSource. Blocco 2a: StageSource must never return
+// nil without an error.
+func TestFetch_NilStaged_ReturnsError(t *testing.T) {
+	fr := &fakeRunner{staged: nil}
 	a := stock.NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
 	if err == nil {
-		t.Fatal("Fetch(no chunks) err = nil, want non-nil")
+		t.Fatal("Fetch(nil staged) err = nil, want non-nil")
 	}
 }
 
-// TestFetch_PipelineRunError_Wrapped protects against silent error
-// loss. The adapter wraps runner.Run errors so callers see the
-// underlying cause via errors.Is / errors.As unwrap.
-func TestFetch_PipelineRunError_Wrapped(t *testing.T) {
-	sentinel := errors.New("pipeline unreachable")
-	fr := &fakeRunner{err: sentinel}
+// TestFetch_StageSourceError_Wrapped protects against silent error
+// loss. The adapter wraps StageSource errors so callers see the
+// underlying cause via errors.Is / errors.As unwrap. Blocco 2a.
+func TestFetch_StageSourceError_Wrapped(t *testing.T) {
+	sentinel := errors.New("stage source unreachable")
+	fr := &fakeRunner{stageErr: sentinel}
 	a := stock.NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
 	if err == nil {
-		t.Fatal("Fetch(pipeline err) err = nil, want non-nil")
+		t.Fatal("Fetch(stage err) err = nil, want non-nil")
 	}
 	if !errors.Is(err, sentinel) {
 		t.Errorf("Fetch error does not wrap sentinel: %v", err)
 	}
 }
 
-// TestFetch_EmptyLocalPath_ReturnsError protects against successful-
-// lookup / zero-path edge cases where the pipeline reported a chunk
-// but its LocalPath is empty (corrupted result state).
+// TestFetch_EmptyLocalPath_ReturnsError protects against successful
+// staging with empty LocalPath (corrupted StagedSource state).
 func TestFetch_EmptyLocalPath_ReturnsError(t *testing.T) {
 	fr := &fakeRunner{
-		result: &stockpipeline.PipelineResult{
-			Chunks: []stockpipeline.ChunkResult{{LocalPath: ""}},
-		},
+		staged: &stockpipeline.StagedSource{LocalPath: ""},
 	}
 	a := stock.NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{

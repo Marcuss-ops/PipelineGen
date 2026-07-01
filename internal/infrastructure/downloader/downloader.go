@@ -119,7 +119,14 @@ type DownloadedSegment struct {
 	Index int
 }
 
-func resolveDownloadedSegmentPath(outputTemplate string) string {
+// ResolveDownloadedSegmentPath finds the actual output file matching the
+// yt-dlp output template. Returns the first non-part, non-ytdl file that
+// exists and is non-empty. Returns an error if no matching file is found.
+//
+// Blocco 1c (July 2026): now returns (string, error) with os.Stat +
+// size verification. Pre-fix returned a fallback ".mp4" path even when
+// no file existed, producing silent false-success.
+func ResolveDownloadedSegmentPath(outputTemplate string) (string, error) {
 	base := strings.TrimSuffix(outputTemplate, ".%(ext)s")
 	candidates, _ := filepath.Glob(base + ".*")
 	for _, candidate := range candidates {
@@ -129,9 +136,16 @@ func resolveDownloadedSegmentPath(outputTemplate string) string {
 		if strings.HasSuffix(candidate, ".ytdl") {
 			continue
 		}
-		return candidate
+		fi, err := os.Stat(candidate)
+		if err != nil {
+			continue
+		}
+		if fi.Size() == 0 {
+			continue
+		}
+		return candidate, nil
 	}
-	return base + ".mp4"
+	return "", fmt.Errorf("resolveDownloadedSegmentPath: no output file found for template %q (globbed %d candidates)", outputTemplate, len(candidates))
 }
 
 func (d *YTDLPDownloader) addExternalDownloaderArgs(args []string) []string {
@@ -258,7 +272,11 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		return "", fmt.Errorf("failed to download range: %w", err)
 	}
 
-	return resolveDownloadedSegmentPath(outputTemplate), nil
+	path, pathErr := ResolveDownloadedSegmentPath(outputTemplate)
+	if pathErr != nil {
+		return "", fmt.Errorf("download range succeeded but output file not found: %w", pathErr)
+	}
+	return path, nil
 }
 
 // DownloadSections downloads specific time sections from a video.
@@ -334,8 +352,13 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 			return results, fmt.Errorf("failed to download section %d: %w", i, err)
 		}
 
+		resolvedPath, pathErr := ResolveDownloadedSegmentPath(outputTemplate)
+		if pathErr != nil {
+			return results, fmt.Errorf("section %d: %w", i, pathErr)
+		}
+
 		results = append(results, DownloadedSegment{
-			Path:  resolveDownloadedSegmentPath(outputTemplate),
+			Path:  resolvedPath,
 			Name:  fmt.Sprintf("segment_%03d", i+1),
 			Index: i,
 		})

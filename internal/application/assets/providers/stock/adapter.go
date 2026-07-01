@@ -23,12 +23,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // Compile-time assertion: *Adapter satisfies providers.FetchProvider.
@@ -47,37 +45,22 @@ var ErrSourceNotWired = errors.New("stock adapter: runner not wired")
 // stub without constructing a full *stockpipeline.Service (which
 // carries a heavy Drive + Jobs + AssetIndex chain).
 //
-// *stockpipeline.Service satisfies stockRunner via its public Run method.
+// *stockpipeline.Service satisfies stockRunner via its public Run and
+// StageSource methods.
 //
 // NewAdapter accepts a stockRunner (NOT a concrete *stockpipeline.Service)
 // so unit tests can hand in *fakeRunner without a constructor signature
 // mismatch. Production wiring in internal/app/registry.go passes
 // *stockpipeline.Service which auto-satisfies the interface.
+//
+// Blocco 2a (July 2026): StageSource added for the FetchProvider contract.
+// Adapter.Fetch calls StageSource instead of Run so the staged file
+// survives the return (Run's defer os.RemoveAll deleted it before
+// Fetch could return it).
 type stockRunner interface {
 	Run(ctx context.Context, input *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error)
+	StageSource(ctx context.Context, url string) (*stockpipeline.StagedSource, error)
 }
-
-// stockDefaults holds the pipeline-tuning numbers used when the
-// caller supplies only a SourceRef (URL). Extracted into named
-// constants with rationale so future readers understand why each
-// value was chosen — these are NOT pipeline-policy magic numbers
-// pulled from thin air.
-//
-// Rationale for each default:
-//
-//   - TotalMinutes: 5  — minimum sensible target so the pipeline
-//     produces ≥ 1 chunk even for short clips.
-//   - ChunkDuration: 25s  — matches stockpipeline.DefaultPipelineConfig
-//     and keeps the chunking boundary stable across registrations.
-//   - ClipDuration:  5s  — matches DefaultPipelineConfig.ClipDuration.
-//
-// All three should be promoted to FetchRequest fields once a second
-// FetchProvider (channel-monitor YouTube) sets the precedent —
-// keeping them adapter-internal for now (YAGNI) avoids API churn.
-const (
-	stockDefaultTotalMinutes  = 5
-	stockDefaultClipDuration  = 5
-)
 
 // Adapter wraps a stockRunner (production: *stockpipeline.Service)
 // and exposes it as a providers.FetchProvider. The Adapter does NOT
@@ -135,12 +118,17 @@ func (a *Adapter) Capabilities() []providers.Capability {
 //
 //   - Validates runner is wired (nil guard).
 //   - Validates SourceRef (a URL) is non-empty.
-//   - Calls runner.Run with a RunInput pinned to the DirectURLs path:
-//     no SearchQueries, no effect overlay, stockDefault* durations.
-//     The resulting PipelineResult.Chunks[0].LocalPath is the staged
-//     payload on disk.
-//   - Returns a FetchedAsset with LocalPath = chunk[0].LocalPath,
-//     FetchedAt = now (UTC), and Bytes from a stat() of LocalPath.
+//   - Calls runner.StageSource (Blocco 2a, July 2026) to download the
+//     video into a staging directory WITHOUT the render/upload/index
+//     pipeline. Pre-fix, Fetch called runner.Run which:
+//       a) ran the full heavy pipeline (render chunks, upload to Drive,
+//          index into Qdrant) — overkill for a staging operation;
+//       b) deleted the temp dir via defer os.RemoveAll before returning,
+//          so the returned LocalPath pointed to a deleted file and
+//          Bytes was always 0 (stat failed silently).
+//   - Returns a FetchedAsset with the live LocalPath and non-zero Bytes.
+//     The caller is responsible for cleanup via the os-level temp dir
+//     (the staging directory is under cfg.Storage.TempPath()).
 //
 // What Fetch deliberately does NOT do:
 //
@@ -162,54 +150,23 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 		return nil, fmt.Errorf("stock fetch: missing SourceRef (URL)")
 	}
 
-	// DirectURLs path only. SearchQueries left empty so resolveQuery
-	// (yt-dlp search) is never invoked.
-	input := &stockpipeline.RunInput{
-		DirectURLs:    []string{req.SourceRef},
-		TotalMinutes:  stockDefaultTotalMinutes,
-		ChunkDuration: defaults.DefaultVideoConfig().ChunkDuration,
-		ClipDuration:  stockDefaultClipDuration,
-		// NoAudio/NoEffects/NoTransitions intentionally false so the
-		// output is the unaltered staged payload. Future waves can
-		// promote these to FetchRequest fields if a non-effect overlay
-		// path is needed.
-	}
-
-	result, err := a.runner.Run(ctx, input)
+	// Blocco 2a (July 2026): call StageSource instead of Run.
+	// StageSource only downloads the video — no render, upload, or
+	// indexing. The file is NOT deleted before return.
+	staged, err := a.runner.StageSource(ctx, req.SourceRef)
 	if err != nil {
-		return nil, fmt.Errorf("stock fetch: pipeline run failed: %w", err)
+		return nil, fmt.Errorf("stock fetch: stage source failed: %w", err)
 	}
-	if result == nil || len(result.Chunks) == 0 {
-		return nil, fmt.Errorf("stock fetch: no chunks yielded for %q", req.SourceRef)
-	}
-	localPath := result.Chunks[0].LocalPath
-	if localPath == "" {
-		return nil, fmt.Errorf("stock fetch: chunk[0].LocalPath empty for %q", req.SourceRef)
+	if staged == nil || staged.LocalPath == "" {
+		return nil, fmt.Errorf("stock fetch: no staged file for %q", req.SourceRef)
 	}
 
 	return &providers.FetchedAsset{
 		Asset:     nil, // canonical asset generation is downstream
-		LocalPath: localPath,
+		LocalPath: staged.LocalPath,
 		FetchedAt: time.Now().UTC(),
-		Bytes:     fileBytes(localPath),
+		Bytes:     staged.Bytes,
 	}, nil
 }
 
-// fileBytes returns the size of the staged payload or 0 when the
-// stat fails. Best-effort: callers receive FetchedAsset.LocalPath
-// unconditionally and can re-stat themselves if precise bytes
-// matter — the helper exists only so log aggregations (Drive
-// upload accounting, telemetry) see a non-zero value when the
-// stage succeeded. Stat errors are NOT surfaced as Fetch errors:
-// a missing intermediate file (cleaned up between hand-off and
-// upload) is a transient race that the upload step will catch.
-func fileBytes(p string) int64 {
-	if p == "" {
-		return 0
-	}
-	fi, err := os.Stat(p)
-	if err != nil {
-		return 0
-	}
-	return fi.Size()
-}
+

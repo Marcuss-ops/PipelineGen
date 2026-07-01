@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -455,4 +457,74 @@ type VideoSource struct {
 	Title       string
 	Source      string
 	DurationSec float64
+}
+
+// StagedSource is the result of a lightweight StageSource call.
+// It contains only the downloaded file — no render, upload, or indexing.
+// The caller owns the file at LocalPath and is responsible for cleanup.
+//
+// Blocco 2a (July 2026): created to separate the "fetch" contract from
+// the full pipeline (render → upload → index). Adapter.Fetch uses this
+// instead of Run so the staged file survives the return.
+type StagedSource struct {
+	LocalPath string
+	Bytes     int64
+}
+
+// StageSource downloads a video from a URL and returns the staged file.
+// It creates a temp directory, downloads via yt-dlp, verifies the output
+// file exists and is non-empty, and returns a StagedSource with a Cleanup
+// function. Does NOT run the render/upload/index pipeline.
+//
+// Blocco 2a (July 2026): lightweight alternative to Run for the FetchProvider
+// contract. The file is NOT cleaned up until the caller invokes Cleanup().
+func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, error) {
+	tempDir, err := os.MkdirTemp(s.cfg.Storage.TempPath(), "stock_stage_")
+	if err != nil {
+		return nil, fmt.Errorf("stage source: create temp dir: %w", err)
+	}
+
+	outputBase := filepath.Join(tempDir, "source")
+	outputTemplate := outputBase + ".%(ext)s"
+
+	dlReq := &downloader.DownloadRequest{
+		URL:        url,
+		OutputPath: outputTemplate,
+		NoPlaylist: true,
+		Timeout:    10 * time.Minute,
+	}
+
+	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage source: download %q: %w", url, err)
+	}
+
+	// Resolve the actual output file (yt-dlp may change the extension).
+	// Uses the canonical downloader.ResolveDownloadedSegmentPath so the
+	// stat+size verification stays in one place (Blocco 1c).
+	localPath, err := downloader.ResolveDownloadedSegmentPath(outputTemplate)
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage source: resolve output file: %w", err)
+	}
+
+	fi, statErr := os.Stat(localPath)
+	if statErr != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage source: stat downloaded file %q: %w", localPath, statErr)
+	}
+	if fi.Size() == 0 {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage source: downloaded file is empty: %s", localPath)
+	}
+
+	s.log.Info("stage source: video downloaded",
+		zap.String("url", url),
+		zap.String("local_path", localPath),
+		zap.Int64("bytes", fi.Size()))
+
+	return &StagedSource{
+		LocalPath: localPath,
+		Bytes:     fi.Size(),
+	}, nil
 }
