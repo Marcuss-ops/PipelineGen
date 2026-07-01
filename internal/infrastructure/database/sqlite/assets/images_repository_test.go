@@ -31,6 +31,12 @@ func testDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open sqlite3 :memory: %v", err)
 	}
+	// SQLite has FK enforcement OFF by default per-connection. Enable it so
+	// the ON DELETE CASCADE clauses on FK(asset_id) cascade correctly during
+	// the CASCADE tests. Production migration runner uses the same pragma.
+	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign_keys: %v", err)
+	}
 	for _, stmt := range fase4TestSchema {
 		if _, err := db.ExecContext(context.Background(), stmt); err != nil {
 			t.Fatalf("apply schema: %v\nstmt=%s", err, stmt)
@@ -111,7 +117,8 @@ func TestUpsertGeneratedDetailsRoundTrip(t *testing.T) {
 		Model:           "flux-1-dev",
 		Seed:            42,
 		GenerationJobID: "job-1",
-		SourceHash:      "hash-1",	}
+		SourceHash:      "hash-1",
+	}
 	if err := repo.UpsertGeneratedDetails(context.Background(), first); err != nil {
 		t.Fatalf("first UpsertGeneratedDetails: %v", err)
 	}
