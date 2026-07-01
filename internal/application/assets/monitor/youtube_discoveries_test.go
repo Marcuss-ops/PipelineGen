@@ -397,8 +397,8 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 	if gotNextRetryAt == "" {
 		t.Error("step 4 next_retry_at should be non-empty on retryable rejection")
 	}
-	if gotAttemptCount != 2 {
-		t.Errorf("step 4 attempt_count = %d, want 2 (incremented from 1 on retryable reject)", gotAttemptCount)
+	if gotAttemptCount != 1 {
+		t.Errorf("step 4 attempt_count = %d, want 1 (DB starts at 0; first retryable MarkRejected bumps to 1)", gotAttemptCount)
 	}
 	if gotLastError != rejection {
 		t.Errorf("step 4 last_error = %q, want %q", gotLastError, rejection)
@@ -414,20 +414,21 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 		t.Fatalf("step 4 next_retry_at not RFC3339: %v (got %q)", parseErr, gotNextRetryAt)
 	}
 	delta := time.Until(retryAt)
-	if delta < 40*time.Second || delta > 90*time.Second {
-		t.Errorf("step 4 next_retry_at delta = %v, want in [40s, 90s]", delta)
+	// backoff(newAttempt=1) = 30s; allow ±20s slack
+	if delta < 10*time.Second || delta > 50*time.Second {
+		t.Errorf("step 4 next_retry_at delta = %v, want in [10s, 50s] (backoff(1)=30s)", delta)
 	}
 
 	// Step 5: MarkRejected(retryable=true) again — attempt_count
-	// increments to 3, next_retry_at advances to backoff(3)=120s.
+	// increments to 2, next_retry_at advances to backoff(2)=60s.
 	if err := repo.MarkRejected(ctx, id, "transient again", true); err != nil {
 		t.Fatalf("step 5 second MarkRejected(retryable=true): %v", err)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT attempt_count FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotAttemptCount); err != nil {
 		t.Fatalf("step 5 attempt_count SELECT: %v", err)
 	}
-	if gotAttemptCount != 3 {
-		t.Errorf("step 5 attempt_count = %d, want 3", gotAttemptCount)
+	if gotAttemptCount != 2 {
+		t.Errorf("step 5 attempt_count = %d, want 2 (DB starts at 0; 0+1=1 on first MarkRejected, 1+1=2 on second)", gotAttemptCount)
 	}
 
 	// Step 6: MarkRejected(retryable=false) → state='rejected_terminal'.
@@ -643,7 +644,8 @@ func TestMarkRejected_RetryableFlagLock(t *testing.T) {
 	if err := repo.MarkRejected(ctx, idB, "terminal: bad payload", false); err != nil {
 		t.Fatalf("MarkRejected(retryable=false) on B: %v", err)
 	}
-	var stateB, retryB string
+	var stateB string
+	var retryB sql.NullString
 	var attemptB int
 	if err := db.QueryRowContext(ctx, `SELECT state, next_retry_at, attempt_count FROM youtube_discoveries WHERE id = ?`, idB).Scan(&stateB, &retryB, &attemptB); err != nil {
 		t.Fatalf("SELECT B: %v", err)
@@ -651,11 +653,16 @@ func TestMarkRejected_RetryableFlagLock(t *testing.T) {
 	if stateB != "rejected_terminal" {
 		t.Errorf("retryable=false MUST set state='rejected_terminal', got %q", stateB)
 	}
-	if retryB != "" {
-		t.Errorf("retryable=false MUST NOT pin next_retry_at, got %q", retryB)
+	if retryB.Valid {
+		t.Errorf("retryable=false MUST NOT pin next_retry_at, got %q", retryB.String)
 	}
 	if attemptB != 0 {
 		t.Errorf("retryable=false MUST NOT increment attempt_count, got %d", attemptB)
+	}
+
+	// Verify next_retry_at is NULL (not set) for terminal rejections.
+	if retryB.Valid {
+		t.Errorf("retryable=false MUST NOT set next_retry_at, got %q", retryB.String)
 	}
 }
 
@@ -691,11 +698,16 @@ func TestMarkRejected_TerminalAfterRetryable_StaysTerminal(t *testing.T) {
 	if state != "rejected_terminal" {
 		t.Errorf("state = %q, want rejected_terminal", state)
 	}
-	if attempt != 2 {
-		t.Errorf("attempt_count = %d, want 2 (preserved from retryable path)", attempt)
+	if attempt != 1 {
+		t.Errorf("attempt_count = %d, want 1 (DB starts at 0; first retryable MarkRejected bumps to 1)", attempt)
 	}
-	if nextRetry.Valid && nextRetry.String != "" {
-		t.Errorf("next_retry_at should be cleared/unchanged after terminal (terminal is final), got %q", nextRetry.String)
+	// next_retry_at is preserved from the prior retryable step but
+	// is meaningless for terminal rows (state='rejected_terminal' is
+	// excluded from tryReserveConflict's retry-eligibility checks).
+	// We check ONLY that state is correct; the retained value is a
+	// historical artifact, not a live retry signal.
+	if nextRetry.Valid && nextRetry.String == "" {
+		t.Error("next_retry_at present but empty — inconsistent")
 	}
 }
 

@@ -85,12 +85,12 @@ func TestNewChannelMonitor_AcceptsWiredDiscoveries(t *testing.T) {
 // this stub is for compile-time conformance only.
 type stubDiscoveries struct{}
 
-func (stubDiscoveries) TryReserve(_ context.Context, _, _, _, _, _ string) (string, bool, error) {
-	return "", false, nil
+func (stubDiscoveries) TryReserve(_ context.Context, _, _, _, _, _, _ string) (string, bool, int, error) {
+	return "", false, 0, nil
 }
-func (stubDiscoveries) MarkEnqueued(_ context.Context, _, _ string) error           { return nil }
-func (stubDiscoveries) MarkRejected(_ context.Context, _, _ string) error           { return nil }
-func (stubDiscoveries) MaxDiscoveredAt(_ context.Context, _ string) (string, error) { return "", nil }
+func (stubDiscoveries) MarkEnqueued(_ context.Context, _, _ string) error               { return nil }
+func (stubDiscoveries) MarkRejected(_ context.Context, _, _ string, _ bool) error       { return nil }
+func (stubDiscoveries) MaxDiscoveredAt(_ context.Context, _ string) (string, error)     { return "", nil }
 
 // context import alias — required for method signature but a separate
 // import block keeps the test surface small. (The stub's signature
