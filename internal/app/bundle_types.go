@@ -66,6 +66,7 @@ type ArtlistBundle struct {
 	ClipsRepo          *assets.ClipsRepository
 	DriveClient        *gdrive.Service
 	DriveUploader      *driveup.Uploader
+	Publisher          delivery.Publisher
 	AssetIndexService  *assetindex.Service
 	ClipIndexerService *clipindexer.Service
 	MediaProcessor     asset.Processor

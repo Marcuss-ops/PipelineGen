@@ -10,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
@@ -142,7 +143,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// the client's default model. The deterministic fallback
 	// uses the formula in metadata/service.go so the production
 	// + fallback score ranges are identical.
-	ollamaBuilder := ytinfra2.NewOllamaClipMetadataBuilder(
+	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
 		0, // timeout=0 → default 60s
@@ -239,6 +240,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// ProcessOneVoiceoverUseCase bridge for Step 12 retirement).
 	voiceoverSvc, voiceoverRepo, voiceoverProcessItem := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.driveUploader,
+		drive.Publisher,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
 		voMetaWriter, ai.ScriptGen,
@@ -252,7 +254,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// internal/infrastructure/drive/ports.go so the field passes at compile).
 	booksSvc := buildBooksService(cfg, dbs, log, voiceoverSvc, drive.Publisher, drive.driveUploader)
 
-	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, repos, search, mutationsDisp)
+	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, drive.Publisher, repos, search, mutationsDisp)
 
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
 		drive.driveUploader, repos.ClipsRepo, repos.ClipsRepo,
@@ -338,7 +340,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// Commit 4/6: the canonical metadata service. Populated
 		// in BuildDomainBundle; consumed by the late-bindings
 		// block + future EnrichClip migration (PR-4.7).
-		ClipMetadataService: clipMetadataService,
 	}, nil
 }
 
@@ -356,7 +357,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // drops the previously-threaded *OutboxBundle arg (it was never read
 // inside the function body) — the caller still constructs mutationsDisp
 // from outbox.Dispatcher, so the Site-1 wiring is unchanged.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
 	if driveUploader == nil {
 		return nil
 	}
@@ -367,13 +368,13 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
 	}
 	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
-	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
+	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
-	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
+	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
 	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, Publisher: drive.Publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	return ingest.NewService(cfg, log, driveUploader.Admin(), map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},

@@ -187,6 +187,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		ClipsRepo:          root.Repos.ClipsRepo,
 		DriveUploader:      root.Drive.driveUploader,
 		DriveClient:        root.Drive.DriveClient,
+		Publisher:          root.Drive.Publisher,
 		AssetIndexService:  root.Search.AssetIndexService,
 		ClipIndexerService: root.Process.ClipIndexerService,
 		MediaProcessor:     root.Process.MediaProcessor,
@@ -240,9 +241,9 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
 	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
 		Service:     root.Jobs.Service,
-		Stats:       root.Jobs.Service, // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
+		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
 		EnabledFunc: func() bool { return true }, // jobs is always on in production
-		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-13 wiring)
+		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-13 wiring)
 		Logger:      log,
 	})
 	if err != nil {

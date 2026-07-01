@@ -93,21 +93,6 @@ func NewYTDLPSubtitleAdapter(d Deps) *YTDLPSubtitleAdapter {
 	}
 }
 
-// TranscriptEntry is the timed-entry shape returned by
-// GetTimedTranscript. The OllamaAnalyzer consumes it for the
-// FindSegments LLM prompt (which prefixes [MM:SS] markers so Ollama
-// can output timestamped segments).
-type TranscriptEntry struct {
-	// Start is the start timestamp in seconds (float for sub-second
-	// precision; the pre-Step-9 segment_finder.go used float64 too).
-	Start float64
-	// End is the end timestamp in seconds.
-	End float64
-	// Text is the cleaned subtitle text for this entry (no XML tags,
-	// no timestamp markers, no whitespace padding).
-	Text string
-}
-
 // GetTranscript satisfies monitor.TranscriptProvider.
 //
 // Steps:
@@ -275,7 +260,7 @@ func (a *YTDLPSubtitleAdapter) Fetch(parent context.Context, videoURL string) (T
 		Text:        text,
 		DurationSec: lastEnd,
 		Entries:     entries,
-		FetchedAt:   nowFn(),
+		FetchedAt:   time.Now().UTC(),
 	}
 	a.log.Debug("YTDLPSubtitleAdapter Fetch succeeded",
 		zap.String("video_id", videoID),

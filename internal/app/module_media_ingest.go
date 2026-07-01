@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
