@@ -15,6 +15,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"go.uber.org/zap"
@@ -356,38 +357,106 @@ func buildVideoURL(clipID string, existing *asset.Asset) string {
 	return ""
 }
 
-// BuildFallbackSearchText populates `clip.SearchText` with a
-// 1 KB-bounded canonical concatenation of title + summary +
-// topics (transcript is empty in this fallback path because
-// the ym=nil branch never reads <LocalPath>.txt — the
-// canonical signature treats transcripts as nullable).
-//
-// Phase 1c closure (Commit 4/4, June 2026): replaced the prior
-// `_ = clip` no-op stub with a delegation to the canonical
-// ytmeta.BuildFallbackSearchText helper. The pre-Commit-1
-// stub left clip.SearchText empty, which silently degraded
-// the semantic-search indexer's BM25-recall surface when
-// ym=nil (yt-dlp failure path). Post-commit-4 the same
-// fallback path writes a real search surface; downstream
-// Qdrant indexing sees an actual signal instead of an
-// empty string.
+// skipMetadataKeysForSearchText is the canonical deny-list
+// for metadata entries that would otherwise bloat the
+// assembled SearchText beyond the 1024-byte budget. Each key
+// holds either pre-computed content, JSON-marshalled
+// structures, or full descriptions that duplicate
+// `metadata["clip_summary"]` signal without giving BM25
+// recall anything new. Adding long-content metadata keys:
+// extend this set, do NOT remove the byte-budget cap.
+var skipMetadataKeysForSearchText = map[string]struct{}{
+	"embedding_text":      {},
+	"clean_transcript":    {},
+	"youtube_chapters":    {},
+	"youtube_categories":  {},
+	"youtube_description": {},
+}
+
+// BuildFallbackSearchText populates `clip.SearchText` from a
+// deterministic in-file assembly of `clip.Name` + `clip.Tags`
+// + `Metadata` (skip-empties + case-insensitive dedup +
+// lower-bound 150 chars + upper-bound 1024 bytes) for the
+// ym=nil fallback path in EnrichClip. Safety-of-shape: this
+// fallback writes `SearchText` but NOT `youtube_title`, so
+// EnrichClip's later `force + youtube_title + SearchText`
+// short-circuit guard (which requires BOTH) is never triggered
+// here. `asset.Asset` has no `Description` field; description-
+// like content folds via metadata.
 func (s *MetadataService) BuildFallbackSearchText(clip *asset.Asset) {
 	if clip == nil {
 		return
 	}
-	// Defensive precedence: future post-write-save paths that
-	// re-run this method after a partial enrichment may have
-	// `youtube_title` stamped in metadata; honor that over
-	// `clip.Name` in that case. The current ym=nil fallback
-	// in EnrichClip never stamps `youtube_title`, so this
-	// branch is observably inert today.
-	title := clip.Name
-	if v := clip.GetMetadataString("youtube_title"); v != "" {
-		title = v
+
+	var parts []string
+	seen := make(map[string]struct{})
+
+	addPart := func(prefix, val string) {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return
+		}
+		low := strings.ToLower(val)
+		if _, dup := seen[low]; dup {
+			return
+		}
+		seen[low] = struct{}{}
+		parts = append(parts, prefix+val)
 	}
-	summary := clip.GetMetadataString("clip_summary")
-	topics := metadataStringSlice(clip.Metadata, "topics")
-	clip.SearchText = ytmeta.BuildFallbackSearchText(title, summary, topics, "")
+
+	addPart("Name: ", clip.Name)
+
+	if len(clip.Tags) > 0 {
+		addPart("Tags: ", strings.Join(clip.Tags, ", "))
+	}
+
+	if clip.Metadata != nil {
+		keys := make([]string, 0, len(clip.Metadata))
+		for k := range clip.Metadata {
+			if _, skip := skipMetadataKeysForSearchText[k]; skip {
+				continue
+			}
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			val := clip.Metadata[k]
+			switch v := val.(type) {
+			case string:
+				addPart(fmt.Sprintf("[%s] ", k), v)
+			case []string:
+				if len(v) > 0 {
+					addPart(fmt.Sprintf("[%s] ", k), strings.Join(v, ", "))
+				}
+			case []any:
+				strs := make([]string, 0, len(v))
+				for _, a := range v {
+					if str, ok := a.(string); ok && strings.TrimSpace(str) != "" {
+						strs = append(strs, str)
+					}
+				}
+				if len(strs) > 0 {
+					addPart(fmt.Sprintf("[%s] ", k), strings.Join(strs, ", "))
+				}
+			}
+		}
+	}
+
+	out := strings.Join(parts, "\n")
+
+	if len(out) < 150 {
+		clip.SearchText = ""
+		return
+	}
+	if len(out) > 1024 {
+		trimmed := out[:1024]
+		if idx := strings.LastIndex(trimmed, " "); idx > 1024-128 {
+			trimmed = trimmed[:idx]
+		}
+		out = strings.TrimRight(trimmed, " \t")
+	}
+
+	clip.SearchText = out
 }
 
 func metadataStringSlice(m map[string]any, key string) []string {
