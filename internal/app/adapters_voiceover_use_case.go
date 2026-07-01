@@ -449,20 +449,20 @@ func (a *useCaseRepoAdapter) PreReadByID(ctx context.Context, id string) (*voice
 // asset.Resolver. Mirrors the production body in *Service.resolveDestination
 // (metadata.go) so the legacy + use-case paths route identically:
 //
-//  1. FORWARD: dest.Group + dest.StyleGroup land in the
+//  1. FORWARD: ALL DestinationRequest fields (Group, FolderID, FolderPath,
+//     SubfolderName, CreateSubfolder, StyleGroup) land in the
 //     asset.ResolveRequest (Source = "voiceover" hardcoded).
-//  2. MIRROR:  dest.StyleGroup is mirrored verbatim onto the returned
-//     ResolvedDestination (resolver is a folder-mapping layer; it
-//     does not echo StyleGroup back).
+//     P0.2 destination-adapter fix (July 2026): pre-fix only Group +
+//     StyleGroup were forwarded; FolderID, FolderPath, SubfolderName,
+//     and CreateSubfolder were silently dropped, so any explicit
+//     routing intent (Kind="explicit" with FolderID) was ignored by
+//     the resolver.
+//  2. MIRROR:  dest.StyleGroup and dest.SubfolderName are mirrored
+//     verbatim onto the returned ResolvedDestination. When dest.FolderID
+//     or dest.FolderPath are explicitly set, they take precedence over
+//     the resolver's returned values (explicit override).
 //  3. Nil-safe: nil dest → error; nil resolver → panic at constructor
 //     time (fail-fast per AGENTS.md WireUp pattern).
-//
-// Note: the use case Execute also forwards cmd.Destination itself as a
-// ServiceDeps; the asset.ResolveRequest does NOT carry the wire
-// Kind / SubfolderName fields. Pre-PR-VO-C1 callers treated the
-// resolver as auto-detect; the use case path inherits that semantically
-// (PR-VO-B2 / PR-VO-A4 work adds Kind / SubfolderName to resolver
-// contracts as the CUTOVER (B-3) step matures — not at P0.1).
 // ─────────────────────────────────────────────────────────────────────
 
 type useCaseDestResolverAdapter struct {
@@ -481,9 +481,13 @@ func (a *useCaseDestResolverAdapter) Resolve(ctx context.Context, dest *voiceove
 		return nil, fmt.Errorf("useCaseDestResolverAdapter.Resolve: nil DestinationRequest")
 	}
 	res, err := a.resolver.Resolve(ctx, &asset.ResolveRequest{
-		Source:     "voiceover",
-		Group:      dest.Group,
-		StyleGroup: dest.StyleGroup,
+		Source:          "voiceover",
+		Group:           dest.Group,
+		FolderID:        dest.FolderID,
+		FolderPath:      dest.FolderPath,
+		SubfolderName:   dest.SubfolderName,
+		CreateSubfolder: dest.CreateSubfolder,
+		StyleGroup:      dest.StyleGroup,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("useCaseDestResolverAdapter.Resolve: resolver failed: %w", err)
@@ -495,12 +499,26 @@ func (a *useCaseDestResolverAdapter) Resolve(ctx context.Context, dest *voiceove
 		// *Service.resolveDestination behavior in metadata.go).
 		res = &asset.ResolveResult{}
 	}
+	// P0.2 fix (July 2026): when dest.FolderID is explicitly set,
+	// use it directly instead of the resolver's result (explicit
+	// override). The resolver is a folder-resolution layer; an
+	// explicit FolderID from the caller means "use this exact folder,
+	// don't resolve through Group/SubfolderName".
+	folderID := res.FolderID
+	if dest.FolderID != "" {
+		folderID = dest.FolderID
+	}
+	folderPath := res.FolderPath
+	if dest.FolderPath != "" {
+		folderPath = dest.FolderPath
+	}
 	return &voiceover.ResolvedDestination{
-		Group:      dest.Group,
-		FolderID:   res.FolderID,
-		FolderPath: res.FolderPath,
-		DriveLink:  res.DriveLink,
-		StyleGroup: dest.StyleGroup, // MIRROR verbatim (NOT from resolver result).
+		Group:         dest.Group,
+		FolderID:      folderID,
+		FolderPath:    folderPath,
+		DriveLink:     res.DriveLink,
+		SubfolderName: dest.SubfolderName, // MIRROR verbatim (P0.2 fix)
+		StyleGroup:    dest.StyleGroup,     // MIRROR verbatim (NOT from resolver result).
 	}, nil
 }
 
