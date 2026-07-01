@@ -1,9 +1,23 @@
-// Package scripts — language helpers + constants extracted from types.go (PG-029, June 2026).
+// Package scripts — language helpers + constants extracted from types.go
+// (PG-029, June 2026).
+//
+// Phase 1c Commit 2/4 (June 2026): NormalizeLanguages removed from this
+// package. The helper was relocated DOWN into
+// internal/application/scripts/dto/language_helpers.go so the canonical
+// BuildMetadataLanguages (in dto/metadata.go) could reach it without a
+// dto→adapters import cycle (the canonical dto imports `domain/script`
+// + `pkg/concurrent` only — adding adapters would have created a future
+// cycle when adapters later reached back to dto). The dto-side helper
+// extends the pre-commit semantics with a lowercase fold (per the
+// user's spec — the pre-commit implementation did trim + dedupe only).
+// SupportedScriptLanguages + the 6 prompt-version consts RETAINED here
+// because adapters is their existing call-site container (the prompt
+// version consts flow through adapters.NormalizationConfig today and
+// would have required a future cycle path if moved alongside
+// NormalizeLanguages).
 package adapters
 
-import "strings"
-
-// ── Default prompt version constants ─────────────────────────────────────
+// ── Default prompt version constants ────────────────────────────────────────
 
 const (
 	DefaultBookPromptVersion       = "v1"
@@ -14,7 +28,7 @@ const (
 	DefaultTextQAPromptVersion     = "v1"
 )
 
-// ── Language helpers ─────────────────────────────────────────────────────
+// ── Language helpers ────────────────────────────────────────────────────────
 
 // SupportedScriptLanguages returns the list of supported script languages.
 func SupportedScriptLanguages(translateLanguages []string, sourceLang string) []string {
@@ -38,22 +52,4 @@ func SupportedScriptLanguages(translateLanguages []string, sourceLang string) []
 		langs = []string{"en", "it"}
 	}
 	return langs
-}
-
-// NormalizeLanguages trims, deduplicates, and preserves order for a language list.
-func NormalizeLanguages(languages []string) []string {
-	out := make([]string, 0, len(languages))
-	seen := make(map[string]struct{}, len(languages))
-	for _, lang := range languages {
-		lang = strings.TrimSpace(lang)
-		if lang == "" {
-			continue
-		}
-		if _, ok := seen[lang]; ok {
-			continue
-		}
-		seen[lang] = struct{}{}
-		out = append(out, lang)
-	}
-	return out
 }
