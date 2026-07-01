@@ -36,21 +36,42 @@ type MetadataTranslator interface {
 }
 
 // BuildMetadataLanguages normalizes the requested metadata languages.
-// English is always first, then any additional unique languages from the
-// payload in the order they were provided.
+//
+// Canonical invariants:
+//   - English ("en") is ALWAYS first in the output. Callers' payloads
+//     may or may not include "en"; the function assumes the canonical
+//     "metadata generated first in English, then translated" pipeline
+//     and prepends "en" unconditionally.
+//   - The remaining entries are the unique, lowercased, trimmed
+//     languages from the caller's payload in their original order
+//     (after the above transforms).
+//   - Duplicate "en" entries from the caller are deduped (the
+//     normalize step consumes the prepend-and-collapses pattern).
+//
+// Phase 1c Commit 2/4 (June 2026): NormalizeLanguages (now lives in
+// the same package — dto/language_helpers.go) is the canonical
+// helper called here. The pre-Phase-1c FIXME referred to
+// the helper being "moved to scripts/adapters/" — Phase 1c Commit 2/4
+// moves it DOWN to dto, eliminating the dto→adapters import-cycle
+// risk and keeping the helper canonical to the package that consumes
+// it.
+//
+// Honest-limitation forward-pointer: the use case at
+// internal/application/scripts/usecase/postgen_usecase.go:152 ships
+// a SHADOW `BuildMetadataLanguages` stub that returns the payload
+// verbatim (no normalization). That stub is NOT exercised by the
+// canonical dto-side wiring here, but it shadows the canonical
+// function for any caller in the usecase package. Godlike/07
+// forward-pointer: a future commit consolidates the shadow stub
+// into a single dto-side canonical impl and re-routes the use case's
+// Run() at usecase/postgen_usecase.go to import dto (the use case
+// is above dto in the dependency graph; no cycle risk).
 func BuildMetadataLanguages(languages []string) []string {
-	out := []string{"en"}
-	// FIXME(Phase 1c): NormalizeLanguages moved to scripts/adapters/.
-	// Restore the call after contracts extraction.
-	normalized := languages
-	for _, lang := range normalized {
-		if lang == "en" {
-			continue
-		}
-		out = append(out, lang)
-	}
-
-	return out
+	// Prepend "en" then normalize — NormalizeLanguages preserves order
+	// and dedupes, so the canonical "English always first" invariant
+	// is enforced regardless of whether the caller passed "en",
+	// an upper-case variant like "EN", or no "en" at all.
+	return NormalizeLanguages(append([]string{"en"}, languages...))
 }
 
 // GenerateVideoMetadata generates YouTube metadata (title, description, tags)

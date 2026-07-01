@@ -11,6 +11,50 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
+**[Commit I — Phase 1c TODO closure, Commit 2/4 (June 2026)]** `chore(scripts)` — `BuildMetadataLanguages` (dto/metadata.go) calls canonical `NormalizeLanguages` (now in dto/language_helpers.go). One site closed; one forward-pointer surfaced + 4 direct TDD tests added.
+
+**Site closed (1 of 11, with a forward-pointer for the shadow stub):**
+
+- **`scripts/dto/metadata.go::BuildMetadataLanguages` (line ~41)**: FIXME(`Phase 1c`) removed; the function body now delegates to the canonical in-package helper. The semantics are: prepend `"en"` to the caller payload, then `NormalizeLanguages(...)` does the lowercase + trim + dedupe + order-preservation pass. English is ALWAYS first in the output (the prepended entry folds with any caller-supplied `"en"`/`"EN"` via the normalize step), lowercase canonical form (ISO 639-1), trimmed whitespace collapsed, duplicates removed.
+- **Helper move**: `NormalizeLanguages` relocated from `internal/application/scripts/adapters/language_helpers.go` DOWN into `internal/application/scripts/dto/language_helpers.go`. The dto→adapters inverted import direction would have created a future cycle risk when adapters later evolves to need dto for downstream consumers; the dto-side helper paths Safe: dto only imports `domain/script` + `pkg/concurrent` (both bottoms).
+- **Semantic delta** (per user spec): the pre-Phase-1c impl did `trim + dedupe` only; the post-Phase-1c impl adds a lowercase fold (so callers passing `"EN"`/`"En"` get canonical `"en"` output). Safe because the helper had **zero production callers** pre-commit — confirmed via `grep -rn 'NormalizeLanguages' --include='*.go' . | wc -l` returning 1 (the def) at the pre-rebase 4f565b35.
+- **TDD coverage added (6 + 4 = 10 tests)**:
+  - 6 `NormalizeLanguages` tests in `dto/language_helpers_test.go` (empty-input, whitespace-trim, lowercase-fold, dedupe, order-preservation, case-insensitive-dedup).
+  - 4 `BuildMetadataLanguages` direct tests in same file (the BLOCKER A from the reviewer's audit that was gapped at the dto layer): empty-payload → `[en]`, caller-order preservation, `EN` → lowercase `en` collapse, dedup-of-duplicate-`en`.
+  - All tests migrate to `testify/assert + require` style to match the existing `metadata_test.go` package convention (BLOCKER C from the reviewer's audit — the first-pass used raw `reflect.DeepEqual + t.Fatalf`, now aligned).
+- **`adapters/language_helpers.go` cleanup**: `NormalizeLanguages` + `import "strings"` removed. RETAINED: `SupportedScriptLanguages` + the 6 `Default*PromptVersion` consts (their call-site container is adapters; moving them alongside `NormalizeLanguages` would have required a future cycle path through `adapters.NormalizationConfig`).
+
+**Forward-pointer (godlike/07 honest-limitation — this commit has zero production caller impact today):**
+
+The use case at `internal/application/scripts/usecase/postgen_usecase.go:152` ships a SHADOW `BuildMetadataLanguages` stub returning the payload verbatim (no normalization). The use case's `Run()` method at line 135 calls the LOCAL stub, NOT the canonical dto version. Until a separate Phase-1c-Style fix consolidates the shadow stub into a single dto-side canonical impl + re-routes `Run()` to `import dto`, the dto-side canonical helper is **correct-but-unreached by production**. Per godlike/07, this honest-limitation declaration is mandatory:
+
+- **Owner**: scripts.
+- **Target commit**: Phase 1c Closure Wave 2 (separate atomic commit after Commit 4/4 lands; identifier `PR-SCRIPTS-POSTGEN-USECASE-DEDUP-STUB` placeholder until ticket is filed).
+- **Consolidation order** (PR-SCRIPTS-POSTGEN-USECASE-DEDUP-STUB, two separate atomic PRs):
+  1. **First**: `postgen_usecase.go:152` `BuildMetadataLanguages` — collapses to a one-liner delegate to `dto.BuildMetadataLanguages`. Blast radius: 1 import line + 1 ctor delegation change + 0 signature changes. Low risk.
+  2. **Second**: `postgen_usecase.go:158` `GenerateVideoMetadata` — collapses to a one-liner delegate to `dto.GenerateVideoMetadata`. Higher blast radius: shadow's `generator any` must be retyped to satisfy dto's narrow `MetadataTranslator` port (which `*ollama.Generator` satisfies implicitly via duck typing). The use case's `PostGenUseCase.generator` is currently `*ollama.Generator` — retyping via the narrow interface is the canonical PR-2-pattern. Land AFTER BuildMetadataLanguages consolidation so a future reviewer can verify the low-risk half landed first.
+
+- **Shadow stubs to consolidate** (compact restatement):
+  - `postgen_usecase.go:152` `BuildMetadataLanguages`.
+  - `postgen_usecase.go:158` `GenerateVideoMetadata`. Shadow `generator any` ↔ dto `generator MetadataTranslator`.
+
+**Files modified/created (4 total):**
+
+- **NEW** `internal/application/scripts/dto/language_helpers.go` (+45 LoC) — canonical home for `NormalizeLanguages` with lowercase + trim + dedupe + order-preservation semantics.
+- **NEW** `internal/application/scripts/dto/language_helpers_test.go` (+115 LoC) — 10 TDD tests.
+- `internal/application/scripts/dto/metadata.go::BuildMetadataLanguages` — replaced FIXME-stale body with canonical `return NormalizeLanguages(append([]string{"en"}, languages...))` (+18 LoC, -10 LoC).
+- `internal/application/scripts/adapters/language_helpers.go` — dropped `NormalizeLanguages` + strings import; retained the const block + `SupportedScriptLanguages` (~+8 LoC, ~-32 LoC).
+
+**Pre-existing build issues (out of scope, NOT regressions from Commit 2/4):**
+
+Same five items as the Commit 1/4 / Commit H Phase 2 closure notes carry forward. Verified against `git show origin/main:<file>` per the canonical recipe:
+- `monitor/enqueue.go`: `strings.ToLower` undefined (in `isTransientEnqueueError`).
+- `monitor/scheduler.go`: `NewUnboundJobEnqueuer` undefined.
+- `internal/application/assets/providers/stock/stockpipeline/run_upload.go`: syntax error (legacy upload path).
+- `internal/app/module_media.go`: pre-existing `clips.Deps.MutationsDispatcher` literal flagged in Commit H Phase 2 closure entry.
+
+---
+
 **[Commit I — Phase 1c TODO closure, Commit 1/4 (June 2026)]** `chore(youtube) + chore(scripts)` — zero-risk Phase 1c closure. Comment-only cleanups + 1 dead-code delete + cross-references re-pointed to **CHANGELOG.md ### Deferred** (the canonical external tracking surface per godlike/07, NOT placeholder YAML anchors which would themselves be fake-tracking). Net delta: 5 files modified, ~43 insertions / ~27 deletions.
 
 **Sites closed in this commit (6 of 11, the zero-risk subset):**
