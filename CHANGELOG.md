@@ -452,6 +452,43 @@ No production-wiring change beyond the ytdlp interface swap (which Go boxes tran
 ### Added
 - **[PR-C-YouTube-Cutover Commit I — Definition-of-Done E2E re-spec, June 2026]** Top-level E2E contract test for the channel-monitor cutover plan (`internal/application/assets/monitor/e2e_no_duplicates_test.go`), re-spec'd to fix the spec-vs-counter-token drift that landed in `a81e238c`. New **`bypassDiscoveries`** wrapper mocks the `YoutubeDiscoveriesPort.TryReserve` so duplicate-video calls return `won=true` with the existing row id (real ledger UNIQUE remains intact at 5 rows); a **`counterEnqueuer`** classifies per-video emits at the broker layer (first call per videoID → forward counters `outbox/qdrant/dbClips/drive_uploads` += 1, subsequent calls → `duplicate_enqueues` += 1); a **`mockSyncBroker`** dedups the channel-level sync job via a unique-channels set (counts `accepted_jobs==1` across Tick1+Tick2 for the same channel). In-memory SQLite with real migrations (`114_youtube_discoveries_v2` + the `category_channels` 28-column schema) inlined; ports mocked (`MonitorDownloaderPort` + `TranscriptProvider` + `VideoAnalyzer` + `JobEnqueuer` + bypass `YoutubeDiscoveriesPort`). Spec invariants pinned in `TestE2E_SyncCycle_DedupeContractFiveByTwo` (Tick1+Tick2 sequential on the same channel): `qdrant==5`, `db_clips==5`, `drive_uploads==5`, `outbox==5` (Tick1 fresh inserts, Tick2 classified as dups so forward counters stay locked at 5), `youtube_discoveries==5` (real ledger UNIQUE blocks re-insert), `cursor==MAX(discovered_at)` (monotonic across both ticks), `accepted_jobs==1` (mockSyncBroker's acceptedChannels set dedups on the channel key), `duplicate_enqueues==5` (Tick2's 5 per-video emits routed to the broker-dup bucket). `TestE2E_ParallelRace_TwoSyncJobsSameChannel` pins the parallel race: 2 concurrent `ScheduleChannelSync` goroutines → exactly 1 wins the active-lock (`accepted_jobs==1`) + exactly 1 gets `ErrAlreadyScheduled` (`alreadyScheduled==1`). Test harness runs in serial mode (`Policy.MaxConcurrentVideos=1`) so the broker-counter observation surface is deterministic; production's concurrent-mode `MaxConcurrentVideos≥2` has a known 4/5 MarkEnqueued-loss bug tracked at `architecture/current.yaml#PR-MONITOR-FANOUT-MARKENQUEUED-RACE` (orthogonal to the broker-counter path). Slot pinned as `Check 45` (`scripts/ci-architectural-checks.sh`) per the user's explicit slot assignment.
 
+**[Creator Blocco 1.1, July 2026]** Worker profile registry with `creator`
+profile — when `$VELOX_WORKER_PROFILE=creator` is set, the worker's
+capabilities are resolved through `ResolveCapabilities`, which enforces
+a three-layer gating rule: profile ceiling → env narrowing (never
+expansion) → registration gate. Without a profile, the legacy
+`ParseAndValidateCaps` path is unchanged.
+
+- **New `WorkerProfile` struct** (`internal/app/workerruntime/profiles.go`)
+  declaring name, allowed job types, and a global concurrency cap.
+- **New `WorkerProfileRegistry`** (`NewProfileRegistry()`) with a single
+  built-in profile: `creator` — allows `script.generate` +
+  `voiceover.generate_item`. `image.generate.google` is reserved but not
+  yet registered (handler may not exist in all deployments).
+- **New `ResolveCapabilities(profile, envOverride, registeredTypes)`**
+  enforces three invariants: (1) env override types MUST be a subset of
+  profile.AllowedJobTypes — expansion attempts fail with a descriptive
+  error naming the disallowed type and the profile ceiling;
+  (2) every resolved type must be registered in the worker's
+  Dispatcher; (3) the final set must be non-empty. Empty env override
+  → profile types used directly. Dedup + sort applied.
+- **`run.go` integration**: reads `$VELOX_WORKER_PROFILE`, branches to
+  `ResolveCapabilities` when set, falls through to
+  `ParseAndValidateCaps` otherwise. Profile load failures are fatal
+  at startup per godlike/07 no-fake-availability.
+- **17 synthetic unit tests** (`profiles_test.go`) covering: profile
+  lookup (creator / unknown / empty / whitespace / nil-registry),
+  empty env → profile types, env narrowing, env expansion rejection,
+  unregistered type gating, nil/empty profile edge cases, malformed
+  JSON, empty job_types array, dedup + sort.
+
+Files: `internal/app/workerruntime/profiles.go` (NEW),
+`internal/app/workerruntime/profiles_test.go` (NEW),
+`internal/app/workerruntime/run.go` (MODIFIED — +`appjobs` import).
+
+Env vars: `VELOX_WORKER_PROFILE` (new), `VELOX_WORKER_CAPABILITIES`
+(pre-existing, now profile-gated when profile is active).
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`
