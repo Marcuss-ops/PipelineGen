@@ -15,6 +15,7 @@ package drive
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -93,6 +94,60 @@ func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
 					doubleWrapped, wrapped)
 			}
 		})
+	}
+
+	// Azione 8/8F di Step 7: 6 canonical Google API / gRPC error string shapes
+	// (camelCase + SNAKE_CASE) that the substring-path classifier MUST catch.
+	// Each raw err string is fed verbatim through fmt.Errorf + retry.IsTransient.
+	// The 6th shape (Resource_Exhausted) covers the gRPC SNAKE_CASE underscore form
+	// documented in the user spec NOTE: ToLower("Resource_Exhausted") ==
+	// "resource_exhausted" which matches the taxonomy entry verbatim.
+
+	// Shape 1: googleapi userRateLimitExceeded (camelCase)
+	{
+		shape, raw := "googleapi: got 403 userRateLimitExceeded", "userRateLimitExceeded"
+		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
+			t.Errorf("%s: expected IsTransient true (substring taxonomy entry userratelimitexceeded)", raw)
+		}
+		var transErr *retry.TransientInfrastructureError
+		if !errors.As(retry.WrapTransient(fmt.Errorf("%s", shape)), &transErr) {
+			t.Errorf("%s: expected WrapTransient returns *TransientInfrastructureError", raw)
+		}
+	}
+	// Shape 2: googleapi deadlineExceeded (camelCase)
+	{
+		shape, raw := "googleapi: deadlineExceeded (context deadline)", "deadlineExceeded"
+		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
+			t.Errorf("%s: expected IsTransient true (substring taxonomy entry deadlineexceeded)", raw)
+		}
+	}
+	// Shape 3: googleapi backendError (camelCase)
+	{
+		shape, raw := "googleapi: backendError (server-side transient)", "backendError"
+		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
+			t.Errorf("%s: expected IsTransient true (substring taxonomy entry backenderror)", raw)
+		}
+	}
+	// Shape 4: googleapi serviceUnavailable (camelCase)
+	{
+		shape, raw := "googleapi: serviceUnavailable (server temporarily unavailable)", "serviceUnavailable"
+		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
+			t.Errorf("%s: expected IsTransient true (substring taxonomy entry serviceunavailable)", raw)
+		}
+	}
+	// Shape 5: googleapi quotaExceeded (camelCase, distinct from spaced form 'quota exceeded')
+	{
+		shape, raw := "googleapi: quotaExceeded (per-user quota camelCase)", "quotaExceeded"
+		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
+			t.Errorf("%s: expected IsTransient true (substring taxonomy entry quotaexceeded; distinct from spaced form)", raw)
+		}
+	}
+	// Shape 6: gRPC Resource_Exhausted (SNAKE_CASE with underscore)
+	{
+		shape, raw := "rpc error: code = Resource_Exhausted (gRPC SNAKE_CASE)", "Resource_Exhausted"
+		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
+			t.Errorf("%s: expected IsTransient true (gRPC snake_case form lowercased matches resource_exhausted)", raw)
+		}
 	}
 }
 

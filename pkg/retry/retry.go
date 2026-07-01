@@ -204,6 +204,17 @@ var transientSubstrings = []string{
 	"resource temporarily unavailable",
 	"database is locked",
 	"sqlite busy",
+	// Google API / gRPC canonical shapes (Azione 8/8F di Step 7, July 2026).
+	// Each entry is the lowercase no-space form; case-insensitive matching
+	// against lowercased err.Error() accepts upstream camelCase / SNAKE_CASE
+	// shapes (userRateLimitExceeded, deadlineExceeded, backendError,
+	// serviceUnavailable, quotaExceeded, Resource_Exhausted).
+	"userratelimitexceeded",
+	"deadlineexceeded",
+	"backenderror",
+	"serviceunavailable",
+	"quotaexceeded",
+	"resource_exhausted",
 }
 
 // IsTransient returns true when err is non-nil AND either:
