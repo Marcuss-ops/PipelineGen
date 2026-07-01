@@ -1537,6 +1537,39 @@ deprecations:
 # can audit why the question was deferred and what canonical surface is in scope.
 # Open questions do NOT block CI; they record the team's decision-making intent so
 # the Wave 24 PR 4+ roadmap can reason about the upstream constraints.
+  # -- PR-DRIVE-DELETE-STM -- Bloco 3.1 deletion state machine canonical
+  # surface -- 5-state state machine, tx-bound advance+emit, Drive
+  # side-effect handler via pattern-0 narrow port. Physical surface
+  # (clips_lifecycle_state.go + drive_delete.go + index_delete.go +
+  # dispatcher_advance.go) shipped in Bloco 3.1 commits on origin/main;
+  # deprecation record formalises closure per godlike/07 §"each wave
+  # closure needs a deprecation record + CHANGELOG entry".
+  # ------------------------------------------------------------
+  - id: PR-DRIVE-DELETE-STM
+    owner_capability: internal/application/jobs/outbox + internal/infrastructure/drive
+    exact_symbol: |
+      Direct mutation of media_assets.lifecycle_state without tx-bound
+      pre-condition guard. The canonical surface in Bloco 3.1 is
+      *assets.ClipsRepository::SetLifecycleStateTx(ctx, tx, id,
+      expectedState, newState) with atomic SQL guard
+      `WHERE id=? AND lifecycle_state=?`.
+    file: internal/infrastructure/database/sqlite/assets/clips_lifecycle_state.go + internal/application/jobs/outbox/drive_delete.go + internal/application/jobs/outbox/index_delete.go + internal/infrastructure/database/sqlite/outbox/dispatcher_advance.go
+    file_line: "commit 8ef5ccc2 (state-machine advance + emit) on origin/main + commit 4b68821e (terminal-error classification + idempotent handler)."
+    replacement: |
+      Direct typed call to pattern-0 narrow ports declared in
+      internal/application/jobs/outbox/ports.go: ClipsLifecycleStateWriter +
+      StateAdvancer + DriveDeleter + LifecycleStateReader.
+    introduction_date: 2026-06
+    removal_date: 2026-07-01
+    tracking_issue: "architecture/current.yaml#id-28 (Bloco 3.1 closure)"
+    compatibility_test: "internal/infrastructure/database/sqlite/assets/clips_lifecycle_state_test.go (7 TDD tests pinning the tx-bound advance contract) + drive_delete_test.go + index_delete_test.go (Drive side-effect idempotency + terminal-error classification)."
+    usage_metric: "media_assets.lifecycle_state column read-write rate (canonical post-Bloco-3.1) vs. legacy surface read-write rate (zero post-removal)."
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Bloco 3.1 closure (July 2026). Atomic four-commit chain on origin/main.
+      The legacy SetLifecycleState surface (if any pre-Bloco-3.1) is removed.
+
 open_questions:
 
   # ── 1. OPEN-W24-BLOCK1-NAMING-DECISION ────────────────────────────────────
