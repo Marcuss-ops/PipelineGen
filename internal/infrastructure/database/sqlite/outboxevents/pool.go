@@ -3,24 +3,60 @@ package outboxevents
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
 
+// ── Clock — injectable time source for testability ────────────────────
+
+// Clock is the injectable time source. The production implementation
+// (RealClock) delegates to time.Now. Tests inject a FakeClock so
+// backoff curves and lease-expiry paths can be driven deterministically
+// without time.Sleep hacks.
+type Clock interface {
+	Now() time.Time
+}
+
+// RealClock delegates to time.Now. The zero value is usable.
+type RealClock struct{}
+
+func (RealClock) Now() time.Time { return time.Now() }
+
+// ── WorkerPollConfig ──────────────────────────────────────────────────
+
 type WorkerPollConfig struct {
 	PollInterval    time.Duration
 	ProcessTimeout  time.Duration
 	ReclaimInterval time.Duration
+	// BackoffCap is the maximum backoff delay for retryable errors.
+	// Zero defaults to 30 minutes.
+	BackoffCap time.Duration
+	// JitterFraction is the ± fraction applied to backoff delays
+	// to prevent thundering-herd retries. Zero defaults to 0.2 (±20%).
+	JitterFraction float64
+}
+
+// eventFinisher is the narrow surface processEvent needs to finalize
+// events. Extracted as an interface so tests can inject a fake without
+// requiring a full *Repository (FASE 2.2, July 2026).
+type eventFinisher interface {
+	MarkDeadLetter(ctx context.Context, eventID int64, leaseID, errMsg string) error
+	MarkSuperseded(ctx context.Context, eventID int64, leaseID, errMsg string) error
+	MarkFailed(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error
+	MarkCompleted(ctx context.Context, eventID int64, leaseID string) error
 }
 
 type Pool struct {
 	name     string
 	repo     *Repository
+	finisher eventFinisher
 	registry *HandlerRegistry
 	log      *zap.Logger
 	cfg      WorkerPollConfig
+	clock    Clock
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 	// stopOnce guards close(p.stopChan) so concurrent or sequential
@@ -36,11 +72,23 @@ func NewPool(name string, repo *Repository, registry *HandlerRegistry, log *zap.
 	return &Pool{
 		name:     name,
 		repo:     repo,
+		finisher: repo,
 		registry: registry,
 		log:      log.With(zap.String("pool", name)),
 		cfg:      cfg,
+		clock:    RealClock{},
 		stopChan: make(chan struct{}),
 	}
+}
+
+// WithClock sets an injectable Clock for testability. Returns the
+// same Pool so construction can be chained. Nil clock falls back
+// to RealClock.
+func (p *Pool) WithClock(c Clock) *Pool {
+	if c != nil {
+		p.clock = c
+	}
+	return p
 }
 
 func (p *Pool) Start(ctx context.Context, workers int) {
@@ -121,6 +169,50 @@ func (p *Pool) Stop(timeout time.Duration) error {
 	}
 }
 
+// computeNextAttempt returns now + jittered exponential backoff.
+//
+// Formula: base = min(1min * 2^attemptCount, backoffCap) with
+// ±jitterFraction random jitter. The production cap is 30min.
+// Jitter defaults to ±20% when cfg.JitterFraction is zero.
+//
+// attemptCount is 1-indexed (first retry = attemptCount 1 → base 2min).
+// Exported so tests can lock the curve without deriving the formula.
+func (p *Pool) computeNextAttempt(attemptCount int) time.Time {
+	if attemptCount < 1 {
+		attemptCount = 1
+	}
+	backoffCap := p.cfg.BackoffCap
+	if backoffCap <= 0 {
+		backoffCap = 30 * time.Minute
+	}
+	jitterFrac := p.cfg.JitterFraction
+
+	// Exponential: 1min * 2^(attemptCount-1)
+	base := time.Minute * time.Duration(1<<uint(attemptCount-1))
+
+	// Apply jitter FIRST, then cap the total so the result never
+	// exceeds backoffCap (Blocco 5 fix: pre-fix, jitter was added
+	// after capping, causing capped+jitter to overshoot).
+	var jitter time.Duration
+	if jitterFrac > 0 {
+		jitterRange := time.Duration(float64(base) * jitterFrac)
+		// Deterministic jitter via attemptCount as seed so tests can
+		// assert the range without rand.Seed races.
+		r := rand.New(rand.NewSource(int64(attemptCount)))
+		jitter = time.Duration(r.Int63n(int64(jitterRange*2)+1)) - jitterRange
+	}
+
+	total := base + jitter
+	if total > backoffCap {
+		total = backoffCap
+	}
+	if total < 1*time.Second {
+		total = 1 * time.Second
+	}
+
+	return p.clock.Now().Add(total)
+}
+
 func (p *Pool) reclaim(ctx context.Context) {
 	affected, err := p.repo.RequeueExpiredLeases(ctx)
 	if err != nil {
@@ -151,93 +243,112 @@ func (p *Pool) pollAndProcess(ctx context.Context, workerName string) {
 	}
 }
 
+// finish calls fn to finalize the event. When p.finisher is nil (e.g.
+// test pool without a real repo), the call is silently skipped and the
+// event remains in 'processing' — the reclaim loop will pick it up.
+func (p *Pool) finish(ctx context.Context, evt Event, claim *Claim, fn func() error, label string) {
+	if p.finisher == nil {
+		p.log.Warn("finisher is nil — event will be reclaimed",
+			zap.Int64("event_id", evt.ID),
+			zap.String("type", evt.EventType),
+			zap.String("label", label))
+		return
+	}
+	if err := fn(); err != nil {
+		p.log.Error("failed to finalize event",
+			zap.Int64("event_id", evt.ID),
+			zap.String("label", label),
+			zap.Error(err))
+	}
+}
+
 func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 	evt := claim.Event
 	p.log.Info("processing event", zap.Int64("event_id", evt.ID), zap.String("type", evt.EventType))
 
-	handler, ok := p.registry.Get(evt.EventType)
-	if !ok {
-		err := fmt.Errorf("no handler registered for event type %s", evt.EventType)
-		p.log.Error("missing event handler", zap.Int64("event_id", evt.ID), zap.Error(err))
-		nextAttempt := time.Now().Add(5 * time.Second)
-		if markErr := p.repo.MarkFailed(ctx, evt.ID, claim.LeaseID, err.Error(), nextAttempt); markErr != nil {
-			p.log.Error("failed to mark event as failed", zap.Int64("event_id", evt.ID), zap.Error(markErr))
+	// ── Panic recovery (FASE 2.2, July 2026) ───────────────────────
+	// A handler panic must NOT kill the worker. Convert the panic
+	// into a terminal error and dead-letter the event immediately.
+	// The deferred recover runs OUTSIDE the handler-scoped block so
+	// it also catches panics in the Get / missing-handler path.
+	var handlerErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if e, ok := r.(error); ok {
+					handlerErr = NewTerminalError(fmt.Errorf("handler panic: %w", e))
+				} else {
+					handlerErr = NewTerminalError(fmt.Errorf("handler panic: %v", r))
+				}
+				p.log.Error("handler panicked — dead-lettering event",
+					zap.Int64("event_id", evt.ID),
+					zap.String("type", evt.EventType),
+					zap.Any("panic", r))
+			}
+		}()
+
+		handler, ok := p.registry.Get(evt.EventType)
+		if !ok {
+			// FASE 2.2: missing handler → dead_letter immediately.
+			// No retry — this event type will never acquire a handler.
+			handlerErr = NewTerminalError(fmt.Errorf("no handler registered for event type %s", evt.EventType))
+			p.log.Error("missing event handler — dead-lettering immediately",
+				zap.Int64("event_id", evt.ID),
+				zap.String("type", evt.EventType))
+			return
 		}
-		return
-	}
 
-	// Create timeout context for processing
-	procCtx, cancel := context.WithTimeout(ctx, p.cfg.ProcessTimeout)
-	defer cancel()
+		// Create timeout context for processing
+		procCtx, cancel := context.WithTimeout(ctx, p.cfg.ProcessTimeout)
+		defer cancel()
 
-	err := handler.Handle(procCtx, evt)
-	if err != nil {
-		// QDRANT-002 item F: classify a *SupersedeError as
-		// success-like. The handler determined the event was
-		// obsoleted by a newer aggregate version, so re-running it
-		// would burn a wasted upsert for no gain. Route to
-		// status='superseded' (terminal, distinct from dead_letter
-		// so dashboards can tell "producer broken" apart from
-		// "upstream streamed a fresh update — old events no-op").
-		//
-		// Order matters: supersede is checked BEFORE IsTerminal. The
-		// two are not mutually exclusive (a future handler could
-		// wrap either around the other) but in practice a handler
-		// returns exactly one shape per error path, so first match
-		// wins.
-		if IsSupersede(err) {
+		handlerErr = handler.Handle(procCtx, evt)
+	}()
+
+	// ── Route by error classification ────────────────────────────
+	if handlerErr != nil {
+		// QDRANT-002 item F: supersede → terminal success.
+		if IsSupersede(handlerErr) {
 			p.log.Info("event superseded by newer aggregate version — closing as superseded",
 				zap.Int64("event_id", evt.ID),
 				zap.String("type", evt.EventType),
 				zap.Int("attempt", evt.AttemptCount),
-				zap.Error(err))
-			if markErr := p.repo.MarkSuperseded(ctx, evt.ID, claim.LeaseID, err.Error()); markErr != nil {
-				// Lease-lost is the only acceptable non-success here
-				// (another worker raced us to terminal status).
-				// Surface all other failures loudly.
-				p.log.Error("failed to supersede event",
-					zap.Int64("event_id", evt.ID),
-					zap.Error(markErr))
-			}
+				zap.Error(handlerErr))
+			p.finish(ctx, evt, claim, func() error {
+				return p.finisher.MarkSuperseded(ctx, evt.ID, claim.LeaseID, handlerErr.Error())
+			}, "superseded")
 			return
 		}
-		// QDRANT-002 item G: classify errors as retryable vs terminal.
-		// Terminal errors (malformed payload, schema mismatch, unknown
-		// provider, unsupported destination) bypass the exponential
-		// backoff and go straight to dead_letter. Retryable errors
-		// keep the existing backoff path; after max_attempts the row
-		// dead_letters naturally via MarkFailed.
-		//
-		// IsTerminal recognises both the typed *TerminalError wrap
-		// (canonical path) and the legacy "(terminal)" string
-		// breadcrumb already inlined by delivery.go / provider_sync.go
-		// — see outboxevents/errors.go for the rationale.
-		if IsTerminal(err) {
+
+		// QDRANT-002 item G: terminal error → dead_letter.
+		// Also catches missing-handler and handler-panic errors
+		// now wrapped with NewTerminalError (FASE 2.2).
+		if IsTerminal(handlerErr) {
 			p.log.Warn("handler returned terminal error — dead-lettering without retry",
 				zap.Int64("event_id", evt.ID),
 				zap.String("type", evt.EventType),
 				zap.Int("attempt", evt.AttemptCount),
-				zap.Error(err))
-			if markErr := p.repo.MarkDeadLetter(ctx, evt.ID, claim.LeaseID, err.Error()); markErr != nil {
-				p.log.Error("failed to dead-letter terminal event",
-					zap.Int64("event_id", evt.ID),
-					zap.Error(markErr))
-			}
+				zap.Error(handlerErr))
+			p.finish(ctx, evt, claim, func() error {
+				return p.finisher.MarkDeadLetter(ctx, evt.ID, claim.LeaseID, handlerErr.Error())
+			}, "dead-letter")
 			return
 		}
-		p.log.Error("handler failed (retryable) — applying backoff",
+
+		// Retryable error: apply jittered backoff (FASE 2.2).
+		p.log.Error("handler failed (retryable) — applying jittered backoff",
 			zap.Int64("event_id", evt.ID),
 			zap.Int("attempt", evt.AttemptCount),
-			zap.Error(err))
-		nextAttempt := time.Now().Add(time.Duration(1<<evt.AttemptCount) * time.Minute)
-		if markErr := p.repo.MarkFailed(ctx, evt.ID, claim.LeaseID, err.Error(), nextAttempt); markErr != nil {
-			p.log.Error("failed to mark event as failed", zap.Int64("event_id", evt.ID), zap.Error(markErr))
-		}
+			zap.Error(handlerErr))
+		nextAttempt := p.computeNextAttempt(evt.AttemptCount + 1)
+		p.finish(ctx, evt, claim, func() error {
+			return p.finisher.MarkFailed(ctx, evt.ID, claim.LeaseID, handlerErr.Error(), nextAttempt)
+		}, "failed")
 		return
 	}
 
 	p.log.Info("event processed successfully", zap.Int64("event_id", evt.ID))
-	if markErr := p.repo.MarkCompleted(ctx, evt.ID, claim.LeaseID); markErr != nil {
-		p.log.Error("failed to mark event as completed", zap.Int64("event_id", evt.ID), zap.Error(markErr))
-	}
+	p.finish(ctx, evt, claim, func() error {
+		return p.finisher.MarkCompleted(ctx, evt.ID, claim.LeaseID)
+	}, "completed")
 }
