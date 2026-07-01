@@ -67,45 +67,18 @@ func FallbackMD5File(path string) string {
 	return fmt.Sprintf("%x", h)
 }
 
-// IsTransientDownloadError returns true if the error is likely transient
-// and worth retrying (e.g. timeout, connection reset, HTTP 429/5xx).
-// Permanent errors (video unavailable, private, invalid URL, etc.) return false.
-func IsTransientDownloadError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errStr := strings.ToLower(err.Error())
-
-	permanentPatterns := []string{
-		"video unavailable", "private video", "sign in to confirm",
-		"confirm your age", "requested format is not available",
-		"invalid url", "unable to extract", "no video formats", "video is live",
-	}
-	for _, p := range permanentPatterns {
-		if strings.Contains(errStr, p) {
-			return false
-		}
-	}
-
-	transientPatterns := []string{
-		"timeout", "connection reset", "connection refused",
-		"temporary failure", "fragment download failed",
-		"no route to host", "network is unreachable",
-		"i/o timeout", "broken pipe",
-	}
-	for _, p := range transientPatterns {
-		if strings.Contains(errStr, p) {
-			return true
-		}
-	}
-
-	if strings.Contains(errStr, "http 429") || strings.Contains(errStr, "http 5") {
-		return true
-	}
-
-	return false
-}
+// IsTransientDownloadError was removed in Azione 2/8 of Step 7 (July 2026):
+// migrated to pkg/retry.IsTransient. Callers that previously used
+// tagutil.IsTransientDownloadError should now use retry.IsTransient directly.
+// The permanent-pattern block (video unavailable, private video, etc.) is
+// preserved implicitly — none of those substrings match the canonical
+// transient taxonomy, so retry.IsTransient correctly returns false for them.
+// See pkg/retry/retry.go for the canonical transient substring taxonomy.
+//
+// For YouTube-specific permanent errors that happen to contain transient
+// substrings (a rare cross-cutting case), wrap with
+// &retry.TransientInfrastructureError{} to override, OR add the substring
+// to pkg/retry.transientSubstrings via a focused PR + test.
 
 // TokenSetForText builds a token set from raw text by lowercasing, cleaning,
 // splitting, and filtering short/generic tokens.
