@@ -32,6 +32,8 @@ import (
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -297,6 +299,15 @@ type TranscriptProvider interface {
 	// given videoURL. Returns an error if the subtitles are unavailable, the
 	// subprocess fails, or the transcript is too short (< 10 words).
 	GetTranscript(ctx context.Context, videoURL string) (transcript string, err error)
+
+	// Fetch (Commit G, June 2026) returns the structured transcript.Document
+	// (entries + text + duration + language + source). The orchestrator
+	// (analyzeVideo) calls Fetch ONCE per video; the returned Document is
+	// both the scored transcript (legacy flow) AND the windowed sampling
+	// source for the new AnalyzeFull one-shot flow. Subsumes the
+	// GetTranscript + GetTimedTranscript pair so the underlying yt-dlp
+	// subprocess runs at most once per video.
+	Fetch(ctx context.Context, videoURL string) (transcript.Document, error)
 }
 
 // ── VideoAnalyzer (Step 9 new port) ──────────────────────────────────────
@@ -338,6 +349,28 @@ type VideoAnalyzer interface {
 	// URL, the analyzer cannot re-fetch the VTT. analyzer.go orchestrator
 	// passes the same videoURL it already uses for GetTranscript + Score.
 	FindSegments(ctx context.Context, videoURL string, transcript string, prompt string, maxSegments int) (segments []ytdomain.Segment, err error)
+
+	// AnalyzeFull (Commit G, June 2026) is the canonical one-shot Analysis
+	// entry point. Subsumes Score + Classify + FindSegments into a single
+	// Ollama JSON call that returns {relevance_score, matched_keyword,
+	// category, segments[]} via windowed sampling on the supplied
+	// TranscriptDocument. Implementations MUST:
+	//
+	//   - return ErrLLMResponseInvalid when the JSON parse fails
+	//     (primary + markdown fallback both fail, OR response is missing
+	//     one of the 4 required fields)
+	//   - bound Ollama concurrency via a pkg/concurrent.Semaphore with
+	//     width = cfg.Concurrency.MaxConcurrentOllamaCalls
+	//     (configurable; default 1 per the GPU-tuning PR in June 2026)
+	//   - apply the score gate via opts.MinScore; segments are STILL
+	//     returned when the score is below threshold so the caller can
+	//     decide on the exact metric for diagnostics
+	//
+	// Unbound stub implementations return ErrAnalyzeFullNotImplemented
+	// so the orchestrator can fall back to the legacy 3-call flow.
+	// This staged-rollout shape keeps test fixtures operational
+	// without the OneShot JSON path being live.
+	AnalyzeFull(ctx context.Context, doc transcript.Document, opts AnalyzeOptions) (Analysis, error)
 }
 
 // ── JobEnqueuer (Step 9 new port) ────────────────────────────────────────
@@ -389,6 +422,67 @@ type Analysis struct {
 	Segments       []ytdomain.Segment
 }
 
+// ── Commit G (June 2026): single-shot Analysis port + typed sentinels ───
+
+// ErrLLMResponseInvalid is returned by VideoAnalyzer.AnalyzeFull when
+// the LLM response fails JSON validation (primary parse + markdown
+// fallback both fail, or response is missing required fields like
+// relevance_score / matched_keyword / category / segments[]).
+//
+// Patterns previously used in OllamaAnalyzer.Score / FindSegments used
+// fmt.Errorf-wrapped "parse ollama response: …" strings. The typed
+// sentinel lets the orchestrator (analyzeVideo) classify the failure
+// without string-matching: errors.Is(err, monitor.ErrLLMResponseInvalid).
+var ErrLLMResponseInvalid = errors.New("monitor: malformed LLM JSON response")
+
+// ErrAnalyzeFullNotImplemented is returned by the unbound VideoAnalyzer
+// stub's AnalyzeFull method. The orchestrator (analyzeVideo) uses
+// errors.Is(err, ErrAnalyzeFullNotImplemented) to detect a non-
+// upgraded analyzer and fall back to the legacy 3-call flow
+// (Score + Classify + FindSegments) for staged rollout.
+//
+// Sentinel shape mirrors godlike/zero-baseline: defined once at the
+// port surface; the stub returns it via the same path. Tests
+// compile-time pin the stub to satisfy VideoAnalyzer so a signature
+// drift becomes a build failure, not a runtime missing-method panic.
+var ErrAnalyzeFullNotImplemented = errors.New("monitor: AnalyzeFull not implemented (fall back to legacy 3-call path)")
+
+// AnalyzeOptions is the input shape for VideoAnalyzer.AnalyzeFull.
+// Replaces the 3 positional keyword/fallback/maxSegments/segmentPrompt
+// argument lists spread across the legacy Score/Classify/FindSegments
+// signatures. Held as a struct because the one-shot prompt assembly
+// reads 5+ fields and collisions on positional arg order are too easy
+// to introduce silently.
+//
+// Zero-values are NOT "do nothing" — MinScore 0 means "score gate
+// is disabled", MaxSegments 0 means "no segment cap (use legacy
+// default 3)", SegmentPrompt "" means "use the default focus
+// instruction".
+type AnalyzeOptions struct {
+	// SemanticKeywords is the channel's semantic-bias keywords (may
+	// be empty → score gate disabled, all videos pass to FindSegments).
+	SemanticKeywords []string
+
+	// CategoryFallback is the Drive-group / category seed for the
+	// LLM classify step when the LLM-driven selection fails. Should
+	// not be empty in production (defaults to channel.Category at
+	// the orchestrator level). Mirrors Classify's legacy fallback
+	// parameter.
+	CategoryFallback string
+
+	// MaxSegments is the segment cap (max 0 = legacy default 3).
+	MaxSegments int
+
+	// SegmentPrompt is the focus instruction override. Empty = use
+	// the canonical default (story beats / arguments / revelations /
+	// jokes / surprises / strong emotional turns).
+	SegmentPrompt string
+
+	// MinScore is the relevance-score gate (legacy default 60 when
+	// channel.MinSemanticScore is unset). 0 disables the gate.
+	MinScore int
+}
+
 // ── Unbound placeholder stubs (this commit only) ──────────────────────────
 
 // NewUnboundVideoAnalyzer returns a VideoAnalyzer that surfaces a loud
@@ -410,6 +504,14 @@ func (u *unboundVideoAnalyzer) Classify(_ context.Context, _, _ string) (string,
 }
 func (u *unboundVideoAnalyzer) FindSegments(_ context.Context, _, _, _ string, _ int) ([]ytdomain.Segment, error) {
 	return nil, u.err
+}
+
+// AnalyzeFull on the unbound stub returns ErrAnalyzeFullNotImplemented
+// so the orchestrator (analyzeVideo) can detect a non-upgraded analyzer
+// and fall back to the legacy 3-call path without throwing a loud
+// "Loud failure on every call" panic per the diagnostic-style stub.
+func (u *unboundVideoAnalyzer) AnalyzeFull(_ context.Context, _ transcript.Document, _ AnalyzeOptions) (Analysis, error) {
+	return Analysis{}, ErrAnalyzeFullNotImplemented
 }
 
 // NewUnboundJobEnqueuer returns a JobEnqueuer that surfaces a loud
@@ -444,7 +546,37 @@ var _ MonitorDownloaderPort = (*downloader.YTDLPDownloader)(nil)
 var _ VideoAnalyzer = (*unboundVideoAnalyzer)(nil)
 var _ JobEnqueuer = (*unboundJobEnqueuer)(nil)
 
-// ── YoutubeDiscoveriesPort (Commit D new port) ─────────────────────────────
+// ── CategoryChannelsPort (Commit G migration adapter, June 2026) ────────
+
+// CategoryChannelsPort decouples monitor from internal/application/channels
+// (the Service internal). Pattern 0 invariant: monitor never imports the
+// channels.Service directly \u2014 it consumes this typed port that exposes
+// only the methods checkChannel / recordCheckOutcome / processVideo
+// actually need. The concrete adapter (a future commit, or the existing
+// channels.Service wrapped via CategoryChannelsAdapter) implements this
+// surface; tests inject a stub.
+//
+// Migration rationale: the pre-Commit-G monitor held *channels.Service
+// directly, leaking the Service's full method canon (Upsert, Delete,
+// ClaimDue, ListAll, ListCategories, etc.) into the monitor package
+// even though monitor only reads 3 methods. The Port narrows the
+// surface; future Policy / WorkerPort / CallerIdPort additions will
+// follow the same Pattern 0.
+//
+// Methods exposed:
+//   - ListEnabled: the canonical pre-tick channel enumeration
+//   - MarkChecked: persists the post-tick outcome (Success + NextCheckAt
+//   - LastError). Replaces channels.Service.MarkChecked.
+//   - UpdateCursor: persists the cycle-end watermark. Replaces
+//     channels.Service.UpdateCursor.
+//
+// Note: an `Enabled: true` Filter list is intentional. ListEnabled()
+// replaces the pre-Port *channels.Service.ListEnabled() call.
+type CategoryChannelsPort interface {
+	ListEnabled(ctx context.Context) ([]*asset.CategoryChannel, error)
+	MarkChecked(ctx context.Context, cmd channels.MarkCheckedCommand) error
+	UpdateCursor(ctx context.Context, cmd channels.UpdateCursorCommand) error
+}
 
 // YoutubeDiscoveriesPort is the typed surface the channel monitor reads
 // against the youtube_discoveries ledger (table created in

@@ -27,27 +27,27 @@
 //
 //   - FindSegments(ctx, videoURL, transcript, prompt, maxSegments)
 //     ([]Segment, error): ASR-driven segment extraction. Steps:
-//       1. Re-fetches the timed transcript via the injected
-//          *transcripts.YTDLPSubtitleAdapter (VTT timing required for
-//          the [MM:SS] prompt markers Ollama uses to output
-//          timestamps).
-//       2. Builds the timestamped transcript (8KB cap).
-//       3. Calls Ollama with the pre-Step-9 segment prompt
-//          (transcript + topic list → JSON array of segments).
-//       4. Validates each segment: timestamps parseable,
-//          duration 10s..60s (clamped at 60s), name not low-value
-//          (intro/outro/sponsor filter).
+//     1. Re-fetches the timed transcript via the injected
+//     *transcripts.YTDLPSubtitleAdapter (VTT timing required for
+//     the [MM:SS] prompt markers Ollama uses to output
+//     timestamps).
+//     2. Builds the timestamped transcript (8KB cap).
+//     3. Calls Ollama with the pre-Step-9 segment prompt
+//     (transcript + topic list → JSON array of segments).
+//     4. Validates each segment: timestamps parseable,
+//     duration 10s..60s (clamped at 60s), name not low-value
+//     (intro/outro/sponsor filter).
 //
 // Sibling-adapter layout:
 //
-//   monitor/         (orchestrator; calls analyzer port only)
-//       |
-//       uses ─────► semantic/   (this file; owns Ollama + JSON parse)
-//                        ▲
-//                        │
-//                   depends on
-//                        │
-//                   transcripts/  (GetTimedTranscript for FindSegments)
+//	monitor/         (orchestrator; calls analyzer port only)
+//	    |
+//	    uses ─────► semantic/   (this file; owns Ollama + JSON parse)
+//	                     ▲
+//	                     │
+//	                depends on
+//	                     │
+//	                transcripts/  (GetTimedTranscript for FindSegments)
 //
 // Simplified from the pre-Step-9 monitor:
 //
@@ -74,14 +74,15 @@ import (
 	"strings"
 	"time"
 
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 
 	"go.uber.org/zap"
 
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -481,6 +482,16 @@ func isLowValueMonitorSegmentName(name string) bool {
 		}
 	}
 	return false
+}
+
+// AnalyzeFull (Commit G, June 2026) — JSON one-shot stub on the concrete
+// OllamaAnalyzer. Returns ErrAnalyzeFullNotImplemented so the orchestrator
+// (analyzeVideo) can detect a non-upgraded analyzer and fall back to the
+// legacy Score / Classify / FindSegments 3-call flow. The real JSON
+// prompt + windowed sampling + Ollama semaphore gating land in Commit H
+// per the implementation ticket tracked in CHANGELOG.md "Commit G follow".
+func (a *OllamaAnalyzer) AnalyzeFull(_ context.Context, _ transcript.Document, _ monitor.AnalyzeOptions) (monitor.Analysis, error) {
+	return monitor.Analysis{}, monitor.ErrAnalyzeFullNotImplemented
 }
 
 // Compile-time assertion: OllamaAnalyzer must satisfy monitor.VideoAnalyzer.
