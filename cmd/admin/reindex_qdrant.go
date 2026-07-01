@@ -300,11 +300,19 @@ func runReindexQdrant(args []string) error {
 			zap.String("target_collection", deps.TargetCollection))
 	}
 
-	// Phase 1: Ensure the target collection exists with matching schema.
-	if _, err := collectionMgr.EnsureSchema(ctx); err != nil {
-		return fmt.Errorf("ensure schema for %q: %w", targetCollection, err)
+	// Phase 1: Create the target collection with matching schema.
+	// Blocco 4a (July 2026): use CreateCollection(ctx, targetCollection)
+	// instead of EnsureSchema(ctx). Pre-fix, EnsureSchema hardcoded
+	// schema.CanonicalName() internally and ignored the timestamped
+	// targetCollection computed above — so the new physical collection
+	// was never created, and Phase 2 wrote points into a non-existent
+	// collection. CreateCollection explicitly takes the target name
+	// and creates the physical collection + payload indexes without
+	// aliasing — exactly what the blue-green reindex needs.
+	if err := collectionMgr.CreateCollection(ctx, targetCollection); err != nil {
+		return fmt.Errorf("create target collection %q: %w", targetCollection, err)
 	}
-	log.Info("schema ensured", zap.String("collection", targetCollection))
+	log.Info("target collection created", zap.String("collection", targetCollection))
 
 	// Phase 2: Reindex all assets into the target collection.
 	start := time.Now()
