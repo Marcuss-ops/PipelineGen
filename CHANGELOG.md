@@ -593,6 +593,20 @@ components:
 Files: `internal/domain/job/artifact_manifest.go` (NEW),
 `internal/domain/job/artifact_manifest_test.go` (NEW).
 
+**[Creator Blocco 2.2, July 2026]** `runner.go` now routes output uploads
+through `uploadManifest`, which tries the ArtifactManifest path first
+(via `job.Decode`), then falls back to `uploadOutputsLegacy` for backward
+compatibility. When a manifest is present, required artefacts are validated,
+SHA-256 hashed, and uploaded fail-closed; non-required artefacts are
+best-effort. `runLease` sends `UploadedManifest` JSON (no local filesystem
+paths) to `tools.Complete` instead of raw `handlerResult`. New
+`TestRunner_uploadManifest_WithManifest` exercises the manifest path
+end-to-end. Existing legacy tests renamed to `_LegacyFallback` and
+preserved. `OutputArtifact` struct retained for backward compat.
+
+Files: `internal/application/jobs/worker/runner.go` (MODIFIED),
+`internal/application/jobs/worker/runner_test.go` (MODIFIED — renamed + new test).
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`

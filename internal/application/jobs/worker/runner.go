@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // DefaultLeaseTTL is the canonical lease TTL used by the runner's
@@ -223,11 +224,23 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 		return tools.Fail(jobCtx, err.Error())
 	}
 
-	resultJSON, err := json.Marshal(handlerResult)
-	if err != nil {
-		return tools.Fail(jobCtx, err.Error())
+	// Creator Blocco 2.2: uploadManifest tries the ArtifactManifest path
+	// first; if no manifest is present, falls back to legacy uploadOutputs.
+	// The returned UploadedManifest is Sender-safe (no local paths).
+	uploaded, upErr := r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
+	if upErr != nil {
+		return tools.Fail(jobCtx, upErr.Error())
 	}
-	if err := r.uploadOutputs(jobCtx, lease.Job.ID, handlerResult); err != nil {
+
+	var resultJSON json.RawMessage
+	if uploaded != nil {
+		// Manifest path: send UploadedManifest (no local filesystem paths).
+		resultJSON, err = json.Marshal(uploaded)
+	} else {
+		// Legacy path: send raw handlerResult (backward compat).
+		resultJSON, err = json.Marshal(handlerResult)
+	}
+	if err != nil {
 		return tools.Fail(jobCtx, err.Error())
 	}
 	if err := checkRenew(); err != nil {
@@ -310,27 +323,111 @@ func (r *Runner) fail(ctx context.Context, lease *appjobs.Lease, err error) erro
 }
 
 // OutputArtifact is the typed per-output declaration a job handler
-// may return in handlerResult["output_files"]. Blocco 2.2: when
-// Required=true and the file is missing on disk (post-cleanup or
-// post-rollback), the runner fails the job BEFORE the deferred
-// workspace cleanup permanently deletes the artefact. The
-// previous silent `continue` allowed jobs to be reported
-// SUCCEEDED while the output was already gone.
-//
-// Path is the on-disk absolute path the runner should upload.
-// AssetID is the optional identifier the runner hands to
-// assetClient.UploadFile — empty falls back to a job-derived
-// default.
+// may return in handlerResult["output_files"]. Used by the legacy
+// uploadOutputsLegacy path for backward compat with handlers that
+// pre-date the ArtifactManifest contract.
 type OutputArtifact struct {
 	AssetID  string `json:"asset_id,omitempty"`
 	Path     string `json:"path"`
 	Required bool   `json:"required,omitempty"`
 }
 
-func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult map[string]any) error {
+// sha256File computes the SHA-256 digest of the file at path and returns
+// the hex-encoded string. Thin wrapper around job.ComputeSHA256 so the
+// worker package doesn't need to import crypto/sha256 directly.
+func sha256File(path string) (string, error) {
+	return job.ComputeSHA256(path)
+}
+
+// uploadManifest tries to decode an ArtifactManifest from handlerResult.
+// If successful, validates required artifacts, computes SHA-256 digests,
+// uploads each file via assetClient, and returns the sender-safe
+// UploadedManifest (no local filesystem paths).
+//
+// If no manifest is found (Decode returns nil, nil), falls back to the
+// legacy uploadOutputs path and returns nil, nil so the caller sends the
+// raw handlerResult.
+//
+// Returns an error on: malformed manifest, validation failure, missing
+// required artefact on disk, SHA-256 computation failure, or upload failure.
+func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult map[string]any) (*job.UploadedManifest, error) {
 	if r.assetClient == nil || len(handlerResult) == 0 {
-		return nil
+		return nil, nil
 	}
+
+	manifest, decodeErr := job.Decode(handlerResult)
+	if decodeErr != nil {
+		// Malformed manifest is a hard error — the handler declared a
+		// manifest but it's unparseable.
+		return nil, fmt.Errorf("artifact manifest decode: %w", decodeErr)
+	}
+
+	if manifest == nil {
+		// No manifest key → legacy path.
+		if err := r.uploadOutputsLegacy(ctx, jobID, handlerResult); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	// Manifest path: validate, compute digests, upload.
+	if err := manifest.Validate(); err != nil {
+		return nil, fmt.Errorf("artifact manifest: %w", err)
+	}
+
+	uploaded := make(map[string]job.RemoteAsset, len(manifest.Artifacts))
+
+	// Required artefacts: fail closed on any issue.
+	for _, a := range manifest.RequiredArtifacts() {
+		if _, statErr := os.Stat(a.Path); os.IsNotExist(statErr) {
+			return nil, fmt.Errorf("required artifact %q (%s): file not found on disk: %s", a.ID, a.Kind, a.Path)
+		}
+
+		sha, shaErr := sha256File(a.Path)
+		if shaErr != nil {
+			return nil, fmt.Errorf("required artifact %q (%s): %w", a.ID, a.Kind, shaErr)
+		}
+
+		if uploadErr := r.assetClient.UploadFile(ctx, a.ID, a.Path); uploadErr != nil {
+			return nil, fmt.Errorf("upload required artifact %q (%s): %w", a.ID, a.Kind, uploadErr)
+		}
+
+		uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: sha}
+	}
+
+	// Non-required artefacts: best-effort upload.
+	for _, a := range manifest.Artifacts {
+		if a.Required {
+			continue // already handled above
+		}
+		if _, statErr := os.Stat(a.Path); os.IsNotExist(statErr) {
+			// Best-effort missing → skip (WithRemoteLocations marks as "skipped").
+			continue
+		}
+		sha, shaErr := sha256File(a.Path)
+		if shaErr != nil {
+			r.log.Warn("non-required artifact SHA-256 failed — skipping",
+				zap.String("artifact_id", a.ID), zap.String("kind", a.Kind), zap.Error(shaErr))
+			continue
+		}
+		if uploadErr := r.assetClient.UploadFile(ctx, a.ID, a.Path); uploadErr != nil {
+			r.log.Warn("non-required artifact upload failed — skipping",
+				zap.String("artifact_id", a.ID), zap.String("kind", a.Kind), zap.Error(uploadErr))
+			continue
+		}
+		uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: sha}
+	}
+
+	// Build sender-safe manifest (no local paths).
+	return manifest.WithRemoteLocations(uploaded)
+}
+
+// uploadOutputsLegacy is the pre-Blocco-2.2 upload path. It scans
+// handlerResult for output_path / pdf_path / markdown_path (string
+// keys) and output_files ([]string / []any / []OutputArtifact). The
+// uploadManifest entry point falls back to this when no manifest is
+// present, preserving backward compatibility with existing handlers.
+func (r *Runner) uploadOutputsLegacy(ctx context.Context, jobID string, handlerResult map[string]any) error {
 	type outputFile struct {
 		assetID  string
 		path     string
@@ -355,10 +452,6 @@ func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult 
 		files = append(files, outputFile{assetID: assetID, path: path, required: required})
 	}
 
-	// Legacy single-string keys are backward-compat optional:
-	// PDF / markdown generators frequently return empty paths when
-	// the optional sub-render is skipped. Treating them as required
-	// would cause regression in the existing handler surface.
 	for _, key := range []string{"output_path", "pdf_path", "markdown_path"} {
 		if v, ok := handlerResult[key].(string); ok {
 			add(jobID+":"+key, v, false)
@@ -395,10 +488,6 @@ func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult 
 		if _, err := os.Stat(file.path); err != nil {
 			if os.IsNotExist(err) {
 				if file.required {
-					// Required output missing on disk. Bail loudly
-					// so the deferred Cleanup can't silently drop it;
-					// the job classifier marks the run as failed and
-					// surfaces the missing file to the operator.
 					return fmt.Errorf("required output file missing on disk: job=%s asset=%s path=%s", jobID, file.assetID, file.path)
 				}
 				continue
