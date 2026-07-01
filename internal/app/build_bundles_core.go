@@ -17,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/books/pythontransformer"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
@@ -247,7 +248,36 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 // root threads only the Publisher + the Reader into books.NewService —
 // the legacy `*drive.Uploader` plumbing is retired from
 // internal/application/books/ entirely (override brutal).
+//
+// Fase 7 (July 2026, Spina Dorsale): BooksService construction also
+// threads the books.BookTransformer port via
+// pythontransformer.NewSubprocessTransformer. The Python-aware
+// subprocess concrete + buildArgs + parseOutput + exec.CommandContext
+// moved OUT of books/service.go into the infrastructure layer
+// (godlike/06 "one owner per fact" — Python execution is an
+// implementation detail, not a domain concern). Composition root is
+// the only place that constructs the concrete SubprocessTransformer;
+// production callers inject it implicitly via the 8th positional
+// arg of books.NewService. A nil ScriptPath in cfg is treated as a
+// hard fail (godlike/07 §"No fake availability" — books capability
+// must never be half-configured); the constructor returns (*Service,
+// nil) on Transformer construction failure (with a Warn log so ops
+// can see the cause).
 func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voiceoverSvc *voiceover.Service, publisher delivery.Publisher, reader drive.Reader) *books.Service {
+	transformer, err := pythontransformer.NewSubprocessTransformer(&books.Config{
+		Enabled:       cfg.Books.Enabled,
+		ScriptPath:    cfg.Books.ScriptPath,
+		PythonBin:     cfg.Books.PythonBin,
+		DriveFolderID: cfg.Drive.BooksFolder(),
+	}, log)
+	if err != nil {
+		log.Warn("Books BookTransformer init failed; ProcessBook will surface ErrBookTransformerMissing",
+			zap.Error(err),
+			zap.String("script_path", cfg.Books.ScriptPath),
+			zap.String("python_bin", cfg.Books.PythonBin),
+		)
+		transformer = nil
+	}
 	booksSvc := books.NewService(
 		&books.Config{
 			Enabled:       cfg.Books.Enabled,
@@ -256,9 +286,12 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voic
 			DriveFolderID: cfg.Drive.BooksFolder(),
 		},
 		dbs.main.DB, cfg.Drive.BooksFolder(), log,
-		voiceoverSvc, publisher, reader,
+		voiceoverSvc, publisher, reader, transformer,
 	)
-	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
+	log.Info("Books service initialized",
+		zap.Bool("enabled", cfg.Books.Enabled),
+		zap.Bool("transformer_wired", transformer != nil),
+	)
 	return booksSvc
 }
 

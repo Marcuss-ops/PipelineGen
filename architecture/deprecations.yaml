@@ -1831,3 +1831,151 @@ audit:
       DRIVE-005-FIELDS removal). Same pattern: keep the field alive
       during EXPAND so external readsites compile, mark deprecated
       via this manifest, plan physical rename + removal at the gate.
+  # ── Fase 7 Spina Dorsale (July 2026): books.Service port-split + Python execution move ──
+  # Three territory separation per Pattern 0 + godlike/06 "one owner per fact":
+  #   - BookSourceReader — reserved for future wave (drive.Reader inline today)
+  #   - BookTransformer  — wired in Fase 7; concrete at internal/infrastructure/books/pythontransformer/
+  #   - BookExporter     — reserved for future wave (Python script does inline today)
+  # Python execution (exec.CommandContext + buildArgs + parseOutput + parseProgressLine)
+  # moved OUT of books/service.go into the pythontransformer concrete. Service now
+  # imports os/exec NO MORE. Pre-Fase-7 inline subprocess invocation lives in the
+  # archive section of architecture/ownership/ as a fossil (godlike/07 §Historical information).
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: BOOKS-PORT-SPLIT
+    owner_capability: internal/application/books
+    exact_symbol: |
+      1. books.Service.bookProcessor.inline_execution_path
+         (Pre-Fase-7: inline exec.CommandContext + buildArgs +
+         parseOutput + parseProgressLine inside
+         internal/application/books/service.go::ProcessBook
+         + ProcessBookWithProgress. Phase 7: removed entirely;
+         service.go no longer imports os/exec, bufio, encoding/json,
+         math, io, strconv.)
+      2. books.Config.ScriptPath + books.Config.PythonBin
+         (Pre-Fase-7: read by books/service.go to spawn the
+         subprocess. Phase 7: retained as no-op fields on the
+         apply-layer Config — the canonical reader is the
+         pythontransformer.SubprocessTransformer.new-computed
+         scriptPath (via the same absolute-path helper). Future
+         wave: move these fields OFF books.Config and onto the
+         pythontransformer concrete's Config.)
+      3. books.NewService 7-arg signature
+         (Pre-Fase-7: NewService(cfg, db, driveFolder, log,
+         voiceoverSvc, publisher, reader) — 7 args. Phase 7:
+         adds an 8th arg, transformer BookTransformer, as the
+         LAST positional. Tests construct with transformer = nil
+         via the new positional; production threading in
+         build_bundles_core.go::buildBooksService.)
+    file: internal/application/books/service.go + internal/application/books/from_drive_test.go + internal/app/build_bundles_core.go
+    file_line: |
+      service.go: 1 (inlined Python exec surface removed;
+        transformer port + ErrBookTransformerMissing + mapProcessToTransform
+        helper added); from_drive_test.go: 2 NewService call sites updated
+        to pass transformer=nil as the 8th positional arg; build_bundles_core.go:
+        buildBooksService constructs pythontransformer.NewSubprocessTransformer
+        and threads the concrete as the 8th arg of books.NewService.
+    replacement: |
+      The canonical apply-layer shape is:
+        (a) books.Service.ProcessBook / .ProcessBookWithProgress DELEGATE
+            to the books.BookTransformer port (Transform +
+            TransformWithProgress). No inline Python exec.
+        (b) The Python subprocess is owned by the infrastructure layer
+            (internal/infrastructure/books/pythontransformer/
+            SubprocessTransformer concrete). Composition root is the ONLY
+            site that constructs the concrete (build_bundles_core.go::
+            buildBooksService).
+        (c) NewService takes the transformer port as the 8th positional
+            arg. Nil transformer fails closed: ProcessBook +
+            ProcessBookWithProgress surface the canonical
+            ErrBookTransformerMissing sentinel (errors.Is-friendly).
+        (d) BookSourceReader + BookExporter ports are RESERVED for
+            future waves (godlike/06 "one owner per fact" — defined
+            here to set the boundary, no concrete yet). The legacy
+            drive.Reader.DownloadFile path remains inline in
+            drive.go::ProcessBookFromDrive to preserve the F2.10
+            closure (the audit-pinned `drive.Reader = (*drive.Uploader)(nil)`
+            compile-time assertion at internal/infrastructure/drive/ports.go).
+            Legacy EXPAND-window callers continue to compile and run.
+    introduction_date: 2026-07-01
+    removal_date: never
+    tracking_issue: "Spina Dorsale Fase 7 \u2014 Piano d'Azione \u00a7 Fase 7 (books territory split)"
+    compatibility_test: |
+      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS / DRIVE-005-FIELDS:
+        (a) Inline `exec.CommandContext` + `os/exec` import removed
+            from internal/application/books/service.go. The
+            ripgrep gate `rg "os/exec" internal/application/books/`
+            returns ZERO hits (only the deprecation comment if
+            future agents reintroduce it lands a fossil-comment).
+        (b) The 3 port interfaces are declared at
+            internal/application/books/ports.go with cadaver
+            compile-time assertions on the canonical
+            SubprocessTransformer concrete:
+              - `var _ books.BookTransformer = (*pythontransformer.SubprocessTransformer)(nil)`
+            Future drift in any port signature is a build failure
+            at the assertion site, not at a runtime caller.
+        (c) NewService takes 8 positional args; the 7-arg form is
+            gone (no overloading). Tests at
+            internal/application/books/from_drive_test.go pin the
+            8-arg shape via two NewService call sites
+            (TestProcessBookFromDrive_F2_10_ReaderRoundTrip +
+            TestProcessBookFromDrive_F2_10_NilReader_ReturnsConfiguredSentinel).
+            Future drift that re-merges the args back to 7 breaks
+            these tests.
+    usage_metric: |
+      Pre-Fase-7 (audit baseline, 2026-07-01):
+        - books.Service.inlined_python_calls   : 2 (ProcessBook +
+          ProcessBookWithProgress both inline-exec Python).
+        - books.Config.ScriptPath / PythonBin   : read by 2 sites
+          (NewService ABS-ify + ProcessBook cmd spawn).
+        - books.NewService callers with 7 args  : 1 production
+          site (build_bundles_core.go::buildBooksService) + 2
+          test sites (from_drive_test.go).
+      Post-Fase-7 (this commit lands):
+        - books.Service.inlined_python_calls   : 0 (Port delegation).
+        - books.Config.ScriptPath / PythonBin   : retained as no-op
+          fields on books.Config (caller-backward-compat); the
+          canonical reader is the pythontransformer.new-computed
+          scriptPath. Future wave moves them OFF books.Config.
+        - books.NewService with 8 args          : 1 production site
+          (build_bundles_core.go::buildBooksService wires
+          pythontransformer.NewSubprocessTransformer as the 8th
+          arg) + 2 test sites (from_drive_test.go passes nil).
+        - book.BookTransformer + BookSourceReader + BookExporter
+          ports   : 3 interfaces declared at
+          internal/application/books/ports.go. BookTransformer has
+          1 concrete (SubprocessTransformer); BookSourceReader +
+          BookExporter are reserved.
+      Net delta = +1 pythontransformer package (1 .go file +
+        1 .go test file at the next wave's TDD step) + -1
+        inline subprocess invocation site + +3 port interfaces +
+        +1 deprecation record + +1 sentinel error
+        (ErrBookTransformerMissing).
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      godlike/07 EXPAND phase: the canonical Python-aware concrete
+      lands alongside the port declaration. The legacy inline
+      subprocess call in books/service.go is removed in the same
+      commit (override brutal phase step). The drive.Reader inline
+      download in books/drive.go::ProcessBookFromDrive is
+      PRESERVED for the EXPAND window to keep the F2.10 closure's
+      audit-pinned compile-time assertion at
+      internal/infrastructure/drive/ports.go intact
+      (`var _ drive.Reader = (*drive.Uploader)(nil)`). Future
+      waves:
+        - BACKFILL: implement BookSourceReader concrete + delegate
+          ProcessBookFromDrive's drive.Reader.DownloadFile call to
+          the port (canonical ownership of source resolution).
+        - BACKFILL: implement BookExporter concrete + delegate the
+          PDF generation + Drive upload side-effects from the
+          Python subprocess to the Go-side delivery.Publisher.
+        - CONTRACT: drop the inline drive.Reader call from
+          ProcessBookFromDrive; remove books.Config.ScriptPath +
+          PythonBin (move to pythontransformer.Config); remove
+          the no-op fields (now read from concrete only).
+      Cross-references: godlike/06 §"One owner per fact" +
+      godlike/07 §"Migration sequence" + AGENTS.md Pattern 0 +
+      AGENTS.md §"Simplicity & Minimalism" (override brutal on
+      the inline Python removal).
+
