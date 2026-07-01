@@ -85,9 +85,26 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 	if rec.DriveLink != "" && f.driveVerifier != nil {
 		exists, err := f.driveVerifier.VerifyDriveLink(ctx, rec.DriveLink)
 		if err != nil {
+			// BLOC5.3 P0.6 no-fake-availability (I2-followup, June 2026):
+			// the previous code logged the verify error and then fell
+			// through to `result.DriveUploaded = exists` — a transport
+			// failure on the Drive SDK (network blip, auth refresh race)
+			// was silently indistinguishable from "verify said the file
+			// is accessible" when the underlying verifier returned
+			// (true, err). Tighten: on err, DriveUploaded is explicitly
+			// false (we do NOT claim accessibility) and the error is
+			// surfaced on result.Error so the API caller can distinguish
+			// "verify failed" from "verify said file is not in Drive"
+			// (both previously looked identical via the DriveUploaded
+			// field alone). The overall operation can still complete
+			// OK (registry write may succeed) — the verify error is
+			// informational + visible, not a hard failure.
 			f.log.Warn("drive verification error", zap.String("id", rec.ID), zap.Error(err))
+			result.DriveUploaded = false
+			result.Error = err.Error()
+		} else {
+			result.DriveUploaded = exists
 		}
-		result.DriveUploaded = exists
 	}
 
 	if err := f.registry.UpsertMedia(ctx, rec); err != nil {

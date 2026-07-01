@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -518,6 +519,83 @@ func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
 	}
 	if found == nil {
 		t.Fatal("Expected to find record in asset_index")
+	}
+}
+
+// BLOC5.3 P0.6 no-fake-availability (I2-followup, June 2026): when the
+// drive verifier surfaces a transport error, the result.DriveUploaded
+// field must NOT silently report the file as accessible. The error is
+// surfaced on result.Error so the API caller can distinguish "verify
+// failed (transport)" from "verify said file is not in Drive" (both
+// previously looked identical via the DriveUploaded field alone).
+//
+// The overall operation may still complete OK — the verify error is
+// informational + visible, not a hard failure. DBSaved stays true
+// (the registry write succeeded downstream) and OK stays true; the
+// operator sees the verify error in result.Error.
+//
+// Pins the silent-success removal at finalizer.go (the previous
+// `result.DriveUploaded = exists` line that ran regardless of err).
+func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
+	ctx := context.Background()
+	logger, _ := zap.NewDevelopment()
+
+	// mockDriveVerifier with shouldErr=true returns (false, sql.ErrConnDone).
+	// Simulates a transport-level failure when contacting the Drive
+	// SDK (network blip, auth refresh race, OAuth rate limit, etc.).
+	driveVerifier := &mockDriveVerifier{shouldErr: true}
+	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
+
+	finalizer := NewFinalizer(registry, driveVerifier, logger)
+
+	// Real temp file so we don't trip the local-missing branch.
+	tmpFile := filepath.Join(t.TempDir(), "verify_err.mp4")
+	if err := os.WriteFile(tmpFile, []byte("data"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	rec := &MediaRecord{
+		ID:        "test_verify_err_001",
+		Name:      "Drive link verify transport error",
+		LocalPath: tmpFile,
+		FileHash:  "hash_verify_err",
+		DriveLink: "https://drive.google.com/file/d/abc123/view",
+		Status:    "processed",
+	}
+
+	opts := FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		RequireDrive: false, // no intent-driven RequireDrive — the verify error is still surfaced
+		VerifyDB:     true,
+	}
+
+	result, err := finalizer.Finalize(ctx, rec, opts)
+	if err != nil {
+		t.Fatalf("Finalize returned a Go error (finalizer surfaces failures via result, not err): %v", err)
+	}
+
+	// P0.6 no-fake-availability: verify error must NOT silently
+	// propagate as DriveUploaded=true. The field is explicit false.
+	if result.DriveUploaded {
+		t.Errorf("DriveUploaded must be false on verify transport error (silent-success regression), got true. Error: %s", result.Error)
+	}
+
+	// The error is surfaced on result.Error so the API caller sees
+	// the verify failure (was: log.Warn only — invisible to API caller).
+	// sql.ErrConnDone renders as "sql: connection is already closed".
+	if !strings.Contains(result.Error, "connection is already closed") {
+		t.Errorf("result.Error must contain the verify error message %q (was logged-only before Wave A I2-followup), got: %q", "connection is already closed", result.Error)
+	}
+
+	// The overall operation can still complete OK — the verify error
+	// is informational, not a hard failure. DBSaved=true because the
+	// registry write succeeded downstream.
+	if !result.OK {
+		t.Errorf("OK must be true (verify error is informational, not a hard failure), got false. Error: %s", result.Error)
+	}
+	if !result.DBSaved {
+		t.Error("DBSaved must be true (verify error is downstream of the registry write)")
 	}
 }
 
