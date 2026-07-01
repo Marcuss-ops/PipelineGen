@@ -301,10 +301,23 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 // decrement these constants and re-run the suite. A growing count means
 // someone added a new spawn to a Build*Bundle body — that is the bug
 // this test is here to catch.
+//
+// Wave A Item 15 (June 2026): BuildDriveBundle moved from the documented-
+// spawn list into the zero-spawn list. The legacy "drive-style-folders"
+// concurrent.SafeGo goroutine was DELETED outright (not just moved) —
+// the build_drive_startup.go closure that used to host it now only
+// validates Drive folders + creates local storage dirs. BuildDriveBundle
+// body is side-effect-free, and the test freeze table below treats it
+// like every other builder in frozenZeroSpawnBuilders.
 const (
-	// PR9-A (June 2026): `go ensureStyleDriveFolders(...)` moved from
-	// BuildDriveBundle body into the returned startDriveBackgroundFolders
-	// closure. The builder body is now side-effect-free.
+	// Wave A Item 15 (June 2026): the legacy ensureStyleDriveFolders
+	// + concurrent.SafeGo("drive-style-folders", ...) site has been
+	// REMOVED (not moved — the legacy style-folder pre-creation was
+	// the wrong composition-time concern entirely). BuildDriveBundle
+	// body has zero spawns and now belongs in frozenZeroSpawnBuilders.
+	// The constant is retained only as a structural marker; the
+	// assertion below uses it for sanity (`counts["BuildDriveBundle"]
+	// should equal zero`).
 	frozenGoroutineInBuildDriveBundle = 0
 	// PR9-B (June 2026): concurrent.SafeGo x2 (pool start + shutdown)
 	// moved from BuildOutboxBundle body into the standalone
@@ -317,9 +330,15 @@ const (
 // explicitly enumerated (not derived) so adding a new builder without
 // declaring it is a test failure that forces the author to either
 // declare zero spawns or move the spawn to lifecycle.go.
+//
+// Wave A Item 15 (June 2026): BuildDriveBundle added to this list — the
+// drive-style-folders SafeGo goroutine was deleted outright, so
+// BuildDriveBundle is structurally indistinguishable from every other
+// builder in the family.
 var frozenZeroSpawnBuilders = []string{
 	"BuildRepoBundle",
 	"BuildSearchBundle",
+	"BuildDriveBundle",
 	"BuildProcessBundle",
 	"BuildAIBundle",
 	"BuildDomainBundle",
@@ -379,9 +398,10 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	}
 
 	// Documented spawn sites: per-builder frozen expectations for the
-	// sites that currently exist (today: DriveBundle + OutboxBundle).
+	// sites that currently exist (today: OutboxBundle only — DriveBundle
+	// migrated into frozenZeroSpawnBuilders via Wave A Item 15).
 	require.Equal(t, frozenGoroutineInBuildDriveBundle, counts["BuildDriveBundle"],
-		"BuildDriveBundle spawn count drifted. ensureStyleDriveFolders goroutine was moved to the standalone startDriveBackgroundFolders function (PR9-A, June 2026); update `frozenGoroutineInBuildDriveBundle` in lockstep.")
+		"BuildDriveBundle spawn count drifted (expected 0 after Wave A Item 15, June 2026 — the drive-style-folders SafeGo goroutine was REMOVED, not just moved).")
 	require.Equal(t, frozenGoroutineInBuildOutboxBundle, counts["BuildOutboxBundle"],
 		"BuildOutboxBundle spawn count drifted. Migrating outbox-pool SafeGo x2 to lifecycle.go is documented in lifecycle.go comment line ~294; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
 

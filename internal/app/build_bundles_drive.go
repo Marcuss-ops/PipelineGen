@@ -32,18 +32,25 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
-// Loads StyleRegistry at the top so ensureStyleDriveFolders (called via the
-// returned startDriveBackgroundFolders closure in build_drive_startup.go)
-// receives the non-nil pointer.
+// Loads StyleRegistry at the top so the canonical StyleRegistry is available
+// for downstream Style-aware consumers (CompositionRoot.processor path),
+// but no longer drives a side-effecting pre-creation goroutine — that
+// path was REMOVED in Wave A Item 15 (June 2026).
 //
 // PR9-A (June 2026): BuildDriveBundle returns an IOpaqueStartFunc closure
 // that defers side-effecting initialisation (Drive folder validation,
-// style-folder pre-creation, storage directory creation) to the lifecycle.
-// The bundle itself is fully populated on return.
+// storage directory creation) to the lifecycle. The bundle itself is
+// fully populated on return.
+//
+// Wave A Item 15 (June 2026): the concurrent.SafeGo("drive-style-folders", ...)
+// call site that called ensureStyleDriveFolders is REMOVED. The values
+// the closure used to populate (per-style Drive folder IDs) are now
+// derived lazily at request time by the canonical drive.Admin
+// GetOrCreateFolder path via the destinations resolver (see
+// delivery.NewDestinationRegistry).
 //
 // FASE 2.B PR1 (June 2026): extracted to this file from
 // build_bundles_process.go. Surface preserved (no signature change).
@@ -150,7 +157,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// Lifecycle-runtime-ownership (June 2026): now returns error so
 	// serverLifecycle.Start can abort on required folder validation failure.
 	startClosure := func() error {
-		return startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, styleRegistry, log)
+		return startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, log)
 	}
 
 	// FASE 9 (June 2026, P0.1 / DRIVE-005): wire the canonical Pattern 0
@@ -222,23 +229,25 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 }
 
 // startDriveBackgroundFolders (moved from build_drive_startup.go, Phase 5 consolidation, June 2026).
-// Performs side-effecting Drive init: pre-creates style folders, validates
-// critical Drive folder paths, and ensures local storage directories exist.
+// Performs side-effecting Drive init: validates critical Drive folder
+// paths, and ensures local storage directories exist.
+//
+// Wave A Item 15 (June 2026): the legacy `concurrent.SafeGo("drive-style-folders", ...)`
+// spawn that called ensureStyleDriveFolders is REMOVED. Per-style Drive
+// folder pre-creation is no longer a composition-time concern; it is
+// the operator's responsibility via `reset-video-ai` (canonical CLI).
+// The `styleRegistry` parameter has been removed from this signature —
+// BuildDriveBundle still constructs the StyleRegistry (other consumers
+// in the bundle tree may read it), but the start-closure no longer
+// needs a handle to it.
 func startDriveBackgroundFolders(
 	ctx context.Context,
 	cfg *config.Config,
 	driveClient *gdrive.Service,
 	driveUploader *drive.Uploader,
 	dests *DriveDestinations,
-	styleRegistry *generation.StyleRegistry,
 	log *zap.Logger,
 ) error {
-	if driveClient != nil && dests.ImagesFolder() != "" && dests.ImagesFolder() != dests.MediaRoot {
-		concurrent.SafeGo("drive-style-folders", func() {
-			ensureStyleDriveFolders(ctx, driveUploader, dests.ImagesFolder(), styleRegistry, log)
-		})
-		log.Info("Style Drive folders using Images root", zap.String("folder_id", dests.ImagesFolder()))
-	}
 	if driveClient != nil {
 		for name, folderID := range map[string]string{
 			"images": dests.ImagesFolder(),
