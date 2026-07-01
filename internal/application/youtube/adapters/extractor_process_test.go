@@ -123,26 +123,41 @@ func TestCleanClipName_UnicodeTruncation(t *testing.T) {
 	}
 }
 
-// ===== tagutil.IsTransientDownloadError tests =====
+// ===== retry.IsTransient download-taxonomy tests =====
+//
+// Azione 2/8 of Step 7 (July 2026): migrated from
+// tagutil.IsTransientDownloadError to retry.IsTransient. The
+// canonical-taxonomy transient cases below are EXACTLY what
+// pkg/retry.transientSubstrings declares — keep the two in sync by
+// only adding/removing cases here when pkg/retry itself changes.
+//
+// Permanent cases (Video unavailable, Private video, sign-in, etc.)
+// preserve the historical behavior: none of those substrings match
+// the canonical transient taxonomy, so retry.IsTransient returns
+// false. This test guard pins that semantic — if a future pkg/retry
+// taxonomy expansion accidentally starts matching a "permanent" string,
+// `TestRetry_IsTransient_DownloadTaxonomy/permanent:<x>` will surface
+// the regression.
 
-func TestIsTransientDownloadError(t *testing.T) {
+func TestRetry_IsTransient_DownloadTaxonomy(t *testing.T) {
 	transient := []string{
 		"timeout",
 		"connection reset by peer",
 		"connection refused",
-		"temporary failure in name resolution",
-		"fragment download failed",
-		"no route to host",
-		"network is unreachable",
 		"i/o timeout",
-		"broken pipe",
+		"EOF: stream closed unexpectedly",
 		"HTTP 429 Too Many Requests",
+		"HTTP 502 Bad Gateway",
 		"HTTP 503 Service Unavailable",
-		"HTTP 500 Internal Server Error",
+		"HTTP 504 Gateway Timeout",
+		"api rate limit reached",
+		"quota exceeded for project",
+		"backend temporarily unavailable",
+		"resource temporarily unavailable, retry",
 	}
 	for _, msg := range transient {
 		t.Run("transient: "+msg, func(t *testing.T) {
-			if !tagutil.IsTransientDownloadError(errors.New(msg)) {
+			if !retry.IsTransient(errors.New(msg)) {
 				t.Errorf("expected transient for %q", msg)
 			}
 		})
@@ -161,7 +176,7 @@ func TestIsTransientDownloadError(t *testing.T) {
 	}
 	for _, msg := range permanent {
 		t.Run("permanent: "+msg, func(t *testing.T) {
-			if tagutil.IsTransientDownloadError(errors.New(msg)) {
+			if retry.IsTransient(errors.New(msg)) {
 				t.Errorf("expected permanent for %q", msg)
 			}
 		})
@@ -169,14 +184,14 @@ func TestIsTransientDownloadError(t *testing.T) {
 
 	// Unknown errors should NOT be transient
 	t.Run("unknown error", func(t *testing.T) {
-		if tagutil.IsTransientDownloadError(errors.New("something weird happened")) {
+		if retry.IsTransient(errors.New("something weird happened")) {
 			t.Error("unknown errors should not be transient")
 		}
 	})
 
 	// nil error
 	t.Run("nil error", func(t *testing.T) {
-		if tagutil.IsTransientDownloadError(nil) {
+		if retry.IsTransient(nil) {
 			t.Error("nil error should not be transient")
 		}
 	})
@@ -220,7 +235,7 @@ func TestRetry_PermanentErrorFailsImmediately(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("Video unavailable")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -234,7 +249,7 @@ func TestRetry_ExhaustsRetries(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("connection reset")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -252,7 +267,7 @@ func TestRetry_ContextCanceled(t *testing.T) {
 			cancel() // cancel after first attempt
 		}
 		return errors.New("timeout")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -444,7 +459,7 @@ func TestRetry_BackoffTiming(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("timeout")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	elapsed := time.Since(start)
 
 	if err == nil {
