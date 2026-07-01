@@ -2454,14 +2454,23 @@ bash "$(dirname "$0")/ci/architecture/checks/44_application_size_cap_and_aliases
 
 bash "$(dirname "$0")/ci/architecture/checks/46_inline_clips_repository_map_ban.sh" || { echo "Check 46 (inline ClipsRepository map ban) failed"; exit 1; }
 
-# ── Check 50: Channel-monitor E2E dedup contract test coverage (Spec June 2026) ──
+# ── Check 45: Channel-monitor E2E dedup contract test coverage (PR-C-YouTube-Cutover Commit I, June 2026) ──
 # Verifies that the canonical E2E test file
 # `internal/application/assets/monitor/e2e_no_duplicates_test.go`
 # exists AND asserts the locked counter invariants so the assertion
-# coverage cannot be silently neutered. Slot chosen as the lowest free
-# number ≥45 since Check 45 is occupied by the inline
-# `map[string]*ClipsRepository` ban (PR-BARE-ONLY-MAP-LITERAL-COVERAGE).
-echo "=== Check 50: Channel-monitor E2E dedup counter coverage ==="
+# coverage cannot be silently neutered. Pin tokens match the spec
+# invariants (parallel-safe-bypass semantics):
+#   accepted_jobs==1     (Tick1+Tick2 dedups the channel-level
+#                         sync job via the mockSyncBroker set)
+#   duplicate_enqueues==5 (Tick2's 5 per-video emits classified
+#                            as broker duplicates)
+# Tick1/Tick2/parallel-race spec assertions are inspected at the
+# source level so a gate regression on any of them surfaces here
+# before CI tests run. Slot picked per spec (PR-C-YouTube-Cutover
+# Commit I — user-explicit slot assignment supersedes the prior
+# Check 50 numbering; the inline `map[string]*ClipsRepository` ban
+# detection remains enforced via Check 46's script invocation).
+echo "=== Check 45: Channel-monitor E2E dedup counter coverage (PR-C-YouTube-Cutover Commit I) ==="
 e2e_test_file="internal/application/assets/monitor/e2e_no_duplicates_test.go"
 if [ ! -f "$e2e_test_file" ]; then
   echo "FAIL: $e2e_test_file is missing."
@@ -2470,7 +2479,7 @@ if [ ! -f "$e2e_test_file" ]; then
   exit 1
 fi
 missing=""
-for tok in qdrant db_clips drive_uploads outbox accepted_jobs duplicate_enqueues; do
+for tok in qdrant db_clips drive_uploads outbox accepted_jobs duplicate_enqueues FiveByTwo; do
   if ! grep -qi "$tok" "$e2e_test_file"; then
     missing="$missing $tok"
   fi
@@ -2479,4 +2488,4 @@ if [ -n "$missing" ]; then
   echo "FAIL: $e2e_test_file is missing counter assertions for:$missing"
   exit 1
 fi
-echo "OK: Check 50 - E2E counter coverage verified on monitor/."
+echo "OK: Check 45 - E2E counter coverage verified on monitor/. (PR-C-YouTube-Cutover Commit I)"
