@@ -441,31 +441,6 @@ func (u *ProcessYouTubeSegmentUseCase) failInvalidTimestamp(out youtubetypes.Pro
 	return u.fail(out, typed)
 }
 
-// isTransientExtractionErrorLegacy is the legacy substring-match
-// fallback used by IsTransientExtractionError when errors.As
-// cannot find a *ExtractionError. Kept as a private helper because
-// raw port errors (e.g. yt-dlp subprocess output) bubble up through
-// retry.Do before the use case can wrap them.
-func isTransientExtractionErrorLegacy(err error) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Error())
-	retryable := []string{
-		"timeout", "connection refused", "connection reset", "eof",
-		"429", "503", "502", "504",
-		"rate limit", "quota exceeded",
-		"http error 5",
-		"temporarily unavailable",
-	}
-	for _, s := range retryable {
-		if strings.Contains(lower, s) {
-			return true
-		}
-	}
-	return false
-}
-
 // cleanSegmentName trims + SafeName + falls back to segment_NNN on
 // empty. Mirrors the helper in adapters/segment_processor.go (kept
 // here so the canonical use case is self-contained; the adapters

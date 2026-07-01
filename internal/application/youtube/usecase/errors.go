@@ -9,20 +9,23 @@
 // (jobs/classify.go) switches on `errors.As(err, &ee)` instead of
 // string matching.
 //
-// The legacy `isTransientExtractionError` (in process_segment.go)
-// stays as a fallback for errors raised by ports that have not yet
-// been ported to the typed taxonomy (the retry.Do wrapper around
-// VideoPipeline.DownloadAndCutYouTubeVideo is the canonical example
-// — a transient 503 from yt-dlp bubbles up as a plain
-// fmt.Errorf("video processing failed: %w", err) before the use
-// case can wrap it). The fallback path is the call-last-resort when
-// `errors.As` returns false; the canonical path is the typed
-// ExtractionError.
+// Azione 3/8 di Step 7 (July 2026): the substring-match fallback
+// delegates to `pkg/retry.IsTransient` (the canonical repository-
+// wide "should I retry this?" predicate). The typed `*ExtractionError`
+// path stays authoritative: a terminal `*ExtractionError{
+// Retryable: false }` whose inner Cause happens to match the
+// transient substring taxonomy (e.g. "503" appearing inside a
+// terminal Cause) MUST classify as non-retryable — that is the
+// Correttezza #9 property. The fallback is therefore only invoked
+// after `errors.As` returns false: it covers raw port errors that
+// bubble up through `retry.Do` before the use case can wrap them.
 package usecase
 
 import (
 	"errors"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // FailureCode is the typed enum the use case returns on the canonical
@@ -130,18 +133,26 @@ func NewExtractionError(code FailureCode, retryable bool, message string, cause 
 }
 
 // IsTransientExtractionError is the canonical retryable classifier.
-// Tries `errors.As(err, &ee)` first (typed path); falls back to the
-// legacy substring match for errors raised by ports that have not
-// been ported to the typed taxonomy (e.g. raw VideoPipeline errors
-// bubbling up through retry.Do).
 //
-// Returns true if the error is retryable under the typed taxonomy
-// OR matches a known transient substring (timeout, 429, 503, 502,
-// 504, "rate limit", "connection refused", "temporarily unavailable").
-// Returns false for nil errors, for terminal ExtractionError (e.g.
-// FailureCodeEmptyLocalPath, FailureCodeInvalidLocalArtifact,
-// FailureCodeHashFailed, FailureCodeDurationOutOfRange), and for
-// unknown error shapes.
+// The typed path is authoritative: `errors.As(err, &ee)` reads the
+// `Retryable` bool from `*ExtractionError` exactly as the use case's
+// `NewExtractionError(code, retryable, ...)` constructor set it.
+// A terminal `*ExtractionError{Retryable: false}` whose inner Cause
+// happens to contain a transient substring (e.g. "503" inside a
+// terminal syscall message) MUST classify as non-retryable — that
+// is the Correttezza #9 property (the typed classification wins
+// over heuristic substring matching).
+//
+// The substring fallback delegates to `pkg/retry.IsTransient` and
+// is only invoked when `errors.As` returns false: it covers raw
+// port errors bubbling up through `retry.Do` before the use case
+// can wrap them (e.g. a transient 503 from yt-dlp wrapped as
+// `fmt.Errorf("video processing failed: %w", err)`).
+//
+// Returns true when the typed path says retryable OR the substring
+// fallback matches the canonical taxonomy. Returns false for nil
+// errors, for terminal `*ExtractionError`, and for unknown shapes
+// that match no transient substring.
 func IsTransientExtractionError(err error) bool {
 	if err == nil {
 		return false
@@ -150,6 +161,5 @@ func IsTransientExtractionError(err error) bool {
 	if errors.As(err, &ee) {
 		return ee.Retryable
 	}
-	// Fallback: substring match for raw port errors.
-	return isTransientExtractionErrorLegacy(err)
+	return retry.IsTransient(err)
 }
