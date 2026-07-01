@@ -21,6 +21,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -122,9 +123,18 @@ func (h *GenerateItemJobHandler) HandleJob(
 
 	res, err := h.useCase.Execute(ctx, &item)
 	if err != nil {
+		// P0.1 Fase 1b (July 2026): check whether the error is a
+		// PipelineError with Retryable flag. Log it so operators can
+		// grep for "pipeline_error stage=<stage> retryable=<bool>".
+		var pipelineErr *voiceover.PipelineError
+		isRetryable := true // default: unknown errors are retryable (fail-safe)
+		if errors.As(err, &pipelineErr) {
+			isRetryable = pipelineErr.Retryable
+		}
 		h.logger.Error("voiceover.generate_item execution failure",
 			zap.String("job_id", j.ID),
 			zap.String("language", item.Language),
+			zap.Bool("retryable", isRetryable),
 			zap.Error(err))
 		if h.hasProgress(tools) {
 			tools.Progress(100, "voiceover.generate_item execution failed")
