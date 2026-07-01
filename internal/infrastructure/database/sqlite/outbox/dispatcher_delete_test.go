@@ -378,3 +378,192 @@ func TestEnqueueAndDelete_ShimIsTrashRoute(t *testing.T) {
 		t.Errorf("EnqueueAndDelete shim event_key: want drive_delete:false:asset_shim got %q", eventKey)
 	}
 }
+
+// ────────────────────────────────────────────────────────────────────
+// EnqueueIndexDelete CIRCUIT-BREAKER contract tests (Blocco 3.2
+// commit 2/2 follow-up pin, July 2026).
+//
+// EnqueueIndexDelete is the canonical re-emit path for stuck
+// mid-chain rows. Per the docstring on dispatcher_delete.go, it
+// re-emits EventAssetIndexDeleteRequested WITHOUT advancing
+// lifecycle_state (emit-only semantic) and re-stamps updated_at
+// (CIRCUIT-BREAKER rate-limit on retries; see dispatcher_advance.go
+// for the state-flip sibling).
+//
+// These tests pin both halves of the invariant. Without them:
+//   - a future refactor that drops the updated_at re-stamp would let
+//     the reconciler re-emit every reconciliationInterval (hot-loop
+//     on permanent failures);
+//   - a future refactor that lifts the emit-only guarantee would let
+//     the reconciler chain the state forward out of order, racing
+//     with the IndexDeleteHandler's at-handler state-flip.
+// ────────────────────────────────────────────────────────────────────
+
+// TestEnqueueIndexDelete_StampsUpdatedAtWithoutStateFlip pins the
+// core CIRCUIT-BREAKER invariant for a row in DRIVE_DELETE_PENDING
+// (a mid-chain state the reconciler would re-emit to recover from
+// a stuck worker). Asserts:
+//
+//   (a) lifecycle_state is NOT changed (emit-only semantic).
+//   (b) updated_at IS re-stamped to current time (CIRCUIT-BREAKER
+//       rate-limit; the next reconciler tick re-fires only after
+//       `threshold` minutes, not on every reconciliationInterval).
+//   (c) outbox row emits EventAssetIndexDeleteRequested with
+//       event_key=`delete:<assetID>` + canonical v1 envelope shape.
+//
+// Pairs with TestEnqueueDriveDelete_StampsUpdatedAtOnLifecycleFlip
+// from Blocco 3.2 commit 1/2 (the CIRCUIT-BREAKER pin on the
+// state-flip path) — together they seal both halves of the blocco.
+func TestEnqueueIndexDelete_StampsUpdatedAtWithoutStateFlip(t *testing.T) {
+	db := memoryDB(t)
+	ensureOutboxSchema(t, db)
+	minimalMediaAssetsFixture(t, db)
+
+	// Seed row in DRIVE_DELETE_PENDING — a mid-chain state where the
+	// DeletionReconciler would re-emit to recover from a stuck worker
+	// (e.g. Drive API permanently failed and the row dropped out of
+	// the happy path but the worker didn't advance to index-delete).
+	const preExistingState = "DRIVE_DELETE_PENDING"
+	const assetID = "asset_midchain"
+	const originalUpdatedAt = "2020-01-01T00:00:00Z"
+	insertRow(t, db, assetID, preExistingState, originalUpdatedAt)
+
+	beforeCall := time.Now().UTC()
+	d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+	if err := d.EnqueueIndexDelete(context.Background(), assetID); err != nil {
+		t.Fatalf("EnqueueIndexDelete: %v", err)
+	}
+	afterCall := time.Now().UTC()
+
+	// (a) lifecycle_state preserved (CIRCUIT-BREAKER is emit-only).
+	var state string
+	var updatedAt string
+	if err := db.QueryRow(`SELECT lifecycle_state, updated_at FROM media_assets WHERE id = ?`, assetID).Scan(&state, &updatedAt); err != nil {
+		t.Fatalf("read media_assets row: %v", err)
+	}
+	if state != preExistingState {
+		t.Errorf("lifecycle_state: CIRCUIT-BREAKER is emit-only; want %s unchanged got %s", preExistingState, state)
+	}
+
+	// (b) updated_at was re-stamped (between beforeCall and afterCall).
+	got := timeutil.ParseRFC3339(updatedAt)
+	if got.IsZero() {
+		t.Fatalf("parse updated_at %q returned zero time", updatedAt)
+	}
+	if !got.After(beforeCall.Add(-time.Second)) || got.After(afterCall.Add(time.Second)) {
+		t.Errorf("updated_at %s not within +/-1s of call window [%s, %s]", got, beforeCall, afterCall)
+	}
+	if updatedAt == originalUpdatedAt {
+		t.Errorf("updated_at was NOT re-stamped (still %q) -- CIRCUIT-BREAKER fix not applied", updatedAt)
+	}
+
+	// (c) outbox row shape.
+	var eventType, aggID, aggType, payload, eventKey string
+	if err := db.QueryRow(`SELECT event_type, aggregate_id, aggregate_type, payload_json, event_key FROM outbox_events ORDER BY id DESC LIMIT 1`).Scan(&eventType, &aggID, &aggType, &payload, &eventKey); err != nil {
+		t.Fatalf("scan outbox row: %v", err)
+	}
+	if eventType != outboxevents.EventAssetIndexDeleteRequested {
+		t.Errorf("event_type: want %q got %q", outboxevents.EventAssetIndexDeleteRequested, eventType)
+	}
+	if aggID != assetID {
+		t.Errorf("aggregate_id: want %q got %q", assetID, aggID)
+	}
+	if aggType != "media_asset" {
+		t.Errorf("aggregate_type: want media_asset got %q", aggType)
+	}
+	if eventKey != "delete:"+assetID {
+		t.Errorf("event_key: want delete:%s got %q", assetID, eventKey)
+	}
+
+	// v1 envelope (light shape check; round-trip is canonical).
+	var p deleteRequestV1
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		t.Fatalf("json.Unmarshal v1 envelope: %v\npayload: %s", err, payload)
+	}
+	if p.SchemaVersion != DeleteRequestSchemaVersion {
+		t.Errorf("schema_version: want %q got %q", DeleteRequestSchemaVersion, p.SchemaVersion)
+	}
+	if p.AssetID != assetID {
+		t.Errorf("asset_id: want %q got %q", assetID, p.AssetID)
+	}
+	if p.EventID == "" {
+		t.Error("event_id must be non-empty (operator audit UUID)")
+	}
+	if p.IdempotencyKey != eventKey {
+		t.Errorf("v1 conflation invariant: payload.IdempotencyKey (%q) != event_key (%q)", p.IdempotencyKey, eventKey)
+	}
+	if p.RequestedAt == "" {
+		t.Error("requested_at: must be non-empty RFC3339 (operator audit)")
+	}
+}
+
+// TestEnqueueIndexDelete_PreservesLifecycleStateAcrossAllMidChainStates
+// is the boundary pin for the emit-only semantic across every
+// deletion-chain state. Catches a hypothetical future refactor that
+// accidentally wires EnqueueIndexDelete to dispatcher_advance.go's
+// state-flip SQL (which would silently advance the row's lifecycle_state
+// even when only re-emission was intended).
+//
+// For each pre-existing state, asserts the same 3 invariants:
+//
+//   (i)   lifecycle_state is unchanged (no accidental state advance).
+//   (ii)  updated_at is re-stamped within +/-1s of call time
+//         (CIRCUIT-BREAKER rate-limit).
+//   (iii) outbox row emits with event_key=`delete:<assetID>`.
+//
+// Subtest-driven so a future regression pinpoints the offending state
+// directly (the failing state's name surfaces in `go test -v`).
+func TestEnqueueIndexDelete_PreservesLifecycleStateAcrossAllMidChainStates(t *testing.T) {
+	for _, preExisting := range []string{
+		"ACTIVE",               // non-chain: classifies to emit-only fallback (rare canonical path)
+		"DELETE_REQUESTED",     // mid-chain hop 1 (would advance->DRIVE_DELETE_PENDING if swapped)
+		"DRIVE_DELETE_PENDING", // mid-chain hop 2 (canonical reconciler target)
+		"INDEX_DELETE_PENDING", // mid-chain hop 3 (would advance->DELETED if swapped)
+		"DELETED",              // terminal (rare path; should still tolerate)
+	} {
+		t.Run(preExisting, func(t *testing.T) {
+			db := memoryDB(t)
+			ensureOutboxSchema(t, db)
+			minimalMediaAssetsFixture(t, db)
+			const originalUpdatedAt = "2024-01-01T00:00:00Z"
+			insertRow(t, db, "asset_inflight", preExisting, originalUpdatedAt)
+
+			beforeCall := time.Now().UTC()
+			d := NewDispatcher(&fakeClips{}, &fakeClips{}, outboxevents.NewRepository(db), &txMgrCapture{db: db}, zap.NewNop())
+			if err := d.EnqueueIndexDelete(context.Background(), "asset_inflight"); err != nil {
+				t.Fatalf("EnqueueIndexDelete on pre-existing %s row: %v", preExisting, err)
+			}
+			afterCall := time.Now().UTC()
+
+			// (i) lifecycle_state preserved.
+			var state, updatedAt string
+			if err := db.QueryRow(`SELECT lifecycle_state, updated_at FROM media_assets WHERE id = ?`, "asset_inflight").Scan(&state, &updatedAt); err != nil {
+				t.Fatalf("read row: %v", err)
+			}
+			if state != preExisting {
+				t.Errorf("lifecycle_state changed: want %s got %s (CIRCUIT-BREAKER is emit-only -- if swapped with dispatcher_advance.go, chain would advance out of order)", preExisting, state)
+			}
+
+			// (ii) updated_at re-stamped within +/-1s.
+			got := timeutil.ParseRFC3339(updatedAt)
+			if got.IsZero() {
+				t.Errorf("updated_at %q is not parseable as RFC3339", updatedAt)
+			}
+			if !got.After(beforeCall.Add(-time.Second)) || got.After(afterCall.Add(time.Second)) {
+				t.Errorf("updated_at %s not within +/-1s of call window [%s, %s]", got, beforeCall, afterCall)
+			}
+			if updatedAt == originalUpdatedAt {
+				t.Errorf("updated_at was NOT re-stamped (still %q) -- CIRCUIT-BREAKER fix not applied", updatedAt)
+			}
+
+			// (iii) outbox row emitted.
+			var eventKey string
+			if err := db.QueryRow(`SELECT event_key FROM outbox_events ORDER BY id DESC LIMIT 1`).Scan(&eventKey); err != nil {
+				t.Fatalf("scan event_key: %v", err)
+			}
+			if eventKey != "delete:asset_inflight" {
+				t.Errorf("event_key: want delete:asset_inflight got %q", eventKey)
+			}
+		})
+	}
+}
