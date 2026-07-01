@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -83,6 +84,38 @@ type MediaDeps struct {
 	Renderer    StockRenderer
 	ClipIndexer *clipindexer.Service
 	MetaWriter  *semantic.MetadataWriter
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Audit P0 #6 (July 2026): narrow port types so test fakes can satisfy
+// them via Go's structural subtyping without mocking the full
+// *assetindex.Service (60+ methods), *assets.ClipsRepository (25+ methods),
+// or *outbox.Dispatcher surface. Production wiring passes concrete
+// pointers which satisfy these interfaces structurally — the
+// `Deps` shape above is unchanged and module_sources.go::WireStockPipeline
+// is NOT modified.
+// ────────────────────────────────────────────────────────────────────
+
+// stockAssetIndexUpserter is the narrow surface the stock pipeline
+// uses from *assetindex.Service. Only Upsert is invoked
+// (run_upload.go::indexChunkToAssetIndex).
+type stockAssetIndexUpserter interface {
+	Upsert(ctx context.Context, rec *assetindex.AssetRecord) error
+}
+
+// stockClipsSearchTermUpdater is the narrow surface the stock pipeline
+// uses from *assets.ClipsRepository. Only UpdateSearchTerms is invoked
+// (run_upload.go::upsertChunkAndDispatch). Audit P0 #6 mandates the
+// failure halts the dispatch path — see run_upload.go::upsertChunkAndDispatch.
+type stockClipsSearchTermUpdater interface {
+	UpdateSearchTerms(ctx context.Context, clipID, source, name string, tags []string, searchText string) error
+}
+
+// stockChunkDispatcher is the narrow surface the stock pipeline uses
+// from *outbox.Dispatcher. Only EnqueueAndIndex is invoked
+// (run_upload.go::upsertChunkAndDispatch).
+type stockChunkDispatcher interface {
+	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, fileHash string) error
 }
 
 // Deps is the canonical constructor input for stockpipeline.Service
@@ -163,15 +196,18 @@ type Service struct {
 	renderer    StockRenderer
 	pcfg        PipelineConfig
 	jobsSvc     *appjobs.Service
-	assetIndex  *assetindex.Service
+	assetIndex  stockAssetIndexUpserter
 	youtubeSvc  *youtube.Service
 	clipIndexer *clipindexer.Service
 	metaWriter  *semantic.MetadataWriter
-	clipsRepo   *assets.ClipsRepository
+	clipsRepo   stockClipsSearchTermUpdater
 	// dispatcher is the canonical media_index_outbox dispatcher,
 	// required at ctor time per QDRANT-002 PR7. NewService rejects
 	// nil dispatcher with ErrStockPipelineNilDispatcher.
-	dispatcher *outbox.Dispatcher
+	// Audit P0 #6: narrowed from `*outbox.Dispatcher` to the local
+	// `stockChunkDispatcher` interface so test fakes can wire the
+	// shape without dragging in the full infra surface.
+	dispatcher stockChunkDispatcher
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -446,9 +482,21 @@ type ChunkResult struct {
 	Rendered bool `json:"rendered"`
 	// Uploaded is true when Publisher.Publish wrote the chunk to Drive.
 	Uploaded bool `json:"uploaded"`
-	// Indexed is true when the asset_index upsert + outbox dispatch
-	// both succeeded (best-effort; false does not block the chunk).
-	Indexed bool `json:"indexed"`
+	// Indexed tracks the post-upload indexing lifecycle of the chunk.
+	// Audit P0 #6 (July 2026): replaced `bool` with the typed
+	// IndexingStatus enum (see types_status.go). The pre-fix bool
+	// was both a silent false-positive (assetIndex nil ⇒
+	// `indexed := true` default-zero ⇒ verified-by-operator false
+	// completion signal) AND a silent false-negative (UpdateSearchTerms
+	// failure logged a Warn + continued, letting the outbox dispatch a
+	// row with stale tags_norm that the worker cannot backfill).
+	//
+	// Wire backwards-compat preserved: `IndexingStatus.MarshalJSON`
+	// emits `true|false` for the "indexed" JSON field depending on
+	// whether the value is `IndexingCompleted`. Operators reading
+	// logs / dashboards should pivot on the typed enum internally;
+	// external API consumers see no schema change.
+	Indexed IndexingStatus `json:"indexed"`
 }
 
 // VideoSource represents a single video to be downloaded and processed.

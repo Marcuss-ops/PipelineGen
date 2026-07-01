@@ -80,15 +80,30 @@ func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPa
 		zap.String("drive_link", webViewLink),
 	)
 
-	// Track indexing outcome. Failures in asset_index / outbox dispatch
-	// are best-effort (logged but not returned as errors — the chunk is
-	// already on Drive and the operator can backfill). Indexed=false is
-	// an operator-visible signal, not a hard failure.
-	indexed := true
-	if s.assetIndex != nil {
-		if ok := s.indexChunkToAssetIndex(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, fileID, webViewLink, downloadLink, videoCfg); !ok {
-			indexed = false
-		}
+	// Audit P0 #6 (July 2026): typed IndexingStatus lifecycle replaces
+	// the legacy `Indexed bool`. The pre-fix default-zero `indexed := true`
+	// when `s.assetIndex == nil` was a silent false-positive (operator
+	// saw Indexed=true but the chunk was never indexed). Now we surface
+	// 3 distinguishable terminal states (the 4th, IndexingPending, is the
+	// default-zero on a freshly-constructed ChunkResult before any
+	// indexing-surface call):
+	//   - s.assetIndex == nil            ⇒ IndexingSkipped (the post-upload
+	//                                       indexing surface is not wired)
+	//   - all steps Up/Upsert/UpdateSearchTerms/EnqueueAndIndex succeeded ⇒ IndexingCompleted
+	//   - any step returned err         ⇒ IndexingFailed
+	//
+	// Note: uploadAndIndexChunk still returns nil at the upload level —
+	// the chunk is on Drive; indexing is best-effort per the legacy
+	// "operator can backfill" comment. The signal of failure is now
+	// honest via IndexingFailed instead of the lossy Indexed=false.
+	var indexed IndexingStatus
+	switch {
+	case s.assetIndex == nil:
+		indexed = IndexingSkipped
+	case s.indexChunkToAssetIndex(ctx, chunkIdx, chunkTitle, folderID, chunkPath, chunkRes, input, fileID, webViewLink, downloadLink, videoCfg):
+		indexed = IndexingCompleted
+	default:
+		indexed = IndexingFailed
 	}
 	chunkRes.Indexed = indexed
 	return nil
@@ -223,8 +238,16 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *asset.Asset)
 	// Skipped for folder rows because UpdateSearchTerms rejects them in
 	// assets.ClipsRepository.
 	if clip.SearchText != "" && !clip.IsFolder() && s.clipsRepo != nil {
+		// Audit P0 #6 (July 2026): UpdateSearchTerms failure MUST halt
+		// the dispatch path. The pre-fix code logged Warn + continued,
+		// letting s.dispatcher.EnqueueAndIndex run and the worker persist
+		// a row with stale tags_norm that the worker doesn't backfill
+		// (no backfill machinery matches legacy tags). Now: propagate
+		// the err → dispatcher.EnqueueAndIndex is NEVER called.
+		// Caller collapses to chunkRes.Indexed = IndexingFailed (closes
+		// the silent-success class on the dispatch surface).
 		if err := s.clipsRepo.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), clip.Name, clip.Tags, clip.SearchText); err != nil {
-			s.log.Warn("failed to update search terms for stock clip", zap.String("clip_id", clip.ID), zap.Error(err))
+			return fmt.Errorf("upsertChunkAndDispatch: UpdateSearchTerms halted dispatch: %w", err)
 		}
 	}
 
