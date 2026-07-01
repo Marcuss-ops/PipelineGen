@@ -59,6 +59,11 @@ func (a *clipsDriveAdapter) DeleteFolder(ctx context.Context, folderID string) e
 	return a.admin.DeleteFolder(ctx, folderID)
 }
 
+// TODO(Fase 3.4): migrate from drive.Admin.UploadFile to delivery.Publisher.Publish.
+// The clipsDriveAdapter currently calls a.admin.UploadFile() which goes through
+// the drive.Admin Pattern 0 port. The canonical upload path is
+// delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationYouTubeClip, ...})
+// which adds conflict policy, folder resolution, and filename normalisation.
 func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*clips.ClipUploadResultDTO, error) {
 	if a.admin == nil {
 		return nil, fmt.Errorf("clipsDriveAdapter: drive not wired")
@@ -70,6 +75,9 @@ func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID,
 	return driveUploadToDTO(res), nil
 }
 
+// TODO(Fase 3.4): migrate from drive.Admin.UploadFileWithDescription to delivery.Publisher.Publish.
+// Same bypass as UploadFile above — the canonical upload path is
+// delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationYouTubeClip, Description: description, ...}).
 func (a *clipsDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*clips.ClipUploadResultDTO, error) {
 	if a.admin == nil {
 		return nil, fmt.Errorf("clipsDriveAdapter: drive not wired")
