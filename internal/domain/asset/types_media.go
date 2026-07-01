@@ -293,6 +293,9 @@ type Subject struct {
 // SubjectID is a string (TEXT in the database) holding the Subject's slug.
 // SlugID is an explicit alias used by some callers and stays equivalent to
 // SubjectID in practice; preserve both for backward compat.
+//
+// Step 1 (July 2026): Origin and Provider fields added for territory
+// separation (retrieved vs generated vs uploaded).
 type ImageAsset struct {
 	ID           int64     `json:"id"`
 	Hash         string    `json:"hash"`
@@ -312,6 +315,12 @@ type ImageAsset struct {
 	MetadataJSON string    `json:"metadata_json"`
 	CreatedAt    time.Time `json:"created_at"`
 	Tags         []string  `json:"tags,omitempty"`
+
+	// Origin classifies the image provenance: retrieved, generated, or uploaded.
+	Origin ImageOrigin `json:"origin,omitempty"`
+
+	// Provider identifies the specific source/generator (wikipedia, flux, etc.).
+	Provider ImageProvider `json:"provider,omitempty"`
 }
 
 // ImageUsage tracks usage of an image inside a rendered video.

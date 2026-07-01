@@ -43,12 +43,80 @@ type Artifact struct {
 // style definitions from config/generation_styles.yaml.
 //
 // This type was moved here from the now-deleted internal/domain/media/styles.go
-// during Wave-14. The domain/media package previously held these types
-// alongside type aliases; since only the aliases were meant to be deleted,
-// the GenerationStyle types are preserved in the canonical domain/asset package.
+// during Wave-14. Step 1 (July 2026) enriches it with version, prompt suffix,
+// negative prompt, dimension defaults, allowed providers/models, destination
+// key, tags, and an enabled flag — all optional fields with omitempty so the
+// existing YAML (name + description only) continues to work.
 type GenerationStyle struct {
-	Name        string `yaml:"name" json:"name"`
+	// Name is the canonical style identifier (e.g. "cinematic", "anime").
+	Name string `yaml:"name" json:"name"`
+
+	// Description is the free-text style description appended to prompts.
+	// Legacy field — kept for backward compatibility with existing YAML.
+	// When PromptSuffix is also set, PromptSuffix takes precedence.
 	Description string `yaml:"description" json:"description"`
+
+	// Version is an integer bumped when the style's prompt suffix or
+	// negative prompt changes. 0 means unversioned (legacy).
+	Version int `yaml:"version,omitempty" json:"version,omitempty"`
+
+	// DisplayName is a human-readable label (e.g. "Cinematic").
+	DisplayName string `yaml:"display_name,omitempty" json:"display_name,omitempty"`
+
+	// PromptSuffix is appended to the user prompt after a comma separator.
+	// When set, this replaces the legacy Description-based composition.
+	PromptSuffix string `yaml:"prompt_suffix,omitempty" json:"prompt_suffix,omitempty"`
+
+	// NegativePrompt is injected as the negative prompt for providers
+	// that support it (Flux, NVIDIA, etc.).
+	NegativePrompt string `yaml:"negative_prompt,omitempty" json:"negative_prompt,omitempty"`
+
+	// DefaultWidth / DefaultHeight override the caller-supplied dimensions
+	// when non-zero. 0 means "use caller value or global default".
+	DefaultWidth  int `yaml:"default_width,omitempty" json:"default_width,omitempty"`
+	DefaultHeight int `yaml:"default_height,omitempty" json:"default_height,omitempty"`
+
+	// AllowedProviders restricts which providers can serve this style.
+	// Empty = all providers are allowed (legacy behaviour).
+	AllowedProviders []string `yaml:"allowed_providers,omitempty" json:"allowed_providers,omitempty"`
+
+	// AllowedModels restricts which models can render this style.
+	// Empty = all models are allowed (legacy behaviour).
+	AllowedModels []string `yaml:"allowed_models,omitempty" json:"allowed_models,omitempty"`
+
+	// Tags are metadata labels associated with this style.
+	Tags []string `yaml:"tags,omitempty" json:"tags,omitempty"`
+
+	// DestinationKey is the logical destination identifier (e.g.
+	// "ai-images/cinematic"). Resolved to a Drive folder ID by
+	// DestinationResolver at generation time.
+	DestinationKey string `yaml:"destination_key,omitempty" json:"destination_key,omitempty"`
+
+	// Enabled controls whether the style is available for use.
+	// nil = absent from YAML = enabled (backward-compatible default).
+	// Explicit false = style is present in config but disabled.
+	// Pointer type so omitempty distinguishes "absent" from "explicit false".
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
+// EffectiveSuffix returns PromptSuffix when set, falling back to
+// Description for backward compatibility with legacy YAML.
+func (s GenerationStyle) EffectiveSuffix() string {
+	if s.PromptSuffix != "" {
+		return s.PromptSuffix
+	}
+	return s.Description
+}
+
+// IsEnabled reports whether the style is active.
+// nil (absent from YAML) → enabled (backward-compatible default).
+// true → explicitly enabled.
+// false → explicitly disabled.
+func (s GenerationStyle) IsEnabled() bool {
+	if s.Enabled == nil {
+		return true
+	}
+	return *s.Enabled
 }
 
 // GenerationStyles is a container for multiple styles (YAML on-disk shape).
