@@ -44,7 +44,9 @@ var allLifecycleStates = []LifecycleState{
 	StateDeletePending,
 	StateDeleteRequested,
 	StateDriveDeletePending,
+	StateDriveDeleted,
 	StateLifecycleIndexDeletePending,
+	StateIndexDeleted,
 	StateDeleted,
 	StateError,
 }
@@ -81,10 +83,16 @@ func TestLifecycleState_IsValidTransitionFullTable(t *testing.T) {
 			StateDeleteRequested:     true, // legacy rewrite path → new chain
 		},
 		StateDriveDeletePending: {
-			StateLifecycleIndexDeletePending: true, // DriveDeleteHandler post-success flip
+			StateDriveDeleted: true, // DriveDeleteHandler post-success flip (Blocco 3.1 commit 2/3, July 2026)
+		},
+		StateDriveDeleted: {
+			StateLifecycleIndexDeletePending: true, // IndexDeleteHandler pre-flip stamp
 		},
 		StateLifecycleIndexDeletePending: {
-			StateDeleted: true, // IndexDeleteHandler post-success flip
+			StateIndexDeleted: true, // IndexDeleteHandler post-Qdrant+SoftDelete flip (Blocco 3.1 commit 2/3, July 2026)
+		},
+		StateIndexDeleted: {
+			StateDeleted: true, // IndexDeleteHandler post-success terminal flip
 		},
 		// STAGING, PROCESSING, DELETED, ERROR → no out-edges (intentionally
 		// empty maps; self-loops handled by the universal layer below).
@@ -132,7 +140,9 @@ func TestLifecycleState_IsValidTransition_StringLiteralValues(t *testing.T) {
 		{StateDeletePending, "DELETE_PENDING"},
 		{StateDeleteRequested, "DELETE_REQUESTED"},
 		{StateDriveDeletePending, "DRIVE_DELETE_PENDING"},
+		{StateDriveDeleted, "DRIVE_DELETED"},
 		{StateLifecycleIndexDeletePending, "INDEX_DELETE_PENDING"},
+		{StateIndexDeleted, "INDEX_DELETED"},
 		{StateDeleted, "DELETED"},
 		{StateError, "ERROR"},
 	}

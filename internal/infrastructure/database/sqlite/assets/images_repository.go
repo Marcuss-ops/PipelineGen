@@ -673,7 +673,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.ImageF
 		}
 		out = append(out, routing.ImageSearchResult{
 			AssetID:      id.String,
-			Origin:       routing.ImageOrigin(originStr.String),
+			Origin:       asset.ImageOrigin(originStr.String),
 			Provider:     providerID.String,
 			Name:         name,
 			PreviewURL:   previewURL.String,
