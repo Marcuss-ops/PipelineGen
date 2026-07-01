@@ -17,6 +17,93 @@
 # (canonical pre-P0-5 byte-equivalent, established by slice 1/4).
 #
 # Zero-fabrication policy: owner / deadline / linked_issues OMITTED when absent in source.
+
+
+- id: S7-Step-7
+  status: done
+  exit_signal: true
+  exit_gate: |
+    pkg/retry canonicalization + Check 50 landed: typed-path transient
+    classifier (`TransientInfrastructureError` + `IsTransient` +
+    `WrapTransient` in `pkg/retry/retry.go`) is the canonical surface
+    with production-default `JitterFraction=0.25` (±25% `sleepDuration`
+    jitter via `math/rand.Float64()` replacing the prior
+    `time.Now().UnixNano() % 1_000_000` modulo-hash hack).
+
+    4 production files migrated off substring-based retry classifiers
+    across the Step 7 chain (commits 8bdb9a8d + accb090b + 6f327b10 +
+    c1cf33d3): youtube/usecase IsTransientExtractionError typed
+    delegation (Azione 3/8, duplicate substring slice + legacy 20-line
+    isTransientExtractionErrorLegacy removed); pkg/retry
+    sleepDuration math/rand.Float64() + clamp + JitterFraction=0.25
+    lock (Azione 4/8, 8 deterministic tests covering envelope, clamp,
+    default lock, variability); drive/uploader SubstringMatcher
+    augmented with pkg/retry.WrapTransient typed-wrap at SDK exit
+    (Azione 5/8, pre-typed substring classifier preserved as audit
+    fallback per PR-VO-A3 / pre-Step-7 contract); SDK pkg wrap test
+    package + 12 tests pinning typed-path contract (Azione 6/8,
+    canonical SSOT surface for downstream callers).
+
+    Check 50 (scripts/ci-architectural-checks.sh, commit ef09b732)
+    is the regression safeguard: per-function awk gate forbids
+    retry-classifier functions (regex tokens
+    (Is|is)(Retry|Transient)|(Should|should)Retry + optional
+    PascalCase suffix) calling strings.Contains natively when
+    located OUTSIDE the hardcoded allowlist (pkg/retry,
+    pkg/textutil, pkg/similarity) AND OUTSIDE the per-file
+    transitional allowlist
+    (docs/migrations/retry-classifier-substring-allowlist.txt,
+    25 lines, 5 offenders with explicit owner_capability +
+    2026-07-25 deadline + inline rationale). Test files
+    (*_test.go) are excluded.
+
+    Gate verification at push time: bash scripts/ci-architectural-
+    checks.sh exits 0 with Check 50 active against the canonical
+    tree; pre-existing architest forward-pointer
+    (PR-PRE-EXISTING-VET-FAILURES-WAVE-2026-06-29 in id: 0
+    linked_issues) remains under its own deadline and is OUT OF
+    SCOPE for this entry. QDRANT-001 baseline forward-pointer is
+    preserved (per AGENTS.md "Pre-existing build issues") and
+    explicitly NOT regressed by this entry's landing.
+  linked_issues:
+    - id: 8bdb9a8d
+      owner_capability: internal/application/youtube/usecase
+      status: shipped
+      deadline: 2026-07-01
+    - id: accb090b
+      owner_capability: pkg/retry
+      status: shipped
+      deadline: 2026-07-01
+    - id: 6f327b10
+      owner_capability: internal/infrastructure/drive
+      status: shipped
+      deadline: 2026-07-01
+    - id: c1cf33d3
+      owner_capability: pkg/wrap
+      status: shipped
+      deadline: 2026-07-01
+    - id: ef09b732
+      owner_capability: scripts/ci-architectural-checks.sh
+      status: shipped
+      deadline: 2026-07-01
+    - id: PR-RETRY-CLASSIFIER-DOWNLOADER-MIGRATION
+      owner_capability: internal/infrastructure/artlist/downloader
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-RETRY-CLASSIFIER-CLASSIFY-MIGRATION
+      owner_capability: internal/application/youtube/jobs
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-RETRY-CLASSIFIER-UPLOADER-MIGRATION
+      owner_capability: internal/infrastructure/drive
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-RETRY-CLASSIFIER-OLLAMA-BUILDER-MIGRATION
+      owner_capability: internal/infrastructure/ai/ollama
+      status: pending
+      deadline: 2026-07-25
+
+
 # Doc #2 (post_cascade_followups) and Doc #3 (legacy_fallback_cleanup) DROPPED - see footer pointer.
 
 - id: 0
