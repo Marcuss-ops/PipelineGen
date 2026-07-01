@@ -174,7 +174,7 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	// IndexingHandler consumer rejected as terminal (dead_letter).
 
 	// ── 4) INSERT outbox_events (tx-bound)
-	if err := w.box.Enqueue(
+	if _, err := w.box.Enqueue(
 		ctx,
 		tx,
 		outboxevents.EventAssetIndexRequested,

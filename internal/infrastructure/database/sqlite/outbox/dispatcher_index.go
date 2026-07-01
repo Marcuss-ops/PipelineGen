@@ -91,7 +91,8 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			return fmt.Errorf("dispatcher marshal v1 index payload %s: %w", clip.ID, err)
 		}
 
-		if err := d.outboxEventsRepo.Enqueue(
+		if _, err := d.outboxEventsRepo.Enqueue(
+		
 			ctx, tx,
 			outboxevents.EventAssetIndexRequested,
 			clip.ID,
@@ -211,7 +212,8 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 		return fmt.Errorf("dispatcher marshal v1 index payload %s: %w", assetID, err)
 	}
 
-	if err := d.outboxEventsRepo.Enqueue(
+	if _, err := d.outboxEventsRepo.Enqueue(
+		
 		ctx, tx,
 		outboxevents.EventAssetIndexRequested,
 		assetID,

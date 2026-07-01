@@ -111,7 +111,7 @@ func (d *Dispatcher) EnqueueCleanupEvent(
 		return fmt.Errorf("outbox.Dispatcher.EnqueueCleanupEvent: marshal v1 cleanup payload %s: %w", voiceoverID, err)
 	}
 
-	if err := d.outboxEventsRepo.Enqueue(
+	if _, err := d.outboxEventsRepo.Enqueue(
 		ctx, tx,
 		outboxevents.EventVoiceoverCleanupRequested,
 		voiceoverID,

@@ -27,7 +27,7 @@ type ClipsUpserter interface {
 // methods (MarkCompleted, MarkFailed, etc.) are owned by the outbox
 // worker pool, not the dispatcher.
 type outboxEnqueuer interface {
-	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) error
+	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error)
 }
 
 // Compile-time assertion: any signature drift between the

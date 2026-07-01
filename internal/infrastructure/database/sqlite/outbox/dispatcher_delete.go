@@ -61,7 +61,7 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 			return fmt.Errorf("dispatcher marshal v1 delete payload %s: %w", assetID, err)
 		}
 
-		if err := d.outboxEventsRepo.Enqueue(
+		if _, err := d.outboxEventsRepo.Enqueue(
 			ctx, tx,
 			outboxevents.EventAssetIndexDeleteRequested,
 			assetID,
@@ -128,7 +128,7 @@ func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) erro
 			return fmt.Errorf("dispatcher marshal v1 restore payload %s: %w", assetID, err)
 		}
 
-		if err := d.outboxEventsRepo.Enqueue(
+		if _, err := d.outboxEventsRepo.Enqueue(
 			ctx, tx,
 			outboxevents.EventAssetIndexRestoreRequested,
 			assetID,

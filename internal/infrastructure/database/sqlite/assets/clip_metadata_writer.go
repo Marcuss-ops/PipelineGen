@@ -146,7 +146,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 	}
 
 	// 4) INSERT outbox_events (tx-bound).
-	if err := w.box.Enqueue(
+	if _, err := w.box.Enqueue(
 		ctx,
 		tx,
 		outboxevents.EventAssetIndexRequested,
