@@ -3,9 +3,14 @@
 //
 // The cache is gated on (videoID, language, source) so multiple
 // providers can be composed without colliding keyspaces. The wrapper
-// satisfies monitor.TranscriptProvider itself (forwarding both
-// GetTranscript + Fetch) so consumers don't need to be aware of the
-// cache layer.
+// satisfies monitor.TranscriptProvider itself (forwarding Fetch) so
+// consumers don't need to be aware of the cache layer.
+//
+// Note: the legacy GetTranscript method that used to live on this
+// wrapper was retired when monitor.TranscriptProvider's CONTRACT
+// cleanup (Step 6, commit 60a1f922, June 2026) removed the legacy
+// GetTranscript port method. The wrapper today satisfies the
+// interface via Fetch alone.
 //
 // Scope: per-process only. Production runs deploy N workers; each
 // gets its OWN L1 cache (post-Commit-G promotion to a shared
@@ -101,19 +106,6 @@ func (c *CachingTranscriptProvider) Fetch(ctx context.Context, videoURL string) 
 	}
 	c.store(key, doc)
 	return doc, nil
-}
-
-// GetTranscript satisfies monitor.TranscriptProvider legacy surface.
-// Implementation forwards to Inner.GetTranscript (NOT to Fetch-then-
-// join) so legacy callers keep their canonical join semantics — the
-// L1 cache is NOT consulted, by design, because the cache key is the
-// Commit-G canonical (videoID, language, source), not the legacy
-// "by URL alone" key that GetTranscript would imply.
-func (c *CachingTranscriptProvider) GetTranscript(ctx context.Context, videoURL string) (string, error) {
-	if c == nil || c.Inner == nil {
-		return "", errNoInnerProvider
-	}
-	return c.Inner.GetTranscript(ctx, videoURL)
 }
 
 // lookup reads the entry without copying InternalEntry (just the
