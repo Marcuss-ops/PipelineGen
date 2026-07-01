@@ -49,7 +49,9 @@ func (d *HTTPDownloader) Download(ctx context.Context, req *HTTPDownloadRequest)
 		return fmt.Errorf("output path is required")
 	}
 
-	os.MkdirAll(filepath.Dir(req.OutputPath), 0755)
+	if err := os.MkdirAll(filepath.Dir(req.OutputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
 
 	out, err := os.Create(req.OutputPath)
 	if err != nil {
@@ -109,7 +111,9 @@ func (d *HTTPDownloader) DownloadWithProgress(ctx context.Context, req *HTTPDown
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	os.MkdirAll(filepath.Dir(req.OutputPath), 0755)
+	if err := os.MkdirAll(filepath.Dir(req.OutputPath), 0755); err != nil {
+		return err
+	}
 	out, err := os.Create(req.OutputPath)
 	if err != nil {
 		return err

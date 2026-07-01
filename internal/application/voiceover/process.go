@@ -212,9 +212,9 @@ func (s *Service) processLanguage(
 				zap.Error(werr))
 			return item.fail(FailureInvalidSubfolder, fmt.Errorf("path escape rejected: %w", werr))
 		}
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			s.log.Warn("failed to create local subfolder for voiceover", zap.String("dir", outputDir), zap.Error(err))
-			outputDir = s.outputDir
+		if err := os.MkdirAll(outputDir, 0755); err != nil { // Wave A Item 16: fail-fast on MkdirAll failure (was: log+continue)
+			return item.fail(FailureInvalidSubfolder, fmt.Errorf("failed to create local subfolder %q: %w", outputDir, err))
+			
 		}
 	}
 

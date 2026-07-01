@@ -128,7 +128,7 @@ func (h *Handler) Generate(c *gin.Context) {
 
 	// 1. Synthesize the sound effect using the Python synth script
 	tempDir := filepath.Join("data", "tmp")
-	_ = os.MkdirAll(tempDir, 0755)
+	if err := os.MkdirAll(tempDir, 0755); err != nil { apiutil.InternalError(c, fmt.Errorf("failed to create temp directory %q: %w", tempDir, err)); return }
 
 	tempWav := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.wav", time.Now().UnixNano()))
 	tempFile := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.mp3", time.Now().UnixNano()))
