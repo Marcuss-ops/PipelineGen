@@ -292,18 +292,67 @@ type JobEnqueuer interface {
 	EnqueueExtract(ctx context.Context, req EnqueueExtractRequest) error
 }
 
-// EnqueueExtractRequest is the canonical payload shape the JobEnqueuer
-// receives. Replaces the ETP-specific ExtractRequest type the
-// pre-Step-9 monitor built inline at enqueueClipExtract time.
-type EnqueueExtractRequest struct {
-	VideoID       string
-	Title         string
-	URL           string
-	Group         string // Drive / category group
-	DriveFolderID string
-	Segments      []ytdomain.Segment
-	Channel       channels.Channel // back-ref for channel-level metrics + cursor
+// ── Fase 8 DTO contract lock (July 2026) ───────────────────────────────────
+//
+// ExtractionSegment is the canonical monitor-package segment alias
+// for ytdomain.Segment (godlike/06 "one canonical owner per fact" —
+// the monitor package does NOT define its own segment shape; it
+// RELAYS the dto.Segment shape verbatim). JSON-tag shape + field
+// count is determined by the dto.Segment struct definition (see
+// extraction_intent_test.go::TestExtractionSegment_FieldParityWithYtdomainSegment
+// for the audit-pin lock).
+//
+// Note: a pre-Fase-8 alias `EnqueueExtractSegment` was introduced
+// in an earlier draft but proved gratuitous (zero pre-Fase-8
+// callers in the codebase per `rg EnqueueExtractSegment`); dropped
+// to honour godlike/06 (no orphan aliases — one canonical name per
+// type). The sole canonical segment name in monitor is now
+// ExtractionSegment.
+//
+// Analysis.Segments (above) already declares []ytdomain.Segment for
+// back-compat — ExtractionSegment is the SAME type via alias, so
+// Analysis.Segments assetions stay green without an explicit retype.
+type ExtractionSegment = ytdomain.Segment
+
+// ExtractionIntent is the Fase 8 canonical extraction-enqueue
+// intent payload. Replaces the legacy EnqueueExtractRequest struct
+// shape (which lacked JSON tags) with a wire-stable, snake_case
+// JSON tag surface that mirrors ytdomain.Segment's tag style. The
+// channel-monitor's bind path (ExtractionIntentAdapter at
+// internal/application/youtube/adapters/monitoradapter/) emits this
+// shape; the broker's job-handler deserializes it; the bloop of
+// lock-test asserts byte-equivalence under json.Marshal.
+//
+// Wire-format note (godlike/07 honest-limitation, deliberate Fase 8
+// break): pre-Fase-8 the same shape was an untagged struct that
+// marshalled with default Go names + the embedded Channel; the
+// new shape uses snake_case top-level tags + drops Channel via
+// `json:"-"`. Any caller that JSON-round-trips the struct (broker
+// payload, monitoradapter bind, job-handler decode) sees a different
+// wire shape post-Fase-8. The downstream caller must re-bind on
+// ExtractionIntent (the apply-leg type-alias preserves compile-time
+// compatibility; the wire-format shift is runtime-only). The new
+// Channel `json:"-"` gate is symmetric: marshal-side omits the field
+// AND unmarshal-side leaves the field at zero-value, so a downstream
+// reader cannot observe the legacy Channel state via JSON.
+type ExtractionIntent struct {
+	VideoID       string             `json:"video_id"`
+	Title         string             `json:"title"`
+	URL           string             `json:"url"`
+	Group         string             `json:"group"`
+	DriveFolderID string             `json:"drive_folder_id"`
+	Segments      []ExtractionSegment `json:"segments"`
+	Channel       channels.Channel   `json:"-"` // opaque in monitor; back-ref only for metrics + cursor
 }
+
+// EnqueueExtractRequest is the apply-leg type alias of ExtractionIntent
+// (Fase 8 DTO contract lock). Pre-Fase-8 callers used
+// EnqueueExtractRequest as a struct literal; post-Fase-8 the same name
+// resolves to the canonical ExtractionIntent via the = alias so
+// the call-site surface is unchanged. The alias is bidirectional:
+// `var _ ExtractionIntent = EnqueueExtractRequest{}` and the inverse
+// both compile (see extraction_intent_test.go::TestEnqueueExtractRequest_TypeAliasResolution).
+type EnqueueExtractRequest = ExtractionIntent
 
 // Analysis is what analyzer.go returns when asked about one video.
 // The Fields are the minimum the enqueue step reads: when Segments is
