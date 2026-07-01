@@ -205,7 +205,8 @@ func (m *ChannelMonitor) HandleChannelSyncJob(ctx context.Context, j *jobservice
 		zap.String("channel_id", payload.ChannelID),
 		zap.Bool("success", checkErr == nil),
 		zap.Int("videos_discovered", result.VideosDiscovered),
-		zap.Int("videos_enqueued", result.VideosEnqueued))
+		zap.Int("videos_enqueued", result.VideosEnqueued),
+		zap.Int("infra_failures", result.InfraFailures))
 
 	// Persist the outcome through the canonical recordCheckOutcome path.
 	// On recordCheckOutcome failure, we still return checkErr so the job

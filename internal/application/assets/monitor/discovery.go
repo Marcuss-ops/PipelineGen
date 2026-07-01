@@ -206,6 +206,8 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 			defer func() {
 				if r := recover(); r != nil {
 					m.log.Error("panic in video processing worker", zap.Any("recover", r), zap.String("video_id", video.ID))
+					// Blocco 3a: panic is an infra failure, not a policy rejection.
+					outcomes.infraFailures.Add(1)
 				}
 			}()
 			if channel.MaxVideosPerRun > 0 && outcomes.budgetUsed.Load() >= int32(channel.MaxVideosPerRun) {
@@ -225,6 +227,7 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 		VideosAlreadyScheduled: already,
 		VideosRejected:         rejected,
 		VideosSkipped:          len(videos) - enqueued - already - rejected,
+		InfraFailures:          int(outcomes.infraFailures.Load()),
 	}, nil
 }
 
@@ -301,6 +304,10 @@ type outcomeCounters struct {
 	alreadyScheduled atomic.Int32
 	rejected         atomic.Int32
 	budgetUsed       atomic.Int32
+	// infraFailures counts per-video infra errors (panics, analyzer
+	// timeouts, SQLite errors, broker failures) within the cycle.
+	// Blocco 3a (July 2026).
+	infraFailures atomic.Int32
 }
 
 // tryReserve is now defined in enqueue.go (pre-existing — the budget
@@ -381,6 +388,8 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 		m.log.Warn("analyzeVideo failed, skipping video",
 			zap.String("video_id", videoID),
 			zap.Error(analyzeErr))
+		// Blocco 3a: analyzer/transcript/Ollama error is infra, not policy.
+		outcomes.infraFailures.Add(1)
 		return
 	}
 	if len(analysis.Segments) == 0 {
@@ -462,7 +471,19 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 		// slot counter and is the one we release.
 		outcomes.budgetUsed.Add(-1)
 		outcomes.rejected.Add(1)
+		// Blocco 3a: broker emit failure is infra (enqueuer port
+		// error, not a policy decision).
+		outcomes.infraFailures.Add(1)
 		m.log.Debug("video rejected post-INSERT", zap.String("video_id", videoID))
+		return
+	case OutcomeInfraFailure:
+		// Blocco 3a: TryReserve itself failed (SQLite error). The
+		// ledger couldn't be reached — classify as both rejected
+		// (no broker emit possible) and infra failure.
+		outcomes.budgetUsed.Add(-1)
+		outcomes.rejected.Add(1)
+		outcomes.infraFailures.Add(1)
+		m.log.Warn("video infra failure (ledger unavailable)", zap.String("video_id", videoID))
 		return
 	case OutcomeEnqueued:
 		// Successful flow: enqueueFromAnalysis ran the broker side AND
@@ -496,6 +517,8 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 //     emit succeeded AND enqueue.go's MarkEnqueued flipped the row.
 //   - (OutcomeRejected, "<id>") when TryReserve wins but the broker
 //     emit failed AND enqueue.go's MarkRejected recorded the reason.
+//   - (OutcomeInfraFailure, "") when TryReserve itself fails (SQLite
+//     error). Blocco 3a (July 2026).
 //   - (OutcomeAlreadyScheduled, "") when m.discoveries is nil (defensive;
 //     no dedupe possible — flagged loudly so a missing wire surfaces in
 //     the per-video warn log rather than silently losing dedupe).
@@ -521,10 +544,11 @@ func (m *ChannelMonitor) recordDiscoveryAndClassify(ctx context.Context, info do
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
 	id, won, _, err := m.discoveries.TryReserve(ctx, channel.ID, videoID, ChannelMonitorPolicyVersion, videoURL, title, cycleNow)
 	if err != nil {
-		m.log.Error("recordDiscoveryAndClassify: TryReserve failed, classifying as rejected (ledger error)",
+		m.log.Error("recordDiscoveryAndClassify: TryReserve failed, classifying as infra_failure (ledger error)",
 			zap.String("video_id", videoID),
 			zap.Error(err))
-		return OutcomeRejected, ""
+		// Blocco 3a: SQLite error is infra, not policy.
+		return OutcomeInfraFailure, ""
 	}
 	if !won {
 		return OutcomeAlreadyScheduled, id

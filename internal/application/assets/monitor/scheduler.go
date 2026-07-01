@@ -311,7 +311,8 @@ func (m *ChannelMonitor) checkDueChannels(ctx context.Context, chs []channels.Ch
 				zap.Bool("success", checkErr == nil),
 				zap.Int("videos_discovered", result.VideosDiscovered),
 				zap.Int("videos_enqueued", result.VideosEnqueued),
-				zap.Int("videos_skipped", result.VideosSkipped))
+				zap.Int("videos_skipped", result.VideosSkipped),
+				zap.Int("infra_failures", result.InfraFailures))
 
 			if recErr := m.recordCheckOutcome(ctx, ch, checkErr); recErr != nil {
 				m.log.Error("Failed to mark channel as checked",
