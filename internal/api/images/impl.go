@@ -34,14 +34,24 @@ func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jo
 }
 
 func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.GET("/search", h.Search)
+	// Step 10 (territory-separated search + generate endpoints).
+	// /search is REPLACED by TerritorySearch (defaults to
+	// territory=retrieved for back-compat with callers that used
+	// /search?q=X).
+	r.GET("/search", h.TerritorySearch)
+	r.GET("/retrieved/search", h.RetrievedSearch)
+	r.GET("/generated/search", h.GeneratedSearch)
+	r.POST("/generated/generate", h.GeneratedGenerate)
+	r.GET("/generated/styles", h.GeneratedStyles)
+
+	// Existing endpoints (unchanged).
 	r.GET("/diagnostics", h.Diagnostics)
 	r.POST("/upload", h.Upload)
 	r.POST("/sync", h.Sync)
 	r.POST("/generate", h.Generate)
 	r.POST("/generate-batch", h.GenerateBatch)
 	r.POST("/animate", h.Animate)
-	r.POST("/webhook/remote", h.ReceiveRemoteWebhook) // Webhook per immagini da remote Google Flow
+	r.POST("/webhook/remote", h.ReceiveRemoteWebhook)
 }
 
 type UploadRequest struct {
@@ -149,36 +159,6 @@ func (h *ImagesHandler) Upload(c *gin.Context) {
 	}
 
 	apiutil.OK(c, asset)
-}
-
-// Search cerca un'immagine per un soggetto, scaricandola se non esiste
-func (h *ImagesHandler) Search(c *gin.Context) {
-	query := c.Query("q")
-	lang := c.DefaultQuery("lang", "it")
-	if query == "" {
-		apiutil.BadRequest(c, "missing query parameter 'q'")
-		return
-	}
-
-	// Proviamo a cercare/scaricare
-	slug := strings.ReplaceAll(strings.ToLower(query), " ", "-")
-	asset, err := h.service.SearchAndDownload(c.Request.Context(), slug, query, query, lang, nil)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"subject": query,
-		"image": gin.H{
-			"hash":       asset.Hash,
-			"path_rel":   asset.PathRel,
-			"source_url": asset.SourceURL,
-			"url_full":   "/assets/" + asset.PathRel,
-			"desc":       asset.Description,
-			"tags":       asset.Tags,
-		},
-	})
 }
 
 // Sync avvia la sincronizzazione manuale del file system e di Drive

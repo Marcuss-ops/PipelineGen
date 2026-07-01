@@ -2007,3 +2007,41 @@ historical record. Cross-references:
 
 **Deprecation record:** `architecture/deprecations.yaml#PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL` (status: `removed`, introduction_date=2026-06-30, replacement=`search.Aggregator`).
 
+## [Step 9 + 10] Image territory separation — 5 subpackages + REST endpoints (July 2026)
+
+### Added
+
+**[Step 9 (July 2026) — image territory subpackages]** `feat(images)` — split `internal/application/images/` into 5 focused subpackages while preserving backward compatibility with the parent `*imgservice.Service` facade:
+
+- `internal/application/images/catalog/` (3 files): `CatalogSearchResult`, `AssetSummary`, `SummaryFromAsset`, `ImageFilter` + `FilterByOrigin`/`FilterBySlug`, `CatalogSearch` interface + `InMemoryCatalogSearch` impl with cursor helpers. Read-only — no ingestion, no generation.
+- `internal/application/images/styles/` (3 files): `ResolvedStyle`, `StyleID`, `StyleDefinition`, `StyleResolver`, `StyleRegistry` aliases for canonical `internal/application/assets/generation` types. `Registry` struct wrapping `*generation.StyleRegistry`; `Resolver` struct wrapping `generation.StyleResolver`. Backward-compatible (`ErrUnknownStyle = generation.ErrStyleNotFound`).
+- `internal/application/images/routing/` (1 file): `Service` interface + `Router` dispatching by `asset.ImageOrigin`. `SearchAll` for territory-wide fan-out. Sentinel errors for each wired/unwired territory.
+- `internal/application/images/retrieved/` (2 added on top of Step 8's provider_registry): `search_service.go` (`SearchServicePort` + `SearchServiceAdapter`) and `ingest.go` (`IngestServicePort` + `IngestServiceAdapter`).
+- `internal/application/images/generated/` (2 added on top of Step 8's provider_registry): `prompt_composer.go` (extracted from parent `generation_service.go` per Step 4 rules; bit-identical semantics) and `generated_search.go` (`GeneratedSearchServicePort` + `GeneratedSearchServiceAdapter`).
+
+Compile-time interface assertions in `internal/application/images/service.go` lock the parent `*ImageStorageService` against the new subpackage ports — drift surfaces at build time, not first runtime panic.
+
+**[Step 10 (July 2026) — territory-separated REST endpoints]** `feat(api-images)` — 5 new endpoints under `/api/images/`, plus an aggregated search endpoint with `territory=retrieved|generated|all` query param:
+
+- `GET  /api/images/retrieved/search?q=…&lang=…` → mirrors pre-Step-10 search semantics with `ImageSearchResults` envelope.
+- `GET  /api/images/generated/search` → Step-9 forward-pointer; returns `200 OK + []` today. SQLite-backed `ListImagesByOrigin` impl is `architecture/issues.yaml#IMG-GEN-SEARCH-FORWARD-POINTER` (deadline 2026-08-01).
+- `POST /api/images/generated/generate` → mirrors legacy `/api/images/generate` payload but mounted under `/generated/*`. Same `h.service.GenerateSmartImageWithAccount` call.
+- `GET  /api/images/generated/styles` → lists registered styles from `*generation.StyleRegistry` via `h.service.StylesRegistry()`.
+- `GET  /api/images/search?territory=retrieved|generated|all&q=…` → aggregator. Default `territory=retrieved` preserves pre-Step-10 caller behaviour. `territory=all` currently fans out to retrieved (canonical query-driven path) + generated (empty stub).
+
+Unified `ImageSearchResult` DTO (fields: `AssetID`, `Origin`, `Provider`, `PreviewURL`, `StyleID`, `License`, `Author`). All `omitempty` where appropriate. `StyleInfo` DTO for `/generated/styles`. Envelope `ImageSearchResults{Results, Count}`.
+
+### Changed
+
+- `GET /api/images/search` response envelope migrated: pre-Step-10 returned `gin.H{"subject": "...", "image": {...}}`; post-Step-10 returns `ImageSearchResults{Results: [...], Count: N}`. Any caller depending on the legacy `subject` / nested `image` keys will see `200 OK` with different JSON shape — silent breakage. Migration: read `results[0].asset_id` instead of `image.hash`.
+- `internal/application/images/service.go::Service` now exposes `Styles *generation.StyleRegistry` field + `StylesRegistry()` accessor. Backward-compatible (zero-value before Step 9 wiring was nil; nil-safe accessor applied).
+
+### Removed
+
+- Legacy `internal/api/images/impl.go::Search` handler removed (replaced by `TerritorySearch`). See "Changed" above for envelope migration. Callers must migrate from `gin.H{"subject","image"}` shape to `ImageSearchResults{...}` envelope.
+
+### Known Build Issues (unrelated, pre-existing)
+
+- `internal/application/semantic/ollama_analyzer.go:494` references `monitor.ErrAnalyzeFullNotImplemented` which is undefined in `internal/application/monitor/`. Blocks `cmd/server/` compile → end-to-end smoke-tests blocked. Tracked as `architecture/issues.yaml#SEM-ANALYZER-ERR-NOT-IMPLEMENTED` (deadline 2026-07-15, owner `architecture/semantic`). Re-confirmed present on `origin/main` HEAD before this commit (commit `a0c2f6ff`, "refactor(ai): Commit G surface split"), so this PR does NOT introduce the regression. Smoke-test of the Step 10 endpoints will land in the same commit as the monitor-error fix.
+
+Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>

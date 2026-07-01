@@ -9,9 +9,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -24,6 +26,34 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 )
+
+// ── Step 9 compile-time interface assertions ──
+// These lock the parent-package types against the new Step 9
+// subpackage ports. Drift between the structural interfaces
+// and the concrete methods surfaces at build time rather than
+// at the first runtime panic.
+//
+// Note: GeneratedSearchServicePort requires ListImagesByOrigin
+// on *ImageStorageService, which doesn't exist yet (it's a
+// Step-9 forward-pointer). Compilation assertions for that
+// port live in generated/generated_search_test.go instead.
+// Same pattern for CatalogSearch — read-only SQLite impl is a
+// forward-pointer; assertions live in catalog tests.
+var (
+	_ retrieved.SearchServicePort = (*ImageStorageService)(nil)
+	_ retrieved.IngestServicePort = (*ImageStorageService)(nil)
+	_ routing.Service             = (*retrieved.SearchServiceAdapter)(nil)
+	_ routing.Service             = (*generated.GeneratedSearchServiceAdapter)(nil)
+	_ catalog.CatalogSearch       = (*catalog.InMemoryCatalogSearch)(nil)
+)
+
+// NOTE: GenerateImageRequest, GeneratedImage, and ImageGenerator
+// are defined in the parent images/ports.go. External callers
+// already access them as `imgservice.GenerateImageRequest` or
+// `images.GenerateImageRequest` — no new alias is needed because
+// the canonical types live here. Step 9 keeps them where they
+// are; future steps may move them into generated/ once a
+// ImageGeneratorBackend contract is fully owned by that subpkg.
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
@@ -110,6 +140,20 @@ type Service struct {
 	Store *ImageStorageService
 	Meta  *MetadataService
 	Diag  *DiagnosticsService
+
+	// Styles is the underlying canonical *generation.StyleRegistry
+	// wired via NewService. Exposed so the GET /api/images/generated/styles
+	// endpoint (Step 10) can list registered styles without going
+	// through the StyleResolver surface.
+	Styles *generation.StyleRegistry
+}
+
+// StylesRegistry returns the wrapped StyleRegistry handle. nil-safe.
+func (s *Service) StylesRegistry() *generation.StyleRegistry {
+	if s == nil {
+		return nil
+	}
+	return s.Styles
 }
 
 // RetrievalRegistry exposes the canonical *retrieved.RetrievalProviderRegistry
@@ -218,10 +262,11 @@ func NewService(deps ImagesDeps) *Service {
 	}
 
 	return &Service{
-		Gen:   gen,
-		Store: store,
-		Meta:  meta,
-		Diag:  diag,
+		Gen:    gen,
+		Store:  store,
+		Meta:   meta,
+		Diag:   diag,
+		Styles: deps.GenAI.StyleRegistry,
 	}
 }
 

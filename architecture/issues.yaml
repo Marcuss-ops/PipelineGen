@@ -303,3 +303,99 @@
   title: "Resolved app/module_media.go line 162 newMutationsDispatcherAdapter obsolete-literal concern (Phase 1c honesty note flagged Wave 7 unification residue per clips.Deps field removal; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — newMutationsDispatcherAdapter defined in registry_adapters.go with full Wave 27 DRIVE-005 unification signature + module_media.go:162 call site valid + go build ./internal/app/... exit 0 per PIPESTATUS[0] verifier)"
   status: done
   owner: internal/app
+
+- id: IMG-GEN-SEARCH-FORWARD-POINTER
+  title: "Generated-search SQLite-backed implementation (Step 9 forward-pointer close-out)"
+  status: pending
+  owner: images/api
+  deadline: 2026-08-01
+  linked_issues:
+    - 27
+  description: |
+    Step 9 added GET /api/images/generated/search returning 200 OK with empty
+    [] ImageSearchResults list. SQLite-backed read-only filter on
+    media_assets.origin='generated' is the canonical follow-up. Today's
+    *ImageStorageService has ListImagesByOrigin (origin/main's internal/
+    infrastructure/database/sqlite/assets/images_repository.go carries the
+    FASE 1B origin column). Wire the storage service method to the
+    generated/GeneratedSearchServicePort and replace the empty-list
+    forward-pointer with the canonical implementation.
+
+- id: IMG-LEGACY-GENERATE-DEPRECATION
+  title: "Deprecate legacy POST /api/images/generate (Step 10 surface split)"
+  status: pending
+  owner: images/api
+  deadline: 2026-08-15
+  linked_issues:
+    - 27
+  description: |
+    Step 10 added POST /api/images/generated/generate which mounts the
+    same service call as POST /api/images/generate. Pick one canonical
+    endpoint: either (a) add RFC 8594 Sunset header on legacy
+    /api/images/generate + deprecation log, or (b) merge both endpoints
+    into the territory prefix. Two parallel endpoints producing identical
+    JSON violates AGENTS.md godlike/06 (one canonical shape per surface).
+
+- id: IMG-API-HANDLER-HTTP-TEST-COVERAGE
+  title: "httptest coverage for 5 Step-10 handlers"
+  status: pending
+  owner: images/api
+  deadline: 2026-07-25
+  linked_issues:
+    - 27
+  description: |
+    Add one httptest-pattern test per handler in internal/api/images/.
+    Existing pattern in capability_test.go sets the bar: gin.CreateTestContext
+    + httptest.NewRecorder + assertions on rec.Code + ImageSearchResults
+    shape. Five handlers to cover: RetrievedSearch (200 + 1 result on
+    happy path; 400 on missing q), GeneratedSearch (200 + empty list),
+    GeneratedGenerate (200 + ImageSearchResult on happy path; 501 on
+    ErrImageGenNotImplemented), GeneratedStyles (200 + StylesResponse),
+    TerritorySearch (200 + per-territory dispatch).
+
+- id: IMG-CATALOG-POINTER-VALUE-NORMALISATION
+  title: "InMemoryCatalogSearch pointer/value boundary closure"
+  status: pending
+  owner: images/catalog
+  deadline: 2026-08-01
+  linked_issues:
+    - 27
+  description: |
+    CatalogSearchResult.Assets is []asset.ImageAsset (value), but
+    *ImagesRepository.ListAll returns []*ImageAsset (pointer). The
+    pointer→value conversion must happen at the consumer boundary
+    (Step 11+). Add a defensive copy/clone at the storage-adapter layer
+    so the value semantics are preserved end-to-end.
+
+- id: STYLES-REGISTRY-DEADCODE-CLEANUP
+  title: "Remove dead styles.Registry.Register path"
+  status: pending
+  owner: images/styles
+  deadline: 2026-07-20
+  linked_issues:
+    - 27
+  description: |
+    styles.Registry.Register always returns ErrRegistryReadOnly. Pure
+    dead-code path. Either delete the method (callers go through YAML
+    bootstrap) or implement runtime registration against a future
+    mutable backend. Per AGENTS.md godlike/07 (no fake availability),
+    dead code that compiles silently and breaks tomorrow is an
+    anti-pattern.
+
+- id: SEM-ANALYZER-ERR-NOT-IMPLEMENTED
+  title: "monitor.ErrAnalyzeFullNotImplemented undefined (pre-existing build regression)"
+  status: pending
+  owner: semantic
+  deadline: 2026-07-15
+  linked_issues:
+    - 29
+  description: |
+    internal/application/semantic/ollama_analyzer.go:494 references
+    monitor.ErrAnalyzeFullNotImplemented which is undefined in
+    internal/application/monitor/. pre-existing on origin/main HEAD
+    (commit a0c2f6ff, "refactor(ai): Commit G surface split"). Blocks
+    cmd/server/ compile. Step 10 smoke-test blocked by this regression;
+    fix as 5-line errs.go addition OR define the sentinel in
+    application/semantic directly. Once fixed, run Step 10 curl smoke
+    against /api/images/{retrieved/search,generated/search,generated/styles,search}
+    to lock the response envelope shape.
