@@ -138,6 +138,23 @@ const (
 	FailureOutboxEnqueue FailureCode = "outbox_enqueue_failed"
 	// FailureTxCommit — finalizeStage: tx.Commit returned an error.
 	FailureTxCommit FailureCode = "tx_commit_failed"
+	// FailureReconciliationRequired (Audit P0.5, July 2026): the
+	// post-commit verification surfaced a severe divergence — the
+	// canonical voiceovers row itself is missing after the tx
+	// committed. The audit-mandated typed FailureCode replaces
+	// FailureTxCommit (which would mislabel the failure as a tx
+	// commit error when in fact the tx did commit successfully).
+	//
+	// API surface contract: surfaced via BatchItem.Errors[]
+	// (serialised into the API response shape per types.go audit-P01
+	// closure contract). Operators reading the response can
+	// distinguish post-commit-reconciliation-required from
+	// actually-failed-commit via this typed literal.
+	//
+	// Grouped adjacent to FailureTxCommit for cognitive locality
+	// (per code-reviewer recommendation): both surface from
+	// finalizeStage's post-tx-execution scope; grep-targets cluster.
+	FailureReconciliationRequired FailureCode = "reconciliation_required"
 	// FailureDedupeAmbiguous (Step 7/12, June 2026) — finalizeStage:
 	// the PR-VO-B3 dedupe gate observed >1 rows sharing the same
 	// drive_file_id (the dedupe invariant — one canonical row per
@@ -158,6 +175,58 @@ const (
 	// FailureDownload — preserved for back-compat with the legacy
 	// service_test.go fixture at line 236.
 	FailureDownload FailureCode = "download_failed"
+)
+
+// ─────────────────────────────────────────────────────────────────────────
+// PR-VO-AUDIT-P05 (P0.5, July 2026): CompletionState typed enum for the
+// post-commit verification outcome on FinalizeResult.
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CompletionState surfaces the durability signal that the existing
+// bool-typed `Reused` field collapses: the verifier outcome after a
+// successful finalize tx. Three explicit states:
+//
+//   - StateCompleted                  — verifier confirms both the
+//     voiceovers row AND the media_assets projection durably present
+//     (the canonical happy-path).
+//   - StateCompletedUnverified        — verifier observed a warn-level
+//     divergence (e.g. the media_assets projection missing while the
+//     voiceovers row IS present). Caller may continue but should
+//     surface to operators.
+//   - StateReconciliationRequired     — verifier observed a severe
+//     divergence (e.g. the voiceovers row itself missing). Per the
+//     audit (P0.5), finalizeStage MUST NOT report the item as
+//     StatusCompleted in this case; the canonical signal is the typed
+//     CompletionState surfaced on FinalizeResult so callers can react.
+//
+// The pre-P0.5 surface log-only-and-continue silently degraded to
+// `StateCompleted` because there was no typed truth sink on the
+// caller side — only `Reused bool` was surfaced on FinalizeResult.
+// Compliance with godlike/07 (no fake availability) now flows
+// through this typed enum; godlike/06 (one canonical owner per fact)
+// is preserved: CompletionState is the only emitter of the typo'd
+// "completion_state" JSON key.
+//
+// JSON wire compat: `type CompletionState string` serialises into the
+// same byte-for-byte strings as the constant values
+// ("completed" / "completed_unverified" / "reconciliation_required").
+// omitempty on the FinalizeResult field keeps the pre-P0.5 wire shape
+// intact for callers that did not read the new field.
+type CompletionState string
+
+const (
+	// StateCompleted — verifier confirms BOTH rows durably present.
+	StateCompleted CompletionState = "completed"
+	// StateCompletedUnverified — verifier observed a warn-level
+	// divergence (e.g. media_assets projection missing but the
+	// canonical voiceovers row present). tx committed successfully;
+	// the missing secondary row is an audit signal, not a halt.
+	StateCompletedUnverified CompletionState = "completed_unverified"
+	// StateReconciliationRequired — verifier observed a severe
+	// divergence (the canonical voiceovers row itself missing).
+	// Caller must NOT report StatusCompleted; the canonical signal
+	// is the typed CompletionState surfaced on FinalizeResult.
+	StateReconciliationRequired CompletionState = "reconciliation_required"
 )
 
 type BatchRequest struct {

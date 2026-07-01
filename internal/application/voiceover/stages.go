@@ -44,6 +44,7 @@ package voiceover
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -518,25 +519,70 @@ func (s *Service) finalizeStage(
 			fmt.Errorf("%s: Commit: %w", restoreIdent, err))
 	}
 
-	// P0.4 Fase 4a (July 2026): post-commit SQL verification.
+	// P0.4 Fase 4a + Audit P0.5 (July 2026): post-commit SQL verification.
 	// The tx has committed — this is purely diagnostic. We confirm
 	// that both the voiceovers row and the media_assets projection
 	// are durably present. A missing row after a successful commit
 	// signals a silent schema/driver bug (e.g. a trigger that
 	// drops rows, a WAL checkpoint race, a silent constraint
-	// violation). The warning is surfaced to operators but does
-	// NOT fail the item — the tx succeeded, the Drive file exists,
-	// and the caller already received StatusCompleted.
+	// violation).
+	//
+	// Audit P0.5: the verifier outcome surfaces on
+	// FinalizeResult.CompletionState (typed enum) so callers can
+	// react without parsing log lines. The mapping contract is the
+	// SINGLE source of truth for the typed CompletionState field:
+	//
+	//   verifier returns nil                                       → StateCompleted
+	//   verifier returns nil OR is unwired                         → StateCompleted
+	//                                                                     (the unwired branch is implicit — finalizeRes.
+	//                                                                      CompletionState stays at "" + omitempty hides it)
+	//   verifier returns err wrapping ErrReconciliationRequired    → StateReconciliationRequired
+	//   verifier returns any other non-nil err                     → StateCompletedUnverified
+	//
+	// The reconcile-required branch is the only one that may alter
+	// item.Status: we must NOT report StatusCompleted when the
+	// canonical row is missing post-commit — the audit-mandated
+	// surface. StateCompletedUnverified keeps StatusCompleted
+	// (warn-level only; the canonical row IS durable).
 	if s.postCommitVerifier != nil {
 		if verifyErr := s.postCommitVerifier.Verify(ctx, item.ID); verifyErr != nil {
+			if errors.Is(verifyErr, ErrReconciliationRequired) {
+				if finalizeRes != nil {
+					finalizeRes.CompletionState = StateReconciliationRequired
+				}
+				if s.log != nil {
+					s.log.Warn("finalizeStage: post-commit verification: canonical row missing — REQUIRES RECONCILIATION (will not report StatusCompleted)",
+						zap.String("restored", restoreIdent),
+						zap.String("voiceover_id", item.ID),
+						zap.String("language", language),
+						zap.String("request_id", requestID),
+						zap.String("completion_state", string(StateReconciliationRequired)),
+						zap.Error(verifyErr))
+				}
+				item.Status = StatusFailed
+				item.Error = "post_commit_reconciliation_required: " + verifyErr.Error()
+				// Audit P0.5 typed-constant surface: FailureReconciliationRequired
+				// (NOT FailureTxCommit — the tx did commit successfully; the
+				// divergence is post-commit. API consumers reading
+				// BatchItem.Errors[] can now distinguish reconciliation-required
+				// from actually-failed-commit via the typed literal.).
+				item.Errors = append(item.Errors, FailureReconciliationRequired)
+				return item
+			}
+			if finalizeRes != nil {
+				finalizeRes.CompletionState = StateCompletedUnverified
+			}
 			if s.log != nil {
-				s.log.Warn("finalizeStage: post-commit verification failed — row(s) missing after successful commit",
+				s.log.Warn("finalizeStage: post-commit verification failed — row(s) missing after successful commit (warn-level — secondary projection missing only)",
 					zap.String("restored", restoreIdent),
 					zap.String("voiceover_id", item.ID),
 					zap.String("language", language),
 					zap.String("request_id", requestID),
+					zap.String("completion_state", string(StateCompletedUnverified)),
 					zap.Error(verifyErr))
 			}
+		} else if finalizeRes != nil {
+			finalizeRes.CompletionState = StateCompleted
 		}
 	}
 

@@ -9,6 +9,8 @@ package voiceover
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -279,9 +281,15 @@ func TestFinalizeStage_NilFinalizer(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// P0.4 Fase 4a: PostCommitVerifier
+// P0.4 Fase 4a + Audit P0.5: PostCommitVerifier + CompletionState
 // ─────────────────────────────────────────────────────────────────────
 
+// stubPostCommitVerifier records invocations and surfaces canned
+// errors via err. The audit-P0.5 contract is:
+//
+//   err == nil                                          → CompletionState = StateCompleted
+//   errors.Is(err, ErrReconciliationRequired) == true  → CompletionState = StateReconciliationRequired
+//   any other non-nil err                                → CompletionState = StateCompletedUnverified
 type stubPostCommitVerifier struct {
 	verified []string
 	err      error
@@ -357,6 +365,137 @@ func TestFinalizeStage_PostCommitVerificationNilSafe(t *testing.T) {
 
 	assert.Equal(t, StatusCompleted, result.Status,
 		"Unwired PostCommitVerifier must not block success")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Audit P0.5 (July 2026): CompletionState 3-state mock-verifier tests.
+//
+// The contract (single source of truth: stages.go::finalizeStage):
+//
+//   verifier returns nil                                       → CompletionState = StateCompleted
+//   verifier returns err wrapping ErrReconciliationRequired    → CompletionState = StateReconciliationRequired
+//                                                                    + item.Status = StatusFailed
+//                                                                    ("must NOT report StatusCompleted")
+//   verifier returns any other non-nil err                     → CompletionState = StateCompletedUnverified
+//                                                                    + item.Status = StatusCompleted (warn)
+//   verifier unwired                                           → CompletionState stays "" (omitempty hides wire)
+//
+// Each test reads `cannedRes.CompletionState` AFTER finalizeStage
+// returns because the typed `FinalizeResult` returned by the stub
+// finalizer is the same pointer finalizeStage mutates — there is no
+// test-side recording wrapper required.
+// ─────────────────────────────────────────────────────────────────────
+
+func TestFinalizeStage_PostCommitVerificationOK_StateCompleted(t *testing.T) {
+	db := openFinalizerTestDB(t)
+	cannedRes := &FinalizeResult{ID: "vo-ok", Reused: false}
+	verifier := &stubPostCommitVerifier{err: nil}
+
+	svc := &Service{
+		finalizer:          &stubFinalizer{cannedRes: cannedRes},
+		voiceoverRepo:      &finalizerTestRepo{db: db},
+		postCommitVerifier: verifier,
+		log:                zap.NewNop(),
+	}
+
+	item := BatchItem{ID: "vo-ok", Status: StatusUploaded, DriveFileID: "drive-ok"}
+	req := &BatchRequest{Text: "test", Strategy: "replace"}
+
+	result := svc.finalizeStage(
+		context.Background(), item,
+		"req-ok", "hash-ok", "en",
+		req,
+		&ResolvedDestination{FolderID: "f1"},
+		[]byte(`{}`),
+		false, "", "", "",
+	)
+
+	assert.Equal(t, StatusCompleted, result.Status, "verifier nil → StatusCompleted preserved")
+	assert.Equal(t, StateCompleted, cannedRes.CompletionState,
+		"verifier nil → FinalizeResult.CompletionState=StateCompleted (audit P0.5 contract)")
+	assert.Len(t, verifier.verified, 1, "PostCommitVerifier.Verify must be called once after commit")
+	assert.Equal(t, "vo-ok", verifier.verified[0])
+}
+
+func TestFinalizeStage_PostCommitVerificationWarnOnly_StateCompletedUnverified(t *testing.T) {
+	db := openFinalizerTestDB(t)
+	cannedRes := &FinalizeResult{ID: "vo-warn", Reused: false}
+	// Bare error (NOT wrapping ErrReconciliationRequired) → warn-level.
+	// Mirrors the production "media_assets projection missing only"
+	// case where the canonical voiceovers row IS present but the
+	// secondary row is gone.
+	bareErr := errors.New("post-commit verification: media_assets projection missing for id=vo-warn")
+	verifier := &stubPostCommitVerifier{err: bareErr}
+
+	svc := &Service{
+		finalizer:          &stubFinalizer{cannedRes: cannedRes},
+		voiceoverRepo:      &finalizerTestRepo{db: db},
+		postCommitVerifier: verifier,
+		log:                zap.NewNop(),
+	}
+
+	item := BatchItem{ID: "vo-warn", Status: StatusUploaded, DriveFileID: "drive-warn"}
+	req := &BatchRequest{Text: "test", Strategy: "replace"}
+
+	result := svc.finalizeStage(
+		context.Background(), item,
+		"req-warn", "hash-warn", "en",
+		req,
+		&ResolvedDestination{FolderID: "f1"},
+		[]byte(`{}`),
+		false, "", "", "",
+	)
+
+	assert.Equal(t, StatusCompleted, result.Status,
+		"warn-level divergence (canonical row IS present) keeps StatusCompleted (audit P0.5)")
+	assert.Equal(t, StateCompletedUnverified, cannedRes.CompletionState,
+		"bare err → FinalizeResult.CompletionState=StateCompletedUnverified (audit P0.5 contract)")
+	assert.Len(t, verifier.verified, 1)
+}
+
+func TestFinalizeStage_PostCommitVerificationCanonicalRowMissing_StateReconciliationRequired(t *testing.T) {
+	db := openFinalizerTestDB(t)
+	cannedRes := &FinalizeResult{ID: "vo-reconcile", Reused: false}
+	// Err wraps ErrReconciliationRequired → severe divergence
+	// (canonical voiceovers row missing). Mirrors the production
+	// adapter's `fmt.Errorf("...: %w", ErrReconciliationRequired)`
+	// wrap on the voiceovers-row-missing branch.
+	wrappedErr := fmt.Errorf("post-commit verification: voiceovers row missing for id=%q: %w",
+		"vo-reconcile", ErrReconciliationRequired)
+	verifier := &stubPostCommitVerifier{err: wrappedErr}
+
+	svc := &Service{
+		finalizer:          &stubFinalizer{cannedRes: cannedRes},
+		voiceoverRepo:      &finalizerTestRepo{db: db},
+		postCommitVerifier: verifier,
+		log:                zap.NewNop(),
+	}
+
+	item := BatchItem{ID: "vo-reconcile", Status: StatusUploaded, DriveFileID: "drive-reconcile"}
+	req := &BatchRequest{Text: "test", Strategy: "replace"}
+
+	result := svc.finalizeStage(
+		context.Background(), item,
+		"req-reconcile", "hash-reconcile", "en",
+		req,
+		&ResolvedDestination{FolderID: "f1"},
+		[]byte(`{}`),
+		false, "", "", "",
+	)
+
+	// Audit P0.5 mandate: "NON far finire il result come StateCompleted
+	// se il check post-commit è ReconciliationRequired" — finalizeStage
+	// MUST surface item.Status=StatusFailed so GenerateBatch's aggregate
+	// OK check correctly propagates the divergence.
+	assert.Equal(t, StatusFailed, result.Status,
+		"canonical row missing MUST NOT report StatusCompleted (audit P0.5 surface contract)")
+	assert.Equal(t, StateReconciliationRequired, cannedRes.CompletionState,
+		"err wrapping ErrReconciliationRequired → FinalizeResult.CompletionState=StateReconciliationRequired")
+	assert.Contains(t, result.Error, "post_commit_reconciliation_required",
+		"forensic-trail Error string carries the typed prefix")
+	assert.Contains(t, result.Errors, FailureReconciliationRequired,
+		"FailureReconciliationRequired (NEW typed constant, audit P0.5) appended to Errors[] for forensic trail — NOT FailureTxCommit (the tx did commit successfully)")
+	assert.Len(t, verifier.verified, 1)
 }
 
 // ─────────────────────────────────────────────────────────────────────
