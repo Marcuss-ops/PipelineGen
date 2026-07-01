@@ -768,6 +768,35 @@ wave_status:
   # the per-commit closures below (10 of 11 sites) plus the pre-existing
   # earlier-phase closure (1ea5de01 / engine.go memoryGateChecker) which
   # is intentionally OUT OF SCOPE here as Phase 1/2 not Phase 1c.
+  image-territories-cutover:
+    id: image-territories-cutover
+    topic: FASE 8 image-territories cutover (cycle break landed; full package reorganization deferred to linked_issues)
+    current_state: partial
+    owner: internal/application/images
+    shipped_in_commit: a130bb9a
+    exit_gate: |
+      Cycle break landed (commit a130bb9a): routing/retrieved import cycle broken; routing/retrieval_types.go hosts the canonical DTOs; routing/Service is the first-class router-dispatch interface.
+      FASE 8 full reorganization deferred to linked_issues:
+        - PR-IMAGE-CAPABILITY: service.go mega-file split (5 capability files: search.go, generate.go, ingest.go, metadata.go, diagnostics.go)
+        - PR-IMAGE-LISTIMAGESBYSUBJECT: ListImagesBySubject deprecation finalization + DELETE write removal
+        - PR-IMAGE-DETAIL-METADATA-MIGRATION: styles canonical-rename (assets/generation → images/styles, ~11 import sites to migrate)
+      rg 'assets/generation' internal/ → 0
+      rg 'source = .image.' internal/ → 0 DELETE writes (currently 1 in images_repository.go:288)
+      E2E smoke on /api/images/{retrieved,generated}/search + /api/images/generated/generate green (currently not run)
+    linked_issues:
+      - id: PR-IMAGE-CAPABILITY
+        owner_capability: internal/application/images
+        status: pending
+        deadline: 2026-07-15
+      - id: PR-IMAGE-LISTIMAGESBYSUBJECT
+        owner_capability: internal/application/images
+        status: pending
+        deadline: 2026-07-15
+      - id: PR-IMAGE-DETAIL-METADATA-MIGRATION
+        owner_capability: internal/application/images/styles + internal/application/assets/generation
+        status: pending
+        deadline: 2026-07-15
+
   PHASE-1C:
     id: PHASE-1C
     topic: Phase 1c TODO closure chain (9 SHA-references across 7 unique on-origin/main SHAs + 2 superseded predecessors + 1 Phase 2 earlier closure; 11 sites closed across Commits 1/4 + 2/4 + 3b/4 + 4b/4 + Commit H Phase 2)
