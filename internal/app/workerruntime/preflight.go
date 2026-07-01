@@ -90,29 +90,81 @@ func MasterURLSource(resolved string) string {
 // worker that pretends the master is healthy because /doctor
 // (a heavier endpoint) happened to come up does NOT have the
 // right semantics. /health is the canonical liveness signal.
+// PreflightMasterHealth polls <masterURL>/health every preflightInterval
+// up to preflightTimeout. Returns nil on the first 200; returns
+// error on deadline with the last seen failure.
+//
+// We deliberately do NOT fall back to /api/system/doctor: a
+// worker that pretends the master is healthy because /doctor
+// (a heavier endpoint) happened to come up does NOT have the
+// right semantics. /health is the canonical liveness signal.
+//
+// Implementation: uses pkg/retry.Do with a custom IsRetryable
+// predicate that returns TRUE on ANY non-OK fn-returned error,
+// preserving the original "wait until 200 OK or deadline" semantic
+// from the prior tight-loop implementation. retry.Options configures
+// constant 1s backoff (BackoffFactor=1.0 + InitialBackoff=MaxBackoff=
+// preflightInterval) so the poll cadence matches the original
+// time.Sleep(preflightInterval) exactly. The ctx deadline
+// (context.WithDeadline) caps the total budget at preflightTimeout.
+// MaxAttempts is sized at int(preflightTimeout/preflightInterval)+2
+// so the retry loop keeps spinning until the ctx deadline fires
+// (vs bailing out at the canonical 3 default); ctx cancellation
+// short-circuits before we hit MaxAttempts.
 func PreflightMasterHealth(masterURL string) error {
 	healthURL := strings.TrimRight(masterURL, "/") + "/health"
 	client := &http.Client{Timeout: preflightHTTPClient}
-	deadline := time.Now().Add(preflightTimeout)
-	var lastErr error
-	for time.Now().Before(deadline) {
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(preflightTimeout))
+	defer cancel()
+
+	walk := func() error {
 		resp, err := client.Get(healthURL)
-		if err == nil {
-			closeBody(resp.Body)
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-			lastErr = fmt.Errorf("/health returned %d", resp.StatusCode)
-		} else {
-			lastErr = err
+		if err != nil {
+			return err
 		}
-		time.Sleep(preflightInterval)
+		defer closeBody(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("/health returned %d", resp.StatusCode)
+		}
+		return nil
 	}
-	if lastErr == nil {
-		lastErr = errors.New("timed out without a single response")
+
+	err := retry.Do(ctx, walk, retry.Options{
+		IsRetryable: func(err error) bool {
+			// Preserve the "wait until 200 OK or deadline" semantic:
+			// any non-OK fn-returned error keeps the retry loop spinning;
+			// ctx deadline (30s budget) is what actually stops the loop.
+			return err != nil
+		},
+		// Constant 1s backoff to preserve the original time.Sleep(1s)
+		// tight-poll cadence exactly. BackoffFactor=1.0 disables
+		// exponential growth; InitialBackoff=MaxBackoff=preflightInterval
+		// clamps the sleep envelope. JitterFraction=0 because preflight is
+		// operator-visible (every attempt logged) and bounded to 30s;
+		// thundering-herd concerns do not apply here.
+		InitialBackoff: preflightInterval,
+		MaxBackoff:     preflightInterval,
+		BackoffFactor:  1.0,
+		JitterFraction: 0,
+		// Size MaxAttempts at the full preflight budget + 2 headroom so
+		// the loop keeps spinning until ctx deadline fires (vs bailing
+		// out at the canonical 3 default). At 1s per attempt in a 30s
+		// budget this is 32 attempts; ctx cancellation short-circuits
+		// before we hit it.
+		MaxAttempts: int(preflightTimeout/preflightInterval) + 2,
+	})
+
+	if err == nil {
+		return nil
 	}
-	return fmt.Errorf("master /health did not return 200 within %s: %w (url=%s)", preflightTimeout, lastErr, healthURL)
+	// Wrap to preserve the canonical "/health" error envelope so
+	// observability contracts (log greps, dashboard queries, errors.Is
+	// matchers) stay stable across the refactor.
+	return fmt.Errorf("master /health did not return 200 within %s: %w (url=%s)",
+		preflightTimeout, err, healthURL)
 }
+
 
 // closeBody is an interface-typed wrapper around resp.Body.Close().
 // Moved verbatim from cmd/worker/main.go. Using `interface{ Close() error }`
