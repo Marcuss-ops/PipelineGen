@@ -458,6 +458,8 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		repos.VoiceoverRepo, repos.ImageRepo,
 		drive.driveUploader, search.AssetTreeService, search.AssetIndexService,
 		outboxBundle.Dispatcher,
+		nil, // driveGoneChecker (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
+		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
 		log,
 	)
 	maintenanceSvc := maintenance.NewService(cfg, log,

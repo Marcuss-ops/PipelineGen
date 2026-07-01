@@ -128,7 +128,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 
 	folderMemSvc := foldermemory.NewService(log, deps.Core.ClipsRepo)
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-	deletionSvc := deletion.NewDeletionService(deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.VoiceoverRepo, deps.Core.ImageRepo, driveUploader, deps.Core.AssetTreeService, deps.Core.AssetIndexService, dispatcher, log)
+	deletionSvc := deletion.NewDeletionService(deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.VoiceoverRepo, deps.Core.ImageRepo, driveUploader, deps.Core.AssetTreeService, deps.Core.AssetIndexService, dispatcher, nil, nil, log)
 
 	// PR8 (June 2026): idemHandler is passed in from WireRegistry (see
 	// registry.go). WireAssets does NOT construct its own Idempotency

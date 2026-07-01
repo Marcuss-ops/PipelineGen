@@ -123,6 +123,8 @@ func TestMaintenancePruning(t *testing.T) {
 		treeSvc,
 		idxSvc,
 		nil, // dispatcher (QDRANT-002 PR7)
+		nil, // driveGoneChecker (Blocco 3.1 commit 3/3 — not exercised in this fixture)
+		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — not exercised in this fixture)
 		logger,
 	)
 
