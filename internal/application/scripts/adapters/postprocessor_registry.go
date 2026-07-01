@@ -148,11 +148,21 @@ const (
 // Future PRs promoting a BestEffort to Required (or vice versa)
 // MUST update both `defaultPolicyByName` and `requiredProcessorNames`
 // in wire_script.go so the two stay in sync.
+// defaultPolicyByName is the canonical static mapping from a
+// postprocessor name to its policy.
+//
+// Fase 2 Spina Dorsale (July 2026): "document", "images", and
+// "voiceover" are downgraded to BestEffort. These processors are
+// being removed from the script pipeline — they will become
+// independent downstream jobs (document.generate, images.generate,
+// voiceover.generate). Until the full CUTOVER phase, they remain
+// registered but with BestEffort policy so legacy callers that
+// still request them do not trigger a hard preflight failure.
 var defaultPolicyByName = map[string]ProcessorPolicy{
 	"persistence": ProcessorRequired,
-	"document":    ProcessorRequired,
-	"images":      ProcessorBestEffort,
-	"voiceover":   ProcessorBestEffort,
+	"document":    ProcessorBestEffort, // Fase 2: downgraded (→ document.generate job)
+	"images":      ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
+	"voiceover":   ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
 	"entities":    ProcessorRequired,
 	"metadata":    ProcessorRequired,
 }

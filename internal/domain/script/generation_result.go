@@ -106,7 +106,11 @@ type CacheResult struct {
 
 // ArtifactResult holds all postprocessor outputs in one typed bundle.
 type ArtifactResult struct {
-	// Document holds the Google Doc link + ID.
+	// Deprecated: Document is no longer populated by the script
+	// postprocessor chain. Fase 2 Spina Dorsale (July 2026): Google
+	// Doc creation is now a separate document.generate downstream
+	// job. This field is kept for backward compatibility; it will
+	// always be nil when served by the new pipeline.
 	Document *DocumentArtifact `json:"document,omitempty"`
 	// Metadata holds YouTube-style metadata.
 	Metadata []VideoMetadata `json:"metadata,omitempty"`
