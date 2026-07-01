@@ -79,8 +79,8 @@ type FinalizeCommand struct {
 // ─────────────────────────────────────────────────────────────────────
 
 // FinalizeResult is returned by VoiceoverFinalizer.Finalize so the
-// caller can observe whether the dedupe gate matched an existing row
-// and update the canonical ID accordingly.
+// caller can observe whether the dedupe gate matched an existing row,
+// update the canonical ID, and inspect which optional steps were skipped.
 type FinalizeResult struct {
 	// ID is the canonical voiceover ID after finalization.
 	// Equal to cmd.ID except when Reused is true (then it's the
@@ -92,6 +92,19 @@ type FinalizeResult struct {
 	// no projection, no outbox). The caller should use the
 	// returned ID as the canonical identifier.
 	Reused bool
+
+	// SkippedSteps lists which optional finalization steps were
+	// skipped and why (P0.4 Fase 3b, July 2026). Empty when all
+	// steps executed. Possible values:
+	//
+	//   "dedupe: empty DriveFileID"           — Step 1 not run
+	//   "dedupe: reuse existing row"           — Steps 2-6 not run
+	//   "media_assets_projection: unwired"     — Step 4 not run
+	//   "index_outbox: unwired"                — Step 5 not run
+	//   "index_outbox: empty FileHash"         — Step 5 not run
+	//   "cleanup_outbox: ShouldSwap=false"     — Step 6 not run
+	//   "cleanup_outbox: unwired"              — Step 6 not run
+	SkippedSteps []string
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -190,6 +203,7 @@ var _ VoiceoverFinalizer = (*voiceoverFinalizer)(nil)
 // Finalize runs the canonical 6-step atomic commit sequence inside the
 // caller-owned transaction. The caller opens the tx, calls Finalize,
 // then commits. Steps 2-6 may be skipped based on zero-value guards.
+// Skipped steps are reported in FinalizeResult.SkippedSteps.
 func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
 	if cmd == nil {
 		return nil, fmt.Errorf("voiceoverFinalizer.Finalize: nil cmd")
@@ -197,6 +211,8 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	if tx == nil {
 		return nil, fmt.Errorf("voiceoverFinalizer.Finalize: nil tx (caller must open before calling Finalize)")
 	}
+
+	var skipped []string
 
 	// ── Step 1: Dedupe Gate (PR-VO-B3) ──
 	// Runs INSIDE the tx so the count query is consistent with the
@@ -211,10 +227,18 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 			f.deps.Logger.Info("voiceoverFinalizer: dedupe reuse — matched single prior row, skipping insert",
 				zap.String("item_id", cmd.ID),
 				zap.String("dedupe_id", matchedID))
-			return &FinalizeResult{ID: matchedID, Reused: true}, nil
+			return &FinalizeResult{
+				ID:     matchedID,
+				Reused: true,
+				SkippedSteps: []string{
+					"dedupe: reuse existing row",
+				},
+			}, nil
 		case DedupeContinue:
 			// Proceed with insert.
 		}
+	} else {
+		skipped = append(skipped, "dedupe: empty DriveFileID")
 	}
 
 	// ── Step 2: Atomic Swap — DELETE old row ──
@@ -279,12 +303,20 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		}); err != nil {
 			return nil, fmt.Errorf("voiceoverFinalizer: UpsertVoiceoverProjectionTx (media_assets): %w", err)
 		}
+	} else {
+		skipped = append(skipped, "media_assets_projection: unwired")
 	}
 
 	// ── Step 5: Outbox — asset.index.requested ──
 	if f.deps.Outbox != nil && cmd.FileHash != "" {
 		if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.FileHash); err != nil {
 			return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
+		}
+	} else {
+		if f.deps.Outbox == nil {
+			skipped = append(skipped, "index_outbox: unwired")
+		} else {
+			skipped = append(skipped, "index_outbox: empty FileHash")
 		}
 	}
 
@@ -307,7 +339,13 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueCleanupEvent: %w", err)
 			}
 		}
+	} else {
+		if !cmd.ShouldSwap {
+			skipped = append(skipped, "cleanup_outbox: ShouldSwap=false")
+		} else {
+			skipped = append(skipped, "cleanup_outbox: unwired")
+		}
 	}
 
-	return &FinalizeResult{ID: cmd.ID, Reused: false}, nil
+	return &FinalizeResult{ID: cmd.ID, Reused: false, SkippedSteps: skipped}, nil
 }
