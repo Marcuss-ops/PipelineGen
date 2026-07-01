@@ -4,7 +4,9 @@
 // $VELOX_WORKER_CAPABILITIES env var. Pre-P1-3 logic moved
 // verbatim from cmd/worker/main.go::parseAndValidateCaps:
 //
-//   - Empty env         → return the full registered set (no narrowing)
+//   - Empty env         → error (Creator Blocco 1.2: refusing to start
+//                          with full capability set; operators must set
+//                          a profile or explicit capabilities)
 //   - Malformed JSON    → error (fail-fast)
 //   - Empty job_types   → error (fail-fast)
 //   - Unknown type      → error (fail-fast)
@@ -16,6 +18,12 @@
 // order, which would mask regressions in logging / agent-config
 // tooling that assumes a deterministic order. The sort is pinned
 // to keep [c, a, b] → [a, b, c] canonical.
+//
+// Creator Blocco 1.2 (July 2026): the empty-env → full-registered-set
+// path was removed. Operators must now explicitly set either
+// $VELOX_WORKER_PROFILE (which gates via ResolveCapabilities) or
+// $VELOX_WORKER_CAPABILITIES with a non-empty job_types array.
+// A worker started with neither now fails closed.
 package workerruntime
 
 import (
@@ -29,14 +37,12 @@ import (
 
 // ParseAndValidateCaps parses raw (the JSON body of
 // $VELOX_WORKER_CAPABILITIES) and validates every entry against
-// the registered set. Empty raw returns a copy of registeredTypes
-// (no narrowing); every other failure returns a wrapped error.
+// the registered set. Empty raw returns an error (Creator Blocco 1.2:
+// operators must set a profile or explicit capabilities).
 func ParseAndValidateCaps(raw string, registeredTypes []string) (appjobs.WorkerCapabilities, error) {
 	if strings.TrimSpace(raw) == "" {
-		// Defensive copy so callers can mutate registeredTypes
-		// without affecting the returned slice.
-		copied := append([]string{}, registeredTypes...)
-		return appjobs.WorkerCapabilities{JobTypes: copied}, nil
+		return appjobs.WorkerCapabilities{}, fmt.Errorf(
+			"VELOX_WORKER_CAPABILITIES empty and no worker profile set — refusing to start with full capability set")
 	}
 	var caps appjobs.WorkerCapabilities
 	if err := json.Unmarshal([]byte(raw), &caps); err != nil {

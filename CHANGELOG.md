@@ -489,6 +489,16 @@ Files: `internal/app/workerruntime/profiles.go` (NEW),
 Env vars: `VELOX_WORKER_PROFILE` (new), `VELOX_WORKER_CAPABILITIES`
 (pre-existing, now profile-gated when profile is active).
 
+**[Creator Blocco 1.2, July 2026]** `ParseAndValidateCaps` now fails closed
+on empty `$VELOX_WORKER_CAPABILITIES` — operators must set either a profile
+or explicit capabilities. The previous fallback (return all registered types
+when env is empty) has been removed. 5 new unit tests lock the new
+behaviour: empty env → error, whitespace-only → error, non-empty valid
+→ success, unknown type → error, malformed JSON → error.
+
+Files: `internal/app/workerruntime/capabilities.go` (MODIFIED),
+`internal/app/workerruntime/profiles_test.go` (MODIFIED — +5 tests).
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`
