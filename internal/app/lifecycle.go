@@ -49,6 +49,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // StartupStep defines a service that the server lifecycle manages.
@@ -505,6 +509,58 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			}
 		} else {
 			log.Warn("deletion-reconciler skipped: root.DB.DB not wired")
+		}
+
+		// ── Orphan Sweeper (P0 #4 commit B/2, July 2026) ──
+		// Periodic ticker that compensates for partial-failures in
+		// the upload_intents table. Per the A/2 use case contract,
+		// Steps 4 (ProjectFinalizer) + 4.5 (MarkFinalized) leave the
+		// row at 'uploaded' on failure so this sweeper can detect +
+		// recover Drive-side orphans on the next tick.
+		//
+		// Compensates stale 'uploaded' rows via Drive.Trash +
+		// MarkFailed (CONSERVATIVE: trash, NOT permanent delete —
+		// operators can recover within Drive's 30-day trash retention);
+		// stale 'pending' rows via MarkFailed only (no Drive file
+		// existed yet, no Drive action).
+		//
+		// Wiring gates: (a) root.DB.DB != nil — *scripts.UploadIntentsRepository
+		// construction requires a *sql.DB handle; (b) root.Drive.Lifecycle != nil —
+		// the DriveTrash port (Pattern 0 narrow interface in
+		// internal/application/voiceover/orphan_sweeper.go) is satisfied
+		// by *drive.FileLifecycleAdapter via structural conformance.
+		// Either gate absent → log warn + skip the step (mirrors the
+		// deletion-reconciler's partial-deploy safety net).
+		if root.DB != nil && root.DB.DB != nil && root.Drive != nil && root.Drive.Lifecycle != nil {
+			uploadRepo := scripts.NewUploadIntentsRepository(root.DB.DB)
+			driveLifecycle := root.Drive.Lifecycle
+			orphanSweeper := voiceover.NewOrphanSweeper(voiceover.OrphanSweeperDeps{
+				Repo:         uploadRepo,
+				DriveDeleter: driveLifecycle, // *drive.FileLifecycleAdapter satisfies OrphanDriveDeleter (Trash method)
+				Logger:       log,
+				Metrics: &voiceover.Metrics{
+					Runs:       observability.OrphanSweeperRunsTotal,
+					Reconciled: observability.OrphanSweeperReconciledTotal,
+				},
+				Tick:        10 * time.Minute, // per user-spec "default 10 min via config"
+				PendingTTL:  30 * time.Minute, // per spec: pending rows timed out after 30m
+				UploadedTTL: 60 * time.Minute, // per spec: Drive-backed orphans recovered after 60m
+			})
+			sw := orphanSweeper
+			steps = append(steps, StartupStep{
+				Name:     "orphan-sweeper",
+				Required: false,
+				Start: func(startCtx context.Context) error {
+					log.Info("orphan-sweeper starting (interval=10m, pendingTTL=30m, uploadedTTL=60m)")
+					concurrent.SafeGo("orphan-sweeper", func() {
+						sw.Run(startCtx)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
+		} else {
+			log.Warn("orphan-sweeper skipped: root.DB.DB or root.Drive.Lifecycle not wired (composition-root partial deploy)")
 		}
 
 		// Qdrant-ghost-sweeper step removed.
