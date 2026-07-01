@@ -271,43 +271,51 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 //     + ProcessBookWithProgress ErrBookTransformerMissing branches),
 //     invalidating review-fix #1's 503 audit.
 //
-// Composition root threads the books.BookTransformer port via
-// pythontransformer.NewSubprocessTransformer. The Python-aware
-// subprocess concrete + buildArgs + parseOutput + exec.CommandContext
-// moved OUT of books/service.go into the infrastructure layer
-// (godlike/06 "one owner per fact" — Python execution is an
-// implementation detail, not a domain concern). Composition root is
-// the only place that constructs the concrete SubprocessTransformer;
-// production callers inject it implicitly via the 8th positional
-// arg of books.NewService. A nil ScriptPath in cfg fails closed at
-// NewSubprocessTransformer (godlike/07 §"No fake availability").
+// Composition root splits the books.Config surface into two
+// godlike/06 SSOTs:
+//   - pythontransformer.Config (the concrete-owning SSOT for
+//     ScriptPath + PythonBin + Enabled) — Python-execution details
+//     belong with the Python-aware concrete.
+//   - books.Config (the apply-layer SSOT for DriveFolderID only) —
+//     the apply-layer Surface no longer carries Python-internals.
+//
+// The previous double-construction pattern (one books.Config
+// passed to both NewSubprocessTransformer and books.NewService)
+// was godlike/06 "duplicate owner per fact"; the BACKFILL
+// splits the canonical surface into two single-owner configs.
 func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voiceoverSvc *voiceover.Service, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
-	transformer, err := pythontransformer.NewSubprocessTransformer(&books.Config{
-		Enabled:       cfg.Books.Enabled,
-		ScriptPath:    cfg.Books.ScriptPath,
-		PythonBin:     cfg.Books.PythonBin,
-		DriveFolderID: cfg.Drive.BooksFolder(),
+	transformer, err := pythontransformer.NewSubprocessTransformer(&pythontransformer.Config{
+		ScriptPath: cfg.Books.ScriptPath,
+		PythonBin:  cfg.Books.PythonBin,
+		Enabled:    cfg.Books.Enabled,
 	}, log)
 	if err != nil {
 		return nil, fmt.Errorf("books service compose failed (transformer): %w", err)
 	}
-	// TODO(Fase 7 review-fix #3 BACKFILL): books.Config is constructed
-	// twice in this function — once for NewSubprocessTransformer above
-	// and once for books.NewService below. The two literal sites must
-	// stay byte-stable in lockstep; a future drift silently breaks the
-	// canonical surface. The review-fix #3 BACKFILL sweep moves
-	// books.Config into the pythontransformer package (apply-layer
-	// Config shrinks to DriveFolderID + Enabled per godlike/06).
 	booksSvc := books.NewService(
 		&books.Config{
-			Enabled:       cfg.Books.Enabled,
-			ScriptPath:    cfg.Books.ScriptPath,
-			PythonBin:     cfg.Books.PythonBin,
 			DriveFolderID: cfg.Drive.BooksFolder(),
 		},
 		dbs.main.DB, cfg.Drive.BooksFolder(), log,
 		voiceoverSvc, publisher, reader, transformer,
 	)
+	// SetEnabled projects cfg.Books.Enabled onto the apply-layer
+	// Service field (post-Fase 7 review-fix #3 BACKFILL: Enabled
+	// lives in pythontransformer.Config at config-time AND is
+	// mirrored on books.Service.enabled via this composition-root
+	// setter, so the apply-layer ProcessBook/ProcessBookWithProgress
+	// checks see the platform's enable-state).
+	//
+	// 3-source mirror rule (godlike/06 + reviewer-feedback #1
+	// closure): cfg.Books.Enabled (platform) ->
+	// pythontransformer.Config.Enabled (config-time fail-closed at
+	// NewSubprocessTransformer — orthogonal concern) ->
+	// books.Service.enabled (runtime per-request gate via
+	// SetEnabled — orthogonal concern). Composition root
+	// (buildBooksService) is the SINGLE mirror site for the
+	// platform config; any future refactor that touches one
+	// source MUST update the other two in lockstep.
+	booksSvc.SetEnabled(cfg.Books.Enabled)
 	log.Info("Books service initialized",
 		zap.Bool("enabled", cfg.Books.Enabled),
 	)

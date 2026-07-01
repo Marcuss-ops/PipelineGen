@@ -46,7 +46,15 @@ type ProcessFromDriveResult struct {
 }
 
 func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriveRequest) (*ProcessFromDriveResult, error) {
-	if !s.cfg.Enabled {
+	// Fase 7 review-fix #3 BACKFILL: Enabled moved from books.Config
+	// to books.Service.enabled (composition root projects
+	// cfg.Books.Enabled via SetEnabled). This is the only
+	// remaining reference of `s.cfg.Enabled` in the books surface
+	// after the BACKFILL — the ProcessBook + ProcessBookWithProgress
+	// + IsEnabled paths already migrated in the canonical BACKFILL
+	// commit; this ProcessBookFromDrive line completes the surface
+	// (drive.go also gates on the apply-layer feature flag).
+	if !s.enabled {
 		return nil, fmt.Errorf("books service is disabled")
 	}
 	// F2.10+: driveUpload (concrete *drive.Uploader) was retired in

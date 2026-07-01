@@ -48,24 +48,26 @@ import (
 )
 
 // Config controls the books capability at construction time.
-// Pre-Fase-7 fields (ScriptPath, PythonBin) are retained as noop
-// fields — the Python-aware concrete lives at
-// internal/infrastructure/books/pythontransformer and reads the
-// same shape. EXPAND window: future versions of books.Config
-// will move these fields into the pythontransformer concrete
-// (the apply-layer Config shrinks to DriveFolderID + Enabled).
+// Fase 7 review-fix #3 BACKFILL (July 2026): the ScriptPath /
+// PythonBin / Enabled fields have been moved OUT of books.Config
+// and INTO the canonical pythontransformer concrete's own Config
+// (internal/infrastructure/books/pythontransformer/python_transformer.go).
+// godlike/06 "one canonical owner per fact" — the apply-layer
+// Service does not need to know about Python-execution details
+// (script path, interpreter binary). The apply-layer Config now
+// holds ONLY DriveFolderID; the transformer-owning Config holds
+// ScriptPath + PythonBin + Enabled.
+//
+// The Enabled feature flag moved to a dedicated `enabled bool`
+// field on books.Service (set via SetEnabled by the composition
+// root) — the apply layer reaches the flag via the struct field,
+// not via Config.
 type Config struct {
-	Enabled       bool   `yaml:"enabled"`
-	ScriptPath    string `yaml:"script_path"`
-	PythonBin     string `yaml:"python_bin"`
 	DriveFolderID string `yaml:"drive_folder_id"`
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		Enabled:       true,
-		ScriptPath:    "scripts/bridges/book_summarizer.py",
-		PythonBin:     "python3",
 		DriveFolderID: "",
 	}
 }
@@ -100,14 +102,15 @@ var ErrBookTransformerMissing = errors.New("books transformer port not wired —
 // dependent paths (ProcessBook + ProcessBookWithProgress) surface
 // ErrBookTransformerMissing on nil.
 type Service struct {
-	db          *sql.DB
-	cfg         *Config
-	log         *zap.Logger
-	driveFolder string
-	publisher   PublisherPort
-	reader      drive.Reader
+	db           *sql.DB
+	cfg          *Config
+	enabled      bool // Fase 7 review-fix #3 BACKFILL: Enabled moved out of Config to a struct field; composition root sets it via SetEnabled.
+	log          *zap.Logger
+	driveFolder  string
+	publisher    PublisherPort
+	reader       drive.Reader
 	voiceoverSvc voiceover.VoiceoverGenerator
-	transformer BookTransformer // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
+	transformer  BookTransformer // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
 }
 
 // NewService constructs a books.Service. Publisher + Reader +
@@ -123,6 +126,14 @@ type Service struct {
 // pass nil (the ProcessBook + ProcessBookWithProgress paths
 // fail-closed with ErrBookTransformerMissing; tests asserting
 // ProcessBookFromDrive behaviour do not exercise ProcessBook).
+//
+// Fase 7 review-fix #3 BACKFILL: NewService defaults `enabled`
+// to true; composition root flips it via SetEnabled based on
+// cfg.Books.Enabled (the platform-config Boolean). Tests
+// invoking ProcessBook without prior SetEnabled see enabled=true,
+// matching the historical default (the pre-fix ProcessBook check
+// was `if !s.cfg.Enabled`); the disabled path is now an explicit
+// composition-root decision rather than a Config field.
 func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc voiceover.VoiceoverGenerator, publisher PublisherPort, reader drive.Reader, transformer BookTransformer) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
@@ -130,6 +141,7 @@ func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, vo
 	return &Service{
 		db:           db,
 		cfg:          cfg,
+		enabled:      true,
 		log:          log,
 		driveFolder:  driveFolder,
 		voiceoverSvc: voiceoverSvc,
@@ -137,6 +149,15 @@ func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, vo
 		reader:       reader,
 		transformer:  transformer,
 	}
+}
+
+// SetEnabled flips the apply-layer feature flag. Called by the
+// composition root with cfg.Books.Enabled (the platform-config
+// Boolean). After Fase 7 review-fix #3 BACKFILL, the apply-layer
+// Config no longer carries Enabled; this setter is the SINGLE
+// site where the apply layer learns the platform's enable-state.
+func (s *Service) SetEnabled(enabled bool) {
+	s.enabled = enabled
 }
 
 type ProcessRequest struct {
@@ -180,7 +201,7 @@ type ProcessResult struct {
 // pipeline, REST summariser, etc.) plug into the same port
 // without changing this method.
 func (s *Service) ProcessBook(ctx context.Context, req *ProcessRequest) (*ProcessResult, error) {
-	if !s.cfg.Enabled {
+	if !s.enabled {
 		return nil, fmt.Errorf("books service is disabled")
 	}
 	if s.transformer == nil {
@@ -207,7 +228,7 @@ func (s *Service) ProcessBook(ctx context.Context, req *ProcessRequest) (*Proces
 // Python-aware concrete via the BookTransformer port's
 // TransformWithProgress method.
 func (s *Service) ProcessBookWithProgress(ctx context.Context, req *ProcessRequest, onProgress func(int, string)) (*ProcessResult, error) {
-	if !s.cfg.Enabled {
+	if !s.enabled {
 		return nil, fmt.Errorf("books service is disabled")
 	}
 	if s.transformer == nil {
@@ -316,7 +337,7 @@ func (s *Service) SetVoiceoverService(v voiceover.VoiceoverGenerator) {
 }
 
 func (s *Service) IsEnabled() bool {
-	return s.cfg.Enabled
+	return s.enabled
 }
 
 // extractGoogleDocID walks a Google Docs URL and returns the

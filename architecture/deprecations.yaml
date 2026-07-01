@@ -1951,8 +1951,8 @@ audit:
         inline subprocess invocation site + +3 port interfaces +
         +1 deprecation record + +1 sentinel error
         (ErrBookTransformerMissing).
-    migration_phase: EXPAND
-    status: contract-back-half
+    migration_phase: CONTRACT
+    status: pending-removal
     notes: |
       godlike/07 EXPAND phase: the canonical Python-aware concrete
       lands alongside the port declaration. The legacy inline
@@ -1979,3 +1979,21 @@ audit:
       AGENTS.md §"Simplicity & Minimalism" (override brutal on
       the inline Python removal).
 
+
+      
+      Phase 7 review-fix #3 BACKFILL audit-pin (July 2026): the
+      books.Config surface shrank from {Enabled, ScriptPath,
+      PythonBin, DriveFolderID} to {DriveFolderID} — the other
+      3 fields relocated to internal/infrastructure/books/
+      pythontransformer/python_transformer.go::Config (the
+      concrete-owning SSOT). godlike/06 "one canonical owner
+      per fact" closure: buildBooksService now constructs
+      TWO single-owner Configs (was previously one books.Config
+      literal duplicated across two call sites). Apply-layer
+      Enabled survives as a Service struct field set via
+      booksSvc.SetEnabled(cfg.Books.Enabled) by the composition
+      root (the canonical composition-time enable-state
+      source). DO NOT re-introduce ScriptPath/PythonBin/Enabled
+      on books.Config; godlike/07 audit-pin anchors the
+      pythontransformer fail-closed path with the explicit
+      "godlike/07 no-fake-availability" attribution.
