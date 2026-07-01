@@ -1779,3 +1779,55 @@ audit:
       - No duplicate IDs
       - No duplicate YAML keys (yaml.v3 strict mode)
       - Required fields present on every record
+
+  # ── 18. PR-IMAGE-CAPABILITY — CapabilityImage / ProviderCapabilitySet.Image
+  #      scope-narrowed to icons/avatar; image-generation + retrieval moved
+  #      to retrieved.Provider + generated.Provider registries (Step 8 / 1eaafd81, July 2026). ──
+  - id: PR-IMAGE-CAPABILITY
+    owner_capability: internal/application/assets/providers
+    exact_symbol: |
+      CapabilityImage (image Capability enum) +
+      ProviderCapabilitySet.Image *ProviderCapabilityDetail (legacy slot;
+      NOW scoped to icons/avatar ONLY via the FASE 5 Step 8 cutover).
+    file: internal/application/assets/providers/types.go + internal/application/assets/providers/registry.go
+    file_line: "types.go CapabilityImage decl, registry.go ProviderCapabilitySet.Image field"
+    replacement: |
+      Image-generation + retrieval consumption lives in
+      internal/application/images/retrieved/Provider +
+      internal/application/images/generated/Provider (FASE 5 Step 8
+      registries, commit 1eaafd81). The ProviderCapabilitySet.Image
+      field survives ONLY for icon/avatar usage; new image-generated
+      / image-retrieved callers MUST consume the new registries.
+      Companion aliases declared in internal/application/images/retrieved/
+      spec_aliases.go + internal/application/images/generated/spec_aliases.go.
+    introduction_date: 2026-07
+    removal_date: 2026-Q4
+    tracking_issue: "FASE 5 Step 8 (1eaafd81) + FASE 6 ImageSearchResolver; the field is marked DEPRECATED in the EXPAND-phase and physically renamed/removed at the Wave 14 mega-package split gate once icon/avatar callers are eligible to migrate."
+    compatibility_test: |
+      Triple-defence mirroring DRIVE-005-FIELDS:
+        (a) var _ retrieved.Provider = (*WikipediaProvider)(nil) +
+            var _ generated.Provider = (*GoogleSlidesProvider)(nil)
+            compile-time assertions pin the new typed-port surface.
+        (b) rg 'Capabilities\.Image' internal/application/images/ returns
+            zero hits post-FASE 6 ImageSearchResolver.
+        (c) scripts/ci-architectural-checks.sh Check 44 (capacity cap)
+            does NOT regress; the field's presence is informational only
+            during EXPAND.
+    usage_metric: |
+      Today (audit baseline, 2026-07, post-Step 8): ProviderCapabilitySet.Image
+      is read by 0 image-gen callers (FASE 5 Step 8 migrated them all to the
+      new registries). Icon/avatar readers: tbd; the EXPAND-phase
+      audit pattern (rg 'Capabilities\.Image' internal/) yields a baseline
+      count that the CONTRACT-phase removal must trend to 0.
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      Field is NOT physically renamed to Icon in this commit because
+      that would break existing struct consumers via go build error.
+      The EXPAND-phase marker is the deprecation record itself; the
+      CONTRACT-phase rename (ProviderCapabilitySet.Image →
+      ProviderCapabilitySet.Icon) gates on the icon/avatar audit and
+      runs at the Wave 14 mega-package split gate (same gate as
+      DRIVE-005-FIELDS removal). Same pattern: keep the field alive
+      during EXPAND so external readsites compile, mark deprecated
+      via this manifest, plan physical rename + removal at the gate.

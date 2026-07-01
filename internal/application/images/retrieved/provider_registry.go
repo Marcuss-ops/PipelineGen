@@ -459,3 +459,66 @@ func (r *RetrievalProviderRegistry) Diagnostics(ctx context.Context) map[asset.I
 	_ = keys // silenced; sort.Strings used as a pre-condition for stable test snapshots
 	return out
 }
+
+// ── FASE 5 spec alignment (July 2026) ────────────────────────────────
+//
+// This block adds the user-spec ID() string method on each concrete
+// retrieval provider plus the literal-spec Registry.Resolve(ids []string)
+// ([]RetrievalProvider, error) method on *RetrievalProviderRegistry.
+//
+// Existing callers (storage_search.go::runRetrievalFallback,
+// internal/app/service.go registry instantiation, the existing
+// provider_registry_test.go file) are UNCHANGED — these are pure
+// additive methods satisfying the FASE 5 user spec shape without
+// rewriting the Step 8 implementation.
+//
+// Companion spec_aliases.go declares the Provider/Registry/aliased
+// types that this file's methods satisfy.
+
+// ID returns the canonical string ID of a retrieval provider.
+// Existing Name() returns the asset.ImageProvider taxonomy constant;
+// ID() is its string-coercion so the user-spec `ID() string` shape
+// is satisfied without disrupting the typed-Name contract.
+func (p *WikipediaProvider) ID() string  { return string(p.Name()) }
+func (p *SearXNGProvider) ID() string    { return string(p.Name()) }
+func (p *DuckDuckGoProvider) ID() string { return string(p.Name()) }
+func (p *DriveImageProvider) ID() string { return string(p.Name()) }
+
+// Resolve implements the user-spec'd Registry.Resolve:
+//   empty input                          -> success + empty result
+//   all ids found                        -> success + ordered providers
+//   ANY id missing (or un-configured)   -> (nil, ErrProviderNotFound wrapping missing ids)
+//
+// Fail-closed per godlike/07 §"No fake availability": callers MUST NOT
+// silently partial-resolve. Operators can read the wrapped missing-id
+// list to compute the next action (register the provider, update the
+// call site, etc.). Returns ErrProviderNotFound via fmt.Errorf("%w ...")
+// so errors.Is(err, ErrProviderNotFound) succeeds at every consumer layer.
+func (r *RetrievalProviderRegistry) Resolve(ids []string) ([]RetrievalProvider, error) {
+	if r == nil {
+		return nil, errors.New("retrieved: nil registry")
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	out := make([]RetrievalProvider, 0, len(ids))
+	var missing []string
+	for _, id := range ids {
+		var found RetrievalProvider
+		for _, p := range r.providers {
+			if string(p.Name()) == id {
+				found = p
+				break
+			}
+		}
+		if found == nil {
+			missing = append(missing, id)
+			continue
+		}
+		out = append(out, found)
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%w (missing ids=%v)", ErrProviderNotFound, missing)
+	}
+	return out, nil
+}
