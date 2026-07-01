@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -18,17 +19,49 @@ import (
 )
 
 // GenerationService handles AI-powered image generation via the
-// injected ImageGenerator port. It is the canonical entry point for
-// both sync (GenerateSmartImage) and async (HandleJob) generation.
+// injected ImageGenerator port and StyleResolver. It is the canonical
+// entry point for both sync (GenerateSmartImage) and async (HandleJob)
+// generation.
+//
+// Step 4 (July 2026): StyleResolver is now wired — every generation
+// request goes through Resolve → PromptComposer → ImageGenerator.Generate
+// so the style suffix, negative prompt, and dimensions are resolved in
+// one place (PromptComposer is the single source of truth for prompt
+// composition).
 //
 // Cross-boundary ingestion: ingestGeneratedImage calls
 // ImageStorageService.IngestImage to persist generated images through
 // the canonical media_assets pipeline.
 type GenerationService struct {
 	imageGen ImageGenerator
+	styles   generation.StyleResolver // Step 4: fail-closed style resolution
 	log      *zap.Logger
 	storage  *ImageStorageService // for ingestGeneratedImage → IngestImage
 }
+
+// ── PromptComposer (Step 4) ────────────────────────────────────────────
+
+// promptComposer is the single place where the user prompt and the
+// resolved style suffix are combined into the final prompt.
+//
+// Rules:
+//   - Empty style suffix → prompt is used unchanged.
+//   - Non-empty suffix → prompt + ", " + suffix.
+//   - Empty prompt + non-empty suffix → suffix becomes the prompt.
+func promptComposer(originalPrompt, styleSuffix string) string {
+	original := strings.TrimSpace(originalPrompt)
+	suffix := strings.TrimSpace(styleSuffix)
+
+	if suffix == "" {
+		return original
+	}
+	if original == "" {
+		return suffix
+	}
+	return original + ", " + suffix
+}
+
+// ── Public API ─────────────────────────────────────────────────────────
 
 // GenerateSmartImage generates an AI image via the injected ImageGenerator port.
 // When imageGen is nil (not wired), returns ErrImageGenNotImplemented.
@@ -47,8 +80,12 @@ func (g *GenerationService) GenerateSmartImage(
 }
 
 // GenerateSmartImageWithAccount generates an AI image via the injected
-// ImageGenerator port. The account and projectID parameters are
-// reserved for future multi-account support.
+// ImageGenerator port and StyleResolver. The account and projectID
+// parameters are reserved for future multi-account support.
+//
+// Step 4 (July 2026): style resolution is now fail-closed through
+// StyleResolver.Resolve. An unknown/incompatible style returns a typed
+// error instead of silently falling back to no-style.
 func (g *GenerationService) GenerateSmartImageWithAccount(
 	ctx context.Context,
 	subject string,
@@ -70,19 +107,55 @@ func (g *GenerationService) GenerateSmartImageWithAccount(
 		return nil, fmt.Errorf("missing image prompt")
 	}
 
+	// Step 4: resolve style fail-closed via StyleResolver.
+	resolved, err := g.resolveStyle(style, model)
+	if err != nil {
+		return nil, fmt.Errorf("style resolution: %w", err)
+	}
+
+	// Step 4: compose the final prompt through PromptComposer.
+	finalPrompt := promptComposer(cleanPrompt, resolved.PromptSuffix)
+
+	// Merge resolved dimensions with caller-supplied values.
+	finalWidth := width
+	if finalWidth == 0 {
+		finalWidth = resolved.Width
+	}
+	if finalWidth == 0 {
+		finalWidth = 1920
+	}
+	finalHeight := height
+	if finalHeight == 0 {
+		finalHeight = resolved.Height
+	}
+	if finalHeight == 0 {
+		finalHeight = 1080
+	}
+
 	result, err := g.imageGen.Generate(ctx, GenerateImageRequest{
-		Prompt: cleanPrompt,
-		Style:  style,
-		Width:  width,
-		Height: height,
-		Model:  model,
-		Tags:   tags,
+		Prompt:         finalPrompt,
+		NegativePrompt: resolved.NegativePrompt,
+		Style:          style,
+		Width:          finalWidth,
+		Height:         finalHeight,
+		Model:          model,
+		Tags:           tags,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("image generation failed: %w", err)
 	}
 
 	return g.ingestGeneratedImage(ctx, result, style, tags, skipDrive)
+}
+
+// resolveStyle is the internal helper that calls StyleResolver.Resolve
+// with safe defaults. Returns a zero ResolvedStyle if the resolver is
+// not wired (backward-compatible with no-style-registry paths).
+func (g *GenerationService) resolveStyle(style, model string) (generation.ResolvedStyle, error) {
+	if g.styles == nil {
+		return generation.ResolvedStyle{}, nil
+	}
+	return g.styles.Resolve(style, "", model)
 }
 
 // ingestGeneratedImage ingests a GeneratedImage result into the canonical
@@ -173,6 +246,9 @@ type imageGeneratePayload struct {
 }
 
 // HandleJob processes an image.generate.google job from the worker queue.
+//
+// Step 4 (July 2026): style resolution is now fail-closed via
+// StyleResolver.Resolve before calling ImageGenerator.Generate.
 func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	g.log.Info("handling image.generate.google job",
 		zap.String("job_id", j.ID),
@@ -213,14 +289,39 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 		return nil, fmt.Errorf("image.generate.google: ImageGenerator not wired")
 	}
 
+	// Step 4: resolve style fail-closed via StyleResolver.
+	resolved, err := g.resolveStyle(payload.Style, payload.Model)
+	if err != nil {
+		g.log.Error("image.generate.google: style resolution failed",
+			zap.String("job_id", j.ID),
+			zap.String("style", payload.Style),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("style resolution: %w", err)
+	}
+
+	// Step 4: compose the final prompt through PromptComposer.
+	finalPrompt := promptComposer(payload.Prompt, resolved.PromptSuffix)
+
+	// Merge resolved dimensions with payload values.
+	finalWidth := payload.Width
+	if finalWidth == 0 && resolved.Width != 0 {
+		finalWidth = resolved.Width
+	}
+	finalHeight := payload.Height
+	if finalHeight == 0 && resolved.Height != 0 {
+		finalHeight = resolved.Height
+	}
+
 	result, err := g.imageGen.Generate(ctx, GenerateImageRequest{
-		Prompt:     payload.Prompt,
-		Style:      payload.Style,
-		Width:      payload.Width,
-		Height:     payload.Height,
-		Model:      payload.Model,
-		Tags:       payload.Tags,
-		OutputPath: outputPath,
+		Prompt:         finalPrompt,
+		NegativePrompt: resolved.NegativePrompt,
+		Style:          payload.Style,
+		Width:          finalWidth,
+		Height:         finalHeight,
+		Model:          payload.Model,
+		Tags:           payload.Tags,
+		OutputPath:     outputPath,
 	})
 	if err != nil {
 		g.log.Error("image.generate.google: generation failed",
@@ -269,12 +370,6 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 
 // RegisterHandler registers the image.generate.google handler with the
 // job service. Called from composition.go late-bindings.
-//
-// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): signature
-// changed to error-return so composition-root fail-closed posture applies.
-// Pre-PR-VALIDATOR-LITERAL-REGISTER the silent log.Warn on nil-jobsSvc
-// + log.Error on dispatcher-reject masked duplicate-bind and nil-typed-
-// dispatcher failures — the silent-success class closed by audit-P0.2-cont.
 func (g *GenerationService) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("images.GenerationService.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")

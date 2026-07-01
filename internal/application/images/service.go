@@ -150,9 +150,10 @@ func NewService(deps ImagesDeps) *Service {
 		meta:          meta,
 	}
 
-	// 4. GenerationService (depends on ImageStorageService)
+	// 4. GenerationService (depends on ImageStorageService + StyleResolver)
 	gen := &GenerationService{
 		imageGen: deps.GenAI.ImageGen,
+		styles:   deps.GenAI.StyleRegistry, // Step 4: StyleResolver for fail-closed style resolution
 		log:      log,
 		storage:  store,
 	}
