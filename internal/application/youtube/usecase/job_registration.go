@@ -7,6 +7,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -18,20 +19,32 @@ import (
 
 // RegisterHandler wires the orchestrator's two job-type handlers into the
 // central jobtools.Service. Call once at composition time.
-func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): Register
+// now returns error so composition-root fall-back nil-typed-dispatcher
+// + duplicate-bind failures surface as a typed error. Pre-PR-VALIDATOR-
+// LITERAL-REGISTER the silent `if jobsSvc == nil { return }` early-exit
+// masked wiring gaps (the silent-success class audit-P0.2 closed for
+// voiceover).
+func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 	if jobsSvc == nil {
-		return
+		return fmt.Errorf("youtube.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
-	jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, ytjobs.NewJobHandler(s, s.log).HandleJob)
+	if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, ytjobs.NewJobHandler(s, s.log).HandleJob); err != nil {
+		return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobservice.TypeYouTubeClipExtract, err)
+	}
 	s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.TypeYouTubeClipExtract))
 
 	// rebuild_search_text needs Clips to be wired so the rebuild can
 	// locate the indexed-clip rows. Guard keeps a half-wired bundle from
 	// registering a handler that would no-op on first invocation.
 	if s.clips != nil {
-		jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
+		if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob); err != nil {
+			return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobservice.TypeYouTubeRebuildST, err)
+		}
 		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobservice.TypeYouTubeRebuildST))
 	}
+	return nil
 }
 
 // HandleRebuildSearchTextJob wraps the free function form of

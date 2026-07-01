@@ -189,8 +189,22 @@ func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobT
 	return s.Gen.HandleJob(ctx, j, tools)
 }
 
-func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
-	s.Gen.RegisterHandler(jobsSvc)
+// RegisterHandler registers the image-generation job handler with the
+// jobs system.
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): signature
+// changed to error-return so composition-root fail-closed posture applies.
+// Pre-PR-VALIDATOR-LITERAL-REGISTER this delegated silently to
+// GenerationService.RegisterHandler which itself logged-and-continued on
+// dispatcher rejection — the silent-success class closed by audit-P0.2-cont.
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
+	}
+	if err := s.Gen.RegisterHandler(jobsSvc); err != nil {
+		return fmt.Errorf("images.Service.RegisterHandler: bind via GenerationService: %w", err)
+	}
+	return nil
 }
 
 // ── Delegate methods: Storage ─────────────────────────────────────────

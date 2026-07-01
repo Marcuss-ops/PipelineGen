@@ -65,19 +65,38 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 }
 
 // RegisterHandler registers this service as a handler for catalog.sync jobs.
-func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, s.HandleJob)
-		s.log.Info("registered catalog.sync job handler")
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): Register
+// now returns error so the composition root can fail-closed at boot if the
+// dispatcher rejects the binding. Pre-PR-VALIDATOR-LITERAL-REGISTER the
+// silent-`if jobsSvc != nil`+log-Info path masked nil-typed-dispatcher
+// + duplicate-bind failures — the same silent-success class audit-P0.2
+// partially closed for the voiceover handlers and that this commit fully
+// closes for all silent-Warn critical handlers.
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("catalogsync.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
+	if err := jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, s.HandleJob); err != nil {
+		return fmt.Errorf("catalogsync.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeCatalogSync, err)
+	}
+	s.log.Info("registered catalog.sync job handler")
+	return nil
 }
 
 // RegisterDriveFolderSyncHandler registers the handler for async drive.folder.sync jobs.
-func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, s.HandleDriveFolderSyncJob)
-		s.log.Info("registered drive.folder.sync job handler")
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026): same
+// signature change as RegisterHandler.
+func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *appjobs.Service) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
+	if err := jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, s.HandleDriveFolderSyncJob); err != nil {
+		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: bind %q to dispatcher: %w", appjobs.TypeDriveFolderSync, err)
+	}
+	s.log.Info("registered drive.folder.sync job handler")
+	return nil
 }
 
 // HandleDriveFolderSyncJob processes an async drive.folder.sync job.

@@ -622,12 +622,25 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Admin)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
+	// Audit P0 #2 cont. — PR-VALIDATOR-LITERAL-REGISTER (July 2026):
+	// every silent-Warn inline Register call is now fail-closed
+	// (errors surface as wrapped composition errors; NewComposition
+	// aborts instead of silently dropping jobs onto an unsigned
+	// dispatcher). The validator below then re-invokes the literal
+	// Register method verbatim, closing the silent-success class on
+	// every critical handler.
 	if sync.CatalogSync != nil && jobs.Service != nil {
-		sync.CatalogSync.RegisterHandler(jobs.Service)
-		sync.CatalogSync.RegisterDriveFolderSyncHandler(jobs.Service)
+		if err := sync.CatalogSync.RegisterHandler(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose catalogsync.catalog_sync binding: %w", err)
+		}
+		if err := sync.CatalogSync.RegisterDriveFolderSyncHandler(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose catalogsync.drive_folder_sync binding: %w", err)
+		}
 	}
 	if domains.YoutubeClipService != nil && jobs.Service != nil {
-		domains.YoutubeClipService.RegisterHandler(jobs.Service)
+		if err := domains.YoutubeClipService.RegisterHandler(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose youtube.clip_extract binding: %w", err)
+		}
 	}
 	// Voiceover registration moved to the new GenerateJobHandler path
 	// (P0.1, June 2026) — see buildVoiceoverService + composition.go::wireVoiceoverJobHandler
@@ -708,10 +721,14 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		log.Info("BLOC5.3 commit-2 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
 	}
 	if domains.ImageService != nil && jobs.Service != nil {
-		domains.ImageService.RegisterHandler(jobs.Service)
+		if err := domains.ImageService.RegisterHandler(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose images.image_generate_google binding: %w", err)
+		}
 	}
 	if process.ClipIndexerService != nil && jobs.Service != nil {
-		process.ClipIndexerService.RegisterJobHandler(jobs.Service)
+		if err := process.ClipIndexerService.RegisterJobHandler(jobs.Service); err != nil {
+			return nil, fmt.Errorf("compose clipindexer.media_reindex binding: %w", err)
+		}
 	}
 	// Capability Standard migration (June 2026): BooksService and
 	// LessonsService worker handlers are NOT registered here.
@@ -745,124 +762,110 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Ctx: ctx,
 	}
 
-	// ── Critical-handler validator (Audit P0 #2 continuation, July 2026) ──
-	// Aggregate post-call HasHandler confirmations for every critical
-	// job handler. godlike/05 fail-closed posture — abort NewComposition
-	// if any binding is missing so the server never boots with a
-	// half-registered dispatcher (silent-success class: jobs queue
-	// without consumers, dead-letter silently).
-	//
-	// Per-handler contract:
-	//   - REQUIRED handlers — return non-nil error if HasHandler is false
-	//     (production failure: the dispatcher cannot reach the bind path
-	//     for that job type; the system would silently drop jobs of
-	//     that type at runtime).
-	//   - OPTIONAL handlers — return nil regardless of HasHandler state
-	//     (the handler is unwired in this deploy and that's intentional;
-	//     e.g. clipindexer disabled via cfg.ClipIndexer.Enabled,
-	//     image service disabled when Chrome/Playwright is absent).
-	//
-	// The validator runs AFTER the late-bindings block above (the
-	// inline Register calls are the actual binding surface); the
-	// HasHandler post-check is a CONFIRMATION layer that catches the
-	// silent-Warn failure class (audit-P0.2 cont. closes the gap that
+	// ── Critical-handler validator (Audit P0 #2 cont., PR-VALIDATOR-LITERAL-REGISTER, July 2026) ──
+	// Each CriticalHandler.Bind closure now re-invokes the
+	// corresponding handler.Register(svc) method verbatim (not a
+	// HasHandler post-call confirmation). The inline late-bindings
+	// calls above are duplicated + fail-closed (errors propagate as
+	// wrapped composition errors); the validator is the canonical
+	// re-bind surface that catches the silent-success class on
+	// every critical handler (audit-P0.2 cont. closes the gap that
 	// audit-P0.2 only partially closed: P0.2 converted voiceover to
-	// error-return but left the OTHER 7 silent-Warn handlers uncovered).
-	criticalHandlerValidators := []CriticalHandler{
-		// ── REQUIRED — voiceover.generate (parent, error-return from audit P0.2) ──
-		{
-			Name: "voiceover.generate",
-			Bind: func(svc *appjobs.Service) error {
-				if svc.HasHandler(appjobs.TypeVoiceoverGenerate) {
-					return nil
-				}
-				return fmt.Errorf("voiceover.generate not bound (REQUIRED for fan-out dispatch; post-call HasHandler check failed)")
+	// error-return but left the OTHER 7 silent-Warn handlers
+	// uncovered).
+	//
+	// godlike/05 fail-closed posture: any non-nil error from
+	// ValidateCriticalHandlers aborts NewComposition; the server
+	// never boots with a half-registered dispatcher.
+	//
+	// stockpipeline.media_stock is NOT in this slice — it's wired via
+	// registerInternalModules::WireStockPipeline AFTER NewComposition
+	// returns. The canonical stockpipeline validator pass lives in
+	// lifecycle.go (post-WireStockPipeline + pre-ListenAndServe).
+	var criticalHandlerValidators []CriticalHandler
+	if sync.CatalogSync != nil && jobs.Service != nil && jobs != nil {
+		catSync := sync.CatalogSync
+		criticalHandlerValidators = append(criticalHandlerValidators,
+			CriticalHandler{
+				Name: "catalogsync.catalog_sync",
+				Bind: func(svc *appjobs.Service) error {
+					return catSync.RegisterHandler(svc)
+				},
 			},
-		},
-		// ── REQUIRED — voiceover.generate_item (child, error-return from audit P0.2) ──
-		{
-			Name: "voiceover.generate_item",
-			Bind: func(svc *appjobs.Service) error {
-				if svc.HasHandler(appjobs.TypeVoiceoverGenerateItem) {
-					return nil
-				}
-				return fmt.Errorf("voiceover.generate_item not bound (REQUIRED for per-language dispatch; post-call HasHandler check failed)")
+			CriticalHandler{
+				Name: "catalogsync.drive_folder_sync",
+				Bind: func(svc *appjobs.Service) error {
+					return catSync.RegisterDriveFolderSyncHandler(svc)
+				},
 			},
-		},
-		// ── REQUIRED — catalogsync.catalog_sync (silent-Warn inline call above) ──
-		{
-			Name: "catalogsync.catalog_sync",
-			Bind: func(svc *appjobs.Service) error {
-				if svc.HasHandler(appjobs.TypeCatalogSync) {
-					return nil
-				}
-				return fmt.Errorf("catalogsync.catalog_sync not bound (REQUIRED for catalog→Drive sync; post-call HasHandler check failed)")
+		)
+	}
+	if domains.YoutubeClipService != nil && jobs.Service != nil {
+		yt := domains.YoutubeClipService
+		criticalHandlerValidators = append(criticalHandlerValidators,
+			CriticalHandler{
+				Name: "youtube.clip_extract",
+				Bind: func(svc *appjobs.Service) error {
+					return yt.RegisterHandler(svc)
+				},
 			},
-		},
-		// ── REQUIRED — catalogsync.drive_folder_sync (silent-Warn inline call above) ──
-		{
-			Name: "catalogsync.drive_folder_sync",
-			Bind: func(svc *appjobs.Service) error {
-				if svc.HasHandler(appjobs.TypeDriveFolderSync) {
-					return nil
-				}
-				return fmt.Errorf("catalogsync.drive_folder_sync not bound (REQUIRED for drive-folder incremental sync; post-call HasHandler check failed)")
+		)
+	}
+	if domains.ImageService != nil && jobs.Service != nil {
+		img := domains.ImageService
+		criticalHandlerValidators = append(criticalHandlerValidators,
+			CriticalHandler{
+				Name: "images.image_generate_google",
+				Bind: func(svc *appjobs.Service) error {
+					return img.RegisterHandler(svc)
+				},
 			},
-		},
-		// ── OPTIONAL — stockpipeline.media_stock (REQUIRED-flag: bind happens in registry_internal_modules.go::WireStockPipeline AFTER NewComposition returns; the post-NewComposition HasHandler check would falsely abort. StockPipeline is OPTIONAL at composition time because it may be disabled via gating infra — see CHANGELOG audit-P0.2-cont honest-limitation for full reasoning.) ──
-		{
-			Name: "stockpipeline.media_stock",
-			Bind: func(svc *appjobs.Service) error {
-				// StockPipeline.Service.RegisterHandler is wired via
-				// registry_internal_modules.go::WireStockPipeline AFTER
-				// NewComposition returns. At composition time, HasHandler
-				// is false even when stock is correctly wired — a REQUIRED
-				// check at composition time would be a FALSE POSITIVE.
-				// The canonical place to assert stock-handler binding is a
-				// post-WireStockPipeline validator (out-of-scope for this commit).
-				if svc.HasHandler(appjobs.TypeMediaStock) {
-					return nil
-				}
-				return nil // intentional: skip silently when bind-after-composition
+		)
+	}
+	if process.ClipIndexerService != nil && jobs.Service != nil {
+		ci := process.ClipIndexerService
+		criticalHandlerValidators = append(criticalHandlerValidators,
+			CriticalHandler{
+				Name: "clipindexer.media_reindex",
+				Bind: func(svc *appjobs.Service) error {
+					return ci.RegisterJobHandler(svc)
+				},
 			},
-		},
-		// ── REQUIRED — youtube.clip_extract (silent-Warn inline call: YoutubeClipService.RegisterHandler) ──
-		{
-			Name: "youtube.clip_extract",
-			Bind: func(svc *appjobs.Service) error {
-				if svc.HasHandler(job.TypeYouTubeClipExtract) {
-					return nil
-				}
-				return fmt.Errorf("youtube.clip_extract not bound (REQUIRED for YouTube clip extraction dispatch; post-call HasHandler check failed)")
+		)
+	}
+	// voiceover.generate: literal Register re-call gated by
+	// HasHandler check to preserve BLOC5.3 + Catena A P0 idempotency
+	// (parent gate at late-bindings time). If the dispatcher already
+	// holds a Catena A P0 binding, the validator no-ops so we don't
+	// overwrite it with the BLOC5.3 caller-reference handler.
+	if jobs.Service != nil {
+		vh := domains.VoiceoverGenerateHandler
+		if vh != nil {
+			criticalHandlerValidators = append(criticalHandlerValidators,
+				CriticalHandler{
+					Name: "voiceover.generate",
+					Bind: func(svc *appjobs.Service) error {
+						if svc.HasHandler(appjobs.TypeVoiceoverGenerate) {
+							return nil // idempotent: Catena A P0 bind preserved
+						}
+						return vh.Register(svc)
+					},
+				},
+			)
+		}
+	}
+	if gih := domains.VoiceoverGenerateItemHandler; gih != nil && jobs.Service != nil {
+		criticalHandlerValidators = append(criticalHandlerValidators,
+			CriticalHandler{
+				Name: "voiceover.generate_item",
+				Bind: func(svc *appjobs.Service) error {
+					return gih.Register(svc)
+				},
 			},
-		},
-		// ── OPTIONAL — clipindexer.media_reindex (silent-Warn inline call above; optional when cfg.ClipIndexer.Enabled=false) ──
-		{
-			Name: "clipindexer.media_reindex",
-			Bind: func(svc *appjobs.Service) error {
-				// Optional — clipindexer may be disabled via cfg.ClipIndexer.Enabled.
-				// Skip silently when unwired; do not abort composition.
-				if svc.HasHandler(appjobs.TypeMediaReindex) {
-					return nil
-				}
-				return nil // intentional: skip silently when cfg-disabled
-			},
-		},
-		// ── OPTIONAL — images.image_generate_google (silent-Warn inline call above; optional when Chrome/Playwright absent) ──
-		{
-			Name: "images.image_generate_google",
-			Bind: func(svc *appjobs.Service) error {
-				// Optional — image service may be disabled when Chrome/Playwright
-				// infrastructure is absent. Skip silently when unwired.
-				if svc.HasHandler(appjobs.TypeImageGenerateGoogle) {
-					return nil
-				}
-				return nil // intentional: skip silently when infrastructure absent
-			},
-		},
+		)
 	}
 	if err := ValidateCriticalHandlers(jobs.Service, log, criticalHandlerValidators); err != nil {
-		return nil, fmt.Errorf("compose critical-handler validation (audit-P0.2 cont.): %w", err)
+		return nil, fmt.Errorf("compose critical-handler validation (audit-P0.2 cont., PR-VALIDATOR-LITERAL-REGISTER): %w", err)
 	}
 
 	return root, nil

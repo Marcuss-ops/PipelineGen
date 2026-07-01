@@ -300,12 +300,24 @@ func NewService(deps Deps) (*Service, error) {
 	}, nil
 }
 
-// RegisterHandler registers the stock pipeline job handler with the jobs system.
-func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(appjobs.TypeMediaStock, s.HandleJob)
-		s.log.Info("registered media.stock job handler", zap.String("type", appjobs.TypeMediaStock))
+// RegisterHandler registers the stock pipeline job handler with the jobs
+// system.
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026):
+// signature changed to error-return so composition-root fail-closed
+// posture applies (the wireStockPipeline call site is the canonical
+// bind surface; the post-WireStockPipeline validator in lifecycle.go
+// re-invokes this method verbatim so a nil-dispatcher or duplicate-bind
+// rejection surfaces as a typed error instead of silent log-Info).
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("stockpipeline.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
+	if err := jobsSvc.RegisterHandler(appjobs.TypeMediaStock, s.HandleJob); err != nil {
+		return fmt.Errorf("stockpipeline.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeMediaStock, err)
+	}
+	s.log.Info("registered media.stock job handler", zap.String("type", appjobs.TypeMediaStock))
+	return nil
 }
 
 // HandleJob handles a stock pipeline job from the job queue.

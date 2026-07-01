@@ -94,12 +94,23 @@ func (s *Service) BatchReindex(ctx context.Context, source, mediaType string, li
 // DefaultBatchConcurrency is the default number of parallel workers for batch reindex.
 const DefaultBatchConcurrency = 3
 
-// RegisterJobHandler registers the batch reindex job handler with the jobs service.
-func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(job.TypeMediaReindex, s.HandleJob)
-		s.log.Info("registered media.reindex job handler")
+// RegisterJobHandler registers the batch reindex job handler with the
+// jobs service.
+//
+// Audit P0 #2 (cont.) — PR-VALIDATOR-LITERAL-REGISTER (July 2026):
+// signature changed to error-return so composition-root fail-closed
+// posture applies (the validator's Bind closure re-invokes this method
+// verbatim; a nil-dispatcher or duplicate-bind rejection surfaces as
+// a typed error instead of silent log-Info).
+func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register)")
 	}
+	if err := jobsSvc.RegisterHandler(job.TypeMediaReindex, s.HandleJob); err != nil {
+		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", job.TypeMediaReindex, err)
+	}
+	s.log.Info("registered media.reindex job handler")
+	return nil
 }
 
 // HandleJob processes a batch reindex job from the job system.
