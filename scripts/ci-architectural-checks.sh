@@ -2453,3 +2453,30 @@ bash "$(dirname "$0")/ci/architecture/checks/43_db_chain_outside_infra.sh" || { 
 bash "$(dirname "$0")/ci/architecture/checks/44_application_size_cap_and_aliases_ban.sh" || { echo "Check 44 (P1-2 application size cap + types_aliases.go filename ban) failed"; exit 1; }
 
 bash "$(dirname "$0")/ci/architecture/checks/46_inline_clips_repository_map_ban.sh" || { echo "Check 46 (inline ClipsRepository map ban) failed"; exit 1; }
+
+# ── Check 50: Channel-monitor E2E dedup contract test coverage (Spec June 2026) ──
+# Verifies that the canonical E2E test file
+# `internal/application/assets/monitor/e2e_no_duplicates_test.go`
+# exists AND asserts the locked counter invariants so the assertion
+# coverage cannot be silently neutered. Slot chosen as the lowest free
+# number ≥45 since Check 45 is occupied by the inline
+# `map[string]*ClipsRepository` ban (PR-BARE-ONLY-MAP-LITERAL-COVERAGE).
+echo "=== Check 50: Channel-monitor E2E dedup counter coverage ==="
+e2e_test_file="internal/application/assets/monitor/e2e_no_duplicates_test.go"
+if [ ! -f "$e2e_test_file" ]; then
+  echo "FAIL: $e2e_test_file is missing."
+  echo "Fix: add the E2E test file at the canonical path; the file is the"
+  echo "single source of truth for the Tick1/Tick2 + parallel race contract."
+  exit 1
+fi
+missing=""
+for tok in qdrant db_clips drive_uploads outbox accepted_jobs duplicate_enqueues; do
+  if ! grep -qi "$tok" "$e2e_test_file"; then
+    missing="$missing $tok"
+  fi
+done
+if [ -n "$missing" ]; then
+  echo "FAIL: $e2e_test_file is missing counter assertions for:$missing"
+  exit 1
+fi
+echo "OK: Check 50 - E2E counter coverage verified on monitor/."
