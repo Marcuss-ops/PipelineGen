@@ -111,6 +111,20 @@ type Deps struct {
 	AssetDeleter           AssetDeleter
 	SourceVersionQuerier   SourceVersionQuerier
 	VoiceoverCleanupDriver VoiceoverCleanupDriver
+
+	// Blocco 3.1 commit 2/3 (June 2026) — deletion state machine.
+	// Each field is optional; their presence registers
+	// DriveDeleteHandler in RegisterOptionalHandlers. The four
+	// fields cover the 4 narrow ports DriveDeleteHandler depends
+	// on. Production wires all 4 from BuildOutboxBundle calling
+	// NewLifecycleStateReader + ClipsLifecycleStateWriter on
+	// *assets.ClipsRepository, NewDriveDeleterAdapter wraps
+	// *drive.FileLifecycleAdapter, and StateAdvancer wraps
+	// *outbox.Dispatcher.
+	DrivePatchLifecycle    LifecycleStateReader
+	DrivePatchLifecycleW   ClipsLifecycleStateWriter
+	DrivePatchStateAdv     StateAdvancer
+	DriveDeleteHandler     DriveDeleter
 }
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
@@ -291,6 +305,26 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	// deployment regardless of whether a Drive admin is wired at
 	// composition time.
 	optional = append(optional, NewVoiceoverCleanupHandler(depsOrNil(deps).VoiceoverCleanupDriver, log))
+
+	// Blocco 3.1 commit 2/3 (June 2026) — DriveDeleteHandler
+	// (asset.drive.delete_requested.v1). Registered only when
+	// ALL four narrow ports are wired, otherwise skipped at Info
+	// (matching the optional-handler best-effort contract — a
+	// partial Drive wiring in dev environments that don't have a
+	// Qdrant cluster should not abort boot).
+	if deps != nil &&
+		deps.DrivePatchLifecycle != nil &&
+		deps.DrivePatchLifecycleW != nil &&
+		deps.DrivePatchStateAdv != nil &&
+		deps.DriveDeleteHandler != nil {
+		optional = append(optional, NewDriveDeleteHandler(
+			log,
+			deps.DriveDeleteHandler,
+			deps.DrivePatchLifecycle,
+			deps.DrivePatchLifecycleW,
+			deps.DrivePatchStateAdv,
+		))
+	}
 	for _, h := range optional {
 		if err := registry.Register(h); err != nil {
 			return err
