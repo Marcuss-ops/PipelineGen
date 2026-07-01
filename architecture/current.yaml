@@ -662,14 +662,19 @@ wave_status:
   # is intentionally OUT OF SCOPE here as Phase 1/2 not Phase 1c.
   PHASE-1C:
     id: PHASE-1C
-    topic: Phase 1c TODO closure chain (5 commits, 10 sites closed across Commits 1/4 + 2/4 + 3/4 + 4b/4)
+    topic: Phase 1c TODO closure chain (9 SHA-references across 7 unique on-origin/main SHAs + 2 superseded predecessors + 1 Phase 2 earlier closure; 11 sites closed across Commits 1/4 + 2/4 + 3b/4 + 4b/4 + Commit H Phase 2)
     current_state: shipped
     owner: architecture
     exit_gate: |
       * Full Phase 1c TODO grep-zero-complete per user spec
         (`Phase 1c TODO` + `Phase 1c deferral` literal grep returns 0
         in production Go on origin/main HEAD).
-      * 5 user-named SHAs landed on origin/main in chronological order:
+      * 7 unique on-origin/main SHAs landed for the Phase 1c chain closure
+        (6 chain-canonical entries in linked_issues slim-shape below;
+        canonical-inception point e62bb65a is intentionally duplicated
+        across both the 5 chain-canonical group and the 2 superseded
+        predecessors group per the Audit cross-SHA sweep Dimension 3
+        wording):
           73c30027  Commit 1/4 zero-risk subset (buildVideoURL +
             GenerateClipMetadata + ProcessLifecycle +
             Service.generateClipMetadata DEAD CODE DELETE + 3 comment
@@ -687,6 +692,21 @@ wave_status:
             (search-text shift; 6 invariants, safety-of-shape
             contract for EnrichClip short-circuit guard) — canonically
             SUPERSEDES Commit 4/4 (10110e03).
+          PHASE-1C-COMMIT-3B semantic ID for 4174bb87 (Commit 3b/4
+            supersede-of-3/4; in-file deterministic isSponsorSegment
+            + calculateQualityScore per user-spec substring match +
+            literal linear blend; landed via Fix #1 SHA 0ab3ec4a
+            closure; slim-shape uses user-spec semantic ID for the
+            6th linked_issues entry — documented in Commit 3
+            id-convention reconciliation).
+          1ea5de01  Commit H Phase 2 earlier closure
+            (engine.go memoryGateChecker — earlier Phase 1/2
+            workstream; out-of-scope for the chain-internal
+            Commit 1-4 sequence but counted for tally completeness).
+        2 superseded predecessors (canonical-delegation impls that
+        gave way to in-file deterministic impls in Commits 3b/4/4b/4):
+          e62bb65a (3/4) — superseded by 3b/4 (4174bb87).
+          10110e03 (4/4) — superseded by 4b/4 (067ff3a5).
       * CHANGELOG.md forward-pointer fulfilled (each commit's entry
         filed under ## Unreleased > ### Fixed; Commit 4b/4 entry
         explicitly documents the supersede-of-4/4 chain-internal line).
@@ -694,12 +714,18 @@ wave_status:
         confirmed: `origin/main` advanced by upstream pulls during
         chain rebase; `git rebase origin/main && git push` succeeded
         without --force for all 5 SHAs (no conflict markers).
-      * 11-site user-spec tally bridges to the 5 SHAs above: 7
-        (Commit 1/4) + 1 (Commit 2/4) + 1 (Commit 3/4 semantic-shift
-        pair) + 1 (Commit 4b/4 final canonical) = 10 Phase 1c sites;
-        the 11th site (engine.go memoryGateChecker) closed earlier in
-        Phase 1/2 workstream via 1ea5de01 (out-of-scope for this
-        Phase 1c chain listing; cited only for tally completeness).
+      * 11-site user-spec tally bridges to the 7 unique SHAs above
+        (5 chain-canonical effective sites + 2 superseded-canonical
+        predecessors that closed the same logical sites with the
+        canonical-delegation pattern before Commits 3b/4/4b/4
+        superseded them; 1 Phase 2 earlier-closure site out-of-scope
+        but counted for tally completeness): 7 (Commit 1/4) + 1
+        (Commit 2/4) + 1 (Commit 3/4 semantic-shift pair, superseded
+        by Commit 3b/4) + 1 (Commit 4b/4 final canonical, superseded
+        Commit 4/4) = 10 Phase 1c sites; the 11th site
+        (engine.go memoryGateChecker) closed earlier in Phase 1/2
+        workstream via 1ea5de01 (out-of-scope for this Phase 1c
+        chain listing; cited only for tally completeness).
     linked_issues:
       - id: 73c30027
         owner_capability: internal/application/youtube/usecase
