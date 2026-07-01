@@ -281,3 +281,100 @@ type AssetMetadata struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 }
+// ── Fase 5 Migration walkthrough (SpecScene → ScenePlan / ResolvedScene / RenderManifest) ───
+//
+// How to migrate a single SpecScene (the canonical LLM-emitted shape
+// of script.generate) into the three canonical territories:
+//
+//	┌──────────────┐        ┌──────────────┐        ┌──────────────┐
+//	│  ScenePlan   │──────▶│ ResolvedScene │──────▶│  RenderManifest│
+//	│  (intent)    │        │ (asset_ids)   │        │  (local paths )│
+//	└──────────────┘        └──────────────┘        └──────────────┘
+//
+//	Step 1: SpecScene → ScenePlan  (read the LLM shape, write the intent)
+//	  Inputs:  scene.ID, scene.Index, scene.Text, scene.Title, scene.Kind
+//	           scene.Bindings.Clip.ClipID   (canonical asset id ref)
+//	           scene.Bindings.Image.Prompt (intent prompt)
+//	           scene.Bindings.Clip.StartMs / EndMs (duration)
+//	  Extracts: ScenePlan.ID, ScenePlan.Text, ScenePlan.Duration,
+//	            ScenePlan.Visual.Query (from prompt or text fallback),
+//	            ScenePlan.Audio (from voiceover requirement if
+//	            Bindings.Voiceover wiring present)
+//	  Discards: scene.Bindings.{Clip,Image,Voiceover,Stock}.DriveLink
+//	            scene.Bindings.Image.URL/LocalPath/Status
+//	            scene.Bindings.Voiceover.LocalPath/Link/Status/DurationMs
+//	            scene.Bindings.Stock.Source/DriveLink/Score/Fallback
+//	  Rationale: those are infrastructural — populated at a later
+//	             phase; they don't belong in the intent envelope.
+//
+//	Step 2: ScenePlan → ResolvedScene  (resolve via Qdrant / stock / ffmpeg)
+//	  Inputs:  ScenePlan.Visual.Query (+ OriginPolicy)
+//	           ScenePlan.Audio.Text + Locale + Voice
+//	  Outputs: ResolvedScene.SceneID
+//	           ResolvedScene.VisualAssetID   (canonical media_assets.id
+//	                                          OR voiceover generator id)
+//	           ResolvedScene.AudioAssetID    (canonical asset id)
+//	  Caller:   internal/application/scripts/usecase/specscene_validator.go
+//	            walks the SceneAssets and queries the stock + voiceover
+//	            ports; returns ResolvedScene slices for the renderer.
+//
+//	Step 3: ResolvedScene → RenderManifest  (materialise for ffmpeg)
+//	  Inputs:  ResolvedScene.VisualAssetID + ResolvedScene.AudioAssetID
+//	  Outputs: RenderableScene.SceneID, Text, DurationSec
+//	           RenderableScene.VisualPath / VisualDriveLink (resolved
+//	           from the ResolvedScene's VisualAssetID via the Drive uploader)
+//	           RenderableScene.AudioPath / AudioDriveLink (resolved
+//	           from the ResolvedScene's AudioAssetID via the voiceover
+//	           postprocessor + delivery.Publisher)
+//	  Caller:   the ffmpeg materialiser (e.g.
+//	            internal/application/assets/providers/stock/stockpipeline/)
+//	            reads SpecScene directly today; the migration target
+//	            is for the plan + resolved slices to drive the renderer.
+//
+//	Backward-compat EXPAND window (Fase 5):
+//	  - SpecScene is NOT removed yet. The 153 callsites that read
+//	    scene.Bindings.*.{ClipTitle, DriveLink, URL, LocalPath, Status,
+//	    Source, Score, Fallback, Link, DurationMs} continue to compile
+//	    and run with the same JSON wire shape. Each binding field is
+//	    marked `// Deprecated:` in internal/domain/script/model_output.go
+//	    and points to its canonical territory.
+//	  - The EXPAND window runs until godlike/07 CUTOVER deadline
+//	    (architecture/current.yaml#wave_status.fase-5). At CUTOVER
+//	    the deprecated specscene fields are flipped to a `Deleted:`
+//	    marker (still emitted as omitempty) and consumers MUST have
+//	    migrated to consume the RenderManifest instead.
+//	  - At CONTRACT (the follow-up wave), the deprecated fields are
+//	    physically removed; SpecScene collapses to a 4-field minimal
+//	    shape (ID + Index + Text + Kind) with the
+//	    SpecBinding = ClipBinding | ImageBinding union (voiceover +
+//	    stock fold into ScenePlan.Audio).
+//
+//	Migrating a single field (the everyday case):
+//
+//	  In (legacy):  scene.Bindings.Clip.DriveLink   // populated by postprocessor
+//	  Out (canonical):
+//	    plan := sceneplan.ScenePlan{
+//	      ID:       scene.ID,
+//	      Text:     scene.Text,
+//	      Visual:   sceneplan.VisualRequirement{ Query: scene.Bindings.Image.Prompt },
+//	      Duration: sceneplan.DurationPolicy{ Seconds: float64(end-start)/1000 },
+//	    }
+//	    resolved := sceneplan.ResolvedScene{
+//	      SceneID:       scene.ID,
+//	      VisualAssetID: scene.Bindings.Clip.ClipID,  // canonical ref, NOT the
+//	                                                // DriveLink — the DriveLink
+//	                                                // is materialised at Step 3.
+//	    }
+//	    rendered := sceneplan.RenderableScene{
+//	      SceneID:         scene.ID,
+//	      Text:            scene.Text,
+//	      DurationSec:     float64(end-start)/1000,
+//	      VisualDriveLink: scene.Bindings.Clip.DriveLink, // canonical home (Step 3)
+//	    }
+//
+//	  The VisualPath / VisualDriveLink fields on RenderableScene are
+//	  the canonical home for the populated DriveLink + local path
+//	  after materialisation. Consumption:
+//	    sceneplan.RenderableScene.VisualPath    → ffmpeg input path
+//	    sceneplan.RenderableScene.VisualDriveLink → public URL surface
+//	  for downstream embedding / sharing / preview UI.
