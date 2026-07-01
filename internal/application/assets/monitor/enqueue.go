@@ -164,12 +164,15 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info downloade
 // of processing channels inline. The job handler performs the channel
 // check, video filtering, and clip extraction enqueue.
 //
-// Per Blocco 1 (channel-monitor hardening): the handler invokes
-// checkChannel and unconditionally writes MarkChecked(Success=true) —
-// the recovery from a sync-failure-driven backoff path is the
-// scheduler's responsibility (the next runSchedulerCycle will re-claim
-// this channel when NextCheckAt fires; backoff is preserved on
-// scheduler-level failures, not on sync-internal policy rejects).
+// Blocco 1a (July 2026): the handler now routes through safeCheckChannel +
+// recordCheckOutcome — the same single canonical outcome path the
+// scheduler uses. Pre-fix the handler discarded checkChannel's return
+// values and unconditionally wrote MarkChecked(Success=true), hiding
+// yt-dlp failures, panics, and SQLite errors from the job status. Now:
+//   - checkErr != nil → job returns error + status:"failed", and
+//     recordCheckOutcome writes Success=false with the error message
+//     so the exponential backoff curve applies.
+//   - checkErr == nil → job returns status:"synced" as before.
 func (m *ChannelMonitor) HandleChannelSyncJob(ctx context.Context, j *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	var payload struct {
 		ChannelID string `json:"channel_id"`
@@ -193,29 +196,41 @@ func (m *ChannelMonitor) HandleChannelSyncJob(ctx context.Context, j *jobservice
 		zap.String("channel_id", payload.ChannelID),
 		zap.String("channel_url", ch.ChannelURL))
 
-	// Defensive panic-recover so a bad channel list does not poison the
-	// whole job worker pool (the dispatcher's contract: never panic back).
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				m.log.Error("panic in channel sync job",
-					zap.String("channel_id", payload.ChannelID),
-					zap.Any("recover", r))
-			}
-		}()
-		m.checkChannel(ctx, ch)
-	}()
+	// Route through safeCheckChannel (panic-recovery → typed error) +
+	// recordCheckOutcome (MarkChecked with Success/LastError/backoff).
+	// This is the same canonical outcome path the scheduler uses in
+	// checkDueChannels; the job handler no longer duplicates the logic.
+	result, checkErr := m.safeCheckChannel(ctx, ch)
+	m.log.Info("channel sync job check completed",
+		zap.String("channel_id", payload.ChannelID),
+		zap.Bool("success", checkErr == nil),
+		zap.Int("videos_discovered", result.VideosDiscovered),
+		zap.Int("videos_enqueued", result.VideosEnqueued))
 
-	// Mark checked on success — the next check time uses the channel's normal interval.
-	nextCheckAt := m.nextCheckTime(ch, true)
-	if err := m.channelsSvc.MarkChecked(ctx, channels.MarkCheckedCommand{
-		ID:          ch.ID,
-		NextCheckAt: nextCheckAt,
-		Success:     true,
-	}); err != nil {
-		m.log.Error("failed to mark channel checked after sync",
+	// Persist the outcome through the canonical recordCheckOutcome path.
+	// On recordCheckOutcome failure, we still return checkErr so the job
+	// status reflects the real infra outcome; the MarkChecked write
+	// failure is surfaced as a secondary error.
+	if recErr := m.recordCheckOutcome(ctx, ch, checkErr); recErr != nil {
+		m.log.Error("failed to mark channel checked after sync job",
 			zap.String("channel_id", ch.ID),
-			zap.Error(err))
+			zap.Error(recErr))
+		if checkErr != nil {
+			return map[string]any{
+				"channel_id": payload.ChannelID,
+				"status":     "failed",
+				"error":      checkErr.Error(),
+			}, fmt.Errorf("channel_sync: check failed AND recordCheckOutcome failed: check=%w, record=%w", checkErr, recErr)
+		}
+		return nil, fmt.Errorf("channel_sync: recordCheckOutcome failed for %q: %w", payload.ChannelID, recErr)
+	}
+
+	if checkErr != nil {
+		return map[string]any{
+			"channel_id": payload.ChannelID,
+			"status":     "failed",
+			"error":      checkErr.Error(),
+		}, checkErr
 	}
 
 	return map[string]any{
