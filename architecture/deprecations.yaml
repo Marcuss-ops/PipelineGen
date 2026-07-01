@@ -222,7 +222,8 @@ deprecations:
     introduction_date: 2026-07-01
     removal_date: 2026-Q3
     tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
-    compatibility_test: "rg 'ArtifactResult.*Document|Artifacts\.Document' internal/domain/script/ returns the deprecated field declaration + the deprecation comment only."
+    compatibility_test: |
+      rg 'ArtifactResult.*Document|Artifacts\.Document' internal/domain/script/ returns the deprecated field declaration + the deprecation comment only.
     usage_metric: "Pre-removal: field populated by DocumentProcessor within script.generate postprocessor chain. Post-Fase 2: field always nil when served by the new pipeline."
     migration_phase: EXPAND
     status: in_progress
@@ -1681,17 +1682,17 @@ open_questions:
 
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
 audit:
-  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026) + QDRANT-005A-VECDRIFT EXPAND registration (2026-06-30) + Wave 1.1 PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL closure (2026-06-30) + audit-summary drift correction (in_progress: 6 → 5, pre-existing inconsistency inherited from HEAD) (2026-06-30)"
-  total_records: 21
+  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026) + QDRANT-005A-VECDRIFT EXPAND registration (2026-06-30) + Wave 1.1 PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL closure (2026-06-30) + audit-summary drift correction (in_progress: 6 → 5, pre-existing inconsistency inherited from HEAD) (2026-06-30) + audit-summary drift correction (in_progress: 5 → 11, EXPAND: 4 → 9, total_records: 21 → 27, July 2026)"
+  total_records: 27
   by_status:
     removed: 15
-    in_progress: 5
+    in_progress: 11
     keep: 1
   by_migration_phase:
-    CONTRACT: 13
+    CONTRACT: 14
     CUTOVER: 2
     BACKFILL: 1
-    EXPAND: 4
+    EXPAND: 9
     not applicable: 1
   ci_gate_impact: |
     Records with removal_date in the past AND status != "removed" fail CI.
