@@ -651,5 +651,81 @@ wave_status:
   BLOC4_ssot_cutover:
     status: shipped
     shipped_in_commit: pending_micro_commit_6_BLOC4
-    risk: one canonical pipeline voiceover end-to-end. The legacy delegating GenerateVoiceoverUseCase (B-2 BACKFILL) is REMOVED per AGENTS.md Active Concerns #10; the new ProcessVoiceoverItemUseCase is the single per-item orchestrator (TTS -> AudioPost -> Lifecycle/Upload -> SwapTx + outbox). The pre-existing process_one.go (ProcessOneVoiceoverUseCase, delegating to Service.GenerateBatch) is REMOVED; jobs/generate_item_handler.go now consumes ProcessVoiceoverItemUseCase directly. FilenameBuilder extracted as a narrow typed port (single grammar implementation across the codebase).
-    evidence: TestProcessVoiceoverItemUseCase_HappyPath_TTSUploadTxOutbox + TestProcessVoiceoverItemUseCase_AllErrorPathsSurfaceAsFailureCode (TTS, upload, db_delete, db_insert, outbox_enqueue, missing_folder_id, destination_resolve subpaths) + TestGenerateItemJobHandler_NoLongerCallsGenerateBatch green. Static grep guard enforced via scripts/ci/architecture/checks/47_generate_batch_ban.sh — the user flagged this as 'il piu delicato' cutover; the canonical cross-scope user instruction is 'una sola pipeline voiceover end-to-end'.
+    risk: one canonical pipeline voiceover end-to-end. The legacy delegating GenerateVoiceoverUseCase (B-2 BACKFILL) is REMOVED per AGENTS.md Active Concerns #10; the new ProcessVoiceoverItemUseCase is the single per-item orchestrator (TTS -> AudioPost -> Lifecycle/Upload -> SwapTx + outbox). The pre-existing process_one.go (ProcessOneVoiceoverUseCase, delegating to Service.GenerateBatch) is REMOVED; jobs/generate_item_handler.go now consumes ProcessVoiceoverItemUseCase directly. FilenameBuilder extracted as a narrow typed port (single grammar implementation across the codebase).      evidence: TestProcessVoiceoverItemUseCase_HappyPath_TTSUploadTxOutbox + TestProcessVoiceoverItemUseCase_AllErrorPathsSurfaceAsFailureCode (TTS, upload, db_delete, db_insert, outbox_enqueue, missing_folder_id, destination_resolve subpaths) + TestGenerateItemJobHandler_NoLongerCallsGenerateBatch green. Static grep guard enforced via scripts/ci/architecture/checks/47_generate_batch_ban.sh — the user flagged this as 'il piu delicato' cutover; the canonical cross-scope user instruction is 'una sola pipeline voiceover end-to-end'.
+
+  # PHASE-1C: 5-commit TODO closure chain (June 2026, internal/application/youtube/usecase).
+  # Filed 2026-07-01 per CHANGELOG forward-pointer (no formal tracker anchor
+  # existed previously for the Phase 1c chain). Cites the 5 user-named
+  # SHAs verified on origin/main; the 11-site user-spec tally bridges via
+  # the per-commit closures below (10 of 11 sites) plus the pre-existing
+  # earlier-phase closure (1ea5de01 / engine.go memoryGateChecker) which
+  # is intentionally OUT OF SCOPE here as Phase 1/2 not Phase 1c.
+  PHASE-1C:
+    id: PHASE-1C
+    topic: Phase 1c TODO closure chain (5 commits, 10 sites closed across Commits 1/4 + 2/4 + 3/4 + 4b/4)
+    current_state: shipped
+    owner: architecture
+    exit_gate: |
+      * Full Phase 1c TODO grep-zero-complete per user spec
+        (`Phase 1c TODO` + `Phase 1c deferral` literal grep returns 0
+        in production Go on origin/main HEAD).
+      * 5 user-named SHAs landed on origin/main in chronological order:
+          73c30027  Commit 1/4 zero-risk subset (buildVideoURL +
+            GenerateClipMetadata + ProcessLifecycle +
+            Service.generateClipMetadata DEAD CODE DELETE + 3 comment
+            cleanups — 7 sites).
+          48775cf6  Commit 2/4 BuildMetadataLanguages →
+            NormalizeLanguages (1 site + 10 TDD tests).
+          e62bb65a  Commit 3/4 canonical-delegation impl
+            (isSponsorSegment canonical regex + calculateQualityScore
+            weighted blend with caller-side sponsor penalty +
+            math.Round bucketing) — SUPERSEDED by Commit 3b/4.
+          10110e03  Commit 4/4 canonical-delegation impl
+            (BuildFallbackSearchText canonical delegation) —
+            SUPERSEDED by Commit 4b/4.
+          067ff3a5  Commit 4b/4 in-file deterministic impl v2
+            (search-text shift; 6 invariants, safety-of-shape
+            contract for EnrichClip short-circuit guard) — canonically
+            SUPERSEDES Commit 4/4 (10110e03).
+      * CHANGELOG.md forward-pointer fulfilled (each commit's entry
+        filed under ## Unreleased > ### Fixed; Commit 4b/4 entry
+        explicitly documents the supersede-of-4/4 chain-internal line).
+      * Race-recovery non-conflicting exit per AGENTS.md Git-Lesson-4
+        confirmed: `origin/main` advanced by upstream pulls during
+        chain rebase; `git rebase origin/main && git push` succeeded
+        without --force for all 5 SHAs (no conflict markers).
+      * 11-site user-spec tally bridges to the 5 SHAs above: 7
+        (Commit 1/4) + 1 (Commit 2/4) + 1 (Commit 3/4 semantic-shift
+        pair) + 1 (Commit 4b/4 final canonical) = 10 Phase 1c sites;
+        the 11th site (engine.go memoryGateChecker) closed earlier in
+        Phase 1/2 workstream via 1ea5de01 (out-of-scope for this
+        Phase 1c chain listing; cited only for tally completeness).
+      * Local-only SHA `4174bb87` (Commit 3b/4) landed the user-spec
+        supersede of Commit 3/4 (e62bb65a) per git reflog, then was
+        itself superseded in a subsequent rebase; the canonical
+        on-origin/main epoch for the Commit 3b/4 surface is recorded
+        in CHANGELOG.md. NOT cited in `linked_issues` here because
+        not currently reachable via `git branch -r --contains
+        4174bb87` (per AGENTS.md §7 NO_FAKE_AVAILABILITY).
+    linked_issues:
+      - id: 73c30027
+        owner_capability: internal/application/youtube/usecase
+        status: shipped
+        deadline: 2026-07-01
+      - id: 48775cf6
+        owner_capability: internal/application/youtube/usecase
+        status: shipped
+        deadline: 2026-07-01
+      - id: e62bb65a
+        owner_capability: internal/application/youtube/usecase
+        status: superseded
+        deadline: 2026-07-01
+      - id: 10110e03
+        owner_capability: internal/application/youtube/usecase
+        status: superseded
+        deadline: 2026-07-01
+      - id: 067ff3a5
+        owner_capability: internal/application/youtube/usecase
+        status: shipped
+        deadline: 2026-07-01
+
