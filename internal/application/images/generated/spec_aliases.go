@@ -12,8 +12,6 @@ type Registry interface {
 
 type GenerationRegistryImpl = GenerationProviderRegistry
 
-type ResolvedGenerationRequest = GenerateRequest
-
 var ErrProviderNotFound = errors.New("generated: provider id not found in registry")
 
 var (
