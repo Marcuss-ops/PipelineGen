@@ -68,9 +68,22 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrStateConflict is returned by state-transition methods (MarkEnqueued,
+// MarkRejected) when the row's current state does not match the expected
+// source state(s). The caller can use errors.Is(err, ErrStateConflict) to
+// distinguish a genuine row-not-found / state-precondition failure from a
+// transient SQLite I/O error.
+//
+// Blocco 2 (July 2026) — audit P0 #3: every state transition now checks
+// RowsAffected; a zero-row UPDATE (excluding explicitly idempotent paths)
+// surfaces this sentinel so the caller can decide to retry, dead-letter,
+// or reconcile.
+var ErrStateConflict = errors.New("youtube_discoveries: state conflict — row state does not match expected source state")
 
 // RetryableBackoffCapSeconds is the canonical cap for the backoff
 // formula. Exposed so monitor package and tests can lock the value
@@ -278,6 +291,14 @@ func (r *YoutubeDiscoveriesRepository) tryReserveConflict(
 // at 'enqueued', enqueued_at stays at the FIRST successful
 // enqueue's timestamp — guarantees the watermark doesn't oscillate
 // between cycles on retry-after-transient-error paths.
+//
+// Blocco 2 (July 2026): RowsAffected check. If the UPDATE matches
+// zero rows, the method checks whether the row is already 'enqueued'
+// (idempotent — return nil) or in an unexpected state (return
+// ErrStateConflict). The audit P0 #3 identified that pre-Blocco-2
+// the ExecContext error was returned directly; a row in a terminal
+// state or an id-mismatch surfaced as a nil error, indistinguishable
+// from a successful transition.
 func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enqueuedAt string) error {
 	if id == "" {
 		return fmt.Errorf("youtube_discoveries.MarkEnqueued: id is required")
@@ -286,7 +307,7 @@ func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enq
 		enqueuedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	nowStr := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE youtube_discoveries
 		SET state = 'enqueued',
 		    enqueued_at = ?,
@@ -294,7 +315,22 @@ func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enq
 		    updated_at = ?
 		WHERE id = ? AND state IN ('pending', 'analyzing')
 	`, enqueuedAt, nowStr, id)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		// Idempotent path: row already marked as enqueued.
+		var gotState string
+		if scanErr := r.db.QueryRowContext(ctx, `SELECT state FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotState); scanErr != nil {
+			return fmt.Errorf("%w: MarkEnqueued row not found for id=%q: %w", ErrStateConflict, id, scanErr)
+		}
+		if gotState == "enqueued" {
+			return nil
+		}
+		return fmt.Errorf("%w: MarkEnqueued expected state IN ('pending','analyzing'), got %q for id=%q", ErrStateConflict, gotState, id)
+	}
+	return nil
 }
 
 // MarkRejected records an explicit rejection on the ledger row.
@@ -307,49 +343,91 @@ func (r *YoutubeDiscoveriesRepository) MarkEnqueued(ctx context.Context, id, enq
 // Both paths preserve the row's audit trail (rejection_reason +
 // legacy outcome column shadow). Caller is the monitor package's
 // enqueue.go where retryable is computed from isTransientErr.
+//
+// Blocco 2 (July 2026): the retryable path replaces the pre-Blocco-2
+// SELECT attempt_count + UPDATE (two queries, non-atomic) with a
+// single atomic UPDATE ... SET attempt_count = attempt_count + 1 ...
+// RETURNING attempt_count. The RETURNING clause surfaces the
+// post-increment value atomically; the follow-up UPDATE sets
+// next_retry_at from the known returned count. Both paths check
+// RowsAffected and return ErrStateConflict on zero rows (audit P0 #3).
 func (r *YoutubeDiscoveriesRepository) MarkRejected(ctx context.Context, id, rejectionReason string, retryable bool) error {
 	if id == "" {
 		return fmt.Errorf("youtube_discoveries.MarkRejected: id is required")
 	}
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	if retryable {
-		// Compute next_retry_at = now + backoff(attempt_count).
-		// attempt_count is incremented in this same UPDATE so the
-		// monitor's next cycle sees the updated counter.
-		var attemptCount int
-		if err := r.db.QueryRowContext(ctx, `
-			SELECT attempt_count FROM youtube_discoveries WHERE id = ?
-		`, id).Scan(&attemptCount); err != nil {
-			return fmt.Errorf("youtube_discoveries.MarkRejected: lookup attempt_count: %w", err)
+		// Atomic UPDATE: bump attempt_count in SQL (no separate SELECT).
+		// RETURNING gives us the post-increment value so we can compute
+		// the backoff without a race window.
+		//
+		// Blocco 2 crash-recovery hardening: the two UPDATEs (state bump
+		// + next_retry_at) run inside a single SQLite transaction so a
+		// crash between them cannot leave the row at
+		// state='rejected_retryable' with next_retry_at=NULL — that
+		// state is permanently unreclaimable by tryReserveConflict(b).
+		tx, txErr := r.db.BeginTx(ctx, nil)
+		if txErr != nil {
+			return fmt.Errorf("youtube_discoveries.MarkRejected: begin tx: %w", txErr)
 		}
-		newAttempt := attemptCount + 1
-		retryAtStr := time.Now().UTC().Add(time.Duration(ComputeRetryBackoffSeconds(newAttempt)) * time.Second).Format(time.RFC3339)
-		if _, err := r.db.ExecContext(ctx, `
+		defer func() {
+			if tx != nil {
+				_ = tx.Rollback()
+			}
+		}()
+
+		var newAttempt sql.NullInt64
+		row := tx.QueryRowContext(ctx, `
 			UPDATE youtube_discoveries
 			SET state = 'rejected_retryable',
-			    next_retry_at = ?,
-			    attempt_count = ?,
+			    attempt_count = attempt_count + 1,
 			    last_error = ?,
 			    rejection_reason = ?,
 			    outcome = 'rejected',
 			    updated_at = ?
-			WHERE id = ? AND state != 'enqueued'
-		`, retryAtStr, newAttempt, rejectionReason, rejectionReason, nowStr, id); err != nil {
+			WHERE id = ? AND state IN ('pending', 'analyzing')
+			RETURNING attempt_count
+		`, rejectionReason, rejectionReason, nowStr, id)
+		if err := row.Scan(&newAttempt); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("%w: MarkRejected(retryable) expected state IN ('pending','analyzing') for id=%q", ErrStateConflict, id)
+			}
 			return fmt.Errorf("youtube_discoveries.MarkRejected: retryable update: %w", err)
 		}
+		// Set next_retry_at from the atomically-returned count.
+		retryAtStr := time.Now().UTC().Add(time.Duration(ComputeRetryBackoffSeconds(int(newAttempt.Int64))) * time.Second).Format(time.RFC3339)
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE youtube_discoveries
+			SET next_retry_at = ?
+			WHERE id = ?
+		`, retryAtStr, id); err != nil {
+			return fmt.Errorf("youtube_discoveries.MarkRejected: set next_retry_at: %w", err)
+		}
+		if commitErr := tx.Commit(); commitErr != nil {
+			return fmt.Errorf("youtube_discoveries.MarkRejected: commit: %w", commitErr)
+		}
+		tx = nil // disable rollback in defer
 		return nil
 	}
 	// Terminal path: no retry, attempt_count stays as-is.
-	if _, err := r.db.ExecContext(ctx, `
+	// Blocco 2: include 'rejected_retryable' so the caller can escalate
+	// a transient rejection to terminal (valid path: pending/analyzing/
+	// rejected_retryable → rejected_terminal).
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE youtube_discoveries
 		SET state = 'rejected_terminal',
 		    last_error = ?,
 		    rejection_reason = ?,
 		    outcome = 'rejected',
 		    updated_at = ?
-		WHERE id = ? AND state != 'enqueued'
-	`, rejectionReason, rejectionReason, nowStr, id); err != nil {
+		WHERE id = ? AND state IN ('pending', 'analyzing', 'rejected_retryable')
+	`, rejectionReason, rejectionReason, nowStr, id)
+	if err != nil {
 		return fmt.Errorf("youtube_discoveries.MarkRejected: terminal update: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("%w: MarkRejected(terminal) expected state IN ('pending','analyzing','rejected_retryable') for id=%q", ErrStateConflict, id)
 	}
 	return nil
 }
