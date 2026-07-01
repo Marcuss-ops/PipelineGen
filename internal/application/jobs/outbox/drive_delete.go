@@ -353,18 +353,30 @@ func (h *DriveDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	}
 
 	// 6. Atomic advance + emit next event.
+	//
+	// Blocco 3.1 commit 2/3 (July 2026): the terminal flip is now
+	// DRIVE_DELETE_PENDING → DRIVE_DELETED (post-Drive confirmation
+	// hop) instead of jumping straight to INDEX_DELETE_PENDING. This
+	// explicit post-Drive confirmation hop is what enables
+	// IndexDeleteHandler's Drive-block guard below to reject rows
+	// still at DRIVE_DELETE_PENDING (Drive side-effect not yet
+	// completed → "file ancora vivo" → user-spec guard surface).
+	// IndexDeleteHandler on entry accepts both DRIVE_DELETED (new
+	// chain) AND INDEX_DELETE_PENDING (legacy forward-compat for
+	// pre-commit 2/3 rows already at the next hop) so the migration
+	// is non-breaking.
 	nextPayload, err := buildIndexDeletePayloadForDrive(req.AssetID)
 	if err != nil {
 		return fmt.Errorf("drive_delete build index-delete payload: %w", err)
 	}
 	nextEventKey := "delete:" + req.AssetID
-	log.Info("drive_delete: advancing to INDEX_DELETE_PENDING + emitting index.delete_requested event",
+	log.Info("drive_delete: advancing to DRIVE_DELETED + emitting index.delete_requested event",
 		append(reqLog, zap.String("next_event_type", outboxevents.EventAssetIndexDeleteRequested))...)
 	if err := h.advancer.AdvanceAndEmit(
 		ctx,
 		req.AssetID,
 		asset.StateDriveDeletePending,
-		asset.StateLifecycleIndexDeletePending,
+		asset.StateDriveDeleted,
 		outboxevents.EventAssetIndexDeleteRequested,
 		nextPayload,
 		nextEventKey,
