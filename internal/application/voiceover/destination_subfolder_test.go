@@ -165,9 +165,20 @@ func TestDestinationStageCreatesAndPersistsSubfolder(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
+	// P0.4 Fase 3a (July 2026): finalizeStage now requires a
+	// VoiceoverFinalizer. Wire a real finalizer backed by the same
+	// in-memory DB so the test exercises the full 6-step sequence.
+	finalizer := newVoiceoverFinalizer(voiceoverFinalizerDeps{
+		VoiceoverRepo:    &testVoiceoverRepo{db: db},
+		Outbox:           nil, // nil-safe (skip index + cleanup)
+		LifecycleService: nil, // nil-safe (skip media_assets projection)
+		Logger:           zap.NewNop(),
+	})
+
 	svc := &Service{
 		log:           zap.NewNop(),
 		voiceoverRepo: &testVoiceoverRepo{db: db},
+		finalizer:     finalizer,
 		lifecycleService: lifecycle.NewService(
 			nil,
 			&fakePublisher{},

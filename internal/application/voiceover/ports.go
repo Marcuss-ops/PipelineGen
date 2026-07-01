@@ -370,6 +370,30 @@ type FilenameBuilder interface {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// VoiceoverFinalizer — unified finalization (P0.4 Fase 3a, July 2026)
+// ────────────────────────────────────────────────────────────────────────
+//
+// VoiceoverFinalizer replaces the two divergent finalization paths
+// (child pipeline Stage 4 + legacy batch finalizeStage) with a SINGLE
+// 6-step atomic commit sequence inside a caller-owned transaction.
+// The caller opens the tx, calls Finalize, then commits.
+//
+// Steps executed by the concrete finalizer:
+//   1. Dedupe gate (CountByDriveFileIDTx + DecideDedupe)
+//   2. DELETE old row (DeleteByIDTx)
+//   3. INSERT new row (InsertTx)
+//   4. media_assets projection (UpsertVoiceoverProjectionTx)
+//   5. asset.index.requested outbox (EnqueueIndexEvent)
+//   6. voiceover.cleanup.requested outbox (EnqueueCleanupEvent)
+//
+// Optional steps are nil-safe: dedupe skipped when DriveFileID empty,
+// media_assets skipped when LifecycleService nil, outbox skipped when
+// nil or FileHash empty, cleanup skipped when ShouldSwap false.
+type VoiceoverFinalizer interface {
+	Finalize(ctx context.Context, tx *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error)
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // VoiceoverItemExecutor port (interface forward-declared, BLOC5.4
 // implementation pending, June 2026 cutover backend).
 // ────────────────────────────────────────────────────────────────────────

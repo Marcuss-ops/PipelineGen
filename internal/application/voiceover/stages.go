@@ -45,10 +45,8 @@ package voiceover
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"go.uber.org/zap"
 )
@@ -426,6 +424,21 @@ func (s *Service) finalizeStage(
 	oldLocalPath string,
 	oldCleanedPath string,
 ) BatchItem {
+	// P0.4 Fase 3a (July 2026): delegate to the unified
+	// VoiceoverFinalizer. The finalizer runs the canonical 6-step
+	// atomic commit sequence (dedupe → delete → insert →
+	// media_assets projection → index outbox → cleanup outbox)
+	// inside a caller-owned tx. This replaces the previous inline
+	// 170-line body with a single Finalize call.
+	//
+	// Nil-safe: when the composition root didn't wire the finalizer
+	// (legacy test paths), surface a typed failure at the per-
+	// language boundary rather than mid-tx.
+	if s.finalizer == nil {
+		return item.fail(FailureDBUnavailable,
+			fmt.Errorf("%s: finalizer not wired (composition root — P0.4 Fase 3a requires VoiceoverFinalizer)", restoreIdent))
+	}
+
 	if s.voiceoverRepo == nil {
 		return item.fail(FailureDBUnavailable,
 			fmt.Errorf("%s: voiceoverRepo not wired (composition root)", restoreIdent))
@@ -438,64 +451,6 @@ func (s *Service) finalizeStage(
 	}
 	defer func() { _ = tx.Rollback() }() // safe after successful Commit
 
-	// PR-VO-B3 dedupe gate (Step 7/12, June 2026 — gate operativo).
-	// Runs INSIDE the tx so the count query is consistent with the
-	// upcoming INSERT. Defensive: an empty driveFileID short-circuits
-	// to (matchedID="", count=0, nil) (no gate fired). The
-	// previously-inlined log-and-fall-through block has been
-	// replaced by a `switch DecideDedupe(count)` that ACTS on the
-	// canonical DedupeDecision verdict (Continue/Reuse/Conflict)
-	// rather than logging and continuing into the PR-VO-A2
-	// atomic-swap. P1-2 (June 2026): the previously-inlined
-	// applyDedupeByDriveFileID call was replaced by the
-	// persistence.Repository.CountByDriveFileIDTx port method.
-	if item.DriveFileID != "" {
-		matchedID, count, _ := s.voiceoverRepo.CountByDriveFileIDTx(ctx, tx, item.ID, item.DriveFileID)
-		switch DecideDedupe(count) {
-		case DedupeConflict:
-			if s.log != nil {
-				s.log.Warn("PR-VO-B3 dedupe conflict — FAIL-CLOSED, NOT inserting duplicate",
-					zap.String("restored", restoreIdent),
-					zap.String("item_id", item.ID),
-					zap.Int("count", count),
-					zap.String("dedupe_id", matchedID),
-					zap.String("decision", string(DedupeConflict)))
-			}
-			return item.fail(FailureDedupeAmbiguous,
-				fmt.Errorf("%s: PR-VO-B3 ambiguous dedupe (count=%d, dedupe_id=%s) — refusing to insert duplicate row against established DriveFileID",
-					restoreIdent, count, matchedID))
-		case DedupeReuse:
-			if s.log != nil {
-				s.log.Info("PR-VO-B3 dedupe reuse — matched single prior row, skipping insert",
-					zap.String("restored", restoreIdent),
-					zap.String("item_id", item.ID),
-					zap.String("dedupe_id", matchedID),
-					zap.String("decision", string(DedupeReuse)))
-			}
-			item.ID = matchedID
-			item.Status = StatusCompleted
-			return item
-		case DedupeContinue:
-			if s.log != nil {
-				s.log.Debug("PR-VO-B3 dedupe continue — no match, proceeding with insert",
-					zap.String("restored", restoreIdent),
-					zap.String("item_id", item.ID),
-					zap.String("decision", string(DedupeContinue)))
-			}
-		}
-	}
-
-	// PR-VO-A2 atomic swap: DELETE any existing row with the same id,
-	// then INSERT the new row, in the same tx. Neither is visible
-	// alone (atomic visibility = single SQLite commit). The
-	// DELETE and INSERT go through the persistence.Repository port
-	// (P1-2 boundary split, June 2026) so the application layer no
-	// longer references voiceovers schema or *sql.Tx.ExecContext.
-	if err := s.voiceoverRepo.DeleteByIDTx(ctx, tx, item.ID); err != nil {
-		return item.fail(FailureDBDelete,
-			fmt.Errorf("%s: DeleteByIDTx: %w", restoreIdent, err))
-	}
-
 	folderID := ""
 	folderPath := ""
 	if dest != nil {
@@ -503,122 +458,43 @@ func (s *Service) finalizeStage(
 		folderPath = dest.FolderPath
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	textPreview := truncatePreview(req.Text)
-
-	rec := &persistence.VoiceoverRecord{
-		ID:           item.ID,
-		RequestID:    requestID,
-		TextHash:     textHash,
-		TextPreview:  textPreview,
-		Language:     language,
-		Voice:        item.Voice,
-		Filename:     item.Filename,
-		LocalPath:    item.LocalPath,
-		CleanedPath:  item.CleanedPath,
-		FolderID:     folderID,
-		FolderPath:   folderPath,
-		DriveFileID:  item.DriveFileID,
-		DriveLink:    item.DriveLink,
-		DownloadLink: item.DownloadLink,
-		FileHash:     item.FileHash,
-		Status:       string(StatusGenerated),
-		Error:        "",
-		Strategy:     req.Strategy,
-		Metadata:     string(metaJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if err := s.voiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
-		return item.fail(FailureDBInsert,
-			fmt.Errorf("%s: InsertTx: %w", restoreIdent, err))
+	cmd := &FinalizeCommand{
+		ID:             item.ID,
+		RequestID:      requestID,
+		TextHash:       textHash,
+		Text:           req.Text,
+		Language:       language,
+		Voice:          item.Voice,
+		Filename:       item.Filename,
+		Strategy:       req.Strategy,
+		MetaJSON:       metaJSON,
+		LocalPath:      item.LocalPath,
+		CleanedPath:    item.CleanedPath,
+		FileHash:       item.FileHash,
+		FolderID:       folderID,
+		FolderPath:     folderPath,
+		DriveFileID:    item.DriveFileID,
+		DriveLink:      item.DriveLink,
+		DownloadLink:   item.DownloadLink,
+		ShouldSwap:     shouldSwap,
+		OldDriveFileID: oldDriveFileID,
+		OldLocalPath:   oldLocalPath,
+		OldCleanedPath: oldCleanedPath,
 	}
 
-	// P0.7 2-PHASE SPLIT (Step 9/12): UPSERT the canonical
-	// media_assets projection row in the SAME caller-owned tx. The
-	// projection uses `source='voiceover'` as the canonical
-	// discriminator so the SQL verification helper at
-	// `verify_media_assets.go::HasVoiceoverProjection` can pin the
-	// contract (SELECT 1 FROM media_assets WHERE id=? AND
-	// source='voiceover'). The UPSERT is idempotent — a re-run of
-	// finalizeStage updates the projected columns in place, no
-	// double-insert. PipelineGen upgrade note: pre-Step 9/12 the
-	// lifecycle.ProcessAsset call at destinationStage wrote this row
-	// in a SEPARATE earlier tx; a Drive upload success followed by
-	// an InsertTx failure left an orphan media_assets row. With
-	// ProcessAsset removed (calling UploadOnly instead) + this
-	// UPSERT added, all persistence is in a SINGLE tx — partial-save
-	// is impossible.
-	if err := s.lifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
-		ID:           item.ID,
-		Source:       "voiceover",
-		Name:         textPreview,
-		Filename:     item.Filename,
-		FolderID:     folderID,
-		FolderPath:   folderPath,
-		MediaType:    "audio",
-		LocalPath:    item.LocalPath,
-		DriveFileID:  item.DriveFileID,
-		DriveLink:    item.DriveLink,
-		DownloadLink: item.DownloadLink,
-		FileHash:     item.FileHash,
-		Language:     language,
-		Status:       string(StatusGenerated),
-		Metadata:     string(metaJSON),
-	}); err != nil {
-		return item.fail(FailureDBInsert,
-			fmt.Errorf("%s: UpsertVoiceoverProjectionTx (media_assets): %w", restoreIdent, err))
+	finalizeRes, err := s.finalizer.Finalize(ctx, tx, cmd)
+	if err != nil {
+		return item.fail(FailureTxBegin,
+			fmt.Errorf("%s: Finalize: %w", restoreIdent, err))
 	}
 
-	// PR-VO-A3 outbox enqueue: inside the same tx so the row INSERT
-	// and the index event INSERT commit atomically. Nil-safe so the
-	// behaviour degrades to "skip indexing" if the composition root
-	// didn't wire the outbox.
-	if s.outboxEnqueuer != nil && item.FileHash != "" {
-		if err := s.outboxEnqueuer.EnqueueIndexEvent(ctx, tx, item.ID, item.FileHash); err != nil {
-			return item.fail(FailureOutboxEnqueue,
-				fmt.Errorf("%s: EnqueueIndexEvent: %w", restoreIdent, err))
-		}
-	}
-
-	// P0.7 Wave 21 — Step 10/12 (June 2026): durable orphan cleanup
-	// via the voiceover.cleanup.requested outbox event INSIDE the
-	// caller-owned tx (atomically with the canonical swap). The
-	// pre-fix `go s.cleanupOrphanVoiceover(...)` goroutine detached
-	// via context.Background could be lost on handler cancel or
-	// server restart; the durable event survives both. Enqueue
-	// semantics:
-	//   - MUST happen INSIDE the tx so a rollback discards the
-	//     cleanup event too (no orphan records survive a rolled-
-	//     back finalize).
-	//   - Nil-safe via `s.outboxEnqueuer != nil` — when the
-	//     composition root didn't wire the outbox, the canonical
-	//     row wins and the orphan Drive + local files linger
-	//     (operator-tier issue, never auto-cleaned).
-	//   - Filter `shouldSwap` so non-replace strategies never queue
-	//     cleanup events for non-swap rows.
-	//   - Filter empty / duplicate paths so the handler's
-	//     `for _, p := range oldLocalPaths` iteration is safe and
-	//     idempotent (dedup'ing oldLocalPath == oldCleanedPath).
-	if shouldSwap && s.outboxEnqueuer != nil {
-		var oldLocalPaths []string
-		if oldLocalPath != "" {
-			oldLocalPaths = append(oldLocalPaths, oldLocalPath)
-		}
-		if oldCleanedPath != "" && oldCleanedPath != oldLocalPath {
-			oldLocalPaths = append(oldLocalPaths, oldCleanedPath)
-		}
-		if oldDriveFileID != "" || len(oldLocalPaths) > 0 {
-			if err := s.outboxEnqueuer.EnqueueCleanupEvent(ctx, tx,
-				item.ID,
-				oldDriveFileID,
-				item.DriveFileID,
-				oldLocalPaths,
-			); err != nil {
-				return item.fail(FailureOutboxEnqueue,
-					fmt.Errorf("%s: EnqueueCleanupEvent: %w", restoreIdent, err))
-			}
-		}
+	// Dedupe reuse: the finalizer matched an existing row. Adopt
+	// the matched ID as the canonical identifier (mirrors the
+	// pre-Fase-3a dedupe-reuse branch).
+	if finalizeRes != nil && finalizeRes.Reused {
+		item.ID = finalizeRes.ID
+		item.Status = StatusCompleted
+		return item
 	}
 
 	if err := tx.Commit(); err != nil {

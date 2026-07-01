@@ -48,6 +48,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -611,3 +612,47 @@ func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) e
 // timeutil import is used here for FormatRFC3339 fallback in
 // InsertTx; the canonical timeutil location avoids bringing in
 // time.UTC().Format() boilerplate per Adapter struct.
+
+// ─────────────────────────────────────────────────────────────────────
+// LifecycleProjectionUpserter adapter (P0.4 Fase 3a, July 2026).
+//
+// Bridges *lifecycle.Service → voiceover.LifecycleProjectionUpserter.
+// The two VoiceoverProjectionInput types (voiceover.VoiceoverProjectionInput
+// and lifecycle.VoiceoverProjectionInput) have identical field sets but
+// are separate types by design (domain separation — godlike/06 §one-
+// owner-per-fact). The adapter translates between them so the
+// voiceover.Finalizer stays free of any lifecycle package import.
+// ─────────────────────────────────────────────────────────────────────
+
+type voiceoverProjectionAdapter struct {
+	svc *lifecycle.Service
+}
+
+func newVoiceoverProjectionAdapter(svc *lifecycle.Service) *voiceoverProjectionAdapter {
+	if svc == nil {
+		panic("app.adapters_voiceover_use_case: newVoiceoverProjectionAdapter: svc is required (*lifecycle.Service)")
+	}
+	return &voiceoverProjectionAdapter{svc: svc}
+}
+
+func (a *voiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *voiceover.VoiceoverProjectionInput) error {
+	return a.svc.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
+		ID:           in.ID,
+		Source:       in.Source,
+		Name:         in.Name,
+		Filename:     in.Filename,
+		FolderID:     in.FolderID,
+		FolderPath:   in.FolderPath,
+		MediaType:    in.MediaType,
+		LocalPath:    in.LocalPath,
+		DriveFileID:  in.DriveFileID,
+		DriveLink:    in.DriveLink,
+		DownloadLink: in.DownloadLink,
+		FileHash:     in.FileHash,
+		Language:     in.Language,
+		Status:       in.Status,
+		Metadata:     in.Metadata,
+	})
+}
+
+var _ voiceover.LifecycleProjectionUpserter = (*voiceoverProjectionAdapter)(nil)

@@ -120,6 +120,29 @@ func buildVoiceoverService(
 		}, nil
 	}
 
+	// P0.4 Fase 3a (July 2026): construct the unified VoiceoverFinalizer
+	// once and inject it into BOTH the per-item use case (child pipeline)
+	// and the legacy Service (batch pipeline). The finalizer replaces the
+	// two divergent finalization paths with a single 6-step atomic commit
+	// sequence: dedupe → delete → insert → media_assets projection →
+	// index outbox → cleanup outbox.
+	//
+	// Dependencies:
+	//   - voRepoAdapter:   persistence.Repository (BeginTx, InsertTx,
+	//                       DeleteByIDTx, CountByDriveFileIDTx)
+	//   - outboxEnqueuer:  TxOutboxEnqueuer (EnqueueIndexEvent,
+	//                       EnqueueCleanupEvent) — nil-safe
+	//   - voLifecycle:     *lifecycle.Service → LifecycleProjectionUpserter
+	//                       via voiceoverProjectionAdapter
+	//   - log:             *zap.Logger
+	projectionAdapter := newVoiceoverProjectionAdapter(voLifecycle)
+	finalizer := voiceover.NewVoiceoverFinalizer(
+		voRepoAdapter,         // VoiceoverRepository
+		outboxEnqueuer,        // TxOutboxEnqueuer (nil-safe in finalizer)
+		projectionAdapter,     // LifecycleProjectionUpserter
+		log,                   // *zap.Logger
+	)
+
 	// Build translator closure from scriptGen (used by promo generation
 	// to translate voiceover text into target language). Graceful
 	// degradation: if scriptGen is nil, return input unchanged so promo
@@ -241,6 +264,7 @@ func buildVoiceoverService(
 			TransactionalOutbox:   txOutbox,
 			FilenameBuilder:       filenameBuilder,
 			DefaultFolderResolver: defaultFolderResolver,
+			Finalizer:             finalizer,
 			Logger:                log,
 		})
 		log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
@@ -261,6 +285,7 @@ func buildVoiceoverService(
 			AssetDestResolver: destResolver,
 			OutboxEnqueuer:    outboxEnqueuer,
 			Translator:        translator,
+			Finalizer:         finalizer,
 		},
 	})
 	// pylint: disable=unused
