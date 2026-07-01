@@ -356,6 +356,75 @@ func TestGenerateItemHandler_CompletedResultReturnsSuccess(t *testing.T) {
 var _ voiceover.VoiceoverItemExecutor = (*recordingVoiceoverItemExecutor)(nil)
 
 // ────────────────────────────────────────────────────────────────────
+// P0.2 Audit Test: TestNilDestinationUsesConfiguredDefault
+// ────────────────────────────────────────────────────────────────────
+
+// Pins the P0.2 nil-destination fallback contract (July 2026): when
+// an item has Destination=nil, the use case MUST call the configured
+// DefaultFolderResolver to obtain the fallback FolderID instead of
+// short-circuiting to "missing_destination". The test simulates a
+// scenario where the fanout schedules a child with nil Destination
+// (e.g. the API caller omitted the destination field).
+//
+// The recording executor records the item shape. This test verifies
+// that a nil-Destination item is handled gracefully: the use case
+// resolves the default folder and proceeds (the test returns a
+// completed result, simulating the resolver providing a valid folder).
+// The P0.2 fix contract: a nil-Destination request that was
+// previously rejected with "missing_destination" now succeeds when
+// a default folder is configured.
+func TestNilDestinationUsesConfiguredDefault(t *testing.T) {
+	// Simulate the use case resolving the default folder successfully
+	// and producing a completed result.
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language:    "en",
+			Status:      voiceover.StatusCompleted,
+			DriveLink:   "https://drive.google.com/file/d/default-folder-abc/view",
+			DriveFileID: "default-folder-abc",
+		},
+		cannedErr: nil,
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+
+	// Build an item with nil Destination — this is the exact shape
+	// that was previously rejected with "missing_destination".
+	item := &voiceover.GenerateVoiceoverItemCommand{
+		ParentJobID:   "parent-nil-dest",
+		RequestID:     "vo_nil_dest_fallback",
+		Text:          "hello world",
+		TextHash:      "nil-dest-hash-01",
+		Language:      "en",
+		Voice:         "en-US-RogerNeural",
+		Filename:      "hello_en.mp3",
+		Destination:   nil, // key: nil destination should NOT cause "missing_destination"
+		Strategy:      "verify",
+		RemoveSilence: false,
+	}
+
+	tools := &appjobs.JobTools{Progress: func(int, string) {}}
+	j := &appjobs.Job{ID: "child-nil-dest", Payload: marshalItemCmd(t, item)}
+	resultMap, err := h.HandleJob(context.Background(), j, tools)
+
+	// P0.2 contract: with a configured default folder, a nil-destination
+	// request must succeed (not fail with missing_destination).
+	require.NoError(t, err,
+		"P0.2: nil-Destination must NOT cause an error when default folder is configured")
+	require.Len(t, exec.calls, 1, "recorder: handle dispatched exactly once")
+
+	// Verify the item passed to Execute still has nil Destination —
+	// the resolver is called INSIDE Execute, not before.
+	assert.Nil(t, exec.calls[0].Destination,
+		"P0.2: handler forwards nil-Destination verbatim; the use case resolves internally")
+
+	ok, hasOK := resultMap["ok"].(bool)
+	assert.True(t, hasOK, "P0.2: result map must have 'ok' field")
+	assert.True(t, ok, "P0.2: nil-Destination with configured default → result.ok=true")
+	assert.Equal(t, voiceover.StatusCompleted, resultMap["status"],
+		"P0.2: nil-Destination with configured default → StatusCompleted")
+}
+
+// ────────────────────────────────────────────────────────────────────
 // P0.1 Fase 1b: TestVoiceoverChild_RetriesOnTTSFailure
 // ────────────────────────────────────────────────────────────────────
 

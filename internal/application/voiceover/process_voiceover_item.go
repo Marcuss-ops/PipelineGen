@@ -54,6 +54,12 @@ type ProcessVoiceoverItemDeps struct {
 	VoiceoverRepository VoiceoverRepository
 	TransactionalOutbox TransactionalOutbox // nil-safe (skip indexing)
 	FilenameBuilder     FilenameBuilder
+	// DefaultFolderResolver is OPTIONAL (nil-safe). When item.Destination
+	// is nil, Execute calls DefaultFolderResolver.Resolve(ctx) to obtain
+	// the configured default Voiceover folder. When nil OR the resolver
+	// returns ok=false, Execute surfaces a permanent missing-destination
+	// error (P0.2 nil-destination fallback, July 2026).
+	DefaultFolderResolver VoiceoverDefaultFolderResolver
 	Logger              *zap.Logger // nil-safe via zap.NewNop()
 }
 
@@ -140,18 +146,34 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		Status:   StatusFailed,
 	}
 
-	// Stage 0b: destination resolution. The canonical 7-port path
-	// requires an explicit destination; the fanout already forwarded
-	// cmd.Destination onto item.Destination at scheduling time, so a
-	// nil here indicates a fanout regression (item.Validate would have
-	// caught this if it requires Destination; the safe path is to
-	// fail-fast with a typed sentinel error so operators see the
-	// regression in audit logs).
-	if item.Destination == nil {
-		out.Error = "missing_destination: GenerateVoiceoverItemCommand.Destination is nil (fanout should populate it from cmd.Destination)"
-		return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
+	// Stage 0b: destination resolution. When the caller supplies an
+	// explicit destination, resolve it through the canonical resolver.
+	// When Destination is nil (e.g. API caller omitted the field),
+	// fall back to the configured default Voiceover folder via
+	// DefaultFolderResolver (P0.2 nil-destination fallback, July 2026).
+	// If the resolver is not wired or returns ok=false, surface a
+	// permanent missing-destination error.
+	destReq := item.Destination
+	if destReq == nil {
+		if u.deps.DefaultFolderResolver != nil {
+			folderID, _, ok := u.deps.DefaultFolderResolver.Resolve(ctx)
+			if ok && folderID != "" {
+				// Synthesise a minimal DestinationRequest from the
+				// resolved default folder so the downstream resolver
+				// and the per-language pipeline see a uniform shape.
+				destReq = &DestinationRequest{
+					FolderID: folderID,
+				}
+			} else {
+				out.Error = "missing_destination: no default Voiceover folder configured (resolve returned ok=false)"
+				return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
+			}
+		} else {
+			out.Error = "missing_destination: GenerateVoiceoverItemCommand.Destination is nil and DefaultFolderResolver is not wired"
+			return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
+		}
 	}
-	dest, err := u.deps.DestinationResolver.Resolve(ctx, item.Destination)
+	dest, err := u.deps.DestinationResolver.Resolve(ctx, destReq)
 	if err != nil {
 		out.Error = fmt.Sprintf("destination_resolve_failed: %v", err)
 		return out, newPipelineError(StageDestinationResolve, false, err)
