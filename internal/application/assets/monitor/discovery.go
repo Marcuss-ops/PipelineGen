@@ -50,14 +50,21 @@ import (
 )
 
 // effectivePlaylistEnd picks the playlist-end limit for the caller's
-// yt-dlp invocation: per-channel override > global default > 0 (which
-// means "no limit").
+// yt-dlp invocation:
+//
+//   - PlaylistEnd > 0 → explicit per-channel limit (honoured as-is)
+//   - PlaylistEnd <= 0 (including DB default 0) → fall back to the
+//     global default. Blocco 3d (July 2026): pre-fix, 0 was passed
+//     through literally, which yt-dlp interprets as "no limit" — a
+//     new channel with the DB default would scan ALL videos instead
+//     of the expected DefaultPlaylistEnd (50).
+//
+// Future: when the schema adds NULL support for the PlaylistEnd
+// column, 0 = disabled (skip channel scan). Today every channel
+// with a non-positive PlaylistEnd falls through to DefaultPlaylistEnd.
 func effectivePlaylistEnd(channel channels.Channel, globalDefault int) int {
 	if channel.PlaylistEnd > 0 {
 		return channel.PlaylistEnd
-	}
-	if channel.PlaylistEnd == 0 {
-		return 0
 	}
 	return globalDefault
 }
