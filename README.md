@@ -111,6 +111,36 @@ Per la migrazione Wave X → Wave 17 (stato attivo / storico),
 vedi `architecture/current.yaml` (ratchet tracker verificabile
 via `bash scripts/ci-architectural-checks.sh`).
 
+## 📐 Architecture ledger consolidata
+
+Canonical closure cycles (waves landed / commit chains completed)
+are recorded here with their canonical SHAs and forward-pointers.
+New entries are appended at the bottom as cycles reach
+`status: done + exit_signal: true` in
+[`architecture/current.yaml`](./architecture/current.yaml). Each
+cycle also surfaces its forward-pointer into the cross-package
+issues ledger
+([`architecture/issues.yaml`](./architecture/issues.yaml)) when a
+typed-enum retirement or capability extraction needs to land in a
+different package.
+
+### Commit 4-expanded (luglio 2026)
+
+Commit 4-expanded closure cycle (luglio 2026): canonical SHA
+`9aa4c9e2` (byte-equivalent-replay); forward-port SHA `0c74e408`
+(handoff archive); closure-note SHA `7dba2adf` (AGENTS.md Active
+Concerns #13); cleaning-anchor SHA `d4952d45` (audit-pin canonical
+`//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded`);
+§12-5 cross-package YouTube `IndexingStatus` forward-pointer tracked
+in
+[`architecture/issues.yaml#PR-CROSSPACKAGE-INDEXING-STATUS-§12-5`](./architecture/issues.yaml)
+(`16b3aa61`) +
+[`architecture/current.yaml#id-29`](./architecture/current.yaml)
+(`exit_signal:true`). See
+[`COMMIT_4_EXPANDED_HANDOFF.md`](./COMMIT_4_EXPANDED_HANDOFF.md)
+§Post-landing-Audit for closure lineage + drift audit (3→4
+sentinels + `ed4f8331` §12-4 mid-flight + 7→10 audit-pin anchors).
+
 ---
 
 *Developed by the Marcuss-ops Team*
