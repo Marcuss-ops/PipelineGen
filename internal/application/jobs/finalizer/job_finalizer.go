@@ -1,5 +1,5 @@
 // Package finalizer provides the concrete implementation of the
-// canonical JobFinalizer interface (Spina Dorsale, Fase 2, July 2026).
+// canonical JobFinalizer interface (Spina Dorsale, Fase 2-3, July 2026).
 //
 // The Finalizer is the SINGLE writer of the terminal SUCCEEDED state.
 // Every capability that completes a job MUST route through
@@ -10,10 +10,12 @@
 //	BEGIN IMMEDIATE
 //	  SELECT job (lease check)
 //	  check prior terminal result (idempotent completion)
-//	  UPSERT media_assets (for each artifact)
-//	  INSERT asset_versions (for each artifact)
-//	  UPSERT asset_locations (for each artifact)
-//	  INSERT outbox_events (for each event)
+//	  delegate to AssetFinalizerTx.FinalizeAsset (for each artifact)
+//	    → UPSERT media_assets
+//	    → INSERT asset_versions
+//	    → UPSERT asset_locations
+//	    → return ArtifactRef + OutboxEvent descriptors
+//	  INSERT outbox_events (for each event from AssetFinalizerTx + request)
 //	  INSERT job_events
 //	  UPDATE jobs SET status = 'SUCCEEDED'
 //	COMMIT
@@ -39,6 +41,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -46,25 +49,27 @@ import (
 
 // Finalizer is the concrete implementation of finalization.JobFinalizer.
 //
-// It holds a *sql.DB (to open transactions) and an *outboxevents.Repository
-// (to enqueue outbox events inside the transaction). FASE 3 will introduce
-// the separate AssetFinalizerTx that participates in the same transaction
-// via the finalization.Transaction interface.
+// It holds a *sql.DB (to open transactions), an *outboxevents.Repository
+// (to enqueue outbox events), and an *AssetTxFinalizer (to write canonical
+// asset records inside the transaction).
 type Finalizer struct {
-	db     *sql.DB
-	outbox *outboxevents.Repository
-	log    *zap.Logger
+	db       *sql.DB
+	outbox   *outboxevents.Repository
+	assetTx  *assetfinalizer.AssetTxFinalizer
+	log      *zap.Logger
 }
 
-// New creates a Finalizer with the given database and outbox repository.
-func New(db *sql.DB, outbox *outboxevents.Repository, log *zap.Logger) *Finalizer {
+// New creates a Finalizer with the given database, outbox repository,
+// and asset finalizer.
+func New(db *sql.DB, outbox *outboxevents.Repository, assetTx *assetfinalizer.AssetTxFinalizer, log *zap.Logger) *Finalizer {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &Finalizer{
-		db:     db,
-		outbox: outbox,
-		log:    log,
+		db:      db,
+		outbox:  outbox,
+		assetTx: assetTx,
+		log:     log,
 	}
 }
 
@@ -100,23 +105,33 @@ func (f *Finalizer) CompleteWithArtifacts(
 		return f.handleIdempotentCompletion(ctx, jobRow, &req)
 	}
 
-	// 5. Write artifacts (media_assets + asset_versions + asset_locations).
-	refs, err := f.writeArtifacts(ctx, tx, &req)
-	if err != nil {
+	// 5. Adapt *sql.Tx to finalization.Transaction for AssetFinalizerTx.
+	domainTx := assetfinalizer.WrapTx(tx)
+
+	// 6. Delegate artifact writes to AssetFinalizerTx.
+	var refs []finalization.ArtifactRef
+	allEvents := make([]finalization.OutboxEvent, 0, len(req.Events)+len(req.Artifacts))
+	allEvents = append(allEvents, req.Events...)
+	for i, a := range req.Artifacts {
+		ref, events, err := f.assetTx.FinalizeAsset(ctx, domainTx, a)
+		if err != nil {
+			return nil, fmt.Errorf("finalizer: artifact[%d] (%s): %w", i, a.ArtifactID, err)
+		}
+		refs = append(refs, ref)
+		allEvents = append(allEvents, events...)
+	}
+
+	// 7. Write outbox events (from request + AssetFinalizerTx).
+	if err := f.writeOutboxEvents(ctx, tx, allEvents); err != nil {
 		return nil, err
 	}
 
-	// 6. Write outbox events.
-	if err := f.writeOutboxEvents(ctx, tx, req.Events); err != nil {
-		return nil, err
-	}
-
-	// 7. Write result manifest + mark job SUCCEEDED.
+	// 8. Write result manifest + mark job SUCCEEDED.
 	if err := f.markSucceeded(ctx, tx, &req); err != nil {
 		return nil, err
 	}
 
-	// 8. Commit.
+	// 9. Commit.
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("finalizer: commit: %w", err)
 	}
@@ -126,7 +141,7 @@ func (f *Finalizer) CompleteWithArtifacts(
 		zap.String("job_id", req.Result.JobID),
 		zap.Int("attempt", req.Result.Attempt),
 		zap.Int("artifact_count", len(refs)),
-		zap.Int("outbox_events", len(req.Events)),
+		zap.Int("outbox_events", len(allEvents)),
 	)
 
 	return &finalization.FinalizationResult{
@@ -348,197 +363,7 @@ func (f *Finalizer) handleIdempotentCompletion(
 	)
 }
 
-// ── Artifact writes ─────────────────────────────────────────────────
 
-// writeArtifacts writes all artifacts (media_assets UPSERT +
-// asset_versions INSERT + asset_locations UPSERT) inside the
-// transaction. Returns ArtifactRef for each artifact.
-func (f *Finalizer) writeArtifacts(
-	ctx context.Context,
-	tx *sql.Tx,
-	req *finalization.FinalizationRequest,
-) ([]finalization.ArtifactRef, error) {
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	refs := make([]finalization.ArtifactRef, 0, len(req.Artifacts))
-
-	for i, a := range req.Artifacts {
-		// --- UPSERT media_assets ---
-		if err := f.upsertMediaAsset(ctx, tx, &a, nowStr); err != nil {
-			return nil, fmt.Errorf("finalizer: artifact[%d] (%s) media_asset upsert: %w", i, a.ArtifactID, err)
-		}
-
-		// --- INSERT asset_versions ---
-		versionNum, err := f.insertAssetVersion(ctx, tx, &a, nowStr)
-		if err != nil {
-			return nil, fmt.Errorf("finalizer: artifact[%d] (%s) version insert: %w", i, a.ArtifactID, err)
-		}
-
-		// --- UPSERT asset_locations ---
-		if err := f.upsertAssetLocation(ctx, tx, &a, nowStr); err != nil {
-			return nil, fmt.Errorf("finalizer: artifact[%d] (%s) location upsert: %w", i, a.ArtifactID, err)
-		}
-
-		refs = append(refs, finalization.ArtifactRef{
-			ArtifactID:    a.ArtifactID,
-			AssetID:       a.ArtifactID,
-			Kind:          a.Kind,
-			SourceVersion: int64(versionNum),
-			ContentHash:   a.SHA256,
-			Location:      a.Location,
-		})
-	}
-
-	return refs, nil
-}
-
-// upsertMediaAsset does an INSERT ... ON CONFLICT DO UPDATE for the
-// canonical media_assets row.
-//
-// Note: metadata_json is replaced (not merged via json_patch) to
-// avoid depending on SQLite extension availability. The caller is
-// responsible for providing the full metadata payload.
-func (f *Finalizer) upsertMediaAsset(
-	ctx context.Context,
-	tx *sql.Tx,
-	a *finalization.PublishedArtifact,
-	nowStr string,
-) error {
-	mediaType := kindToMediaType(a.Kind)
-	metadata := map[string]any{
-		"publish_action": string(a.Location.Action),
-		"source_version": a.SourceVersion,
-		"size_bytes":     a.SizeBytes,
-	}
-	metadataJSON, _ := json.Marshal(metadata)
-	actionStr := ""
-	if a.Location.Action != "" {
-		actionStr = string(a.Location.Action)
-	}
-
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO media_assets (
-			id, source, name, filename, media_type,
-			file_hash, drive_file_id, drive_link, download_link,
-			folder_id, folder_path, lifecycle_state,
-			metadata_json, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			filename = excluded.filename,
-			media_type = excluded.media_type,
-			file_hash = excluded.file_hash,
-			drive_file_id = excluded.drive_file_id,
-			drive_link = excluded.drive_link,
-			download_link = excluded.download_link,
-			folder_id = excluded.folder_id,
-			folder_path = excluded.folder_path,
-			metadata_json = excluded.metadata_json,
-			updated_at = excluded.updated_at
-	`,
-		a.ArtifactID,
-		actionStr,  // source
-		a.Filename, // name
-		a.Filename,
-		mediaType,
-		a.SHA256,
-		a.Location.FileID,
-		a.Location.WebViewLink,
-		a.Location.DownloadLink,
-		a.Location.FolderID,
-		a.Location.FolderPath,
-		string(metadataJSON),
-		nowStr,
-		nowStr,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert media_asset: %w", err)
-	}
-	return nil
-}
-
-// insertAssetVersion inserts a new version row with auto-incremented
-// version_number.
-func (f *Finalizer) insertAssetVersion(
-	ctx context.Context,
-	tx *sql.Tx,
-	a *finalization.PublishedArtifact,
-	nowStr string,
-) (int, error) {
-	// Compute next version_number.
-	var nextVer int
-	err := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(version_number), 0) + 1 FROM asset_versions WHERE asset_id = ?`,
-		a.ArtifactID,
-	).Scan(&nextVer)
-	if err != nil {
-		return 0, fmt.Errorf("compute next version: %w", err)
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO asset_versions
-			(asset_id, version_number, file_hash, file_size_bytes, mime_type, metadata_json, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`,
-		a.ArtifactID,
-		nextVer,
-		a.SHA256,
-		a.SizeBytes,
-		a.MIMEType,
-		"{}",
-		nowStr,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("insert version: %w", err)
-	}
-
-	return nextVer, nil
-}
-
-// upsertAssetLocation does an INSERT ... ON CONFLICT DO UPDATE for the
-// canonical asset_locations row.
-func (f *Finalizer) upsertAssetLocation(
-	ctx context.Context,
-	tx *sql.Tx,
-	a *finalization.PublishedArtifact,
-	nowStr string,
-) error {
-	locationKind := a.Location.Provider
-	if locationKind == "" {
-		locationKind = "drive"
-	}
-
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO asset_locations
-			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
-			uri = excluded.uri,
-			external_id = excluded.external_id,
-			web_view_link = excluded.web_view_link,
-			download_url = excluded.download_url,
-			mime_type = excluded.mime_type,
-			file_size_bytes = excluded.file_size_bytes,
-			file_hash = excluded.file_hash,
-			is_primary = excluded.is_primary,
-			updated_at = excluded.updated_at
-	`,
-		a.ArtifactID,
-		locationKind,
-		a.Location.FileID,
-		a.Location.FileID,
-		a.Location.WebViewLink,
-		a.Location.DownloadLink,
-		a.MIMEType,
-		a.SizeBytes,
-		a.SHA256,
-		nowStr,
-		nowStr,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert location: %w", err)
-	}
-	return nil
-}
 
 // ── Outbox events ───────────────────────────────────────────────────
 
@@ -634,29 +459,6 @@ func hashJSONString(s string) string {
 	}
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
-}
-
-// kindToMediaType maps a domain ArtifactKind to a media_type string
-// suitable for the media_assets.media_type column.
-func kindToMediaType(k finalization.ArtifactKind) string {
-	switch k {
-	case finalization.KindVideo:
-		return "video"
-	case finalization.KindImage:
-		return "image"
-	case finalization.KindAudio, finalization.KindVoiceover, finalization.KindSoundEffect:
-		return "audio"
-	case finalization.KindDocument:
-		return "document"
-	case finalization.KindScript:
-		return "text"
-	case finalization.KindMetadata:
-		return "metadata"
-	case finalization.KindArchive:
-		return "archive"
-	default:
-		return "other"
-	}
 }
 
 // randomHex returns a random hex string of n bytes (2n characters).

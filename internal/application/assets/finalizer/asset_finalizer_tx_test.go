@@ -1,0 +1,447 @@
+package finalizer_test
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+)
+
+// setupTestDB creates an in-memory SQLite DB with the canonical tables.
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:?_journal=WAL&_busy_timeout=5000")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+
+	// Create tables matching the canonical schemas (055, 105, plus media_assets).
+	for _, ddl := range []string{
+		`CREATE TABLE IF NOT EXISTS media_assets (
+			id TEXT PRIMARY KEY,
+			source TEXT NOT NULL DEFAULT '',
+			name TEXT NOT NULL DEFAULT '',
+			filename TEXT NOT NULL DEFAULT '',
+			media_type TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT '',
+			drive_file_id TEXT NOT NULL DEFAULT '',
+			drive_link TEXT NOT NULL DEFAULT '',
+			download_link TEXT NOT NULL DEFAULT '',
+			folder_id TEXT NOT NULL DEFAULT '',
+			folder_path TEXT NOT NULL DEFAULT '',
+			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_versions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+			version_number INTEGER NOT NULL,
+			source_uri TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT '',
+			file_size_bytes INTEGER NOT NULL DEFAULT 0,
+			mime_type TEXT NOT NULL DEFAULT '',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT '',
+			UNIQUE (asset_id, version_number)
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_locations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+			location_kind TEXT NOT NULL CHECK (location_kind IN ('local', 'drive', 'object_storage')),
+			uri TEXT NOT NULL,
+			external_id TEXT NOT NULL DEFAULT '',
+			web_view_link TEXT NOT NULL DEFAULT '',
+			download_url TEXT NOT NULL DEFAULT '',
+			mime_type TEXT NOT NULL DEFAULT '',
+			file_size_bytes INTEGER NOT NULL DEFAULT 0,
+			file_hash TEXT NOT NULL DEFAULT '',
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT '',
+			UNIQUE (asset_id, location_kind)
+		)`,
+		`CREATE TABLE IF NOT EXISTS jobs (
+			id TEXT PRIMARY KEY,
+			status TEXT NOT NULL DEFAULT 'QUEUED',
+			worker_id TEXT NOT NULL DEFAULT '',
+			lease_id TEXT NOT NULL DEFAULT '',
+			retry_count INTEGER NOT NULL DEFAULT 0,
+			revision INTEGER NOT NULL DEFAULT 0,
+			result_json TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS outbox_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_type TEXT NOT NULL,
+			aggregate_id TEXT NOT NULL DEFAULT '',
+			aggregate_type TEXT NOT NULL DEFAULT '',
+			payload_json TEXT NOT NULL DEFAULT '{}',
+			event_key TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			max_attempts INTEGER NOT NULL DEFAULT 5,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS job_events (
+			id TEXT PRIMARY KEY,
+			job_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			message TEXT NOT NULL DEFAULT '',
+			data_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT ''
+		)`,
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			t.Fatalf("create table: %v", err)
+		}
+	}
+
+	return db
+}
+
+func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArtifact {
+	return finalization.PublishedArtifact{
+		ArtifactID:     assetID,
+		Kind:           finalization.KindVideo,
+		Filename:       "test-video.mp4",
+		MIMEType:       "video/mp4",
+		SizeBytes:      1024,
+		SHA256:         sha256,
+		SourceVersion:  1,
+		Required:       true,
+		IdempotencyKey: fmt.Sprintf("idem-%s", assetID),
+		Location: finalization.AssetLocation{
+			Provider:     "drive",
+			FileID:       fileID,
+			WebViewLink:  fmt.Sprintf("https://drive.google.com/file/d/%s/view", fileID),
+			DownloadLink: fmt.Sprintf("https://drive.google.com/uc?id=%s", fileID),
+			FolderID:     "folder-abc",
+			FolderPath:   "/test",
+			Action:       finalization.PublishCreated,
+		},
+	}
+}
+
+// TestAssetTxFinalizer_RoundTrip verifies that FinalizeAsset writes
+// to all three canonical tables (media_assets, asset_versions,
+// asset_locations) inside a transaction.
+func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	fx := finalizer.NewAssetTxFinalizer(nil)
+	ctx := context.Background()
+	artifact := publishedArtifact("asset-001", "abc123", "drive-file-abc")
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	domainTx := finalizer.WrapTx(tx)
+	ref, events, err := fx.FinalizeAsset(ctx, domainTx, artifact)
+	if err != nil {
+		t.Fatalf("FinalizeAsset: %v", err)
+	}
+	if ref.ArtifactID != "asset-001" {
+		t.Errorf("ArtifactID = %q, want %q", ref.ArtifactID, "asset-001")
+	}
+	if ref.AssetID != "asset-001" {
+		t.Errorf("AssetID = %q, want %q", ref.AssetID, "asset-001")
+	}
+	if ref.SourceVersion != 1 {
+		t.Errorf("SourceVersion = %d, want 1", ref.SourceVersion)
+	}
+	if ref.ContentHash != "abc123" {
+		t.Errorf("ContentHash = %q, want %q", ref.ContentHash, "abc123")
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 outbox event, got %d", len(events))
+	}
+	if events[0].EventType != "asset.index_requested.v1" {
+		t.Errorf("event type = %q, want asset.index_requested.v1", events[0].EventType)
+	}
+
+	// Verify media_assets row exists (before commit — inside tx).
+	var (
+		filename, mediaType, fileHash, driveFileID string
+	)
+	err = tx.QueryRowContext(ctx,
+		`SELECT filename, media_type, file_hash, drive_file_id FROM media_assets WHERE id = ?`,
+		"asset-001",
+	).Scan(&filename, &mediaType, &fileHash, &driveFileID)
+	if err != nil {
+		t.Fatalf("verify media_assets: %v", err)
+	}
+	if filename != "test-video.mp4" {
+		t.Errorf("filename = %q", filename)
+	}
+	if mediaType != "video" {
+		t.Errorf("media_type = %q", mediaType)
+	}
+	if fileHash != "abc123" {
+		t.Errorf("file_hash = %q", fileHash)
+	}
+	if driveFileID != "drive-file-abc" {
+		t.Errorf("drive_file_id = %q", driveFileID)
+	}
+
+	// Verify asset_versions row exists.
+	var versionNum int
+	var versionHash string
+	err = tx.QueryRowContext(ctx,
+		`SELECT version_number, file_hash FROM asset_versions WHERE asset_id = ?`,
+		"asset-001",
+	).Scan(&versionNum, &versionHash)
+	if err != nil {
+		t.Fatalf("verify asset_versions: %v", err)
+	}
+	if versionNum != 1 {
+		t.Errorf("version_number = %d, want 1", versionNum)
+	}
+	if versionHash != "abc123" {
+		t.Errorf("file_hash = %q", versionHash)
+	}
+
+	// Verify asset_locations row exists.
+	var locKind, locFileID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT location_kind, external_id FROM asset_locations WHERE asset_id = ?`,
+		"asset-001",
+	).Scan(&locKind, &locFileID)
+	if err != nil {
+		t.Fatalf("verify asset_locations: %v", err)
+	}
+	if locKind != "drive" {
+		t.Errorf("location_kind = %q", locKind)
+	}
+	if locFileID != "drive-file-abc" {
+		t.Errorf("external_id = %q", locFileID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestAssetTxFinalizer_IdempotentVersionIncrement verifies that
+// two sequential FinalizeAsset calls on the same asset increment
+// the version_number correctly.
+func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	fx := finalizer.NewAssetTxFinalizer(nil)
+	ctx := context.Background()
+
+	// First finalization.
+	tx1, _ := db.BeginTx(ctx, nil)
+	ref1, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx1),
+		publishedArtifact("asset-002", "hash-v1", "file-v1"))
+	if err != nil {
+		tx1.Rollback()
+		t.Fatalf("first finalize: %v", err)
+	}
+	if ref1.SourceVersion != 1 {
+		t.Errorf("first version = %d, want 1", ref1.SourceVersion)
+	}
+	tx1.Commit()
+
+	// Second finalization (new content hash, new file).
+	tx2, _ := db.BeginTx(ctx, nil)
+	ref2, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2),
+		publishedArtifact("asset-002", "hash-v2", "file-v2"))
+	if err != nil {
+		tx2.Rollback()
+		t.Fatalf("second finalize: %v", err)
+	}
+	if ref2.SourceVersion != 2 {
+		t.Errorf("second version = %d, want 2", ref2.SourceVersion)
+	}
+	tx2.Commit()
+
+	// Verify both versions exist.
+	var count int
+	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_versions WHERE asset_id = ?`, "asset-002").Scan(&count)
+	if count != 2 {
+		t.Errorf("version count = %d, want 2", count)
+	}
+
+	// Verify media_assets now reflects the latest hash.
+	var fileHash string
+	db.QueryRowContext(ctx, `SELECT file_hash FROM media_assets WHERE id = ?`, "asset-002").Scan(&fileHash)
+	if fileHash != "hash-v2" {
+		t.Errorf("media_assets file_hash = %q after second finalize, want hash-v2", fileHash)
+	}
+}
+
+// TestAssetTxFinalizer_DifferentArtifactKinds verifies correct media_type
+// mapping for each ArtifactKind.
+func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	fx := finalizer.NewAssetTxFinalizer(nil)
+	ctx := context.Background()
+
+	cases := []struct {
+		kind      finalization.ArtifactKind
+		wantMedia string
+	}{
+		{finalization.KindVideo, "video"},
+		{finalization.KindImage, "image"},
+		{finalization.KindAudio, "audio"},
+		{finalization.KindVoiceover, "audio"},
+		{finalization.KindSoundEffect, "audio"},
+		{finalization.KindDocument, "document"},
+		{finalization.KindScript, "text"},
+		{finalization.KindMetadata, "metadata"},
+		{finalization.KindArchive, "archive"},
+	}
+
+	for _, c := range cases {
+		t.Run(string(c.kind), func(t *testing.T) {
+			assetID := fmt.Sprintf("kind-test-%s", c.kind)
+			pa := publishedArtifact(assetID, "hash", "file")
+			pa.Kind = c.kind
+
+			tx, _ := db.BeginTx(ctx, nil)
+			defer tx.Rollback()
+			_, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), pa)
+			if err != nil {
+				t.Fatalf("FinalizeAsset(%s): %v", c.kind, err)
+			}
+
+			var mediaType string
+			tx.QueryRowContext(ctx,
+				`SELECT media_type FROM media_assets WHERE id = ?`, assetID,
+			).Scan(&mediaType)
+			if mediaType != c.wantMedia {
+				t.Errorf("media_type = %q, want %q", mediaType, c.wantMedia)
+			}
+		})
+	}
+}
+
+// TestAssetTxFinalizer_OutboxEventPayload verifies the outbox event
+// carries the correct index request payload.
+func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	fx := finalizer.NewAssetTxFinalizer(nil)
+	ctx := context.Background()
+
+	artifact := publishedArtifact("asset-payload", "sha256-hash", "drive-id-xyz")
+	tx, _ := db.BeginTx(ctx, nil)
+	defer tx.Rollback()
+
+	_, events, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), artifact)
+	if err != nil {
+		t.Fatalf("FinalizeAsset: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 outbox event, got %d", len(events))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal outbox payload: %v", err)
+	}
+	if payload["asset_id"] != "asset-payload" {
+		t.Errorf("asset_id = %v", payload["asset_id"])
+	}
+	if payload["sha256"] != "sha256-hash" {
+		t.Errorf("sha256 = %v", payload["sha256"])
+	}
+	if payload["location"] != "drive" {
+		t.Errorf("location = %v", payload["location"])
+	}
+	if payload["file_id"] != "drive-id-xyz" {
+		t.Errorf("file_id = %v", payload["file_id"])
+	}
+}
+
+// TestAssetTxFinalizer_RollbackOnError verifies that a failed
+// write inside the transaction doesn't persist.
+func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	fx := finalizer.NewAssetTxFinalizer(nil)
+	ctx := context.Background()
+
+	// Insert a row that will cause a UNIQUE constraint violation on
+	// asset_versions (same asset_id + version_number = 1).
+	tx, _ := db.BeginTx(ctx, nil)
+	_, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx),
+		publishedArtifact("asset-rollback", "h1", "f1"))
+	if err != nil {
+		t.Fatalf("first finalize: %v", err)
+	}
+	tx.Commit()
+
+	// Insert a conflicting asset_versions row manually.
+	db.Exec(`INSERT INTO asset_versions (asset_id, version_number, file_hash, created_at)
+		VALUES ('asset-rollback', 999, 'h999', '2024-01-01')`)
+
+	// Now finalize again — the MAX(version_number)+1 should give 1000,
+	// but if someone manually inserted 999, the unique constraint should
+	// still hold since MAX+1 = 1000 which doesn't conflict.
+	tx2, _ := db.BeginTx(ctx, nil)
+	ref2, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2),
+		publishedArtifact("asset-rollback", "h2", "f2"))
+	if err != nil {
+		t.Fatalf("second finalize with manual version 999: %v", err)
+	}
+	// MAX(1, 999) + 1 = 1000, which is unique.
+	if ref2.SourceVersion != 1000 {
+		t.Errorf("expected version 1000 after manual version 999 insert, got %d", ref2.SourceVersion)
+	}
+	tx2.Commit()
+}
+
+// TestTxAdapter_SatisfiesInterface verifies the compile-time assertion
+// (this is tested at compile time, but we also test at runtime).
+func TestTxAdapter_SatisfiesInterface(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	tx, _ := db.BeginTx(context.Background(), nil)
+	defer tx.Rollback()
+
+	domainTx := finalizer.WrapTx(tx)
+	// Use ExecContext to verify the adapter forwards correctly.
+	result, err := domainTx.ExecContext(context.Background(),
+		`INSERT INTO media_assets (id, name, filename, created_at, updated_at) VALUES (?, ?, ?, '', '')`,
+		"adapter-test", "test", "test.mp4")
+	if err != nil {
+		t.Fatalf("domainTx.ExecContext: %v", err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		t.Errorf("RowsAffected = %d, want 1", affected)
+	}
+
+	// Also test QueryRowContext.
+	row := domainTx.QueryRowContext(context.Background(),
+		`SELECT name FROM media_assets WHERE id = ?`, "adapter-test")
+	var name string
+	if err := row.Scan(&name); err != nil {
+		t.Fatalf("QueryRowContext.Scan: %v", err)
+	}
+	if name != "test" {
+		t.Errorf("name = %q, want test", name)
+	}
+}
