@@ -176,16 +176,45 @@ type GenerationStyles struct {
 // concrete implementation at construction time from internal/app/
 // composition root.
 
+// EmbeddingResult is the canonical envelope returned by every concrete
+// Embedder implementation. It carries the raw vector, observed model
+// identity, model version, and dimensions so consumers (PayloadMapper,
+// Qdrant index writer, etc.) can record provenance at write time.
+//
+// QDRANT-001 introduced this type; QDRANT-001b (July 2026) propagates
+// it through PythonScriptEmbedder and HTTPTextEmbedder.
+type EmbeddingResult struct {
+	// Vector is the raw embedding as []float32.
+	Vector []float32 `json:"embedding"`
+
+	// Dimensions is the vector length (e.g. 768 for e5-base).
+	Dimensions int `json:"dimensions"`
+
+	// Model is the canonical model name (e.g. "intfloat/multilingual-e5-base").
+	Model string `json:"model"`
+
+	// ModelVersion is the model release or fine-tune label
+	// (e.g. "<hf_revision>|<project_semver>").
+	ModelVersion string `json:"model_version"`
+}
+
 // Embedder generates semantic embedding vectors for text. Both inputs
 // and outputs ([]float32) match what the Python e5-base-multilingual
 // script in bridges/generate_embedding.py returns; the sidecar HTTP
 // adapter (infrastructures/embeddings/http.go) returns []float64 but
 // the application layer normalises to []float32 via the wrapper.
+//
+// QDRANT-001b (July 2026): the return type has been promoted from
+// ([]float32, error) to (EmbeddingResult, error) so callers receive
+// the full provenance envelope (Model, ModelVersion, Dimensions)
+// alongside the raw vector. Both PythonScriptEmbedder and
+// HTTPTextEmbedder now return EmbeddingResult; adapters that need
+// []float32 unwrap via result.Vector.
 type Embedder interface {
 	// Embed returns a vector representation of text. Empty text is
-	// permitted and returns (nil, nil) so callers can short-circuit on
-	// blank-input pipelines without an error.
-	Embed(ctx context.Context, text string) ([]float32, error)
+	// permitted and returns (EmbeddingResult{}, nil) so callers can
+	// short-circuit on blank-input pipelines without an error.
+	Embed(ctx context.Context, text string) (EmbeddingResult, error)
 }
 
 // Canonical domain errors for asset operations.
