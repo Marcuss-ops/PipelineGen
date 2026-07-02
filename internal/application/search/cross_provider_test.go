@@ -108,7 +108,7 @@ func TestFilterUniformContract(t *testing.T) {
 	}
 	q := Query{
 		Text:    "developer working late at desk",
-		Mode:    SearchModeHybrid,
+		Mode:    SearchModeANN, // ANN: test is about filter forwarding, not hybrid
 		Limit:   20,
 		Filters: canonical,
 	}
