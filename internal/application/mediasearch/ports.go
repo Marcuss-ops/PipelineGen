@@ -65,6 +65,18 @@ var ErrMissingWorkspace = errors.New("mediasearch: workspace context required")
 // populated sparse vector — at different layers of the call stack.
 var ErrHybridRequiresSparse = errors.New("mediasearch: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
 
+// ErrNoBackendAvailable is returned when the BackendRegistry has zero
+// eligible backends for the query (e.g. no backend advertises the
+// requested media type capability). Handler maps this to HTTP 503.
+// PR-AGENTE2-ERRORS (Agente 2, Azione 4).
+var ErrNoBackendAvailable = errors.New("mediasearch: no backend available for the requested query")
+
+// ErrAllBackendsFailed is returned when every eligible backend
+// returned an error (the fan-out produced zero successful results).
+// Handler maps this to HTTP 502 (Bad Gateway — upstream backends
+// are reachable but all failed). PR-AGENTE2-ERRORS (Agente 2, Azione 4).
+var ErrAllBackendsFailed = errors.New("mediasearch: all backends failed")
+
 // SearchableLifecycleStates is the canonical allowlist of
 // lifecycle_state values that survive the hydration phase (PR 1 —
 // Lifecycle state SSOT, June 2026). The single value is ACTIVE;

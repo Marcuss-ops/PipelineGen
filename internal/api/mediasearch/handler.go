@@ -159,16 +159,20 @@ type searchResultItem struct {
 
 // Search is the HTTP handler for POST /internal/v1/media/search.
 //
-// Status codes:
+// Status codes (PR-AGENTE2-ERRORS — Agente 2, Azione 4):
 //
-//	200 — OK, results in body (may be empty if no hit survives filters).
+//	200 — OK, results in body (may be empty if no hit survives filters;
+//	      partial results with at least one hit also return 200 with
+//	      partial=true + degraded=true).
 //	400 — malformed JSON, missing query, or invalid mode.
 //	401 — missing/invalid auth token (handled upstream by middleware.Auth).
-//	403 — workspace not provided in auth context, or worker tried to
-//	      pick a non-default workspace (handled upstream by
-//	      middleware.WorkspaceScopeMiddleware).
-//	422 — invalid cursor (semantic error from Aggregator).
-//	500 — internal error from embedder / vector store / hydration.
+//	403 — workspace not provided in auth context (ErrMissingWorkspace).
+//	422 — invalid cursor (ErrInvalidCursor) or hybrid sparse not available
+//	      (ErrHybridRequiresSparse).
+//	502 — all eligible backends returned errors (ErrAllBackendsFailed).
+//	503 — no backend registered / eligible for the query
+//	      (ErrNoBackendAvailable).
+//	500 — unexpected internal error from embedder / vector store.
 //
 // Issue 14b (June 2026): the response DTO (searchResponse) is derived
 // directly from search.Result. The legacy MediaSearchRequest /
@@ -201,17 +205,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	res, err := h.aggreg.Search(c.Request.Context(), q)
 	if err != nil {
-		switch {
-		case errors.Is(err, search.ErrInvalidCursor):
-			apiutil.Error(c, http.StatusUnprocessableEntity, "invalid cursor")
-		case errors.Is(err, mediasearchapp.ErrMissingWorkspace):
-			apiutil.Error(c, http.StatusForbidden, "workspace_id required in context")
-		default:
-			h.safeError("mediasearch.Search failed",
-				zap.String("workspace", workspace.WorkspaceID),
-				zap.Error(err))
-			apiutil.InternalError(c, err)
-		}
+		h.mapSearchError(c, err, workspace.WorkspaceID)
 		return
 	}
 
@@ -256,7 +250,34 @@ func (h *Handler) parseMode(c *gin.Context, raw string) (mediasearchapp.SearchMo
 	}
 }
 
-// ── Response construction ───────────────────────────────────────────────
+// ── Error mapping ───────────────────────────────────────────────────────
+
+// mapSearchError translates typed sentinels from the aggregator layer
+// into HTTP status codes.
+// PR-AGENTE2-ERRORS (Agente 2, Azione 4): full error-to-HTTP surface
+// covering 400, 403, 422, 502, 503, 500.
+func (h *Handler) mapSearchError(c *gin.Context, err error, workspaceID string) {
+	switch {
+	case errors.Is(err, search.ErrInvalidCursor):
+		apiutil.Error(c, http.StatusUnprocessableEntity, "invalid cursor")
+	case errors.Is(err, mediasearchapp.ErrMissingWorkspace):
+		apiutil.Error(c, http.StatusForbidden, "workspace_id required in context")
+	case errors.Is(err, mediasearchapp.ErrHybridRequiresSparse):
+		apiutil.Error(c, http.StatusUnprocessableEntity,
+			"hybrid mode unavailable: sparse vector channel or BM25 tokenizer not configured")
+	case errors.Is(err, mediasearchapp.ErrNoBackendAvailable):
+		apiutil.Error(c, http.StatusServiceUnavailable,
+			"no search backend available for the requested query")
+	case errors.Is(err, mediasearchapp.ErrAllBackendsFailed):
+		apiutil.Error(c, http.StatusBadGateway,
+			"all search backends failed to return results")
+	default:
+		h.safeError("mediasearch.Search failed",
+			zap.String("workspace", workspaceID),
+			zap.Error(err))
+		apiutil.InternalError(c, err)
+	}
+}
 
 // resultToResponse converts the canonical search.Result into the
 // handler's response DTO (searchResponse). Items map 1:1 from
