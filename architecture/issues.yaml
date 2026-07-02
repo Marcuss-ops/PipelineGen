@@ -573,3 +573,69 @@
       * Deferral deadline compliance: 2026-08-15 driven by
         architecture/current.yaml#id-29.linked_issues PR-CrossPackage-
         IndexingStatus-§12-5 deadline (mirrors P0.18's deadline).
+
+- id: PR-DOC-USAHE-SHA256-RESIDUAL
+  title: "P0 #3-B SHA256 idem-key residual: migrate document/usecase.go:189 inline [:16] to canonical asset.SHA256IdempotencyKey via typed-package helper buildDocArtifactIdempotencyKey"
+  status: in_progress  # flipped to done when the residual migration commits merge on origin/main
+  owner: internal/application/document
+  deadline: 2026-07-15
+  linked_issues:
+    - SHA256IdempotencyKey-Canonical-Surface  # the canonical owner at internal/domain/asset/sha256idempotency.go (Stock Cutover §12-1, July 2026) — already on origin/main
+    - internal/application/assets/providers/stock/stockpipeline/finalizer_gates.go::VerifyChunks-ValidateSHA256-call  # the canonical gating application site + tests in finalizer_gates_test.go
+  notes: |
+    P0 #3 verdict panic class (`"prefix" + sha[:16]` on short input) was
+    retired on the STOCK side by Stock Cutover §12-1 (July 2026) via the
+    canonical asset.ValidateSHA256 + asset.SHA256IdempotencyKey validator
+    in internal/domain/asset/sha256idempotency.go — see the existing test
+    surface at internal/application/assets/providers/stock/stockpipeline/
+    finalizer_gates_test.go which covers all 7 verdict-mandated input
+    classes (empty / length=1 / length=15 / length=63 / non-hex /
+    uppercase / happy).
+
+    The ONE residual [:16]-on-non-hex-panic site lives on the DOCUMENT
+    side at internal/application/document/usecase.go:189 in the spine
+    path (the SpineFinalizer.CompleteWithArtifacts artifact-idempotency-key
+    construction). This ticket's migration closes that residual.
+
+    User-spec → canonical-surface mapping (per godlike/07 honest-
+    limitation discipline):
+
+    (a) User-spec named `pkg/hashutil/SHA256IdempotencyKey.go` as the
+        home for the helper. The canonical surface per godlike/06
+        one-owner-per-fact is `internal/domain/asset/sha256idempotency.go`
+        — NOT a `pkg/hashutil` parallel package. The AGENTS.md section
+        that references `pkg/hashutil` maps to `internal/infrastructure/
+        files.Hashutil` (the cross-package helper that intentionally
+        exposes only `SHA256String` + `RandomString`). The canonical
+        typed-error surface lives in `internal/domain/asset` — NOT
+        split across `pkg/hashutil`.
+
+    (b) User-spec mandates TDD tests for 7 input classes. The canonical
+        regression-pinning surface for the verifier is
+        `internal/application/assets/providers/stock/stockpipeline/
+        finalizer_gates_test.go`. The new typed-package tests at
+        `internal/application/document/usecase_test.go` mirror those
+        tests verbatim for the document-package entry-point
+        `buildDocArtifactIdempotencyKey` — duplicating test coverage
+        per package is correct under godlike/06 SSOT.
+
+    (c) User-spec mandates `git push` directly to `origin/main` w/o
+        branches + `Co-authored-by:` trailer per AGENTS.md §Git-Lesson-2
+        direct-to-main workflow + §Git-Lesson-3 trailer semantics.
+
+    Honest rationale for the migration: production `info.SHA256` is
+    canonical via `service.GeneratePDF → sha256File` (Go stdlib
+    `encoding/hex.EncodeToString` always emits lowercase). The typed-error
+    path is unreachable in production today; the helper is defence-in-
+    depth against future SHA-producer drift.
+
+    Per Q16-CHANGELOG-ARCHYAML-CONTENTION-PRUDENT-2PR: Commits A1
+    (CHANGELOG) and A2 (issues.yaml) are split via the prudent-canonical
+    pattern documented at architecture/issues.yaml#Q16-CHANGELOG-
+    ARCYAML-CONTENTION-PRUDENT-2PR. Commit A2 is the ALWAYS-LESS-
+    CONTENDED single-file commit (issues.yaml append-only, rarely twinned
+    with parallel agent activity).
+
+    Linked wave ref: architecture/current.yaml#id-29 linked_issues
+    entry P0.18 shares the 2026-07-15 deadline (P0.18 = reintroduce
+    structured outbox-driven enrichment; orthogonal to this ticket).
