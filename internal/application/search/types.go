@@ -180,5 +180,6 @@ type Result struct {
 	Items          []Candidate
 	NextCursor     string            // "" = end of stream
 	ProviderErrors map[string]string // backend name → error string (e.g. "youtube" → "rate-limited")
+	ChannelsUsed   []string          // which search channels were used (e.g. ["text", "bm25"]); empty when unknown
 	Partial        bool              // true if any backend errored
 }

@@ -129,19 +129,26 @@ type searchRequestFilter struct {
 }
 
 // searchResponse is the response DTO derived directly from
-// search.Result (Issue 14b CONTRACT phase). Fields are a 1:1
-// projection of search.Candidate — no lossy translation, no
-// legacy envelope. OK flips to false only when the result is
-// partial AND has zero items (no fake availability).
+// search.Result (Issue 14b CONTRACT phase + PR-AGENTE2-TRUTHFUL).
+// Fields are a 1:1 projection of search.Candidate — no lossy
+// translation, no legacy envelope. OK flips to false only when the
+// result is partial AND has zero items (no fake availability).
+// Degraded is true when the result is partial but has at least one
+// hit (the search "worked" but some backends are down).
+// ProviderErrors surfaces per-backend failures so callers can
+// diagnose degraded results without scraping logs.
 type searchResponse struct {
-	OK           bool               `json:"ok"`
-	Query        string             `json:"query"`
-	Mode         string             `json:"mode"`
-	Count        int                `json:"count"`
-	Items        []searchResultItem `json:"items"`
-	Partial      bool               `json:"partial,omitempty"`
-	NextCursor   string             `json:"next_cursor,omitempty"`
-	IndexVersion string             `json:"index_version"`
+	OK             bool               `json:"ok"`
+	Query          string             `json:"query"`
+	Mode           string             `json:"mode"`
+	Count          int                `json:"count"`
+	Items          []searchResultItem `json:"items"`
+	Partial        bool               `json:"partial,omitempty"`
+	Degraded       bool               `json:"degraded,omitempty"`
+	ProviderErrors map[string]string  `json:"provider_errors,omitempty"`
+	ChannelsUsed   []string           `json:"channels_used,omitempty"`
+	NextCursor     string             `json:"next_cursor,omitempty"`
+	IndexVersion   string             `json:"index_version"`
 }
 
 // searchResultItem is the per-result item in the response,
@@ -284,12 +291,24 @@ func (h *Handler) mapSearchError(c *gin.Context, err error, workspaceID string) 
 // search.Candidate with no lossy translation — every field on
 // Candidate is projected. OK flips to false only when Partial &&
 // zero items (no fake availability).
+// PR-AGENTE2-TRUTHFUL (Agente 2, Azione 3): Degraded is true when
+// Partial && len(items) > 0 (at least one backend returned results
+// but others failed). ProviderErrors is forwarded directly from
+// search.Result so callers see per-backend failure reasons.
 func resultToResponse(r *search.Result, query string, mode mediasearchapp.SearchMode) *searchResponse {
 	ok := true
 	items := make([]searchResultItem, 0)
+	var degraded bool
+	var providerErrors map[string]string
 	if r != nil {
 		if r.Partial && len(r.Items) == 0 {
 			ok = false
+		}
+		if r.Partial && len(r.Items) > 0 {
+			degraded = true
+		}
+		if len(r.ProviderErrors) > 0 {
+			providerErrors = r.ProviderErrors
 		}
 		for _, c := range r.Items {
 			items = append(items, searchResultItem{
@@ -310,15 +329,22 @@ func resultToResponse(r *search.Result, query string, mode mediasearchapp.Search
 	if r != nil {
 		partial = r.Partial
 	}
+	var channelsUsed []string
+	if r != nil && len(r.ChannelsUsed) > 0 {
+		channelsUsed = r.ChannelsUsed
+	}
 	return &searchResponse{
-		OK:           ok,
-		Query:        strings.TrimSpace(query),
-		Mode:         string(mode),
-		Count:        len(items),
-		Items:        items,
-		Partial:      partial,
-		NextCursor:   nextCursor,
-		IndexVersion: "v1-search-api",
+		OK:             ok,
+		Query:          strings.TrimSpace(query),
+		Mode:           string(mode),
+		Count:          len(items),
+		Items:          items,
+		Partial:        partial,
+		Degraded:       degraded,
+		ProviderErrors: providerErrors,
+		ChannelsUsed:   channelsUsed,
+		NextCursor:     nextCursor,
+		IndexVersion:   "v1-search-api",
 	}
 }
 

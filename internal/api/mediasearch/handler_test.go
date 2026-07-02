@@ -463,7 +463,92 @@ func TestMapSearchError_WrappedSentinel(t *testing.T) {
 	}
 }
 
-// ── Test harness: gin test context + error helpers ─────────────────────
+// ── Response truthfulness tests (PR-AGENTE2-TRUTHFUL — Agente 2, Azione 3)
+
+// TestHandlerExposesPartialWithoutInternalPaths verifies that when
+// a result is partial (some backends errored), the response carries
+// degraded=true, provider_errors, and none of the items leak
+// internal fields (LocalPath, DriveFileID, raw Drive URL).
+func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
+	r := &search.Result{
+		Partial: true,
+		ProviderErrors: map[string]string{
+			"artlist": "timeout",
+		},
+		Items: []search.Candidate{
+			{
+				AssetID:      "asset-1",
+				Title:        "Sunset",
+				Source:       "youtube",
+				MediaType:    "video",
+				PreviewURL:   "https://signed.example.com/asset-1",
+				Score:        0.95,
+				LocalPath:    "/data/secret/file.mp4",
+				DriveLink:    "https://drive.google.com/raw",
+				ThumbnailURL: "https://thumbnail.internal/qdrant_collection_x",
+			},
+		},
+	}
+
+	resp := resultToResponse(r, "sunset", mediasearchapp.SearchModeHybrid)
+
+	if !resp.OK {
+		t.Error("partial with items should have OK=true")
+	}
+	if !resp.Degraded {
+		t.Error("partial with items should have Degraded=true")
+	}
+	if !resp.Partial {
+		t.Error("Partial should be true")
+	}
+	if resp.ProviderErrors == nil || resp.ProviderErrors["artlist"] != "timeout" {
+		t.Errorf("ProviderErrors = %v, want {artlist: timeout}", resp.ProviderErrors)
+	}
+
+	// Verify no internal fields leak in items
+	for _, item := range resp.Items {
+		if strings.Contains(item.PreviewURL, "drive.google.com") {
+			t.Errorf("PreviewURL %q should not be a raw Drive URL", item.PreviewURL)
+		}
+		// searchResultItem deliberately excludes LocalPath, DriveLink, ThumbnailURL
+		// so those fields are structurally impossible to leak.
+	}
+}
+
+// TestHandlerReturns503WhenNoBackend verifies that when the
+// aggregator returns ErrNoBackendAvailable, the handler responds 503.
+func TestHandlerReturns503WhenNoBackend(t *testing.T) {
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, mediasearchapp.ErrNoBackendAvailable, "ws-test")
+
+	if w.Code != 503 {
+		t.Errorf("status = %d, want 503", w.Code)
+	}
+}
+
+// TestHandlerReturns502WhenAllBackendsFail verifies that when the
+// aggregator returns ErrAllBackendsFailed, the handler responds 502.
+func TestHandlerReturns502WhenAllBackendsFail(t *testing.T) {
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, mediasearchapp.ErrAllBackendsFailed, "ws-test")
+
+	if w.Code != 502 {
+		t.Errorf("status = %d, want 502", w.Code)
+	}
+}
+
+// errorReturningAggregator is a stub that always returns a fixed error.
+type errorReturningAggregator struct {
+	err error
+}
+
+func (a *errorReturningAggregator) Search(_ context.Context, _ search.Query) (*search.Result, error) {
+	return nil, a.err
+}
 
 // errTestUnknown is a plain error not matching any sentinel.
 var errTestUnknown = errStr("some unexpected runtime error")
