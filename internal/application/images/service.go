@@ -24,7 +24,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 )
 
 // ── Step 9 compile-time interface assertions ──
@@ -102,7 +101,7 @@ type ImagesCoreDeps struct {
 type ImagesStorageDeps struct {
 	ImageRepo  *assets.ImagesRepository
 	ClipsRepo  *assets.ClipsRepository
-	DriveSvc   *driveapi.Service
+	DriveReader  drive.Reader
 	MediaStore *drive.Store
 
 	// DestResolver (FASE 2D EXPAND, July 2026) is the canonical
@@ -186,7 +185,7 @@ func NewService(deps ImagesDeps) *Service {
 	// 1. DiagnosticsService (no cross-deps)
 	diag := &DiagnosticsService{
 		repo:         deps.Storage.ImageRepo,
-		driveSvc:     deps.Storage.DriveSvc,
+		driveReader:  deps.Storage.DriveReader,
 		imageGen:     deps.GenAI.ImageGen,
 		ingestSvc:    deps.External.IngestSvc,
 		log:          log,
@@ -206,7 +205,7 @@ func NewService(deps ImagesDeps) *Service {
 		repo:          deps.Storage.ImageRepo,
 		stockRepo:     deps.Storage.ClipsRepo,
 		mediaStore:    deps.Storage.MediaStore,
-		driveSvc:      deps.Storage.DriveSvc,
+		driveReader:   deps.Storage.DriveReader,
 		cfg:           cfg,
 		imagesDir:     cfg.Storage.ImagesPath(),
 		tempDir:       cfg.Storage.TempPath(),

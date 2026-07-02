@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
@@ -22,7 +21,7 @@ type ImageStorageService struct {
 	repo          *assets.ImagesRepository
 	stockRepo     *assets.ClipsRepository
 	mediaStore    *drive.Store
-	driveSvc      *driveapi.Service
+	driveReader    drive.Reader
 	cfg           *config.Config
 	imagesDir     string
 	tempDir       string

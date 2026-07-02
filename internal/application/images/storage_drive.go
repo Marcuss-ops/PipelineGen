@@ -327,7 +327,7 @@ func (s *ImageStorageService) registerAudioClip(ctx context.Context, videoPath, 
 
 // SyncFromDrive syncs image assets from Google Drive to the local DB.
 func (s *ImageStorageService) SyncFromDrive(ctx context.Context) error {
-	if s.driveSvc == nil || s.driveFolderID == "" {
+	if s.driveReader == nil || s.driveFolderID == "" {
 		return fmt.Errorf("drive service or folder ID not configured")
 	}
 	s.log.Info("Starting images sync from Drive", zap.String("folder_id", s.driveFolderID))
@@ -335,8 +335,7 @@ func (s *ImageStorageService) SyncFromDrive(ctx context.Context) error {
 }
 
 func (s *ImageStorageService) syncFolderRecursive(ctx context.Context, folderID, folderPath string) error {
-	uploader := &drive.Uploader{Service: s.driveSvc}
-	files, err := uploader.ListFiles(ctx, folderID)
+	files, err := s.driveReader.ListFiles(ctx, folderID)
 	if err != nil {
 		return err
 	}
