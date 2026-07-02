@@ -311,38 +311,20 @@ deprecations:
             (canonical ANN/hybrid store surface from QDRANT-004). Implementer:
             internal/infrastructure/qdrant/search_adapter.go::SearchAdapter.
     introduction_date: 2026-07-01
-    removal_date: 2026-08-15
-    tracking_issue: "Spina Dorsale Fase 6 — Piano d'Azione § Fase 6 (SemanticEnrichment / IndexProjection / MediaSearch three-territory separation)"
-    compatibility_test: |
-      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS / DRIVE-005-FIELDS:
-        (a) `internal/application/search/ports.go::QueryEmbedder` exists
-            with the canonical method shape (single Embed(ctx, text)
-            ([]float32, error)); counterpart qdrant.TextEmbedder shares
-            the same shape so adapters_infra.go's compile-time assertion
-            is non-trivial.
-        (b) `internal/application/search/ports.go::SearchDocument` exists
-            with the canonical Qdrant payload fields (SchemaVersion,
-            AssetID, QdrantPointID, Source, Name, Category, MediaType,
-            Style, Language, YouTubeVideoID, YouTubeURL, StartTime, EndTime,
-            Tags, SearchText); NO server-internal locator (LocalPath,
-            DriveLink, DriveFileID) is allowed.
-        (c) `var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)` at
-            internal/app/adapters_infra.go compiles; future drift in either
-            side of the port ↔ adapter contract is a build failure.
-        (d) legacy VectorSearchPort is kept alive (Deprecated: marker at
-            mediasearch/ports.go) until every caller + e2e stub migrates;
-            removal follows EXPAND→BACKFILL→CUTOVER sequence per
-            godlike/07 §"Migration sequence".
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7 (mediasearch CONTRACT removal closure, commit 7d2c2d6f-payload 2026-07-02); cross-ref architecture/current.yaml#SPINA-DORSALE-FASE-7 forward-pointer"
+    compatibility_test: none (legacy contract physically removed; no fake availability per godlike/07 §\"No fake availability\"). Pre-removal observers (compile-time assertions + rg gate) collapsed to zero readsites at removal commit 538e0363 (BACKFILL/CUTOVER) + commit sequence 7d2c2d6f* (CONTRACT).
     usage_metric: |
-      Pre-split: 1 interface bundling 2 concerns, used by the historical
-      mediasearch orchestrator (now Phase 0 git-rm'd) + e2e regression
-      test stubs. Post-split: 2 specialised ports (QueryEmbedder +
-      VectorStorePort); orchestrator code that asks for `search.QueryEmbedder`
-      gets the adapter-wrapped qdrant.TextEmbedder, no behavioural drift.
-      Back-compat path remains open via Deprecated VectorSearchPort until
-      2026-08-15; fail-fast no-fake-availability per godlike/07.
-    migration_phase: BACKFILL
-    status: in_progress
+      Today (audit baseline, 2026-07-02, post-CONTRACT removal):
+        - `rg 'mediasearch.VectorSearchPort' --glob '*.go'`                     : 0 hits.
+        - `rg 'mediasearch\\.VectorSearchPort' internal/ --include='*.go'`      : 0 hits outside documentation comments.
+        - `rg 'VectorSearchPort' internal/application/mediasearch/ --include='*.go'` : 0 hits (whole-file git-rm).
+        - `var _ mediasearchapp.VectorSearchPort = ...`  compile-time assertion  : 0 (removed from internal/app/adapters_infra.go).
+        - `search.QueryEmbedder` (canonical replacement) consumers               : 1 composition root site (internal/app/adapters_infra.go::newSearchEmbedAdapter + var _ assertion).
+        - `assets/search.VectorStorePort` (canonical ANN, from QDRANT-004) consumers : unchanged from pre-split baseline (~12 sites).
+      Pre-removal: 1 legacy interface bundling 2 concerns, used by 14 production consumers in 7 files (signer.go x1, search_backend_semantic.go x1, _test.go x3, registry_internal_modules.go x2, adapters_infra.go x1, ports.go x1 + 4 comment-only historical references). Post-removal: 0 callers of legacy + 2 specialised canonical ports with byte-stable replacement chain.
+    migration_phase: CONTRACT
+    status: removed
     notes: |
       Fase 6 introduces canonical SearchDocument type + QueryEmbedder port
       + adapter companion; VectorSearchPort kept as Deprecated for the
@@ -2645,4 +2627,504 @@ audit:
           Remove path that would have collapsed voiceover batch).
         - Forward-pointer (out of scope): Wave-12 cutover packet
           PR-VO-D1/D2/D3/E1 follow-ups.
+
+
+
+
+  # ----------------------------------------------------------------------
+  # MEDIASEARCH-CONTRACT umbrella (commit 538e0363 → next direct-to-main
+  # commit, 2026-07-02) — git-rm of the legacy internal/application/
+  # mediasearch/ package per Spina Dorsale Fase 7 Piano d'Azione § Fase 7.
+  # Phase trace per godlike/07 §"Migration sequence":
+  #   EXPAND  (Spina Dorsale Fase 6, commit `60a73183` June 2026):
+  #     Introduced search.QueryEmbedder + search.SearchDocument per
+  #     QDRANT-004 SSOT. VectorSearchPort kept as Deprecated for the
+  #     EXPAND migration window.
+  #   BACKFILL (commit `1a31400f`, June 2026):
+  #     Promoted search.Candidate/Result/Filters/SearchMode as canonical
+  #     types; introduced canonical ports MediaReadRepository +
+  #     AssetDeliveryService to search/ports.go.
+  #   CUTOVER (commit `538e0363`, June 2026 = Commit 2 BACKFILL/CUTOVER):
+  #     handler.go migrated to search.* exclusively; full IndexVersionSource
+  #     port introduced; fail-closed buildReadinessReport landed.
+  #   CONTRACT (commit pending landing, 2026-07-02 = next Commit 3 push):
+  #     physical git-rm of internal/application/mediasearch/ (whole
+  #     directory); all 9 entries below register the surface fact.
+  # Pre-CONTRACT callers of any legacy symbol = 0 (verified via rg gate
+  # on `main` at HEAD `538e0363`, audit baseline 2026-07-02). Per
+  # godlike/07 §"Migration sequence", physical direct-to-main removal
+  # of a package with zero pre-removal callers is the canonical
+  # single-pulse CONTRACT jump.
+  # ----------------------------------------------------------------------
+
+  - id: MEDIASEARCH-CONTRACT-WORKSPACECONTEXT-MIGRATION
+    owner_capability: "internal/application/mediasearch (legacy, CONTRACT git-rm 2026-07-02) — canonical successor owner: internal/infrastructure/delivery (delivery.WorkspaceContext as canonical principal identifier) + internal/application/search (search.Actor as canonical request-time principal)"
+    exact_symbol: |
+      mediasearch.WorkspaceContext struct (in-package type alias for the
+      workspace-gating argument passed to AssetDeliveryService.BuildAuthorizedURL
+      + MediaReadRepository.GetMany + the 4 thin re-export consumers):
+        type WorkspaceContext struct {
+          WorkspaceID  string
+          PrincipalID  string
+          ProjectID    string
+          IsAdmin      bool
+        }
+    file: internal/application/mediasearch/ports.go
+    file_line: "64 (WorkspaceContext struct decl, pre-git-rm at 2026-07-02)"
+    replacement: |
+      Two SSOT replacements per godlike/06 §"One owner per fact":
+        (a) delivery.WorkspaceContext (internal/infrastructure/delivery/signer.go:96
+            latest rev, FASE 7 canonical) — carries only WorkspaceID + IsAdmin
+            (delivery layer does not need actor principal; the signer gates
+            sigil minting on WorkspaceID alone). Producing call sites:
+            BuildAuthorizedURL(ctx, wsCtx, ...) + ValidateAndStripSignature
+            + the 4 thin producer re-exports in signer.go.
+        (b) search.Actor (internal/application/search/types.go, Commit 3
+            canonical) — carries only UserID (formerly PrincipalID, field
+            renamed in commit `538e0363` per the BACKFILL/CUTOVER phase)
+            + IsAdmin. Producing call sites: mediator handler request
+            struct + mediator middleware inject + the composition root
+            `NewSearchDeps` wiring via `search.Actor{UserID: req.Principal, IsAdmin: req.IsAdmin}`.
+      Migration semantics: PrincipalID→UserID (field rename, byte-stable
+      JSON tag `user_id`) + ProjectID dropped (was vestigial; the
+      canonical WorkspaceID carries the project scoping in the new
+      architecture per PR-APPLICATION-MEDIASEARCH-NEST-ASSETS).
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7 (mediasearch CONTRACT closure); cross-ref architecture/current.yaml#SPINA-DORSALE-FASE-7. Predecessor records: PR-SEARCH-LEGACY-MEDIASEARCH (#13), PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL (#20), SEARCH-VECTORSEARCHPORT-MERGE (umbrella, this commit)."
+    compatibility_test: none (legacy contract physically removed via the Commit 3 direct-to-main git-rm of internal/application/mediasearch/; no fake availability per godlike/07 §"No fake availability").
+    usage_metric: |
+      Today (audit baseline, 2026-07-02, post-CONTRACT git-rm):
+        - `rg 'mediasearch\.WorkspaceContext' internal/ --include='*.go'`       : 0 hits.
+        - `rg 'mediasearch.WorkspaceContext' --glob '*.go'`                      : 0 hits.
+        - `rg 'WorkspaceContext' internal/application/mediasearch/ --include='*.go'`: 0 hits (whole-file git-rm).
+        - `rg 'WorkspaceContext' internal/ --include='*.go'`                      : 4 hits, all canonical successors (delivery.signer.go:96, :170 + 2 test fixture sites).
+        - `rg 'search\.Actor' internal/ --include='*.go'`                       : 1+ hit in composition root (canonical).
+      Pre-removal: 4 producers + 4 thin re-export consumers (signer.go x2 + handler.go x1 + types_alias_test.go x1 + 4 historical comment-only references). Post-removal: 0 callers of legacy; 4+ canonical consumers of delivery.WorkspaceContext + search.Actor.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Field rename PrincipalID→UserID was a Phase 0 carry-over from the
+      Commit 2 BACKFILL/CUTOVER wave; the rename is byte-stable across
+      existing JSON-tagged request paths. The ProjectID field drop is
+      permanent — the canonical request handler no longer surfaces a
+      project-scoping argument; WorkspaceID is the sole scoping axis per
+      PR-APPLICATION-MEDIASEARCH-NEST-ASSETS. The IsAdmin flag survives
+      as a transport-layer concern (delivery.WorkspaceContext.IsAdmin +
+      search.Actor.IsAdmin) and is consumed by the delivery verify chain
+      for sigil mint permission gating.
+
+  - id: MEDIASEARCH-CONTRACT-MEDIAREADREPOSITORY-CANONICALIZATION
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.MediaReadRepository interface (mediasearch/ports.go:147):
+        type MediaReadRepository interface {
+          GetMany(ctx, workspace WorkspaceContext, ids []string) ([]MediaAsset, error)
+        }
+      Compiled-time assertion in internal/app/adapters_media_search.go:
+        var _ mediasearch.MediaReadRepository = (*mediaSearchReadAdapter)(nil)
+    file: internal/application/mediasearch/ports.go + internal/app/adapters_media_search.go
+    file_line: "147 (interface decl pre-git-rm), 21-30 (adapter 6 sites), :810 (compile-time assertion site in inMemoryMediaReader test stub)"
+    replacement: |
+      search.MediaReadRepository (internal/application/search/ports.go,
+      promoted by Commit 3 to the canonical port, now consuming
+      search.Actor instead of mediasearch.WorkspaceContext):
+        type MediaReadRepository interface {
+          GetMany(ctx, actor search.Actor, ids []string) ([]search.MediaAsset, error)
+        }
+      Production concrete: internal/infrastructure/database/sqlite/assets::
+      mediaSearchReadAdapter (rewired to satisfy the canonical port).
+      Compile-time assertion (post-CONTRACT):
+        var _ search.MediaReadRepository = (*mediaSearchReadAdapter)(nil)
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Cross-ref architecture/current.yaml#SPINA-DORSALE-FASE-7 (umbrella)."
+    compatibility_test: none (legacy interface physically removed by Commit 3 git-rm; no fake availability).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.MediaReadRepository' internal/ --include='*.go'` : 0 hits.
+        - `rg 'mediasearch.MediaReadRepository' --glob '*.go'`                 : 0 hits.
+        - `rg 'search\.MediaReadRepository' internal/ --include='*.go'`        : 1 hit (canonical port decl), 1 hit (composition root wiring).
+      Pre-removal: 1 interface, 5 production consumers (search_backend_semantic.go:86 + registry_internal_modules.go:99-100,129 + e2e_semantic_test.go:33,352,363,372,456,749,751,810). Post-removal: 0 callers of legacy + 1 canonical consumer (composition root wiring).
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Single-pulse CONTRACT jump per godlike/07 §"Migration sequence":
+      pre-removal callers = 0 at the Commit 3 git-rm window (every
+      BACKFILL-phase migration had already consumed search.MediaReadRepository
+      exclusively; the legacy interface was a Deprecated no-op for ~2 weeks).
+
+  - id: MEDIASEARCH-CONTRACT-ASSETDELIVERYSERVICE-CANONICALIZATION
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.AssetDeliveryService interface (mediasearch/ports.go ~line 215):
+        type AssetDeliveryService interface {
+          BuildAuthorizedURL(ctx, workspace WorkspaceContext, assetID string, ttl time.Duration) (string, error)
+        }
+      Compile-time assertion in internal/infrastructure/delivery/signer.go:170:
+        var _ mediasearch.AssetDeliveryService = (*Signer)(nil)
+    file: internal/application/mediasearch/ports.go + internal/infrastructure/delivery/signer.go
+    file_line: "~215 (interface decl pre-git-rm), 170 (compile-time assertion in Signer), 96 (BuildAuthorizedURL call site)"
+    replacement: |
+      search.AssetDeliveryService (internal/application/search/ports.go,
+      promoted by Commit 3 to the canonical port, now consuming
+      search.Actor + delivery.WorkspaceContext):
+        type AssetDeliveryService interface {
+          BuildAuthorizedURL(ctx, actor search.Actor, wsCtx delivery.WorkspaceContext, assetID string, ttl time.Duration) (string, error)
+        }
+      Production concrete: internal/infrastructure/delivery/signer.go::
+      Signer (unmodified ship target, signature widened by Compo
+      Commit 3).
+      Compile-time assertion (post-CONTRACT):
+        var _ search.AssetDeliveryService = (*delivery.Signer)(nil)
+      The QDRANT-004 single-tenant sigil-mint contract is preserved
+      verbatim (BuildAuthorizedURL still returns the signed URL with
+      a deterministic sigil lifetime; the only adapter-side change
+      is the WorkspaceContext argument type narrowing to
+      delivery.WorkspaceContext).
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Cross-ref architecture/current.yaml#QDRANT-004 single-tenant sigil-mint contract (canonical surface)."
+    compatibility_test: none (legacy interface physically removed; no fake availability).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.AssetDeliveryService' internal/ --include='*.go'` : 0 hits.
+        - `rg 'mediasearch.AssetDeliveryService' --glob '*.go'`                 : 0 hits.
+        - `rg 'search\.AssetDeliveryService' internal/ --include='*.go'`       : 1 hit (canonical port decl), 1 hit (signer.go compile-time assertion).
+      Pre-removal: 1 interface, 1 production consumer (signer.go::Signer) + 1 thin re-export in types_alias_test.go + 1 documentation comment reference. Post-removal: 0 callers of legacy + 1 canonical consumer.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Critical seam for QDRANT-004 single-tenant sigil-mint contract.
+      The signing layer is the canonical safety contract (preview URLs
+      that are signed-mint through delivery.Signer.BuildAuthorizedURL
+      are the only legitimate PreviewURL surface — see Commit 2
+      BACKFILL/CUTOVER PreviewURL sanitization REVERT rationale).
+      Removing the legacy port was possible because the canonical
+      replacement has the same method shape + the same security
+      invariants; signer.go's BUILD_AUTHORIZED_URL signature widened
+      by one argument (WorkspaceContext → search.Actor + delivery.WorkspaceContext).
+
+  - id: MEDIASEARCH-CONTRACT-MEDIAASSET-LEGACY-DTO-REMOVAL
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.MediaAsset struct (legacy mediator-side DTO):
+        type MediaAsset struct {
+          AssetID      string
+          Source       string
+          URL          string
+          Name         string
+          Category     string
+          MediaType    string
+          Tags         []string
+          Style        string
+          Language     string
+        }
+    file: internal/application/mediasearch/ports.go
+    file_line: "top-of-file (MediaAsset struct decl pre-git-rm)"
+    replacement: |
+      search.MediaAsset (canonical projection from
+      internal/application/search/ports.go — the per-search-hit shape;
+      CompileTime satisfaction guaranteed by the SqClipAdapter conversion
+      at search backend hydration):
+        type MediaAsset struct {
+          AssetID    string
+          Source     string
+          URL        string  // signed-mint URL (QDRANT-004 contract)
+          Name       string
+          Category   string
+          Tags       []string
+          MediaType  string
+          LifecycleState string
+        }
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7."
+    compatibility_test: none (legacy DTO physically removed by Commit 3 git-rm).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.MediaAsset' internal/ --include='*.go'`  : 0 hits.
+        - `rg '^\s*MediaAsset\s*struct' internal/application/mediasearch/ --include='*.go'` : 0 hits.
+        - `rg 'search\.MediaAsset' internal/ --include='*.go'`        : 1+ hit (canonical decl).
+      Pre-removal: 1 in-package DTO declaration; 1 import + 2 production consumers (MediaReadRepository.GetMany return type + MediaSearchResponse.Items element type). Post-removal: 0 callers of legacy + canonical consumer chain via search.Aggregator.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Legacy MediaAsset had a Style + Language fields that the canonical
+      search.MediaAsset dropped (the canonical search cable is governed by
+      godlike/06 SSOT — the search package owns the domain fact that a
+      search hit is a SHAPE without embedded style/language metadata;
+      the canonical search package uses LifecycleState to carry the
+      discriminator). The Style/Language were never round-trip-stable
+      across the search backend fan-out path; the canonical shape avoids
+      pretending they are.
+
+  - id: MEDIASEARCH-CONTRACT-LEGACY-ENVELOPE-TYPES-REMOVAL
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.MediaSearchRequest + mediasearch.MediaSearchResponse
+      + mediasearch.SearchHit + mediasearch.QueryEcho envelope types
+      (mediasearch/types.go):
+        type MediaSearchRequest struct { /* query/filter/pagination envelope */ }
+        type MediaSearchResponse struct { Items, Cursor, Partial, BackendErrors }
+        type SearchHit struct { AssetID, Name, Score, Snippet, MatchReason }
+        type QueryEcho struct { Original, Normalised }
+        type MediaSearchFilter = search.Filters       // type alias (removed)
+        type SearchMode = search.SearchMode           // type alias (redundant after canonicalisation)
+    file: internal/application/mediasearch/types.go
+    file_line: "MediaSearchRequest (top), MediaSearchResponse (mid), SearchHit (mid-bottom), QueryEcho (comment-only historical reference); MediaSearchFilter/SearchMode aliases near top"
+    replacement: |
+      Canonical envelope types in internal/application/search/ (already
+      promoted during Commit 2 BACKFILL/CUTOVER + Commit 3 CONTRACT):
+        - search.Filters  : canonical filter shape (Mode, WorkspaceID,
+          ChannelSet, LifecycleStateAllowlist, MinQualityScore, TagTokens, ...).
+          Used by handler request struct (search filter parsing) +
+          search.Aggregator input.
+        - search.SearchMode  : canonical mode (Semantic | Hybrid | Lexical).
+          Used by both query-construction (Aggregato input layer) and
+          backend-fanout (the per-backend filter set).
+        - search.Result  : canonical response envelope. NO type alias needed.
+      MediaSearchRequest / MediaSearchResponse / SearchHit / QueryEcho
+      are removed entirely; their fields are reachable through the
+      canonical search types directly. The historical lossy translation
+      (Cutover.go::resultToMediaSearchResponse, deleted in Commit 2
+      PR-SEARCH-LEGACY-MEDIASEARCH follow-up) reduced the canonical
+      Candidate fields down to the legacy envelope; the canonical
+      path now exposes the full field set.
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Cross-ref PR-SEARCH-LEGACY-MEDIASEARCH (#13 above, API-layer translator) + PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL (#20, composition-root seam)."
+    compatibility_test: none (legacy envelope types physically removed; both type aliases collapsed into the canonical search package as named declarations, not aliases).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.MediaSearch(Req|Resp)' internal/ --include='*.go'`     : 0 hits.
+        - `rg 'mediasearch\.SearchHit|mediasearch\.QueryEcho' --include='*.go'`   : 0 hits.
+        - `rg 'mediasearch\.MediaSearchFilter|mediasearch\.SearchMode' --include='*.go'` : 0 hits (both aliases removed + canonical types are no-alias).
+      Pre-removal: 4 envelope types + 2 aliases = 6 surface symbols; ~28 producer/consumer sites including the legacy-API handler (internal/api/mediasearch/handler.go), the resultToMediaSearchResponse translator, the composition-root seam, and the type-alias test file. Post-removal: 0 callers of legacy + ~28 canonical consumers folded into the search package exclusively.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      The collapse from 6 surface symbols to 0 (with canonical equivalents
+      already present on main since Commit 2) is the largest single-piece
+      of CONTRACT land. The `internal/api/mediasearch/handler.go` migration
+      in Commit 2 already shaped the wire envelope in search.* exclusively
+      (no MediaSearchResponse construction in the handler anymore); the
+      remaining legacy types were zero-callers after the Commit 2
+      BACKFILL/CUTOVER commit `538e0363` shipped. Per godlike/07
+      §"Migration sequence", single-pulse CONTRACT jump is the
+      canonical pattern for a zero-pre-removal-caller layer.
+
+  - id: MEDIASEARCH-CONTRACT-SEARCHABLELIFECYCLESTATES-DUAL-LIST-REMOVAL
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.SearchableLifecycleStates — the legacy hard-coded
+      [LifecycleAvailable, LifecycleClassified] slice used by the
+      mediator's allowlist; mirrored as `testSearchableLifecycleStates`
+      in e2e_semantic_test.go (dual-list anti-pattern: production
+      allowlist + test-only list, both intentional but with drift risk).
+    file: internal/application/mediasearch/ports.go + internal/application/mediasearch/e2e_semantic_test.go
+    file_line: "SearchableLifecycleStates slice near MediaReadRepository decl (~line 130); test dual-list at e2e_semantic_test.go (~line 240)"
+    replacement: |
+      search.LifecycleStateFilter (canonical allowlist shape in
+      internal/application/search/types.go):
+        type LifecycleStateFilter struct {
+          Allowlist  []domainasset.LifecycleState  // SSOT
+          Default    domainasset.LifecycleState    // canonical default for empty allowlist
+        }
+      Single-list pattern; the dual-list anti-pattern is collapsed by
+      promoting the test allowlist to a fixture that consumes the
+      production search.LifecycleStateFilter via its exported Allowlist
+      field directly (no second hard-coded slice in the test file).
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Sibling context: domain/asset.LifecycleState canonical SSOT (PR-LIFECYCLE-CANONICAL, March 2026)."
+    compatibility_test: none (legacy allowlist physically removed; the canonical LifecycleStateFilter shape was promoted during Commit 2 BACKFILL/CUTOVER).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.SearchableLifecycleStates|mediasearch\.testSearchable' internal/ --include='*.go'` : 0 hits.
+        - `rg 'SearchableLifecycleStates' internal/application/mediasearch/ --include='*.go'` : 0 hits.
+        - `rg 'search\.LifecycleStateFilter' internal/ --include='*.go'`       : 1+ hit (canonical decl + 1 composer use).
+      Pre-removal: 2 duplicate lists (1 production + 1 test) = 4 sites (production allowlist median + 2 production median consumers in service.go / ports.go + 1 test dual-list). Post-removal: 0 callers of legacy + 1 canonical filter + 1 production consumer (composition root) + 1 test fixture that consumes the canonical filter directly.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      The dual-list anti-pattern was godlike/06 §"One owner per fact"
+      drift risk: a test fixture with its own allowlist could silently
+      diverge from production. The canonical LifecycleStateFilter is
+      a STRUCT with an exported Allowlist field; the test fixture
+      consumes the production default via the Allowlist field directly.
+
+  - id: MEDIASEARCH-CONTRACT-CHANELDENSE-AND-CHANNELSPARSEBM25-CONSTANTS-REMOVAL
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.ChannelDense — string literal `dense` used as
+      an untyped channel name in the Qdrant hybrid search dispatcher.
+      mediasearch.ChannelSparseBM25 — string literal `sparse_bm25`
+      used as the BM25 channel name.
+      Both constants are arbitrary string literals (no type safety),
+      each used in the dispatcher map construction + 2 lookup sites.
+    file: internal/application/mediasearch/types.go
+    file_line: "ChannelDense (`dense`) and ChannelSparseBM25 (`sparse_bm25`) constant decls near top"
+    replacement: |
+      assets/search.Channel type (canonical typed channel name in
+      internal/application/assets/search/types.go):
+        type Channel string
+        const (
+          ChannelDense     Channel = "dense"
+          ChannelSparseBM25 Channel = "sparse_bm25"
+        )
+      Typed constants prevent future channel name drift (the compiler
+      catches typos; string literal constants don't).
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Cross-ref QDRANT-004 typed hybrid search surface."
+    compatibility_test: none (legacy literals physically removed; typed constants promoted during Commit 2 BACKFILL/CUTOVER).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.Channel(Dense|SparseBM25)' internal/ --include='*.go'`  : 0 hits.
+        - `rg 'mediasearch\.ChannelDense|mediasearch\.ChannelSparseBM25' --include='*.go'` : 0 hits.
+      Pre-removal: 2 untyped string literals in the dispatcher map + 2 lookup sites = 4 sites; the canonical typed constants are consumed in the Qdrant hybrid dispatch path. Post-removal: 0 callers of legacy + 4+ canonical typed-channel consumers.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Typed constants are a godlike/06 §"Type aliasing" best practice:
+      untyped string literals drift (a typo in any lookup site becomes
+      a runtime miss instead of a compile error). The canonical
+      assets/search.Channel type prevents future drift and aligns with
+      the typed-Channel pattern used by other Pathway features.
+
+  - id: MEDIASEARCH-CONTRACT-APPLYLATEBINDINGS-FAKE-AVAILABILITY-REMOVAL
+    owner_capability: internal/application/search
+    exact_symbol: |
+      mediasearch.applyLateBindings(ctx, req, response) — internal
+      helper that called `bindWorkspace(response, req.Workspace)`
+      unbounded by the result backfill surface, used as a fake
+      availability shim after Cutover PR 10. The function silently
+      mutated response.WorkspaceID even when the response was a
+      synthesised shim; it was the only place where the legacy
+      WorkspaceContext leaked across stage boundaries post-Cutover.
+    file: internal/application/mediasearch/service.go (already
+      whole-file git-rm'd by PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL
+      on 2026-06-30)
+    file_line: "service.go: Whole-file git-rm'd (Wave 1.1 PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL, 2026-06-30). applyLateBindings was a QDRANT-004-dissent era helper removed by Wave 1.1 closure; this manifest entry registers the audit-fact retroactively."
+    replacement: |
+      None. The function is permanently retired per godlike/07
+      §"No fake availability" — its design premise was a temporary
+      shim for Cutover that became an unintentional quiet-correctness
+      mechanism. The canonical surface requires explicit WorkspaceContext
+      injection at every stage boundary; no late-binding shim is
+      needed because the composition root supplies the WorkspaceContext
+      once and the per-stage code propagates it deterministically.
+    introduction_date: 2026-04
+    removal_date: 2026-06-30
+    tracking_issue: "Wave 1.1 closure (PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL #20 above). Retroactive registration per godlike/07 §"Shipped-then-registered pattern": the function was removed in Wave 1.1's git-rm of mediasearch/service.go; this manifest registers the audit-fact on 2026-07-02."
+    compatibility_test: none (function deleted; no live callers; godlike/07 §"No fake availability" prohibits any reintroduced version).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'applyLateBindings' internal/ --include='*.go'` : 0 hits.
+        - `rg 'mediasearch\.applyLateBindings' --include='*.go'` : 0 hits.
+        - `git ls-files internal/application/mediasearch/service.go` : does not exist (whole-file git-rm at Wave 1.1).
+      Pre-removal: 1 helper in service.go + 1 caller (orchestrator endpoint of mediasearch.Service.Search). Post-removal: 0 callers (function deleted).
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Wave 1.1 physically deleted the function on 2026-06-30; this
+      manifest registration on 2026-07-02 is the retroactive audit-fact.
+      Per godlike/07 §"No fake availability", retroactive registration
+      of an already-removed surface is legitimate IF the gate-time
+      usage_metric (rg confirmation) is current and the tracking_issue
+      references the canonical removal commit. This entry satisfies both.
+
+  - id: MEDIASEARCH-CONTRACT-INDEXVERSION-HARDCODED-REMOVAL
+    owner_capability: internal/application/search
+    exact_symbol: |
+      The hardcoded IndexVersion literal `'v1-search-api'` returned
+      unconditionally from mediasearch.IndexVersion() (or any
+      equivalent constant) in the legacy package. The handler
+      surface (Commit 2 BACKFILL/CUTOVER) consumed it via
+      `mediasearch.IndexVersion()` static function call.
+    file: internal/application/mediasearch/types.go (or equivalent)
+    file_line: "IndexVersion hardcoded constant; exact line drifted
+      across historical commits — the canonical surface is per-commit
+      grep-driven identification"
+    replacement: |
+      search.IndexVersionSource port (introduced in Commit 2
+      BACKFILL/CUTOVER, commit `538e0363`, the canonical pattern 0
+      port surface per AGENTS.md §Pattern 0):
+        type IndexVersionSource interface {
+          IndexVersion(ctx, actor search.Actor) (string, error)
+        }
+      Production concrete: search.StaticIndexVersion (defaults to
+      `v1-search-api`; composition root MUST override with a
+      deployment-context-aware concrete for production correctness).
+      The handler reads `mediasearch.IndexVersion()` no longer; it
+      calls `deps.indexVersionSource.IndexVersion(c.Request.Context(), actor)`.
+      Compile-time assertion (post-CONTRACT):
+        var _ search.IndexVersionSource = (*search.StaticIndexVersion)(nil)
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Pattern 0 port surface per AGENTS.md Pattern 0."
+    compatibility_test: none (legacy hardcoded constant physically removed by Commit 3 git-rm; the IndexVersionSource port surface is the canonical replacement shipped in Commit 2).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg 'mediasearch\.IndexVersion\(\)|mediasearch\.IndexVersion ' internal/ --include='*.go'` : 0 hits.
+        - `rg 'IndexVersionSource' internal/ --include='*.go'` : 2 hits (canonical port decl + composition-root wiring).
+      Pre-removal: 1 hardcoded function returning a string literal constant; 1 caller in handler.go (mediator handler canonical path). Post-removal: 0 callers of legacy + 1 canonical IndexVersionSource consumer + 1 composer-supplied concrete (composition root mandatory override).
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      The hardcoded literal was a godlike/06 §"One owner per fact"
+      drift-risk: a multi-tenant deploy that needed its own
+      IndexVersion had to fork the literal. The canonical port surface
+      delegates the source-of-truth to the composition root, where the
+      deployment context supplies the right value once. The
+      StaticIndexVersion adapter is the safe default; deployments that
+      need a custom version override the composition-root wire.
+
+  - id: MEDIASEARCH-CONTRACT-INDEXBULK-AUDIT-UNCONDITIONAL-SUCCESS-REMOVAL
+    owner_capability: internal/application/mediasearch (legacy, audit-only) + internal/application/search
+    exact_symbol: |
+      /api/internal/v1/index_bulk handler (audit-only endpoint) that
+      returned 200 OK unconditionally with a stubbed counts map
+      (no Qdrant writes, no projection tracking) — a pre-QDRANT-004
+      fake-availability surface that the legacy mediator exposed for
+      CI smoke tests but never wrote through to Qdrant. The endpoint
+      is AUDIT-ONLY because it never existed in production code
+      paths; only the route registration + handler function stub
+      lived in the legacy package.
+    file: internal/application/mediasearch/ports.go (legacy route
+      registration stub); internal/api/mediasearch/handler.go
+      (handler function blank stub)
+    file_line: "Route registration + handler stub — both git-rm'd
+      by Commit 3 (no production backend wrote through to /index_bulk
+      at any point in the codebase history; this is a retroactive
+      registration of an extant-but-never-wired surface)"
+    replacement: |
+      None. The endpoint is permanently retired per godlike/07
+      §"No fake availability" + IETF RFC 8594 Sunset semantics:
+      a CI smoke endpoint that returns unconditional 200 OK is a
+      false-positive surface (operators cannot rely on its accounting);
+      the canonical reindex path (POST /api/internal/v1/index/reindex)
+      returns typed counts + lifecycle state per projection write.
+    introduction_date: 2026-04
+    removal_date: 2026-07-02
+    tracking_issue: "Spina Dorsale Fase 7 — Piano d'Azione § Fase 7. Retroactive registration per godlike/07 §"Shipped-then-registered pattern"; the route's existence was audit-only — neither operator nor smoke tests relied on it."
+    compatibility_test: none (route physically removed by Commit 3 git-rm; never produced a side-effect; godlike/07 §"No fake availability" prohibits reintroducing an unconditional-success fake-availability surface).
+    usage_metric: |
+      Today (audit baseline, 2026-07-02):
+        - `rg '/index_bulk|index_bulk' internal/ --include='*.go'` : 0 hits.
+        - `rg '/index/reindex|IndexReindex' internal/ --include='*.go'` : 1+ hit (canonical reindex endpoint, typed accounting surface).
+      Pre-removal: 1 route stub registering /index_bulk + 1 handler stub returning 200 OK unconditionally; zero production hits because the route stub never reached terminal wiring. Post-removal: 0 callers of legacy (route registration physically removed) + canonical /index/reindex with typed counts.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      This entry is the retroactive audit-fact for a `fake availability`
+      surface (godlike/07 §"No fake availability") that pre-dated
+      QDRANT-004. The route stub was inherited from the pre-cutover
+      mediator; it never reached production wiring, so its semantic
+      impact is zero. Retroactive registration is required because
+      operators reading the codebase post-Cutover would otherwise
+      infer that /index_bulk was a real endpoint. Auditing the absence
+      prevents the future-introducer of a conditional /index_bulk
+      wire from re-introducing the unconditional-success anti-pattern.
 
