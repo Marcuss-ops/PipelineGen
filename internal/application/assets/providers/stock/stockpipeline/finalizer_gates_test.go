@@ -2,8 +2,10 @@ package stockpipeline
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
@@ -20,6 +22,96 @@ func fakeSHA(i int) string {
 		out[k] = pad[(k+i)%len(pad)]
 	}
 	return string(out)
+}
+
+// ── VerifyChunks / VerifyMetadata — strict SHA256 validation ─────
+//
+// Commit 0.2 P0 2.4 hardening: the gates reject malformed SHA256
+// (len<64 / non-hex / uppercase) BEFORE the panic site at
+// BuildFinalizationRequest's `"stock:" + sha[:16]` composition.
+// Each sub-test asserts the gate surfaces the typed sentinel
+// (ErrStockChunkHashInvalid / ErrStockMetadataHashInvalid) AND that
+// the underlying asset.ErrSHA256Invalid is reachable via errors.Is
+// — the contract probe for future wrapping layers.
+
+func TestVerifyChunks_RejectsMalformedSHA256(t *testing.T) {
+	base := ChunkState{
+		Index: 0, ArtifactID: "stock:run:chunk:0",
+		LocalPath: "/tmp/c.mp4", RemoteFileID: "drive-id-0", SizeBytes: 1024,
+		Filename: "c.mp4",
+	}
+	cases := []struct {
+		name  string
+		sha   string
+	}{
+		{"short (len=15)", strings.Repeat("a", 15)},
+		{"non-hex (g)", strings.Repeat("a", 63) + "g"},
+		{"uppercase", strings.ToUpper(fakeSHA(0))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := base
+			c.SHA256 = tc.sha
+			err := VerifyChunks([]ChunkState{c})
+			if err == nil {
+				t.Fatalf("verifyChunks must reject malformed SHA256 (%s)", tc.name)
+			}
+			if !errors.Is(err, ErrStockChunkHashInvalid) {
+				t.Errorf("err = %v; want errors.Is ErrStockChunkHashInvalid == true", err)
+			}
+			if !errors.Is(err, asset.ErrSHA256Invalid) {
+				t.Errorf("err = %v; want errors.Is asset.ErrSHA256Invalid == true (godlike/07 deep probe)", err)
+			}
+		})
+	}
+}
+
+func TestVerifyMetadata_RejectsMalformedSHA256(t *testing.T) {
+	base := MetadataState{
+		LocalPath: "/tmp/m.json", RemoteFileID: "drive-id-m", SizeBytes: 512,
+	}
+	cases := []struct {
+		name string
+		sha  string
+	}{
+		{"short (len=15)", strings.Repeat("a", 15)},
+		{"non-hex (g)", strings.Repeat("a", 63) + "g"},
+		{"uppercase", strings.ToUpper(fakeSHA(99))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := base
+			m.SHA256 = tc.sha
+			err := VerifyMetadata(m)
+			if err == nil {
+				t.Fatalf("VerifyMetadata must reject malformed SHA256 (%s)", tc.name)
+			}
+			if !errors.Is(err, ErrStockMetadataHashInvalid) {
+				t.Errorf("err = %v; want errors.Is ErrStockMetadataHashInvalid == true", err)
+			}
+			if !errors.Is(err, asset.ErrSHA256Invalid) {
+				t.Errorf("err = %v; want errors.Is asset.ErrSHA256Invalid == true (godlike/07 deep probe)", err)
+			}
+		})
+	}
+}
+
+// TestVerifyChunks_AcceptsCanonicalLowercaseHex64 pins the positive
+// contract: existing happy-path SHA256 (fakeSHA produces valid 64-char
+// lowercase hex) MUST still pass the gate. Guards against future
+// regressions where a too-strict gate would reject canonical inputs.
+func TestVerifyChunks_AcceptsCanonicalLowercaseHex64(t *testing.T) {
+	chunk := ChunkState{
+		Index: 0, ArtifactID: "stock:run:chunk:0",
+		LocalPath:   "/tmp/c.mp4",
+		RemoteFileID: "drive-id-0",
+		SizeBytes:    1024,
+		Filename:     "c.mp4",
+		SHA256:       fakeSHA(0),
+	}
+	if err := VerifyChunks([]ChunkState{chunk}); err != nil {
+		t.Fatalf("verifyChunks must accept canonical SHA256: %v", err)
+	}
 }
 
 // TestVerifyChunks_Empty raises the canonical P0 2.1 sentinel
