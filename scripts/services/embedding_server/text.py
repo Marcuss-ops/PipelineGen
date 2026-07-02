@@ -149,32 +149,71 @@ async def index_bulk(req: IndexBulkRequest):
     """QDRANT-001 closure: bulk compute-and-return. Caller persists.
 
     Input: list of clip specs {clip_id, name, search_text}.
-    Output: list of {clip_id, field, embedding, dimensions, text_length, status}.
+    Output: {status, total, successful, skipped, failed, results}.
+
+    Status derivation:
+      - all clips embedded successfully  → "success"
+      - some skipped / some failed      → "partial"
+      - every clip failed or skipped    → "failed"
+
+    Per-clip embedding errors are caught individually so one bad clip
+    does not abort the entire batch. The caller inspects the per-item
+    status field (absent = success, "skipped", "failed") to decide
+    which entries to persist.
 
     Replaces the previous flow that opened SQLite inside this sidecar.
     """
     async with _inference_sem:
         try:
             results: list[dict] = []
+            successful = 0
+            skipped = 0
+            failed = 0
             for clip in req.clips:
                 text = (clip.search_text or clip.name or "").strip()
                 if not text:
+                    skipped += 1
                     results.append({
                         "status": "skipped",
                         "clip_id": clip.clip_id,
                         "reason": "no search_text or name",
                     })
                     continue
-                normalized = normalize_text(text)
-                prefixed = "passage: " + normalized
-                embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
-                results.append({
-                    "clip_id": clip.clip_id,
-                    "embedding": embedding,
-                    "dimensions": len(embedding),
-                    "model": TEXT_MODEL_NAME,
-                    "model_version": TEXT_MODEL_VERSION,
-                })
-            return {"status": "success", "count": len(results), "total": len(req.clips), "results": results}
+                try:
+                    normalized = normalize_text(text)
+                    prefixed = "passage: " + normalized
+                    embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
+                    successful += 1
+                    results.append({
+                        "clip_id": clip.clip_id,
+                        "embedding": embedding,
+                        "dimensions": len(embedding),
+                        "model": TEXT_MODEL_NAME,
+                        "model_version": TEXT_MODEL_VERSION,
+                    })
+                except Exception:
+                    failed += 1
+                    results.append({
+                        "status": "failed",
+                        "clip_id": clip.clip_id,
+                        "reason": "embedding generation failed",
+                    })
+
+            total = len(req.clips)
+            if successful == total:
+                status = "success"
+            elif successful == 0:
+                status = "failed"
+            else:
+                status = "partial"
+
+            return {
+                "status": status,
+                "total": total,
+                "successful": successful,
+                "skipped": skipped,
+                "failed": failed,
+                "results": results,
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
