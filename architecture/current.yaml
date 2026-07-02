@@ -611,6 +611,93 @@
       owner_capability: internal/application/jobs/outbox + internal/infrastructure/drive
       status: removed
       deadline: 2026-07-01
+- id: 29
+  status: done
+  exit_signal: true
+  owner: stock
+  deadline: 2026-07-02
+  exit_gate: |
+    Stock Cutover Commit 4-expanded landed on origin/main, scope-locked
+    to internal/application/assets/providers/stock/stockpipeline/.
+
+    Canonical surface verified on origin/main (3 SHAs: 9aa4c9e2
+    byte-equivalent-replay canonical + 0c74e408 forward-port +
+    ed4f8331 post-rebase, per AGENTS.md Git-Lesson-5 umbrella):
+      * 3 Pattern 0 resilience ports (ManifestBuilder /
+        TransactionalAssetWriter / ProjectionPort) declared in
+        upload_orchestration.go (~190 LoC).
+      * RunResilient 7-step ladder (resolve_sources / plan_clips /
+        stage_sources / build_manifest / validate_manifest /
+        emit_chunks / project_manifest) threads typed *RunSummary
+        through Service.runOrchestratorResilient.
+      * 4 typed sentinels in upload_orchestration.go:
+        ErrManifestIncomplete + ErrAtomicDispatchFailed +
+        ErrProjectionResilience + ErrResilienceNotWired (all
+        errors.New typed, surfaced via errors.Is per godlike/07).
+      * 3 canonical resilience tests in run_upload_indexing_test.go
+        (~110 LoC): (a) writer-error → ErrAtomicDispatchFailed via
+        errors.Is after aborting on first call (atomic outbox-DB
+        rollback contract); (b) manifest-incomplete gate →
+        ErrManifestIncomplete when Required:true artifact Path empty
+        (summary must be nil); (c) Qdrant offline →
+        *RunSummary{Manifest:non-nil, FinalStatus:StatusIndexPending}
+        with nil error (artifacts ARE on Drive; only indexing deferred).
+      * job.StatusIndexPending = "INDEX_PENDING" surrogate
+        (kernel/job + domain/job re-export), IsActive + Valid
+        predicates extended.
+      * Verification gates: go build ./internal/application/assets/
+        providers/stock/stockpipeline/... + go vet + go test
+        -count=1 -timeout=60s all exit 0 (ok ... 0.017s post-rebase).
+
+    Residue (godlike/07 no-fake-availability): 8 doc-only audit-pins
+    intentionally retained in stockpipeline/{service.go, run.go}
+    referencing retired symbols (godlike/06/07 audit-pin discipline).
+    NO production-code active-use residue for the 10 retired symbols
+    in this scope. NoopSourceStager legacy artefact confirmed retired
+    (Commit 1.2 lineage; check 54 contract surface); noopWriter +
+    noopProjection Pattern 0 default impls preserved as
+    resilience-port fallbacks for NewOrchestrator. Surface fully
+    retired; no follow-on artifact.
+
+    Honest scope statement (per godlike/07 + AGENTS.md \"don't surprise
+    downstream commits\"): the stockpipeline subtree IS the canonical
+    closure scope for this commit. Cross-package YouTube-side
+    IndexingStatus (in internal/application/assets/sourcing/types.go
+    declaring typed enum, sourcing/youtube/{service.go, ports.go} with
+    3 production-code usages, and internal/api/assets/register/
+    handler.go:126 emitting the `\"indexing_status\"` JSON wire field)
+    is a SEPARATE concern (asset-level YouTube indexing vs chunk-level
+    stock indexing). The YouTube-side IndexingStatus is NOT retired by
+    Stock Cutover Commit 4-expanded; see linked_issues
+    PR-CrossPackage-IndexingStatus-§12-5 (deadline 2026-08-15) for the
+    forward-pointer.
+
+    Reflog audit-trail per AGENTS.md Git-Lesson-5 step 4: local-divergent
+    SHA 94854247 retained in git reflog for 30+ day audit, with byte-
+    equivalence diagnostic confirming 11/11 semantic-surface Go files
+    blob-identical to canonical 9aa4c9e2 (no --force used; canonical
+    SHA on origin/main wins per AGENTS.md canonical recovery posture).
+  linked_issues:
+    - id: 9aa4c9e2
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      deadline: 2026-07-02
+    - id: 0c74e408
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      deadline: 2026-07-02
+    - id: ed4f8331
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      deadline: 2026-07-02
+    - id: PR-CrossPackage-IndexingStatus-§12-5
+      owner_capability: internal/application/assets/sourcing (cross-package coordination)
+      status: pending
+      deadline: 2026-08-15
+    - id: P0.18
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-08-15
 
 
 # ---------------------------------------------------------------------------
