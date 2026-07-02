@@ -16,6 +16,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -50,8 +51,8 @@ func DefaultPipelineConfig() PipelineConfig {
 // error to operators and tests can assert the precise missing dep without
 // reading through the wrapped fmt chain.
 var (
-	ErrStockPipelineNilCfg            = errors.New("stockpipeline.NewService: cfg is required")
-	ErrStockPipelineNilLog            = errors.New("stockpipeline.NewService: log is required")
+	ErrStockPipelineNilCfg = errors.New("stockpipeline.NewService: cfg is required")
+	ErrStockPipelineNilLog = errors.New("stockpipeline.NewService: log is required")
 	// F2.10: ErrStockPipelineNilDriveSvc RETIRED. The legacy
 	// DriveSvc surface (driveup.Admin + its upload/folder-resolution
 	// methods) was dropped entirely (override brutal). Every Drive
@@ -185,10 +186,10 @@ type Deps struct {
 // were removed. Production wire-up lives in WireStockPipeline at
 // internal/app/module_sources.go (Deps{...} literal).
 type Service struct {
-	cfg      *config.Config
-	log      *zap.Logger
+	cfg       *config.Config
+	log       *zap.Logger
 	publisher delivery.Publisher
-	ytdlp    *downloader.YTDLPDownloader
+	ytdlp     *downloader.YTDLPDownloader
 	// cutter + renderer are the PR6 ports. Initialised at ctor time so
 	// every method sees either a non-nil port or an error from NewService;
 	// the per-site nil-guards the setters previously required are gone.
@@ -281,9 +282,9 @@ func NewService(deps Deps) (*Service, error) {
 		cfg:       deps.Cfg,
 		log:       deps.Log,
 		publisher: deps.Publisher,
-		ytdlp:    downloader.NewYTDLP(deps.Cfg),
-		cutter:   deps.Media.Cutter,
-		renderer: deps.Media.Renderer,
+		ytdlp:     downloader.NewYTDLP(deps.Cfg),
+		cutter:    deps.Media.Cutter,
+		renderer:  deps.Media.Renderer,
 		pcfg: PipelineConfig{
 			ChunkDuration:  v.ChunkDuration,
 			MaxResults:     v.MaxClipsPerSource,
@@ -326,6 +327,30 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 }
 
 // HandleJob handles a stock pipeline job from the job queue.
+//
+// Stock Cutover Commit 2 (July 2026): the handler no longer calls
+// s.Run (the legacy ~280-line body that called resolveQuery /
+// processSingleVideo / renderChunk / uploadAndIndexChunk / etc.).
+// Instead it calls s.runOrchestrator directly so it has access to
+// the typed *job.ArtifactManifest, which is the canonical wire
+// artefact for the broker's downstream runner (the worker runner
+// at internal/application/jobs/worker/runner.go::uploadManifest
+// reads the result map's "__artifact_manifest" key per
+// domain/job.ManifestKey).
+//
+// Result-map shape (Stock Cutover Commit 2):
+//
+//	"__artifact_manifest" -> *job.ArtifactManifest (canonical wire artefact)
+//	"total_clips"          -> int                      (legacy field, projected from manifest; zero in Commit 2, hydrated in Commit 4-7)
+//	"total_chunks"         -> int                      (legacy field, projected from manifest; zero in Commit 2)
+//	"chunks"               -> []ChunkResult            (legacy field, projected from manifest; nil in Commit 2)
+//	"metadata_link"        -> string                   (legacy field, projected from manifest; empty in Commit 2)
+//	"metadata_file_id"     -> string                   (legacy field, projected from manifest; empty in Commit 2)
+//
+// Legacy fields are kept so dashboards reading the JobStatusResponse
+// continue to render without a schema break; the canonical manifest
+// is the new source of truth. Commit 4-7 hydrates the legacy fields
+// from the committed RunOutput metadata once the chunk ladder ships.
 func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	var payload StockRunPayload
 	if len(job.Payload) > 0 {
@@ -372,24 +397,38 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 
 	if tools.Progress != nil {
 		input.Progress = tools.Progress
-		tools.Progress(5, "Starting stock pipeline")
+		tools.Progress(5, "Starting stock orchestrator")
 	}
 
-	result, err := s.Run(ctx, input)
+	// Stock Cutover Commit 2: route through runOrchestrator so the
+	// JobID stamped on the manifest is the broker-assigned one
+	// (Service.Run would default to "stock_orchestrator_v1"
+	// because it has no job.ID in scope).
+	manifest, err := s.runOrchestrator(ctx, input, job.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	if tools.Progress != nil {
-		tools.Progress(100, "Stock pipeline complete")
+		tools.Progress(100, "Stock orchestrator complete")
 	}
 
+	// Project the typed manifest into the legacy shape for
+	// dashboards that read the top-level fields (zero in Commit 2;
+	// post-cutover chunks populate them in Commit 4-7).
+	projected := projectManifestToPipelineResult(manifest) // Note on `jobdomain` (alias vs HandleJob's `job` parameter): the
+	// HandleJob parameter is named `job *appjobs.Job` so the bare
+	// identifier `job` resolves to the broker job, NOT to a package
+	// alias. We therefore import domain/job as `jobdomain` so the
+	// artifact-manifest constants (jobdomain.ManifestKey,
+	// jobdomain.SchemaVersionArtifactManifestV1) are unambiguous.
 	return map[string]any{
-		"total_clips":      result.TotalClips,
-		"total_chunks":     result.TotalChunks,
-		"chunks":           result.Chunks,
-		"metadata_link":    result.MetadataLink,
-		"metadata_file_id": result.MetadataFileID,
+		jobdomain.ManifestKey: manifest, // "__artifact_manifest" — canonical wire artefact
+		"total_clips":         projected.TotalClips,
+		"total_chunks":        projected.TotalChunks,
+		"chunks":              projected.Chunks,
+		"metadata_link":       projected.MetadataLink,
+		"metadata_file_id":    projected.MetadataFileID,
 	}, nil
 }
 
