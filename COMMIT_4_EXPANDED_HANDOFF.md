@@ -619,3 +619,101 @@ Verdict: APPROVE/APPROVE-WITH-NITS/REJECT.
 | 6 | codice Go pronto per i 3 test (copia-incolla) | quando implementi §2.3 |
 | 7 | prompt per il code-reviewer | quando lanci §4 |
 | 8 | TL;DR | rileggilo prima di committare |
+
+---
+
+# Post-landing Audit (luglio 2026)
+
+> **Scopo della sezione**: Questo documento è nato come **planning-document**
+> (snapshot stato + recovery playbook per sessioni successive) per guidare
+> le 5 sub-sessioni che hanno portato il Commit 4-expanded a `origin/main`.
+> Una volta atterrato, planning-document è obsoleto: si converte in
+> **historical-document** registrando canonical-landed-shape, 3-SHA
+> lineage (audit-trail per AGENTS.md §Git-Lesson-5), e il diff onesto
+> tra piano iniziale ed effettiva landed-state.
+>
+> Le sezioni 1-8 sopra restano valide come **recovery playbook** (un
+> agente futuro può ri-usarle se dovesse re-implementare un Commit
+> 4-equivalente su una codebase divergente), ma NON sono più il "next
+> action" canonico. Per lo stato corrente del contratto closure,
+> consultare:
+> - `architecture/current.yaml#id-29` (wave tracker entry, `status: done` + `exit_signal: true`)
+> - `architecture/issues.yaml#PR-CROSSPACKAGE-INDEXING-STATUS-§12-5` (cross-package forward-pointer, deadline 2026-08-15)
+> - `AGENTS.md §Active Concerns #13` (closure entry canonical)
+
+---
+
+## §A. 3-SHA closure lineage (commit chain landing su origin/main)
+
+I 3 SHAs canonici che rappresentano la chain di commit che ha portato
+Commit 4-expanded dalla working tree locale a `origin/main`:
+
+| # | SHA (short) | SHA (full) | Subject | Ruolo nella chain |
+|---|-------------|------------|---------|-------------------|
+| 1 | `9aa4c9e2` | `9aa4c9e2b... (Commit 4-expanded canonical)` | `refactor(stock): Commit 4-expanded — retire IndexingStatus residue + add resilience ports + 3 tests + gofmt carry-over` | **CANONICAL byte-equivalent-replay SHA**. Un agente parallelo su `origin/main`'s development line ha applicato byte-equivalent la stessa patch (11/11 shared Go files blob-identical al locale-divergent amend `94854247`). Per AGENTS.md §Git-Lesson-5 step 3, il canonical SHA su `origin/main` wins senza `--force`. |
+| 2 | `0c74e408` | `0c74e408e... (forward-port)` | `docs(handoff): archive COMMIT_4_EXPANDED_HANDOFF.md planning notes` | **FORWARD-PORT commit**. Il locale-divergent `94854247` (prima amend sequence) ha generato un SURVIVING md5 byte-identical a `/tmp/handoff.bak` (`c184317e87ab2367cc2ffe529f207775`); cherry-pick Option 2 (preserve planning notes per audit-trail) usato per recuperare il file via `git reset --hard origin/main && git cherry-pick 94854247~... && md5-verify` path descritto in AGENTS.md §Git-Lesson-5 Option 2. |
+| 3 | `7dba2adf` | `7dba2adf2... (AGENTS.md Active Concerns #13)` | `docs(agents): add Active Concerns #13 closure note (Commit 4-expanded landed)` | **CLOSURE NOTE commit**. AGENTS.md §Active Concerns #13 entry registra i 5 surfaces canonical-closed: (a) `upload_orchestration.go` (3 port + 4 sentinel + RunSummary), (b) orchestrator.go (RunResilient 7-step ladder), (c) run_upload_indexing_test.go (3 canonical contracts), (d) kernel/domain job StatusIndexPending (107 import sites in 93 files re-exported), (e) service.go ChunkResult.Indexed retirement. |
+
+**Audit-trail canonical preservation**: `94854247` (locale-divergent amend SHA) è preservato in `git reflog` per 30+ giorni per AGENTS.md §Git-Lesson-5 step 4 audit (`94854247 HEAD@{N}` con N che varia in base alla chain accumulation sopra). `refs survive the default expire window; git reflog expire --expire-unreachable=now NOT needed`.
+
+---
+
+## §B. Diff tra planning-document e landed-state (4 sentinels vs 3 + commit ed4f8331 §12-4)
+
+### §B.1 Sentinel count drift (3 → 4)
+
+**Planning document** (sezione "appendice codice pronto" e prompt code-reviewer §7):
+> "3 typed sentinels (ErrManifestIncomplete + ErrAtomicDispatchFailed + ...)"
+
+**Landed state canonico** (commits 9aa4c9e2 + step-3-pre-update):
+> "4 typed sentinels in `upload_orchestration.go`: `ErrManifestIncomplete` + `ErrAtomicDispatchFailed` + `ErrProjectionResilience` + `ErrResilienceNotWired` (all `errors.New(...)` typed, surfaced via `errors.Is` per godlike/07)"
+
+**Causa del drift**: durante l'implementazione effettiva, è emerso un quarto sentinel `ErrResilienceNotWired` non documentato nel piano iniziale — necessario per esplicitare la failure-mode "i 3 port resilience NON sono iniettati dal composition root" (catturabile dal test path quando `NewOrchestratorWithResilience` riceve nil ports invece dei default fallback). Senza questo typed sentinel, il fallback ai default impls avrebbe mascherato il wiring-gap silenziosamente (silent-success class che Audit P0 #6/Wave 21 vieta per godlike/07).
+
+**Azione taken**: ho aggiornato la count nel commit AGENTS.md Active Concerns #13 (7dba2adf) + closure meta-entry CHANGELOG + arch/current.yaml#id-29.exit_gate, **esplicitando la divergence dal planning** come "deliberate landed-state hardening, NON regression". Le sezioni planning-di-cui-sopra restano con la count originaria "3" per non riscrivere la storia del piano: la divergence è documentata qui in §B.1.
+
+### §B.2 §12-4 SourceStager port abstraction — commit intermedio non pianificato
+
+**Planning document** (sezione 2.1, 6, 7): menziona `NewNoopSourceStager()` come constructor concret esistente, non pianifica abstraction port per SourceStager.
+
+**Landed state canonico**: include il commit `ed4f8331 feat(stock): §12-4 — SourceStager port abstraction (persistent staging)` tra Commit 4-expanded (9aa4c9e2) e forward-port (0c74e408) nella lineage di `origin/main`:
+
+```
+ed4f8331 feat(stock): §12-4 — SourceStager port abstraction (persistent staging)
+9aa4c9e2 refactor(stock): Commit 4-expanded — retire IndexingStatus residue + add resilience ports + 3 tests + gofmt carry-over
+13495fb0 feat(stock): §12-1 §F — thread HandleJob through canonical Spina Dorsale single-TX handoff
+...
+```
+
+**Causa del drift**: durante la finestra di commit-to-push di Commit 4-expanded, un agente parallelo su `origin/main`'s development line ha considerato il `NewNoopSourceStager()` "single-implementation concrete senza abstraction port" come un anti-pattern contro Pattern 0 (godlike/06 SSOT violation risk). Ha quindi introdotto il commit `ed4f8331` che astrae `SourceStager` nello stesso pattern port dei 3 commit-pattern-0-resistant stocksurface di Commit 4-expanded. Il planning-document non ha copertura preventival di questa decision perché è una **wave-parallel decision external** al Commit 4-expanded scope-lock.
+
+**Impatto su Commit 4-expanded closure**: NULLO. Il commit 9aa4c9e2 NON dipende da SourceStager abstraction — usa direttamente `NewNoopSourceStager()` come concrete passed-by-value a `NewOrchestrator(cfg, planner, steps, stager, cutter, renderer)`. Il commit `ed4f8331` ha semplicemente sostituito la chiamata interna con un port-injected versione dello stesso constructor; il byte-pattern di superficie (signature + body) è conservato per backward-compat con Commit 4-expanded callers. La closure entry id:29 menziona `ed4f8331` esplicitamente nella exit_gate narrative come "inter-wave co-commit, scope-lock verified independent".
+
+---
+
+## §C. Post-landing audit checklist (per future re-implementations)
+
+Se una futura codebase diverge abbastanza da richiedere un Commit 4-equivalente
+su un nuovo subtree, ri-usare le sezioni 1-8 come playbook **MA** consultare
+prima i canonical-doc pointers:
+
+1. `architecture/current.yaml#id-29.exit_gate` per la "4 sentinels canonico" + scope-lock narration
+2. `architecture/issues.yaml#PR-CROSSPACKAGE-INDEXING-STATUS-§12-5` se la nuova codebase ha un typed-enum IndexingStatus cross-package (probabilmente sì, era comune nel pattern stock-side)
+3. `AGENTS.md §Active Concerns #13` per il forward-pointer pattern completo
+4. `/tmp/residue_post_commit5.md` per il base-line di residue (snapshot pre-§12-5-EXPAND)
+5. **NON** ri-pianificare con count "3 sentinels" — la count canonica è 4, e `ErrResilienceNotWired` va progettato dal COMMIT 1 non aggiunto in corso d'opera.
+
+---
+
+## §D. Conversion marker (planning → historical)
+
+Da questo punto in poi, COMMIT_4_EXPANDED_HANDOFF.md è un **historical-document**.
+Le sezioni 1-8 rimangono nel file per audit purposes ma NON devono essere
+riferite come "next action". Per "next action" canonico, fare sempre
+riferimento ai linked canonical-doc pointers (§A fine + §C).
+
+**Conversion timestamp**: 2026-07-02 (post-§12-5 ticket landing `16b3aa61`).
+**Conversion reason**: Complete la §12-5 ticket landing + verifica
+tracciaudit (`/tmp/residue_post_commit5.md`) — Commit 4-expanded è
+**canonical-closed** per stockpipeline subtree, e **forward-pointed**
+per cross-package YouTube (§12-5 EXPAND phase pending).
