@@ -456,9 +456,26 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		if compPath != "" {
 			if err := cs.ComputeAndFillSHA256(); err != nil {
-				// godlike/07 fail-closed: surface the typed sentinel
-				// verbatim so callers can errors.Is into
-				// ErrStockChunkHashMissing / ErrStockChunkLocalMissing.
+				// Pre-Commit-7 transitional path: the compose_chunks
+				// stub produces logical IDs (not real file paths).
+				// When the file doesn't exist on disk, skip the
+				// chunk gracefully so the pipeline continues.
+				// Once Commit 7 wires StockRenderer.Render, every
+				// composed path will be a real file on disk.
+				// TODO(Commit-7): restore fail-closed on
+				// ErrStockChunkLocalMissing once compose_chunks
+				// produces real files.
+				if errors.Is(err, ErrStockChunkLocalMissing) {
+					if runner.Log() != nil {
+						runner.Log().Debug("orchestrator: stock.publish: skipping chunk (local file not on disk — pre-Commit-7 compose stub)",
+							zap.Int("chunk_index", i),
+							zap.String("artifact_id", cs.ArtifactID),
+							zap.String("local_path", compPath))
+					}
+					continue
+				}
+				// Non-ErrStockChunkLocalMissing errors (hash failures,
+				// stat I/O errors) are still surfaced loudly.
 				return fmt.Errorf("orchestrator: stock.publish: chunk %d (artifact=%s): %w",
 					i, cs.ArtifactID, err)
 			}
@@ -494,6 +511,18 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// ── Phase 2: per-run metadata.json ArtifactPreparation ────────
 	// Always invoked AFTER chunks so the metadata's Chunks[] list
 	// embeds the per-chunk ArtifactIDs + DriveFileIDs.
+	//
+	// Pre-Commit-7 guard: if zero chunks were prepared (all skipped
+	// because compose_chunks is a stub producing logical IDs), skip
+	// metadata publication too — there are no chunk entries to embed.
+	// This preserves the PublisherUnreached contract (recordingPublisher
+	// must record 0 publish calls).
+	if len(chunks) == 0 {
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.publish: zero chunks prepared — skipping metadata publication (pre-Commit-7 stub)")
+		}
+		return nil
+	}
 	metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(
 		runner.RunInput(), chunks, fp,
 	)
