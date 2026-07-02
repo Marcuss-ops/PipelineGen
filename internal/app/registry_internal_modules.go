@@ -26,6 +26,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -70,19 +75,59 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if root.Search != nil {
 		providerReg = root.Search.ProviderRegistry
 	}
-	// Fase 6 (July 2026): wire VectorStore (Qdrant SearchAdapter) into
-	// the search backend registry. Embedder + MediaRepo + Delivery are
-	// nil for now — the semantic backend gracefully skips registration
-	// until all four ports are wired (future PR).
+	// Fase 6 (July 2026): wire the canonical 4-port semantic backend.
+	// VectorStore (Qdrant SearchAdapter) from Process bundle,
+	// EmbeddingChannelRegistry from Ollama (OllamaClient →
+	// ollamaEmbedder → qdrant.TextEmbedder → embeddingRegistryAdapter
+	// → search.EmbeddingChannelRegistry), MediaReadRepository from
+	// ClipsRepository, and Delivery from the HMAC Signer
+	// (cfg.Security.DeliveryHMACSecret ≥ 32 bytes). When any of the
+	// four ports is nil, BuildSearchBackends silently skips the
+	// semantic backend (graceful degradation to providers + local).
 	var vectorStoreForSearch assetsearch.VectorStorePort
 	if root.Process != nil {
 		vectorStoreForSearch = root.Process.VectorSvc
 	}
+
+	// EmbeddingChannelRegistry: Ollama → ollamaEmbedder → qdrant.TextEmbedder → embeddingRegistryAdapter
+	var embeddingReg search.EmbeddingChannelRegistry
+	if root.AI != nil && root.AI.OllamaClient != nil {
+		ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
+		embeddingReg = newEmbeddingRegistryAdapter(qdrant.NewTextEmbedderAdapter(ollamaEmb))
+	}
+
+	// MediaReadRepository: ClipsRepository → mediasearch.MediaReadRepository
+	var mediaRepo mediasearch.MediaReadRepository
+	if root.Repos != nil {
+		mediaRepo = newMediaSearchReadAdapter(root.Repos.ClipsRepo)
+	}
+
+	// Delivery: HMAC Signer for signed asset delivery URLs.
+	var deliveryPort mediasearch.AssetDeliveryService
+	if cfg != nil && cfg.Security.DeliveryHMACSecret != "" {
+		baseURL := cfg.External.VeloxBaseURL
+		if baseURL == "" {
+			baseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+		}
+		signer, err := delivery.NewSigner(
+			[]byte(cfg.Security.DeliveryHMACSecret),
+			0, // use default 5m TTL
+			baseURL,
+			"/api/internal/v1/deliver",
+		)
+		if err != nil {
+			log.Warn("registerInternalModules: delivery signer construction failed; semantic backend delivery disabled",
+				zap.Error(err))
+		} else {
+			deliveryPort = signer
+		}
+	}
+
 	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
-		nil,                   // embeddings: PR-EMBEDDING-CHANNEL-REGISTRY surface, wired in a follow-up PR
+		embeddingReg,          // embeddings: EmbeddingChannelRegistry from Ollama pipeline
 		vectorStoreForSearch,  // vectorStore: Qdrant SearchAdapter from Process bundle
-		nil,                   // mediaRepo: wired in a follow-up PR
-		nil,                   // delivery: wired in a follow-up PR
+		mediaRepo,             // mediaRepo: ClipsRepository → MediaReadRepository
+		deliveryPort,          // delivery: HMAC Signer for signed URLs
 	)
 	_ = searchAgg // for symmetry with pre-PR4 inline pattern; the var stays nil when providerReg is nil
 	wiring.idempotencyHandler = idemHandler
