@@ -11,15 +11,18 @@
 package job
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 )
 
 // jobDefinitionTestCodec is a minimal stub satisfying the
-// CodecDescriptor interface (introduced in P0 Commit 1). The interface
-// surface today is just SchemaVersion + JobType; Commit 2 wires the
-// typed Encode/Decode bodies.
+// PayloadCodec + ResultCodec interfaces (introduced in P0
+// Commit 2, elaborating the C1 CodecDescriptor marker with
+// Encode/Decode bodies). Implementation is intentionally trivial
+// (JSON-marshal round-trip) so canonical-literal tests don't
+// rely on production codec behaviour.
 type jobDefinitionTestCodec struct {
 	jobType       string
 	schemaVersion string
@@ -27,6 +30,44 @@ type jobDefinitionTestCodec struct {
 
 func (c jobDefinitionTestCodec) SchemaVersion() string { return c.schemaVersion }
 func (c jobDefinitionTestCodec) JobType() string       { return c.jobType }
+
+// EncodePayload — PayloadCodec body. Test-only identity round-trip.
+func (c jobDefinitionTestCodec) EncodePayload(req any) (json.RawMessage, error) {
+	return json.Marshal(req)
+}
+
+// DecodePayload — PayloadCodec body. Returns a map[string]any decoded
+// from the canonical json bytes; tests assert by reading selected keys.
+func (c jobDefinitionTestCodec) DecodePayload(raw json.RawMessage) (any, error) {
+	var v map[string]any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// EncodeResult — ResultCodec body. Test-only identity round-trip.
+func (c jobDefinitionTestCodec) EncodeResult(resp any) (json.RawMessage, error) {
+	return json.Marshal(resp)
+}
+
+// DecodeResult — ResultCodec body. Mirrors DecodePayload.
+func (c jobDefinitionTestCodec) DecodeResult(raw json.RawMessage) (any, error) {
+	var v map[string]any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// Compile-time assertions: jobDefinitionTestCodec implements BOTH
+// PayloadCodec AND ResultCodec. A future commit that adds another
+// method to either interface would break the assertion here FIRST,
+// locking the keep-them-in-sync contract.
+var (
+	_ PayloadCodec = jobDefinitionTestCodec{}
+	_ ResultCodec  = jobDefinitionTestCodec{}
+)
 
 // ── Canonical JobDefinition literals (single source of truth) ────────
 //
