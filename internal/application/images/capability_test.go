@@ -2,110 +2,54 @@ package images
 
 import "testing"
 
-// TestCapabilityResolution_NilSafe: a nil *Service must NOT panic and
-// must report NotImplemented for any capability. Handlers in tests +
-// partial wiring call into Service{} values before the composition
-// root has populated the fields; the resolver must degrade safely.
 func TestCapabilityResolution_NilSafe(t *testing.T) {
-	var s *Service // nil receiver
-	for _, cap := range []Capability{
-		CapImageGenNvidia,
-		CapRemoteImageGen,
-		CapImageGenChrome,
-	} {
-		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
-			t.Errorf("nil receiver for %s: got %s, want %s", cap, got, StatusNotImplemented)
-		}
+	var s *Service
+	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusNotImplemented {
+		t.Errorf("nil receiver: got %s, want %s", got, StatusNotImplemented)
 	}
 }
 
-// TestCapabilityResolution_TruthfulMapping: A zero-value Service (no
-// NVIDIA key, no remote URL) must report MissingDependency for the
-// Chrome generator (not wired) and NotImplemented for the others.
-func TestCapabilityResolution_TruthfulMapping(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{}} // zero Diag
-
-	want := map[Capability]CapabilityStatus{
-		CapImageGenNvidia: StatusNotImplemented,    // Disabled
-		CapRemoteImageGen: StatusNotImplemented,    // Disabled
-		CapImageGenChrome: StatusMissingDependency, // imageGen not wired
-	}
-	for cap, want := range want {
-		if got := s.CapabilityResolution(cap); got != want {
-			t.Errorf("capability %s: got %s, want %s", cap, got, want)
-		}
-	}
-}
-
-// TestCapabilityResolution_NvidiaKeyAvailable: Even setting nvidiaAPIKey on
-// the Service, CapImageGenNvidia remains StatusNotImplemented since Chrome/Slides is the only provider.
-func TestCapabilityResolution_NvidiaKeyAvailable(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{nvidiaAPIKey: "nvapi-real-key-12345"}}
-
-	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
-		t.Errorf("CapImageGenNvidia with real key: got %s, want %s", got, StatusNotImplemented)
-	}
-	if got := s.CapabilityResolution(CapRemoteImageGen); got != StatusNotImplemented {
-		t.Errorf("CapRemoteImageGen: got %s, want %s", got, StatusNotImplemented)
-	}
-	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusMissingDependency {
-		t.Errorf("CapImageGenChrome: got %s, want %s", got, StatusMissingDependency)
-	}
-}
-
-// TestCapabilityResolution_NvidiaKeyPlaceholder: Checked for completeness.
-func TestCapabilityResolution_NvidiaKeyPlaceholder(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{nvidiaAPIKey: nvidiaAPIKeyPlaceholder}}
-	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
-		t.Errorf("CapImageGenNvidia with placeholder: got %s, want %s", got, StatusNotImplemented)
-	}
-}
-
-// TestCapabilityResolution_ChromeAvailable: Wiring an ImageGenerator
-// flips CapImageGenChrome to StatusAvailable. Uses a non-nil dummy to
-// satisfy the ImageGenerator interface.
-func TestCapabilityResolution_ChromeAvailable(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{imageGen: &ChromeImageProvider{}}}
-
-	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusAvailable {
-		t.Errorf("CapImageGenChrome with wired provider: got %s, want %s", got, StatusAvailable)
-	}
-	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
-		t.Errorf("CapImageGenNvidia: got %s, want %s", got, StatusNotImplemented)
-	}
-}
-// TestCapabilityResolution_RemoteURLAvailable:
-// remoteImageEndpointURL on the Diag, CapRemoteImageGen remains
-// StatusNotImplemented since Chrome/Slides is the only provider.
-func TestCapabilityResolution_RemoteURLAvailable(t *testing.T) {
+func TestCapabilityResolution_MissingGoogleSlidesDependency(t *testing.T) {
 	s := &Service{Diag: &DiagnosticsService{}}
-
-	if got := s.CapabilityResolution(CapRemoteImageGen); got != StatusNotImplemented {
-		t.Errorf("CapRemoteImageGen with URL: got %s, want %s", got, StatusNotImplemented)
-	}
-	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusNotImplemented {
-		t.Errorf("CapImageGenNvidia: got %s, want %s", got, StatusNotImplemented)
+	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusMissingDependency {
+		t.Errorf("Google Slides capability: got %s, want %s", got, StatusMissingDependency)
 	}
 }
 
-// TestAllCapabilities_ContainsAllCapabilities: The AllCapabilities
-// map must contain EVERY Capability constant (not just a subset) so
-// the diagnostic endpoint + future consumers can iterate over it
-// without holding a parallel list.
-func TestAllCapabilities_ContainsAllCapabilities(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{}} // zero Diag
-	all := s.AllCapabilities()
+func TestCapabilityResolution_GoogleSlidesAvailable(t *testing.T) {
+	s := &Service{Diag: &DiagnosticsService{imageGen: &ChromeImageProvider{}}}
+	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusAvailable {
+		t.Errorf("Google Slides capability: got %s, want %s", got, StatusAvailable)
+	}
+}
 
-	for _, cap := range []Capability{
-		CapImageGenNvidia,
-		CapRemoteImageGen,
-		CapImageGenChrome,
-	} {
-		if _, ok := all[cap]; !ok {
-			t.Errorf("AllCapabilities missing entry for %s", cap)
+func TestCapabilityResolution_DeprecatedProviderIDsNotImplemented(t *testing.T) {
+	s := &Service{Diag: &DiagnosticsService{
+		imageGen:     &ChromeImageProvider{},
+		nvidiaAPIKey: "legacy-key-must-not-enable-provider",
+	}}
+	for _, cap := range []Capability{CapImageGenNvidia, CapRemoteImageGen} {
+		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
+			t.Errorf("deprecated capability %s: got %s, want %s", cap, got, StatusNotImplemented)
 		}
 	}
-	if len(all) != 3 {
-		t.Errorf("AllCapabilities length = %d, want 3 (one per known Capability)", len(all))
+}
+
+func TestAllCapabilities_AdvertisesOnlyGoogleSlides(t *testing.T) {
+	s := &Service{Diag: &DiagnosticsService{}}
+	all := s.AllCapabilities()
+	if len(all) != 1 {
+		t.Fatalf("AllCapabilities length = %d, want 1", len(all))
+	}
+	if got, ok := all[CapImageGenChrome]; !ok {
+		t.Fatal("Google Slides capability missing")
+	} else if got != StatusMissingDependency {
+		t.Fatalf("Google Slides status = %s, want %s", got, StatusMissingDependency)
+	}
+	if _, ok := all[CapImageGenNvidia]; ok {
+		t.Fatal("NVIDIA capability must not be advertised")
+	}
+	if _, ok := all[CapRemoteImageGen]; ok {
+		t.Fatal("remote image generation capability must not be advertised")
 	}
 }
