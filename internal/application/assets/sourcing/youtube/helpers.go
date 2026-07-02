@@ -15,6 +15,8 @@ package youtube
 import (
 	"fmt"
 	"strings"
+
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
 )
 
 // ExtractVideoIDFromURL pulls the YouTube video ID from a raw URL.
@@ -123,11 +125,31 @@ func CleanFolderName(name string) string {
 	return strings.TrimSpace(strings.ToLower(name))
 }
 
-// IndexStatus renders the indexing-status string for the RegisterClipResult.
-// "enqueued" when enrichment is wired; "not_configured" otherwise.
-func IndexStatus(indexed bool) string {
+// IndexStatus renders the indexing-status typed-enum for the
+// RegisterClipResult. §12-5 EXPAND phase (godlike/06 SSOT migration):
+// returns domain.SourcingIndexStatus — the legacy "enqueued"/"not_configured"
+// placeholder strings have been retired in favor of the canonical
+// 4-state lifecycle (architecture/issues.yaml#PR-CROSSPACKAGE-INDEXING-
+// STATUS-§12-5).
+//
+// Wire mapping (was a wire breaking change in §12-5 EXPAND):
+//
+//	indexed=true  → domain.SourcingIndexStatusPending   ("pending")
+//	indexed=false → domain.SourcingIndexStatusSkipped   ("skipped")
+//
+// The Pending/Skipped mapping preserves the pre-§12-5 intent:
+// "enqueued" semantically means awaiting-in-flight (Pending),
+// "not_configured" semantically means enrichment-bypass (Skipped).
+//
+// godlike/06 SSOT: this helper does NOT own the canonical enum —
+// the canonical 4-state lifecycle + Validation + Marshal/Unmarshal
+// contracts live in internal/domain/sourcing/index_status.go. The
+// application-layer `sourcing.IndexingStatus` is a transparent Go
+// type-alias to that enum; this helper writes the canonical typed
+// value directly so the wire emission stays byte-stable.
+func IndexStatus(indexed bool) domain.SourcingIndexStatus {
 	if indexed {
-		return "enqueued"
+		return domain.SourcingIndexStatusPending
 	}
-	return "not_configured"
+	return domain.SourcingIndexStatusSkipped
 }
