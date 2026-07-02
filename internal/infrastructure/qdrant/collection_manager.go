@@ -29,6 +29,11 @@ type EnsureResult struct {
 // collection_manager_* files that calls cm.client.CreateAlias or
 // cm.client.SwitchAlias. EnsureSchema is a thin orchestrator that
 // calls the ops in sequence.
+//
+// QDRANT-ALIAS-CACHE (July 2026): OnAliasSwitch is an optional callback
+// invoked after every successful PromoteCandidate. The Searcher wires
+// its ResetSearchCache here so the alias-target cache is invalidated
+// atomically with the alias switch.
 type CollectionManager struct {
 	client *Client
 	schema *IndexSchema
@@ -36,6 +41,11 @@ type CollectionManager struct {
 
 	verifyLedgerMu sync.RWMutex
 	verifyLedger   map[string]bool
+
+	// OnAliasSwitch is called after a successful PromoteCandidate.
+	// nil is safe — the callback is optional. The canonical consumer
+	// is Searcher.ResetSearchCache, wired at runtime construction.
+	OnAliasSwitch func()
 }
 
 // NewCollectionManager creates a CollectionManager bound to a schema.

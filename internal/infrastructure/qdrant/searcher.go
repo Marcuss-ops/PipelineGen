@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -11,11 +13,29 @@ import (
 // Searcher provides semantic search over Qdrant collections.
 // It routes all searches through the runtime alias and validates vectors
 // against the manifest.
+//
+// QDRANT-ALIAS-CACHE (July 2026): the searcher caches the resolved alias
+// target locally with a 30s TTL so the search hot-path does not pay an
+// extra HTTP round-trip (GetAliasTarget) on every query. The cache is
+// invalidated by CollectionManager.PromoteCandidate via the
+// OnAliasSwitch callback wired at runtime construction.
 type Searcher struct {
 	client *Client
 	schema *IndexSchema
 	log    *zap.Logger
+
+	// Alias cache: avoids an HTTP round-trip on every search query.
+	// Protected by cacheMu; invalidated via ResetSearchCache().
+	cacheMu      sync.RWMutex
+	cachedTarget string
+	cachedAt     time.Time
 }
+
+// aliasCacheTTL is how long the resolved alias target stays valid
+// before requiring a fresh GetAliasTarget call. 30s balances freshness
+// (blue-green alias switches are rare, operator-paced operations) against
+// throughput (saves 1 HTTP round-trip per search query).
+const aliasCacheTTL = 30 * time.Second
 
 // NewSearcher creates a Searcher.
 func NewSearcher(client *Client, schema *IndexSchema, log *zap.Logger) *Searcher {
@@ -138,7 +158,35 @@ func (s *Searcher) SearchByText(ctx context.Context, text string, embedder TextE
 	})
 }
 
+// resolveCollection returns the physical collection name for the runtime
+// alias, using a local cache with a 30s TTL to avoid paying an HTTP
+// round-trip on every search query.
+//
+// QDRANT-ALIAS-CACHE (July 2026): the hot-path read uses a RWMutex so
+// concurrent searches don't contend. Only a cache miss (first call or
+// TTL expired) acquires the write lock and issues GetAliasTarget.
+// Invalidation is triggered by ResetSearchCache(), called by
+// CollectionManager.PromoteCandidate after every alias switch.
 func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
+	// Fast path: read-lock, check cache.
+	s.cacheMu.RLock()
+	if s.cachedTarget != "" && time.Since(s.cachedAt) < aliasCacheTTL {
+		target := s.cachedTarget
+		s.cacheMu.RUnlock()
+		return target, nil
+	}
+	s.cacheMu.RUnlock()
+
+	// Slow path: write-lock, resolve alias, populate cache.
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	// Double-check: another goroutine may have populated the cache
+	// between our RUnlock and Lock.
+	if s.cachedTarget != "" && time.Since(s.cachedAt) < aliasCacheTTL {
+		return s.cachedTarget, nil
+	}
+
 	collection, err := s.client.GetAliasTarget(ctx, s.schema.RuntimeAlias)
 	if err != nil {
 		return "", fmt.Errorf("resolve alias target: %w", err)
@@ -146,7 +194,20 @@ func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	if collection == "" {
 		return "", fmt.Errorf("runtime alias %q has no target — run EnsureSchema first", s.schema.RuntimeAlias)
 	}
+
+	s.cachedTarget = collection
+	s.cachedAt = time.Now()
 	return collection, nil
+}
+
+// ResetSearchCache invalidates the alias-target cache. Called by
+// CollectionManager.PromoteCandidate after every alias switch so the
+// next search query picks up the new physical collection immediately.
+func (s *Searcher) ResetSearchCache() {
+	s.cacheMu.Lock()
+	s.cachedTarget = ""
+	s.cachedAt = time.Time{}
+	s.cacheMu.Unlock()
 }
 
 // ── Embedding contract ───────────────────────────────────────────────
