@@ -4,6 +4,30 @@
 // the command and result structs used by the sourcing service's public API.
 package sourcing
 
+import (
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
+)
+
+// IndexingStatus is the canonical type-alias mirroring
+// `domain.SourcingIndexStatus`. The application-layer historical name
+// "IndexingStatus" is preserved so the 4 §12-5 BACKFILL-touched sites
+// (architecture/issues.yaml#PR-CROSSPACKAGE-INDEXING-STATUS-§12-5:
+// types.go:39 + youtube/service.go (2 sites) + youtube/ports.go (doc) +
+// register/handler.go:126) continue to compile unchanged.
+//
+// godlike/06 SSOT: production ownership of the lifecycle enum is in
+// internal/domain/sourcing/index_status.go. This alias is a TRANSPARENT
+// Go type-alias (no parallel state, no forked serialization). Type-identity
+// is locked via compile-time assertions in types_test.go (the user-facing
+// contract: `var _ domain.SourcingIndexStatus = IndexingStatus("")`).
+//
+// Wire breaking change vs the pre-§12-5 placeholder strings
+// ("enqueued"/"not_configured"): the canonical enum emits
+// "pending"/"skipped"/"completed"/"failed". The migration is
+// implemented in internal/application/assets/sourcing/youtube/helpers.go
+// (IndexStatus return type changes from string to domain.SourcingIndexStatus).
+type IndexingStatus = domain.SourcingIndexStatus
+
 // RegisterClipCommand is the input for registering a clip from a YouTube URL.
 type RegisterClipCommand struct {
 	URL         string
@@ -36,7 +60,7 @@ type RegisterClipResult struct {
 	Tags           []string
 	LocalPath      string
 	Indexed        bool
-	IndexingStatus string
+	IndexingStatus IndexingStatus `json:"indexing_status"`
 	Transcribed    bool
 	Language       string
 	RelatedClips   map[string]any
