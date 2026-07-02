@@ -20,19 +20,22 @@ import (
 
 // ── Status lifecycle (canonical) ────────────────────────────────────
 
-// Status is the canonical 7-state job lifecycle.
+// Status is the canonical 8-state job lifecycle.
 //
-//	queued → leased → running → completed/failed/retry_wait/cancelled
+//	queued → leased → running → finalizing → succeeded
+//	                            ↘ retry_wait → queued
+//	                            ↘ failed / cancelled
 type Status string
 
 const (
-	StatusQueued    Status = "QUEUED"
-	StatusLeased    Status = "LEASED"
-	StatusRunning   Status = "RUNNING"
-	StatusRetryWait Status = "RETRY_WAIT"
-	StatusSucceeded Status = "SUCCEEDED"
-	StatusFailed    Status = "FAILED"
-	StatusCancelled Status = "CANCELLED"
+	StatusQueued     Status = "QUEUED"
+	StatusLeased     Status = "LEASED"
+	StatusRunning    Status = "RUNNING"
+	StatusFinalizing Status = "FINALIZING"
+	StatusRetryWait  Status = "RETRY_WAIT"
+	StatusSucceeded  Status = "SUCCEEDED"
+	StatusFailed     Status = "FAILED"
+	StatusCancelled  Status = "CANCELLED"
 )
 
 // IsTerminal returns true if the status is a final state.
@@ -41,14 +44,16 @@ func (s Status) IsTerminal() bool {
 }
 
 // IsActive returns true if a worker currently owns this job.
+// FINALIZING is considered active: the worker still holds the lease
+// and is performing cleanup (artifact publication, outbox writes).
 func (s Status) IsActive() bool {
-	return s == StatusLeased || s == StatusRunning
+	return s == StatusLeased || s == StatusRunning || s == StatusFinalizing
 }
 
 // Valid returns true if s is a known job status.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusQueued, StatusLeased, StatusRunning, StatusRetryWait,
+	case StatusQueued, StatusLeased, StatusRunning, StatusFinalizing, StatusRetryWait,
 		StatusSucceeded, StatusFailed, StatusCancelled:
 		return true
 	}

@@ -21,7 +21,7 @@ import (
 // ── Type aliases to canonical kernel/job types (Phase A.2) ──────────
 
 type (
-	// Status is the canonical 7-state job lifecycle (see kernel/job.Status).
+	// Status is the canonical 8-state job lifecycle (see kernel/job.Status).
 	Status = kerneljob.Status
 	// Filter narrows job queries (see kernel/job.Filter).
 	Filter = kerneljob.Filter
@@ -39,13 +39,14 @@ type (
 //   var x job.Status = job.StatusQueued         (compiles)
 
 const (
-	StatusQueued    = kerneljob.StatusQueued
-	StatusLeased    = kerneljob.StatusLeased
-	StatusRunning   = kerneljob.StatusRunning
-	StatusRetryWait = kerneljob.StatusRetryWait
-	StatusSucceeded = kerneljob.StatusSucceeded
-	StatusFailed    = kerneljob.StatusFailed
-	StatusCancelled = kerneljob.StatusCancelled
+	StatusQueued     = kerneljob.StatusQueued
+	StatusLeased     = kerneljob.StatusLeased
+	StatusRunning    = kerneljob.StatusRunning
+	StatusFinalizing = kerneljob.StatusFinalizing
+	StatusRetryWait  = kerneljob.StatusRetryWait
+	StatusSucceeded  = kerneljob.StatusSucceeded
+	StatusFailed     = kerneljob.StatusFailed
+	StatusCancelled  = kerneljob.StatusCancelled
 )
 
 // ── Job type string constants ───────────────────────────────────────

@@ -56,7 +56,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		return fmt.Errorf("complete: select: %w", err)
 	}
 	if err := validateOwnership(id, "complete", status, curWorkerID, curLeaseID, revision,
-		workerID, leaseID, int64(expectedRevision), job.StatusRunning); err != nil {
+		workerID, leaseID, int64(expectedRevision), job.StatusRunning, job.StatusFinalizing); err != nil {
 		return err
 	}
 
@@ -65,7 +65,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		`UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?, result_json = ?,
 		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'RUNNING' AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING') AND worker_id = ? AND lease_id = ? AND revision = ?`,
 		nowStr, resultJSON, nowStr,
 		id, workerID, leaseID, expectedRevision)
 	if err != nil {
@@ -119,7 +119,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		return fmt.Errorf("fail: select: %w", err)
 	}
 	if err := validateOwnership(id, "fail", status, curWorkerID, curLeaseID, revision,
-		workerID, leaseID, int64(expectedRevision), job.StatusRunning); err != nil {
+		workerID, leaseID, int64(expectedRevision), job.StatusRunning, job.StatusFinalizing); err != nil {
 		return err
 	}
 
@@ -127,7 +127,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'RUNNING' AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING') AND worker_id = ? AND lease_id = ? AND revision = ?`,
 		nowStr, errMsg, nowStr,
 		id, workerID, leaseID, expectedRevision)
 	if err != nil {
@@ -180,7 +180,7 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 		`UPDATE jobs SET status = 'RETRY_WAIT', error = ?,
 		 retry_count = retry_count + 1, worker_id = '', lease_id = '',
 		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'RUNNING'
+		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
 		 AND worker_id = ? AND lease_id = ? AND revision = ?`,
 		"scheduled for retry by worker "+workerID, nowStr,
 		id, workerID, leaseID, expectedRevision)
@@ -218,7 +218,7 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE jobs SET status = 'CANCELLED', cancelled_at = ?, worker_id = '',
 		 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('QUEUED', 'LEASED', 'RUNNING', 'RETRY_WAIT')`,
+		 WHERE id = ? AND status IN ('QUEUED', 'LEASED', 'RUNNING', 'FINALIZING', 'RETRY_WAIT')`,
 		nowStr, nowStr, id)
 	if err != nil {
 		return fmt.Errorf("cancel: %w", err)
@@ -320,7 +320,7 @@ func (r *SQLiteStore) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff
 		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < ?`,
+		 WHERE status IN ('LEASED', 'RUNNING', 'FINALIZING') AND lease_expiry < ?`,
 		now, reason, now, cutoffStr)
 	if err != nil {
 		return 0, fmt.Errorf("markRunningJobsOlderThanFailed: %w", err)
@@ -362,12 +362,27 @@ func (r *SQLiteStore) AddEvent(ctx context.Context, id string, eventType, messag
 // through this function (complete / fail); the other 3 fenced-UPDATE
 // paths (schedule_retry / cancel / retry) bump at their own CAS-fence
 // sites because they DO NOT pass through validateOwnership.
+//
+// FASE 2b (July 2026): expectedStatus is now variadic — the caller
+// passes one or more allowed statuses. Complete/Fail accept both
+// RUNNING and FINALIZING.
 func validateOwnership(jobID string, method string, currentStatus job.Status,
 	currentWorker, currentLease string, currentRevision int,
 	expectedWorker, expectedLease string, expectedRevision int64,
-	expectedStatus job.Status) error {
-	if currentStatus != expectedStatus {
-		return fmt.Errorf("%w: status %q, expected %q", ErrInvalidState, currentStatus, expectedStatus)
+	expectedStatuses ...job.Status) error {
+	allowed := false
+	for _, s := range expectedStatuses {
+		if currentStatus == s {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		expectedStrs := make([]string, len(expectedStatuses))
+		for i, s := range expectedStatuses {
+			expectedStrs[i] = string(s)
+		}
+		return fmt.Errorf("%w: status %q, expected one of %v", ErrInvalidState, currentStatus, expectedStrs)
 	}
 	if currentWorker != expectedWorker {
 		return fmt.Errorf("%w: worker %q, expected %q", ErrLeaseLost, currentWorker, expectedWorker)

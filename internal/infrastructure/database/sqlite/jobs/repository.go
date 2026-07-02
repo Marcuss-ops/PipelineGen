@@ -1,7 +1,7 @@
 // Package jobs provides the canonical job repository with atomic CAS operations
-// for the 7-state job lifecycle.
+// for the 8-state job lifecycle.
 //
-// States: queued → leased → running → completed / retry_wait / failed / cancelled
+// States: queued → leased → running → finalizing → succeeded / retry_wait / failed / cancelled
 //
 // Implements the canonical job.Store contract from internal/domain/job directly,
 // without conversion through legacy model types (PR4: job.Job SSOT).
@@ -364,7 +364,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 
 	// 5. Stale/zombie active jobs (status=leased or running but lease_expiry in past)
 	var staleCount sql.NullInt64
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('LEASED', 'RUNNING', 'FINALIZING') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
 		r.log.Warn("getStats: stale-running query failed", zap.Error(err))
 	} else if staleCount.Valid {
 		stats.StaleRunning = int(staleCount.Int64)
@@ -386,7 +386,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 }
 
 func (r *SQLiteStore) FindActiveByKey(ctx context.Context, activeKey string) (*job.Job, error) {
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('QUEUED', 'LEASED', 'RUNNING') ORDER BY started_at DESC LIMIT 1`
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('QUEUED', 'LEASED', 'RUNNING', 'FINALIZING') ORDER BY started_at DESC LIMIT 1`
 	j := &job.Job{}
 	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, activeKey), j); err != nil {
 		if err == sql.ErrNoRows {
@@ -439,7 +439,7 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 
 	// Set depth for currently-observed type × status combinations.
 	allStatuses := []job.Status{
-		job.StatusQueued, job.StatusLeased, job.StatusRunning,
+		job.StatusQueued, job.StatusLeased, job.StatusRunning, job.StatusFinalizing,
 		job.StatusRetryWait,
 		job.StatusFailed, job.StatusSucceeded, job.StatusCancelled,
 	}
