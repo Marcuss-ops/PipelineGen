@@ -176,3 +176,56 @@ func TestValidateOwnership_AllMatch_DoesNotBumpCounter(t *testing.T) {
 		t.Errorf("counter MUST NOT bump on success; got delta=%v", delta)
 	}
 }
+
+// TestValidateOwnership_AcceptsFinalizing verifies the FASE 2b contract:
+// validateOwnership accepts FINALIZING as a valid current status for
+// completion/failure. A job in FINALIZING is still recoverable — the
+// worker that holds the lease can still Complete or Fail it.
+func TestValidateOwnership_AcceptsFinalizing(t *testing.T) {
+	method := "test_validate_finalizing_accept"
+
+	// Case 1: current=FINALIZING, expected={RUNNING, FINALIZING} → success.
+	err := validateOwnership("test-job", method,
+		job.StatusFinalizing,
+		"worker-A", "lease-X", 5,
+		"worker-A", "lease-X", 5,
+		job.StatusRunning, job.StatusFinalizing)
+	if err != nil {
+		t.Fatalf("validateOwnership with FINALIZING current, expected {RUNNING,FINALIZING}: got %v, want nil", err)
+	}
+
+	// Case 2: current=RUNNING, expected={RUNNING, FINALIZING} → success
+	// (backwards-compat: the variadic signature accepts single status too).
+	err = validateOwnership("test-job", method,
+		job.StatusRunning,
+		"worker-A", "lease-X", 5,
+		"worker-A", "lease-X", 5,
+		job.StatusRunning, job.StatusFinalizing)
+	if err != nil {
+		t.Fatalf("validateOwnership with RUNNING current, expected {RUNNING,FINALIZING}: got %v, want nil", err)
+	}
+
+	// Case 3: current=QUEUED, expected={RUNNING, FINALIZING} → ErrInvalidState
+	// (a queued job has not been leased yet — cannot be finalised).
+	err = validateOwnership("test-job", method,
+		job.StatusQueued,
+		"worker-A", "lease-X", 5,
+		"worker-A", "lease-X", 5,
+		job.StatusRunning, job.StatusFinalizing)
+	if err == nil {
+		t.Fatalf("validateOwnership with QUEUED current, expected {RUNNING,FINALIZING}: expected ErrInvalidState, got nil")
+	}
+	if !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("validateOwnership with QUEUED current: expected ErrInvalidState, got %v", err)
+	}
+
+	// Case 4: backwards-compat — single expectedStatus still works.
+	err = validateOwnership("test-job", method,
+		job.StatusRunning,
+		"worker-A", "lease-X", 5,
+		"worker-A", "lease-X", 5,
+		job.StatusRunning) // single arg → variadic of one
+	if err != nil {
+		t.Fatalf("validateOwnership backwards-compat single status: got %v, want nil", err)
+	}
+}

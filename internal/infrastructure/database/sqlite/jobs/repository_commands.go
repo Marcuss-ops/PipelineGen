@@ -121,6 +121,11 @@ func ValidateTransition(current, next job.Status) error {
 		}
 	case job.StatusRunning:
 		switch next {
+		case job.StatusFinalizing, job.StatusSucceeded, job.StatusRetryWait, job.StatusFailed, job.StatusCancelled:
+			return nil
+		}
+	case job.StatusFinalizing:
+		switch next {
 		case job.StatusSucceeded, job.StatusRetryWait, job.StatusFailed, job.StatusCancelled:
 			return nil
 		}

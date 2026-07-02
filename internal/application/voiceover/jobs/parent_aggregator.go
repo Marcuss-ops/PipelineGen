@@ -211,7 +211,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 			continue
 		}
 		status := childJob.Status
-		if status == job.StatusQueued || status == job.StatusLeased || status == job.StatusRunning || status == job.StatusRetryWait {
+		if status == job.StatusQueued || status == job.StatusLeased || status == job.StatusRunning || status == job.StatusFinalizing || status == job.StatusRetryWait {
 			allTerminal = false
 		}
 

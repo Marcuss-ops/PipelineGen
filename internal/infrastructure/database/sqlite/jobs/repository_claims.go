@@ -108,12 +108,12 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 
 // ── RenewLease ───────────────────────────────────────────────────────────
 
-// RenewLease extends an existing lease for a running job.
+// RenewLease extends an existing lease for a running or finalizing job.
 func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) error {
 	newExpiry := time.Now().Add(leaseTTL)
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE jobs SET lease_expiry = ?, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'RUNNING'
+		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
 		 AND worker_id = ?`,
 		timeutil.FormatRFC3339(newExpiry), timeutil.FormatRFC3339(time.Now()),
 		id, workerID,
@@ -135,7 +135,7 @@ func (r *SQLiteStore) RequeueExpiredLeases(ctx context.Context, now time.Time, l
 	nowStr := timeutil.FormatRFC3339(now)
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, retry_count, max_retries, revision
-		 FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < ?
+		 FROM jobs WHERE status IN ('LEASED', 'RUNNING', 'FINALIZING') AND lease_expiry < ?
 		 ORDER BY lease_expiry LIMIT ?`, nowStr, limit,
 	)
 	if err != nil {
