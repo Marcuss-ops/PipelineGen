@@ -71,138 +71,30 @@ var (
 
 // ── Canonical JobDefinition literals (single source of truth) ────────
 //
-// These four package-level vars are the ANCHOR for the workflow
-// coordinator's job families. They are referenced (by value copy)
-// by the per-family tests below, by TestJobDefinition_Validate_AllFamilies,
-// and by any future cross-literal tests a future contributor adds.
+// P0 Commit 3 (July 2026) NOTE: the canonical literals physically
+// moved out of this test file into canonical_definitions.go as
+// EXPORTED package-level vars (CanonicalScriptGenerate /
+// CanonicalImagesGenerate / CanonicalDocumentGenerate /
+// CanonicalAssetsResolve / CanonicalJobDefinitions) so the
+// composition root (internal/app/registry.go::WireRegistry) can
+// reference them at startup wiring time. Go's `_test.go` files
+// are not importable from production code, so the production-
+// visible surface requires a non-test home.
 //
-// A future commit that adds a required field to JobDefinition FAILS
-// the compile of these vars immediately — that's the lock.
-
-// canonicalScriptGenerate locks the canonical shape of script.generate.
-// If a future P0 commit breaks this literal (e.g. adds a required field
-// outside the C1 spec), the compile-time failure is loud and immediate.
-var canonicalScriptGenerate = JobDefinition{
-	Type:           TypeScriptGenerate,
-	ExecutionClass: ExecutionCreatorAllowed,
-	Queue:          "default",
-	Timeout:        60 * time.Minute,
-	RetryPolicyKey: "max_retries_2",
-	ConcurrencyKey: "single_global",
-	RequiredCapabilities: []Capability{
-		"script.generate",
-		"media.script.generate",
-	},
-	PayloadCodec: jobDefinitionTestCodec{
-		jobType:       TypeScriptGenerate,
-		schemaVersion: "pipelinegen.payload.script.generate.v1",
-	},
-	ResultCodec: jobDefinitionTestCodec{
-		jobType:       TypeScriptGenerate,
-		schemaVersion: "pipelinegen.result.script.generate.v1",
-	},
-	ArtifactPolicy: ArtifactPolicy{
-		ProducesArtifacts: true,
-		RequireManifest:   true,
-		MaxArtifacts:      16,
-		MaxTotalBytes:     256 * 1024 * 1024,
-	},
-	HandlerKey: "script.generate.handler",
-}
-
-// canonicalImagesGenerate locks the canonical shape of images.generate.
-var canonicalImagesGenerate = JobDefinition{
-	Type:           TypeImagesGenerate,
-	ExecutionClass: ExecutionCreatorAllowed,
-	Queue:          "heavy",
-	Timeout:        30 * time.Minute,
-	RetryPolicyKey: "max_retries_2",
-	ConcurrencyKey: "global_cap_2",
-	RequiredCapabilities: []Capability{
-		"media.image.generate",
-	},
-	PayloadCodec: jobDefinitionTestCodec{
-		jobType:       TypeImagesGenerate,
-		schemaVersion: "pipelinegen.payload.images.generate.v1",
-	},
-	ResultCodec: jobDefinitionTestCodec{
-		jobType:       TypeImagesGenerate,
-		schemaVersion: "pipelinegen.result.images.generate.v1",
-	},
-	ArtifactPolicy: ArtifactPolicy{
-		ProducesArtifacts: true,
-		RequireManifest:   true,
-		MaxArtifacts:      64,
-		MaxTotalBytes:     512 * 1024 * 1024,
-	},
-	HandlerKey: "images.generate.handler",
-}
-
-// canonicalDocumentGenerate locks the canonical shape of document.generate.
-var canonicalDocumentGenerate = JobDefinition{
-	Type:           TypeDocumentGenerate,
-	ExecutionClass: ExecutionCreatorAllowed,
-	Queue:          "default",
-	Timeout:        15 * time.Minute,
-	RetryPolicyKey: "max_retries_2",
-	ConcurrencyKey: "single_global",
-	RequiredCapabilities: []Capability{
-		"doc.create",
-		"drive.write",
-	},
-	PayloadCodec: jobDefinitionTestCodec{
-		jobType:       TypeDocumentGenerate,
-		schemaVersion: "pipelinegen.payload.document.generate.v1",
-	},
-	ResultCodec: jobDefinitionTestCodec{
-		jobType:       TypeDocumentGenerate,
-		schemaVersion: "pipelinegen.result.document.generate.v1",
-	},
-	ArtifactPolicy: ArtifactPolicy{
-		ProducesArtifacts: true,
-		RequireManifest:   true,
-		MaxArtifacts:      8,
-		MaxTotalBytes:     64 * 1024 * 1024,
-	},
-	HandlerKey: "document.generate.handler",
-}
-
-// canonicalAssetsResolve locks the canonical shape of assets.resolve.
-// Pure-data job: zero ArtifactPolicy = ProducesArtifacts=false,
-// RequireManifest=false. No upload path; Sender records only the
-// returned clip IDs.
-var canonicalAssetsResolve = JobDefinition{
-	Type:           TypeAssetsResolve,
-	ExecutionClass: ExecutionCreatorAllowed,
-	Queue:          "default",
-	Timeout:        10 * time.Minute,
-	RetryPolicyKey: "max_retries_1",
-	ConcurrencyKey: "single_global",
-	RequiredCapabilities: []Capability{
-		"qdrant.search",
-		"asset.reference",
-	},
-	PayloadCodec: jobDefinitionTestCodec{
-		jobType:       TypeAssetsResolve,
-		schemaVersion: "pipelinegen.payload.assets.resolve.v1",
-	},
-	ResultCodec: jobDefinitionTestCodec{
-		jobType:       TypeAssetsResolve,
-		schemaVersion: "pipelinegen.result.assets.resolve.v1",
-	},
-	// Pure-data job: zero ArtifactPolicy.
-	HandlerKey: "assets.resolve.handler",
-}
-
-// canonicalFamilies — list of all four canonical families, used by
-// TestJobDefinition_Validate_AllFamilies and any future cross-literal
-// tests a future contributor adds.
-var canonicalFamilies = []JobDefinition{
-	canonicalScriptGenerate,
-	canonicalImagesGenerate,
-	canonicalDocumentGenerate,
-	canonicalAssetsResolve,
-}
+// The legacy lower-case aliases below preserve the existing
+// test-side naming convention (canonicalScriptGenerate etc.)
+// without rewriting every test function. They are TYPE ALIASES —
+// zero-cost references to the exported Canonical* vars in
+// canonical_definitions.go. A future field-additive change to
+// JobDefinition will break the compile in canonical_definitions.go
+// first (where the literals sit), not here. Auditing which var
+// is canonical: canonical_definitions.go is; this file's locals
+// are references only.
+var canonicalScriptGenerate = CanonicalScriptGenerate
+var canonicalImagesGenerate = CanonicalImagesGenerate
+var canonicalDocumentGenerate = CanonicalDocumentGenerate
+var canonicalAssetsResolve = CanonicalAssetsResolve
+var canonicalFamilies = CanonicalJobDefinitions
 
 // ── Per-family tests ─────────────────────────────────────────────────
 
@@ -313,8 +205,8 @@ func TestExecutionClass_IsValid(t *testing.T) {
 		{ExecutionCreatorOnly, true},
 		{"", false},
 		{"unknown", false},
-		{"SenderOnly", false},     // canonical form is snake_case, not CamelCase
-		{"sender-only", false},    // canonical form uses underscore, not hyphen
+		{"SenderOnly", false},        // canonical form is snake_case, not CamelCase
+		{"sender-only", false},       // canonical form uses underscore, not hyphen
 		{" creator_allowed ", false}, // whitespace-padded form is rejected
 	}
 	for _, c := range cases {
