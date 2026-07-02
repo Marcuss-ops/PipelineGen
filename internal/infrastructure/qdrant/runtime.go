@@ -154,6 +154,10 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	writer := NewIndexWriter(client, schema, mapper, log)
 	searcher := NewSearcher(client, schema, log)
 	manager := NewCollectionManager(client, schema, log)
+	// QDRANT-ALIAS-CACHE (July 2026): wire the cache invalidation so
+	// PromoteCandidate resets the Searcher's alias-target cache
+	// atomically with every alias switch.
+	manager.OnAliasSwitch = searcher.ResetSearchCache
 	health := NewHealthProbe(client)
 	cleaner := NewLocatorCleaner(client, schema, log)
 	searchAdapter := NewSearchAdapter(searcher, log)

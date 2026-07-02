@@ -15,6 +15,11 @@ import (
 // cm.client.CreateAlias or cm.client.SwitchAlias outside
 // RollbackCandidate's switch-back). Fails with ErrPromoteWithoutVerify
 // if verifyLedger[candidate] is missing (PR 6 §#6.3 invariant).
+//
+// QDRANT-ALIAS-CACHE (July 2026): after a successful alias write,
+// PromoteCandidate invokes cm.OnAliasSwitch (if non-nil) so downstream
+// consumers (e.g. Searcher.ResetSearchCache) can invalidate their
+// cached alias target atomically with the switch.
 func (cm *CollectionManager) PromoteCandidate(ctx context.Context, candidate string) error {
 	if !cm.consumeVerified(candidate) {
 		return fmt.Errorf("%w: candidate %q (call VerifyCandidate first)", ErrPromoteWithoutVerify, candidate)
@@ -22,7 +27,14 @@ func (cm *CollectionManager) PromoteCandidate(ctx context.Context, candidate str
 	cm.log.Info("promoting candidate to runtime alias",
 		zap.String("alias", cm.schema.RuntimeAlias),
 		zap.String("target", candidate))
-	return cm.client.CreateAlias(ctx, cm.schema.RuntimeAlias, candidate)
+	if err := cm.client.CreateAlias(ctx, cm.schema.RuntimeAlias, candidate); err != nil {
+		return err
+	}
+	// Invalidate downstream caches atomically with the alias switch.
+	if cm.OnAliasSwitch != nil {
+		cm.OnAliasSwitch()
+	}
+	return nil
 }
 
 // ReindexCandidate is the orchestrator marker step in EnsureSchema's
