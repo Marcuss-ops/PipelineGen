@@ -5,9 +5,28 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
+
+// stubStager è il Commit 1.2 test fixture per il canonical
+// assets.SourceStager port (godlike/06 SSOT — sostituisce il
+// retired NewNoopSourceStager del local stockpipeline.SourceStager).
+// I 3 failure-mode test NON invocano stager.Stage (lo step
+// stage_sources dell'orchestrator è Begin/Complete only — vedi
+// orchestrator.go), quindi lo stub ritorna un StagedAsset
+// deterministico + nil error per passare l'nil-guard
+// dell'orchestrator e arrivare ai resilience ports under test.
+type stubStager struct{}
+
+func (stubStager) StageSource(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
+	return &assets.StagedAsset{LocalPath: "/tmp/stub-stager", Bytes: 0}, nil
+}
+
+func (stubStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
+	return nil
+}
 
 // stubWriter supporta le 3 failure-mode dei test:
 //   - modeA (forceFail=true): ritorna errore alla PRIMA chiamata.
@@ -61,7 +80,7 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 		OrchestratorConfig{JobId: "test-a", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
-		NewNoopSourceStager(),
+		assets.SourceStager(stubStager{}),
 		nil, nil,
 		stockManifestBuilder{}, w, noopProjection{},
 	)
@@ -91,7 +110,7 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 		OrchestratorConfig{JobId: "test-b", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
-		NewNoopSourceStager(),
+		assets.SourceStager(stubStager{}),
 		nil, nil,
 		stubBuilder{}, noopWriter{}, noopProjection{},
 	)
@@ -121,7 +140,7 @@ func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 		OrchestratorConfig{JobId: "test-c", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
-		NewNoopSourceStager(),
+		assets.SourceStager(stubStager{}),
 		nil, nil,
 		stockManifestBuilder{}, noopWriter{}, stubProjection{},
 	)

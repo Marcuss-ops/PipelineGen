@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -212,7 +213,7 @@ type Orchestrator struct {
 	cfg      OrchestratorConfig
 	planner  ClipPlanner
 	steps    ExecutionStepStore
-	stager   SourceStager
+	stager   assets.SourceStager
 	cutter   VideoCutter
 	renderer StockRenderer
 	// builder emits the typed *job.ArtifactManifest from (workflowID,
@@ -251,7 +252,7 @@ type Orchestrator struct {
 // is only used by non-broker callers (tests, CLI). Production wiring
 // that wants custom resilience ports MUST use
 // NewOrchestratorWithResilience instead.
-func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, steps ExecutionStepStore, stager SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, steps ExecutionStepStore, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
@@ -289,7 +290,7 @@ func NewOrchestratorWithResilience(
 	cfg OrchestratorConfig,
 	planner ClipPlanner,
 	steps ExecutionStepStore,
-	stager SourceStager,
+	stager assets.SourceStager,
 	cutter VideoCutter,
 	renderer StockRenderer,
 	builder ManifestBuilder,
