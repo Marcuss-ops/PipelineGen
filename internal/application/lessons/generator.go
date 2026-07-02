@@ -41,7 +41,7 @@ func (s *Service) GenerateChapters(
 			Title: split.Title,
 		}
 
-		// 1. Generate chapter text via Ollama
+		// 1. Generate chapter text via Ollama.
 		chapterCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 
@@ -66,7 +66,8 @@ func (s *Service) GenerateChapters(
 			zap.Int("words", result.WordCount),
 		)
 
-		// 2. Optionally generate image for this chapter
+		// 2. Optionally generate the chapter image through the sole
+		// Google Slides / Nano Banana Pro path.
 		if req.GenerateImages && s.imgService != nil {
 			imgRef, imgErr := s.generateChapterImage(chapterCtx, split, req)
 			if imgErr != nil {
@@ -75,7 +76,7 @@ func (s *Service) GenerateChapters(
 					zap.String("title", split.Title),
 					zap.Error(imgErr),
 				)
-				// Non-fatal: chapter is still valid without image
+				// Non-fatal: chapter is still valid without image.
 			} else {
 				result.Image = imgRef
 				s.log.Info("chapter image generated",
@@ -85,7 +86,6 @@ func (s *Service) GenerateChapters(
 			}
 		}
 
-		// Update progress
 		muCompleted.Lock()
 		completed++
 		pct := 10 + (completed * 80 / total)
@@ -103,8 +103,9 @@ func (s *Service) GenerateChapters(
 	})
 }
 
-// generateChapterImage generates an AI image for a single chapter.
-// This is a Fase 2 placeholder — actual implementation will call images.Service.
+// generateChapterImage generates an AI image for a single chapter exclusively
+// through Google Slides. ImageModel is ignored for backward wire compatibility;
+// callers can no longer select Flux, NVIDIA, or another provider.
 func (s *Service) generateChapterImage(
 	ctx context.Context,
 	split ChapterSplit,
@@ -114,14 +115,7 @@ func (s *Service) generateChapterImage(
 		return nil, fmt.Errorf("image service not available")
 	}
 
-	// Build a descriptive prompt for the image based on chapter title and content
 	prompt := buildImagePrompt(split.Title, split.Text, req)
-
-	// Use GenerateSmartImage: tries Google Vids first, falls back to NVIDIA Flux
-	imageModel := req.ImageModel
-	if imageModel == "" {
-		imageModel = s.cfg.DefaultImageModel
-	}
 
 	width := req.ImageWidth
 	if width <= 0 {
@@ -132,36 +126,36 @@ func (s *Service) generateChapterImage(
 		height = 1024
 	}
 
-	asset, err := s.imgService.GenerateSmartImage(
+	imageAsset, err := s.imgService.GenerateSmartImage(
 		ctx,
-		split.Title,                      // subject
-		req.Title,                        // topic
-		req.ImageStyle,                   // style
-		[]string{prompt},                 // prompts
-		[]string{req.Title, split.Title}, // tags
+		split.Title,
+		req.Title,
+		req.ImageStyle,
+		[]string{prompt},
+		[]string{req.Title, split.Title},
 		width,
 		height,
-		imageModel,
-		false, // skipDrive = false (always upload to Drive)
+		"", // resolves to nano-banana-pro via the sole Google Slides provider
+		false,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("smart image generation failed: %w", err)
+		return nil, fmt.Errorf("Google Slides image generation failed: %w", err)
 	}
-	if asset == nil {
-		return nil, fmt.Errorf("smart image returned nil asset")
+	if imageAsset == nil {
+		return nil, fmt.Errorf("Google Slides image generation returned nil asset")
 	}
 
 	driveLink := ""
 	driveFileID := ""
-	if asset.DriveFileID != "" {
-		driveFileID = asset.DriveFileID
-		driveLink = drive.FileURLFromID(asset.DriveFileID)
+	if imageAsset.DriveFileID != "" {
+		driveFileID = imageAsset.DriveFileID
+		driveLink = drive.FileURLFromID(imageAsset.DriveFileID)
 	}
 
 	return &ImageRef{
-		Hash:        asset.Hash,
-		PathRel:     asset.PathRel,
-		URL:         "/assets/" + asset.PathRel,
+		Hash:        imageAsset.Hash,
+		PathRel:     imageAsset.PathRel,
+		URL:         "/assets/" + imageAsset.PathRel,
 		DriveLink:   driveLink,
 		DriveFileID: driveFileID,
 		Prompt:      prompt,
@@ -170,10 +164,9 @@ func (s *Service) generateChapterImage(
 
 // buildImagePrompt creates a visual prompt for AI image generation from chapter content.
 func buildImagePrompt(chapterTitle, chapterText string, req *LessonRequest) string {
-	// Use the first ~300 chars of text for context, limited to a few sentences
 	contextText := textutil.Truncate(chapterText, 300)
 
-	prompt := fmt.Sprintf(
+	return fmt.Sprintf(
 		"Educational illustration for a lesson chapter titled '%s'. "+
 			"Style: %s. Topic: %s. Context: %s",
 		chapterTitle,
@@ -181,5 +174,4 @@ func buildImagePrompt(chapterTitle, chapterText string, req *LessonRequest) stri
 		req.Title,
 		contextText,
 	)
-	return prompt
 }
