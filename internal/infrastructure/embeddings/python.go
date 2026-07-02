@@ -58,12 +58,19 @@ func NewPythonScriptEmbedder(pythonBin, scriptsDir string) coreembedding.Embedde
 }
 
 // Embed runs the Python sidecar and parses the JSON result.
-// Empty text short-circuits to (nil, nil) so application callers do
-// not have to special-case blank input. All errors wrap the original
-// subprocess output (via platform.Run) for post-mortem visibility.
-func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+// Empty text short-circuits to (EmbeddingResult{}, nil) so application
+// callers do not have to special-case blank input. All errors wrap the
+// original subprocess output (via process.Run) for post-mortem visibility.
+//
+// QDRANT-001b (July 2026): the return type is now EmbeddingResult instead
+// of []float32. The sidecar emits the canonical envelope
+// {"embedding": [...], "dimensions": 768, "model": "<name>",
+// "model_version": "<version>", "error": ""}. The function parses the
+// full envelope and returns it; the caller unwraps .Vector when only the
+// raw vector is needed.
+func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) (coreembedding.EmbeddingResult, error) {
 	if text == "" {
-		return nil, nil
+		return coreembedding.EmbeddingResult{}, nil
 	}
 
 	result, err := process.Run(ctx, e.pythonBin,
@@ -71,13 +78,51 @@ func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) ([]float3
 		e.opts,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("embedding generation failed: %w", err)
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("embedding generation failed: %w", err)
 	}
 
-	var embedding []float32
-	if err := json.Unmarshal([]byte(result.Output), &embedding); err != nil {
-		return nil, fmt.Errorf("failed to parse embedding JSON: %w (output: %s)", err, result.Output)
+	// QDRANT-001 / QDRANT-001b: parse the canonical sidecar envelope.
+	// Legacy sidecars that emit a raw []float32 array are still accepted
+	// via the fallback path (Model and ModelVersion set to empty).
+	var envelope struct {
+		Embedding    []float32 `json:"embedding"`
+		Dimensions   int       `json:"dimensions"`
+		Model        string    `json:"model"`
+		ModelVersion string    `json:"model_version"`
+		Error        string    `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(result.Output), &envelope); err != nil {
+		// Fallback: try parsing as a raw []float32 array (legacy sidecar).
+		var legacy []float32
+		if err2 := json.Unmarshal([]byte(result.Output), &legacy); err2 != nil {
+			return coreembedding.EmbeddingResult{}, fmt.Errorf("failed to parse embedding JSON: %w (output: %s)", err, result.Output)
+		}
+		return coreembedding.EmbeddingResult{
+			Vector:     legacy,
+			Dimensions: len(legacy),
+		}, nil
 	}
 
-	return embedding, nil
+	// Fail-loud on sidecar-reported error.
+	if envelope.Error != "" {
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("sidecar error: %s", envelope.Error)
+	}
+
+	if len(envelope.Embedding) == 0 {
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("sidecar returned empty embedding vector")
+	}
+
+	// QDRANT-001b: validate declared dimensions match actual vector length.
+	if envelope.Dimensions > 0 && envelope.Dimensions != len(envelope.Embedding) {
+		return coreembedding.EmbeddingResult{}, fmt.Errorf(
+			"dimension mismatch: declared %d, actual embedding length %d",
+			envelope.Dimensions, len(envelope.Embedding))
+	}
+
+	return coreembedding.EmbeddingResult{
+		Vector:       envelope.Embedding,
+		Dimensions:   envelope.Dimensions,
+		Model:        envelope.Model,
+		ModelVersion: envelope.ModelVersion,
+	}, nil
 }

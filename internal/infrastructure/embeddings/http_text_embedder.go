@@ -51,14 +51,22 @@ func NewHTTPTextEmbedder(serverURL string) coreembedding.Embedder {
 
 // Embed posts {"text": ..., "type": "query"} to the sidecar's /embed
 // endpoint and returns the parsed embedding. Empty text short-circuits
-// to (nil, nil) to match the canonical contract.
+// to (EmbeddingResult{}, nil) to match the canonical contract.
+//
+// QDRANT-001b (July 2026): the return type is now EmbeddingResult
+// instead of []float32. The sidecar returns the canonical envelope
+// {"embedding": [...], "dimensions": 768, "model": "<name>",
+// "model_version": "<version>", "error": ""}. Graceful fallback: when
+// the sidecar is not yet updated and returns only {"embedding": [...]},
+// we set Model="" and ModelVersion="" (documented in architecture/qdrant/
+// 002-sidecar-envelope-ripple.md§Trade-off).
 //
 // Error wrapping includes the original HTTP status code and body so
 // production observability can correlate embedder failures with
 // Qdrant upsert health.
-func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreembedding.EmbeddingResult, error) {
 	if text == "" {
-		return nil, nil
+		return coreembedding.EmbeddingResult{}, nil
 	}
 
 	payload, err := json.Marshal(map[string]string{
@@ -66,40 +74,79 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) ([]float32, e
 		"type": "query", // E5 model prefix for queries (vs "passage" for index)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal embedder request: %w", err)
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("marshal embedder request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		e.serverURL+"/embed", bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("create embedder request: %w", err)
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("create embedder request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := e.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("embedder request failed: %w", err)
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("embedder request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return nil, fmt.Errorf("read embedder response: %w", readErr)
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("read embedder response: %w", readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embedder returned status %d: %s", resp.StatusCode, string(body))
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("embedder returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var parsed struct {
-		Embedding []float64 `json:"embedding"`
+	// QDRANT-001b: try canonical envelope first, fall back to legacy raw vector.
+	var envelope struct {
+		Embedding    []float64 `json:"embedding"`
+		Dimensions   int       `json:"dimensions"`
+		Model        string    `json:"model"`
+		ModelVersion string    `json:"model_version"`
+		Error        string    `json:"error"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("parse embedder response: %w (body: %s)", err, string(body))
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		// Fallback: legacy sidecar emitting only {"embedding": [...]}.
+		var legacy struct {
+			Embedding []float64 `json:"embedding"`
+		}
+		if err2 := json.Unmarshal(body, &legacy); err2 != nil {
+			return coreembedding.EmbeddingResult{}, fmt.Errorf("parse embedder response: %w (body: %s)", err, string(body))
+		}
+		out := make([]float32, len(legacy.Embedding))
+		for i, v := range legacy.Embedding {
+			out[i] = float32(v)
+		}
+		return coreembedding.EmbeddingResult{
+			Vector:     out,
+			Dimensions: len(out),
+		}, nil
 	}
 
-	out := make([]float32, len(parsed.Embedding))
-	for i, v := range parsed.Embedding {
+	if envelope.Error != "" {
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("sidecar error: %s", envelope.Error)
+	}
+
+	if len(envelope.Embedding) == 0 {
+		return coreembedding.EmbeddingResult{}, fmt.Errorf("sidecar returned empty embedding vector")
+	}
+
+	// QDRANT-001b: validate declared dimensions match actual vector length.
+	if envelope.Dimensions > 0 && envelope.Dimensions != len(envelope.Embedding) {
+		return coreembedding.EmbeddingResult{}, fmt.Errorf(
+			"dimension mismatch: declared %d, actual embedding length %d",
+			envelope.Dimensions, len(envelope.Embedding))
+	}
+
+	out := make([]float32, len(envelope.Embedding))
+	for i, v := range envelope.Embedding {
 		out[i] = float32(v)
 	}
-	return out, nil
+	return coreembedding.EmbeddingResult{
+		Vector:       out,
+		Dimensions:   envelope.Dimensions,
+		Model:        envelope.Model,
+		ModelVersion: envelope.ModelVersion,
+	}, nil
 }

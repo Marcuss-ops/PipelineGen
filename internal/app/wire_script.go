@@ -61,6 +61,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -237,7 +238,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	var ollamaEmbedder qdrant.TextEmbedder
 	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
-			ollamaEmbedder = qdrant.NewTextEmbedderAdapter(ollamaClient)
+			ollamaEmbedder = qdrant.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
 		}
 	}
 

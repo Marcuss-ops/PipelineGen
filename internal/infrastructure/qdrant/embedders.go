@@ -48,7 +48,11 @@ func NewTextEmbedderAdapter(inner asset.Embedder) TextEmbedder {
 var _ TextEmbedder = (*textEmbedderAdapter)(nil)
 
 func (a *textEmbedderAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
-	return a.inner.Embed(ctx, text)
+	result, err := a.inner.Embed(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	return result.Vector, nil
 }
 
 // ── ImageEmbedder adapter ─────────────────────────────────────────────
