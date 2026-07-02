@@ -34,6 +34,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
@@ -84,11 +85,27 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	if q.Hash != "" {
 		return nil, nil
 	}
+	// PR-AGGREGATE-FILTER-UNIFORM (July 2026): q.Filters is now
+	// the canonical forwarding channel for filter semantics
+	// (architecture/current.yaml#id-30, PR-1 of VERDICT §6). The
+	// provider backend reads the FILTERS DTO's MediaType field
+	// (single value) — NOT q.MediaTypes (legacy capability-shape).
+	// q.Filters.MediaType is already a single string (NOT a slice)
+	// so it forwards as a 1-element slice to provider.SearchFilters.
+	//
+	// Category / Language / Tags populate the new SearchFilters
+	// fields. Provider adapters silently drop what their native
+	// APIs don't support (the documented SearchFilters contract):
+	// the Aggregator fan-out never aborts on a per-backend filter
+	// mismatch so partial results remain preferred.
 	provReq := providers.SearchRequest{
 		Query: q.Text,
 		Limit: q.Limit,
 		Filters: providers.SearchFilters{
-			MediaTypes: mediaTypesFromStrings(q.MediaTypes),
+			MediaTypes: mediaTypesSingleFromString(q.Filters.MediaType),
+			Category:   strings.TrimSpace(q.Filters.Category),
+			Language:   strings.TrimSpace(q.Filters.Language),
+			Tags:       append([]string(nil), q.Filters.Tags...),
 		},
 	}
 	res, err := b.provider.Search(ctx, provReq)
@@ -195,10 +212,23 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 	if limit > search.MaxLimit {
 		limit = search.MaxLimit
 	}
+	// PR-AGGREGATE-FILTER-UNIFORM (July 2026): AdvancedSearchRequest
+	// is the canonical DTO for the local-backend filter set
+	// (godlike/06 SSOT). Category/Language/Tags forward from
+	// q.Filters; Source continues to flow through sourceOrAll for
+	// the legacy "all" semantic. The recipient SearchClipsAdvanced
+	// is also canonical (architecture/current.yaml#id-30). Language
+	// passes through AdvancedSearchRequest but cannot be applied at
+	// the SQL layer today (no media_assets.language column); the
+	// SQL filter is a no-op until a future migration lands — the
+	// DTO shape stays uniform so the Migration is wire-stable.
 	req := assetpkg.AdvancedSearchRequest{
-		Q:      q.Text,
-		Limit:  limit,
-		Source: sourceOrAll(q.Filters.Source),
+		Q:         q.Text,
+		Limit:     limit,
+		Source:    sourceOrAll(q.Filters.Source),
+		Category:  strings.TrimSpace(q.Filters.Category),
+		Language:  strings.TrimSpace(q.Filters.Language),
+		Tags:      append([]string(nil), q.Filters.Tags...),
 	}
 	res, err := b.repo.SearchClipsAdvanced(ctx, req)
 	if err != nil {
@@ -419,6 +449,19 @@ func mediaTypesFromStrings(in []string) []assetpkg.MediaType {
 		out = append(out, assetpkg.MediaType(m))
 	}
 	return out
+}
+
+// mediaTypesSingleFromString is the PR-AGGREGATE-FILTER-UNIFORM
+// canonical helper: map q.Filters.MediaType (a SINGLE canonical
+// string per architecture/current.yaml#id-30 PR-1) to the
+// providers.SearchFilters.MediaTypes ([]asset.MediaType) shape.
+// Empty input returns nil (the "no media-type filter active"
+// semantic that the Aggregator already preserves). Delegates to
+// the existing mediaTypesFromStrings (skip-blanks + same canonical
+// trim semantics) so PR-2's helper stays the single source of
+// truth for the slice conversion.
+func mediaTypesSingleFromString(in string) []assetpkg.MediaType {
+	return mediaTypesFromStrings([]string{strings.TrimSpace(in)})
 }
 
 // sourceOrAll normalises the legacy clipssearch "source" filter

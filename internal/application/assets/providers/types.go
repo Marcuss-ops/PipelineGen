@@ -66,6 +66,18 @@ const (
 // map[string]any was forbidden because it transformed the registry
 // into another untyped container at the application layer
 // (Agent 3 PR 3E constraints).
+//
+// PR-AGGREGATE-FILTER-UNIFORM (July 2026): Category, Language, and
+// Tags added so the provider backend's filter forwarding stays
+// uniform with the local backend's AdvancedSearchRequest
+// (architecture/current.yaml#id-30, PR-1 of VERDICT §6 follow-ups).
+// Provider adapters silently ignore filter fields their native API
+// does not support (the semantic of SearchFilters carries forward
+// unchanged for artlist/youtube — they only translate what their
+// API exposes; the canonical Aggregator fan-out never aborts the
+// per-backend search because of a filter mismatch, in line with
+// the "partial preferred" posture documented in
+// internal/application/search/aggregator.go).
 type SearchFilters struct {
 	// PublishedAfter excludes results with PublishedAt < PublishedAfter.
 	// Honours providers with a publication date in their metadata.
@@ -74,6 +86,13 @@ type SearchFilters struct {
 	Sort SortMode
 	// MediaTypes filters by media type. Empty list means "any".
 	MediaTypes []asset.MediaType
+	// Category is the taxonomy category slug. Empty means "any".
+	Category string
+	// Language is a BCP-47 code (e.g. "en", "it"). Empty means "any".
+	Language string
+	// Tags applies AND-semantics: every listed tag must be present.
+	// Empty means "no tag filter".
+	Tags []string
 	// MinDuration clamps out content shorter than this.
 	MinDuration time.Duration
 	// MaxDuration clamps out content longer than this.
