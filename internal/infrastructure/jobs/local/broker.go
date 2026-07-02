@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -19,6 +21,7 @@ type Broker struct {
 	workers    *assets.WorkerNodesRepository
 	progress   ProgressSink
 	coalescer  *ProgressCoalescer
+	finalizer  finalization.JobFinalizer
 	log        *zap.Logger
 	coalesceOn bool // true when coalescer is configured; gated via nil-check
 }
@@ -32,11 +35,17 @@ type Broker struct {
 // behind 100ms window). Pass Coalescer == nil to disable coalescing
 // (declares Window=0 semantics inside NewProgressCoalescer) — broker
 // will route Progress calls directly to the sink in that mode.
+//
+// Finalizer is the JobFinalizer for artifact-producing jobs (Spina
+// Dorsale, Fase 3). nil = CompleteWithArtifacts will return
+// ErrFinalizerNotConfigured. Non-nil = the broker delegates artifact-
+// producing completions through the transactional finalization spine.
 type Deps struct {
 	Jobs      domainjob.Store
 	Workers   *assets.WorkerNodesRepository
 	Progress  ProgressSink
 	Coalescer *ProgressCoalescer
+	Finalizer finalization.JobFinalizer
 	Log       *zap.Logger
 }
 
@@ -58,6 +67,7 @@ func New(d Deps) (*Broker, error) {
 		workers:    d.Workers,
 		progress:   d.Progress,
 		coalescer:  d.Coalescer,
+		finalizer:  d.Finalizer,
 		log:        d.Log,
 		coalesceOn: d.Coalescer != nil,
 	}, nil
@@ -231,6 +241,85 @@ func (b *Broker) Complete(ctx context.Context, cmd appjobs.CompleteCommand) erro
 	}
 	b.flushPendingProgress(ctx, cmd.JobID)
 	return b.jobs.Complete(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.ExpectedRevision, cmd.Result)
+}
+
+// ErrFinalizerNotConfigured is returned when CompleteWithArtifacts is
+// called but the broker was not wired with a JobFinalizer.
+var ErrFinalizerNotConfigured = errors.New("broker: JobFinalizer not configured — CompleteWithArtifacts requires the finalization spine")
+
+// CompleteWithArtifacts finalises a job atomically with its published
+// artifacts through the JobFinalizer spine. The command's artifacts and
+// events are deserialised into finalization types and passed to the
+// finalizer's CompleteWithArtifacts.
+//
+// The lease is constructed from the broker's knowledge of the job row
+// (workerID, leaseID, attempt) combined with the command's expiration
+// hint.
+func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
+	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
+		return err
+	}
+	b.flushPendingProgress(ctx, cmd.JobID)
+
+	if b.finalizer == nil {
+		return ErrFinalizerNotConfigured
+	}
+
+	// Deserialise artifacts from the command.
+	var artifacts []finalization.PublishedArtifact
+	if len(cmd.PublishedArtifacts) > 0 {
+		if err := json.Unmarshal(cmd.PublishedArtifacts, &artifacts); err != nil {
+			return fmt.Errorf("broker: deserialise published artifacts: %w", err)
+		}
+	}
+
+	// Deserialise outbox events from the command.
+	var events []finalization.OutboxEvent
+	if len(cmd.OutboxEvents) > 0 {
+		if err := json.Unmarshal(cmd.OutboxEvents, &events); err != nil {
+			return fmt.Errorf("broker: deserialise outbox events: %w", err)
+		}
+	}
+
+	// Get the job row to compute the attempt counter and lease expiry.
+	j, err := b.jobs.Get(ctx, cmd.JobID)
+	if err != nil {
+		return fmt.Errorf("broker: get job for finalization: %w", err)
+	}
+	if j == nil {
+		return fmt.Errorf("broker: job %q not found for finalization", cmd.JobID)
+	}
+
+	// LeaseExpiry is a *time.Time in the Job struct; default to 30s
+	// from now if nil (matches the Claim default).
+	leaseExpiresAt := time.Now().UTC().Add(30 * time.Second)
+	if j.LeaseExpiry != nil {
+		leaseExpiresAt = *j.LeaseExpiry
+	}
+
+	req := finalization.FinalizationRequest{
+		Lease: finalization.Lease{
+			LeaseID:   cmd.LeaseID,
+			JobID:     cmd.JobID,
+			WorkerID:  cmd.WorkerID,
+			Attempt:   j.RetryCount + 1,
+			ExpiresAt: leaseExpiresAt,
+		},
+		Result: finalization.ResultManifest{
+			JobID:   cmd.JobID,
+			Attempt: j.RetryCount + 1,
+			Data:    cmd.ResultData,
+		},
+		Artifacts: artifacts,
+		Events:    events,
+	}
+
+	_, err = b.finalizer.CompleteWithArtifacts(ctx, req)
+	if err != nil {
+		return fmt.Errorf("broker: finalizer.CompleteWithArtifacts: %w", err)
+	}
+
+	return nil
 }
 
 // Fail — same flush-pending-progress ordering as Complete.

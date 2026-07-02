@@ -127,6 +127,13 @@ func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) erro
 	return c.post(ctx, fmt.Sprintf(pathCompleteFmt, cmd.JobID), cmd, nil)
 }
 
+// CompleteWithArtifacts is not supported over the remote wire protocol
+// yet (the artifact-finalization spine requires in-process SQLite access).
+// Remote workers MUST use the legacy Complete path.
+func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
+	return fmt.Errorf("jobbrokerclient: CompleteWithArtifacts not supported over remote protocol — use Complete instead")
+}
+
 func (c *Client) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
 	return c.post(ctx, fmt.Sprintf(pathFailFmt, cmd.JobID), cmd, nil)
 }
