@@ -145,6 +145,7 @@ type Query struct {
 	Cursor     string     // opaque base64-JSON; "" = first page
 	Mode       SearchMode // applied to the semantic backend only
 	Actor      Actor      // PR-1: tenant identity forwarded to every backend
+	MinScore   float64    // 0 → use backend default (semanticMinScore 0.50); >0 overrides the score floor
 }
 
 // ── Candidate ──────────────────────────────────────────────────────
