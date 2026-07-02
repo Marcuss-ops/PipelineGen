@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -89,20 +92,28 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 	}
 
 	// Outbox event: index this asset in Qdrant.
-	indexPayload, _ := json.Marshal(map[string]any{
-		"asset_id":    artifact.ArtifactID,
-		"kind":        string(artifact.Kind),
-		"sha256":      artifact.SHA256,
-		"location":    artifact.Location.Provider,
-		"file_id":     artifact.Location.FileID,
-		"version":     versionNum,
-		"idempotency_key": artifact.IdempotencyKey,
+	// Canonical v1 envelope matching the IndexingHandler contract
+	// (schema_version, event_id, asset_id, source_version,
+	// idempotency_key are REQUIRED by the handler).
+	eventID := uuid.NewString()
+	eventKey := fmt.Sprintf("index:%s:%s", artifact.ArtifactID, artifact.SHA256)
+	indexPayload, err := json.Marshal(map[string]any{
+		"schema_version":  outboxevents.ReindexEnvelopeV1Schema,
+		"event_id":        eventID,
+		"asset_id":        artifact.ArtifactID,
+		"operation":       "UPSERT",
+		"source_version":  artifact.SHA256,
+		"idempotency_key": eventKey,
 	})
+	if err != nil {
+		return finalization.ArtifactRef{}, nil,
+			fmt.Errorf("asset finalizer: marshal index payload: %w", err)
+	}
 	events := []finalization.OutboxEvent{
 		{
-			EventType:   "asset.index_requested.v1",
+			EventType:   outboxevents.EventAssetIndexRequested,
 			AggregateID: artifact.ArtifactID,
-			EventKey:    fmt.Sprintf("index:%s:v%d", artifact.ArtifactID, versionNum),
+			EventKey:    eventKey,
 			Payload:     json.RawMessage(indexPayload),
 		},
 	}

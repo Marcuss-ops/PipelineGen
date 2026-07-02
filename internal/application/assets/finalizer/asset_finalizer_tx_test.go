@@ -11,6 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // setupTestDB creates an in-memory SQLite DB with the canonical tables.
@@ -169,8 +170,8 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 outbox event, got %d", len(events))
 	}
-	if events[0].EventType != "asset.index_requested.v1" {
-		t.Errorf("event type = %q, want asset.index_requested.v1", events[0].EventType)
+	if events[0].EventType != outboxevents.EventAssetIndexRequested {
+		t.Errorf("event type = %q, want %q", events[0].EventType, outboxevents.EventAssetIndexRequested)
 	}
 
 	// Verify media_assets row exists (before commit — inside tx).
@@ -339,7 +340,9 @@ func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
 }
 
 // TestAssetTxFinalizer_OutboxEventPayload verifies the outbox event
-// carries the correct index request payload.
+// carries the canonical v1 index request payload matching the
+// IndexingHandler contract (schema_version, event_id, asset_id,
+// source_version, idempotency_key).
 func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -363,17 +366,23 @@ func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
 	if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal outbox payload: %v", err)
 	}
+	if payload["schema_version"] != outboxevents.ReindexEnvelopeV1Schema {
+		t.Errorf("schema_version = %v, want %v", payload["schema_version"], outboxevents.ReindexEnvelopeV1Schema)
+	}
 	if payload["asset_id"] != "asset-payload" {
 		t.Errorf("asset_id = %v", payload["asset_id"])
 	}
-	if payload["sha256"] != "sha256-hash" {
-		t.Errorf("sha256 = %v", payload["sha256"])
+	if payload["source_version"] != "sha256-hash" {
+		t.Errorf("source_version = %v", payload["source_version"])
 	}
-	if payload["location"] != "drive" {
-		t.Errorf("location = %v", payload["location"])
+	if _, ok := payload["event_id"]; !ok {
+		t.Error("event_id missing from payload")
 	}
-	if payload["file_id"] != "drive-id-xyz" {
-		t.Errorf("file_id = %v", payload["file_id"])
+	if _, ok := payload["idempotency_key"]; !ok {
+		t.Error("idempotency_key missing from payload")
+	}
+	if payload["operation"] != "UPSERT" {
+		t.Errorf("operation = %v, want UPSERT", payload["operation"])
 	}
 }
 
