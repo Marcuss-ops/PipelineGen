@@ -167,6 +167,56 @@ func (s *Searcher) SearchByText(ctx context.Context, text string, embedder TextE
 // TTL expired) acquires the write lock and issues GetAliasTarget.
 // Invalidation is triggered by ResetSearchCache(), called by
 // CollectionManager.PromoteCandidate after every alias switch.
+//
+// ── PR 5 asymmetry: why the read path resolves the alias but the write path doesn't ──
+//
+// The Searcher (read path) calls GetAliasTarget to resolve
+// s.schema.RuntimeAlias → physical collection name, caches it for 30s,
+// and then routes all Search/HybridSearch queries to the resolved
+// target. The IndexWriter (write path) does NOT resolve — it passes
+// s.schema.RuntimeAlias directly to UpsertPoints / DeletePoints.
+//
+// This asymmetry is intentional (PR 5, June 2026, fix/qdrant-tenant-scope)
+// and must NOT be "corrected" by a future maintainer. Here's why:
+//
+// READ PATH (resolve, then query):
+//   • Qdrant accepts aliases in all REST API paths (including
+//     /points/search), so resolving before searching is an optimisation
+//     and explicit-validation choice, not an API requirement.
+//   • GetAliasTarget serves as a liveness check: if the runtime alias has
+//     no target, we fail early with a clear error rather than forwarding
+//     an opaque 404 from Qdrant's search handler.
+//   • The 30s TTL cache eliminates the per-request alias-resolution cost
+//     on the hot path (saving one Qdrant-internal lookup per query).
+//   • A stale cache (up to 30s) is safe: after a blue-green alias switch,
+//     searches briefly hitting the old collection return correct results
+//     (the old collection still exists and is consistent). No data
+//     corruption, no write-tearing.
+//
+// WRITE PATH (write directly through alias):
+//   • Qdrant accepts the alias name in PUT /points and POST /points/delete
+//     requests natively. The write is server-side atomic: Qdrant resolves
+//     the alias at request time within a single operation — no TOCTOU
+//     window between a client-side GetAliasTarget and the subsequent write.
+//   • The PRE-PR5 approach (GetAliasTarget → write to physical name)
+//     opened a race: if an alias switch landed between resolution and
+//     write, the batch would be written to the collection the alias
+//     JUST MOVED AWAY FROM — silently losing the write from the active
+//     index. The new collection would never see those points.
+//   • The write path saves one HTTP round-trip per batch (deletes and
+//     upserts are already batched, so this is a latency saving, not a
+//     correctness concern).
+//
+// TRADE-OFF SUMMARY:
+//   • Read path: extra round-trip on cache miss, safe staleness up to 30s.
+//   • Write path: zero extra round-trips, atomic alias resolution, no
+//     blue-green race window.
+//   • The asymmetry is a feature, not a bug. Resolving aliases on the
+//     write path was explicitly removed in PR 5 because correctness
+//     (atomic writes) trumps symmetry.
+//
+// See internal/infrastructure/qdrant/index_writer.go PR 5 comment block
+// for the write-side counterpart of this documentation.
 func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	// Fast path: read-lock, check cache.
 	s.cacheMu.RLock()
