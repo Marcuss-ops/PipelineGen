@@ -1,5 +1,5 @@
-// Package generated — spec_aliases.go declares the user-spec surface
-// (FASE 5, July 2026) on top of Step 8's canonical implementation.
+// Package generated — spec_aliases.go exposes the stable generation-provider
+// contract. Google Slides is the sole implementation.
 package generated
 
 import "errors"
@@ -16,8 +16,6 @@ var ErrProviderNotFound = errors.New("generated: provider id not found in regist
 
 var (
 	_ Provider = (*GoogleSlidesProvider)(nil)
-	_ Provider = (*FluxProvider)(nil)
-	_ Provider = (*NvidiaProvider)(nil)
 
 	_ Registry = (*GenerationProviderRegistry)(nil)
 	_ Registry = (*GenerationRegistryImpl)(nil)
