@@ -399,3 +399,89 @@
     application/semantic directly. Once fixed, run Step 10 curl smoke
     against /api/images/{retrieved/search,generated/search,generated/styles,search}
     to lock the response envelope shape.
+
+- id: PR-CROSSPACKAGE-INDEXING-STATUS-§12-5
+  title: "Consolidate cross-package IndexingStatus typed-enum (chunk-level stock vs asset-level YouTube)"
+  status: pending
+  owner: internal/application/assets/sourcing (cross-package coordination lead)
+  deadline: 2026-08-15
+  linked_issues:
+    - 29  # architecture/current.yaml#id-29 forward-pointer origin
+    - 9aa4c9e2  # canonical Stock Cutover Commit 4-expanded byte-equivalent-replay SHA
+    - 7dba2adf  # post-rebase AGENTS.md Active Concerns #13 closure note SHA
+  notes: |
+    Stock Cutover Commit 4-expanded (commit 9aa4c9e2, landed 2026-07-02
+    via byte-equivalent-replay race resolution per AGENTS.md §Git-Lesson-5)
+    retired the stock-subtree IndexingStatus typed-enum (the local
+    declaration in internal/application/assets/providers/stock/stockpipeline/
+    service.go + chunk-result-level IndexingStatus enum, retired alongside
+    the synchronous uploadAndIndexChunk post-upload indexing path). The
+    Commit 4-expanded closure note (per AGENTS.md Active Concerns #13,
+    7dba2adf) explicitly surfaced 4 cross-package production-code sites
+    that still use a NAME-HOMOGONYM typed-enum IndexingStatus on the
+    YouTube-side asset-level indexing path — those sites were deliberately
+    untouched by Commit 4-expanded per scope-lock discipline (godlike/07
+    "don't surprise downstream commits").
+
+    The 4 cross-package sites enumerated via residue grep (post-Commit
+    4-expanded, in this ticket's scope):
+      1. internal/application/assets/sourcing/types.go:39 — declaration
+         site of the local typed-enum IndexingStatus {IndexingPending,
+         IndexingSkipped, IndexingCompleted, IndexingFailed}.
+      2. internal/application/assets/sourcing/youtube/service.go — 2
+         production-code usages (status write-path + completion path).
+      3. internal/application/assets/sourcing/youtube/ports.go — 1
+         doc-comment mention (audit-pin reference).
+      4. internal/api/assets/register/handler.go:126 — JSON wire-field
+         emission `"indexing_status"` (round-tripped via boolean
+         MarshalJSON shim).
+
+    Pattern candidate (godlike/06 one-owner-per-fact): lift the typed-enum
+    out of the YouTube-sourcing path entirely and unify under a canonical
+    domain-level enum at internal/domain/sourcing/index_status.go (or extend
+    internal/domain/asset/lifecycle.go if cross-domain). Re-export lato stock
+    via type alias `type StockIndexStatus = domain.SourcingIndexStatus` per
+    the godlike/06 SSOT rule — the stock-side surface (currently 0 production-
+    code usages after Commit 4-expanded) becomes a pure re-export with no
+    copy-paste drift risk.
+
+    EXPAND/BACKFILL/CUTOVER/CONTRACT sequence per AGENTS.md §7:
+      EXPAND (this ticket's start): declare canonical domain enum +
+        re-export aliases in both packages; no surface deletion yet.
+      BACKFILL: migrate the 4 sourcing/youtube + register/handler usage
+        sites to the canonical domain enum (each call site uses
+        domain.SourcingIndexStatusCompleted instead of the local
+        typed-enum literal).
+      CUTOVER: retire the local `sourcing.IndexingStatus` enum
+        declaration with deprecated comment + deprecation record in
+        architecture/deprecations.yaml (add entry PR-CROSSPACKAGE-
+        INDEXING-STATUS-§12-5 under cross-package category).
+      CONTRACT: physical git-rm the local enum declaration + 4 call-
+        site usages of the alias.
+
+    Linked canonical references:
+      * architecture/current.yaml#id-29 linked_issues entry
+        PR-CrossPackage-IndexingStatus-§12-5 (this ticket's namesake,
+        forward-pointer origin)
+      * architecture/current.yaml#id-29 linked_issues entry P0.18
+        (reintroduce structured outbox-driven enrichment — orthogonal
+        to this ticket but shares the deadline 2026-08-15)
+      * AGENTS.md Active Concerns #13 closure note (the 4 cross-package
+        sites are explicitly forward-pointed from this entry)
+      * godlike/06 one-owner-per-fact rule: the typed-enum's canonical
+        owner TODAY is the YouTube-side path (post-Commit 4-expanded
+        stock retirement); this ticket consolidates both packages under
+        a single domain owner.
+
+    Tests to pin at CUTOVER (TDD-discipline, godlike/06 audit-pinning):
+      * JSON round-trip marshal/unmarshal of the `indexing_status` wire
+        field with all 4 enum values (IndexingPending / Skipped /
+        Completed / Failed).
+      * Compile-time assertion `var _ domain.SourcingIndexStatus =
+        sourcing.IndexingStatus` linking the alias to the canonical
+        enum.
+      * Residue-grep test (rg on `sourcing.IndexingStatus` excluding
+        the alias declaration site) returns zero matches.
+      * Deferral deadline compliance: 2026-08-15 driven by
+        architecture/current.yaml#id-29.linked_issues PR-CrossPackage-
+        IndexingStatus-§12-5 deadline (mirrors P0.18's deadline).
