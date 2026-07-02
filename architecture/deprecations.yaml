@@ -2534,3 +2534,115 @@ audit:
       14-field schema contract (godlike/07 audit-pin: the
       migration_phase canonical Godlike/07 values + the
       status contract-half framing).
+  # ── 23. SCRIPT-LEGACY-GENERATE-BATCH — legacy /api/script/generate-batch removal ratification ──
+  # Step 8 / FASE 12c (commit 9ff1e19e on origin/main, July 2026)
+  # physically removed POST /api/script/generate-batch + LegacyGenerateBatch+
+  # Request + LegacyBatchItem + LegacyBatchTopic + the LegacyGenerateBatch
+  # handler + route registration + DeprecationCount entry + the
+  # removalDateBatch const. This entry is the retroactive godlike/07
+  # audit-footprint. Voiceover.Service.GenerateBatch is EXPLICITLY OUT OF
+  # SCOPE per user choice on Step 12A "Spostati a SCRIPT legacy backup".
+  # ──────────────────────────────────────────────────────────────────
+  - id: SCRIPT-LEGACY-GENERATE-BATCH
+    owner_capability: internal/api/script
+    exact_symbol: |
+      ScriptFlowHandler.LegacyGenerateBatch (HTTP handler method) +
+      POST /api/script/generate-batch (Gin route registration) +
+      LegacyGenerateBatchRequest struct + LegacyBatchItem struct +
+      LegacyBatchTopic struct + LegacyGenerateBatchRequest.toEnvelope()
+      mapper + removalDateBatch const + the 4th "generate-batch" entry
+      in DeprecationCount() route list.
+    file: internal/api/script/handler_legacy_adapters.go + internal/api/script/handler_flow.go
+    file_line: |
+      All symbols DELETED at commit 9ff1e19e (FASE 12c, July 2026).
+      git show 9ff1e19e~1:<file> returns pre-deletion anchor lines
+      for the route registration, the handler impl, the 4 type struct
+      decls, the const, the DeprecationCount list entry, and the
+      test cases. Post-9ff1e19e reference: rg --type go on all symbols
+      returns 0 hits (verified at Step 12A audit baseline).
+    replacement: |
+      Direct typed call to POST /api/script/generate (the unified
+      pipeline endpoint shipped in PR 11 + Step 8 FASE 12c) with
+      multiple GenerationEnvelopeV2 items in a single envelope.
+      Clients construct N items with SourceSpec.Type = legacy
+      batch semantics, no separate /generate-batch entry point.
+      handler_flow.go::RegisterRoutes r.POST("/generate", ...) is
+      the canonical mount with items array unbounded (N=1..K
+      scripts per call).
+    introduction_date: 2026-06-28
+    removal_date: 2026-07-29
+    tracking_issue: |
+      FASE 12c — Legacy route removal (commit 9ff1e19e + residual
+      cleanup 00ad3430 on origin/main, July 2026). Wave tracker:
+      architecture/current.yaml#BLOC5.3_commit-3-legacy_batch_elim
+      (sibling to BLOC5.3_commit-2-child_canonical; closure in this
+      audit pass via Step 12A "Spostati a SCRIPT legacy backup").
+    compatibility_test: |
+      Five-layer defence mirroring DRIVE-005-FIELDS / PR-SEARCH-
+      LEGACY-MEDIASEARCH / PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL:
+        (a) rg --type go -n 'LegacyBatchItem|LegacyBatchTopic|
+            LegacyGenerateBatchRequest' internal/  -> 0 hits.
+        (b) rg --type go -n 'LegacyGenerateBatch\(' internal/  -> 0 hits.
+        (c) rg --type go -n '"/generate-batch"|/api/script/generate-
+            batch' internal/  -> 0 hits.
+        (d) rg -n 'generate-batch' .  -> AT MOST 1 hit =
+            architecture/current.yaml (FASE 12c marker block) +
+            this manifest entry.
+        (e) bash scripts/ci-architectural-checks.sh  -> rc=0
+            (route-allowlist gate does not contain /api/script/
+            generate-batch post-FASE 12c).
+    usage_metric: |
+      Pre-removal (Step 8 / FASE 12c commit 9ff1e19e, July 2026):
+        Gin route: 1, HTTP handler: 1, type structs: 4
+        (LegacyGenerateBatchRequest + LegacyBatchItem +
+        LegacyBatchTopic + toEnvelope mapper), removalDateBatch
+        const: 1, DeprecationCount entry: 1, test assertions: ~4
+        (handler_test.go::TestScriptRoutes_Compatibility + batch-
+        specific subtests).
+      Post-removal (Step 12A audit baseline, July 2026):
+        Gin route: 0, HTTP handler: 0, type structs: 0, test
+        assertions: 0, all rg gates return 0 hits. Voiceover.
+        Service.GenerateBatch has 4 non-test hits in
+        internal/application/voiceover/* — EXPLICITLY OUT OF SCOPE
+        (canonical batch voiceover pipeline, untouched per user).
+      Documentation residue (gated to 1 repo hit): the FASE 12c
+      marker block in architecture/current.yaml is the single
+      allowed residue per godlike/07 §"Historical information".
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Single-pulse CONTRACT jump per godlike/07 §"Migration
+      sequence": 0 pre-removal callers + canonical replacement
+      POST /api/script/generate already on main HEAD -> direct
+      CONTRACT. Step 8 / FASE 12c (commit 9ff1e19e + 00ad3430)
+      physically removed everything. This entry ratchets the
+      removal so future PR cannot re-introduce /api/script/
+      generate-batch without a fresh deprecation record + 90-day
+      Sunset per godlike/07.
+
+      Voiceover.Service.GenerateBatch is EXPLICITLY OUT OF SCOPE.
+      The 4 non-test occurrences (internal/application/voiceover/*
+      jobs/generate_item_handler.go, process.go:88, process_voiceover_
+      item.go, usecase.go) are documentation-comment refs to the
+      canonical batch voiceover pipeline (HandleJob -> handleBatchJob
+      /handlePromoJob -> GenerateBatch -> processLanguage x N
+      languages), NOT SCRIPT legacy stragglers. Future wave closures
+      PR-VO-D1/D2/D3/E1 (Wave-12 cutover packet) will track the
+      voiceover canonical Service typed-port migration per
+      BLOC5.3_commit-2-child_canonical + BLOC5.3_commit-3-legacy_
+      batch_elim markers (this entry's sibling wave-tracker
+      closure).
+
+      Cross-refs (gate-side audit trail):
+        - FASE 12c physical removal: commit 9ff1e19e + 00ad3430
+          (origin/main, July 2026).
+        - Wave-tracker closure: architecture/current.yaml#
+          BLOC5.3_commit-3-legacy_batch_elim.
+        - godlike/07 schema home: this manifest entry
+          (architecture/deprecations.yaml#SCRIPT-LEGACY-GENERATE-BATCH).
+        - User clarification audit: Step 12A "Spostati a SCRIPT
+          legacy backup" choice (rejecting the destructive Force-
+          Remove path that would have collapsed voiceover batch).
+        - Forward-pointer (out of scope): Wave-12 cutover packet
+          PR-VO-D1/D2/D3/E1 follow-ups.
+
