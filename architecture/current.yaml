@@ -766,9 +766,13 @@
 #     (qdrant.TextEmbedder) wires through composition root.
 #   * Verdict §4 (text-to-visual cross-modale)     → STILL PENDING
 #     (forward-pointer PR-CROSS-MODAL-TEXT-TO-VISUAL).
-#   * Verdict §5 (canale audio non completo)       → STILL PENDING
-#     (forward-pointer; indexViaAPI emits 3 phases today, CLAP
-#     audio-channel projection is the 4th-phase extension).
+#   * Verdict §5 (canale audio non completo)       → CLOSED by
+#     PR-AUDIO-CHANNEL-EXTENSION (shipped on origin/main, 4/4
+#     TDD tests green; indexViaAPI now emits 4 phases incl. CLAP
+#     audio channel). Forward-pointer CANONICAL-DRIFT-MIG094
+#     documents a pre-existing drift in CanonicalMediaAssetsSchema
+#     (migration 094 columns not folded into the canonical
+#     constant; non-blocking; tracked separately).
 #   * Verdict §6 (filtri non uniformi)             → STILL PENDING
 #     (forward-pointer PR-AGGREGATE-FILTER-UNIFORM; provider backend
 #     reads q.MediaTypes instead of q.Filters.MediaType today, and
@@ -778,7 +782,7 @@
 - id: 30
   status: in_progress
   exit_signal: false
-  owner: application/mediasearch (composition: internal/app)
+  owner: "application/mediasearch (composition: internal/app)"
   deadline: 2026-08-15
   blocker: ["16"]
   exit_gate: |
@@ -1155,6 +1159,76 @@
           owner_capability: internal/application/mediasearch + tests
           status: pending
           deadline: 2026-08-15
+    # PR-AUDIO-CHANNEL-EXTENSION (July 2026, shipped): Phase 4 audio
+    # embedding (CLAP-HTSAT 512d) added to indexViaAPI at the
+    # canonical surface internal/infrastructure/indexing/clipindexer/
+    # indexing_api.go (the user spec path internal/application/video/
+    # indexer/indexViaAPI.go does not exist; per AGENTS.md
+    # Path Resolution + "minimal change" rule, the existing canonical
+    # 3-phase file was extended).
+    #
+    # Surface landed (1 MODIFIED + 1 NEW):
+    #   * MODIFIED internal/infrastructure/indexing/clipindexer/indexing_api.go
+    #     (~120 LoC added): Step 4 in indexViaAPI (best-effort, fail-soft,
+    #     combined with Step 3 visual under a single `if localPath != ""`
+    #     guard) + indexAudioViaAPI function (POST /embed_audio_from_file
+    #     to the Python sidecar; 60s audioClient timeout absorbs cold-
+    #     start CLAP model load; 410/501 fail-soft per godlike/07
+    #     no-fake-availability) + persistAudioEmbedding helper (JSON-
+    #     encodes the 512d vector to media_assets.audio_embedding).
+    #   * NEW internal/infrastructure/indexing/clipindexer/indexing_api_audio_test.go
+    #     (~310 LoC, 4 TDD tests): TestIndexClip_PopulatesAudioChannel
+    #     (happy path) + TestIndexClip_AudioChannelUnavailableFailSoft
+    #     (HTTP 501, CLAP not loaded) + TestIndexClip_AudioChannelEndpointRetired
+    #     (HTTP 410, QDRANT-001 retirement) + TestIndexClip_AudioChannelLocalPathEmpty
+    #     (no audio source on disk).
+    #
+    # godlike/06 SSOT (one canonical owner per fact): the Qdrant audio
+    # channel was already declared (schema.go::DefaultV3Schema); the
+    # media_assets.audio_embedding column already exists (migration 099);
+    # the AssetStore.AudioVector field already exists (index_writer.go:392);
+    # the payload_mapper.IndexDocumentToPoint already handles
+    # case ChannelAudio (payload_mapper.go:412). ZERO production-side
+    # wiring churn. Phase 4 is purely additive.
+    #
+    # godlike/07 fail-soft contract: failing the audio channel MUST
+    # NOT fail the entire IndexClip — the clip remains valid for the
+    # other 3 channels (text / transcript / visual) per the Qdrant
+    # v3 schema's ChannelAudio-drops-on-nil behavior. HTTP 200 ->
+    # persist; HTTP 501 (CLAP model not loaded) -> log INFO + skip;
+    # HTTP 410 (endpoint retired, QDRANT-001) -> log INFO + skip;
+    # other HTTP errors -> log DEBUG + skip (best-effort, like visual).
+    #
+    # Test verification: 4/4 TDD tests green; go vet + go build +
+    # go test -short -count=1 on the full clipindexer package all
+    # exit 0. The audio_embedding persists synchronously in
+    # indexAudioViaAPI; the Qdrant upsert is decoupled via the
+    # existing outbox contract (media.index.requested ->
+    # IndexWriter.UpsertFromClips -> PayloadMapper case ChannelAudio).
+    - id: PR-AUDIO-CHANNEL-EXTENSION
+      owner_capability: internal/infrastructure/indexing/clipindexer
+      status: shipped
+      exit_signal: true
+      deadline: 2026-07-02
+    # CANONICAL-DRIFT-MIG094 (July 2026, pending): pre-existing drift
+    # in internal/infrastructure/database/canonical.go::CanonicalMediaAssetsSchema.
+    # The canonical constant was authored before migration 094
+    # (QDRANT-002 PR6, June 2026) added the index_state /
+    # index_state_updated_at / source_version columns; the constant
+    # has not been folded to mirror those additions. This drift is
+    # OUT OF SCOPE for PR-AUDIO-CHANNEL-EXTENSION — the Phase 4
+    # tests use an inline schema matching the existing
+    # service_test.go pattern in the same package, which works
+    # around the drift. Future fix: append the 3 missing column
+    # definitions to CanonicalMediaAssetsSchema and fold the 5+
+    # inline test schemas (clipindexer, artlist, catalogsync, etc.)
+    # to embed the canonical constant per canonical.go's
+    # "Test fixtures that call drive.NewTestDBWithSchema MUST embed
+    # this constant" rule.
+    - id: CANONICAL-DRIFT-MIG094
+      owner_capability: internal/infrastructure/database
+      status: pending
+      deadline: 2026-07-25
 
 
 # ---------------------------------------------------------------------------
