@@ -1,0 +1,667 @@
+// Package finalizer provides the concrete implementation of the
+// canonical JobFinalizer interface (Spina Dorsale, Fase 2, July 2026).
+//
+// The Finalizer is the SINGLE writer of the terminal SUCCEEDED state.
+// Every capability that completes a job MUST route through
+// CompleteWithArtifacts — never set SUCCEEDED directly.
+//
+// Transactional contract (Piano d'Azione § 4.4):
+//
+//	BEGIN IMMEDIATE
+//	  SELECT job (lease check)
+//	  check prior terminal result (idempotent completion)
+//	  UPSERT media_assets (for each artifact)
+//	  INSERT asset_versions (for each artifact)
+//	  UPSERT asset_locations (for each artifact)
+//	  INSERT outbox_events (for each event)
+//	  INSERT job_events
+//	  UPDATE jobs SET status = 'SUCCEEDED'
+//	COMMIT
+//
+// All writes happen in ONE transaction. If any step fails, the
+// deferred rollback undoes everything.
+//
+// Idempotency contract (Piano d'Azione § 4.5):
+//
+//   - Same result hash + same artifacts → idempotent success (no-op).
+//   - Different result hash on already-SUCCEEDED job → ErrCompletionConflict.
+//   - Stale attempt (request.Attempt < current.Attempt) → ErrStaleAttempt.
+package finalizer
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+)
+
+// Finalizer is the concrete implementation of finalization.JobFinalizer.
+//
+// It holds a *sql.DB (to open transactions) and an *outboxevents.Repository
+// (to enqueue outbox events inside the transaction). FASE 3 will introduce
+// the separate AssetFinalizerTx that participates in the same transaction
+// via the finalization.Transaction interface.
+type Finalizer struct {
+	db     *sql.DB
+	outbox *outboxevents.Repository
+	log    *zap.Logger
+}
+
+// New creates a Finalizer with the given database and outbox repository.
+func New(db *sql.DB, outbox *outboxevents.Repository, log *zap.Logger) *Finalizer {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &Finalizer{
+		db:     db,
+		outbox: outbox,
+		log:    log,
+	}
+}
+
+// Compile-time assertion: Finalizer implements finalization.JobFinalizer.
+var _ finalization.JobFinalizer = (*Finalizer)(nil)
+
+// CompleteWithArtifacts finalises a job atomically with its published
+// artifacts. See finalization.JobFinalizer for the full contract.
+func (f *Finalizer) CompleteWithArtifacts(
+	ctx context.Context,
+	req finalization.FinalizationRequest,
+) (*finalization.FinalizationResult, error) {
+	// 1. Pre-validation (outside transaction — fail-fast).
+	if err := f.validateRequest(&req); err != nil {
+		return nil, err
+	}
+
+	// 2. Open transaction.
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finalizer: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 3. SELECT job with lease fence.
+	jobRow, err := f.selectJobForFinalization(ctx, tx, &req.Lease)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Check prior terminal result (idempotent completion).
+	if jobRow.status == "SUCCEEDED" {
+		return f.handleIdempotentCompletion(ctx, jobRow, &req)
+	}
+
+	// 5. Write artifacts (media_assets + asset_versions + asset_locations).
+	refs, err := f.writeArtifacts(ctx, tx, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	// 6. Write outbox events.
+	if err := f.writeOutboxEvents(ctx, tx, req.Events); err != nil {
+		return nil, err
+	}
+
+	// 7. Write result manifest + mark job SUCCEEDED.
+	if err := f.markSucceeded(ctx, tx, &req); err != nil {
+		return nil, err
+	}
+
+	// 8. Commit.
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("finalizer: commit: %w", err)
+	}
+
+	now := time.Now().UTC()
+	f.log.Info("job finalised with artifacts",
+		zap.String("job_id", req.Result.JobID),
+		zap.Int("attempt", req.Result.Attempt),
+		zap.Int("artifact_count", len(refs)),
+		zap.Int("outbox_events", len(req.Events)),
+	)
+
+	return &finalization.FinalizationResult{
+		JobID:        req.Result.JobID,
+		Status:       "SUCCEEDED",
+		CompletedAt:  now,
+		ArtifactRefs: refs,
+	}, nil
+}
+
+// ── Pre-validation ──────────────────────────────────────────────────
+
+// validateRequest performs fail-fast validation before opening a
+// transaction. This catches programming errors early and avoids
+// wasted transaction opens.
+func (f *Finalizer) validateRequest(req *finalization.FinalizationRequest) error {
+	// Lease validation.
+	if req.Lease.JobID == "" {
+		return finalization.NewFinalizationError(
+			"INVALID_LEASE", "lease has empty JobID",
+			"", 0, finalization.ErrLeaseExpired,
+		)
+	}
+	if !req.Lease.Valid() {
+		return finalization.NewFinalizationError(
+			"LEASE_EXPIRED", "lease has expired",
+			req.Lease.JobID, req.Lease.Attempt, finalization.ErrLeaseExpired,
+		)
+	}
+	if req.Lease.LeaseID == "" {
+		return finalization.NewFinalizationError(
+			"INVALID_LEASE", "lease has empty LeaseID",
+			req.Lease.JobID, req.Lease.Attempt, finalization.ErrLeaseExpired,
+		)
+	}
+	if req.Lease.WorkerID == "" {
+		return finalization.NewFinalizationError(
+			"INVALID_LEASE", "lease has empty WorkerID",
+			req.Lease.JobID, req.Lease.Attempt, finalization.ErrLeaseExpired,
+		)
+	}
+
+	// Result manifest validation.
+	if req.Result.JobID == "" {
+		return finalization.NewFinalizationError(
+			"INVALID_RESULT", "result manifest has empty JobID",
+			"", 0, nil,
+		)
+	}
+	if req.Result.JobID != req.Lease.JobID {
+		return finalization.NewFinalizationError(
+			"MISMATCHED_JOB_ID", "result JobID does not match lease JobID",
+			req.Result.JobID, req.Lease.Attempt, nil,
+		)
+	}
+
+	// Artifact validation.
+	seen := make(map[string]bool)
+	hasRequired := false
+	for i, a := range req.Artifacts {
+		if a.ArtifactID == "" {
+			return finalization.NewFinalizationError(
+				"INVALID_ARTIFACT",
+				fmt.Sprintf("artifact[%d] has empty ArtifactID", i),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrRequiredArtifactMissing,
+			)
+		}
+		if a.IdempotencyKey == "" {
+			return finalization.NewFinalizationError(
+				"INVALID_IDEMPOTENCY_KEY",
+				fmt.Sprintf("artifact[%d] (%s) has empty IdempotencyKey", i, a.ArtifactID),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrInvalidIdempotencyKey,
+			)
+		}
+		if seen[a.ArtifactID] {
+			return finalization.NewFinalizationError(
+				"DUPLICATE_ARTIFACT",
+				fmt.Sprintf("artifact[%d] (%s) is a duplicate", i, a.ArtifactID),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrDuplicateArtifact,
+			)
+		}
+		seen[a.ArtifactID] = true
+		if a.Required {
+			hasRequired = true
+		}
+	}
+
+	// At least one artifact must be required (otherwise the job has
+	// nothing substantive to record).
+	if len(req.Artifacts) > 0 && !hasRequired {
+		return finalization.NewFinalizationError(
+			"NO_REQUIRED_ARTIFACTS",
+			"all artifacts are optional — at least one required artifact expected",
+			req.Result.JobID, req.Lease.Attempt,
+			finalization.ErrRequiredArtifactMissing,
+		)
+	}
+
+	return nil
+}
+
+// ── Job row (lease fence) ───────────────────────────────────────────
+
+// jobRow holds the result of the lease-fenced SELECT.
+type jobRow struct {
+	status       string
+	workerID     string
+	leaseID      string
+	revision     int
+	retryCount   int
+	resultJSON   string
+}
+
+// selectJobForFinalization reads the job row inside the transaction
+// and validates the lease fence.
+func (f *Finalizer) selectJobForFinalization(
+	ctx context.Context,
+	tx *sql.Tx,
+	lease *finalization.Lease,
+) (*jobRow, error) {
+	var row jobRow
+	err := tx.QueryRowContext(ctx,
+		`SELECT status, worker_id, lease_id, revision, retry_count, COALESCE(result_json, '')
+		 FROM jobs WHERE id = ?`,
+		lease.JobID,
+	).Scan(&row.status, &row.workerID, &row.leaseID, &row.revision, &row.retryCount, &row.resultJSON)
+	if err == sql.ErrNoRows {
+		return nil, finalization.NewFinalizationError(
+			"JOB_NOT_FOUND", "job not found",
+			lease.JobID, lease.Attempt, nil,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("finalizer: select job: %w", err)
+	}
+
+	// Validate lease ownership inside the transaction (defence against
+	// race between pre-validation and commit).
+	if row.status != "RUNNING" && row.status != "FINALIZING" && row.status != "SUCCEEDED" {
+		return nil, finalization.NewFinalizationError(
+			"INVALID_STATUS",
+			fmt.Sprintf("job status %q is not completable", row.status),
+			lease.JobID, lease.Attempt, nil,
+		)
+	}
+	if row.workerID != lease.WorkerID {
+		return nil, finalization.NewFinalizationError(
+			"LEASE_OWNER_MISMATCH",
+			fmt.Sprintf("lease owner mismatch: worker %q != expected %q", row.workerID, lease.WorkerID),
+			lease.JobID, lease.Attempt, finalization.ErrLeaseOwnerMismatch,
+		)
+	}
+	if row.leaseID != lease.LeaseID {
+		return nil, finalization.NewFinalizationError(
+			"LEASE_ID_MISMATCH",
+			fmt.Sprintf("lease ID mismatch: %q != expected %q", row.leaseID, lease.LeaseID),
+			lease.JobID, lease.Attempt, finalization.ErrLeaseExpired,
+		)
+	}
+
+	// The request attempt must equal the job's retry_count + 1
+	// (the attempt counter increments on each retry).
+	expectedAttempt := row.retryCount + 1
+	if lease.Attempt != expectedAttempt {
+		return nil, finalization.NewFinalizationError(
+			"STALE_ATTEMPT",
+			fmt.Sprintf("request attempt %d != expected %d (retry_count=%d)", lease.Attempt, expectedAttempt, row.retryCount),
+			lease.JobID, lease.Attempt, finalization.ErrStaleAttempt,
+		)
+	}
+
+	return &row, nil
+}
+
+// ── Idempotent completion ───────────────────────────────────────────
+
+// handleIdempotentCompletion checks whether an already-SUCCEEDED job
+// was completed with the same result. If so, it returns idempotent
+// success. If the result hash differs, it returns ErrCompletionConflict.
+func (f *Finalizer) handleIdempotentCompletion(
+	ctx context.Context,
+	row *jobRow,
+	req *finalization.FinalizationRequest,
+) (*finalization.FinalizationResult, error) {
+	requestHash := hashResult(req.Result.Data)
+
+	// If the stored result is empty, we can't compare — treat as conflict.
+	if row.resultJSON == "" || row.resultJSON == "{}" || row.resultJSON == "null" {
+		f.log.Warn("job already SUCCEEDED with empty result, cannot verify idempotency",
+			zap.String("job_id", req.Result.JobID),
+		)
+		return nil, finalization.NewFinalizationError(
+			"COMPLETION_CONFLICT",
+			"job already SUCCEEDED with empty/nil result — cannot verify idempotency",
+			req.Result.JobID, req.Lease.Attempt, finalization.ErrCompletionConflict,
+		)
+	}
+
+	storedHash := hashJSONString(row.resultJSON)
+	if storedHash == requestHash {
+		f.log.Info("job already SUCCEEDED with same result hash — idempotent success",
+			zap.String("job_id", req.Result.JobID),
+			zap.String("hash", requestHash),
+		)
+		return &finalization.FinalizationResult{
+			JobID:       req.Result.JobID,
+			Status:      "SUCCEEDED",
+			CompletedAt: time.Now().UTC(),
+		}, nil
+	}
+
+	return nil, finalization.NewFinalizationError(
+		"COMPLETION_CONFLICT",
+		fmt.Sprintf("job already SUCCEEDED with different result (stored_hash=%s request_hash=%s)", storedHash, requestHash),
+		req.Result.JobID, req.Lease.Attempt, finalization.ErrCompletionConflict,
+	)
+}
+
+// ── Artifact writes ─────────────────────────────────────────────────
+
+// writeArtifacts writes all artifacts (media_assets UPSERT +
+// asset_versions INSERT + asset_locations UPSERT) inside the
+// transaction. Returns ArtifactRef for each artifact.
+func (f *Finalizer) writeArtifacts(
+	ctx context.Context,
+	tx *sql.Tx,
+	req *finalization.FinalizationRequest,
+) ([]finalization.ArtifactRef, error) {
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	refs := make([]finalization.ArtifactRef, 0, len(req.Artifacts))
+
+	for i, a := range req.Artifacts {
+		// --- UPSERT media_assets ---
+		if err := f.upsertMediaAsset(ctx, tx, &a, nowStr); err != nil {
+			return nil, fmt.Errorf("finalizer: artifact[%d] (%s) media_asset upsert: %w", i, a.ArtifactID, err)
+		}
+
+		// --- INSERT asset_versions ---
+		versionNum, err := f.insertAssetVersion(ctx, tx, &a, nowStr)
+		if err != nil {
+			return nil, fmt.Errorf("finalizer: artifact[%d] (%s) version insert: %w", i, a.ArtifactID, err)
+		}
+
+		// --- UPSERT asset_locations ---
+		if err := f.upsertAssetLocation(ctx, tx, &a, nowStr); err != nil {
+			return nil, fmt.Errorf("finalizer: artifact[%d] (%s) location upsert: %w", i, a.ArtifactID, err)
+		}
+
+		refs = append(refs, finalization.ArtifactRef{
+			ArtifactID:    a.ArtifactID,
+			AssetID:       a.ArtifactID,
+			Kind:          a.Kind,
+			SourceVersion: int64(versionNum),
+			ContentHash:   a.SHA256,
+			Location:      a.Location,
+		})
+	}
+
+	return refs, nil
+}
+
+// upsertMediaAsset does an INSERT ... ON CONFLICT DO UPDATE for the
+// canonical media_assets row.
+//
+// Note: metadata_json is replaced (not merged via json_patch) to
+// avoid depending on SQLite extension availability. The caller is
+// responsible for providing the full metadata payload.
+func (f *Finalizer) upsertMediaAsset(
+	ctx context.Context,
+	tx *sql.Tx,
+	a *finalization.PublishedArtifact,
+	nowStr string,
+) error {
+	mediaType := kindToMediaType(a.Kind)
+	metadata := map[string]any{
+		"publish_action": string(a.Location.Action),
+		"source_version": a.SourceVersion,
+		"size_bytes":     a.SizeBytes,
+	}
+	metadataJSON, _ := json.Marshal(metadata)
+	actionStr := ""
+	if a.Location.Action != "" {
+		actionStr = string(a.Location.Action)
+	}
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO media_assets (
+			id, source, name, filename, media_type,
+			file_hash, drive_file_id, drive_link, download_link,
+			folder_id, folder_path, lifecycle_state,
+			metadata_json, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			filename = excluded.filename,
+			media_type = excluded.media_type,
+			file_hash = excluded.file_hash,
+			drive_file_id = excluded.drive_file_id,
+			drive_link = excluded.drive_link,
+			download_link = excluded.download_link,
+			folder_id = excluded.folder_id,
+			folder_path = excluded.folder_path,
+			metadata_json = excluded.metadata_json,
+			updated_at = excluded.updated_at
+	`,
+		a.ArtifactID,
+		actionStr,  // source
+		a.Filename, // name
+		a.Filename,
+		mediaType,
+		a.SHA256,
+		a.Location.FileID,
+		a.Location.WebViewLink,
+		a.Location.DownloadLink,
+		a.Location.FolderID,
+		a.Location.FolderPath,
+		string(metadataJSON),
+		nowStr,
+		nowStr,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert media_asset: %w", err)
+	}
+	return nil
+}
+
+// insertAssetVersion inserts a new version row with auto-incremented
+// version_number.
+func (f *Finalizer) insertAssetVersion(
+	ctx context.Context,
+	tx *sql.Tx,
+	a *finalization.PublishedArtifact,
+	nowStr string,
+) (int, error) {
+	// Compute next version_number.
+	var nextVer int
+	err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(version_number), 0) + 1 FROM asset_versions WHERE asset_id = ?`,
+		a.ArtifactID,
+	).Scan(&nextVer)
+	if err != nil {
+		return 0, fmt.Errorf("compute next version: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO asset_versions
+			(asset_id, version_number, file_hash, file_size_bytes, mime_type, metadata_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		a.ArtifactID,
+		nextVer,
+		a.SHA256,
+		a.SizeBytes,
+		a.MIMEType,
+		"{}",
+		nowStr,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert version: %w", err)
+	}
+
+	return nextVer, nil
+}
+
+// upsertAssetLocation does an INSERT ... ON CONFLICT DO UPDATE for the
+// canonical asset_locations row.
+func (f *Finalizer) upsertAssetLocation(
+	ctx context.Context,
+	tx *sql.Tx,
+	a *finalization.PublishedArtifact,
+	nowStr string,
+) error {
+	locationKind := a.Location.Provider
+	if locationKind == "" {
+		locationKind = "drive"
+	}
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO asset_locations
+			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
+			 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
+			uri = excluded.uri,
+			external_id = excluded.external_id,
+			web_view_link = excluded.web_view_link,
+			download_url = excluded.download_url,
+			mime_type = excluded.mime_type,
+			file_size_bytes = excluded.file_size_bytes,
+			file_hash = excluded.file_hash,
+			is_primary = excluded.is_primary,
+			updated_at = excluded.updated_at
+	`,
+		a.ArtifactID,
+		locationKind,
+		a.Location.FileID,
+		a.Location.FileID,
+		a.Location.WebViewLink,
+		a.Location.DownloadLink,
+		a.MIMEType,
+		a.SizeBytes,
+		a.SHA256,
+		nowStr,
+		nowStr,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert location: %w", err)
+	}
+	return nil
+}
+
+// ── Outbox events ───────────────────────────────────────────────────
+
+// writeOutboxEvents enqueues all outbox events inside the transaction
+// using the outboxevents.Repository.
+func (f *Finalizer) writeOutboxEvents(
+	ctx context.Context,
+	tx *sql.Tx,
+	events []finalization.OutboxEvent,
+) error {
+	for i, evt := range events {
+		payloadJSON := string(evt.Payload)
+		if payloadJSON == "" || payloadJSON == "null" {
+			payloadJSON = "{}"
+		}
+		_, err := f.outbox.Enqueue(ctx, tx,
+			evt.EventType,
+			evt.AggregateID,
+			"", // aggregate_type — not required for asset events
+			payloadJSON,
+			evt.EventKey,
+		)
+		if err != nil {
+			return fmt.Errorf("finalizer: outbox event[%d] (%s): %w", i, evt.EventType, err)
+		}
+	}
+	return nil
+}
+
+// ── Mark succeeded ──────────────────────────────────────────────────
+
+// markSucceeded writes the result manifest, inserts a job event, and
+// updates the job status to SUCCEEDED — all inside the transaction.
+func (f *Finalizer) markSucceeded(
+	ctx context.Context,
+	tx *sql.Tx,
+	req *finalization.FinalizationRequest,
+) error {
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+	resultJSON := string(req.Result.Data)
+	if resultJSON == "" || resultJSON == "null" {
+		resultJSON = "{}"
+	}
+
+	// Atomic UPDATE with lease fence (same pattern as the existing
+	// SQLiteStore.Complete in repository_lifecycle.go). Accepts both
+	// RUNNING and FINALIZING to cover the FASE 2b state transition.
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?, result_json = ?,
+		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
+		 revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
+		 AND worker_id = ? AND lease_id = ?`,
+		nowStr, resultJSON, nowStr,
+		req.Result.JobID, req.Lease.WorkerID, req.Lease.LeaseID,
+	)
+	if err != nil {
+		return fmt.Errorf("finalizer: update jobs: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return finalization.NewFinalizationError(
+			"TRANSITION_CONFLICT",
+			"job row was modified by another transaction after lease validation",
+			req.Result.JobID, req.Lease.Attempt, nil,
+		)
+	}
+
+	// Insert job event.
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), randomHex(6))
+	_, _ = tx.ExecContext(ctx,
+		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, req.Result.JobID, "job_completed",
+		"job completed with artifacts via JobFinalizer", "{}", nowStr,
+	)
+
+	return nil
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+// hashResult computes a SHA-256 hash of the result data for
+// idempotent completion comparison.
+func hashResult(data json.RawMessage) string {
+	return hashJSONString(string(data))
+}
+
+func hashJSONString(s string) string {
+	if s == "" || s == "null" {
+		s = "{}"
+	}
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// kindToMediaType maps a domain ArtifactKind to a media_type string
+// suitable for the media_assets.media_type column.
+func kindToMediaType(k finalization.ArtifactKind) string {
+	switch k {
+	case finalization.KindVideo:
+		return "video"
+	case finalization.KindImage:
+		return "image"
+	case finalization.KindAudio, finalization.KindVoiceover, finalization.KindSoundEffect:
+		return "audio"
+	case finalization.KindDocument:
+		return "document"
+	case finalization.KindScript:
+		return "text"
+	case finalization.KindMetadata:
+		return "metadata"
+	case finalization.KindArchive:
+		return "archive"
+	default:
+		return "other"
+	}
+}
+
+// randomHex returns a random hex string of n bytes (2n characters).
+// The output is derived from SHA-256 truncated to n bytes. n must be ≤ 32.
+func randomHex(n int) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("job_finalizer_%d_%d", time.Now().UnixNano(), n)))
+	return hex.EncodeToString(h[:n])
+}
