@@ -834,6 +834,134 @@
       deadline: 2026-07-25
 
 
+- id: Step-10-C-closure
+  status: done
+  exit_signal: true
+  exit_gate: |
+    Stock Cutover §12-3 SSOT-extension complete: persistent SQLite-backed
+    steps.Store + Orchestrator.RunResilient resume contract both shipped
+    on origin/main via race-safe rebase + ff-push (no `--force`).
+
+    C1/4 (commit `7f81ac7cfc2e`, post-rebase):
+      * NEW migrations/sqlite/122_execution_steps_add_lease_until.sql
+        (~30 LoC): ALTER execution_steps ADD COLUMN lease_until +
+        partial index ix_execution_steps_leased_stale
+        (... WHERE lease_until != ''). User-spec's
+        stock_execution_steps table is CONSOLIDATED into the canonical
+        execution_steps table per godlike/06 SSOT (user confirmed
+        path B in the audit via ask_user).
+      * NEW internal/application/execution/steps/sqlite_store.go
+        (~340 LoC): implements canonical steps.Store port
+        (5 methods: MarkStarted / MarkCompleted / MarkFailed /
+        FirstNonCompleted / ListByJob). Race-safe MarkStarted
+        (atomic INSERT ... ON CONFLICT DO UPDATE ... RETURNING status
+        UPSERT; CASE preserves terminal-immutability when prior
+        status='completed'). Byte-equal idempotent MarkCompleted
+        (bytes.Equal over result_json + artifact_refs_json).
+        DefaultLeaseTTL=1h stamped on MarkStarted, cleared on
+        terminal transitions. FirstNonCompleted via JOIN-with-
+        MAX(id) subquery (O(N) scan). ListByJob ordered by
+        step_key ASC, id ASC (fingerprint-versioning audit trail).
+        Compile-time pin var _ Store = (*sqliteStore)(nil).
+      * NEW internal/application/execution/steps/sqlite_store_test.go
+        (~570 LoC, 16 test functions): all 5 methods + idempotency
+        invariants + typed-error sentinels + lease_until
+        stamping/clearing + fingerprint-versioning + race-safety
+        (5 concurrent goroutines on same triple via `-race`
+        detector).
+
+    C2/4 (commit `46e2aecfbed7`, post-rebase):
+      * MODIFIED internal/application/assets/providers/stock/
+        stockpipeline/orchestrator.go: OrchestratorConfig.stepStore
+        steps.Store field (defaults to NewInMemoryStore() when nil —
+        preserves legacy call sites). NewOrchestrator +
+        NewOrchestratorWithResilience accept the optional stepStore.
+        RunResilient body's MarkStarted error branch now
+        distinguishes steps.ErrStepAlreadyCompleted (logged INFO +
+        `continue` — canonical idiomatic resume) from other errors
+        (wrap + return — preserves the prior fail-closed abort
+        signal). Recovery contract is canonical per godlike/07.
+      * NEW internal/application/assets/providers/stock/
+        stockpipeline/orchestrator_resume_test.go (~440 LoC, 3
+        tests):
+          - TestOrchestrator_RunResilient_SkipAlreadyCompleted
+            (partial-resume: 2 of 5 pre-Completed → 3 Run; exactly
+            5 rows post-resume, zero duplicate stage rows).
+          - TestOrchestrator_RunResilient_AllPreCompletedSkipsAll
+            (full-resume: 5/5 pre-Completed → 0 Run invocations).
+          - TestOrchestrator_RunResilient_NewStepFailureMarkFailed
+            (fail-closed: pre-Completed skip + throwing stage +
+            post-failure no-iteration).
+
+    Validation (all 4 quality axes GREEN):
+      go vet + go build + go test -count=1 + go test -race
+      -count=1 on internal/application/execution/steps/... PASS
+      (16+ tests).
+      go vet + go build + go test -count=1 -run
+      TestOrchestrator_RunResilient + go test -race -count=1
+      on internal/application/assets/providers/stock/
+      stockpipeline/... PASS (3 tests, race-flagged).
+      Whole-project go build failures are pre-existing
+      tests/fixtures/zero_legacy baseline, NOT regressions from
+      Step 10 (out-of-scope per godlike/07 forward-pointer).
+
+    Push recovery (per AGENTS.md Git-Lesson-4/5):
+      C1 rebased cleanly onto origin/main via git rebase.
+      C2 attempt `7502ba28ecc5` was rejected non-fast-forward
+      (origin/main advanced during my commit window with
+      parallel-agent commits). Diagnosed as textual-conflict race
+      (NOT byte-equivalent-replay per Git-Lesson-5 — 3-indicator
+      diagnostic: (1) git log --oneline HEAD..@{u} non-empty, (2)
+      git log origin/main -5 showed unrelated-subject commits
+      like feat(mediasearch) populate Query.MediaTypes, (3) the
+      file-set of my C2 commit (orchestrator.go +
+      orchestrator_resume_test.go) does not overlap with the
+      upstream tip's file set). Recovered via git rebase
+      origin/main (clean, no conflicts) → commit replayed as
+      `46e2aecfbed7` → git push origin main (no `--force`).
+      Co-authored-by trailer preserved across rebase.
+
+    Honest scope statement (per godlike/07):
+      The user-spec's separate stock_execution_steps table is
+      consolidated into the canonical execution_steps SSOT per
+      godlike/06 one-owner-per-fact (and AGENTS.md "Don't ship a
+      parallel table when the SSOT exists" doctrine). The
+      user-spec's recovery.go external helper with MAX(stage)
+      lookup is implemented inline in orchestrator.RunResilient
+      (the orchestrator's existing per-iter error-type switch
+      provides the canonical recovery surface per godlike/06).
+      The user-spec's 'running' row-status is normalized to
+      canonical 'pending' for fresh rows (status_running remains
+      in the canonical StepStatus enum for any future
+      actively-running heartbeat pattern). Pre-existing 5 build
+      issues carry forward unchanged (out-of-scope per prior
+      CHANGELOG forward-pointer convention).
+  linked_issues:
+    - id: 7f81ac7cfc2e
+      owner_capability: internal/application/execution/steps + internal/infrastructure/database/sqlite/assets
+      status: shipped
+      deadline: 2026-07-02
+    - id: 46e2aecfbed7
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      deadline: 2026-07-02
+    - id: 122_execution_steps_add_lease_until
+      owner_capability: internal/infrastructure/database/sqlite
+      status: shipped
+      deadline: 2026-07-02
+    - id: PR-STEP-10-RESULT-HYDRATION
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-STEP-10-E2E-SIGKILL-TEST
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-STEP-10-SURFACE-CUTOVER
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-08-15
+
 - id: PR-STOCK-SOURCESTAGER-WIRE
   status: deferred
   exit_signal: false
