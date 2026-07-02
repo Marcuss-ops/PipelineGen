@@ -37,6 +37,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"go.uber.org/zap"
@@ -250,12 +251,13 @@ func (f *Finalizer) validateRequest(req *finalization.FinalizationRequest) error
 
 // jobRow holds the result of the lease-fenced SELECT.
 type jobRow struct {
-	status       string
-	workerID     string
-	leaseID      string
-	revision     int
-	retryCount   int
-	resultJSON   string
+	status      string
+	workerID    string
+	leaseID     string
+	revision    int
+	retryCount  int
+	leaseExpiry sql.NullString
+	resultJSON  string
 }
 
 // selectJobForFinalization reads the job row inside the transaction
@@ -267,10 +269,10 @@ func (f *Finalizer) selectJobForFinalization(
 ) (*jobRow, error) {
 	var row jobRow
 	err := tx.QueryRowContext(ctx,
-		`SELECT status, worker_id, lease_id, revision, retry_count, COALESCE(result_json, '')
+		`SELECT status, worker_id, lease_id, revision, retry_count, lease_expiry, COALESCE(result_json, '')
 		 FROM jobs WHERE id = ?`,
 		lease.JobID,
-	).Scan(&row.status, &row.workerID, &row.leaseID, &row.revision, &row.retryCount, &row.resultJSON)
+	).Scan(&row.status, &row.workerID, &row.leaseID, &row.revision, &row.retryCount, &row.leaseExpiry, &row.resultJSON)
 	if err == sql.ErrNoRows {
 		return nil, finalization.NewFinalizationError(
 			"JOB_NOT_FOUND", "job not found",
@@ -305,6 +307,20 @@ func (f *Finalizer) selectJobForFinalization(
 		)
 	}
 
+	// Re-validate lease expiry against the DB row (not the request value).
+	// The pre-validation check on req.Lease.Valid() uses the request's
+	// ExpiresAt; the DB row carries the canonical value.
+	if row.leaseExpiry.Valid {
+		expiryTime, parseErr := time.Parse(time.RFC3339, row.leaseExpiry.String)
+		if parseErr == nil && time.Now().UTC().After(expiryTime) {
+			return nil, finalization.NewFinalizationError(
+				"LEASE_EXPIRED_DB",
+				fmt.Sprintf("lease expired at %s (checked from DB row)", row.leaseExpiry.String),
+				lease.JobID, lease.Attempt, finalization.ErrLeaseExpired,
+			)
+		}
+	}
+
 	// The request attempt must equal the job's retry_count + 1
 	// (the attempt counter increments on each retry).
 	expectedAttempt := row.retryCount + 1
@@ -322,14 +338,20 @@ func (f *Finalizer) selectJobForFinalization(
 // ── Idempotent completion ───────────────────────────────────────────
 
 // handleIdempotentCompletion checks whether an already-SUCCEEDED job
-// was completed with the same result. If so, it returns idempotent
-// success. If the result hash differs, it returns ErrCompletionConflict.
+// was completed with the same result and artifacts. If so, it returns
+// idempotent success. If the completion fingerprint differs, it returns
+// ErrCompletionConflict.
+//
+// The completion fingerprint is a SHA-256 hash of the result manifest
+// data + all artifact IDs (sorted) + SHA256s + source versions + remote
+// asset IDs. Two completions with the same result but different artifacts
+// produce different fingerprints and correctly fail as conflict.
 func (f *Finalizer) handleIdempotentCompletion(
 	ctx context.Context,
 	row *jobRow,
 	req *finalization.FinalizationRequest,
 ) (*finalization.FinalizationResult, error) {
-	requestHash := hashResult(req.Result.Data)
+	requestFingerprint := computeCompletionFingerprint(req.Result.Data, req.Artifacts)
 
 	// If the stored result is empty, we can't compare — treat as conflict.
 	if row.resultJSON == "" || row.resultJSON == "{}" || row.resultJSON == "null" {
@@ -343,11 +365,33 @@ func (f *Finalizer) handleIdempotentCompletion(
 		)
 	}
 
-	storedHash := hashJSONString(row.resultJSON)
-	if storedHash == requestHash {
-		f.log.Info("job already SUCCEEDED with same result hash — idempotent success",
+	storedFingerprint := extractCompletionFingerprint(row.resultJSON)
+	if storedFingerprint == "" {
+		// Legacy: no fingerprint stored — fall back to result-data-only hash.
+		storedHash := hashJSONString(row.resultJSON)
+		requestHash := hashJSONString(string(req.Result.Data))
+		if storedHash == requestHash {
+			f.log.Info("job already SUCCEEDED with same result hash — idempotent success (legacy fallback)",
+				zap.String("job_id", req.Result.JobID),
+				zap.String("hash", requestHash),
+			)
+			return &finalization.FinalizationResult{
+				JobID:       req.Result.JobID,
+				Status:      "SUCCEEDED",
+				CompletedAt: time.Now().UTC(),
+			}, nil
+		}
+		return nil, finalization.NewFinalizationError(
+			"COMPLETION_CONFLICT",
+			fmt.Sprintf("job already SUCCEEDED with different result (stored_hash=%s request_hash=%s)", storedHash, requestHash),
+			req.Result.JobID, req.Lease.Attempt, finalization.ErrCompletionConflict,
+		)
+	}
+
+	if storedFingerprint == requestFingerprint {
+		f.log.Info("job already SUCCEEDED with same completion fingerprint — idempotent success",
 			zap.String("job_id", req.Result.JobID),
-			zap.String("hash", requestHash),
+			zap.String("fingerprint", requestFingerprint),
 		)
 		return &finalization.FinalizationResult{
 			JobID:       req.Result.JobID,
@@ -358,7 +402,8 @@ func (f *Finalizer) handleIdempotentCompletion(
 
 	return nil, finalization.NewFinalizationError(
 		"COMPLETION_CONFLICT",
-		fmt.Sprintf("job already SUCCEEDED with different result (stored_hash=%s request_hash=%s)", storedHash, requestHash),
+		fmt.Sprintf("job already SUCCEEDED with different completion fingerprint (stored=%s request=%s)",
+			storedFingerprint, requestFingerprint),
 		req.Result.JobID, req.Lease.Attempt, finalization.ErrCompletionConflict,
 	)
 }
@@ -395,7 +440,8 @@ func (f *Finalizer) writeOutboxEvents(
 
 // ── Mark succeeded ──────────────────────────────────────────────────
 
-// markSucceeded writes the result manifest, inserts a job event, and
+// markSucceeded writes the result manifest (wrapped with completion
+// fingerprint for artifact-aware idempotency), inserts a job event, and
 // updates the job status to SUCCEEDED — all inside the transaction.
 func (f *Finalizer) markSucceeded(
 	ctx context.Context,
@@ -404,10 +450,24 @@ func (f *Finalizer) markSucceeded(
 ) error {
 	now := time.Now().UTC()
 	nowStr := timeutil.FormatRFC3339(now)
-	resultJSON := string(req.Result.Data)
-	if resultJSON == "" || resultJSON == "null" {
-		resultJSON = "{}"
+
+	// Compute completion fingerprint: result + sorted artifact hashes.
+	fingerprint := computeCompletionFingerprint(req.Result.Data, req.Artifacts)
+
+	// Wrap result JSON to include the fingerprint so idempotent
+	// re-completion can compare full artifact state, not just result data.
+	type resultWithFingerprint struct {
+		Data                  json.RawMessage `json:"data"`
+		CompletionFingerprint string          `json:"completion_fingerprint"`
 	}
+	wrapped, err := json.Marshal(resultWithFingerprint{
+		Data:                  req.Result.Data,
+		CompletionFingerprint: fingerprint,
+	})
+	if err != nil {
+		return fmt.Errorf("finalizer: marshal wrapped result: %w", err)
+	}
+	resultJSON := string(wrapped)
 
 	// Atomic UPDATE with lease fence (same pattern as the existing
 	// SQLiteStore.Complete in repository_lifecycle.go). Accepts both
@@ -433,14 +493,17 @@ func (f *Finalizer) markSucceeded(
 		)
 	}
 
-	// Insert job event.
+	// Insert job event — propagate the error (previously silently ignored).
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), randomHex(6))
-	_, _ = tx.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		evtID, req.Result.JobID, "job_completed",
 		"job completed with artifacts via JobFinalizer", "{}", nowStr,
 	)
+	if err != nil {
+		return fmt.Errorf("finalizer: insert job event: %w", err)
+	}
 
 	return nil
 }
@@ -459,6 +522,62 @@ func hashJSONString(s string) string {
 	}
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// ── Completion fingerprint (§ 4.5 idempotency) ─────────────────────
+
+// artifactFingerprintEntry is a deterministic per-artifact summary used
+// in the completion fingerprint.
+type artifactFingerprintEntry struct {
+	ArtifactID    string `json:"artifact_id"`
+	SHA256        string `json:"sha256"`
+	SourceVersion int64  `json:"source_version"`
+	FileID        string `json:"file_id"`
+}
+
+// computeCompletionFingerprint computes a SHA-256 hash of the result
+// manifest data combined with all artifact identifiers (sorted by
+// ArtifactID for determinism). Artifact IDs, SHA256 content hashes,
+// source versions, and remote asset IDs (FileID) are all included so
+// that two completions with the same result JSON but different artifacts
+// produce different fingerprints.
+func computeCompletionFingerprint(resultData json.RawMessage, artifacts []finalization.PublishedArtifact) string {
+	sorted := make([]artifactFingerprintEntry, len(artifacts))
+	for i, a := range artifacts {
+		sorted[i] = artifactFingerprintEntry{
+			ArtifactID:    a.ArtifactID,
+			SHA256:        a.SHA256,
+			SourceVersion: a.SourceVersion,
+			FileID:        a.Location.FileID,
+		}
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].ArtifactID < sorted[j].ArtifactID
+	})
+
+	payload, _ := json.Marshal(struct {
+		Result    json.RawMessage           `json:"result"`
+		Artifacts []artifactFingerprintEntry `json:"artifacts"`
+	}{
+		Result:    resultData,
+		Artifacts: sorted,
+	})
+
+	return hashJSONString(string(payload))
+}
+
+// extractCompletionFingerprint attempts to extract the
+// completion_fingerprint from a stored result JSON. Returns "" if the
+// stored result predates the fingerprint wrapper (legacy format).
+func extractCompletionFingerprint(storedJSON string) string {
+	var wrapped struct {
+		Data                  json.RawMessage `json:"data"`
+		CompletionFingerprint string          `json:"completion_fingerprint"`
+	}
+	if err := json.Unmarshal([]byte(storedJSON), &wrapped); err != nil {
+		return ""
+	}
+	return wrapped.CompletionFingerprint
 }
 
 // randomHex returns a random hex string of n bytes (2n characters).
