@@ -1023,3 +1023,18 @@ wave_status:
 # Forward-pointer: godlike/06 CAS-fence pattern now shared between
 # JobFinalizer (Step 3) and clipindexer (Step 5); future CAS-fence
 # adopters (image-ingest, voiceover) follow the same shape.
+
+# FASE 7 of 12-step plan — document.generate CompleteWithArtifacts vertical slice (CLOSED, July 2026)
+# Canonical SHA: 56ae6b8a feat(docs): migrate document.generate to CompleteWithArtifacts vertical slice (Step 4/12)
+# Six-commit lineage on origin/main - the entire Step 7 fixture (and P0 #1+#3+#4+#5 cascade)
+# closures are physically on origin/main ahead of the local Step 7 attempt:
+#   - 36fcedea  feat(jobs): implement transactional JobFinalizer with idempotent artifact completion (FASE 2)
+#   - c9a6e005  chore(architecture): Step 2 closure - JobFinalizer.CompleteWithArtifacts wiring audit-pin
+#   - 1cb2881f  fix(finalizer): Step 3 closure - transactional-fence hardening
+#   - 199e47b6  fix(jobs): add lease re-check, completion fingerprint, and error propagation to JobFinalizer
+#   - b5e7b84a  fix(finalizer): skip lease checks for already-SUCCEEDED jobs in selectJobForFinalization
+#   - 56ae6b8a  feat(docs): migrate document.generate to CompleteWithArtifacts vertical slice (Step 4/12)
+#   - 69c3c7ed  refactor(document): emit canonical ArtifactManifest, kill path hardcoding
+#   - 511efc86  refactor(images): emit canonical ArtifactManifest for image.generate family
+# Canonical surface (no local duplicates): handler -> ArtifactManifest (sender-side sidecar under
+# __artifact_manifest, V1 schema_version) -> delivery.Publisher.Publish (with ConflictPolicy belt + composition-time sentinels) -> AssetTxFinalizer.FinalizeAsset (atomic media_assets + asset_versions + asset_locations + outbox_events inside the JobFinalizer's *sql.Tx) -> JobFinalizer.CompleteWithArtifacts (single writer of SUCCEEDED via id+lease+attempt CAS) -> result_hash idempotency fingerprint -> publication_intents reconstructable from SUCCEEDED jobs via orphan reconciler. P0 #1+#3+#4+#5 closed at the seam level. Recovery action: per AGENTS.md Git-Lesson-5 (byte-equivalent-replay), local Step 7 was dropped - the canonical SHA on origin/main already encodes the intent. No force-push; commit + ff-push only.
