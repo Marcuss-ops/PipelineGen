@@ -983,8 +983,110 @@
       deadline: 2026-08-01
     - id: PR-ENRICHMENT-STATE-MACHINE
       owner_capability: internal/application/assets/enrichment
-      status: pending
+      status: done
+      exit_signal: true
       deadline: 2026-08-15
+      description: |
+        Landed the canonical 4-state typed enum (PENDING/ENRICHING/
+        ENRICHED/FAILED) for media_assets.enrich_state (migration 123)
+        + the typed state-machine wrapper at
+        internal/application/assets/enrichment/state_machine.go with
+        closed-set validEdges. The canonical ingest path
+        (internal/application/assets/ingest/service.go::Service.Ingest)
+        stamps PENDING on every freshly-ingested row post-ProcessAsset
+        success — no future row is "mai classificato" per user spec.
+        The VLM 15-min sweeper (internal/app/lifecycle_sweepers.go
+        ::startVLMAutoTagSweeper) reads the typed-state filter via
+        the new ProcessByEnrichCandidates method (autotag.Service
+        typed-state-aware surface) and is gated by a 30s claimFence
+        race-mitigation.
+
+        godlike/06 SSOT (one owner per fact): the typed-enum lives
+        ONLY in internal/domain/asset/enrich_state.go; the SQL
+        primitive (SetEnrichState + GetEnrichState) lives ONLY in
+        internal/infrastructure/database/sqlite/assets/clips_enrich_state.go;
+        the state-machine wrapper + validEdges live ONLY in
+        internal/application/assets/enrichment/state_machine.go; the
+        Pattern 0 ports (EnrichRepositoryPort + EnrichStateMachinePort)
+        live ONLY in internal/application/assets/enrichment/ports.go.
+
+        godlike/07 typed-error contract: 4 sentinels (ErrEnrichStateNotWired
+        / ErrIllegalEnrichTransition / ErrEnrichStateMissing /
+        ErrEnrichAssetIDRequired) + IllegalEnrichTransitionError{From,To}
+        typed envelope supporting both errors.Is + errors.As probes.
+        The state-machine wrapper remaps the SQL primitive's row-missing
+        fmt.Errorf to ErrEnrichStateMissing via a strings.Contains
+        probe (locked by TestStateMachine_Transition_RowMissingRemapsToTypedSentinel;
+        future hardening: typed ErrSetEnrichStateRowMissing sentinel
+        returned via %w from the SQL primitive directly).
+
+        FAILED is terminal-non-retryable per godlike/07 no-fake-
+        availability (validEdges[FAILED] is empty; recovery is via
+        the admin reindex endpoint only — forward-pointed to
+        PR-ENRICHMENT-STATE-TIER-1-WIRING below).
+
+        Surface landed (11 NEW + 4 MODIFIED + 1 yaml):
+          - internal/domain/asset/enrich_state.go: 4-state typed enum
+            + Valid/IsTerminal/IsFailed/IsScrapeCandidate helpers +
+            CanonicalEnrichStateValues closed-set enumerator.
+          - internal/domain/asset/enrich_state_test.go: 5 contract
+            tests (chromatic values, canonical closed-set,
+            IsValidExhaustive, IsTerminal, IsScrapeCandidate).
+          - internal/infrastructure/database/sqlite/assets/clips_enrich_state.go:
+            SetEnrichState (atomic UPDATE enrich_state+updated_at;
+            Valid() guard; typed-error on missing row) +
+            GetEnrichState (canonical default on read; sql.ErrNoRows
+            for state-machine wrapper remap).
+          - internal/application/assets/enrichment/errors.go: 4 typed
+            sentinels + IllegalEnrichTransitionError{From,To} typed
+            envelope supporting errors.Is + errors.As probes.
+          - internal/application/assets/enrichment/ports.go:
+            EnrichRepositoryPort (Set+Get) + EnrichStateMachinePort
+            (Transition+MarkPending+ClaimForEnrichment+MarkEnriched+
+            MarkFailed). Pattern 0 fail-closed constructor contract.
+          - internal/application/assets/enrichment/state_machine.go:
+            validEdges closed-set (PENDING→ENRICHING + ENRICHING→
+            {ENRICHED,FAILED}; FAILED is a sink) + Transition +
+            MarkPending + ClaimForEnrichment + MarkEnriched +
+            MarkFailed methods. EXPAND-phase: Tier-1 transitions are
+            wired at the typed state-machine surface; the autotag
+            sweep reads the filter but does NOT yet invoke the
+            state-machine wrapper (BACKFILL wave forward-pointer).
+          - internal/application/assets/enrichment/state_machine_test.go:
+            7 contract tests (MarkPending + 3 legal edges + illegal
+            envelope + empty-ID + row-missing remap).
+          - internal/infrastructure/ai/autotag/process_by_enrich_candidates.go:
+            ProcessByEnrichCandidates typed-state-aware sweep with
+            claimFence 30s race-mitigation. Backwards-compatible
+            with the legacy ProcessUntagged (preserved for admin
+            tooling during BACKFILL+CONTRACT waves).
+          - internal/application/assets/ingest/service.go: NewService
+            gained 5th arg `*enrichment.EnrichStateMachine` (nil-safe
+            EXPAND phase); Service.Ingest post-ProcessAsset-success
+            stamps PENDING via MarkPending. Stamp failure surfaces
+            as typed error (no silent-success per godlike/07).
+          - internal/app/lifecycle_sweepers.go::startVLMAutoTagSweeper:
+            switched from ProcessUntagged to ProcessByEnrichCandidates
+            with claimFence 30s. EXPAND-phase discipline: filter-only,
+            transitions deferred to BACKFILL wave.
+          - internal/app/build_bundles_domain.go:488 + module_media_ingest.go:132:
+            5th-arg `nil /* enrichState: nil for EXPAND phase */`
+            annotation at both ingest.NewService call sites.
+
+        Forward-pointer: PR-ENRICHMENT-STATE-TIER-1-WIRING (the
+        BACKFILL wave) threads the live EnrichStateMachine into
+        the composition root (autotag.Service.WithEnrichStateMachine
+        setter) + invokes ClaimForEnrichment/MarkEnriched/MarkFailed
+        on the typed state-machine surface at the VLM sweep seam.
+        Until that lands, the EXPAND-phase discipline holds: ingest
+        stamps PENDING; the VLM swecper reads the typed-state filter;
+        the typed state-machine is the canonical surface but not yet
+        invoked at the sweep seam.
+      linked_issues:
+        - id: PR-ENRICHMENT-STATE-TIER-1-WIRING
+          owner_capability: internal/infrastructure/ai/autotag + internal/application/assets/enrichment
+          status: pending
+          deadline: 2026-09-15
     - id: PR-E2E-SEMANTIC-MULTIMODAL-TEST
       owner_capability: internal/application/mediasearch + tests
       status: pending

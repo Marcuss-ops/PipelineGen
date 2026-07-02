@@ -490,7 +490,15 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
 		ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},
 		ingest.KindStock:     {Kind: ingest.KindStock, DefaultSource: "stock", RootFolderID: cfg.Drive.StockFolder(), Lifecycle: stockLifecycle},
-	})
+		// PR-ENRICHMENT-STATE-MACHINE EXPAND phase: enrichState
+		// passed as nil. The ingest service flips PENDING on every
+		// freshly-ingested row only when the typed state-machine
+		// wrapper is wired (canonical godlike/06 SSOT). Until the
+		// composition root wires the state machine at boot, the VLM
+		// 15-min sweeper still recovers via the typed-state filter
+		// (backfill path per godlike/07). BACKFILL wave forward-
+		// pointer wires the live state-machine here.
+	}, nil /* enrichState: nil for EXPAND phase */)
 }
 
 // buildYouTubeRuntimeConfig resolves the flat RuntimeConfig consumed by the

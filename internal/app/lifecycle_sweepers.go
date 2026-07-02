@@ -195,6 +195,14 @@ func startVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, lo
 		initialDelay = 1 * time.Minute
 		interval     = 15 * time.Minute
 		batchSize    = 10
+		// claimFence is the canonical proof-window: rows whose
+		// enrich_state_updated_at is more recent than
+		// now()-claimFence are SKIPPED so a slow VLM call on row X
+		// (claimed at T0) doesn't get re-claimed at T0+1min by an
+		// overlapping sweep tick. Mirrors the PR-EMBEDDING-CHANNEL-
+		// REGISTRY claim-fence pattern (godlike/06 SSOT: every first-
+		// class sweep claim is gated by an updated_at fence).
+		claimFence = 30 * time.Second
 	)
 	select {
 	case <-ctx.Done():
@@ -208,7 +216,22 @@ func startVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, lo
 	process := func() {
 		sCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
-		processed, err := autotagSvc.ProcessUntagged(sCtx, batchSize)
+		// PR-ENRICHMENT-STATE-MACHINE (July 2026): the VLM swecper
+		// filter is the typed-state-mask filter, NOT the legacy
+		// "untagged" JSON-Extract query. The autotag service was
+		// pre-PR relying on `SELECT ... WHERE tags IS NULL OR tags=''`
+		// against metadata_json; the typed canonical path is:
+		//   SELECT id FROM media_assets
+		//   WHERE enrich_state IN ('PENDING','FAILED')
+		//     AND enrich_state_updated_at < (now - 30s claim-fence)
+		//     AND lifecycle_state NOT IN ('deleted','DELETED')
+		//   ORDER BY enrich_state_updated_at ASC
+		//   LIMIT 10
+		// FAILED is included so an operator-reset row (FAILED --(admin
+		// reindex)--> PENDING) is picked up. The 30s claim fence
+		// prevents overlapping ticks from racing on a row whose VLM
+		// call is in-flight.
+		processed, err := autotagSvc.ProcessByEnrichCandidates(sCtx, batchSize, claimFence)
 		if err != nil {
 			log.Warn("vlm auto-tag sweep failed", zap.Error(err))
 			return
