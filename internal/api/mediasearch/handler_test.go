@@ -6,7 +6,11 @@ package mediasearch
 
 import (
 	"context"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	mediasearchapp "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
@@ -333,6 +337,166 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 			t.Errorf("Filters.MediaType = %q, want image", q.Filters.MediaType)
 		}
 	})
+}
+
+// ── Error mapping tests (PR-AGENTE2-ERRORS — Agente 2, Azione 4) ────
+
+// TestMapSearchError_InvalidCursor verifies ErrInvalidCursor → 422.
+func TestMapSearchError_InvalidCursor(t *testing.T) {
+	err := search.ErrInvalidCursor
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, err, "ws-test")
+
+	if w.Code != 422 {
+		t.Errorf("status = %d, want 422 (UnprocessableEntity)", w.Code)
+	}
+	body := w.Body.String()
+	if !containsFold(body, "invalid cursor") {
+		t.Errorf("body %q should mention 'invalid cursor'", body)
+	}
+}
+
+// TestMapSearchError_MissingWorkspace verifies ErrMissingWorkspace → 403.
+func TestMapSearchError_MissingWorkspace(t *testing.T) {
+	err := mediasearchapp.ErrMissingWorkspace
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, err, "ws-test")
+
+	if w.Code != 403 {
+		t.Errorf("status = %d, want 403 (Forbidden)", w.Code)
+	}
+}
+
+// TestMapSearchError_HybridRequiresSparse verifies ErrHybridRequiresSparse → 422.
+func TestMapSearchError_HybridRequiresSparse(t *testing.T) {
+	err := mediasearchapp.ErrHybridRequiresSparse
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, err, "ws-test")
+
+	if w.Code != 422 {
+		t.Errorf("status = %d, want 422 (UnprocessableEntity)", w.Code)
+	}
+	body := w.Body.String()
+	if !containsFold(body, "hybrid") {
+		t.Errorf("body %q should mention 'hybrid'", body)
+	}
+}
+
+// TestMapSearchError_NoBackendAvailable verifies ErrNoBackendAvailable → 503.
+func TestMapSearchError_NoBackendAvailable(t *testing.T) {
+	err := mediasearchapp.ErrNoBackendAvailable
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, err, "ws-test")
+
+	if w.Code != 503 {
+		t.Errorf("status = %d, want 503 (ServiceUnavailable)", w.Code)
+	}
+	body := w.Body.String()
+	if !containsFold(body, "no search backend") {
+		t.Errorf("body %q should mention 'no search backend'", body)
+	}
+}
+
+// TestMapSearchError_AllBackendsFailed verifies ErrAllBackendsFailed → 502.
+func TestMapSearchError_AllBackendsFailed(t *testing.T) {
+	err := mediasearchapp.ErrAllBackendsFailed
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, err, "ws-test")
+
+	if w.Code != 502 {
+		t.Errorf("status = %d, want 502 (BadGateway)", w.Code)
+	}
+	body := w.Body.String()
+	if !containsFold(body, "all search backends") {
+		t.Errorf("body %q should mention 'all search backends'", body)
+	}
+}
+
+// TestMapSearchError_UnknownError verifies unknown errors → 500.
+func TestMapSearchError_UnknownError(t *testing.T) {
+	err := errTestUnknown
+	h := NewHandler(WireParams{})
+	c, w := newTestGinContext()
+
+	h.mapSearchError(c, err, "ws-test")
+
+	if w.Code != 500 {
+		t.Errorf("status = %d, want 500 (InternalServerError)", w.Code)
+	}
+}
+
+// TestMapSearchError_WrappedSentinel verifies that errors.Is works
+// through fmt.Errorf("...: %w", sentinel) wrappers.
+func TestMapSearchError_WrappedSentinel(t *testing.T) {
+	h := NewHandler(WireParams{})
+
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{"wrapped InvalidCursor", newWrappedErr(search.ErrInvalidCursor), 422},
+		{"wrapped MissingWorkspace", newWrappedErr(mediasearchapp.ErrMissingWorkspace), 403},
+		{"wrapped HybridRequiresSparse", newWrappedErr(mediasearchapp.ErrHybridRequiresSparse), 422},
+		{"wrapped NoBackendAvailable", newWrappedErr(mediasearchapp.ErrNoBackendAvailable), 503},
+		{"wrapped AllBackendsFailed", newWrappedErr(mediasearchapp.ErrAllBackendsFailed), 502},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, w := newTestGinContext()
+			h.mapSearchError(c, tt.err, "ws-test")
+			if w.Code != tt.wantCode {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantCode)
+			}
+		})
+	}
+}
+
+// ── Test harness: gin test context + error helpers ─────────────────────
+
+// errTestUnknown is a plain error not matching any sentinel.
+var errTestUnknown = errStr("some unexpected runtime error")
+
+type errStr string
+
+func (e errStr) Error() string { return string(e) }
+
+// newWrappedErr wraps a sentinel so errors.Is still traverses the chain.
+func newWrappedErr(sentinel error) error {
+	return errWrapped{msg: "upstream: " + sentinel.Error(), cause: sentinel}
+}
+
+type errWrapped struct {
+	msg   string
+	cause error
+}
+
+func (e errWrapped) Error() string { return e.msg }
+func (e errWrapped) Unwrap() error { return e.cause }
+
+// newTestGinContext creates a real *gin.Context backed by httptest
+// so apiutil.Error writes to the recorder (which we can inspect).
+func newTestGinContext() (*gin.Context, *httptest.ResponseRecorder) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	return c, w
+}
+
+// containsFold reports whether s contains substr case-insensitively.
+func containsFold(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // actorCapturingAggregator is a test stub that records the Query
