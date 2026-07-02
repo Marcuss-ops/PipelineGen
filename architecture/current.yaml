@@ -825,6 +825,47 @@
 # value comes from architecture/current.yaml::wave_status.P1-2.transitional_cap
 # rather than being inline in the gate script. The "of cleanup plan" pattern
 # appears throughout this file; forward ratchets inherit the convention.
+BLOC5.3_commit-3-legacy_batch_elim:
+  owner_capability: internal/api/script (audit closure) + internal/application/voiceover (out-of-scope forward-pointer)
+  closure_date: 2026-07-29
+  status: shipped
+  description: |
+    Step 12A closure audit for the legacy script /generate-batch route removal
+    (Step 8 / FASE 12c, commits 9ff1e19e + 00ad3430 on origin/main, July 2026).
+    This marker ratchets the physical removal (commit 9ff1e19e: route + handler
+    + 4 type structs + const + DeprecationCount entry + tests ALL DELETED) +
+    the godlike/07 audit-footprint (entry architecture/deprecations.yaml#
+    SCRIPT-LEGACY-GENERATE-BATCH with status: removed + migration_phase:
+    CONTRACT + 5-layer compatibility test + full usage_metric).
+  audit_baseline: |
+    Acceptance gate verified zero-residue on Step 12A (July 2026):
+      - rg --type go -n 'LegacyBatchItem|LegacyBatchTopic|
+        LegacyGenerateBatchRequest' internal/  -> 0 hits
+      - rg --type go -n 'LegacyGenerateBatch\(' internal/  -> 0 hits
+      - rg --type go -n '"/generate-batch"|/api/script/generate-batch'
+        internal/  -> 0 hits
+      - rg 'generate-batch' --type go internal/ cmd/  -> 0 hits (only
+        1 allowed residue: FASE 12c marker in this file)
+      - bash scripts/ci-architectural-checks.sh -> rc=0
+  out_of_scope: |
+    Voiceover.Service.GenerateBatch (4 non-test hits in
+    internal/application/voiceover/jobs/generate_item_handler.go,
+    process.go:88, process_voiceover_item.go, usecase.go) is EXPLICITLY
+    OUT OF SCOPE per user choice on Step 12A ("Spostati a SCRIPT legacy
+    backup"). These are documentation-comment refs to the canonical batch
+    voiceover pipeline (HandleJob -> handleBatchJob/handlePromoJob ->
+    GenerateBatch -> processLanguage x N languages), NOT SCRIPT legacy
+    stragglers. Future wave closures PR-VO-D1/D2/D3/E1 (Wave-12 cutover
+    packet) track the voiceover canonical Service typed-port migration.
+  crossrefs:
+    - architecture/deprecations.yaml#SCRIPT-LEGACY-GENERATE-BATCH
+    - CHANGELOG.md (Step 12A closure entry under ### Removed)
+    - commit 9ff1e19e + 00ad3430 on origin/main
+  follow_up_tickers:
+    - PR-VO-D1, PR-VO-D2, PR-VO-D3, PR-VO-E1 (out-of-scope forward pointer
+      to voiceover batch canonical typed-port migration)
+
+
 wave_status:
   P1-2:
     id: P1-2

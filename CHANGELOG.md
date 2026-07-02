@@ -2273,6 +2273,9 @@ historical record. Cross-references:
   locale parser (`pkg/localeutil/locale.go`).
 
 ### Removed
+- **[FASE 12c removal ratification, July 2026]** `chore(arch)` — Step 12A SCRIPT legacy closure audit. Goalike/07 audit-footprint for the legacy `POST /api/script/generate-batch` route removal: route + handler + 4 type structs (`LegacyGenerateBatchRequest`, `LegacyBatchItem`, `LegacyBatchTopic`, `toEnvelope` mapper) + `removalDateBatch` const + `DeprecationCount` route entry + test assertions all physically deleted at commit `9ff1e19e` (FASE 12c, July 2026) + residual cleanup at `00ad3430`. New deprecation record `architecture/deprecations.yaml#SCRIPT-LEGACY-GENERATE-BATCH` (status: removed, migration_phase: CONTRACT, 5-layer compatibility test) + new wave-tracker marker `architecture/current.yaml#BLOC5.3_commit-3-legacy_batch_elim` (status: shipped) ratchet the audit-footprint against re-introduction. Voiceover `Service.GenerateBatch` (4 non-test hits in `internal/application/voiceover/*`) is EXPLICITLY OUT OF SCOPE — it is the canonical batch voiceover pipeline for `TypeVoiceoverBatch` + `TypeVoiceoverPromo` jobs. Forward-pointer: PR-VO-D1/D2/D3/E1 (Wave-12 cutover packet) for the voiceover canonical typed-port migration.
+
+
 
 **[Wave 1.1, QDRANT-004 backend git-rm, June 2026]** `refactor(mediasearch) + refactor(app)` — the QDRANT-004 single-tenant semantic search orchestrator is git-rm'd. The canonical `search.Aggregator` (provider + local backends, both typed via Pattern 0) is the SOLE wire for media-search results; workspace-gated semantic routing now lives in per-scope `search.Aggregator` paths, never in dedicated Service composition. Files touched (7):
 
