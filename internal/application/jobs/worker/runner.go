@@ -249,19 +249,20 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	// Complete is mid-flight doesn't try to flip a job we just
 	// terminal-reported.
 	renewCancel()
-	select {
-	case <-renewErrs:
-		// The loop already sent an error; we'll surface it as the
-		// Complete return value instead of as a Fail command
-		// (a Fail after Complete would be a no-op, but surfacing
-		// the read order matters to the test assertions).
-	case <-time.After(200 * time.Millisecond):
-		// Loop is still alive; it will exit on its own when renewCtx
-		// is observed on the next tick (or immediately, since cancel
-		// closes the channel and we just observed-cancelled it via
-		// renewCancel() above).
+	// P0 #5 (July 2026) — fail-closed seam: drain the renewal
+	// loop's error channel BEFORE calling tools.Complete. If the
+	// renewal loop reported an error (typically
+	// sqljobs.ErrLeaseLost — another worker took the job), the
+	// helper returns ErrLeaseLostDuringRun wrapped; runLease
+	// returns it without calling tools.Complete, so the broker
+	// never sees a phantom Complete on a lease it has already
+	// reassigned. Pre-P0 #5 the runner called tools.Complete
+	// anyway, producing a stale terminal report from a worker
+	// that no longer owned the lease (godlike/07
+	// no-fake-availability).
+	if preCompleteErr := postRenewFailClosedCheck(renewErrs); preCompleteErr != nil {
+		return preCompleteErr
 	}
-
 	return tools.Complete(jobCtx, resultJSON)
 }
 
@@ -490,6 +491,34 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 // error. The uploadManifest wrapper does this today.
 var ErrArtifactClientRequired = errors.New("worker Runner: assetClient is required when handlerResult is non-empty (P0 #4 fail-closed — silent skip on a real artifact-producing job is a misconfiguration, not a no-op)")
 
+// ErrLeaseLostDuringRun surfaces a lease-lost condition detected
+// in the post-handler drain step BEFORE the final tools.Complete
+// call. Pre-P0 #5 the runner's runLease ignored the
+// renewal-loop's reported error in the post-renewCancel drain
+// step and proceeded to call tools.Complete anyway, producing a
+// phantom Complete on a lease the broker had already
+// reassigned to another worker. Post-P0 #5 the runner
+// fail-closes with this typed error BEFORE calling
+// tools.Complete, so the broker never sees a stale terminal
+// report from a worker that no longer owns the lease.
+//
+// godlike/07 typed-error contract: errors.Is reachable via the
+// %w chain in postRenewFailClosedCheck. The original renewErr
+// (typically sqljobs.ErrLeaseLost) is ALSO reachable via the
+// same error chain thanks to Go 1.20+ multi-%w. Callers can
+// probe either sentinel with a single errors.Is call.
+//
+// godlike/06 SSOT: ErrLeaseLostDuringRun is the worker-package
+// owner of the "lease lost during run but BEFORE Complete" fact.
+// Placed next to ErrArtifactClientRequired in this file. The
+// sqljobs.ErrLeaseLost sentinel (from
+// internal/application/jobs/broker.go) is the broker's typed
+// response to a stale Renew attempt — distinct concern
+// (broker perspective vs runner orchestration perspective). The
+// two sentinels are intentionally separate so each layer's
+// contract is independently probeable.
+var ErrLeaseLostDuringRun = errors.New("worker Runner: lease lost during run (renewal loop reported error before tools.Complete) — godlike/07 P0 #5 fail-closed: no phantom Complete on a reassigned lease")
+
 // ErrLegacyUploadPathRemoved is the sentinel returned by the now-disabled
 // pre-Blocco-2.2 JSON path-scan upload path. P0 Commit 12 (July 2026)
 // killed the output_path / pdf_path / markdown_path / output_files
@@ -536,4 +565,44 @@ func (r *Runner) uploadOutputsLegacy(ctx context.Context, jobID string, handlerR
 			zap.String("job_id", jobID))
 	}
 	return fmt.Errorf("job=%s: %w", jobID, ErrLegacyUploadPathRemoved)
+}
+
+// postRenewFailClosedCheckTimeout bounds the post-renewCancel
+// drain step in runLease. After renewCancel, the renewal
+// goroutine has a 200ms window to deliver any in-flight error
+// on renewErrs before the runLease select gives up and falls
+// through to the canonical tools.Complete call. The 200ms is
+// the historical value; it exceeds the renew interval by ~4x
+// at the default cadence (DefaultRenewInterval = 30s) but is
+// the safety net for a fast-cadence test (50ms minimum).
+const postRenewFailClosedCheckTimeout = 200 * time.Millisecond
+
+// postRenewFailClosedCheck is the P0 #5 fail-closed seam. It
+// returns renewErr wrapped as ErrLeaseLostDuringRun if the
+// renewal loop reported an error, else returns nil so the
+// caller proceeds to the terminal action (e.g. tools.Complete).
+//
+// godlike/07 typed-error contract: errors.Is(err, ErrLeaseLostDuringRun)
+// AND errors.Is(err, original renewErr) both probe correctly
+// via Go 1.20+ multi-%w wrapping.
+//
+// Why a helper (thinker-Option-D-extracted): the runLease
+// terminal sequence is order-sensitive (renewCancel → drain
+// renewErrs → Complete). Extracting the drain into a single
+// named function makes the seam unit-testable in isolation
+// (the TestPostRenewFailClosedCheck_* cases pin the typed-error
+// contract without the runLease boilerplate) AND keeps the
+// runLease call site short and obvious. The helper is
+// package-private; production callers always go through
+// runLease.
+func postRenewFailClosedCheck(renewErrs <-chan error) error {
+	select {
+	case renewErr := <-renewErrs:
+		if renewErr != nil {
+			return fmt.Errorf("worker Runner: pre-Complete lease renewal failed: %w: %w", ErrLeaseLostDuringRun, renewErr)
+		}
+		return nil
+	case <-time.After(postRenewFailClosedCheckTimeout):
+		return nil
+	}
 }
