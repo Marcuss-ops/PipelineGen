@@ -16,6 +16,12 @@
 //     pass (the keys are already gone).
 //   - Does NOT touch vectors, other payload fields, or the SQLite database.
 //
+// P4 PREALLOC-CLEANER (July 2026): affectedIDs is pre-allocated using a
+// two-tier estimate: (1) CountPoints gives an upper-bound capacity before
+// the first scroll, (2) after the first scroll page the actual affected
+// ratio refines the estimate. This eliminates reallocation churn on
+// collections with a high proportion of legacy points.
+//
 // Usage:
 //
 //	cleaner := qdrant.NewLocatorCleaner(client, schema, log)
@@ -63,10 +69,11 @@ const deleteBatchSize = 200
 // drive_link / local_path payload keys. In dry-run mode it only reports
 // counts; with apply=true it strips the keys via DeletePayloadKeys.
 //
-// The active collection is resolved from the IndexSchema's
-// RuntimeAlias. Returns an error only when the alias cannot be
-// resolved or the scroll/delete infrastructure fails entirely;
-// per-point errors are captured in the report's Errors slice.
+// P4 PREALLOC-CLEANER (July 2026): affectedIDs is pre-allocated before
+// the scroll using CountPoints as an upper bound. After the first scroll
+// page, the observed affected-ratio refines the estimate. firstPageAffected
+// is tracked inline (no redundant iteration). When CountPoints fails the
+// slice starts nil — Go's append doubling handles it gracefully.
 func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*LocatorCleanupReport, error) {
 	collection, err := c.client.GetAliasTarget(ctx, c.schema.RuntimeAlias)
 	if err != nil {
@@ -81,12 +88,36 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*Locato
 		Collection: collection,
 	}
 
-	// Scroll all points, accumulating those with legacy keys.
+	// ── P4: Estimate affected count for pre-allocation ──────────
+	totalPoints, countErr := c.client.CountPoints(ctx, collection)
+	if countErr != nil {
+		c.log.Warn("locator-cleaner: CountPoints failed, falling back to no pre-alloc",
+			zap.String("collection", collection),
+			zap.Error(countErr))
+		totalPoints = 0
+	}
+
+	affectedEstimate := totalPoints
+	if affectedEstimate > 0 {
+		c.log.Debug("locator-cleaner: pre-alloc from CountPoints",
+			zap.Int("total_points", totalPoints))
+	}
+
+	// Pre-allocate before the scroll loop so the first page doesn't
+	// waste appends on a starting-nil backing array.
 	var affectedIDs []string
+	if affectedEstimate > 0 {
+		affectedIDs = make([]string, 0, affectedEstimate)
+	}
+
+	firstPageDone := false
+	firstPageAffected := 0
 	offset := ""
+
 	for {
 		page, err := c.client.ScrollPoints(ctx, collection, offset, scrollBatchSize, nil)
 		if err != nil {
+			report.AllocCapacity = cap(affectedIDs)
 			return report, fmt.Errorf("scroll %q at offset %q (scrolled %d points so far): %w",
 				collection, offset, report.TotalPointsScrolled, err)
 		}
@@ -104,7 +135,40 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*Locato
 			}
 			if hasDriveLink || hasLocalPath {
 				report.PointsAffected++
+				if !firstPageDone {
+					firstPageAffected++
+				}
 				affectedIDs = append(affectedIDs, pt.ID)
+			}
+		}
+
+		// ── P4: Refine estimate after first page ────────────────
+		if !firstPageDone && totalPoints > 0 && len(page.Points) > 0 {
+			firstPageDone = true
+
+			if firstPageAffected > 0 {
+				ratio := float64(firstPageAffected) / float64(len(page.Points))
+				estimated := int(float64(totalPoints) * ratio)
+				if estimated < report.PointsAffected {
+					estimated = report.PointsAffected
+				}
+				if estimated > totalPoints {
+					estimated = totalPoints
+				}
+
+				// Re-allocate only if the refined estimate is
+				// materially larger than current capacity.
+				if cap(affectedIDs) < estimated {
+					resized := make([]string, len(affectedIDs), estimated)
+					copy(resized, affectedIDs)
+					affectedIDs = resized
+				}
+				c.log.Debug("locator-cleaner: refined pre-alloc from first-page ratio",
+					zap.Int("first_page_size", len(page.Points)),
+					zap.Int("first_page_affected", firstPageAffected),
+					zap.Float64("ratio", ratio),
+					zap.Int("estimated", estimated),
+					zap.Int("capacity", cap(affectedIDs)))
 			}
 		}
 
@@ -121,9 +185,11 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*Locato
 
 	// In dry-run mode, report only — no mutations.
 	if !apply {
+		report.AllocCapacity = cap(affectedIDs)
 		c.log.Info("locator-cleaner dry-run complete",
 			zap.Int("total_scrolled", report.TotalPointsScrolled),
-			zap.Int("affected", report.PointsAffected))
+			zap.Int("affected", report.PointsAffected),
+			zap.Int("alloc_capacity", report.AllocCapacity))
 		return report, nil
 	}
 
@@ -147,19 +213,20 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*Locato
 				zap.Int("batch_start", i),
 				zap.Int("batch_end", end),
 				zap.Error(err))
-			// Continue with remaining batches — don't abort on partial failure.
 			continue
 		}
 		report.BatchCount++
 		report.KeysRemoved += len(batch) * len(legacyKeys)
 	}
 
+	report.AllocCapacity = cap(affectedIDs)
 	c.log.Info("locator-cleaner apply complete",
 		zap.Int("total_scrolled", report.TotalPointsScrolled),
 		zap.Int("affected", report.PointsAffected),
 		zap.Int("keys_removed", report.KeysRemoved),
 		zap.Int("batch_count", report.BatchCount),
-		zap.Int("error_count", len(report.Errors)))
+		zap.Int("error_count", len(report.Errors)),
+		zap.Int("alloc_capacity", report.AllocCapacity))
 
 	if len(report.Errors) > 0 {
 		return report, fmt.Errorf("locator cleanup completed with %d batch errors", len(report.Errors))

@@ -315,6 +315,11 @@ type LocatorCleanupReport struct {
 	// BatchCount is the number of batch payload/delete calls made.
 	BatchCount int `json:"batch_count"`
 
+	// AllocCapacity records the final capacity of the affectedIDs slice
+	// after pre-allocation and ratio refinement (P4 PREALLOC-CLEANER).
+	// It is set by CleanLocators and asserted by tests.
+	AllocCapacity int `json:"alloc_capacity,omitempty"`
+
 	// Errors contains any non-fatal errors encountered during scroll
 	// or delete phases.
 	Errors []string `json:"errors,omitempty"`
