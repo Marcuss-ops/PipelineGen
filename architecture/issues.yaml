@@ -304,6 +304,94 @@
   status: done
   owner: internal/app
 
+- id: Q16-CHANGELOG-ARCHYAML-CONTENTION-PRUDENT-2PR
+  title: "Coordinate dual commits to CHANGELOG.md + architecture/current.yaml via prudent 2-PR split (3+ push races empirically documented on PR-STOCK-SOURCESTAGER-WIRE land cycle)"
+  status: pending
+  owner: architecture  # canonical owner of the dual-coordination convention (owns architecture/{current,issues}.yaml schemas + scripts/ci-architectural-checks.sh + AGENTS.md §Git Lessons governance)
+  linked_issues:
+    - PR-STOCK-SOURCESTAGER-WIRE  # wave-tracker entry in architecture/current.yaml (status: deferred, deadline: 2026-08-15) — canonical forward-pointer for the empirical WIN
+  notes: |
+    EMPIRICAL (3+ push races documented on PR-STOCK-SOURCESTAGER-WIRE
+    land cycle: PR1 96917e2f + PR2 39cbdb51): the contention surface
+    is CHANGELOG.md + architecture/current.yaml — NOT the test file
+    itself (PR1 = NEW file = zero cross-agent overlap = lands ff-clean).
+    The races are caused by parallel agents concurrently:
+      (a) Adding entries to the top of `## Unreleased > ### Added` in
+          CHANGELOG.md (single anchor point: every new CHANGELOG entry
+          inserts BETWEEN `### Added\n\n` and the prior first entry;
+          parallel agents racing on the same anchor almost always
+          produce non-fast-forward push outcomes).
+      (b) Inserting wave-tracker entries AFTER the most-recent `id:`
+          row in architecture/current.yaml (same anchor pattern;
+          slim-schema wave-tracker rows are expected to append to the
+          tail of the wave list).
+
+    MITIGATION (prudent 2-PR split — the actionable response):
+      Whenever a commit lands BOTH (i) a CHANGELOG.md bullet AND
+      (ii) a new wave-tracker row in architecture/current.yaml,
+      split into two PRs:
+        PR1: ship ONLY test file / plumbing / policy / ANY NEW file
+          (NEW file = zero contention = guaranteed ff-push). Lands
+          atomically to origin/main.
+        PR2: ship CHANGELOG + arch yaml atomically (likely still
+          races because the contention is precisely on these 2 files;
+          apply the recovery toolkit below).
+
+    RECOVERY TOOLKIT (per AGENTS.md §Git-Lesson-2/4/5; force-push is
+    NEVER the right exit against origin/main):
+      (1) Try `git rebase origin/main` first. Most style of upstream
+          drift is git's automatic 3-way merge can replay your commit
+          cleanly with zero conflict markers (verified empirically on
+          PR2 39cbdb51: rebase completed SUCCESSFULLY without conflict
+          markers, proving the 2 upstream commits touched
+          differing-from-mine files in those 2 high-contention files).
+      (2) If rebase surfaces conflict markers, DO NOT use --ours/--theirs
+          blindly. Per §Rebase-Conflict Lesson: open a 3-way diff,
+          re-read each hunk's intent (what is it asserting? what is
+          now obsolete?), then combine hunks manually. CHANGELOG /
+          arch yaml files are USUALLY append-only (newer entries land
+          BEFORE older entries at the top of `### Added`; newer
+          wave-tracker rows land AFTER older `id:` rows on the tail
+          of the wave list) — additive hunks with non-overlapping
+          intent re-merge cleanly.
+      (3) If byte-equivalent-replay (parallel agent lands the SAME
+          intent independently on origin/main's tip), ACCEPT the
+          canonical SHA on origin/main WITHOUT force-push per
+          §Git-Lesson-5 — your local SHA is superseded, reflog
+          retains for audit (refs survive 30+ days by default).
+
+    FORWARD-POINTER (future hardening beyond this ticket):
+      (a) A serial-watchdog convention: when 2 agents coordinate on
+          CHANGELOG + arch yaml, the SECOND agent WAITS for an
+          `origin/main` refresh + `git rebase origin/main` BEFORE
+          staging their changes — eliminates the 30s commit-to-push
+          race window entirely at the agentic level rather than the
+          git-level. Lower-friction than a CI ratchet; ergonomic
+          for sub-agent sessions.
+      (b) Promote the prudent 2-PR split to AGENTS.md Pattern 12
+          (canonical pattern for high-contention dual-file edits);
+          formalises the rule so future agents cite it in PR bodies.
+
+    EVIDENCE (commit SHAs from the STOCK-CUT-6 land cycle, retained
+    here per godlike/07 audit-pin discipline; not promoted to
+    linked_issues per the file's forward-pointer-only schema):
+      * `96917e2f` — PR1 SHA in the STOCK-CUT-6 prudent 2-PR split
+        (test file alone, NEW file, no contention). Landed cleanly
+        `[rejected] (non-fast-forward)`-free on first attempt.
+      * `11e4b546` — pre-rebase PR2 SHA. Abandoned per §Git-Lesson-5
+        recovery posture (1 race), superseded by the rebased lineage.
+      * `39cbdb51` — post-rebase PR2 SHA on origin/main. Canonical
+        after §Rebase-Conflict Lesson clean-rebase recovery (no
+        force-push, no manual 3-way merge touch, no conflict markers
+        during rebase). Reflog retains `11e4b546` for 30+ day audit
+        per AGENTS.md §Git-Lesson-5 step 4.
+
+    This is a coordination ticket — no production code change
+    required. The mitigation (prudent 2-PR split) is the actionable
+    response. Future agents dual-coordinating on CHANGELOG.md +
+    architecture/current.yaml should sequence PR1 (file-only) prior
+    to PR2 (audit-trail) per this convention.
+
 - id: IMG-GEN-SEARCH-FORWARD-POINTER
   title: "Generated-search SQLite-backed implementation (Step 9 forward-pointer close-out)"
   status: pending
