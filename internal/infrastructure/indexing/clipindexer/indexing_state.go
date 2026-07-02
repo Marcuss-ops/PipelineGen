@@ -38,7 +38,7 @@ import (
 // A future refactor that accidentally passes StateIndexed to
 // setIndexState panics loudly rather than silently double-counting
 // the MediaIndexSuccessTotal metric.
-func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.IndexState, lastError string) {
+func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.IndexState, lastError string) error {
 	if state == asset.StateIndexed {
 		panic("clipindexer.setIndexState must NOT write INDEXED — use setIndexedAt (writes the indexed_at / indexed_content_hash sidecars in a single atomic UPDATE)")
 	}
@@ -53,9 +53,7 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 	// caller needs an explicit no-op, add a typed setter (e.g.
 	// setIndexStateNoop) rather than conflating empty with no-op.
 	if state == "" {
-		s.log.Warn("setIndexState refusing empty state (silent garbage write would lose pre-state)",
-			zap.String("clip_id", clipID))
-		return
+		return fmt.Errorf("setIndexState: refusing empty state for %s (silent garbage write would lose pre-state)", clipID)
 	}
 	if !state.Valid() {
 		// Defense in depth against an enum drift: refuse unknown
@@ -63,10 +61,7 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 		// the legacy lowercase alphabet (legacyStateEmbedding etc.)
 		// that pre-PR6 callers may still pass if their callers
 		// haven't been migrated to the canonical enum yet.
-		s.log.Warn("setIndexState refusing unknown state value",
-			zap.String("clip_id", clipID),
-			zap.String("state", string(state)))
-		return
+		return fmt.Errorf("setIndexState: refusing unknown state %q for %s", state, clipID)
 	}
 
 	source := sourceFromClipID(clipID)
@@ -104,10 +99,7 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 			string(state), now, clipID)
 	}
 	if err != nil {
-		s.log.Warn("failed to set index state",
-			zap.String("clip_id", clipID),
-			zap.String("state", string(state)),
-			zap.Error(err))
+		return fmt.Errorf("setIndexState UPDATE for %s (state=%s): %w", clipID, state, err)
 	}
 
 	// Metric increments: only transient / failure states here.
@@ -131,6 +123,7 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 	s.log.Debug("index state transition",
 		zap.String("clip_id", clipID),
 		zap.String("state", string(state)))
+	return nil
 }
 
 // sourceFromClipID returns the canonical source label used by Prometheus
@@ -172,19 +165,27 @@ func sourceFromClipID(clipID string) string {
 // catch a between-the-two state, but the column-first write
 // ordering is defensive in case a future refactor splits the
 // UPDATE in error.
-func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash string) error {
+func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash, sourceVersion string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(ctx,
 		`UPDATE media_assets SET
 			index_state = ?,
 			index_state_updated_at = ?,
 			metadata_json = json_set(json_set(json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?)
-		 WHERE id = ?`,
+		 WHERE id = ? AND source_version = ? AND file_hash = ? AND index_state = 'INDEXING'`,
 		string(asset.StateIndexed), now,
 		now, contentHash, embeddingModel, embeddingModelVersion,
-		clipID)
+		clipID, sourceVersion, contentHash)
 	if err != nil {
 		return fmt.Errorf("set indexed_at for %s: %w", clipID, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		s.log.Warn("stale index event skipped",
+			zap.String("clip_id", clipID),
+			zap.String("source_version", sourceVersion),
+			zap.String("content_hash", contentHash))
+		return nil
 	}
 	metrics.MediaIndexSuccessTotal.WithLabelValues(sourceFromClipID(clipID)).Inc()
 	return nil
