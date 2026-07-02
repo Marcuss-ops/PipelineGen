@@ -54,6 +54,15 @@ type OrchestratorConfig struct {
 	// orchestrator fans out to. 0 means "use the default 3" so
 	// operators can rely on the legacy run.go semaphore.
 	MaxConcurrentJobs int
+	// StepStore is the per-step checkpointing store (canonical
+	// §12-3 / godlike/06 SSOT). nil ⇒ defaults to
+	// steps.NewInMemoryStore() inside NewOrchestrator (the
+	// hermetic default for tests + dev modes). Production
+	// composition roots should inject steps.NewSQLiteStore(db) so
+	// per-step state survives process restarts and the resume
+	// contract (MarkStarted → ErrStepAlreadyCompleted → skip-on-
+	// orchestrator-continue) takes effect.
+	StepStore steps.Store
 }
 
 // DefaultMaxConcurrentJobs is the orchestrator's fallback when
@@ -291,6 +300,18 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps Ex
 	if cfg.JobId == "" {
 		cfg.JobId = DefaultOrchestratorJobId
 	}
+	stepStore := steps.NewInMemoryStore()
+	if cfg.StepStore != nil {
+		// Step 10 C2/4 (July 2026): the production composition root
+		// supplies a concrete Store (typically
+		// steps.NewSQLiteStore(db) bound to the canonical
+		// execution_steps table). The godlike/06 "one owner per
+		// fact" invariant: caller is the sole injector and
+		// NewOrchestrator never overrides a non-nil store (the
+		// resume contract on retry-after-crash would be silently
+		// broken by the in-memory default taking over).
+		stepStore = cfg.StepStore
+	}
 	return &Orchestrator{
 		cfg:           cfg,
 		planner:       planner,
@@ -301,7 +322,7 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps Ex
 		builder:       stockManifestBuilder{},
 		writer:        noopWriter{},
 		projection:    noopProjection{},
-		stepStore:     steps.NewInMemoryStore(),
+		stepStore:     stepStore,
 		dispatchSteps: DefaultStockSteps(),
 	}
 }
@@ -399,16 +420,17 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 // non-nil ⇒ MarkFailed + return (nil RunSummary, err) so the broker
 // runner can stamp the typed JobFailed state.
 //
-// Resume semantics: the orchestrator iterates the typed []Step
-// slice in declaration order — NOT §12-3's lexically-sorted
-// FirstNonCompleted ordering (the §12-3 doc-comment warns that
-// lexical sort assumes step_keys use the "01_stage / 02_render"
-// convention; the user spec for §12-5 mandates the `stock.<stage>`
-// naming, so we read the typed slice for canonical order). On
-// retry-after-crash, FirstNonCompleted differentiates "earlier
-// step did not complete" (handled by re-entering that step's
-// slot via the typed slice) from "all steps complete" (handled
-// by returning RunSummary immediately).
+// Resume semantics (Step 10 C2/4, July 2026): on retry-after-crash,
+// MarkStarted returns steps.ErrStepAlreadyCompleted for any step
+// whose latest row is Completed in the steps.Store (typically from
+// a prior interrupted run that persisted progress to SQLite before
+// the SIGKILL). The orchestrator continues to the next step via
+// `continue` — skipping re-execution of the Completed step's body
+// while preserving the typed RowID/lease_until audit trail. The
+// §12-3 FirstNonCompleted surface remains available for the
+// operator-diagnostic "what stage is currently in-flight?" query
+// but is NOT used as the orchestrator's primary resume mechanism
+// (lex-smallest non-completed ≠ pipeline-order).
 func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunSummary, error) {
 	if o.planner == nil || o.stager == nil || o.stepStore == nil || len(o.dispatchSteps) == 0 {
 		return nil, ErrOrchestratorNilDeps
@@ -425,6 +447,21 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 		}
 
 		if err := o.stepStore.MarkStarted(ctx, key); err != nil {
+			if errors.Is(err, steps.ErrStepAlreadyCompleted) {
+				// Step 10 C2/4 resume contract: this step is
+				// already Completed in the steps.Store (likely
+				// from a prior SIGKILL'd run that persisted
+				// progress before crashing). Skip re-execution
+				// — do NOT call step.Run, do NOT call
+				// MarkCompleted (terminal-immutability). The
+				// next stage in dispatchSteps proceeds.
+				if o.executorLog != nil {
+					o.executorLog.Info("orchestrator: skip already-completed step (recovery)",
+						zap.String("step", step.Name()),
+						zap.String("job_id", o.cfg.JobId))
+				}
+				continue
+			}
 			return nil, fmt.Errorf("orchestrator: %s MarkStarted: %w", step.Name(), err)
 		}
 		if runErr := step.Run(ctx, runner); runErr != nil {
