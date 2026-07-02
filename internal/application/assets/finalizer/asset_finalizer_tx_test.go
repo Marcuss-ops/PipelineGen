@@ -175,12 +175,12 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 
 	// Verify media_assets row exists (before commit — inside tx).
 	var (
-		filename, mediaType, fileHash, driveFileID string
+		filename, mediaType, fileHash, driveFileID, lifecycleState string
 	)
 	err = tx.QueryRowContext(ctx,
-		`SELECT filename, media_type, file_hash, drive_file_id FROM media_assets WHERE id = ?`,
+		`SELECT filename, media_type, file_hash, drive_file_id, lifecycle_state FROM media_assets WHERE id = ?`,
 		"asset-001",
-	).Scan(&filename, &mediaType, &fileHash, &driveFileID)
+	).Scan(&filename, &mediaType, &fileHash, &driveFileID, &lifecycleState)
 	if err != nil {
 		t.Fatalf("verify media_assets: %v", err)
 	}
@@ -195,6 +195,10 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	}
 	if driveFileID != "drive-file-abc" {
 		t.Errorf("drive_file_id = %q", driveFileID)
+	}
+	// FASE 3b: new rows are PUBLISHED (not ACTIVE).
+	if lifecycleState != "PUBLISHED" {
+		t.Errorf("lifecycle_state = %q, want PUBLISHED", lifecycleState)
 	}
 
 	// Verify asset_versions row exists.

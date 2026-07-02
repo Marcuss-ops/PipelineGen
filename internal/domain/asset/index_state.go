@@ -1,4 +1,4 @@
-// Package asset — index_state.go is the canonical 7-state enum that
+// Package asset — index_state.go is the canonical 8-state enum that
 // drives the media_assets.index_state column (QDRANT-002 PR6, ships
 // with migration 094).
 //
@@ -37,6 +37,12 @@ package asset
 type IndexState string
 
 const (
+	// StateNotIndexable — asset is not eligible for indexing (e.g.
+	// voiceover, sound effect, or assets with no vectorizable content).
+	// Terminal for indexing purposes; the asset can still be ACTIVE.
+	// Added FASE 3b (July 2026).
+	StateNotIndexable IndexState = "NOT_INDEXABLE"
+
 	// StateDiscovered — initial sentinel for a row that has never
 	// been touched by a worker. Migration 094's ALTER TABLE DEFAULT
 	// writes this on every existing row, so a row in DISCOVERED
@@ -104,7 +110,8 @@ const (
 // until first re-touch (which normalises them to the canonical enum).
 func (s IndexState) Valid() bool {
 	switch s {
-	case StateDiscovered, StateIndexPending, StateIndexing, StateIndexed,
+	case StateNotIndexable,
+		StateDiscovered, StateIndexPending, StateIndexing, StateIndexed,
 		StateIndexFailed, StateIndexDeletePending, StateDELETED:
 		return true
 	}
@@ -118,7 +125,7 @@ func (s IndexState) Valid() bool {
 // supersede gate (the event is a no-op).
 func (s IndexState) IsTerminal() bool {
 	switch s {
-	case StateIndexed, StateIndexFailed, StateDELETED:
+	case StateNotIndexable, StateIndexed, StateIndexFailed, StateDELETED:
 		return true
 	}
 	return false
