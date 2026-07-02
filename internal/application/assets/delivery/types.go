@@ -32,6 +32,7 @@ const (
 	DestinationBook         DestinationKey = "book"
 	DestinationScript       DestinationKey = "script"
 	DestinationSoundEffect  DestinationKey = "sound_effect"
+	DestinationDocument     DestinationKey = "document"
 )
 
 // ConflictPolicy controls what happens when a file with the same name
