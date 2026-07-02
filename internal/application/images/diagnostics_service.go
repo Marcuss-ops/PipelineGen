@@ -11,14 +11,11 @@ import (
 // images subsystem. AI generation reports only the Google Slides-backed
 // Chrome/Playwright capability.
 type DiagnosticsService struct {
-	repo         *assets.ImagesRepository
-	driveReader  drive.Reader
-	imageGen     ImageGenerator
-	ingestSvc    *ingest.Service
-	log          *zap.Logger
-	// nvidiaAPIKey is retained temporarily for constructor compatibility. It
-	// has no effect on generation or advertised capabilities.
-	nvidiaAPIKey string
+	repo        *assets.ImagesRepository
+	driveReader drive.Reader
+	imageGen    ImageGenerator
+	ingestSvc   *ingest.Service
+	log         *zap.Logger
 }
 
 // Diagnostics returns a truthful health report for the images subsystem.
@@ -28,7 +25,6 @@ func (d *DiagnosticsService) Diagnostics() DiagnosticsReport {
 		Services:         []string{"repo", "drive", "google_slides", "chrome_playwright", "ingest"},
 		RepoConfigured:   d.repo != nil,
 		DriveConfigured:  d.driveReader != nil,
-		NvidiaConfigured: false,
 		IngestConfigured: d.ingestSvc != nil,
 		ImageGenWired:    d.imageGen != nil,
 		Capabilities:     d.AllCapabilities(),
@@ -41,8 +37,7 @@ func (d *DiagnosticsService) Diagnostics() DiagnosticsReport {
 	return report
 }
 
-// CapabilityResolution returns the status of the sole AI generation
-// capability. Deprecated provider capability IDs are not advertised.
+// CapabilityResolution returns the status of the sole AI generation capability.
 func (d *DiagnosticsService) CapabilityResolution(cap Capability) CapabilityStatus {
 	switch cap {
 	case CapImageGenChrome:
