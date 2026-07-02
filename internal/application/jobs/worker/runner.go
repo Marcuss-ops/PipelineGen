@@ -358,9 +358,36 @@ func sha256File(path string) (string, error) {
 // required artefact on disk, SHA-256 computation failure, upload failure,
 // or post-upload ToRemote gate rejection (SchemaVersion!=V1, required
 // missing).
+//
+// P0 #4 (July 2026) — fail-closed split: the historical
+// `r.assetClient == nil || len(handlerResult) == 0` short-circuit
+// conflated two semantically distinct conditions and silently
+// dropped both. The runner now distinguishes:
+//
+//   - handlerResult empty      ⇒ silent-skip (no upload needed,
+//     preserves the legacy contract).
+//   - handlerResult non-empty + assetClient nil ⇒ typed error
+//     ErrArtifactClientRequired (godlike/07 no-fake-availability:
+//     the worker is misconfigured to upload but the broker asked
+//     for a non-empty artifact manifest, so the runner must surface
+//     the misconfiguration rather than silently dropping).
+//
+// godlike/06 SSOT: ErrArtifactClientRequired is the worker-package
+// owner of the "worker AssetClient is unwired" fact. Placed next
+// to ErrLegacyUploadPathRemoved + ErrHandlerNotRegistered in this
+// file (worker-internal surface; the AssetClient interface lives
+// in tools.go of the same package, so the sentinel does not cross
+// the domain/application boundary).
 func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult map[string]any) (*job.RemoteArtifactManifest, error) {
-	if r.assetClient == nil || len(handlerResult) == 0 {
+	// Order matters: empty handlerResult short-circuits BEFORE the
+	// assetClient check so the legacy silent-skip is preserved when
+	// both conditions hold (handler did not produce any output; the
+	// worker may or may not have an asset client — irrelevant).
+	if len(handlerResult) == 0 {
 		return nil, nil
+	}
+	if r.assetClient == nil {
+		return nil, fmt.Errorf("runner.uploadManifest: jobID=%q: %w", jobID, ErrArtifactClientRequired)
 	}
 
 	manifest, decodeErr := job.Decode(handlerResult)
@@ -432,6 +459,36 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 	// the caller can errors.Is(err, ErrRemoteSchemaVersionUnsupported).
 	return manifest.ToRemote(uploaded)
 }
+
+// ErrArtifactClientRequired surfaces a worker misconfiguration:
+// the runner's assetClient is nil AND a non-empty handlerResult
+// was produced (so the worker is expected to upload). Pre-P0 #4
+// the runner silently returned nil + nil, masking the
+// misconfiguration. Post-P0 #4 the runner fail-closes with this
+// typed error so the operator dashboard can surface a single
+// "asset-client-not-wired" alarm category and the worker
+// supervisor can fail-fast the job instead of leaving it
+// terminal-reported as SUCCEEDED with zero artifacts.
+//
+// godlike/07 typed-error contract: the sentinel is errors.Is
+// reachable from any caller (no wrap layer) so tests + ops
+// tooling can probe via `errors.Is(err, ErrArtifactClientRequired)`.
+// Placement rationale: ErrArtifactClientRequired is
+// worker-package-internal (it guards the worker Runner's
+// uploadManifest entry point where the AssetClient interface is
+// consumed). The AssetClient interface itself is defined in
+// tools.go of the same package, so the sentinel does not need
+// to cross the application/domain boundary to be canonical.
+// The domain/remote/artifact_uploader.go surface covers the
+// Creator-side ArtifactUploader port (C6) and the
+// CompleteWithArtifacts command (C7) — distinct concern, distinct
+// sentinel cluster.
+//
+// Wrapping: callers MUST use `fmt.Errorf("...: %w", ErrArtifactClientRequired)`
+// (not the bare sentinel) so the per-call jobID context survives
+// in the error message while errors.Is still probes the typed
+// error. The uploadManifest wrapper does this today.
+var ErrArtifactClientRequired = errors.New("worker Runner: assetClient is required when handlerResult is non-empty (P0 #4 fail-closed — silent skip on a real artifact-producing job is a misconfiguration, not a no-op)")
 
 // ErrLegacyUploadPathRemoved is the sentinel returned by the now-disabled
 // pre-Blocco-2.2 JSON path-scan upload path. P0 Commit 12 (July 2026)

@@ -31,6 +31,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -70,8 +71,41 @@ func TestRunner_uploadManifest_NilAssetClient(t *testing.T) {
 			OutputArtifact{Path: "/missing", Required: true},
 		},
 	})
+	if err == nil {
+		t.Fatal("nil assetClient + non-empty handlerResult must fail-closed with ErrArtifactClientRequired (P0 #4) — pre-P0 #4 the runner silently returned nil + nil and masked the misconfiguration")
+	}
+	if !errors.Is(err, ErrArtifactClientRequired) {
+		t.Errorf("runner.uploadManifest err = %v, want errors.Is(err, ErrArtifactClientRequired)", err)
+	}
+	// The jobID must surface in the message so operator dashboards
+	// can correlate the misconfiguration with the job row.
+	if !strings.Contains(err.Error(), "job-nil-client") {
+		t.Errorf("err message %q should contain jobID=job-nil-client", err.Error())
+	}
+}
+
+// TestRunner_uploadManifest_NilAssetClient_EmptyHandlerResult_StillSilentSkips
+// pins the conjunction case: BOTH conditions hold (assetClient nil
+// AND handlerResult empty). The P0 #4 split is order-sensitive — the
+// empty handlerResult check fires first so the runner returns
+// nil + nil silently, not ErrArtifactClientRequired. This guards
+// against future contributors re-ordering the conditions and
+// regressing the legacy contract. (Code-reviewer callout #1: this
+// test replaces a redundant companion that tested the same
+// condition under a less self-documenting name.)
+//
+// If the conditions are reordered, this test still pins
+// order-sensitivity: assetClient=nil + handlerResult=empty MUST
+// short-circuit on the empty check first (the legacy contract
+// survives the P0 #4 fail-closed split).
+func TestRunner_uploadManifest_NilAssetClient_EmptyHandlerResult_StillSilentSkips(t *testing.T) {
+	runner := &Runner{assetClient: nil}
+	uploaded, err := runner.uploadManifest(context.Background(), "conjoint-empty-job", map[string]any{})
 	if err != nil {
-		t.Fatalf("nil assetClient must not produce an error, got: %v", err)
+		t.Fatalf("both conditions empty must still silent-skip, got: %v", err)
+	}
+	if uploaded != nil {
+		t.Errorf("conjoint empty must return nil uploaded manifest, got: %+v", uploaded)
 	}
 }
 
