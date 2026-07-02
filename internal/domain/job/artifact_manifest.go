@@ -52,6 +52,14 @@ const (
 	ArtifactKindImage            = "image"
 	ArtifactKindClipBindings     = "clip_bindings"
 	ArtifactKindArtifactManifest = "artifact_manifest"
+	// ArtifactKindPDF = "pdf" (P0 Commit 10, July 2026) extends the
+	// canonical kind set for the document.generate handler. The kind
+	// string is the contract that the Sender-side upload cycle
+	// (internal/application/jobs/worker/runner.go::uploadManifest)
+	// switches on; adding a new kind is a wire-format extension and
+	// is documented here so the next reader can find the originating
+	// handler at internal/api/assets/document/document_handler.go.
+	ArtifactKindPDF = "pdf"
 )
 
 // ArtifactManifest is the top-level container for a job's output artefacts.
