@@ -86,17 +86,9 @@ func (s *Service) GenerateLessonWithProgress(
 	if tone == "" {
 		tone = s.cfg.DefaultTone
 	}
-	model := req.Model
-	if model == "" {
-		model = s.cfg.DefaultModel
-	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = extractTitle(req.SourceText)
-	}
-	imageModel := req.ImageModel
-	if imageModel == "" {
-		imageModel = s.cfg.DefaultImageModel
 	}
 
 	// Step 1: Split into chapters
@@ -122,10 +114,6 @@ func (s *Service) GenerateLessonWithProgress(
 	req.Title = title
 	req.Language = lang
 	req.Tone = tone
-	req.Model = model
-	if req.ImageModel == "" {
-		req.ImageModel = imageModel
-	}
 
 	results := s.GenerateChapters(ctx, chapters, req, onProgress)
 
@@ -222,7 +210,7 @@ func (s *Service) buildChapterGenerationRequest(chapter ChapterSplit, req *Lesso
 		Language:   req.Language,
 		Duration:   duration,
 		Tone:       req.Tone,
-		Model:      req.Model,
+		Model:      s.cfg.DefaultModel,
 		Prompt:     fmt.Sprintf("Write an educational lesson chapter titled '%s' based on the provided reference material.", chapter.Title),
 		SourceText: fmt.Sprintf("CHAPTER TITLE: %s\n\nREFERENCE MATERIAL:\n%s", chapter.Title, chapter.Text),
 		Title:      chapter.Title,

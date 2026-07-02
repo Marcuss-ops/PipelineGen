@@ -9,14 +9,10 @@ type LessonRequest struct {
 	Title          string `json:"title"`
 	Language       string `json:"language,omitempty"`
 	Tone           string `json:"tone,omitempty"`
-	Model          string `json:"model,omitempty"`
 	MaxChapters    int    `json:"max_chapters,omitempty"`
 	GenerateImages bool   `json:"generate_images,omitempty"`
 	ImageStyle     string `json:"image_style,omitempty"`
-	// ImageModel is retained only for request compatibility. Generation ignores
-	// it and always uses Google Slides with nano-banana-pro.
-	ImageModel  string `json:"image_model,omitempty"`
-	ImageWidth  int    `json:"image_width,omitempty"`
+	ImageWidth   int    `json:"image_width,omitempty"`
 	ImageHeight int    `json:"image_height,omitempty"`
 	GeneratePDF bool   `json:"generate_pdf,omitempty"`
 	OllamaURL   string `json:"ollama_url,omitempty"`
