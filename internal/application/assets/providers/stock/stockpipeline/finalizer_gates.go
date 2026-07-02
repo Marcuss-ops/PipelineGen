@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -75,6 +76,22 @@ var (
 	// so we fail-closed at the orchestrator rather than dispatching
 	// an event the consumer rejects.
 	ErrStockChunkHashMissing = errors.New("stock: chunk SHA256 empty — must compute pre-publish (P0 2.4)")
+
+	// ErrStockChunkHashInvalid is raised when a chunk's SHA256 is
+	// non-empty but does NOT match the canonical hex-encoded
+	// SHA-256 format (exactly 64 lowercase hex chars). Per
+	// P0 2.4 hardening (Commit 0.2 — godlike/07 fail-closed
+	// at the gate layer): the orchestrator refuses to dispatch
+	// a chunk whose SHA256 is malformed because the
+	// IdempotencyKey derivation (prefix + sha[:16]) would have
+	// PANICKED at runtime on short input. The error wraps the
+	// canonical domainasset.ErrSHA256Invalid so callers can
+	// errors.Is both sentinels to inspect the failure class.
+	ErrStockChunkHashInvalid = errors.New("stock: chunk SHA256 malformed — must be exactly 64 lowercase hex chars (P0 2.4)")
+
+	// ErrStockMetadataHashInvalid mirrors ErrStockChunkHashInvalid
+	// for the per-run metadata.json (symmetric gate).
+	ErrStockMetadataHashInvalid = errors.New("stock: metadata SHA256 malformed — must be exactly 64 lowercase hex chars (P0 2.4)")
 
 	// ErrStockChunkLocalMissing is raised when a chunk's LocalPath
 	// does not exist on disk at finalize time. Per P0 2.1 the
@@ -173,9 +190,17 @@ type MetadataState struct {
 //  2. missing LocalPath on any chunk → ErrStockChunkNotFinalized
 //  3. empty RemoteFileID on any chunk → ErrStockChunkNotFinalized
 //  4. empty SHA256 on any chunk → ErrStockChunkHashMissing
+//  5. malformed SHA256 on any chunk (len<64 / non-hex / uppercase) →
+//     ErrStockChunkHashInvalid (Commit 0.2 P0 2.4 hardening)
 //
 // Order matters for the test assertion table (each test isolates
 // one rule, not the chain).
+//
+// Commit 0.2 (godlike/07 fail-closed at the gate layer): SHA256
+// strict-format validation is enforced here so the
+// BuildFinalizationRequest IdempotencyKey derivation
+// (prefix + sha[:16]) is no longer reachable on a short hash,
+// eliminating the verdict's P0 #3 panic class.
 func VerifyChunks(chunks []ChunkState) error {
 	if len(chunks) == 0 {
 		return ErrStockNoChunksFinalized
@@ -193,13 +218,33 @@ func VerifyChunks(chunks []ChunkState) error {
 			return fmt.Errorf("%w: chunk[%d] (artifact=%s) SHA256 must be computed BEFORE publish (P0 2.4)",
 				ErrStockChunkHashMissing, c.Index, c.ArtifactID)
 		}
+		// Commit 0.2 P0 2.4 hardening: reject malformed SHA256 BEFORE
+		// the panic site at BuildFinalizationRequest's composition.
+		// Errors.Is(asset.ErrSHA256Invalid, ...) AND
+		// errors.Is(ErrStockChunkHashInvalid, ...) both surface so
+		// callers can probe either sentinel.
+		if _, err := asset.ValidateSHA256(c.SHA256); err != nil {
+			// godlike/07 typed-error contract (Commit 0.2 P0 2.4):
+			// errors.Join preserves BOTH sentinels so callers can
+			// errors.Is(ErrStockChunkHashInvalid) AND
+			// errors.Is(asset.ErrSHA256Invalid) — fmt.Errorf supports
+			// only one %w, so Join is the canonical multi-sentinel carrier.
+			return errors.Join(
+				ErrStockChunkHashInvalid,
+				fmt.Errorf("chunk[%d] (artifact=%s)", c.Index, c.ArtifactID),
+				err,
+			)
+		}
 	}
 	return nil
 }
 
 // VerifyMetadata is the §12-1 fail-closed gate for the per-run
 // metadata.json. Symmetric to VerifyChunks but with metadata-specific
-// flags. Pure function.
+// flags. Pure function. Commit 0.2 hardening: SHA256 strict-format
+// validation surfaces ErrStockMetadataHashInvalid for malformed
+// digest inputs (len<64 / non-hex / uppercase) — same defence-in-depth
+// contract as VerifyChunks.
 func VerifyMetadata(m MetadataState) error {
 	if m.LocalPath == "" {
 		return fmt.Errorf("%w: LocalPath empty",
@@ -212,6 +257,11 @@ func VerifyMetadata(m MetadataState) error {
 	if m.SHA256 == "" {
 		return fmt.Errorf("%w: SHA256 must be computed BEFORE publish (P0 2.4)",
 			ErrStockMetadataNotPublished)
+	}
+	// Commit 0.2 P0 2.4 hardening: malformed-SHA256 → ErrStockMetadataHashInvalid.
+	if _, err := asset.ValidateSHA256(m.SHA256); err != nil {
+		// godlike/07 typed-error: errors.Join preserves both sentinels.
+		return errors.Join(ErrStockMetadataHashInvalid, err)
 	}
 	return nil
 }
@@ -258,6 +308,21 @@ func BuildFinalizationRequest(
 	arts := make([]finalization.PublishedArtifact, 0, 1+len(chunks))
 
 	// (1) Metadata artifact (always present, Required:true).
+	// Commit 0.2 P0 2.4 hardening: SHA256IdempotencyKey validates
+	// the digest BEFORE slicing — the verdict's P0 #3 panic class
+	// (`"stock:" + sha[:16]` on short input) is no longer reachable
+	// from this composition site.
+	metaIdemKey, errMeta := asset.SHA256IdempotencyKey("stock", metadata.SHA256)
+	if errMeta != nil {
+		// godlike/07 typed-error: errors.Join preserves both sentinels
+		// so callers can probe ErrStockMetadataHashInvalid AND the
+		// underlying asset.ErrSHA256Invalid via errors.Is.
+		return nil, errors.Join(
+			ErrStockMetadataHashInvalid,
+			fmt.Errorf("metadata"),
+			errMeta,
+		)
+	}
 	arts = append(arts, finalization.PublishedArtifact{
 		ArtifactID:     jobID + ":" + string(finalization.KindMetadata),
 		Kind:           finalization.KindMetadata,
@@ -267,7 +332,7 @@ func BuildFinalizationRequest(
 		SHA256:         metadata.SHA256,
 		SourceVersion:  1,
 		Required:       true,
-		IdempotencyKey: "stock:" + metadata.SHA256[:16],
+		IdempotencyKey: metaIdemKey,
 		Location: finalization.AssetLocation{
 			Provider:     "drive",
 			FileID:       metadata.RemoteFileID,
@@ -280,7 +345,19 @@ func BuildFinalizationRequest(
 	})
 
 	// (2) Chunk artifacts (one per ChunkState, Required:true).
+	// Commit 0.2 P0 2.4 hardening: per-chunk SHA256 typed through
+	// SHA256IdempotencyKey so a malformed digest surfaces a typed
+	// error before it could panic on `c.SHA256[:16]`.
 	for _, c := range chunks {
+		chunkIdemKey, errChunk := asset.SHA256IdempotencyKey("stock", c.SHA256)
+		if errChunk != nil {
+			// godlike/07 typed-error: errors.Join preserves both sentinels.
+			return nil, errors.Join(
+				ErrStockChunkHashInvalid,
+				fmt.Errorf("chunk[%d] (artifact=%s)", c.Index, c.ArtifactID),
+				errChunk,
+			)
+		}
 		arts = append(arts, finalization.PublishedArtifact{
 			ArtifactID:    c.ArtifactID,
 			Kind:          finalization.KindVideo,
@@ -290,7 +367,7 @@ func BuildFinalizationRequest(
 			SHA256:        c.SHA256,
 			SourceVersion: int64(c.Index + 1),
 			Required:      true,
-			IdempotencyKey: "stock:" + c.SHA256[:16],
+			IdempotencyKey: chunkIdemKey,
 			Location: finalization.AssetLocation{
 				Provider:     "drive",
 				FileID:       c.RemoteFileID,
