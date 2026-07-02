@@ -15,6 +15,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
+// isImageRetryable is the test-scoped retry classifier. It delegates to
+// the canonical pkg/retry.IsTransient so the retry.Options{IsRetryable}
+// predicates in the retry-loop tests stay consistent with the production
+// retry classifier. Tests reference it 4× across TestIsImageRetryable
+// (predicate truth-table) plus 3 retry.Options scopes.
+func isImageRetryable(err error) bool {
+	return retry.IsTransient(err)
+}
+
 // ── isImageRetryable unit tests ──────────────────────────────────────
 
 func TestIsImageRetryable(t *testing.T) {
