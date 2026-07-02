@@ -2887,48 +2887,43 @@ if [ -n "$violators" ]; then
 fi
 echo "OK: no retry-classifier substring-matchers outside pkg/retry"
 
+
 # ── Check 54: forbid legacy stock pipeline keywords (Stock Cutover Commit 3, July 2026) ──
 # Stock Cutover Cleanup Plan Commits 4-8 retire the assetIndex / media_assets /
 # EnqueueAndIndex / UploadFile / Publisher.Publish / YTDLPDownloader / youtube.Service
 # surfaces of the stock pipeline. Check 54 is the regression guard: any NEW
 # occurrence of these banned keywords in a non-allowlisted file exits CI red.
-# Today's allowlist (docs/migrations/stock-legacy-keyword-allowlist.txt)
-# grandfathers the 4 files Commit 4-8 will retire; remove the matching entry
-# at the same commit that deletes the file.
+# The allowlist (docs/migrations/stock-legacy-keyword-allowlist.txt)
+# grandfathers the legacy files that Commits 4-8 will retire; remove the
+# matching allowlist entry at the same commit as the file deletion.
 echo "=== Check 54: forbid legacy stock pipeline keywords ==="
 banned_words='\bassetIndex\b|media_assets|\bEnqueueAndIndex\b|\bUploadFile\b|\bPublisher\.Publish\b|\bYTDLPDownloader\b|\byoutube\.Service\b'
 
-# 1. Gather all hits in the stock package, dropping full-line comments (per
-# the standard awk pass used elsewhere in this script, e.g. lines 175/225/334).
+# 1. Gather raw hits with grep + rescue grep failure via || true at the
+#    command level (kept outside $() so bash parsing isn't confused by
+#    pipe+or+close-paren combinations).
 all_hits=$(grep -rnE "$banned_words" \
-    internal/application/assets/providers/stock/ 2>/dev/null \
-    | awk -F: '{
-        rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i;
-        if (rest ~ /^[[:space:]]*\/\//) next # drop full-line comments
-        if (rest ~ /^[[:space:]]*\/\*/) next # drop full-line block comments
-        print
-    }' \
-    || true)
+    internal/application/assets/providers/stock/ 2>/dev/null || true)
 
-# 2. Parse the allowlist into a `|`-joined regex of repo-relative file paths.
-# Only the FILENAME (col 1) is compared — not line+col — so the regex works
-# across all matches in the same file. Comments (#) and blank lines are
-# stripped before the join.
+# 2. Parse the allowlist into a |-joined regex of repo-relative file paths.
+# Comments (#) and blank lines are stripped before the join.
 allowed_files=""
 if [ -f docs/migrations/stock-legacy-keyword-allowlist.txt ]; then
     allowed_files=$(
-        grep -vE '^[[:space:]]*(#|$)' docs/migrations/stock-legacy-keyword-allowlist.txt \
+        grep -vE '^[[:space:]]*(#|$)' docs/migrations/stock-legacy-keyword-allowlist.txt 2>/dev/null \
             | sort -u | paste -sd'|' -
-        || true
     )
 fi
+[ -z "$allowed_files" ] && allowed_files="__no_allowlist__"
 
-# 3. Subtract allowlist matches. Every match whose file path is in the
-# allowlist is exempted (the file is on the cleanup queue); everything else
-# is a net-new offender that fails the gate.
+# 3. Subtract allowlist matches. The awk body has NO inline comments — inline
+# comments after awk statements confuse some awk/bash combinations. Hits in
+# non-allowlisted files trigger the gate regardless of code-vs-comment:
+# a comment mentioning a banned keyword is still a regression-risk surface
+# (the comment-bypass prevented this in the prior implementation).
 fails=""
 if [ -n "$all_hits" ]; then
-    fails=$(printf '%s\n' "$all_hits" | awk -v allow="$allowed_files" -F':' '
+    fails=$(printf '%s\n' "$all_hits" | awk -F':' -v allow="$allowed_files" '
         BEGIN {
             n = split(allow, a, "|")
             for (i = 1; i <= n; i++) if (a[i] != "") allowed[a[i]] = 1
@@ -2937,7 +2932,7 @@ if [ -n "$all_hits" ]; then
     ' || true)
 fi
 
-# 4. Assess. Empty output -> OK; non-empty -> FAIL.
+# 4. Assess. Empty diff → OK gate green; non-empty → FAIL gate red.
 if [ -n "$fails" ]; then
     echo "FAIL: legacy stock pipeline keyword(s) found in non-allowlisted files:"
     echo "$fails"
