@@ -15,7 +15,7 @@ import (
 )
 
 // EnrichAndIndexClip helper — used by external batch/mixin callers.
-// Inline on *Handler post-Split 2 since Ops no longer carries it.
+// Extracted from handler.go per PG-028 capability split (July 2026).
 // Returns immediately if enrichUC is nil; otherwise delegates to the
 // shared enrichUC instance (single source of construction).
 func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
