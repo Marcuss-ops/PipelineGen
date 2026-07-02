@@ -191,6 +191,41 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 		}
 	}
 
+	// PR-AGGREGATE-FILTER-UNIFORM (July 2026): Tags filter added.
+	// Every listed tag must be present on the `tags` JSON column
+	// (AND-semantics, matching the canonical q.Filters.Tags contract
+	// from internal/application/search/types.go::Filters.Tags). FTS5
+	// is banned per project policy so we route through
+	// pkg/sqlutil.BuildFallbackLikeConditions — the single-tag case
+	// reduces to a single-column LIKE which the planner can
+	// short-circuit when the row is small enough. Coarse substring
+	// behaviour on a JSON column is acceptable given the FTS5 ban;
+	// production deployments that need exact-token matching should
+	// add a `tags_norm` FULL INDEX migration downstream.
+	//
+	// Forward-pointer (NOT shipped in this commit): a dedicated
+	// Language exact-match filter. The media_assets table does not
+	// carry a `language` column today (per asset.ScanMediaAsset's
+	// 40-column projection in clips_repository.go::MediaAssetColumns),
+	// so wiring req.Language reliably requires a schema migration
+	// first. Caller-side the filter PASSES THROUGH
+	// AdvancedSearchRequest for API symmetry; the SQL filter is
+	// deliberately a no-op until the column lands.
+	// godlike/07 honest-limitation: this contract is pinned by
+	// internal/application/search/cross_provider_test.go::
+	// TestFilterLanguageHonestyContract so a future reader / CI
+	// gate catches a regression if the projection drifts. WITHOUT
+	// the honest test, a casual caller setting q.Filters.Language="en"
+	// would see no filter applied AND assume Language filtering works
+	// — a hallmarked godlike/07 fake-availability violation.
+	if len(req.Tags) > 0 {
+		tagCond, tagArgs := sqlutil.BuildFallbackLikeConditions(req.Tags, []string{"tags"})
+		if tagCond != "" {
+			conditions = append(conditions, "("+tagCond+")")
+			args = append(args, tagArgs...)
+		}
+	}
+
 	if req.MinDuration > 0 {
 		conditions = append(conditions, "duration_ms >= ?")
 		args = append(args, req.MinDuration*1000)

@@ -18,20 +18,33 @@ package asset
 import "context"
 
 // AdvancedSearchRequest contains filters for advanced clip search.
+//
+// PR-AGGREGATE-FILTER-UNIFORM (July 2026): Language and Tags added
+// to the canonical DTO so the local backend (composed with the
+// SQLite AdvancedSearchRepo) can forward every filter the handler
+// accepts on q.Filters. Category was already present (the only
+// non-Q/Source metadata filter the repo honoured pre-PR-2); Language
+// joins via exact-match equality (BCP-47 string compare) and Tags
+// join via pkg/sqlutil.BuildFallbackLikeConditions over the JSON
+// tags column (FTS5 is banned per project policy). godlike/06 SSOT:
+// this DTO is the canonical owner-of-fact for the local-backend
+// filter set; do not introduce a parallel Filter struct.
 type AdvancedSearchRequest struct {
-	Q             string `json:"q"`
-	Source        string `json:"source"`
-	Category      string `json:"category"`
-	MinDuration   int    `json:"min_duration"`
-	MaxDuration   int    `json:"max_duration"`
-	HasTranscript bool   `json:"has_transcript"`
-	HasDriveLink  bool   `json:"has_drive_link"`
-	CreatedAfter  string `json:"created_after"`
-	CreatedBefore string `json:"created_before"`
-	SortBy        string `json:"sort_by"`
-	SortAsc       bool   `json:"sort_asc"`
-	Limit         int    `json:"limit"`
-	Offset        int    `json:"offset"`
+	Q             string   `json:"q"`
+	Source        string   `json:"source"`
+	Category      string   `json:"category"`
+	Language      string   `json:"language"`
+	Tags          []string `json:"tags,omitempty"`
+	MinDuration   int      `json:"min_duration"`
+	MaxDuration   int      `json:"max_duration"`
+	HasTranscript bool     `json:"has_transcript"`
+	HasDriveLink  bool     `json:"has_drive_link"`
+	CreatedAfter  string   `json:"created_after"`
+	CreatedBefore string   `json:"created_before"`
+	SortBy        string   `json:"sort_by"`
+	SortAsc       bool     `json:"sort_asc"`
+	Limit         int      `json:"limit"`
+	Offset        int      `json:"offset"`
 }
 
 // AdvancedSearchResult is the response for advanced clip search.

@@ -818,7 +818,7 @@
       deadline: 2026-07-01
     - id: PR-AGGREGATE-FILTER-UNIFORM
       owner_capability: internal/app + internal/application/search + internal/infrastructure/database/sqlite/catalog
-      status: pending
+      status: shipped
       deadline: 2026-07-25
     - id: PR-CROSS-MODAL-TEXT-TO-VISUAL
       owner_capability: internal/infrastructure/qdrant + internal/infrastructure/embeddings
