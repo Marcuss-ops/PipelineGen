@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // ── Wire-level error DTO (PR1 — fix/qdrant-wire-contracts) ───────────
@@ -162,6 +164,8 @@ func NewErrSchemaIncompatible(diff *SchemaDiff) *ErrSchemaIncompatible {
 }
 
 // ErrCollectionNotFound is returned when a collection doesn't exist.
+// Implements retry.RetryableError — collection/alias absence is an
+// operator-fixable transient condition (pending schema init).
 type ErrCollectionNotFound struct {
 	Name string
 }
@@ -170,7 +174,10 @@ func (e *ErrCollectionNotFound) Error() string {
 	return fmt.Sprintf("qdrant collection %q not found", e.Name)
 }
 
+func (e *ErrCollectionNotFound) IsRetryable() bool { return true }
+
 // ErrAliasNotFound is returned when an alias doesn't exist.
+// Implements retry.RetryableError — same rationale as ErrCollectionNotFound.
 type ErrAliasNotFound struct {
 	Alias string
 }
@@ -178,6 +185,8 @@ type ErrAliasNotFound struct {
 func (e *ErrAliasNotFound) Error() string {
 	return fmt.Sprintf("qdrant alias %q not found", e.Alias)
 }
+
+func (e *ErrAliasNotFound) IsRetryable() bool { return true }
 
 // ErrVectorDimensionMismatch is returned when a vector has wrong dimensions.
 type ErrVectorDimensionMismatch struct {
@@ -223,6 +232,7 @@ func (e *ErrChannelUnavailable) Error() string {
 }
 
 // ErrAliasSwitchNotReady is returned when pre-switch verification hasn't passed.
+// Implements retry.RetryableError — pre-switch state is transient.
 type ErrAliasSwitchNotReady struct {
 	Report *SwitchReport
 }
@@ -230,6 +240,8 @@ type ErrAliasSwitchNotReady struct {
 func (e *ErrAliasSwitchNotReady) Error() string {
 	return "qdrant alias switch not ready: pre-switch verification failed"
 }
+
+func (e *ErrAliasSwitchNotReady) IsRetryable() bool { return true }
 
 // ErrSparseRequired is returned when the schema has a sparse BM25 channel
 // configured but the caller did not supply a SparseQueryVector for the
@@ -286,10 +298,15 @@ func IsRetryable(err error) bool {
 	if isRetryableSentinel(err) {
 		return true
 	}
-	// Blocco 4d: unknown errors default to terminal. Pre-fix returned
-	// true (retryable), creating a catch-all retry policy for every
-	// unrecognised error type — the opposite of fail-safe.
-	return false
+	// Blocco 4d (July 2026, updated): delegate non-Qdrant errors to
+	// the canonical pkg/retry.IsTransient for substring-fallback
+	// classification. Pre-fix returned false (terminal), which made
+	// raw transport timeouts from the Qdrant HTTP client invisible
+	// to the retry loop. pkg/retry already has the Qdrant-specific
+	// typed checks above (isPermanent + isRetryableSentinel), and
+	// its own RetryableError + TransientInfrastructureError checks
+	// are a strict superset of the old Blocco 4d terminal-default.
+	return retry.IsTransient(err)
 }
 
 func isPermanent(err error) bool {
