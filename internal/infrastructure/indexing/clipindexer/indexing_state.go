@@ -12,6 +12,25 @@ import (
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
+// ErrIndexSuperseded is returned by setIndexedAt when the CAS fence
+// (source_version + file_hash + index_state='INDEXING') matches zero rows.
+// The indexing event was obsoleted by a newer version of the same asset
+// while embeddings were being generated. The Qdrant point may have been
+// upserted by this goroutine, but the SQLite row must NOT be flipped to
+// INDEXED — the newer event (or the already-indexed state from a parallel
+// goroutine) provides the canonical point.
+//
+// Callers (finalizeIndex, tryFastPath) propagate this error so the outbox
+// handler routes the event to SUPERSEDED instead of SUCCESS.
+type ErrIndexSuperseded struct {
+	ClipID        string
+	SourceVersion string
+}
+
+func (e *ErrIndexSuperseded) Error() string {
+	return fmt.Sprintf("clipindexer: CAS miss for %s (source_version=%q) — index event superseded by newer version", e.ClipID, e.SourceVersion)
+}
+
 // setIndexState atomically writes the canonical index_state column
 // (media_assets.index_state, QDRANT-002 PR6 / migration 094) + the
 // matching index_state_updated_at stamp. lastError is mirrored into
@@ -181,11 +200,10 @@ func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash, sourceV
 	}
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
-		s.log.Warn("stale index event skipped",
-			zap.String("clip_id", clipID),
-			zap.String("source_version", sourceVersion),
-			zap.String("content_hash", contentHash))
-		return nil
+		return &ErrIndexSuperseded{
+			ClipID:        clipID,
+			SourceVersion: sourceVersion,
+		}
 	}
 	metrics.MediaIndexSuccessTotal.WithLabelValues(sourceFromClipID(clipID)).Inc()
 	return nil
