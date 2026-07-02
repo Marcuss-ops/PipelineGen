@@ -454,6 +454,13 @@ const (
 	TypeImagesGenerate   = job.TypeImagesGenerate
 	TypeDocumentGenerate = job.TypeDocumentGenerate
 	TypeAssetsResolve    = job.TypeAssetsResolve
+
+	// Step 11B (July 2026) sibling-job type aliases. Canonical strings
+	// ("script.spawn_voiceover", "script.spawn_images") live in
+	// internal/domain/job/job.go per godlike/02 §Capability-specific
+	// constants stay in their owning domain package.
+	TypeScriptVoiceoverSibling = job.TypeScriptVoiceoverSibling
+	TypeScriptImageSibling     = job.TypeScriptImageSibling
 )
 
 // Compose builds the standard registry with all known job types.
@@ -525,6 +532,15 @@ func Compose() *Registry {
 	// RequiredCapabilities["image_gen_chrome"] mirrors internal/application/images/capability.go::CapImageGenChrome.
 	// Keep both declaration sites in sync.
 	r.Register(JobPolicy{Type: TypeImageGenerateGoogle, Description: "Google Slides AI image generation (Chrome + Playwright)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, RequiredCapabilities: []string{"image_gen_chrome"}, ProducesArtifacts: true})
+
+	// Step 11B sibling types (script.generate -> voiceover / image fan-out).
+	// Concurrency=4 per user spec bounds per-worker sibling fan-out. Both
+	// sibling classes produce canonical asset rows via JobFinalizer.
+	// CompleteWithArtifacts (PR-VO-A3) so ProducesArtifacts=true.
+	// AssetRequirements.Required drives the parent's fail-closed policy
+	// (Step 11B (d)).
+	r.Register(JobPolicy{Type: TypeScriptVoiceoverSibling, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeScriptImageSibling, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency

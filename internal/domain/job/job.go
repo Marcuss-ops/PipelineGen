@@ -119,4 +119,29 @@ const (
 	// Doc creation. Scheduled by the workflow coordinator after
 	// script.generate completes.
 	TypeDocumentGenerate = "document.generate"
+
+	// ── Step 11B (July 2026): script.generate sibling job types ──
+
+	// TypeScriptVoiceoverSibling is the canonical sibling job type
+	// for voiceover assets spawned by HandleClipScriptGenerateJob
+	// immediately after the script job is enqueued. Each sibling
+	// carries ParentJobID = the parent script.generate JobID and
+	// AssetRequirements.Required drives the parent's fail-closed
+	// policy (Step 11B (d)): if any REQUIRED voiceover sibling
+	// FAILED (or was never enqueued), the parent script.generate
+	// transitions to FAILED with PartialReason="missing_required_downstream".
+	//
+	// Concurrency is bounded at 4 per-worker (configured in
+	// internal/application/jobs/registry.go). Independent retry
+	// per sibling (no shared retry envelope).
+	TypeScriptVoiceoverSibling = "script.spawn_voiceover"
+
+	// TypeScriptImageSibling is the canonical sibling job type for
+	// AI image assets spawned by HandleClipScriptGenerateJob. The
+	// image sibling mirrors TypeScriptVoiceoverSibling's surface:
+	// ParentJobID + AssetRequirements + Concurrency: 4 + independent
+	// retry. Fail-closed propagation is uniform across both sibling
+	// classes via the aggregator (Step 12B's ChildTerminatedEvent
+	// pipeline).
+	TypeScriptImageSibling = "script.spawn_images"
 )
