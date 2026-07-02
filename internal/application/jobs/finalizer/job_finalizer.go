@@ -292,6 +292,16 @@ func (f *Finalizer) selectJobForFinalization(
 			lease.JobID, lease.Attempt, nil,
 		)
 	}
+
+	// Already-SUCCEEDED jobs skip lease ownership checks because
+	// markSucceeded clears worker_id + lease_id on completion.
+	// The caller routes these to handleIdempotentCompletion which
+	// compares completion fingerprints to decide idempotent success
+	// vs ErrCompletionConflict.
+	if row.status == "SUCCEEDED" {
+		return &row, nil
+	}
+
 	if row.workerID != lease.WorkerID {
 		return nil, finalization.NewFinalizationError(
 			"LEASE_OWNER_MISMATCH",

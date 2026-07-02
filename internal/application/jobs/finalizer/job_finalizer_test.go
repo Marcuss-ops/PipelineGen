@@ -1,11 +1,18 @@
 package finalizer
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
+	_ "github.com/mattn/go-sqlite3"
+
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // ── Test (a): job_events error is NOT silently ignored ────────────────
@@ -247,4 +254,448 @@ func TestHashJSONString_NullBecomesEmptyObject(t *testing.T) {
 	if h1 != h2 {
 		t.Errorf("null should hash as {}: %s != %s", h1, h2)
 	}
+}
+
+// ── End-to-end integration: full spine vertical slice ───────────────
+
+// TestFinalizerE2E_CompleteSpine is the vertical slice that proves
+// the full Spina Dorsale works end-to-end. It:
+//
+//  1. Creates an in-memory SQLite DB with all canonical tables.
+//  2. Inserts a RUNNING job with a valid lease.
+//  3. Constructs AssetTxFinalizer + outboxevents.Repository + Finalizer.
+//  4. Calls CompleteWithArtifacts with a published PDF artifact
+//     (simulating what document.generate would produce).
+//  5. Verifies ALL six tables were written in one transaction:
+//     - jobs → SUCCEEDED
+//     - media_assets → PUBLISHED
+//     - asset_versions → version 1
+//     - asset_locations → drive location
+//     - outbox_events → asset.index.requested
+//     - job_events → job_completed
+//
+// This is Step 4's proof that the new spine is operational.
+func TestFinalizerE2E_CompleteSpine(t *testing.T) {
+	db := setupFinalizerE2EDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+	futureStr := now.Add(5 * time.Minute).Format(time.RFC3339)
+
+	// 1. Insert a RUNNING job with a valid lease.
+	const jobID = "doc-job-001"
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO jobs (id, type, status, worker_id, lease_id, lease_expiry, retry_count, revision, created_at, updated_at)
+		 VALUES (?, 'document.generate', 'RUNNING', 'worker-1', 'lease-abc', ?, 0, 1, ?, ?)`,
+		jobID, futureStr, nowStr, nowStr,
+	)
+	if err != nil {
+		t.Fatalf("insert job: %v", err)
+	}
+
+	// 2. Construct the spine components.
+	assetTx := assetfinalizer.NewAssetTxFinalizer(nil)
+	outboxRepo := outboxevents.NewRepository(db)
+	fx := New(db, outboxRepo, assetTx, nil)
+
+	// 3. Call CompleteWithArtifacts with a published PDF artifact.
+	result, err := fx.CompleteWithArtifacts(ctx, finalization.FinalizationRequest{
+		Lease: finalization.Lease{
+			LeaseID:   "lease-abc",
+			JobID:     jobID,
+			WorkerID:  "worker-1",
+			Attempt:   1,
+			ExpiresAt: now.Add(5 * time.Minute),
+		},
+		Result: finalization.ResultManifest{
+			JobID:   jobID,
+			Attempt: 1,
+			Data:    json.RawMessage(`{"title":"Test Document","format":"pdf","page_count":3}`),
+		},
+		Artifacts: []finalization.PublishedArtifact{
+			{
+				ArtifactID:     "doc-job-001:pdf",
+				Kind:           finalization.KindDocument,
+				Filename:       "test-document.pdf",
+				MIMEType:       "application/pdf",
+				SizeBytes:      12345,
+				SHA256:         "sha256-doc-hash-abc123",
+				SourceVersion:  1,
+				Required:       true,
+				IdempotencyKey: "idem-doc-job-001",
+				Location: finalization.AssetLocation{
+					Provider:     "drive",
+					FileID:       "drive-file-doc-xyz",
+					WebViewLink:  "https://drive.google.com/file/d/drive-file-doc-xyz/view",
+					DownloadLink: "https://drive.google.com/uc?id=drive-file-doc-xyz",
+					FolderID:     "folder-docs",
+					FolderPath:   "/documents",
+					Action:       finalization.PublishCreated,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CompleteWithArtifacts: %v", err)
+	}
+
+	// 4. Verify job → SUCCEEDED.
+	var jobStatus, jobResult string
+	err = db.QueryRowContext(ctx, `SELECT status, result_json FROM jobs WHERE id = ?`, jobID).
+		Scan(&jobStatus, &jobResult)
+	if err != nil {
+		t.Fatalf("verify job: %v", err)
+	}
+	if jobStatus != "SUCCEEDED" {
+		t.Errorf("job status = %q, want SUCCEEDED", jobStatus)
+	}
+	if jobResult == "" || jobResult == "{}" {
+		t.Error("job result_json should contain the wrapped result with completion_fingerprint")
+	}
+
+	// Verify the result JSON contains the fingerprint.
+	fp := extractCompletionFingerprint(jobResult)
+	if fp == "" {
+		t.Error("result_json should contain a non-empty completion_fingerprint")
+	}
+
+	// 5. Verify media_assets → PUBLISHED.
+	var lifecycleState string
+	err = db.QueryRowContext(ctx,
+		`SELECT lifecycle_state FROM media_assets WHERE id = ?`, "doc-job-001:pdf",
+	).Scan(&lifecycleState)
+	if err != nil {
+		t.Fatalf("verify media_assets: %v", err)
+	}
+	if lifecycleState != "PUBLISHED" {
+		t.Errorf("media_assets.lifecycle_state = %q, want PUBLISHED", lifecycleState)
+	}
+
+	// 6. Verify asset_versions → version 1.
+	var versionNum int
+	var versionHash string
+	err = db.QueryRowContext(ctx,
+		`SELECT version_number, file_hash FROM asset_versions WHERE asset_id = ?`, "doc-job-001:pdf",
+	).Scan(&versionNum, &versionHash)
+	if err != nil {
+		t.Fatalf("verify asset_versions: %v", err)
+	}
+	if versionNum != 1 {
+		t.Errorf("asset_versions.version_number = %d, want 1", versionNum)
+	}
+	if versionHash != "sha256-doc-hash-abc123" {
+		t.Errorf("asset_versions.file_hash = %q", versionHash)
+	}
+
+	// 7. Verify asset_locations → drive location.
+	var locKind, locFileID string
+	err = db.QueryRowContext(ctx,
+		`SELECT location_kind, external_id FROM asset_locations WHERE asset_id = ?`, "doc-job-001:pdf",
+	).Scan(&locKind, &locFileID)
+	if err != nil {
+		t.Fatalf("verify asset_locations: %v", err)
+	}
+	if locKind != "drive" {
+		t.Errorf("asset_locations.location_kind = %q, want drive", locKind)
+	}
+	if locFileID != "drive-file-doc-xyz" {
+		t.Errorf("asset_locations.external_id = %q", locFileID)
+	}
+
+	// 8. Verify outbox_events → asset.index.requested (canonical).
+	var outboxCount int
+	err = db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = ?`,
+		"doc-job-001:pdf", outboxevents.EventAssetIndexRequested,
+	).Scan(&outboxCount)
+	if err != nil {
+		t.Fatalf("verify outbox_events: %v", err)
+	}
+	if outboxCount != 1 {
+		t.Errorf("outbox_events count = %d, want 1 (asset.index.requested)", outboxCount)
+	}
+
+	// Verify the outbox payload has the canonical fields.
+	var payloadJSON string
+	err = db.QueryRowContext(ctx,
+		`SELECT payload_json FROM outbox_events WHERE aggregate_id = ? AND event_type = ?`,
+		"doc-job-001:pdf", outboxevents.EventAssetIndexRequested,
+	).Scan(&payloadJSON)
+	if err != nil {
+		t.Fatalf("verify outbox payload: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		t.Fatalf("unmarshal outbox payload: %v", err)
+	}
+	if payload["schema_version"] != outboxevents.ReindexEnvelopeV1Schema {
+		t.Errorf("outbox payload schema_version = %v, want %v", payload["schema_version"], outboxevents.ReindexEnvelopeV1Schema)
+	}
+	if payload["asset_id"] != "doc-job-001:pdf" {
+		t.Errorf("outbox payload asset_id = %v", payload["asset_id"])
+	}
+	if _, ok := payload["source_version"]; !ok {
+		t.Error("outbox payload missing source_version")
+	}
+	if _, ok := payload["event_id"]; !ok {
+		t.Error("outbox payload missing event_id")
+	}
+	if _, ok := payload["idempotency_key"]; !ok {
+		t.Error("outbox payload missing idempotency_key")
+	}
+
+	// 9. Verify job_events → job_completed.
+	var eventCount int
+	err = db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM job_events WHERE job_id = ? AND type = 'job_completed'`,
+		jobID,
+	).Scan(&eventCount)
+	if err != nil {
+		t.Fatalf("verify job_events: %v", err)
+	}
+	if eventCount != 1 {
+		t.Errorf("job_events count = %d, want 1", eventCount)
+	}
+
+	// 10. Idempotency: calling CompleteWithArtifacts again with
+	// the SAME artifacts should succeed.
+	result2, err := fx.CompleteWithArtifacts(ctx, finalization.FinalizationRequest{
+		Lease: finalization.Lease{
+			LeaseID:   "lease-abc",
+			JobID:     jobID,
+			WorkerID:  "worker-1",
+			Attempt:   1,
+			ExpiresAt: now.Add(5 * time.Minute),
+		},
+		Result: finalization.ResultManifest{
+			JobID:   jobID,
+			Attempt: 1,
+			Data:    json.RawMessage(`{"title":"Test Document","format":"pdf","page_count":3}`),
+		},
+		Artifacts: []finalization.PublishedArtifact{
+			{
+				ArtifactID:     "doc-job-001:pdf",
+				Kind:           finalization.KindDocument,
+				Filename:       "test-document.pdf",
+				MIMEType:       "application/pdf",
+				SizeBytes:      12345,
+				SHA256:         "sha256-doc-hash-abc123",
+				SourceVersion:  1,
+				Required:       true,
+				IdempotencyKey: "idem-doc-job-001",
+				Location: finalization.AssetLocation{
+					Provider:     "drive",
+					FileID:       "drive-file-doc-xyz",
+					WebViewLink:  "https://drive.google.com/file/d/drive-file-doc-xyz/view",
+					DownloadLink: "https://drive.google.com/uc?id=drive-file-doc-xyz",
+					FolderID:     "folder-docs",
+					FolderPath:   "/documents",
+					Action:       finalization.PublishCreated,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("idempotent CompleteWithArtifacts: %v", err)
+	}
+	if result2.Status != "SUCCEEDED" {
+		t.Errorf("idempotent retry status = %q, want SUCCEEDED", result2.Status)
+	}
+	if result2.JobID != jobID {
+		t.Errorf("idempotent retry JobID = %q, want %q", result2.JobID, jobID)
+	}
+
+	t.Logf("✅ Full spine verified: job=%s artifacts=%d fingerprint=%s",
+		jobID, len(result.ArtifactRefs), fp)
+}
+
+// setupFinalizerE2EDB creates an in-memory SQLite DB with ALL canonical
+// tables needed for the CompleteWithArtifacts vertical slice.
+func setupFinalizerE2EDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:?_journal=WAL&_busy_timeout=5000")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+
+	for _, ddl := range []string{
+		// jobs + job_events (canonical)
+		`CREATE TABLE IF NOT EXISTS jobs (
+			id TEXT PRIMARY KEY,
+			type TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'QUEUED',
+			worker_id TEXT NOT NULL DEFAULT '',
+			lease_id TEXT NOT NULL DEFAULT '',
+			lease_expiry TEXT,
+			retry_count INTEGER NOT NULL DEFAULT 0,
+			revision INTEGER NOT NULL DEFAULT 0,
+			result_json TEXT NOT NULL DEFAULT '',
+			progress INTEGER NOT NULL DEFAULT 0,
+			completed_at TEXT,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS job_events (
+			id TEXT PRIMARY KEY,
+			job_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			message TEXT NOT NULL DEFAULT '',
+			data_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT ''
+		)`,
+		// media_assets + asset_versions + asset_locations (canonical)
+		`CREATE TABLE IF NOT EXISTS media_assets (
+			id TEXT PRIMARY KEY,
+			source TEXT NOT NULL DEFAULT '',
+			name TEXT NOT NULL DEFAULT '',
+			filename TEXT NOT NULL DEFAULT '',
+			media_type TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT '',
+			drive_file_id TEXT NOT NULL DEFAULT '',
+			drive_link TEXT NOT NULL DEFAULT '',
+			download_link TEXT NOT NULL DEFAULT '',
+			folder_id TEXT NOT NULL DEFAULT '',
+			folder_path TEXT NOT NULL DEFAULT '',
+			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_versions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+			version_number INTEGER NOT NULL,
+			source_uri TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT '',
+			file_size_bytes INTEGER NOT NULL DEFAULT 0,
+			mime_type TEXT NOT NULL DEFAULT '',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT '',
+			UNIQUE (asset_id, version_number)
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_locations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+			location_kind TEXT NOT NULL CHECK (location_kind IN ('local', 'drive', 'object_storage')),
+			uri TEXT NOT NULL,
+			external_id TEXT NOT NULL DEFAULT '',
+			web_view_link TEXT NOT NULL DEFAULT '',
+			download_url TEXT NOT NULL DEFAULT '',
+			mime_type TEXT NOT NULL DEFAULT '',
+			file_size_bytes INTEGER NOT NULL DEFAULT 0,
+			file_hash TEXT NOT NULL DEFAULT '',
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT '',
+			UNIQUE (asset_id, location_kind)
+		)`,
+		// outbox_events (canonical schema matching migration 092)
+		`CREATE TABLE IF NOT EXISTS outbox_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_type TEXT NOT NULL,
+			aggregate_id TEXT NOT NULL DEFAULT '',
+			aggregate_type TEXT NOT NULL DEFAULT '',
+			payload_json TEXT NOT NULL DEFAULT '',
+			event_key TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			max_attempts INTEGER NOT NULL DEFAULT 10,
+			last_error TEXT NOT NULL DEFAULT '',
+			next_attempt_at TEXT,
+			worker_id TEXT NOT NULL DEFAULT '',
+			lease_id TEXT NOT NULL DEFAULT '',
+			lease_expiry TEXT,
+			completed_at TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key ON outbox_events(event_key)`,
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			t.Fatalf("create table: %v\nDDL: %s", err, ddl)
+		}
+	}
+
+	return db
+}
+
+func TestFinalizerE2E_CreateSpineSetupDB(t *testing.T) {
+	// Smoke test: verify the setup helper works.
+	db := setupFinalizerE2EDB(t)
+	defer db.Close()
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").Scan(&count); err != nil {
+		t.Fatalf("count tables: %v", err)
+	}
+	if count < 6 {
+		t.Errorf("expected at least 6 tables, got %d", count)
+	}
+}
+
+func TestFinalizerE2E_RejectsStaleLease(t *testing.T) {
+	db := setupFinalizerE2EDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+	pastStr := now.Add(-5 * time.Minute).Format(time.RFC3339)
+
+	// Job with EXPIRED lease.
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO jobs (id, type, status, worker_id, lease_id, lease_expiry, retry_count, revision, created_at, updated_at)
+		 VALUES (?, 'document.generate', 'RUNNING', 'worker-1', 'lease-expired', ?, 0, 1, ?, ?)`,
+		"job-expired", pastStr, nowStr, nowStr,
+	)
+	if err != nil {
+		t.Fatalf("insert expired job: %v", err)
+	}
+
+	assetTx := assetfinalizer.NewAssetTxFinalizer(nil)
+	outboxRepo := outboxevents.NewRepository(db)
+	fx := New(db, outboxRepo, assetTx, nil)
+
+	_, err = fx.CompleteWithArtifacts(ctx, finalization.FinalizationRequest{
+		Lease: finalization.Lease{
+			LeaseID:   "lease-expired",
+			JobID:     "job-expired",
+			WorkerID:  "worker-1",
+			Attempt:   1,
+			ExpiresAt: now.Add(5 * time.Minute), // request says valid
+		},
+		Result: finalization.ResultManifest{
+			JobID: "job-expired",
+			Data:  json.RawMessage(`{}`),
+		},
+		Artifacts: []finalization.PublishedArtifact{
+			{
+				ArtifactID:     "art-expired",
+				Kind:           finalization.KindDocument,
+				Filename:       "x.pdf",
+				MIMEType:       "application/pdf",
+				SHA256:         "hash",
+				SourceVersion:  1,
+				Required:       true,
+				IdempotencyKey: "ik",
+				Location: finalization.AssetLocation{
+					Provider: "drive",
+					FileID:   "f1",
+					Action:   finalization.PublishCreated,
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for expired lease, got nil")
+	}
+	if !isFinalizationErrorWith(err, finalization.ErrLeaseExpired) {
+		t.Errorf("expected ErrLeaseExpired, got: %v", err)
+	}
+}
+
+func isFinalizationErrorWith(err error, sentinel error) bool {
+	return errors.Is(err, sentinel)
 }
