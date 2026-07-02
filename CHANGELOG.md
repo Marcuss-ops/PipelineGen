@@ -12,6 +12,54 @@ the canonical ARCHITECTURE.md section that owns the change.---
 - **[S7-Step-7 snapshot, July 2026]** documentation(md) + arch(current) + retry(pkg) -- Wave-7 canonical closeout audit-pin. pkg/retry typed-path transient classifier (IsTransient + WrapTransient) replaces 3 duplicate substring-match predicates (monitor.isTransientEnqueueError, tagutil.IsTransientDownloadError, youtube/usecase.IsTransientExtractionError). Production-default JitterFraction=0.25 enables bounded retry desynchronisation across fleet contention (kills thundering-herd retry storms). Wave-tracker entry S7-Step-7 -> status:done, exit_signal:true (ExitGate=true), deadline:2026-07-25. Cross-reference SHAs: chain 8bdb9a8d, accb090b, 6f327b10, c1cf33d3; taxonomy extension 2d09f3e8; Check 50 retry-classifier gate ef09b732; wave-tracker update 60e3e5f4.
 
 ## Unreleased
+### Added — Commit 2 BACKFILL/CUTOVER (July 2026) — Search capability
+
+#### `internal/api/mediasearch/handler.go` — canonical search contracts migration
+
+BACKFILL of the canonical `internal/application/search` contracts into the HTTP transport. Implements the user-spec 4-symbol conflict map:
+
+| Old (legacy) | New (canonical) |
+|--------------|------------------|
+| `mediasearchapp.DefaultLimit`        | `search.DefaultLimit` |
+| `mediasearchapp.ErrMissingWorkspace` | `search.ErrMissingWorkspace` |
+| `mediasearchapp.SearchMode`          | `search.SearchMode` |
+| `mediasearchapp.WorkspaceContext`    | `search.Actor` (PrincipalID→UserID field rename; ProjectID dropped) |
+
+The `mediasearchapp` import is COMPLETELY DROPPED from `internal/api/mediasearch/handler.go` (with only one residual mention of the legacy identifier in the migration audit footer of handler.go, matching `rg 'mediasearchapp' internal/api/mediasearch/` = document-comment-only relative to grep-without-comment).
+
+Other changes:
+
+- **IndexVersion source** — removed hardcoded `"v1-search-api"` literal; the handler now sources `index_version` via the new `IndexVersionSource` port (composition root wires a live adapter; tests use the `StaticIndexVersion("vN")` factory).
+- **New endpoint `GET /internal/v1/media/ready`** — separated from the diagnostic `media_search_route_registered` check (which only verifies route mount). The new `semantic_search_real` probe surfaces per-subsystem readiness booleans for: `embedder`, `semantic_backend`, `qdrant_reachable`, `sqlite_hydration_ready`, `workspace_enforced`. Reports a sanitized, space-joined sub-system failure summary in the `failures` field when at least one sub-check fails.
+- **`BackendErrors` field** — the `Partial bool` is now `BackendErrors map[string]string` (sanitized per-message). `SanitizeProviderErrors` runs each value through `sanitizeMessage` which redacts patterns matching: filesystem paths (`/` prefix, `/tmp/`), `http://`, `https://`, `stack:`, `secret`, `password`, `token`, `bearer`, `authorization`. Length cap 240 chars.
+- **Per-item sanitization** — REVERTED. The initial attempt to run `searchResultItem.PreviewURL` through `sanitizeMessage` would have neutered the legitimate signed-delivery contract (QDRANT-004: every PreviewURL is signed-mint through delivery.Publisher.BuildAuthorizedURL). The signing layer is the canonical safety contract — sanitizing would only mask upstream bugs. Reverted to direct projection. Additionally, sanitizeMessage was tightened with tokenRedactRegex (Go regexp matching token=, token: , token <alnum> shapes) to avoid the bare-substring over-redaction flagged during code review.
+- **Degraded vs Partial** — `OK` is false only when partial AND zero items (no fake availability). `Degraded` is true when partial AND at least one item.
+
+Verification commands run:
+- `rg 'mediasearchapp' internal/api/mediasearch/ --include='*.go'` — 0 production-code references (only doc-comment audit footer).
+- `rg 'IndexVersion.*v1-search-api' internal/api/` — 0 matches.
+- `rg 'resultToMediaSearchResponse|MediaSearchResponse envelope' internal/api/` — 0 matches.
+- `/index_bulk` endpoint audit — handler registers only `POST /search` and `GET /ready`; no bulk-index endpoint is exposed on `/internal/v1/media` (per `rg -i 'index_bulk|bulk_index' internal/api/mediasearch/` = 0).
+- `go build ./internal/api/mediasearch/... ./internal/application/search/... ./internal/application/mediasearch/...` clean.
+- `go test -count=1 -timeout=120s ./internal/api/mediasearch/...` clean. Pre-existing failures in `internal/application/search/` aggregator tests (`TestAggregatorNOOPReturnsEmptyResult`, `TestAggregatorNILLogNoopFallback`) are confirmed pre-existing on `origin/main` and are out of Commit 2 scope.
+
+#### Application-layer search contract promotions
+
+`internal/application/search/ports.go`:
+- **NEW** canonical sentinels: `search.ErrMissingWorkspace`, `search.ErrHybridRequiresSparse`, `search.ErrNoBackendAvailable`. They live in `ports.go` because they are infrastructure/registry-level (workspace auth, mode requirement, no-backend-registered).
+- `search.ErrAllBackendsFailed` is the canonical sentinel in `errors.go` (richer message: "search: all eligible backends failed — check ProviderErrors for per-backend diagnostics"). The duplicate declaration that was previously in `ports.go` is dropped; `ports.go` now carries only a comment marker pointing to the canonical owner (godlike/06 SSOT, one canonical owner per fact).
+
+`internal/application/mediasearch/ports.go`:
+- All 4 legacy sentinels (`ErrMissingWorkspace`, `ErrHybridRequiresSparse`, `ErrNoBackendAvailable`, `ErrAllBackendsFailed`) are now Go-level pointer-identical aliases of the canonical `search.X` sentinels. `errors.Is` traverses the alias chain transparently.
+- The `search.VectorStorePort` reference in the historical `VectorSearchPort` interface is renamed to `assetssearch.VectorStorePort` to avoid shadowing the now-imported canonical search package.
+- `"errors"` import is removed (no longer needed after aliasing).
+- `WorkspaceContext` type retained with explicit `DEPRECATION-DEADLINE 2026-08-01` marker — by that date all 4 callers MUST migrate to `search.Actor` and the type is removed.
+
+#### Forward pointers for Commit 3 (CUTOVER wave)
+
+- (A) SSOT dual-ownership residue — `SearchableLifecycleStates` and `ChannelDense/ChannelSparseBM25` are still declared as literals in `internal/application/mediasearch/ports.go` alongside their canonical versions in `internal/domain/asset/lifecycle_state.go` and `internal/infrastructure/qdrant/schema_config.go` (the Syntax carries both legacy literals for compatibility). Commit 3 CUTOVER wave replaces the literals with `var X = canonical.X` Go-level aliases (godlike/06 SSOT).
+- (B) Compile-time `IndexVersionSource` constraint — composition-root wiring MUST override the `staticIndexVersion` adapter for production correctness. Commit 3 CUTOVER wave adds `var _ IndexVersionSource = IndexVersionSource(nil)` style compile-time assertion in `internal/app/wiring.go` to make "production forgot to override" a build failure, not a silent degradation.
+
 
 ### Added
 
