@@ -1,61 +1,61 @@
 // Package stockpipeline — orchestrator_steps.go (Stock Cutover
-// §12-5, July 2026).
+// §12-7, July 2026).
 //
-// §12-5 separates the orchestrator from the monolithic Run. Six
-// typed Step structs are declared with canonical step_keys
-// (stock.plan / stock.stage_sources / stock.extract_clips /
-// stock.compose_chunks / stock.publish / stock.finalize). The
-// Orchestrator iterates a typed []Step slice in canonical
-// pipeline order; each step is checkpointed via the canonical
-// §12-3 steps.Store (MarkStarted → Run → MarkCompleted /
-// MarkFailed). The Orchestrator's RunResilient body becomes a
-// thin dispatch loop; per-step internals live in this file.
+// §12-7 lifts AssetPreparation (Drive upload) into StockPublishStep
+// and the Single-TX spine write into StockFinalizeStep. The
+// orchestrator owns the full chunk-rendering ladder end-to-end:
+// chunk → ArtifactPreparation → metadata-json → ArtifactPreparation
+// → manifest → validate → project → BuildFinalizationRequest →
+// JobFinalizer.CompleteWithArtifacts → SUCCEEDED. Service.HandleJob
+// becomes a thin wrapper that just calls RunResilient + return-map.
 //
-// SSOT (godlike/06): this file is the single owner of "what are
-// the stock pipeline's six canonical steps and what is each
-// step's Run contract". The orchestrator.go field `dispatchSteps
-// []Step` is initialised in NewOrchestrator to the canonical six
-// order; orchestration-logic churn lands here, not in
-// orchestrator.go.
+// godlike/06 SSOT: orchestrator_steps.go is the single owner of
+// (a) what the stock pipeline's six canonical steps are and
+// (b) what each step's Run contract looks like. Orchestrator.go's
+// dispatchSteps field is initialised to DefaultStockSteps(); every
+// orchestration-logic change lands here.
 //
-// Resume semantics (godlike/07): the Orchestrator iterates its
-// typed []Step slice in declaration order. For each step, it
-// computes a StepKey triple with InputFingerprint derived from
-// (JobID, stepName) — retries with the same triple MarkStarted
-// idempotently per §12-3 mark-started semantics. A prior
-// Completed row for the triple is allowed only if the fingerprint
-// matches; in §12-5 the fingerprint is stable per (JobID,
-// stepName), so re-runs re-MarkStarted idempotently (bumps
-// attempt counter).
+// godlike/06 (FileID = LOCATION, NOT identity): each chunk's
+// logical ArtifactID is stable per (run_fingerprint, index) — so a
+// retry with the same logical run produces the same ArtifactID.
+// The Publisher returns a Location.FileID which is a separate
+// per-publish identifier (changes on Drive-upload retry). The
+// JobFinalizer stores Drive FileID in the location column; the
+// ArtifactID stays in the identity column — `stock:<fp>:chunk:<i>`
+//
+// godlike/07 (no-fake-availability): the run_fingerprint is
+// SHA256(PolicyVersion | FolderID | Subfolder | FolderName |
+// joined DirectURLs | joined SearchQueries | numeric(plan knobs)
+// | boolean(plan flags)). Same logical input ⇒ same fingerprint
+// ⇒ same ArtifactID ⇒ single AssetVersions row even on retry.
 package stockpipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
-// ── Canonical step keys (PipelineGen §12-5) ──────────────────────────
+// ── Canonical step keys (PipelineGen §12-5) ────────────────────────────
 //
-// These constants are the canonical step_keys the Orchestrator
-// stamps on the §12-3 steps.Store rows. The §12-3 doc-comment
-// requires "step_keys to use a lexically sortable naming
-// convention" for FirstNonCompleted to return the pipeline-correct
-// row; the orchestrator's typed []Step slice carries the
-// canonical pipeline order (so resume reads the typed slice, not
-// the lexical sort), but the step keys themselves follow the
-// `stock.<stage>` naming convention as the user spec requires.
-//
-// SSOT: changing any of these constants is a wire-format break
-// for the canonical §12-3 step store. New stages MUST add new
-// constants; existing ones MUST NOT be renamed without a
-// migration forward-pointer via architecture/current.yaml.
+// SSOT: changing any of these constants is a wire-format break for the
+// canonical §12-3 step store. New stages MUST add new constants;
+// existing ones MUST NOT be renamed without a migration forward-pointer
+// via architecture/current.yaml.
 const (
 	StepKeyStockPlan          = "stock.plan"
 	StepKeyStockStageSources  = "stock.stage_sources"
@@ -65,31 +65,62 @@ const (
 	StepKeyStockFinalize      = "stock.finalize"
 )
 
-// ── Step contract ────────────────────────────────────────────────────
+// ── §12-7 sentinel errors (godlike/07 typed-error contract) ────────────
+//
+// Each sentinel names the rule it enforces. Callers MUST use
+// errors.Is(err, ErrStock*) to inspect the failure class. Wraps
+// preserve underlying typed errors via fmt.Errorf("%w: %v", ...)
+// so dashboards can errors.Is into deeper sentinels like
+// ErrConcurrentLeaseRefutation or asset.ErrSHA256Invalid.
 
-// Step is the canonical typed contract for a single
-// orchestrator-side step. The Orchestrator iterates over a typed
-// []Step slice and dispatches each step's Run with a StepRunner.
+var (
+	// ErrStockPublishArtifactFailed is raised when ArtifactPreparation.Prepare
+	// returns non-nil for any chunk OR for the per-run metadata.json.
+	// The wrapped error is the underlying publisher fault.
+	ErrStockPublishArtifactFailed = errors.New("stock.publish: ArtifactPreparation failed")
+
+	// ErrStockFinalizeSpineFailed is raised when JobFinalizer.CompleteWithArtifacts
+	// returns non-nil. The wrapped error carries the underlying
+	// finalizer typed sentinel (ErrConcurrentLeaseRefutation,
+	// ErrRemoteArtifactHashMismatch, ErrCompleteJobRequestMissingFields,
+	// etc.) via errors.Is / errors.As.
+	ErrStockFinalizeSpineFailed = errors.New("stock.finalize: JobFinalizer spine write failed")
+
+	// ErrStockFinalizeLeaseMissing is raised when runner.Cfg().Lease
+	// has empty JobID/WorkerID/LeaseID — HandleJob must thread
+	// extractLease(job) into cfg.Lease before RunResilient. This
+	// sentinel surfaces composition-time wiring gaps loudly.
+	ErrStockFinalizeLeaseMissing = errors.New("stock.finalize: cfg.Lease empty (HandleJob must call extractLease)")
+
+	// ErrStockFnRequired surfaces RunFingerprint() == "" — invokes
+	// the canonical godlike/07 "every deployment-fingerprint-derived
+	// ID must be non-empty" gate. Composition-time wiring gap.
+	ErrStockFnRequired = errors.New("stock.finalize: run fingerprint empty (policyVersion / inputs missing)")
+)
+
+// ── Step contract ──────────────────────────────────────────────────────
+
+// Step is the canonical typed contract for a single orchestrator-side
+// step. The Orchestrator iterates over a typed []Step slice and
+// dispatches each step's Run with a StepRunner.
 //
 // Name() returns the canonical step_key (one of the
 // StepKeyStockXxx constants above) — used to build the
-// steps.StepKey triple on checkpoint rows. The Name() output
-// MUST match the typed slice's position; changing it is a
-// pipeline-order break.
+// steps.StepKey triple on checkpoint rows. The Name() output MUST
+// match the typed slice's position; changing it is a pipeline-order
+// break.
 //
 // Run() executes the step body. Returns nil error on success
 // (orchestrator dispatches MarkCompleted); returns non-nil error
 // on failure (orchestrator dispatches MarkFailed + aborts the
 // run with the typed error). Optional non-fatal outcomes (like
 // the projection-resilience INDEX_PENDING flip) MUST be expressed
-// via state mutation (e.g. StepRunner.SetFinalStatus) rather than
-// returning error — error means abort.
+// via state mutation (e.g. State.FinalStatus = StatusIndexPending)
+// rather than returning error — error means abort.
 type Step interface {
 	Name() string
 	Run(ctx context.Context, runner StepRunner) error
 }
-
-// ── StepRunner contract (state + deps seam) ─────────────────────────
 
 // StepRunner is the typed context each step body sees during
 // execution. The Orchestrator constructs an *orchestratorRunner
@@ -100,14 +131,6 @@ type Step interface {
 // fields directly — they go through the StepRunner accessors so
 // test fakes can implement StepRunner without dragging the
 // Orchestrator's full surface into the test fixture.
-//
-// Each step reads immutable inputs via Cfg() / RunInput() — the
-// run is parameterised by the caller's (cfg, in) tuple. Each step
-// writes/reads mutable state via State() — per-RunResilient
-// state survives across steps in the same call. Each step
-// invokes port dependencies (Planner / SourceStager / Cutter /
-// Renderer / Builder / Writer / Projection / Log) via typed
-// accessors.
 type StepRunner interface {
 	// Immutable per-call inputs.
 	Cfg() OrchestratorConfig
@@ -123,9 +146,13 @@ type StepRunner interface {
 	Builder() ManifestBuilder
 	Writer() TransactionalAssetWriter
 	Projection() ProjectionPort
-	Log() *zap.Logger
 
-	// Mutable state (per-RunResilient accumulator).
+	// §12-7 extensions: Finalizer-side ports + run fingerprint.
+	ArtifactPreparation() finalization.ArtifactPreparationService
+	JobFinalizer() finalization.JobFinalizer
+	RunFingerprint() string
+
+	Log() *zap.Logger
 	State() *runState
 }
 
@@ -134,58 +161,69 @@ type StepRunner interface {
 // reads from its predecessor's field(s); the typed []Step slice
 // encodes the canonical ordering.
 //
-// SSOT: this is the ONLY state shared across steps. Steps MUST
-// NOT cross-pad via package-level globals or external state.
+// SSOT: this is the ONLY state shared across steps. Steps MUST NOT
+// cross-pad via package-level globals or external state.
 type runState struct {
-	// Plan is the output of stock.plan (ClipPlanner.Plan) and
-	// the input of stock.extract_clips (writer.WriteAndEnqueue loop).
+	// Plan is the output of stock.plan and the input of stock.extract_clips.
 	Plan []ClipPlan
 
-	// StagedAssets is the output of stock.stage_sources and the
-	// input of stock.extract_clips (future Commit 6 wiring).
-	// Today (Commit 5) it's nil — staging is a Begin/Complete stub.
+	// StagedAssets is the output of stock.stage_sources. Today (Commit 5)
+	// it's nil — staging is a Begin/Complete stub.
 	StagedAssets []*assets.StagedAsset
 
-	// CutPaths is the output of stock.extract_clips. For
-	// Commit 5 wire-format holdover: each CutPath is the
-	// logical OutputLogicalID from the corresponding ClipPlan.
-	// Post-Commit-7 the literal file-paths from a real cutter
-	// invocation will replace the prototype IDs.
+	// CutPaths is the output of stock.extract_clips.
 	CutPaths []string
 
-	// ComposedPaths is the output of stock.compose_chunks. Today
-	// (Commit 5): 1:1 mirror of CutPaths (the renderer isn't
-	// invoked yet). Post-Commit-7: literal rendered file-paths.
+	// ComposedPaths is the output of stock.compose_chunks.
 	ComposedPaths []string
 
-	// Published is the output of stock.publish — the manifest's
-	// published artifact entries. Today (Commit 5): begin/complete
-	// stub (chunk-upload is forward-pointer for Commit 8).
-	Published []job.Artifact
+	// Published (§12-7 replaces the §12-5 stub []job.Artifact): the
+	// per-chunk ChunkState slice populated by StockPublishStep after
+	// AssetPreparation.Prepare per chunk. RemoteFileID / WebViewLink /
+	// DownloadLink are populated from the Publisher response. LocalPath
+	// is the chunk's on-disk render output (still a placeholder ID
+	// per ComposeChunks stub — real paths wire in Commit 7).
+	Published []ChunkState
 
-	// Manifest is the output of stock.finalize. The
-	// ManifestBuilder.Build + Validate gate runs before the
-	// projection resilience step.
+	// MetadataPublished (§12-7 NEW): the per-run metadata.json state
+	// after AssetPreparation.Prepare. StockFinalizeStep reads this
+	// for BuildFinalizationRequest so the per-run metadata Artifact
+	// is included in the spine write.
+	MetadataPublished MetadataState
+
+	// Manifest is the output of stock.finalize.
 	Manifest *job.ArtifactManifest
 
-	// FinalStatus is the orchestrator's per-run job status
-	// stamp on the ResultMap. stock.finalize sets it to
-	// StatusSucceeded, then conditionally flips to
-	// StatusIndexPending if projection.Project returned an error.
+	// FinalStatus is the orchestrator's per-run job status stamp.
 	FinalStatus job.Status
+
+	// FinalizationResult (§12-7 NEW) is the JobFinalizer response after
+	// stock.finalize calls CompleteWithArtifacts. Surfaced via result-map
+	// __finalization_status key for dashboards. Nil when JobFinalizer
+	// is unwired (test fixture / §F.1 OPTIONAL back-compat).
+	FinalizationResult *finalization.FinalizationResult
 }
 
-// ── orchestratorRunner — StepRunner impl backed by Orchestrator ─────
+// ── orchestratorRunner — StepRunner impl backed by Orchestrator ────────
 
 // orchestratorRunner is the canonical StepRunner implementation.
-// One is constructed per RunResilient call so the per-call
-// (in, state) pair survives across steps without leaking into
+// One is constructed per RunResilient call so the per-call (in,
+// state) pair survives across steps without leaking into
 // Orchestrator fields.
+//
+// §12-7 adds ArtifactPreparation + JobFinalizer + RunFingerprint
+// fields. The fingerprint is computed once on construction
+// (lazy) so it's stable across all 6 steps in the run —
+// drift-free even if cfg.PolicyVersion is mutated mid-run.
 type orchestratorRunner struct {
-	orch  *Orchestrator
-	in    *RunInput
-	state *runState
-	log   *zap.Logger
+	orch                *Orchestrator
+	in                  *RunInput
+	state               *runState
+	log                 *zap.Logger
+	artifactPreparation finalization.ArtifactPreparationService
+	jobFinalizer        finalization.JobFinalizer
+	fingerprintOnce     sync.Once
+	cachedFingerprint   string
 }
 
 // Compile-time assertion: *orchestratorRunner satisfies StepRunner.
@@ -202,31 +240,66 @@ func (a *orchestratorRunner) Renderer() StockRenderer             { return a.orc
 func (a *orchestratorRunner) Builder() ManifestBuilder            { return a.orch.builder }
 func (a *orchestratorRunner) Writer() TransactionalAssetWriter    { return a.orch.writer }
 func (a *orchestratorRunner) Projection() ProjectionPort          { return a.orch.projection }
+func (a *orchestratorRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
+	return a.artifactPreparation
+}
+func (a *orchestratorRunner) JobFinalizer() finalization.JobFinalizer {
+	return a.jobFinalizer
+}
 func (a *orchestratorRunner) Log() *zap.Logger                    { return a.log }
 func (a *orchestratorRunner) State() *runState                    { return a.state }
 
-// defaultStepRunnerLog falls back to a no-op logger when no
-// composition-root logger is wired. Mirrors the canonical
-// no-panic no-fail-closed convention for ephermeral adapters.
+// RunFingerprint returns the canonical run fingerprint for the
+// current call. Byte-stable across retries of the same logical
+// run (same jobID + same input + same policyVersion) so the
+// per-chunk ArtifactID derivation (ChunkArtifactID) and the
+// metadata ArtifactID (MetadataArtifactID) are deterministic
+// per godlike/07 no-fake-availability.
+//
+// Composition: SHA256(PolicyVersion | FolderID | Subfolder |
+// FolderName | joined DirectURLs | joined SearchQueries |
+// strconv(TotalMinutes, ChunkDuration, ClipDuration, MaxVideos) |
+// strconv Bool(NoAudio, NoEffects, NoTransitions)).
+//
+// Same inputs ⇒ same fingerprint ⇒ same chunk ArtifactIDs ⇒
+// no-fake-availability: a retry with the same logical run cannot
+// produce a different AssetID, so the JobFinalizer's
+// UNIQUE(?job_id, attempt, result_hash) collapse to a single row.
+func (a *orchestratorRunner) RunFingerprint() string {
+	if a == nil || a.orch == nil {
+		return ""
+	}
+	in := a.in
+	if in == nil {
+		return ""
+	}
+	parts := []string{
+		a.orch.cfg.PolicyVersion,
+		in.FolderID,
+		in.Subfolder,
+		in.FolderName,
+		strings.Join(in.DirectURLs, ","),
+		strings.Join(in.SearchQueries, ","),
+		strconv.Itoa(in.TotalMinutes),
+		strconv.Itoa(in.ChunkDuration),
+		strconv.Itoa(in.ClipDuration),
+		strconv.Itoa(in.MaxVideos),
+		strconv.FormatBool(in.NoAudio),
+		strconv.FormatBool(in.NoEffects),
+		strconv.FormatBool(in.NoTransitions),
+	}
+	return files.SHA256String(strings.Join(parts, "|"))
+}
+
 func defaultStepRunnerLog() *zap.Logger {
 	return zap.NewNop()
 }
 
-// ── Step 1: stock.plan ──────────────────────────────────────────────
+// ── Step 1: stock.plan ────────────────────────────────────────────────
 
 // StockPlanStep is the canonical implementation of stock.plan.
 // It exercises the deterministic ClipPlanner.Plan round-trip on
 // the first source, populating runState.Plan for downstream steps.
-//
-// Body:
-//  1. Resolve the canonical source via firstSource(RunInput).
-//  2. Compute planBudget from RunInput.TotalMinutes (fallback to
-//     Cfg().ChunkDurationSec when 0).
-//  3. Planner.Plan round-trip with clip duration + policy version.
-//  4. State.Plan populated for stock.extract_clips.
-//
-// Failures surface typed errors so the orchestrator's MarkFailed
-// path can stamp the canonical ErrPlannerBudgetTooSmall envelope.
 type StockPlanStep struct{}
 
 func (StockPlanStep) Name() string { return StepKeyStockPlan }
@@ -253,18 +326,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	return nil
 }
 
-// ── Step 2: stock.stage_sources ─────────────────────────────────────
+// ── Step 2: stock.stage_sources ───────────────────────────────────────
 
 // StockStageSourcesStep is the canonical implementation of
 // stock.stage_sources. Today (Commit 5) the body is a Begin/Complete
-// stub — the per-plan SourceStager.Prepare loop wires in Commit 6
-// (see Stock Cutover Plan, §12-4.3 in CHANGELOG).
-//
-// On MarkCompleted, the orchestrator has persisted an audit-trail
-// row confirming "this run executed stock.stage_sources" — even
-// though the body is empty. Future Commit 6 will thread real
-// Prepare calls through this step without changing its public
-// surface.
+// stub — the per-plan SourceStager.Prepare loop wires in Commit 6.
 type StockStageSourcesStep struct{}
 
 func (StockStageSourcesStep) Name() string { return StepKeyStockStageSources }
@@ -277,20 +343,15 @@ func (StockStageSourcesStep) Run(_ context.Context, runner StepRunner) error {
 	return nil
 }
 
-// ── Step 3: stock.extract_clips ─────────────────────────────────────
+// ── Step 3: stock.extract_clips ───────────────────────────────────────
 
 // StockExtractClipsStep is the canonical implementation of
 // stock.extract_clips. For each ClipPlan entry the step constructs
 // a typed *asset.Asset and invokes Writer.WriteAndEnqueue — the
-// canonical atomic UPSERT + outbox-enqueue entry-point. A
-// returned non-nil error aborts the orchestrator with the typed
-// ErrAtomicDispatchFailed envelope (per the run_upload_indexing_test.go
+// canonical atomic UPSERT + outbox-enqueue entry-point. A returned
+// non-nil error aborts the orchestrator with the typed
+// ErrAtomicDispatchFailed envelope (per run_upload_indexing_test.go
 // contract, test (a)).
-//
-// The per-plan IDs populate runState.CutPaths as the proto-stage
-// output (today), so the downstream composer has a typed 1:1 list
-// to operate on. Post-Commit-7 the literal file-paths from the
-// cutter invocation replace the OutputLogicalID placeholders.
 type StockExtractClipsStep struct{}
 
 func (StockExtractClipsStep) Name() string { return StepKeyStockExtractClips }
@@ -315,16 +376,13 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	return nil
 }
 
-// ── Step 4: stock.compose_chunks ─────────────────────────────────────
+// ── Step 4: stock.compose_chunks ───────────────────────────────────────
 
 // StockComposeChunksStep is the canonical implementation of
-// stock.compose_chunks. Today (Commit 5) the body is
-// Begin/Complete stub — the per-cut StockRenderer.Render loop
-// wires in Commit 7 (Stock Cutover Plan, §12-7.4 in CHANGELOG).
-//
+// stock.compose_chunks. Today (Commit 5) the body is Begin/Complete
+// stub — the per-cut StockRenderer.Render loop wires in Commit 7.
 // State.ComposedPaths is set 1:1 from State.CutPaths so downstream
-// stock.publish has a typed list. Post-Commit-7 the literal
-// rendered file-paths populate ComposedPaths.
+// stock.publish has a typed list to operate on.
 type StockComposeChunksStep struct{}
 
 func (StockComposeChunksStep) Name() string { return StepKeyStockComposeChunks }
@@ -338,58 +396,210 @@ func (StockComposeChunksStep) Run(_ context.Context, runner StepRunner) error {
 	return nil
 }
 
-// ── Step 5: stock.publish ────────────────────────────────────────────
+// ── Step 5: stock.publish (§12-7 REWRITE) ──────────────────────────────
 
 // StockPublishStep is the canonical implementation of
-// stock.publish. Today (Commit 5) the body is a Begin/Complete
-// stub — real Drive upload + Qdrant projection wire in Commit 8
-// (Stock Cutover Plan, §12-8.5 in CHANGELOG). State.Published is
-// populated from State.ComposedPaths so downstream stock.finalize
-// has a typed list of "publishable" clip entries.
+// stock.publish. §12-7 replaces the §12-5 Begin/Complete stub with
+// the real AssetPreparation ladder:
+//
+//  1. For each composed chunk: ComputeAndFillSHA256 → Build
+//     VerifiedArtifact (ArtifactID = stock:<fp>:chunk:<i>,
+//     Required:true) → ArtifactPreparation.Prepare → translate
+//     PublishedArtifact → ChunkState (RemoteFileID = Location.FileID
+//     per godlike/06 FileID=location NOT identity).
+//
+//  2. Build the per-run metadata.json (StockRunMetadata envelope
+//     with the per-chunk entries baked in) → write to temp → SHA256
+//     → ArtifactPreparation.Prepare → translate → MetadataState.
+//
+// Fail-closed contracts:
+//   - AssetPreparation nil → State.Published = nil, return nil
+//     (test-fixture compat). Downstream stock.finalize's
+//     BuildFinalizationRequest will raise ErrStockNoChunksFinalized.
+//   - Prepare returns error → abort with ErrStockPublishArtifactFailed
+//     (wraps publisher fault; preserves typed sentinel via %w+errors.Is).
+//   - ComputeAndFillSHA256 returns error → abort (ChunkState sentinel
+//     propagates verbatim — VerifyChunks surfaces ErrStockChunkHashMissing
+//     / ErrStockChunkLocalMissing consistently).
 type StockPublishStep struct{}
 
 func (StockPublishStep) Name() string { return StepKeyStockPublish }
 
-func (StockPublishStep) Run(_ context.Context, runner StepRunner) error {
-	if runner.Log() != nil {
-		runner.Log().Info("orchestrator: stock.publish stub (Commit 8 wires real Drive upload + Qdrant index)",
-			zap.Int("composed_count", len(runner.State().ComposedPaths)))
+func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
+	if runner.ArtifactPreparation() == nil {
+		// Test-fixture path: no AssetPreparation wired → no chunks
+		// prepared. StockFinalizeStep's BuildFinalizationRequest gate
+		// raises ErrStockNoChunksFinalized — that's the intended
+		// fail-closed signal for unwired composition roots + tests.
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.publish: ArtifactPreparation nil — skipping upload (test-fixture path)")
+		}
+		runner.State().Published = nil
+		return nil
 	}
-	published := make([]job.Artifact, 0, len(runner.State().ComposedPaths))
-	runner.State().Published = published
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.publish: AssetPreparation wired — preparing chunks + metadata")
+	}
+
+	fp := runner.RunFingerprint()
+	composed := runner.State().ComposedPaths
+	chunks := make([]ChunkState, 0, len(composed))
+
+	// ── Phase 1: per-chunk ArtifactPreparation ─────────────────────
+	for i, compPath := range composed {
+		cs := ChunkState{
+			Index:      i,
+			ArtifactID: ChunkArtifactID(fp, i),
+			Filename:   ChunkArtifactFilename(fp, i),
+			LocalPath:  compPath,
+		}
+		if compPath != "" {
+			if err := cs.ComputeAndFillSHA256(); err != nil {
+				// godlike/07 fail-closed: surface the typed sentinel
+				// verbatim so callers can errors.Is into
+				// ErrStockChunkHashMissing / ErrStockChunkLocalMissing.
+				return fmt.Errorf("orchestrator: stock.publish: chunk %d (artifact=%s): %w",
+					i, cs.ArtifactID, err)
+			}
+		}
+		idem, idemErr := asset.SHA256IdempotencyKey("stock", cs.SHA256)
+		if idemErr != nil {
+			return fmt.Errorf("%w: chunk %d (artifact=%s) idem-key: %v",
+				ErrStockPublishArtifactFailed, i, cs.ArtifactID, idemErr)
+		}
+		va := finalization.VerifiedArtifact{
+			ArtifactID:     cs.ArtifactID,
+			Kind:           finalization.KindVideo,
+			Filename:       cs.Filename,
+			MIMEType:       "video/mp4",
+			LocalPath:      cs.LocalPath,
+			SizeBytes:      cs.SizeBytes,
+			SHA256:         cs.SHA256,
+			Required:       true,
+			IdempotencyKey: idem + ":c" + strconv.Itoa(i),
+		}
+		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
+		if prepErr != nil {
+			return fmt.Errorf("%w: chunk %d (artifact=%s): %v",
+				ErrStockPublishArtifactFailed, i, cs.ArtifactID, prepErr)
+		}
+		cs.RemoteFileID = published.Location.FileID
+		cs.RemoteWebViewLink = published.Location.WebViewLink
+		cs.RemoteDownloadLink = published.Location.DownloadLink
+		chunks = append(chunks, cs)
+	}
+	runner.State().Published = chunks
+
+	// ── Phase 2: per-run metadata.json ArtifactPreparation ────────
+	// Always invoked AFTER chunks so the metadata's Chunks[] list
+	// embeds the per-chunk ArtifactIDs + DriveFileIDs.
+	metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(
+		runner.RunInput(), chunks, fp,
+	)
+	if metaErr != nil {
+		return fmt.Errorf("%w: metadata.json stage: %v",
+			ErrStockPublishArtifactFailed, metaErr)
+	}
+	defer func() {
+		// Best-effort cleanup of the metadata temp file after
+		// Prepare. The Publisher has already consumed the contents
+		// and the metadata RemoteFileID lives on in GoMemory.
+		if rmErr := os.Remove(metaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.publish: failed to remove metadata temp file",
+					zap.String("path", metaPath), zap.Error(rmErr))
+			}
+		}
+	}()
+
+	metaIdem, metaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":metadata", metaHash)
+	if metaIdemErr != nil {
+		return fmt.Errorf("%w: metadata idem-key: %v",
+			ErrStockPublishArtifactFailed, metaIdemErr)
+	}
+	metaVA := finalization.VerifiedArtifact{
+		ArtifactID:     MetadataArtifactID(fp),
+		Kind:           finalization.KindMetadata,
+		Filename:       "metadata.json",
+		MIMEType:       "application/json",
+		LocalPath:      metaPath,
+		SizeBytes:      metaSize,
+		SHA256:         metaHash,
+		Required:       true,
+		IdempotencyKey: metaIdem,
+	}
+	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
+	if metaPrepErr != nil {
+		return fmt.Errorf("%w: metadata.json upload: %v",
+			ErrStockPublishArtifactFailed, metaPrepErr)
+	}
+	runner.State().MetadataPublished = MetadataState{
+		LocalPath:         metaVA.LocalPath,
+		SHA256:            metaVA.SHA256,
+		SizeBytes:         metaVA.SizeBytes,
+		RemoteFileID:      metaPublished.Location.FileID,
+		RemoteWebViewLink: metaPublished.Location.WebViewLink,
+	}
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.publish: AssetPreparation completed",
+			zap.Int("chunk_count", len(chunks)),
+			zap.String("metadata_artifact_id", MetadataArtifactID(fp)),
+			zap.String("metadata_remote_file_id", metaPublished.Location.FileID))
+	}
 	return nil
 }
 
-// ── Step 6: stock.finalize ───────────────────────────────────────────
+// ── Step 6: stock.finalize (§12-7 REWRITE) ─────────────────────────────
 
 // StockFinalizeStep is the canonical implementation of
-// stock.finalize. The body unifies the pre-§12-5 inline ladder's
-// build_manifest + validate_manifest + project_manifest triple
-// into a single typed gated step:
+// stock.finalize. §12-7 rewrites the body to drive the canonical
+// Single-TX spine write via BuildFinalizationRequest +
+// JobFinalizer.CompleteWithArtifacts. The phase ladder shrinks
+// (pre-§12-7: build → validate → project; post-§12-7: build →
+// validate → project → spine write).
 //
-//  1. ManifestBuilder.Build(workflowID, jobID) — defaults to
-//     buildStockManifest when no Builder is injected.
-//  2. manifest.Validate() — the canonical C12 wire-format gate.
-//     Returns ErrManifestIncomplete on Required:true + Path:"".
-//  3. ProjectionPort.Project(manifest) — best-effort Qdrant sync.
-//     Error flips FinalStatus to StatusIndexPending (per the
-//     run_upload_indexing_test.go contract, test (c)); the step
-//     does NOT abort — Run returns nil so the orchestrator can
-//     stamp MarkCompleted and RunResilient's caller receives
-//     (manifest, nil) per the resilience contract.
+// Phase 1 — Build + Validate manifest. The manifest is the wire
+// artefact (SchemaVersion=1, JobID + per-chunk Artifacts). Build
+// path: ManifestBuilder.Build when wired (production) else
+// buildChunkedStockManifest fallback. Validate surfaces
+// ErrManifestIncomplete (test (b) contract).
 //
-// godlike/07 typed-error contract: ErrManifestIncomplete is the
-// canonical surfaced sentinel for Validate-failure; callers can
-// errors.Is on it from any seam.
+// Phase 2 — Projection (best-effort). On error flip FinalStatus
+// to StatusIndexPending (test (c) contract). DO NOT propagate —
+// the spine write still runs in Phase 4 so DB SUCCEEDED is the
+// durable state. Per-chunk Qdrant indexing is async via the
+// reconciler-driven Qdrant index task.
+//
+// Phase 3 — BuildFinalizationRequest. Canonical helper from
+// finalizer_gates.go. Composes Lease + Result + Artifacts
+// (preserves the §12-1 typed-error contract).
+//
+// Phase 4 — JobFinalizer.CompleteWithArtifacts. The canonical
+// Single-TX spine write (asset + version + location + outbox +
+// SUCCEEDED). On error propagate as ErrStockFinalizeSpineFailed
+// (typed wrap preserves typed sentinels like ErrConcurrentLeaseRefutation,
+// ErrRemoteArtifactHashMismatch, ErrCompleteJobRequestMissingFields,
+// etc. via errors.Is / errors.As traversal).
 type StockFinalizeStep struct{}
 
 func (StockFinalizeStep) Name() string { return StepKeyStockFinalize }
 
 func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 	in := runner.RunInput()
+	if in == nil {
+		return errors.New("orchestrator: stock.finalize: nil RunInput")
+	}
 	workflowID := in.FolderID
 	if workflowID == "" {
 		workflowID = in.FolderName
+	}
+
+	// ── Phase 1: Build + Validate manifest ─────────────────────────
+	fp := runner.RunFingerprint()
+	if fp == "" {
+		return ErrStockFnRequired
 	}
 
 	var manifest *job.ArtifactManifest
@@ -400,19 +610,19 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 			return fmt.Errorf("orchestrator: stock.finalize: ManifestBuilder.Build: %w", buildErr)
 		}
 	} else {
-		manifest = buildStockManifest(workflowID, runner.JobID())
+		manifest = buildChunkedStockManifest(
+			workflowID, runner.JobID(), fp,
+			runner.State().Published, runner.State().MetadataPublished,
+		)
 	}
 	if err := manifest.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrManifestIncomplete, err)
 	}
 	runner.State().Manifest = manifest
 
-	// Projection resilience: best-effort, NOT fatal. A non-nil
-	// error flips FinalStatus to StatusIndexPending so the broker
-	// runner persists the index-pending state and the
-	// Qdrant-reconciler task retries asynchronously.
+	// ── Phase 2: Projection (best-effort, never aborts) ────────────
 	runner.State().FinalStatus = job.StatusSucceeded
-	if runner.Projection() != nil {
+	if runner.Projection() != nil && manifest != nil {
 		if projErr := runner.Projection().Project(ctx, manifest); projErr != nil {
 			runner.State().FinalStatus = job.StatusIndexPending
 			if runner.Log() != nil {
@@ -421,10 +631,69 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 		}
 	}
+
+	// ── Phase 3+4: single-TX spine write (optional) ────────────────
+	if runner.JobFinalizer() == nil {
+		// Test-fixture / §F.1 back-compat: no JobFinalizer wired.
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.finalize JobFinalizer NOT wired — single-TX spine write skipped (test-fixture path)")
+		}
+		return nil
+	}
+	if len(runner.State().Published) == 0 {
+		// No chunks prepared → preserve the INDEX_PENDING flip from
+		// Phase 2 and skip the spine write. This is the canonical
+		// path tested by run_upload_indexing_test.go case (c) (Qdrant
+		// offline + nil chunks → FinalStatus=StatusIndexPending,
+		// spine writes intentionally skipped).
+		if runner.Log() != nil {
+			runner.Log().Warn("orchestrator: stock.finalize: zero chunks published — single-TX spine write skipped (preserve INDEX_PENDING flip)")
+		}
+		return nil
+	}
+
+	lease := runner.Cfg().Lease
+	if lease.JobID == "" || lease.WorkerID == "" || lease.LeaseID == "" {
+		return fmt.Errorf("%w: lease.JobID=%q WorkerID=%q LeaseID=%q (HandleJob must thread extractLease)",
+			ErrStockFinalizeLeaseMissing, lease.JobID, lease.WorkerID, lease.LeaseID)
+	}
+
+	manifestData, marshalErr := manifestBytes(manifest)
+	if marshalErr != nil {
+		return fmt.Errorf("orchestrator: stock.finalize: marshal manifest: %w", marshalErr)
+	}
+
+	finReq, finBuildErr := BuildFinalizationRequest(
+		runner.JobID(),
+		lease,
+		manifestData,
+		runner.State().Published,
+		runner.State().MetadataPublished,
+	)
+	if finBuildErr != nil {
+		return fmt.Errorf("orchestrator: stock.finalize: BuildFinalizationRequest: %w", finBuildErr)
+	}
+
+	finResult, finErr := runner.JobFinalizer().CompleteWithArtifacts(ctx, *finReq)
+	if finErr != nil {
+		// godlike/07 typed-error contract: propagate the typed sentinel
+		// verbatim via %w + fmt.Errorf so callers can errors.Is into
+		// deeper sentinels (ErrConcurrentLeaseRefutation,
+		// ErrRemoteArtifactHashMismatch) without unwrapping our wrapper.
+		return fmt.Errorf("%w: %v", ErrStockFinalizeSpineFailed, finErr)
+	}
+	runner.State().FinalizationResult = finResult
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.finalize: JobFinalizer spine write SUCCEEDED",
+			zap.String("job_id", runner.JobID()),
+			zap.Int("attempt", lease.Attempt),
+			zap.Int("artifact_ref_count", len(finResult.ArtifactRefs)))
+	}
 	return nil
 }
 
-// ── Default 6-step dispatch ─────────────────────────────────────────
+// ── Default 6-step dispatch ───────────────────────────────────────────
 
 // DefaultStockSteps returns the canonical 6-step slice the
 // Orchestrator iterates in RunResilient. The slice order is the
@@ -456,3 +725,196 @@ var (
 	_ Step = StockPublishStep{}
 	_ Step = StockFinalizeStep{}
 )
+
+// ── §12-7 helpers (ArtifactID + RunFingerprint + Metadata envelope) ───
+
+// ChunkArtifactID returns the canonical logical ArtifactID for a
+// single chunk. Stable across retries of the same logical run
+// (same fingerprint) — Drive FileID is LOCATION (changes per retry
+// if the DriveUpload re-runs), but the logical IDENTITY (this
+// string) stays constant per godlike/07 no-fake-availability.
+//
+// Format: stock:<run_fingerprint>:chunk:<chunk_index>
+func ChunkArtifactID(runFingerprint string, chunkIndex int) string {
+	return "stock:" + runFingerprint + ":chunk:" + strconv.Itoa(chunkIndex)
+}
+
+// ChunkArtifactFilename returns the canonical filename for a
+// single chunk. Truncates the fingerprint to the first 12 hex
+// chars for readable on-disk filenames while preserving enough
+// entropy for human auditing. Full fingerprint remains in the
+// ArtifactID where it matters for byte-equality comparisons.
+func ChunkArtifactFilename(runFingerprint string, chunkIndex int) string {
+	fpShort := runFingerprint
+	if len(fpShort) > 12 {
+		fpShort = fpShort[:12]
+	}
+	return "stock_" + fpShort + "_chunk_" + strconv.Itoa(chunkIndex) + ".mp4"
+}
+
+// MetadataArtifactID returns the canonical logical ArtifactID for
+// the per-run metadata.json. Format: stock:<run_fingerprint>:metadata
+//
+// Same fingerprint ⇒ same ArtifactID across retries
+// (godlike/07 no-fake-availability invariant).
+func MetadataArtifactID(runFingerprint string) string {
+	return "stock:" + runFingerprint + ":metadata"
+}
+
+// writeAndHashMetadata stages the per-run metadata.json content
+// to a temp file, computes its SHA256, and returns
+// (LocalPath, SHA256, SizeBytes, error). Best-effort cleanup on
+// failure paths so the temp dir doesn't accumulate garbage.
+func writeAndHashMetadata(in *RunInput, chunks []ChunkState, runFingerprint string) (string, string, int64, error) {
+	if in == nil {
+		return "", "", 0, errors.New("writeAndHashMetadata: nil RunInput")
+	}
+	meta := buildStockRunMetadata(in, chunks, runFingerprint)
+	raw, mErr := json.MarshalIndent(meta, "", "  ")
+	if mErr != nil {
+		return "", "", 0, fmt.Errorf("writeAndHashMetadata: marshal: %w", mErr)
+	}
+	sizeBytes := int64(len(raw))
+
+	f, cErr := os.CreateTemp("", "pipelinegen-stock-metadata-*.json")
+	if cErr != nil {
+		return "", "", 0, fmt.Errorf("writeAndHashMetadata: create temp: %w", cErr)
+	}
+	cleanup := func() { _ = os.Remove(f.Name()) }
+
+	if _, wErr := f.Write(raw); wErr != nil {
+		_ = f.Close()
+		cleanup()
+		return "", "", 0, fmt.Errorf("writeAndHashMetadata: write %s: %w", f.Name(), wErr)
+	}
+	if cErr := f.Close(); cErr != nil {
+		cleanup()
+		return "", "", 0, fmt.Errorf("writeAndHashMetadata: close %s: %w", f.Name(), cErr)
+	}
+	h, hErr := job.ComputeSHA256(f.Name())
+	if hErr != nil {
+		cleanup()
+		return "", "", 0, fmt.Errorf("writeAndHashMetadata: hash %s: %w", f.Name(), hErr)
+	}
+	return f.Name(), h, sizeBytes, nil
+}
+
+// StockRunMetadata is the typed wire envelope placed in the
+// per-run metadata.json. Contains chunk-level entries so the
+// downstream run consumer can reconstruct the chunk topology
+// without re-walking the orchestrator's state.
+//
+// LocalPath is embedded for audit; the user-facing API response
+// (HandleJob result map) does NOT carry LocalPath — see godlike/07
+// no-fake-availability: ApiResponseFields{AssetID/RemoteAssetID/
+// SHA256/SizeBytes/DurationMS/IndexState} only.
+type StockRunMetadata struct {
+	JobID          string               `json:"job_id"`
+	RunFingerprint string               `json:"run_fingerprint"`
+	WorkflowID     string               `json:"workflow_id"`
+	Subfolder      string               `json:"subfolder,omitempty"`
+	DirectURLs     []string             `json:"direct_urls,omitempty"`
+	SearchQueries  []string             `json:"search_queries,omitempty"`
+	TotalMinutes   int                  `json:"total_minutes"`
+	ChunkDuration  int                  `json:"chunk_duration"`
+	ClipDuration   int                  `json:"clip_duration"`
+	Chunks         []ChunkMetadataEntry `json:"chunks"`
+	CreatedAt      time.Time            `json:"created_at"`
+	PolicyVersion  string               `json:"policy_version"`
+}
+
+// ChunkMetadataEntry is the per-chunk metadata entry embedded
+// in the per-run metadata.json. LocalPath is exposed here for
+// audit; the public API response strips it.
+type ChunkMetadataEntry struct {
+	Index            int    `json:"index"`
+	ArtifactID       string `json:"artifact_id"`
+	DriveFileID      string `json:"drive_file_id"`
+	DriveWebViewLink string `json:"drive_web_view_link,omitempty"`
+	SHA256           string `json:"sha256"`
+	SizeBytes        int64  `json:"size_bytes"`
+	LocalPath        string `json:"local_path,omitempty"`
+}
+
+// buildStockRunMetadata constructs the typed StockRunMetadata
+// from the per-call RunInput + chunks. Pure function so TDD
+// coverage can pin the entry shape (no I/O, no SHA, no
+// Publisher).
+func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint string) StockRunMetadata {
+	if in == nil {
+		return StockRunMetadata{}
+	}
+	entries := make([]ChunkMetadataEntry, 0, len(chunks))
+	for _, c := range chunks {
+		entry := ChunkMetadataEntry{
+			Index:            c.Index,
+			ArtifactID:       c.ArtifactID,
+			DriveFileID:      c.RemoteFileID,
+			DriveWebViewLink: c.RemoteWebViewLink,
+			SHA256:           c.SHA256,
+			SizeBytes:        c.SizeBytes,
+			LocalPath:        c.LocalPath,
+		}
+		entries = append(entries, entry)
+	}
+	return StockRunMetadata{
+		JobID:          in.FolderID,
+		RunFingerprint: runFingerprint,
+		WorkflowID:     in.FolderID,
+		Subfolder:      in.Subfolder,
+		DirectURLs:     append([]string(nil), in.DirectURLs...),
+		SearchQueries:  append([]string(nil), in.SearchQueries...),
+		TotalMinutes:   in.TotalMinutes,
+		ChunkDuration:  in.ChunkDuration,
+		ClipDuration:   in.ClipDuration,
+		Chunks:         entries,
+		CreatedAt:      time.Now().UTC(),
+		PolicyVersion:  in.PolicyVersion, // populated from RunInput; Cfg() also has it
+	}
+}
+
+// buildChunkedStockManifest constructs the canonical wire manifest
+// for the §12-7 chunked pipeline:
+//
+//   - 1 metadata Artifact entry (Required:true) keyed by
+//     MetadataArtifactID(fp)
+//   - N chunk Artifact entries (Required:true) keyed by
+//     ChunkArtifactID(fp, index)
+//
+// Pure function so TDD coverage can pin the manifest shape
+// independently of orchestrator state.
+func buildChunkedStockManifest(workflowID, jobID, fp string, chunks []ChunkState, metadata MetadataState) *job.ArtifactManifest {
+	manifest := &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		WorkflowID:    workflowID,
+		JobID:         jobID,
+		Artifacts:     make([]job.Artifact, 0, 1+len(chunks)),
+	}
+	if metadata.LocalPath != "" {
+		manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
+			ID:       MetadataArtifactID(fp),
+			Kind:     job.ArtifactKindMetadata,
+			Filename: "metadata.json",
+			MIMEType: "application/json",
+			Path:     metadata.LocalPath,
+			SHA256:   metadata.SHA256,
+			SizeBytes: metadata.SizeBytes,
+			Required: true,
+		})
+	}
+	if len(chunks) > 0 {
+		for _, c := range chunks {
+			manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
+				ID:       c.ArtifactID,
+				Kind:     job.ArtifactKindClipBindings, // canonical video variant
+				Filename: c.Filename,
+				MIMEType: "video/mp4",
+				Path:     c.LocalPath,
+				SHA256:   c.SHA256,
+				SizeBytes: c.SizeBytes,
+				Required: true,
+			})
+		}
+	}
+	return manifest
+}

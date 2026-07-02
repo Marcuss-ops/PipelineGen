@@ -93,7 +93,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	var embeddingReg search.EmbeddingChannelRegistry
 	if root.AI != nil && root.AI.OllamaClient != nil {
 		ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
-		embeddingReg = newEmbeddingRegistryAdapter(qdrant.NewTextEmbedderAdapter(ollamaEmb))
+		embeddingReg = newEmbeddingRegistryAdapter(qdrant.NewTextEmbedderAdapter(ollamaEmb), nil)
 	}
 
 	// MediaReadRepository: ClipsRepository → mediasearch.MediaReadRepository

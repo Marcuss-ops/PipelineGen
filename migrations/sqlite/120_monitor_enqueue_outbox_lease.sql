@@ -46,12 +46,6 @@ CREATE TABLE IF NOT EXISTS monitor_enqueue_outbox (
     error             TEXT
 );
 
--- Index for the drainer: covers both 'pending' rows (for DrainPendingOutbox)
--- and 'dispatching' rows (for DrainDispatched / reclaim).
-CREATE INDEX IF NOT EXISTS idx_monitor_outbox_drain
-    ON monitor_enqueue_outbox(state, next_retry_at, created_at)
-    WHERE state IN ('pending', 'dispatching');
-
 -- New columns for lease-based drainer + retryable failure.
 -- ALTER TABLE ADD COLUMN is idempotent on SQLite 3.35+: if the column
 -- already exists (re-run migration), it silently succeeds.
@@ -59,3 +53,10 @@ ALTER TABLE monitor_enqueue_outbox ADD COLUMN retry_count INTEGER NOT NULL DEFAU
 ALTER TABLE monitor_enqueue_outbox ADD COLUMN next_retry_at TEXT;
 ALTER TABLE monitor_enqueue_outbox ADD COLUMN lease_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE monitor_enqueue_outbox ADD COLUMN lease_until TEXT;
+
+-- Index for the drainer: covers both 'pending' rows (for DrainPendingOutbox)
+-- and 'dispatching' rows (for DrainDispatched / reclaim).
+-- MUST be created AFTER the ALTER TABLE columns so next_retry_at exists.
+CREATE INDEX IF NOT EXISTS idx_monitor_outbox_drain
+    ON monitor_enqueue_outbox(state, next_retry_at, created_at)
+    WHERE state IN ('pending', 'dispatching');

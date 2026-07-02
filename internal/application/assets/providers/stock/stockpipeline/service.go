@@ -658,6 +658,12 @@ func manifestBytes(manifest *jobdomain.ArtifactManifest) ([]byte, error) {
 }
 
 // RunInput holds the parameters for a stock pipeline run.
+//
+// §12-7 (July 2026): adds FinalizationLease (the canonical
+// finalization.Lease the JobFinalizer validates inside the
+// spine-write TX, extracted from broker job by HandleJob via
+// extractLease) and PolicyVersion (the run-fingerprint salt
+// godlike/07 SSOT, propagated to the per-run metadata.json).
 type RunInput struct {
 	SearchQueries []string
 	DirectURLs    []string
@@ -673,6 +679,10 @@ type RunInput struct {
 	FolderID      string
 	Metadata      *ChunkMetadataInput
 	Progress      func(percent int, message string)
+
+	// §12-7 (July 2026).
+	FinalizationLease finalization.Lease // broker lease for StockFinalizeStep spine write
+	PolicyVersion     string             // run-fingerprint salt used by orchestrator + metadata.json
 }
 
 // ChunkMetadataInput holds user-provided metadata for chunks.
