@@ -197,7 +197,7 @@ func (h *Handler) Search(c *gin.Context) {
 	}
 
 	limit := defaults.Int(req.Limit, mediasearchapp.DefaultLimit)
-	q := searchQueryFromRequest(req, mode, limit)
+	q := searchQueryFromRequest(req, mode, limit, workspace)
 
 	res, err := h.aggreg.Search(c.Request.Context(), q)
 	if err != nil {
@@ -302,11 +302,19 @@ func resultToResponse(r *search.Result, query string, mode mediasearchapp.Search
 }
 
 // searchQueryFromRequest builds a search.Query from the API request DTO.
-func searchQueryFromRequest(req searchRequest, mode mediasearchapp.SearchMode, limit int) search.Query {
+// PR-1 (Agente 2, Azione 1): workspace is now propagated into
+// Query.Actor so every backend receives the real tenant identity
+// (WorkspaceID, UserID from PrincipalID, IsAdmin).
+func searchQueryFromRequest(req searchRequest, mode mediasearchapp.SearchMode, limit int, workspace mediasearchapp.WorkspaceContext) search.Query {
 	return search.Query{
 		Text:  strings.TrimSpace(req.Query),
 		Mode:  mode,
 		Limit: limit,
+		Actor: search.Actor{
+			WorkspaceID: workspace.WorkspaceID,
+			UserID:      workspace.PrincipalID,
+			IsAdmin:     workspace.IsAdmin,
+		},
 		Filters: search.Filters{
 			Source:        strings.TrimSpace(req.Filters.Source),
 			MediaType:     strings.TrimSpace(req.Filters.MediaType),
