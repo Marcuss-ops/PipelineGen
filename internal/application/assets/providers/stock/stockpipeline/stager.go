@@ -1,20 +1,26 @@
-// Package stock — stager.go (Stock Cutover Commit 1, July 2026).
+// Package stock — stager.go (Stock Cutover Commits 1 + 2, July 2026).
 //
 // SourceStager is the neutral abstraction over a source fetcher.
 // It replaces the legacy yt-dlp-baked `Service.StageSource(url string)`
 // with a capability-typed port that any registered stager (youtube,
 // http, artlist, drive, existing_catalog) can satisfy.
 //
-// Commit 1 ships ONLY the port interface; concrete implementations
-// land in Commit 7 (when the legacy Service.StageSource method is
-// retired in favour of registered stagers). Keeping the interface
-// isolated here lets the orchestrator's compile dependencies
-// stabilise first — the orchestrator already accepts (SourceStager)
-// as a constructor argument so production wiring in Commit 7 is
-// type-stable.
+// Commit 1 ships the port interface; Commit 2 adds a NoopSourceStager
+// to satisfy the Orchestrator's compile-time nil-guard while the
+// real implementations land in Commit 7 (when the legacy
+// Service.StageSource method is retired in favour of registered
+// stagers).
+//
+// Keeping the port isolated here lets the orchestrator's compile
+// dependencies stabilise first — the orchestrator already accepts
+// (SourceStager) as a constructor argument so production wiring in
+// Commit 7 is type-stable.
 package stockpipeline
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // SourceStager is the typed port for source-fetch capability.
 //
@@ -34,6 +40,55 @@ type SourceStager interface {
 	// owns. The cleanup function is invoked by the orchestrator
 	// once the downstream pipeline has consumed the file.
 	Stage(ctx context.Context, req StageRequest) (*StagedSource, error)
+}
+
+// ── NoopSourceStager (Stock Cutover Commit 2, July 2026) ──────────────
+//
+// NoopSourceStager is the Commit 2 placeholder SourceStager. It
+// satisfies the SourceStager interface so the Orchestrator's
+// compile-time nil-guard (`o.planner == nil || o.steps == nil ||
+// o.stager == nil`) is satisfied, but its Stage call returns
+// ErrStagerNotImplemented because the legacy Service.Run body has
+// been retired in Commit 2 — no real SourceStager impl exists yet.
+//
+// Commit 7 replaces this with the real implementations
+// (youtube/http/artlist/drive/existing_catalog). The replacement
+// keeps the same SourceStager port so the Orchestrator's compile
+// dependencies are stable across the Commit 2 → Commit 7 transition.
+//
+// Why not nil-stager? The Orchestrator's Run signature rejects
+// nil-stager early (ErrOrchestratorNilDeps); a typed noop lets
+// Service.RunOrchestrator construct a Service.Run → Orchestrator
+// delegate without conditional guards.
+type NoopSourceStager struct{}
+
+// NewNoopSourceStager constructs a NoopSourceStager. Returns the
+// canonical interface value so callers can swap in real
+// implementations behind the same SourceStager port without
+// touching Service.RunOrchestrator.
+func NewNoopSourceStager() SourceStager {
+	return &NoopSourceStager{}
+}
+
+// ErrStagerNotImplemented is returned by NoopSourceStager.Stage
+// because no real source-stager implementation lands before
+// Commit 7. The error wraps with `%w` + a "Commit 7 ships real
+// impl" annotation so operators running Commit 2 in production
+// see a clear message rather than a silent zero-value.
+var ErrStagerNotImplemented = errors.New("stockpipeline: SourceStager not implemented (Stock Cutover Commit 7 ships the real impl; NoopSourceStager is the Commit 2 placeholder)")
+
+// Compile-time assertion: *NoopSourceStager satisfies SourceStager.
+// Catches signature drift at build (not run time) and pins the
+// noop path as a first-class stager in the lineage.
+var _ SourceStager = (*NoopSourceStager)(nil)
+
+// Stage returns ErrStagerNotImplemented. The Orchestrator's Run
+// in Commit 2 does NOT actually invoke stager.Stage (the
+// `stage_sources` step is Begin/Complete only — see
+// orchestrator.go::Run), so this error never surfaces in
+// Commit 2's end-to-end path. Commit 7 wires the real Stagers.
+func (n *NoopSourceStager) Stage(ctx context.Context, req StageRequest) (*StagedSource, error) {
+	return nil, ErrStagerNotImplemented
 }
 
 // StageRequest captures the minimum contract any SourceStager needs.
