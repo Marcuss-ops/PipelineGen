@@ -3,13 +3,11 @@
 Per godlike/07 (docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md), this
 CHANGELOG records every user-visible API and behavior change. Each entry
 cross-references the architecture/deprecations.yaml record (if any) and
-the canonical ARCHITECTURE.md section that owns the change.
-
----
-
-
+the canonical ARCHITECTURE.md section that owns the change.---
 
 ### Documentation
+
+- **[Wave 30 — UNIFIED-SEMANTIC-MULTIMODAL-SEARCH action plan, July 2026]** `docs(plan)` — codify the FASE-6 architecture verdict (Italian audit) into a canonical wave-tracker entry (`architecture/current.yaml#id-30`) with the 4 forward-pointer issues mapped to the slim-schema linked_issues. Pre-Fase-6 verdict items 1 (semantic backend collegamento), 2 (mode hybrid|ann wiring), 3 (QueryEmbedder port connesso), 7 (workspace Actor propagation), 8 (signed preview URL) are ALL already closed by FASE-6 chain commits (search_backend_semantic.go `feat(search): FASE 6 — semanticSearchBackend with two-port Qdrant architecture` + `feat(mediasearch): propagate workspace Actor into search.Query (PR-AGENTE2-ACTOR)` + `feat(execution): Step 10 C1/4 - SQLite-backed steps.Store`); audit pins the 4 still-pending gaps as forward-pointer tickets (filter uniformity, cross-modal text-to-visual, enrichment state machine, E2E multimodal test). Each PR that ships ONE of the four items MUST land its SHA in the matching linked_issue slot; once all four flip to `status: shipped`, the wave flips to `status: done / exit_signal: true` per godlike/07 §Exit gate. Rationale per AGENTS.md Plan > Reflect > Commit: the verdict was a useful pre-Fase-6 audit but the canonical surface has advanced; this commit (a) anchors the verdict-to-closure mapping in the wave-tracker for future reader audit, (b) explicitly names which gaps are forward-pointers (so future agents don't redo closed work), (c) sets per-gate exit criteria so the operator dashboard surfaces green/red per item rather than a single monolithic status. Cross-reference: `architecture/current.yaml#id-30`, AGENTS.md §Pattern 0 + §Qdrant Entity Associations, CHANGELOG S7-Step-7 closure entry for the parallel precedent pattern. No SQLite migration, no gofmt touch, no test churn — documentation only, NO semantic surface change.
 
 - **[S7-Step-7 snapshot, July 2026]** documentation(md) + arch(current) + retry(pkg) -- Wave-7 canonical closeout audit-pin. pkg/retry typed-path transient classifier (IsTransient + WrapTransient) replaces 3 duplicate substring-match predicates (monitor.isTransientEnqueueError, tagutil.IsTransientDownloadError, youtube/usecase.IsTransientExtractionError). Production-default JitterFraction=0.25 enables bounded retry desynchronisation across fleet contention (kills thundering-herd retry storms). Wave-tracker entry S7-Step-7 -> status:done, exit_signal:true (ExitGate=true), deadline:2026-07-25. Cross-reference SHAs: chain 8bdb9a8d, accb090b, 6f327b10, c1cf33d3; taxonomy extension 2d09f3e8; Check 50 retry-classifier gate ef09b732; wave-tracker update 60e3e5f4.
 
