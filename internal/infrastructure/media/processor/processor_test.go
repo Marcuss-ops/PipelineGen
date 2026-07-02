@@ -39,12 +39,29 @@ func (f *fakeHTTPDownloader) Download(ctx context.Context, req *downloader.HTTPD
 type fakeFFmpeg struct {
 	normalizeErr    error
 	normalizeCalled bool
+	// normalizeAsDir — when true, MkdirAll at outputPath instead of
+	// WriteFile. Forces hashutil.MD5File to fail with "is a directory"
+	// at the Step 3 hashStep call site. The Step 9/12 PR-LOCALPATH-OSREMOVE-TEST-PIN
+	// test pins the gateway contract at hashStep failure. Empty by
+	// default; existing fakeFFmpeg users (TestProcessorE2E_*, etc.)
+	// keep the WriteFile behaviour.
+	normalizeAsDir bool
 }
 
 func (f *fakeFFmpeg) Normalize(ctx context.Context, inputPath, outputPath string, opts ffmpeg.NormalizeOptions) error {
 	f.normalizeCalled = true
 	if f.normalizeErr != nil {
 		return f.normalizeErr
+	}
+	if f.normalizeAsDir {
+		// Test-only forcing site for Step 3 hashStep failure:
+		// create a directory at processedPath so the subsequent
+		// hashutil.MD5File returns "is a directory" error. In
+		// production this has no analogue - real ffmpeg writes a
+		// real file. PR-LOCALPATH-OSREMOVE-TEST-PIN: the LocalPath
+		// gateway contract must preserve the caller-provided staged
+		// file even when hashStep errors out.
+		return os.MkdirAll(outputPath, 0o755)
 	}
 	return os.WriteFile(outputPath, []byte("processed-video"), 0o644)
 }
@@ -386,4 +403,163 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 	// LocalPath + FileHash are still populated (local save + hash succeeded).
 	assert.NotEmpty(t, result.LocalPath, "F2.8: LocalPath must be populated even on Publish failure (local save succeeded)")
 	assert.NotEmpty(t, result.FileHash, "F2.8: FileHash must be populated even on Publish failure")
+}
+
+// ── Step 9/12 follow-up: PR-LOCALPATH-OSREMOVE-TEST-PIN (CHANGELOG forward-pointer closure) ──
+//
+// Three tests pin the 3 os.Remove(actualRawPath) guards in Processor.Process:
+// processor.go Step 2 cleanup (after processStep fail) + Step 3 cleanup
+// (after hashStep fail) + final cleanup (after success). All three guards
+// share the contract: when input.LocalPath is set, Processor.Process MUST
+// NOT delete the caller-provided path even on failure. The caller
+// (typically the shared assets.SourceStager port) owns the staged file's
+// lifecycle.
+//
+// Usage note: these tests deliberately use an EMPTY ProcessorConfig.VideoCfg
+// (Width=0/Height=0/FPS=0). The empty VideoCfg purposefully fails the
+// zero-copy resMatch check in processStep (target.Width=0 != probed 1920),
+// forcing the path through ffmpeg.Normalize instead of os.Rename on the
+// LocalPath. Zero-copy's os.Rename would physically MOVE (not copy) the
+// staged file to processedPath, defeating the gateway-preservation test.
+
+// writeStagedFile creates the caller-owned local file at a temp dir and
+// returns its path. Mirrors the SourceStager's responsibility: download
+// to a known path, hand it off, defer cleanup.
+func writeStagedFileForTest(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "staged.mp4")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	return path
+}
+
+// newProcessorForLocalPathTest constructs a Processor with the
+// canonical test-side stub wiring + an empty VideoCfg (intentional:
+// forces ffmpeg.Normalize path so LocalPath is read, not Renamed).
+func newProcessorForLocalPathTest(t *testing.T, ff *fakeFFmpeg) *Processor {
+	t.Helper()
+	tmp := t.TempDir()
+	// fakeYTDLP / fakeHTTPDownloader MUST be wired even though they're
+	// bypassed by LocalPath: NewProcessor's only nil-guard fires on
+	// Publisher (per F2.8 fail-closed) — YTDLP nil is tolerated when
+	// LocalPath is set (processor.go Step 1 validator relaxed in
+	// Step 9/12). We pass them anyway so the test surface mirrors
+	// production wiring.
+	return NewProcessor(
+		&fakeYTDLP{},
+		&fakeHTTPDownloader{},
+		ff,
+		zap.NewNop(),
+		ProcessorConfig{
+			DataDir:  tmp,
+			TempDir:  "tmp",
+			VideoCfg: ffmpeg.NormalizeOptions{}, // EMPTY on purpose (see header note)
+		},
+		nil,
+		&fakePublisher{},
+	)
+}
+
+// TestProcess_LocalPathPreservedOnProcessStepFailure — pin Step 2 cleanup guard.
+//
+// Forces ffmpeg.Normalize to fail (fakeFFmpeg.normalizeErr) and asserts
+// the caller-provided LocalPath file STILL exists after Process returns.
+// This pins processor.go's behavior at the `if err != nil` branch of
+// processStep: `_ = os.Remove(actualRawPath)` is GUARDED by
+// `if input.LocalPath == ""` — a future refactor that drops the guard
+// would delete caller-owned files on transient normalize failures.
+func TestProcess_LocalPathPreservedOnProcessStepFailure(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+
+	ff := &fakeFFmpeg{
+		normalizeErr: errors.New("forced normalize failure (PR-LOCALPATH-OSREMOVE-TEST-PIN Step 2 guard)"),
+	}
+	p := newProcessorForLocalPathTest(t, ff)
+
+	result, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        "clip-processfail",
+		Name:      "test clip",
+		LocalPath: localPath, // <-- gateway field set: caller-owned staged path
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+	})
+
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "failed", result.Status)
+	assert.Contains(t, result.Error, "process failed")
+	assert.True(t, ff.normalizeCalled, "ffmpeg.Normalize MUST have been called to exercise the processStep-failure cleanup path")
+
+	// PR-LOCALPATH-OSREMOVE-TEST-PIN Step 2 guard: gateway contract.
+	_, statErr := os.Stat(localPath)
+	require.NoError(t, statErr,
+		"PR-LOCALPATH-OSREMOVE-TEST-PIN: Processor.Process deleted caller-provided LocalPath on processStep failure (Step 2 cleanup guard violated)")
+}
+
+// TestProcess_LocalPathPreservedOnHashStepFailure — pin Step 3 cleanup guard.
+//
+// Forces hashStep to fail by creating a DIRECTORY at processedPath via
+// fakeFFmpeg.normalizeAsDir — hashutil.MD5File on a directory returns
+// "is a directory" error. Asserts the caller-provided LocalPath file
+// STILL exists after Process returns. Pins processor.go's behavior at
+// the `if err != nil` branch of hashStep: `_ = os.Remove(actualRawPath)`
+// is GUARDED by `if input.LocalPath == ""` — without the guard, a
+// tmpdir-cleanup noise (os.ErrNotExist warning logged by caller-side
+// defer Cleanup) would surface in production without a pinning test.
+func TestProcess_LocalPathPreservedOnHashStepFailure(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+
+	ff := &fakeFFmpeg{normalizeAsDir: true} // <-- forces hashStep MD5File failure
+	p := newProcessorForLocalPathTest(t, ff)
+
+	result, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        "clip-hashfail",
+		Name:      "test clip",
+		LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+	})
+
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "failed", result.Status)
+	assert.Contains(t, result.Error, "hash failed")
+
+	// PR-LOCALPATH-OSREMOVE-TEST-PIN Step 3 guard: gateway contract.
+	_, statErr := os.Stat(localPath)
+	require.NoError(t, statErr,
+		"PR-LOCALPATH-OSREMOVE-TEST-PIN: Processor.Process deleted caller-provided LocalPath on hashStep failure (Step 3 cleanup guard violated)")
+}
+
+// TestProcess_LocalPathPreservedOnHappyPath — pin post-success cleanup guard.
+//
+// Happy-path run: Normalize succeeds, hashStep succeeds, Publisher
+// succeeds. Asserts the caller-provided LocalPath file STILL exists
+// after Process returns status="processed". Pins processor.go's final
+// `if input.LocalPath == "" { _ = os.Remove(actualRawPath) }` cleanup
+// guard. Without this pin, a refactor that drops the guard on the
+// post-success path would silently delete the SourceStager's staged
+// file — the very next defer Cleanup at the artlist call site would
+// see os.ErrNotExist and log warn noise.
+func TestProcess_LocalPathPreservedOnHappyPath(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+
+	p := newProcessorForLocalPathTest(t, &fakeFFmpeg{}) // standard WriteFile path
+
+	result, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        "clip-happy",
+		Name:      "test clip",
+		LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		FolderID:  "test-folder", // triggers Publisher path
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "processed", result.Status)
+
+	// PR-LOCALPATH-OSREMOVE-TEST-PIN post-success guard: gateway contract.
+	_, statErr := os.Stat(localPath)
+	require.NoError(t, statErr,
+		"PR-LOCALPATH-OSREMOVE-TEST-PIN: Processor.Process deleted caller-provided LocalPath after success (post-success cleanup guard violated)")
 }
