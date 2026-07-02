@@ -9,12 +9,12 @@
 //     catalog. Exposes SearchClipsAdvanced (AdvancedSearchRepo) and
 //     FindClipsByHash (the hash-match dedup path).
 //
-// Today (June 2026, post PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL):
-// providerSearchBackend + localSearchBackend only — the QDRANT-004
-// single-tenant semanticSearchBackend (which wrapped *mediasearch.Service)
-// is git-rm'd alongside the service itself; future workspace-gated
-// search lives directly inside search.Aggregator paths (per-scope),
-// not in a separate Service composition.
+// Today (July 2026, post Fase 6): providerSearchBackend + localSearchBackend
+// + semanticSearchBackend. The historical QDRANT-004 single-tenant
+// semanticSearchBackend (which wrapped *mediasearch.Service) was git-rm'd
+// in PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL and replaced by the
+// canonical Fase 6 two-port architecture (QueryEmbedder + VectorStorePort)
+// in search_backend_semantic.go.
 //
 // Wave 19 cross-capability rule: this file IS the ONLY place in
 // internal/app/ where multiple internal/application/* domains are
@@ -38,6 +38,8 @@ import (
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -245,31 +247,30 @@ var _ search.SearchBackend = (*localSearchBackend)(nil)
 
 // ── Composition bridge ─────────────────────────────────────────────────
 //
-// PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL (June 2026): the
-// historical semanticSearchBackend (which wrapped the QDRANT-004
-// single-tenant *mediasearch.Service) is git-rm'd alongside the
-// service itself. Workspace-aware per-tenant routing now lives
-// directly in search.Aggregator paths (per-scope), not as a
-// dedicated backend here. The 3 backwards-compat surviving pieces
-// of the mediasearch package (WorkspaceContext + AssetDeliveryService
-// + MediaSearchRequest alias) are kept as thin re-exports for the
-// 4 remaining callers.
-
 // SearchBackendBuildOpts groups the inputs BuildSearchBackends
-// needs. Both backends can be disabled by leaving the corresponding
+// needs. Every backend can be disabled by leaving the corresponding
 // fields nil/empty. The ProviderRegistry and ClipsRepository are
 // guaranteed by WireAssets's AssetsBundle plumbing (providerRegistry
 // is a direct arg, bundle.ClipsRepo is bundle-resident).
 //
-// PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL (June 2026): the
-// historical MediasearchSvc + WorkspaceID opt-in fields are git-rm'd
-// alongside the semanticSearchBackend. Workspace-aware per-tenant
-// routing lives in search.Aggregator handlers (per-scope), not in
-// dedicated backend plumbing here.
+// Fase 6 (July 2026): Embedder + VectorStore + MediaRepo + Delivery
+// are the four ports consumed by the semanticSearchBackend
+// (search_backend_semantic.go). When all four are non-nil, the
+// semantic backend is registered alongside providers + local.
+// When any is nil (e.g. Qdrant disabled, or embedder not yet wired),
+// the semantic backend is silently skipped — the Aggregator falls
+// back to provider + local backends (graceful degradation).
 type SearchBackendBuildOpts struct {
 	Logger      *zap.Logger
 	ProviderReg *providers.Registry
 	ClipsRepo   *sqassets.ClipsRepository
+
+	// Fase 6 semantic backend deps (all four must be non-nil to
+	// register the backend; nil-safe when any is zero).
+	Embedder    search.QueryEmbedder
+	VectorStore assetsearch.VectorStorePort
+	MediaRepo   mediasearch.MediaReadRepository
+	Delivery    mediasearch.AssetDeliveryService
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,
@@ -318,6 +319,26 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			log.Error("BuildSearchBackends: local backend register failed (fail-closed)", zap.Error(err))
 			return nil, fmt.Errorf("BuildSearchBackends: local backend: %w", err)
 		}
+	}
+
+	// Fase 6 (July 2026): semantic backend — requires all four
+	// ports to be non-nil. Graceful degradation: when Qdrant or
+	// the embedder is not yet wired, the backend is silently
+	// skipped and the Aggregator operates with providers + local
+	// only.
+	if opts.Embedder != nil && opts.VectorStore != nil && opts.MediaRepo != nil && opts.Delivery != nil {
+		semantic := &semanticSearchBackend{
+			embedder:    opts.Embedder,
+			vectorStore: opts.VectorStore,
+			mediaReader: opts.MediaRepo,
+			delivery:    opts.Delivery,
+			log:         log,
+		}
+		if err := reg.Register(semantic); err != nil {
+			log.Error("BuildSearchBackends: semantic backend register failed (fail-closed)", zap.Error(err))
+			return nil, fmt.Errorf("BuildSearchBackends: semantic backend: %w", err)
+		}
+		log.Info("BuildSearchBackends: Fase 6 semantic backend registered (two-port Qdrant architecture)")
 	}
 
 	reg.Freeze()

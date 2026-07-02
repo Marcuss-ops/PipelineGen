@@ -24,6 +24,7 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -69,7 +70,20 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if root.Search != nil {
 		providerReg = root.Search.ProviderRegistry
 	}
-	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring)
+	// Fase 6 (July 2026): wire VectorStore (Qdrant SearchAdapter) into
+	// the search backend registry. Embedder + MediaRepo + Delivery are
+	// nil for now — the semantic backend gracefully skips registration
+	// until all four ports are wired (future PR).
+	var vectorStoreForSearch assetsearch.VectorStorePort
+	if root.Process != nil {
+		vectorStoreForSearch = root.Process.VectorSvc
+	}
+	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
+		nil,                   // embedder: wired in a follow-up PR
+		vectorStoreForSearch,  // vectorStore: Qdrant SearchAdapter from Process bundle
+		nil,                   // mediaRepo: wired in a follow-up PR
+		nil,                   // delivery: wired in a follow-up PR
+	)
 	_ = searchAgg // for symmetry with pre-PR4 inline pattern; the var stays nil when providerReg is nil
 	wiring.idempotencyHandler = idemHandler
 

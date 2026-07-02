@@ -20,6 +20,8 @@
 package app
 
 import (
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -49,7 +51,7 @@ import (
 // reviewer's Q7 invariant: nil provider-reg must NOT panic here;
 // production sees the warning log and proceeds with nil for the
 // downstream caller to fail-closed.
-func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
+func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embedder search.QueryEmbedder, vectorStore assetsearch.VectorStorePort, mediaRepo mediasearch.MediaReadRepository, delivery mediasearch.AssetDeliveryService) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
 	var searchAgg *providers.SearchAggregator
@@ -58,6 +60,12 @@ func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, cli
 			Logger:      log,
 			ProviderReg: providerReg,
 			ClipsRepo:   clipsRepo,
+			// Fase 6 semantic backend deps: nil-safe — the
+			// backend only registers when all four are non-nil.
+			Embedder:    embedder,
+			VectorStore: vectorStore,
+			MediaRepo:   mediaRepo,
+			Delivery:    delivery,
 		})
 		searchAgg = providers.NewSearchAggregator(providerReg)
 		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
