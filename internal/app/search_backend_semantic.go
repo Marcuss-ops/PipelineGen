@@ -118,7 +118,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 
 	// ── 2. Compile filters ─────────────────────────────────────
-	wsID, source, category, mediaType, language := compileSemanticFilters(q)
+	scope, filter := compileSemanticFilters(q)
 
 	// ── 3. Clamp limit ─────────────────────────────────────────
 	limit := q.Limit
@@ -146,11 +146,11 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			SparseVectorName:  semanticSparseVectorName,
 			Limit:             limit,
 			MinScore:          semanticMinScore,
-			Source:            source,
-			Category:          category,
-			MediaType:         mediaType,
-			Language:          language,
-			WorkspaceID:       wsID,
+			Source:            filter.Source,
+			Category:          filter.Category,
+			MediaType:         filter.MediaType,
+			Language:          filter.Language,
+			WorkspaceID:       scope.WorkspaceID,
 		})
 	default: // SearchModeANN (or empty string → ANN)
 		results, err = b.vectorStore.Search(ctx, assetsearch.VectorSearchRequest{
@@ -158,11 +158,11 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			VectorName:  semanticDenseVectorName,
 			Limit:       limit,
 			MinScore:    semanticMinScore,
-			Source:      source,
-			Category:    category,
-			MediaType:   mediaType,
-			Language:    language,
-			WorkspaceID: wsID,
+			Source:      filter.Source,
+			Category:    filter.Category,
+			MediaType:   filter.MediaType,
+			Language:    filter.Language,
+			WorkspaceID: scope.WorkspaceID,
 		})
 	}
 	if err != nil {
@@ -199,7 +199,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 
 	// ── 7. SQLite hydration ────────────────────────────────────
-	ws := mediasearch.WorkspaceContext{WorkspaceID: wsID}
+	ws := mediasearch.WorkspaceContext{WorkspaceID: scope.WorkspaceID}
 	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs, mediasearch.SearchableLifecycleStates)
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: hydrate: %w", err)
@@ -248,18 +248,37 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 // ── Filter compilation ────────────────────────────────────────────────
 //
 // compileSemanticFilters is the SINGLE canonical mapping from
-// search.Query to the filter fields consumed by VectorStorePort.
-// Do NOT duplicate switch or mapping logic in multiple files —
-// every ANN and Hybrid path routes through this function.
+// search.Query to the typed filter envelopes consumed by
+// VectorStorePort. Do NOT duplicate switch or mapping logic in
+// multiple files — every ANN and Hybrid path routes through this
+// function.
+//
+// Returns:
+//   - SearchScope: workspace isolation envelope (WorkspaceID from
+//     q.Actor). IsSystem=false — every user-facing call enforces
+//     the workspace must-clause.
+//   - AssetFilter: equality filters (Source, Category, MediaType,
+//     Language) + lifecycle allowlist (ACTIVE only). Empty fields
+//     drop out of the Qdrant filter (no zero-value must-clauses).
 //
 // The Qdrant adapter (infrastructure/qdrant/search_adapter.go)
 // internally calls CompileQdrantFilter with these values.
-func compileSemanticFilters(q search.Query) (workspaceID, source, category, mediaType, language string) {
-	return strings.TrimSpace(q.Actor.WorkspaceID),
-		strings.TrimSpace(q.Filters.Source),
-		strings.TrimSpace(q.Filters.Category),
-		strings.TrimSpace(q.Filters.MediaType),
-		strings.TrimSpace(q.Filters.Language)
+func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearch.AssetFilter) {
+	return assetsearch.SearchScope{
+			WorkspaceID: strings.TrimSpace(q.Actor.WorkspaceID),
+			IsSystem:    false,
+		},
+		assetsearch.AssetFilter{
+			Source:    strings.TrimSpace(q.Filters.Source),
+			Category:  strings.TrimSpace(q.Filters.Category),
+			MediaType: strings.TrimSpace(q.Filters.MediaType),
+			Language:  strings.TrimSpace(q.Filters.Language),
+			// LifecycleState: the Qdrant adapter defaults to
+			// ACTIVE when empty. Setting it here makes
+			// compileSemanticFilters the single source of
+			// truth for ALL filter invariants.
+			LifecycleState: []string{"ACTIVE"},
+		}
 }
 
 // ── Logger safety ────────────────────────────────────────────────────
