@@ -36,3 +36,15 @@ internal/application/assets/providers/stock/adapter.go
 # NOTE: top-level stock/usecase.go (parent package) stays — only the
 # stockpipeline/ subpackage file is on this list.
 internal/application/assets/providers/stock/stockpipeline/usecase.go
+
+# Commit 4 (parallel deletion with run_upload.go): the per-chunk indexing
+# test mocks assetIndex; the file deletes at the same commit.
+internal/application/assets/providers/stock/stockpipeline/run_upload_indexing_test.go
+
+# Commit 4 (parallel deletion): the typed IndexingStatus enum file deletes
+# alongside run_upload.go.
+internal/application/assets/providers/stock/stockpipeline/types_status.go
+
+# Commit 5 (parallel deletion with service.go): the Service.Run entrypoint
+# body deletes when the legacy storage-dispatcher chain is removed.
+internal/application/assets/providers/stock/stockpipeline/run.go
