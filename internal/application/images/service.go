@@ -60,24 +60,24 @@ const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 // DiagnosticsReport is the health report for the images subsystem.
 type DiagnosticsReport struct {
-	OK                        bool                            `json:"ok"`
-	Services                  []string                        `json:"services"`
-	RepoConfigured            bool                            `json:"repo_configured"`
-	DriveConfigured           bool                            `json:"drive_configured"`
-	NvidiaConfigured          bool                            `json:"nvidia_configured"`
-	IngestConfigured          bool                            `json:"ingest_configured"`
-	WikidataWorks             bool                            `json:"wikidata_works"`
-	ImageGenWired             bool                            `json:"image_gen_wired"`
-	ImageGenHealthy           bool                            `json:"image_gen_healthy"`
-	ImageGenCooldownProfiles  int                             `json:"image_gen_cooldown_profiles"`
-	Capabilities              map[Capability]CapabilityStatus `json:"capabilities"`
+	OK                       bool                            `json:"ok"`
+	Services                 []string                        `json:"services"`
+	RepoConfigured           bool                            `json:"repo_configured"`
+	DriveConfigured          bool                            `json:"drive_configured"`
+	NvidiaConfigured         bool                            `json:"nvidia_configured"`
+	IngestConfigured         bool                            `json:"ingest_configured"`
+	WikidataWorks            bool                            `json:"wikidata_works"`
+	ImageGenWired            bool                            `json:"image_gen_wired"`
+	ImageGenHealthy          bool                            `json:"image_gen_healthy"`
+	ImageGenCooldownProfiles int                             `json:"image_gen_cooldown_profiles"`
+	Capabilities             map[Capability]CapabilityStatus `json:"capabilities"`
 }
 
 // SemanticMetadataPayload is the cross-package carrier for video metadata.
 type SemanticMetadataPayload = semantic.Payload
 
-// ErrImageGenNotImplemented is returned when imageGen is not wired.
-var ErrImageGenNotImplemented = fmt.Errorf("image generation via Google Slides API has been removed")
+// ErrImageGenNotImplemented is returned when the Google Slides generator is not wired.
+var ErrImageGenNotImplemented = fmt.Errorf("image generation via Google Slides is not configured")
 
 // ── Dependency bundles ────────────────────────────────────────────────
 
@@ -87,8 +87,8 @@ type ImagesDeps struct {
 	Storage   ImagesStorageDeps
 	GenAI     ImagesGenAIDeps
 	External  ImagesExternalDeps
-	Retrieval *retrieved.RetrievalProviderRegistry // Step 8: optional; default built if nil
-	Generated *generated.GenerationProviderRegistry  // Step 8: optional; default built if nil
+	Retrieval *retrieved.RetrievalProviderRegistry
+	Generated *generated.GenerationProviderRegistry
 }
 
 // ImagesCoreDeps — config + logging + concurrency config.
@@ -99,20 +99,18 @@ type ImagesCoreDeps struct {
 
 // ImagesStorageDeps — repositories + Drive client + media store.
 type ImagesStorageDeps struct {
-	ImageRepo  *assets.ImagesRepository
-	ClipsRepo  *assets.ClipsRepository
-	DriveReader  drive.Reader
-	MediaStore *drive.Store
+	ImageRepo   *assets.ImagesRepository
+	ClipsRepo   *assets.ClipsRepository
+	DriveReader drive.Reader
+	MediaStore  *drive.Store
 
-	// DestResolver (FASE 2D EXPAND, July 2026) is the canonical
-	// destinationKey -> Drive folder ID lookup. May be nil in tests
-	// where the new resolver is not yet exercised; production wiring
-	// in internal/app/build_bundles_core.go::buildImagesService
-	// constructs it from config/image_destinations.yaml at boot.
+	// DestResolver is the canonical destinationKey -> Drive folder ID lookup.
 	DestResolver destinations.DestinationResolver
 }
 
-// ImagesGenAIDeps — AI generation: LLM, metadata, style, image generator.
+// ImagesGenAIDeps — AI generation: LLM, metadata, style and the sole
+// Google Slides image generator. NvidiaCfg is retained temporarily only for
+// legacy diagnostics/config compatibility; it is not a generation provider.
 type ImagesGenAIDeps struct {
 	LLMGen         *ollama.Generator
 	MetaWriter     *semantic.MetadataWriter
@@ -140,10 +138,7 @@ type Service struct {
 	Meta  *MetadataService
 	Diag  *DiagnosticsService
 
-	// Styles is the underlying canonical *generation.StyleRegistry
-	// wired via NewService. Exposed so the GET /api/images/generated/styles
-	// endpoint (Step 10) can list registered styles without going
-	// through the StyleResolver surface.
+	// Styles is the underlying canonical *generation.StyleRegistry.
 	Styles *generation.StyleRegistry
 }
 
@@ -155,16 +150,8 @@ func (s *Service) StylesRegistry() *generation.StyleRegistry {
 	return s.Styles
 }
 
-// RetrievalRegistry exposes the canonical *retrieved.RetrievalProviderRegistry
-// owned by the ImageStorageService sub-service. Used by FASE 7 wiring
-// (composition.BuildDomainBundle) to instantiate routing.ImageSearchResolver
-// without re-constructing the provider list (so the resolver and the
-// store-side fallback chain share the same Wikipedia → SearXNG →
-// DuckDuckGo → Drive order).
-//
-// FASE 7 (July 2026): introduced alongside the routing.ImageSearchResolver
-// composition. Nil-safe when the image service was constructed without a
-// retrieval registry (the per-Server.NewDefaultProviderRegistry fallback).
+// RetrievalRegistry exposes the canonical retrieval registry used only for
+// finding existing web/archive images. It is separate from AI generation.
 func (s *Service) RetrievalRegistry() *retrieved.RetrievalProviderRegistry {
 	if s == nil || s.Store == nil {
 		return nil
@@ -220,16 +207,11 @@ func NewService(deps ImagesDeps) *Service {
 		gaDownloadDir: deps.External.GACfg.DownloadDir,
 		vidsProjectID: deps.External.GACfg.VidsProjectID,
 		meta:          meta,
-		destResolver:  deps.Storage.DestResolver, // FASE 2D EXPAND: wired but not yet called
+		destResolver:  deps.Storage.DestResolver,
 	}
 
-	// 4. Step 8 — Provider registries. Build defaults if caller didn't
-	// inject them. Both registries are nil-tolerant so tests + ad-hoc
-	// wiring can run with partial deps.
-	//
-	// RetrievalRegistry uses the just-built ImageStorageService as its
-	// StorageBridge — that's the only data dependency between the
-	// registry and the parent package.
+	// 4. Retrieval providers remain available for web/archive search; they
+	// are not AI generation backends.
 	retrievalRegistry := deps.Retrieval
 	if retrievalRegistry == nil {
 		retrievalRegistry = retrieved.NewDefaultProviderRegistry(
@@ -238,26 +220,22 @@ func NewService(deps ImagesDeps) *Service {
 	}
 	store.retrievalRegistry = retrievalRegistry
 
-	// GeneratedRegistry uses the parent ImageGenerator (ChromeImageProvider
-	// today) wrapped as a generated.ImageGeneratorPort via
-	// ImageGeneratorAdapter. nil ImageGen keeps GoogleSlidesProvider in
-	// "unwired but registered" mode — flux + nvidia providers remain
-	// stubs.
+	// AI generation has exactly one backend: Google Slides through the
+	// Chrome/Playwright ImageGenerator adapter.
 	generatedRegistry := deps.Generated
 	if generatedRegistry == nil {
 		generatedRegistry = generated.NewDefaultProviderRegistry(
-			log, NewImageGeneratorAdapter(deps.GenAI.ImageGen), deps.GenAI.NvidiaCfg.APIKey,
+			log, NewImageGeneratorAdapter(deps.GenAI.ImageGen),
 		)
 	}
 
-	// 5. GenerationService (depends on ImageStorageService + StyleResolver +
-	//    Step 8 generation registry).
+	// 5. GenerationService.
 	gen := &GenerationService{
-		imageGen:      deps.GenAI.ImageGen,
-		styles:        deps.GenAI.StyleRegistry, // Step 4: StyleResolver for fail-closed style resolution
-		log:           log,
-		storage:       store,
-		registry:      generatedRegistry, // Step 8: routes through GenerationProviderRegistry when non-nil
+		imageGen: deps.GenAI.ImageGen,
+		styles:   deps.GenAI.StyleRegistry,
+		log:      log,
+		storage:  store,
+		registry: generatedRegistry,
 	}
 
 	return &Service{
@@ -293,20 +271,7 @@ func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobT
 	return s.Gen.HandleJob(ctx, j, tools)
 }
 
-// RegisterHandler registers the image-generation job handler with the
-// jobs system.
-//
-// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
-//
-// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
-// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
-// regardless of which handler-specific prefix the future maintainer
-// adds or removes. The handler-specific diagnostic prefix is preserved
-// for operator logs. The error-return signature (refactored in
-// Audit P0 #2 cont. — PR-VALIDATOR-LITERAL-REGISTER, July 2026)
-// closes the silent-success class of "if jobsSvc != nil { log.Info }"
-// that pre-P0 #2 swallowed nil-typed-dispatcher + duplicate-bind
-// failures.
+// RegisterHandler registers the image-generation job handler with the jobs system.
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
@@ -331,8 +296,8 @@ func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, da
 	return s.Store.IngestImage(ctx, slug, style, genID, data, filename, sourceURL, description, tags, skipDrive, skipMetadata)
 }
 
-func (s *Service) UploadToStyleDrive(ctx context.Context, asset *asset.ImageAsset, style string) (string, string, error) {
-	return s.Store.UploadToStyleDrive(ctx, asset, style)
+func (s *Service) UploadToStyleDrive(ctx context.Context, imageAsset *asset.ImageAsset, style string) (string, string, error) {
+	return s.Store.UploadToStyleDrive(ctx, imageAsset, style)
 }
 
 func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description, source, style string, durationSec int, existingDriveFileID, existingDriveLink string) error {
@@ -349,8 +314,8 @@ func (s *Service) FormatDriveLink(id string) string {
 
 // ── Delegate methods: Metadata ────────────────────────────────────────
 
-func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*asset.ImageAsset) {
-	s.Meta.UploadBatchMetadata(ctx, genID, slug, style, prompt, generator, assets)
+func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, imageAssets []*asset.ImageAsset) {
+	s.Meta.UploadBatchMetadata(ctx, genID, slug, style, prompt, generator, imageAssets)
 }
 
 // ── Delegate methods: Diagnostics ─────────────────────────────────────
