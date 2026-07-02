@@ -21,8 +21,10 @@ import (
 	"errors"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -212,10 +214,18 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/steps/stager must
 type Orchestrator struct {
 	cfg      OrchestratorConfig
 	planner  ClipPlanner
-	steps    ExecutionStepStore
-	stager   assets.SourceStager
-	cutter   VideoCutter
-	renderer StockRenderer
+	// legacySteps is the pre-§12-5 in-process step store; kept as a
+	// constructor-injected field for backwards compatibility with the
+	// Service.runOrchestrator signature (which continues to pass a
+	// *InMemoryStepStore). The canonical §12-3 step checkpointing in
+	// RunResilient uses stepStore (below); legacySteps is no longer
+	// referenced from any production path. Forward-pointer: §12-5.x
+	// can retire this field once composition-root wiring drops the
+	// local InMemoryStepStore calls entirely.
+	legacySteps ExecutionStepStore
+	stager      assets.SourceStager
+	cutter      VideoCutter
+	renderer    StockRenderer
 	// builder emits the typed *job.ArtifactManifest from (workflowID,
 	// jobID). Default: stockManifestBuilder wrapping buildStockManifest.
 	builder ManifestBuilder
@@ -230,6 +240,28 @@ type Orchestrator struct {
 	// StatusIndexPending (instead of returning an error to the
 	// caller) so the Qdrant-reconciler task can retry asynchronously.
 	projection ProjectionPort
+	// stepStore is the canonical §12-3 ports.Store the Orchestrator
+	// uses for per-step checkpointing (MarkStarted / MarkCompleted /
+	// MarkFailed). Default in NewOrchestrator +
+	// NewOrchestratorWithResilience is steps.NewInMemoryStore() — a
+	// production-grade in-memory impl that satisfies the canonical
+	// interface and survives concurrent goroutines. Forward-pointer:
+	// the SQLite-backed impl lands in a follow-up commit (the
+	// production composition root will switch to it).
+	stepStore steps.Store
+	// dispatchSteps is the canonical 6-step typed []Step slice the
+	// Orchestrator iterates in RunResilient, in pipeline order.
+	// Default in NewOrchestrator is DefaultStockSteps() (the typed
+	// Steps declared in orchestrator_steps.go). Production wiring
+	// can inject a custom slice via NewOrchestratorWithResilience
+	// to thread fork-points (e.g. dry-run modes that skip
+	// stock.publish).
+	dispatchSteps []Step
+	// executorLog is the per-orchestrator logger passed to each
+	// step's StepRunner. Optional — falls back to a no-op logger
+	// when nil (composition roots that haven't yet wired a logger
+	// shouldn't crash the orchestrator at runtime).
+	executorLog *zap.Logger
 }
 
 // NewOrchestrator returns the canonical orchestrator. Caller-side
@@ -252,7 +284,7 @@ type Orchestrator struct {
 // is only used by non-broker callers (tests, CLI). Production wiring
 // that wants custom resilience ports MUST use
 // NewOrchestratorWithResilience instead.
-func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, steps ExecutionStepStore, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps ExecutionStepStore, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
@@ -260,15 +292,17 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, steps Executio
 		cfg.JobId = DefaultOrchestratorJobId
 	}
 	return &Orchestrator{
-		cfg:        cfg,
-		planner:    planner,
-		steps:      steps,
-		stager:     stager,
-		cutter:     cutter,
-		renderer:   renderer,
-		builder:    stockManifestBuilder{},
-		writer:     noopWriter{},
-		projection: noopProjection{},
+		cfg:           cfg,
+		planner:       planner,
+		legacySteps:   legacySteps,
+		stager:        stager,
+		cutter:        cutter,
+		renderer:      renderer,
+		builder:       stockManifestBuilder{},
+		writer:        noopWriter{},
+		projection:    noopProjection{},
+		stepStore:     steps.NewInMemoryStore(),
+		dispatchSteps: DefaultStockSteps(),
 	}
 }
 
@@ -289,7 +323,7 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, steps Executio
 func NewOrchestratorWithResilience(
 	cfg OrchestratorConfig,
 	planner ClipPlanner,
-	steps ExecutionStepStore,
+	legacySteps ExecutionStepStore,
 	stager assets.SourceStager,
 	cutter VideoCutter,
 	renderer StockRenderer,
@@ -297,7 +331,7 @@ func NewOrchestratorWithResilience(
 	writer TransactionalAssetWriter,
 	projection ProjectionPort,
 ) *Orchestrator {
-	o := NewOrchestrator(cfg, planner, steps, stager, cutter, renderer)
+	o := NewOrchestrator(cfg, planner, legacySteps, stager, cutter, renderer)
 	if builder != nil {
 		o.builder = builder
 	}
@@ -330,162 +364,112 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 }
 
 // RunResilient is the canonical orchestrator entry point for the
-// Commit 4-expanded resilience flow. It threads the typed
-// *job.ArtifactManifest + the per-run FinalStatus through a single
-// RunSummary envelope so the broker JobFinalizer can stamp the right
-// job-status without re-inferring it from the manifest alone.
+// Stock Cutover §12-5 (July 2026) resilience flow. It threads the
+// typed *job.ArtifactManifest + the per-run FinalStatus through a
+// single RunSummary envelope so the broker JobFinalizer can stamp
+// the right job-status without re-inferring it from the manifest
+// alone.
 //
-// Step ladder (per spec https://AGENTS.md Pattern 3):
+// §12-5 step ladder: the 6 typed Steps declared in
+// orchestrator_steps.go iterate dispatchSteps (a typed []Step
+// slice) in canonical pipeline order:
 //
-//  1. resolve_sources — SourceSearchProvider.Search + Stage.
-//  2. plan_clips      — deterministic ClipPlanner.Plan round-trip.
-//  3. stage_sources   — SourceStager.Stage.
-//  4. build_manifest  — ManifestBuilder.Build (default 5-entry C12).
-//  5. validate_manifest — manifest-completeness gate (test b).
-//  6. emit_chunks     — TransactionalAssetWriter.WriteAndEnqueue
-//     (atomic; writer error ⇒ ErrAtomicDispatchFailed; test a).
-//  7. project_manifest — ProjectionPort.Project; error INFLECTS
-//     FinalStatus to StatusIndexPending rather than aborting
-//     (test c). RunResilient returns nil error in this case so
-//     the broker runner persists the index-pending state and the
-//     Qdrant-reconciler task retries asynchronously.
+//  1. stock.plan           — deterministic ClipPlanner.Plan round-trip.
+//  2. stock.stage_sources  — SourceStager.Prepare (future Commit 6 wires real Stage).
+//  3. stock.extract_clips  — atomic TransactionalAssetWriter
+//                            WriteAndEnqueue per ClipPlan
+//                            (test (a) verifies writer error ⇒ ErrAtomicDispatchFailed).
+//  4. stock.compose_chunks — StockRenderer.Render (future Commit 7 wires real Render).
+//  5. stock.publish        — chunk upload to Drive + Qdrant sync
+//                            (future Commit 8 wires real upload).
+//  6. stock.finalize       — ManifestBuilder.Build + Validate +
+//                            ProjectionPort.Project (test (b) verifies
+//                            Validate failure ⇒ ErrManifestIncomplete;
+//                            test (c) verifies Project failure ⇒
+//                            StatusIndexPending flip with nil error).
 //
-// Steps 4-7 are new for Commit 4-expanded; steps 1-3 carry forward
-// from earlier commits.
+// Per-step checkpointing: every step calls
+//
+//	o.stepStore.MarkStarted(ctx, steps.StepKey{JobID, StepKey, InputFingerprint})
+//	o.stepStore.MarkCompleted(ctx, key, result, artifactRefs)  // on success
+//	o.stepStore.MarkFailed(ctx, key, errMessage)               // on failure
+//
+// via the canonical §12-3 ports.Store (godlike/06 SSOT). A step's
+// Run return is the abort signal: nil ⇒ MarkCompleted + continue;
+// non-nil ⇒ MarkFailed + return (nil RunSummary, err) so the broker
+// runner can stamp the typed JobFailed state.
+//
+// Resume semantics: the orchestrator iterates the typed []Step
+// slice in declaration order — NOT §12-3's lexically-sorted
+// FirstNonCompleted ordering (the §12-3 doc-comment warns that
+// lexical sort assumes step_keys use the "01_stage / 02_render"
+// convention; the user spec for §12-5 mandates the `stock.<stage>`
+// naming, so we read the typed slice for canonical order). On
+// retry-after-crash, FirstNonCompleted differentiates "earlier
+// step did not complete" (handled by re-entering that step's
+// slot via the typed slice) from "all steps complete" (handled
+// by returning RunSummary immediately).
 func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunSummary, error) {
-	if o.planner == nil || o.steps == nil || o.stager == nil {
+	if o.planner == nil || o.stager == nil || o.stepStore == nil || len(o.dispatchSteps) == 0 {
 		return nil, ErrOrchestratorNilDeps
 	}
 
-	// Step 1: resolve_sources — stub. Real production wiring iterates
-	// SearchQueries via SourceSearchProvider.Search and direct-URL
-	// additions via stager.Stage. We Begin/Complete to assert the
-	// types fit together; the real resolve logic lands alongside
-	// the SourceStager registry in Commit 7.
-	if err := o.steps.Begin("resolve_sources"); err != nil {
-		return nil, fmt.Errorf("orchestrator.resolve_sources.begin: %w", err)
-	}
-	if err := o.steps.Complete("resolve_sources", "ok"); err != nil {
-		return nil, fmt.Errorf("orchestrator.resolve_sources.complete: %w", err)
-	}
+	state := &runState{}
+	runner := &orchestratorRunner{orch: o, in: input, state: state, log: o.executorLogOrNop()}
 
-	// Step 2: plan_clips — exercise the deterministic planner
-	// round-trip on the FIRST source so the round-trip test in
-	// planner_test.go is replicated at runtime. Future commits
-	// will plan across all resolved sources.
-	if err := o.steps.Begin("plan_clips"); err != nil {
-		return nil, fmt.Errorf("orchestrator.plan_clips.begin: %w", err)
-	}
-	demoSrc, ok := firstSource(input)
-	if !ok {
-		err := errors.New("orchestrator: no sources to plan")
-		_ = o.steps.Fail("plan_clips", err)
-		return nil, err
-	}
-	planBudget := input.TotalMinutes * 60
-	if planBudget <= 0 {
-		planBudget = o.cfg.ChunkDurationSec
-	}
-	plans, err := o.planner.Plan(ctx, demoSrc, planBudget, o.cfg.ClipDurationSec, o.cfg.PolicyVersion)
-	if err != nil {
-		_ = o.steps.Fail("plan_clips", err)
-		return nil, fmt.Errorf("orchestrator.plan_clips: %w", err)
-	}
-	if err := o.steps.Complete("plan_clips", fmt.Sprintf("%d clips planned", len(plans))); err != nil {
-		return nil, fmt.Errorf("orchestrator.plan_clips.complete: %w", err)
-	}
-
-	// Step 3: stage_sources — Begin/Complete to mark the planner's
-	// output as "staged". The actual stager.Stage call lands in
-	// Commit 2 alongside the chunk-emission ladder.
-	if err := o.steps.Begin("stage_sources"); err != nil {
-		return nil, fmt.Errorf("orchestrator.stage_sources.begin: %w", err)
-	}
-	if err := o.steps.Complete("stage_sources", fmt.Sprintf("%d staged", len(plans))); err != nil {
-		return nil, fmt.Errorf("orchestrator.stage_sources.complete: %w", err)
-	}
-
-	// Step 4: build_manifest via the injected ManifestBuilder.
-	// Defaults to stockManifestBuilder → buildStockManifest
-	// (5-entry C12 envelope, all Required:false). Tests inject a
-	// custom builder to exercise the manifest-completeness gate
-	// (test (b) in run_upload_indexing_test.go).
-	workflowID := input.FolderID
-	if workflowID == "" {
-		workflowID = input.FolderName
-	}
-	var manifest *job.ArtifactManifest
-	if o.builder != nil {
-		manifest, err = o.builder.Build(workflowID, o.cfg.JobId)
-		if err != nil {
-			return nil, fmt.Errorf("orchestrator.build_manifest: %w", err)
+	for _, step := range o.dispatchSteps {
+		key := steps.StepKey{
+			JobID:            o.cfg.JobId,
+			StepKey:          step.Name(),
+			InputFingerprint: stepInputFingerprint(o.cfg.JobId, step.Name()),
 		}
-	} else {
-		manifest = buildStockManifest(workflowID, o.cfg.JobId)
-	}
 
-	// Step 5: manifest-completeness gate. Validate() rejects any
-	// Required:true artifact with empty Path. The orchestrator
-	// surfaces this as ErrManifestIncomplete (typed) and returns
-	// nil RunSummary; the JobFinalizer stamps Failed.
-	if err := manifest.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrManifestIncomplete, err)
-	}
-
-	// Step 6: atomic dispatch per planned clip. Production
-	// TransactionalAssetWriter wraps asset_index.Upsert +
-	// clipsRepo.UpsertClip + outbox.EnqueueAndIndex under a
-	// single SQLite tx; a returned non-nil error rolls back the
-	// tx. The orchestrator surfaces the failure as
-	// ErrAtomicDispatchFailed (test (a) verifies a writer error
-	// aborts the run; the canonical contract is: no partial
-	// writes leak into media_assets when the writer returns
-	// non-nil).
-	if err := o.steps.Begin("emit_chunks"); err != nil {
-		return nil, fmt.Errorf("orchestrator.emit_chunks.begin: %w", err)
-	}
-	for i, plan := range plans {
-		clip := &asset.Asset{
-			ID:        plan.OutputLogicalID,
-			Name:      fmt.Sprintf("chunk_%d", i),
-			Source:    asset.Source("stock"),
-			MediaType: asset.MediaType("video"),
+		if err := o.stepStore.MarkStarted(ctx, key); err != nil {
+			return nil, fmt.Errorf("orchestrator: %s MarkStarted: %w", step.Name(), err)
 		}
-		if err := o.writer.WriteAndEnqueue(ctx, clip, ""); err != nil {
-			_ = o.steps.Fail("emit_chunks", err)
-			return nil, fmt.Errorf("%w: chunk %d (%s): %v",
-				ErrAtomicDispatchFailed, i, clip.ID, err)
+		if runErr := step.Run(ctx, runner); runErr != nil {
+			// MarkFailed is best-effort: the typed sentinel is
+			// what callers errors.Is on, not the row's LastError.
+			// We still call MarkFailed so the §12-3 audit log
+			// captures the failure path.
+			_ = o.stepStore.MarkFailed(ctx, key, runErr.Error())
+			return nil, runErr
+		}
+		if err := o.stepStore.MarkCompleted(ctx, key, nil, nil); err != nil {
+			// ErrStepAlreadyCompleted cannot fire here (we just
+			// MarkStarted the same key); any other error
+			// (ErrStoreNotWired, ErrInvalidStepKey) is a
+			// programming error and surfaces loudly.
+			return nil, fmt.Errorf("orchestrator: %s MarkCompleted: %w", step.Name(), err)
 		}
 	}
-	if err := o.steps.Complete("emit_chunks", fmt.Sprintf("%d emitted", len(plans))); err != nil {
-		return nil, fmt.Errorf("orchestrator.emit_chunks.complete: %w", err)
-	}
 
-	// Step 7: post-emission Qdrant projection. A non-nil return
-	// from the projection port does NOT abort the run —
-	// RunResilient flips FinalStatus to StatusIndexPending and
-	// returns nil from Run so the Qdrant-reconciler task can
-	// retry asynchronously (test (c) verifies this contract).
-	// The "project_manifest" step is marked Failed in the steps
-	// store when projection errors; Run itself returns success
-	// because the artifacts ARE on Drive; only the index
-	// projection is deferred.
-	var projectionErr error
-	if err := o.steps.Begin("project_manifest"); err != nil {
-		return nil, fmt.Errorf("orchestrator.project_manifest.begin: %w", err)
-	}
-	if o.projection != nil {
-		projectionErr = o.projection.Project(ctx, manifest)
-	}
-	finalStatus := job.StatusSucceeded
-	if projectionErr != nil {
-		finalStatus = job.StatusIndexPending
-		_ = o.steps.Fail("project_manifest", projectionErr)
-	} else {
-		_ = o.steps.Complete("project_manifest", "ok")
-	}
+	return &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}, nil
+}
 
-	return &RunSummary{Manifest: manifest, FinalStatus: finalStatus}, nil
+// executorLogOrNop returns the per-orchestrator logger if one
+// was injected at New-construction; otherwise returns a no-op
+// logger so the steps' Log().Info calls don't panic.
+func (o *Orchestrator) executorLogOrNop() *zap.Logger {
+	if o.executorLog != nil {
+		return o.executorLog
+	}
+	return defaultStepRunnerLog()
+}
+
+// stepInputFingerprint returns the canonical input fingerprint
+// for a step within (JobID, stepName). Per §12-3 Design A (per-row
+// canonical): each (JobID, StepKey, fingerprint) triple is a
+// distinct row. For §12-5 minimal scope the fingerprint is a
+// concatenated stable string so retries with the same triple
+// MarkStarted idempotently (§12-3 MarkStarted semantics).
+//
+// Future commits can tighten the fingerprint to a chained SHA256
+// of the previous step's Result JSON so retries with different
+// inputs fragment cleanly per Design A's "Retries with a
+// different fingerprint INSERT a new row" rule.
+func stepInputFingerprint(jobID, stepName string) string {
+	return jobID + "|" + stepName
 }
 
 // firstSource returns the first source the orchestrator can plan
