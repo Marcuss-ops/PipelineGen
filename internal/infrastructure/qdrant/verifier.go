@@ -21,7 +21,7 @@
 //     collection larger than the cap cannot complete its scan
 //     and the operator MUST raise the cap on the production
 //     deployment — silently truncating was the original hazard.
-//  5. pt.ID MUST equal AssetIDToQdrantPointID(payload["asset_id"])
+//  5. pt.ID MUST equal schema.AssetIDToQdrantPointID(payload["asset_id"])
 //     EXACTLY. The previous uuid.Parse(pt.ID) accepted ANY
 //     UUID-form string, which silently lost the reverse-mapping
 //     when the canonical asset_id was different from the
@@ -48,15 +48,17 @@
 // P2 SPLIT-VERIFY-REINDEX (July 2026): VerifyReindex split into
 // 7 gate functions so each helper has a single responsibility
 // and the orchestrator stays ~30 lines. Gate functions:
-//   verifyPointCountParity, verifyScrollAndCanonical,
-//   verifyPerChannelVersions (per-point), computeMissingOrphan,
-//   checkDeadLetters, runGoldenQuerySmoke, runFilterSmoke.
+//
+//	verifyPointCountParity, verifyScrollAndCanonical,
+//	verifyPerChannelVersions (per-point), computeMissingOrphan,
+//	checkDeadLetters, runGoldenQuerySmoke, runFilterSmoke.
 package qdrant
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"go.uber.org/zap"
 )
 
@@ -225,7 +227,7 @@ func (v *ReindexVerifier) verifyPointCountParity(ctx context.Context, target str
 // verifyScrollAndCanonical scrolls every point in the target collection
 // and performs three per-point checks inline:
 //   - Payload minimum validation (asset_id, name, source).
-//   - Canonical pt.ID == AssetIDToQdrantPointID(asset_id).
+//   - Canonical pt.ID == schema.AssetIDToQdrantPointID(asset_id).
 //   - Per-channel embedding_version_<channel> parity (delegates to
 //     verifyPerChannelVersions).
 //
@@ -262,7 +264,7 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 
 		// Gate 3b (PR 12): strict canonical pt.ID.
 		if assetIDOK && assetID != "" {
-			canonical := AssetIDToQdrantPointID(assetID)
+			canonical := schema.AssetIDToQdrantPointID(assetID)
 			if pt.ID != canonical {
 				report.NonCanonicalPointCount++
 				if len(report.NonCanonicalPointIDs) < 20 {
@@ -272,7 +274,7 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 				}
 				if len(report.Errors) < 20 {
 					report.Errors = append(report.Errors,
-						fmt.Sprintf("PR 12 non-canonical pt.ID: pt.ID=%q, AssetIDToQdrantPointID(%q)=%q (point #%d on page %d)",
+						fmt.Sprintf("PR 12 non-canonical pt.ID: pt.ID=%q, schema.AssetIDToQdrantPointID(%q)=%q (point #%d on page %d)",
 							pt.ID, assetID, canonical, idx, iteration))
 				}
 			}

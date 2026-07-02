@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 // PayloadMapper converts internal AssetData to Qdrant Point representations.
@@ -440,7 +441,7 @@ func (m *PayloadMapper) AssetToIndexDocument(asset *AssetData, schema *IndexSche
 // model name; SearchText comes from the document. Empty SearchText
 // drops the channel (mirrors the existing AssetToPoint behavior for
 // backward compatibility with the PR 2 BM25 contract).
-func (m *PayloadMapper) IndexDocumentToPoint(doc *IndexDocument, schema *IndexSchema) (*Point, error) {
+func (m *PayloadMapper) IndexDocumentToPoint(doc *IndexDocument, idxSchema *IndexSchema) (*Point, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("index document is nil")
 	}
@@ -475,8 +476,8 @@ func (m *PayloadMapper) IndexDocumentToPoint(doc *IndexDocument, schema *IndexSc
 		}
 	}
 	return &Point{
-		ID:      AssetIDToQdrantPointID(doc.AssetID),
+		ID:      schema.AssetIDToQdrantPointID(doc.AssetID),
 		Vectors: vectors,
-		Payload: BuildPayloadFromDocument(doc, schema),
+		Payload: BuildPayloadFromDocument(doc, idxSchema),
 	}, nil
 }

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -23,7 +24,7 @@ import (
 // PR 12 adds the symmetric over-count block from the user's spec.
 func TestReindexVerifier_PointCountStrict_UnderCountBlocks(t *testing.T) {
 	t.Parallel()
-	canonicalID := AssetIDToQdrantPointID("asset-1")
+	canonicalID := schema.AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
 		"payload": {
@@ -63,7 +64,7 @@ func TestReindexVerifier_PointCountStrict_UnderCountBlocks(t *testing.T) {
 // trip through any SQLite row).
 func TestReindexVerifier_PointCountStrict_OverCountBlocks(t *testing.T) {
 	t.Parallel()
-	canonicalID := AssetIDToQdrantPointID("asset-1")
+	canonicalID := schema.AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
 		"payload": {
@@ -161,12 +162,12 @@ func TestReindexVerifier_MaxPagesCapBlocking(t *testing.T) {
 
 // TestReindexVerifier_NonCanonicalPointIDBlocking — a point whose
 // pt.ID is a generic UUID (parseable but NOT equal to
-// AssetIDToQdrantPointID(asset_id)) is BLOCKING. The previous
+// schema.AssetIDToQdrantPointID(asset_id)) is BLOCKING. The previous
 // uuid.Parse(pt.ID) accept-anything-UUID mask is gone.
 func TestReindexVerifier_NonCanonicalPointIDBlocking(t *testing.T) {
 	t.Parallel()
 	const nonCanonicalUUID = "00000000-0000-0000-0000-000000000001"
-	canonical := AssetIDToQdrantPointID("asset-1")
+	canonical := schema.AssetIDToQdrantPointID("asset-1")
 	if nonCanonicalUUID == canonical {
 		t.Fatalf("test setup invariant: non-canonical UUID must differ from canonical")
 	}
@@ -253,7 +254,7 @@ func TestReindexVerifier_PerChannelCheckEveryPage_SampleRemoved(t *testing.T) {
 // payload issues/version mismatches/non-canonical point IDs.
 func TestReindexVerifier_PR12_HappyPath_AllGatesGreen(t *testing.T) {
 	t.Parallel()
-	canonicalID := AssetIDToQdrantPointID("asset-1")
+	canonicalID := schema.AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
 		"payload": {
@@ -293,7 +294,7 @@ func TestReindexVerifier_PR12_HappyPath_AllGatesGreen(t *testing.T) {
 // Used by PR 12 tests that need a happy-path point without per-test
 // fmt.Sprintf boilerplate.
 func canonicalPointPayload(assetID string) string {
-	canonicalID := AssetIDToQdrantPointID(assetID)
+	canonicalID := schema.AssetIDToQdrantPointID(assetID)
 	return fmt.Sprintf(`{
 		"id": %q,
 		"payload": {
@@ -388,7 +389,7 @@ func mockQdrantForVerifierWithHooks(t *testing.T, hooks mockQdrantHooks) *httpte
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
-					"points":      []interface{}{pt},
+					"points":           []interface{}{pt},
 					"next_page_offset": nextOffset,
 				},
 			})
