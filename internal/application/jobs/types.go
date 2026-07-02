@@ -67,6 +67,24 @@ type Dispatcher struct {
 	mu       sync.RWMutex
 	handlers map[string]HandlerFunc
 	frozen   bool
+
+	// registry + enqueuer are the P0 Commit 4 (July 2026) additions
+	// for Dispatcher.Enqueue. They live on Dispatcher (not a separate
+	// EnqueueService type) so the typed gateway is co-located with the
+	// handler dispatcher surface. Both fields are unexported; access
+	// via the fluent builders (WithRegistry + SetEnqueuer) in dispatcher.go.
+	//
+	// registry holds the canonical frozen CompiledJobRegistry (P0 Commit 3)
+	// for type→definition lookups. Enqueue reads Definition(jobType) to
+	// find the canonical codec for payload encoding.
+	//
+	// enqueuer holds the typed EnqueuePort that Enqueue delegates to.
+	// *Service satisfies EnqueuePort (Service.Enqueue is the canonical
+	// row-create method). The composition root wires the enqueuer
+	// AFTER constructing the *Service — see dispatcher.go for the
+	// late-binding rationale (cycle-break between dispatcher↔service).
+	registry job.CompiledJobRegistry
+	enqueuer EnqueuePort
 }
 
 func NewDispatcher() *Dispatcher {
