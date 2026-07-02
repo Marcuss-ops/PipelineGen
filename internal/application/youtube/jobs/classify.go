@@ -23,9 +23,9 @@ package jobs
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // ErrExtractionTerminal is the sentinel for non-retryable extraction
@@ -101,7 +101,7 @@ func ClassifyExtractionResult(resp *youtubetypes.ExtractResponse) error {
 		if item.Status != "failed" || item.Error == "" {
 			continue
 		}
-		if isRetryableItemError(item.Error) {
+		if retry.IsTransientString(item.Error) {
 			hasRetryable = true
 		}
 	}
@@ -111,38 +111,3 @@ func ClassifyExtractionResult(resp *youtubetypes.ExtractResponse) error {
 	return ErrExtractionTerminal
 }
 
-// isRetryableItemError applies the canonical retryable-error substring
-// taxonomy to a single item's Error string. The taxonomy is:
-//
-//   - Network / IO: timeout, connection refused/reset, EOF
-//   - ytdlp HTTP transient: 429, 503, 502, 504, "http error 5"
-//   - Drive transient: rate limit, quota exceeded, temporarily unavailable
-//
-// Everything else (invalid URL, bad timestamp, FFmpeg corrupted input,
-// Drive 404/permanently gone, etc.) is treated as terminal.
-func isRetryableItemError(errStr string) bool {
-	lower := strings.ToLower(errStr)
-	for _, s := range retryableItemErrorSubstrings {
-		if strings.Contains(lower, s) {
-			return true
-		}
-	}
-	return false
-}
-
-// retryableItemErrorSubstrings is the canonical list. Keep this list in
-// sync with isTransientExtractionError at the use case level.
-var retryableItemErrorSubstrings = []string{
-	"timeout",
-	"connection refused",
-	"connection reset",
-	"eof",
-	"429",
-	"503",
-	"502",
-	"504",
-	"http error 5",
-	"rate limit",
-	"quota exceeded",
-	"temporarily unavailable",
-}

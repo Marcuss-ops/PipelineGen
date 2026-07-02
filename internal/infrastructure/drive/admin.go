@@ -16,7 +16,7 @@
 // non-recoverable lookup error DOES NOT fall through to Create.
 //
 // DRY (godlike/06 §Data and Configuration Ownership): folderLookupFunc,
-// folderLookupRetry* constants, firstFolderID, and isRetryableDriveErr
+// folderLookupRetry* constants, firstFolderID, and retry.IsTransient
 // already live in folder_manager.go; admin.go reuses them verbatim —
 // no parallel types, no shared-with-different-name constants, no second
 // isRetryable predicate that would drift over time. The two narrow
@@ -127,7 +127,7 @@ func newAdminDefaultLookup(svc *driveapi.Service, log *zap.Logger) folderLookupF
 			MaxBackoff:     folderLookupMaxBackoff,
 			BackoffFactor:  2.0,
 			JitterFraction: folderLookupJitterFraction,
-			IsRetryable:    isRetryableDriveErr,
+			IsRetryable:    retry.IsTransient,
 			OnRetry: func(attempt int, err error) {
 				if log != nil {
 					log.Warn("transient drive list error, retrying (P0.4 admin scope)",

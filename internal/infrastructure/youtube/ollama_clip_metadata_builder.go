@@ -155,7 +155,7 @@ func (b *OllamaClipMetadataBuilder) Build(
 		MaxBackoff:     5 * time.Second,
 		BackoffFactor:  2.0,
 		JitterFraction: 0.2,
-		IsRetryable:    isTransientBuilderError,
+		IsRetryable:    retry.IsTransient,
 	})
 	if err != nil {
 		b.log.Warn("OllamaClipMetadataBuilder.Build: ollama call failed; using deterministic fallback",
@@ -328,29 +328,6 @@ func (b *OllamaClipMetadataBuilder) parseResponse(response string) (ollamaMetada
 	return out, nil
 }
 
-// isTransientBuilderError is the canonical retry predicate
-// for the Ollama call. Substring-match on the canonical
-// transient taxonomy (same list the YouTube pipeline uses
-// elsewhere) — the alternative (errors.As on a typed
-// client error) requires the Ollama client to expose one,
-// which the current ollamaclient.Client does not.
-func isTransientBuilderError(err error) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Error())
-	for _, s := range []string{
-		"timeout", "connection refused", "connection reset", "eof",
-		"429", "503", "502", "504",
-		"rate limit", "quota exceeded",
-		"temporarily unavailable",
-	} {
-		if strings.Contains(lower, s) {
-			return true
-		}
-	}
-	return false
-}
 
 // countWordsForBuilder delegates to the metadata package's
 // exported CountWords so the word-count definition is

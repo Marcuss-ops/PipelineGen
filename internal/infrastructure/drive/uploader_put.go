@@ -126,7 +126,7 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	}, retry.Options{
 		MaxAttempts:    3,
 		InitialBackoff: 2 * time.Second,
-		IsRetryable:    isRetryableDriveErr,
+		IsRetryable:    retry.IsTransient,
 		OnRetry: func(attempt int, err error) {
 			u.Log.Warn("transient drive put error, retrying",
 				zap.String("filename", req.Filename),
