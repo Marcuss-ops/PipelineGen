@@ -42,6 +42,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	"go.uber.org/zap"
 )
 
@@ -167,7 +168,7 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 	)
 
 	// ── Compute idempotency SourceHash (FASE 10) ────────────────────
-	sourceHash := ComputeSourceHash("google-slides", req.Prompt, req.Style, req.Width, req.Height, req.Model)
+	sourceHash := ComputeSourceHash("google-slides", req.Prompt, req.Style, req.Width, req.Height, generated.CanonicalGoogleSlidesModel)
 
 	return &GeneratedImage{
 		Data:       data,

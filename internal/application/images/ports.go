@@ -38,10 +38,6 @@ type GenerateImageRequest struct {
 	Width  int `json:"width,omitempty"`
 	Height int `json:"height,omitempty"`
 
-	// Model is the AI model to use (e.g. "flux-1-dev").
-	// Empty means use the provider default.
-	Model string `json:"model,omitempty"`
-
 	// Tags are metadata labels to attach to the generated asset.
 	Tags []string `json:"tags,omitempty"`
 

@@ -40,7 +40,6 @@ type ResolvedGenerationRequest struct {
 	StyleID        string   `json:"style_id"`
 	StyleVersion   int      `json:"style_version,omitempty"`
 	Provider       string   `json:"provider,omitempty"`
-	Model          string   `json:"model,omitempty"`
 	Width          int      `json:"width,omitempty"`
 	Height         int      `json:"height,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
@@ -51,7 +50,6 @@ type ResolvedGenerationRequest struct {
 type GenerateCommand struct {
 	Prompt   string
 	Provider string
-	Model    string
 	Width    int
 	Height   int
 	Tags     []string
@@ -107,7 +105,6 @@ func (*promptComposerImpl) Compose(ctx context.Context, cmd GenerateCommand, sty
 		StyleID:        style.ID,
 		StyleVersion:   style.Version,
 		Provider:       cmd.Provider,
-		Model:          cmd.Model,
 		Width:          fallbackDim(cmd.Width, style.Width),
 		Height:         fallbackDim(cmd.Height, style.Height),
 		Tags:           cmd.Tags,

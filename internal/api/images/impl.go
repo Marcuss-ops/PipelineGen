@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -65,7 +66,6 @@ type UploadRequest struct {
 // GenerateImageRequest is the request type for POST /api/images/generate.
 type GenerateImageRequest struct {
 	Prompt    string   `json:"prompt" binding:"required"`
-	Model     string   `json:"model"`
 	Width     int      `json:"width"`
 	Height    int      `json:"height"`
 	Style     string   `json:"style" example:"medievale"`
@@ -93,8 +93,6 @@ type GenerateBatchItem struct {
 	// Width and Height are the desired output dimensions (default 1920x1080).
 	Width  int `json:"width,omitempty"`
 	Height int `json:"height,omitempty"`
-	// Model is the AI model override (empty = provider default).
-	Model string `json:"model,omitempty"`
 	// Tags are metadata labels to attach to the generated asset.
 	Tags []string `json:"tags,omitempty"`
 }
@@ -197,7 +195,7 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		req.Tags,
 		req.Width,
 		req.Height,
-		req.Model,
+		generated.CanonicalGoogleSlidesModel,
 		false, // skipDrive = false
 		req.Account,
 		req.ProjectID,
@@ -264,7 +262,6 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 			"style":    item.Style,
 			"width":    item.Width,
 			"height":   item.Height,
-			"model":    item.Model,
 			"tags":     item.Tags,
 		}
 
@@ -316,7 +313,6 @@ type RemoteWebhookJobJSON struct {
 	Status           string   `json:"status"`
 	Prompt           string   `json:"prompt"`
 	ProjectID        string   `json:"project_id"`
-	Model            string   `json:"model,omitempty"`
 	Error            string   `json:"error,omitempty"`
 	DownloadedImages []string `json:"downloaded_images,omitempty"`
 }

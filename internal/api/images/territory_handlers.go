@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -146,7 +147,6 @@ func (h *ImagesHandler) GeneratedSearch(c *gin.Context) {
 // to emphasise territory separation.
 type GeneratedGenerateRequest struct {
 	Prompt    string   `json:"prompt" binding:"required"`
-	Model     string   `json:"model"`
 	Width     int      `json:"width"`
 	Height    int      `json:"height"`
 	Style     string   `json:"style" example:"medievale"`
@@ -176,7 +176,7 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		req.Tags,
 		req.Width,
 		req.Height,
-		req.Model,
+		generated.CanonicalGoogleSlidesModel,
 		false, // skipDrive = false
 		req.Account,
 		req.ProjectID,

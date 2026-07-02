@@ -149,7 +149,6 @@ func (g *GenerationService) GenerateSmartImageWithAccount(
 		Style:          style,
 		Width:          finalWidth,
 		Height:         finalHeight,
-		Model:          model,
 		Tags:           tags,
 	})
 	if err != nil {
@@ -171,7 +170,6 @@ func (g *GenerationService) generateThroughRegistry(ctx context.Context, req Gen
 			Style:          req.Style,
 			Width:          req.Width,
 			Height:         req.Height,
-			Model:          req.Model,
 			Tags:           req.Tags,
 			NegativePrompt: req.NegativePrompt,
 			OutputPath:     req.OutputPath,
@@ -286,7 +284,6 @@ type imageGeneratePayload struct {
 	Style    string   `json:"style,omitempty"`
 	Width    int      `json:"width"`
 	Height   int      `json:"height"`
-	Model    string   `json:"model,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 }
 
@@ -335,7 +332,7 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 	}
 
 	// Step 4: resolve style fail-closed via StyleResolver.
-	resolved, err := g.resolveStyle(payload.Style, payload.Model)
+	resolved, err := g.resolveStyle(payload.Style, "")
 	if err != nil {
 		g.log.Error("image.generate.google: style resolution failed",
 			zap.String("job_id", j.ID),
@@ -364,7 +361,6 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 		Style:          payload.Style,
 		Width:          finalWidth,
 		Height:         finalHeight,
-		Model:          payload.Model,
 		Tags:           payload.Tags,
 		OutputPath:     outputPath,
 	})

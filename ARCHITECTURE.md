@@ -520,8 +520,17 @@ rather than add another pipeline variant.
 
 ### Images and fullimages
 
-The image capability coordinates prompt generation, configured AI providers,
+The image capability coordinates prompt generation, the canonical AI
+provider (Google Slides via Chrome/Playwright, single model `nano-banana-pro`),
 local image storage, metadata, Drive publication, and asset persistence.
+The selectable `model` JSON field was retired from image DTOs/ports/jobs in
+July 2026 (surface 1 cut); callers cannot switch the generation backend or
+model — the canonical provider is enforced globally through
+`internal/application/images/generated/provider_registry.go` and the
+`generated.CanonicalGoogleSlidesModel` typed constant. Field-level model
+selection on `/api/images/**` is gone; legacy `model` JSON keys are silently
+ignored (forward-pointer to godlike/07 fail-closed rejection in a future
+commit).
 `/api/images/**` handles image generation and catalog operations.
 `/api/fullimages/**` is a separate video-producing surface that combines the
 image service, FFmpeg, and the Drive media store.
