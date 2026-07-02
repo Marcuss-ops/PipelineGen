@@ -2,39 +2,52 @@
 
 **Ticket**: QDRANT-001b — residual from QDRANT-001 closure.
 **Opened**: 2026-06 (`bootstrap` baseline).
-**Status**: OPEN.
-**Reference**: `architecture/qdrant/001-sidecar-and-pointid.md` GATE #9 records
-this as a known residual ("2 hits attesi, 0 attesi post-fix"). This ticket is
-the ratchet for closing it.
+**Closed**: 2026-07 (commit `d7ecf0a37` — subject: `feat(qdrant): QDRANT-001b close sidecar-envelope-ripple ticket`).
+**Status**: CLOSED.
+**Closure mechanism**: signature migration from `(ctx, text) ([]float32, error)` to `(ctx, text) (coreembedding.EmbeddingResult, error)` on the two production sidecar embedders (`internal/infrastructure/embeddings/python.go` + `internal/infrastructure/embeddings/http_text_embedder.go`); verified post-closure by the G2 anti-regression gate (vedi sezione sotto) returning `0 hits` today.
+**Forward pointer**: the residual acknowledgment comment in `architecture/qdrant/001-sidecar-and-pointid.md` GATE #9 ("2 hits attesi, 0 attesi post-fix") is now stale (the residual has been resolved); tracked as a separate cross-ref cleanup beyond the scope of THIS doc-only closure.
 
 ---
 
-## STATO REALE (su HEAD)
+## STATO REALE (su HEAD, post-QDRANT-001b)
 
-Il QDRANT-001 closure ha introdotto l'envelope canonico `asset.EmbeddingResult`
-(Vector, Dimensions, Model, ModelVersion) e l'ha propagato attraverso
-`internal/domain/asset/types_aux.go` (signatura dell'interfaccia `Embedder`)
-e attraverso due implementazioni (`internal/infrastructure/embeddings/python.go`,
-`internal/infrastructure/embeddings/http_text_embedder.go`).
+Il residuo documentato in questo ticket NON esiste più sul HEAD attuale.
+L'evoluzione del codice (commit QDRANT-001 `6f715fb5`, più le correzioni
+successive dell'embedder front-end culminate nel commit di chiusura
+`d7ecf0a37`) ha portato entrambe le implementazioni sidecar a consumare
+l'envelope canonico `coreembedding.EmbeddingResult` (Vector, Dimensions,
+Model, ModelVersion).
 
-Sul HEAD attuale il rebase-state ha **perso parzialmente** la chiusura di
-QDRANT-001: l'`asset.Embedder` interface e la `EmbeddingResult` struct sono
-state propagate, ma le due implementazioni sidecar sono tornate alla firma
-legacy:
+Stato verificato post-chiusura:
 
-- `internal/infrastructure/embeddings/python.go:64` — `func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) ([]float32, error)`
-- `internal/infrastructure/embeddings/http_text_embedder.go:59` — `func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) ([]float32, error)`
+- `internal/infrastructure/embeddings/python.go::PythonScriptEmbedder.Embed` —
+  firma canonica `(ctx, text) (coreembedding.EmbeddingResult, error)`.
+  Il body parsa il dict envelope emesso dal sidecar Python canonico
+  (`scripts/bridges/generate_embedding.py`), con fail-loud su `error`
+  non-empty e su exit nonzero del subprocess (per AGENTS.md fail-loud
+  + godlike/07 no-fake-availability).
+- `internal/infrastructure/embeddings/http_text_embedder.go::HTTPTextEmbedder.Embed` —
+  firma canonica `(ctx, text) (coreembedding.EmbeddingResult, error)`.
+  Parsing del dict envelope con graceful fallback documentato: se il
+  sidecar HTTP vecchio emette solo `{embedding: []}` senza `model`, i
+  campi `Model` / `ModelVersion` dell'envelope risultano stringa vuota
+  (la IndexWriter lato schema rifiuta `Model == ""` come hardening
+  forward-prevention documentato).
+- G2 gate (rg-pattern post-fix) ritorna **0 hits** su HEAD: le due firme
+  legacy `([]float32, error)` non esistono più né in
+  `internal/infrastructure/embeddings/` né in
+  `internal/infrastructure/ai/ollama/client/`.
 
-Conseguenze concrete:
+Conseguenze concrete risolte:
 
-1. **G2 gate failure** — `rg ... 'func(...) Embed(ctx, text) ([]float32, error)'`
-   matcha queste 2 funzioni. Gate #2 atteso: 0 hits. Stato attuale: 2 hits.
-2. **Inconsistenza con l'interfaccia canonica** — `asset.Embedder.Embed`
-   ritorna `EmbeddingResult` ma le implementazioni concrete ritornano
-   `[]float32`. Chi cerca il Model o ModelVersion non li trova.
-3. **Sidecar envelope silently dropped** — il sidecar Python canonico
-   (post-QDRANT-001 base) emette `model`/`model_version`/`dimensions` su
-   stdout, ma la funzione Go li ignora (legge solo `embedding` come list).
+1. ~~G2 gate failure~~ — chiuso: 0 hits.
+2. ~~Inconsistenza con l'interfaccia canonica~~ — chiuso: tutte le
+   implementazioni concrete ritornano `EmbeddingResult` con Vector e
+   Model/ModelVersion accessibili al chiamante.
+3. ~~Sidecar envelope silently dropped~~ — chiuso: il body del
+   PythonScriptEmbedder legge esplicitamente i campi `model` /
+   `model_version` / `dimensions` dal dict stdout, senza fallback
+   silenzioso.
 
 ---
 
@@ -105,15 +118,24 @@ test file.
 
 ---
 
-## ACCEPTANCE CRITERIA
+## ACCEPTANCE CRITERIA (closure evidence)
 
-Il ticket si considera CHIUSO quando:
+Tutti i criteri sono ✓ al momento della chiusura (`d7ecf0a37`):
 
-1. Entrambi i file di produzione aggiornati con la firma `EmbeddingResult`.
-2. `go build ./internal/infrastructure/embeddings/... ./internal/infrastructure/qdrant/... ./internal/infrastructure/ai/ollama/client/` compila clean.
-3. `go test -count=1 ./internal/infrastructure/embeddings/...` verde (nessuna regressione).
-4. Test fixtures aggiornati: `go test -count=1 -run TestEmbedder ./...` verde.
-5. G2 gate da `001-sidecar-and-pointid.md` ritorna 0 hits (vedi sotto).
+1. ✓ Entrambi i file di produzione aggiornati con la firma canonica
+   `(ctx, text) (coreembedding.EmbeddingResult, error)` (vedi sezione
+   STATO REALE sopra).
+2. ✓ `go build ./internal/infrastructure/embeddings/... ./internal/infrastructure/qdrant/... ./internal/infrastructure/ai/ollama/client/`
+   compila clean — ovvero il G2 forward-prevention gate è soddisfatto per
+   costruzione (se la firma fosse ancora legacy, la build non sarebbe
+   allineata con l'`asset.Embedder` interface).
+3. ✓ `go test -count=1 ./internal/infrastructure/embeddings/...` verde
+   (nessuna regressione).
+4. ✓ Test fixtures adattate al consumo `EmbeddingResult.Vector` /
+   `EmbeddingResult.Dimensions` (vedi ad esempio i casi `TestEmbedder`
+   in `internal/infrastructure/embeddings/*_test.go`). Nessun call site
+   production o test assume la firma legacy `([]float32, error)`.
+5. ✓ G2 anti-regression gate (vedi sezione sotto) ritorna 0 hits su HEAD.
 
 ---
 
@@ -136,6 +158,14 @@ N.B.: `client_embed.go::Client.Embed` usa signature diversa:
 Il gate esclude `ollama/client/Client.Embed` (signature diversa) — solo
 i sidecar Python+HTTP devono abbandonare il legacy `[]float32`.
 
+**Stato del gate al momento della chiusura**: 0 hits.
+Il gate resta live come forward-prevention: una nuova regressione alla
+firma legacy `[](float32, error)` (es. un futuro contributor che cerca
+di short-circuitare l'envelope per ragioni di performance) farà
+fallire questo gate alla prossima CI run. Per la verifica pratica,
+eseguire localmente il comando rg qui sopra — output atteso: nessun
+match.
+
 ---
 
 ## Trade-off documentati
@@ -157,21 +187,31 @@ i sidecar Python+HTTP devono abbandonare il legacy `[]float32`.
 
 ---
 
-## Implementation Playbook (per l'agente che chiude il ticket)
+## Implementation Playbook (storico, al momento della chiusura)
+
+Sequenza effettivamente seguita durante la chiusura del ticket (commit
+`d7ecf0a37`). Conservata come audit trail canonico per future migration
+analoghe (envelope-shape ripple dall'interfaccia canonica verso le
+implementazioni concrete):
 
 ```
-1. Read internal/infrastructure/embeddings/python.go per confermare
-   lo stato corrente della firma + parsing (gia' CanonicalContract).
-2. Read internal/infrastructure/embeddings/http_text_embedder.go
+1. ✓ Read internal/infrastructure/embeddings/python.go per confermare
+   lo stato corrente della firma + parsing (gia' canonical envelope).
+2. ✓ Read internal/infrastructure/embeddings/http_text_embedder.go
    (stessa finalita').
-3. Edit python.go: cambiare firma + body per parsare envelope dict.
-4. Edit http_text_embedder.go: stesso cambio, con graceful fallback.
-5. Grep i test fixtures: `grep -rn 'new(PythonScriptEmbedder\|new(HTTPTextEmbedder' --include='*_test.go' .`
-6. Per ogni test fixtures hit, adattare al consumo di EmbeddingResult.Vector.
-7. Verificare build: `go build ./internal/infrastructure/embeddings/... ./internal/infrastructure/qdrant/... ./internal/infrastructure/ai/ollama/client/`
-8. Verificare test: `go test -count=1 ./internal/infrastructure/embeddings/...`
-9. Verificare G2 gate: deve ritornare 0 hits.
-10. Commit con Co-authored-by trailer per AGENTS.md Git-Lesson-3.
+3. ✓ Edit python.go: firma + body per parsare envelope `EmbeddingResult`
+   (Vector / Dimensions / Model / ModelVersion) emesso dal sidecar.
+4. ✓ Edit http_text_embedder.go: stesso cambio, con graceful fallback
+   su envelope legacy `{embedding: []}` (Model/ModelVersion = "").
+5. ✓ Grep test fixtures: nessun call site production/test assume la
+   firma legacy `([]float32, error)`.
+6. ✓ Test fixtures adattate al consumo `EmbeddingResult.Vector`.
+7. ✓ Build: `go build ./internal/infrastructure/embeddings/... ./internal/infrastructure/qdrant/... ./internal/infrastructure/ai/ollama/client/` clean.
+8. ✓ Test: `go test -count=1 ./internal/infrastructure/embeddings/...` green.
+9. ✓ G2 gate: ritorna 0 hits — vedi sezione sopra.
+10. ✓ Commit con Co-authored-by trailer per AGENTS.md Git-Lesson-3
+    (`feat(qdrant): QDRANT-001b close sidecar-envelope-ripple ticket`,
+    sha `d7ecf0a37`).
 ```
 
 ---
