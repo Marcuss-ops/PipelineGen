@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // Searcher provides semantic search over Qdrant collections.
@@ -26,10 +27,18 @@ type Searcher struct {
 	log    *zap.Logger
 
 	// Alias cache: avoids an HTTP round-trip on every search query.
-	// Protected by cacheMu; invalidated via ResetSearchCache().
+	// Protected by cacheMu for read/write; never held across network calls.
+	// Concurrent refresh is deduplicated by sfGroup.
+	// Invalidated via ResetSearchCache().
 	cacheMu      sync.RWMutex
 	cachedTarget string
 	cachedAt     time.Time
+
+	// sfGroup deduplicates concurrent GetAliasTarget refreshes so
+	// only ONE network call is in-flight at a time per alias, even
+	// under N-way concurrent cache-miss pressure. The mutex is NOT
+	// held during the network call — it only guards cache read/write.
+	sfGroup singleflight.Group
 }
 
 // aliasCacheTTL is how long the resolved alias target stays valid
@@ -222,6 +231,19 @@ func (s *Searcher) SearchByText(ctx context.Context, text string, embedder TextE
 //
 // See internal/infrastructure/qdrant/index_writer.go PR 5 comment block
 // for the write-side counterpart of this documentation.
+//
+// ── Concurrency contract (HIGH #9, July 2026) ──
+//
+// cacheMu is ONLY held for cache reads (RLock) and cache writes (Lock).
+// It is NEVER held across the GetAliasTarget network call.
+//
+// Concurrent refresh is deduplicated by sfGroup (singleflight.Group):
+// when N goroutines simultaneously hit a cache miss, only ONE makes
+// the GetAliasTarget call. The other N-1 wait for that result via
+// singleflight's internal dedup and then double-check the cache.
+// This eliminates the thundering-herd problem where N concurrent
+// cache-miss callers each acquire cacheMu.Lock() sequentially and
+// each make their own network call.
 func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	// Fast path: read-lock, check cache.
 	s.cacheMu.RLock()
@@ -233,29 +255,44 @@ func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	}
 	s.cacheMu.RUnlock()
 
-	// Slow path: write-lock, resolve alias, populate cache.
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
+	// Slow path: singleflight-deduplicated refresh.
+	// Only ONE goroutine per alias actually calls GetAliasTarget;
+	// the rest get the result from the singleflight group.
+	result, err, _ := s.sfGroup.Do(s.schema.RuntimeAlias, func() (interface{}, error) {
+		// Double-check: another goroutine may have populated the
+		// cache between our RUnlock and the singleflight callback
+		// execution (e.g. a prior singleflight call completed).
+		s.cacheMu.RLock()
+		if s.cachedTarget != "" && time.Since(s.cachedAt) < aliasCacheTTL {
+			target := s.cachedTarget
+			s.cacheMu.RUnlock()
+			return target, nil
+		}
+		s.cacheMu.RUnlock()
 
-	// Double-check: another goroutine may have populated the cache
-	// between our RUnlock and Lock.
-	if s.cachedTarget != "" && time.Since(s.cachedAt) < aliasCacheTTL {
-		observability.QdrantAliasCacheHitTotal.Inc()
-		return s.cachedTarget, nil
-	}
+		// Cache miss: execute the network call WITHOUT holding cacheMu.
+		observability.QdrantAliasCacheMissTotal.Inc()
+		collection, callErr := s.client.GetAliasTarget(ctx, s.schema.RuntimeAlias)
+		if callErr != nil {
+			return "", fmt.Errorf("resolve alias target: %w", callErr)
+		}
+		if collection == "" {
+			return "", fmt.Errorf("runtime alias %q has no target — run EnsureSchema first", s.schema.RuntimeAlias)
+		}
 
-	observability.QdrantAliasCacheMissTotal.Inc()
-	collection, err := s.client.GetAliasTarget(ctx, s.schema.RuntimeAlias)
+		// Populate cache — mutex ONLY for the cache write, not the network call.
+		s.cacheMu.Lock()
+		s.cachedTarget = collection
+		s.cachedAt = time.Now()
+		s.cacheMu.Unlock()
+
+		return collection, nil
+	})
+
 	if err != nil {
-		return "", fmt.Errorf("resolve alias target: %w", err)
+		return "", err
 	}
-	if collection == "" {
-		return "", fmt.Errorf("runtime alias %q has no target — run EnsureSchema first", s.schema.RuntimeAlias)
-	}
-
-	s.cachedTarget = collection
-	s.cachedAt = time.Now()
-	return collection, nil
+	return result.(string), nil
 }
 
 // ResetSearchCache invalidates the alias-target cache. Called by
