@@ -75,13 +75,18 @@ func (w *IndexWriter) UpsertFromClip(ctx context.Context, clipID string) error {
 
 // UpsertFromClips reads multiple clips and batch-upserts them.
 // Implements clipindexer.VectorStoreIndexer.
+//
+// HIGH #4 (July 2026): partial failures now return a typed *PartialUpsertError
+// with per-asset phase (fetch/map/upsert), cause, and retryability. The
+// previous implementation lost the original error and reduced failures to
+// a count-only summary.
 func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) error {
 	if len(clipIDs) == 0 {
 		return nil
 	}
 
 	points := make([]Point, 0, len(clipIDs))
-	var failed []string
+	var failures []AssetUpsertFailure
 
 	for _, clipID := range clipIDs {
 		asset, err := w.mapper.FetchAsset(ctx, clipID)
@@ -89,7 +94,11 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 			w.log.Warn("failed to fetch asset for qdrant upsert",
 				zap.String("asset_id", clipID),
 				zap.Error(err))
-			failed = append(failed, clipID)
+			failures = append(failures, AssetUpsertFailure{
+				AssetID: clipID,
+				Phase:   "fetch",
+				Cause:   err,
+			})
 			continue
 		}
 		point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
@@ -97,15 +106,21 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 			w.log.Warn("failed to map asset to qdrant point",
 				zap.String("asset_id", clipID),
 				zap.Error(err))
-			failed = append(failed, clipID)
+			failures = append(failures, AssetUpsertFailure{
+				AssetID: clipID,
+				Phase:   "map",
+				Cause:   err,
+			})
 			continue
 		}
 		points = append(points, *point)
 	}
 
 	if len(points) == 0 {
-		if len(failed) > 0 {
-			return fmt.Errorf("all %d assets failed to map to qdrant points", len(failed))
+		if len(failures) > 0 {
+			// Build the typed error so callers can inspect per-failure
+			// causes instead of parsing a flat count-only string.
+			return newPartialUpsertError(nil, failures)
 		}
 		return nil
 	}
@@ -130,10 +145,44 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 		zap.Int("count", len(points)),
 		zap.String("collection", w.idxSchema.RuntimeAlias))
 
-	if len(failed) > 0 {
-		return fmt.Errorf("upserted %d points but %d assets failed mapping", len(points), len(failed))
+	if len(failures) > 0 {
+		successIDs := make([]string, 0, len(points))
+		for _, p := range points {
+			// Extract the canonical media_assets.id from the
+			// payload (PayloadMapper always sets asset_id).
+			// Fall back to the Qdrant point ID only when the
+			// payload is missing — the canonical path never
+			// hits this branch.
+			assetID := p.ID
+			if p.Payload != nil {
+				if id, ok := p.Payload["asset_id"].(string); ok && id != "" {
+					assetID = id
+				}
+			}
+			successIDs = append(successIDs, assetID)
+		}
+		return newPartialUpsertError(successIDs, failures)
 	}
 	return nil
+}
+
+// newPartialUpsertError constructs a *PartialUpsertError and pre-computes
+// Retryable by classifying each failure through the canonical
+// qdrant.IsRetryable helper. Centralised here so the retry decision is
+// made once at construction time rather than re-derived by every caller.
+func newPartialUpsertError(successIDs []string, failures []AssetUpsertFailure) *PartialUpsertError {
+	retryable := false
+	for i := range failures {
+		if IsRetryable(failures[i].Cause) {
+			retryable = true
+			break
+		}
+	}
+	return &PartialUpsertError{
+		SuccessfulIDs: successIDs,
+		Failures:      failures,
+		Retryable:     retryable,
+	}
 }
 
 // DeletePoints deletes points from the active collection by asset ID.
