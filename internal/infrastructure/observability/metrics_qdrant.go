@@ -130,4 +130,28 @@ var (
 		Name: "qdrant_alias_current_collection",
 		Help: "Current physical collection bound to each runtime alias. Set to 1 for the current target, 0 otherwise.",
 	}, []string{"alias", "collection"})
+
+	// P6 METRICS-ALIAS (July 2026): alias cache hit/miss counters for
+	// monitoring the Searcher.resolveCollection 30s TTL cache effectiveness.
+	// Operators compute hit rate as hit/(hit+miss); a low rate signals
+	// excessive alias churn or TTL misconfiguration.
+	QdrantAliasCacheHitTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "qdrant_alias_cache_hit_total",
+		Help: "Total number of alias cache hits from Searcher.resolveCollection.",
+	})
+
+	QdrantAliasCacheMissTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "qdrant_alias_cache_miss_total",
+		Help: "Total number of alias cache misses from Searcher.resolveCollection.",
+	})
+
+	// P6 METRICS-ALIAS (July 2026): end-to-end search latency histogram
+	// covering alias resolution + Qdrant query. Measured at the Searcher
+	// boundary (Search / HybridSearch) so operators see the wall-clock
+	// latency the caller experiences.
+	QdrantSearchLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "qdrant_search_latency_seconds",
+		Help:    "End-to-end search latency including alias resolution and Qdrant query, by vector_name.",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	}, []string{"vector_name"})
 )

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
 )
 
@@ -68,12 +69,14 @@ func (s *Searcher) Search(ctx context.Context, req SearchRequest) ([]SearchResul
 		}
 	}
 
+	start := time.Now()
 	collection, err := s.resolveCollection(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	results, err := s.client.SearchPoints(ctx, collection, req)
+	observability.QdrantSearchLatency.WithLabelValues(req.VectorName).Observe(time.Since(start).Seconds())
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -129,12 +132,14 @@ func (s *Searcher) HybridSearch(ctx context.Context, req HybridSearchRequest) ([
 		}
 	}
 
+	start := time.Now()
 	collection, err := s.resolveCollection(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	results, err := s.client.HybridSearchPoints(ctx, collection, req)
+	observability.QdrantSearchLatency.WithLabelValues(req.DenseVectorName).Observe(time.Since(start).Seconds())
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search: %w", err)
 	}
@@ -221,6 +226,7 @@ func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	// Fast path: read-lock, check cache.
 	s.cacheMu.RLock()
 	if s.cachedTarget != "" && time.Since(s.cachedAt) < aliasCacheTTL {
+		observability.QdrantAliasCacheHitTotal.Inc()
 		target := s.cachedTarget
 		s.cacheMu.RUnlock()
 		return target, nil
@@ -234,9 +240,11 @@ func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	// Double-check: another goroutine may have populated the cache
 	// between our RUnlock and Lock.
 	if s.cachedTarget != "" && time.Since(s.cachedAt) < aliasCacheTTL {
+		observability.QdrantAliasCacheHitTotal.Inc()
 		return s.cachedTarget, nil
 	}
 
+	observability.QdrantAliasCacheMissTotal.Inc()
 	collection, err := s.client.GetAliasTarget(ctx, s.schema.RuntimeAlias)
 	if err != nil {
 		return "", fmt.Errorf("resolve alias target: %w", err)
