@@ -302,11 +302,25 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 // runtime panic. Note the construction functions return interface types
 // (not *T) so the assertions live on the concrete types below; if the
 // port signature drifts, the assignment `wrap → interface` fails compile.
+// ── Compile-time assertions (AGENTS.md Pattern 0) ────────────────────────────
+
+// Compile-time guarantees that each adapter satisfies the port it claims
+// to satisfy. Drift in either signature surfaces at build time, not at
+// runtime panic. Note the construction functions return interface types
+// (not *T) so the assertions live on the concrete types below; if the
+// port signature drifts, the assignment `wrap → interface` fails compile.
 var (
 	_ systemapi.DriveAdminOps = (*driveAdminAdapter)(nil)
 	_ systemapi.Reconciler    = (*noopReconciler)(nil)
 	_ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)
 )
+
+// embeddingRegistryAdapter compile-time assertion (PR-EMBEDDING-CHANNEL-
+// REGISTRY) — declared next to the embeddingRegistryAdapter struct
+// declaration below so the assertion lives alongside its concrete type
+// (the canonical Pattern 0 layout per the existing searchEmbedAdapter
+// declaration comment convention).
+var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
 
 // ── Search query embedder adapter (Fase 6 Spina Dorsale) ───────────────────
 //
@@ -346,6 +360,150 @@ func newSearchEmbedAdapter(embedder qdrant.TextEmbedder) searchpkg.QueryEmbedder
 		return nil
 	}
 	return &searchEmbedAdapter{embedder: embedder}
+}
+
+// ── Embedding channel registry adapter (PR-EMBEDDING-CHANNEL-REGISTRY, July 2026) ───
+//
+// Composition-only-seam concrete for search.EmbeddingChannelRegistry
+// (Pattern 0). The semantic backend (search_backend_semantic.go)
+// consumes this port instead of inlining 5-model switch logic; adding
+// a new channel encoder (e.g. SigLIP-text for cross-modal visual search
+// per PR-CROSS-MODAL-TEXT-TO-VISUAL, deadline 2026-08-15) plugs in at
+// composition root without touching the backend.
+//
+// godlike/06 SSOT: the per-channel adapter set lives ENTIRELY here.
+// internal/application/search owns the channel-name vocabulary
+// (ChannelText / ChannelTranscript / ChannelVisual / ChannelAudio /
+// ChannelSparse) and the typed-error contract (ErrChannelUnknown /
+// ErrChannelNotConfigured / ErrChannelNotApplicable). This file owns
+// the wiring of per-channel adapters at composition root only.
+//
+// Channel status (July 2026):
+//
+//	text        LIVE   routes to qdrant.TextEmbedder via textChannelEncoderAdapter.
+//	transcript  LIVE   SAME adapter (transcript content is text).
+//	visual      forward-pointer  SigLIP-text encoder (PR-CROSS-MODAL-TEXT-TO-VISUAL)
+//	                     returns search.ErrChannelNotConfigured.
+//	audio       forward-pointer  CLAP-text encoder (PR-CROSS-MODAL-TEXT-TO-VISUAL)
+//	                     returns search.ErrChannelNotConfigured.
+//	sparse      server-side BM25 inference on Qdrant (no Go-side encoder needed)
+//	                     returns search.ErrChannelNotApplicable.
+type embeddingRegistryAdapter struct {
+	// adapters is keyed by canonical channel-name string. Each entry
+	// is a search.ChannelEncoder that produces a channel-specific vector.
+	// godlike/06 SSOT: the lookup table is the canonical source-of-truth
+	// for which channels the composition root has wired.
+	adapters map[string]searchpkg.ChannelEncoder
+}
+
+// newEmbeddingRegistryAdapter wires the 5 canonical channels at composition
+// root. text+transcript map to a textChannelEncoderAdapter wrapping the
+// passed qdrant.TextEmbedder; visual/audio/sparse are forward-pointer stubs
+// returning the documented godlike/07 typed-error sentinels. The returned
+// registry is the single source-of-truth for the semantic backend's
+// embedding surface; the backend fans out per channel via EmbedQuery.
+//
+// textEmbedder nil-tolerance: when the underlying qdrant.TextEmbedder is
+// not wired (composition root deferred), text + transcript channels ship
+// as notConfiguredAdapter stubs so the failure surfaces with the documented
+// sentinel rather than a panic-nil dereference.
+func newEmbeddingRegistryAdapter(textEmbedder qdrant.TextEmbedder) searchpkg.EmbeddingChannelRegistry {
+	adapters := make(map[string]searchpkg.ChannelEncoder, len(searchpkg.CanonicalChannelNames()))
+
+	// text + transcript: same text-channel encoder; transcript content is text.
+	if textEmbedder != nil {
+		enc := &textChannelEncoderAdapter{textEmbedder: textEmbedder}
+		adapters[searchpkg.ChannelText] = enc
+		adapters[searchpkg.ChannelTranscript] = enc
+	} else {
+		adapters[searchpkg.ChannelText] = notConfiguredAdapter{}
+		adapters[searchpkg.ChannelTranscript] = notConfiguredAdapter{}
+	}
+
+	// visual + audio: forward-pointer stubs returning search.ErrChannelNotConfigured
+	// (TypedError contract: channel is RECOGNIZED but no adapter wired yet).
+	// Slot is filled by the SigLIP-text / CLAP-text encoder when
+	// PR-CROSS-MODAL-TEXT-TO-VISUAL lands.
+	adapters[searchpkg.ChannelVisual] = notConfiguredAdapter{}
+	adapters[searchpkg.ChannelAudio] = notConfiguredAdapter{}
+
+	// sparse: forward-pointer stub returning search.ErrChannelNotApplicable
+	// (TypedError contract: channel is RECOGNIZED but a TEXT query cannot
+	// produce a sparse vector). Qdrant handles BM25 inference server-side
+	// (see internal/infrastructure/qdrant/client_search.go::SparseText
+	// + SparseVectorName pair semantics); no Go-side encoder needed for
+	// the canonical Qdrant-backed path.
+	adapters[searchpkg.ChannelSparse] = notApplicableAdapter{}
+
+	return &embeddingRegistryAdapter{adapters: adapters}
+}
+
+// EmbedQuery is the godlike/07 typed-error contract:
+//   - unknown channel   → ErrChannelUnknown (wrapped %w; programming error)
+//   - empty text input  → ErrChannelUnknown (no embed nothing, fail closed)
+//   - known but no adapter → ErrChannelNotConfigured (wrapped %w)
+//   - sparse/visual/audio stub → ErrChannelNotApplicable or
+//     ErrChannelNotConfigured (forward-pointer)
+//
+// The wrapped %w guarantees errors.Is(err, sentinel) round-trips through
+// any caller of the semantic backend, so the operator dashboard can
+// surface "channel X forward-pointer" vs "channel X ad-hoc" cleanly.
+func (r *embeddingRegistryAdapter) EmbedQuery(ctx context.Context, channel string, text string) ([]float32, error) {
+	if r == nil {
+		return nil, fmt.Errorf("embeddingRegistryAdapter: registry not wired: %w", searchpkg.ErrChannelUnknown)
+	}
+	if !searchpkg.IsKnownChannel(channel) {
+		return nil, fmt.Errorf("embeddingRegistryAdapter: channel %q: %w", channel, searchpkg.ErrChannelUnknown)
+	}
+	if text == "" {
+		return nil, fmt.Errorf("embeddingRegistryAdapter: channel %q: empty text query: %w", channel, searchpkg.ErrChannelUnknown)
+	}
+	adapter, ok := r.adapters[channel]
+	if !ok || adapter == nil {
+		return nil, fmt.Errorf("embeddingRegistryAdapter: channel %q: %w", channel, searchpkg.ErrChannelNotConfigured)
+	}
+	return adapter.EmbedTextQuery(ctx, text)
+}
+
+// textChannelEncoderAdapter wraps the qdrant.TextEmbedder as a
+// search.ChannelEncoder. Same shape (Embed(ctx, text) -> []float32, error);
+// the adapter is a one-method delegation matching the canonical port.
+type textChannelEncoderAdapter struct {
+	textEmbedder qdrant.TextEmbedder
+}
+
+// EmbedTextQuery delegates to the underlying qdrant.TextEmbedder.
+// Nil-tolerant: a nil underlying qdrant embedder returns a typed-error
+// wrapped via %w so callers can errors.Is the canonical sentinel.
+func (a *textChannelEncoderAdapter) EmbedTextQuery(ctx context.Context, text string) ([]float32, error) {
+	if a == nil || a.textEmbedder == nil {
+		return nil, fmt.Errorf("textChannelEncoderAdapter: underlying qdrant.TextEmbedder not wired: %w",
+			searchpkg.ErrChannelNotConfigured)
+	}
+	return a.textEmbedder.Embed(ctx, text)
+}
+
+// notConfiguredAdapter is the godlike/07 typed-error carrier for
+// channels that are RECOGNIZED but UNWIRED (visual + audio forward-pointers
+// + the nil-textEmbedder fallback for text + transcript channels).
+// Returns search.ErrChannelNotConfigured so callers can errors.Is
+// the canonical sentinel directly without unwrapping. The receiver is
+// empty struct (zero-cost) per the typed-error carrier convention.
+type notConfiguredAdapter struct{}
+
+func (notConfiguredAdapter) EmbedTextQuery(_ context.Context, _ string) ([]float32, error) {
+	return nil, searchpkg.ErrChannelNotConfigured
+}
+
+// notApplicableAdapter is the godlike/07 typed-error carrier for
+// channels that are RECOGNIZED but NOT encodable via a TEXT query.
+// Today this is the sparse channel (Qdrant handles BM25 inference
+// server-side via SparseText in HybridSearchRequest; no Go-side
+// encoder needed). Empty struct (zero-cost) per typed-error carrier.
+type notApplicableAdapter struct{}
+
+func (notApplicableAdapter) EmbedTextQuery(_ context.Context, _ string) ([]float32, error) {
+	return nil, searchpkg.ErrChannelNotApplicable
 }
 
 // artlistConfigAdapter wraps *config.Config to satisfy

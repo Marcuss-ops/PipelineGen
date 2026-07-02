@@ -51,7 +51,7 @@ import (
 // reviewer's Q7 invariant: nil provider-reg must NOT panic here;
 // production sees the warning log and proceeds with nil for the
 // downstream caller to fail-closed.
-func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embedder search.QueryEmbedder, vectorStore assetsearch.VectorStorePort, mediaRepo mediasearch.MediaReadRepository, delivery mediasearch.AssetDeliveryService) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
+func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo mediasearch.MediaReadRepository, delivery mediasearch.AssetDeliveryService) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
 	var searchAgg *providers.SearchAggregator
@@ -60,9 +60,11 @@ func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, cli
 			Logger:      log,
 			ProviderReg: providerReg,
 			ClipsRepo:   clipsRepo,
-			// Fase 6 semantic backend deps: nil-safe — the
-			// backend only registers when all four are non-nil.
-			Embedder:    embedder,
+			// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): semantic
+			// backend deps are nil-safe — the backend only
+			// registers when all four are non-nil. Embeddings
+			// replaces the historical Embedder search.QueryEmbedder.
+			Embeddings:  embeddings,
 			VectorStore: vectorStore,
 			MediaRepo:   mediaRepo,
 			Delivery:    delivery,
