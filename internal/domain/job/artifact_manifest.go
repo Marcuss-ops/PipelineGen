@@ -7,21 +7,22 @@
 // MUST embed a manifest under the __artifact_manifest key.
 //
 // Lifecycle:
-//   1. Handler produces files in the job workspace.
-//   2. Handler builds an ArtifactManifest (one Artifact per file).
-//   3. Handler embeds the manifest in the result map
-//      (key "__artifact_manifest", value serialised JSON).
-//   4. The worker runner (internal/application/jobs/worker/runner.go)
-//      calls Decode() to extract the manifest, Validate() to check
-//      required-artefact invariants, then uploads each artefact.
-//   5. After upload, WithRemoteLocations() replaces local paths with
-//      remote references so the Sender never sees local filesystem paths.
+//  1. Handler produces files in the job workspace.
+//  2. Handler builds an ArtifactManifest (one Artifact per file).
+//  3. Handler embeds the manifest in the result map
+//     (key "__artifact_manifest", value serialised JSON).
+//  4. The worker runner (internal/application/jobs/worker/runner.go)
+//     calls Decode() to extract the manifest, Validate() to check
+//     required-artefact invariants, then uploads each artefact.
+//  5. After upload, WithRemoteLocations() replaces local paths with
+//     remote references so the Sender never sees local filesystem paths.
 package job
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,14 +43,14 @@ const ManifestKey = "__artifact_manifest"
 // Sender to decide routing (e.g. voiceover → TTS review queue,
 // script_json → Document builder).
 const (
-	ArtifactKindScriptJSON      = "script_json"
-	ArtifactKindScriptText      = "script_text"
-	ArtifactKindScenes          = "scenes"
-	ArtifactKindMetadata        = "metadata"
-	ArtifactKindEntities        = "entities"
-	ArtifactKindVoiceover       = "voiceover"
-	ArtifactKindImage           = "image"
-	ArtifactKindClipBindings    = "clip_bindings"
+	ArtifactKindScriptJSON       = "script_json"
+	ArtifactKindScriptText       = "script_text"
+	ArtifactKindScenes           = "scenes"
+	ArtifactKindMetadata         = "metadata"
+	ArtifactKindEntities         = "entities"
+	ArtifactKindVoiceover        = "voiceover"
+	ArtifactKindImage            = "image"
+	ArtifactKindClipBindings     = "clip_bindings"
 	ArtifactKindArtifactManifest = "artifact_manifest"
 )
 
@@ -159,10 +160,10 @@ func (m *ArtifactManifest) RequiredArtifacts() []Artifact {
 // result map. Looks for the key ManifestKey ("__artifact_manifest").
 //
 // Three forms are accepted:
-//   1. The value is already a *ArtifactManifest — returned directly.
-//   2. The value is a json.RawMessage / []byte / string — unmarshalled.
-//   3. The value is a map[string]any — re-serialised to JSON then unmarshalled
-//      (covers the case where the handler embedded a literal map).
+//  1. The value is already a *ArtifactManifest — returned directly.
+//  2. The value is a json.RawMessage / []byte / string — unmarshalled.
+//  3. The value is a map[string]any — re-serialised to JSON then unmarshalled
+//     (covers the case where the handler embedded a literal map).
 //
 // Returns nil, nil when the key is absent (no manifest → legacy path).
 // Returns an error only when the key is present but malformed.
@@ -218,6 +219,20 @@ type RemoteAsset struct {
 	SHA256        string `json:"sha256"`
 }
 
+// RemoteAssetIDAdapter is the typed adapter the ToRemote canonical
+// conversion accepts. The C5 spec keeps RemoteAsset as the SSOT
+// (the existing `map[string]RemoteAsset` pattern in
+// internal/application/jobs/worker/runner.go::uploadManifest) and
+// surfaces it through RemoteAssetIDAdapter as a type alias — same
+// identity, but the alias gives the Sender-side call sites a
+// canonical vocabulary that documents the adapter contract ("any
+// value satisfying RemoteAssetIDAdapter can be projected to a
+// RemoteArtifact" rather than the lower-level "value struct").
+//
+// Future divergence (e.g. adding a ContentURL field) can split the
+// alias into a defined type without breaking the C5 call signature.
+type RemoteAssetIDAdapter = RemoteAsset
+
 // UploadedManifest is the Sender-safe representation of a job's artefacts
 // after all uploads have completed. It contains no local filesystem paths
 // — every artefact references a RemoteAssetID that the Sender can resolve.
@@ -227,6 +242,15 @@ type UploadedManifest struct {
 	JobID         string             `json:"job_id"`
 	Artifacts     []UploadedArtifact `json:"artifacts"`
 }
+
+// RemoteArtifactManifest is the C5 canonical name for the
+// Sender-safe manifest (dual-type vocabulary per P0 §4 dual-type
+// discipline). The type alias preserves identity with UploadedManifest
+// so existing callers (legacy WithRemoteLocations tests, the runner)
+// keep compiling unchanged while new callers exercise the canonical
+// ToRemote contract. When the legacy alias path is removed in C9,
+// this becomes a defined type.
+type RemoteArtifactManifest = UploadedManifest
 
 // ── Upload status constants ──────────────────────────────────────
 
@@ -248,32 +272,89 @@ type UploadedArtifact struct {
 	Status        string `json:"status"` // StatusReady | StatusSkipped
 }
 
-// WithRemoteLocations replaces every Artifact's local Path with the
-// corresponding RemoteAsset reference from the uploaded map, keyed by
-// Artifact.ID. The returned UploadedManifest contains no local filesystem
-// paths and is suitable for serialisation into the job's Complete result.
+// RemoteArtifact is the C5 canonical name for the Sender-safe
+// per-artefact envelope. Alias of UploadedArtifact (see
+// RemoteArtifactManifest rationale).
+type RemoteArtifact = UploadedArtifact
+
+// ── Sentinel errors (P0 Commit 5) ──────────────────────────────────
+
+// ErrRemoteSchemaVersionUnsupported is returned by ToRemote when the
+// input ArtifactManifest.SchemaVersion is anything other than the
+// canonical V1 schema. The Sender protocol is locked to V1 today;
+// emitting any other version would silently regress the wire-format
+// contract. Sentinels are exported so callers can probe via
+// errors.Is(err, ErrRemoteSchemaVersionUnsupported).
+var ErrRemoteSchemaVersionUnsupported = errors.New("artifact manifest: remote schema_version is not V1")
+
+// LocalPath is the canonical accessor for an Artifact's on-disk
+// filesystem path. Kept as an accessor method on the Artifact value
+// (NOT a field rename) so the existing json:"path" JSON tag is
+// preserved — no wire-format regression for handler-emitted
+// manifests, and the Sender-safe types simply omit the LocalPath
+// accessor (their fields are position-based RemoteAssetID + Status),
+// enforcing the C5 invariant "Sender NEVER sees LocalPath" at the
+// type level for the dual types.
+func (a Artifact) LocalPath() string {
+	return a.Path
+}
+
+// ToRemote is the canonical emit-side converter from local
+// ArtifactManifest to Sender-safe RemoteArtifactManifest. The dual
+// type vocabulary (Local ArtifactManifest + Remote RemoteArtifactManifest)
+// is locked here: ToRemote strips every LocalPath reference (the
+// remote type's field set has no LocalPath / Path field), validates
+// the canonical V1 schema_version (rejects anything else before
+// emit), and rejects any Required artefact missing from the
+// `uploaded` map BEFORE producing the RemoteArtifactManifest
+// (per the C5 spec: "Required missing rejected before emit").
 //
-// Required artefacts that are missing from the uploaded map trigger an
-// error. Non-required artefacts not in the map receive status "skipped".
-func (m *ArtifactManifest) WithRemoteLocations(uploaded map[string]RemoteAsset) (*UploadedManifest, error) {
+// Validation order (matters for the error attribution test suite):
+//  1. nil-receiver guard
+//  2. SchemaVersion must equal SchemaVersionArtifactManifestV1
+//  3. Required artefacts must all be present in `uploaded`
+//
+// Then the type-stripped RemoteArtifactManifest is built and returned.
+//
+// Non-required artefacts not in `uploaded` receive Status="skipped"
+// (best-effort, matches the existing WithRemoteLocations semantics).
+func (m *ArtifactManifest) ToRemote(uploaded map[string]RemoteAssetIDAdapter) (*RemoteArtifactManifest, error) {
 	if m == nil {
 		return nil, fmt.Errorf("manifest is nil")
 	}
 
-	result := &UploadedManifest{
+	// (1) SchemaVersion is locked to V1 on the Sender side. Any
+	// other value (including "" or "v2") is rejected BEFORE emit
+	// so a V2 manifest cannot silently downgrade the wire-format
+	// contract that downstream Sender workers depend on.
+	if m.SchemaVersion != SchemaVersionArtifactManifestV1 {
+		return nil, fmt.Errorf("%w: got %q, want %q",
+			ErrRemoteSchemaVersionUnsupported, m.SchemaVersion, SchemaVersionArtifactManifestV1)
+	}
+
+	// (2) Required artefacts: pre-emit check. A missing required
+	// entry is a hard failure — the Sender cannot pretend the
+	// artefact is "skipped" for a required slot.
+	for _, a := range m.RequiredArtifacts() {
+		if _, ok := uploaded[a.ID]; !ok {
+			return nil, fmt.Errorf("artifact %q (%s) is required but was not uploaded", a.ID, a.Kind)
+		}
+	}
+
+	// (3) Build the RemoteArtifactManifest. Note: this type has
+	// NO LocalPath / Path field — the omission is the structural
+	// enforcement of the C5 invariant "Sender NEVER sees LocalPath".
+	result := &RemoteArtifactManifest{
 		SchemaVersion: m.SchemaVersion,
 		WorkflowID:    m.WorkflowID,
 		JobID:         m.JobID,
-		Artifacts:     make([]UploadedArtifact, 0, len(m.Artifacts)),
+		Artifacts:     make([]RemoteArtifact, 0, len(m.Artifacts)),
 	}
 
 	for _, a := range m.Artifacts {
 		remote, ok := uploaded[a.ID]
-		if a.Required && !ok {
-			return nil, fmt.Errorf("artifact %q (%s) is required but was not uploaded", a.ID, a.Kind)
-		}
 
-		ua := UploadedArtifact{
+		ra := RemoteArtifact{
 			ID:       a.ID,
 			Kind:     a.Kind,
 			Filename: a.Filename,
@@ -282,16 +363,26 @@ func (m *ArtifactManifest) WithRemoteLocations(uploaded map[string]RemoteAsset) 
 		}
 
 		if ok {
-			ua.RemoteAssetID = remote.RemoteAssetID
-			ua.Status = StatusReady
+			ra.RemoteAssetID = remote.RemoteAssetID
+			ra.Status = StatusReady
 		} else {
-			ua.Status = StatusSkipped
+			ra.Status = StatusSkipped
 		}
 
-		result.Artifacts = append(result.Artifacts, ua)
+		result.Artifacts = append(result.Artifacts, ra)
 	}
 
 	return result, nil
+}
+
+// WithRemoteLocations is the legacy back-compat alias for ToRemote.
+// The canonical C5 entry point is ToRemote (semantically equivalent
+// except for the explicit V1 SchemaVersion gate which was added in
+// C5); WithRemoteLocations delegates to ToRemote so existing callers
+// (e.g. legacy unit tests, the canonical pre-C5 uploadManifest path)
+// continue to compile. New code MUST use ToRemote.
+func (m *ArtifactManifest) WithRemoteLocations(uploaded map[string]RemoteAsset) (*UploadedManifest, error) {
+	return m.ToRemote(uploaded)
 }
 
 // ComputeSHA256 reads the file at path and returns its hex-encoded
