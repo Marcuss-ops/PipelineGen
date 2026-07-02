@@ -32,6 +32,7 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -120,9 +121,18 @@ func (a *Aggregator) Backends() *BackendRegistry {
 	return a.backends
 }
 
-// Search runs the full PR 9 pipeline. Errors from the cursor
-// decoder propagate (handlers map to 422); backend errors are
-// demoted to Result.ProviderErrors + Result.Partial.
+// Search runs the full PR 9 pipeline with Fase 6 fail-closed
+// hardening:
+//   - Cursor decode errors → propagate (handlers map to 422).
+//   - No eligible backends → typed error (ErrNoEligibleBackends
+//     or ErrSemanticBackendUnavailable for hybrid mode).
+//   - All backends failed → ErrAllBackendsFailed with
+//     ProviderErrors preserved in the returned Result.
+//   - Partial (some backends failed, some succeeded) →
+//     Result.Partial = true, ProviderErrors populated.
+//   - Cursor encoding failure → ErrCursorEncoding.
+// Single-backend errors are demoted to Result.ProviderErrors +
+// Result.Partial (unchanged from PR 9).
 func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 	cur, err := DecodeCursor(q.Cursor)
 	if err != nil {
@@ -144,13 +154,16 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 		a.log.Debug("search.Aggregator.Search: no eligible backends",
 			"text_len", len(q.Text),
 			"media_types", q.MediaTypes,
+			"mode", q.Mode,
 		)
-		return &Result{
-			Items:          []Candidate{},
-			NextCursor:     "",
-			ProviderErrors: map[string]string{},
-			Partial:        false,
-		}, nil
+		// Fase 6 fail-closed: never return an empty-but-valid
+		// Result when zero backends matched. Hybrid mode gets
+		// a dedicated sentinel so callers can distinguish
+		// "semantic backend missing" from "no backend at all."
+		if q.Mode == SearchModeHybrid {
+			return nil, ErrSemanticBackendUnavailable
+		}
+		return nil, ErrNoEligibleBackends
 	}
 
 	// Per-backend outcomes pre-allocated by index so goroutines
@@ -186,9 +199,11 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 	pending := make([]Candidate, 0, len(eligible)*DefaultLimit)
 	providerErrors := make(map[string]string)
 	partial := false
+	failedCount := 0
 	for _, o := range outcomes {
 		if o.err != nil {
 			providerErrors[o.backendName] = o.err.Error()
+			failedCount++
 			partial = true
 			continue
 		}
@@ -197,20 +212,36 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 		}
 	}
 
+	// Fase 6 fail-closed: when EVERY backend errored, return
+	// a Result with Partial=true AND ProviderErrors populated
+	// alongside the typed error. Callers inspect ProviderErrors
+	// for per-backend diagnostics; the error signals "all failed"
+	// for status-code routing (502 Bad Gateway).
+	if failedCount == len(outcomes) {
+		return &Result{
+			Items:          []Candidate{},
+			NextCursor:     "",
+			ProviderErrors: providerErrors,
+			Partial:        true,
+		}, fmt.Errorf("%w: %d backend(s) failed", ErrAllBackendsFailed, failedCount)
+	}
+
 	merged := Merge(pending, skipSet)
 	if len(merged) > limit {
 		merged = merged[:limit]
 	}
 
-	next := ""
+	var next string
 	if len(merged) > 0 {
 		cursorObj, cerr := EncodeCursorFromItems(merged)
-		if cerr == nil {
-			wire, werr := EncodeCursor(cursorObj)
-			if werr == nil {
-				next = wire
-			}
+		if cerr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrCursorEncoding, cerr)
 		}
+		wire, werr := EncodeCursor(cursorObj)
+		if werr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrCursorEncoding, werr)
+		}
+		next = wire
 	}
 
 	a.log.Info("search.Aggregator.Search completed",
