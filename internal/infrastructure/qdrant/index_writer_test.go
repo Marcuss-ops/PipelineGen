@@ -247,7 +247,13 @@ func TestIndexWriter_UpsertFromClips_MapperError(t *testing.T) {
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 	err := w.UpsertFromClips(context.Background(), []string{"nonexistent"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to map")
+
+	var partial *PartialUpsertError
+	require.ErrorAs(t, err, &partial, "should wrap PartialUpsertError")
+	require.Len(t, partial.Failures, 1)
+	assert.Equal(t, "nonexistent", partial.Failures[0].AssetID)
+	assert.Equal(t, "fetch", partial.Failures[0].Phase)
+	assert.NotNil(t, partial.Failures[0].Cause)
 	assert.Equal(t, int32(0), callCount, "mapper failure must not trigger HTTP call")
 }
 
@@ -285,7 +291,13 @@ func TestIndexWriter_UpsertFromClips_PartialFailure(t *testing.T) {
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), &PayloadMapper{store: mapper, log: zap.NewNop()}, zap.NewNop())
 	err := w.UpsertFromClips(context.Background(), []string{"asset-1", "asset-2"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "1 assets failed mapping")
+
+	var partial *PartialUpsertError
+	require.ErrorAs(t, err, &partial, "should return *PartialUpsertError")
+	assert.Len(t, partial.SuccessfulIDs, 1)
+	assert.Len(t, partial.Failures, 1)
+	assert.Equal(t, "asset-2", partial.Failures[0].AssetID)
+	assert.Equal(t, "fetch", partial.Failures[0].Phase)
 	assert.Len(t, upsertedIDs, 1)
 }
 

@@ -276,6 +276,70 @@ func (e *ErrSparseRequired) Error() string {
 		" — schema has sparse BM25 configured; dense-only is a regression"
 }
 
+// ── Partial upsert error (HIGH #4, July 2026) ───────────────────────
+
+// AssetUpsertFailure records a single asset's failure during
+// IndexWriter.UpsertFromClips. The Phase discriminator (fetch/map)
+// lets callers decide whether to retry or dead-letter the event; Cause
+// preserves the original error for errors.Is/errors.As chains.
+type AssetUpsertFailure struct {
+	AssetID string `json:"asset_id"`
+	Phase   string `json:"phase"` // "fetch" or "map" (batch upsert to Qdrant is all-or-nothing)
+	Cause   error  `json:"-"`    // original error (errors.Is/errors.As compatible)
+}
+
+// Error returns the canonical per-failure message.
+func (f *AssetUpsertFailure) Error() string {
+	if f == nil {
+		return "<nil AssetUpsertFailure>"
+	}
+	return fmt.Sprintf("%s %s: %v", f.Phase, f.AssetID, f.Cause)
+}
+
+// Unwrap exposes Cause to errors.Is/errors.As chains.
+func (f *AssetUpsertFailure) Unwrap() error {
+	if f == nil {
+		return nil
+	}
+	return f.Cause
+}
+
+// PartialUpsertError is the aggregated error returned by
+// IndexWriter.UpsertFromClips when one or more assets fail during the
+// fetch → map → upsert pipeline. Successful points are already committed
+// to Qdrant; the failures are recorded per-asset with their phase and
+// cause so callers can re-route retryable failures without losing the
+// classification of the underlying error.
+//
+// Retryable is true when at least one failure's cause is transient
+// (classified via qdrant.IsRetryable / pkg/retry.IsTransient). Callers
+// SHOULD consult .Retryable rather than re-deriving retry decisions
+// from the failure slice.
+type PartialUpsertError struct {
+	SuccessfulIDs []string             `json:"successful_ids"`
+	Failures      []AssetUpsertFailure `json:"failures"`
+	Retryable     bool                 `json:"retryable"`
+}
+
+// Error returns the canonical aggregated error message.
+func (e *PartialUpsertError) Error() string {
+	if e == nil {
+		return "<nil PartialUpsertError>"
+	}
+	return fmt.Sprintf("upserted %d points but %d assets failed",
+		len(e.SuccessfulIDs), len(e.Failures))
+}
+
+// IsRetryable exposes the pre-computed Retryable flag so the retry
+// decision is centralised at construction time rather than re-derived
+// by every caller.
+func (e *PartialUpsertError) IsRetryable() bool {
+	if e == nil {
+		return false
+	}
+	return e.Retryable
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 // IsRetryable returns true for errors that should be retried
