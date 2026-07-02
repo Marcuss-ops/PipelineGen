@@ -116,6 +116,50 @@ var (
 	ErrEmptyName         = errors.New("search: backend Name() returned empty")
 )
 
+// ErrMissingWorkspace is returned when the search surface is invoked
+// without a workspace in the auth context. The handler maps this to
+// HTTP 403 — worker principals cannot bypass through the body.
+//
+// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
+// mediasearch.ErrMissingWorkspace to the canonical search package
+// (godlike/06 SSOT — the search capability owns its own workspace
+// enforcement contract). The legacy mediasearch.ErrMissingWorkspace
+// is now a Go-level alias of this canonical sentinel (same pointer,
+// so errors.Is traverses the chain transparently).
+//
+// Wraps `errors.Is` cleanly: errors.Is(err, search.ErrMissingWorkspace)
+// returns true for the canonical sentinel AND for the legacy alias
+// (single pointer identity — the alias is the same variable).
+var ErrMissingWorkspace = errors.New("search: workspace context required")
+
+// ErrHybridRequiresSparse is returned when mode=hybrid is requested
+// but the pipeline cannot produce a real dense+sparse retrieval
+// (sparse channel missing from VectorConfig, OR the BM25 tokenizer
+// returns nil for the query — e.g. all tokens <2 chars after
+// punctuation stripping). Handler maps to HTTP 422.
+//
+// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
+// mediasearch.ErrHybridRequiresSparse to the canonical search
+// package. The legacy alias mediasearch.ErrHybridRequiresSparse
+// is now a Go-level pointer-identical re-export of this sentinel.
+var ErrHybridRequiresSparse = errors.New("search: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
+
+// ErrNoBackendAvailable is returned when the BackendRegistry has
+// zero eligible backends for the query (e.g. no backend advertises
+// the requested media type capability). Handler maps to HTTP 503.
+//
+// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
+// mediasearch.ErrNoBackendAvailable to the canonical search package.
+var ErrNoBackendAvailable = errors.New("search: no backend available for the requested query")
+
+// ErrAllBackendsFailed is returned when every eligible backend
+// returned an error (the fan-out produced zero successful results).
+// Handler maps to HTTP 502 (Bad Gateway — upstream backends are
+// reachable but all failed).
+//
+// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
+// mediasearch.ErrAllBackendsFailed to the canonical search package.
+
 // NewBackendRegistry returns an empty, mutable registry.
 func NewBackendRegistry() *BackendRegistry {
 	return &BackendRegistry{entries: make(map[string]SearchBackend)}

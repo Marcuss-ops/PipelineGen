@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	mediasearchapp "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 
@@ -20,15 +19,15 @@ import (
 // populates search.Query.Actor with the real workspace extracted
 // from the auth middleware (not default/zero values).
 func TestHandlerPropagatesWorkspaceActor(t *testing.T) {
-	workspace := mediasearchapp.WorkspaceContext{
+	workspace := search.Actor{
 		WorkspaceID: "ws-abc123",
-		PrincipalID: "user-42",
+		UserID: "user-42",
 		IsAdmin:     false,
 	}
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "test query"},
-		mediasearchapp.SearchModeHybrid,
+		search.SearchModeHybrid,
 		20,
 		workspace,
 	)
@@ -50,15 +49,15 @@ func TestHandlerPropagatesWorkspaceActor(t *testing.T) {
 // TestHandlerPropagatesAdminActor verifies that admin flag is
 // correctly forwarded when the auth middleware sets is_admin=true.
 func TestHandlerPropagatesAdminActor(t *testing.T) {
-	workspace := mediasearchapp.WorkspaceContext{
+	workspace := search.Actor{
 		WorkspaceID: "ws-admin",
-		PrincipalID: "admin-007",
+		UserID: "admin-007",
 		IsAdmin:     true,
 	}
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "admin search"},
-		mediasearchapp.SearchModeANN,
+		search.SearchModeANN,
 		50,
 		workspace,
 	)
@@ -81,11 +80,11 @@ func TestHandlerPropagatesAdminActor(t *testing.T) {
 // workspace produces an Actor with zero-value fields (the caller is
 // responsible for workspace validation, not the query builder).
 func TestSearchQueryFromRequest_ActorZeroValues(t *testing.T) {
-	workspace := mediasearchapp.WorkspaceContext{} // empty: no workspace extracted
+	workspace := search.Actor{} // empty: no workspace extracted
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "anonymous"},
-		mediasearchapp.SearchModeHybrid,
+		search.SearchModeHybrid,
 		10,
 		workspace,
 	)
@@ -99,9 +98,9 @@ func TestSearchQueryFromRequest_ActorZeroValues(t *testing.T) {
 // adding Actor does not lose any existing field: Text, Mode, Limit,
 // and Filters all survive the change.
 func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
-	workspace := mediasearchapp.WorkspaceContext{
+	workspace := search.Actor{
 		WorkspaceID: "ws-preserve",
-		PrincipalID: "user-preserve",
+		UserID: "user-preserve",
 		IsAdmin:     false,
 	}
 
@@ -119,7 +118,7 @@ func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 				DurationMsMin: 5000,
 			},
 		},
-		mediasearchapp.SearchModeHybrid,
+		search.SearchModeHybrid,
 		30,
 		workspace,
 	)
@@ -127,8 +126,8 @@ func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 	if q.Text != "hello world" {
 		t.Errorf("Text = %q, want %q", q.Text, "hello world")
 	}
-	if q.Mode != mediasearchapp.SearchModeHybrid {
-		t.Errorf("Mode = %q, want %q", q.Mode, mediasearchapp.SearchModeHybrid)
+	if q.Mode != search.SearchModeHybrid {
+		t.Errorf("Mode = %q, want %q", q.Mode, search.SearchModeHybrid)
 	}
 	if q.Limit != 30 {
 		t.Errorf("Limit = %d, want 30", q.Limit)
@@ -161,15 +160,15 @@ func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 // When searchQueryFromRequest receives a real workspace, the
 // resulting Query.Actor must be non-zero (a real identity).
 func TestSearchQueryFromRequest_HandlesBuild(t *testing.T) {
-	workspace := mediasearchapp.WorkspaceContext{
+	workspace := search.Actor{
 		WorkspaceID: "ws-prod-1",
-		PrincipalID: "worker-001",
+		UserID: "worker-001",
 		IsAdmin:     false,
 	}
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "prod"},
-		mediasearchapp.SearchModeHybrid,
+		search.SearchModeHybrid,
 		20,
 		workspace,
 	)
@@ -195,14 +194,14 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 
 	// Simulate a gin context via httptest
 	req := searchRequest{Query: "e2e", Mode: "ann", Limit: 10}
-	workspace := mediasearchapp.WorkspaceContext{
+	workspace := search.Actor{
 		WorkspaceID: "ws-e2e",
-		PrincipalID: "u-e2e",
+		UserID: "u-e2e",
 		IsAdmin:     true,
 	}
 
 	// Direct call to searchQueryFromRequest (the handler's function)
-	q := searchQueryFromRequest(req, mediasearchapp.SearchModeANN, 10, workspace)
+	q := searchQueryFromRequest(req, search.SearchModeANN, 10, workspace)
 
 	// Verify the search.Query has Actor populated
 	if q.Actor.WorkspaceID != "ws-e2e" {
@@ -229,9 +228,9 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 // must-predicate compilation).
 // PR-AGENTE2-MEDIATYPE (Agente 2, Azione 2).
 func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
-	workspace := mediasearchapp.WorkspaceContext{
+	workspace := search.Actor{
 		WorkspaceID: "ws-mt",
-		PrincipalID: "u-mt",
+		UserID: "u-mt",
 		IsAdmin:     false,
 	}
 
@@ -243,7 +242,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "video",
 				},
 			},
-			mediasearchapp.SearchModeHybrid,
+			search.SearchModeHybrid,
 			20,
 			workspace,
 		)
@@ -265,7 +264,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 	t.Run("empty media_type leaves MediaTypes nil", func(t *testing.T) {
 		q := searchQueryFromRequest(
 			searchRequest{Query: "no filter"},
-			mediasearchapp.SearchModeHybrid,
+			search.SearchModeHybrid,
 			20,
 			workspace,
 		)
@@ -283,7 +282,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "   ",
 				},
 			},
-			mediasearchapp.SearchModeHybrid,
+			search.SearchModeHybrid,
 			20,
 			workspace,
 		)
@@ -304,7 +303,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "audio",
 				},
 			},
-			mediasearchapp.SearchModeANN,
+			search.SearchModeANN,
 			10,
 			workspace,
 		)
@@ -325,7 +324,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "image",
 				},
 			},
-			mediasearchapp.SearchModeHybrid,
+			search.SearchModeHybrid,
 			15,
 			workspace,
 		)
@@ -360,7 +359,7 @@ func TestMapSearchError_InvalidCursor(t *testing.T) {
 
 // TestMapSearchError_MissingWorkspace verifies ErrMissingWorkspace → 403.
 func TestMapSearchError_MissingWorkspace(t *testing.T) {
-	err := mediasearchapp.ErrMissingWorkspace
+	err := search.ErrMissingWorkspace
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()
 
@@ -373,7 +372,7 @@ func TestMapSearchError_MissingWorkspace(t *testing.T) {
 
 // TestMapSearchError_HybridRequiresSparse verifies ErrHybridRequiresSparse → 422.
 func TestMapSearchError_HybridRequiresSparse(t *testing.T) {
-	err := mediasearchapp.ErrHybridRequiresSparse
+	err := search.ErrHybridRequiresSparse
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()
 
@@ -390,7 +389,7 @@ func TestMapSearchError_HybridRequiresSparse(t *testing.T) {
 
 // TestMapSearchError_NoBackendAvailable verifies ErrNoBackendAvailable → 503.
 func TestMapSearchError_NoBackendAvailable(t *testing.T) {
-	err := mediasearchapp.ErrNoBackendAvailable
+	err := search.ErrNoBackendAvailable
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()
 
@@ -407,7 +406,7 @@ func TestMapSearchError_NoBackendAvailable(t *testing.T) {
 
 // TestMapSearchError_AllBackendsFailed verifies ErrAllBackendsFailed → 502.
 func TestMapSearchError_AllBackendsFailed(t *testing.T) {
-	err := mediasearchapp.ErrAllBackendsFailed
+	err := search.ErrAllBackendsFailed
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()
 
@@ -446,10 +445,10 @@ func TestMapSearchError_WrappedSentinel(t *testing.T) {
 		wantCode int
 	}{
 		{"wrapped InvalidCursor", newWrappedErr(search.ErrInvalidCursor), 422},
-		{"wrapped MissingWorkspace", newWrappedErr(mediasearchapp.ErrMissingWorkspace), 403},
-		{"wrapped HybridRequiresSparse", newWrappedErr(mediasearchapp.ErrHybridRequiresSparse), 422},
-		{"wrapped NoBackendAvailable", newWrappedErr(mediasearchapp.ErrNoBackendAvailable), 503},
-		{"wrapped AllBackendsFailed", newWrappedErr(mediasearchapp.ErrAllBackendsFailed), 502},
+		{"wrapped MissingWorkspace", newWrappedErr(search.ErrMissingWorkspace), 403},
+		{"wrapped HybridRequiresSparse", newWrappedErr(search.ErrHybridRequiresSparse), 422},
+		{"wrapped NoBackendAvailable", newWrappedErr(search.ErrNoBackendAvailable), 503},
+		{"wrapped AllBackendsFailed", newWrappedErr(search.ErrAllBackendsFailed), 502},
 	}
 
 	for _, tt := range tests {
@@ -490,7 +489,7 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 		},
 	}
 
-	resp := resultToResponse(r, "sunset", mediasearchapp.SearchModeHybrid)
+	resp := resultToResponse(r, "sunset", search.SearchModeHybrid, "")
 
 	if !resp.OK {
 		t.Error("partial with items should have OK=true")
@@ -501,8 +500,8 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 	if !resp.Partial {
 		t.Error("Partial should be true")
 	}
-	if resp.ProviderErrors == nil || resp.ProviderErrors["artlist"] != "timeout" {
-		t.Errorf("ProviderErrors = %v, want {artlist: timeout}", resp.ProviderErrors)
+	if resp.BackendErrors == nil || resp.BackendErrors["artlist"] != "timeout" {
+		t.Errorf("ProviderErrors = %v, want {artlist: timeout}", resp.BackendErrors)
 	}
 
 	// Verify no internal fields leak in items
@@ -521,7 +520,7 @@ func TestHandlerReturns503WhenNoBackend(t *testing.T) {
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()
 
-	h.mapSearchError(c, mediasearchapp.ErrNoBackendAvailable, "ws-test")
+	h.mapSearchError(c, search.ErrNoBackendAvailable, "ws-test")
 
 	if w.Code != 503 {
 		t.Errorf("status = %d, want 503", w.Code)
@@ -534,7 +533,7 @@ func TestHandlerReturns502WhenAllBackendsFail(t *testing.T) {
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()
 
-	h.mapSearchError(c, mediasearchapp.ErrAllBackendsFailed, "ws-test")
+	h.mapSearchError(c, search.ErrAllBackendsFailed, "ws-test")
 
 	if w.Code != 502 {
 		t.Errorf("status = %d, want 502", w.Code)

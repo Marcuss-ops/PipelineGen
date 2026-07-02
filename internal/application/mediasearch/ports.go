@@ -26,15 +26,24 @@ package mediasearch
 
 import (
 	"context"
-	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	assetssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 
 // WorkspaceContext is the per-request authorisation envelope extracted
 // from the API middleware. The service treats WorkspaceID as REQUIRED:
 // an empty value is a programming error (the middleware should have
 // rejected it).
+//
+// DEPRECATION-DEADLINE 2026-08-01: this type is superseded by the
+// canonical search.Actor (godlike/06 SSOT — the search capability
+// owns its own workspace enforcement contract). The
+// PrincipalID/WorkspaceID/IsAdmin field set maps one-to-one; the
+// only field removed is ProjectID (the canonical search.Actor does
+// not carry it). After 2026-08-01, callers MUST migrate to
+// search.Actor and this type is removed (godlike/07
+// zero-baseline rule, godlike/06 SSOT migration).
 type WorkspaceContext struct {
 	WorkspaceID string
 	ProjectID   string
@@ -44,38 +53,42 @@ type WorkspaceContext struct {
 
 // ErrMissingWorkspace is returned when the service is invoked without
 // a workspace context. Handler maps this to HTTP 403.
-var ErrMissingWorkspace = errors.New("mediasearch: workspace context required")
-
-// ErrHybridRequiresSparse is returned when mode=hybrid is requested but
-// the pipeline cannot produce a real dense+sparse retrieval (sparse
-// channel missing from VectorConfig, OR the BM25 tokenizer returns nil
-// for the query — e.g. all tokens <2 chars after punctuation stripping).
 //
-// QDRANT-004 PR1 (June 2026): the orchestrator must NEVER silently
-// degrade a hybrid request to ANN. Callers either retry with mode=ann
-// explicitly OR fix the configuration. The handler maps this to
-// HTTP 422 (semantic error, not a transient failure) so clients can
-// distinguish from generic 500s.
+// Commit 2 BACKFILL/CUTOVER (July 2026): re-aliased as a Go-level
+// pointer-identical deprecation of the canonical
+// search.ErrMissingWorkspace. Two-way identity preserves
+// `errors.Is(err, search.ErrMissingWorkspace)` for legacy callers
+// that still hit this package's sentinel. The canonical source of
+// truth is now search.ErrMissingWorkspace — new code MUST use the
+// canonical (godlike/06 SSOT — the search capability owns its own
+// workspace enforcement contract).
+var ErrMissingWorkspace = search.ErrMissingWorkspace
+
+// ErrHybridRequiresSparse is the legacy deprecation alias of
+// canonical search.ErrHybridRequiresSparse. Re-exported via
+// Go-level pointer identity so errors.Is traverses transparently
+// regardless of which package the caller imported.
 //
-// Sentinel pairing: this is the application-level "fail-closed for the
-// use case" error. The infrastructure-level sibling is qdrant.ErrSparseRequired,
-// which fires deeper in the stack when the orchestrator accidentally
-// sends a malformed hybrid request. Both errors communicate the same
-// invariant — a hybrid request must carry both a sparse channel and a
-// populated sparse vector — at different layers of the call stack.
-var ErrHybridRequiresSparse = errors.New("mediasearch: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
+// Commit 2 BACKFILL/CUTOVER (July 2026): pointer-identical alias.
+// New code MUST use search.ErrHybridRequiresSparse — only legacy
+// callers should reference the alias.
+//
+// Pre-promotion history (kept for audit): this sentinel was paired
+// with qdrant.ErrSparseRequired (infrastructure-level sibling) per
+// QDRANT-004 PR1 (June 2026). The "orchestrator must NEVER silently
+// degrade a hybrid request to ANN" invariant is preserved — only
+// the owner package moved from mediasearch → search.
+var ErrHybridRequiresSparse = search.ErrHybridRequiresSparse
 
-// ErrNoBackendAvailable is returned when the BackendRegistry has zero
-// eligible backends for the query (e.g. no backend advertises the
-// requested media type capability). Handler maps this to HTTP 503.
-// PR-AGENTE2-ERRORS (Agente 2, Azione 4).
-var ErrNoBackendAvailable = errors.New("mediasearch: no backend available for the requested query")
+// ErrNoBackendAvailable is the legacy deprecation alias of canonical
+// search.ErrNoBackendAvailable. PR-AGENTE2-ERRORS (Agente 2, Azione 4)
+// was the origin; Commit 2 BACKFILL/CUTOVER (July 2026) promoted it.
+var ErrNoBackendAvailable = search.ErrNoBackendAvailable
 
-// ErrAllBackendsFailed is returned when every eligible backend
-// returned an error (the fan-out produced zero successful results).
-// Handler maps this to HTTP 502 (Bad Gateway — upstream backends
-// are reachable but all failed). PR-AGENTE2-ERRORS (Agente 2, Azione 4).
-var ErrAllBackendsFailed = errors.New("mediasearch: all backends failed")
+// ErrAllBackendsFailed is the legacy deprecation alias of canonical
+// search.ErrAllBackendsFailed. PR-AGENTE2-ERRORS (Agente 2, Azione 4)
+// was the origin; Commit 2 BACKFILL/CUTOVER (July 2026) promoted it.
+var ErrAllBackendsFailed = search.ErrAllBackendsFailed
 
 // SearchableLifecycleStates is the canonical allowlist of
 // lifecycle_state values that survive the hydration phase (PR 1 —
@@ -172,7 +185,7 @@ type AssetDeliveryService interface {
 // EXPAND→BACKFILL→CUTOVER sequence per godlike/07 §Zero-Legacy Policy.
 type VectorSearchPort interface {
 	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
-	VectorStore() search.VectorStorePort
+	VectorStore() assetssearch.VectorStorePort
 }
 
 // ── Re-exports ───────────────────────────────────────────────────────────
