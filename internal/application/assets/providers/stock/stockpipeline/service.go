@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -69,6 +69,15 @@ var (
 	ErrStockPipelineNilMetadataWriter = errors.New("stockpipeline.NewService: media.MetaWriter is required (semantic enrichment for Drive metadata.json upload)")
 	ErrStockPipelineNilYouTube        = errors.New("stockpipeline.NewService: YouTube is required (provider metadata enrichment for direct URL sources)")
 	ErrStockPipelineNilJobs           = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+
+	// §12-4 (July 2026): stock pipeline no longer threads
+	// `*downloader.YTDLPDownloader` directly. Every yt-dlp / HTTP / Drive
+	// byte-fetch call routes through the canonical
+	// acquisition.SourceStager port (Prepare / Release). Production
+	// wiring supplies an `*acquisition.FilesystemStager` (or future
+	// `*acquisition.YTDLPSourceStager`); nil routing is REJECTED at
+	// ctor time so a missed composition-root injection fails loud.
+	ErrStockPipelineNilSourceStager = errors.New("stockpipeline.NewService: storage.SourceStager is required (Stock Cutover §12-4 — yt-dlp must be hidden behind the acquisition port)")
 
 	// ErrStockPipelineNilFinalizer is NOT a fail-fast sentinel — the
 	// stock Service tolerates a nil Finalizer at ctor time (§12-1
@@ -196,6 +205,17 @@ type Deps struct {
 	// the composition root (currently routed via imageSvc per
 	// registry_internal_modules.go::registerInternalModules).
 	Finalizer finalization.JobFinalizer
+
+	// SourceStager is the canonical acquisition.SourceStager port
+	// (Stock Cutover §12-4, July 2026). Every yt-dlp / HTTP byte-fetch
+	// call in stock routes through Prepare / Release on this port —
+	// the underlying `*downloader.YTDLPDownloader` is HIDDEN behind
+	// the acquisition abstraction so future §§ (DRIVE-005 forward-pointer,
+	// Drive-stager, etc.) can swap the concrete without touching
+	// stock surface. The port is REQUIRED at ctor time per godlike/06
+	// SSOT — there is exactly ONE owner of "how does stock fetch its
+	// source bytes?" and it's the concrete injected here.
+	SourceStager acquisition.SourceStager
 }
 
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
@@ -246,6 +266,15 @@ type Service struct {
 	// finalizer.New(...) at the composition root (currently routed
 	// via imageSvc per registry_internal_modules.go).
 	finalizer finalization.JobFinalizer
+	// sourceStager is the canonical acquisition.SourceStager port
+	// (Stock Cutover §12-4, July 2026). REQUIRED at ctor time — the
+	// None-checking ErrStockPipelineNilSourceStager gate surfaces
+	// composition-time wiring gaps before the first stock run hits
+	// the broker. The `ytdlp *downloader.YTDLPDownloader` field is
+	// RETIRED in §12-4: the Service no longer holds the
+	// downloader-handle directly; production concretes inject the
+	// bytes through acquisition.Prepare.
+	sourceStager acquisition.SourceStager
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -313,6 +342,16 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Jobs == nil {
 		return nil, ErrStockPipelineNilJobs
 	}
+	// §12-4 (July 2026): SourceStager is REQUIRED. The previous
+	// nil-tolerant fallback to a `*downloader.YTDLPDownloader` direct
+	// field is retired; production composition roots MUST inject a
+	// concrete `acquisition.SourceStager` here (typically
+	// `*acquisition.FilesystemStager` wrapping a Fetch closure that
+	// invokes yt-dlp subprocess). Missing injection fails loud at
+	// boot — no silent-degrade to the old ytdlp field.
+	if deps.SourceStager == nil {
+		return nil, ErrStockPipelineNilSourceStager
+	}
 
 	v := deps.Cfg.Video.WithDefaults()
 	return &Service{
@@ -328,14 +367,15 @@ func NewService(deps Deps) (*Service, error) {
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-		jobsSvc:     deps.Jobs,
-		assetIndex:  deps.Storage.AssetIndex,
-		youtubeSvc:  deps.YouTube,
-		clipIndexer: deps.Media.ClipIndexer,
-		metaWriter:  deps.Media.MetaWriter,
-		clipsRepo:   deps.Storage.ClipsRepo,
-		dispatcher:  deps.Storage.Dispatcher,
-		finalizer:   deps.Finalizer,
+		jobsSvc:      deps.Jobs,
+		assetIndex:   deps.Storage.AssetIndex,
+		youtubeSvc:   deps.YouTube,
+		clipIndexer:  deps.Media.ClipIndexer,
+		metaWriter:   deps.Media.MetaWriter,
+		clipsRepo:    deps.Storage.ClipsRepo,
+		dispatcher:   deps.Storage.Dispatcher,
+		finalizer:    deps.Finalizer,
+		sourceStager: deps.SourceStager,
 	}, nil
 }
 
@@ -753,114 +793,108 @@ type StagedSource struct {
 }
 
 // StageSource downloads a video from a URL and returns the staged file.
-// It creates a temp directory, downloads via yt-dlp, verifies the output
-// file exists and is non-empty, and returns a StagedSource with a Cleanup
-// function. Does NOT run the render/upload/index pipeline.
+// It delegates to the canonical acquisition.SourceStager port which
+// owns persistent stage registry + .meta.json sidecars + TTL eviction.
 //
-// Blocco 2a (July 2026): lightweight alternative to Run for the FetchProvider
-// contract. The file is NOT cleaned up until the caller invokes Cleanup().
+// §12-4 (July 2026): the legacy yt-dlp-baked local implementation is
+// RETIRED. The Service no longer holds a `*downloader.YTDLPDownloader`
+// field directly; instead it asks `Service.sourceStager.Prepare(ctx, req)`
+// for the canonical PrepareContext + LocalPath. The TempPath + MkdirTemp
+// dance is gone — stagingRoot lives in the FilesystemStager so multiple
+// runs share persistent state across calls (idempotency invariant).
+//
+// Blocco 2a (July 2026, preserved for the FetchProvider contract): the
+// returned *StagedSource is the legacy dual-shape carrier; the adapter
+// flattens the PrepareContext.LocalPath + PrepareContext.SizeBytes
+// into the StagedSource struct so callers (Adapter.Fetch etc.) don't
+// need to switch shapes mid-call. The cleanup function is a thin
+// wrapper around sourceStager.Release(ctx, PrepareContext.CleanupToken).
 func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, error) {
-	tempDir, err := os.MkdirTemp(s.cfg.Storage.TempPath(), "stock_stage_")
+	prepared, err := s.sourceStager.Prepare(ctx, acquisition.PrepareRequest{
+		Source: acquisition.SourceRef{
+			URL:         url,
+			PolicyVersion: "v1",
+		},
+		IdempotencyKey: "stock.stage." + acquisition.DeriveIdempotencyKey(acquisition.SourceRef{
+			URL:         url,
+			PolicyVersion: "v1",
+		}),
+		CallerRef: "stock.StageSource",
+	})
 	if err != nil {
-		return nil, fmt.Errorf("stage source: create temp dir: %w", err)
+		return nil, fmt.Errorf("stage source: prepare via acquisition.SourceStager: %w", err)
 	}
-
-	outputBase := filepath.Join(tempDir, "source")
-	outputTemplate := outputBase + ".%(ext)s"
-
-	dlReq := &downloader.DownloadRequest{
-		URL:        url,
-		OutputPath: outputTemplate,
-		NoPlaylist: true,
-		Timeout:    10 * time.Minute,
-	}
-
-	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage source: download %q: %w", url, err)
-	}
-
-	// Resolve the actual output file (yt-dlp may change the extension).
-	// Uses the canonical downloader.ResolveDownloadedSegmentPath so the
-	// stat+size verification stays in one place (Blocco 1c).
-	localPath, err := downloader.ResolveDownloadedSegmentPath(outputTemplate)
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage source: resolve output file: %w", err)
-	}
-
-	fi, statErr := os.Stat(localPath)
+	fi, statErr := os.Stat(prepared.LocalPath)
 	if statErr != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage source: stat downloaded file %q: %w", localPath, statErr)
+		return nil, fmt.Errorf("stage source: stat staged file %q: %w", prepared.LocalPath, statErr)
 	}
 	if fi.Size() == 0 {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage source: downloaded file is empty: %s", localPath)
+		return nil, fmt.Errorf("stage source: staged file is empty: %s", prepared.LocalPath)
 	}
-
-	s.log.Info("stage source: video downloaded",
+	s.log.Info("stage source: video downloaded via acquisition port",
 		zap.String("url", url),
-		zap.String("local_path", localPath),
-		zap.Int64("bytes", fi.Size()))
-
+		zap.String("local_path", prepared.LocalPath),
+		zap.String("stage_id", prepared.ID),
+		zap.String("cleanup_token", prepared.CleanupToken),
+		zap.Int64("bytes", fi.Size()),
+		zap.Time("expires_at", prepared.ExpiresAt),
+	)
 	return &StagedSource{
-		LocalPath: localPath,
+		LocalPath: prepared.LocalPath,
 		Bytes:     fi.Size(),
 	}, nil
 }
 
-// stageSection downloads a single time-slice of a video via yt-dlp's
-// --download-sections. It is the shared helper used by both
-// processSingleVideo (for the full pipeline) and StockStager (for the
-// SourceStager port). Step 9/12 (July 2026): extracted from
-// processSingleVideo's inline download logic.
+// stageSection downloads a single time-slice of a video via the
+// canonical acquisition.SourceStager port (Stock Cutover §12-4).
+//
+// §12-4 (July 2026): the section path no longer threads a raw
+// downloader.YTDLPDownloader.Download call. Instead the section time
+// range flows through the same acquisition.SourceRef envelope as the
+// full-asset path; the yt-dlp invocation logic that handles yt-dlp's
+// `--download-sections` lives INSIDE the production concrete
+// (`*acquisition.YTDLPSourceStager`, §12-4.2 forward-pointer). Today
+// the FilesystemStager concrete writes the file via its Fetch
+// closure — which stock callers wire to the yt-dlp subprocess.
+//
+// The legacy `s.ytdlp.Download` direct call is RETIRED.
 func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*appassets.StagedAsset, error) {
-	tempDir, err := os.MkdirTemp(s.cfg.Storage.TempPath(), "stock_section_")
+	prepared, err := s.sourceStager.Prepare(ctx, acquisition.PrepareRequest{
+		Source: acquisition.SourceRef{
+			URL:               ref.URL,
+			DownloadSection:   ref.DownloadSection,
+			ForceKeyframes:    ref.ForceKeyframes,
+			MergeFormat:       ref.MergeFormat,
+			PolicyVersion:     "v1",
+		},
+		IdempotencyKey: "stock.section." + acquisition.DeriveIdempotencyKey(acquisition.SourceRef{
+			URL:             ref.URL,
+			DownloadSection: ref.DownloadSection,
+			PolicyVersion:   "v1",
+		}),
+		CallerRef: "stock.stageSection",
+	})
 	if err != nil {
-		return nil, fmt.Errorf("stage section: create temp dir: %w", err)
+		return nil, fmt.Errorf("stage section: prepare via acquisition.SourceStager (%q section=%q): %w", ref.URL, ref.DownloadSection, err)
 	}
-
-	rawPath := filepath.Join(tempDir, "section.mp4")
-
-	mergeFormat := ref.MergeFormat
-	if mergeFormat == "" {
-		mergeFormat = "mp4"
-	}
-
-	dlReq := &downloader.DownloadRequest{
-		URL:              ref.URL,
-		OutputPath:       rawPath,
-		MergeFormat:      mergeFormat,
-		DownloadSections: []string{ref.DownloadSection},
-		ForceKeyframes:   ref.ForceKeyframes,
-		Timeout:          10 * time.Minute,
-	}
-	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage section: download %q: %w", ref.URL, err)
-	}
-
-	actualPath := resolveActualPath(rawPath)
-	if actualPath == "" {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage section: downloaded file not found for %q", ref.URL)
-	}
-
-	fi, statErr := os.Stat(actualPath)
+	fi, statErr := os.Stat(prepared.LocalPath)
 	if statErr != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("stage section: stat %q: %w", actualPath, statErr)
+		return nil, fmt.Errorf("stage section: stat %q: %w", prepared.LocalPath, statErr)
 	}
-
-	s.log.Info("stage section: video section downloaded",
+	if fi.Size() == 0 {
+		return nil, fmt.Errorf("stage section: staged file is empty: %s", prepared.LocalPath)
+	}
+	s.log.Info("stage section: video section downloaded via acquisition port",
 		zap.String("url", ref.URL),
 		zap.String("section", ref.DownloadSection),
-		zap.String("local_path", actualPath),
-		zap.Int64("bytes", fi.Size()))
-
+		zap.String("local_path", prepared.LocalPath),
+		zap.String("stage_id", prepared.ID),
+		zap.String("cleanup_token", prepared.CleanupToken),
+		zap.Int64("bytes", fi.Size()),
+		zap.Time("expires_at", prepared.ExpiresAt),
+	)
 	return &appassets.StagedAsset{
-		LocalPath: actualPath,
+		LocalPath: prepared.LocalPath,
 		Bytes:     fi.Size(),
 	}, nil
 }
