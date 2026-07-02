@@ -106,6 +106,15 @@ type RegistryEntry struct {
 	Concurrency int
 	// RequiredCapabilities are worker capabilities needed (empty = any worker).
 	RequiredCapabilities []string
+
+	// ProducesArtifacts is true when this job type produces files (videos,
+	// images, documents, audio, etc.) that must be finalised through the
+	// JobFinalizer spine. Jobs with ProducesArtifacts=true MUST call
+	// CompleteWithArtifacts instead of the legacy Complete path.
+	//
+	// When true, SQLiteStore.Complete will reject completions with
+	// ErrArtifactJobRequiresCompleteWithArtifacts.
+	ProducesArtifacts bool
 }
 
 // JobPolicy is the canonical alias for RegistryEntry. New code MUST
@@ -241,6 +250,30 @@ func (r *Registry) Concurrency(jobType string) int {
 		return entry.Concurrency
 	}
 	return DefaultConcurrency
+}
+
+// ProducesArtifacts returns true if the job type is registered as an
+// artifact-producing job. Artifact-producing jobs MUST use
+// CompleteWithArtifacts instead of the legacy Complete path.
+func (r *Registry) ProducesArtifacts(jobType string) bool {
+	if entry, ok := r.Get(jobType); ok {
+		return entry.ProducesArtifacts
+	}
+	return false
+}
+
+// ProducesArtifactsMap returns a read-only map of job types that produce
+// artifacts, keyed by type string. Used to configure the SQLiteStore gate.
+func (r *Registry) ProducesArtifactsMap() map[string]bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string]bool, len(r.entries))
+	for t, e := range r.entries {
+		if e.ProducesArtifacts {
+			out[t] = true
+		}
+	}
+	return out
 }
 
 // applyDefaults is invoked by Compose() at the end of the canonical
@@ -439,24 +472,24 @@ func Compose() *Registry {
 	r := NewRegistry()
 
 	// ── Script generation ──
-	r.Register(JobPolicy{Type: TypeScriptGenerate, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Type: TypeScriptGenerate, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeMediaCurate, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Media processing ──
-	r.Register(JobPolicy{Type: TypeMediaExtract, Description: "Media extraction", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
-	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Type: TypeMediaExtract, Description: "Media extraction", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
 	r.Register(JobPolicy{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
 
 	// ── Video ──
-	r.Register(JobPolicy{Type: TypeVideoGenerate, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
-	r.Register(JobPolicy{Type: TypeRenderVideo, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Type: TypeVideoGenerate, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeRenderVideo, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
 
 	// ── YouTube ──
-	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction", Timeout: 60 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeYouTubeRebuildST, Description: "Rebuild YouTube search text", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 	// YouTube cutover Commit 6/6 (June 2026, P1 #17 closure): Concurrency=1
 	// locks the per-worker serial mode (matches e2e_no_duplicates_test.go's
@@ -467,10 +500,10 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeYouTubeChannelSync, Description: "YouTube channel-level sync (metadata + video listings)", Timeout: 30 * time.Minute, DefaultMaxRetries: 1, Concurrency: 1})
 
 	// ── Voiceover / subtitles ──
-	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeVoiceoverGenerateItem, Description: "Voiceover per-language child (P0.3 fan-out: parent voiceover.generate schedules 1 job per (language, voice) pair; concurrency 4 = sibling throttle)", Timeout: 10 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeVoiceoverGenerateItem, Description: "Voiceover per-language child (P0.3 fan-out: parent voiceover.generate schedules 1 job per (language, voice) pair; concurrency 4 = sibling throttle)", Timeout: 10 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──
@@ -479,8 +512,8 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeDriveFolderSync, Description: "Drive folder sync", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Content processing ──
-	r.Register(JobPolicy{Type: TypeBooksProcess, Description: "Book processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeLessonsProcess, Description: "Lesson processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Type: TypeBooksProcess, Description: "Book processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeLessonsProcess, Description: "Lesson processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 
 	// ── System ──
 	r.Register(JobPolicy{Type: TypeSystemCleanup, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
@@ -491,7 +524,7 @@ func Compose() *Registry {
 	// the operational parameters so the broker can accept jobs of this type.
 	// RequiredCapabilities["image_gen_chrome"] mirrors internal/application/images/capability.go::CapImageGenChrome.
 	// Keep both declaration sites in sync.
-	r.Register(JobPolicy{Type: TypeImageGenerateGoogle, Description: "Google Slides AI image generation (Chrome + Playwright)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, RequiredCapabilities: []string{"image_gen_chrome"}})
+	r.Register(JobPolicy{Type: TypeImageGenerateGoogle, Description: "Google Slides AI image generation (Chrome + Playwright)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, RequiredCapabilities: []string{"image_gen_chrome"}, ProducesArtifacts: true})
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency

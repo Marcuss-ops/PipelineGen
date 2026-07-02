@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,9 +27,21 @@ func (r *SQLiteStore) SetProgress(ctx context.Context, jobID string, progress in
 	return nil
 }
 
+// ErrArtifactJobRequiresCompleteWithArtifacts is returned when a worker
+// calls Complete (the legacy path) on a job type that produces artifacts.
+// Artifact-producing jobs MUST use CompleteWithArtifacts (the
+// JobFinalizer spine) instead.
+var ErrArtifactJobRequiresCompleteWithArtifacts = errors.New("artifact-producing job must use CompleteWithArtifacts — the legacy Complete path is gated for this job type")
+
 // ── Complete (atomic transaction) ────────────────────────────────────────
 
 // Complete marks a job as completed with a result. Fenced by lease.
+//
+// Deprecated: artifact-producing jobs (ProducesArtifacts=true in the
+// registry) MUST use the JobFinalizer.CompleteWithArtifacts path instead.
+// This method will reject artifact-producing job types with
+// ErrArtifactJobRequiresCompleteWithArtifacts. Use broker.CompleteWithArtifacts
+// which routes through the transactional finalization spine.
 func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, result json.RawMessage) error {
 	now := time.Now().UTC()
 	nowStr := timeutil.FormatRFC3339(now)
@@ -43,12 +56,12 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 	}
 	defer tx.Rollback()
 
-	// Validate ownership
+	// Validate ownership — also read the job type to gate artifact producers.
 	var status job.Status
-	var curWorkerID, curLeaseID string
+	var curWorkerID, curLeaseID, jobType string
 	var revision int
-	err = tx.QueryRowContext(ctx, `SELECT status, worker_id, lease_id, revision FROM jobs WHERE id = ?`, id).
-		Scan(&status, &curWorkerID, &curLeaseID, &revision)
+	err = tx.QueryRowContext(ctx, `SELECT status, worker_id, lease_id, type, revision FROM jobs WHERE id = ?`, id).
+		Scan(&status, &curWorkerID, &curLeaseID, &jobType, &revision)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ErrJobNotFound
@@ -58,6 +71,11 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 	if err := validateOwnership(id, "complete", status, curWorkerID, curLeaseID, revision,
 		workerID, leaseID, int64(expectedRevision), job.StatusRunning, job.StatusFinalizing); err != nil {
 		return err
+	}
+
+	// Gate: artifact-producing jobs MUST use CompleteWithArtifacts.
+	if r.producesArtifacts != nil && r.producesArtifacts[jobType] {
+		return fmt.Errorf("%w: job type %q produces artifacts — use CompleteWithArtifacts instead of Complete", ErrArtifactJobRequiresCompleteWithArtifacts, jobType)
 	}
 
 	// Atomic update

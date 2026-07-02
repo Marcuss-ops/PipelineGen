@@ -35,9 +35,10 @@ import (
 // returns rows-affected=0 → ErrTransitionConflict. No application-level
 // mutex is needed; SQLite is the synchronisation point.
 type SQLiteStore struct {
-	db       *sql.DB
-	log      *zap.Logger
-	notifier *notifier
+	db                 *sql.DB
+	log                *zap.Logger
+	notifier           *notifier
+	producesArtifacts  map[string]bool // job types that MUST use CompleteWithArtifacts
 }
 
 // jobColumns is the canonical list of column names read by Get, List and
@@ -49,6 +50,13 @@ const jobColumns = `id, type, status, priority, project, video_name, active_key,
 
 func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
 	return &SQLiteStore{db: db, log: log, notifier: newNotifier()}
+}
+
+// SetProducesArtifacts configures which job types produce artifacts and
+// must use CompleteWithArtifacts instead of the legacy Complete path.
+// Passing nil clears the gate (allows all types through Complete).
+func (r *SQLiteStore) SetProducesArtifacts(types map[string]bool) {
+	r.producesArtifacts = types
 }
 
 // ── In-process queue-notifier port (PR-Polling / ADR-0002 §D6.5) ────────────
