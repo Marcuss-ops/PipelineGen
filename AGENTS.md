@@ -821,7 +821,7 @@ adding similar sites:
 - ✅ **Scriptflow eliminato** — `internal/application/scriptflow/` directory rimossa, codice assorbito in `internal/application/scripts/`
 - ✅ **Registry provider tipizzato** — `internal/application/assets/providers/` con adapter per Artlist e YouTube
 - ✅ **Consolidation api/sources** — Migrati gli handler di voiceover, soundeffect e register (YouTube) da `internal/api/sources/` a sotto-pacchetti dedicati in `internal/api/assets/` (`voiceover/`, `soundeffect/`, `register/`)
-- ✅ **Script-flow use cases extracted** (June 2026): `GenerateBatchUseCase`, `SectionRegenerator`, `CacheEvictionUseCase` — handler `ScriptFlowHandler` orchestration for `/generate-batch`, `/cache/evict`, and `/sections/:section_id/regenerate` now delegates via `ScriptFlowDeps` (22-positional ctor replaced).
+- ✅ **Script-flow use cases extracted** (June 2026): `GenerateBatchUseCase`, `SectionRegenerator`, `CacheEvictionUseCase` — handler `ScriptFlowHandler` orchestration for the legacy batch endpoint, `/cache/evict`, and `/sections/:section_id/regenerate` now delegates via `ScriptFlowDeps` (22-positional ctor replaced).
 
 ### Still Pending
 - Completion of the remaining `internal/api/sources/` consolidation to `internal/api/assets/` (e.g. artlist, stock, local-to-drive)

@@ -189,7 +189,6 @@ routes:
       path: /generate
       source: internal/api/script/handler_flow.go
     - method: POST
-      path: /generate-batch
       source: internal/api/script/handler_flow.go
     - method: POST
       path: /generate-from-clips

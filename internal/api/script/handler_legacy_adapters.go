@@ -14,7 +14,7 @@
 //   - POST /api/script/generate-with-images  → unified pipeline  (removal: 2026-12-31)
 //   - POST /api/script/curate                → unified pipeline  (removal: 2026-09-30)
 //
-// FASE 12c (July 2026): generate-batch legacy route REMOVED — clients
+// FASE 12c (July 2026): legacy batch route REMOVED — clients
 // must use POST /api/script/generate with multiple items.
 //
 // PR 11 (June 2026): created as part of the legacy-route deprecation wave.

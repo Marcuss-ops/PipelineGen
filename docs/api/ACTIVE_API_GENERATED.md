@@ -58,7 +58,7 @@
 | GET | `/api/images/search` | Search images |
 | POST | `/api/images/animate` | Animate an image |
 | POST | `/api/images/generate` | Generate AI images |
-| POST | `/api/images/generate-batch` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/images/batch-generate` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/images/sync` | Sync images to Drive |
 | POST | `/api/images/upload` | Upload an image |
 | POST | `/api/images/webhook/remote` | Remote image webhook |
@@ -114,7 +114,6 @@
 | POST | `/api/script/cache/evict` | Evict script cache entries |
 | POST | `/api/script/curate` | Curate generated content |
 | POST | `/api/script/generate` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/script/generate-batch` | Generate scripts in batch |
 | POST | `/api/script/generate-from-clips` | Generate script from clips |
 | POST | `/api/script/generate-with-images` | Generate script with AI scene images |
 
