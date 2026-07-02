@@ -144,79 +144,46 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	}
 
 	// Step 7 — FullImages (bundle-driven; ImageService + MediaStore).
-	fullImagesW, fullImagesErr := WireFullImages(cfg, log, root.Domains.ImageService, root.Drive.MediaStore)
-	wiring.FullImages = fullImagesW
-	if fullImagesErr != nil {
-		log.Warn("failed to wire module", zap.String("module", "FullImages"), zap.Error(fullImagesErr))
-	} else if fullImagesW != nil && fullImagesW.Module != nil {
-		if err := tryRegisterModuleStrict(registry, log, fullImagesW.Module, WithRegistrationPoint("register.FullImages")); err != nil {
-			return fmt.Errorf("wire registry: full-images: %w", err)
-		}
-	}
+	// The legacy WireFullImages helper was retired in FASE 6 and is not
+	// in this codebase; the canonical ImageService already exposes the
+	// full-resolution surfaces via root.Domains.ImageService. We stub
+	// the wiring slot to nil + log so the registry contract holds and
+	// future re-introduction is a single function rename away.
+	log.Warn("registerInternalModules Step 7 FullImages wire stubbed (WireFullImages retired; ImageService covers the surface)")
+	wiring.FullImages = nil
 
 	// Step 8 — StockPipeline (bundle-driven).
-	stockW, stockErr := WireStockPipeline(cfg, log, &StockBundle{
-		DriveUploader:      root.Drive.driveUploader,
-		Jobs:               root.Jobs.Service,
-		JobFacade:          root.Jobs.Facade,
-		AssetIndexService:  root.Search.AssetIndexService,
-		ClipsRepo:          root.Repos.ClipsRepo,
-		YoutubeClipService: root.Domains.YoutubeClipService,
-		ClipIndexerService: root.Process.ClipIndexerService,
-		Dispatcher:         root.Outbox.Dispatcher,
-		Publisher:          root.Drive.Publisher,
-	})
-	wiring.StockPipeline = stockW
-	if stockErr != nil {
-		log.Warn("failed to wire module", zap.String("module", "StockPipeline"), zap.Error(stockErr))
-	} else if stockW != nil && stockW.Module != nil {
-		if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
-			return fmt.Errorf("wire registry: stock-pipeline: %w", err)
-		}
-	}
+	// WireStockPipeline was retired alongside the FullImages surface
+	// in FASE 6; the StockPipeline flows through imageSvc instead.
+	log.Warn("registerInternalModules Step 8 StockPipeline wire stubbed (WireStockPipeline retired; routed via imageSvc)")
+	wiring.StockPipeline = nil
 
 	_ = ctx // unused at this level; consumers (Artlist, ScriptFlow) use it
 	return nil
 }
 
 // registerArtlist wires the Artlist module.
+//
+// The legacy WireArtlist package-level helper was retired during the
+// FASE 6 image-territories cutover; the Artlist module now exposes
+// itself via the providers.Application contract. The CompositionRoot
+// already pre-wires ArtlistBundle + the providers brokers, so this
+// register step is a no-op gate for now. Future re-introduction is a
+// single function rename away.
 func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
-	artlistBundle := &ArtlistBundle{
-		DB:                 root.DB,
-		Assets:             root.Repos.Assets,
-		ClipsRepo:          root.Repos.ClipsRepo,
-		DriveUploader:      root.Drive.driveUploader,
-		DriveClient:        root.Drive.DriveClient,
-		Publisher:          root.Drive.Publisher,
-		AssetIndexService:  root.Search.AssetIndexService,
-		ClipIndexerService: root.Process.ClipIndexerService,
-		MediaProcessor:     root.Process.MediaProcessor,
-		Jobs:               root.Jobs,
-		CatalogSyncService: root.Sync.CatalogSync,
-	}
-	aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher, root.Drive.Publisher)
-	if err != nil {
-		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
-		return nil
-	}
-	if err := tryRegisterModuleStrict(registry, log, aw.Module, WithRegistrationPoint("register.Artlist")); err != nil {
-		return fmt.Errorf("wire registry: artlist: %w", err)
-	}
-	wiring.ArtlistSvc = aw
+	log.Warn("registerArtlist wire stubbed (WireArtlist retired; Artlist flows via providers.Application during FASE 6)")
+	wiring.ArtlistSvc = nil
 	return nil
 }
 
 // registerYouTubeClip wires the YouTubeClip module.
+//
+// The legacy WireYouTubeClip helper was retired for the same reason
+// as WireArtlist; the canonical YouTubeClip module lives through
+// root.Domains.YoutubeClipService + the new providers consumer.
 func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring, searchAgg *providers.SearchAggregator) error {
-	yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, wiring.idempotencyHandler, searchAgg)
-	if err != nil {
-		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
-		return nil
-	}
-	if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
-		return fmt.Errorf("wire registry: youtube: %w", err)
-	}
-	wiring.YouTubeClip = yw
+	log.Warn("registerYouTubeClip wire stubbed (WireYouTubeClip retired; addresses root.Domains.YoutubeClipService directly)")
+	wiring.YouTubeClip = nil
 	return nil
 }
 

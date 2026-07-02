@@ -369,6 +369,68 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}, nil
 }
 
+// imageListRepoAdapter bridges *assets.ImagesRepository (the infra
+// producer of routing.RepositoryListFilter + []routing.RepositoryImageRow)
+// to the canonical routing.ImageListRepository interface expected by
+// the FASE 7 ImageSearchResolver (which accepts routing.ImageFilter +
+// []routing.ImageSearchResult). The two structs are structurally
+// identical — different package names only — so the adapter does a
+// field-for-field rebind with no data loss.
+type imageListRepoAdapter struct {
+	repo *assets.ImagesRepository
+}
+
+// ListImages satisfies routing.ImageListRepository. Repository-only
+// fields (Subject/Slug/Description/Tags/CreatedAt on the row) are
+// dropped since the canonical ImageSearchResult does not expose
+// them; field-for-field bind for the rest.
+func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+	if a == nil || a.repo == nil {
+		return nil, nil
+	}
+	// Translate the canonical routing ImageFilter → assets.RepositoryListFilter.
+	// Both underlying ImageOrigin enums are `type ImageOrigin string` in their
+	// respective packages; we cast element-by-element because Go does not allow
+	// direct conversion between named types declared in different packages even
+	// when their underlying types match.
+	dbOrigins := make([]assets.ImageOrigin, 0, len(filter.Origins))
+	for _, o := range filter.Origins {
+		dbOrigins = append(dbOrigins, assets.ImageOrigin(o))
+	}
+	dbRows, err := a.repo.ListImages(ctx, routing.RepositoryListFilter{
+		SubjectID: filter.SubjectID,
+		Origins:   dbOrigins,
+		Providers: filter.Providers,
+		StyleIDs:  filter.StyleIDs,
+		Tags:      filter.Tags,
+		Limit:     filter.Limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]routing.ImageSearchResult, 0, len(dbRows))
+	for _, r := range dbRows {
+		out = append(out, routing.ImageSearchResult{
+			AssetID:      r.AssetID,
+			Origin:       routing.ImageOrigin(r.Origin),
+			Provider:     r.Provider,
+			Name:         r.Name,
+			PreviewURL:   r.PreviewURL,
+			Width:        r.Width,
+			Height:       r.Height,
+			Score:        r.Score,
+			StyleID:      r.StyleID,
+			StyleVersion: r.StyleVersion,
+			License:      r.License,
+		})
+	}
+	return out, nil
+}
+
+// Compile-time assertion: imageListRepoAdapter satisfies the
+// canonical routing ImageListRepository.
+var _ routing.ImageListRepository = (*imageListRepoAdapter)(nil)
+
 // buildImageSearchResolver wires the FASE 7 routing layer
 // (routing.ImageSearchResolver) from the canonical image-side deps.
 // Fail-closed (godlike/07): if either input is nil we surface the
@@ -383,7 +445,7 @@ func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *assets.Im
 	}
 	resolver, err := routing.NewImageSearchResolver(
 		routing.WithRetrievalBackend(imageSvc.RetrievalRegistry()),
-		routing.WithImageListRepository(imageRepo),
+		routing.WithImageListRepository(&imageListRepoAdapter{repo: imageRepo}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("routing.NewImageSearchResolver: %w", err)
