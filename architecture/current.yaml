@@ -1433,9 +1433,64 @@
       deadline: 2026-07-02
     - id: STOCK-CUT-6-WIRE-UP
       owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending      deadline: 2026-08-15
+
+# ── P0 #6 — runLease intermediate checkRenew redesign (forward-pointer from P0 #5 closure, July 2026) ──
+# P0 #5 (fail-closed pre-Complete seam: postRenewFailClosedCheck +
+# ErrLeaseLostDuringRun + 4 typed sentinels + 2 helper tests) landed clean:
+# gofmt/vet/build/test all PASS, the typed-error contract is locked via
+# TestPostRenewFailClosedCheck_{LeaseLost,CleanDrain,Timeout}_ReturnsNil.
+# The P0 #5 integration test (TestRunLease_RenewalError_NoCompleteCall) is
+# currently t.Skip'd — see runner_test.go long comment block above the
+# function for the full failure-mode analysis. This P0 #6 entry tracks the
+# follow-up work that makes the integration test satisfiable.
+#
+# What runLease leaves on the table today: the runner's body holds multiple
+# non-blocking checkRenew reads between handler dispatch and the final
+# post-renewCancel drain. Each checkRenew CONSUMES the renewal error from
+# renewErrs the moment the renew goroutine writes it, leaving the channel
+# empty by the time postRenewFailClosedCheck observes it. runLease silently
+# degrades to tools.Fail returning nil (because stubLeaseBroker.Fail is a
+# no-op) and the integration test sees "expected error, got nil"
+# deterministically. The fail-closed seam itself is correct; only the
+# runLease call-graph order needs the redesign.
+#
+# Architectural decision (one of three options; godlike/06 SSOT will codify
+# the CUTOVER choice):
+#   (a) Separate observation channel — new chan for the mid-stream reads;
+#       renewErrs stays untouched for the final drain. checkRenew moves to
+#       reading the new channel; postRenewFailClosedCheck keeps reading
+#       renewErrs. Minimal blast radius (1 new field + 1 new chan); the
+#       current runLease shape stays intact for callers.
+#   (b) Post-renewCancel gating on the FIRST intermediate read — defer all
+#       intermediate checkRenew reads until after renewCancel is called so
+#       they observe the channel only after the cancel propagates. Requires
+#       moving checkRenew call sites; semantically equivalent (a) under a
+#       different shape.
+#   (c) Snapshot renewErrs to a local at post-renewCancel time only — remove
+#       the intermediate reads entirely; the only checkRenew is the final
+#       one. Most invasive; requires redesigning the per-stage
+#       check-then-fail logic.
+#
+# Forward-pointer urgency: low at present (the "phantom Complete" guard
+# still works through the SQL-layer failsafe on the broker side today per
+# ErrArtifactJobRequiresCompleteWithArtifacts gate). P0 #6 is a
+# godlike/07 audit-pin residue rather than a critical-path regression:
+# future agents who try to remove the intermediate checkRenew reads
+# (thinking they're dead code) need to be caught by the re-enabled
+# integration test. The stubLeaseBroker + handler close-on-first-Renew
+# sync barrier infrastructure is preserved verbatim in runner_test.go so
+# P0 #6 can re-enable the test by deleting t.Skip alone — no other test
+# line changes needed.
+- id: P0.6-runlease_checkrenew_redesign
+  status: pending
+  owner_capability: internal/application/jobs/worker
+  deadline: 2026-08-15
+  linked_issues:
+    - id: PR-WORKER-RUNLEASE-INTEGRATION-RE-ENABLE
+      owner_capability: internal/application/jobs/worker
       status: pending
       deadline: 2026-08-15
-
 
 # Doc #2 (post_cascade_followups) and Doc #3 (legacy_fallback_cleanup) DROPPED - see footer pointer.
 
