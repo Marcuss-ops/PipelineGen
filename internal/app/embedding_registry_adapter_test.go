@@ -12,8 +12,10 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 
@@ -54,7 +56,7 @@ func (s *stubTextEmbedder) Embed(ctx context.Context, text string) ([]float32, e
 // without touching the registry's surface.
 func TestEmbeddingRegistryTextChannelLive(t *testing.T) {
 	inner := &stubTextEmbedder{vec: []float32{0.5, 0.6, 0.7}}
-	reg := newEmbeddingRegistryAdapter(inner)
+	reg := newEmbeddingRegistryAdapter(inner, nil)
 	if reg == nil {
 		t.Fatal("newEmbeddingRegistryAdapter returned nil for non-nil embedder")
 	}
@@ -81,7 +83,7 @@ func TestEmbeddingRegistryTextChannelLive(t *testing.T) {
 // is the same qdrant.TextEmbedder today.
 func TestEmbeddingRegistryTranscriptChannelLive(t *testing.T) {
 	inner := &stubTextEmbedder{vec: []float32{0.1, 0.2, 0.3}}
-	reg := newEmbeddingRegistryAdapter(inner)
+	reg := newEmbeddingRegistryAdapter(inner, nil)
 	got, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelTranscript, "transcript content")
 	if err != nil {
 		t.Fatalf("transcript channel EmbedQuery: unexpected error %v", err)
@@ -102,7 +104,7 @@ func TestEmbeddingRegistryTranscriptChannelLive(t *testing.T) {
 // the embedding model.
 func TestEmbeddingRegistryTextAndTranscriptShareEncoder(t *testing.T) {
 	inner := &stubTextEmbedder{}
-	reg := newEmbeddingRegistryAdapter(inner)
+	reg := newEmbeddingRegistryAdapter(inner, nil)
 	// Two calls on each channel — verify they all route through
 	// inner.calls == 4. Separate channels operating on separate
 	// encoder copies would double the embedding model load + cost.
@@ -126,11 +128,12 @@ func TestEmbeddingRegistryTextAndTranscriptShareEncoder(t *testing.T) {
 // ── Forward-pointer stub sentinels ────────────────────────────────
 
 // TestEmbeddingRegistryVisualNotConfigured: the visual channel is
-// RECOGNIZED but UNWIRED (forward-pointer: SigLIP-text encoder from
-// PR-CROSS-MODAL-TEXT-TO-VISUAL). Errors.Is probe MUST reach
-// ErrChannelNotConfigured without unwrapping.
+// RECOGNIZED but UNWIRED when siglipEncoder is nil at the composition
+// root (siglip-text encoder from PR-CROSS-MODAL-TEXT-TO-VISUAL not yet
+// wired). Errors.Is probe MUST reach ErrChannelNotConfigured without
+// unwrapping.
 func TestEmbeddingRegistryVisualNotConfigured(t *testing.T) {
-	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{})
+	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{}, nil)
 	_, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelVisual, "landscape concept")
 	if err == nil {
 		t.Fatal("visual channel: want error, got nil")
@@ -144,7 +147,7 @@ func TestEmbeddingRegistryVisualNotConfigured(t *testing.T) {
 // contract as visual — CLAP-text encoder from PR-CROSS-MODAL lands
 // later.
 func TestEmbeddingRegistryAudioNotConfigured(t *testing.T) {
-	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{})
+	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{}, nil)
 	_, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelAudio, "ocean waves")
 	if !errors.Is(err, searchpkg.ErrChannelNotConfigured) {
 		t.Errorf("audio channel: want errors.Is(err, ErrChannelNotConfigured)=true, got %v", err)
@@ -158,7 +161,7 @@ func TestEmbeddingRegistryAudioNotConfigured(t *testing.T) {
 // ErrChannelNotConfigured because the WRONG-disable reason surfaces
 // differently in operator dashboards.
 func TestEmbeddingRegistrySparseNotApplicable(t *testing.T) {
-	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{})
+	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{}, nil)
 	_, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelSparse, "any text")
 	if err == nil {
 		t.Fatal("sparse channel: want error, got nil")
@@ -174,13 +177,108 @@ func TestEmbeddingRegistrySparseNotApplicable(t *testing.T) {
 	}
 }
 
+// ── PR-CROSS-MODAL-TEXT-TO-VISUAL: live SigLIP path ──────────────
+
+// stubSiglipTextEncoder is the canonical test double for the
+// SigLIP text encoder (satisfies search.ChannelEncoder). Tests
+// inspect calls + lastText + returned vec to confirm the registry
+// routes ChannelVisual through SigLIP-text end-to-end (godlike/07
+// EXPAND-phase live path).
+type stubSiglipTextEncoder struct {
+	vec      []float32
+	calls    int
+	embedErr error
+	lastText string
+}
+
+func (s *stubSiglipTextEncoder) EmbedTextQuery(_ context.Context, text string) ([]float32, error) {
+	s.calls++
+	s.lastText = text
+	if s.embedErr != nil {
+		return nil, s.embedErr
+	}
+	if s.vec != nil {
+		return s.vec, nil
+	}
+	return []float32{0.7, 0.8, 0.9}, nil
+}
+
+// TestEmbeddingRegistryVisualLiveWithSigLIPEncoder: PR-CROSS-MODAL-TEXT-TO-VISUAL
+// (August 2026) — when composition root provides a non-nil
+// siglipEncoder, ChannelVisual routes through it (no stub fallback,
+// no ErrChannelNotConfigured). The text query flows end-to-end via
+// SigLIP-text and lands in the same 768d vector space as image-
+// encoded video frames.
+func TestEmbeddingRegistryVisualLiveWithSigLIPEncoder(t *testing.T) {
+	inner := &stubTextEmbedder{}
+	siglip := &stubSiglipTextEncoder{vec: []float32{0.11, 0.22, 0.33}}
+	reg := newEmbeddingRegistryAdapter(inner, siglip)
+	if reg == nil {
+		t.Fatal("newEmbeddingRegistryAdapter returned nil")
+	}
+	got, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelVisual, "sunset over mountains")
+	if err != nil {
+		t.Fatalf("visual channel EmbedQuery: want nil error (live SigLIP path), got %v", err)
+	}
+	// Vec-identity pin (godlike/06 SSOT): the registry MUST return
+	// the SigLIP-output vector verbatim, NOT a generic e5-shaped
+	// vector. A future regression that routes ChannelVisual through
+	// the wrong adapter would surface here (silent cross-modal
+	// corruption catches at this seam before Qdrant upsert).
+	if len(got) != len(siglip.vec) {
+		t.Fatalf("visual channel EmbedQuery: want %dd (SigLIP-output), got %dd", len(siglip.vec), len(got))
+	}
+	for i, v := range siglip.vec {
+		if got[i] != v {
+			t.Errorf("visual channel EmbedQuery: vec[%d]=%v, want %v (SigLIP-output identity broken)",
+				i, got[i], v)
+		}
+	}
+	if siglip.calls != 1 {
+		t.Errorf("visual channel EmbedQuery: want 1 underlying call, got %d", siglip.calls)
+	}
+	if siglip.lastText != "sunset over mountains" {
+		t.Errorf("visual channel EmbedQuery: want text routed to SigLIP encoder %q, got %q",
+			"sunset over mountains", siglip.lastText)
+	}
+	// Live visual path must NOT have leaked into the text encoder:
+	// text channel uses the e5 path; visual uses SigLIP-text.
+	if inner.calls != 0 {
+		t.Errorf("visual channel call leaked into text embedder: got %d text calls", inner.calls)
+	}
+}
+
+// TestEmbeddingRegistryVisualSigLIPEncoderErrorPropagates: when
+// the SigLIP encoder returns an error, the registry propagates it
+// unwrapped — the registry MUST own the routing decision but NOT
+// the encoder-side error contract. We exercise this via the
+// canonical ErrSigLIPDimensionMismatch typed sentinel so the assertion
+// uses errors.Is (the godlike/07 routing contract), not raw string
+// equality (brittle to future wrapping).
+func TestEmbeddingRegistryVisualSigLIPEncoderErrorPropagates(t *testing.T) {
+	inner := &stubTextEmbedder{}
+	siglipErr := fmt.Errorf("siglip sidecar 500: %w", embeddings.ErrSigLIPDimensionMismatch)
+	siglip := &stubSiglipTextEncoder{embedErr: siglipErr}
+	reg := newEmbeddingRegistryAdapter(inner, siglip)
+	_, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelVisual, "any text")
+	if err == nil {
+		t.Fatal("visual channel: want error from SigLIP encoder, got nil")
+	}
+	// godlike/07 typed-error probe via errors.Is beats raw string
+	// equality; future wrapping (e.g., adding request ID context)
+	// won't break this test.
+	if !errors.Is(err, embeddings.ErrSigLIPDimensionMismatch) {
+		t.Errorf("visual channel: want errors.Is(err, ErrSigLIPDimensionMismatch)=true, got %v", err)
+	}
+}
+
 // ── Fail-closed surface ──────────────────────────────────────────
 
 // TestEmbeddingRegistryUnknownChannelRejected: off-vocabulary
 // channel names return ErrChannelUnknown (programming error at the
 // orchestrator level). The wrapped %w is the godlike/07 contract.
 func TestEmbeddingRegistryUnknownChannelRejected(t *testing.T) {
-	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{})
+	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{}, nil)
 	for _, name := range []string{"", "TEXT", "vision", "bm25", "unknown", "textual"} {
 		_, err := reg.EmbedQuery(context.Background(), name, "any text")
 		if err == nil {
@@ -197,7 +295,7 @@ func TestEmbeddingRegistryUnknownChannelRejected(t *testing.T) {
 // a programming error — the orchestrator MUST not call EmbedQuery
 // with empty text. Registry fails closed + ErrChannelUnknown.
 func TestEmbeddingRegistryEmptyTextRejected(t *testing.T) {
-	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{})
+	reg := newEmbeddingRegistryAdapter(&stubTextEmbedder{}, nil)
 	_, err := reg.EmbedQuery(context.Background(), searchpkg.ChannelText, "")
 	if err == nil {
 		t.Fatal("empty text query: want error, got nil")
@@ -213,7 +311,7 @@ func TestEmbeddingRegistryEmptyTextRejected(t *testing.T) {
 // so the failure surfaces with the documented sentinel rather
 // than a panic-nil dereference.
 func TestEmbeddingRegistryNilEmbedderFallback(t *testing.T) {
-	reg := newEmbeddingRegistryAdapter(nil)
+	reg := newEmbeddingRegistryAdapter(nil, nil)
 	if reg == nil {
 		t.Fatal("newEmbeddingRegistryAdapter(nil) MUST return a non-nil registry (fail-closed carrier, not nil)")
 	}

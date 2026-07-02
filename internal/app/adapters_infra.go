@@ -398,16 +398,27 @@ type embeddingRegistryAdapter struct {
 
 // newEmbeddingRegistryAdapter wires the 5 canonical channels at composition
 // root. text+transcript map to a textChannelEncoderAdapter wrapping the
-// passed qdrant.TextEmbedder; visual/audio/sparse are forward-pointer stubs
-// returning the documented godlike/07 typed-error sentinels. The returned
-// registry is the single source-of-truth for the semantic backend's
-// embedding surface; the backend fans out per channel via EmbedQuery.
+// passed qdrant.TextEmbedder; visual maps to a passed siglipEncoder (the
+// PR-CROSS-MODAL-TEXT-TO-VISUAL live path); audio/sparse are forward-pointer
+// stubs returning the documented godlike/07 typed-error sentinels. The
+// returned registry is the single source-of-truth for the semantic
+// backend's embedding surface; the backend fans out per channel via
+// EmbedQuery.
+//
+// PR-CROSS-MODAL-TEXT-TO-VISUAL (August 2026): the signature gains a
+// 2nd argument siglipEncoder (search.ChannelEncoder concrete): when
+// non-nil, ChannelVisual becomes LIVE — text queries embedded via SigLIP
+// land in the same 768d space as image-encoded video frames, enabling
+// end-to-end "search the concept in the pixels". When siglipEncoder is
+// nil (composition root deferred), ChannelVisual falls back to the
+// notConfiguredAdapter typed-error carrier so the failure surfaces
+// with the documented sentinel rather than a panic-nil dereference.
 //
 // textEmbedder nil-tolerance: when the underlying qdrant.TextEmbedder is
 // not wired (composition root deferred), text + transcript channels ship
 // as notConfiguredAdapter stubs so the failure surfaces with the documented
 // sentinel rather than a panic-nil dereference.
-func newEmbeddingRegistryAdapter(textEmbedder qdrant.TextEmbedder) searchpkg.EmbeddingChannelRegistry {
+func newEmbeddingRegistryAdapter(textEmbedder qdrant.TextEmbedder, siglipEncoder searchpkg.ChannelEncoder) searchpkg.EmbeddingChannelRegistry {
 	adapters := make(map[string]searchpkg.ChannelEncoder, len(searchpkg.CanonicalChannelNames()))
 
 	// text + transcript: same text-channel encoder; transcript content is text.
@@ -420,11 +431,26 @@ func newEmbeddingRegistryAdapter(textEmbedder qdrant.TextEmbedder) searchpkg.Emb
 		adapters[searchpkg.ChannelTranscript] = notConfiguredAdapter{}
 	}
 
-	// visual + audio: forward-pointer stubs returning search.ErrChannelNotConfigured
-	// (TypedError contract: channel is RECOGNIZED but no adapter wired yet).
-	// Slot is filled by the SigLIP-text / CLAP-text encoder when
-	// PR-CROSS-MODAL-TEXT-TO-VISUAL lands.
-	adapters[searchpkg.ChannelVisual] = notConfiguredAdapter{}
+	// PR-CROSS-MODAL-TEXT-TO-VISUAL (August 2026): visual channel
+	// routes to the live SigLIP text encoder when composition root
+	// provides one. The encoder concrete ships at
+	// internal/infrastructure/embeddings/siglip_text_embedder.go
+	// and satisfies the canonical ChannelEncoder port (var _ assertion
+	// at the SigLIPTextEmbedder struct declaration site). When
+	// siglipEncoder is nil (composition root deferred — typical for tests
+	// and for production when the sidecar Python embedding server is not
+	// yet wired), ChannelVisual falls back to NotConfigured so the failure
+	// surfaces with the documented sentinel.
+	if siglipEncoder != nil {
+		adapters[searchpkg.ChannelVisual] = siglipEncoder
+	} else {
+		adapters[searchpkg.ChannelVisual] = notConfiguredAdapter{}
+	}
+
+	// audio: forward-pointer stub (CLAP-text encoder from
+	// PR-CROSS-MODAL-AUDIO forward-pointer — out of scope for the
+	// visual-only PR-CROSS-MODAL-TEXT-TO-VISUAL). Slot is filled
+	// by a CLAP-text encoder in the audio-specific cutover PR.
 	adapters[searchpkg.ChannelAudio] = notConfiguredAdapter{}
 
 	// sparse: forward-pointer stub returning search.ErrChannelNotApplicable
