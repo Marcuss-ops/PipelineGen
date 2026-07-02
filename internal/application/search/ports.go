@@ -399,3 +399,113 @@ func (d SearchDocument) AsPayloadMap() map[string]any {
 type QueryEmbedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
+
+// ── EmbeddingChannelRegistry (PR-EMBEDDING-CHANNEL-REGISTRY, July 2026) ────────
+//
+// Per godlike/06 one-canonical-owner-per-fact: the multi-channel
+// embedding surface lives on a single typed port. The legacy
+// QueryEmbedder is the single-text embedder; the new
+// EmbeddingChannelRegistry is the canonical owner of the 5-channel
+// vector vocabulary. The semantic backend (search_backend_semantic.go)
+// delegates to this port instead of switching on 5 inline encoders,
+// so adding a new channel (e.g. SigLIP-text for cross-modal visual
+// search per PR-CROSS-MODAL-TEXT-TO-VISUAL) plugs in via composition
+// root without touching the backend.
+
+// Canonical channel-name vocabulary. Closed set; canonical SSOT for
+// the multi-channel embedding surface (godlike/06). Qdrant vector
+// names ("text"/"transcript"/"visual"/"audio"/"bm25_text") MUST match
+// these constants 1:1 at the wire adapter layer so the registry,
+// the schema, and the orchestrator agree byte-for-byte. The
+// sparse channel uses the wire-level "bm25_text" name because that
+// is what Qdrant expects for server-side BM25 inference
+// (see internal/infrastructure/qdrant/client_search.go::SparseText
+// + SparseVectorName pair semantics).
+const (
+	ChannelText       = "text"        // 768d multilingual-e5-base (semantic meaning)
+	ChannelTranscript = "transcript"  // 768d multilingual-e5-base (Whisper transcript content)
+	ChannelVisual     = "visual"      // 768d SigLIP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
+	ChannelAudio      = "audio"       // 512d CLAP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
+	ChannelSparse     = "bm25_text"   // sparse BM25; server-side inference; ERR_NOT_APPLICABLE on query-time
+)
+
+// CanonicalChannelNames returns the closed set of channel names
+// the registry MUST recognize. Used by registry concrete impls
+// to differentiate ErrChannelUnknown from ErrChannelNotConfigured.
+// Order matches the canonical semantic-of-source: text-first.
+func CanonicalChannelNames() []string {
+	return []string{ChannelText, ChannelTranscript, ChannelVisual, ChannelAudio, ChannelSparse}
+}
+
+// IsKnownChannel reports whether name is in CanonicalChannelNames().
+// Composition-root registry impls SHALL use this to distinguish the
+// godlike/07 typed-error contract:
+//   - name unknown → ErrChannelUnknown
+//   - known but no adapter wired → ErrChannelNotConfigured
+func IsKnownChannel(name string) bool {
+	switch name {
+	case ChannelText, ChannelTranscript, ChannelVisual, ChannelAudio, ChannelSparse:
+		return true
+	default:
+		return false
+	}
+}
+
+// Typed-error contract (godlike/07 typed-error). Registry impls MUST
+// return these sentinels (errors.New(...)) or wrap them via fmt.Errorf("%w")
+// so callers can errors.Is the specific failure mode.
+var (
+	// ErrChannelUnknown is returned when the channel name is not in
+	// the canonical closed set. Surfaces a programming error at the
+	// orchestrator rather than a misconfiguration at composition root.
+	ErrChannelUnknown = errors.New("search: unknown embedding channel")
+
+	// ErrChannelNotConfigured is returned when the channel is in the
+	// canonical closed set but no adapter has been wired at the
+	// composition root. Distinguishes "we don't yet support this
+	// channel" from "the channel doesn't even exist".
+	ErrChannelNotConfigured = errors.New("search: channel recognized but no adapter wired")
+
+	// ErrChannelNotApplicable is returned when the channel accepts
+	// file-path index-time inputs (visual/audio) but the caller is
+	// invoking EmbedQuery (a text-input port). The visual/audio
+	// channels are NOT query-time text-encodable in the canonical
+	// surface until PR-CROSS-MODAL-TEXT-TO-VISUAL lands a SigLIP-text
+	// / CLAP-text encoder. The sparse channel returns this sentinel
+	// because Qdrant handles BM25 inference server-side; no Go-side
+	// encoder is needed.
+	ErrChannelNotApplicable = errors.New("search: channel does not support text-query encoding (use index-time file input instead)")
+)
+
+// ChannelEncoder is the per-channel adapter contract consumed by
+// EmbeddingChannelRegistry concrete impls. Each adapter implements
+// text-query to channel-vector encoding. The implementation is
+// hidden behind the application-layer port (godlike/06 SSOT);
+// composition root wires the concrete adapters (typically wrapping
+// the existing qdrant.TextEmbedder for text+transcript channels and
+// stubbing the rest).
+type ChannelEncoder interface {
+	EmbedTextQuery(ctx context.Context, text string) ([]float32, error)
+}
+
+// EmbeddingChannelRegistry is the canonical multi-channel embedding port.
+//
+// Single text input per call (per architecture/current.yaml#id-30
+// PR-EMBEDDING-CHANNEL-REGISTRY spec). The semantic backend delegates
+// to this port instead of switching on 5 inline encoders:
+//   - text channel today: qdrant.TextEmbedder wrapped as ChannelEncoder
+//   - transcript: same TextEmbedder (transcript content is text)
+//   - visual: forward-pointer stub returning ErrChannelNotConfigured
+//     until PR-CROSS-MODAL-TEXT-TO-VISUAL lands a SigLIP-text encoder
+//   - audio: forward-pointer stub returning ErrChannelNotConfigured
+//     until PR-CROSS-MODAL-TEXT-TO-VISUAL lands a CLAP-text encoder
+//   - sparse: forward-pointer stub returning ErrChannelNotApplicable
+//     because Qdrant handles BM25 inference server-side via SparseText
+//
+// godlike/06 SSOT: this port is the canonical owner of the
+// channel-name vocabulary. New encoders plug in by adding a new
+// channel constant + wiring a ChannelEncoder at composition root;
+// the semantic backend does NOT change.
+type EmbeddingChannelRegistry interface {
+	EmbedQuery(ctx context.Context, channel string, text string) ([]float32, error)
+}

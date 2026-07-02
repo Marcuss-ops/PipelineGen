@@ -816,6 +816,68 @@
       owner_capability: internal/app + internal/application/mediasearch
       status: shipped
       deadline: 2026-07-01
+    - id: PR-EMBEDDING-CHANNEL-REGISTRY
+      owner_capability: internal/application/search + internal/app/adapters_infra + internal/app/search_backend_semantic + internal/app/search_backends
+      status: done
+      exit_signal: true
+      deadline: 2026-08-01
+      description: |
+        Introduce the canonical multi-channel EmbeddingChannelRegistry
+        port (EmbedQuery(ctx, channel, text) ([]float32, error)) in
+        internal/application/search/ports.go with 5 closed channels
+        (text/transcript/visual/audio/sparse). The semantic backend
+        (search_backend_semantic.go) delegates its text-channel
+        embedding to EmbedQuery(ctx, ChannelText, q.Text) instead
+        of a single-text QueryEmbedder.Embed invocation. New channel
+        encoders (e.g. SigLIP-text for cross-modal visual search per
+        PR-CROSS-MODAL-TEXT-TO-VISUAL, deadline 2026-08-15) plug in
+        at composition root via adapters_infra.go::newEmbeddingRegistryAdapter
+        — the semantic backend is untouched.
+
+        godlike/06 SSOT: channel-name vocabulary lives ENTIRELY in
+        ports.go (ChannelText="text", ChannelTranscript="transcript",
+        ChannelVisual="visual", ChannelAudio="audio", ChannelSparse="bm25_text").
+        The sparse wire name "bm25_text" matches the Qdrant SparseVectorName
+        1:1 so the orchestrator↔registry↔Qdrant-schema triple is consistent.
+
+        godlike/07 typed-error contract: 3 distinct errors.New sentinels
+        (ErrChannelUnknown / ErrChannelNotConfigured / ErrChannelNotApplicable)
+        propagated via wrapped %w chains; callers errors.Is the appropriate
+        sentinel without unwrapping. The forward-pointer channels
+        (visual / audio / sparse) ship as notConfiguredAdapter /
+        notApplicableAdapter zero-cost typed-error carriers at EXPAND
+        phase per godlike/07.
+
+        Surface landed:
+          - internal/application/search/ports.go: 5 consts + closed-set
+            helpers + 3 sentinels + ChannelEncoder + EmbeddingChannelRegistry
+          - internal/application/search/embedding_channel_registry_test.go:
+            5 TDD tests (ChromaticChannelNames / CanonicalChannelNames /
+            IsKnownChannelExhaustive / SentinelsAreDistinct / SentinelMessages)
+          - internal/app/adapters_infra.go: embeddingRegistryAdapter +
+            3 typed-error carriers (textChannelEncoderAdapter /
+            notConfiguredAdapter / notApplicableAdapter) + composition-time
+            wiring via newEmbeddingRegistryAdapter(qdrant.TextEmbedder)
+          - internal/app/embedding_registry_adapter_test.go: 9 TDD tests
+            for the concrete adapter (live text+transcript routing /
+            forward-pointer sentinels / fail-closed surfaces)
+          - internal/app/search_backend_semantic.go: semanticSearchBackend
+            field embedder→embeddings (search.EmbeddingChannelRegistry);
+            Embed()→EmbedQuery(ctx, ChannelText, q.Text)
+          - internal/app/search_backends.go: SearchBackendBuildOpts.
+            Embedder (search.QueryEmbedder)→Embeddings (search.
+            EmbeddingChannelRegistry)
+          - internal/app/registry_search.go: registerSearchBackend
+            signature: embedder→embeddings
+          - internal/app/registry_internal_modules.go: caller updated
+            to pass nil for embeddings (forward-pointer; actual wiring
+            deferred to a follow-up PR per package comment)
+
+        Cross-package impact: composition root owns the only
+        EmbeddingChannelRegistry concrete wiring (canonical Pattern 0
+        port layered over qdrant.TextEmbedder). The bare
+        search.QueryEmbedder port + searchEmbedAdapter concrete are
+        NOT removed (carry-forward surface; deprecation deferred).
     - id: PR-AGGREGATE-FILTER-UNIFORM
       owner_capability: internal/app + internal/application/search + internal/infrastructure/database/sqlite/catalog
       status: shipped

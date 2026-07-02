@@ -5,13 +5,24 @@
 // (which wrapped *mediasearch.Service in a single-port shape) with
 // the canonical two-port architecture:
 //
-//	QueryEmbedder   (embedding generation)
-//	VectorStorePort (locator-free ANN/hybrid retrieval)
+//	EmbeddingChannelRegistry (multi-channel embedding)
+//	VectorStorePort          (locator-free ANN/hybrid retrieval)
 //
 // Plus SQLite hydration (MediaReadRepository) and signed delivery
 // URLs (AssetDeliveryService). Per AGENTS.md Pattern 0, every
 // external dependency flows through a typed port so tests can swap
 // in stubs without touching Qdrant or SQLite.
+//
+// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): the backend now
+// consumes the multi-channel EmbeddingChannelRegistry port
+// (internal/application/search/ports.go) instead of the historical
+// single-text QueryEmbedder. Today's wiring exercises only the
+// ChannelText path (768d multilingual-e5-base); the registry
+// architecture guarantees the BACKEND doesn't change when new
+// channel encoders land (e.g. SigLIP-text for PR-CROSS-MODAL-
+// TEXT-TO-VISUAL, deadline 2026-08-15) — composition root adds
+// the encoder to registry.adapters and the backend fans out via
+// EmbedQuery(channel, text) without touching this file.
 //
 // Wave 19 cross-capability rule: this file IS in internal/app/
 // (composition root) and imports from multiple application/*
@@ -48,20 +59,29 @@ const (
 	semanticMinScore = 0.50
 )
 
-// semanticSearchBackend is the Fase 6 Qdrant-backed SearchBackend.
-// It fans out a search.Query through the two-port architecture:
+// semanticSearchBackend is the Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY
+// Qdrant-backed SearchBackend. It fans out a search.Query through the
+// canonical two-port architecture:
 //
-//  1. embedder.Embed        → dense vector ([]float32)
-//  2. vectorStore.Search or .HybridSearch → Qdrant results
-//  3. mediaReader.GetMany   → SQLite hydration (canonical metadata)
-//  4. delivery.BuildAuthorizedURL → signed delivery URL per hit
+//  1. embeddings.EmbedQuery(ctx, ChannelText, q.Text) → dense vector
+//     (delegated to EmbeddingChannelRegistry so new channel encoders
+//     plug in at composition root without backend changes)
+//  2. vectorStore.Search or .HybridSearch      → Qdrant results
+//  3. mediaReader.GetMany                      → SQLite hydration (canonical metadata)
+//  4. delivery.BuildAuthorizedURL              → signed delivery URL per hit
 //
 // Workspace isolation, lifecycle ACTIVE, and equality filters
 // (source, category, media_type, language) are applied at the
 // Qdrant layer via the VectorStorePort adapter. Tags (AND
 // semantics) and DurationMsMin are enforced post-hydration.
+//
+// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): Embeddings is the
+// canonical multi-channel embedding port (Pattern 0); the legacy
+// `embedder search.QueryEmbedder` field is gone — the registry
+// owns text-channel encoding now and future cross-modal channels
+// plug in here.
 type semanticSearchBackend struct {
-	embedder    search.QueryEmbedder
+	embeddings  search.EmbeddingChannelRegistry
 	vectorStore assetsearch.VectorStorePort
 	mediaReader mediasearch.MediaReadRepository
 	delivery    mediasearch.AssetDeliveryService
@@ -106,13 +126,22 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, nil
 	}
 
-	// ── 1. Text embedding ──────────────────────────────────────
-	vec, err := b.embedder.Embed(ctx, q.Text)
+	// ── 1. Text embedding via canonical EmbeddingChannelRegistry ──────
+	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): we delegate the
+	// text-channel encoding to the registry instead of calling
+	// QueryEmbedder.Embed directly. Today's registry wires text+transcript
+	// both to the qdrant.TextEmbedder; future SigLIP-text/CLAP-text
+	// encoders plug in to the visual/audio channels at composition
+	// root without this backend knowing. The ChannelText constant is
+	// the canonical SSOT channel name (godlike/06) and matches the
+	// Qdrant vector name "text" (semanticDenseVectorName) 1:1.
+	vec, err := b.embeddings.EmbedQuery(ctx, search.ChannelText, q.Text)
 	if err != nil {
-		return nil, fmt.Errorf("semantic backend: embed: %w", err)
+		return nil, fmt.Errorf("semantic backend: embed channel %q: %w", search.ChannelText, err)
 	}
 	if len(vec) == 0 {
 		b.warn("semantic backend: embedder returned zero-length vector",
+			zap.String("channel", search.ChannelText),
 			zap.String("text", q.Text))
 		return nil, nil
 	}

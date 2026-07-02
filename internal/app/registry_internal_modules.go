@@ -79,7 +79,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		vectorStoreForSearch = root.Process.VectorSvc
 	}
 	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
-		nil,                   // embedder: wired in a follow-up PR
+		nil,                   // embeddings: PR-EMBEDDING-CHANNEL-REGISTRY surface, wired in a follow-up PR
 		vectorStoreForSearch,  // vectorStore: Qdrant SearchAdapter from Process bundle
 		nil,                   // mediaRepo: wired in a follow-up PR
 		nil,                   // delivery: wired in a follow-up PR

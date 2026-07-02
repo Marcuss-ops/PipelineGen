@@ -295,12 +295,20 @@ type SearchBackendBuildOpts struct {
 	ProviderReg *providers.Registry
 	ClipsRepo   *sqassets.ClipsRepository
 
-	// Fase 6 semantic backend deps (all four must be non-nil to
-	// register the backend; nil-safe when any is zero).
-	Embedder    search.QueryEmbedder
-	VectorStore assetsearch.VectorStorePort
-	MediaRepo   mediasearch.MediaReadRepository
-	Delivery    mediasearch.AssetDeliveryService
+	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): Embeddings
+	// replaces the historical Embedder search.QueryEmbedder field.
+	// The semanticSearchBackend delegates the multi-channel
+	// embedding surface to this registry; new channel encoders
+	// plug in via registry composition without backend changes.
+	// Required (non-nil) to register the semantic backend
+	// alongside VectorStore + MediaRepo + Delivery; nil-safe
+	// when zero (the semantic backend gracefully skips
+	// registration per Wave 19 invariant — Aggregator falls back
+	// to provider + local backends).
+	Embeddings   search.EmbeddingChannelRegistry
+	VectorStore  assetsearch.VectorStorePort
+	MediaRepo    mediasearch.MediaReadRepository
+	Delivery     mediasearch.AssetDeliveryService
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,
@@ -351,14 +359,14 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 		}
 	}
 
-	// Fase 6 (July 2026): semantic backend — requires all four
-	// ports to be non-nil. Graceful degradation: when Qdrant or
-	// the embedder is not yet wired, the backend is silently
-	// skipped and the Aggregator operates with providers + local
-	// only.
-	if opts.Embedder != nil && opts.VectorStore != nil && opts.MediaRepo != nil && opts.Delivery != nil {
+	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): semantic backend —
+	// requires all four ports to be non-nil. Graceful degradation:
+	// when Qdrant / EmbeddingChannelRegistry / hydration / delivery
+	// are not yet wired, the backend is silently skipped and the
+	// Aggregator operates with providers + local only.
+	if opts.Embeddings != nil && opts.VectorStore != nil && opts.MediaRepo != nil && opts.Delivery != nil {
 		semantic := &semanticSearchBackend{
-			embedder:    opts.Embedder,
+			embeddings:  opts.Embeddings,
 			vectorStore: opts.VectorStore,
 			mediaReader: opts.MediaRepo,
 			delivery:    opts.Delivery,
@@ -368,7 +376,7 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			log.Error("BuildSearchBackends: semantic backend register failed (fail-closed)", zap.Error(err))
 			return nil, fmt.Errorf("BuildSearchBackends: semantic backend: %w", err)
 		}
-		log.Info("BuildSearchBackends: Fase 6 semantic backend registered (two-port Qdrant architecture)")
+		log.Info("BuildSearchBackends: Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY semantic backend registered (two-port Qdrant + 5-channel registry)")
 	}
 
 	reg.Freeze()
