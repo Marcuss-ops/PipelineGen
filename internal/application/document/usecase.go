@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	delivery "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -162,6 +163,19 @@ func (uc *GenerateDocumentUseCase) Handle(ctx context.Context, req DocumentReque
 			Slug:      info.Slug,
 		})
 
+		// P0 #3-B residual migration: route the IdempotencyKey through
+		// buildDocArtifactIdempotencyKey (which calls asset.SHA256IdempotencyKey
+		// behind the scenes) — the canonical owner per godlike/06 SSOT.
+		// Production info.SHA256 is canonical via service.GeneratePDF →
+		// sha256File, so the typed-error path is unreachable today; the
+		// helper acts as defence-in-depth against future SHA-producer drift
+		// (a regression that emits uppercase / short / non-canonical hex
+		// from sha256File would panic on `[:16]` without this gate).
+		idemKey, idemErr := buildDocArtifactIdempotencyKey(info.SHA256)
+		if idemErr != nil {
+			return job.ExecutionResult[DocumentResult]{}, fmt.Errorf("document.GenerateDocumentUseCase.Handle: idempotency key: %w", idemErr)
+		}
+
 		finResult, finErr := uc.SpineFinalizer.CompleteWithArtifacts(ctx, finalization.FinalizationRequest{
 			Lease: finalization.Lease{
 				LeaseID:   leaseID,
@@ -186,7 +200,7 @@ func (uc *GenerateDocumentUseCase) Handle(ctx context.Context, req DocumentReque
 					SHA256:         info.SHA256,
 					SourceVersion:  1,
 					Required:       true,
-					IdempotencyKey: "doc-" + info.SHA256[:16],
+					IdempotencyKey: idemKey,
 					Location: finalization.AssetLocation{
 						Provider:     "drive",
 						FileID:       driveFileID,
@@ -286,6 +300,34 @@ type validationError struct{ msg string }
 
 func (v validationError) Error() string { return v.msg }
 func errInvalid(s string) error         { return validationError{msg: s} }
+
+// buildDocArtifactIdempotencyKey is the canonical owner of
+// "doc:idempotency-key-from-sha" within the document package.
+// It's a thin typed-package entry-point over the cross-package
+// canonical asset.SHA256IdempotencyKey validator godlike/06 SSOT.
+//
+// Why this helper exists (P0 #3-B residual, July 2026):
+//   Pre-migration, the spine path built the artifact idempotency key
+//   with the literal `"doc-" + info.SHA256[:16]` at usecase.go:189 —
+//   the same panic-prone pattern that the verdict flagged on the stock
+//   side for stockpipeline/finalizer_gates.go. Stock §12-1 (July 2026)
+//   retired the runtime panic via asset.SHA256IdempotencyKey; this
+//   helper closes the same exposure on the document spine path BEFORE
+//   a malformed-SHA producer causes a slice-bounds panic at runtime.
+//
+// godlike/06 SSOT: this helper is the typed-package entry-point
+// (package document). The cross-package validator
+// (asset.ValidateSHA256 + asset.SHA256IdempotencyKey in
+// internal/domain/asset) is the canonical owner; this helper
+// routes through it without re-implementing the validation rules.
+//
+// godlike/07 typed-error contract: ErrSHA256Invalid propagates via
+// errors.Is(err, asset.ErrSHA256Invalid) — the closure typed-error
+// chain is preserved through the call site's `fmt.Errorf(": %w", err)`
+// wrapping.
+func buildDocArtifactIdempotencyKey(sha string) (string, error) {
+	return asset.SHA256IdempotencyKey("doc", sha)
+}
 
 // GenerateDocumentErrMapper maps use-case errors to HTTP responses.
 // Mirrors the lessons + books pattern: 400 for validation, 500 +
