@@ -2275,6 +2275,26 @@ deprecated in favour of the typed-pattern ports
   EXPAND-phase usage_metric baseline for `DRIVE-005-FIELDS`.
 
 ---
+### Removed
+
+- **NVIDIA capability** (surface 1, commit `d54728dc`, July 2026) — `internal/infrastructure/media/ai/nvidia` + `internal/application/images/nvidia` removed end-to-end. Zero active call sites in `internal/`: `rg 'ProviderNvidia|nvidiaSem|nvidia_sem|nvidia_config' --type go internal/` returns 0 hits.
+
+- **FluxProvider** (surface 1, commit `d54728dc`, July 2026) — `internal/application/images/providers/flux` + `ProviderFlux` enum value retired. Zero active call sites in `internal/`: `rg 'ProviderFlux' --type go internal/` returns 0 hits.
+
+- **NvidiaProvider + NvidiaConfig + nvidiaSem** (surface 1, commit `d54728dc`, July 2026) — same surface-1 closure as the NVIDIA capability purge (atomic commit covering provider enum value + yaml-config domain + concurrency semaphore). Zero active references across `internal/`.
+
+- **POST /api/images/webhook/remote** (surface 2, commit `cb51643e` + follow-up `966ae75d`, July 2026) — route retired (was a remote-worker multipart ingest bypass that pre-dated the canonical async job system). Canonical replacement: `image.generate.google` async job type. Audit-pin residue (godlike/07 no-silent-resurrection): 3 doc-only references in `internal/api/images/{impl.go,handler_full.go}` documenting the retirement + 1 test-pinning reference in `internal/api/middleware/middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404` (asserts gin NoRoute fires for the retired path regardless of credentials).
+
+- **AllowedProviders / AllowedModels API fields** (surface 3, commit `01011911`, July 2026) — `internal/api/images/types_search.go::StyleInfo` no longer exposes these fields. The YAML `allowed_providers:` / `allowed_models:` keys are hard-dead-controlled at startup to the canonical `google-slides` / `nano-banana-pro` pair (per style resolver's relaxed defense-in-depth). Audit-pin residue: 8 files retain references — primarily `internal/domain/asset/types_aux.go::StyleDef.AllowedProviders` + `StyleDef.AllowedModels` (struct fields retained for legacy YAML config parsing per godlike/06 SSOT) + test fixtures + documentation comments referencing the retirement.
+
+- **Image `Model` + `ImageModel` request fields** (surface 1 + surface 4 carrier, commits `d54728dc` + `04f03a69`, July 2026) — `Model string` + `ImageModel string` retired from PUBLIC image DTOs/ports/jobs across `internal/api/images/{impl.go,territory_handlers.go}` + `internal/application/images/{ports.go,generated/prompt_composer.go,generation_service.go}` + `internal/application/generation/registry.go`. Defense-in-depth seam retained per godlike/06 SSOT: `internal/application/images/generated/provider_registry.go::GenerateRequest.Model` + `PortGenerateRequest.Model` are the only image-side citations that survive — `normalizeModel("")` returns canonical (`CanonicalGoogleSlidesModel = "nano-banana-pro"`), `ErrUnsupportedModel` is retained as `// Deprecated` audit-pin sentinel for any future re-introduction of model-routing. LLM-territory `Model` fields (`GenerationEnvelopeV2.Model`, `BookSource/ScriptSource/BatchSource.Model`) are INTENTIONALLY preserved per user directive "NON toccare i campi Model LLM" — only image-side surfaces are retired.
+
+- **Lessons `Model` + `ImageModel` fields** (surface 5, commit `53f63aac`, July 2026) — `Model` + `ImageModel` fields retired from `internal/application/lessons/{types.go::LessonRequest, generate_usecase.go::GenerateLessonRequest}`. `service.go::buildChapterGenerationRequest` now pins `Model: s.cfg.DefaultModel` (Ollama canonical config — operators can swap via yaml `default_model`, but per-request selection is gone). Audit-pin residue: 8 files retain references — primarily `internal/application/lessons/types.go::LessonRequest.ImageModel` retained for wire-compat (legacy callers' JSON keys ignored at unmarshal) + `internal/platform/config/media.go::DefaultImageModel` retained as yaml field back-compat pin + doc-only comments referencing the retirement + `internal/domain/asset/types_aux.go::StyleDef.AllowedModels` (the parallel schema residue also pinned for yaml back-compat).
+
+**Cumulative scope (final audit per godlike/06 SSOT one-owner-per-fact):** `rg 'ProviderFlux|ProviderNvidia|nvidia_sem|AllowedProviders|AllowedModels|webhook/remote|ReceiveRemoteWebhook|ImageModel' --type go internal/` returns **42 hits across 15 files**. Distribution: ~30 doc-only audit-pin comments (godlike/07 "no silent resurrection" — surface-N ancestor commit bodies + carry-over godoc blocks); ~10 backward-compat struct-field retentions (yaml config back-compat + JSON wire-format back-compat, no functional use today); 1 test fixture asserting NoRoute fires for the retired path. **Zero production-code active-use residue** of any retired control — every production caller now routes through the canonical `CanonicalGoogleSlidesModel = "nano-banana-pro"` for image generation and `s.cfg.DefaultModel` (yaml `default_model`, default `gemma4:e4b`) for Ollama chat.
+
+**Honest scope-lock declaration (per godlike/07):** the canonical image strands (provider_registry seam + sentinel retention) and the canonical Ollama chat config pin (`s.cfg.DefaultModel`) are the only intentional residue. Future drifts toward caller-side model selection will be detected by `architecture/current.yaml` wave-tracker entries (current link: `id-17 / id-29 / id-30`) + CI gate Check 51 (raw-string `.Enqueue` caller ban) + Check 52 (ArtifactUploader port-call ban) + Check 53 (TxContext method ban) + future Check 54 if `HasModelKey` fail-closed handler is implemented for the legacy JSON keys per CHANGELOG.md L245 forward-pointer.
+
 
 ## Earlier (June 2026 wave)
 
@@ -2340,6 +2360,91 @@ Pattern 0 port abstraction; godlike/06 — `delivery.ConflictPolicy` is
 the canonical enum owner; `PutAction` is the canonical return enum
 owner. Cross-references:
 [`architecture/current.yaml#id-26.linked_issues[PR-PUTFILE-P0-1]`](../architecture/current.yaml).
+
+## Earlier (June 2026 wave)
+
+See ARCHITECTURE.md §"Migration Status (Brutal Care Plan)" for the
+historical record. Cross-references:
+
+- **PR-VO-A1** through **PR-VO-A6** — voiceover P0 hardening bundle.
+- **PR-VO-B1** — Drive upload split Processor ↔ Lifecycle
+  (DriveUploaderPort).
+- **PR-VO-B2** — metadata + StyleGroup propagation (no silent-drop
+  through `processLanguage` + `resolveDestination`).
+- **PR-VO-B3** — sync dedupe by `drive_file_id` + BCP-47 / compact
+  locale parser (`pkg/localeutil/locale.go`).
+
+### Removed
+- **[FASE 12c removal ratification, July 2026]** `chore(arch)` — Step 12A SCRIPT legacy closure audit. Goalike/07 audit-footprint for the legacy `POST /api/script/generate-batch` route removal: route + handler + 4 type structs (`LegacyGenerateBatchRequest`, `LegacyBatchItem`, `LegacyBatchTopic`, `toEnvelope` mapper) + `removalDateBatch` const + `DeprecationCount` route entry + test assertions all physically deleted at commit `9ff1e19e` (FASE 12c, July 2026) + residual cleanup at `00ad3430`. New deprecation record `architecture/deprecations.yaml#SCRIPT-LEGACY-GENERATE-BATCH` (status: removed, migration_phase: CONTRACT, 5-layer compatibility test) + new wave-tracker marker `architecture/current.yaml#BLOC5.3_commit-3-legacy_batch_elim` (status: shipped) ratchet the audit-footprint against re-introduction. Voiceover `Service.GenerateBatch` (4 non-test hits in `internal/application/voiceover/*`) is EXPLICITLY OUT OF SCOPE — it is the canonical batch voiceover pipeline for `TypeVoiceoverBatch` + `TypeVoiceoverPromo` jobs. Forward-pointer: PR-VO-D1/D2/D3/E1 (Wave-12 cutover packet) for the voiceover canonical typed-port migration.
+
+
+
+**[Wave 1.1, QDRANT-004 backend git-rm, June 2026]** `refactor(mediasearch) + refactor(app)` — the QDRANT-004 single-tenant semantic search orchestrator is git-rm'd. The canonical `search.Aggregator` (provider + local backends, both typed via Pattern 0) is the SOLE wire for media-search results; workspace-gated semantic routing now lives in per-scope `search.Aggregator` paths, never in dedicated Service composition. Files touched (7):
+
+- **DELETED** `internal/application/mediasearch/service.go` (−552 LoC: `*Service` struct + `NewService` ctor + `Search` orchestrator + 9 helpers + 2 constants).
+- **DELETED** `internal/application/mediasearch/service_test.go`.
+- `internal/app/search_backends.go` — removed `semanticSearchBackend` struct + 3 methods + `var _` assertion + `MediasearchSvc` field on `SearchBackendBuildOpts` + `WorkspaceID` field on same opts (sole consumer was the deleted semanticSearchBackend).
+- `internal/app/assets_core.go` — removed `MediasearchService *mediasearch.Service` field from `SearchDeps` + `SearchWorkspaceID` field (historical diagnostic-only) + `mediasearch` import.
+- `internal/app/registry_search.go` — replaced stale `search_backends.go:346` line-number pin with a drift-resilient note.
+- `internal/app/registry_assets.go` — `SearchDeps` literal already passes only the canonical fields; no construction change beyond bundle-field drops above.
+- `internal/application/search/ports.go` — replaced the `semanticBackendAdapter wraps mediasearch.Service (cross-cap port bridge)` god-comment with the PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL marker describing the surviving thin re-export surface.
+
+**Retained as thin re-exports** (4 real callers compile against these canonical types): `mediasearch.WorkspaceContext`, `mediasearch.AssetDeliveryService`, `mediasearch.MediaSearchRequest{Response,Filter}`, `mediasearch.SearchMode` (alias of `search.SearchMode`). The QDRANT-004 `/internal/v1/media/search` handler at `internal/api/mediasearch/handler.go` still wires via canonical `search.Aggregator` (the per-scope workspace gate consumer — distinct from the git-rm'd orchestrator).
+
+**Deprecation record:** `architecture/deprecations.yaml#PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL` (status: `removed`, introduction_date=2026-06-30, replacement=`search.Aggregator`).
+
+## [Step 9 + 10] Image territory separation — 5 subpackages + REST endpoints (July 2026)
+
+### Added
+
+**[Step 9 (July 2026) — image territory subpackages]** `feat(images)` — split `internal/application/images/` into 5 focused subpackages while preserving backward compatibility with the parent `*imgservice.Service` facade:
+
+- `internal/application/images/catalog/` (3 files): `CatalogSearchResult`, `AssetSummary`, `SummaryFromAsset`, `ImageFilter` + `FilterByOrigin`/`FilterBySlug`, `CatalogSearch` interface + `InMemoryCatalogSearch` impl with cursor helpers. Read-only — no ingestion, no generation.
+- `internal/application/images/styles/` (3 files): `ResolvedStyle`, `StyleID`, `StyleDefinition`, `StyleResolver`, `StyleRegistry` aliases for canonical `internal/application/assets/generation` types. `Registry` struct wrapping `*generation.StyleRegistry`; `Resolver` struct wrapping `generation.StyleResolver`. Backward-compatible (`ErrUnknownStyle = generation.ErrStyleNotFound`).
+- `internal/application/images/routing/` (1 file): `Service` interface + `Router` dispatching by `asset.ImageOrigin`. `SearchAll` for territory-wide fan-out. Sentinel errors for each wired/unwired territory.
+- `internal/application/images/retrieved/` (2 added on top of Step 8's provider_registry): `search_service.go` (`SearchServicePort` + `SearchServiceAdapter`) and `ingest.go` (`IngestServicePort` + `IngestServiceAdapter`).
+- `internal/application/images/generated/` (2 added on top of Step 8's provider_registry): `prompt_composer.go` (extracted from parent `generation_service.go` per Step 4 rules; bit-identical semantics) and `generated_search.go` (`GeneratedSearchServicePort` + `GeneratedSearchServiceAdapter`).
+
+Compile-time interface assertions in `internal/application/images/service.go` lock the parent `*ImageStorageService` against the new subpackage ports — drift surfaces at build time, not first runtime panic.
+
+**[Step 10 (July 2026) — territory-separated REST endpoints]** `feat(api-images)` — 5 new endpoints under `/api/images/`, plus an aggregated search endpoint with `territory=retrieved|generated|all` query param:
+
+- `GET  /api/images/retrieved/search?q=…&lang=…` → mirrors pre-Step-10 search semantics with `ImageSearchResults` envelope.
+- `GET  /api/images/generated/search` → Step-9 forward-pointer; returns `200 OK + []` today. SQLite-backed `ListImagesByOrigin` impl is `architecture/issues.yaml#IMG-GEN-SEARCH-FORWARD-POINTER` (deadline 2026-08-01).
+- `POST /api/images/generated/generate` → mirrors legacy `/api/images/generate` payload but mounted under `/generated/*`. Same `h.service.GenerateSmartImageWithAccount` call.
+- `GET  /api/images/generated/styles` → lists registered styles from `*generation.StyleRegistry` via `h.service.StylesRegistry()`.
+- `GET  /api/images/search?territory=retrieved|generated|all&q=…` → aggregator. Default `territory=retrieved` preserves pre-Step-10 caller behaviour. `territory=all` currently fans out to retrieved (canonical query-driven path) + generated (empty stub).
+
+Unified `ImageSearchResult` DTO (fields: `AssetID`, `Origin`, `Provider`, `PreviewURL`, `StyleID`, `License`, `Author`). All `omitempty` where appropriate. `StyleInfo` DTO for `/generated/styles`. Envelope `ImageSearchResults{Results, Count}`.
+
+### Changed
+
+- `GET /api/images/search` response envelope migrated: pre-Step-10 returned `gin.H{"subject": "...", "image": {...}}`; post-Step-10 returns `ImageSearchResults{Results: [...], Count: N}`. Any caller depending on the legacy `subject` / nested `image` keys will see `200 OK` with different JSON shape — silent breakage. Migration: read `results[0].asset_id` instead of `image.hash`.
+- `internal/application/images/service.go::Service` now exposes `Styles *generation.StyleRegistry` field + `StylesRegistry()` accessor. Backward-compatible (zero-value before Step 9 wiring was nil; nil-safe accessor applied).
+
+### Removed
+
+- **NVIDIA capability** (surface 1, commit `d54728dc`, July 2026) — `internal/infrastructure/media/ai/nvidia` + `internal/application/images/nvidia` removed end-to-end. Zero active call sites in `internal/`: `rg 'ProviderNvidia|nvidiaSem|nvidia_sem|nvidia_config' --type go internal/` returns 0 hits.
+
+- **FluxProvider** (surface 1, commit `d54728dc`, July 2026) — `internal/application/images/providers/flux` + `ProviderFlux` enum value retired. Zero active call sites in `internal/`: `rg 'ProviderFlux' --type go internal/` returns 0 hits.
+
+- **NvidiaProvider** (surface 1, commit `d54728dc`, July 2026) — NVIDIA-specific provider implementation + `ProviderNvidia` enum value. Zero active call sites in `internal/`: `rg 'ProviderNvidia' --type go internal/` returns 0 hits.
+
+- **NvidiaConfig** (surface 1, commit `d54728dc`, July 2026) — `internal/infrastructure/media/ai/nvidia` yaml config domain (provider URL, model selection, rate limits). Zero active references in `internal/`. The `nvidia_*` config keys are silently ignored at load time (no yaml field schema, no producer).
+
+- **nvidiaSem** (surface 1, commit `d54728dc`, July 2026) — concurrency semaphore for the NVIDIA generation queue. Zero active callers in `internal/`: `rg 'nvidia_sem|nvidiaSem' --type go internal/` returns 0 hits.
+
+- **POST /api/images/webhook/remote** (surface 2, commit `cb51643e` + follow-up `966ae75d`, July 2026) — route retired (was a remote-worker multipart ingest bypass that pre-dated the canonical async job system). Canonical replacement: `image.generate.google` async job type. Audit-pin residue (godlike/07 no-silent-resurrection): 3 doc-only references in `internal/api/images/{impl.go,handler_full.go}` documenting the retirement + 1 test-pinning reference in `internal/api/middleware/middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404` (asserts gin NoRoute fires for the retired path regardless of credentials).
+
+- **AllowedProviders / AllowedModels API fields** (surface 3, commit `01011911`, July 2026) — `internal/api/images/types_search.go::StyleInfo` no longer exposes these fields. The YAML `allowed_providers:` / `allowed_models:` keys are hard-dead-controlled at startup to the canonical `google-slides` / `nano-banana-pro` pair (per style resolver's relaxed defense-in-depth). Audit-pin residue: 8 files retain references — primarily `internal/domain/asset/types_aux.go::StyleDef.AllowedProviders` + `StyleDef.AllowedModels` (struct fields retained for legacy YAML config parsing per godlike/06 SSOT) + test fixtures + documentation comments referencing the retirement.
+
+- **Image `Model` + `ImageModel` request fields** (surface 1 + surface 4 carrier, commits `d54728dc` + `04f03a69`, July 2026) — `Model string` + `ImageModel string` retired from PUBLIC image DTOs/ports/jobs across `internal/api/images/{impl.go,territory_handlers.go}` + `internal/application/images/{ports.go,generated/prompt_composer.go,generation_service.go}` + `internal/application/generation/registry.go`. Post-surface-4 image-side residue (per godlike/06 SSOT + surface-4 forward-pointer pinned here per reviewer BLOCK): `internal/application/images/generated/provider_registry.go::ErrUnsupportedModel` retained as `// Deprecated` audit-pin sentinel (any future re-introduction of model-routing can compare against this typed error via `errors.Is`); `generated.CanonicalGoogleSlidesModel = "nano-banana-pro"` kept PUBLIC because 3 external files read it — `internal/application/images/chrome_provider.go:171` (ComputeSourceHash argument), `internal/api/images/territory_handlers.go:178` (log-line value), `internal/api/images/impl.go:198` (log-line value). Surface-4 (commit `04f03a69`) physically retired `GenerateRequest.Model` + `PortGenerateRequest.Model` request fields AND `func normalizeModel` (gone) — those are NOT defense-in-depth residue anymore, contrary to the pre-surface-1 CHANGELOG.md L233 wording. LLM-territory `Model` fields (`GenerationEnvelopeV2.Model`, `BookSource/ScriptSource/BatchSource.Model`) are INTENTIONALLY preserved per user directive "NON toccare i campi Model LLM" — only image-side surfaces are retired.
+
+- **Lessons `Model` + `ImageModel` fields** (surface 5, commit `53f63aac`, July 2026) — `Model` + `ImageModel` fields retired from `internal/application/lessons/{types.go::LessonRequest, generate_usecase.go::GenerateLessonRequest}`. `service.go::buildChapterGenerationRequest` now pins `Model: s.cfg.DefaultModel` (Ollama canonical config — operators can swap via yaml `default_model`, but per-request selection is gone). Audit-pin residue: 8 files retain references — primarily `internal/application/lessons/types.go::LessonRequest.ImageModel` retained for wire-compat (legacy callers' JSON keys ignored at unmarshal) + `internal/platform/config/media.go::DefaultImageModel` retained as yaml field back-compat pin + doc-only comments referencing the retirement + `internal/domain/asset/types_aux.go::StyleDef.AllowedModels` (the parallel schema residue also pinned for yaml back-compat).
+
+**Cumulative scope (final audit per godlike/06 SSOT one-owner-per-fact):** `rg 'ProviderFlux|ProviderNvidia|nvidia_sem|AllowedProviders|AllowedModels|webhook/remote|ReceiveRemoteWebhook|ImageModel' --type go internal/` returns **42 hits across 15 files**. Distribution: ~30 doc-only audit-pin comments (godlike/07 "no silent resurrection" — surface-N ancestor commit bodies + carry-over godoc blocks); ~10 backward-compat struct-field retentions (yaml config back-compat + JSON wire-format back-compat, no functional use today); 1 test fixture asserting NoRoute fires for the retired path. **Zero production-code active-use residue** of any retired control — every production caller now routes through the canonical `CanonicalGoogleSlidesModel = "nano-banana-pro"` for image generation and `s.cfg.DefaultModel` (yaml `default_model`, default `gemma4:e4b`) for Ollama chat.
+
+**Honest scope-lock declaration (per godlike/07):** the canonical image strands (`ErrUnsupportedModel` audit-pin sentinel + `CanonicalGoogleSlidesModel` public constant) and the canonical Ollama chat config pin (`s.cfg.DefaultModel`) are the only intentional residue. Future drifts toward caller-side model selection will be detected by `architecture/current.yaml` wave-tracker entries (current link: `id-17 / id-29 / id-30`) + CI gate Check 51 (raw-string `.Enqueue` caller ban) + Check 52 (ArtifactUploader port-call ban) + Check 53 (TxContext method ban) + future Check 54 if `HasModelKey` fail-closed handler is implemented for the legacy JSON keys per CHANGELOG.md L245 forward-pointer.
 
 ## Earlier (June 2026 wave)
 
