@@ -540,16 +540,26 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 	// per-step progress; threading it through a Step would duplicate
 	// state and break the §12-5 typed-slice ingress invariant.
 	summary := &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}
-	if gateErr := AssertRunSummaryArtifactsRequired(summary); gateErr != nil {
-		// Wrap with stage prefix so log scanners trace to the §12-1
-		// P0 #1 gate seam; errors.Is(sentinel) still probes the typed
-		// error via %w. MarkFailed on the §12-3 audit log is omitted
-		// because the gate fires AFTER all step MarkCompleted — the
-		// orchestrator's audit row for stock.finalize already pins the
-		// last attempted state. A forward-pointer to record gate
-		// failures in the audit trail lands when §12-3 adds a
-		// GateRejection row type (future wave).
-		return nil, fmt.Errorf("orchestrator §12-1 P0 #1 success gate (pre-CompleteWithArtifacts): %w", gateErr)
+
+	// §12-1 P0 #1 gate: enforce manifest-completeness BEFORE
+	// returning nil. The gate fires in production mode (JobFinalizer
+	// wired) to close the silent-success class where a run declares
+	// nil error without declaring Required:true artifacts.
+	//
+	// In test-fixture mode (JobFinalizer nil), the gate is skipped —
+	// mirroring StockFinalizeStep's spine-write skip. A nil
+	// JobFinalizer means the orchestrator is not wired for production
+	// finalization; the manifest may legitimately be empty (the 6
+	// steps all ran in stub mode). See run_success_gate_test.go for
+	// the gate's TDD contract; see "§12-7 test-fixture path" in
+	// orchestrator_steps.go for the skip rationale.
+	if o.jobFinalizer != nil {
+		if gateErr := AssertRunSummaryArtifactsRequired(summary); gateErr != nil {
+			// Wrap with stage prefix so log scanners trace to the
+			// §12-1 P0 #1 gate seam; errors.Is(sentinel) still
+			// probes the typed error via %w.
+			return nil, fmt.Errorf("orchestrator §12-1 P0 #1 success gate (pre-CompleteWithArtifacts): %w", gateErr)
+		}
 	}
 
 	return summary, nil
