@@ -987,3 +987,19 @@ wave_status:
         status: shipped
         deadline: 2026-07-01
 
+
+# FASE 5 of 12-step plan — Qdrant CAS-fence + ErrStaleVersion (CLOSED, July 2026)
+# Canonical SHA: 96665cf1 fix(qdrant): make setIndexState error-returning
+# and setIndexedAt CAS-fenced (parallel agent landed identical Step 5
+# content on divergent lineage; per AGENTS.md Git-Lesson-5 byte-equivalent-
+# replay recovery no force-push was needed — local SHA a6b0b111 was
+# superseded). setIndexState signature gained contentHash + sourceVersion.
+# setIndexedAt WHERE is now CAS-fenced on (id, source_version column,
+# $.indexing_content_hash_cas sidecar, index_state='INDEXING');
+# RowsAffected == 0 returns typed sentinel ErrStaleVersion. tryFastPath
+# skips setIndexedAt when row is already INDEXED (Qdrant refresh suffices),
+# restoring MediaIndexSuccessTotal parity. indexing_cas_concurrency_test.go
+# exercises 200 race iterations (2×100 iter) under -race detector.
+# Forward-pointer: godlike/06 CAS-fence pattern now shared between
+# JobFinalizer (Step 3) and clipindexer (Step 5); future CAS-fence
+# adopters (image-ingest, voiceover) follow the same shape.
