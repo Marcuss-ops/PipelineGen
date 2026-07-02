@@ -97,9 +97,12 @@ func (d *Dispatcher) Register(jobType string, handler HandlerFunc) error {
 	if d.frozen {
 		return fmt.Errorf("dispatcher is frozen: cannot register handler for %s", jobType)
 	}
-	if _, exists := d.handlers[jobType]; exists {
-		return fmt.Errorf("handler for job type %s already registered", jobType)
-	}
+	// Idempotent: silently overwrite on duplicate Register — the v2
+	// critical-handler validator (PR-VALIDATOR-LITERAL-REGISTER, July 2026)
+	// re-invokes Register for handlers already bound by the late-bindings
+	// block. The dispatcher MUST accept duplicates without error so the
+	// validator's fail-closed posture (abort on any non-nil Bind result)
+	// is compatible with the double-Register pattern.
 	d.handlers[jobType] = handler
 	return nil
 }

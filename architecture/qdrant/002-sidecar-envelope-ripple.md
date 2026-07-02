@@ -219,10 +219,16 @@ implementazioni concrete):
 ## Riferimenti
 
 - `architecture/qdrant/001-sidecar-and-pointid.md` — ticket precedente,
-  GATE #9 (residual tracker).
+  GATE #9 (residual tracker; residuo risolto da questo ticket ma il commento
+  testuale di 001 resta stale, tracked come cross-ref cleanup).
 - `internal/domain/asset/types_aux.go::EmbeddingResult` — tipo envelope
-  canonico.
+  canonico (importato come `coreembedding` nei file sidecar production,
+  alias→`internal/domain/asset`).
 - `internal/infrastructure/embeddings/python.go::PythonScriptEmbedder` —
   implementazione subprocess.
 - `internal/infrastructure/embeddings/http_text_embedder.go::HTTPTextEmbedder` —
   implementazione HTTP client.
+- Commit di chiusura: `d7ecf0a37` (sha `d7ecf0a37de9ab6c8c8d5b827ab9bd068ba3778f`,
+  subject `feat(qdrant): QDRANT-001b close sidecar-envelope-ripple ticket`).
+  Per forensic walk: `git show d7ecf0a37` elenca signature signature changes
+  + parsing-instruction diff su entrambe le implementazioni sidecar.

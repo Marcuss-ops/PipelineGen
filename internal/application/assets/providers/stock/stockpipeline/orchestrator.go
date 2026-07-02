@@ -25,6 +25,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -33,6 +34,11 @@ import (
 // applies defaults for the optional fields (JobID, MaxConcurrentJobs)
 // and forwards PolicyVersion + ChunkDurationSec + ClipDurationSec
 // verbatim to the planner.
+//
+// §12-7 (July 2026): Lease is added so StockFinalizeStep can drive
+// BuildFinalizationRequest + JobFinalizer.CompleteWithArtifacts
+// inside the orchestrator (single-TX spine write SSOT). Service.HandleJob
+// extracts Lease via extractLease(job) and threads it via cfg.Lease.
 type OrchestratorConfig struct {
 	// JobId is the broker-assigned job identifier stamped on the
 	// returned ArtifactManifest.JobID. Stock Cutover Commit 2
@@ -41,7 +47,15 @@ type OrchestratorConfig struct {
 	// Commit 1 "stock_orchestrator_v1" placeholder). Empty value
 	// falls back to the placeholder so non-broker callers (tests,
 	// CLI) still produce a deterministic JobID.
-	JobId         string
+	JobId string
+	// Lease (§12-7) is the canonical finalization.Lease the
+	// StockFinalizeStep reads to compose BuildFinalizationRequest.
+	// Empty JobID/WorkerID/LeaseID surfaces ErrStockFinalizeLeaseMissing
+	// loudly at compose time so composition-time wiring gaps don't
+	// silently degrade the spine write.
+	Lease finalization.Lease
+	// PolicyVersion is the run-fingerprint salt (godlike/07
+	// semantic). Empty value surfaces ErrStockFnRequired.
 	PolicyVersion string
 	// ChunkDurationSec is the per-chunk video budget. The output
 	// ArtifactManifest emits one entry per chunk; today only the
@@ -271,6 +285,18 @@ type Orchestrator struct {
 	// when nil (composition roots that haven't yet wired a logger
 	// shouldn't crash the orchestrator at runtime).
 	executorLog *zap.Logger
+
+	// §12-7 (July 2026): Finalizer-side ports threaded via fluent
+	// setters (WithAssetPreparation / WithJobFinalizer). Defaulted to
+	// nil in NewOrchestrator; production composition roots in
+	// run_orchestrator.go::runOrchestratorResilient wire the canonical
+	// finalizer.NewArtifactPreparation(s.publisher, s.log) and
+	// s.finalizer respectively. Test fixtures leave nil so the
+	// share-test-faxture-compat path (StockPublishStep uploads
+	// skipped, StockFinalizeStep spine write skipped) is the canonical
+	// no-op behavior.
+	artifactPreparation finalization.ArtifactPreparationService // nil ⇒ StockPublishStep logs+skips upload
+	jobFinalizer        finalization.JobFinalizer              // nil ⇒ StockFinalizeStep logs+skips spine write
 }
 
 // NewOrchestrator returns the canonical orchestrator. Caller-side
@@ -385,13 +411,12 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 }
 
 // RunResilient is the canonical orchestrator entry point for the
-// Stock Cutover §12-5 (July 2026) resilience flow. It threads the
-// typed *job.ArtifactManifest + the per-run FinalStatus through a
-// single RunSummary envelope so the broker JobFinalizer can stamp
-// the right job-status without re-inferring it from the manifest
-// alone.
+// Stock Cutover §12-7 (July 2026) resilience flow. It threads the
+// typed *job.ArtifactManifest + the per-run FinalStatus + the
+// per-run FinalizationResult through a single RunSummary envelope
+// so the broker JobStatusResponse can render all three.
 //
-// §12-5 step ladder: the 6 typed Steps declared in
+// §12-7 step ladder: the 6 typed Steps declared in
 // orchestrator_steps.go iterate dispatchSteps (a typed []Step
 // slice) in canonical pipeline order:
 //
@@ -401,13 +426,23 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 //                            WriteAndEnqueue per ClipPlan
 //                            (test (a) verifies writer error ⇒ ErrAtomicDispatchFailed).
 //  4. stock.compose_chunks — StockRenderer.Render (future Commit 7 wires real Render).
-//  5. stock.publish        — chunk upload to Drive + Qdrant sync
-//                            (future Commit 8 wires real upload).
-//  6. stock.finalize       — ManifestBuilder.Build + Validate +
-//                            ProjectionPort.Project (test (b) verifies
-//                            Validate failure ⇒ ErrManifestIncomplete;
-//                            test (c) verifies Project failure ⇒
-//                            StatusIndexPending flip with nil error).
+//  5. stock.publish        — §12-7: ArtifactPreparation.Prepare per
+//                            chunk + per metadata.json. Uploads
+//                            Drive (or remote equivalent); the
+//                            State.Published []ChunkState carries
+//                            the per-chunk RemoteFileID + Location.
+//                            nil ArtifactPreparation ⇒ test-fixture
+//                            path (State.Published empty, spine
+//                            write skipped).
+//  6. stock.finalize       — §12-7: ManifestBuilder.Build +
+//                            Validate + ProjectionPort.Project (best-
+//                            effort Qdrant → flips FinalStatus to
+//                            StatusIndexPending) + BuildFinalizationRequest
+//                            + JobFinalizer.CompleteWithArtifacts
+//                            SINGLE-TX SPINE WRITE (asset + version
+//                            + location + outbox + SUCCEEDED).
+//                            nil JobFinalizer ⇒ test-fixture path
+//                            (spine write skipped).
 //
 // Per-step checkpointing: every step calls
 //
@@ -437,7 +472,14 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 	}
 
 	state := &runState{}
-	runner := &orchestratorRunner{orch: o, in: input, state: state, log: o.executorLogOrNop()}
+	runner := &orchestratorRunner{
+		orch:                o,
+		in:                  input,
+		state:               state,
+		log:                 o.executorLogOrNop(),
+		artifactPreparation: o.artifactPreparation,
+		jobFinalizer:        o.jobFinalizer,
+	}
 
 	for _, step := range o.dispatchSteps {
 		key := steps.StepKey{
@@ -521,6 +563,31 @@ func (o *Orchestrator) executorLogOrNop() *zap.Logger {
 		return o.executorLog
 	}
 	return defaultStepRunnerLog()
+}
+
+// WithAssetPreparation threads the canonical ArtifactPreparationService
+// to the orchestrator's StockPublishStep. §12-7 fluent-setter pattern —
+// keeps NewOrchestrator + NewOrchestratorWithResilience signatures
+// stable so test (a/b/c) compile unchanged (godlike/06 backward
+// minimal-surface-change principle). Composition-root production
+// wiring in run_orchestrator.go::runOrchestratorResilient calls this
+// once after NewOrchestrator returns. Returns the receiver for
+// fluent chaining.
+func (o *Orchestrator) WithAssetPreparation(svc finalization.ArtifactPreparationService) *Orchestrator {
+	o.artifactPreparation = svc
+	return o
+}
+
+// WithJobFinalizer threads the canonical JobFinalizer to the
+// orchestrator's StockFinalizeStep. §12-7 fluent-setter pattern
+// (same rationale as WithAssetPreparation). Composition-root
+// production wiring in run_orchestrator.go::runOrchestratorResilient
+// calls this once after WithAssetPreparation; nil pass-through is
+// allowed so test fixtures can compile unchanged. Returns the
+// receiver for fluent chaining.
+func (o *Orchestrator) WithJobFinalizer(svc finalization.JobFinalizer) *Orchestrator {
+	o.jobFinalizer = svc
+	return o
 }
 
 // stepInputFingerprint returns the canonical input fingerprint
