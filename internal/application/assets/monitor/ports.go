@@ -556,12 +556,22 @@ type YoutubeDiscoveriesPort interface {
 	// nil on idempotent retry (duplicate idempotency_key).
 	CommitEnqueueOutbox(ctx context.Context, discoveryID, enqueuedAt, idempotencyKey, payloadJSON string) error
 
-	// DrainPendingOutbox returns up to limit pending outbox entries.
-	DrainPendingOutbox(ctx context.Context, limit int) ([]assetsdb.OutboxEntry, error)
+	// DrainPendingOutbox atomically claims up to limit pending outbox
+	// entries using UPDATE ... RETURNING. leaseID + leaseUntil provide
+	// the exclusive claim. Returns entries in 'dispatching' state.
+	// Step 7/12: lease-based atomic claim.
+	DrainPendingOutbox(ctx context.Context, limit int, leaseID, leaseUntil string) ([]assetsdb.OutboxEntry, error)
+
+	// DrainDispatched reclaims rows stuck in 'dispatching' with
+	// expired leases. Resets them to 'pending' for re-dispatch.
+	// Step 7/12: lease reclamation.
+	DrainDispatched(ctx context.Context, limit int, leaseID, leaseUntil string) ([]assetsdb.OutboxEntry, error)
 
 	// MarkOutboxDispatched marks an outbox entry as dispatched.
 	MarkOutboxDispatched(ctx context.Context, outboxID int64, jobID string) error
 
-	// MarkOutboxFailed marks an outbox entry as failed.
+	// MarkOutboxFailed records a transient failure with retry backoff.
+	// After maxOutboxRetries, the entry is marked 'dead' (terminal).
+	// Step 7/12: retryable failure + dead letter.
 	MarkOutboxFailed(ctx context.Context, outboxID int64, errMsg string) error
 }

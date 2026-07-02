@@ -95,7 +95,10 @@ func (stubDiscoveries) MaxDiscoveredAt(_ context.Context, _ string) (string, err
 
 // Blocco 3 (July 2026): outbox surface methods.
 func (stubDiscoveries) CommitEnqueueOutbox(_ context.Context, _, _, _, _ string) error  { return nil }
-func (stubDiscoveries) DrainPendingOutbox(_ context.Context, _ int) ([]assetsdb.OutboxEntry, error) {
+func (stubDiscoveries) DrainPendingOutbox(_ context.Context, _ int, _, _ string) ([]assetsdb.OutboxEntry, error) {
+	return nil, nil
+}
+func (stubDiscoveries) DrainDispatched(_ context.Context, _ int, _, _ string) ([]assetsdb.OutboxEntry, error) {
 	return nil, nil
 }
 func (stubDiscoveries) MarkOutboxDispatched(_ context.Context, _ int64, _ string) error { return nil }
