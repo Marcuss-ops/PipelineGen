@@ -60,6 +60,16 @@ const (
 	// is documented here so the next reader can find the originating
 	// handler at internal/api/assets/document/document_handler.go.
 	ArtifactKindPDF = "pdf"
+	// ArtifactKindMarkdown = "markdown" (P0 Commit 12, July 2026)
+	// extends the canonical kind set for the script.generate
+	// §8.4 multi-artifact envelope. Reserved as the document-markdown
+	// OPTIONAL slot per the §8.4 spec — the markdown twin of the
+	// generated document is gated on a future markdown emission
+	// pipeline (out of scope for C12); the kind constant is added
+	// NOW so the C12 handler emission code can name the slot at
+	// compile time without a string literal, matching how
+	// ArtifactKindPDF was introduced in C10.
+	ArtifactKindMarkdown = "markdown"
 )
 
 // ArtifactManifest is the top-level container for a job's output artefacts.

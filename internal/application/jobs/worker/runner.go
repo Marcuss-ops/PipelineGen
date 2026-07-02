@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -435,81 +433,50 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 	return manifest.ToRemote(uploaded)
 }
 
-// uploadOutputsLegacy is the pre-Blocco-2.2 upload path. It scans
-// handlerResult for output_path / pdf_path / markdown_path (string
-// keys) and output_files ([]string / []any / []OutputArtifact). The
-// uploadManifest entry point falls back to this when no manifest is
-// present, preserving backward compatibility with existing handlers.
+// ErrLegacyUploadPathRemoved is the sentinel returned by the now-disabled
+// pre-Blocco-2.2 JSON path-scan upload path. P0 Commit 12 (July 2026)
+// killed the output_path / pdf_path / markdown_path / output_files
+// scan entirely: handlers that do not emit an ArtifactManifest under
+// __artifact_manifest fail-closed at the runner. The error is exported
+// so callers can probe via errors.Is and the operator dashboard can
+// surface a single "missing-manifest" alarm category.
+//
+// Migration audit: callers that previously relied on the legacy path
+// must build an ArtifactManifest sidecar (see C10's document handler
+// at internal/api/assets/document/, C11's image handler at
+// internal/application/images/, and C12's script.generate handler at
+// internal/application/scripts/jobs/generation_job.go for the
+// canonical reference implementations). The OutputArtifact struct is
+// preserved below as a back-compat type alias — callers that try to
+// construct it now get the sentinel error at composition, not at
+// runtime; that audit signal is what gates "no future contributor
+// silently re-introduces the path-scan".
+var ErrLegacyUploadPathRemoved = errors.New("runner: legacy output_files/output_path/pdf_path/markdown_path upload path removed (P0 Commit 12); emit ArtifactManifest under __artifact_manifest instead")
+
+// uploadOutputsLegacy is the disabled pre-Blocco-2.2 JSON path-scan.
+// P0 Commit 12 (July 2026) killed it entirely: handlers that emit
+// required files MUST go through the canonical ArtifactManifest sidecar
+// at __artifact_manifest and the round-trip job.Decode path.
+//
+// Pre-C12 this function scanned handlerResult for the keys
+// output_path / pdf_path / markdown_path (string keys) and the array
+// output_files ([]string / []any / []OutputArtifact). The C12 audit
+// (see architecture/current.yaml#C12 closure notes) confirmed there
+// are no production callers left after C9 (creator per-job workspace)
+// + C10 (document manifest) + C11 (image manifest) + C12
+// (script.generate manifest) cut the legacy fallback down to zero
+// callers. The function body is gone; the sentinel error + the audit
+// signal stand.
+//
+// Fail-closed at composition-time: a future caller that bypasses the
+// manifest emission and attempts the legacy path gets the typed
+// error, surfacing the regression immediately in monitoring rather
+// than running on a stale upload cycle that silently scans the wrong
+// keys.
 func (r *Runner) uploadOutputsLegacy(ctx context.Context, jobID string, handlerResult map[string]any) error {
-	type outputFile struct {
-		assetID  string
-		path     string
-		required bool
+	if r.log != nil {
+		r.log.Error("legacy upload path invoked — handler does not emit ArtifactManifest",
+			zap.String("job_id", jobID))
 	}
-	var files []outputFile
-	seen := make(map[string]struct{})
-	add := func(assetID, path string, required bool) {
-		assetID = strings.TrimSpace(assetID)
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return
-		}
-		if assetID == "" {
-			assetID = jobID + ":" + filepath.Base(path)
-		}
-		key := assetID + "|" + path
-		if _, ok := seen[key]; ok {
-			return
-		}
-		seen[key] = struct{}{}
-		files = append(files, outputFile{assetID: assetID, path: path, required: required})
-	}
-
-	for _, key := range []string{"output_path", "pdf_path", "markdown_path"} {
-		if v, ok := handlerResult[key].(string); ok {
-			add(jobID+":"+key, v, false)
-		}
-	}
-
-	if raw, ok := handlerResult["output_files"]; ok {
-		switch list := raw.(type) {
-		case []string:
-			for _, path := range list {
-				add("", path, false)
-			}
-		case []any:
-			for i, item := range list {
-				switch v := item.(type) {
-				case string:
-					add("", v, false)
-				case OutputArtifact:
-					add(v.AssetID, v.Path, v.Required)
-				case map[string]any:
-					path, _ := v["path"].(string)
-					assetID, _ := v["asset_id"].(string)
-					required, _ := v["required"].(bool)
-					if assetID == "" {
-						assetID = fmt.Sprintf("%s:output_files:%d", jobID, i)
-					}
-					add(assetID, path, required)
-				}
-			}
-		}
-	}
-
-	for _, file := range files {
-		if _, err := os.Stat(file.path); err != nil {
-			if os.IsNotExist(err) {
-				if file.required {
-					return fmt.Errorf("required output file missing on disk: job=%s asset=%s path=%s", jobID, file.assetID, file.path)
-				}
-				continue
-			}
-			return err
-		}
-		if err := r.assetClient.UploadFile(ctx, file.assetID, file.path); err != nil {
-			return fmt.Errorf("upload output %s: %w", file.path, err)
-		}
-	}
-	return nil
+	return fmt.Errorf("job=%s: %w", jobID, ErrLegacyUploadPathRemoved)
 }
