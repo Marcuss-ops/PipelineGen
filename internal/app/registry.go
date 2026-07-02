@@ -153,6 +153,11 @@ type RegistryWiring struct {
 	searchFanOut       search.SearchFanOut
 	searchBackends     *search.BackendRegistry
 	idempotencyHandler gin.HandlerFunc
+
+	// SearchFanOut is the public accessor for the canonical search
+	// aggregator (PR-AGENTE2-READINESS). Populated by WireRegistry
+	// after registerInternalModules sets the unexported field.
+	SearchFanOut search.SearchFanOut
 }
 
 // WireRegistry creates and populates the module registry with all modules.
@@ -192,6 +197,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if err := registerInternalModules(ctx, registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: internal-modules: %w", err)
 	}
+
+	// Expose search fanout for readiness gates (PR-AGENTE2-READINESS).
+	wiring.SearchFanOut = wiring.searchFanOut
 
 	// Step 3 — Scripts: wireScriptFlow orchestration + ScriptHistory module.
 	if err := registerScripts(ctx, registry, log, cfg, root); err != nil {
