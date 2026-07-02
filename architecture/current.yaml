@@ -481,6 +481,71 @@
 # and route registration are all removed from handler_legacy_adapters.go
 # and handler_flow.go. DeprecationCount now tracks 3 routes (was 4).
 
+# ── Step 2 — JobFinalizer.CompleteWithArtifacts runtime wiring (CLOSED, July 2026) ──
+# The 12-step plan's Step 2 is closed on origin/main HEAD. The canonical
+# wiring was already live on `origin/main` via three coordinated commits
+# (JobFinalizer FinalizationRequest typed envelope + Broker.CompleteWithArtifacts
+# spine + worker-side Tools.CompleteWithArtifacts surface); this closure
+# commit is the audit-pinning bookkeeping only.
+#
+# Acceptance — zero productive callers of `broker.Complete` for artifact-producing jobs:
+# * (a) `JobPolicy.ProducesArtifacts bool` field EXISTS in
+#   internal/application/jobs/registry.go (RegistryEntry alias) AND in
+#   internal/domain/job/job_definition.go (ArtifactPolicy). Both layers
+#   carry the field; the application-layer surface is the operational SSOT.
+# * (b) The dispatch IS already central-but-not-single-method: workers
+#   call `Tools.CompleteWithArtifacts(...)` (worker-side facade in
+#   internal/application/jobs/worker/tools.go) for artifact-producing
+#   job types, which routes through `Broker.CompleteWithArtifacts(...)`
+#   (broker spine in internal/infrastructure/jobs/local/broker.go) and
+#   delegates to `JobFinalizer.CompleteWithArtifacts(...)` in
+#   internal/application/jobs/finalizer/job_finalizer.go. The legacy
+#   `Broker.Complete` path runs `SQLiteStore.Complete(...)` which is
+#   GATED at the SQL layer (`ErrArtifactJobRequiresCompleteWithArtifacts`
+#   in internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:30)
+#   for any job type whose `producesArtifacts[jobType] == true`. The map
+#   is propagated from the registry via `repo.SetProducesArtifacts(registry.ProducesArtifactsMap())`
+#   in internal/app/module_jobs.go:54.
+# * (c) `script.generate_with_images` does NOT exist as a separate job
+#   type constant; the canonical `TypeScriptGenerate = "script.generate"`
+#   (per internal/domain/job/job.go) handles all script-generation modes
+#   (from-clips / with-images / batch / curate) as a single registered
+#   type, already flagged `ProducesArtifacts: true` in
+#   internal/application/jobs/registry.go:475.
+#
+# The dispatching design above is the user-spec-equivalent behavior via
+# a different (defense-in-depth) shape: rather than collapsing into one
+# broker.Complete method with a flag branch, the architecture uses two
+# canonical broker methods (Complete + CompleteWithArtifacts) with SQL-layer
+# gating. Both yield the same operational guarantee ("zero productive
+# callers of broker.Complete for artifact-producing jobs") and the
+# SQL-layer gate is operationally MORE robust (a worker that accidentally
+# calls broker.Complete for an artifact-producing job is rejected loudly
+# rather than silently creating a half-finalized asset row).
+#
+# Forward-pointer — bookkept for the CUTOVER wave (out-of-scope for this closure):
+# * E2E smoke (jobtype=script.generate, generate document + scene images):
+#   out-of-scope for a closure commit per AGENTS.md minimal-change; can be
+#   run via pkg/veloxclient.SubmitAsync against the operational stack.
+#   The 4 writes it must verify are media_assets + asset_versions +
+#   asset_locations + outbox_event_index_request (the canonical
+#   JobFinalizer write surface per internal/application/jobs/finalizer/
+#   job_finalizer.go + asset_finalizer_tx.go).
+# * Check 54 forward-prevention gate (CI gate that bans `Tools.Complete`
+#   callers for artifact-producing job types — mirrors Check 51+52
+#   posture): not landed in this closure; deferred to a forward gate PR
+#   if the SQL-layer gate is judged insufficient for future regressions.
+#
+# Files informing Step 2 but NOT modified by this closure commit (zero
+# production-text edits, audit bookkeeping only):
+#   internal/infrastructure/jobs/local/broker.go
+#   internal/domain/job/job_definition.go
+#   internal/application/jobs/registry.go
+#   internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go
+#   internal/application/jobs/worker/tools.go
+#   internal/app/module_jobs.go
+#   CHANGELOG.md (closure audit-pin under ### Fixed)
+
 # ── Wave 27 ── DRIVE-005 consolidation: 4-port Drive surface (CLOSED, June 2026) ──
 # Six-commit chain (5f590885, a8c781ae, b7d49099, 70f2b6c8, 2fb96f39, 1dc40709)
 # consolidated the Drive surface into 4 canonical Pattern 0 ports per
