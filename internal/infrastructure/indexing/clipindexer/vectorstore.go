@@ -2,6 +2,7 @@ package clipindexer
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 )
@@ -12,11 +13,11 @@ func (s *Service) SetVectorStore(vs VectorStoreIndexer) {
 }
 
 // UpsertVectorStore pushes the newly indexed clip to Qdrant if a vector store is configured.
+// Returns a terminal error when vectorStore is nil — this is a composition bug:
+// SetVectorStore was never called but the service is enabled and called.
 func (s *Service) UpsertVectorStore(ctx context.Context, clipID string) error {
 	if s.vectorStore == nil {
-		s.log.Warn("vector store not configured, skipping Qdrant upsert",
-			zap.String("clip_id", clipID))
-		return nil
+		return fmt.Errorf("clipindexer: vector store not wired for %s — SetVectorStore was never called (composition error)", clipID)
 	}
 	if err := s.vectorStore.UpsertFromClip(ctx, clipID); err != nil {
 		s.log.Warn("failed to upsert clip to vector store",
@@ -31,8 +32,12 @@ func (s *Service) UpsertVectorStore(ctx context.Context, clipID string) error {
 
 // UpsertVectorStoreBulk pushes multiple indexed clips to Qdrant in a single batch.
 // Much faster than N individual UpsertVectorStore calls for bulk operations.
+// Returns a terminal error when vectorStore is nil (composition bug).
 func (s *Service) UpsertVectorStoreBulk(ctx context.Context, clipIDs []string) error {
-	if s.vectorStore == nil || len(clipIDs) == 0 {
+	if s.vectorStore == nil {
+		return fmt.Errorf("clipindexer: vector store not wired for bulk upsert (%d clips) — SetVectorStore was never called (composition error)", len(clipIDs))
+	}
+	if len(clipIDs) == 0 {
 		return nil
 	}
 	if err := s.vectorStore.UpsertFromClips(ctx, clipIDs); err != nil {

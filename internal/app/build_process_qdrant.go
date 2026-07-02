@@ -163,6 +163,16 @@ func initQdrantProcessSubsystems(
 }
 func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*QdrantDeps, error) {
 	_ = ctx
+
+	// BLOCKER #3 (Qdrant Verdetto, July 2026): ClipIndexer without Qdrant
+	// is a misconfiguration — the vector store is required for indexing
+	// completion. Without it, UpsertVectorStore would silently skip the
+	// Qdrant write and mark the asset as INDEXED, producing a false-success
+	// path. Fail-closed at composition time.
+	if cfg.ClipIndexer.Enabled && !cfg.Qdrant.Enabled {
+		return nil, fmt.Errorf("invalid configuration: clipindexer.enabled=true but qdrant.enabled=false — Qdrant vector store is required when the ClipIndexer is active")
+	}
+
 	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
 		Enabled:               cfg.ClipIndexer.Enabled,
 		ServerURL:             cfg.ClipIndexer.ServerURL,
