@@ -17,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -388,14 +389,19 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.Im
 	if a == nil || a.repo == nil {
 		return nil, nil
 	}
-	// Translate the canonical routing ImageFilter → assets.RepositoryListFilter.
-	// Both underlying ImageOrigin enums are `type ImageOrigin string` in their
-	// respective packages; we cast element-by-element because Go does not allow
-	// direct conversion between named types declared in different packages even
+	// Translate the canonical routing ImageFilter → routing.RepositoryListFilter.
+	// routing.RepositoryListFilter.Origins is typed
+	// []domainasset.ImageOrigin (i.e. internal/domain/asset.ImageOrigin,
+	// NOT the internal/infrastructure/database/sqlite/assets package).
+	// Both ImageOrigin enums (routing.ImageOrigin vs domainasset.ImageOrigin)
+	// are `type ImageOrigin string` so an element-by-element cast is
+	// lossless; we cannot convert []routing.ImageOrigin to
+	// []domainasset.ImageOrigin in a single expression because Go does not
+	// allow conversion between slices of differently-named types even
 	// when their underlying types match.
-	dbOrigins := make([]assets.ImageOrigin, 0, len(filter.Origins))
+	dbOrigins := make([]domainasset.ImageOrigin, 0, len(filter.Origins))
 	for _, o := range filter.Origins {
-		dbOrigins = append(dbOrigins, assets.ImageOrigin(o))
+		dbOrigins = append(dbOrigins, domainasset.ImageOrigin(o))
 	}
 	dbRows, err := a.repo.ListImages(ctx, routing.RepositoryListFilter{
 		SubjectID: filter.SubjectID,

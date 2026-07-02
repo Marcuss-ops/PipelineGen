@@ -553,7 +553,10 @@ func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domain
 	} else if writeErr := os.WriteFile(scriptJSONPath, scriptData, 0644); writeErr != nil {
 		logWarn(h.log, "failed to write script.json", jobID, writeErr)
 	} else {
-		sha, shaErr := job.ComputeSHA256(scriptJSONPath)
+		sha, shaErr := scriptpkg.ComputeSHA256(scriptJSONPath)
+		if shaErr != nil {
+			logWarn(h.log, "failed to compute SHA for script.json", jobID, shaErr)
+		}
 		artifacts = append(artifacts, scriptpkg.Artifact{
 			ID:        jobID + ":script_json",
 			Kind:      scriptpkg.ArtifactKindScriptJSON,
@@ -592,12 +595,15 @@ func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domain
 		scenesData, marErr := json.MarshalIndent(result.Output.SpecScene, "", "  ")
 		if marErr != nil {
 			logWarn(h.log, "failed to marshal scenes.json", jobID, marErr)
-		} else if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0644); writeErr != nil {
-			logWarn(h.log, "failed to write scenes.json", jobID, writeErr)
-		} else {
-			sha, shaErr := job.ComputeSHA256(scenesJSONPath)
-			artifacts = append(artifacts, scriptpkg.Artifact{
-				ID:        jobID + ":scenes",
+	} else if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0644); writeErr != nil {
+		logWarn(h.log, "failed to write scenes.json", jobID, writeErr)
+	} else {
+		sha, shaErr := scriptpkg.ComputeSHA256(scenesJSONPath)
+		if shaErr != nil {
+			logWarn(h.log, "failed to compute SHA for scenes.json", jobID, shaErr)
+		}
+		artifacts = append(artifacts, scriptpkg.Artifact{
+			ID:        jobID + ":scenes",
 				Kind:      scriptpkg.ArtifactKindScenes,
 				Path:      scenesJSONPath,
 				Filename:  "scenes.json",
