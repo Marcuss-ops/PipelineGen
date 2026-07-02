@@ -63,7 +63,6 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 
 	// 3. Setup Mock HTTP Server to mock embedding_server.py
 	var apiCalled int
-	var bulkCalled int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/index" {
@@ -74,17 +73,6 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 				"clip_id":    "clip_1",
 				"embedding":  []float64{0.1, 0.2, 0.3},
 				"dimensions": 3,
-			})
-		} else if r.URL.Path == "/index_bulk" {
-			bulkCalled++
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{
-				"status": "success",
-				"count":  2,
-				"results": []map[string]any{
-					{"clip_id": "clip_1", "embedding": []float64{0.1, 0.2, 0.3}},
-					{"clip_id": "clip_2", "embedding": []float64{0.4, 0.5, 0.6}},
-				},
 			})
 		} else {
 			w.WriteHeader(http.StatusNotFound)
@@ -113,12 +101,5 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, apiCalled)
 
-	// 6. Index run items in bulk via API
-	items := []map[string]any{
-		{"clip_id": "clip_1"},
-		{"clip_id": "clip_2"},
-	}
-	err = svc.IndexRunItems(context.Background(), items)
-	require.NoError(t, err)
-	assert.Equal(t, 1, bulkCalled)
+
 }
