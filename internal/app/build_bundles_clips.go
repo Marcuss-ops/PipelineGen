@@ -3,6 +3,8 @@
 package app
 
 import (
+	"fmt"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
@@ -11,7 +13,7 @@ import (
 func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		if err := process.ClipIndexerService.RegisterJobHandler(jobs.Service); err != nil {
-			return err
+			return fmt.Errorf("clipindexer.media_reindex: %w", err)
 		}
 	}
 	return nil

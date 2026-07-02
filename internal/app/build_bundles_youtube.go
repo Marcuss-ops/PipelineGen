@@ -3,6 +3,8 @@
 package app
 
 import (
+	"fmt"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
@@ -11,15 +13,15 @@ import (
 func wireYoutubeCatalogJobBindings(sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle) error {
 	if sync.CatalogSync != nil && jobs.Service != nil {
 		if err := sync.CatalogSync.RegisterHandler(jobs.Service); err != nil {
-			return err
+			return fmt.Errorf("catalogsync.catalog_sync: %w", err)
 		}
 		if err := sync.CatalogSync.RegisterDriveFolderSyncHandler(jobs.Service); err != nil {
-			return err
+			return fmt.Errorf("catalogsync.drive_folder_sync: %w", err)
 		}
 	}
 	if domains.YoutubeClipService != nil && jobs.Service != nil {
 		if err := domains.YoutubeClipService.RegisterHandler(jobs.Service); err != nil {
-			return err
+			return fmt.Errorf("youtube.clip_extract: %w", err)
 		}
 	}
 	return nil

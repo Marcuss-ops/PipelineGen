@@ -3,6 +3,8 @@
 package app
 
 import (
+	"fmt"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
@@ -11,7 +13,7 @@ import (
 func wireImagesJobBinding(domains *DomainBundle, jobs *JobsBundle) error {
 	if domains.ImageService != nil && jobs.Service != nil {
 		if err := domains.ImageService.RegisterHandler(jobs.Service); err != nil {
-			return err
+			return fmt.Errorf("images.image_generate_google: %w", err)
 		}
 	}
 	return nil
