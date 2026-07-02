@@ -4,7 +4,6 @@
 // the new Orchestrator (per user-spec literal "Set stock.Service.Run
 // = new orchestrator only"). The legacy ~280-line body that
 // called resolveQuery / processSingleVideo / renderChunk /
-// uploadAndIndexChunk / buildPipelineMetadata / expandSearchQueries
 // / InterleaveClips has been MOVED OUT of this file. The legacy
 // helpers themselves (run_upload.go, query.go, download_helpers.go,
 // etc.) STAY ON DISK as part of the package — they remain
@@ -20,6 +19,8 @@
 // (see service.go::HandleJob) and emits the typed manifest via
 // the broker's __artifact_manifest key. See run_orchestrator.go
 // for the canonical Orchestrator-construction + projection helpers.
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 package stockpipeline
 
 import (

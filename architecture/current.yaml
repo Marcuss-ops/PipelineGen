@@ -677,6 +677,29 @@
     equivalence diagnostic confirming 11/11 semantic-surface Go files
     blob-identical to canonical 9aa4c9e2 (no --force used; canonical
     SHA on origin/main wins per AGENTS.md canonical recovery posture).
+
+    Audit-pin canonical anchor (post-2026-07-02 cleanup, commit
+    archived after this paragraph landed): the 8 doc-only audit-pins
+    retained in stockpipeline/{service.go, run.go} after Commit
+    4-expanded landed were compressed to single-line canonical anchors
+    "//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded" via
+    this follow-up commit chain. Total: 10 anchor lines ported into
+    8 logical locations (run.go:1 anchor + service.go:9 anchors
+    across 7 individual audit-pin sites + 1 multi-line comment block
+    of 3 consecutive anchors). The canonical anchor enables future
+    CI-golint scan to distinguish audit-pin residue from production-
+    code active-uses via a separate Check rule per godlike/07 +
+    AGENTS.md §7 zero-baseline rule; forward-pointer entry
+    PR-AUDIT-PIN-GOLINT-CI-GATE (deadline pending 2026-08-15) carries
+    the CI-gate promotion ticket. Honest delta: residue-grep prior
+    audit counted 8 audit-pins total; my replacement strategy
+    generated 10 anchor lines because one location (service.go lines
+    145-147, the stockChunkDispatcher docstring block + the
+    consecutive audit-pin line) was a 3-line block that became
+    3 single-line anchors. No new residue introduced; no semantic
+    surface drift; godlike/06 SSOT intact (cross-package YouTube
+    IndexingStatus still untouched, see linked_issues
+    PR-CrossPackage-IndexingStatus-§12-5 + P0.18 below).
   linked_issues:
     - id: 9aa4c9e2
       owner_capability: internal/application/assets/providers/stock/stockpipeline
