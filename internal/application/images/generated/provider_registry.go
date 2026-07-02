@@ -1,24 +1,10 @@
-// Package generated — provider_registry.go declares Step 8's
-// GenerationProvider interface and the canonical provider list for
-// the AI-generated image territory.
+// Package generated owns the single AI-image generation backend used by
+// PipelineGen.
 //
-// Per the July 2026 image-restructuring plan, generation backends fall
-// into three named providers per the ImageProvider taxonomy in
-// internal/domain/asset/image_taxonomy.go:
-//
-//   - google-slides (provider.ProviderGoogleSlides)  — ChromeImageProvider (Playwright)
-//   - flux          (provider.ProviderFlux)          — NVIDIA Flux family (stub today)
-//   - nvidia        (provider.ProviderNvidia)        — NVIDIA Picasso/Edify (stub today)
-//
-// Each provider owns the model-shape specific to its backend
-// (prompt field names, negative-prompt conventions, dimension contracts).
-// The GenerationProviderRegistry dispatch receives a GenerateImageRequest
-// and routes to the right provider based on Model — this is the
-// canonical extension point when a new provider is added (1 port
-// method + 1 constructor + 1 entry in NewDefaultProviderRegistry).
-//
-// Step 8 replaces the monolithic ImageGenerator-port call in
-// generation_service.go with this registry.
+// Google Slides, driven through Chrome/Playwright and Nano Banana Pro, is the
+// only supported generation path. Flux and NVIDIA provider stubs were removed
+// deliberately: unavailable providers must not appear in registries,
+// diagnostics, model routing, or public capability surfaces.
 package generated
 
 import (
@@ -32,49 +18,32 @@ import (
 	"go.uber.org/zap"
 )
 
-// GenerateOptions are the per-call options that control generation
-// beyond the canonical GenerateImageRequest fields. Carried as a
-// second parameter so the Generate method signature remains stable
-// when new options are introduced.
+const (
+	// CanonicalGoogleSlidesModel is the only model accepted by the generated
+	// image pipeline. Empty model values are normalized to this value for
+	// backward-compatible callers that relied on provider defaults.
+	CanonicalGoogleSlidesModel = "nano-banana-pro"
+)
+
+// GenerateOptions are per-call execution options. They remain separate from
+// GenerateRequest so transport-only settings do not pollute the canonical
+// generation request.
 type GenerateOptions struct {
-	// Account and ProjectID are reserved for future multi-account
-	// routing; passed-through today without consumer semantics.
 	Account   string
 	ProjectID string
-	// Timeout bounds the per-provider HTTP round-trip; zero = no cap.
-	Timeout time.Duration
-	// SkipDrive skips the canonical Drive-upload step after ingest.
-	// Mirrors the existing skipDrive field on GenerateSmartImage.
+	Timeout   time.Duration
 	SkipDrive bool
 }
 
-// GenerationProvider is one named backend for AI image generation.
-// Each implementation owns model-shape specific to its backend.
+// GenerationProvider is the single backend contract for AI image generation.
+// Production composition must register GoogleSlidesProvider and nothing else.
 type GenerationProvider interface {
-	// Generate runs the backend-specific generation and returns a
-	// canonical *images.GeneratedImage. Returns ErrProviderUnavailable
-	// when the backend is not configured or wired.
 	Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error)
-	// Name returns the canonical ImageProvider constant.
 	Name() asset.ImageProvider
-	// SupportedModels returns the model identifiers this provider
-	// accepts; empty list = accept-any-model. Used by the registry to
-	// decide whether to fast-path or fallthrough.
-	SupportedModels() []string
-	// Healthy reports whether the provider is reachable (worker process
-	// alive, API key present). Used by the diagnostics surface.
 	Healthy(ctx context.Context) error
 }
 
-// ── Cross-package carrier types (mirror internal/application/images/[GeneratedImage]) ──
-//
-// These are intentionally minimal — they carry only the metadata providers
-// populate; raw bytes (`Data []byte`) are exercised by the consumer
-// (ingestGeneratedImage) which sits in the parent package.
-
 // GenerateRequest is the provider-facing subset of images.GenerateImageRequest.
-// Kept as a separate type to break the import cycle (the generated package
-// cannot import the parent images package without a circular reference).
 type GenerateRequest struct {
 	Prompt         string
 	Style          string
@@ -86,56 +55,42 @@ type GenerateRequest struct {
 	OutputPath     string
 }
 
-// GeneratedImage is the provider-facing subset of images.GeneratedImage.
+// GeneratedImage is the provider-facing generated image result.
 type GeneratedImage struct {
-	Data        []byte
-	Format      string
-	Width       int
-	Height      int
-	PromptUsed  string
-	Provider    asset.ImageProvider
-	Model       string
-	SourceHash  string
-	OutputPath  string
+	Data       []byte
+	Format     string
+	Width      int
+	Height     int
+	PromptUsed string
+	Provider   asset.ImageProvider
+	Model      string
+	SourceHash string
+	OutputPath string
 }
 
-// ── Sentinel errors ────────────────────────────────────────────────────
-
-// ErrProviderUnavailable is returned by providers that are not wired
-// or whose backend is offline. Returned (not panicked) so the registry
-// can log + continue with the next provider when applicable.
+// ErrProviderUnavailable is returned when Google Slides is not wired or is
+// temporarily unavailable.
 var ErrProviderUnavailable = errors.New("generated image provider unavailable")
 
-// ErrProviderModelMismatch is returned when the requested model is
-// not one SupportedModels reports. Fail-closed per Step 4 style
-// registry: never silently fall back to a wrong provider.
-var ErrProviderModelMismatch = errors.New("generated image provider does not support requested model")
+// ErrUnsupportedModel is returned when a caller attempts to select an image
+// model other than the one canonical Google Slides model.
+var ErrUnsupportedModel = errors.New("generated image model unsupported; only nano-banana-pro via google-slides is available")
 
-// ── GoogleSlidesProvider (current canonical backend) ──────────────────
-
-// GoogleSlidesProvider is the Step 8 wrapper around the canonical
-// images.ImageGenerator port. Today that's the ChromeImageProvider
-// driving Playwright → slides.new → Nano Banana Pro. The wrapper
-// exists so new providers (Flux, Nvidia) can be added without
-// touching the registry orchestration code.
+// GoogleSlidesProvider wraps the canonical images.ImageGenerator port. The
+// production delegate is ChromeImageProvider, which drives Playwright →
+// slides.new → Nano Banana Pro.
 type GoogleSlidesProvider struct {
 	delegate ImageGeneratorPort
 	log      *zap.Logger
 }
 
-// ImageGeneratorPort is the minimal contract the registry needs to
-// invoke a canonical backend. *images.ChromeImageProvider satisfies
-// this interface implicitly via its Generate method, but we declare
-// it as an explicit interface so the package can compile without
-// importing the parent package.
+// ImageGeneratorPort is the minimal contract the registry needs to invoke the
+// Chrome/Playwright backend without importing the parent images package.
 type ImageGeneratorPort interface {
 	Generate(ctx context.Context, req PortGenerateRequest) (*PortGeneratedImage, error)
 }
 
-// PortGenerateRequest is the adapter-level shape the registry presents
-// to backend ports. Concrete mapping happens in Wire (composition root);
-// the provider constructor takes an ImageGeneratorPort that already
-// knows how to translate between the two.
+// PortGenerateRequest is the adapter-level request passed to the backend.
 type PortGenerateRequest struct {
 	Prompt         string
 	Style          string
@@ -147,19 +102,17 @@ type PortGenerateRequest struct {
 	OutputPath     string
 }
 
-// PortGeneratedImage is the adapter-level shape the registry receives
-// from backend ports. Concrete mapping back to internal/application/images.GeneratedImage
-// happens in the caller (ingestGeneratedImage).
+// PortGeneratedImage is the adapter-level result returned by the backend.
 type PortGeneratedImage struct {
-	Data        []byte
-	Format      string
-	Width       int
-	Height      int
-	PromptUsed  string
-	Provider    string
-	Model       string
-	SourceHash  string
-	OutputPath  string
+	Data       []byte
+	Format     string
+	Width      int
+	Height     int
+	PromptUsed string
+	Provider   string
+	Model      string
+	SourceHash string
+	OutputPath string
 }
 
 func NewGoogleSlidesProvider(delegate ImageGeneratorPort, log *zap.Logger) *GoogleSlidesProvider {
@@ -171,29 +124,29 @@ func NewGoogleSlidesProvider(delegate ImageGeneratorPort, log *zap.Logger) *Goog
 
 func (p *GoogleSlidesProvider) Name() asset.ImageProvider { return asset.ProviderGoogleSlides }
 
-func (p *GoogleSlidesProvider) SupportedModels() []string {
-	// Today: Nano Banana Pro is the default. Future: Nano Banana 2,
-	// Imagen 3 (via the same Slides surface), etc.
-	return []string{"", "nano-banana-pro", "nano-banana", "imagen-3"}
-}
-
 func (p *GoogleSlidesProvider) Healthy(_ context.Context) error {
-	if p.delegate == nil {
+	if p == nil || p.delegate == nil {
 		return fmt.Errorf("google-slides provider not wired: %w", ErrProviderUnavailable)
 	}
 	return nil
 }
 
-func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error) {
-	if p.delegate == nil {
+func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest, _ GenerateOptions) (*GeneratedImage, error) {
+	if p == nil || p.delegate == nil {
 		return nil, fmt.Errorf("google-slides backend not wired: %w", ErrProviderUnavailable)
 	}
+
+	model, err := normalizeModel(req.Model)
+	if err != nil {
+		return nil, err
+	}
+
 	portOut, err := p.delegate.Generate(ctx, PortGenerateRequest{
 		Prompt:         req.Prompt,
 		Style:          req.Style,
 		Width:          req.Width,
 		Height:         req.Height,
-		Model:          req.Model,
+		Model:          model,
 		NegativePrompt: req.NegativePrompt,
 		Tags:           req.Tags,
 		OutputPath:     req.OutputPath,
@@ -201,309 +154,119 @@ func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest
 	if err != nil {
 		return nil, fmt.Errorf("google-slides generate: %w", err)
 	}
-	return &GeneratedImage{
-		Data:        portOut.Data,
-		Format:      portOut.Format,
-		Width:       portOut.Width,
-		Height:      portOut.Height,
-		PromptUsed:  portOut.PromptUsed,
-		Provider:    p.Name(),
-		Model:       portOut.Model,
-		SourceHash:  portOut.SourceHash,
-		OutputPath:  portOut.OutputPath,
-	}, nil
-}
-
-// ── FluxProvider (step-8 stub, real wiring later) ─────────────────────
-
-// FluxProvider is a first-class stub for the NVIDIA Flux family.
-// It is fail-closed: when no real Flux backend is wired, Generate
-// returns ErrProviderUnavailable. The provider exists today so
-// future PR-FLUX has a placeholder to swap implementation behind.
-type FluxProvider struct {
-	delegate ImageGeneratorPort // optional; nil = unavailable
-	log      *zap.Logger
-}
-
-func NewFluxProvider(delegate ImageGeneratorPort, log *zap.Logger) *FluxProvider {
-	if log == nil {
-		log = zap.NewNop()
+	if portOut == nil {
+		return nil, fmt.Errorf("google-slides generate returned nil result: %w", ErrProviderUnavailable)
 	}
-	return &FluxProvider{delegate: delegate, log: log}
-}
 
-func (p *FluxProvider) Name() asset.ImageProvider { return asset.ProviderFlux }
-
-func (p *FluxProvider) SupportedModels() []string {
-	return []string{"flux-1-dev", "flux-1-schnell", "flux-1-pro"}
-}
-
-func (p *FluxProvider) Healthy(_ context.Context) error {
-	if p.delegate == nil {
-		return fmt.Errorf("flux backend not wired: %w", ErrProviderUnavailable)
+	resultModel := strings.TrimSpace(portOut.Model)
+	if resultModel == "" {
+		resultModel = model
 	}
-	return nil
-}
 
-func (p *FluxProvider) Generate(ctx context.Context, req GenerateRequest, _ GenerateOptions) (*GeneratedImage, error) {
-	if p.delegate == nil {
-		return nil, fmt.Errorf("flux backend not wired (provider exists; real adapter pending): %w", ErrProviderUnavailable)
-	}
-	portOut, err := p.delegate.Generate(ctx, PortGenerateRequest{
-		Prompt:         req.Prompt,
-		Style:          req.Style,
-		Width:          req.Width,
-		Height:         req.Height,
-		Model:          req.Model,
-		NegativePrompt: req.NegativePrompt,
-		Tags:           req.Tags,
-		OutputPath:     req.OutputPath,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("flux generate: %w", err)
-	}
 	return &GeneratedImage{
 		Data:       portOut.Data,
 		Format:     portOut.Format,
 		Width:      portOut.Width,
 		Height:     portOut.Height,
 		PromptUsed: portOut.PromptUsed,
-		Provider:   p.Name(),
-		Model:      portOut.Model,
+		Provider:   asset.ProviderGoogleSlides,
+		Model:      resultModel,
 		SourceHash: portOut.SourceHash,
 		OutputPath: portOut.OutputPath,
 	}, nil
 }
 
-// ── NvidiaProvider (Step 8 stub for NVIDIA Picasso/Edify) ─────────────
-
-// NvidiaProvider is a first-class stub for the NVIDIA Picasso/Edify
-// service. Mirrors the FluxProvider contract — present in the
-// registry today, fail-closed until a real adapter is wired.
-type NvidiaProvider struct {
-	delegate ImageGeneratorPort
-	log      *zap.Logger
-	apiKey   string
-	endpoint string
+func normalizeModel(model string) (string, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return CanonicalGoogleSlidesModel, nil
+	}
+	if !strings.EqualFold(model, CanonicalGoogleSlidesModel) {
+		return "", fmt.Errorf("model=%q: %w", model, ErrUnsupportedModel)
+	}
+	return CanonicalGoogleSlidesModel, nil
 }
 
-func NewNvidiaProvider(delegate ImageGeneratorPort, apiKey, endpoint string, log *zap.Logger) *NvidiaProvider {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	if endpoint == "" {
-		endpoint = "https://ai.api.nvidia.com/v1/genai"
-	}
-	return &NvidiaProvider{delegate: delegate, apiKey: apiKey, endpoint: endpoint, log: log}
-}
-
-func (p *NvidiaProvider) Name() asset.ImageProvider { return asset.ProviderNvidia }
-
-func (p *NvidiaProvider) SupportedModels() []string {
-	return []string{"nvidia-picasso", "nvidia-edify", "stable-diffusion-xl"}
-}
-
-func (p *NvidiaProvider) Healthy(_ context.Context) error {
-	if p.delegate == nil && p.apiKey == "" {
-		return fmt.Errorf("nvidia backend not wired: %w", ErrProviderUnavailable)
-	}
-	return nil
-}
-
-func (p *NvidiaProvider) Generate(ctx context.Context, req GenerateRequest, _ GenerateOptions) (*GeneratedImage, error) {
-	if p.delegate == nil && p.apiKey == "" {
-		return nil, fmt.Errorf("nvidia backend not wired (provider exists; real adapter pending): %w", ErrProviderUnavailable)
-	}
-	if p.delegate == nil {
-		// Stub path with apiKey present but no Go-side adapter.
-		// Real adapter wiring is a future PR; for now, log and fail.
-		p.log.Warn("NvidiaProvider.Generate: apiKey present but Go-side adapter unwired; fail-closed",
-			zap.String("endpoint", p.endpoint),
-		)
-		return nil, fmt.Errorf("nvidia backend not wired (apiKey present but no Go adapter): %w", ErrProviderUnavailable)
-	}
-	portOut, err := p.delegate.Generate(ctx, PortGenerateRequest{
-		Prompt:         req.Prompt,
-		Style:          req.Style,
-		Width:          req.Width,
-		Height:         req.Height,
-		Model:          req.Model,
-		NegativePrompt: req.NegativePrompt,
-		Tags:           req.Tags,
-		OutputPath:     req.OutputPath,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("nvidia generate: %w", err)
-	}
-	return &GeneratedImage{
-		Data:       portOut.Data,
-		Format:     portOut.Format,
-		Width:      portOut.Width,
-		Height:     portOut.Height,
-		PromptUsed: portOut.PromptUsed,
-		Provider:   p.Name(),
-		Model:      portOut.Model,
-		SourceHash: portOut.SourceHash,
-		OutputPath: portOut.OutputPath,
-	}, nil
-}
-
-// ── Registry ───────────────────────────────────────────────────────────
-
-// GenerationProviderRegistry is the canonical composition of GenerationProviders.
-// Routing: the requested Model maps to the FIRST provider whose
-// SupportedModels() contains it. Default (Model == "") routes to
-// GoogleSlidesProvider.
+// GenerationProviderRegistry retains the registry seam while enforcing a
+// single-provider invariant. This keeps composition/test boundaries stable
+// without preserving unnecessary provider selection logic.
 type GenerationProviderRegistry struct {
-	providers []GenerationProvider
-	defaultP  GenerationProvider
-	log       *zap.Logger
+	provider GenerationProvider
+	log      *zap.Logger
 }
 
-// NewGenerationProviderRegistry composes the providers and indexes
-// the default (first in slice). Caller-supplied order is respected.
-func NewGenerationProviderRegistry(log *zap.Logger, providers []GenerationProvider) *GenerationProviderRegistry {
+func NewGenerationProviderRegistry(log *zap.Logger, provider GenerationProvider) *GenerationProviderRegistry {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	var def GenerationProvider
-	if len(providers) > 0 {
-		def = providers[0]
-	}
-	return &GenerationProviderRegistry{providers: providers, defaultP: def, log: log}
+	return &GenerationProviderRegistry{provider: provider, log: log}
 }
 
-// NewDefaultProviderRegistry returns the canonical 3-provider fallback
-// chain in GoogleSlides → Flux → Nvidia order. googleSlidesPort is
-// the existing images.ChromeImageProvider; pass nil to keep
-// GoogleSlides in stub mode.
-func NewDefaultProviderRegistry(log *zap.Logger, googleSlidesPort ImageGeneratorPort, nvidiaAPIKey string) *GenerationProviderRegistry {
-	return NewGenerationProviderRegistry(log, []GenerationProvider{
-		NewGoogleSlidesProvider(googleSlidesPort, log),
-		NewFluxProvider(nil, log),
-		NewNvidiaProvider(nil, nvidiaAPIKey, "https://ai.api.nvidia.com/v1/genai", log),
-	})
+// NewDefaultProviderRegistry builds the only supported generation registry.
+func NewDefaultProviderRegistry(log *zap.Logger, googleSlidesPort ImageGeneratorPort) *GenerationProviderRegistry {
+	return NewGenerationProviderRegistry(log, NewGoogleSlidesProvider(googleSlidesPort, log))
 }
 
-// Generate routes the request to the FIRST provider whose
-// SupportedModels() matches req.Model. Empty model → defaultP.
-// Returns ErrProviderModelMismatch when no provider matches.
-//
-// Dispatch is "first-match-wins"; the comparator is case-insensitive
-// strings.EqualFold on each provider's SupportedModels() slice. The
-// matched provider supersedes defaultP for the rest of this call
-// only — no cached state is updated.
 func (r *GenerationProviderRegistry) Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error) {
-	if r == nil || len(r.providers) == 0 {
-		return nil, fmt.Errorf("no providers registered: %w", ErrProviderUnavailable)
+	if r == nil || r.provider == nil {
+		return nil, fmt.Errorf("google-slides provider not registered: %w", ErrProviderUnavailable)
 	}
-	var target GenerationProvider
-	if req.Model == "" {
-		target = r.defaultP
-	} else {
-		for _, p := range r.providers {
-			for _, m := range p.SupportedModels() {
-				if strings.EqualFold(m, req.Model) {
-					target = p
-					break
-				}
-			}
-			// `matched` flag distinguishes "found a match in this
-			// provider" from "target reuses defaultP init value".
-			// Without this, the outer loop terminates after the
-			// FIRST provider regardless of model match.
-			if target != nil {
-				break
-			}
-		}
-		if target == nil {
-			return nil, fmt.Errorf("no provider matches model=%q: %w", req.Model, ErrProviderModelMismatch)
-		}
+	if r.provider.Name() != asset.ProviderGoogleSlides {
+		return nil, fmt.Errorf("invalid generation provider %q: only %q is allowed: %w",
+			r.provider.Name(), asset.ProviderGoogleSlides, ErrProviderUnavailable)
 	}
-	out, err := target.Generate(ctx, req, opts)
+
+	out, err := r.provider.Generate(ctx, req, opts)
 	if err != nil {
 		return nil, err
 	}
 	if r.log != nil {
 		r.log.Info("generation provider dispatched",
-			zap.String("provider", string(target.Name())),
-			zap.String("model", req.Model),
+			zap.String("provider", string(asset.ProviderGoogleSlides)),
+			zap.String("model", CanonicalGoogleSlidesModel),
 			zap.Int("bytes", len(out.Data)),
 		)
 	}
 	return out, nil
 }
 
-// ProviderByName returns the provider matched by name, or nil.
+// ProviderByName returns Google Slides for its canonical ID and nil for every
+// other provider name.
 func (r *GenerationProviderRegistry) ProviderByName(name asset.ImageProvider) GenerationProvider {
-	if r == nil {
+	if r == nil || r.provider == nil || name != asset.ProviderGoogleSlides {
 		return nil
 	}
-	for _, p := range r.providers {
-		if p.Name() == name {
-			return p
-		}
-	}
-	return nil
+	return r.provider
 }
 
-// Providers returns the registered providers in registration order.
+// Providers returns either the sole Google Slides provider or an empty list.
 func (r *GenerationProviderRegistry) Providers() []GenerationProvider {
-	if r == nil {
+	if r == nil || r.provider == nil {
 		return nil
 	}
-	out := make([]GenerationProvider, len(r.providers))
-	copy(out, r.providers)
-	return out
+	return []GenerationProvider{r.provider}
 }
 
-// Diagnostics probes Healthy for every registered provider.
+// Diagnostics probes only the real Google Slides provider.
 func (r *GenerationProviderRegistry) Diagnostics(ctx context.Context) map[asset.ImageProvider]error {
-	out := make(map[asset.ImageProvider]error, len(r.providers))
-	if r == nil {
+	out := make(map[asset.ImageProvider]error, 1)
+	if r == nil || r.provider == nil {
 		return out
 	}
-	for _, p := range r.providers {
-		out[p.Name()] = p.Healthy(ctx)
-	}
+	out[asset.ProviderGoogleSlides] = r.provider.Healthy(ctx)
 	return out
 }
 
-// NOTE: The adapter that bridges the canonical images.ImageGenerator
-// port to the ImageGeneratorPort interface above lives in the parent
-// images package (images/google_slides_adapter.go) — not here. Keeping
-// the adapter in the parent breaks the otherwise-circular
-// generated ↔ images dependency and lets each provider declare only the
-// image-platform-agnostic ImageGeneratorPort contract.
-
-// (no exported helpers at this layer — providers carry their own
-// HTTP client construction; future Flux/Nvidia HTTP adapters will
-// add their own package-private helpers as needed.)
-
-// ── FASE 5 spec alignment (July 2026) ────────────────────────────────
-//
-// Appends ID() string on each concrete generation provider + the
-// literal-spec Registry.Resolve(providerID string) (GenerationProvider, error)
-// method on *GenerationProviderRegistry.
-
 func (p *GoogleSlidesProvider) ID() string { return string(p.Name()) }
-func (p *FluxProvider) ID() string         { return string(p.Name()) }
-func (p *NvidiaProvider) ID() string       { return string(p.Name()) }
 
-// Resolve implements the user-spec'd Registry.Resolve: single-id
-// lookup. Fail-closed: missing id → (nil, ErrProviderNotFound wrapping
-// the missing id).
+// Resolve implements the generation Registry contract. Only google-slides is
+// resolvable; all former provider IDs fail closed.
 func (r *GenerationProviderRegistry) Resolve(providerID string) (GenerationProvider, error) {
 	if r == nil {
 		return nil, errors.New("generated: nil registry")
 	}
-	if providerID == "" {
-		return nil, fmt.Errorf("%w (id=\"\")", ErrProviderNotFound)
+	if providerID != string(asset.ProviderGoogleSlides) || r.provider == nil {
+		return nil, fmt.Errorf("%w (id=%q)", ErrProviderNotFound, providerID)
 	}
-	for _, p := range r.providers {
-		if string(p.Name()) == providerID {
-			return p, nil
-		}
-	}
-	return nil, fmt.Errorf("%w (id=%q)", ErrProviderNotFound, providerID)
+	return r.provider, nil
 }
