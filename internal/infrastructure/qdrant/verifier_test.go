@@ -431,6 +431,10 @@ func (s *stubAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error) 
 	return s.ids, nil
 }
 
+func (s *stubAssetStore) FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error) {
+	return nil, nil
+}
+
 func newClientAt(baseURL string) *Client {
 	return NewClient(&Config{BaseURL: baseURL, Timeout: 5}, zap.NewNop())
 }

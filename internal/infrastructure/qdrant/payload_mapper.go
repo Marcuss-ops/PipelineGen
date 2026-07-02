@@ -39,6 +39,11 @@ func (m *PayloadMapper) ListAllAssetIDs(ctx context.Context) ([]string, error) {
 	return m.store.ListAllAssetIDs(ctx)
 }
 
+// FetchAssetBatch delegates to the AssetStore (HIGH #8, July 2026).
+func (m *PayloadMapper) FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error) {
+	return m.store.FetchAssetBatch(ctx, afterID, limit)
+}
+
 // AssetToPoint converts an AssetData to a Qdrant Point using the manifest.
 //
 // PR 6 (refactor/qdrant-index-document): AssetToPoint now delegates to
