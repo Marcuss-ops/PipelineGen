@@ -310,7 +310,6 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 				MaxChapters:    input.MaxChapters,
 				GenerateImages: input.GenerateImages,
 				ImageStyle:     input.ImageStyle,
-				ImageModel:     input.ImageModel,
 				ImageWidth:     input.ImageWidth,
 				ImageHeight:    input.ImageHeight,
 				GeneratePDF:    input.GeneratePDF,

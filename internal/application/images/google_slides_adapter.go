@@ -67,7 +67,6 @@ func (a *ImageGeneratorAdapter) Generate(ctx context.Context, req generated.Port
 		Style:          req.Style,
 		Width:          req.Width,
 		Height:         req.Height,
-		Model:          req.Model,
 		NegativePrompt: req.NegativePrompt,
 		Tags:           req.Tags,
 		OutputPath:     req.OutputPath,

@@ -108,7 +108,6 @@ type LessonSource struct {
 	MaxChapters    int    `json:"max_chapters,omitempty"`
 	GenerateImages bool   `json:"generate_images,omitempty"`
 	ImageStyle     string `json:"image_style,omitempty"`
-	ImageModel     string `json:"image_model,omitempty"`
 	ImageWidth     int    `json:"image_width,omitempty"`
 	ImageHeight    int    `json:"image_height,omitempty"`
 	GeneratePDF    bool   `json:"generate_pdf,omitempty"`
