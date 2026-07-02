@@ -17,6 +17,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -68,6 +69,25 @@ var (
 	ErrStockPipelineNilMetadataWriter = errors.New("stockpipeline.NewService: media.MetaWriter is required (semantic enrichment for Drive metadata.json upload)")
 	ErrStockPipelineNilYouTube        = errors.New("stockpipeline.NewService: YouTube is required (provider metadata enrichment for direct URL sources)")
 	ErrStockPipelineNilJobs           = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+
+	// ErrStockPipelineNilFinalizer is NOT a fail-fast sentinel — the
+	// stock Service tolerates a nil Finalizer at ctor time (§12-1
+	// §F.1 governance, July 2026) so existing composition-root
+	// wiring (which doesn't yet inject the Spina Dorsale finalizer)
+	// does not break. When nil:
+	//   - Service.HandleJob STILL runs the gates via
+	//     BuildFinalizationRequest (the gates fail-closed today
+	//     on ErrStockNoChunksFinalized until Commit 4-7 wires
+	//     the chunk-rendering ladder).
+	//   - When gates pass, HandleJob logs a Warn + skips the
+	//     finalizer.CompleteWithArtifacts call (legacy
+	//     return-map path remains active).
+	//
+	// §F.2 follow-up: make Finalizer REQUIRED at ctor time +
+	// wire the *finalizer.Finalizer concrete at the composition
+	// root (currently routed via imageSvc per
+	// registry_internal_modules.go::registerInternalModules).
+	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewService: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
 )
 
 // StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
@@ -167,6 +187,15 @@ type Deps struct {
 	// shape rather than introduce a CrossCuttingDeps for symmetry.
 	YouTube *youtube.Service
 	Jobs    *appjobs.Service
+
+	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
+	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes
+	// it OPTIONAL — nil routing keeps the legacy return-map path
+	// alive for un-wired composition roots. §F.2 follow-up makes
+	// it REQUIRED + wires the *finalizer.Finalizer concrete at
+	// the composition root (currently routed via imageSvc per
+	// registry_internal_modules.go::registerInternalModules).
+	Finalizer finalization.JobFinalizer
 }
 
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
@@ -210,6 +239,13 @@ type Service struct {
 	// `stockChunkDispatcher` interface so test fakes can wire the
 	// shape without dragging in the full infra surface.
 	dispatcher stockChunkDispatcher
+	// finalizer is the Spina Dorsale JobFinalizer (§12-1 §F.1
+	// governance, July 2026). OPTIONAL in this commit (no fail-fast
+	// on nil — see ErrStockPipelineNilFinalizer doc-comment). §F.2
+	// follow-up promotes it to a REQUIRED dep + wires production
+	// finalizer.New(...) at the composition root (currently routed
+	// via imageSvc per registry_internal_modules.go).
+	finalizer finalization.JobFinalizer
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -299,6 +335,7 @@ func NewService(deps Deps) (*Service, error) {
 		metaWriter:  deps.Media.MetaWriter,
 		clipsRepo:   deps.Storage.ClipsRepo,
 		dispatcher:  deps.Storage.Dispatcher,
+		finalizer:   deps.Finalizer,
 	}, nil
 }
 
@@ -415,27 +452,166 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	manifest := summary.Manifest
 
 	if tools.Progress != nil {
-		tools.Progress(100, "Stock orchestrator complete")
+		tools.Progress(80, "Stock orchestrator complete")
+	}
+
+	// Stock Cutover §12-1 §F (July 2026): thread HandleJob through
+	// the canonical Spina Dorsale. Build the OrchestrationResult
+	// envelope (already defined in finalizer_gates.go) carrying
+	// the typed manifest + the per-chunk + per-metadata gate
+	// inputs. Today (Commit 4-7 not landed) Chunks and Metadata
+	// are EMPTY so BuildFinalizationRequest's VerifyChunks raises
+	// ErrStockNoChunksFinalized — the gate fires before any
+	// finalizer call, propagating the typed error to the broker
+	// which marks the job FAILED (closing the silent-success
+	// class per user spec P0 2.1).
+	orchestration := &OrchestrationResult{
+		Manifest:  manifest,
+		Chunks:    []ChunkState{}, // pre-Commit-4-7: empty
+		Metadata:  MetadataState{}, // pre-Commit-4-7: empty
+	}
+
+	// §F.1 (this commit): the Spine is OPTIONAL. When wired
+	// (production case in §F.2 follow-up) the atomic
+	// single-TX SUCCEEDED write happens; when unwired (today's
+	// composition root, which doesn't yet thread a finalizer)
+	// the gate-fail-fast path still propagates and the legacy
+	// return-map shape is preserved so dashboards keep rendering.
+	manifestData, marshalErr := manifestBytes(manifest)
+	if marshalErr != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.HandleJob: marshal manifest: %w", marshalErr)
+	}
+	lease := extractLease(job)
+	finReq, buildErr := BuildFinalizationRequest(
+		job.ID,
+		lease,
+		manifestData,
+		orchestration.Chunks,
+		orchestration.Metadata,
+	)
+	if buildErr != nil {
+		// Gate failed — propagate the typed sentinel so the
+		// broker's downstream runner marks the job FAILED.
+		// Today this returns ErrStockNoChunksFinalized on EVERY
+		// stock run (pre-Commit-4-7). §F.2 does NOT change this
+		// fail-closed behavior — it just enables the
+		// post-gate-pass path through finalizer.CompleteWithArtifacts.
+		return nil, fmt.Errorf("stockpipeline.Service.HandleJob: gates failed (job cannot SUCCEED): %w", buildErr)
+	}
+
+	var finResult *finalization.FinalizationResult
+	if s.finalizer != nil {
+		var finalErr error
+		finResult, finalErr = s.finalizer.CompleteWithArtifacts(ctx, *finReq)
+		if finalErr != nil {
+			return nil, fmt.Errorf("stockpipeline.Service.HandleJob: finalizer spine write: %w", finalErr)
+		}
+		s.log.Info("stock finaliser spine SUCCEEDED",
+			zap.String("job_id", job.ID),
+			zap.Int("attempt", lease.Attempt),
+			zap.Int("artifact_count", len(finResult.ArtifactRefs)),
+		)
+	} else {
+		// §F.1 fallback: composition root hasn't wired the
+		// production finalizer yet. The legacy return-map shape
+		// preserves JobStatusResponse rendering and the broker's
+		// downstream runner still sees the manifest. The job is
+		// NOT marked SUCCEEDED in this branch (finalizer is the
+		// single writer per godlike/06 SSOT).
+		s.log.Warn("stock Service.HandleJob finalizer NOT wired (§12-1 §F.1 OPTIONAL gate) — gates passed but no spine write occurred; legacy return-map path is active",
+			zap.String("job_id", job.ID),
+			zap.Int("attempt", lease.Attempt),
+		)
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(100, "Stock pipeline finalised")
 	}
 
 	// Project the typed manifest into the legacy shape for
 	// dashboards that read the top-level fields (zero in Commit 2;
 	// post-cutover chunks populate them in Commit 4-7).
-	projected := projectManifestToPipelineResult(manifest) // Note on `jobdomain` (alias vs HandleJob's `job` parameter): the
+	projected := projectManifestToPipelineResult(manifest)
+
+	// Note on `jobdomain` (alias vs HandleJob's `job` parameter): the
 	// HandleJob parameter is named `job *appjobs.Job` so the bare
 	// identifier `job` resolves to the broker job, NOT to a package
 	// alias. We therefore import domain/job as `jobdomain` so the
 	// artifact-manifest constants (jobdomain.ManifestKey,
 	// jobdomain.SchemaVersionArtifactManifestV1) are unambiguous.
-	return map[string]any{
-		jobdomain.ManifestKey: manifest,                    // "__artifact_manifest" — canonical wire artefact
-		"final_status":        string(summary.FinalStatus), // "SUCCEEDED" | "INDEX_PENDING" | "FAILED" | ...
-		"total_clips":         projected.TotalClips,
-		"total_chunks":        projected.TotalChunks,
-		"chunks":              projected.Chunks,
-		"metadata_link":       projected.MetadataLink,
-		"metadata_file_id":    projected.MetadataFileID,
-	}, nil
+	result := map[string]any{
+		jobdomain.ManifestKey:  manifest,                       // "__artifact_manifest" — canonical wire artefact
+		"final_status":         string(summary.FinalStatus),   // "SUCCEEDED" | "INDEX_PENDING" | "FAILED" | ...
+		"total_clips":          projected.TotalClips,
+		"total_chunks":         projected.TotalChunks,
+		"chunks":               projected.Chunks,
+		"metadata_link":        projected.MetadataLink,
+		"metadata_file_id":     projected.MetadataFileID,
+	}
+	if finResult != nil {
+		result["__finalization_status"] = finResult.Status
+		result["__finalization_completed_at"] = finResult.CompletedAt
+	}
+	return result, nil
+}
+
+// extractLease projects the legacy *appjobs.Job (broker-routed,
+// already-claimed) into the canonical finalization.Lease struct
+// the JobFinalizer validates inside its single-TX commit.
+//
+// Mapping rules (Stock Cutover §12-1 §F, July 2026):
+//
+//	LeaseID    ← job.LeaseID         (broker-assigned at Claim time)
+//	JobID      ← job.ID              (canonical broker job identifier)
+//	WorkerID   ← job.WorkerID        (broker-assigned worker id)
+//	Attempt    ← job.RetryCount + 1  (the canonical "next attempt" formula)
+//	ExpiresAt  ← job.LeaseExpiry     (broker-issued lease TTL)
+//
+// TOCTOU note: the broker's lease could expire between this
+// pre-tx read and the finalizer's in-tx lease fence. The
+// finalizer's own selectJobForFinalization runs the canonical
+// re-validation against the DB row (worker_id + lease_id +
+// lease_expiry + retry_count+1 == attempt); lease drift here
+// surfaces as ErrLeaseExpired / ErrStaleAttempt inside the tx,
+// which is the typed-error contract callers can errors.Is()
+// against.
+//
+// Defensive fallback: if the broker hasn't populated LeaseExpiry
+// (rare — usually happens only on synthetic test fixtures),
+// extractLease returns a 5-minute TTL so validateRequest
+// (`Lease.Valid()`) doesn't raise an empty-time false-positive.
+// Production broker traffic always carries a non-nil LeaseExpiry.
+func extractLease(job *appjobs.Job) finalization.Lease {
+	if job == nil {
+		return finalization.Lease{}
+	}
+	expiresAt := time.Now().UTC().Add(5 * time.Minute)
+	if job.LeaseExpiry != nil && !job.LeaseExpiry.IsZero() {
+		expiresAt = *job.LeaseExpiry
+	}
+	return finalization.Lease{
+		LeaseID:   job.LeaseID,
+		JobID:     job.ID,
+		WorkerID:  job.WorkerID,
+		Attempt:   job.RetryCount + 1,
+		ExpiresAt: expiresAt,
+	}
+}
+
+// manifestBytes marshals the canonical *job.ArtifactManifest
+// (C12 envelope) into finalization.ResultManifest.Data bytes.
+// Errors here are typed-error contract violations (manifest
+// schema drift) — a typed-error wrap is the right escalation
+// since callers can't recover from a marshaller bug mid-job.
+func manifestBytes(manifest *jobdomain.ArtifactManifest) ([]byte, error) {
+	if manifest == nil {
+		return nil, fmt.Errorf("stockpipeline.manifestBytes: nil manifest")
+	}
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("stockpipeline.manifestBytes: marshal: %w", err)
+	}
+	return raw, nil
 }
 
 // RunInput holds the parameters for a stock pipeline run.

@@ -21,6 +21,7 @@ package stockpipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"go.uber.org/zap"
@@ -284,11 +285,25 @@ func TestService_Run_LegacySignature_ReturnsPipelineResult(t *testing.T) {
 // Service.HandleJob end-to-end tests
 // ─────────────────────────────────────────────────────────────────────
 
-// TestService_HandleJob_EmitsArtifactManifestKey — the user-spec
-// literal: "the JobStatusResponse exposes __artifact_manifest with
-// the C12 5-artifact shape". Pin that HandleJob returns a result
-// map containing the typed manifest under job.ManifestKey.
-func TestService_HandleJob_EmitsArtifactManifestKey(t *testing.T) {
+// TestService_HandleJob_GateFailClosed_OnEmptyChunks (Stock Cutover
+// §12-1 §F, July 2026) — the gate-fail-closed contract: today's
+// orchestrator emits a typed *job.ArtifactManifest but the
+// per-chunk states are EMPTY (pre-Commit-4-7 chunk-rendering
+// ladder) and per-metadata state is EMPTY (pre-Commit-7 metadata
+// publication). BuildFinalizationRequest's VerifyChunks gate
+// raises ErrStockNoChunksFinalized BEFORE any finalizer call,
+// and Service.HandleJob propagates the typed error so the
+// broker's downstream runner marks the job FAILED. The silent-
+// success class is closed (P0 2.1): no manifest emitted in the
+// "happy path" shape, no Publisher side-effects.
+//
+// The pre-§F expectation (this test's obsolete version, retained
+// in CHANGELOG and git log) was C12-emit-success which is
+// verbatim false under §F. Commit 4-7 (chunk-rendering ladder)
+// flips this test back to the emit-success shape once
+// OrchestrationResult.Chunks is populated by the orchestrator
+// and metadata.json publication runs in Commit 7.
+func TestService_HandleJob_GateFailClosed_OnEmptyChunks(t *testing.T) {
 	rec := &recordingPublisher{}
 	svc := &Service{log: zap.NewNop(), publisher: rec}
 
@@ -308,44 +323,46 @@ func TestService_HandleJob_EmitsArtifactManifestKey(t *testing.T) {
 		ID:      "broker-job-1",
 		Payload: payload,
 	}, &appjobs.JobTools{})
-	if err != nil {
-		t.Fatalf("HandleJob err: %v", err)
-	}
 
-	raw, ok := res[job.ManifestKey]
-	if !ok {
-		t.Fatalf("HandleJob result map missing key %q (user-spec literal: __artifact_manifest exposure)", job.ManifestKey)
+	// Gate-fail-closed contract: today (Commit 2 + §F.1) the
+	// Chunks=[] state triggers ErrStockNoChunksFinalized, NOT
+	// a successful return. errors.Is reaches the wrapped sentinel
+	// via the typed-error wrap pattern (godlike/07).
+	if err == nil {
+		t.Fatalf("HandleJob expected gate-fail error (ErrStockNoChunksFinalized), got nil + result=%v (pre-Commit-4-7 silent-success regression — §12-1 §F closes this class)", res)
 	}
-	manifest, ok := raw.(*job.ArtifactManifest)
-	if !ok {
-		t.Fatalf("HandleJob result[%q] type = %T, want *job.ArtifactManifest", job.ManifestKey, raw)
+	if !errors.Is(err, ErrStockNoChunksFinalized) {
+		t.Fatalf("HandleJob err = %v; want ErrStockNoChunksFinalized (gates must fail-closed today pre-Commit-4-7)", err)
 	}
-	if err := manifest.Validate(); err != nil {
-		t.Fatalf("HandleJob-emitted manifest.Validate() = %v", err)
+	// Gate fires BEFORE any finalizer call, so Publisher remains
+	// untouched — that part of the legacy-path-unreachable
+	// contract is preserved across the gate-fail rewrite.
+	if rec.publishCalls != 0 {
+		t.Errorf("recordingPublisher.Publish called %d times (must be zero — gate fires before any Drive write)", rec.publishCalls)
 	}
-	if got, want := manifest.JobID, "broker-job-1"; got != want {
-		t.Errorf("manifest.JobID = %q, want %q (HandleJob stamps broker JobID on the manifest)", got, want)
-	}
-	if got, want := manifest.SchemaVersion, job.SchemaVersionArtifactManifestV1; got != want {
-		t.Errorf("manifest.SchemaVersion = %q, want %q", got, want)
-	}
-	// job.Decode round-trip — the broker runner uses Decode to
-	// extract the literal map → structured manifest.
-	decoded, decodeErr := job.Decode(res)
-	if decodeErr != nil {
-		t.Fatalf("job.Decode(result) = %v (broker runner reads via Decode — must round-trip)", decodeErr)
-	}
-	if decoded == nil {
-		t.Fatal("job.Decode returned nil despite __artifact_manifest key present")
+	if rec.resolveFolderCalls != 0 {
+		t.Errorf("recordingPublisher.ResolveFolder called %d times (must be zero)", rec.resolveFolderCalls)
 	}
 }
 
-// TestService_HandleJob_LegacyFieldsPresent — even though Commit 2
-// hydrates legacy fields to zero, the keys must still be present
-// in the map so dashboards reading top-level fields don't see
-// "key missing" instead of "key=0". Commit 4-7 will replace the
-// zeros with real values.
-func TestService_HandleJob_LegacyFieldsPresent(t *testing.T) {
+// TestService_HandleJob_GateFailClosed_HydrationPendingBothGates
+// (Stock Cutover §12-1 §F, July 2026) — companion to
+// GateFailClosed_OnEmptyChunks; the test name reflects the actual
+// OR-semantic it exercises: today BOTH gates fail (chunks empty
+// AND metadata empty), and whichever gate fires first wins, so
+// the assertion accepts either sentinel. The semantic invariant
+// being pinned is "HandleJob is fail-closed when the orchestrator's
+// state is empty on EITHER input axis", not "which specific gate
+// fires first" — the latter is documented in `BuildFinalizationRequest`'s
+// own doc-comment and is a separate concern.
+//
+// Splitting this into two physically-isolated gates tests would
+// require mocking the orchestrator to emit populated chunks with
+// empty metadata (or vice versa), but `OrchestrationResult.Chunks`
+// and `MetadataState` are not injectable today (the orchestrator
+// is a method, not a port — §F.2 forward-pointer: lift to a
+// port so per-axis testing is possible).
+func TestService_HandleJob_GateFailClosed_HydrationPendingBothGates(t *testing.T) {
 	svc := &Service{log: zap.NewNop(), publisher: &recordingPublisher{}}
 
 	payload, _ := json.Marshal(&StockRunPayload{
@@ -354,55 +371,35 @@ func TestService_HandleJob_LegacyFieldsPresent(t *testing.T) {
 		ClipDuration:  5,
 		ChunkDuration: 5,
 	})
-	res, err := svc.HandleJob(context.Background(), &appjobs.Job{
+	_, err := svc.HandleJob(context.Background(), &appjobs.Job{
 		ID:      "job-fields",
 		Payload: payload,
 	}, &appjobs.JobTools{})
-	if err != nil {
-		t.Fatalf("HandleJob err: %v", err)
+	// Today (pre-Commit-4-7 + pre-Commit-7) BOTH gates fail; the
+	// first gate to fire per `BuildFinalizationRequest`'s order
+	// wins, but the test asserts the "fail-closed on empty state"
+	// invariant regardless of which gate actually fires first.
+	if err == nil {
+		t.Fatalf("HandleJob expected gate-fail error, got nil (silent-success class reopened)")
 	}
-	for _, key := range []string{
-		job.ManifestKey,
-		"total_clips",
-		"total_chunks",
-		"chunks",
-		"metadata_link",
-		"metadata_file_id",
-	} {
-		if _, ok := res[key]; !ok {
-			t.Errorf("HandleJob result map missing key %q (must be present even when value is zero-value)", key)
-		}
-	}
-	if got, want := res["total_clips"], 0; got != want {
-		t.Errorf("total_clips = %v, want %d (Commit 2 zero projection)", got, want)
-	}
-	if got, want := res["total_chunks"], 0; got != want {
-		t.Errorf("total_chunks = %v, want %d (Commit 2 zero projection)", got, want)
-	}
-	// `chunks` carries a typed-nil []ChunkResult (the projection
-	// helper sets `Chunks: nil`); interface wrapping prevents the
-	// literal `got == nil` check from being meaningful, so the
-	// assertion is "len(chunks)==0 OR value is untyped-nil" — both
-	// represent the Commit 2 zero projection (Commit 4-7 hydrates
-	// real chunk entries).
-	switch c := res["chunks"].(type) {
-	case nil:
-		// untyped-nil — accepted
-	case []ChunkResult:
-		if len(c) != 0 {
-			t.Errorf("chunks len = %d, want 0 (Commit 2 zero projection)", len(c))
-		}
-	default:
-		t.Errorf("chunks type = %T, want nil or []ChunkResult (Commit 2 zero projection)", res["chunks"])
+	if !errors.Is(err, ErrStockNoChunksFinalized) && !errors.Is(err, ErrStockMetadataNotPublished) {
+		t.Fatalf("HandleJob err = %v; want ErrStockNoChunksFinalized OR ErrStockMetadataNotPublished (both gates are fail-closed semantically — whichever gate's precondition fires first is implementation detail)", err)
 	}
 }
 
-// TestService_HandleJob_LegacyPathUnreachable — Commit 2 spec:
-// "the legacy run_upload.go code stays on disk but becomes
-// unreachable from the public entrypoint". Verify the Publisher
-// (the Drive write canal) is NOT invoked by HandleJob — the
-// orchestrator-driven path doesn't touch Drive in Commit 2.
-func TestService_HandleJob_LegacyPathUnreachable(t *testing.T) {
+// TestService_HandleJob_GateFailClosed_PublisherUnreached (Stock
+// Cutover §12-1 §F, July 2026) — preserved semantic from the
+// pre-§F LegacyPathUnreachable test: the Publisher (Drive-write
+// canal) MUST NOT be invoked by HandleJob. The gate-fail path
+// preserves this contract because the gate fires before any
+// publisher side-effect would be plausible — the orchestrator
+// doesn't touch Drive today (pre-Commit-4-7 / pre-Commit-7), and
+// the gate fails before we'd ever get to Drive publication if
+// it did. This narrows the contract to "either path: Publisher
+// untouched", which is a stronger invariant that future
+// Commit-4-7 / Commit-7 hydration MUST preserve (a single Drive
+// write pre-gate fired = regression).
+func TestService_HandleJob_GateFailClosed_PublisherUnreached(t *testing.T) {
 	rec := &recordingPublisher{}
 	svc := &Service{log: zap.NewNop(), publisher: rec}
 
@@ -416,13 +413,15 @@ func TestService_HandleJob_LegacyPathUnreachable(t *testing.T) {
 		ID:      "job-no-drive",
 		Payload: payload,
 	}, &appjobs.JobTools{})
-	if err != nil {
-		t.Fatalf("HandleJob err: %v", err)
+	// Gate-fail is expected (pre-Commit-4-7) but the Publisher
+	// assertion is the load-bearing assertion: zero Drive writes.
+	if err != nil && !errors.Is(err, ErrStockNoChunksFinalized) && !errors.Is(err, ErrStockMetadataNotPublished) {
+		t.Fatalf("HandleJob err = %v; want ErrStockNoChunksFinalized OR ErrStockMetadataNotPublished", err)
 	}
 	if rec.publishCalls != 0 {
-		t.Errorf("recordingPublisher.Publish called %d times (legacy chunk-render writing to Drive MUST NOT be triggered — Commit 2 spec literal)", rec.publishCalls)
+		t.Errorf("recordingPublisher.Publish called %d times (must be zero — gates fire before any Drive write)", rec.publishCalls)
 	}
 	if rec.resolveFolderCalls != 0 {
-		t.Errorf("recordingPublisher.ResolveFolder called %d times (Runner legacy path MUST NOT reach Drive — Commit 2)", rec.resolveFolderCalls)
+		t.Errorf("recordingPublisher.ResolveFolder called %d times (must be zero)", rec.resolveFolderCalls)
 	}
 }
