@@ -37,14 +37,13 @@ func runListStyles(args []string) error {
 			enabledCount++
 		}
 
-		providerList := "any"
-		if len(s.AllowedProviders) > 0 {
-			providerList = fmt.Sprintf("%v", s.AllowedProviders)
-		}
-
 		fmt.Printf("  %-18s v%-2d [%s] → %s\n", s.Name, s.Version, status, s.DestinationKey)
 		fmt.Printf("    prompt:     %s\n", textutil.Truncate(s.EffectiveSuffix(), 80))
-		fmt.Printf("    providers:  %s\n", providerList)
+		// surface-3 (July 2026): per-style AllowedProviders retired.
+		// google-slides is the sole image-generation provider; the
+		// row is now a static statement rather than a dynamic
+		// lookup on s.AllowedProviders.
+		fmt.Printf("    providers:  google-slides (only)\n")
 		if s.NegativePrompt != "" {
 			fmt.Printf("    negative:   %s\n", textutil.Truncate(s.NegativePrompt, 80))
 		}

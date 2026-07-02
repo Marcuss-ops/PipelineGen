@@ -6,6 +6,15 @@
 // fake source backend is keyed by style id; tests either share a
 // "default + cinematic + disabled" fixture or replace it inline for
 // the "empty input + no default registered" case.
+//
+// surface-3 (July 2026): the per-style AllowedProviders / AllowedModels
+// negative-path rows (formerly rows 6+7 of the table) were retired
+// along with the underlying checks; the test now exercises only the
+// remaining fail-closed gates (not-found, default fallback, missing
+// default, disabled). The ErrStyleProviderUnsupported /
+// ErrStyleModelUnsupported sentinels stay validated as non-nil by
+// TestStyleResolver_AllSentinelErrorsNonNil below — that's the
+// godlike/06 audit-pinning contract that callers can rely on.
 package styles
 
 import (
@@ -33,7 +42,12 @@ func (f *fakeSourceBackend) GetStyle(id string) (StyleSnapshot, error) {
 
 func TestNew_NilSource_FailsClosed(t *testing.T) {
 	r := New(nil)
-	_, err := r.Resolve("cinematic", "nvidia", "flux-1-dev")
+	// surface-3 (July 2026): inputs use the canonical google-slides
+	// provider + nano-banana-pro model. The choice is irrelevant for
+	// the nil-source fail-closed assertion (the gate-1 branch fires
+	// regardless of provider/model) but we keep the canonical values
+	// for consistency with the rest of the suite.
+	_, err := r.Resolve("cinematic", "google-slides", "nano-banana-pro")
 	if !errors.Is(err, ErrStyleNotFound) {
 		t.Fatalf("New(nil) must fail-closed: got %v, want ErrStyleNotFound", err)
 	}
@@ -51,16 +65,16 @@ func TestStyleResolver_TableDriven_Cases(t *testing.T) {
 		Width: 1920, Height: 1080,
 		DestinationKey:    dst,
 		Enabled:           true,
-		AllowedProviders:  []string{"nvidia", "google-slides"},
-		AllowedModels:     []string{"flux-1-dev"},
+		AllowedProviders:  []string{"google-slides"}, // surface-3: canonical, dead-control
+		AllowedModels:     []string{"nano-banana-pro"}, // surface-3: canonical, dead-control
 	}
 	def := StyleSnapshot{
 		ID: "default", Version: 1,
 		PromptSuffix:      "neutral baseline",
 		Width: 1280, Height: 720,
 		Enabled:           true,
-		AllowedProviders:  nil, // empty = any
-		AllowedModels:     nil, // empty = any
+		AllowedProviders:  nil, // empty (post surface-3: never read; kept for yaml back-compat)
+		AllowedModels:     nil, // empty (post surface-3: never read; kept for yaml back-compat)
 	}
 	disabled := StyleSnapshot{
 		ID: "disabled-style", Version: 1,
@@ -88,8 +102,8 @@ func TestStyleResolver_TableDriven_Cases(t *testing.T) {
 		wantStyle ResolvedStyle
 	}{
 		{
-			name: "success: cinematic + nvidia + flux-1-dev",
-			src: full, styleID: "cinematic", provider: "nvidia", model: "flux-1-dev",
+			name: "success: cinematic + google-slides + nano-banana-pro",
+			src: full, styleID: "cinematic", provider: "google-slides", model: "nano-banana-pro",
 			wantErr: nil,
 			wantStyle: ResolvedStyle{
 				ID: "cinematic", Version: 1,
@@ -101,7 +115,7 @@ func TestStyleResolver_TableDriven_Cases(t *testing.T) {
 		},
 		{
 			name: "empty styleID falls back to magic id 'default'",
-			src: full, styleID: "", provider: "nvidia", model: "flux-1-dev",
+			src: full, styleID: "", provider: "google-slides", model: "nano-banana-pro",
 			wantErr: nil,
 			wantStyle: ResolvedStyle{
 				ID: "default", Version: 1,
@@ -112,29 +126,24 @@ func TestStyleResolver_TableDriven_Cases(t *testing.T) {
 		},
 		{
 			name: "missing styleID -> ErrStyleNotFound",
-			src: full, styleID: "ghost-style", provider: "nvidia", model: "flux-1-dev",
+			src: full, styleID: "ghost-style", provider: "google-slides", model: "nano-banana-pro",
 			wantErr: ErrStyleNotFound,
 		},
 		{
 			name: "empty styleID + no default registered -> ErrStyleNotFound",
-			src: missing, styleID: "", provider: "nvidia", model: "flux-1-dev",
+			src: missing, styleID: "", provider: "google-slides", model: "nano-banana-pro",
 			wantErr: ErrStyleNotFound,
 		},
 		{
 			name: "style found but Enabled=false -> ErrStyleDisabled",
-			src: full, styleID: "disabled-style", provider: "nvidia", model: "flux-1-dev",
+			src: full, styleID: "disabled-style", provider: "google-slides", model: "nano-banana-pro",
 			wantErr: ErrStyleDisabled,
 		},
-		{
-			name: "provider not in AllowedProviders -> ErrStyleProviderUnsupported",
-			src: full, styleID: "cinematic", provider: "duckduckgo", model: "flux-1-dev",
-			wantErr: ErrStyleProviderUnsupported,
-		},
-		{
-			name: "model not in AllowedModels -> ErrStyleModelUnsupported",
-			src: full, styleID: "cinematic", provider: "nvidia", model: "flux-2-pro",
-			wantErr: ErrStyleModelUnsupported,
-		},
+		// surface-3 (July 2026): the per-style AllowedProviders /
+		// AllowedModels negative-path rows were retired because the
+		// checks that fired ErrStyleProviderUnsupported /
+		// ErrStyleModelUnsupported were themselves retired. See
+		// resolver.go doc-comment for the canonical rationale.
 	}
 
 	for _, tc := range tests {
@@ -170,6 +179,14 @@ func TestStyleResolver_TableDriven_Cases(t *testing.T) {
 	}
 }
 
+// TestStyleResolver_AllSentinelErrorsNonNil is the godlike/06
+// audit-pinning contract: every sentinel — including the sur-face-3
+// "dead-code" ErrStyleProviderUnsupported / ErrStyleModelUnsupported —
+// must remain non-nil even after their checks are retired. The
+// re-export surface in
+// internal/application/assets/generation/style_registry.go (lines
+// 39-44) keeps these aliases stable so external consumers and
+// future wiring can still reference them.
 func TestStyleResolver_AllSentinelErrorsNonNil(t *testing.T) {
 	sentinels := []error{
 		ErrStyleNotFound,
@@ -192,7 +209,7 @@ func TestStyleResolver_WhitespaceStyleIDFallsBackToDefault(t *testing.T) {
 		},
 	}}
 	r := New(full)
-	got, err := r.Resolve("   ", "nvidia", "flux-1-dev")
+	got, err := r.Resolve("   ", "google-slides", "nano-banana-pro")
 	if err != nil {
 		t.Fatalf("whitespace-only styleID should resolve to default-magic-id: %v", err)
 	}

@@ -27,7 +27,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
@@ -218,24 +217,30 @@ func (h *ImagesHandler) GeneratedStyles(c *gin.Context) {
 	apiutil.OK(c, StylesResponse{Styles: out, Count: len(out)})
 }
 
-// styleDefToInfo projects a canonical GenerationStyle to a
-// StyleInfo DTO. AllowedProviders/Models are joined with commas
-// for JSON portability (canonical type uses []string).
+// styleDefToInfo projects a canonical GenerationStyle to a StyleInfo
+// DTO for the admin styles endpoint.
+//
+// surface-3 (July 2026): per-style AllowedProviders / AllowedModels
+// were retired from the StyleInfo DTO + this projection once
+// google-slides became the sole image-generation provider (commit
+// d54728dc — surface 1 cut). The canonical GenerationStyle fields
+// stay on the domain type (domain/asset/types_aux.go:83,87) for
+// yaml back-compat; existing config/generation_styles.yaml files
+// still carry the keys but are no longer surfaced via the admin
+// endpoint or enforced at resolve time.
 //
 // Note: the canonical GenerationStyle lives in
 // internal/domain/asset (not generation/), since Step 3
 // moved the type definitions to the domain layer.
 func styleDefToInfo(s domain.GenerationStyle) StyleInfo {
 	return StyleInfo{
-		StyleID:         s.Name,
-		Name:            s.Name,
-		Version:         s.Version,
-		PromptSuffix:    s.EffectiveSuffix(),
-		NegativePrompt:  s.NegativePrompt,
-		DestinationKey:  s.DestinationKey,
-		Enabled:         s.IsEnabled(),
-		AllowedProviders: strings.Join(s.AllowedProviders, ","),
-		AllowedModels:   strings.Join(s.AllowedModels, ","),
+		StyleID:        s.Name,
+		Name:           s.Name,
+		Version:        s.Version,
+		PromptSuffix:   s.EffectiveSuffix(),
+		NegativePrompt: s.NegativePrompt,
+		DestinationKey: s.DestinationKey,
+		Enabled:        s.IsEnabled(),
 	}
 }
 

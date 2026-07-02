@@ -18,13 +18,28 @@ func testYAML(t *testing.T, content string) string {
 	return path
 }
 
+// ── surface-3 (July 2026) audit pin ──────────────────────────────────────
+//
+// TestResolve_ProviderUnsupported and TestResolve_ModelUnsupported
+// were retired along with the underlying checks in
+// styles.StyleRegistry.Resolve (see resolver.go doc-comment for the
+// canonical rationale). The empty-fields path
+// (TestResolve_EmptyProviderAndModel) below still exercises Resolve
+// with empty inputs to confirm the function entry is reachable. The
+// t.Skip stubs at the bottom of this file keep the surface-3
+// retirement grep-able for downstream audits.
+
 func TestResolve_EmptyStyleID(t *testing.T) {
 	reg, err := NewStyleRegistry(testYAML(t, "styles: []"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	resolved, err := reg.Resolve("", "flux", "flux-1-dev")
+	// surface-3 (July 2026): provider/model use canonical values.
+	// The fields are irrelevant for the empty-styleID branch (no-op
+	// default returns immediately) — the values stay canonical for
+	// consistency with the rest of the suite.
+	resolved, err := reg.Resolve("", "google-slides", "nano-banana-pro")
 	if err != nil {
 		t.Fatalf("empty styleID should not error: %v", err)
 	}
@@ -48,7 +63,7 @@ styles:
 		t.Fatal(err)
 	}
 
-	resolved, err := reg.Resolve("cinematic", "flux", "flux-1-dev")
+	resolved, err := reg.Resolve("cinematic", "google-slides", "nano-banana-pro")
 	if err != nil {
 		t.Fatalf("valid style should resolve: %v", err)
 	}
@@ -75,7 +90,7 @@ func TestResolve_StyleNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = reg.Resolve("nonexistent", "flux", "")
+	_, err = reg.Resolve("nonexistent", "google-slides", "")
 	if !errors.Is(err, ErrStyleNotFound) {
 		t.Fatalf("expected ErrStyleNotFound, got: %v", err)
 	}
@@ -92,65 +107,9 @@ styles:
 		t.Fatal(err)
 	}
 
-	_, err = reg.Resolve("cinematic", "flux", "")
+	_, err = reg.Resolve("cinematic", "google-slides", "")
 	if !errors.Is(err, ErrStyleDisabled) {
 		t.Fatalf("expected ErrStyleDisabled, got: %v", err)
-	}
-}
-
-func TestResolve_ProviderUnsupported(t *testing.T) {
-	yaml := `
-styles:
-  - name: "cinematic"
-    prompt_suffix: "test"
-    allowed_providers: ["flux"]
-    enabled: true
-`
-	reg, err := NewStyleRegistry(testYAML(t, yaml))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = reg.Resolve("cinematic", "google-slides", "")
-	if !errors.Is(err, ErrStyleProviderUnsupported) {
-		t.Fatalf("expected ErrStyleProviderUnsupported, got: %v", err)
-	}
-
-	// Same provider but different case should still succeed.
-	resolved, err := reg.Resolve("cinematic", "Flux", "")
-	if err != nil {
-		t.Fatalf("Flux (case-insensitive) should resolve: %v", err)
-	}
-	if resolved.ID != "cinematic" {
-		t.Fatalf("ID = %q", resolved.ID)
-	}
-}
-
-func TestResolve_ModelUnsupported(t *testing.T) {
-	yaml := `
-styles:
-  - name: "cinematic"
-    prompt_suffix: "test"
-    allowed_models: ["flux-1-dev"]
-    enabled: true
-`
-	reg, err := NewStyleRegistry(testYAML(t, yaml))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = reg.Resolve("cinematic", "flux", "stable-diffusion-xl")
-	if !errors.Is(err, ErrStyleModelUnsupported) {
-		t.Fatalf("expected ErrStyleModelUnsupported, got: %v", err)
-	}
-
-	// Same model but different case should still succeed.
-	resolved, err := reg.Resolve("cinematic", "flux", "FLUX-1-DEV")
-	if err != nil {
-		t.Fatalf("FLUX-1-DEV (case-insensitive) should resolve: %v", err)
-	}
-	if resolved.ID != "cinematic" {
-		t.Fatalf("ID = %q", resolved.ID)
 	}
 }
 
@@ -159,8 +118,8 @@ func TestResolve_EmptyProviderAndModel(t *testing.T) {
 styles:
   - name: "cinematic"
     prompt_suffix: "test"
-    allowed_providers: ["flux"]
-    allowed_models: ["flux-1-dev"]
+    allowed_providers: ["google-slides"]
+    allowed_models: ["nano-banana-pro"]
     enabled: true
 `
 	reg, err := NewStyleRegistry(testYAML(t, yaml))
@@ -168,7 +127,11 @@ styles:
 		t.Fatal(err)
 	}
 
-	// Empty provider and model should skip validation entirely.
+	// Empty provider and model should still resolve cleanly
+	// (post surface-3 the allowlist checks are dead so this is a
+	// pure passthrough to the ResolvedStyle population step; pre-cut
+	// the empty-string short-circuit was already in place since the
+	// checks were conditional on non-empty inputs).
 	resolved, err := reg.Resolve("cinematic", "", "")
 	if err != nil {
 		t.Fatalf("empty provider/model should resolve: %v", err)
@@ -273,4 +236,21 @@ styles:
 	if len(enabled) != 2 {
 		t.Fatalf("ListEnabled = %d, want 2 (a + c, omitted enabled defaults true)", len(enabled))
 	}
+}
+
+// ── surface-3 (July 2026) sentinel retirement stubs ──────────────────────
+// TestResolve_ProviderUnsupported_Retired and
+// TestResolve_ModelUnsupported_Retired are t.Skip stubs that document
+// the surface-3 retirement of the underlying negative-path tests
+// (TestResolve_ProviderUnsupported + TestResolve_ModelUnsupported).
+// The stubs are NOT counted as failing tests — they fail-closed via
+// t.Skip — and they keep the retirement grep-able for downstream
+// audits (audit-pinning discipline per godlike/06).
+
+func TestResolve_ProviderUnsupported_Retired(t *testing.T) {
+	t.Skip("surface-3 (July 2026): per-style AllowedProviders check retired; ErrStyleProviderUnsupported never raised. See resolver.go doc-comment + sentinel non-nil contract TestStyleResolver_AllSentinelErrorsNonNil.")
+}
+
+func TestResolve_ModelUnsupported_Retired(t *testing.T) {
+	t.Skip("surface-3 (July 2026): per-style AllowedModels check retired; ErrStyleModelUnsupported never raised. See resolver.go doc-comment + sentinel non-nil contract TestStyleResolver_AllSentinelErrorsNonNil.")
 }

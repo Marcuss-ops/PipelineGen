@@ -11,14 +11,22 @@
 // the fail-closed StyleResolver interface (Resolve + Validate).
 //
 // Key design decisions:
-//   - Resolve(styleID, provider, model) is fail-closed: unknown style,
-//     incompatible provider, or incompatible model → typed error.
+//   - Resolve(styleID, provider, model) is fail-closed: unknown style
+//     or disabled style → typed error.
 //   - Empty styleID → no-op default (zero ResolvedStyle, no error).
 //   - ApplyStyle is deprecated — callers should use Resolve + PromptComposer.
 //   - StyleRegistry implements StyleResolver, so existing wiring passes
 //     *StyleRegistry as the StyleResolver dependency.
 //   - Uses ONLY local types from this package (types.go, resolver.go) —
 //     no import of generation/ to keep the dependency graph cycle-free.
+//
+// Surface-3 (July 2026): the per-style AllowedProviders / AllowedModels
+// compatibility checks that historically fired ErrStyleProviderUnsupported
+// / ErrStyleModelUnsupported were retired from Resolve. The
+// GenerationStyle fields stay loaded from yaml for back-compat; the
+// helper stringInSlice was removed (was only called from the
+// retired checks). See resolver.go's doc-comment for the canonical
+// rationale + audit-pinning chain.
 package styles
 
 import (
@@ -171,11 +179,19 @@ func (r *StyleRegistry) ApplyStyle(prompt, styleName string) string {
 
 // ── Fail-closed resolution (canonical) ──────────────────────────────────
 
-// Resolve implements StyleResolver. It validates styleID, provider, and
-// model against the registry and returns a ResolvedStyle on success.
+// Resolve implements StyleResolver. It validates styleID against the
+// registry and returns a ResolvedStyle on success.
 //
 // Empty styleID is permitted and returns a zero ResolvedStyle with no
 // error — the caller can treat this as "no style requested".
+//
+// surface-3 (July 2026): the per-style AllowedProviders / AllowedModels
+// compatibility checks (formerly raising ErrStyleProviderUnsupported /
+// ErrStyleModelUnsupported via the stringInSlice helper) were retired
+// once google-slides became the sole image-generation provider. See
+// resolver.go for the canonical rationale + godlike/06 audit-pinning
+// chain — the GenerationStyle fields stay loaded from yaml for
+// back-compat but are no longer enforced here.
 func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle, error) {
 	// Empty styleID = no style requested → no-op default.
 	if styleID == "" {
@@ -194,25 +210,14 @@ func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle,
 		return ResolvedStyle{}, fmt.Errorf("%w: %q", ErrStyleDisabled, styleID)
 	}
 
-	// Provider compatibility check.
-	if len(style.AllowedProviders) > 0 && provider != "" {
-		if !stringInSlice(provider, style.AllowedProviders) {
-			return ResolvedStyle{}, fmt.Errorf(
-				"%w: style %q allows providers %v, got %q",
-				ErrStyleProviderUnsupported, styleID, style.AllowedProviders, provider,
-			)
-		}
-	}
-
-	// Model compatibility check.
-	if len(style.AllowedModels) > 0 && model != "" {
-		if !stringInSlice(model, style.AllowedModels) {
-			return ResolvedStyle{}, fmt.Errorf(
-				"%w: style %q allows models %v, got %q",
-				ErrStyleModelUnsupported, styleID, style.AllowedModels, model,
-			)
-		}
-	}
+	// surface-3 (July 2026): per-style allowlist checks retired. See
+	// resolver.go's doc-comment for the canonical rationale. The
+	// helper stringInSlice was removed; the re-exported sentinels
+	// stay defined for godlike/06 audit-pinning (the canonical
+	// non-nil contract is locked in by
+	// resolver_test.go::TestStyleResolver_AllSentinelErrorsNonNil).
+	_ = ErrStyleProviderUnsupported
+	_ = ErrStyleModelUnsupported
 
 	width := style.DefaultWidth
 	height := style.DefaultHeight
@@ -248,16 +253,4 @@ func (r *StyleRegistry) Validate(styleID, provider, model string) error {
 // is *StyleRegistry (the canonical implementation).
 func (r *StyleRegistry) Inner() *StyleRegistry {
 	return r
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-// stringInSlice reports whether needle is in haystack (case-insensitive).
-func stringInSlice(needle string, haystack []string) bool {
-	for _, v := range haystack {
-		if strings.EqualFold(v, needle) {
-			return true
-		}
-	}
-	return false
 }
