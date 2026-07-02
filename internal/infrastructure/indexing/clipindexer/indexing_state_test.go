@@ -366,13 +366,14 @@ func TestSetIndexState_MultiStateTransitions(t *testing.T) {
 	}
 }
 
-// TestSetIndexedAt_StaleCASFence_SkipsWhenVersionMismatch verifies
+// TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenVersionMismatch verifies
 // that when the source_version in the CAS fence doesn't match the
 // row (e.g. an obsolete indexing goroutine tries to write INDEXED
 // for a version that has already been superseded), setIndexedAt
-// returns nil (not an error) and logs "stale index event skipped".
+// returns *ErrIndexSuperseded so callers can route the event to
+// SUPERSEDED instead of SUCCESS.
 // The row's index_state must remain unchanged.
-func TestSetIndexedAt_StaleCASFence_SkipsWhenVersionMismatch(t *testing.T) {
+func TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenVersionMismatch(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
@@ -388,8 +389,15 @@ func TestSetIndexedAt_StaleCASFence_SkipsWhenVersionMismatch(t *testing.T) {
 
 	// Pass a DIFFERENT source_version — should be a stale CAS match.
 	err = svc.setIndexedAt(ctx, "clip-cas-1", "hash-CURRENT", "sv-v1")
-	if err != nil {
-		t.Fatalf("setIndexedAt with stale version should return nil (not error): %v", err)
+	if err == nil {
+		t.Fatalf("setIndexedAt with stale version should return ErrIndexSuperseded")
+	}
+	var superseded *ErrIndexSuperseded
+	if !errors.As(err, &superseded) {
+		t.Fatalf("setIndexedAt with stale version should return *ErrIndexSuperseded; got %T: %v", err, err)
+	}
+	if superseded.ClipID != "clip-cas-1" {
+		t.Errorf("ErrIndexSuperseded.ClipID = %q; want %q", superseded.ClipID, "clip-cas-1")
 	}
 
 	// Verify the row was NOT updated (stale event skipped).
@@ -399,12 +407,11 @@ func TestSetIndexedAt_StaleCASFence_SkipsWhenVersionMismatch(t *testing.T) {
 	}
 }
 
-// TestSetIndexedAt_StaleCASFence_SkipsWhenNotIndexing verifies that
-// setIndexedAt skips rows that are not in INDEXING state (e.g.
-// already INDEXED by a faster goroutine). The CAS fence's
-// index_state = 'INDEXING' clause prevents overwriting a terminal
-// state.
-func TestSetIndexedAt_StaleCASFence_SkipsWhenNotIndexing(t *testing.T) {
+// TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenNotIndexing verifies that
+// setIndexedAt returns *ErrIndexSuperseded for rows that are not in INDEXING
+// state (e.g. already INDEXED by a faster goroutine). The CAS fence's
+// index_state = 'INDEXING' clause prevents overwriting a terminal state.
+func TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenNotIndexing(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
@@ -419,8 +426,12 @@ func TestSetIndexedAt_StaleCASFence_SkipsWhenNotIndexing(t *testing.T) {
 
 	// Pass matching source_version but the row is already INDEXED.
 	err = svc.setIndexedAt(ctx, "clip-cas-2", "hash-CURRENT", "sv-v1")
-	if err != nil {
-		t.Fatalf("setIndexedAt on already INDEXED row should return nil: %v", err)
+	if err == nil {
+		t.Fatalf("setIndexedAt on already INDEXED row should return ErrIndexSuperseded")
+	}
+	var superseded *ErrIndexSuperseded
+	if !errors.As(err, &superseded) {
+		t.Fatalf("setIndexedAt on already INDEXED row should return *ErrIndexSuperseded; got %T: %v", err, err)
 	}
 
 	// Verify the row was NOT overwritten.
@@ -430,10 +441,10 @@ func TestSetIndexedAt_StaleCASFence_SkipsWhenNotIndexing(t *testing.T) {
 	}
 }
 
-// TestSetIndexedAt_StaleCASFence_SkipsWhenHashMismatch verifies that
-// the file_hash CAS fence prevents an indexing goroutine from
-// overwriting the state when the content hash has changed.
-func TestSetIndexedAt_StaleCASFence_SkipsWhenHashMismatch(t *testing.T) {
+// TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenHashMismatch verifies that
+// the file_hash CAS fence returns *ErrIndexSuperseded when the content hash
+// has changed — the event is stale and callers must route to SUPERSEDED.
+func TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenHashMismatch(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
@@ -447,8 +458,12 @@ func TestSetIndexedAt_StaleCASFence_SkipsWhenHashMismatch(t *testing.T) {
 
 	// Pass matching source_version but DIFFERENT content hash.
 	err = svc.setIndexedAt(ctx, "clip-cas-3", "hash-NEW", "sv-v1")
-	if err != nil {
-		t.Fatalf("setIndexedAt with mismatched hash should return nil: %v", err)
+	if err == nil {
+		t.Fatalf("setIndexedAt with mismatched hash should return ErrIndexSuperseded")
+	}
+	var superseded *ErrIndexSuperseded
+	if !errors.As(err, &superseded) {
+		t.Fatalf("setIndexedAt with mismatched hash should return *ErrIndexSuperseded; got %T: %v", err, err)
 	}
 
 	got := readStateAndMeta(t, ctx, svc.db, "clip-cas-3")

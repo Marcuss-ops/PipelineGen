@@ -53,6 +53,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
@@ -378,6 +379,22 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		)
 	}
 	if ierr := h.indexer.IndexClip(ctx, p.AssetID); ierr != nil {
+		// CAS miss after Qdrant upsert (BLOCKER #2): setIndexedAt's
+		// source_version + file_hash + index_state='INDEXING' fence
+		// matched zero rows — the asset was superseded while embeddings
+		// were being generated. Route to SUPERSEDED so the outbox does
+		// NOT retry and does NOT mark the stale event as SUCCESS.
+		var superseded *clipindexer.ErrIndexSuperseded
+		if errors.As(ierr, &superseded) {
+			metrics.MediaIndexSupersededTotal.WithLabelValues(evt.EventType).Inc()
+			outcome = "superseded"
+			log.Info("asset.index.requested: IndexClip CAS miss — event superseded (routing to MarkSuperseded)",
+				append(reqLog,
+					zap.String("stale_source_version", superseded.SourceVersion),
+				)...,
+			)
+			return outboxevents.NewSupersede(superseded.ClipID, "<post-upsert-race>", superseded.SourceVersion)
+		}
 		// Retryable — embedding-server transient failures (timeouts,
 		// 502/503/504), network blips, and Qdrant conn drops ride
 		// the existing exponential-backoff path; max_attempts is their
