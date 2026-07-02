@@ -6,7 +6,7 @@
 // This handler replaces the four legacy endpoints:
 //   - /generate-from-clips
 //   - /generate-with-images
-//   - /generate-batch
+//   - /legacy-batch
 //   - /generate-from-catalog
 //
 // All business logic lives in GenerateOneUseCase / GenerateManyUseCase;

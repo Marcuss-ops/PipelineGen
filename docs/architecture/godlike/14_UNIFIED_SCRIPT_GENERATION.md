@@ -521,7 +521,7 @@ Current generation routes may coexist temporarily only through tracked deprecati
 
 - `/api/script/generate-from-clips`;
 - `/api/script/generate-with-images`;
-- `/api/script/generate-batch`;
+- `/api/script/legacy-batch`;
 - `/api/script/generate-from-catalog`;
 - script-producing behavior hidden behind `/api/script/curate`.
 

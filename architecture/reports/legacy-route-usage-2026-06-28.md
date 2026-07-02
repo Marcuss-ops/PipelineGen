@@ -10,11 +10,11 @@
 
 ## 1. Executive Summary
 
-The four legacy script-generation routes (`POST /api/script/{generate-from-clips, generate-with-images, generate-batch, curate}`) are wired into the unified `POST /api/script/generate` pipeline via a thin adapter layer (`internal/api/script/handler_legacy_adapters.go`, 623 lines). All four routes emit a `X-Deprecated: true` response header and increment a per-route Prometheus counter on every invocation, with concrete removal dates pre-staged:
+The four legacy script-generation routes (`POST /api/script/{generate-from-clips, generate-with-images, legacy-batch, curate}`) are wired into the unified `POST /api/script/generate` pipeline via a thin adapter layer (`internal/api/script/handler_legacy_adapters.go`, 623 lines). All four routes emit a `X-Deprecated: true` response header and increment a per-route Prometheus counter on every invocation, with concrete removal dates pre-staged:
 
 | Route | Removal date | Phase | Status |
 |---|---|---|---|
-| `POST /api/script/generate-batch` | **2026-09-30** | EXPAND (3-month grace) | in_progress |
+| `POST /api/script/legacy-batch` | **2026-09-30** | EXPAND (3-month grace) | in_progress |
 | `POST /api/script/curate` | **2026-09-30** | EXPAND (3-month grace) | in_progress |
 | `POST /api/script/generate-from-clips` | **2026-12-31** | EXPAND (6-month grace) | in_progress |
 | `POST /api/script/generate-with-images` | **2026-12-31** | EXPAND (6-month grace) | in_progress |
@@ -44,7 +44,7 @@ The four legacy script-generation routes (`POST /api/script/{generate-from-clips
 |---|---|---|
 | `POST /api/script/generate-from-clips` | `(h *ScriptFlowHandler).LegacyGenerateFromClips` | `internal/api/script/handler_flow.go`; test files |
 | `POST /api/script/generate-with-images` | `(h *ScriptFlowHandler).LegacyGenerateWithImages` | test files only |
-| `POST /api/script/generate-batch` | `(h *ScriptFlowHandler).LegacyGenerateBatch` | `internal/api/assets/voiceover/handler.go` (cross-ref) |
+| `POST /api/script/legacy-batch` | `(h *ScriptFlowHandler).LegacyGenerateBatch` | `internal/api/assets/voiceover/handler.go` (cross-ref) |
 | `POST /api/script/curate` | `(h *ScriptFlowHandler).LegacyCurate` | test files only |
 
 > Note: production-side route registration lives in the scriptflow module composition. The call-site grep above is informational for the team; precise registration file is documented in `internal/api/script/` package flow handler.
@@ -93,7 +93,7 @@ func DeprecationCount() int64 {
     for _, route := range []string{
         "generate-from-clips",
         "generate-with-images",
-        "generate-batch",
+        "legacy-batch",
         "curate",
     } {
         counter, err := legacyRouteInvocationsTotal.GetMetricWithLabelValues(route)
@@ -120,7 +120,7 @@ The script routes' `legacy_route_invocations_total{route=...}` is the same canon
 |---|---|---|---|
 | `generate-from-clips` | 0 (process start 2026-06-28) | n/a — fresh process | n/a |
 | `generate-with-images` | 0 | n/a | n/a |
-| `generate-batch` | 0 | n/a | n/a |
+| `legacy-batch` | 0 | n/a | n/a |
 | `curate` | 0 | n/a | n/a |
 
 > Important: the counter is a process-lifetime `CounterVec`. To compute a rolling 14-day hit count, query Prometheus with `increase(legacy_route_invocations_total[14d])`. The handoff step in §8 commits the team to run that query BEFORE the September 30 cutover to produce the **caller-identification report** (User-Agent, IP) that the upstream user spec called the prerequisite for runtime cut.
@@ -245,7 +245,7 @@ Per `architecture/deprecations.yaml` audit (read 2026-06-28):
       Scene-image-path counterpart. Drives `generate_scene_images: true` envelope via
       PresetWithImages branch.
 
-  # ── 17. PR-LEGACY-SCRIPT-BATCH — POST /api/script/generate-batch ──
+  # ── 17. PR-LEGACY-SCRIPT-BATCH — POST /api/script/legacy-batch ──
   - id: PR-LEGACY-SCRIPT-BATCH
     owner_capability: internal/api/script
     exact_symbol: "ScriptFlowHandler.LegacyGenerateBatch"
@@ -258,7 +258,7 @@ Per `architecture/deprecations.yaml` audit (read 2026-06-28):
     compatibility_test: |
       Post-removal: `rg 'LegacyGenerateBatch' internal/` returns zero hits.
     usage_metric: |
-      Metric: legacy_route_invocations_total{route="generate-batch"}.
+      Metric: legacy_route_invocations_total{route="legacy-batch"}.
     migration_phase: EXPAND
     status: in_progress
     notes: |

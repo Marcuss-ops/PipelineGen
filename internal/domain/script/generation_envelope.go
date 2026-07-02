@@ -6,7 +6,7 @@
 //
 // A single-item envelope maps to the previous /generate-from-clips,
 // /generate-with-images, /generate-from-catalog, and /curate flows.
-// A multi-item envelope maps to the previous /generate-batch flow.
+// A multi-item envelope maps to the previous /legacy-batch flow.
 //
 // No durable field uses interface{}, any, or map[string]any.
 package script

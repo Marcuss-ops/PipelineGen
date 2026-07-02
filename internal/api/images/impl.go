@@ -49,7 +49,7 @@ func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/upload", h.Upload)
 	r.POST("/sync", h.Sync)
 	r.POST("/generate", h.Generate)
-	r.POST("/generate-batch", h.GenerateBatch)
+	r.POST("/batch-generate", h.GenerateBatch)
 	r.POST("/animate", h.Animate)
 	r.POST("/webhook/remote", h.ReceiveRemoteWebhook)
 }

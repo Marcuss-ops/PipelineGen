@@ -267,7 +267,7 @@ func extractHeaderToken(c *gin.Context) string {
 // Legacy routes (generate-from-clips, generate-with-images, curate) are
 // registered as deprecated adapters that translate old request formats to
 // GenerationEnvelopeV2 and forward to the canonical enqueue.
-// FASE 12c (July 2026): generate-batch route REMOVED.
+// FASE 12c (July 2026): legacy batch route REMOVED.
 // Flow routes (regenerate, evict, job status) are always mounted.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// Unified generation endpoint (replaces all legacy per-mode endpoints).

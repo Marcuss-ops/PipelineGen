@@ -123,7 +123,7 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	}{
 		{"POST", "/api/script/generate"},
 		// Legacy routes — now registered as deprecated adapters (PR 11).
-	// FASE 12c: generate-batch route REMOVED.
+	// FASE 12c: legacy batch route REMOVED.
 		{"POST", "/api/script/generate-from-clips"},
 		{"POST", "/api/script/generate-with-images"},
 		{"POST", "/api/script/curate"},
