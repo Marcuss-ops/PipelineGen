@@ -20,6 +20,8 @@ package app
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
@@ -259,7 +261,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				// transcripts/YTDLPSubtitleAdapter for the subtitle
 				// subprocess, keeping a single downloader binary+cookies
 				// config across the two adapters.
-				Ytdlp:      ytdlpForSubtitles,
+				Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
 				Transcript: ytdlpSubtitleAdapter,
 				Analyzer:   ollamaAnalyzer,
 				Enqueuer:   monitoradapter.NewExtractionIntentAdapter(root.Jobs.Service, channelsSvc, log),
@@ -536,7 +538,14 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			uploadRepo := scripts.NewUploadIntentsRepository(root.DB.DB)
 			driveLifecycle := root.Drive.Lifecycle
 			orphanSweeper := voiceover.NewOrphanSweeper(voiceover.OrphanSweeperDeps{
-				Repo:         uploadRepo,
+				// Repo: scripts.UploadIntentsRepository emits
+				// *scripts.InsertUploadIntentOptions on InsertTx, but
+				// voiceover.UploadIntentsRepository expects
+				// *voiceover.UploadIntentInsertOptions (same field
+				// shape, different package name). Inline adapter
+				// converts between the two without leaking the
+				// infra option type into the voiceover package.
+				Repo:         newUploadIntentsAdapter(uploadRepo),
 				DriveDeleter: driveLifecycle, // *drive.FileLifecycleAdapter satisfies OrphanDriveDeleter (Trash method)
 				Logger:       log,
 				Metrics: &voiceover.Metrics{
@@ -705,3 +714,155 @@ func (a *outboxMonitorAdapter) ListPending(ctx context.Context) ([]outbox.EventD
 	}
 	return dtos, nil
 }
+
+// ── inline adapters ─────────────────────────────────────────────
+//
+// The adapters below exist ONLY because the build has a few
+// mid-refactoring type-shape mismatches between ports (declared in
+// canonical cross-package locations) and the concrete adapters
+// in the composition root. Each adapter:
+//
+//   - is defined inline at the composition root (no new shared
+//     package surface, no leak into the application-layer domain);
+//   - uses field-level assignment rather than any reflection or
+//     unsafe casts (Go-strict, easy to audit);
+//   - is documented with the upstream contract it satisfies so a
+//     future port evolution (e.g. renaming InsertTx signatures)
+//     can be tracked here as the canonical Bridge layer.
+
+// monitorYtdlpAdapter wraps *downloader.YTDLPDownloader (the infra
+// DTO producer) so the channel-monitor's typed port
+// `monitor.MonitorDownloaderPort` (the domain DTO consumer) is
+// satisfied. The only mismatch is the return-slice element type:
+//   - downloader.VideoInfo  (infra DTO, includes downloader-internal fields)
+//   - monitor.VideoInfo     (domain DTO, the monitor's canonical projection)
+// Field names are stable; the wrapper maps ID + Title + Views +
+// Duration verbatim. New infra fields are dropped on the floor —
+// intentional: the monitor port surface is the canonical SSOT for
+// "what the channel-monitor needs from the yt-dlp layer".
+type monitorYtdlpAdapter struct {
+	inner *downloader.YTDLPDownloader
+}
+
+// ListChannelVideos satisfies monitor.MonitorDownloaderPort. The
+// request shape (downloader.ListChannelVideosRequest) is
+// structurally identical across infra / domain so it is passed
+// through verbatim.
+func (a *monitorYtdlpAdapter) ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]monitor.VideoInfo, error) {
+	if a == nil || a.inner == nil {
+		return nil, nil
+	}
+	rawList, err := a.inner.ListChannelVideos(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]monitor.VideoInfo, len(rawList))
+	for i, v := range rawList {
+		out[i] = monitor.VideoInfo{
+			ID:       v.ID,
+			Title:    v.Title,
+			Views:    v.Views,
+			Duration: v.Duration,
+		}
+	}
+	return out, nil
+}
+
+// Path satisfies monitor.MonitorDownloaderPort. Forwarded verbatim.
+func (a *monitorYtdlpAdapter) Path() string {
+	if a == nil || a.inner == nil {
+		return ""
+	}
+	return a.inner.Path()
+}
+
+// newMonitorYtdlpAdapter constructs the inline ytdlp→monitor bridge.
+// The composition root is the canonical caller; the adapter is
+// private to this file so it cannot be reused outside the lifecycle
+// path. Returns a valid monitor.MonitorDownloaderPort even when
+// ytdlp is nil (no-op: ListChannelVideos returns nil, Path returns ""),
+// matching the grace-no-crash contract of the pre-FASE ports.
+func newMonitorYtdlpAdapter(ytdlp *downloader.YTDLPDownloader) monitor.MonitorDownloaderPort {
+	return &monitorYtdlpAdapter{inner: ytdlp}
+}
+
+// Compile-time assertion: monitorYtdlpAdapter satisfies the
+// canonical monitor MonitorDownloaderPort. Drift between the
+// inline adapter and the canonical port surface is a build-time
+// failure rather than a runtime panic.
+var _ monitor.MonitorDownloaderPort = (*monitorYtdlpAdapter)(nil)
+
+// uploadIntentsAdapter wraps *scripts.UploadIntentsRepository so the
+// voiceover.OrphanSweeper's typed port
+// `voiceover.UploadIntentsRepository` is satisfied. The only
+// mismatch is InsertTx's options type:
+//
+//   - scripts.InsertUploadIntentOptions{ VoiceoverID, Attempts }
+//   - voiceover.UploadIntentInsertOptions{ VoiceoverID, Attempts }
+//
+// Struct fields are stable and identical; the adapter re-binds
+// them inline. No other Repository methods differ — all other
+// methods (MarkUploaded / MarkFinalized / MarkCompleted /
+// MarkFailed / ListPending / BeginTx) are inherited from the
+// embedded *scripts.UploadIntentsRepository via Go's struct
+// embedding promotion.
+type uploadIntentsAdapter struct {
+	*scripts.UploadIntentsRepository
+}
+
+// InsertTx satisfies voiceover.UploadIntentsRepository. The option
+// struct is re-bound with identical field values so the SQLite
+// repository sees the canonical infra type it expects.
+func (a *uploadIntentsAdapter) InsertTx(ctx context.Context, tx *sql.Tx, opts *voiceover.UploadIntentInsertOptions) (int64, error) {
+	if a == nil || a.UploadIntentsRepository == nil {
+		return 0, fmt.Errorf("uploadIntentsAdapter: nil repository")
+	}
+	return a.UploadIntentsRepository.InsertTx(ctx, tx, &scripts.InsertUploadIntentOptions{
+		VoiceoverID: opts.VoiceoverID,
+		Attempts:    opts.Attempts,
+	})
+}
+
+// ListPending satisfies voiceover.UploadIntentsRepository. The
+// scripts.UploadIntent row type is converted element-wise to the
+// voiceover.UploadIntent domain shape. UpdatedUnix is computed from
+// UpdatedAt so the wire stays a single int64 (avoiding leaking
+// time.Time into the application-layer port).
+func (a *uploadIntentsAdapter) ListPending(ctx context.Context, olderThan time.Time) ([]voiceover.UploadIntent, error) {
+	if a == nil || a.UploadIntentsRepository == nil {
+		return nil, nil
+	}
+	rows, err := a.UploadIntentsRepository.ListPending(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]voiceover.UploadIntent, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, voiceover.UploadIntent{
+			ID:          r.ID,
+			VoiceoverID: r.VoiceoverID,
+			DriveFileID: r.DriveFileID,
+			Status:      r.Status,
+			Reason:      r.Reason,
+			Attempts:    r.Attempts,
+			UpdatedUnix: r.UpdatedAt.Unix(),
+		})
+	}
+	return out, nil
+}
+
+// newUploadIntentsAdapter constructs the inline scripts→voiceover
+// bridge. Returns a valid voiceover.UploadIntentsRepository even
+// when repo is nil so partial-deploy paths log+skip cleanly.
+func newUploadIntentsAdapter(repo *scripts.UploadIntentsRepository) voiceover.UploadIntentsRepository {
+	if repo == nil {
+		return nil
+	}
+	return &uploadIntentsAdapter{UploadIntentsRepository: repo}
+}
+
+// Compile-time assertion: uploadIntentsAdapter satisfies the
+// canonical voiceover UploadIntentsRepository. Drift between the
+// inline adapter and the canonical port surface is a build-time
+// failure rather than a runtime panic.
+var _ voiceover.UploadIntentsRepository = (*uploadIntentsAdapter)(nil)

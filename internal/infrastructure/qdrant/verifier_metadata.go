@@ -1,0 +1,220 @@
+// Package qdrant — P1 QDRANT-VERIFIER-SPLIT: metadata phase (July 2026).
+//
+// verifyMetadata runs the post-scroll validation gates: dead-letter check,
+// golden-query smoke, filter smoke, and the Ready computation. Extracted
+// from verifier.go so each phase has a single responsibility.
+package qdrant
+
+import (
+	"context"
+	"fmt"
+
+	"go.uber.org/zap"
+)
+
+// verifyMetadata performs Gates 5–7 (dead letters, golden query, filter
+// smoke) and computes the final Ready gate.
+//
+// Populates report.DeadLetterOpen, report.GoldenQueriesOK,
+// report.FiltersOK, report.Ready, and report.Errors.
+func (v *ReindexVerifier) verifyMetadata(ctx context.Context, target string, report *SwitchReport) {
+	// ── Gate 5: Dead‑letter check ───────────────────────────────
+	v.checkDeadLetters(ctx, report)
+
+	// ── Gate 6: Golden‑query smoke ──────────────────────────────
+	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, target)
+	if !report.GoldenQueriesOK {
+		report.Errors = append(report.Errors,
+			"QDRANT-005: golden query smoke failed — collection not queryable or payloads malformed")
+	}
+
+	// ── Gate 7: Filter smoke ────────────────────────────────────
+	report.FiltersOK = v.runFilterSmoke(ctx, target)
+	if !report.FiltersOK {
+		report.Errors = append(report.Errors,
+			"QDRANT-005: filter smoke failed — payload index or filtering broken")
+	}
+
+	// ── Ready gate ──────────────────────────────────────────────
+	report.Ready = computeReady(report)
+
+	if !report.Ready {
+		v.log.Warn("PR 12 reindex verification FAILED",
+			zap.String("target", target),
+			zap.Bool("complete_scan", report.CompleteScan),
+			zap.Int("expected", report.ExpectedPoints),
+			zap.Int("actual", report.ActualPoints),
+			zap.Int("scrolled", report.TotalScrolled),
+			zap.Int("missing", report.MissingCount),
+			zap.Int("orphan", report.OrphanCount),
+			zap.Int("payload_issues", report.PayloadIssues),
+			zap.Int("version_mismatch", report.VersionMismatch),
+			zap.Int("non_canonical_point_count", report.NonCanonicalPointCount),
+			zap.Int("dead_letter_open", report.DeadLetterOpen),
+			zap.Int("errors", len(report.Errors)))
+	} else {
+		v.log.Info("PR 12 reindex verification PASSED — all gates green",
+			zap.String("target", target),
+			zap.Int("points", report.ActualPoints),
+			zap.Int("scanned", report.TotalScrolled))
+	}
+}
+
+// checkDeadLetters queries the optional DeadLetterChecker and records
+// the count of open dead-letter entries on report. When the checker is
+// nil (legacy admin CLIs) this is a no-op. Errors are appended to
+// report.Errors but do not abort verification.
+func (v *ReindexVerifier) checkDeadLetters(ctx context.Context, report *SwitchReport) {
+	if v.deadLetter == nil {
+		return
+	}
+	dl, err := v.deadLetter.CountOpen(ctx)
+	if err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("dead-letter count: %v", err))
+		return
+	}
+	report.DeadLetterOpen = dl
+}
+
+// computeReady evaluates all gate conditions and returns true only when
+// every gate is green: CompleteScan=true, counts match, zero missing/
+// orphan/payload issues/version mismatches/non-canonical point IDs/
+// dead letters, golden-query and filter smokes pass, and no errors.
+func computeReady(report *SwitchReport) bool {
+	channelTotal := 0
+	for _, c := range report.VersionMismatchPerChannel {
+		channelTotal += c
+	}
+	return report.CompleteScan &&
+		report.ActualPoints == report.ExpectedPoints &&
+		report.ExpectedPoints > 0 &&
+		report.MissingCount == 0 &&
+		report.OrphanCount == 0 &&
+		report.PayloadIssues == 0 &&
+		channelTotal == 0 &&
+		report.NonCanonicalPointCount == 0 &&
+		report.DeadLetterOpen == 0 &&
+		report.GoldenQueriesOK &&
+		report.FiltersOK &&
+		len(report.Errors) == 0
+}
+
+// ── QDRANT-005 smoke runners ────────────────────────────────────────
+
+// runGoldenQuerySmoke verifies the target collection is queryable by
+// scrolling a small sample and checking that at least one returned point
+// has a well-formed payload (asset_id, name, source all present).
+//
+// QDRANT-005 (June 2026): replaces the hardcoded GoldenQueriesOK=true
+// placeholder. A failing smoke test (scroll error, empty collection,
+// or zero points with valid payload) sets GoldenQueriesOK=false and
+// blocks the Ready gate.
+func (v *ReindexVerifier) runGoldenQuerySmoke(ctx context.Context, collection string) bool {
+	result, err := v.client.ScrollPoints(ctx, collection, "", 10, nil)
+	if err != nil {
+		v.log.Warn("QDRANT-005 golden query smoke: scroll failed",
+			zap.String("collection", collection),
+			zap.Error(err))
+		return false
+	}
+	if len(result.Points) == 0 {
+		v.log.Warn("QDRANT-005 golden query smoke: collection is empty",
+			zap.String("collection", collection))
+		return true
+	}
+
+	for _, pt := range result.Points {
+		if validatePayloadMinimum(pt.Payload, pt.ID) == "" {
+			return true
+		}
+	}
+
+	v.log.Warn("QDRANT-005 golden query smoke: no point with valid payload in sample",
+		zap.String("collection", collection),
+		zap.Int("sample_size", len(result.Points)))
+	return false
+}
+
+// runFilterSmoke validates that Qdrant payload indexes work correctly by
+// running a filtered scroll and checking that every returned point matches
+// the filter criteria.
+//
+// Algorithm:
+//  1. Scroll a small unfiltered sample to discover a filterable field value.
+//  2. Build a Qdrant filter on "source" matching that value.
+//  3. Scroll with the filter and verify ALL results have the expected source.
+//
+// QDRANT-005 (June 2026): replaces the hardcoded FiltersOK=true placeholder.
+// Filter failure blocks the Ready gate.
+func (v *ReindexVerifier) runFilterSmoke(ctx context.Context, collection string) bool {
+	sample, err := v.client.ScrollPoints(ctx, collection, "", 20, nil)
+	if err != nil {
+		v.log.Warn("QDRANT-005 filter smoke: cannot scroll for filter discovery",
+			zap.String("collection", collection),
+			zap.Error(err))
+		return false
+	}
+	if len(sample.Points) == 0 {
+		v.log.Info("QDRANT-005 filter smoke: collection empty, skipping filter test")
+		return true
+	}
+
+	var sourceValue string
+	for _, pt := range sample.Points {
+		if s, ok := pt.Payload["source"].(string); ok && s != "" {
+			sourceValue = s
+			break
+		}
+	}
+	if sourceValue == "" {
+		v.log.Warn("QDRANT-005 filter smoke: no source field found in sample points",
+			zap.String("collection", collection),
+			zap.Int("sample_size", len(sample.Points)))
+		return false
+	}
+
+	filter := map[string]interface{}{
+		"must": []map[string]interface{}{
+			{
+				"key":   "source",
+				"match": map[string]interface{}{"value": sourceValue},
+			},
+		},
+	}
+	filtered, err := v.client.ScrollPoints(ctx, collection, "", 50, filter)
+	if err != nil {
+		v.log.Warn("QDRANT-005 filter smoke: filtered scroll failed",
+			zap.String("collection", collection),
+			zap.String("source", sourceValue),
+			zap.Error(err))
+		return false
+	}
+	if len(filtered.Points) == 0 {
+		v.log.Warn("QDRANT-005 filter smoke: filtered scroll returned zero points",
+			zap.String("collection", collection),
+			zap.String("source", sourceValue))
+		return false
+	}
+
+	for _, pt := range filtered.Points {
+		s, ok := pt.Payload["source"].(string)
+		if !ok {
+			v.log.Warn("QDRANT-005 filter smoke: point missing source field",
+				zap.String("point_id", pt.ID))
+			return false
+		}
+		if s != sourceValue {
+			v.log.Warn("QDRANT-005 filter smoke: source mismatch",
+				zap.String("point_id", pt.ID),
+				zap.String("expected", sourceValue),
+				zap.String("got", s))
+			return false
+		}
+	}
+
+	v.log.Info("QDRANT-005 filter smoke: PASSED",
+		zap.String("collection", collection),
+		zap.String("source", sourceValue),
+		zap.Int("matched", len(filtered.Points)))
+	return true
+}

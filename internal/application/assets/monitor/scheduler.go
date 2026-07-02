@@ -154,9 +154,14 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// so a nil deps.Transcript can only happen in partial-deploy / test-fixture
 	// paths and the analyzer's `if m.transcript != nil` discipline catches it.
 
-	if deps.Enqueuer == nil {
-		deps.Enqueuer = NewExtractionEnqueuer(nil, nil, deps.Log)
-	}
+	// NOTE: Enqueuer may remain nil — dispatchOutboxEntry already
+	// handles nil m.enqueuer gracefully (logs warning + marks outbox
+	// entry as failed). The pre-Fase-8 nil-guard that created a
+	// NewExtractionEnqueuer(nil, nil, ...) stub was removed when the
+	// concrete ExtractionEnqueuer adapter + its constructor were
+	// retired (commit 57212f1a). Production composition (lifecycle.go)
+	// wires the concrete adapter; nil is safe for test fixtures and
+	// partial-deploy paths.
 
 	return &ChannelMonitor{
 		cfg:         deps.Cfg,
