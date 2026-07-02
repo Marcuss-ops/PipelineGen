@@ -89,6 +89,9 @@ type ServerDeps struct {
 	Lifecycle LifecycleManager
 	Health    interface{}
 	Ready     *systemhealth.ReadyChecker
+	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
+	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
+	QdrantHealth interface{}
 	// ImageSearchResolver (FASE 7, July 2026): the canonical routing
 	// singleton reached from app.DomainBundle.ImageSearchResolver.
 	// Server holds it for downstream handler injection (the
@@ -204,6 +207,9 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	}
 	if readyChecker != nil {
 		router.SetReadyChecker(readyChecker)
+	}
+	if deps.QdrantHealth != nil {
+		router.SetQdrantHealthHandler(deps.QdrantHealth)
 	}
 	r := router.Setup()
 

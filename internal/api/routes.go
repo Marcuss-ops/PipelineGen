@@ -65,6 +65,7 @@ type Router struct {
 	ctx                context.Context
 	healthSvc          interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
 	readyChecker       *systemhealth.ReadyChecker
+	qdrantHealth       interface{} // *transport.QdrantHealthHandler; interface{} keeps the router infra-clean.
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*
@@ -173,6 +174,13 @@ func (r *Router) SetReadyChecker(rc *systemhealth.ReadyChecker) {
 	r.readyChecker = rc
 }
 
+// SetQdrantHealthHandler wires the QdrantHealthHandler for
+// /qdrant/live and /qdrant/ready (HIGH #7, July 2026).
+// nil-safe: if not wired the routes simply won't register.
+func (r *Router) SetQdrantHealthHandler(h interface{}) {
+	r.qdrantHealth = h
+}
+
 // buildCORSConfig builds a CORS configuration from the supplied origins.
 // PG-006 (June 2026): now takes origins directly instead of a
 // *config.Config — composition root extracts cfg.Security.CORSOrigins
@@ -246,6 +254,21 @@ func (r *Router) Setup() *gin.Engine {
 	}
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
+
+	// Qdrant health endpoints — /qdrant/live (liveness) and
+	// /qdrant/ready (deep readiness with alias + collection + schema
+	// + semantic canary). HIGH #7, July 2026.
+	if r.qdrantHealth != nil {
+		if qh, ok := r.qdrantHealth.(interface {
+			Live(*gin.Context)
+			Ready(*gin.Context)
+		}); ok {
+			engine.GET("/qdrant/live", qh.Live)
+			engine.GET("/qdrant/ready", qh.Ready)
+		} else {
+			log.Warn("qdrantHealth handler does not satisfy Live/Ready interface, routes not registered")
+		}
+	}
 
 	// Prometheus metrics endpoint — protected if METRICS_AUTH_TOKEN is set
 	metricsHandler := gin.WrapH(promhttp.Handler())

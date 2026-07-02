@@ -122,9 +122,10 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 			Outbox:      deps.OutboxHandler,
 			MediaSearch: deps.MediasearchHandler,
 		},
-		Lifecycle: deps.Lifecycle,
-		Health:    deps.HealthService,
-		Ready:     deps.ReadyChecker,
+		Lifecycle:    deps.Lifecycle,
+		Health:       deps.HealthService,
+		Ready:        deps.ReadyChecker,
+		QdrantHealth: deps.QdrantHealth,
 	})
 	return &ServerRuntime{Server: server, Deps: deps}, nil
 }
