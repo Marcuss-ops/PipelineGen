@@ -27,24 +27,24 @@
 // ── P0 Commit 1 surface ──────────────────────────────────────────────
 //
 //   - ExecutionClass   (sender_only | creator_allowed | creator_only)
-//                     — the second dimension of P0's two-runtime
-//                     topology (Sender / Creator / both).
+//     — the second dimension of P0's two-runtime
+//     topology (Sender / Creator / both).
 //   - ArtifactPolicy   (ProducesArtifacts, RequireManifest,
-//                     MaxArtifacts, MaxTotalBytes)
-//                     — the producer-side file contract.
+//     MaxArtifacts, MaxTotalBytes)
+//     — the producer-side file contract.
 //   - Capability       — the typed-string label for worker-advertised
-//                     / definition-required capabilities.
+//     / definition-required capabilities.
 //   - CodecDescriptor — the metadata-only marker interface
-//                     (SchemaVersion + JobType). Kept from C1 as
-//                     the parent of PayloadCodec and ResultCodec.
+//     (SchemaVersion + JobType). Kept from C1 as
+//     the parent of PayloadCodec and ResultCodec.
 //   - PayloadCodec   — canonical typed encode/decode for the
-//                     JobDefinition's INPUT payload (C2 elaboration
-//                     of CodecDescriptor with EncodePayload +
-//                     DecodePayload bodies). Defined in codec.go.
+//     JobDefinition's INPUT payload (C2 elaboration
+//     of CodecDescriptor with EncodePayload +
+//     DecodePayload bodies). Defined in codec.go.
 //   - ResultCodec    — canonical typed encode/decode for the
-//                     JobDefinition's OUTPUT result (C2 elaboration
-//                     of CodecDescriptor with EncodeResult +
-//                     DecodeResult bodies). Defined in codec.go.
+//     JobDefinition's OUTPUT result (C2 elaboration
+//     of CodecDescriptor with EncodeResult +
+//     DecodeResult bodies). Defined in codec.go.
 //   - JobDefinition    — the SSOT struct, plus Validate.
 //
 // ── Field scope (locked to user C1 spec) ─────────────────────────────
@@ -61,16 +61,16 @@
 // ── Migration schedule for downstream commits ──────────────────────
 //
 //   - Commit 2:  PayloadCodec + ResultCodec interfaces (extending
-//                CodecDescriptor marker) + TypedCodecAdapter[T,R]
-//                decorator that adapts the existing Codec[T,R]
-//                infrastructure to satisfy both domain interfaces.
+//     CodecDescriptor marker) + TypedCodecAdapter[T,R]
+//     decorator that adapts the existing Codec[T,R]
+//     infrastructure to satisfy both domain interfaces.
 //   - Commit 3:  MutableJobRegistry + CompiledJobRegistry + Freeze +
-//                StartupValidator.ValidateRuntimeGraph.
+//     StartupValidator.ValidateRuntimeGraph.
 //   - Commit 4:  Dispatcher.Enqueue through def.PayloadCodec.
 //   - Commit 5..14: handler migration + CI gates.
 //   - Commit 15: cutover — JobDefinition supersedes JobPolicy as the
-//                registry SSOT; JobPolicy retained as a derived
-//                projection.
+//     registry SSOT; JobPolicy retained as a derived
+//     projection.
 package job
 
 import (
@@ -88,17 +88,17 @@ import (
 // Canonical values:
 //
 //   - ExecutionSenderOnly:     the job MUST run on the Sender
-//                              (central composition). A Creator
-//                              cannot claim it.
+//     (central composition). A Creator
+//     cannot claim it.
 //   - ExecutionCreatorAllowed: the job may run on either the Sender
-//                              or the Creator (default; legacy
-//                              semantics). The Sender decides at
-//                              dispatch time based on capability
-//                              advertisement.
+//     or the Creator (default; legacy
+//     semantics). The Sender decides at
+//     dispatch time based on capability
+//     advertisement.
 //   - ExecutionCreatorOnly:    the job MUST run on a Creator. The
-//                              Sender may advertise it but cannot
-//                              execute it. Examples: heavy media
-//                              pipelines with no Sender reach.
+//     Sender may advertise it but cannot
+//     execute it. Examples: heavy media
+//     pipelines with no Sender reach.
 //
 // Adding a fourth ExecutionClass is an ARCHITECTURE change; it
 // requires an AGENTS.md / ARCHITECTURE.md update and an entry in
@@ -143,22 +143,22 @@ func (e ExecutionClass) String() string { return string(e) }
 // Three orthogonal dimensions:
 //
 //   - ProducesArtifacts:     whether the job is allowed to produce
-//                            files at all. False means the handler
-//                            MUST NOT return an ArtifactManifest;
-//                            the Sender refuses Complete if one is
-//                            returned. (e.g. assets.resolve returns
-//                            data only, no files.)
+//     files at all. False means the handler
+//     MUST NOT return an ArtifactManifest;
+//     the Sender refuses Complete if one is
+//     returned. (e.g. assets.resolve returns
+//     data only, no files.)
 //   - RequireManifest:       whether the job MUST return a manifest
-//                            even if it produced zero artefacts.
-//                            Today the producer-side convention is
-//                            "every ProducesArtifacts=true job sets
-//                            RequireManifest=true so the Sender can
-//                            deterministically audit which artefacts
-//                            landed".
+//     even if it produced zero artefacts.
+//     Today the producer-side convention is
+//     "every ProducesArtifacts=true job sets
+//     RequireManifest=true so the Sender can
+//     deterministically audit which artefacts
+//     landed".
 //   - MaxArtifacts / MaxTotalBytes: bounds enforced by the Creator
-//                            runtime (P0 Commit 6) BEFORE upload;
-//                            overruns are an immediate job failure,
-//                            not a partial success.
+//     runtime (P0 Commit 6) BEFORE upload;
+//     overruns are an immediate job failure,
+//     not a partial success.
 //
 // The zero value (all fields zero / false) represents a pure-data
 // sender-side job that returns no manifest — a safe default for

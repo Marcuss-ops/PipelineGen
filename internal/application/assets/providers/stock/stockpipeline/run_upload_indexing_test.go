@@ -1,0 +1,145 @@
+package stockpipeline
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+)
+
+// stubWriter supporta le 3 failure-mode dei test:
+//   - modeA (forceFail=true): ritorna errore alla PRIMA chiamata.
+//     Usato dal test (a) per verificare abort immediato dell'orchestrator.
+type stubWriter struct {
+	calls     int
+	forceFail bool
+}
+
+func (w *stubWriter) WriteAndEnqueue(_ context.Context, _ *asset.Asset, _ string) error {
+	w.calls++
+	if w.forceFail {
+		return errors.New("simulated outbox insert failure (test stub)")
+	}
+	return nil
+}
+
+// stubBuilder restituisce un manifest invalido per test (b).
+// Artifact[0] ha Required:true ma Path:"" — Validate() fallisce
+// => orchestrator returns ErrManifestIncomplete.
+type stubBuilder struct{}
+
+func (stubBuilder) Build(_, _ string) (*job.ArtifactManifest, error) {
+	return &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		Artifacts: []job.Artifact{{
+			ID:       "test:incomplete",
+			Kind:     job.ArtifactKindMetadata,
+			Required: true,
+			Path:     "",
+		}},
+	}, nil
+}
+
+// stubProjection supporta test (c): ritorna errore per simulare Qdrant
+// offline => orchestrator flips FinalStatus a StatusIndexPending.
+type stubProjection struct{}
+
+func (stubProjection) Project(_ context.Context, _ *job.ArtifactManifest) error {
+	return errors.New("simulated qdrant offline (test stub)")
+}
+
+// ─── TEST (a): outbox rollback ─────────────────────────────────
+// Spec utente: "outbox not written → DB rollback"
+// Contract: writer returns error at first call => RunResilient aborts
+//
+//	immediately, surfaces ErrAtomicDispatchFailed via errors.Is.
+func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
+	w := &stubWriter{forceFail: true}
+	o := NewOrchestratorWithResilience(
+		OrchestratorConfig{JobId: "test-a", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
+		NewDeterministicPlanner(),
+		NewInMemoryStepStore(),
+		NewNoopSourceStager(),
+		nil, nil,
+		stockManifestBuilder{}, w, noopProjection{},
+	)
+	_, err := o.RunResilient(context.Background(), &RunInput{
+		DirectURLs:    []string{"https://example.com/a.mp4"},
+		ClipDuration:  5,
+		ChunkDuration: 5,
+	})
+	if err == nil {
+		t.Fatal("expected ErrAtomicDispatchFailed, got nil")
+	}
+	if !errors.Is(err, ErrAtomicDispatchFailed) {
+		t.Errorf("err = %v, want errors.Is(err, ErrAtomicDispatchFailed) == true", err)
+	}
+	if w.calls != 1 {
+		t.Errorf("writer.calls = %d, want 1 (abort on first failure)", w.calls)
+	}
+}
+
+// ─── TEST (b): manifest-completeness gate ──────────────────────
+// Spec utente: "asset missing from manifest → job NOT marked SUCCEEDED"
+// Contract: Required:true + empty Path => Validate() fails => Gate
+//
+//	surfaces ErrManifestIncomplete; summary MUST be nil.
+func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
+	o := NewOrchestratorWithResilience(
+		OrchestratorConfig{JobId: "test-b", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
+		NewDeterministicPlanner(),
+		NewInMemoryStepStore(),
+		NewNoopSourceStager(),
+		nil, nil,
+		stubBuilder{}, noopWriter{}, noopProjection{},
+	)
+	summary, err := o.RunResilient(context.Background(), &RunInput{
+		DirectURLs:    []string{"https://example.com/b.mp4"},
+		ClipDuration:  5,
+		ChunkDuration: 5,
+	})
+	if err == nil {
+		t.Fatal("expected ErrManifestIncomplete, got nil")
+	}
+	if !errors.Is(err, ErrManifestIncomplete) {
+		t.Errorf("err = %v, want errors.Is(err, ErrManifestIncomplete) == true", err)
+	}
+	if summary != nil {
+		t.Errorf("summary must be nil on gate failure, got %v", summary)
+	}
+}
+
+// ─── TEST (c): Qdrant offline → INDEX_PENDING ──────────────────
+// Spec utente: "Qdrant offline → job SUCCEEDED with INDEX_PENDING"
+// Contract: projection.Project returns error => RunResilient flips
+//
+//	FinalStatus a StatusIndexPending, ritorna (manifest, nil).
+func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
+	o := NewOrchestratorWithResilience(
+		OrchestratorConfig{JobId: "test-c", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
+		NewDeterministicPlanner(),
+		NewInMemoryStepStore(),
+		NewNoopSourceStager(),
+		nil, nil,
+		stockManifestBuilder{}, noopWriter{}, stubProjection{},
+	)
+	summary, err := o.RunResilient(context.Background(), &RunInput{
+		DirectURLs:    []string{"https://example.com/c.mp4"},
+		ClipDuration:  5,
+		ChunkDuration: 5,
+	})
+	if err != nil {
+		t.Fatalf("RunResilient err = %v (Qdrant offline must NOT surface as error — resilient path flips to INDEX_PENDING)", err)
+	}
+	if summary == nil {
+		t.Fatal("RunResilient returned nil summary on Qdrant offline (artifacts ARE on Drive; only indexing is deferred)")
+	}
+	if summary.Manifest == nil {
+		t.Error("summary.Manifest must be non-nil on Qdrant offline")
+	}
+	if summary.FinalStatus != job.StatusIndexPending {
+		t.Errorf("summary.FinalStatus = %q, want %q", summary.FinalStatus, job.StatusIndexPending)
+	}
+}

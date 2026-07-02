@@ -7,7 +7,6 @@
 // Per godlike/02 kernel rules: interface-signature references are
 // intra-package (Status, Filter, Job, Event) or stdlib (context,
 // encoding/json, time). Kernel does NOT import internal/domain/job/.
-//
 package job
 
 import (

@@ -66,10 +66,10 @@ import "encoding/json"
 // `Codec[T,R]` in application/jobs and the concrete `JobCodec` in
 // artlist). C2 ELABORATES it with body-bearing extensions:
 //
-//   PayloadCodec embeds CodecDescriptor and adds Encode/Decode bodies
-//   for the typed payload.
-//   ResultCodec embeds CodecDescriptor and adds Encode/Decode bodies
-//   for the typed result.
+//	PayloadCodec embeds CodecDescriptor and adds Encode/Decode bodies
+//	for the typed payload.
+//	ResultCodec embeds CodecDescriptor and adds Encode/Decode bodies
+//	for the typed result.
 //
 // This interface is what the JobDefinition validator keys on to
 // verify a codec is registered: a struct that lacks SchemaVersion()
