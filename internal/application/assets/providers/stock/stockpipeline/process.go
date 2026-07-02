@@ -25,11 +25,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"time"
 
 	"go.uber.org/zap"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
 // processSingleVideo downloads a single video source, then extracts and
@@ -52,8 +51,6 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Float64("source_duration_sec", vs.DurationSec),
 	)
 
-	rawPath := filepath.Join(tempDir, fmt.Sprintf("raw_%04d.mp4", idx))
-
 	startTime := rng.Float64() * math.Max(0, vs.DurationSec-float64(secsPerVideo))
 	startStr := formatDuration(startTime)
 	endStr := formatDuration(startTime + float64(secsPerVideo))
@@ -65,19 +62,20 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.String("end", endStr),
 	)
 
-	err := s.ytdlp.Download(ctx, &downloader.DownloadRequest{
-		URL:              vs.URL,
-		OutputPath:       rawPath,
-		MergeFormat:      "mp4",
-		DownloadSections: []string{section},
-		ForceKeyframes:   true,
-		Timeout:          10 * time.Minute,
+	// Step 9/12 (July 2026): route download through the shared
+	// stageSection helper instead of inline yt-dlp call. The helper
+	// is also used by StockStager for the SourceStager port.
+	staged, err := s.stageSection(ctx, assets.SourceRef{
+		URL:             vs.URL,
+		DownloadSection: section,
+		ForceKeyframes:  true,
+		MergeFormat:     "mp4",
 	})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("yt-dlp download failed for %q: %w", vs.URL, err)
 	}
 
-	actualPath := resolveActualPath(rawPath)
+	actualPath := staged.LocalPath
 	if actualPath == "" {
 		return nil, nil, nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
 	}

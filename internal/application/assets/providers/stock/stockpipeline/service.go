@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -727,6 +728,61 @@ func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, e
 
 	return &StagedSource{
 		LocalPath: localPath,
+		Bytes:     fi.Size(),
+	}, nil
+}
+
+// stageSection downloads a single time-slice of a video via yt-dlp's
+// --download-sections. It is the shared helper used by both
+// processSingleVideo (for the full pipeline) and StockStager (for the
+// SourceStager port). Step 9/12 (July 2026): extracted from
+// processSingleVideo's inline download logic.
+func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*appassets.StagedAsset, error) {
+	tempDir, err := os.MkdirTemp(s.cfg.Storage.TempPath(), "stock_section_")
+	if err != nil {
+		return nil, fmt.Errorf("stage section: create temp dir: %w", err)
+	}
+
+	rawPath := filepath.Join(tempDir, "section.mp4")
+
+	mergeFormat := ref.MergeFormat
+	if mergeFormat == "" {
+		mergeFormat = "mp4"
+	}
+
+	dlReq := &downloader.DownloadRequest{
+		URL:              ref.URL,
+		OutputPath:       rawPath,
+		MergeFormat:      mergeFormat,
+		DownloadSections: []string{ref.DownloadSection},
+		ForceKeyframes:   ref.ForceKeyframes,
+		Timeout:          10 * time.Minute,
+	}
+	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage section: download %q: %w", ref.URL, err)
+	}
+
+	actualPath := resolveActualPath(rawPath)
+	if actualPath == "" {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage section: downloaded file not found for %q", ref.URL)
+	}
+
+	fi, statErr := os.Stat(actualPath)
+	if statErr != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("stage section: stat %q: %w", actualPath, statErr)
+	}
+
+	s.log.Info("stage section: video section downloaded",
+		zap.String("url", ref.URL),
+		zap.String("section", ref.DownloadSection),
+		zap.String("local_path", actualPath),
+		zap.Int64("bytes", fi.Size()))
+
+	return &appassets.StagedAsset{
+		LocalPath: actualPath,
 		Bytes:     fi.Size(),
 	}, nil
 }

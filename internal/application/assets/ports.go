@@ -50,3 +50,49 @@ type DBHealthChecker interface {
 	GetDBPath(dataDir, relPath string) string
 	Ping(ctx context.Context, dbPath string) DBHealthCheckResult
 }
+
+// ── SourceStager port (Step 9/12, July 2026) ────────────────────────────
+//
+// SourceStager is the shared port for downloading source media into a
+// staging location. It is implemented by YouTube, stock, and Artlist
+// adapters so callers (ingest pipelines, channel monitors, fetch
+// providers) can stage source bytes without knowing which provider
+// owns the download.
+//
+// SourceStager MUST NOT decide asset lifecycle transitions, emit
+// Qdrant upserts, or decide Drive destinations. It just stages bytes
+// to disk and returns the local path. The caller is responsible for
+// cleanup of the temp directory that contains the staged file.
+//
+// Per Pattern 0 (AGENTS.md): the port lives at the application layer;
+// concrete implementations live in infrastructure or provider packages.
+
+// SourceRef identifies what to download. URL is the canonical source
+// locator (e.g. a YouTube video URL, an Artlist m3u8, a stock clip URL).
+//
+// DownloadSection is an optional time range (yt-dlp format, e.g.
+// "*00:01:20-00:01:35"). Empty means "download the full asset".
+// ForceKeyframes forces keyframe-aligned cuts for time-section downloads.
+// MergeFormat sets the output container (e.g. "mp4").
+type SourceRef struct {
+	URL             string
+	DownloadSection string
+	ForceKeyframes  bool
+	MergeFormat     string
+}
+
+// StagedAsset carries the result of a successful StageSource call.
+// The file at LocalPath is ready for subsequent processing (cut,
+// transcode, upload). Bytes is the on-disk size.
+type StagedAsset struct {
+	LocalPath string
+	Bytes     int64
+}
+
+// SourceStager downloads source media into a staging location and
+// returns the staged file path. Cleanup removes staged files when the
+// caller no longer needs them.
+type SourceStager interface {
+	StageSource(ctx context.Context, ref SourceRef) (*StagedAsset, error)
+	Cleanup(ctx context.Context, staged *StagedAsset) error
+}
