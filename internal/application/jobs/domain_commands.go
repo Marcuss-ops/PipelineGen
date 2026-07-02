@@ -7,6 +7,8 @@
 package jobs
 
 import (
+	"encoding/json"
+
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -21,3 +23,35 @@ type RenewCommand = job.RenewCommand
 type ProgressCommand = job.ProgressCommand
 type CompleteCommand = job.CompleteCommand
 type FailCommand = job.FailCommand
+
+// CompleteWithArtifactsCommand carries the result manifest, published
+// artifacts, and outbox events for atomic job finalisation through the
+// JobFinalizer spine (Spina Dorsale, Fase 3). Workers that produce
+// artifacts MUST use this path instead of CompleteCommand so that
+// asset records, versions, locations, and outbox events are written
+// in the same transaction as the SUCCEEDED transition.
+//
+// The command carries enough information for the broker to construct
+// a finalization.FinalizationRequest. The broker is responsible for
+// constructing the Lease from its own knowledge of the job row.
+type CompleteWithArtifactsCommand struct {
+	// Worker credentials (mirrors CompleteCommand).
+	WorkerID         string `json:"worker_id"`
+	WorkerSessionID  string `json:"worker_session_id"`
+	JobID            string `json:"job_id"`
+	LeaseID          string `json:"lease_id"`
+	ExpectedRevision int    `json:"expected_revision"`
+	CorrelationID    string `json:"correlation_id,omitempty"`
+
+	// Result manifest data (capability-specific).
+	ResultData json.RawMessage `json:"result_data"`
+
+	// PublishedArtifacts is the JSON-serialised slice of
+	// PublishedArtifact. The broker deserialises and passes to
+	// AssetFinalizerTx.
+	PublishedArtifacts json.RawMessage `json:"published_artifacts"`
+
+	// OutboxEvents is the JSON-serialised slice of OutboxEvent
+	// descriptors. Optional; AssetFinalizerTx also emits its own.
+	OutboxEvents json.RawMessage `json:"outbox_events,omitempty"`
+}

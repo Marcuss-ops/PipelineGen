@@ -54,6 +54,26 @@ func (t *Tools) Complete(ctx context.Context, result json.RawMessage) error {
 	})
 }
 
+// CompleteWithArtifacts forwards a successful artifact-producing job
+// outcome to the broker using the JobFinalizer spine. The artifacts
+// and events are JSON-serialised on the worker side and deserialised
+// by the broker before the finalization transaction.
+//
+// Workers that produce artifacts (videos, images, documents,
+// voiceovers, etc.) MUST call this instead of Complete.
+func (t *Tools) CompleteWithArtifacts(ctx context.Context, resultData json.RawMessage, publishedArtifacts json.RawMessage, outboxEvents json.RawMessage) error {
+	return t.broker.CompleteWithArtifacts(ctx, appjobs.CompleteWithArtifactsCommand{
+		WorkerID:           t.workerID,
+		WorkerSessionID:    t.sessionID,
+		JobID:              t.jobID,
+		LeaseID:            t.leaseID,
+		ExpectedRevision:   int(t.revision.Load()),
+		ResultData:         resultData,
+		PublishedArtifacts: publishedArtifacts,
+		OutboxEvents:       outboxEvents,
+	})
+}
+
 // Fail forwards a terminal job outcome (with a stringified error)
 // to the broker using the worker's current ExpectedRevision
 // (post-renewal). Used by the runner when the handler returned an
