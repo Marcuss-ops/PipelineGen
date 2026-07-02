@@ -119,9 +119,14 @@ func (h *GenerateItemJobHandler) HandleJob(
 	h.logger.Info("handling voiceover.generate_item job",
 		zap.String("job_id", j.ID))
 
-	if h.hasProgress(tools) {
-		tools.Progress(5, "starting voiceover.generate_item")
-	}
+	// job-tools.Progress nil-safe wrapper — canonical for all 3 handlers
+	// (voiceover.generate, voiceover.generate_item, script.generate). The
+	// Creator-runtime wrap path passes tools=nil; the SafeProgressFn
+	// utility captures the canonical nil-tolerance gate so consumer
+	// sites can call pf(...) directly without per-call nil checks.
+	pf := appjobs.SafeProgressFn(tools)
+
+	pf(5, "starting voiceover.generate_item")
 
 	var item voiceover.GenerateVoiceoverItemCommand
 	if err := json.Unmarshal(j.Payload, &item); err != nil {
@@ -129,9 +134,7 @@ func (h *GenerateItemJobHandler) HandleJob(
 	}
 
 	if err := item.Validate(); err != nil {
-		if h.hasProgress(tools) {
-			tools.Progress(100, "voiceover.generate_item validation failed")
-		}
+		pf(100, "voiceover.generate_item validation failed")
 		return nil, fmt.Errorf("voiceover.generate_item: validate: %w", err)
 	}
 
@@ -150,9 +153,7 @@ func (h *GenerateItemJobHandler) HandleJob(
 			zap.String("language", item.Language),
 			zap.Bool("retryable", isRetryable),
 			zap.Error(err))
-		if h.hasProgress(tools) {
-			tools.Progress(100, "voiceover.generate_item execution failed")
-		}
+		pf(100, "voiceover.generate_item execution failed")
 		return toItemResultMap(res, &item, j.ID), fmt.Errorf("voiceover.generate_item: execute: %w", err)
 	}
 
@@ -177,21 +178,12 @@ func (h *GenerateItemJobHandler) HandleJob(
 			zap.String("language", item.Language),
 			zap.String("status", string(res.Status)),
 			zap.String("error", res.Error))
-		if h.hasProgress(tools) {
-			tools.Progress(100, "voiceover.generate_item pipeline failed: "+string(res.Status))
-		}
+		pf(100, "voiceover.generate_item pipeline failed: "+string(res.Status))
 		return toItemResultMap(res, &item, j.ID), fmt.Errorf("%s", errMsg)
 	}
 
-	if h.hasProgress(tools) {
-		tools.Progress(100, "voiceover.generate_item execution complete")
-	}
+	pf(100, "voiceover.generate_item execution complete")
 	return toItemResultMap(res, &item, j.ID), nil
-}
-
-// hasProgress is the nil-safe guard for the JobTools Progress callback.
-func (h *GenerateItemJobHandler) hasProgress(tools *appjobs.JobTools) bool {
-	return tools != nil && tools.Progress != nil
 }
 
 // toItemResultMap serialises a per-language VoiceoverItemResult into

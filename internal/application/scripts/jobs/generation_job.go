@@ -142,11 +142,15 @@ func (h *GenerateJobHandler) Handle(
 			zap.Int("items", len(env.Items)))
 	}
 
-	// Pipe progress through.
-	var progressFn func(int, string)
-	if tools != nil && tools.Progress != nil {
-		progressFn = tools.Progress
-	}
+	// Pipe progress through. SafeProgressFn captures the canonical
+	// nil-tolerance gate (`tools != nil && tools.Progress != nil`) so
+	// this closure is safely passable to use cases deep (tracker +
+	// many.Execute) regardless of whether the Creator-runtime-wrap
+	// path passed a nil tools handler (which is the GodLike/07 P0/P1
+	// nil-tools wrap contract). All 3 script.generate caller
+	// paths (voiceover.generate, voiceover.generate_item,
+	// script.generate) consume the same SafeProgressFn utility.
+	progressFn := appjobs.SafeProgressFn(tools)
 
 	if len(env.Items) == 1 {
 		// Single-item path (PR 7): even single-item runs emit the

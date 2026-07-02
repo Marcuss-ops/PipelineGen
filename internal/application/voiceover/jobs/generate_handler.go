@@ -143,9 +143,14 @@ func (h *GenerateJobHandler) HandleJob(
 	h.logger.Info("handling voiceover.generate job",
 		zap.String("job_id", j.ID))
 
-	if h.hasProgress(tools) {
-		tools.Progress(5, "starting voiceover.generate fan-out")
-	}
+	// job-tools.Progress nil-safe wrapper — canonical for all 3 handlers
+	// (voiceover.generate, voiceover.generate_item, script.generate). The
+	// Creator-runtime wrap path passes tools=nil; the SafeProgressFn
+	// utility captures the canonical nil-tolerance gate so consumer
+	// sites can call pf(...) directly without per-call nil checks.
+	pf := appjobs.SafeProgressFn(tools)
+
+	pf(5, "starting voiceover.generate fan-out")
 
 	var cmd voiceover.GenerateVoiceoversCommand
 	if err := json.Unmarshal(j.Payload, &cmd); err != nil {
@@ -188,9 +193,7 @@ func (h *GenerateJobHandler) HandleJob(
 			zap.Int("enqueued", enq),
 			zap.Int("failed_enqueue", failEnq),
 			zap.Error(err))
-		if h.hasProgress(tools) {
-			tools.Progress(100, "voiceover.generate fan-out failed")
-		}
+		pf(100, "voiceover.generate fan-out failed")
 		// Surface the partial-success result map so operators can
 		// correlate which siblings enqueued + which failed. toFanoutResultMap
 		// is nil-safe (it returns a well-formed partial-failure map
@@ -200,9 +203,7 @@ func (h *GenerateJobHandler) HandleJob(
 		return toFanoutResultMap(res, j.ID), fmt.Errorf("voiceover.generate: fanout: %w", err)
 	}
 
-	if h.hasProgress(tools) {
-		tools.Progress(100, "voiceover.generate fan-out complete")
-	}
+	pf(100, "voiceover.generate fan-out complete")
 
 	// Full enqueue success: dispatcher marks parent SUCCEEDED. The
 	// Commit 2 aggregator will later re-finalise the parent status
@@ -210,11 +211,6 @@ func (h *GenerateJobHandler) HandleJob(
 	// (success_count, failed_count, total) for completed / partial; or
 	// FAILED if all children failed).
 	return toFanoutResultMap(res, j.ID), nil
-}
-
-// hasProgress is the nil-safe guard for the JobTools Progress callback.
-func (h *GenerateJobHandler) hasProgress(tools *appjobs.JobTools) bool {
-	return tools != nil && tools.Progress != nil
 }
 
 // toFanoutResultMap serialises a FanoutResult into the
