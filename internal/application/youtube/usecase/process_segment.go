@@ -41,6 +41,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -81,6 +82,15 @@ type ProcessSegmentDeps struct {
 	// EnrichClip to build + persist metadata. When nil, Step 10
 	// is a no-op.
 	MetadataService *ytmetadata.MetadataService
+	// Stager is the shared assets.SourceStager port (Step 9/12 wire-up,
+	// July 2026). Optional. When non-nil, Step 4 stages the FULL
+	// video via the shared stager before retry.Do, then sets
+	// cutReq.PreDownloadedPath so the concrete VideoPipeline
+	// uses ffmpeg -c copy (videomuscles/youtube_pipeline.go:124-133)
+	// to slice the local staged file instead of re-downloading via
+	// yt-dlp. This is genuine bandwidth-saving (one yt-dlp download
+	// per Execute vs N downloads for the retry+replace case).
+	Stager assets.SourceStager
 	Log           *zap.Logger
 }
 
@@ -220,6 +230,47 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	if u.deps.VideoPipeline == nil {
 		typed := NewExtractionError(FailureCodeVideoProcessingFailed, false, "video pipeline port not wired", nil)
 		return u.fail(out, typed)
+	}
+
+	// Step 4a — shared SourceStager pre-stage (Step 9/12 wire-up, July 2026).
+	//
+	// When the Stager port is wired, download the FULL source video via the
+	// shared SourceStager port BEFORE the retry loop. CutRequest.PreDownloadedPath
+	// is set so the concrete VideoPipeline (videomuscles/youtube_pipeline.go:124-133)
+	// SKIPS the yt-dlp download slice and uses ffmpeg -c copy on the local file —
+	// saving N yt-dlp calls for the retry loop (the retry consumes the SAME
+	// staged file).
+	//
+	// Graceful degradation: stager.StageSource failure is logged Warn and the
+	// cutReq keeps PreDownloadedPath=""; the legacy DownloadAndCut path
+	// downloads itself per attempt. No call site is locked-out.
+	//
+	// Cleanup is deferred best-effort via Cleanup() so a transient failure
+	// cannot mask the mediaProcessor's outcome (mirrors Artlist pattern).
+	if u.deps.Stager != nil && cmd.VideoURL != "" {
+		staged, stageErr := u.deps.Stager.StageSource(ctx, assets.SourceRef{
+			URL: cmd.VideoURL,
+		})
+		if stageErr != nil {
+			u.deps.Log.Warn("shared SourceStager pre-stage failed (continuing with legacy per-segment yt-dlp)",
+				zap.String("clip_id", clipID),
+				zap.String("video_url", cmd.VideoURL),
+				zap.Error(stageErr))
+		} else {
+			cutReq.PreDownloadedPath = staged.LocalPath
+			u.deps.Log.Info("shared SourceStager pre-staged full video for -c copy slicing",
+				zap.String("clip_id", clipID),
+				zap.String("video_url", cmd.VideoURL),
+				zap.String("local_path", staged.LocalPath),
+				zap.Int64("bytes", staged.Bytes))
+			defer func(staged *assets.StagedAsset) {
+				if cleanupErr := u.deps.Stager.Cleanup(ctx, staged); cleanupErr != nil {
+					u.deps.Log.Warn("shared SourceStager cleanup failed (best-effort)",
+						zap.String("local_path", staged.LocalPath),
+						zap.Error(cleanupErr))
+				}
+			}(staged)
+		}
 	}
 	var dlResult *youtubeports.VideoCutResult
 	err = retry.Do(ctx, func() error {
