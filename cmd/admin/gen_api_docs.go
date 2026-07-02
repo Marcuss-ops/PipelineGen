@@ -155,7 +155,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/images/generate":     "Generate AI images",
 	"POST /api/images/animate":      "Animate an image",
 	"GET /api/images/diagnostics":   "Images diagnostics",
-	"POST /api/images/webhook/remote": "Remote image webhook",
 
 	// ── Scripts ───────────────────────────────────────────────
 	"GET /api/scripts":             "List scripts",
