@@ -372,7 +372,7 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 		g.log.Error("image.generate.google: generation failed",
 			zap.String("job_id", j.ID),
 			zap.String("prompt", payload.Prompt),
-			zap.String("output_path", outputPath),
+			zap.String("artifact_file_path", outputPath),
 			zap.Error(err),
 		)
 		return nil, fmt.Errorf("image generation failed: %w", err)
@@ -386,31 +386,58 @@ func (g *GenerationService) HandleJob(ctx context.Context, j *job.Job, tools *ap
 	if err != nil {
 		g.log.Error("image.generate.google: ingest failed",
 			zap.String("job_id", j.ID),
-			zap.String("output_path", outputPath),
+			zap.String("artifact_file_path", outputPath),
 			zap.Error(err),
 		)
 		return nil, fmt.Errorf("image ingest failed: %w", err)
 	}
 
-	_ = os.Remove(outputPath)
+	// C11 (P0 Commit 11): build the canonical Sender-side ArtifactManifest
+	// sidecar instead of relying on output_path/workspace_path string keys.
+	// The runner's uploadManifest reads handlerResult[ManifestKey] via
+	// job.Decode and iterates manifest.Artifacts, so every Sender-side
+	// upload now flows through the sidecar — drop the legacy file-map
+	// emission below (workspace_path / workspace_dir / output_path).
+	//
+	// The local PNG file on disk at outputPath survives this function
+	// return: the runner's deferred workspace.Cleanup removes it when the
+	// job terminalises (via C9's per-job WorkspaceManager). Removing the
+	// file here would defeat the runner's "stats the file, computes SHA,
+	// uploads to Drive" cycle.
+	if tools.Progress != nil {
+		tools.Progress(95, "Building ArtifactManifest sidecar")
+	}
+
+	manifest, mErr := g.buildImageManifest(j.ID, payload.Position, outputPath, result.Format)
+	if mErr != nil {
+		g.log.Error("image.generate.google: manifest build failed",
+			zap.String("job_id", j.ID),
+			zap.String("artifact_file_path", outputPath),
+			zap.Error(mErr),
+		)
+		return nil, fmt.Errorf("artifact manifest build: %w", mErr)
+	}
+	if vErr := manifest.Validate(); vErr != nil {
+		return nil, fmt.Errorf("artifact manifest validate: %w", vErr)
+	}
 
 	if tools.Progress != nil {
 		tools.Progress(100, "Image generation completed")
 	}
 
-	return map[string]any{
-		"batch_id":       payload.BatchID,
-		"position":       payload.Position,
-		"prompt":         payload.Prompt,
-		"style":          payload.Style,
-		"asset_hash":     asset.Hash,
-		"path_rel":       asset.PathRel,
-		"drive_file_id":  asset.DriveFileID,
-		"drive_link":     g.storage.FormatDriveLink(asset.DriveFileID),
-		"description":    asset.Description,
-		"workspace_path": outputPath,
-		"workspace_dir":  workspaceDir,
-	}, nil
+	handlerResult := map[string]any{
+		"batch_id":      payload.BatchID,
+		"position":      payload.Position,
+		"prompt":        payload.Prompt,
+		"style":         payload.Style,
+		"asset_hash":    asset.Hash,
+		"path_rel":      asset.PathRel,
+		"drive_file_id": asset.DriveFileID,
+		"drive_link":    g.storage.FormatDriveLink(asset.DriveFileID),
+		"description":   asset.Description,
+	}
+	handlerResult[job.ManifestKey] = manifest
+	return handlerResult, nil
 }
 
 // RegisterHandler registers the image.generate.google handler with the
@@ -432,6 +459,75 @@ func (g *GenerationService) RegisterHandler(jobsSvc *appjobs.Service) error {
 	}
 	g.log.Info("registered image.generate.google job handler")
 	return nil
+}
+
+// buildImageManifest is the C11 (P0 Commit 11) helper that materialises
+// the canonical Sender-side ArtifactManifest sidecar from the on-disk
+// generated image. One REQUIRED kind=image artifact (per the user
+// spec — "one required Image artifact"); the runner's uploadManifest
+// path then uploads it via delivery.Publisher.Publish, reading
+// Filename / MIMEType / SizeBytes from the manifest sidecar rather
+// than from any legacy file-map keys in handlerResult.
+//
+// ID convention follows the canonical script.generate precedent
+// (internal/application/scripts/jobs/generation_job.go::buildAndInjectManifest):
+//
+//	fmt.Sprintf("%s:image:%d", jobID, position)
+//
+// so the runner's `uploaded[ID]` map cannot collide when the same
+// jobID is processed in a batch context (multiple Position values).
+//
+// MIMEType derives from the provider's result.Format (e.g. png/jpg/
+// webp) — NOT from the local filename. Generation services may use
+// a hardcoded outputPath while generating a JPEG (the provider's
+// denoted format wins; the .png suffix on outputPath is a hint, not
+// a contract).
+func (g *GenerationService) buildImageManifest(jobID string, position int, outputPath, format string) (*job.ArtifactManifest, error) {
+	if strings.TrimSpace(outputPath) == "" {
+		return nil, fmt.Errorf("buildImageManifest: outputPath is empty")
+	}
+	if strings.TrimSpace(jobID) == "" {
+		return nil, fmt.Errorf("buildImageManifest: jobID is empty")
+	}
+
+	fi, statErr := os.Stat(outputPath)
+	if statErr != nil {
+		return nil, fmt.Errorf("buildImageManifest: stat %q: %w", outputPath, statErr)
+	}
+	size := fi.Size()
+
+	sha, shaErr := job.ComputeSHA256(outputPath)
+	if shaErr != nil {
+		return nil, fmt.Errorf("buildImageManifest: sha256 %q: %w", outputPath, shaErr)
+	}
+
+	mimeType := "image/" + strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		mimeType = "image/png"
+	}
+
+	filename := filepath.Base(outputPath)
+	if filename == "" || filename == "." || filename == "/" {
+		filename = fmt.Sprintf("image-%d.png", position)
+	}
+
+	art := job.Artifact{
+		ID:        fmt.Sprintf("%s:image:%d", jobID, position),
+		Kind:      job.ArtifactKindImage,
+		Path:      outputPath,
+		Filename:  filename,
+		MIMEType:  mimeType,
+		SizeBytes: size,
+		SHA256:    sha,
+		Required:  true,
+	}
+
+	return &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		WorkflowID:    "",
+		JobID:         jobID,
+		Artifacts:     []job.Artifact{art},
+	}, nil
 }
 
 // pickImagePrompt extracts the most specific prompt from a list.
