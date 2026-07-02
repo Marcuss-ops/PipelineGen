@@ -308,12 +308,16 @@ func errInvalid(s string) error         { return validationError{msg: s} }
 //
 // Why this helper exists (P0 #3-B residual, July 2026):
 //   Pre-migration, the spine path built the artifact idempotency key
-//   with the literal `"doc-" + info.SHA256[:16]` at usecase.go:189 —
-//   the same panic-prone pattern that the verdict flagged on the stock
-//   side for stockpipeline/finalizer_gates.go. Stock §12-1 (July 2026)
+//   with the literal `"doc-" + info.SHA256[:16]` in Handle() (right
+//   before the CompleteWithArtifacts call) — the same panic-prone
+//   pattern that the verdict flagged on the stock side for
+//   stockpipeline/finalizer_gates.go. Stock §12-1 (July 2026)
 //   retired the runtime panic via asset.SHA256IdempotencyKey; this
 //   helper closes the same exposure on the document spine path BEFORE
 //   a malformed-SHA producer causes a slice-bounds panic at runtime.
+//   (Symbol reference preferred over hard-coded line numbers per
+//   godlike/06 audit-pinning discipline — line numbers drift across
+//   refactors; symbol references stay valid.)
 //
 // godlike/06 SSOT: this helper is the typed-package entry-point
 // (package document). The cross-package validator
