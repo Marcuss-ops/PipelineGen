@@ -571,6 +571,7 @@
 #   internal/app/module_jobs.go
 #   CHANGELOG.md (closure audit-pin under ### Fixed)
 
+# FASE 6-Step 6 — Channel Monitor outbox lease-based + retryable (CLOSED, July 2026) — closed via AGENTS.md Git-Lesson-5 byte-equivalent-replay recovery (upstream canonical SHA 207d92fd is canonical; no force-push — see CHANGELOG.md audit trail).
 # ── Wave 27 ── DRIVE-005 consolidation: 4-port Drive surface (CLOSED, June 2026) ──
 # Six-commit chain (5f590885, a8c781ae, b7d49099, 70f2b6c8, 2fb96f39, 1dc40709)
 # consolidated the Drive surface into 4 canonical Pattern 0 ports per
