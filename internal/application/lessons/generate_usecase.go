@@ -75,11 +75,9 @@ type GenerateLessonRequest struct {
 	Title          string `json:"title,omitempty"`
 	Language       string `json:"language,omitempty"`
 	Tone           string `json:"tone,omitempty"`
-	Model          string `json:"model,omitempty"`
 	MaxChapters    int    `json:"max_chapters,omitempty"`
 	GenerateImages bool   `json:"generate_images,omitempty"`
 	ImageStyle     string `json:"image_style,omitempty"`
-	ImageModel     string `json:"image_model,omitempty"`
 	ImageWidth     int    `json:"image_width,omitempty"`
 	ImageHeight    int    `json:"image_height,omitempty"`
 	GeneratePDF    bool   `json:"generate_pdf,omitempty"`
@@ -121,11 +119,9 @@ func (r GenerateLessonRequest) payload() map[string]any {
 		"title":           r.Title,
 		"language":        r.Language,
 		"tone":            r.Tone,
-		"model":           r.Model,
 		"max_chapters":    r.MaxChapters,
 		"generate_images": r.GenerateImages,
 		"image_style":     r.ImageStyle,
-		"image_model":     r.ImageModel,
 		"image_width":     r.ImageWidth,
 		"image_height":    r.ImageHeight,
 		"generate_pdf":    r.GeneratePDF,
@@ -203,11 +199,9 @@ func (uc *GenerateLessonUseCase) handleSync(ctx context.Context, req GenerateLes
 		Title:          req.Title,
 		Language:       req.Language,
 		Tone:           req.Tone,
-		Model:          req.Model,
 		MaxChapters:    req.MaxChapters,
 		GenerateImages: req.GenerateImages,
 		ImageStyle:     req.ImageStyle,
-		ImageModel:     req.ImageModel,
 		ImageWidth:     req.ImageWidth,
 		ImageHeight:    req.ImageHeight,
 		GeneratePDF:    req.GeneratePDF,
