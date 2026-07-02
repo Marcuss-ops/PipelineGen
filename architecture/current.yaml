@@ -1566,6 +1566,70 @@
       status: pending
       deadline: 2026-08-15
 
+
+# ── AUDIT-2026-07-02 — Italian architectural audit action plan (in_progress, July 2026) ──
+# 4 capability areas (voiceover / scripting / monitor / images), 6 P0 + 7 P1
+# audit items. 9 net-new PRs filed here; 6 forward-cites to existing trackers
+# (id-26 P0.1-P0.6 voiceover + BLOC5.3 batch-elim chain + id-17 monitor
+# Concurrency=1 + image-territories-cutover + S7-Step-7 pkg/retry — no
+# duplicate per godlike/06 SSOT). Truth-source reconciliation: the audit
+# claims TypeYouTubeChannelSync registered-but-handler-removed; basher on
+# ca0831d5 returns NOT-IN-CODE for TypeYouTubeChannelSync + HandleChannelSyncJob,
+# so id-17's closure claim is documentation-drift — forward-pointer
+# PR-ID17-TRUTH-RECONCILE below closes the contradiction without mutating
+# id-17 in this commit (godlike/07 no-fake-availability, audit-trail preserved).
+- id: AUDIT-2026-07-02
+  status: in_progress
+  exit_signal: false
+  owner: architecture
+  deadline: 2026-08-15
+  exit_gate: |
+    All AUDIT-2026-07-02 linked_issues reach status: shipped (one PR
+    per ticket per godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT). No
+    fixed counter — the gate scales with future linked_issues edits.
+  linked_issues:
+    - id: PR-VO-PARENT-AGGREGATOR-MVP-5
+      status: pending
+      owner_capability: internal/application/voiceover
+      deadline: 2026-07-25
+    - id: PR-VO-AGGREGATOR-QUERY-SPECIFICITY
+      status: pending
+      owner_capability: internal/application/voiceover
+      deadline: 2026-07-25
+    - id: PR-SCRIPTING-CANONICAL-FRAMEWORK
+      status: pending
+      owner_capability: internal/application/scripts
+      deadline: 2026-08-15
+    - id: PR-SCRIPTING-BATCH-RETRY
+      status: pending
+      owner_capability: internal/application/scripts
+      deadline: 2026-07-25
+    - id: PR-YOUTUBE-CONCURRENCY-OUTBOX
+      status: pending
+      owner_capability: internal/application/assets/monitor
+      deadline: 2026-08-15
+    - id: PR-YOUTUBE-MONITOR-POLICY-IMMUTABLE
+      status: pending
+      owner_capability: internal/application/assets/monitor
+      deadline: 2026-07-25
+    - id: PR-IMAGES-BATCH-IDEMPOTENT
+      status: pending
+      owner_capability: internal/application/images
+      deadline: 2026-07-25
+    - id: PR-IMAGES-SINGLE-FINALIZATION
+      status: pending
+      owner_capability: internal/application/images
+      deadline: 2026-08-15
+    - id: PR-IMAGES-FAKE-AVAILABLE-PARAMS
+      status: pending
+      owner_capability: internal/application/images
+      deadline: 2026-07-25
+    - id: PR-ID17-TRUTH-RECONCILE
+      status: pending
+      owner_capability: architecture
+      deadline: 2026-08-01
+
+
 # Doc #2 (post_cascade_followups) and Doc #3 (legacy_fallback_cleanup) DROPPED - see footer pointer.
 
 # Doc #2 (post_cascade_followups) + Doc #3 (legacy_fallback_cleanup)
