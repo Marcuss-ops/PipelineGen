@@ -47,8 +47,13 @@ func BuildJobsBundle(db *storage.SQLiteDB, log *zap.Logger) (*JobsBundle, error)
 	}
 
 	repo := sqljobs.NewSQLiteStore(db.DB, log)
+	// Wire the ProducesArtifacts gate from the registry so that
+	// artifact-producing job types are rejected by the legacy
+	// SQLiteStore.Complete path (they must use CompleteWithArtifacts).
+	registry := appjobs.Compose()
+	repo.SetProducesArtifacts(registry.ProducesArtifactsMap())
 	dispatcher := appjobs.NewDispatcher()
-	svc := appjobs.NewService(repo, dispatcher, log).WithRegistry(appjobs.Compose())
+	svc := appjobs.NewService(repo, dispatcher, log).WithRegistry(registry)
 
 	return &JobsBundle{
 		Repo:       repo,
