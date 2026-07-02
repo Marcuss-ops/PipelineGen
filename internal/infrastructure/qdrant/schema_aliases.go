@@ -22,7 +22,7 @@ const DefaultSparseModel = schema.DefaultSparseModel
 
 // ── schema.go ──────────────────────────────────────────────────────────
 
-func DefaultV() *IndexSchema { return DefaultV3Schema() }
+func DefaultV() *IndexSchema        { return DefaultV3Schema() }
 func DefaultV3Schema() *IndexSchema { return schema.DefaultV3Schema() }
 func CompareSchema(expected *IndexSchema, actual *CollectionInfo) *SchemaDiff {
 	return schema.CompareSchema(expected, actual)
@@ -65,10 +65,6 @@ func DefaultConfig() *Config { return schema.DefaultConfig() }
 
 var PipelineGenQdrantNamespace = schema.PipelineGenQdrantNamespace
 
-func AssetIDToQdrantPointID(assetID string) string {
-	return schema.AssetIDToQdrantPointID(assetID)
-}
-
 // Re-exports of unexported symbols that test files still reference.
-func IsValidDistance(d string) bool    { return schema.IsValidDistance(d) }
+func IsValidDistance(d string) bool  { return schema.IsValidDistance(d) }
 func IsValidFieldType(t string) bool { return schema.IsValidFieldType(t) }

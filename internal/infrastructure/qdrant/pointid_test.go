@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/google/uuid"
 )
 
@@ -23,9 +24,9 @@ func TestPipelineGenQdrantNamespace_ValidUUID(t *testing.T) {
 // of AssetIDToQdrantPointID).
 func TestAssetIDToQdrantPointID_Deterministic(t *testing.T) {
 	const assetID = "yt_abc123_000_015"
-	first := AssetIDToQdrantPointID(assetID)
+	first := schema.AssetIDToQdrantPointID(assetID)
 	for i := 0; i < 16; i++ {
-		if got := AssetIDToQdrantPointID(assetID); got != first {
+		if got := schema.AssetIDToQdrantPointID(assetID); got != first {
 			t.Fatalf("non-deterministic output: first=%q got=%q (iter %d)", first, got, i)
 		}
 	}
@@ -38,8 +39,8 @@ func TestAssetIDToQdrantPointID_Deterministic(t *testing.T) {
 // strong-keyed independence so a typo in an asset ID doesn't
 // accidentally map to a nearby asset's point ID.
 func TestAssetIDToQdrantPointID_CollisionResistance(t *testing.T) {
-	idA := AssetIDToQdrantPointID("yt_abc123_000_015")
-	idB := AssetIDToQdrantPointID("yt_abc124_000_015") // one char diff
+	idA := schema.AssetIDToQdrantPointID("yt_abc123_000_015")
+	idB := schema.AssetIDToQdrantPointID("yt_abc124_000_015") // one char diff
 	if idA == idB {
 		t.Fatalf("collision: %q == %q", idA, idB)
 	}
@@ -59,7 +60,7 @@ func TestAssetIDToQdrantPointID_CollisionResistance(t *testing.T) {
 // calls receive a clearly invalid point ID rather than a fake
 // UUID.
 func TestAssetIDToQdrantPointID_EmptyInput(t *testing.T) {
-	if got := AssetIDToQdrantPointID(""); got != "" {
+	if got := schema.AssetIDToQdrantPointID(""); got != "" {
 		t.Fatalf("empty input must yield empty output, got %q", got)
 	}
 }
@@ -72,7 +73,7 @@ func TestAssetIDToQdrantPointID_EmptyInput(t *testing.T) {
 // project's UUIDv5 derivation collide with our media_assets.
 func TestAssetIDToQdrantPointID_NamespaceIsolation(t *testing.T) {
 	const assetID = "yt_collision_probe_001"
-	ours := AssetIDToQdrantPointID(assetID)
+	ours := schema.AssetIDToQdrantPointID(assetID)
 	publicURLNamespace := uuid.NewSHA1(uuid.NameSpaceURL, []byte(assetID)).String()
 	if ours == publicURLNamespace {
 		t.Fatalf("our namespace collides with uuid.NameSpaceURL on input %q — boundary is not isolated", assetID)
@@ -89,7 +90,7 @@ func TestAssetIDToQdrantPointID_Distribution(t *testing.T) {
 	seen := make(map[string]string, n)
 	for i := 0; i < n; i++ {
 		id := idForI(i)
-		out := AssetIDToQdrantPointID(id)
+		out := schema.AssetIDToQdrantPointID(id)
 		if prev, ok := seen[out]; ok {
 			t.Fatalf("duplicate output %q across inputs %q and %q", out, prev, id)
 		}

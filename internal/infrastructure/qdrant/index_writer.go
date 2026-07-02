@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 // IndexWriter handles point upsert and deletion for Qdrant collections.
@@ -28,10 +29,10 @@ import (
 // All writes go through the runtime alias so callers never need to know
 // the physical collection name.
 type IndexWriter struct {
-	client *Client
-	schema *IndexSchema
-	mapper *PayloadMapper
-	log    *zap.Logger
+	client    *Client
+	idxSchema *IndexSchema
+	mapper    *PayloadMapper
+	log       *zap.Logger
 }
 
 // NewIndexWriter creates an IndexWriter.
@@ -48,12 +49,21 @@ var (
 	_ jobsoutbox.VectorPointDeleter = (*IndexWriter)(nil)
 )
 
-func NewIndexWriter(client *Client, schema *IndexSchema, mapper *PayloadMapper, log *zap.Logger) *IndexWriter {
+// NewIndexWriter creates an IndexWriter.
+//
+// Parameter naming: `idxSchema` (NOT `schema`) to avoid shadowing the
+// imported `github.com/.../infrastructure/qdrant/schema` package inside
+// this function body. Renamed as part of the QDRANT-001 Check 2 fix
+// (July 2026); the earlier `schema *IndexSchema` parameter silently
+// re-routed any future `schema.X` reference to a method call on the
+// local variable. Callers pass positionally, so this rename is
+// non-breaking at the call-site layer.
+func NewIndexWriter(client *Client, idxSchema *IndexSchema, mapper *PayloadMapper, log *zap.Logger) *IndexWriter {
 	return &IndexWriter{
-		client: client,
-		schema: schema,
-		mapper: mapper,
-		log:    log,
+		client:    client,
+		idxSchema: idxSchema,
+		mapper:    mapper,
+		log:       log,
 	}
 }
 
@@ -82,7 +92,7 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 			failed = append(failed, clipID)
 			continue
 		}
-		point, err := w.mapper.AssetToPoint(asset, w.schema)
+		point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
 		if err != nil {
 			w.log.Warn("failed to map asset to qdrant point",
 				zap.String("asset_id", clipID),
@@ -112,13 +122,13 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 	// GetAliasTarget's legitimate uses (admin reconcile, DR, ensure
 	// schema, snapshot) are unaffected — only the writer hot path
 	// is changed.
-	if err := w.client.UpsertPoints(ctx, w.schema.RuntimeAlias, points); err != nil {
-		return fmt.Errorf("upsert %d points to %q: %w", len(points), w.schema.RuntimeAlias, err)
+	if err := w.client.UpsertPoints(ctx, w.idxSchema.RuntimeAlias, points); err != nil {
+		return fmt.Errorf("upsert %d points to %q: %w", len(points), w.idxSchema.RuntimeAlias, err)
 	}
 
 	w.log.Info("upserted points to qdrant",
 		zap.Int("count", len(points)),
-		zap.String("collection", w.schema.RuntimeAlias))
+		zap.String("collection", w.idxSchema.RuntimeAlias))
 
 	if len(failed) > 0 {
 		return fmt.Errorf("upserted %d points but %d assets failed mapping", len(points), len(failed))
@@ -148,7 +158,7 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 	// semantics in legacy callers that haven't yet trimmed.
 	pointIDs := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if pid := AssetIDToQdrantPointID(id); pid != "" {
+		if pid := schema.AssetIDToQdrantPointID(id); pid != "" {
 			pointIDs = append(pointIDs, pid)
 		}
 	}
@@ -161,13 +171,13 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 	// alias-resolution round-trip is dropped; the alias name is
 	// used directly as the Qdrant collection name in the delete
 	// payload.
-	if err := w.client.DeletePoints(ctx, w.schema.RuntimeAlias, pointIDs); err != nil {
-		return fmt.Errorf("delete points from %q: %w", w.schema.RuntimeAlias, err)
+	if err := w.client.DeletePoints(ctx, w.idxSchema.RuntimeAlias, pointIDs); err != nil {
+		return fmt.Errorf("delete points from %q: %w", w.idxSchema.RuntimeAlias, err)
 	}
 
 	w.log.Info("deleted points from qdrant",
 		zap.Int("count", len(pointIDs)),
-		zap.String("collection", w.schema.RuntimeAlias))
+		zap.String("collection", w.idxSchema.RuntimeAlias))
 	return nil
 }
 
@@ -175,7 +185,7 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 // the given target collection (usually a new physical collection before alias switch).
 func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, limit int) (*ReindexResult, error) {
 	if targetCollection == "" {
-		targetCollection = w.schema.CanonicalName()
+		targetCollection = w.idxSchema.CanonicalName()
 	}
 
 	assetIDs, err := w.mapper.ListAllAssetIDs(ctx)
@@ -201,7 +211,7 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 			result.FailedAssetIDs = append(result.FailedAssetIDs, assetID)
 			continue
 		}
-		point, err := w.mapper.AssetToPoint(asset, w.schema)
+		point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
 		if err != nil {
 			result.FailedAssets++
 			result.FailedAssetIDs = append(result.FailedAssetIDs, assetID)

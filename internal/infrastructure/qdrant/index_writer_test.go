@@ -17,6 +17,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -105,8 +106,8 @@ func TestIndexWriter_DeletePoints_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify canonicalised IDs were sent.
-	canonical1 := AssetIDToQdrantPointID("asset-1")
-	canonical2 := AssetIDToQdrantPointID("asset-2")
+	canonical1 := schema.AssetIDToQdrantPointID("asset-1")
+	canonical2 := schema.AssetIDToQdrantPointID("asset-2")
 	assert.Contains(t, deletedIDs, canonical1)
 	assert.Contains(t, deletedIDs, canonical2)
 }
@@ -205,7 +206,7 @@ func TestIndexWriter_UpsertFromClips_Success(t *testing.T) {
 	err := w.UpsertFromClips(context.Background(), []string{"asset-1"})
 	require.NoError(t, err)
 	assert.Len(t, upsertedPoints, 1)
-	assert.Equal(t, AssetIDToQdrantPointID("asset-1"), upsertedPoints[0].ID)
+	assert.Equal(t, schema.AssetIDToQdrantPointID("asset-1"), upsertedPoints[0].ID)
 }
 
 func TestIndexWriter_UpsertFromClips_EmptyList(t *testing.T) {

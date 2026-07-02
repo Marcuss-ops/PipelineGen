@@ -19,7 +19,7 @@
 //   - ActualPoints == ExpectedPoints (strict).
 //   - Full per-channel scan on every page (no 1000-point sample).
 //   - Scroll errors are fatal; maxPages-cap is blocking.
-//   - pt.ID MUST equal AssetIDToQdrantPointID(payload["asset_id"])
+//   - pt.ID MUST equal schema.AssetIDToQdrantPointID(payload["asset_id"])
 //     (not just uuid-parseable).
 
 package qdrant
@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -47,7 +48,7 @@ import (
 func TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch(t *testing.T) {
 	t.Parallel()
 
-	canonicalID := AssetIDToQdrantPointID("asset-1")
+	canonicalID := schema.AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
 		"payload": {
@@ -82,7 +83,7 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch(t *testing.T)
 func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 	t.Parallel()
 
-	canonicalID := AssetIDToQdrantPointID("asset-1")
+	canonicalID := schema.AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
 		"payload": {
@@ -120,7 +121,7 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 // counter (QDRANT-005 closure kept). No legacy rescue.
 func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail(t *testing.T) {
 	t.Parallel()
-	canonicalID := AssetIDToQdrantPointID("asset-1")
+	canonicalID := schema.AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
 		"payload": {

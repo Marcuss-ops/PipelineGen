@@ -93,6 +93,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 // QdrantScanner is the read-side port the AuditService needs from the
@@ -522,12 +523,13 @@ func observeNonCanonicalPointID(pt ScrollPoint, cats *Categories) {
 // ──────────────────────────────────────────────────────────────────────
 
 // CanonicalPointID returns the canonical UUID v5 hash for assetID
-// using the project-namespaced boundary. Mirrors
-// internal/infrastructure/qdrant/AssetIDToQdrantPointID so the apply
-// step can build replacement events without reaching into the infra
-// package.
+// using the project-namespaced boundary. Mirrors the canonical
+// QDRANT-001 surface at internal/infrastructure/qdrant/schema/AssetIDToQdrantPointID
+// so the apply step can build replacement events without going
+// through the schema_aliases.go forwarded shell (which is no longer
+// the canonical entry point per the Check 2 gate).
 func CanonicalPointID(assetID string) string {
-	return qdrant.AssetIDToQdrantPointID(assetID)
+	return schema.AssetIDToQdrantPointID(assetID)
 }
 
 // IsCanonicalPointID returns true iff pt.ID is a UUID v5 hash that
