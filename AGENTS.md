@@ -1052,6 +1052,7 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 | Scenario | Servizio | Path |
 |---|---|---|
 | Enqueue/poll/cancel async | `jobs.Service` | `internal/jobs/` — sempre per ogni long-running (>5s) |
+| Emetti un job typed via CompiledJobRegistry | `jobs.Dispatcher.Enqueue` | `internal/application/jobs/dispatcher.go` — typed entry point (P0 Commit 4, July 2026); passa per `CompiledJobRegistry.Definition` → `def.PayloadCodec.EncodePayload(payload)` → queue/timeout/retry da `JobDefinition` → delegate a `Service.Enqueue`. **Canonical replacement** per ogni future caller (Check 51 in `scripts/ci-architectural-checks.sh` ci-gate rileva raw-string `.Enqueue(<ctx>, "<literal>")` come SSOT regression). Migration-step zero-vuoto oggi (zero raw-string callers production); surface live, future wiring deferred a C5+. |
 | Vettori Qdrant (interfaccia canonica) | `vectorstore.Service` | `internal/media/vectorstore/` — mai HTTP directo |
 | Reranker CrossEncoder BGE-reranker-v2-m3 | `reranker.Client` | `internal/reranker/` |
 | Embeddings/chat LLM (con retry + fallback) | `ollama.client.Client` | `internal/ml/ollama/client/` |
@@ -1239,6 +1240,25 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 ```
 
 ---
+
+### Pattern 9 — Dispatcher.Enqueue via CompiledJobRegistry (P0 Commit 4, July 2026)
+
+**Regola**: quando un caller (handler, dispatcher, use case) deve emettere un job async, **NON** chiamare `service.Enqueue(ctx, &EnqueueRequest{Type: "<literal>", ...})` direttamente — il path canonico è `dispatcher.Enqueue(ctx, jobType string, payload any) (*job.Job, error)` che instrada via:
+
+1. `CompiledJobRegistry.Definition(jobType)` (registry post-Freeze, locked at boot — C3 surface)
+2. `def.PayloadCodec.EncodePayload(payload any)` → `json.RawMessage` (C2 codec surface)
+3. Popolazione automatica di `def.Queue` / `def.Timeout` / `def.RetryPolicyKey` da `JobDefinition` (3 metadata che altrimenti andrebbero perse manualmente)
+4. Delegazione finale a `EnqueuePort.Enqueue(ctx, &EnqueueRequest{Type: def.Type, Payload: rawBytes})` (compile-time pinned `var _ EnqueuePort = (*Service)(nil)` blocca drift di signature del Service a build-failure, non runtime panic)
+
+**Perché serva il Dispatcher (e non basti il raw Service call):** il `CompiledJobRegistry` è il single-source-of-truth per la metadata di routing (queue, timeout, retry policy) di ogni jobType. Una chiamata raw a `Service.Enqueue(ctx, &typedReq)` salta quel lookup — il caller dovrebbe manualmente copiare queue/timeout/retry da una fonte canonica altrove, rompendo godlike/06 "one canonical owner per fact". Il Dispatcher incapsula quel lookup in un'unica API typed e il check 51 in `scripts/ci-architectural-checks.sh` (pattern `\.\Enqueue\s*\(\s*[^,]+,\s*"[a-z][a-zA-Z0-9._]*"`) rileva future regression che recuperano il surface diretto.
+
+**Vietato**:
+- `service.Enqueue(ctx, &EnqueueRequest{Type: "script.generate_from_clips", ...})` — anche se typed (non raw-string), bypassa `CompiledJobRegistry` e quindi la metadata di routing canonica. Ogni nuova emissione di job dovrebbe passare per `Dispatcher.Enqueue(ctx, "script.generate_from_clips", typedPayload)`.
+- Caller-injection di payload non-encoded (es. `payload map[string]any`): il `PayloadCodec.EncodePayload` è la sola fonte canonica per la wire-format (json.RawMessage canonical). Un payload non-encoded romperebbe la idempotency contract del worker all'esecuzione.
+
+**Migration status (forward-pointer)**: P0 Commit 4 (July 2026) ha reso la surface live ma zero variazione di behaviour per i 54 callers production esistenti (Audit `rg '\.Enqueue\(' internal/ --glob '!**/*_test.go'` pre-commit: tutti i 54 callers sono typed `EnqueueRequest{...}` literal, zero raw-string). La surface è forward-preventive — il Dispatcher esiste per future emissioni e per sostituire progressivamente i raw Service.Enqueue nei wave successivi (C5+ composition-root wiring di `dispatcher.WithRegistry(compiled).SetEnqueuer(service)`).
+
+**Canonical test surface**: `internal/application/jobs/dispatcher_test.go` (9 TDD tests) copre nil-receiver + enqueuer-unwired (`ErrEnqueuerNotWired`) + nil-registry (`ErrRegistryNotFrozen`) + unfrozen-registry stub + unknown-jobType (`job.ErrUnknownJobType`) + missing-`PayloadCodec` (`ErrCodecMissing`) + encode-error (dual `%w` chain preserva `errors.Is(err, ErrInvalidPayload)` + `errors.As(err, &codecErr)`) + happy-path roundtrip (assertion `stub.lastReq.Payload.(json.RawMessage)`) + fluent-builder nil-guard. Compile-time `var _ EnqueuePort = (*Service)(nil)` blocca future drift.
 
 ## File Structure (quick reference)
 
