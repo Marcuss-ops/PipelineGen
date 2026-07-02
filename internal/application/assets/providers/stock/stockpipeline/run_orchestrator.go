@@ -89,6 +89,55 @@ func (s *Service) runOrchestrator(ctx context.Context, input *RunInput, jobID st
 	return manifest, nil
 }
 
+// runOrchestratorResilient is the Stock Cutover Commit 4-expanded sibling
+// of runOrchestrator. It calls Orchestrator.RunResilient (not
+// Orchestrator.Run) to obtain the *RunSummary that pairs the typed
+// *job.ArtifactManifest with the per-run FinalStatus the broker
+// JobFinalizer stamps on the job row (canonical resilience contract:
+// artifacts on Drive + Qdrant projection failed ⇒ job.StatusIndexPending;
+// artifacts on Drive + Qdrant projection OK ⇒ job.StatusSucceeded;
+// signature/manifest-gate failed ⇒ typed sentinel ⇒ JobFailed).
+//
+// Surface NON-BREAKING: runOrchestrator (manifest-only) remains active
+// for the existing run_orchestrator_test.go tests + the legacy
+// ServiceRunner interface (stock -> usecase). Only HandleJob
+// (production broker traffic) uses this variant so FinalStatus surfaces
+// in the result map under "final_status".
+func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (*RunSummary, error) {
+	if s == nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil receiver")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil *RunInput")
+	}
+	cfg := OrchestratorConfig{
+		JobId:            jobID,
+		PolicyVersion:    "v1",
+		ChunkDurationSec: effectiveChunkDurationSec(input, s),
+		ClipDurationSec:  effectiveClipDurationSec(input, s),
+	}
+	o := NewOrchestrator(
+		cfg,
+		NewDeterministicPlanner(),
+		NewInMemoryStepStore(),
+		NewNoopSourceStager(),
+		s.cutter,
+		s.renderer,
+	)
+	summary, err := o.RunResilient(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: orchestrator.RunResilient: %w", err)
+	}
+	if s.log != nil {
+		s.log.Info("stock orchestrator resilient run succeeded",
+			zap.String("job_id", summary.Manifest.JobID),
+			zap.String("final_status", string(summary.FinalStatus)),
+			zap.Int("artifact_count", len(summary.Manifest.Artifacts)),
+		)
+	}
+	return summary, nil
+}
+
 // projectManifestToPipelineResult converts the typed
 // *job.ArtifactManifest (canonical post-cutover shape, C12
 // 5-artifact envelope) into the legacy *PipelineResult used by

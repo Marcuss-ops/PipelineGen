@@ -28,14 +28,15 @@ import (
 type Status string
 
 const (
-	StatusQueued     Status = "QUEUED"
-	StatusLeased     Status = "LEASED"
-	StatusRunning    Status = "RUNNING"
-	StatusFinalizing Status = "FINALIZING"
-	StatusRetryWait  Status = "RETRY_WAIT"
-	StatusSucceeded  Status = "SUCCEEDED"
-	StatusFailed     Status = "FAILED"
-	StatusCancelled  Status = "CANCELLED"
+	StatusQueued       Status = "QUEUED"
+	StatusLeased       Status = "LEASED"
+	StatusRunning      Status = "RUNNING"
+	StatusFinalizing   Status = "FINALIZING"
+	StatusRetryWait    Status = "RETRY_WAIT"
+	StatusSucceeded    Status = "SUCCEEDED"
+	StatusIndexPending Status = "INDEX_PENDING"
+	StatusFailed       Status = "FAILED"
+	StatusCancelled    Status = "CANCELLED"
 )
 
 // IsTerminal returns true if the status is a final state.
@@ -46,15 +47,20 @@ func (s Status) IsTerminal() bool {
 // IsActive returns true if a worker currently owns this job.
 // FINALIZING is considered active: the worker still holds the lease
 // and is performing cleanup (artifact publication, outbox writes).
+// INDEX_PENDING is active when post-emission Qdrant projection is
+// still trying to land: the canonical Qdrant-reconciler task owns
+// the row until it either succeeds (→ Succeeded) or fails terminal
+// (→ Failed).
 func (s Status) IsActive() bool {
-	return s == StatusLeased || s == StatusRunning || s == StatusFinalizing
+	return s == StatusLeased || s == StatusRunning || s == StatusFinalizing ||
+		s == StatusIndexPending
 }
 
 // Valid returns true if s is a known job status.
 func (s Status) Valid() bool {
 	switch s {
 	case StatusQueued, StatusLeased, StatusRunning, StatusFinalizing, StatusRetryWait,
-		StatusSucceeded, StatusFailed, StatusCancelled:
+		StatusSucceeded, StatusIndexPending, StatusFailed, StatusCancelled:
 		return true
 	}
 	return false

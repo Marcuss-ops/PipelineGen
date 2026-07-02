@@ -39,14 +39,15 @@ type (
 //   var x job.Status = job.StatusQueued         (compiles)
 
 const (
-	StatusQueued     = kerneljob.StatusQueued
-	StatusLeased     = kerneljob.StatusLeased
-	StatusRunning    = kerneljob.StatusRunning
-	StatusFinalizing = kerneljob.StatusFinalizing
-	StatusRetryWait  = kerneljob.StatusRetryWait
-	StatusSucceeded  = kerneljob.StatusSucceeded
-	StatusFailed     = kerneljob.StatusFailed
-	StatusCancelled  = kerneljob.StatusCancelled
+	StatusQueued       = kerneljob.StatusQueued
+	StatusLeased       = kerneljob.StatusLeased
+	StatusRunning      = kerneljob.StatusRunning
+	StatusFinalizing   = kerneljob.StatusFinalizing
+	StatusRetryWait    = kerneljob.StatusRetryWait
+	StatusSucceeded    = kerneljob.StatusSucceeded
+	StatusIndexPending = kerneljob.StatusIndexPending
+	StatusFailed       = kerneljob.StatusFailed
+	StatusCancelled    = kerneljob.StatusCancelled
 )
 
 // ── Job type string constants ───────────────────────────────────────
@@ -70,16 +71,16 @@ const (
 //   - scripts: TypeScriptGenerate
 //   - drive: TypeDriveFolderSync
 const (
-	TypeMediaExtract           = "media.extract"
-	TypeMediaStock             = "media.stock"
-	TypeVoiceoverBatch         = "voiceover.batch"
-	TypeVoiceoverGenerate      = "voiceover.generate"
+	TypeMediaExtract      = "media.extract"
+	TypeMediaStock        = "media.stock"
+	TypeVoiceoverBatch    = "voiceover.batch"
+	TypeVoiceoverGenerate = "voiceover.generate"
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
 	// parent voiceover.generate handler via FanoutVoiceoversUseCase
 	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is regulated
 	// by the registry's per-job-type Concurrency field, NOT by goroutines
 	// inside the API. Independent retry.
-	TypeVoiceoverGenerateItem = "voiceover.generate_item"
+	TypeVoiceoverGenerateItem  = "voiceover.generate_item"
 	TypeSubtitleGenerate       = "subtitle.generate"
 	TypeRenderVideo            = "render.video"
 	TypeYouTubeUpload          = "youtube.upload"
