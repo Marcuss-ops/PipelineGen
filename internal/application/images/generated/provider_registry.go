@@ -44,12 +44,15 @@ type GenerationProvider interface {
 }
 
 // GenerateRequest is the provider-facing subset of images.GenerateImageRequest.
+//
+// surface-4 (July 2026): the Model field was retired. Image generation
+// routes through the canonical CanonicalGoogleSlidesModel ("nano-banana-pro")
+// only and is no longer caller-selectable.
 type GenerateRequest struct {
 	Prompt         string
 	Style          string
 	Width          int
 	Height         int
-	Model          string
 	Tags           []string
 	NegativePrompt string
 	OutputPath     string
@@ -72,8 +75,16 @@ type GeneratedImage struct {
 // temporarily unavailable.
 var ErrProviderUnavailable = errors.New("generated image provider unavailable")
 
-// ErrUnsupportedModel is returned when a caller attempts to select an image
-// model other than the one canonical Google Slides model.
+// ErrUnsupportedModel is retained as an audit-pin sentinel. surface-4
+// (July 2026) removed the caller-facing surface that could select a
+// non-canonical model — the AI backend routes through the canonical
+// CanonicalGoogleSlidesModel only. No call site raises this error
+// any more; the sentinel exists for godlike/07 "no silent resurrection"
+// discipline so a future contributor who re-introduces model-routing
+// has a typed error to compare against.
+//
+// Deprecated: model selection is retired. Image generation has a single
+// canonical backend (Google Slides via "nano-banana-pro").
 var ErrUnsupportedModel = errors.New("generated image model unsupported; only nano-banana-pro via google-slides is available")
 
 // GoogleSlidesProvider wraps the canonical images.ImageGenerator port. The
@@ -91,12 +102,15 @@ type ImageGeneratorPort interface {
 }
 
 // PortGenerateRequest is the adapter-level request passed to the backend.
+//
+// surface-4 (July 2026): the Model field was retired. Image generation
+// routes through the canonical CanonicalGoogleSlidesModel ("nano-banana-pro")
+// only and is no longer caller-selectable.
 type PortGenerateRequest struct {
 	Prompt         string
 	Style          string
 	Width          int
 	Height         int
-	Model          string
 	NegativePrompt string
 	Tags           []string
 	OutputPath     string
@@ -136,17 +150,14 @@ func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest
 		return nil, fmt.Errorf("google-slides backend not wired: %w", ErrProviderUnavailable)
 	}
 
-	model, err := normalizeModel(req.Model)
-	if err != nil {
-		return nil, err
-	}
-
+	// surface-4 (July 2026): the request no longer carries a Model
+	// field. The canonical model is CanonicalGoogleSlidesModel, set
+	// server-side; callers have no selection surface.
 	portOut, err := p.delegate.Generate(ctx, PortGenerateRequest{
 		Prompt:         req.Prompt,
 		Style:          req.Style,
 		Width:          req.Width,
 		Height:         req.Height,
-		Model:          model,
 		NegativePrompt: req.NegativePrompt,
 		Tags:           req.Tags,
 		OutputPath:     req.OutputPath,
@@ -158,9 +169,14 @@ func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest
 		return nil, fmt.Errorf("google-slides generate returned nil result: %w", ErrProviderUnavailable)
 	}
 
+	// Backend reports the canonical model it used. Fall back to the
+	// canonical constant when the backend omits the field (e.g. an
+	// older adapter version) so GeneratedImage.Model is always
+	// informative and consistent with surface-4's single-canonical
+	// backend invariant.
 	resultModel := strings.TrimSpace(portOut.Model)
 	if resultModel == "" {
-		resultModel = model
+		resultModel = CanonicalGoogleSlidesModel
 	}
 
 	return &GeneratedImage{
@@ -174,17 +190,6 @@ func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest
 		SourceHash: portOut.SourceHash,
 		OutputPath: portOut.OutputPath,
 	}, nil
-}
-
-func normalizeModel(model string) (string, error) {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return CanonicalGoogleSlidesModel, nil
-	}
-	if !strings.EqualFold(model, CanonicalGoogleSlidesModel) {
-		return "", fmt.Errorf("model=%q: %w", model, ErrUnsupportedModel)
-	}
-	return CanonicalGoogleSlidesModel, nil
 }
 
 // GenerationProviderRegistry retains the registry seam while enforcing a
