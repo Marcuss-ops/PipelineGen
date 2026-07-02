@@ -1,0 +1,38 @@
+# =============================================================================
+# Stock Cutover — grandfathered legacy-keyword files (Commit 3, July 2026)
+# =============================================================================
+#
+# Check 54 in scripts/ci-architectural-checks.sh bans the following keywords
+# in production paths of internal/application/assets/providers/stock/**:
+#   assetIndex  media_assets  EnqueueAndIndex  UploadFile
+#   Publisher.Publish  YTDLPDownloader  youtube.Service
+#
+# Commits 4-8 of the Stock Cutover Cleanup Plan retire each file listed
+# below. Remove the matching entry at the SAME commit that deletes the file
+# so this allowlist shrinks to empty by Commit 8.
+#
+# Each line below is a repo-relative .go file path. Comments (lines starting
+# with `#`) and blank lines are ignored by Check 54.
+#
+# Owner: codebuff-agent@pipelinegen.local
+# Deadline: 2026-08-15 (commit-land of Commit 8)
+# =============================================================================
+
+# Commit 4: legacy finalization (run_upload.go + types_status.go already slim
+# in the package; run_upload_indexing_test.go to be replaced).
+internal/application/assets/providers/stock/stockpipeline/run_upload.go
+
+# Commit 5: legacy Service wiring — removes assetIndex / clipsRepo /
+# dispatcher / clipIndexer / metaWriter / youtubeSvc / ytdlp / publisher
+# fields. Type aliases here for back-compat with the constructor.
+internal/application/assets/providers/stock/stockpipeline/service.go
+
+# Commit 7: legacy source adapter — adapter.go exposes StageSource as a
+# duplicated FetchProvider pattern. Replaced by registered SourceStagers.
+internal/application/assets/providers/stock/adapter.go
+
+# Commit 6: legacy duplicate use case — stockpipeline/usecase.go lives at
+# this path. Migrate API to SubmitStockPipelineUseCase then DELETE.
+# NOTE: top-level stock/usecase.go (parent package) stays — only the
+# stockpipeline/ subpackage file is on this list.
+internal/application/assets/providers/stock/stockpipeline/usecase.go

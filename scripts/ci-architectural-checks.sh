@@ -2886,3 +2886,68 @@ if [ -n "$violators" ]; then
     exit 1
 fi
 echo "OK: no retry-classifier substring-matchers outside pkg/retry"
+
+# ── Check 54: forbid legacy stock pipeline keywords (Stock Cutover Commit 3, July 2026) ──
+# Stock Cutover Cleanup Plan Commits 4-8 retire the assetIndex / media_assets /
+# EnqueueAndIndex / UploadFile / Publisher.Publish / YTDLPDownloader / youtube.Service
+# surfaces of the stock pipeline. Check 54 is the regression guard: any NEW
+# occurrence of these banned keywords in a non-allowlisted file exits CI red.
+# Today's allowlist (docs/migrations/stock-legacy-keyword-allowlist.txt)
+# grandfathers the 4 files Commit 4-8 will retire; remove the matching entry
+# at the same commit that deletes the file.
+echo "=== Check 54: forbid legacy stock pipeline keywords ==="
+banned_words='\bassetIndex\b|media_assets|\bEnqueueAndIndex\b|\bUploadFile\b|\bPublisher\.Publish\b|\bYTDLPDownloader\b|\byoutube\.Service\b'
+
+# 1. Gather all hits in the stock package, dropping full-line comments (per
+# the standard awk pass used elsewhere in this script, e.g. lines 175/225/334).
+all_hits=$(grep -rnE "$banned_words" \
+    internal/application/assets/providers/stock/ 2>/dev/null \
+    | awk -F: '{
+        rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i;
+        if (rest ~ /^[[:space:]]*\/\//) next # drop full-line comments
+        if (rest ~ /^[[:space:]]*\/\*/) next # drop full-line block comments
+        print
+    }' \
+    || true)
+
+# 2. Parse the allowlist into a `|`-joined regex of repo-relative file paths.
+# Only the FILENAME (col 1) is compared — not line+col — so the regex works
+# across all matches in the same file. Comments (#) and blank lines are
+# stripped before the join.
+allowed_files=""
+if [ -f docs/migrations/stock-legacy-keyword-allowlist.txt ]; then
+    allowed_files=$(
+        grep -vE '^[[:space:]]*(#|$)' docs/migrations/stock-legacy-keyword-allowlist.txt \
+            | sort -u | paste -sd'|' -
+        || true
+    )
+fi
+
+# 3. Subtract allowlist matches. Every match whose file path is in the
+# allowlist is exempted (the file is on the cleanup queue); everything else
+# is a net-new offender that fails the gate.
+fails=""
+if [ -n "$all_hits" ]; then
+    fails=$(printf '%s\n' "$all_hits" | awk -v allow="$allowed_files" -F':' '
+        BEGIN {
+            n = split(allow, a, "|")
+            for (i = 1; i <= n; i++) if (a[i] != "") allowed[a[i]] = 1
+        }
+        { if ($1 in allowed) next; print }
+    ' || true)
+fi
+
+# 4. Assess. Empty output -> OK; non-empty -> FAIL.
+if [ -n "$fails" ]; then
+    echo "FAIL: legacy stock pipeline keyword(s) found in non-allowlisted files:"
+    echo "$fails"
+    echo ""
+    echo "Fix: the stock pipeline is locked for cleanup (Commits 4-8). Do not"
+    echo "introduce NEW occurrences of assetIndex, media_assets, EnqueueAndIndex,"
+    echo "UploadFile, Publisher.Publish, YTDLPDownloader, or youtube.Service in"
+    echo "production paths of internal/application/assets/providers/stock/."
+    echo "If retiring a legacy file (Commits 4-8), remove the matching entry"
+    echo "from docs/migrations/stock-legacy-keyword-allowlist.txt at the same commit."
+    exit 1
+fi
+echo "OK: no net-new legacy stock pipeline keywords"
