@@ -473,6 +473,14 @@
       owner_capability: cmd/admin + internal/application/channels
       status: removed
 
+# FASE 12c — Legacy route removal (July 2026)
+# Removed POST /api/script/generate-batch (deprecated adapter). Clients
+# must use POST /api/script/generate with multiple items. The
+# LegacyGenerateBatch handler, LegacyGenerateBatchRequest type,
+# LegacyBatchItem/LegacyBatchTopic structs, removalDateBatch constant,
+# and route registration are all removed from handler_legacy_adapters.go
+# and handler_flow.go. DeprecationCount now tracks 3 routes (was 4).
+
 # ── Wave 27 ── DRIVE-005 consolidation: 4-port Drive surface (CLOSED, June 2026) ──
 # Six-commit chain (5f590885, a8c781ae, b7d49099, 70f2b6c8, 2fb96f39, 1dc40709)
 # consolidated the Drive surface into 4 canonical Pattern 0 ports per
