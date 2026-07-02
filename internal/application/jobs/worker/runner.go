@@ -342,15 +342,25 @@ func sha256File(path string) (string, error) {
 // uploadManifest tries to decode an ArtifactManifest from handlerResult.
 // If successful, validates required artifacts, computes SHA-256 digests,
 // uploads each file via assetClient, and returns the sender-safe
-// UploadedManifest (no local filesystem paths).
+// RemoteArtifactManifest (no local filesystem paths).
+//
+// P0 Commit 5 (C5): the canonical emit-side conversion is now
+// (*ArtifactManifest).ToRemote, which enforces the V1 schema-version
+// gate (rejecting any other schema_version before emit) and the
+// required-missing rejection (pre-emit check that all Required
+// artefacts have an entry in `uploaded`). The dual type vocabulary
+// (Local ArtifactManifest + Remote RemoteArtifactManifest) is locked
+// at this conversion boundary so the Sender NEVER sees LocalPath.
 //
 // If no manifest is found (Decode returns nil, nil), falls back to the
 // legacy uploadOutputs path and returns nil, nil so the caller sends the
 // raw handlerResult.
 //
 // Returns an error on: malformed manifest, validation failure, missing
-// required artefact on disk, SHA-256 computation failure, or upload failure.
-func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult map[string]any) (*job.UploadedManifest, error) {
+// required artefact on disk, SHA-256 computation failure, upload failure,
+// or post-upload ToRemote gate rejection (SchemaVersion!=V1, required
+// missing).
+func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult map[string]any) (*job.RemoteArtifactManifest, error) {
 	if r.assetClient == nil || len(handlerResult) == 0 {
 		return nil, nil
 	}
@@ -375,7 +385,7 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 		return nil, fmt.Errorf("artifact manifest: %w", err)
 	}
 
-	uploaded := make(map[string]job.RemoteAsset, len(manifest.Artifacts))
+	uploaded := make(map[string]job.RemoteAssetIDAdapter, len(manifest.Artifacts))
 
 	// Required artefacts: fail closed on any issue.
 	for _, a := range manifest.RequiredArtifacts() {
@@ -401,7 +411,7 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 			continue // already handled above
 		}
 		if _, statErr := os.Stat(a.Path); os.IsNotExist(statErr) {
-			// Best-effort missing → skip (WithRemoteLocations marks as "skipped").
+			// Best-effort missing → skip (ToRemote marks as "skipped").
 			continue
 		}
 		sha, shaErr := sha256File(a.Path)
@@ -418,8 +428,11 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 		uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: sha}
 	}
 
-	// Build sender-safe manifest (no local paths).
-	return manifest.WithRemoteLocations(uploaded)
+	// Build sender-safe manifest (no local paths) via the C5 canonical
+	// ToRemote adapter. ToRemote enforces the V1 gate + required-missing
+	// pre-emit check; the runner returns the typed error unwrapped so
+	// the caller can errors.Is(err, ErrRemoteSchemaVersionUnsupported).
+	return manifest.ToRemote(uploaded)
 }
 
 // uploadOutputsLegacy is the pre-Blocco-2.2 upload path. It scans
