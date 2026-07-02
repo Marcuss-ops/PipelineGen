@@ -1,98 +1,263 @@
-// Package styles — registry.go declares the application-layer
-// wrapper around generation.StyleRegistry.
+// Package styles — registry.go: canonical YAML-backed StyleRegistry
+// (FASE 8 image-territories migration, July 2026).
 //
-// Per the July 2026 image-restructuring plan, the application
-// layer should be able to *lookup* a registered style at boot
-// and consult the canonical registry handle. The underlying
-// canonical implementation lives in
-// internal/application/assets/generation — this file is a thin
-// wrapper that exposes a stable name (styles.Registry) without
-// forcing callers to import the deeper package directly.
+// The real StyleRegistry implementation was moved here from
+// internal/application/assets/generation/style_registry.go to break
+// the styles → generation import cycle. generation/ now imports this
+// package and uses Go type aliases for back-compat.
 //
-// Step 9 (July 2026): the wrapper is a struct that EMBEDS the
-// canonical registry, so all methods are available transitively.
-// Explicit Register/Lookup/List forwarders exist for the small
-// surface most application-layer code touches.
+// StyleRegistry loads GenerationStyle definitions from YAML and exposes
+// both the legacy query methods (Get, List, ListEnabled, ApplyStyle) and
+// the fail-closed StyleResolver interface (Resolve + Validate).
 //
-// NOTE: generation.StyleRegistry is today a YAML-backed, runtime
-// read-only registry. Register returns a typed error to surface
-// the read-only contract; migrations that need runtime
-// registration must use the YAML bootstrap path.
+// Key design decisions:
+//   - Resolve(styleID, provider, model) is fail-closed: unknown style,
+//     incompatible provider, or incompatible model → typed error.
+//   - Empty styleID → no-op default (zero ResolvedStyle, no error).
+//   - ApplyStyle is deprecated — callers should use Resolve + PromptComposer.
+//   - StyleRegistry implements StyleResolver, so existing wiring passes
+//     *StyleRegistry as the StyleResolver dependency.
+//   - Uses ONLY local types from this package (types.go, resolver.go) —
+//     no import of generation/ to keep the dependency graph cycle-free.
 package styles
 
 import (
-	"context"
 	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"gopkg.in/yaml.v3"
 )
 
-// Registry is the application-layer wrapper around
-// generation.StyleRegistry. Composition root construction calls
-// NewRegistry to obtain one; all public methods forward to the
-// canonical implementation.
-type Registry struct {
-	inner *generation.StyleRegistry
-}
+// ── Compile-time assertions ────────────────────────────────────────────
+
+// StyleRegistry satisfies StyleResolver (defined in resolver.go).
+var _ StyleResolver = (*StyleRegistry)(nil)
+
+// ── RegistryReadOnly sentinel ───────────────────────────────────────────
 
 // ErrRegistryReadOnly is returned by Register when caller code
 // attempts to add a StyleDefinition at runtime. The canonical
 // registry is YAML-backed today; runtime mutations require
-// re-via generation.NewStyleRegistry.
-var ErrRegistryReadOnly = errors.New("styles.Registry: runtime Register not supported (YAML bootstrap only)")
+// re-via NewStyleRegistry.
+var ErrRegistryReadOnly = errors.New("styles.StyleRegistry: runtime Register not supported (YAML bootstrap only)")
 
-// NewRegistry wraps a non-nil *generation.StyleRegistry.
-// Returns nil if `inner` is nil — callers must handle the nil
-// case (back-compat with Step 4 pre-Stage-5 wiring where
-// StyleRegistry was optional).
-func NewRegistry(inner *generation.StyleRegistry) *Registry {
-	if inner == nil {
-		return nil
+// ── StyleRegistry ──────────────────────────────────────────────────────
+
+// StyleRegistry manages a collection of generation styles loaded from YAML.
+type StyleRegistry struct {
+	styles map[string]domain.GenerationStyle
+	mu     sync.RWMutex
+}
+
+// NewStyleRegistry creates a new registry and loads styles from the given
+// YAML file. Returns an error if the file cannot be read or unmarshalled.
+func NewStyleRegistry(yamlPath string) (*StyleRegistry, error) {
+	r := &StyleRegistry{
+		styles: make(map[string]domain.GenerationStyle),
 	}
-	return &Registry{inner: inner}
+	if err := r.Load(yamlPath); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// Load reads styles from a YAML file. Existing styles are replaced atomically.
+func (r *StyleRegistry) Load(yamlPath string) error {
+	data, err := os.ReadFile(yamlPath)
+	if err != nil {
+		return fmt.Errorf("failed to read styles file: %w", err)
+	}
+
+	var container domain.GenerationStyles
+	if err := yaml.Unmarshal(data, &container); err != nil {
+		return fmt.Errorf("failed to unmarshal styles: %w", err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.styles = make(map[string]domain.GenerationStyle, len(container.Styles))
+	for _, s := range container.Styles {
+		r.styles[strings.ToLower(s.Name)] = s
+	}
+
+	return nil
+}
+
+// ── Legacy query methods (backward-compatible) ─────────────────────────
+
+// Get retrieves a style by name (case-insensitive).
+func (r *StyleRegistry) Get(name string) (domain.GenerationStyle, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.styles[strings.ToLower(name)]
+	return s, ok
+}
+
+// Lookup is the application-layer alias for Get. It returns the
+// StyleDefinition for the given StyleID, or (zero, false) if not found.
+// Uses case-insensitive name lookup identical to Get.
+func (r *StyleRegistry) Lookup(name string) (StyleDefinition, bool) {
+	return r.Get(name)
+}
+
+// List returns all available styles (including disabled ones — callers
+// should filter via IsEnabled() if they only want active styles).
+func (r *StyleRegistry) List() []domain.GenerationStyle {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	res := make([]domain.GenerationStyle, 0, len(r.styles))
+	for _, s := range r.styles {
+		res = append(res, s)
+	}
+	return res
+}
+
+// ListEnabled returns only styles where IsEnabled() is true.
+func (r *StyleRegistry) ListEnabled() []domain.GenerationStyle {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	res := make([]domain.GenerationStyle, 0, len(r.styles))
+	for _, s := range r.styles {
+		if s.IsEnabled() {
+			res = append(res, s)
+		}
+	}
+	return res
 }
 
 // Register adds a new StyleDefinition at runtime. Today this
 // always returns ErrRegistryReadOnly because canonical state is
 // YAML-backed; composition roots that need to extend the recipe
 // set should write to the style registry YAML and reload.
-func (r *Registry) Register(_ context.Context, _ StyleDefinition) error {
-	if r == nil {
-		return ErrRegistryReadOnly
-	}
+func (r *StyleRegistry) Register(_ StyleDefinition) error {
 	return ErrRegistryReadOnly
 }
 
-// Lookup returns the StyleDefinition for the given StyleID, or
-// (zero, false) if not found. Uses generation.StyleRegistry.Get
-// under the hood (case-insensitive name lookup).
-func (r *Registry) Lookup(_ context.Context, id StyleID) (StyleDefinition, bool) {
-	if r == nil || r.inner == nil {
-		return StyleDefinition{}, false
+// ApplyStyle appends the style suffix to the prompt. Deprecated: prefer
+// Resolve + PromptComposer for fail-closed resolution. Kept for backward
+// compatibility. Empty or unknown styleName returns the prompt unchanged
+// (silent fallback — the old behaviour).
+//
+// Deprecated: use StyleResolver.Resolve instead.
+func (r *StyleRegistry) ApplyStyle(prompt, styleName string) string {
+	if styleName == "" {
+		return prompt
 	}
-	if id == "" {
-		return StyleDefinition{}, false
+
+	style, ok := r.Get(styleName)
+	if !ok {
+		return prompt
 	}
-	return r.inner.Get(id)
+
+	effectiveSuffix := style.EffectiveSuffix()
+	if effectiveSuffix == "" {
+		return prompt
+	}
+
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return effectiveSuffix
+	}
+
+	return prompt + ", " + effectiveSuffix
 }
 
-// List returns all registered StyleDefinitions. Used by the
-// admin UI / health endpoints. alphabetical ordering is handled
-// by the canonical registry when wired (List() returns an
-// unordered slice — callers should sort if needed).
-func (r *Registry) List(_ context.Context) []StyleDefinition {
-	if r == nil || r.inner == nil {
-		return nil
+// ── Fail-closed resolution (canonical) ──────────────────────────────────
+
+// Resolve implements StyleResolver. It validates styleID, provider, and
+// model against the registry and returns a ResolvedStyle on success.
+//
+// Empty styleID is permitted and returns a zero ResolvedStyle with no
+// error — the caller can treat this as "no style requested".
+func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle, error) {
+	// Empty styleID = no style requested → no-op default.
+	if styleID == "" {
+		return ResolvedStyle{}, nil
 	}
-	return r.inner.List()
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	style, ok := r.styles[strings.ToLower(styleID)]
+	if !ok {
+		return ResolvedStyle{}, fmt.Errorf("%w: %q", ErrStyleNotFound, styleID)
+	}
+
+	if !style.IsEnabled() {
+		return ResolvedStyle{}, fmt.Errorf("%w: %q", ErrStyleDisabled, styleID)
+	}
+
+	// Provider compatibility check.
+	if len(style.AllowedProviders) > 0 && provider != "" {
+		if !stringInSlice(provider, style.AllowedProviders) {
+			return ResolvedStyle{}, fmt.Errorf(
+				"%w: style %q allows providers %v, got %q",
+				ErrStyleProviderUnsupported, styleID, style.AllowedProviders, provider,
+			)
+		}
+	}
+
+	// Model compatibility check.
+	if len(style.AllowedModels) > 0 && model != "" {
+		if !stringInSlice(model, style.AllowedModels) {
+			return ResolvedStyle{}, fmt.Errorf(
+				"%w: style %q allows models %v, got %q",
+				ErrStyleModelUnsupported, styleID, style.AllowedModels, model,
+			)
+		}
+	}
+
+	width := style.DefaultWidth
+	height := style.DefaultHeight
+
+	destKey := style.DestinationKey
+	if destKey == "" {
+		destKey = "ai-images/" + style.Name
+	}
+
+	return ResolvedStyle{
+		ID:             style.Name,
+		Version:        style.Version,
+		PromptSuffix:   style.EffectiveSuffix(),
+		NegativePrompt: style.NegativePrompt,
+		Width:          width,
+		Height:         height,
+		DestinationKey: destKey,
+		Enabled:        true,
+	}, nil
 }
 
-// Inner returns the underlying canonical *generation.StyleRegistry.
-// Reserved for tests + composition roots; application code should
-// use the wrapped surface above.
-func (r *Registry) Inner() *generation.StyleRegistry {
-	if r == nil {
-		return nil
+// Validate implements StyleResolver. It is the void variant of Resolve.
+func (r *StyleRegistry) Validate(styleID, provider, model string) error {
+	_, err := r.Resolve(styleID, provider, model)
+	return err
+}
+
+// ── Inner (back-compat) ─────────────────────────────────────────────────
+
+// Inner returns self. It preserves the back-compat surface for callers
+// that used the thin-wrapper's Inner() method to reach the underlying
+// *generation.StyleRegistry. After FASE 8 migration, the returned type
+// is *StyleRegistry (the canonical implementation).
+func (r *StyleRegistry) Inner() *StyleRegistry {
+	return r
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+// stringInSlice reports whether needle is in haystack (case-insensitive).
+func stringInSlice(needle string, haystack []string) bool {
+	for _, v := range haystack {
+		if strings.EqualFold(v, needle) {
+			return true
+		}
 	}
-	return r.inner
+	return false
 }
