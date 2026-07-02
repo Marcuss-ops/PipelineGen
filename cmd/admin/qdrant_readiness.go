@@ -236,6 +236,7 @@ func appInitCompositionForReadiness(ctx context.Context, cfg *config.Config, log
 		MediasearchHandler: registryWiring.MediasearchHandler,
 		ClipsRepo:          prodRoot.Repos.ClipsRepo,
 		QdrantClient:       prodRoot.Process.QdrantClient,
+		SemanticSearch:     registryWiring.SearchFanOut,
 	}, cleanup, nil
 }
 

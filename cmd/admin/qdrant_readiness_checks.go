@@ -27,6 +27,7 @@ import (
 	middlewareports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
+	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -79,6 +80,7 @@ type readinessDeps struct {
 //   - MediasearchHandler← WireRegistry().MediasearchHandler (api.InternalMediaSearchRouter)
 //   - ClipsRepo         ← root.Repos.ClipsRepo     *assets.ClipsRepository
 //   - QdrantClient      ← root.Process.QdrantClient  *qdrant.Client
+//   - SemanticSearch    ← registryWiring.SearchFanOut (search.SearchFanOut)
 type compositionRoot struct {
 	Dispatcher         *outbox.Dispatcher
 	EventsPool         *outboxevents.Pool
@@ -86,6 +88,7 @@ type compositionRoot struct {
 	MediasearchHandler api.InternalMediaSearchRouter
 	ClipsRepo          *assets.ClipsRepository
 	QdrantClient       *qdrant.Client
+	SemanticSearch     searchpkg.SearchFanOut
 }
 
 // readinessCheck is the testable surface for the production-shaped
@@ -124,6 +127,7 @@ var readinessCheck = map[string]func(context.Context, readinessDeps) checkStatus
 	"qdrant_active_collection_real": checkQdrantActiveCollection,
 	"real_routes_present":           checkRoutesReal,
 	"scan_reconciler_complete":      checkReconcilerProduction,
+	"semantic_search_real":          checkSemanticSearchReal,
 	"server_production_constructor": checkServerProductionConstructor,
 	"worker_real_state":             checkWorkerRealState,
 }

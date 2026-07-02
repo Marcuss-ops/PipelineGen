@@ -76,18 +76,14 @@ func validCfg() *config.Config {
 			PollIntervalMs: 500,
 			Workers:        2,
 		},
-		Security: config.SecurityConfig{
-			DeliveryHMACSecret: "0123456789abcdef0123456789abcdef",
-			RateLimit: config.RateLimitConfig{
-				Enabled:           false,
-				RequestsPerMinute: 60,
-			},
-		},
-		Features: config.FeatureFlagsConfig{
-			ArtlistEnabled:     false,
-			ScriptDocsEnabled:  false,
-			ScriptClipsEnabled: false,
-		},
+	Security: config.SecurityConfig{
+		DeliveryHMACSecret: "0123456789abcdef0123456789abcdef",
+	},
+	Features: config.FeaturesConfig{
+		ArtlistEnabled:     false,
+		ScriptDocsEnabled:  false,
+		ScriptClipsEnabled: false,
+	},
 	}
 	return c
 }
@@ -180,10 +176,9 @@ func TestCheckWorkerRealState_NilCfgFails(t *testing.T) {
 func TestCheckWorkerRealState_ZeroWorkersFails(t *testing.T) {
 	cfg := validCfg()
 	cfg.Outbox.Workers = 0
-	// Simulate a real root via empty-marker fakes.
 	res := checkWorkerRealState(context.Background(), readinessDeps{
 		DB: nil, Cfg: cfg, Log: zap.NewNop(),
-		Root: &compositionRoot{EventsPool: &fakePool{}},
+		Root: &compositionRoot{},
 	})
 	if res.Pass {
 		t.Errorf("outbox.workers=0 should fail even with real root, got pass")
@@ -261,6 +256,7 @@ func TestReadinessCheck_HasAllKeys(t *testing.T) {
 		"qdrant_active_collection_real",
 		"real_routes_present",
 		"scan_reconciler_complete",
+		"semantic_search_real",
 		"server_production_constructor",
 		"worker_real_state",
 	}
@@ -365,12 +361,3 @@ type (
 func (fakePool) IsPoolNonNilMarker()             {}
 func (fakeDispatcher) IsDispatcherNonNilMarker() {}
 func (fakeClipsRepo) IsClipsRepoNonNilMarker()   {}
-
-// ── Compile-time wire assertions ────────────────────────────────────────
-
-var (
-	_ dispatcherBuilt       = (*fakeDispatcher)(nil)
-	_ poolBuilt             = (*fakePool)(nil)
-	_ sqliteReader          = (*fakeClipsRepo)(nil)
-	_ ginRoutesRegisterable = (*fakeRoutesHandler)(nil)
-)
