@@ -102,6 +102,9 @@ type AppDeps struct {
 	// nil-safe: when qdrant is disabled the probe is nil and the
 	// lifecycle readiness barrier auto-skips it.
 	QdrantProbe   interface{ Probe(context.Context) error }
+	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
+	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
+	QdrantHealth  interface{}
 	Lifecycle     module.LifecycleManager
 	HealthService interface{}
 	ReadyChecker  *systemhealth.ReadyChecker

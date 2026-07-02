@@ -31,7 +31,10 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -342,6 +345,25 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if cfg.Qdrant.Enabled && root != nil && root.Process != nil {
 		qdrantProbe = root.Process.QdrantHealthProbe
 	}
+
+	// HIGH #7 (July 2026): construct QdrantHealthHandler for /qdrant/live
+	// and /qdrant/ready. nil-safe when Qdrant is disabled.
+	var qdrantHealth interface{}
+	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
+		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
+		var embedder qdrant.TextEmbedder
+		if root.AI != nil && root.AI.OllamaClient != nil {
+			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
+			embedder = qdrant.NewTextEmbedderAdapter(ollamaEmb)
+		}
+		qdrantHealth = transport.NewQdrantHealthHandler(
+			root.Process.QdrantHealthProbe,
+			root.Process.CollectionManager,
+			root.Process.QdrantSearcher,
+			embedder,
+		)
+	}
+
 	return &AppDeps{
 		Registry:             registryWiring.Registry,
 		WorkerHandler:        workerHandler,
@@ -349,6 +371,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		OutboxHandler:        registryWiring.OutboxHandler,
 		MediasearchHandler:   registryWiring.MediasearchHandler,
 		QdrantProbe:          qdrantProbe,
+		QdrantHealth:         qdrantHealth,
 		Lifecycle:            lifecycle,
 		HealthService:        healthSvc,
 		ReadyChecker:         readyChecker,
