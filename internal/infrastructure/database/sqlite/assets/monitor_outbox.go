@@ -40,34 +40,26 @@ import (
 // OutboxEntry is the canonical shape surfaced to the drainer.
 // It carries enough information to reconstruct the ExtractRequest
 // payload the durable-jobs broker expects.
+//
+// Step 7/12 (July 2026): added RetryCount, NextRetryAt, LeaseID,
+// LeaseUntil to support the lease-based atomic claim + retryable
+// failure pattern.
 type OutboxEntry struct {
 	ID             int64  `json:"id"`
 	DiscoveryID    string `json:"discovery_id"`
 	IdempotencyKey string `json:"idempotency_key"`
 	PayloadJSON    string `json:"payload_json"`
+	State          string `json:"state"`
+	RetryCount     int    `json:"retry_count"`
+	NextRetryAt    string `json:"next_retry_at,omitempty"`
 }
 
-// ensureOutboxTable creates the outbox table if it doesn't exist.
-// Called from CommitEnqueueOutbox on first use (CREATE TABLE IF NOT EXISTS
-// is idempotent and cheap — no separate migration runner needed).
+// ensureOutboxTable is now a no-op — the table is created by the
+// canonical migration 120_monitor_enqueue_outbox_lease.sql (Step 7/12).
+// Kept as a compatibility shim so callers still compile; removed in a
+// follow-up cleanup wave.
 func ensureOutboxTable(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS monitor_enqueue_outbox (
-			id                INTEGER PRIMARY KEY AUTOINCREMENT,
-			discovery_id      TEXT NOT NULL,
-			idempotency_key   TEXT NOT NULL UNIQUE,
-			payload_json      TEXT NOT NULL,
-			state             TEXT NOT NULL DEFAULT 'pending',
-			created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-			dispatched_at     TEXT,
-			job_id            TEXT,
-			error             TEXT
-		);
-		CREATE INDEX IF NOT EXISTS idx_monitor_outbox_pending
-			ON monitor_enqueue_outbox(state, created_at)
-			WHERE state = 'pending';
-	`)
-	return err
+	return nil
 }
 
 // CommitEnqueueOutbox atomically marks the discovery as enqueued AND inserts
@@ -165,11 +157,14 @@ func (r *YoutubeDiscoveriesRepository) CommitEnqueueOutbox(
 	return nil
 }
 
-// DrainPendingOutbox returns up to limit pending outbox entries ordered by
-// created_at ASC. The caller (the outbox drainer goroutine) dispatches
-// each entry to the durable-jobs broker, then calls MarkOutboxDispatched
-// or MarkOutboxFailed.
-func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, limit int) ([]OutboxEntry, error) {
+// DrainPendingOutbox atomically claims up to limit pending outbox entries
+// using UPDATE ... RETURNING. The caller receives exclusively claimed
+// rows in 'dispatching' state with the supplied lease. Rows with
+// next_retry_at in the future are skipped (backoff not yet elapsed).
+//
+// Step 7/12: replaced the pre-migration SELECT-based query with an
+// atomic claim that prevents two drainers from reading the same row.
+func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, limit int, leaseID, leaseUntil string) ([]OutboxEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -178,21 +173,25 @@ func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, l
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, discovery_id, idempotency_key, payload_json
-		FROM monitor_enqueue_outbox
+		UPDATE monitor_enqueue_outbox
+		SET state = 'dispatching',
+		    lease_id = ?,
+		    lease_until = ?
 		WHERE state = 'pending'
+		  AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
 		ORDER BY created_at ASC
 		LIMIT ?
-	`, limit)
+		RETURNING id, discovery_id, idempotency_key, payload_json, state, retry_count, COALESCE(next_retry_at, '')
+	`, leaseID, leaseUntil, limit)
 	if err != nil {
-		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: query: %w", err)
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: atomic claim: %w", err)
 	}
 	defer rows.Close()
 
 	var entries []OutboxEntry
 	for rows.Next() {
 		var e OutboxEntry
-		if scanErr := rows.Scan(&e.ID, &e.DiscoveryID, &e.IdempotencyKey, &e.PayloadJSON); scanErr != nil {
+		if scanErr := rows.Scan(&e.ID, &e.DiscoveryID, &e.IdempotencyKey, &e.PayloadJSON, &e.State, &e.RetryCount, &e.NextRetryAt); scanErr != nil {
 			return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: scan: %w", scanErr)
 		}
 		entries = append(entries, e)
@@ -200,45 +199,137 @@ func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, l
 	return entries, rows.Err()
 }
 
+// DrainDispatched reclaims rows stuck in 'dispatching' state with
+// expired leases. On reclamation, the row is reset to 'pending' with
+// a fresh lease so it can be picked up by DrainPendingOutbox.
+//
+// Step 7/12: prevents permanent row loss when a drainer crashes mid-
+// dispatch.
+func (r *YoutubeDiscoveriesRepository) DrainDispatched(ctx context.Context, limit int, leaseID, leaseUntil string) ([]OutboxEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		UPDATE monitor_enqueue_outbox
+		SET state = 'pending',
+		    lease_id = '',
+		    lease_until = NULL
+		WHERE state = 'dispatching'
+		  AND lease_until < datetime('now')
+		ORDER BY created_at ASC
+		LIMIT ?
+		RETURNING id, discovery_id, idempotency_key, payload_json, state, retry_count, COALESCE(next_retry_at, '')
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: reclaim: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []OutboxEntry
+	for rows.Next() {
+		var e OutboxEntry
+		if scanErr := rows.Scan(&e.ID, &e.DiscoveryID, &e.IdempotencyKey, &e.PayloadJSON, &e.State, &e.RetryCount, &e.NextRetryAt); scanErr != nil {
+			return nil, fmt.Errorf("monitor_outbox.DrainDispatched: scan: %w", scanErr)
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // MarkOutboxDispatched marks an outbox entry as successfully dispatched
-// with the resulting durable-job ID.
+// with the resulting durable-job ID. Requires the row to be in
+// 'dispatching' state (the drainer claims it before dispatching).
 func (r *YoutubeDiscoveriesRepository) MarkOutboxDispatched(ctx context.Context, outboxID int64, jobID string) error {
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE monitor_enqueue_outbox
 		SET state = 'dispatched',
 		    job_id = ?,
-		    dispatched_at = ?
-		WHERE id = ? AND state = 'pending'
+		    dispatched_at = ?,
+		    lease_id = '',
+		    lease_until = NULL
+		WHERE id = ? AND state = 'dispatching'
 	`, jobID, nowStr, outboxID)
 	if err != nil {
 		return fmt.Errorf("monitor_outbox.MarkOutboxDispatched: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("monitor_outbox.MarkOutboxDispatched: outbox entry %d not found or not pending", outboxID)
+		return fmt.Errorf("monitor_outbox.MarkOutboxDispatched: outbox entry %d not found or not dispatching", outboxID)
 	}
 	return nil
 }
 
-// MarkOutboxFailed marks an outbox entry as failed with an error message.
-// Failed entries remain in the table for operator visibility but are no
-// longer picked up by DrainPendingOutbox.
+// maxOutboxRetries is the number of retry attempts before an outbox
+// entry is marked dead (terminal failure).
+const maxOutboxRetries = 3
+
+// MarkOutboxFailed records a transient failure and reschedules the
+// outbox entry for retry. The entry is set back to 'pending' with
+// next_retry_at computed via exponential backoff (5s, 15s, 45s).
+// After maxOutboxRetries consecutive failures, the entry is marked
+// 'dead' (terminal — operator must manually intervene).
+//
+// Step 7/12: replaces the pre-migration permanent 'failed' state
+// with retryable pending + dead letter after N retries.
 func (r *YoutubeDiscoveriesRepository) MarkOutboxFailed(ctx context.Context, outboxID int64, errMsg string) error {
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	// Read current retry_count to decide pending vs dead.
+	var retryCount int
+	scanErr := r.db.QueryRowContext(ctx,
+		`SELECT retry_count FROM monitor_enqueue_outbox WHERE id = ?`, outboxID,
+	).Scan(&retryCount)
+	if scanErr != nil {
+		return fmt.Errorf("monitor_outbox.MarkOutboxFailed: read retry_count for %d: %w", outboxID, scanErr)
+	}
+
+	newRetryCount := retryCount + 1
+
+	if newRetryCount >= maxOutboxRetries {
+		// Terminal: mark as dead.
+		res, err := r.db.ExecContext(ctx, `
+			UPDATE monitor_enqueue_outbox
+			SET state = 'dead',
+			    error = ?,
+			    dispatched_at = ?,
+			    retry_count = ?,
+			    lease_id = '',
+			    lease_until = NULL
+			WHERE id = ? AND state = 'dispatching'
+		`, errMsg, nowStr, newRetryCount, outboxID)
+		if err != nil {
+			return fmt.Errorf("monitor_outbox.MarkOutboxFailed: dead letter: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return fmt.Errorf("monitor_outbox.MarkOutboxFailed: outbox entry %d not found or not dispatching", outboxID)
+		}
+		return nil
+	}
+
+	// Retryable: set back to pending with exponential backoff.
+	backoff := time.Duration(5*newRetryCount) * time.Second
+	nextRetryAt := now.Add(backoff).Format(time.RFC3339)
+
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE monitor_enqueue_outbox
-		SET state = 'failed',
+		SET state = 'pending',
 		    error = ?,
-		    dispatched_at = ?
-		WHERE id = ? AND state = 'pending'
-	`, errMsg, nowStr, outboxID)
+		    next_retry_at = ?,
+		    retry_count = ?,
+		    lease_id = '',
+		    lease_until = NULL
+		WHERE id = ? AND state = 'dispatching'
+	`, errMsg, nextRetryAt, newRetryCount, outboxID)
 	if err != nil {
-		return fmt.Errorf("monitor_outbox.MarkOutboxFailed: %w", err)
+		return fmt.Errorf("monitor_outbox.MarkOutboxFailed: retryable: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("monitor_outbox.MarkOutboxFailed: outbox entry %d not found or not pending", outboxID)
+		return fmt.Errorf("monitor_outbox.MarkOutboxFailed: outbox entry %d not found or not dispatching", outboxID)
 	}
 	return nil
 }

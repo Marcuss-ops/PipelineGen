@@ -93,7 +93,10 @@ func (s *stubDiscoveriesForEnqueue) CommitEnqueueOutbox(_ context.Context, disco
 	}
 	return nil
 }
-func (s *stubDiscoveriesForEnqueue) DrainPendingOutbox(_ context.Context, _ int) ([]assetsdb.OutboxEntry, error) {
+func (s *stubDiscoveriesForEnqueue) DrainPendingOutbox(_ context.Context, _ int, _, _ string) ([]assetsdb.OutboxEntry, error) {
+	return nil, nil
+}
+func (s *stubDiscoveriesForEnqueue) DrainDispatched(_ context.Context, _ int, _, _ string) ([]assetsdb.OutboxEntry, error) {
 	return nil, nil
 }
 func (s *stubDiscoveriesForEnqueue) MarkOutboxDispatched(_ context.Context, _ int64, _ string) error {

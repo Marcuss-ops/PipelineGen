@@ -288,12 +288,31 @@ func (m *ChannelMonitor) startOutboxDrainer(ctx context.Context) {
 	}
 }
 
-// drainOutboxOnce drains a single batch of pending outbox entries.
+// drainOutboxOnce drains a single batch of pending outbox entries
+// and reclaims any stuck-in-dispatching entries with expired leases.
+//
+// Step 7/12: added DrainDispatched reclamation and lease-based claim.
 func (m *ChannelMonitor) drainOutboxOnce(ctx context.Context) {
 	if m.discoveries == nil {
 		return
 	}
-	entries, err := m.discoveries.DrainPendingOutbox(ctx, 10)
+
+	// Lease identity: unique per drain cycle so a crashed drainer's
+	// lease can be reclaimed by the next cycle.
+	now := time.Now().UTC()
+	leaseID := fmt.Sprintf("outbox-drainer-%d", now.UnixNano()%100000)
+	leaseUntil := now.Add(30 * time.Second).Format(time.RFC3339)
+
+	// Step 1: Reclaim stuck entries (crashed drainer recovery).
+	reclaimed, err := m.discoveries.DrainDispatched(ctx, 5, leaseID, leaseUntil)
+	if err != nil {
+		m.log.Warn("outbox drainer: DrainDispatched reclaim failed", zap.Error(err))
+	} else if len(reclaimed) > 0 {
+		m.log.Info("outbox drainer: reclaimed stuck entries", zap.Int("count", len(reclaimed)))
+	}
+
+	// Step 2: Atomically claim pending entries.
+	entries, err := m.discoveries.DrainPendingOutbox(ctx, 10, leaseID, leaseUntil)
 	if err != nil {
 		m.log.Warn("outbox drainer: DrainPendingOutbox failed", zap.Error(err))
 		return
