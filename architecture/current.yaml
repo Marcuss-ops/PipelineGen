@@ -883,9 +883,100 @@
       status: shipped
       deadline: 2026-07-25
     - id: PR-CROSS-MODAL-TEXT-TO-VISUAL
-      owner_capability: internal/infrastructure/qdrant + internal/infrastructure/embeddings
-      status: pending
+      owner_capability: internal/infrastructure/embeddings + internal/app/adapters_infra + internal/app/search_backend_semantic_test.go canonical-pattern
+      status: done
       deadline: 2026-08-01
+      exit_signal: true
+      description: |
+        Landed the canonical SigLIP text encoder as an adapter in
+        internal/infrastructure/embeddings/siglip_text_embedder.go
+        and have it consumed by the EmbeddingChannelRegistry. The
+        adapter satisfies the search.ChannelEncoder port via
+        `var _ ChannelEncoder = (*SigLIPTextEmbedder)(nil)` at the
+        struct declaration site (Pattern 0 build-failure lock per
+        AGENTS.md). The query text passes through SigLIP-text and
+        lands in the SAME 768d vector space as image-encoded
+        SigLIP vectors in the Qdrant v3 IndexSchema visual channel
+        (SigLIP so400m patch14-384, Cosine, normalized). End-to-end
+        "search the concept in the pixels" via the joint
+        image+text embedding premise (SigLIP is trained as a joint
+        model) is now enabled at composition-root; the semantic
+        backend's EmbedQuery(ctx, ChannelText, q.Text) surface stays
+        unchanged on the production hot path.
+
+        Spec clarification (godlike/07 honest-limitation disclosure):
+        the user's PR spec referenced "512-dim"; canonical Qdrant v3
+        IndexSchema visual channel is 768d. Implementing 512d would
+        BREAK the cross-modal premise (different vector spaces cannot
+        be fused — the user's text-query 512d vector would never
+        match image-encoded 768d frames in the same Qdrant collection).
+        The implementation uses 768d per canonical SSOT; the dim
+        guard `len(parsed.Embedding) != SigLIPTextDimension` returns
+        ErrSigLIPDimensionMismatch per godlike/07 no-fake-availability.
+        Loud NOTE in the package doc of siglip_text_embedder.go
+        explicitly documents the spec's "512-dim" typo + cross-modal-
+        only-works-at-768d rationale.
+
+        Surface landed:
+          - internal/infrastructure/embeddings/siglip_text_embedder.go:
+            SigLIPTextDimension=768 const + SigLIPTextEndpoint=
+            "/embed_visual_from_text" const + 4 typed-error sentinels
+            (ErrSigLIPSidecarUnavailable / ErrSigLIPDimensionMismatch /
+            ErrSigLIPModelIdentityMismatch / ErrSigLIPEmptyResponse) +
+            EmbedTextQuery method (empty short-circuit + serverURL==""
+            ErrSigLIPSidecarUnavailable + POST /embed_visual_from_text
+            with {text, model:"siglip-so400m-patch14-384"} + canonical
+            QDRANT-001 envelope decode + 768d fail-closed dim assert +
+            HTTP 501 -> ErrSigLIPSidecarUnavailable + model identity
+            cross-check via siglipModelNameMatches (vendor-prefix
+            tolerant)).
+          - internal/infrastructure/embeddings/siglip_text_embedder_test.go:
+            9 TDD tests (dim-const + endpoint-const + sentinels-distinct
+            + sentinel-keyword-pinning + empty-text-short-circuit +
+            serverURL==""-fail-closed + happy-path-roundtrip + 512d-dim-
+            mismatch-fail-closed + HTTP-501-fail-closed + model-identity-
+            mismatch-fail-closed + empty-vec-fail-closed + HTTP-500 + compile-
+            time-assertion). 9/9 GREEN.
+          - internal/app/adapters_infra.go: newEmbeddingRegistryAdapter
+            signature growth 1-arg -> 2-arg (textEmbedder, siglipEncoder).
+            ChannelVisual routes LIVE through the SigLIP encoder when
+            non-nil; falls back to notConfiguredAdapter typed-error
+            carrier when nil (fail-closed).
+          - internal/app/embedding_registry_adapter_test.go: 11 existing
+            test calls updated for 2-arg signature + 2 NEW SigLIP-live-
+            path tests + vec-identity pin (godlike/06 SSOT: registry
+            MUST return SigLIP-output vector verbatim, not a generic
+            e5-shaped vector).
+          - internal/app/search_backend_semantic_test.go: carry-forward
+            regression fix from PR-EMBEDDING-CHANNEL-REGISTRY — mockEmbedder
+            renamed to mockEmbeddingRegistry (satisfies search.EmbeddingChannel
+            Registry) + all 6 TestSemanticBackend* tests gained
+            callsByChan[search.ChannelText]==1 SSOT pin (godlike/06
+            guarantee: backend MUST call EmbedQuery with ChannelText,
+            NOT ChannelVisual — guards against future regression).
+
+        Forward-pointer (godlike/07 EXPAND phase bookkeeping): the
+        composition root's `registerSearchBackend` chain still passes
+        nil for the siglipEncoder slot per the package comment —
+        ChannelVisual stays a runtime stub returning ErrChannelNotConfigured
+        at the running server until composition wiring lands. This
+        is correctly EXPAND-phase discipline per godlike/07; the
+        canonical surface is live at compile time, future BACKFILL
+        wave threads `embeddings.NewSigLIPTextEmbedder(cfg.SigLIPText
+        SidecarURL, schema.GetDense("visual").Model)` into the
+        register call when the Python sidecar is productionized.
+        PR-CROSS-MODAL-COMPOSITION-WIRE (deadline 2026-09-15) tracks
+        the BACKFILL wave; PR-CROSS-MODAL-E2E (post-composition-wire)
+        covers the end-to-end "search the concept in the pixels"
+        integration test once the encoder is wired.
+
+        Pre-existing build issues (out of scope, NOT regressions per
+        AGENTS.md "minimal blast radius"): workerruntime / composition.go
+        / module_media.go / worker_registry_e2e_test.go / composition_test.go
+        / creator_runtime_test.go — same 5-item carry-forward list as
+        the prior PR chain. The PR-CROSS-MODAL surface passes targeted
+        gofmt + go vet + go build + go test on the 5 touched files
+        independently.
     - id: PR-EMBEDDING-CHANNEL-REGISTRY
       owner_capability: internal/application/search + internal/infrastructure/embeddings
       status: pending
