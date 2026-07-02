@@ -481,7 +481,36 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 		}
 	}
 
-	return &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}, nil
+	// §12-1 P0 #1 (July 2026) — orchestrator-level fail-closed gate.
+	// The post-publish gate-level layers (in finalizer_gates.go) catch
+	// populate-and-validate failures AFTER Drive upload; this gate closes
+	// the verdict's earlier-stage false-success class — Orchestrator.Run
+	// must NOT return nil error unless RunSummary.Manifest declares at
+	// least one Required:true chunk AND one Required:true metadata.json
+	// entry. Pre-Commit-4-7 every stock run hits ErrMetadataMissing
+	// (buildStockManifest emits 5 entries all Required:false today); the
+	// chunk-rendering ladder flips entries to Required:true once their
+	// LocalPath is hydrated, after which the gate starts passing.
+	//
+	// godlike/06 SSOT: this gate is the sole orchestrator-layer owner of
+	// "manifest declares canonical artifacts". Wired inline (NOT in a
+	// dedicated Step type) because the gate checks RunSummary state, not
+	// per-step progress; threading it through a Step would duplicate
+	// state and break the §12-5 typed-slice ingress invariant.
+	summary := &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}
+	if gateErr := AssertRunSummaryArtifactsRequired(summary); gateErr != nil {
+		// Wrap with stage prefix so log scanners trace to the §12-1
+		// P0 #1 gate seam; errors.Is(sentinel) still probes the typed
+		// error via %w. MarkFailed on the §12-3 audit log is omitted
+		// because the gate fires AFTER all step MarkCompleted — the
+		// orchestrator's audit row for stock.finalize already pins the
+		// last attempted state. A forward-pointer to record gate
+		// failures in the audit trail lands when §12-3 adds a
+		// GateRejection row type (future wave).
+		return nil, fmt.Errorf("orchestrator §12-1 P0 #1 success gate (pre-CompleteWithArtifacts): %w", gateErr)
+	}
+
+	return summary, nil
 }
 
 // executorLogOrNop returns the per-orchestrator logger if one

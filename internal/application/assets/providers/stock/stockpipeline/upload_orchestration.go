@@ -36,8 +36,10 @@ package stockpipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -175,3 +177,122 @@ var ErrProjectionResilience = errors.New("projection-resilience path: Qdrant pro
 // the existing ErrOrchestratorNilDeps pattern (compose-time
 // fail-closed, NOT a panic at runtime).
 var ErrResilienceNotWired = errors.New("orchestrator: resilience ports (builder, writer, projection) must be non-nil; NewOrchestratorWithResilience requires explicit port injection")
+
+// ErrNoProducedChunk surfaces the §12-1 P0 #1 (July 2026) orchestrator-
+// level fail-closed gate: every Orchestrator.Run success path MUST
+// carry at least one Required:true chunk entry in the manifest. The
+// gate fires when zero Artifact entries with (Required:true AND Kind ==
+// ArtifactKindVideo) are present in RunSummary.Manifest.Artifacts.
+//
+// This is the manifest-level analog of the post-publish gate-level
+// ErrStockNoChunksFinalized (in finalizer_gates.go — fired inside
+// BuildFinalizationRequest after Drive upload). The orchestrator-level
+// gate fires EARLIER: closing the verdict's P0 #1 false-success class
+// where Orchestrator.Run declared success without producing any real
+// chunk. Per godlike/07 typed-error contract, callers can errors.Is
+// from any seam.
+var ErrNoProducedChunk = errors.New("stock: orchestrator produced no Required chunk entry (P0 #1 fail-closed — manifest must declare ≥1 chunk before Run returns nil)")
+
+// ErrMetadataMissing surfaces the §12-1 P0 #1 (July 2026) orchestrator-
+// level fail-closed gate: every Orchestrator.Run success path MUST
+// carry exactly one Required:true metadata.json entry (canonical
+// stable ID = StockArtifactIdMetadata). The gate fires when zero
+// Artifact entries with (Required:true AND Kind == ArtifactKindMetadata)
+// are present in RunSummary.Manifest.Artifacts.
+//
+// This is the manifest-level analog of the post-publish gate-level
+// ErrStockMetadataNotPublished (in finalizer_gates.go). The
+// orchestrator-level gate fires EARLIER: closing the verdict's
+// silent-success class where the run declares success without
+// declaring the metadata.json envelope needed for downstream
+// reconstruction. Per godlike/07 typed-error contract, callers can
+// errors.Is from any seam.
+var ErrMetadataMissing = errors.New("stock: orchestrator manifest is missing the Required metadata.json entry (P0 #1 fail-closed — must declare metadata before Run returns nil)")
+
+// AssertRunSummaryArtifactsRequired is the §12-1 P0 #1 (July 2026)
+// orchestrator-level fail-closed gate. Pure function: easy TDD,
+// zero side-effects on RunSummary. It is the SINGLE owner (godlike/06
+// SSOT) of the "manifest declares ≥1 Required:true chunk AND the
+// Required:true metadata.json entry" fact at the orchestrator layer.
+//
+// Composition (priority-ordered, fail-fast):
+//
+//  1. nil RunSummary OR nil RunSummary.Manifest → ErrMetadataMissing
+//     (cannot assess chunk presence without a manifest).
+//  2. zero Required:true ArtifactKindMetadata entries → ErrMetadataMissing.
+//  3. zero Required:true ArtifactKindVideo entries → ErrNoProducedChunk.
+//
+// Pre-Commit-4-7 (the chunk-rendering ladder not shipped yet) every
+// stock run hits (2) — all 5 entries in buildStockManifest have
+// Required:false, so the gate fires ErrMetadataMissing on every run,
+// closing the P0 #1 false-success class. Post-Commit-4-7 the chunk
+// ladder flips entries to Required:true once their LocalPath is
+// hydrated, so the gate starts passing.
+//
+// Wired into Orchestrator.RunResilient BEFORE the
+// `return &RunSummary{...}, nil` line — wrapping the typed error via
+// fmt.Errorf("%w: orchestrator success gate", sentinel) so the caller
+// can errors.Is(sentinel) AND retain the human-readable prefix for
+// log scanners.
+//
+// godlike/06 SSOT: this gate is the typed-package entry-point of
+// "did the orchestrator produce canonical artifacts?" — paired with
+// the post-publish gate-level layers in finalizer_gates.go. The
+// orchestrator-level gate declares (Required:true) artefact presence;
+// the post-publish gates declare populate-and-validate completeness.
+// Failing the orchestrator-level gate short-circuits before any
+// publisher/upload/indexer work happens.
+// godlike/07 typed-error: ErrMetadataMissing and ErrNoProducedChunk
+// are exported errors.New sentinels, reachable via errors.Is from any
+// caller + test seam.
+//
+// Layering note (condition-3 delegation): the verdict lists 3
+// conditions for Orchestrator.Run success: (1) ≥1 Required chunk
+// finalized AND (2) metadata.json Required finalized AND (3)
+// CompleteWithArtifacts finalized. This gate enforces conditions
+// 1+2 at the orchestrator layer. Condition 3 is enforced at the
+// post-publish gate in finalizer_gates.go::BuildFinalizationRequest
+// (called by Service.HandleJob after the orchestrator returns),
+// where the orchestrator's pre-publication manifest is the input to
+// the spine-finalizer CompositionRequest. The orchestrator does
+// not call CompleteWithArtifacts itself (architecturally separate
+// concerns: orchestrator owns the prepare/build pipeline; HandleJob
+// owns the spine finalization), so condition 3 cannot be enforced
+// at the orchestrator level without restructuring the layer split.
+// The two gates together close the verdict's success-class fully.
+func AssertRunSummaryArtifactsRequired(summary *RunSummary) error {
+	if summary == nil || summary.Manifest == nil {
+		return fmt.Errorf("%w: RunSummary or RunSummary.Manifest nil", ErrMetadataMissing)
+	}
+	var hasMetadata, hasChunk bool
+	for _, a := range summary.Manifest.Artifacts {
+		if !a.Required {
+			continue
+		}
+		// Kind comparison note (typed-string bridge):
+		//   job.Artifact.Kind is typed `string`. The kind-typed
+		//   constants in this package come from two distinct
+		//   packages — job (untyped-string constants: ArtifactKindMetadata)
+		//   and finalization (typed-string constants of type
+		//   finalization.ArtifactKind: KindVideo). The
+		//   untyped-const case label auto-converts to string
+		//   on switch-tag match; the typed-const requires an
+		//   explicit `string(...)` conversion to align with the
+		//   switch tag's `string` type. The conversion is
+		//   compile-time (string-of-typed-string is zero-cost)
+		//   so the gate's runtime cost is unchanged.
+		if a.Kind == job.ArtifactKindMetadata {
+			hasMetadata = true
+		}
+		if a.Kind == string(finalization.KindVideo) {
+			hasChunk = true
+		}
+	}
+	if !hasMetadata {
+		return ErrMetadataMissing
+	}
+	if !hasChunk {
+		return ErrNoProducedChunk
+	}
+	return nil
+}
