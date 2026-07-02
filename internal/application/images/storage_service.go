@@ -21,7 +21,7 @@ type ImageStorageService struct {
 	repo          *assets.ImagesRepository
 	stockRepo     *assets.ClipsRepository
 	mediaStore    *drive.Store
-	driveReader    drive.Reader
+	driveReader   drive.Reader
 	cfg           *config.Config
 	imagesDir     string
 	tempDir       string
@@ -29,23 +29,14 @@ type ImageStorageService struct {
 	client        *http.Client
 	dispatcher    *outbox.Dispatcher
 	dedup         singleflight.Group
-	nvidiaSem     chan struct{}
 	log           *zap.Logger
 	gaServerURL   string
 	gaDownloadDir string
 	vidsProjectID string
 	meta          *MetadataService
+	destResolver  destinations.DestinationResolver
 
-	// destResolver (FASE 2D EXPAND, July 2026) maps a logical
-	// destinationKey (e.g. "ai-images/cinematic") to a concrete Google
-	// Drive folder ID. Wired in NewService via
-	// ImagesStorageDeps.DestResolver. NOT YET CALLED by the ingest
-	// path — the BACKFILL commit introduces dual-read verification,
-	// and CUTOVER switches the call site over.
-	destResolver destinations.DestinationResolver
-
-	// retrievalRegistry (Step 8) composes Wikipedia/SearXNG/DuckDuckGo/Drive
-	// providers in fallback order. nil = fetch via the legacy inline cascade
-	// (preserved for back-compat with existing tests that pre-date Step 8).
+	// retrievalRegistry composes Wikipedia/SearXNG/DuckDuckGo/Drive providers
+	// for finding existing images. It is separate from AI generation.
 	retrievalRegistry *retrieved.RetrievalProviderRegistry
 }
