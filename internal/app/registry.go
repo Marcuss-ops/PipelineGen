@@ -111,6 +111,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 
@@ -248,5 +249,87 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: register-capabilities: %w", err)
 	}
 
+	// Step 8 — P0 Commit 3 (July 2026) C3 runtime-graph validation.
+	// Populate the C3 MutableJobRegistry with the 4 canonical
+	// JobDefinitions + placeholder handler bindings, freeze, and run
+	// the §4.5 validator. If ANY check fails (creator-enabled without
+	// handler, RequireManifest=true without ResultCodec, empty codec
+	// SchemaVersion, missing RequiredCapabilities, etc.), the
+	// validator surfaces all findings via errors.Join and WireRegistry
+	// aborts the server boot — fail-closed posture.
+	//
+	// The placeholder handlers are deliberate: this commit (C3)
+	// introduces the registry + validator contracts only. C4
+	// (Dispatcher Enqueue through def.PayloadCodec) replaces the
+	// placeholders with real dispatch routing. Validation locks the
+	// SHAPE (HasHandler=true) so C4 can focus on the dispatch path
+	// without re-checking the registry.
+	if err := c3ValidateRuntimeGraph(); err != nil {
+		return nil, fmt.Errorf("wire registry: c3 startup validation failed: %w", err)
+	}
+
 	return wiring, nil
+}
+
+// ── Step 8 helper (P0 Commit 3, July 2026) ───────────────────────────
+
+// c3ValidateRuntimeGraph constructs the C3 MutableJobRegistry,
+// populates it with the 4 canonical JobDefinitions wired with
+// placeholder JobHandlerFunc bindings, freezes the registry, and
+// runs the §4.5 validator. Returns nil on a clean graph, or an
+// error wrapping ErrInvalidRuntimeGraph when ANY check fails.
+//
+// Why placeholders? C3 ships registry + validator contracts only.
+// The handlers' bodies are NOT yet routed through def.PayloadCodec —
+// that is the explicit scope of C4 (Commit 4). For C3's purposes,
+// HasHandler=true (post-BindHandler) is the only invariant the
+// validator checks; full payload/result dispatch lands in C4.
+//
+// The wire-up target is job.StartupValidationInput with Workflow =
+// {TypeScriptGenerate, TypeImagesGenerate, TypeDocumentGenerate,
+// TypeAssetsResolve} — the canonical 4-family execution graph.
+//
+// A future contributor adding a 5th canonical job family must:
+//  1. Append the literal to internal/domain/job/canonical_definitions.go.
+//  2. Append the type constant to internal/domain/job/job.go.
+//  3. Update workflowRefs below.
+//  4. Update the per-family round-trip test in registry_codec_completeness_test.go.
+//
+// The compile-time assertions in startup_validator_test.go lock the
+// canonical 4 literal references — adding a 5th and forgetting step
+// (3) surfaces as a test failure rather than a runtime mismatch.
+func c3ValidateRuntimeGraph() error {
+	mutableReg := jobpkg.NewMutableJobRegistry()
+	for _, def := range jobpkg.CanonicalJobDefinitions {
+		if err := mutableReg.RegisterDefinition(def); err != nil {
+			return fmt.Errorf("register %s: %w", def.Type, err)
+		}
+		// Placeholder JobHandlerFunc — replaced by C4 dispatch routing.
+		// Read by the C3 validator's HasHandler check only; not invoked
+		// at runtime until C4 wires def.PayloadCodec -> dispatcher.
+		placeholder := func(_ context.Context, _ *jobpkg.Job, _ any) (any, error) {
+			return nil, nil
+		}
+		if err := mutableReg.BindHandler(def.Type, placeholder); err != nil {
+			return fmt.Errorf("bind handler %s: %w", def.Type, err)
+		}
+	}
+	compiled, err := mutableReg.Freeze()
+	if err != nil {
+		return fmt.Errorf("freeze: %w", err)
+	}
+	workflowRefs := []string{
+		jobpkg.TypeScriptGenerate,
+		jobpkg.TypeImagesGenerate,
+		jobpkg.TypeDocumentGenerate,
+		jobpkg.TypeAssetsResolve,
+	}
+	validator := jobpkg.DefaultStartupValidator{}
+	if err := validator.ValidateRuntimeGraph(jobpkg.StartupValidationInput{
+		Registry: compiled,
+		Workflow: workflowRefs,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
