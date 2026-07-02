@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 const (
@@ -91,14 +92,14 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	}
 
 	// Read source_version from the DB for the CAS fence in setIndexedAt.
+	// A failed read is fatal: continuing with sourceVersion="" would
+	// silently degrade the CAS fence (BLOCKER #2) to a no-op.
 	var sourceVersion string
 	if svErr := s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(source_version, '') FROM media_assets WHERE id = ?`,
 		clipID,
 	).Scan(&sourceVersion); svErr != nil {
-		s.log.Warn("failed to read source_version, continuing without CAS fence",
-			zap.String("clip_id", clipID), zap.Error(svErr))
-		sourceVersion = ""
+		return fmt.Errorf("failed to read source_version for CAS fence on %s: %w", clipID, retry.WrapTransient(svErr))
 	}
 
 	if s.cfg.ServerURL != "" {
