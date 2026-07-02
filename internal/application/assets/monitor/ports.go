@@ -397,6 +397,13 @@ type Analysis struct {
 // without string-matching: errors.Is(err, monitor.ErrLLMResponseInvalid).
 var ErrLLMResponseInvalid = errors.New("monitor: malformed LLM JSON response")
 
+// ErrAnalyzeFullNotImplemented is returned by AnalyzeFull when the
+// concrete analyzer has not yet been upgraded to the one-shot JSON
+// AnalyzeFull flow (Commit G follow-up, June 2026). The orchestrator
+// (analyzeVideo) detects this sentinel and falls back to the legacy
+// Score + Classify + FindSegments 3-call path.
+var ErrAnalyzeFullNotImplemented = errors.New("monitor: AnalyzeFull not implemented on concrete adapter")
+
 // AnalyzeOptions is the input shape for VideoAnalyzer.AnalyzeFull.
 // Replaces the 3 positional keyword/fallback/maxSegments/segmentPrompt
 // argument lists spread across the legacy Score/Classify/FindSegments

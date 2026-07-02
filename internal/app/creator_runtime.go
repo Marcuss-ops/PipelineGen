@@ -242,7 +242,11 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 
 	// Build dispatcher + registry ───────────────────
 	dispatcher := appjobs.NewDispatcher()
-	if err := genJobHandler.RegisterJobs(dispatcher); err != nil {
+	// Inline adapter: generator.RegisterJobs expects ports.Broker
+	// (requires RegisterHandler(jobType, handler any) error); the
+	// canonical dispatcher exposes Register(jobType, HandlerFunc).
+	// The adapter narrows the gap without modifying either contract.
+	if err := genJobHandler.RegisterJobs(brokerAdapter{disp: dispatcher}); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("creator: register script.generate handler: %w", err)
 	}
@@ -262,15 +266,24 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	dispatcher.Freeze()
 
 	reg := worker.NewRegistry()
+	// Adapter: worker.Handler is a distinct named func type
+	// (worker.Tools via worker pkg, appjobs.JobTools via appjobs pkg) so
+	// a structural cast is not allowed. Wrap the dispatcher's HandlerFunc
+	// into the worker's Handler signature. Tools are forwarded as nil
+	// at this composition root — production runtime Bridges will tear
+	// JobTools into worker.Tools in a Future Blocco.
 	for jobType, handler := range dispatcher.AllHandlers() {
-		if err := reg.Register(jobType, handler); err != nil {
+		adapted := func(ctx context.Context, j *domainjob.Job, _ *worker.Tools) (map[string]any, error) {
+			return handler(ctx, j, nil)
+		}
+		if err := reg.Register(jobType, adapted); err != nil {
 			cleanup()
 			return nil, nil, fmt.Errorf("creator: register handler %q in worker registry: %w", jobType, err)
 		}
 	}
 	reg.Freeze()
 
-	caps := appjobs.WorkerCapabilities{JobTypes: reg.Capabilities()}
+	caps := appjobs.WorkerCapabilities{JobTypes: reg.JobTypes()}
 
 	log.Info("creator: worker registry built",
 		zap.Int("handlers", reg.Len()),
@@ -295,6 +308,31 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		Caps:         caps,
 		Log:          log,
 	}, cleanup, nil
+}
+
+// brokerAdapter is a thin inline adapter that bridges the
+// canonical `appjobs.Dispatcher` (which exposes Register(jobType,
+// HandlerFunc) error) to the consumer-side `scriptports.Broker`
+// interface (RegisterHandler(jobType, handler any) error) used by
+// `genJobHandler.RegisterJobs`. Kept here at the composition root
+// so the producer-side and consumer-side contracts stay
+// independent — neither package needs to import the other for the
+// adapter to exist.
+type brokerAdapter struct {
+	disp *appjobs.Dispatcher
+}
+
+// RegisterHandler satisfies scriptports.Broker. The `any` handler
+// is type-asserted to the dispatcher's `HandlerFunc` named
+// signature; a mismatched payload is reported as a typed error so
+// registration fails loudly rather than silently dropping the
+// handler.
+func (b brokerAdapter) RegisterHandler(jobType string, handler any) error {
+	h, ok := handler.(func(context.Context, *domainjob.Job, *appjobs.JobTools) (map[string]any, error))
+	if !ok {
+		return fmt.Errorf("brokerAdapter: handler type mismatch for jobType=%q (got %T)", jobType, handler)
+	}
+	return b.disp.Register(jobType, h)
 }
 
 // Compile-time DB orphan pin (P0 Commit 8, July 2026).
