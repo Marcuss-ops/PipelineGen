@@ -467,9 +467,7 @@ type PromoRequest = promoTypes.Request
 // Deprecated: use translation.DefaultPromoLanguages directly.
 var DefaultPromoLanguages = translation.DefaultPromoLanguages
 
-// LanguageTarget pairs a BCP-47 language code with a human-readable name.
-// Deprecated: use translation.LanguageTarget directly.
-type LanguageTarget = translation.LanguageTarget
+// ALIAS REMOVED Fase 9 step 3: see architecture/deprecations.yaml#TRANSLATION-UNIFY (migration_phase: BACKFILL / status: contract-half).
 
 // PromoResult holds the result of a single promo voiceover generation.
 // Deprecated: use promo.Result directly.

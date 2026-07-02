@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -324,14 +325,43 @@ func SearchArtlistClips(ctx context.Context, svc ClipServices, title string, phr
 // translation output, this function now returns ("", err) — the caller
 // decides what to do (e.g. surface via ScriptArtlistClipSuggestion.TranslationError
 // and skip the search).
+//
+// Fase 9 step 2 (July 2026, Spina Dorsale): migrated from the legacy
+// 4-arg `svc.Translator.TranslateTextWithModel` (TranslatorService
+// straggler) to the canonical `svc.TranslationPort.Translate(ctx, cmd)`
+// surface. The legacy `Svc.Translator` field stays populated for
+// the godlike/07 EXPAND window per the umbrella deprecation record
+// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION.
 func artlistSearchPhrase(ctx context.Context, svc ClipServices, phrase string) (string, error) {
-	if svc.Translator == nil {
+	if svc.TranslationPort == nil {
 		return "", fmt.Errorf("artlist translator not configured")
 	}
 	if strings.TrimSpace(phrase) == "" {
 		return "", fmt.Errorf("artlist phrase is empty")
 	}
-	translated, err := svc.Translator.TranslateTextWithModel(ctx, phrase, "english", svc.MetadataModel)
+
+	// Resolve the effective model via ModelPolicy: cmd.ModelPolicy.Model
+	// wins when set (server default-token "ollama"+model string from
+	// svc.MetadataModel). cmd.SourceLang left empty — the underlying
+	// gen.TranslateTextWithModel consumes only TargetLang; leaving
+	// SourceLang empty signals "inference" to downstream auditors
+	// without affecting wire behavior of the legacy gen method.
+	var modelPolicy *translation.ModelPolicy
+	if svc.MetadataModel != "" {
+		modelPolicy = &translation.ModelPolicy{
+			Provider: "ollama",
+			Model:    svc.MetadataModel,
+		}
+	}
+
+	cmd := translation.TranslationCommand{
+		SourceLang:  "",
+		TargetLang:  "english",
+		Text:        phrase,
+		ModelPolicy: modelPolicy,
+	}
+
+	result, err := svc.TranslationPort.Translate(ctx, cmd)
 	if err != nil {
 		if svc.Logger != nil {
 			svc.Logger.Debug("artlist phrase translation failed",
@@ -341,6 +371,7 @@ func artlistSearchPhrase(ctx context.Context, svc ClipServices, phrase string) (
 		}
 		return "", fmt.Errorf("artlist phrase translation: %w", err)
 	}
+	translated := result.TranslatedText
 	if strings.TrimSpace(translated) == "" {
 		if svc.Logger != nil {
 			svc.Logger.Debug("artlist phrase translation returned empty",

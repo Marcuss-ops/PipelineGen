@@ -19,6 +19,7 @@ import (
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
@@ -479,6 +480,28 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
+	// Fase 9 step 2 (Spina Dorsale, July 2026): construct the
+	// canonical OllamaTranslator — the single application-layer
+	// concrete that satisfies translation.TranslationPort + the
+	// three legacy port surfaces (LegacyTextTranslationService +
+	// LegacyTranslatorService + LegacyMetadataTranslator). The
+	// composition root constructs ONE OllamaTranslator per process
+	// (godlike/06 SSOT for the translation logic); every consumer
+	// field on ClipServices (Translation, Translator,
+	// TranslationPort + any future metadata-translator dependency)
+	// routes through this instance. Wrap the scriptGen (a
+	// *ollama.Generator) — the canonical `TranslationCache` is
+	// already wired into scriptGen by the SetTranslationCache call
+	// above, so the OllamaTranslator's underlying gen.TranslateTextWithModel
+	// call respects the same SQLite-backed cache lookup as the
+	// legacy direct-call path. Per godlike/06 "one owner per fact",
+	// the *ollama.Generator translation logic is owned by ONE
+	// canonical Pyt-path (translation.ollama_translator.go) reachable
+	// via all 4 ports. Tracking entry:
+	// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION
+	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
+	log.Info("Fase 9 step 2: OllamaTranslator wired (translation.TranslationPort + 3 legacy port surfaces)")
+
 	// Commit H Phase 2 (June 2026): gemmamemory gemmamemory gate service + the
 	// MemoryCacheAdapter wrapper are gone. The canonical engine no
 	// longer consumes the gemmamemory cross-package type — the in-package
@@ -491,10 +514,11 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	engine := usecase.NewEngine(scriptGen, nil, log)
 
 	return &AIBundle{
-		OllamaClient: ollamaClient,
-		ScriptGen:    scriptGen,
-		MemoryRepo:   adapters.NewRepository(dbs.main.DB),
-		ScriptEngine: engine,
+		OllamaClient:     ollamaClient,
+		ScriptGen:        scriptGen,
+		OllamaTranslator: ollamaTranslator,
+		MemoryRepo:       adapters.NewRepository(dbs.main.DB),
+		ScriptEngine:     engine,
 	}, nil
 }
 

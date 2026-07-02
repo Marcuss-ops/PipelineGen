@@ -34,6 +34,7 @@ import (
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
@@ -273,11 +274,25 @@ type QdrantDeps struct {
 //
 // StyleRegistry lives on DriveBundle (PR4.A). ScriptFlowHandler lives
 // in registry.go::WireRegistry.
+//
+// Fase 9 step 2 (July 2026, Spina Dorsale): OllamaTranslator is the
+// canonical application-layer port-surface concrete (translation.TranslationPort +
+// 3 legacy ports). Composition root instantiates ONE *OllamaTranslator
+// per process and routes every consumer (svc.Translation, svc.Translator,
+// svc.TranslationPort, and any future metadata-translator dependency)
+// through this instance. ScriptGen stays as the direct concrete consumed
+// by ScriptEngine (scriptcore.NewEngine requires *ollama.Generator at
+// compile time); OllamaTranslator wraps the same *ollama.Generator so
+// the two fields share the canonical translation logic without
+// duplicating it. Per godlike/06 "one owner per fact", the
+// *ollama.Generator translation logic is owned by ONE canonical
+// Pyt-path (translation.ollama_translator.go) reachable via all 4 ports.
 type AIBundle struct {
-	OllamaClient *client.Client
-	ScriptGen    *ollama.Generator
-	MemoryRepo   *adapters.Repository
-	ScriptEngine *scriptcore.Engine
+	OllamaClient     *client.Client
+	ScriptGen        *ollama.Generator
+	OllamaTranslator *translation.OllamaTranslator
+	MemoryRepo       *adapters.Repository
+	ScriptEngine     *scriptcore.Engine
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.
