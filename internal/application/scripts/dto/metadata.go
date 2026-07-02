@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -27,13 +28,18 @@ import (
 // satisfies this interface implicitly so existing production wiring
 // compiles unchanged, while tests can inject a deterministic stub.
 //
-// The two methods are the only ones dto.GenerateVideoMetadata calls on
-// the generator — keep this list lean so adapters don't have to stub
-// unrelated methods.
-type MetadataTranslator interface {
-	GenerateVideoMetadataWithModel(ctx context.Context, title, model string) (string, []string, error)
-	TranslateTextWithModel(ctx context.Context, text, lang, model string) (string, error)
-}
+// Fase 9 step 2 (Spina Dorsale, July 2026): MetadataTranslator is now a
+// Go type alias for the canonical godlike/06 SSOT declaration in
+// `internal/application/translation/legacy.go::LegacyMetadataTranslator`.
+// Method set is byte-stable (Go 1.9+ type aliases are structurally
+// transparent), so the existing compile-time assertions at
+// internal/application/scripts/dto/metadata_test.go (var _ MetadataTranslator
+// = (*mockTranslatorFailingTranslate)(nil) etc.) compile unchanged
+// because the alias and the canonical declaration share identical
+// method sets. The legacy in-package interface declaration is removed;
+// the alias is the EXPAND-window canonical surface per
+// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION.
+type MetadataTranslator = translation.LegacyMetadataTranslator
 
 // BuildMetadataLanguages normalizes the requested metadata languages.
 //

@@ -107,18 +107,28 @@ type TranslationPort interface {
 // application-layer boundary, applying defaults from cmd.ModelHints
 // + app-level ModelPolicy (the struct) so callers don't need to know
 // provider internals.
+//
+// Fase 9 step 3 (July 2026, Spina Dorsale): json tags added on every
+// field for forward-compat wire-shape contracts; users of the (in-process)
+// port surface are unaffected (Go struct tags do not change call sites),
+// but external test suites that JSON-marshal/round-trip the struct will
+// now see the documented wire names with omitempty edges. The
+// `model_policy,omitempty` tag is the canonical back-compat gate for
+// any future gateway-edge struct that mirrors TranslationCommand onto
+// the API surface (godlike/07 no-fake-availability: a non-nil but
+// zero-value ModelPolicy must NOT be shipped over the wire).
 type TranslationCommand struct {
 	// SourceLang is the BCP-47 language tag of the source text.
 	// Empty means auto-detect (provider-specific behaviour).
-	SourceLang string
+	SourceLang string `json:"source_lang,omitempty"`
 
 	// TargetLang is the BCP-47 language tag to translate into.
 	// Required. Empty is a contract violation — implementations
 	// MAY return an error.
-	TargetLang string
+	TargetLang string `json:"target_lang,omitempty"`
 
 	// Text is the source text to translate. Required.
-	Text string
+	Text string `json:"text,omitempty"`
 
 	// ModelHints is an optional caller-intent map.
 	//
@@ -138,7 +148,7 @@ type TranslationCommand struct {
 	// `HintPreserveFormatting = "preserve_formatting"` consts (and the
 	// other 4) so providers and scripts can't drift on misspelled keys.
 	// Out of scope for Fase 9 step 1 (definitions + contract only).
-	ModelHints map[string]string
+	ModelHints map[string]string `json:"model_hints,omitempty"`
 
 	// ModelPolicy is the optional provider+model+generation control.
 	// nil = server default (pick by content length + TargetLang
@@ -149,7 +159,14 @@ type TranslationCommand struct {
 	// exact model, generation params) that callers USUALLY do not need
 	// to set. Most callers leave ModelPolicy == nil and trust the
 	// server default — the enum in domain is the caller-intent surface.
-	ModelPolicy *ModelPolicy
+	//
+	// json:"model_policy,omitempty" is the canonical back-compat gate:
+	// a nil-ModelPolicy (the common case) is omitted from any wire
+	// serialisation; a non-nil-but-zero-value ModelPolicy also serialises
+	// as missing (omitempty), so callers MUST serialise explicitly with
+	// `json.Marshal` + a non-zero struct to surface their model choice
+	// over the wire.
+	ModelPolicy *ModelPolicy `json:"model_policy,omitempty"`
 }
 
 // ── TranslationResult ─────────────────────────────────────────────────────
@@ -210,33 +227,33 @@ type TranslationResult struct {
 	// (callers surface it via TranslationStatus or a separate
 	// failure marker — see the scripts package's
 	// ScriptArtlistClipSuggestion.TranslationError).
-	TranslatedText string
+	TranslatedText string `json:"translated_text,omitempty"`
 
 	// Confidence is a 0..1 provider self-reported confidence.
 	// 0 = unknown (provider did not return a score); 1 = high confidence.
 	// Provider-specific; consumers should treat it as a soft signal.
-	Confidence float64
+	Confidence float64 `json:"confidence,omitempty"`
 
 	// UsedModel is the resolved effective model name
 	// (e.g. "llama3:8b", "deepl-pro"). Empty is allowed if the
 	// implementation cannot determine it post-hoc.
-	UsedModel string
+	UsedModel string `json:"used_model,omitempty"`
 
 	// UsedProvider is the resolved provider identifier
 	// (e.g. "ollama", "deepl", "google-translate").
-	UsedProvider string
+	UsedProvider string `json:"used_provider,omitempty"`
 
 	// SourceLang is the detected or provided source language tag.
 	// Echoes cmd.SourceLang when caller supplied one.
-	SourceLang string
+	SourceLang string `json:"source_lang,omitempty"`
 
 	// TargetLang is the target language tag. Echoes cmd.TargetLang.
-	TargetLang string
+	TargetLang string `json:"target_lang,omitempty"`
 
 	// CacheStatus is "hit" | "miss" | "bypass" — opaque to callers
 	// but useful for observability metrics + cache auditing. Empty
 	// when the implementation cannot determine it.
-	CacheStatus string
+	CacheStatus string `json:"cache_status,omitempty"`
 }
 
 // ── ModelPolicy ───────────────────────────────────────────────────────────
@@ -266,21 +283,21 @@ type ModelPolicy struct {
 	// Today only "ollama" is wired; future providers: "deepl",
 	// "google-translate", "gcloud-translate".
 	// Empty when unspecified (server picks).
-	Provider string
+	Provider string `json:"provider,omitempty"`
 
 	// Model is the provider-specific model name.
 	// Examples: "llama3:8b", "gemma3:4b", "deepl-pro".
 	// Empty when unspecified (server picks within chosen Provider).
-	Model string
+	Model string `json:"model,omitempty"`
 
 	// Temperature is the generation temperature override; 0 means
 	// "use provider default" (NOT "deterministic"). For deterministic
 	// behaviour, callers send cmd.ModelHints["deterministic"] instead.
-	Temperature float64
+	Temperature float64 `json:"temperature,omitempty"`
 
 	// MaxTokens is the hard cap on output tokens; 0 means "use
 	// provider default". Implementations clamp to provider limits.
-	MaxTokens int
+	MaxTokens int `json:"max_tokens,omitempty"`
 }
 
 // ── unimplemented stub (forward-compatibility sentinel) ───────────────────

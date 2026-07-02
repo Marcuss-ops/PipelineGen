@@ -100,11 +100,7 @@ type Service struct {
 	postCommitVerifier VoiceoverPostCommitVerifier
 }
 
-// TranslatorFunc translates text to a target language. Used by GeneratePromo.
-// Deprecated: use translation.TranslatorFunc directly.
-// Removal plan: 15 consumer sites verified (2026-06-30). Migrate callers
-// in Wave 23, then remove the alias. Tracked in architecture/deprecations.yaml.
-type TranslatorFunc = translation.TranslatorFunc
+// ALIAS REMOVED Fase 9 step 3: see architecture/deprecations.yaml#TRANSLATION-UNIFY (migration_phase: BACKFILL / status: contract-half)
 
 // VoiceoverDeps groups constructor dependencies by real capability.
 // Replaces the 11-param flat constructor with 4 grouped bundles.
@@ -145,7 +141,15 @@ type VoiceoverIntegrationDeps struct {
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
 	OutboxEnqueuer    TxOutboxEnqueuer
-	Translator        TranslatorFunc
+	// Translator is the per-promo-go translation callback; the
+	// composition root wires it from scriptGen.TranslateText
+	// (see build_bundles_voiceover.go). Fase 9 step 3 (July 2026)
+	// declared the canonical type as `translation.TranslatorFunc`
+	// directly (the prior voiceover-local typewriter alias
+	// `type TranslatorFunc = translation.TranslatorFunc` has been
+	// removed in step 3; tracking entry
+	// architecture/deprecations.yaml#TRANSLATION-UNIFY).
+	Translator translation.TranslatorFunc
 	// Finalizer is the unified finalization port (P0.4 Fase 3a, July 2026).
 	// Nil-safe: finalizeStage guards nil and surfaces a typed failure so
 	// a partially-wired composition root fails at the per-language boundary

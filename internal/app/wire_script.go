@@ -140,12 +140,28 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		metaModel = mm
 	}
 	artlistFolder := cfg.Drive.ArtlistFolder()
+	// Fase 9 step 2 (Spina Dorsale, July 2026): populate ClipServices
+	// with the canonical OllamaTranslator instance from root.AI. The
+	// single *OllamaTranslator concrete satisfies (via Go implicit
+	// interface satisfaction):
+	//   - translation.TranslationPort  (svc.TranslationPort)
+	//   - translation.LegacyTextTranslationService (svc.Translation)
+	//   - translation.LegacyTranslatorService (svc.Translator)
+	// per the compile-time assertion `_ TranslationPort = (*OllamaTranslator)(nil)`
+	// at internal/application/translation/ollama_translator.go. The
+	// legacy fields (Translation + Translator) stay populated for the
+	// godlike/07 EXPAND window per architecture/deprecations.yaml
+	// #TRANSLATION-LEGACY-SERVICES-MIGRATION; CUTOVER phase will
+	// retire them once the last non-TranslatedPort caller migrates.
+	ollamaTranslator := root.AI.OllamaTranslator
 	clipServices := usecase.ClipServices{
-		Logger:        log,
-		DriveSvc:      root.Drive.Reader,
-		Translator:    gen,
-		ArtlistFolder: artlistFolder,
-		MetadataModel: metaModel,
+		Logger:         log,
+		DriveSvc:       root.Drive.Reader,
+		Translator:     ollamaTranslator, // satisfies LegacyTranslatorService (4-arg)
+		Translation:    ollamaTranslator, // satisfies LegacyTextTranslationService (3-arg)
+		TranslationPort: ollamaTranslator, // satisfies canonical TranslationPort (DTO-in/DTO-out)
+		ArtlistFolder:  artlistFolder,
+		MetadataModel:  metaModel,
 	}
 
 	// ── Drive folder client adapter (impl in wire_script_adapters.go) ─
