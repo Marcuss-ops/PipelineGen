@@ -33,7 +33,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	gdrive "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -332,10 +331,11 @@ func buildImagesService(
 	ingestSvc *ingest.Service,
 	dispatcher *outbox.Dispatcher,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
-	var driveSvc *gdrive.Service
-	if driveUploader != nil {
-		driveSvc = driveUploader.Service
-	}
+	// DRIVE-005 FASE 4 (July 2026): ImageStorageService.DriveReader now
+	// takes the canonical drive.Reader port (Pattern 0). The legacy
+	// *gdrive.Service extraction from driveUploader.Service is retired
+	// — *drive.Uploader satisfies drive.Reader structurally (see
+	// internal/infrastructure/drive/ports.go compile-time assert).
 
 	// FASE 2D EXPAND (July 2026): construct the YamlResolver and wire
 	// it into ImageStorageService.DestResolver. The resolver is NOT
@@ -360,7 +360,7 @@ func buildImagesService(
 		Storage: imgservice.ImagesStorageDeps{
 			ImageRepo:    imageRepo,
 			ClipsRepo:    clipsRepo,
-			DriveSvc:     driveSvc,
+			DriveReader:  driveUploader,
 			MediaStore:   mediaStore,
 			DestResolver: destResolver,
 		},

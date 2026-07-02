@@ -3,8 +3,8 @@ package images
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 )
 
 // DiagnosticsService exposes health checks and capability reporting
@@ -12,7 +12,7 @@ import (
 // references to other sub-services.
 type DiagnosticsService struct {
 	repo         *assets.ImagesRepository
-	driveSvc     *driveapi.Service
+	driveReader   drive.Reader
 	imageGen     ImageGenerator
 	ingestSvc    *ingest.Service
 	log          *zap.Logger
@@ -25,7 +25,7 @@ func (d *DiagnosticsService) Diagnostics() DiagnosticsReport {
 		OK:               d.repo != nil,
 		Services:         []string{"repo", "drive", "nvidia", "remote_image_gen", "chrome_playwright"},
 		RepoConfigured:   d.repo != nil,
-		DriveConfigured:  d.driveSvc != nil,
+		DriveConfigured:  d.driveReader != nil,
 		NvidiaConfigured: d.CapabilityResolution(CapImageGenNvidia) == StatusAvailable,
 		IngestConfigured: d.ingestSvc != nil,
 		ImageGenWired:    d.imageGen != nil,
