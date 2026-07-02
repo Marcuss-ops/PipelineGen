@@ -97,6 +97,7 @@ func newPhase4TestService(t *testing.T) (*Service, *drive.SQLiteDB, func()) {
 		":memory:",
 		zap.NewNop(),
 	)
+	svc.vectorStore = &mockVectorStoreIndexer{} // BLOCKER #3: UpsertVectorStore now fail-closed on nil
 	cleanup := func() { db.Close() }
 	return svc, &drive.SQLiteDB{DB: db}, cleanup
 }
@@ -133,6 +134,22 @@ func readAudioEmbedding(t *testing.T, db *drive.SQLiteDB, clipID string) []float
 	return out
 }
 
+// preSeedFileHash computes the deterministic content hash for clipID
+// and updates the row's file_hash so the CAS fence in setIndexedAt
+// (BLOCKER #2) passes. Without this, a test row with file_hash=''
+// would trigger ErrIndexSuperseded on every IndexClip.
+func preSeedFileHash(t *testing.T, svc *Service, clipID string) {
+	t.Helper()
+	ch, _, err := svc.computeContentHash(context.Background(), clipID)
+	require.NoError(t, err)
+	if ch == "" {
+		return
+	}
+	_, err = svc.db.ExecContext(context.Background(),
+		`UPDATE media_assets SET file_hash = ? WHERE id = ?`, ch, clipID)
+	require.NoError(t, err)
+}
+
 // TestIndexClip_PopulatesAudioChannel — happy path. Sidecar returns
 // HTTP 200 with a 512d CLAP vector. After IndexClip returns, the
 // audio_embedding column is populated with the JSON-encoded vector
@@ -147,6 +164,7 @@ INSERT INTO media_assets (id, name, source, media_type, local_path, search_text,
 VALUES (?, 'Test Audio Clip', 'youtube', 'video', '/data/audio_happy.mp4', 'ambient rain with distant thunder', '{}')
 `, clipID)
 	require.NoError(t, err)
+	preSeedFileHash(t, svc, clipID) // BLOCKER #2: CAS fence needs matching file_hash
 
 	expectedVec := makeCLAPVector()
 	var audioCalled int32
@@ -215,6 +233,7 @@ INSERT INTO media_assets (id, name, source, media_type, local_path, search_text,
 VALUES (?, 'Test Audio 501', 'youtube', 'video', '/data/audio_501.mp4', 'ambient music with string section', '{}')
 `, clipID)
 	require.NoError(t, err)
+	preSeedFileHash(t, svc, clipID)
 
 	var audioCalled int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -261,6 +280,7 @@ INSERT INTO media_assets (id, name, source, media_type, local_path, search_text,
 VALUES (?, 'Test Audio 410', 'youtube', 'video', '/data/audio_410.mp4', 'dramatic music with brass section', '{}')
 `, clipID)
 	require.NoError(t, err)
+	preSeedFileHash(t, svc, clipID)
 
 	var audioCalled int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +322,7 @@ INSERT INTO media_assets (id, name, source, media_type, local_path, search_text,
 VALUES (?, 'Test Audio NoPath', 'youtube', 'video', '', 'placeholder search text', '{}')
 `, clipID)
 	require.NoError(t, err)
+	preSeedFileHash(t, svc, clipID)
 
 	var audioCalled int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

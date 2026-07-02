@@ -3,7 +3,6 @@ package clipindexer
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"go.uber.org/zap"
@@ -49,57 +48,4 @@ func (s *Service) shouldSkipByName(ctx context.Context, clipID string) (bool, st
 		return true, name
 	}
 	return false, name
-}
-
-// filterSkippableClipIDs removes any ID whose media_assets.name matches a
-// metadata-only pattern, so bulk indexing paths do not waste an embedding
-// request on them. Errors fall through to the original slice (safe default).
-func (s *Service) filterSkippableClipIDs(ctx context.Context, clipIDs []string) []string {
-	if len(clipIDs) == 0 {
-		return clipIDs
-	}
-	placeholders := make([]string, len(clipIDs))
-	args := make([]any, len(clipIDs))
-	for i, id := range clipIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	query := fmt.Sprintf(
-		// Mirror isSkippableAssetName() exactly (case-insensitive on both branches)
-		// so a row like `Metadata.JSON` is caught here just as it is by the
-		// single-row shouldSkipByName() path.
-		"SELECT id FROM media_assets WHERE id IN (%s) AND (LOWER(name) = 'metadata.json' OR LOWER(name) LIKE '%%.json')",
-		strings.Join(placeholders, ","),
-	)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		s.log.Warn("could not pre-filter skippable clip IDs, proceeding with original batch",
-			zap.Int("count", len(clipIDs)), zap.Error(err))
-		return clipIDs
-	}
-	defer rows.Close()
-
-	skippable := make(map[string]struct{}, len(clipIDs))
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		skippable[id] = struct{}{}
-	}
-
-	if len(skippable) == 0 {
-		return clipIDs
-	}
-	filtered := make([]string, 0, len(clipIDs)-len(skippable))
-	for _, id := range clipIDs {
-		if _, drop := skippable[id]; !drop {
-			filtered = append(filtered, id)
-		}
-	}
-	s.log.Info("filtered skippable JSON-metadata ids from batch",
-		zap.Int("total", len(clipIDs)),
-		zap.Int("skipped", len(skippable)),
-		zap.Int("kept", len(filtered)))
-	return filtered
 }
