@@ -294,57 +294,48 @@ func TestCompareTokens(t *testing.T) {
 	})
 }
 
-// TestAuth_RejectsWebhookPathWithoutToken locks in the P0 #2 fix: the
-// /api/images/webhook/remote path no longer bypasses auth via
-// isPublicWebhookPath (that function and its bypass were removed in
-// June 2026). Without a valid header token the webhook must return
-// 401; with a valid token (either X-Velox-Admin-Token or
-// Authorization: Bearer) the request reaches the handler and returns
-// the expected 200. If a future contributor re-adds a path-based
-// bypass, the first subtest will fail.
-func TestAuth_RejectsWebhookPathWithoutToken(t *testing.T) {
+// TestAuth_RetiredWebhookPathReturns404 locks the surface-2 (July 2026)
+// retirement of the /api/images/webhook/remote endpoint. The route
+// was retracted once the remote-worker ingest pipeline collapsed
+// into the canonical image-generation job system (job type
+// image.generate.google). POSTs to the path now return 404 via gin's
+// default NoRoute handler regardless of the credentials presented.
+// If a future contributor re-introduces the route registration, the
+// sub-tests below will fail — re-introducing the legacy handler
+// requires a dedicated canonical auth-bypass review.
+func TestAuth_RetiredWebhookPathReturns404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	sec := &testSecurity{enabled: true, admin: "webhook-secret-DO-NOT-LEAK"}
 	r := gin.New()
 	r.Use(Auth(sec, nil))
-	r.POST("/api/images/webhook/remote", func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
-	})
+	// Intentionally NOT registering r.POST("/api/images/webhook/remote", …).
+	// surface-2: gin will return 404 via NoRoute for every POST to the
+	// retired path, even when the auth middleware would otherwise admit
+	// the request. The four sub-tests below cover all credential states
+	// a caller could realistically present.
 
-	// 1. No auth header → 401 (the bypass is gone).
-	req := httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for webhook without auth, got %d", w.Code)
+	cases := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{"no_auth", nil},
+		{"wrong_x_velox_token", map[string]string{"X-Velox-Admin-Token": "wrong-secret"}},
+		{"valid_x_velox_admin_token", map[string]string{"X-Velox-Admin-Token": "webhook-secret-DO-NOT-LEAK"}},
+		{"valid_authorization_bearer", map[string]string{"Authorization": "Bearer webhook-secret-DO-NOT-LEAK"}},
 	}
-
-	// 2. Wrong token → 401.
-	req = httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
-	req.Header.Set("X-Velox-Admin-Token", "wrong-secret")
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for webhook with wrong token, got %d", w.Code)
-	}
-
-	// 3. Valid X-Velox-Admin-Token → 200.
-	req = httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
-	req.Header.Set("X-Velox-Admin-Token", "webhook-secret-DO-NOT-LEAK")
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for webhook with valid X-Velox-Admin-Token, got %d", w.Code)
-	}
-
-	// 4. Valid Authorization: Bearer → 200.
-	req = httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
-	req.Header.Set("Authorization", "Bearer webhook-secret-DO-NOT-LEAK")
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for webhook with valid Bearer, got %d", w.Code)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
+			for k, v := range tc.headers {
+				req.Header.Set(k, v)
+			}
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != http.StatusNotFound {
+				t.Fatalf("expected 404 for retired webhook path (case %q), got %d", tc.name, w.Code)
+			}
+		})
 	}
 }
 

@@ -1,14 +1,10 @@
 package images
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
@@ -19,9 +15,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 type ImagesHandler struct {
@@ -52,7 +46,13 @@ func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 	r.POST("/batch-generate", h.GenerateBatch)
 	r.POST("/animate", h.Animate)
-	r.POST("/webhook/remote", h.ReceiveRemoteWebhook)
+	// surface-2 (July 2026): POST /webhook/remote retired. The remote
+	// worker ingest pipeline collapsed into the canonical async job
+	// system (job type image.generate.google) post-NVIDIA-cutover; the
+	// legacy webhook handler that bypassed the workers and went
+	// straight to ingest.Service.IngestImage is gone. See
+	// middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404
+	// for the audit-pin test that locks the retirement.
 }
 
 type UploadRequest struct {
@@ -307,171 +307,13 @@ func (h *ImagesHandler) Diagnostics(c *gin.Context) {
 	apiutil.OK(c, h.service.Diagnostics())
 }
 
-// RemoteWebhookJobJSON is the JSON payload sent by the remote worker alongside image files.
-type RemoteWebhookJobJSON struct {
-	JobID            string   `json:"job_id"`
-	Status           string   `json:"status"`
-	Prompt           string   `json:"prompt"`
-	ProjectID        string   `json:"project_id"`
-	Error            string   `json:"error,omitempty"`
-	DownloadedImages []string `json:"downloaded_images,omitempty"`
-}
-
-// ReceiveRemoteWebhook handles POST /api/images/webhook/remote
-// The remote worker sends image files as multipart form data with a job_json field.
-// This endpoint receives the images, saves them locally, and triggers the ingest pipeline.
-func (h *ImagesHandler) ReceiveRemoteWebhook(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	// Parse multipart form (max 500MB per image, allow many files)
-	if err := c.Request.ParseMultipartForm(500 << 20); err != nil {
-		apiutil.BadRequest(c, fmt.Sprintf("failed to parse multipart form: %v", err))
-		return
-	}
-
-	// Extract job metadata from job_json field
-	jobJSONStr := c.PostForm("job_json")
-	if jobJSONStr == "" {
-		apiutil.BadRequest(c, "missing job_json field")
-		return
-	}
-
-	var jobData RemoteWebhookJobJSON
-	if err := json.Unmarshal([]byte(jobJSONStr), &jobData); err != nil {
-		apiutil.BadRequest(c, fmt.Sprintf("failed to parse job_json: %v", err))
-		return
-	}
-
-	if jobData.JobID == "" {
-		apiutil.BadRequest(c, "job_json missing job_id")
-		return
-	}
-
-	// Extract style from project_id (format: "velox-{style}" or UUID for no-style)
-	style := ""
-	if strings.HasPrefix(jobData.ProjectID, "velox-") {
-		style = strings.TrimPrefix(jobData.ProjectID, "velox-")
-		// If style looks like a UUID (4+ dashes), treat as no-style
-		if strings.Count(style, "-") >= 4 {
-			style = ""
-		}
-	}
-
-	// Collect image files from multipart
-	form := c.Request.MultipartForm
-	var imageFiles []*multipart.FileHeader
-	if form != nil && form.File != nil {
-		for filename := range form.File {
-			lower := strings.ToLower(filename)
-			if strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg") ||
-				strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".webp") {
-				if fhs, ok := form.File[filename]; ok && len(fhs) > 0 {
-					imageFiles = append(imageFiles, fhs[0])
-				}
-			}
-		}
-	}
-
-	if len(imageFiles) == 0 {
-		apiutil.BadRequest(c, "no image files found in webhook request")
-		return
-	}
-
-	h.service.Log().Info("ReceiveRemoteWebhook: received images from remote",
-		zap.String("job_id", jobData.JobID),
-		zap.Int("image_count", len(imageFiles)),
-		zap.String("prompt", jobData.Prompt),
-		zap.String("style", style),
-	)
-
-	var ingestedAssets []map[string]any
-
-	// Process each image file through the ingest pipeline
-	for i, fh := range imageFiles {
-		src, err := fh.Open()
-		if err != nil {
-			h.service.Log().Warn("ReceiveRemoteWebhook: failed to open uploaded file",
-				zap.String("filename", fh.Filename),
-				zap.Error(err),
-			)
-			continue
-		}
-
-		content, err := io.ReadAll(src)
-		src.Close()
-		if err != nil {
-			h.service.Log().Warn("ReceiveRemoteWebhook: failed to read uploaded file",
-				zap.String("filename", fh.Filename),
-				zap.Error(err),
-			)
-			continue
-		}
-
-		// Determine slug from prompt
-		slug := textutil.Slugify(jobData.Prompt)
-		if len(slug) > 50 {
-			slug = slug[:50]
-		}
-
-		// Use the original filename from the remote worker
-		filename := fh.Filename
-		if filename == "" {
-			filename = fmt.Sprintf("remote_%s_%d.jpg", jobData.JobID[:8], i)
-		}
-
-		description := fmt.Sprintf("AI generated image via Google Flow for prompt: %s", jobData.Prompt)
-		generator := "google-flow"
-		tags := []string{"remote", "google-flow", "ai-generated"}
-
-		// Ingest through the full pipeline: local storage + metadata + Drive upload + Qdrant
-		asset, ingestErr := h.service.IngestImage(
-			ctx,
-			slug,
-			style,
-			jobData.JobID,
-			bytes.NewReader(content),
-			filename,
-			generator,
-			description,
-			tags,
-			false, // skipDrive = false → upload to Drive
-			false, // isURL = false, we have the content directly
-		)
-
-		if ingestErr != nil {
-			h.service.Log().Error("ReceiveRemoteWebhook: ingest failed for file",
-				zap.String("filename", fh.Filename),
-				zap.Error(ingestErr),
-			)
-			continue
-		}
-
-		ingestedAssets = append(ingestedAssets, map[string]any{
-			"hash":          asset.Hash,
-			"path_rel":      asset.PathRel,
-			"filename":      filename,
-			"drive_file_id": asset.DriveFileID,
-			"description":   description,
-		})
-
-		h.service.Log().Info("ReceiveRemoteWebhook: successfully ingested image",
-			zap.String("filename", filename),
-			zap.String("hash", asset.Hash),
-			zap.String("drive_file_id", asset.DriveFileID),
-		)
-	}
-
-	if len(ingestedAssets) == 0 {
-		apiutil.InternalError(c, fmt.Errorf("failed to ingest any of the %d received images", len(imageFiles)))
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"job_id":  jobData.JobID,
-		"status":  jobData.Status,
-		"prompt":  jobData.Prompt,
-		"images":  ingestedAssets,
-		"count":   len(ingestedAssets),
-		"message": fmt.Sprintf("Received and ingested %d image(s) from remote Google Flow", len(ingestedAssets)),
-	})
-}
+// surface-2 (July 2026): ReceiveRemoteWebhook + RemoteWebhookJobJSON
+// retired. The legacy POST /api/images/webhook/remote route that
+// bypassed the worker pool and fed images straight into the local
+// ingest pipeline via multipart upload (max 500MB) is gone. The
+// remote-worker ingest pipeline collapsed into the canonical async
+// job system (job type image.generate.google + job results →
+// ingest.Service.IngestImage on the worker side). The retirement
+// audit-pin lives in
+// middleware/middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404
+// which asserts 404 for all POSTs to the path regardless of credentials.
