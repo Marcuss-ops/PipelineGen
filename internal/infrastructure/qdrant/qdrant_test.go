@@ -1141,6 +1141,108 @@ func TestIsRetryable_RetryableErrors(t *testing.T) {
 	assert.False(t, IsRetryable(nil))
 }
 
+// TestIsRetryable_HTTPStatusClasses locks the Blocco 4d retryability
+// contract across all Qdrant HTTP status classes and typed error surfaces.
+// Each case represents a real Qdrant response path: APIError carries the
+// wire-level status + Retryable hint from classifyRetryability; sentinel
+// errors carry semantic wrappers from the client layer.
+//
+// P7 RETRY-INTEGRATION-TEST (July 2026): Blocco 4d changed the default
+// for unknown errors from retryable → terminal. This test nails it down.
+func TestIsRetryable_HTTPStatusClasses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		// ── Wire-level HTTP classes via classifyRetryability ──────
+		{
+			name:      "network timeout (Status=0)",
+			err:       &APIError{Operation: "SearchPoints", Status: 0, Message: "dial tcp: i/o timeout", Retryable: true},
+			retryable: true,
+		},
+		{
+			name:      "HTTP 429 Too Many Requests",
+			err:       &APIError{Operation: "UpsertPoints", Status: 429, Message: "too many requests", Retryable: true},
+			retryable: true,
+		},
+		{
+			name:      "HTTP 503 Service Unavailable",
+			err:       &APIError{Operation: "DeletePoints", Status: 503, Message: "service unavailable", Retryable: true},
+			retryable: true,
+		},
+		{
+			name:      "HTTP 408 Request Timeout",
+			err:       &APIError{Operation: "ScrollPoints", Status: 408, Message: "request timeout", Retryable: true},
+			retryable: true,
+		},
+		{
+			name:      "HTTP 502 Bad Gateway",
+			err:       &APIError{Operation: "GetCollection", Status: 502, Message: "bad gateway", Retryable: true},
+			retryable: true,
+		},
+		{
+			name:      "HTTP 400 Bad Request (client error → terminal)",
+			err:       &APIError{Operation: "SearchPoints", Status: 400, Message: "bad request: malformed filter", Retryable: false},
+			retryable: false,
+		},
+		{
+			name:      "HTTP 404 raw APIError (wire-level 404 is not retryable)",
+			err:       &APIError{Operation: "GetCollection", Status: 404, Message: "collection not found", Retryable: false},
+			retryable: false,
+		},
+
+		// ── Sentinel wrappers for 404 → semantic retryable ────────
+		{
+			name:      "ErrCollectionNotFound (404 wrapped → retryable)",
+			err:       &ErrCollectionNotFound{Name: "media_assets_v3"},
+			retryable: true,
+		},
+
+		// ── Permanent typed errors (never retry) ──────────────────
+		{
+			name:      "ErrVectorDimensionMismatch",
+			err:       &ErrVectorDimensionMismatch{Channel: "text", Expected: 768, Actual: 512, AssetID: "a1"},
+			retryable: false,
+		},
+		{
+			name:      "ErrNaNOrInf",
+			err:       &ErrNaNOrInf{Channel: "visual", AssetID: "a2"},
+			retryable: false,
+		},
+
+		// ── Blocco 4d lock: unknown errors default to terminal ────
+		{
+			name:      "unknown plain error (Blocco 4d default → terminal)",
+			err:       &errPlainTest{msg: "unknown error"}, // Blocco 4d: non-transient unknown error → terminal
+			retryable: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := IsRetryable(tt.err)
+			if tt.retryable {
+				assert.True(t, got, "%s: %T should be retryable", tt.name, tt.err)
+			} else {
+				assert.False(t, got, "%s: %T should NOT be retryable", tt.name, tt.err)
+			}
+		})
+	}
+}
+
+// errPlainTest is a non-Qdrant, non-pkg/retry error type used to verify
+// Blocco 4d's unknown→terminal default. It does NOT implement any
+// RetryableError or IsRetryable interface, so IsRetryable must classify
+// it as terminal.
+type errPlainTest struct{ msg string }
+
+func (e *errPlainTest) Error() string { return e.msg }
+
 func TestErrorMessages(t *testing.T) {
 	t.Parallel()
 
