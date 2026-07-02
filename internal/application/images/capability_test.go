@@ -23,15 +23,10 @@ func TestCapabilityResolution_GoogleSlidesAvailable(t *testing.T) {
 	}
 }
 
-func TestCapabilityResolution_DeprecatedProviderIDsNotImplemented(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{
-		imageGen:     &ChromeImageProvider{},
-		nvidiaAPIKey: "legacy-key-must-not-enable-provider",
-	}}
-	for _, cap := range []Capability{CapImageGenNvidia, CapRemoteImageGen} {
-		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
-			t.Errorf("deprecated capability %s: got %s, want %s", cap, got, StatusNotImplemented)
-		}
+func TestCapabilityResolution_UnknownCapabilityNotImplemented(t *testing.T) {
+	s := &Service{Diag: &DiagnosticsService{imageGen: &ChromeImageProvider{}}}
+	if got := s.CapabilityResolution(Capability("removed-provider")); got != StatusNotImplemented {
+		t.Errorf("unknown capability: got %s, want %s", got, StatusNotImplemented)
 	}
 }
 
@@ -45,11 +40,5 @@ func TestAllCapabilities_AdvertisesOnlyGoogleSlides(t *testing.T) {
 		t.Fatal("Google Slides capability missing")
 	} else if got != StatusMissingDependency {
 		t.Fatalf("Google Slides status = %s, want %s", got, StatusMissingDependency)
-	}
-	if _, ok := all[CapImageGenNvidia]; ok {
-		t.Fatal("NVIDIA capability must not be advertised")
-	}
-	if _, ok := all[CapRemoteImageGen]; ok {
-		t.Fatal("remote image generation capability must not be advertised")
 	}
 }
