@@ -517,6 +517,104 @@ type PipelineResult struct {
 	MetadataFileID string        `json:"metadata_file_id,omitempty"`
 }
 
+// IndexingStatus is the typed 4-state enum that replaces the legacy
+// `Indexed bool` on ChunkResult. Audit P0 #6 (July 2026) closes
+// silent-success classes by making the indexer's lifecycle observable
+// end-to-end via 4 grep-friendly constants.
+//
+// Migrated from the deleted types_status.go file (Stock Cutover
+// Commit 4) into service.go so the type colocates with the
+// ChunkResult declaration that uses it. The Marshal/Unmarshal
+// signatures and wire shape (`true|false`) are byte-equivalent to
+// the original; only the file location changed.
+//
+// Commit 5 (which removes Service.assetIndex / clipsRepo /
+// dispatcher fields) is the next opportunity to retire the
+// ChunkResult.Indexed field entirely; until then the field is
+// honest-but-fading (no production code writes to it because
+// run_upload.go is retired in Commit 4).
+type IndexingStatus string
+
+const (
+	// IndexingPending is the default-zero state, set on a freshly
+	// constructed ChunkResult before the indexing surface has run.
+	IndexingPending IndexingStatus = "indexing_pending"
+
+	// IndexingSkipped is set when the canonical post-upload indexing
+	// surface is NOT wired (e.g. assetIndex port is nil in a test
+	// fixture or partial deploy).
+	IndexingSkipped IndexingStatus = "indexing_skipped"
+
+	// IndexingCompleted is the terminal success state — the asset_index
+	// upsert + clips-repo UpdateSearchTerms + outbox EnqueueAndIndex
+	// all succeeded.
+	IndexingCompleted IndexingStatus = "indexing_completed"
+
+	// IndexingFailed is the terminal failure state — at least one of
+	// asset_index.Upsert, clips-repo.UpdateSearchTerms, or
+	// outbox.EnqueueAndIndex returned an error. The chunk itself is
+	// still on Drive; the operator can backfill from
+	// ChunkResult.DriveFileID.
+	IndexingFailed IndexingStatus = "indexing_failed"
+)
+
+// MarshalJSON preserves the LEGACY wire shape (`true|false`) so the
+// public JSON contract for ChunkResult.Indexed is unchanged.
+// Mapping: IndexingCompleted → true; everything else → false.
+//
+// The lossy encoding is intentional: external API consumers don't
+// currently distinguish failure-from-deferred indexing; they only
+// need to know "did the chunk's post-upload indexing reach the
+// IndexingCompleted terminal". The 4-state enum is an internal-Go
+// surface improvement; the external JSON stays bool for backwards
+// compat with the existing registered clients.
+func (s IndexingStatus) MarshalJSON() ([]byte, error) {
+	if s == IndexingCompleted {
+		return []byte("true"), nil
+	}
+	return []byte("false"), nil
+}
+
+// UnmarshalJSON accepts both the legacy bool shape AND the typed
+// string shape — see Commit 3 audit history (Audit P0 #6, July 2026)
+// for the original rationale. The deleted file types_status.go carried
+// the same logic; this method is byte-equivalent.
+//
+// The `false → IndexingPending` mapping is the most lossy step of
+// the transition: a legacy `false` historically meant "not done"
+// without distinguishing skip vs fail vs pending. Newly-typed Go
+// callers emitting the typed string constants round-trip exactly.
+func (s *IndexingStatus) UnmarshalJSON(data []byte) error {
+	// Quoted string shape: typed-string round-trip.
+	if len(data) > 0 && data[0] == '"' {
+		var raw string
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		*s = IndexingStatus(raw)
+		return nil
+	}
+	// Bare bool shape: legacy compat.
+	var b bool
+	if err := json.Unmarshal(data, &b); err != nil {
+		return err
+	}
+	if b {
+		*s = IndexingCompleted
+	} else {
+		*s = IndexingPending
+	}
+	return nil
+}
+
+// Compile-time assertions — preserved from types_status.go so future
+// drift in the Marshal/Unmarshal signatures surfaces at compile,
+// not runtime.
+var (
+	_ json.Marshaler   = IndexingStatus("")
+	_ json.Unmarshaler = (*IndexingStatus)(nil)
+)
+
 // ChunkResult represents a single rendered and uploaded video chunk.
 //
 // Blocco 1b (July 2026): added Rendered / Uploaded / Indexed outcome

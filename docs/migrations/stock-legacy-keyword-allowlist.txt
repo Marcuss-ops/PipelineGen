@@ -7,9 +7,11 @@
 #   assetIndex  media_assets  EnqueueAndIndex  UploadFile
 #   Publisher.Publish  YTDLPDownloader  youtube.Service
 #
-# Commits 4-8 of the Stock Cutover Cleanup Plan retire each file listed
+# Commits 5-8 of the Stock Cutover Cleanup Plan retire each file listed
 # below. Remove the matching entry at the SAME commit that deletes the file
-# so this allowlist shrinks to empty by Commit 8.
+# so this allowlist shrinks to empty by Commit 8. (Commit 4 retired
+# run_upload.go + run_upload_indexing_test.go + types_status.go; those
+# entries are no longer grandfathered.)
 #
 # Each line below is a repo-relative .go file path. Comments (lines starting
 # with `#`) and blank lines are ignored by Check 54.
@@ -17,10 +19,6 @@
 # Owner: codebuff-agent@pipelinegen.local
 # Deadline: 2026-08-15 (commit-land of Commit 8)
 # =============================================================================
-
-# Commit 4: legacy finalization (run_upload.go + types_status.go already slim
-# in the package; run_upload_indexing_test.go to be replaced).
-internal/application/assets/providers/stock/stockpipeline/run_upload.go
 
 # Commit 5: legacy Service wiring — removes assetIndex / clipsRepo /
 # dispatcher / clipIndexer / metaWriter / youtubeSvc / ytdlp / publisher
@@ -36,14 +34,6 @@ internal/application/assets/providers/stock/adapter.go
 # NOTE: top-level stock/usecase.go (parent package) stays — only the
 # stockpipeline/ subpackage file is on this list.
 internal/application/assets/providers/stock/stockpipeline/usecase.go
-
-# Commit 4 (parallel deletion with run_upload.go): the per-chunk indexing
-# test mocks assetIndex; the file deletes at the same commit.
-internal/application/assets/providers/stock/stockpipeline/run_upload_indexing_test.go
-
-# Commit 4 (parallel deletion): the typed IndexingStatus enum file deletes
-# alongside run_upload.go.
-internal/application/assets/providers/stock/stockpipeline/types_status.go
 
 # Commit 5 (parallel deletion with service.go): the Service.Run entrypoint
 # body deletes when the legacy storage-dispatcher chain is removed.
