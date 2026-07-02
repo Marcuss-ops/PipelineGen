@@ -216,12 +216,15 @@ func TestSearcher_AliasCache_ConcurrentCacheFill(t *testing.T) {
 		t.Errorf("concurrent cache fill failed: %v", err)
 	}
 
-	// The double-check lock guarantees single-write semantics: exactly
+	// singleflight dedup guarantees single-write semantics: exactly
 	// ONE HTTP call even under N-way concurrent cache-fill race.
-	// If this ever flakes on overloaded CI (unlikely — RWMutex is
-	// fast-path uncontended), loosen to ≤3, but start strict.
+	// The double-check inside the singleflight callback catches the
+	// case where another goroutine populated the cache between RUnlock
+	// and singleflight execution.
+	// If this ever flakes on overloaded CI (unlikely — singleflight
+	// is lock-free on the fast path), loosen to ≤3, but start strict.
 	assert.Equal(t, int32(1), atomic.LoadInt32(callCount),
-		"double-check lock must guarantee exactly one GetAliasTarget call")
+		"singleflight dedup must guarantee exactly one GetAliasTarget call")
 }
 
 // ── PromoteCandidate → cache invalidation integration test ────────────
