@@ -7,9 +7,7 @@ import (
 )
 
 func TestResolve_KnownID_ReturnsProvider(t *testing.T) {
-	r := NewGenerationProviderRegistry(nil, []GenerationProvider{
-		NewGoogleSlidesProvider(nil, nil),
-	})
+	r := NewGenerationProviderRegistry(nil, NewGoogleSlidesProvider(nil, nil))
 	got, err := r.Resolve("google-slides")
 	if err != nil {
 		t.Errorf("Resolve(google-slides) err = %v; want nil", err)
@@ -20,20 +18,20 @@ func TestResolve_KnownID_ReturnsProvider(t *testing.T) {
 }
 
 func TestResolve_MissingID_ReturnsErrProviderNotFound(t *testing.T) {
-	r := NewGenerationProviderRegistry(nil, nil)
-	_, err := r.Resolve("nonexistent-model")
-	if err == nil {
-		t.Fatalf("Resolve(nonexistent-model) err = nil; want ErrProviderNotFound")
-	}
-	if !errors.Is(err, ErrProviderNotFound) {
-		t.Errorf("Resolve(nonexistent-model) err = %v; want errors.Is(_, ErrProviderNotFound)", err)
+	r := NewGenerationProviderRegistry(nil, NewGoogleSlidesProvider(nil, nil))
+	for _, id := range []string{"flux", "nvidia", "nonexistent-model"} {
+		_, err := r.Resolve(id)
+		if err == nil {
+			t.Fatalf("Resolve(%q) err = nil; want ErrProviderNotFound", id)
+		}
+		if !errors.Is(err, ErrProviderNotFound) {
+			t.Errorf("Resolve(%q) err = %v; want errors.Is(_, ErrProviderNotFound)", id, err)
+		}
 	}
 }
 
 func TestResolve_EmptyID_ReturnsErrProviderNotFound(t *testing.T) {
-	r := NewGenerationProviderRegistry(nil, []GenerationProvider{
-		NewGoogleSlidesProvider(nil, nil),
-	})
+	r := NewGenerationProviderRegistry(nil, NewGoogleSlidesProvider(nil, nil))
 	_, err := r.Resolve("")
 	if err == nil {
 		t.Fatalf("Resolve(\"\") err = nil; want ErrProviderNotFound")
