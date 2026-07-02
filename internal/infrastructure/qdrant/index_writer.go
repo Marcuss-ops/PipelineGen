@@ -230,58 +230,77 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 	return nil
 }
 
-// ReindexAll reads all assets from the mapper's store and upserts them into
-// the given target collection (usually a new physical collection before alias switch).
+// ReindexAll reads all assets from the mapper's store via paginated
+// cursor scan and upserts them into the given target collection.
+//
+// HIGH #8 (July 2026): replaced total-ID-in-memory + N+1 FetchAsset
+// with cursor-based paginated scanning (WHERE id > ? ORDER BY id
+// LIMIT 500). Each batch is fetched in a single SQL query; the
+// writer receives complete batches without re-reading.
 func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, limit int) (*ReindexResult, error) {
 	if targetCollection == "" {
 		targetCollection = w.idxSchema.CanonicalName()
 	}
 
-	assetIDs, err := w.mapper.ListAllAssetIDs(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list assets for reindex: %w", err)
-	}
-
-	if limit > 0 && len(assetIDs) > limit {
-		assetIDs = assetIDs[:limit]
-	}
+	const pageSize = 500
 
 	result := &ReindexResult{
-		TotalAssets:      len(assetIDs),
 		TargetCollection: targetCollection,
 	}
 
-	points := make([]Point, 0, 100)
-	var batchCount int // points accumulated since last flush
-	for _, assetID := range assetIDs {
-		asset, err := w.mapper.FetchAsset(ctx, assetID)
-		if err != nil {
-			result.FailedAssets++
-			result.FailedAssetIDs = append(result.FailedAssetIDs, assetID)
-			continue
-		}
-		point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
-		if err != nil {
-			result.FailedAssets++
-			result.FailedAssetIDs = append(result.FailedAssetIDs, assetID)
-			continue
-		}
-		points = append(points, *point)
-		batchCount++
+	var afterID string // cursor: tracks the last asset ID from the previous page
+	var totalSeen int
 
-		// Flush every 100 points.
-		if len(points) >= 100 {
-			if err := w.client.UpsertPoints(ctx, targetCollection, points); err != nil {
-				return result, fmt.Errorf("reindex batch upsert: %w", err)
+	points := make([]Point, 0, 100)
+	var batchCount int
+
+	for {
+		// Respect the limit: if we've seen enough, stop.
+		if limit > 0 && totalSeen >= limit {
+			break
+		}
+
+		// Fetch one page of full AssetData rows.
+		pageLimit := pageSize
+		if limit > 0 && totalSeen+pageLimit > limit {
+			pageLimit = limit - totalSeen
+		}
+
+		batch, err := w.mapper.FetchAssetBatch(ctx, afterID, pageLimit)
+		if err != nil {
+			return result, fmt.Errorf("reindex: fetch batch (after %q): %w", afterID, err)
+		}
+		if len(batch) == 0 {
+			break // no more assets
+		}
+
+		result.TotalAssets += len(batch)
+		totalSeen += len(batch)
+
+		// Map each asset to a point and accumulate.
+		for _, asset := range batch {
+			afterID = asset.ID // advance cursor
+
+			point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
+			if err != nil {
+				result.FailedAssets++
+				result.FailedAssetIDs = append(result.FailedAssetIDs, asset.ID)
+				continue
 			}
-			// Blocco 4c (July 2026): only count as indexed AFTER the
-			// batch commit to Qdrant succeeds. Pre-fix, IndexedAssets
-			// was incremented per-point during accumulation — a failed
-			// batch commit left the counter stale (reporting points
-			// that were never actually written).
-			result.IndexedAssets += batchCount
-			batchCount = 0
-			points = points[:0]
+			points = append(points, *point)
+			batchCount++
+
+			// Flush every 100 points.
+			if len(points) >= 100 {
+				if err := w.client.UpsertPoints(ctx, targetCollection, points); err != nil {
+					return result, fmt.Errorf("reindex batch upsert: %w", err)
+				}
+				// Only count as indexed AFTER the batch commit
+				// succeeds (Blocco 4c, July 2026).
+				result.IndexedAssets += batchCount
+				batchCount = 0
+				points = points[:0]
+			}
 		}
 	}
 
@@ -446,4 +465,10 @@ type AssetData struct {
 type AssetStore interface {
 	FetchAsset(ctx context.Context, assetID string) (*AssetData, error)
 	ListAllAssetIDs(ctx context.Context) ([]string, error)
+	// FetchAssetBatch returns a page of assets where id > afterID,
+	// ordered by id ASC, limited to limit rows. Returns an empty
+	// slice when no more rows exist. Used by ReindexAll for cursor-
+	// based paginated scanning instead of loading all IDs into memory
+	// and N+1 FetchAsset calls (HIGH #8, July 2026).
+	FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error)
 }

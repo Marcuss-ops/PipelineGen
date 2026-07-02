@@ -207,6 +207,178 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 	return ids, rows.Err()
 }
 
+// FetchAssetBatch returns a page of full AssetData rows using cursor-based
+// pagination (WHERE id > ? ORDER BY id LIMIT ?).
+//
+// HIGH #8 (July 2026): replaces the ReindexAll pattern of loading all IDs
+// into memory and doing N+1 FetchAsset calls. A single SQL query per page
+// fetches complete AssetData rows; the caller advances the cursor via the
+// last asset's ID.
+//
+// Same filter as ListAllAssetIDs: excludes folders and soft-deleted rows.
+func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+
+	query := `
+		SELECT
+			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
+			COALESCE(lifecycle_state, 'ACTIVE'),
+			COALESCE(tags, '[]'),
+			COALESCE(search_text, ''),
+			COALESCE(drive_link, ''),
+			COALESCE(local_path, ''),
+			COALESCE(metadata_json, '{}'),
+			COALESCE(embedding_json, '[]'),
+			COALESCE(transcript_embedding, '[]'),
+			COALESCE(visual_embedding, '[]'),
+			COALESCE(audio_embedding, '[]'),
+			language, category, style,
+			youtube_video_id, youtube_url,
+			start_time, end_time,
+			duration_ms,
+			workspace_id, channel_id, license,
+			source_version,
+			created_at, updated_at, deleted_at
+		FROM media_assets
+		WHERE media_type != 'folder'
+		  AND (deleted_at IS NULL OR deleted_at = '')
+	`
+
+	var args []any
+	if afterID != "" {
+		query += ` AND id > ?`
+		args = append(args, afterID)
+	}
+	query += ` ORDER BY id ASC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch asset batch (after %q): %w", afterID, err)
+	}
+	defer rows.Close()
+
+	var out []*AssetData
+	for rows.Next() {
+		a := &AssetData{}
+		var tagsJSON, metaJSON, textEmbJSON, transcriptEmbJSON, visualEmbJSON, audioEmbJSON sql.NullString
+		var durationMs sql.NullInt64
+		var sourceVersionStr sql.NullString
+		var language, category, style, channelID, lic sql.NullString
+		var workspaceID, youtubeVideoID, youtubeURL, startTime, endTime sql.NullString
+		var createdAt, updatedAt, deletedAt sql.NullString
+		var lifecycleState sql.NullString
+
+		err := rows.Scan(
+			&a.ID, &a.Name, &a.Source, &a.MediaType,
+			&lifecycleState,
+			&tagsJSON,
+			&a.SearchText,
+			&a.DriveLink,
+			&a.LocalPath,
+			&metaJSON,
+			&textEmbJSON,
+			&transcriptEmbJSON,
+			&visualEmbJSON,
+			&audioEmbJSON,
+			&language, &category, &style,
+			&youtubeVideoID, &youtubeURL,
+			&startTime, &endTime,
+			&durationMs,
+			&workspaceID, &channelID, &lic,
+			&sourceVersionStr,
+			&createdAt, &updatedAt, &deletedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan asset in batch (after %q): %w", afterID, err)
+		}
+
+		if lifecycleState.Valid {
+			a.LifecycleState = lifecycleState.String
+		}
+
+		// Parse tags JSON.
+		if tagsJSON.Valid && tagsJSON.String != "" && tagsJSON.String != "[]" {
+			json.Unmarshal([]byte(tagsJSON.String), &a.Tags)
+		}
+
+		// Parse metadata JSON.
+		a.MetadataJSON = metaJSON.String
+		if a.MetadataJSON != "" && a.MetadataJSON != "{}" {
+			var m map[string]interface{}
+			if err := json.Unmarshal([]byte(a.MetadataJSON), &m); err == nil {
+				a.Metadata = m
+			}
+		}
+
+		// Parse embedding vectors.
+		if textEmbJSON.Valid && textEmbJSON.String != "" && textEmbJSON.String != "[]" && textEmbJSON.String != "{}" {
+			json.Unmarshal([]byte(textEmbJSON.String), &a.TextVector)
+		}
+		if transcriptEmbJSON.Valid && transcriptEmbJSON.String != "" && transcriptEmbJSON.String != "[]" && transcriptEmbJSON.String != "{}" {
+			json.Unmarshal([]byte(transcriptEmbJSON.String), &a.TranscriptVector)
+		}
+		if visualEmbJSON.Valid && visualEmbJSON.String != "" && visualEmbJSON.String != "[]" && visualEmbJSON.String != "{}" {
+			json.Unmarshal([]byte(visualEmbJSON.String), &a.VisualVector)
+		}
+		if audioEmbJSON.Valid && audioEmbJSON.String != "" && audioEmbJSON.String != "[]" && audioEmbJSON.String != "{}" {
+			json.Unmarshal([]byte(audioEmbJSON.String), &a.AudioVector)
+		}
+
+		// Optional fields.
+		if language.Valid {
+			a.Language = language.String
+		}
+		if category.Valid {
+			a.Category = category.String
+		}
+		if style.Valid {
+			a.Style = style.String
+		}
+		if channelID.Valid {
+			a.ChannelID = channelID.String
+		}
+		if lic.Valid {
+			a.License = lic.String
+		}
+		if youtubeVideoID.Valid {
+			a.YouTubeVideoID = youtubeVideoID.String
+		}
+		if youtubeURL.Valid {
+			a.YouTubeURL = youtubeURL.String
+		}
+		if startTime.Valid {
+			a.StartTime = startTime.String
+		}
+		if endTime.Valid {
+			a.EndTime = endTime.String
+		}
+		if durationMs.Valid {
+			a.DurationMs = durationMs.Int64
+		}
+		if workspaceID.Valid {
+			a.WorkspaceID = workspaceID.String
+		}
+		if sourceVersionStr.Valid {
+			a.SourceVersion = sourceVersionStr.String
+		}
+		if createdAt.Valid {
+			a.CreatedAt = createdAt.String
+		}
+		if updatedAt.Valid {
+			a.UpdatedAt = updatedAt.String
+		}
+		if deletedAt.Valid {
+			a.DeletedAt = deletedAt.String
+		}
+
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // ListAssetsForReconcile returns the minimum asset payload needed by the
 // admin-side `cmd/admin/reconcile_qdrant.go` reconcile dry-run.
 //

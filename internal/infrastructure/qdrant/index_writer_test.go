@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -53,6 +54,55 @@ func (s *stubWriteMapper) ListAllAssetIDs(_ context.Context) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+// FetchAssetBatch returns a paginated batch of assets ordered by ID.
+// Implements the cursor-based contract used by ReindexAll (HIGH #8).
+func (s *stubWriteMapper) FetchAssetBatch(_ context.Context, afterID string, limit int) ([]*AssetData, error) {
+	ids := s.sortedIDs()
+	var start int
+	if afterID != "" {
+		found := false
+		for i, id := range ids {
+			if id > afterID {
+				start = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, nil // cursor past the last asset → end of data
+		}
+	}
+	end := start + limit
+	if end > len(ids) {
+		end = len(ids)
+	}
+	if start >= len(ids) {
+		return nil, nil
+	}
+	out := make([]*AssetData, 0, end-start)
+	for _, id := range ids[start:end] {
+		a, ok := s.assets[id]
+		if !ok {
+			return nil, fmt.Errorf("asset %q not found", id)
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+func (s *stubWriteMapper) sortedIDs() []string {
+	if s.ids != nil {
+		return s.ids
+	}
+	ids := make([]string, 0, len(s.assets))
+	for id := range s.assets {
+		ids = append(ids, id)
+	}
+	// Sort for deterministic cursor behaviour.
+	sort.Strings(ids)
+	return ids
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

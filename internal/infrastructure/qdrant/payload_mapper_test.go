@@ -243,6 +243,10 @@ func (f *fakeAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error) 
 	return f.ids, nil
 }
 
+func (f *fakeAssetStore) FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error) {
+	return nil, nil
+}
+
 func mapKeysVec(m map[string]interface{}) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
