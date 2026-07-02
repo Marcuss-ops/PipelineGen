@@ -264,9 +264,10 @@ func extractHeaderToken(c *gin.Context) string {
 
 // RegisterRoutes mounts every script-flow route under r. The unified
 // generation endpoint (POST /generate) handles all generation modes.
-// Legacy routes (generate-from-clips, generate-with-images, generate-batch,
-// curate) are registered as deprecated adapters that translate old request
-// formats to GenerationEnvelopeV2 and forward to the canonical enqueue.
+// Legacy routes (generate-from-clips, generate-with-images, curate) are
+// registered as deprecated adapters that translate old request formats to
+// GenerationEnvelopeV2 and forward to the canonical enqueue.
+// FASE 12c (July 2026): generate-batch route REMOVED.
 // Flow routes (regenerate, evict, job status) are always mounted.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// Unified generation endpoint (replaces all legacy per-mode endpoints).
@@ -277,7 +278,6 @@ func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// enqueues as script.generate, and adds X-Deprecated: true header.
 	r.POST("/generate-from-clips", h.LegacyGenerateFromClips)
 	r.POST("/generate-with-images", h.LegacyGenerateWithImages)
-	r.POST("/generate-batch", h.LegacyGenerateBatch)
 	r.POST("/curate", h.LegacyCurate)
 
 	r.GET("/clips/search", h.SearchClipsByName)

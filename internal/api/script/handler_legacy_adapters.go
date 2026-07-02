@@ -12,8 +12,10 @@
 // Legacy routes registered here:
 //   - POST /api/script/generate-from-clips   → unified pipeline  (removal: 2026-12-31)
 //   - POST /api/script/generate-with-images  → unified pipeline  (removal: 2026-12-31)
-//   - POST /api/script/generate-batch        → unified pipeline  (removal: 2026-09-30)
 //   - POST /api/script/curate                → unified pipeline  (removal: 2026-09-30)
+//
+// FASE 12c (July 2026): generate-batch legacy route REMOVED — clients
+// must use POST /api/script/generate with multiple items.
 //
 // PR 11 (June 2026): created as part of the legacy-route deprecation wave.
 // P0.7 (June 2026): replaced atomic.Int64 with prometheus.CounterVec;
@@ -54,7 +56,7 @@ var legacyRouteInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 // counter (dto.Metric writeback pattern).
 func DeprecationCount() int64 {
 	var total int64
-	for _, route := range []string{"generate-from-clips", "generate-with-images", "generate-batch", "curate"} {
+	for _, route := range []string{"generate-from-clips", "generate-with-images", "curate"} {
 		counter, err := legacyRouteInvocationsTotal.GetMetricWithLabelValues(route)
 		if err != nil {
 			continue
@@ -83,7 +85,7 @@ func addDeprecationHeader(c *gin.Context, route string, removalDate string) {
 // ── Removal dates ─────────────────────────────────────────────────────
 // Established P0.7 (June 2026):
 //   - generate-from-clips  / generate-with-images: 6-month grace (2026-12-31)
-//   - generate-batch       / curate:               3-month grace (2026-09-30)
+//   - curate:                                      3-month grace (2026-09-30)
 // Reasoning: batch and curate are lower-usage routes historically;
 // from-clips and with-images are the original entry points, still
 // used by external API consumers.
@@ -91,7 +93,6 @@ func addDeprecationHeader(c *gin.Context, route string, removalDate string) {
 const (
 	removalDateFromClips  = "2026-12-31"
 	removalDateWithImages = "2026-12-31"
-	removalDateBatch      = "2026-09-30"
 	removalDateCurate     = "2026-09-30"
 )
 
@@ -356,89 +357,6 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 	}
 }
 
-// ── Legacy batch types ─────────────────────────────────────────────────
-
-// LegacyBatchItem is a single topic in a deprecated batch request.
-type LegacyBatchItem struct {
-	Topic      string `json:"topic"`
-	SourceText string `json:"source_text"`
-}
-
-// LegacyBatchTopic mirrors LegacyBatchItem for the batch_topics field.
-type LegacyBatchTopic struct {
-	Topic      string `json:"topic"`
-	SourceText string `json:"source_text"`
-}
-
-// LegacyGenerateBatchRequest is the deprecated request for
-// POST /api/script/generate-batch.
-type LegacyGenerateBatchRequest struct {
-	DocTitle            string             `json:"doc_title"`
-	DriveFolderID       string             `json:"drive_folder_id"`
-	Language            string             `json:"language"`
-	Tone                string             `json:"tone"`
-	Duration            int                `json:"duration"`
-	Model               string             `json:"model"`
-	PromptVersion       string             `json:"prompt_version"`
-	EditorPromptVersion string             `json:"editor_prompt_version"`
-	QAPromptVersion     string             `json:"qa_prompt_version"`
-	SaveToDB            bool               `json:"save_to_db"`
-	Style               string             `json:"style"`
-	Items               []LegacyBatchItem  `json:"items"`
-	BatchTopics         []LegacyBatchTopic `json:"batch_topics"`
-	ForceRefresh        bool               `json:"force_refresh"`
-}
-
-// toEnvelope translates a legacy batch request.
-func (r *LegacyGenerateBatchRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
-	topics := r.Items
-	if len(topics) == 0 {
-		for _, bt := range r.BatchTopics {
-			topics = append(topics, LegacyBatchItem{Topic: bt.Topic, SourceText: bt.SourceText})
-		}
-	}
-	items := make([]domainScript.GenerationItemV2, 0, len(topics))
-	for i, t := range topics {
-		itemID := fmt.Sprintf("%d", i+1)
-		title := t.Topic
-		if title == "" {
-			title = t.SourceText
-		}
-		if title == "" && r.DocTitle != "" {
-			title = fmt.Sprintf("%s #%d", r.DocTitle, i+1)
-		}
-		items = append(items, domainScript.GenerationItemV2{
-			ID:       itemID,
-			Title:    title,
-			Language: r.Language,
-			Tone:     r.Tone,
-			Model:    r.Model,
-			Style:    r.Style,
-			Source: domainScript.SourceSpec{
-				Type:       domainScript.SourceText,
-				Topic:      t.Topic,
-				SourceText: t.SourceText,
-			},
-			ScriptParams: domainScript.ScriptSpec{
-				TargetWords:   0,
-				Duration:      r.Duration,
-				PromptVersion: r.PromptVersion,
-				ForceRefresh:  r.ForceRefresh,
-			},
-			Output: domainScript.OutputSpec{
-				SaveToDB:         r.SaveToDB,
-				GenerateDocument: true,
-				DriveFolderID:    r.DriveFolderID,
-			},
-		})
-	}
-	return domainScript.GenerationEnvelopeV2{
-		Version: 2,
-		Preset:  domainScript.PresetCustom,
-		Items:   items,
-	}
-}
-
 // ── Legacy curate adapter ───────────────────────────────────────────────
 
 // LegacyCurateRequest is the deprecated request for
@@ -580,20 +498,6 @@ func (h *ScriptFlowHandler) LegacyGenerateWithImages(c *gin.Context) {
 			zap.String("note", "not fully enforced; 500-char transcript excerpt always used"))
 	}
 
-	env := req.toEnvelope()
-	h.enqueueEnvelope(c, env)
-}
-
-// LegacyGenerateBatch handles POST /api/script/generate-batch.
-// Removal target: 2026-09-30.
-func (h *ScriptFlowHandler) LegacyGenerateBatch(c *gin.Context) {
-	addDeprecationHeader(c, "generate-batch", removalDateBatch)
-
-	var req LegacyGenerateBatchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
-		return
-	}
 	env := req.toEnvelope()
 	h.enqueueEnvelope(c, env)
 }
