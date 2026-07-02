@@ -723,6 +723,121 @@
       deadline: 2026-08-15
 
 
+# ── Wave 30 — UNIFIED-SEMANTIC-MULTIMODAL-SEARCH (in_progress, July 2026) ──
+# Action plan derived from the FASE-6 architecture verdict (Italian audit
+# snapshot, June 2026). The verdict identified 8 gaps between the
+# canonical search.Aggregator surface and a unified semantic multimodal
+# search pipeline. As of this commit (post-Fase-6 chain), the gaps
+# split into "ALREADY CLOSED by recent SHAs" (forward-tracked under
+# FASE-6-SEMANTIC-BACKEND linked_issue) and "STILL PENDING" (the four
+# forward-pointer issues below: filter uniformity, cross-modal
+# text-to-visual, Enrichment state machine, E2E multimodal test).
+#
+# This entry is the canonical wave-tracker anchor — every PR that
+# ships one of the four pending gaps MUST add its SHA to the
+# matching linked_issue slot. Once all four linked_issues flip to
+# status: shipped, this entry flips to status: done / exit_signal:
+# true per godlike/07 §Exit gate.
+#
+# Verdict → closure mapping (per godlike/06 one-canonical-owner-per-
+# fact; FASE-6 supersedes the pre-Fase-6 verdict items 1, 2, 7, 8):
+#   * Verdict §1 (semantic backend non collegato)  → CLOSED by FASE-6
+#     semanticSearchBackend (search_backend_semantic.go}; BackendRegistry
+#     registers "semantic" alongside provider + local; fail-closed
+#     graceful-degradation when any of the 4 ports (Embedder /
+#     VectorStore / MediaRepo / Delivery) is nil.
+#   * Verdict §2 (mode hybrid|ann decorativo)      → CLOSED by FASE-6;
+#     semanticSearchBackend.Search branches on q.Mode (default ANN,
+#     SearchModeHybrid routes through vectorStore.HybridSearch with
+#     dense + sparse BM25 channels).
+#   * Verdict §7 (workspace propagation assente)   → CLOSED by
+#     feat(mediasearch): propagate workspace Actor into search.Query
+#     (PR-AGENTE2-ACTOR); handler.extractWorkspace populates
+#     Query.Actor.WorkspaceID + UserID + IsAdmin and semantic
+#     backend rejects (via Qdrant filter) any row whose Qdrant
+#     payload workspace_id mismatches.
+#   * Verdict §8 (preview URL non firmata)         → CLOSED by FASE-6;
+#     semanticSearchBackend.Search step 8 calls
+#     delivery.BuildAuthorizedURL(ctx, ws, a.ID) per Qdrant hit per
+#     godlike/06 SSOT (the canonical delivery port).
+#   * Verdict §3 (QueryEmbedder non collegato)     → CLOSED by FASE-6;
+#     semanticSearchBackend.embedder.Embed(ctx, q.Text) → []float32
+#     is the canonical embedding seam; production concrete
+#     (qdrant.TextEmbedder) wires through composition root.
+#   * Verdict §4 (text-to-visual cross-modale)     → STILL PENDING
+#     (forward-pointer PR-CROSS-MODAL-TEXT-TO-VISUAL).
+#   * Verdict §5 (canale audio non completo)       → STILL PENDING
+#     (forward-pointer; indexViaAPI emits 3 phases today, CLAP
+#     audio-channel projection is the 4th-phase extension).
+#   * Verdict §6 (filtri non uniformi)             → STILL PENDING
+#     (forward-pointer PR-AGGREGATE-FILTER-UNIFORM; provider backend
+#     reads q.MediaTypes instead of q.Filters.MediaType today, and
+#     local backend forwards Source but skips Category / Language /
+#     Tags on the SQLite side).
+#
+- id: 30
+  status: in_progress
+  exit_signal: false
+  owner: application/mediasearch (composition: internal/app)
+  deadline: 2026-08-15
+  blocker: ["16"]
+  exit_gate: |
+    (a) PR-AGGREGATE-FILTER-UNIFORM SHIPPED (provider backend reads
+        q.Filters.MediaType; local backend forwards Category +
+        Language + Tags to SQLite FTS-fallback LIKE conditions via
+        pkg/sqlutil.BuildFallbackLikeConditions per AGENTS.md FTS5
+        ban). Backed by a contract test that runs the SAME search.Query
+        against every registered backend and asserts the same
+        source/category/language/tags filter semantics.
+    (b) PR-CROSS-MODAL-TEXT-TO-VISUAL SHIPPED (visual channel uses
+        SigLIP-text encoder so the text query and the visual-encoded
+        frame live in the same 512-dim space; semanticSearchBackend
+        delegates to EmbeddingChannelRegistry.EmbedQuery("visual",
+        q.Text) for visual-channel search). Backed by a TestE2E
+        asserting that an image-only query like "panda" returns
+        videos whose visual embedding (frame 0.5) ranks in the top-N
+        even when Title/Tags are zero match.
+    (c) PR-ENRICHMENT-STATE-MACHINE SHIPPED (media_assets gains
+        enrich_state enum PENDING / ENRICHING / ENRICHED / FAILED +
+        column + canonical VLM ingest path in
+        internal/application/assets/enrichment/ that flips the
+        column; the 15-min VLM sweeper stays as backfill, not as
+        the primary path).
+    (d) PR-E2E-SEMANTIC-MULTIMODAL-TEST SHIPPED (TestE2E_* covers
+        the 4 media surfaces — video / image / audio / music — with
+        a never-in-metadata phrase and asserts (i) it appears in top
+        results, (ii) asset_id round-trips, (iii) score > 0.5, (iv)
+        preview_url is a signed delivery URL).
+    Until all four forward-pointer issues flip to status: shipped,
+    verified_zero stays false; the in-/v1/media/search byte-equivalent
+    surface stays canonical.
+  linked_issues:
+    - id: FASE-6-SEMANTIC-BACKEND
+      owner_capability: internal/app + internal/application/mediasearch
+      status: shipped
+      deadline: 2026-07-01
+    - id: PR-AGGREGATE-FILTER-UNIFORM
+      owner_capability: internal/app + internal/application/search + internal/infrastructure/database/sqlite/catalog
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-CROSS-MODAL-TEXT-TO-VISUAL
+      owner_capability: internal/infrastructure/qdrant + internal/infrastructure/embeddings
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-EMBEDDING-CHANNEL-REGISTRY
+      owner_capability: internal/application/search + internal/infrastructure/embeddings
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-ENRICHMENT-STATE-MACHINE
+      owner_capability: internal/application/assets/enrichment
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-E2E-SEMANTIC-MULTIMODAL-TEST
+      owner_capability: internal/application/mediasearch + tests
+      status: pending
+      deadline: 2026-08-15
+
+
 # ---------------------------------------------------------------------------
 
 
