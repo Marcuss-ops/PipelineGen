@@ -36,6 +36,13 @@ type Metadata map[string]any
 type LifecycleState string
 
 const (
+	// StatePreparing — asset row created, local file being validated/hashed,
+	// not yet published to remote storage. Added FASE 3b (July 2026).
+	StatePreparing LifecycleState = "PREPARING"
+	// StatePublished — artifact published to remote storage (Drive, S3)
+	// but not yet indexed. Transitions to ACTIVE after Qdrant indexing
+	// completes. Added FASE 3b (July 2026).
+	StatePublished LifecycleState = "PUBLISHED"
 	// StateStaging — asset row created but not yet indexable.
 	StateStaging LifecycleState = "STAGING"
 	// StateProcessing — vectorisation currently in flight.
@@ -116,6 +123,8 @@ const (
 // + post-Qdrant confirmation hops).
 func CanonicalLifecycleStateValues() []LifecycleState {
 	return []LifecycleState{
+		StatePreparing,
+		StatePublished,
 		StateStaging,
 		StateProcessing,
 		StateActive,
@@ -135,7 +144,8 @@ func CanonicalLifecycleStateValues() []LifecycleState {
 // added StateDriveDeleted + StateIndexDeleted).
 func (s LifecycleState) Valid() bool {
 	switch s {
-	case StateStaging, StateProcessing, StateActive,
+	case StatePreparing, StatePublished,
+		StateStaging, StateProcessing, StateActive,
 		StateDeletePending, StateDeleteRequested,
 		StateDriveDeletePending, StateDriveDeleted,
 		StateLifecycleIndexDeletePending, StateIndexDeleted,
@@ -170,6 +180,18 @@ func (s LifecycleState) Valid() bool {
 // intermediate hops is observable per the canonical-state-machine
 // invariant.
 //
+// The PREPARING and PUBLISHED states (FASE 3b, July 2026) represent the
+// early lifecycle before indexing:
+//
+//	PREPARING           → PUBLISHED              (AssetTxFinalizer writes PUBLISHED)
+//	PUBLISHED           → ACTIVE                 (post-indexing activation)
+//	*                   → PREPARING              (creation path)
+//
+// FASE 3b explicit forward edges:
+//
+//	PREPARING           → PUBLISHED
+//	PUBLISHED           → ACTIVE
+//
 // Self-loops are allowed and idempotent (writing the same state
 // twice in a row is harmless; the chain-defensive SetLifecycleState
 // callers use this for retry safety). StateDeletePending is the
@@ -189,6 +211,14 @@ func (s LifecycleState) IsValidTransition(to LifecycleState) bool {
 		return true // idempotent self-loop
 	}
 	switch s {
+	case StatePreparing:
+		// FASE 3b: preparing → published (finalizer writes PUBLISHED).
+		return to == StatePublished
+	case StatePublished:
+		// FASE 3b: published → active (post-indexing activation)
+		// or published → delete (asset deletable even before indexing).
+		return to == StateActive || to == StateError ||
+			to == StateDeleteRequested || to == StateDeletePending
 	case StateActive:
 		return to == StateDeleteRequested || to == StateDeletePending
 	case StateDeleteRequested:
