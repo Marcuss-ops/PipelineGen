@@ -12,7 +12,8 @@ import (
 )
 
 // ReindexClip triggers re-indexing of an existing clip (semantic
-// enrichment + vector store). Inline on *Handler post-Split 2.
+// enrichment + vector store). Extracted from handler.go per
+// PG-028 capability split (July 2026).
 func (h *Handler) ReindexClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
@@ -86,7 +87,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 
 // BatchReindex finds all assets missing embeddings and re-indexes
 // them via the job system (or synchronously when jobsSvc is nil).
-// Inline on *Handler post-Split 2.
+// Extracted from handler.go per PG-028 capability split (July 2026).
 func (h *Handler) BatchReindex(c *gin.Context) {
 	var req struct {
 		Source    string `json:"source"`
