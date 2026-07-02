@@ -10,12 +10,10 @@
 // idempotency middleware (PR8) for all writes, and calls RegisterRoutes on
 // each sub-handler.
 //
-// NON-Ops methods (BulkAddTags / BulkRemoveTags / ReprocessClip /
-// EnrichMedia / ReindexClip / BatchReindex) stay INLINE on *Handler until
-// they each get their own dedicated sub-handler in a follow-up commit.
-// They use Handler mirror fields directly (jobsSvc, bulkTagsUC, reprocessUC,
-// enrichUC, clipIndexer) — no thin delegator — because there is no
-// sub-handler receiver to forward to yet.
+// NON-Ops methods: BulkAddTags/BulkRemoveTags stay INLINE on *Handler.
+// ReprocessClip → handler_reprocess.go, EnrichMedia+EnrichAndIndexClip
+// → handler_download.go, ReindexClip+BatchReindex → handler_index.go
+// (PG-028 capability split, July 2026).
 //
 // Action cluster (DownloadClip / ReuploadClip / FindDuplicates) stays on
 // *Handler via clip_action.go; Action its own sub-handler will land in a
@@ -23,11 +21,6 @@
 package clips
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"strings"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -401,9 +394,10 @@ func (h *Handler) GetBreadcrumb(c *gin.Context) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// NON-Ops methods (Step 5 Split 2, June 2026): these stay INLINE on
-// *Handler until their clusters get dedicated sub-handlers in future
-// commits (BulkTags UC, Reprocess UC, Enrich UC cluster, etc.).
+// NON-Ops methods (Step 5 Split 2, June 2026): only BulkTags endpoints
+// stay INLINE. ReprocessClip → handler_reprocess.go, EnrichMedia +
+// EnrichAndIndexClip → handler_download.go, ReindexClip + BatchReindex
+// → handler_index.go per PG-028 capability split (July 2026).
 // ──────────────────────────────────────────────────────────────────────
 
 // BulkAddTags adds tags to multiple clips in one request.
@@ -463,254 +457,6 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		"source":  result.Source,
 		"count":   result.Count,
 		"message": result.Message,
-	})
-}
-
-// ReprocessClip reprocesses a clip (download/process/upload).
-func (h *Handler) ReprocessClip(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-
-	var req struct {
-		Force       bool  `json:"force"`
-		UploadDrive bool  `json:"upload_drive"`
-		Normalize   *bool `json:"normalize"`
-	}
-	_ = c.ShouldBindJSON(&req)
-
-	result, err := h.reprocessUC.Execute(c.Request.Context(), appclips.ReprocessRequest{
-		ClipID:      clipID,
-		Source:      source,
-		Force:       req.Force,
-		UploadDrive: req.UploadDrive,
-		Normalize:   req.Normalize,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			apiutil.NotFound(c, err.Error())
-		} else {
-			apiutil.InternalError(c, err)
-		}
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":            true,
-		"source":        result.Source,
-		"clip_id":       result.ClipID,
-		"status":        result.Status,
-		"local_path":    result.LocalPath,
-		"file_hash":     result.FileHash,
-		"drive_link":    result.DriveLink,
-		"download_link": result.DownloadLink,
-		"processed_at":  result.ProcessedAt,
-	})
-}
-
-// EnrichAndIndexClip helper — used by external batch/mixin callers.
-// Inline on *Handler post-Split 2 since Ops no longer carries it.
-// Returns immediately if enrichUC is nil; otherwise delegates to the
-// shared enrichUC instance (single source of construction).
-func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
-	if h.enrichUC == nil {
-		return
-	}
-	h.enrichUC.EnrichAndIndex(ctx, clip, source)
-}
-
-// EnrichMedia triggers semantic enrichment + embedding for any media
-// asset. Step 5 Split 2: stayed on *Handler (inline) — JobsSvc route.
-//
-// Status codes:
-//
-//	503 — jobs service unavailable (S1a, no SafeGo workaround).
-func (h *Handler) EnrichMedia(c *gin.Context) {
-	var req struct {
-		AssetID      string `json:"asset_id"`
-		Source       string `json:"source"`
-		SkipEmbedGen bool   `json:"skip_embed_gen"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request: "+err.Error())
-		return
-	}
-
-	if req.Source == "" {
-		req.Source = c.Param("source")
-	}
-
-	if req.AssetID == "" {
-		apiutil.BadRequest(c, "asset_id is required")
-		return
-	}
-
-	if h.jobsSvc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable,
-			"EnrichMedia requires the jobs service (S1a removed the in-process SafeGo fallback); wire jobsSvc to use /api/media/enrich")
-		return
-	}
-
-	h.log.Info("dispatching media.enrich via jobs system",
-		zap.String("asset_id", req.AssetID),
-		zap.String("source", req.Source),
-		zap.Bool("skip_embed_gen", req.SkipEmbedGen),
-	)
-
-	payload := map[string]any{
-		"asset_id":       req.AssetID,
-		"source":         req.Source,
-		"skip_embed_gen": req.SkipEmbedGen,
-	}
-	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &enqueueRequest{
-		Type:      "media.enrich",
-		Payload:   payload,
-		ActiveKey: "enrich_clip_" + req.AssetID,
-	})
-	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to enqueue media.enrich job: %w", err))
-		return
-	}
-	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"action":     "enqueued",
-		"job_id":     job.ID,
-		"status_url": "/api/jobs/" + job.ID + "/full",
-		"asset_id":   req.AssetID,
-		"source":     req.Source,
-		"method":     "media.enrich_worker_via_jobs",
-		"message":    "enrichment + indexing dispatched to jobs system (worker will run)",
-	})
-}
-
-// ReindexClip triggers re-indexing of an existing clip (semantic
-// enrichment + vector store). Inline on *Handler post-Split 2.
-func (h *Handler) ReindexClip(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-
-	repo := h.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	ctx := c.Request.Context()
-
-	clip, err := repo.GetClip(ctx, clipID)
-	if err != nil {
-		apiutil.NotFound(c, "clip not found")
-		return
-	}
-
-	enrichNeeded := clip.SearchText == "" && clip.Name != "" && h.enrichUC != nil
-	if enrichNeeded {
-		if h.jobsSvc == nil {
-			apiutil.Error(c, http.StatusServiceUnavailable,
-				"reindex requires the jobs service (S1a removed the in-process SafeGo fallback); wire jobsSvc to use reindex")
-			return
-		}
-		job, err := h.jobsSvc.Enqueue(ctx, &enqueueRequest{
-			Type: "media.enrich",
-			Payload: map[string]any{
-				"asset_id": clipID,
-				"source":   source,
-			},
-			ActiveKey: "enrich_clip_" + clipID,
-		})
-		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue media.enrich job: %w", err))
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"ok":         true,
-			"action":     "enqueued",
-			"job_id":     job.ID,
-			"status_url": "/api/jobs/" + job.ID + "/full",
-			"clip_id":    clipID,
-			"method":     "async_enrich+index_via_jobs",
-			"message":    "enrichment + indexing dispatched to jobs system (worker will run)",
-		})
-		return
-	}
-
-	if h.clipIndexer != nil && h.clipIndexer.IsEnabled() {
-		if err := h.clipIndexer.IndexClip(ctx, clipID); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("index failed: %w", err))
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"ok":      true,
-			"action":  "reindexed",
-			"clip_id": clipID,
-			"method":  "clip_indexer",
-		})
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"action":  "skipped",
-		"clip_id": clipID,
-		"reason":  "no indexer configured and no search_text available",
-	})
-}
-
-// BatchReindex finds all assets missing embeddings and re-indexes
-// them via the job system (or synchronously when jobsSvc is nil).
-// Inline on *Handler post-Split 2.
-func (h *Handler) BatchReindex(c *gin.Context) {
-	var req struct {
-		Source    string `json:"source"`
-		MediaType string `json:"media_type"`
-		Limit     int    `json:"limit"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request: "+err.Error())
-		return
-	}
-
-	if h.clipIndexer == nil || !h.clipIndexer.IsEnabled() {
-		apiutil.InternalError(c, fmt.Errorf("clip indexer not available"))
-		return
-	}
-
-	if h.jobsSvc != nil {
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &enqueueRequest{
-			Type: "media.reindex",
-			Payload: map[string]any{
-				"source":     req.Source,
-				"media_type": req.MediaType,
-				"limit":      req.Limit,
-			},
-			ActiveKey: fmt.Sprintf("batch_reindex_%s_%s", req.Source, req.MediaType),
-		})
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"ok":         true,
-			"action":     "batch_reindex_enqueued",
-			"job_id":     job.ID,
-			"status_url": "/api/jobs/" + job.ID + "/full",
-			"message":    "Batch reindex job enqueued",
-		})
-		return
-	}
-
-	// Fallback: synchronous call when jobs service not available.
-	ctx := c.Request.Context()
-	result, err := h.clipIndexer.BatchReindex(ctx, req.Source, req.MediaType, req.Limit)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"action":  "batch_reindex_started",
-		"total":   result.Total,
-		"message": fmt.Sprintf("%d assets queued for re-indexing (background)", result.Total),
 	})
 }
 
