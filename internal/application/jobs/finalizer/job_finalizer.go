@@ -54,15 +54,17 @@ import (
 // (to enqueue outbox events), and an *AssetTxFinalizer (to write canonical
 // asset records inside the transaction).
 type Finalizer struct {
-	db       *sql.DB
-	outbox   *outboxevents.Repository
-	assetTx  *assetfinalizer.AssetTxFinalizer
-	log      *zap.Logger
+	db      *sql.DB
+	outbox  *outboxevents.Repository
+	assetTx finalization.AssetFinalizerTx
+	log     *zap.Logger
 }
 
 // New creates a Finalizer with the given database, outbox repository,
-// and asset finalizer.
-func New(db *sql.DB, outbox *outboxevents.Repository, assetTx *assetfinalizer.AssetTxFinalizer, log *zap.Logger) *Finalizer {
+// and asset-finalizer port (Pattern-0 port abstraction). Production
+// callers pass *assetfinalizer.AssetTxFinalizer which satisfies the
+// interface.
+func New(db *sql.DB, outbox *outboxevents.Repository, assetTx finalization.AssetFinalizerTx, log *zap.Logger) *Finalizer {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -270,7 +272,9 @@ func (f *Finalizer) selectJobForFinalization(
 	var row jobRow
 	err := tx.QueryRowContext(ctx,
 		`SELECT status, worker_id, lease_id, revision, retry_count, lease_expiry, COALESCE(result_json, '')
-		 FROM jobs WHERE id = ?`,
+		 FROM jobs
+		 WHERE id = ?
+		   AND (lease_expiry IS NULL OR lease_expiry > CURRENT_TIMESTAMP)`,
 		lease.JobID,
 	).Scan(&row.status, &row.workerID, &row.leaseID, &row.revision, &row.retryCount, &row.leaseExpiry, &row.resultJSON)
 	if err == sql.ErrNoRows {
@@ -302,6 +306,16 @@ func (f *Finalizer) selectJobForFinalization(
 		return &row, nil
 	}
 
+	// SUCCEEDED rows are already terminal — worker_id and lease_id
+	// are cleared by markSucceeded at completion time, so a
+	// subsequent idempotent call would otherwise fail the
+	// ownership check. The caller identity is no longer relevant
+	// once the job is committed; handleIdempotentCompletion compares
+	// fingerprints instead. Step 3 (d) of the 12-step plan (July
+	// 2026) formalises this path.
+	if row.status == "SUCCEEDED" {
+		return &row, nil
+	}
 	if row.workerID != lease.WorkerID {
 		return nil, finalization.NewFinalizationError(
 			"LEASE_OWNER_MISMATCH",

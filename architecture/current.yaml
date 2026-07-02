@@ -481,6 +481,31 @@
 # and route registration are all removed from handler_legacy_adapters.go
 # and handler_flow.go. DeprecationCount now tracks 3 routes (was 4).
 
+
+# ── Step 3 — Transactional fence hardening in JobFinalizer (CLOSED, July 2026) ──
+# Step 3 user spec → 4 sub-tasks (a)(b)(c)(d); all closed via the canonical
+# implementation that landed on origin/main today:
+#
+#   * (a) SQL lease_expiry fence — `AND (lease_expiry IS NULL OR lease_expiry >
+#       CURRENT_TIMESTAMP)` on the SELECT in `finalizer.selectJobForFinalization`.
+#   * (b) completion_fingerprint — SHA256 over (result JSON + sorted artifact
+#       IDs + SHA256s + source versions + file IDs); persisted in jobs.result_json
+#       via a {data, completion_fingerprint} JSON wrapper at markSucceeded.
+#   * (c) Error-propagation sweep — 8 sites of `_, _ = INSERT INTO job_events`
+#       replaced with explicit `fmt.Errorf` wrapping: 5 in
+#       repository_lifecycle.go (Complete/Fail/ScheduleRetry/Cancel/Retry) +
+#       3 in repository_claims.go (Start + requeueSingle × 2 branches).
+#       `JobFinalizer.markSucceeded` already canonical (propagates).
+#   * (d) End-to-end idempotency coverage — 6 TestE2E_* tests in the new
+#       job_finalizer_e2e_test.go file (in-memory SQLite + noopAssetTx mock +
+#       real Finalizer via Pattern-0 assetTx port abstraction).
+#
+# Behavioural change (godlike/07 disclosure): selectJobForFinalization early-
+# returns for status='SUCCEEDED' rows, bypassing the worker_id / lease_id
+# ownership checks. Idempotent re-completion on a canonical terminal job
+# returns clean SUCCEEDED via fingerprint comparison. Side effect: stale-
+# attempt callers see ErrCompletionConflict (not ErrStaleAttempt) for
+# terminal rows. See CHANGELOG.md ## Unreleased → ### Fixed.
 # ── Step 2 — JobFinalizer.CompleteWithArtifacts runtime wiring (CLOSED, July 2026) ──
 # The 12-step plan's Step 2 is closed on origin/main HEAD. The canonical
 # wiring was already live on `origin/main` via three coordinated commits

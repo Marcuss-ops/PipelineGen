@@ -98,11 +98,13 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 		return nil, ErrTransitionConflict
 	}
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	_, _ = r.db.ExecContext(ctx,
+	if _, err := r.db.ExecContext(ctx,
 		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		evtID, cmd.JobID, "job_running", "job.Job started", "{}", timeutil.FormatRFC3339(now),
-	)
+	); err != nil {
+		return nil, fmt.Errorf("start: insert job event: %w", err)
+	}
 	return r.Get(ctx, cmd.JobID)
 }
 
@@ -189,9 +191,13 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 		if err != nil || mustRowsAffected(res) == 0 {
 			return RequeueResult{JobID: jobID, Error: "rows affected 0"}
 		}
-		tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			evtID, jobID, eventType, eventMsg, "{}", nowStr)
-		tx.Commit()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			evtID, jobID, eventType, eventMsg, "{}", nowStr); err != nil {
+			return RequeueResult{JobID: jobID, Error: fmt.Sprintf("insert job event: %v", err)}
+		}
+		if err := tx.Commit(); err != nil {
+			return RequeueResult{JobID: jobID, Error: fmt.Sprintf("commit: %v", err)}
+		}
 		return RequeueResult{JobID: jobID, NewStatus: targetStatus}
 	}
 	// Exhausted → failed
@@ -203,9 +209,13 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	if err != nil || mustRowsAffected(res) == 0 {
 		return RequeueResult{JobID: jobID, Error: "rows affected 0"}
 	}
-	tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, jobID, "job_failed", "Max retries exhausted", "{}", nowStr)
-	tx.Commit()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, jobID, "job_failed", "Max retries exhausted", "{}", nowStr); err != nil {
+		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("insert job event: %v", err)}
+	}
+	if err := tx.Commit(); err != nil {
+		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("commit: %v", err)}
+	}
 	return RequeueResult{JobID: jobID, NewStatus: job.StatusFailed}
 }
 

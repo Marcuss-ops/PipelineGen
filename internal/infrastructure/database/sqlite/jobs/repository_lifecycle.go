@@ -103,8 +103,10 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 
 	// Insert event
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	_, _ = tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_completed", "job.Job completed successfully", "{}", nowStr)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, id, "job_completed", "job.Job completed successfully", "{}", nowStr); err != nil {
+		return fmt.Errorf("complete: insert job event: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("complete: commit: %w", err)
@@ -161,8 +163,10 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	_, _ = tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_failed", errMsg, "{}", nowStr)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, id, "job_failed", errMsg, "{}", nowStr); err != nil {
+		return fmt.Errorf("fail: insert job event: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("fail: commit: %w", err)
@@ -218,8 +222,10 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	_, _ = tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_retry_wait", "job.Job scheduled for retry", "{}", nowStr)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, id, "job_retry_wait", "job.Job scheduled for retry", "{}", nowStr); err != nil {
+		return fmt.Errorf("scheduleRetry: insert job event: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("scheduleRetry: commit: %w", err)
@@ -257,8 +263,10 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	_, _ = r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_cancelled", "job.Job cancelled", "{}", nowStr)
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, id, "job_cancelled", "job.Job cancelled", "{}", nowStr); err != nil {
+		return fmt.Errorf("cancel: insert job event: %w", err)
+	}
 	return nil
 }
 
@@ -315,8 +323,10 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
-	_, _ = r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_queued", "job.Job retry activated", "{}", now)
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, id, "job_queued", "job.Job retry activated", "{}", now); err != nil {
+		return nil, fmt.Errorf("retry: insert job event: %w", err)
+	}
 
 	// PR-Polling / ADR-0002 §D6.5 (June 2026): the requeued job
 	// transitions back to QUEUED; wake every sleeping Worker so the

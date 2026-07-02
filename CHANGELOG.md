@@ -2236,3 +2236,34 @@ Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>
   3. **Pre-existing build issues carry forward**: monitor/enqueue.go, scheduler.go, run_upload.go, module_media.go, internal/application/images/routing cycle. Step 2 closure touches ONLY `architecture/current.yaml` + `CHANGELOG.md` (audit-pin only).
 
   Wave-tracker cross-reference: `architecture/current.yaml#Step 2 — JobFinalizer.CompleteWithArtifacts runtime wiring (CLOSED, July 2026)` block added. No `- id: <num>` row (slim-shape convention reserves those for in-progress wave entries; closure audit pins use comment-block shape).
+
+- **[Step 3 of 12-step plan (July 2026) — Transactional fence hardening in JobFinalizer, CLOSED]** `fix(finalizer)` + `feat(finalizer)` — Pattern-0 port abstraction + end-to-end idempotency coverage. Step 3 user spec → 4 sub-tasks (a)(b)(c)(d); all 4 closed.
+
+  * **Behaviour change (godlike/07 disclosure)**: `JobFinalizer.selectJobForFinalization` now early-returns for `status='SUCCEEDED'` rows, bypassing worker_id / lease_id lease-ownership checks. Workers re-attempting an already-canonical-SUCCEEDED job now receive a clean idempotent `SUCCEEDED` (via fingerprint comparison in `handleIdempotentCompletion`) instead of `ErrLeaseOwnerMismatch` / `ErrLeaseIDMismatch`. Side effect: stale-attempt callers on terminal rows now see `ErrCompletionConflict` (fingerprint mismatch) rather than `ErrStaleAttempt` — kept the attempt-counter check disabled on SUCCEEDED rows because `markSucceeded` clears worker/lease_id, which would otherwise break idempotency. Documented in the `Step 3 (d)` comment block inside `selectJobForFinalization`. The canonical gate remains the SQL fence (sub-task (a)) + the fingerprint hash (sub-task (b)) for already-terminal rows.
+  * **(a) SQL lease_expiry fence**: `finalizer.selectJobForFinalization`'s SELECT now includes `AND (lease_expiry IS NULL OR lease_expiry > CURRENT_TIMESTAMP)`. The IS NULL branch preserves idempotency for already-SUCCEEDED rows whose `lease_expiry` was cleared at job_completed time. Defence-in-depth: kept the Go-side `time.Now().UTC().After(expiryTime)` check beneath the SQL fence.
+  * **(b) completion_fingerprint fixture-locked**: `finalizer.computeCompletionFingerprint` already implemented SHA-256 over `result JSON + sorted artifact IDs + SHA256s + source versions + file IDs` per Piano d'Azione §4.5. The fingerprint is persisted in `jobs.result_json` via a `{data, completion_fingerprint}` JSON wrapper written by `markSucceeded`. New `TestE2E_FingerprintPersistedInResultJSON` asserts the JSON shape + fingerprint hex length (64 chars = SHA-256) post-commit.
+  * **(c) Error-propagation completeness sweep** (godlike/07 "no fake availability"): replaced `_, _ = tx.ExecContext("INSERT INTO job_events ...")` with explicit `if _, err := ...; err != nil { return fmt.Errorf("%s: insert job event: %w", err) }` (or `tx.Commit()`-then-error path for the lockable SQL surface in `requeueSingle`):
+    * `internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go` — 5 sites: `Complete` / `Fail` / `ScheduleRetry` / `Cancel` / `Retry`.
+    * `internal/infrastructure/database/sqlite/jobs/repository_claims.go` — 3 sites: `Start` + `requeueSingle` retry-branch + `requeueSingle` exhausted-branch.
+    * `JobFinalizer.markSucceeded`'s `INSERT INTO job_events` already propagated (`fmt.Errorf("finalizer: insert job event: %w", err)`); confirmed canonical.
+  * **Pattern-0 port abstraction** (feeds (d)): `finalizer.Finalizer.assetTx` field + `finalizer.New(...)` parameter changed from `*assetfinalizer.AssetTxFinalizer` (concrete) to `finalization.AssetFinalizerTx` (interface). Production wiring sites pass `*assetfinalizer.AssetTxFinalizer` (sat-implicitly per `var _ finalization.AssetFinalizerTx = (*AssetTxFinalizer)(nil)` on the production concrete — interface satisfaction verified at compile time). Enables test injection of a `noopAssetTx` value-receiver mock without spinning up the 33/055/105-migration media_assets/asset_versions/asset_locations schema.
+  * **(d) End-to-end idempotency coverage** (`internal/application/jobs/finalizer/job_finalizer_e2e_test.go`, NEW — 6 TestE2E_* tests):
+    * `TestE2E_FingerprintPersistedInResultJSON` — (b) lock.
+    * `TestE2E_DoubleCompleteSameFingerprintIsIdempotent` — same result+artifacts → second call returns SUCCEEDED, no DB re-write (result_json + completed_at byte-equal).
+    * `TestE2E_DoubleCompleteDifferentResultReturnsConflict` — different `Result.Data` → `ErrCompletionConflict`.
+    * `TestE2E_DoubleCompleteDifferentArtifactsReturnsConflict` — different artifact SHA256 → `ErrCompletionConflict`.
+    * `TestE2E_LeaseExpiryFenceSQLGated` — past expiry → `ErrLeaseExpired`; DB row stays RUNNING.
+    * `TestE2E_LeaseExpiryNullIsAcceptedBySQLGated` — after SUCCEEDED (lease_expiry cleared), the NULL branch of the SQL fence accepts the idempotent re-call.
+
+  * **Forward-pointers** (out of scope for Step 3; honest-limitation disclosure):
+    * `SetProgress._ = r.AddEvent(...)` (different surface, not direct INSERT INTO job_events) — same fake-availability anti-pattern; tighten in a follow-up commit.
+    * `ClaimNext` unused `evtID` — pre-existing dead variable; hygiene-only cleanup.
+    * Divergent-clock test gap (Go `lease.ExpiresAt` past vs DB `lease_expiry` future) — covered by the SQL-fence defence-in-depth design, but no explicit test pins it.
+    * Concurrent-interleaved double-completion (two workers racing the same row) — handled atomically by the SQL UPDATE fence (one wins via `rows-affected=0`, other gets `ErrTransitionConflict`); no integration test pins this scenario.
+    * `TestScriptFlowAsyncRoutes_EnqueueJobs` baseline regression — the legacy regression test in `internal/api/script/handler_test.go` references `NewScriptFlowHandler` / `ScriptFlowDeps` / `RequireAdminToken` / `AdminTokenProvider` not currently in the tree; pre-existing build-failure unrelated to Step 3.
+
+  * **Pre-existing build issues carried forward** (honest-limitation convention — same as Step 1 + Step 2 closures):
+    1. `internal/application/scripts/jobs/generation_job.go` declares `shaErr` and `job` but uses neither (vet warning).
+    2. `internal/application/assets/monitor/scheduler.go` references undefined `NewExtractionEnqueuer` (vet warning).
+    3. `internal/app/worker_registry_e2e_test.go:140` declares `*mockBroker` which doesn't implement `internal/application/jobs.Broker.CompleteWithArtifacts` (test-fixture interface mismatch).
+    These three issues were present on `origin/main` before Step 1 landed; they are NOT regressions introduced by this commit per AGENTS.md §Honest-Limitations, surfaced for a future test-fixture migration ticket.
