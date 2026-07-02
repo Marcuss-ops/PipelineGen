@@ -67,9 +67,16 @@ type StyleInfo struct {
 	NegativePrompt  string `json:"negative_prompt,omitempty"`
 	DestinationKey  string `json:"destination_key,omitempty"`
 	Enabled         bool   `json:"enabled"`
-	AllowedProviders string `json:"allowed_providers,omitempty"`
-	AllowedModels   string `json:"allowed_models,omitempty"`
 }
+
+// StyleInfo canonical shape (surface-3, July 2026, mirror of
+// domain/asset.GenerationStyle minus the per-style allowlist
+// fields). AllowedProviders / AllowedModels were retired from the
+// API DTO once google-slides became the sole image-generation
+// provider (commit d54728dc — surface 1 cut). The canonical
+// GenerationStyle fields stay loadable from yaml for back-compat
+// but are no longer exposed to callers via the admin styles
+// endpoint.
 
 // StylesResponse is the response envelope for the styles endpoint.
 type StylesResponse struct {

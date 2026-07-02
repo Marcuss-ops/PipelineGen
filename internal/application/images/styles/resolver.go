@@ -29,6 +29,11 @@ type SourceBackend interface {
 // INTERNAL to this package — callers see only ResolvedStyle, never
 // StyleSnapshot. The resolver translates snap -> ResolvedStyle after
 // every fail-closed gate passes.
+//
+// AllowedProviders / AllowedModels are retained on the snapshot for
+// yaml back-compat (config/generation_styles.yaml still carries the
+// keys). As of surface-3 (July 2026) the canonical resolver no longer
+// reads these fields — see Resolve's doc-comment for the rationale.
 type StyleSnapshot struct {
 	ID               string
 	Version          int
@@ -41,9 +46,13 @@ type StyleSnapshot struct {
 	AllowedModels    []string
 }
 
-// StyleResolver resolves a style by ID, validating provider/model
-// compatibility against the style's allow-lists. Fail-closed contract.
+// StyleResolver resolves a style by ID. Fail-closed contract.
 // Validate is the void variant: callers only need the error.
+//
+// The provider/model compatibility checks that historically lived
+// inside Resolve (formerly steps 5 and 6 of the fail-closed chain)
+// were retired in surface-3 (July 2026) — see Resolve's doc-comment
+// for the canonical rationale.
 type StyleResolver interface {
 	Resolve(styleID, provider, model string) (ResolvedStyle, error)
 	Validate(styleID, provider, model string) error
@@ -90,11 +99,23 @@ var _ StyleResolver = (*failingResolver)(nil)
 //                                                    -> ErrStyleNotFound.
 //  3. ID absent in source                          -> ErrStyleNotFound.
 //  4. ID found but Enabled = false                 -> ErrStyleDisabled.
-//  5. AllowedProviders non-empty AND provider not
-//     in the list                                  -> ErrStyleProviderUnsupported.
-//  6. AllowedModels non-empty AND model not
-//     in the list                                 -> ErrStyleModelUnsupported.
-//  7. success                                       -> ResolvedStyle populated.
+//  5. success                                       -> ResolvedStyle populated.
+//
+// Dead-code (surface-3, July 2026): the per-style AllowedProviders /
+// AllowedModels checks (formerly steps 5 and 6 of this list, which
+// raised ErrStyleProviderUnsupported / ErrStyleModelUnsupported via
+// the containsString helper) were retired once google-slides became
+// the sole image-generation provider (commit d54728dc — surface 1
+// cut). The GenerationStyle.AllowedProviders / AllowedModels fields
+// (types_aux.go:83,87) remain on the domain type for yaml
+// back-compat (existing config/generation_styles.yaml files still
+// carry the keys; ignored at resolve time). The
+// ErrStyleProviderUnsupported / ErrStyleModelUnsupported sentinels
+// stay defined for re-export audit-pinning (godlike/06) — see
+// internal/application/assets/generation/style_registry.go for the
+// stable re-export surface, and
+// resolver_test.go::TestStyleResolver_AllSentinelErrorsNonNil for
+// the non-nil semantic contract that callers can rely on.
 func (r *styleResolverImpl) Resolve(styleID, provider, model string) (ResolvedStyle, error) {
 	if r == nil || r.source == nil {
 		return ResolvedStyle{}, ErrStyleNotFound
@@ -112,14 +133,11 @@ func (r *styleResolverImpl) Resolve(styleID, provider, model string) (ResolvedSt
 	if !snap.Enabled {
 		return ResolvedStyle{}, fmt.Errorf("%w: %s", ErrStyleDisabled, styleID)
 	}
-	if len(snap.AllowedProviders) > 0 && !containsString(snap.AllowedProviders, provider) {
-		return ResolvedStyle{}, fmt.Errorf("%w: style=%s provider=%s",
-			ErrStyleProviderUnsupported, styleID, provider)
-	}
-	if len(snap.AllowedModels) > 0 && !containsString(snap.AllowedModels, model) {
-		return ResolvedStyle{}, fmt.Errorf("%w: style=%s model=%s",
-			ErrStyleModelUnsupported, styleID, model)
-	}
+	// surface-3 (July 2026): per-style allowlist checks retired. See
+	// the doc-comment above for the rationale + audit-pinning chain.
+	// The sentinels stay defined for re-export but are never raised.
+	_ = ErrStyleProviderUnsupported
+	_ = ErrStyleModelUnsupported
 	return ResolvedStyle{
 		ID:             snap.ID,
 		Version:        snap.Version,
@@ -136,13 +154,4 @@ func (r *styleResolverImpl) Resolve(styleID, provider, model string) (ResolvedSt
 func (r *styleResolverImpl) Validate(styleID, provider, model string) error {
 	_, err := r.Resolve(styleID, provider, model)
 	return err
-}
-
-func containsString(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

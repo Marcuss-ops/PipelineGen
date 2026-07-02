@@ -69,8 +69,8 @@ func TestGenerationStyle_YAMLRoundTrip_NewShape(t *testing.T) {
 		NegativePrompt: "blurry",
 		DefaultWidth:   1920,
 		DefaultHeight:  1080,
-		AllowedProviders: []string{"flux", "google-slides"},
-		AllowedModels:    []string{"flux-1-dev"},
+		AllowedProviders: []string{"google-slides"},
+		AllowedModels:    []string{"nano-banana-pro"},
 		Tags:             []string{"cinematic", "movie"},
 		DestinationKey:   "ai-images/cinematic",
 		Enabled:          &tru,
@@ -115,11 +115,11 @@ func TestGenerationStyle_YAMLRoundTrip_NewShape(t *testing.T) {
 	}
 	// Allow *string slices may round-trip empty when nil, but for non-empty
 	// slices we want them preserved.
-	if len(dst.AllowedProviders) != 2 || dst.AllowedProviders[0] != "flux" {
-		t.Errorf("AllowedProviders = %v, want [flux google-slides]", dst.AllowedProviders)
+	if len(dst.AllowedProviders) != 1 || dst.AllowedProviders[0] != "google-slides" {
+		t.Errorf("AllowedProviders = %v, want [google-slides]", dst.AllowedProviders)
 	}
-	if len(dst.AllowedModels) != 1 || dst.AllowedModels[0] != "flux-1-dev" {
-		t.Errorf("AllowedModels = %v, want [flux-1-dev]", dst.AllowedModels)
+	if len(dst.AllowedModels) != 1 || dst.AllowedModels[0] != "nano-banana-pro" {
+		t.Errorf("AllowedModels = %v, want [nano-banana-pro]", dst.AllowedModels)
 	}
 }
 
