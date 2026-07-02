@@ -34,14 +34,17 @@
 //                     — the producer-side file contract.
 //   - Capability       — the typed-string label for worker-advertised
 //                     / definition-required capabilities.
-//   - CodecDescriptor  — the minimal encode/decode interface
-//                     (SchemaVersion + JobType) as the registry
-//                     records it. Renamed from the in-plan `Codec`
-//                     to disambiguate from the existing
-//                     `Codec[T,R]` (application/jobs) and
-//                     `JobCodec` (artlist) names. Commit 2 wires
-//                     the Encode/Decode bodies via a decorator
-//                     that adapts `Codec[T,R]` to CodecDescriptor.
+//   - CodecDescriptor — the metadata-only marker interface
+//                     (SchemaVersion + JobType). Kept from C1 as
+//                     the parent of PayloadCodec and ResultCodec.
+//   - PayloadCodec   — canonical typed encode/decode for the
+//                     JobDefinition's INPUT payload (C2 elaboration
+//                     of CodecDescriptor with EncodePayload +
+//                     DecodePayload bodies). Defined in codec.go.
+//   - ResultCodec    — canonical typed encode/decode for the
+//                     JobDefinition's OUTPUT result (C2 elaboration
+//                     of CodecDescriptor with EncodeResult +
+//                     DecodeResult bodies). Defined in codec.go.
 //   - JobDefinition    — the SSOT struct, plus Validate.
 //
 // ── Field scope (locked to user C1 spec) ─────────────────────────────
@@ -57,8 +60,10 @@
 //
 // ── Migration schedule for downstream commits ──────────────────────
 //
-//   - Commit 2:  CodecDescriptor wiring (typed Encode/Decode
-//                decorator).
+//   - Commit 2:  PayloadCodec + ResultCodec interfaces (extending
+//                CodecDescriptor marker) + TypedCodecAdapter[T,R]
+//                decorator that adapts the existing Codec[T,R]
+//                infrastructure to satisfy both domain interfaces.
 //   - Commit 3:  MutableJobRegistry + CompiledJobRegistry + Freeze +
 //                StartupValidator.ValidateRuntimeGraph.
 //   - Commit 4:  Dispatcher.Enqueue through def.PayloadCodec.
@@ -223,46 +228,18 @@ func (p ArtifactPolicy) Validate() error {
 // ([]string).
 type Capability string
 
-// ── CodecDescriptor (P0 §4.1, §5 — Encode/Decode wired in Commit 2) ──
+// ── Codec surfaces (P0 C2) ──────────────────────────────────────────
 
-// CodecDescriptor is the canonical typed encode/decode contract for
-// a job's payload AND result, as the registry records it. Commit 2
-// wires the bodies via a decorator that adapts the existing generic
-// `Codec[T,R]` in internal/application/jobs/codec.go (which has
-// typed Encode/Decode but lacks the metadata fields below).
+// CodecDescriptor (defs in codec.go, kept here as an alias note):
 //
-// Why renamed from the in-plan `Codec`: the codebase already has
-// three different "codec" identifiers that a fourth same-named entry
-// would conflate in cross-package code search:
-//
-//   - `Codec[T,R]` — generic interface in
-//     internal/application/jobs/codec.go (typed Encode/Decode bodies,
-//     JSON-marshalled wire format).
-//   - `JobCodec` — concrete struct in
-//     internal/application/assets/providers/artlist/job_core.go (the
-//     Artlist-specific ArtlistJobCodec).
-//   - `CodecDescriptor` (this interface) — registry-side metadata
-//     surface (SchemaVersion + JobType).
-//
-// CodecDescriptor is the canonical name for the registry-side
-// metadata shape. Commit 2's adapter produces `Codec[T,R]` values
-// that ALSO satisfy this interface so a typed codec can be
-// registered alongside the metadata-only assertions.
-//
-// The interface surface today is intentionally MINIMAL — just
-// SchemaVersion + JobType. C2 wires Encode/Decode by adding the
-// bodies via a small adapter.
-type CodecDescriptor interface {
-	// SchemaVersion is the wire-format version of the codec.
-	// Examples: "pipelinegen.payload.script.generate.v1",
-	// "pipelinegen.result.images.generate.v2". Non-empty.
-	SchemaVersion() string
-
-	// JobType is the canonical job type string this codec
-	// pairs with. MUST equal JobDefinition.Type when
-	// StartupValidator runs in Commit 3.
-	JobType() string
-}
+//   The metadata-only marker interface (SchemaVersion + JobType)
+//   shipped in C1 is now the parent of two body-bearing interfaces
+//   in codec.go:
+//     PayloadCodec — embeds CodecDescriptor + Encode/Decode payloads
+//     ResultCodec  — embeds CodecDescriptor + Encode/Decode results
+//   All three interfaces live in this package (domain/job) but
+//   PayloadCodec / ResultCodec's definitions are in codec.go for
+//   cohesion with the application-layer adapter that satisfies them.
 
 // ── JobDefinition (P0 §4.1) ─────────────────────────────────────────
 
@@ -339,16 +316,21 @@ type JobDefinition struct {
 	// is the claim-time gate. Empty means "any worker can claim".
 	RequiredCapabilities []Capability
 
-	// PayloadCodec encodes/decodes the job's input payload. May
-	// be nil for jobs whose payload is empty; Commit 3 enforces
+	// PayloadCodec encodes/decodes the job's INPUT payload.
+	// Type is now the body-bearing PayloadCodec (C2 elaboration):
+	// must implement CodecDescriptor (SchemaVersion + JobType) AND
+	// the typed EncodePayload / DecodePayload bodies. May be nil
+	// for jobs whose payload is empty; Commit 3 enforces
 	// per-registry presence (a missing codec for an executable
 	// job blocks startup).
-	PayloadCodec CodecDescriptor
+	PayloadCodec PayloadCodec
 
-	// ResultCodec encodes/decodes the job's output result. May
-	// be nil for sender-only classification jobs that have no
-	// structured result.
-	ResultCodec CodecDescriptor
+	// ResultCodec encodes/decodes the job's OUTPUT result.
+	// Type is the body-bearing ResultCodec (C2 elaboration):
+	// must implement CodecDescriptor + the typed EncodeResult /
+	// DecodeResult bodies. May be nil for sender-only
+	// classification jobs that have no structured result.
+	ResultCodec ResultCodec
 
 	// ArtifactPolicy declares whether this job produces files and
 	// whether it MUST return an ArtifactManifest. Sender-side

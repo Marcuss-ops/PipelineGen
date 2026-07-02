@@ -411,6 +411,16 @@ const (
 	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
 	TypeYouTubeChannelSync    = job.TypeYouTubeChannelSync
 	TypeImageGenerateGoogle   = "image.generate.google"
+
+	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
+	// (NOT in codec.go) so the package-level re-export surface stays in
+	// ONE place. registry_codec_completeness_test.go uses these as bare
+	// identifiers when wiring canonical codecs; the canonical strings
+	// themselves live in internal/domain/job/job.go (per godlike/02
+	// §Capability-specific constants stay in their owning domain package).
+	TypeImagesGenerate   = job.TypeImagesGenerate
+	TypeDocumentGenerate = job.TypeDocumentGenerate
+	TypeAssetsResolve    = job.TypeAssetsResolve
 )
 
 // Compose builds the standard registry with all known job types.
