@@ -82,7 +82,7 @@ func TestNewImageSearchResolver_MissingBackend_FailsClosed(t *testing.T) {
 
 // STRONG ASSERTION: territory=retrieved MUST NOT return rows with
 // origin='generated'. Test uses a fake-filled backend that returns
-// 3 results; the searcher must hard-set Origin=OriginRetrieved on
+// 3 results; the searcher must hard-set Origin=asset.ImageOriginRetrieved on
 // every emitted row regardless of upstream domain.
 func TestSearch_Retrieved_NoGeneratedLeak(t *testing.T) {
 	backend := &fakeRetrievalBackend{
@@ -106,7 +106,7 @@ func TestSearch_Retrieved_NoGeneratedLeak(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(got))
 	}
 	for i, r := range got {
-		if r.Origin != OriginRetrieved {
+		if r.Origin != asset.ImageOriginRetrieved {
 			t.Fatalf("row %d: expected Origin=retrieved (territory invariant), got %q", i, r.Origin)
 		}
 		if r.Score < 0 || r.Score > 1 {
@@ -118,14 +118,14 @@ func TestSearch_Retrieved_NoGeneratedLeak(t *testing.T) {
 // STRONG ASSERTION (mirror): territory=generated MUST NOT return rows
 // with origin='retrieved'. The fake repo returns 3 rows with mixed-or
 // explicitly Origin=Retrieved values; the searcher must override
-// Origin to OriginGenerated on every emitted row.
+// Origin to asset.ImageOriginGenerated on every emitted row.
 func TestSearch_Generated_NoRetrievedLeak(t *testing.T) {
 	backend := &fakeRetrievalBackend{}
 	repo := &fakeImageListRepository{
 		rows: []ImageSearchResult{
-			{AssetID: "a1", Origin: OriginRetrieved, Provider: "fake-storage-leak", Name: "leak-1", PreviewURL: "https://leak/1"},
-			{AssetID: "a2", Origin: OriginGenerated, Provider: "Flux", Name: "flux-prompt", PreviewURL: "https://flux/2", StyleID: "photoreal"},
-			{AssetID: "a3", Origin: OriginRetrieved, Provider: "another-fake-leak"},
+			{AssetID: "a1", Origin: asset.ImageOriginRetrieved, Provider: "fake-storage-leak", Name: "leak-1", PreviewURL: "https://leak/1"},
+			{AssetID: "a2", Origin: asset.ImageOriginGenerated, Provider: "Flux", Name: "flux-prompt", PreviewURL: "https://flux/2", StyleID: "photoreal"},
+			{AssetID: "a3", Origin: asset.ImageOriginRetrieved, Provider: "another-fake-leak"},
 		},
 	}
 	resolver := mustResolver(t, backend, repo)
@@ -141,7 +141,7 @@ func TestSearch_Generated_NoRetrievedLeak(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(got))
 	}
 	for i, r := range got {
-		if r.Origin != OriginGenerated {
+		if r.Origin != asset.ImageOriginGenerated {
 			t.Fatalf("row %d: expected Origin=generated (territory invariant), got %q", i, r.Origin)
 		}
 	}
@@ -156,7 +156,7 @@ func TestSearch_All_ReturnsBothOrigins(t *testing.T) {
 	}
 	repo := &fakeImageListRepository{
 		rows: []ImageSearchResult{
-			{AssetID: "a1", Origin: OriginGenerated, Provider: "Flux"},
+			{AssetID: "a1", Origin: asset.ImageOriginGenerated, Provider: "Flux"},
 		},
 	}
 	resolver := mustResolver(t, backend, repo)
@@ -171,9 +171,9 @@ func TestSearch_All_ReturnsBothOrigins(t *testing.T) {
 	countRetr, countGen := 0, 0
 	for _, r := range got {
 		switch r.Origin {
-		case OriginRetrieved:
+		case asset.ImageOriginRetrieved:
 			countRetr++
-		case OriginGenerated:
+		case asset.ImageOriginGenerated:
 			countGen++
 		default:
 			t.Fatalf("unexpected Origin: %q", r.Origin)
@@ -208,12 +208,12 @@ func TestResolvedLimit_ClampsAndDefaults(t *testing.T) {
 
 func TestIntersectOrigins(t *testing.T) {
 	cases := []struct{ a, b, want []ImageOrigin }{
-		{nil, []ImageOrigin{OriginGenerated}, nil},
-		{[]ImageOrigin{OriginGenerated}, nil, nil},
-		{[]ImageOrigin{OriginGenerated}, []ImageOrigin{OriginGenerated}, []ImageOrigin{OriginGenerated}},
-		{[]ImageOrigin{OriginRetrieved}, []ImageOrigin{OriginGenerated}, nil},
-		{[]ImageOrigin{OriginRetrieved, OriginGenerated}, []ImageOrigin{OriginGenerated}, []ImageOrigin{OriginGenerated}},
-		{[]ImageOrigin{}, []ImageOrigin{OriginGenerated}, nil},
+		{nil, []ImageOrigin{asset.ImageOriginGenerated}, nil},
+		{[]ImageOrigin{asset.ImageOriginGenerated}, nil, nil},
+		{[]ImageOrigin{asset.ImageOriginGenerated}, []ImageOrigin{asset.ImageOriginGenerated}, []ImageOrigin{asset.ImageOriginGenerated}},
+		{[]ImageOrigin{asset.ImageOriginRetrieved}, []ImageOrigin{asset.ImageOriginGenerated}, nil},
+		{[]ImageOrigin{asset.ImageOriginRetrieved, asset.ImageOriginGenerated}, []ImageOrigin{asset.ImageOriginGenerated}, []ImageOrigin{asset.ImageOriginGenerated}},
+		{[]ImageOrigin{}, []ImageOrigin{asset.ImageOriginGenerated}, nil},
 	}
 	for i, c := range cases {
 		got := intersectOrigins(c.a, c.b)
@@ -237,7 +237,7 @@ func TestResult_FieldsPerTerritory(t *testing.T) {
 	}
 	repo := &fakeImageListRepository{
 		rows: []ImageSearchResult{
-			{AssetID: "gx", Origin: OriginGenerated, Provider: "Flux", StyleID: "photoreal", StyleVersion: "v1"},
+			{AssetID: "gx", Origin: asset.ImageOriginGenerated, Provider: "Flux", StyleID: "photoreal", StyleVersion: "v1"},
 		},
 	}
 	resolver := mustResolver(t, backend, repo)

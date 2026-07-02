@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -389,23 +388,17 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.Im
 	if a == nil || a.repo == nil {
 		return nil, nil
 	}
-	// Translate the canonical routing ImageFilter → routing.RepositoryListFilter.
-	// routing.RepositoryListFilter.Origins is typed
-	// []domainasset.ImageOrigin (i.e. internal/domain/asset.ImageOrigin,
-	// NOT the internal/infrastructure/database/sqlite/assets package).
-	// Both ImageOrigin enums (routing.ImageOrigin vs domainasset.ImageOrigin)
-	// are `type ImageOrigin string` so an element-by-element cast is
-	// lossless; we cannot convert []routing.ImageOrigin to
-	// []domainasset.ImageOrigin in a single expression because Go does not
-	// allow conversion between slices of differently-named types even
-	// when their underlying types match.
-	dbOrigins := make([]domainasset.ImageOrigin, 0, len(filter.Origins))
-	for _, o := range filter.Origins {
-		dbOrigins = append(dbOrigins, domainasset.ImageOrigin(o))
-	}
+	// FASE 7 image-territories cleanup (July 2026, godlike/06 SSOT):
+	// routing.ImageOrigin is a Go 1.9+ type alias for
+	// asset.ImageOrigin (declared in internal/domain/asset/image_taxonomy.go).
+	// Same type identity → []routing.ImageOrigin flows directly into
+	// the []asset.ImageOrigin slot on routing.RepositoryListFilter
+	// without conversion. The previous element-by-element cast loop
+	// (a third knowledge site that the code-reviewer flagged) is
+	// collapsed — there is no conversion at all.
 	dbRows, err := a.repo.ListImages(ctx, routing.RepositoryListFilter{
 		SubjectID: filter.SubjectID,
-		Origins:   dbOrigins,
+		Origins:   filter.Origins,
 		Providers: filter.Providers,
 		StyleIDs:  filter.StyleIDs,
 		Tags:      filter.Tags,
@@ -418,7 +411,7 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.Im
 	for _, r := range dbRows {
 		out = append(out, routing.ImageSearchResult{
 			AssetID:      r.AssetID,
-			Origin:       routing.ImageOrigin(r.Origin),
+			Origin:       r.Origin, // routing.ImageOrigin alias = asset.ImageOrigin, no conversion
 			Provider:     r.Provider,
 			Name:         r.Name,
 			PreviewURL:   r.PreviewURL,

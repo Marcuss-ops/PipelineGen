@@ -7,7 +7,11 @@
 // import edge that completed the pre-FASE-8 import cycle.
 package routing
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
 
 type retrievedSearcher struct {
 	backend RetrievalSearchBackend
@@ -36,7 +40,7 @@ func (s *retrievedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 		// the row is exact-match of the upstream-sourced candidate.
 		out = append(out, ImageSearchResult{
 			AssetID:      "",
-			Origin:       OriginRetrieved,
+			Origin:       asset.ImageOriginRetrieved,
 			Provider:     string(h.Provider),
 			Name:         h.Title,
 			PreviewURL:   h.PreviewURL,

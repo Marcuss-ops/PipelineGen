@@ -4,6 +4,8 @@ package routing
 
 import (
 	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 type generatedSearcher struct {
@@ -22,9 +24,9 @@ func (s *generatedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 	}
 	narrowed := filter
 	if len(narrowed.Origins) == 0 {
-		narrowed.Origins = []ImageOrigin{OriginGenerated}
+		narrowed.Origins = []ImageOrigin{asset.ImageOriginGenerated}
 	} else {
-		narrowed.Origins = intersectOrigins(narrowed.Origins, []ImageOrigin{OriginGenerated})
+		narrowed.Origins = intersectOrigins(narrowed.Origins, []ImageOrigin{asset.ImageOriginGenerated})
 	}
 	rows, err := s.repo.ListImages(ctx, narrowed)
 	if err != nil {
@@ -32,7 +34,7 @@ func (s *generatedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 	}
 	out := make([]ImageSearchResult, 0, len(rows))
 	for _, r := range rows {
-		r.Origin = OriginGenerated // territory invariant
+		r.Origin = asset.ImageOriginGenerated // territory invariant
 		out = append(out, r)
 	}
 	return out, nil

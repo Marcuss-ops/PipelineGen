@@ -26,6 +26,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── Pure-Go stub mock ──────────────────────────────────────────────────
@@ -115,8 +116,8 @@ func TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory(t *testing.T)
 // territory key. Mirrors the routing.image_search_resolver_test.go
 // strong invariant in mock form.
 func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
-	stubRetr := &stubSearcher{rows: []routing.ImageSearchResult{{AssetID: "r1", Origin: routing.OriginRetrieved}}}
-	stubGen := &stubSearcher{rows: []routing.ImageSearchResult{{AssetID: "g1", Origin: routing.OriginGenerated}}}
+	stubRetr := &stubSearcher{rows: []routing.ImageSearchResult{{AssetID: "r1", Origin: asset.ImageOriginRetrieved}}}
+	stubGen := &stubSearcher{rows: []routing.ImageSearchResult{{AssetID: "g1", Origin: asset.ImageOriginGenerated}}}
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{
 			routing.TerritoryRetrieved: stubRetr,
@@ -140,8 +141,8 @@ func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
 // verifies the *type-system* contract is reachable from this package).
 func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	stubAll := &stubSearcher{rows: []routing.ImageSearchResult{
-		{AssetID: "r1", Origin: routing.OriginRetrieved, Provider: "wikipedia"},
-		{AssetID: "g1", Origin: routing.OriginGenerated, Provider: "flux"},
+		{AssetID: "r1", Origin: asset.ImageOriginRetrieved, Provider: "wikipedia"},
+		{AssetID: "g1", Origin: asset.ImageOriginGenerated, Provider: "flux"},
 	}}
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{
@@ -161,7 +162,7 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	}
 	// Hard invariant: only OriginRetrieved or OriginGenerated allowed.
 	for i, r := range rows {
-		if r.Origin != routing.OriginRetrieved && r.Origin != routing.OriginGenerated {
+		if r.Origin != asset.ImageOriginRetrieved && r.Origin != asset.ImageOriginGenerated {
 			t.Errorf("row %d: unexpected origin %q (must be retrieved or generated)", i, r.Origin)
 		}
 	}
