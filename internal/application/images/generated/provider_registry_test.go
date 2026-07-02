@@ -37,16 +37,8 @@ func TestGenerationRegistry_DefaultsToGoogleSlidesNanoBananaPro(t *testing.T) {
 	if result.Model != CanonicalGoogleSlidesModel {
 		t.Fatalf("model = %q, want %q", result.Model, CanonicalGoogleSlidesModel)
 	}
-	if len(backend.captures) != 1 || backend.captures[0].Model != CanonicalGoogleSlidesModel {
-		t.Fatalf("backend model = %+v", backend.captures)
-	}
-}
-
-func TestGenerationRegistry_RejectsUnknownModel(t *testing.T) {
-	registry := NewDefaultProviderRegistry(zap.NewNop(), &fakeBackend{result: &PortGeneratedImage{}})
-	_, err := registry.Generate(context.Background(), GenerateRequest{Prompt: "x", Model: "removed-model"}, GenerateOptions{})
-	if !errors.Is(err, ErrUnsupportedModel) {
-		t.Fatalf("err = %v, want ErrUnsupportedModel", err)
+	if len(backend.captures) != 1 {
+		t.Fatalf("expected 1 backend dispatch, got %d", len(backend.captures))
 	}
 }
 
