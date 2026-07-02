@@ -834,6 +834,47 @@
       deadline: 2026-07-25
 
 
+- id: PR-STOCK-SOURCESTAGER-WIRE
+  status: deferred
+  exit_signal: false
+  owner_capability: internal/application/assets/providers/stock/stockpipeline
+  exit_gate: |
+    Stock Cutover §12-4 Commit 6 (STOCK-CUT-6) wire-up closes atomically
+    in a follow-up PR. PRE-CONDITIONS:
+      (a) `StockStageSourcesStep.Run` body wire-up of the canonical
+          `o.stager.StageSource(ctx, assets.SourceRef{URL: firstSource(in).URL})`
+          + `state.StagedAssets` capture returned to the deferred Cleanup
+          hook in `Orchestrator.RunResilient` (already landed via this
+          commit's CHANGELOG entry (1)).
+      (b) nil-deref at `service.go:817` (`s.sourceStager.Prepare`) is
+          root-caused via focused investigation. Two possible causes:
+          (i) test-fixture wiring gap (TestService_RunOrchestrator_
+          C12FiveArtifacts does not inject sourceStager before invoking
+          runOrchestrator); (ii) broader production-side wiring gap
+          affecting real callers — the canonical `Service` wiring layer
+          does not currently bind sourceStager unconditionally.
+          Decision documented via the follow-up PR's CHANGELOG entry.
+      (c) Remove the 5 `t.Skip()` lines in
+          `stock_stager_wiring_test.go::TestOrchestrator_RunResilient_*`
+          so the 5 contract assertions exercise the wire-up surface;
+          the `var _ assets.SourceStager = (*recordingStager)(nil)`
+          compile-time port-drift defense at package scope remains.
+      (d) Flip this entry `status: deferred` -> `status: done` with
+          `exit_signal: true` after the wire-up PR lands + the
+          foreground test suite goes green from a single canonical
+          run (no t.Skip, no nil-deref).
+  deadline: 2026-08-15
+  linked_issues:
+    - id: STOCK-CUT-6-FORWARD-COVERAGE-TESTPIN
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      deadline: 2026-07-02
+    - id: STOCK-CUT-6-WIRE-UP
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-08-15
+
+
 # Doc #2 (post_cascade_followups) and Doc #3 (legacy_fallback_cleanup) DROPPED - see footer pointer.
 
 # Doc #2 (post_cascade_followups) + Doc #3 (legacy_fallback_cleanup)
