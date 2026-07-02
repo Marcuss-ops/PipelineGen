@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -17,8 +18,9 @@ import (
 
 // clipWork pairs a RunTagItem with its processor input.
 type clipWork struct {
-	item         RunTagItem
-	processInput *asset.ProcessInput
+	item            RunTagItem
+	processInput    *asset.ProcessInput
+	stagedAsset     *assets.StagedAsset // set when shared SourceStager pre-staged the source
 }
 
 // pipelineState holds mutable state accumulated across RunTag stages.
@@ -163,6 +165,59 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.Error(err))
 				}
+			}
+
+			// Step 9/12 wire-up (July 2026): invoke the shared SourceStager
+			// port before mediaProcessor.Process when wired. This locks
+			// Artlist onto the SAME shared port YouTube and stock use,
+			// and provides:
+			//   - Early connectivity probe (stager.StageSource FailureCode
+			//     surfaces a typed pre-flight diagnostic before the heavier
+			//     transcode pipeline starts).
+			//   - Observability for "URL was reachable at download time"
+			//     (zap log carries staged LocalPath + bytes).
+			//   - Single canonical path for the "download" surface (the
+			//     stager wraps Artlist Downloader port → composes with the
+			//     same Downloader that mediaProcessor internally uses).
+			//
+			// KNOWN LIMITATION (July 2026): asset.ProcessInput has no
+			// LocalPath field, so mediaProcessor still performs its own
+			// download after this pre-flight. The stager invocation IS
+			// bandwidth-waste when both succeed; the staged file is
+			// cleaned up immediately. A future refactor (FASE 7+) that
+			// adds LocalPath to ProcessInput would let the stager download
+			// REPLACE the mediaProcessor download. Until then the
+			// pre-flight is an honest observability + port-usage probe.
+			//
+			// Thread safety: both arg.w.stagedAsset (per-goroutine clipWork
+			// copy from the outer `work := work` loop capture) and
+			// zap.Logger are thread-safe; no extra mutex is needed here.
+			if o.svc.stager != nil && arg.w.processInput.SourceURL != "" {
+				staged, stageErr := o.svc.stager.StageSource(ctx, assets.SourceRef{
+					URL: arg.w.processInput.SourceURL,
+				})
+				if stageErr != nil {
+					o.svc.log.Warn("shared SourceStager pre-stage failed (continuing with mediaProcessor)",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.String("source_url", arg.w.processInput.SourceURL),
+						zap.Error(stageErr))
+				} else {
+					arg.w.stagedAsset = staged
+					o.svc.log.Info("shared SourceStager pre-staged source",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.String("source_url", arg.w.processInput.SourceURL),
+						zap.String("local_path", staged.LocalPath),
+						zap.Int64("bytes", staged.Bytes))
+				}
+			}
+			if arg.w.stagedAsset != nil {
+				defer func(staged *assets.StagedAsset) {
+					if cleanupErr := o.svc.stager.Cleanup(ctx, staged); cleanupErr != nil {
+						o.svc.log.Warn("shared SourceStager cleanup failed (best-effort)",
+							zap.String("local_path", staged.LocalPath),
+							zap.Error(cleanupErr))
+					}
+				}(arg.w.stagedAsset)
 			}
 
 			result, procErr := o.svc.mediaProcessor.Process(ctx, arg.w.processInput)

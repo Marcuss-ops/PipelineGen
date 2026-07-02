@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -45,6 +46,13 @@ type ServicePorts struct {
 	ScraperSearcher Searcher
 	PixabaySearcher Searcher
 	PexelsSearcher  Searcher
+	// Stager is the shared SourceStager port (Step 9/12 wire-up, July 2026).
+	// Optional — when non-nil, stageProcessBatch uses it as the canonical
+	// source-staging surface (wrapping the Artlist Downloader port) so
+	// Artlist demonstrates the same SourceStager contract used by YouTube
+	// and stock. When nil, stageProcessBatch falls through to the legacy
+	// mediaProcessor.Process pipeline without breaking.
+	Stager assets.SourceStager
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -184,6 +192,9 @@ type Service struct {
 
 	// Asset locations: canonical source of truth for local/drive paths.
 	assetLocRepo asset.LocationRepository
+
+	// stager is the shared SourceStager port (Step 9/12 wire-up). Optional.
+	stager assets.SourceStager
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
@@ -225,6 +236,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		assetProcessing:    deps.AssetProcRepo,
 		assetVersions:      deps.AssetVerRepo,
 		assetLocRepo:       deps.AssetLocRepo,
+		stager:             deps.Stager,
 	}
 
 	// Inizializza i componenti delegati
