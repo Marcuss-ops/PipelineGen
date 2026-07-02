@@ -23,7 +23,7 @@ type Section struct {
 	Title  string `json:"title" binding:"required" example:"Castello Medievale"`
 	Text   string `json:"text"  example:"Descrizione della scena..."`
 	Style  string `json:"style" example:"medievale"`
-	Engine string `json:"engine" example:"google-vids"` // "ken-burns" or "google-vids"
+	Engine string `json:"engine,omitempty"` // Deprecated: generation always uses Google Slides + Ken Burns.
 }
 
 // SectionVideo holds the result for one generated video.
@@ -62,11 +62,6 @@ func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, me
 	}
 }
 
-// VideoStatus has been removed (PR cleanup June 2026).
-// CapVideoAI capability was deleted. The handler gate in api/images/handler_full.go
-// that called this method has been removed. Google Vids generation is no longer
-// advertised as a capability.
-
 const (
 	videoGenTimeout = 5 * time.Minute
 	imageGenWidth   = 1344
@@ -74,7 +69,6 @@ const (
 	videoDuration   = 7
 	videoMaxWorkers = 3
 
-	// Output resolution for the final MP4 video (1920x1080)
 	videoOutWidth  = 1920
 	videoOutHeight = 1080
 )
@@ -95,7 +89,7 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 	var wg sync.WaitGroup
 
 	for i, sec := range sections {
-		i, sec := i, sec // capture per-iteration
+		i, sec := i, sec
 		wg.Add(1)
 		concurrent.SafeGoFunc("fullimages-section", struct {
 			Idx   int
@@ -134,7 +128,8 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 	return &Result{Videos: results}, nil
 }
 
-// generateOneVideo handles the full pipeline for one section.
+// generateOneVideo generates the source image exclusively through Google
+// Slides, then converts it to a Ken Burns MP4.
 func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic string, idx int) SectionVideo {
 	ctx, cancel := context.WithTimeout(ctx, videoGenTimeout)
 	defer cancel()
@@ -148,12 +143,10 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 	prompt := pickBestPrompt(prompts, subject, topic)
 	genID := hashutil.MD5String(prompt)[:12]
 
-	// Precompute paths
 	videoDir := filepath.Join(s.imagesDir, style, genID)
 	videoName := genID + ".mp4"
 	videoPath := filepath.Join(videoDir, videoName)
 
-	// === Step 0: Cache check — return existing video if found ===
 	if _, err := os.Stat(videoPath); err == nil {
 		s.log.Info("fullimages: video already exists, returning cached",
 			zap.Int("section", idx),
@@ -170,24 +163,27 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// === Step 1: Generate video/image via selected Engine ===
-	engine := strings.ToLower(strings.TrimSpace(sec.Engine))
-	if engine == "" {
-		engine = "ken-burns" // Default
-	}
-
-	// Google Vids engine was removed (PR June 2026). All sections fall
-	// through to the ken-burns path below.
-
-	s.log.Info("fullimages: generating smart image for ken-burns", zap.Int("section", idx), zap.String("subject", subject), zap.String("style", style))
+	s.log.Info("fullimages: generating source image with Google Slides",
+		zap.Int("section", idx),
+		zap.String("subject", subject),
+		zap.String("style", style),
+	)
 
 	tags := []string{subject, "style:" + style}
-
-	// Use GenerateSmartImage which handles styles and fallback
-	asset, err := s.imgService.GenerateSmartImage(ctx, subject, topic, style, prompts, tags, imageGenWidth, imageGenHeight, "flux-1-dev", true)
-
-	if err != nil || asset == nil {
-		errMsg := "all NVIDIA models failed"
+	imageAsset, err := s.imgService.GenerateSmartImage(
+		ctx,
+		subject,
+		topic,
+		style,
+		prompts,
+		tags,
+		imageGenWidth,
+		imageGenHeight,
+		"", // empty resolves to the sole canonical model: nano-banana-pro
+		true,
+	)
+	if err != nil || imageAsset == nil {
+		errMsg := "Google Slides image generation failed"
 		if err != nil {
 			errMsg = err.Error()
 		}
@@ -197,18 +193,17 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 
 	s.log.Info("fullimages: image ready",
 		zap.Int("section", idx),
-		zap.String("hash", asset.Hash),
-		zap.String("path_rel", asset.PathRel),
-		zap.String("source", asset.SourceURL),
+		zap.String("hash", imageAsset.Hash),
+		zap.String("path_rel", imageAsset.PathRel),
+		zap.String("source", imageAsset.SourceURL),
 	)
 
-	// === Step 2: Locate image on disk ===
-	imagePath := resolveImagePath(s.imagesDir, asset.Hash)
-	if imagePath == "" && asset.PathRel != "" {
-		imagePath = filepath.Join(s.imagesDir, asset.PathRel)
+	imagePath := resolveImagePath(s.imagesDir, imageAsset.Hash)
+	if imagePath == "" && imageAsset.PathRel != "" {
+		imagePath = filepath.Join(s.imagesDir, imageAsset.PathRel)
 	}
 	if imagePath == "" {
-		s.log.Error("fullimages: image file not found on disk", zap.Int("section", idx), zap.String("hash", asset.Hash))
+		s.log.Error("fullimages: image file not found on disk", zap.Int("section", idx), zap.String("hash", imageAsset.Hash))
 		return SectionVideo{
 			SectionIndex: idx,
 			Title:        sec.Title,
@@ -217,7 +212,6 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// === Step 3: Convert image to 1920x1080 MP4 video with Ken Burns zoom ===
 	s.log.Info("fullimages: converting image to 1920x1080 video",
 		zap.Int("section", idx),
 		zap.String("image", imagePath),
@@ -254,13 +248,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		zap.Int("height", videoOutHeight),
 	)
 
-	// === Step 4: Upload video to Drive ===
 	return s.uploadAndFinish(ctx, sec, idx, videoPath, videoName, genID, style, prompt)
 }
 
-// processGeneratedVideo handles a video file already generated (e.g. via Google Vids)
+// processGeneratedVideo handles a video file already generated by an external
+// compatibility caller. New generation does not use this path.
 func (s *Service) processGeneratedVideo(ctx context.Context, sec Section, idx int, tempPath, genID, style, prompt string) SectionVideo {
-	// Precompute paths
 	videoDir := filepath.Join(s.imagesDir, style, genID)
 	videoName := genID + ".mp4"
 	videoPath := filepath.Join(videoDir, videoName)
@@ -269,27 +262,22 @@ func (s *Service) processGeneratedVideo(ctx context.Context, sec Section, idx in
 		return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to create dir: %v", err)}
 	}
 
-	// Move if different
 	if tempPath != videoPath {
 		if err := os.Rename(tempPath, videoPath); err != nil {
-			// Try copy if rename fails (e.g. cross-device)
-			input, err := os.ReadFile(tempPath)
-			if err != nil {
-				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to move video: %v", err)}
+			input, readErr := os.ReadFile(tempPath)
+			if readErr != nil {
+				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to move video: %v", readErr)}
 			}
-			if err := os.WriteFile(videoPath, input, 0644); err != nil {
-				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to write video: %v", err)}
+			if writeErr := os.WriteFile(videoPath, input, 0644); writeErr != nil {
+				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to write video: %v", writeErr)}
 			}
 		}
 	}
 
-	// Upload to Drive (re-using Step 4 logic)
 	return s.uploadAndFinish(ctx, sec, idx, videoPath, videoName, genID, style, prompt)
 }
 
 // uploadAndFinish handles the final Drive upload and result packaging.
-// Uses mediaStore.UploadToDrive which resolves style folders from AssetTree
-// (SQLite cache) before falling back to Drive API.
 func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, videoPath, videoName, genID, style, prompt string) SectionVideo {
 	if s.mediaStore == nil {
 		return SectionVideo{
@@ -324,7 +312,6 @@ func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, vid
 
 	saveCacheSidecar(videoPath, webLink, fileID)
 
-	// Registra il video in media_assets (salta Drive upload, già fatto sopra)
 	if err := s.imgService.RegisterVideoAsset(ctx, videoPath, prompt, "ken-burns", style, videoDuration, fileID, webLink); err != nil {
 		s.log.Warn("fullimages: failed to register video asset in DB", zap.Error(err))
 	}
@@ -338,9 +325,6 @@ func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, vid
 		VideoPath:    videoPath,
 	}
 }
-
-// --- Cache sidecar helpers ---
-// A tiny JSON file next to the video remembers the Drive link for fast cache hits.
 
 type cacheMeta struct {
 	DriveLink   string `json:"drive_link,omitempty"`
