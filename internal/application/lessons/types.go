@@ -5,37 +5,39 @@ package lessons
 
 // LessonRequest is the input for generating a web lesson.
 type LessonRequest struct {
-	SourceText     string `json:"source_text"`               // Full source text to process
-	Title          string `json:"title"`                     // Lesson title
-	Language       string `json:"language,omitempty"`        // Output language (default: "it")
-	Tone           string `json:"tone,omitempty"`            // Narrative tone (default: "educational")
-	Model          string `json:"model,omitempty"`           // Ollama model (default: "gemma4:e4b")
-	MaxChapters    int    `json:"max_chapters,omitempty"`    // Max chapters (0 = auto-calculate)
-	GenerateImages bool   `json:"generate_images,omitempty"` // Generate AI images per chapter
-	ImageStyle     string `json:"image_style,omitempty"`     // Image generation style
-	ImageModel     string `json:"image_model,omitempty"`     // Image model (default: "flux-1-dev")
-	ImageWidth     int    `json:"image_width,omitempty"`     // Image width
-	ImageHeight    int    `json:"image_height,omitempty"`    // Image height
-	GeneratePDF    bool   `json:"generate_pdf,omitempty"`    // Generate PDF output
-	OllamaURL      string `json:"ollama_url,omitempty"`      // Ollama URL override
-	Async          bool   `json:"async,omitempty"`           // Run as background job
+	SourceText     string `json:"source_text"`
+	Title          string `json:"title"`
+	Language       string `json:"language,omitempty"`
+	Tone           string `json:"tone,omitempty"`
+	Model          string `json:"model,omitempty"`
+	MaxChapters    int    `json:"max_chapters,omitempty"`
+	GenerateImages bool   `json:"generate_images,omitempty"`
+	ImageStyle     string `json:"image_style,omitempty"`
+	// ImageModel is retained only for request compatibility. Generation ignores
+	// it and always uses Google Slides with nano-banana-pro.
+	ImageModel  string `json:"image_model,omitempty"`
+	ImageWidth  int    `json:"image_width,omitempty"`
+	ImageHeight int    `json:"image_height,omitempty"`
+	GeneratePDF bool   `json:"generate_pdf,omitempty"`
+	OllamaURL   string `json:"ollama_url,omitempty"`
+	Async       bool   `json:"async,omitempty"`
 }
 
 // ChapterSplit represents a source text segment to be processed as a chapter.
 type ChapterSplit struct {
-	Index int    // Position in the chapter sequence
-	Title string // Suggested chapter title
-	Text  string // Source text content for this chapter
+	Index int
+	Title string
+	Text  string
 }
 
 // ChapterResult is the output of a single chapter generation.
 type ChapterResult struct {
 	Index     int       `json:"index"`
 	Title     string    `json:"title"`
-	Content   string    `json:"content"` // Generated chapter text
+	Content   string    `json:"content"`
 	WordCount int       `json:"word_count"`
-	Image     *ImageRef `json:"image,omitempty"` // Generated image (if requested)
-	Error     string    `json:"error,omitempty"` // Non-empty if chapter failed
+	Image     *ImageRef `json:"image,omitempty"`
+	Error     string    `json:"error,omitempty"`
 }
 
 // ImageRef holds a reference to a generated AI image.
@@ -55,8 +57,8 @@ type LessonResult struct {
 	Language       string          `json:"language"`
 	Chapters       []ChapterResult `json:"chapters"`
 	TotalWords     int             `json:"total_words"`
-	MarkdownPath   string          `json:"markdown_path,omitempty"` // Path to generated .md file
-	PDFPath        string          `json:"pdf_path,omitempty"`      // Path to generated .pdf file
+	MarkdownPath   string          `json:"markdown_path,omitempty"`
+	PDFPath        string          `json:"pdf_path,omitempty"`
 	DriveDocURL    string          `json:"drive_doc_url,omitempty"`
 	DriveFolderURL string          `json:"drive_folder_url,omitempty"`
 	GeneratedAt    string          `json:"generated_at"`
@@ -64,12 +66,13 @@ type LessonResult struct {
 }
 
 // LessonsConfig holds configuration for the lessons service.
-// This mirrors the pattern used by books.Config.
 type LessonsConfig struct {
-	Enabled             bool   `yaml:"enabled"`
-	DefaultModel        string `yaml:"default_model"`
-	DefaultTone         string `yaml:"default_tone"`
-	DefaultLanguage     string `yaml:"default_language"`
+	Enabled          bool   `yaml:"enabled"`
+	DefaultModel     string `yaml:"default_model"`
+	DefaultTone      string `yaml:"default_tone"`
+	DefaultLanguage  string `yaml:"default_language"`
+	// DefaultImageModel is retained for config compatibility and is fixed to
+	// the only supported Google Slides model.
 	DefaultImageModel   string `yaml:"default_image_model"`
 	MaxParallelChapters int    `yaml:"max_parallel_chapters"`
 	OllamaURL           string `yaml:"ollama_url"`
@@ -83,7 +86,7 @@ func DefaultConfig() *LessonsConfig {
 		DefaultModel:        "gemma4:e4b",
 		DefaultTone:         "educational",
 		DefaultLanguage:     "it",
-		DefaultImageModel:   "flux-1-dev",
+		DefaultImageModel:   "nano-banana-pro",
 		MaxParallelChapters: 5,
 		OllamaURL:           "http://127.0.0.1:11434",
 		DriveFolderID:       "",
