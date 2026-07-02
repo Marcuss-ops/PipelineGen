@@ -568,7 +568,8 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
-					"status": "green",
+					"status":        "green",
+					"points_count":  42.0,
 					"config": map[string]interface{}{
 						"params": map[string]interface{}{
 							"vectors": map[string]interface{}{
