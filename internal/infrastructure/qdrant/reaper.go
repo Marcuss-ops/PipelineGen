@@ -49,6 +49,45 @@ const (
 // bumped, and the effective request is at most 100.
 const MaxReaperBatchSize = 100
 
+// ── P1 QDRANT-REAPER PointsSelector (July 2026) ──────────────────────
+//
+// PointsSelector decouples the point-level decision ("should this point
+// be redacted?") from the Reaper's scroll+overwrite loop. A single
+// Filter method returns true when the point's payload contains
+// redactable keys. Implementations are stateless — the Reaper owns
+// iteration, batching, and audit; the selector owns classification.
+//
+// KeySelector is the canonical implementation: it matches points whose
+// payload contains any of the configured redaction keys. Additional
+// selectors (e.g. time-based, workspace-scoped) can be added without
+// touching the Reaper's scroll loop.
+type PointsSelector interface {
+	// Filter returns true if the point should have its payload
+	// redacted. The Reaper calls this for every scrolled point
+	// before deciding whether to include it in the overwrite batch.
+	Filter(payload map[string]interface{}) bool
+}
+
+// KeySelector matches points that carry any of the configured
+// redaction keys in their payload.
+type KeySelector struct {
+	Keys []string
+}
+
+// Filter returns true if payload contains at least one of the
+// configured Keys.
+func (s *KeySelector) Filter(payload map[string]interface{}) bool {
+	if payload == nil || len(s.Keys) == 0 {
+		return false
+	}
+	for _, key := range s.Keys {
+		if _, ok := payload[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // ReaperOptions configures a single Reap run.
 type ReaperOptions struct {
 	// Collection is the Qdrant collection name (required).
@@ -57,7 +96,20 @@ type ReaperOptions struct {
 	// Keys is the list of payload keys to redact. Empty → no-op run
 	// (the operator must opt in explicitly per key). Defaults to
 	// DefaultReaperKeys (empty in production).
+	//
+	// When Selector is non-nil, Keys is ignored — the selector
+	// owns the classification decision. When Selector is nil,
+	// a KeySelector{Keys} is constructed internally and Keys
+	// drives the redaction decision.
 	Keys []string
+
+	// Selector is an optional PointsSelector that decides which
+	// points need redaction. When nil, a KeySelector with the
+	// provided Keys is used as the default filter. P1 QDRANT-REAPER
+	// (July 2026): extracted from the inline redactPayload check
+	// so the Reaper loop stays clean and new selector types can be
+	// plugged in without touching the scroll+overwrite path.
+	Selector PointsSelector
 
 	// BatchSize is the scroll page size (1–MaxReaperBatchSize,
 	// default MaxReaperBatchSize).
@@ -148,19 +200,33 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 	if len(keys) == 0 {
 		keys = DefaultReaperKeys
 	}
-	if len(keys) == 0 {
-		started := time.Now().UTC()
-		return &ReaperResult{
-			RunID:        "noop-no-keys",
-			Collection:   opts.Collection,
-			KeysRedacted: keys,
-			StartedAt:    started,
-			CompletedAt:  started,
-			Status:       StatusNoop,
-			DryRun:       opts.DryRun,
-			BatchCapped:  0,
-			Errors:       []string{"reaper no-op: no keys specified (QDRANT-005 operator must opt in explicitly per key)"},
-		}, nil
+
+	// Build the selector: use the provided one, or fall back to a
+	// KeySelector built from opts.Keys. The selector owns the
+	// "should we redact?" decision; the Reaper loop only iterates.
+	//
+	// When Selector is non-nil, we trust it even when Keys is empty
+	// (the selector may use its own criteria). The no-op guard below
+	// only applies when the default KeySelector is in use.
+	selector := opts.Selector
+	if selector == nil {
+		selector = &KeySelector{Keys: keys}
+		// Only guard against empty keys when using the default selector.
+		// A custom selector may not need Keys at all.
+		if len(keys) == 0 {
+			started := time.Now().UTC()
+			return &ReaperResult{
+				RunID:        "noop-no-keys",
+				Collection:   opts.Collection,
+				KeysRedacted: keys,
+				StartedAt:    started,
+				CompletedAt:  started,
+				Status:       StatusNoop,
+				DryRun:       opts.DryRun,
+				BatchCapped:  0,
+				Errors:       []string{"reaper no-op: no keys specified (QDRANT-005 operator must opt in explicitly per key)"},
+			}, nil
+		}
 	}
 
 	batch := opts.BatchSize
@@ -214,8 +280,18 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 		// OverwritePayload so vectors are preserved. The per-page
 		// batch keeps the Qdrant PUT body small and avoids the
 		// per-point fixed cost of N individual calls.
+		//
+		// P1 QDRANT-REAPER (July 2026): classification is delegated
+		// to opts.Selector.Filter so the Reaper loop is a clean
+		// scroll→classify→overwrite pipeline. The stripped check
+		// is preserved: if the selector matches but no keys were
+		// actually stripped (custom selector + different key set),
+		// skip the no-op overwrite.
 		var redactions []PointPayload
 		for _, p := range page.Points {
+			if !selector.Filter(p.Payload) {
+				continue
+			}
 			cleaned, stripped := redactPayload(p.Payload, keys)
 			if !stripped {
 				continue

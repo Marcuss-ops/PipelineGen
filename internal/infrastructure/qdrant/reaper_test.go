@@ -162,3 +162,224 @@ func TestMaxReaperBatchSize_Const(t *testing.T) {
 	assert.Equal(t, 100, MaxReaperBatchSize,
 		"MaxReaperBatchSize is the Qdrant REST scroll-page ceiling; changing it requires a Qdrant version probe + product signoff")
 }
+
+// ── P1 QDRANT-REAPER PointsSelector tests (July 2026) ────────────────
+
+// TestReaper_IdleCycle_SinglePage verifies that when the selector
+// matches zero points, the Reap completes with StatusNoop and
+// touches zero points — no unnecessary OverwritePayload calls.
+func TestReaper_IdleCycle_SinglePage(t *testing.T) {
+	t.Parallel()
+
+	var overwriteCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/scroll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"points":[
+				{"id":"pt-1","payload":{"asset_id":"a1","name":"clean-1","source":"youtube"}},
+				{"id":"pt-2","payload":{"asset_id":"a2","name":"clean-2","source":"artlist"}},
+				{"id":"pt-3","payload":{"asset_id":"a3","name":"clean-3","source":"stock"}}
+			],"next_page_offset":""}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/payload":
+			overwriteCalls++
+			t.Error("unexpected OverwritePayload call — idle cycle should not mutate Qdrant")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
+	r := NewReaper(client, zap.NewNop())
+
+	result, err := r.Reap(context.Background(), ReaperOptions{
+		Collection: "test-collection",
+		Keys:       []string{"obsolete_key"},
+		// All points carry asset_id/name/source — none have "obsolete_key".
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PointsScanned)
+	assert.Equal(t, 0, result.PointsAffected)
+	assert.Equal(t, StatusNoop, result.Status,
+		"idle cycle with zero matching points must return StatusNoop")
+	assert.Equal(t, 0, overwriteCalls,
+		"idle cycle must not call OverwritePayload")
+}
+
+// TestReaper_DeleteCycle_OrphanPoints verifies that the selector
+// correctly identifies points with redactable keys and the Reaper
+// calls OverwritePayload to strip them.
+func TestReaper_DeleteCycle_OrphanPoints(t *testing.T) {
+	t.Parallel()
+
+	var overwritePayloads []PointPayload
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/scroll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"points":[
+				{"id":"pt-1","payload":{"asset_id":"a1","name":"n1","source":"youtube","obsolete_key":"stale"}},
+				{"id":"pt-2","payload":{"asset_id":"a2","name":"n2","source":"artlist"}},
+				{"id":"pt-3","payload":{"asset_id":"a3","name":"n3","source":"stock","obsolete_key":"also-stale"}}
+			],"next_page_offset":""}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/payload":
+			var body struct {
+				Points []PointPayload `json:"points"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("failed to decode OverwritePayload body: %v", err)
+			}
+			overwritePayloads = append(overwritePayloads, body.Points...)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"status":"completed"},"status":"ok"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
+	r := NewReaper(client, zap.NewNop())
+
+	result, err := r.Reap(context.Background(), ReaperOptions{
+		Collection: "test-collection",
+		Keys:       []string{"obsolete_key"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PointsScanned)
+	assert.Equal(t, 2, result.PointsAffected,
+		"pt-1 and pt-3 have obsolete_key and should be redacted")
+	assert.Equal(t, StatusOK, result.Status,
+		"successful delete cycle must return StatusOK")
+	require.Len(t, overwritePayloads, 2, "exactly 2 points should be in the overwrite batch")
+
+	// Verify pt-2 (no obsolete_key) is NOT in the overwrite batch.
+	for _, pp := range overwritePayloads {
+		assert.NotEqual(t, "pt-2", pp.ID, "pt-2 had no obsolete_key, must not be redacted")
+		// Verify obsolete_key was stripped from the cleaned payload.
+		assert.NotContains(t, pp.Payload, "obsolete_key",
+			"redacted payload for %s must NOT contain obsolete_key", pp.ID)
+	}
+}
+
+// TestReaper_BatchPagination verifies that the Reaper correctly
+// handles multi-page scroll results, accumulating affected points
+// across pages and applying overwrites per-page.
+func TestReaper_BatchPagination(t *testing.T) {
+	t.Parallel()
+
+	var pageCalls int
+	var overwriteBatches int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/scroll":
+			pageCalls++
+			w.Header().Set("Content-Type", "application/json")
+			switch pageCalls {
+			case 1:
+				// Page 1: 2 points, 1 affected.
+				_, _ = w.Write([]byte(`{"result":{"points":[
+					{"id":"p1-1","payload":{"asset_id":"a1","name":"n1","source":"youtube","legacy":"yes"}},
+					{"id":"p1-2","payload":{"asset_id":"a2","name":"n2","source":"artlist"}}
+				],"next_page_offset":"page-2"}}`))
+			case 2:
+				// Page 2: 2 points, 1 affected.
+				_, _ = w.Write([]byte(`{"result":{"points":[
+					{"id":"p2-1","payload":{"asset_id":"a3","name":"n3","source":"stock"}},
+					{"id":"p2-2","payload":{"asset_id":"a4","name":"n4","source":"youtube","legacy":"also-yes"}}
+				],"next_page_offset":""}}`))
+			default:
+				_, _ = w.Write([]byte(`{"result":{"points":[],"next_page_offset":""}}`))
+			}
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/payload":
+			overwriteBatches++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"status":"completed"},"status":"ok"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
+	r := NewReaper(client, zap.NewNop())
+
+	result, err := r.Reap(context.Background(), ReaperOptions{
+		Collection: "test-collection",
+		Keys:       []string{"legacy"},
+		BatchSize:  2, // small batch to trigger per-page overwrites
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, pageCalls, "should have made exactly 2 scroll calls")
+	assert.Equal(t, 4, result.PointsScanned, "4 points total across both pages")
+	assert.Equal(t, 2, result.PointsAffected,
+		"p1-1 (page 1) and p2-2 (page 2) have legacy key → 2 affected")
+	assert.Equal(t, StatusOK, result.Status,
+		"multi-page successful cycle must return StatusOK")
+	assert.Equal(t, 2, overwriteBatches,
+		"two pages with affected points → two OverwritePayload calls")
+	assert.Len(t, result.AffectedSample, 2,
+		"affected sample should include both matching point IDs")
+}
+
+// mockSelector always returns true — every point is "affected".
+// Used to verify that the custom Selector injection path works
+// end-to-end, including the empty-Keys guard not blocking it.
+type mockSelector struct{}
+
+func (mockSelector) Filter(_ map[string]interface{}) bool { return true }
+
+// TestReaper_CustomSelector verifies that a custom PointsSelector
+// injected via ReaperOptions.Selector is correctly delegated to.
+// The mock returns true for every point; only points that actually
+// carry the redaction key (from opts.Keys) should be overwritten.
+func TestReaper_CustomSelector(t *testing.T) {
+	t.Parallel()
+
+	var overwritePayloads []PointPayload
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/scroll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"points":[
+				{"id":"pt-a","payload":{"asset_id":"a1","name":"n1","obsolete_key":"yes"}},
+				{"id":"pt-b","payload":{"asset_id":"a2","name":"n2"}},
+				{"id":"pt-c","payload":{"asset_id":"a3","name":"n3","obsolete_key":"also"}}
+			],"next_page_offset":""}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/test-collection/points/payload":
+			var body struct {
+				Points []PointPayload `json:"points"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("failed to decode OverwritePayload body: %v", err)
+			}
+			overwritePayloads = append(overwritePayloads, body.Points...)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"status":"completed"},"status":"ok"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
+	r := NewReaper(client, zap.NewNop())
+
+	result, err := r.Reap(context.Background(), ReaperOptions{
+		Collection: "test-collection",
+		Keys:       []string{"obsolete_key"},
+		Selector:   &mockSelector{}, // custom: ALL points selected for filtering
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PointsScanned)
+	// mockSelector returns true for all 3 points, but only pt-a and pt-c
+	// actually carry "obsolete_key" → only those get overwritten.
+	assert.Equal(t, 2, result.PointsAffected)
+	assert.Equal(t, StatusOK, result.Status)
+	require.Len(t, overwritePayloads, 2)
+	// pt-b had no obsolete_key → stripped guard should skip it.
+	for _, pp := range overwritePayloads {
+		assert.NotEqual(t, "pt-b", pp.ID, "pt-b without obsolete_key must not be overwritten")
+	}
+}
