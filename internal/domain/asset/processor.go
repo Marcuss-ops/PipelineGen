@@ -68,10 +68,23 @@ type Processor interface {
 }
 
 // ProcessInput contains the input for processing an asset.
+//
+// LocalPath (Step 9/12 wire-up, July 2026): when set, Processor.Process
+// SKIPS the download step and uses LocalPath as the raw source input
+// for downstream processing (ffmpeg normalize, hash, upload). This lets
+// the shared assets.SourceStager port REPLACE the Processor's own
+// download instead of being a redundant pre-flight probe. Cleanup of
+// the external file is the caller's responsibility (gateway pattern:
+// the Processor does NOT delete caller-provided paths).
+//
+// When LocalPath is empty (the canonical legacy case), the Processor
+// uses SourceURL to download. SourceURL remains the required field
+// unless LocalPath is set, OR-relationship validated in Processor.Process.
 type ProcessInput struct {
 	ID               string
 	Name             string
 	SourceURL        string
+	LocalPath        string
 	Term             string
 	OutputDir        string
 	Filename         string

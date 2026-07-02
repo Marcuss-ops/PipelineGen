@@ -202,8 +202,15 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 						zap.String("source_url", arg.w.processInput.SourceURL),
 						zap.Error(stageErr))
 				} else {
+					// Step 9/12 wire-up (July 2026): now that the Processor honors
+					// ProcessInput.LocalPath (asset/processor.go + processor.go),
+					// the staged file is NOT just a probe — mediaProcessor.Process
+					// will SKIP its internal downloadStep and use this file as
+					// the raw input to ffmpeg normalize. Eliminates the redundant
+					// bandwidth double-download that the pre-refactor probe caused.
 					arg.w.stagedAsset = staged
-					o.svc.log.Info("shared SourceStager pre-staged source",
+					arg.w.processInput.LocalPath = staged.LocalPath
+					o.svc.log.Info("shared SourceStager replaced mediaProcessor download",
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.String("source_url", arg.w.processInput.SourceURL),
 						zap.String("local_path", staged.LocalPath),

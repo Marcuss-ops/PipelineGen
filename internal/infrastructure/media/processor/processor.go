@@ -118,11 +118,14 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	if input.Name == "" {
 		return result, fmt.Errorf("ProcessInput.Name is required")
 	}
-	if input.SourceURL == "" {
-		return result, fmt.Errorf("ProcessInput.SourceURL is required")
+	// Step 9/12 wire-up (July 2026): relaxed from "SourceURL==" → error"
+	// to OR-relationship with LocalPath. Either field is valid; if both
+	// are set, LocalPath takes precedence (download skipped).
+	if input.SourceURL == "" && input.LocalPath == "" {
+		return result, fmt.Errorf("ProcessInput.SourceURL or LocalPath is required")
 	}
-	if p.dl == nil {
-		return result, fmt.Errorf("Processor.dl (YTDLP) is nil - cannot download")
+	if p.dl == nil && input.LocalPath == "" {
+		return result, fmt.Errorf("Processor.dl (YTDLP) is nil - cannot download and LocalPath not set")
 	}
 
 	// Setup paths.
@@ -131,17 +134,36 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	processedPath := OutputPath(saveDir, finalFilename)
 
 	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly).
-	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
-	actualRawPath, err := p.downloadStep(ctx, input, rawPath)
-	if err != nil {
-		result.Error = fmt.Sprintf("download failed: %v", err)
-		return result, err
+	// Step 9/12 wire-up (July 2026): when input.LocalPath != "", the download
+	// step is BYPASSED — the caller (typically the shared SourceStager port)
+	// already staged the source bytes. This eliminates the redundant
+	// bandwidth double-download that was previously a probed pre-flight only.
+	// The caller owns cleanup of the staged file; Processor must NOT delete it.
+	var (
+		actualRawPath string
+		err           error
+	)
+	if input.LocalPath != "" {
+		actualRawPath = input.LocalPath
+		p.log.Info("Process: bypassing downloadStep — using caller-provided LocalPath",
+			zap.String("id", input.ID),
+			zap.String("local_path", input.LocalPath))
+	} else {
+		rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
+		actualRawPath, err = p.downloadStep(ctx, input, rawPath)
+		if err != nil {
+			result.Error = fmt.Sprintf("download failed: %v", err)
+			return result, err
+		}
 	}
 
-	// Step 2: Process/Normalize.
+	// Step 2: Process/Normalize. Caller-provided LocalPath cleanup skipped
+	// below (Step 9/12 wire-up): the stager owns the staged file lifecycle.
 	processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
 	if err != nil {
-		_ = os.Remove(actualRawPath)
+		if input.LocalPath == "" {
+			_ = os.Remove(actualRawPath)
+		}
 		result.Error = fmt.Sprintf("process failed: %v", err)
 		return result, err
 	}
@@ -166,10 +188,13 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		}
 	}
 
-	// Step 3: Hash.
+	// Step 3: Hash. Caller-provided LocalPath cleanup skipped below
+	// (Step 9/12 wire-up): the stager owns the staged file lifecycle.
 	fileHash, err := p.hashStep(ctx, processedPath)
 	if err != nil {
-		_ = os.Remove(actualRawPath)
+		if input.LocalPath == "" {
+			_ = os.Remove(actualRawPath)
+		}
 		_ = os.Remove(processedPath)
 		result.Error = fmt.Sprintf("hash failed: %v", err)
 		return result, err
@@ -285,7 +310,11 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	}
 
 	// Cleanup raw file after processing.
-	_ = os.Remove(actualRawPath)
+	// Skip when LocalPath was caller-provided (Step 9/12 wire-up): the
+	// caller (e.g. shared SourceStager) owns the staged file's lifecycle.
+	if input.LocalPath == "" {
+		_ = os.Remove(actualRawPath)
+	}
 
 	result.Status = "processed"
 	return result, nil
