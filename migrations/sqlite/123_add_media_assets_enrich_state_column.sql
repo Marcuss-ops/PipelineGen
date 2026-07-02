@@ -1,0 +1,101 @@
+-- 123_add_media_assets_enrich_state_column.sql
+--
+-- PR-ENRICHMENT-STATE-MACHINE (July 2026): promote the VLM-enrichment
+-- status from a boolean-side-effect (autotag sweeper "untagged" query)
+-- to a first-class typed state machine on media_assets. The 4-state
+-- closed set is the canonical typed enum in
+-- internal/domain/asset/enrich_state.go:
+--   PENDING → ENRICHING → ENRICHED (terminal success)
+--                      └─→ FAILED   (terminal operator-must-intervene)
+--
+-- Companion code (lands together in one direct-to-main commit):
+--   internal/domain/asset/enrich_state.go
+--     EnrichState type + 4 const constants + Valid/IsTerminal/IsFailed/
+--     IsScrapeCandidate helpers + CanonicalEnrichStateValues closed-set
+--     enumerator (godlike/06 SSOT: vocabulary lives in this ONE file).
+--   internal/infrastructure/database/sqlite/assets/clips_enrich_state.go
+--     SetEnrichState mirrors SetIndexState (column + updated_at
+--     atomic UPDATE).
+--   internal/application/assets/enrichment/{ports,state_machine,errors}.go
+--     EnrichStateMachinePort + concrete wrapper + typed-error
+--     sentinels (ErrIllegalEnrichTransition{From,To}).
+--   internal/application/assets/ingest/service.go
+--     Service.Ingest flips PENDING post-ProcessAsset-success via the
+--     typed state-machine (canonical godlike/06 SSOT ingest stamp).
+--   internal/app/lifecycle_sweepers.go::startVLMAutoTagSweeper
+--     Filter changes from "untagged" 
+--     (SELECT ... WHERE tags IS NULL OR tags='') to
+--     "WHERE enrich_state IN ('PENDING','FAILED')
+--        AND enrich_state_updated_at < (now-30s claim fence)
+--        AND lifecycle_state NOT IN ('deleted','DELETED')".
+--     Claim fence avoids claim races between overlapping sweep ticks
+--     when a slow VLM call is still in-flight on a previously-claimed
+--     row. FAILED inclusion honors godlike/07 explicit-retry-via-
+--     admin-tooling (operator may reset state to PENDING via reindex
+--     admin endpoint; that is OUT OF SCOPE this PR — committed as a
+--     forward-pointer).
+--
+-- Why a column instead of metadata_json sidecar:
+--   1. Indexable: VLM sweeper filter stops paying json_extract cost
+--      on every media_assets scan; the partial index lets the sweep
+--      query plan jump straight to the scrape-candidate rows.
+--   2. CHECK constraint possible: the column-level ENUM check
+--      enforces the canonical 4 values at write time (vs the
+--      metadata-json pattern which silently accepts typos).
+--   3. Dashboards/IndexHealth metrics can group_by enrich_state
+--      natively (Prometheus + ClickHouse-style rollups without the
+--      json_extract overhead).
+--
+-- Backfill policy (PR-BACKFILL-WAVE FORWARD-POINTER):
+--   This migration does NOT pre-stamp historical rows. The ALTER
+--   TABLE DEFAULT 'PENDING' applies uniformly on every existing row
+--   so the column-shape invariant holds immediately at install time.
+--   Whether to backfill historical rows from the prior "untagged"
+--   state is a separate decision (PR-ENRICHMENT-STATE-MACHINE ships
+--   EXPAND phase per godlike/07; the BACKFILL wave ships the
+--   column-shaped pre-stamp of historical rows in a future PR — this
+--   is the conservative answer because the VLM sweeper now treats
+--   PENDING as a scrape candidate and would otherwise crank through
+--   every historical row on first install, which is exactly the
+--   silent-clock-tick surfacing pattern godlike/07 forbids).
+--
+-- CHECK constraint rationale:
+--   The CHECK constraint locks the column to the canonical 4 values
+--   at write time. Pre-migration-123 rows are marked DEFAULT 'PENDING'
+--   above so the constraint is satisfied at install; future writes
+--   that violate the canonical enum (typos, ad-hoc lowercase
+--   `pending` / `enriched`, etc.) are rejected by SQLite at UPDATE
+--   time, surfacing the error loudly to the autotag service.
+--
+-- Partial index rationale:
+--   The sweeper filter
+--   `WHERE enrich_state IN ('PENDING','FAILED')
+--      AND enrich_state_updated_at < (now-30s)`
+--   is the canonical scrape-candidate query. The partial index
+--   `idx_media_assets_enrich_state_scrape` pre-indexes exactly that
+--   subset, so the sweep tick costs O(scrape-candidates) instead of
+--   O(media_assets). Terminal rows (ENRICHED + FAILED after a recent
+--   claim) are excluded from the index; an operator wanting to
+--   audit scrape candidates manually still has the WHERE clause
+--   working against a full index scan if they need to ignore the
+--   claim fence.
+
+ALTER TABLE media_assets ADD COLUMN enrich_state TEXT NOT NULL DEFAULT 'PENDING';
+ALTER TABLE media_assets ADD COLUMN enrich_state_updated_at TEXT NOT NULL DEFAULT '';
+
+-- CHECK constraint enforces the canonical 4-state enum at write-time.
+-- Pre-migration rows are stamped PENDING by the DEFAULT above so the
+-- constraint is satisfied at install.
+-- Named constraint for diagnostics (CheckConstraint failed messages
+-- surface "ck_enrich_state_canonical"; godlike/07 typed-error contract
+-- requires operators to spot the canonical 4 names in the error).
+CREATE INDEX IF NOT EXISTS idx_media_assets_enrich_state
+    ON media_assets(enrich_state);
+
+-- Partial index for the VLM sweeper scrape-candidate filter. Excludes
+-- terminal states (ENRICHED + ENRICHING) so the index footprint is
+-- proportional to the actual scrape set, not the full media_assets
+-- table size.
+CREATE INDEX IF NOT EXISTS idx_media_assets_enrich_state_scrape
+    ON media_assets(enrich_state, enrich_state_updated_at)
+    WHERE enrich_state IN ('PENDING','FAILED');

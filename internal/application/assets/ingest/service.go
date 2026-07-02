@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -27,24 +28,40 @@ type Pipeline struct {
 }
 
 type Service struct {
-	cfg       *config.Config
-	log       *zap.Logger
-	client    *http.Client
+	cfg        *config.Config
+	log        *zap.Logger
+	client     *http.Client
 	driveAdmin drive.Admin
-	pipelines map[Kind]*Pipeline
-	imagesDir string
-	tempDir   string
+	pipelines  map[Kind]*Pipeline
+	imagesDir  string
+	tempDir    string
+	// enrichState is the typed state-machine wrapper
+	// (PR-ENRICHMENT-STATE-MACHINE, July 2026, godlike/06 SSOT).
+	// NewService stamps PENDING on ingested rows post-ProcessAsset
+	// success so no future row is "mai classificato". Optional
+	// during EXPAND phase: nil is permitted (constructor FailClosed
+	// gate below) so composition-root wiring can land incrementally.
+	enrichState *enrichment.EnrichStateMachine
 }
 
-func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, pipelines map[Kind]*Pipeline) *Service {
+// NewService constructs the canonical ingest service.
+// enrichState may be nil during EXPAND phase (composition-root wires
+// it incrementally). When nil, Service.Ingest skips the canonical
+// PENDING stamp — the VLM 15-min sweeper still recovers via its
+// scrape-candidate filter (backfill path). When non-nil, the
+// canonical PENDING stamp fires immediately on ingest success
+// (godlike/06 SSOT: every freshly-ingested row gets explicit
+// enrich_state).
+func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
 	return &Service{
-		cfg:        cfg,
-		log:        log,
-		client:     &http.Client{Timeout: 90 * time.Second},
-		driveAdmin: driveAdmin,
-		pipelines:  pipelines,
-		imagesDir: cfg.Storage.ImagesPath(),
-		tempDir:   cfg.Storage.TempPath(),
+		cfg:         cfg,
+		log:         log,
+		client:      &http.Client{Timeout: 90 * time.Second},
+		driveAdmin:  driveAdmin,
+		pipelines:   pipelines,
+		imagesDir:  cfg.Storage.ImagesPath(),
+		tempDir:    cfg.Storage.TempPath(),
+		enrichState: enrichState,
 	}
 }
 
@@ -194,6 +211,44 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 	}
 	if result == nil {
 		return nil, fmt.Errorf("empty ingest result")
+	}
+	// Canonical godlike/06 SSOT enrichment-stamp: every freshly-ingested
+	// row is born with explicit enrich_state="PENDING" (PR-ENRICHMENT-
+	// STATE-MACHINE, July 2026). The typed state-machine wrapper
+	// preserves the godlike/06 SSOT contract by writing through
+	// EnrichStateMachine.MarkPending (which routes through
+	// EnrichRepositoryPort.SetEnrichState — the canonical write
+	// surface) and stamping enrich_state_updated_at atomically with
+	// enrich_state.
+	//
+	// EXPAND-phase discipline: when enrichState is nil (composition-
+	// root wiring deferred), the canonical stamp is skipped and the
+	// VLM 15-min sweeper still recovers via the scrape-candidate
+	// filter (backfill path, per godlike/07). When non-nil, the
+	// canonical stamp fires immediately so the row is never "mai
+	// classificato".
+	//
+	// Why stamp AFTER result.OK gate: a row that did not enter
+	// media_assets (result.OK=false) cannot have a stable
+	// enrich_state to flip — the typed stamp would target a row
+	// that is not there, surfacing ErrEnrichStateMissing. The
+	// canonical gate rejects this surface because it surfaces the
+	// "WHERE id=? UPDATE 0 rows" silently masked by the typed-
+	// error contract — operator dashboards would see a row that
+	// "should" be PENDING but isn't because the insert failed.
+	if result.OK && s.enrichState != nil {
+		if stampErr := s.enrichState.MarkPending(ctx, id); stampErr != nil {
+			// godlike/07 no-fake-availability: the stamp failure
+			// MUST surface as a typed error envelope, NOT be silently
+			// swallowed (the row would then be born without an
+			// enrich_state and the VLM sweeper would see it as a
+			// legitimate scrape candidate on every tick, defeating
+			// the no-fake-availability contract).
+			s.log.Warn("canonical enrich_state stamp failed (ingest result still returned OK)",
+				zap.String("asset_id", id),
+				zap.Error(stampErr))
+			return nil, fmt.Errorf("canonical enrich_state stamp failed for asset %q: %w", id, stampErr)
+		}
 	}
 	if !result.OK {
 		return &Result{
