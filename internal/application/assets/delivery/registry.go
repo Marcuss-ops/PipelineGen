@@ -84,6 +84,11 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				PathBuilder:    SoundEffectPath,
 				RequireSubpath: true,
 			},
+			DestinationDocument: {
+				RootFolderID:   cfg.Drive.DocumentsFolder(),
+				PathBuilder:    DocumentPath,
+				RequireSubpath: true,
+			},
 		},
 	}
 }
@@ -252,5 +257,20 @@ func SoundEffectPath(req PublishRequest) ([]string, error) {
 	}
 	return []string{
 		pathutil.SafeFolderName(group),
+	}, nil
+}
+
+// DocumentPath builds the path for generated documents (PDFs, DOCX):
+//
+//	documents/{asset_id_slug}
+//
+// AssetID is used as the subfolder to group document artifacts.
+func DocumentPath(req PublishRequest) ([]string, error) {
+	assetID := strings.TrimSpace(req.AssetID)
+	if assetID == "" {
+		return nil, fmt.Errorf("delivery: DocumentPath: asset_id is required")
+	}
+	return []string{
+		pathutil.SafeFolderName(assetID),
 	}, nil
 }
