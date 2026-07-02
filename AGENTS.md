@@ -1260,6 +1260,47 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 
 **Canonical test surface**: `internal/application/jobs/dispatcher_test.go` (9 TDD tests) copre nil-receiver + enqueuer-unwired (`ErrEnqueuerNotWired`) + nil-registry (`ErrRegistryNotFrozen`) + unfrozen-registry stub + unknown-jobType (`job.ErrUnknownJobType`) + missing-`PayloadCodec` (`ErrCodecMissing`) + encode-error (dual `%w` chain preserva `errors.Is(err, ErrInvalidPayload)` + `errors.As(err, &codecErr)`) + happy-path roundtrip (assertion `stub.lastReq.Payload.(json.RawMessage)`) + fluent-builder nil-guard. Compile-time `var _ EnqueuePort = (*Service)(nil)` blocca future drift.
 
+### Pattern 10 — ArtifactUploader state-machine + idem-key (P0 Commit 6, July 2026)
+
+**Regola**: quando un caller (worker, use case, handler) deve trasferire un artifact al remote-side via il protocollo 3-phase stateful upload, **NON** chiamare `*jobbrokerclient.Client.PrepareArtifactUpload` / `UploadArtifactFile` / `FinalizeArtifactUpload` direttamente dal codice di production — il path canonico è `creator.Adapter` (`internal/infrastructure/remote/creator/adapter.go`) che implementa `remote.ArtifactUploader` (`internal/domain/remote/artifact_uploader.go`) e instrada i 3 wire commands attraverso state-machine + idem-key enforcements. Il port `ArtifactUploader` (3 metodi: Prepare/Upload/Finalize) + la state-machine `UploadState` (6 closed values: PREPARING/UPLOADING/UPLOADED/VERIFIED/FINALIZED/FAILED) + l'idempotency-key deterministica `ArtifactIdempotencyKey(jobID, artifactID, sha256) string` formano il triangolo canonico per ogni sessione di upload.
+
+**Perché servono tutti e tre (port + state-machine + idem-key):**
+
+- **State-machine**: `UploadState.IsValidTransition(to)` enforces the closed 6-state machine (forward chain + sticky-terminal FAILED/FINALIZED sinks + self-loop idempotency). Bypassing la state-machine via caller-side direct call significa corruption di stato silently absorbed (e.g. retry su FINALIZED invece di inventare una nuova sessione) invece di typed errors con `*IllegalTransitionError{From, To}` envelope esposto per log scanners e dashboard.
+- **Idempotency-key byte-stability**: `ArtifactIdempotencyKey(jobID, artifactID, sha256)` ritorna lo stesso SHA-256 hex triple-key across retries con lo stesso triple. Bypassing via random UUID o via string concatenata manualmente rompe il remote-side dedup slot — oppure multiple distinct keys on the same logical content fanned out non intenzionalmente.
+- **Typed-error godlike/07**: 5 sentinels (`ErrArtifactUploaderNotConfigured`, `ErrArtifactSessionExpired`, `ErrArtifactSessionNotFound`, `ErrArtifactRemoteSchemaVersionUnsupported`, `ErrIllegalUploadStateTransition`) + `IllegalTransitionError{From, To}` typed-data envelope permettono `errors.Is` + `errors.As` traversal in unico probe — callers possono scrivere `if errors.Is(err, ErrIllegalUploadStateTransition) { var ite *IllegalTransitionError; if errors.As(err, &ite) { log.Warn("transition rejected", zap.String("from", string(ite.From)), zap.String("to", string(ite.To))) } }`.
+
+**Vietato**:
+
+- Chiamare i 3 protocol commands direttamente: `.PrepareArtifactUpload(` / `.UploadArtifactFile(` / `.FinalizeArtifactUpload(` su `*jobbrokerclient.Client` dal codice in `internal/application/**` o `internal/api/**` (lock enforced by Check 52 in `scripts/ci-architectural-checks.sh`). Production consumers MUST consumare il typed `remote.ArtifactUploader` port via `*creator.Adapter` injected in composition root.
+- Costruire `UploadSession` via literal struct `{ID: ..., LeaseID: ..., ArtifactID: ..., State: ...}` bypassing `NewUploadSession` (the constructor enforches 3-field aggregated diagnostic su Empty + initializes State=PREPARING allo stato canonico d'ingresso).
+- Hard-codare l'idempotency-key come UUID random — la retry deve essere byte-stable tramite `ArtifactIdempotencyKey(jobID, artifactID, sha256)` (mirror pattern C4 Check 51 che vieta raw-string `.Enqueue(<ctx>, "<literal>")` callers).
+- Saltare la state-machine gate via self-loop su FAILED o FINALIZED — sono sticky-terminal sinks (no transition out). Retry su una session failed richiede una NUOVA session via nuovo `Prepare()` call (canonical godlike/07 contract).
+- Re-uso di `idempotencyKey := uuid.NewString()` in Upload/Finalize call sites che bypassano Prepare — la defensive derivation in `creator.Adapter.Upload` + `Finalize` (via `deriveIdempotencyKey` helper) si attiva quando `ctx.IdempotencyKey == ""`, ma il call-site MUST pre-idratare la chiave al Prepare seam per evitare derivation per-call.
+
+**Canonical surface (godlike/06 one-canonical-owner-per-fact):**
+
+- **Port (typed contract)**: `internal/domain/remote/artifact_uploader.go` — `ArtifactUploader` interface (3 methods: Prepare/Upload/Finalize) + `UploadSession` envelope (typed JSON) + `UploadState` typed enum (6 closed values) + `CanonicalUploadStateValues()` + `Valid()` + `IsValidTransition(to)` + 5 typed sentinels + `IllegalTransitionError{From, To}` typed-data struct + `UploadSessionStore` query port + `PrepareContext` envelope (9 fields: JobID/LeaseID/ArtifactID/ArtifactKind/Filename/MIMEType/SizeBytes/SHA256/IdempotencyKey).
+- **Idempotency-key helper**: `internal/domain/remote/idempotency.go` — `ArtifactIdempotencyKey(jobID, artifactID, sha256) string` (usa `internal/infrastructure/files.SHA256String` aliased come `hashutil`) + `IsValidIdempotencyKey(s) bool` (case-insensitive 64-char hex) + `ErrArtifactIdempotencyKeyConflict` typed sentinel.
+- **Concrete (Creator-side adapter)**: `internal/infrastructure/remote/creator/adapter.go` — `*Adapter` struct + `NewAdapter(deps)` constructor + `WithBrokerClient(...)` fluent setter + state-machine gate inline ad ogni seam + defensive `deriveIdempotencyKey` helper (consolida 4 retry paths) + file streaming via `os.Open` + `io.Copy`.
+- **Wire (HTTP protocol)**: `internal/infrastructure/remote/jobbrokerclient/client.go` — `PathUploadPrepare` / `PathUploadFile` / `PathUploadFinalize` path constants + `PrepareArtifactUploadRequest` / `FinalizeArtifactUploadRequest` typed request DTOs + 3 NEW methods on `*Client`: `PrepareArtifactUpload` / `UploadArtifactFile` / `FinalizeArtifactUpload`.
+
+**Migration status (godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT):**
+
+- **EXPAND (C6, July 2026)**: canonical surface live + ci-gate Check 52 forward-preventive. Zero variazione di behaviour per existing pre-C6 worker.AssetClient.UploadFile callers (Audit `rg '\.(PrepareArtifactUpload|UploadArtifactFile|FinalizeArtifactUpload)\(' internal/application internal/api` pre-commit: 0 caller, zero violations).
+- **BACKFILL (C7, forward-pointer)**: migrate pre-C6 worker callers to consume `remote.ArtifactUploader` port via `*creator.Adapter` injected in composition root. Add `Context context.Context` field to `PrepareContext` for ambient-ctx threading (canonical hardening deferred dal C6 NIT-1 logged by code-reviewer).
+- **CUTOVER (C8, forward-pointer)**: retire pre-C6 worker.AssetClient.UploadFile surface — godlike/06 SSOT one-owner-per-fact restored. `architecture/deprecations.yaml` entry gated by C7 completion.
+- **CONTRACT (final lock)**: physical git-rm of the legacy surface; Check 52 tightened to ban the surface entirely (no allowlist row).
+
+**Canonical test surface (godlike/06 audit-pinning):**
+
+- `internal/domain/remote/artifact_uploader_test.go` (~430 LoC, 9 TDD tests): legal transitions (4 forward edges inclusi il skip-ahead UPLOADED→VERIFIED allowed) + sticky-terminal rejection (FAILED→* e FINALIZED→* rejected) + non-terminal-to-FAILED accepted per i 4 stati non-sink + self-loop idempotency per tutti i 6 canonical values + `ArtifactIdempotencyKey` byte-stability across 1000 retries con stesso triple + empty-marker triple returns empty-marker + `IsValidIdempotencyKey` accepts canonical, rejects all 4 false-case shapes + `IllegalTransitionError.Is` compatibile con `errors.Is(err, ErrIllegalUploadStateTransition)` + `CanonicalUploadStateValues` enumeration completeness (no dups) + `NewUploadSession` aggregates all missing-fields diagnostic.
+- `internal/infrastructure/remote/creator/adapter_test.go` (~330 LoC): happy-path 3-call chain (Prepare/Upload/Finalize) + nil-receiver propagation (returns `ErrArtifactUploaderNotConfigured`) + Upload standalone idem-key derivation test (byte-stable across N retries con stesso triple) + Finalize standalone idem-key + sha256 surface test + illegal transition rejection test (FINALIZED→PREPARING fails con typed `*IllegalTransitionError` preservando From/To via `errors.As`).
+
+Compile-time `var _ remote.ArtifactUploader = (*creator.Adapter)(nil)` blocca future drift nella signature del 3-method port.
+
+CI gate Check 52 (`scripts/ci-architectural-checks.sh`) forward-prevention: `.PrepareArtifactUpload(` / `.UploadArtifactFile(` / `.FinalizeArtifactUpload(` callers in `internal/application/**` o `internal/api/**` (al di fuori del canonical allowlist: creator adapter + jobbrokerclient + test files) fail-closed via exit 1. Pre-flight audit today: 0 violations (Creator adapter è l'unico caller under allowlist; production consumers MUST route through `remote.ArtifactUploader` port).
+
 ## File Structure (quick reference)
 
 See `ARCHITECTURE.md` for the full diagram. Quick reference:
