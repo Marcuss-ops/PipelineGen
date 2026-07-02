@@ -37,12 +37,23 @@ func (cm *CollectionManager) PromoteCandidate(ctx context.Context, candidate str
 	return nil
 }
 
-// ReindexCandidate is the orchestrator marker step in EnsureSchema's
-// chain. In this PR it's a no-op stub because the actual reindex
-// is owned by the admin `cmd/admin/reindex_qdrant.go` command.
-// EnsureSchema keeps the call so the contract is explicit.
+// ReindexCandidate checks whether the candidate collection has points.
+// When PointTotal is zero the collection was created by PrepareCandidate
+// but never backfilled — returns ErrReindexRequired to block promotion.
+// The operator must run `go run ./cmd/admin reindex-qdrant --apply` to
+// backfill data before the server can start with a ready Qdrant index.
 func (cm *CollectionManager) ReindexCandidate(ctx context.Context, candidate string) error {
-	cm.log.Debug("ReindexCandidate is a no-op stub in EnsureSchema orchestrator; explicit reindex lives in cmd/admin/reindex_qdrant.go",
-		zap.String("candidate", candidate))
+	info, err := cm.client.GetCollection(ctx, candidate)
+	if err != nil {
+		return fmt.Errorf("reindex candidate: get collection %q: %w", candidate, err)
+	}
+	if info.PointTotal == 0 {
+		cm.log.Warn("collection has zero points — reindex required before promotion",
+			zap.String("candidate", candidate))
+		return &ErrReindexRequired{Collection: candidate}
+	}
+	cm.log.Debug("reindex candidate: collection has points, proceeding",
+		zap.String("candidate", candidate),
+		zap.Int("points", info.PointTotal))
 	return nil
 }

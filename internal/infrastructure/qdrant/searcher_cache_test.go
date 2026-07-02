@@ -272,19 +272,20 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 				http.NotFound(w, r)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": map[string]interface{}{
-					"status": "green",
-					"config": map[string]interface{}{
-						"params": map[string]interface{}{
-							"vectors": map[string]interface{}{
-								"text": map[string]interface{}{"size": float64(768), "distance": "Cosine"},
-							},
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"result": map[string]interface{}{
+				"status":        "green",
+				"points_count":  42.0,
+				"config": map[string]interface{}{
+					"params": map[string]interface{}{
+						"vectors": map[string]interface{}{
+							"text": map[string]interface{}{"size": float64(768), "distance": "Cosine"},
 						},
 					},
-					"payload_schema": map[string]interface{}{},
 				},
-			})
+				"payload_schema": map[string]interface{}{},
+			},
+		})
 		// Create collection.
 		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_minimal":
 			collectionCreated = true
