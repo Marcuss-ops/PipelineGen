@@ -1,5 +1,7 @@
 // Package migration_test verifies the FASE 1B image-territories
-// migration 115. Precedent: internal/infrastructure/database/migrations_test.go
+// migration 123 (renumbered from 115 in July 2026 to break a
+// prefix collision with migrations/sqlite/115_add_image_origin_provider.sql).
+// Precedent: internal/infrastructure/database/migrations_test.go
 // (smoke-test on a fresh DB in t.TempDir(); never references production
 // DBs under data/).
 //
@@ -46,7 +48,7 @@ import (
 // `migrations/sqlite/` when invoked via `go test ./migrations/sqlite/...`.
 // The structure is robust against the working-directory misconfiguration:
 // readMigration logs the path the test expected.
-const migrationFile = "115_add_media_assets_origin_provider.sql"
+const migrationFile = "123_add_media_assets_origin_provider.sql"
 
 // openTestDB opens a fresh SQLite DB in t.TempDir() and ensures a
 // MINIMAL media_assets table exists so the migration's ALTER TABLE
@@ -89,7 +91,7 @@ func readMigration(t *testing.T) string {
 }
 
 // TestMigration115 covers the FASE 1B contract end-to-end.
-func TestMigration115(t *testing.T) {
+func TestMigration123(t *testing.T) {
 	db := openTestDB(t)
 	migration := readMigration(t)
 
