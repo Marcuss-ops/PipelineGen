@@ -45,7 +45,9 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 			embedding_json TEXT,
 			metadata_json TEXT,
 			index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
-			index_state_updated_at TEXT NOT NULL DEFAULT ''
+			index_state_updated_at TEXT NOT NULL DEFAULT '',
+			source_version TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT ''
 		)
 	`)
 	defer db.Close()

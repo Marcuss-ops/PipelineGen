@@ -86,12 +86,25 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 		}
 	}
 
-	s.setIndexState(ctx, clipID, asset.StateIndexing, "")
+	if err := s.setIndexState(ctx, clipID, asset.StateIndexing, ""); err != nil {
+		return fmt.Errorf("setIndexState INDEXING for %s: %w", clipID, err)
+	}
+
+	// Read source_version from the DB for the CAS fence in setIndexedAt.
+	var sourceVersion string
+	if svErr := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(source_version, '') FROM media_assets WHERE id = ?`,
+		clipID,
+	).Scan(&sourceVersion); svErr != nil {
+		s.log.Warn("failed to read source_version, continuing without CAS fence",
+			zap.String("clip_id", clipID), zap.Error(svErr))
+		sourceVersion = ""
+	}
 
 	if s.cfg.ServerURL != "" {
 		err := s.indexViaAPI(ctx, clipID)
 		if err == nil {
-			return s.finalizeIndex(ctx, clipID, contentHash)
+			return s.finalizeIndex(ctx, clipID, contentHash, sourceVersion)
 		}
 		s.log.Warn("embedding server failed, falling back to script",
 			zap.String("clip_id", clipID),
@@ -101,10 +114,12 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 
 	err = s.indexViaScript(ctx, clipID)
 	if err != nil {
-		s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error())
+		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error()); setErr != nil {
+			s.log.Error("failed to persist index failed state", zap.String("clip_id", clipID), zap.Error(setErr))
+		}
 		return fmt.Errorf("indexViaScript failed for %s: %w", clipID, err)
 	}
-	return s.finalizeIndex(ctx, clipID, contentHash)
+	return s.finalizeIndex(ctx, clipID, contentHash, sourceVersion)
 }
 
 // tryFastPath returns true if the clip is already fully indexed with valid
@@ -115,12 +130,14 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 	var hasTranscriptEmb bool
 	var storedHash string
 	var indexState string
+	var sourceVersion string
 	err := s.db.QueryRowContext(ctx, `SELECT
 		(embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}'),
 		(transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}'),
 		COALESCE(json_extract(metadata_json, '$.indexed_content_hash'), ''),
-		COALESCE(index_state, '')
-		FROM media_assets WHERE id = ?`, clipID).Scan(&hasSemantic, &hasTranscriptEmb, &storedHash, &indexState)
+		COALESCE(index_state, ''),
+		COALESCE(source_version, '')
+		FROM media_assets WHERE id = ?`, clipID).Scan(&hasSemantic, &hasTranscriptEmb, &storedHash, &indexState, &sourceVersion)
 	if err != nil {
 		s.log.Warn("fast path check failed, will re-index",
 			zap.String("clip_id", clipID), zap.Error(err))
@@ -136,12 +153,14 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 		zap.String("clip_id", clipID))
 
 	if err := s.UpsertVectorStore(ctx, clipID); err != nil {
-		s.setIndexState(ctx, clipID, asset.StateIndexPending, err.Error())
+		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexPending, err.Error()); setErr != nil {
+			s.log.Error("fast-path: failed to persist index state", zap.String("clip_id", clipID), zap.Error(setErr))
+		}
 		s.log.Error("fast-path upsert failed", zap.String("clip_id", clipID), zap.Error(err))
 		return false
 	}
 
-	if setErr := s.setIndexedAt(ctx, clipID, contentHash); setErr != nil {
+	if setErr := s.setIndexedAt(ctx, clipID, contentHash, sourceVersion); setErr != nil {
 		s.log.Error("fast-path: failed to persist indexed state, falling through to full re-index",
 			zap.String("clip_id", clipID), zap.Error(setErr))
 		return false
@@ -150,15 +169,23 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 }
 
 // finalizeIndex upserts to vector store and persists the indexed state.
-func (s *Service) finalizeIndex(ctx context.Context, clipID, contentHash string) error {
-	s.setIndexState(ctx, clipID, asset.StateIndexing, "")
+// sourceVersion is the canonical source_version column value read from
+// the media_assets row BEFORE the upsert; it is passed to setIndexedAt
+// for the CAS fence (prevents an obsolete indexing goroutine from
+// overwriting a newer version's state).
+func (s *Service) finalizeIndex(ctx context.Context, clipID, contentHash, sourceVersion string) error {
+	if err := s.setIndexState(ctx, clipID, asset.StateIndexing, ""); err != nil {
+		return fmt.Errorf("setIndexState INDEXING for %s: %w", clipID, err)
+	}
 
 	if err := s.UpsertVectorStore(ctx, clipID); err != nil {
-		s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error())
+		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error()); setErr != nil {
+			s.log.Error("failed to persist failed index state", zap.String("clip_id", clipID), zap.Error(setErr))
+		}
 		return fmt.Errorf("Qdrant upsert failed for %s: %w", clipID, err)
 	}
 
-	if err := s.setIndexedAt(ctx, clipID, contentHash); err != nil {
+	if err := s.setIndexedAt(ctx, clipID, contentHash, sourceVersion); err != nil {
 		return fmt.Errorf("failed to persist indexed state for %s: %w", clipID, err)
 	}
 	s.log.Info("clip fully indexed and upserted to Qdrant", zap.String("clip_id", clipID))
