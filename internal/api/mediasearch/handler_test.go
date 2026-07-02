@@ -218,6 +218,123 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 	}
 }
 
+// TestHandlerMapsMediaTypeToQueryMediaTypes verifies that when the
+// request filter carries media_type, it is forwarded as
+// Query.MediaTypes []string (for BackendRegistry capability
+// selection) AND as Filters.MediaType (for downstream Qdrant
+// must-predicate compilation).
+// PR-AGENTE2-MEDIATYPE (Agente 2, Azione 2).
+func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
+	workspace := mediasearchapp.WorkspaceContext{
+		WorkspaceID: "ws-mt",
+		PrincipalID: "u-mt",
+		IsAdmin:     false,
+	}
+
+	t.Run("video media_type populates both fields", func(t *testing.T) {
+		q := searchQueryFromRequest(
+			searchRequest{
+				Query: "test",
+				Filters: searchRequestFilter{
+					MediaType: "video",
+				},
+			},
+			mediasearchapp.SearchModeHybrid,
+			20,
+			workspace,
+		)
+
+		// Query.MediaTypes: should be ["video"]
+		if len(q.MediaTypes) != 1 {
+			t.Fatalf("len(MediaTypes) = %d, want 1", len(q.MediaTypes))
+		}
+		if q.MediaTypes[0] != "video" {
+			t.Errorf("MediaTypes[0] = %q, want %q", q.MediaTypes[0], "video")
+		}
+
+		// Filters.MediaType: should still be "video"
+		if q.Filters.MediaType != "video" {
+			t.Errorf("Filters.MediaType = %q, want %q", q.Filters.MediaType, "video")
+		}
+	})
+
+	t.Run("empty media_type leaves MediaTypes nil", func(t *testing.T) {
+		q := searchQueryFromRequest(
+			searchRequest{Query: "no filter"},
+			mediasearchapp.SearchModeHybrid,
+			20,
+			workspace,
+		)
+
+		if q.MediaTypes != nil {
+			t.Errorf("MediaTypes = %v, want nil (no media_type filter)", q.MediaTypes)
+		}
+	})
+
+	t.Run("whitespace-only media_type leaves MediaTypes nil", func(t *testing.T) {
+		q := searchQueryFromRequest(
+			searchRequest{
+				Query: "test",
+				Filters: searchRequestFilter{
+					MediaType: "   ",
+				},
+			},
+			mediasearchapp.SearchModeHybrid,
+			20,
+			workspace,
+		)
+
+		if q.MediaTypes != nil {
+			t.Errorf("MediaTypes = %v, want nil (whitespace-only trimmed to empty)", q.MediaTypes)
+		}
+		if q.Filters.MediaType != "" {
+			t.Errorf("Filters.MediaType = %q, want empty after trim", q.Filters.MediaType)
+		}
+	})
+
+	t.Run("audio media_type works", func(t *testing.T) {
+		q := searchQueryFromRequest(
+			searchRequest{
+				Query: "sound",
+				Filters: searchRequestFilter{
+					MediaType: "audio",
+				},
+			},
+			mediasearchapp.SearchModeANN,
+			10,
+			workspace,
+		)
+
+		if len(q.MediaTypes) != 1 || q.MediaTypes[0] != "audio" {
+			t.Errorf("MediaTypes = %v, want [audio]", q.MediaTypes)
+		}
+		if q.Filters.MediaType != "audio" {
+			t.Errorf("Filters.MediaType = %q, want audio", q.Filters.MediaType)
+		}
+	})
+
+	t.Run("image media_type works", func(t *testing.T) {
+		q := searchQueryFromRequest(
+			searchRequest{
+				Query: "photo",
+				Filters: searchRequestFilter{
+					MediaType: "image",
+				},
+			},
+			mediasearchapp.SearchModeHybrid,
+			15,
+			workspace,
+		)
+
+		if len(q.MediaTypes) != 1 || q.MediaTypes[0] != "image" {
+			t.Errorf("MediaTypes = %v, want [image]", q.MediaTypes)
+		}
+		if q.Filters.MediaType != "image" {
+			t.Errorf("Filters.MediaType = %q, want image", q.Filters.MediaType)
+		}
+	})
+}
+
 // actorCapturingAggregator is a test stub that records the Query
 // passed to its Search method.
 type actorCapturingAggregator struct {

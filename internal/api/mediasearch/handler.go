@@ -305,11 +305,20 @@ func resultToResponse(r *search.Result, query string, mode mediasearchapp.Search
 // PR-1 (Agente 2, Azione 1): workspace is now propagated into
 // Query.Actor so every backend receives the real tenant identity
 // (WorkspaceID, UserID from PrincipalID, IsAdmin).
+// PR-AGENTE2-MEDIATYPE (Agente 2, Azione 2): when the request filter
+// carries media_type, it is also forwarded as Query.MediaTypes so
+// the BackendRegistry can select capability-compatible backends.
 func searchQueryFromRequest(req searchRequest, mode mediasearchapp.SearchMode, limit int, workspace mediasearchapp.WorkspaceContext) search.Query {
+	mediaType := strings.TrimSpace(req.Filters.MediaType)
+	var mediaTypes []string
+	if mediaType != "" {
+		mediaTypes = []string{mediaType}
+	}
 	return search.Query{
-		Text:  strings.TrimSpace(req.Query),
-		Mode:  mode,
-		Limit: limit,
+		Text:       strings.TrimSpace(req.Query),
+		Mode:       mode,
+		Limit:      limit,
+		MediaTypes: mediaTypes,
 		Actor: search.Actor{
 			WorkspaceID: workspace.WorkspaceID,
 			UserID:      workspace.PrincipalID,
@@ -317,7 +326,7 @@ func searchQueryFromRequest(req searchRequest, mode mediasearchapp.SearchMode, l
 		},
 		Filters: search.Filters{
 			Source:        strings.TrimSpace(req.Filters.Source),
-			MediaType:     strings.TrimSpace(req.Filters.MediaType),
+			MediaType:     mediaType,
 			Category:      strings.TrimSpace(req.Filters.Category),
 			Language:      strings.TrimSpace(req.Filters.Language),
 			Tags:          req.Filters.Tags,
