@@ -36,8 +36,8 @@ import (
 type Service struct {
 	fetcher     sourcing.FetchProviderPort
 	clips       sourcing.ClipStorePort
-	drive       sourcing.DrivePort       // Deprecated: fallback during Publisher migration
-	publisher   sourcing.PublisherPort   // FASE 5: canonical Drive upload canal
+	drive       sourcing.DrivePort     // Deprecated: fallback during Publisher migration
+	publisher   sourcing.PublisherPort // FASE 5: canonical Drive upload canal
 	transcriber sourcing.TranscriptionPort
 	metadata    sourcing.MetadataUploadPort
 	indexDisp   IndexDispatcherPort // v2: merges IndexDisp + AssetTree
@@ -226,13 +226,13 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	if s.publisher != nil {
 		// Canonical path: Publisher resolves folder + uploads.
 		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-			Destination:       delivery.DestinationYouTubeClip,
-			LocalPath:         fetched.LocalPath,
-			Filename:          driveFilename,
-			Description:       driveDesc,
-			AssetID:           clipID,
-			Group:             group,
-			Subject:           videoSlug,
+			Destination:        delivery.DestinationYouTubeClip,
+			LocalPath:          fetched.LocalPath,
+			Filename:           driveFilename,
+			Description:        driveDesc,
+			AssetID:            clipID,
+			Group:              group,
+			Subject:            videoSlug,
 			RootFolderOverride: strings.TrimSpace(cmd.FolderID),
 		})
 		if err != nil {
