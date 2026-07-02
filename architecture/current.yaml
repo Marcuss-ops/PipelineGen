@@ -1089,8 +1089,72 @@
           deadline: 2026-09-15
     - id: PR-E2E-SEMANTIC-MULTIMODAL-TEST
       owner_capability: internal/application/mediasearch + tests
-      status: pending
-      deadline: 2026-08-15
+      status: shipped
+      exit_signal: true
+      deadline: 2026-07-02
+      description: |
+        Landed TestE2E_SemanticSearchMultimodal in
+        internal/application/mediasearch/e2e_semantic_test.go (~640 LoC;
+        black-box `mediasearch_test` package). 4/4 subtests GREEN
+        (video / image / audio / music). Each subtest:
+          1. Inserts an asset WITHOUT manual tags (Tags: nil per spec).
+          2. Runs VLM tagging (VLM-derived caption + dense embedding
+             via the deterministic 2-dim keyword-triggered embedder).
+          3. Indexes the asset in the in-memory Qdrant stub
+             (vector + text per asset; sparse channel uses BM25
+             token-overlap path).
+          4. Searches the canonical Phase-6 multi-channel pipeline
+             (Hybrid mode per godlike/06 default) with a phrase
+             NEVER present in metadata ("sviluppatore esausto davanti
+             al monitor di notte"); asserts:
+               - top hit is the inserted asset
+               - score > 0.5 (hybrid combined: 0.65*dense + 0.35*sparse)
+               - media_type round-trips
+               - DeliveryURL is signed (URL has sig=/exp=/wid=; signer.
+                 Verify succeeds — locks BuildAuthorizedURL↔Verify
+                 canonicalization drift)
+               - QueryEcho.Normalized == targetPhrase
+               - QueryEcho.ChannelsUsed includes BOTH ChannelText AND
+                 ChannelSparse (Hybrid routing contract)
+               - QueryEcho.Mode == SearchModeHybrid
+
+        In-test orchestrator mirrors the production semanticSearchBackend
+        (internal/app/search_backend_semantic.go) 4-port architecture
+        + mode routing (HybridSearch vs Search). hermetic: all stubs
+        local to the test file; the ONLY production component is
+        delivery.Signer (real, with 32-byte test secret). 3 compile-
+        time port assertions pin method-signature drift
+        (search.EmbeddingChannelRegistry + assetsearch.VectorStorePort +
+        mediasearch.MediaReadRepository). godlike/06 SSOT intact: the
+        4 canonical ports are REUSED (not redefined) per the existing
+        internal/application/mediasearch/ports.go. godlike/07 typed-
+        error contract: HybridSearch properly implemented (no plain
+        errors.New fallback); orchestrator wraps errors via fmt.Errorf
+        with %w.
+
+        EXPAND-phase discipline: the orchestrator mirrors the
+        production backend (BACKFILL ticket is "sync production
+        orchestrator with this in-test one" — not the inverse). Zero
+        production-side wiring.
+
+        Pre-flight invariant: the full target phrase must NEVER appear
+        in any fixture's Name/SearchText (asserted for all 4 fixtures
+        before the subtest loop). The cosine > 0.5 comes from the
+        soft-vocab partial semantic match (~0.5734 dense) + binary
+        sparse token overlap (1.0 for any common Italian word),
+        combined 0.65*0.5734 + 0.35*1.0 = 0.7227 > 0.5.
+
+        Forward-pointer (BACKFILL wave, optional): the binary sparse
+        model is a simplification. A future test expansion could
+        inject a fixture with zero lexical overlap to prove the dense
+        channel alone drives retrieval (current dense cosine 0.5734
+        > 0.5 would survive the MinScore floor). Filed as
+        PR-E2E-MULTIMODAL-DENSE-ONLY-FIXTURE.
+      linked_issues:
+        - id: PR-E2E-MULTIMODAL-DENSE-ONLY-FIXTURE
+          owner_capability: internal/application/mediasearch + tests
+          status: pending
+          deadline: 2026-08-15
 
 
 # ---------------------------------------------------------------------------
