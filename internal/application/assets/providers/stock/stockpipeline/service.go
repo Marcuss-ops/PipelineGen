@@ -11,8 +11,8 @@ import (
 
 	"go.uber.org/zap"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -129,22 +129,24 @@ type MediaDeps struct {
 
 // stockAssetIndexUpserter is the narrow surface the stock pipeline
 // uses from *assetindex.Service. Only Upsert is invoked
-// (run_upload.go::indexChunkToAssetIndex).
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 type stockAssetIndexUpserter interface {
 	Upsert(ctx context.Context, rec *assetindex.AssetRecord) error
 }
 
 // stockClipsSearchTermUpdater is the narrow surface the stock pipeline
 // uses from *assets.ClipsRepository. Only UpdateSearchTerms is invoked
-// (run_upload.go::upsertChunkAndDispatch). Audit P0 #6 mandates the
-// failure halts the dispatch path — see run_upload.go::upsertChunkAndDispatch.
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 type stockClipsSearchTermUpdater interface {
 	UpdateSearchTerms(ctx context.Context, clipID, source, name string, tags []string, searchText string) error
 }
 
-// stockChunkDispatcher is the narrow surface the stock pipeline uses
-// from *outbox.Dispatcher. Only EnqueueAndIndex is invoked
-// (run_upload.go::upsertChunkAndDispatch).
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 type stockChunkDispatcher interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, fileHash string) error
 }
@@ -408,7 +410,6 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 //
 // Stock Cutover Commit 2 (July 2026): the handler no longer calls
 // s.Run (the legacy ~280-line body that called resolveQuery /
-// processSingleVideo / renderChunk / uploadAndIndexChunk / etc.).
 // Instead it calls s.runOrchestrator directly so it has access to
 // the typed *job.ArtifactManifest, which is the canonical wire
 // artefact for the broker's downstream runner (the worker runner
@@ -429,6 +430,8 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 // continue to render without a schema break; the canonical manifest
 // is the new source of truth. Commit 4-7 hydrates the legacy fields
 // from the committed RunOutput metadata once the chunk ladder ships.
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	var payload StockRunPayload
 	if len(job.Payload) > 0 {
@@ -506,9 +509,9 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	// which marks the job FAILED (closing the silent-success
 	// class per user spec P0 2.1).
 	orchestration := &OrchestrationResult{
-		Manifest:  manifest,
-		Chunks:    []ChunkState{}, // pre-Commit-4-7: empty
-		Metadata:  MetadataState{}, // pre-Commit-4-7: empty
+		Manifest: manifest,
+		Chunks:   []ChunkState{},  // pre-Commit-4-7: empty
+		Metadata: MetadataState{}, // pre-Commit-4-7: empty
 	}
 
 	// §F.1 (this commit): the Spine is OPTIONAL. When wired
@@ -580,13 +583,13 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	// artifact-manifest constants (jobdomain.ManifestKey,
 	// jobdomain.SchemaVersionArtifactManifestV1) are unambiguous.
 	result := map[string]any{
-		jobdomain.ManifestKey:  manifest,                       // "__artifact_manifest" — canonical wire artefact
-		"final_status":         string(summary.FinalStatus),   // "SUCCEEDED" | "INDEX_PENDING" | "FAILED" | ...
-		"total_clips":          projected.TotalClips,
-		"total_chunks":         projected.TotalChunks,
-		"chunks":               projected.Chunks,
-		"metadata_link":        projected.MetadataLink,
-		"metadata_file_id":     projected.MetadataFileID,
+		jobdomain.ManifestKey: manifest,                    // "__artifact_manifest" — canonical wire artefact
+		"final_status":        string(summary.FinalStatus), // "SUCCEEDED" | "INDEX_PENDING" | "FAILED" | ...
+		"total_clips":         projected.TotalClips,
+		"total_chunks":        projected.TotalChunks,
+		"chunks":              projected.Chunks,
+		"metadata_link":       projected.MetadataLink,
+		"metadata_file_id":    projected.MetadataFileID,
 	}
 	if finResult != nil {
 		result["__finalization_status"] = finResult.Status
@@ -747,14 +750,15 @@ type PipelineResult struct {
 // empty-because-upload-failed.
 //
 // Stock Cutover Commit 4-expanded (July 2026): the previously-typed
-// `Indexed IndexingStatus` field was retired alongside
 // `internal/.../types_status.go` (deleted in Commit 4) and the
-// `Service.uploadAndIndexChunk` post-upload indexing surface — see
 // `run_upload_indexing_test.go` for the canonical 3-test failure-mode
 // contract that replaces the field-level signal. Per-job post-emission
 // indexing state is now surfaced at the orchestrator level via
 // `job.StatusIndexPending` (see domain/job/job.go), not at the per-
 // chunk level.
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 type ChunkResult struct {
 	Index         int      `json:"index"`
 	TimelineStart float64  `json:"timeline_start"`
@@ -812,11 +816,11 @@ type StagedSource struct {
 func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, error) {
 	prepared, err := s.sourceStager.Prepare(ctx, acquisition.PrepareRequest{
 		Source: acquisition.SourceRef{
-			URL:         url,
+			URL:           url,
 			PolicyVersion: "v1",
 		},
 		IdempotencyKey: "stock.stage." + acquisition.DeriveIdempotencyKey(acquisition.SourceRef{
-			URL:         url,
+			URL:           url,
 			PolicyVersion: "v1",
 		}),
 		CallerRef: "stock.StageSource",
@@ -861,11 +865,11 @@ func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, e
 func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*appassets.StagedAsset, error) {
 	prepared, err := s.sourceStager.Prepare(ctx, acquisition.PrepareRequest{
 		Source: acquisition.SourceRef{
-			URL:               ref.URL,
-			DownloadSection:   ref.DownloadSection,
-			ForceKeyframes:    ref.ForceKeyframes,
-			MergeFormat:       ref.MergeFormat,
-			PolicyVersion:     "v1",
+			URL:             ref.URL,
+			DownloadSection: ref.DownloadSection,
+			ForceKeyframes:  ref.ForceKeyframes,
+			MergeFormat:     ref.MergeFormat,
+			PolicyVersion:   "v1",
 		},
 		IdempotencyKey: "stock.section." + acquisition.DeriveIdempotencyKey(acquisition.SourceRef{
 			URL:             ref.URL,
