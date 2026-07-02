@@ -149,7 +149,17 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	// ── 2. Compile filters ─────────────────────────────────────
 	scope, filter := compileSemanticFilters(q)
 
-	// ── 3. Clamp limit ─────────────────────────────────────────
+	// ── 3. Resolve score floor ───────────────────────────────
+	// PR-MINSCORE-QUERY (July 2026): q.MinScore > 0 overrides the
+	// backend default (semanticMinScore 0.50). This lets callers
+	// tune precision/recall per-request without changing the
+	// package-level constant.
+	minScore := semanticMinScore
+	if q.MinScore > 0 {
+		minScore = q.MinScore
+	}
+
+	// ── 4. Clamp limit ─────────────────────────────────────────
 	limit := q.Limit
 	if limit <= 0 {
 		limit = search.DefaultLimit
@@ -158,7 +168,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		limit = search.MaxLimit
 	}
 
-	// ── 4. Execute vector search ───────────────────────────────
+	// ── 5. Execute vector search ───────────────────────────────
 	var results []assetsearch.VectorSearchResult
 	switch q.Mode {
 	case search.SearchModeHybrid:
@@ -174,7 +184,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			SparseText:        q.Text,
 			SparseVectorName:  semanticSparseVectorName,
 			Limit:             limit,
-			MinScore:          semanticMinScore,
+			MinScore:          minScore,
 			Source:            filter.Source,
 			Category:          filter.Category,
 			MediaType:         filter.MediaType,
@@ -186,7 +196,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			QueryVector: vec,
 			VectorName:  semanticDenseVectorName,
 			Limit:       limit,
-			MinScore:    semanticMinScore,
+			MinScore:    minScore,
 			Source:      filter.Source,
 			Category:    filter.Category,
 			MediaType:   filter.MediaType,
@@ -198,12 +208,12 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, fmt.Errorf("semantic backend: vector search: %w", err)
 	}
 
-	// ── 5. No Qdrant results → done ────────────────────────────
+	// ── 6. No Qdrant results → done ────────────────────────────
 	if len(results) == 0 {
 		return nil, nil
 	}
 
-	// ── 6. Extract asset IDs + scores ──────────────────────────
+	// ── 7. Extract asset IDs + scores ──────────────────────────
 	assetIDs := make([]string, 0, len(results))
 	scoreByID := make(map[string]float64, len(results))
 	for _, r := range results {
@@ -227,14 +237,14 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, nil
 	}
 
-	// ── 7. SQLite hydration ────────────────────────────────────
+	// ── 8. SQLite hydration ────────────────────────────────────
 	ws := mediasearch.WorkspaceContext{WorkspaceID: scope.WorkspaceID}
 	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs, mediasearch.SearchableLifecycleStates)
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: hydrate: %w", err)
 	}
 
-	// ── 8. Post-hydration filters + signed URLs ────────────────
+	// ── 9. Post-hydration filters + signed URLs ────────────────
 	candidates := make([]search.Candidate, 0, len(assets))
 	for _, a := range assets {
 		// Tag filter: AND semantics (every filter tag must
