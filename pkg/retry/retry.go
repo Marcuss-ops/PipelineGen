@@ -217,10 +217,33 @@ var transientSubstrings = []string{
 	"resource_exhausted",
 }
 
+// RetryableError is a structural interface for errors that carry their
+// own retryability classification. Any error type with an IsRetryable()
+// bool method satisfies this interface — no import of pkg/retry required.
+//
+// Example: Qdrant's *APIError has IsRetryable() bool (returns
+// APIError.Retryable), so it satisfies RetryableError automatically.
+// Image retrieval's ErrImageTransient can implement IsRetryable() bool
+// { return true } to signal transient semantics without importing pkg/retry.
+//
+// Checked by IsTransient BEFORE the substring-fallback path so typed
+// errors always win over heuristic matching.
+type RetryableError interface {
+	IsRetryable() bool
+}
+
 // IsTransient returns true when err is non-nil AND either:
+//   - err implements RetryableError and IsRetryable() returns true, OR
 //   - err is (or wraps) a *TransientInfrastructureError, OR
 //   - err.Error() contains one of the canonical transient-infrastructure
 //     substrings (timeout, connection refused, 429, 503, etc.).
+//
+// Decision order (typed wins over substring):
+//   1. nil → false
+//   2. RetryableError interface → IsRetryable() (typed authoritative path)
+//   3. *TransientInfrastructureError via errors.As → true
+//   4. Substring fallback against transientSubstrings
+//   5. Everything else → false
 //
 // This is the single canonical "should I retry this?" predicate for
 // the whole codebase. Callers that previously implemented their own
@@ -232,13 +255,37 @@ func IsTransient(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Typed path #1: RetryableError interface (authoritative).
+	var re RetryableError
+	if errors.As(err, &re) && re.IsRetryable() {
+		return true
+	}
+	// Typed path #2: TransientInfrastructureError carrier.
 	var te *TransientInfrastructureError
 	if errors.As(err, &te) {
 		return true
 	}
+	// Substring fallback.
 	lower := strings.ToLower(err.Error())
 	for _, s := range transientSubstrings {
 		if strings.Contains(lower, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTransientString is the string-only version of IsTransient. It performs
+// the substring-fallback check against the canonical transientSubstrings
+// taxonomy without requiring an error type. Useful when the caller already
+// has an error message string (e.g., from an ExtractItem.Error field).
+//
+// Does NOT check RetryableError or TransientInfrastructureError — this
+// is a pure substring matcher. For typed errors, use IsTransient.
+func IsTransientString(s string) bool {
+	lower := strings.ToLower(s)
+	for _, token := range transientSubstrings {
+		if strings.Contains(lower, token) {
 			return true
 		}
 	}

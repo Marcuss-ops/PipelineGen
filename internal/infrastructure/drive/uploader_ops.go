@@ -229,7 +229,7 @@ func folderLookupRetryOpts() retry.Options {
 		MaxBackoff:     2 * time.Second,
 		BackoffFactor:  2.0,
 		JitterFraction: 0.3,
-		IsRetryable:    isRetryableDriveErr,
+		IsRetryable:    retry.IsTransient,
 	}
 }
 

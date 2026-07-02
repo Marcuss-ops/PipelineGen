@@ -217,7 +217,7 @@ func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookup
 
 		// result is the first match ID; the retry-loop's second return
 		// carries the SDK error so pkg/retry.DoWithValue predicates on
-		// it via isRetryableDriveErr. Returning ("", nil) on a successful
+		// it via retry.IsTransient. Returning ("", nil) on a successful
 		// empty List is what surfaces "doesn't exist" to the caller.
 		id, err := retry.DoWithValue(ctx, func() (string, error) {
 			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
@@ -228,7 +228,7 @@ func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookup
 			MaxBackoff:     folderLookupMaxBackoff,
 			BackoffFactor:  2.0,
 			JitterFraction: folderLookupJitterFraction,
-			IsRetryable:    isRetryableDriveErr,
+			IsRetryable:    retry.IsTransient,
 			OnRetry: func(attempt int, err error) {
 				if log != nil {
 					log.Warn("transient drive list error, retrying (P0.4: no fallback-to-create)",

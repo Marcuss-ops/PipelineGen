@@ -30,9 +30,17 @@ import (
 // HTTP 404 — the image does not exist at the given URL. NOT retryable.
 var ErrImageNotFound = errors.New("image: not found (HTTP 404)")
 
-// ErrImageTransient is returned for transient HTTP errors (429, 5xx,
-// timeout, connection refused). Retryable with backoff.
-var ErrImageTransient = errors.New("image: transient error (retryable)")
+// ErrImageTransient is the canonical transient-error sentinel for image
+// operations (429, 5xx, timeout, connection refused). Implements the
+// retry.RetryableError interface (IsRetryable() bool → true) so
+// retry.IsTransient recognises it at the typed layer without substring
+// matching. Retryable with backoff.
+type errImageTransient struct{}
+
+func (e *errImageTransient) Error() string      { return "image: transient error (retryable)" }
+func (e *errImageTransient) IsRetryable() bool  { return true }
+
+var ErrImageTransient error = &errImageTransient{}
 
 // ErrImageInvalidResponse is returned when the HTTP response body is
 // not a valid image or JSON (malformed, empty, wrong content-type).
@@ -239,7 +247,7 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	}, retry.Options{
 		MaxAttempts:    3,
 		InitialBackoff: 500 * time.Millisecond,
-		IsRetryable:    isImageRetryable,
+		IsRetryable:    retry.IsTransient,
 	})
 	if err != nil {
 		return nil, err
@@ -270,13 +278,6 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 		zap.String("path", asset.PathRel),
 	)
 	return asset, nil
-}
-
-// isImageRetryable reports whether an error from the image download
-// pipeline is transient (retryable) or permanent. Used by retry.Do
-// as the IsRetryable predicate in SearchWebImage.
-func isImageRetryable(err error) bool {
-	return errors.Is(err, ErrImageTransient)
 }
 
 // runRetrievalFallback (Step 8) walks the RetrievalProviderRegistry

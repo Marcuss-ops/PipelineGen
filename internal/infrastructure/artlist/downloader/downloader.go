@@ -136,7 +136,7 @@ func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 		InitialBackoff: p.cfg.InitialBackoff,
 		MaxBackoff:     p.cfg.MaxBackoff,
 		JitterFraction: p.cfg.JitterFraction,
-		IsRetryable:    isRetryable,
+		IsRetryable:    retry.IsTransient,
 	}
 
 	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
@@ -172,32 +172,6 @@ func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	}, nil
 }
 
-// isRetryable predicts transport failures vs client errors.
-// Default: retry. The deny-list enumerates only the 4xx codes we
-// know for certain are non-retryable (request itself is malformed
-// or forbidden, retrying will not change the outcome). 429 is a
-// deliberate exception — the upstream explicitly asked us to slow
-// down, so we retry (with backoff + jitter) rather than give up.
-// Trade-off: an unknown future 4xx (e.g. 451) WILL retry. That's
-// reversible (an extra request) versus the alternative of silently
-// swallowing it as non-retryable (which would never surface as a
-// retried-eligible error). Caller can revisit the deny-list when
-// a new code is observed in production.
-func isRetryable(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-	msg := err.Error()
-	for _, code := range []string{"400", "401", "403", "404", "410"} {
-		if strings.Contains(msg, "bad status: "+code) {
-			return false
-		}
-	}
-	return true
-}
 
 // mapError classifies an underlying transport error into one of the
 // centralized artapp sentinels so callers branch on intent, not on

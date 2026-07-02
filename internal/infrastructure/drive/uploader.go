@@ -99,7 +99,7 @@ func (u *Uploader) UploadFileWithDescription(ctx context.Context, localPath, fol
 	}, retry.Options{
 		MaxAttempts:    3,
 		InitialBackoff: 2 * time.Second,
-		IsRetryable:    isRetryableDriveErr,
+		IsRetryable:    retry.IsTransient,
 		OnRetry: func(attempt int, err error) {
 			u.Log.Warn("transient drive upload error, retrying",
 				zap.String("filename", filename),
@@ -300,22 +300,3 @@ var openFile = func(path string) (*os.File, error) {
 	return os.Open(path)
 }
 
-// isRetryableDriveErr returns true for transient Google Drive API errors that
-// may succeed on retry: rate limits (429), server errors (503), and timeouts.
-func isRetryableDriveErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	// Google API errors embed status codes in the message
-	if strings.Contains(errStr, "429") || strings.Contains(errStr, "rateLimitExceeded") || strings.Contains(errStr, "userRateLimitExceeded") {
-		return true
-	}
-	if strings.Contains(errStr, "503") || strings.Contains(errStr, "backendError") || strings.Contains(errStr, "serviceUnavailable") {
-		return true
-	}
-	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadlineExceeded") || strings.Contains(errStr, "connection reset") {
-		return true
-	}
-	return false
-}
