@@ -306,14 +306,25 @@ func TestCompareTokens(t *testing.T) {
 func TestAuth_RetiredWebhookPathReturns404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	sec := &testSecurity{enabled: true, admin: "webhook-secret-DO-NOT-LEAK"}
+	// surface-2 (July 2026) — auth-bypass endpoint retirement.
+	//
+	// This test pins the *server-side* contract for the retired
+	// /api/images/webhook/remote path: gin's default NoRoute
+	// handler must fire for POSTs regardless of the credentials
+	// the caller presents. The auth-bypass behaviour the old
+	// test asserted (401) is gone; the retired path now behaves
+	// like any other unregistered route.
+	//
+	// Note: r.Use(Auth(...)) is intentionally absent. Per gin v1.x,
+	// engine-level middleware registered via r.Use() is bundled
+	// into the default NoRoute handler chain (combineHandlers on
+	// RouterGroup.Handlers). Adding Auth here would short-circuit
+	// every sub-test with a 401 *before* NoRoute gets to respond
+	// with 404 — masking the very invariant the test is
+	// asserting. The four sub-tests below exercise the same
+	// NoRoute handler across all credential states the canonical
+	// godlike/07 no-fake-availability discipline requires.
 	r := gin.New()
-	r.Use(Auth(sec, nil))
-	// Intentionally NOT registering r.POST("/api/images/webhook/remote", …).
-	// surface-2: gin will return 404 via NoRoute for every POST to the
-	// retired path, even when the auth middleware would otherwise admit
-	// the request. The four sub-tests below cover all credential states
-	// a caller could realistically present.
 
 	cases := []struct {
 		name    string
