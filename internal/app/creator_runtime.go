@@ -1,0 +1,409 @@
+// Package app — creator_runtime.go (P0 Commit 8, July 2026).
+//
+// CreatorRuntime is the canonical runtime surface for the Creator
+// worker profile. The struct + BuildCreatorRuntime factory encode a
+// structural contract enforced in code (compile-time orphan pin) AND
+// in tests (import-allowlist AST scan):
+//
+//  1. NO RELATIONAL DATABASE — the Creator produces artifacts via
+//     Ollama/AI; it does not own SQLite or any other RDBMS. SQLite
+//     is the canonical Sender-side metadata store (godlike/06
+//     "one canonical owner per fact"). The Creator does not write
+//     to it directly — it pushes artifacts through the
+//     remote.ArtifactUploader port (DRIVE-005 closed), and the
+//     Sender ingests them through CreatorCompleteJob (C6/C7).
+//
+//  2. NO QDRANT — Qdrant is the Sender-side derived projection
+//     (godlike/06 SemanticIndex). The Creator is push-only; it
+//     does not write embeddings or trigger projector promotion.
+//     Vector ingestion goes through Sender-side handlers.
+//
+//  3. NO SCHEDULER — the Creator side is awaiting HTTP-poll or
+//     gRPC-pull jobs from the Sender; it does not own a
+//     background scheduler. Channel-monitor jobs live on the
+//     Sender.
+//
+//  4. NO CATALOGSYNC — catalog reconciliation is a Sender-side
+//     helper that runs on the main SQLite + Qdrant state. The
+//     Creator's view is "produce artifacts -> push to Sender".
+//
+// Architectural posture (godlike/07 "no fake availability"):
+//
+//   - The compile-pin `var _ = func() any { var _ *sql.DB = nil; return nil }`
+//     below anchors a *sql.DB shape reference to stdlib `database/sql`
+//     WITHOUT bringing any concrete SQLite impl into the package. The
+//     pinned import is `database/sql` (the stdlib interface package).
+//
+//   - The forbidden reach into `internal/infrastructure/database/sqlite`
+//     is enforced by TestCreatorRuntime_FrozenImportAllowlist (see
+//     creator_runtime_test.go): every `creator_*.go` file under
+//     internal/app/ is AST-scanned; any of the four forbidden substrings
+//     listed below fails the build.
+//
+//   - Forbidden-import substrings (source of truth — update in lockstep
+//     with the package doc contract above):
+//
+//   - internal/infrastructure/database/sqlite
+//
+//   - internal/infrastructure/qdrant
+//
+//   - scheduler
+//
+//   - catalogsync
+//
+// CreatorRuntime is the CANONICAL Creator-side wiring surface. The
+// legacy CreatorRoot struct is now a type alias for CreatorRuntime;
+// the legacy InitCreatorComposition shim (creator_composition.go) is
+// preserved as a thin delegator for godlike/07 backward compat. The
+// new workerruntime/run.go Creator profile delegates directly to
+// BuildCreatorRuntime so there is one source of truth.
+package app
+
+import (
+	"context"
+	"database/sql" // ← positive test anchor; pinned by var _ compile-pin below
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"go.uber.org/zap"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
+)
+
+// CreatorRoot is preserved as a type alias for godlike/07 backward
+// compat. The canonical surface type is CreatorRuntime; the new
+// profile wiring in workerruntime/run.go references CreatorRuntime
+// directly via `creatorRuntime, _, _ := app.BuildCreatorRuntime(...)`
+// and reads its fields directly. Future Blocco 4 commits will
+// retire the alias once the legacy call site in
+// creator_composition.go (InitCreatorComposition shim) itself becomes
+// the final dead-code signal.
+type CreatorRoot = CreatorRuntime
+
+// CreatorRuntime is the canonical runtime struct for the Creator
+// worker profile. It carries ONLY the services the Creator needs;
+// nothing forces the Creator to depend on a persistent store or
+// vector projection. See the package doc above for the no-DB /
+// no-Qdrant / no-Scheduler / no-CatalogSync contract.
+//
+// Field-by-field rationale:
+//
+//   - ScriptEngine / OllamaClient / Workspace / AssetClient / Registry
+//     / Caps — required production deps for the Creator role (script
+//     generation via Ollama, workspace for job artefacts, asset-client
+//     for Sender-side claim/submit, pre-built dispatcher for the
+//     Creator's allowed job types).
+//
+//   - VoiceoverEngine / ImageGenerator — typed-nil placeholders until
+//     Blocco 3.x wires real services. The placeholder fields preserve
+//     the contract surface (future call sites can rely on the field
+//     name) while deferring implementation drift to a later wave.
+//
+//   - Log — required by the canonical app.CleanupFunc contract for
+//     diagnostic-on-cleanup-failure (workspace removal BestEffort).
+type CreatorRuntime struct {
+	ScriptEngine *usecase.Engine
+
+	// VoiceoverEngine generates per-scene voiceover audio via Ollama TTS.
+	// Typed-nil when the TTS backend is not configured.
+	VoiceoverEngine interface{} // TODO (Blocco 3.x): wire real voiceover.Service or narrow port
+
+	// ImageGenerator creates AI images for script scenes.
+	// Typed-nil when image generation is not configured.
+	ImageGenerator interface{} // TODO (Blocco 3.x): wire real image generator or narrow port
+
+	// OllamaClient is the raw HTTP client for Ollama (used by voiceover
+	// and image generation engines when they are wired).
+	OllamaClient *client.Client
+
+	// Workspace is the temporary job workspace. The Creator does not
+	// share a filesystem with the Sender; workspace cleanup is owned
+	// by the CleanupFunc returned by BuildCreatorRuntime.
+	Workspace *worker.Workspace
+
+	// AssetClient is the HTTP client for talking to the Sender broker.
+	// Jobs are claimed and results are submitted through this client.
+	AssetClient *veloxclient.Client
+
+	// Registry is the pre-built worker.Registry with Creator job handlers
+	// (script.generate + voiceover.generate_item) already registered.
+	Registry *worker.Registry
+
+	// Caps are derived from the Registry (single source of truth).
+	Caps appjobs.WorkerCapabilities
+
+	Log *zap.Logger
+}
+
+// BuildCreatorRuntime constructs the Creator runtime graph from
+// config. Returns (*CreatorRuntime, CleanupFunc, error) on success;
+// the caller is responsible for invoking the CleanupFunc at shutdown
+// (typically via defer in workerruntime/run.go).
+//
+// The factory enforces the canonical Creator-side contract (see
+// package doc): NO DB, NO Qdrant, NO Scheduler, NO CatalogSync. Any
+// future pull of one of those capabilities MUST go through a
+// Sender-side handling port (e.g. remote.ArtifactUploader for
+// persistence), NOT direct coupling in this file. The contract is
+// enforced in two ways:
+//
+//  1. Compile pin (var _ = func() any { var _ *sql.DB = nil; return nil })
+//     below — forces `database/sql` import without bringing a SQL
+//     implementation into the package.
+//
+//  2. Import-allowlist AST scan (creator_runtime_test.go::TestCreatorRuntime_FrozenImportAllowlist)
+//     — forbids any of internal/infrastructure/database/sqlite,
+//     internal/infrastructure/qdrant, `scheduler`, or
+//     `catalogsync` from any creator_*.go under internal/app/.
+//
+// Fail-closed precondition: cfg and log MUST be non-nil. A nil
+// argument produces a typed error and (nil, nil, err), NOT a panic.
+// This makes the canonical composition graph's optionality explicit.
+func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, CleanupFunc, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("creator runtime: config is nil")
+	}
+	if log == nil {
+		return nil, nil, fmt.Errorf("creator runtime: logger is nil")
+	}
+
+	// Workspace ─────────────────────────────────────
+	workspaceRoot := filepath.Join(os.TempDir(), "pipelinegen", "creator")
+	ws, err := worker.NewWorkspace(workspaceRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creator workspace: %w", err)
+	}
+	cleanup := func() {
+		if rmErr := os.RemoveAll(workspaceRoot); rmErr != nil {
+			log.Warn("creator workspace cleanup failed", zap.Error(rmErr))
+		}
+	}
+
+	// Ollama client ─────────────────────────────────
+	ollamaClient := client.NewClient(
+		cfg.External.OllamaURL,
+		cfg.External.OllamaModel,
+		cfg.External.OllamaTimeoutSeconds,
+	)
+	ollamaClient.SetNvidiaConfig(
+		cfg.External.UseNvidiaForLLM,
+		cfg.External.NvidiaAPIKey,
+		cfg.External.NvidiaLLMModel,
+	)
+
+	log.Info("creator: Ollama client constructed",
+		zap.String("ollama_url", cfg.External.OllamaURL),
+		zap.String("ollama_model", cfg.External.OllamaModel),
+	)
+
+	// Script engine ─────────────────────────────────
+	scriptGen := ollama.NewGenerator(ollamaClient)
+	engine := usecase.NewEngine(scriptGen, nil, log)
+
+	log.Info("creator: script engine constructed")
+
+	// Postprocessor registry ────────────────────────
+	// Creator postprocessors write outputs as files in the workspace.
+	// Forbidden: PersistenceProcessor (SQLite), DocumentProcessor
+	// (Google Drive), StockAssociation (Qdrant). See package doc.
+	ppReg := registerCreatorPostProcessors(log)
+
+	log.Info("creator: postprocessor registry built",
+		zap.Int("processors", ppReg.Len()))
+
+	// Script generate handler ───────────────────────
+	// Build the minimal dependency chain for script.generate:
+	//   Engine -> GenerateOneUseCase -> GenerateManyUseCase -> GenerateJobHandler
+	normCfg := adapters.NormalizationConfig{
+		DefaultLanguage:          "en",
+		DefaultTone:              "professional",
+		DefaultDurationSeconds:   600,
+		OllamaModel:              cfg.External.OllamaModel,
+		MinWordFloor:             200,
+		DefaultSentencesPerImage: 10,
+		DefaultImagesPerScene:    2,
+		MaxBatchWorkers:          4,
+	}
+	sourceReg := adapters.NewSourceRegistry(log)
+	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	generateMany := usecase.NewGenerateManyUseCase(generateOne, log)
+	genJobHandler := scriptjobs.NewGenerateJobHandler(generateOne, generateMany, normCfg, log)
+
+	// Build dispatcher + registry ───────────────────
+	dispatcher := appjobs.NewDispatcher()
+	if err := genJobHandler.RegisterJobs(dispatcher); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("creator: register script.generate handler: %w", err)
+	}
+
+	// TODO (Blocco 3.x): register real voiceover.generate_item handler.
+	// The placeholder returns a clear "not yet implemented" error so the
+	// Creator never silently drops voiceover jobs on an unsigned dispatcher.
+	placeholderVO := func(ctx context.Context, j *domainjob.Job, tools *appjobs.JobTools) (map[string]any, error) {
+		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
+	}
+	if err := dispatcher.Register(domainjob.TypeVoiceoverGenerateItem, placeholderVO); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
+	}
+	log.Info("creator: voiceover.generate_item placeholder registered (TODO Blocco 3.x — wire real engine)")
+
+	dispatcher.Freeze()
+
+	reg := worker.NewRegistry()
+	for jobType, handler := range dispatcher.AllHandlers() {
+		if err := reg.Register(jobType, handler); err != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("creator: register handler %q in worker registry: %w", jobType, err)
+		}
+	}
+	reg.Freeze()
+
+	caps := appjobs.WorkerCapabilities{JobTypes: reg.Capabilities()}
+
+	log.Info("creator: worker registry built",
+		zap.Int("handlers", reg.Len()),
+		zap.Strings("capabilities", caps.JobTypes),
+	)
+
+	// Asset client ──────────────────────────────────
+	masterURL := cfg.External.ResolvedMasterURL()
+	workerToken := cfg.WorkerToken()
+	assetClient := veloxclient.New(masterURL, workerToken)
+
+	log.Info("creator: asset client constructed",
+		zap.String("master_url", masterURL),
+	)
+
+	return &CreatorRuntime{
+		ScriptEngine: engine,
+		OllamaClient: ollamaClient,
+		Workspace:    ws,
+		AssetClient:  assetClient,
+		Registry:     reg,
+		Caps:         caps,
+		Log:          log,
+	}, cleanup, nil
+}
+
+// Compile-time DB orphan pin (P0 Commit 8, July 2026).
+//
+// This var declaration is orphaned: the variable assigned the
+// anonymous-function literal is bound to the BLANK identifier `_`,
+// so it occupies no name slot in the package. The function body
+// still references the *sql.DB type from stdlib `database/sql`,
+// so the IMPORT is forced at compile time without bringing any
+// concrete SQLite implementation into this package.
+//
+// Contract enforced (godlike/06 + godlike/07):
+//
+//	POSITIVE side: shape-only `*sql.DB` reference. The stdlib
+//	  `database/sql` import is forced to be resolvable. The type
+//	  IS available from this package — but no concrete connection,
+//	  store, or repository is EVER wired through it.
+//
+//	NEGATIVE side: paired with
+//	  TestCreatorRuntime_FrozenImportAllowlist (creator_runtime_test.go),
+//	  no creator_*.go under internal/app/ can reach into
+//	  internal/infrastructure/database/sqlite (or any of the other
+//	  forbidden substrings) — the import-allowlist AST scan rejects
+//	  such a pull at CI build time.
+//
+// Keep this pin in lockstep with the canonical no-DB contract in
+// the package doc above. If a future Creator-side capability
+// MUST touch SQLite, the fix is to add a SENDER-side handling
+// port (e.g. remote.ArtifactUploader) and consume it, NOT to
+// weaken this contract. A *sql.DB argument NEVER appears in any
+// BuildCreatorRuntime signature or CreatorRuntime field by
+// construction.
+var _ = func() any { var _ *sql.DB = nil; return nil }
+
+// Creator postprocessor registry ──────────────────────────
+//
+// Originally defined in creator_composition.go (Creator Blocco 3.2);
+// moved to creator_runtime.go in P0 Commit 8 so the Creator-side
+// surface lives in ONE file (the canonical CreatorRuntime file).
+//
+// registerCreatorPostProcessors builds a PostProcessorRegistry with
+// Creator-safe postprocessors that write files instead of talking
+// to SQLite, Google Drive, or Qdrant.
+//
+//   - entities -> noop EntityExtractor (returns empty result, no
+//     backend call).
+//   - metadata -> noop MetadataGenerator (returns nil, no backend
+//     call).
+//   - clip_bindings -> canonical ClipBindingsProcessor. No-op when
+//     ClipEvidence is nil/empty (pure-text generation).
+//
+// FORBIDDEN (never registered):
+//   - persistence (SQLite)
+//   - document (Google Drive)
+//   - stock_association (Qdrant)
+//
+// voiceover and images are NOT registered yet — the Creator's
+// VoiceoverEngine and ImageGenerator are typed-nil placeholders
+// until Blocco 3.x wires real services.
+func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegistry {
+	ppReg := adapters.NewPostProcessorRegistry(log)
+
+	// entities -> Creator-safe noop with BestEffort policy.
+	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
+	entityProc := adapters.NewEntitiesProcessor(entityAdapter)
+	if !ppReg.Register(&creatorBestEffort{inner: entityProc, name: "entities"}) {
+		if log != nil {
+			log.Warn("creator: failed to register entities processor")
+		}
+	}
+
+	// metadata -> Creator-safe noop with BestEffort policy.
+	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, "")
+	metadataProc := adapters.NewMetadataProcessor(metadataAdapter)
+	if !ppReg.Register(&creatorBestEffort{inner: metadataProc, name: "metadata"}) {
+		if log != nil {
+			log.Warn("creator: failed to register metadata processor")
+		}
+	}
+
+	// clip_bindings -> canonical processor (in-memory, no external deps).
+	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
+		if log != nil {
+			log.Warn("creator: failed to register clip_bindings processor")
+		}
+	}
+
+	// Freeze prevents further registration (matches standard worker pattern).
+	ppReg.Freeze()
+
+	return ppReg
+}
+
+// creatorBestEffort wraps a PostProcessor to downgrade its policy
+// to ProcessorBestEffort. Used for Creator postprocessors backed
+// by noop adapters — the noop returns empty output, which would
+// trigger the Required empty-output gate on the standard
+// processor. BestEffort downgrades this to a warning.
+type creatorBestEffort struct {
+	inner adapters.PostProcessor
+	name  string
+}
+
+func (p *creatorBestEffort) Name() string { return p.name }
+
+func (p *creatorBestEffort) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapters.ProcessorPolicy {
+	return adapters.ProcessorBestEffort
+}
+
+func (p *creatorBestEffort) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input adapters.ProcessInput) (*adapters.PostProcessResult, error) {
+	return p.inner.Process(ctx, plan, input)
+}

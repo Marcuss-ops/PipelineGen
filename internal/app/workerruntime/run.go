@@ -3,14 +3,14 @@
 //
 // File layout (1-orientation-per-file convention, AGENTS.md Pattern 5):
 //
-//   run.go          — this file; Run() orchestrator + log-fatals
-//   config.go       — LoadConfig (cfgPath -> *config.Config, error)
-//   identity.go     — WorkerIdentity tuple (id/name/version/hostname)
-//   capabilities.go — ParseAndValidateCaps (env-raw JSON -> WorkerCapabilities)
-//   profiles.go     — WorkerProfile, WorkerProfileRegistry, ResolveCapabilities
-//   preflight.go    — master URL resolve + /health pre-flight loop
-//   heartbeat.go    — HeartbeatLoop (background broker.Heartbeat ticker)
-//   registration.go — broker + asset-client wire-up + the register call
+//	run.go          — this file; Run() orchestrator + log-fatals
+//	config.go       — LoadConfig (cfgPath -> *config.Config, error)
+//	identity.go     — WorkerIdentity tuple (id/name/version/hostname)
+//	capabilities.go — ParseAndValidateCaps (env-raw JSON -> WorkerCapabilities)
+//	profiles.go     — WorkerProfile, WorkerProfileRegistry, ResolveCapabilities
+//	preflight.go    — master URL resolve + /health pre-flight loop
+//	heartbeat.go    — HeartbeatLoop (background broker.Heartbeat ticker)
+//	registration.go — broker + asset-client wire-up + the register call
 //
 // Conforms to the cmd/archcheck/main.go layout convention (see
 // AGENTS.md Pattern 5 — split-one-package-by-capability-stable).
@@ -112,22 +112,27 @@ func Run(ctx context.Context, cfgPath string) error {
 
 		switch profile.Name {
 		case "creator":
-			// Creator Blocco 3.1: minimal composition without DB,
-			// Drive, Qdrant, or Repos. Registry + workspace are
-			// pre-built by InitCreatorComposition.
-			creatorRoot, creatorCleanup, creatorErr := app.InitCreatorComposition(cfg, log)
+			// Creator Blocco 3.1 (now P0 C8 — July 2026): minimal
+			// composition without DB, Drive, Qdrant, Scheduler, or
+			// CatalogSync reach. Registry + workspace are built by
+			// the canonical CreatorRuntime factory
+			// (app.BuildCreatorRuntime in creator_runtime.go).
+			// The no-DB / no-Qdrant / no-Scheduler / no-CatalogSync
+			// contract is enforced at the canonical surface via
+			// compile-time orphan pin + import-allowlist AST scan.
+			creatorRuntime, creatorCleanup, creatorErr := app.BuildCreatorRuntime(cfg, log)
 			if creatorErr != nil {
-				log.Error("failed to build creator composition", zap.Error(creatorErr))
-				return fmt.Errorf("creator composition: %w", creatorErr)
+				log.Error("failed to build creator runtime", zap.Error(creatorErr))
+				return fmt.Errorf("creator runtime: %w", creatorErr)
 			}
 			cleanup = creatorCleanup
-			registry = creatorRoot.Registry
-			caps = creatorRoot.Caps
-			ws = creatorRoot.Workspace
-			workspaceRoot = creatorRoot.Workspace.Root
+			registry = creatorRuntime.Registry
+			caps = creatorRuntime.Caps
+			ws = creatorRuntime.Workspace
+			workspaceRoot = creatorRuntime.Workspace.Root
 			registeredCaps = caps.JobTypes
 
-			log.Info("creator composition ready",
+			log.Info("creator runtime ready",
 				zap.Int("handlers", registry.Len()),
 				zap.Strings("capabilities", registeredCaps),
 				zap.String("workspace_root", workspaceRoot),
