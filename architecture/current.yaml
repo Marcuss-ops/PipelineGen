@@ -616,6 +616,25 @@
 # ---------------------------------------------------------------------------
 
 
+- id: PR-PROCESSINPUT-LOCALPATH-GATEWAY
+  status: done
+  owner_capability: assets
+  deadline: 2026-07-25
+  linked_issues:
+    - id: 93d92b78
+      owner_capability: internal/application/youtube
+      status: shipped
+      deadline: 2026-07-25
+    - id: 2bc503df
+      owner_capability: internal/application/assets/providers
+      status: shipped
+      deadline: 2026-07-25
+    - id: ab404b8b
+      owner_capability: internal/domain/asset + internal/application/assets
+      status: shipped
+      deadline: 2026-07-25
+
+
 - id: S7-Step-7
   status: done
   exit_signal: true
