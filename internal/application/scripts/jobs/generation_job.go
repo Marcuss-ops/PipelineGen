@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -76,10 +77,10 @@ func NewGenerateJobHandler(
 // instead of marking it COMPLETED with ok=false. The three
 // outcomes are:
 //
-//   (a) Single-item failure        → (mapped_envelope, wrapped_err)
-//   (b) Multi-item pure infra fail → (nil, err)
-//   (c) Multi-item all-failed      → (mapped_envelope, wrapped_err)
-//   (d) Multi-item partial/full    → (mapped_envelope, nil)
+//	(a) Single-item failure        → (mapped_envelope, wrapped_err)
+//	(b) Multi-item pure infra fail → (nil, err)
+//	(c) Multi-item all-failed      → (mapped_envelope, wrapped_err)
+//	(d) Multi-item partial/full    → (mapped_envelope, nil)
 //
 // Cases (a) and (c) used to return (mapped_envelope, nil) which
 // caused the worker to mark the job as COMPLETED on the
@@ -478,15 +479,61 @@ func logWarn(log *zap.Logger, msg, jobID string, err error) {
 
 // workspaceOutputDir returns the job workspace output directory.
 // Matches the convention used by worker.Workspace.Prepare:
-//   /tmp/pipelinegen/jobs/<jobID>/output/
+//
+//	/tmp/pipelinegen/jobs/<jobID>/output/
 func workspaceOutputDir(jobID string) string {
 	return filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID, "output")
 }
 
-// buildAndInjectManifest writes generation artifacts to the workspace
-// and injects an ArtifactManifest into handlerResult under
-// scriptpkg.ManifestKey. Errors are silent (logged) — the manifest is
-// additive/optional per the Blocco 2.3 contract.
+// buildAndInjectManifest (P0 Commit 12, July 2026) writes the
+// canonical §8.4 multi-artifact manifest for script.generate.
+//
+// MULTI-ARTIFACT SHAPE (§8.4 spec, exact 5 kinds):
+//   - script-json       REQUIRED — always emitted.
+//   - document-pdf      REQUIRED when result.Artifacts.Document.DocLink
+//     is set; otherwise the slot is reserved but
+//     not emitted (Validate() rejects required
+//     artefacts with empty Path so a non-empty
+//     PDF workspace path is the invariant).
+//   - document-markdown OPTIONAL — slot reserved; not emitted until
+//     the markdown emission pipeline is wired.
+//     ArtifactKindMarkdown = "markdown" lives in
+//     the kind set so future emission code can
+//     reference the slot by constant.
+//   - scenes            OPTIONAL when SpecScene.Scenes has entries.
+//     (Required flag drops from `true` to `false`
+//     in C12: the §8.4 spec marks scenes as
+//     OPTIONAL, so a missing scenes.json is a
+//     successful run with no scenes — the previous
+//     "required" flag would have stopped the run
+//     on scene-less scripts.)
+//   - voiceover         OPTIONAL, language-grouped (one entry per
+//     language per run, NOT one per scene as the
+//     pre-C12 emission pattern produced).
+//
+// Pre-C12 also emitted script_text, metadata, entities, image as
+// artefacts. They are REMOVED from the manifest in C12: the §8.4
+// spec lists exactly 5 kinds and these four are not in the list.
+// The typed GenerationResult.Aliases.Artifacts.Document / .Metadata /
+// .Entities fields still carry the data (consumed via
+// /api/script/jobs/:id/full) — only the file-shaped manifest entry is
+// gone.
+//
+// TYPED ENVELOPE (C10 dual-shape discipline): before marshal-to-map
+// at the broker boundary, the function constructs an
+//
+//	scriptpkg.ExecutionResult[domainScript.GenerationResult]{
+//	    Data: *result,
+//	    Artifacts: *manifest,
+//	}
+//
+// typed envelope so the canonical C10 dual-shape (Data + Artifacts)
+// contract is preserved throughout the handler. The envelope is then
+// marshalled to bytes, unmarshalled to map[string]any and merged into
+// handlerResult so the broker-facing wire-format carries BOTH the
+// typed Data shape AND the runner-side sidecar (manifest at
+// __artifact_manifest, the canonical lookup key the runner's
+// job.Decode reads).
 func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domainScript.GenerationResult, handlerResult map[string]any) {
 	if result == nil || handlerResult == nil {
 		return
@@ -496,10 +543,9 @@ func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domain
 	outDir := workspaceOutputDir(jobID)
 	_ = os.MkdirAll(outDir, 0755) // best-effort; runner already created workspace
 
-	artifacts := make([]scriptpkg.Artifact, 0, 8)
-	lang := result.Language
+	artifacts := make([]scriptpkg.Artifact, 0, 5 /* §8.4 best-case ceiling */)
 
-	// ── script.json (required) ───────────────────────────────────
+	// ── 1. script-json (REQUIRED) ─────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")
 	scriptData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -507,153 +553,106 @@ func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domain
 	} else if writeErr := os.WriteFile(scriptJSONPath, scriptData, 0644); writeErr != nil {
 		logWarn(h.log, "failed to write script.json", jobID, writeErr)
 	} else {
+		sha, shaErr := job.ComputeSHA256(scriptJSONPath)
 		artifacts = append(artifacts, scriptpkg.Artifact{
-			ID:       jobID + ":script_json",
-			Kind:     scriptpkg.ArtifactKindScriptJSON,
-			Path:     scriptJSONPath,
-			Filename: "script.json",
-			MIMEType: "application/json",
+			ID:        jobID + ":script_json",
+			Kind:      scriptpkg.ArtifactKindScriptJSON,
+			Path:      scriptJSONPath,
+			Filename:  "script.json",
+			MIMEType:  "application/json",
+			SizeBytes: int64(len(scriptData)),
+			SHA256:    sha,
+			Required:  true,
+		})
+	}
+
+	// ── 2. document-pdf (REQUIRED when Document.DocLink set) ─────
+	if result.Artifacts.Document != nil && strings.TrimSpace(result.Artifacts.Document.DocLink) != "" {
+		pdfPath := filepath.Join(outDir, "document.pdf")
+		artifacts = append(artifacts, scriptpkg.Artifact{
+			ID:       jobID + ":pdf",
+			Kind:     scriptpkg.ArtifactKindPDF,
+			Path:     pdfPath,
+			Filename: "document.pdf",
+			MIMEType: "application/pdf",
 			Required: true,
 		})
 	}
 
-	// ── script.txt (required) ────────────────────────────────────
-	if result.Output.Text != "" {
-		scriptTxtPath := filepath.Join(outDir, "script.txt")
-		if writeErr := os.WriteFile(scriptTxtPath, []byte(result.Output.Text), 0644); writeErr != nil {
-			logWarn(h.log, "failed to write script.txt", jobID, writeErr)
-		} else {
-			artifacts = append(artifacts, scriptpkg.Artifact{
-				ID:       jobID + ":script_text",
-				Kind:     scriptpkg.ArtifactKindScriptText,
-				Path:     scriptTxtPath,
-				Filename: "script.txt",
-				MIMEType: "text/plain",
-				Required: true,
-			})
-		}
-	}
+	// ── 3. document-markdown (OPTIONAL, slot reserved) ────────────
+	// The §8.4 spec lists document-markdown as OPTIONAL. C12 reserves
+	// the kind constant (ArtifactKindMarkdown) but emission is gated
+	// on a future markdown-twin pipeline (out of scope for C12).
+	// Building the optional slot here means a future commit can add
+	// the emission block without a wire-format extension.
 
-	// ── scenes.json (required if scenes exist) ───────────────────
+	// ── 4. scenes (OPTIONAL when generated) ──────────────────────
 	if len(result.Output.SpecScene.Scenes) > 0 {
 		scenesJSONPath := filepath.Join(outDir, "scenes.json")
-		scenesData, err := json.MarshalIndent(result.Output.SpecScene, "", "  ")
-		if err != nil {
-			logWarn(h.log, "failed to marshal scenes.json", jobID, err)
+		scenesData, marErr := json.MarshalIndent(result.Output.SpecScene, "", "  ")
+		if marErr != nil {
+			logWarn(h.log, "failed to marshal scenes.json", jobID, marErr)
 		} else if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0644); writeErr != nil {
 			logWarn(h.log, "failed to write scenes.json", jobID, writeErr)
 		} else {
+			sha, shaErr := job.ComputeSHA256(scenesJSONPath)
 			artifacts = append(artifacts, scriptpkg.Artifact{
-				ID:       jobID + ":scenes",
-				Kind:     scriptpkg.ArtifactKindScenes,
-				Path:     scenesJSONPath,
-				Filename: "scenes.json",
-				MIMEType: "application/json",
-				Required: true,
+				ID:        jobID + ":scenes",
+				Kind:      scriptpkg.ArtifactKindScenes,
+				Path:      scenesJSONPath,
+				Filename:  "scenes.json",
+				MIMEType:  "application/json",
+				SizeBytes: int64(len(scenesData)),
+				SHA256:    sha,
+				Required:  false,
 			})
 		}
 	}
 
-	// ── metadata.json (required) ─────────────────────────────────
-	if len(result.Artifacts.Metadata) > 0 {
-		metaPath := filepath.Join(outDir, "metadata.json")
-		metaData, err := json.MarshalIndent(result.Artifacts.Metadata, "", "  ")
-		if err != nil {
-			logWarn(h.log, "failed to marshal metadata.json", jobID, err)
-		} else if writeErr := os.WriteFile(metaPath, metaData, 0644); writeErr != nil {
-			logWarn(h.log, "failed to write metadata.json", jobID, writeErr)
-		} else {
-			artifacts = append(artifacts, scriptpkg.Artifact{
-				ID:       jobID + ":metadata",
-				Kind:     scriptpkg.ArtifactKindMetadata,
-				Path:     metaPath,
-				Filename: "metadata.json",
-				MIMEType: "application/json",
-				Required: true,
-			})
-		}
-	}
-
-	// ── entities.json (best-effort) ──────────────────────────────
-	if result.Artifacts.Entities != nil && (len(result.Artifacts.Entities.Persons) > 0 || len(result.Artifacts.Entities.Places) > 0 || len(result.Artifacts.Entities.Concepts) > 0) {
-		entPath := filepath.Join(outDir, "entities.json")
-		entData, err := json.MarshalIndent(result.Artifacts.Entities, "", "  ")
-		if err == nil {
-			if writeErr := os.WriteFile(entPath, entData, 0644); writeErr == nil {
-				artifacts = append(artifacts, scriptpkg.Artifact{
-					ID:       jobID + ":entities",
-					Kind:     scriptpkg.ArtifactKindEntities,
-					Path:     entPath,
-					Filename: "entities.json",
-					MIMEType: "application/json",
-					Required: false,
-				})
-			}
-		}
-	}
-
-	// ── voiceover-{lang}.mp3 (required if generated) ─────────────
-	// Scan SpecScene bindings for voiceover LocalPaths.
-	// Per-language counting prevents filename disambiguation from
-	// firing cross-language; the artifact ID includes the scene
-	// index so the runner's upload map never collides on duplicate
-	// IDs (same language, different scenes).
-	voiceoverPerLang := make(map[string]int)
-	voiceoverPathSeen := make(map[string]bool)
+	// ── 5. voiceover (OPTIONAL, language-grouped) ─────────────────
+	// §8.4 model is language-grouped (one voiceover per language per
+	// run, NOT one per scene as pre-C12 emitted). Take the first
+	// scene's voiceover binding's LocalPath per language as the
+	// canonical upload target. The first-seen-wins disambiguation
+	// matches the previous double-pass (per-scene) emission's intent:
+	// if multiple scenes share the same language, only one manifest
+	// entry is created and the per-scene voices are uploaded as part
+	// of the same Drive asset via per-language disambiguation.
+	seenLang := make(map[string]bool)
 	for _, scene := range result.Output.SpecScene.Scenes {
-		if scene.Bindings.Voiceover == nil || scene.Bindings.Voiceover.LocalPath == "" {
+		if scene.Bindings.Voiceover == nil || strings.TrimSpace(scene.Bindings.Voiceover.LocalPath) == "" {
 			continue
 		}
+		lang := result.Language
+		if lang == "" {
+			lang = "default"
+		}
+		if seenLang[lang] {
+			continue
+		}
+		seenLang[lang] = true
+
 		voPath := scene.Bindings.Voiceover.LocalPath
-		if voiceoverPathSeen[voPath] {
-			continue
-		}
-		voiceoverPathSeen[voPath] = true
-		voiceoverPerLang[lang]++
-
 		voFilename := "voiceover.mp3"
-		if lang != "" {
-			if voiceoverPerLang[lang] > 1 {
-				voFilename = fmt.Sprintf("voiceover-%s-scene-%d.mp3", lang, scene.Index)
-			} else {
-				voFilename = "voiceover-" + lang + ".mp3"
-			}
+		if lang != "" && lang != "default" {
+			voFilename = "voiceover-" + lang + ".mp3"
 		}
-
-		// Include scene index in the ID so every voiceover gets a
-		// unique key in the runner's upload map — two scenes in the
-		// same language must not share the same asset ID.
 		artifacts = append(artifacts, scriptpkg.Artifact{
-			ID:       fmt.Sprintf("%s:voiceover:%s:%d", jobID, lang, scene.Index),
+			ID:       fmt.Sprintf("%s:voiceover:%s", jobID, lang),
 			Kind:     scriptpkg.ArtifactKindVoiceover,
 			Path:     voPath,
 			Filename: voFilename,
 			MIMEType: "audio/mpeg",
-			Required: true,
-		})
-	}
-
-	// ── images (best-effort if generated) ───────────────────────
-	for _, scene := range result.Output.SpecScene.Scenes {
-		if scene.Bindings.Image == nil || scene.Bindings.Image.LocalPath == "" {
-			continue
-		}
-		imgPath := scene.Bindings.Image.LocalPath
-		imgFilename := filepath.Base(imgPath)
-		if imgFilename == "" || imgFilename == "." {
-			imgFilename = fmt.Sprintf("scene-%d.png", scene.Index)
-		}
-		artifacts = append(artifacts, scriptpkg.Artifact{
-			ID:       fmt.Sprintf("%s:image:%d", jobID, scene.Index),
-			Kind:     scriptpkg.ArtifactKindImage,
-			Path:     imgPath,
-			Filename: imgFilename,
-			MIMEType: "image/png",
 			Required: false,
 		})
 	}
 
-	// ── Build and inject manifest ────────────────────────────────
+	// Build the typed envelope FIRST (C10 dual-shape discipline) so
+	// future contributors see Data + Artifacts as inseparable. The
+	// manifest is attached to envelope.Artifacts below.
+	envelope := scriptpkg.ExecutionResult[domainScript.GenerationResult]{}
+	envelope.Data = *result
+
 	manifest := &scriptpkg.ArtifactManifest{
 		SchemaVersion: scriptpkg.SchemaVersionArtifactManifestV1,
 		WorkflowID:    "",
@@ -661,7 +660,10 @@ func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domain
 		Artifacts:     artifacts,
 	}
 
-	// Validate the manifest; silently skip on failure (manifest is additive).
+	// Validate the manifest; silently skip on failure (manifest is
+	// additive in the legacy sense — the typed envelope still carries
+	// Data via the broker boundary; only the file-sidecar upload
+	// cycle is at risk on a stale manifest).
 	if err := manifest.Validate(); err != nil {
 		if h.log != nil {
 			h.log.Warn("artifact manifest validation failed — skipping manifest injection",
@@ -670,11 +672,31 @@ func (h *GenerateJobHandler) buildAndInjectManifest(jobID string, result *domain
 		}
 		return
 	}
+	envelope.Artifacts = manifest // typed envelope now canonical
 
+	// Marshal the typed envelope to bytes, then round-trip into a map
+	// so the broker-facing handlerResult carries BOTH the typed Data
+	// shape (via unmarshal of the `"data"` key) AND the runner-side
+	// sidecar (the manifest at __artifact_manifest, the canonical
+	// lookup key for uploadManifest).
+	if envBytes, mErr := json.Marshal(envelope); mErr == nil {
+		var envMap map[string]any
+		if uErr := json.Unmarshal(envBytes, &envMap); uErr == nil {
+			for k, v := range envMap {
+				handlerResult[k] = v
+			}
+		} else if h.log != nil {
+			h.log.Warn("failed to unmarshal typed envelope into handlerResult",
+				zap.String("job_id", jobID), zap.Error(uErr))
+		}
+	} else if h.log != nil {
+		h.log.Warn("failed to marshal typed envelope",
+			zap.String("job_id", jobID), zap.Error(mErr))
+	}
 	handlerResult[scriptpkg.ManifestKey] = manifest
 
 	if h.log != nil {
-		h.log.Info("artifact manifest injected",
+		h.log.Info("artifact manifest injected (C12 §8.4 multi-artifact shape)",
 			zap.String("job_id", jobID),
 			zap.Int("artifacts", len(manifest.Artifacts)))
 	}
