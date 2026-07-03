@@ -485,17 +485,17 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			return fmt.Errorf("%w: chunk %d (artifact=%s) idem-key: %v",
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, idemErr)
 		}
-		va := finalization.VerifiedArtifact{
-			ArtifactID:     cs.ArtifactID,
-			Kind:           finalization.KindVideo,
-			Filename:       cs.Filename,
-			MIMEType:       "video/mp4",
-			LocalPath:      cs.LocalPath,
-			SizeBytes:      cs.SizeBytes,
-			SHA256:         cs.SHA256,
-			Required:       true,
-			IdempotencyKey: idem + ":c" + strconv.Itoa(i),
-		}
+	va := finalization.VerifiedArtifact{
+		ArtifactID:     cs.ArtifactID,
+		Kind:           finalization.KindVideo,
+		Filename:       cs.Filename,
+		MIMEType:       "video/mp4",
+		LocalPath:      cs.LocalPath,
+		SizeBytes:      cs.SizeBytes,
+		SHA256:         cs.SHA256,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: idem + ":c" + strconv.Itoa(i),
+	}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
 		if prepErr != nil {
 			return fmt.Errorf("%w: chunk %d (artifact=%s): %v",
@@ -555,7 +555,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		LocalPath:      metaPath,
 		SizeBytes:      metaSize,
 		SHA256:         metaHash,
-		Required:       true,
+		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: metaIdem,
 	}
 	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)

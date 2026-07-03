@@ -63,6 +63,36 @@ var (
 	// ErrSizeMismatch is returned when an artifact's SizeBytes does
 	// not match the expected value.
 	ErrSizeMismatch = errors.New("finalization: artifact size mismatch")
+
+	// ── P1.2 (July 2026) sentinels — Required/Optional artifact sidecar ───
+
+	// ErrArtifactRequirementInvalid is returned when a VerifiedArtifact
+	// or PublishedArtifact carries Requirement == ArtifactRequirementInvalid
+	// (the typed-enum zero value). Callers MUST set Requirement to either
+	// ArtifactRequirementRequired or ArtifactRequirementOptional
+	// explicitly. The zero value is rejected by validateRequest so a
+	// default-zero struct literal cannot silently pass as "Optional".
+	ErrArtifactRequirementInvalid = errors.New("finalization: artifact Requirement is the zero value (ArtifactRequirementInvalid) — set explicitly to Required or Optional")
+
+	// ErrOptionalDeclarationHasRequiredRequirement is returned when a
+	// FinalizationRequest.OptionalDeclarations entry carries
+	// Requirement == ArtifactRequirementRequired. OptionalDeclarations
+	// is the audit sidecar dedicated to OPTIONAL artifacts only; a
+	// required artifact belongs on the request's `Artifacts` list, not
+	// on the declaration sidecar. Surfaces caller misclassification
+	// loudly instead of letting the audit row silently misclassify.
+	ErrOptionalDeclarationHasRequiredRequirement = errors.New("finalization: OptionalDeclarations entry has Requirement=Required — required artifacts belong on Artifacts, declarations are the optional sidecar only")
+
+	// ErrOptionalArtifactFinalizedMismatch is returned when a
+	// FinalizationRequest.OptionalDeclarations entry declares
+	// Status=OptionalArtifactStatusFinalized but the matching
+	// ArtifactID does NOT appear in the request's Artifacts list. The
+	// worker promised the artifact was published, but the
+	// cross-reference fails — likely a programming error (the worker
+	// dropped the artifact on the way to BuildFinalizationRequest, or
+	// set the wrong ArtifactID). Better surface loudly than emit a
+	// misleading Finalized record.
+	ErrOptionalArtifactFinalizedMismatch = errors.New("finalization: optional artifact declared Finalized but missing from Artifacts (cross-reference mismatch)")
 )
 
 // ── Structured error (JobFinalizer) ──────────────────────────────────

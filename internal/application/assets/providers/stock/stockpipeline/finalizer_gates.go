@@ -331,7 +331,7 @@ func BuildFinalizationRequest(
 		SizeBytes:      metadata.SizeBytes,
 		SHA256:         metadata.SHA256,
 		SourceVersion:  1,
-		Required:       true,
+		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: metaIdemKey,
 		Location: finalization.AssetLocation{
 			Provider:     "drive",
@@ -359,14 +359,14 @@ func BuildFinalizationRequest(
 			)
 		}
 		arts = append(arts, finalization.PublishedArtifact{
-			ArtifactID:    c.ArtifactID,
-			Kind:          finalization.KindVideo,
-			Filename:      c.Filename,
-			MIMEType:      "video/mp4",
-			SizeBytes:     c.SizeBytes,
-			SHA256:        c.SHA256,
-			SourceVersion: int64(c.Index + 1),
-			Required:      true,
+			ArtifactID:     c.ArtifactID,
+			Kind:           finalization.KindVideo,
+			Filename:       c.Filename,
+			MIMEType:       "video/mp4",
+			SizeBytes:      c.SizeBytes,
+			SHA256:         c.SHA256,
+			SourceVersion:  int64(c.Index + 1),
+			Requirement:    finalization.ArtifactRequirementRequired,
 			IdempotencyKey: chunkIdemKey,
 			Location: finalization.AssetLocation{
 				Provider:     "drive",

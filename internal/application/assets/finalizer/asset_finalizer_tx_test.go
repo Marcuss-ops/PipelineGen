@@ -119,7 +119,7 @@ func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArt
 		SizeBytes:      1024,
 		SHA256:         sha256,
 		SourceVersion:  1,
-		Required:       true,
+		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: fmt.Sprintf("idem-%s", assetID),
 		Location: finalization.AssetLocation{
 			Provider:     "drive",
