@@ -77,6 +77,7 @@ type stubFanoutBroker struct{}
 func (s *stubFanoutBroker) EnqueueScriptItem(
 	ctx context.Context,
 	parentJobID string,
+	itemIndex int,
 	item domainScript.GenerationItemV2,
 	preset domainScript.Preset,
 ) (string, error) {
