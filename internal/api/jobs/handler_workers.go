@@ -18,6 +18,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"time"
@@ -27,6 +28,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -70,6 +72,7 @@ func (h *WorkersBrokerHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/jobs/:id/renew", h.Renew)
 	r.POST("/jobs/:id/progress", h.Progress)
 	r.POST("/jobs/:id/complete", h.Complete)
+	r.POST("/jobs/:id/complete-with-artifacts", h.CompleteWithArtifacts)
 	r.POST("/jobs/:id/fail", h.Fail)
 	r.GET("/jobs/:id/cancelled", h.IsCancelled)
 	r.GET("/worker-assets/:asset_id/download", h.DownloadAsset)
@@ -185,6 +188,97 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 	apiutil.OK(c, gin.H{"ok": true})
 }
 
+// CompleteArtifactsRequest is the typed HTTP-in DTO for
+// POST /internal/v1/jobs/:id/complete-with-artifacts. It mirrors
+// appjobs.CompleteWithArtifactsCommand but exposes ArtifactManifest
+// (the published artifact catalog submitted by the remote worker)
+// under an HTTP-friendly field name.
+//
+// CRITICAL CONTRACT (godlike/07 no-fake-availability): the body
+// MUST NOT contain local Creator paths. The asset transport
+// already uploads the artifacts to the Sender over the
+// /worker-assets/* surface — this endpoint only references them
+// by ID. Any non-canonical field (LocalPath, SourcePath) is a
+// regression of the cutover and surfaces immediately in code
+// review (CI Check 53 on the production tree enforces the
+// structural shape).
+type CompleteArtifactsRequest struct {
+	WorkerID         string          `json:"worker_id"`
+	WorkerSessionID  string          `json:"worker_session_id"`
+	LeaseID          string          `json:"lease_id"`
+	ExpectedRevision int             `json:"expected_revision"`
+	ResultData       json.RawMessage `json:"result_data"`
+	// ArtifactManifest is the JSON-serialised slice of published
+	// artifacts (the worker's authoritative catalog before the
+	// atomic finalisation transaction). The broker deserialises
+	// this into finalization.PublishedArtifact slice and passes
+	// to the JobFinalizer spine.
+	ArtifactManifest json.RawMessage `json:"artifact_manifest"`
+	// OutboxEvents is optional; mirror of CompleteWithArtifactsCommand.
+	OutboxEvents json.RawMessage `json:"outbox_events,omitempty"`
+}
+
+// CompleteArtifactsResponse is the typed HTTP-out DTO. The
+// canonical post-completion SUCCEEDED status is surfaced
+// uniformly; AssetIDs is forward-declared so the wire contract
+// survives the future PR where Broker.CompleteWithArtifacts
+// returns the typed FinalizationResult acknowledgment (the
+// canonical-server-side ack surface). For now the slice is
+// always empty — godlike/07 no-fake-availability: never invent
+// IDs that did not come from the typed return.
+type CompleteArtifactsResponse struct {
+	JobID    string   `json:"job_id"`
+	Status   string   `json:"status"`
+	AssetIDs []string `json:"asset_ids"`
+}
+
+// CompleteWithArtifacts forwards a successful artifact-producing
+// job outcome from a remote worker through the JobFinalizer
+// spine. The body carries the worker's published artifact
+// manifest + result data; the broker deserialises and writes
+// asset records, versions, locations, outbox events in the SAME
+// transaction as the SUCCEEDED transition (atomic per
+// godlike/07).
+//
+// Wire contract: mounted on remoteshared.InternalPathPrefix
+// (typically /internal/v1/) and gated by WorkerAuth — the same
+// boundary as the legacy /complete surface. The internal-only
+// path deliberately mirrors the legacy route's wire role
+// (server-to-server worker RPC, never exposed under /api).
+//
+// NOTE: the response AssetIDs slice is currently always empty
+// (forward-declared). When the underlying Broker interface is
+// extended to return the typed FinalizationResult in a future
+// PR, the handler will thread the asset IDs from the typed
+// return into the response struct without changing the wire
+// shape.
+func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
+	var req CompleteArtifactsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+	cmd := appjobs.CompleteWithArtifactsCommand{
+		WorkerID:           req.WorkerID,
+		WorkerSessionID:    req.WorkerSessionID,
+		JobID:              c.Param("id"),
+		LeaseID:            req.LeaseID,
+		ExpectedRevision:   req.ExpectedRevision,
+		ResultData:         req.ResultData,
+		PublishedArtifacts: req.ArtifactManifest,
+		OutboxEvents:       req.OutboxEvents,
+	}
+	if err := h.broker.CompleteWithArtifacts(c.Request.Context(), cmd); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, CompleteArtifactsResponse{
+		JobID:    cmd.JobID,
+		Status:   string(domainjob.StatusSucceeded),
+		AssetIDs: []string{},
+	})
+}
+
 func (h *WorkersBrokerHandler) Fail(c *gin.Context) {
 	var req appjobs.FailCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -283,5 +377,3 @@ func (h *WorkersBrokerHandler) FinalizeUpload(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{"ok": true})
 }
-
-var _ = http.StatusOK
