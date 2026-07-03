@@ -249,19 +249,22 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	if err := genJobHandler.RegisterJobs(brokerAdapter{disp: dispatcher}); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("creator: register script.generate handler: %w", err)
-	}
-
-	// TODO (Blocco 3.x): register real voiceover.generate_item handler.
-	// The placeholder returns a clear "not yet implemented" error so the
-	// Creator never silently drops voiceover jobs on an unsigned dispatcher.
-	placeholderVO := func(ctx context.Context, j *domainjob.Job, tools *appjobs.JobTools) (map[string]any, error) {
-		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
-	}
-	if err := dispatcher.Register(domainjob.TypeVoiceoverGenerateItem, placeholderVO); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
-	}
-	log.Info("creator: voiceover.generate_item placeholder registered (TODO Blocco 3.x — wire real engine)")
+	}	// P1-COMPL-12-PLACEHOLDER-CAPABILITY (godlike/07 no-fake-availability,
+	// deadline 2026-07-25, small-but-dangerous band): the
+	// `voiceover.generate_item` placeholder registration that USED to live
+	// here has been REMOVED from default production builds. No fake
+	// capability is now advertised to the Sender from the Creator
+	// composition root; the `workerruntime.ResolveCapabilities` gate
+	// correctly fail-closes at boot if a deployment profile lists
+	// `voiceover.generate_item` as allowed but the dispatcher has no
+	// handler for it. The placeholder SHAPE (a godlike/07-compliant
+	// typed-error handler) is preserved for OPT-IN test affordance ONLY
+	// — see `creator_runtime_placeholder_test_only.go`, gated by the
+	// `voiceover_placeholder` build tag. Default `go build` does NOT
+	// compile the affordance; `go build -tags voiceover_placeholder`
+	// loads it for test fixtures. When the real Creator-side voiceover
+	// engine lands (Blocco 3.x), re-introduce the handler here under the
+	// canonical Pattern 0 port rather than reviving the placeholder.
 
 	dispatcher.Freeze()
 
