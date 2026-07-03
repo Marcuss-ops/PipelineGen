@@ -2718,3 +2718,91 @@ wave_status:
       owner_capability: architecture (docs-only)
       status: shipped
       deadline: 2026-07-03
+
+
+# ── COMPLETION-CUTOVER-P0 — Sender-side wire-up + double-publish dedup + upload state machine (in_progress, July 2026) ──
+# Action plan derived from the 9-issue Italian P0 audit snapshot posted by
+# `Marcuss-ops` to the orchestrator on 2026-07-04 (covering the typed
+# completion-flow contract, Stage→Drive production wiring, "published"-naming
+# hygiene, Prepare+Publish dedup, competing completion backbones, workspace
+# retention policy, workspace path owner, atomic staged upload, server-side
+# typed upload protocol routes). Each item maps to a net-new slim-shape
+# `linked_issue` (id / status / owner_capability / deadline). Execution
+# order pinned per godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT; **P0
+# structural priority** on items 4 (publish dedup) + 5 (single canonical
+# backbone) because they are godlike/06 SSOT violations today; items 1+2
+# are cutover wiring (cross-package composition root + wire-format rename);
+# items 6-9 are infrastructure hardening (workspace lifecycle + atomic
+# state machine + server-side protocol routes).
+#
+# Per-item PR outline + wave latency assumptions live in
+# `architecture/action-plans/2026-07-04-completion-cutover.md` (mirrors
+# the 2026-07-03 godobjects-decomposition precedent).
+#
+# godlike/07 honest-limitation: items 4+5 are structural (godlike/06 SSOT)
+# so they MUST land atomically in the same PR to avoid split-brain
+# owner-of-fact; items 1+2 can ship as one composition-root wiring PR;
+# items 6-9 ship independently per package. Verification per item: targeted
+# `gofmt + go vet + go build + go test -short` on the touched subtree +
+# 1 typed-error sentinel + 1 boundary contract test.
+- id: COMPLETION-CUTOVER-P0-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner: "internal/application/jobs/completion (canonical) + internal/application/assets/delivery (cross-package) + internal/app (composition)"
+  deadline: 2026-08-15
+  exit_gate: |
+    All 9 `linked_issues` flip to `status: shipped`. Each PR lands a
+    single item with auto-sufficient granularity per AGENTS.md
+    Git-Lesson-2 (direct-to-main) + a typed-error contract per
+    godlike/07 (no fake-availability). Per-item exit gates documented
+    in the action-plan file
+    `architecture/action-plans/2026-07-04-completion-cutover.md`
+    § "Execution order". Pre-existing build issues (5-item
+    carry-forward from CHANGELOG convention) stay OUT OF SCOPE per
+    AGENTS.md §"Known Issues & Fixes" scope discipline.
+  linked_issues:
+    # ── P0 #1 — Manifest-aware Complete decision ────────────────────────────
+    - id: P0-COMPL-1-MANIFEST-DECISION
+      owner_capability: internal/application/jobs/worker
+      status: pending
+      deadline: 2026-07-25
+    # ── P0 #2 — Stage→Drive composition wiring ─────────────────────────────
+    - id: P0-COMPL-2-COMPOSITION-WIRE
+      owner_capability: internal/app + internal/application/assets/delivery + internal/application/jobs/completion
+      status: pending
+      deadline: 2026-08-01
+    # ── P0 #3 — ArtifactManifest contract rename (staged != published) ─────
+    - id: P0-COMPL-3-ARTIFACT-CONTRACT
+      owner_capability: internal/api + internal/infrastructure/remote/jobbrokerclient + internal/application/jobs/completion
+      status: pending
+      deadline: 2026-08-01
+    # ── P0 #4 — completion.Service: stop double-publishing ─────────────────
+    - id: P0-COMPL-4-PUBLISH-DEDUPE
+      owner_capability: internal/application/jobs/completion
+      status: pending
+      deadline: 2026-07-25
+    # ── P0 #5 — Single canonical completion backbone ───────────────────────
+    - id: P0-COMPL-5-SINGLE-BACKBONE
+      owner_capability: internal/application/jobs/finalizer + internal/application/jobs/completion
+      status: pending
+      deadline: 2026-08-15
+    # ── P0 #6 — WorkspaceRetentionPolicy ────────────────────────────────────
+    - id: P0-COMPL-6-WORKSPACE-RETENTION
+      owner_capability: internal/application/jobs/worker + internal/infrastructure/jobs/local
+      status: pending
+      deadline: 2026-08-01
+    # ── P0 #7 — Workspace path owner ───────────────────────────────────────
+    - id: P0-COMPL-7-WORKSPACE-PATH-OWNER
+      owner_capability: internal/application/jobs/worker + internal/app
+      status: pending
+      deadline: 2026-08-01
+    # ── P0 #8 — Atomic staged upload (.part + fsync + sha256 + atomic rename) ──
+    - id: P0-COMPL-8-STAGED-UPLOAD-ATOMIC
+      owner_capability: internal/infrastructure/remote/jobbrokerclient
+      status: pending
+      deadline: 2026-08-15
+    # ── P0 #9 — Server-side typed upload protocol routes ──────────────────
+    - id: P0-COMPL-9-UPLOAD-ROUTES-LIVE
+      owner_capability: internal/infrastructure/remote/jobbrokerclient + internal/app
+      status: pending
+      deadline: 2026-08-15
