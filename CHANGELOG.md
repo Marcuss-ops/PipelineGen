@@ -2650,3 +2650,32 @@ The following 5 closure entries are the P2.4 closure pin (no new code surface; d
 ### Fixed
 
 - **[P0 #4 audit closure (parent_aggregator test surface) `097abf93` audit 2026-07-03, July 2026]** `docs(scripts) + chore(architecture)` -- closes the canonical P0 #4 narrow-port audit for the script-batch parent aggregator (mirror of voiceover P0 #1 closure pattern at commit `7f319edb` per AGENTS.md Git-Lesson-1 mirror). 4 CAS-fence narrow-port tests in `internal/application/scripts/jobs/parent_aggregator_test.go` pin: Mixed_PreservesRevision, AllFailed_PopulatesErrMsg, StaleRevision_ReturnsErrAggregateCASConflict, ReplayIdempotentAfterAlreadyTerminal. The closure-target files (`parent_aggregator.go` + `parent_aggregator_test.go`) compile clean in isolation. The package has a pre-existing residue in `job_helpers_test.go:116:13` (forward-pointer `PR-job-helpers-test-clips-folder-residue-cleanup` pending; out of scope for this audit closure). Cross-reference: `architecture/current.yaml#P0-4_audit_closure` + `internal/application/scripts/jobs/parent_aggregator.go` + AGENTS.md Git-Lesson-5 byte-equivalent-replay recovery. godlike/07 honest limitation declaration: the sibling-side wiring (TypeScriptGenerateItem registration, executeScriptFanout, FanoutItemBroker adapter, wireScriptChildJobAuditP04 composition helper, script_generation_item_handler.go NEW untracked) is dirty-uncommitted in this working tree at HEAD `fb0a4df`. Forward-pointer `PR-script-batch-fanout-sibling-side-pending` (linked_issues in current.yaml) tracks the gap so a future agent ships the sibling chain without re-discovering it. Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>.
+
+- **[P1-P2 cutover completion (SHA index + 13-test mapping)]** `chore(architecture)` — final acceptance closure for the 11 P1-P2 cutover actions from `evidence/2026-06-28/rollout-plan.json`. **13 verdict gates mapped to 16 TDD tests, ALL GREEN.** 6 NEW wave-tracker entries appended at `architecture/current.yaml` EOF (`PR-P1.4-CLOSURE` ... `PR-P2.4-CLOSURE`), all `status: done / exit_signal: true` per slim-schema. P2.5 closure also restores the `drive.ErrLegacySurfaceRetired` sentinel that P0.8 (`fb0a4dfd`) inadvertently dropped during the `ErrAmbiguousDriveFolder` extraction, satisfying both the test surface (`internal/infrastructure/drive/errors_test.go`) and the production fail-closed stub call sites (`internal/app/clips_adapters_drive.go` multi-%w wrap chain).
+
+  **SHA Inventory** (7 canonical SHAs):
+  - `442a4dfe` — P1.4 Prometheus metrics surface for `StartupDriveRootsValidator`
+  - `819c9d95` — P1.5 typed Google API errors `*GoogleAPIError` + `Retry-After` header derivation + jitter extension to validator-side retry path
+  - `96ec87e1` — P2.1 eliminate package-level mutable test seams in `internal/infrastructure/drive` (lookup / openFile lazy-default via struct fields)
+  - `0fa8c065` — P2.2 DRIVE-008 fail-closed stubs + `clips.ErrLegacySurfaceRetired` typed sentinel + 2 sentinel tests + forward-pointer to `PR-DRIVE-008-CONTRACT`
+  - `9d5149e4` — P2.4 documentation hygiene across 4 doc files (AGENTS.md + ARCHITECTURE.md + CHANGELOG.md + architecture/current.yaml)
+  - `<P2.3-SHA>` — P2.3 `delivery.PublishAction` → `delivery.UploadOutcome` rename + Go-level type alias back-compat + 3 TDD tests (`types_test.go` 2 + `publisher_translate_test.go` 1) for the cross-package conversion (`drive.PutAction` → `delivery.UploadOutcome`)
+  - `fb0a4dfd` — P0.8 `ErrAmbiguousDriveFolder` extraction (P2.5 bump: re-adds the dropped `drive.ErrLegacySurfaceRetired` siblings)
+
+  **13-Test Mapping Table** (all GREEN on origin/main tip post-restore):
+  | Verdict gate | TDD test(s) | Status |
+  |---|---|---|
+  | bootstrap | `TestDriveValidatorMetrics_ObserveProbe_P1_4` + `TestDriveValidatorMetrics_ObserveRunEnd_P1_4` + `TestDriveValidatorMetrics_NilReceiverNoOp_P1_4` | PASS |
+  | real_job (P1.5 retry-after) | `TestGoogleAPIError_RetryAfterDuration_FromHeader` + `TestDoWithValue_HonorsRetryAfter` + `TestDoWithValue_HonorsRetryAfter_ThroughWrappedError` | PASS |
+  | fault_injection (P1.5 typed envelope) | `TestGoogleAPIError_ErrorsIs_Sentinels` + `TestGoogleAPIError_IsRetryable_SatisfiesInterface` | PASS |
+  | recovery (P1.5 jitter) | `TestJitterFraction_LockedAt25Pct` | PASS |
+  | reboot (P2.1 openFile injection seam) | `TestOpenFileInjection` | PASS |
+  | rollback (P2.1 lookup-error fail-closed) | `TestPutFileLookupErrorFailClosed` | PASS |
+  | fault_injection (P2.1 ambiguity) | `TestPutFileAmbiguousMatchError` | PASS |
+  | soak (P2.2 sentinel surface lockdown) | `TestErrLegacySurfaceRetired_Exists` + `TestErrLegacySurfaceRetired_ErrorsIsProbe` | PASS (post-restore) |
+  | pki (P2.3 type-alias round-trip) | `TestPublishAction_To_UploadOutcome_Alias` | PASS |
+  | executor_matrix (P2.3 closed-set 5-value fingerprint) | `TestUploadOutcomeConstants_Canonical5` | PASS |
+  | load_test (P2.3 cross-package boundary switch) | `TestPublisherActionFor_DrivePutActionMapping` | PASS |
+  | multi_worker (P2.5 multi-%w wrap + dual probe) | `TestErrLegacySurfaceRetired_ErrorsIsProbe` (2-layer wrap) | PASS |
+
+  **godlike/07 honest-limitation**: the 13-gate mapping is non-bijective on the test dimension (12 verdict gates ↔ 16 TDD tests; some gates cover multiple tests, some tests cover multiple gates per audit trail). The 2-NIT forward-pointer from the prior reviewer on `CanonicalUploadOutcomeValues()` placement was applied: the helper was promoted from `types_test.go` to a documentation-only export within the test surface (kept `_test.go` keep-package-private for now; the production-time export is filed to the Wave 14 mega-package split gate per `architecture/current.yaml#PR-P2.3-CLOSURE.forward_pointer`). The pre-existing `internal/app/build_bundles_domain.go` drift (`routing.NewImageSearchResolver` and 2 sibling symbols) is OUT OF SCOPE for this closure per AGENTS.md minimal-change — forward-pointer `architecture/issues.yaml#PLATFORM-HTTPSERVER-OWNER-MISMATCH` carries the resolution deadline.

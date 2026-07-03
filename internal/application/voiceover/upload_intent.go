@@ -69,6 +69,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"go.uber.org/zap"
 )
@@ -170,19 +171,19 @@ func isMarkNotFoundError(err error) bool {
 	return strings.Contains(err.Error(), scripts.ErrUploadIntentNotFound.Error())
 }
 
-// DriveUploaderAdapter is the narrow port for the publish step.
-// Mirrors the DriveUploaderPort pattern in ports.go so the use case
-// has an application-layer port (NOT a drive.Uploader concrete — the
-// production wrapper is wired in build_bundles_voiceover.go).
-type DriveUploaderAdapter interface {
-	UploadFile(ctx context.Context, folderID, localPath, filename string) (driveFileID string, err error)
-}
-
 // ProjectFinalizer is the narrow port for the local DB-finalize
 // step (Step 4). The voiceover pipeline's finalizeStage already
 // does this work via VoiceoverFinalizer (finalizer.go); this port is
 // a strictly narrower surface so the use case doesn't import the
 // whole package inline.
+//
+// P2.6 note: the prior `DriveUploaderAdapter` interface (a thin
+// adapter over `drive.Admin.UploadFile`) has been retired — Step 2
+// now routes through canonical `delivery.Publisher.Publish` per
+// DRIVE-CUTOVER-P0-1 closure. The caller-resolved folder is
+// preserved via `PublishRequest.RootFolderOverride` to keep
+// byte-equivalent behaviour vs the prior `UploadFile(ctx, folderID, ...)`
+// 3-arg signature.
 type ProjectFinalizer interface {
 	Finalize(ctx context.Context, voiceoverID, driveFileID string) error
 }
@@ -191,9 +192,12 @@ type ProjectFinalizer interface {
 
 // UploadIntentDeps is the constructor dep bundle (godlike/05
 // wiring-error rule: mandatory deps panic on nil).
+//
+// P2.6: `DriveUploader` retired in favour of `Publisher` carrying
+// canonical `delivery.Publisher` per DRIVE-CUTOVER-P0-1 closure.
 type UploadIntentDeps struct {
 	Repo             UploadIntentsRepository // mandatory
-	DriveUploader    DriveUploaderAdapter    // mandatory
+	Publisher        delivery.Publisher      // mandatory (canonical Drive publish; replaces retired DriveUploaderAdapter)
 	ProjectFinalizer ProjectFinalizer        // mandatory
 	Logger           *zap.Logger             // nil-safe via zap.NewNop()
 }
@@ -212,8 +216,8 @@ func NewUploadIntentUseCase(deps UploadIntentDeps) *UploadIntentUseCase {
 	if deps.Repo == nil {
 		panic("voiceover.NewUploadIntentUseCase: Repo is required (godlike/05 wiring-error fail-fast)")
 	}
-	if deps.DriveUploader == nil {
-		panic("voiceover.NewUploadIntentUseCase: DriveUploader is required")
+	if deps.Publisher == nil {
+		panic("voiceover.NewUploadIntentUseCase: Publisher is required (canonical delivery.Publisher; retired DriveUploaderAdapter no longer accepted)")
 	}
 	if deps.ProjectFinalizer == nil {
 		panic("voiceover.NewUploadIntentUseCase: ProjectFinalizer is required")
@@ -273,24 +277,36 @@ func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPat
 		return "", fmt.Errorf("UploadIntentUseCase.Execute: tx.Commit (post-InsertTx): %w", err)
 	}
 
-	// ── Step 2: Drive.Upload (external side-effect) ──
-	// Drive upload failure advances intent row to 'failed' with
-	// reason `upload_failed: <cause>`. Sweeper does NOT need to
-	// compensate because Drive file does NOT exist on upload
-	// failure (no orphan Drive file). The MarkFailed error is
-	// logged (warn-level) instead of silently swallowed so operator
-	// dashboards can correlate Step-2-fail with missing-MarkFailed
-	// (e.g., row absent due to operator delete).
-	driveFileID, err := u.deps.DriveUploader.UploadFile(ctx, folderID, localPath, filename)
+	// ── Step 2: Drive.Publish (external side-effect) ──
+	// P2.6 migration: routes through canonical `delivery.Publisher.Publish`
+	// per architecture/deprecations.yaml#DRIVE-CUTOVER-P0-1 closure.
+	// The caller-resolved `folderID` is preserved via
+	// `PublishRequest.RootFolderOverride` to keep byte-equivalent
+	// behaviour vs the prior `drive.Admin.UploadFile(ctx, folderID, ...)`
+	// 3-arg signature. Failure semantics unchanged: drive upload
+	// failure advances intent row to 'failed' with reason
+	// `upload_failed: <cause>`. Sweeper does NOT need to compensate
+	// because Drive file does NOT exist on upload failure (no orphan
+	// Drive file). The MarkFailed error is logged (warn-level) instead
+	// of silently swallowed so operator dashboards can correlate
+	// Step-2-fail with missing-MarkFailed (e.g., row absent due to
+	// operator delete).
+	result, err := u.deps.Publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:        delivery.DestinationVoiceover,
+		LocalPath:          localPath,
+		Filename:           filename,
+		RootFolderOverride: folderID, // caller-resolved folder preserved
+	})
 	if err != nil {
 		if mfErr := u.deps.Repo.MarkFailed(ctx, voiceoverID,
 			fmt.Sprintf("upload_failed: %v", err)); mfErr != nil {
-			u.deps.Logger.Warn("UploadIntentUseCase.Execute: MarkFailed (post-Step-2-fail) returned error; surfacing drive error to caller anyway",
+			u.deps.Logger.Warn("UploadIntentUseCase.Execute: MarkFailed (post-Step-2-fail) returned error; surfacing publisher error to caller anyway",
 				zap.String("voiceover_id", voiceoverID),
 				zap.Error(mfErr))
 		}
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: Drive.UploadFile: %w", err)
+		return "", fmt.Errorf("UploadIntentUseCase.Execute: Publisher.Publish: %w", err)
 	}
+	driveFileID := result.FileID
 
 	// ── Step 3: MarkUploaded (status 'pending' → 'uploaded', drive_file_id stamped) ──
 	if err := u.deps.Repo.MarkUploaded(ctx, voiceoverID, driveFileID); err != nil {

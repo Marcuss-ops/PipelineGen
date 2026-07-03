@@ -265,36 +265,18 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			deliveryStatus = asset.AssetPublishPublished
 			s.log.Info("uploaded to Drive via Publisher", "file_id", result.FileID, "link", result.WebViewLink)
 		}
-	} else if s.drive != nil {
-		// Legacy fallback: direct DrivePort calls. Will be removed in FASE 9.
-		rootID := strings.TrimSpace(cmd.FolderID)
-		if rootID == "" && s.enrichment != nil {
-			cf, rf := s.enrichment.FolderDefaults()
-			if cf != "" {
-				rootID = cf
-			} else if rf != "" {
-				rootID = rf
-			}
-		}
-		if group != "" && rootID != "" {
-			if dirID, err := s.drive.GetOrCreateFolder(ctx, group, rootID); err == nil {
-				rootID = dirID
-			}
-		}
-		if videoSlug != "" && rootID != "" {
-			if vidID, err := s.drive.GetOrCreateFolder(ctx, videoSlug, rootID); err == nil {
-				rootID = vidID
-			}
-		}
-		targetFolderID = rootID
-		if result, err := s.drive.UploadFileWithDescription(ctx, fetched.LocalPath, rootID, driveFilename, driveDesc); err != nil {
-			s.log.Warn("Drive upload failed", "error", err, "delivery_status", asset.AssetPublishFailed)
-			deliveryStatus = asset.AssetPublishFailed
-		} else {
-			uploadResult = result
-			deliveryStatus = asset.AssetPublishPublished
-			s.log.Info("uploaded to Drive", "file_id", result.FileID, "link", result.WebViewLink)
-		}
+	} else {
+		// P2.6 closure (DRIVE-CUTOVER-P0-1): the pre-FASE-9 dead-path
+		// `else if s.drive != nil { s.drive.UploadFileWithDescription(...) }`
+		// fallback block has been retired. The composition root
+		// (`internal/app/assets_register_sourcing.go::newAssetRegisterService`)
+		// wires `&sourcingPublisherAdapter{publisher: publisher}` non-nil at
+		// all production sites — a nil `s.publisher` here is a wiring bug
+		// (no test harness relies on the dead-path branch post-CUTOVER).
+		// This branch only logs + falls through to the local-only
+		// delivery path; no Drive-side recovery is attempted here.
+		s.log.Warn("Drive Publisher unwired — wiring bug or pre-CUTOVER composition site; recording local-only deliveryStatus; investigate composition wiring",
+			"video_id", videoID, "delivery_status", asset.AssetPublishLocalOnly)
 	}
 
 	// ── 9a. Mandatory-Drive check (P0.2, July 2026) ──────────────

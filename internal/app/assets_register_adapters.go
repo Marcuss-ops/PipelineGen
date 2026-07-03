@@ -253,6 +253,14 @@ var _ sourcing.DrivePort = (*sourcingDriveAdapter)(nil)
 // wiring). The interface signature still matches the legacy shape
 // even though the body is now a fail-closed shim — callers detect
 // the failure via errors.Is(err, drive.ErrLegacySurfaceRetired).
+// P2.6 (DRIVE-CUTOVER-P0-1): sourcing-side multi-wrap mirrors the
+// clips adapter; the underlying driveutil.ErrLegacySurfaceRetired
+// is preserved alongside the facade surface for any future
+// forward-port. SourcingPkg doesn't currently have its own
+// application-layer sentinel (the sourcing side is mid-renaming
+// per the FASE 5 fallback retirement); the drive-package sentinel
+// is the only probe the sourcing consumer uses. Errors.Is at the
+// sourcing consumption layer will continue to resolve cleanly.
 func (a *sourcingDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*sourcing.DriveUploadResult, error) {
 	return nil, fmt.Errorf("sourcingDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, driveutil.ErrLegacySurfaceRetired)
 }

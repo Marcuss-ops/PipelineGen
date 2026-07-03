@@ -207,34 +207,92 @@ func DeriveIdempotencyKey(destination DestinationKey, artifactID, contentHash st
 	h.Write([]byte(input))
 	return hex.EncodeToString(h.Sum(nil))
 }
-// It mirrors delivery.ConflictPolicy (declared further up in this
-// file) by exposing the concrete outcome of the publish so callers
-// can branch on it: route a "skipped" asset to the dedupe ledger,
-// convert a "renamed" asset into a sibling row, treat "updated" as
-// a no-op for downstream events, and surface "created" as the
-// canonical fresh-asset path.
+
+// ── P2.3 (July 2026) — PublishAction consolidation: UploadOutcome canonical rename ──
 //
-// Zero value is "" to keep zero-value PublishResults (e.g. stub
-// fakes in tests, or legacy sites that still construct the value
-// manually before downstream consumers move to the canonical
-// Publisher) indistinguishable from an actual unknown action — any
-// consumer that branches on Action MUST default the empty branch
-// to a conservative no-op rather than treat it as "created".
-type PublishAction string
+// godlike/06 §"one owner per fact" motivation. Pre-P2.3 the cross-package
+// mapping between drive.PutAction (4 values, used by the uploader seam) and
+// delivery.PublishAction (4 values + zero-marker Unknown) was implicit
+// through Publisher.actionFor; the ambiguous "PublishAction" naming
+// (publish is a verb, but the type is the outcome enum) created a
+// maintenance hazard: every new wire consumer had to learn the legacy
+// verb-type semantic before branching.
+//
+// The canonical rename UploadOutcome (a noun, matching the verb base
+// "upload") replaces PublishAction as the SSOT. The legacy identifier
+// remains available via Go-level type alias (`type PublishAction =
+// UploadOutcome`) + back-compat constant aliases so pre-P2.3 call sites
+// compile unchanged and post-P2.3 new code prefers UploadOutcome per
+// godlike/06 SSOT. The 4 arms (Created / Updated / Skipped / Renamed) +
+// the zero-value sentinel (UploadOutcomeUnknown = "") are preserved
+// 1:1; no semantic shift, only a rename + back-compat surface.
+//
+// godlike/07 honest-limitation: the back-compat surface carries the
+// `,back-compat 2026-Q4` deprecation hint in the docstring above the
+// alias declaration; future agents reading the file cold see the
+// migration intent. The CONTRACT removal of the alias is filed in
+// architecture/current.yaml#PR-P2.3-CLOSURE for ForwardPointer at the
+// Wave 14 mega-package split gate; current P2.5 closure locks the
+// canonical surface + tests + alias.
+
+// UploadOutcome is the canonical typed-string outcome enum for the Drive
+// publisher. It mirrors the legacy PublishAction 1:1; the canonical
+// surface post-P2.3 is UploadOutcome, and PublishAction is preserved
+// as a Go-level type alias for back-compat (see below). It mirrors
+// delivery.ConflictPolicy (declared further up in this file) by
+// exposing the concrete outcome of the publish so callers can branch
+// on it: route a "skipped" asset to the dedupe ledger, convert a
+// "renamed" asset into a sibling row, treat "updated" as a no-op for
+// downstream events, and surface "created" as the canonical
+// fresh-asset path.
+//
+// Zero value is "" to keep zero-value PublishResult (e.g. stub fakes
+// in tests, or legacy sites that still construct the value manually
+// before downstream consumers move to the canonical Publisher)
+// indistinguishable from an actual unknown action — any consumer that
+// branches on Action MUST default the empty branch to a conservative
+// no-op rather than treat it as "created".
+type UploadOutcome string
 
 const (
-	// PublishActionUnknown is the typed zero value. It signals that
+	// UploadOutcomeUnknown is the typed zero value. It signals that
 	// the publisher could not determine the outcome — usually because
 	// a pre-P0-#1 adapter (no PutFile on the FileUploaderPort)
 	// produced a PublishResult. Post-P0-#9 callers that branch on
 	// Action MUST default the empty branch to a conservative no-op
-	// rather than treat it as PublishActionCreated.
-	PublishActionUnknown PublishAction = ""
+	// rather than treat it as UploadOutcomeCreated.
+	UploadOutcomeUnknown UploadOutcome = ""
 
-	PublishActionCreated PublishAction = "created"
-	PublishActionUpdated PublishAction = "updated"
-	PublishActionSkipped PublishAction = "skipped"
-	PublishActionRenamed PublishAction = "renamed"
+	UploadOutcomeCreated UploadOutcome = "created"
+	UploadOutcomeUpdated UploadOutcome = "updated"
+	UploadOutcomeSkipped UploadOutcome = "skipped"
+	UploadOutcomeRenamed UploadOutcome = "renamed"
+)
+
+// Back-compat aliases (P2.3, July 2026).
+//
+// `type PublishAction = UploadOutcome` is a Go-level type alias — the
+// two names refer to the same underlying type, so existing pre-P2.3 code
+// that says `var x delivery.PublishAction = delivery.PublishActionCreated`
+// continues to compile unchanged. The same alias allows
+// `delivery.PublishAction` and `delivery.UploadOutcome` to be used
+// interchangeably in struct literals, function signatures, and
+// comparisons. Future removal (filed in
+// architecture/current.yaml#PR-P2.3-CLOSURE forward-pointer) gates on
+// the Wave 14 mega-package split per godlike/06 SSOT.
+//
+// The constant aliases (PublishActionUnknown/= UploadOutcomeUnknown, etc.)
+// preserve the legacy constant names while pointing to the canonical
+// UploadOutcome values. `errors.Is`, switch arms, and consumers that
+// branch on the legacy constants continue to work byte-stable.
+type PublishAction = UploadOutcome
+
+const (
+	PublishActionUnknown = UploadOutcomeUnknown
+	PublishActionCreated = UploadOutcomeCreated
+	PublishActionUpdated = UploadOutcomeUpdated
+	PublishActionSkipped = UploadOutcomeSkipped
+	PublishActionRenamed = UploadOutcomeRenamed
 )
 
 // PublishResult is returned after a successful publish.

@@ -73,8 +73,14 @@ func (a *clipsDriveAdapter) DeleteFolder(ctx context.Context, folderID string) e
 // signature is unchanged; the body is now a fail-closed shim that
 // propagates the canonical sentinel via %w so callers can detect
 // via errors.Is(err, drive.ErrLegacySurfaceRetired).
+// P2.6 closure (DRIVE-CUTOVER-P0-1): multi-wrap so both
+// `errors.Is(err, drive.ErrLegacySurfaceRetired)` (infra-side probe,
+// kept for backwards-compat) AND `errors.Is(err, clips.ErrLegacySurfaceRetired)`
+// (app-side probe, layered-safe per AGENTS.md Pattern 5) resolve.
+// Go 1.20+ supports multi-%w wrapping; both sentinel pointers survive
+// through the error chain.
 func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*clips.ClipUploadResultDTO, error) {
-	return nil, fmt.Errorf("clipsDriveAdapter.UploadFile(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, drive.ErrLegacySurfaceRetired)
+	return nil, fmt.Errorf("clipsDriveAdapter.UploadFile(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w: %w", localPath, folderID, filename, clips.ErrLegacySurfaceRetired, drive.ErrLegacySurfaceRetired)
 }
 
 // UploadFileWithDescription is the legacy drive upload seam with
@@ -82,8 +88,9 @@ func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID,
 // fail-closed — same shape as UploadFile above. Canonical path:
 // delivery.Publisher.Publish(ctx, PublishRequest{Destination: ...,
 // Description: description, ...}).
+// P2.6 multi-wrap (see UploadFile above for rationale).
 func (a *clipsDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*clips.ClipUploadResultDTO, error) {
-	return nil, fmt.Errorf("clipsDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, drive.ErrLegacySurfaceRetired)
+	return nil, fmt.Errorf("clipsDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w: %w", localPath, folderID, filename, clips.ErrLegacySurfaceRetired, drive.ErrLegacySurfaceRetired)
 }
 
 func (a *clipsDriveAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {

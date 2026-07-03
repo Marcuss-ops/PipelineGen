@@ -17,6 +17,7 @@ package clips
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -24,6 +25,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/gin-gonic/gin"
 )
+
+// ErrLegacySurfaceRetired is the application-layer typed sentinel
+// surfaced by the ClipDriveUploaderPort.UploadFile + UploadFileWithDescription
+// fail-closed stubs after P2.2 DRIVE-008 closure (commit `0fa8c065`).
+// P2.6 closure (DRIVE-CUTOVER-P0-1): the canonical migration
+// destination is `delivery.Publisher.Publish` once the
+// `DestinationMetadata` key lands in the registry (forward-pointer
+// TODO(P0.5)). Consumers probe the seam via
+// `errors.Is(err, clips.ErrLegacySurfaceRetired)` without crossing
+// the application/infrastructure layering boundary — the production
+// fail-closed stub (internal/app/clips_adapters_drive.go) wraps
+// both this sentinel AND the underlying `drive.ErrLegacySurfaceRetired`
+// via Go 1.20+ multi-%w so either probe resolves cleanly.
+var ErrLegacySurfaceRetired = errors.New("clips: legacy drive upload surface retired (DRIVE-008 fail-closed stub); forward-pointer TODO(P0.5): migrate to delivery.Publisher.Publish when DestinationMetadata key lands in registry")
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────
 
