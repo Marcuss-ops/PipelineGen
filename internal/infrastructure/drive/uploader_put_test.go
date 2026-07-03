@@ -67,20 +67,15 @@ func newFakeDriveService(t *testing.T) *driveapi.Service {
 //     pattern-match on the inner Drive-side error too (e.g.
 //     `gapi.Error` 429 / 503).
 func TestPutFileLookupErrorFailClosed(t *testing.T) {
-	// Restore package-level seam at test end.
-	origLookup := lookupFunc
-	t.Cleanup(func() { lookupFunc = origLookup })
-
 	simulatedErr := errors.New("simulated Drive API outage")
 	var lookupCalls int
-	lookupFunc = func(_ *Uploader, _ context.Context, _, _ string) (ExistingFileLookup, error) {
-		lookupCalls++
-		return ExistingFileLookup{}, simulatedErr
-	}
-
 	u := &Uploader{
 		Service: newFakeDriveService(t),
 		Log:     zap.NewNop(),
+		lookupFunc: func(_ *Uploader, _ context.Context, _, _ string) (ExistingFileLookup, error) {
+			lookupCalls++
+			return ExistingFileLookup{}, simulatedErr
+		},
 	}
 
 	// Bounded ctx so any future regression that mistakenly retries
@@ -139,26 +134,21 @@ func TestPutFileLookupErrorFailClosed(t *testing.T) {
 //  3. The wrapped prefix "putFile: lookup existing file" is present
 //     for audit trail parity with the Wave B1 fail-closed path.
 func TestPutFileAmbiguousMatchError(t *testing.T) {
-	// Restore package-level seam at test end.
-	origLookup := lookupFunc
-	t.Cleanup(func() { lookupFunc = origLookup })
-
 	// Two sibling matches. The field values are zeroed — the
 	// fail-closed guard fires on len, not on the contents, so
 	// zero-value RemoteFile entries are sufficient to drive the
 	// >1 branch.
-	lookupFunc = func(_ *Uploader, _ context.Context, _, _ string) (ExistingFileLookup, error) {
-		return ExistingFileLookup{
-			Matches: []RemoteFile{
-				{FileID: "id-A", Name: "test.mp4"},
-				{FileID: "id-B", Name: "test.mp4"},
-			},
-		}, nil
-	}
-
 	u := &Uploader{
 		Service: newFakeDriveService(t),
 		Log:     zap.NewNop(),
+		lookupFunc: func(_ *Uploader, _ context.Context, _, _ string) (ExistingFileLookup, error) {
+			return ExistingFileLookup{
+				Matches: []RemoteFile{
+					{FileID: "id-A", Name: "test.mp4"},
+					{FileID: "id-B", Name: "test.mp4"},
+				},
+			}, nil
+		},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -202,10 +192,16 @@ func TestPutFileAmbiguousMatchError(t *testing.T) {
 // uploader_test.go::TestUploaderValidatesService. Post-Wave B1 the
 // CanPutFile reuses the SAME Service=nil guard so the surface is
 // symmetric across PutFile / UploadFile.
+//
+// P2.1 (July 2026): the service-=nil guard short-circuits BEFORE
+// u.lookupExisting is reached, so the test does NOT need to install
+// a lookupFunc override. The lazy-default fallback would otherwise
+// fire on the nil service, but the explicit `if u.Service == nil`
+// guard is the canonical fail-closed gate and runs first.
 func TestPutFileValidatesServiceUnchanged(t *testing.T) {
 	u := &Uploader{Service: nil, Log: zap.NewNop()}
 
-	// Bypass the lookupFunc seam entirely (it's never reached
+	// Bypass the lookupExisting seam entirely (it's never reached
 	// because Service=nil fails before the retry wrapper).
 	_, err := u.PutFile(context.Background(), PutFileRequest{
 		LocalPath:      "/nonexistent/test.mp4",
