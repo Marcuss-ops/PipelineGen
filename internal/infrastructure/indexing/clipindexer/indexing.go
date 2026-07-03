@@ -44,19 +44,23 @@ func CollectionVersion() string { return collectionVersion }
 // QDRANT-002 PR6 / migration 094) — see internal/domain/asset/index_state.go
 // for the IndexState enum:
 //
-//	DISCOVERED → INDEX_PENDING → INDEXING → INDEXED → INDEX_FAILED
+//	DISCOVERED → EMBEDDING → EMBEDDED → INDEXING → INDEXED
+//	                 ↓                       ↓
+//	            EMBEDDING_FAILED        INDEXING_FAILED
 //	                                                → DELETE_PENDING → DELETED
+//
+// Task 2 (July 2026): EMBEDDING means "generating embedding vectors".
+// EMBEDDED means "vectors saved to SQLite, Qdrant NOT yet updated".
+// INDEXING means "pushing to Qdrant". INDEXED is terminal success
+// (point verified + vectors validated + payload verified).
 //
 // The fast path skips regeneration when BOTH embeddings exist AND the
 // content hash matches AND index_state == asset.StateIndexed.
 // Clips without a transcript only require the semantic embedding to be valid.
 //
 // Writers to media_assets.index_state:
-//   - setIndexState (transient + failure states INDEXING, INDEX_PENDING,
-//     INDEX_FAILED; refuses to write INDEXED — see panic guard).
-//   - setIndexedAt (terminal INDEXED + sidecar metadata in single atomic
-//     UPDATE — folded with $.indexed_at, $.indexed_content_hash,
-//     $.embedding_model, $.embedding_model_version).
+//   - setIndexState (all transient + failure states; refuses to write INDEXED).
+//   - setIndexedAt (terminal INDEXED + sidecar metadata in single atomic UPDATE).
 func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if !s.cfg.Enabled {
 		s.log.Debug("clipindexer disabled, skipping", zap.String("clip_id", clipID))
@@ -87,8 +91,9 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 		}
 	}
 
-	if err := s.setIndexState(ctx, clipID, asset.StateIndexing, ""); err != nil {
-		return fmt.Errorf("setIndexState INDEXING for %s: %w", clipID, err)
+	// Transition to EMBEDDING: embedding generation is about to start.
+	if err := s.setIndexState(ctx, clipID, asset.StateEmbedding, ""); err != nil {
+		return fmt.Errorf("setIndexState EMBEDDING for %s: %w", clipID, err)
 	}
 
 	// Read source_version from the DB for the CAS fence in setIndexedAt.
@@ -105,6 +110,10 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if s.cfg.ServerURL != "" {
 		err := s.indexViaAPI(ctx, clipID)
 		if err == nil {
+			// Embeddings are now in SQLite — transition to EMBEDDED.
+			if setErr := s.setIndexState(ctx, clipID, asset.StateEmbedded, ""); setErr != nil {
+				s.log.Error("failed to persist EMBEDDED state", zap.String("clip_id", clipID), zap.Error(setErr))
+			}
 			return s.finalizeIndex(ctx, clipID, contentHash, sourceVersion)
 		}
 		s.log.Warn("embedding server failed, falling back to script",
@@ -115,17 +124,26 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 
 	err = s.indexViaScript(ctx, clipID)
 	if err != nil {
-		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error()); setErr != nil {
-			s.log.Error("failed to persist index failed state", zap.String("clip_id", clipID), zap.Error(setErr))
+		if setErr := s.setIndexState(ctx, clipID, asset.StateEmbeddingFailed, err.Error()); setErr != nil {
+			s.log.Error("failed to persist embedding failed state", zap.String("clip_id", clipID), zap.Error(setErr))
 		}
 		return fmt.Errorf("indexViaScript failed for %s: %w", clipID, err)
+	}
+	// Embeddings are now in SQLite via the script — transition to EMBEDDED.
+	if setErr := s.setIndexState(ctx, clipID, asset.StateEmbedded, ""); setErr != nil {
+		s.log.Error("failed to persist EMBEDDED state after script", zap.String("clip_id", clipID), zap.Error(setErr))
 	}
 	return s.finalizeIndex(ctx, clipID, contentHash, sourceVersion)
 }
 
-// tryFastPath returns true if the clip is already fully indexed with valid
-// embeddings and a matching content hash. The caller short-circuits to nil;
-// otherwise fast-path upsert is attempted and the result returned.
+// tryFastPath returns true if the clip is already fully indexed or has
+// valid embeddings ready for upsert.
+//
+// Task 2: the fast-path also accepts EMBEDDED state — a clip whose
+// embeddings were saved but the Qdrant upsert never completed (e.g.
+// crash between EMBEDDED and INDEXED). When the content hash matches
+// and embeddings are valid, the fast path re-upserts without
+// re-generating embeddings.
 func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, hasTranscript bool) bool {
 	var hasSemantic bool
 	var hasTranscriptEmb bool
@@ -146,16 +164,20 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 	}
 
 	embeddingsOK := hasSemantic && (hasTranscriptEmb || !hasTranscript)
-	if !embeddingsOK || indexState != string(asset.StateIndexed) || storedHash != contentHash {
+	// Task 2: accept INDEXED (normal fast path) OR EMBEDDED (embeddings
+	// saved but Qdrant upsert never completed). Re-upserting an EMBEDDED
+	// clip skips embedding generation while recovering the Qdrant point.
+	indexedOrEmbedded := indexState == string(asset.StateIndexed) || indexState == string(asset.StateEmbedded)
+	if !embeddingsOK || !indexedOrEmbedded || storedHash != contentHash {
 		return false
 	}
 
-	s.log.Info("clip already indexed with valid content hash, fast-path upsert",
+	s.log.Info("clip has valid embeddings, fast-path upsert",
 		zap.String("clip_id", clipID))
 
 	if err := s.UpsertVectorStore(ctx, clipID); err != nil {
-		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexPending, err.Error()); setErr != nil {
-			s.log.Error("fast-path: failed to persist index state", zap.String("clip_id", clipID), zap.Error(setErr))
+		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexingFailed, err.Error()); setErr != nil {
+			s.log.Error("fast-path: failed to persist index failed state", zap.String("clip_id", clipID), zap.Error(setErr))
 		}
 		s.log.Error("fast-path upsert failed", zap.String("clip_id", clipID), zap.Error(err))
 		return false
@@ -170,18 +192,20 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 }
 
 // finalizeIndex upserts to vector store and persists the indexed state.
-// sourceVersion is the canonical source_version column value read from
-// the media_assets row BEFORE the upsert; it is passed to setIndexedAt
-// for the CAS fence (prevents an obsolete indexing goroutine from
-// overwriting a newer version's state).
+//
+// Task 2: this function now expects the row to be in EMBEDDED state
+// (embeddings saved, Qdrant not yet updated). It transitions to INDEXING
+// before the upsert, then to INDEXED on success, or INDEXING_FAILED on
+// failure.
 func (s *Service) finalizeIndex(ctx context.Context, clipID, contentHash, sourceVersion string) error {
+	// Transition EMBEDDED → INDEXING: Qdrant upsert is about to start.
 	if err := s.setIndexState(ctx, clipID, asset.StateIndexing, ""); err != nil {
 		return fmt.Errorf("setIndexState INDEXING for %s: %w", clipID, err)
 	}
 
 	if err := s.UpsertVectorStore(ctx, clipID); err != nil {
-		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error()); setErr != nil {
-			s.log.Error("failed to persist failed index state", zap.String("clip_id", clipID), zap.Error(setErr))
+		if setErr := s.setIndexState(ctx, clipID, asset.StateIndexingFailed, err.Error()); setErr != nil {
+			s.log.Error("failed to persist indexing-failed state", zap.String("clip_id", clipID), zap.Error(setErr))
 		}
 		return fmt.Errorf("Qdrant upsert failed for %s: %w", clipID, err)
 	}

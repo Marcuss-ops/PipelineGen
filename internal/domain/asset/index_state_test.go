@@ -2,20 +2,25 @@ package asset
 
 import "testing"
 
-// TestIndexState_ValidAcceptsCanonicalSeven locks in the exact 7-state
-// alphabet that migration 094's ALTER TABLE ... DEFAULT 'DISCOVERED'
-// + the backfill CASE expression pins. Any drift here is a contract
-// break — the backfill would write a wrong value and the column
-// would accept a non-canonical enum.
-func TestIndexState_ValidAcceptsCanonicalSeven(t *testing.T) {
+// TestIndexState_ValidAcceptsCanonical12 locks in the exact 12-state
+// alphabet (Task 2, July 2026). The old 7-state contract (pre-Task 2)
+// is expanded with EMBEDDING / EMBEDDED / EMBEDDING_FAILED /
+// INDEXING_FAILED, plus NOT_INDEXABLE (FASE 3b). INDEX_PENDING and
+// INDEX_FAILED remain valid for DB backward-compat.
+func TestIndexState_ValidAcceptsCanonical12(t *testing.T) {
 	canonical := []IndexState{
+		StateNotIndexable,
 		StateDiscovered,
-		StateIndexPending,
+		StateEmbedding,
+		StateEmbedded,
 		StateIndexing,
 		StateIndexed,
-		StateIndexFailed,
+		StateEmbeddingFailed,
+		StateIndexingFailed,
 		StateIndexDeletePending,
 		StateDELETED,
+		StateIndexPending, // deprecated, still valid
+		StateIndexFailed,   // deprecated, still valid
 	}
 	for _, s := range canonical {
 		t.Run(string(s), func(t *testing.T) {
@@ -67,14 +72,15 @@ func TestIndexState_ValidRejectsLegacyLowercase(t *testing.T) {
 }
 
 // TestIndexState_IsTerminal pins the helper that IndexDeleteHandler
-// and IndexingHandler use to short-circuit state-machine gates
-// ("is this row already at a terminal state? skip the transition").
-// A failed terminal (INDEX_FAILED) is intentionally NOT terminal in
-// the IsTerminal() sense — it represents an operator-must-intervene
-// state, distinguished by IsFailedTerminal() below.
+// and IndexingHandler use to short-circuit state-machine gates.
+//
+// Task 2 (July 2026): EMBEDDING_FAILED and INDEXING_FAILED are terminal.
+// EMBEDDED is intentionally NOT terminal — it means "embeddings saved,
+// ready for Qdrant upsert".
 func TestIndexState_IsTerminal(t *testing.T) {
 	terminal := []IndexState{
-		StateIndexed, StateIndexFailed, StateDELETED,
+		StateNotIndexable, StateIndexed, StateIndexFailed, StateDELETED,
+		StateEmbeddingFailed, StateIndexingFailed,
 	}
 	for _, s := range terminal {
 		t.Run(string(s)+"_is_terminal", func(t *testing.T) {
@@ -85,7 +91,8 @@ func TestIndexState_IsTerminal(t *testing.T) {
 	}
 
 	nonTerminal := []IndexState{
-		StateDiscovered, StateIndexPending, StateIndexing, StateIndexDeletePending,
+		StateDiscovered, StateEmbedding, StateEmbedded, StateIndexing,
+		StateIndexDeletePending, StateIndexPending,
 	}
 	for _, s := range nonTerminal {
 		t.Run(string(s)+"_not_terminal", func(t *testing.T) {
@@ -96,19 +103,27 @@ func TestIndexState_IsTerminal(t *testing.T) {
 	}
 }
 
-// TestIndexState_IsFailedTerminal pins that only INDEX_FAILED reports
-// as a failed-terminal. INDEXED is a successful terminal; DELETED is
-// an intentional terminal (tombstone). StateIndexFailed is the only
-// "must manually reindex" signal.
+// TestIndexState_IsFailedTerminal pins that EMBEDDING_FAILED,
+// INDEXING_FAILED, and the legacy INDEX_FAILED all report as failed
+// terminals. INDEXED is a successful terminal; DELETED is an
+// intentional terminal (tombstone).
 func TestIndexState_IsFailedTerminal(t *testing.T) {
-	if !StateIndexFailed.IsFailedTerminal() {
-		t.Error("StateIndexFailed must report IsFailedTerminal=true")
+	failed := []IndexState{StateIndexFailed, StateEmbeddingFailed, StateIndexingFailed}
+	for _, s := range failed {
+		t.Run(string(s)+"_is_failed", func(t *testing.T) {
+			if !s.IsFailedTerminal() {
+				t.Errorf("IsFailedTerminal(%q): want true; got false", string(s))
+			}
+		})
 	}
-	for _, s := range []IndexState{
-		StateIndexed, StateDELETED, // successful terminals
-		StateDiscovered, StateIndexPending, StateIndexing, StateIndexDeletePending, // non-terminal
-	} {
-		t.Run(string(s)+"_not_failed_terminal", func(t *testing.T) {
+
+	notFailed := []IndexState{
+		StateNotIndexable, StateIndexed, StateDELETED,
+		StateDiscovered, StateEmbedding, StateEmbedded, StateIndexing,
+		StateIndexDeletePending, StateIndexPending,
+	}
+	for _, s := range notFailed {
+		t.Run(string(s)+"_not_failed", func(t *testing.T) {
 			if s.IsFailedTerminal() {
 				t.Errorf("IsFailedTerminal(%q): want false; got true", string(s))
 			}
@@ -134,8 +149,9 @@ func TestIndexState_IsDeletedCanonical(t *testing.T) {
 	}
 
 	notDeleted := []IndexState{
-		StateDiscovered, StateIndexPending, StateIndexing,
-		StateIndexed, StateIndexFailed,
+		StateDiscovered, StateEmbedding, StateEmbedded, StateIndexing,
+		StateIndexed, StateIndexPending, StateIndexFailed,
+		StateNotIndexable, StateEmbeddingFailed, StateIndexingFailed,
 	}
 	for _, s := range notDeleted {
 		t.Run(string(s)+"_not_deleted", func(t *testing.T) {
@@ -157,12 +173,17 @@ func TestIndexState_StringLiteralValues(t *testing.T) {
 		want  string
 	}{
 		{StateDiscovered, "DISCOVERED"},
-		{StateIndexPending, "INDEX_PENDING"},
+		{StateEmbedding, "EMBEDDING"},
+		{StateEmbedded, "EMBEDDED"},
 		{StateIndexing, "INDEXING"},
 		{StateIndexed, "INDEXED"},
-		{StateIndexFailed, "INDEX_FAILED"},
+		{StateEmbeddingFailed, "EMBEDDING_FAILED"},
+		{StateIndexingFailed, "INDEXING_FAILED"},
 		{StateIndexDeletePending, "DELETE_PENDING"},
 		{StateDELETED, "DELETED"},
+		{StateNotIndexable, "NOT_INDEXABLE"},
+		{StateIndexPending, "INDEX_PENDING"},
+		{StateIndexFailed, "INDEX_FAILED"},
 	}
 	for _, c := range cases {
 		t.Run(c.want, func(t *testing.T) {

@@ -1,6 +1,7 @@
-// Package asset — index_state.go is the canonical 8-state enum that
+// Package asset — index_state.go is the canonical 12-state enum that
 // drives the media_assets.index_state column (QDRANT-002 PR6, ships
-// with migration 094).
+// with migration 094; Task 2 July 2026 adds EMBEDDING/EMBEDDED/
+// EMBEDDING_FAILED/INDEXING_FAILED).
 //
 // Lifecycle (companion, not replacement): LifecycleState in
 // asset_types.go tracks the high-level asset lifecycle
@@ -8,18 +9,30 @@
 // the per-asset indexing progress narrowly. They are orthogonal:
 //   - LifecycleState = "ACTIVE" + IndexState = "INDEXED"
 //     → real, searchable asset.
+//   - LifecycleState = "ACTIVE" + IndexState = "INDEXING_FAILED"
+//     → Qdrant upsert failed but embeddings exist in SQLite;
+//     operator re-indexes to recover.
+//   - LifecycleState = "ACTIVE" + IndexState = "EMBEDDING_FAILED"
+//     → embedding generation failed; SQLite carries no vectors.
 //   - LifecycleState = "DELETED" + IndexState = "DELETED"
 //     → canonical tombstone; Qdrant point gone AND row retired.
-//   - LifecycleState = "ACTIVE" + IndexState = "INDEX_FAILED"
-//     → unexpectedly broken — Qdrant search will silently miss this
-//     asset until an operator re-indexes it (QDRANT-005 followup
-//     adds an alert).
 //   - LifecycleState = "ACTIVE" + IndexState = "DELETE_PENDING"
 //     → race window: Qdrant delete acknowledged, SQLite
 //     soft-delete pending next outbox pass.
 //
-// Do NOT add a sub-state "RETRYING" — the canonical 7 reflect stable
-// state, not transient worker activity. QDRANT-002 PR4's supersede
+// Task 2 (July 2026): split the conflated INDEXING state into
+// EMBEDDING → EMBEDDED → INDEXING, and split INDEX_FAILED into
+// EMBEDDING_FAILED + INDEXING_FAILED. The old states (INDEX_PENDING,
+// INDEX_FAILED) remain valid for backward-compatibility with existing
+// DB rows but are deprecated in new writer paths.
+//
+// Core principle: embedding saved != asset indexed.
+//   - EMBEDDED = embeddings in SQLite, Qdrant NOT yet updated.
+//   - INDEXED  = Qdrant upsert succeeded AND point verified AND
+//                vectors validated AND payload verified.
+//
+// Do NOT add a sub-state "RETRYING" — the canonical states reflect
+// stable state, not transient worker activity. QDRANT-002 PR4's supersede
 // gate already short-circuits stale events before the worker hits a
 // retry loop; if a future PR needs the distinction, model it as a
 // separate `last_index_attempt_count` column, not a sub-state.
@@ -40,7 +53,6 @@ const (
 	// StateNotIndexable — asset is not eligible for indexing (e.g.
 	// voiceover, sound effect, or assets with no vectorizable content).
 	// Terminal for indexing purposes; the asset can still be ACTIVE.
-	// Added FASE 3b (July 2026).
 	StateNotIndexable IndexState = "NOT_INDEXABLE"
 
 	// StateDiscovered — initial sentinel for a row that has never
@@ -49,28 +61,44 @@ const (
 	// means "either newly inserted or pre-PR6 untouched".
 	StateDiscovered IndexState = "DISCOVERED"
 
-	// StateIndexPending — worker hit a retryable error; row is in
-	// the queue waiting for the next claim slot. Maps to the legacy
-	// "retrying" JSON value during the migration backfill.
-	StateIndexPending IndexState = "INDEX_PENDING"
+	// StateEmbedding (Task 2, July 2026) — worker is actively
+	// generating embeddings (text model, visual SigLIP, audio CLAP).
+	// This is the FIRST step of what was previously conflated into
+	// INDEXING. On success the worker transitions to EMBEDDED.
+	StateEmbedding IndexState = "EMBEDDING"
 
-	// StateIndexing — worker actively holding the lease, performing
-	// embedding generation + Qdrant upsert. Maps to the legacy
-	// "embedding" + "upserting" JSON values (both indicate
-	// in-flight work).
+	// StateEmbedded (Task 2, July 2026) — embeddings have been
+	// generated and saved to SQLite (embedding_json, visual_embedding,
+	// audio_embedding columns populated). Qdrant has NOT yet been
+	// updated. This is the key state that encodes "embedding saved
+	// != asset indexed". The next step is INDEXING.
+	StateEmbedded IndexState = "EMBEDDED"
+
+	// StateIndexing — worker is actively performing Qdrant upsert.
+	// Post-Task 2 this means "Qdrant write ONLY" — embeddings MUST
+	// already be in SQLite (the row must have passed through EMBEDDED).
 	StateIndexing IndexState = "INDEXING"
 
 	// StateIndexed — terminal success. Qdrant point is current AND
-	// media_assets.embedded_at / indexed_content_hash are
-	// populated. No further automatic transitions; the next state
-	// change is to DELETE_PENDING if a delete event arrives.
+	// media_assets.embedded_at / indexed_content_hash are populated.
+	// Post-Task 2 this ALSO means: point ID was verified, vectors
+	// were validated for correct dimensions, payload was verified
+	// (no missing required keys). No further automatic transitions.
 	StateIndexed IndexState = "INDEXED"
 
-	// StateIndexFailed — terminal failure. Worker has exhausted
-	// max_attempts on a retryable error, or hit a typed terminal
-	// classification (and the outbox record was MarkedDeadLetter).
-	// Maps to the legacy "failed" JSON value during backfill.
-	StateIndexFailed IndexState = "INDEX_FAILED"
+	// StateEmbeddingFailed (Task 2, July 2026) — terminal failure
+	// at the embedding-generation stage. SQLite carries no vectors.
+	// The asset CANNOT be found in Qdrant (no upsert was attempted).
+	// Operator must re-index from scratch.
+	StateEmbeddingFailed IndexState = "EMBEDDING_FAILED"
+
+	// StateIndexingFailed (Task 2, July 2026) — terminal failure
+	// at the Qdrant-upsert stage. SQLite carries VALID embeddings
+	// (the row passed through EMBEDDED), but the Qdrant point is
+	// missing or invalid. Operator can re-index from EMBEDDED
+	// (skipping embedding generation) — the backfill command's
+	// --only-missing flag recognises this state and re-upserts.
+	StateIndexingFailed IndexState = "INDEXING_FAILED"
 
 	// StateIndexDeletePending — IndexDeleteHandler has acknowledged the
 	// Qdrant DeletePoints call but the SQLite SoftDelete has not yet
@@ -89,6 +117,23 @@ const (
 	// matches both casings.
 	StateDELETED IndexState = "DELETED"
 
+	// ── Deprecated (pre-Task 2) — kept for DB backward-compat ──────
+
+	// StateIndexPending — DEPRECATED. Worker hit a retryable error;
+	// row is waiting for the next claim slot. Post-Task 2 this is
+	// subsumed: embedding retries use StateEmbeddingFailed → re-enqueue;
+	// indexing retries use StateIndexingFailed → re-enqueue. The
+	// state remains valid so existing rows with INDEX_PENDING are
+	// not orphaned; new writers should use the granular states.
+	StateIndexPending IndexState = "INDEX_PENDING"
+
+	// StateIndexFailed — DEPRECATED. Catch-all failure terminal.
+	// Post-Task 2 this is split into EMBEDDING_FAILED (no vectors)
+	// and INDEXING_FAILED (vectors exist, Qdrant missing). The state
+	// remains valid for existing rows; new writers use the granular
+	// states.
+	StateIndexFailed IndexState = "INDEX_FAILED"
+
 	// Legacy values that lived in metadata_json.$.index_state
 	// pre-PR6. Valid() returns false for these — workers reading
 	// them should map via readSourceVersion-style priority walker
@@ -102,41 +147,48 @@ const (
 	legacyStateFailed    IndexState = "failed"
 )
 
-// Valid returns true if s is one of the 7 canonical IndexState values.
-// Legacy lowercase values are intentionally rejected so a worker can
-// spot pre-PR6 rows whose metadata_json carried the deprecated
-// alphabet — those rows are recoverable via the reindex admin
-// endpoint but should NOT participate in state-machine transitions
-// until first re-touch (which normalises them to the canonical enum).
+// Valid returns true if s is one of the canonical IndexState values.
+// Both old (pre-Task 2) and new (Task 2) states are accepted so
+// existing DB rows are not orphaned. Legacy lowercase values are
+// intentionally rejected.
 func (s IndexState) Valid() bool {
 	switch s {
 	case StateNotIndexable,
-		StateDiscovered, StateIndexPending, StateIndexing, StateIndexed,
-		StateIndexFailed, StateIndexDeletePending, StateDELETED:
+		StateDiscovered,
+		// Task 2 granular states
+		StateEmbedding, StateEmbedded,
+		StateIndexing, StateIndexed,
+		StateEmbeddingFailed, StateIndexingFailed,
+		// Deletion states
+		StateIndexDeletePending, StateDELETED,
+		// Deprecated pre-Task 2 states (backward-compat)
+		StateIndexPending, StateIndexFailed:
 		return true
 	}
 	return false
 }
 
-// IsTerminal returns true if the state is one of the four terminal
-// values (no further automatic transitions expected from the worker
-// unless a new event is enqueued). Used by outbox worker pre-flight
-// to short-circuit gates: an already-terminal state skips the
-// supersede gate (the event is a no-op).
+// IsTerminal returns true if the state is a terminal value (no further
+// automatic transitions expected unless a new event is enqueued).
+// Used by outbox worker pre-flight to short-circuit gates.
+//
+// Task 2: EMBEDDING_FAILED and INDEXING_FAILED are both terminal —
+// the worker will not re-touch them unless an operator re-enqueues.
 func (s IndexState) IsTerminal() bool {
 	switch s {
-	case StateNotIndexable, StateIndexed, StateIndexFailed, StateDELETED:
+	case StateNotIndexable, StateIndexed, StateDELETED,
+		StateEmbeddingFailed, StateIndexingFailed,
+		StateIndexFailed: // deprecated, treated as terminal
 		return true
 	}
 	return false
 }
 
-// IsFailedTerminal distinguishes the "operator must intervene" terminal
-// from the "successful terminal". StateIndexFailed is the only
-// failure terminal — StateDELETED and StateIndexed are intentional
-// outcomes of successful flows.
+// IsFailedTerminal returns true if the state is a failure terminal
+// (operator-must-intervene). Post-Task 2 this includes the granular
+// EMBEDDING_FAILED and INDEXING_FAILED, plus the legacy INDEX_FAILED.
 func (s IndexState) IsFailedTerminal() bool {
-	return s == StateIndexFailed
+	return s == StateIndexFailed || s == StateEmbeddingFailed || s == StateIndexingFailed
 }
 
 // IsDeletedCanonical returns true if the row is in a tombstone state

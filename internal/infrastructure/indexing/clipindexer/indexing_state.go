@@ -128,13 +128,23 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 	// mistakenly passes StateIndexed to setIndexState.
 	switch state {
 	case asset.StateIndexing:
-		// No metric: in-flight work is not directly observable.
+		// No metric: in-flight Qdrant work is not directly observable.
+	case asset.StateEmbedding:
+		// No metric: in-flight embedding work.
+	case asset.StateEmbedded:
+		// No metric: intermediate state; embeddings saved, awaiting upsert.
 	case asset.StateIndexPending:
 		metrics.MediaIndexRetryTotal.WithLabelValues(source).Inc()
 		metrics.StaleAssets.WithLabelValues(source, "retrying").Inc()
 	case asset.StateIndexFailed:
 		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
 		metrics.StaleAssets.WithLabelValues(source, "failed").Inc()
+	case asset.StateEmbeddingFailed:
+		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
+		metrics.StaleAssets.WithLabelValues(source, "embedding_failed").Inc()
+	case asset.StateIndexingFailed:
+		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
+		metrics.StaleAssets.WithLabelValues(source, "indexing_failed").Inc()
 	case asset.StateDiscovered:
 		// Initial state; no metric. Stale-Assets gauge remains at 0.
 	}
