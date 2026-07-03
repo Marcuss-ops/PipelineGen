@@ -26,7 +26,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -109,18 +108,14 @@ type GenerateManySummary struct {
 // Items is ordered by input index. Warnings carry non-per-item
 // observations (e.g. "one or more items failed").
 //
-// P0 #4 audit (audit 2026-07-03): on the fan-out path, ChildJobIDs
-// carries one entry per item (empty string for failed enqueues) so
-// the handler can extract them when building the parent envelope.
-// ChildJobIDsJSON is the json.RawMessage mirror used as a wire-field
-// stub so callers that don't yet read ChildJobIDs (legacy paths)
-// continue to compile.
+// P0 #4 audit (audit 2026-07-03): ChildJobIDs carries one entry per
+// item (empty string for failed enqueues) so the handler can extract
+// them when building the parent waiting_children envelope.
 type GenerateManyResult struct {
-	Items         []GenerateManyItemResult `json:"items"`
-	Summary       GenerateManySummary      `json:"summary"`
-	Warnings      []string                 `json:"warnings,omitempty"`
-	ChildJobIDs   []string                 `json:"child_job_ids,omitempty"`
-	ChildJobIDsJSON json.RawMessage        `json:"child_job_ids_json,omitempty"`
+	Items       []GenerateManyItemResult `json:"items"`
+	Summary     GenerateManySummary      `json:"summary"`
+	Warnings    []string                 `json:"warnings,omitempty"`
+	ChildJobIDs []string                 `json:"child_job_ids,omitempty"`
 }
 
 // ── Execute ────────────────────────────────────────────────────────
@@ -280,7 +275,6 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 	ctx context.Context,
 	parentJobID string,
 	env *scriptpkg.GenerationEnvelopeV2,
-	cfg adapters.NormalizationConfig,
 ) (*GenerateManyResult, error) {
 	if uc == nil {
 		return nil, fmt.Errorf("%w: use case not constructed", scriptpkg.ErrGenerationFailed)
@@ -333,7 +327,6 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 		// Items is left as a placeholder (Result=nil, Error=""); the
 		// aggregator will overwrite child results on terminal flip.
 		items[i] = GenerateManyItemResult{ItemID: itemID}
-		_ = cfg // future use: thread per-batch MaxBatchWorkers into broker enqueue
 	}
 
 	// Fan-out is considered FAILED when ALL enqueues fail. Returns
@@ -352,9 +345,6 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 		}
 	}
 
-	// Marshal ChildJobIDs into the extra-metadata blob so the handler
-	// can extract them when building the parent envelope.
-	childJobIDsJSON, _ := json.Marshal(childJobIDs)
 	var warnings []string
 	if enqueueErrors > 0 {
 		warnings = append(warnings, fmt.Sprintf("%d of %d items failed to enqueue", enqueueErrors, n))
@@ -368,15 +358,14 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 			zap.Int("child_job_ids_len", len(childJobIDs)))
 	}
 
-	// Return a GenerateManyResult with ChildJobIDs marshalled into a
-	// JSON-encoded field for the handler to pick up. Empty Summary
-	// counts because the aggregator decides the final outcome.
+	// Return a GenerateManyResult with ChildJobIDs so the handler can
+	// extract them when building the parent waiting_children envelope.
+	// Summary counts reflect enqueue outcome; the aggregator decides
+	// the final parent outcome (P0 #4 audit closure).
 	return &GenerateManyResult{
-		Items:   items,
-		Summary: GenerateManySummary{Total: n, Succeeded: n - enqueueErrors, Failed: enqueueErrors},
-		Warnings: warnings,
-		// The handler reads child_job_ids from this serialization.
+		Items:       items,
+		Summary:     GenerateManySummary{Total: n, Succeeded: n - enqueueErrors, Failed: enqueueErrors},
+		Warnings:    warnings,
 		ChildJobIDs: childJobIDs,
-		ChildJobIDsJSON: childJobIDsJSON,
 	}, nil
 }

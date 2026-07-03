@@ -263,7 +263,7 @@ func (h *GenerateJobHandler) handleBatchFanout(
 	progressFn := appjobs.SafeProgressFn(tools)
 	progressFn(5, "fanning out script items to child jobs")
 
-	manyResult, err := h.many.ExecuteFanout(ctx, j.ID, env, h.cfg)
+	manyResult, err := h.many.ExecuteFanout(ctx, j.ID, env)
 	if err != nil {
 		if h.log != nil {
 			h.log.Error("script.generate: fanout failed",
