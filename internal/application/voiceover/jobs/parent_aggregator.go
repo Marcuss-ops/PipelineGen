@@ -379,13 +379,13 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// for optimistic locking. A concurrent FinalizeAggregateParent would have
 	// bumped revision, causing a 0 rows-affected → CAS conflict.
 	aggResult := VoiceoverAggregateResult{
-		ParentState:          newPS,
-		TotalChildren:        len(childIDs),
-		SucceededCount:       len(sm.Succeeded()),
-		FailedCount:          len(sm.Failed()),
-		RequiredFailedCount:  requiredFailed,
-		StateMachineVersion:  j.Revision,
-		ChildIDs:             childIDs,
+		ParentState:         newPS,
+		TotalChildren:       len(childIDs),
+		SucceededCount:      len(sm.Succeeded()),
+		FailedCount:         len(sm.Failed()),
+		RequiredFailedCount: requiredFailed,
+		StateMachineVersion: j.Revision,
+		ChildIDs:            childIDs,
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil
@@ -403,12 +403,12 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 // parent (status, parent_state) tuples.
 func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID string, agg VoiceoverAggregateResult) {
 	resultMap := map[string]any{
-		"parent_state":            string(agg.ParentState),
-		"_aggregator_version":     agg.StateMachineVersion,
-		"total_children":          agg.TotalChildren,
-		"succeeded_count":         agg.SucceededCount,
-		"failed_count":            agg.FailedCount,
-		"required_failed_count":   agg.RequiredFailedCount,
+		"parent_state":          string(agg.ParentState),
+		"_aggregator_version":   agg.StateMachineVersion,
+		"total_children":        agg.TotalChildren,
+		"succeeded_count":       agg.SucceededCount,
+		"failed_count":          agg.FailedCount,
+		"required_failed_count": agg.RequiredFailedCount,
 	}
 
 	targetStatus := job.StatusSucceeded
@@ -446,8 +446,6 @@ func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID strin
 		zap.String("target_status", string(targetStatus)),
 		zap.Int("version", agg.StateMachineVersion))
 }
-
-
 
 // domainToVoiceoverParentState maps the domain 5-state machine result
 // to the voiceover 4-state result enum for wire-shape back-compat.

@@ -25,15 +25,15 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
-	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
 	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/deletion"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -496,7 +496,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				}
 			}
 
-				// Look up the outbox.Dispatcher via root.Outbox; if absent
+			// Look up the outbox.Dispatcher via root.Outbox; if absent
 			// (e.g. partial deploy), log WARN + skip.
 			if root.Outbox != nil && root.Outbox.Dispatcher != nil {
 				disp := root.Outbox.Dispatcher
@@ -760,6 +760,7 @@ func (a *outboxMonitorAdapter) ListPending(ctx context.Context) ([]outbox.EventD
 // satisfied. The only mismatch is the return-slice element type:
 //   - downloader.VideoInfo  (infra DTO, includes downloader-internal fields)
 //   - monitor.VideoInfo     (domain DTO, the monitor's canonical projection)
+//
 // Field names are stable; the wrapper maps ID + Title + Views +
 // Duration verbatim. New infra fields are dropped on the floor —
 // intentional: the monitor port surface is the canonical SSOT for

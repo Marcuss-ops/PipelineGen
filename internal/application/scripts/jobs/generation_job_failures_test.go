@@ -7,7 +7,7 @@
 //   - Batch all-items-failed    → (mapped_envelope, wrapped_err)
 //   - Batch partial/full success → (mapped_envelope, nil)
 //   - Batch empty envelope      → (nil, decode_err) — rejected
-//                                  before multi-item branch
+//     before multi-item branch
 //   - Nil handler receiver      → (nil, error)
 //
 // Before the fix, the single-item failure path returned
@@ -62,14 +62,33 @@ func newTestHandler(t *testing.T, maxBatchWorkers int) (*jobs.GenerateJobHandler
 	t.Helper()
 	one := newFailingOneUseCase()
 	many := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	// Commit 5 P0 #4: batch path requires a broker (no silent inline
+	// fallback). Wire a stub that always fails enqueue so the all-failed
+	// error path is exercised.
+	many.SetFanoutBroker(&stubFanoutBroker{})
 	handler := jobs.NewGenerateJobHandler(one, many,
 		adapters.NormalizationConfig{
-			DefaultLanguage:  "en",
+			DefaultLanguage: "en",
 			MaxBatchWorkers: maxBatchWorkers,
 		},
 		zap.NewNop())
 	return handler, appjobs.JobTools{}
 }
+
+// stubFanoutBroker is a test double that always fails EnqueueScriptItem
+// so the all-failed fan-out error path is exercised in tests.
+type stubFanoutBroker struct{}
+
+func (s *stubFanoutBroker) EnqueueScriptItem(
+	ctx context.Context,
+	parentJobID string,
+	item domainScript.GenerationItemV2,
+	preset domainScript.Preset,
+) (string, error) {
+	return "", errors.New("stub: enqueue failed")
+}
+
+var _ usecase.FanoutItemBroker = (*stubFanoutBroker)(nil)
 
 func makeEnvelopeJSON(t *testing.T, items ...domainScript.GenerationItemV2) []byte {
 	t.Helper()
@@ -221,38 +240,18 @@ func TestGenerateJobHandler_BatchAllItemsFailedReturnsError(t *testing.T) {
 	mapped, runErr := handler.Handle(context.Background(), job, &tools)
 
 	// 1. Non-nil Go error — the fix for the all-failed batch case.
+	//    Commit 2 P0 #4: fan-out path returns (nil, error) when ALL
+	//    enqueues fail (no children were created, no envelope to return).
 	if runErr == nil {
 		t.Fatal("P0 (Issue 1): expected non-nil error when all items failed, got nil. " +
 			"Worker would mark this job COMPLETED on /api/script/jobs/:id/full wire shape.")
 	}
-	if mapped == nil {
-		t.Fatal("expected non-nil mapped envelope on all-failed batch, got nil")
-	}
+	// mapped is nil on all-failed fan-out (no children created).
+	// The old inline path produced both mapped + error; the Commit 2
+	// fan-out path produces only error when all enqueues fail.
+	_ = mapped
 
-	// 2. Envelope shape: ok=false, summary.total == summary.failed, succeeded=0.
-	var got envelopeSummary
-	remapEnvelope(t, mapped, &got)
-	if got.OK {
-		t.Errorf("envelope OK should be false on all-failed batch, got true")
-	}
-	if got.Summary.Total != 3 {
-		t.Errorf("envelope Summary.Total: got %d, want 3", got.Summary.Total)
-	}
-	if got.Summary.Failed != 3 {
-		t.Errorf("envelope Summary.Failed: got %d, want 3", got.Summary.Failed)
-	}
-	if got.Summary.Succeeded != 0 {
-		t.Errorf("envelope Summary.Succeeded: got %d, want 0", got.Summary.Succeeded)
-	}
-	if len(got.Items) != 3 {
-		t.Fatalf("envelope items: got %d, want 3", len(got.Items))
-	}
-	for i, it := range got.Items {
-		if it.Error == "" {
-			t.Errorf("item[%d] (%q): expected error, got none", i, it.ItemID)
-		}
-	}
-	// 3. The synthesised error mentions the count so operators
+	// 2. The error message mentions the count so operators
 	//    immediately know it's a complete failure (not a partial).
 	if !strings.Contains(runErr.Error(), "all 3 items failed") {
 		t.Errorf("error message must report 'all 3 items failed', got: %v", runErr)

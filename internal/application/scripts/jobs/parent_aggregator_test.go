@@ -39,7 +39,7 @@
 //     with the "FinalizeAggregateParent CAS conflict" message (audit pin).
 //     Uses zap/zaptest/observer for non-destructive log capture.
 //
-// 10. TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal — second
+//  10. TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal — second
 //     tick AFTER a successful first tick, with stub simulating the
 //     "already-terminal" state. Aggregator must (a) NOT overwrite
 //     the first tick's stub.flipped record + (b) emit ZERO Warn log
@@ -476,11 +476,11 @@ func TestFinalizeAggregateParent_AllFailed_PopulatesErrMsg(t *testing.T) {
 // domainremote.ErrAggregateCASConflict (simulating a concurrent tick's
 // revision bump racing the WHERE revision=? UPDATE). Aggregator must:
 //
-//   (a) NOT mutate stub.flipped — the rejection short-circuits before
-//       FinalizeAggregateParent's record step (stub impl: flippedErr returns the
-//       error without writing to stub.flipped).
-//   (b) Emit a Warn-level log with the canonical "FinalizeAggregateParent CAS conflict"
-//       snippet (audit-forensic readable on operator log streams).
+//	(a) NOT mutate stub.flipped — the rejection short-circuits before
+//	    FinalizeAggregateParent's record step (stub impl: flippedErr returns the
+//	    error without writing to stub.flipped).
+//	(b) Emit a Warn-level log with the canonical "FinalizeAggregateParent CAS conflict"
+//	    snippet (audit-forensic readable on operator log streams).
 //
 // Uses zap/zaptest/observer to capture log entries non-destructively
 // (zap.NewNop would discard them).
@@ -520,9 +520,9 @@ func TestFinalizeAggregateParent_StaleRevision_ReturnsErrAggregateCASConflict(t 
 // arrives with stub simulating "already-terminal" state — broker
 // already at terminal so any further flip is a no-op. Aggregator must:
 //
-//   (a) NOT overwrite the first tick's stub.flipped record.
-//   (b) Emit ZERO Warn-level log entries (idempotent replay is silent
-//       — INFO level acceptable, WARN forbidden; per godlike/07).
+//	(a) NOT overwrite the first tick's stub.flipped record.
+//	(b) Emit ZERO Warn-level log entries (idempotent replay is silent
+//	    — INFO level acceptable, WARN forbidden; per godlike/07).
 //
 // Uses zap/zaptest/observer to assert zero warn entries.
 func TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal(t *testing.T) {
