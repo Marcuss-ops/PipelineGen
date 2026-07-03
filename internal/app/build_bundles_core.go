@@ -159,7 +159,7 @@ func buildImagesService(
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: scriptGen, MetaWriter: voMetaWriter, StyleRegistry: styleRegistry,
-			ImageGen: imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, 1, log),
+			ImageGen: imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, log),
 		},
 		External: imgservice.ImagesExternalDeps{
 			IngestSvc: ingestSvc, Dispatcher: dispatcher, VeloxBaseURL: cfg.External.VeloxBaseURL,
