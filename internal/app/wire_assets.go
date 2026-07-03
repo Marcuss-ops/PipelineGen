@@ -1,3 +1,9 @@
+// Package app — Assets module wiring (PR-GODOBJ-7 composition target, July 2026).
+//
+// WireAssets creates the unified Assets handler and module. The AssetsWiring
+// type was moved to composition.go alongside other bundle types; the three
+// package-level adapter vars (processRunnerAdapter, toolCheckerAdapter,
+// dbHealthCheckerAdapter) were moved to module_adapters.go.
 package app
 
 import (
@@ -24,7 +30,6 @@ import (
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -33,37 +38,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
-
-// processRunnerAdapter is a package-level adapter for the infrastructure ProcessRunner port.
-// Used by ScraperHandler and other handlers in registry.go that need subprocess execution.
-var processRunnerAdapter = infraassets.NewProcessRunnerAdapter()
-
-// toolCheckerAdapter is a package-level adapter for the infrastructure ToolChecker port.
-// Used by YouTubeClipHandler and system handler to check external tool availability.
-var toolCheckerAdapter = infraassets.NewToolCheckerAdapter()
-
-// dbHealthCheckerAdapter is a package-level adapter for the infrastructure DBHealthChecker port.
-// Used by system handler to check database health.
-var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
-
-// AssetsWiring holds the Assets module wiring.
-type AssetsWiring struct {
-	Module               module.Module
-	DeletionSvc          *deletion.DeletionService
-	InternalMediaHandler *assetstorage.Handler
-	// Wave 21 PR 10 (June 2026): the canonical SearchAggregator
-	// (search.NewAggregator). The legacy clipssearch.Service +
-	// appsearch.Service wirings were deleted in PR 10 — see
-	// architecture/deprecations.yaml records
-	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
-	SearchAggregator *search.Aggregator
-	// PR-2 (June 2026): the canonical SearchFanOut (decorator
-	// wrapping the canonical Aggregator). Exposed via this
-	// wiring handle so other consumers (diagnostics + future
-	// Health probes) read the SHARED instance rather than
-	// constructing a parallel one. == deps.Search.SearchFanOut alias.
-	SearchFanOut search.SearchFanOut
-}
 
 // WireAssets creates the unified Assets handler and module.
 //
@@ -291,30 +265,30 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// (newAssetRegisterService → sourcingEnrichmentAdapter →
 	// handler.EnrichAndIndexClip).
 	clipsDescriptor, err := clipsapi.Build(clipsapi.Dependencies{
-		ClipsRepo:        deps.Core.ClipsRepo,
-		AssetRepo:        assetRepo,
-		DeletionSvc:      deletionSvc,
-		DriveAdmin:    driveUploader,
-		MediaProcessor:   deps.Core.MediaProcessor,
-		AssetTreeSvc:     deps.Core.AssetTreeService,
-		MetaWriter:       metaWriter,
-		ClipIndexer:      deps.Search.ClipIndexerService,
-		JobsSvc:          jobs.Facade,
-		Cfg:              cfg,
-		Log:              log,
-		VoiceoverRepo:    deps.Core.VoiceoverRepo,
-		ImagesRepo:       deps.Core.ImageRepo,
-		FolderMemSvc:     folderMemSvc,
-		ProcessRunner:    processRunnerAdapter,
-		Dispatcher:       clipsDispatcherPort,
-		EnrichUC:         enrichUC,
-		SearchSvc:        searchAggregator,
+		ClipsRepo:      deps.Core.ClipsRepo,
+		AssetRepo:      assetRepo,
+		DeletionSvc:    deletionSvc,
+		DriveAdmin:     driveUploader,
+		MediaProcessor: deps.Core.MediaProcessor,
+		AssetTreeSvc:   deps.Core.AssetTreeService,
+		MetaWriter:     metaWriter,
+		ClipIndexer:    deps.Search.ClipIndexerService,
+		JobsSvc:        jobs.Facade,
+		Cfg:            cfg,
+		Log:            log,
+		VoiceoverRepo:  deps.Core.VoiceoverRepo,
+		ImagesRepo:     deps.Core.ImageRepo,
+		FolderMemSvc:   folderMemSvc,
+		ProcessRunner:  processRunnerAdapter,
+		Dispatcher:     clipsDispatcherPort,
+		EnrichUC:       enrichUC,
+		SearchSvc:      searchAggregator,
 		BulkUploadWorker: bulkUploadWorker,
-		ClipOpsService:   clipOpsSvc,
-		UploadUC:         uploadUC,
-		ReuploadUC:       reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
-		Idempotency:      idemHandler,
-		EnabledFunc:      func() bool { return true },
+		ClipOpsService: clipOpsSvc,
+		UploadUC:       uploadUC,
+		ReuploadUC:     reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
+		Idempotency:    idemHandler,
+		EnabledFunc:    func() bool { return true },
 	})
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: clips.Build: %w", err)
@@ -657,5 +631,3 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		SearchFanOut:         searchFanOut,
 	}, nil
 }
-
-

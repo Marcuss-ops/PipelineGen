@@ -34,6 +34,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+// configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
+// Moved from composition.go (PR-GODOBJ-7 composition target, July 2026).
+func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
+	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
+}
+
 // BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
 // Loads StyleRegistry at the top so the canonical StyleRegistry is available
 // for downstream Style-aware consumers (CompositionRoot.processor path),
