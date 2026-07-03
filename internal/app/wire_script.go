@@ -530,8 +530,6 @@ func wireScriptChildJobAuditP04(
 	// 1. Construct the per-item child worker.
 	itemHandler := jobs.NewScriptGenerateItemJobHandler(
 		oneUC, // satisfies GenerateOneExecutor port via Go interface satisfaction
-		normCfg,
-		nil, // requestIDFn defaults to parentJobID + ":item"
 		log,
 	)
 	if err := itemHandler.Register(jobsSvc); err != nil {

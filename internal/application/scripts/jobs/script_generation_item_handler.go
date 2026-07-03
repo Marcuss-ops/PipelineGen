@@ -31,14 +31,12 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	"go.uber.org/zap"
@@ -82,10 +80,8 @@ var _ GenerateOneExecutor = (*usecase.GenerateOneUseCase)(nil)
 // (Pattern 0 — AGENTS.md) so test fixtures can inject a recording
 // stub without instantiating the full 5-resolver registry.
 type ScriptGenerateItemJobHandler struct {
-	oneUC       GenerateOneExecutor
-	normalCfg   adapters.NormalizationConfig
-	requestIDFn func(ctx context.Context, parentJobID string) string
-	logger      *zap.Logger
+	oneUC  GenerateOneExecutor
+	logger *zap.Logger
 }
 
 // NewScriptGenerateItemJobHandler constructs the handler. oneUC is
@@ -93,8 +89,6 @@ type ScriptGenerateItemJobHandler struct {
 // Logger is OPTIONAL (nil-safe via zap.NewNop()).
 func NewScriptGenerateItemJobHandler(
 	oneUC GenerateOneExecutor,
-	normalCfg adapters.NormalizationConfig,
-	requestIDFn func(ctx context.Context, parentJobID string) string,
 	logger *zap.Logger,
 ) *ScriptGenerateItemJobHandler {
 	if oneUC == nil {
@@ -103,18 +97,9 @@ func NewScriptGenerateItemJobHandler(
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	if requestIDFn == nil {
-		// Default: derive a stable request_id from parentJobID per-item
-		// so the per-item child result is greppable from the parent.
-		requestIDFn = func(_ context.Context, parentJobID string) string {
-			return parentJobID + ":item"
-		}
-	}
 	return &ScriptGenerateItemJobHandler{
-		oneUC:       oneUC,
-		normalCfg:   normalCfg,
-		requestIDFn: requestIDFn,
-		logger:      logger,
+		oneUC:  oneUC,
+		logger: logger,
 	}
 }
 
@@ -163,8 +148,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	tools *appjobs.JobTools,
 ) (map[string]any, error) {
 	h.logger.Info("handling script.generate_item job",
-		zap.String("job_id", j.ID),
-		zap.String("parent_job_id", string(j.Payload))) // log full payload as raw for fallback; payload-bytes compare is cheap
+		zap.String("job_id", j.ID))
 
 	// job-tools.Progress nil-safe wrapper — canonical for all handlers
 	// registered with the broker (voiceover.generate, voiceover.generate_item,
@@ -188,6 +172,11 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	item := childPayload.Item
 	parentJobID := childPayload.ParentJobID
 	preset := childPayload.Preset
+
+	h.logger.Info("decoded script.generate_item payload",
+		zap.String("job_id", j.ID),
+		zap.String("parent_job_id", parentJobID),
+		zap.String("item_id", item.ID))
 
 	if item.ID == "" {
 		// Defensive: a missing item.ID would corrupt the parent's
@@ -332,11 +321,3 @@ func scriptItemIsSuccessful(res *domainScript.GenerationResult) bool {
 // (the canonical status→succeeded/failed map lives in the aggregator's
 // PerItemStatusToOutcome helper so the child and aggregator agree on
 // the meaning — see parent_aggregator.go)
-
-// errorIsPipe carries errors.Is probing for the typed-error contract.
-func errorIsPipe(err error, target error) bool {
-	if err == nil || target == nil {
-		return false
-	}
-	return errors.Is(err, target)
-}
