@@ -79,7 +79,7 @@ func (s *stubAggregatorJobsService) List(ctx context.Context, filter job.Filter)
 // stub does not mirror the SQL-side json_extract filter. The
 // aggregator's aggregateOne still calls IsAwaitingAggregation() on
 // each returned parent and skips non-awaiting entries in memory.
-func (s *stubAggregatorJobsService) ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error) {
+func (s *stubAggregatorJobsService) ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error) {
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
