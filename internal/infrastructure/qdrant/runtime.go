@@ -31,6 +31,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 )
 
 // RuntimeConfig is the bundle NewRuntime consumes. Avoiding a direct
@@ -150,6 +151,24 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	// block is now unconditional: mapper+store are always non-nil.
 	store := NewSQLiteAssetStore(cfg.DB)
 	mapper := NewPayloadMapper(store, log)
+	// Task 5 (July 2026): wire the canonical SearchTextBuilder
+	// registry into the mapper so each AssetToIndexDocument call
+	// routes BM25 search-text through per-source strategies
+	// (youtube, artlist, voiceover, image, generated_image). The
+	// admin reindex_qdrant CLI path uses NewPayloadMapper directly
+	// (without this wiring) and falls back to asset.SearchText —
+	// the SetSearchTextBuilder path enforces the production
+	// contract while keeping the CLI / tests / fixtures nil-tolerant.
+	// Wire the canonical SearchTextBuilder registry so each
+	// AssetToIndexDocument call routes BM25 search-text through
+	// per-source strategies (youtube, artlist, voiceover, image,
+	// generated_image). The mapper stays backwards-compatible for
+	// callers that bypass NewRuntime (admin reindex_qdrant CLI,
+	// unit tests, fixtures) — those callers see the legacy
+	// asset.SearchText pass-through because they construct the
+	// mapper via NewPayloadMapper(store, log) without
+	// SetSearchTextBuilder.
+	mapper.SetSearchTextBuilder(searchtext.NewRegistry())
 
 	writer := NewIndexWriter(client, schema, mapper, log)
 	searcher := NewSearcher(client, schema, log)

@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -18,16 +19,31 @@ import (
 // It is the SINGLE place where vector names, payload fields, and embedding
 // channel mapping are configured — no hardcoded names anywhere else.
 type PayloadMapper struct {
-	store AssetStore
-	log   *zap.Logger
+	store           AssetStore
+	log             *zap.Logger
+	searchTextBuild appsearchtext.SearchTextBuilder // optional; nil → fall back to asset.SearchText
 }
 
-// NewPayloadMapper creates a PayloadMapper.
+// NewPayloadMapper creates a PayloadMapper. The SearchTextBuilder is
+// optional — when nil (e.g. admin tooling, tests that don't need BM25),
+// the mapper falls back to asset.SearchText (the pre-existing DB column).
+// Composition root wires the canonical Registry via SetSearchTextBuilder.
 func NewPayloadMapper(store AssetStore, log *zap.Logger) *PayloadMapper {
 	return &PayloadMapper{
 		store: store,
 		log:   log,
 	}
+}
+
+// SetSearchTextBuilder wires the canonical SearchTextBuilder port. When
+// non-nil, assetToIndexDocumentNoValidate / AssetToIndexDocument delegate
+// BM25 search-text construction to the builder (per-source strategies:
+// youtube, artlist, voiceover, image, generated_image). When the builder
+// returns empty for an input, the mapper falls back to asset.SearchText
+// (the SQL column) for that asset. When the builder itself is nil, the
+// mapper uses asset.SearchText directly.
+func (m *PayloadMapper) SetSearchTextBuilder(b appsearchtext.SearchTextBuilder) {
+	m.searchTextBuild = b
 }
 
 // FetchAsset delegates to the AssetStore.
@@ -103,6 +119,14 @@ func (m *PayloadMapper) getVectorForChannel(asset *AssetData, channel string) []
 // unchanged for legacy callers (assetToIndexDocumentNoValidate populates
 // EmbeddingArtifacts whose ModelVersion defaults to the schema value;
 // AssetData carries no separate observed source today).
+//
+// SearchTextBuilder integration: this is the package-level (no
+// mapper receiver) entry point — it does NOT call into the
+// SearchTextBuilder because it has no mapper receiver. This matches
+// the pre-mapper era intent: callers that go through BuildPayload
+// accept the asset.SearchText passthrough. Production callers go
+// through AssetToIndexDocument which IS mapper-receiver-bound and
+// DOES use the SearchTextBuilder.
 //
 // QDRANT-004 PR2 (June 2026): the canonical lifecycle key is
 // `lifecycle_state` (SSOT — matches media_assets.lifecycle_state in SQLite,
@@ -363,7 +387,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		LifecycleState: domainAssetLifecycle(asset.LifecycleState),
 		SourceVersion:  asset.SourceVersion,
 		ContentHash:    asset.ContentHash,
-		SearchText:     asset.SearchText,
+		SearchText:     asset.SearchText, // legacy pass-through (BuildPayload entry); mapper receivers override via AssetToIndexDocument
 		Metadata: IndexedMetadata{
 			Title:        metadataString(asset.Metadata, "title"),
 			Description:  metadataString(asset.Metadata, "description"),
@@ -447,6 +471,153 @@ func metadataString(m map[string]interface{}, key string) string {
 	return ""
 }
 
+// metadataStringSlice extracts a string-slice-typed field from a parsed
+// JSON metadata map (used for "tags" arrays and "detected_entities").
+// Returns nil when absent, non-array, or contains non-string elements.
+// Filters out empty/whitespace-only strings so downstream joinTags
+// helpers behave correctly.
+func metadataStringSlice(m map[string]interface{}, key string) []string {
+	if m == nil {
+		return nil
+	}
+	raw, ok := m[key]
+	if !ok {
+		return nil
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		// Also handle []string as a defensive fallback.
+		if ss, ok := raw.([]string); ok {
+			out := make([]string, 0, len(ss))
+			for _, s := range ss {
+				if s != "" {
+					out = append(out, s)
+				}
+			}
+			if len(out) == 0 {
+				return nil
+			}
+			return out
+		}
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// buildSearchTextInput maps an AssetData row to the canonical
+// SearchTextInput that the per-source strategies consume. The mapping
+// is intentionally permissive: every field on SearchTextInput is a
+// zero-or-more-value contract; strategies only read the subset they
+// document (per `internal/infrastructure/indexing/searchtext/strategies.go`).
+//
+// AssetData field priorities:
+//   - Title         ← asset.Name (canonical human-readable label)
+//   - Tags          ← asset.Tags (already-typed []string)
+//   - Category      ← asset.Category
+//   - Channel       ← asset.ChannelID (YouTube channel name)
+//   - Language      ← asset.Language (BCP-47)
+//   - Description   ← metadata_json.$.description (when parsed)
+//   - Transcript    ← metadata_json.$.transcript ONLY (no asset.SearchText
+//                      fallback — search_text is the BM25 OUTPUT, never the
+//                      raw transcript; falling back would feed the assembled
+//                      search text back into the YouTube strategy's
+//                      transcript slot and double-count it).
+//   - Caption       ← metadata_json.$.caption
+//   - Prompt        ← metadata_json.$.prompt
+//   - DetectedEntities ← metadata_json.$.detected_entities
+//   - OriginProvider   ← metadata_json.$.origin_provider
+//
+// The function returns a SearchTextInput that ALWAYS carries the
+// canonical identifiers (AssetID, Source, MediaType) so the registry
+// can dispatch on Source even when the freetext bag is empty.
+func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
+	if asset == nil {
+		return appsearchtext.SearchTextInput{}
+	}
+	parseMetadataJSON(asset)
+	return appsearchtext.SearchTextInput{
+		AssetID:          asset.ID,
+		Source:           asset.Source,
+		MediaType:        asset.MediaType,
+		Title:            asset.Name,
+		Description:      metadataString(asset.Metadata, "description"),
+		Transcript:       metadataString(asset.Metadata, "transcript"),
+		Prompt:           metadataString(asset.Metadata, "prompt"),
+		Caption:          metadataString(asset.Metadata, "caption"),
+		Tags:             asset.Tags,
+		Category:         asset.Category,
+		Language:         asset.Language,
+		Channel:          asset.ChannelID,
+		DetectedEntities: metadataStringSlice(asset.Metadata, "detected_entities"),
+		OriginProvider:   metadataString(asset.Metadata, "origin_provider"),
+	}
+}
+
+// firstNonEmpty returns the first non-empty trimmed string. Empty
+// whitespace-only strings are treated as empty so callers don't have
+// to repeat trim/empty checks at every call-site.
+func firstNonEmpty(parts ...string) string {
+	for _, p := range parts {
+		if p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// resolveSearchText is the canonical call site for search-text
+// construction at indexing time. It owns the precedence order:
+//
+//  1. SearchTextBuilder (when wired via SetSearchTextBuilder) — returns
+//     the per-source canonical text. A nil error is treated as "ok"
+//     even when Build returns empty (legitimate empty strategies).
+//     A non-nil error is logged at DEBUG and falls through — we
+//     never block the IndexDocument on a search-text builder
+//     failure (godlike/07 no-fake-availability contract).
+//  2. asset.SearchText — the DB-stored pre-built value. Always the
+//     graceful fallback when the builder is absent OR returns empty.
+//
+// Always returns a non-nil string (possibly "") so callers can write
+// doc.SearchText directly without nil-checks.
+//
+// IMPORTANT: returns asset.SearchText UNCHANGED when the builder is nil
+// — this is the byte-for-byte contract the pre-existing
+// TestAssetToPoint_SparseVector_HasServerSideShape and other tests
+// (which call NewPayloadMapper(store, log) WITHOUT SetSearchTextBuilder)
+// pin. Production code paths (NewRuntime) wire the registry; admin
+// CLI / tests / fixtures that bypass NewRuntime see the legacy
+// pass-through behavior.
+func (m *PayloadMapper) resolveSearchText(ctx context.Context, asset *AssetData) string {
+	if asset == nil {
+		return ""
+	}
+	if m.searchTextBuild != nil {
+		input := buildSearchTextInput(asset)
+		text, err := m.searchTextBuild.Build(ctx, input)
+		if err != nil {
+			if m.log != nil {
+				m.log.Debug("SearchTextBuilder.Build error; falling back to asset.SearchText",
+					zap.String("asset_id", asset.ID),
+					zap.Error(err))
+			}
+			// Fall through to asset.SearchText — never block
+			// the IndexDocument on a search-text builder issue.
+		} else if text != "" {
+			return text
+		}
+	}
+	return asset.SearchText
+}
+
 // AssetToIndexDocument is the canonical Mapper airlock (PR 6). Builds
 // an IndexDocument from a SQL-fetch AssetData and validates the
 // per-channel vector dimensions / NaN / Inf before the wire is
@@ -471,6 +642,12 @@ func (m *PayloadMapper) AssetToIndexDocument(asset *AssetData, schema *schema.In
 		return nil, fmt.Errorf("asset ID must not be empty")
 	}
 	doc := assetToIndexDocumentNoValidate(asset, schema)
+	// Route BM25 search-text through the canonical SearchTextBuilder
+	// (registered via SetSearchTextBuilder at composition root). The
+	// helper falls back to asset.SearchText when the builder is nil
+	// or returns empty — the contract preserves the pre-existing DB
+	// pre-build path for legacy rows.
+	doc.SearchText = m.resolveSearchText(context.Background(), asset)
 	for _, spec := range schema.DenseVectors {
 		channel := VectorChannel(spec.Channel)
 		vec := m.getVectorForChannel(asset, spec.Channel)
