@@ -46,14 +46,15 @@ func New(baseURL, token string) *Client {
 // with no breadcrumb — keep them synchronized.
 
 const (
-	pathRegisterWorker = remoteshared.InternalPathPrefix + "/workers/register"
-	pathHeartbeat      = remoteshared.InternalPathPrefix + "/workers/heartbeat"
-	pathClaim          = remoteshared.InternalPathPrefix + "/jobs/claim"
-	pathRenewFmt       = remoteshared.InternalPathPrefix + "/jobs/%s/renew"
-	pathProgressFmt    = remoteshared.InternalPathPrefix + "/jobs/%s/progress"
-	pathCompleteFmt    = remoteshared.InternalPathPrefix + "/jobs/%s/complete"
-	pathFailFmt        = remoteshared.InternalPathPrefix + "/jobs/%s/fail"
-	pathIsCancelledFmt = remoteshared.InternalPathPrefix + "/jobs/%s/cancelled"
+	pathRegisterWorker           = remoteshared.InternalPathPrefix + "/workers/register"
+	pathHeartbeat                = remoteshared.InternalPathPrefix + "/workers/heartbeat"
+	pathClaim                    = remoteshared.InternalPathPrefix + "/jobs/claim"
+	pathRenewFmt                 = remoteshared.InternalPathPrefix + "/jobs/%s/renew"
+	pathProgressFmt              = remoteshared.InternalPathPrefix + "/jobs/%s/progress"
+	pathCompleteFmt              = remoteshared.InternalPathPrefix + "/jobs/%s/complete"
+	pathCompleteWithArtifactsFmt = remoteshared.InternalPathPrefix + "/jobs/%s/complete-with-artifacts"
+	pathFailFmt                  = remoteshared.InternalPathPrefix + "/jobs/%s/fail"
+	pathIsCancelledFmt           = remoteshared.InternalPathPrefix + "/jobs/%s/cancelled"
 
 	// ── P0 Commit 6 (July 2026): artifact-upload protocol commands ─────
 	// The 3-command handshake (prepare → file content → finalize) is the
@@ -127,11 +128,70 @@ func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) erro
 	return c.post(ctx, fmt.Sprintf(pathCompleteFmt, cmd.JobID), cmd, nil)
 }
 
-// CompleteWithArtifacts is not supported over the remote wire protocol
-// yet (the artifact-finalization spine requires in-process SQLite access).
-// Remote workers MUST use the legacy Complete path.
+// CompleteWithArtifacts POSTs the typed CompleteWithArtifactsCommand
+// to /internal/v1/jobs/:id/complete-with-artifacts. Mirrors the
+// canonical Complete implementation (json.Marshal cmd → POST body →
+// 200 OK → success; 400+ → typed-error decode).
+//
+// CRITICAL CONTRACT (godlike/07 typed-error contract): when the
+// server-side handler returns the typed-error envelope
+//
+//	{"kind":"lease_lost","error":"..."}
+//
+// this method wraps the canonical sentinel via fmt.Errorf(..., %w)
+// so upstream callers can use errors.Is(err, appjobs.ErrLeaseLost)
+// symmetrically across in-process (*local.Broker) and remote
+// (this Client) worker executions.
+//
+// Forward-pointer: the server-side handler at
+// internal/api/jobs/handler_workers.go::CompleteWithArtifacts emits
+// a generic 500 today; the typed-error envelope emission lands in
+// a follow-up PR (godlike/06 SSOT discipline: one owner per fact).
+// This client-side decode is already forward-compatible — once
+// the server emits the envelope, existing calls produce typed
+// errors without further migration.
+//
+// Wire shape: serialises cmd (json.RawMessage bodies carried
+// byte-stable through the wire) into the POST body and decodes
+// the 200 response into the typed CWA response envelope (forward-
+// declared fields; expected response shape mirrors
+// internal/api/jobs.CompleteArtifactsResponse).
 func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
-	return fmt.Errorf("jobbrokerclient: CompleteWithArtifacts not supported over remote protocol — use Complete instead")
+	bodyBytes, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("complete-with-artifacts: marshal: %w", err)
+	}
+	url := c.baseURL + fmt.Sprintf(pathCompleteWithArtifactsFmt, cmd.JobID)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("complete-with-artifacts: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.setAuth(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("complete-with-artifacts: do request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		rawBody, _ := io.ReadAll(resp.Body)
+		// Typed-error envelope decode (forward-prevention: server
+		// emits the envelope in a follow-up PR; this decode is
+		// forward-compatible today). Unknown kinds fall through to
+		// the generic HTTP-error path.
+		var typedErr struct {
+			Error string `json:"error"`
+			Kind  string `json:"kind"`
+		}
+		if json.Unmarshal(rawBody, &typedErr) == nil && typedErr.Kind != "" {
+			switch typedErr.Kind {
+			case "lease_lost":
+				return fmt.Errorf("complete-with-artifacts: %s: %w", typedErr.Error, appjobs.ErrLeaseLost)
+			}
+		}
+		return fmt.Errorf("complete-with-artifacts: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(rawBody)))
+	}
+	return nil
 }
 
 func (c *Client) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
@@ -344,6 +404,14 @@ func (c *Client) FinalizeArtifactUpload(ctx remote.PrepareContext, sessionID, sh
 //
 // Returns the path-prefixed error so callers can wrap with fmt.Errorf
 // and preserve the underlying transport error via %w.
+// Compile-time pin (godlike/06 SSOT discipline): *Client MUST
+// satisfy the narrow typed CompletionPort for the artifact-
+// completion wire surface. Drift in either the 1-method port
+// signature (in appjobs.CompletionPort) or the Client method
+// signature (this file) is a build failure rather than a
+// runtime panic.
+var _ appjobs.CompletionPort = (*Client)(nil)
+
 func (c *Client) postJSON(ctx context.Context, url string, reqBody any, respBody any) error {
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {

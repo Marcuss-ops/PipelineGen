@@ -25,3 +25,24 @@ type Broker interface {
 	Fail(ctx context.Context, cmd FailCommand) error
 	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
 }
+
+// CompletionPort is the narrow typed port for the artifact-completion
+// wire surface. Forked from Broker (Pattern 0 godlike/06 SSOT discipline:
+// one canonical owner per fact, no inline port declarations scattered
+// across consumers) so tests + future tooling can inject a fake
+// completion port without satisfying the full 9-method Broker surface.
+//
+// Satisfied by:
+//   - *infrastructure/jobs/local.Broker (in-process; delegates to
+//     JobFinalizer.CompleteWithArtifacts via the finalization spine)
+//   - *infrastructure/remote/jobbrokerclient.Client (remote; delegates
+//     to POST /internal/v1/jobs/:id/complete-with-artifacts)
+//
+// The narrowness is load-bearing: a future "/complete-with-artifacts"
+// canonical-spec drift (e.g. an optional field on the typed command)
+// will fail at the *X compile-time pin (`var _ CompletionPort = (*X)(nil)`)
+// across both adapters, surfacing drift as a build failure rather than
+// a runtime panic.
+type CompletionPort interface {
+	CompleteWithArtifacts(ctx context.Context, cmd CompleteWithArtifactsCommand) error
+}
