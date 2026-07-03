@@ -39,7 +39,6 @@ import (
 	"go.uber.org/zap"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 
@@ -83,8 +82,8 @@ const (
 type semanticSearchBackend struct {
 	embeddings  search.EmbeddingChannelRegistry
 	vectorStore assetsearch.VectorStorePort
-	mediaReader mediasearch.MediaReadRepository
-	delivery    mediasearch.AssetDeliveryService
+	mediaReader search.MediaReadRepository
+	delivery    search.AssetDeliveryService
 	log         *zap.Logger
 }
 
@@ -179,17 +178,17 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		// transcript embedder is QDRANT-005 territory.
 		// See mediasearch/ports.go::ChannelTranscript comment.
 		results, err = b.vectorStore.HybridSearch(ctx, assetsearch.HybridSearchRequest{
-			DenseVector:       vec,
-			DenseVectorName:   semanticDenseVectorName,
-			SparseText:        q.Text,
-			SparseVectorName:  semanticSparseVectorName,
-			Limit:             limit,
-			MinScore:          minScore,
-			Source:            filter.Source,
-			Category:          filter.Category,
-			MediaType:         filter.MediaType,
-			Language:          filter.Language,
-			WorkspaceID:       scope.WorkspaceID,
+			DenseVector:      vec,
+			DenseVectorName:  semanticDenseVectorName,
+			SparseText:       q.Text,
+			SparseVectorName: semanticSparseVectorName,
+			Limit:            limit,
+			MinScore:         minScore,
+			Source:           filter.Source,
+			Category:         filter.Category,
+			MediaType:        filter.MediaType,
+			Language:         filter.Language,
+			WorkspaceID:      scope.WorkspaceID,
 		})
 	default: // SearchModeANN (or empty string → ANN)
 		results, err = b.vectorStore.Search(ctx, assetsearch.VectorSearchRequest{
@@ -238,8 +237,8 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 
 	// ── 8. SQLite hydration ────────────────────────────────────
-	ws := mediasearch.WorkspaceContext{WorkspaceID: scope.WorkspaceID}
-	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs, mediasearch.SearchableLifecycleStates)
+	ws := search.Actor{WorkspaceID: scope.WorkspaceID}
+	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs, search.SearchableLifecycleStates)
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: hydrate: %w", err)
 	}

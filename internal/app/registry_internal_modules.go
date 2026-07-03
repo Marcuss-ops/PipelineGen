@@ -24,9 +24,8 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
@@ -96,14 +95,14 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		embeddingReg = newEmbeddingRegistryAdapter(qdrant.NewTextEmbedderAdapter(ollamaEmb), nil)
 	}
 
-	// MediaReadRepository: ClipsRepository → mediasearch.MediaReadRepository
-	var mediaRepo mediasearch.MediaReadRepository
+	// MediaReadRepository: ClipsRepository → search.MediaReadRepository
+	var mediaRepo search.MediaReadRepository
 	if root.Repos != nil {
-		mediaRepo = newMediaSearchReadAdapter(root.Repos.ClipsRepo)
+		mediaRepo = newSearchReadAdapter(root.Repos.ClipsRepo)
 	}
 
 	// Delivery: HMAC Signer for signed asset delivery URLs.
-	var deliveryPort mediasearch.AssetDeliveryService
+	var deliveryPort search.AssetDeliveryService
 	if cfg != nil && cfg.Security.DeliveryHMACSecret != "" {
 		baseURL := cfg.External.VeloxBaseURL
 		if baseURL == "" {
@@ -124,10 +123,10 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	}
 
 	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
-		embeddingReg,          // embeddings: EmbeddingChannelRegistry from Ollama pipeline
-		vectorStoreForSearch,  // vectorStore: Qdrant SearchAdapter from Process bundle
-		mediaRepo,             // mediaRepo: ClipsRepository → MediaReadRepository
-		deliveryPort,          // delivery: HMAC Signer for signed URLs
+		embeddingReg,         // embeddings: EmbeddingChannelRegistry from Ollama pipeline
+		vectorStoreForSearch, // vectorStore: Qdrant SearchAdapter from Process bundle
+		mediaRepo,            // mediaRepo: ClipsRepository → MediaReadRepository
+		deliveryPort,         // delivery: HMAC Signer for signed URLs
 	)
 	_ = searchAgg // for symmetry with pre-PR4 inline pattern; the var stays nil when providerReg is nil
 	wiring.idempotencyHandler = idemHandler

@@ -21,6 +21,15 @@
 // (canonical: timestamp + event_id + body); delivery signs inbound
 // asset delivery URLs (canonical: asset_id + workspace_id + expiry).
 // Both share the principle that signing keys MUST be ≥32 bytes.
+//
+// Tenant identity: BuildAuthorizedURL consumes `WorkspaceContext`
+// (a Go-level alias of `search.Actor` — see workspace.go). Per
+// godlike/06 SSOT, the canonical tenant envelope lives in
+// `internal/application/search/types.go::Actor`; the type alias
+// keeps this package's preferred name without re-declaring the
+// struct. Cross-package layering (Wave 19): infra → application
+// is the canonical GateDirection; the inverse is intentional NOT
+// done.
 package delivery
 
 import (
@@ -35,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 
 // ErrExpired is returned when the URL expiry is in the past.
@@ -49,9 +58,9 @@ var ErrInvalidSignature = errors.New("delivery: signature mismatch")
 // is fewer than 32 bytes. Comment in NewSigner explains why.
 var ErrSecretTooShort = errors.New("delivery: secret must be at least 32 bytes")
 
-// Signer is the production AssetDeliveryService. Construct via
-// NewSigner, then register it as the concrete application/
-// mediasearch.AssetDeliveryService at the composition root.
+// Signer is the production search.AssetDeliveryService. Construct
+// via NewSigner, then register it as the concrete
+// `search.AssetDeliveryService` at the composition root.
 type Signer struct {
 	secret  []byte
 	ttl     time.Duration
@@ -93,7 +102,17 @@ func NewSigner(secret []byte, ttl time.Duration, baseURL, path string) (*Signer,
 
 // BuildAuthorizedURL mints a signed delivery URL. It is safe to call
 // concurrently; the secret is read-only.
-func (s *Signer) BuildAuthorizedURL(ctx context.Context, workspace mediasearch.WorkspaceContext, assetID string) (string, error) {
+//
+// Commit 3-B migration (July 2026): the parameter type switched
+// from `mediasearch.WorkspaceContext{WorkspaceID, ProjectID, PrincipalID, IsAdmin}`
+// to the canonical `search.Actor{WorkspaceID, UserID, IsAdmin}`
+// surfaces here as the local alias `WorkspaceContext` (a Go-level
+// pointer alias). ProjectID is dropped because the canonical
+// search capability does not carry project scoping per godlike/06;
+// PrincipalID was renamed to UserID at the canonical surface
+// (callers that previously set PrincipalID via the legacy struct
+// will be migrated inline as the legacy package is deleted).
+func (s *Signer) BuildAuthorizedURL(ctx context.Context, workspace WorkspaceContext, assetID string) (string, error) {
 	if s == nil {
 		return "", errors.New("delivery: signer is nil")
 	}
@@ -166,5 +185,6 @@ func canonicalPayload(assetID, workspaceID string, exp int64) string {
 }
 
 // Compile-time assertion: production Signer satisfies the canonical
-// application-layer port. Drift is caught at compile, not on first HTTP.
-var _ mediasearch.AssetDeliveryService = (*Signer)(nil)
+// search.AssetDeliveryService port. Drift is caught at compile, not
+// on first HTTP.
+var _ search.AssetDeliveryService = (*Signer)(nil)

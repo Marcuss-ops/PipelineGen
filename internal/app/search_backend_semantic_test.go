@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 
@@ -60,7 +59,7 @@ type mockVectorStore struct {
 	hybRes        []assetsearch.VectorSearchResult
 	err           error
 	lastHybridReq *assetsearch.HybridSearchRequest // captured for inspection
-	lastAnnReq    *assetsearch.VectorSearchRequest  // captured for inspection
+	lastAnnReq    *assetsearch.VectorSearchRequest // captured for inspection
 }
 
 func (m *mockVectorStore) Search(_ context.Context, req assetsearch.VectorSearchRequest) ([]assetsearch.VectorSearchResult, error) {
@@ -74,11 +73,11 @@ func (m *mockVectorStore) HybridSearch(_ context.Context, req assetsearch.Hybrid
 }
 
 type mockMediaReader struct {
-	assets []mediasearch.MediaAsset
+	assets []search.MediaAsset
 	err    error
 }
 
-func (m *mockMediaReader) GetMany(_ context.Context, _ mediasearch.WorkspaceContext, _ []string, _ []string) ([]mediasearch.MediaAsset, error) {
+func (m *mockMediaReader) GetMany(_ context.Context, _ search.Actor, _ []string, _ []string) ([]search.MediaAsset, error) {
 	return m.assets, m.err
 }
 
@@ -87,7 +86,7 @@ type mockDelivery struct {
 	err  error
 }
 
-func (m *mockDelivery) BuildAuthorizedURL(_ context.Context, _ mediasearch.WorkspaceContext, assetID string) (string, error) {
+func (m *mockDelivery) BuildAuthorizedURL(_ context.Context, _ search.Actor, assetID string) (string, error) {
 	if m.err != nil {
 		return "", m.err
 	}
@@ -118,7 +117,7 @@ func TestSemanticBackendANN(t *testing.T) {
 		},
 	}
 	mr := &mockMediaReader{
-		assets: []mediasearch.MediaAsset{
+		assets: []search.MediaAsset{
 			{ID: "asset-1", Name: "Clip A", MediaType: "video", Source: "youtube"},
 		},
 	}
@@ -176,7 +175,7 @@ func TestSemanticBackendHybrid(t *testing.T) {
 		},
 	}
 	mr := &mockMediaReader{
-		assets: []mediasearch.MediaAsset{
+		assets: []search.MediaAsset{
 			{ID: "hyb-1", Name: "Hybrid Hit", MediaType: "video"},
 		},
 	}
@@ -264,7 +263,7 @@ func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 		},
 	}
 	mr := &mockMediaReader{
-		assets: []mediasearch.MediaAsset{
+		assets: []search.MediaAsset{
 			{ID: "ws-1", Name: "WS Asset"},
 		},
 	}
@@ -311,7 +310,7 @@ func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 	}
 	// Only return the ACTIVE asset — the deleted one is absent.
 	mr := &mockMediaReader{
-		assets: []mediasearch.MediaAsset{
+		assets: []search.MediaAsset{
 			{ID: "active-1", Name: "Active Asset", LifecycleState: "ACTIVE"},
 		},
 	}
@@ -350,7 +349,7 @@ func TestSemanticBackendFiltersMediaType(t *testing.T) {
 		},
 	}
 	mr := &mockMediaReader{
-		assets: []mediasearch.MediaAsset{
+		assets: []search.MediaAsset{
 			{ID: "img-1", Name: "Image Asset", MediaType: "image"},
 		},
 	}
@@ -358,9 +357,9 @@ func TestSemanticBackendFiltersMediaType(t *testing.T) {
 	b := newSemanticBackend(reg, vs, mr, del)
 
 	q := search.Query{
-		Text:  "sunset",
-		Mode:  search.SearchModeANN,
-		Limit: 5,
+		Text:    "sunset",
+		Mode:    search.SearchModeANN,
+		Limit:   5,
 		Filters: search.Filters{MediaType: "image"},
 	}
 	candidates, err := b.Search(context.Background(), q)

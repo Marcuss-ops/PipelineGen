@@ -39,9 +39,8 @@ import (
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
@@ -171,12 +170,19 @@ func (b *localSearchBackend) Search(ctx context.Context, q search.Query) ([]sear
 	return b.searchByText(ctx, q)
 }
 
-// searchByHash answers the PR-2 hash-match Query path. Each row
-// carries the asset-shape projection (LocalPath + DriveLink +
-// ThumbnailURL) so the FindDuplicates handler can render
-// duplicates without a second DB lookup. Score = 1.0 because a
-// deterministic MD5 match has no semantic scoring; the canonical
-// 4-key dedup will merge collisions in the aggregator.
+// searchByHash answers the PR-2 hash-match Query path. Score = 1.0
+// because a deterministic MD5 match has no semantic scoring; the
+// canonical 4-key dedup will merge collisions in the aggregator.
+//
+// QDRANT-004 invariant (Commit 3-A lockdown): search.Candidate
+// carries NO server-internal locator (no LocalPath, no DriveLink,
+// no RawDriveFileID). The Hash + AssetID + ThumbnailURL fields
+// are the surface shipped to FindDuplicates; the operator/admin
+// surfaces that legitimately need {LocalPath, DriveLink} consume
+// duplicates.DuplicateMatch from
+// internal/application/assets/duplicates/types.go (the canonical
+// owner per godlike/06 one-owner-per-fact) — same discipline as
+// searchByText below.
 func (b *localSearchBackend) searchByHash(ctx context.Context, q search.Query) ([]search.Candidate, error) {
 	hits, err := b.repo.FindClipsByHash(ctx, q.Hash)
 	if err != nil {
@@ -185,14 +191,11 @@ func (b *localSearchBackend) searchByHash(ctx context.Context, q search.Query) (
 	out := make([]search.Candidate, 0, len(hits))
 	for _, clip := range hits {
 		out = append(out, search.Candidate{
-			AssetID:      clip.ID,
-			Source:       string(clip.Source),
-			SourceRef:    clip.ID,
-			MediaType:    string(clip.MediaType),
-			Title:        clip.Name,
+			AssetID:   clip.ID,
+			Source:    string(clip.Source),
+			SourceRef: clip.ID,
+			MediaType: string(clip.MediaType), Title: clip.Name,
 			Name:         clip.Name,
-			LocalPath:    clip.LocalPath(),
-			DriveLink:    clip.DriveLink(),
 			ThumbnailURL: clip.ThumbnailURL,
 			Score:        1.0,
 			Hash:         q.Hash,
@@ -223,12 +226,12 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 	// SQL filter is a no-op until a future migration lands — the
 	// DTO shape stays uniform so the Migration is wire-stable.
 	req := assetpkg.AdvancedSearchRequest{
-		Q:         q.Text,
-		Limit:     limit,
-		Source:    sourceOrAll(q.Filters.Source),
-		Category:  strings.TrimSpace(q.Filters.Category),
-		Language:  strings.TrimSpace(q.Filters.Language),
-		Tags:      append([]string(nil), q.Filters.Tags...),
+		Q:        q.Text,
+		Limit:    limit,
+		Source:   sourceOrAll(q.Filters.Source),
+		Category: strings.TrimSpace(q.Filters.Category),
+		Language: strings.TrimSpace(q.Filters.Language),
+		Tags:     append([]string(nil), q.Filters.Tags...),
 	}
 	res, err := b.repo.SearchClipsAdvanced(ctx, req)
 	if err != nil {
@@ -257,6 +260,14 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 			// signal can fire from a non-zero query filter.
 			MinDuration: q.Filters.DurationMsMin,
 		}
+		// QDRANT-004 invariant: search.Candidate carries NO
+		// server-internal locator (the canonical candidate shape
+		// was collapsed during Commit 3-A). When FindDuplicates/
+		// operator surfaces need {LocalPath, DriveLink}, they
+		// consume duplicates.DuplicateMatch from
+		// internal/application/assets/duplicates/types.go (the
+		// canonical owner) — see the dedicated surface added in
+		// Phase 7 P0 follow-ups.
 		out = append(out, search.Candidate{
 			AssetID:      clip.ID,
 			Source:       string(clip.Source),
@@ -264,8 +275,6 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 			Title:        clip.Name,
 			Name:         clip.Name,
 			MediaType:    string(clip.MediaType),
-			LocalPath:    clip.LocalPath(),
-			DriveLink:    clip.DriveLink(),
 			ThumbnailURL: clip.ThumbnailURL,
 			Score:        search.LocalScore(sig, q),
 		})
@@ -305,10 +314,10 @@ type SearchBackendBuildOpts struct {
 	// when zero (the semantic backend gracefully skips
 	// registration per Wave 19 invariant — Aggregator falls back
 	// to provider + local backends).
-	Embeddings   search.EmbeddingChannelRegistry
-	VectorStore  assetsearch.VectorStorePort
-	MediaRepo    mediasearch.MediaReadRepository
-	Delivery     mediasearch.AssetDeliveryService
+	Embeddings  search.EmbeddingChannelRegistry
+	VectorStore assetsearch.VectorStorePort
+	MediaRepo   search.MediaReadRepository
+	Delivery    search.AssetDeliveryService
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,
