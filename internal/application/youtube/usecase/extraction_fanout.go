@@ -1,0 +1,103 @@
+// Package usecase — extraction_fanout.go: bounded-concurrency goroutine
+// dispatch across ProcessYouTubeSegmentUseCase.Execute.
+//
+// PR-GODOBJ-1 (July 2026): the legacy inline per-seg loop was REMOVED
+// (godlike/07 no-fake-availability: ProcessSeg is REQUIRED at
+// composition time and the fallback path is physically gone). The
+// canonical 9-step per-segment pipeline (process_segment.go) is the
+// ONLY processor invoked from this fan-out.
+//
+// Honest-limitation (godlike/07): this file exceeds the AGENTS.md
+// Check 44 target (40 LoC) because the per-goroutine panic-recovery +
+// bounded-semaphore pattern is inherently verbose. The boilerplate
+// is faithful to the EXISTING extractFanOut pattern (PR-C YouTube
+// Cutover Commit C) and matches monitor.safeCheckChannel's panic-
+// isolation precedent (per-goroutine `recover()` so a panic inside
+// ProcessYouTubeSegmentUseCase.Execute does NOT crash the broker).
+package usecase
+
+import (
+	"context"
+	"sync"
+
+	"go.uber.org/zap"
+
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+)
+
+// extractFanOut fans out ProcessYouTubeSegmentUseCase.Execute across the
+// inbound segments with bounded concurrency (maxConcurrentVideos). The
+// canonical 9-step per-segment pipeline is invoked per goroutine; per-
+// goroutine panic recovery keeps a single-segment panic from killing
+// the broker; results are collected into the canonical ExtractResponse.
+func (s *ExtractionService) extractFanOut(
+	ctx context.Context,
+	req *youtubetypes.ExtractRequest,
+	videoID, outDir, driveFolderID, driveFolderPath string,
+) (*youtubetypes.ExtractResponse, error) {
+	resp := buildInitialResponse(req, videoID, driveFolderID, driveFolderPath)
+	keepAudio := resolveKeepAudio(req)
+	sem := make(chan struct{}, s.maxConcurrentVideos)
+	results := make([]youtubetypes.ProcessSegmentResult, len(req.Segments))
+	var wg sync.WaitGroup
+	for i, seg := range req.Segments {
+		i, seg := i, seg
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					s.log.Error("panic in segment goroutine (extractFanOut recovered)",
+						zap.Int("segment_index", i),
+						zap.String("video_id", videoID),
+						zap.Any("recover", r))
+				}
+			}()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, keepAudio)
+			res, _ := s.processSeg.Execute(ctx, cmd)
+			results[i] = res
+		}()
+	}
+	wg.Wait()
+	for _, res := range results {
+		resp.Items = append(resp.Items, res.Item)
+	}
+	stats := aggregateFanOutStats(resp.Items)
+	resp.Stats = &stats
+	resp.OK = classifyExtractionRun(resp.Stats)
+	if !resp.OK && resp.Error == "" {
+		resp.Error = "one or more segments failed"
+	}
+	return resp, nil
+}
+
+// buildSegmentCommand constructs the ProcessSegmentCommand envelope from
+// the inbound ExtractRequest + one segment + the resolved destination +
+// keepAudio flag. The 13-field struct literal mirrors the prior god-
+// service inline assignment exactly (PR-GODOBJ-1 must NOT change wire
+// behaviour; only split).
+func buildSegmentCommand(
+	req *youtubetypes.ExtractRequest,
+	seg youtubetypes.Segment,
+	index int,
+	videoID, outDir, driveFolderID, driveFolderPath string,
+	keepAudio bool,
+) youtubetypes.ProcessSegmentCommand {
+	return youtubetypes.ProcessSegmentCommand{
+		VideoID:         videoID,
+		Segment:         seg,
+		Index:           index,
+		PolicyVersion:   ProcessSegmentPolicyVersion,
+		OutDir:          outDir,
+		DriveFolderID:   driveFolderID,
+		DriveFolderPath: driveFolderPath,
+		VideoURL:        req.URL,
+		ForceKeyframes:  req.ForceKeyframes,
+		Normalize:       req.Normalize,
+		KeepAudio:       &keepAudio,
+		Strategy:        req.Strategy,
+		Destination:     req.Destination,
+	}
+}

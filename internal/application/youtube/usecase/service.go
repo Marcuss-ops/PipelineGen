@@ -67,19 +67,16 @@ type ServiceDeps struct {
 	FolderMemory youtubeports.FolderMemoryPort
 	Ollama       youtubeports.OllamaClientPort
 
-	// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the canonical
-	// ProcessYouTubeSegmentUseCase constructed at composition time
-	// and threaded into NewExtractionService via ExtractionDeps.ProcessSeg.
-	// Required: ExtractionService.Extract fans out through this use
-	// case when non-nil; when nil, the legacy inline loop runs (the
-	// pre-Commit-1 fallback). Post-Commit-H (legacy DELETE), the nil
-	// fallback will be removed and ProcessSeg will be required at
-	// the composition root. For now we keep the optional shape so
-	// tests that drive the legacy inline path keep compiling.
-	//
-	// Composition (build_bundles_domain.go) constructs this from
-	// the canonical ClipCacheAdapter + ClipAtomicWriterAdapter pair
-	// introduced in Commit 1.
+	// PR-GODOBJ-1 (July 2026): REQUIRED via panic fail-closed in
+	// NewExtractionService (godlike/07 no-fake-availability).
+	// Composition (build_bundles_domain.go) must wire
+	// ProcessYouTubeSegmentUseCase — a nil wiring triggers a
+	// ctor-panic that surfaces the missing port at boot. The
+	// legacy inline per-seg loop was physically removed in
+	// PR-GODOBJ-1 (the previous Commit 1/6 "Post-Commit-H
+	// removal" ratchet is now realized). Concrete wiring:
+	// build_bundles_domain.go constructs ProcessSeg from
+	// canonical ClipCacheAdapter + ClipAtomicWriterAdapter.
 	ProcessSeg *ProcessYouTubeSegmentUseCase
 }
 
@@ -211,11 +208,10 @@ func NewService(deps ServiceDeps) *Service {
 		AssetDestResolver: deps.AssetDestResolver,
 		FolderMemory:      deps.FolderMemory,
 		SegmentsSvc:       svc.segSvc,
-		// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): when ProcessSeg
-		// is non-nil the canonical fan-out runs through
-		// ProcessYouTubeSegmentUseCase (9-step pipeline + ClipAtomicWriter
-		// commit per commit F). When nil, ExtractionService.Extract falls
-		// back to the legacy inline loop — slated for removal in Commit H.
+		// PR-GODOBJ-1 (July 2026): REQUIRED. NewExtractionService
+		// panics if ProcessSeg is nil (godlike/07 fail-closed;
+		// legacy inline loop PHYSICALLY removed). Composition MUST
+		// wire ProcessYouTubeSegmentUseCase.
 		ProcessSeg:          deps.ProcessSeg,
 		MaxConcurrentVideos: deps.Cfg.MaxConcurrentVideoExtracts,
 	}, svc)
