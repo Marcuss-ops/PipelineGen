@@ -111,6 +111,38 @@ type IndexSchema struct {
 	PayloadIndexes []PayloadIndexSpec `json:"payload_indexes,omitempty"`
 }
 
+// DeepCopy returns a deep copy of the IndexSchema suitable for mutation
+// without affecting the original. All slices are allocated fresh; scalar
+// fields are value-copied. EmbeddingSpec, SparseSpec, and PayloadIndexSpec
+// are value types so struct copies are sufficient.
+//
+// PR #11 (July 2026): the SchemaRegistry now returns DeepCopy'd schemas
+// from Resolve() so post-boot callers cannot mutate the registry's
+// internal canonical instances.
+func (s *IndexSchema) DeepCopy() *IndexSchema {
+	if s == nil {
+		return nil
+	}
+	c := &IndexSchema{
+		Version:      s.Version,
+		PhysicalName: s.PhysicalName,
+		RuntimeAlias: s.RuntimeAlias,
+	}
+	if len(s.DenseVectors) > 0 {
+		c.DenseVectors = make([]EmbeddingSpec, len(s.DenseVectors))
+		copy(c.DenseVectors, s.DenseVectors)
+	}
+	if len(s.SparseVectors) > 0 {
+		c.SparseVectors = make([]SparseSpec, len(s.SparseVectors))
+		copy(c.SparseVectors, s.SparseVectors)
+	}
+	if len(s.PayloadIndexes) > 0 {
+		c.PayloadIndexes = make([]PayloadIndexSpec, len(s.PayloadIndexes))
+		copy(c.PayloadIndexes, s.PayloadIndexes)
+	}
+	return c
+}
+
 // CanonicalName derives the deterministic physical collection name. Exported for cross-package access.
 func (s *IndexSchema) CanonicalName() string { return s.physicalName() }
 

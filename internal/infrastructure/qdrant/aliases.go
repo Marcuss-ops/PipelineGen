@@ -103,7 +103,13 @@ var NewCollectionManager = collections.NewCollectionManager
 type ReindexVerifier = verification.ReindexVerifier
 type SchemaRegistry = verification.SchemaRegistry
 
-var DefaultSchemaRegistry = verification.DefaultSchemaRegistry
+// ResolveSchema resolves a registered schema version and returns a deep
+// copy. Empty version defaults to "v3". PR #11 (July 2026): replaces
+// the former mutable var DefaultSchemaRegistry.
+var ResolveSchema = verification.ResolveSchema
+var MustResolveSchema = verification.MustResolveSchema
+var RegisteredVersions = verification.RegisteredVersions
+
 var NewReindexVerifier = verification.NewReindexVerifier
 
 // ── maintenance ──────────────────────────────────────────────────────
