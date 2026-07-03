@@ -50,11 +50,11 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 		// the outer 5-second cap in step 4 still bounds total cleanup
 		// latency. context.Background() is intentional because the
 		// parent ctx was just cancelled in step 1.
-		//
-		// FASE 3.8: error path is unreachable in production (Background
-		// never cancels), but the return value is consumed defensively
-		// for future migration if a parent ctx is ever honored here.
 		const settleDrainTimeout = 100 * time.Millisecond
+		// FASE 3.8: error path is unreachable in production (Background
+		// never cancels); _ = is intentional for future migration if a
+		// parent ctx is ever honored here. See Commit 2 audit-trail
+		// notes for the broader pre-existing-breakage context.
 		_ = retry.Sleep(context.Background(), settleDrainTimeout, retry.Options{})
 
 		// 3. Stop services in parallel
