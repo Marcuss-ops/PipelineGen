@@ -178,7 +178,7 @@ func WireArtlist(
 		NodeScraperDir: cfg.External.NodeScraperDir,
 		CfgPort:        newArtlistConfigAdapter(cfg),
 		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },
-		ModuleOpts:     nil,
+		ModuleOpts: nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
 		Logger:         log,
 	})
 	if err != nil {
@@ -201,4 +201,17 @@ func WireArtlist(
 		zap.Bool("godlike_06_ssot", true),
 	)
 	return &ArtlistWiring{Module: ad.Module, Service: ad.Service}, nil
+}
+
+// WireArtlistJobBindings registers the Artlist job handler with the jobs dispatcher.
+// Extracted from WireArtlist so the late-binding has a dedicated composition surface
+// (mirrors wireYoutubeCatalogJobBindings precedent in build_bundles_youtube.go).
+func WireArtlistJobBindings(artlistSvc *artlistPkg.Service, jobsBundle *JobsBundle) error {
+	if artlistSvc == nil {
+		return fmt.Errorf("WireArtlistJobBindings: artlistSvc is nil")
+	}
+	if jobsBundle == nil || jobsBundle.Service == nil {
+		return fmt.Errorf("WireArtlistJobBindings: jobsBundle.Service is nil")
+	}
+	return artlistSvc.RegisterHandler(jobsBundle.Service)
 }

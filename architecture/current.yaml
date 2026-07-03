@@ -2740,6 +2740,17 @@ wave_status:
       status: shipped
       deadline: 2026-07-03
     - id: PR-DRIVE-008-CONTRACT
+
+    - id: PR-COMPOSITION-MODULE-OPTS
+      owner_capability: "internal/app/build_bundles_artlist.go (ModuleOpts field of types.NewService deps) + internal/api/assets/artlist/module.go::Build(Dependencies{...})"
+      status: pending
+      deadline: 2026-08-15
+      introduced_by: "chore(ci): Check 55 forward-pointer marker + linked_issue cross-ref enforcement gate (rotate to fix8 here)"
+    - id: PR-COMPOSITION-REGISTRY-LIVE-WIRE
+      owner_capability: "internal/app/wire_services.go (Registry field of initCompositionMinimal AppDeps) + internal/app/composition.go root pattern"
+      status: pending
+      deadline: 2026-08-15
+      introduced_by: "chore(ci): Check 55 forward-pointer marker + linked_issue cross-ref enforcement gate (rotate to fix9 here)"
       owner_capability: internal/app + internal/infrastructure/drive + internal/application/clips + internal/application/assets/sourcing
       status: pending
       deadline: 2026-Q4
