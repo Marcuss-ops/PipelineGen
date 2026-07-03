@@ -228,6 +228,33 @@ func (s *Service) HasHandler(jobType string) bool {
 	return ok
 }
 
+// ValidateHandlerCompleteness checks that every job type registered in
+// the canonical Registry has a handler bound to the Dispatcher. Returns
+// nil when every job type is consumable; returns an error listing the
+// first missing handler when a registration gap is detected.
+//
+// §15.9 (July 2026): the voiceover parent-child fan-out pair is the
+// canonical trigger — when voiceover.generate_item has no handler, the
+// server MUST NOT start because the parent's fan-out creates child jobs
+// that can never be executed. ValidateHandlerCompleteness is the gate
+// the composition root calls before Freeze().
+//
+// Nil-tolerant: nil receiver, nil dispatcher, and nil registry all
+// return nil (the belt-and-suspenders check runs later, after the
+// composition root has wired both).
+func (s *Service) ValidateHandlerCompleteness(reg *Registry) error {
+	if s == nil || s.dispatcher == nil || reg == nil {
+		return nil
+	}
+	handlers := s.dispatcher.AllHandlers()
+	for _, jobType := range reg.AllTypes() {
+		if _, ok := handlers[jobType]; !ok {
+			return fmt.Errorf("job.Service.ValidateHandlerCompleteness: job type %q is registered in the canonical Registry but has NO handler bound to the Dispatcher — the server MUST NOT start with a consumable-type-without-handler gap (§15.9 registrazione incompleta)", jobType)
+		}
+	}
+	return nil
+}
+
 // validateEnqueueRequest checks the domain EnqueueRequest for common errors.
 func validateEnqueueRequest(req *job.EnqueueRequest) error {
 	if req == nil {
