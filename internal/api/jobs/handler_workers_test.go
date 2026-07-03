@@ -15,6 +15,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
 
 // Compile-time pins (godlike/06 SSOT discipline): the stubs
@@ -112,13 +113,27 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath(t *testing.T) {
 	stub := &stubBroker{}
 	engine := newTestEngine(stub, &stubAssetTransfer{})
 
+	// P0-COMPL-5-WIRE-NAMING: the wire body now ships a typed
+	// StagedArtifacts slice (3-field minimum: ArtifactID + Destination +
+	// optional SHA256 hint) instead of an opaque ArtifactManifest
+	// (json.RawMessage). The handler marshals it back to JSON bytes
+	// (cmd.StagedArtifacts is still json.RawMessage for worker-side
+	// byte-stability with the legacy finalizer pipeline).
+	stagedRefs := []*remote.StagedArtifactReference{
+		{ArtifactID: "art-1", Destination: "image", SHA256: "sha-art-1"},
+		{ArtifactID: "art-2", Destination: "image", SHA256: "sha-art-2"},
+	}
+	wantStagedBytes, marshalErr := json.Marshal(stagedRefs)
+	if marshalErr != nil {
+		t.Fatalf("marshal stagedRefs: %v", marshalErr)
+	}
 	body := CompleteArtifactsRequest{
 		WorkerID:         "worker-1",
 		WorkerSessionID:  "session-1",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 7,
 		ResultData:       json.RawMessage(`{"hello":"world"}`),
-		ArtifactManifest: json.RawMessage(`[{"artifact_id":"art-1","kind":"image/png"},{"artifact_id":"art-2","kind":"image/png"}]`),
+		StagedArtifacts:  stagedRefs,
 		OutboxEvents:     json.RawMessage(`[]`),
 	}
 	raw, err := json.Marshal(body)
@@ -170,8 +185,8 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath(t *testing.T) {
 	if stub.lastCmd.ExpectedRevision != body.ExpectedRevision {
 		t.Errorf("ExpectedRevision: got %d want %d", stub.lastCmd.ExpectedRevision, body.ExpectedRevision)
 	}
-	if !bytes.Equal(stub.lastCmd.PublishedArtifacts, body.ArtifactManifest) {
-		t.Errorf("PublishedArtifacts byte-mismatch:\n got: %s\nwant: %s", stub.lastCmd.PublishedArtifacts, body.ArtifactManifest)
+	if !bytes.Equal(stub.lastCmd.StagedArtifacts, wantStagedBytes) {
+		t.Errorf("StagedArtifacts byte-mismatch:\n got: %s\nwant: %s", stub.lastCmd.StagedArtifacts, wantStagedBytes)
 	}
 	if !bytes.Equal(stub.lastCmd.OutboxEvents, body.OutboxEvents) {
 		t.Errorf("OutboxEvents byte-mismatch:\n got: %s\nwant: %s", stub.lastCmd.OutboxEvents, body.OutboxEvents)
@@ -216,7 +231,7 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_BrokerErr(t *testing.T) {
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
 		ResultData:       json.RawMessage(`{}`),
-		ArtifactManifest: json.RawMessage(`[]`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
 		OutboxEvents:     nil,
 	}
 	raw, _ := json.Marshal(body)
@@ -260,6 +275,9 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_URLIsCanonicalJobIDSource(t 
 
 	// Body deliberately contains a stray `job_id` field that
 	// the typed DTO does NOT have — gin will silently drop it.
+	// P0-COMPL-5-WIRE-NAMING: wire key `staged_artifacts` (typed
+	// StagedArtifactReference slice), NOT `artifact_manifest` (opaque
+	// json.RawMessage).
 	payload := []byte(`{
 		"worker_id": "w",
 		"worker_session_id": "s",
@@ -267,7 +285,7 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_URLIsCanonicalJobIDSource(t 
 		"lease_id": "l",
 		"expected_revision": 3,
 		"result_data": {},
-		"artifact_manifest": []
+		"staged_artifacts": []
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/CANONICAL-FROM-URL/complete-with-artifacts", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")

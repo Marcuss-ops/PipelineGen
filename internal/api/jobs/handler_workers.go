@@ -19,6 +19,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -30,6 +31,7 @@ import (
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -200,9 +202,21 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 
 // CompleteArtifactsRequest is the typed HTTP-in DTO for
 // POST /internal/v1/jobs/:id/complete-with-artifacts. It mirrors
-// appjobs.CompleteWithArtifactsCommand but exposes ArtifactManifest
-// (the published artifact catalog submitted by the remote worker)
-// under an HTTP-friendly field name.
+// appjobs.CompleteWithArtifactsCommand but exposes StagedArtifacts
+// (the pre-publish artifact reference catalog submitted by the
+// caller) under the canonical wire-field name.
+//
+// P0-COMPL-5-WIRE-NAMING (July 2026): the wire field was renamed
+// ArtifactManifest → StagedArtifacts. The HTTP wire now ships the
+// pre-publish StagedArtifactReference envelope (3-field minimum:
+// ArtifactID + Destination + optional SHA256 hint) instead of the
+// pre-published bytes convention. The Sender is responsible for
+// converting StagedArtifactReference → PublishedArtifact (canonical
+// 7-field envelope with Drive FileID/link/checksum) post-publish,
+// per the PublishAndCompleteUseCase surface at
+// internal/application/jobs/completion/publish_and_complete_use_case.go
+// (the EXPAND-phase canonical; handler-wiring to the use case is
+// the BACKFILL phase, forward-pointer TODO(P0-COMPL-5-HANDLER-WIRE)).
 //
 // CRITICAL CONTRACT (godlike/07 no-fake-availability): the body
 // MUST NOT contain local Creator paths. The asset transport
@@ -213,17 +227,18 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 // review (CI Check 53 on the production tree enforces the
 // structural shape).
 type CompleteArtifactsRequest struct {
-	WorkerID         string          `json:"worker_id"`
-	WorkerSessionID  string          `json:"worker_session_id"`
-	LeaseID          string          `json:"lease_id"`
-	ExpectedRevision int             `json:"expected_revision"`
+	WorkerID         string `json:"worker_id"`
+	WorkerSessionID  string `json:"worker_session_id"`
+	LeaseID          string `json:"lease_id"`
+	ExpectedRevision int    `json:"expected_revision"`
 	ResultData       json.RawMessage `json:"result_data"`
-	// ArtifactManifest is the JSON-serialised slice of published
-	// artifacts (the worker's authoritative catalog before the
-	// atomic finalisation transaction). The broker deserialises
-	// this into finalization.PublishedArtifact slice and passes
-	// to the JobFinalizer spine.
-	ArtifactManifest json.RawMessage `json:"artifact_manifest"`
+	// StagedArtifacts is the canonical pre-publish reference slice
+	// (P0-COMPL-5-WIRE-NAMING, July 2026). The caller ships the
+	// minimum identifier envelope (ArtifactID + Destination + SHA256
+	// hint); the Sender converts each reference to a canonical
+	// PublishedArtifact envelope (Drive FileID/link/checksum +
+	// Location populated by the prepare pipeline).
+	StagedArtifacts []*remote.StagedArtifactReference `json:"staged_artifacts"`
 	// OutboxEvents is optional; mirror of CompleteWithArtifactsCommand.
 	OutboxEvents json.RawMessage `json:"outbox_events,omitempty"`
 }
@@ -268,15 +283,27 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
+	// P0-COMPL-5-WIRE-NAMING: marshal the typed StagedArtifacts slice
+	// to canonical JSON bytes for the cmd field (which is still
+	// json.RawMessage for the worker-side pipeline byte-stability). The
+	// canonical envelope conversion (StagedArtifactReference → PublishedArtifact
+	// with Drive FileID/link/checksum post-publish) is the future BACKFILL
+	// phase via PublishAndCompleteUseCase.Execute (forward-pointer
+	// TODO(P0-COMPL-5-HANDLER-WIRE)).
+	stagedBytes, marshalErr := json.Marshal(req.StagedArtifacts)
+	if marshalErr != nil {
+		apiutil.BadRequest(c, fmt.Sprintf("staged_artifacts marshal: %v", marshalErr))
+		return
+	}
 	cmd := appjobs.CompleteWithArtifactsCommand{
-		WorkerID:           req.WorkerID,
-		WorkerSessionID:    req.WorkerSessionID,
-		JobID:              c.Param("id"),
-		LeaseID:            req.LeaseID,
-		ExpectedRevision:   req.ExpectedRevision,
-		ResultData:         req.ResultData,
-		PublishedArtifacts: req.ArtifactManifest,
-		OutboxEvents:       req.OutboxEvents,
+		WorkerID:         req.WorkerID,
+		WorkerSessionID:  req.WorkerSessionID,
+		JobID:            c.Param("id"),
+		LeaseID:          req.LeaseID,
+		ExpectedRevision: req.ExpectedRevision,
+		ResultData:       req.ResultData,
+		StagedArtifacts:  stagedBytes,
+		OutboxEvents:     req.OutboxEvents,
 	}
 	if err := h.broker.CompleteWithArtifacts(c.Request.Context(), cmd); err != nil {
 		// P1 #15 (July 2026): the complete-with-artifacts path
