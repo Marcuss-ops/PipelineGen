@@ -3267,3 +3267,139 @@ audit:
       remaining call sites still reference it through typed ports.
       Retirement of the type declaration happens when all 4 sites
       are migrated (P0.4 CONTRACT).
+
+  # ───────────────────────────────────────────────────────────────────────
+  # 21. DRIVE-008 — Legacy drive upload seam retired to fail-closed stubs.
+  #   clips.ClipDriveUploaderPort.UploadFile +
+  #   clips.ClipDriveUploaderPort.UploadFileWithDescription +
+  #   sourcing.DrivePort.UploadFileWithDescription are the bypass
+  #   upload surface that called drive.Admin.UploadFile* directly,
+  #   skipping delivery.Publisher.Publish. DRIVE-008 (July 2026):
+  #   CUTOVER phase — the 3 methods become fail-closed stubs that
+  #   return drive.ErrLegacySurfaceRetired (errors.Is compatible)
+  #   on every invocation. The canonical upload path is
+  #   delivery.Publisher.Publish(ctx, PublishRequest{...}). Per
+  #   godlike/07 §"No fake availability", the legacy seam is loud at
+  #   runtime, not silently translated to a 200 OK; no bypass path
+  #   survives between the application layer and Drive.
+  # ─────────────────────────────────────────────────────────────────
+  - id: DRIVE-008
+    owner_capability: internal/app (composition root) + internal/infrastructure/drive + internal/application/clips + internal/application/assets/sourcing
+    exact_symbol: |
+      (a) clips.ClipDriveUploaderPort.UploadFile (clip-handler-side typed
+          port method) — declared at internal/application/clips/
+          ports.go:174, implemented at internal/app/clips_adapters_
+          drive.go::(*clipsDriveAdapter).UploadFile.
+      (b) clips.ClipDriveUploaderPort.UploadFileWithDescription
+          (clip-handler-side typed port method with description
+          metadata) — declared at internal/application/clips/
+          ports.go:175, implemented at internal/app/clips_adapters_
+          drive.go::(*clipsDriveAdapter).UploadFileWithDescription.
+      (c) sourcing.DrivePort.UploadFileWithDescription (sourcing
+          composition-root adapter method) — declared at internal/
+          application/assets/sourcing/ports.go:52, implemented at
+          internal/app/assets_register_adapters.go::(*
+          sourcingDriveAdapter).UploadFileWithDescription.
+    file: |
+      internal/application/clips/ports.go (interface declaration) +
+      internal/app/clips_adapters_drive.go (concrete adapter) +
+      internal/application/assets/sourcing/ports.go (interface declaration) +
+      internal/app/assets_register_adapters.go (concrete adapter) +
+      internal/infrastructure/drive/errors.go (new sentinel declaration)
+    file_line: |
+      clips/ports.go:174-175 (interface signatures) +
+      clips_adapters_drive.go:62-72 (UploadFile stub) +
+      clips_adapters_drive.go:74-83 (UploadFileWithDescription stub) +
+      sourcing/ports.go:52 (interface signature) +
+      assets_register_adapters.go:196-205 (sourcingDriveAdapter stub) +
+      drive/errors.go (var ErrLegacySurfaceRetired declaration).
+    replacement: |
+      (a) All Drive file uploads via delivery.Publisher.Publish (canonical
+          Pattern 0 port). Single call shape independent of caller
+          capability — composition roots inject
+          root.DriveBundle.Publisher per FASE 9 + FASE 3 Spina Dorsale.
+      (b) For the clip handler: clips.ClipPublisherPort.Publish(ctx,
+          delivery.PublishRequest{Destination: delivery.DestinationYouTubeClip,
+          LocalPath, Filename, Description, ...}).
+      (c) For the sourcing layer: sourcing.PublisherPort.Publish(ctx,
+          delivery.PublishRequest{Destination, ...}) — the
+          sourcingPublisherAdapter wrapping delivery.Publisher shipped FASE 5.
+      (d) The drive.Admin.UploadFile + UploadFileWithDescription methods
+          themselves are NOT deprecated by this record — they remain on the
+          *drive.Uploader concrete for the publisher's internal step. The
+          deprecation is at the COMPOSITION-ROOT ADAPTER LAYER (the
+          bypass that skipped Publisher.Publish).
+    introduction_date: 2026-07-03
+    removal_date: 2026-Q4
+    tracking_issue: |
+      DRIVE-008 (Wave 27 P0 sub-task: composition-root adapter
+      retirement — `legacy drive upload seam retired to fail-closed`).
+      Forward-pointers:
+        - architecture/current.yaml#id-27 (DRIVE-005-FIELDS closure,
+          the upstream typed-port migration that made Publisher the
+          SOLE wire for cross-capability uploads);
+        - architecture/current.yaml#DRIVE-STORE-UPLOAD-TO-DRIVE
+          (Fase 3 Spina Dorsale: replaces bypass route.Store.
+          UploadToDrive with delivery.Publisher.Publish across the
+          6 image-upload call sites in internal/application/images/);
+        - DRIVE-CUTOVER-P0-1 (entry immediately above) — the bulk_upload
+          worker CUTOVER that grounds Publisher.Publish as the
+          canonical wire. DRIVE-008 is the OPPOSITE phase (locks the
+          legacy adapter seam as fail-closed) so residual non-bulk-
+          worker callers (4 sites with TODO(P0.4) markers) cannot drift
+          back to the bypass during the P0.4 follow-up migration.
+    compatibility_test: |
+      Six-layer defence mirroring DRIVE-005-FIELDS / DRIVE-STORE-UPLOAD-TO-DRIVE:
+        (a) `rg '\.UploadFile\(|\.UploadFileWithDescription\(' internal/app/clips_adapters_drive.go internal/app/assets_register_adapters.go` returns 0 hits live.
+        (b) `rg 'drive\.ErrLegacySurfaceRetired' internal/` returns at minimum 3 hits.
+        (c) `errors.Is(err, drive.ErrLegacySurfaceRetired)` resolves true at every invocation (wrapped with %w).
+        (d) `go build ./...` exits 0.
+        (e) Compile-time assertion `var _ clips.ClipDriveUploaderPort = (*clipsDriveAdapter)(nil)` at clips_adapters_drive.go remains valid.
+        (f) Every caller reaching the retired seam propagates the typed error up to the API boundary as 5xx.
+    usage_metric: |
+      Pre-CUTOVER (audit baseline, 2026-07-03):
+        - clipsDriveAdapter.UploadFile                : 0 callers (post-FASE 7; field retained only for type-system compliance).
+        - clipsDriveAdapter.UploadFileWithDescription : 0 direct callers.
+        - sourcingDriveAdapter.UploadFileWithDescription : 0 direct callers (sourcing.Service migrated to PublisherPort in FASE 5).
+      Post-CUTOVER (this commit lands on `main`):
+        - 3 stub bodies return drive.ErrLegacySurfaceRetired wrapped.
+        - compile-time assertion preserved; interface signatures unchanged.
+        - future callers reaching the typed port surface receive a loud typed error.
+        - Net delta = 3 fail-closed stubs, +1 sentinel declaration, +1 deprecation record.
+        - Per-call cost reduced (single wrap vs legacy a.admin.UploadFile chain with retry).
+    migration_phase: CUTOVER
+    status: in_progress
+    notes: |
+      DRIVE-008 is at the CUTOVER phase per godlike/07 §"Migration sequence":
+      legacy surface is reachable (no compile-time deletion); callers
+      receive a typed error immediately at runtime (no silent fallback).
+      The companion CONTRACT phase (physical removal of the 3 methods
+      from interface + adapters) is deferred to a future wave once
+      residual callers all migrate to Publisher.Publish and a
+      follow-up audit confirms zero callers reach the typed port
+      methods. CONTRACT deadline 2026-Q4.
+
+      Cross-refs:
+        - godlike/06 §"One owner per fact": delivery.Publisher owns
+          the upload fact; adapter duplicates collapsed.
+        - godlike/07 §"No fake availability": 3 stubs are LOUD —
+          operators reading the error know with certainty the caller
+          has not yet migrated.
+        - godlike/07 §"Migration sequence": CUTOVER = stub alive +
+          callers fail-closed; CONTRACT (future wave) = physical
+          removal of the 3 methods.
+
+      Sentinel location rationale: drive.ErrLegacySurfaceRetired
+      declared in internal/infrastructure/drive/errors.go because
+      the upstream of the legacy bypass chain is drive package's
+      UploadFileWithDescription method; drive package is the
+      canonical owner per godlike/06 single-fact ownership.
+
+      Cross-refs to sibling records (read each independently):
+        - DRIVE-005-FIELDS (record #16 above): upstream typed-port
+          migration that made Publisher the SOLE wire.
+        - DRIVE-STORE-UPLOAD-TO-DRIVE (Fase 3 entry mid-file):
+          replaces parallel bypass route.Store.UploadToDrive with
+          Publisher.Publish for the 6 image-upload call sites.
+        - DRIVE-CUTOVER-P0-1 (immediately above): bulk_upload_worker
+          CUTOVER that grounds Publisher.Publish as canonical wire.

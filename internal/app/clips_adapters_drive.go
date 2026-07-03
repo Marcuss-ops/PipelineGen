@@ -59,34 +59,31 @@ func (a *clipsDriveAdapter) DeleteFolder(ctx context.Context, folderID string) e
 	return a.admin.DeleteFolder(ctx, folderID)
 }
 
-// TODO(Fase 3.4): migrate from drive.Admin.UploadFile to delivery.Publisher.Publish.
-// The clipsDriveAdapter currently calls a.admin.UploadFile() which goes through
-// the drive.Admin Pattern 0 port. The canonical upload path is
-// delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationYouTubeClip, ...})
-// which adds conflict policy, folder resolution, and filename normalisation.
+// UploadFile is the legacy drive upload seam. DRIVE-008 (July 2026):
+// retired to fail-closed — converted to a typed-error stub that
+// returns drive.ErrLegacySurfaceRetired on every invocation. The
+// canonical upload path is delivery.Publisher.Publish (used by the
+// bulk_upload_worker + UploadService after FASE 3). Production
+// callers that still reach this seam receive a loud typed error at
+// runtime per godlike/07 §"No fake availability" — no silent
+// fallback, no faux-200 from a cancelled path.
+//
+// Compile-time assertion `var _ clips.ClipDriveUploaderPort =
+// (*clipsDriveAdapter)(nil)` remains valid: the interface method
+// signature is unchanged; the body is now a fail-closed shim that
+// propagates the canonical sentinel via %w so callers can detect
+// via errors.Is(err, drive.ErrLegacySurfaceRetired).
 func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*clips.ClipUploadResultDTO, error) {
-	if a.admin == nil {
-		return nil, fmt.Errorf("clipsDriveAdapter: drive not wired")
-	}
-	res, err := a.admin.UploadFile(ctx, localPath, folderID, filename)
-	if err != nil {
-		return nil, err
-	}
-	return driveUploadToDTO(res), nil
+	return nil, fmt.Errorf("clipsDriveAdapter.UploadFile(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, drive.ErrLegacySurfaceRetired)
 }
 
-// TODO(Fase 3.4): migrate from drive.Admin.UploadFileWithDescription to delivery.Publisher.Publish.
-// Same bypass as UploadFile above — the canonical upload path is
-// delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationYouTubeClip, Description: description, ...}).
+// UploadFileWithDescription is the legacy drive upload seam with
+// description metadata. DRIVE-008 (July 2026): retired to
+// fail-closed — same shape as UploadFile above. Canonical path:
+// delivery.Publisher.Publish(ctx, PublishRequest{Destination: ...,
+// Description: description, ...}).
 func (a *clipsDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*clips.ClipUploadResultDTO, error) {
-	if a.admin == nil {
-		return nil, fmt.Errorf("clipsDriveAdapter: drive not wired")
-	}
-	res, err := a.admin.UploadFileWithDescription(ctx, localPath, folderID, filename, description)
-	if err != nil {
-		return nil, err
-	}
-	return driveUploadToDTO(res), nil
+	return nil, fmt.Errorf("clipsDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, drive.ErrLegacySurfaceRetired)
 }
 
 func (a *clipsDriveAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
@@ -142,21 +139,6 @@ func (a *clipsDriveAdapter) ListFiles(ctx context.Context, query string) ([]clip
 		out[i] = clips.ClipDriveFileDTO{ID: f.ID, Name: f.Name}
 	}
 	return out, nil
-}
-
-// driveUploadToDTO is the projection helper that maps drive.UploadResult
-// onto the narrower clips.ClipUploadResultDTO. Drop any field the
-// HTTP transport doesn't consume (Pattern 0 minimal projection).
-func driveUploadToDTO(res *drive.UploadResult) *clips.ClipUploadResultDTO {
-	if res == nil {
-		return &clips.ClipUploadResultDTO{}
-	}
-	return &clips.ClipUploadResultDTO{
-		FileID:       res.FileID,
-		WebViewLink:  res.WebViewLink,
-		DownloadLink: res.DownloadLink,
-		MD5Checksum:  res.MD5Checksum,
-	}
 }
 
 // ── Meta writer adapter ──────────────────────────────────────────

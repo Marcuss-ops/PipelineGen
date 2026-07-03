@@ -230,19 +230,31 @@ type sourcingDriveAdapter struct {
 	drive driveutil.Admin
 }
 
+// Compile-time pin: sourcingDriveAdapter satisfies sourcing.DrivePort.
+// P2.2 (DRIVE-008, July 2026): mirrors the `var _ clips.ClipDriveUploaderPort =
+// (*clipsDriveAdapter)(nil)` pin in clips_adapters_drive.go. Interface
+// drift on sourcing.DrivePort surfaces at compile time rather than at
+// first runtime call. After DRIVE-008 CUTOVER, the UploadFileWithDescription
+// method body returns the fail-closed sentinel; the interface compliance
+// is preserved because the method signature is unchanged.
+var _ sourcing.DrivePort = (*sourcingDriveAdapter)(nil)
+
+// UploadFileWithDescription is the legacy drive upload seam for
+// the sourcing layer. DRIVE-008 (July 2026): retired to fail-closed
+// per godlike/07 §"No fake availability" — invoked callers receive
+// drive.ErrLegacySurfaceRetired immediately at runtime, no silent
+// fallback. Canonical upload path is delivery.Publisher.Publish
+// (sourcingDriven layer migrates to sourcing.PublisherPort which
+// wraps delivery.Publisher, see internal/application/assets/
+// sourcing/ports.go::PublisherPort).
+//
+// Compile-time assembly: sourcingDriveAdapter satisfies
+// sourcing.DrivePort (and indirectly the CompositionRoot's typed
+// wiring). The interface signature still matches the legacy shape
+// even though the body is now a fail-closed shim — callers detect
+// the failure via errors.Is(err, drive.ErrLegacySurfaceRetired).
 func (a *sourcingDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*sourcing.DriveUploadResult, error) {
-	if a.drive == nil {
-		return nil, fmt.Errorf("drive not configured")
-	}
-	res, err := a.drive.UploadFileWithDescription(ctx, localPath, folderID, filename, description)
-	if err != nil || res == nil {
-		return nil, err
-	}
-	return &sourcing.DriveUploadResult{
-		FileID:       res.FileID,
-		WebViewLink:  res.WebViewLink,
-		DownloadLink: res.DownloadLink,
-	}, nil
+	return nil, fmt.Errorf("sourcingDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, driveutil.ErrLegacySurfaceRetired)
 }
 
 func (a *sourcingDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
