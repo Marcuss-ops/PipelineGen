@@ -314,9 +314,13 @@ Prima di iniziare il lavoro, il child deve verificare:
 - filename valido;
 - request ID presente;
 - parent job ID presente;
-- text hash presente;
 - destinazione valida o default risolvibile;
 - opzioni coerenti.
+
+Nota (FASE 2, July 2026): il campo `TextHash` è pre-calcolato dal
+fan-out e usato verbatim dalla pipeline (P0.6 invariant), ma
+`GenerateVoiceoverItemCommand.Validate()` non lo controlla
+esplicitamente — il fan-out è il garante della presenza.
 
 Un errore di validazione è generalmente **permanente**.
 
@@ -609,33 +613,62 @@ Il controllo secondario su `result.ok` è importante, perché protegge da child 
 
 ## 8.2 Problema strutturale
 
-L'aggregatore usa un metodo concettualmente simile a:
+L'aggregatore usa ora `TerminalFlip` con CAS sulla versione (FASE 2,
+July 2026) per re-finalizzare il parent:
 
 ```go
-Complete(parentID, resultMap)
+finalizeParent(parentID, VoiceoverAggregateResult{...})
+    → jobsSvc.TerminalFlip(ctx, id, targetStatus, resultMap, errMsg, expectedVersion)
 ```
 
-Ma il parent è già stato completato tecnicamente dal dispatcher dopo il fan-out.
+FASE 2 permette all'aggregatore di impostare `FAILED` o `SUCCEEDED`
+reali sul broker, non solo modificare il JSON del risultato. Il CAS
+(`AND revision = expectedVersion`) protegge da race condition con
+altri writer concorrenti.
 
-Quindi l'aggregatore modifica soprattutto il JSON del risultato, non governa veramente la transizione terminale.
-
-Questo crea una macchina a due stati:
+Tuttavia, il parent viene ancora marcato broker-`SUCCEEDED` dal
+fan-out handler (generate_handler.go restituisce `nil` error dopo
+il fan-out completo). L'aggregatore poi re-finalizza via
+`TerminalFlip`. La doppia macchina a stati è ridotta ma non ancora
+eliminata:
 
 ```text
-Stato broker:
-QUEUED -> RUNNING -> SUCCEEDED
-
-Stato applicativo nel JSON:
-waiting_children -> partial_success -> succeeded/failed
+Fan-out handler → broker SUCCEEDED (temporaneo)
+Aggregator tick → TerminalFlip → broker SUCCEEDED/FAILED (definitivo)
 ```
 
-Questa doppia macchina deve essere eliminata.
+La macchina a stati target (§9) prevede che il parent resti
+non-terminale dopo il fan-out e che l'aggregatore sia il **solo**
+writer terminale.
 
 ---
 
-# 9. Macchina a stati target
+# 9. Macchina a stati attuale e target
 
-La macchina a stati desiderata è unica.
+## 9.1 Domain StateMachine (attuale, FASE 1)
+
+La `StateMachine` in `internal/domain/job/parent_state.go` (FASE 1,
+July 2026) implementa una macchina a 5 stati:
+
+```text
+Dispatching → WaitingChildren → Aggregating → Succeeded
+                                            → FailedTerminal
+```
+
+Transizioni:
+- `TransitionToWaitingChildren(childIDs)` — esplicita dopo il fan-out
+- `Transition(ChildTerminatedEvent)` — per ogni child terminale
+  - Rule ①: REQUIRED-failed → FailedTerminal immediato
+  - Rule ②: Dispatching → WaitingChildren (fallback se TransitionToWaitingChildren non chiamata)
+  - Rule ③: WaitingChildren → Aggregating (ultimo child)
+- `Compute()` — Aggregating → Succeeded o FailedTerminal
+
+Questi stati vivono nel **result map** (`parent_state`) e nella
+memoria dell'aggregatore, NON negli stati broker del job.
+
+## 9.2 Macchina a stati target (broker-level)
+
+La macchina a stati desiderata è unica e vive a livello broker:
 
 ```mermaid
 stateDiagram-v2
@@ -655,21 +688,10 @@ stateDiagram-v2
     WAITING_CHILDREN --> CANCELLED
 ```
 
-Se il dominio job non vuole introdurre `WAITING_CHILDREN` e `PARTIAL` come stati globali, si possono usare stati esistenti con una phase tipizzata:
-
-```text
-job.status = RUNNING
-job.phase = waiting_children
-```
-
-oppure:
-
-```text
-job.status = FINALIZING
-job.phase = waiting_children
-```
-
-L'importante è che `SUCCEEDED` sia terminale e significhi una sola cosa.
+⚠️ **Oggi il broker non ha `WAITING_CHILDREN` / `FINALIZING` / `PARTIAL`.**
+Il fan-out handler restituisce `nil` → broker `SUCCEEDED`. L'aggregatore
+re-finalizza via `TerminalFlip`. Il gap principale è far sì che il parent
+resti broker-non-terminale dopo il fan-out (forward-pointer).
 
 ---
 
@@ -677,29 +699,28 @@ L'importante è che `SUCCEEDED` sia terminale e significhi una sola cosa.
 
 ## 10.1 Parent terminalizzato troppo presto
 
-### Situazione attuale
+### Situazione attuale (post-FASE 1)
 
-Il parent termina tecnicamente dopo il fan-out.
+✅ `TransitionToWaitingChildren` implementata (domain `StateMachine`).
+✅ `TerminalFlip` con version CAS implementato (aggregatore può re-finalizzare).
+⚠️ Il fan-out handler restituisce ancora `nil` error → broker `SUCCEEDED`.
+
+L'aggregatore corregge lo stato broker via `TerminalFlip`, ma il parent
+non è ancora veramente non-terminale al momento del fan-out.
 
 ### Situazione target
 
-Il parent resta aperto finché tutti i child non sono terminali.
+Il parent resta broker-non-terminale (`RUNNING` o `WAITING_CHILDREN`)
+finché tutti i child non sono terminali. L'aggregatore è il **solo**
+writer del terminal flip.
 
-### Intervento
+### Intervento residuo
 
-Creare un'operazione dedicata:
-
-```go
-TransitionToWaitingChildren(parentID, lease, attempt, childIDs)
-```
-
-L'aggregatore deve usare:
-
-```go
-FinalizeParent(parentID, expectedVersion, aggregateResult)
-```
-
-con CAS e controllo della versione.
+Il fan-out handler deve restituire un errore (o un segnale) che impedisca
+al broker di marcare `SUCCEEDED`. Possibili strade:
+- Fan-out handler restituisce `error` non-nil ma non-fatale (broker resta `RUNNING`)
+- Introduzione di `WAITING_CHILDREN` come stato broker nativo
+- `job.phase = "waiting_children"` con status `RUNNING`
 
 ---
 
@@ -775,25 +796,33 @@ Con:
 
 ## 10.4 Risultati ancora convertiti in `map[string]any`
 
-Il broker usa ancora mappe generiche sul boundary.
+✅ **FASE 2 (July 2026): parzialmente risolto.** L'aggregatore
+usa ora DTO tipizzati internamente:
+- `VoiceoverParentResult` — deserializzazione del parent job result
+- `VoiceoverChildResult` — deserializzazione del child job result (P0.1 gate)
+- `VoiceoverChildPayload` — deserializzazione del child job payload (Required flag)
+- `VoiceoverAggregateResult` — output dell'aggregazione, passato a `finalizeParent`
 
-Questo può essere tollerato soltanto all'ultimo confine, ma internamente devono essere usati DTO tipizzati.
+Le definizioni vivono in `internal/application/voiceover/jobs/result_dto.go`.
 
-Target:
+Il boundary verso il broker (`TerminalFlip`, `map[string]any`) è
+ancora generico — la conversione avviene solo al confine ultimo.
 
-```go
-VoiceoverParentResult
-VoiceoverItemResult
-VoiceoverAggregateResult
-```
-
-Conversione a `map[string]any` solo nel codec del job system.
+Handler (`generate_handler.go`, `generate_item_handler.go`) usano
+ancora `map[string]any` per i result map — migrazione futura.
 
 ---
 
 ## 10.5 Polling non indicizzato dell'aggregatore
 
-L'aggregatore sembra interrogare i parent per tipo e filtrare `parent_state` dopo la deserializzazione.
+⚠️ **Ancora aperto (July 2026).** L'aggregatore usa:
+
+```go
+a.deps.JobsSvc.List(ctx, job.Filter{Type: ptrStr(job.TypeVoiceoverGenerate)})
+```
+
+che lista TUTTI i job `voiceover.generate` e filtra `parent_state`
+in memoria dopo la deserializzazione (`IsAwaitingAggregation()`).
 
 Con una cronologia grande, questo può diventare costoso.
 
@@ -810,7 +839,8 @@ ORDER BY next_check_at
 LIMIT ?;
 ```
 
-Serve anche un indice coerente.
+Serve anche un indice coerente. La query attuale non è ancora
+ottimizzata (forward-pointer: `architecture/current.yaml`).
 
 ---
 
@@ -839,25 +869,24 @@ poller reconciliation slow path
 
 ## 10.7 Mancanza di una policy chiara required vs optional
 
-Il parent deve sapere quali output sono obbligatori.
+✅ **FASE 2 (July 2026): risolto.** Il campo `Required` è stato
+aggiunto a:
+- `VoiceoverItem` (command.go) — propagato dall'API caller
+- `GenerateVoiceoverItemCommand` (command.go) — propagato dal fan-out
+- `VoiceoverChildPayload` (result_dto.go) — letto dall'aggregatore
 
-Esempio:
+La `StateMachine.Transition()` applica la regola ①: un child
+`REQUIRED` fallito short-circuita immediatamente a `FailedTerminal`.
 
-```json
-{
-  "language": "it",
-  "required": true
-}
-```
+`Compute()` tollera fallimenti OPTIONAL quando almeno un child ha
+avuto successo → `ParentStateSucceeded` mappato a
+`voiceover.ParentPartialSuccess` quando `len(sm.Failed()) > 0`.
 
-Policy aggregata:
-
-- tutti i required riusciti, optional falliti -> `SUCCEEDED_WITH_WARNINGS` o successo con warning;
-- almeno un required fallito -> `FAILED`;
-- tutti riusciti -> `SUCCEEDED`;
-- nessun child creato -> `FAILED`.
-
-Non bisogna inferire questa policy solamente dal numero di successi.
+Policy aggregata attuale:
+- tutti i required riusciti, optional falliti → `partial_success`;
+- almeno un required fallito → `failed` (Transition rule ①);
+- tutti riusciti → `succeeded`;
+- nessun child creato o tutti falliti → `failed`.
 
 ---
 
@@ -994,15 +1023,19 @@ type GenerateVoiceoversCommand struct {
 ## 12.2 Item specification
 
 ```go
-type GenerateVoiceoverItemSpec struct {
-    ID       string
-    Text     string
-    Language string
-    Voice    string
-    Filename string
-    Required bool
+// VoiceoverItem — definito in internal/application/voiceover/command.go
+type VoiceoverItem struct {
+    Text     string `json:"text"`
+    Language string `json:"language"`
+    Voice    string `json:"voice,omitempty"`
+    Filename string `json:"filename,omitempty"`
+    Required bool   `json:"required,omitempty"`  // FASE 2, July 2026
 }
 ```
+
+Nota: il nome canônico è `VoiceoverItem` (non `GenerateVoiceoverItemSpec`).
+Il campo `ID` non esiste nel tipo attuale; l'identità del child è
+derivata dal fan-out via `buildVoiceoverID(textHash, language, folderID)`.
 
 ## 12.3 Child command
 
@@ -1025,20 +1058,27 @@ type GenerateVoiceoverItemCommand struct {
 ## 12.4 Parent result
 
 ```go
+// VoiceoverParentResult — definito in internal/application/voiceover/jobs/result_dto.go (FASE 2, July 2026)
 type VoiceoverParentResult struct {
-    RequestID       string
-    ParentJobID     string
-    State           ParentState
-    Total           int
-    RequiredTotal   int
-    Succeeded       int
-    Failed          int
-    RequiredFailed  int
-    ChildJobIDs     []string
-    Items           []VoiceoverItemSummary
-    Warnings        []string
+    OK                 bool     `json:"ok"`
+    ParentJobID        string   `json:"parent_job_id"`
+    RequestID          string   `json:"request_id"`
+    TotalOutputs       int      `json:"total_outputs"`
+    ExpectedChildren   int      `json:"expected_children"`
+    EnqueuedCount      int      `json:"enqueued_count"`
+    FailedEnqueueCount int      `json:"failed_enqueue_count"`
+    ChildJobIDs        []string `json:"child_job_ids"`
+    ParentState        string   `json:"parent_state"`
+    AggregatorVersion  int      `json:"_aggregator_version,omitempty"`
 }
 ```
+
+Nota: i campi `Total`, `RequiredTotal`, `Items`, `Warnings` nel
+blueprint originale non esistono ancora nel tipo attuale. Il
+`VoiceoverParentResult` viene scritto dal fan-out handler e letto
+dall'aggregatore; i conteggi aggregati (`succeeded_count`,
+`failed_count`, `required_failed_count`) sono scritti nel result
+map dall'aggregatore via `finalizeParent`, non nel DTO.
 
 ---
 
@@ -1046,34 +1086,33 @@ type VoiceoverParentResult struct {
 
 ## Fase 1: correggere lo stato parent
 
-Obiettivo:
+✅ **Completata (FASE 1, July 2026, SHA `3edbf8c5`).**
 
-```text
-Il parent non viene più marcato SUCCEEDED dal fan-out handler.
-```
+Obiettivo raggiunto parzialmente:
 
-Attività:
-
-1. introdurre una transizione `waiting_children`;
-2. separare fan-out completion da job completion;
-3. aggiungere CAS su parent finalization;
-4. modificare l'aggregatore affinché possa impostare `FAILED` o `SUCCEEDED` reali;
-5. aggiornare API job status.
+1. ✅ `TransitionToWaitingChildren(childIDs)` introdotta in `domain/job/parent_state.go`
+2. ✅ Fan-out completion separata concettualmente (result map porta `parent_state=waiting_children`)
+3. ✅ CAS su parent finalization aggiunto (version-based via `j.Revision`)
+4. ✅ Aggregatore può impostare `FAILED` o `SUCCEEDED` reali via `TerminalFlip`
+5. ⚠️ Il fan-out handler restituisce ancora `nil` → broker `SUCCEEDED`
+   (forward-pointer: §9.2 target state machine)
 
 Gate:
 
-- nessun parent `SUCCEEDED` con figli non terminali;
-- nessun parent `SUCCEEDED` con required child fallito.
+- ⚠️ Parent ancora broker-`SUCCEEDED` dopo il fan-out (forward-pointer)
+- ✅ Nessun parent `SUCCEEDED` con required child fallito (StateMachine rule ①)
 
 ## Fase 2: tipizzare l'aggregazione
 
-Attività:
+✅ **Completata (FASE 2, July 2026, SHA `f25471e9`).**
 
-- eliminare mappe generiche dall'aggregatore;
-- introdurre codec parent e child;
-- aggiungere `required`;
-- aggiungere summary tipizzato;
-- query repository specifica per parent aperti.
+Attività completate:
+
+- ✅ Eliminate mappe generiche dall'aggregatore (DTO tipizzati in `result_dto.go`)
+- ✅ Introdotti `VoiceoverParentResult`, `VoiceoverChildResult`, `VoiceoverAggregateResult`
+- ✅ Aggiunto `Required` a `VoiceoverItem` / `GenerateVoiceoverItemCommand`
+- ✅ Aggiunto summary tipizzato (`VoiceoverAggregateResult`)
+- ⚠️ Query repository specifica per parent aperti: non ancora implementata (forward-pointer: §10.5)
 
 ## Fase 3: event-driven aggregation
 
@@ -1237,6 +1276,12 @@ Alert raccomandati:
 - boot deve fallire;
 - nessun server avviato con job type accettabile ma non consumabile.
 
+⚠️ **Non coperto dai test di accettazione (July 2026).** Questo
+scenario richiede test al livello `Service`/`Dispatcher` che gli
+stub attuali non supportano. I test attuali coprono gli scenari
+§15.1–§15.8 a livello aggregatore. Lo scenario §15.9 è registrato
+come forward-pointer.
+
 ---
 
 # 16. Hotspot attuali
@@ -1245,24 +1290,35 @@ File da considerare ad alta frequenza e alta fragilità:
 
 ```text
 internal/api/assets/voiceover/handler.go
+internal/api/assets/voiceover/types.go
 internal/application/voiceover/jobs/generate_handler.go
 internal/application/voiceover/jobs/generate_item_handler.go
 internal/application/voiceover/jobs/parent_aggregator.go
+internal/application/voiceover/jobs/parent_aggregator_test.go
+internal/application/voiceover/jobs/fanout.go
+internal/application/voiceover/jobs/result_dto.go
 internal/application/voiceover/process_voiceover_item.go
+internal/application/voiceover/command.go
 internal/application/voiceover/service.go
-internal/application/voiceover/fanout.go
+internal/application/voiceover/ports.go
+internal/domain/job/parent_state.go
+internal/domain/job/parent_state_test.go
+internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go
 internal/app/build_bundles_voiceover.go
 internal/app/lifecycle.go
 internal/application/jobs/registry.go
+internal/application/jobs/service.go
 ```
 
 Priorità speciale:
 
-1. `generate_handler.go`: semantica parent;
-2. `parent_aggregator.go`: terminalizzazione reale;
-3. `service.go`: legacy batch e promo;
-4. composition root: fail-fast e singolo wiring;
-5. repository job: query parent aperti e CAS.
+1. `generate_handler.go`: semantica parent e `toFanoutResultMap`
+2. `parent_aggregator.go`: terminalizzazione reale con version CAS
+3. `parent_state.go`: domain StateMachine (Transition + Compute + TransitionToWaitingChildren)
+4. `result_dto.go`: DTO tipizzati (VoiceoverParentResult, VoiceoverChildResult, VoiceoverAggregateResult)
+5. `service.go`: legacy batch e promo (ancora registrati)
+6. `repository_lifecycle.go`: TerminalFlip con `AND revision = ?` CAS
+7. composition root (`build_bundles_voiceover.go`): fail-fast e singolo wiring
 
 ---
 
@@ -1322,24 +1378,24 @@ I commenti non devono descrivere un'architettura futura come se fosse già attiv
 
 L'architettura Voiceover può essere considerata completata quando:
 
-- esiste un solo endpoint pubblico canonico;
-- esiste un solo parent job type;
-- esiste un solo child job type;
-- batch e promo legacy non eseguono più TTS direttamente;
-- il parent non viene completato dopo il fan-out;
-- l'aggregatore può terminalizzare realmente il parent;
-- required e optional sono espliciti;
-- retry è per-child;
-- la finalizzazione è unica e atomica;
-- il poller interroga solo parent realmente aperti;
-- esiste un fast path event-driven;
-- esiste un reconciler;
-- non esistono falsi successi;
-- non esistono job type senza handler;
-- non esistono doppie pubblicazioni;
-- tutti i test di accettazione sono verdi;
-- i job legacy sono rimossi dal registry;
-- le metriche permettono di rilevare parent bloccati e artifact orfani.
+- ✅ esiste un solo endpoint pubblico canonico (`POST /api/media/voiceover/generate`);
+- ✅ esiste un solo parent job type (`voiceover.generate`);
+- ✅ esiste un solo child job type (`voiceover.generate_item`);
+- ⚠️ batch e promo legacy non eseguono più TTS direttamente (ancora registrati su `service.go`);
+- ⚠️ il parent non viene completato dopo il fan-out (ancora broker-`SUCCEEDED`);
+- ✅ l'aggregatore può terminalizzare realmente il parent (FASE 1+2 `TerminalFlip`);
+- ✅ required e optional sono espliciti (FASE 2 `Required` field);
+- ✅ retry è per-child (`voiceover.generate_item` indipendente);
+- ✅ la finalizzazione è unica e atomica (`VoiceoverFinalizer` 6-step tx);
+- ⚠️ il poller interroga solo parent realmente aperti (ancora `List` full-scan);
+- ⚠️ esiste un fast path event-driven (solo poller oggi);
+- ✅ esiste un reconciler (stesso poller, `TerminalFlip` idempotente);
+- ✅ non esistono falsi successi (P0.1 gate in `generate_item_handler.go`);
+- ⚠️ non esistono job type senza handler (`voiceover.batch`/`voiceover.promo` ancora registrati);
+- ✅ non esistono doppie pubblicazioni (dedupe gate in `VoiceoverFinalizer`);
+- ⚠️ tutti i test di accettazione sono verdi (§15.1–15.8 coperti, §15.9 forward-pointer);
+- ⚠️ i job legacy sono rimossi dal registry (ancora presenti);
+- ⚠️ le metriche permettono di rilevare parent bloccati e artifact orfani (parzialmente).
 
 ---
 
@@ -1351,12 +1407,18 @@ internal/api/assets/voiceover/types.go
 internal/application/voiceover/jobs/generate_handler.go
 internal/application/voiceover/jobs/generate_item_handler.go
 internal/application/voiceover/jobs/parent_aggregator.go
+internal/application/voiceover/jobs/parent_aggregator_test.go
+internal/application/voiceover/jobs/fanout.go
+internal/application/voiceover/jobs/result_dto.go
 internal/application/voiceover/process_voiceover_item.go
-internal/application/voiceover/fanout.go
+internal/application/voiceover/command.go
 internal/application/voiceover/service.go
 internal/application/voiceover/ports.go
+internal/domain/job/parent_state.go
+internal/domain/job/parent_state_test.go
+internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go
 internal/application/jobs/registry.go
-internal/domain/job/job.go
+internal/application/jobs/service.go
 internal/app/build_bundles_voiceover.go
 internal/app/lifecycle.go
 ```
@@ -1377,26 +1439,36 @@ La parte più difficile è già stata impostata:
 - controllo anti-falso-successo;
 - aggregatore di recovery.
 
-Il lavoro decisivo ora è eliminare le ambiguità rimaste.
+**FASE 1 (SHA `3edbf8c5`)** ha introdotto:
+- `TransitionToWaitingChildren` nel domain `StateMachine`
+- `TerminalFlip` con version CAS per re-finalizzare il parent
+- Test di accettazione §15.1–§15.9
 
-La priorità assoluta è trasformare questa situazione:
+**FASE 2 (SHA `f25471e9`)** ha introdotto:
+- DTO tipizzati (`VoiceoverParentResult`, `VoiceoverChildResult`, `VoiceoverAggregateResult`)
+- Campo `Required` con policy aggregata
+- Version CAS in `TerminalFlip` SQL
+
+Il prossimo passo decisivo è trasformare questa situazione:
 
 ```text
-parent broker SUCCEEDED
-ma children ancora in esecuzione
+parent broker SUCCEEDED (dopo fan-out)
+→ aggregator TerminalFlip → SUCCEEDED/FAILED reale
 ```
 
 in questa:
 
 ```text
-parent WAITING_CHILDREN
-children terminali
-parent FINALIZING
-parent SUCCEEDED oppure FAILED
+parent broker RUNNING (dopo fan-out, con parent_state=waiting_children)
+→ aggregator → unico terminal flip → SUCCEEDED/FAILED
 ```
 
-Dopo questa correzione bisogna rimuovere `voiceover.batch` e `voiceover.promo` come motori alternativi, lasciandoli al massimo come adapter temporanei verso il comando canonico.
+Dopo questa correzione bisogna rimuovere `voiceover.batch` e `voiceover.promo`
+come motori alternativi, lasciandoli al massimo come adapter temporanei verso
+il comando canonico.
 
 Il risultato finale deve essere semplice da descrivere:
 
-> Una richiesta crea un parent. Il parent crea un child per ogni output. Ogni child usa la stessa pipeline. Il finalizer persiste gli asset. L'aggregatore chiude il parent solo quando il lavoro reale è terminato.
+> Una richiesta crea un parent. Il parent crea un child per ogni output.
+> Ogni child usa la stessa pipeline. Il finalizer persiste gli asset.
+> L'aggregatore chiude il parent solo quando il lavoro reale è terminato.
