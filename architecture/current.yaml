@@ -1791,8 +1791,37 @@
     # ── Priority absolute (1..6) ────────────────────────────────────────
     - id: PR-GODOBJ-1-EXTRACTION-SERVICE
       owner_capability: internal/application/youtube/usecase
-      status: pending
+      status: shipped
+      ship_sha: 93f05e5d
+      ship_date: 2026-07-03
       deadline: 2026-08-15
+      notes: 5 of 7 split files exceed the AGENTS.md Check 44 66-LoC transitional cap (extraction_service.go ~94 LoC, extraction_fanout.go 103 LoC, extraction_callbacks_iface.go 80 LoC, extraction_result.go 76 LoC, extraction_stubs_test.go 69 LoC). godlike/07 honest-limitation disclosure in commit body; each over-cap file has exactly one forward-pointing linked_issue below (zero-baseline rule).
+      linked_issues:
+        - id: PR-GODOBJ-1b-FANOUT-PKG-CONCURRENT
+          spec: extract pkg/concurrent.BoundedFanOut from extraction_fanout.go per-goroutine panic-recovery + bounded-semaphore boilerplate to compress the file to <=50 LoC
+          owner_capability: internal/application/youtube/usecase (with pkg/concurrent guidance)
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-1c-CALLBACKS-INTERFACE-SPLIT
+          spec: split the 13-method ExtractionCallbacks mega-interface into per-capability ports (HashPort, DrivePort, OllamaPort, IndexerPort, SubtitlesPort, LifecyclePort) per godlike/06 SSOT
+          owner_capability: internal/application/youtube/usecase
+          deadline: 2026-08-15
+          status: pending (forward-pointer: gated on YouTube orchestrator audit trajectory)
+        - id: PR-GODOBJ-1d-RESULT-EXTRACT-AGGREGATOR
+          spec: collapse extraction_result.go 3 helpers + their aggregates into a single ResultBuilder typed envelope so the file lands <=40 LoC
+          owner_capability: internal/application/youtube/usecase
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-1e-STUBS-HELPERS-TEST
+          spec: extract extraction_stubs_test.go stubs into a test-only sub-package or move into service_test.go so the helper file lands <=30 LoC
+          owner_capability: internal/application/youtube/usecase
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-1f-ORCHESTRATOR-SLIM
+          spec: extract NewExtractionService panic-validation + ExtractionDeps struct into extraction_service_ctor.go so the orchestrator file lands <=66 LoC (currently ~94 LoC)
+          owner_capability: internal/application/youtube/usecase
+          deadline: 2026-08-15
+          status: pending
     - id: PR-GODOBJ-2-MONITOR-SCHEDULER
       owner_capability: internal/application/assets/monitor
       status: pending
