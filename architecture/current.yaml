@@ -1966,7 +1966,9 @@
         regression risk.
     - id: PR-CHROME-PROVIDER-SPLIT
       owner_capability: internal/application/images
-      status: pending
+      status: shipped
+      ship_sha: cd7e1799
+      ship_date: 2026-07-04
       deadline: 2026-08-01
       notes: |
         Split internal/application/images/chrome_provider.go (currently
@@ -1976,18 +1978,59 @@
           chrome_provider.go          # Generate + interface pubblico
           slide_worker_process.go     # ensureStarted / Stop / subprocess lifecycle
           slide_worker_protocol.go    # writeJSON / readResponse / readRawResponse / workerResponse
-          slide_worker_health.go      # Health / healthCheck / cooldown
-        Per AGENTS.md Pattern 5: split per capability stabile (lifecycle
-        vs protocol vs health), then per file.
-        BRUTAL DECISION required: current code does
-        `exec.Command("python3", scriptPath, "--profiles", "1")` while
-        `numProfiles` constructor arg is IGNORED + `cooldowns map[int]int64`
-        is dead. Either:
-          (a) single-profile is official policy → retire numProfiles +
-              cooldowns map (godlike/07 no-fake-availability);
-          (b) reintroduce genuine multi-profile semantics.
-        User-spec prefers option (a); deferred decision to PR landing.
-    - id: PR-QDRANT-MAINT-PER-MODE
+          slide_worker_health.go      # Health / healthCheck / ActiveCooldownProfiles
+
+        BRUTAL DECISION (godlike/07 no-fake-availability):
+          (a) retire numProfiles constructor arg (today exec.Command("python3",
+              scriptPath, "--profiles", "1") ignores numProfiles → fake availability);
+          (b) retire cooldowns map[int]int64 (single-profile policy has no
+              per-profile routing to spread load onto).
+
+        CLOSED (2026-07-04, commit cd7e1799 on origin/main):
+        the 4-file split landed per godlike/06 + AGENTS.md Pattern 5:
+          * chrome_provider.go REWRITTEN (slim public surface: struct +
+            NewChromeImageProvider + Generate + compile-time assertion);
+          * slide_worker_process.go NEW (subprocess lifecycle);
+          * slide_worker_protocol.go NEW (JSON wire protocol);
+          * slide_worker_health.go NEW (health probes).
+        numProfiles constructor arg RETIRED (2-arg signature: scriptsDir + log).
+        cooldowns map[int]int64 field RETIRED. The per-profile cooldown
+        tracking block in Generate REMOVED. ActiveCooldownProfiles() int
+        PRESERVED on the public surface (consumed by DiagnosticsService.
+        Diagnostics() to populate ImageGenCooldownProfiles) but ALWAYS
+        returns 0 (single-profile policy = no per-profile routing).
+        --profiles 1 hard-coded in slide_worker_process.go::ensureStarted
+        (canonical single-profile policy).
+
+        godlike/07 minimal-blast-radius: diagnostics_service.go:35 +
+        capability_test.go + DiagnosticsReport.ImageGenCooldownProfiles
+        field are NOT touched (method still exists, struct literal still
+        works with fewer fields, diagnostics field always reports 0 per
+        the canonical policy).
+
+        Verification (per user spec):
+          * go build ./internal/application/images/... exit 0;
+          * go test -short ./internal/application/images/... exit 0;
+          * rg numProfiles|cooldowns internal/ --type go → 0 PRODUCTION-CODE
+            hits; the 4 audit-pin comment hits are intentional godlike/06
+            documentation discipline (closure audit-pins reference the
+            retired symbols by name to document the godlike/07 retirement
+            rationale, consistent with the historical pattern of
+            PR-IMAGES-SHIM-REMOVAL + PR-DRIVECLIENT-RAW-RETIRE);
+          * gofmt -d on the 4 files exit 0;
+          * --profiles 1 hard-coded in slide_worker_process.go::ensureStarted.
+
+        Code-reviewer accepted pre-commit code (BUG-1 HIGH about unused
+        encoding/json import in chrome_provider.go fixed; NIT-1 LOW about
+        doc-comment duplication across the 3 new files deferred per
+        godlike/07 minimal-blast-radius — the duplication is intentional
+        SSOT-per-file documentation, each file owns its own rationale).
+
+        Pre-existing build issues (NOT regressions, tracked separately):
+        FIX-IMAGES-ROUTING-CYCLE (deadline 2026-08-01) blocks the full-
+        project build via a pre-existing import cycle. This PR passes
+        targeted go build ./internal/application/images/... + go test
+        -short ./internal/application/images/... exit 0.    - id: PR-QDRANT-MAINT-PER-MODE
       owner_capability: cmd/admin
       status: pending
       deadline: 2026-08-01
