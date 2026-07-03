@@ -388,7 +388,7 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 		return nil, err
 	}
 	return &AppDeps{
-		Registry:  nil,
+		Registry: nil, // forward-pointer: PR-COMPOSITION-REGISTRY-LIVE-WIRE
 		Lifecycle: &minimalLifecycle{stop: coreClean},
 	}, nil
 }

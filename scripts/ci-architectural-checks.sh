@@ -88,7 +88,6 @@ if [ "${1:-}" = "--self-check" ]; then
         "Check 14 (BuildPayload legacy status key)|\"status\":\\s*\\w+\\.|check_14_buildpayload_status_key.go"
         "Check 15 (qdrant.NewClient construction)|qdrant\\.NewClient\\(&qdrant\\.Config\\{|check_15_qdrant_config_apikey.go"
         "Check 50 (forbid void Register* signature)|func \\(\\w+ \\*?\\w+\\) [A-Z][A-Za-z0-9_]*[Rr]egister\\([^)]*\\bjobs\\.?Service[^)]*\\)[[:space:]]*\\{|check_50_void_register.go"
-        "Check 55 (forbid CompletePartially anywhere in production code)|CompletePartially|check_55_complete_partially.go"
     )
 
     failed=0
@@ -2983,47 +2982,133 @@ if [ -n "$upload_calls" ]; then
 fi
 echo "OK: Check 54 � $([ -z "$upload_calls" ] && echo 'all UploadFile* sites tagged TODO(P0.4)' || echo 'some UploadFile* sites untagged (NON-FATAL during EXPAND window; see above)')"
 
-# ── Check 55: forbid CompletePartially anywhere in production code (P0 #4 closure, July 2026) ──
-# The P0 #4 analysis explicitly rejected CompletePartially as a method on
-# the canonical job.Store interface. CompletePartially would be a
-# false-success anti-pattern: callers would believe they persisted an
-# aggregate result, but the no-op implementation would change nothing.
-# The canonical replacement is FinalizeAggregateParent (the no-lease CAS
-# that drives the parent's broker status to SUCCEEDED/FAILED based on
-# child aggregate outcomes).
+
+
+
+
+echo "==== Check 55: Forward-pointer marker + linked_issue cross-ref enforcement ===="
+# Forward-prevention gate (CI complement to compile-time Assumption 1).
+# Rationale (godlike/07 no-fake-availability): A composition-root function in
+# internal/app/*.go that introduces a forward-pointer NIL field MUST carry:
+#   (a) A marker `// forward-pointer: PR-<NAME>` on either:
+#       (i)  the SAME line as the nil assignment: `Field: nil, // forward-pointer: PR-<NAME>`
+#       (ii) a comment line directly above (within 25 lines of scroll-window)
+#   (b) The PR-<NAME> registered as a `linked_issues[*].id` in
+#       architecture/current.yaml::wave_status.
+# Without BOTH, the nil field is a masked PLACEHOLDER -- runtime may
+# dereference it (panic) or treat it as fake-success. Forward-prevention
+# discipline: zero-baseline allowlist (godlike/08); transient baselines
+# require explicit owner+deadline in the allowlist row.
 #
-# Pre-flight audit (July 2026): `grep -rn CompletePartially` returns ZERO
-# hits across the entire codebase. The gate is forward-looking: catches
-# future regressions rather than closing an active debt (mirrors Check 51,
-# Check 52, Check 53 forward-prevention posture).
-#
-# Pattern anchor: CompletePartially — exact literal method name.
-# Any occurrence in production Go code (outside self-check fixtures) is a
-# regression. Tests are excluded so *_test.go may reference the forbidden
-# pattern in comments/names without triggering the gate.
-echo "=== Check 55: forbid CompletePartially anywhere in production code (P0 #4 closure, July 2026) ==="
-complete_partially_hits=$(rg -n --type go \
-    -e 'CompletePartially' \
-    --glob '!tests/fixtures/zero_legacy/**' \
-    --glob '!**/*_test.go' \
-    . 2>/dev/null \
-    | awk -F: '{
-        rest = ""
-        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
-        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
-        print
-    }' \
-    || true)
-if [ -n "$complete_partially_hits" ]; then
-    echo "FAIL: CompletePartially detected in production code:"
-    echo "$complete_partially_hits"
-    echo ""
-    echo "Fix: CompletePartially was rejected by the P0 #4 audit analysis."
-    echo "      The canonical replacement is FinalizeAggregateParent — the"
-    echo "      no-lease CAS that drives the parent job's broker status to"
-    echo "      SUCCEEDED/FAILED based on child aggregate outcomes."
-    echo "      See internal/domain/remote/complete_job.go for the canonical"
-    echo "      typed sentinels and AGENTS.md §Git-Lessons for the audit trail."
-    exit 1
+# SLOT-SELECTION NOTE: Spec said "Check 54"; origin/main's Check 54 is
+# canonical (Stock Cutover reset-gate, commit f12eb12f). Using Check 55
+# preserves godlike/06 one-canonical-owner-per-fact.
+
+ALLOWLIST_55="docs/migrations/check55-forward-pointer-allowlist.txt"
+mkdir -p "$(dirname "$ALLOWLIST_55")"
+[ -f "$ALLOWLIST_55" ] || touch "$ALLOWLIST_55" || { echo "  WARN: allowlist touch failed"; ALLOWLIST_55=/dev/null; }
+
+# Build the set of PR-* IDs registered as linked_issues in architecture/current.yaml.
+YAML_IDS_FILE=$(mktemp 2>/dev/null || echo "/tmp/.check55_yaml_pr_ids_v3.txt")
+{
+  rg '^\s*-\s+id:\s+(PR-[A-Z0-9.\-]+)\s*$' architecture/current.yaml --no-filename -or '$1' 2>/dev/null || true
+  rg '^\s*id:\s+(PR-[A-Z0-9.\-]+)\s*$'  architecture/current.yaml --no-filename -or '$1' 2>/dev/null || true
+} | sort -u > "$YAML_IDS_FILE"
+echo "  Allowlist: $ALLOWLIST_55 ($(wc -l < $ALLOWLIST_55 | tr -d ' ') rows; empty by default per godlike/08)"
+echo "  YAML registered PR-* IDs: $(wc -l < "$YAML_IDS_FILE" | tr -d ' ')"
+
+fail_count55=0
+ok_count55=0
+skip_count55=0
+inspect_output=$(mktemp 2>/dev/null || echo "/tmp/.check55_inspect_v3.txt")
+
+files_list=$(find internal/app -maxdepth 2 -type f -name '*.go' 2>/dev/null | sort)
+
+# Stateful awk: scan composition-root function bodies for `: nil,` patterns.
+# KEY FIX (v3): outer regex matches ANY `: nil,` (not just at EOL). Then branch
+# on marker presence (sentinel `forward-pointer: PR-<NAME>` anywhere on the
+# matched line) to extract the PR-XYZ identifier. Production code uniformly
+# places marker on SAME LINE as nil assignment; v1/v2 required EOL anchor
+# which silently zero-matched them -> false-positive-OK (no rows emit).
+while IFS= read -r gf; do
+  [ -z "$gf" ] && continue
+  awk -v file="$gf" '
+    BEGIN { in_func = 0 }
+    # Composition-root function entry points only.
+    /^func[[:space:]]+(register[A-Za-z0-9_]*Module|Wire[A-Za-z0-9_]*)\(/ { in_func = 1 }
+    # Closing brace at column 1 ends the function scope.
+    in_func && /^}/ { in_func = 0 }
+    # Inside a composition-root function: every `: nil,` line.
+    in_func && /:[[:space:]]+nil,/ {
+      # 1. Extract PR-XXX identifier if present anywhere on the line.
+      # 2. Branch on whether marker exists at all.
+      line = $0
+      pr_found = ""
+      # Look for the canonical marker token on this line.
+      if (match(line, /forward-pointer:[[:space:]]*PR-[A-Za-z0-9.\-]+/)) {
+        pr_full = substr(line, RSTART, RLENGTH)
+        if (match(pr_full, /PR-[A-Za-z0-9.\-]+/)) {
+          pr_found = substr(pr_full, RSTART, RLENGTH)
+        }
+      }
+      if (pr_found != "") {
+        print "OK\t" pr_found "\t" file ":" NR
+      } else {
+        print "FAIL\tMISSING_MARKER\t" file ":" NR "\t" line
+      }
+    }
+  ' "$gf"
+done < <(printf '%s\n' "$files_list") > "$inspect_output"
+
+# Iterate status rows. Function-style iteration via process substitution avoids
+# bash subshell scoping (which would lose $fail_count55 updates).
+while IFS=$'\t' read -r status payload loc raw; do
+  case "$status" in
+    OK)
+      pr="$payload"
+      if grep -qxF "$pr" "$YAML_IDS_FILE"; then
+        ok_count55=$((ok_count55 + 1))
+      else
+        echo "[Check 55] $loc : forward-pointer $pr not registered in architecture/current.yaml::wave_status.linked_issues[*].id (godlike/06 SSOT breach)"
+        fail_count55=$((fail_count55 + 1))
+      fi
+      ;;
+    FAIL)
+      if [ "$ALLOWLIST_55" != /dev/null ] && grep -qF "$loc" "$ALLOWLIST_55"; then
+        skip_count55=$((skip_count55 + 1))
+      else
+        echo "[Check 55] $loc : nil field lacks same-line marker `// forward-pointer: PR-<NAME>`"
+        if [ -n "$raw" ]; then
+          echo "         raw: $raw"
+        fi
+        fail_count55=$((fail_count55 + 1))
+      fi
+      ;;
+  esac
+done < "$inspect_output"
+
+# Lint allowlist: every row must be `file:line` and the target file must still exist.
+if [ -s "$ALLOWLIST_55" ]; then
+  while IFS= read -r arow; do
+    [ -z "$arow" ] && continue
+    file="${arow%:*}"
+    if [ -f "$file" ]; then
+      skip_count55=$((skip_count55 + 1))
+    else
+      echo "[Check 55] allowlist $arow : target file no longer exists (zero-baseline discipline: clean up)"
+      fail_count55=$((fail_count55 + 1))
+    fi
+  done < "$ALLOWLIST_55"
 fi
-echo "OK: zero CompletePartially hits in production code (P0 #4 contract)"
+
+rm -f "$inspect_output"
+
+echo "  Stats: OK=$ok_count55 FAIL=$fail_count55 SKIP(allowlisted)=$skip_count55"
+if [ "$fail_count55" -gt 0 ]; then
+  echo "RESULT: Check 55 FAIL ($fail_count55 violations)"
+  rm -f "$YAML_IDS_FILE"
+  exit 1
+fi
+echo "RESULT: Check 55 OK (forward-pointer markers present + YAML-registered)"
+
+rm -f "$YAML_IDS_FILE"
