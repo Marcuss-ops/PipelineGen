@@ -1913,7 +1913,9 @@
         type-switch + the caller-side explicit cast idiom.
     - id: PR-IMAGES-SHIM-REMOVAL
       owner_capability: internal/application/images
-      status: pending
+      status: shipped
+      ship_sha: 851c5a93
+      ship_date: 2026-07-04
       deadline: 2026-07-25
       notes: |
         In internal/application/images/generation_service.go retire:
