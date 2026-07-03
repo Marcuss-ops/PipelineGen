@@ -66,12 +66,7 @@ func newTestHandler(t *testing.T, maxBatchWorkers int) (*jobs.GenerateJobHandler
 	// fallback). Wire a stub that always fails enqueue so the all-failed
 	// error path is exercised.
 	many.SetFanoutBroker(&stubFanoutBroker{})
-	handler := jobs.NewGenerateJobHandler(one, many,
-		adapters.NormalizationConfig{
-			DefaultLanguage: "en",
-			MaxBatchWorkers: maxBatchWorkers,
-		},
-		zap.NewNop())
+	handler := jobs.NewGenerateJobHandler(one, many, zap.NewNop())
 	return handler, appjobs.JobTools{}
 }
 

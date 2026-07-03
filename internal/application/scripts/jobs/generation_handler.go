@@ -56,24 +56,20 @@ import (
 type GenerateJobHandler struct {
 	one  *usecase.GenerateOneUseCase
 	many *usecase.GenerateManyUseCase
-	cfg  adapters.NormalizationConfig
 	log  *zap.Logger
 }
 
 // NewGenerateJobHandler wires the handler to the unified use cases.
-// Constructor signature is bijective with the prior shape
-// (one, many, cfg, log); composition root wiring (wire_script.go)
-// is preserved.
+// Constructor simplified in Commit 5 P0 #4: cfg removed (dead field
+// after ExecuteFanout no longer accepts NormalizationConfig).
 func NewGenerateJobHandler(
 	one *usecase.GenerateOneUseCase,
 	many *usecase.GenerateManyUseCase,
-	cfg adapters.NormalizationConfig,
 	log *zap.Logger,
 ) *GenerateJobHandler {
 	return &GenerateJobHandler{
 		one:  one,
 		many: many,
-		cfg:  cfg,
 		log:  log,
 	}
 }
