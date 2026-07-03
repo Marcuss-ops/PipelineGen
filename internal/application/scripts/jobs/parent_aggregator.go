@@ -2,8 +2,8 @@
 // mirror of voiceover/jobs/parent_aggregator.go at commit 7f319edb).
 //
 // ParentAggregator is the background poller that reads parent
-// script.generate jobs with parent_state=waiting_children or
-// parent_state=partial_success, queries their children's terminal
+// script.generate jobs with parent_state=waiting_children,
+// queries their children's terminal
 // statuses from the broker, computes the canonical aggregate
 // ParentState via domain job.StateMachine (5-state machine — all
 // script-batch children are OPTIONAL since GenerationItemV2 has no
