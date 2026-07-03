@@ -2928,3 +2928,60 @@ wave_status:
         lands on the small-but-dangerous band of GODOBJ-2026-07-03. Re-uses
         `PR-GODOBJ-6-JOBS-SERVICE` slot — no duplication.
       references: GODOBJ-2026-07-03/PR-GODOBJ-6-JOBS-SERVICE
+
+# ── P0-COMPL-5-WIRE-NAMING (wire-format rename + canonical PublishAndCompleteUseCase, July 2026) ──
+# 5-touch-point refactor (3 NEW + 2 MODIFIED): canonical StagedArtifactReference
+# in internal/domain/remote/, canonical PublishAndCompleteUseCase in
+# internal/application/jobs/completion/, 3 round-trip TDD tests, plus the
+# CompleteArtifactsRequest wire-field rename + CompleteWithArtifactsCommand
+# field rename. Shipped atomically on origin/main as completion of the
+# wire-format rename per the user spec (deadline 2026-08-01).
+- id: P0-COMPL-5-WIRE-NAMING
+  status: shipped
+  exit_signal: true
+  owner: api/jobs + jobs-domain + completion
+  deadline: 2026-08-01
+  exit_gate: |-
+    Wire-format rename landed atomically on origin/main (canonical SHA pending).
+    The HTTP wire at internal/api/jobs/handler_workers.go::CompleteArtifactsRequest
+    now ships a typed `StagedArtifacts []*remote.StagedArtifactReference` slice
+    (JSON key `staged_artifacts` — NOT the prior opaque `artifact_manifest` bytes
+    convention). The domain command at internal/application/jobs/domain_commands.go
+    ::CompleteWithArtifactsCommand is renamed `PublishedArtifacts` → `StagedArtifacts`
+    (json.RawMessage preserved for worker-side byte-stability with the legacy
+    finalizer pipeline).
+    Canonical StagedArtifactReference type at internal/domain/remote/staged_artifact_
+    reference.go (ArtifactID + Destination + optional SHA256 hint + Validate() +
+    2 typed sentinels for missing-fields and invalid-destination; 9-key
+    CanonicalDestinationKeys directory for wire-layer destination validation).
+    Canonical PublishAndCompleteUseCase at internal/application/jobs/completion/
+    publish_and_complete_use_case.go (the EXPAND-phase converter: Step 1
+    validates req + staged, then for each StagedArtifactReference calls
+    ArtifactPreparation.Prepare producing finalization.PublishedArtifact with
+    Drive Location populated; Step 2 routes the []PublishedArtifact slice to
+    WithArtifactsService.CompleteWithArtifacts single-TX atomic terminal; 2
+    typed sentinels ErrPublishAndCompleteUseCaseNotConfigured +
+    ErrPublishAndCompleteUseCasePrepareFailed).
+    3 user-spec'd round-trip TDD tests pinned at internal/application/jobs/
+    completion/publish_and_complete_use_case_test.go (T1 distinct-Drive-Location
+    round-trip + T2 10-field + 5-Location byte-stable + T3 invalid-input
+    typed-error contract) + 1 supporting wire-format byte-stability test
+    (TestWireFormat_StagedArtifactsRoundTrip).
+    4 prior tests in handler_workers_test.go migrated to typed slice + new
+    field name (TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath +
+    TestWorkersBrokerHandler_CompleteWithArtifacts_BadJSON +
+    TestWorkersBrokerHandler_CompleteWithArtifacts_BrokerErr +
+    TestWorkersBrokerHandler_CompleteWithArtifacts_URLIsCanonicalJobIDSource).
+  linked_issues:
+    - id: P0-COMPL-5-COMMIT-SHA-TBD
+      owner_capability: api + jobs-domain + completion
+      status: shipped
+      deadline: 2026-07-04
+    - id: P0-COMPL-5-HANDLER-WIRE
+      owner_capability: api/jobs
+      status: pending
+      deadline: 2026-08-01
+    - id: P0-COMPL-5-RESOLVER
+      owner_capability: completion
+      status: pending
+      deadline: 2026-08-15

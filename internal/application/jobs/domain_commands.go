@@ -46,10 +46,18 @@ type CompleteWithArtifactsCommand struct {
 	// Result manifest data (capability-specific).
 	ResultData json.RawMessage `json:"result_data"`
 
-	// PublishedArtifacts is the JSON-serialised slice of
-	// PublishedArtifact. The broker deserialises and passes to
-	// AssetFinalizerTx.
-	PublishedArtifacts json.RawMessage `json:"published_artifacts"`
+	// StagedArtifacts is the JSON-serialised slice of
+	// pre-publish StagedArtifactReference (renamed from
+	// PublishedArtifacts in P0-COMPL-5-WIRE-NAMING, July 2026).
+	// The canonical Sender-side conversion (StagedArtifactReference
+	// -> PublishedArtifact with Drive FileID/link/checksum post-publish)
+	// lives on the PublishAndCompleteUseCase surface at
+	// internal/application/jobs/completion/publish_and_complete_use_case.go
+	// (the EXPAND-phase canonical; handler-wiring to the use case is
+	// the BACKFILL phase, forward-pointer TODO(P0-COMPL-5-HANDLER-WIRE)).
+	// For now this field continues to carry json.RawMessage on the
+	// worker-side pipeline for byte-stability with the legacy wire.
+	StagedArtifacts json.RawMessage `json:"staged_artifacts"`
 
 	// OutboxEvents is the JSON-serialised slice of OutboxEvent
 	// descriptors. Optional; AssetFinalizerTx also emits its own.
