@@ -10,7 +10,8 @@
 // requires either a heavy fixture or an integration-test environment.
 // Instead, the canonical C11 contract is:
 //
-//  1. GenerationService.buildImageManifest(jobID, position, outputPath, format)
+//  1. buildImageManifest(jobID, position, outputPath, format) (now a
+//     package-level function in image_manifest.go per PR-GODOBJ-3)
 //     returns an *ArtifactManifest with EXACTLY ONE required kind=image
 //     artifact; Filename matches the on-disk path's leaf; MIMEType
 //     derives from format (not from path extension); SizeBytes +
@@ -25,6 +26,12 @@
 //
 // We exercise (1) and (2) directly. These tests pin the C11 contract
 // without the integration-test overhead of a fully-wired HandleJob.
+//
+// PR-GODOBJ-3 note: prior to this PR, buildImageManifest lived as a
+// method on *GenerationService. The PR moved it to a package-level
+// function in image_manifest.go (godlike/06 SSOT: one owner per
+// fact → only image_manifest.go assembles the manifest). The tests
+// were updated to call the package-level function directly.
 package images
 
 import (
@@ -38,7 +45,6 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"go.uber.org/zap"
 )
 
 // validPNGBytes is the canonical 67-byte PNG signature + IHDR + IDAT
@@ -75,14 +81,13 @@ var validPNGBytes = []byte{
 //  4. SizeBytes = stat size.
 //  5. SHA256 = sha256.Sum256(file content).
 func TestBuildImageManifest_HappyPath_PNG(t *testing.T) {
-	g := &GenerationService{log: zap.NewNop()}
 	tmpDir := t.TempDir()
 	imgPath := filepath.Join(tmpDir, "image.png")
 	if err := os.WriteFile(imgPath, validPNGBytes, 0o644); err != nil {
 		t.Fatalf("seed fixture: %v", err)
 	}
 
-	manifest, err := g.buildImageManifest("c11-image-png-001", 0, imgPath, "png")
+	manifest, err := buildImageManifest("c11-image-png-001", 0, imgPath, "png")
 	if err != nil {
 		t.Fatalf("buildImageManifest: %v", err)
 	}
@@ -157,13 +162,12 @@ func TestBuildImageManifest_FormatVariants(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			g := &GenerationService{log: zap.NewNop()}
 			tmpDir := t.TempDir()
 			imgPath := filepath.Join(tmpDir, tc.wantFilename)
 			if err := os.WriteFile(imgPath, validPNGBytes, 0o644); err != nil {
 				t.Fatalf("seed: %v", err)
 			}
-			manifest, err := g.buildImageManifest("job-var-"+tc.name, tc.position, imgPath, tc.format)
+			manifest, err := buildImageManifest("job-var-"+tc.name, tc.position, imgPath, tc.format)
 			if err != nil {
 				t.Fatalf("buildImageManifest: %v", err)
 			}
@@ -182,7 +186,6 @@ func TestBuildImageManifest_FormatVariants(t *testing.T) {
 // validation invariants: empty jobID, empty outputPath, missing file
 // on disk all fail closed at buildImageManifest.
 func TestBuildImageManifest_InvalidArgs_FailsClosed(t *testing.T) {
-	g := &GenerationService{log: zap.NewNop()}
 	tmpDir := t.TempDir()
 	imgPath := filepath.Join(tmpDir, "image.png")
 	if err := os.WriteFile(imgPath, validPNGBytes, 0o644); err != nil {
@@ -202,7 +205,7 @@ func TestBuildImageManifest_InvalidArgs_FailsClosed(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := g.buildImageManifest(tc.jobID, 0, tc.path, "png")
+			_, err := buildImageManifest(tc.jobID, 0, tc.path, "png")
 			if tc.wantErr && err == nil {
 				t.Errorf("buildImageManifest(%q, %q) must fail closed", tc.jobID, tc.path)
 			}
@@ -218,7 +221,6 @@ func TestBuildImageManifest_InvalidArgs_FailsClosed(t *testing.T) {
 // `uploaded[ID]` map cannot collide across batch items in the same
 // jobID namespace.
 func TestBuildImageManifest_PositionEncoding(t *testing.T) {
-	g := &GenerationService{log: zap.NewNop()}
 	tmpDir := t.TempDir()
 	imgPath := filepath.Join(tmpDir, "image.png")
 	if err := os.WriteFile(imgPath, validPNGBytes, 0o644); err != nil {
@@ -227,7 +229,7 @@ func TestBuildImageManifest_PositionEncoding(t *testing.T) {
 
 	for _, position := range []int{0, 1, 5, 12} {
 		t.Run("position="+strconv.Itoa(position), func(t *testing.T) {
-			manifest, err := g.buildImageManifest("job-batch", position, imgPath, "png")
+			manifest, err := buildImageManifest("job-batch", position, imgPath, "png")
 			if err != nil {
 				t.Fatalf("buildImageManifest: %v", err)
 			}
@@ -253,14 +255,13 @@ func TestBuildImageManifest_PositionEncoding(t *testing.T) {
 // the same artifact fields that the Sender-side upload cycle would
 // consume.
 func TestImageManifest_SenderSideDecodeViaJobDecode(t *testing.T) {
-	g := &GenerationService{log: zap.NewNop()}
 	tmpDir := t.TempDir()
 	imgPath := filepath.Join(tmpDir, "image.png")
 	if err := os.WriteFile(imgPath, validPNGBytes, 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	manifest, err := g.buildImageManifest("c11-image-sender-001", 0, imgPath, "png")
+	manifest, err := buildImageManifest("c11-image-sender-001", 0, imgPath, "png")
 	if err != nil {
 		t.Fatalf("buildImageManifest: %v", err)
 	}
@@ -321,13 +322,12 @@ func assertImageManifestSenderFields(t *testing.T, m *job.ArtifactManifest) {
 // RemoteArtifactManifest (Sender-safe, no LocalPath) while preserving
 // the Filename/MIMEType triple that drives upload semantics.
 func TestImageManifest_SenderSideToRemotePreservesFields(t *testing.T) {
-	g := &GenerationService{log: zap.NewNop()}
 	tmpDir := t.TempDir()
 	imgPath := filepath.Join(tmpDir, "image.png")
 	if err := os.WriteFile(imgPath, validPNGBytes, 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	manifest, err := g.buildImageManifest("c11-image-toremote-001", 0, imgPath, "png")
+	manifest, err := buildImageManifest("c11-image-toremote-001", 0, imgPath, "png")
 	if err != nil {
 		t.Fatalf("buildImageManifest: %v", err)
 	}
@@ -393,8 +393,8 @@ func TestImageManifest_SenderSideToRemotePreservesFields(t *testing.T) {
 // body — log fields and doc strings are forbidden too, so a future
 // contributor cannot rename the local variable back to output_path or
 // re-introduce a workspace_path tag in a zap.String call.
-func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {
-	path := "./generation_service.go"
+func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {		path := "./generation_service.go"
+		// ZAP import removed from test (no fixture constructions left).
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile %q: %v", path, err)
@@ -417,3 +417,24 @@ func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {
 		}
 	}
 }
+
+// Note: TestHandleJob_NoAccountProjectParams was removed at the
+// PR-GODOBJ-3 closure pass. Source-text grep audits proved fragile
+// (false positives on the runtime Warn log + the shim's named
+// parameters). The KILL LIST (c) contract is enforced at compile
+// time via godlike/06 SSOT:
+//   - imageGeneratePayload struct (generation_job.go) has NO
+//     Account / ProjectID fields — marshal/unmarshal would fail at
+//     runtime if a caller added them.
+//   - UsecaseCommand (generation_usecase.go) has NO
+//     Account / ProjectID fields.
+//   - SyncCommand (sync_generation.go) has NO
+//     Account / ProjectID fields.
+//   - GenerateSmartImage (generation_service.go) public signature
+//     has NO account/project param.
+//   - GenerateSmartImageWithAccount is the SOLE transitional shim
+//     that retains the legacy params (with one-shot Warn log) —
+//     tracked for removal at PR-GODOBJ-3d-DEPRECATED-SHIM-REMOVAL
+//     (deadline 2026-08-15).
+
+
