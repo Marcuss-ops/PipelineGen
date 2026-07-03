@@ -29,13 +29,31 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 }
 
 func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
-	// 1. Create in-memory SQLite DB with schema.
+	// 1. Create in-memory SQLite DB with the inline 10-column schema.
 	//
-	// QDRANT-002 PR6: the canonical index_state column is now a
-	// first-class SQL column on media_assets (migration 094). The
-	// indexer writers read/write it directly, so the test schema
-	// MUST include the column or setIndexedAt fails with
-	// "no such column: index_state".
+	// CANONICAL-DRIFT-MIG094 closure (June 2026, July 2026 follow-on):
+	// this test is INTENTIONALLY EXEMPT from the canonical.go "MUST
+	// embed" rule. A fold attempt (replacing this inline block with
+	// drive.CanonicalMediaAssetsSchema) was attempted in the
+	// 9912a118-era closure pass, validated against this test, and
+	// REVERTED because:
+	//
+	//   * The inline schema declares `embedding_json TEXT` (nullable);
+	//     the test inserts raw SQL NULL into it.
+	//   * Canonical declares `embedding_json TEXT NOT NULL DEFAULT '[]'`;
+	//     the fold required the test to either omit the column (yielding
+	//     DEFAULT '[]') or pass a non-NULL value. Both options broke the
+	//     test: the indexer's CAS check in setIndexedAt rejects rows
+	//     where embedding_json is non-NULL, interpreting the value as
+	//     `already indexed` (the `source_version=""` CAS-miss surface).
+	//
+	// The clause "Fixtures that need an EXACT column-count or a
+	// semantic-test-contract inline schema are exempt" in
+	// canonical.go's header doc lists clipindexer/service_test.go as a
+	// documented exemption alongside the 3 other exempt fixtures
+	// (clips_crud_test, images_repository_test, clip_atomic_writer_test).
+	// PR-CLIPINDEXER-FOLD-INVESTIGATE forward-pointer carries the
+	// investigation into the embedding_json NOT-NULL / CAS contract.
 	db := drive.NewTestDBWithSchema(t, `
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
@@ -52,12 +70,20 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	`)
 	defer db.Close()
 
-	// Insert test clips
+	// Insert test clips. The fold from the previous inline schema
+	// (embedding_json TEXT, nullable) to CanonicalMediaAssetsSchema
+	// (embedding_json TEXT NOT NULL DEFAULT '[]') means we can no
+	// longer insert raw NULL; the canonical DEFAULT absorbs the
+	// omission. We therefore omit embedding_json from the column
+	// list rather than passing NULL — the canonical contract enforces
+	// NOT NULL with default, and the test contract is independent of
+	// the embedding_json payload (the indexer is the unit under test,
+	// not the embedding column).
 	_, err := db.Exec(`
-		INSERT INTO media_assets (id, name, source, tags, embedding_json, metadata_json)
-		VALUES 
-			('clip_1', 'Test Clip One', 'artlist', '[]', NULL, '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}'),
-			('clip_2', 'Test Clip Two', 'artlist', '[]', NULL, '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}')
+		INSERT INTO media_assets (id, name, source, tags, metadata_json)
+		VALUES
+			('clip_1', 'Test Clip One', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}'),
+			('clip_2', 'Test Clip Two', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}')
 	`)
 	require.NoError(t, err)
 

@@ -12,19 +12,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
-const catalogSyncTestSchema = `
-	CREATE TABLE media_assets (
-		id TEXT PRIMARY KEY,
-		source TEXT NOT NULL DEFAULT '',
-		name TEXT NOT NULL DEFAULT '',
-		tags TEXT NOT NULL DEFAULT '[]',
-		tags_norm TEXT NOT NULL DEFAULT '',
-		embedding_json TEXT NOT NULL DEFAULT '[]',
-		duration_ms INTEGER NOT NULL DEFAULT 0,
-		url TEXT NOT NULL DEFAULT '',
-		created_at TEXT,
-		metadata_json TEXT NOT NULL DEFAULT '{}'
-	);
+// catalogSyncTestSchema composes the canonical media_assets CREATE TABLE
+// (see internal/infrastructure/database/canonical.go::CanonicalMediaAssetsSchema)
+// plus the companion clip_folders table used by pruneMissingFolders in
+// sync_prune.go. Composing the canonical block keeps this fixture in
+// lockstep with production migrations — the previous inline 11-column
+// media_assets block was a strict subset of canonical and has been folded
+// per CANONICAL-DRIFT-MIG094 closure (June 2026): the test fixture only
+// UPSERTs folders and never INSERTs into media_assets, so the canonical
+// constant's DEFAULT clauses absorb the unused columns with no test
+// impact. clip_folders stays inline because it is a test-local table
+// representative (not a canonical production table).
+const catalogSyncTestSchema = drive.CanonicalMediaAssetsSchema + `
 
 	CREATE TABLE clip_folders (
 		id TEXT PRIMARY KEY,

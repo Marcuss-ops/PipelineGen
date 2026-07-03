@@ -33,7 +33,42 @@ package storage
 //
 // Test fixtures that call drive.NewTestDBWithSchema MUST embed this
 // constant so their schema stays in lockstep with the production
-// schema. When migration adds another canonical column it should:
+// schema. Fixtures that need an EXACT column-count OR a
+// semantic-test-contract inline schema are exempt — the inline
+// schema in such tests is the test's own pedagogical contract, not
+// a violation of the SSOT. The canonical exempt-fixture list (July
+// 2026, post-CANONICAL-DRIFT-MIG094 closure):
+//
+//   - clips_crud_test.go::newAlignTestDB
+//       40-col MediaAssetColumns projection-alignment test; folding
+//       would invalidate the contract assertion (the test pins the
+//       40-column EXACT count).
+//   - images_repository_test.go::fase4TestSchema
+//       FASE 4 CUTOVER dual-write minimal schema; folding would
+//       inflate the test surface beyond the FK-cascade contract.
+//   - clip_atomic_writer_test.go::clipAtomicWriterSchema
+//       5-step tx shape minimal schema; folding would obscure the
+//       writer's narrow write-surface intent.
+//   - clipindexer/service_test.go::TestIndexingDoesNotSpawnPythonPerClip
+//       Fold attempted during CANONICAL-DRIFT-MIG094 closure pass,
+//       REVERTED because canonical's `embedding_json TEXT NOT NULL
+//       DEFAULT '[]'` breaks the indexer's CAS check that treats
+//       embedding_json=NULL as `not yet indexed`. Investigation is
+//       tracked separately under PR-CLIPINDEXER-FOLD-INVESTIGATE.
+//
+// See CANONICAL.md §1 for the SSOT contract; see each exempt test
+// file's header comment for the test-specific exemption rationale.
+//
+// Migration 094 closure (CANONICAL-DRIFT-MIG094, July 2026): the
+// canonical constant now embeds `index_state` + `index_state_updated_at`
+// (the two columns PR-AUDIO-CHANNEL-EXTENSION setIndexedAt reads/writes
+// from a first-class column rather than via json_extract). Pre-094
+// fixtures that inlined index_state were violating the SSOT contract;
+// the closure pass folds the residual 2 strictly-subset inline schemas
+// (clipindexer/service_test.go + catalogsync/service_test.go) to embed
+// the canonical constant per the rule below.
+//
+// When migration adds another canonical column it should:
 //   - append a column definition here, AND
 //   - append a matching mediaAssetColumns entry in
 //     internal/infrastructure/database/sqlite/clips_repository.go
@@ -119,5 +154,19 @@ CREATE TABLE IF NOT EXISTS media_assets (
     channel_id TEXT NOT NULL DEFAULT '',
     license TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
-    style TEXT NOT NULL DEFAULT ''
+    style TEXT NOT NULL DEFAULT '',
+    -- Migration 094 (June 2026) — QDRANT-002 PR6: promote index_state
+    -- from a JSON-set value inside metadata_json ($.index_state) to a
+    -- first-class media_assets.index_state column. index_state_updated_at
+    -- is the sibling column — pairing them keeps a single source of
+    -- truth for state-machine rotation (the worker writes both in one
+    -- UPDATE). DEFAULTs match the production migration
+    -- (migrations/sqlite/094_add_media_assets_index_state_column.sql)
+    -- so the canonical CREATE TABLE reproduces what the migration
+    -- chain produces on a fresh DB. Historical ordering note: 094
+    -- landed BEFORE migration 099, but the schema groups them at the
+    -- bottom for readability — see the layered-enumeration block in
+    -- the package doc above for the detailed column history.
+    index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
+    index_state_updated_at TEXT NOT NULL DEFAULT ''
 );`
