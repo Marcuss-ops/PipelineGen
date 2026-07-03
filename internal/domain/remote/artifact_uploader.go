@@ -21,6 +21,7 @@
 package remote
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -284,7 +285,34 @@ type ArtifactUploader interface {
 // ArtifactIdempotencyKey(jobID, artifactID, sha256) at the seam
 // once all three fields are hydrated; the Creator adapter asserts
 // this invariant in its constructor.
+// godlike/06 SSOT: Ctx is the canonical threading point for the
+// ambient job-ctx (cancellation + lease-loss + shutdown drain).
+// The Creator adapter (internal/infrastructure/remote/creator/
+// adapter.go) and the jobbrokerclient.Client (internal/infrastructure/
+// remote/jobbrokerclient/client.go) both fail-closed with a typed
+// error when Ctx is nil — silent-degrade to context.Background()
+// would mask the exact wiring bug this field was added to fix
+// (P1 #10 hardening, formerly C6 NIT-1 logged by code-reviewer
+// and gated in scripts/ci-architectural-checks.sh).
 type PrepareContext struct {
+	// Ctx is the ambient context.Context that the Creator adapter
+	// and the HTTP transport thread through every protocol call
+	// (Prepare / Upload / Finalize). It owns the cancellation
+	// semantics: when the worker is cancelled — job-cancel signal,
+	// lease-loss, shutdown drain — the Ctx is cancelled and the
+	// HTTP transport aborts the in-flight request instead of
+	// continuing against context.Background() (P1 #10 hardening).
+	//
+	// godlike/07 no-fake-availability: Ctx MUST be non-nil. The
+	// Creator adapter and the jobbrokerclient.Client both reject a
+	// nil Ctx with a typed error at the seam. Callers that hold a
+	// *job.Job or a long-lived jobCtx typically wrap it via
+	// context.WithCancel / context.WithTimeout / context.WithDeadline
+	// before assigning to this field; a plain context.Background()
+	// is acceptable ONLY for one-shot test harnesses where
+	// cancellation is intentionally inert.
+	Ctx context.Context
+
 	// JobID is the canonical job-broker JobID (matches lease_id
 	// origin in domain/job/job.go).
 	JobID string
@@ -355,6 +383,11 @@ type UploadSessionStore interface {
 // Creator adapter (composition-time invariant broken) or when a
 // method is called on a nil receiver. Callers errors.Is against
 // this sentinel to distinguish "wiring bug" from "wire-shape bug".
+//
+// Scope: covers ONLY composition/wiring failures (nil receiver,
+// nil broker, empty JobID). Cancellation failures (Ctx nil) and
+// lease/session failures are gated by their own typed sentinels
+// so callers can disambiguate via errors.Is.
 var ErrArtifactUploaderNotConfigured = errors.New("artifact uploader: not configured")
 
 // ErrArtifactSessionExpired is the typed sentinel for session reuse
@@ -372,6 +405,24 @@ var ErrArtifactSessionNotFound = errors.New("artifact uploader: session not foun
 // for the Sender-side projection — both sentinels are part of the
 // godlike/06 SSOT wire-shape contract.
 var ErrArtifactRemoteSchemaVersionUnsupported = errors.New("artifact uploader: remote schema_version is not supported")
+
+// ErrArtifactCtxRequired is the typed sentinel returned when
+// PrepareContext.Ctx is nil at any of the 3 protocol commands
+// (Prepare / Upload / Finalize) on either the Creator-side Adapter
+// or the HTTP-side jobbrokerclient.Client. P1 #10 hardening
+// (formerly C6 NIT-1 logged by code-reviewer).
+//
+// godlike/07 no-fake-availability: a nil Ctx would silently behave
+// like context.Background() because net/http's NewRequestWithContext
+// only enforces the supplied ctx, NOT a default. Such a silent
+// degrade would let the upload continue running after a worker
+// cancellation (job-cancel, lease-loss, shutdown drain) — the
+// exact bug this sentinel was added to surface. Distinct from
+// ErrArtifactUploaderNotConfigured (wiring bug) so callers can
+// errors.Is(err, ErrArtifactCtxRequired) for cancellation-driven
+// failures specifically (e.g., to log
+// `zap.String("ctx_status", "missing")` separately from `wiring`).
+var ErrArtifactCtxRequired = errors.New("artifact uploader: PrepareContext.Ctx required (godlike/07 no-fake-availability — silent-degrade to context.Background() is the P1 #10 bug)")
 
 // ErrIllegalUploadStateTransition is the typed sentinel for
 // IsValidTransition rejections. Callers errors.Is against the
