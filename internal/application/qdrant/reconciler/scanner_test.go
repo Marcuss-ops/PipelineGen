@@ -92,7 +92,7 @@ func TestClassify_NoDrift(t *testing.T) {
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 0 {
 		t.Fatalf("expected zero classifications, got %#v", got)
 	}
@@ -104,7 +104,7 @@ func TestClassify_Missing(t *testing.T) {
 		"a1": {ID: "a1", WorkspaceID: "ws1", LifecycleState: "ACTIVE"},
 	}
 	qdrant := map[string]pointWithID{}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindMissing || got[0].AssetID != "a1" {
 		t.Fatalf("expected one Missing(a1), got %#v", got)
 	}
@@ -118,7 +118,7 @@ func TestClassify_Orphan(t *testing.T) {
 			"asset_id": "orphan1",
 		}},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindOrphan || got[0].AssetID != "orphan1" {
 		t.Fatalf("expected one Orphan(orphan1), got %#v", got)
 	}
@@ -143,7 +143,7 @@ func TestClassify_NonCanonicalPointID_PriorityWins(t *testing.T) {
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected 1, got %d (%#v)", len(got), got)
 	}
@@ -164,7 +164,7 @@ func TestClassify_PayloadIncomplete_PriorityOverVersionStale(t *testing.T) {
 			"embedding_version_text": "v0", // would also fire VersionStale
 		}},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindPayloadIncomplete {
 		t.Fatalf("expected PayloadIncomplete wins over VersionStale, got %s", got[0].Kind)
 	}
@@ -187,7 +187,7 @@ func TestClassify_VersionStale_LegacyGlobalFallback(t *testing.T) {
 			"embedding_version": "2026-06-16-v1",
 		}},
 	}
-	got := classify(sqlite, qdrantMatchLegacy, schema, canonicalPointID)
+	got := classify(sqlite, qdrantMatchLegacy, schema, canonicalPointID, nil)
 	if len(got) != 0 {
 		t.Fatalf("legacy global fallback should NOT produce VersionStale, got %#v", got)
 	}
@@ -203,7 +203,7 @@ func TestClassify_VersionStale_LegacyGlobalFallback(t *testing.T) {
 			"embedding_version": "v0",
 		}},
 	}
-	got = classify(sqlite, qdrantMismatchLegacy, schema, canonicalPointID)
+	got = classify(sqlite, qdrantMismatchLegacy, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindVersionStale {
 		t.Fatalf("legacy global mismatch should produce VersionStale, got %#v", got)
 	}
@@ -224,14 +224,14 @@ func TestClassify_LifecycleMismatch_CaseInsensitive(t *testing.T) {
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 0 {
 		t.Fatalf("case-insensitive lifecycle match should not classify, got %#v", got)
 	}
 
 	// Now mismatch (deleted).
 	qdrant["a1"].Payload["lifecycle_state"] = "DELETED"
-	got = classify(sqlite, qdrant, schema, canonicalPointID)
+	got = classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindLifecycleMismatch {
 		t.Fatalf("expected LifecycleMismatch(ACTIVE vs DELETED), got %#v", got)
 	}
@@ -250,7 +250,7 @@ func TestClassify_WorkspaceMismatch(t *testing.T) {
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindWorkspaceMismatch {
 		t.Fatalf("expected WorkspaceMismatch, got %#v", got)
 	}
@@ -271,7 +271,7 @@ func TestClassify_LegacyKeys(t *testing.T) {
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
-	got := classify(sqlite, qdrantStatus, schema, canonicalPointID)
+	got := classify(sqlite, qdrantStatus, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindLifecycleKeyLegacy {
 		t.Fatalf("expected LifecycleKeyLegacy, got %#v", got)
 	}
@@ -287,7 +287,7 @@ func TestClassify_LegacyKeys(t *testing.T) {
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
-	got = classify(sqlite, qdrantDriveLink, schema, canonicalPointID)
+	got = classify(sqlite, qdrantDriveLink, schema, canonicalPointID, nil)
 	if len(got) != 1 || got[0].Kind != KindLocatorLegacy {
 		t.Fatalf("expected LocatorLegacy(drive_link), got %#v", got)
 	}
@@ -316,7 +316,7 @@ func TestClassify_Mixed_DeterministicOrdering(t *testing.T) {
 			},
 		},
 	}
-	got := classify(sqlite, qdrant, schema, canonicalPointID)
+	got := classify(sqlite, qdrant, schema, canonicalPointID, nil)
 	if len(got) != 3 {
 		t.Fatalf("expected 3 classifications, got %d (%#v)", len(got), got)
 	}

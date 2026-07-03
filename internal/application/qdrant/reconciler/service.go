@@ -177,7 +177,7 @@ func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*Reconc
 	// Phase 2: Qdrant scroll. PR 10 fail-closed gates: ANY scroll
 	// failure is a HARD error that aborts the run — partial data
 	// doesn't get classified in either mode.
-	qdrantSet, scrollErrs, err := s.scrollAll(ctx, opts.Collection, opts.BatchSize, len(sqliteSet))
+	qdrantSet, duplicates, scrollErrs, err := s.scrollAll(ctx, opts.Collection, opts.BatchSize, len(sqliteSet))
 	if err != nil {
 		// PR 10: even a non-empty qdrantSet is untrusted when ANY
 		// gate fires. Only SQLite-side counters surface in the report.
@@ -201,7 +201,7 @@ func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*Reconc
 	report.ScannedTotals.CompleteScan = true
 
 	// Phase 3: classify (pure).
-	pairs := classify(sqliteSet, qdrantSet, s.schema, s.pointIDFor)
+	pairs := classify(sqliteSet, qdrantSet, s.schema, s.pointIDFor, duplicates)
 	report.ScannedTotals.Pairs = len(pairs)
 	for _, c := range pairs {
 		report.Counts[c.Kind]++
@@ -212,6 +212,11 @@ func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*Reconc
 	} else {
 		report.DisplayedCount = len(pairs)
 	}
+
+	// Phase 3.1: derive typed ReconciliationReport from Classifications.
+	// Task 6 (July 2026): dashboard consumers read this directly instead
+	// of iterating the flat Classifications list.
+	report.Reconciliation = report.ToReconciliationReport()
 
 	// Phase 3.5: pre-repair metric emission (DryRun + Apply).
 	s.metrics.RecordFindings(report.Counts)
@@ -382,8 +387,9 @@ type legacyStripTotals struct {
 // should still rely on the count gates in the post-reindex verifier
 // (PR 12) — Qdrant.CountPoints reports N above the rest API which is
 // a stronger signal than scroll returning zero.
-func (s *Service) scrollAll(ctx context.Context, collection string, batchSize int, expectedAssets int) (map[string]pointWithID, []string, error) {
+func (s *Service) scrollAll(ctx context.Context, collection string, batchSize int, expectedAssets int) (map[string]pointWithID, map[string][]pointWithID, []string, error) {
 	out := make(map[string]pointWithID)
+	dupes := make(map[string][]pointWithID)
 	var errs []string
 	var missingIDs int
 	var lastNextOffset string
@@ -395,7 +401,7 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 			// the QDRANT-005B regression that returned partial data
 			// with nil err after the first page.
 			errs = append(errs, fmt.Sprintf("scroll page %d: %v", i, err))
-			return out, errs, fmt.Errorf("QDRANT-fail-closed: scroll page %d failed: %w", i, err)
+			return out, dupes, errs, fmt.Errorf("QDRANT-fail-closed: scroll page %d failed: %w", i, err)
 		}
 		if len(page.Items) == 0 {
 			break
@@ -413,6 +419,17 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 				errs = append(errs, fmt.Sprintf("page %d: point %q missing asset_id (fail-closed)", i, p.ID))
 				continue
 			}
+			// Task 6: detect duplicates — when the same asset_id already
+			// exists in the output map, the new point is a duplicate.
+			// The first occurrence stays in the map; subsequent ones
+			// are collected for classification as KindDuplicate.
+			if _, exists := out[assetID]; exists {
+				// Task 6: duplicate point — same asset_id already exists
+				// in the output map (first occurrence is canonical).
+				// Extra copies are flagged as KindDuplicate.
+				dupes[assetID] = append(dupes[assetID], pointWithID{ID: p.ID, Payload: p.Payload})
+				continue
+			}
 			out[assetID] = pointWithID{ID: p.ID, Payload: p.Payload}
 		}
 		if page.NextOffset == "" {
@@ -423,7 +440,7 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 		if i == maxPages-1 {
 			// Gate (b): maxPages cap hit with trailing NextOffset.
 			errs = append(errs, fmt.Sprintf("scroll iteration cap %d reached with NextOffset=%q; remaining points unsampled (fail-closed)", maxPages, lastNextOffset))
-			return out, errs, fmt.Errorf("QDRANT-fail-closed: maxScrolls=%d reached with NextOffset still trailing (more points unsampled)", maxPages)
+			return out, dupes, errs, fmt.Errorf("QDRANT-fail-closed: maxScrolls=%d reached with NextOffset still trailing (more points unsampled)", maxPages)
 		}
 	}
 
@@ -435,7 +452,7 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 	// bounding the trailing offset, this branch is the safety net.
 	if lastNextOffset != "" {
 		errs = append(errs, fmt.Sprintf("QDRANT-fail-closed: trailing NextOffset=%q at end of scroll loop", lastNextOffset))
-		return out, errs, fmt.Errorf("QDRANT-fail-closed: trailing NextOffset=%q after cursor exhaust", lastNextOffset)
+		return out, dupes, errs, fmt.Errorf("QDRANT-fail-closed: trailing NextOffset=%q after cursor exhaust", lastNextOffset)
 	}
 	// Gate (e): missing-asset_id count when expected > 0. Even if
 	// some points decoded fine, the undecoded ones are unknowns —
@@ -443,9 +460,9 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 	// the operator. Discard partial data and abort.
 	if expectedAssets > 0 && missingIDs > 0 {
 		errs = append(errs, fmt.Sprintf("QDRANT-fail-closed: %d points missing asset_id (canonical decode failure on %d/%d assets)", missingIDs, missingIDs, expectedAssets))
-		return out, errs, fmt.Errorf("QDRANT-fail-closed: %d Qdrant points with empty/missing asset_id (canonical decode failure)", missingIDs)
+		return out, dupes, errs, fmt.Errorf("QDRANT-fail-closed: %d Qdrant points with empty/missing asset_id (canonical decode failure)", missingIDs)
 	}
-	return out, errs, nil
+	return out, dupes, errs, nil
 }
 
 // applyRepair dispatches the repair actions. Returns the run summary
@@ -514,6 +531,12 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 				locatorPoints = append(locatorPoints, c.QdrantPointID)
 				locatorKeysByPointID[c.QdrantPointID] = c.LocatorKeys
 			}
+		// KindDuplicate, KindMissingVectors, KindDimensionMismatch:
+		// no automated repair. Duplicates need manual operator review
+		// (which point is canonical? does the extra point carry stale
+		// vectors or a different workspace?). MissingVectors and
+		// DimensionMismatches are verifier-side gates — the reconciler
+		// scrolls with with_vector=false so it cannot detect these.
 		}
 	}
 
