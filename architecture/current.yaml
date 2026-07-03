@@ -1741,6 +1741,15 @@
       status: shipped
       owner_capability: internal/application/scripts
       deadline: 2026-07-03
+      ship_date: 2026-07-03
+      description: |
+        P0 #4 audit closure -- 6-commit chain (98d768aa, 18151c0a,
+        63d4fcb6, cd866457, de8a7321, 7336699d) landing the canonical
+        script.generate → script.generate_item child-job fan-out
+        architecture with parent aggregator + lifecycle ownership.
+        10 aggregator tests + 4 handler tests green; 13/13 P0 #4
+        scenarios covered. Closes 9 P0 issues from Italian audit
+        snapshot (July 2026).
     - id: PR-SCRIPTING-BATCH-RETRY
       status: pending
       owner_capability: internal/application/scripts
