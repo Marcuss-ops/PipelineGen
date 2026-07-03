@@ -70,10 +70,20 @@ type AggregatorDeps struct {
 // as a second CAS fence alongside the existing (status, parent_state)
 // guard. A zero expectedVersion means "skip the revision check"
 // (backward-compatible with callers that don't own a StateMachine).
+//
+// FASE 3 (July 2026): ListAwaitingAggregation replaces the generic
+// List(type=voiceover.generate) + in-memory JSON filter. The new
+// method uses an optimized SQL query with idx_jobs_type_status
+// index + json_extract WHERE clause (voiceover.md §10.5).
 type AggregatorJobsService interface {
 	List(ctx context.Context, filter job.Filter) ([]job.Job, error)
 	Get(ctx context.Context, id string) (*job.Job, error)
 	Complete(ctx context.Context, id string, result map[string]any) error
+	// ListAwaitingAggregation returns voiceover.generate parents awaiting
+	// aggregation (parent_state IN waiting_children/partial_success,
+	// broker status IN RUNNING/FINALIZING/SUCCEEDED). Uses the optimized
+	// idx_jobs_type_status index + json_extract filter.
+	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
 	// TerminalFlip is the canonical no-lease CAS that re-finalises the
 	// parent (status, parent_state) atomically. expectedVersion is
 	// the domain StateMachine.Version() — when > 0, the SQL layer
@@ -141,17 +151,16 @@ func (a *ParentAggregator) Start(ctx context.Context) {
 	}()
 }
 
-// Tick performs one aggregation sweep. Lists all voiceover.generate
-// parent jobs with non-terminal parent_state, reads their children,
-// and updates the parent Result when all children are terminal.
+// Tick performs one aggregation sweep. Uses the optimized
+// ListAwaitingAggregation query (voiceover.md §10.5) which filters
+// parent_state via json_extract in SQL rather than loading all
+// voiceover.generate jobs and filtering in Go memory.
 // Errors on individual parents are logged and skipped — a failed
 // parent will be retried on the next tick.
 func (a *ParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.List(ctx, job.Filter{
-		Type: ptrStr(job.TypeVoiceoverGenerate),
-	})
+	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, 100)
 	if err != nil {
-		a.deps.Logger.Error("ParentAggregator.Tick: List failed", zap.Error(err))
+		a.deps.Logger.Error("ParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
 		return
 	}
 	if len(jobs) == 0 {
@@ -393,8 +402,3 @@ func domainToVoiceoverParentState(sm *job.StateMachine) voiceover.ParentState {
 		return voiceover.ParentPartialSuccess
 	}
 }
-
-// ptrStr returns a pointer to the given string. Used to build
-// the job.Filter.Type pointer field. Inline here (no pkg/ptrutil
-// import) so the aggregator keeps a tight import surface.
-func ptrStr(s string) *string { return &s }

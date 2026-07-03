@@ -366,6 +366,34 @@ func (s *Service) List(ctx context.Context, filter job.Filter) ([]job.Job, error
 	return s.repo.List(ctx, filter)
 }
 
+// awaitingAggregationLister is the narrow Pattern-0 port the parent
+// aggregator's ListAwaitingAggregation relies on. The canonical
+// *sqljobs.SQLiteStore satisfies it (migration 127 + repository.go).
+type awaitingAggregationLister interface {
+	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
+}
+
+// ListAwaitingAggregation returns voiceover.generate parent jobs awaiting
+// aggregation (parent_state IN waiting_children/partial_success, broker
+// status IN RUNNING/FINALIZING/SUCCEEDED). See voiceover.md §10.5.
+//
+// Delegates to the repository's optimized query (uses idx_jobs_type_status
+// index + json_extract filter) via type-assertion on the broker.
+// When limit <= 0, defaults to 100.
+func (s *Service) ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error) {
+	if s == nil {
+		return nil, fmt.Errorf("jobs: ListAwaitingAggregation: nil receiver (composition bug)")
+	}
+	if s.repo == nil {
+		return nil, fmt.Errorf("jobs: ListAwaitingAggregation: repo not wired")
+	}
+	lister, ok := s.repo.(awaitingAggregationLister)
+	if !ok {
+		return nil, fmt.Errorf("jobs: ListAwaitingAggregation: underlying broker %T does not implement awaiting-aggregation lister — migration 127 required", s.repo)
+	}
+	return lister.ListAwaitingAggregation(ctx, limit)
+}
+
 func (s *Service) Cancel(ctx context.Context, id string) error {
 	return s.repo.Cancel(ctx, id)
 }
