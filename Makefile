@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-qdrant-fixtures test-qdrant-fixtures-down
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -449,6 +449,38 @@ smoke-dry:
 	    bash $$s --dry; \
 	done
 	@echo "✅ smoke-dry OK"
+
+# ─── Qdrant synthetic-asset integration tests (Task 8, July 2026) ──────
+
+# test-qdrant-fixtures: Start ephemeral Qdrant container, run synthetic
+# asset integration tests, then tear down. Fails fast if docker is not
+# available or the Qdrant image cannot be pulled.
+#
+# Port 16333 avoids collision with the production Qdrant on 6333.
+# The container is ephemeral (no volume) — data is lost on stop.
+#
+# Usage:
+#   make test-qdrant-fixtures                         # default Qdrant port
+#   make test-qdrant-fixtures TEST_QDRANT_PORT=16333  # override port
+test-qdrant-fixtures:
+	@echo "→ Starting ephemeral Qdrant on port $${TEST_QDRANT_PORT:-16333}..."
+	docker compose -f docker-compose.test-qdrant.yml up -d --wait 2>/dev/null || \
+		docker compose -f docker-compose.test-qdrant.yml up -d
+	@sleep 3  # give Qdrant time to accept connections
+	@echo "→ Running synthetic asset integration tests..."
+	TEST_QDRANT_URL=http://localhost:$${TEST_QDRANT_PORT:-16333} $(GO) test -tags=integration -v -count=1 ./tests/fixtures/... || \
+		(echo "→ Tests failed — tearing down Qdrant..."; \
+		 docker compose -f docker-compose.test-qdrant.yml down --volumes 2>/dev/null; \
+		 exit 1)
+	@echo "→ Tests passed — tearing down Qdrant..."
+	docker compose -f docker-compose.test-qdrant.yml down --volumes 2>/dev/null
+	@echo "✅ test-qdrant-fixtures OK"
+
+# test-qdrant-fixtures-down: Tear down the test Qdrant container.
+# Use this to clean up after a failed/aborted test run.
+test-qdrant-fixtures-down:
+	docker compose -f docker-compose.test-qdrant.yml down --volumes 2>/dev/null
+	@echo "Qdrant test container torn down"
 
 # Regenerate Google Drive token.json
 regenerate-token:
