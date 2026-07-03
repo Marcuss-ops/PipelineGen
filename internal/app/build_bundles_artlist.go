@@ -104,6 +104,22 @@ func WireArtlist(
 		zap.Bool("godlike_07_fail_closed", true),
 	)
 
+	// godlike/06 SSOT: HTTPSelfLoopProbe is the canonical app-layer wrapper
+	// for *Probe; its Probe(ctx) (bool, error) signature matches
+	// artlist.IsLiveProbe exactly (http_live_probe.go). Composition root
+	// owns the resolution of baseURL (cfg.External.VeloxBaseURL > localhost
+	// fallback) + timeout (5s default per DefaultProbeTimeout in artlist pkg).
+	probeBaseURL := cfg.External.VeloxBaseURL
+	if probeBaseURL == "" {
+		probeBaseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+	}
+	isLiveProbe := artlistPkg.NewHTTPSelfLoopProbe(
+		probeBaseURL,
+		"/api/artlist/stats",
+		artlistPkg.DefaultProbeTimeout,
+		log,
+	)
+
 	// godlike/06 SSOT: SemanticEnricher is the canonical app-layer wrapper for
 	// *semantic.MetadataWriter; its Enrich(ctx, clip, term) signature matches
 	// artlist.MetadataWriter.Enrich exactly (semantic_enricher.go:147). The 8
@@ -129,10 +145,11 @@ func WireArtlist(
 			Indexer:         bundle.ClipIndexerService,
 			MetadataWriter:  semanticEnricher,
 			Publisher:       bundle.Publisher,
-			ScraperSearcher: nil, // forward-pointer: PR-ARTLIST-LIVE-WIRE
-			PixabaySearcher: nil, // forward-pointer: PR-ARTLIST-SEARCHERS
-			PexelsSearcher:  nil, // forward-pointer: PR-ARTLIST-SEARCHERS
-			Stager:          nil, // forward-pointer: PR-ARTLIST-STAGER
+			ScraperSearcher: nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
+			PixabaySearcher: nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
+			PexelsSearcher:  nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
+			Stager:          nil,         // forward-pointer: PR-ARTLIST-STAGER
+			IsLiveProbe:     isLiveProbe,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (11) — 7 DIRECT, 4 FORWARD_POINTER nil.

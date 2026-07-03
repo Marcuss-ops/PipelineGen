@@ -53,6 +53,15 @@ type ServicePorts struct {
 	// and stock. When nil, stageProcessBatch falls through to the legacy
 	// mediaProcessor.Process pipeline without breaking.
 	Stager assets.SourceStager
+	// IsLiveProbe is the canonical runtime liveness probe port
+	// (PR-ARTLIST-LIVE-WIRE, July 2026; godlike/06 SSOT owner of the
+	// HTTP self-loop surface). Optional — the WireArtlist composition
+	// site constructs a *HTTPSelfLoopProbe (http_live_probe.go) that
+	// pings GET /api/artlist/stats with a configurable timeout; when
+	// nil, callers should treat the live-probe capability as
+	// unavailable (no panic — the WireArtlist 4 mandatory gates stay
+	// unchanged per godlike/07). Test fixtures may pass nil.
+	IsLiveProbe IsLiveProbe
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -195,6 +204,13 @@ type Service struct {
 
 	// stager is the shared SourceStager port (Step 9/12 wire-up). Optional.
 	stager assets.SourceStager
+
+	// isLiveProbe is the canonical runtime liveness probe port
+	// (PR-ARTLIST-LIVE-WIRE, July 2026). Wired via deps.IsLiveProbe.
+	// When nil, callers should treat the probe capability as
+	// unavailable — the WireArtlist 4 mandatory gates stay
+	// unchanged per godlike/07.
+	isLiveProbe IsLiveProbe
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
@@ -237,6 +253,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		assetVersions:      deps.AssetVerRepo,
 		assetLocRepo:       deps.AssetLocRepo,
 		stager:             deps.Stager,
+		isLiveProbe:        deps.IsLiveProbe,
 	}
 
 	// Inizializza i componenti delegati
