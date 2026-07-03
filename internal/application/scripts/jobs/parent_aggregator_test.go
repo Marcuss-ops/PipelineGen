@@ -90,22 +90,10 @@ type scriptFlipRecord struct {
 // Ensure the stub satisfies the port interface (compile-time).
 var _ ScriptAggregatorJobsService = (*stubScriptAggregatorJobsService)(nil)
 
-// List returns the parent job (used by stub's Tick even though
-// ListAwaitingAggregation is what the aggregator calls; the stub
-// keeps both to satisfy the full ScriptAggregatorJobsService interface).
-func (s *stubScriptAggregatorJobsService) List(ctx context.Context, filter job.Filter) ([]job.Job, error) {
-	if s.listErr != nil {
-		return nil, s.listErr
-	}
-	if s.parentJob == nil {
-		return nil, nil
-	}
-	return []job.Job{*s.parentJob}, nil
-}
-
 // ListAwaitingAggregation returns the parent job (matches voiceover's
 // stub surface — single parent, no batch filtering).
-func (s *stubScriptAggregatorJobsService) ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error) {
+// Commit 3: parentType param added (ignored in stub).
+func (s *stubScriptAggregatorJobsService) ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error) {
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
@@ -126,17 +114,7 @@ func (s *stubScriptAggregatorJobsService) Get(ctx context.Context, id string) (*
 	return nil, nil
 }
 
-// Complete is preserved for non-aggregate callers (style parity with
-// voiceover stub).
-func (s *stubScriptAggregatorJobsService) Complete(ctx context.Context, id string, result map[string]any) error {
-	if s.completed == nil {
-		s.completed = make(map[string]map[string]any)
-	}
-	s.completed[id] = result
-	return nil
-}
-
-// FinalizeAggregateParent records the flip into stub.flipped (including expectedVersion
+// TerminalFlip records the flip into stub.flipped (including expectedVersion
 // so CAS-fence-argument assertions can pin parent.Revision selection).
 func (s *stubScriptAggregatorJobsService) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s.flippedErr != nil {
@@ -597,6 +575,6 @@ func TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal(t *testing
 	}
 }
 
-// Ensure the voiceover P0 #1 surface compiles against our aggregator
-// (compile-time assertion — the voiceover aggregator is symmetric).
+// Ensure the compile-time assertion still holds after Commit 3 interface
+// narrowing (removed List/Complete — the aggregator doesn't use them).
 var _ ScriptAggregatorJobsService = (*appjobs.Service)(nil)

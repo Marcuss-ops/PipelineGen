@@ -249,30 +249,31 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 	return out, nil
 }
 
-// ListAwaitingAggregation returns voiceover.generate parent jobs whose
-// result_json carries parent_state IN ('waiting_children','partial_success')
-// AND whose broker status is RUNNING, FINALIZING, or SUCCEEDED. Uses the
-// composite index idx_jobs_type_status (migration 127) to narrow the scan
-// before applying json_extract.
+// ListAwaitingAggregation returns parent jobs of the given type whose
+// result_json carries parent_state = 'waiting_children' AND whose broker
+// status is RUNNING, FINALIZING, or SUCCEEDED. Uses the composite index
+// idx_jobs_type_status (migration 127) to narrow the scan before applying
+// json_extract.
 //
-// This replaces the previous List(type=voiceover.generate) + in-memory
-// VoiceoverParentResult.IsAwaitingAggregation() filter that loaded ALL
-// voiceover.generate rows ever created. See voiceover.md §10.5.
+// Commit 3 P0 #4 (July 2026): parentType parameter replaces the hardcoded
+// job.TypeVoiceoverGenerate so both script.generate and voiceover.generate
+// aggregators reuse the same query. Only waiting_children is queried —
+// partial_success is terminal (prevents infinite re-aggregation P0 #7).
 //
 // The query returns up to `limit` rows ordered by created_at DESC so the
 // aggregator processes the most recent parents first. When limit <= 0,
 // defaults to 100.
-func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error) {
+func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	query := `SELECT ` + jobColumns + ` FROM jobs
 WHERE type = ?
   AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
-  AND json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
+  AND json_extract(result_json,'$.parent_state') = 'waiting_children'
 ORDER BY created_at DESC
 LIMIT ?`
-	rows, err := r.db.QueryContext(ctx, query, job.TypeVoiceoverGenerate, limit)
+	rows, err := r.db.QueryContext(ctx, query, parentType, limit)
 	if err != nil {
 		return nil, fmt.Errorf("ListAwaitingAggregation: %w", err)
 	}

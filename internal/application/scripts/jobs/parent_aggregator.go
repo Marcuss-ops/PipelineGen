@@ -71,14 +71,13 @@ type ScriptAggregatorDeps struct {
 // Pattern 0 surface (AGENTS.md) — tests inject stubs via this interface
 // without instantiating the full lease machinery.
 type ScriptAggregatorJobsService interface {
-	List(ctx context.Context, filter job.Filter) ([]job.Job, error)
 	Get(ctx context.Context, id string) (*job.Job, error)
-	Complete(ctx context.Context, id string, result map[string]any) error
 	// ListAwaitingAggregation returns script.generate parents awaiting
-	// aggregation (parent_state IN waiting_children/partial_success,
-	// broker status IN RUNNING/FINALIZING/SUCCEEDED).
-	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
-	// FinalizeAggregateParent is the canonical no-lease CAS that re-finalises the
+	// aggregation (parent_state = waiting_children, broker status IN
+	// RUNNING/FINALIZING/SUCCEEDED). Commit 3: parentType param scopes
+	// the query to script.generate only.
+	ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error)
+	// TerminalFlip is the canonical no-lease CAS that re-finalises the
 	// parent (status, parent_state) atomically. expectedVersion is the
 	// domain StateMachine.Version() — when > 0, the SQL layer adds
 	// `AND revision = ?` as a second CAS fence.
@@ -86,6 +85,10 @@ type ScriptAggregatorJobsService interface {
 }
 
 // Compile-time assertion: *appjobs.Service satisfies ScriptAggregatorJobsService.
+//
+// Note: the interface was narrowed in Commit 3 (removed List/Complete — the
+// aggregator doesn't use them). *appjobs.Service still satisfies it because
+// Go interface satisfaction is structural.
 var _ ScriptAggregatorJobsService = (*appjobs.Service)(nil)
 
 // ScriptParentResult is the typed parent job result. Field names
@@ -108,12 +111,12 @@ type ScriptParentResult struct {
 
 // IsAwaitingAggregation reports whether the parent is in a non-terminal
 // application-level state that the aggregator should process.
+//
+// Commit 3 P0 #4: only waiting_children is non-terminal. partial_success
+// is terminal — once the aggregator finalises a parent as partial_success,
+// it must NOT be re-aggregated (P0 #7 infinite aggregation loop).
 func (r *ScriptParentResult) IsAwaitingAggregation() bool {
-	switch ScriptParentState(r.ParentState) {
-	case ScriptParentWaitingChildren, ScriptParentPartialSuccess:
-		return true
-	}
-	return false
+	return ScriptParentState(r.ParentState) == ScriptParentWaitingChildren
 }
 
 // ScriptChildResult is the typed per-item child result the aggregator
@@ -233,7 +236,7 @@ func (a *ScriptParentAggregator) Start(ctx context.Context) {
 // Tick performs one aggregation sweep. Errors on individual parents are
 // logged and skipped — a failed parent is retried on the next tick.
 func (a *ScriptParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, 100)
+	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, job.TypeScriptGenerate, 100)
 	if err != nil {
 		a.deps.Logger.Error("ScriptParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
 		return
@@ -321,6 +324,16 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 					zap.String("parent_job_id", j.ID),
 					zap.String("child_job_id", childID),
 					zap.Error(err))
+				allTerminal = false
+				continue
+			}
+			// Commit 3 P0 #4: nil-child guard — the repo can legitimately
+			// return (nil, nil) when the job does not exist. Treating
+			// nil as non-terminal keeps the parent open.
+			if childJob == nil {
+				a.deps.Logger.Warn("ScriptParentAggregator: child job missing",
+					zap.String("parent_job_id", j.ID),
+					zap.String("child_job_id", childID))
 				allTerminal = false
 				continue
 			}
@@ -447,6 +460,7 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		"total_items":         agg.TotalItems,
 		"succeeded_count":     agg.SucceededCount,
 		"failed_count":        agg.FailedCount,
+		"child_job_ids":       agg.ChildIDs,
 	}
 
 	targetStatus := job.StatusSucceeded

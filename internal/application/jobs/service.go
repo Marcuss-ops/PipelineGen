@@ -396,18 +396,24 @@ func (s *Service) List(ctx context.Context, filter job.Filter) ([]job.Job, error
 // awaitingAggregationLister is the narrow Pattern-0 port the parent
 // aggregator's ListAwaitingAggregation relies on. The canonical
 // *sqljobs.SQLiteStore satisfies it (migration 127 + repository.go).
+//
+// Commit 3 P0 #4 (July 2026): parentType parameter added so script
+// and voiceover aggregators can use the same query.
 type awaitingAggregationLister interface {
-	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
+	ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error)
 }
 
-// ListAwaitingAggregation returns voiceover.generate parent jobs awaiting
-// aggregation (parent_state IN waiting_children/partial_success, broker
-// status IN RUNNING/FINALIZING/SUCCEEDED). See voiceover.md §10.5.
+// ListAwaitingAggregation returns parent jobs awaiting aggregation
+// (parent_state = waiting_children, broker status IN RUNNING/
+// FINALIZING/SUCCEEDED) filtered by parentType. See voiceover.md §10.5.
 //
-// Delegates to the repository's optimized query (uses idx_jobs_type_status
-// index + json_extract filter) via type-assertion on the broker.
+// Commit 3 P0 #4: parentType parameter scopes the query so script
+// and voiceover aggregators don't cross-pollinate. Only waiting_children
+// is queried — partial_success is terminal (P0 #7).
+//
+// Delegates to the repository's optimized query via type-assertion.
 // When limit <= 0, defaults to 100.
-func (s *Service) ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error) {
+func (s *Service) ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error) {
 	if s == nil {
 		return nil, fmt.Errorf("jobs: ListAwaitingAggregation: nil receiver (composition bug)")
 	}
@@ -418,7 +424,7 @@ func (s *Service) ListAwaitingAggregation(ctx context.Context, limit int) ([]job
 	if !ok {
 		return nil, fmt.Errorf("jobs: ListAwaitingAggregation: underlying broker %T does not implement awaiting-aggregation lister — migration 127 required", s.repo)
 	}
-	return lister.ListAwaitingAggregation(ctx, limit)
+	return lister.ListAwaitingAggregation(ctx, parentType, limit)
 }
 
 func (s *Service) Cancel(ctx context.Context, id string) error {

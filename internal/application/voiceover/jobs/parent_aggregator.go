@@ -83,7 +83,7 @@ type AggregatorJobsService interface {
 	// aggregation (parent_state IN waiting_children/partial_success,
 	// broker status IN RUNNING/FINALIZING/SUCCEEDED). Uses the optimized
 	// idx_jobs_type_status index + json_extract filter.
-	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
+	ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error)
 	// FinalizeAggregateParent is the canonical no-lease CAS that re-finalises the
 	// parent (status, parent_state) atomically. expectedVersion is
 	// the domain StateMachine.Version() — when > 0, the SQL layer
@@ -180,7 +180,7 @@ func (a *ParentAggregator) Start(ctx context.Context) {
 // Errors on individual parents are logged and skipped — a failed
 // parent will be retried on the next tick.
 func (a *ParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, 100)
+	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, job.TypeVoiceoverGenerate, 100)
 	if err != nil {
 		a.deps.Logger.Error("ParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
 		return
