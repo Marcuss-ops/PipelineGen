@@ -37,6 +37,12 @@
 // wire_script_adapters.go. wireScriptFlow is now a pure-routing
 // orchestrator (wiring → use cases → job handler → handler →
 // module registration) with no inline post-processor loop.
+//
+// Commit 1 P0 #4 audit (July 2026): extracted wireScriptChildJobAuditP04
+// and scriptItemFanoutBrokerAdapter to package level (Go does not allow
+// nested functions). Moved root.Jobs nil check before dereference. Fixed
+// EnqueueScriptItem: ret.JobID→ret.ID, typed ScriptGenerateItemPayload
+// instead of double-marshalling, constant reference fix.
 
 package app
 
@@ -51,6 +57,7 @@ import (
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -157,13 +164,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// retire them once the last non-TranslatedPort caller migrates.
 	ollamaTranslator := root.AI.OllamaTranslator
 	clipServices := usecase.ClipServices{
-		Logger:         log,
-		DriveSvc:       root.Drive.Reader,
-		Translator:     ollamaTranslator, // satisfies LegacyTranslatorService (4-arg)
-		Translation:    ollamaTranslator, // satisfies LegacyTextTranslationService (3-arg)
+		Logger:          log,
+		DriveSvc:        root.Drive.Reader,
+		Translator:      ollamaTranslator, // satisfies LegacyTranslatorService (4-arg)
+		Translation:     ollamaTranslator, // satisfies LegacyTextTranslationService (3-arg)
 		TranslationPort: ollamaTranslator, // satisfies canonical TranslationPort (DTO-in/DTO-out)
-		ArtlistFolder:  artlistFolder,
-		MetadataModel:  metaModel,
+		ArtlistFolder:   artlistFolder,
+		MetadataModel:   metaModel,
 	}
 
 	// ── Drive folder client adapter (impl in wire_script_adapters.go) ─
@@ -382,20 +389,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	//      service as the AggregatorJobsService port (satisfied
 	//      implicitly by *appjobs.Service). Ticker polls every 30s
 	//      and applies TerminalFlip based on the per-item aggregate.
-	if err := wireScriptChildJobAuditP04(root.Jobs.Service, oneUC, manyUC, normCfg, log); err != nil {
-		return fmt.Errorf("wireScriptFlow: P0 #4 audit wiring: %w", err)
+	if root.Jobs == nil || root.Jobs.Service == nil {
+		return fmt.Errorf("wireScriptFlow: jobs broker is required (Issue 7 / P1 fail-fast)")
 	}
 
-	// Issue 7 / P1 (June 2026): fail-fast when broker is missing or
-	// the registration fails on script.generate. The previous
-	// `if root.Jobs.Service != nil { log.Warn(...) }` shape silently
-	// swallowed broker-missing OR registration-errors, letting the
-	// server come up without a script.generate handler -- which then
-	// surfaced as a runtime "no handler for script.generate" on the
-	// first enqueue. Composition fails closed at this gate; the
-	// caller (bootstrap.go) aborts startup on non-nil error.
-	if root.Jobs == nil || root.Jobs.Service == nil {
-		return fmt.Errorf("wireScriptFlow: jobs broker is required for script.generate registration (Issue 7 / P1 fail-fast)")
+	if err := wireScriptChildJobAuditP04(root.Jobs.Service, oneUC, manyUC, normCfg, log); err != nil {
+		return fmt.Errorf("wireScriptFlow: P0 #4 audit wiring: %w", err)
 	}
 	if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
 		return fmt.Errorf("wireScriptFlow: register script.generate job handler: %w", err)
@@ -410,7 +409,86 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 
-	// wireScriptChildJobAuditP04 is the canonical composition helper for
+	// ── Set metadata model ─────────────────────────────────────────────
+	if gen != nil {
+		gen.SetMetadataModel(metaModel)
+	}
+
+	// PR-FIX (June 2026): lightweight clip-name searcher for
+	// GET /script/clips/search?q= discovery endpoint. The
+	// clipsNameSearchAdapter impl lives in wire_script_sources.go.
+	var clipsSearcher scriptapi.ClipSearcher
+	if root.Repos.ClipsRepo != nil {
+		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
+	}
+
+	// ── Construct handler via Build contract (Blocco C1-Step 14) ───────
+	// Blocco C1-Step 14 (June 2026): ScriptFlow capability is now
+	// built via the canonical scriptapi.Build(deps)
+	// (api.Descriptor, error) contract, matching the artlist /
+	// youtube / clips / stock / voiceover / soundeffect /
+	// register / diagnostics / search / jobs precedent. The
+	// Handler is constructed inside Build and captured by the
+	// returned ScriptDescriptor's Module closure. The composition
+	// site type-asserts ONCE to *scriptapi.ScriptDescriptor
+	// (fail-closed) and reuses the concrete for the
+	// tryRegisterModule call (the concrete *ScriptDescriptor
+	// satisfies api.Descriptor structurally). The ScriptFlow
+	// capability has 6 non-HTTP methods (EnableAuth /
+	// AdminToken / GetVoiceoverService / GetGroupsResolver /
+	// ResolveDriveFolderID / MaybeCreateGoogleDoc) but ZERO
+	// external callers (verified via code-search 2026-06-29), so
+	// the Descriptor surface is the smallest in the tree today
+	// — just `Module` field + forwarder methods (matches the
+	// stock / voiceover / soundeffect / register / diagnostics /
+	// search / jobs precedent exactly).
+	// Blocco C1-Step 14 (June 2026): declare a local
+	// scriptapi.Dependencies value before calling scriptapi.Build
+	// to keep the wire-up scannable (matches the clips C1-Step 5
+	// precedent in `registerClips`). The 24 ScriptFlowDeps-equivalent
+	// fields are forwarded verbatim from the existing wireScriptFlow
+	// local variables; no field-renaming is performed.
+	scriptDeps := scriptapi.Dependencies{
+		Engine:                engine,
+		Section:               sectionRegen,
+		CacheEviction:         cacheEvictionUC,
+		Image:                 root.Domains.ImageService,
+		Realtime:              root.Domains.RealtimeSearch,
+		Association:           root.Domains.AssocService,
+		Voiceover:             root.Domains.VoiceoverService,
+		AssetTree:             root.Search.AssetTreeService,
+		ClipSourceBuilder:     clipSourceBuilder,
+		MediaCurator:          mediaCurator,
+		Harvest:               harvestSvc,
+		ScriptsRepo:           scriptsRepoAdapter,
+		// Commit H Phase 2 (June 2026): Memory field dropped (no
+		// gemmamemory service wiring candidate).
+		Jobs:                  root.Jobs.Facade,
+		Registry:              appjobs.Compose(),
+		ClipsSearcher:         clipsSearcher,
+		AdminToken:            adminToken,
+		DriveFolderClient:     driveFolderClient,
+		DocumentCreator:       documentCreator,
+		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
+		ClipServices:          clipServices,
+		EnabledFunc:           func() bool { return anyScriptFeatureEnabled(cfg) },
+		ModuleOpts:            nil, // no per-feature middleware (matches pre-Step-14 wiring)
+		Logger:                log,
+	}
+	scriptDescriptor, err := scriptapi.Build(scriptDeps)
+	if err != nil {
+		return fmt.Errorf("wireScriptFlow: %w", err)
+	}
+	sd, ok := scriptDescriptor.(*scriptapi.ScriptDescriptor)
+	if !ok || sd == nil {
+		return fmt.Errorf("wireScriptFlow: script.Build returned unexpected descriptor type %T (want *scriptapi.ScriptDescriptor)", scriptDescriptor)
+	}
+
+	// ── Register HTTP module ───────────────────────────────────────────
+	return tryRegisterModule(registry, log, sd)
+}
+
+// wireScriptChildJobAuditP04 is the canonical composition helper for
 // the P0 #4 audit (audit 2026-07-03) per-item retry pattern in
 // script.generate batches. Wires:
 //
@@ -501,128 +579,45 @@ func newScriptItemFanoutBrokerAdapter(jobsSvc *appjobs.Service, log *zap.Logger)
 }
 
 // EnqueueScriptItem satisfies the FanoutItemBroker port. Marshals
-// the item to JSON, builds a typed EnqueueRequest for the per-item
-// child type, and returns the broker-assigned JobID.
+// the item to JSON inside a typed ScriptGenerateItemPayload, builds
+// a typed EnqueueRequest for the per-item child type, and returns the
+// broker-assigned job ID.
 func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
 	ctx context.Context,
 	parentJobID string,
 	item scriptpkg.GenerationItemV2,
 	preset scriptpkg.Preset,
 ) (string, error) {
-	payload, err := json.Marshal(item)
+	// Build typed payload (avoids double-marshalling). The child
+	// handler decodes ScriptGenerateItemPayload directly.
+	typedPayload := jobs.ScriptGenerateItemPayload{
+		ParentJobID: parentJobID,
+		Item:        item,
+		Preset:      preset,
+	}
+	payloadBytes, err := json.Marshal(typedPayload)
 	if err != nil {
 		return "", fmt.Errorf("marshal item payload: %w", err)
 	}
-	// Build per-item typed envelope. The child worker
-	// (ScriptGenerateItemJobHandler) decodes this directly.
-	envelope := map[string]any{
-		"item":    item,
-		"preset":  string(preset),
-		"parent":  parentJobID,
-	}
-	envelopeBytes, err := json.Marshal(envelope)
-	if err != nil {
-		return "", fmt.Errorf("marshal fanout envelope: %w", err)
-	}
-	_ = payload // envelopeBytes is the canonical wire form
 
-	req := &appjobs.EnqueueRequest{
-		Type:    scriptpkg.TypeScriptGenerateItem,
-		Payload: envelopeBytes,
+	req := &domainjob.EnqueueRequest{
+		Type:    domainjob.TypeScriptGenerateItem,
+		Payload: json.RawMessage(payloadBytes),
 	}
 	ret, err := a.jobsSvc.Enqueue(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("enqueue script.generate_item: %w", err)
 	}
-	if ret == nil || ret.JobID == "" {
-		return "", fmt.Errorf("enqueue script.generate_item returned empty JobID")
+	if ret == nil || ret.ID == "" {
+		return "", fmt.Errorf("enqueue script.generate_item returned empty ID")
 	}
 	if a.log != nil {
 		a.log.Info("P0 #4 audit: child job enqueued",
-			zap.String("child_job_id", ret.JobID),
+			zap.String("child_job_id", ret.ID),
 			zap.String("parent_job_id", parentJobID),
 			zap.String("item_id", item.ID))
 	}
-	return ret.JobID, nil
-}
-
-// ── Set metadata model ─────────────────────────────────────────────
-	if gen != nil {
-		gen.SetMetadataModel(metaModel)
-	}
-
-	// PR-FIX (June 2026): lightweight clip-name searcher for
-	// GET /script/clips/search?q= discovery endpoint. The
-	// clipsNameSearchAdapter impl lives in wire_script_sources.go.
-	var clipsSearcher scriptapi.ClipSearcher
-	if root.Repos.ClipsRepo != nil {
-		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
-	}
-
-	// ── Construct handler via Build contract (Blocco C1-Step 14) ───────
-	// Blocco C1-Step 14 (June 2026): ScriptFlow capability is now
-	// built via the canonical scriptapi.Build(deps)
-	// (api.Descriptor, error) contract, matching the artlist /
-	// youtube / clips / stock / voiceover / soundeffect /
-	// register / diagnostics / search / jobs precedent. The
-	// Handler is constructed inside Build and captured by the
-	// returned ScriptDescriptor's Module closure. The composition
-	// site type-asserts ONCE to *scriptapi.ScriptDescriptor
-	// (fail-closed) and reuses the concrete for the
-	// tryRegisterModule call (the concrete *ScriptDescriptor
-	// satisfies api.Descriptor structurally). The ScriptFlow
-	// capability has 6 non-HTTP methods (EnableAuth /
-	// AdminToken / GetVoiceoverService / GetGroupsResolver /
-	// ResolveDriveFolderID / MaybeCreateGoogleDoc) but ZERO
-	// external callers (verified via code-search 2026-06-29), so
-	// the Descriptor surface is the smallest in the tree today
-	// — just `Module` field + forwarder methods (matches the
-	// stock / voiceover / soundeffect / register / diagnostics /
-	// search / jobs precedent exactly).
-	// Blocco C1-Step 14 (June 2026): declare a local
-	// scriptapi.Dependencies value before calling scriptapi.Build
-	// to keep the wire-up scannable (matches the clips C1-Step 5
-	// precedent in `registerClips`). The 24 ScriptFlowDeps-equivalent
-	// fields are forwarded verbatim from the existing wireScriptFlow
-	// local variables; no field-renaming is performed.
-	scriptDeps := scriptapi.Dependencies{
-		Engine:                engine,
-		Section:               sectionRegen,
-		CacheEviction:         cacheEvictionUC,
-		Image:                 root.Domains.ImageService,
-		Realtime:              root.Domains.RealtimeSearch,
-		Association:           root.Domains.AssocService,
-		Voiceover:             root.Domains.VoiceoverService,
-		AssetTree:             root.Search.AssetTreeService,
-		ClipSourceBuilder:     clipSourceBuilder,
-		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
-		ScriptsRepo:           scriptsRepoAdapter,
-		// Commit H Phase 2 (June 2026): Memory field dropped (no
-		// gemmamemory service wiring candidate).
-		Jobs:                  root.Jobs.Facade,
-		Registry:              appjobs.Compose(),
-		ClipsSearcher:         clipsSearcher,
-		AdminToken:            adminToken,
-		DriveFolderClient:     driveFolderClient,
-		DocumentCreator:       documentCreator,
-		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
-		ClipServices:          clipServices,
-		EnabledFunc:           func() bool { return anyScriptFeatureEnabled(cfg) },
-		ModuleOpts:            nil, // no per-feature middleware (matches pre-Step-14 wiring)
-		Logger:                log,
-	}
-	scriptDescriptor, err := scriptapi.Build(scriptDeps)
-	if err != nil {
-		return fmt.Errorf("wireScriptFlow: %w", err)
-	}
-	sd, ok := scriptDescriptor.(*scriptapi.ScriptDescriptor)
-	if !ok || sd == nil {
-		return fmt.Errorf("wireScriptFlow: script.Build returned unexpected descriptor type %T (want *scriptapi.ScriptDescriptor)", scriptDescriptor)
-	}
-
-	// ── Register HTTP module ───────────────────────────────────────────
-	return tryRegisterModule(registry, log, sd)
+	return ret.ID, nil
 }
 
 // anyScriptFeatureEnabled returns true when at least one script feature flag
