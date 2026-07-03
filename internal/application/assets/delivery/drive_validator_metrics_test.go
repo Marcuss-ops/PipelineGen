@@ -183,7 +183,7 @@ func TestDriveRootsValidator_MetricsIntegration_P1_4(t *testing.T) {
 		t.Fatal("ValidateDriveRoots: report nil despite error")
 	}
 
-	// 9 unique rows materialize (one per registry.Keys(), since the
+	// 10 unique rows materialize (one per registry.Keys(), since the
 	// validator emits Probes on every iteration step — skipped,
 	// success, failure alike). The exact breakdown depends on
 	// resolver behaviour for which destinations have empty resolved
@@ -191,8 +191,8 @@ func TestDriveRootsValidator_MetricsIntegration_P1_4(t *testing.T) {
 	// don't commit to a specific success/failure/skipped split in
 	// the comment — the cardinality pin below is what matters for
 	// drift detection.
-	if got := testutil.CollectAndCount(metrics.Probes); got != 9 {
-		t.Errorf("Probes series count = %v, want 9 (one per registry.Keys())", got)
+	if got := testutil.CollectAndCount(metrics.Probes); got != 10 {
+		t.Errorf("Probes series count = %v, want 10 (one per registry.Keys())", got)
 	}
 
 	// Per-key assertions via label-aware testutil.

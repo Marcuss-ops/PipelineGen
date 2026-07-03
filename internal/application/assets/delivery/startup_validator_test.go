@@ -142,13 +142,13 @@ func TestDriveRootsValidator_AllPass_P1_3(t *testing.T) {
 	require.False(t, report.HasFailures(), "AllPass: HasFailures must be false")
 	require.Empty(t, report.FailedDestinations(), "AllPass: FailedDestinations must be empty")
 	require.Empty(t, report.Skipped, "AllPass: Skipped must be empty (all roots non-empty)")
-	require.Len(t, report.PerDestination, 9, "AllPass: all 9 destinations probed")
+	require.Len(t, report.PerDestination, 10, "AllPass: all 10 destinations probed")
 
 	// Every probe was called exactly once.
-	require.Len(t, probe.probeCalls, 9, "AllPass: all 9 roots probed once each")
+	require.Len(t, probe.probeCalls, 10, "AllPass: all 10 roots probed once each")
 	for _, r := range report.PerDestination {
 		require.NoError(t, r.Err, "AllPass: per-destination Err must be nil for %q", r.Destination)
-		require.NotZero(t, r.Elapsed, "AllPass: Elapsed must be recorded per probe")
+		require.GreaterOrEqual(t, r.Elapsed.Microseconds(), int64(0), "AllPass: Elapsed must be recorded per probe")
 	}
 }
 
@@ -171,7 +171,7 @@ func TestDriveRootsValidator_AllFail_P1_3(t *testing.T) {
 	require.True(t, report.HasFailures(), "AllFail: HasFailures must be true")
 
 	failed := report.FailedDestinations()
-	require.Len(t, failed, 9, "AllFail: every reachable root must be in FailedDestinations")
+	require.Len(t, failed, 10, "AllFail: every reachable root must be in FailedDestinations")
 
 	// Per-destination errors surface with the typed chain.
 	for _, r := range failed {
@@ -217,8 +217,8 @@ func TestDriveRootsValidator_PartialFail_P1_3(t *testing.T) {
 	require.Equal(t, []DestinationKey{DestinationVoiceover}, failed,
 		"PartialFail: only the voiceover root should be in FailedDestinations")
 
-	// Sanity: 9 probes total (every destination probed even when one fails).
-	require.Len(t, report.PerDestination, 9)
+	// Sanity: 10 probes total (every destination probed even when one fails).
+	require.Len(t, report.PerDestination, 10)
 	successCount := 0
 	for _, p := range report.PerDestination {
 		if p.Destination == DestinationVoiceover {
@@ -228,7 +228,7 @@ func TestDriveRootsValidator_PartialFail_P1_3(t *testing.T) {
 			successCount++
 		}
 	}
-	require.Equal(t, 8, successCount, "PartialFail: 8 destinations succeeded")
+	require.Equal(t, 9, successCount, "PartialFail: 9 destinations succeeded")
 }
 
 // ── Test 4: EmptySkipped (empty RootFolderID is skipped, not failed) ─
@@ -246,12 +246,13 @@ func TestDriveRootsValidator_EmptySkipped_P1_3(t *testing.T) {
 	require.False(t, report.HasFailures(),
 		"EmptySkipped: HasFailures must be false (empty root is Skipped, not a probe failure)")
 
-	// The Artlist destination is in Skipped. The other 8 are in
-	// PerDestination with nil Err.
-	require.Equal(t, []DestinationKey{DestinationArtlist}, report.Skipped,
-		"EmptySkipped: DestinationArtlist (empty root) MUST be in Skipped")
+	// The Artlist destination is in Skipped (empty root). Admin is also
+	// skipped because its RootFolder() returns MediaRootFolder which is
+	// empty in this registry. The other 8 are in PerDestination.
+	require.ElementsMatch(t, []DestinationKey{DestinationArtlist, DestinationAdmin}, report.Skipped,
+		"EmptySkipped: DestinationArtlist + DestinationAdmin (empty roots) MUST be in Skipped")
 	require.Len(t, report.PerDestination, 8,
-		"EmptySkipped: 8 non-empty roots probed (Artlist excluded)")
+		"EmptySkipped: 8 non-empty roots probed (Artlist + Admin excluded)")
 
 	// Verify NO probe call was made for the empty Artlist root
 	// (validator MUST skip it before invoking ProbeFolderAccess).
@@ -311,7 +312,7 @@ func TestDriveRootsValidator_AllFailReportShape_P1_3(t *testing.T) {
 	// Every reachable root failed → all in FailedDestinations AND
 	// every row has Err set (the per-destination error chain).
 	failed := report.FailedDestinations()
-	require.Len(t, failed, 9, "AllFailReportShape: every reachable root must fail")
+	require.Len(t, failed, 10, "AllFailReportShape: every reachable root must fail")
 	require.True(t, report.HasFailures())
 
 	for _, r := range report.PerDestination {

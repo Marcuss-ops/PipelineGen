@@ -111,13 +111,13 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				RootFolderID:   cfg.Drive.ImagesFolder(),
 				PathBuilder:    ImagePath,
 				RequireSubpath: true,
-				ConflictPolicy: ConflictSkip, // content-hash dedupe via SHA-256
+				ConflictPolicy: ConflictSkipByHash, // P1: skip when content hash matches
 			},
 			DestinationVoiceover: {
 				RootFolderID:   cfg.Drive.VoiceoverFolder(),
 				PathBuilder:    VoiceoverPath,
 				RequireSubpath: true,
-				ConflictPolicy: ConflictSkip, // immutable per (project, language, version)
+				ConflictPolicy: ConflictSkip, // P1: skip-or-create-version (hash-based)
 			},
 			DestinationBook: {
 				RootFolderID:   cfg.Drive.BooksFolder(),
@@ -142,6 +142,12 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				PathBuilder:    DocumentPath,
 				RequireSubpath: true,
 				ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
+			},
+			DestinationAdmin: {
+				RootFolderID:   cfg.Drive.RootFolder(),
+				PathBuilder:    AdminPath,
+				RequireSubpath: false,
+				ConflictPolicy: ConflictOverwrite, // P1: admin CLI always overwrites
 			},
 		},
 	}
@@ -327,4 +333,11 @@ func DocumentPath(req PublishRequest) ([]string, error) {
 	return []string{
 		pathutil.SafeFolderName(assetID),
 	}, nil
+}
+
+// AdminPath (P1, July 2026) builds the path for admin CLI uploads.
+// Returns an empty slice — admin uploads land directly in the root
+// folder. RequireSubpath is false for this destination.
+func AdminPath(_ PublishRequest) ([]string, error) {
+	return nil, nil
 }
