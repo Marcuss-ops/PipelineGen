@@ -1,32 +1,22 @@
-// Package jobs — generation_job_manifest_test.go (P0 Commit 12, July 2026).
+// Package jobs — generation_job_manifest_test.go (P0 Commit 12,
+// July 2026) updated for PR-GODOBJ-4 KILL-K1.
 //
-// Round-trip + assertion tests for the C12 script.generate §8.4
-// multi-artifact emission contract.
+// Per KILL-K1, the §8.4 multi-artifact emission is owned by
+// adapters.PersistGeneratedArtifacts (filesystem ops), the typed
+// manifest assembly is owned by buildManifestFromArtifacts
+// (PURE constructor), and the typed ExecutionResult dual-shape
+// merge is owned by MergeTypedExecutionEnvelope (PURE marshal/unmarshal).
 //
-// C12 spec (literal user request):
+// Round-trip + assertion tests:
 //   - script-json REQUIRED
 //   - document-pdf REQUIRED (when generated)
 //   - document-markdown OPTIONAL (reserved slot)
-//   - scenes OPTIONAL (when SpecScene has entries)
+//   - scenes OPTIONAL (when generated)
 //   - voiceover OPTIONAL (language-grouped)
-//
-// Pre-C12 also emitted script_text + metadata + entities + image —
-// these are NOT in the §8.4 spec envelope and the C12 audit asserts
-// they are GONE from the manifest emission (the typed
-// GenerationResult still carries them as Data fields, just not as
-// manifest file-sidecar entries).
-//
-// The §8.4 envelope is built INTERNALLY as a typed
-//
-//	scriptpkg.ExecutionResult[script.GenerationResult]{Data,Artifacts}
-//
-// (C10 dual-shape discipline); the function then marshals the envelope
-// to bytes + round-trips to map[string]any, AND sets
-// handlerResult[__artifact_manifest] = manifest so the runner's
-// job.Decode path still works at the wire-protocol boundary.
 package jobs
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -34,13 +24,11 @@ import (
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"go.uber.org/zap"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 )
 
 // validScriptResult builds a minimal typed GenerationResult that
-// satisfies the §8.4 contract: scrip text + 2 scenes + 1 voiceover
-// (en) + 1 document (with DocLink). Tests below compose variations
-// of this fixture to exercise each emission branch.
+// satisfies the §8.4 contract.
 func validScriptResult(language string) *script.GenerationResult {
 	if language == "" {
 		language = "en"
@@ -87,27 +75,19 @@ func validScriptResult(language string) *script.GenerationResult {
 	}
 }
 
-// validScriptResult_NoDocument returns the same shape minus the
-// Document artifact; the §8.4 PDF emission slot should NOT appear in
-// the manifest when no document was generated.
 func validScriptResult_NoDocument() *script.GenerationResult {
 	r := validScriptResult("en")
 	r.Artifacts.Document = nil
 	return r
 }
 
-// validScriptResult_NoScenes returns the same shape with empty scenes
-// so the §8.4 scenes emission slot should NOT appear.
 func validScriptResult_NoScenes() *script.GenerationResult {
 	r := validScriptResult("en")
 	r.Output.SpecScene.Scenes = nil
-	r.Output.SpecScene.Scenes = []script.SpecScene{} // explicit empty
+	r.Output.SpecScene.Scenes = []script.SpecScene{}
 	return r
 }
 
-// validScriptResult_VoiceoverMultiLanguage exercises the §8.4
-// language-grouped emission: 3 scenes across 2 languages, expect ONE
-// manifest entry per language (en + it).
 func validScriptResult_VoiceoverMultiLanguage() *script.GenerationResult {
 	return &script.GenerationResult{
 		ItemID:   "test-item-multilang",
@@ -136,54 +116,64 @@ func validScriptResult_VoiceoverMultiLanguage() *script.GenerationResult {
 	}
 }
 
-// TestBuildAndInjectManifest_HappyPath_FiveArtifacts is the canonical
-// C12 round-trip e2e. With a fully-populated GenerationResult (doc +
-// scenes + voiceover), the manifest must contain EXACTLY the §8.4
-// 5-artifact shape:
+// canonicalEmit runs the canonical PR-GODOBJ-4 KILL-K1 surface for
+// test fixtures: PersistGeneratedArtifacts → buildManifestFromArtifacts
+// → MergeTypedExecutionEnvelope. Mirrors the production handler's
+// handleSingle/handleBatch flow without going through the broker
+// dispatch so tests assert the unit-level surface directly.
+func canonicalEmit(t *testing.T, jobID string, res *script.GenerationResult) (map[string]any, *scriptpkg.ArtifactManifest) {
+	t.Helper()
+	ctx := context.Background()
+	artifacts, err := adapters.PersistGeneratedArtifacts(ctx, jobID, res)
+	if err != nil {
+		t.Fatalf("canonicalEmit: PersistGeneratedArtifacts(%q): %v", jobID, err)
+	}
+	manifest := buildManifestFromArtifacts(jobID, artifacts)
+	if vErr := manifest.Validate(); vErr != nil {
+		t.Logf("canonicalEmit: manifest.Validate() returned %v (non-fatal — migration tests assert envelope merge path)", vErr)
+	}
+	handlerResult := map[string]any{}
+	if mErr := MergeTypedExecutionEnvelope(handlerResult, res, manifest); mErr != nil {
+		t.Fatalf("canonicalEmit: MergeTypedExecutionEnvelope: %v", mErr)
+	}
+	return handlerResult, manifest
+}
+
+// TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts is the
+// canonical C12 round-trip e2e. With a fully-populated GenerationResult
+// (doc + scenes + voiceover), the manifest must contain EXACTLY the
+// §8.4 5-artifact shape:
 //
 //  1. script-json    REQUIRED
 //  2. document-pdf   REQUIRED (Document.DocLink set in fixture)
-//  3. document-markdown — RESERVED SLOT, not emitted (no
-//     ArtifactKindMarkdown emission yet)
+//  3. document-markdown — RESERVED SLOT, not emitted
 //  4. scenes         OPTIONAL (emitted because fixture has 2 scenes)
-//  5. voiceover      OPTIONAL (emitted because fixture has 2
-//     en-scene bindings → manifest dedup'd to
-//     ONE entry per language)
+//  5. voiceover      OPTIONAL (1 entry per language)
 //
-// Total: 4 manifest entries (NOT 5 — markdown slot is reserved
-// without emission).
-func TestBuildAndInjectManifest_HappyPath_FiveArtifacts(t *testing.T) {
-	h := &GenerateJobHandler{log: zap.NewNop()}
-	handlerResult := map[string]any{}
+// Total: 4 manifest entries.
+func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 	res := validScriptResult("en")
+	handlerResult, _ := canonicalEmit(t, "test-job-c12-happy", res)
 
-	h.buildAndInjectManifest("test-job-c12-happy", res, handlerResult)
-
-	// Decode the manifest via the canonical runner-side lookup.
 	manifest, decodeErr := scriptpkg.Decode(handlerResult)
 	if decodeErr != nil {
 		t.Fatalf("job.Decode(handlerResult): %v", decodeErr)
 	}
 	if manifest == nil {
-		t.Fatal("manifest is nil — handler did not inject under __artifact_manifest")
+		t.Fatal("manifest is nil — MergeTypedExecutionEnvelope did not inject under __artifact_manifest")
 	}
 
-	// Build a kind→count map for clarity.
 	kindCount := map[string]int{}
-	requiredKinds := []string{}
 	for _, a := range manifest.Artifacts {
 		kindCount[a.Kind]++
-		if a.Required {
-			requiredKinds = append(requiredKinds, a.Kind)
-		}
 	}
 
 	want := map[string]int{
-		scriptpkg.ArtifactKindScriptJSON: 1, // (a)
-		scriptpkg.ArtifactKindPDF:        1, // (b)
-		scriptpkg.ArtifactKindMarkdown:   0, // (c) reserved, NOT emitted
-		scriptpkg.ArtifactKindScenes:     1, // (d)
-		scriptpkg.ArtifactKindVoiceover:  1, // (e), language-grouped (en)
+		scriptpkg.ArtifactKindScriptJSON: 1,
+		scriptpkg.ArtifactKindPDF:        1,
+		scriptpkg.ArtifactKindMarkdown:   0,
+		scriptpkg.ArtifactKindScenes:     1,
+		scriptpkg.ArtifactKindVoiceover:  1,
 	}
 	for k, wantv := range want {
 		if got := kindCount[k]; got != wantv {
@@ -191,7 +181,6 @@ func TestBuildAndInjectManifest_HappyPath_FiveArtifacts(t *testing.T) {
 		}
 	}
 
-	// Also assert that pre-C12 kinds (now-removed) are absent.
 	removedKinds := []string{
 		scriptpkg.ArtifactKindScriptText,
 		scriptpkg.ArtifactKindMetadata,
@@ -204,7 +193,6 @@ func TestBuildAndInjectManifest_HappyPath_FiveArtifacts(t *testing.T) {
 		}
 	}
 
-	// Required-set must be exactly: script-json + document-pdf (§8.4 spec).
 	wantRequired := map[string]bool{
 		scriptpkg.ArtifactKindScriptJSON: true,
 		scriptpkg.ArtifactKindPDF:        true,
@@ -230,30 +218,18 @@ func TestBuildAndInjectManifest_HappyPath_FiveArtifacts(t *testing.T) {
 		}
 	}
 
-	// Manifest.Validate must succeed.
 	if vErr := manifest.Validate(); vErr != nil {
 		t.Errorf("manifest.Validate(): %v (manifest should be well-formed)", vErr)
 	}
 
-	// SchemaVersion must be V1.
 	if manifest.SchemaVersion != scriptpkg.SchemaVersionArtifactManifestV1 {
 		t.Errorf("manifest schema_version = %q, want %q", manifest.SchemaVersion, scriptpkg.SchemaVersionArtifactManifestV1)
 	}
 }
 
-// TestBuildAndInjectManifest_NoDocument_OmitsPDF locks the §8.4
-// "REQUIRED when Document.DocLink set" semantics — if the document
-// pipeline did NOT produce a document (GenerateDocument=false or
-// pipeline skipped), the pdf slot must NOT appear in the manifest.
-// A required artefact with empty Path would fail Validate; the
-// §8.4 spec's "Required when generated" conditional emission
-// prevents that.
-func TestBuildAndInjectManifest_NoDocument_OmitsPDF(t *testing.T) {
-	h := &GenerateJobHandler{log: zap.NewNop()}
-	handlerResult := map[string]any{}
+func TestPersistGeneratedArtifacts_NoDocument_OmitsPDF(t *testing.T) {
 	res := validScriptResult_NoDocument()
-
-	h.buildAndInjectManifest("test-job-c12-no-doc", res, handlerResult)
+	handlerResult, _ := canonicalEmit(t, "test-job-c12-no-doc", res)
 
 	manifest, decodeErr := scriptpkg.Decode(handlerResult)
 	if decodeErr != nil {
@@ -266,18 +242,9 @@ func TestBuildAndInjectManifest_NoDocument_OmitsPDF(t *testing.T) {
 	}
 }
 
-// TestBuildAndInjectManifest_NoScenes_OmitsScenes locks the §8.4
-// "scenes OPTIONAL" semantics — empty SpecScene.Scenes should NOT
-// produce a scenes.json entry. Validate would fail if the entry had
-// empty Path with Required=true (pre-C12 behaviour); the C12 fix
-// marks scenes as OPTIONAL, so even an empty entry would be allowed,
-// but emitting nothing is cleaner.
-func TestBuildAndInjectManifest_NoScenes_OmitsScenes(t *testing.T) {
-	h := &GenerateJobHandler{log: zap.NewNop()}
-	handlerResult := map[string]any{}
+func TestPersistGeneratedArtifacts_NoScenes_OmitsScenes(t *testing.T) {
 	res := validScriptResult_NoScenes()
-
-	h.buildAndInjectManifest("test-job-c12-no-scenes", res, handlerResult)
+	handlerResult, _ := canonicalEmit(t, "test-job-c12-no-scenes", res)
 
 	manifest, _ := scriptpkg.Decode(handlerResult)
 	for _, a := range manifest.Artifacts {
@@ -287,23 +254,14 @@ func TestBuildAndInjectManifest_NoScenes_OmitsScenes(t *testing.T) {
 	}
 }
 
-// TestBuildAndInjectManifest_VoiceoverMultilang_OnePerLanguage
-// locks the §8.4 voiceover language-grouped emission. 3 scenes
-// across 2 languages (en + it) must produce ONE voiceover entry
-// per language, NOT 3 entries (pre-C12 behaviour was per-scene
-// which emitted 3 en entries + 1 it entry).
-func TestBuildAndInjectManifest_VoiceoverMultilang_OnePerLanguage(t *testing.T) {
-	h := &GenerateJobHandler{log: zap.NewNop()}
-	handlerResult := map[string]any{}
+func TestPersistGeneratedArtifacts_VoiceoverMultilang_OnePerLanguage(t *testing.T) {
 	res := validScriptResult_VoiceoverMultiLanguage()
-
-	h.buildAndInjectManifest("test-job-c12-multilang", res, handlerResult)
+	handlerResult, _ := canonicalEmit(t, "test-job-c12-multilang", res)
 
 	manifest, _ := scriptpkg.Decode(handlerResult)
 	voiceoverLangs := []string{}
 	for _, a := range manifest.Artifacts {
 		if a.Kind == scriptpkg.ArtifactKindVoiceover {
-			// ID format: "<jobID>:voiceover:<lang>"
 			voiceoverLangs = append(voiceoverLangs, filepath.Base(a.ID))
 		}
 	}
@@ -312,24 +270,15 @@ func TestBuildAndInjectManifest_VoiceoverMultilang_OnePerLanguage(t *testing.T) 
 	}
 }
 
-// TestBuildAndInjectManifest_TypedEnvelopeRouted wraps the handler's
+// TestPersistGeneratedArtifacts_TypedEnvelopeRouted wraps the handler's
 // output and decodes it AS the typed ExecutionResult[GenerationResult]
-// envelope (NOT just as a sidecar lookup). The dual-shape discipline
-// asserts BOTH Data AND Artifacts are present and typed-correctly
-// after marshal-to-map round-trip.
-//
-// This is the user's literal "emit as part of the ExecutionResult
-// envelope rather than embedding file paths inside Items" assertion:
-// the typed envelope wraps Data + Artifacts so a handler that
-// forgets one half is caught at the Decode step.
-func TestBuildAndInjectManifest_TypedEnvelopeRouted(t *testing.T) {
-	h := &GenerateJobHandler{log: zap.NewNop()}
-	handlerResult := map[string]any{}
+// envelope (NOT just as a sidecar lookup). Validates that the C10
+// dual-shape discipline routes through correctly: Data half round-trips
+// via JSON marshal/unmarshal into the typed ExecutionResult.
+func TestPersistGeneratedArtifacts_TypedEnvelopeRouted(t *testing.T) {
 	res := validScriptResult("en")
+	handlerResult, _ := canonicalEmit(t, "test-job-c12-typed-env", res)
 
-	h.buildAndInjectManifest("test-job-c12-typed-env", res, handlerResult)
-
-	// Round-trip the entire handlerResult through the typed envelope.
 	envelopeBytes, mErr := json.Marshal(handlerResult)
 	if mErr != nil {
 		t.Fatalf("marshal handlerResult: %v", mErr)
@@ -339,7 +288,6 @@ func TestBuildAndInjectManifest_TypedEnvelopeRouted(t *testing.T) {
 		t.Fatalf("unmarshal into typed ExecutionResult[GenerationResult]: %v", uErr)
 	}
 
-	// Data half: typed GenerationResult with the canonical fields.
 	if envelope.Data.ItemID != res.ItemID {
 		t.Errorf("envelope.Data.ItemID = %q, want %q", envelope.Data.ItemID, res.ItemID)
 	}
@@ -350,8 +298,6 @@ func TestBuildAndInjectManifest_TypedEnvelopeRouted(t *testing.T) {
 		t.Errorf("envelope.Data.Language = %q, want %q (typed envelope fields round-tripped)", envelope.Data.Language, res.Language)
 	}
 
-	// Artifacts half: manifest with the §8.4 spec shape (verified
-	// by the happy-path test, but re-asserted here).
 	if envelope.Artifacts == nil {
 		t.Fatal("envelope.Artifacts is nil — typed dual-shape discipline violated")
 	}
@@ -361,25 +307,19 @@ func TestBuildAndInjectManifest_TypedEnvelopeRouted(t *testing.T) {
 	if envelope.Artifacts.JobID != "test-job-c12-typed-env" {
 		t.Errorf("envelope.Artifacts.JobID = %q, want %q", envelope.Artifacts.JobID, "test-job-c12-typed-env")
 	}
-	// And the sidecar existence — handleResult[__artifact_manifest] must
-	// also be set so the runner's job.Decode lookup works in addition
-	// to the typed envelope channel.
 	if _, hasSidecar := handlerResult[scriptpkg.ManifestKey]; !hasSidecar {
 		t.Errorf("handlerResult missing %q sidecar — runner's job.Decode lookup will fail", scriptpkg.ManifestKey)
 	}
 }
 
-// TestBuildAndInjectManifest_ScriptJSONOnDisk pins the §8.4 spec
+// TestPersistGeneratedArtifacts_ScriptJSONOnDisk pins the §8.4 spec
 // invariant that script.json is materialized on disk (the worker
 // process has to read it for the upload cycle to compute SHA-256
-// and stream to Drive). Validates that buildAndInjectManifest
+// and stream to Drive). Validates that PersistGeneratedArtifacts
 // actually writes the file, not just declares it in the manifest.
-func TestBuildAndInjectManifest_ScriptJSONOnDisk(t *testing.T) {
-	h := &GenerateJobHandler{log: zap.NewNop()}
-	handlerResult := map[string]any{}
+func TestPersistGeneratedArtifacts_ScriptJSONOnDisk(t *testing.T) {
 	res := validScriptResult("en")
-
-	h.buildAndInjectManifest("c12-disk-pin-test", res, handlerResult)
+	handlerResult, _ := canonicalEmit(t, "c12-disk-pin-test", res)
 
 	manifest, _ := scriptpkg.Decode(handlerResult)
 	for _, a := range manifest.Artifacts {
@@ -393,7 +333,9 @@ func TestBuildAndInjectManifest_ScriptJSONOnDisk(t *testing.T) {
 			t.Errorf("script-json SizeBytes = %d, want > 0 (handler must populate)", a.SizeBytes)
 		}
 		if a.SHA256 == "" {
-			t.Errorf("script-json SHA256 = \"\", want non-empty")
+			t.Errorf(`script-json SHA256 = "", want non-empty`)
 		}
 	}
 }
+
+

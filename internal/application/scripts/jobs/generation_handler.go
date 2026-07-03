@@ -1,0 +1,337 @@
+// Package scripts — generation_handler.go is the canonical owner of
+// the script.generate job-system dispatch (godlike/06 SSOT: one
+// owner per fact: the broker entrypoint).
+//
+// PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
+//   (1) Single + batch paths MUST NOT coabit in the same body. This
+//       file routes the dispatch entry to HandleSingle (one item)
+//       or HandleBatch (multiple items). The bodies live in
+//       cleanly-separated methods below — no shared `if len(...) == 1`
+//       conditional branching.
+//   (2) Filesystem ops are NOT in this file. The handler delegates
+//       to adapters/artifacts_persistence.go::PersistGeneratedArtifacts
+//       which returns a pre-computed []scriptpkg.Artifact. The
+//       handler then calls buildManifestFromArtifacts (in
+//       generation_manifest.go) to assemble the typed
+//       *job.ArtifactManifest from that slice.
+//   (3) Envelope construction is in generation_result_mapper.go.
+//       Outcome classification is in generation_outcome.go.
+//       Broker registration is in generation_registration.go.
+//
+// godlike/07 typed-error contract: both HandleSingle and HandleBatch
+// return (map[string]any, error). The error is non-nil exactly when
+// the worker broker should ROUTE the job through FAILED + retry
+// (godlike/07 no-fake-availability). Outcome classification uses
+// the typed Diagnostic struct from generation_outcome.go.
+//
+// godlike/07 honest-limitation disclosure (AGENTS.md Check 44 LoC cap):
+// This file exceeds the 66-LoC transitional cap (~340 LoC — measured 2026-07-03) because
+// HandleSingle + HandleBatch bodies + decode/dispatch + the
+// checkPipelineCtx helper are inherently verbose. Forward-pointer
+// linked_issue (zero-baseline rule):
+// PR-GODOBJ-4a-HANDLER-SLIM extracts checkPipelineCtx into
+// pkg/pipeline/util.sh — the helper is shared with voiceover +
+// images generation handlers in forthcoming waves. Deadline
+// 2026-08-15.
+package jobs
+
+import (
+	"context"
+	"fmt"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+
+	"go.uber.org/zap"
+)
+
+// GenerateJobHandler is the application-layer broker-handler for
+// `script.generate` jobs. Constructed via NewGenerateJobHandler;
+// registered by generation_registration.go::RegisterJobs under
+// scriptpkg.TypeScriptGenerate.
+type GenerateJobHandler struct {
+	one  *usecase.GenerateOneUseCase
+	many *usecase.GenerateManyUseCase
+	cfg  adapters.NormalizationConfig
+	log  *zap.Logger
+}
+
+// NewGenerateJobHandler wires the handler to the unified use cases.
+// Constructor signature is bijective with the prior shape
+// (one, many, cfg, log); composition root wiring (wire_script.go)
+// is preserved.
+func NewGenerateJobHandler(
+	one *usecase.GenerateOneUseCase,
+	many *usecase.GenerateManyUseCase,
+	cfg adapters.NormalizationConfig,
+	log *zap.Logger,
+) *GenerateJobHandler {
+	return &GenerateJobHandler{
+		one:  one,
+		many: many,
+		cfg:  cfg,
+		log:  log,
+	}
+}
+
+// checkPipelineCtx returns a typed cancel-error when the pipeline
+// ctx has been cancelled (Issue 6 / P1, June 2026). The label is
+// logged via Warn so operators can audit which phase the cancel
+// was observed at. The underlying ctx.Err() is wrapped with %w so
+// errors.Is(err, context.Canceled) remains reliable for cancellation
+// classification in generation_outcome.go.
+func (h *GenerateJobHandler) checkPipelineCtx(ctx context.Context, phase string) error {
+	if err := ctx.Err(); err != nil {
+		if h.log != nil {
+			h.log.Warn("script.generate: cancelled at phase boundary",
+				zap.String("phase", phase),
+				zap.Error(err))
+		}
+		return fmt.Errorf("script.generate cancelled at %s: %w", phase, err)
+	}
+	return nil
+}
+
+// Handle is the queue-worker entry point. Decodes the envelope,
+// dispatches to HandleSingle (one item) or HandleBatch (multiple
+// items). The dispatch is a SHAPE-typed `if len(env.Items) == 1`
+// boundary that ONLY routes — the bodies do not share conditional
+// logic.
+//
+// PipelineContexts: handler-entry → single-item-pre-execute →
+// multi-item-pre-execute. Issue 6 / P1 propagation gates ensure the
+// pipeline-surface signal is observed BEFORE handing off to the
+// use case.
+func (h *GenerateJobHandler) Handle(
+	ctx context.Context,
+	j *scriptpkg.Job,
+	tools *appjobs.JobTools,
+) (map[string]any, error) {
+	if h == nil {
+		return nil, fmt.Errorf("generate job handler: not constructed")
+	}
+	if err := h.checkPipelineCtx(ctx, "handler-entry"); err != nil {
+		return nil, err
+	}
+	env, err := domainScript.DecodeEnvelopeV2(j.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("generate job handler: decode envelope: %w", err)
+	}
+	if h.log != nil {
+		h.log.Info("handling script.generate job",
+			zap.String("job_id", j.ID),
+			zap.String("preset", string(env.Preset)),
+			zap.Int("items", len(env.Items)))
+	}
+	if len(env.Items) == 1 {
+		return h.handleSingle(ctx, j, env, tools)
+	}
+	return h.handleBatch(ctx, j, env, tools)
+}
+
+// handleSingle owns the single-item script.generate path.
+// Cleanly separated from handleBatch — no shared conditional logic.
+//   - checkPipelineCtx at single-item-pre-execute
+//   - tracker via usecase.NewProgressTracker
+//   - one.Execute → typed envelope via ClassifySingleOutcome
+//   - on failure: typed single-failure envelope + wrapped Go error
+//   - on success: persistence via NewGenerationArtifactsAdapter (per
+//     KILL K1; future SLIM) → typed artifact slice → typed manifest
+//     via buildManifestFromArtifacts → handlerResult[ManifestKey]
+//   - manifest validation is observed via manifest.Validate(); a
+//     failed validate still injects the typed envelope (the runner
+//     has typed-envelope fallback per C10 dual-shape discipline).
+func (h *GenerateJobHandler) handleSingle(
+	ctx context.Context,
+	j *scriptpkg.Job,
+	env *domainScript.GenerationEnvelopeV2,
+	tools *appjobs.JobTools,
+) (map[string]any, error) {
+	if err := h.checkPipelineCtx(ctx, "single-item-pre-execute"); err != nil {
+		return nil, err
+	}
+	progressFn := appjobs.SafeProgressFn(tools)
+	tracker := usecase.NewProgressTracker(progressFn, env.Items[0].ID)
+	result, err := h.one.Execute(ctx, env.Items[0], env.Preset, tracker)
+	diag := ClassifySingleOutcome(result, err)
+	if diag.Outcome == OutcomeCanceled {
+		if h.log != nil {
+			h.log.Warn("script.generate: single-item cancelled mid-run",
+				zap.String("job_id", j.ID),
+				zap.Error(diag.Err))
+		}
+		return nil, diag.Err
+	}
+	if diag.Outcome == OutcomeSingleFailure {
+		if h.log != nil {
+			h.log.Error("script.generate: single-item failed",
+				zap.String("job_id", j.ID),
+				zap.Error(diag.Err))
+		}
+		mapped, mapErr := toMap(buildSingleFailureEnvelope(env.Items[0].ID, err.Error()))
+		if mapErr != nil {
+			return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
+		}
+		return mapped, diag.Err
+	}
+	// OutcomeSingleSuccess
+	envelope := buildSingleSuccessEnvelope(env.Items[0].ID, result)
+	mapped, mapErr := toMap(envelope)
+	if mapErr != nil {
+		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
+	}
+	artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, result)
+	if persistErr != nil {
+		if h.log != nil {
+			h.log.Warn("handleSingle: persistence failed — manifest not injected; typed envelope still propagates",
+				zap.String("job_id", j.ID),
+				zap.Error(persistErr))
+		}
+		return mapped, nil
+	}
+	manifest := buildManifestFromArtifacts(j.ID, artifacts)
+	if vErr := manifest.Validate(); vErr != nil {
+		if h.log != nil {
+			h.log.Warn("handleSingle: manifest validation failed — typed envelope only",
+				zap.String("job_id", j.ID),
+				zap.Error(vErr))
+		}
+		return mapped, nil
+	}
+	// Merge the C10 dual-shape typed envelope (Data + Artifacts) into
+	// the broker handlerResult map. MergeTypedExecutionEnvelope is
+	// PURE (no I/O, no log writes) and is the canonical owner of the
+	// typed ExecutionResult marshal/unmarshal cycle (godlike/06 SSOT).
+	if mErr := MergeTypedExecutionEnvelope(mapped, result, manifest); mErr != nil {
+		if h.log != nil {
+			h.log.Warn("handleSingle: typed envelope merge failed — manifest sidecar only",
+				zap.String("job_id", j.ID),
+				zap.Error(mErr))
+		}
+		mapped[scriptpkg.ManifestKey] = manifest
+	}
+	if h.log != nil {
+		h.log.Info("handleSingle: artifact manifest injected (§8.4 multi-artifact shape)",
+			zap.String("job_id", j.ID),
+			zap.Int("artifacts", len(manifest.Artifacts)))
+	}
+	return mapped, nil
+}
+
+// handleBatch owns the multi-item script.generate path.
+// Cleanly separated from handleSingle — no shared conditional logic.
+//   - checkPipelineCtx at multi-item-pre-execute
+//   - many.Execute → typed envelope via ClassifyGenerationOutcome
+//   - outcome dispatch (5 outcomes + CANCELED) → (mapped_envelope,
+//     dispatch_err) per the §P0 Issue-1 contract
+//   - on FULL / PARTIAL: persistence picks the first-successful-item
+//     typed *GenerationResult and writes artifacts via the adapter.
+//   - cancel and all-failed keep the manifest sidecar absent (the
+//     worker either retries or closes the job as FAILED depending
+//     on Diagnostic.Err).
+func (h *GenerateJobHandler) handleBatch(
+	ctx context.Context,
+	j *scriptpkg.Job,
+	env *domainScript.GenerationEnvelopeV2,
+	tools *appjobs.JobTools,
+) (map[string]any, error) {
+	if err := h.checkPipelineCtx(ctx, "multi-item-pre-execute"); err != nil {
+		return nil, err
+	}
+	progressFn := appjobs.SafeProgressFn(tools)
+	manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)
+	diag := ClassifyGenerationOutcome(manyResult, err)
+	if diag.Outcome == OutcomeCanceled {
+		if h.log != nil {
+			h.log.Warn("script.generate: multi-item cancelled mid-run",
+				zap.String("job_id", j.ID),
+				zap.Int("succeeded", diag.Succeeded),
+				zap.Int("failed", diag.Failed),
+				zap.Error(diag.Err))
+		}
+		return nil, diag.Err
+	}
+	if diag.Outcome == OutcomeMultiInfraFailure {
+		if h.log != nil {
+			h.log.Error("script.generate: multi-item use-case failure",
+				zap.String("job_id", j.ID),
+				zap.Error(diag.Err))
+		}
+		return nil, diag.Err
+	}
+	envelope := buildEnvelopeResult(manyResult)
+	mapped, mapErr := toMap(envelope)
+	if mapErr != nil {
+		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
+	}
+	if diag.Outcome == OutcomeMultiAllFailed {
+		if h.log != nil {
+			h.log.Error("script.generate: multi-item all-failed",
+				zap.String("job_id", j.ID),
+				zap.Int("total", diag.Total),
+				zap.Int("failed", diag.Failed),
+				zap.Error(diag.Err))
+		}
+		return mapped, diag.Err
+	}
+	// OutcomeMultiPartial or OutcomeMultiFullSuccess: persist the
+	// first successful item's *GenerationResult (the canonical
+	// §8.4 per-job aggregate is built from one item; the multi-item
+	// dispatch surface uses the first successful item's result).
+	if freshResult := firstSuccessfulResult(manyResult); freshResult != nil {
+		artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, freshResult)
+		if persistErr != nil {
+			if h.log != nil {
+				h.log.Warn("handleBatch: persistence failed — typed envelope only",
+					zap.String("job_id", j.ID),
+					zap.Error(persistErr))
+			}
+		} else {
+			manifest := buildManifestFromArtifacts(j.ID, artifacts)
+			if vErr := manifest.Validate(); vErr != nil {
+				if h.log != nil {
+					h.log.Warn("handleBatch: manifest validation failed — typed envelope only",
+						zap.String("job_id", j.ID),
+						zap.Error(vErr))
+				}
+			} else {
+				if mErr := MergeTypedExecutionEnvelope(mapped, freshResult, manifest); mErr != nil {
+					if h.log != nil {
+						h.log.Warn("handleBatch: typed envelope merge failed — manifest sidecar only",
+							zap.String("job_id", j.ID),
+							zap.Error(mErr))
+					}
+					mapped[scriptpkg.ManifestKey] = manifest
+				}
+				if h.log != nil {
+					h.log.Info("handleBatch: artifact manifest injected (§8.4 multi-artifact shape)",
+						zap.String("job_id", j.ID),
+						zap.Int("artifacts", len(manifest.Artifacts)))
+				}
+			}
+		}
+	}
+	return mapped, nil
+}
+
+// firstSuccessfulResult returns the first item with a non-nil
+// *GenerationResult. This is the canonical "one manifest per
+// successful aggregate" pre-PR-GODOBJ-4 build path; a future PR
+// could thread a per-item structure but the §8.4 spec mandates
+// one manifest per job run.
+func firstSuccessfulResult(r *usecase.GenerateManyResult) *domainScript.GenerationResult {
+	if r == nil {
+		return nil
+	}
+	for _, item := range r.Items {
+		if item.Result != nil {
+			return item.Result
+		}
+	}
+	return nil
+}
+
+
