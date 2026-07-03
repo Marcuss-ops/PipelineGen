@@ -94,7 +94,7 @@ func (s *stubAggregatorJobsService) Complete(ctx context.Context, id string, res
 // tests asserting broker-status mirror) AND mirrors the parent_state
 // into stub.completed (back-compat for the existing 4 P0.1 false-success
 // gate tests that read `stub.completed[id]["parent_state"]`).
-func (s *stubAggregatorJobsService) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string) error {
+func (s *stubAggregatorJobsService) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s.flippedErr != nil {
 		// CAS-rejection simulation: do NOT mutate stub.flipped/completed
 		// (the production SQL repo's UPDATE returned 0 rows-affected, the

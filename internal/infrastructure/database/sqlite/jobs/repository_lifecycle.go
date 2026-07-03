@@ -179,8 +179,10 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 // pattern-0 port for aggregator-only callers of TerminalFlip. The canonical
 // SQLiteStore implements this (see TerminalFlip below). Other broker
 // adapters (e.g. future Postgres) MUST also implement it.
+//
+// FASE 2 (July 2026): expectedVersion added for version-based CAS.
 type aggregateFlipper interface {
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string) error
+	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
 }
 
 // ── TerminalFlip (post-fan-out parent state finalisation, no-lease CAS) ───
@@ -218,7 +220,7 @@ type aggregateFlipper interface {
 // The two sentinels are distinct because operator dashboards render
 // them as different alert classes (replay-no-op vs race-concurrent.
 // flip).
-func (r *SQLiteStore) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string) error {
+func (r *SQLiteStore) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error {
 	if id == "" {
 		return fmt.Errorf("terminalFlip: id is empty")
 	}
@@ -239,18 +241,28 @@ func (r *SQLiteStore) TerminalFlip(ctx context.Context, id string, targetStatus 
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = ?,
-			completed_at = COALESCE(completed_at, ?),
-			error = CASE WHEN ? = '' THEN error ELSE ? END,
-			result_json = ?,
-			progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
-			revision = revision + 1, updated_at = ?
-		WHERE id = ?
-			AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
-			AND json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')`,
-		string(targetStatus), nowStr, errMsg, errMsg, resultJSON, nowStr,
-		id)
+	// FASE 2 (July 2026): version-based CAS — when expectedVersion > 0,
+	// add `AND revision = expectedVersion` as a second fence. The
+	// revision column is bumped on every state transition (Complete,
+	// Fail, TerminalFlip) so a concurrent tick that already landed the
+	// flip will have incremented revision, causing this UPDATE to
+	// return 0 rows-affected → ErrAggregateCASConflict.
+	query := `UPDATE jobs SET status = ?,
+		completed_at = COALESCE(completed_at, ?),
+		error = CASE WHEN ? = '' THEN error ELSE ? END,
+		result_json = ?,
+		progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
+		revision = revision + 1, updated_at = ?
+	WHERE id = ?
+		AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
+		AND json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')`
+	args := []any{string(targetStatus), nowStr, errMsg, errMsg, resultJSON, nowStr, id}
+	if expectedVersion > 0 {
+		query += `
+		AND revision = ?`
+		args = append(args, expectedVersion)
+	}
+	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("terminalFlip: update: %w", err)
 	}

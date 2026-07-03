@@ -206,6 +206,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			Language:      itemSpec.Language,
 			Voice:         itemSpec.Voice,
 			Filename:      filename,
+			Required:      itemSpec.Required,
 			Destination:   cmd.Destination,
 			Strategy:      cmd.Strategy,
 			RemoveSilence: cmd.RemoveSilence,

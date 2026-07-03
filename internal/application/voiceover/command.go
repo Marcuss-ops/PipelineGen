@@ -51,6 +51,12 @@ import (
 // per-item independence so mixed-text requests, two voices for the
 // same language, and per-item filenames are all first-class.
 //
+// FASE 2 (July 2026): Required field added. When true, the child's
+// outcome gates the parent terminal state — a REQUIRED-failed child
+// short-circuits the domain StateMachine to FailedTerminal in
+// Transition() rule ①. Optional-failed children are tolerated
+// when at least one child succeeded (Compute() FASE 1 semantics).
+//
 // JSON tags mirror the canonical API wire shape so unmarshalling a
 // request payload directly into a VoiceoverItem list produces the
 // same field set the HTTP handler binds to GenerateVoiceoversRequest.
@@ -70,6 +76,12 @@ type VoiceoverItem struct {
 	// Filename is the per-item sanitised filename. Empty triggers the
 	// {slug}_{lang}_{unix}.mp3 fallback in the fan-out (buildItemFilename).
 	Filename string `json:"filename,omitempty"`
+
+	// Required gates the parent terminal state (FASE 2, July 2026).
+	// When true, this child's failure short-circuits the parent to
+	// FailedTerminal; when false, the failure is tolerated if at
+	// least one other child succeeded (Compute() FASE 1 semantics).
+	Required bool `json:"required,omitempty"`
 }
 
 // GenerateVoiceoversCommand is the canonical singular request to the
@@ -148,6 +160,11 @@ type GenerateVoiceoversCommand struct {
 // whole batch struct would leak goroutine-style fan-out semantics into
 // the child surface.
 //
+// FASE 2 (July 2026): Required field added. Propagated from the
+// VoiceoverItem.Required flag set by the API caller. The aggregator
+// reads this field from the child job's payload to feed the domain
+// StateMachine's REQUIRED-failed short-circuit (Transition() rule ①).
+//
 // Field ownership:
 //   - ParentJobID, RequestID: batch-level IDs the child threads into
 //     its DB row + outbox event so the aggregator can find the parent.
@@ -157,7 +174,7 @@ type GenerateVoiceoversCommand struct {
 //   - Destination: the OUTPUT DestinationRequest — the child re-resolves
 //     it independently so a child retry that survives a transient
 //     resolver hiccup does not need the parent to re-run.
-//   - Strategy, RemoveSilence, Metadata: pass-through from the parent.
+//   - Strategy, RemoveSilence, Metadata, Required: pass-through from the parent.
 type GenerateVoiceoverItemCommand struct {
 	// ParentJobID is the dispatcher-assigned job.ID of the parent
 	// voiceover.generate job. Aggregator in Commit 2 reads this from
@@ -200,6 +217,12 @@ type GenerateVoiceoverItemCommand struct {
 	// Metadata is the per-batch user-supplied meta overlay that flows
 	// into the row's metadata column.
 	Metadata map[string]any `json:"metadata,omitempty"`
+
+	// Required gates the parent terminal state (FASE 2, July 2026).
+	// Propagated from VoiceoverItem.Required by the fan-out.
+	// Read by the aggregator from the child job's payload to feed
+	// the domain StateMachine Transition() rule ①.
+	Required bool `json:"required,omitempty"`
 }
 
 // Validate runs the canonical validation gate ONCE at the child use case

@@ -61,22 +61,24 @@ type AggregatorDeps struct {
 // Audit 2026-07-03 P0 #1 (added TerminalFlip): the legacy Complete
 // surface is preserved for back-compat with non-aggregate callers
 // (e.g. pre-orchestrator handlers that delegate directly). The
-// aggregator's updateParentState routes aggregate-specific writes
+// aggregator's finalizeParent routes aggregate-specific writes
 // through TerminalFlip, which is the canonical no-lease CAS path
 // for post-fan-out parent state transitions.
+//
+// FASE 2 (July 2026): TerminalFlip now accepts expectedVersion from
+// the domain StateMachine so the SQL layer can add `AND revision = ?`
+// as a second CAS fence alongside the existing (status, parent_state)
+// guard. A zero expectedVersion means "skip the revision check"
+// (backward-compatible with callers that don't own a StateMachine).
 type AggregatorJobsService interface {
 	List(ctx context.Context, filter job.Filter) ([]job.Job, error)
 	Get(ctx context.Context, id string) (*job.Job, error)
 	Complete(ctx context.Context, id string, result map[string]any) error
-	// TerminalFlip is the audit 2026-07-03 P0 #1 closure surface:
-	// the aggregator's no-lease CAS that re-finalises the parent
-	// (status, parent_state) atomically. targetStatus MUST be
-	// job.StatusSucceeded (when aggregate=succeeded/partial_success)
-	// or job.StatusFailed (when aggregate=failed_terminal). The
-	// underlying broker guards on (status, json_extract
-	// result_json.'$.parent_state' IN awaiting-values) so concurrent
-	// aggregator ticks and replays are first-to-act wins.
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string) error
+	// TerminalFlip is the canonical no-lease CAS that re-finalises the
+	// parent (status, parent_state) atomically. expectedVersion is
+	// the domain StateMachine.Version() — when > 0, the SQL layer
+	// adds `AND revision = expectedVersion` as a second CAS fence.
+	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error
 }
 
 // Compile-time assertion: *appjobs.Service satisfies AggregatorJobsService.
@@ -164,75 +166,60 @@ func (a *ParentAggregator) Tick(ctx context.Context) {
 	}
 }
 
-// aggregateOne processes a single parent job: reads its result map
-// to extract child IDs, queries each child's terminal status, computes
-// the aggregate ParentState, and updates the parent when the state
-// transitions to a terminal value.
+// aggregateOne processes a single parent job: deserializes into typed
+// VoiceoverParentResult, reads child outcomes via typed VoiceoverChildResult,
+// computes the aggregate via domain StateMachine, and finalizes the parent
+// via finalizeParent with version-based CAS.
 //
-// P0.1 false-success gate (Step 4 child-result audit, July 2026):
-// a child job may be marked SUCCEEDED by the broker even though the
-// per-item pipeline failed (ProcessVoiceoverItemUseCase returned
-// result.Status=StatusFailed but err==nil → the handler now returns
-// an error via the P0.1 gate in GenerateItemJobHandler, but for
-// children completed BEFORE the P0.1 gate landed, the broker status
-// may still say SUCCEEDED while result.ok=false). The aggregator
-// MUST inspect each child's result.ok before classifying — a child
-// with result.ok=false is treated as FAILED regardless of broker
-// status. This is defense-in-depth: even if the P0.1 handler gate
-// misses a case, the aggregator's re-read of the result map catches
-// it at the parent-finalisation boundary.
+// FASE 2 (July 2026): all internal map[string]any access replaced with
+// typed DTOs (VoiceoverParentResult, VoiceoverChildResult,
+// VoiceoverAggregateResult). The broker boundary (TerminalFlip) still
+// accepts map[string]any for wire-shape back-compat.
 func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
-	// Step 1: unmarshal parent result to read current parent_state
-	// and child_job_ids.
-	var parentResult map[string]any
+	// Step 1: unmarshal parent result into typed VoiceoverParentResult.
+	var parentResult VoiceoverParentResult
 	if len(j.Result) > 0 {
 		if err := json.Unmarshal(j.Result, &parentResult); err != nil {
 			a.deps.Logger.Debug("ParentAggregator: cannot unmarshal parent result, skipping",
 				zap.String("parent_job_id", j.ID), zap.Error(err))
-			return nil // non-fatal: not every parent has valid JSON result
+			return nil
 		}
 	}
-	if parentResult == nil {
-		parentResult = map[string]any{}
-	}
 
-	// Step 2: only process parents that are still in a non-terminal
-	// application-level state (waiting_children or partial_success).
-	currentPS, _ := parentResult["parent_state"].(string)
-	switch voiceover.ParentState(currentPS) {
-	case voiceover.ParentWaitingChildren, voiceover.ParentPartialSuccess:
-		// proceed — these are the states that need re-aggregation
-	default:
-		return nil // already terminal (succeeded, failed, or absent)
-	}
-
-	// Step 3: extract child job IDs from parent result.
-	childIDs := extractChildJobIDs(parentResult)
-	if len(childIDs) == 0 {
-		// Parent has no recorded children — mark as partial_success.
-		// This handles the edge case where the fan-out didn't record
-		// child IDs (pre-ActiveKey era) OR the parent was enqueued
-		// with empty languages.
-		a.updateParentState(ctx, j.ID, parentResult, voiceover.ParentPartialSuccess)
+	// Step 2: only process parents awaiting aggregation.
+	if !parentResult.IsAwaitingAggregation() {
 		return nil
-	}	// Step 4: construct domain StateMachine and transition to WaitingChildren
-	// explicitly BEFORE feeding child terminal events.
-	// FASE 1 (July 2026): replaces the implicit "first child event triggers
-	// Dispatching→WaitingChildren" path with an explicit transition. The
-	// aggregator owns this transition because the fan-out handler (which
-	// enqueued the children) already returned — the aggregator is the first
-	// agent that can observe both the parent and its children in one tick.
+	}
+
+	// Step 3: extract child job IDs.
+	childIDs := parentResult.ChildJobIDs
+	// Filter empty strings (failed-enqueue placeholders).
+	filtered := make([]string, 0, len(childIDs))
+	for _, id := range childIDs {
+		if id != "" {
+			filtered = append(filtered, id)
+		}
+	}
+	childIDs = filtered
+	if len(childIDs) == 0 {
+		a.finalizeParent(ctx, j.ID, VoiceoverAggregateResult{
+			ParentState:         voiceover.ParentPartialSuccess,
+			TotalChildren:       0,
+			StateMachineVersion: 0,
+		})
+		return nil
+	}
+
+	// Step 4: construct domain StateMachine + explicit TransitionToWaitingChildren.
 	sm := job.NewStateMachine(j.ID, len(childIDs))
 	if err := sm.TransitionToWaitingChildren(childIDs); err != nil {
-		// If the state machine rejects the transition (e.g. already terminal
-		// from a prior tick), skip this parent — the terminal state is already
-		// correct and will be re-read on the next tick if needed.
 		a.deps.Logger.Debug("ParentAggregator: TransitionToWaitingChildren rejected",
-			zap.String("parent_job_id", j.ID),
-			zap.Error(err))
+			zap.String("parent_job_id", j.ID), zap.Error(err))
 		return nil
 	}
+
 	allTerminal := true
+	requiredFailed := 0
 	for _, childID := range childIDs {
 		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
 		if err != nil {
@@ -248,37 +235,38 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 			allTerminal = false
 		}
 
-		// P0.1 gate: inspect the child's result.ok field as the
-		// authoritative secondary signal. If result.ok == false, the
-		// per-item pipeline failed even if the broker says SUCCEEDED.
+		// P0.1 gate: typed child result — *bool distinguishes absent (nil)
+		// from present-and-false (gate override). Legacy results without
+		// an "ok" field fall back to broker status.
 		childErr := ""
 		if len(childJob.Result) > 0 {
-			var childResult map[string]any
+			var childResult VoiceoverChildResult
 			if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
-				if ok, hasOK := childResult["ok"].(bool); hasOK && !ok {
+				if childResult.OK != nil && !*childResult.OK {
 					if status == job.StatusSucceeded {
 						a.deps.Logger.Warn("ParentAggregator: child broker-succeeded but result.ok=false (P0.1 gate override)",
 							zap.String("parent_job_id", j.ID),
 							zap.String("child_job_id", childID))
 						status = job.StatusFailed
 					}
-					if errStr, _ := childResult["error"].(string); errStr != "" {
-						childErr = errStr
-					}
+					childErr = childResult.Error
 				}
 			}
 		}
 
-		// Extract Required flag from child payload (GenerateVoiceoverItemCommand).
-		// Default false — FASE 2 will wire the fanout to set Required explicitly.
+		// FASE 2: typed child payload deserialization replaces map access.
 		childRequired := false
 		if len(childJob.Payload) > 0 {
-			var childPayload map[string]any
+			var childPayload VoiceoverChildPayload
 			if jsonErr := json.Unmarshal(childJob.Payload, &childPayload); jsonErr == nil {
-				if req, ok := childPayload["required"].(bool); ok {
-					childRequired = req
-				}
+				childRequired = childPayload.Required
 			}
+		}
+		if !childJob.Status.IsTerminal() {
+			// Non-terminal children are not yet classified as required-failed.
+			// The count is updated when the child reaches terminal.
+		} else if childRequired && (status == job.StatusFailed || status == job.StatusCancelled) {
+			requiredFailed++
 		}
 
 		// Feed child terminal event to the domain StateMachine.
@@ -301,14 +289,12 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		}
 	}
 
-	// Step 5: if not all children are terminal, skip this parent
-	// (next tick will re-evaluate). If we can't determine (some Get
-	// calls failed), keep current state.
+	// Step 5: skip if not all children are terminal.
 	if !allTerminal {
 		return nil
 	}
 
-	// Step 6: compute canonical aggregate state via domain StateMachine.
+	// Step 6: compute canonical aggregate state.
 	if err := sm.Compute(); err != nil {
 		a.deps.Logger.Error("ParentAggregator: StateMachine.Compute failed",
 			zap.String("parent_job_id", j.ID), zap.Error(err))
@@ -316,99 +302,76 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	}
 
 	newPS := domainToVoiceoverParentState(sm)
-	// FASE 1 (July 2026): thread the StateMachine version into the result
-	// map so future TerminalFlip CAS can add `AND version = ?` as a second
-	// fence alongside the existing (status, parent_state) guard. The
-	// version field is the StateMachine's monotonic counter after all
-	// child events + Compute() — it surfaces how many state transitions
-	// the aggregator observed, which is a stronger CAS signal than the
-	// current parent_state-only guard.
-	parentResult["_aggregator_version"] = sm.Version()
-	a.updateParentState(ctx, j.ID, parentResult, newPS)
+	// FASE 2 (July 2026): version CAS uses j.Revision (the DB-level
+	// revision at the time of List), NOT sm.Version() (the in-memory
+	// StateMachine counter). The SQL `revision` column is bumped on
+	// every Complete/Fail/TerminalFlip transaction; passing the
+	// pre-flip revision lets the UPDATE check `AND revision = ?`
+	// for optimistic locking. A concurrent TerminalFlip would have
+	// bumped revision, causing a 0 rows-affected → CAS conflict.
+	aggResult := VoiceoverAggregateResult{
+		ParentState:          newPS,
+		TotalChildren:        len(childIDs),
+		SucceededCount:       len(sm.Succeeded()),
+		FailedCount:          len(sm.Failed()),
+		RequiredFailedCount:  requiredFailed,
+		StateMachineVersion:  j.Revision,
+		ChildIDs:             childIDs,
+	}
+	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil
 }
 
-// updateParentState merges the new parent_state into the result map and
-// persists it via jobsSvc.TerminalFlip no-lease CAS (audit 2026-07-03 P0 #1
-// closure). The target status is derived from the aggregate state: a
-// ParentFailed aggregate flips the broker-level terminal from SUCCEEDED
-// (worker-emitted) to FAILED, eliminating the prior "broker status SUCCEEDED
-// + result.parent_state=failed" double-truth. Partial-success and succeeded
-// aggregates preserve broker.status=SUCCEEDED with the new parent_state
-// embedded in the result JSON.
+// finalizeParent builds the result map from the typed aggregate result
+// and persists it via jobsSvc.TerminalFlip with version-based CAS.
 //
-// ErrAlreadyTerminalAggregate is treated as an idempotent replay no-op
-// (another tick already landed the flip on the prior interval); we
-// deliberately do NOT log at warn-level — the contract is godlike/07
-// no-fake-success, not silent-degrade (godlike/08 fail-closed posture:
-// the message IS the source of truth, no further action required).
-//
-// Other errors (ErrAggregateCASConflict, infra-level) bubble up at warn-level
-// for operator dashboards; the next tick will retry and may re-classify
-// if children have moved terminal in the meantime.
+// FASE 2 (July 2026): replaces updateParentState(map[string]any, ParentState)
+// with a typed VoiceoverAggregateResult struct. The expectedVersion from
+// the domain StateMachine is passed to TerminalFlip so the SQL layer can
+// add `AND revision = ?` as a second CAS fence.
 //
 // godlike/06 SSOT: this is the SINGLE canonical writer of post-fan-out
-// parent (status, parent_state) tuples. The legacy Complete path retains
-// its lease-protected semantics for worker-driven completions only.
-func (a *ParentAggregator) updateParentState(ctx context.Context, parentJobID string, resultMap map[string]any, newPS voiceover.ParentState) {
-	resultMap["parent_state"] = string(newPS)
-	// Audit 2026-07-03 P0 #1: route the aggregate state to the broker
-	// terminal. ParentFailed means "all children definitively failed",
-	// which we MUST surface as broker.status=FAILED (not as a SUCCEEDED
-	// broker-status + result.parent_state=failed double-truth).
+// parent (status, parent_state) tuples.
+func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID string, agg VoiceoverAggregateResult) {
+	resultMap := map[string]any{
+		"parent_state":            string(agg.ParentState),
+		"_aggregator_version":     agg.StateMachineVersion,
+		"total_children":          agg.TotalChildren,
+		"succeeded_count":         agg.SucceededCount,
+		"failed_count":            agg.FailedCount,
+		"required_failed_count":   agg.RequiredFailedCount,
+	}
+
 	targetStatus := job.StatusSucceeded
 	errMsg := ""
-	if newPS == voiceover.ParentFailed {
+	if agg.ParentState == voiceover.ParentFailed {
 		targetStatus = job.StatusFailed
-		errMsg = "parent aggregate: all children definitively failed (audit 2026-07-03 P0 #1 closure)"
+		errMsg = "parent aggregate: all children definitively failed (FASE 2 version CAS)"
 	}
-	if err := a.deps.JobsSvc.TerminalFlip(ctx, parentJobID, targetStatus, resultMap, errMsg); err != nil {
+
+	if err := a.deps.JobsSvc.TerminalFlip(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
 		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
-			// Idempotent replay: another tick already finalised. Quiet no-op
-			// — the canonical flip landed, the second call is a no-op.
 			a.deps.Logger.Info("ParentAggregator: parent already finalised (replay no-op)",
 				zap.String("parent_job_id", parentJobID),
-				zap.String("parent_state", string(newPS)))
+				zap.String("parent_state", string(agg.ParentState)))
 			return
 		}
 		a.deps.Logger.Warn("ParentAggregator: TerminalFlip failed",
 			zap.String("parent_job_id", parentJobID),
 			zap.String("target_status", string(targetStatus)),
-			zap.String("new_parent_state", string(newPS)),
+			zap.String("new_parent_state", string(agg.ParentState)),
+			zap.Int("expected_version", agg.StateMachineVersion),
 			zap.Error(err))
 		return
 	}
 	a.deps.Logger.Info("ParentAggregator: parent state transition",
 		zap.String("parent_job_id", parentJobID),
-		zap.String("parent_state", string(newPS)),
-		zap.String("target_status", string(targetStatus)))
+		zap.String("parent_state", string(agg.ParentState)),
+		zap.String("target_status", string(targetStatus)),
+		zap.Int("version", agg.StateMachineVersion))
 }
 
-// extractChildJobIDs reads child_job_ids from a parent result map.
-// The field is populated by FanoutVoiceoversUseCase.Execute and
-// stored in job.Result via toFanoutResultMap.
-//
-// Empty-string entries (from failed enqueues where FanoutResult.ChildJobIDs
-// carries "" as a placeholder) are intentionally filtered out — only
-// non-empty job IDs are returned. The returned count matches
-// res.EnqueuedCount, not res.TotalOutputs.
-func extractChildJobIDs(parentResult map[string]any) []string {
-	raw, ok := parentResult["child_job_ids"]
-	if !ok || raw == nil {
-		return nil
-	}
-	arr, ok := raw.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(arr))
-	for _, v := range arr {
-		if s, ok := v.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
+
 
 // domainToVoiceoverParentState maps the domain 5-state machine result
 // to the voiceover 4-state result enum for wire-shape back-compat.
