@@ -215,19 +215,23 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		// with empty languages.
 		a.updateParentState(ctx, j.ID, parentResult, voiceover.ParentPartialSuccess)
 		return nil
-	}	// Step 4: construct domain StateMachine and feed child terminal events.
-	// FASE 1 (July 2026): replaces voiceover.AggregateChildOutcomes with
-	// the canonical 5-state domain.StateMachine (Dispatching →
-	// WaitingChildren → Aggregating → Succeeded/FailedTerminal).
-	// The StateMachine handles REQUIRED-failed short-circuits in
-	// Transition() and distinguishes optional-only failures in Compute().
-	//
-	// P0.1 false-success gate: the broker status is the primary signal
-	// but the child's result.ok is the authoritative secondary signal.
-	// A child broker:Succeeded + result.ok:false MUST be treated as
-	// FAILED — the per-item pipeline failed but the handler (pre-P0.1)
-	// returned (resultMap, nil), so the broker saw success.
+	}	// Step 4: construct domain StateMachine and transition to WaitingChildren
+	// explicitly BEFORE feeding child terminal events.
+	// FASE 1 (July 2026): replaces the implicit "first child event triggers
+	// Dispatching→WaitingChildren" path with an explicit transition. The
+	// aggregator owns this transition because the fan-out handler (which
+	// enqueued the children) already returned — the aggregator is the first
+	// agent that can observe both the parent and its children in one tick.
 	sm := job.NewStateMachine(j.ID, len(childIDs))
+	if err := sm.TransitionToWaitingChildren(childIDs); err != nil {
+		// If the state machine rejects the transition (e.g. already terminal
+		// from a prior tick), skip this parent — the terminal state is already
+		// correct and will be re-read on the next tick if needed.
+		a.deps.Logger.Debug("ParentAggregator: TransitionToWaitingChildren rejected",
+			zap.String("parent_job_id", j.ID),
+			zap.Error(err))
+		return nil
+	}
 	allTerminal := true
 	for _, childID := range childIDs {
 		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
@@ -312,6 +316,14 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	}
 
 	newPS := domainToVoiceoverParentState(sm)
+	// FASE 1 (July 2026): thread the StateMachine version into the result
+	// map so future TerminalFlip CAS can add `AND version = ?` as a second
+	// fence alongside the existing (status, parent_state) guard. The
+	// version field is the StateMachine's monotonic counter after all
+	// child events + Compute() — it surfaces how many state transitions
+	// the aggregator observed, which is a stronger CAS signal than the
+	// current parent_state-only guard.
+	parentResult["_aggregator_version"] = sm.Version()
 	a.updateParentState(ctx, j.ID, parentResult, newPS)
 	return nil
 }
@@ -375,6 +387,11 @@ func (a *ParentAggregator) updateParentState(ctx context.Context, parentJobID st
 // extractChildJobIDs reads child_job_ids from a parent result map.
 // The field is populated by FanoutVoiceoversUseCase.Execute and
 // stored in job.Result via toFanoutResultMap.
+//
+// Empty-string entries (from failed enqueues where FanoutResult.ChildJobIDs
+// carries "" as a placeholder) are intentionally filtered out — only
+// non-empty job IDs are returned. The returned count matches
+// res.EnqueuedCount, not res.TotalOutputs.
 func extractChildJobIDs(parentResult map[string]any) []string {
 	raw, ok := parentResult["child_job_ids"]
 	if !ok || raw == nil {
