@@ -205,11 +205,13 @@ func (h *GenerateJobHandler) HandleJob(
 
 	pf(100, "voiceover.generate fan-out complete")
 
-	// Full enqueue success: dispatcher marks parent SUCCEEDED. The
-	// Commit 2 aggregator will later re-finalise the parent status
-	// based on outbox events emitted by each child (SUCCEEDED +
-	// (success_count, failed_count, total) for completed / partial; or
-	// FAILED if all children failed).
+// FASE 1 (July 2026): the parent is NOT truly terminal after fan-out.
+// Returning (resultMap, nil) tells the broker to mark SUCCEEDED — but
+// this is TEMPORARY. The parent aggregator's TerminalFlip will re-finalise
+// the parent status based on real child outcomes: preserving SUCCEEDED
+// on all-succeeded, or flipping to FAILED when all children definitively
+// failed (P0 #1 closure). The result map carries parent_state=
+// waiting_children to signal "not yet terminal at the application level".
 	return toFanoutResultMap(res, j.ID), nil
 }
 
@@ -256,12 +258,23 @@ func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 	ps := voiceover.ParentWaitingChildren
 	if !res.OK {
 		ps = voiceover.ParentPartialSuccess
-	}
+	}// FASE 1 (July 2026): result map carries expected_children so the
+// parent aggregator can reconstruct the domain StateMachine with
+// the correct expected count on every tick, even when the parent
+// job's result map is the only durable source of truth before the
+// parent_aggregator_state table migration (Step 12B-C2).
+//
+// expected_children = EnqueuedCount (children actually enqueued),
+// NOT TotalOutputs. On partial fan-out, TotalOutputs > EnqueuedCount
+// and the aggregator should only track children that were actually
+// created — the failed enqueue entries have empty-string child IDs
+// that extractChildJobIDs filters out.
 	m := map[string]any{
 		"ok":                   res.OK,
 		"parent_job_id":        pid,
 		"request_id":           res.RequestID,
 		"total_outputs":        res.TotalOutputs,
+		"expected_children":    res.EnqueuedCount,
 		"enqueued_count":       res.EnqueuedCount,
 		"failed_enqueue_count": res.FailedEnqueueCount,
 		"child_job_ids":        res.ChildJobIDs,

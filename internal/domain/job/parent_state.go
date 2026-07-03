@@ -146,6 +146,7 @@ type StateMachine struct {
 	terminatedChildren int
 	succeeded          []string
 	failed             []string
+	childIDs           []string
 	version            int
 	seen               map[string]struct{}
 }
@@ -193,27 +194,57 @@ func (sm *StateMachine) Succeeded() []string { return sm.succeeded }
 // Failed returns the JobIDs of children that reached FAILED.
 func (sm *StateMachine) Failed() []string { return sm.failed }
 
+// TransitionToWaitingChildren explicitly transitions the parent from
+// Dispatching to WaitingChildren. Called after fan-out completes and
+// all child jobs are enqueued, BEFORE any child-terminated events
+// arrive. Records the child IDs for later cross-reference.
+//
+// FASE 1 (July 2026): this method makes the fan-out→WaitingChildren
+// transition explicit, replacing the implicit "first child event
+// triggers Dispatching→WaitingChildren" path. The Transition() method
+// still handles the implicit path as a backward-compatible fallback.
+//
+// Errors:
+//   - ErrAlreadyTerminal: state is already Succeeded or FailedTerminal
+//   - ErrInvalidTransition: state is not Dispatching (e.g. already
+//     WaitingChildren or Aggregating — a previous tick already
+//     constructed and fed this parent)
+func (sm *StateMachine) TransitionToWaitingChildren(childIDs []string) error {
+	if sm.state.IsTerminal() {
+		return fmt.Errorf("%w: parent=%s state=%s", ErrAlreadyTerminal, sm.parentJobID, sm.state)
+	}
+	if sm.state != ParentStateDispatching {
+		return fmt.Errorf("%w: parent=%s state=%s (expected dispatching)", ErrInvalidTransition, sm.parentJobID, sm.state)
+	}
+	if len(childIDs) == 0 {
+		return fmt.Errorf("%w: parent=%s childIDs is empty (expected at least 1 child)", ErrInvalidTransition, sm.parentJobID)
+	}
+	sm.state = ParentStateWaitingChildren
+	sm.childIDs = append([]string{}, childIDs...)
+	sm.version++
+	return nil
+}
+
+// ChildIDs returns the child job IDs recorded at TransitionToWaitingChildren.
+// Returns nil if TransitionToWaitingChildren was never called (implicit
+// Dispatching→WaitingChildren via first child event).
+func (sm *StateMachine) ChildIDs() []string { return sm.childIDs }
+
 // Transition applies a single child_terminated event. Idempotent on duplicate
 // child JobID (returns ErrDuplicateChildEvent). Idempotent on terminal state
 // (returns ErrAlreadyTerminal).
 //
-// Transition table (canonical per user-spec, Step 12B):
-//
-//	Dispatching    + child SUCCEEDED                       → WaitingChildren
-//	Dispatching    + REQUIRED child FAILED                  → FailedTerminal
-//	WaitingChildren + last child (terminated == expected)   → Aggregating
-//	WaitingChildren + REQUIRED child FAILED (with pending) → FailedTerminal
-//	Aggregating    + any (post-Aggregating events malformed) → ErrInvalidTransition
-//	Succeeded/FailedTerminal + any → ErrAlreadyTerminal
-// Transition applies a single child_terminated event. Idempotent on duplicate
-// child JobID (returns ErrDuplicateChildEvent). Idempotent on terminal state
-// (returns ErrAlreadyTerminal).
+// FASE 1 (July 2026): Dispatching→WaitingChildren can now happen via
+// TransitionToWaitingChildren() (explicit) or via the first child event
+// (implicit, backward-compatible fallback). Rule ② below only fires when
+// the state is still Dispatching — if TransitionToWaitingChildren has
+// already moved to WaitingChildren, it's a no-op.
 //
 // Transition table (canonical per user-spec, Step 12B), re-evaluated
 // uniformly on every event regardless of prior state:
 //
 //	① REQUIRED child failed (any state)        → FailedTerminal
-//	② Dispatching → WaitingChildren (1st event)
+//	② Dispatching → WaitingChildren (1st event, if still Dispatching)
 //	③ WaitingChildren → last expected child   → Aggregating
 //	④ Aggregating → event received             → ErrInvalidTransition
 //	⑤ Succeeded/FailedTerminal + any event     → ErrAlreadyTerminal
@@ -310,6 +341,7 @@ func (sm *StateMachine) Snapshot() StateSnapshot {
 		TerminatedChildren: sm.terminatedChildren,
 		Succeeded:          append([]string{}, sm.succeeded...),
 		Failed:             append([]string{}, sm.failed...),
+		ChildIDs:           append([]string{}, sm.childIDs...),
 		Version:            sm.version,
 	}
 }
@@ -322,5 +354,6 @@ type StateSnapshot struct {
 	TerminatedChildren int         `json:"terminated_children"`
 	Succeeded          []string    `json:"succeeded"`
 	Failed             []string    `json:"failed"`
+	ChildIDs           []string    `json:"child_ids,omitempty"`
 	Version            int         `json:"version"`
 }

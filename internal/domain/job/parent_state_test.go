@@ -151,7 +151,100 @@ func TestStateMachine_RequiredChildFailedInWaitingChildren_GoesToFailedTerminal(
 	assert.Equal(t, []string{"c3"}, sm.Failed())
 }
 
-// ── Aggregating → terminal via Compute() ──────────────────────────
+// ── TransitionToWaitingChildren (FASE 1 explicit transition) ─────
+
+func TestStateMachine_TransitionToWaitingChildren_HappyPath(t *testing.T) {
+	sm := NewStateMachine("p", 3)
+	err := sm.TransitionToWaitingChildren([]string{"c1", "c2", "c3"})
+	require.NoError(t, err)
+	assert.Equal(t, ParentStateWaitingChildren, sm.State())
+	assert.Equal(t, 3, sm.Expected())
+	assert.Equal(t, 0, sm.Terminated())
+	assert.Equal(t, 1, sm.Version()) // 1 version bump for the explicit transition
+	assert.Equal(t, []string{"c1", "c2", "c3"}, sm.ChildIDs())
+	assert.Equal(t, []string{}, sm.Succeeded())
+	assert.Equal(t, []string{}, sm.Failed())
+}
+
+func TestStateMachine_TransitionToWaitingChildren_AlreadyTerminal(t *testing.T) {
+	sm := NewStateMachine("p", 1)
+	// Force terminal via REQUIRED-failed child.
+	require.NoError(t, sm.Transition(ChildTerminatedEvent{
+		ParentJobID: "p", ChildJobID: "c1",
+		Outcome: ChildOutcome{JobID: "c1", Succeeded: false, Required: true, Error: "boom"},
+	}))
+	assert.True(t, sm.State().IsTerminal())
+
+	err := sm.TransitionToWaitingChildren([]string{"c1"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrAlreadyTerminal)
+}
+
+func TestStateMachine_TransitionToWaitingChildren_NotDispatching(t *testing.T) {
+	sm := NewStateMachine("p", 3)
+	// First move to WaitingChildren via implicit path (child event).
+	require.NoError(t, sm.Transition(ChildTerminatedEvent{
+		ParentJobID: "p", ChildJobID: "c1",
+		Outcome: ChildOutcome{JobID: "c1", Succeeded: true},
+	}))
+	assert.Equal(t, ParentStateWaitingChildren, sm.State())
+
+	// Now try explicit transition — must fail (already past Dispatching).
+	err := sm.TransitionToWaitingChildren([]string{"c1", "c2", "c3"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidTransition)
+}
+
+func TestStateMachine_TransitionToWaitingChildren_EmptyChildIDs(t *testing.T) {
+	sm := NewStateMachine("p", 1)
+	err := sm.TransitionToWaitingChildren(nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidTransition)
+}
+
+func TestStateMachine_TransitionToWaitingChildren_ThenFeedChildren(t *testing.T) {
+	// FASE 1 integration: explicit TransitionToWaitingChildren → child events → Compute.
+	sm := NewStateMachine("p", 3)
+	require.NoError(t, sm.TransitionToWaitingChildren([]string{"c1", "c2", "c3"}))
+	assert.Equal(t, ParentStateWaitingChildren, sm.State())
+
+	// Feed child events — the parent is already WaitingChildren, so Transition
+	// rule ② (Dispatching→WaitingChildren) is a no-op.
+	require.NoError(t, sm.Transition(ChildTerminatedEvent{
+		ParentJobID: "p", ChildJobID: "c1",
+		Outcome: ChildOutcome{JobID: "c1", Succeeded: true, Required: true},
+	}))
+	assert.Equal(t, ParentStateWaitingChildren, sm.State())
+	require.NoError(t, sm.Transition(ChildTerminatedEvent{
+		ParentJobID: "p", ChildJobID: "c2",
+		Outcome: ChildOutcome{JobID: "c2", Succeeded: true},
+	}))
+	require.NoError(t, sm.Transition(ChildTerminatedEvent{
+		ParentJobID: "p", ChildJobID: "c3",
+		Outcome: ChildOutcome{JobID: "c3", Succeeded: true, Required: true},
+	}))
+	assert.Equal(t, ParentStateAggregating, sm.State())
+	require.NoError(t, sm.Compute())
+	assert.Equal(t, ParentStateSucceeded, sm.State())
+
+	// Version: 1 (TransitionToWaitingChildren) + 3 (child events) = 4
+	assert.Equal(t, 4, sm.Version())
+}
+
+func TestStateMachine_TransitionToWaitingChildren_RequiredFailedAfterExplicit(t *testing.T) {
+	// A REQUIRED-failed child arriving after explicit TransitionToWaitingChildren
+	// must still short-circuit to FailedTerminal (rule ①).
+	sm := NewStateMachine("p", 3)
+	require.NoError(t, sm.TransitionToWaitingChildren([]string{"c1", "c2", "c3"}))
+
+	// c1 is REQUIRED and fails → immediate FailedTerminal.
+	require.NoError(t, sm.Transition(ChildTerminatedEvent{
+		ParentJobID: "p", ChildJobID: "c1",
+		Outcome: ChildOutcome{JobID: "c1", Succeeded: false, Required: true, Error: "tts crash"},
+	}))
+	assert.Equal(t, ParentStateFailedTerminal, sm.State())
+	assert.True(t, sm.State().IsTerminal())
+}
 
 func TestStateMachine_AggregatingToSucceeded_OnAllSucceeded(t *testing.T) {
 	sm := NewStateMachine("p", 4)
