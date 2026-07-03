@@ -1887,7 +1887,9 @@
       deadline: 2026-08-15
     - id: PR-GODOBJ-3-IMAGES-GENERATION
       owner_capability: internal/application/images
-      status: pending
+      status: shipped
+      ship_sha: 12813f65
+      ship_date: 2026-07-03
       deadline: 2026-08-15
     - id: PR-GODOBJ-4-SCRIPTS-GENERATION-JOB
       owner_capability: internal/application/scripts
@@ -1951,16 +1953,22 @@
           status: pending
     - id: PR-GODOBJ-5-FINALIZER
       owner_capability: internal/application/jobs/finalizer
-      status: pending
+      status: shipped
+      ship_sha: 54e356b7
+      ship_date: 2026-07-03
       deadline: 2026-08-15
     - id: PR-GODOBJ-6-JOBS-SERVICE
       owner_capability: internal/application/jobs
-      status: pending
+      status: shipped
+      ship_sha: 0b37f96e
+      ship_date: 2026-07-03
       deadline: 2026-08-15
     # ── Priority mechanical (7..9) ─────────────────────────────────────
     - id: PR-GODOBJ-7-COMPOSITION
       owner_capability: internal/app (composition root)
-      status: pending
+      status: shipped
+      ship_sha: dbb9f569
+      ship_date: 2026-07-03
       deadline: 2026-08-22
     - id: PR-GODOBJ-8-ASSETS-REGISTER-ADAPTERS
       owner_capability: internal/app (assets adapter drawer)
