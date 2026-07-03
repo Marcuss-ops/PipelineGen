@@ -15,10 +15,12 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -738,6 +740,137 @@ func TestClassifyChannel(t *testing.T) {
 				t.Errorf("classifyChannel(%q) = %v, want %v", tc.channel, got, tc.want)
 			}
 		})
+	}
+}
+
+// ── SearchTextBuilder wiring (July 2026) ──────────────────────────────────────
+
+// TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough pins
+// the legacy byte-for-byte contract: when SetSearchTextBuilder is
+// NOT called (nil builder), AssetToPoint emits asset.SearchText
+// verbatim into the bm25_text sparse vector's `text` field. This
+// preserves the pre-existing TestAssetToPoint_SparseVector_HasServerSideShape
+// behaviour for any caller that constructs the mapper without
+// wiring the registry (admin CLI, fixtures, ad-hoc test scaffolds).
+func TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough(t *testing.T) {
+	const wantSearchText = "pre-existing search text from DB"
+	asset := &AssetData{
+		ID:             "asset-nil-builder",
+		SearchText:     wantSearchText,
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     makeFloat32Slice(768),
+	}
+	schema := qdrantSchema.DefaultV3Schema()
+
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	// Explicit: no SetSearchTextBuilder call.
+	point, err := mapper.AssetToPoint(asset, schema)
+	if err != nil {
+		t.Fatalf("AssetToPoint: %v", err)
+	}
+	bm25, ok := point.Vectors["bm25_text"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("bm25_text channel missing/malformed: %v", point.Vectors["bm25_text"])
+	}
+	if got := bm25["text"]; got != wantSearchText {
+		t.Errorf("nil-builder pass-through: bm25_text.text = %v, want %q", got, wantSearchText)
+	}
+}
+
+// TestAssetToPoint_SearchTextBuilder_YoutubeStrategy pins the wiring
+// for the YouTube source. The asset's Title + Channel + Description
+// are routed through the YouTube strategy. The FallBack behavior
+// (empty builder output → asset.SearchText) is verified separately
+// in TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText.
+func TestAssetToPoint_SearchTextBuilder_YoutubeStrategy(t *testing.T) {
+	asset := &AssetData{
+		ID:             "asset-yt-builder",
+		Name:           "Cinematic Drone Footage",
+		Source:         "youtube",
+		MediaType:      "video",
+		Language:       "en",
+		Tags:           []string{"drone", "cinematic"},
+		ChannelID:      "ChannelAlpha",
+		LifecycleState: "ACTIVE",
+		TextVector:     makeFloat32Slice(768),
+		MetadataJSON:   `{"description":"Beautiful drone footage over mountains at sunrise.","transcript":"Welcome to my drone channel."}`,
+	}
+	schema := qdrantSchema.DefaultV3Schema()
+
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	mapper.SetSearchTextBuilder(searchtext.NewRegistry())
+	point, err := mapper.AssetToPoint(asset, schema)
+	if err != nil {
+		t.Fatalf("AssetToPoint: %v", err)
+	}
+	bm25, ok := point.Vectors["bm25_text"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("bm25_text channel missing/malformed")
+	}
+	text, _ := bm25["text"].(string)
+	// YouTube strategy joins title + transcript + channel + description.
+	// Let canonical per-source formula speak for the contract rather
+	// than pinning exact ordering \u2014 each substring MUST appear.
+	mustContainAll := func(haystack string, needles ...string) {
+		t.Helper()
+		for _, n := range needles {
+			if !strings.Contains(haystack, n) {
+				t.Errorf("YouTube strategy output missing %q in %q", n, haystack)
+			}
+		}
+	}
+	mustContainAll(text,
+		"Cinematic Drone Footage",   // title
+		"Welcome to my drone channel", // transcript (from metadata_json)
+		"ChannelAlpha",              // channel
+		"Beautiful drone footage over mountains at sunrise", // description
+	)
+}
+
+// TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText pins
+// the graceful-degradation contract: when the builder returns empty
+// (legitimate empty strategy result, e.g. unrecognised source
+// with no Title and no Tags), the mapper falls back to
+// asset.SearchText. This matches the resolver's precedence
+// order (builder -> asset.SearchText).
+func TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText(t *testing.T) {
+	const wantSearchText = "fallback search text from DB"
+	asset := &AssetData{
+		ID:             "asset-fallback",
+		Name:           "",
+		Source:         "unknown_future_source",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		Tags:           nil, // no tags → default-fallback returns "" too
+		SearchText:     wantSearchText,
+		TextVector:     makeFloat32Slice(768),
+	}
+	schema := qdrantSchema.DefaultV3Schema()
+
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	mapper.SetSearchTextBuilder(searchtext.NewRegistry())
+	point, err := mapper.AssetToPoint(asset, schema)
+	if err != nil {
+		t.Fatalf("AssetToPoint: %v", err)
+	}
+	bm25, ok := point.Vectors["bm25_text"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("bm25_text channel missing/malformed")
+	}
+	if got := bm25["text"]; got != wantSearchText {
+		t.Errorf("empty-builder fallback: bm25_text.text = %v, want %q", got, wantSearchText)
+	}
+}
+
+// TestResolveSearchText_NilBuilder_ReturnsAssetSearchText pins the
+// precedence-order stage (the resolver helper used by AssetToIndexDocument).
+func TestResolveSearchText_NilBuilder_ReturnsAssetSearchText(t *testing.T) {
+	const want = "asset fallback"
+	m := NewPayloadMapper(&fakeAssetStore{}, nil)
+	if got := m.resolveSearchText(context.Background(), &AssetData{SearchText: want}); got != want {
+		t.Errorf("nil builder: got %q, want %q", got, want)
 	}
 }
 
