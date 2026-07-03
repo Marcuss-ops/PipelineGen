@@ -11,6 +11,7 @@ import (
 	"time"
 
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -92,6 +93,10 @@ type ServerDeps struct {
 	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
 	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
 	QdrantHealth interface{}
+	// ModelsSidecarURL is the Python embedding server URL for the /models endpoint
+	// (Task 10, July 2026). When empty, /models returns "sidecar not configured".
+	// Default: ClipIndexer.ServerURL (typically http://127.0.0.1:8001).
+	ModelsSidecarURL string
 	// ImageSearchResolver (FASE 7, July 2026): the canonical routing
 	// singleton reached from app.DomainBundle.ImageSearchResolver.
 	// Server holds it for downstream handler injection (the
@@ -163,6 +168,10 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		if readyChecker != nil {
 			router.SetReadyChecker(readyChecker)
 		}
+		// Task 10: /models endpoint — wire ModelsHandler from sidecar URL.
+		if deps.ModelsSidecarURL != "" {
+			router.SetModelsHandler(transport.NewModelsHandler(deps.ModelsSidecarURL))
+		}
 		r := router.Setup()
 
 		return &Server{
@@ -210,6 +219,10 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	}
 	if deps.QdrantHealth != nil {
 		router.SetQdrantHealthHandler(deps.QdrantHealth)
+	}
+	// Task 10: /models endpoint — wire ModelsHandler from sidecar URL.
+	if deps.ModelsSidecarURL != "" {
+		router.SetModelsHandler(transport.NewModelsHandler(deps.ModelsSidecarURL))
 	}
 	r := router.Setup()
 
