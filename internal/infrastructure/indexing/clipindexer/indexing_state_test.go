@@ -170,8 +170,8 @@ func TestSetIndexedAt_WritesColumnPlusSidecarsAtomically(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
-	// Direct INSERT with file_hash, source_version, AND index_state='INDEXING'
-	// so the CAS fence matches: source_version=? AND file_hash=? AND index_state='INDEXING'.
+	// Direct INSERT with source_version AND index_state='INDEXING'
+	// so the CAS fence matches: source_version=? AND index_state='INDEXING'.
 	_, err := svc.db.ExecContext(ctx,
 		`INSERT INTO media_assets (id, metadata_json, index_state, source_version, file_hash) VALUES (?, '{}', 'INDEXING', ?, ?)`,
 		"clip-4", "sv-v1", "hash-CURRENT",
@@ -328,8 +328,8 @@ func TestSetIndexState_MultiStateTransitions(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
-	// Direct INSERT with file_hash and source_version to satisfy the CAS fence.
-	// The state transitions will change index_state but leave file_hash/source_version intact.
+	// Direct INSERT with source_version to satisfy the CAS fence.
+	// The state transitions will change index_state but leave source_version intact.
 	_, err := svc.db.ExecContext(ctx,
 		`INSERT INTO media_assets (id, metadata_json, index_state, source_version, file_hash) VALUES (?, '{}', 'DISCOVERED', ?, ?)`,
 		"clip-6", "sv-MULTI", "hash-FINAL",
@@ -351,7 +351,7 @@ func TestSetIndexState_MultiStateTransitions(t *testing.T) {
 	if err := svc.setIndexState(ctx, "clip-6", asset.StateIndexing, ""); err != nil {
 		t.Fatalf("setIndexState INDEXING (pre-setIndexedAt): %v", err)
 	}
-	// setIndexedAt CAS fence: file_hash="hash-FINAL" matches, source_version="sv-MULTI" matches, index_state='INDEXING' matches.
+	// setIndexedAt CAS fence: source_version="sv-MULTI" matches, index_state='INDEXING' matches.
 	if err := svc.setIndexedAt(ctx, "clip-6", "hash-FINAL", "sv-MULTI"); err != nil {
 		t.Fatalf("setIndexedAt: %v", err)
 	}
@@ -441,10 +441,13 @@ func TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenNotIndexing(t *testing.
 	}
 }
 
-// TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenHashMismatch verifies that
-// the file_hash CAS fence returns *ErrIndexSuperseded when the content hash
-// has changed — the event is stale and callers must route to SUPERSEDED.
-func TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenHashMismatch(t *testing.T) {
+// TestSetIndexedAt_SucceedsWhenContentHashDiffersButSourceVersionMatches verifies
+// the audit 2026-07-03 BLOCKER #1 closure: the CAS fence guards on
+// (id, source_version, index_state='INDEXING') ONLY — file_hash is no
+// longer compared. When the content hash differs, the new hash is still
+// written as $.indexed_content_hash (the metadata sidecar records what
+// was indexed), but the CAS succeeds because source_version matches.
+func TestSetIndexedAt_SucceedsWhenContentHashDiffersButSourceVersionMatches(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
@@ -457,18 +460,21 @@ func TestSetIndexedAt_StaleCASFence_ReturnsSupersededWhenHashMismatch(t *testing
 	}
 
 	// Pass matching source_version but DIFFERENT content hash.
+	// BLOCKER #1 closure: file_hash is no longer in the CAS fence,
+	// so this now SUCCEEDS. The new hash is written to $.indexed_content_hash.
 	err = svc.setIndexedAt(ctx, "clip-cas-3", "hash-NEW", "sv-v1")
-	if err == nil {
-		t.Fatalf("setIndexedAt with mismatched hash should return ErrIndexSuperseded")
-	}
-	var superseded *ErrIndexSuperseded
-	if !errors.As(err, &superseded) {
-		t.Fatalf("setIndexedAt with mismatched hash should return *ErrIndexSuperseded; got %T: %v", err, err)
+	if err != nil {
+		t.Fatalf("BLOCKER #1 closure: setIndexedAt must succeed when source_version matches (file_hash no longer compared): %v", err)
 	}
 
 	got := readStateAndMeta(t, ctx, svc.db, "clip-cas-3")
-	if got.indexState != "INDEXING" {
-		t.Errorf("index_state must remain INDEXING; got %q", got.indexState)
+	if got.indexState != string(asset.StateIndexed) {
+		t.Errorf("index_state must be INDEXED after successful CAS; got %q", got.indexState)
+	}
+	meta := parseJSONMeta(got.metadataJSON)
+	if metaString(meta, "indexed_content_hash") != "hash-NEW" {
+		t.Errorf("$.indexed_content_hash must be the NEW hash (%q); got %q",
+			"hash-NEW", metaString(meta, "indexed_content_hash"))
 	}
 }
 
@@ -487,7 +493,7 @@ func TestSetIndexedAt_CASFence_SucceedsWhenAllMatch(t *testing.T) {
 		t.Fatalf("insert fixture: %v", err)
 	}
 
-	// All three match: source_version, file_hash, index_state='INDEXING'.
+	// Both match: source_version, index_state='INDEXING'.
 	err = svc.setIndexedAt(ctx, "clip-cas-4", "hash-MATCH", "sv-v1")
 	if err != nil {
 		t.Fatalf("setIndexedAt with matching CAS: %v", err)
