@@ -187,18 +187,20 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	// `producedSet` alignment map is GONE because the new contract
 	// is "every Job has a CutItemResult with JobID=j.OutputPath".
 	// The Items slice preserves input-Jobs order, so the per-clip
-	// title / sourceID projection is a single index-aligned loop.
+	// title / sourceID projection is a direct index-aligned loop.
+	//
+	// The port contract guarantees len(Items) == len(req.Jobs) (the
+	// mai-nil-with-zero-output invariant). A mismatch surfaces as a
+	// wire-format regression that's loud to debug but silent to the
+	// caller — we panic with a typed diagnostic so the next agent
+	// has an actionable stack trace rather than a misplaced title
+	// on a randomly aligned clip.
+	if len(batch.Items) != len(clipTitles) {
+		panic(fmt.Sprintf("processSingleVideo: cutter contract violated: len(Items)=%d != len(clipTitles)=%d for source %q", len(batch.Items), len(clipTitles), vs.URL))
+	}
 	sourceID := extractVideoID(vs.URL)
 	clips := make([]Clip, 0, len(batch.Items))
 	for i, item := range batch.Items {
-		if i >= len(clipTitles) {
-			// Defensive: if Items somehow has more entries than
-			// Jobs (shouldn't happen because the cutter contract
-			// is len(Items)==len(Jobs)), skip the overflow
-			// without crashing. The mai-nil invariant still
-			// guarantees we get len(Jobs) items.
-			break
-		}
 		clip := Clip{
 			Path:        item.OutputPath,
 			Title:       clipTitles[i],
