@@ -562,18 +562,6 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 	}
 }
 
-// firstNonEmpty returns the first non-empty trimmed string. Empty
-// whitespace-only strings are treated as empty so callers don't have
-// to repeat trim/empty checks at every call-site.
-func firstNonEmpty(parts ...string) string {
-	for _, p := range parts {
-		if p != "" {
-			return p
-		}
-	}
-	return ""
-}
-
 // resolveSearchText is the canonical call site for search-text
 // construction at indexing time. It owns the precedence order:
 //
@@ -605,7 +593,14 @@ func (m *PayloadMapper) resolveSearchText(ctx context.Context, asset *AssetData)
 		text, err := m.searchTextBuild.Build(ctx, input)
 		if err != nil {
 			if m.log != nil {
-				m.log.Debug("SearchTextBuilder.Build error; falling back to asset.SearchText",
+				// godlike/07 no-fake-availability: surface strategy
+				// failures at Warn so operator dashboards catch a
+				// panicking or misconfigured strategy. The mapper
+				// still degrades gracefully (falls through to
+				// asset.SearchText) so a single broken strategy
+				// does not block the IndexDocument, but the
+				// degradation is visible.
+				m.log.Warn("SearchTextBuilder.Build error; falling back to asset.SearchText",
 					zap.String("asset_id", asset.ID),
 					zap.Error(err))
 			}
