@@ -422,6 +422,58 @@ func (s *Service) Fail(ctx context.Context, id string, err error) error {
 	return s.repo.Fail(ctx, id, "", "", 0, err.Error())
 }
 
+// aggregateFlipper is the narrow Pattern-0 port the parent aggregator's
+// TerminalFlip relies on. The canonical *SQLiteStore satisfies it (the
+// audit 2026-07-03 P0 #1 closure added this method to its lifecycle.go).
+// Future broker adapters must implement it; the type-assertion probe
+// in Service.TerminalFlip fail-closes non-conformant brokers with a
+// typed error rather than panicking at first aggregator tick.
+type aggregateFlipper interface {
+	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string) error
+}
+
+// TerminalFlip applies the canonical post-fan-out parent state flip.
+//
+// godlike/06 SSOT: this method is the SINGLE app-layer entry point that
+// transitions a parent voiceover.generate job from
+// (status=SUCCEEDED, result.parent_state in {waiting_children, partial_success})
+// to its final terminal posture. No other code path may write
+// jobs.status or jobs.result.parent_state for the voiceover.generate
+// job type after the worker has emitted JOB_COMPLETED. (The legacy
+// voiceover.batch + voiceover.promo paths will be retired in the P1
+// commit chain; today their handlers still reach the in-flight
+// aggregator via this surface only when the orchestrator routes them.)
+//
+// godlike/07 typed-error contract: returns ErrAggregateCASConflict or
+// ErrAlreadyTerminalAggregate via the typed-error surface — callers
+// MUST handle the replay-no-op branch explicitly (the aggregator
+// uses `errors.Is(err, ErrAlreadyTerminalAggregate)` to short-circuit).
+//
+// Audit 2026-07-03 P0 #1 closure surface: wired into the canonical
+// ParentAggregator.updateParentState, replacing the prior Complete-only
+// dispatch that left the broker status at SUCCEEDED even when
+// aggregate=failed_terminal.
+func (s *Service) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string) error {
+	if s == nil {
+		return fmt.Errorf("jobs: TerminalFlip: nil receiver (composition bug)")
+	}
+	if s.repo == nil {
+		return fmt.Errorf("jobs: TerminalFlip: repo not wired")
+	}
+	if id == "" {
+		return fmt.Errorf("jobs: TerminalFlip: id is empty")
+	}
+	if targetStatus != job.StatusSucceeded && targetStatus != job.StatusFailed {
+		return fmt.Errorf("jobs: TerminalFlip: targetStatus must be SUCCEEDED or FAILED, got %q", targetStatus)
+	}
+	flipper, ok := s.repo.(aggregateFlipper)
+	if !ok {
+		return fmt.Errorf("jobs: TerminalFlip: underlying broker %T does not implement aggregate fliper — audit 2026-07-03 migration required", s.repo)
+	}
+	resultJSON, _ := json.Marshal(result)
+	return flipper.TerminalFlip(ctx, id, targetStatus, resultJSON, errMsg)
+}
+
 // Compile-time assertion: *Service satisfies the domain job.Service interface.
 var _ job.Service = (*Service)(nil)
 

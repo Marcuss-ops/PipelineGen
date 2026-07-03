@@ -110,6 +110,38 @@ var ErrRemoteArtifactSizeMismatch = errors.New("complete job: remote artifact si
 // replay.
 var ErrCompleteJobIdempotencyConflict = errors.New("complete job: (jobID, attempt) has a prior completed result with DIFFERENT result_hash (godlike/07 no fake availability)")
 
+// ── Aggregate-flipped sentinels (P0 #1 audit 2026-07-03 closure) ────────────
+//
+// godlike/07 typed-error contract: the parent aggregator's no-lease CAS
+// (TerminalFlip) exposes these sentinels so callers can errors.Is-probe
+// the failure shape regardless of where the typed message is wrapped.
+//
+// ErrAggregateCASConflict distinguishes a CAS guard rejection (parent_state
+// not in awaiting states, OR status not in pre-terminal) from a typed
+// success; reproduction-safe across re-tick, replay, and manual retry.
+//
+// ErrAlreadyTerminalAggregate distinguishes an idempotent-replay scenario
+// (parent already in FAILED/CANCELLED terminal sink, must NOT regress) from
+// a CAS conflict — different operator dashboards, different alerts.
+
+var (
+	// ErrAggregateCASConflict is returned when the parent aggregator's
+	// no-lease CAS UPDATE fails: the parent row's parent_state is not in the
+	// awaiting states (already finalised or never enqueued) OR the parent is
+	// in a non-eligible status (e.g. QUEUED from manual retry). Both branches
+	// are CONCURRENT-AGGREGATOR-TICK safe (first-to-act wins), REPLAY safe
+	// (idempotent re-tick no-op), MANUAL-RETRY safe (status=QUEUED from CLI
+	// requeue — gated out by the broader status guard, NOT bumped as a flip race).
+	ErrAggregateCASConflict = errors.New("parent aggregate: CAS conflict (parent_state not awaiting, status not pre-terminal)")
+
+	// ErrAlreadyTerminalAggregate is returned when an aggregator tick arrives
+	// for a parent whose terminal-flip already landed (parent_state in
+	// {succeeded, partial_success, failed_terminal} or status in
+	// {FAILED, CANCELLED}). The caller can treat this as a no-op and re-tick
+	// on the next interval without operator intervention.
+	ErrAlreadyTerminalAggregate = errors.New("parent aggregate: parent already finalised (idempotent replay safe)")
+)
+
 // ── CompleteJobRequest (typed envelope from the Creator-side client / handler) ──
 
 // CompleteJobRequest is the canonical Sender-side atomic-complete
