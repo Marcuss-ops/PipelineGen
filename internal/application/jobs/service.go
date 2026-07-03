@@ -478,18 +478,18 @@ func (s *Service) Fail(ctx context.Context, id string, err error) error {
 }
 
 // aggregateFlipper is the narrow Pattern-0 port the parent aggregator's
-// TerminalFlip relies on. The canonical *SQLiteStore satisfies it (the
+// FinalizeAggregateParent relies on. The canonical *SQLiteStore satisfies it (the
 // audit 2026-07-03 P0 #1 closure added this method to its lifecycle.go).
 // Future broker adapters must implement it; the type-assertion probe
-// in Service.TerminalFlip fail-closes non-conformant brokers with a
+// in Service.FinalizeAggregateParent fail-closes non-conformant brokers with a
 // typed error rather than panicking at first aggregator tick.
 //
 // FASE 2 (July 2026): expectedVersion added for version-based CAS.
 type aggregateFlipper interface {
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
+	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
 }
 
-// TerminalFlip applies the canonical post-fan-out parent state flip.
+// FinalizeAggregateParent applies the canonical post-fan-out parent state flip.
 //
 // FASE 2 (July 2026): expectedVersion added. When > 0, the SQL layer
 // adds `AND revision = expectedVersion` as a second CAS fence alongside
@@ -500,25 +500,25 @@ type aggregateFlipper interface {
 // transitions a parent voiceover.generate job to its final terminal
 // posture. No other code path may write jobs.status or
 // jobs.result.parent_state after the worker has emitted JOB_COMPLETED.
-func (s *Service) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
+func (s *Service) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s == nil {
-		return fmt.Errorf("jobs: TerminalFlip: nil receiver (composition bug)")
+		return fmt.Errorf("jobs: FinalizeAggregateParent: nil receiver (composition bug)")
 	}
 	if s.repo == nil {
-		return fmt.Errorf("jobs: TerminalFlip: repo not wired")
+		return fmt.Errorf("jobs: FinalizeAggregateParent: repo not wired")
 	}
 	if id == "" {
-		return fmt.Errorf("jobs: TerminalFlip: id is empty")
+		return fmt.Errorf("jobs: FinalizeAggregateParent: id is empty")
 	}
 	if targetStatus != job.StatusSucceeded && targetStatus != job.StatusFailed {
-		return fmt.Errorf("jobs: TerminalFlip: targetStatus must be SUCCEEDED or FAILED, got %q", targetStatus)
+		return fmt.Errorf("jobs: FinalizeAggregateParent: targetStatus must be SUCCEEDED or FAILED, got %q", targetStatus)
 	}
 	flipper, ok := s.repo.(aggregateFlipper)
 	if !ok {
-		return fmt.Errorf("jobs: TerminalFlip: underlying broker %T does not implement aggregate fliper — audit 2026-07-03 migration required", s.repo)
+		return fmt.Errorf("jobs: FinalizeAggregateParent: underlying broker %T does not implement aggregate fliper — audit 2026-07-03 migration required", s.repo)
 	}
 	resultJSON, _ := json.Marshal(result)
-	return flipper.TerminalFlip(ctx, id, targetStatus, resultJSON, errMsg, expectedVersion)
+	return flipper.FinalizeAggregateParent(ctx, id, targetStatus, resultJSON, errMsg, expectedVersion)
 }
 
 // Compile-time assertion: *Service satisfies the domain job.Service interface.

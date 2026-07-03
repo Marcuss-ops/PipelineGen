@@ -2489,7 +2489,7 @@ wave_status:
   status: done
   exit_signal: true
   exit_gate: |
-    P0 #4 narrow-port audit closure landed on origin/main (canonical SHA 097abf93, race-recovery tip b5da5134): script-batch parent aggregator mirrors voiceover P0 #1 (commit 7f319edb) — parent_aggregator.go TerminalFlip drives the parent's broker status to SUCCEEDED / FAILED / PARTIALLY_SUCCEEDED (godlike/07 no-fake-availability). 4 CAS-fence narrow-port tests in parent_aggregator_test.go pin: Mixed_PreservesRevision, AllFailed_PopulatesErrMsg, StaleRevision_ReturnsErrAggregateCASConflict, ReplayIdempotentAfterAlreadyTerminal. Compiles clean in isolation (go vet ./internal/application/scripts/jobs/ exits 0); Check 51/52/53 forward-preventive gates PASS (0 raw `.Enqueue(<ctx>, "<literal>")` callers, 0 ArtifactUploader Prepare/Upload/Finalize raw callers, 0 completion-service raw-method callers).
+    P0 #4 narrow-port audit closure landed on origin/main (canonical SHA 097abf93, race-recovery tip b5da5134): script-batch parent aggregator mirrors voiceover P0 #1 (commit 7f319edb) — parent_aggregator.go FinalizeAggregateParent drives the parent's broker status to SUCCEEDED / FAILED / PARTIALLY_SUCCEEDED (godlike/07 no-fake-availability). 4 CAS-fence narrow-port tests in parent_aggregator_test.go pin: Mixed_PreservesRevision, AllFailed_PopulatesErrMsg, StaleRevision_ReturnsErrAggregateCASConflict, ReplayIdempotentAfterAlreadyTerminal. Compiles clean in isolation (go vet ./internal/application/scripts/jobs/ exits 0); Check 51/52/53 forward-preventive gates PASS (0 raw `.Enqueue(<ctx>, "<literal>")` callers, 0 ArtifactUploader Prepare/Upload/Finalize raw callers, 0 completion-service raw-method callers).
   linked_issues:
     - id: 097abf93
       owner_capability: internal/application/scripts/jobs
@@ -2590,7 +2590,7 @@ wave_status:
 
 # ── PR-WIRE-SCRIPT-FIX-2026-07-04 — wire_script.go 10 syntax errors (pre-existing carry-forward, NOT ART-001 regression) ──
 # Regressor (parallel-agent commit): 7388c3858cbef069133ac950bf2ec94ef17d41d6
-# \"docs(scripts): P0 #4 audit closure -- parent_aggregator on TerminalFlip via narrow-port CAS fence\".
+# \"docs(scripts): P0 #4 audit closure -- parent_aggregator on FinalizeAggregateParent via narrow-port CAS fence\".
 # NOT touched by ART-001 (verified: `git show e5985003` + `c700123f` + `b6b00130` each have NO `internal/app/wire_script.go` in
 # the file-set). gofmt -d `internal/app/wire_script.go` returns a diff → MALFORMED, not semantic-only. 10 errors across 176 lines
 # span this is SEMANTIC DRIFT (multiple `func` keywords missing + multiple method receiver declarations broken + multiple

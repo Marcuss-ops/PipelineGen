@@ -152,7 +152,7 @@ const (
 	// a separate script.generate_item job, with its own broker-side
 	// retry envelope. The canonical parent aggregator
 	// (internal/application/scripts/jobs/parent_aggregator.go)
-	// ticks the children and calls TerminalFlip to set the parent's
+	// ticks the children and calls FinalizeAggregateParent to set the parent's
 	// final broker status based on the aggregate.
 	//
 	// The child type mirrors TypeVoiceoverGenerateItem on the

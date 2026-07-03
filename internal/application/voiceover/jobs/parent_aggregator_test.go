@@ -28,7 +28,7 @@ import (
 // stubAggregatorJobsService satisfies AggregatorJobsService with an
 // in-memory job store so tests can inject any job shape without a DB.
 //
-// Audit 2026-07-03 P0 #1 (added `flipped` map + TerminalFlip method):
+// Audit 2026-07-03 P0 #1 (added `flipped` map + FinalizeAggregateParent method):
 // the legacy `completed` map is preserved for the existing 4
 // P0.1-false-success-gate tests (their assertions read
 // `stub.completed[id]["parent_state"]`). The new `flipped` map is the
@@ -42,7 +42,7 @@ type stubAggregatorJobsService struct {
 	completed map[string]map[string]any
 	flipped   map[string]flipRecord // audit 2026-07-03 P0 #1 closure
 	// flippedErr is the typed-error knob for the CAS-rejection tests.
-	// When non-nil, the stub's TerminalFlip returns this error
+	// When non-nil, the stub's FinalizeAggregateParent returns this error
 	// (simulating production CAS rejection: ErrAlreadyTerminalAggregate
 	// for replay, ErrAggregateCASConflict for manual-retry / status-revoked).
 	flippedErr error
@@ -56,7 +56,7 @@ type stubAggregatorJobsService struct {
 }
 
 // flipRecord is the typed audit pin for the P0 #1 closure tests:
-// targetStatus is the broker-level status the aggregator's TerminalFlip
+// targetStatus is the broker-level status the aggregator's FinalizeAggregateParent
 // decided (job.StatusFailed when all children failed), result carries the
 // new parent_state, errMsg is empty on success / populated on FAILED.
 type flipRecord struct {
@@ -109,12 +109,12 @@ func (s *stubAggregatorJobsService) Complete(ctx context.Context, id string, res
 	return nil
 }
 
-// TerminalFlip satisfies the audit 2026-07-03 P0 #1 aggregator port
+// FinalizeAggregateParent satisfies the audit 2026-07-03 P0 #1 aggregator port
 // extension. Records the flip into stub.flipped (canonical for new
 // tests asserting broker-status mirror) AND mirrors the parent_state
 // into stub.completed (back-compat for the existing 4 P0.1 false-success
 // gate tests that read `stub.completed[id]["parent_state"]`).
-func (s *stubAggregatorJobsService) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
+func (s *stubAggregatorJobsService) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s.flippedErr != nil {
 		// CAS-rejection simulation: do NOT mutate stub.flipped/completed
 		// (the production SQL repo's UPDATE returned 0 rows-affected, the
@@ -372,7 +372,7 @@ func TestParentHandlesChildResultWithoutOKField(t *testing.T) {
 // "c-OK"/"c-FAIL") pass them explicitly so the parent's child_job_ids
 // align with the stub's childJobs map keys (extractChildJobIDs ↔
 // stub.Get(ctx, childID) must match for the aggregator's loop to
-// reach the TerminalFlip call).
+// reach the FinalizeAggregateParent call).
 func makeParentStateWaitingChildren(childIDs ...string) []byte {
 	ids := childIDs
 	if len(ids) == 0 {
@@ -391,7 +391,7 @@ func makeParentStateWaitingChildren(childIDs ...string) []byte {
 // TestParentBrokerStatusIsFAILEDWhenAllChildrenFailed pins the audit's
 // core acceptance criterion: when ALL children definitively fail (broker
 // status = FAILED), the aggregator must NOT silently leave the parent
-// broker-status at SUCCEEDED. The new TerminalFlip path must call
+// broker-status at SUCCEEDED. The new FinalizeAggregateParent path must call
 // target_status=StatusFailed so the DB row reads broker.status=FAILED.
 // Pre-P0 #1: parent broker-status stayed SUCCEEDED + result.parent_state=
 // failed — the "two-truth" bug the audit calls out.
@@ -424,7 +424,7 @@ func TestParentBrokerStatusIsFAILEDWhenAllChildrenFailed(t *testing.T) {
 	agg.Tick(context.Background())
 
 	require.Contains(t, stub.flipped, "parent-fail",
-		"P0 #1: aggregator must call TerminalFlip (not Complete) on full-failure aggregate")
+		"P0 #1: aggregator must call FinalizeAggregateParent (not Complete) on full-failure aggregate")
 	got := stub.flipped["parent-fail"]
 	assert.Equal(t, job.StatusFailed, got.targetStatus,
 		"P0 #1: aggregate=failed_terminal MUST flip broker-status to FAILED (eliminates double-truth)")
@@ -466,7 +466,7 @@ func TestParentBrokerStatusSUCCEEDEDWhenAggregateIsPartialSuccess(t *testing.T) 
 	agg.Tick(context.Background())
 
 	require.Contains(t, stub.flipped, "parent-ps",
-		"P0 #1: aggregator must call TerminalFlip on partial_success aggregate")
+		"P0 #1: aggregator must call FinalizeAggregateParent on partial_success aggregate")
 	got := stub.flipped["parent-ps"]
 	assert.Equal(t, job.StatusSucceeded, got.targetStatus,
 		"P0 #1: partial_success aggregate MUST NOT flip broker-status to FAILED — preserve worker-emitted SUCCEEDED")
@@ -480,15 +480,15 @@ func TestParentBrokerStatusSUCCEEDEDWhenAggregateIsPartialSuccess(t *testing.T) 
 // P0 #1 CAS-rejection tests — code-reviewer critical gap closure
 // ─────────────────────────────────────────────────────────────────
 
-// TestTerminalFlipReplayIsIdempotent_NoOp verifies that when the
-// underlying broker rejects the TerminalFlip with ErrAlreadyTerminalAggregate
+// TestFinalizeAggregateParentReplayIsIdempotent_NoOp verifies that when the
+// underlying broker rejects the FinalizeAggregateParent with ErrAlreadyTerminalAggregate
 // (idempotent replay — another tick already landed the flip), the
 // aggregator treats it as a SILENT no-op (no warn-level log, no panic,
 // no parent_state regression). The audit acceptance criterion: "re-tick
 // MUST be idempotent; no parent regression".
-func TestTerminalFlipReplayIsIdempotent_NoOp(t *testing.T) {
+func TestFinalizeAggregateParentReplayIsIdempotent_NoOp(t *testing.T) {
 	// Both children failed → aggregate=failed_terminal → aggregator attempts
-	// TerminalFlip(StatusFailed). Stub's flippedErr simulates the broker
+	// FinalizeAggregateParent(StatusFailed). Stub's flippedErr simulates the broker
 	// returning ErrAlreadyTerminalAggregate because another tick already
 	// finalised the parent.
 	stub := &stubAggregatorJobsService{
@@ -875,7 +875,7 @@ func TestAcceptance_FanoutParziale_OKFalse_AggregatorHandlesPartialSuccess(t *te
 // ─────────────────────────────────────────────────────────────────
 // §15.4b Fan-out parziale con accurate handler simulation:
 // 3 items richiesti, 2 enqueued, expected_children=2, parent_state=partial_success.
-// One child optional-failed, one child succeeded → TerminalFlip with
+// One child optional-failed, one child succeeded → FinalizeAggregateParent with
 // parent_state=partial_success, broker status SUCCEEDED.
 // ─────────────────────────────────────────────────────────────────
 
@@ -884,7 +884,7 @@ func TestAcceptance_FanoutParziale_OKFalse_AggregatorHandlesPartialSuccess(t *te
 //
 //  1. expected_children = 2 (the handler writes res.EnqueuedCount, NOT total_outputs)
 //  2. parent_state = "partial_success" (res.OK=false → partial_success in toFanoutResultMap)
-//  3. TerminalFlip is called correctly — broker status stays SUCCEEDED
+//  3. FinalizeAggregateParent is called correctly — broker status stays SUCCEEDED
 //     (partial_success is not a terminal failure), parent_state emits "partial_success"
 //     in the finalised result.
 //
@@ -924,9 +924,9 @@ func TestAcceptance_PartialFanout_ExpectedChildrenMatchesEnqueued(t *testing.T) 
 	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
 	agg.Tick(context.Background())
 
-	// Criterion 1: aggregator must finalise the parent (TerminalFlip called).
+	// Criterion 1: aggregator must finalise the parent (FinalizeAggregateParent called).
 	require.Contains(t, stub.flipped, "parent-partial-accurate",
-		"§15.4b: aggregator must call TerminalFlip when all enqueued children are terminal")
+		"§15.4b: aggregator must call FinalizeAggregateParent when all enqueued children are terminal")
 
 	got := stub.flipped["parent-partial-accurate"]
 
@@ -1004,7 +1004,7 @@ func TestAcceptance_CancelParent_AggregatorSkips(t *testing.T) {
 
 func TestAcceptance_DBSucceededWorkerCrash_IdempotentRetry(t *testing.T) {
 	// Simulates: DB transaction completed, worker crashed before ACK.
-	// The retry finds all children terminal; the TerminalFlip CAS
+	// The retry finds all children terminal; the FinalizeAggregateParent CAS
 	// returns ErrAlreadyTerminalAggregate (another tick already landed).
 	// The aggregator must treat this as a silent no-op.
 	stub := &stubAggregatorJobsService{
@@ -1082,7 +1082,7 @@ func TestAcceptance_RequiredFlagPropagatedFromChildPayload(t *testing.T) {
 
 func TestAcceptance_AggregatorCrash_VersionCASConflictRecovery(t *testing.T) {
 	// Simulates: aggregator tick reads parent at revision=3, computes
-	// aggregate, but TerminalFlip's SQL UPDATE returns 0 rows because
+	// aggregate, but FinalizeAggregateParent's SQL UPDATE returns 0 rows because
 	// another tick already bumped revision to 4. The aggregator must
 	// treat ErrAggregateCASConflict as a warn-level no-op.
 	stub := &stubAggregatorJobsService{

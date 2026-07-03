@@ -113,7 +113,7 @@ var ErrCompleteJobIdempotencyConflict = errors.New("complete job: (jobID, attemp
 // ── Aggregate-flipped sentinels (P0 #1 audit 2026-07-03 closure) ────────────
 //
 // godlike/07 typed-error contract: the parent aggregator's no-lease CAS
-// (TerminalFlip) exposes these sentinels so callers can errors.Is-probe
+// (FinalizeAggregateParent) exposes these sentinels so callers can errors.Is-probe
 // the failure shape regardless of where the typed message is wrapped.
 //
 // ErrAggregateCASConflict distinguishes a CAS guard rejection (parent_state

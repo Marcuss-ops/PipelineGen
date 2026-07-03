@@ -469,7 +469,7 @@ const (
 	// retry envelope. Concurrency=4 per-worker per Step 11B/12B
 	// sibling-fan-out budget; independent per-item retry. The
 	// parent aggregator (internal/application/scripts/jobs/
-	// parent_aggregator.go) ticks the children and emits TerminalFlip
+	// parent_aggregator.go) ticks the children and emits FinalizeAggregateParent
 	// with target_status=FAILED when aggregate=failed_terminal per
 	// godlike/07 (no fake availability), otherwise SUCCEEDED.
 	TypeScriptGenerateItem = job.TypeScriptGenerateItem
@@ -556,10 +556,10 @@ func Compose() *Registry {
 	// Handle multi-item path) emits parent_state=waiting_children on
 	// full-fanout + tail, then the parent aggregator
 	// (internal/application/scripts/jobs/parent_aggregator.go) ticks
-	// the children and calls TerminalFlip(FAILED) when the aggregate
+	// the children and calls FinalizeAggregateParent(FAILED) when the aggregate
 	// dictates per godlike/07 no-fake-availability. RequiredCapabilities
 	// stays empty (the children inherit from the parent's broker lease).
-	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child (P0 #4 audit closure: each batch item is a separate broker-emitted job with independent retry envelope; the parent aggregator TerminalFlip drives the parent broker status based on the aggregate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child (P0 #4 audit closure: each batch item is a separate broker-emitted job with independent retry envelope; the parent aggregator FinalizeAggregateParent drives the parent broker status based on the aggregate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
 	// (note: ProducesArtifacts=true pins the parent's legacy
 	// artifact-payload contract; sibling-image / sibling-voiceover
 	// payloads are emitted by the existing sibling handlers, not by

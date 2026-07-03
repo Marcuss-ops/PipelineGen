@@ -18,7 +18,7 @@
 // script.generate_item child job (canonical per-item retry via the
 // broker). The aggregator (internal/application/scripts/jobs/
 /// parent_aggregator.go) then aggregates child outcomes and calls
-// TerminalFlip to set the parent's broker status. The fan-out path
+// FinalizeAggregateParent to set the parent's broker status. The fan-out path
 // preserves the legacy inline execution when no broker is wired
 // (the canonical backward-compat guarantee for tests and current
 // callers).
@@ -262,7 +262,7 @@ func (uc *GenerateManyUseCase) Execute(
 
 // ExecuteFanout emits each item as a separate script.generate_item child
 // job via the wired broker. The aggregator (parent_aggregator.go)
-// reads child outcomes and TerminalFlip-s the parent's broker status.
+// reads child outcomes and FinalizeAggregateParent-s the parent's broker status.
 // The returned GenerateManyResult carries ChildJobIDs (one per item,
 // empty string for failed enqueues) and Summary counts derived from
 // the fanout outcome (Total = children count, Succeeded/Failed = 0
