@@ -56,7 +56,10 @@
       deadline: 2026-08-01
     - id: FIX-APP-WIRE-SCRIPT-SYNTAX
       owner_capability: "internal/app"
-      status: pending
+      status: retired
+      retire_reason: "wire_script.go spec was based on stale info; file compiles cleanly today (go build ./internal/app/... + ./cmd/server both EXIT 0; gofmt -d returns only formatting alignment diffs, not syntax errors; user-claimed error sites at lines 435/499/550/558/611 hold unrelated valid Go — no 10-error debt exists at this site)"
+      retire_date: 2026-07-04
+      retire_audit_sha: 85e96411
       deadline: 2026-08-01
 
 - id: 0
