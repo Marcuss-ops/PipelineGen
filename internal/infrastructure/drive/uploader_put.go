@@ -172,6 +172,12 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	}, retry.Options{
 		MaxAttempts:    3,
 		InitialBackoff: 2 * time.Second,
+		// P1.5 (July 2026): jitter audit found uploader_put.go was
+		// the only Drive-side retry site without JitterFraction.
+		// ±30% matches the canonical folderLookupJitterFraction
+		// (see folder_manager.go) and prevents thundering-herd
+		// retries when N workers converge on the same Drive 429.
+		JitterFraction: 0.3,
 		IsRetryable:    retry.IsTransient,
 		OnRetry: func(attempt int, err error) {
 			u.Log.Warn("transient drive put error, retrying",
@@ -235,7 +241,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			Context(ctx).
 			Do()
 		if err != nil {
-			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, err)
+			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, retry.ClassifyGoogleAPIError(err))
 		}
 		return &PutFileResult{
 			FileID:       updated.Id,
@@ -268,7 +274,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			Context(ctx).
 			Do()
 		if err != nil {
-			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, err)
+			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, retry.ClassifyGoogleAPIError(err))
 		}
 		u.Log.Info("putFile: renamed to avoid collision",
 			zap.String("original", req.Filename),
@@ -297,7 +303,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		Context(ctx).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, err)
+		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, retry.ClassifyGoogleAPIError(err))
 	}
 	return &PutFileResult{
 		FileID:       created.Id,

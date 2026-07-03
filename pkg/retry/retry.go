@@ -232,6 +232,23 @@ type RetryableError interface {
 	IsRetryable() bool
 }
 
+// RetryAfterError is the pkg/retry contract for errors that carry a
+// Retry-After suggestion (P1.5, July 2026). Implementing types
+// MUST return a non-negative duration; zero means "no header
+// supplied; use the calculated backoff". Implementers supply the
+// parsed RFC 7231 §7.1.3 hi value (delta-seconds OR HTTP-date).
+//
+// DoWithValue honors RetryAfterError at the pre-sleep point by
+// taking max(computed-backoff, retryAfterDuration) before jitter
+// is applied, so Google API throttling shapes (429 with
+// Retry-After: 60) wait the upstream-debounced instant rather
+// than burning the static backoff first. GoogleAPIError satisfies
+// this interface (see pkg/retry/google_api_error.go).
+type RetryAfterError interface {
+	error
+	RetryAfterDuration() time.Duration
+}
+
 // IsTransient returns true when err is non-nil AND either:
 //   - err implements RetryableError and IsRetryable() returns true, OR
 //   - err is (or wraps) a *TransientInfrastructureError, OR
@@ -425,6 +442,33 @@ func DoWithValue[T any](ctx context.Context, fn func() (T, error), opts Options)
 				opts.OnRetry(i, err)
 			}
 			sleep := sleepDuration(i, opts)
+			// P1.5 (July 2026): honor the Retry-After hint at the
+			// pre-sleep point. Google API 429/503 responses carry
+			// Retry-After that often exceeds the static exponential
+			// backoff — burning 1s/2s/4s before reaching the upstream
+			// debounce instant wastes retry budget. max() here means
+			// "wait the larger of (computed, suggested)". The
+			// assertion that re.RetryAfterDuration() returns non-
+			// negative is a contract: the RetryAfterError docs say
+			// "MUST return non-negative" — the deliberate no-op on
+			// negative value would be a wrapper bug, not a bug here.
+			//
+			// Why errors.As and NOT direct type assertion: production
+			// callers wrap SDK exits via fmt.Errorf %w (e.g. uploader_doPutFile
+			// emits `fmt.Errorf("drive put (create %q): %w", req.Filename, err)`).
+			// The value that lands here is the wrapped chain, not the
+			// raw *GoogleAPIError. errors.As walks Unwrap and matches
+			// any layer that satisfies the RetryAfterError contract;
+			// direct type assertion `err.(RetryAfterError)` would miss
+			// the envelope (godlike/07 no-fake-availability: a passing
+			// unit test that uses an unwrapped fake masks the production
+			// miss).
+			var re RetryAfterError
+			if errors.As(err, &re) {
+				if ra := re.RetryAfterDuration(); ra > sleep {
+					sleep = ra
+				}
+			}
 			select {
 			case <-time.After(sleep):
 			case <-ctx.Done():
