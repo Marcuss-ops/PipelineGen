@@ -5,6 +5,7 @@
 package sourcing
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
 )
 
@@ -70,7 +71,7 @@ type RegisterClipResult struct {
 	// Replaces the pre-P0.2 ambiguous "OK=true for both Drive-success and
 	// Drive-failure". Canonical values: PUBLISHED / PUBLISH_FAILED /
 	// LOCAL_ONLY / PUBLISH_PENDING / PUBLISHING.
-	DeliveryStatus asset.DeliveryStatus `json:"delivery_status,omitempty"`
+	DeliveryStatus asset.AssetPublishStatus `json:"delivery_status,omitempty"`
 
 	// RetryScheduled is true when Drive upload failed but a retry job has
 	// been enqueued (P0.2, July 2026). Set alongside

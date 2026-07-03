@@ -19,15 +19,21 @@ package youtube
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
+
+// ErrYouTubeDriveRequired is returned when Drive upload is mandatory and
+// the Publisher fails (P0.2, July 2026). Callers can probe with errors.Is.
+var ErrYouTubeDriveRequired = errors.New("youtube.Register: Drive upload is required but Publisher failed")
 
 // Service is the YouTubeRegistrar implementation. 9-port budget (8 + 1
 // transitional for Publisher migration). The `drive` field is retained
@@ -43,6 +49,12 @@ type Service struct {
 	indexDisp   IndexDispatcherPort // v2: merges IndexDisp + AssetTree
 	enrichment  EnrichmentPort      // v2: merges Jobs + Search + Config + legacy Enrichment
 	log         sourcing.Logger
+
+	// RequireDrive, when true, causes Register to return an error if the
+	// Drive Publisher fails (P0.2, July 2026). Default is false: Drive
+	// failure returns PUBLISH_FAILED + RetryScheduled without blocking
+	// the registration.
+	RequireDrive bool
 }
 
 // NewService creates a YouTubeRegistrar service. indexDisp is REQUIRED
@@ -113,6 +125,10 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			if existingClip, gerr := s.clips.GetClip(ctx, existing); gerr == nil && existingClip != nil {
 				s.log.Debug("dedup hit", "existing_id", existing, "video_id", videoID)
 				indexed := s.enrichment != nil && s.enrichment.IndexingEnabled()
+				publishStatus := asset.AssetPublishLocalOnly
+				if existingClip.DriveFileID != "" {
+					publishStatus = asset.AssetPublishPublished
+				}
 				return &sourcing.RegisterClipResult{
 					OK: true, Duplicate: true, ClipID: existingClip.ID, VideoID: videoID,
 					Name: existingClip.Name, Filename: existingClip.Filename,
@@ -123,6 +139,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 					LocalPath: existingClip.LocalPath, Indexed: indexed,
 					IndexingStatus: IndexStatus(indexed),
 					Message:        "clip already registered for this YouTube video",
+					DeliveryStatus: publishStatus,
 				}, nil
 			}
 		}
@@ -222,6 +239,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 
 	var uploadResult *sourcing.DriveUploadResult
 	targetFolderID := ""
+	deliveryStatus := asset.AssetPublishLocalOnly
 
 	if s.publisher != nil {
 		// Canonical path: Publisher resolves folder + uploads.
@@ -236,13 +254,15 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			RootFolderOverride: strings.TrimSpace(cmd.FolderID),
 		})
 		if err != nil {
-			s.log.Warn("Drive upload via Publisher failed, continuing with local file only", "error", err)
+			s.log.Warn("Drive upload via Publisher failed", "error", err, "delivery_status", asset.AssetPublishFailed)
+			deliveryStatus = asset.AssetPublishFailed
 		} else {
 			targetFolderID = result.FolderID
 			uploadResult = &sourcing.DriveUploadResult{
 				FileID:      result.FileID,
 				WebViewLink: result.WebViewLink,
 			}
+			deliveryStatus = asset.AssetPublishPublished
 			s.log.Info("uploaded to Drive via Publisher", "file_id", result.FileID, "link", result.WebViewLink)
 		}
 	} else if s.drive != nil {
@@ -268,11 +288,21 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		}
 		targetFolderID = rootID
 		if result, err := s.drive.UploadFileWithDescription(ctx, fetched.LocalPath, rootID, driveFilename, driveDesc); err != nil {
-			s.log.Warn("Drive upload failed, continuing with local file only", "error", err)
+			s.log.Warn("Drive upload failed", "error", err, "delivery_status", asset.AssetPublishFailed)
+			deliveryStatus = asset.AssetPublishFailed
 		} else {
 			uploadResult = result
+			deliveryStatus = asset.AssetPublishPublished
 			s.log.Info("uploaded to Drive", "file_id", result.FileID, "link", result.WebViewLink)
 		}
+	}
+
+	// ── 9a. Mandatory-Drive check (P0.2, July 2026) ──────────────
+	// When RequireDrive is set and the Publisher failed, fail the
+	// entire operation BEFORE saving to DB. The asset is downloaded
+	// but not registered; the caller can retry.
+	if s.RequireDrive && deliveryStatus == asset.AssetPublishFailed {
+		return nil, fmt.Errorf("%w: publisher returned %v", ErrYouTubeDriveRequired, deliveryStatus)
 	}
 
 	// ── 10. Upload cumulative metadata.json to Drive ────────────
@@ -398,6 +428,17 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	if uploadResult != nil {
 		res.DriveLink = uploadResult.WebViewLink
 		res.DriveFileID = uploadResult.FileID
+	}
+
+	// ── 15. Delivery status (P0.2, July 2026) ────────────────────
+	// Eliminates the pre-P0.2 ambiguous "OK=true for both Drive-success
+	// and Drive-failure". The caller can now distinguish:
+	//   - delivery_status: PUBLISHED → Drive upload succeeded
+	//   - delivery_status: PUBLISH_FAILED → Drive failed, retry scheduled
+	res.DeliveryStatus = deliveryStatus
+	if deliveryStatus == asset.AssetPublishFailed {
+		res.RetryScheduled = true
+		res.Message = "asset registered locally; Drive upload failed — retry scheduled"
 	}
 	return res, nil
 }
