@@ -120,7 +120,10 @@ func newAdminDefaultLookup(svc *driveapi.Service, log *zap.Logger) folderLookupF
 
 		id, err := retry.DoWithValue(ctx, func() (string, error) {
 			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-			return firstFolderID(list), lerr
+			if lerr != nil {
+				return "", lerr
+			}
+			return firstFolderID(list)
 		}, retry.Options{
 			MaxAttempts:    folderLookupMaxAttempts,
 			InitialBackoff: folderLookupInitialBackoff,

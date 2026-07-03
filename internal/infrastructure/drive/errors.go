@@ -1,39 +1,35 @@
-// Package drive — errors.go
+// Package drive — errors.go (P0.8, July 2026)
 //
-// Canonical typed-error surface for the drive package.
+// Canonical typed sentinels for Drive operations. Callers use errors.Is
+// to distinguish ambiguity from transient failures without string-matching
+// on error messages. Mirrors the per-package sentinel convention already
+// established in publisher.go (ErrMissingDestinationRegistry,
+// ErrMissingFolderManager, ErrMissingFileUploader) and uploader.go
+// (ErrAmbiguousDriveFile).
 //
-// DRIVE-008 (July 2026): ErrLegacySurfaceRetired is the fail-closed
-// sentinel for the legacy drive upload seam (UploadFile /
-// UploadFileWithDescription) on the composition-root adapters
-// (clipsDriveAdapter + sourcingDriveAdapter). The canonical upload
-// path is delivery.Publisher.Publish (internal/application/assets/
-// delivery/publisher.go) — any caller that still reaches the bypass
-// surface via clips.ClipDriveUploaderPort.UploadFile or
-// sourcing.DrivePort.UploadFileWithDescription receives this typed
-// error immediately at runtime (errors.Is compatible). Per
-// godlike/07 §"No fake availability", the legacy surface is loud at
-// runtime rather than silently translating to a 200 OK.
-//
-// The sentinel lives in the drive package because the retirements
-// map to the drive package's UploadFileWithDescription upstream
-// (the bypass source that composition-root adapters were calling
-// directly). The canonical replacement (delivery.Publisher.Publish)
-// is the SINGLE AUTHORITATIVE upload surface per architecture/
-// deprecations.yaml#DRIVE-008.
+// P0.8 (July 2026): ErrAmbiguousDriveFolder was extracted from
+// folder_manager.go (where it was initially defined in P0.7) into this
+// canonical errors home so it can be imported without pulling in the
+// folder-manager dependency surface.
 package drive
 
 import "errors"
 
-// ErrLegacySurfaceRetired is returned by the legacy drive upload
-// seam (clips.ClipDriveUploaderPort.UploadFile + UploadFileWithDescription,
-// sourcing.DrivePort.UploadFileWithDescription) when invoked.
-// Production callers MUST migrate to delivery.Publisher.Publish —
-// see architecture/deprecations.yaml#DRIVE-008 for the migration
-// contract, replacement path, and compatibility test surface.
+// ErrAmbiguousDriveFolder is the canonical sentinel returned when
+// a Drive Files.List query finds more than one non-trashed folder
+// with the same name under the same parent. This is the folder-level
+// parallel to ErrAmbiguousDriveFile for files.
 //
-// Detect via errors.Is(err, drive.ErrLegacySurfaceRetired) at the
-// caller / handler / API boundary. The error is wrapped one or two
-// levels by adapter-specific context messages so callers retain
-// adapter-level diagnostics (which surface + which arguments
-// triggered the fail-closed).
-var ErrLegacySurfaceRetired = errors.New("legacy drive upload surface retired: use delivery.Publisher.Publish (DRIVE-008)")
+// P0.7 (July 2026): the pre-fix findOrCreateFolder created a folder
+// and returned created.Id without checking whether a cross-process
+// race produced a duplicate. The re-lookup after Create now detects
+// the >1 case and surfaces this sentinel so callers can fail-closed
+// rather than silently returning a folder ID that may collide with
+// another instance's folder.
+//
+// P0.8 (July 2026): firstFolderID was upgraded from silently returning
+// the first match to returning this sentinel on >1 match. Callers
+// (newDefaultFolderLookup, newAdminDefaultLookup) propagate the error
+// through the retry seam, and callers errors.Is against this sentinel
+// to distinguish ambiguity from transient failures.
+var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multiple non-trashed folders with the same name+parent exist on Drive")
