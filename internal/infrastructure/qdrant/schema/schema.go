@@ -66,17 +66,17 @@ func DefaultV3Schema() *IndexSchema {
 			// pinned in the channel config. DefaultSparseModel is the
 			// single source of truth for the inference model name.
 			{Channel: "bm25_text", Modifier: "idf", Model: DefaultSparseModel},
-		},		PayloadIndexes: []PayloadIndexSpec{
-		{FieldName: "workspace_id", FieldType: "keyword"},
-		// QDRANT-004 PR2 (June 2026): lifecycle_state is the SINGLE
-		// canonical lifecycle key. The legacy `status` field is
-		// forbidden — search_adapter, clip_search_adapter,
-		// mediasearch.Service and BuildPayload all read/write this
-		// name exclusively. A CI gate (rg 'payload\[..status..\]' over
-		// qdrant infra, plus a reindex-qdrant startup assert)
-		// keeps the drift window closed. Historical points are
-		// mutated via cmd/admin/qdrant_backfill_lifecycle.go.
-		{FieldName: "lifecycle_state", FieldType: "keyword"},
+		}, PayloadIndexes: []PayloadIndexSpec{
+			{FieldName: "workspace_id", FieldType: "keyword"},
+			// QDRANT-004 PR2 (June 2026): lifecycle_state is the SINGLE
+			// canonical lifecycle key. The legacy `status` field is
+			// forbidden — search_adapter, clip_search_adapter,
+			// mediasearch.Service and BuildPayload all read/write this
+			// name exclusively. A CI gate (rg 'payload\[..status..\]' over
+			// qdrant infra, plus a reindex-qdrant startup assert)
+			// keeps the drift window closed. Historical points are
+			// mutated via cmd/admin/qdrant_backfill_lifecycle.go.
+			{FieldName: "lifecycle_state", FieldType: "keyword"},
 			{FieldName: "source", FieldType: "keyword"},
 			{FieldName: "media_type", FieldType: "keyword"},
 			{FieldName: "language", FieldType: "keyword"},
