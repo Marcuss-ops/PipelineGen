@@ -2830,7 +2830,7 @@ wave_status:
     # ── P0 #2 — Stage→Drive composition wiring ─────────────────────────────
     - id: P0-COMPL-2-COMPOSITION-WIRE
       owner_capability: internal/app + internal/application/assets/delivery + internal/application/jobs/completion
-      status: pending
+      status: shipped
       deadline: 2026-08-01
     # ── P0 #3 — ArtifactManifest contract rename (staged != published) ─────
     - id: P0-COMPL-3-ARTIFACT-CONTRACT
