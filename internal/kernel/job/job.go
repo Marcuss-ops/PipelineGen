@@ -28,20 +28,23 @@ import (
 type Status string
 
 const (
-	StatusQueued       Status = "QUEUED"
-	StatusLeased       Status = "LEASED"
-	StatusRunning      Status = "RUNNING"
-	StatusFinalizing   Status = "FINALIZING"
-	StatusRetryWait    Status = "RETRY_WAIT"
-	StatusSucceeded    Status = "SUCCEEDED"
-	StatusIndexPending Status = "INDEX_PENDING"
-	StatusFailed       Status = "FAILED"
-	StatusCancelled    Status = "CANCELLED"
+	StatusQueued              Status = "QUEUED"
+	StatusLeased              Status = "LEASED"
+	StatusRunning             Status = "RUNNING"
+	StatusFinalizing          Status = "FINALIZING"
+	StatusRetryWait           Status = "RETRY_WAIT"
+	StatusSucceeded           Status = "SUCCEEDED"
+	StatusPartiallySucceeded  Status = "PARTIALLY_SUCCEEDED"
+	StatusIndexPending        Status = "INDEX_PENDING"
+	StatusFailed              Status = "FAILED"
+	StatusCancelled           Status = "CANCELLED"
 )
 
 // IsTerminal returns true if the status is a final state.
+// PARTIALLY_SUCCEEDED is terminal: the job finished, some artifacts
+// succeeded and some failed. No further worker action is expected.
 func (s Status) IsTerminal() bool {
-	return s == StatusSucceeded || s == StatusFailed || s == StatusCancelled
+	return s == StatusSucceeded || s == StatusPartiallySucceeded || s == StatusFailed || s == StatusCancelled
 }
 
 // IsActive returns true if a worker currently owns this job.
@@ -60,7 +63,7 @@ func (s Status) IsActive() bool {
 func (s Status) Valid() bool {
 	switch s {
 	case StatusQueued, StatusLeased, StatusRunning, StatusFinalizing, StatusRetryWait,
-		StatusSucceeded, StatusIndexPending, StatusFailed, StatusCancelled:
+		StatusSucceeded, StatusPartiallySucceeded, StatusIndexPending, StatusFailed, StatusCancelled:
 		return true
 	}
 	return false

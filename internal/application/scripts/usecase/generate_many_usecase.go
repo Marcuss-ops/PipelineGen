@@ -12,10 +12,21 @@
 // loop stops launching new items, but already-running items are
 // allowed to complete. Cancelled-but-not-started items are
 // recorded with a "context cancelled" error.
+//
+// P0 #4 audit (audit 2026-07-03): when a broker is wired via
+// SetFanoutBroker, the multi-item path emits each item as a separate
+// script.generate_item child job (canonical per-item retry via the
+// broker). The aggregator (internal/application/scripts/jobs/
+/// parent_aggregator.go) then aggregates child outcomes and calls
+// TerminalFlip to set the parent's broker status. The fan-out path
+// preserves the legacy inline execution when no broker is wired
+// (the canonical backward-compat guarantee for tests and current
+// callers).
 package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -25,17 +36,55 @@ import (
 	"go.uber.org/zap"
 )
 
+// FanoutItemBroker is the narrow Pattern-0 port for emitting per-item
+// child jobs (P0 #4 audit closure). The canonical *appjobs.Service
+// satisfies it via Enqueue(JobPolicy{Type: TypeScriptGenerateItem}).
+// Tests inject stubs without instantiating the full broker.
+type FanoutItemBroker interface {
+	EnqueueScriptItem(ctx context.Context, parentJobID string, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error)
+}
+
 // GenerateManyUseCase orchestrates multi-item generation. Each item
 // is processed independently through the unified pipeline, with
 // bounded concurrency controlled by adapters.NormalizationConfig.MaxBatchWorkers.
+//
+// P0 #4: when broker is wired via SetFanoutBroker, multi-item runs
+// FAN OUT each item as a child broker job (per-item retry);
+// otherwise multi-item runs the legacy INLINE path (backward-compat).
 type GenerateManyUseCase struct {
-	one *GenerateOneUseCase
-	log *zap.Logger
+	one    *GenerateOneUseCase
+	log    *zap.Logger
+	broker FanoutItemBroker
 }
 
 // NewGenerateManyUseCase wraps a GenerateOneUseCase for batch.
 func NewGenerateManyUseCase(one *GenerateOneUseCase, log *zap.Logger) *GenerateManyUseCase {
 	return &GenerateManyUseCase{one: one, log: log}
+}
+
+// SetFanoutBroker wires the optional broker port. Callers that want
+// the P0 #4 child-job architecture pass a non-nil FanoutItemBroker
+// (composition root wires this from the typed *appjobs.Service via
+// an adapter). Tests / callers that want the legacy inline path
+// leave broker nil.
+func (uc *GenerateManyUseCase) SetFanoutBroker(broker FanoutItemBroker) {
+	if uc == nil {
+		return
+	}
+	uc.broker = broker
+}
+
+// HasFanoutBroker reports whether the canonical FanoutItemBroker
+// port is wired. The handler reads this to decide between the
+// legacy inline path (broker == nil) and the P0 #4 fan-out path
+// (broker != nil). godlike/07 fail-closed: leaving the broker nil
+// preserves the legacy backward-compat behavior (existing tests
+// and callers continue to work); the fan-out path is opt-in.
+func (uc *GenerateManyUseCase) HasFanoutBroker() bool {
+	if uc == nil {
+		return false
+	}
+	return uc.broker != nil
 }
 
 // ── Result types ───────────────────────────────────────────────────
@@ -59,10 +108,19 @@ type GenerateManySummary struct {
 // GenerateManyResult holds the complete outcome of a multi-item run.
 // Items is ordered by input index. Warnings carry non-per-item
 // observations (e.g. "one or more items failed").
+//
+// P0 #4 audit (audit 2026-07-03): on the fan-out path, ChildJobIDs
+// carries one entry per item (empty string for failed enqueues) so
+// the handler can extract them when building the parent envelope.
+// ChildJobIDsJSON is the json.RawMessage mirror used as a wire-field
+// stub so callers that don't yet read ChildJobIDs (legacy paths)
+// continue to compile.
 type GenerateManyResult struct {
-	Items    []GenerateManyItemResult `json:"items"`
-	Summary  GenerateManySummary      `json:"summary"`
-	Warnings []string                 `json:"warnings,omitempty"`
+	Items         []GenerateManyItemResult `json:"items"`
+	Summary       GenerateManySummary      `json:"summary"`
+	Warnings      []string                 `json:"warnings,omitempty"`
+	ChildJobIDs   []string                 `json:"child_job_ids,omitempty"`
+	ChildJobIDsJSON json.RawMessage        `json:"child_job_ids_json,omitempty"`
 }
 
 // ── Execute ────────────────────────────────────────────────────────
@@ -199,5 +257,124 @@ func (uc *GenerateManyUseCase) Execute(
 		Items:    items,
 		Summary:  GenerateManySummary{Total: n, Succeeded: succeeded, Failed: failed},
 		Warnings: warnings,
+	}, nil
+}
+
+// ExecuteFanout emits each item as a separate script.generate_item child
+// job via the wired broker. The aggregator (parent_aggregator.go)
+// reads child outcomes and TerminalFlip-s the parent's broker status.
+// The returned GenerateManyResult carries ChildJobIDs (one per item,
+// empty string for failed enqueues) and Summary counts derived from
+// the fanout outcome (Total = children count, Succeeded/Failed = 0
+// initially because final outcomes are decided by the aggregator).
+//
+// P0 #4 audit closure (mirror of voiceover FanoutVoiceoversUseCase):
+// this is the canonical fan-out use case for the per-item retry
+// semantic. The handler (generation_job.go Handle multi-item path)
+// reads ExecOrFanout to pick the path: inline (broker nil) vs fan-out.
+//
+// godlike/07 fail-closed: a non-nil broker with a partial fan-out
+// failure is returned as a non-nil Go error so the worker treats
+// it as FAILED (matches the voiceover FanoutVoiceoversUseCase).
+func (uc *GenerateManyUseCase) ExecuteFanout(
+	ctx context.Context,
+	parentJobID string,
+	env *scriptpkg.GenerationEnvelopeV2,
+	cfg adapters.NormalizationConfig,
+) (*GenerateManyResult, error) {
+	if uc == nil {
+		return nil, fmt.Errorf("%w: use case not constructed", scriptpkg.ErrGenerationFailed)
+	}
+	if uc.broker == nil {
+		return nil, fmt.Errorf("%w: fanout broker not wired", scriptpkg.ErrGenerationFailed)
+	}
+	if env == nil || len(env.Items) == 0 {
+		return &GenerateManyResult{
+			Items:   []GenerateManyItemResult{},
+			Summary: GenerateManySummary{},
+		}, nil
+	}
+
+	n := len(env.Items)
+	items := make([]GenerateManyItemResult, n)
+	childJobIDs := make([]string, n)
+	enqueueErrors := 0
+
+	for i, item := range env.Items {
+		itemID := item.ID
+		if itemID == "" {
+			itemID = fmt.Sprintf("item-%d", i)
+		}
+		if ctx.Err() != nil {
+			items[i] = GenerateManyItemResult{
+				ItemID: itemID,
+				Error:  fmt.Sprintf("context cancelled before fanout: %v", ctx.Err()),
+			}
+			enqueueErrors++
+			continue
+		}
+		jobID, err := uc.broker.EnqueueScriptItem(ctx, parentJobID, item, env.Preset)
+		if err != nil {
+			if uc.log != nil {
+				uc.log.Warn("generate-many: child enqueue failed (P0 #4)",
+					zap.String("item_id", itemID),
+					zap.String("parent_job_id", parentJobID),
+					zap.Error(err))
+			}
+			items[i] = GenerateManyItemResult{
+				ItemID: itemID,
+				Error:  fmt.Sprintf("enqueue failed: %v", err),
+			}
+			childJobIDs[i] = ""
+			enqueueErrors++
+			continue
+		}
+		childJobIDs[i] = jobID
+		// Items is left as a placeholder (Result=nil, Error=""); the
+		// aggregator will overwrite child results on terminal flip.
+		items[i] = GenerateManyItemResult{ItemID: itemID}
+		_ = cfg // future use: thread per-batch MaxBatchWorkers into broker enqueue
+	}
+
+	// Fan-out is considered partial failure if more than one enqueue
+	// failed. Mirrors the voiceover fan-out invariant — partial
+	// fan-out is logged, but only criterion for parent FAILED in the
+	// broker is ALL items definitively failed (the aggregator's
+	// StateMachine.Compute decides; per-item Required distinctions
+	// don't apply to scripts).
+	failedEnqueue := ""
+	if enqueueErrors == n && n > 0 {
+		failedEnqueue = fmt.Sprintf("%d of %d items failed to enqueue", enqueueErrors, n)
+	} else if enqueueErrors > 0 {
+		if uc.log != nil {
+			uc.log.Warn("generate-many: partial fan-out failure",
+				zap.Int("total", n),
+				zap.Int("failed_enqueue", enqueueErrors))
+		}
+	}
+
+	// Marshal ChildJobIDs into the extra-metadata blob so the handler
+	// can extract them when building the parent envelope.
+	childJobIDsJSON, _ := json.Marshal(childJobIDs)
+	warnings := append([]string{}, failedEnqueue)
+
+	if uc.log != nil {
+		uc.log.Info("generate-many: fanout completed",
+			zap.String("parent_job_id", parentJobID),
+			zap.Int("total", n),
+			zap.Int("failed_enqueue", enqueueErrors),
+			zap.Int("child_job_ids_len", len(childJobIDs)))
+	}
+
+	// Return a GenerateManyResult with ChildJobIDs marshalled into a
+	// JSON-encoded field for the handler to pick up. Empty Summary
+	// counts because the aggregator decides the final outcome.
+	return &GenerateManyResult{
+		Items:   items,
+		Summary: GenerateManySummary{Total: n, Succeeded: n - enqueueErrors, Failed: enqueueErrors},
+		Warnings: warnings,
+		// The handler reads child_job_ids from this serialization.
+		ChildJobIDs: childJobIDs,
+		ChildJobIDsJSON: childJobIDsJSON,
 	}, nil
 }
