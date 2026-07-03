@@ -218,17 +218,8 @@ func (h *GenerateJobHandler) handleSingle(
 	return mapped, nil
 }
 
-// handleBatch owns the multi-item script.generate path.
-// Cleanly separated from handleSingle — no shared conditional logic.
-//   - checkPipelineCtx at multi-item-pre-execute
-//   - many.Execute → typed envelope via ClassifyGenerationOutcome
-//   - outcome dispatch (5 outcomes + CANCELED) → (mapped_envelope,
-//     dispatch_err) per the §P0 Issue-1 contract
-//   - on FULL / PARTIAL: persistence picks the first-successful-item
-//     typed *GenerationResult and writes artifacts via the adapter.
-//   - cancel and all-failed keep the manifest sidecar absent (the
-//     worker either retries or closes the job as FAILED depending
-//     on Diagnostic.Err).
+// handleBatch fans out multi-item script generation as
+// separate script.generate_item child jobs via the wired broker.
 func (h *GenerateJobHandler) handleBatch(
 	ctx context.Context,
 	j *scriptpkg.Job,
@@ -237,12 +228,6 @@ func (h *GenerateJobHandler) handleBatch(
 ) (map[string]any, error) {
 	if err := h.checkPipelineCtx(ctx, "multi-item-pre-execute"); err != nil {
 		return nil, err
-	}
-	// Commit 2 P0 #4: when broker is wired, the canonical path is
-	// child-job fan-out (each item = separate script.generate_item
-	// job). No silent inline fallback — incomplete wiring fails closed.
-	if !h.many.HasFanoutBroker() {
-		return nil, fmt.Errorf("script.generate batch: fanout broker not wired (Commit 2 P0 #4 — incomplete wiring fails closed)")
 	}
 	return h.handleBatchFanout(ctx, j, env, tools)
 }
@@ -260,7 +245,7 @@ func (h *GenerateJobHandler) handleBatchFanout(
 	progressFn := appjobs.SafeProgressFn(tools)
 	progressFn(5, "fanning out script items to child jobs")
 
-	manyResult, err := h.many.ExecuteFanout(ctx, j.ID, env)
+	fanout, err := h.many.ExecuteFanout(ctx, j.ID, env)
 	if err != nil {
 		if h.log != nil {
 			h.log.Error("script.generate: fanout failed",
@@ -270,40 +255,24 @@ func (h *GenerateJobHandler) handleBatchFanout(
 		return nil, fmt.Errorf("script.generate fanout: %w", err)
 	}
 
-	// Defensive nil guard: ExecuteFanout returns (nil, err) on failure
-	// but a nil-deref here would panic the worker goroutine.
-	if manyResult == nil {
+	if fanout == nil {
 		return nil, fmt.Errorf("script.generate fanout: ExecuteFanout returned nil result without error")
 	}
-
-	// Keep ALL child job IDs (including empty placeholders for failed
-	// enqueues) so the aggregator can compute total_items from the
-	// original batch size. The aggregator filters empties when querying
-	// children but uses parentResult.TotalItems for the aggregate counts.
-	childIDs := manyResult.ChildJobIDs
 
 	resultMap := map[string]any{
 		"parent_state":         "waiting_children",
 		"parent_job_id":        j.ID,
-		"total_items":          manyResult.Summary.Total,
-		"child_job_ids":        childIDs,
-		"failed_enqueue_count": manyResult.Summary.Failed,
-	}
-
-	// Count non-empty child IDs for the log line only.
-	enqueued := 0
-	for _, id := range childIDs {
-		if id != "" {
-			enqueued++
-		}
+		"total_items":          fanout.TotalItems,
+		"child_job_ids":        fanout.ChildJobIDs,
+		"failed_enqueue_count": fanout.FailedEnqueueCount,
 	}
 
 	if h.log != nil {
 		h.log.Info("script.generate: fanout complete, parent waiting for children",
 			zap.String("parent_job_id", j.ID),
-			zap.Int("total_items", manyResult.Summary.Total),
-			zap.Int("children_enqueued", enqueued),
-			zap.Int("failed_enqueue", manyResult.Summary.Failed))
+			zap.Int("total_items", fanout.TotalItems),
+			zap.Int("children_enqueued", fanout.TotalEnqueued),
+			zap.Int("failed_enqueue", fanout.FailedEnqueueCount))
 	}
 
 	progressFn(100, "fanout complete, waiting for child aggregation")

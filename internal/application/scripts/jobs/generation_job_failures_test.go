@@ -61,7 +61,7 @@ func newFailingOneUseCase() *usecase.GenerateOneUseCase {
 func newTestHandler(t *testing.T, maxBatchWorkers int) (*jobs.GenerateJobHandler, appjobs.JobTools) {
 	t.Helper()
 	one := newFailingOneUseCase()
-	many := usecase.NewGenerateManyUseCase(one, zap.NewNop())
+	many := usecase.NewGenerateManyUseCase(zap.NewNop())
 	// Commit 5 P0 #4: batch path requires a broker (no silent inline
 	// fallback). Wire a stub that always fails enqueue so the all-failed
 	// error path is exercised.

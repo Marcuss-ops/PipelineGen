@@ -1,43 +1,23 @@
 // Package scripts_test — generate_many_usecase_test.go exercises
-// GenerateManyUseCase with bounded concurrency, partial-failure
-// semantics, and cancellation support (PR 9).
+// GenerateManyUseCase.ExecuteFanout (fan-out path).
 package usecase_test
 
 import (
 	"context"
 	"errors"
-	"sync/atomic"
-	"testing"
+// ── Stub broker ────────────────────────────────────────────────────
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+type stubBroker struct {
+	enqueueFunc func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error)
+}
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+func (s *stubBroker) EnqueueScriptItem(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+	return s.enqueueFunc(ctx, parentJobID, itemIndex, item, preset)
+}
 
-	"go.uber.org/zap"
-)
+var _ scripts.FanoutItemBroker = (*stubBroker)(nil)
 
-// Type aliases so the test (package usecase_test) can reference the
-// canonical usecase/adapters types by their bare name (matches the
-// test fixtures in scriptflow_usecase_test.go and the rest of the
-// usecase test surface).
-type (
-	GenerateManyResult     = scripts.GenerateManyResult
-	GenerateManyItemResult = scripts.GenerateManyItemResult
-	GenerateManySummary    = scripts.GenerateManySummary
-	GenerateManyUseCase    = scripts.GenerateManyUseCase
-	NormalizationConfig    = adapters.NormalizationConfig
-)
-
-var (
-	NewSourceRegistry     = adapters.NewSourceRegistry
-	NewGenerateOneUseCase = scripts.NewGenerateOneUseCase
-	NewTextSourceResolver = scripts.NewTextSourceResolver
-)
-
-// ── Helpers ───────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────
 
 func makeManyEnv(items ...scriptpkg.GenerationItemV2) *scriptpkg.GenerationEnvelopeV2 {
 	return &scriptpkg.GenerationEnvelopeV2{
@@ -57,589 +37,158 @@ func makeItem(id string) scriptpkg.GenerationItemV2 {
 	}
 }
 
-// ── Tests ─────────────────────────────────────────────────────────
+func newWiredUC(broker scripts.FanoutItemBroker) *scripts.GenerateManyUseCase {
+	uc := scripts.NewGenerateManyUseCase(zap.NewNop())
+	uc.SetFanoutBroker(broker)
+	return uc
+}
 
-func TestGenerateManyEmptyEnvelope(t *testing.T) {
+// ── Tests ──────────────────────────────────────────────────────────
+
+func TestExecuteFanout_EmptyEnvelope(t *testing.T) {
 	t.Parallel()
-	uc := scripts.NewGenerateManyUseCase(nil, zap.NewNop())
-	result, err := uc.Execute(context.Background(), makeManyEnv(), NormalizationConfig{}, nil)
+	uc := newWiredUC(&stubBroker{
+		enqueueFunc: func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+			return "job-1", nil
+		},
+	})
+	result, err := uc.ExecuteFanout(context.Background(), "parent-1", makeManyEnv())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.Items) != 0 {
-		t.Errorf("expected 0 items, got %d", len(result.Items))
-	}
-	if result.Summary.Total != 0 {
-		t.Errorf("expected total 0, got %d", result.Summary.Total)
+	if result.TotalItems != 0 {
+		t.Errorf("expected 0 total, got %d", result.TotalItems)
 	}
 }
 
-func TestGenerateManyNilEnvelope(t *testing.T) {
+func TestExecuteFanout_NilEnvelope(t *testing.T) {
 	t.Parallel()
-	uc := scripts.NewGenerateManyUseCase(nil, zap.NewNop())
-	result, err := uc.Execute(context.Background(), nil, NormalizationConfig{}, nil)
+	uc := newWiredUC(&stubBroker{})
+	result, err := uc.ExecuteFanout(context.Background(), "parent-1", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.Items) != 0 {
-		t.Errorf("expected 0 items, got %d", len(result.Items))
+	if result.TotalItems != 0 {
+		t.Errorf("expected 0 total, got %d", result.TotalItems)
 	}
 }
 
-func TestGenerateManyNilUseCase(t *testing.T) {
+func TestExecuteFanout_NilUseCase(t *testing.T) {
 	t.Parallel()
-	var uc *GenerateManyUseCase
-	env := makeManyEnv(makeItem("a"))
-	_, err := uc.Execute(context.Background(), env, NormalizationConfig{}, nil)
+	var uc *scripts.GenerateManyUseCase
+	_, err := uc.ExecuteFanout(context.Background(), "parent-1", makeManyEnv(makeItem("a")))
 	if err == nil {
 		t.Fatal("expected error for nil use case")
 	}
 }
 
-// TestGenerateManySequentialParity verifies sequential behaviour
-// through the real Execute path with a concrete GenerateOneUseCase
-// having a nil engine (validates plumbing, not engine output).
-func TestGenerateManySequentialParity(t *testing.T) {
+func TestExecuteFanout_BrokerNotWired(t *testing.T) {
 	t.Parallel()
-	// Create a real GenerateOneUseCase with nil engine — Execute
-	// will error, but we verify that the many use case correctly
-	// delegates and collects errors.
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil, // engine nil → will fail
-		nil, // no postprocessors
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := makeItem("a")
-	env := makeManyEnv(items)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 1, // sequential
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	// All items should fail (engine is nil), but the use case itself
-	// should not return an error — it collects per-item errors.
-	if err != nil {
-		t.Fatalf("unexpected use-case error: %v", err)
-	}
-	if result.Summary.Total != 1 {
-		t.Fatalf("expected 1 total, got %d", result.Summary.Total)
-	}
-	if result.Summary.Failed != 1 {
-		t.Errorf("expected 1 failed, got %d", result.Summary.Failed)
-	}
-	if result.Items[0].Error == "" {
-		t.Error("expected per-item error for nil engine")
-	}
-	if result.Items[0].ItemID != "a" {
-		t.Errorf("expected item ID 'a', got %q", result.Items[0].ItemID)
-	}
-	if len(result.Warnings) == 0 {
-		t.Error("expected warnings for failed items")
+	uc := scripts.NewGenerateManyUseCase(zap.NewNop())
+	_, err := uc.ExecuteFanout(context.Background(), "parent-1", makeManyEnv(makeItem("a")))
+	if err == nil {
+		t.Fatal("expected error for missing broker")
 	}
 }
 
-// TestGenerateManyCancellation verifies that context cancellation
-// stops launching new items and records cancelled items with errors.
-func TestGenerateManyCancellation(t *testing.T) {
+func TestExecuteFanout_AllSucceed(t *testing.T) {
 	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil,
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	nextID := 0
+	uc := newWiredUC(&stubBroker{
+		enqueueFunc: func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+			nextID++
+			return "child-" + string(rune('0'+nextID)), nil
+		},
+	})
+	result, err := uc.ExecuteFanout(context.Background(), "parent-1",
+		makeManyEnv(makeItem("a"), makeItem("b"), makeItem("c")))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.TotalItems != 3 {
+		t.Errorf("TotalItems: got %d, want 3", result.TotalItems)
+	}
+	if result.FailedEnqueueCount != 0 {
+		t.Errorf("FailedEnqueueCount: got %d, want 0", result.FailedEnqueueCount)
+	}
+	if result.TotalEnqueued != 3 {
+		t.Errorf("TotalEnqueued: got %d, want 3", result.TotalEnqueued)
+	}
+	if len(result.ChildJobIDs) != 3 {
+		t.Errorf("ChildJobIDs len: got %d, want 3", len(result.ChildJobIDs))
+	}
+	for i, id := range result.ChildJobIDs {
+		if id == "" {
+			t.Errorf("ChildJobIDs[%d] is empty", i)
+		}
+	}
+}
 
-	// Three items, cancel immediately.
+func TestExecuteFanout_AllFailed(t *testing.T) {
+	t.Parallel()
+	uc := newWiredUC(&stubBroker{
+		enqueueFunc: func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+			return "", errors.New("stub enqueue failure")
+		},
+	})
+	_, err := uc.ExecuteFanout(context.Background(), "parent-1",
+		makeManyEnv(makeItem("a"), makeItem("b")))
+	if err == nil {
+		t.Fatal("expected error when all enqueues fail")
+	}
+}
+
+func TestExecuteFanout_PartialFailure(t *testing.T) {
+	t.Parallel()
+	failCount := 0
+	uc := newWiredUC(&stubBroker{
+		enqueueFunc: func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+			failCount++
+			if failCount == 2 {
+				return "", errors.New("stub enqueue failure")
+			}
+			return "child-ok", nil
+		},
+	})
+	result, err := uc.ExecuteFanout(context.Background(), "parent-1",
+		makeManyEnv(makeItem("a"), makeItem("b"), makeItem("c")))
+	if err != nil {
+		t.Fatalf("unexpected error on partial failure: %v", err)
+	}
+	if result.TotalItems != 3 {
+		t.Errorf("TotalItems: got %d, want 3", result.TotalItems)
+	}
+	if result.FailedEnqueueCount != 1 {
+		t.Errorf("FailedEnqueueCount: got %d, want 1", result.FailedEnqueueCount)
+	}
+	if result.TotalEnqueued != 2 {
+		t.Errorf("TotalEnqueued: got %d, want 2", result.TotalEnqueued)
+	}
+	// Failed enqueue slot must be empty.
+	emptyCount := 0
+	for _, id := range result.ChildJobIDs {
+		if id == "" {
+			emptyCount++
+		}
+	}
+	if emptyCount != 1 {
+		t.Errorf("expected 1 empty ChildJobID (failed enqueue), got %d", emptyCount)
+	}
+}
+
+func TestExecuteFanout_CtxCanceled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-
-	items := []scriptpkg.GenerationItemV2{makeItem("a"), makeItem("b"), makeItem("c")}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 4,
-	}
-
-	result, err := uc.Execute(ctx, env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Total != 3 {
-		t.Fatalf("expected 3 total, got %d", result.Summary.Total)
-	}
-	if result.Summary.Failed != 3 {
-		t.Errorf("expected 3 failed (all cancelled), got %d", result.Summary.Failed)
-	}
-	for i, item := range result.Items {
-		if item.Error == "" {
-			t.Errorf("item %d (%q): expected error, got none", i, item.ItemID)
-		}
-	}
-}
-
-// TestGenerateManyWorkersDefault verifies that MaxBatchWorkers=0
-// falls back to the default of 4.
-func TestGenerateManyWorkersDefault(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil, // engine nil → will fail
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		makeItem("a"), makeItem("b"), makeItem("c"),
-		makeItem("d"), makeItem("e"),
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 0, // should default to 4
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Total != 5 {
-		t.Errorf("expected 5 total, got %d", result.Summary.Total)
-	}
-}
-
-// TestGenerateManyItemOrder verifies that results are returned in
-// input order, not completion order.
-func TestGenerateManyItemOrder(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil,
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	// Items with IDs that would sort differently from input order.
-	items := []scriptpkg.GenerationItemV2{
-		makeItem("z"), makeItem("a"), makeItem("m"),
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 2,
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result.Items) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(result.Items))
-	}
-	// Must be in input order.
-	if result.Items[0].ItemID != "z" {
-		t.Errorf("index 0: expected 'z', got %q", result.Items[0].ItemID)
-	}
-	if result.Items[1].ItemID != "a" {
-		t.Errorf("index 1: expected 'a', got %q", result.Items[1].ItemID)
-	}
-	if result.Items[2].ItemID != "m" {
-		t.Errorf("index 2: expected 'm', got %q", result.Items[2].ItemID)
-	}
-}
-
-// TestGenerateManyMixedResults verifies that a mix of successes and
-// failures is correctly reported with aggregate counts.
-func TestGenerateManyMixedResults(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil, // all items will fail with engine=nil
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		{ID: "ok-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "t1"}},
-		{ID: "fail-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "t2"}},
-		{ID: "ok-2", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "t3"}},
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 2,
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Total != 3 {
-		t.Errorf("expected 3 total, got %d", result.Summary.Total)
-	}
-	// All fail because engine is nil.
-	if result.Summary.Failed != 3 {
-		t.Errorf("expected 3 failed, got %d", result.Summary.Failed)
-	}
-	if result.Summary.Succeeded != 0 {
-		t.Errorf("expected 0 succeeded, got %d", result.Summary.Succeeded)
-	}
-	for _, item := range result.Items {
-		if item.Result != nil {
-			t.Errorf("item %q: expected nil result, got %v", item.ItemID, item.Result)
-		}
-		if item.Error == "" {
-			t.Errorf("item %q: expected error, got none", item.ItemID)
-		}
-	}
-}
-
-// TestGenerateManyResultTypes verifies type assertions on result structs.
-func TestGenerateManyResultTypes(t *testing.T) {
-	r := &GenerateManyResult{
-		Items: []GenerateManyItemResult{
-			{ItemID: "a", Result: &scriptpkg.GenerationResult{ItemID: "a", Title: "Test"}},
-			{ItemID: "b", Error: "something went wrong"},
+	uc := newWiredUC(&stubBroker{
+		enqueueFunc: func(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error) {
+			return "child-ok", nil
 		},
-		Summary:  GenerateManySummary{Total: 2, Succeeded: 1, Failed: 1},
-		Warnings: []string{"1 of 2 items failed"},
-	}
-	if r.Summary.Total != 2 {
-		t.Errorf("total: %d", r.Summary.Total)
-	}
-	if r.Items[0].ItemID != "a" {
-		t.Errorf("item[0].ItemID: %q", r.Items[0].ItemID)
-	}
-	if r.Items[0].Result == nil {
-		t.Error("item[0].Result should be non-nil")
-	}
-	if r.Items[1].Result != nil {
-		t.Error("item[1].Result should be nil")
-	}
-	if r.Items[1].Error == "" {
-		t.Error("item[1].Error should be non-empty")
+	})
+	_, err := uc.ExecuteFanout(ctx, "parent-1",
+		makeManyEnv(makeItem("a"), makeItem("b")))
+	if err == nil {
+		t.Fatal("expected error on cancelled context (all enqueues skipped)")
 	}
 }
 
-// TestGenerateManyWithSourceRegistry verifies that items with source
-// resolution go through the full pipeline even when resolvers fail.
-func TestGenerateManyWithSourceRegistry(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	// Register a text resolver (will work) and leave catalog
-	// unregistered.
-	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
-	reg.Freeze()
-
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil, // engine nil → will fail after source resolution
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		{ID: "text-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic 1"}},
-		{ID: "text-2", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic 2"}},
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 2,
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Total != 2 {
-		t.Errorf("total: %d", result.Summary.Total)
-	}
-	// Both should fail at engine (nil), not at source resolution.
-	for _, item := range result.Items {
-		if item.Error == "" {
-			t.Errorf("item %q: expected engine error, got none", item.ItemID)
-		}
-	}
-}
-
-// TestGenerateManyUnregisteredSourceType verifies that items with
-// an unregistered source type fail at source resolution.
-func TestGenerateManyUnregisteredSourceType(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	reg.Freeze() // no resolvers registered
-
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil,
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		{ID: "cat-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceCatalog, Query: "test"}},
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 1,
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Failed != 1 {
-		t.Errorf("expected 1 failed, got %d", result.Summary.Failed)
-	}
-	if result.Items[0].Error == "" {
-		t.Error("expected source resolution error")
-	}
-}
-
-// TestGenerateManyProgressCallback verifies that progressFn is not called
-// when items fail before normalization (e.g., nil engine). With a real
-// engine, progress is emitted at each phase; integration tests cover that path.
-func TestGenerateManyProgressCallback(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil,
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	var calls atomic.Int32
-	progressFn := func(percent int, message string) {
-		calls.Add(1)
-	}
-
-	items := []scriptpkg.GenerationItemV2{makeItem("a"), makeItem("b")}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 2,
-	}
-
-	_, err := uc.Execute(context.Background(), env, cfg, progressFn)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// With nil engine, items fail before normalization phase — no progress.
-	// Integration tests with a real engine verify the normal path.
-	if calls.Load() != 0 {
-		t.Logf("progress called %d times (engine was nil, expected 0)", calls.Load())
-	}
-}
-
-// TestGenerateManySingleItem ensures single-item batch uses the
-// same code path as multi-item and reports correctly.
-func TestGenerateManySingleItem(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil,
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	env := makeManyEnv(makeItem("solo"))
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 4,
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Total != 1 {
-		t.Errorf("expected 1 total, got %d", result.Summary.Total)
-	}
-	if len(result.Items) != 1 {
-		t.Errorf("expected 1 item, got %d", len(result.Items))
-	}
-}
-
-// ── SCRIPT-T03-USECASE (P0, 2026-07-15) godlike/07 typed-error gate ──
-
-// TestGenerateManyUseCase_TypedErrorPerItem pins the
-// SCRIPT-T03-USECASE (P0, 2026-07-15) godlike/07 typed-error gate
-// for the multi-item path: when a per-item Execute call returns a
-// typed error, GenerateManyUseCase MUST preserve the typed-error
-// propagation surface (TypedError field) so handlers can use
-// errors.Is for status-code mapping (parallel to the single-item
-// Execute return path).
-//
-// Strategy: construct a many usecase with a real single-item usecase
-// having engine=nil (per-item Execute returns errors.Is(ErrGenerationFailed));
-// execute a 3-item envelope; assert:
-//
-//	(a) all 3 items failed (Summary.Failed == 3)
-//	(b) each Items[i].TypedError satisfies errors.Is(ErrGenerationFailed)
-//	(c) each Items[i].Error (string) is non-empty (wire-format compat)
-//	(d) result.Warnings carries the partial-failure summary
-//
-// godlike/07 NO_FAKE_AVAILABILITY: the typed error is the canonical
-// propagation surface; the wire-format string is preserved for
-// downstream JSON consumers. Both surfaces are asserted in this test.
-func TestGenerateManyUseCase_TypedErrorPerItem(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil, // engine nil → per-item Execute returns errors.Is(ErrGenerationFailed)
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		makeItem("a"),
-		makeItem("b"),
-		makeItem("c"),
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{DefaultLanguage: "en", MaxBatchWorkers: 2}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	require.NoError(t, err, "many usecase itself must not error")
-	require.Equal(t, 3, result.Summary.Failed,
-		"SCRIPT-T03-USECASE: all 3 items must fail (engine=nil)")
-
-	for i, item := range result.Items {
-		require.NotNil(t, item.TypedError,
-			"item[%d].TypedError must be populated (SCRIPT-T03-USECASE godlike/07 typed-error gate)", i)
-		assert.True(t, errors.Is(item.TypedError, scriptpkg.ErrGenerationFailed),
-			"item[%d].TypedError must satisfy errors.Is(ErrGenerationFailed), got %v",
-			i, item.TypedError)
-		assert.NotEmpty(t, item.Error,
-			"item[%d].Error (string) must be non-empty for wire-format compat", i)
-	}
-
-	require.NotEmpty(t, result.Warnings,
-		"SCRIPT-T03-USECASE: Warnings must carry the partial-failure summary")
-}
-
-// TestGenerateManyUseCase_TypedErrorPreservesOrderOnPartialFailure
-// pins the ordering guarantee for partial-failure: even when every
-// item fails, Items is returned in input order (not completion
-// order) so handlers can correlate Items[i] with env.Items[i]
-// without ID lookups.
-//
-// Strategy: 3 items with IDs that sort differently from input order
-// (z, a, m) + engine=nil (all fail) + MaxBatchWorkers=2 (forces
-// some concurrency); assert Items[i].ItemID == env.Items[i].ID for
-// all i, and TypedError is populated for all failed items.
-func TestGenerateManyUseCase_TypedErrorPreservesOrderOnPartialFailure(t *testing.T) {
-	t.Parallel()
-	reg := NewSourceRegistry(zap.NewNop())
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil, // engine nil → all items fail
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		makeItem("z"),
-		makeItem("a"),
-		makeItem("m"),
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{DefaultLanguage: "en", MaxBatchWorkers: 2}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	require.NoError(t, err, "many usecase itself must not error")
-	require.Equal(t, 3, len(result.Items),
-		"SCRIPT-T03-USECASE: 3 items must be returned (1:1 with input)")
-
-	// Ordering: input order preserved even when all items fail.
-	assert.Equal(t, "z", result.Items[0].ItemID,
-		"SCRIPT-T03-USECASE: Items[0] must be 'z' (input index 0)")
-	assert.Equal(t, "a", result.Items[1].ItemID,
-		"SCRIPT-T03-USECASE: Items[1] must be 'a' (input index 1)")
-	assert.Equal(t, "m", result.Items[2].ItemID,
-		"SCRIPT-T03-USECASE: Items[2] must be 'm' (input index 2)")
-
-	// Typed errors: all items failed, so all TypedError must satisfy
-	// errors.Is(ErrGenerationFailed).
-	for i, item := range result.Items {
-		require.NotNil(t, item.TypedError,
-			"SCRIPT-T03-USECASE: item[%d].TypedError must be populated", i)
-		assert.True(t, errors.Is(item.TypedError, scriptpkg.ErrGenerationFailed),
-			"SCRIPT-T03-USECASE: item[%d].TypedError must satisfy errors.Is(ErrGenerationFailed), got %v",
-			i, item.TypedError)
-	}
-}
-
-// TestGenerateManyConcurrencyLimit verifies that workers are bounded
-// — with workers=2 and 5 items, at most 2 run concurrently.
-func TestGenerateManyConcurrencyLimit(t *testing.T) {
-	// Not parallel — uses shared state via a counter.
-	reg := NewSourceRegistry(zap.NewNop())
-
-	// We can't easily inject a fake engine, so we test the shape
-	// with a real GenerateOneUseCase that fails fast (nil engine)
-	// and verify the summary is correct. True concurrency is tested
-	// in the worker pool integration test.
-
-	one := NewGenerateOneUseCase(
-		NormalizationConfig{DefaultLanguage: "en"},
-		reg,
-		nil,
-		nil,
-		zap.NewNop(),
-	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
-
-	items := []scriptpkg.GenerationItemV2{
-		makeItem("a"), makeItem("b"), makeItem("c"),
-		makeItem("d"), makeItem("e"),
-	}
-	env := makeManyEnv(items...)
-	cfg := NormalizationConfig{
-		DefaultLanguage: "en",
-		MaxBatchWorkers: 2,
-	}
-
-	result, err := uc.Execute(context.Background(), env, cfg, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Summary.Total != 5 {
-		t.Errorf("expected 5 total, got %d", result.Summary.Total)
-	}
-	// All items should be processed (even if they fail).
-}

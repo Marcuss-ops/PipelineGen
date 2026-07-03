@@ -126,34 +126,8 @@ func TestHandler_FilesystemOpsAbsent(t *testing.T) {
 // KILL-K3: outcome classification treats ctx.Canceled distinctly.
 // ─────────────────────────────────────────────────────────────────
 
-// TestClassifyGenerationOutcome_CtxCanceledPreemptsFailed asserts
-// that when the use case returns a partial-or-full result WITH a
-// context.Canceled error, the classification is OutcomeCanceled
-// (NOT a MULTI_PARTIAL with a nil Err — the worker must observe
-// the cancel signal and not retry the job the user pressed
-// cancel on).
-func TestClassifyGenerationOutcome_CtxCanceledPreemptsFailed(t *testing.T) {
-	cancelErr := context.Canceled
-	res := &usecase.GenerateManyResult{
-		Items: nil,
-		Summary: usecase.GenerateManySummary{
-			Total:     0,
-			Succeeded: 0,
-			Failed:    0,
-		},
-	}
-	d := ClassifyGenerationOutcome(res, cancelErr)
-	if d.Outcome != OutcomeCanceled {
-		t.Errorf("ClassifyGenerationOutcome: Outcome = %q, want %q (errors.Is(err, context.Canceled) MUST preempt MULTI_PARTIAL / MULTI_ALL_FAILED)", d.Outcome, OutcomeCanceled)
-	}
-	if !errors.Is(d.Err, context.Canceled) {
-		t.Errorf("ClassifyGenerationOutcome: Diagnostic.Err does not wrap context.Canceled via errors.Is (godlike/07 typed-error contract violated)")
-	}
-}
-
 // TestClassifySingleOutcome_CtxCanceledPreemptsFailed asserts
-// the single-item equivalent: context.Canceled surfaces as
-// OutcomeCanceled, NOT OutcomeSingleFailure.
+// context.Canceled surfaces as OutcomeCanceled, NOT OutcomeSingleFailure.
 func TestClassifySingleOutcome_CtxCanceledPreemptsFailed(t *testing.T) {
 	cancelErr := context.Canceled
 	d := ClassifySingleOutcome(nil, cancelErr)
@@ -162,72 +136,5 @@ func TestClassifySingleOutcome_CtxCanceledPreemptsFailed(t *testing.T) {
 	}
 	if !errors.Is(d.Err, context.Canceled) {
 		t.Errorf("ClassifySingleOutcome: Diagnostic.Err does not wrap context.Canceled via errors.Is")
-	}
-}
-
-// TestClassifyGenerationOutcome_PureNoSideEffects asserts the two
-// Classify functions are PURE: they do not call log writers, do
-// not open files, and do not invoke DB connections (verified via
-// dependency-shape: the structs do not require logger or DB
-// pointers — if a future contributor adds one, the test fails to
-// compile).
-func TestClassifyGenerationOutcome_PureNoSideEffects(t *testing.T) {
-	cases := []struct {
-		name string
-		res  *usecase.GenerateManyResult
-		err  error
-		want Outcome
-	}{
-		{
-			name: "manyResult nil with no error → MULTI_INFRA_FAILURE",
-			res:  nil, err: nil, want: OutcomeMultiInfraFailure,
-		},
-		{
-			name: "manyResult nil with err → MULTI_INFRA_FAILURE (wraps err)",
-			res:  nil, err: errors.New("inf"), want: OutcomeMultiInfraFailure,
-		},
-		{
-			name: "ctx.Canceled preempts all-failed classification",
-			res: &usecase.GenerateManyResult{Summary: usecase.GenerateManySummary{
-				Total: 3, Succeeded: 0, Failed: 3,
-			}},
-			err: context.Canceled, want: OutcomeCanceled,
-		},
-		{
-			name: "all items failed, no cancel → MULTI_ALL_FAILED",
-			res: &usecase.GenerateManyResult{Summary: usecase.GenerateManySummary{
-				Total: 3, Succeeded: 0, Failed: 3,
-			}},
-			err: nil, want: OutcomeMultiAllFailed,
-		},
-		{
-			name: "partial success → MULTI_PARTIAL (no error returned)",
-			res: &usecase.GenerateManyResult{Summary: usecase.GenerateManySummary{
-				Total: 3, Succeeded: 2, Failed: 1,
-			}},
-			err: nil, want: OutcomeMultiPartial,
-		},
-		{
-			name: "full success → MULTI_FULL_SUCCESS",
-			res: &usecase.GenerateManyResult{Summary: usecase.GenerateManySummary{
-				Total: 3, Succeeded: 3, Failed: 0,
-			}},
-			err: nil, want: OutcomeMultiFullSuccess,
-		},
-		{
-			name: "zero-item batch (malformed) → MULTI_INFRA_FAILURE",
-			res: &usecase.GenerateManyResult{Summary: usecase.GenerateManySummary{
-				Total: 0, Succeeded: 0, Failed: 0,
-			}},
-			err: nil, want: OutcomeMultiInfraFailure,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			d := ClassifyGenerationOutcome(tc.res, tc.err)
-			if d.Outcome != tc.want {
-				t.Errorf("Outcome = %q, want %q", d.Outcome, tc.want)
-			}
-		})
 	}
 }
