@@ -75,6 +75,35 @@ type JobFinalizer interface {
 
 // ── ArtifactPreparationService ──────────────────────────────────────
 
+// ── PublisherPort ───────────────────────────────────────────────────
+
+// PublisherPort is the canonical domain port for publishing a verified
+// artifact to a remote storage backend (Drive, S3, object storage).
+//
+// It is the narrow publish-only seam consumed by ArtifactPreparation.
+// The concrete implementation lives in
+// internal/infrastructure/drive/artifact_publisher_adapter.go and
+// wraps delivery.Publisher.
+//
+// Drive cutover P0.4 (July 2026): extracted from the local Publisher
+// interface in internal/application/assets/finalizer/. The port lives
+// at the domain boundary (Pattern 0) so the infrastructure adapter
+// can implement it without importing the application layer.
+type PublisherPort interface {
+	// Publish uploads the artifact's content (from LocalPath) to the
+	// remote storage backend and returns the canonical AssetLocation.
+	//
+	// The returned location MUST set Provider, FileID, WebViewLink,
+	// DownloadLink, Checksum, FolderID, FolderPath, and Action.
+	//
+	// Idempotency: the implementation MUST use the artifact's
+	// IdempotencyKey to avoid duplicate publications. Same content
+	// → same key → same remote file → PublishSkipped.
+	Publish(ctx context.Context, artifact VerifiedArtifact) (AssetLocation, error)
+}
+
+// ── ArtifactPreparationService ──────────────────────────────────────
+
 // ArtifactPreparationService owns the external side-effects of
 // preparing an artifact for finalisation: validation, hashing, and
 // publication to a remote location.

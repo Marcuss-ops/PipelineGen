@@ -24,10 +24,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // runOrchestrator is the Stock Cutover Commit 2 canonical entry
@@ -138,7 +137,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	// service that StockFinalizeStep.CompleteWithArtifacts invokes.
 	if s.publisher != nil {
 		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
-			&deliveryToFinalizerPublisherAdapter{pub: s.publisher}, s.log))
+			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))
 	}
 	o.WithJobFinalizer(s.finalizer)
 	summary, err := o.RunResilient(ctx, input)
@@ -223,69 +222,6 @@ func effectiveClipDurationSec(input *RunInput, s *Service) int {
 		return s.cfg.Video.WithDefaults().ClipDuration
 	}
 	return 0
-}
-
-// deliveryToFinalizerPublisherAdapter adapts delivery.Publisher to
-// finalizer.Publisher so stockpipeline's runOrchestratorResilient can
-// pass s.publisher to finalizer.NewArtifactPreparation (which expects
-// the narrow finalizer.Publisher interface).
-//
-// godlike/06 SSOT: this adapter is the single canonical bridge between
-// the delivery-layer's typed PublishRequest/PublishResult and the
-// finalization-layer's VerifiedArtifact/AssetLocation. It lives here
-// rather than in the finalizer package because (a) it depends on both
-// delivery and finalization types (import-cycle risk) and (b) the
-// stock pipeline is the only consumer today — extracting it to a shared
-// location would cross capability boundaries prematurely.
-type deliveryToFinalizerPublisherAdapter struct {
-	pub delivery.Publisher
-}
-
-// Compile-time assertion: adapter satisfies finalizer.Publisher.
-var _ finalizer.Publisher = (*deliveryToFinalizerPublisherAdapter)(nil)
-
-// Publish converts a VerifiedArtifact to a delivery.PublishRequest,
-// delegates to the underlying delivery.Publisher, and converts the
-// delivery.PublishResult to a finalization.AssetLocation.
-func (a *deliveryToFinalizerPublisherAdapter) Publish(
-	ctx context.Context,
-	artifact finalization.VerifiedArtifact,
-) (finalization.AssetLocation, error) {
-	result, err := a.pub.Publish(ctx, delivery.PublishRequest{
-		Destination: delivery.DestinationStock,
-		LocalPath:   artifact.LocalPath,
-		Filename:    artifact.Filename,
-		AssetID:     artifact.ArtifactID,
-	})
-	if err != nil {
-		return finalization.AssetLocation{}, err
-	}
-	return finalization.AssetLocation{
-		Provider:     "drive",
-		FileID:       result.FileID,
-		WebViewLink:  result.WebViewLink,
-		DownloadLink: result.DownloadLink,
-		Checksum:     result.MD5Checksum,
-		FolderID:     result.FolderID,
-		FolderPath:   result.FolderPath,
-		Action:       translateDeliveryAction(result.Action),
-	}, nil
-}
-
-// translateDeliveryAction maps delivery.PublishAction → finalization.PublishAction.
-func translateDeliveryAction(a delivery.PublishAction) finalization.PublishAction {
-	switch a {
-	case delivery.PublishActionCreated:
-		return finalization.PublishCreated
-	case delivery.PublishActionUpdated:
-		return finalization.PublishUpdated
-	case delivery.PublishActionSkipped:
-		return finalization.PublishSkipped
-	case delivery.PublishActionRenamed:
-		return finalization.PublishRenamed
-	default:
-		return finalization.PublishAction("")
-	}
 }
 
 // stagerForRun resolves the canonical assets.SourceStager for the

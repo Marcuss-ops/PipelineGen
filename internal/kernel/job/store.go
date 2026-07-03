@@ -17,9 +17,7 @@ import (
 
 // Store is the canonical persistence contract for jobs.
 //
-// All state-changing operations accept the lease fencing tuple
-// (workerID, leaseID, expectedRevision) inline. Implementations MUST
-// perform an optimistic-concurrency check before mutating job state.
+// fencing/CAS primitives only.
 //
 // Phase A.2 (June 2026): canonical home is internal/kernel/job/.
 // Adapters (SQLiteStore etc.) continue to satisfy this interface via

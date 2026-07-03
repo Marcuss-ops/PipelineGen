@@ -8,28 +8,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// Publisher is the port for publishing a verified artifact to a remote
-// storage backend (Drive, S3, object storage).
-//
-// FASE 5 will provide the concrete Drive publisher. Until then, tests and
-// capabilities can inject a stub or mock.
-//
-// Idempotency: the implementation MUST use the artifact's IdempotencyKey
-// to avoid duplicate publications. Same content → same key → same remote
-// file → PublishSkipped.
-type Publisher interface {
-	// Publish uploads the artifact's content (from LocalPath) to the
-	// remote storage backend and returns the canonical AssetLocation.
-	// The returned location MUST set Provider, FileID, WebViewLink,
-	// DownloadLink, Checksum, FolderID, FolderPath, and Action.
-	Publish(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.AssetLocation, error)
-}
-
 // ArtifactPreparation is the concrete implementation of
 // finalization.ArtifactPreparationService.
 //
-// It validates a verified artifact, delegates publication to a Publisher,
-// and returns the PublishedArtifact with its canonical location.
+// It validates a verified artifact, delegates publication to a
+// finalization.PublisherPort, and returns the PublishedArtifact with
+// its canonical location.
 //
 // Validation (fail-fast):
 //   - ArtifactID is non-empty
@@ -39,14 +23,14 @@ type Publisher interface {
 //   - SizeBytes > 0
 //   - IdempotencyKey is non-empty
 type ArtifactPreparation struct {
-	publisher Publisher
+	publisher finalization.PublisherPort
 	log       *zap.Logger
 }
 
 // NewArtifactPreparation creates an ArtifactPreparation with the given
 // publisher (nil-safe; if nil, Prepare will always return an error
 // for publication — useful for testing with a stub).
-func NewArtifactPreparation(pub Publisher, log *zap.Logger) *ArtifactPreparation {
+func NewArtifactPreparation(pub finalization.PublisherPort, log *zap.Logger) *ArtifactPreparation {
 	if log == nil {
 		log = zap.NewNop()
 	}
