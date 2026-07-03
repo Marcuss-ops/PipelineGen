@@ -15,10 +15,10 @@ import (
 )
 
 // verifyMetadata performs Gates 5–7 (dead letters, golden query, filter
-// smoke) and computes the final Ready gate.
+// smoke) and computes the final Ready gate + per-gate details (Task 7).
 //
 // Populates report.DeadLetterOpen, report.GoldenQueriesOK,
-// report.FiltersOK, report.Ready, and report.Errors.
+// report.FiltersOK, report.GateDetails, report.Ready, and report.Errors.
 func (v *ReindexVerifier) verifyMetadata(ctx context.Context, target string, report *schema.SwitchReport) {
 	// ── Gate 5: Dead‑letter check ───────────────────────────────
 	v.checkDeadLetters(ctx, report)
@@ -26,18 +26,27 @@ func (v *ReindexVerifier) verifyMetadata(ctx context.Context, target string, rep
 	// ── Gate 6: Golden‑query smoke ──────────────────────────────
 	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, target)
 	if !report.GoldenQueriesOK {
-		report.Errors = append(report.Errors,
-			"QDRANT-005: golden query smoke failed — collection not queryable or payloads malformed")
+		if len(report.Errors) < schema.MaxErrors {
+			report.Errors = append(report.Errors,
+				"QDRANT-005: golden query smoke failed — collection not queryable or payloads malformed")
+		} else {
+			report.ErrorsTruncated = true
+		}
 	}
 
 	// ── Gate 7: Filter smoke ────────────────────────────────────
 	report.FiltersOK = v.runFilterSmoke(ctx, target)
 	if !report.FiltersOK {
-		report.Errors = append(report.Errors,
-			"QDRANT-005: filter smoke failed — payload index or filtering broken")
+		if len(report.Errors) < schema.MaxErrors {
+			report.Errors = append(report.Errors,
+				"QDRANT-005: filter smoke failed — payload index or filtering broken")
+		} else {
+			report.ErrorsTruncated = true
+		}
 	}
 
-	// ── Ready gate ──────────────────────────────────────────────
+	// ── Ready gate + per-gate details (Task 7) ──────────────────
+	report.GateDetails = computeGateDetails(report)
 	report.Ready = computeReady(report)
 
 	if !report.Ready {
@@ -82,6 +91,10 @@ func (v *ReindexVerifier) checkDeadLetters(ctx context.Context, report *schema.S
 // every gate is green: CompleteScan=true, counts match, zero missing/
 // orphan/payload issues/version mismatches/non-canonical point IDs/
 // dead letters, golden-query and filter smokes pass, and no errors.
+//
+// Task 7 hardening: ErrorsTruncated=true also blocks Ready — the
+// operator must raise MaxErrors and re-run to get a complete diagnostic
+// surface before the alias switch is permitted.
 func computeReady(report *schema.SwitchReport) bool {
 	channelTotal := 0
 	for _, c := range report.VersionMismatchPerChannel {
@@ -98,7 +111,62 @@ func computeReady(report *schema.SwitchReport) bool {
 		report.DeadLetterOpen == 0 &&
 		report.GoldenQueriesOK &&
 		report.FiltersOK &&
-		len(report.Errors) == 0
+		len(report.Errors) == 0 &&
+		!report.ErrorsTruncated
+}
+
+// computeGateDetails builds the per-gate pass/fail breakdown (Task 7)
+// from the report counters. Operators read the GateDetails JSON block
+// to see exactly which condition(s) blocked the alias switch.
+// Every gate has a Passed bool and a human-readable Description.
+func computeGateDetails(report *schema.SwitchReport) *schema.GateDetails {
+	channelTotal := 0
+	for _, c := range report.VersionMismatchPerChannel {
+		channelTotal += c
+	}
+
+	return &schema.GateDetails{
+		PointCountParity: schema.GateDetail{
+			Passed:      report.ActualPoints == report.ExpectedPoints && report.ExpectedPoints > 0,
+			Description: fmt.Sprintf("expected=%d actual=%d", report.ExpectedPoints, report.ActualPoints),
+		},
+		CompleteScan: schema.GateDetail{
+			Passed:      report.CompleteScan,
+			Description: fmt.Sprintf("scrolled=%d (CompleteScan=%v)", report.TotalScrolled, report.CompleteScan),
+		},
+		MissingOrphan: schema.GateDetail{
+			Passed:      report.MissingCount == 0 && report.OrphanCount == 0,
+			Description: fmt.Sprintf("missing=%d orphan=%d", report.MissingCount, report.OrphanCount),
+		},
+		PayloadValidation: schema.GateDetail{
+			Passed:      report.PayloadIssues == 0,
+			Description: fmt.Sprintf("payload_issues=%d", report.PayloadIssues),
+		},
+		EmbeddingVersion: schema.GateDetail{
+			Passed:      channelTotal == 0,
+			Description: fmt.Sprintf("version_mismatch=%d per_channel_total=%d", report.VersionMismatch, channelTotal),
+		},
+		CanonicalPointID: schema.GateDetail{
+			Passed:      report.NonCanonicalPointCount == 0,
+			Description: fmt.Sprintf("non_canonical=%d", report.NonCanonicalPointCount),
+		},
+		DeadLetters: schema.GateDetail{
+			Passed:      report.DeadLetterOpen == 0,
+			Description: fmt.Sprintf("dead_letter_open=%d", report.DeadLetterOpen),
+		},
+		GoldenQueries: schema.GateDetail{
+			Passed:      report.GoldenQueriesOK,
+			Description: fmt.Sprintf("golden_queries_ok=%v", report.GoldenQueriesOK),
+		},
+		FilterSmoke: schema.GateDetail{
+			Passed:      report.FiltersOK,
+			Description: fmt.Sprintf("filters_ok=%v", report.FiltersOK),
+		},
+		ZeroErrors: schema.GateDetail{
+			Passed:      len(report.Errors) == 0 && !report.ErrorsTruncated,
+			Description: fmt.Sprintf("errors=%d truncated=%v", len(report.Errors), report.ErrorsTruncated),
+		},
+	}
 }
 
 // ── QDRANT-005 smoke runners ────────────────────────────────────────

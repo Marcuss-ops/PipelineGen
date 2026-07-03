@@ -197,6 +197,18 @@ type ReindexResult struct {
 	DryRun           bool     `json:"dry_run"`
 }
 
+// MaxErrors is the safety cap for the report.Errors slice. Beyond this
+// threshold, ErrorsTruncated is set true and further diagnostics are
+// dropped from the payload but still counted by their respective
+// gate-level counters. The cap prevents unbounded memory growth on
+// catastrophically corrupt collections while keeping the counter totals
+// accurate.
+const MaxErrors = 500
+
+// MaxMissingOrphanIDs is the safety cap for MissingIDs / OrphanIDs.
+// Beyond this threshold the respective Truncated flag is set.
+const MaxMissingOrphanIDs = 1000
+
 // SwitchReport is the pre-switch verification report.
 //
 // PR 12 (June 2026) extensions: three new fields expose the strict
@@ -224,6 +236,20 @@ type ReindexResult struct {
 //     longer accepted — only the canonical boundary can locate a
 //     Qdrant point via our reverse-mapping, so a generic-UUID
 //     substitute silently lost the read path.
+//
+// Task 7 (July 2026) hardening — zero-errors gate + structured details:
+//
+//   - GateDetails: per-gate pass/fail breakdown with human-readable
+//     descriptions. Operators see exactly which gate(s) blocked the
+//     alias switch without parsing the raw Errors list.
+//   - ErrorsTruncated: true when the Errors slice hit MaxErrors.
+//     The counter totals (MissingCount, PayloadIssues, etc.) still
+//     reflect the full scan; the Errors list is a diagnostic sample.
+//   - MissingTruncated / OrphanTruncated: true when the respective
+//     ID list hit MaxMissingOrphanIDs.
+//   - Zero-errors gate: Ready requires len(Errors)==0 AND
+//     !ErrorsTruncated — a truncated list is evidence of an
+//     incomplete diagnostic surface and blocks the switch.
 type SwitchReport struct {
 	TargetCollection string `json:"target_collection"`
 	ExpectedPoints   int    `json:"expected_points"`
@@ -280,7 +306,37 @@ type SwitchReport struct {
 	// "previously active" rolling snapshots.
 	OldCollection string   `json:"old_collection,omitempty"`
 	Ready         bool     `json:"ready"`
-	Errors        []string `json:"errors,omitempty"`
+	Errors           []string `json:"errors,omitempty"`
+	ErrorsTruncated  bool     `json:"errors_truncated,omitempty"`
+	MissingTruncated bool     `json:"missing_truncated,omitempty"`
+	OrphanTruncated  bool     `json:"orphan_truncated,omitempty"`
+	// GateDetails is the per-gate pass/fail breakdown (Task 7).
+	// Populated by the verifier metadata phase; nil when the
+	// verifier did not reach the metadata phase.
+	GateDetails *GateDetails `json:"gate_details,omitempty"`
+}
+
+// GateDetails is the structured per-gate pass/fail report (Task 7).
+// Every gate carries a Passed bool and a human-readable Description
+// so operators can diagnose which condition(s) blocked the alias
+// switch without parsing the raw Errors list.
+type GateDetails struct {
+	PointCountParity  GateDetail `json:"point_count_parity"`
+	CompleteScan      GateDetail `json:"complete_scan"`
+	MissingOrphan     GateDetail `json:"missing_orphan"`
+	PayloadValidation GateDetail `json:"payload_validation"`
+	EmbeddingVersion  GateDetail `json:"embedding_version"`
+	CanonicalPointID  GateDetail `json:"canonical_point_id"`
+	DeadLetters       GateDetail `json:"dead_letters"`
+	GoldenQueries     GateDetail `json:"golden_queries"`
+	FilterSmoke       GateDetail `json:"filter_smoke"`
+	ZeroErrors        GateDetail `json:"zero_errors"`
+}
+
+// GateDetail describes a single verification gate outcome.
+type GateDetail struct {
+	Passed      bool   `json:"passed"`
+	Description string `json:"description"`
 }
 
 // LocatorCleanupReport is the machine-readable result of a locator
