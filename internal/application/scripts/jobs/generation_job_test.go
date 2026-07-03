@@ -2,18 +2,18 @@
 //
 // Pins the fail-fast contract on GenerateJobHandler.RegisterJobs:
 //
-//   1. TestRegisterJobs_FailsWhenBrokerMissing: pass nil broker,
-//      assert the new typed error is returned and the error message
-//      matches the canonical "jobs broker is required" substring so
-//      operator audit logs from the composition root grep cleanly.
+//  1. TestRegisterJobs_FailsWhenBrokerMissing: pass nil broker,
+//     assert the new typed error is returned and the error message
+//     matches the canonical "jobs broker is required" substring so
+//     operator audit logs from the composition root grep cleanly.
 //
-//   2. TestRegisterJobs_HappyPath: build a real broker (via a
-//      minimal mockBroker that records the (jobType, handler) pair
-//      passed to RegisterHandler), call RegisterJobs with it, assert
-//      (a) returns nil, (b) mockBroker.lastType == script.generate,
-//      (c) the handler passed is non-nil. The third sub-test pins
-//      the registered handler identity so a future refactor that
-//      swaps h.Handle for a wrapper does not regress silently.
+//  2. TestRegisterJobs_HappyPath: build a real broker (via a
+//     minimal mockBroker that records the (jobType, handler) pair
+//     passed to RegisterHandler), call RegisterJobs with it, assert
+//     (a) returns nil, (b) mockBroker.lastType == script.generate,
+//     (c) the handler passed is non-nil. The third sub-test pins
+//     the registered handler identity so a future refactor that
+//     swaps h.Handle for a wrapper does not regress silently.
 //
 // Future-proofing note: ports.Broker uses `handler any` (rather than
 // the job-system `HandlerFunc` concrete signature) because the
@@ -29,8 +29,6 @@ import (
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,7 +70,6 @@ func TestRegisterJobs_FailsWhenBrokerMissing(t *testing.T) {
 		// nil `one` and `many` -- the fail-fast is checked before
 		// any use-case invocation, so partial construction is fine.
 		one: nil,
-		cfg: adapters.NormalizationConfig{},
 		log: logger,
 	}
 
@@ -103,7 +100,6 @@ func TestRegisterJobs_HappyPath(t *testing.T) {
 	logger := zap.NewNop()
 	handler := &GenerateJobHandler{
 		one: nil, // partial; RegisterJobs does not invoke the use cases
-		cfg: adapters.NormalizationConfig{},
 		log: logger,
 	}
 
@@ -128,7 +124,6 @@ func TestRegisterJobs_PropagatesBrokerError(t *testing.T) {
 	logger := zap.NewNop()
 	handler := &GenerateJobHandler{
 		one: nil,
-		cfg: adapters.NormalizationConfig{},
 		log: logger,
 	}
 

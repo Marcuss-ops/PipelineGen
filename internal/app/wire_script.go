@@ -365,7 +365,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
+	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, log)
 
 	// ── P0 #4 audit (audit 2026-07-03) per-item retry wiring ──
 	// Mirror of voiceover P0 #1 commit 7f319edb: the canonical
