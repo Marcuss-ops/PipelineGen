@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-qdrant-fixtures test-qdrant-fixtures-down
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-qdrant-fixtures test-qdrant-fixtures-down
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -62,7 +62,14 @@ node-version-check:
 	    echo "❌ Node binary not found on PATH — install Node 22.x (nvm, fnm, asdf, or distro packages)"; \
 	    exit 1; \
 	fi; \
-	REQ_RAW=$$(node -p "require('./node-scraper/package.json').engines.node" 2>/dev/null); \
+	# Read engines.node directly via awk (more reliable under Make's
+	# subshell than `node -p JSON.parse(...)`, which suffered from a
+	# subtle Make variable-expansion issue that surfaced on 2026-07-03:
+	# the second `[ -z ]` check saw REQ_RAW as empty even though the
+	# first saw it as populated. awk is a single-line field splitter
+	# with no module-system dependencies, agnostic to the `"type"` field
+	# of node-scraper/package.json (ESM or CJS, both work).
+	REQ_RAW=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' node-scraper/package.json); \
 	HOST=$$(node --version 2>/dev/null | sed 's/^v//'); \
 	if [ -z "$$REQ_RAW" ]; then \
 	    echo "❌ node-scraper/package.json has no 'engines.node' field — set e.g. \"engines\": { \"node\": \"22.x\" }"; \
@@ -106,12 +113,40 @@ build: go-version-check
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/admin      ./cmd/admin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/worker     ./cmd/worker
 
-# Run all tests
+# Run Go unit tests (Go is the canonical test surface; tests here run
+# for every `make test` invocation and in CI without requiring Node).
 test: test-unit
+
+# Run ALL tests (Go + JS). Opt-in target — `make test` alone stays Go-only
+# to keep the cheap default CI chain (go-version-check + Go test + build)
+# independent from Node toolchain state. CI environments that don't have
+# Node installed can still run `make test`; `make test-all` adds the JS
+# gate for environments where Node 22 + mocha are wired.
+test-all: test-unit test-js
 
 # Run unit tests with race detector
 test-unit:
 	$(GO) test -v -race -coverprofile=coverage.out ./internal/... ./pkg/...
+
+# Run JavaScript test suite (node-scraper).
+# Equivalent: cd node-scraper && npm install --silent && npm test.
+# Uses Mocha (devDependency) as the canonical runner; the project also
+# keeps `npm run test:fallback` as the node --test runner for operators
+# who prefer the Node built-in. Auto-installs deps on first run
+# (idempotent: skips install when mocha is already wired — uses `-e`
+# rather than `-x` so the skip works whether mocha is a real file OR a
+# symlink under node_modules/.bin/, which is the npm v7+ default).
+# Exits non-zero on any failing test — same fail-closed contract as
+# test-unit. Gated on node-version-check so a stale host Node aborts
+# BEFORE npm install (a 30s install vs an immediate ✓/❌ toggle on the
+# version mismatch).
+test-js: node-version-check
+	@if [ ! -e node-scraper/node_modules/.bin/mocha ]; then \
+	    echo "→ Installing node-scraper devDependencies (Mocha + ESLint)..."; \
+	    cd node-scraper && npm install --silent; \
+	fi
+	@echo "→ Running Mocha test suite on node-scraper/test/*.test.js..."
+	cd node-scraper && npm test
 
 # Generate coverage report
 coverage: test-unit

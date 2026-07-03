@@ -34,9 +34,11 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -76,9 +78,17 @@ func registerScriptPostProcessors(
 		return fmt.Errorf("registerScriptPostProcessors: ppReg is nil (composition bug)")
 	}
 
-	// Fase 2 Spina Dorsale (July 2026): document processor removed.
-	// Google Doc creation is now a separate document.generate
-	// downstream job (see internal/domain/job/job.go TypeDocumentGenerate).
+	// Google Doc creation inline registration (temporarily restored).
+	if root.Drive != nil && root.Drive.DocClient != nil {
+		docsSvc := usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
+		resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
+			return input, nil
+		}
+		if !ppReg.Register(adapters.NewDocumentProcessor(docsSvc, resolveFolder)) {
+			return fmt.Errorf("register document processor: composition bug or duplicate name")
+		}
+		log.Info("DocumentProcessor (inline Google Docs) successfully registered")
+	}
 
 	// Persistence processor (PR 5: now the single persistence
 	// owner; engine no longer writes to SQLite). Constructor takes
@@ -92,9 +102,14 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// Fase 2 Spina Dorsale (July 2026): image processor removed.
-	// Scene images are now produced by a separate images.generate
-	// downstream job (see internal/domain/job/job.go TypeImagesGenerate).
+	// Inline Image generation processor (temporarily restored).
+	if root.Domains != nil && root.Domains.ImageService != nil {
+		imgGenSvc := &imageGenSvcAdapter{svc: root.Domains.ImageService}
+		if !ppReg.Register(adapters.NewImageProcessor(imgGenSvc, log)) {
+			return fmt.Errorf("register image processor: composition bug or duplicate name")
+		}
+		log.Info("ImageProcessor (inline scene images) successfully registered")
+	}
 
 	// Fase 2 Spina Dorsale (July 2026): voiceover processor removed.
 	// Voiceovers are now produced by a separate voiceover.generate
