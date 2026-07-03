@@ -142,6 +142,10 @@ func (a *ClipCacheAdapter) GetExisting(ctx context.Context, clipID string) (*you
 	// When localPath is empty but DriveFileID is present, consider it
 	// a cache hit — the Drive file may still be accessible even though
 	// the local scratch file was cleaned up.
+	//
+	// When BOTH localPath and DriveFileID are empty, return cache-miss:
+	// the row has no usable file reference (degenerate — shouldn't exist
+	// in production, but the guard is cheap and fail-closed).
 	localPath := details.LocalPath()
 	if localPath != "" {
 		stat, statErr := os.Stat(localPath)
@@ -152,6 +156,13 @@ func (a *ClipCacheAdapter) GetExisting(ctx context.Context, clipID string) (*you
 				zap.Any("stat_err", statErr))
 			return nil, false, nil
 		}
+	} else if details.DriveFileID() == "" {
+		// No local file AND no Drive reference — the row has no
+		// usable source. Return cache-miss so the use case
+		// re-downloads rather than propagating a phantom hit.
+		a.log.Info("ClipCacheAdapter: cache miss — no local file and no Drive reference, falling through to re-download",
+			zap.String("clip_id", clipID))
+		return nil, false, nil
 	}
 
 	return assetToExtractItem(details), true, nil
