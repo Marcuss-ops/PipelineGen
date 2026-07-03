@@ -245,11 +245,9 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 }
 
 // runProbe runs the ffprobe validation pass on every produced clip,
-// flipping Status from Succeeded to Validated on success. Failures
-// keep Status=Succeeded (the file is on disk and playable) and stash
-// the probe error in ProbeError / Err annotated per call (the
-// application layer can downgrade validated → succeeded-equivalent
-// for downstream stages regardless of probe outcome).
+// flipping Status from Succeeded to Validated on success. Probe
+// failures flip Status to ProbeFailed (with Err set) so downstream
+// SuccessfulItems partitions correctly.
 //
 // Concurrent: NOT safe — Cut callers do not parallelise per-job
 // (the ffmpeg batch-then-fallback ladder is sequential). If a
@@ -260,28 +258,54 @@ func (c *FFmpegCutter) runProbe(ctx context.Context, logger *zap.Logger, items [
 	if !c.probeAfterCut {
 		return
 	}
+	// Honuor the upstream context — after a long batch +
+	// per-clip fallback path, the parent ctx may already be
+	// cancelled; sequential probes that ignore ctx could block
+	// for up to 2*time.Minute per clip before noticing the
+	// cancel. Bail fast so the broker's job-cancel path is
+	// responsive regardless of probe queue depth.
+	select {
+	case <-ctx.Done():
+		for _, i := range producedIdx {
+			it := &items[i]
+			if it.Status == stockpipeline.CutItemStatusSucceeded {
+				it.Status = stockpipeline.CutItemStatusProbeFailed
+				it.Err = fmt.Errorf("ffprobe validation cancelled: %w", ctx.Err())
+			}
+		}
+		return
+	default:
+	}
 	for _, i := range producedIdx {
 		it := &items[i]
 		info, err := c.proc.Probe(ctx, it.OutputPath)
 		if err != nil {
-			// Soft-fail: surface on the item but keep Succeeded;
-			// downstream filter rendering depends on the file being
-			// on disk, not on probe's validity verdict.
+			// Soft-fail: surface on the item but mark ProbeFailed
+			// so SuccessfulItems still includes it (the file IS
+			// on disk and downstream renderChunk can consume it)
+			// while AllSucceeded() reports it as a non-strict
+			// success for dashboards that partition
+			// "fully validated" from "playable but unvalidated".
 			logger.Warn("stock extractor: ffprobe validation failed for clip",
 				zap.String("output_path", it.OutputPath),
 				zap.String("job_id", it.JobID),
 				zap.Error(err),
 			)
+			it.Status = stockpipeline.CutItemStatusProbeFailed
 			it.Err = fmt.Errorf("ffprobe validation failed: %w", err)
 			continue
 		}
 		// Populate DurationSec; flip to Validated when the
 		// ffprobe-reported duration is a positive number. Zero
-		// or negative durations stay at Status=Succeeded.
+		// or negative durations stay at ProbeFailed (the file
+		// is on disk but unvalidated).
 		if info != nil {
 			it.DurationSec = info.Duration.Seconds()
 			if it.DurationSec > 0 {
 				it.Status = stockpipeline.CutItemStatusValidated
+			} else {
+				it.Status = stockpipeline.CutItemStatusProbeFailed
+				it.Err = errors.New("ffprobe reported zero/negative duration")
 			}
 		}
 	}
