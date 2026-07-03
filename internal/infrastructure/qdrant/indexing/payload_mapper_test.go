@@ -13,9 +13,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"math"
 	"testing"
 
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -466,6 +469,276 @@ func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
 		}
 	}
 	_ = found // explicit no-op marker for grep forensics
+}
+
+// ── Task 4 (July 2026) — dense-vector validation tests ─────────────────
+
+// TestValidateDenseVector_RequiredChannelNil returns ErrMissingRequiredVector
+// for channels classified as policyRequired (text).
+func TestValidateDenseVector_RequiredChannelNil(t *testing.T) {
+	err := validateDenseVector("text", nil, 768, "asset-1")
+	if err == nil {
+		t.Fatal("nil text vector must return error")
+	}
+	var missing *transport.ErrMissingRequiredVector
+	if !errors.As(err, &missing) {
+		t.Fatalf("expected *ErrMissingRequiredVector, got %T: %v", err, err)
+	}
+	if missing.Channel != "text" || missing.AssetID != "asset-1" {
+		t.Errorf("error details: channel=%q assetID=%q", missing.Channel, missing.AssetID)
+	}
+}
+
+// TestValidateDenseVector_OptionalChannelNil returns nil for channels
+// classified as policyOptional (audio, transcript, visual).
+func TestValidateDenseVector_OptionalChannelNil(t *testing.T) {
+	for _, ch := range []string{"audio", "transcript", "visual", "future_channel"} {
+		t.Run(ch, func(t *testing.T) {
+			if err := validateDenseVector(ch, nil, 512, "asset-1"); err != nil {
+				t.Errorf("nil %q must be silently skipped; got %v", ch, err)
+			}
+		})
+	}
+}
+
+// TestValidateDenseVector_ZeroLengthVector returns ErrEmptyVector for
+// non-nil but empty slices (len==0). Distinct from nil (missing).
+func TestValidateDenseVector_ZeroLengthVector(t *testing.T) {
+	emptyVec := make([]float32, 0) // non-nil, zero-length
+	err := validateDenseVector("text", emptyVec, 768, "asset-2")
+	if err == nil {
+		t.Fatal("zero-length vector must return error")
+	}
+	var empty *transport.ErrEmptyVector
+	if !errors.As(err, &empty) {
+		t.Fatalf("expected *ErrEmptyVector for zero-length, got %T: %v", err, err)
+	}
+	if empty.Channel != "text" || empty.AssetID != "asset-2" {
+		t.Errorf("error details: channel=%q assetID=%q", empty.Channel, empty.AssetID)
+	}
+}
+
+// TestValidateDenseVector_DimensionMismatch returns ErrVectorDimensionMismatch.
+func TestValidateDenseVector_DimensionMismatch(t *testing.T) {
+	vec := makeFloat32Slice(512) // 512d, but schema expects 768
+	err := validateDenseVector("text", vec, 768, "asset-3")
+	if err == nil {
+		t.Fatal("dimension mismatch must return error")
+	}
+	var dimErr *transport.ErrVectorDimensionMismatch
+	if !errors.As(err, &dimErr) {
+		t.Fatalf("expected *ErrVectorDimensionMismatch, got %T: %v", err, err)
+	}
+	if dimErr.Expected != 768 || dimErr.Actual != 512 {
+		t.Errorf("expected=768 actual=%d; got expected=%d actual=%d", 512, dimErr.Expected, dimErr.Actual)
+	}
+}
+
+// TestValidateDenseVector_NaN returns ErrNaNOrInf.
+func TestValidateDenseVector_NaN(t *testing.T) {
+	vec := makeFloat32Slice(768)
+	vec[100] = float32(math.NaN())
+	err := validateDenseVector("text", vec, 768, "asset-4")
+	if err == nil {
+		t.Fatal("NaN vector must return error")
+	}
+	var nanErr *transport.ErrNaNOrInf
+	if !errors.As(err, &nanErr) {
+		t.Fatalf("expected *ErrNaNOrInf, got %T: %v", err, err)
+	}
+}
+
+// TestValidateDenseVector_Inf returns ErrNaNOrInf.
+func TestValidateDenseVector_Inf(t *testing.T) {
+	vec := makeFloat32Slice(768)
+	vec[200] = float32(math.Inf(1))
+	err := validateDenseVector("visual", vec, 768, "asset-5")
+	if err == nil {
+		t.Fatal("Inf vector must return error")
+	}
+	var infErr *transport.ErrNaNOrInf
+	if !errors.As(err, &infErr) {
+		t.Fatalf("expected *ErrNaNOrInf, got %T: %v", err, err)
+	}
+	if infErr.Channel != "visual" {
+		t.Errorf("channel=%q want visual", infErr.Channel)
+	}
+}
+
+// TestValidateDenseVector_NegativeInf returns ErrNaNOrInf.
+func TestValidateDenseVector_NegativeInf(t *testing.T) {
+	vec := makeFloat32Slice(768)
+	vec[300] = float32(math.Inf(-1))
+	err := validateDenseVector("text", vec, 768, "asset-6")
+	if err == nil {
+		t.Fatal("negative Inf vector must return error")
+	}
+	if _, ok := err.(*transport.ErrNaNOrInf); !ok {
+		t.Fatalf("expected *ErrNaNOrInf, got %T", err)
+	}
+}
+
+// TestValidateDenseVector_ValidVector returns nil.
+func TestValidateDenseVector_ValidVector(t *testing.T) {
+	vec := makeFloat32Slice(768)
+	for _, ch := range []string{"text", "visual", "audio", "transcript"} {
+		t.Run(ch, func(t *testing.T) {
+			if err := validateDenseVector(ch, vec, 768, "asset-ok"); err != nil {
+				t.Errorf("valid %q vector must not error; got %v", ch, err)
+			}
+		})
+	}
+}
+
+// TestValidateDenseVector_MultipleErrors_FirstWins verifies that when
+// multiple issues exist (e.g. zero-length AND would-be-wrong-dimension),
+// the first check (zero-length) wins per the documented order.
+func TestValidateDenseVector_MultipleErrors_FirstWins(t *testing.T) {
+	// zero-length vector: first check that fails is len(vec)==0
+	emptyVec := make([]float32, 0)
+	err := validateDenseVector("text", emptyVec, 768, "asset-multi")
+	var empty *transport.ErrEmptyVector
+	if !errors.As(err, &empty) {
+		t.Fatalf("zero-length must surface as ErrEmptyVector (first check wins); got %T: %v", err, err)
+	}
+}
+
+// TestAssetToIndexDocument_MissingRequiredTextVector ensures the full
+// mapper path surfaces ErrMissingRequiredVector for nil TextVector.
+func TestAssetToIndexDocument_MissingRequiredTextVector(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-no-text",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		// TextVector intentionally nil — required channel.
+	}
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	_, err := mapper.AssetToIndexDocument(asset, schema)
+	if err == nil {
+		t.Fatal("missing required text vector must error")
+	}
+	var missing *transport.ErrMissingRequiredVector
+	if !errors.As(err, &missing) {
+		t.Fatalf("expected *ErrMissingRequiredVector, got %T: %v", err, err)
+	}
+}
+
+// TestAssetToIndexDocument_ZeroLengthTextVector ensures the mapper
+// surfaces ErrEmptyVector for zero-length (but non-nil) TextVector.
+func TestAssetToIndexDocument_ZeroLengthTextVector(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-zero-text",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     make([]float32, 0), // non-nil, zero-length
+	}
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	_, err := mapper.AssetToIndexDocument(asset, schema)
+	if err == nil {
+		t.Fatal("zero-length text vector must error")
+	}
+	var empty *transport.ErrEmptyVector
+	if !errors.As(err, &empty) {
+		t.Fatalf("expected *ErrEmptyVector for zero-length, got %T: %v", err, err)
+	}
+}
+
+// TestAssetToIndexDocument_OptionalChannelsNilAllowed ensures the mapper
+// silently accepts nil for optional channels (audio, transcript, visual).
+func TestAssetToIndexDocument_OptionalChannelsNilAllowed(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-optional",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     makeFloat32Slice(768),
+		// AudioVector, TranscriptVector, VisualVector all nil — OK.
+	}
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	doc, err := mapper.AssetToIndexDocument(asset, schema)
+	if err != nil {
+		t.Fatalf("nil optional channels must not error; got %v", err)
+	}
+	// Text must be present; optional channels must be absent.
+	if _, ok := doc.Embeddings[ChannelText]; !ok {
+		t.Error("text embedding must be present when vector is valid")
+	}
+	for _, ch := range []VectorChannel{ChannelAudio, ChannelTranscript, ChannelVisual} {
+		if art, ok := doc.Embeddings[ch]; ok && art.Values != nil {
+			t.Errorf("optional channel %q must not have Values when asset vector is nil; got %v", ch, art.Values)
+		}
+	}
+}
+
+// TestAssetToIndexDocument_NaNInVector returns ErrNaNOrInf through the
+// full mapper path.
+func TestAssetToIndexDocument_NaNInVector(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	vec := makeFloat32Slice(768)
+	vec[50] = float32(math.NaN())
+	asset := &AssetData{
+		ID:             "asset-nan",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     vec,
+	}
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	_, err := mapper.AssetToIndexDocument(asset, schema)
+	if err == nil {
+		t.Fatal("NaN in vector must error")
+	}
+	var nanErr *transport.ErrNaNOrInf
+	if !errors.As(err, &nanErr) {
+		t.Fatalf("expected *ErrNaNOrInf, got %T: %v", err, err)
+	}
+}
+
+// TestAssetToIndexDocument_DimensionMismatch returns dimension error.
+func TestAssetToIndexDocument_DimensionMismatch(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-dim",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     makeFloat32Slice(512), // wrong dim
+	}
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	_, err := mapper.AssetToIndexDocument(asset, schema)
+	if err == nil {
+		t.Fatal("dimension mismatch must error")
+	}
+	var dimErr *transport.ErrVectorDimensionMismatch
+	if !errors.As(err, &dimErr) {
+		t.Fatalf("expected *ErrVectorDimensionMismatch, got %T: %v", err, err)
+	}
+}
+
+// TestClassifyChannel verifies the per-channel policy classification.
+func TestClassifyChannel(t *testing.T) {
+	tests := []struct {
+		channel string
+		want    channelPolicy
+	}{
+		{"text", policyRequired},
+		{"transcript", policyOptional},
+		{"visual", policyOptional},
+		{"audio", policyOptional},
+		{"unknown_future_channel", policyOptional},
+	}
+	for _, tc := range tests {
+		t.Run(tc.channel, func(t *testing.T) {
+			if got := classifyChannel(tc.channel); got != tc.want {
+				t.Errorf("classifyChannel(%q) = %v, want %v", tc.channel, got, tc.want)
+			}
+		})
+	}
 }
 
 // ErrAssetNotFound is a tiny test-only sentinel to satisfy FetchAsset.
