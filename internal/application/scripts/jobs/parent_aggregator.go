@@ -438,11 +438,31 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		return nil
 	}
 
+	// Build aggregate from the StateMachine result. Incorporate
+	// failed enqueues (items that never became child jobs) into
+	// the total/failed counts so the parent state reflects the
+	// original batch size, not just the enqueued subset.
+	state := domainToScriptParentState(sm)
+
+	totalItems := parentResult.TotalItems
+	if totalItems <= 0 {
+		totalItems = len(childIDs) + parentResult.FailedEnqueue
+	}
+	failed := len(sm.Failed()) + parentResult.FailedEnqueue
+	succeeded := len(sm.Succeeded())
+
+	// Override state when failed enqueues make the result partial.
+	if failed > 0 && succeeded > 0 {
+		state = ScriptParentPartialSuccess
+	} else if failed == totalItems && totalItems > 0 {
+		state = ScriptParentFailedTerminal
+	}
+
 	aggResult := ScriptAggregateResult{
-		ParentState:         domainToScriptParentState(sm),
-		TotalItems:          len(childIDs),
-		SucceededCount:      len(sm.Succeeded()),
-		FailedCount:         len(sm.Failed()),
+		ParentState:         state,
+		TotalItems:          totalItems,
+		SucceededCount:      succeeded,
+		FailedCount:         failed,
 		StateMachineVersion: j.Revision,
 		ChildIDs:            childIDs,
 	}

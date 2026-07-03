@@ -276,28 +276,33 @@ func (h *GenerateJobHandler) handleBatchFanout(
 		return nil, fmt.Errorf("script.generate fanout: ExecuteFanout returned nil result without error")
 	}
 
-	// Filter empty child IDs (failed enqueue placeholders).
+	// Keep ALL child job IDs (including empty placeholders for failed
+	// enqueues) so the aggregator can compute total_items from the
+	// original batch size. The aggregator filters empties when querying
+	// children but uses parentResult.TotalItems for the aggregate counts.
 	childIDs := manyResult.ChildJobIDs
-	filtered := make([]string, 0, len(childIDs))
-	for _, id := range childIDs {
-		if id != "" {
-			filtered = append(filtered, id)
-		}
-	}
 
 	resultMap := map[string]any{
 		"parent_state":         "waiting_children",
 		"parent_job_id":        j.ID,
 		"total_items":          manyResult.Summary.Total,
-		"child_job_ids":        filtered,
+		"child_job_ids":        childIDs,
 		"failed_enqueue_count": manyResult.Summary.Failed,
+	}
+
+	// Count non-empty child IDs for the log line only.
+	enqueued := 0
+	for _, id := range childIDs {
+		if id != "" {
+			enqueued++
+		}
 	}
 
 	if h.log != nil {
 		h.log.Info("script.generate: fanout complete, parent waiting for children",
 			zap.String("parent_job_id", j.ID),
 			zap.Int("total_items", manyResult.Summary.Total),
-			zap.Int("children_enqueued", len(filtered)),
+			zap.Int("children_enqueued", enqueued),
 			zap.Int("failed_enqueue", manyResult.Summary.Failed))
 	}
 
