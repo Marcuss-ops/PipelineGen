@@ -58,6 +58,12 @@ type mockTxContext struct {
 	outbox            []completion.OutboxEnvelope
 	priorHashesCache  map[string]map[string]completion.PriorArtifactHash
 	getPriorHashCalls int
+
+	// InsertAssetLocations (Azione 6, July 2026): recorded entries
+	// (typed-writes to asset_locations). insertLocationsFn lets a
+	// test inject a typed-error return path; defaults to nil-success.
+	insertedLocations []completion.AssetLocationEntry
+	insertLocationsFn func(ctx context.Context, entries []completion.AssetLocationEntry) error
 }
 
 func newMockTxContext() *mockTxContext {
@@ -135,6 +141,21 @@ func (m *mockTxContext) InsertOutboxEnvelope(ctx context.Context, envelope compl
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.outbox = append(m.outbox, envelope)
+	return nil
+}
+
+// InsertAssetLocations (Azione 6, July 2026) records the in-TX
+// writes to asset_locations on the mockTxContext. The optional
+// insertLocationsFn lets tests inject a typed-error return path
+// (e.g. for round-trip-mismatch or transient-failure scenarios);
+// default nil means a successful no-op (locations recorded only).
+func (m *mockTxContext) InsertAssetLocations(ctx context.Context, entries []completion.AssetLocationEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.insertedLocations = append(m.insertedLocations, entries...)
+	if m.insertLocationsFn != nil {
+		return m.insertLocationsFn(ctx, entries)
+	}
 	return nil
 }
 
