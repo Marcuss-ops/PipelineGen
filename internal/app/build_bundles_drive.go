@@ -206,23 +206,18 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// Canonical Pattern 0 ports (FASE 9 P0.1 / DRIVE-005).
 		Admin: admin,
 		Reader: reader,
-		// Wave B (June 2026): DriveUploader field removed from DriveBundle.
-		// Wave C (June 2026 — partial): DriveUploader + DriveClient
-		// deprecated fields removed from DriveBundle. cmd/admin/ callers
-		// reach Drive via root.Drive.Admin / root.Drive.Reader — no
-		// further raw SDK reach-through from cmd/admin/.
-		//
-		// Wave D Commit 1 (June 2026 — mechanical migration): the
-		// residual 13 sites (artlist package diagnostic field rename,
-		// internal/app/ docs refresh) now consume the DriveFolderManager
-		// port; DriveClient REMAINS on DriveBundle as the back-compat
-		// plumbing channel that feeds the ArtlistBundle.DriveClient
-		// threading path (registry_internal_modules.go::registerArtlist)
-		// and the *drive.DriveFolderManagerAdapter construction in
-		// WireArtlist. Future Wave D Commits may retire the field +
-		// drop the gdrive import pending operator signal on whether
-		// the back-compat affordance is still load-bearing.
-		DriveClient:    driveClient,
+		// PR-DRIVECLIENT-RAW-RETIRE (2026-07-04): the previous
+		// `DriveClient: driveClient,` field assignment is REMOVED. The
+		// local `driveClient *gdrive.Service` is retained as a function-
+		// local variable for the driveUploader ctor + the startClosure's
+		// startDriveBackgroundFolders call (which still takes a raw
+		// *gdrive.Service for the start-time FolderManager probe — that
+		// function is INTERNAL to the composition root and does NOT
+		// surface the raw SDK via the bundle). The 4 Pattern 0 ports
+		// above (Admin / Reader / DocClient / Lifecycle) are the ONLY
+		// canonical Drive surface on the bundle per godlike/06 SSOT
+		// (one owner per fact). Deprecation record:
+		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
 		driveUploader:  driveUploader, // unexported; for internal wiring within package app
 		DriveDests:     dests,
 		MediaStore:     mediaStore,

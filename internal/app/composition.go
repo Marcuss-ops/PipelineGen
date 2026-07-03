@@ -12,7 +12,6 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
@@ -104,33 +103,23 @@ type DriveBundle struct {
 	// exactly once at composition.
 	Lifecycle drive.FileLifecycle
 
-	// Wave B (June 2026): DriveBundle.DriveUploader deprecated field removed.
-	// The 5 cleanup.go callers + 1 list_drive_folder.go caller now reach
-	// drive.Admin / drive.Reader via root.Drive.Admin and root.Drive.Reader
-	// directly (the Pattern 0 canonical ports).
-	//
-	// Wave C (June 2026 — partial): DriveBundle.DriveClient deprecated
-	// field STILL PRESENT for back-compat with internal/app/ and
-	// internal/application/assets/providers/artlist/ raw SDK reach-through
-	// sites that haven't migrated to Pattern 0 ports yet. The 8 cmd/admin/
-	// raw callers (cleanup.go, list_drive_folder.go, stock_reset.go,
+	// PR-DRIVECLIENT-RAW-RETIRE (2026-07-04): DriveClient field REMOVED
+	// per godlike/06 SSOT (one canonical owner per fact). The 4 canonical
+	// Pattern 0 ports (Admin / Reader / DocClient / Lifecycle) declared
+	// above are the only Drive surface on the bundle. The pre-removal
+	// "back-compat plumbing channel" rationale (Wave C / Wave D Commit 1
+	// June 2026 narrative that still threaded root.Drive.DriveClient into
+	// ArtlistBundle) is retired: the ArtlistBundle.DriveClient field is a
+	// separate struct field on a separate type (bundle_types.go) and is
+	// NOT retired by this commit (forward-pointer territory — out of
+	// scope per godlike/07 minimal-blast-radius). The 8 cmd/admin/ raw
+	// callers (cleanup.go, list_drive_folder.go, stock_reset.go,
 	// stock_subfolders_reset.go, summarize_book.go, sync_outros.go,
-	// reset_video_ai.go, backfill_hash.go::runBackfillHashV2) DO NOT
-	// touch root.Drive.DriveClient anymore — they reach drive.Admin /
-	// drive.Reader / drive.DocClient via Pattern 0 ports.
-	//
-	// Wave D Commit 1 (June 2026 — mechanical migration): the residual
-	// 13 sites now consume the DriveFolderManager port instead of the
-	// raw SDK — registry_internal_modules.go::registerArtlist still
-	// threads root.Drive.DriveClient into ArtlistBundle as the
-	// plumbing channel that feeds the *drive.DriveFolderManagerAdapter
-	// in WireArtlist, but the diagnostic API field has been renamed
-	// (HasDriveClient → HasDriveFolderManager, see artlist/types.go)
-	// and every comment that referenced the raw SDK reach-through now
-	// points at the port. DriveClient REMAINS on the bundle per the
-	// Wave D Commit 1 back-compat mandate (operator signal will
-	// determine Wave D Commit 2/3 retirement).
-	DriveClient *gdrive.Service
+	// reset_video_ai.go, backfill_hash.go::runBackfillHashV2) already
+	// routed through Pattern 0 ports (Admin / Reader / DocClient) since
+	// the FASE 9 closure (DRIVE-005, id-27). Raw *gdrive.Service reach-
+	// through is no longer reachable from the composition-root bundle.
+	// Deprecation record: architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
 
 	// driveUploader is unexported for internal wiring only. *drive.Uploader
 	// is the SINGLE source-of-truth concrete exposed via Admin / Reader ports.
