@@ -631,7 +631,7 @@
     All raw `root.Drive.DriveClient` + `root.Drive.DriveUploader` readsites
     physically retired from `internal/app.DriveBundle` in commit `a8c781ae`.
     DRIVE-005-FIELDS deprecation record closed (status: removed,
-    migration_phase: CONTRACT, removal_date: 2026-06-30).
+    migration_phase: "CONTRACT, removal_date: 2026-06-30)."
   linked_issues:
     - id: DRIVE-005-FIELDS
       owner_capability: internal/app (composition root) + internal/infrastructure/drive
@@ -1854,7 +1854,7 @@
           spec: split the 13-method ExtractionCallbacks mega-interface into per-capability ports (HashPort, DrivePort, OllamaPort, IndexerPort, SubtitlesPort, LifecyclePort) per godlike/06 SSOT
           owner_capability: internal/application/youtube/usecase
           deadline: 2026-08-15
-          status: pending (forward-pointer: gated on YouTube orchestrator audit trajectory)
+          status: "pending (forward-pointer: gated on YouTube orchestrator audit trajectory)"
         - id: PR-GODOBJ-1d-RESULT-EXTRACT-AGGREGATOR
           spec: collapse extraction_result.go 3 helpers + their aggregates into a single ResultBuilder typed envelope so the file lands <=40 LoC
           owner_capability: internal/application/youtube/usecase
@@ -2049,7 +2049,7 @@ BLOC5.3_commit-3-legacy_batch_elim:
 
 
 P0-3_audit-2026-07-03_skip-CUTOVER:
-  owner_capability: internal/application/scripts/apiutil (audit closure) + internal/application/generation (legacy carrier: removed)
+  owner_capability: "internal/application/scripts/apiutil (audit closure) + internal/application/generation (legacy carrier: removed)"
   closure_date: 2026-07-03
   status: shipped
   description: |
@@ -2074,7 +2074,7 @@ P0-3_audit-2026-07-03_skip-CUTOVER:
         PR-SCRIPTING-CANONICAL-FRAMEWORK -> status: shipped /
         deadline: 2026-07-03
       - architecture/deprecations.yaml#P0-3-GENERATION-RESPONSE ->
-        status: removed / migration_phase: CONTRACT
+        status: "removed / migration_phase: CONTRACT"
       - git ls-files internal/application/generation/response.go ->
         0 hits (file physically removed via canonical closure SHA
         on origin/main; byte-equivalent-replay per AGENTS.md
@@ -2232,7 +2232,7 @@ wave_status:
   BLOC4_ssot_cutover:
     status: shipped
     shipped_in_commit: pending_micro_commit_6_BLOC4
-    risk: one canonical pipeline voiceover end-to-end. The legacy delegating GenerateVoiceoverUseCase (B-2 BACKFILL) is REMOVED per AGENTS.md Active Concerns #10; the new ProcessVoiceoverItemUseCase is the single per-item orchestrator (TTS -> AudioPost -> Lifecycle/Upload -> SwapTx + outbox). The pre-existing process_one.go (ProcessOneVoiceoverUseCase, delegating to Service.GenerateBatch) is REMOVED; jobs/generate_item_handler.go now consumes ProcessVoiceoverItemUseCase directly. FilenameBuilder extracted as a narrow typed port (single grammar implementation across the codebase).      evidence: TestProcessVoiceoverItemUseCase_HappyPath_TTSUploadTxOutbox + TestProcessVoiceoverItemUseCase_AllErrorPathsSurfaceAsFailureCode (TTS, upload, db_delete, db_insert, outbox_enqueue, missing_folder_id, destination_resolve subpaths) + TestGenerateItemJobHandler_NoLongerCallsGenerateBatch green. Static grep guard enforced via scripts/ci/architecture/checks/47_generate_batch_ban.sh — the user flagged this as 'il piu delicato' cutover; the canonical cross-scope user instruction is 'una sola pipeline voiceover end-to-end'.
+    risk: "one canonical pipeline voiceover end-to-end. The legacy delegating GenerateVoiceoverUseCase (B-2 BACKFILL) is REMOVED per AGENTS.md Active Concerns #10; the new ProcessVoiceoverItemUseCase is the single per-item orchestrator (TTS -> AudioPost -> Lifecycle/Upload -> SwapTx + outbox). The pre-existing process_one.go (ProcessOneVoiceoverUseCase, delegating to Service.GenerateBatch) is REMOVED; jobs/generate_item_handler.go now consumes ProcessVoiceoverItemUseCase directly. FilenameBuilder extracted as a narrow typed port (single grammar implementation across the codebase).      evidence: TestProcessVoiceoverItemUseCase_HappyPath_TTSUploadTxOutbox + TestProcessVoiceoverItemUseCase_AllErrorPathsSurfaceAsFailureCode (TTS, upload, db_delete, db_insert, outbox_enqueue, missing_folder_id, destination_resolve subpaths) + TestGenerateItemJobHandler_NoLongerCallsGenerateBatch green. Static grep guard enforced via scripts/ci/architecture/checks/47_generate_batch_ban.sh — the user flagged this as 'il piu delicato' cutover; the canonical cross-scope user instruction is 'una sola pipeline voiceover end-to-end'."
 
   # PHASE-1C: 5-commit TODO closure chain (June 2026, internal/application/youtube/usecase).
   # Filed 2026-07-01 per CHANGELOG forward-pointer (no formal tracker anchor
