@@ -32,19 +32,26 @@ import (
 // stubEnqueuer is a minimal Enqueuer implementation: returns a
 // pre-configured result for every Enqueue call. Captures the call
 // count so tests can assert N children enqueued.
+//
+// failOnCall (FASE 2 acceptance test, July 2026): when > 0, the stub
+// returns returnErr on the N-th call (1-indexed) instead of returnJob.
+// Used by TestGenerateJobHandler_PartialFanoutExpectedChildren to
+// simulate a partial fan-out (e.g. failOnCall=3 with 3 items → first
+// 2 enqueue succeed, 3rd fails).
 type stubEnqueuer struct {
 	returnJob *job.Job
 	returnErr error
-	callCount int
-	lastReq   *job.EnqueueRequest
-	requests  []*job.EnqueueRequest
+	failOnCall int // 0 = never fail; N = fail on N-th call (1-indexed)
+	callCount  int
+	lastReq    *job.EnqueueRequest
+	requests   []*job.EnqueueRequest
 }
 
 func (s *stubEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	s.callCount++
 	s.lastReq = req
 	s.requests = append(s.requests, req)
-	if s.returnErr != nil {
+	if s.returnErr != nil && (s.failOnCall == 0 || s.callCount == s.failOnCall) {
 		return nil, s.returnErr
 	}
 	return s.returnJob, nil
@@ -227,4 +234,98 @@ func TestGenerateJobHandler_MixedTextsEnqueueDistinctActiveKeys(t *testing.T) {
 			t.Errorf("Step 5: child[%d] ActiveKey missing language %q (got %q)", i, cmd.Items[i].Language, req.ActiveKey)
 		}
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.4b Fan-out parziale handler-level test (July 2026):
+// 3 items, stub fails on 3rd enqueue → expected_children=2,
+// parent_state=partial_success, child_job_ids carries the 2 real
+// IDs + 1 empty string.
+// ─────────────────────────────────────────────────────────────────
+
+// TestGenerateJobHandler_PartialFanoutExpectedChildren verifies that
+// the fan-out handler's toFanoutResultMap accurately reflects partial
+// fan-out when the job broker rejects one child enqueue (simulated
+// via failOnCall=3, returnErr).
+//
+// Acceptence criteria (§15 fan-out parziale):
+//  1. expected_children = 2 (res.EnqueuedCount, NOT total_outputs=3)
+//  2. parent_state = "partial_success" (res.OK=false → partial_success)
+//  3. failed_enqueue_count = 1 (the 3rd enqueue failed)
+//  4. child_job_ids carries 2 real IDs + 1 empty string
+//  5. HandleJob returns (resultMap, err) — err signals the dispatcher
+//     to mark the parent FAILED (partial fan-out is a failure at the
+//     broker level, even though the result map carries partial_success)
+func TestGenerateJobHandler_PartialFanoutExpectedChildren(t *testing.T) {
+	stub := &stubEnqueuer{
+		returnJob: &job.Job{ID: "child-test", Type: job.TypeVoiceoverGenerateItem},
+		returnErr: errors.New("broker enqueue rejected: queue full"),
+		failOnCall: 3, // fail ONLY on 3rd call (Portuguese), not the first 2
+	}
+	uc := NewFanoutVoiceoversUseCase(FanoutDeps{Enqueuer: stub, Logger: zap.NewNop()})
+	h := NewGenerateJobHandler(uc, zap.NewNop())
+
+	// 3 items: Italian, English, Portuguese — the Portuguese enqueue will fail.
+	cmd := voiceover.GenerateVoiceoversCommand{
+		RequestID: "vo_partial_test",
+		Items: []voiceover.VoiceoverItem{
+			{Text: "Ciao mondo", Language: "it-IT", Voice: "it-IT-Elsa"},
+			{Text: "Hello world", Language: "en-US", Voice: "en-US-Aria"},
+			{Text: "Olá mundo", Language: "pt-BR", Voice: "pt-BR-Francisca"},
+		},
+	}
+	payload, err := json.Marshal(cmd)
+	require.NoError(t, err)
+
+	result, err := h.HandleJob(context.Background(), &jobs.Job{ID: "parent-partial", Payload: payload}, nil)
+
+	// Criterion 5: HandleJob must return an error (partial fan-out = broker failure).
+	require.Error(t, err,
+		"§15.4b handler: partial fan-out must return err → dispatcher marks parent FAILED")
+	require.NotNil(t, result,
+		"§15.4b handler: toFanoutResultMap is nil-safe — partial fan-out still returns a result map")
+
+	// Criterion 1: expected_children = EnqueuedCount = 2 (not total_outputs=3).
+	assert.Equal(t, 2, result["expected_children"],
+		"§15.4b handler: expected_children must be 2 (res.EnqueuedCount, not TotalOutputs)")
+
+	// Criterion 2: parent_state = partial_success (res.OK=false → partial_success).
+	assert.Equal(t, "partial_success", result["parent_state"],
+		"§15.4b handler: parent_state must be 'partial_success' (res.OK=false branch)")
+
+	// Criterion 3: failed_enqueue_count = 1.
+	assert.Equal(t, 1, result["failed_enqueue_count"],
+		"§15.4b handler: failed_enqueue_count must be 1 (3rd enqueue rejected)")
+
+	// enqueued_count = 2.
+	assert.Equal(t, 2, result["enqueued_count"],
+		"§15.4b handler: enqueued_count must be 2")
+
+	// total_outputs = 3 (the original request count).
+	assert.Equal(t, 3, result["total_outputs"],
+		"§15.4b handler: total_outputs must be 3 (original request)")
+
+	// Criterion 4: child_job_ids has 3 entries, 2 real IDs + 1 empty.
+	childIDs, ok := result["child_job_ids"].([]string)
+	require.True(t, ok, "§15.4b handler: child_job_ids must be []string")
+	assert.Len(t, childIDs, 3,
+		"§15.4b handler: child_job_ids must have 3 entries (2 real + 1 empty for failed enqueue)")
+	assert.NotEmpty(t, childIDs[0],
+		"§15.4b handler: child_job_ids[0] must be a real job ID (Italian enqueued)")
+	assert.NotEmpty(t, childIDs[1],
+		"§15.4b handler: child_job_ids[1] must be a real job ID (English enqueued)")
+	assert.Empty(t, childIDs[2],
+		"§15.4b handler: child_job_ids[2] must be empty (Portuguese enqueue failed)")
+
+	// Sanity: stub was called exactly 3 times (one per item).
+	assert.Equal(t, 3, stub.callCount,
+		"§15.4b handler: FanoutUseCase must attempt 3 enqueues (one per item)")
+
+	// per_language carries all 3 languages (including the failed one).
+	perLang, ok := result["per_language"].([]string)
+	require.True(t, ok, "§15.4b handler: per_language must be []string")
+	assert.Len(t, perLang, 3,
+		"§15.4b handler: per_language must have 3 entries (all items recorded)")
+	assert.Contains(t, perLang, "pt-BR",
+		"§15.4b handler: per_language must include the failed Portuguese enqueue")
 }
