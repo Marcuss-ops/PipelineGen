@@ -66,6 +66,7 @@ type Router struct {
 	healthSvc          interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
 	readyChecker       *systemhealth.ReadyChecker
 	qdrantHealth       interface{} // *transport.QdrantHealthHandler; interface{} keeps the router infra-clean.
+	modelsHandler      *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*
@@ -181,6 +182,12 @@ func (r *Router) SetQdrantHealthHandler(h interface{}) {
 	r.qdrantHealth = h
 }
 
+// SetModelsHandler wires the ModelsHandler for /models (Task 10, July 2026).
+// nil-safe: if not wired the route returns 503.
+func (r *Router) SetModelsHandler(h *transport.ModelsHandler) {
+	r.modelsHandler = h
+}
+
 // buildCORSConfig builds a CORS configuration from the supplied origins.
 // PG-006 (June 2026): now takes origins directly instead of a
 // *config.Config — composition root extracts cfg.Security.CORSOrigins
@@ -254,6 +261,15 @@ func (r *Router) Setup() *gin.Engine {
 	}
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
+
+	// /models — E5 + SigLIP model health probes (Task 10, July 2026).
+	// nil-safe: returns 503 when the handler is not wired.
+	modelsHandler := r.modelsHandler
+	if modelsHandler == nil {
+		log.Warn("models handler not wired, /models will return 503")
+		modelsHandler = transport.NewModelsHandler("") // empty URL -> 503 responses
+	}
+	engine.GET("/models", modelsHandler.Models)
 
 	// Qdrant health endpoints — /qdrant/live (liveness) and
 	// /qdrant/ready (deep readiness with alias + collection + schema
