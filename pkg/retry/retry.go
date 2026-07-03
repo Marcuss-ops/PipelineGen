@@ -376,6 +376,18 @@ type Options struct {
 	// OnRetry is an optional callback invoked before each retry attempt.
 	// The attempt number is 0-based (0 = first retry).
 	OnRetry func(attempt int, err error)
+
+	// Clock is the injectable time source for backoff sleeps.
+	// Nil → RealClock{} (production default, delegates to time.After).
+	// Tests inject a fake clock via Options{Clock: myFakeClock} for
+	// deterministic duration assertions (no 100ms flake on slow CI).
+	//
+	// FASE 3.8 (July 2026): introduced to support the static
+	// time.Sleep ban in internal/ — migration targets route through
+	// retry.Sleep(ctx, d, opts) which in turn reads Options.Clock via
+	// ClockFromOptions. DoWithValue reads it from the same picker so
+	// retry-loop sleeps honour the injected clock consistently.
+	Clock Clock
 }
 
 // RetryOptions is an alias for Options, kept for backward compatibility.
@@ -415,6 +427,15 @@ func Do(ctx context.Context, fn func() error, opts Options) error {
 // DoWithValue is the generic version of Do. fn returns (T, error).
 // On success the value is returned; on permanent failure the zero value of T
 // is returned together with the last error.
+//
+// FASE 3.8 (July 2026): the backoff sleep now uses ClockFromOptions(opts)
+// instead of bare time.After so tests can inject a fake clock via
+// Options.Clock for deterministic duration assertions. Production
+// callers see byte-identical behaviour to pre-FASE-3.8 because
+// Options{} (zero Clock field) selects RealClock, which delegates
+// to time.After. The picker is a single-line change so the retry
+// loop's ctx-aware cancellation + RetryAfterError honoring logic
+// stay in one place.
 func DoWithValue[T any](ctx context.Context, fn func() (T, error), opts Options) (T, error) {
 	opts = norm(opts)
 
@@ -469,12 +490,12 @@ func DoWithValue[T any](ctx context.Context, fn func() (T, error), opts Options)
 					sleep = ra
 				}
 			}
-			select {
-			case <-time.After(sleep):
-			case <-ctx.Done():
-				var zero T
-				return zero, ctx.Err()
-			}
+		select {
+		case <-ClockFromOptions(opts).After(sleep):
+		case <-ctx.Done():
+			var zero T
+			return zero, ctx.Err()
+		}
 		}
 	}
 	var zero T
