@@ -189,6 +189,12 @@ type DriveRootsValidator struct {
 	registry *DestinationRegistry
 	folders  StartupRootsProbe
 	log      *zap.Logger
+	// metrics is the observability handle for SRE surfaces
+	// (counter per probe, latency histogram, run-summary gauges).
+	// Nil-safe: composition roots can pre-empt metrics with nil
+	// (typed-NIL-safe pattern after zap.Logger). Production
+	// wiring injects delivery.NewDriveValidatorMetrics().
+	metrics *DriveValidatorMetrics
 
 	// Per probe-attempt: time budget before the retry loop gives up.
 	ProbeTimeout time.Duration
@@ -207,10 +213,17 @@ type DriveRootsValidator struct {
 // log tolerance: nil log defaults to zap.NewNop() so composition
 // roots that pre-wire the logger after NewComposition can still
 // invoke the validator with a typed-NIL-safe log handle.
+//
+// metrics tolerance: nil metrics disables all SRE emission (the
+// observe helpers short-circuit on a nil receiver). Composition
+// roots that want a no-stats-run (e.g. dry-mode tooling) pass nil.
+// Production wiring injects NewDriveValidatorMetrics() so probes /
+// histograms / run-summary gauges populate prometheus.DefaultRegisterer.
 func NewDriveRootsValidator(
 	registry *DestinationRegistry,
 	folders StartupRootsProbe,
 	log *zap.Logger,
+	metrics *DriveValidatorMetrics,
 ) (*DriveRootsValidator, error) {
 	if registry == nil {
 		return nil, ErrMissingStartupValidatorRegistry
@@ -225,6 +238,7 @@ func NewDriveRootsValidator(
 		registry:       registry,
 		folders:        folders,
 		log:            log,
+		metrics:        metrics,
 		ProbeTimeout:   30 * time.Second,
 		ProbeAttempts:  3,
 		InitialBackoff: 2 * time.Second,
@@ -246,6 +260,14 @@ func NewDriveRootsValidator(
 // The retry curve (2s → 4s, 3 attempts) means worst-case probe time
 // is 9 × ~6s = ~54s of boot-time overhead on a fully-broken
 // environment, which is acceptable for a fail-closed barrier.
+//
+// P1.4 (July 2026): per-probe observations are emitted to the
+// injected *DriveValidatorMetrics (counter per outcome,
+// histogram per elapsed), and a final observeRunEnd latches
+// the run-summary gauges (last-run timestamp + success
+// indicator). Nil-receiver safe — composition roots that
+// pre-date the metrics surface pass nil without guard
+// boilerplate.
 func (v *DriveRootsValidator) ValidateDriveRoots(ctx context.Context) (*StartupValidationReport, error) {
 	report := &StartupValidationReport{}
 
@@ -258,6 +280,7 @@ func (v *DriveRootsValidator) ValidateDriveRoots(ctx context.Context) (*StartupV
 				Destination: destKey,
 				Err:         err,
 			})
+			v.metrics.observeProbe(string(destKey), "failure", 0)
 			continue
 		}
 
@@ -266,6 +289,12 @@ func (v *DriveRootsValidator) ValidateDriveRoots(ctx context.Context) (*StartupV
 			report.Skipped = append(report.Skipped, destKey)
 			v.log.Warn("delivery: StartupDriveRootsValidator skipped — empty RootFolderID (capability may be intentionally disabled)",
 				zap.String("destination", string(destKey)))
+			// Skipped rows still surface on the SRE side: a skipped
+			// probe is operator signal ("intentionally disabled
+			// capability") distinct from a driven-but-failed probe.
+			// Record with elapsed=0 because ProbeFolderAccess was
+			// not invoked.
+			v.metrics.observeProbe(string(destKey), "skipped", 0)
 			continue
 		}
 
@@ -278,6 +307,11 @@ func (v *DriveRootsValidator) ValidateDriveRoots(ctx context.Context) (*StartupV
 			Elapsed:      time.Since(start),
 		}
 		report.PerDestination = append(report.PerDestination, result)
+		outcome := "success"
+		if probeErr != nil {
+			outcome = "failure"
+		}
+		v.metrics.observeProbe(string(destKey), outcome, result.Elapsed)
 
 		if probeErr != nil {
 			v.log.Error("delivery: StartupDriveRootsValidator probe failed",
@@ -294,6 +328,8 @@ func (v *DriveRootsValidator) ValidateDriveRoots(ctx context.Context) (*StartupV
 			)
 		}
 	}
+
+	v.metrics.observeRunEnd(!report.HasFailures(), float64(time.Now().Unix()))
 
 	if !report.HasFailures() {
 		return report, nil

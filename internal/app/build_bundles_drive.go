@@ -274,7 +274,15 @@ func startDriveBackgroundFolders(
 	if driveClient != nil && driveUploader != nil {
 		registry := delivery.NewDestinationRegistry(cfg)
 		folderMgr := drive.NewDriveFolderManagerAdapter(driveClient, log)
-		validator, vErr := delivery.NewDriveRootsValidator(registry, folderMgr, log)
+		// P1.4 (July 2026): wire the canonical metrics surface so the
+		// SRE dashboard sees per-destination probe counters + latency
+		// histograms + run-summary gauges. The struct is built against
+		// the promauto package globals declared in
+		// internal/infrastructure/observability/metrics_delivery.go
+		// — production wiring always uses this constructor so all four
+		// metrics auto-register with the default Prometheus registry.
+		metrics := delivery.NewDriveValidatorMetrics()
+		validator, vErr := delivery.NewDriveRootsValidator(registry, folderMgr, log, metrics)
 		if vErr != nil {
 			// Should be unreachable (registry is constructed, folderMgr
 			// is constructed). Log + halt so a future drift surfaces

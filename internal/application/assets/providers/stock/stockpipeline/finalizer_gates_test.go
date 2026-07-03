@@ -277,8 +277,8 @@ func TestBuildFinalizationRequest_HappyPath(t *testing.T) {
 		t.Fatalf("artifacts count=%d, want 3 (1 metadata + 2 chunks)", len(req.Artifacts))
 	}
 	for i, a := range req.Artifacts {
-		if !a.Required {
-			t.Fatalf("artifact[%d] (%s) Required=false, want true", i, a.ArtifactID)
+		if a.Requirement != finalization.ArtifactRequirementRequired {
+			t.Fatalf("artifact[%d] (%s) Requirement=%v, want %v", i, a.ArtifactID, a.Requirement, finalization.ArtifactRequirementRequired)
 		}
 		if a.IdempotencyKey == "" || a.SHA256 == "" {
 			t.Fatalf("artifact[%d] missing IdempotencyKey or SHA256", i)

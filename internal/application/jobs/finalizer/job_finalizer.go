@@ -108,10 +108,25 @@ func (f *Finalizer) CompleteWithArtifacts(
 		return f.handleIdempotentCompletion(ctx, jobRow, &req)
 	}
 
-	// 5. Adapt *sql.Tx to finalization.Transaction for AssetFinalizerTx.
+	now := time.Now().UTC()
+
+	// 5. Build the optional-artifact audit report (P1.2). Pure
+	// function over the request struct — runs BEFORE the SQL
+	// operations so a cross-reference mismatch
+	// (ErrOptionalArtifactFinalizedMismatch when a declaration
+	// promises Finalized but the ArtifactID is missing from
+	// Artifacts) fails the request BEFORE any table is touched.
+	// The report is later persisted to the `optional_artifact_report`
+	// job_events row inside markSucceeded.
+	optionalReport, reportErr := f.buildOptionalArtifactReport(&req, now)
+	if reportErr != nil {
+		return nil, reportErr
+	}
+
+	// 6. Adapt *sql.Tx to finalization.Transaction for AssetFinalizerTx.
 	domainTx := assetfinalizer.WrapTx(tx)
 
-	// 6. Delegate artifact writes to AssetFinalizerTx.
+	// 7. Delegate artifact writes to AssetFinalizerTx.
 	var refs []finalization.ArtifactRef
 	allEvents := make([]finalization.OutboxEvent, 0, len(req.Events)+len(req.Artifacts))
 	allEvents = append(allEvents, req.Events...)
@@ -124,34 +139,37 @@ func (f *Finalizer) CompleteWithArtifacts(
 		allEvents = append(allEvents, events...)
 	}
 
-	// 7. Write outbox events (from request + AssetFinalizerTx).
+	// 8. Write outbox events (from request + AssetFinalizerTx).
 	if err := f.writeOutboxEvents(ctx, tx, allEvents); err != nil {
 		return nil, err
 	}
 
-	// 8. Write result manifest + mark job SUCCEEDED.
-	if err := f.markSucceeded(ctx, tx, &req); err != nil {
+	// 9. Write result manifest + mark job SUCCEEDED + persist the
+	//    optional_artifact_report audit sidecar inside the same
+	//    SQLite transaction.
+	if err := f.markSucceeded(ctx, tx, &req, optionalReport); err != nil {
 		return nil, err
 	}
 
-	// 9. Commit.
+	// 10. Commit.
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("finalizer: commit: %w", err)
 	}
 
-	now := time.Now().UTC()
 	f.log.Info("job finalised with artifacts",
 		zap.String("job_id", req.Result.JobID),
 		zap.Int("attempt", req.Result.Attempt),
 		zap.Int("artifact_count", len(refs)),
 		zap.Int("outbox_events", len(allEvents)),
+		zap.Int("optional_artifact_count", len(optionalReport)),
 	)
 
 	return &finalization.FinalizationResult{
-		JobID:        req.Result.JobID,
-		Status:       "SUCCEEDED",
-		CompletedAt:  now,
-		ArtifactRefs: refs,
+		JobID:          req.Result.JobID,
+		Status:         "SUCCEEDED",
+		CompletedAt:    now,
+		ArtifactRefs:   refs,
+		OptionalArtifactReport: optionalReport,
 	}, nil
 }
 
@@ -213,6 +231,18 @@ func (f *Finalizer) validateRequest(req *finalization.FinalizationRequest) error
 				finalization.ErrRequiredArtifactMissing,
 			)
 		}
+		// P1.2 (July 2026): typed Requirement enum. The zero value
+		// (ArtifactRequirementInvalid) is explicitly rejected so a
+		// forgotten-to-set field fail-closes loudly — mirrors how
+		// PublishAction's empty-string zero value is handled.
+		if !a.Requirement.Valid() {
+			return finalization.NewFinalizationError(
+				"INVALID_REQUIREMENT",
+				fmt.Sprintf("artifact[%d] (%s) has Requirement=%s — must be Required or Optional", i, a.ArtifactID, a.Requirement),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrArtifactRequirementInvalid,
+			)
+		}
 		if a.IdempotencyKey == "" {
 			return finalization.NewFinalizationError(
 				"INVALID_IDEMPOTENCY_KEY",
@@ -230,9 +260,57 @@ func (f *Finalizer) validateRequest(req *finalization.FinalizationRequest) error
 			)
 		}
 		seen[a.ArtifactID] = true
-		if a.Required {
+		// P1.2 (July 2026): typed Requirement enum replaces the
+		// legacy Required bool. hasRequired still tracks the
+		// required-set membership for the "at least one required"
+		// invariant below.
+		if a.Requirement == finalization.ArtifactRequirementRequired {
 			hasRequired = true
 		}
+	}
+
+	// P1.2 (July 2026): OptionalDeclarations is the OPTIONAL sidecar
+	// only. We surface three failure classes with distinct typed
+	// sentinels so log scrapers and dashboards can attribute the
+	// issue without parsing the error message:
+	//
+	//   (a) Requirement=Invalid (zero value) — fail-fast: caller
+	//       forgot to set the field. Mirrors how an artifact literal
+	//       with Invalid Requirement is rejected above.
+	//   (b) Requirement=Required — fail-fast: caller put a required
+	//       artifact on the optional sidecar. Required artifacts
+	//       belong on `Artifacts`, not on the declaration sidecar.
+	//   (c) Duplicate ArtifactID within declarations — fail-fast:
+	//       caller emitted two records for one optional artifact.
+	//       Without this check, the cross-reference would produce
+	//       two audit rows and surfaces misleading outcome counts.
+	seenDecl := make(map[string]bool, len(req.OptionalDeclarations))
+	for i, d := range req.OptionalDeclarations {
+		if d.Requirement == finalization.ArtifactRequirementInvalid {
+			return finalization.NewFinalizationError(
+				"DECLARATION_HAS_INVALID_REQUIREMENT",
+				fmt.Sprintf("OptionalDeclarations[%d] (%s) has Requirement=INVALID (zero value) — set explicitly to Required or Optional", i, d.ArtifactID),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrArtifactRequirementInvalid,
+			)
+		}
+		if d.Requirement != finalization.ArtifactRequirementOptional {
+			return finalization.NewFinalizationError(
+				"DECLARATION_HAS_REQUIRED_REQUIREMENT",
+				fmt.Sprintf("OptionalDeclarations[%d] (%s) has Requirement=%s — required artifacts belong on Artifacts, declarations are the optional sidecar only", i, d.ArtifactID, d.Requirement),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrOptionalDeclarationHasRequiredRequirement,
+			)
+		}
+		if seenDecl[d.ArtifactID] {
+			return finalization.NewFinalizationError(
+				"DUPLICATE_OPTIONAL_DECLARATION",
+				fmt.Sprintf("OptionalDeclarations[%d] (%s) is a duplicate", i, d.ArtifactID),
+				req.Result.JobID, req.Lease.Attempt,
+				finalization.ErrDuplicateArtifact,
+			)
+		}
+		seenDecl[d.ArtifactID] = true
 	}
 
 	// At least one artifact must be required (otherwise the job has
@@ -375,6 +453,22 @@ func (f *Finalizer) handleIdempotentCompletion(
 	row *jobRow,
 	req *finalization.FinalizationRequest,
 ) (*finalization.FinalizationResult, error) {
+	// P1.2: rebuild the optional-artifact audit report so callers
+	// retrying an already-SUCCEEDED job (idempotent replay path)
+	// see the same per-optional outcome on the in-memory return as
+	// the first successful commit. Best-effort attach — a build
+	// error here would mean the FIRST commit also failed, and the
+	// stored fingerprint comparison below is the louder signal.
+	//
+	// The cross-reference is deterministic over the request struct
+	// (P1.2 typed-data invariant: same OptionalDeclarations +
+	// same Artifacts -> same OptionalArtifactReport), so the
+	// recompute produces a byte-equivalent report to what was
+	// persisted on the first commit. We attach it to the returned
+	// FinalizationResult so dashboards reading `finResult` on a
+	// retry see the actual outcome rather than a silent empty list.
+	optionalReport, _ := f.buildOptionalArtifactReport(req, time.Now().UTC())
+
 	requestFingerprint := computeCompletionFingerprint(req.Result.Data, req.Artifacts)
 
 	// If the stored result is empty, we can't compare — treat as conflict.
@@ -418,9 +512,10 @@ func (f *Finalizer) handleIdempotentCompletion(
 			zap.String("fingerprint", requestFingerprint),
 		)
 		return &finalization.FinalizationResult{
-			JobID:       req.Result.JobID,
-			Status:      "SUCCEEDED",
-			CompletedAt: time.Now().UTC(),
+			JobID:          req.Result.JobID,
+			Status:         "SUCCEEDED",
+			CompletedAt:    time.Now().UTC(),
+			OptionalArtifactReport: optionalReport,
 		}, nil
 	}
 
@@ -465,12 +560,20 @@ func (f *Finalizer) writeOutboxEvents(
 // ── Mark succeeded ──────────────────────────────────────────────────
 
 // markSucceeded writes the result manifest (wrapped with completion
-// fingerprint for artifact-aware idempotency), inserts a job event, and
+// fingerprint for artifact-aware idempotency), inserts a job event for
+// `job_completed`, persists the optional-artifact audit sidecar (P1.2)
+// as a separate `optional_artifact_report` job_events row, and
 // updates the job status to SUCCEEDED — all inside the transaction.
+//
+// godlike/07 typed-error contract: the optional-artifact sidecar row
+// lands atomically with the job_completed flip so a partial commit
+// cannot corrupt the operator's view of which optional artifacts
+// shipped (P1.2 invariant: success == sidecar persisted).
 func (f *Finalizer) markSucceeded(
 	ctx context.Context,
 	tx *sql.Tx,
 	req *finalization.FinalizationRequest,
+	optionalReport []finalization.OptionalArtifactRecord,
 ) error {
 	now := time.Now().UTC()
 	nowStr := timeutil.FormatRFC3339(now)
@@ -529,7 +632,171 @@ func (f *Finalizer) markSucceeded(
 		return fmt.Errorf("finalizer: insert job event: %w", err)
 	}
 
+	// P1.2 (July 2026): Persist the optional-artifact audit report
+	// as a distinct job_events row inside the same SQLite transaction.
+	// Skip when len(optionalReport)==0 to avoid bloating job_events
+	// with empty sidecar rows on jobs that produced no optional
+	// artifacts. The Err field on each record is json:"-" so we
+	// serialise the typed error's Error() into the typed-data
+	// ErrorMessage carrier for observability (the audit row reads
+	// cleanly through standard JSON marshaling).
+	if len(optionalReport) > 0 {
+		payload, marshalErr := json.Marshal(struct {
+			SchemaVersion string                                `json:"schema_version"`
+			Records       []finalization.OptionalArtifactRecord `json:"records"`
+		}{
+			SchemaVersion: "v1",
+			Records:       optionalReport,
+		})
+		if marshalErr != nil {
+			return fmt.Errorf("finalizer: marshal optional_artifact_report: %w", marshalErr)
+		}
+		reportEvtID := fmt.Sprintf("evt_%d_%s_opt", now.UnixNano(), randomHex(6))
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			reportEvtID, req.Result.JobID, "optional_artifact_report",
+			fmt.Sprintf("optional artifact audit report (%d records)", len(optionalReport)),
+			string(payload), nowStr,
+		)
+		if err != nil {
+			return fmt.Errorf("finalizer: insert optional_artifact_report job event: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// ── Optional artifact audit report (P1.2) ──────────────────────────
+
+// buildOptionalArtifactReport cross-references OptionalDeclarations
+// against the request's Artifacts list to produce the per-optional-
+// artifact audit sidecar that's persisted in the `optional_artifact_report`
+// job_events row alongside the existing `job_completed` event.
+//
+// Phase 1 — explicit declarations are AUTHORITATIVE.
+//
+//   - OptionalArtifactStatusFinalized: the artifact MUST appear in
+//     Artifacts (matched by ArtifactID). When missing, returns
+//     ErrOptionalArtifactFinalizedMismatch — the worker promised
+//     the artifact but it's absent from the publish-side, which is
+//     almost certainly a programmer error (the worker dropped the
+//     artifact on the way to BuildFinalizationRequest, or set the
+//     wrong ArtifactID). Loud-fail is preferred over emitting a
+//     misleading Finalized record.
+//
+//     When present, the canonical Filename and IdempotencyKey are
+//     copied from the matching PublishedArtifact (NOT the
+//     declaration's hint) — the PublishedArtifact is the
+//     authoritative source per godlike/06 SSOT (one canonical
+//     owner per fact).
+//
+//   - OptionalArtifactStatusFailed: typed-data envelope populated
+//     verbatim from the declaration. Err is preserved in-memory
+//     for runtime errors.Is / errors.As traversal; ErrorMessage
+//     carries the string into job_events data_json via json.Marshal
+//     (Err has json:"-" so a separate persistent carrier is required).
+//
+//   - OptionalArtifactStatusMissing: silent absent — no Err,
+//     no ErrorMessage. Validates that the worker was loud-and-clear
+//     about NOT producing the artifact.
+//
+// validateRequest already rejects OptionalDeclarations entries
+// with Requirement != Optional (ErrOptionalDeclarationHasRequiredRequirement)
+// and artifact.Requirement == Invalid (ErrArtifactRequirementInvalid),
+// so this method assumes canonical declarations on input.
+//
+// Phase 2 — inference fallback iterates Artifacts filtered to
+// Requirement==Optional and surfaces Finalized records for any not
+// already covered by a Phase 1 declaration. Note that the fallback
+// CANNOT surface Missing / Failed artifacts (those are only visible
+// when the worker emits explicit declarations) — this is by design:
+// silent FAIL-flips are a recurring source of hidden degradation;
+// explicit declarations are the operator's signal that they WANT
+// visibility onto a particular optional slot. The fallback exists
+// for backwards-compat with workers that haven't yet migrated to
+// the explicit-declaration path.
+//
+// godlike/06 SSOT: this method is the single canonical owner of
+// "what does the optional-artifact audit report look like for
+// job X?" — callers MUST NOT compute their own cross-reference
+// outside this method.
+func (f *Finalizer) buildOptionalArtifactReport(
+	req *finalization.FinalizationRequest,
+	now time.Time,
+) ([]finalization.OptionalArtifactRecord, error) {
+	pubByID := make(map[string]finalization.PublishedArtifact, len(req.Artifacts))
+	for _, a := range req.Artifacts {
+		pubByID[a.ArtifactID] = a
+	}
+
+	report := make([]finalization.OptionalArtifactRecord, 0, len(req.OptionalDeclarations)+len(req.Artifacts))
+	seen := make(map[string]bool, len(req.OptionalDeclarations))
+
+	// Phase 1 — process explicit declarations (authoritative).
+	for _, d := range req.OptionalDeclarations {
+		rec := finalization.OptionalArtifactRecord{
+			ArtifactID:     d.ArtifactID,
+			Kind:           d.Kind,
+			Requirement:    finalization.ArtifactRequirementOptional,
+			Status:         d.Status,
+			Filename:       d.Filename,
+			IdempotencyKey: d.IdempotencyKey,
+			RecordedAt:     now,
+		}
+		switch d.Status {
+		case finalization.OptionalArtifactStatusFinalized:
+			pa, ok := pubByID[d.ArtifactID]
+			if !ok {
+				return nil, finalization.NewFinalizationError(
+					"OPTIONAL_FINALIZED_MISMATCH",
+					fmt.Sprintf("OptionalDeclarations[%s] declared Finalized but is missing from Artifacts", d.ArtifactID),
+					req.Result.JobID, req.Lease.Attempt,
+					finalization.ErrOptionalArtifactFinalizedMismatch,
+				)
+			}
+			// Overwrite Phase 1 guesses with canonical Truth from
+			// the cross-match — the declaration may carry a hint
+			// but the PublishedArtifact is the authoritative source.
+			rec.Filename = pa.Filename
+			rec.IdempotencyKey = pa.IdempotencyKey
+			rec.Err = nil
+		case finalization.OptionalArtifactStatusFailed:
+			// Surface the typed-data envelope. Err is preserved
+			// in-memory for errors.Is/As; ErrorMessage is the
+			// JSON-persistent string carrier.
+			rec.Err = d.Err
+			if d.Err != nil {
+				rec.ErrorMessage = d.Err.Error()
+			}
+		case finalization.OptionalArtifactStatusMissing:
+			// Silent absent — no Err, no ErrorMessage.
+		}
+		report = append(report, rec)
+		seen[d.ArtifactID] = true
+	}
+
+	// Phase 2 — inference fallback: Artifacts filtered by
+	// Requirement==Optional, dedup against Phase 1 entries.
+	for _, a := range req.Artifacts {
+		if seen[a.ArtifactID] {
+			continue
+		}
+		if a.Requirement != finalization.ArtifactRequirementOptional {
+			continue
+		}
+		report = append(report, finalization.OptionalArtifactRecord{
+			ArtifactID:     a.ArtifactID,
+			Kind:           a.Kind,
+			Requirement:    finalization.ArtifactRequirementOptional,
+			Status:         finalization.OptionalArtifactStatusFinalized,
+			Filename:       a.Filename,
+			IdempotencyKey: a.IdempotencyKey,
+			RecordedAt:     now,
+		})
+	}
+
+	return report, nil
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

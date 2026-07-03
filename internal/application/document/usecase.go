@@ -199,7 +199,7 @@ func (uc *GenerateDocumentUseCase) Handle(ctx context.Context, req DocumentReque
 					SizeBytes:      info.SizeBytes,
 					SHA256:         info.SHA256,
 					SourceVersion:  1,
-					Required:       true,
+					Requirement:    finalization.ArtifactRequirementRequired,
 					IdempotencyKey: idemKey,
 					Location: finalization.AssetLocation{
 						Provider:     "drive",

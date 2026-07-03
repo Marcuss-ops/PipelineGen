@@ -133,7 +133,7 @@ func TestDriveRootsValidator_AllPass_P1_3(t *testing.T) {
 	reg := startupTestRegistry()
 	probe := &fakeStartupRootsProbe{}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())
@@ -160,7 +160,7 @@ func TestDriveRootsValidator_AllFail_P1_3(t *testing.T) {
 		probeErrFn: func(string) error { return errors.New("drive: sim not found") },
 	}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())
@@ -205,7 +205,7 @@ func TestDriveRootsValidator_PartialFail_P1_3(t *testing.T) {
 		},
 	}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())
@@ -237,7 +237,7 @@ func TestDriveRootsValidator_EmptySkipped_P1_3(t *testing.T) {
 	reg := startupEmptyRootRegistry() // DestinationArtlist has empty RootFolderID
 	probe := &fakeStartupRootsProbe{}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())
@@ -265,7 +265,7 @@ func TestDriveRootsValidator_EmptySkipped_P1_3(t *testing.T) {
 
 func TestDriveRootsValidator_NilRegistry_P1_3(t *testing.T) {
 	probe := &fakeStartupRootsProbe{}
-	v, err := NewDriveRootsValidator(nil, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(nil, probe, zap.NewNop(), nil)
 	require.Error(t, err, "NilRegistry: must fail-fast on nil registry")
 	require.ErrorIs(t, err, ErrMissingStartupValidatorRegistry,
 		"NilRegistry: error MUST wrap ErrMissingStartupValidatorRegistry verbatim")
@@ -276,7 +276,7 @@ func TestDriveRootsValidator_NilRegistry_P1_3(t *testing.T) {
 
 func TestDriveRootsValidator_NilFolders_P1_3(t *testing.T) {
 	reg := startupTestRegistry()
-	v, err := NewDriveRootsValidator(reg, nil, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, nil, zap.NewNop(), nil)
 	require.Error(t, err, "NilFolders: must fail-fast on nil StartupRootsProbe")
 	require.ErrorIs(t, err, ErrMissingStartupValidatorFolders,
 		"NilFolders: error MUST wrap ErrMissingStartupValidatorFolders verbatim")
@@ -299,7 +299,7 @@ func TestDriveRootsValidator_AllFailReportShape_P1_3(t *testing.T) {
 		},
 	}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())
@@ -337,7 +337,7 @@ func TestDriveRootsValidator_FailureLabelPerDestination_P1_3(t *testing.T) {
 		},
 	}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())
@@ -360,7 +360,7 @@ func TestDriveRootsValidator_ReportCoversAllKeys_P1_3(t *testing.T) {
 	reg := startupEmptyRootRegistry() // includes a Skipped entry (Artlist)
 	probe := &fakeStartupRootsProbe{}
 
-	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop())
+	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
 	require.NoError(t, err)
 
 	report, err := v.ValidateDriveRoots(context.Background())

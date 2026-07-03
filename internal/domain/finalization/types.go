@@ -27,6 +27,17 @@
 // finalised. The completion, asset records, locations, and outbox events
 // are written in the SAME SQLite transaction.
 //
+// Required vs Optional artifacts (P1.2, July 2026):
+//
+//   - Required artifacts block job completion. If any required artifact
+//     is missing from the publish-side at completion time, the
+//     JobFinalizer returns ErrRequiredArtifactMissing.
+//   - Optional artifacts are non-blocking. JobFinalizer records every
+//     optional artifact in FinalizationResult.OptionalArtifactReport
+//     (a typed-data audit sidecar) regardless of outcome. The optional
+//     artifact's status — Finalized / Missing / Failed — is preserved
+//     for operator investigation. Optional failures DO NOT fail the job.
+//
 // Canonical reference: Piano d'Azione Completo § 4.
 package finalization
 
@@ -119,6 +130,261 @@ type AssetLocation struct {
 	Action PublishAction `json:"action,omitempty"`
 }
 
+// ── ArtifactRequirement (P1.2) ──────────────────────────────────────
+
+// ArtifactRequirement classifies whether an artifact blocks job
+// completion or is non-blocking (best-effort, recorded but does not
+// fail the job). Replaces the legacy `Required bool` field on
+// VerifiedArtifact and PublishedArtifact (P1.2 cutover).
+//
+// godlike/07 typed-error contract: the zero value
+// (ArtifactRequirementInvalid) is explicitly rejected at validation
+// time so a caller that forgot to set the field fail-closes loudly
+// (mirrors PublishAction's empty-string zero-value handling).
+//
+// Canonical values:
+//
+//   - ArtifactRequirementRequired — blocks job completion. Missing
+//     at completion → ErrRequiredArtifactMissing.
+//   - ArtifactRequirementOptional — non-blocking. JobFinalizer records
+//     the artifact in OptionalArtifactRecord (per-optional audit
+//     sidecar) regardless of outcome.
+type ArtifactRequirement int
+
+const (
+	// ArtifactRequirementInvalid is the zero value. Exists so the
+	// field is explicitly NOT-Required and NOT-Optional until the
+	// caller sets it; rejected by validateRequest so a default-zero
+	// artifact cannot silently pass the gate as "Optional".
+	ArtifactRequirementInvalid ArtifactRequirement = iota
+
+	// ArtifactRequirementRequired marks an artifact whose absence
+	// at completion time fails the request with ErrRequiredArtifactMissing.
+	ArtifactRequirementRequired
+
+	// ArtifactRequirementOptional marks a non-blocking artifact.
+	// JS completion succeeds even when the optional artifact is
+	// missing or failed; the per-optional outcome is recorded in
+	// FinalizationResult.OptionalArtifactReport for audit.
+	ArtifactRequirementOptional
+)
+
+// Valid returns true if r is one of the two canonical values
+// (Required or Optional). ArtifactRequirementInvalid (zero value)
+// is NOT valid; callers MUST set Requirement explicitly.
+func (r ArtifactRequirement) Valid() bool {
+	switch r {
+	case ArtifactRequirementRequired, ArtifactRequirementOptional:
+		return true
+	}
+	return false
+}
+
+// String returns the human-readable label ("REQUIRED" or "OPTIONAL")
+// used in structured logs and the job_events audit row. The zero
+// value renders as "INVALID" so a wrong-default sentinel surfaces
+// loudly at log scrape time.
+func (r ArtifactRequirement) String() string {
+	switch r {
+	case ArtifactRequirementRequired:
+		return "REQUIRED"
+	case ArtifactRequirementOptional:
+		return "OPTIONAL"
+	}
+	return "INVALID"
+}
+
+// ── OptionalArtifactStatus (P1.2) ───────────────────────────────────
+
+// OptionalArtifactStatus classifies the outcome of an optional
+// artifact's per-request attempt. The JobFinalizer records one
+// OptionalArtifactRecord per optional artifact in
+// FinalizationResult.OptionalArtifactReport and persists a durable
+// copy in the `optional_artifact_report` job_events row.
+type OptionalArtifactStatus int
+
+const (
+	// OptionalArtifactStatusUnknown is the zero value. The
+	// JobFinalizer MUST never produce a record in this state.
+	OptionalArtifactStatusUnknown OptionalArtifactStatus = iota
+
+	// OptionalArtifactStatusFinalized means the artifact was
+	// successfully published and is present in the request's
+	// Artifacts list (matched by ArtifactID).
+	OptionalArtifactStatusFinalized
+
+	// OptionalArtifactStatusMissing means the worker declared the
+	// artifact (in OptionalDeclarations) but did NOT publish it.
+	// No underlying error — the worker intentionally skipped the
+	// artifact (e.g. condition that made the artifact irrelevant).
+	OptionalArtifactStatusMissing
+
+	// OptionalArtifactStatusFailed means the worker attempted to
+	// publish but ArtifactPreparation returned an error. The underlying
+	// error is preserved in OptionalArtifactRecord.Err so an operator
+	// can investigate WITHOUT needing to correlate against a separate
+	// error log.
+	OptionalArtifactStatusFailed
+)
+
+// Valid returns true if s is one of the three canonical values
+// (Finalized, Missing, Failed). The zero value (Unknown) is NOT valid.
+func (s OptionalArtifactStatus) Valid() bool {
+	switch s {
+	case OptionalArtifactStatusFinalized,
+		OptionalArtifactStatusMissing,
+		OptionalArtifactStatusFailed:
+		return true
+	}
+	return false
+}
+
+// String returns the human-readable label for logs / job_events.
+func (s OptionalArtifactStatus) String() string {
+	switch s {
+	case OptionalArtifactStatusFinalized:
+		return "FINALIZED"
+	case OptionalArtifactStatusMissing:
+		return "MISSING"
+	case OptionalArtifactStatusFailed:
+		return "FAILED"
+	}
+	return "UNKNOWN"
+}
+
+// ── ArtifactDeclaration (P1.2) ──────────────────────────────────────
+
+// ArtifactDeclaration is the worker's registry of an artifact it
+// INTENDED to handle during the job, marked with its Requirement.
+// The JobFinalizer cross-references OptionalDeclarations against
+// the request's actually-published `Artifacts` list to build
+// FinalizationResult.OptionalArtifactReport.
+//
+// For required artifacts, the worker publishes the artifact directly
+// into `request.Artifacts` — a declaration is OPTIONAL (the cross-ref
+// path is a fallback). For optional artifacts, an explicit declaration
+// lets the worker pre-signal the outcome (Finalized / Missing / Failed)
+// without depending on cross-referencing inference.
+//
+// Either way, every optional artifact's outcome is recorded in the
+// audit sidecar so operators have an at-a-glance count of
+// success/missing/failed without correlating against separate error
+// logs.
+type ArtifactDeclaration struct {
+	// ArtifactID is the canonical artifact identifier the worker
+	// intends to handle. Matches by ArtifactID against the request's
+	// Artifacts list.
+	ArtifactID string `json:"artifact_id"`
+
+	// Kind is the high-level category of the artifact.
+	Kind ArtifactKind `json:"kind"`
+
+	// Filename is the optional canonical publication filename.
+	Filename string `json:"filename,omitempty"`
+
+	// MIMEType is the optional IANA media type.
+	MIMEType string `json:"mime_type,omitempty"`
+
+	// IdempotencyKey is the deterministic key the ArtifactPreparation
+	// service would use for publication. Carried for audit; the
+	// JobFinalizer does not enforce uniqueness across declarations.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+
+	// Requirement classifies the declaration. MUST equal
+	// ArtifactRequirementOptional — declaring a required artifact
+	// in OptionalDeclarations is a programming error
+	// (ErrOptionalDeclarationHasRequiredRequirement).
+	Requirement ArtifactRequirement `json:"requirement"`
+
+	// Status is the worker's pre-publish intent for this artifact.
+	//
+	//   - OptionalArtifactStatusFinalized: the worker produced the
+	//     artifact and includes it in `request.Artifacts`. The
+	//     JobFinalizer MUST verify the ArtifactID appears in
+	//     `request.Artifacts` — when missing, returns
+	//     ErrOptionalArtifactFinalizedMismatch.
+	//
+	//   - OptionalArtifactStatusMissing: the worker did NOT produce
+	//     the artifact (silent — no error). Recorded as Missing.
+	//
+	//   - OptionalArtifactStatusFailed: the worker attempted to
+	//     produce but ArtifactPreparation returned an error. Recorded
+	//     as Failed with Err carrying the underlying typed sentinel
+	//     (preserves errors.Is/As traversal).
+	Status OptionalArtifactStatus `json:"status"`
+
+	// Err is the underlying failure carrier when Status ==
+	// OptionalArtifactStatusFailed. Nil otherwise.
+	Err error `json:"-"`
+}
+
+// ── OptionalArtifactRecord (P1.2) ───────────────────────────────────
+
+// OptionalArtifactRecord is the per-optional-artifact audit sidecar
+// entry on FinalizationResult. JobFinalizer.CompleteWithArtifacts
+// populates one record per optional artifact (regardless of outcome)
+// and persists a JSON-encoded copy of the entire report inside the
+// same SQLite transaction under the `optional_artifact_report` job_events
+// row (separate from the `job_completed` event).
+//
+// Why a sidecar?
+//
+//   job_completed alone tells operators "this job succeeded" but
+//   says nothing about why some optional artifacts are missing or
+//   failed (success today can paper over hidden degradation: an
+//   AI image that never generated, a metadata.json that never
+//   uploaded, etc.). The sidecar carries the EXACT per-optional
+//   outcome so dashboards can surface the degradation to operators
+//   without parsing text logs.
+type OptionalArtifactRecord struct {
+	// ArtifactID is the canonical identifier of the optional artifact.
+	ArtifactID string `json:"artifact_id"`
+
+	// Kind is the artifact category (preserved from the declaration /
+	// artifact for dashboards that aggregate by Kind).
+	Kind ArtifactKind `json:"kind"`
+
+	// Requirement is ALWAYS ArtifactRequirementOptional for the
+	// records on this struct; included for JSON schema symmetry with
+	// ArtifactDeclaration so the audit row reads without case-split.
+	Requirement ArtifactRequirement `json:"requirement"`
+
+	// Status is the per-artifact outcome (Finalized / Missing / Failed).
+	Status OptionalArtifactStatus `json:"status"`
+
+	// Err is the underlying failure carrier when Status == Failed.
+	// In-memory-runtime only (json:"-") — used by callers during the
+	// same process for errors.Is / errors.As traversal. The
+	// JSON-persistent carrier is ErrorMessage below.
+	Err error `json:"-"`
+
+	// ErrorMessage is the JSON-persistent string carrier for the
+	// underlying failure when Status == Failed. Populated from
+	// Err.Error() at JobFinalizer.CompleteWithArtifacts time so the
+	// `optional_artifact_report` job_events row can carry the
+	// failure reason verbatim through standard JSON marshaling.
+	// (Err has json:"-" so it is otherwise stripped during the
+	// job_events data_json marshal.)
+	ErrorMessage string `json:"error_message,omitempty"`
+
+	// Filename is the canonical publication filename when known —
+	// overwritten with the resolved value from the matched
+	// PublishedArtifact when Status == Finalized, falling back to
+	// the declaration's intended filename otherwise.
+	Filename string `json:"filename,omitempty"`
+
+	// IdempotencyKey is the deterministic key when known —
+	// overwritten with the resolved value from the matched
+	// PublishedArtifact when Status == Finalized, falling back to
+	// the declaration's intended key otherwise.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+
+	// RecordedAt is the UTC timestamp the record was assembled by
+	// the JobFinalizer. Useful for sequencing optional outcomes in
+	// dashboards when the worker took Time-on-step.
+	RecordedAt time.Time `json:"recorded_at"`
+}
+
 // ── VerifiedArtifact ────────────────────────────────────────────────
 
 // VerifiedArtifact represents an artifact that has been locally
@@ -127,6 +393,12 @@ type AssetLocation struct {
 //
 // This is the output of a capability's production step. The
 // ArtifactPreparationService transforms it into a PublishedArtifact.
+//
+// P1.2 (July 2026): the `Required bool` field is replaced by the typed
+// `Requirement ArtifactRequirement` enum. The zero value
+// (ArtifactRequirementInvalid) is explicitly rejected by the
+// JobFinalizer at validation time so callers cannot accidentally
+// default to "Optional" by leaving the field unset.
 type VerifiedArtifact struct {
 	// ArtifactID is the unique canonical identifier for this artifact.
 	// Derived from a content hash (SHA-256) or a deterministic
@@ -155,23 +427,31 @@ type VerifiedArtifact struct {
 	// this artifact. Monotonically increasing within a capability.
 	SourceVersion int64 `json:"source_version"`
 
-	// Required indicates whether this artifact MUST be successfully
-	// finalised for the job to become SUCCEEDED. Optional artifacts
-	// that fail do not block job completion.
-	Required bool `json:"required"`
+	// Requirement classifies whether this artifact blocks job
+	// completion. Set explicitly to ArtifactRequirementRequired for
+	// block-on-missing artifacts, ArtifactRequirementOptional for
+	// best-effort sidecars. The zero value (ArtifactRequirementInvalid)
+	// is rejected at validation — callers MUST set this field.
+	Requirement ArtifactRequirement `json:"requirement"`
 
 	// IdempotencyKey is a deterministic key that makes publication
 	// and finalisation idempotent. Same content → same key.
 	IdempotencyKey string `json:"idempotency_key"`
 }
 
-// ── PublishedArtifact ───────────────────────────────────────────────
+// ── PublishedArtifact ────────────────────────────────────────────────
 
 // PublishedArtifact represents an artifact that has been successfully
 // published to a remote location. It extends VerifiedArtifact with
 // the canonical AssetLocation.
 //
 // This is the input to AssetFinalizerTx.FinalizeAsset.
+//
+// P1.2 (July 2026): the `Required bool` field is replaced by the typed
+// `Requirement ArtifactRequirement` enum carried through from
+// VerifiedArtifact. The ArtifactPreparation service preserves the
+// requirement during the local→remote publish step. Clean cutover —
+// no back-compat alias per godlike/06 one-owner-per-fact.
 type PublishedArtifact struct {
 	// ArtifactID is the unique canonical identifier for this artifact.
 	ArtifactID string `json:"artifact_id"`
@@ -194,12 +474,13 @@ type PublishedArtifact struct {
 	// SourceVersion is the logical version of the source.
 	SourceVersion int64 `json:"source_version"`
 
-	// Required indicates whether this artifact is required for job
-	// completion.
-	Required bool `json:"required"`
+	// Requirement classifies whether this artifact blocks job
+	// completion (P1.2). Carried verbatim from VerifiedArtifact.Requirement
+	// through ArtifactPreparation.Prepare. JobFinalizer uses this
+	// typed field for the cross-reference against OptionalDeclarations.
+	Requirement ArtifactRequirement `json:"requirement"`
 
-	// IdempotencyKey is the same deterministic key from the
-	// VerifiedArtifact, carried forward for idempotent finalisation.
+	// IdempotencyKey is the deterministic key the worker supplied.
 	IdempotencyKey string `json:"idempotency_key"`
 
 	// Location is the canonical descriptor of where the artifact was
@@ -283,8 +564,21 @@ type ArtifactRef struct {
 
 // FinalizationRequest is the input to JobFinalizer.CompleteWithArtifacts.
 // It carries the lease (for ownership verification), the result
-// manifest, all published artifacts, and any outbox events to emit
-// atomically.
+// manifest, all published artifacts, optional artifact declarations,
+// and any outbox events to emit atomically.
+//
+// P1.2 (July 2026): the request carries two artefact-side surfaces:
+//
+//   - `Artifacts` — the actually-published artifacts (locations
+//     returned by ArtifactPreparation). Required artifacts MUST
+//     appear here, or CompleteWithArtifacts returns
+//     ErrRequiredArtifactMissing.
+//   - `OptionalDeclarations` — the worker's per-optional-artifact
+//     intent (Finalized/Missing/Failed). Optional: the cross-ref
+//     can infer optional outcomes by filtering `Artifacts` against
+//     `Requirement == ArtifactRequirementOptional`, but explicit
+//     declarations let the worker pre-signal Missing/Failed without
+//     running an unsuccessful publish.
 type FinalizationRequest struct {
 	// Lease is the job lease held by the calling worker. The finalizer
 	// validates that the lease is still valid and belongs to the
@@ -297,6 +591,19 @@ type FinalizationRequest struct {
 	// Artifacts is the list of published artifacts to register.
 	Artifacts []PublishedArtifact `json:"artifacts"`
 
+	// OptionalDeclarations (P1.2) is the worker's per-optional-artifact
+	// intent. Each entry classifies a declared optional artifact as
+	// Finalized, Missing, or Failed. The JobFinalizer cross-references
+	// against Artifacts and persists the resolved audit report both
+	// on FinalizationResult.OptionalArtifactReport (in-memory) and
+	// inside the `optional_artifact_report` job_events row (durable).
+	//
+	// May be empty — the JobFinalizer's fallback path infers optional
+	// outcomes from Artifacts (filter Requirement == Optional →
+	// Finalized record). Explicit declarations take precedence when
+	// present.
+	OptionalDeclarations []ArtifactDeclaration `json:"optional_declarations,omitempty"`
+
 	// Events is the list of outbox events to emit atomically with the
 	// job completion.
 	Events []OutboxEvent `json:"events,omitempty"`
@@ -306,7 +613,8 @@ type FinalizationRequest struct {
 
 // FinalizationResult is returned by JobFinalizer.CompleteWithArtifacts
 // on success. It carries the artifact references for downstream
-// consumers (workflow coordinator, dashboards).
+// consumers (workflow coordinator, dashboards) AND, in P1.2, the
+// optional-artifact audit sidecar.
 type FinalizationResult struct {
 	// JobID is the canonical job identifier.
 	JobID string `json:"job_id"`
@@ -319,6 +627,15 @@ type FinalizationResult struct {
 
 	// ArtifactRefs is the list of finalised artifact references.
 	ArtifactRefs []ArtifactRef `json:"artifact_refs"`
+
+	// OptionalArtifactReport (P1.2) is the audit sidecar for every
+	// optional artifact the job declared (or every artifact with
+	// Requirement == Optional from the cross-reference fallback).
+	// One record per optional artifact, regardless of outcome.
+	// The JobFinalizer also persists a JSON-encoded copy of this
+	// slice into the `optional_artifact_report` job_events row
+	// inside the SAME transaction (next to job_completed).
+	OptionalArtifactReport []OptionalArtifactRecord `json:"optional_artifact_report,omitempty"`
 }
 
 // ── Lease ───────────────────────────────────────────────────────────
