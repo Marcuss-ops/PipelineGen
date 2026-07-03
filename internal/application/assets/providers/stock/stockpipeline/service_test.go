@@ -1,6 +1,7 @@
 package stockpipeline
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -119,34 +120,77 @@ func TestRunInputMaxVideosBoundary(t *testing.T) {
 }
 
 func TestInterleaveClips(t *testing.T) {
-	clips := [][]string{
-		{"A1", "A2", "A3"},
-		{"B1", "B2"},
-		{"C1"},
+	// FASE 2.4 (July 2026): the legacy parallel-array signature
+	// (clips/titles/sourceIDs as three [][]string slices) is gone.
+	// The signature is now single [][]Clip input → []Clip output.
+	// Each source group feeds its 2-3 produced clips; InterleaveClips
+	// shuffles within each group and round-robins across groups.
+	srcA := []Clip{
+		{Path: "A1", Title: "TitleA1", SourceID: "video-a", Status: CutItemStatusSucceeded},
+		{Path: "A2", Title: "TitleA2", SourceID: "video-a", Status: CutItemStatusSucceeded},
+		{Path: "A3", Title: "TitleA3", SourceID: "video-a", Status: CutItemStatusSucceeded},
 	}
-	titles := [][]string{
-		{"TitleA1", "TitleA2", "TitleA3"},
-		{"TitleB1", "TitleB2"},
-		{"TitleC1"},
+	srcB := []Clip{
+		{Path: "B1", Title: "TitleB1", SourceID: "video-b", Status: CutItemStatusValidated},
+		{Path: "B2", Title: "TitleB2", SourceID: "video-b", Status: CutItemStatusValidated},
 	}
-	sourceIDs := [][]string{
-		{"video-a", "video-a", "video-a"},
-		{"video-b", "video-b"},
-		{"video-c"},
-	}
-
-	interleaved, interleavedTitles, interleavedSourceIDs := InterleaveClips(clips, titles, sourceIDs)
-
-	assert.Len(t, interleaved, 6)
-	assert.Len(t, interleavedTitles, 6)
-	assert.Len(t, interleavedSourceIDs, 6)
-
-	groupOf := func(val string) string {
-		return string(val[0])
+	srcC := []Clip{
+		{Path: "C1", Title: "TitleC1", SourceID: "video-c", Status: CutItemStatusSucceeded},
 	}
 
-	// First 3 items should contain one element from A, B, and C each
-	assert.Equal(t, 3, countUniqueGroups(interleaved[0:3], groupOf))
+	clips := [][]Clip{srcA, srcB, srcC}
+	interleaved := InterleaveClips(clips)
+
+	assert.Len(t, interleaved, 6, "interleaved length should equal union of source slices")
+
+	// Verify the structured fields propagate to the output.
+	for _, c := range interleaved {
+		assert.NotEmpty(t, c.Path, "Path should be preserved through interleave")
+		assert.NotEmpty(t, c.Title, "Title should be preserved through interleave")
+		assert.NotEmpty(t, c.SourceID, "SourceID should be preserved through interleave")
+		assert.True(t, c.Succeeded(), "only Succeeded/Validated clips survive interleave")
+	}
+
+	groupOf := func(c Clip) string {
+		return string(c.Path[0])
+	}
+
+	// First 3 items should contain one element from A, B, and C each.
+	assert.Equal(t, 3, countUniqueGroupsClips(interleaved[0:3], groupOf))
+}
+
+// countUniqueGroupsClips is the FASE 2.4 Clip-aware counterpart to
+// service_test.go's legacy countUniqueGroups(string). It maps each
+// Clip to a key via the supplied projection function for partition
+// cardinality checks.
+func countUniqueGroupsClips(items []Clip, groupOf func(Clip) string) int {
+	seen := make(map[string]bool)
+	for _, item := range items {
+		seen[groupOf(item)] = true
+	}
+	return len(seen)
+}
+
+// TestInterleaveClips_DropsFailed pins the FASE 2.4 filter
+// behaviour: Failed clips are excluded from the interleaved output
+// (they are not Succeeded(), so they don't reach downstream
+// renderChunk). The test also exercises the empty-source-skip path
+// (source B is empty — should be silently skipped).
+func TestInterleaveClips_DropsFailed(t *testing.T) {
+	srcA := []Clip{
+		{Path: "A1", Title: "a", SourceID: "a", Status: CutItemStatusSucceeded},
+		{Path: "A2", Title: "a", SourceID: "a", Status: CutItemStatusFailed, Err: errors.New("x")},
+	}
+	srcB := []Clip{} // empty source — should be skipped
+	srcC := []Clip{
+		{Path: "C1", Title: "c", SourceID: "c", Status: CutItemStatusValidated},
+	}
+	out := InterleaveClips([][]Clip{srcA, srcB, srcC})
+	assert.Len(t, out, 2, "Failed clips + empty source groups must be excluded")
+	for _, c := range out {
+		assert.True(t, c.Succeeded(), "only Succeeded/Validated should survive")
+		assert.NotEqual(t, "A2", c.Path, "Failed clip A2 must not interleave")
+	}
 }
 
 func TestExtractVideoIDHandlesCommonYouTubeURLs(t *testing.T) {

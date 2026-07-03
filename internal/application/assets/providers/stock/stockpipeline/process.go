@@ -1,4 +1,4 @@
-// Package stockpipeline — process.go refactored (PR6, June 2026).
+// Package stockpipeline — process.go refactored (PR6 + FASE 2.4, July 2026).
 //
 // Pre-PR6: processSingleVideo reached directly into
 // `internal/infrastructure/media/ffmpeg::Processor`, constructed ffmpeg.CutJob
@@ -8,8 +8,16 @@
 //
 // Post-PR6: this file is PURE ORCHESTRATION. It computes deterministic
 // non-overlapping clip window offsets, hands a neutral `stock.CutRequest` to
-// the canonical `stock.VideoCutter` port, and uses `CutResult.ProducedPaths`
-// directly — no ffmpeg / process / os import for verification.
+// the canonical `stock.VideoCutter` port, and reads CutBatchResult directly
+// — no ffmpeg / process / os import for verification.
+//
+// FASE 2.4 (July 2026): the legacy parallel-array return shape
+// `([]paths, []titles, []sourceIDs, err)` is collapsed into a single
+// `[]Clip` slice. Each Clip carries Path/Title/SourceID/Status/SizeBytes/
+// DurationSec/Err in one struct, eliminating the producedSet-and-index
+// alignment logic the previous code paths relied on (processSingleVideo
+// simply iterates CutBatchResult.Items and projects into Clips — Items
+// already carry the canonical Outcome per JobID).
 //
 // Import-boundary invariant:
 //
@@ -33,13 +41,27 @@ import (
 
 // processSingleVideo downloads a single video source, then extracts and
 // normalizes short clips via the canonical stock.VideoCutter port. The
-// port encapsulates the batch-then-fallback-to-individual FFmpeg logic
-// and disk verification — the application layer stays free of ffmpeg
-// knowledge.
-func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs VideoSource, idx int, secsPerVideo int, clipDurOverride int, noAudio bool) ([]string, []string, []string, error) {
+// port encapsulates the batch-then-fallback-to-individual FFmpeg logic,
+// the per-job on-disk verification, and the ffprobe validation step —
+// the application layer stays free of ffmpeg knowledge.
+//
+// FASE 2.4 returns: ([]Clip, error). The Clip slice carries each
+// produced clip's Path + Title + SourceID + Status + SizeBytes +
+// DurationSec + Err. A non-nil error is surfaced only when the entire
+// batch failed (zero Items succeeded); partial-success calls return
+// nil error with a Clips slice mixing Succeeded / Validated / Failed
+// items so callers iterate the slice and self-route per Status.
+//
+// Backward-compat: callers that previously destructured into
+// `paths / titles / sourceIDs` parallel slices can substitute
+// `for _, c := range clips { paths = append(paths, c.Path); ... }`
+// — the Index / parallel-array contract is gone (single structured
+// slice replaces it) but the per-clip fields are still individually
+// extractable.
+func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs VideoSource, idx int, secsPerVideo int, clipDurOverride int, noAudio bool) ([]Clip, error) {
 	select {
 	case <-ctx.Done():
-		return nil, nil, nil, ctx.Err()
+		return nil, ctx.Err()
 	default:
 	}
 
@@ -72,12 +94,12 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		MergeFormat:     "mp4",
 	})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("yt-dlp download failed for %q: %w", vs.URL, err)
+		return nil, fmt.Errorf("yt-dlp download failed for %q: %w", vs.URL, err)
 	}
 
 	actualPath := staged.LocalPath
 	if actualPath == "" {
-		return nil, nil, nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
+		return nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
 	}
 	if info, statErr := os.Stat(actualPath); statErr == nil {
 		s.log.Info("video downloaded",
@@ -110,7 +132,6 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Int("planned_clips", numClips),
 	)
 
-	var clipTitles []string
 	usedOffsets := make(map[float64]bool)
 
 	maxStart := float64(secsPerVideo) - float64(clipDur)
@@ -119,6 +140,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	}
 
 	// ── Build the deterministic non-overlapping cut plan ─────────────
+	clipTitles := make([]string, 0, numClips)
 	jobs := make([]CutJob, 0, numClips)
 	for clipIdx := 0; clipIdx < numClips; clipIdx++ {
 		var offset float64
@@ -142,7 +164,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 	// ── Port delegation ──────────────────────────────────────────────
 	if s.cutter == nil {
-		return nil, nil, nil, fmt.Errorf("processSingleVideo: VideoCutter port is nil — was composition root build correct?")
+		return nil, fmt.Errorf("processSingleVideo: VideoCutter port is nil — was composition root build correct?")
 	}
 
 	s.log.Info("stock extractor: hand-off to VideoCutter port",
@@ -150,7 +172,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Int("clip_count", len(jobs)),
 	)
 
-	res, cutErr := s.cutter.Cut(ctx, CutRequest{
+	batch, cutErr := s.cutter.Cut(ctx, CutRequest{
 		SourcePath: actualPath,
 		Jobs:       jobs,
 		Codec:      v.Codec,
@@ -161,50 +183,64 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		SourceIdx:  idx,
 	})
 
-	// Blocco 4 (July 2026, audit P0 #4): the pre-Blocco-4 code
-	// accepted a cutter error as a warning and returned nil (false
-	// success) even when zero clips were produced. Fix:
-	//   - cutErr != nil && len(res.ProducedPaths) == 0 → hard error
-	//     (the cutter failed completely — caller must skip this video)
-	//   - cutErr != nil && len(res.ProducedPaths) > 0 → partial success
-	//     (some clips produced — continue with what we have)
-	//   - clipTitles is now filtered to match ProducedPaths so the
-	//     two slices stay aligned (pre-Blocco-4, clipTitles contained
-	//     entries for ALL planned jobs regardless of cutter outcome).
-	if cutErr != nil {
-		if len(res.ProducedPaths) == 0 {
-			return nil, nil, nil, fmt.Errorf("cutter failed for %q with zero clips produced: %w", vs.URL, cutErr)
+	// FASE 2.4 (July 2026, audit P0 #4 continuation): the legacy
+	// `producedSet` alignment map is GONE because the new contract
+	// is "every Job has a CutItemResult with JobID=j.OutputPath".
+	// The Items slice preserves input-Jobs order, so the per-clip
+	// title / sourceID projection is a single index-aligned loop.
+	sourceID := extractVideoID(vs.URL)
+	clips := make([]Clip, 0, len(batch.Items))
+	for i, item := range batch.Items {
+		if i >= len(clipTitles) {
+			// Defensive: if Items somehow has more entries than
+			// Jobs (shouldn't happen because the cutter contract
+			// is len(Items)==len(Jobs)), skip the overflow
+			// without crashing. The mai-nil invariant still
+			// guarantees we get len(Jobs) items.
+			break
 		}
-		// Partial success — align clipTitles with produced paths.
-		s.log.Warn("stock extractor: cutter reported partial / error",
-			zap.Int("video_index", idx),
-			zap.Int("clips_planned", len(jobs)),
-			zap.Int("clips_produced", len(res.ProducedPaths)),
-			zap.Error(cutErr),
-		)
+		clip := Clip{
+			Path:        item.OutputPath,
+			Title:       clipTitles[i],
+			SourceID:    sourceID,
+			Status:      item.Status,
+			SizeBytes:   item.SizeBytes,
+			DurationSec: item.DurationSec,
+			Err:         item.Err,
+		}
+		clips = append(clips, clip)
 	}
 
-	// Build a set of produced paths for O(1) lookup when filtering
-	// clipTitles. The pre-Blocco-4 code returned clipTitles for ALL
-	// planned jobs regardless of which OutputPaths the cutter actually
-	// produced; this misalignment broke downstream InterleaveClips
-	// when ProducedPaths was shorter than clipTitles.
-	producedSet := make(map[string]bool, len(res.ProducedPaths))
-	for _, p := range res.ProducedPaths {
-		producedSet[p] = true
-	}
-	alignedTitles := make([]string, 0, len(res.ProducedPaths))
-	for i, job := range jobs {
-		if producedSet[job.OutputPath] {
-			alignedTitles = append(alignedTitles, clipTitles[i])
+	if cutErr != nil {
+		// Batch-level error propagates only when zero clips
+		// succeeded (FFmpegCutter.batchErr convention). For a
+		// partial-success batch the top-level err is nil and
+		// FailedItems carries the per-clip reason; the caller
+		// iterates Clips and self-routes per Status without
+		// inspecting the err.
+		successful := 0
+		for _, c := range clips {
+			if c.Succeeded() {
+				successful++
+			}
 		}
+		if successful == 0 {
+			return nil, fmt.Errorf("cutter failed for %q with zero clips produced: %w", vs.URL, cutErr)
+		}
+		s.log.Warn("stock extractor: cutter reported partial / error (continuing with successful clips)",
+			zap.Int("video_index", idx),
+			zap.Int("clips_planned", len(jobs)),
+			zap.Int("clips_produced", successful),
+			zap.Int("clips_failed", len(clips)-successful),
+			zap.Error(cutErr),
+		)
 	}
 
 	s.log.Info("video processing finished",
 		zap.Int("video_index", idx),
 		zap.Int("clips_planned", len(jobs)),
-		zap.Int("clips_created", len(res.ProducedPaths)),
+		zap.Int("clips_created", len(clips)),
 		zap.String("source_url", vs.URL),
 	)
-	return res.ProducedPaths, alignedTitles, uniqueRepeat(extractVideoID(vs.URL), len(res.ProducedPaths)), nil
+	return clips, nil
 }
