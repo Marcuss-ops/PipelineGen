@@ -320,16 +320,17 @@ func TestSetIndexState_LastErrorSidecarClearsOnEmpty(t *testing.T) {
 }
 
 // TestSetIndexState_MultiStateTransitions pins that the
-// (transient → failure → pending → terminal) sequence writes
-// happen in order with no missed states. Final state is INDEXED,
-// written by setIndexedAt (not setIndexState — see panic guard
-// above).
+// (transient → failure → pending → transient → terminal) sequence
+// writes happen in order with no missed states.
+//
+// Task 2 (July 2026): updated to exercise the new granular states:
+// DISCOVERED → EMBEDDING → EMBEDDING_FAILED → INDEX_PENDING
+// → EMBEDDING → EMBEDDED → INDEXING → INDEXED.
 func TestSetIndexState_MultiStateTransitions(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestServiceForStateMachine(t, nil)
 
 	// Direct INSERT with source_version to satisfy the CAS fence.
-	// The state transitions will change index_state but leave source_version intact.
 	_, err := svc.db.ExecContext(ctx,
 		`INSERT INTO media_assets (id, metadata_json, index_state, source_version, file_hash) VALUES (?, '{}', 'DISCOVERED', ?, ?)`,
 		"clip-6", "sv-MULTI", "hash-FINAL",
@@ -338,20 +339,31 @@ func TestSetIndexState_MultiStateTransitions(t *testing.T) {
 		t.Fatalf("insert fixture: %v", err)
 	}
 
-	if err := svc.setIndexState(ctx, "clip-6", asset.StateIndexing, ""); err != nil {
-		t.Fatalf("setIndexState INDEXING: %v", err)
+	// Step 1: DISCOVERED → EMBEDDING (embedding generation starts)
+	if err := svc.setIndexState(ctx, "clip-6", asset.StateEmbedding, ""); err != nil {
+		t.Fatalf("setIndexState EMBEDDING: %v", err)
 	}
-	if err := svc.setIndexState(ctx, "clip-6", asset.StateIndexFailed, "transient-err"); err != nil {
-		t.Fatalf("setIndexState INDEX_FAILED: %v", err)
+	// Step 2: EMBEDDING → EMBEDDING_FAILED (embedding generation failed)
+	if err := svc.setIndexState(ctx, "clip-6", asset.StateEmbeddingFailed, "transient-err"); err != nil {
+		t.Fatalf("setIndexState EMBEDDING_FAILED: %v", err)
 	}
+	// Step 3: EMBEDDING_FAILED → INDEX_PENDING (waiting for retry)
 	if err := svc.setIndexState(ctx, "clip-6", asset.StateIndexPending, ""); err != nil {
 		t.Fatalf("setIndexState INDEX_PENDING: %v", err)
 	}
-	// setIndexedAt CAS fence requires index_state='INDEXING' — set it before the final call.
+	// Step 4: INDEX_PENDING → EMBEDDING (retry: embedding generation restarts)
+	if err := svc.setIndexState(ctx, "clip-6", asset.StateEmbedding, ""); err != nil {
+		t.Fatalf("setIndexState EMBEDDING (retry): %v", err)
+	}
+	// Step 5: EMBEDDING → EMBEDDED (embeddings saved to SQLite)
+	if err := svc.setIndexState(ctx, "clip-6", asset.StateEmbedded, ""); err != nil {
+		t.Fatalf("setIndexState EMBEDDED: %v", err)
+	}
+	// Step 6: EMBEDDED → INDEXING (Qdrant upsert begins)
 	if err := svc.setIndexState(ctx, "clip-6", asset.StateIndexing, ""); err != nil {
 		t.Fatalf("setIndexState INDEXING (pre-setIndexedAt): %v", err)
 	}
-	// setIndexedAt CAS fence: source_version="sv-MULTI" matches, index_state='INDEXING' matches.
+	// Step 7: INDEXING → INDEXED (CAS fence: source_version matches, index_state='INDEXING' matches)
 	if err := svc.setIndexedAt(ctx, "clip-6", "hash-FINAL", "sv-MULTI"); err != nil {
 		t.Fatalf("setIndexedAt: %v", err)
 	}
