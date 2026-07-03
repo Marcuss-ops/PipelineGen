@@ -2536,3 +2536,45 @@ wave_status:
       owner_capability: "internal/application/assets/providers/artlist + internal/application/clipresolver"
       status: pending
       deadline: 2026-08-15
+
+
+# ── PR-WIRE-SCRIPT-FIX-2026-07-04 — wire_script.go 10 syntax errors (pre-existing carry-forward, NOT ART-001 regression) ──
+# Regressor (parallel-agent commit): 7388c3858cbef069133ac950bf2ec94ef17d41d6
+# \"docs(scripts): P0 #4 audit closure -- parent_aggregator on TerminalFlip via narrow-port CAS fence\".
+# NOT touched by ART-001 (verified: `git show e5985003` + `c700123f` + `b6b00130` each have NO `internal/app/wire_script.go` in
+# the file-set). gofmt -d `internal/app/wire_script.go` returns a diff → MALFORMED, not semantic-only. 10 errors across 176 lines
+# span this is SEMANTIC DRIFT (multiple `func` keywords missing + multiple method receiver declarations broken + multiple
+# non-declaration statements outside function bodies) → far beyond workspace-rot 1-3 line typo. Per godlike/07 no-fake-availability
+# + AGENTS.md scope discipline: file this as PR-WIRE-SCRIPT-FIX-2026-07-04 with the 10-error diagnosis verbatim, NO production-code
+# edit in this commit. Unblocks Step 8 E2E retry once this PR lands.
+- id: PR-WIRE-SCRIPT-FIX-2026-07-04
+  status: pending
+  owner: "composition root (internal/app)"
+  deadline: 2026-07-04
+  exit_signal: false
+  exit_gate: |
+    wire_script.go syntax errors fixed (10 errors across lines 435, 499, 550, 558, 611 cleared) AND go build ./internal/app/... / go build ./... exit 0
+    AND go vet ./internal/app/... clean AND /tmp/pipelinegen binary builds AND Step 8 E2E confirms /api/artlist/stats returns
+    HTTP 2xx (or 503 on write endpoints where forward-pointer fields are still intentionally nil per ART-001 EXPAND-phase).
+    Per godlike/07, fix must be min-blast-radius atomic commit (workspace-rot restructuring target syntax only) — NOT rewrite.
+  linked_issues:
+    - id: wire_script.go-syntax-10errors-435-499-550-558-611
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-04
+    - id: wireScriptChildJobAuditP04-missing-func-keyword-line-435
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-04
+    - id: newScriptItemFanoutBrokerAdapter-missing-func-keyword-line-499
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-04
+    - id: wire_script.go-non-declaration-statement-line-550-and-558
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-04
+    - id: wire_script.go-method-no-receiver-line-611
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-04
