@@ -93,9 +93,9 @@ func finalizationRequestWithArtifact(lease finalization.Lease, data json.RawMess
 				MIMEType:      "image/png",
 				SizeBytes:     1234,
 				SHA256:        sha,
-				SourceVersion: 1,
-				Required:      true,
-				IdempotencyKey: "ik-" + sha,
+			SourceVersion: 1,
+			Requirement:   finalization.ArtifactRequirementRequired,
+			IdempotencyKey: "ik-" + sha,
 				Location: finalization.AssetLocation{
 					Provider: "drive",
 					FileID:   "drive-" + sha,
