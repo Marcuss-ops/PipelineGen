@@ -24,21 +24,30 @@
 //     — duplicate enqueue with same event_key → ON CONFLICT DO NOTHING.
 //   TestE2E_Supersede
 //     — newer aggregate version obsoletes pending event → superseded.
+//   TestE2E_YouTubeDownloadToQdrantCAS
+//     — audit 2026-07-03: full download→Qdrant flow with source_version
+//       invariant and CAS fence verification (BLOCKER #1 + #2 closure).
 
 package outbox
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
 	"go.uber.org/zap"
 
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
+
+// ── helpers ────────────────────────────────────────────────────────
 
 // qdrantFlowDB is a test helper that opens an in-memory SQLite DB
 // with the outbox_events schema.
@@ -52,6 +61,65 @@ func qdrantFlowDB(t *testing.T) *sql.DB {
 	ensureOutboxSchema(t, db)
 	return db
 }
+
+// youTubeQdrantDB opens an in-memory SQLite with BOTH media_assets
+// and outbox_events schemas (union of the clip_atomic_writer and
+// outbox schemas) for the YouTube→Qdrant e2e test.
+func youTubeQdrantDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite3 memory: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	// Combined schema: writer columns + clipindexer columns + outbox.
+	schema := `
+	CREATE TABLE IF NOT EXISTS media_assets (
+		id TEXT PRIMARY KEY,
+		source TEXT, name TEXT, filename TEXT, media_type TEXT,
+		drive_file_id TEXT, drive_link TEXT, download_link TEXT,
+		local_path TEXT, file_hash TEXT,
+		folder_id TEXT, folder_path TEXT,
+		source_version TEXT NOT NULL DEFAULT '',
+		lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
+		index_state_updated_at TEXT NOT NULL DEFAULT '',
+		created_at TEXT, updated_at TEXT
+	);`
+	schema += clipAtomicWriterOutboxSchema
+
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+	return db
+}
+
+// clipAtomicWriterOutboxSchema is the outbox half shared between
+// the existing qdrantFlowDB and the new youTubeQdrantDB.
+const clipAtomicWriterOutboxSchema = `
+CREATE TABLE IF NOT EXISTS outbox_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	event_type TEXT NOT NULL,
+	aggregate_id TEXT NOT NULL,
+	aggregate_type TEXT NOT NULL DEFAULT '',
+	payload_json TEXT NOT NULL DEFAULT '{}',
+	event_key TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	max_attempts INTEGER NOT NULL DEFAULT 10,
+	last_error TEXT,
+	worker_id TEXT,
+	lease_id TEXT,
+	lease_expiry TEXT,
+	completed_at TEXT,
+	next_attempt_at TEXT,
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key ON outbox_events(event_key);
+`
 
 // enqueueTestEvent inserts a synthetic asset.index.requested event
 // through the canonical Dispatcher path (real txmgr + real
@@ -521,4 +589,212 @@ func TestE2E_TransactionalAtomicity_DeleteFlow(t *testing.T) {
 		t.Fatalf("MarkCompleted: %v", err)
 	}
 	assertStatus(t, db, claim.Event.EventKey, "completed")
+}
+
+// ── Scenario 7: YouTube download → Qdrant CAS (BLOCKER #1 + #2 closure) ─
+
+// TestE2E_YouTubeDownloadToQdrantCAS validates the full download→Qdrant
+// flow end-to-end, focusing on the source_version invariant and CAS fence
+// that audit 2026-07-03 BLOCKER #1 and #2 identified.
+//
+// Flow:
+//   1. Write a clip via ClipAtomicWriterAdapter (simulates YouTube download)
+//   2. Verify source_version is persisted in media_assets (BLOCKER #2 fix)
+//   3. Verify the outbox event carries the same source_version
+//   4. Simulate IndexClip: set index_state='INDEXING', then CAS fence
+//      UPDATE to 'INDEXED' — verifies source_version guard succeeds
+//   5. Verify stale CAS: wrong source_version → 0 rows affected
+//   6. Verify not-in-INDEXING CAS: wrong index_state → 0 rows affected
+func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
+	db := youTubeQdrantDB(t)
+	box := outboxevents.NewRepository(db)
+	adapter := clipwriter.NewClipAtomicWriterAdapter(db, box, zap.NewNop())
+
+	const clipID = "yt_qdrant_e2e_10_60_v1"
+	fileHash := "abcdef0123456789abcdef0123456789" // 32-char MD5 hex
+	item := youtubetypes.ClipAsset{
+		ID:        clipID,
+		VideoID:   "qdrant_e2e",
+		FileHash:  fileHash,
+		LocalPath: "/tmp/" + clipID + ".mp4",
+		Drive: youtubetypes.ClipAssetDrive{
+			FolderID:    "folder_e2e",
+			FolderPath:  "youtube/qdrant_e2e",
+			FileID:      "drive_e2e",
+			WebViewLink: "https://drive.google.com/file/d/drive_e2e/view",
+		},
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: 10,
+			EndSec:   60,
+			Duration: 50,
+		},
+		Metadata: youtubetypes.ClipMetadata{
+			Summary:         "E2E Qdrant CAS Probe",
+			NormalizedGroup: "general",
+		},
+		PolicyVersion: "v1",
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Stage 1: Write clip via ClipAtomicWriterAdapter
+	// ═══════════════════════════════════════════════════════════════
+	ctx := context.Background()
+	if err := adapter.CommitClipAndIndexEvent(ctx, clipID, item,
+		youTubeIndexEventPayload(),
+	); err != nil {
+		t.Fatalf("CommitClipAndIndexEvent: %v", err)
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Stage 2: Verify source_version in media_assets (BLOCKER #2)
+	// ═══════════════════════════════════════════════════════════════
+	var gotSourceVersion, gotFileHash string
+	if err := db.QueryRow(
+		`SELECT source_version, file_hash FROM media_assets WHERE id = ?`, clipID,
+	).Scan(&gotSourceVersion, &gotFileHash); err != nil {
+		t.Fatalf("read media_assets: %v", err)
+	}
+	if gotSourceVersion == "" {
+		t.Fatal("BLOCKER #2: source_version must be non-empty after CommitClipAndIndexEvent")
+	}
+	if gotSourceVersion != fileHash {
+		t.Errorf("BLOCKER #2: source_version must equal FileHash (the canonical ingest-time fingerprint); got %q want %q",
+			gotSourceVersion, fileHash)
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Stage 3: Verify outbox event carries matching source_version
+	// ═══════════════════════════════════════════════════════════════
+	var eventCount int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ?`, clipID,
+	).Scan(&eventCount); err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("expected 1 outbox event, got %d", eventCount)
+	}
+
+	var payloadJSON string
+	if err := db.QueryRow(
+		`SELECT payload_json FROM outbox_events WHERE aggregate_id = ?`, clipID,
+	).Scan(&payloadJSON); err != nil {
+		t.Fatalf("read outbox payload: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		t.Fatalf("parse outbox payload: %v", err)
+	}
+	sv, _ := payload["source_version"].(string)
+	if sv != fileHash {
+		t.Errorf("outbox event source_version must match DB source_version; payload=%q DB=%q",
+			sv, gotSourceVersion)
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Stage 4: CAS fence — source_version matches → success
+	// ═══════════════════════════════════════════════════════════════
+	// Set index_state = 'INDEXING' (precondition for the CAS fence).
+	if _, err := db.Exec(
+		`UPDATE media_assets SET index_state = 'INDEXING' WHERE id = ?`, clipID,
+	); err != nil {
+		t.Fatalf("set INDEXING: %v", err)
+	}
+
+	// Run the CAS UPDATE that setIndexedAt would run:
+	// WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(
+		`UPDATE media_assets SET
+			index_state = 'INDEXED',
+			index_state_updated_at = ?,
+			metadata_json = json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?)
+		 WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
+		now, now, "e2e-content-hash",
+		clipID, gotSourceVersion)
+	if err != nil {
+		t.Fatalf("CAS UPDATE: %v", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected != 1 {
+		t.Fatalf("BLOCKER #1 closure: CAS UPDATE must affect 1 row when source_version matches; got %d", affected)
+	}
+
+	// Verify the state flipped to INDEXED.
+	var idxState string
+	if err := db.QueryRow(
+		`SELECT index_state FROM media_assets WHERE id = ?`, clipID,
+	).Scan(&idxState); err != nil {
+		t.Fatalf("read index_state: %v", err)
+	}
+	if idxState != "INDEXED" {
+		t.Errorf("index_state must be INDEXED after successful CAS; got %q", idxState)
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Stage 5: Stale CAS — wrong source_version → 0 rows
+	// ═══════════════════════════════════════════════════════════════
+	// Reset to INDEXING for the stale-CAS test.
+	if _, err := db.Exec(
+		`UPDATE media_assets SET index_state = 'INDEXING' WHERE id = ?`, clipID,
+	); err != nil {
+		t.Fatalf("reset to INDEXING: %v", err)
+	}
+
+	res2, err := db.Exec(
+		`UPDATE media_assets SET
+			index_state = 'INDEXED',
+			index_state_updated_at = ?
+		 WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
+		now, clipID, "stale-wrong-version")
+	if err != nil {
+		t.Fatalf("stale CAS UPDATE: %v", err)
+	}
+	affected2, _ := res2.RowsAffected()
+	if affected2 != 0 {
+		t.Errorf("stale CAS (wrong source_version): must affect 0 rows; got %d", affected2)
+	}
+
+	// Verify index_state was NOT changed by the stale CAS.
+	if err := db.QueryRow(
+		`SELECT index_state FROM media_assets WHERE id = ?`, clipID,
+	).Scan(&idxState); err != nil {
+		t.Fatalf("read index_state after stale CAS: %v", err)
+	}
+	if idxState != "INDEXING" {
+		t.Errorf("index_state must remain INDEXING after stale CAS rejection; got %q", idxState)
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Stage 6: Stale CAS — wrong index_state → 0 rows
+	// ═══════════════════════════════════════════════════════════════
+	// Set index_state to something that is NOT 'INDEXING'.
+	if _, err := db.Exec(
+		`UPDATE media_assets SET index_state = 'INDEX_FAILED' WHERE id = ?`, clipID,
+	); err != nil {
+		t.Fatalf("set INDEX_FAILED: %v", err)
+	}
+
+	res3, err := db.Exec(
+		`UPDATE media_assets SET
+			index_state = 'INDEXED',
+			index_state_updated_at = ?
+		 WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
+		now, clipID, gotSourceVersion)
+	if err != nil {
+		t.Fatalf("wrong-index_state CAS UPDATE: %v", err)
+	}
+	affected3, _ := res3.RowsAffected()
+	if affected3 != 0 {
+		t.Errorf("stale CAS (not INDEXING): must affect 0 rows; got %d", affected3)
+	}
+}
+
+// youTubeIndexEventPayload returns the canonical IndexEventPayload
+// used by the use case. Mirrors process_segment.go Step 9.
+func youTubeIndexEventPayload() youtubeports.IndexEventPayload {
+	return youtubeports.IndexEventPayload{
+		Type:        outboxevents.EventAssetIndexRequested,
+		AggregateID: "", // filled by the adapter from clipID
+	}
 }

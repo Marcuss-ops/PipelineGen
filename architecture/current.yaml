@@ -1698,9 +1698,9 @@
       owner_capability: internal/application/voiceover
       deadline: 2026-07-25
     - id: PR-SCRIPTING-CANONICAL-FRAMEWORK
-      status: pending
+      status: shipped
       owner_capability: internal/application/scripts
-      deadline: 2026-08-15
+      deadline: 2026-07-03
     - id: PR-SCRIPTING-BATCH-RETRY
       status: pending
       owner_capability: internal/application/scripts
