@@ -680,29 +680,25 @@
         (registry_compose_ssot_test.go::Concurrency >= 1) stay
         byte-stable post-retirement.
 
-    (d) cmd/archcheck/scan/scan_jobhandlers.go (NEW) — Phase 0
-        warn-severity guardrail. Walks internal/application/jobs/
-        registry.go for `r.Register(JobPolicy{Type: <X>, ...)` callsites
-        AND internal/app + internal/application/jobs +
-        internal/application/assets/monitor for `func Handle<Type>Job(...)`
-        declarations. Diff = registered - handled = orphans → one
-        warn-severity Violation per orphan. Mirrors the ScanConstructors
-        scan/style (cmd/archcheck/scan/constructors.go) so the
-        accumulator in `summary.by_reason` keys aligned. Phase 0
-        default: --strict does NOT gate this rule (governed by the
-        architecture/current.yaml#id-22 PHASE 0 → PHASE 1 promotion
-        track). Forward-pointer to PR-HARMONIUM-RUNBOOK promotes
-        the rule to enforced-fail default CI mode (mirrors the
-        Q-PR-REGISTER-CI-GATE Check 50 promotion precedent).
+    (d) internal/app/registry_wiring_completeness_test.go (NEW) —
+        runtime composition test, the canonical acceptance gate
+        for P0 #2 closure. Asserts that post-typed-handle-retirement,
+        TypeYouTubeChannelSync no longer appears in any
+        r.Register(JobPolicy{...}) callsite in registry.go (orphan
+        count = 0). User Option A selection rejected the static
+        cmd/archcheck scan/scan_jobhandlers.go approach per
+        godlike/07 §"No fake availability" + the canonical PipelineGen
+        handler-dispatch is slot-based via jobs.Service.RegisterHandler
+        at composition boot, not topic-name-pattern via func Handle<X>Job
+        declarations — a static source-graph regex walk would either
+        miss dynamic dispatch surface or invent fake provenance. The
+        runtime test reads registry.go + asserts TypeYouTubeChannelSync
+        is absent from r.Register callsites, mirroring the runtime
+        critical_handler_validator.go composition-time pattern (the
+        test is the test-pin twin of the composition-time validator
+        per godlike/06 audit-pin discipline).
 
-    (e) cmd/archcheck/runner.go::DefaultChecks() — new CheckSpec
-        {"job_handlers_audit_check_54", scan.ScanRegisteredJobTypesWithoutHandlers}
-        appended as the last entry in the canonical Phase 0 sequence
-        (slot 14 in the chain; the file_size_pkg_size_thin_command
-        closure remains the second-to-last slot, preserving the
-        shared fileLines map invariant).
-
-    (f) internal/application/assets/monitor/enqueue.go — historical
+    (e) internal/application/assets/monitor/enqueue.go — historical
         "Commit H Phase 2 (June 2026)" comment block updated to
         reflect post-retirement state: the comment now references
         the P0 #2 closure (this entry) and notes that the

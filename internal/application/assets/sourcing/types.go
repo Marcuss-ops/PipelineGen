@@ -65,6 +65,17 @@ type RegisterClipResult struct {
 	Language       string
 	RelatedClips   map[string]any
 	Message        string
+
+	// DeliveryStatus tracks the Drive publishing outcome (P0.2, July 2026).
+	// Replaces the pre-P0.2 ambiguous "OK=true for both Drive-success and
+	// Drive-failure". Canonical values: PUBLISHED / PUBLISH_FAILED /
+	// LOCAL_ONLY / PUBLISH_PENDING / PUBLISHING.
+	DeliveryStatus asset.DeliveryStatus `json:"delivery_status,omitempty"`
+
+	// RetryScheduled is true when Drive upload failed but a retry job has
+	// been enqueued (P0.2, July 2026). Set alongside
+	// DeliveryStatus=PUBLISH_FAILED.
+	RetryScheduled bool `json:"retry_scheduled,omitempty"`
 }
 
 // BatchClipResult is the result for a single clip in a batch registration.
