@@ -19,12 +19,14 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"go.uber.org/zap"
 )
 
@@ -48,10 +50,26 @@ type AggregatorDeps struct {
 // needs from the jobs broker. The production *appjobs.Service
 // satisfies this implicitly. Extracting it as an interface lets
 // tests inject stubs without the dispatcher + lease machinery.
+//
+// Audit 2026-07-03 P0 #1 (added TerminalFlip): the legacy Complete
+// surface is preserved for back-compat with non-aggregate callers
+// (e.g. pre-orchestrator handlers that delegate directly). The
+// aggregator's updateParentState routes aggregate-specific writes
+// through TerminalFlip, which is the canonical no-lease CAS path
+// for post-fan-out parent state transitions.
 type AggregatorJobsService interface {
 	List(ctx context.Context, filter job.Filter) ([]job.Job, error)
 	Get(ctx context.Context, id string) (*job.Job, error)
 	Complete(ctx context.Context, id string, result map[string]any) error
+	// TerminalFlip is the audit 2026-07-03 P0 #1 closure surface:
+	// the aggregator's no-lease CAS that re-finalises the parent
+	// (status, parent_state) atomically. targetStatus MUST be
+	// job.StatusSucceeded (when aggregate=succeeded/partial_success)
+	// or job.StatusFailed (when aggregate=failed_terminal). The
+	// underlying broker guards on (status, json_extract
+	// result_json.'$.parent_state' IN awaiting-values) so concurrent
+	// aggregator ticks and replays are first-to-act wins.
+	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string) error
 }
 
 // Compile-time assertion: *appjobs.Service satisfies AggregatorJobsService.
@@ -259,21 +277,60 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	return nil
 }
 
-// updateParentState merges the new parent_state into the result map
-// and persists it via jobsSvc.Complete. Idempotent: calling Complete
-// on an already-completed job safely overwrites the Result JSON.
+// updateParentState merges the new parent_state into the result map and
+// persists it via jobsSvc.TerminalFlip no-lease CAS (audit 2026-07-03 P0 #1
+// closure). The target status is derived from the aggregate state: a
+// ParentFailed aggregate flips the broker-level terminal from SUCCEEDED
+// (worker-emitted) to FAILED, eliminating the prior "broker status SUCCEEDED
+// + result.parent_state=failed" double-truth. Partial-success and succeeded
+// aggregates preserve broker.status=SUCCEEDED with the new parent_state
+// embedded in the result JSON.
+//
+// ErrAlreadyTerminalAggregate is treated as an idempotent replay no-op
+// (another tick already landed the flip on the prior interval); we
+// deliberately do NOT log at warn-level — the contract is godlike/07
+// no-fake-success, not silent-degrade (godlike/08 fail-closed posture:
+// the message IS the source of truth, no further action required).
+//
+// Other errors (ErrAggregateCASConflict, infra-level) bubble up at warn-level
+// for operator dashboards; the next tick will retry and may re-classify
+// if children have moved terminal in the meantime.
+//
+// godlike/06 SSOT: this is the SINGLE canonical writer of post-fan-out
+// parent (status, parent_state) tuples. The legacy Complete path retains
+// its lease-protected semantics for worker-driven completions only.
 func (a *ParentAggregator) updateParentState(ctx context.Context, parentJobID string, resultMap map[string]any, newPS voiceover.ParentState) {
 	resultMap["parent_state"] = string(newPS)
-	if err := a.deps.JobsSvc.Complete(ctx, parentJobID, resultMap); err != nil {
-		a.deps.Logger.Warn("ParentAggregator: Complete failed",
+	// Audit 2026-07-03 P0 #1: route the aggregate state to the broker
+	// terminal. ParentFailed means "all children definitively failed",
+	// which we MUST surface as broker.status=FAILED (not as a SUCCEEDED
+	// broker-status + result.parent_state=failed double-truth).
+	targetStatus := job.StatusSucceeded
+	errMsg := ""
+	if newPS == voiceover.ParentFailed {
+		targetStatus = job.StatusFailed
+		errMsg = "parent aggregate: all children definitively failed (audit 2026-07-03 P0 #1 closure)"
+	}
+	if err := a.deps.JobsSvc.TerminalFlip(ctx, parentJobID, targetStatus, resultMap, errMsg); err != nil {
+		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
+			// Idempotent replay: another tick already finalised. Quiet no-op
+			// — the canonical flip landed, the second call is a no-op.
+			a.deps.Logger.Info("ParentAggregator: parent already finalised (replay no-op)",
+				zap.String("parent_job_id", parentJobID),
+				zap.String("parent_state", string(newPS)))
+			return
+		}
+		a.deps.Logger.Warn("ParentAggregator: TerminalFlip failed",
 			zap.String("parent_job_id", parentJobID),
+			zap.String("target_status", string(targetStatus)),
 			zap.String("new_parent_state", string(newPS)),
 			zap.Error(err))
 		return
 	}
 	a.deps.Logger.Info("ParentAggregator: parent state transition",
 		zap.String("parent_job_id", parentJobID),
-		zap.String("parent_state", string(newPS)))
+		zap.String("parent_state", string(newPS)),
+		zap.String("target_status", string(targetStatus)))
 }
 
 // extractChildJobIDs reads child_job_ids from a parent result map.
