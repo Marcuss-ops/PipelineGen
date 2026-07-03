@@ -46,7 +46,6 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -76,19 +75,6 @@ import (
 // The single-method surface here is the canonical F3.14 end-state; future
 // additions should be justified against drive.Reader / delivery.Publisher
 // / drive.FileLifecycle ownerships before they land here.
-// ErrAmbiguousDriveFolder is the canonical sentinel returned when
-// a post-create re-lookup finds more than one non-trashed folder
-// with the same name under the same parent on Drive. This is the
-// folder-level parallel to ErrAmbiguousDriveFile for files.
-//
-// P0.7 (July 2026): the pre-fix findOrCreateFolder created a folder
-// and returned created.Id without checking whether a cross-process
-// race produced a duplicate. The re-lookup after Create now detects
-// the >1 case and surfaces this sentinel so callers can fail-closed
-// rather than silently returning a folder ID that may collide with
-// another instance's folder. Callers errors.Is against this sentinel.
-var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multiple non-trashed folders with the same name+parent exist on Drive")
-
 type DriveFolderManagerAdapter struct {
 	svc *driveapi.Service
 	log *zap.Logger
@@ -350,7 +336,10 @@ func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookup
 		// empty List is what surfaces "doesn't exist" to the caller.
 		id, err := retry.DoWithValue(ctx, func() (string, error) {
 			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-			return firstFolderID(list), retry.ClassifyGoogleAPIError(lerr)
+			if lerr != nil {
+				return "", retry.ClassifyGoogleAPIError(lerr)
+			}
+			return firstFolderID(list)
 		}, retry.Options{
 			MaxAttempts:    folderLookupMaxAttempts,
 			InitialBackoff: folderLookupInitialBackoff,
@@ -374,15 +363,25 @@ func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookup
 	}
 }
 
-// firstFolderID returns the first folder ID from a Drive List result,
-// or "" when the list is nil/empty. Used by newDefaultFolderLookup to
-// map a *driveapi.FileList to the seam's string return value ("" =
-// "doesn't exist", non-empty = "exists with this ID").
-func firstFolderID(list *driveapi.FileList) string {
+// firstFolderID returns the single folder ID from a Drive List result.
+// Returns ("", nil) when the list is nil/empty ("doesn't exist").
+// Returns ("", ErrAmbiguousDriveFolder) when more than one non-trashed
+// folder matches (fail-closed — never silently pick the first match on
+// ambiguous state). The P0.8 upgrade mirrors the ErrAmbiguousDriveFile
+// pattern already active for files (uploader.go:FindFileByName returns
+// ALL matches; the caller detects len > 1).
+//
+// Used by newDefaultFolderLookup (folder_manager.go) and
+// newAdminDefaultLookup (admin.go) to map a *driveapi.FileList to
+// the seam's (id, error) return value.
+func firstFolderID(list *driveapi.FileList) (string, error) {
 	if list == nil || len(list.Files) == 0 {
-		return ""
+		return "", nil
 	}
-	return list.Files[0].Id
+	if len(list.Files) > 1 {
+		return "", ErrAmbiguousDriveFolder
+	}
+	return list.Files[0].Id, nil
 }
 
 // findOrCreateFolder looks for a folder under parentID with the given

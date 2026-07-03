@@ -239,3 +239,54 @@ func TestEnsureFolder_SingleflightCoalescesConcurrentCalls(t *testing.T) {
 		t.Errorf("expected fewer than %d lookup calls under singleflight (got %d) — some coalescing must occur", numGoroutines, calls)
 	}
 }
+
+// ── P0.8 tests ───────────────────────────────────────────────────
+
+// TestFirstFolderID_SingleFolder_ReturnsID pins the P0.8 contract:
+// when a Drive List returns exactly one match, firstFolderID returns
+// that folder ID with no error.
+func TestFirstFolderID_SingleFolder_ReturnsID(t *testing.T) {
+	list := &driveapi.FileList{
+		Files: []*driveapi.File{
+			{Id: "single-folder-id", Name: "My Folder"},
+		},
+	}
+
+	got, err := firstFolderID(list)
+	require.NoError(t, err, "single-folder list must return no error")
+	require.Equal(t, "single-folder-id", got, "must return the single folder ID")
+}
+
+// TestFirstFolderID_TwoFolders_ReturnsTypedAmbiguousError pins the
+// P0.8 fail-closed contract: when a Drive List returns more than one
+// match, firstFolderID MUST surface ErrAmbiguousDriveFolder (typed
+// sentinel, detectable via errors.Is) and return an empty string.
+func TestFirstFolderID_TwoFolders_ReturnsTypedAmbiguousError(t *testing.T) {
+	list := &driveapi.FileList{
+		Files: []*driveapi.File{
+			{Id: "folder-a", Name: "Duplicate Folder"},
+			{Id: "folder-b", Name: "Duplicate Folder"},
+		},
+	}
+
+	got, err := firstFolderID(list)
+	require.Error(t, err, "two-folder list must return an error (fail-closed)")
+	require.True(t, errors.Is(err, ErrAmbiguousDriveFolder),
+		"the error must be detectable via errors.Is against ErrAmbiguousDriveFolder")
+	require.Empty(t, got, "no folder ID must be returned on ambiguity")
+}
+
+// TestFirstFolderID_EmptyList_ReturnsEmpty pins the pre-existing
+// contract: nil or empty list returns ("", nil) — "doesn't exist".
+func TestFirstFolderID_EmptyList_ReturnsEmpty(t *testing.T) {
+	t.Run("nil list", func(t *testing.T) {
+		got, err := firstFolderID(nil)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+	t.Run("empty files", func(t *testing.T) {
+		got, err := firstFolderID(&driveapi.FileList{Files: []*driveapi.File{}})
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+}
