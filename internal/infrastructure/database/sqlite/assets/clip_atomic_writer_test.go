@@ -12,7 +12,8 @@
 //  1. Happy path: CommitClipAndIndexEvent on a fresh ledger inserts
 //     exactly ONE media_assets row + ONE outbox_events row in one
 //     tx, and the schema_version literal matches
-//     outboxevents.ReindexEnvelopeV1Schema.
+//     outboxevents.ReindexEnvelopeV1Schema. source_version is
+//     persisted in the media_assets row (BLOCKER #2 closure).
 //  2. Idempotency: a second call with the same clipID + same
 //     FileHash-derived sourceVersion collapses the outbox half via
 //     ON CONFLICT(event_key) DO NOTHING. media_assets row is
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     drive_file_id TEXT, drive_link TEXT, download_link TEXT,
     local_path TEXT, file_hash TEXT,
     folder_id TEXT, folder_path TEXT,
+    source_version TEXT NOT NULL DEFAULT '',
     lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     created_at TEXT, updated_at TEXT
 );
@@ -163,15 +165,15 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 		t.Fatalf("CommitClipAndIndexEvent happy path: %v", err)
 	}
 
-	// Verify media_assets row.
+	// Verify media_assets row (BLOCKER #2: source_version now persisted).
 	var (
-		gotName, gotFileHash, gotLocalPath, gotLifecycle string
-		gotDriveFileID, gotDriveLink                     string
+		gotName, gotFileHash, gotLocalPath, gotSourceVersion, gotLifecycle string
+		gotDriveFileID, gotDriveLink                                       string
 	)
 	row := db.QueryRow(`
-		SELECT name, file_hash, local_path, drive_file_id, drive_link, lifecycle_state
+		SELECT name, file_hash, local_path, drive_file_id, drive_link, source_version, lifecycle_state
 		FROM media_assets WHERE id = ?`, clipID)
-	if err := row.Scan(&gotName, &gotFileHash, &gotLocalPath, &gotDriveFileID, &gotDriveLink, &gotLifecycle); err != nil {
+	if err := row.Scan(&gotName, &gotFileHash, &gotLocalPath, &gotDriveFileID, &gotDriveLink, &gotSourceVersion, &gotLifecycle); err != nil {
 		t.Fatalf("scan media_assets row: %v", err)
 	}
 	if gotName != item.Metadata.Summary {
@@ -188,6 +190,15 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	}
 	if gotDriveLink != item.Drive.WebViewLink {
 		t.Errorf("drive_link: want %q got %q", item.Drive.WebViewLink, gotDriveLink)
+	}
+	// BLOCKER #2 closure: source_version must be non-empty and must
+	// match what deriveSourceVersion computes (asset.FileHash when
+	// non-empty). The clipindexer's CAS fence reads this column.
+	if gotSourceVersion == "" {
+		t.Errorf("BLOCKER #2: source_version must be non-empty after CommitClipAndIndexEvent (CAS fence starves on empty)")
+	}
+	if gotSourceVersion != item.FileHash {
+		t.Errorf("BLOCKER #2: source_version must equal FileHash when FileHash is non-empty; want %q got %q", item.FileHash, gotSourceVersion)
 	}
 	if gotLifecycle != "ACTIVE" {
 		t.Errorf("lifecycle_state: want ACTIVE got %q", gotLifecycle)

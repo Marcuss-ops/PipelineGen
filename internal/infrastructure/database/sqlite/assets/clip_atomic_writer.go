@@ -23,13 +23,21 @@
 // Transaction shape (canonical PR-C PR-VO-A3 pattern):
 //
 //	BEGIN
-//	UPSERT media_assets SET  ... (id=clipID, lifecycle_state='ACTIVE')
+//	UPSERT media_assets SET  ... (id=clipID, lifecycle_state='ACTIVE',
+//	                                  source_version=deriveSourceVersion(...))
 //	BUILD  eventKey, payload = BuildReindexEnvelopeV1(
 //	          clipID, targetSchema="asset.index.requested.v1",
 //	          sourceVersion=deriveSourceVersion(clipID, asset.FileHash, asset.PolicyVersion),
 //	          requestedAt=now)
 //	INSERT outbox_events (...) ON CONFLICT(event_key) WHERE !='' DO NOTHING
 //	COMMIT
+//
+// Audit 2026-07-03 BLOCKER #2 closure: source_version is now written
+// to BOTH the media_assets.source_version column (via upsertClipInTx)
+// AND the outbox event envelope (BuildReindexEnvelopeV1). The CAS
+// fence in clipindexer.setIndexedAt reads source_version from the
+// column; before this fix the column was always '' (default) while
+// the event carried the real value — the CAS fence starved.
 //
 // Idempotency contracts (mirrored from outboxevents.BuildReindexEnvelopeV1):
 //   - eventKey shaped "reconcile:reindex:<assetID>:<schema>:<source>".
@@ -47,7 +55,7 @@
 //     MD5(clipID + policyVersion) so the event_key remains stable
 //     across retries.
 //
-// Column projection (10 fields): the canonical ClipAsset → media_assets
+// Column projection (11 fields): the canonical ClipAsset → media_assets
 // surface. LIVE state is updated_at + updated-once fields; lifecycle_state
 // stays 'ACTIVE' (the canonical PR-C lifecycle) — soft-delete is delegated
 // to LifecycleService. We intentionally do NOT include the metadata_json
@@ -145,18 +153,21 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		}
 	}()
 
-	// ── 2) UPSERT media_assets
+	// ── 2) UPSERT media_assets (BLOCKER #2 closure: source_version
+	//     is now written to the DB column, not just the outbox envelope).
 	nowStr := w.now().UTC().Format(time.RFC3339)
-	if err := upsertClipInTx(ctx, tx, clipID, asset, nowStr); err != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: upsert: %w", err)
-	}
-
-	// ── 3) Build canonical v1 envelope
+	// Compute before both UPSERT + outbox so both surfaces agree on
+	// the same sourceVersion — invariant enforced by the test.
 	policyVersion := asset.PolicyVersion
 	if policyVersion == "" {
 		policyVersion = derivePolicyVersion(clipID)
 	}
 	sourceVersion := deriveSourceVersion(clipID, asset.FileHash, policyVersion)
+	if err := upsertClipInTx(ctx, tx, clipID, asset, sourceVersion, nowStr); err != nil {
+		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: upsert: %w", err)
+	}
+
+	// ── 3) Build canonical v1 envelope
 	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(
 		clipID,
 		outboxevents.ReindexEnvelopeV1Schema,
@@ -224,11 +235,13 @@ func isTerminalOutboxStatus(status string) bool {
 	return status == "dead_letter" || status == outboxevents.SupersedeStatus
 }
 
-// upsertClipInTx writes the canonical 10-column clip row shape into
-// media_assets inside the caller's tx. The projection reads from
-// ClipAsset's nested structs (Drive, Coordinates, Metadata) per the
-// Commit 2 #6 verdict mandate.
-func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtubetypes.ClipAsset, nowStr string) error {
+// upsertClipInTx writes the canonical 11-column clip row shape into
+// media_assets inside the caller's tx. Audit 2026-07-03 BLOCKER #2
+// closure: source_version is now included in both INSERT and
+// ON CONFLICT DO UPDATE, matching the outbox event's source_version
+// so the CAS fence in clipindexer.setIndexedAt can read a non-empty
+// value.
+func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtubetypes.ClipAsset, sourceVersion, nowStr string) error {
 	if tx == nil {
 		return errors.New("upsertClipInTx: tx is nil")
 	}
@@ -238,8 +251,9 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 			drive_file_id, drive_link, download_link,
 			local_path, file_hash,
 			folder_id, folder_path,
+			source_version,
 			lifecycle_state, updated_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -251,6 +265,7 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 			file_hash = excluded.file_hash,
 			folder_id = excluded.folder_id,
 			folder_path = excluded.folder_path,
+			source_version = excluded.source_version,
 			updated_at = excluded.updated_at
 	`,
 		clipID,
@@ -265,6 +280,7 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		asset.FileHash,
 		asset.Drive.FolderID,
 		asset.Drive.FolderPath,
+		sourceVersion,
 		nowStr,
 		nowStr,
 	)
