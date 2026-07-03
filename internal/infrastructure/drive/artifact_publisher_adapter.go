@@ -1,0 +1,263 @@
+// Package drive — artifact_publisher_adapter.go (P0.4, July 2026).
+//
+// ArtifactPublisherAdapter is the canonical bridge between the
+// domain-level finalization.PublisherPort and the application-level
+// delivery.Publisher. It:
+//
+//  1. Maps finalization.ArtifactKind → delivery.DestinationKey
+//     (deterministic switch so every artifact kind routes to the
+//     correct Drive destination).
+//
+//  2. Verifies the artifact's SHA-256 matches the on-disk file
+//     (defence-in-depth: a mutated-on-disk file or a file moved
+//     between verification and upload MUST NOT be uploaded with the
+//     wrong hash — the verify-before-publish gate catches drift).
+//
+//  3. Threads VerifiedArtifact.IdempotencyKey into PublishRequest
+//     with ConflictPolicy=ConflictSkip so the Drive-side dedup
+//     (filename-based + description-idempotency-key compound) can
+//     collapse retries into a PublishActionSkipped without
+//     re-uploading identical content.
+//
+//  4. Converts delivery.PublishResult → finalization.AssetLocation
+//     (the canonical wire format the ArtifactPreparation.Prepare
+//     expects for building PublishedArtifact).
+//
+// godlike/06 SSOT: this adapter is the ONE canonical bridge between
+// finalization → delivery. Every capability that needs to publish a
+// VerifiedArtifact to Drive MUST go through this adapter (or a
+// structurally identical one that satisfies the same port). No
+// capability may hand-wire delivery.Publisher.Publish directly.
+//
+// Compile-time assertion:
+//
+//	var _ finalization.PublisherPort = (*ArtifactPublisherAdapter)(nil)
+//
+// ensures that future drift on the PublisherPort signature is a build
+// failure, not a runtime panic.
+package drive
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+)
+
+// ── Sentinel errors ─────────────────────────────────────────────────
+
+// ErrArtifactKindUnmapped is returned when a VerifiedArtifact.Kind
+// has no corresponding delivery.DestinationKey. The caller MUST
+// either add the mapping here or route the artifact through an
+// alternate publisher.
+var ErrArtifactKindUnmapped = errors.New("artifact publisher: artifact kind has no Drive destination mapping")
+
+// ErrArtifactHashMismatch is returned when the on-disk file's SHA-256
+// does not match the VerifiedArtifact.SHA256. This is a defence-in-
+// depth gate: the artifact was verified locally before being handed
+// to this publisher; if the hash diverges, the file was mutated or
+// moved between verification and upload.
+var ErrArtifactHashMismatch = errors.New("artifact publisher: on-disk SHA-256 does not match VerifiedArtifact.SHA256")
+
+// ErrArtifactPublisherNotConfigured is returned when the adapter
+// was constructed with a nil Publisher (composition-time wiring gap).
+var ErrArtifactPublisherNotConfigured = errors.New("artifact publisher: delivery.Publisher is nil (composition-time wiring gap)")
+
+// ── Adapter ─────────────────────────────────────────────────────────
+
+// ArtifactPublisherAdapter implements finalization.PublisherPort by
+// wrapping delivery.Publisher.
+//
+// Drive cutover P0.4 (July 2026): this adapter supersedes the
+// previously-hand-wired deliveryToFinalizerPublisherAdapter in
+// internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go
+// (which hardcoded DestinationStock and skipped SHA-256 verification).
+// The per-kind mapping + verify-before-publish gate make this the
+// canonical upload surface for ALL capabilities.
+type ArtifactPublisherAdapter struct {
+	pub delivery.Publisher
+	log *zap.Logger
+}
+
+// Compile-time assertion: adapter satisfies finalization.PublisherPort.
+var _ finalization.PublisherPort = (*ArtifactPublisherAdapter)(nil)
+
+// NewArtifactPublisherAdapter creates the canonical adapter. Returns
+// an adapter even when pub is nil (the nil-receiver guard on Publish
+// surfaces ErrArtifactPublisherNotConfigured rather than a nil-pointer
+// panic — the same fail-closed pattern as C6 Adapter).
+func NewArtifactPublisherAdapter(pub delivery.Publisher, log *zap.Logger) *ArtifactPublisherAdapter {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &ArtifactPublisherAdapter{pub: pub, log: log}
+}
+
+// Publish implements finalization.PublisherPort.
+//
+// Steps:
+//  1. Verify SHA-256 of local file matches VerifiedArtifact.SHA256.
+//  2. Map ArtifactKind → Delivery.DestinationKey.
+//  3. Build delivery.PublishRequest with ConflictSkip + Description
+//     carrying IdempotencyKey (Drive-side dedup).
+//  4. Delegate to delivery.Publisher.Publish.
+//  5. Convert delivery.PublishResult → finalization.AssetLocation.
+func (a *ArtifactPublisherAdapter) Publish(
+	ctx context.Context,
+	artifact finalization.VerifiedArtifact,
+) (finalization.AssetLocation, error) {
+	if a.pub == nil {
+		return finalization.AssetLocation{}, ErrArtifactPublisherNotConfigured
+	}
+
+	// Step 1: Verify content hash (defence-in-depth).
+	if err := a.verifySHA256(artifact); err != nil {
+		return finalization.AssetLocation{}, err
+	}
+
+	// Step 2: Map kind → destination.
+	destKey, err := mapKindToDestination(artifact.Kind)
+	if err != nil {
+		return finalization.AssetLocation{}, err
+	}
+
+	// Step 3: Build publish request with idempotency threading.
+	req := delivery.PublishRequest{
+		Destination:    destKey,
+		LocalPath:      artifact.LocalPath,
+		Filename:       artifact.Filename,
+		Description:    artifact.IdempotencyKey,
+		AssetID:        artifact.ArtifactID,
+		ConflictPolicy: delivery.ConflictSkip, // Drive-side dedup on (filename, description)
+	}
+
+	// Step 4: Delegate to canonical Drive publisher.
+	result, err := a.pub.Publish(ctx, req)
+	if err != nil {
+		return finalization.AssetLocation{},
+			fmt.Errorf("artifact publisher: publish %s (kind=%s dest=%s): %w",
+				artifact.ArtifactID, artifact.Kind, destKey, err)
+	}
+
+	// Step 5: Convert delivery.PublishResult → finalization.AssetLocation.
+	loc := finalization.AssetLocation{
+		Provider:     "drive",
+		FileID:       result.FileID,
+		WebViewLink:  result.WebViewLink,
+		DownloadLink: result.DownloadLink,
+		Checksum:     result.MD5Checksum,
+		FolderID:     result.FolderID,
+		FolderPath:   result.FolderPath,
+		Action:       translatePublishAction(result.Action),
+	}
+
+	a.log.Info("artifact published to Drive",
+		zap.String("artifact_id", artifact.ArtifactID),
+		zap.String("kind", string(artifact.Kind)),
+		zap.String("dest", string(destKey)),
+		zap.String("file_id", result.FileID),
+		zap.String("action", string(result.Action)),
+	)
+
+	return loc, nil
+}
+
+// ── Kind → DestinationKey mapping ───────────────────────────────────
+
+// mapKindToDestination maps a finalization.ArtifactKind to a
+// delivery.DestinationKey. Returns ErrArtifactKindUnmapped for
+// unrecognised kinds so callers fail loudly rather than silently
+// routing to a default destination.
+//
+// Mapping table (P0.4, July 2026):
+//
+//	KindVideo       → DestinationYouTubeClip (default for video)
+//	KindImage       → DestinationImage
+//	KindAudio       → DestinationYouTubeClip (audio clips also route to clips)
+//	KindDocument    → DestinationDocument
+//	KindScript      → DestinationScript
+//	KindVoiceover   → DestinationVoiceover
+//	KindSoundEffect → DestinationSoundEffect
+//	KindMetadata    → DestinationStock (metadata artifacts from stock pipeline)
+//	KindArchive     → DestinationStock (archive artifacts from stock pipeline)
+func mapKindToDestination(kind finalization.ArtifactKind) (delivery.DestinationKey, error) {
+	switch kind {
+	case finalization.KindVideo:
+		return delivery.DestinationYouTubeClip, nil
+	case finalization.KindImage:
+		return delivery.DestinationImage, nil
+	case finalization.KindAudio:
+		return delivery.DestinationYouTubeClip, nil
+	case finalization.KindDocument:
+		return delivery.DestinationDocument, nil
+	case finalization.KindScript:
+		return delivery.DestinationScript, nil
+	case finalization.KindVoiceover:
+		return delivery.DestinationVoiceover, nil
+	case finalization.KindSoundEffect:
+		return delivery.DestinationSoundEffect, nil
+	case finalization.KindMetadata:
+		return delivery.DestinationStock, nil
+	case finalization.KindArchive:
+		return delivery.DestinationStock, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrArtifactKindUnmapped, kind)
+	}
+}
+
+// ── SHA-256 verification ────────────────────────────────────────────
+
+// verifySHA256 computes the SHA-256 hash of the file at
+// artifact.LocalPath and compares it against artifact.SHA256.
+// Returns ErrArtifactHashMismatch if they differ.
+func (a *ArtifactPublisherAdapter) verifySHA256(artifact finalization.VerifiedArtifact) error {
+	f, err := os.Open(artifact.LocalPath)
+	if err != nil {
+		return fmt.Errorf("artifact publisher: cannot open %s for hash verification: %w", artifact.LocalPath, err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("artifact publisher: cannot read %s for hash verification: %w", artifact.LocalPath, err)
+	}
+	actual := hex.EncodeToString(h.Sum(nil))
+
+	if actual != artifact.SHA256 {
+		return fmt.Errorf("%w: artifact=%s expected=%s actual=%s",
+			ErrArtifactHashMismatch, artifact.ArtifactID, artifact.SHA256, actual)
+	}
+	return nil
+}
+
+// ── Action translation ──────────────────────────────────────────────
+
+// translatePublishAction converts delivery.PublishAction to
+// finalization.PublishAction.
+//
+// Mirrors the existing translateDeliveryAction in
+// stockpipeline/run_orchestrator.go (pre-P0.4 hand-wired adapter).
+// Post-P0.4, the stockpipeline adapter is retired; this is the
+// canonical translation point.
+func translatePublishAction(a delivery.PublishAction) finalization.PublishAction {
+	switch a {
+	case delivery.PublishActionCreated:
+		return finalization.PublishCreated
+	case delivery.PublishActionUpdated:
+		return finalization.PublishUpdated
+	case delivery.PublishActionSkipped:
+		return finalization.PublishSkipped
+	case delivery.PublishActionRenamed:
+		return finalization.PublishRenamed
+	default:
+		return finalization.PublishAction("")
+	}
+}
