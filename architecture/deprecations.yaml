@@ -17,6 +17,83 @@
 
 deprecations:
 
+  # ── 17. P0-3-GENERATION-RESPONSE — internal/application/generation/response.go physical git-rm ──
+  # Wave 3 CONTRACT of audit 2026-07-03 P0 #3 (Single canonical scripting framework,
+  # July 2026). internal/application/scripts/apiutil is the canonical SSOT for the
+  # wire envelope (Mode / ModeSync / ModeAsync / Response[T] / Sync[T] / Async[T])
+  # per godlike/06 "one owner per fact". The legacy carrier
+  # internal/application/generation/response.go is git-rm'd post-Wave-1-BACKFILL
+  # migration of the 3 envelope callers (books/process, books/process_drive,
+  # lessons/generate). Wave 2 CUTOVER's ErrDeprecatedWireEnvelope fail-closed
+  # was deliberately skipped (user-jump from BACKFILL to CONTRACT): with a
+  # planned git-rm the deprecation semantics are moot — the file physically
+  # disappears and no consumer can reach it. Per godlike/07 §"Migration
+  # sequence", zero pre-removal callers + canonical replacement present +
+  # physical-removal target → EXPAND→BACKFILL→CONTRACT (skip CUTOVER).
+  # ────────────────────────────────────────────────────────────────────────
+  - id: P0-3-GENERATION-RESPONSE
+    owner_capability: internal/application/generation (legacy) + internal/application/scripts/apiutil (canonical)
+    exact_symbol: |
+      Type aliases `type Response[T any] = apiutil.Response[T]` +
+      `type Mode = apiutil.Mode` + `const ModeSync = apiutil.ModeSync` +
+      `const ModeAsync = apiutil.ModeAsync` + the Sync[T] / Async[T]
+      constructor functions (delegate to aliased struct fields).
+      The full-file git-rm of internal/application/generation/response.go
+      removes both the type-alias redirects AND the function constructors.
+    file: internal/application/generation/response.go
+    file_line: ALL (whole-file git-rm)
+    replacement: |
+      internal/application/scripts/apiutil (canonical SSOT for the wire envelope
+      surface). Importers in production code:
+        - internal/application/books/process_usecase.go
+        - internal/application/books/process_drive_usecase.go
+        - internal/application/lessons/generate_usecase.go
+      All migrated to `apiutil.Response[T]` / `apiutil.Sync[T]` / `apiutil.Async[T]`
+      at Wave 1 BACKFILL (commit landed on origin/main). Zero live references
+      to the legacy carrier remain in production code; the file is safe to
+      physically remove (git-rm) per godlike/07 §"No fake availability".
+    introduction_date: 2026-05
+    removal_date: 2026-07-03
+    tracking_issue: "PR-SCRIPTING-CANONICAL-FRAMEWORK (linked in architecture/current.yaml#linked_issues[PR-SCRIPTING-CANONICAL-FRAMEWORK], status shipped / deadline 2026-07-03). Wave 0 EXPAND canonical home at commit 66b93a4f. Wave 1 BACKFILL 3-callsite migration (origin/main tip). Wave 3 CONTRACT this record."
+    compatibility_test: |
+      Five-layer defence for the git-rm shape:
+        (a) `git ls-files internal/application/generation/response.go` returns 0.
+        (b) `rg 'generation\.Response\b|generation\.Sync\b|generation\.Async\b'
+            --type go internal/` returns zero hits post-Wave-1-BACKFILL migration.
+        (c) `go build ./...` exits 0 post-removal.
+        (d) `go vet ./internal/application/...` exits 0.
+        (e) apiutil package continues to compile clean; Wave 0 EXPAND's
+            byte-identical shape preserved through BACKFILL type-aliases
+            and into CONTRACT physical removal.
+    usage_metric: |
+      Pre-Wave-3: 1 legacy file live + 0 production envelope-symbol callers.
+      Post-Wave-3: 0 (whole-file git-rm). Net delta = -1 file git-rm'd,
+      +0 canonical surface edits, +1 deprecation record.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Single-pulse CONTRACT from BACKFILL per user-jump (audit 2026-07-03
+      explicit decision). Per godlike/07 §"Migration sequence":
+      zero pre-removal callers + canonical replacement + planned
+      physical removal → direct EXPAND→BACKFILL→CONTRACT (skip CUTOVER).
+      Wave 2 CUTOVER (`ErrDeprecatedWireEnvelope` fail-closed marker)
+      was deliberately skipped: with a git-rm target, there is no
+      one to fail-closed. The godlike/07 §"No fake availability" rule
+      is satisfied because the canonical replacement (apiutil.*) already
+      serves all 3 callers.
+
+      Cross-refs:
+        - godlike/06 §"One owner per fact" : apiutil owns the wire envelope.
+        - godlike/07 §"No fake availability" : canonical surface continuous from Wave 0.
+        - godlike/07 §"Migration sequence" : skip CUTOVER was valid.
+        - AGENTS.md Pattern 0 : apiutil is the typed envelope surface.
+
+      Sibling-record delineation:
+        - registry_public_modules.go still imports generation for capability
+          composition (Build/Dependencies/HandlerFunc), NOT envelope symbols.
+          Forward-pointer: future wave may collapse the `generation` capability
+          package; OUT OF SCOPE for this record.
+
   # ── 0. PR-VOICEOVER-LEGACY-ENDPOINTS-410 — voiceover typed-port seam HTTP 410 surface removed ──
   # Step 9 B-3 CUTOVER (commit 665ff194, June 2026) deleted the
   # `voiceoverSvcAdapter` typed-port seam that was introduced during

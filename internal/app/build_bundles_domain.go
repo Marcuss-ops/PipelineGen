@@ -130,7 +130,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// in process_segment.go). A future commit wires YTDLPSubtitleAdapter
 	// for Subtitles and the canonical Whisper bridge for Transcriber;
 	// for Commit 1 the post-cut step degrades to a no-op path.
-	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo)
+	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
 	clipWriter := assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
 	// Commit 4/6 (PR-C-YouTube-Cutover, June 2026, P1 #15 + #16):
 	// the canonical ClipMetadataWriter adapter (tx-bound UPDATE

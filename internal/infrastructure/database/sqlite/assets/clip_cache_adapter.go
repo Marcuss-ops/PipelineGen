@@ -53,8 +53,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -66,22 +69,28 @@ import (
 // because AssetStoreSQLite.Get is the canonical read seam — it
 // honours the SoftDeleteFilter (DELETED rows are cache-misses) and
 // the 40-column projection lock with ScanMediaAsset.
+//
+// Audit 2026-07-03 BLOCKER #5 (cache file verification): the adapter
+// now verifies the local file still exists before returning a cache
+// hit. A stale SQLite row whose local_path file has been deleted
+// returns cache-miss so the use case falls through to re-download.
 type ClipCacheAdapter struct {
 	repo *ClipsRepository
+	log  *zap.Logger
 }
 
 // NewClipCacheAdapter constructs the cache adapter on top of the
 // canonical clips repository. nil repo is FAIL-CLOSED: every GetExisting
 // call returns an error so a wiring gap lands in operator logs as a
 // loud failure rather than a silent cache miss + re-processing loop.
-// (Pre-Commit-1 the path was UN-wired; the use case tolerated nil-port
-// via runtime guard. Post-Commit-1 the ctor panic path is the
-// composition-side counterpart.)
 //
-// Nil-tolerant path is NOT provided here — the verdict requires
-// fail-fast production wiring.
-func NewClipCacheAdapter(repo *ClipsRepository) *ClipCacheAdapter {
-	return &ClipCacheAdapter{repo: repo}
+// log is optional: when nil, file-missing cache misses are silent.
+// Production wiring passes a real *zap.Logger for operator visibility.
+func NewClipCacheAdapter(repo *ClipsRepository, log *zap.Logger) *ClipCacheAdapter {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &ClipCacheAdapter{repo: repo, log: log}
 }
 
 // GetExisting returns the cached ExtractItem for clipID. The contract:
@@ -124,6 +133,27 @@ func (a *ClipCacheAdapter) GetExisting(ctx context.Context, clipID string) (*you
 	if details == nil {
 		return nil, false, nil
 	}
+
+	// BLOCKER #5 closure (audit 2026-07-03): verify the local file
+	// still exists before returning a cache hit. A stale SQLite row
+	// whose local_path file has been cleaned up must return cache-miss
+	// so the use case falls through to re-download.
+	//
+	// When localPath is empty but DriveFileID is present, consider it
+	// a cache hit — the Drive file may still be accessible even though
+	// the local scratch file was cleaned up.
+	localPath := details.LocalPath()
+	if localPath != "" {
+		stat, statErr := os.Stat(localPath)
+		if statErr != nil || stat.Size() == 0 {
+			a.log.Info("ClipCacheAdapter: cache miss — local file missing or empty, falling through to re-download",
+				zap.String("clip_id", clipID),
+				zap.String("local_path", localPath),
+				zap.Any("stat_err", statErr))
+			return nil, false, nil
+		}
+	}
+
 	return assetToExtractItem(details), true, nil
 }
 
