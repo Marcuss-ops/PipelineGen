@@ -33,6 +33,7 @@ package app
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -876,6 +877,51 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 			"PR 6 #1: forbidden field %q expected exactly once in ForbiddenIndexDocumentFields SSOT; found %d",
 			forbidden, n)
 	}
+}
+
+// ── Task 3: AssetIDToQdrantPointID single-declaration gate ──────────────
+
+// frozenAssetIDToQdrantPointIDSites pins Task 3 (July 2026): exactly ONE
+// production declaration of AssetIDToQdrantPointID exists in the codebase.
+// The canonical implementation is UUID v5 SHA-1 in
+// internal/infrastructure/qdrant/schema/pointid.go. All callers MUST route
+// through this single function; ad-hoc point ID generation is forbidden.
+const frozenAssetIDToQdrantPointIDSites = 1
+
+// TestComposition_AssetIDToQdrantPointID_SingleDeclaration verifies
+// Task 3's invariant: exactly 1 `func AssetIDToQdrantPointID` production
+// declaration exists. Walks the entire internal/ tree (filepath.WalkDir
+// is used instead of filepath.Glob because Go's Glob does NOT support **
+// recursive matching). Excludes _test.go files (test stubs like the
+// reconciler's canonicalPointID helper are allowed). The aliases.go
+// redirect `var AssetIDToQdrantPointID = schema.AssetIDToQdrantPointID`
+// is NOT a declaration — the check only matches `func AssetIDToQdrantPointID`.
+func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	matches := 0
+	var matchFiles []string
+	err := filepath.WalkDir("internal", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || strings.HasSuffix(path, "_test.go") || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		src, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		if strings.Contains(string(src), "func AssetIDToQdrantPointID") {
+			matches++
+			matchFiles = append(matchFiles, path)
+		}
+		return nil
+	})
+	require.NoError(t, err, "walkDir internal tree")
+	require.Equalf(t, frozenAssetIDToQdrantPointIDSites, matches,
+		"Task 3: exactly %d `func AssetIDToQdrantPointID` production declaration expected; found %d in: %v. The canonical UUID v5 SHA-1 function lives in internal/infrastructure/qdrant/schema/pointid.go. All callers must route through it — never create ad-hoc point ID generation.",
+		frozenAssetIDToQdrantPointIDSites, matches, matchFiles)
 }
 
 // ── Brace-counting helpers (test-private) ────────────────────────────────

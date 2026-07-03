@@ -33,6 +33,46 @@ func TestAssetIDToQdrantPointID_Deterministic(t *testing.T) {
 	}
 }
 
+// TestSameAssetAlwaysProducesSamePointID is the user-facing alias for
+// TestAssetIDToQdrantPointID_Deterministic. Task 3 (July 2026): ensures
+// the canonical function is deterministic — re-indexing the same asset
+// always yields the same Qdrant point ID.
+func TestSameAssetAlwaysProducesSamePointID(t *testing.T) {
+	TestAssetIDToQdrantPointID_Deterministic(t)
+}
+
+// TestDifferentAssetsProduceDifferentPointIDs ensures that distinct
+// asset IDs always produce distinct Qdrant point IDs. Task 3 (July 2026).
+// Covers: one-char difference, prefix variants, realistic asset-ID shapes.
+func TestDifferentAssetsProduceDifferentPointIDs(t *testing.T) {
+	ids := []string{
+		"yt_abc123_000_015",
+		"yt_abc124_000_015", // one char diff
+		"artlist_music_001",
+		"artlist_music_002",
+		"voiceover_en-US_hello",
+		"voiceover_it-IT_ciao",
+		"img_sunset_001",
+		"img_sunset_002",
+		"generated_dalle_future_city",
+		"generated_midjourney_future_city",
+	}
+	seen := make(map[string]string, len(ids))
+	for _, id := range ids {
+		pt := schema.AssetIDToQdrantPointID(id)
+		if pt == "" {
+			t.Fatalf("AssetIDToQdrantPointID(%q) returned empty", id)
+		}
+		if prev, ok := seen[pt]; ok {
+			t.Fatalf("collision: AssetIDToQdrantPointID(%q) == AssetIDToQdrantPointID(%q) == %q", prev, id, pt)
+		}
+		seen[pt] = id
+	}
+	if len(seen) != len(ids) {
+		t.Fatalf("expected %d distinct point IDs, got %d", len(ids), len(seen))
+	}
+}
+
 // TestAssetIDToQdrantPointID_CollisionResistance ensures a one-char
 // difference in input produces a substantially different UUID output.
 // SHA-1 hashes are expected to flip ~half their bits on a one-bit
