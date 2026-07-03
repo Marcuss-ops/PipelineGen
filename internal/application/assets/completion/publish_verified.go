@@ -45,14 +45,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// Publisher is the typed port for the Drive-side upload seam. The canonical
-// concrete is *internal/infrastructure/drive.ArtifactPublisherAdapter, which
-// already classifies GoogleAPI 401/429/5xx as transient via
-// pkg/retry.IsTransient and threads Retry-After via the RetryAfterError
-// interface (per P1.5/P1.6 closes history).
-type Publisher interface {
-	Publish(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.AssetLocation, error)
-}
+// Publisher (DEDUP-REMOVED P0-COMPL-4): historically this Service held a
+// Publisher field that published the artifact AGAIN after ArtifactPreparation
+// .Prepare had ALREADY published it (via Prepare→s.publisher.Publish internally).
+// The double-Publish was the godlike/06 SSOT violation: TWO owners of the
+// canonical "Drive write" fact. Per P0-COMPL-4 the Publisher interface +
+// the Publisher field on Service + the second Publish retry block in
+// publishOne have all been deleted. Prepare IS the canonical publish seam.
 
 // Preparer is the typed port for the Prepare seam that mirrors the
 // schema-versioned PublishedArtifact envelope (idempotency-key derivation
@@ -84,26 +83,32 @@ type IdempotencyBookkeeper interface {
 // drift), and short-circuit on already-published (returns existing PublishedArtifact
 // + ErrAlreadyPublished wrap for caller introspection).
 type Service struct {
-	publisher  Publisher
 	preparer   Preparer
 	bookkeeper IdempotencyBookkeeper
 }
 
-// NewService constructs a Service with fail-closed nil-check on all 3 ports.
-// All three ports are required at composition root; missing ANY returns a
+// NewService constructs a Service with fail-closed nil-check on both ports.
+// Both ports are required at composition root; missing EITHER returns a
 // wrapped ErrPublishInvalidArtifact sentinel so the wire-up-bug is surfaced
-// at boot, not at first-request time.
-func NewService(p Publisher, pr Preparer, b IdempotencyBookkeeper) (*Service, error) {
-	if p == nil {
-		return nil, fmt.Errorf("completion.NewService: Publisher port is required: %w", ErrPublishInvalidArtifact)
-	}
+// at boot, not at first-request time. The Publisher port was REMOVED in
+// P0-COMPL-4 (dedup refactor): Preparer IS the canonical publisher seam
+// because ArtifactPreparation.Prepare internally invokes its embedded
+// finalization.PublisherPort during validation.
+//
+// This 2-arg constructor is a BREAKING change vs the prior 3-arg shape
+// (Publisher + Preparer + Bookkeeper). All callers must be updated to drop
+// the Publisher argument. The compile-time error at first build is the
+// canonical signal that the godlike/06 SSOT violation has been retired
+// (per the explicit godlike/06 "one owner per fact" rule — the canonical
+// Drive-write owner is now solely inside ArtifactPreparation).
+func NewService(pr Preparer, b IdempotencyBookkeeper) (*Service, error) {
 	if pr == nil {
-		return nil, fmt.Errorf("completion.NewService: Preparer port is required: %w", ErrPublishInvalidArtifact)
+		return nil, fmt.Errorf("completion.NewService: Preparer port is required (REMOVED P0-COMPL-4 Publisher port; ArtifactPreparation is the canonical Drive-write owner per godlike/06 SSOT): %w", ErrPublishInvalidArtifact)
 	}
 	if b == nil {
 		return nil, fmt.Errorf("completion.NewService: IdempotencyBookkeeper port is required: %w", ErrPublishInvalidArtifact)
 	}
-	return &Service{publisher: p, preparer: pr, bookkeeper: b}, nil
+	return &Service{preparer: pr, bookkeeper: b}, nil
 }
 
 // PublishVerifiedArtifacts routes each VerifiedArtifact through the 5-step
@@ -205,49 +210,43 @@ func (s *Service) publishOne(
 		)
 	}
 
-	// 3. Prepare (mirror schema → PublishedArtifact). Concrete retry on
-	//    transient is delegated to the Preparer concrete's internal wiring
-	//    (mirrors the Publisher retry pattern). This Service does NOT add a
-	//    parallel retry layer (godlike/07 typed-error contract: the wire-up
-	//    is the SINGLE owner of retry policy for each port).
-	prepared, err := s.preparer.Prepare(ctx, *va)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"completion.publishOne[%s]: prepare: %w",
-			va.ArtifactID, err,
-		)
-	}
-
-	// 4. Publish (Drive upload, wrapped in retry-on-transient loop via
-	//    pkg/retry.IsTransient probe). The Service IS the canonical owner of
-	//    retry policy for the Publish seam (godlike/06 SSOT discipline):
-	//    transient errors bubble through pkg/retry.Do with retry.DefaultOptions
-	//    until either the operation succeeds or the retry budget is exhausted.
+	// 3. Prepare (mirror schema → PublishedArtifact) wrapped in
+	//    retry-on-transient loop. This Service IS the canonical owner of
+	//    retry policy for the publish seam in the post-P0-COMPL-4
+	//    architecture: the Preparer (ArtifactPreparation) internally
+	//    invokes its finalization.PublisherPort to Drive; transient
+	//    errors from that publish bubble out of Prepare and through
+	//    pkg/retry.Do with retry.DefaultOptions until either the
+	//    operation succeeds or the retry budget is exhausted.
 	//
-	//    This package owns the retry budget for the Publish seam. The concrete
-	//    ArtifactPublisherAdapter may still emit transient classifications
-	//    (P1.5 closes history), but the OUTER retry here ensures uniform
-	//    behavior across mocks and concretes in compliance with the user's
-	//    "401 → retry" test contract.
-	var location finalization.AssetLocation
-	publishErr := retry.Do(ctx, func() error {
-		var pubErr error
-		location, pubErr = s.publisher.Publish(ctx, *va)
-		return pubErr
+	//    godlike/06 SSOT (one owner per fact): the canonical "Drive
+	//    write" owner is solely inside ArtifactPreparation. There is no
+	//    second Publish call site in this Service — the prior
+	//    Publisher.Publish retry loop was REMOVED in P0-COMPL-4 to
+	//    eliminate the double-publish defect.
+	var published finalization.PublishedArtifact
+	prepErr := retry.Do(ctx, func() error {
+		var err error
+		published, err = s.preparer.Prepare(ctx, *va)
+		return err
 	}, retry.DefaultOptions())
-	if publishErr != nil {
+	if prepErr != nil {
 		return nil, fmt.Errorf(
-			"completion.publishOne[%s]: publish: %w",
-			va.ArtifactID, publishErr,
+			"completion.publishOne[%s]: prepare (canonical publish: validate+sha256+Drive-upload): %w",
+			va.ArtifactID, prepErr,
 		)
 	}
 
-	// 5. Compose PublishedArtifact envelope (10-field canonical shape per
-	//    finalization/types.go:455). The IdempotencyKey is byte-stable per
-	//    P0.7 via the canonical ArtifactIdempotencyKey helper.
-	pub := prepared
+	// 4. Compose the canonical PublishedArtifact envelope. The IdempotencyKey
+	//    is byte-stable per P0.7 via the canonical ArtifactIdempotencyKey
+	//    helper. The Location comes from Prepare (which delegated to its
+	//    finalization.PublisherPort inside). No double-Publish here — the
+	//    populated Location is the SINGLE source of truth for where the
+	//    artifact lives on the canonical Drive.
+	pub := published
 	pub.IdempotencyKey = remote.ArtifactIdempotencyKey(jobID, subID, va.SHA256)
-	pub.Location = location
+	// pub.Location already populated by Prepare (via its embedded
+	// finalization.PublisherPort); no override needed.
 
 	// 6. Post-publish fail-closed invariant (godlike/07 no-fake-availability):
 	//    re-read on-disk local file and recompute SHA-256; mismatch surfaces
