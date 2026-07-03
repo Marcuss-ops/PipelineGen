@@ -241,97 +241,71 @@ func (h *GenerateJobHandler) handleBatch(
 	if err := h.checkPipelineCtx(ctx, "multi-item-pre-execute"); err != nil {
 		return nil, err
 	}
-	progressFn := appjobs.SafeProgressFn(tools)
-	manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)
-	diag := ClassifyGenerationOutcome(manyResult, err)
-	if diag.Outcome == OutcomeCanceled {
-		if h.log != nil {
-			h.log.Warn("script.generate: multi-item cancelled mid-run",
-				zap.String("job_id", j.ID),
-				zap.Int("succeeded", diag.Succeeded),
-				zap.Int("failed", diag.Failed),
-				zap.Error(diag.Err))
-		}
-		return nil, diag.Err
+	// Commit 2 P0 #4: when broker is wired, the canonical path is
+	// child-job fan-out (each item = separate script.generate_item
+	// job). No silent inline fallback — incomplete wiring fails closed.
+	if !h.many.HasFanoutBroker() {
+		return nil, fmt.Errorf("script.generate batch: fanout broker not wired (Commit 2 P0 #4 — incomplete wiring fails closed)")
 	}
-	if diag.Outcome == OutcomeMultiInfraFailure {
-		if h.log != nil {
-			h.log.Error("script.generate: multi-item use-case failure",
-				zap.String("job_id", j.ID),
-				zap.Error(diag.Err))
-		}
-		return nil, diag.Err
-	}
-	envelope := buildEnvelopeResult(manyResult)
-	mapped, mapErr := toMap(envelope)
-	if mapErr != nil {
-		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
-	}
-	if diag.Outcome == OutcomeMultiAllFailed {
-		if h.log != nil {
-			h.log.Error("script.generate: multi-item all-failed",
-				zap.String("job_id", j.ID),
-				zap.Int("total", diag.Total),
-				zap.Int("failed", diag.Failed),
-				zap.Error(diag.Err))
-		}
-		return mapped, diag.Err
-	}
-	// OutcomeMultiPartial or OutcomeMultiFullSuccess: persist the
-	// first successful item's *GenerationResult (the canonical
-	// §8.4 per-job aggregate is built from one item; the multi-item
-	// dispatch surface uses the first successful item's result).
-	if freshResult := firstSuccessfulResult(manyResult); freshResult != nil {
-		artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, freshResult)
-		if persistErr != nil {
-			if h.log != nil {
-				h.log.Warn("handleBatch: persistence failed — typed envelope only",
-					zap.String("job_id", j.ID),
-					zap.Error(persistErr))
-			}
-		} else {
-			manifest := buildManifestFromArtifacts(j.ID, artifacts)
-			if vErr := manifest.Validate(); vErr != nil {
-				if h.log != nil {
-					h.log.Warn("handleBatch: manifest validation failed — typed envelope only",
-						zap.String("job_id", j.ID),
-						zap.Error(vErr))
-				}
-			} else {
-				if mErr := MergeTypedExecutionEnvelope(mapped, freshResult, manifest); mErr != nil {
-					if h.log != nil {
-						h.log.Warn("handleBatch: typed envelope merge failed — manifest sidecar only",
-							zap.String("job_id", j.ID),
-							zap.Error(mErr))
-					}
-					mapped[scriptpkg.ManifestKey] = manifest
-				}
-				if h.log != nil {
-					h.log.Info("handleBatch: artifact manifest injected (§8.4 multi-artifact shape)",
-						zap.String("job_id", j.ID),
-						zap.Int("artifacts", len(manifest.Artifacts)))
-				}
-			}
-		}
-	}
-	return mapped, nil
+	return h.handleBatchFanout(ctx, j, env, tools)
 }
 
-// firstSuccessfulResult returns the first item with a non-nil
-// *GenerationResult. This is the canonical "one manifest per
-// successful aggregate" pre-PR-GODOBJ-4 build path; a future PR
-// could thread a per-item structure but the §8.4 spec mandates
-// one manifest per job run.
-func firstSuccessfulResult(r *usecase.GenerateManyResult) *domainScript.GenerationResult {
-	if r == nil {
-		return nil
+// handleBatchFanout emits each item as a separate script.generate_item
+// child job via the wired broker. The handler builds a parent
+// waiting_children result that the aggregator (parent_aggregator.go)
+// reads to track child outcomes and finalise the parent.
+func (h *GenerateJobHandler) handleBatchFanout(
+	ctx context.Context,
+	j *scriptpkg.Job,
+	env *domainScript.GenerationEnvelopeV2,
+	tools *appjobs.JobTools,
+) (map[string]any, error) {
+	progressFn := appjobs.SafeProgressFn(tools)
+	progressFn(5, "fanning out script items to child jobs")
+
+	manyResult, err := h.many.ExecuteFanout(ctx, j.ID, env, h.cfg)
+	if err != nil {
+		if h.log != nil {
+			h.log.Error("script.generate: fanout failed",
+				zap.String("job_id", j.ID),
+				zap.Error(err))
+		}
+		return nil, fmt.Errorf("script.generate fanout: %w", err)
 	}
-	for _, item := range r.Items {
-		if item.Result != nil {
-			return item.Result
+
+	// Defensive nil guard: ExecuteFanout returns (nil, err) on failure
+	// but a nil-deref here would panic the worker goroutine.
+	if manyResult == nil {
+		return nil, fmt.Errorf("script.generate fanout: ExecuteFanout returned nil result without error")
+	}
+
+	// Filter empty child IDs (failed enqueue placeholders).
+	childIDs := manyResult.ChildJobIDs
+	filtered := make([]string, 0, len(childIDs))
+	for _, id := range childIDs {
+		if id != "" {
+			filtered = append(filtered, id)
 		}
 	}
-	return nil
+
+	resultMap := map[string]any{
+		"parent_state":         "waiting_children",
+		"parent_job_id":        j.ID,
+		"total_items":          manyResult.Summary.Total,
+		"child_job_ids":        filtered,
+		"failed_enqueue_count": manyResult.Summary.Failed,
+	}
+
+	if h.log != nil {
+		h.log.Info("script.generate: fanout complete, parent waiting for children",
+			zap.String("parent_job_id", j.ID),
+			zap.Int("total_items", manyResult.Summary.Total),
+			zap.Int("children_enqueued", len(filtered)),
+			zap.Int("failed_enqueue", manyResult.Summary.Failed))
+	}
+
+	progressFn(100, "fanout complete, waiting for child aggregation")
+	return resultMap, nil
 }
 
 

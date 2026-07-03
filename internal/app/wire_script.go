@@ -600,9 +600,15 @@ func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
 		return "", fmt.Errorf("marshal item payload: %w", err)
 	}
 
+	// Deterministic ActiveKey prevents duplicate child jobs on parent
+	// retry (mirrors voiceover P0 #1 idempotency contract). item.ID
+	// is unique per item within a batch (set by ExecuteFanout).
+	activeKey := fmt.Sprintf("script:item:%s:%s", parentJobID, item.ID)
+
 	req := &domainjob.EnqueueRequest{
-		Type:    domainjob.TypeScriptGenerateItem,
-		Payload: json.RawMessage(payloadBytes),
+		Type:      domainjob.TypeScriptGenerateItem,
+		Payload:   json.RawMessage(payloadBytes),
+		ActiveKey: activeKey,
 	}
 	ret, err := a.jobsSvc.Enqueue(ctx, req)
 	if err != nil {
