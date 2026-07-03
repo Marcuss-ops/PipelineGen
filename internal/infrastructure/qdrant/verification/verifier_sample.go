@@ -58,6 +58,12 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 	pointsScrolled := 0
 
 	// ── Per-point check: canonical pt.ID + payload validation ───
+	// Task 7: removed 20-entry error cap — all errors up to
+	// MaxErrors are reported. Beyond the cap, ErrorsTruncated is
+	// set and no further diagnostics are appended (counters still
+	// increment accurately). Same truncation pattern for
+	// NonCanonicalPointIDs (20-entry diagnostic sample, cap tracked
+	// via NonCanonicalTruncated).
 	checkCanonical := func(idx, iteration int, pt schema.ScrollPoint) {
 		assetID, assetIDOK := pt.Payload["asset_id"].(string)
 		if assetIDOK && assetID != "" {
@@ -67,8 +73,10 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 		// Gate 3: Payload minimum validation.
 		if issue := validatePayloadMinimum(pt.Payload, assetID); issue != "" {
 			report.PayloadIssues++
-			if len(report.Errors) < 20 {
+			if len(report.Errors) < schema.MaxErrors {
 				report.Errors = append(report.Errors, issue)
+			} else {
+				report.ErrorsTruncated = true
 			}
 		}
 
@@ -82,10 +90,12 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 				} else {
 					report.NonCanonicalTruncated = true
 				}
-				if len(report.Errors) < 20 {
+				if len(report.Errors) < schema.MaxErrors {
 					report.Errors = append(report.Errors,
 						fmt.Sprintf("PR 12 non-canonical pt.ID: pt.ID=%q, schema.AssetIDToQdrantPointID(%q)=%q (point #%d on page %d)",
 							pt.ID, assetID, canonical, idx, iteration))
+				} else {
+					report.ErrorsTruncated = true
 				}
 			}
 		}
@@ -138,21 +148,18 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 // schema.IndexSchema. Every declared channel MUST have a matching version key;
 // a missing or mismatched key bumps the per-channel counter in report.
 //
-// The legacy global embedding_version rescue path was DELETED (QDRANT-005
-// closure); points missing per-channel keys ALWAYS fail.
+// Task 7 (July 2026): the legacy global embedding_version rescue path
+// was PHYSICALLY REMOVED. Points without per-channel keys ALWAYS fail;
+// the old global fallback (checking payload["embedding_version"] standalone)
+// is gone — per-channel is the only path.
 //
 // Returns true if ANY per-channel mismatch was found (so the caller can
 // bump the global VersionMismatch counter).
 func (v *ReindexVerifier) verifyPerChannelVersions(payload map[string]interface{}, report *schema.SwitchReport) bool {
 	pointMismatched := false
 
-	// Legacy global check.
-	if gv, ok := payload["embedding_version"].(string); ok && gv != "" && gv != schema.CurrentEmbeddingVersion {
-		pointMismatched = true
-	}
-
 	if v.schema == nil {
-		return pointMismatched
+		return false
 	}
 
 	for _, spec := range v.schema.DenseVectors {
@@ -178,19 +185,30 @@ func (v *ReindexVerifier) verifyPerChannelVersions(payload map[string]interface{
 // computeMissingOrphan compares the SQLite ID set against the Qdrant
 // point ID set and populates report.MissingIDs / MissingCount (in
 // SQLite but not Qdrant) and report.OrphanIDs / OrphanCount (in Qdrant
-// but not SQLite). When zero points were scrolled a guard in the
-// orchestrator skips this call to avoid catastrophic false positives.
+// but not SQLite).
+//
+// Task 7: MissingIDs and OrphanIDs are capped at MaxMissingOrphanIDs.
+// Beyond the cap, the respective Truncated flag is set but the counter
+// keeps incrementing so the operator sees the actual totals.
 func computeMissingOrphan(sqliteSet, qdrantIDs map[string]bool, report *schema.SwitchReport) {
 	for sqliteID := range sqliteSet {
 		if !qdrantIDs[sqliteID] {
-			report.MissingIDs = append(report.MissingIDs, sqliteID)
 			report.MissingCount++
+			if report.MissingCount <= schema.MaxMissingOrphanIDs {
+				report.MissingIDs = append(report.MissingIDs, sqliteID)
+			} else {
+				report.MissingTruncated = true
+			}
 		}
 	}
 	for qdrantID := range qdrantIDs {
 		if !sqliteSet[qdrantID] {
-			report.OrphanIDs = append(report.OrphanIDs, qdrantID)
 			report.OrphanCount++
+			if report.OrphanCount <= schema.MaxMissingOrphanIDs {
+				report.OrphanIDs = append(report.OrphanIDs, qdrantID)
+			} else {
+				report.OrphanTruncated = true
+			}
 		}
 	}
 }

@@ -288,6 +288,20 @@ func TestReindexVerifier_PR12_HappyPath_AllGatesGreen(t *testing.T) {
 		channelTotal += c
 	}
 	assert.Equal(t, 0, channelTotal, "PR 12 happy path: per-channel total == 0")
+
+	// Task 7: GateDetails must be populated and every gate must pass.
+	require.NotNil(t, report.GateDetails, "Task 7: GateDetails must be populated on verify")
+	gd := report.GateDetails
+	assert.True(t, gd.PointCountParity.Passed, "point_count_parity")
+	assert.True(t, gd.CompleteScan.Passed, "complete_scan")
+	assert.True(t, gd.MissingOrphan.Passed, "missing_orphan")
+	assert.True(t, gd.PayloadValidation.Passed, "payload_validation")
+	assert.True(t, gd.EmbeddingVersion.Passed, "embedding_version")
+	assert.True(t, gd.CanonicalPointID.Passed, "canonical_point_id")
+	assert.True(t, gd.DeadLetters.Passed, "dead_letters")
+	assert.True(t, gd.GoldenQueries.Passed, "golden_queries")
+	assert.True(t, gd.FilterSmoke.Passed, "filter_smoke")
+	assert.True(t, gd.ZeroErrors.Passed, "zero_errors")
 }
 
 // ─── helpers (extended for PR 12 tests) ──────────────────────────────
