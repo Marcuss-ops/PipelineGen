@@ -24,7 +24,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/apiutil"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -146,7 +146,7 @@ func (r ProcessBookRequest) payload() map[string]any {
 
 // ProcessBookResponse reuses the shared generation envelope so books
 // matches the other text-generation endpoints.
-type ProcessBookResponse = generation.Response[ProcessBookResult]
+type ProcessBookResponse = apiutil.Response[ProcessBookResult] 
 
 // Sentinels returned by the use case. The handler's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
@@ -249,7 +249,7 @@ func (uc *ProcessBookUseCase) handleSync(ctx context.Context, req ProcessBookReq
 	if !result.Success {
 		return ProcessBookResponse{}, ErrProcessFailed{Message: result.Error}
 	}
-	return generation.Sync("book", ProcessBookResult{
+	return apiutil.Sync("book", ProcessBookResult{
 		OutputPath:      result.OutputPath,
 		PDFPath:         result.PDFPath,
 		DriveFolder:     result.DriveFolderURL,
@@ -304,9 +304,8 @@ func (uc *ProcessBookUseCase) enqueueBookJob(ctx context.Context, req ProcessBoo
 	status := ""
 	if enqueued != nil {
 		jobID = enqueued.ID
-		status = string(enqueued.Status)
-	}
-	return generation.Async[ProcessBookResult]("book", jobID, status, jobType), nil
+		status = string(enqueued.Status)	}
+	return apiutil.Async[ProcessBookResult]("book", jobID, status, jobType), nil  
 }
 
 // ProcessBookErrMapper maps use-case errors to HTTP status codes. It

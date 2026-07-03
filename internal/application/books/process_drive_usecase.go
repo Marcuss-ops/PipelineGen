@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/apiutil"
 )
 
 // processBookFromDriveTimeout caps the synchronous
@@ -80,7 +80,7 @@ func (r ProcessBookFromDriveRequest) Validate() error {
 
 // ProcessBookFromDriveResponse reuses the shared generation envelope
 // so the books API matches the other text-generation endpoints.
-type ProcessBookFromDriveResponse = generation.Response[ProcessBookFromDriveResult]
+type ProcessBookFromDriveResponse = apiutil.Response[ProcessBookFromDriveResult] 
 
 // ErrDriveMissing is returned when the books Service is nil at
 // construction. The ErrorMapper translates to 503. Reuses the same
@@ -157,7 +157,7 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 		resp.VoiceoverDriveID = result.VoiceoverDriveID
 	}
 	resp.VoiceoverError = result.VoiceoverError
-	return generation.Sync("book", resp), nil
+	return apiutil.Sync("book", resp), nil 
 }
 
 // ProcessBookFromDriveErrMapper maps use-case errors to HTTP responses.
