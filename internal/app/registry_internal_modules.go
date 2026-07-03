@@ -22,6 +22,7 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
@@ -234,15 +235,44 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 	return nil
 }
 
-// registerYouTubeClip wires the YouTubeClip module.
+// registerYouTubeClip wires the YouTubeClip module via the canonical
+// youtube.Build(deps) (api.Descriptor, error) contract, matching the
+// artlist / clips / voiceover / soundeffect / register precedent.
 //
-// The legacy WireYouTubeClip helper was retired for the same reason
-// as WireArtlist; the canonical YouTubeClip module lives through
-// root.Domains.YoutubeClipService + the new providers consumer.
+// The Handler is constructed inside Build and captured by the
+// returned YouTubeDescriptor's Module closure. The composition
+// site type-asserts ONCE to *youtubeapi.YouTubeDescriptor
+// (fail-closed) and reuses the concrete for the
+// wiring.YouTubeClip wiring handle.
 func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring, searchAgg *providers.SearchAggregator) error {
-	log.Warn("registerYouTubeClip wire stubbed (WireYouTubeClip retired; addresses root.Domains.YoutubeClipService directly)")
-	wiring.YouTubeClip = nil
-	return nil
+	if !cfg.Features.YouTubeEnabled {
+		log.Info("registerYouTubeClip: YouTube feature is disabled; skipping HTTP route registration")
+		wiring.YouTubeClip = nil
+		return nil
+	}
+
+	descriptor, err := youtubeapi.Build(youtubeapi.Dependencies{
+		Service:          root.Domains.YoutubeClipService,
+		Jobs:             root.Jobs.Facade,
+		ToolChecker:      toolCheckerAdapter,
+		Idempotency:      wiring.idempotencyHandler,
+		SearchAggregator: searchAgg,
+		EnabledFunc:      func() bool { return cfg.Features.YouTubeEnabled },
+		Logger:           log,
+	})
+	if err != nil {
+		return fmt.Errorf("registerYouTubeClip: youtube.Build: %w", err)
+	}
+	yd, ok := descriptor.(*youtubeapi.YouTubeDescriptor)
+	if !ok || yd == nil {
+		return fmt.Errorf("registerYouTubeClip: youtube.Build returned unexpected descriptor type %T (want *youtubeapi.YouTubeDescriptor)", descriptor)
+	}
+	wiring.YouTubeClip = &YouTubeClipWiring{
+		Module:  yd.Module,
+		Service: yd.Service,
+	}
+	log.Info("created YouTubeClip module via youtube.Build (Blocco C1-Step 4)")
+	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
 }
 
 // registerJobsRoute registers the /jobs route module. Inlined from the
