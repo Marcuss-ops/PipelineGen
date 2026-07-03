@@ -687,6 +687,44 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 		"the service's IsEnabled bit must reflect ClipIndexer.Enabled=false")
 }
 
+// TestComposition_ClipIndexerEnabledNoQdrant_FailClosed pins
+// BLOCKER #3 (Qdrant Verdetto, July 2026): with cfg.ClipIndexer.Enabled=true
+// but cfg.Qdrant.Enabled=false, buildQdrantDeps MUST abort boot with a
+// terminal error. The ClipIndexer vector-store write path requires Qdrant
+// for UpsertVectorStore completion; without it, every indexing job would
+// dead-letter on the nil vectorStore or silently skip the Qdrant write.
+// The previous code merely logged a warning and continued, which produced
+// a false-success path (asset marked INDEXED but never actually written
+// to Qdrant). Fail-closed at composition time per godlike/07.
+func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	dataDir := t.TempDir()
+	cfg := minimalConfig(dataDir)
+	cfg.ClipIndexer.Enabled = true // ClipIndexer ON
+	cfg.Qdrant.Enabled = false     // Qdrant OFF — the BLOCKER #3 trigger
+	log := zaptest.NewLogger(t)
+
+	dbs, err := initDatabases(cfg, log)
+	require.NoError(t, err, "initDatabases")
+	t.Cleanup(func() {
+		if dbs != nil && dbs.main != nil {
+			_ = dbs.main.Close()
+		}
+	})
+
+	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, log)
+	require.Error(t, err,
+		"BLOCKER #3: cfg.ClipIndexer.Enabled=true + cfg.Qdrant.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root)")
+	require.Nil(t, qd,
+		"BLOCKER #3: buildQdrantDeps must return nil QdrantDeps alongside the error (fail-closed, no partial bundle)")
+	require.Contains(t, err.Error(), "clipindexer.enabled=true",
+		"BLOCKER #3: error message must mention the offending flag so operators can grep the boot log and correct config:\n\tgot: %v", err)
+	require.Contains(t, err.Error(), "qdrant.enabled=false",
+		"BLOCKER #3: error message must mention the missing flag so operators can grep the boot log and correct config:\n\tgot: %v", err)
+}
+
+
 // TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed pins
 // PR 3 #4 + #5: with cfg.Qdrant.Enabled=true but repos.ClipsRepo=nil,
 // BuildOutboxBundle MUST abort boot via RegisterCoreHandlers's
