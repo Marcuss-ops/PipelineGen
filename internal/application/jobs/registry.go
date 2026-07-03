@@ -559,11 +559,9 @@ func Compose() *Registry {
 	// the children and calls FinalizeAggregateParent(FAILED) when the aggregate
 	// dictates per godlike/07 no-fake-availability. RequiredCapabilities
 	// stays empty (the children inherit from the parent's broker lease).
-	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child (P0 #4 audit closure: each batch item is a separate broker-emitted job with independent retry envelope; the parent aggregator FinalizeAggregateParent drives the parent broker status based on the aggregate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
-	// (note: ProducesArtifacts=true pins the parent's legacy
-	// artifact-payload contract; sibling-image / sibling-voiceover
-	// payloads are emitted by the existing sibling handlers, not by
-	// this child. The child carries the per-item typed result map only.)
+	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	// ProducesArtifacts=false: the child produces only a result map
+	// (ok, status, item_id) — no artifact manifest.
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency

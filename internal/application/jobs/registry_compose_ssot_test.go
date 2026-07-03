@@ -233,6 +233,29 @@ func TestCompose_BulkUploadTimeoutResolvesThroughAllSurfaces(t *testing.T) {
 	}
 }
 
+// TestCompose_ScriptGenerateItem_ProducesArtifactsFalse — P0 #4 audit
+// (Commit A, July 2026). Pins the contract that script.generate_item is
+// a pure-data child job (ProducesArtifacts=false). The child handler
+// produces only a result map (ok, status, item_id) — it does NOT
+// produce an artifact manifest. Removing ProducesArtifacts=true fixes
+// the state-machine breakage where SQLiteStore.Complete would reject
+// completions with ErrArtifactJobRequiresCompleteWithArtifacts.
+func TestCompose_ScriptGenerateItem_ProducesArtifactsFalse(t *testing.T) {
+	t.Parallel()
+
+	reg := Compose()
+
+	if !reg.IsRegistered(TypeScriptGenerateItem) {
+		t.Fatal("TypeScriptGenerateItem must be registered in Compose()")
+	}
+
+	if reg.ProducesArtifacts(TypeScriptGenerateItem) {
+		t.Fatal("TypeScriptGenerateItem must set ProducesArtifacts=false (pure-data child job; produces only a result map — no artifact manifest). " +
+			"ProducesArtifacts=true breaks the state-machine: SQLiteStore.Complete rejects completions and demands CompleteWithArtifacts, " +
+			"but the child handler never builds an artifact manifest.")
+	}
+}
+
 // TestCompose_SnapshotFiltersZeroTimeoutEntries — pins the
 // documented "Zero-filter semantics" of Registry.Compose()
 // (registry.go::Compose() doc, HC-1 code-review DISCUSS).
