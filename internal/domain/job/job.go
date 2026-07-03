@@ -39,15 +39,16 @@ type (
 //   var x job.Status = job.StatusQueued         (compiles)
 
 const (
-	StatusQueued       = kerneljob.StatusQueued
-	StatusLeased       = kerneljob.StatusLeased
-	StatusRunning      = kerneljob.StatusRunning
-	StatusFinalizing   = kerneljob.StatusFinalizing
-	StatusRetryWait    = kerneljob.StatusRetryWait
-	StatusSucceeded    = kerneljob.StatusSucceeded
-	StatusIndexPending = kerneljob.StatusIndexPending
-	StatusFailed       = kerneljob.StatusFailed
-	StatusCancelled    = kerneljob.StatusCancelled
+	StatusQueued             = kerneljob.StatusQueued
+	StatusLeased             = kerneljob.StatusLeased
+	StatusRunning            = kerneljob.StatusRunning
+	StatusFinalizing         = kerneljob.StatusFinalizing
+	StatusRetryWait          = kerneljob.StatusRetryWait
+	StatusSucceeded          = kerneljob.StatusSucceeded
+	StatusPartiallySucceeded = kerneljob.StatusPartiallySucceeded
+	StatusIndexPending       = kerneljob.StatusIndexPending
+	StatusFailed             = kerneljob.StatusFailed
+	StatusCancelled          = kerneljob.StatusCancelled
 )
 
 // ── Job type string constants ───────────────────────────────────────
@@ -143,4 +144,20 @@ const (
 	// classes via the aggregator (Step 12B's ChildTerminatedEvent
 	// pipeline).
 	TypeScriptImageSibling = "script.spawn_images"
+
+	// ── P0 #4 audit (audit 2026-07-03) child-job architecture ──
+
+	// TypeScriptGenerateItem is the canonical child job type for
+	// script.generate batches. Each item in a multi-item batch becomes
+	// a separate script.generate_item job, with its own broker-side
+	// retry envelope. The canonical parent aggregator
+	// (internal/application/scripts/jobs/parent_aggregator.go)
+	// ticks the children and calls TerminalFlip to set the parent's
+	// final broker status based on the aggregate.
+	//
+	// The child type mirrors TypeVoiceoverGenerateItem on the
+	// voiceover side (P0 #1 closure, 7f319edb); the same 4-step
+	// pattern is replicated here — child jobs are an OWNED fact of
+	// the script-batch capability (godlike/06 one-canonical-owner-per-fact).
+	TypeScriptGenerateItem = "script.generate_item"
 )

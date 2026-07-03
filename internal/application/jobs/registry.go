@@ -460,6 +460,19 @@ const (
 	// constants stay in their owning domain package.
 	TypeScriptVoiceoverSibling = job.TypeScriptVoiceoverSibling
 	TypeScriptImageSibling     = job.TypeScriptImageSibling
+
+	// ── P0 #4 audit (audit 2026-07-03) child-job type ──
+	// Audit 2026-07-03 P0 #4: per-item retry in script batches via
+	// canonical child-job architecture (mirror of voiceover P0 #1
+	// closure, commit 7f319edb). Each item in a multi-item batch
+	// becomes a script.generate_item job with its own broker-side
+	// retry envelope. Concurrency=4 per-worker per Step 11B/12B
+	// sibling-fan-out budget; independent per-item retry. The
+	// parent aggregator (internal/application/scripts/jobs/
+	// parent_aggregator.go) ticks the children and emits TerminalFlip
+	// with target_status=FAILED when aggregate=failed_terminal per
+	// godlike/07 (no fake availability), otherwise SUCCEEDED.
+	TypeScriptGenerateItem = job.TypeScriptGenerateItem
 )
 
 // Compose builds the standard registry with all known job types.
@@ -532,6 +545,25 @@ func Compose() *Registry {
 	// (Step 11B (d)).
 	r.Register(JobPolicy{Type: TypeScriptVoiceoverSibling, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeScriptImageSibling, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
+
+	// ── P0 #4 audit (audit 2026-07-03) script.generate_item child-job ──
+	// Audit 2026-07-03 P0 #4 closure (mirror of voiceover P0 #1 commit
+	// 7f319edb): each item in a multi-item script.generate batch is
+	// emitted as a separate script.generate_item child job with its
+	// own broker-side retry envelope. Per-item retries are independent
+	// (the per-child terminal-flip drives the parent's aggregate). The
+	// orchestrator (internal/application/scripts/jobs/generation_job.go
+	// Handle multi-item path) emits parent_state=waiting_children on
+	// full-fanout + tail, then the parent aggregator
+	// (internal/application/scripts/jobs/parent_aggregator.go) ticks
+	// the children and calls TerminalFlip(FAILED) when the aggregate
+	// dictates per godlike/07 no-fake-availability. RequiredCapabilities
+	// stays empty (the children inherit from the parent's broker lease).
+	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child (P0 #4 audit closure: each batch item is a separate broker-emitted job with independent retry envelope; the parent aggregator TerminalFlip drives the parent broker status based on the aggregate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
+	// (note: ProducesArtifacts=true pins the parent's legacy
+	// artifact-payload contract; sibling-image / sibling-voiceover
+	// payloads are emitted by the existing sibling handlers, not by
+	// this child. The child carries the per-item typed result map only.)
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency

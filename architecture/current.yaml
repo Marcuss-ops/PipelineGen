@@ -2436,3 +2436,34 @@ wave_status:
       owner_capability: internal/app + internal/infrastructure/drive + internal/application/clips + internal/application/assets/sourcing
       status: pending
       deadline: 2026-Q4
+
+- id: P0-4_audit_closure
+  status: done
+  exit_signal: true
+  exit_gate: |
+    P0 #4 narrow-port audit closure landed on origin/main (canonical SHA 097abf93, race-recovery tip b5da5134): script-batch parent aggregator mirrors voiceover P0 #1 (commit 7f319edb) — parent_aggregator.go TerminalFlip drives the parent's broker status to SUCCEEDED / FAILED / PARTIALLY_SUCCEEDED (godlike/07 no-fake-availability). 4 CAS-fence narrow-port tests in parent_aggregator_test.go pin: Mixed_PreservesRevision, AllFailed_PopulatesErrMsg, StaleRevision_ReturnsErrAggregateCASConflict, ReplayIdempotentAfterAlreadyTerminal. Compiles clean in isolation (go vet ./internal/application/scripts/jobs/ exits 0); Check 51/52/53 forward-preventive gates PASS (0 raw `.Enqueue(<ctx>, "<literal>")` callers, 0 ArtifactUploader Prepare/Upload/Finalize raw callers, 0 completion-service raw-method callers).
+  linked_issues:
+    - id: 097abf93
+      owner_capability: internal/application/scripts/jobs
+      status: shipped
+      deadline: 2026-07-03
+    - id: PR-job-helpers-test-clips-folder-residue-cleanup
+      owner_capability: internal/application/scripts/jobs
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-co-authored-by-trailer-backfill-097abf93
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-StatusPartiallySucceeded-RETIREMENT
+      owner_capability: internal/kernel/job
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-architecture-current-yaml-line-1809-parse-fix
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-script-batch-fanout-sibling-side-pending
+      owner_capability: internal/application/scripts/jobs
+      status: pending
+      deadline: 2026-07-15

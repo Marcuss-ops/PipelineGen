@@ -42,6 +42,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -359,6 +360,32 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
 
+	// ── P0 #4 audit (audit 2026-07-03) per-item retry wiring ──
+	// Mirror of voiceover P0 #1 commit 7f319edb: the canonical
+	// child-job architecture for script.generate batches. Each item
+	// in a multi-item script.generate envelope becomes a separate
+	// script.generate_item child job with its own broker-side retry
+	// envelope. The aggregator (parent_aggregator.go) reads child
+	// outcomes and TerminalFlip-s the parent's broker status based
+	// on the aggregate.
+	//
+	// 4-step composition:
+	//   1. ScriptGenerateItemJobHandler receives the per-item
+	//      GenerateOneExecutor port (oneUC satisfies it implicitly
+	//      via Go interface satisfaction).
+	//   2. Register on jobs.Service for TypeScriptGenerateItem
+	//      (fail-closed at boot per Issue 7 / P1 discipline).
+	//   3. Wire GenerateManyUseCase.SetFanoutBroker with a thin
+	//      adapter that calls jobs.Service.Enqueue with the typed
+	//      per-item script.generate_item JobPolicy.
+	//   4. Construct + Start ScriptParentAggregator with the jobs
+	//      service as the AggregatorJobsService port (satisfied
+	//      implicitly by *appjobs.Service). Ticker polls every 30s
+	//      and applies TerminalFlip based on the per-item aggregate.
+	if err := wireScriptChildJobAuditP04(root.Jobs.Service, oneUC, manyUC, normCfg, log); err != nil {
+		return fmt.Errorf("wireScriptFlow: P0 #4 audit wiring: %w", err)
+	}
+
 	// Issue 7 / P1 (June 2026): fail-fast when broker is missing or
 	// the registration fails on script.generate. The previous
 	// `if root.Jobs.Service != nil { log.Warn(...) }` shape silently
@@ -383,7 +410,143 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 
-	// ── Set metadata model ─────────────────────────────────────────────
+	// wireScriptChildJobAuditP04 is the canonical composition helper for
+// the P0 #4 audit (audit 2026-07-03) per-item retry pattern in
+// script.generate batches. Wires:
+//
+//  1. ScriptGenerateItemJobHandler — receives the GenerateOneExecutor
+//     port (pattern 0, narrow surface). Register binds it to the
+//     canonical jobs.Service dispatcher for TypeScriptGenerateItem.
+//
+//  2. GenerateManyUseCase.SetFanoutBroker — passes a thin adapter that
+//     calls jobs.Service.Enqueue with the typed per-item EnqueueCommand.
+//     When fanout broker is wired + envelope has >1 item, the
+//     multi-item path emits N child jobs instead of inline execution.
+//
+//  3. ScriptParentAggregator — background poller (30s tick) reads
+//     script.generate parents with parent_state=waiting_children or
+//     partial_success, queries their children's terminal statuses,
+//     computes the canonical aggregate via domain StateMachine, and
+//     TerminalFlip-s the parent's broker status based on the
+//     aggregate.
+//
+// All three components are fail-fast on missing dependencies
+// per the AGENTS.md WireUp discipline.
+func wireScriptChildJobAuditP04(
+	jobsSvc *appjobs.Service,
+	oneUC *usecase.GenerateOneUseCase,
+	manyUC *usecase.GenerateManyUseCase,
+	normCfg adapters.NormalizationConfig,
+	log *zap.Logger,
+) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("P0 #4 audit wiring: jobs service is required (nil-broken composition root)")
+	}
+	if oneUC == nil {
+		return fmt.Errorf("P0 #4 audit wiring: GenerateOneUseCase is required (nil-broken composition)")
+	}
+	if manyUC == nil {
+		return fmt.Errorf("P0 #4 audit wiring: GenerateManyUseCase is required (nil-broken composition)")
+	}
+
+	ctx := context.Background() // aggregator lifetime is server-wide; ticks run for the whole server boot.
+	_ = ctx
+
+	// 1. Construct the per-item child worker.
+	itemHandler := jobs.NewScriptGenerateItemJobHandler(
+		oneUC, // satisfies GenerateOneExecutor port via Go interface satisfaction
+		normCfg,
+		nil, // requestIDFn defaults to parentJobID + ":item"
+		log,
+	)
+	if err := itemHandler.Register(jobsSvc); err != nil {
+		return fmt.Errorf("register script.generate_item handler: %w", err)
+	}
+
+	// 2. Wire the FanoutItemBroker adapter (emits N child jobs to the
+	//    broker when the multi-item path fans out).
+	broker := newScriptItemFanoutBrokerAdapter(jobsSvc, log)
+	manyUC.SetFanoutBroker(broker)
+	if log != nil {
+		log.Info("P0 #4 audit wiring: FanoutItemBroker wired to GenerateManyUseCase",
+			zap.Int("max_concurrency", normCfg.MaxBatchWorkers))
+	}
+
+	// 3. Construct + register the parent aggregator. The ticker polls
+	//    children at 30s interval (canonical production cadence).
+	agg := jobs.NewScriptParentAggregator(jobs.ScriptAggregatorDeps{
+		JobsSvc:      jobsSvc, // *appjobs.Service satisfies ScriptAggregatorJobsService
+		Logger:       log,
+		PollInterval: 30 * 1_000_000_000, // 30s in nanoseconds
+	})
+	agg.Start(context.Background())
+	if log != nil {
+		log.Info("P0 #4 audit wiring: ScriptParentAggregator started (30s tick interval)")
+	}
+
+	return nil
+}
+
+// scriptItemFanoutBrokerAdapter is the thin Pattern-0 adapter that
+// bridges jobs.Service.Enqueue to the canonical FanoutItemBroker port
+// consumed by GenerateManyUseCase.ExecuteFanout.
+type scriptItemFanoutBrokerAdapter struct {
+	jobsSvc *appjobs.Service
+	log     *zap.Logger
+}
+
+// newScriptItemFanoutBrokerAdapter constructs the adapter.
+func newScriptItemFanoutBrokerAdapter(jobsSvc *appjobs.Service, log *zap.Logger) *scriptItemFanoutBrokerAdapter {
+	return &scriptItemFanoutBrokerAdapter{jobsSvc: jobsSvc, log: log}
+}
+
+// EnqueueScriptItem satisfies the FanoutItemBroker port. Marshals
+// the item to JSON, builds a typed EnqueueRequest for the per-item
+// child type, and returns the broker-assigned JobID.
+func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
+	ctx context.Context,
+	parentJobID string,
+	item scriptpkg.GenerationItemV2,
+	preset scriptpkg.Preset,
+) (string, error) {
+	payload, err := json.Marshal(item)
+	if err != nil {
+		return "", fmt.Errorf("marshal item payload: %w", err)
+	}
+	// Build per-item typed envelope. The child worker
+	// (ScriptGenerateItemJobHandler) decodes this directly.
+	envelope := map[string]any{
+		"item":    item,
+		"preset":  string(preset),
+		"parent":  parentJobID,
+	}
+	envelopeBytes, err := json.Marshal(envelope)
+	if err != nil {
+		return "", fmt.Errorf("marshal fanout envelope: %w", err)
+	}
+	_ = payload // envelopeBytes is the canonical wire form
+
+	req := &appjobs.EnqueueRequest{
+		Type:    scriptpkg.TypeScriptGenerateItem,
+		Payload: envelopeBytes,
+	}
+	ret, err := a.jobsSvc.Enqueue(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("enqueue script.generate_item: %w", err)
+	}
+	if ret == nil || ret.JobID == "" {
+		return "", fmt.Errorf("enqueue script.generate_item returned empty JobID")
+	}
+	if a.log != nil {
+		a.log.Info("P0 #4 audit: child job enqueued",
+			zap.String("child_job_id", ret.JobID),
+			zap.String("parent_job_id", parentJobID),
+			zap.String("item_id", item.ID))
+	}
+	return ret.JobID, nil
+}
+
+// ── Set metadata model ─────────────────────────────────────────────
 	if gen != nil {
 		gen.SetMetadataModel(metaModel)
 	}
