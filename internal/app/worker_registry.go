@@ -1,12 +1,9 @@
 package app
 
 import (
-	"context"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // BuildProfileWorkerRegistry creates a remote-worker Registry populated only
@@ -50,12 +47,21 @@ func BuildProfileWorkerRegistry(root *ComposeRoot, allowedTypes []string) (*work
 	}
 
 	// Register only handlers whose types are in the allowed set.
+	// P1 #13 (July 2026): jobs.Dispatcher.AllHandlers returns
+	// canonical `appjobs.Handler` values which are now Go-type-aliases
+	// for `domainjob.Handler` (the canonical SSOT in
+	// internal/domain/job/handler.go). worker.Handler is the same
+	// alias, so the handler passes directly — no adaptHandler bridge
+	// is needed at registration time. The worker runtime translates
+	// `worker.Tools` (broker facade) into `*domainjob.JobExecutionTools`
+	// at Dispatch time (registry.go::translateToolsToExecutionTools)
+	// so the handler observes the canonical signature.
 	reg := worker.NewRegistry()
 	for jobType, h := range allHandlers {
 		if _, ok := allowed[jobType]; !ok {
 			continue
 		}
-		if err := reg.Register(jobType, adaptHandler(h)); err != nil {
+		if err := reg.Register(jobType, h); err != nil {
 			return nil, nil, fmt.Errorf("register handler for %s: %w", jobType, err)
 		}
 	}
@@ -89,8 +95,16 @@ func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) 
 		return nil, nil, fmt.Errorf("compose root or jobs dispatcher is nil")
 	}
 	reg := worker.NewRegistry()
+	// P1 #13 (July 2026): handler is canonical `appjobs.Handler`
+	// which is a Go-type-alias for `domainjob.Handler`. worker.Handler
+	// is the same alias, so it passes directly — no adaptHandler
+	// bridge is needed at registration time. The worker runtime
+	// translates `worker.Tools` (broker facade) into
+	// `*domainjob.JobExecutionTools` at Dispatch time
+	// (registry.go::translateToolsToExecutionTools) so the handler
+	// observes the canonical signature.
 	for jobType, h := range root.Jobs.Dispatcher.AllHandlers() {
-		if err := reg.Register(jobType, adaptHandler(h)); err != nil {
+		if err := reg.Register(jobType, h); err != nil {
 			return nil, nil, fmt.Errorf("register handler for %s: %w", jobType, err)
 		}
 	}
@@ -101,24 +115,22 @@ func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) 
 	return reg, caps, nil
 }
 
-// adaptHandler bridges the in-process HandlerFunc signature (which expects
-// *appjobs.JobTools) with the remote worker Handler signature (which expects
-// *worker.Tools). Progress, cancellation and events are forwarded via the
-// broker-backed Tools implementation.
-func adaptHandler(h appjobs.HandlerFunc) worker.Handler {
-	return func(ctx context.Context, j *domainjob.Job, tools *worker.Tools) (map[string]any, error) {
-		jobTools := &appjobs.JobTools{
-			Progress: func(p int, msg string) {
-				_ = tools.Progress(ctx, p, msg)
-			},
-			Event: func(eventType, msg string, data map[string]any) {
-				// worker broker does not support events yet; silently drop.
-			},
-			IsCancelled: func() bool {
-				ok, _ := tools.IsCancelled(ctx)
-				return ok
-			},
-		}
-		return h(ctx, j, jobTools)
-	}
-}
+// adaptHandler was retired in P1 #13 (July 2026). appjobs.Handler is
+// a Go-type-alias for domainjob.Handler (the canonical SSOT in
+// internal/domain/job/handler.go), and worker.Handler is also a
+// Go-type-alias for the same domainjob.Handler. Registering an
+// appjobs.Handler into worker.Registry therefore requires NO
+// bridging — the runtime does the worker.Tools →
+// *domainjob.JobExecutionTools translation at Dispatch time
+// (worker/registry.go::translateToolsToExecutionTools). The
+// reference sites in BuildWorkerRegistry + BuildProfileWorkerRegistry
+// now pass `h` directly. The legacy function signature is preserved
+// as a typed-error dead-comment so future agents don't reinstate the
+// 1-call-site accident that pre-P1-#13 incurred.
+//
+// Re-introducing adaptHandler is forward-forbidden: any future
+// caller that needs an in-process Handler in the runtime should
+// (a) consume it via Dispatcher.Dispatch if the in-process
+// Dispatcher is the target; or (b) wire worker.Registry.Register
+// directly with the canonical Handler literal — the runtime's
+// translateToolsToExecutionTools handles the boundary translation.

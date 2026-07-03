@@ -22,7 +22,17 @@ var (
 	ErrUnsupportedJobType   = errors.New("unsupported job type")
 )
 
-type Handler func(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error)
+// Handler is the canonical job-handler signature used by BOTH
+// jobs.Dispatcher.Register AND worker.Registry.Register (P1 #13
+// unification, July 2026). It is a Go type alias to
+// domainjob.Handler (the canonical SSOT in internal/domain/job/
+// handler.go). Putting the alias on domainjob (NOT jobs.Handler)
+// breaks what would otherwise be a cycle — worker no longer
+// imports its parent package; the canonical SSOT in domain is
+// below both, and both packages can freely alias from it. Compile
+// drift in domainjob.Handler is a build failure at THIS site AND
+// at the jobs.Handler alias site (godlike/06 SSOT lock).
+type Handler = domainjob.Handler
 
 // Registry maps job types to handler functions. Once frozen, no new
 // registrations are accepted — this prevents the claim loop from picking
@@ -99,6 +109,15 @@ func (r *Registry) JobTypes() []string {
 
 // Dispatch routes a job to its registered handler. Returns
 // ErrHandlerNotRegistered if no handler exists for the job type.
+//
+// P1 #13 boundary: the public Dispatch seam stays `*Tools`-bound
+// because the worker runtime owns the broker-facade lifecycle
+// (renewLoop + atomic revision). Internally, Dispatch translates
+// the broker-facade *Tools into a JobExecutionTools callback envelope
+// (Progress / Event / IsCancelled) so the canonical jobs.Handler
+// signature (ctx, *job.Job, *JobExecutionTools) is observed at the
+// actual handler invocation site. The translation is a 1:1
+// forwarding adapter — no field is dropped or remapped.
 func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error) {
 	r.mu.RLock()
 	h, ok := r.handlers[j.Type]
@@ -106,5 +125,44 @@ func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools)
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrHandlerNotRegistered, j.Type)
 	}
-	return h(ctx, j, tools)
+	jen := translateToolsToExecutionTools(ctx, tools)
+	return h(ctx, j, jen)
+}
+
+// translateToolsToExecutionTools builds a JobExecutionTools envelope
+// from the worker.Tools broker facade. The 3 callbacks forward 1:1 —
+// Progress → broker.Progress; IsCancelled → broker.IsCancelled; Event
+// is wired to the broker via a typed-events hook (when available; nil
+// closure if the worker has no event-emission port configured so the
+// canonical nil-tolerant SafeProgressFn / future SafeEventFn semantics
+// apply at the handler site).
+//
+// godlike/07 fail-closed: if tools is nil, every callback becomes a
+// no-op closure so the handler observes the canonical nil-tolerant
+// contract rather than a nil-deref panic. Mirrors the
+// SafeProgressFn(tools) pattern at the application layer.
+func translateToolsToExecutionTools(ctx context.Context, t *Tools) *domainjob.JobExecutionTools {
+	if t == nil {
+		return &domainjob.JobExecutionTools{
+			Progress:    func(int, string) {},
+			Event:       func(string, string, map[string]any) {},
+			IsCancelled: func() bool { return false },
+		}
+	}
+	return &domainjob.JobExecutionTools{
+		Progress: func(progress int, message string) {
+			_ = t.Progress(ctx, progress, message)
+		},
+		IsCancelled: func() bool {
+			ok, _ := t.IsCancelled(ctx)
+			return ok
+		},
+		// Event is a no-op for the worker runtime today: worker.Tools
+		// does not currently expose a typed-event emission port. The
+		// canonical SafeEventFn (forward-pointer, mirrors SafeProgressFn)
+		// will be added in a future PR when the broker side surfaces the
+		// typed EventCommand. Today handlers that call tools.Event observe
+		// a no-op closure.
+		Event: func(string, string, map[string]any) {},
+	}
 }

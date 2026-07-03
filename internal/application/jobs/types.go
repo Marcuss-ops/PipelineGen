@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"go.uber.org/zap"
 )
@@ -17,12 +17,12 @@ import (
 // Wave 5 PR 3 (June 2026): removed the three zero-copy forwarding type
 // aliases formerly aliased here (Store, StartJob, RequeueResult). Callers
 // must now import the canonical home directly:
-//   • jobs.Store                 → domain/job.Store
+//   • jobs.Store                 → domain/domainjob.Store
 //   • jobs.StartJob              → internal/infrastructure/database/sqlite/jobs.StartJob
 //   • jobs.RequeueResult         → internal/infrastructure/database/sqlite/jobs.RequeueResult
 // The single in-tree consumer that switched to direct imports is
 // internal/infrastructure/jobs/local/broker.go. The application-layer
-// Runner/NewRunner are now typed against the canonical job.Store interface.
+// Runner/NewRunner are now typed against the canonical domainjob.Store interface.
 // PR4.A2 (June 2026): removed the SQLiteStore/JobStats/ErrLeaseLost type
 // aliases (formerly this package's store.go). Callers now import
 // internal/infrastructure/database/sqlite/jobs directly as `sqljobs`.
@@ -49,23 +49,50 @@ type EnqueueRequest struct {
 	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
-// JobTools provides callbacks that handlers use to report progress,
-// record events, and check for cancellation.
-type JobTools struct {
-	Progress    func(progress int, message string)
-	Event       func(eventType string, message string, data map[string]any)
-	IsCancelled func() bool
-}
-
-// HandlerFunc is the type for job handlers. Accepts the canonical domain
-// *job.Job type. All handlers were migrated in Passaggio 6.
-type HandlerFunc func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error)
+// Canonical Handler / JobExecutionTools / Result types live in
+// internal/domain/job/handler.go (P1 #13 SSOT, July 2026). The
+// canonical placement is the domain layer — NOT this package —
+// because worker.Registry.Register (a sub-package of jobs) needs
+// the SAME Handler type, and putting it in jobs would force worker
+// to import its parent package, creating a cycle on the test side
+// (jobs/handler_signature_test.go imports worker).
+//
+// Domain has NO upstream imports, so both jobs AND worker can
+// freely alias from it. The aliases below are sealed: renaming
+// any of domainjob.Handler / domainob.JobExecutionTools /
+// domainob.Result triggers a compile failure at THIS site, the
+// godlike/06 SSOT lock that forces future renames to be deliberate.
+//
+// The application-layer aliases preserve the 96 in-tree pre-P1-#13
+// references that imported HandlerFunc / JobTools directly from
+// jobs — they compile unchanged via Go type-alias semantics. New
+// code MUST prefer to import internal/domain/job directly.
+//
+// godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT migration:
+//   EXPAND (today, P1 #13): canonical SSOT in domain/job +
+//                            sealed back-compat aliases here.
+//   BACKFILL (forward-pointer, deadline 2026-09-15): per-job-type
+//                            handlers that still type-literal
+//                            HandlerFunc / map[string]any return
+//                            migrate to Handler / Result.
+//   CUTOVER (forward-pointer, deadline 2026-10-01): aliases
+//                            HandlerFunc, JobTools retired.
+//   CONTRACT (forward-pointer): physical git-rm; Check-N in
+//                            scripts/ci-architectural-checks.sh
+//                            bans the legacy literal shapes.
+type (
+	JobExecutionTools = domainjob.JobExecutionTools
+	JobTools           = domainjob.JobExecutionTools // back-compat alias
+	Result             = domainjob.Result
+	Handler            = domainjob.Handler
+	HandlerFunc        = domainjob.Handler // back-compat alias
+)
 
 // Dispatcher routes jobs to registered handlers by job type (string).
 // Safe for concurrent use after Freeze().
 type Dispatcher struct {
 	mu       sync.RWMutex
-	handlers map[string]HandlerFunc
+	handlers map[string]Handler
 	frozen   bool
 
 	// registry + enqueuer are the P0 Commit 4 (July 2026) additions
@@ -83,15 +110,15 @@ type Dispatcher struct {
 	// row-create method). The composition root wires the enqueuer
 	// AFTER constructing the *Service — see dispatcher.go for the
 	// late-binding rationale (cycle-break between dispatcher↔service).
-	registry job.CompiledJobRegistry
+	registry domainjob.CompiledJobRegistry
 	enqueuer EnqueuePort
 }
 
 func NewDispatcher() *Dispatcher {
-	return &Dispatcher{handlers: make(map[string]HandlerFunc)}
+	return &Dispatcher{handlers: make(map[string]Handler)}
 }
 
-func (d *Dispatcher) Register(jobType string, handler HandlerFunc) error {
+func (d *Dispatcher) Register(jobType string, handler Handler) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.frozen {
@@ -115,17 +142,17 @@ func (d *Dispatcher) Freeze() {
 
 // AllHandlers returns a shallow copy of all registered handlers.
 // Safe for read-only iteration; used by the remote worker builder.
-func (d *Dispatcher) AllHandlers() map[string]HandlerFunc {
+func (d *Dispatcher) AllHandlers() map[string]Handler {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	out := make(map[string]HandlerFunc, len(d.handlers))
+	out := make(map[string]Handler, len(d.handlers))
 	for k, v := range d.handlers {
 		out[k] = v
 	}
 	return out
 }
 
-func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job, tools *JobTools) (result map[string]any, err error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, j *domainjob.Job, tools *JobExecutionTools) (result Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in handler for job type %s: %v", j.Type, r)
@@ -181,7 +208,7 @@ type RunnerConfig struct {
 //	    WithRegistry(jobs.Compose())
 //	r.Start(ctx)
 type Runner struct {
-	repo       job.Store
+	repo       domainjob.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
@@ -189,7 +216,7 @@ type Runner struct {
 	workers    []*Worker
 }
 
-func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
+func NewRunner(repo domainjob.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
 		dispatcher: dispatcher,

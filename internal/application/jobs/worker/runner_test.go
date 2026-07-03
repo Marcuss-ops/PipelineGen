@@ -474,12 +474,20 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 		renewed:  make(chan struct{}),
 	}
 
-	handler := func(_ context.Context, _ *job.Job, _ *Tools) (map[string]any, error) {
+	handler := func(_ context.Context, _ *job.Job, _ *appjobs.JobExecutionTools) (appjobs.Result, error) {
 		// Determinism barrier: wait for the first renew tick to
 		// fire (mock.Renew closes `renewed` exactly once via
 		// sync.Once). Synchronous, no Sleep, no race.
+		//
+		// P1 #13 (July 2026): worker.Handler is a Go-type-alias
+		// for domainjob.Handler (canonical SSOT at
+		// internal/domain/job/handler.go). The handler literal
+		// must consume *appjobs.JobExecutionTools (==*domainob.JobExecutionTools)
+		// AND return appjobs.Result (==Map alias). The worker runtime
+		// translates the *Tools broker facade at Dispatch time so
+		// this test fixture exercises the canonical invocation shape.
 		<-mock.renewed
-		return map[string]any{}, nil
+		return appjobs.Result{}, nil
 	}
 
 	registry := NewRegistry()
