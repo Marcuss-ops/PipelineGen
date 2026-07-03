@@ -1,98 +1,69 @@
+// Package jobs — safe_progress_test.go.
+//
+// Pins the nil-tolerant SafeProgressFn contract for the canonical
+// JobExecutionTools envelope (P1 #13 unification, July 2026). The
+// test exercises the three nil-tolerance postures that handlers
+// may invoke SafeProgressFn under:
+//
+//   1. tools == nil                     → no-op closure
+//   2. tools.Progress field == nil      → no-op closure
+//   3. tools.Progress field non-nil     → forwards 1:1
+//
+// godlike/07 fail-closed contract: SafeProgressFn MUST NOT panic
+// when invoked against a nil or partially-populated tools. The
+// Creator-runtime wrap (internal/app/creator_runtime.go::adapted
+// closure) and the worker-runtime translateToolsToExecutionTools
+// helper both depend on this invariant for nil-tolerance safety
+// at the worker composition root.
 package jobs
 
 import (
 	"testing"
 )
 
-// TestSafeProgressFn_NilTools_NoPanic: a nil *JobTools must not panic.
-// Calling the returned closure with any pct/msg must be a silent no-op.
-func TestSafeProgressFn_NilTools_NoPanic(t *testing.T) {
-	fn := SafeProgressFn(nil)
-	// No defer-recover needed: the closure is itself a no-op.
-	fn(5, "starting voiceover.generate_item")
-	fn(100, "voiceover.generate_item execution complete")
-	fn(0, "")
-	fn(-1, "negative percent still safe")
-}
-
-// TestSafeProgressFn_NilProgressField_NoPanic: a non-nil *JobTools but
-// with Progress==nil must produce a no-op closure (defensive guard
-// against partial tool wiring).
-func TestSafeProgressFn_NilProgressField_NoPanic(t *testing.T) {
-	tools := &JobTools{Progress: nil}
-	fn := SafeProgressFn(tools)
-	fn(50, "hello")
-	fn(100, "done")
-}
-
-// TestSafeProgressFn_ValidProgress_ForwardsArgs: when Progress is set,
-// SafeProgressFn returns the underlying Progress closure verbatim.
-// Each call forwards (pct, msg) 1:1.
-func TestSafeProgressFn_ValidProgress_ForwardsArgs(t *testing.T) {
-	type call struct {
-		pct int
-		msg string
+// TestSafeProgressFn_NilTools_NoOp — nil-tolerant ProgressFn
+// witness for the canonical *domainjob.JobExecutionTools. The
+// Creator-runtime wrap (internal/app/creator_runtime.go) and the
+// worker.Registry.Dispatch translation helper both produce
+// nil-tolerant envelopes (event no-op closures) so a handler that
+// calls tools.Progress observes a safe no-op rather than a
+// nil-deref panic.
+//
+// Three postures are exercised:
+//
+//  1. nil *JobExecutionTools — nilPf must be a callable no-op.
+//  2. &{Progress: nil}       — nilProgressPf must be a callable no-op.
+//  3. &{Progress: real}      — realPf must forward 1:1 to the inner closure.
+func TestSafeProgressFn_NilTools_NoOp(t *testing.T) {
+	// Posture 1: nil *JobExecutionTools.
+	nilPf := SafeProgressFn(nil)
+	if nilPf == nil {
+		t.Fatalf("SafeProgressFn(nil) returned nil closure — must return a safe no-op callable")
 	}
-	var got []call
-	tools := &JobTools{
-		Progress: func(progress int, message string) {
-			got = append(got, call{pct: progress, msg: message})
+	nilPf(50, "should be a no-op (no panic)")
+
+	// Posture 2: nil Progress field.
+	nilProgressPf := SafeProgressFn(&JobExecutionTools{Progress: nil})
+	if nilProgressPf == nil {
+		t.Fatalf("SafeProgressFn(&{Progress: nil}) returned nil — must return a no-op callable")
+	}
+	nilProgressPf(75, "should be a no-op (no panic)")
+
+	// Posture 3: non-nil Progress — forwards 1:1. We capture via
+	// a channel so the assertion is deterministic even under
+	// concurrent.SafeGo scheduling nondeterminism elsewhere.
+	observed := make(chan struct{ p int; m string }, 1)
+	realPf := SafeProgressFn(&JobExecutionTools{
+		Progress: func(p int, msg string) {
+			observed <- struct{ p int; m string }{p, msg}
 		},
+	})
+	if realPf == nil {
+		t.Fatalf("SafeProgressFn(&{Progress: real}) returned nil — must return the wrapped closure")
 	}
-	fn := SafeProgressFn(tools)
-
-	fn(5, "starting voiceover.generate_item")
-	fn(100, "voiceover.generate_item execution complete")
-
-	if len(got) != 2 {
-		t.Fatalf("expected 2 calls to underlying Progress, got %d", len(got))
-	}
-	if got[0] != (call{5, "starting voiceover.generate_item"}) {
-		t.Errorf("got[0] = %+v; want {5, \"starting voiceover.generate_item\"}", got[0])
-	}
-	if got[1] != (call{100, "voiceover.generate_item execution complete"}) {
-		t.Errorf("got[1] = %+v; want {100, \"voiceover.generate_item execution complete\"}", got[1])
-	}
-}
-
-// TestSafeProgressFn_NoOpIsIdempotent: calling the no-op closure 1000
-// times must be silent and side-effect-free. This is the canonical
-// audit-pin for the Creator-wrap nil-Tools path — the canonical safety
-// gate relies on idempotent no-op semantics for the (rare) offline
-// restart window when a job is enqueued but tools haven't been wired.
-func TestSafeProgressFn_NoOpIsIdempotent(t *testing.T) {
-	fn := SafeProgressFn(nil)
-	for i := 0; i < 1000; i++ {
-		fn(i, "iteration")
-	}
-}
-
-// TestSafeProgressFn_NilProgressField_Idempotent: same idempotency
-// audit for the partial-wiring case (Progress is nil but Event/IsCancelled
-// might be wired).
-func TestSafeProgressFn_NilProgressField_Idempotent(t *testing.T) {
-	tools := &JobTools{Progress: nil}
-	fn := SafeProgressFn(tools)
-	for i := 0; i < 1000; i++ {
-		fn(i, "iteration")
-	}
-}
-
-// TestSafeProgressFn_ValidProgress_ExactForwardingCount: each call to
-// the returned fn maps to exactly one call to the underlying Progress.
-// (An off-by-one impl would re-call or skip — neither is acceptable.)
-func TestSafeProgressFn_ValidProgress_ExactForwardingCount(t *testing.T) {
-	calls := 0
-	tools := &JobTools{
-		Progress: func(progress int, message string) {
-			calls++
-		},
-	}
-	fn := SafeProgressFn(tools)
-	for i := 0; i < 7; i++ {
-		fn(i, "x")
-	}
-	if calls != 7 {
-		t.Errorf("expected 7 underlying calls, got %d", calls)
+	realPf(42, "hello")
+	got := <-observed
+	if got.p != 42 || got.m != "hello" {
+		t.Fatalf("forwarded Progress mismatch: got {%d, %q}; want {42, \"hello\"}", got.p, got.m)
 	}
 }

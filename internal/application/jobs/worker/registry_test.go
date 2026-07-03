@@ -16,8 +16,15 @@ import (
 )
 
 // stubHandler is a no-op handler used by every positive-path test.
-func stubHandler(_ context.Context, _ *domainjob.Job, _ *Tools) (map[string]any, error) {
-	return map[string]any{"ok": true}, nil
+// P1 #13 (July 2026): the worker's Handler is now a Go type alias
+// for domainjob.Handler, so the test fixture MUST conform to the
+// canonical Handler signature `func(context.Context, *domainjob.Job,
+// *domainjob.JobExecutionTools) (domainjob.Result, error)`. The
+// return type is `domainjob.Result` which is a Go type alias for
+// `map[string]any` (godlike/06 SSOT back-compat policy), so the
+// `map[string]any{"ok": true}` literal still compiles.
+func stubHandler(_ context.Context, _ *domainjob.Job, _ *domainjob.JobExecutionTools) (domainjob.Result, error) {
+	return domainjob.Result{"ok": true}, nil
 }
 
 // ── Registration invariants ─────────────────────────────────────────────
@@ -115,9 +122,9 @@ func TestRegistry_JobTypesReturnsDefensiveCopy(t *testing.T) {
 func TestRegistry_DispatchSupportedType(t *testing.T) {
 	r := NewRegistry()
 	called := false
-	h := func(_ context.Context, _ *domainjob.Job, _ *Tools) (map[string]any, error) {
+	h := func(_ context.Context, _ *domainjob.Job, _ *domainjob.JobExecutionTools) (domainjob.Result, error) {
 		called = true
-		return map[string]any{"ran": true}, nil
+		return domainjob.Result{"ran": true}, nil
 	}
 	if err := r.Register("test.job", h); err != nil {
 		t.Fatalf("Register returned %v", err)

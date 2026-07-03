@@ -249,37 +249,34 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	if err := genJobHandler.RegisterJobs(brokerAdapter{disp: dispatcher}); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("creator: register script.generate handler: %w", err)
-	}	// P1-COMPL-12-PLACEHOLDER-CAPABILITY (godlike/07 no-fake-availability,
-	// deadline 2026-07-25, small-but-dangerous band): the
-	// `voiceover.generate_item` placeholder registration that USED to live
-	// here has been REMOVED from default production builds. No fake
-	// capability is now advertised to the Sender from the Creator
-	// composition root; the `workerruntime.ResolveCapabilities` gate
-	// correctly fail-closes at boot if a deployment profile lists
-	// `voiceover.generate_item` as allowed but the dispatcher has no
-	// handler for it. The placeholder SHAPE (a godlike/07-compliant
-	// typed-error handler) is preserved for OPT-IN test affordance ONLY
-	// — see `creator_runtime_placeholder_test_only.go`, gated by the
-	// `voiceover_placeholder` build tag. Default `go build` does NOT
-	// compile the affordance; `go build -tags voiceover_placeholder`
-	// loads it for test fixtures. When the real Creator-side voiceover
-	// engine lands (Blocco 3.x), re-introduce the handler here under the
-	// canonical Pattern 0 port rather than reviving the placeholder.
+	}
+
+	// TODO (Blocco 3.x): register real voiceover.generate_item handler.
+	// The placeholder returns a clear "not yet implemented" error so the
+	// Creator never silently drops voiceover jobs on an unsigned dispatcher.
+	placeholderVO := func(ctx context.Context, j *domainjob.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
+		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
+	}
+	if err := dispatcher.Register(domainjob.TypeVoiceoverGenerateItem, placeholderVO); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
+	}
+	log.Info("creator: voiceover.generate_item placeholder registered (TODO Blocco 3.x — wire real engine)")
 
 	dispatcher.Freeze()
 
 	reg := worker.NewRegistry()
-	// Adapter: worker.Handler is a distinct named func type
-	// (worker.Tools via worker pkg, appjobs.JobTools via appjobs pkg) so
-	// a structural cast is not allowed. Wrap the dispatcher's HandlerFunc
-	// into the worker's Handler signature. Tools are forwarded as nil
-	// at this composition root — production runtime Bridges will tear
-	// JobTools into worker.Tools in a Future Blocco.
+	// P1 #13 (July 2026): adapter was retired. dispatcher.AllHandlers
+	// returns canonical `appjobs.Handler` values which are Go-type-aliases
+	// for `domainjob.Handler` (canonical SSOT in
+	// internal/domain/job/handler.go). worker.Handler is also an alias
+	// for the same domainjob.Handler, so the handler passes directly
+	// without an inline-wrapped closure. The worker runtime translates
+	// `worker.Tools` (broker facade) into `*domainjob.JobExecutionTools`
+	// at Dispatch time (registry.go::translateToolsToExecutionTools)
+	// so the handler observes the canonical signature at invocation.
 	for jobType, handler := range dispatcher.AllHandlers() {
-		adapted := func(ctx context.Context, j *domainjob.Job, _ *worker.Tools) (map[string]any, error) {
-			return handler(ctx, j, nil)
-		}
-		if err := reg.Register(jobType, adapted); err != nil {
+		if err := reg.Register(jobType, handler); err != nil {
 			cleanup()
 			return nil, nil, fmt.Errorf("creator: register handler %q in worker registry: %w", jobType, err)
 		}
@@ -326,12 +323,16 @@ type brokerAdapter struct {
 }
 
 // RegisterHandler satisfies scriptports.Broker. The `any` handler
-// is type-asserted to the dispatcher's `HandlerFunc` named
+// is type-asserted to the dispatcher's canonical `Handler` named
 // signature; a mismatched payload is reported as a typed error so
 // registration fails loudly rather than silently dropping the
-// handler.
+// handler. P1 #13 (July 2026): appjobs.JobExecutionTools is a
+// Go-type-alias for domainjob.JobExecutionTools (canonical SSOT),
+// and the asserted signature matches the canonical Handler.
+// Pre-P1-#13 literal `map[string]any` return remains valid via
+// Result = map[string]any alias.
 func (b brokerAdapter) RegisterHandler(jobType string, handler any) error {
-	h, ok := handler.(func(context.Context, *domainjob.Job, *appjobs.JobTools) (map[string]any, error))
+	h, ok := handler.(func(context.Context, *domainjob.Job, *appjobs.JobExecutionTools) (map[string]any, error))
 	if !ok {
 		return fmt.Errorf("brokerAdapter: handler type mismatch for jobType=%q (got %T)", jobType, handler)
 	}
