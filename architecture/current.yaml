@@ -1927,7 +1927,9 @@
         direct NewJobHandler wiring (godlike/06 SSOT one-owner-per-fact).
     - id: PR-DRIVECLIENT-RAW-RETIRE
       owner_capability: internal/app + internal/infrastructure/drive
-      status: pending
+      status: shipped
+      ship_sha: 08be6ede
+      ship_date: 2026-07-04
       deadline: 2026-07-25
       notes: |
         Retire raw `DriveClient *gdrive.Service` field from
@@ -1936,6 +1938,29 @@
         closed via commit a8c781ae): delivery.Publisher / drive.Reader /
         drive.FileLifecycle / drive.DocClient. While raw *gdrive.Service
         leaks into the bundle, callers can bypass the canonical ports.
+
+        CLOSED (2026-07-04, commit 08be6ede on origin/main):
+        the DriveClient field is physically REMOVED from DriveBundle;
+        the gdrive import is REMOVED from composition.go (the only
+        use was the removed field); the 4 canonical Pattern 0 ports
+        (Admin / Reader / DocClient / Lifecycle + Publisher) remain
+        wired as the only Drive surface on the bundle. The local
+        driveClient *gdrive.Service variable in BuildDriveBundle is
+        RETAINED for the driveUploader ctor + startDriveBackgroundFolders
+        closure parameter (internal-only, NOT exposed via the bundle).
+        Audit: rg root\.Drive\.DriveClient|driveBundle\.DriveClient|
+        DriveBundle\.DriveClient internal/ → 0 hits post-removal.
+        Deprecation record: architecture/deprecations.yaml#
+        DRIVE-RAW-BUNDLE-LEAK (status: removed, migration_phase: CONTRACT).
+
+        Honest scope-lock (godlike/07 minimal-blast-radius):
+        ArtlistBundle.DriveClient (separate struct, always nil in
+        production) and HasDriveClient JSON diagnostic field
+        (different concern: JSON wire shape) are tracked as
+        separate forward-pointers — NOT regressed by this closure.
+        Pre-existing build issue FIX-IMAGES-ROUTING-CYCLE blocks
+        full build verification (reproduces on stashed pre-PR tree,
+        NOT a regression).
         godlike/06 SSOT one-owner-per-fact: per DRIVE-005 closure the
         Drive surface has 4 canonical owners; the raw handle is an SSOT
         regression risk.
