@@ -19,31 +19,43 @@ package reconciler
 
 import "time"
 
-// ClassificationKind enumerates the 9 categories a paired (asset_id,
+// ClassificationKind enumerates the 12 categories a paired (asset_id,
 // qdrantPoint) can fall into. Priority order (highest first; used by
 // classifyPair when multiple conditions apply):
 //
 //  1. Missing              — in SQLite, not in Qdrant
 //  2. Orphan               — in Qdrant, not in SQLite
-//  3. NonCanonicalPointID  — Qdrant point ID does NOT match the
+//  3. Duplicate            — same asset_id appears on multiple Qdrant
+//     points (detected during scroll; the first occurrence is kept,
+//     subsequent occurrences are flagged)
+//  4. NonCanonicalPointID  — Qdrant point ID does NOT match the
 //     AssetIDToQdrantPointID(asset_id) contract
-//  4. PayloadIncomplete    — missing required payload key
-//  5. VersionStale         — any channel embedding_version_<ch>
+//  5. PayloadIncomplete    — missing required payload key
+//  6. VersionStale         — any channel embedding_version_<ch>
 //     mismatches the manifest ModelVersion
-//  6. LifecycleMismatch    — sqlite lifecycle_state != payload
-//  7. WorkspaceMismatch    — sqlite workspace_id != payload
-//  8. LifecycleKeyLegacy   — payload uses retired "status" key
+//  7. MissingVectors       — payload present but point has zero or
+//     empty vector channels (detected via verifier; reconciler scrolls
+//     with with_vector=false so this is a placeholder gate)
+//  8. DimensionMismatch    — vector dimension mismatch vs schema
+//     (detected via verifier; reconciler scrolls with with_vector=false
+//     so this is a placeholder gate)
+//  9. LifecycleMismatch    — sqlite lifecycle_state != payload
+//  10. WorkspaceMismatch   — sqlite workspace_id != payload
+//  11. LifecycleKeyLegacy  — payload uses retired "status" key
 //     (instead of canonical "lifecycle_state"; QDRANT-004 SSOT)
-//  9. LocatorLegacy        — payload carries "drive_link" /
+//  12. LocatorLegacy       — payload carries "drive_link" /
 //     "local_path" (retired by QDRANT-001)
 type ClassificationKind string
 
 const (
 	KindMissing             ClassificationKind = "missing"
 	KindOrphan              ClassificationKind = "orphan"
+	KindDuplicate           ClassificationKind = "duplicate"
 	KindNonCanonicalPointID ClassificationKind = "non_canonical_point_id"
 	KindPayloadIncomplete   ClassificationKind = "payload_incomplete"
 	KindVersionStale        ClassificationKind = "version_stale"
+	KindMissingVectors      ClassificationKind = "missing_vectors"
+	KindDimensionMismatch   ClassificationKind = "dimension_mismatch"
 	KindLifecycleMismatch   ClassificationKind = "lifecycle_mismatch"
 	KindWorkspaceMismatch   ClassificationKind = "workspace_mismatch"
 	KindLifecycleKeyLegacy  ClassificationKind = "lifecycle_key_legacy"
@@ -115,6 +127,41 @@ type Classification struct {
 	LocatorKeys   []string `json:"locator_keys,omitempty"`
 }
 
+// CategoryGroup is a named aggregation of classifications for a single
+// reconciliation category. The Count is always authoritative; Items is
+// the (possibly truncated) list of classifications in this category.
+type CategoryGroup struct {
+	Count int              `json:"count"`
+	Items []Classification `json:"items,omitempty"`
+}
+
+// ReconciliationReport is the typed, operator-facing report derived from
+// a ReconcileReport. It surfaces named, domain-specific categories —
+// Missing, Orphans, InvalidPayloads, NonCanonicalIDs, MissingVectors,
+// DimensionMismatches, Duplicates — each backed by the underlying
+// ClassificationKind enumeration and its detection logic.
+//
+// The 5 remaining classification kinds (VersionStale, LifecycleMismatch,
+// WorkspaceMismatch, LifecycleKeyLegacy, LocatorLegacy) are NOT surfaced
+// as named groups here — they are diagnostics that already appear in the
+// Counts map and Classifications list; the named groups are the
+// action/dispatch categories.
+//
+// Task 6 (July 2026): this type provides a stable API surface for
+// dashboards and alerting rules that need named fields rather than
+// iterating a flat []Classification list. The converter method
+// ReconcileReport.ToReconciliationReport() maps from the canonical
+// kind-based representation into these named groups.
+type ReconciliationReport struct {
+	Missing             CategoryGroup `json:"missing"`
+	Orphans             CategoryGroup `json:"orphans"`
+	InvalidPayloads     CategoryGroup `json:"invalid_payloads"`
+	NonCanonicalIDs     CategoryGroup `json:"non_canonical_ids"`
+	MissingVectors      CategoryGroup `json:"missing_vectors"`
+	DimensionMismatches CategoryGroup `json:"dimension_mismatches"`
+	Duplicates          CategoryGroup `json:"duplicates"`
+}
+
 // ReconcileReport is the machine-readable output of a reconcile run.
 // The JSON form is consumed by ops dashboards / alert routing.
 type ReconcileReport struct {
@@ -144,6 +191,12 @@ type ReconcileReport struct {
 	// DisplayedCount is len(Classifications); equals len(pairs) when
 	// not truncated, MaxClassifications when truncated.
 	DisplayedCount int `json:"displayed_count"`
+
+	// Reconciliation is the typed report derived from Classifications.
+	// Populated by Service.Reconcile after classification completes.
+	// Dashboard consumers can read this directly instead of iterating
+	// the flat Classifications list.
+	Reconciliation ReconciliationReport `json:"reconciliation"`
 
 	// RepairSummary records per-action dispatch counts. Zeros when
 	// DryRun.
@@ -230,16 +283,66 @@ const MaxClassifications = 10000
 // AllClassificationKinds is the canonical, deterministic enumeration of
 // every ClassificationKind value, in priority order top-to-bottom.
 // Used by dashboards and the cmd/admin reconcile command to render all
-// 9 categories (including zero-count entries) so operators see exactly
+// 12 categories (including zero-count entries) so operators see exactly
 // which categories the scan covered.
 var AllClassificationKinds = []ClassificationKind{
 	KindMissing,
 	KindOrphan,
+	KindDuplicate,
 	KindNonCanonicalPointID,
 	KindPayloadIncomplete,
 	KindVersionStale,
+	KindMissingVectors,
+	KindDimensionMismatch,
 	KindLifecycleMismatch,
 	KindWorkspaceMismatch,
 	KindLifecycleKeyLegacy,
 	KindLocatorLegacy,
+}
+
+// ToReconciliationReport derives the typed ReconciliationReport from
+// the flat Classifications list. Each named category extracts its
+// corresponding ClassificationKind entries. The Counts map is the
+// authoritative source for counts; the Items slice is capped at the
+// same MaxClassifications bound as the parent report.
+//
+// Verifier-only categories (MissingVectors, DimensionMismatch) are
+// populated from Classifications produced by the verifier path — the
+// reconciler currently does not populate these (it scrolls with
+// with_vector=false), so these fields default to zero counts unless
+// a future wave adds vector inspection to the scroll phase.
+func (r *ReconcileReport) ToReconciliationReport() ReconciliationReport {
+	pairs := r.Classifications
+	return ReconciliationReport{
+		Missing:             extractCategory(pairs, KindMissing, MaxClassifications),
+		Orphans:             extractCategory(pairs, KindOrphan, MaxClassifications),
+		InvalidPayloads:     extractCategory(pairs, KindPayloadIncomplete, MaxClassifications),
+		NonCanonicalIDs:     extractCategory(pairs, KindNonCanonicalPointID, MaxClassifications),
+		MissingVectors:      extractCategory(pairs, KindMissingVectors, MaxClassifications),
+		DimensionMismatches: extractCategory(pairs, KindDimensionMismatch, MaxClassifications),
+		Duplicates:          extractCategory(pairs, KindDuplicate, MaxClassifications),
+	}
+}
+
+// extractCategory filters a classification list for a single kind and
+// returns a CategoryGroup with the count and (possibly truncated) items.
+func extractCategory(pairs []Classification, kind ClassificationKind, max int) CategoryGroup {
+	items := make([]Classification, 0)
+	for _, c := range pairs {
+		if c.Kind == kind {
+			if len(items) < max {
+				items = append(items, c)
+			}
+		}
+	}
+	total := 0
+	for _, c := range pairs {
+		if c.Kind == kind {
+			total++
+		}
+	}
+	return CategoryGroup{
+		Count: total,
+		Items: items,
+	}
 }

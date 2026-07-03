@@ -257,7 +257,16 @@ func runReconcileQdrant(args []string) error {
 	fmt.Printf("  SQLite rows:  %d\n", report.ScannedTotals.SQLiteAssets)
 	fmt.Printf("  Qdrant pts:   %d\n", report.ScannedTotals.QdrantPoints)
 	fmt.Printf("  Pairs:        %d\n", report.ScannedTotals.Pairs)
-	fmt.Println("  --- Counts (per category):")
+	fmt.Println("  --- Action categories:")
+	rr := report.Reconciliation
+	fmt.Printf("    Missing:             %d\n", rr.Missing.Count)
+	fmt.Printf("    Orphans:             %d\n", rr.Orphans.Count)
+	fmt.Printf("    InvalidPayloads:     %d\n", rr.InvalidPayloads.Count)
+	fmt.Printf("    NonCanonicalIDs:     %d\n", rr.NonCanonicalIDs.Count)
+	fmt.Printf("    MissingVectors:      %d\n", rr.MissingVectors.Count)
+	fmt.Printf("    DimensionMismatches: %d\n", rr.DimensionMismatches.Count)
+	fmt.Printf("    Duplicates:          %d\n", rr.Duplicates.Count)
+	fmt.Println("  --- All categories (12):")
 	for _, k := range reconciler.AllClassificationKinds {
 		fmt.Printf("    %-26s = %d\n", k, report.Counts[k])
 	}

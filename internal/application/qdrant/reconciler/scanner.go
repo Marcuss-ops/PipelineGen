@@ -18,9 +18,10 @@ import (
 // Order in the returned slice:
 //  1. All Missing entries (alphabetical by asset_id, for stable diffs).
 //  2. All Orphan entries.
-//  3. Paired classifications with priority applied
+//  3. All Duplicate entries (Task 6, July 2026).
+//  4. Paired classifications with priority applied
 //     (highest-priority kind wins).
-func classify(sqliteSet map[string]AssetSnapshot, qdrantSet map[string]pointWithID, schema SchemaVersions, pointIDFor AssetPointIDFunc) []Classification {
+func classify(sqliteSet map[string]AssetSnapshot, qdrantSet map[string]pointWithID, schema SchemaVersions, pointIDFor AssetPointIDFunc, duplicates map[string][]pointWithID) []Classification {
 	var missing []Classification
 	for id := range sqliteSet {
 		if _, ok := qdrantSet[id]; !ok {
@@ -61,9 +62,21 @@ func classify(sqliteSet map[string]AssetSnapshot, qdrantSet map[string]pointWith
 		c.QdrantPointID = p.ID
 		pairs = append(pairs, *c)
 	}
-	out := make([]Classification, 0, len(missing)+len(orphan)+len(pairs))
+	var duplicatesCls []Classification
+	for assetID, extraPoints := range duplicates {
+		for _, p := range extraPoints {
+			duplicatesCls = append(duplicatesCls, Classification{
+				Kind:          KindDuplicate,
+				AssetID:       assetID,
+				QdrantPointID: p.ID,
+				Details:       fmt.Sprintf("duplicate Qdrant point for asset_id %q: point ID %q (first occurrence kept)", assetID, p.ID),
+			})
+		}
+	}
+	out := make([]Classification, 0, len(missing)+len(orphan)+len(duplicatesCls)+len(pairs))
 	out = append(out, missing...)
 	out = append(out, orphan...)
+	out = append(out, duplicatesCls...)
 	out = append(out, pairs...)
 	return out
 }

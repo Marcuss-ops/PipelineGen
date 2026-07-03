@@ -582,14 +582,16 @@ func TestReconcile_VersionMismatchPerChannel_Emitted(t *testing.T) {
 			"stale_text_a": {ID: "pt-stale_text_a", Payload: map[string]interface{}{
 				"asset_id": "stale_text_a",
 				"name":     "x", "source": "youtube",
-				"lifecycle_state":        "ACTIVE",
-				"embedding_version_text": "v0",
+				"lifecycle_state":              "ACTIVE",
+				"embedding_version_text":       "v0",
+				"embedding_version_transcript": "2026-06-16-v1",
 			}},
 			"stale_text_b": {ID: "pt-stale_text_b", Payload: map[string]interface{}{
 				"asset_id": "stale_text_b",
 				"name":     "x", "source": "youtube",
-				"lifecycle_state":        "ACTIVE",
-				"embedding_version_text": "v0",
+				"lifecycle_state":              "ACTIVE",
+				"embedding_version_text":       "v0",
+				"embedding_version_transcript": "2026-06-16-v1",
 			}},
 			"stale_trans": {ID: "pt-stale_trans", Payload: map[string]interface{}{
 				"asset_id": "stale_trans",
