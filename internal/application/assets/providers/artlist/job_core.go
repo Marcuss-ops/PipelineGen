@@ -235,6 +235,18 @@ func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 
 var jobCodec = &JobCodec{}
 
+// RegisterHandler registers HandleJob as the worker handler for media.artlist.
+// The canonical job type constant lives in internal/application/jobs/registry.go
+// (TypeArtlistRun = "media.artlist") and internal/domain/job/job.go. This method
+// is the single call-site that bridges the Artlist service to the jobs dispatcher;
+// composition root (build_bundles_artlist.go) calls it after WireArtlist.
+func (a *JobAdapter) RegisterHandler(jobsSvc *appjobs.Service) error {
+	if jobsSvc == nil {
+		return fmt.Errorf("artlist.RegisterHandler: jobs service is nil")
+	}
+	return jobsSvc.RegisterHandler(appjobs.TypeArtlistRun, appjobs.HandlerFunc(a.HandleJob))
+}
+
 func (a *JobAdapter) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s := a.service
 	s.log.Info("handling artlist job",

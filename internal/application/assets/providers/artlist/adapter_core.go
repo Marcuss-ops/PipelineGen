@@ -255,7 +255,7 @@ func (s *DBSearcher) Search(ctx context.Context, req SearchRequest) ([]Candidate
 			ID:         clip.ID,
 			Title:      clip.Name,
 			SourceRef:  clip.ExternalURL(),
-			PageURL:    clip.GetMetadataString("external_url"),
+			PageURL:    clip.ClipPageURL,
 			SourceName: "database",
 		})
 	}

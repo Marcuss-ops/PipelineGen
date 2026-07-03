@@ -35,16 +35,19 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 		}
 	}
 
-	// For Artlist URLs, use the Node.js scraper with browser cookies.
+	// For Artlist clips, use the Node.js scraper with browser cookies.
 	// Artlist CDN URLs often lack explicit .m3u8 extension but are HLS streams.
 	// FFmpeg/yt-dlp fail with 403 because they lack browser session cookies.
 	// The scraper (Puppeteer/Chromium) carries the proper auth context, opens
 	// the clip page, scrolls into view, clicks play, and captures the stream URL.
-	// Trigger when: SourceURL contains "artlist" AND either has .m3u8 OR a ClipPageURL.
-	if p.ffmpeg != nil && (p.isHLSURL(input.SourceURL) || input.ClipPageURL != "") && p.isArtlistURL(input.SourceURL) {
-		p.log.Info("using Node.js scraper for Artlist HLS download",
+	// Trigger when: the clip is from Artlist (identified by SourceURL, ClipPageURL,
+	// or by having an Artlist-style numeric ID with a name).
+	isArtlistClip := p.isArtlistURL(input.SourceURL) || p.isArtlistURL(input.ClipPageURL) ||
+		(input.ID != "" && input.Name != "" && p.isArtlistNumericID(input.ID))
+	if p.ffmpeg != nil && isArtlistClip {
+		p.log.Info("using Node.js scraper for Artlist download",
 			zap.String("id", input.ID),
-			zap.String("url", input.SourceURL),
+			zap.String("name", input.Name),
 		)
 
 		scraperOutput, scraperErr := p.downloadViaScraper(ctx, input, rawPath)
@@ -132,6 +135,59 @@ func (p *Processor) isArtlistURL(url string) bool {
 	return strings.Contains(u, "artlist") || strings.Contains(u, "cdn.artlist")
 }
 
+// isArtlistNumericID checks if the clip ID looks like an Artlist numeric identifier.
+// Artlist clip IDs are 4-7 digit numbers (e.g. 694565, 760198, 489828).
+func (p *Processor) isArtlistNumericID(id string) bool {
+	id = strings.TrimSpace(id)
+	if len(id) < 4 || len(id) > 7 {
+		return false
+	}
+	for _, c := range id {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// buildArtlistClipPageURL constructs an Artlist clip page URL from the clip name and ID.
+// Artlist URLs follow the pattern: https://artlist.io/stock-footage/clip/<slug>/<id>
+// where <slug> is a URL-safe version of the clip name.
+func buildArtlistClipPageURL(name, id string) string {
+	if id == "" {
+		return ""
+	}
+	// Derive a slug from the clip name: lowercase, remove non-alphanumeric
+	// chars, collapse spaces to hyphens, trim.
+	slug := strings.ToLower(name)
+	// Remove everything after " by " (the author attribution)
+	if idx := strings.Index(slug, " by "); idx >= 0 {
+		slug = slug[:idx]
+	}
+	// Replace common separators and spaces with hyphens
+	slug = strings.ReplaceAll(slug, ",", "")
+	slug = strings.ReplaceAll(slug, "  ", " ")
+	slug = strings.TrimSpace(slug)
+	slug = strings.ReplaceAll(slug, " ", "-")
+	// Remove any remaining non-alpha-numeric-hyphen characters
+	var cleaned strings.Builder
+	for _, c := range slug {
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
+			cleaned.WriteRune(c)
+		}
+	}
+	slug = cleaned.String()
+	// Remove leading/trailing hyphens and collapse multiple hyphens
+	slug = strings.Trim(slug, "-")
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	if slug == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://artlist.io/stock-footage/clip/%s/%s", slug, id)
+}
+
 // downloadViaScraper calls the Node.js scraper /download endpoint to download
 // an Artlist clip with browser authentication (cookies).
 func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.ProcessInput, rawPath string) (string, error) {
@@ -139,9 +195,18 @@ func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.Process
 
 	// Use ClipPageURL if available (the actual Artlist clip page URL for browser navigation).
 	// Fall back to SourceURL (which might be the .m3u8 URL).
+	// If both are empty, construct the URL from clip name + ID.
 	clipPageURL := input.ClipPageURL
 	if clipPageURL == "" {
 		clipPageURL = input.SourceURL
+	}
+	if clipPageURL == "" && input.ID != "" {
+		clipPageURL = buildArtlistClipPageURL(input.Name, input.ID)
+		p.log.Info("constructed Artlist clip page URL from name+ID",
+			zap.String("url", clipPageURL),
+			zap.String("name", input.Name),
+			zap.String("id", input.ID),
+		)
 	}
 
 	// The scraper saves to output_dir with filename: {clipId}.ts (for HLS) or {clipId}.mp4.

@@ -334,6 +334,17 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 	}
 
 	wiring.ArtlistSvc = artlistWiring
+
+	// Register the Artlist job handler with the jobs dispatcher so the
+	// worker can process media.artlist jobs (the HTTP /run endpoint
+	// enqueues them and the worker calls artlist.Service.HandleJob).
+	// Mirror of wireYoutubeCatalogJobBindings precedent.
+	if err := WireArtlistJobBindings(artlistWiring.Service, root.Jobs); err != nil {
+		log.Warn("registerArtlist: job handler registration failed (worker will retry media.artlist jobs indefinitely)",
+			zap.Error(err),
+		)
+	}
+
 	log.Info("registerArtlist: ART-001 reversal milestone complete",
 		zap.String("descriptor_module_name", artlistWiring.Module.Name()),
 	)
