@@ -527,9 +527,6 @@ func wireScriptChildJobAuditP04(
 		return fmt.Errorf("P0 #4 audit wiring: GenerateManyUseCase is required (nil-broken composition)")
 	}
 
-	ctx := context.Background() // aggregator lifetime is server-wide; ticks run for the whole server boot.
-	_ = ctx
-
 	// 1. Construct the per-item child worker.
 	itemHandler := jobs.NewScriptGenerateItemJobHandler(
 		oneUC, // satisfies GenerateOneExecutor port via Go interface satisfaction
@@ -550,17 +547,10 @@ func wireScriptChildJobAuditP04(
 			zap.Int("max_concurrency", normCfg.MaxBatchWorkers))
 	}
 
-	// 3. Construct + register the parent aggregator. The ticker polls
-	//    children at 30s interval (canonical production cadence).
-	agg := jobs.NewScriptParentAggregator(jobs.ScriptAggregatorDeps{
-		JobsSvc:      jobsSvc, // *appjobs.Service satisfies ScriptAggregatorJobsService
-		Logger:       log,
-		PollInterval: 30 * 1_000_000_000, // 30s in nanoseconds
-	})
-	agg.Start(context.Background())
-	if log != nil {
-		log.Info("P0 #4 audit wiring: ScriptParentAggregator started (30s tick interval)")
-	}
+	// 3. ScriptParentAggregator is constructed + lifecycle-owned in
+	//    startBackgroundJobs (lifecycle.go) — NOT here. The aggregator
+	//    ticker uses the server's runtime context (signal.NotifyContext),
+	//    not context.Background(). See Commit 4 (P0 #9 lifecycle ownership).
 
 	return nil
 }

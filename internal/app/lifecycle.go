@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -206,6 +207,29 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				Start: func(startCtx context.Context) error {
 					voAgg.Start(startCtx)
 					log.Info("Voiceover parent aggregator started (interval=30s)")
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
+		}
+
+		// Script parent aggregator (Commit 4 P0 #4 audit, July 2026):
+		// lifecycle-owns the script.generate parent aggregator with the
+		// server's runtime context (signal.NotifyContext). Previously
+		// started during composition with context.Background() — the
+		// goroutine had no shutdown signal and leaked on re-composition.
+		// Mirrors the voiceover-parent-aggregator pattern above.
+		if root.Jobs.Service != nil {
+			scriptAgg := scriptjobs.NewScriptParentAggregator(scriptjobs.ScriptAggregatorDeps{
+				JobsSvc:      root.Jobs.Service,
+				Logger:       log,
+				PollInterval: 30 * time.Second,
+			})
+			steps = append(steps, StartupStep{
+				Name: "script-parent-aggregator", Required: false,
+				Start: func(startCtx context.Context) error {
+					scriptAgg.Start(startCtx)
+					log.Info("Script parent aggregator started (interval=30s)")
 					return nil
 				},
 				Stop: func(_ context.Context) error { return nil },
