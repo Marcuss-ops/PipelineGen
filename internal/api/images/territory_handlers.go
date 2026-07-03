@@ -10,7 +10,7 @@
 //                                       (returns empty DTO list today;
 //                                        SQLite-backed read-only filter is
 //                                        a follow-up).
-//   POST /api/images/generated/generate → GenerateSmartImageWithAccount
+//   POST /api/images/generated/generate → GenerateSmartImage (PR-IMAGES-SHIM-REMOVAL, 2026-07-04)
 //                                         (matches the existing /generate
 //                                          payload semantics but mounted
 //                                          under /generated/*).
@@ -150,8 +150,6 @@ type GeneratedGenerateRequest struct {
 	Height    int      `json:"height"`
 	Style     string   `json:"style" example:"medievale"`
 	Tags      []string `json:"tags"`
-	Account   string   `json:"account,omitempty"`
-	ProjectID string   `json:"project_id,omitempty"`
 }
 
 // GeneratedGenerate handles POST /api/images/generated/generate.
@@ -166,7 +164,7 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		return
 	}
 
-	asset, err := h.service.GenerateSmartImageWithAccount(
+	asset, err := h.service.GenerateSmartImage(
 		c.Request.Context(),
 		"", // subject
 		"", // topic
@@ -177,8 +175,6 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		req.Height,
 		generated.CanonicalGoogleSlidesModel,
 		false, // skipDrive = false
-		req.Account,
-		req.ProjectID,
 	)
 	if err != nil {
 		if errors.Is(err, imgservice.ErrImageGenNotImplemented) {

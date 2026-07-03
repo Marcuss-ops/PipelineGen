@@ -70,8 +70,10 @@ type GenerateImageRequest struct {
 	Height    int      `json:"height"`
 	Style     string   `json:"style" example:"medievale"`
 	Tags      []string `json:"tags"`
-	Account   string   `json:"account,omitempty"`
-	ProjectID string   `json:"project_id,omitempty"`
+	// Account/ProjectID RETIRED per PR-IMAGES-SHIM-REMOVAL (2026-07-04):
+	// canonical surface has no account/project params (fake-availability
+	// retirement per godlike/07 no-fake-availability). Tenant identity
+	// belongs in a separate auth/tenancy port.
 }
 
 // GenerateBatchRequest is the async batch image generation request (FASE 3, June 2026).
@@ -186,7 +188,7 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	asset, err := h.service.GenerateSmartImageWithAccount(
+	asset, err := h.service.GenerateSmartImage(
 		c.Request.Context(),
 		"", // subject
 		"", // topic
@@ -197,8 +199,6 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		req.Height,
 		generated.CanonicalGoogleSlidesModel,
 		false, // skipDrive = false
-		req.Account,
-		req.ProjectID,
 	)
 	if err != nil {
 		if errors.Is(err, imgservice.ErrImageGenNotImplemented) {

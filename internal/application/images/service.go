@@ -90,11 +90,12 @@ type ImagesExternalDeps struct {
 }
 
 type Service struct {
-	Gen    *GenerationService
-	Store  *ImageStorageService
-	Meta   *MetadataService
-	Diag   *DiagnosticsService
-	Styles *generation.StyleRegistry
+	Gen        *GenerationService
+	JobHandler *JobHandler
+	Store      *ImageStorageService
+	Meta       *MetadataService
+	Diag       *DiagnosticsService
+	Styles     *generation.StyleRegistry
 }
 
 func (s *Service) StylesRegistry() *generation.StyleRegistry {
@@ -160,15 +161,10 @@ func NewService(deps ImagesDeps) *Service {
 		generatedRegistry = generated.NewDefaultProviderRegistry(log, NewImageGeneratorAdapter(deps.GenAI.ImageGen))
 	}
 
-	gen := &GenerationService{
-		imageGen: deps.GenAI.ImageGen,
-		styles:   deps.GenAI.StyleRegistry,
-		log:      log,
-		storage:  store,
-		registry: generatedRegistry,
-	}
+	gen := NewGenerationService(generatedRegistry, deps.GenAI.StyleRegistry, log, store)
+	jobHandler := NewJobHandler(generatedRegistry, deps.GenAI.StyleRegistry, log)
 
-	return &Service{Gen: gen, Store: store, Meta: meta, Diag: diag, Styles: deps.GenAI.StyleRegistry}
+	return &Service{Gen: gen, JobHandler: jobHandler, Store: store, Meta: meta, Diag: diag, Styles: deps.GenAI.StyleRegistry}
 }
 
 func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
@@ -178,26 +174,29 @@ func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style 
 	return s.Gen.GenerateSmartImage(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive)
 }
 
-func (s *Service) GenerateSmartImageWithAccount(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool, account, projectID string) (*asset.ImageAsset, error) {
-	if s == nil || s.Gen == nil {
-		return nil, ErrImageGenNotImplemented
-	}
-	return s.Gen.GenerateSmartImageWithAccount(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive, account, projectID)
-}
-
 func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
 	s.Gen.TriggerPrewarm(ctx, jobID, count)
 }
 
+// HandleJob delegates to the held JobHandler (constructed once at
+// NewService time per PR-IMAGES-SHIM-REMOVAL, 2026-07-04). The
+// pre-removal pattern of constructing a fresh NewJobHandler(...)
+// per call is RETIRED — composition root owns the canonical wiring.
 func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
-	return s.Gen.HandleJob(ctx, j, tools)
+	if s == nil || s.JobHandler == nil {
+		return nil, fmt.Errorf("images.Service.HandleJob: JobHandler not wired (composition must call NewService): %w", appjobs.ErrMissingDeps)
+	}
+	return s.JobHandler.HandleJob(ctx, j, tools)
 }
 
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil: %w", appjobs.ErrMissingDeps)
 	}
-	if err := s.Gen.RegisterHandler(jobsSvc); err != nil {
+	if s.JobHandler == nil {
+		return fmt.Errorf("images.Service.RegisterHandler: JobHandler not wired (composition must call NewService): %w", appjobs.ErrMissingDeps)
+	}
+	if err := s.JobHandler.RegisterHandler(jobsSvc); err != nil {
 		return fmt.Errorf("images.Service.RegisterHandler: %w", err)
 	}
 	return nil
