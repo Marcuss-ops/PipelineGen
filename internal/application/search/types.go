@@ -163,9 +163,7 @@ type Candidate struct {
 	SourceRef    string  `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
 	MediaType    string  `json:"media_type,omitempty"`
 	Title        string  `json:"title,omitempty"`
-	Name         string  `json:"name,omitempty"`       // canonical asset name; may differ from Title when localizations differ
-	LocalPath    string  `json:"local_path,omitempty"` // for hash-source + duplicate-list display
-	DriveLink    string  `json:"drive_link,omitempty"` // for hash-source + duplicate-list display
+	Name         string  `json:"name,omitempty"` // canonical asset name; may differ from Title when localizations differ
 	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	PreviewURL   string  `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
 	Score        float64 `json:"score"`

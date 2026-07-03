@@ -20,9 +20,8 @@
 package app
 
 import (
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"go.uber.org/zap"
@@ -51,7 +50,7 @@ import (
 // reviewer's Q7 invariant: nil provider-reg must NOT panic here;
 // production sees the warning log and proceeds with nil for the
 // downstream caller to fail-closed.
-func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo mediasearch.MediaReadRepository, delivery mediasearch.AssetDeliveryService) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
+func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
 	var searchAgg *providers.SearchAggregator

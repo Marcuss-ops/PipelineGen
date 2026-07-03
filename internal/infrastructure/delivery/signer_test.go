@@ -20,8 +20,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 )
 
 const testSecret = "0123456789abcdef0123456789abcdef" // exactly 32 bytes
@@ -81,7 +79,7 @@ func TestNewSigner_NormalisesBaseURLAndPath(t *testing.T) {
 func TestBuildAndVerify_Roundtrip(t *testing.T) {
 	s := newTestSigner(t)
 	ctx := context.Background()
-	w := mediasearch.WorkspaceContext{WorkspaceID: "ws-42"}
+	w := WorkspaceContext{WorkspaceID: "ws-42"}
 	url, err := s.BuildAuthorizedURL(ctx, w, "asset-xyz")
 	if err != nil {
 		t.Fatalf("BuildAuthorizedURL: %v", err)
@@ -102,7 +100,7 @@ func TestBuildAndVerify_Roundtrip(t *testing.T) {
 func TestVerify_RejectsMismatch(t *testing.T) {
 	s := newTestSigner(t)
 	ctx := context.Background()
-	url, err := s.BuildAuthorizedURL(ctx, mediasearch.WorkspaceContext{WorkspaceID: "ws-1"}, "asset-1")
+	url, err := s.BuildAuthorizedURL(ctx, WorkspaceContext{WorkspaceID: "ws-1"}, "asset-1")
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -136,7 +134,7 @@ func TestVerify_RejectsExpired(t *testing.T) {
 	s.ttl = -1 * time.Second
 
 	url, err := s.BuildAuthorizedURL(context.Background(),
-		mediasearch.WorkspaceContext{WorkspaceID: "ws-1"}, "asset-1")
+		WorkspaceContext{WorkspaceID: "ws-1"}, "asset-1")
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -150,7 +148,7 @@ func TestVerify_RejectsExpired(t *testing.T) {
 func TestBuild_RejectsEmptyAssetID(t *testing.T) {
 	s := newTestSigner(t)
 	if _, err := s.BuildAuthorizedURL(context.Background(),
-		mediasearch.WorkspaceContext{WorkspaceID: "ws-1"}, "  "); err == nil {
+		WorkspaceContext{WorkspaceID: "ws-1"}, "  "); err == nil {
 		t.Fatal("expected error on empty asset_id")
 	}
 }
@@ -158,7 +156,7 @@ func TestBuild_RejectsEmptyAssetID(t *testing.T) {
 func TestBuild_RejectsDefaultWorkspace(t *testing.T) {
 	s := newTestSigner(t)
 	if _, err := s.BuildAuthorizedURL(context.Background(),
-		mediasearch.WorkspaceContext{WorkspaceID: "default"}, "asset-1"); err == nil {
+		WorkspaceContext{WorkspaceID: "default"}, "asset-1"); err == nil {
 		t.Fatal("expected error on default workspace")
 	}
 }
@@ -167,7 +165,7 @@ func TestBuild_AllowsArbitraryWorkspace(t *testing.T) {
 	s := newTestSigner(t)
 	for _, w := range []string{"ws-1", "ws-42", "tenant-A"} {
 		if _, err := s.BuildAuthorizedURL(context.Background(),
-			mediasearch.WorkspaceContext{WorkspaceID: w}, "asset-1"); err != nil {
+			WorkspaceContext{WorkspaceID: w}, "asset-1"); err != nil {
 			t.Errorf("workspace %q rejected: %v", w, err)
 		}
 	}

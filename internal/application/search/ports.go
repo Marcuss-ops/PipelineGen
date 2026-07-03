@@ -2,31 +2,31 @@
 // the MediaSearch capability. The package is organised into three
 // territories that mirror godlike/06 "one owner per fact" rule:
 //
-//   ┌─ SemanticEnrichment ───────────────────────────────────────────┐
-//   │  Asset → SearchDocument                                       │
-//   │   Owners: artlist/semantic_enricher.go (Artlist provider),    │
-//   │           images/metadata_service.go (pipeline images),       │
-//   │           clipindexer (YouTube clips).                        │
-//   │   Output: SearchDocument{AssetID, QdrantPointID, Payload...} │
-//   └────────────────────────────────────────────────────────────────┘
+//	┌─ SemanticEnrichment ───────────────────────────────────────────┐
+//	│  Asset → SearchDocument                                       │
+//	│   Owners: artlist/semantic_enricher.go (Artlist provider),    │
+//	│           images/metadata_service.go (pipeline images),       │
+//	│           clipindexer (YouTube clips).                        │
+//	│   Output: SearchDocument{AssetID, QdrantPointID, Payload...} │
+//	└────────────────────────────────────────────────────────────────┘
 //
-//   ┌─ IndexProjection ──────────────────────────────────────────────┐
-//   │  SearchDocument → Qdrant payload                               │
-//   │   Owner: infrastructure/qdrant/index_writer.go                 │
-//   │           (implements clipindexer.VectorStoreIndexer)          │
-//   │   Bridge: SearchDocument is a typed envelope that mirrors the  │
-//   │           Qdrant IndexSchema fields 1:1 (no Locator leak).    │
-//   └────────────────────────────────────────────────────────────────┘
+//	┌─ IndexProjection ──────────────────────────────────────────────┐
+//	│  SearchDocument → Qdrant payload                               │
+//	│   Owner: infrastructure/qdrant/index_writer.go                 │
+//	│           (implements clipindexer.VectorStoreIndexer)          │
+//	│   Bridge: SearchDocument is a typed envelope that mirrors the  │
+//	│           Qdrant IndexSchema fields 1:1 (no Locator leak).    │
+//	└────────────────────────────────────────────────────────────────┘
 //
-//   ┌─ MediaSearch ───────────────────────────────────────────────────┐
-//   │  SearchRequest → []SearchHit                                   │
-//   │   Orchestrator: search.Aggregator (registered SearchBackends). │
-//   │   Ports consumed per backend path:                             │
-//   │     - QueryEmbedder   (Fase 6: NEW, separates from store)     │
-//   │     - VectorStorePort (assets/search, locator-free, ANN+RRF)  │
-//   │     - MediaReadRepository + AssetDeliveryService (hydratation) │
-//   │   Surface: GET /internal/v1/media/search (mediasearch handler) │
-//   └────────────────────────────────────────────────────────────────┘
+//	┌─ MediaSearch ───────────────────────────────────────────────────┐
+//	│  SearchRequest → []SearchHit                                   │
+//	│   Orchestrator: search.Aggregator (registered SearchBackends). │
+//	│   Ports consumed per backend path:                             │
+//	│     - QueryEmbedder   (Fase 6: NEW, separates from store)     │
+//	│     - VectorStorePort (assets/search, locator-free, ANN+RRF)  │
+//	│     - MediaReadRepository + AssetDeliveryService (hydratation) │
+//	│   Surface: GET /internal/v1/media/search (mediasearch handler) │
+//	└────────────────────────────────────────────────────────────────┘
 //
 // Fase 6 Spina Dorsale (July 2026):
 //   - Introduces canonical SearchDocument type that ALL three territories
@@ -466,11 +466,11 @@ type QueryEmbedder interface {
 // (see internal/infrastructure/qdrant/client_search.go::SparseText
 // + SparseVectorName pair semantics).
 const (
-	ChannelText       = "text"        // 768d multilingual-e5-base (semantic meaning)
-	ChannelTranscript = "transcript"  // 768d multilingual-e5-base (Whisper transcript content)
-	ChannelVisual     = "visual"      // 768d SigLIP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
-	ChannelAudio      = "audio"       // 512d CLAP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
-	ChannelSparse     = "bm25_text"   // sparse BM25; server-side inference; ERR_NOT_APPLICABLE on query-time
+	ChannelText       = "text"       // 768d multilingual-e5-base (semantic meaning)
+	ChannelTranscript = "transcript" // 768d multilingual-e5-base (Whisper transcript content)
+	ChannelVisual     = "visual"     // 768d SigLIP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
+	ChannelAudio      = "audio"      // 512d CLAP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
+	ChannelSparse     = "bm25_text"  // sparse BM25; server-side inference; ERR_NOT_APPLICABLE on query-time
 )
 
 // CanonicalChannelNames returns the closed set of channel names
@@ -553,3 +553,122 @@ type ChannelEncoder interface {
 type EmbeddingChannelRegistry interface {
 	EmbedQuery(ctx context.Context, channel string, text string) ([]float32, error)
 }
+
+// ── Canonical MediaAsset + MediaReadRepository + AssetDeliveryService (Commit 3-A, July 2026) ───────────
+//
+// Per Commit 2 BACKFILL/CUTOVER (which promoted the typed-error sentinels
+// from mediasearch → search), Commit 3-A promotes the canonical ports so
+// the search capability owns its hydration + delivery seams.
+//
+// godlike/06 SSOT: the canonical owner of MediaReadRepository +
+// AssetDeliveryService is the SEARCH capability (this file). The
+// legacy `internal/application/mediasearch.MediaReadRepository` /
+// `.AssetDeliveryService` remain pointer-identical Go-level interface
+// aliases of these canonical surfaces (errors.Is + structural
+// compatibility through the type-identity rule) until Commit 3-B folds
+// the 14 production consumers. Per the godlike/07 EXPAND-phase
+// discipline, NEW adapters implement the canonical interfaces; legacy
+// ports are read-only during the migration window.
+//
+// QDRANT-004 invariant: `MediaAsset` deliberately carries NO
+// server-internal locator (no LocalPath, no DriveLink, no raw
+// DriveFileID). Operator/admin surfaces that legitimately need to
+// surface file paths consume `duplicates.DuplicateMatch` from
+// `internal/application/assets/duplicates/types.go` (the canonical
+// owner per godlike/06 one-owner-per-fact). The `Candidate` shape
+// was also locked down as part of Commit 3-A: LocalPath + DriveLink
+// have been removed; Find-by-hash matchups surface the duplicate
+// match via a separate path.
+//
+// Both canonical ports consume `search.Actor` (the canonical tenant
+// identity owned by the search capability). The legacy
+// `mediasearch.WorkspaceContext{WorkspaceID, ProjectID, PrincipalID,
+// IsAdmin}` is retain-only during the migration window: the canonical
+// fields are `WorkspaceID` (canonical) + `UserID` (renamed from
+// `PrincipalID`) + `IsAdmin`. ProjectID was dropped — workspace
+// isolation needs no separate project scoping per godlike/06.
+
+// MediaAsset is the canonical typed envelope for SQLite hydration.
+// Shape mirrors the legacy `mediasearch.MediaAsset` 1:1
+// (gofmt-stable, JSON-tag-stable) but carries NO server-internal
+// locator (the QDRANT-004 acceptance criterion "Nessun path locale
+// o secret esposto"). Adapters that map *asset.Asset → MediaAsset
+// MUST NOT propagate LocalPath/DriveLink; clients needing those
+// fields consume `duplicates.DuplicateMatch` instead.
+//
+// LifecycleState is `json:"-"` because clients have no business
+// knowing internal lifecycle semantics; if a row reaches a Candidate
+// it is by definition searchable. The post-query guard layers
+// defence-in-depth on top of the SQL allowStates filter.
+type MediaAsset struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Source         string   `json:"source"`
+	MediaType      string   `json:"media_type"`
+	Category       string   `json:"category"`
+	Tags           []string `json:"tags,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	DurationMs     int      `json:"duration_ms,omitempty"`
+	Width          int      `json:"width,omitempty"`
+	Height         int      `json:"height,omitempty"`
+	SearchText     string   `json:"search_text,omitempty"`
+	LifecycleState string   `json:"-"`
+}
+
+// MediaReadRepository fetches canonical asset metadata from SQLite.
+// Per QDRANT-004 PR3 (June 2026): the interface takes an allowStates
+// []string argument so hydration can apply the lifecycle_state
+// allowlist at the SQL layer (primary defence). The post-query guard
+// in the search.SemanticBackend layers defence-in-depth on top —
+// without the SQL pre-filter, a future hydrate-on-read drift could
+// re-leak deleted/archived/pending rows.
+//
+// Commit 3-A promotion (July 2026): the canonical interface takes
+// `search.Actor` (NOT the legacy `mediasearch.WorkspaceContext`). The
+// adapter bridging ClipsRepository → MediaReadRepository is the
+// composition-root only (Pattern 0 — see internal/app/adapters_media_
+// search.go and searchReadAdapter/assetReadAdapter siblings).
+//
+// Workspace isolation: the implementation MUST apply workspace_id
+// filtering from `actor.WorkspaceID` (forward-compatible with the
+// QDRANT-001 media_assets.workspace_id column when it lands).
+type MediaReadRepository interface {
+	GetMany(
+		ctx context.Context,
+		actor Actor,
+		assetIDs []string,
+		allowStates []string,
+	) ([]MediaAsset, error)
+}
+
+// AssetDeliveryService mints short-lived signed URLs that authorise
+// a client to download or stream an asset's bytes for a bounded TTL.
+//
+// Commit 3-A promotion (July 2026): the canonical interface takes
+// `search.Actor`. Per QDRANT-004 acceptance criterion "Delivery URL
+// protetto", signatures are HMAC-SHA256 with a server-side secret of
+// at least 32 bytes (mirror of pkg/hmacsign canonicalisation rules;
+// the future GET /api/internal/v1/deliver handler will consume
+// the receiver-side Verify helper exported alongside BuildAuthorizedURL).
+type AssetDeliveryService interface {
+	BuildAuthorizedURL(ctx context.Context, actor Actor, assetID string) (string, error)
+}
+
+// SearchableLifecycleStates is the canonical allowlist of
+// lifecycle_state values that survive the hydration phase.
+//
+// Commit 3-A → Commit 3-B (July 2026) promotion: previously lived as
+// `mediasearch.SearchableLifecycleStates = []string{"ACTIVE"}`;
+// promoted to the canonical search capability owner per godlike/06
+// (the search capability is the canonical owner of which lifecycle
+// states are surfaced to clients — the domain/asset package owns
+// the enum shape but the search capability owns the searchable-projection
+// semantics).
+//
+// The single value is ACTIVE; pre-<aural>-migrations the list carried
+// legacy lowercase values (\"active\", \"searchable\") pruned by data
+// migrations. Anything outside this set — STAGING, PROCESSING,
+// DELETE_PENDING, DELETED, ERROR — MUST be filtered both in SQL
+// (primary, via `MediaReadRepository.GetMany(allowStates=...)`) and
+// in the post-query guard (defence-in-depth, in semanticSearchBackend).
+var SearchableLifecycleStates = []string{"ACTIVE"}
