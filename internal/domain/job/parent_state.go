@@ -14,7 +14,7 @@
 //	WaitingChildren   + last child terminal                  → Aggregating
 //	WaitingChildren   + REQUIRED child FAILED (with pending) → FailedTerminal
 //	Aggregating       + Compute() with all SUCCEEDED         → Succeeded
-//	Aggregating       + Compute() with >=1 FAILED or REQUIRED failed → FailedTerminal
+//	Aggregating       + Compute() with all REQUIRED succeeded + optional-only failures → Succeeded
 //	Succeeded/FailedTerminal + any                            → ErrAlreadyTerminal
 //
 // Idempotency: a duplicate ChildTerminatedEvent for an already-seen childJobID
@@ -268,21 +268,28 @@ func (sm *StateMachine) Transition(ev ChildTerminatedEvent) error {
 // outbox-emit handler must NOT skip Compute — without it the parent
 // state stays at Aggregating (a perpetual non-terminal).
 //
-// Fail-closed semantics: any failed child → FailedTerminal, regardless
-// of how many other children succeeded. Per godlike/07 policy. This
-// is the OPTIONAL-failure floor — REQUIRED failures have already
-// short-circuited to FailedTerminal in ① above, so by the time we
-// reach Compute, every recorded failure is OPTIONAL by construction.
-// A clean Compute path therefore implies all REQUIRED children
-// SUCCEEDED + possibly some OPTIONAL failed → fail-closed.
+// Required vs Optional semantics (FASE 1, July 2026):
+//
+// By the time we reach Compute(), all REQUIRED-failed children have
+// already short-circuited to FailedTerminal via Transition() rule ①.
+// The only failures recorded in sm.failed at this point are OPTIONAL.
+//
+//   - len(succeeded) == 0 → FailedTerminal: total failure, even though
+//     every child was optional. A parent with zero successful outputs
+//     cannot be declared Succeeded.
+//   - len(succeeded) > 0  → Succeeded: at least one child produced a
+//     valid output. OPTIONAL failures are tolerated — the caller
+//     inspects sm.Failed() for the warning list.
 func (sm *StateMachine) Compute() error {
 	switch sm.state {
 	case ParentStateSucceeded, ParentStateFailedTerminal:
 		return nil // idempotent: terminal → no-op
 	case ParentStateAggregating:
-		if len(sm.failed) > 0 {
+		if len(sm.succeeded) == 0 {
+			// All children failed (even if all optional) — total failure.
 			sm.state = ParentStateFailedTerminal
 		} else {
+			// At least one child succeeded. OPTIONAL failures tolerated.
 			sm.state = ParentStateSucceeded
 		}
 		return nil
