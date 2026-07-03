@@ -336,16 +336,15 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 		_ = cfg // future use: thread per-batch MaxBatchWorkers into broker enqueue
 	}
 
-	// Fan-out is considered partial failure if more than one enqueue
-	// failed. Mirrors the voiceover fan-out invariant — partial
-	// fan-out is logged, but only criterion for parent FAILED in the
-	// broker is ALL items definitively failed (the aggregator's
-	// StateMachine.Compute decides; per-item Required distinctions
-	// don't apply to scripts).
-	failedEnqueue := ""
+	// Fan-out is considered FAILED when ALL enqueues fail. Returns
+	// a typed error so the worker marks the parent FAILED (Commit 2
+	// P0 #4 — no fake availability). Partial failures are logged and
+	// the parent proceeds to waiting_children; the aggregator tracks
+	// the failed_enqueue_count in the parent result.
 	if enqueueErrors == n && n > 0 {
-		failedEnqueue = fmt.Sprintf("%d of %d items failed to enqueue", enqueueErrors, n)
-	} else if enqueueErrors > 0 {
+		return nil, fmt.Errorf("%w: all %d items failed to enqueue (P0 #4 fan-out failure)", scriptpkg.ErrGenerationFailed, n)
+	}
+	if enqueueErrors > 0 {
 		if uc.log != nil {
 			uc.log.Warn("generate-many: partial fan-out failure",
 				zap.Int("total", n),
@@ -356,7 +355,10 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 	// Marshal ChildJobIDs into the extra-metadata blob so the handler
 	// can extract them when building the parent envelope.
 	childJobIDsJSON, _ := json.Marshal(childJobIDs)
-	warnings := append([]string{}, failedEnqueue)
+	var warnings []string
+	if enqueueErrors > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d of %d items failed to enqueue", enqueueErrors, n))
+	}
 
 	if uc.log != nil {
 		uc.log.Info("generate-many: fanout completed",
