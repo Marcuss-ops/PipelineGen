@@ -8,7 +8,7 @@
 // ParentState via domain job.StateMachine (5-state machine — all
 // script-batch children are OPTIONAL since GenerationItemV2 has no
 // Required field), and updates the parent's Result map via
-// jobsSvc.TerminalFlip when the state transitions to a terminal value.
+// jobsSvc.FinalizeAggregateParent when the state transitions to a terminal value.
 //
 // P0 #4 mirror (audit 2026-07-03) of voiceover P0 #1 (commit 7f319edb).
 // The structural differences vs voiceover are:
@@ -64,7 +64,7 @@ type ScriptAggregatorDeps struct {
 
 // ScriptAggregatorJobsService is the narrow surface the ParentAggregator
 // needs from the jobs broker. The production *appjobs.Service satisfies
-// this implicitly via Go interface satisfaction. The TerminalFlip
+// this implicitly via Go interface satisfaction. The FinalizeAggregateParent
 // method enables the canonical no-lease CAS re-flip after children
 // reach terminal status.
 //
@@ -78,11 +78,11 @@ type ScriptAggregatorJobsService interface {
 	// aggregation (parent_state IN waiting_children/partial_success,
 	// broker status IN RUNNING/FINALIZING/SUCCEEDED).
 	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
-	// TerminalFlip is the canonical no-lease CAS that re-finalises the
+	// FinalizeAggregateParent is the canonical no-lease CAS that re-finalises the
 	// parent (status, parent_state) atomically. expectedVersion is the
 	// domain StateMachine.Version() — when > 0, the SQL layer adds
 	// `AND revision = ?` as a second CAS fence.
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error
+	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error
 }
 
 // Compile-time assertion: *appjobs.Service satisfies ScriptAggregatorJobsService.
@@ -134,7 +134,7 @@ type ScriptChildResult struct {
 
 // ScriptAggregateResult is the typed output of the aggregation loop.
 // Built from the domain StateMachine (Transition + Compute) and passed
-// to finalizeParent for TerminalFlip persistence. Mirrors
+// to finalizeParent for FinalizeAggregateParent persistence. Mirrors
 // voiceover's VoiceoverAggregateResult.
 type ScriptAggregateResult struct {
 	ParentState         ScriptParentState
@@ -253,7 +253,7 @@ func (a *ScriptParentAggregator) Tick(ctx context.Context) {
 // verifies it's awaiting aggregation, extracts child IDs, builds the
 // canonical domain StateMachine, feeds each child's terminal event
 // (with P0.1-style false-success gate override), and finalises via
-// TerminalFlip.
+// FinalizeAggregateParent.
 func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// Decode the typed parent result.
 	var parentResult ScriptParentResult
@@ -330,7 +330,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 			// SUCCEEDED, the child result.ok false overrides to FAILED.
 			// The handler writes result.ok via scriptItemIsSuccessful;
 			// the aggregator applies the override HERE so all downstream
-			// gates (StateMachine.Transition, Compute, TerminalFlip
+			// gates (StateMachine.Transition, Compute, FinalizeAggregateParent
 			// targetStatus mapping) see one consistent truth.
 			if status == job.StatusSucceeded {
 				if isOKFalseOverride := scriptItemP0_1Gate(childJob.Result); isOKFalseOverride {
@@ -438,7 +438,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 }
 
 // finalizeParent builds the result map from the typed aggregate result
-// and persists it via jobsSvc.TerminalFlip with version-based CAS.
+// and persists it via jobsSvc.FinalizeAggregateParent with version-based CAS.
 // Mirrors voiceover/jobs/parent_aggregator.go::finalizeParent.
 func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID string, agg ScriptAggregateResult) {
 	resultMap := map[string]any{
@@ -454,7 +454,7 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 	if agg.ParentState == ScriptParentFailedTerminal {
 		targetStatus = job.StatusFailed
 		// Marker is canonical per P0 #4 aggregate-flip audit; the test
-		// parent_aggregator_test.go::TestTerminalFlip_AllFailed_PopulatesErrMsg
+		// parent_aggregator_test.go::TestFinalizeAggregateParent_AllFailed_PopulatesErrMsg
 		// asserts that errMsg contains the literal
 		// "script aggregate: all child jobs definitively failed" prefix
 		// for audit forensics (the test extracts prefix via substring
@@ -473,7 +473,7 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 	// Canonical narrow-port call: agg.StateMachineVersion (which IS
 	// parent.Revision — aggregateOne set it from j.Revision at tick
 	// start) is the 6th argument. The SQL CAS fence in
-	// repository_lifecycle.go::TerminalFlip relies on
+	// repository_lifecycle.go::FinalizeAggregateParent relies on
 	// `revision = ?` matching the row's stored revision. A
 	// StateMachine-local counter (e.g. transition count) would
 	// mismatch the SQL row's `revision` field on the WHERE clause
@@ -486,7 +486,7 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 	// errMsg is constructed separately (init empty above; populated
 	// only on ScriptParentFailedTerminal switch above — NOT read
 	// from resultMap["error"]).
-	if err := a.deps.JobsSvc.TerminalFlip(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
+	if err := a.deps.JobsSvc.FinalizeAggregateParent(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
 		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
 			a.deps.Logger.Info("ScriptParentAggregator: parent already finalised (replay no-op)",
 				zap.String("parent_job_id", parentJobID),
@@ -494,11 +494,11 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 			return
 		}
 		if errors.Is(err, domainremote.ErrAggregateCASConflict) {
-			a.deps.Logger.Warn("ScriptParentAggregator: TerminalFlip CAS conflict (concurrent tick)",
+			a.deps.Logger.Warn("ScriptParentAggregator: FinalizeAggregateParent CAS conflict (concurrent tick)",
 				zap.String("parent_job_id", parentJobID))
 			return
 		}
-		a.deps.Logger.Warn("ScriptParentAggregator: TerminalFlip failed",
+		a.deps.Logger.Warn("ScriptParentAggregator: FinalizeAggregateParent failed",
 			zap.String("parent_job_id", parentJobID),
 			zap.String("target_status", string(targetStatus)),
 			zap.Error(err))

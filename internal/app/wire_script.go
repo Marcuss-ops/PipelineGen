@@ -373,7 +373,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// in a multi-item script.generate envelope becomes a separate
 	// script.generate_item child job with its own broker-side retry
 	// envelope. The aggregator (parent_aggregator.go) reads child
-	// outcomes and TerminalFlip-s the parent's broker status based
+	// outcomes and FinalizeAggregateParent-s the parent's broker status based
 	// on the aggregate.
 	//
 	// 4-step composition:
@@ -388,7 +388,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	//   4. Construct + Start ScriptParentAggregator with the jobs
 	//      service as the AggregatorJobsService port (satisfied
 	//      implicitly by *appjobs.Service). Ticker polls every 30s
-	//      and applies TerminalFlip based on the per-item aggregate.
+	//      and applies FinalizeAggregateParent based on the per-item aggregate.
 	if root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("wireScriptFlow: jobs broker is required (Issue 7 / P1 fail-fast)")
 	}
@@ -505,7 +505,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 //     script.generate parents with parent_state=waiting_children or
 //     partial_success, queries their children's terminal statuses,
 //     computes the canonical aggregate via domain StateMachine, and
-//     TerminalFlip-s the parent's broker status based on the
+//     FinalizeAggregateParent-s the parent's broker status based on the
 //     aggregate.
 //
 // All three components are fail-fast on missing dependencies

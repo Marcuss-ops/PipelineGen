@@ -176,16 +176,16 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 }
 
 // Aggregate-flipper port (godlike/07 typed-error contract) — narrows the
-// pattern-0 port for aggregator-only callers of TerminalFlip. The canonical
-// SQLiteStore implements this (see TerminalFlip below). Other broker
+// pattern-0 port for aggregator-only callers of FinalizeAggregateParent. The canonical
+// SQLiteStore implements this (see FinalizeAggregateParent below). Other broker
 // adapters (e.g. future Postgres) MUST also implement it.
 //
 // FASE 2 (July 2026): expectedVersion added for version-based CAS.
 type aggregateFlipper interface {
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
+	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
 }
 
-// ── TerminalFlip (post-fan-out parent state finalisation, no-lease CAS) ───
+// ── FinalizeAggregateParent (post-fan-out parent state finalisation, no-lease CAS) ───
 //
 // AUDIT 2026-07-03 P0 #1 closure. The parent voiceover.generate handler
 // emits (parent_state=waiting_children, nil) on full-fanout success; the
@@ -211,7 +211,7 @@ type aggregateFlipper interface {
 // godlike/06 SSOT: this method is the SINGLE canonical writer of
 // post-fan-out parent state transitions. No other code path may mutate
 // jobs.status from non-terminal → terminalised after the worker has
-// emitted JOB_COMPLETED. Worker's Complete + Aggregator's TerminalFlip
+// emitted JOB_COMPLETED. Worker's Complete + Aggregator's FinalizeAggregateParent
 // are the only two writers; the worker's writes are pre-finalisation,
 // the aggregator's writes are post-finalisation.
 //
@@ -220,7 +220,7 @@ type aggregateFlipper interface {
 // The two sentinels are distinct because operator dashboards render
 // them as different alert classes (replay-no-op vs race-concurrent.
 // flip).
-func (r *SQLiteStore) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error {
+func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error {
 	if id == "" {
 		return fmt.Errorf("terminalFlip: id is empty")
 	}
@@ -244,7 +244,7 @@ func (r *SQLiteStore) TerminalFlip(ctx context.Context, id string, targetStatus 
 	// FASE 2 (July 2026): version-based CAS — when expectedVersion > 0,
 	// add `AND revision = expectedVersion` as a second fence. The
 	// revision column is bumped on every state transition (Complete,
-	// Fail, TerminalFlip) so a concurrent tick that already landed the
+	// Fail, FinalizeAggregateParent) so a concurrent tick that already landed the
 	// flip will have incremented revision, causing this UPDATE to
 	// return 0 rows-affected → ErrAggregateCASConflict.
 	query := `UPDATE jobs SET status = ?,

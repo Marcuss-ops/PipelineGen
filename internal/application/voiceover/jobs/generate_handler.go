@@ -209,7 +209,7 @@ func (h *GenerateJobHandler) HandleJob(
 
 // FASE 1 (July 2026): the parent is NOT truly terminal after fan-out.
 // Returning (resultMap, nil) tells the broker to mark SUCCEEDED — but
-// this is TEMPORARY. The parent aggregator's TerminalFlip will re-finalise
+// this is TEMPORARY. The parent aggregator's FinalizeAggregateParent will re-finalise
 // the parent status based on real child outcomes: preserving SUCCEEDED
 // on all-succeeded, or flipping to FAILED when all children definitively
 // failed (P0 #1 closure). The result map carries parent_state=

@@ -6,7 +6,7 @@
 // statuses from the broker, computes the canonical aggregate
 // ParentState via domain job.StateMachine (5-state machine with
 // REQUIRED/optional distinction), and updates the parent's Result
-// map via jobsSvc.TerminalFlip when the state transitions to a
+// map via jobsSvc.FinalizeAggregateParent when the state transitions to a
 // terminal value.
 //
 // FASE 1 (July 2026): replaced voiceover.AggregateChildOutcomes
@@ -58,14 +58,14 @@ type AggregatorDeps struct {
 // satisfies this implicitly. Extracting it as an interface lets
 // tests inject stubs without the dispatcher + lease machinery.
 //
-// Audit 2026-07-03 P0 #1 (added TerminalFlip): the legacy Complete
+// Audit 2026-07-03 P0 #1 (added FinalizeAggregateParent): the legacy Complete
 // surface is preserved for back-compat with non-aggregate callers
 // (e.g. pre-orchestrator handlers that delegate directly). The
 // aggregator's finalizeParent routes aggregate-specific writes
-// through TerminalFlip, which is the canonical no-lease CAS path
+// through FinalizeAggregateParent, which is the canonical no-lease CAS path
 // for post-fan-out parent state transitions.
 //
-// FASE 2 (July 2026): TerminalFlip now accepts expectedVersion from
+// FASE 2 (July 2026): FinalizeAggregateParent now accepts expectedVersion from
 // the domain StateMachine so the SQL layer can add `AND revision = ?`
 // as a second CAS fence alongside the existing (status, parent_state)
 // guard. A zero expectedVersion means "skip the revision check"
@@ -84,11 +84,11 @@ type AggregatorJobsService interface {
 	// broker status IN RUNNING/FINALIZING/SUCCEEDED). Uses the optimized
 	// idx_jobs_type_status index + json_extract filter.
 	ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error)
-	// TerminalFlip is the canonical no-lease CAS that re-finalises the
+	// FinalizeAggregateParent is the canonical no-lease CAS that re-finalises the
 	// parent (status, parent_state) atomically. expectedVersion is
 	// the domain StateMachine.Version() — when > 0, the SQL layer
 	// adds `AND revision = expectedVersion` as a second CAS fence.
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error
+	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error
 }
 
 // Compile-time assertion: *appjobs.Service satisfies AggregatorJobsService.
@@ -98,7 +98,7 @@ var _ AggregatorJobsService = (*appjobs.Service)(nil)
 // from the previous tick so the retry tick can skip re-querying it
 // via Get(). Only terminal children are cached; non-terminal children
 // are always re-queried. The cache is cleared when the parent is
-// finalised (via TerminalFlip) or when the aggregator restarts.
+// finalised (via FinalizeAggregateParent) or when the aggregator restarts.
 type cachedChildTerminalState struct {
 	status   job.Status
 	required bool
@@ -204,7 +204,7 @@ func (a *ParentAggregator) Tick(ctx context.Context) {
 //
 // FASE 2 (July 2026): all internal map[string]any access replaced with
 // typed DTOs (VoiceoverParentResult, VoiceoverChildResult,
-// VoiceoverAggregateResult). The broker boundary (TerminalFlip) still
+// VoiceoverAggregateResult). The broker boundary (FinalizeAggregateParent) still
 // accepts map[string]any for wire-shape back-compat.
 func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// Step 1: unmarshal parent result into typed VoiceoverParentResult.
@@ -374,9 +374,9 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// FASE 2 (July 2026): version CAS uses j.Revision (the DB-level
 	// revision at the time of List), NOT sm.Version() (the in-memory
 	// StateMachine counter). The SQL `revision` column is bumped on
-	// every Complete/Fail/TerminalFlip transaction; passing the
+	// every Complete/Fail/FinalizeAggregateParent transaction; passing the
 	// pre-flip revision lets the UPDATE check `AND revision = ?`
-	// for optimistic locking. A concurrent TerminalFlip would have
+	// for optimistic locking. A concurrent FinalizeAggregateParent would have
 	// bumped revision, causing a 0 rows-affected → CAS conflict.
 	aggResult := VoiceoverAggregateResult{
 		ParentState:          newPS,
@@ -392,11 +392,11 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 }
 
 // finalizeParent builds the result map from the typed aggregate result
-// and persists it via jobsSvc.TerminalFlip with version-based CAS.
+// and persists it via jobsSvc.FinalizeAggregateParent with version-based CAS.
 //
 // FASE 2 (July 2026): replaces updateParentState(map[string]any, ParentState)
 // with a typed VoiceoverAggregateResult struct. The expectedVersion from
-// the domain StateMachine is passed to TerminalFlip so the SQL layer can
+// the domain StateMachine is passed to FinalizeAggregateParent so the SQL layer can
 // add `AND revision = ?` as a second CAS fence.
 //
 // godlike/06 SSOT: this is the SINGLE canonical writer of post-fan-out
@@ -419,20 +419,20 @@ func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID strin
 	}
 
 	// Clear the terminal-child cache unconditionally — once we attempt
-	// TerminalFlip, the cached state is no longer needed regardless of
+	// FinalizeAggregateParent, the cached state is no longer needed regardless of
 	// outcome (success, idempotent replay, or CAS conflict).
 	if a.previouslyTerminal != nil {
 		delete(a.previouslyTerminal, parentJobID)
 	}
 
-	if err := a.deps.JobsSvc.TerminalFlip(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
+	if err := a.deps.JobsSvc.FinalizeAggregateParent(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
 		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
 			a.deps.Logger.Info("ParentAggregator: parent already finalised (replay no-op)",
 				zap.String("parent_job_id", parentJobID),
 				zap.String("parent_state", string(agg.ParentState)))
 			return
 		}
-		a.deps.Logger.Warn("ParentAggregator: TerminalFlip failed",
+		a.deps.Logger.Warn("ParentAggregator: FinalizeAggregateParent failed",
 			zap.String("parent_job_id", parentJobID),
 			zap.String("target_status", string(targetStatus)),
 			zap.String("new_parent_state", string(agg.ParentState)),

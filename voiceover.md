@@ -613,12 +613,12 @@ Il controllo secondario su `result.ok` è importante, perché protegge da child 
 
 ## 8.2 Problema strutturale
 
-L'aggregatore usa ora `TerminalFlip` con CAS sulla versione (FASE 2,
+L'aggregatore usa ora `FinalizeAggregateParent` con CAS sulla versione (FASE 2,
 July 2026) per re-finalizzare il parent:
 
 ```go
 finalizeParent(parentID, VoiceoverAggregateResult{...})
-    → jobsSvc.TerminalFlip(ctx, id, targetStatus, resultMap, errMsg, expectedVersion)
+    → jobsSvc.FinalizeAggregateParent(ctx, id, targetStatus, resultMap, errMsg, expectedVersion)
 ```
 
 FASE 2 permette all'aggregatore di impostare `FAILED` o `SUCCEEDED`
@@ -629,12 +629,12 @@ altri writer concorrenti.
 Tuttavia, il parent viene ancora marcato broker-`SUCCEEDED` dal
 fan-out handler (generate_handler.go restituisce `nil` error dopo
 il fan-out completo). L'aggregatore poi re-finalizza via
-`TerminalFlip`. La doppia macchina a stati è ridotta ma non ancora
+`FinalizeAggregateParent`. La doppia macchina a stati è ridotta ma non ancora
 eliminata:
 
 ```text
 Fan-out handler → broker SUCCEEDED (temporaneo)
-Aggregator tick → TerminalFlip → broker SUCCEEDED/FAILED (definitivo)
+Aggregator tick → FinalizeAggregateParent → broker SUCCEEDED/FAILED (definitivo)
 ```
 
 La macchina a stati target (§9) prevede che il parent resti
@@ -690,7 +690,7 @@ stateDiagram-v2
 
 ⚠️ **Oggi il broker non ha `WAITING_CHILDREN` / `FINALIZING` / `PARTIAL`.**
 Il fan-out handler restituisce `nil` → broker `SUCCEEDED`. L'aggregatore
-re-finalizza via `TerminalFlip`. Il gap principale è far sì che il parent
+re-finalizza via `FinalizeAggregateParent`. Il gap principale è far sì che il parent
 resti broker-non-terminale dopo il fan-out (forward-pointer).
 
 ---
@@ -702,10 +702,10 @@ resti broker-non-terminale dopo il fan-out (forward-pointer).
 ### Situazione attuale (post-FASE 1)
 
 ✅ `TransitionToWaitingChildren` implementata (domain `StateMachine`).
-✅ `TerminalFlip` con version CAS implementato (aggregatore può re-finalizzare).
+✅ `FinalizeAggregateParent` con version CAS implementato (aggregatore può re-finalizzare).
 ⚠️ Il fan-out handler restituisce ancora `nil` error → broker `SUCCEEDED`.
 
-L'aggregatore corregge lo stato broker via `TerminalFlip`, ma il parent
+L'aggregatore corregge lo stato broker via `FinalizeAggregateParent`, ma il parent
 non è ancora veramente non-terminale al momento del fan-out.
 
 ### Situazione target
@@ -805,7 +805,7 @@ usa ora DTO tipizzati internamente:
 
 Le definizioni vivono in `internal/application/voiceover/jobs/result_dto.go`.
 
-Il boundary verso il broker (`TerminalFlip`, `map[string]any`) è
+Il boundary verso il broker (`FinalizeAggregateParent`, `map[string]any`) è
 ancora generico — la conversione avviene solo al confine ultimo.
 
 Handler (`generate_handler.go`, `generate_item_handler.go`) usano
@@ -1093,7 +1093,7 @@ Obiettivo raggiunto parzialmente:
 1. ✅ `TransitionToWaitingChildren(childIDs)` introdotta in `domain/job/parent_state.go`
 2. ✅ Fan-out completion separata concettualmente (result map porta `parent_state=waiting_children`)
 3. ✅ CAS su parent finalization aggiunto (version-based via `j.Revision`)
-4. ✅ Aggregatore può impostare `FAILED` o `SUCCEEDED` reali via `TerminalFlip`
+4. ✅ Aggregatore può impostare `FAILED` o `SUCCEEDED` reali via `FinalizeAggregateParent`
 5. ⚠️ Il fan-out handler restituisce ancora `nil` → broker `SUCCEEDED`
    (forward-pointer: §9.2 target state machine)
 
@@ -1317,7 +1317,7 @@ Priorità speciale:
 3. `parent_state.go`: domain StateMachine (Transition + Compute + TransitionToWaitingChildren)
 4. `result_dto.go`: DTO tipizzati (VoiceoverParentResult, VoiceoverChildResult, VoiceoverAggregateResult)
 5. `service.go`: legacy batch e promo (ancora registrati)
-6. `repository_lifecycle.go`: TerminalFlip con `AND revision = ?` CAS
+6. `repository_lifecycle.go`: FinalizeAggregateParent con `AND revision = ?` CAS
 7. composition root (`build_bundles_voiceover.go`): fail-fast e singolo wiring
 
 ---
@@ -1383,13 +1383,13 @@ L'architettura Voiceover può essere considerata completata quando:
 - ✅ esiste un solo child job type (`voiceover.generate_item`);
 - ⚠️ batch e promo legacy non eseguono più TTS direttamente (ancora registrati su `service.go`);
 - ⚠️ il parent non viene completato dopo il fan-out (ancora broker-`SUCCEEDED`);
-- ✅ l'aggregatore può terminalizzare realmente il parent (FASE 1+2 `TerminalFlip`);
+- ✅ l'aggregatore può terminalizzare realmente il parent (FASE 1+2 `FinalizeAggregateParent`);
 - ✅ required e optional sono espliciti (FASE 2 `Required` field);
 - ✅ retry è per-child (`voiceover.generate_item` indipendente);
 - ✅ la finalizzazione è unica e atomica (`VoiceoverFinalizer` 6-step tx);
 - ⚠️ il poller interroga solo parent realmente aperti (ancora `List` full-scan);
 - ⚠️ esiste un fast path event-driven (solo poller oggi);
-- ✅ esiste un reconciler (stesso poller, `TerminalFlip` idempotente);
+- ✅ esiste un reconciler (stesso poller, `FinalizeAggregateParent` idempotente);
 - ✅ non esistono falsi successi (P0.1 gate in `generate_item_handler.go`);
 - ⚠️ non esistono job type senza handler (`voiceover.batch`/`voiceover.promo` ancora registrati);
 - ✅ non esistono doppie pubblicazioni (dedupe gate in `VoiceoverFinalizer`);
@@ -1441,19 +1441,19 @@ La parte più difficile è già stata impostata:
 
 **FASE 1 (SHA `3edbf8c5`)** ha introdotto:
 - `TransitionToWaitingChildren` nel domain `StateMachine`
-- `TerminalFlip` con version CAS per re-finalizzare il parent
+- `FinalizeAggregateParent` con version CAS per re-finalizzare il parent
 - Test di accettazione §15.1–§15.9
 
 **FASE 2 (SHA `f25471e9`)** ha introdotto:
 - DTO tipizzati (`VoiceoverParentResult`, `VoiceoverChildResult`, `VoiceoverAggregateResult`)
 - Campo `Required` con policy aggregata
-- Version CAS in `TerminalFlip` SQL
+- Version CAS in `FinalizeAggregateParent` SQL
 
 Il prossimo passo decisivo è trasformare questa situazione:
 
 ```text
 parent broker SUCCEEDED (dopo fan-out)
-→ aggregator TerminalFlip → SUCCEEDED/FAILED reale
+→ aggregator FinalizeAggregateParent → SUCCEEDED/FAILED reale
 ```
 
 in questa:

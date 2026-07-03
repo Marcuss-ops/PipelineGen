@@ -5,41 +5,41 @@
 // aggregator (mirror of voiceover/jobs/parent_aggregator_test.go at
 // commit 7f319edb). Each test drives the public Tick API with a stub
 // ScriptAggregatorJobsService that returns pre-configured parent + child
-// jobs. Tick calls ListAwaitingAggregation → Get → TerminalFlip on the
+// jobs. Tick calls ListAwaitingAggregation → Get → FinalizeAggregateParent on the
 // stub; assertions read the stub's flipped / completed maps.
 //
 // Existing acceptance suite (audit P0 #4, 6 tests) — pinned pre-2026-07-03:
 //
 //  1. TestScriptParentBrokerStatusIsFAILEDWhenAllChildrenFailed
 //  2. TestScriptParentBrokerFAILEDWhenChildResultOKIsFalse
-//  3. TestTerminalFlipReplayIsIdempotent_NoOp
+//  3. TestFinalizeAggregateParentReplayIsIdempotent_NoOp
 //  4. TestScriptParentBrokerStatusSUCCEEDEDWhenMixedOutcome
 //  5. TestAcceptance_HappyPath_AllSucceeded
-//  6. TestTerminalFlipCASConflict_LoggedAndNoFatal
+//  6. TestFinalizeAggregateParentCASConflict_LoggedAndNoFatal
 //
 // New CAS narrow-port suite (added 2026-07-03, audit P0 #4 lock):
 //
-//  7. TestTerminalFlip_Mixed_PreservesRevision — mixed outcome keeps
+//  7. TestFinalizeAggregateParent_Mixed_PreservesRevision — mixed outcome keeps
 //     broker-status SUCCEEDED + parent_state=partial_success. Records
 //     that the flip call passes expectedVersion == parent.Revision
 //     (CAS fence). Real SQL UPDATE bumps revision atomically; the
 //     stub-level assertion pins the CAS argument selection, not the
 //     post-update row revision (that's an integration-test concern).
 //
-//  8. TestTerminalFlip_AllFailed_PopulatesErrMsg — all-failed flips
+//  8. TestFinalizeAggregateParent_AllFailed_PopulatesErrMsg — all-failed flips
 //     broker-status FAILED + populates errMsg with the canonical
 //     aggregate marker "script aggregate: all child jobs
 //     definitively failed" (audit-forensics readable on operator
 //     dashboards). Records expectedVersion == parent.Revision.
 //
-//  9. TestTerminalFlip_StaleRevision_ReturnsErrAggregateCASConflict —
-//     stub.TerminalFlip returns domainremote.ErrAggregateCASConflict
+//  9. TestFinalizeAggregateParent_StaleRevision_ReturnsErrAggregateCASConflict —
+//     stub.FinalizeAggregateParent returns domainremote.ErrAggregateCASConflict
 //     (simulating a concurrent tick's revision bump). Aggregator
 //     must (a) NOT mutate stub.flipped + (b) emit a Warn-level log
-//     with the "TerminalFlip CAS conflict" message (audit pin).
+//     with the "FinalizeAggregateParent CAS conflict" message (audit pin).
 //     Uses zap/zaptest/observer for non-destructive log capture.
 //
-// 10. TestTerminalFlip_ReplayIdempotentAfterAlreadyTerminal — second
+// 10. TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal — second
 //     tick AFTER a successful first tick, with stub simulating the
 //     "already-terminal" state. Aggregator must (a) NOT overwrite
 //     the first tick's stub.flipped record + (b) emit ZERO Warn log
@@ -66,7 +66,7 @@ import (
 // without a DB. Mirrors voiceover/jobs/parent_aggregator_test.go
 // ::stubAggregatorJobsService exactly, with the audit-pinned 2026-07-03
 // extension: tracks the expectedVersion (parent.Revision) passed on
-// each TerminalFlip call so CAS-fence-argument assertions can run.
+// each FinalizeAggregateParent call so CAS-fence-argument assertions can run.
 type stubScriptAggregatorJobsService struct {
 	parentJob  *job.Job
 	childJobs  map[string]*job.Job // childID → *job.Job
@@ -136,9 +136,9 @@ func (s *stubScriptAggregatorJobsService) Complete(ctx context.Context, id strin
 	return nil
 }
 
-// TerminalFlip records the flip into stub.flipped (including expectedVersion
+// FinalizeAggregateParent records the flip into stub.flipped (including expectedVersion
 // so CAS-fence-argument assertions can pin parent.Revision selection).
-func (s *stubScriptAggregatorJobsService) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
+func (s *stubScriptAggregatorJobsService) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s.flippedErr != nil {
 		// CAS-rejection simulation: do NOT mutate stub.flipped (the
 		// non-mutation contract is per godlike/07 no-fake-availability;
@@ -227,7 +227,7 @@ func buildParentStub(parentID string, childStatuses map[string]job.Status, child
 	}
 }
 
-// Test 1: all children FAILED → parent broker FAILED via TerminalFlip.
+// Test 1: all children FAILED → parent broker FAILED via FinalizeAggregateParent.
 func TestScriptParentBrokerStatusIsFAILEDWhenAllChildrenFailed(t *testing.T) {
 	stub := buildParentStub("parent-fail", map[string]job.Status{
 		"c1": job.StatusFailed,
@@ -242,7 +242,7 @@ func TestScriptParentBrokerStatusIsFAILEDWhenAllChildrenFailed(t *testing.T) {
 	agg.Tick(context.Background())
 
 	if _, ok := stub.flipped["parent-fail"]; !ok {
-		t.Fatal("P0 #4: aggregator must call TerminalFlip on full-failure aggregate")
+		t.Fatal("P0 #4: aggregator must call FinalizeAggregateParent on full-failure aggregate")
 	}
 	got := stub.flipped["parent-fail"]
 	if got.targetStatus != job.StatusFailed {
@@ -271,7 +271,7 @@ func TestScriptParentBrokerFAILEDWhenChildResultOKIsFalse(t *testing.T) {
 	agg.Tick(context.Background())
 
 	if _, ok := stub.flipped["parent-ok-false"]; !ok {
-		t.Fatal("P0 #4: aggregator must call TerminalFlip when P0.1-gate-extension forces all-failed aggregate")
+		t.Fatal("P0 #4: aggregator must call FinalizeAggregateParent when P0.1-gate-extension forces all-failed aggregate")
 	}
 	got := stub.flipped["parent-ok-false"]
 	if got.targetStatus != job.StatusFailed {
@@ -280,14 +280,14 @@ func TestScriptParentBrokerFAILEDWhenChildResultOKIsFalse(t *testing.T) {
 	}
 }
 
-// Test 3: idempotent re-aggregation. When TerminalFlip returns
+// Test 3: idempotent re-aggregation. When FinalizeAggregateParent returns
 // ErrAlreadyTerminalAggregate (a previous tick already landed the
 // terminal flip), the aggregator must treat this as a silent no-op
 // without re-attempting the flip. The stub's flipped map is NOT
 // mutated (because flippedErr is set), so the test verifies that
 // the aggregator's response to ErrAlreadyTerminalAggregate is
 // non-fatal (logger.info + return).
-func TestTerminalFlipReplayIsIdempotent_NoOp(t *testing.T) {
+func TestFinalizeAggregateParentReplayIsIdempotent_NoOp(t *testing.T) {
 	stub := buildParentStub("parent-replay", map[string]job.Status{
 		"c1": job.StatusSucceeded,
 		"c2": job.StatusSucceeded,
@@ -303,7 +303,7 @@ func TestTerminalFlipReplayIsIdempotent_NoOp(t *testing.T) {
 	agg.Tick(context.Background())
 
 	if _, ok := stub.flipped["parent-replay"]; ok {
-		t.Error("P0 #4: aggregator must NOT mutate stub.flipped when TerminalFlip returns ErrAlreadyTerminalAggregate (idempotent no-op)")
+		t.Error("P0 #4: aggregator must NOT mutate stub.flipped when FinalizeAggregateParent returns ErrAlreadyTerminalAggregate (idempotent no-op)")
 	}
 }
 
@@ -326,7 +326,7 @@ func TestScriptParentBrokerStatusSUCCEEDEDWhenMixedOutcome(t *testing.T) {
 	agg.Tick(context.Background())
 
 	if _, ok := stub.flipped["parent-mix"]; !ok {
-		t.Fatal("P0 #4: aggregator must call TerminalFlip on partial-success aggregate")
+		t.Fatal("P0 #4: aggregator must call FinalizeAggregateParent on partial-success aggregate")
 	}
 	got := stub.flipped["parent-mix"]
 	if got.targetStatus != job.StatusSucceeded {
@@ -354,7 +354,7 @@ func TestAcceptance_HappyPath_AllSucceeded(t *testing.T) {
 	agg.Tick(context.Background())
 
 	if _, ok := stub.flipped["parent-happy"]; !ok {
-		t.Fatal("P0 #4: aggregator must call TerminalFlip on all-succeeded aggregate")
+		t.Fatal("P0 #4: aggregator must call FinalizeAggregateParent on all-succeeded aggregate")
 	}
 	got := stub.flipped["parent-happy"]
 	if got.targetStatus != job.StatusSucceeded {
@@ -363,10 +363,10 @@ func TestAcceptance_HappyPath_AllSucceeded(t *testing.T) {
 	}
 }
 
-// Test 6 (CAS conflict path): when TerminalFlip returns
+// Test 6 (CAS conflict path): when FinalizeAggregateParent returns
 // ErrAggregateCASConflict (revision bump mid-tick), the aggregator must
 // treat this as a warn-level no-op.
-func TestTerminalFlipCASConflict_LoggedAndNoFatal(t *testing.T) {
+func TestFinalizeAggregateParentCASConflict_LoggedAndNoFatal(t *testing.T) {
 	stub := buildParentStub("parent-cas", map[string]job.Status{
 		"c1": job.StatusSucceeded,
 	}, map[string]bool{"c1": true})
@@ -389,7 +389,7 @@ func TestTerminalFlipCASConflict_LoggedAndNoFatal(t *testing.T) {
 func assertExpectedVersionIsParentRevision(t *testing.T, label string, rec scriptFlipRecord, parentJob *job.Job) {
 	t.Helper()
 	if rec.expectedVersion != parentJob.Revision {
-		t.Errorf("P0 #4 CAS [%s]: TerminalFlip expectedVersion MUST be parent.Revision (SQL CAS fence), got %d (parent.Revision=%d)",
+		t.Errorf("P0 #4 CAS [%s]: FinalizeAggregateParent expectedVersion MUST be parent.Revision (SQL CAS fence), got %d (parent.Revision=%d)",
 			label, rec.expectedVersion, parentJob.Revision)
 	}
 }
@@ -423,13 +423,13 @@ func countAtLevel(recorded *observer.ObservedLogs, level zapcore.Level) int {
 }
 
 // Test 7 (NEW): mixed-outcome → broker=SUCCEEDED + parent_state=partial_success
-// + errMsg empty + TerminalFlip's expectedVersion arg == parent.Revision
+// + errMsg empty + FinalizeAggregateParent's expectedVersion arg == parent.Revision
 // (the SQL CAS-fence value pulled from the row at tick start). Real
 // SQL UPDATE atomically bumps revision (revision+1) on success; the
 // stub assertion pins the arg-side discipline that the consumer-side
 // aggregate-flip MUST observe parent.Revision (NOT a StateMachine-
 // local counter).
-func TestTerminalFlip_Mixed_PreservesRevision(t *testing.T) {
+func TestFinalizeAggregateParent_Mixed_PreservesRevision(t *testing.T) {
 	stub := buildParentStub("parent-mix-rev", map[string]job.Status{
 		"c1": job.StatusSucceeded,
 		"c2": job.StatusFailed,
@@ -446,7 +446,7 @@ func TestTerminalFlip_Mixed_PreservesRevision(t *testing.T) {
 
 	rec, ok := stub.flipped["parent-mix-rev"]
 	if !ok {
-		t.Fatal("P0 #4 CAS: aggregator must call TerminalFlip on partial-success aggregate")
+		t.Fatal("P0 #4 CAS: aggregator must call FinalizeAggregateParent on partial-success aggregate")
 	}
 	if rec.targetStatus != job.StatusSucceeded {
 		t.Errorf("P0 #4 CAS: mixed-outcome (partial_success) MUST flip broker-status to SUCCEEDED, got %s",
@@ -463,7 +463,7 @@ func TestTerminalFlip_Mixed_PreservesRevision(t *testing.T) {
 // + errMsg carries the canonical aggregate marker literal
 // "script aggregate: all child jobs definitively failed" + Revision
 // CAS-fence assertion.
-func TestTerminalFlip_AllFailed_PopulatesErrMsg(t *testing.T) {
+func TestFinalizeAggregateParent_AllFailed_PopulatesErrMsg(t *testing.T) {
 	stub := buildParentStub("parent-all-fail", map[string]job.Status{
 		"c1": job.StatusFailed,
 		"c2": job.StatusFailed,
@@ -479,7 +479,7 @@ func TestTerminalFlip_AllFailed_PopulatesErrMsg(t *testing.T) {
 
 	rec, ok := stub.flipped["parent-all-fail"]
 	if !ok {
-		t.Fatal("P0 #4 CAS: aggregator must call TerminalFlip on all-failed aggregate")
+		t.Fatal("P0 #4 CAS: aggregator must call FinalizeAggregateParent on all-failed aggregate")
 	}
 	if rec.targetStatus != job.StatusFailed {
 		t.Errorf("P0 #4 CAS: all-failed MUST flip broker-status to FAILED, got %s",
@@ -494,19 +494,19 @@ func TestTerminalFlip_AllFailed_PopulatesErrMsg(t *testing.T) {
 	assertExpectedVersionIsParentRevision(t, "all-failed", rec, stub.parentJob)
 }
 
-// Test 9 (NEW): terminal-CAS-rejection path. Stub.TerminalFlip returns
+// Test 9 (NEW): terminal-CAS-rejection path. Stub.FinalizeAggregateParent returns
 // domainremote.ErrAggregateCASConflict (simulating a concurrent tick's
 // revision bump racing the WHERE revision=? UPDATE). Aggregator must:
 //
 //   (a) NOT mutate stub.flipped — the rejection short-circuits before
-//       TerminalFlip's record step (stub impl: flippedErr returns the
+//       FinalizeAggregateParent's record step (stub impl: flippedErr returns the
 //       error without writing to stub.flipped).
-//   (b) Emit a Warn-level log with the canonical "TerminalFlip CAS conflict"
+//   (b) Emit a Warn-level log with the canonical "FinalizeAggregateParent CAS conflict"
 //       snippet (audit-forensic readable on operator log streams).
 //
 // Uses zap/zaptest/observer to capture log entries non-destructively
 // (zap.NewNop would discard them).
-func TestTerminalFlip_StaleRevision_ReturnsErrAggregateCASConflict(t *testing.T) {
+func TestFinalizeAggregateParent_StaleRevision_ReturnsErrAggregateCASConflict(t *testing.T) {
 	stub := buildParentStub("parent-stale", map[string]job.Status{
 		"c1": job.StatusSucceeded,
 		"c2": job.StatusSucceeded,
@@ -532,7 +532,7 @@ func TestTerminalFlip_StaleRevision_ReturnsErrAggregateCASConflict(t *testing.T)
 	// the helper countWarnMatching iterates All() directly checking
 	// both level + snippet. If the aggregator's WARN log is emitted
 	// with the canonical snippet, countWarnMatching returns >= 1.
-	if got := countWarnMatching(recorded, "TerminalFlip CAS conflict"); got == 0 {
+	if got := countWarnMatching(recorded, "FinalizeAggregateParent CAS conflict"); got == 0 {
 		t.Error("P0 #4 CAS: aggregator must emit Warn log on ErrAggregateCASConflict (audit forensics)")
 	}
 }
@@ -547,7 +547,7 @@ func TestTerminalFlip_StaleRevision_ReturnsErrAggregateCASConflict(t *testing.T)
 //       — INFO level acceptable, WARN forbidden; per godlike/07).
 //
 // Uses zap/zaptest/observer to assert zero warn entries.
-func TestTerminalFlip_ReplayIdempotentAfterAlreadyTerminal(t *testing.T) {
+func TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal(t *testing.T) {
 	// Setup: first tick will succeed (no flippedErr, default zero value).
 	stub := buildParentStub("parent-replay-second", map[string]job.Status{
 		"c1": job.StatusSucceeded,
@@ -566,7 +566,7 @@ func TestTerminalFlip_ReplayIdempotentAfterAlreadyTerminal(t *testing.T) {
 
 	firstRecord, ok := stub.flipped["parent-replay-second"]
 	if !ok {
-		t.Fatal("P0 #4 CAS: first tick must call TerminalFlip (precondition for replay scenario)")
+		t.Fatal("P0 #4 CAS: first tick must call FinalizeAggregateParent (precondition for replay scenario)")
 	}
 	if firstRecord.expectedVersion != stub.parentJob.Revision {
 		t.Errorf("P0 #4 CAS [replay scenario]: first tick CAS-fence expectedVersion MUST be parent.Revision, got %d",

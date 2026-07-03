@@ -15,7 +15,7 @@
 //
 // VoiceoverAggregateResult is the output of the aggregation loop:
 // what the aggregator has computed and is about to persist via
-// TerminalFlip.
+// FinalizeAggregateParent.
 //
 // voiceover.md §12 reference:
 //
@@ -91,7 +91,7 @@ type VoiceoverChildPayload struct {
 
 // VoiceoverAggregateResult is the typed output of the aggregation loop.
 // Built from the domain StateMachine (Transition + Compute) and passed
-// to finalizeParent for TerminalFlip persistence.
+// to finalizeParent for FinalizeAggregateParent persistence.
 type VoiceoverAggregateResult struct {
 	// ParentState is the voiceover-level enum (succeeded / partial_success / failed).
 	ParentState voiceover.ParentState
@@ -114,7 +114,7 @@ type VoiceoverAggregateResult struct {
 
 	// StateMachineVersion is the domain StateMachine.Version() after
 	// all child events + Compute(). Used as the expectedVersion for
-	// version-based CAS in TerminalFlip.
+	// version-based CAS in FinalizeAggregateParent.
 	StateMachineVersion int
 
 	// ChildIDs is the list of child job IDs the aggregator observed.
