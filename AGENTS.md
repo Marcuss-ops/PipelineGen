@@ -1020,6 +1020,22 @@ the snapshot table above.
   the residual admin-token / port-mock / spoke-shutdown hardening
   items (out-of-scope for Commit C; see CHANGELOG follow-up notes).
 
+- **[ART-001 — FASE-6 reversal: Artlist routes restored (POST /run, GET /stats, GET /search, GET /search/live, GET /diagnostics, POST /recommend, POST /sync-catalogs return 2xx, July 2026)]** `feat(artlist)` — closure mirror entry acknowledging the FASE-6 Artlist reversal landed on `origin/main` via 3 coordinated commits. All 3 commits carry the `Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>` trailer per AGENTS.md §Git-Lesson-3 auditability convention:
+  - **Commit A=`e5985003`** (code surface) — restore `internal/app/registry_internal_modules.go::registerArtlist` from the FASE-6 log-only stub (was returning 404 on `/api/artlist/*` since the June 2026 cutover) to invoke the canonical `artlist.NewService(deps)` + `artlist.Build(deps)` Pattern 0 entrypoint. 3 mandatory fail-closed gates (`Publisher` / `outbox.Dispatcher` / `cfg+repos.ClipsRepo+Jobs.Service`) + 2 inline typed adapter structs (`artlistDispatchAdapterInline` + `artlistIndexerAdapterInline`) compile-time pinned via `var _ artlistPkg.X = (*Adapter)(nil)` per godlike/06 SSOT.
+  - **Commit B=`c700123f`** (wave-tracker entry) — open `architecture/current.yaml#ART-001` with the 8 forward-pointer `linked_issues[PR-ARTLIST-*]` slots and the canonical-`architecture` ownership; status `shipped` per godlike/06 SSOT lockstep with this CHANGELOG.md entry + the AGENTS.md mirror (this entry).
+  - **Commit C=SHA-TBD** (CHANGELOG closure meta-entry post-Step 10) — narrative acknowledging A+B as artifact-state, tombstoning the FASE-6 regression narrative, honest-limitation disclosure on the 6 build-issue carry-forward (this entry's bottom block).
+  - **godlike/06 3-surface lockstep:** `AGENTS.md` (this section) ≡ `CHANGELOG.md` (`## Unreleased → ### Fixed → ART-001`) ≡ `architecture/current.yaml#ART-001`. Operators reading any of the 3 surfaces get consistent artifact-state; cross-references maintained at every wave-tracker-entry `ship_sha` audit-pin (e.g. `PR-ARTLIST-LIVE-WIRE` shipped_sha=`d2491f76` from our Wave 1 BACKFILL chain mirrored in lockstep commit `efaed7c5`).
+  - **Forward-pointer discipline per godlike/06 SSOT:** 7 of 8 `architecture/current.yaml#ART-001.linked_issues[PR-ARTLIST-*]` slots remain `status: pending` with band-aligned deadlines 2026-07-25..2026-08-15. `PR-ARTLIST-LIVE-WIRE` is the first BACKFILL entry to flip pending → shipped (ship_sha `d2491f76` + ship_date `2026-07-03`, ship-via lockstep commit `efaed7c5`); the remaining 7 PR-ARTLIST-SEARCHERS / STAGER / LIFECYCLE / REPOS / CHIP2 / SYNCSERVICE / STATS-MINIMAL-RESTORE follow the same discipline as each lands.
+  - **Honest carry-forward (godlike/07 disclosure):** post-ART-001 closure, 6 source-file compilation failures predate ART-001 and are NOT regressions of any ART-001 commit. Filed under `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04.linked_issues` with deadline range 2026-07-15..2026-08-01:
+    - `FIX-MONITOR-ENQUEUE-TOLOWER` (internal/application/assets/monitor/enqueue.go, deadline 2026-07-15)
+    - `FIX-MONITOR-SCHEDULER-ENQUEUER` (internal/application/assets/monitor/scheduler.go, deadline 2026-07-15)
+    - `FIX-STOCKPIPELINE-REDECLARATION` (run_upload.go — file MISSING from disk, retired in a prior god-object decomposition wave; deadline 2026-07-25)
+    - `FIX-APP-MODULE-MEDIA-DISPATCHER` (internal/app/module_media.go ~line 334, deadline 2026-07-25)
+    - `FIX-IMAGES-ROUTING-CYCLE` (internal/application/images/routing/ structural DTO-relocation per commit e52005cc; deadline 2026-08-01)
+    - `FIX-APP-WIRE-SCRIPT-SYNTAX` (internal/app/wire_script.go — original Step 8 audit attribution; verified post-E2E-runtime-check 2026-07-04 that the actual broken code lives in `internal/app/workerruntime/{preflight.go, run.go}` not in `wire_script.go` itself; deadline 2026-08-01 — REVISIT-AND-RETIRE pending post-discovery reconciliation per godlike/06 SSOT)
+  - **godlike/07 no-fake-availability audit-pin:** PR-ARTLIST-LIVE-WIRE was the first BACKFILL Wave 1 entry to flip `status: pending` → `status: shipped` with full commit-SHA + ship-date audit trail. Subsequent PR-ARTLIST-* entries follow the same lockstep convention as Wave 2+ BACKFILL lands.
+
+
 - **PR-C-YouTube-Cutover, P1 #17 final closure (June 2026, Commit 6/6)**
   — `arch(current)` + `fix(jobs)` — durable channel-monitor sync closes
   P1 deck. `architecture/current.yaml` wave-tracker entry `id-17` flipped
