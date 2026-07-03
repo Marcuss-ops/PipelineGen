@@ -282,3 +282,22 @@ type Dispatcher interface {
 type ArtlistConfigPort interface {
 	ArtlistRootFolderID() string
 }
+
+// IsLiveProbe is the canonical port for the runtime liveness probe
+// (PR-ARTLIST-LIVE-WIRE, July 2026). Implementations perform an HTTP
+// GET against the local /api/artlist/stats endpoint (configurable URL)
+// with a configurable timeout and report whether the server is
+// reachable + responding 2xx. Return semantics per godlike/07
+// no-fake-availability:
+//   - (true,  nil)  → service is live (HTTP 2xx within timeout)
+//   - (false, nil)  → service responded but not 2xx (4xx/5xx classified
+//                      as "not live" without surfacing transient details;
+//                      the diagnostic layer decides escalation)
+//   - (false, err)  → transport failure (DNS/TCP/timeout/connection-refused);
+//                      the caller decides retry policy
+//
+// Probe MUST NOT mutate the request. Probe MUST NOT cache results across
+// calls (compositional callers wrap with their own LRU if desired).
+type IsLiveProbe interface {
+	Probe(ctx context.Context) (bool, error)
+}
