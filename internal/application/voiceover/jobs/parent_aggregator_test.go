@@ -491,29 +491,378 @@ func TestTerminalFlipReplayIsIdempotent_NoOp(t *testing.T) {
 		"P0 #1: ErrAlreadyTerminalAggregate → aggregator MUST NOT regress parent (no stub.flipped writes)")
 }
 
-// TestTerminalFlipManualRetryPathGatesOutViaCASConflict verifies that
-// when the underlying broker rejects TerminalFlip with ErrAggregateCASConflict
-// (manual retry path → status=QUEUED from CLI requeue, parent_state not
-// in awaiting states), the aggregator TREATS IT AS A CONFLICT (warn level
-// log + leave parent_state unchanged) — NOT a silent no-op and NOT a
-// silent regression. The audit acceptance: "manual retry path → gateway out,
-// no parent_state corruption".
-func TestTerminalFlipManualRetryPathGatesOutViaCASConflict(t *testing.T) {
+// ─────────────────────────────────────────────────────────────────
+// Voiceover §15 Acceptance Tests (FASE 2, July 2026)
+// ─────────────────────────────────────────────────────────────────
+
+// makeChildPayloadWithRequired builds a child job payload with the
+// Required flag set. Simulates the fan-out handler populating the
+// GenerateVoiceoverItemCommand payload.
+func makeChildPayloadWithRequired(required bool) []byte {
+	m := map[string]any{
+		"text":         "test text",
+		"language":     "en",
+		"voice":        "en-US-Aria",
+		"filename":     "test_en.mp3",
+		"parent_job_id": "parent-1",
+		"request_id":   "vo_test",
+		"required":     required,
+	}
+	raw, _ := json.Marshal(m)
+	return raw
+}
+
+// makeMultiChildParentResult builds a parent result with N children.
+func makeMultiChildParentResult(childIDs []string, totalOutputs int) []byte {
+	m := map[string]any{
+		"ok":              true,
+		"parent_job_id":   "parent-multi",
+		"request_id":      "vo_acceptance",
+		"total_outputs":   totalOutputs,
+		"expected_children": len(childIDs),
+		"enqueued_count":  len(childIDs),
+		"child_job_ids":   childIDs,
+		"parent_state":    string(voiceover.ParentWaitingChildren),
+	}
+	raw, _ := json.Marshal(m)
+	return raw
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.1 Happy path: 3 languages, 3 children, all SUCCEEDED
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_HappyPath_ThreeLanguagesAllSucceeded(t *testing.T) {
 	stub := &stubAggregatorJobsService{
-		flippedErr: domainremote.ErrAggregateCASConflict,
 		parentJob: &job.Job{
-			ID: "parent-retry", Type: job.TypeVoiceoverGenerate,
-			Status: job.StatusSucceeded, Result: makeParentStateWaitingChildren(),
+			ID:     "parent-happy",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3),
 		},
 		childJobs: map[string]*job.Job{
-			"c1": {ID: "c1", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusFailed, Result: makeChildResult(false, "failed", "err")},
-			"c2": {ID: "c2", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusFailed, Result: makeChildResult(false, "failed", "err")},
+			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-en": {ID: "c-en", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-pt": {ID: "c-pt", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
 		},
 	}
 	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
-	// Tick must not panic; the flippedErr is consumed at warn-level (logger.Warn).
 	agg.Tick(context.Background())
-	// Stub flippedErr short-circuits BEFORE writes — no stub.flipped entries.
+
+	require.Contains(t, stub.flipped, "parent-happy",
+		"§15.1: aggregator must finalise parent when all 3 children are terminal")
+	got := stub.flipped["parent-happy"]
+	assert.Equal(t, job.StatusSucceeded, got.targetStatus,
+		"§15.1: broker status must stay SUCCEEDED when all children succeeded")
+	assert.Equal(t, "succeeded", got.result["parent_state"],
+		"§15.1: parent_state must be 'succeeded' when all children succeeded")
+	assert.Equal(t, 3, got.result["total_children"],
+		"§15.1: total_children must be 3")
+	assert.Equal(t, 3, got.result["succeeded_count"],
+		"§15.1: succeeded_count must be 3")
+	assert.Equal(t, 0, got.result["failed_count"],
+		"§15.1: failed_count must be 0")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.2 TTS transient failure: child retry, others unaffected
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_TTSTransientFailure_ChildRetryParentStaysOpen(t *testing.T) {
+	// c-it and c-pt are terminal, c-en is still in RETRY_WAIT.
+	// Aggregator must skip the parent (not all children terminal).
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-retry",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3),
+		},
+		childJobs: map[string]*job.Job{
+			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-en": {ID: "c-en", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusRetryWait, Result: makeChildResult(false, "failed", "tts timeout")},
+			"c-pt": {ID: "c-pt", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	// Parent must NOT be finalised — c-en is still in flight.
 	assert.Empty(t, stub.flipped,
-		"P0 #1: ErrAggregateCASConflict → aggregator MUST NOT write to stub.flipped (gated out, retry path safe)")
+		"§15.2: aggregator must NOT finalise parent when a child is still RETRY_WAIT")
+
+	// Simulate next tick: c-en has been retried and now SUCCEEDED.
+	stub.childJobs["c-en"].Status = job.StatusSucceeded
+	stub.childJobs["c-en"].Result = makeChildResult(true, "completed", "")
+	// Reset stub.flipped for clean assertion.
+	stub.flipped = nil
+	agg.Tick(context.Background())
+
+	require.Contains(t, stub.flipped, "parent-retry",
+		"§15.2: after retry succeeds, aggregator must finalise parent")
+	got := stub.flipped["parent-retry"]
+	assert.Equal(t, "succeeded", got.result["parent_state"],
+		"§15.2: after retry, parent_state must be 'succeeded' (all terminal, all succeeded)")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.3 Permanent voice error: REQUIRED→FAILED, optional→partial
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_PermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
+	// c-required is REQUIRED and FAILED → parent must go to FAILED.
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-reqfail",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-required", "c-ok"}, 2),
+		},
+		childJobs: map[string]*job.Job{
+			"c-required": {
+				ID:      "c-required",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusFailed,
+				Result:  makeChildResult(false, "failed", "voice 'xx-ZZ-Bogus' not found"),
+				Payload: makeChildPayloadWithRequired(true), // REQUIRED
+			},
+			"c-ok": {
+				ID:      "c-ok",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusSucceeded,
+				Result:  makeChildResult(true, "completed", ""),
+				Payload: makeChildPayloadWithRequired(false),
+			},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	require.Contains(t, stub.flipped, "parent-reqfail",
+		"§15.3: REQUIRED child FAILED → aggregator must finalise parent")
+	got := stub.flipped["parent-reqfail"]
+	assert.Equal(t, job.StatusFailed, got.targetStatus,
+		"§15.3: REQUIRED child FAILED → broker status must flip to FAILED")
+	assert.Equal(t, "failed", got.result["parent_state"],
+		"§15.3: REQUIRED child FAILED → parent_state must be 'failed'")
+	assert.Equal(t, 1, got.result["required_failed_count"],
+		"§15.3: required_failed_count must be 1")
+}
+
+func TestAcceptance_OptionalVoiceError_ParentSucceedsWithWarning(t *testing.T) {
+	// c-opt-fail is OPTIONAL and FAILED, c-ok is SUCCEEDED → partial_success.
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-optfail",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-opt-fail", "c-ok"}, 2),
+		},
+		childJobs: map[string]*job.Job{
+			"c-opt-fail": {
+				ID:      "c-opt-fail",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusFailed,
+				Result:  makeChildResult(false, "failed", "voice 'xx-YY-Nope' not found"),
+				Payload: makeChildPayloadWithRequired(false), // OPTIONAL
+			},
+			"c-ok": {
+				ID:      "c-ok",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusSucceeded,
+				Result:  makeChildResult(true, "completed", ""),
+				Payload: makeChildPayloadWithRequired(false),
+			},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	require.Contains(t, stub.flipped, "parent-optfail",
+		"§15.3b: optional child FAILED with another SUCCEEDED → aggregator must finalise parent")
+	got := stub.flipped["parent-optfail"]
+	assert.Equal(t, job.StatusSucceeded, got.targetStatus,
+		"§15.3b: optional FAILED + one SUCCEEDED → broker status stays SUCCEEDED")
+	assert.Equal(t, "partial_success", got.result["parent_state"],
+		"§15.3b: optional FAILED + one SUCCEEDED → parent_state must be 'partial_success'")
+	assert.Equal(t, 0, got.result["required_failed_count"],
+		"§15.3b: optional failures don't increment required_failed_count")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.4 Fan-out parziale: 3rd child enqueue fails
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_FanoutParziale_EmptyChildIDsFiltered(t *testing.T) {
+	// Fan-out requested 3 children but only 2 were enqueued.
+	// ChildJobIDs = ["c-it", "c-en", ""] — empty string for the failed enqueue.
+	// The aggregator must filter the empty string and only process 2 children.
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-partial",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", ""}, 3),
+		},
+		childJobs: map[string]*job.Job{
+			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-en": {ID: "c-en", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	require.Contains(t, stub.flipped, "parent-partial",
+		"§15.4: aggregator must finalise parent even with partial fan-out")
+	got := stub.flipped["parent-partial"]
+	assert.Equal(t, "succeeded", got.result["parent_state"],
+		"§15.4: 2 enqueued children both succeeded → parent_state must be 'succeeded'")
+	assert.Equal(t, 2, got.result["total_children"],
+		"§15.4: total_children must be 2 (empty string filtered out)")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.8 Cancel parent: children in flight, parent CANCELLED
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_CancelParent_AggregatorSkips(t *testing.T) {
+	// Parent was cancelled after fan-out. Children may still complete,
+	// but the aggregator should skip the parent (parent_state is not
+	// waiting_children or partial_success).
+	cancelParentResult := map[string]any{
+		"ok":            false,
+		"parent_job_id": "parent-cancelled",
+		"parent_state":  "failed",
+		"child_job_ids": []string{"c-it", "c-en"},
+	}
+	cancelRaw, _ := json.Marshal(cancelParentResult)
+
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-cancelled",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusCancelled,
+			Result: cancelRaw,
+		},
+		childJobs: map[string]*job.Job{
+			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-en": {ID: "c-en", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	// Aggregator must NOT finalise — parent_state="failed" is not awaiting aggregation.
+	assert.Empty(t, stub.flipped,
+		"§15.8: cancelled parent with parent_state='failed' must NOT be finalised by aggregator")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.6 DB succeeded + worker crash: idempotent retry
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_DBSucceededWorkerCrash_IdempotentRetry(t *testing.T) {
+	// Simulates: DB transaction completed, worker crashed before ACK.
+	// The retry finds all children terminal; the TerminalFlip CAS
+	// returns ErrAlreadyTerminalAggregate (another tick already landed).
+	// The aggregator must treat this as a silent no-op.
+	stub := &stubAggregatorJobsService{
+		flippedErr: domainremote.ErrAlreadyTerminalAggregate,
+		parentJob: &job.Job{
+			ID:     "parent-idem",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3),
+		},
+		childJobs: map[string]*job.Job{
+			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-en": {ID: "c-en", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c-pt": {ID: "c-pt", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	// Must not panic; the ErrAlreadyTerminalAggregate is silently consumed.
+	agg.Tick(context.Background())
+
+	// No flip was written — the previous tick already finalised.
+	assert.Empty(t, stub.flipped,
+		"§15.6: ErrAlreadyTerminalAggregate → no regression, no panic, no duplicate")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.2b Required flag propagation from child payload
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_RequiredFlagPropagatedFromChildPayload(t *testing.T) {
+	// Verifies that VoiceoverChildPayload.Required is correctly read
+	// from the child job's payload JSON and fed to the StateMachine.
+	// Two children: one REQUIRED-failed → parent FAILED.
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-reqprop",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeMultiChildParentResult([]string{"c-req", "c-opt"}, 2),
+		},
+		childJobs: map[string]*job.Job{
+			"c-req": {
+				ID:      "c-req",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusFailed,
+				Result:  makeChildResult(false, "failed", "permanent TTS failure"),
+				Payload: makeChildPayloadWithRequired(true), // REQUIRED=true
+			},
+			"c-opt": {
+				ID:      "c-opt",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusFailed,
+				Result:  makeChildResult(false, "failed", "transient upload failure"),
+				Payload: makeChildPayloadWithRequired(false), // REQUIRED=false
+			},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	require.Contains(t, stub.flipped, "parent-reqprop",
+		"§15.2b: REQUIRED child FAILED → aggregator must finalise parent")
+	got := stub.flipped["parent-reqprop"]
+	assert.Equal(t, job.StatusFailed, got.targetStatus,
+		"§15.2b: REQUIRED-failed → broker status flipped to FAILED")
+	assert.Equal(t, "failed", got.result["parent_state"],
+		"§15.2b: REQUIRED-failed → parent_state='failed'")
+	assert.Equal(t, 1, got.result["required_failed_count"],
+		"§15.2b: only c-req counts as required_failed (c-opt is optional)")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.7 Parent aggregator crash: version CAS conflict recovery
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_AggregatorCrash_VersionCASConflictRecovery(t *testing.T) {
+	// Simulates: aggregator tick reads parent at revision=3, computes
+	// aggregate, but TerminalFlip's SQL UPDATE returns 0 rows because
+	// another tick already bumped revision to 4. The aggregator must
+	// treat ErrAggregateCASConflict as a warn-level no-op.
+	stub := &stubAggregatorJobsService{
+		flippedErr: domainremote.ErrAggregateCASConflict,
+		parentJob: &job.Job{
+			ID:       "parent-casconflict",
+			Type:     job.TypeVoiceoverGenerate,
+			Status:   job.StatusSucceeded,
+			Result:   makeMultiChildParentResult([]string{"c1", "c2"}, 2),
+			Revision: 3,
+		},
+		childJobs: map[string]*job.Job{
+			"c1": {ID: "c1", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+			"c2": {ID: "c2", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	// Must not panic; the ErrAggregateCASConflict is consumed at warn-level.
+	agg.Tick(context.Background())
+
+	// No flip written — CAS conflict means the row was already updated.
+	assert.Empty(t, stub.flipped,
+		"§15.7: ErrAggregateCASConflict → no regression, next tick recovers")
 }
