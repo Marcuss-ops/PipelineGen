@@ -689,3 +689,18 @@ Authoritative references:
 When code and this document diverge, fix the code or update this document
 immediately. Do not preserve a known contradiction as historical narrative;
 history belongs under `docs/archive/` or `architecture/archive/`.
+
+---
+
+## Recent closures (July 2026, audit-pin)
+
+The following recent closures are documented in detail in the corresponding `AGENTS.md` "Known Issues & Fixes" entries + `CHANGELOG.md` closures + `architecture/deprecations.yaml` canonical records. This section is the single-page navigation pointer; the granular per-commit / per-PR decomposition lives in the canonical sources above.
+
+| Tag | SHA | Surface | Anchor |
+|-----|-----|---------|--------|
+| P1.4 | `442a4dfe` | Prometheus metrics for `StartupDriveRootsValidator` (4 metrics + typed-NIL optional 4th ctor arg) | AGENTS.md entry #18 + CHANGELOG `## Unreleased -> ### Added -> P1.4` + `regression-fixup 9856a2b6` (DeliveryStatus rename) |
+| P1.5 | `819c9d95` | Typed Google API errors + RFC 7231 §7.1.3 Retry-After + jitter extension (6 SDK exits) | AGENTS.md entry #17 + CHANGELOG `## Unreleased -> ### Added -> P1.5` |
+| P2.1 | `96ec87e1` | Eliminate package-level mutable test seams in `internal/infrastructure/drive/` (lookupFunc + openFile → `*Uploader` struct fields) | AGENTS.md entry #16 + CHANGELOG `## Unreleased -> ### Refactor -> P2.1` |
+| P2.2 | `0fa8c065` | DRIVE-008 fail-closed stubs for `ClipDriveUploaderPort.UploadFile*` + `sourcing.DrivePort.UploadFileWithDescription` (canonical replacement: `delivery.Publisher.Publish`) | AGENTS.md entry #15 + CHANGELOG `## Unreleased -> ### Refactor -> P2.2` + `architecture/deprecations.yaml#DRIVE-008` + `architecture/current.yaml#PR-DRIVE-008-CUTOVER` |
+
+godlike/07 honest-limitation: the surfaced TODOs `TODO(Fase 3.3)` (in `internal/infrastructure/drive/store.go:173`) and `TODO(Fase 3.5)` (in `internal/app/adapters_voiceover_use_case.go:203`) are LEGITIMATE open work (Fase 3 Spina Dorsale `DRIVE-STORE-UPLOAD-TO-DRIVE` migration is still in `migration_phase: EXPAND / status: in_progress`); they remain in place until the canonical image-upload migration closes. The 0-closed TODO audit (rg `TODO\(Fase [0-9]+\.[0-9]+\)` returns 2 hits, both active) means P2.4 has no stale-closure work to chase.
