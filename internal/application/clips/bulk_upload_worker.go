@@ -12,37 +12,38 @@
 // *drive.Uploader, *config.Config, *clipindexer.Service,
 // foldermemory.Service and hashutil.MD5File at the composition root.
 //
-// PG-005 (June 2026) pre-work already defined the ports
-// (ClipRepositoryPort, ClipDriveUploaderPort, ClipConfigPort,
-// ClipIndexerPort, ClipHashPort). The handler-side glue line
+// P1.7 (July 2026): the per-clip pipeline was extracted into 6 sibling
+// files (one section per concern) so this file stays focused on the
+// top-level orchestration: struct + ctor + HandleJob + processOneClip
+// stitch. The 7 sections of the pipeline are:
 //
-//	*config.Config, *assets.ClipsRepository → ClipConfigPort, ClipRepositoryPort
+//   1. worker       — this file (struct + ctor + orchestrator)
+//   2. scanner      — bulk_upload_scan_pipeline.go
+//   3. clip-pub     — bulk_upload_clip_pub.go
+//   4. sidecar-pub  — bulk_upload_sidecar_pub.go
+//   5. registration — bulk_upload_registration.go
+//   6. enrichment   — bulk_upload_enrichment.go
+//   7. result       — bulk_upload_result.go
 //
-// is what previously caused bulk_upload_worker.go to be on the
-// docs/migrations/api-infrastructure-imports-allowlist.txt. This file
-// is the canonical seam above that infra; the API handler now calls
-// out to BulkUploadWorker.HandleJob without itself importing infra.
+// No new abstractions — only top-level helper functions consumed by
+// the processOneClip stitch. The worker struct (7 typed-port fields)
+// and constructor signature are unchanged from the pre-split surface.
 package clips
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // BulkUploadWorker owns the heavy business logic for the
@@ -53,12 +54,9 @@ import (
 // `dispatcher` field is the canonical mutations.AssetMutationDispatcher
 // SSOT. Required so the worker's media_assets UPSERT step routes
 // through the canonical outbox+tx writer (QDRANT-002 atomicity
-// invariant). Strict fail-closed on nil dispatcher — the worker
-// surfaces an explicit error instead of writing a half-state asset
-// row. See internal/app/registry_adapters.go::newMutationsDispatcherAdapter
-// for the error sentinel.
+// invariant).
 type BulkUploadWorker struct {
-	publisher  ClipPublisherPort // canonical Drive upload (P0.1: Publisher mandatory, legacy ClipDriveUploaderPort removed)
+	publisher  ClipPublisherPort
 	repo       ClipRepositoryPort
 	indexer    ClipIndexerPort
 	hasher     ClipHashPort
@@ -68,15 +66,7 @@ type BulkUploadWorker struct {
 }
 
 // NewBulkUploadWorker constructs the canonical worker. All port
-// arguments are required. Returns a *BulkUploadWorker (never nil);
-// callers should treat it as production code (no panic on nil deps).
-//
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): added
-// `dispatcher` as the 7th positional arg (between cfg and log) so the
-// worker's media_assets write enforces the canonical outbox path.
-// Composition root pre-rejection lives in the wiring site (see
-// internal/app/module_media.go::WireAssets) which surfaces a
-// configure-time error if dispatcher is nil.
+// arguments are required. Returns a *BulkUploadWorker (never nil).
 func NewBulkUploadWorker(
 	publisher ClipPublisherPort,
 	repo ClipRepositoryPort,
@@ -104,38 +94,12 @@ func NewBulkUploadWorker(
 // "bulk_upload_youtube_clips". Wired by the API layer's
 // Handler.RegisterJobHandlers (which delegates into this worker).
 //
-// Job-level deadline prevents abandoned jobs from sitting half-done
-// forever; the worker ctx only times out on shutdown, which leaves
-// orphans otherwise.
-//
-// HC-1 (June 2026): the per-job timeout resolves through the typed
-// config-port `w.cfg.JobTimeout(jobType)` — the canonical Registry is
-// the SSOT (replaces the pre-HC-1 hard-coded 2*time.Hour literal).
-// Refusal to fire wall-clock timeouts left a job open indefinitely
-// under stacked Drive + indexer + Qdrant lock contention; the typed
-// lookup lets the operator override the timeout per job-type without
-// re-deploying the worker.
-//
-// HC-1 code-review cleanup: NO belt-and-suspenders 2h fallback on
-// nil-cfg — the cfg adapter (internal/app/clips_adapters_cfg.go's
-// clipsCfgAdapter.JobTimeout) already returns the canonical 10-minute
-// default when the resolver is nil or returns 0. Trusting the typed
-// port removes a dead-code path AND the 2h/10m inconsistency between
-// the worker fallback (2h) and the rest of the pipeline (10m).
+// P1.7 (July 2026): the per-clip pipeline calls into the 6 sibling
+// files (publishClip + publishSidecars + registerClip + enrichClip +
+// finalizeJobResult) instead of inlining them. The orchestrating
+// flow is preserved verbatim — only the body of processOneClip
+// changed (now stages helpers in sequence).
 func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
-	// HC-1 (June 2026): per-job-type timeout resolves through the
-	// typed config-port (ClipConfigPort.JobTimeout → adapter
-	// → *jobs.Registry.JobTimeout). cfg is mandatory — the
-	// constructor (NewBulkUploadWorker) accepts it unconditionally
-	// and production wiring in module_media.go always supplies
-	// non-nil cfg. A nil cfg at runtime is a misconfiguration
-	// surfaced as an explicit error (no silent fallback).
-	//
-	// P0.4 (June 2026): the local `const defaultTimeout = 10*time.Minute`
-	// fallback is REMOVED. The canonical fallback lives in the
-	// clipsCfgAdapter.JobTimeout (internal/app/clips_adapters_cfg.go)
-	// which returns 10 minutes when the resolver is nil or returns 0.
-	// The worker trusts the typed port and does not second-guess it.
 	if w.cfg == nil {
 		return nil, fmt.Errorf("bulk upload worker: cfg not configured (ClipConfigPort is nil — production wiring must supply non-nil cfg)")
 	}
@@ -203,12 +167,10 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		tools.Progress(5, fmt.Sprintf("Found %d clips, starting pipeline", total))
 	}
 
-	// P0.1 (July 2026): Publisher is mandatory; subdir folder resolution
-	// is handled internally by delivery.Publisher.resolveDestination via
-	// the Group and RootFolderOverride fields.
-	//
-	// Legacy resolveSubdirFolderID closure (which used
-	// w.uploader.GetOrCreateFolder) removed.
+	// P0.1 (July 2026): Publisher is mandatory; subdir folder
+	// resolution is handled internally by delivery.Publisher
+	// via the Group and RootFolderOverride fields. Legacy
+	// resolveSubdirFolderID closure removed.
 
 	concurrency := payload.Concurrency
 	if concurrency <= 0 {
@@ -272,31 +234,30 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	wg.Wait()
 	reportProgress(true)
 
-	result := map[string]any{
-		"total":         total,
-		"uploaded":      uploaded.Load(),
-		"indexed":       indexed.Load(),
-		"qdrant_pushed": pushed.Load(),
-		"skipped":       skipped.Load(),
-		"failed":        failed.Load(),
-		"local_folder":  payload.LocalFolder,
-		"drive_folder":  payload.DriveFolderID,
-	}
-	if len(failedDetails) > 0 {
-		result["failures"] = failedDetails
-	}
+	result := finalizeJobResult(total, &uploaded, &indexed, &pushed, &skipped, &failed, failedDetails, payload)
 	log.Info("bulk upload job complete", zap.Any("result", result))
 	return result, nil
 }
 
-// processOneClip handles a single .mp4 through the pipeline.
-// Steps (skip flags short-circuit downstream steps):
-//  1. Compute MD5 hash + check dedup by local_path in DB
-//  2. Upload to Drive (unless skip_upload)
-//  3. Upload siblings (manifest.json, transcript.txt) to same Drive folder
-//  4. Create / update MediaAsset record
-//  5. Generate embeddings via Python server (unless skip_embeddings)
-//  6. Push to Qdrant (handled automatically by clipIndexer.IndexClip unless skip_qdrant)
+// processOneClip stitches the per-clip pipeline: config check →
+// hash + clipID → publish-clip (skip-upload gate) → sidecar-publish
+// (skip-upload gate) → register (clip build + dispatcher
+// EnqueueAndIndex) → enrich (skip-embeddings gate).
+//
+// P1.7 (July 2026): the steps are extracted into top-level helpers
+// in 6 sibling files. This method only sequences them + manages
+// per-clip counter book-keeping.
+//
+// Latent counters preserved verbatim from pre-split (forward-pointer
+// for a future hardening wave, NOT changed in P1.7):
+//   - "skipped" is never incremented (always 0 in the report)
+//   - "pushed" is never incremented (always 0 in the report)
+//
+// Both counters are kept on the report schema for back-compat
+// with downstream reconciliation + dashboard consumers; promoting
+// them to real metrics is a separate change. Function parameters
+// in Go don't require suppressors, so `skipped` / `pushed` are
+// passed through to finalizeJobResult where they are loaded.
 func (w *BulkUploadWorker) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
@@ -309,340 +270,58 @@ func (w *BulkUploadWorker) processOneClip(
 		return fmt.Errorf("bulk upload not configured correctly (P0.1: Publisher mandatory)")
 	}
 
-	// Step 1: hash
+	// Step 1: hash + clipID (stays in worker.go — these are the
+	// per-clip log-bookkeeping fields; the scan-pipeline file
+	// owns the folder-walk helpers only).
 	fileHash, err := w.hasher.MD5File(cand.LocalPath)
 	if err != nil {
 		failed.Add(1)
 		return fmt.Errorf("hash: %w", err)
 	}
-
 	clipID := buildBulkClipID(cand, fileHash)
 	log = log.With(zap.String("clip_id", clipID), zap.String("path", cand.LocalPath))
 
-	// Step 2: Drive target folder. Publisher handles folder resolution
-	// internally via RootFolderOverride; subdir is threaded as Group.
+	// Step 2-3: publish clip via Publisher (clip-pub section).
+	var pubRes *delivery.PublishResult
 	targetFolderID := payload.DriveFolderID
-
-	var (
-		driveFileID  string
-		driveLink    string
-		downloadLink string
-	)
 	if !payload.SkipUpload {
-		// Build Drive filename: use subdir (actor name) if available, else clip name
-		driveName := ""
-		if cand.Subdir != "" && cand.Subdir != "." {
-			driveName = sanitiseDriveName(filepath.Base(cand.Subdir))
+		var pubErr error
+		pubRes, pubErr = publishClip(ctx, w.publisher, payload, cand, fileHash, log)
+		if pubErr != nil {
+			failed.Add(1)
+			return pubErr
 		}
-		if driveName == "" {
-			driveName = sanitiseDriveName(cand.DisplayName())
-		}
-		if driveName == "" {
-			driveName = cand.Name
-		}
-		driveFilename := driveName + ".mp4"
-		driveDesc := buildBulkDriveDescription(cand, fileHash, *payload)
-
-		// Determine the group for Publisher (subdir maps to group folder)
-		pubGroup := ""
-		if payload.SubdirAsDriveSubdir && cand.Subdir != "" && cand.Subdir != "." {
-			pubGroup = cand.Subdir
-		}
-
-		// P0.1 (July 2026): Canonical Publisher path (mandatory).
-		// Legacy uploader-path (w.uploader.UploadFileWithDescription) removed.
-			pubReq := delivery.PublishRequest{
-				Destination:        delivery.DestinationYouTubeClip,
-				LocalPath:          cand.LocalPath,
-				Filename:           driveFilename,
-				Description:        driveDesc,
-				Group:              pubGroup,
-				RootFolderOverride: payload.DriveFolderID,
-			}
-			pubRes, err := w.publisher.Publish(ctx, pubReq)
-			if err != nil {
-				failed.Add(1)
-				return fmt.Errorf("drive publish: %w", err)
-			}
-		driveFileID = pubRes.FileID
-		driveLink = pubRes.WebViewLink
-		// F1.5 (P0 #9): read DownloadLink from the canonical
-		// PublishResult instead of reconstructing via string
-		// interpolation. Recomputing uc?id= on the consumer side
-		// risks drift against the URL format Drive returns and
-		// prevents the canonical Publisher from centralising URL
-		// formatting (e.g. for ?export=download variants).
-		downloadLink = pubRes.DownloadLink
-		targetFolderID = pubRes.FolderID
 		uploaded.Add(1)
+		targetFolderID = pubRes.FolderID
 		log.Info("published to drive",
-			zap.String("file_id", driveFileID),
-			zap.String("drive_link", driveLink),
+			zap.String("file_id", pubRes.FileID),
+			zap.String("drive_link", pubRes.WebViewLink),
 			zap.String("publish_action", string(pubRes.Action)))
-		// Upload siblings via Publisher (best effort)
-		// Group is empty because the folder is already resolved by the
-		// first Publish call (targetFolderID = pubRes.FolderID). Setting
-		// Group here would create double-nesting.
-		dir := filepath.Dir(cand.LocalPath)
-		baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
-		manifestPath := filepath.Join(dir, "clip_manifest.json")
-		if _, err := os.Stat(manifestPath); err == nil {
-			w.publisher.Publish(ctx, delivery.PublishRequest{
-				Destination:        delivery.DestinationYouTubeClip,
-				LocalPath:          manifestPath,
-				Filename:           baseNoExt + ".clip_manifest.json",
-				Description:        "Clip manifest for " + baseNoExt,
-				RootFolderOverride: targetFolderID,
-			})
-		}
-		for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
-			if _, err := os.Stat(tp); err == nil {
-				w.publisher.Publish(ctx, delivery.PublishRequest{
-					Destination:        delivery.DestinationYouTubeClip,
-					LocalPath:          tp,
-					Filename:           baseNoExt + ".transcript.txt",
-					Description:        "Whisper transcript for " + baseNoExt,
-					RootFolderOverride: targetFolderID,
-				})
-				break
-			}
-		}
+		// Step 3b: best-effort sidecar publishes (errors logged
+		// but not bubbled — pre-split silently dropped sidecar
+		// errors; P1.7 preserves silent-drop semantics by NOT
+		// bumping any counter from publishSidecars). The added
+		// `log.Warn` on sidecar publish failure is a hygiene
+		// improvement: original code had no observability at all
+		// — operator dashboards would never see sidecar drift.
+		publishSidecars(ctx, w.publisher, cand, targetFolderID, log)
 	}
 
-	// Step 4: create / update MediaAsset record
-	now := time.Now().UTC()
-	source := payload.Source
-	if source == "" {
-		source = "youtube-local"
-	}
-	category := payload.Category
-	if category == "" && cand.Subdir != "" && cand.Subdir != "." {
-		category = strings.SplitN(cand.Subdir, "/", 2)[0]
-	}
-
-	clip := &asset.Asset{
-		ID:             clipID,
-		Name:           cand.DisplayName(),
-		Filename:       filepath.Base(cand.LocalPath),
-		Source:         asset.Source(source),
-		Category:       category,
-		MediaType:      asset.MediaType("video"),
-		SearchText:     deriveSearchText(cand),
-		LifecycleState: asset.StateActive,
-		Duration:       time.Duration(extractIntFromManifest(cand.Manifest, "duration_sec")) * time.Second,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
-	clip.SetLocalPath(cand.LocalPath)
-	clip.SetFileHash(fileHash)
-	clip.SetFolderID(targetFolderID)
-	clip.SetFolderPath(cand.Subdir)
-	if cand.Manifest != nil {
-		if v, ok := cand.Manifest["youtube_video_id"].(string); ok && v != "" {
-			clip.SetMetadataString("youtube_video_id", v)
-		} else if v, ok := cand.Manifest["youtube_id"].(string); ok && v != "" {
-			clip.SetMetadataString("youtube_video_id", v)
-		}
-		if v, ok := cand.Manifest["youtube_url"].(string); ok && v != "" {
-			clip.SetMetadataString("youtube_url", v)
-		} else if v, ok := cand.Manifest["url"].(string); ok && v != "" {
-			clip.SetMetadataString("youtube_url", v)
-		}
-	}
-	if v, ok := cand.Manifest["tags"].([]any); ok {
-		for _, t := range v {
-			if s, ok := t.(string); ok && s != "" {
-				clip.Tags = append(clip.Tags, s)
-			}
-		}
-	}
-	if driveFileID != "" {
-		clip.SetDriveLink(driveLink)
-		clip.SetDownloadLink(downloadLink)
-		clip.SetDriveFileID(driveFileID)
-	}
-	if cand.Transcript != "" {
-		if clip.Metadata == nil {
-			clip.Metadata = make(map[string]any)
-		}
-		maxLen := 200000
-		if len(cand.Transcript) > maxLen {
-			clip.Metadata["clean_transcript"] = cand.Transcript[:maxLen]
-			clip.Metadata["transcript_truncated"] = true
-		} else {
-			clip.Metadata["clean_transcript"] = cand.Transcript
-		}
-	}
-
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
-	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
-	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
-	// INSERT in one tx) applies uniformly to bulk-upload workers.
-	//
-	// Strict fail-closed: a nil dispatcher returns
-	// mutations.ErrDispatcherUnavailable wrapped with context so the
-	// work's failure is operator-visible via the job outcome, NOT as a
-	// half-written asset row that would orphan a Qdrant upsert.
-	// contentHash is the MD5 already computed in Step 1; mirrors the v1
-	// supersede-gate semantics (QDRANT-002 item F: source_version on
-	// index.requested.v1).
-	if w.dispatcher == nil {
+	// Step 4 + 5: build clip Asset + dispatcher.EnqueueAndIndex
+	// (registration section). Strict fail-closed on nil
+	// dispatcher — surfaces explicitly via returned error.
+	if err := registerClip(ctx, w.dispatcher, payload, cand, pubRes, fileHash, targetFolderID, log); err != nil {
 		failed.Add(1)
-		return fmt.Errorf("bulk upload dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
-	}
-	if err := w.dispatcher.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-		failed.Add(1)
-		return fmt.Errorf("dispatcher enqueue: %w", err)
-	}
-	log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
-
-	// Step 5: embeddings via existing IndexClip pipeline.
-	// SkipQdrant gating and the direct-vector-store fallback
-	// (HasVectorStore / UpsertToVectorStore) are gone. The indexer is now
-	// the canonical semantic-search backend and is the only post-DB-side leg.
-	if !payload.SkipEmbeddings {
-		// Stage the transcript in data/youtube-clips/ so the indexer's
-		// /index_transcript endpoint can find it.
-		if cand.Transcript != "" {
-			stageRoot := w.cfg.YoutubeClipsPath()
-			if stageRoot == "" {
-				stageRoot = filepath.Join(w.cfg.DataDir(), "youtube-clips")
-			}
-			baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
-			subBucket := strings.TrimSpace(cand.Subdir)
-			if subBucket == "" || subBucket == "." {
-				subBucket = "_root"
-			}
-			subBucket = strings.Map(func(r rune) rune {
-				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
-					return r
-				}
-				return '_'
-			}, subBucket)
-			stageDir := filepath.Join(stageRoot, subBucket)
-			_ = os.MkdirAll(stageDir, 0o755)
-			stagePath := filepath.Join(stageDir, baseNoExt+".txt")
-			if err := os.WriteFile(stagePath, []byte(cand.Transcript), 0o644); err != nil {
-				log.Warn("transcript staging failed (non-fatal)", zap.String("path", stagePath), zap.Error(err))
-			}
-		}
-		if w.indexer != nil && w.indexer.IsEnabled() {
-			if err := w.indexer.IndexClip(ctx, clip.ID); err != nil {
-				log.Warn("indexer failed (non-fatal)", zap.Error(err))
-			} else {
-				indexed.Add(1)
-			}
-		}
-	}
-	return nil
-}
-
-// clipCandidate and its DisplayName method are defined in
-// bulk_upload_helpers.go (this package). No duplicate here.
-
-func scanLocalClips(root string, recursive bool, include, skip []string, limit int) ([]clipCandidate, error) {
-	if root == "" {
-		return nil, fmt.Errorf("root is empty")
-	}
-	out := []clipCandidate{}
-	count := 0
-
-	walk := func(path string, info os.DirEntry, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(info.Name()), ".mp4") {
-			return nil
-		}
-		if len(include) > 0 && !matchAny(info.Name(), include) {
-			return nil
-		}
-		if len(skip) > 0 && matchAny(info.Name(), skip) {
-			return nil
-		}
-		if limit > 0 && count >= limit {
-			return filepath.SkipDir
-		}
-		subdir, _ := filepath.Rel(root, filepath.Dir(path))
-		manifest := readManifest(filepath.Join(filepath.Dir(path), "clip_manifest.json"))
-		transcript := readTranscript(filepath.Join(filepath.Dir(path), strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))+".txt"), path)
-		out = append(out, clipCandidate{
-			Name:       strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())),
-			LocalPath:  path,
-			Subdir:     subdir,
-			Manifest:   manifest,
-			Transcript: transcript,
-		})
-		count++
-		return nil
-	}
-	var err error
-	if recursive {
-		err = filepath.WalkDir(root, walk)
-	} else {
-		err = readDirShallow(root, walk)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func readDirShallow(root string, walk func(path string, info os.DirEntry, err error) error) error {
-	entries, err := os.ReadDir(root)
-	if err != nil {
 		return err
 	}
-	for _, e := range entries {
-		full := filepath.Join(root, e.Name())
-		if err := walk(full, e, nil); err != nil {
-			if err == filepath.SkipDir {
-				continue
-			}
-			return err
+	log.Info("saved clip to DB", zap.String("clip_id", clipID))
+
+	// Step 6: enrichment (transcript staging + IndexClip), only
+	// when embeddings are not skipped (preserve pre-split gate).
+	if !payload.SkipEmbeddings {
+		if didIndex := enrichClip(ctx, w.cfg, w.indexer, cand, clipID, log); didIndex {
+			indexed.Add(1)
 		}
 	}
 	return nil
 }
-
-func matchAny(name string, patterns []string) bool {
-	lower := strings.ToLower(name)
-	for _, p := range patterns {
-		if strings.Contains(lower, strings.ToLower(p)) {
-			return true
-		}
-	}
-	return false
-}
-
-func readManifest(path string) map[string]any {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var m map[string]any
-	if err := jsonUnmarshal(b, &m); err != nil {
-		return nil
-	}
-	return m
-}
-
-func readTranscript(txtPath, mp4Path string) string {
-	for _, p := range []string{txtPath, filepath.Join(filepath.Dir(mp4Path), "transcript.txt")} {
-		if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
-			return string(b)
-		}
-	}
-	return ""
-}
-
-// The helpers buildBulkClipID, sanitiseDriveName, buildBulkDriveDescription,
-// deriveSearchText, and extractIntFromManifest are now defined once in
-// bulk_upload_helpers.go (this package). The previous duplicates in this file
-// were removed during Wave 14 PR2 slice 2 (June 2026).
