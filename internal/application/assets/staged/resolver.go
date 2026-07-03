@@ -111,15 +111,15 @@ func NewResolver(store IndexStore) (*Resolver, error) {
 //
 // Pipeline (3-step verification chain):
 //
-//   1. IndexStore.GetLocalPath(ctx, artifactID) — DB lookup. Empty
-//      returned path OR non-nil error → wrapped ErrStagedArtifactMissing.
-//   2. os.Stat(localPath) — file existence + size. Stat failure
-//      (file deleted/moved/TTL'd) → wrapped ErrStagedArtifactMissing.
-//   3. files.HashFile(localPath, sha256.New()) — live SHA-256
-//      recompute. NEVER falls back to asset_index.content_hash
-//      (godlike/07 no-fake-availability: stale DB hash would
-//      silently publish a corrupted file). Hash failure → wrapped
-//      ErrStagedArtifactMissing.
+//  1. IndexStore.GetLocalPath(ctx, artifactID) — DB lookup. Empty
+//     returned path OR non-nil error → wrapped ErrStagedArtifactMissing.
+//  2. os.Stat(localPath) — file existence + size. Stat failure
+//     (file deleted/moved/TTL'd) → wrapped ErrStagedArtifactMissing.
+//  3. files.HashFile(localPath, sha256.New()) — live SHA-256
+//     recompute. NEVER falls back to asset_index.content_hash
+//     (godlike/07 no-fake-availability: stale DB hash would
+//     silently publish a corrupted file). Hash failure → wrapped
+//     ErrStagedArtifactMissing.
 //
 // On success, returns a populated StagedArtifact (AssetID +
 // LocalPath + SHA256 + SizeBytes).
@@ -132,11 +132,15 @@ func NewResolver(store IndexStore) (*Resolver, error) {
 // discrimination needed.
 func (r *Resolver) ResolveStagedArtifact(ctx context.Context, artifactID string) (*StagedArtifact, error) {
 	localPath, err := r.store.GetLocalPath(ctx, artifactID)
-	if err != nil {
-		return nil, fmt.Errorf("staged.ResolveStagedArtifact[%s]: index lookup: %w", artifactID, err)
-	}
-	if localPath == "" {
-		return nil, fmt.Errorf("staged.ResolveStagedArtifact[%s]: index lookup returned empty local path: %w", artifactID, ErrStagedArtifactMissing)
+	if err != nil || localPath == "" {
+		// err != nil AND localPath == "" both surface as the canonical
+		// ErrStagedArtifactMissing sentinel (godlike/07 single-sentinel
+		// contract for "is this artifact usable" cutover branch point).
+		// The underlying err + the returned path are STILL preserved via
+		// %v / %q interpolation so the operator log scraper can see
+		// DB diagnostic detail (the %w chain only carries the sentinel
+		// for errors.Is assertions in the cutover caller).
+		return nil, fmt.Errorf("staged.ResolveStagedArtifact[%s]: index lookup failed (err=%v, path=%q): %w", artifactID, err, localPath, ErrStagedArtifactMissing)
 	}
 
 	info, err := os.Stat(localPath)

@@ -16,14 +16,14 @@ import "errors"
 // returned by the Resolver when any step in the staged-lookup chain
 // fails:
 //
-//   1. IndexStore returns "" or an error (DB row absent) — the
-//      artifact is not in the staged surface.
-//   2. os.Stat fails on the looked-up local path (file deleted,
-//      moved, TTL'd by the standalone cleanup daemon, etc.) — the
-//      DB row is stale.
-//   3. files.HashFile fails on the local file (I/O error, truncated
-//      zeros, silent disk corruption) — the staged payload is
-//      unverifiable for downstream ArtifactPreparation.
+//  1. IndexStore returns "" or an error (DB row absent) — the
+//     artifact is not in the staged surface.
+//  2. os.Stat fails on the looked-up local path (file deleted,
+//     moved, TTL'd by the standalone cleanup daemon, etc.) — the
+//     DB row is stale.
+//  3. files.HashFile fails on the local file (I/O error, truncated
+//     zeros, silent disk corruption) — the staged payload is
+//     unverifiable for downstream ArtifactPreparation.
 //
 // All three failure paths return wrapped via fmt.Errorf("...: %w",
 // ErrStagedArtifactMissing) so upstream callers branch on
