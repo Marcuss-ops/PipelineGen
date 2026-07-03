@@ -55,9 +55,9 @@
 //     content replay the top-level err is nil — this is the explicit
 //     breaking contract change vs the prior P0-COMPL-4 wrap-ErrAlreadyPublished
 //     behaviour. Callers route the two surfaces via:
-//       - Same content           → errors.Is(err, X) is FALSE; outcome.Reused == true
-//       - Different content key → errors.Is(err, ErrIdempotencyKeyConflictDifferingContent) is TRUE
-//       - Per-art failure       → errors.Is(outcome.Err, ErrFinalChecksumMismatch) is TRUE
+//   - Same content           → errors.Is(err, X) is FALSE; outcome.Reused == true
+//   - Different content key → errors.Is(err, ErrIdempotencyKeyConflictDifferingContent) is TRUE
+//   - Per-art failure       → errors.Is(outcome.Err, ErrFinalChecksumMismatch) is TRUE
 package completion
 
 import (
@@ -101,11 +101,11 @@ type Preparer interface {
 //   - IsPublished              : O(1) lookup; returns (true, nil) if triple recorded
 //   - LookupPublished          : returns the full *PublishedArtifact envelope
 //   - LookupByIdempotencyKey   : returns the FIRST record whose IdempotencyKey
-//                                matches the searched key scoped to the
-//                                canonical jobID namespace (P1 #14 NEW).
-//                                Used to detect same-key / different-content
-//                                collisions (godlike/07 fail-closed) by
-//                                comparing the cached SHA against the in-flight SHA.
+//     matches the searched key scoped to the
+//     canonical jobID namespace (P1 #14 NEW).
+//     Used to detect same-key / different-content
+//     collisions (godlike/07 fail-closed) by
+//     comparing the cached SHA against the in-flight SHA.
 //   - RecordPublished          : stores the envelope after successful publish
 type IdempotencyBookkeeper interface {
 	IsPublished(ctx context.Context, jobID, artifactID, sha256Hex string) (bool, error)
@@ -220,10 +220,10 @@ func NewService(pr Preparer, b IdempotencyBookkeeper) (*Service, error) {
 //   - Per-artifact FAILURE:    outcome {Artifact=nil,                  Err=<typed>}
 //   - Idem-key COLLISION (diff
 //     content):                partial outcome (with the
-//                              collision-failure envelope + Reused=false +
-//                              Err wrapping the typed sentinel) IS preserved
-//                              in the slice returned; top-level err is
-//                              non-nil ONLY on this collision
+//     collision-failure envelope + Reused=false +
+//     Err wrapping the typed sentinel) IS preserved
+//     in the slice returned; top-level err is
+//     non-nil ONLY on this collision
 //   - Caller loops NO LONGER short-circuit on first non-typed failure; this
 //     is the canonical "loop isolation" surface
 //
@@ -286,7 +286,7 @@ func (s *Service) PublishVerifiedArtifacts(
 // P1 #14 (July 2026) signature: returns (pub, reused, err) where:
 //   - pub    : the per-artifact envelope (nil on failure)
 //   - reused : true if the result came from a SAME-content idempotent replay
-//              (no Prepare re-run; no Drive re-write)
+//     (no Prepare re-run; no Drive re-write)
 //   - err    : nil on success; typed sentinel + context on per-artifact failure
 func (s *Service) publishOne(
 	ctx context.Context,
