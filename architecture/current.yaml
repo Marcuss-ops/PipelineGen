@@ -1729,6 +1729,14 @@
       status: pending
       owner_capability: architecture
       deadline: 2026-08-01
+    - id: PR-IMAGE-TERRITORIES-W1
+      owner_capability: internal/application/images/routing
+      status: shipped
+      deadline: 2026-07-03
+    - id: PR-IMAGE-TERRITORIES-W1.5-CROSS-PACKAGE-SEARCHER
+      owner_capability: internal/application/images
+      status: pending
+      deadline: 2026-07-25
 
 
 # ── Wave 31 — GOD-OBJECT DECOMPOSITION (Italian audit, July 2026) ──
