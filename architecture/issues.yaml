@@ -639,3 +639,112 @@
     Linked wave ref: architecture/current.yaml#id-29 linked_issues
     entry P0.18 shares the 2026-07-15 deadline (P0.18 = reintroduce
     structured outbox-driven enrichment; orthogonal to this ticket).
+
+- id: PR-RETIRE-DORMANT-TYPEYOUTUBECHANNELSYNC
+  title: "P0 #2 audit closure — retire dormant TypeYouTubeChannelSync typed-handle + add cmd/archcheck Check 54 guardrail (registered-job-types-without-handlers)"
+  status: done
+  owner: cmd/archcheck + internal/application/jobs
+  deadline: 2026-07-25
+  linked_issues:
+    - PR-ID17-TRUTH-RECONCILE  # the audit claim that TypeYouTubeChannelSync was registered-but-handler-removed (a stale id-17 closure claim — this entry resolves the contradiction)
+    - PR-HARMONIUM-RUNBOOK  # forward-pointer to the future Harmonium runbook (CHECK 54 promotion to fail-closed default CI mode, mirroring Q-PR-REGISTER-CI-GATE precedent for Check 50)
+  notes: |
+    Audit P0 #2 (registered-but-no-handler orphan) closed via typed-handle
+    retirement + archcheck Check 54 guardrail landing. The canonical
+    closure surface (4 files touched in this commit):
+
+    (a) internal/domain/job/job.go — `TypeYouTubeChannelSync = "youtube.channel.sync"`
+        constant declaration REMOVED (the canonical source). The
+        "youtube: TypeYouTubeUpload, TypeYouTubeClipExtract,
+        TypeYouTubeRebuildST, TypeYouTubeChannelSync" comment block
+        case-list also pruned per godlike/06 SSOT discipline (one
+        canonical owner per fact).
+
+    (b) internal/application/jobs/registry.go — `TypeYouTubeChannelSync
+        = job.TypeYouTubeChannelSync` alias declaration REMOVED + the
+        `r.Register(JobPolicy{Type: TypeYouTubeChannelSync, ...Concurrency: 1})`
+        callsite REMOVED. The 4-line canonical BLOC5.3 + Concurrency=1
+        context comment is preserved as audit-pin residue per
+        AGENTS.md active concern #13 closure-note discipline; the
+        per-cycle Concurrency=1 wiring-mode mitigation is now N/A
+        (no job type exists) — the dual-mode contention ticket
+        PR-MONITOR-FANOUT-MARKENQUEUED-RACE remains open and is
+        covered by the canonical scheduler tick path (channels_service
+        + monitor.tick + JobEnqueuer port to youtube_clip.extract).
+
+    (c) internal/application/jobs/registry_completeness_test.go —
+        `expectedRegisteredTypes` list updated to drop the
+        `job.TypeYouTubeChannelSync,` literal AND the
+        documentation-block comment that listed it as a canonical
+        registered job type. The remaining test invariants
+        (registry_compose_ssot_test.go::Concurrency >= 1) stay
+        byte-stable post-retirement.
+
+    (d) cmd/archcheck/scan/scan_jobhandlers.go (NEW) — Phase 0
+        warn-severity guardrail. Walks internal/application/jobs/
+        registry.go for `r.Register(JobPolicy{Type: <X>, ...)` callsites
+        AND internal/app + internal/application/jobs +
+        internal/application/assets/monitor for `func Handle<Type>Job(...)`
+        declarations. Diff = registered - handled = orphans → one
+        warn-severity Violation per orphan. Mirrors the ScanConstructors
+        scan/style (cmd/archcheck/scan/constructors.go) so the
+        accumulator in `summary.by_reason` keys aligned. Phase 0
+        default: --strict does NOT gate this rule (governed by the
+        architecture/current.yaml#id-22 PHASE 0 → PHASE 1 promotion
+        track). Forward-pointer to PR-HARMONIUM-RUNBOOK promotes
+        the rule to enforced-fail default CI mode (mirrors the
+        Q-PR-REGISTER-CI-GATE Check 50 promotion precedent).
+
+    (e) cmd/archcheck/runner.go::DefaultChecks() — new CheckSpec
+        {"job_handlers_audit_check_54", scan.ScanRegisteredJobTypesWithoutHandlers}
+        appended as the last entry in the canonical Phase 0 sequence
+        (slot 14 in the chain; the file_size_pkg_size_thin_command
+        closure remains the second-to-last slot, preserving the
+        shared fileLines map invariant).
+
+    (f) internal/application/assets/monitor/enqueue.go — historical
+        "Commit H Phase 2 (June 2026)" comment block updated to
+        reflect post-retirement state: the comment now references
+        the P0 #2 closure (this entry) and notes that the
+        TypeYouTubeChannelSync constant + alias have been retired
+        entirely from domain/job/job.go + application/jobs/registry.go.
+        The canonical scheduler path (channels_service + monitor.tick +
+        JobEnqueuer port to youtube_clip.extract) is unchanged —
+        no production-code semantic drift.
+
+    Acceptance gate (P0 #2 audit, locked at this commit):
+
+      * registered-job-types-without-handlers count = 0
+        (cmd/archcheck Check 54 walk reports zero orphans post-commit)
+      * rg --type go -n 'TypeYouTubeChannelSync' internal/  -> 0 hits
+        (production-code residue GREP — comment-only audit-pin residue
+        in monitor/enqueue.go is INTENTIONAL and stays per the
+        post-2026-07-02 cleanup-pattern preservation discipline; it
+        cross-references this entry, NOT the live code)
+      * rg --type go -n 'HandleChannelSyncJob|HandleChannelSync' internal/
+        -> 0 hits (handler surface fully retired since Commit H Phase 2)
+
+    Cross-reference: architecture/current.yaml#AUDIT-2026-07-02
+    (Italian architectural audit action plan wave-tracker, July 2026)
+    carried this P0 #2 item as a future work item; this entry is the
+    closure marker for that forward-pointer.
+
+    Linked wave entry: architecture/current.yaml#id-29 is the
+    sibling monitor-cutover wave-tracker; the canonical id-17
+    closure claim (about TypeYouTubeChannelSync "durable channel
+    sync") is documentation-drift per the audit truth-source
+    reconciliation paragraph — PR-ID17-TRUTH-RECONCILE tracks
+    the future fix-up of id-17's narrative block to match the
+    post-retirement reality (the closure surface in this entry
+    is the truth-source; id-17's narrative remains until
+    PR-ID17-TRUTH-RECONCILE explicitly rewrites it).
+
+    Forward-pointer (PR-HARMONIUM-RUNBOOK):
+      Promote Check 54 from voluntary warn (Phase 0) to enforced-fail
+      exit-1 (Phase 1+) in the default CI mode, mirroring the
+      PR-REGISTER-CI-GATE promotion of Check 50. Future runbook
+      "Harmonium" tracks the promotion + the per-rule allowlist
+      doc at docs/migrations/registered-job-types-without-handlers-
+      allowlist.txt (initial content: empty-per-zero-baseline-rule,
+      populated ONLY for transitional cases per godlike/07 + AGENTS.md
+      §8 zero-baseline rule).

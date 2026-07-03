@@ -188,7 +188,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// (replaces the pre-HC-1 hard-coded context.WithTimeout(ctx, 2*time.Hour)
 	// in bulk_upload_worker.go::HandleJob).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
-		newClipsDriveAdapter(driveUploader, driveUploader),
 		deps.Delivery.Publisher,
 		newClipsRepoAdapter(deps.Core.ClipsRepo),
 		newClipsIndexerAdapter(deps.Search.ClipIndexerService),

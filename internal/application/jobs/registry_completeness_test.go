@@ -68,7 +68,7 @@ import (
 //       TypeBooksProcess, TypeLessonsProcess, TypeMediaReindex,
 //       TypeMediaEnrich, TypeYouTubeRebuildST, TypeScriptGenerate,
 //       TypeBulkUploadYouTubeClips, TypeDriveFolderSync,
-//       TypeMediaCurate, TypeVoiceoverPromo, TypeYouTubeChannelSync.
+//       TypeMediaCurate, TypeVoiceoverPromo.
 //
 //   internal/application/jobs/registry.go (Wave 19 / P1-9 adder):
 //     - TypeImageGenerateGoogle — FASE 2 (June 2026) Chrome/Playwright
@@ -111,7 +111,6 @@ var canonicalJobTypes = []string{
 	job.TypeVoiceoverPromo,               // domain/job/job.go
 	job.TypeVoiceoverGenerate,            // domain/job/job.go
 	job.TypeVoiceoverGenerateItem,        // domain/job/job.go
-	job.TypeYouTubeChannelSync,           // domain/job/job.go
 	TypeImageGenerateGoogle,              // application/jobs/registry.go (FASE 2 / June 2026)
 }
 

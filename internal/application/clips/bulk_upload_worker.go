@@ -58,8 +58,7 @@ import (
 // row. See internal/app/registry_adapters.go::newMutationsDispatcherAdapter
 // for the error sentinel.
 type BulkUploadWorker struct {
-	uploader   ClipDriveUploaderPort // deprecated: kept for non-Publisher paths
-	publisher  ClipPublisherPort    // canonical Drive upload (FASE 7)
+	publisher  ClipPublisherPort // canonical Drive upload (P0.1: Publisher mandatory, legacy ClipDriveUploaderPort removed)
 	repo       ClipRepositoryPort
 	indexer    ClipIndexerPort
 	hasher     ClipHashPort
@@ -79,7 +78,6 @@ type BulkUploadWorker struct {
 // internal/app/module_media.go::WireAssets) which surfaces a
 // configure-time error if dispatcher is nil.
 func NewBulkUploadWorker(
-	uploader ClipDriveUploaderPort,
 	publisher ClipPublisherPort,
 	repo ClipRepositoryPort,
 	indexer ClipIndexerPort,
@@ -92,7 +90,6 @@ func NewBulkUploadWorker(
 		log = zap.NewNop()
 	}
 	return &BulkUploadWorker{
-		uploader:   uploader,
 		publisher:  publisher,
 		repo:       repo,
 		indexer:    indexer,
@@ -166,8 +163,8 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	if strings.TrimSpace(payload.LocalFolder) == "" {
 		return nil, fmt.Errorf("local_folder is required")
 	}
-	if w.uploader == nil && w.publisher == nil {
-		return nil, fmt.Errorf("drive uploader or publisher not configured")
+	if w.publisher == nil {
+		return nil, fmt.Errorf("drive publisher not configured (P0.1: Publisher mandatory, ClipDriveUploaderPort removed)")
 	}
 	if w.repo == nil {
 		return nil, fmt.Errorf("clips repository not configured")
@@ -206,31 +203,12 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		tools.Progress(5, fmt.Sprintf("Found %d clips, starting pipeline", total))
 	}
 
-	// Resolve subdir folder cache (Drive folder ID per subdir).
-	// Mutex prevents two concurrent clips sharing a subdir from both
-	// creating duplicate folders on Drive.
-	subdirFolderCache := sync.Map{}
-	var subdirMu sync.Mutex
-
-	resolveSubdirFolderID := func(ctx context.Context, subdir string) (string, error) {
-		if subdir == "" || !payload.SubdirAsDriveSubdir {
-			return payload.DriveFolderID, nil
-		}
-		if v, ok := subdirFolderCache.Load(subdir); ok {
-			return v.(string), nil
-		}
-		subdirMu.Lock()
-		defer subdirMu.Unlock()
-		if v, ok := subdirFolderCache.Load(subdir); ok {
-			return v.(string), nil
-		}
-		id, err := w.uploader.GetOrCreateFolder(ctx, subdir, payload.DriveFolderID)
-		if err != nil {
-			return "", err
-		}
-		subdirFolderCache.Store(subdir, id)
-		return id, nil
-	}
+	// P0.1 (July 2026): Publisher is mandatory; subdir folder resolution
+	// is handled internally by delivery.Publisher.resolveDestination via
+	// the Group and RootFolderOverride fields.
+	//
+	// Legacy resolveSubdirFolderID closure (which used
+	// w.uploader.GetOrCreateFolder) removed.
 
 	concurrency := payload.Concurrency
 	if concurrency <= 0 {
@@ -277,7 +255,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			defer func() { <-sem }()
 			defer reportProgress(false)
 
-			if err := w.processOneClip(ctx, payload, cand, resolveSubdirFolderID,
+			if err := w.processOneClip(ctx, payload, cand,
 				&uploaded, &indexed, &pushed, &skipped, &failed, log); err != nil {
 				failedMu.Lock()
 				failedDetails = append(failedDetails, fmt.Sprintf("%s: %v", cand.LocalPath, err))
@@ -323,13 +301,12 @@ func (w *BulkUploadWorker) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
-	resolveSubdirFolderID func(ctx context.Context, subdir string) (string, error),
 	uploaded, indexed, pushed, skipped, failed *atomic.Int64,
 	log *zap.Logger,
 ) error {
-	if w == nil || w.hasher == nil || (w.uploader == nil && w.publisher == nil) || w.repo == nil {
+	if w == nil || w.hasher == nil || w.publisher == nil || w.repo == nil {
 		failed.Add(1)
-		return fmt.Errorf("bulk upload not configured correctly")
+		return fmt.Errorf("bulk upload not configured correctly (P0.1: Publisher mandatory)")
 	}
 
 	// Step 1: hash
@@ -342,18 +319,9 @@ func (w *BulkUploadWorker) processOneClip(
 	clipID := buildBulkClipID(cand, fileHash)
 	log = log.With(zap.String("clip_id", clipID), zap.String("path", cand.LocalPath))
 
-	// Step 2: Drive target folder (with subdir if requested)
-	// When publisher is available, folder resolution is handled internally;
-	// only call resolveSubdirFolderID when using the legacy uploader path.
+	// Step 2: Drive target folder. Publisher handles folder resolution
+	// internally via RootFolderOverride; subdir is threaded as Group.
 	targetFolderID := payload.DriveFolderID
-	if w.publisher == nil && payload.SubdirAsDriveSubdir && cand.Subdir != "" && cand.Subdir != "." {
-		id, ferr := resolveSubdirFolderID(ctx, cand.Subdir)
-		if ferr != nil {
-			failed.Add(1)
-			return fmt.Errorf("resolve subdir folder %q: %w", cand.Subdir, ferr)
-		}
-		targetFolderID = id
-	}
 
 	var (
 		driveFileID  string
@@ -381,8 +349,8 @@ func (w *BulkUploadWorker) processOneClip(
 			pubGroup = cand.Subdir
 		}
 
-		if w.publisher != nil {
-			// FASE 7: use canonical Publisher
+		// P0.1 (July 2026): Canonical Publisher path (mandatory).
+		// Legacy uploader-path (w.uploader.UploadFileWithDescription) removed.
 			pubReq := delivery.PublishRequest{
 				Destination:        delivery.DestinationYouTubeClip,
 				LocalPath:          cand.LocalPath,
@@ -396,81 +364,47 @@ func (w *BulkUploadWorker) processOneClip(
 				failed.Add(1)
 				return fmt.Errorf("drive publish: %w", err)
 			}
-			driveFileID = pubRes.FileID
-			driveLink = pubRes.WebViewLink
-			// F1.5 (P0 #9): read DownloadLink from the canonical
-			// PublishResult instead of reconstructing via string
-			// interpolation. Recomputing uc?id= on the consumer side
-			// risks drift against the URL format Drive returns and
-			// prevents the canonical Publisher from centralising URL
-			// formatting (e.g. for ?export=download variants).
-			downloadLink = pubRes.DownloadLink
-			targetFolderID = pubRes.FolderID
-			uploaded.Add(1)
-			log.Info("published to drive",
-				zap.String("file_id", driveFileID),
-				zap.String("drive_link", driveLink),
-				zap.String("publish_action", string(pubRes.Action)))			// Upload siblings via Publisher (best effort)
-			// Group is empty because the folder is already resolved by the
-			// first Publish call (targetFolderID = pubRes.FolderID). Setting
-			// Group here would create double-nesting.
-			dir := filepath.Dir(cand.LocalPath)
-			baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
-			manifestPath := filepath.Join(dir, "clip_manifest.json")
-			if _, err := os.Stat(manifestPath); err == nil {
-				w.publisher.Publish(ctx, delivery.PublishRequest{
-					Destination:        delivery.DestinationYouTubeClip,
-					LocalPath:          manifestPath,
-					Filename:           baseNoExt + ".clip_manifest.json",
-					Description:        "Clip manifest for " + baseNoExt,
-					RootFolderOverride: targetFolderID,
-				})
-			}
-			for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
-				if _, err := os.Stat(tp); err == nil {
-					w.publisher.Publish(ctx, delivery.PublishRequest{
-						Destination:        delivery.DestinationYouTubeClip,
-						LocalPath:          tp,
-						Filename:           baseNoExt + ".transcript.txt",
-						Description:        "Whisper transcript for " + baseNoExt,
-						RootFolderOverride: targetFolderID,
-					})
-					break
-				}
-			}
-		} else {
-			// Legacy fallback
-			upRes, err := w.uploader.UploadFileWithDescription(ctx, cand.LocalPath, targetFolderID, driveFilename, driveDesc)
-			if err != nil {
-				failed.Add(1)
-				return fmt.Errorf("drive upload: %w", err)
-			}
-			driveFileID = upRes.FileID
-			driveLink = upRes.WebViewLink
-			downloadLink = upRes.DownloadLink
-			uploaded.Add(1)
-			log.Info("uploaded to drive",
-				zap.String("file_id", driveFileID),
-				zap.String("drive_link", driveLink))
-
-			// Step 3: upload siblings (best effort)
+		driveFileID = pubRes.FileID
+		driveLink = pubRes.WebViewLink
+		// F1.5 (P0 #9): read DownloadLink from the canonical
+		// PublishResult instead of reconstructing via string
+		// interpolation. Recomputing uc?id= on the consumer side
+		// risks drift against the URL format Drive returns and
+		// prevents the canonical Publisher from centralising URL
+		// formatting (e.g. for ?export=download variants).
+		downloadLink = pubRes.DownloadLink
+		targetFolderID = pubRes.FolderID
+		uploaded.Add(1)
+		log.Info("published to drive",
+			zap.String("file_id", driveFileID),
+			zap.String("drive_link", driveLink),
+			zap.String("publish_action", string(pubRes.Action)))
+		// Upload siblings via Publisher (best effort)
+		// Group is empty because the folder is already resolved by the
+		// first Publish call (targetFolderID = pubRes.FolderID). Setting
+		// Group here would create double-nesting.
 		dir := filepath.Dir(cand.LocalPath)
 		baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
 		manifestPath := filepath.Join(dir, "clip_manifest.json")
 		if _, err := os.Stat(manifestPath); err == nil {
-				mdesc := "Clip manifest for " + baseNoExt
-				if _, e := w.uploader.UploadFileWithDescription(ctx, manifestPath, targetFolderID, baseNoExt+".clip_manifest.json", mdesc); e != nil {
-					log.Warn("manifest.json upload failed (non-fatal)", zap.Error(e))
-				}
-			}
-			for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
-				if _, err := os.Stat(tp); err == nil {
-					tdesc := "Whisper transcript for " + baseNoExt
-					if _, e := w.uploader.UploadFileWithDescription(ctx, tp, targetFolderID, baseNoExt+".transcript.txt", tdesc); e != nil {
-						log.Warn("transcript.txt upload failed (non-fatal)", zap.Error(e))
-					}
-					break
-				}
+			w.publisher.Publish(ctx, delivery.PublishRequest{
+				Destination:        delivery.DestinationYouTubeClip,
+				LocalPath:          manifestPath,
+				Filename:           baseNoExt + ".clip_manifest.json",
+				Description:        "Clip manifest for " + baseNoExt,
+				RootFolderOverride: targetFolderID,
+			})
+		}
+		for _, tp := range []string{filepath.Join(dir, baseNoExt+".txt"), filepath.Join(dir, "transcript.txt")} {
+			if _, err := os.Stat(tp); err == nil {
+				w.publisher.Publish(ctx, delivery.PublishRequest{
+					Destination:        delivery.DestinationYouTubeClip,
+					LocalPath:          tp,
+					Filename:           baseNoExt + ".transcript.txt",
+					Description:        "Whisper transcript for " + baseNoExt,
+					RootFolderOverride: targetFolderID,
+				})
+				break
 			}
 		}
 	}
