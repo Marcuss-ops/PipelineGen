@@ -14,47 +14,48 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// ── Mock implementations of the 3 ports ────────────────────────────────────
+// ── Mock implementations of the 2 ports (P0-COMPL-4: Publisher port REMOVED) ──
 
 // keyTriplet builds the canonical map-key for the (jobID, subID, sha256Hex)
 // idempotency surface. Uses 0x00 as separator to avoid collision with the
 // ":" separator used in splitJobArtifactID.
 func keyTriplet(j, a, s string) string { return j + "\x00" + a + "\x00" + s }
 
-// mockPublisher is a stateful Publisher stub. Configurable per-test for
-// success-after-transient, general errors, or always-fail behavior.
-type mockPublisher struct {
+// mockPreparer is the canonical post-P0-COMPL-4 mock. In the dedup-refactor
+// architecture, the Preparer (typed as *finalizer.ArtifactPreparation in
+// production) IS the canonical publish seam: its internal call to
+// finalization.PublisherPort.Publish handles validate+sha256+Drive-upload.
+// The Service struct no longer holds a Publisher field (the double-publish
+// godlike/06 SSOT violation was retired in P0-COMPL-4).
+//
+// Mock contract:
+//   - preparedPub: success-shape returned on every non-error call (Location
+//     is the canonical Drive location envelope, as if Prepare had published).
+//   - prepareErr: static error returned on EVERY call (overrides
+//     transientSequence semantics).
+//   - transientSequence: per-call sequence of transient errors followed
+//     by a nil terminator (simulates the pkg/retry.Do retry-on-transient
+//     loop that Prepare may encounter via its internal finalization.PublisherPort).
+type mockPreparer struct {
 	calls             atomic.Int64
-	transientSequence []error // explicit sequence returned one-by-one
-	succeedLocation   finalization.AssetLocation
+	transientSequence []error
+	prepareErr        error
+	preparedPub       finalization.PublishedArtifact
 }
 
-func (m *mockPublisher) Publish(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.AssetLocation, error) {
+func (m *mockPreparer) Prepare(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
 	m.calls.Add(1)
 	if len(m.transientSequence) > 0 {
 		next := m.transientSequence[0]
 		m.transientSequence = m.transientSequence[1:]
 		if next != nil {
-			return finalization.AssetLocation{}, next
+			return finalization.PublishedArtifact{}, next
 		}
 	}
-	return m.succeedLocation, nil
-}
-
-// mockPreparer is a stateless Preparer stub. Returns a deterministic
-// PublishedArtifact envelope (10-field canonical shape) with input identity
-// propagated through.
-type mockPreparer struct {
-	calls       atomic.Int64
-	prepareErr  error
-	preparedPub finalization.PublishedArtifact
-}
-
-func (m *mockPreparer) Prepare(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
-	m.calls.Add(1)
 	if m.prepareErr != nil {
 		return finalization.PublishedArtifact{}, m.prepareErr
 	}
@@ -142,13 +143,53 @@ func newVerified(t *testing.T, artifactID, localPath string, payload []byte) *fi
 		SHA256:        files.SHA256Bytes(payload),
 		SourceVersion: 1,
 		Requirement:   finalization.ArtifactRequirementRequired,
+		IdempotencyKey: remote.ArtifactIdempotencyKey(
+			jobIDFromArtifactID(artifactID), subIDFromArtifactID(artifactID),
+			files.SHA256Bytes(payload),
+		),
 	}
 }
 
-// transientErr implements pkg/retry.RetryableError via the IsRetryable()
-// method, qualifying as a TRANSIENT error per pkg/retry.IsTransient probe.
-// Used by TestPublish_FourOhOne_ThenSuccess to simulate a 401-then-success
-// scenario where pkg/retry.Do retries the Publish call after the transient.
+// jobIDFromArtifactID returns the canonical jobID portion for the
+// (jobID:subID) ArtifactID convention. Returns "job-001" for "job-001:script_json"
+// etc. Falls back to a literal "test-job" if no ":" separator is present
+// (hermetic test fixture default).
+func jobIDFromArtifactID(artifactID string) string {
+	if i := indexByte(artifactID, ':'); i >= 0 {
+		return artifactID[:i]
+	}
+	return artifactID
+}
+
+func subIDFromArtifactID(artifactID string) string {
+	if i := indexByte(artifactID, ':'); i >= 0 {
+		return artifactID[i+1:]
+	}
+	return ""
+}
+
+// indexByte returns the byte index of c in s, or -1 if not found.
+// Stdlib strings.IndexByte exists but we keep the local helper to avoid
+// path-bumping a single-purpose import line.
+func indexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// transientErr implements the typed RetryableError interface that
+// pkg/retry.IsTransient probes for classification. Used by
+// TestPublish_TransientRetryOnPrepare to simulate a 401-then-success
+// transient sequence occurring inside Preparer.Prepare.
+//
+// In the post-P0-COMPL-4 architecture, the retry lives in the Service's
+// publishOne wrapper (pkg/retry.Do around Preparer.Prepare); the underlying
+// concrete ArtifactPreparation handles its own finalization.PublisherPort
+// retries for non-prep errors. The Service-level wrapper handles
+// prep-level transient errors.
 type transientErr struct {
 	msg string
 }
@@ -156,28 +197,36 @@ type transientErr struct {
 func (e *transientErr) Error() string     { return e.msg }
 func (e *transientErr) IsRetryable() bool { return true }
 
-// ── 5 TDD TESTS ─────────────────────────────────────────────────────────────
+// ── 5 TDD TESTS (P0-COMPL-4 dedup invariants pinned) ───────────────────────
 
-// Test 1: Happy-path — single artifact routes through Prepare → Publish →
+// Test 1: Happy-path — single artifact routes through Prepare →
 // verify-final-checksum → record-idempotency. ALL 10 fields of the
 // PublishedArtifact envelope are populated correctly. IdempotencyKey is
 // byte-stable per P0.7 (derived via remote.ArtifactIdempotencyKey).
-func TestPublish_HappyPath_AllTenFieldsPopulated(t *testing.T) {
+//
+// Dedup-invariant: Preparer.prepare is called EXACTLY ONCE per artifact
+// (no double-Publish retry loop in this Service). Bookkeeper.RecordPublished
+// is called EXACTLY ONCE.
+func TestPublish_HappyPath_AllTenFieldsPopulated_SinglePrepareCall(t *testing.T) {
 	payload := []byte("happy-path publish pipeline payload")
 	localPath := writeTempFile(t, payload)
 	va := newVerified(t, "job-001:script_json", localPath, payload)
 
-	pubMock := &mockPublisher{
-		succeedLocation: finalization.AssetLocation{
-			Provider:    "drive",
-			FileID:      "drive-file-id-001",
-			WebViewLink: "https://drive.google.com/file/d/drive-file-id-001/view",
+	// (post-P0-COMPL-4) mockPreparer's preparedPub.Is the canonical
+	// success-shape Location envelope; Prepare internally publishes to
+	// Drive, then returns this fully-populated envelope.
+	prepMock := &mockPreparer{
+		preparedPub: finalization.PublishedArtifact{
+			Location: finalization.AssetLocation{
+				Provider:    "drive",
+				FileID:      "drive-file-id-001",
+				WebViewLink: "https://drive.google.com/file/d/drive-file-id-001/view",
+			},
 		},
 	}
-	prepMock := &mockPreparer{}
 	bkMock := &mockBookkeeper{records: map[string]*finalization.PublishedArtifact{}}
 
-	svc, err := completion.NewService(pubMock, prepMock, bkMock)
+	svc, err := completion.NewService(prepMock, bkMock)
 	if err != nil {
 		t.Fatalf("NewService: got %v, want nil", err)
 	}
@@ -229,49 +278,54 @@ func TestPublish_HappyPath_AllTenFieldsPopulated(t *testing.T) {
 		t.Errorf("Location.FileID: got %q, want %q", out.Location.FileID, "drive-file-id-001")
 	}
 
-	// Side-effects: Prepare + Publish called once; bookkeeper recorded.
+	// Dedup-invariants (P0-COMPL-4): Prepare called EXACTLY ONCE.
 	if prepMock.calls.Load() != 1 {
-		t.Errorf("Preparer calls: got %d, want 1", prepMock.calls.Load())
-	}
-	if pubMock.calls.Load() != 1 {
-		t.Errorf("Publisher calls: got %d, want 1", pubMock.calls.Load())
+		t.Errorf("Preparer calls: got %d, want 1 (P0-COMPL-4 dedup invariant)", prepMock.calls.Load())
 	}
 	if _, ok := bkMock.records[keyTriplet("job-001", "script_json", va.SHA256)]; !ok {
 		t.Error("Bookkeeper: triple not recorded")
 	}
+	if got, want := len(bkMock.records), 1; got != want {
+		t.Errorf("Bookkeeper record count: got %d, want %d (single canonical record)", got, want)
+	}
 }
 
-// Test 2: 401 → retry — Publisher returns transient 401 on FIRST call,
-// success on SECOND. Service propagates the post-retry success outcome.
-// The concrete ArtifactPublisherAdapter retries 401 internally per P1.5;
-// this test verifies the Service correctly forwards the resolved outcome.
-func TestPublish_FourOhOne_ThenSuccess(t *testing.T) {
-	payload := []byte("401-then-success payload")
+// Test 2: Transient retry on Preparer.Prepare. The Preparer returns a
+// transientErr (implements pkg/retry.IsRetryable) on the FIRST call and
+// success on the SECOND. The Service's publishOne wrapper retries via
+// pkg/retry.Do and propagates the post-retry success outcome.
+//
+// Dedup-invariant: cumulative calls == 2 (1 transient + 1 success retry)
+// — exposes the canonical retry path. NO Publisher-field retries in this
+// Service (Publisher was REMOVED in P0-COMPL-4).
+func TestPublish_TransientRetryOnPrepare(t *testing.T) {
+	payload := []byte("transient-then-success payload")
 	localPath := writeTempFile(t, payload)
 	va := newVerified(t, "job-001:audio_mix", localPath, payload)
 
-	pubMock := &mockPublisher{
-		succeedLocation: finalization.AssetLocation{
-			Provider: "drive",
-			FileID:   "drive-file-id-002",
+	prepMock := &mockPreparer{
+		preparedPub: finalization.PublishedArtifact{
+			Location: finalization.AssetLocation{
+				Provider: "drive",
+				FileID:   "drive-file-id-002",
+			},
 		},
 	}
-	pubMock.transientSequence = []error{
+	prepMock.transientSequence = []error{
 		&transientErr{msg: "transient 401 unauthorized"},
-		nil,
+		nil, // second call: success
 	}
 
-	prepMock := &mockPreparer{}
 	bkMock := &mockBookkeeper{records: map[string]*finalization.PublishedArtifact{}}
 
-	svc, err := completion.NewService(pubMock, prepMock, bkMock)
+	svc, err := completion.NewService(prepMock, bkMock)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
 
 	got, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
 	if err != nil {
-		t.Fatalf("401-then-success: got %v, want nil", err)
+		t.Fatalf("transient-then-success: got %v, want nil", err)
 	}
 	if len(got) != 1 {
 		t.Fatalf("len(output): got %d, want 1", len(got))
@@ -281,15 +335,20 @@ func TestPublish_FourOhOne_ThenSuccess(t *testing.T) {
 	}
 
 	// Cumulative call count = 2 (1 transient + 1 success post-internal-retry).
-	if pubMock.calls.Load() != 2 {
-		t.Errorf("Publisher cumulative calls: got %d, want 2", pubMock.calls.Load())
+	if prepMock.calls.Load() != 2 {
+		t.Errorf("Preparer cumulative calls: got %d, want 2 (1 transient + 1 retry-success)", prepMock.calls.Load())
 	}
 }
 
 // Test 3: Duplicate → idempotent short-circuit. Bookkeeper reports the
-// triple is already-published; Service MUST NOT call Prepare/Publish; the
-// cached envelope is returned via the output slice position; ErrAlreadyPublished
-// surfaces via errors.Is (godlike/07 no-duplicate-side-effects).
+// triple is already-published; Service MUST NOT call Preparer.Prepare;
+// the cached envelope is returned via the output slice position;
+// ErrAlreadyPublished surfaces via errors.Is (godlike/07
+// no-duplicate-side-effects).
+//
+// Dedup-invariant: zero Prepare calls on short-circuit; the canonical
+// idempotency-key collision path is the single source of truth for
+// "do not re-publish".
 func TestPublish_Duplicate_AlreadyPublished_IdempotentShortCircuit(t *testing.T) {
 	payload := []byte("already-published duplicate payload")
 	localPath := writeTempFile(t, payload)
@@ -318,10 +377,9 @@ func TestPublish_Duplicate_AlreadyPublished_IdempotentShortCircuit(t *testing.T)
 	}
 	bkMock.isPubTrue.Store(true)
 
-	pubMock := &mockPublisher{}
 	prepMock := &mockPreparer{}
 
-	svc, err := completion.NewService(pubMock, prepMock, bkMock)
+	svc, err := completion.NewService(prepMock, bkMock)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -342,18 +400,21 @@ func TestPublish_Duplicate_AlreadyPublished_IdempotentShortCircuit(t *testing.T)
 		t.Errorf("cached FileID: got %q, want %q", got[0].Location.FileID, "drive-file-id-cached")
 	}
 
+	// Dedup-invariant (P0-COMPL-4): Preparer NEVER called on short-circuit.
 	if prepMock.calls.Load() != 0 {
 		t.Errorf("Preparer calls on short-circuit: got %d, want 0", prepMock.calls.Load())
-	}
-	if pubMock.calls.Load() != 0 {
-		t.Errorf("Publisher calls on short-circuit: got %d, want 0", pubMock.calls.Load())
 	}
 }
 
 // Test 4: Final-checksum mismatch raises ErrFinalChecksumMismatch.
-// Publisher returns success, BUT the on-disk file has been mutated after
-// Publish (simulates Drive-write corruption). Service's post-publish
-// fail-closed invariant MUST surface ErrFinalChecksumMismatch.
+// Preparer returns success (it published to Drive via its internal port),
+// BUT the on-disk file has been mutated after the publish (simulates
+// Drive-write corruption). Service's post-publish fail-closed invariant
+// MUST surface ErrFinalChecksumMismatch.
+//
+// Dedup-invariant: Preparer called exactly once (the publish DID happen);
+// bookkeeper recording is SKIPPED on checksum mismatch
+// (godlike/07 no-fake-availability).
 func TestPublish_FinalChecksumMismatch_ErrFinalChecksumMismatch(t *testing.T) {
 	payload := []byte("original payload for final-checksum test")
 	localPath := writeTempFile(t, payload)
@@ -365,16 +426,17 @@ func TestPublish_FinalChecksumMismatch_ErrFinalChecksumMismatch(t *testing.T) {
 		t.Fatalf("mutate file: %v", err)
 	}
 
-	pubMock := &mockPublisher{
-		succeedLocation: finalization.AssetLocation{
-			Provider: "drive",
-			FileID:   "drive-file-id-final-mismatch",
+	prepMock := &mockPreparer{
+		preparedPub: finalization.PublishedArtifact{
+			Location: finalization.AssetLocation{
+				Provider: "drive",
+				FileID:   "drive-file-id-final-mismatch",
+			},
 		},
 	}
-	prepMock := &mockPreparer{}
 	bkMock := &mockBookkeeper{records: map[string]*finalization.PublishedArtifact{}}
 
-	svc, err := completion.NewService(pubMock, prepMock, bkMock)
+	svc, err := completion.NewService(prepMock, bkMock)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -387,15 +449,12 @@ func TestPublish_FinalChecksumMismatch_ErrFinalChecksumMismatch(t *testing.T) {
 		t.Errorf("err = %v; want wraps ErrFinalChecksumMismatch via errors.Is", err)
 	}
 
-	// Prepare + Publish succeeded; failure is post-publish recompute.
+	// Prepare succeeded; failure is post-publish recompute.
 	if prepMock.calls.Load() != 1 {
 		t.Errorf("Preparer calls: got %d, want 1", prepMock.calls.Load())
 	}
-	if pubMock.calls.Load() != 1 {
-		t.Errorf("Publisher calls: got %d, want 1", pubMock.calls.Load())
-	}
 
-	// Bookkeeper MUST NOT contain drift triple.
+	// Bookkeeper MUST NOT contain drift triple (godlike/07 no-fake-availability).
 	if _, ok := bkMock.records[keyTriplet("job-003", "cover_image", va.SHA256)]; ok {
 		t.Errorf("Bookkeeper recorded drift triple; want recording skipped on final-checksum mismatch")
 	}
@@ -404,11 +463,10 @@ func TestPublish_FinalChecksumMismatch_ErrFinalChecksumMismatch(t *testing.T) {
 // Test 5: Empty-slice input → ErrPublishEmptySlice. Defensive pre-loop
 // input gate fires BEFORE any per-artifact work.
 func TestPublish_EmptySlice_ErrPublishEmptySlice(t *testing.T) {
-	pubMock := &mockPublisher{}
 	prepMock := &mockPreparer{}
 	bkMock := &mockBookkeeper{}
 
-	svc, err := completion.NewService(pubMock, prepMock, bkMock)
+	svc, err := completion.NewService(prepMock, bkMock)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -433,24 +491,22 @@ func TestPublish_EmptySlice_ErrPublishEmptySlice(t *testing.T) {
 // INTERFACE types (not typed-nil pointers) so passing the literal `nil`
 // in the struct literal assigns an INTERFACE-NIL value. The interface
 // comparison `if p == nil` then returns TRUE. If the slots were typed as
-// *mockPublisher/*mockPreparer/*mockBookkeeper, the same `nil` literal
-// would wrap a typed-nil POINTER in the interface (interface IS NOT nil),
-// and the ctor's nil-check would silently pass through — a godlike/07
+// *mockPreparer/*mockBookkeeper, the same `nil` literal would wrap a
+// typed-nil POINTER in the interface (interface IS NOT nil), and the
+// ctor's nil-check would silently pass through — a godlike/07
 // wire-up-bug-detection regression.
 func TestNewService_NilPorts_Errors(t *testing.T) {
 	cases := []struct {
 		name string
-		p    completion.Publisher
 		pr   completion.Preparer
 		b    completion.IdempotencyBookkeeper
 	}{
-		{"nil publisher", nil, &mockPreparer{}, &mockBookkeeper{}},
-		{"nil preparer", &mockPublisher{}, nil, &mockBookkeeper{}},
-		{"nil bookkeeper", &mockPublisher{}, &mockPreparer{}, nil},
+		{"nil preparer", nil, &mockBookkeeper{}},
+		{"nil bookkeeper", &mockPreparer{}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc, err := completion.NewService(tc.p, tc.pr, tc.b)
+			svc, err := completion.NewService(tc.pr, tc.b)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -467,6 +523,4 @@ func TestNewService_NilPorts_Errors(t *testing.T) {
 // Reserve imports for forward-compat P3 instrumentation.
 var _ = retry.IsTransient
 var _ = sha256.New
-
-// Reserve: time anchor import kept for forward-compat P3 instrumentation.
-var _ = sha256.New
+var _ = job.StatusPartiallySucceeded

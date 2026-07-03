@@ -2840,7 +2840,7 @@ wave_status:
     # ── P0 #4 — completion.Service: stop double-publishing ─────────────────
     - id: P0-COMPL-4-PUBLISH-DEDUPE
       owner_capability: internal/application/jobs/completion
-      status: pending
+      status: shipped
       deadline: 2026-07-25
     # ── P0 #5 — Single canonical completion backbone ───────────────────────
     - id: P0-COMPL-5-SINGLE-BACKBONE
@@ -2867,3 +2867,64 @@ wave_status:
       owner_capability: internal/infrastructure/remote/jobbrokerclient + internal/app
       status: pending
       deadline: 2026-08-15
+
+- id: COMPLETION-HARDENING-P1P2-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner: architecture
+  deadline: 2026-08-15
+  description: |
+    Wave tracker for the P1+P2 hardening items (TYP 1/2) surfaced from the
+    post-CUTOVER stability audit on 2026-07-04. The 9 P0 items already live
+    under `COMPLETION-CUTOVER-P0-2026-07-04` (above) — no duplication per
+    godlike/06 SSOT. This entry tracks the 6 P1 + 2 P2 forward-pointer
+    items only. Each `linked_issue` is associated with one of three
+    audit-pin bands: (a) typed-error semantic correction (P0 Commit 6/7
+    precedent), (b) mechanical bundle separation mirroring DRIVE-005 4-port
+    surface, (c) cut-not-split tombstone (godlike/07 no-fake-availability).
+    Forward-pointers re-use `GODOBJ-2026-07-03` `linked_issues` slots where
+    the work already lives — avoids creating duplicate wave-tracking
+    surfaces per godlike/06 one-owner-per-fact.
+  linked_issues:
+    - id: P1-COMPL-12-PLACEHOLDER-CAPABILITY
+      status: shipped
+      shipped_sha: bd11f6be
+      ship_date: 2026-07-04
+      owner: completions
+      description: |
+        Closure of P1 #12 (godlike/07 no-fake-availability): drop default-build
+        registration of the placeholder `voiceover.generate_item` handler in
+        `internal/app/creator_runtime.go`. Replaced with a godlike/07-compliant
+        tombstone comment. Placeholder SHAPE preserved under build-tag
+        `voiceover_placeholder` (`creator_runtime_placeholder_test_only.go`,
+        `creator_runtime_placeholder_opt_in_test.go`) for opt-in test fixtures
+        ONLY. Forward-prevention via Check 56 in `scripts/ci-architectural-checks.sh`.
+      referenced_in:
+        - architecture/action-plans/2026-07-04-completion-cutover.md
+        - CHANGELOG.md (## Unreleased -> ### Fixed, closure meta-entry)
+    - id: P1-COMPL-13-UNIFIED-HANDLER-SIGNATURE
+      status: pending
+      owner: jobs
+      deadline: 2026-07-25
+      description: |
+        P1 #13 closure (already shipped, see commit 687f3e60):
+        `JobExecutionTools` unified across dispatcher+worker. Wave-tracker
+        entry preserved as audit-pin per CHANGELOG forward-pointer convention.
+    - id: P2-FILE1-DECOMPOSITION
+      status: pending
+      owner: completions
+      deadline: 2026-08-15
+      description: |
+        P2 forward-pointer (per godlike/07): deferred to ROOT_SYSTEM_POLICY
+        decomposition wave. Re-uses `GODOBJ-2026-07-03#PR-GODOBJ-9-CHROME-PROVIDER`
+        slot — no duplication per godlike/06.
+      references: GODOBJ-2026-07-03/PR-GODOBJ-9-CHROME-PROVIDER
+    - id: P2-FILE2-DECOMPOSITION
+      status: pending
+      owner: completions
+      deadline: 2026-07-25
+      description: |
+        P2 forward-pointer (per godlike/07): jobs_service reflection-removal
+        lands on the small-but-dangerous band of GODOBJ-2026-07-03. Re-uses
+        `PR-GODOBJ-6-JOBS-SERVICE` slot — no duplication.
+      references: GODOBJ-2026-07-03/PR-GODOBJ-6-JOBS-SERVICE
