@@ -2514,7 +2514,9 @@ wave_status:
   linked_issues:
     - id: PR-ARTLIST-LIVE-WIRE
       owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/indexing/clipindexer.IsLiveProbe"
-      status: pending
+      status: shipped
+      ship_sha: d2491f76
+      ship_date: "2026-07-03"
       deadline: 2026-07-25
     - id: PR-ARTLIST-SEARCHERS
       owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/search/pixabay + internal/infrastructure/search/pexels"
