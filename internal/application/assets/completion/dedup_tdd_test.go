@@ -23,7 +23,6 @@ package completion_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -149,9 +148,9 @@ func TestDedup_NoDoublePublishOnTransientRetry(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 
-	got, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
-	if err != nil {
-		t.Fatalf("PublishVerifiedArtifacts: %v", err)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
+	if topErr != nil {
+		t.Fatalf("PublishVerifiedArtifacts: %v", topErr)
 	}
 
 	// Cumulative call count = 2 (1 transient + 1 success post-retry).
@@ -160,9 +159,13 @@ func TestDedup_NoDoublePublishOnTransientRetry(t *testing.T) {
 	if prepMock.calls.Load() != 2 {
 		t.Errorf("Preparer cumulative calls: got %d, want 2 (no-double-publish)", prepMock.calls.Load())
 	}
-	if got[0].Location.FileID != "drive-retry-final" {
+	// P1 #14: PublishVerifiedArtifacts now returns []PublishOutcome, not
+	// []*PublishedArtifact. outcomes[0].Artifact carries the canonical
+	// envelope (Location.FileID is on the nested Artifact, not on the
+	// outcome itself).
+	if outcomes[0].Artifact.Location.FileID != "drive-retry-final" {
 		t.Errorf("Location.FileID: got %q, want %q (post-retry success)",
-			got[0].Location.FileID, "drive-retry-final")
+			outcomes[0].Artifact.Location.FileID, "drive-retry-final")
 	}
 }
 
@@ -206,12 +209,20 @@ func TestDedup_IdempotentReplayZeroPrepareAndZeroRecord(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 
-	got, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
-	if !errors.Is(err, completion.ErrAlreadyPublished) {
-		t.Errorf("err: got %v, want wraps ErrAlreadyPublished", err)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
+	// P1 #14: same-content idempotent-replay contract — topErr is NIL;
+	// the canonical byte-stable replay is surfaced via outcomes[0].Reused
+	// instead of a wrapped sentinel. The pre-P1 #14 P0-COMPL-4 contract
+	// wrapped ErrAlreadyPublished; that contract is retired in favor of
+	// the typed-outcome envelope (PublishOutcome.Reused + Err=nil).
+	if topErr != nil {
+		t.Errorf("err: got %v, want nil (P1 #14 same-content replay contract)", topErr)
 	}
-	if len(got) != 1 || got[0].Location.FileID != "drive-cached-replay" {
-		t.Errorf("cached envelope: got %v, want FileID='drive-cached-replay'", got)
+	if len(outcomes) != 1 || outcomes[0].Artifact.Location.FileID != "drive-cached-replay" {
+		t.Errorf("cached envelope: got %v, want FileID='drive-cached-replay'", outcomes)
+	}
+	if !outcomes[0].Reused {
+		t.Errorf("outcomes[0].Reused: got false, want true (P1 #14 same-content replay path)")
 	}
 	if prepMock.calls.Load() != 0 {
 		t.Errorf("Preparer calls: got %d, want 0 (idempotent-replay dedup invariant)", prepMock.calls.Load())
@@ -261,8 +272,15 @@ func TestDedup_SingleCanonicalRecordPerTriple(t *testing.T) {
 	// Re-arm the cache: IsPublished + LookupPublished simulate
 	// the cached record we just wrote.
 	bkMock.isPubTrue.Store(true)
-	if _, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va}); !errors.Is(err, completion.ErrAlreadyPublished) {
-		t.Fatalf("replay err: got %v, want ErrAlreadyPublished", err)
+	// P1 #14: same-content replay returns topErr=nil + outcomes[0].Reused=true
+	// (the pre-P1 #14 P0-COMPL-4 contract wrapped ErrAlreadyPublished; that
+	// contract is retired in favor of the typed-outcome envelope).
+	outcomesReplay, topErr := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
+	if topErr != nil {
+		t.Fatalf("replay err: got %v, want nil (P1 #14 same-content replay)", topErr)
+	}
+	if !outcomesReplay[0].Reused {
+		t.Errorf("replay outcome[0].Reused: got false, want true (P1 #14 same-content replay path)")
 	}
 	if got := len(bkMock.records); got != 1 {
 		t.Errorf("Bookkeeper records post-replay: got %d, want 1 (replay must NOT add a 2nd record)", got)
