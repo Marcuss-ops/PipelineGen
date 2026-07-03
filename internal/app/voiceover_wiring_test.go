@@ -60,11 +60,15 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 	require.False(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerate),
 		"voiceover.generate handler is unregistered at boot — Catena A P0 wiring is missing")
 
-	// Register a stub handler. The signature accepts HandleJob's
-	// (ctx, *job.Job, *appjobs.JobTools) → (map[string]any, error)
+	// Register a stub handler. The signature accepts the canonical
+	// (ctx, *job.Job, *appjobs.JobExecutionTools) → (map[string]any, error)
 	// shape — the canonical GenerateJobHandler.HandleJob uses the same
 	// signature (see jobs/generate_handler.go), so this tracks the
-	// wire shape the dispatcher expects.
+	// wire shape the dispatcher expects. Conformance is locked via the
+	// `var _ appjobs.Handler = stubVoiceoverGenerateHandler` line at the
+	// bottom of this file (P1 #13a godlike/06 audit-pin); the legacy
+	// `appjobs.JobTools` parameter name was retired in favour of the
+	// canonical `appjobs.JobExecutionTools` per the P1 #13 unification.
 	jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerate, stubVoiceoverGenerateHandler)
 
 	require.True(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerate),
@@ -83,12 +87,29 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 }
 
 // stubVoiceoverGenerateHandler is a minimal closure that satisfies the
-// jobs.Service.HandlerFunc signature. Real work happens in the typed-port
-// GenerateJobHandler registered by composition.go; this stub exists
-// only to exercise the dispatcher lookup table for HasHandler.
-func stubVoiceoverGenerateHandler(ctx context.Context, j *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
+// canonical `appjobs.Handler` signature (P1 #13 unification, July 2026):
+// `func(context.Context, *job.Job, *appjobs.JobExecutionTools) (map[string]any, error)`.
+// Real work happens in the typed-port GenerateJobHandler registered by
+// composition.go; this stub exists only to exercise the dispatcher
+// lookup table for HasHandler.
+//
+// Compile-time conformance pin (godlike/06 audit-pin, P1 #13a): the
+// `var _ appjobs.Handler = stubVoiceoverGenerateHandler` line below
+// locks the closure against future parameter-type drift. If a refactor
+// regresses `*appjobs.JobExecutionTools` to `*worker.Tools` (or another
+// non-canonical shape), the test file fails to compile at this pin
+// rather than silently passing through the Go type-alias identity.
+// Mirrors the compile-time lock in
+// internal/domain/job/handler_test.go::TestHandlerAliases_CompileTimeLock.
+func stubVoiceoverGenerateHandler(ctx context.Context, j *appjobs.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
 	return map[string]any{"stub": true}, nil
 }
+
+// Compliance pin: stubVoiceoverGenerateHandler conforms to the canonical
+// appjobs.Handler signature (P1 #13a closure cleanup). The compile-time
+// assignment is the godlike/06 SSOT lock — a regression of the parameter
+// type or return type surfaces as a build failure here.
+var _ appjobs.Handler = stubVoiceoverGenerateHandler
 
 // TestVoiceoverGenerateJobHandlerTypeIsWiredInSamePackage is a
 // compile-time pin: the *voiceoverjobs.GenerateJobHandler type lives

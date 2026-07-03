@@ -115,22 +115,11 @@ func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) 
 	return reg, caps, nil
 }
 
-// adaptHandler was retired in P1 #13 (July 2026). appjobs.Handler is
-// a Go-type-alias for domainjob.Handler (the canonical SSOT in
-// internal/domain/job/handler.go), and worker.Handler is also a
-// Go-type-alias for the same domainjob.Handler. Registering an
-// appjobs.Handler into worker.Registry therefore requires NO
-// bridging — the runtime does the worker.Tools →
-// *domainjob.JobExecutionTools translation at Dispatch time
-// (worker/registry.go::translateToolsToExecutionTools). The
-// reference sites in BuildWorkerRegistry + BuildProfileWorkerRegistry
-// now pass `h` directly. The legacy function signature is preserved
-// as a typed-error dead-comment so future agents don't reinstate the
-// 1-call-site accident that pre-P1-#13 incurred.
-//
-// Re-introducing adaptHandler is forward-forbidden: any future
-// caller that needs an in-process Handler in the runtime should
-// (a) consume it via Dispatcher.Dispatch if the in-process
-// Dispatcher is the target; or (b) wire worker.Registry.Register
-// directly with the canonical Handler literal — the runtime's
-// translateToolsToExecutionTools handles the boundary translation.
+// adaptHandler was RETIRED in P1 #13 (July 2026): appjobs.Handler and
+// worker.Handler are both Go-type-aliases for domainjob.Handler (see
+// internal/domain/job/handler.go for the canonical SSOT). Re-introducing
+// a bridge here is forward-forbidden — the runtime handles worker.Tools
+// → *domainjob.JobExecutionTools translation at Dispatch time
+// (worker/registry.go::translateToolsToExecutionTools). The two
+// Build*WorkerRegistry helpers below now pass canonical Handler values
+// directly to worker.Registry.Register.
