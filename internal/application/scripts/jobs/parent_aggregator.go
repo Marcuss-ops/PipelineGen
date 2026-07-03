@@ -30,13 +30,7 @@ type ScriptAggregatorDeps struct {
 }
 
 // ScriptAggregatorJobsService is the narrow surface the ParentAggregator
-// needs from the jobs broker. The production *appjobs.Service satisfies
-// this implicitly via Go interface satisfaction. The FinalizeAggregateParent
-// method enables the canonical no-lease CAS re-flip after children
-// reach terminal status.
-//
-// Pattern 0 surface (AGENTS.md) — tests inject stubs via this interface
-// without instantiating the full lease machinery.
+// needs from the jobs broker (Pattern 0 — AGENTS.md).
 type ScriptAggregatorJobsService interface {
 	Get(ctx context.Context, id string) (*job.Job, error)
 	// ListAwaitingAggregation returns script.generate parents awaiting
@@ -121,27 +115,19 @@ type ScriptAggregateResult struct {
 type ScriptParentState string
 
 const (
-	// ScriptParentDispatching — initial state.
-	ScriptParentDispatching ScriptParentState = "dispatching"
 	// ScriptParentWaitingChildren — fan-out complete, awaiting child terminals.
 	ScriptParentWaitingChildren ScriptParentState = "waiting_children"
 	// ScriptParentPartialSuccess — some optional children succeeded,
-	// some failed (mixed). Settled before aggregator finalises if
-	// intermediate progress is desired.
+	// some failed (mixed).
 	ScriptParentPartialSuccess ScriptParentState = "partial_success"
-	// ScriptParentSucceeded — all children succeeded (or some-failed-op-only-OK).
+	// ScriptParentSucceeded — all children succeeded.
 	ScriptParentSucceeded ScriptParentState = "succeeded"
 	// ScriptParentFailedTerminal — every child definitively failed.
 	ScriptParentFailedTerminal ScriptParentState = "failed_terminal"
 )
 
-// IsTerminal reports whether the state has no allowed outgoing transitions.
-func (s ScriptParentState) IsTerminal() bool {
-	return s == ScriptParentSucceeded || s == ScriptParentFailedTerminal
-}
-
-// ScriptParentAggregator is the background poller that re-finalises
-// parent jobs once all their children have reached terminal status.
+// ScriptParentAggregator re-finalises parent jobs once all children
+// have reached terminal status.
 type ScriptParentAggregator struct {
 	deps    ScriptAggregatorDeps
 	started atomic.Bool
@@ -455,18 +441,8 @@ func domainToScriptParentState(sm *job.StateMachine) ScriptParentState {
 	}
 }
 
-// scriptItemP0_1Gate is the canonical P0 #1-style false-success gate
-// EXTENDED to scripts (P0 #4 audit closure). When a child's broker-
-// status reads SUCCEEDED but its result map carries `ok: false`,
-// the aggregator overrides the child to FAILED.
-//
-// The handler writes `ok` based on scriptItemIsSuccessful — the
-// structural heuristic (Output.Text non-empty OR ScriptID persisted
-// OR Cache.Hit). When a child worker emits (resultMap, wrappedErr)
-// due to the gate, the broker marks the child FAILED — the gate path
-// is the canonical godlike/07 fail-closed mechanism. This is a
-// back-up at the aggregator level for handlers that emit (resultMap,
-// nil) but structured-emptied result.
+// scriptItemP0_1Gate overrides a child to FAILED when broker status
+// is SUCCEEDED but result.ok=false (false-success gate).
 func scriptItemP0_1Gate(childJSON []byte) bool {
 	if len(childJSON) == 0 {
 		return false
