@@ -112,7 +112,7 @@ func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(job.TypeMediaReindex, s.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(job.TypeMediaReindex, appjobs.HandlerFunc(s.HandleJob)); err != nil {
 		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", job.TypeMediaReindex, err)
 	}
 	s.log.Info("registered media.reindex job handler")

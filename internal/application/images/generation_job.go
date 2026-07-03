@@ -175,7 +175,7 @@ func (h *JobHandler) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("images.JobHandler.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeImageGenerateGoogle, h.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(appjobs.TypeImageGenerateGoogle, appjobs.HandlerFunc(h.HandleJob)); err != nil {
 		return fmt.Errorf("images.JobHandler.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeImageGenerateGoogle, err)
 	}
 	h.log.Info("registered image.generate.google job handler")

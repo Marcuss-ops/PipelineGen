@@ -34,7 +34,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("youtube.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", jobtools.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, ytjobs.NewJobHandler(s, s.log).HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, jobtools.HandlerFunc(ytjobs.NewJobHandler(s, s.log).HandleJob)); err != nil {
 		return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobservice.TypeYouTubeClipExtract, err)
 	}
 	s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.TypeYouTubeClipExtract))
@@ -43,7 +43,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 	// locate the indexed-clip rows. Guard keeps a half-wired bundle from
 	// registering a handler that would no-op on first invocation.
 	if s.clips != nil {
-		if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob); err != nil {
+		if err := jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, jobtools.HandlerFunc(s.HandleRebuildSearchTextJob)); err != nil {
 			return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobservice.TypeYouTubeRebuildST, err)
 		}
 		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobservice.TypeYouTubeRebuildST))
