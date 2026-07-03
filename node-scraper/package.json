@@ -6,7 +6,8 @@
     "node": "22.x"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "mocha test/*.test.js",
+    "test:fallback": "node --test test/",
     "lint": "eslint .",
     "check": "npm run lint && npm test"
   },
@@ -15,6 +16,7 @@
     "puppeteer-core": "^25.2.0"
   },
   "devDependencies": {
-    "eslint": "^8.57.1"
+    "eslint": "^8.57.1",
+    "mocha": "^11.7.6"
   }
 }

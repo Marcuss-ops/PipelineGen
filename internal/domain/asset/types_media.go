@@ -144,43 +144,42 @@ type ResolveResult struct {
 	Extra        map[string]any
 }
 
-// JobDeliveryStatus tracks the lifecycle of a delivery attempt
-// (outbox delivery-attempt state machine: PENDING/LEASED/RUNNING/
-// RETRY_WAIT/SUCCEEDED/.../CANCELLED) and is the predecessor of
-// the post-P0.2 asset-publishing state machine.
+// DeliveryStatus tracks the lifecycle of an outbox delivery ATTEMPT
+// (job-level: enqueued → leased → running → terminal).
 //
-// Renamed from DeliveryStatus → JobDeliveryStatus in July 2026
-// (rebase-collision fix) to disambiguate from the new canonical
-// P0.2 per-asset Drive-publishing enum in delivery_status.go
-// (LOCAL_ONLY / PUBLISH_PENDING / PUBLISHING / PUBLISHED /
-// PUBLISH_FAILED). The two enums encode distinct concerns:
-//   - JobDeliveryStatus (this file) → outbox/job-attempt lifecycle
-//   - delivery_status.go::DeliveryStatus → per-asset publishing progress
-//
-// godlike/06 SSOT forward-pointer: the AssetPublishStatus re-export in
-// asset_publish_status.go should ultimately resolve to
-// delivery_status.go::DeliveryStatus via a type alias, collapsing the
-// parallel enum. Deferred to a follow-up wave.
-type JobDeliveryStatus string
+// IMPORTANT: this DeliveryStatus is DISTINCT from AssetPublishStatus
+// (in asset_publish_status.go) which tracks the per-asset publishing
+// OUTCOME (LOCAL_ONLY / PUBLISH_PENDING / PUBLISHING / PUBLISHED /
+// PUBLISH_FAILED, P0.2 July 2026). They are orthogonal:
+//   - DeliveryStatus here = transient worker-attempt state for a single
+//     outbox row (PENDING/LEASED/RUNNING/RETRY_WAIT/SUCCEEDED/...).
+//   - AssetPublishStatus  = stable per-asset outcome persisted on
+//     media_assets (PUBLISHED or PUBLISH_FAILED).
+// On Drive publish success, the per-attempt DeliveryStatus is
+// SUCCEEDED and the AssetPublishStatus for that asset becomes
+// PUBLISHED. They never alias — keeping them separate enforces
+// godlike/06 "one owner per fact" (the worker owns attempts; the asset
+// owns outcomes) and prevents accidental cross-wiring.
+type DeliveryStatus string
 
 const (
-	JobDeliveryPending     JobDeliveryStatus = "PENDING"
-	JobDeliveryLeased      JobDeliveryStatus = "LEASED"
-	JobDeliveryRunning     JobDeliveryStatus = "RUNNING"
-	JobDeliveryRetryWait   JobDeliveryStatus = "RETRY_WAIT"
-	JobDeliverySucceeded   JobDeliveryStatus = "SUCCEEDED"
-	JobDeliveryFailed      JobDeliveryStatus = "FAILED"
-	JobDeliveryBlockedAuth JobDeliveryStatus = "BLOCKED_AUTH"
-	JobDeliveryCancelled   JobDeliveryStatus = "CANCELLED"
+	DeliveryPending     DeliveryStatus = "PENDING"
+	DeliveryLeased      DeliveryStatus = "LEASED"
+	DeliveryRunning     DeliveryStatus = "RUNNING"
+	DeliveryRetryWait   DeliveryStatus = "RETRY_WAIT"
+	DeliverySucceeded   DeliveryStatus = "SUCCEEDED"
+	DeliveryFailed      DeliveryStatus = "FAILED"
+	DeliveryBlockedAuth DeliveryStatus = "BLOCKED_AUTH"
+	DeliveryCancelled   DeliveryStatus = "CANCELLED"
 )
 
 // Delivery represents an attempt to deliver an artifact to a destination.
 type Delivery struct {
-	ID               string            `json:"id"`
-	ArtifactID       string            `json:"artifact_id"`
-	DestinationID    string            `json:"destination_id"`
-	Provider         string            `json:"provider"`
-	Status           JobDeliveryStatus `json:"status"`
+	ID               string         `json:"id"`
+	ArtifactID       string         `json:"artifact_id"`
+	DestinationID    string         `json:"destination_id"`
+	Provider         string         `json:"provider"`
+	Status           DeliveryStatus `json:"status"`
 	AttemptCount     int            `json:"attempt_count"`
 	MaxAttempts      int            `json:"max_attempts"`
 	NextAttemptAt    *time.Time     `json:"next_attempt_at,omitempty"`
