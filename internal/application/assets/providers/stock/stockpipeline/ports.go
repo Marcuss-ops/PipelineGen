@@ -223,6 +223,46 @@ type CutResult struct {
 	ProducedPaths []string
 }
 
+// CutItemStatus enumerates the per-job outcome of a Cut step.
+// Aggregating on the status enum (rather than string-matching Err
+// patterns) lets dashboards partition success/failure/validation
+// outcomes without unwrapping chains.
+type CutItemStatus int
+
+const (
+	// CutItemStatusUnknown is the zero-value; never written by the
+	// canonical FFmpegCutter.AuditCutBatchResult sanity-check fails
+	// fast on Items with status Unknown.
+	CutItemStatusUnknown CutItemStatus = iota
+	// CutItemStatusSucceeded means ffmpeg exited 0 and an output
+	// file exists at OutputPath. Status, SizeBytes, DurationSec
+	// are populated; Err is nil.
+	CutItemStatusSucceeded
+	// CutItemStatusFailed means ffmpeg exited non-zero and no
+	// output file exists at OutputPath. Err carries the failure
+	// reason; Status, SizeBytes, DurationSec are zero values.
+	CutItemStatusFailed
+	// CutItemStatusValidated marks a previously-Succeeded item
+	// whose ffprobe-validation step ran without error
+	// (DurationSec lies within ±10% of the requested cut window).
+	CutItemStatusValidated
+)
+
+// String returns the canonical human-readable label for a
+// CutItemStatus (used by tests / dashboards / log aggregation).
+func (s CutItemStatus) String() string {
+	switch s {
+	case CutItemStatusSucceeded:
+		return "succeeded"
+	case CutItemStatusFailed:
+		return "failed"
+	case CutItemStatusValidated:
+		return "validated"
+	default:
+		return "unknown"
+	}
+}
+
 // CutItemResult is the per-job typed result for partial-success
 // tracking (Blocco 4, July 2026 — audit P0 #4). When the cutter
 // reports partial failure (some clips produced, some failed),
@@ -230,15 +270,175 @@ type CutResult struct {
 // application layer can align clipTitles with ProducedPaths
 // without guessing which job failed.
 //
-// Forward-declaration: the VideoCutter.Cut port still returns
-// (CutResult, error); CutItemResult is the target shape for a
-// future port cutover where Cut returns []CutItemResult. Until
-// then, processSingleVideo aligns titles via the producedSet map
-// (see process.go Blocco 4).
+// Status is always non-zero on a properly populated item.
+// CutItemStatusSucceeded ⇒ Err == nil and SizeBytes > 0.
+// CutItemStatusFailed   ⇒ Err != nil and SizeBytes == 0.
+// CutItemStatusValidated ⇒ Status previously Succeeded +
+//                           ffprobe-validation passed; DurationSec
+//                           reflects the ffprobe-reported duration
+//                           (should be within ±10% of the cut
+//                           window and never 0 for a valid clip).
 type CutItemResult struct {
-	JobID      string // OutputPath from the original CutJob
-	OutputPath string // same as JobID when successful, empty on failure
-	Err        error  // nil on success, the per-job failure reason otherwise
+	// JobID is the OutputPath from the original CutJob — stable
+	// per (SourcePath, batch, index), used for caller-side dedupe
+	// regardless of cut outcome.
+	JobID string
+
+	// OutputPath is the absolute path the adapter wrote the clip
+	// to. Empty when Status == CutItemStatusFailed.
+	OutputPath string
+
+	// Status is the typed outcome enum.
+	Status CutItemStatus
+
+	// SizeBytes is the on-disk size of the produced clip in bytes;
+	// 0 when Status != CutItemStatus{Succeeded,Validated}.
+	SizeBytes int64
+
+	// DurationSec is the ffprobe-reported duration of the
+	// produced clip in seconds. 0 when ffprobe did not run or
+	// Status == CutItemStatusFailed.
+	DurationSec float64
+
+	// Err is the per-job failure reason; nil on success.
+	Err error
+}
+
+// CutBatchResult is the structured, non-nil batch result returned
+// by VideoCutter.Cut (FASE 2.4 — July 2026, audit P0 #4
+// continuation). The struct lifts the previous "ProducedPaths only"
+// contract so callers receive:
+//
+//   - Per-job outcome Items in input-Jobs order — len(Items) ==
+//     len(input.Jobs) ALWAYS, even on full failure (no zero-output
+//     nil results).
+//   - SourcePath for audit traceability.
+//
+// "mai nil con zero output" invariant: the contract zeroes every
+// Item that did not produce a file, populating JobID with the
+// original OutputPath and Err with the per-job failure reason.
+// Callers MUST be able to iterate Items without nil-checks.
+//
+// Helper accessors keep the typing ergonomic:
+//
+//	ProducedPaths()    → []string of output paths for succeeded items
+//	SuccessfulItems()  → []CutItemResult filtered to Status >= Succeeded
+//	FailedItems()      → []CutItemResult filtered to Status == Failed
+//	AllSucceeded()     → bool (true when zero failures)
+type CutBatchResult struct {
+	// SourcePath is the input video path the batch was cut from.
+	// Stable per call — audit-friendly.
+	SourcePath string
+
+	// Items is the per-job outcome in input-Jobs order.
+	// len(Items) == len(input.Jobs) is GUARANTEED by the
+	// VideoCutter.Cut contract; a partial-success result carries
+	// the produced items in Items alongside the failed items with
+	// Status=CutItemStatusFailed.
+	Items []CutItemResult
+}
+
+// ProducedPaths returns the produced output paths for items in
+// StatusCutItemStatus{Succeeded,Validated}. Equivalent to the
+// pre-FASE-2.4 CutResult.ProducedPaths surface, retained for
+// backward compatibility with callers that only need the path
+// list.
+func (b CutBatchResult) ProducedPaths() []string {
+	out := make([]string, 0, len(b.Items))
+	for _, it := range b.Items {
+		if it.Status == CutItemStatusSucceeded || it.Status == CutItemStatusValidated {
+			if it.OutputPath != "" {
+				out = append(out, it.OutputPath)
+			}
+		}
+	}
+	return out
+}
+
+// SuccessfulItems returns the Items filtered to Status ∈
+// {Succeeded, Validated}. The validation status is treated as a
+// strict superset of success.
+func (b CutBatchResult) SuccessfulItems() []CutItemResult {
+	out := make([]CutItemResult, 0, len(b.Items))
+	for _, it := range b.Items {
+		if it.Status == CutItemStatusSucceeded || it.Status == CutItemStatusValidated {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// FailedItems returns the Items filtered to Status == Failed.
+func (b CutBatchResult) FailedItems() []CutItemResult {
+	out := make([]CutItemResult, 0, len(b.Items))
+	for _, it := range b.Items {
+		if it.Status == CutItemStatusFailed {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// AllSucceeded returns true when every Item has Status ∈
+// {Succeeded, Validated}. Empty batch == true (vacuous).
+func (b CutBatchResult) AllSucceeded() bool {
+	for _, it := range b.Items {
+		if it.Status != CutItemStatusSucceeded && it.Status != CutItemStatusValidated {
+			return false
+		}
+	}
+	return true
+}
+
+// ── Clip DTO (parallel-array replacement, FASE 2.4 — July 2026) ─────
+
+// Clip is the structured per-clip DTO used by processSingleVideo
+// and InterleaveClips after FASE 2.4 removed the previous
+// ([]string paths, []string titles, []string sourceIDs) parallel-
+// array shape. Consolidating the three parallel slices into one
+// Clip value per produced clip eliminates the producedSet / index
+// alignment logic the previous code paths relied on.
+//
+// The struct lives in the application layer alongside the existing
+// CutResult / CutJob / CutBatchResult DTOs so all per-clip
+// metadata is co-located in ports.go (single owner per clip fact
+// per AGENTS.md godlike/06).
+type Clip struct {
+	// Path is the absolute path of the produced clip on disk.
+	// Empty when Status == CutItemStatusFailed.
+	Path string
+
+	// Title is the human-readable clip title (the
+	// "<vs.Title>_<idx>" pattern processSingleVideo emits).
+	Title string
+
+	// SourceID is the canonical source video identifier (the
+	// yt-dlp video ID for stockpipeline; the YouTube video ID
+	// for the YouTube cutover path). Stays unit-test friendly
+	// without driving on Path filesystem state.
+	SourceID string
+
+	// Status carries the underlying CutItemStatus so callers can
+	// route failed clips into the canonical "downgrade to
+	// soft-skip" path without re-deriving from Path-presence.
+	Status CutItemStatus
+
+	// SizeBytes is the on-disk size; 0 when Status == Failed.
+	SizeBytes int64
+
+	// DurationSec is the ffprobe-reported duration; 0 when
+	// ffprobe did not run or Status == Failed.
+	DurationSec float64
+
+	// Err is the per-clip failure reason; nil on success.
+	Err error
+}
+
+// Succeeded returns true when the clip's Status is in
+// {Succeeded, Validated}. Source-fed consumers (InterleaveClips,
+// renderChunk) skip non-Succeeded clips at iteration time.
+func (c Clip) Succeeded() bool {
+	return c.Status == CutItemStatusSucceeded || c.Status == CutItemStatusValidated
 }
 
 // ── Compile-time anchors ────────────────────────────────────────────────
