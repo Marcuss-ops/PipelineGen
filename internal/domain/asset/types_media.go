@@ -144,27 +144,43 @@ type ResolveResult struct {
 	Extra        map[string]any
 }
 
-// DeliveryStatus tracks the lifecycle of a delivery attempt.
-type DeliveryStatus string
+// JobDeliveryStatus tracks the lifecycle of a delivery attempt
+// (outbox delivery-attempt state machine: PENDING/LEASED/RUNNING/
+// RETRY_WAIT/SUCCEEDED/.../CANCELLED) and is the predecessor of
+// the post-P0.2 asset-publishing state machine.
+//
+// Renamed from DeliveryStatus → JobDeliveryStatus in July 2026
+// (rebase-collision fix) to disambiguate from the new canonical
+// P0.2 per-asset Drive-publishing enum in delivery_status.go
+// (LOCAL_ONLY / PUBLISH_PENDING / PUBLISHING / PUBLISHED /
+// PUBLISH_FAILED). The two enums encode distinct concerns:
+//   - JobDeliveryStatus (this file) → outbox/job-attempt lifecycle
+//   - delivery_status.go::DeliveryStatus → per-asset publishing progress
+//
+// godlike/06 SSOT forward-pointer: the AssetPublishStatus re-export in
+// asset_publish_status.go should ultimately resolve to
+// delivery_status.go::DeliveryStatus via a type alias, collapsing the
+// parallel enum. Deferred to a follow-up wave.
+type JobDeliveryStatus string
 
 const (
-	DeliveryPending     DeliveryStatus = "PENDING"
-	DeliveryLeased      DeliveryStatus = "LEASED"
-	DeliveryRunning     DeliveryStatus = "RUNNING"
-	DeliveryRetryWait   DeliveryStatus = "RETRY_WAIT"
-	DeliverySucceeded   DeliveryStatus = "SUCCEEDED"
-	DeliveryFailed      DeliveryStatus = "FAILED"
-	DeliveryBlockedAuth DeliveryStatus = "BLOCKED_AUTH"
-	DeliveryCancelled   DeliveryStatus = "CANCELLED"
+	JobDeliveryPending     JobDeliveryStatus = "PENDING"
+	JobDeliveryLeased      JobDeliveryStatus = "LEASED"
+	JobDeliveryRunning     JobDeliveryStatus = "RUNNING"
+	JobDeliveryRetryWait   JobDeliveryStatus = "RETRY_WAIT"
+	JobDeliverySucceeded   JobDeliveryStatus = "SUCCEEDED"
+	JobDeliveryFailed      JobDeliveryStatus = "FAILED"
+	JobDeliveryBlockedAuth JobDeliveryStatus = "BLOCKED_AUTH"
+	JobDeliveryCancelled   JobDeliveryStatus = "CANCELLED"
 )
 
 // Delivery represents an attempt to deliver an artifact to a destination.
 type Delivery struct {
-	ID               string         `json:"id"`
-	ArtifactID       string         `json:"artifact_id"`
-	DestinationID    string         `json:"destination_id"`
-	Provider         string         `json:"provider"`
-	Status           DeliveryStatus `json:"status"`
+	ID               string            `json:"id"`
+	ArtifactID       string            `json:"artifact_id"`
+	DestinationID    string            `json:"destination_id"`
+	Provider         string            `json:"provider"`
+	Status           JobDeliveryStatus `json:"status"`
 	AttemptCount     int            `json:"attempt_count"`
 	MaxAttempts      int            `json:"max_attempts"`
 	NextAttemptAt    *time.Time     `json:"next_attempt_at,omitempty"`
