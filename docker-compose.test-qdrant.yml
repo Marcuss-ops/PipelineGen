@@ -1,0 +1,23 @@
+# docker-compose.test-qdrant.yml — standalone Qdrant for local integration tests.
+#
+# Usage:
+#   docker compose -f docker-compose.test-qdrant.yml up -d
+#   TEST_QDRANT_URL=http://localhost:16333 go test -tags=integration ./tests/fixtures/...
+#   docker compose -f docker-compose.test-qdrant.yml down
+#
+# Port 16333 avoids colliding with the production Qdrant on 6333 from the
+# main docker-compose.yml. This instance has no volumes (ephemeral) and no
+# lifecycle dependency on the main PipelineGen stack.
+#
+# Make target: make test-qdrant-fixtures
+
+services:
+  qdrant-test:
+    image: qdrant/qdrant:latest
+    container_name: pipelinegen-qdrant-test
+    restart: "no"
+    ports:
+      - "16333:6333"
+      - "16334:6334"
+    # Ephemeral: no volume — data is lost on container stop.
+    # This is intentional for CI and local test isolation.
