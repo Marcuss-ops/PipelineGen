@@ -222,10 +222,12 @@ func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLo
 	// inputs (ArtifactID + Destination mapped-kind + Filename=
 	// ArtifactID fallback per refToVerifiedArtifact() and SHA256 from
 	// the wire hint).
-	if got := len(prep.recordedInputs.Load().*[]finalization.VerifiedArtifact); got != 3 {
-		t.Errorf("Prepare inputs: got %d, want 3", got)
-	} else {
-		for i, va := range *prep.recordedInputs.Load().*[]finalization.VerifiedArtifact {
+	if recordedPtr := prep.recordedInputs.Load(); recordedPtr != nil {
+		recorded := *recordedPtr
+		if got := len(recorded); got != 3 {
+			t.Errorf("Prepare inputs: got %d, want 3", got)
+		}
+		for i, va := range recorded {
 			if va.ArtifactID != staged[i].ArtifactID {
 				t.Errorf("input[%d].ArtifactID: got %q want %q",
 					i, va.ArtifactID, staged[i].ArtifactID)
