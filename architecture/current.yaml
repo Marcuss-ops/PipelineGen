@@ -1210,25 +1210,96 @@
       status: shipped
       exit_signal: true
       deadline: 2026-07-02
-    # CANONICAL-DRIFT-MIG094 (July 2026, pending): pre-existing drift
-    # in internal/infrastructure/database/canonical.go::CanonicalMediaAssetsSchema.
-    # The canonical constant was authored before migration 094
-    # (QDRANT-002 PR6, June 2026) added the index_state /
-    # index_state_updated_at / source_version columns; the constant
-    # has not been folded to mirror those additions. This drift is
-    # OUT OF SCOPE for PR-AUDIO-CHANNEL-EXTENSION — the Phase 4
-    # tests use an inline schema matching the existing
-    # service_test.go pattern in the same package, which works
-    # around the drift. Future fix: append the 3 missing column
-    # definitions to CanonicalMediaAssetsSchema and fold the 5+
-    # inline test schemas (clipindexer, artlist, catalogsync, etc.)
-    # to embed the canonical constant per canonical.go's
-    # "Test fixtures that call drive.NewTestDBWithSchema MUST embed
-    # this constant" rule.
+    # CANONICAL-DRIFT-MIG094 (July 2026, SHIPPED). Closure commit landed:
+    #   (a) Appended `index_state TEXT NOT NULL DEFAULT 'DISCOVERED'` +
+    #       `index_state_updated_at TEXT NOT NULL DEFAULT ''` to the bottom of
+    #       CanonicalMediaAssetsSchema (migrations/sqlite/094_*.sql byte-match).
+    #   (b) Header doc of canonical.go now enumerates 4 canonical exemption
+    #       sites (clips_crud_test / images_repository_test / clip_atomic_writer_test
+    #       / clipindexer/service_test) per the SSOT-folding exception clause.
+    #   (c) Folded internal/application/assets/catalogsync/service_test.go::
+    #       catalogSyncTestSchema to `drive.CanonicalMediaAssetsSchema +` (clip_folders
+    #       stays inline as test-local); the test only UPSERTs folders so the canonical
+    #       DEFAULTs absorb the extra columns with no test impact.
+    #   (d) Honest disclosure (godlike/07): the user's "5+ inline test schemas"
+    #       premise overstated the residual — 5 of 7 candidate schemas were
+    #       already folded in prior waves (youtube/assetrepo_integration,
+    #       artlist/assetrepo_integration, artlist/solar_panel,
+    #       artlist/service, catalogsync/dispatcher). Of the 2 actually-remaining,
+    #       1 (catalogsync) folds cleanly; 1 (clipindexer/service_test)
+    #       requires follow-up investigation per PR-CLIPINDEXER-FOLD-INVESTIGATE.
     - id: CANONICAL-DRIFT-MIG094
       owner_capability: internal/infrastructure/database
-      status: pending
+      status: shipped
+      exit_signal: true
       deadline: 2026-07-25
+      description: |
+        Closure of pre-existing drift in
+        internal/infrastructure/database/canonical.go::CanonicalMediaAssetsSchema.
+        Migration 094 (QDRANT-002 PR6, June 2026) added the index_state +
+        index_state_updated_at columns to media_assets but they were never
+        folded into the canonical CREATE TABLE — pre-PR tests using the
+        canonical constant were either forced to inline-stub the missing
+        columns OR silently absorb them via the canonical NOT-NULL DEFAULT
+        chain. The closure puts the canonical constant back in lockstep
+        with production migrations.
+
+        godlike/06 SSOT: the canonical media_assets CREATE TABLE block
+        is now the single source of truth for in-memory test schemas;
+        test fixtures that need a strict-subset embed
+        drive.CanonicalMediaAssetsSchema via `+` composition per the
+        documented SSOT-folding pattern (canonical.go header doc +
+        PR12bYoutubeSchema + pr12bArtlistSchema + solarTestSchema +
+        artlistTestSchema + dispatcherTestSchema all use this idiom).
+
+        godlike/07 honest-limitation: the user's "5+ inline test schemas"
+        spec overcounted the residual. Pre-closure audit found:
+          * 5 already folded in prior waves (youtube/assetrepo_integration,
+            artlist/assetrepo_integration, artlist/solar_panel,
+            artlist/service, catalogsync/dispatcher).
+          * 1 cleanly foldable (catalogsync/service_test.go — folded).
+          * 1 requires investigation (clipindexer/service_test.go — fold
+            attempted, REVERTED because canonical's
+            `embedding_json TEXT NOT NULL DEFAULT '[]'` breaks the
+            indexer's CAS check that treats embedding_json=NULL as
+            `not yet indexed`. Forward-port:
+            PR-CLIPINDEXER-FOLD-INVESTIGATE).
+          * 3 must NOT fold (semantic test contracts: clips_crud_test's
+            40-col projection-alignment, images_repository_test's
+            FASE-4-dual-write-minimal, clip_atomic_writer_test's
+            5-step-tx-shape-minimal — documented per-file in canonical.go
+            header comment).
+
+        godlike/07 audit-pin residue (carry-forward): the `source_version`
+        column the user spec listed is ALREADY in the canonical (added by
+        migration 099, located at the bottom of the schema with the 099
+        comment block). The closure appended only the 2 migration-094
+        columns (`index_state` + `index_state_updated_at`), not 3 as
+        the user spec implied.
+    # PR-CLIPINDEXER-FOLD-INVESTIGATE forward-pointer (July 2026):
+    # the clipindexer fold was REVERTED during the CANONICAL-DRIFT-MIG094
+    # closure pass because canonical's `embedding_json TEXT NOT NULL
+    # DEFAULT '[]'` broke the indexer's CAS check in setIndexedAt that
+    # treats embedding_json=NULL as `not yet indexed`. The clipindexer
+    # TestIndexingDoesNotSpawnPythonPerClip test is preserved with the
+    # inline 10-col schema (per canonical.go's SSOT-folding exemption
+    # for semantic-test-contract fixtures). This forward-pointer tracks
+    # the investigation into:
+    #   (a) whether setIndexedAt's CAS check should be expanded to
+    #       accept `embedding_json='[]'` as a "freshly indexed" sentinel
+    #       alongside `embedding_json IS NULL` (semantic equivalent in
+    #       both cases),
+    #   (b) whether the test's contract should be rewritten to assert
+    #       on a different surface (e.g. AudioVector / VisualVector
+    #       rather than the boolean `apiCalled` count),
+    #   (c) whether the production canonical contract can be loosened
+    #       to make `embedding_json` nullable (breaking schema change,
+    #       requires a separate migration decision).
+    # Decision documented via the follow-up PR's CHANGELOG entry.
+    - id: PR-CLIPINDEXER-FOLD-INVESTIGATE
+      owner_capability: internal/infrastructure/indexing/clipindexer
+      status: pending
+      deadline: 2026-08-15
 
 
 # ---------------------------------------------------------------------------
