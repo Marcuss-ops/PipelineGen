@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"go.uber.org/zap"
 )
 
@@ -50,7 +51,7 @@ func (s *ArtifactPreparation) Prepare(
 	artifact finalization.VerifiedArtifact,
 ) (finalization.PublishedArtifact, error) {
 	// Fail-fast validation.
-	if err := s.validate(artifact); err != nil {
+	if err := s.validate(ctx, artifact); err != nil {
 		return finalization.PublishedArtifact{}, err
 	}
 
@@ -89,7 +90,13 @@ func (s *ArtifactPreparation) Prepare(
 }
 
 // validate performs fail-fast checks on the verified artifact.
-func (s *ArtifactPreparation) validate(a finalization.VerifiedArtifact) error {
+// P0.5 (July 2026): upgraded from non-empty-string-only checks to
+// real on-disk verification via remote.VerifyArtifact (os.Stat +
+// SHA-256 file hash). The idempotency-key derivation check is
+// deferred until the caller threads a jobID through the context
+// or the VerifiedArtifact struct.
+func (s *ArtifactPreparation) validate(ctx context.Context, a finalization.VerifiedArtifact) error {
+	// Lightweight pre-checks (fail-fast before touching disk).
 	if a.ArtifactID == "" {
 		return fmt.Errorf("artifact validation: ArtifactID is empty")
 	}
@@ -107,6 +114,13 @@ func (s *ArtifactPreparation) validate(a finalization.VerifiedArtifact) error {
 	}
 	if a.IdempotencyKey == "" {
 		return fmt.Errorf("artifact validation: IdempotencyKey is empty (artifact=%s)", a.ArtifactID)
+	}
+
+	// Real on-disk verification (P0.5).
+	// Empty jobID skips idempotency-key derivation check; file
+	// existence / size / SHA-256 are always enforced.
+	if err := remote.VerifyArtifact(ctx, "", a); err != nil {
+		return fmt.Errorf("artifact verification failed for %s: %w", a.ArtifactID, err)
 	}
 	return nil
 }
