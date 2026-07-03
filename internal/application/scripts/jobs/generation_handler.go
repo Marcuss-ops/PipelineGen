@@ -3,20 +3,21 @@
 // owner per fact: the broker entrypoint).
 //
 // PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
-//   (1) Single + batch paths MUST NOT coabit in the same body. This
-//       file routes the dispatch entry to HandleSingle (one item)
-//       or HandleBatch (multiple items). The bodies live in
-//       cleanly-separated methods below — no shared `if len(...) == 1`
-//       conditional branching.
-//   (2) Filesystem ops are NOT in this file. The handler delegates
-//       to adapters/artifacts_persistence.go::PersistGeneratedArtifacts
-//       which returns a pre-computed []scriptpkg.Artifact. The
-//       handler then calls buildManifestFromArtifacts (in
-//       generation_manifest.go) to assemble the typed
-//       *job.ArtifactManifest from that slice.
-//   (3) Envelope construction is in generation_result_mapper.go.
-//       Outcome classification is in generation_outcome.go.
-//       Broker registration is in generation_registration.go.
+//
+//	(1) Single + batch paths MUST NOT coabit in the same body. This
+//	    file routes the dispatch entry to HandleSingle (one item)
+//	    or HandleBatch (multiple items). The bodies live in
+//	    cleanly-separated methods below — no shared `if len(...) == 1`
+//	    conditional branching.
+//	(2) Filesystem ops are NOT in this file. The handler delegates
+//	    to adapters/artifacts_persistence.go::PersistGeneratedArtifacts
+//	    which returns a pre-computed []scriptpkg.Artifact. The
+//	    handler then calls buildManifestFromArtifacts (in
+//	    generation_manifest.go) to assemble the typed
+//	    *job.ArtifactManifest from that slice.
+//	(3) Envelope construction is in generation_result_mapper.go.
+//	    Outcome classification is in generation_outcome.go.
+//	    Broker registration is in generation_registration.go.
 //
 // godlike/07 typed-error contract: both HandleSingle and HandleBatch
 // return (map[string]any, error). The error is non-nil exactly when
@@ -41,9 +42,9 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
 )
@@ -307,5 +308,3 @@ func (h *GenerateJobHandler) handleBatchFanout(
 	progressFn(100, "fanout complete, waiting for child aggregation")
 	return resultMap, nil
 }
-
-

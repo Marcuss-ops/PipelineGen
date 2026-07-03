@@ -35,10 +35,10 @@ import (
 // returns rows-affected=0 → ErrTransitionConflict. No application-level
 // mutex is needed; SQLite is the synchronisation point.
 type SQLiteStore struct {
-	db                 *sql.DB
-	log                *zap.Logger
-	notifier           *notifier
-	producesArtifacts  map[string]bool // job types that MUST use CompleteWithArtifacts
+	db                *sql.DB
+	log               *zap.Logger
+	notifier          *notifier
+	producesArtifacts map[string]bool // job types that MUST use CompleteWithArtifacts
 }
 
 // jobColumns is the canonical list of column names read by Get, List and

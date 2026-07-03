@@ -17,7 +17,7 @@
 // SetFanoutBroker, the multi-item path emits each item as a separate
 // script.generate_item child job (canonical per-item retry via the
 // broker). The aggregator (internal/application/scripts/jobs/
-/// parent_aggregator.go) then aggregates child outcomes and calls
+// / parent_aggregator.go) then aggregates child outcomes and calls
 // FinalizeAggregateParent to set the parent's broker status. The fan-out path
 // preserves the legacy inline execution when no broker is wired
 // (the canonical backward-compat guarantee for tests and current

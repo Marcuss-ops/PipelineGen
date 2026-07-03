@@ -57,8 +57,8 @@ import (
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
@@ -449,18 +449,18 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// fields are forwarded verbatim from the existing wireScriptFlow
 	// local variables; no field-renaming is performed.
 	scriptDeps := scriptapi.Dependencies{
-		Engine:                engine,
-		Section:               sectionRegen,
-		CacheEviction:         cacheEvictionUC,
-		Image:                 root.Domains.ImageService,
-		Realtime:              root.Domains.RealtimeSearch,
-		Association:           root.Domains.AssocService,
-		Voiceover:             root.Domains.VoiceoverService,
-		AssetTree:             root.Search.AssetTreeService,
-		ClipSourceBuilder:     clipSourceBuilder,
-		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
-		ScriptsRepo:           scriptsRepoAdapter,
+		Engine:            engine,
+		Section:           sectionRegen,
+		CacheEviction:     cacheEvictionUC,
+		Image:             root.Domains.ImageService,
+		Realtime:          root.Domains.RealtimeSearch,
+		Association:       root.Domains.AssocService,
+		Voiceover:         root.Domains.VoiceoverService,
+		AssetTree:         root.Search.AssetTreeService,
+		ClipSourceBuilder: clipSourceBuilder,
+		MediaCurator:      mediaCurator,
+		Harvest:           harvestSvc,
+		ScriptsRepo:       scriptsRepoAdapter,
 		// Commit H Phase 2 (June 2026): Memory field dropped (no
 		// gemmamemory service wiring candidate).
 		Jobs:                  root.Jobs.Facade,
