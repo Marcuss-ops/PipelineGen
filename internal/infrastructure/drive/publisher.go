@@ -109,12 +109,21 @@ const (
 // seam eliminates the dead-enum failure mode (P0 #1): every caller
 // MUST pick Overwrite/Skip/Rename explicitly. Zero-value policy
 // resolves to delivery.ConflictOverwrite to match legacy behaviour.
+//
+// P0.6 (July 2026): IdempotencyKey replaces folderID+filename as the
+// authoritative identity for conflict detection. When non-empty, the
+// uploader uses Drive appProperties lookup instead of filename match.
+// ContentHash and SourceVersion are carried for idempotency-key
+// derivation and future audit surfaces.
 type PutFileRequest struct {
 	LocalPath      string
 	FolderID       string
 	Filename       string
-	Description    string // optional; empty means "no description"
-	ConflictPolicy delivery.ConflictPolicy // zero = ConflictOverwrite (legacy default)
+	Description    string                   // optional; empty means "no description"
+	ConflictPolicy delivery.ConflictPolicy   // zero = ConflictOverwrite (legacy default)
+	IdempotencyKey string                   // P0.6: Drive appProperties key for conflict detection
+	ContentHash    string                   // P0.6: hex-encoded SHA-256 of file content
+	SourceVersion  int64                    // P0.6: logical source version
 }
 
 // PutFileResult is the structured return value. Action tells callers
@@ -365,6 +374,9 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		Filename:       filename,
 		Description:    req.Description,
 		ConflictPolicy: req.ConflictPolicy,
+		IdempotencyKey: req.IdempotencyKey,
+		ContentHash:    req.ContentHash,
+		SourceVersion:  req.SourceVersion,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("delivery: publish to %q: %w", req.Destination, err)

@@ -157,12 +157,22 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		//     the filename. The pre-Wave B2 first-match truncation
 		//     silently hid this case, which made overwrite/skip
 		//     non-deterministic on sibling copies.
-		lookup, lookupErr := u.lookupExisting(ctx, req.FolderID, req.Filename)
+		// P0.6 (July 2026): lookup by idempotency key when
+		// available, falling back to filename-based lookup.
+		lookup, lookupErr := u.lookupExisting(ctx, req.FolderID, req.Filename, req.IdempotencyKey)
 		if lookupErr != nil {
-			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", req.Filename, lookupErr)
+			label := req.Filename
+			if req.IdempotencyKey != "" {
+				label = truncate16(req.IdempotencyKey) + "..."
+			}
+			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", label, lookupErr)
 		}
 		if len(lookup.Matches) > 1 {
-			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", req.Filename, ErrAmbiguousDriveFile)
+			label := req.Filename
+			if req.IdempotencyKey != "" {
+				label = truncate16(req.IdempotencyKey) + "..."
+			}
+			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", label, ErrAmbiguousDriveFile)
 		}
 		var existing *RemoteFile
 		if len(lookup.Matches) == 1 {
@@ -230,10 +240,20 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	// ConflictOverwrite on existing match: drive Files.Update (which
 	// preserves the file's ID and version history when keepRevisionForever
 	// is unset on the file, matching legacy semantics).
+	// P0.6: when overwriting a match found by idempotency key (not
+	// filename), sync the display filename to the latest request.
 	if req.ConflictPolicy == delivery.ConflictOverwrite && existing != nil && existing.FileID != "" {
-		updateFile := &driveapi.File{}
+		updateFile := &driveapi.File{
+			Name: req.Filename, // P0.6: sync display name on overwrite
+		}
 		if req.Description != "" {
 			updateFile.Description = req.Description
+		}
+		// P0.6: carry idempotency key as appProperty for cross-session recovery.
+		if req.IdempotencyKey != "" {
+			updateFile.AppProperties = map[string]string{
+				"pipelinegen_idempotency_key": req.IdempotencyKey,
+			}
 		}
 		updated, err := u.Service.Files.Update(existing.FileID, updateFile).
 			Fields("id,webViewLink,md5Checksum").
@@ -261,13 +281,29 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	// two renames within the same second (rare but observable) and
 	// produce a Drive 409 (not retryable per pkg/retry's isRetryable
 	// predicate — only 429/503/timeouts qualify).
+	//
+	// P0.6: when ConflictRename is combined with IdempotencyKey,
+	// idempotency takes precedence — the existing file is returned
+	// rather than creating a renamed duplicate (same as ConflictSkip).
 	if req.ConflictPolicy == delivery.ConflictRename && existing != nil && existing.FileID != "" {
+		if req.IdempotencyKey != "" {
+			// Idempotency key means "this IS the same file" —
+			// skip, not rename.
+			return &PutFileResult{
+				FileID:       existing.FileID,
+				WebViewLink:  existing.WebViewLink,
+				DownloadLink: "https://drive.google.com/uc?id=" + existing.FileID,
+				MD5Checksum:  existing.MD5Checksum,
+				Action:       PutActionSkipped,
+			}, nil
+		}
 		newName := renameWithTimestamp(req.Filename, time.Now().UnixNano())
 		file := &driveapi.File{Name: newName}
 		if req.Description != "" {
 			file.Description = req.Description
 		}
 		file.Parents = []string{req.FolderID}
+		setAppProperties(file, req.IdempotencyKey)
 		created, err := u.Service.Files.Create(file).
 			Fields("id,webViewLink,md5Checksum").
 			Media(f).
@@ -297,6 +333,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		file.Description = req.Description
 	}
 	file.Parents = []string{req.FolderID}
+	setAppProperties(file, req.IdempotencyKey)
 	created, err := u.Service.Files.Create(file).
 		Fields("id,webViewLink,md5Checksum").
 		Media(f).
@@ -328,10 +365,24 @@ func renameWithTimestamp(name string, ts int64) string {
 	return fmt.Sprintf("%s_%d%s", base, ts, ext)
 }
 
-// keep zap + retry imported — both used by the PutFile + doPutFile
-// bodies above. The Package import references are intentional and
-// survive compiler-side import pruning.
-// (P2.1, July 2026: the lookupFunc package-level var is REMOVED. The
-// seam is now `u.lookupFunc` struct field on *Uploader; see
-// uploader.go::LookupFunc + Uploader.lookupExisting for the migrated
-// surface.)
+// setAppProperties (P0.6) sets the pipelinegen_idempotency_key
+// appProperty on a Drive File metadata struct. When idemKey is empty,
+// the function is a no-op (no appProperty set).
+func setAppProperties(file *driveapi.File, idemKey string) {
+	if idemKey != "" {
+		file.AppProperties = map[string]string{
+			"pipelinegen_idempotency_key": idemKey,
+		}
+	}
+}
+
+// min returns the smaller of two integers. Used for truncating
+// idempotency-key prefixes in error messages.
+// truncate16 returns the first 16 characters of s, or s itself if shorter.
+// Used for error-message prefixes to avoid leaking full idempotency keys.
+func truncate16(s string) string {
+	if len(s) > 16 {
+		return s[:16]
+	}
+	return s
+}

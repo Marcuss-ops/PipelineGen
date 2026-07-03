@@ -17,16 +17,21 @@ import (
 )
 
 // LookupFunc is the seam signature for a file-existence lookup. The
-// production wiring delegates to Uploader.FindFileByName. Tests inject
-// overrides via struct-literal field injection (no package-level
-// mutation).
+// production wiring delegates to Uploader.FindFileByName or
+// Uploader.FindFileByIdempotencyKey depending on whether idemKey is
+// empty. Tests inject overrides via struct-literal field injection
+// (no package-level mutation).
 //
 // P2.1 (July 2026): the seam was migrated from a package-level var to
 // a struct field on *Uploader. Pre-P2.1 tests using `lookupFunc = ...`
 // + t.Cleanup could leak between parallel runs through cross-test
 // package-state contamination; the field-based surface is per-instance
 // and safe under t.Parallel.
-type LookupFunc func(u *Uploader, ctx context.Context, folderID, filename string) (ExistingFileLookup, error)
+//
+// P0.6 (July 2026): idemKey parameter added for idempotency-key-based
+// lookup. When empty, the implementation falls back to filename-based
+// lookup (backward compat).
+type LookupFunc func(u *Uploader, ctx context.Context, folderID, filename, idemKey string) (ExistingFileLookup, error)
 
 // OpenFileFunc is the seam signature for opening a local file. The
 // production wiring delegates to os.Open. Tests inject overrides via
@@ -286,6 +291,55 @@ func (u *Uploader) FindFileByName(ctx context.Context, folderID, filename string
 	return lookup, nil
 }
 
+// FindFileByIdempotencyKey (P0.6, July 2026) returns all non-trashed
+// files in folderID whose Drive appProperties contain
+// pipelinegen_idempotency_key=<idemKey>. This is the canonical
+// lookup surface for idempotent Drive publication — same key → same
+// file, regardless of filename.
+//
+// The Drive API query uses the `appProperties` search operator:
+//
+//	appProperties has {key='pipelinegen_idempotency_key' and value='<key>'}
+//	and trashed=false and '<folderID>' in parents
+//
+// Len(Matches) == 0 means no existing file with this idempotency key
+// (equivalent to "create fresh"). Len(Matches) > 1 is a corrupted
+// state (two files share the same idempotency key — the caller MUST
+// fail-closed with ErrAmbiguousDriveFile, as for filename ambiguity).
+func (u *Uploader) FindFileByIdempotencyKey(ctx context.Context, folderID, idemKey string) (ExistingFileLookup, error) {
+	if u.Service == nil {
+		return ExistingFileLookup{}, fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(folderID) == "" || strings.TrimSpace(idemKey) == "" {
+		return ExistingFileLookup{}, nil
+	}
+
+	query := fmt.Sprintf(
+		"appProperties has {key='pipelinegen_idempotency_key' and value='%s'} and trashed=false and '%s' in parents",
+		strings.ReplaceAll(idemKey, "'", "\\'"),
+		folderID,
+	)
+	list, err := u.Service.Files.List().
+		Q(query).
+		Fields("files(id, name, webViewLink, md5Checksum, appProperties)").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return ExistingFileLookup{}, err
+	}
+
+	lookup := ExistingFileLookup{Matches: make([]RemoteFile, 0, len(list.Files))}
+	for _, file := range list.Files {
+		lookup.Matches = append(lookup.Matches, RemoteFile{
+			FileID:      file.Id,
+			Name:        file.Name,
+			WebViewLink: file.WebViewLink,
+			MD5Checksum: file.Md5Checksum,
+		})
+	}
+	return lookup, nil
+}
+
 // UploadFileIfChanged uploads a file only when the Drive file does not already exist with the same hash.
 func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error) {
 	localHash, err := hashutil.MD5File(localPath)
@@ -327,13 +381,17 @@ func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID,
 // lookupExisting runs the file-existence lookup with lazy default
 // injection. Production code uses this in PutFile. Tests inject
 // `lookupFunc` via struct literal override; the lazy default falls
-// through to Uploader.FindFileByName.
+// through to Uploader.FindFileByName or FindFileByIdempotencyKey
+// depending on whether idemKey is empty.
 //
 // Pre-P2.1 the package-level `var lookupFunc` carried the seam;
 // per P2.1 the seam is per-instance.
-func (u *Uploader) lookupExisting(ctx context.Context, folderID, filename string) (ExistingFileLookup, error) {
+func (u *Uploader) lookupExisting(ctx context.Context, folderID, filename, idemKey string) (ExistingFileLookup, error) {
 	if u.lookupFunc != nil {
-		return u.lookupFunc(u, ctx, folderID, filename)
+		return u.lookupFunc(u, ctx, folderID, filename, idemKey)
+	}
+	if idemKey != "" {
+		return u.FindFileByIdempotencyKey(ctx, folderID, idemKey)
 	}
 	return u.FindFileByName(ctx, folderID, filename)
 }

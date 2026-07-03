@@ -72,7 +72,7 @@ func TestPutFileLookupErrorFailClosed(t *testing.T) {
 	u := &Uploader{
 		Service: newFakeDriveService(t),
 		Log:     zap.NewNop(),
-		lookupFunc: func(_ *Uploader, _ context.Context, _, _ string) (ExistingFileLookup, error) {
+		lookupFunc: func(_ *Uploader, _ context.Context, _, _, _ string) (ExistingFileLookup, error) {
 			lookupCalls++
 			return ExistingFileLookup{}, simulatedErr
 		},
@@ -141,7 +141,7 @@ func TestPutFileAmbiguousMatchError(t *testing.T) {
 	u := &Uploader{
 		Service: newFakeDriveService(t),
 		Log:     zap.NewNop(),
-		lookupFunc: func(_ *Uploader, _ context.Context, _, _ string) (ExistingFileLookup, error) {
+		lookupFunc: func(_ *Uploader, _ context.Context, _, _, _ string) (ExistingFileLookup, error) {
 			return ExistingFileLookup{
 				Matches: []RemoteFile{
 					{FileID: "id-A", Name: "test.mp4"},
