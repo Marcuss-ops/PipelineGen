@@ -573,6 +573,7 @@ func newScriptItemFanoutBrokerAdapter(jobsSvc *appjobs.Service, log *zap.Logger)
 func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
 	ctx context.Context,
 	parentJobID string,
+	itemIndex int,
 	item scriptpkg.GenerationItemV2,
 	preset scriptpkg.Preset,
 ) (string, error) {
@@ -582,16 +583,17 @@ func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
 		ParentJobID: parentJobID,
 		Item:        item,
 		Preset:      preset,
+		ItemIndex:   itemIndex,
 	}
 	payloadBytes, err := json.Marshal(typedPayload)
 	if err != nil {
 		return "", fmt.Errorf("marshal item payload: %w", err)
 	}
 
-	// Deterministic ActiveKey prevents duplicate child jobs on parent
-	// retry (mirrors voiceover P0 #1 idempotency contract). item.ID
-	// is unique per item within a batch (set by ExecuteFanout).
-	activeKey := fmt.Sprintf("script:item:%s:%s", parentJobID, item.ID)
+	// Deterministic ActiveKey: parentJobID + itemIndex + item.ID.
+	// itemIndex guards against collisions when item.ID is empty or
+	// duplicated across items in the same batch.
+	activeKey := fmt.Sprintf("script:item:%s:%d:%s", parentJobID, itemIndex, item.ID)
 
 	req := &domainjob.EnqueueRequest{
 		Type:      domainjob.TypeScriptGenerateItem,

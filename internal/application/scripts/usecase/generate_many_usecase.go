@@ -40,7 +40,7 @@ import (
 // satisfies it via Enqueue(JobPolicy{Type: TypeScriptGenerateItem}).
 // Tests inject stubs without instantiating the full broker.
 type FanoutItemBroker interface {
-	EnqueueScriptItem(ctx context.Context, parentJobID string, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error)
+	EnqueueScriptItem(ctx context.Context, parentJobID string, itemIndex int, item scriptpkg.GenerationItemV2, preset scriptpkg.Preset) (string, error)
 }
 
 // GenerateManyUseCase orchestrates multi-item generation. Each item
@@ -298,6 +298,10 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 		itemID := item.ID
 		if itemID == "" {
 			itemID = fmt.Sprintf("item-%d", i)
+			// Normalise the item ID in the source envelope so the
+			// adapter receives a populated ID for the ActiveKey.
+			env.Items[i].ID = itemID
+			item.ID = itemID
 		}
 		if ctx.Err() != nil {
 			items[i] = GenerateManyItemResult{
@@ -307,7 +311,7 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 			enqueueErrors++
 			continue
 		}
-		jobID, err := uc.broker.EnqueueScriptItem(ctx, parentJobID, item, env.Preset)
+		jobID, err := uc.broker.EnqueueScriptItem(ctx, parentJobID, i, item, env.Preset)
 		if err != nil {
 			if uc.log != nil {
 				uc.log.Warn("generate-many: child enqueue failed (P0 #4)",
