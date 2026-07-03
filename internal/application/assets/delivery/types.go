@@ -15,7 +15,19 @@
 //	asset's logical metadata. The DestinationRegistry is the sole
 //	authority for root and structure; the Publisher is the sole
 //	authority for folder creation and file upload.
+//
+// P0.6 (July 2026): IdempotencyKey replaces folderID+filename as the
+// authoritative identity for Drive file conflict detection. The key is
+// derived from SHA-256(destination:artifactID:contentHash:sourceVersion)
+// and stored as a Drive appProperty for cross-session recovery.
+// Filename is retained as a display property only.
 package delivery
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
+)
 
 // DestinationKey identifies a canonical Drive destination. Each key maps
 // to exactly one DestinationPolicy in the DestinationRegistry. Adding a
@@ -144,9 +156,38 @@ type PublishRequest struct {
 	// Deprecated: will be removed once all callers migrate to
 	// DestinationKey-only routing (FASE 9 cleanup).
 	RootFolderOverride string `json:"root_folder_override,omitempty"`
+
+	// IdempotencyKey (P0.6, July 2026) is the deterministic identity
+	// key for this publish. Derived from SHA-256(destination:artifactID:
+	// contentHash:sourceVersion). When non-empty, the Publisher uses
+	// it for conflict detection via Drive appProperties instead of
+	// folderID+filename lookup. Empry = fallback to filename-based
+	// lookup (backward compat).
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+
+	// ContentHash (P0.6) is the hex-encoded SHA-256 digest of the
+	// artifact content. Used to derive IdempotencyKey.
+	ContentHash string `json:"content_hash,omitempty"`
+
+	// SourceVersion (P0.6) is the logical source version at publish
+	// time. Used to derive IdempotencyKey.
+	SourceVersion int64 `json:"source_version,omitempty"`
 }
 
-// PublishAction describes what the publisher actually did on Drive.
+// DeriveIdempotencyKey (P0.6, July 2026) computes the deterministic
+// identity key for a publish operation:
+//
+//	SHA-256(destination:artifactID:contentHash:sourceVersion)
+//
+// The colon-delimited input string is hashed via SHA-256 and returned
+// as a 64-char hex string. Same inputs → same key across retries and
+// cross-session recovery.
+func DeriveIdempotencyKey(destination DestinationKey, artifactID, contentHash string, sourceVersion int64) string {
+	input := string(destination) + ":" + artifactID + ":" + contentHash + ":" + strconv.FormatInt(sourceVersion, 10)
+	h := sha256.New()
+	h.Write([]byte(input))
+	return hex.EncodeToString(h.Sum(nil))
+}
 // It mirrors delivery.ConflictPolicy (declared further up in this
 // file) by exposing the concrete outcome of the publish so callers
 // can branch on it: route a "skipped" asset to the dedupe ledger,

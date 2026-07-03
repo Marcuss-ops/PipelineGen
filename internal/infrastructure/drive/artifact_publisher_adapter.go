@@ -129,14 +129,22 @@ func (a *ArtifactPublisherAdapter) Publish(
 		return finalization.AssetLocation{}, err
 	}
 
-	// Step 3: Build publish request with idempotency threading.
+	// Step 3: Build publish request with idempotency-key identity (P0.6).
+	// The IdempotencyKey is derived from SHA-256(dest:artifactID:sha256:version)
+	// and becomes the authoritative identity for Drive conflict detection.
+	// Description carries human-readable context for the Drive UI (no longer
+	// a hash workaround — P0.4 deprecated).
+	idemKey := delivery.DeriveIdempotencyKey(destKey, artifact.ArtifactID, artifact.SHA256, artifact.SourceVersion)
 	req := delivery.PublishRequest{
 		Destination:    destKey,
 		LocalPath:      artifact.LocalPath,
 		Filename:       artifact.Filename,
-		Description:    artifact.IdempotencyKey,
+		Description:    fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
 		AssetID:        artifact.ArtifactID,
-		ConflictPolicy: delivery.ConflictSkip, // Drive-side dedup on (filename, description)
+		ConflictPolicy: delivery.ConflictSkip,
+		IdempotencyKey: idemKey,
+		ContentHash:    artifact.SHA256,
+		SourceVersion:  artifact.SourceVersion,
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.
