@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // buildCleanup constructs a cleanup function that stops background jobs,
@@ -30,6 +31,13 @@ import (
 //  3. parallel Stop for: channelMonitor
 //  4. wait (5-second timeout)
 //  5. close main database
+//
+// FASE 3.8 (July 2026): step 2 routes through `retry.Sleep`
+// (Clock-injectable, ctx-aware) for consistency with the canonical
+// retry-loop architecture; behavior-equivalent in production (100ms
+// via RealClock). context.Background() is intentional — the parent
+// ctx was just cancelled in step 1, so there is no parent ctx to
+// honor.
 func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
 	_ = root // placeholder: future per-bundle teardown hooks (Outbox pool stop, etc.) live here
 	return func() {
@@ -38,8 +46,16 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 			cancel()
 		}
 
-		// 2. Give jobs a moment to stop
-		time.Sleep(100 * time.Millisecond)
+		// 2. Give jobs a moment to stop. Settle-drain is best-effort;
+		// the outer 5-second cap in step 4 still bounds total cleanup
+		// latency. context.Background() is intentional because the
+		// parent ctx was just cancelled in step 1.
+		//
+		// FASE 3.8: error path is unreachable in production (Background
+		// never cancels), but the return value is consumed defensively
+		// for future migration if a parent ctx is ever honored here.
+		const settleDrainTimeout = 100 * time.Millisecond
+		_ = retry.Sleep(context.Background(), settleDrainTimeout, retry.Options{})
 
 		// 3. Stop services in parallel
 		var wg sync.WaitGroup
