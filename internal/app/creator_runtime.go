@@ -237,7 +237,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	}
 	sourceReg := adapters.NewSourceRegistry(log)
 	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
-	generateMany := usecase.NewGenerateManyUseCase(generateOne, log)
+	generateMany := usecase.NewGenerateManyUseCase(log)
 	genJobHandler := scriptjobs.NewGenerateJobHandler(generateOne, generateMany, log)
 
 	// Build dispatcher + registry ───────────────────

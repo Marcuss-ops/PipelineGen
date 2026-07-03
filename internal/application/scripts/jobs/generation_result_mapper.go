@@ -37,7 +37,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -102,47 +102,6 @@ func singleEnvelopeResult(itemID string, result *domainScript.GenerationResult) 
 			Succeeded: 1,
 			Failed:    0,
 		},
-	}
-}
-
-// buildEnvelopeResult converts a GenerateManyResult into a typed
-// GenerationEnvelopeResult. PR 7 contract: Summary is a value type,
-// Version is always EnvelopeVersion, no Single field. A nil
-// manyResult yields a typed zero-summary envelope (the handler
-// projects this when the use case produced no aggregate counts).
-func buildEnvelopeResult(r *usecase.GenerateManyResult) domainScript.GenerationEnvelopeResult {
-	if r == nil {
-		return domainScript.GenerationEnvelopeResult{
-			Version: domainScript.EnvelopeVersion,
-			OK:      false,
-			Summary: domainScript.GenerationEnvelopeSummary{},
-		}
-	}
-	items := make([]domainScript.GenerationEnvelopeItem, len(r.Items))
-	for i, item := range r.Items {
-		var errStr string
-		var genResult *domainScript.GenerationResult
-		if item.Error != "" {
-			errStr = item.Error
-		} else {
-			genResult = item.Result
-		}
-		items[i] = domainScript.GenerationEnvelopeItem{
-			ItemID: item.ItemID,
-			Result: genResult,
-			Error:  errStr,
-		}
-	}
-	return domainScript.GenerationEnvelopeResult{
-		Version: domainScript.EnvelopeVersion,
-		OK:      r.Summary.Failed == 0,
-		Items:   items,
-		Summary: domainScript.GenerationEnvelopeSummary{
-			Total:     r.Summary.Total,
-			Succeeded: r.Summary.Succeeded,
-			Failed:    r.Summary.Failed,
-		},
-		Warnings: r.Warnings,
 	}
 }
 
