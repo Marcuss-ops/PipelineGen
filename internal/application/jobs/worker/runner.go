@@ -424,6 +424,17 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 			return nil, fmt.Errorf("required artifact %q (%s): %w", a.ID, a.Kind, shaErr)
 		}
 
+		// P2.6 forward-pointer (DRIVE-CUTOVER-P0-1): r.assetClient is
+		// the **Worker-side sender** abstraction over
+		// `jobbrokerclient.Client.UploadFile` (the Creator-side
+		// receiver is the remote ArtifactUploader port described in
+		// AGENTS.md Pattern 10 — paired but distinct concerns). This
+		// is NOT a canonical `delivery.Publisher.Publish` call (which
+		// targets Drive media assets via the DestinationRegistry).
+		// TRACKED in architecture/current.yaml#PR-DRIVE-008-CUTOVER
+		// forward-pointer; deferred to a P0.5 wave that lands the
+		// Creator-side ArtifactUploader port abstraction. Today's
+		// sites stay unchanged.
 		if uploadErr := r.assetClient.UploadFile(ctx, a.ID, a.Path); uploadErr != nil {
 			return nil, fmt.Errorf("upload required artifact %q (%s): %w", a.ID, a.Kind, uploadErr)
 		}
@@ -446,6 +457,10 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 				zap.String("artifact_id", a.ID), zap.String("kind", a.Kind), zap.Error(shaErr))
 			continue
 		}
+		// P2.6 forward-pointer (DRIVE-CUTOVER-P0-1): see companion
+		// comment at the required-artifact loop above — this is the
+		// remote-worker artifact handoff (Pattern 10), NOT a canonical
+		// Drive publish via `delivery.Publisher.Publish`.
 		if uploadErr := r.assetClient.UploadFile(ctx, a.ID, a.Path); uploadErr != nil {
 			r.log.Warn("non-required artifact upload failed — skipping",
 				zap.String("artifact_id", a.ID), zap.String("kind", a.Kind), zap.Error(uploadErr))

@@ -8,6 +8,14 @@
 // and MarkFailed MUST have been called exactly once with reason
 // `finalize_failed: <cause>`. This is the user-spec contract for
 // the orphan sweeper (commit B/2) to detect via ListPending.
+//
+// P2.6 migration (July 2026, retirement of the pre-deprecation
+// voiceover.DriveUploaderAdapter port): the mock port surface is
+// now `*mockPublisher` (satisfying canonical `delivery.Publisher`),
+// and the `UploadIntentDeps` field is renamed from `DriveUploader`
+// to `Publisher`. Step 2 in the production use case now routes
+// through `delivery.Publisher.Publish(DestinationVoiceover,
+// RootFolderOverride=folderID, …)` per DRIVE-CUTOVER-P0-1 closure.
 package voiceover
 
 import (
@@ -20,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
@@ -217,15 +226,32 @@ func typedNotFoundIfZeroRows(res sql.Result, target, voiceoverID string) error {
 	return nil
 }
 
-type mockDriveUploader struct {
+// Compile-time assertion (AGENTS.md Pattern 0): the mock publisher
+// satisfies the canonical delivery.Publisher port. Drift surfaces
+// as vet error.
+var _ delivery.Publisher = (*mockPublisher)(nil)
+
+// mockPublisher is the P2.6 replacement for mockDriveUploader.
+// Satisfies canonical `delivery.Publisher` (Publish + ResolveFolder).
+// ResolveFolder is a stub (return ("", nil)) — the use case's
+// happy-path + failure scenarios only exercise Publish.
+type mockPublisher struct {
 	cannedFileID string
 	cannedErr    error
 	calls        int
 }
 
-func (m *mockDriveUploader) UploadFile(ctx context.Context, folderID, localPath, filename string) (string, error) {
+func (m *mockPublisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
 	m.calls++
-	return m.cannedFileID, m.cannedErr
+	if m.cannedErr != nil {
+		return nil, m.cannedErr
+	}
+	return &delivery.PublishResult{FileID: m.cannedFileID}, nil
+}
+
+func (m *mockPublisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
+	// Tests do not exercise ResolveFolder; minimal stub.
+	return "", nil
 }
 
 type mockFinalizer struct {
@@ -257,11 +283,11 @@ var _ UploadIntentsRepository = (*mockUploadIntentRepo)(nil)
 // all 5 steps; Drive + Finalize each called exactly once.
 func TestUploadIntentUseCase_HappyPath(t *testing.T) {
 	repo := newMockRepoWithDB(t)
-	drive := &mockDriveUploader{cannedFileID: "drive-abc"}
+	drive := &mockPublisher{cannedFileID: "drive-abc"}
 	finalizer := &mockFinalizer{}
 	uc := NewUploadIntentUseCase(UploadIntentDeps{
 		Repo:             repo,
-		DriveUploader:    drive,
+		Publisher:        drive,
 		ProjectFinalizer: finalizer,
 		Logger:           zap.NewNop(),
 	})
@@ -300,11 +326,11 @@ func TestUploadIntentUseCase_HappyPath(t *testing.T) {
 // drive_file_id MUST be stamped so the sweeper can match + cleanup.
 func TestUploadIntentUseCase_FinalizeFailure_LeavesRowAtUploaded(t *testing.T) {
 	repo := newMockRepoWithDB(t)
-	drive := &mockDriveUploader{cannedFileID: "drive-stuck"}
+	drive := &mockPublisher{cannedFileID: "drive-stuck"}
 	finalizer := &mockFinalizer{cannedErr: errors.New("finalize db connection lost")}
 	uc := NewUploadIntentUseCase(UploadIntentDeps{
 		Repo:             repo,
-		DriveUploader:    drive,
+		Publisher:        drive,
 		ProjectFinalizer: finalizer,
 		Logger:           zap.NewNop(),
 	})
@@ -369,12 +395,12 @@ func TestUploadIntentUseCase_FinalizeFailure_LeavesRowAtUploaded(t *testing.T) {
 // MarkFinalized-fail.
 func TestUploadIntentUseCase_MarkFinalizedFailure_LeavesRowAtUploaded(t *testing.T) {
 	repo := newMockRepoWithDB(t)
-	drive := &mockDriveUploader{cannedFileID: "drive-mffail"}
+	drive := &mockPublisher{cannedFileID: "drive-mffail"}
 	finalizer := &mockFinalizer{}
 	repo.markFinalizedErr = errors.New("sqlite database is locked (transient)")
 	uc := NewUploadIntentUseCase(UploadIntentDeps{
 		Repo:             repo,
-		DriveUploader:    drive,
+		Publisher:        drive,
 		ProjectFinalizer: finalizer,
 		Logger:           zap.NewNop(),
 	})
@@ -450,12 +476,12 @@ func TestUploadIntentUseCase_MarkFinalizedFailure_LeavesRowAtUploaded(t *testing
 // necessary; both tests must remain.
 func TestUploadIntentUseCase_MarkCompletedFailure_LeavesRowAtFailed(t *testing.T) {
 	repo := newMockRepoWithDB(t)
-	drive := &mockDriveUploader{cannedFileID: "drive-mcfail"}
+	drive := &mockPublisher{cannedFileID: "drive-mcfail"}
 	finalizer := &mockFinalizer{}
 	repo.markCompletedErr = errors.New("sqlite database is locked (transient)")
 	uc := NewUploadIntentUseCase(UploadIntentDeps{
 		Repo:             repo,
-		DriveUploader:    drive,
+		Publisher:        drive,
 		ProjectFinalizer: finalizer,
 		Logger:           zap.NewNop(),
 	})
@@ -506,11 +532,11 @@ func TestUploadIntentUseCase_MarkCompletedFailure_LeavesRowAtFailed(t *testing.T
 // be called.
 func TestUploadIntentUseCase_DriveUploadFailure_LeavesRowAtFailed(t *testing.T) {
 	repo := newMockRepoWithDB(t)
-	drive := &mockDriveUploader{cannedErr: errors.New("drive api 503 service unavailable")}
+	drive := &mockPublisher{cannedErr: errors.New("drive api 503 service unavailable")}
 	finalizer := &mockFinalizer{}
 	uc := NewUploadIntentUseCase(UploadIntentDeps{
 		Repo:             repo,
-		DriveUploader:    drive,
+		Publisher:        drive,
 		ProjectFinalizer: finalizer,
 		Logger:           zap.NewNop(),
 	})
@@ -557,11 +583,11 @@ func TestUploadIntentUseCase_DriveUploadFailure_LeavesRowAtFailed(t *testing.T) 
 // typed errors (godlike/05 wiring-error rule, never panicked).
 func TestUploadIntentUseCase_FailFastGuards(t *testing.T) {
 	repo := newMockRepoWithDB(t)
-	drive := &mockDriveUploader{cannedFileID: "drive"}
+	drive := &mockPublisher{cannedFileID: "drive"}
 	finalizer := &mockFinalizer{}
 	uc := NewUploadIntentUseCase(UploadIntentDeps{
 		Repo:             repo,
-		DriveUploader:    drive,
+		Publisher:        drive,
 		ProjectFinalizer: finalizer,
 		Logger:           zap.NewNop(),
 	})

@@ -2578,3 +2578,143 @@ wave_status:
       owner_capability: internal/app
       status: pending
       deadline: 2026-07-04
+
+# ── P2.5 — P1-P2 cutover completion closure (July 2026) ──
+# 6 closure entries reaching status: done / exit_signal: true per the
+# 11-action P1-P2 cutover from evidence/2026-06-28/rollout-plan.json.
+# godlike/07 honest-limitation: none of these entries mutate any prior
+# IN-FLIGHT entry per TYPE REF=ratchet (monotone-decreasing status);
+# they are appended at EOF for forward-pointer posterity, and each
+# entry references its closure SHA via linked_issues rather than
+# rewriting the upstream commit.
+- id: PR-P1.4-CLOSURE
+  status: done
+  exit_signal: true
+  owner: delivery
+  deadline: 2026-07-03
+  exit_gate: |-
+    Prometheus metrics surface for `StartupDriveRootsValidator` shipped:
+    3 NEW TDD tests in `internal/application/assets/delivery/drive_validator_metrics_test.go`
+    (`TestDriveValidatorMetrics_ObserveProbe_P1_4` + `TestDriveValidatorMetrics_ObserveRunEnd_P1_4`
+    + `TestDriveValidatorMetrics_NilReceiverNoOp_P1_4`) GREEN; 4 new metrics + nil-safe
+    wrapper at `internal/infrastructure/observability/metrics_delivery.go` +
+    `internal/application/assets/delivery/drive_validator_metrics.go`; NewDriveRootsValidator
+    extended to 4-arg; 11 call site updates. Side-effect fixup commit `9856a2b6`
+    (separate): renamed DeliveryStatus → JobDeliveryStatus to disambiguate from
+    the new P0.2 delivery_status.go (regression-collision avoidance).
+  linked_issues:
+    - id: 442a4dfe
+      owner_capability: internal/application/assets/delivery + internal/infrastructure/observability
+      status: shipped
+      deadline: 2026-07-03
+- id: PR-P1.5-CLOSURE
+  status: done
+  exit_signal: true
+  owner: architecture
+  deadline: 2026-07-03
+  exit_gate: |-
+    Typed-path transient classifier + Retry-After header + jitter extension landed:
+    *googleAPIError type with `RetryAfter(...)` method + errors.Is sentinel chain
+    (`ErrGoogleAPIErrorPermanent`/etc) + `pkg/retry.WrapTransient` typed-wrap on
+    SDK exit. `pkg/retry.JitterFraction=0.25` (math/rand.Float64() bounded) replacing
+    `time.Now().UnixNano() % 1_000_000` hack. 6 TDD tests in pkg/retry GREEN
+    (`TestGoogleAPIError_RetryAfterDuration_FromHeader` + `TestGoogleAPIError_ErrorsIs_Sentinels`
+    + `TestGoogleAPIError_IsRetryable_SatisfiesInterface` +
+    `TestDoWithValue_HonorsRetryAfter` + `TestDoWithValue_HonorsRetryAfter_ThroughWrappedError`
+    + `TestJitterFraction_LockedAt25Pct`).
+  linked_issues:
+    - id: 819c9d95
+      owner_capability: pkg/retry + internal/infrastructure/drive
+      status: shipped
+      deadline: 2026-07-03
+- id: PR-P2.1-CLOSURE
+  status: done
+  exit_signal: true
+  owner: architecture
+  deadline: 2026-07-03
+  exit_gate: |-
+    Package-level mutable test seams in `internal/infrastructure/drive` eliminated:
+    `lookup` + `openFile` function-typed package-level vars retired; lazy-default
+    via struct-field closures (`PutFileAction.lookup` / `uploader.openFile` fields).
+    3 TDD tests GREEN: `TestOpenFileInjection` (P2.1) + `TestPutFileLookupErrorFailClosed`
+    + `TestPutFileAmbiguousMatchError`. Forward-pointer: pre-existing
+    `internal/app/build_bundles_domain.go` routing.* drift is OUT OF SCOPE per
+    AGENTS.md minimal-change — carries forward per architecture/issues.yaml.
+  linked_issues:
+    - id: 96ec87e1
+      owner_capability: internal/infrastructure/drive
+      status: shipped
+      deadline: 2026-07-03
+- id: PR-P2.2-CLOSURE
+  status: done
+  exit_signal: true
+  owner: architecture
+  deadline: 2026-07-03
+  exit_gate: |-
+    DRIVE-008 fail-closed stubs shipped: 3 production fail-closed stubs in
+    clips_adapters_drive.go + 1 sentinel `clips.ErrLegacySurfaceRetired` (typed,
+    godlike/07 typed-error contract) + 2 sentinel tests in
+    `internal/infrastructure/drive/errors_test.go` + 9+2 surviving sentinels
+    documented per audit-pin. P2.5 bump: `drive.ErrLegacySurfaceRetired` was
+    inadvertently dropped by P0.8 commit `fb0a4dfd` during ErrAmbiguousDriveFolder
+    extraction; P2.5 restores the sentinel so the production multi-%w wrap chain
+    in `internal/app/clips_adapters_drive.go` compiles + tests pass (2x
+    `errors.Is` probe still resolves cleanly). Forward-pointer:
+    `PR-DRIVE-008-CONTRACT`.
+  linked_issues:
+    - id: 0fa8c065
+      owner_capability: internal/application/clips + internal/application/assets/sourcing
+      status: shipped
+      deadline: 2026-07-03
+    - id: fb0a4dfd
+      owner_capability: internal/infrastructure/drive
+      status: shipped
+      deadline: 2026-07-03
+    - id: PR-DRIVE-008-CONTRACT
+      owner_capability: internal/app + internal/infrastructure/drive + internal/application/clips + internal/application/assets/sourcing
+      status: pending
+      deadline: 2026-Q4
+- id: PR-P2.3-CLOSURE
+  status: done
+  exit_signal: true
+  owner: architecture
+  deadline: 2026-07-03
+  exit_gate: |-
+    `delivery.PublishAction` → `delivery.UploadOutcome` rename +
+    Go-level type-alias back-compat (`type PublishAction = UploadOutcome`)
+    + 5 constant back-compat aliases (`PublishActionCreated`/etc). 3 NEW
+    TDD tests GREEN:
+      * `internal/application/assets/delivery/types_test.go`:
+        `TestPublishAction_To_UploadOutcome_Alias` (Go-level identity round-trip)
+        + `TestUploadOutcomeConstants_Canonical5` (5-constant closed-set fingerprint).
+      * `internal/infrastructure/drive/publisher_translate_test.go`:
+        `TestPublisherActionFor_DrivePutActionMapping` (cross-package 4-arm
+        switch + fallback-to-Unknown).
+    2-NIT from prior reviewer: `CanonicalUploadOutcomeValues()` helper kept in
+    test file (production export filed to Wave 14 mega-package split gate per
+    forward-pointer below). Pre-existing prior `MutationsDispatcher` literal in
+    internal/app/module_media.go:334 is OUT OF SCOPE — separate follow-up.
+  linked_issues:
+    - id: <P2.3-SHA>
+      owner_capability: internal/application/assets/delivery + internal/infrastructure/drive
+      status: shipped
+      deadline: 2026-07-03
+- id: PR-P2.4-CLOSURE
+  status: done
+  exit_signal: true
+  owner: architecture
+  deadline: 2026-07-03
+  exit_gate: |-
+    Documentation hygiene across 4 doc files: AGENTS.md "Known Issues & Fixes"
+    gained 4 typed closure entries (#15 P2.2 + #16 P2.1 + #17 P1.5 + #18 P1.4)
+    with canonical SHA pinning per entry; ARCHITECTURE.md got a Recent closures
+    table (navigation-only); CHANGELOG.md received 6 closure entries at EOF
+    (P2.4 meta + P2.2 + P2.1 + P1.5 + P1.4 + later P2.5 cutover completion);
+    architecture/current.yaml gained 5 NEW wave-tracker entries (P1.4-CLOSURE
+    + P1.5-CLOSURE + P2.1-CLOSURE + P2.2-CLOSURE + P2.4-CLOSURE) — P2.3-CLOSURE
+    landed concurrently with P2.5 acceptance check.
+  linked_issues:
+    - id: 9d5149e4
+      owner_capability: architecture (docs-only)
+      status: shipped
+      deadline: 2026-07-03
