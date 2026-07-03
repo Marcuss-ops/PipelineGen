@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/zap"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/stretchr/testify/assert"
@@ -154,7 +155,9 @@ func TestValidateServiceDeps_AllValidDepsPass(t *testing.T) {
 
 func TestIndexClip_NoOpWhenIndexerNotWired(t *testing.T) {
 	svc := NewService(ServiceDeps{
-		Indexer: nil, // no indexer
+		Log:        zap.NewNop(),
+		ProcessSeg: newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
+		Indexer:    nil, // no indexer
 	})
 	err := svc.IndexClip(context.Background(), "test-clip-id")
 	assert.NoError(t, err, "IndexClip should return nil (no-op) when indexer is not wired")
@@ -162,7 +165,9 @@ func TestIndexClip_NoOpWhenIndexerNotWired(t *testing.T) {
 
 func TestTranscribeAudio_EmptyWhenWhisperNotWired(t *testing.T) {
 	svc := NewService(ServiceDeps{
-		Whisper: nil, // no whisper
+		Log:        zap.NewNop(),
+		ProcessSeg: newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
+		Whisper:    nil, // no whisper
 	})
 	result, err := svc.TranscribeAudio(context.Background(), "/tmp/test.wav")
 	assert.NoError(t, err)

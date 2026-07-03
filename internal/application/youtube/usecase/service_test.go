@@ -198,6 +198,7 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 	svc := NewService(ServiceDeps{
 		Cfg:               cfg,
 		Log:               log,
+		ProcessSeg:        newTestProcessSegmentUseCase(log, pipeline),
 		MediaProcessor:    nil, // processor
 		VideoPipeline:     pipeline,
 		LifecycleService:  nil, // lifecycle
@@ -247,6 +248,7 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 	svc := NewService(ServiceDeps{
 		Cfg:               cfg,
 		Log:               log,
+		ProcessSeg:        newTestProcessSegmentUseCase(log, pipeline),
 		MediaProcessor:    nil, // processor
 		VideoPipeline:     pipeline,
 		LifecycleService:  nil, // lifecycle
@@ -425,6 +427,7 @@ func TestExtract_ReturnsContextCancelledIfContextCancelled(t *testing.T) {
 	svc := NewService(ServiceDeps{
 		Cfg:           testConfig(tmp),
 		Log:           zap.NewNop(),
+		ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
 		VideoPipeline: &fakeVideoPipeline{},
 		AssetRepo:     &fakeAssetRepo{},
 		SearchRunner:  &fakeSearchRunner{},
@@ -473,6 +476,7 @@ func TestExtract_ReturnsContextDeadlineExceededIfContextExpired(t *testing.T) {
 	svc := NewService(ServiceDeps{
 		Cfg:           testConfig(tmp),
 		Log:           zap.NewNop(),
+		ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
 		VideoPipeline: &fakeVideoPipeline{},
 		AssetRepo:     &fakeAssetRepo{},
 		SearchRunner:  &fakeSearchRunner{},
