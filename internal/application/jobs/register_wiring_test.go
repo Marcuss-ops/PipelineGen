@@ -45,6 +45,7 @@ package jobs_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	catalogsync "github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -162,4 +163,123 @@ func TestErrMissingDeps_IsExportedSentinel(t *testing.T) {
 	if jobs.ErrMissingDeps.Error() == "" {
 		t.Fatal("jobs.ErrMissingDeps.Error() is empty; canonical sentinel string-is-empty is a regression")
 	}
+}
+
+// ── §15.9 Registrazione incompleta (July 2026) ─────────────────────
+//
+// TestValidateHandlerCompleteness_DetectsMissingChildHandler pins the
+// voiceover.md §15.9 acceptance criterion: when the voiceover.generate
+// parent handler is registered but voiceover.generate_item is missing,
+// the server MUST NOT start (ValidateHandlerCompleteness must return
+// an error so the composition root can fail-closed at boot).
+//
+// Why this matters: the parent voiceover.generate handler fans out
+// voiceover.generate_item child jobs. If the child handler is not
+// registered, every child job sits in the queue forever (no worker
+// can execute it). The pre-§15.9 state was a silent failure: the
+// server booted, the parent enqueued children, and nothing consumed
+// them. ValidateHandlerCompleteness closes this gap by failing-closed
+// BEFORE the first job is accepted.
+//
+// Test strategy: build a real Service + Dispatcher + Registry (no mocks),
+// register ONLY the parent handler, and assert ValidateHandlerCompleteness
+// returns a non-nil error referencing the missing voiceover.generate_item.
+// Then register the child handler and assert the check passes.
+func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
+	dispatcher := jobs.NewDispatcher()
+	svc := jobs.NewService(nil, dispatcher, nil)
+
+	// Build a minimal registry with only the voiceover parent-child pair.
+	// Using Compose() would register ALL job types (media.reindex, etc.),
+	// and registering every handler in a focused §15.9 test would be
+	// invasive. A custom Registry isolates the test to the voiceover pair.
+	reg := jobs.NewRegistry()
+	if err := reg.Register(jobs.JobPolicy{
+		Type:              jobs.TypeVoiceoverGenerate,
+		Description:       "Voiceover single generation",
+		Timeout:           30 * time.Minute,
+		DefaultMaxRetries: 2,
+		ProducesArtifacts: true,
+	}); err != nil {
+		t.Fatalf("§15.9: register voiceover.generate in test registry: %v", err)
+	}
+	if err := reg.Register(jobs.JobPolicy{
+		Type:              jobs.TypeVoiceoverGenerateItem,
+		Description:       "Voiceover per-language child",
+		Timeout:           10 * time.Minute,
+		DefaultMaxRetries: 2,
+		Concurrency:       4,
+		ProducesArtifacts: true,
+	}); err != nil {
+		t.Fatalf("§15.9: register voiceover.generate_item in test registry: %v", err)
+	}
+
+	// Step 1: register ONLY the parent — child is missing.
+	// The zero-value GenerateJobHandler{}.Register only does
+	// jobsSvc.RegisterHandler(TypeVoiceoverGenerate, ...) — it
+	// does NOT register voiceover.generate_item.
+	if err := (&voiceoverjobs.GenerateJobHandler{}).Register(svc); err != nil {
+		t.Fatalf("§15.9: Register parent (GenerateJobHandler) failed: %v", err)
+	}
+
+	// Parent IS consumable.
+	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+		t.Fatal("§15.9: after Register, parent handler must be present (HasHandler returned false)")
+	}
+
+	// Child is NOT consumable — the gap that ValidateHandlerCompleteness must detect.
+	if svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {
+		t.Fatal("§15.9: child handler must NOT be present yet (only parent registered)")
+	}
+
+	// ValidateHandlerCompleteness must fail because voiceover.generate_item
+	// is in the registry but has no handler.
+	err := svc.ValidateHandlerCompleteness(reg)
+	if err == nil {
+		t.Fatal("§15.9 ACCEPTANCE CRITERION FAILED: ValidateHandlerCompleteness returned nil when voiceover.generate_item has no handler. The server would start with a consumable job type that can never execute.")
+	}
+
+	// The error must reference the missing job type so operators can
+	// grep the boot log for the specific gap.
+	if !containsString(err.Error(), jobs.TypeVoiceoverGenerateItem) {
+		t.Fatalf("§15.9: ValidateHandlerCompleteness error must mention the missing job type %q, got: %v",
+			jobs.TypeVoiceoverGenerateItem, err)
+	}
+
+	t.Logf("§15.9 parent-only check passed: %v", err)
+
+	// Step 2: register the child handler — now both are present.
+	// Zero-value GenerateItemJobHandler{}.Register is safe because
+	// RegisterHandler is the only code path reached (the unexported
+	// useCase field is never dereferenced by Register).
+	if err := (&voiceoverjobs.GenerateItemJobHandler{}).Register(svc); err != nil {
+		t.Fatalf("§15.9: Register child (GenerateItemJobHandler) failed: %v", err)
+	}
+
+	// Both handlers must be consumable.
+	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+		t.Fatal("§15.9: after child register, parent handler must still be present")
+	}
+	if !svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {
+		t.Fatal("§15.9: after child register, child handler must be present")
+	}
+
+	// ValidateHandlerCompleteness must now pass.
+	if err := svc.ValidateHandlerCompleteness(reg); err != nil {
+		t.Fatalf("§15.9: after both handlers registered, ValidateHandlerCompleteness must return nil, got: %v", err)
+	}
+
+	t.Log("§15.9 full-pair check: ValidateHandlerCompleteness passed (both handlers present)")
+}
+
+// containsString reports whether s contains substr (case-sensitive).
+// Go 1.21+ would use strings.Contains directly; this helper avoids an
+// extra import in the test package for one call.
+func containsString(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

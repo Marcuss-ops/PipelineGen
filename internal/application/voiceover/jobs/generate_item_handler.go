@@ -85,8 +85,10 @@ func (h *GenerateItemJobHandler) Register(jobsSvc *appjobs.Service) error {
 		return fmt.Errorf("GenerateItemJobHandler.Register: bind %q to dispatcher: %w",
 			appjobs.TypeVoiceoverGenerateItem, err)
 	}
-	h.logger.Info("registered voiceover.generate_item handler",
-		zap.String("job_type", appjobs.TypeVoiceoverGenerateItem))
+	if h.logger != nil {
+		h.logger.Info("registered voiceover.generate_item handler",
+			zap.String("job_type", appjobs.TypeVoiceoverGenerateItem))
+	}
 	return nil
 }
 
