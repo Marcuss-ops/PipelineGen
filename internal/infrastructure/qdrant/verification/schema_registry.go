@@ -111,15 +111,40 @@ func (r *SchemaRegistry) Versions() []string {
 // to surface a meaningful operator error.
 var ErrSchemaVersionNotFound = fmt.Errorf("qdrant: schema version not found")
 
-// DefaultSchemaRegistry is the package-level registry populated at
-// init() with the canonical PipelineGen schemas. Production code
-// resolves through this; tests that need isolation construct their
-// own registry via NewSchemaRegistry().
-var DefaultSchemaRegistry = NewSchemaRegistry()
+// defaultSchemaRegistry is the package-level registry populated at
+// init() with the canonical PipelineGen schemas. Unexported per PR #11
+// (July 2026) — the registry is sealed after init(); external callers
+// resolve via the package-level ResolveSchema() / MustResolveSchema() /
+// RegisteredVersions() which return deep copies so the registry's
+// internal instances stay immutable.
+var defaultSchemaRegistry = NewSchemaRegistry()
+
+// ResolveSchema returns a deep copy of the schema registered under `version`.
+// Empty `version` defaults to "v3". Callers receive a mutable copy —
+// the registry's canonical instance is never mutated through this path.
+func ResolveSchema(version string) (*schema.IndexSchema, error) {
+	s, err := defaultSchemaRegistry.Resolve(version)
+	if err != nil {
+		return nil, err
+	}
+	return s.DeepCopy(), nil
+}
+
+// MustResolveSchema is ResolveSchema-or-panic.
+func MustResolveSchema(version string) *schema.IndexSchema {
+	s, err := ResolveSchema(version)
+	if err != nil {
+		panic(err.Error())
+	}
+	return s
+}
+
+// RegisteredVersions returns the sorted list of registered versions.
+func RegisteredVersions() []string { return defaultSchemaRegistry.Versions() }
 
 func init() {
-	DefaultSchemaRegistry.Register(schema.DefaultV3Schema())
-	DefaultSchemaRegistry.Register(DefaultV3SpeakerSchema())
+	defaultSchemaRegistry.Register(schema.DefaultV3Schema())
+	defaultSchemaRegistry.Register(DefaultV3SpeakerSchema())
 }
 
 // DefaultV3SpeakerSchema is the second-registered schema

@@ -22,9 +22,7 @@ const CurrentEmbeddingVersion = schema.CurrentEmbeddingVersion
 const CurrentSearchTextVersion = schema.CurrentSearchTextVersion
 const DefaultSparseModel = schema.DefaultSparseModel
 
-// ── schema.go ──────────────────────────────────────────────────────────
-
-func DefaultV() *IndexSchema        { return DefaultV3Schema() }
+// ── schema.go ──────────────────────────────────────────────────────────func DefaultV() *IndexSchema        { return DefaultV3Schema() }
 func DefaultV3Schema() *IndexSchema { return schema.DefaultV3Schema() }
 func CompareSchema(expected *IndexSchema, actual *CollectionInfo) *SchemaDiff {
 	return schema.CompareSchema(expected, actual)

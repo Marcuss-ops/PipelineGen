@@ -137,7 +137,7 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 		if cfg.QdrantCfg != nil && cfg.QdrantCfg.CollectionVersion != "" {
 			version = cfg.QdrantCfg.CollectionVersion
 		}
-		resolved, err := DefaultSchemaRegistry.Resolve(version)
+		resolved, err := ResolveSchema(version)
 		if err != nil {
 			return nil, fmt.Errorf("qdrant.NewRuntime: %w", err)
 		}
