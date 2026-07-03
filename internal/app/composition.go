@@ -15,7 +15,10 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -26,8 +29,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	assetsearch	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
@@ -381,6 +385,26 @@ type UtilityBundle struct {
 	ReadyChecker  *systemhealth.ReadyChecker
 }
 
+// AssetsWiring holds the Assets module wiring.
+// Moved from module_media.go (PR-GODOBJ-7 composition target, July 2026).
+type AssetsWiring struct {
+	Module               module.Module
+	DeletionSvc          *deletion.DeletionService
+	InternalMediaHandler *assetstorage.Handler
+	// Wave 21 PR 10 (June 2026): the canonical SearchAggregator
+	// (search.NewAggregator). The legacy clipssearch.Service +
+	// appsearch.Service wirings were deleted in PR 10 — see
+	// architecture/deprecations.yaml records
+	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
+	SearchAggregator *search.Aggregator
+	// PR-2 (June 2026): the canonical SearchFanOut (decorator
+	// wrapping the canonical Aggregator). Exposed via this
+	// wiring handle so other consumers (diagnostics + future
+	// Health probes) read the SHARED instance rather than
+	// constructing a parallel one. == deps.Search.SearchFanOut alias.
+	SearchFanOut search.SearchFanOut
+}
+
 // ComposeRoot is the assembled root tree. NewComposition returns this.
 type ComposeRoot struct {
 	DB *storage.SQLiteDB
@@ -415,13 +439,6 @@ type ComposeRoot struct {
 // IOpaqueStartFunc is the opaque type for deferred initialisation closures
 // returned by Build*Bundle constructors (PR9 series, June 2026).
 type IOpaqueStartFunc func() error
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-// configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
-func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
-	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
-}
 
 // ── Orchestrator: NewComposition ─────────────────────────────────────────
 
