@@ -28,57 +28,68 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 	return nil
 }
 
+// seedFileHash pre-computes the contentHash that IndexClip will compute
+// when called, and writes it to media_assets.file_hash so the CAS fence
+// in setIndexedAt passes for the test fixture.
+//
+// Why this is necessary (PR-CLIPINDEXER-FOLD-INVESTIGATE closure):
+//   The CAS fence matches (id, source_version, file_hash, index_state='INDEXING').
+//   A test row with file_hash='' (canonical default) and source_version=''
+//   (canonical default) CAS-misses whenever computeContentHash returns a
+//   non-empty hash — production callers always pre-populate file_hash via
+//   DownloadProcessor / Drive upload / cmd/admin/backfill_hash.go before
+//   calling IndexClip, so this seed mirrors the production setup shape.
+//
+//   Computing the hash via svc.computeContentHash (rather than duplicating
+//   the hashing algorithm here) means algorithm evolution (e.g. adding a
+//   new field to contentParts) automatically stays in lockstep; the test
+//   cannot drift from production by a missing input variable.
+//
+// Mirrors the `preSeedFileHash` helper in indexing_api_audio_test.go
+// (already shipped on origin/main, July 2026, PRE-AUDIO-CHANNEL-EXTENSION)
+// — both helpers thread (svc, clipID) and write back to the same row.
+func seedFileHash(t *testing.T, svc *Service, clipID string) {
+	t.Helper()
+	ctx := context.Background()
+	ch, _, err := svc.computeContentHash(ctx, clipID)
+	if err != nil {
+		t.Fatalf("seedFileHash: computeContentHash for %s failed: %v", clipID, err)
+	}
+	if _, err := svc.db.ExecContext(ctx,
+		`UPDATE media_assets SET file_hash = ? WHERE id = ?`, ch, clipID,
+	); err != nil {
+		t.Fatalf("seedFileHash: UPDATE for %s failed: %v", clipID, err)
+	}
+}
+
 func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
-	// 1. Create in-memory SQLite DB with the inline 10-column schema.
+	// 1. Create in-memory SQLite DB with the canonical media_assets schema.
 	//
-	// CANONICAL-DRIFT-MIG094 closure (June 2026, July 2026 follow-on):
-	// this test is INTENTIONALLY EXEMPT from the canonical.go "MUST
-	// embed" rule. A fold attempt (replacing this inline block with
-	// drive.CanonicalMediaAssetsSchema) was attempted in the
-	// 9912a118-era closure pass, validated against this test, and
-	// REVERTED because:
-	//
-	//   * The inline schema declares `embedding_json TEXT` (nullable);
-	//     the test inserts raw SQL NULL into it.
-	//   * Canonical declares `embedding_json TEXT NOT NULL DEFAULT '[]'`;
-	//     the fold required the test to either omit the column (yielding
-	//     DEFAULT '[]') or pass a non-NULL value. Both options broke the
-	//     test: the indexer's CAS check in setIndexedAt rejects rows
-	//     where embedding_json is non-NULL, interpreting the value as
-	//     `already indexed` (the `source_version=""` CAS-miss surface).
-	//
-	// The clause "Fixtures that need an EXACT column-count or a
-	// semantic-test-contract inline schema are exempt" in
-	// canonical.go's header doc lists clipindexer/service_test.go as a
-	// documented exemption alongside the 3 other exempt fixtures
-	// (clips_crud_test, images_repository_test, clip_atomic_writer_test).
-	// PR-CLIPINDEXER-FOLD-INVESTIGATE forward-pointer carries the
-	// investigation into the embedding_json NOT-NULL / CAS contract.
-	db := drive.NewTestDBWithSchema(t, `
-		CREATE TABLE media_assets (
-			id TEXT PRIMARY KEY,
-			name TEXT,
-			source TEXT,
-			tags TEXT,
-			embedding_json TEXT,
-			metadata_json TEXT,
-			index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
-			index_state_updated_at TEXT NOT NULL DEFAULT '',
-			source_version TEXT NOT NULL DEFAULT '',
-			file_hash TEXT NOT NULL DEFAULT ''
-		)
-	`)
+	// Closed via PR-CLIPINDEXER-FOLD-INVESTIGATE (July 2026): the inline
+	// 10-col schema previously used here was a strict subset of canonical
+	// but INADVERTENTLY PASSED the CAS fence because it lacked the
+	// search_text column — computeContentHash errored with `no such
+	// column` and fell back to contentHash=""; the empty hash then
+	// matched row.file_hash='' (canonical default) and the test passed
+	// by accident. The fold + the seedFileHash helper (above) now exercise
+	// the production-shape CAS fence honestly: search_text column exists
+	// in canonical, computeContentHash succeeds, file_hash is pre-seeded
+	// with the same hash via seedFileHash, CAS matches, setIndexedAt
+	// writes INDEXED. See canonical.go header's "Historical audits" block
+	// for the full exemption-archaeology context.
+	db := drive.NewTestDBWithSchema(t, drive.CanonicalMediaAssetsSchema)
 	defer db.Close()
 
-	// Insert test clips. The fold from the previous inline schema
-	// (embedding_json TEXT, nullable) to CanonicalMediaAssetsSchema
-	// (embedding_json TEXT NOT NULL DEFAULT '[]') means we can no
-	// longer insert raw NULL; the canonical DEFAULT absorbs the
-	// omission. We therefore omit embedding_json from the column
-	// list rather than passing NULL — the canonical contract enforces
-	// NOT NULL with default, and the test contract is independent of
-	// the embedding_json payload (the indexer is the unit under test,
-	// not the embedding column).
+	// 2. Insert test clips. embedding_json is OMITTED from the column
+	// list so canonical's NOT NULL DEFAULT '[]' absorbs the omission
+	// (the test contract is the indexer, not the embedding column).
+	// search_text column is also omitted — the column-level default is
+	// '', and the test's metadata_json carries $.search_text which is
+	// read by indexTextViaAPI via json_extract. computeContentHash will
+	// see an empty search_text column though, meaning its returned hash
+	// composes only with name + transcript — which is exactly the
+	// production-shape pattern (search_text starts empty until the
+	// outbox elsepath populates it).
 	_, err := db.Exec(`
 		INSERT INTO media_assets (id, name, source, tags, metadata_json)
 		VALUES
@@ -122,10 +133,21 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	vs := &mockVectorStoreIndexer{}
 	svc.vectorStore = vs
 
+	// 4.5. PR-CLIPINDEXER-FOLD-INVESTIGATE seed step: production callers
+	// always pre-populate media_assets.file_hash (via DownloadProcessor
+	// / Drive upload / cmd/admin/backfill_hash.go admin) before calling
+	// IndexClip. The CAS fence (setIndexedAt) matches (id, source_version,
+	// file_hash, index_state='INDEXING'); without the seed, the empty
+	// canonical-default file_hash mismatches the contentHash that
+	// computeContentHash returns for a row with name='Test Clip One',
+	// and setIndexedAt surfaces ErrIndexSuperseded
+	// (CAS miss for clip_1 (source_version="") — index event superseded
+	// by newer version).
+	seedFileHash(t, svc, "clip_1")
+
 	// 5. Index individual clip via API
 	err = svc.IndexClip(context.Background(), "clip_1")
 	require.NoError(t, err)
 	assert.Equal(t, 1, apiCalled)
-
-
 }
+
