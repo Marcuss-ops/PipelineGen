@@ -8,6 +8,7 @@
 package creator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -40,18 +41,26 @@ type stubBroker struct {
 	lastFinalizeIdemKey   string
 	lastUploadSessionID   string
 	lastFinalizeSessionID string
+	// Last prepareCtx observed by the stub. Captured so tests can
+	// assert that the Adapter threads prepareCtx.Ctx through to the
+	// broker verbatim (P1 #10 hardening).
+	lastPrepareCtxPrepare remote.PrepareContext
+	lastPrepareCtxUpload  remote.PrepareContext
+	lastPrepareCtxFinal   remote.PrepareContext
 }
 
-func (s *stubBroker) PrepareArtifactUpload(ctx remote.PrepareContext) (*remote.UploadSession, error) {
+func (s *stubBroker) PrepareArtifactUpload(prepareCtx remote.PrepareContext) (*remote.UploadSession, error) {
 	s.prepareCalls++
+	s.lastPrepareCtxPrepare = prepareCtx
 	if s.nextPrepareErr != nil {
 		return nil, s.nextPrepareErr
 	}
 	return s.nextPrepareSession, nil
 }
 
-func (s *stubBroker) UploadArtifactFile(ctx remote.PrepareContext, sessionID, localPath, idempotencyKey string) (*remote.UploadSession, error) {
+func (s *stubBroker) UploadArtifactFile(prepareCtx remote.PrepareContext, sessionID, localPath, idempotencyKey string) (*remote.UploadSession, error) {
 	s.uploadCalls++
+	s.lastPrepareCtxUpload = prepareCtx
 	s.lastUploadSessionID = sessionID
 	s.lastUploadLocalPath = localPath
 	s.lastUploadIdemKey = idempotencyKey
@@ -61,8 +70,9 @@ func (s *stubBroker) UploadArtifactFile(ctx remote.PrepareContext, sessionID, lo
 	return s.nextUploadSession, nil
 }
 
-func (s *stubBroker) FinalizeArtifactUpload(ctx remote.PrepareContext, sessionID, sha256Hex, idempotencyKey string) (*remote.UploadSession, error) {
+func (s *stubBroker) FinalizeArtifactUpload(prepareCtx remote.PrepareContext, sessionID, sha256Hex, idempotencyKey string) (*remote.UploadSession, error) {
 	s.finalizeCalls++
+	s.lastPrepareCtxFinal = prepareCtx
 	s.lastFinalizeSessionID = sessionID
 	s.lastFinalizeSha256Hex = sha256Hex
 	s.lastFinalizeIdemKey = idempotencyKey
@@ -96,7 +106,11 @@ func mkFinalizedSession() *remote.UploadSession {
 }
 
 func mkContext() remote.PrepareContext {
+	// Ctx set to context.Background() so existing happy-path tests
+	// keep passing under P1 #10's fail-closed Ctx-required contract.
+	// Per-test cancellation scenarios use mkContextWithCtx below.
 	return remote.PrepareContext{
+		Ctx:          context.Background(),
 		JobID:        "job-001",
 		LeaseID:      "lease-001",
 		ArtifactID:   "job-001:script_json",
@@ -106,6 +120,15 @@ func mkContext() remote.PrepareContext {
 		SizeBytes:    1234,
 		SHA256:       "abc12345",
 	}
+}
+
+// mkContextCtx returns a PrepareContext with the supplied Ctx (for
+// P1 #10 cancellation tests that need to assert the Ctx propagates
+// end-to-end through to the broker stub).
+func mkContextCtx(parent context.Context) remote.PrepareContext {
+	c := mkContext()
+	c.Ctx = parent
+	return c
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -339,6 +362,152 @@ func TestAdapter_Prepare_EmptyArtifactID_IdemKeyEmpty(t *testing.T) {
 	}
 	if !errors.Is(err, remote.ErrArtifactIdempotencyKeyConflict) {
 		t.Errorf("expected ErrArtifactIdempotencyKeyConflict; got %v", err)
+	}
+}
+
+// ── P1 #10 hardening tests ─────────────────────────────────────────────────
+
+// TestAdapter_Prepare_NilCtx_FailsClosed — P1 #10: a PrepareContext
+// with Ctx==nil is rejected BEFORE any state-machine gate or
+// broker call, surfacing ErrArtifactCtxRequired as the canonical
+// typed-error contract. godlike/07 no-fake-availability + distinct
+// sentinel from ErrArtifactUploaderNotConfigured (wiring bug) so
+// callers can errors.Is each disambiguatably.
+func TestAdapter_Prepare_NilCtx_FailsClosed(t *testing.T) {
+	broker := &stubBroker{nextPrepareSession: mkInitialSession()}
+	a := newWithClient(broker, zap.NewNop())
+
+	ctx := mkContext()
+	ctx.Ctx = nil // the bug scenario: caller forgot to thread the ambient jobCtx
+
+	_, err := a.Prepare(ctx)
+	if err == nil {
+		t.Fatal("expected error when PrepareContext.Ctx is nil (P1 #10 fail-closed)")
+	}
+	if !errors.Is(err, remote.ErrArtifactCtxRequired) {
+		t.Errorf("expected ErrArtifactCtxRequired; got %v", err)
+	}
+	if broker.prepareCalls != 0 {
+		t.Errorf("broker.prepareCalls = %d; want 0 (pre-call rejection)", broker.prepareCalls)
+	}
+}
+
+// TestAdapter_Upload_NilCtx_FailsClosed — P1 #10 mirror for Upload.
+func TestAdapter_Upload_NilCtx_FailsClosed(t *testing.T) {
+	broker := &stubBroker{nextUploadSession: mkUploadedSession()}
+	a := newWithClient(broker, zap.NewNop())
+
+	ctx := mkContext()
+	ctx.Ctx = nil
+	prepSession := mkInitialSession()
+
+	tmpFile := writeTempFile(t, []byte("hello\n"))
+	_, err := a.Upload(ctx, *prepSession, tmpFile)
+	if err == nil {
+		t.Fatal("expected error when PrepareContext.Ctx is nil (P1 #10 fail-closed)")
+	}
+	if !errors.Is(err, remote.ErrArtifactCtxRequired) {
+		t.Errorf("expected ErrArtifactCtxRequired; got %v", err)
+	}
+	if broker.uploadCalls != 0 {
+		t.Errorf("broker.uploadCalls = %d; want 0 (pre-call rejection)", broker.uploadCalls)
+	}
+}
+
+// TestAdapter_Finalize_NilCtx_FailsClosed — P1 #10 mirror for Finalize.
+func TestAdapter_Finalize_NilCtx_FailsClosed(t *testing.T) {
+	broker := &stubBroker{nextFinalizeSession: mkFinalizedSession()}
+	a := newWithClient(broker, zap.NewNop())
+
+	ctx := mkContext()
+	ctx.Ctx = nil
+	uploaded := mkUploadedSession()
+
+	_, err := a.Finalize(ctx, *uploaded)
+	if err == nil {
+		t.Fatal("expected error when PrepareContext.Ctx is nil (P1 #10 fail-closed)")
+	}
+	if !errors.Is(err, remote.ErrArtifactCtxRequired) {
+		t.Errorf("expected ErrArtifactCtxRequired; got %v", err)
+	}
+	if broker.finalizeCalls != 0 {
+		t.Errorf("broker.finalizeCalls = %d; want 0 (pre-call rejection)", broker.finalizeCalls)
+	}
+}
+
+// TestAdapter_Prepare_ThreadsCtxThroughToBroker — P1 #10 audit-pin:
+// the adapter must thread prepareCtx.Ctx verbatim to the broker so
+// the HTTP transport can bind it to net/http.NewRequestWithContext.
+// Without this assertion the Adapter could silently drop or replace
+// the Ctx, reintroducing the P1 #10 bug at a different layer.
+func TestAdapter_Prepare_ThreadsCtxThroughToBroker(t *testing.T) {
+	broker := &stubBroker{nextPrepareSession: mkInitialSession()}
+	a := newWithClient(broker, zap.NewNop())
+
+	type ctxKey struct{}
+	wantCtx := context.WithValue(context.Background(), ctxKey{}, "marker")
+	ctx := mkContextCtx(wantCtx)
+
+	_, err := a.Prepare(ctx)
+	if err != nil {
+		t.Fatalf("Prepare returned error: %v", err)
+	}
+	if broker.lastPrepareCtxPrepare.Ctx != wantCtx {
+		t.Errorf("Prepare did not thread PrepareContext.Ctx verbatim (got %v; want %v)", broker.lastPrepareCtxPrepare.Ctx, wantCtx)
+	}
+	// Sanity: the broker's captured IdempotencyKey was derived from
+	// the canonical triple (still independent of Ctx — guards
+	// against accidental coupling).
+	expectedKey := remote.ArtifactIdempotencyKey("job-001", "job-001:script_json", "abc12345")
+	if broker.lastPrepareCtxPrepare.IdempotencyKey != expectedKey {
+		t.Errorf("IdempotencyKey = %q; want %q", broker.lastPrepareCtxPrepare.IdempotencyKey, expectedKey)
+	}
+}
+
+// TestAdapter_FullHappyPath_ThreeCalls_ThreadsCtx — P1 #10 audit-pin
+// for the full 3-phase protocol: every broker call must receive the
+// same prepareCtx.Ctx reference (no replacement, no nil fallback).
+func TestAdapter_FullHappyPath_ThreeCalls_ThreadsCtx(t *testing.T) {
+	broker := &stubBroker{
+		nextPrepareSession:  mkInitialSession(),
+		nextUploadSession:   mkUploadedSession(),
+		nextFinalizeSession: mkFinalizedSession(),
+	}
+	a := newWithClient(broker, zap.NewNop())
+
+	type ctxKey struct{}
+	wantCtx := context.WithValue(context.Background(), ctxKey{}, "threaded-end-to-end")
+	ctx := mkContextCtx(wantCtx)
+
+	session, err := a.Prepare(ctx)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if broker.lastPrepareCtxPrepare.Ctx != wantCtx {
+		t.Errorf("Prepare.PrepareCtx.Ctx did not thread end-to-end")
+	}
+	tmpFile := writeTempFile(t, []byte("thread-test\n"))
+	// MUST use `session, err = a.Upload(...)` (not `_, err =`) — the
+	// returned session carries the post-Upload state (UPLOADED),
+	// which Finalize requires for the state-machine gate. The
+	// original `_, err =` shadow stripped the state and triggered
+	// a typed IllegalTransitionError at Finalize time.
+	session, err = a.Upload(ctx, *session, tmpFile)
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	if broker.lastPrepareCtxUpload.Ctx != wantCtx {
+		t.Errorf("Upload.PrepareCtx.Ctx did not thread end-to-end")
+	}
+	session, err = a.Finalize(ctx, *session)
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	if broker.lastPrepareCtxFinal.Ctx != wantCtx {
+		t.Errorf("Finalize.PrepareCtx.Ctx did not thread end-to-end")
+	}
+	if session.State != remote.StateUploadFinalized {
+		t.Errorf("post-Finalize state = %q; want FINALIZED", session.State)
 	}
 }
 

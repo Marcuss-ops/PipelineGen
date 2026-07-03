@@ -289,22 +289,37 @@ func (c *Client) setAuth(req *http.Request) {
 // UploadSession envelope. The server-side is expected to return
 // StateUploadPreparing (the Creator adapter's transition gate
 // enforces this client-side).
-func (c *Client) PrepareArtifactUpload(ctx remote.PrepareContext) (*remote.UploadSession, error) {
-	if ctx.JobID == "" {
-		return nil, fmt.Errorf("prepare-artifact-upload: ctx.JobID required (godlike/07 no-fake-availability)")
+//
+// P1 #10 hardening (formerly C6 NIT-1): the HTTP request is bound
+// to prepareCtx.Ctx (the ambient job-ctx), NOT context.Background().
+// When the worker is cancelled, the lease is lost, or shutdown is
+// in progress, prepareCtx.Ctx is already cancelled and net/http
+// aborts the in-flight request. Silent-degrade to a non-cancellable
+// background context would let the upload continue running after
+// the worker has decided to stop (godlike/07 no-fake-availability).
+//
+// godlike/07 fail-closed: when prepareCtx.Ctx is nil, reject before
+// building the HTTP request — a nil Ctx would silently behave like
+// context.Background() and reintroduce the exact bug P1 #10 fixed.
+func (c *Client) PrepareArtifactUpload(prepareCtx remote.PrepareContext) (*remote.UploadSession, error) {
+	if prepareCtx.Ctx == nil {
+		return nil, fmt.Errorf("prepare-artifact-upload: %w", remote.ErrArtifactCtxRequired)
+	}
+	if prepareCtx.JobID == "" {
+		return nil, fmt.Errorf("prepare-artifact-upload: prepareCtx.JobID required (godlike/07 no-fake-availability)")
 	}
 	reqBody := UploadPrepareRequest{
-		ArtifactID:     ctx.ArtifactID,
-		ArtifactKind:   ctx.ArtifactKind,
-		Filename:       ctx.Filename,
-		MIMEType:       ctx.MIMEType,
-		SizeBytes:      ctx.SizeBytes,
-		SHA256:         ctx.SHA256,
-		IdempotencyKey: ctx.IdempotencyKey,
+		ArtifactID:     prepareCtx.ArtifactID,
+		ArtifactKind:   prepareCtx.ArtifactKind,
+		Filename:       prepareCtx.Filename,
+		MIMEType:       prepareCtx.MIMEType,
+		SizeBytes:      prepareCtx.SizeBytes,
+		SHA256:         prepareCtx.SHA256,
+		IdempotencyKey: prepareCtx.IdempotencyKey,
 	}
-	url := c.baseURL + fmt.Sprintf(pathUploadPrepareFmt, ctx.JobID)
+	url := c.baseURL + fmt.Sprintf(pathUploadPrepareFmt, prepareCtx.JobID)
 	var session remote.UploadSession
-	if err := c.postJSON(context.Background(), url, reqBody, &session); err != nil {
+	if err := c.postJSON(prepareCtx.Ctx, url, reqBody, &session); err != nil {
 		return nil, fmt.Errorf("prepare-artifact-upload: %w", err)
 	}
 	return &session, nil
@@ -318,7 +333,20 @@ func (c *Client) PrepareArtifactUpload(ctx remote.PrepareContext) (*remote.Uploa
 // Key headers. Percent-escapes the filename for URL-safety so names
 // with spaces / ampersands / hash fragments / non-ASCII survive the
 // ?filename= query parameter without 400-ing the request.
-func (c *Client) UploadArtifactFile(ctx remote.PrepareContext, sessionID, localPath, idempotencyKey string) (*remote.UploadSession, error) {
+//
+// P1 #10 hardening (formerly C6 NIT-1): the HTTP request is bound
+// to prepareCtx.Ctx (the ambient job-ctx) via
+// http.NewRequestWithContext, NOT context.Background(). For an
+// upload-file command this is critical because the file stream
+// can be many MB; without the binding, a worker shutdown drain or
+// lease-loss would let the upload continue to completion silently
+// even after the worker has decided to stop.
+//
+// godlike/07 fail-closed: prepareCtx.Ctx nil → reject.
+func (c *Client) UploadArtifactFile(prepareCtx remote.PrepareContext, sessionID, localPath, idempotencyKey string) (*remote.UploadSession, error) {
+	if prepareCtx.Ctx == nil {
+		return nil, fmt.Errorf("upload-artifact-file: %w", remote.ErrArtifactCtxRequired)
+	}
 	if sessionID == "" {
 		return nil, fmt.Errorf("upload-artifact-file: sessionID required (godlike/07 no-fake-availability)")
 	}
@@ -341,15 +369,14 @@ func (c *Client) UploadArtifactFile(ctx remote.PrepareContext, sessionID, localP
 	// silently break the upload pipeline. percent-escape canonical
 	// via the stdlib url.QueryEscape (matches assettransferclient pattern).
 	safeFilename := url.QueryEscape(filename)
-	contentURL := c.baseURL + fmt.Sprintf(pathUploadFileFmt, ctx.JobID, sessionID) + "?filename=" + safeFilename
+	contentURL := c.baseURL + fmt.Sprintf(pathUploadFileFmt, prepareCtx.JobID, sessionID) + "?filename=" + safeFilename
 
-	// Cancel semantics for the upload-file command: the http-level
-	// Timeout configured on c.httpClient governs cancel; the
-	// context.Background here matches the existing client pattern
-	// for non-streaming commands (which also use Background since
-	// the typed port passes remote.PrepareContext, not a
-	// context.Context).
-	req, err := http.NewRequestWithContext(context.Background(), "POST", contentURL, f)
+	// P1 #10: bind the HTTP request to prepareCtx.Ctx (was
+	// context.Background before this commit; see the type-level
+	// godlike/07 contract). Worker cancellation / lease-loss /
+	// shutdown drain surfaces as a transport error here, NOT a
+	// silent success.
+	req, err := http.NewRequestWithContext(prepareCtx.Ctx, "POST", contentURL, f)
 	if err != nil {
 		return nil, fmt.Errorf("upload-artifact-file: create request: %w", err)
 	}
@@ -380,7 +407,14 @@ func (c *Client) UploadArtifactFile(ctx remote.PrepareContext, sessionID, localP
 // server-side atomically verifies + transitions to VERIFIED + FINALIZED
 // in one call; the Creator adapter's transition gate handles the
 // intermediate VERIFIED hop.
-func (c *Client) FinalizeArtifactUpload(ctx remote.PrepareContext, sessionID, sha256Hex, idempotencyKey string) (*remote.UploadSession, error) {
+//
+// P1 #10 hardening (formerly C6 NIT-1): the HTTP request is bound
+// to prepareCtx.Ctx (the ambient job-ctx), NOT context.Background().
+// godlike/07 fail-closed: prepareCtx.Ctx nil → reject.
+func (c *Client) FinalizeArtifactUpload(prepareCtx remote.PrepareContext, sessionID, sha256Hex, idempotencyKey string) (*remote.UploadSession, error) {
+	if prepareCtx.Ctx == nil {
+		return nil, fmt.Errorf("finalize-artifact-upload: %w", remote.ErrArtifactCtxRequired)
+	}
 	if sessionID == "" {
 		return nil, fmt.Errorf("finalize-artifact-upload: sessionID required (godlike/07 no-fake-availability)")
 	}
@@ -389,9 +423,9 @@ func (c *Client) FinalizeArtifactUpload(ctx remote.PrepareContext, sessionID, sh
 		SHA256:         sha256Hex,
 		IdempotencyKey: idempotencyKey,
 	}
-	url := c.baseURL + fmt.Sprintf(pathUploadFinalizeFmt, ctx.JobID, sessionID)
+	url := c.baseURL + fmt.Sprintf(pathUploadFinalizeFmt, prepareCtx.JobID, sessionID)
 	var session remote.UploadSession
-	if err := c.postJSON(context.Background(), url, reqBody, &session); err != nil {
+	if err := c.postJSON(prepareCtx.Ctx, url, reqBody, &session); err != nil {
 		return nil, fmt.Errorf("finalize-artifact-upload: %w", err)
 	}
 	return &session, nil
