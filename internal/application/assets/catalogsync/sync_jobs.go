@@ -81,7 +81,7 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 		// handler prefix.
 		return fmt.Errorf("catalogsync.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, s.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, appjobs.HandlerFunc(s.HandleJob)); err != nil {
 		return fmt.Errorf("catalogsync.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeCatalogSync, err)
 	}
 	s.log.Info("registered catalog.sync job handler")
@@ -100,7 +100,7 @@ func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *appjobs.Service) error
 		// handler prefix.
 		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, s.HandleDriveFolderSyncJob); err != nil {
+	if err := jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, appjobs.HandlerFunc(s.HandleDriveFolderSyncJob)); err != nil {
 		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: bind %q to dispatcher: %w", appjobs.TypeDriveFolderSync, err)
 	}
 	s.log.Info("registered drive.folder.sync job handler")

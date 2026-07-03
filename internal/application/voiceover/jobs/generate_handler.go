@@ -100,7 +100,7 @@ func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("GenerateJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerate, h.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerate, appjobs.HandlerFunc(h.HandleJob)); err != nil {
 		return fmt.Errorf("GenerateJobHandler.Register: bind %q to dispatcher: %w",
 			appjobs.TypeVoiceoverGenerate, err)
 	}

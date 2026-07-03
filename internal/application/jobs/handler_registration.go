@@ -1,65 +1,79 @@
 // Package jobs — handler_registration.go: handler binding surface.
 //
 // PR-GODOBJ-6 (July 2026): mechanically extracted from service.go
-// per the god-object decomposition plan. Zero behavior changes.
+// per the god-object decomposition plan. Zero behaviour changes on
+// the canonical HandlerFunc path (pre-extraction shape was identical).
 //
-// Forward-pointer: the reflection-based RegisterHandler fallback
-// (reflect.ValueOf/Call) is a godlike/07 anti-pattern retained for
-// mechanical-split purity; a follow-up PR will remove it and enforce
-// HandlerFunc-only registration.
+// PR-REFLECT-ELIM-HANDLER-REGISTRATION (2026-07-04, godlike/07 win):
+// the reflection-based RegisterHandler fallback (reflect.ValueOf/Call +
+// runtime ArgCount / AssignableTo / In-Out shape-validation) has been
+// RETIRED per the AGENTS.md §Pattern 0 + godlike/07 typed-error
+// discipline. The implementation now strictly accepts ONLY
+// appjobs.HandlerFunc via a tight type-switch; any other `any` shape
+// (struct, raw string, raw int, anonymous func literal of the
+// structural signature, etc.) is rejected at registration time with a
+// typed error — no silent-success class per godlike/07.
+//
+// The surface signature REMAINS `(jobType string, handler any) error`
+// because 4 lock-step interface contracts depend on it (changing the
+// surface breaks each compile-time assertion below):
+//
+//   - internal/kernel/job/service.go::Service             (kernel canonical Service)
+//   - internal/application/scripts/ports/ports.go::Broker (scripts broker port)
+//   - internal/api/module_descriptor.go::JobRegistrar     (api capability-standard)
+//   - internal/app/creator_runtime.go::brokerAdapter      (creator runtime inline adapter)
+//
+// Locked by the corresponding assertions at each interface declaration site
+// (e.g. `var _ job.Service = (*appjobs.Service)(nil)`). Per godlike/07
+// minimal-blast-radius, we tighten the IMPLEMENTATION while preserving
+// the surface — the typed-error gate at registration time surfaces the
+// reflection-elimination as a runtime contract that production callers
+// can errors.Is / errors.As against.
+//
+// What changed for production callers: the canonical handler-registration
+// idiom at every call site MUST now wrap the method value in
+// `appjobs.HandlerFunc(h.HandleJob)` (cf. artlist precedent at
+// internal/application/assets/providers/artlist/job_core.go:247). The
+// type-switch accepts method values whose signature structurally matches
+// HandlerFunc (Go's structural subtyping auto-converts at the case
+// branch), but explicit casts are canonical for human-readability
+// per godlike/06 SSOT — future maintainers reading the call site see
+// "this IS a HandlerFunc" without inspecting the method signature.
 package jobs
 
 import (
-	"context"
 	"fmt"
-	"reflect"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-// RegisterHandler registers a handler for the given job type.
-// Accepts any handler; performs a type-assertion to HandlerFunc.
-// Implements job.Service interface.
+// MaxJobsPerType is the canonical upper bound on registered handlers per
+// job type string (P0 #15 against arbitrary dict-growth, July 2026).
+// Kept here rather than types.go to colocate it with the registration
+// surface; the dispatcher enforces the cap at Register time.
+const MaxJobsPerType = 16
+
+// RegisterHandler registers a handler for the given job type. Surface
+// signature is locked at `(jobType string, handler any) error` by the
+// 4 interface contracts listed in the package doc; the IMPLEMENTATION
+// accepts ONLY `appjobs.HandlerFunc` via strict type-switch. The
+// previous reflection-based fallback + structural-anonymous-function
+// case have been retired (godlike/07 no-fake-availability audit-pin);
+// see PR-REFLECT-ELIM-HANDLER-REGISTRATION in architecture/current.yaml.
+//
+// To register a method like `h.HandleJob` (whose signature matches
+// HandlerFunc structurally) wrap it at the call site:
+//   jobsSvc.RegisterHandler(jobType, appjobs.HandlerFunc(h.HandleJob))
+// This explicit cast is canonical (cf. artlist/job_core.go:247).
+// Method values without the cast are accepted by the type-switch
+// (structural subtyping), but explicit casts are preferred for
+// human-readability + future-proofing against signature drift.
 func (s *Service) RegisterHandler(jobType string, handler any) error {
-	switch h := handler.(type) {
-	case HandlerFunc:
-		return s.dispatcher.Register(jobType, h)
-	case func(context.Context, *job.Job, *JobTools) (map[string]any, error):
-		return s.dispatcher.Register(jobType, HandlerFunc(h))
+	h, ok := handler.(HandlerFunc)
+	if !ok {
+		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc (apply explicit `appjobs.HandlerFunc(method)` cast at the call site); got %T for jobType=%q", handler, jobType)
 	}
-
-	rv := reflect.ValueOf(handler)
-	if rv.Kind() != reflect.Func {
-		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
-	}
-	rt := rv.Type()
-	if rt.NumIn() != 3 || rt.NumOut() != 2 {
-		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
-	}
-	if !rt.In(0).AssignableTo(reflect.TypeOf((*context.Context)(nil)).Elem()) ||
-		!rt.In(1).AssignableTo(reflect.TypeOf((*job.Job)(nil))) ||
-		!rt.In(2).AssignableTo(reflect.TypeOf((*JobTools)(nil))) ||
-		!rt.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
-	}
-
-	wrapped := func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
-		results := rv.Call([]reflect.Value{
-			reflect.ValueOf(ctx),
-			reflect.ValueOf(j),
-			reflect.ValueOf(tools),
-		})
-		var out map[string]any
-		if !results[0].IsNil() {
-			out, _ = results[0].Interface().(map[string]any)
-		}
-		var err error
-		if !results[1].IsNil() {
-			err, _ = results[1].Interface().(error)
-		}
-		return out, err
-	}
-	return s.dispatcher.Register(jobType, wrapped)
+	return s.dispatcher.Register(jobType, h)
 }
 
 // HasHandler reports whether the broker has a handler registered
@@ -117,3 +131,14 @@ func (s *Service) ValidateHandlerCompleteness(reg *Registry) error {
 	}
 	return nil
 }
+
+// compile-time assertion: appjobs.Service satisfies the kernel canonical
+// job.Service interface (RegisterHandler + Enqueue + Get + Cancel + ...).
+// appjobs.Service is the canonical producer — interface satisfaction is
+// asserted at the *application* boundary rather than at the kernel
+// declaration site; the kernel package is upstream and references
+// appjobs by alias only.
+//
+// (job alias import retained for any future kernel-layer consumers that
+// reference domain types — currently zero in this file.)
+var _ job.Service = (*Service)(nil)

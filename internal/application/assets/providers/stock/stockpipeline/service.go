@@ -399,7 +399,7 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("stockpipeline.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeMediaStock, s.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(appjobs.TypeMediaStock, appjobs.HandlerFunc(s.HandleJob)); err != nil {
 		return fmt.Errorf("stockpipeline.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeMediaStock, err)
 	}
 	s.log.Info("registered media.stock job handler", zap.String("type", appjobs.TypeMediaStock))

@@ -185,8 +185,8 @@ func NewService(deps VoiceoverDeps) *Service {
 // (both batch and promo).
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverBatch, s.HandleJob)
-		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverPromo, s.HandleJob)
+		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverBatch, appjobs.HandlerFunc(s.HandleJob))
+		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverPromo, appjobs.HandlerFunc(s.HandleJob))
 		s.log.Info("registered voiceover job handlers (batch + promo)")
 	}
 }
