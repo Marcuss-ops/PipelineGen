@@ -204,25 +204,31 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	}
 	committed = true
 
-	if w.log != nil {
-		// Blocco 2.1: surface ON CONFLICT suppression by an existing
-		// terminal row (dead_letter/superseded). The producer must
-		// react — a freshly-completed tx that "succeeded" but silently
-		// squelched the index request is exactly the silent-success
-		// regression the audit called out.
-		if !enqResult.Inserted && isTerminalOutboxStatus(enqResult.ExistingStatus) {
-			w.log.Warn("ClipAtomicWriterAdapter: outbox event suppressed by existing terminal row",
+	// ── 6) BLOCKER #4 closure: terminal conflict → error, not silent success.
+	// Pre-closure the writer logged a warning and returned nil, producing
+	// "processed" with no index event. Post-closure we return a typed
+	// sentinel so the use case can surface "processed_but_index_blocked".
+	if !enqResult.Inserted && isTerminalOutboxStatus(enqResult.ExistingStatus) {
+		err := fmt.Errorf("%w: clip %q event_key=%q suppressed by existing %q row (event_id=%d)",
+			youtubeports.ErrOutboxTerminalConflict, clipID, eventKey,
+			enqResult.ExistingStatus, enqResult.EventID)
+		if w.log != nil {
+			w.log.Warn("ClipAtomicWriterAdapter: returning ErrOutboxTerminalConflict (BLOCKER #4 closure)",
 				zap.String("clip_id", clipID),
 				zap.String("event_key", eventKey),
 				zap.Int64("existing_event_id", enqResult.EventID),
-				zap.String("existing_status", enqResult.ExistingStatus))
-		} else {
-			w.log.Debug("ClipAtomicWriterAdapter: clip + index event committed",
-				zap.String("clip_id", clipID),
-				zap.String("event_key", eventKey),
-				zap.String("source_version", sourceVersion),
-				zap.Bool("outbox_inserted", enqResult.Inserted))
+				zap.String("existing_status", enqResult.ExistingStatus),
+				zap.Error(err))
 		}
+		return err
+	}
+
+	if w.log != nil {
+		w.log.Debug("ClipAtomicWriterAdapter: clip + index event committed",
+			zap.String("clip_id", clipID),
+			zap.String("event_key", eventKey),
+			zap.String("source_version", sourceVersion),
+			zap.Bool("outbox_inserted", enqResult.Inserted))
 	}
 	return nil
 }

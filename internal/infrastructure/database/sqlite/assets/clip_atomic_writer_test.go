@@ -41,6 +41,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"testing"
 
@@ -368,6 +369,83 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 }
 
 // ── Test 4: closed writer DB → error, no panic ─────────────────────
+
+// ── Test 5: terminal conflict returns typed error ───────────────────
+
+// TestClipAtomicWriter_TerminalConflictReturnsError verifies the
+// audit 2026-07-03 BLOCKER #4 closure: when an existing dead_letter
+// or superseded outbox row blocks the INSERT (same event_key),
+// the writer must return ErrOutboxTerminalConflict instead of the
+// pre-closure silent-success nil.
+func TestClipAtomicWriter_TerminalConflictReturnsError(t *testing.T) {
+	db := newAtomicWriterDB(t)
+	box := outboxevents.NewRepository(db)
+	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+
+	const clipID = "yt_terminal_001_10_60_v1"
+	fileHash := sha256Hex("terminal-conflict-content")
+	item := youtubetypes.ClipAsset{
+		ID:        clipID,
+		VideoID:   "terminal_001",
+		FileHash:  fileHash,
+		LocalPath: "/tmp/" + clipID + ".mp4",
+		Drive:     youtubetypes.ClipAssetDrive{},
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: 10,
+			EndSec:   60,
+			Duration: 50,
+		},
+		Metadata: youtubetypes.ClipMetadata{
+			Summary:         "Terminal Conflict Probe",
+			NormalizedGroup: "general",
+		},
+		PolicyVersion: "v1",
+	}
+	ctx := context.Background()
+
+	// First call: normal write succeeds (1 row each).
+	if err := adapter.CommitClipAndIndexEvent(ctx, clipID, item, canonicalEnvelopePayload()); err != nil {
+		t.Fatalf("first call (normal): %v", err)
+	}
+
+	// Manually mark the outbox row as dead_letter to simulate a
+	// terminal state from a prior indexing run.
+	_, err := db.Exec(`UPDATE outbox_events SET status = 'dead_letter' WHERE aggregate_id = ?`, clipID)
+	if err != nil {
+		t.Fatalf("seed dead_letter row: %v", err)
+	}
+
+	// Second call: same FileHash → same sourceVersion → same eventKey.
+	// ON CONFLICT(event_key) DO NOTHING suppresses the INSERT;
+	// the existing row is dead_letter (terminal). BLOCKER #4 closure:
+	// the writer must return ErrOutboxTerminalConflict.
+	err = adapter.CommitClipAndIndexEvent(ctx, clipID, item, canonicalEnvelopePayload())
+	if err == nil {
+		t.Fatal("BLOCKER #4: second call with terminal row must return error (pre-closure returned nil with 'processed')")
+	}
+	if !errors.Is(err, youtubeports.ErrOutboxTerminalConflict) {
+		t.Errorf("BLOCKER #4: error must wrap ErrOutboxTerminalConflict; got %v", err)
+	}
+
+	// Verify the asset row is still there (it was committed in the first call;
+	// the second call's UPSERT is ON CONFLICT(id) DO UPDATE — idempotent).
+	var medCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets WHERE id = ?`, clipID).Scan(&medCount); err != nil {
+		t.Fatalf("count media_assets: %v", err)
+	}
+	if medCount != 1 {
+		t.Errorf("media_assets must still have 1 row after terminal conflict; got %d", medCount)
+	}
+
+	// Verify no NEW outbox row was created (terminal suppression confirmed).
+	var outCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND status != 'dead_letter'`, clipID).Scan(&outCount); err != nil {
+		t.Fatalf("count non-terminal outbox: %v", err)
+	}
+	if outCount != 0 {
+		t.Errorf("BLOCKER #4: no new outbox row must be created on terminal conflict; got %d pending rows", outCount)
+	}
+}
 
 // TestClipAtomicWriter_ClosedWriterDBReturnsError pins the
 // minimum-viable fail-closed posture for the adapter: a closed
