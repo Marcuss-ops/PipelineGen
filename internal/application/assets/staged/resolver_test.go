@@ -36,8 +36,8 @@ var _ IndexStore = (*mockIndexStore)(nil)
 // TestResolve_StagedArtifact_HappyPath pins the canonical wire
 // contract:
 //
-//   asset_index row -> local_path -> os.Stat -> files.HashFile
-//   -> StagedArtifact{AssetID, LocalPath, SHA256, SizeBytes}
+//	asset_index row -> local_path -> os.Stat -> files.HashFile
+//	-> StagedArtifact{AssetID, LocalPath, SHA256, SizeBytes}
 //
 // SHA256 byte-stability is the load-bearing assertion: the
 // resolver must compute the same SHA256 as files.SHA256Bytes
@@ -92,10 +92,10 @@ func TestResolve_StagedArtifact_HappyPath(t *testing.T) {
 // TestResolve_StagedArtifact_NotFound pins the typed-sentinel
 // branch across all 3 failure paths the Resolver can take:
 //
-//   (a) IndexStore returns ("", nil) — DB row absent.
-//   (b) IndexStore returns ("", err) — DB underlying error surfaced.
-//   (c) IndexStore returns a path, but os.Stat fails — TTL GC swept
-//       the file or path was moved after the DB write.
+//	(a) IndexStore returns ("", nil) — DB row absent.
+//	(b) IndexStore returns ("", err) — DB underlying error surfaced.
+//	(c) IndexStore returns a path, but os.Stat fails — TTL GC swept
+//	    the file or path was moved after the DB write.
 //
 // All three branches MUST surface the canonical sentinel
 // (errors.Is(err, ErrStagedArtifactMissing)) AND return a nil
@@ -163,9 +163,9 @@ func TestResolve_StagedArtifact_NotFound(t *testing.T) {
 // TestResolve_StagedArtifact_Idempotency pins the canonical
 // idempotency contract:
 //
-//   two consecutive calls for the same assetID + same on-disk bytes
-//   MUST return byte-equivalent StagedArtifacts (AssetID, LocalPath,
-//   SHA256, SizeBytes all equal across calls).
+//	two consecutive calls for the same assetID + same on-disk bytes
+//	MUST return byte-equivalent StagedArtifacts (AssetID, LocalPath,
+//	SHA256, SizeBytes all equal across calls).
 //
 // PLUS the drift-detection invariant (the load-bearing corollary
 // of "recompute on every call"): a mutation of the local file
