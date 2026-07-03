@@ -75,6 +75,7 @@ var availableCommands = []string{
 	"sync-outros",
 	"test-youtube",
 	"unify-catalogs",
+	"backfill-asset-embeddings",
 	"backfill-visual-embeddings",
 	"verify-artlist-pipeline",
 }
@@ -91,6 +92,8 @@ func main() {
 	var err error
 	switch cmd {
 	// ── AGENT-1 owned subcommands (cmd/admin/<file>.go) ─────────────
+	case "backfill-asset-embeddings":
+		err = runBackfillAssetEmbeddings(args)
 	case "backfill-visual-embeddings":
 		err = runBackfillVisualEmbeddings(args)
 	case "benchmark":
