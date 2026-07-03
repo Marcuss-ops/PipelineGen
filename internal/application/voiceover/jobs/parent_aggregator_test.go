@@ -562,11 +562,35 @@ func makeMultiChildParentResult(childIDs []string, totalOutputs int, expectedChi
 // makePartialFanoutParentResult builds a parent result simulating what
 // the fan-out handler writes after a partial fan-out (3 items requested,
 // 2 enqueued). expected_children = 2 (matches EnqueuedCount in
-// toFanoutResultMap), parent_state = partial_success (res.OK=false),
-// child_job_ids carries the 2 real IDs + 1 empty string for the failed
-// enqueue. This is the canonical simulation for §15 fan-out parziale tests.
+// toFanoutResultMap), parent_state = partial_success, ok=true
+// (the handler writes ok=res.OK which is true when at least one child
+// was enqueued successfully). child_job_ids carries the 2 real IDs +
+// 1 empty string for the failed enqueue.
+// For the ok=false variant, use makeFanoutPartialOkFalseParentResult.
 func makePartialFanoutParentResult(childIDs []string) []byte {
 	return makeMultiChildParentResult(childIDs, 3, 2, voiceover.ParentPartialSuccess)
+}
+
+// makeFanoutPartialOkFalseParentResult builds a parent result simulating
+// the real fan-out handler's output when some enqueues fail: ok=false
+// (toFanoutResultMap sets ok=res.OK), parent_state=partial_success,
+// expected_children=2, child_job_ids has 2 real IDs + 1 empty string.
+// This is the variant used by §15.4c — the aggregator must handle
+// ok=false the same way as ok=true (both reach IsAwaitingAggregation).
+func makeFanoutPartialOkFalseParentResult(childIDs []string) []byte {
+	ids := childIDs
+	m := map[string]any{
+		"ok":                false,
+		"parent_job_id":     "parent-multi",
+		"request_id":        "vo_acceptance",
+		"total_outputs":     3,
+		"expected_children": 2,
+		"enqueued_count":    2,
+		"child_job_ids":     ids,
+		"parent_state":      string(voiceover.ParentPartialSuccess),
+	}
+	raw, _ := json.Marshal(m)
+	return raw
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -744,10 +768,12 @@ func TestAcceptance_OptionalVoiceError_ParentSucceedsWithWarning(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// §15.4 Fan-out parziale: 3rd child enqueue fails
+// §15.4 Empty-string child ID filtering: 3rd child enqueue failed,
+// its slot in child_job_ids is an empty string. The aggregator must
+// filter it out and only process the 2 real children.
 // ─────────────────────────────────────────────────────────────────
 
-func TestAcceptance_FanoutParziale_EmptyChildIDsFiltered(t *testing.T) {
+func TestAcceptance_EmptyChildIDsFiltered(t *testing.T) {
 	// Fan-out requested 3 children but only 2 were enqueued.
 	// ChildJobIDs = ["c-it", "c-en", ""] — empty string for the failed enqueue.
 	// The aggregator must filter the empty string and only process 2 children.
@@ -773,6 +799,77 @@ func TestAcceptance_FanoutParziale_EmptyChildIDsFiltered(t *testing.T) {
 		"§15.4: 2 enqueued children both succeeded → parent_state must be 'succeeded'")
 	assert.Equal(t, 2, got.result["total_children"],
 		"§15.4: total_children must be 2 (empty string filtered out)")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.4c Fan-out parziale con ok=false: real partial fan-out where
+// some enqueues failed. The parent result has ok=false (res.OK=false
+// in toFanoutResultMap), parent_state=partial_success, child_job_ids
+// has 2 real children + 1 empty slot. The aggregator must handle this
+// identically to the ok=true case — IsAwaitingAggregation only inspects
+// parent_state, not ok.
+// ─────────────────────────────────────────────────────────────────
+
+func TestAcceptance_FanoutParziale_OKFalse_AggregatorHandlesPartialSuccess(t *testing.T) {
+	// 3 languages requested, only 2 enqueued (fan-out parziale).
+	// ok=false because res.OK is false when some enqueues fail.
+	// c-it SUCCEEDED, c-en FAILED (optional), 3rd child never enqueued.
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-okfalse",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeFanoutPartialOkFalseParentResult([]string{"c-it", "c-en", ""}),
+		},
+		childJobs: map[string]*job.Job{
+			"c-it": {
+				ID:      "c-it",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusSucceeded,
+				Result:  makeChildResult(true, "completed", ""),
+				Payload: makeChildPayloadWithRequired(false),
+			},
+			"c-en": {
+				ID:      "c-en",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusFailed,
+				Result:  makeChildResult(false, "failed", "tts_failed: Edge TTS timeout"),
+				Payload: makeChildPayloadWithRequired(false),
+			},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	// Criterion 1: aggregator MUST still finalise the parent even with ok=false.
+	// IsAwaitingAggregation() inspects parent_state, not ok — both ok=true and
+	// ok=false with parent_state=partial_success reach the aggregation loop.
+	require.Contains(t, stub.flipped, "parent-okfalse",
+		"§15.4c: ok=false parent with parent_state=partial_success must still be finalised by aggregator")
+
+	got := stub.flipped["parent-okfalse"]
+
+	// Criterion 2: broker status stays SUCCEEDED (partial_success is not terminal failure).
+	assert.Equal(t, job.StatusSucceeded, got.targetStatus,
+		"§15.4c: ok=false + partial_success → broker status stays SUCCEEDED")
+
+	// Criterion 3: parent_state remains partial_success (one succeeded, one optional-failed).
+	assert.Equal(t, "partial_success", got.result["parent_state"],
+		"§15.4c: one succeeded + one optional-failed → parent_state='partial_success'")
+
+	// Criterion 4: total_children = 2 (empty string filtered).
+	assert.Equal(t, 2, got.result["total_children"],
+		"§15.4c: total_children=2 (empty string filtered out)")
+
+	// Criterion 5: succeeded_count=1, failed_count=1.
+	assert.Equal(t, 1, got.result["succeeded_count"],
+		"§15.4c: 1 child succeeded (c-it)")
+	assert.Equal(t, 1, got.result["failed_count"],
+		"§15.4c: 1 child failed (c-en, optional TTS failure)")
+
+	// Criterion 6: no error message on partial_success flip.
+	assert.Empty(t, got.errMsg,
+		"§15.4c: partial_success flip has no error message")
 }
 
 // ─────────────────────────────────────────────────────────────────
