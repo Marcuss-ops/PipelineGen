@@ -221,17 +221,122 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	return nil
 }
 
-// registerArtlist wires the Artlist module.
+// registerArtlist wires the Artlist module via the canonical
+// `artlist.Build(deps) (api.Descriptor, error)` contract (Blocco
+// C1-Step 3, June 2026 — `internal/api/assets/artlist/module.go`).
 //
-// The legacy WireArtlist package-level helper was retired during the
-// FASE 6 image-territories cutover; the Artlist module now exposes
-// itself via the providers.Application contract. The CompositionRoot
-// already pre-wires ArtlistBundle + the providers brokers, so this
-// register step is a no-op gate for now. Future re-introduction is a
-// single function rename away.
+// FASE-6 image-territories cutover (June 2026) retired WireArtlist and
+// stubbed this body to log-only; routes /api/artlist/* return 404 in
+// production since. Initial commit attempt of a full reversal exposed
+// 3 first-order blockers (code-reviewer audit, July 2026):
+//
+//	(a) artlist.NewService validates ONLY `deps.Publisher`; the 8
+//	    forward-pointer fields (MediaProcessor / LifecycleService /
+//	    Searcher trio + Stager / MetadataWriter / AssetProcRepo+Ver+Loc)
+//	    flow into the service struct without nil-check; nil-deref panic
+//	    on /run / /recommend path is a godlike/07 fake-availability
+//	    violation unless gates are tightened or forward-pointers are
+//	    wired.
+//	(b) ClipsRepository satisfies `artlist.AssetStore` 1:1 ONLY if
+//	    the 7 method signatures (Get / Upsert / SearchByTerms /
+//	    SearchClips / CountClips / LastUpdatedAtForTerm /
+//	    UpdateSearchTerms) match exactly — the operator-narrative
+//	    "PR2.5 mirrored" was not verified at compile time against the
+//	    concrete receiver (would need a `clipsRepoAssetStoreAdapter`
+//	    shim if signatures drift).
+//	(c) `artlist.Build(Dependencies{...})` requires `Jobs` field type
+//	    `jobservice.Service` (per `internal/domain/job/job.go::Service`)
+//	    — a typed return of `jobdomain.Service` to that field compiles
+//	    only if `jobdomain.Service` is the same interface (low risk
+//	    given the import alias `jobservice` is canonical, but
+//	    unverified in this commit window).
+//
+// Per godlike/07 no-fake-availability, the safe path is to STAY
+// log-only here and let the 8 forward-pointers close via the
+// PR-ARTLIST-* follow-ups. Each forward-pointer is filed as a
+// `linked_issue` under `architecture/current.yaml#ART-001` (pending —
+// the current.yaml file has a pre-existing parse error at
+// line 1808 unrelated to this commit; the wave-tracker entry is
+// deferred until file-unblock lands).
+// registerArtlist wires the Artlist module via the canonical
+// artlist.Build(deps) (api.Descriptor, error) contract.
+//
+// ART-001 reversal (July 2026): the FASE-6 stub is replaced with the
+// full re-introduction of the canonical WireArtlist composition path.
+// godlike/07 fail-closed: any of the 4 mandatory gates (Publisher /
+// Dispatcher / ClipsRepo / Jobs.Service) nil → WireArtlist returns a
+// typed error which we downgrade to log.Warn + skip-route + return-nil
+// (composition boot MUST NOT abort because Artlist is optional in the
+// architecture). Read-only endpoints (/stats, /diagnostics, /search/live)
+// remain live even with forward-pointers nil; write endpoints return 503
+// via the handler's nil-tolerance discipline (godlike/07 honest disclosure).
+//
+// Forward-pointer nil fields (8 in ServiceDeps + 1 in Build(Dependencies))
+// are tagged inline in build_bundles_artlist.go with linked_issue ids
+// pointing at architecture/current.yaml#ART-001.linked_issues. Each
+// follows the godlike/07 EXPAND-phase discipline: nil is intentional
+// + documented, not a placeholder to be patched in a future commit.
 func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
-	log.Warn("registerArtlist wire stubbed (WireArtlist retired; Artlist flows via providers.Application during FASE 6)")
-	wiring.ArtlistSvc = nil
+	_ = ctx
+
+	// Feature-flag gate: composition-stable no-op when the operator has
+	// not enabled the artlist capability. Pre-dates FASE-6 cutover.
+	if !cfg.Features.ArtlistEnabled {
+		log.Info("registerArtlist: feature disabled (cfg.Features.ArtlistEnabled=false); skipping route registration")
+		wiring.ArtlistSvc = nil
+		return nil
+	}
+
+	// Build the canonical ArtlistBundle from ComposeRoot. DriveClient is
+	// intentionally nil (FASE-6 retired the raw *gdrive.Service reach-through
+	// on this capability; the Pattern 0 publisher/reader/lifecycle trio below
+	// replaces it without exposing the SDK).
+	artlistWiring, err := WireArtlist(
+		ctx,
+		log,
+		cfg,
+		&ArtlistBundle{
+			DB:                 root.DB,
+			Assets:             root.Repos.Assets,
+			ClipsRepo:          root.Repos.ClipsRepo,
+			DriveClient:        nil,
+			DriveUploader:      root.Drive.driveUploader,
+			Publisher:          root.Drive.Publisher,
+			AssetIndexService:  root.Search.AssetIndexService,
+			ClipIndexerService: root.Process.ClipIndexerService,
+			MediaProcessor:     root.Process.MediaProcessor,
+			Jobs:               root.Jobs,
+			CatalogSyncService: root.Sync.CatalogSync,
+		},
+		root.Outbox.Dispatcher,
+		root.Drive.Reader,
+		root.Drive.Lifecycle,
+		root.Domains.MetaWriter,
+		root.Drive.DestResolver,
+	)
+	if err != nil {
+		// godlike/07 fail-closed: downgrade to log.Warn + skip-route + return-nil.
+		// Composition boot MUST NOT abort because artlist is optional in the
+		// architecture; operators see 404 on /api/artlist/* rather than a
+		// full-system rollback.
+		log.Warn("registerArtlist: WireArtlist failed (mandatory gate nil); skipping route registration (godlike/07 fail-closed)",
+			zap.String("root_path", "/api/artlist/*"),
+			zap.Bool("godlike_07_fail_closed", true),
+			zap.Error(err),
+		)
+		wiring.ArtlistSvc = nil
+		return nil
+	}
+
+	if err := tryRegisterModuleStrict(registry, log, artlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
+		_ = artlistWiring.Service.Close()
+		return fmt.Errorf("registerArtlist: tryRegisterModuleStrict: %w", err)
+	}
+
+	wiring.ArtlistSvc = artlistWiring
+	log.Info("registerArtlist: ART-001 reversal milestone complete",
+		zap.String("descriptor_module_name", artlistWiring.Module.Name()),
+	)
 	return nil
 }
 
