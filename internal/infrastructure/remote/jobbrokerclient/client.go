@@ -175,19 +175,17 @@ func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		rawBody, _ := io.ReadAll(resp.Body)
-		// Typed-error envelope decode (forward-prevention: server
-		// emits the envelope in a follow-up PR; this decode is
-		// forward-compatible today). Unknown kinds fall through to
-		// the generic HTTP-error path.
-		var typedErr struct {
-			Error string `json:"error"`
-			Kind  string `json:"kind"`
-		}
-		if json.Unmarshal(rawBody, &typedErr) == nil && typedErr.Kind != "" {
-			switch typedErr.Kind {
-			case "lease_lost":
-				return fmt.Errorf("complete-with-artifacts: %s: %w", typedErr.Error, appjobs.ErrLeaseLost)
-			}
+		// Typed-error envelope decode (P1 #15, July 2026).
+		// Builds a *remote.RemoteCompletionError from the canonical
+		// wire envelope so callers can probe either via errors.As
+		// (structured Kind-by-Kind) or errors.Is against the
+		// canonical closed-set sentinel (canonical sentinel-of-
+		// sentinels in domain/remote/cerrors.go). The wire envelope
+		// is emitted by server-side MapErrorToHTTP on the
+		// /complete-with-artifacts path; this decode is the canonical
+		// client-side reconstruction per godlike/06 SSOT.
+		if remErr, ok := decodeCompletionErrorEnvelope(rawBody); ok {
+			return remErr
 		}
 		return fmt.Errorf("complete-with-artifacts: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(rawBody)))
 	}

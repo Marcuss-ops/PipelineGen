@@ -28,6 +28,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -182,6 +183,15 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 	}
 	req.JobID = c.Param("id")
 	if err := h.broker.Complete(c.Request.Context(), req); err != nil {
+		// P1 #15 (July 2026): the complete-jobs path emits the
+		// canonical 7-kind wire envelope via completion.MapErrorToHTTP.
+		// MapErrorToHTTP returns true (and aborts the gin chain)
+		// when err matches one of the 7 canonical kinds; false
+		// falls through to apiutil.InternalError so the 500 path
+		// stays intact for genuine unknowns.
+		if completion.MapErrorToHTTP(c, err) {
+			return
+		}
 		apiutil.InternalError(c, err)
 		return
 	}
@@ -269,6 +279,14 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		OutboxEvents:       req.OutboxEvents,
 	}
 	if err := h.broker.CompleteWithArtifacts(c.Request.Context(), cmd); err != nil {
+		// P1 #15 (July 2026): the complete-with-artifacts path
+		// emits the canonical 7-kind wire envelope via
+		// completion.MapErrorToHTTP. Same semantics as Complete:
+		// true = aborts gin chain + sets typed envelope; false =
+		// fall-through to apiutil.InternalError for unmapped errors.
+		if completion.MapErrorToHTTP(c, err) {
+			return
+		}
 		apiutil.InternalError(c, err)
 		return
 	}
