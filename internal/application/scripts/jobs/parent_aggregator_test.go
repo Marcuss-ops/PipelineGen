@@ -575,6 +575,31 @@ func TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal(t *testing
 	}
 }
 
+// Test 11 (NEW): zero children enqueued → PartialSuccess immediately
+// without querying any child jobs. The aggregator short-circuits
+// when parentResult.ChildJobIDs is empty after filtering.
+func TestScriptParentBrokerStatusSUCCEEDEDWhenZeroChildren(t *testing.T) {
+	stub := buildParentStub("parent-zero", map[string]job.Status{}, map[string]bool{})
+
+	agg := NewScriptParentAggregator(ScriptAggregatorDeps{
+		JobsSvc: stub,
+		Logger:  zap.NewNop(),
+	})
+	agg.Tick(context.Background())
+
+	rec, ok := stub.flipped["parent-zero"]
+	if !ok {
+		t.Fatal("P0 #4: aggregator must call FinalizeAggregateParent on zero-children aggregate")
+	}
+	if rec.targetStatus != job.StatusSucceeded {
+		t.Errorf("P0 #4: zero-children aggregate MUST flip broker-status to SUCCEEDED (partial_success), got %s",
+			rec.targetStatus)
+	}
+	if rec.errMsg != "" {
+		t.Errorf("P0 #4: zero-children flip must carry empty errMsg, got %q", rec.errMsg)
+	}
+}
+
 // Ensure the compile-time assertion still holds after Commit 3 interface
 // narrowing (removed List/Complete — the aggregator doesn't use them).
 var _ ScriptAggregatorJobsService = (*appjobs.Service)(nil)

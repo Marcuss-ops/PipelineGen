@@ -105,7 +105,7 @@ type ScriptAggregateResult struct {
 	TotalItems          int
 	SucceededCount      int
 	FailedCount         int
-	StateMachineVersion int
+	ParentRevision int
 	ChildIDs            []string
 }
 
@@ -193,10 +193,8 @@ func (a *ScriptParentAggregator) Tick(ctx context.Context) {
 }
 
 // aggregateOne processes a single parent job: decodes the typed result,
-// verifies it's awaiting aggregation, extracts child IDs, builds the
-// canonical domain StateMachine, feeds each child's terminal event
-// (with P0.1-style false-success gate override), and finalises via
-// FinalizeAggregateParent.
+// verifies it's awaiting aggregation, queries each child's terminal
+// status, counts succeeded/failed, and finalises the parent.
 func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// Decode the typed parent result.
 	var parentResult ScriptParentResult
@@ -228,24 +226,17 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		a.finalizeParent(ctx, j.ID, ScriptAggregateResult{
 			ParentState:         ScriptParentPartialSuccess,
 			TotalItems:          0,
-			StateMachineVersion: j.Revision,
+			ParentRevision: j.Revision,
 		})
 		return nil
 	}
 
-	// Build the canonical domain StateMachine + explicitly transition
-	// to WaitingChildren (mirrors voiceover FASE 1 explicit path).
-	sm := job.NewStateMachine(j.ID, len(childIDs))
-	if err := sm.TransitionToWaitingChildren(childIDs); err != nil {
-		a.deps.Logger.Debug("ScriptParentAggregator: TransitionToWaitingChildren rejected",
-			zap.String("parent_job_id", j.ID), zap.Error(err))
-		return nil
-	}
-
+	// Query each child and count terminal outcomes.
+	succeeded := 0
+	failed := parentResult.FailedEnqueue
 	allTerminal := true
 	for _, childID := range childIDs {
 		var status job.Status
-		var childErr string
 		var childOK bool
 
 		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
@@ -279,7 +270,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 			var childResult ScriptChildResult
 			if len(childJob.Result) > 0 {
 				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
-					childErr = childResult.Error
 					if childResult.OK != nil {
 						childOK = *childResult.OK
 					}
@@ -302,28 +292,11 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 			continue
 		}
 
-		// Feed child terminal event to the canonical domain StateMachine.
-		// All script-batch children are OPTIONAL (GenerationItemV2 has
-		// no Required field), so we set Required=false on every
-		// ChildOutcome. The StateMachine.Transition rule
-		// "① REQUIRED-failed short-circuit" therefore never fires for
-		// script parents — the aggregate naturally falls through to
-		// Compute().
-		if tErr := sm.Transition(job.ChildTerminatedEvent{
-			ParentJobID: j.ID,
-			ChildJobID:  childID,
-			Outcome: job.ChildOutcome{
-				JobID:     childID,
-				Succeeded: (status == job.StatusSucceeded) && childOK,
-				Required:  false,
-				Error:     childErr,
-				Status:    string(status),
-			},
-		}); tErr != nil {
-			a.deps.Logger.Debug("ScriptParentAggregator: StateMachine.Transition skipped",
-				zap.String("parent_job_id", j.ID),
-				zap.String("child_job_id", childID),
-				zap.Error(tErr))
+		// All script-batch children are OPTIONAL. Count terminal outcome.
+		if (status == job.StatusSucceeded) && childOK {
+			succeeded++
+		} else {
+			failed++
 		}
 	}
 
@@ -332,28 +305,20 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		return nil
 	}
 
-	// Compute the canonical aggregate (Succeeded or FailedTerminal).
-	if err := sm.Compute(); err != nil {
-		a.deps.Logger.Error("ScriptParentAggregator: StateMachine.Compute failed",
-			zap.String("parent_job_id", j.ID), zap.Error(err))
-		return nil
-	}
-
-	// Build aggregate from the StateMachine result. Incorporate
-	// failed enqueues (items that never became child jobs).
-	state := domainToScriptParentState(sm)
-
+	// Compute total items and derive the aggregate parent state.
 	totalItems := parentResult.TotalItems
 	if totalItems <= 0 {
 		totalItems = len(childIDs) + parentResult.FailedEnqueue
 	}
-	failed := len(sm.Failed()) + parentResult.FailedEnqueue
-	succeeded := len(sm.Succeeded())
 
-	if failed > 0 && succeeded > 0 {
-		state = ScriptParentPartialSuccess
-	} else if failed == totalItems && totalItems > 0 {
+	var state ScriptParentState
+	switch {
+	case failed == totalItems && totalItems > 0:
 		state = ScriptParentFailedTerminal
+	case failed > 0:
+		state = ScriptParentPartialSuccess
+	default:
+		state = ScriptParentSucceeded
 	}
 
 	aggResult := ScriptAggregateResult{
@@ -361,7 +326,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		TotalItems:          totalItems,
 		SucceededCount:      succeeded,
 		FailedCount:         failed,
-		StateMachineVersion: j.Revision,
+		ParentRevision: j.Revision,
 		ChildIDs:            childIDs,
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
@@ -374,7 +339,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID string, agg ScriptAggregateResult) {
 	resultMap := map[string]any{
 		"parent_state":        string(agg.ParentState),
-		"_aggregator_version": agg.StateMachineVersion,
+		"_aggregator_version": agg.ParentRevision,
 		"total_items":         agg.TotalItems,
 		"succeeded_count":     agg.SucceededCount,
 		"failed_count":        agg.FailedCount,
@@ -395,7 +360,7 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		errMsg = "script aggregate: all child jobs definitively failed (P0 #4 narrow-port discipline)"
 	}
 
-	if err := a.deps.JobsSvc.FinalizeAggregateParent(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
+	if err := a.deps.JobsSvc.FinalizeAggregateParent(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.ParentRevision); err != nil {
 		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
 			a.deps.Logger.Info("ScriptParentAggregator: parent already finalised (replay no-op)",
 				zap.String("parent_job_id", parentJobID),
@@ -417,28 +382,7 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		zap.String("parent_job_id", parentJobID),
 		zap.String("parent_state", string(agg.ParentState)),
 		zap.String("target_status", string(targetStatus)),
-		zap.Int("revision", agg.StateMachineVersion))
-}
-
-// domainToScriptParentState maps the canonical domain 5-state machine
-// result to the script-batch 5-state result enum. Succeeded with
-// optional failures maps to PartialSuccess so the API response
-// distinguishes "all succeeded" from "succeeded with warnings".
-// Mirrors voiceover/jobs/parent_aggregator.go::domainToVoiceoverParentState.
-func domainToScriptParentState(sm *job.StateMachine) ScriptParentState {
-	switch sm.State() {
-	case job.ParentStateSucceeded:
-		if len(sm.Failed()) > 0 {
-			// Some optional children failed — succeeded with warnings.
-			return ScriptParentPartialSuccess
-		}
-		return ScriptParentSucceeded
-	case job.ParentStateFailedTerminal:
-		return ScriptParentFailedTerminal
-	default:
-		// Defensive fallback for non-terminal states passed by mistake.
-		return ScriptParentWaitingChildren
-	}
+		zap.Int("revision", agg.ParentRevision))
 }
 
 // scriptItemP0_1Gate overrides a child to FAILED when broker status
