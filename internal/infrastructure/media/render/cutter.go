@@ -1,10 +1,10 @@
-// Package render — concrete VideoCutter port implementation (PR6, June 2026).
+// Package render — concrete VideoCutter port implementation (PR6, June 2026; FASE 2.4, July 2026).
 //
 // This adapter owns the batch-then-fallback-to-individual FFmpeg logic
-// that previously lived in stockpipeline.process.go's processSingleVideo.
-// It also lifts disk verification (os.Stat) into the returned
-// CutResult.ProducedPaths so the application layer no longer imports
-// `os` for verification.
+// that previously lived in stockpipeline.process.go's processSingleVideo,
+// the per-job on-disk verification, and (FASE 2.4) the per-clip ffprobe
+// validation step that lifts DurationSec + SizeBytes into the structured
+// CutBatchResult surface.
 //
 // Import-boundary invariant (AGENTS.md Pattern 0 + Pattern 8):
 //   - internal/application/** MUST NOT import this package.
@@ -14,12 +14,19 @@
 // Behavioural equivalence with pre-PR6:
 //  1. Try CutReencodeBatch (single FFmpeg invocation producing N clips)
 //  2. On batch failure, fall back to per-clip CutReencode invocations
-//  3. Verify each produced output exists on disk (os.Stat) and only
-//     include it in the result when present.
+//  3. Verify each produced output exists on disk (os.Stat)
+//  4. (FASE 2.4) Run ffprobe on every produced clip to populate
+//     DurationSec; flip Status to Validated on success.
+//
+// FASE 2.4 (July 2026): the legacy CutResult.{ProducedPaths-only} contract
+// is replaced with CutBatchResult (always non-nil, len(Items)=len(input.Jobs)).
+// Per-job failure detail (Err, JobID) is exposed to the application layer
+// without forcing the caller to guess which clip failed.
 package render
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -32,16 +39,22 @@ import (
 // FFmpegCutter is the canonical concrete implementation of the
 // VideoCutter port. It wraps the existing ffmpeg.Processor (kept as
 // an internal collaborator so the well-tested cut-arg-assembly is
-// preserved) AND lifts the batch/fallback + disk-verification logic
-// out of the application layer.
+// preserved) AND lifts the batch/fallback + disk-verification + ffprobe
+// logic out of the application layer.
 type FFmpegCutter struct {
 	proc *ffmpeg.Processor
 	log  *zap.Logger
+	// probeAfterCut toggles the ffprobe-validation pass; default true.
+	// Slice with NewFFmpegCutterOnlyCut when a watcher path needs to
+	// skip probe (typically the staging run where ProbeError is
+	// irrelevant — the file is re-staged, not validated).
+	probeAfterCut bool
 }
 
 // NewFFmpegCutter constructs the cutter with the canonical binary
-// path + logger. The processor is built lazily from the supplied
-// ffmpeg path (empty path defaults to "ffmpeg" via ffmpeg.NewProcessor).
+// path + logger + ffprobe-after-cut enabled. The processor is built
+// lazily from the supplied ffmpeg path (empty path defaults to
+// "ffmpeg" via ffmpeg.NewProcessor).
 func NewFFmpegCutter(ffmpegPath string, log *zap.Logger) *FFmpegCutter {
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
@@ -50,8 +63,27 @@ func NewFFmpegCutter(ffmpegPath string, log *zap.Logger) *FFmpegCutter {
 		log = zap.NewNop()
 	}
 	return &FFmpegCutter{
-		proc: ffmpeg.NewProcessor(ffmpegPath),
-		log:  log,
+		proc:          ffmpeg.NewProcessor(ffmpegPath),
+		log:           log,
+		probeAfterCut: true,
+	}
+}
+
+// NewFFmpegCutterOnlyCut constructs the cutter with the canonical
+// binary path + logger + ffprobe-after-cut disabled. Used by tests
+// that assemble a tiny synthetic clip and want to assert just the
+// cut behaviour (and not the ffprobe-validation gate).
+func NewFFmpegCutterOnlyCut(ffmpegPath string, log *zap.Logger) *FFmpegCutter {
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &FFmpegCutter{
+		proc:          ffmpeg.NewProcessor(ffmpegPath),
+		log:           log,
+		probeAfterCut: false,
 	}
 }
 
@@ -75,13 +107,37 @@ func toInternalCutJobs(jobs []stockpipeline.CutJob) []ffmpeg.CutJob {
 // Cut is the concrete port implementation. It attempts the batch cut
 // first; on failure, it falls back to per-clip sequential cuts and
 // returns the union of successfully-produced clip paths.
-func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutResult, error) {
+//
+// FASE 2.4 contract:
+//   - Returns CutBatchResult with len(Items) == len(req.Jobs) ALWAYS.
+//   - Each Item carries Status / SizeBytes / DurationSec / Err
+//     according to the per-job outcome.
+//   - ffprobe runs on every produced clip (when probeAfterCut=true):
+//     Status flips from Succeeded to Validated on success; failures
+//     keep Status=Succeeded with Err set (soft-fail — file is on disk
+//     and ffprobe is informational, not blocking).
+//   - Top-level err is non-nil only when EVERY job failed; partial-
+//     success batches return nil error so the caller iterates Items
+//     to partition succeeded / failed.
+func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutBatchResult, error) {
+	items := make([]stockpipeline.CutItemResult, len(req.Jobs))
+	for i, j := range req.Jobs {
+		items[i] = stockpipeline.CutItemResult{JobID: j.OutputPath}
+	}
+
 	if req.SourcePath == "" {
-		return stockpipeline.CutResult{}, fmt.Errorf("cutter: empty source path")
+		// Mark every item failed with a single shared error; the
+		// batch-level err echoes the same sentinel wrapped.
+		err := errors.New("cutter: empty source path")
+		for i := range items {
+			items[i].Status = stockpipeline.CutItemStatusFailed
+			items[i].Err = err
+		}
+		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, err
 	}
 	if len(req.Jobs) == 0 {
-		// No work to do — no-op success.
-		return stockpipeline.CutResult{}, nil
+		// No work to do — empty batch is a success (len(items)==0).
+		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, nil
 	}
 
 	logger := c.log
@@ -90,7 +146,7 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	}
 
 	internalJobs := toInternalCutJobs(req.Jobs)
-	produced := make([]string, 0, len(internalJobs))
+	producedIdx := make([]int, 0, len(internalJobs)) // indices into items where a file is on disk
 
 	// ── Attempt 1: single-pass batch cut ──────────────────────────────
 	logger.Info("stock extractor: single-pass batch cut starting",
@@ -106,17 +162,29 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	)
 
 	if batchErr == nil {
-		// Batch succeeded: verify + collect produced paths.
-		for _, j := range internalJobs {
-			if _, err := os.Stat(j.Output); err == nil {
-				produced = append(produced, j.Output)
+		// Batch succeeded — verify on disk + record produced indices.
+		for i, j := range internalJobs {
+			if info, statErr := os.Stat(j.Output); statErr == nil {
+				producedIdx = append(producedIdx, i)
+				items[i].OutputPath = j.Output
+				items[i].SizeBytes = info.Size()
+				items[i].Status = stockpipeline.CutItemStatusSucceeded
+			} else {
+				// ffmpeg exited 0 but the file is missing — this is
+				// a partial-success: the batch cmd "succeeded" but
+				// the produced file is gone (simulated cleanup race,
+				// disk full, antivirus deletion). Mark Failed for
+				// honesty; the top-level err stays nil.
+				items[i].Status = stockpipeline.CutItemStatusFailed
+				items[i].Err = fmt.Errorf("batch reported success but file missing: %w", statErr)
 			}
 		}
-		logger.Info("stock extractor: single-pass batch cut succeeded",
+		c.runProbe(ctx, logger, items, producedIdx)
+		logger.Info("stock extractor: single-pass batch cut completed",
 			zap.Int("source_index", req.SourceIdx),
-			zap.Int("clips_produced", len(produced)),
+			zap.Int("clips_produced", len(producedIdx)),
 		)
-		return stockpipeline.CutResult{ProducedPaths: produced}, nil
+		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, c.batchErr(logger, items)
 	}
 
 	// ── Attempt 2: per-clip fallback ─────────────────────────────────
@@ -129,7 +197,15 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	for i, j := range internalJobs {
 		select {
 		case <-ctx.Done():
-			return stockpipeline.CutResult{ProducedPaths: produced}, ctx.Err()
+			// Context cancelled: mark every still-unprocessed item as
+			// failed with ctx.Err; iterate only over the un-cut suffix.
+			for k := i; k < len(items); k++ {
+				if items[k].Status == stockpipeline.CutItemStatusUnknown {
+					items[k].Status = stockpipeline.CutItemStatusFailed
+					items[k].Err = ctx.Err()
+				}
+			}
+			return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, ctx.Err()
 		default:
 		}
 		cutErr := c.proc.CutReencode(
@@ -143,21 +219,107 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 				zap.Int("clip_index", i),
 				zap.Error(cutErr),
 			)
+			items[i].Status = stockpipeline.CutItemStatusFailed
+			items[i].Err = cutErr
 			lastErr = cutErr
 			continue
 		}
-		if _, err := os.Stat(j.Output); err == nil {
-			produced = append(produced, j.Output)
+		if info, statErr := os.Stat(j.Output); statErr == nil {
+			items[i].OutputPath = j.Output
+			items[i].SizeBytes = info.Size()
+			items[i].Status = stockpipeline.CutItemStatusSucceeded
+			producedIdx = append(producedIdx, i)
+		} else {
+			items[i].Status = stockpipeline.CutItemStatusFailed
+			items[i].Err = fmt.Errorf("fallback reported success but file missing: %w", statErr)
+			lastErr = statErr
 		}
 	}
+	c.runProbe(ctx, logger, items, producedIdx)
 
 	logger.Info("stock extractor: per-clip fallback completed",
 		zap.Int("source_index", req.SourceIdx),
-		zap.Int("clips_produced", len(produced)),
+		zap.Int("clips_produced", len(producedIdx)),
 	)
+	return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, c.batchErr(logger, items, lastErr)
+}
 
-	if len(produced) == 0 && lastErr != nil {
-		return stockpipeline.CutResult{}, fmt.Errorf("cutter: all jobs failed; last err: %w", lastErr)
+// runProbe runs the ffprobe validation pass on every produced clip,
+// flipping Status from Succeeded to Validated on success. Failures
+// keep Status=Succeeded (the file is on disk and playable) and stash
+// the probe error in ProbeError / Err annotated per call (the
+// application layer can downgrade validated → succeeded-equivalent
+// for downstream stages regardless of probe outcome).
+//
+// Concurrent: NOT safe — Cut callers do not parallelise per-job
+// (the ffmpeg batch-then-fallback ladder is sequential). If a
+// future port re-introduces parallel probes, this method needs
+// a per-clip goroutine + WaitGroup to avoid blocking on the probe
+// timeout. Today's call-surface stays sequential for simplicity.
+func (c *FFmpegCutter) runProbe(ctx context.Context, logger *zap.Logger, items []stockpipeline.CutItemResult, producedIdx []int) {
+	if !c.probeAfterCut {
+		return
 	}
-	return stockpipeline.CutResult{ProducedPaths: produced}, nil
+	for _, i := range producedIdx {
+		it := &items[i]
+		info, err := c.proc.Probe(ctx, it.OutputPath)
+		if err != nil {
+			// Soft-fail: surface on the item but keep Succeeded;
+			// downstream filter rendering depends on the file being
+			// on disk, not on probe's validity verdict.
+			logger.Warn("stock extractor: ffprobe validation failed for clip",
+				zap.String("output_path", it.OutputPath),
+				zap.String("job_id", it.JobID),
+				zap.Error(err),
+			)
+			it.Err = fmt.Errorf("ffprobe validation failed: %w", err)
+			continue
+		}
+		// Populate DurationSec; flip to Validated when the
+		// ffprobe-reported duration is a positive number. Zero
+		// or negative durations stay at Status=Succeeded.
+		if info != nil {
+			it.DurationSec = info.Duration.Seconds()
+			if it.DurationSec > 0 {
+				it.Status = stockpipeline.CutItemStatusValidated
+			}
+		}
+	}
+}
+
+// batchErr returns the top-level batch error for the Cut call.
+// nil err when at least one Item succeeded; non-nil when ALL items
+// failed (with the last captured failure preconditioned as argu).
+//
+// The legacy partial-success contract — non-nil error with some
+// clips produced — is replaced with the CutBatchResult invariant:
+// is preserved so the public contract reads identically to the
+// pre-FASE-2.4 CutResult.ProducedPaths-keyed signature.
+func (c *FFmpegCutter) batchErr(logger *zap.Logger, items []stockpipeline.CutItemResult, lastErrs ...error) error {
+	// Aggregate any preserved lastErrs (typically a single ffmpeg
+	// exit error) so callers can log a single root cause without
+	// iterating Items.
+	var lastErr error
+	if len(lastErrs) > 0 {
+		lastErr = lastErrs[0]
+	}
+	for _, it := range items {
+		if it.Status == stockpipeline.CutItemStatusSucceeded || it.Status == stockpipeline.CutItemStatusValidated {
+			return nil
+		}
+		if it.Err != nil {
+			lastErr = it.Err
+		}
+	}
+	if lastErr == nil {
+		// Empty Items (or all Items with StatusUnknown — bodies
+		// constructed but never assigned): surface a generic
+		// "batch produced nothing" sentinel so callers never see
+		// a silent nil.
+		return errors.New("cutter: all jobs failed (no per-item err captured)")
+	}
+	logger.Warn("stock extractor: batch-level failure (all items failed)",
+		zap.Error(lastErr),
+	)
+	return fmt.Errorf("cutter: all %d jobs failed; last err: %w", len(items), lastErr)
 }
