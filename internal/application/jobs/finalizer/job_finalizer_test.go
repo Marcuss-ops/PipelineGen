@@ -323,8 +323,8 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 				SizeBytes:      12345,
 				SHA256:         "sha256-doc-hash-abc123",
 				SourceVersion:  1,
-				Required:       true,
-				IdempotencyKey: "idem-doc-job-001",
+			Requirement:   finalization.ArtifactRequirementRequired,
+			IdempotencyKey: "idem-doc-job-001",
 				Location: finalization.AssetLocation{
 					Provider:     "drive",
 					FileID:       "drive-file-doc-xyz",
@@ -483,8 +483,8 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 				SizeBytes:      12345,
 				SHA256:         "sha256-doc-hash-abc123",
 				SourceVersion:  1,
-				Required:       true,
-				IdempotencyKey: "idem-doc-job-001",
+			Requirement:   finalization.ArtifactRequirementRequired,
+			IdempotencyKey: "idem-doc-job-001",
 				Location: finalization.AssetLocation{
 					Provider:     "drive",
 					FileID:       "drive-file-doc-xyz",
@@ -678,8 +678,8 @@ func TestFinalizerE2E_RejectsStaleLease(t *testing.T) {
 				MIMEType:       "application/pdf",
 				SHA256:         "hash",
 				SourceVersion:  1,
-				Required:       true,
-				IdempotencyKey: "ik",
+			Requirement:   finalization.ArtifactRequirementRequired,
+			IdempotencyKey: "ik",
 				Location: finalization.AssetLocation{
 					Provider: "drive",
 					FileID:   "f1",
