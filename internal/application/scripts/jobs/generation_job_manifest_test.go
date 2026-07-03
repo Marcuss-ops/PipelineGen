@@ -18,7 +18,7 @@
 //
 // The §8.4 envelope is built INTERNALLY as a typed
 //
-//	scriptpkg.ExecutionResult[domainScript.GenerationResult]{Data,Artifacts}
+//	scriptpkg.ExecutionResult[script.GenerationResult]{Data,Artifacts}
 //
 // (C10 dual-shape discipline); the function then marshals the envelope
 // to bytes + round-trips to map[string]any, AND sets
@@ -33,7 +33,7 @@ import (
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
 
@@ -41,25 +41,25 @@ import (
 // satisfies the §8.4 contract: scrip text + 2 scenes + 1 voiceover
 // (en) + 1 document (with DocLink). Tests below compose variations
 // of this fixture to exercise each emission branch.
-func validScriptResult(language string) *domainScript.GenerationResult {
+func validScriptResult(language string) *script.GenerationResult {
 	if language == "" {
 		language = "en"
 	}
-	return &domainScript.GenerationResult{
+	return &script.GenerationResult{
 		ItemID:   "test-item-c12",
 		Title:    "C12 Title",
 		Language: language,
-		Output: domainScript.ScriptOutput{
+		Output: script.ScriptOutput{
 			Text:      "Scene one says hi. Scene two says bye.",
 			WordCount: 8,
-			SpecScene: domainScript.SpecScene{
-				Scenes: []domainScript.Scene{
+			SpecScene: script.SpecSceneOutput{
+				Scenes: []script.SpecScene{
 					{
 						Index: 0,
 						Text:  "Scene one says hi.",
 						Kind:  "narration",
-						Bindings: domainScript.SceneBindings{
-							Voiceover: &domainScript.VoiceoverBinding{
+						Bindings: script.SceneBindings{
+							Voiceover: &script.VoiceoverBinding{
 								LocalPath: "/tmp/pipelinegen/jobs/test-job/voiceover-en-scene-0.mp3",
 							},
 						},
@@ -68,8 +68,8 @@ func validScriptResult(language string) *domainScript.GenerationResult {
 						Index: 1,
 						Text:  "Scene two says bye.",
 						Kind:  "narration",
-						Bindings: domainScript.SceneBindings{
-							Voiceover: &domainScript.VoiceoverBinding{
+						Bindings: script.SceneBindings{
+							Voiceover: &script.VoiceoverBinding{
 								LocalPath: "/tmp/pipelinegen/jobs/test-job/voiceover-en-scene-1.mp3",
 							},
 						},
@@ -77,8 +77,8 @@ func validScriptResult(language string) *domainScript.GenerationResult {
 				},
 			},
 		},
-		Artifacts: domainScript.ScriptArtifacts{
-			Document: &domainScript.DocumentArtifact{
+		Artifacts: script.ArtifactResult{
+			Document: &script.DocumentArtifact{
 				DocLink: "https://docs.google.com/document/d/test-doc-link/edit",
 				DocID:   "test-doc-id",
 				Status:  "completed",
@@ -90,7 +90,7 @@ func validScriptResult(language string) *domainScript.GenerationResult {
 // validScriptResult_NoDocument returns the same shape minus the
 // Document artifact; the §8.4 PDF emission slot should NOT appear in
 // the manifest when no document was generated.
-func validScriptResult_NoDocument() *domainScript.GenerationResult {
+func validScriptResult_NoDocument() *script.GenerationResult {
 	r := validScriptResult("en")
 	r.Artifacts.Document = nil
 	return r
@@ -98,37 +98,37 @@ func validScriptResult_NoDocument() *domainScript.GenerationResult {
 
 // validScriptResult_NoScenes returns the same shape with empty scenes
 // so the §8.4 scenes emission slot should NOT appear.
-func validScriptResult_NoScenes() *domainScript.GenerationResult {
+func validScriptResult_NoScenes() *script.GenerationResult {
 	r := validScriptResult("en")
 	r.Output.SpecScene.Scenes = nil
-	r.Output.SpecScene.Scenes = []domainScript.Scene{} // explicit empty
+	r.Output.SpecScene.Scenes = []script.SpecScene{} // explicit empty
 	return r
 }
 
 // validScriptResult_VoiceoverMultiLanguage exercises the §8.4
 // language-grouped emission: 3 scenes across 2 languages, expect ONE
 // manifest entry per language (en + it).
-func validScriptResult_VoiceoverMultiLanguage() *domainScript.GenerationResult {
-	return &domainScript.GenerationResult{
+func validScriptResult_VoiceoverMultiLanguage() *script.GenerationResult {
+	return &script.GenerationResult{
 		ItemID:   "test-item-multilang",
 		Title:    "C12 Multilang Title",
 		Language: "en",
-		Output: domainScript.ScriptOutput{
+		Output: script.ScriptOutput{
 			Text:      "Multi-language scenes.",
 			WordCount: 3,
-			SpecScene: domainScript.SpecScene{
-				Scenes: []domainScript.Scene{
+			SpecScene: script.SpecSceneOutput{
+				Scenes: []script.SpecScene{
 					{Index: 0, Text: "EN: hi", Kind: "narration",
-						Bindings: domainScript.SceneBindings{
-							Voiceover: &domainScript.VoiceoverBinding{LocalPath: "/tmp/vo-en-0.mp3"},
+						Bindings: script.SceneBindings{
+							Voiceover: &script.VoiceoverBinding{LocalPath: "/tmp/vo-en-0.mp3"},
 						}},
 					{Index: 1, Text: "IT: ciao", Kind: "narration",
-						Bindings: domainScript.SceneBindings{
-							Voiceover: &domainScript.VoiceoverBinding{LocalPath: "/tmp/vo-it-1.mp3"},
+						Bindings: script.SceneBindings{
+							Voiceover: &script.VoiceoverBinding{LocalPath: "/tmp/vo-it-1.mp3"},
 						}},
 					{Index: 2, Text: "EN: bye", Kind: "narration",
-						Bindings: domainScript.SceneBindings{
-							Voiceover: &domainScript.VoiceoverBinding{LocalPath: "/tmp/vo-en-2.mp3"},
+						Bindings: script.SceneBindings{
+							Voiceover: &script.VoiceoverBinding{LocalPath: "/tmp/vo-en-2.mp3"},
 						}},
 				},
 			},
@@ -334,7 +334,7 @@ func TestBuildAndInjectManifest_TypedEnvelopeRouted(t *testing.T) {
 	if mErr != nil {
 		t.Fatalf("marshal handlerResult: %v", mErr)
 	}
-	var envelope scriptpkg.ExecutionResult[domainScript.GenerationResult]
+	var envelope scriptpkg.ExecutionResult[script.GenerationResult]
 	if uErr := json.Unmarshal(envelopeBytes, &envelope); uErr != nil {
 		t.Fatalf("unmarshal into typed ExecutionResult[GenerationResult]: %v", uErr)
 	}

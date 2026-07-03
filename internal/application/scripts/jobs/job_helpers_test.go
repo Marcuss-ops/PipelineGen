@@ -90,14 +90,13 @@ func TestBuildVoiceoverDestination_RoutesThroughFolderExtPort_DirectFolder(t *te
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
-		stub,
-		nil,
+		nil, // resolveFolder closure: unused — folder-id branch fires first
 		zap.NewNop(),
 		"Top 10 Funny Moments",
 		" raw-folder-string ", // assert TrimSpace happens inside the port adapter
-		"",
-		"",
-		nil, // no groupsResolver
+		"",     // voiceoverGroup
+		"",     // voRootID
+		nil,    // no groupsResolver
 	)
 
 	require.NotNil(t, dest)
@@ -110,7 +109,6 @@ func TestBuildVoiceoverDestination_RoutesThroughFolderExtPort_DirectFolder(t *te
 // - Audit §3 case 2: destination routes through port (folder-id empty, group non-empty)
 
 func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonEmpty(t *testing.T) {
-	folderExt := &stubClipsFolderExt{fixedFolderID: ""} // forced-empty so groupsResolver branch fires
 	resolver := &stubVoiceoverGroupResolver{
 		folderByName: map[string]string{
 			"Jackie Chan": "jackie-folder-id",
@@ -119,8 +117,7 @@ func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonE
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
-		folderExt,
-		nil,
+		nil, // resolveFolder closure: unused — groupsResolver branch fires before closure fallback
 		zap.NewNop(),
 		"Karate Fails Compilation",
 		"",                  // empty folder-id
@@ -142,7 +139,6 @@ func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonE
 // resolver signals "unknown group". This is the canonical sentinel
 // flow from ports/voiceover_group_port.go.
 func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
-	folderExt := &stubClipsFolderExt{fixedFolderID: ""}
 	resolver := &stubVoiceoverGroupResolver{
 		errByName: map[string]error{
 			"missing-group": ports.ErrVoiceoverGroupNotFound,
@@ -151,13 +147,12 @@ func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
-		folderExt,
-		nil,
+		nil, // resolveFolder closure: unused — fallthrough to voRootID-or-group branch
 		zap.NewNop(),
 		"Fallback Title",
-		"",
-		"missing-group",
-		"",
+		"", // folder-id
+		"missing-group", // group
+		"", // voRootID
 		resolver,
 	)
 
@@ -170,18 +165,16 @@ func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
 // Bonus: nil resolver behaves the same as before refactor. Defensive
 // parity check to ensure the refactor preserves nil-resolver leg.
 func TestBuildVoiceoverDestination_NilResolverStillSucceeds(t *testing.T) {
-	folderExt := &stubClipsFolderExt{fixedFolderID: "ext-folder-id"}
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
-		folderExt,
-		nil,
+		nil, // resolveFolder closure: unused — folder-id branch fires first
 		zap.NewNop(),
 		"Title",
 		"raw",
-		"",
-		"",
-		nil,
+		"", // group
+		"", // voRootID
+		nil, // groupsResolver
 	)
 	require.NotNil(t, dest)
 	require.Equal(t, "ext-folder-id", dest.FolderID)
