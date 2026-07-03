@@ -105,6 +105,7 @@ func DefaultChecks() []CheckSpec {
 			scan.ScanPackages(root, pol, r, fileLines)
 			scan.ScanCommandBinaries(root, pol, r, fileLines)
 		}},
+		{"job_handlers_audit_check_54", scan.ScanRegisteredJobTypesWithoutHandlers},
 	}
 }
 

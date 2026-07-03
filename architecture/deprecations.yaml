@@ -3205,3 +3205,65 @@ audit:
       prevents the future-introducer of a conditional /index_bulk
       wire from re-introducing the unconditional-success anti-pattern.
 
+
+  # -- P0.1 DRIVE-CUTOVER-P0-1 -- BulkUploadWorker ClipDriveUploaderPort removed; Publisher mandatory --
+  # Drive cutover P0.1 (July 2026): the legacy ClipDriveUploaderPort field
+  # on BulkUploadWorker is removed. All bulk-upload Drive writes now go
+  # exclusively through the canonical delivery.Publisher.Publish path.
+  # Remaining capability-layer .UploadFile/.UploadFileWithDescription
+  # call sites (upload_helpers.go, worker/runner.go, upload_intent.go,
+  # youtube/service.go) are deprecated with TODO(P0.4) forward-pointers.
+  # --
+  - id: DRIVE-CUTOVER-P0-1
+    owner_capability: internal/application/clips + internal/infrastructure/drive
+    exact_symbol: |
+      BulkUploadWorker.uploader (ClipDriveUploaderPort, deprecated) -
+      field + constructor arg + nil-check + processOneClip legacy
+      else branch (w.uploader.UploadFileWithDescription + sidecar
+      UploadFileWithDescription calls) REMOVED. Publisher
+      (ClipPublisherPort) is now mandatory; nil publisher at
+      construction -> fail-closed at HandleJob.
+    file: internal/application/clips/bulk_upload_worker.go + internal/app/module_media.go
+    file_line: "Struct field line 61 (removed), constructor arg line 80 (removed), wiring call line 190 (removed) plus the processOneClip else branch (~40 lines removed)."
+    replacement: |
+      delivery.Publisher.Publish(ctx, PublishRequest{Destination:
+      DestinationYouTubeClip, ...}) -- the canonical single-wire
+      path for all Drive file uploads (conflict-aware, folder-
+      resolved, filename-normalised). The Publisher internally
+      handles subdirectory resolution via the Group field +
+      RootFolderOverride.
+    introduction_date: 2026-07-03
+    removal_date: 2026-07-03
+    tracking_issue: "DRIVE-CUTOVER-P0-1 (architecture P0.1 -- Drive cutover verdict. Next: P0.2 YouTube delivery_status enum, P0.3 bulk PARTIALLY_SUCCEEDED, P0.4 ArtifactPreparationService wiring.)"
+    compatibility_test: |
+      Triple-defence:
+        (a) `rg '\.UploadFile\(|\.UploadFileWithDescription\(' internal/application/` returns only deprecated sites with TODO(P0.4) markers.
+        (b) `go build ./internal/application/clips/...` exits 0 (no reference to removed ClipDriveUploaderPort).
+        (c) `rg 'ClipDriveUploaderPort' internal/application/clips/bulk_upload_worker.go` returns 0 hits.
+    usage_metric: |
+      Pre-removal: 1 field + 1 constructor arg + 4 legacy call sites (1 main video + manifest + transcript sidecars via UploadFileWithDescription, 1 resolveSubdirFolderID via GetOrCreateFolder).
+      Post-removal: 0 BulkUploadWorker references to ClipDriveUploaderPort. All Drive writes -> Publisher.
+      Remaining deprecated call sites (non-bulk-worker): upload_helpers.go:175 (UploadFile), runner.go:427+449 (UploadFile via assetClient), upload_intent.go:284 (UploadFile), youtube/service.go:270 (UploadFileWithDescription) -- all carry // TODO(P0.4) markers.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Single-commit CONTRACT per AGENTS.md Git-Lesson-2: bulk worker
+      had Publisher wired alongside the legacy port since FASE 7;
+      the Publisher path was already exercised in production (w.publisher
+      != nil guard was the first branch). Removing the else branch
+      and the ClipDriveUploaderPort is a pure-deletion operation with
+      zero risk of breaking code already on the Publisher path.
+
+      Remaining non-bulk-worker .UploadFile* call sites:
+        - upload_helpers.go:175           : cumulative metadata.json upload (legacy helper; migrate to Publisher when metadata.json helper is ported) -- TODO(P0.4)
+        - worker/runner.go:427,449        : assetClient.UploadFile (remote-worker artifact handoff; separate Publisher wiring) -- TODO(P0.4)
+        - upload_intent.go:284            : DriveUploader.UploadFile (voiceover upload-intent; separate Publisher wiring) -- TODO(P0.4)
+        - youtube/service.go:270          : UploadFileWithDescription (YouTube sourcing; separate Publisher wiring) -- TODO(P0.4)
+
+      Forward-pointer: these 4 remaining sites are P0.4 scope (wire
+      ArtifactPreparationService to delivery.Publisher + migrate
+      each caller). The ClipDriveUploaderPort type declaration
+      (ports.go:185) is intentionally retained at P0.1 -- the
+      remaining call sites still reference it through typed ports.
+      Retirement of the type declaration happens when all 4 sites
+      are migrated (P0.4 CONTRACT).

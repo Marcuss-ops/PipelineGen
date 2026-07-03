@@ -442,7 +442,6 @@ const (
 	// regulated by the registry's per-job-type Concurrency field
 	// (configured at compose time), NOT by goroutines inside the API.
 	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
-	TypeYouTubeChannelSync    = job.TypeYouTubeChannelSync
 	TypeImageGenerateGoogle   = "image.generate.google"
 
 	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
@@ -504,8 +503,6 @@ func Compose() *Registry {
 	// accessor Registry.Concurrency(t), which already normalises <=0 to
 	// DefaultConcurrency=1 via applyDefaults(). See architecture/issues.yaml
 	// for the parallel-mode race ticket tracked separately.
-	r.Register(JobPolicy{Type: TypeYouTubeChannelSync, Description: "YouTube channel-level sync (metadata + video listings)", Timeout: 30 * time.Minute, DefaultMaxRetries: 1, Concurrency: 1})
-
 	// ── Voiceover / subtitles ──
 	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})

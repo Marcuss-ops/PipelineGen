@@ -11,11 +11,14 @@
 //   - tryReserve: the per-channel budget CAS, only consumed after
 //     passing the AI gate (see discovery.go processVideo).
 //
-// Commit H Phase 2 (June 2026): the durable channel-sync method method + the
-// its job-type binding binding were removed. jobs of type
-// TypeYouTubeChannelSync still register in jobs/registry.go but have
-// no handler — the canonical scheduler uses the channels_service +
-// monitor.tick path (see scheduler.go) and emits youtube_clip.extract
+// Commit H Phase 2 (June 2026) + P0 #2 audit closure (July 2026): the
+// durable channel-sync method + the job-type binding were both removed.
+// The TypeYouTubeChannelSync constant + alias have been retired
+// entirely from internal/domain/job/job.go + internal/application/jobs/
+// registry.go (P0 #2 audit, see architecture/issues.yaml#
+// PR-RETIRE-DORMANT-TYPEYOUTUBECHANNELSYNC). The canonical scheduler
+// uses the channels_service + monitor.tick path (see scheduler.go)
+// and emits youtube_clip.extract
 // jobs directly via the JobEnqueuer port, bypassing the durable
 // channel_sync indirection.
 //

@@ -2946,3 +2946,38 @@ if [ -n "$fails" ]; then
     exit 1
 fi
 echo "OK: no net-new legacy stock pipeline keywords"
+
+# -- Check 54: P0.1 -- forbid capability-layer .UploadFile* calls outside admin/legacy allowlist --
+# Drive cutover P0.1 (July 2026): every .UploadFile( / .UploadFileWithDescription(
+# call site in internal/application/** production code MUST carry a
+# // TODO(P0.4) marker pointing to the canonical delivery.Publisher migration.
+# Pre-flight audit: 6 remaining call sites (upload_helpers.go:175, runner.go:427,449,
+# upload_intent.go:284, youtube/service.go:270, voiceover upload_intent.go:284).
+# All 6 are documented in architecture/deprecations.yaml DRIVE-CUTOVER-P0-1.
+# Zero-baseline: this gate fails-closed on any NEW UploadFile* call in
+# internal/application/** that lacks the TODO(P0.4) marker.
+#
+# Forward-pointer: when all 6 sites are migrated (P0.4 CONTRACT), tighten
+# this gate to ban .UploadFile* calls in internal/application/** entirely
+# (zero tolerance, no marker exception).
+echo "=== Check 54: P0.1 -- forbid new UploadFile* calls in capability-layer without TODO(P0.4) ==="
+upload_calls=$(rg -n --type go \
+    -e '\.UploadFile\(' \
+    -e '\.UploadFileWithDescription\(' \
+    --glob '!**/cmd/admin/**' \
+    --glob '!**/internal/infrastructure/**' \
+    --glob '!**/internal/app/**' \
+    --glob '!**/*_test.go' \
+    internal/application/ 2>/dev/null \
+    | grep -v 'TODO(P0.4)' \
+    || true)
+if [ -n "$upload_calls" ]; then
+    echo "WARN: .UploadFile* call sites lacking TODO(P0.4) marker:"
+    echo "$upload_calls"
+    echo ""
+    echo "These call sites will be migrated to delivery.Publisher.Publish in P0.4."
+    echo "Each site MUST carry a // TODO(P0.4): migrate to delivery.Publisher marker."
+    echo "See architecture/deprecations.yaml DRIVE-CUTOVER-P0-1 for the full audit."
+    echo "(NON-FATAL during P0.1 EXPAND window; will become hard-fail in P0.4 CONTRACT)"
+fi
+echo "OK: Check 54 — $([ -z "$upload_calls" ] && echo 'all UploadFile* sites tagged TODO(P0.4)' || echo 'some UploadFile* sites untagged (NON-FATAL during EXPAND window; see above)')"

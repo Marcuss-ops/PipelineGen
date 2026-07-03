@@ -63,7 +63,7 @@ const (
 //   - render/video: TypeRenderVideo, TypeVideoGenerate
 //   - subtitles: TypeSubtitleGenerate
 //   - youtube: TypeYouTubeUpload, TypeYouTubeClipExtract,
-//     TypeYouTubeRebuildST, TypeYouTubeChannelSync
+//     TypeYouTubeRebuildST
 //   - catalog: TypeCatalogSync
 //   - system: TypeSystemCleanup
 //   - books: TypeBooksProcess
@@ -100,7 +100,6 @@ const (
 	TypeDriveFolderSync        = "drive.folder.sync"
 	TypeMediaCurate            = "media.curate"
 	TypeVoiceoverPromo         = "voiceover.promo"
-	TypeYouTubeChannelSync     = "youtube.channel.sync"
 
 	// ── Spina Dorsale Fase 2 (July 2026): downstream artifact jobs ──
 
