@@ -6,7 +6,7 @@
 //
 // Routing table (ConflictPolicy → action):
 //
-//	ConflictOverwrite (zero-value, legacy default):
+//	ConflictOverwrite:
 //	  - existing match   → Files.Update with Media  → PutActionUpdated
 //	  - no match         → Files.Create with Media  → PutActionCreated
 //	ConflictSkip:
@@ -17,6 +17,13 @@
 //	  - existing match   → Files.Create with new name (timestamp suffix)
 //	                                              → PutActionRenamed
 //	  - no match         → Files.Create with Media  → PutActionCreated
+//
+// P1.1 (July 2026): ConflictOverwrite is no longer the iota-zero
+// default — that role moved to ConflictPolicyUnset, which the
+// publisher resolves to a registry-driven value before calling
+// this seam. The routing table above assumes a non-Unset policy;
+// direct PutFile callers MUST NOT pass ConflictPolicyUnset (see
+// Publisher.Step0 in publisher.go for the registry-default path).
 //
 // Retries on transient Drive errors (429, 503, timeouts, network blips)
 // via pkg/retry — same exponential backoff policy (3 attempts, 2s → 4s)
@@ -49,6 +56,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -60,6 +68,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
+
+// ErrConflictPolicyUnresolved is the typed sentinel a caller of
+// PutFile receives when it bypasses the publisher-side registry-
+// default path (Publisher.Step0 in publisher.go) and forwards a
+// raw ConflictPolicyUnset value into the uploader seam. The publisher
+// resolves Unset to a per-destination registry default BEFORE calling
+// PutFile, so production never reaches this branch — the guard is
+// defense-in-depth so a future admin / migration / test surface that
+// constructs PutFileRequest{} directly cannot silently fall through
+// to "Plain Create" and lose the registry-driven safety contract
+// (P1.1, July 2026). Callers that genuinely want "fresh Drive file on
+// collision" must pass ConflictOverwrite explicitly.
+var ErrConflictPolicyUnresolved = errors.New("drive: PutFile received ConflictPolicyUnset — caller bypassed Publisher.Step0")
 
 // PutFile is the conflict-aware upload entry point. Implements
 // FileUploaderPort.PutFile (used by delivery.Publisher) and
@@ -83,6 +104,17 @@ import (
 // more than one non-trashed match in the same parent — surfaces
 // ErrAmbiguousDriveFile wrapped with the filename; pre-Wave B2 the
 // first-match truncation silently hid this case.
+//
+// P1.1 (July 2026): PutFile rejects ConflictPolicyUnset with the
+// typed sentinel ErrConflictPolicyUnresolved. Publisher.Step0
+// resolves Unset BEFORE the uploader is called, so production never
+// reaches this branch — the guard exists as defense-in-depth so a
+// future caller that bypasses Publisher cannot silently fall through
+// to "Plain Create" and lose the registry-driven safety contract.
+// Callers who genuinely want "create a fresh Drive file on collision"
+// must pass ConflictOverwrite explicitly (Overwrite + no-existing
+// match → Files.Create, the same end-state Unset would have
+// produced here, but explicit).
 func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileResult, error) {
 	if u.Service == nil {
 		return nil, fmt.Errorf("drive service not configured")
@@ -95,6 +127,20 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	}
 	if strings.TrimSpace(req.Filename) == "" {
 		return nil, fmt.Errorf("putFile: filename is required")
+	}
+	// P1.1 defense-in-depth: ConflictPolicyUnset (= 0, the iota
+	// sentinel for "the caller did not pick a policy") MUST NOT
+	// reach the uploader. Publisher.Step0 resolves Unset to a
+	// registry-driven value before calling us, so production
+	// cannot land here. The guard is a typed-sentinel fail-closed
+	// gate for any future caller that bypasses Publisher (e.g. a
+	// migration / admin / test surface that constructs
+	// PutFileRequest{} directly), paralleling the Wave B1 + Wave B2
+	// lookup fail-closed axes. Callers that genuinely want a fresh
+	// Drive file on collision must pass ConflictOverwrite
+	// explicitly.
+	if req.ConflictPolicy == delivery.ConflictPolicyUnset {
+		return nil, fmt.Errorf("putFile: %w", ErrConflictPolicyUnresolved)
 	}
 
 	result, err := retry.DoWithValue(ctx, func() (*PutFileResult, error) {

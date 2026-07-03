@@ -14,8 +14,21 @@ import (
 // Returning an empty slice is valid only when RequireSubpath is false.
 type PathBuilder func(req PublishRequest) ([]string, error)
 
-// DestinationPolicy defines how a DestinationKey resolves to a Drive path.
+// DestinationPolicy defines how a DestinationKey resolves to a Drive path
+// AND how to handle a filename collision in the resolved folder.
+//
 // The DestinationRegistry holds exactly one policy per DestinationKey.
+// All fields are captured eagerly at construction time; the registry is
+// immutable after creation. Per-destination ConflictPolicy is set here
+// — NOT threaded through PublishRequest — so callers that omit the
+// field cannot accidentally trigger uploads against the wrong policy.
+//
+// P1.1 (July 2026): the legacy zero = ConflictOverwrite default was
+// unsafe; a caller forgetting to pick a policy would silently overwrite
+// any existing Drive file under that name. The publisher now consults
+// this field when req.ConflictPolicy == 0 (the "caller didn't pick"
+// path) so the safety contract lives in the registry, not as a hidden
+// zero-value trap. Explicit PublishRequest.ConflictPolicy always wins.
 type DestinationPolicy struct {
 	// RootFolderID returns the Drive folder ID that serves as the root
 	// for this destination. Derived from config at construction time.
@@ -28,6 +41,27 @@ type DestinationPolicy struct {
 	// in the root folder (i.e. when PathBuilder returns an empty slice).
 	// This prevents accidental pollution of top-level Drive folders.
 	RequireSubpath bool
+
+	// ConflictPolicy is the registry-driven default for filename
+	// collisions in the resolved Drive folder. The publisher applies
+	// this when PublishRequest.ConflictPolicy is the zero value (the
+	// "caller didn't pick" path). MUST be one of ConflictOverwrite /
+	// ConflictSkip / ConflictRename — zero is NOT a valid default and
+	// would silently fall back to ConflictOverwrite via the PutFile
+	// seam.
+	//
+	// Semantics per destination (P1.1 mapping, July 2026):
+	//   - YouTube clip / Artlist / Stock / Image / Voiceover /
+	//     SoundEffect → ConflictSkip  (immutable / versioned assets,
+	//     collisions are content-hash dupes that should not overwrite)
+	//   - Book / Script / Document → ConflictOverwrite (regenerable
+	//     outputs, latest version wins)
+	//
+	// Operator overrides (e.g. an explicit admin reupload that wants
+	// ConflictOverwrite on a normally-Skip destination) MUST thread
+	// PublishRequest.ConflictPolicy explicitly; the registry default
+	// only applies when the caller left it at zero.
+	ConflictPolicy ConflictPolicy
 }
 
 // DestinationRegistry is the single authority that maps a DestinationKey
@@ -38,9 +72,20 @@ type DestinationRegistry struct {
 }
 
 // NewDestinationRegistry builds the registry from application config.
-// Every DestinationKey has exactly one policy. The root folder IDs are
-// captured eagerly (at construction time) so the registry is immutable
-// after creation.
+// Every DestinationKey has exactly one policy. The root folder IDs and
+// per-destination ConflictPolicy are captured eagerly (at construction
+// time) so the registry is immutable after creation.
+//
+// Per-destination ConflictPolicy mapping (P1.1, July 2026) — see
+// DestinationPolicy.ConflictPolicy for the rationale. Pure data:
+//   Skip             → immutable / versioned asset (do not overwrite
+//                       silently when an existing Drive file under the
+//                       same name is found)
+//   Overwrite        → regenerable artefact where the latest version
+//                       wins (caller can override per request, e.g. an
+//                       explicit admin reupload wants Overwrite on a
+//                       normally-Skip destination — PublishRequest is
+//                       the surface for that override)
 func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 	return &DestinationRegistry{
 		policies: map[DestinationKey]DestinationPolicy{
@@ -48,46 +93,55 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				RootFolderID:   cfg.Drive.ClipsFolder(),
 				PathBuilder:    YouTubeClipPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // immutable uploaded clip
 			},
 			DestinationArtlist: {
 				RootFolderID:   cfg.Drive.ArtlistFolder(),
 				PathBuilder:    ArtlistPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // curated artlist asset
 			},
 			DestinationStock: {
 				RootFolderID:   cfg.Drive.StockFolder(),
 				PathBuilder:    StockPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // licensed stock asset
 			},
 			DestinationImage: {
 				RootFolderID:   cfg.Drive.ImagesFolder(),
 				PathBuilder:    ImagePath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // content-hash dedupe via SHA-256
 			},
 			DestinationVoiceover: {
 				RootFolderID:   cfg.Drive.VoiceoverFolder(),
 				PathBuilder:    VoiceoverPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // immutable per (project, language, version)
 			},
 			DestinationBook: {
 				RootFolderID:   cfg.Drive.BooksFolder(),
 				PathBuilder:    BookPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictOverwrite, // regenerable summary
 			},
 			DestinationScript: {
 				RootFolderID:   cfg.Drive.ScriptsFolder(),
 				PathBuilder:    ScriptPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictOverwrite, // regenerable script output
 			},
 			DestinationSoundEffect: {
 				RootFolderID:   cfg.Drive.SoundEffectsFolder(),
 				PathBuilder:    SoundEffectPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // licensed sound effect
 			},
 			DestinationDocument: {
 				RootFolderID:   cfg.Drive.DocumentsFolder(),
 				PathBuilder:    DocumentPath,
 				RequireSubpath: true,
+				ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
 			},
 		},
 	}
