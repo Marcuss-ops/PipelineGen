@@ -1832,8 +1832,64 @@
       deadline: 2026-08-15
     - id: PR-GODOBJ-4-SCRIPTS-GENERATION-JOB
       owner_capability: internal/application/scripts
-      status: pending
+      status: shipped
+      ship_sha: 70c58c4d60b09f7e6d92f7ad446afa0526cea67e
+      ship_date: 2026-07-03
       deadline: 2026-08-15
+      notes: >
+        4 of 8 canonical split files exceed the AGENTS.md Check 44
+        66-LoC transitional cap (generation_handler.go ~340 LoC,
+        adapters/artifacts_persistence.go 201 LoC, generation_outcome.go
+        181 LoC, generation_result_mapper.go 165 LoC). godlike/07
+        honest-limitation disclosure: zero filesystem ops in handler-
+        adjacent files (KILL-K1); single+batch in 3 SEPARATE methods on
+        *GenerateJobHandler (KILL-K2 compile-time interface probe via
+        var _ requireSeparateDispatch = (*GenerateJobHandler)(nil));
+        ctx.Canceled classified as OutcomeCanceled BEFORE generic
+        OutcomeFailed bucket (KILL-K3 errors.Is probe). Canonical
+        landing: build + test green on touched subtree (10 files:
+        1439 insertions / 840 deletions). Each over-cap file has
+        EXACTLY ONE forward-pointing linked_issue below per zero-baseline
+        rule. The legacy buildAndInjectManifest method is REMOVED from
+        production code (godlike/07 no-fake-availability — dual surface
+        gone). The 7 prior h.buildAndInjectManifest test call sites
+        migrated to the canonicalEmit helper (adapter+manifest+merger).
+      linked_issues:
+        - id: PR-GODOBJ-4a-HANDLER-SLIM
+          spec: compress generation_handler.go to <=40 LoC by extracting checkPipelineCtx into pkg/pipeline/util.sh
+          owner_capability: internal/application/scripts
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-4b-RESULT-MAPPER-SLIM
+          spec: split generation_result_mapper.go envelope builders into per-capability helper files (≤30 LoC each)
+          owner_capability: internal/application/scripts
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-4c-PERSIST-ADAPTER-SLIM
+          spec: extract per-kind writers (script-json / scenes-json / voiceover §8.4) into per-kind helper files (≤30 LoC each)
+          owner_capability: internal/application/scripts/adapters
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-4d-OUTCOME-SLIM
+          spec: split ClassifySingleOutcome + ClassifyGenerationOutcome into per-path helper files (≤30 LoC each)
+          owner_capability: internal/application/scripts
+          deadline: 2026-08-15
+          status: pending
+        - id: PR-GODOBJ-4-PERSIST-MIGRATION-TO-SCRIPTCORE
+          spec: per user spec "scrivi in service core, NON handler" — future wave may move PersistGeneratedArtifacts from internal/application/scripts/adapters/ to internal/service/scriptcore/ for stricter SSOT locality
+          owner_capability: internal/application/scripts (with internal/service/scriptcore coordination)
+          deadline: 2026-08-31
+          status: pending
+        - id: PR-GODOBJ-4-OUTCOME-NIL-CTX-COVERAGE
+          spec: add 6th case to TestClassifyGenerationOutcome_PureNoSideEffects for (manyResult=nil AND err=context.Canceled) edge
+          owner_capability: internal/application/scripts
+          deadline: 2026-07-15
+          status: pending
+        - id: PR-GODOBJ-4-TEST-TEMPDIR
+          spec: redirect PersistGeneratedArtifacts's outDir to t.TempDir() for hermetic tests (avoids /tmp-residue in CI)
+          owner_capability: internal/application/scripts
+          deadline: 2026-08-15
+          status: pending
     - id: PR-GODOBJ-5-FINALIZER
       owner_capability: internal/application/jobs/finalizer
       status: pending
