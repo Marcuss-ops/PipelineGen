@@ -5,27 +5,24 @@
 // not accidentally relocate the seal.
 package reconciler
 
-// canonicalPointID is the canonical AssetIDToQdrantPointID mapping
-// (= assetID with "pt-" prefix) used by every reconciler test
-// fixture. Mirrors production schema.AssetIDToQdrantPointID.
+// canonicalPointID is a TEST-ONLY stub that simplifies the real
+// schema.AssetIDToQdrantPointID (UUID v5 with SHA-1) to a predictable
+// "pt-<assetID>" prefix. This stub is INTENTIONALLY simpler than
+// production — the reconciler's NonCanonicalPointID classifier only
+// needs to detect that a point ID does NOT match the canonical
+// derivation; "pt-a1" vs "wrong-uuid" is sufficient for testing.
+//
+// Task 3 (July 2026): explicitly documented as TEST-ONLY. The ONLY
+// production declaration of AssetIDToQdrantPointID lives in
+// internal/infrastructure/qdrant/schema/pointid.go (UUID v5 SHA-1).
+// This stub MUST NOT be used in production code — the composition_test
+// gate "TestComposition_AssetIDToQdrantPointID_SingleDeclaration"
+// enforces exactly 1 production declaration.
 //
 // Why this is a sealed helper:
-//
-//   - The scanner's NonCanonicalPointID classifier compares observed
-//     point-IDs against canonicalPointID("a1") == "pt-a1". Tests that
-//     substitute a different prefix (e.g. "asset-a1") silently
-//     diverge from production semantics, and the divergence is only
-//     caught by manual review of the fixture.
-//
-//   - The hyphen-vs-underscore trap ("pt-a1" vs "pt_a1") used to live
-//     as inline `func(s string) string { return "pt-" + s }` literals
-//     at every call site; this helper locks the canonical shape in
-//     exactly one place.
-//
-// Use this helper instead of inline `func(s string) string { ... }`
-// literals; assign it to AssetPointIDFunc in fixtures with
-// `withPointIDFor(canonicalPointID)` so all tests exercise the same
-// prefix derivation.
+//   - Prevents inline point-ID derivation at test call sites
+//   - Locks "pt-" prefix shape in a single place
+//   - Makes future migration to the real function a one-line change
 func canonicalPointID(assetID string) string {
 	return "pt-" + assetID
 }
