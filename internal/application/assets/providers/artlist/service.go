@@ -322,6 +322,15 @@ func (s *Service) HandleJob(ctx context.Context, j *jobs.Job, tools *appjobs.Job
 	return s.jobAdapter.HandleJob(ctx, j, tools)
 }
 
+// RegisterHandler registers the Artlist job handler (HandleJob) with the
+// canonical jobs.Service dispatcher for TypeArtlistRun ("media.artlist").
+// The composition root (WireArtlistJobBindings in build_bundles_artlist.go)
+// calls this method after WireArtlist completes, mirroring the
+// catalog/youtube RegisterHandler precedent in build_bundles_youtube.go.
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
+	return s.jobAdapter.RegisterHandler(jobsSvc)
+}
+
 // GetJobByRunID ottiene un job per run ID.
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*jobs.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)

@@ -253,7 +253,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 		}
 
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-			Type:       "artlist.run",
+			Type:       "media.artlist",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),
 			MaxRetries: 3,
 		})

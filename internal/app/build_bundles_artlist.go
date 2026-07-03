@@ -12,12 +12,14 @@
 // return-nil. Operators see 404 on /api/artlist/* rather than a full-system
 // boot abort.
 //
-// 9 forward-pointer nil fields (8 in ServiceDeps + 1 in Build(Dependencies))
+// 6 forward-pointer nil fields (4 in ServiceDeps + 2 in Build(Dependencies))
 // are declared explicitly with linked_issue cross-refs; see
 // architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
-// discipline). Read-only endpoints (/stats, /diagnostics, /search/live)
-// remain live even with forward-pointers nil; write endpoints (/run,
-// /recommend, /sync-catalogs) return 503 at runtime via the handler's
+// discipline). The 3 repo fields (AssetProcRepo / AssetVerRepo / AssetLocRepo)
+// are now WIRED via sqassets.NewAssetStoreSQLite (PRIORITÀ ASSOLUTA — nil would
+// panic in run_orchestrator_stages.go). Read-only endpoints (/stats, /diagnostics,
+// /search/live) remain live even with forward-pointers nil; write endpoints
+// (/run, /recommend, /sync-catalogs) return 503 at runtime via the handler's
 // nil-tolerance.
 //
 // Single-function shape (WireArtlist) mirrors the existing WireMediaIngest
@@ -38,6 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -135,12 +138,44 @@ func WireArtlist(
 		log,
 	)
 
+	// Asset lifecycle repositories: wired from the canonical
+	// sqassets.AssetStoreSQLite (same DB handle bundle.DB.DB, same logger).
+	// AssetProcRepo + AssetVerRepo are MANDATORY — called in
+	// run_orchestrator_stages.go (Start/Fail/Complete + Append); nil would
+	// panic on any real /run invocation (PRIORITÀ ASSOLUTA per la matrice
+	// Frequenza×Complessità). AssetLocRepo is a free bonus (zero call sites
+	// today but cheap to wire now).
+	//
+	// godlike/06 SSOT: the canonical adapter factories live on
+	// *assets.AssetStoreSQLite.ProcessingRepository() / .VersionRepository() /
+	// .LocationRepository() (processing_queries.go / version_queries.go /
+	// location_queries.go).
+	assetSQLiteStore := assets.NewAssetStoreSQLite(bundle.DB.DB, log)
+	assetProcRepo := assetSQLiteStore.ProcessingRepository()
+	assetVerRepo := assetSQLiteStore.VersionRepository()
+	assetLocRepo := assetSQLiteStore.LocationRepository()
+
+	// Stager (SourceStager port, Step 9/12): wraps the Artlist Downloader
+	// so run_orchestrator_stages.go can use the canonical SourceStager
+	// contract instead of falling through to the legacy mediaProcessor
+	// pipeline. The downloader is the same yt-dlp + HTTPDownloader
+	// composition that mediaProcessor uses internally — just exposed
+	// through a different port shape.
+	//
+	// godlike/06 SSOT: internal/infrastructure/artlist/downloader.Provider
+	// is the canonical concrete implementing artlist.Downloader. Config{} =
+	// all defaults (3 retries, 1s/30s backoff, 0.3 jitter, 5m HTTP timeout).
+	artlistDownloader := downloader.New(cfg, downloader.Config{})
+	// Compile-time pin lives in the infra package.
+	_ = (artlistPkg.Downloader)(artlistDownloader)
+	artlistStager := artlistPkg.NewArtlistStager(artlistDownloader)
+
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
-	// + 11 ServiceDependencies). 8 forward-pointer nil fields tagged with
+	// + 11 ServiceDependencies). 6 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues.
 	service, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
 		ServicePorts: artlistPkg.ServicePorts{
-			// ServicePorts (8) — 4 DIRECT, 4 FORWARD_POINTER nil.
+			// ServicePorts (9) — 6 DIRECT, 3 FORWARD_POINTER nil.
 			AssetStore:      bundle.ClipsRepo,
 			Indexer:         bundle.ClipIndexerService,
 			MetadataWriter:  semanticEnricher,
@@ -148,11 +183,11 @@ func WireArtlist(
 			ScraperSearcher: nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
 			PixabaySearcher: nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
 			PexelsSearcher:  nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
-			Stager:          nil,         // forward-pointer: PR-ARTLIST-STAGER
+			Stager:          artlistStager,
 			IsLiveProbe:     isLiveProbe,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
-			// ServiceDependencies (11) — 7 DIRECT, 4 FORWARD_POINTER nil.
+			// ServiceDependencies (11) — 10 DIRECT, 1 FORWARD_POINTER nil.
 			Cfg:               cfg,
 			MainDB:            bundle.DB.DB,
 			Log:               log,
@@ -161,9 +196,9 @@ func WireArtlist(
 			LifecycleService:  nil, // forward-pointer: PR-ARTLIST-LIFECYCLE
 			AssetDestResolver: destResolver,
 			JobsSvc:           bundle.Jobs.Service,
-			AssetProcRepo:     nil, // forward-pointer: PR-ARTLIST-REPOS
-			AssetVerRepo:      nil, // forward-pointer: PR-ARTLIST-REPOS
-			AssetLocRepo:      nil, // forward-pointer: PR-ARTLIST-REPOS
+			AssetProcRepo:     assetProcRepo,
+			AssetVerRepo:      assetVerRepo,
+			AssetLocRepo:      assetLocRepo,
 		},
 	})
 	if err != nil {

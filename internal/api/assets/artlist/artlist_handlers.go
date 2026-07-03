@@ -161,7 +161,7 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 
 	// Use common jobs system exclusively
 	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       "artlist.run",
+		Type:       "media.artlist",
 		Payload:    (&artlist.JobCodec{}).PayloadFromRequest(&req),
 		MaxRetries: 3,
 		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
