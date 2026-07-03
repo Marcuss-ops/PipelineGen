@@ -1881,7 +1881,9 @@
           status: pending
     - id: PR-GODOBJ-2-MONITOR-SCHEDULER
       owner_capability: internal/application/assets/monitor
-      status: pending
+      status: shipped
+      ship_sha: 792c187d
+      ship_date: 2026-07-03
       deadline: 2026-08-15
     - id: PR-GODOBJ-3-IMAGES-GENERATION
       owner_capability: internal/application/images
