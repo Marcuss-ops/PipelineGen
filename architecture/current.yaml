@@ -19,6 +19,46 @@
 # Zero-fabrication policy: owner / deadline / linked_issues OMITTED when absent in source.
 
 
+- id: PRE-EXISTING-BUILD-ISSUES-2026-07-04
+  owner_capability: architecture
+  status: in_progress
+  exit_signal: false
+  deadline: 2026-08-01
+  description: |
+    Pre-existing build issues carried forward unchanged after ART-001
+    closure (July 2026). Filed here as separate linked_issues so ART-001
+    closure's `done / shipped` claim doesn't overstate reality: these
+    6 source-file compilation failures predate ART-001 and are NOT
+    regressions of any ART-001 commit. Each entry MUST independently
+    pass `go build ./...` exit 0 (target subtree) before flipping to
+    `status: shipped` per godlike/07. No new code change is in scope
+    of this triage commit; closure is via separate per-issue PRs.
+  linked_issues:
+    - id: FIX-MONITOR-ENQUEUE-TOLOWER
+      owner_capability: "internal/application/assets/monitor"
+      status: pending
+      deadline: 2026-07-15
+    - id: FIX-MONITOR-SCHEDULER-ENQUEUER
+      owner_capability: "internal/application/assets/monitor"
+      status: pending
+      deadline: 2026-07-15
+    - id: FIX-STOCKPIPELINE-REDECLARATION
+      owner_capability: "internal/application/assets/providers/stock/stockpipeline"
+      status: pending
+      deadline: 2026-07-25
+    - id: FIX-APP-MODULE-MEDIA-DISPATCHER
+      owner_capability: "internal/app"
+      status: pending
+      deadline: 2026-07-25
+    - id: FIX-IMAGES-ROUTING-CYCLE
+      owner_capability: "internal/application/images/routing + internal/application/images"
+      status: pending
+      deadline: 2026-08-01
+    - id: FIX-APP-WIRE-SCRIPT-SYNTAX
+      owner_capability: "internal/app"
+      status: pending
+      deadline: 2026-08-01
+
 - id: 0
   status: done
   exit_gate: "All artifacts present; archcheck focused gate passes."
