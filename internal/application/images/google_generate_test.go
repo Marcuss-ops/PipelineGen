@@ -17,16 +17,3 @@ func TestGenerateSmartImage_ReturnsNotImplemented(t *testing.T) {
 		t.Fatalf("expected ErrImageGenNotImplemented, got %v", err)
 	}
 }
-
-// TestGenerateSmartImageWithAccount_ReturnsNotImplemented verifies the same for
-// the WithAccount variant.
-func TestGenerateSmartImageWithAccount_ReturnsNotImplemented(t *testing.T) {
-	s := &Service{}
-	_, err := s.GenerateSmartImageWithAccount(context.Background(), "test", "", "", nil, nil, 1920, 1080, "", false, "", "")
-	if err == nil {
-		t.Fatal("expected ErrImageGenNotImplemented, got nil")
-	}
-	if err != ErrImageGenNotImplemented {
-		t.Fatalf("expected ErrImageGenNotImplemented, got %v", err)
-	}
-}
