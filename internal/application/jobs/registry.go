@@ -704,8 +704,6 @@ func Compose() *Registry {
 	// Per-item retry via broker-emitted child jobs. The parent aggregator
 	// reads child outcomes and finalizes the parent.
 	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
-	// ProducesArtifacts=false: the child produces only a result map
-	// (ok, status, item_id) — no artifact manifest.
 
 	// ── Clip registration (async batch, PR-BATCH-REGISTER-ASYNC) ──
 	// Each clip from POST /api/media/register-batch becomes one media.clip
