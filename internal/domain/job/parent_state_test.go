@@ -169,7 +169,11 @@ func TestStateMachine_AggregatingToSucceeded_OnAllSucceeded(t *testing.T) {
 	assert.Equal(t, 4, sm.Version())
 }
 
-func TestStateMachine_AggregatingToFailedTerminal_OnAnyFailed(t *testing.T) {
+func TestStateMachine_AggregatingToSucceeded_WhenOnlyOptionalFailed(t *testing.T) {
+	// FASE 1 (July 2026): Compute() now tolerates OPTIONAL-only failures.
+	// REQUIRED failures short-circuit to FailedTerminal in Transition() rule ①,
+	// so by the time we reach Compute(), every failure in sm.failed is OPTIONAL.
+	// If at least one child succeeded → Succeeded (optional failures tolerated).
 	sm := NewStateMachine("p", 3)
 	require.NoError(t, sm.Transition(ChildTerminatedEvent{
 		ParentJobID: "p", ChildJobID: "c1",
@@ -183,6 +187,23 @@ func TestStateMachine_AggregatingToFailedTerminal_OnAnyFailed(t *testing.T) {
 		ParentJobID: "p", ChildJobID: "c3",
 		Outcome: ChildOutcome{JobID: "c3", Succeeded: true, Required: true},
 	}))
+	assert.Equal(t, ParentStateAggregating, sm.State())
+	require.NoError(t, sm.Compute())
+	// Optional-only failure: 2 succeeded + 1 optional-failed → Succeeded.
+	assert.Equal(t, ParentStateSucceeded, sm.State())
+	assert.True(t, sm.State().IsTerminal())
+}
+
+func TestStateMachine_AggregatingToFailedTerminal_OnAllChildrenFailed(t *testing.T) {
+	// Total failure: even though every child is optional, zero successes
+	// means the parent has no valid output → FailedTerminal.
+	sm := NewStateMachine("p", 3)
+	for _, childID := range []string{"c1", "c2", "c3"} {
+		require.NoError(t, sm.Transition(ChildTerminatedEvent{
+			ParentJobID: "p", ChildJobID: childID,
+			Outcome:     ChildOutcome{JobID: childID, Succeeded: false, Required: false, Error: "boom"},
+		}))
+	}
 	assert.Equal(t, ParentStateAggregating, sm.State())
 	require.NoError(t, sm.Compute())
 	assert.Equal(t, ParentStateFailedTerminal, sm.State())

@@ -1,12 +1,19 @@
-// Package jobs — parent_aggregator.go (micro-commit #5, Step 4, June 2026).
+// Package jobs — parent_aggregator.go (FASE 1 wiring, July 2026).
 //
 // ParentAggregator is the background poller that reads parent
 // voiceover.generate jobs with parent_state=waiting_children or
 // parent_state=partial_success, queries their children's terminal
 // statuses from the broker, computes the canonical aggregate
-// ParentState via voiceover.AggregateChildOutcomes, and updates
-// the parent's Result map via jobsSvc.Complete when the state
-// transitions to a terminal value.
+// ParentState via domain job.StateMachine (5-state machine with
+// REQUIRED/optional distinction), and updates the parent's Result
+// map via jobsSvc.TerminalFlip when the state transitions to a
+// terminal value.
+//
+// FASE 1 (July 2026): replaced voiceover.AggregateChildOutcomes
+// (4-state pure classifier) with domain job.StateMachine
+// (Transition + Compute). The StateMachine handles REQUIRED-failed
+// short-circuits in Transition() and distinguishes optional-only
+// failures in Compute().
 //
 // Why a background poller (not synchronous in HandleJob): the
 // child job's terminal status is written by the dispatcher AFTER
@@ -208,15 +215,19 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		// with empty languages.
 		a.updateParentState(ctx, j.ID, parentResult, voiceover.ParentPartialSuccess)
 		return nil
-	}
-
-	// Step 4: query each child's terminal status from the broker.
+	}	// Step 4: construct domain StateMachine and feed child terminal events.
+	// FASE 1 (July 2026): replaces voiceover.AggregateChildOutcomes with
+	// the canonical 5-state domain.StateMachine (Dispatching →
+	// WaitingChildren → Aggregating → Succeeded/FailedTerminal).
+	// The StateMachine handles REQUIRED-failed short-circuits in
+	// Transition() and distinguishes optional-only failures in Compute().
+	//
 	// P0.1 false-success gate: the broker status is the primary signal
 	// but the child's result.ok is the authoritative secondary signal.
 	// A child broker:Succeeded + result.ok:false MUST be treated as
 	// FAILED — the per-item pipeline failed but the handler (pre-P0.1)
 	// returned (resultMap, nil), so the broker saw success.
-	children := make([]voiceover.LanguageOutcome, 0, len(childIDs))
+	sm := job.NewStateMachine(j.ID, len(childIDs))
 	allTerminal := true
 	for _, childID := range childIDs {
 		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
@@ -236,9 +247,6 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		// P0.1 gate: inspect the child's result.ok field as the
 		// authoritative secondary signal. If result.ok == false, the
 		// per-item pipeline failed even if the broker says SUCCEEDED.
-		// Record the failure in the LanguageOutcome so
-		// AggregateChildOutcomes correctly counts this child as
-		// failed (not succeeded).
 		childErr := ""
 		if len(childJob.Result) > 0 {
 			var childResult map[string]any
@@ -257,11 +265,36 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 			}
 		}
 
-		children = append(children, voiceover.LanguageOutcome{
-			ChildJobID: childID,
-			Status:     status,
-			Error:      childErr,
-		})
+		// Extract Required flag from child payload (GenerateVoiceoverItemCommand).
+		// Default false — FASE 2 will wire the fanout to set Required explicitly.
+		childRequired := false
+		if len(childJob.Payload) > 0 {
+			var childPayload map[string]any
+			if jsonErr := json.Unmarshal(childJob.Payload, &childPayload); jsonErr == nil {
+				if req, ok := childPayload["required"].(bool); ok {
+					childRequired = req
+				}
+			}
+		}
+
+		// Feed child terminal event to the domain StateMachine.
+		succeeded := (status == job.StatusSucceeded)
+		if tErr := sm.Transition(job.ChildTerminatedEvent{
+			ParentJobID: j.ID,
+			ChildJobID:  childID,
+			Outcome: job.ChildOutcome{
+				JobID:     childID,
+				Succeeded: succeeded,
+				Required:  childRequired,
+				Error:     childErr,
+				Status:    string(status),
+			},
+		}); tErr != nil {
+			a.deps.Logger.Debug("ParentAggregator: StateMachine.Transition skipped",
+				zap.String("parent_job_id", j.ID),
+				zap.String("child_job_id", childID),
+				zap.Error(tErr))
+		}
 	}
 
 	// Step 5: if not all children are terminal, skip this parent
@@ -271,8 +304,14 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		return nil
 	}
 
-	// Step 6: compute canonical aggregate state.
-	newPS := voiceover.AggregateChildOutcomes(children)
+	// Step 6: compute canonical aggregate state via domain StateMachine.
+	if err := sm.Compute(); err != nil {
+		a.deps.Logger.Error("ParentAggregator: StateMachine.Compute failed",
+			zap.String("parent_job_id", j.ID), zap.Error(err))
+		return nil
+	}
+
+	newPS := domainToVoiceoverParentState(sm)
 	a.updateParentState(ctx, j.ID, parentResult, newPS)
 	return nil
 }
@@ -352,6 +391,27 @@ func extractChildJobIDs(parentResult map[string]any) []string {
 		}
 	}
 	return out
+}
+
+// domainToVoiceoverParentState maps the domain 5-state machine result
+// to the voiceover 4-state result enum for wire-shape back-compat.
+// Succeeded with optional failures maps to partial_success so the
+// API response distinguishes "all succeeded" from "succeeded with
+// warnings".
+func domainToVoiceoverParentState(sm *job.StateMachine) voiceover.ParentState {
+	switch sm.State() {
+	case job.ParentStateSucceeded:
+		if len(sm.Failed()) > 0 {
+			// Some optional children failed — succeeded with warnings.
+			return voiceover.ParentPartialSuccess
+		}
+		return voiceover.ParentSucceeded
+	case job.ParentStateFailedTerminal:
+		return voiceover.ParentFailed
+	default:
+		// Non-terminal state passed to mapping — defensive fallback.
+		return voiceover.ParentPartialSuccess
+	}
 }
 
 // ptrStr returns a pointer to the given string. Used to build
