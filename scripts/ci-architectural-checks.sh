@@ -88,6 +88,7 @@ if [ "${1:-}" = "--self-check" ]; then
         "Check 14 (BuildPayload legacy status key)|\"status\":\\s*\\w+\\.|check_14_buildpayload_status_key.go"
         "Check 15 (qdrant.NewClient construction)|qdrant\\.NewClient\\(&qdrant\\.Config\\{|check_15_qdrant_config_apikey.go"
         "Check 50 (forbid void Register* signature)|func \\(\\w+ \\*?\\w+\\) [A-Z][A-Za-z0-9_]*[Rr]egister\\([^)]*\\bjobs\\.?Service[^)]*\\)[[:space:]]*\\{|check_50_void_register.go"
+        "Check 55 (forbid CompletePartially anywhere in production code)|CompletePartially|check_55_complete_partially.go"
     )
 
     failed=0
@@ -2980,4 +2981,49 @@ if [ -n "$upload_calls" ]; then
     echo "See architecture/deprecations.yaml DRIVE-CUTOVER-P0-1 for the full audit."
     echo "(NON-FATAL during P0.1 EXPAND window; will become hard-fail in P0.4 CONTRACT)"
 fi
-echo "OK: Check 54 � $([ -z "$upload_calls" ] && echo 'all UploadFile* sites tagged TODO(P0.4)' || echo 'some UploadFile* sites untagged (NON-FATAL during EXPAND window; see above)')"
+echo "OK: Check 54 � $([ -z "$upload_calls" ] && echo 'all UploadFile* sites tagged TODO(P0.4)' || echo 'some UploadFile* sites untagged (NON-FATAL during EXPAND window; see above)')"
+
+# ── Check 55: forbid CompletePartially anywhere in production code (P0 #4 closure, July 2026) ──
+# The P0 #4 analysis explicitly rejected CompletePartially as a method on
+# the canonical job.Store interface. CompletePartially would be a
+# false-success anti-pattern: callers would believe they persisted an
+# aggregate result, but the no-op implementation would change nothing.
+# The canonical replacement is FinalizeAggregateParent (the no-lease CAS
+# that drives the parent's broker status to SUCCEEDED/FAILED based on
+# child aggregate outcomes).
+#
+# Pre-flight audit (July 2026): `grep -rn CompletePartially` returns ZERO
+# hits across the entire codebase. The gate is forward-looking: catches
+# future regressions rather than closing an active debt (mirrors Check 51,
+# Check 52, Check 53 forward-prevention posture).
+#
+# Pattern anchor: CompletePartially — exact literal method name.
+# Any occurrence in production Go code (outside self-check fixtures) is a
+# regression. Tests are excluded so *_test.go may reference the forbidden
+# pattern in comments/names without triggering the gate.
+echo "=== Check 55: forbid CompletePartially anywhere in production code (P0 #4 closure, July 2026) ==="
+complete_partially_hits=$(rg -n --type go \
+    -e 'CompletePartially' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    --glob '!**/*_test.go' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$complete_partially_hits" ]; then
+    echo "FAIL: CompletePartially detected in production code:"
+    echo "$complete_partially_hits"
+    echo ""
+    echo "Fix: CompletePartially was rejected by the P0 #4 audit analysis."
+    echo "      The canonical replacement is FinalizeAggregateParent — the"
+    echo "      no-lease CAS that drives the parent job's broker status to"
+    echo "      SUCCEEDED/FAILED based on child aggregate outcomes."
+    echo "      See internal/domain/remote/complete_job.go for the canonical"
+    echo "      typed sentinels and AGENTS.md §Git-Lessons for the audit trail."
+    exit 1
+fi
+echo "OK: zero CompletePartially hits in production code (P0 #4 contract)"
