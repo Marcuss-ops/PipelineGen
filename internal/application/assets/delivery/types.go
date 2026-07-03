@@ -37,12 +37,34 @@ const (
 
 // ConflictPolicy controls what happens when a file with the same name
 // already exists in the target Drive folder.
+//
+// P1.1 (July 2026) — type contract: ConflictPolicyUnset is the iota
+// zero value, intentionally distinct from any "real" policy. This
+// lets the publisher distinguish "caller did not pick a policy" from
+// "caller explicitly chose ConflictOverwrite" — pre-P1.1 the two were
+// indistinguishable (zero was silently mapped to ConflictOverwrite)
+// which produced the unsafe silent-overwrite footgun the registry-
+// driven default is meant to eliminate.
+//
+// A typed value of ConflictPolicyUnset MUST be treated by the
+// publisher as "look up the registry default" and never forwarded
+// to the uploader without resolution. Callers that explicitly want
+// ConflictOverwrite must pass the named constant; the struct's zero
+// value is "unset", not "overwrite".
 type ConflictPolicy int
 
 const (
-	// ConflictOverwrite updates the existing file in place (default).
-	// This matches the legacy behaviour of drive.Uploader.UploadFile.
-	ConflictOverwrite ConflictPolicy = iota
+	// ConflictPolicyUnset is the iota-zero sentinel. The publisher
+	// MUST treat this as "caller didn't pick — consult the registry"
+	// and resolve to DestinationPolicy.ConflictPolicy before
+	// forwarding. Forwarding Unset verbatim to the uploader would
+	// silently fall back to legacy overwriting behaviour.
+	ConflictPolicyUnset ConflictPolicy = iota
+
+	// ConflictOverwrite updates the existing file in place. Distinct
+	// from ConflictPolicyUnset: an explicit choice, not a hidden
+	// zero-default. (P1.1, July 2026.)
+	ConflictOverwrite
 
 	// ConflictSkip returns the existing file's metadata without uploading.
 	ConflictSkip
@@ -88,8 +110,28 @@ type PublishRequest struct {
 	// Language is an optional BCP-47 language tag.
 	Language string `json:"language,omitempty"`
 
-	// ConflictPolicy controls duplicate-file behaviour. Zero-value
-	// (ConflictOverwrite) matches legacy behaviour.
+	// ConflictPolicy controls duplicate-file behaviour for this call.
+	//
+	// Semantics (P1.1, July 2026):
+	//   - ConflictPolicyUnset (zero value of the enum, the iota
+	//     sentinel) means "caller didn't pick a policy"; the publisher
+	//     consults DestinationRegistry's per-destination default (see
+	//     DestinationPolicy.ConflictPolicy). Per-key mapping: immutable
+	//     assets (YouTube clip, Artlist, Stock, Image, Voiceover,
+	//     SoundEffect) default to ConflictSkip; regenerable outputs
+	//     (Book, Script, Document) default to ConflictOverwrite.
+	//   - Explicit values (ConflictOverwrite / ConflictSkip /
+	//     ConflictRename) are honoured verbatim — the registry
+	//     default is bypassed.
+	//
+	// Pre-P1.1, the iota-first const was ConflictOverwrite => the
+	// zero value of uninitialised PublishRequest.ConflictPolicy was
+	// indistinguishable from "caller explicitly wants Overwrite",
+	// which produced the silent-overwrite footgun for callers that
+	// forgot the field. Reordering the iota to put
+	// ConflictPolicyUnset first closes that gap: the zero value is
+	// now a typed sentinel that triggers registry-default lookup,
+	// and an explicit Overwrite must use the named constant.
 	ConflictPolicy ConflictPolicy `json:"conflict_policy,omitempty"`
 
 	// RootFolderOverride, when non-empty, overrides the root folder ID

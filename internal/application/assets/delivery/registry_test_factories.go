@@ -25,6 +25,21 @@ package delivery
 // a new canonical destination. Each entry's RequireSubpath is honoured
 // exactly the way it would be in the canonical registry.
 //
+// Each supplied DestinationPolicy MUST declare ConflictPolicy as ONE of
+// the explicit named constants — ConflictOverwrite / ConflictSkip /
+// ConflictRename. ConflictPolicyUnset (= 0, the iota sentinel) MUST NOT
+// be used as a registry default: the publisher treats Unset as "ask
+// the registry" and would propagate Unset through to PutFile if a
+// registry entry had it.
+//
+// Tests that need to pin the "caller didn't pick" path should leave
+// PublishRequest.ConflictPolicy at Unset (= zero) and verify the
+// publisher-side resolution instead of relying on a registry entry
+// with Unset. Pre-P1.1 the zero value WAS ConflictOverwrite, which
+// silently overwrote; P1.1 closes that by making Unset a typed
+// sentinel that triggers registry lookup, with explicit named
+// values required for the registry table itself.
+//
 // Reason for //go:build drivepolicypkgtest gate: this is the canonical
 // P0 #2 test affordance. The companion tests verify symmetric Publish +
 // ResolveFolder enforcement of RequireSubpath when the PathBuilder

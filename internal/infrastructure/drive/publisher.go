@@ -297,7 +297,38 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 // to resolveDestination so the resolution pipeline is shared with
 // ResolveFolder (P0 #2, June 2026). Publish's added responsibilities
 // are: Step 5 (filename normalise) and Step 6 (PutFile upload).
+//
+// P1.1 (July 2026): when req.ConflictPolicy == 0 (the "caller didn't
+// pick a policy" path), Publish consults the registry's per-destination
+// default and threads that value into Step 6. Explicit
+// req.ConflictPolicy values (Skip / Overwrite / Rename) are honoured
+// verbatim. The legacy zero == ConflictOverwrite silent fallback is
+// gone; immutable destinations now default to Skip so a freshly-added
+// caller cannot accidentally overwriteDrive files under the same name.
 func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	// Step 0 (P1.1): registry-driven ConflictPolicy default.
+	//
+	// When the caller did not pick a policy — i.e.
+	// req.ConflictPolicy == delivery.ConflictPolicyUnset (the
+	// iota-zero sentinel) — consult the registry so the per-destination
+	// safety contract (ConflictSkip for immutable assets,
+	// ConflictOverwrite for regenerable outputs) is honoured.
+	// Explicit req.ConflictPolicy values (ConflictOverwrite /
+	// ConflictSkip / ConflictRename) are honoured verbatim — explicit
+	// caller choice always wins over the registry default.
+	//
+	// The lookup happens BEFORE resolveDestination so an unknown
+	// destination surfaces as the typed registry error rather than
+	// leaking into the resolution pipeline as a silent fallback —
+	// the registry error is preserved verbatim.
+	if req.ConflictPolicy == delivery.ConflictPolicyUnset {
+		policy, pErr := p.registry.Resolve(req.Destination)
+		if pErr != nil {
+			return nil, pErr
+		}
+		req.ConflictPolicy = policy.ConflictPolicy
+	}
+
 	// Steps 1–4: resolution pipeline (delegated, P0 #2). The helper
 	// enforces RequireSubpath symmetrically across Publish and
 	// ResolveFolder, eliminating the previous ResolveFolder bypass.
@@ -313,9 +344,11 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	}
 
 	// Step 6: Upload the file (conflict-aware, P0 #1 fix).
-	// req.ConflictPolicy flows through PutFileRequest so the uploader
-	// picks created/updated/skipped/renamed based on the explicit
-	// policy rather than silently overwriting.
+	// req.ConflictPolicy — after Step 0 above either the caller's
+	// explicit choice or the registry's per-destination default — flows
+	// through to PutFileRequest so the uploader picks
+	// created/updated/skipped/renamed based on the explicit policy
+	// rather than silently overwriting.
 	result, err := p.files.PutFile(ctx, PutFileRequest{
 		LocalPath:      req.LocalPath,
 		FolderID:       resolved.FolderID,
