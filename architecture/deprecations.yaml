@@ -3403,3 +3403,100 @@ audit:
           Publisher.Publish for the 6 image-upload call sites.
         - DRIVE-CUTOVER-P0-1 (immediately above): bulk_upload_worker
           CUTOVER that grounds Publisher.Publish as canonical wire.
+  - id: DRIVE-RAW-BUNDLE-LEAK
+    owner_capability: internal/app (composition root)
+    exact_symbol: |
+      internal/app.DriveBundle.DriveClient (*google.golang.org/api/drive/v3.Service)
+      — field physically REMOVED from the DriveBundle struct.
+      The local driveClient *gdrive.Service variable in
+      BuildDriveBundle is RETAINED for the driveUploader ctor
+      + startDriveBackgroundFolders closure parameter (internal-only,
+      NOT exposed via the bundle).
+    file: internal/app/composition.go
+    file_line: |
+      DriveBundle struct (composition.go, PR-DRIVECLIENT-RAW-RETIRE 2026-07-04;
+      the field + its 19-line Wave B/C/D-Commit-1 narrative doc comment
+      were physically removed in commit 08be6ede on origin/main).
+      The gdrive import was also REMOVED from composition.go
+      (the only use was the removed field).
+    replacement: |
+      The 4 canonical Pattern 0 ports on DriveBundle:
+        - internal/app.DriveBundle.Admin (drive.Admin interface;
+          *drive.NewAdminAdapter(driveUploader, log) wire-up)
+        - internal/app.DriveBundle.Reader (drive.Reader interface;
+          *drive.Uploader satisfies via compile-time assertion
+          var _ Reader = (*Uploader)(nil) at
+          internal/infrastructure/drive/ports.go)
+        - internal/app.DriveBundle.DocClient (drive.DocClient interface;
+          *drive.NewDocClient(...) wire-up)
+        - internal/app.DriveBundle.Lifecycle (drive.FileLifecycle interface;
+          *drive.NewFileLifecycleAdapter(driveUploader.Service, log) wire-up)
+      + internal/app.DriveBundle.Publisher (delivery.Publisher interface;
+        *drive.NewPublisher(...) wire-up — the canonical Drive write
+        canal, established FASE 3 June 2026).
+      Raw *gdrive.Service reach-through is no longer exposed via the
+      composition-root bundle. The 8 cmd/admin/ raw callers already
+      routed through Pattern 0 ports per the FASE 9 closure
+      (DRIVE-005, id-27).
+    introduction_date: 2026-07-04
+    removal_date: 2026-07-04
+    tracking_issue: architecture/current.yaml#AUDIT-RESIDUE-2026-07-04.linked_issues[PR-DRIVECLIENT-RAW-RETIRE]
+    compatibility_test: |
+      (a) rg '\bDriveClient\b' internal/app/ → 0 hits in production code
+          (only the 2 audit-pin comments remain, which is the intended
+          godlike/06 SSOT closure documentation);
+      (b) rg 'root\.Drive\.DriveClient|driveBundle\.DriveClient|
+          DriveBundle\.DriveClient' internal/ → 0 hits
+          (audit pre-fix showed zero production-code reads of the
+          field; post-removal is also zero);
+      (c) gofmt -d internal/app/composition.go internal/app/build_bundles_drive.go
+          exit 0 (no formatting drift);
+      (d) the 4 canonical Pattern 0 ports remain wired correctly
+          (Admin/Reader/DocClient/Lifecycle + Publisher) and pass
+          their compile-time assertions in internal/infrastructure/drive/ports.go.
+    usage_metric: |
+      Pre-removal: rg '\bDriveClient\b' internal/app/ → 1 field
+      declaration + 1 assignment + 5 doc-comment references = 7 raw hits.
+      Post-removal: 0 raw hits in production code (only the 2 audit-pin
+      comments remain). The 0-baseline is enforced by future audits.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      PR-DRIVECLIENT-RAW-RETIRE closure (commit 08be6ede on origin/main,
+      2026-07-04). The canonical 4-port surface (Admin / Reader /
+      DocClient / Lifecycle + Publisher) was already live on DriveBundle
+      per the FASE 9 / DRIVE-005 closure (id-27, commit a8c781ae, June 2026)
+      + FASE 3 Publisher (June 2026). The `DriveClient` field was a
+      back-compat plumbing channel that was always nil-or-vestigial in
+      production (the 8 cmd/admin/ raw callers had already migrated
+      to Pattern 0 ports; the ArtlistBundle received nil per the
+      registry_internal_modules.go::registerArtlist wiring).
+
+      Honest scope-lock (godlike/07 minimal-blast-radius): the
+      ArtlistBundle.DriveClient field on a SEPARATE struct in
+      internal/app/bundle_types.go is INTENTIONALLY out of scope —
+      it is a separate field on a separate type, always nil in
+      production, and tracked as a separate forward-pointer. The
+      HasDriveClient JSON diagnostic field in artlist/types.go is
+      also out of scope (different concern: JSON wire shape vs
+      internal composition-root field). The startDriveBackgroundFolders
+      function still takes driveClient *gdrive.Service as a
+      parameter (internal-only seam, NOT exposed via the bundle) —
+      a follow-up wave should migrate that to the canonical Admin
+      port per godlike/06 SSOT.
+
+      Pre-existing build issues (NOT regressions per
+      architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04):
+      FIX-IMAGES-ROUTING-CYCLE (deadline 2026-08-01) blocks
+      `go build ./internal/app/...` + `go test -short ./internal/
+      infrastructure/drive/...` via a pre-existing import cycle
+      involving internal/infrastructure/database/sqlite/assets.
+      The cycle reproduces on the stashed pre-PR tree (verified
+      via git stash; go build ./internal/app/...; git stash pop),
+      so it is NOT introduced by this PR.
+
+      Sibling record: DRIVE-005-FIELDS (FASE 9, June 2026) closed
+      the parallel DriveUploader + DriveClient reach-through surface
+      for the cmd/admin/ + composition-root callers. This record
+      closes the residual DriveBundle.DriveClient struct field
+      retirement per godlike/06 SSOT.
