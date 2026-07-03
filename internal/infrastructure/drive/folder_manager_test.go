@@ -3,6 +3,7 @@ package drive_test
 import (
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -35,7 +36,20 @@ import (
 // so the test can import `drive` (for both the adapter type and the
 // FolderManagerPort interface declared in publisher.go) without an
 // import cycle. Production graph remains acyclic.
+// Production FolderManagerPort (wide — used by delivery.Publisher for
+// nested-folder creation):
 var _ drivepkg.FolderManagerPort = (*drivepkg.DriveFolderManagerAdapter)(nil)
+
+// P1.3 (July 2026): also pins the narrow StartupRootsProbe port
+// (declared in the delivery package, import direction is
+// drive → delivery which is already established by drive/publisher.go).
+// Future drift that removes ProbeFolderAccess from this adapter
+// without updating delivery.StartupRootsProbe surfaces as a build
+// failure here, not a runtime panic at first ValidateDriveRoots
+// call site. The two assertions side-by-side catch drift on either
+// the wide surface (EnsureFolder + ProbeFolderAccess) or the narrow
+// validator surface (ProbeFolderAccess-only).
+var _ delivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
 
 // TestDriveFolderManagerAdapterImplementsFolderManagerPort makes the
 // compile-time assertion visible as a `go test` pass line, which is
@@ -45,4 +59,5 @@ var _ drivepkg.FolderManagerPort = (*drivepkg.DriveFolderManagerAdapter)(nil)
 // trivial.
 func TestDriveFolderManagerAdapterImplementsFolderManagerPort(t *testing.T) {
 	var _ drivepkg.FolderManagerPort = (*drivepkg.DriveFolderManagerAdapter)(nil)
+	var _ delivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
 }

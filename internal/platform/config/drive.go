@@ -36,6 +36,19 @@ type DriveConfig struct {
 	AvatarAIRootFolder string `yaml:"avatar_ai_root_folder" env:"VELOX_DRIVE_AVATAR_AI_ROOT" default:""`
 	// SharedWithEmail is the Google account email to automatically share generated docs with.
 	SharedWithEmail string `yaml:"shared_with_email" env:"VELOX_DRIVE_SHARED_WITH_EMAIL" default:""`
+
+	// StrictStartupValidation, when true (default), makes the
+	// delivery.StartupDriveRootsValidator abort the process at boot
+	// if ANY configured RootFolderID is unreachable on Drive.
+	//
+	// When false, the validator still runs but the composition root
+	// logs the per-destination failures and continues boot; the
+	// affected destinations then fail-fast at first Publish call
+	// (the legacy "discover at first upload" behaviour). Operators
+	// SHOULD leave this at true — soft-mode is a transitional escape
+	// hatch for staging / DR runs where one root is intentionally
+	// absent. (P1.3, July 2026.)
+	StrictStartupValidation bool `yaml:"strict_startup_validation" env:"VELOX_DRIVE_STRICT_STARTUP_VALIDATION" default:"true"`
 }
 
 // RootFolder returns the MediaRootFolder.
