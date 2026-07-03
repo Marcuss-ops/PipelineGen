@@ -1786,6 +1786,52 @@ BLOC5.3_commit-3-legacy_batch_elim:
       to voiceover batch canonical typed-port migration)
 
 
+
+P0-3_audit-2026-07-03_skip-CUTOVER:
+  owner_capability: internal/application/scripts/apiutil (audit closure) + internal/application/generation (legacy carrier: removed)
+  closure_date: 2026-07-03
+  status: shipped
+  description: |
+    P0 #3 closure audit-pin for the Single canonical scripting framework
+    (canonical home: internal/application/scripts/apiutil/response.go
+    shipped by Wave 0 EXPAND commit 66b93a4f). Records the
+    skip-CUTOVER rationale per godlike/07 §"Migration sequence":
+    zero pre-removal callers (Wave 1 BACKFILL routed books/process,
+    books/process_drive, lessons/generate to the canonical
+    apiutil.Response[T] / apiutil.Sync[T] / apiutil.Async[T]
+    surface) + canonical replacement active at
+    internal/application/scripts/apiutil/response.go + planned
+    physical removal of the legacy carrier at
+    internal/application/generation/response.go. Per godlike/07
+    §"No fake availability", a future caller cannot reach the
+    legacy carrier; the CUTOVER sentinel phase
+    (ErrDeprecatedWireEnvelope etc.) is moot when the file
+    physically disappears.
+  audit_baseline: |
+    Acceptance gates verified on 2026-07-03:
+      - architecture/current.yaml#audit-2026-07-02.linked_issues.
+        PR-SCRIPTING-CANONICAL-FRAMEWORK -> status: shipped /
+        deadline: 2026-07-03
+      - architecture/deprecations.yaml#P0-3-GENERATION-RESPONSE ->
+        status: removed / migration_phase: CONTRACT
+      - git ls-files internal/application/generation/response.go ->
+        0 hits (file physically removed via canonical closure SHA
+        on origin/main; byte-equivalent-replay per AGENTS.md
+        §Git-Lesson-5)
+      - rg --type go -n 'generation\.Response\b|generation\.Sync\b|
+        generation\.Async\b' internal/ -> 0 hits
+      - go build ./internal/application/{scripts/apiutil,books,
+        lessons,generation}/... -> exit 0 (narrow closure scope)
+      - go vet ./internal/application/{scripts/apiutil,books,
+        lessons,generation}/... -> exit 0
+  crossrefs:
+    - architecture/deprecations.yaml#P0-3-GENERATION-RESPONSE
+    - architecture/current.yaml#audit-2026-07-02.linked_issues.PR-SCRIPTING-CANONICAL-FRAMEWORK
+    - AGENTS.md §"godlike/07 §Migration sequence"
+  follow_up_tickers:
+    - (none — CUTOVER sentinel phase skipped-jump-to-CONTRACT per
+      godlike/07 §"Migration sequence" user-jump rule; no follow-up
+      because the legacy carrier is physically absent)
 wave_status:
   P1-2:
     id: P1-2
