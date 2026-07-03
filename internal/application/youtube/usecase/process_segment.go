@@ -33,6 +33,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -419,6 +420,12 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// (Blocco 1.1: the previous ad-hoc payload caused every
 	// indexing event to land in dead_letter because the consumer
 	// requires the canonical BuildReindexEnvelopeV1 shape).
+	//
+	// BLOCKER #4 closure (audit 2026-07-03): when the outbox event
+	// is suppressed by an existing terminal row (dead_letter or
+	// superseded), the writer returns ErrOutboxTerminalConflict.
+	// We surface this as "processed_but_index_blocked" — the clip
+	// was written to the DB but no new indexing event was created.
 	if u.deps.Writer != nil {
 		asset := buildClipAsset(clipID, cmd, out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
@@ -429,6 +436,18 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		if wErr := u.deps.Writer.CommitClipAndIndexEvent(
 			ctx, clipID, asset, event,
 		); wErr != nil {
+			// BLOCKER #4: terminal outbox conflict → processed_but_index_blocked.
+			// The clip row was committed; the index event was suppressed by
+			// a dead_letter/superseded row. Not a failure — the clip is safe,
+			// but the operator must resolve the terminal event before indexing.
+			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
+				out.Item.Status = "processed_but_index_blocked"
+				out.Status = "processed_but_index_blocked"
+				u.deps.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
+					zap.String("clip_id", clipID),
+					zap.Error(wErr))
+				return out, nil
+			}
 			typed := NewExtractionError(FailureCodeWriterFailed, false,
 				fmt.Sprintf("writer failed: %v", wErr), wErr)
 			return u.fail(out, typed)

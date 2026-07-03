@@ -15,6 +15,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -237,6 +238,22 @@ type IndexEventPayload struct {
 type ClipAtomicWriter interface {
 	CommitClipAndIndexEvent(ctx context.Context, clipID string, asset youtubetypes.ClipAsset, event IndexEventPayload) error
 }
+
+// ErrOutboxTerminalConflict is returned by the ClipAtomicWriter concrete
+// adapter when the outbox event INSERT is suppressed by an existing
+// terminal row (dead_letter or superseded) sharing the same event_key.
+// The media_assets row WAS written successfully, but no new indexing
+// event was created. Callers should surface this as
+// "processed_but_index_blocked" — the clip exists but cannot be indexed
+// until the terminal row is resolved (re-opened or a new event is created).
+//
+// Audit 2026-07-03 BLOCKER #4 closure: pre-closure the writer logged a
+// warning and returned nil, leading to "processed" with no index event.
+//
+// Sentinel is defined alongside the port so both the infra adapter and
+// the application-layer use case can errors.Is-probe it without an
+// import cycle.
+var ErrOutboxTerminalConflict = errors.New("outbox: event suppressed by existing terminal row (dead_letter or superseded); media_assets row committed, index blocked")
 
 // ClipMetadataWriter is the port for metadata-enrichment writes. The
 // concrete ClipMetadataWriterAdapter (internal/infrastructure/database/
