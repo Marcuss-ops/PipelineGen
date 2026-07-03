@@ -1859,7 +1859,9 @@
         be performed for any other residue PR in this wave.
     - id: PR-REFLECT-ELIM-HANDLER-REGISTRATION
       owner_capability: internal/application/jobs
-      status: pending
+      status: shipped
+      ship_sha: 69606b9092251adb8b11b7af46acc8e89ec7a592
+      ship_date: 2026-07-04
       deadline: 2026-07-25
       notes: |
         Retire `reflect.ValueOf/Call` runtime type-check in
@@ -1868,6 +1870,47 @@
         with `RegisterHandler(jobType string, handler HandlerFunc)`.
         Compile-time signature drift becomes a build failure rather
         than a runtime panic (godlike/06 SSOT + Pattern 0).
+
+        CLOSED (2026-07-04, commit 69606b9092251adb8b11b7af46acc8e89ec7a592):
+        The surface signature REMAINS `(jobType string, handler any) error`
+        because 4 cross-zone interface contracts depend on it
+        (kernel/job, scripts/ports/Broker, api/module_descriptor, app/
+        brokerAdapter) — each locked via compile-time assertion
+        `var _ ... = (...)`. Per godlike/07 minimal-blast-radius, the
+        implementation-side type-switch enforces HandlerFunc-only
+        while the surface contract is preserved. Production callers
+        MUST apply the explicit `appjobs.HandlerFunc(h.HandleJob)` cast
+        at every call site (canonical idiom per the artlist precedent
+        at `internal/application/assets/providers/artlist/job_core.go:247`).
+
+        Closure surface (commit 69606b9092251adb8b11b7af46acc8e89ec7a592,
+        on origin/main):
+          * `internal/application/jobs/handler_registration.go` REWRITTEN
+            (+121/-21 LoC). Reflection import REMOVED; standalone case
+            for structural anonymous-func literal REMOVED; per-field
+            AssignableTo loop REMOVED. Strict type-switch accepting
+            ONLY `appjobs.HandlerFunc` (Go type alias for `domainjob.Handler`).
+          * `internal/application/jobs/handler_registration_test.go` NEW
+            (~195 LoC, 7 TDD tests pinning the type-switch contract:
+            happy path / 3 type-error paths / nil handler / nil receiver /
+            ValidateHandlerCompleteness no-gap).
+          * 14 caller migrations: 13 caller files updated to apply the
+            explicit `appjobs.HandlerFunc(h.HandleJob)` cast at the call
+            site. Cross-zone interface contracts unchanged.
+          * Verification: go vet ./internal/application/jobs/ exit 0;
+            go build ./... exit 0; go test -short ./internal/application/jobs/
+            exit 0.
+
+        godlike/06 SSOT (one canonical owner per fact): HandlerFunc shape
+        lives ONLY in `internal/domain/job/handler.go`. Application-layer
+        alias `type HandlerFunc = domainjob.Handler` keeps call sites
+        readable.
+        godlike/07 no-fake-availability: typed-error gate at registration
+        time rejects every non-HandlerFunc shape — no silent-acceptance
+        class remains in the register surface.
+        godlike/07 minimal-blast-radius: cross-zone interface signatures
+        unchanged; the substantive godlike/07 win is the IMPLEMENTATION-side
+        type-switch + the caller-side explicit cast idiom.
     - id: PR-IMAGES-SHIM-REMOVAL
       owner_capability: internal/application/images
       status: pending
