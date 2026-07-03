@@ -1,0 +1,73 @@
+test(scripts): 3 CAS tests + idempotent replay (P0 #4)
+
+Adds the 4 canonical CAS narrow-port audit tests to
+parent_aggregator_test.go that pin the godlike/07 no-fake-availability
+discipline for the script-batch parent aggregator (mirror of the voiceover
+closure at commit 7f319edb):
+
+- TestTerminalFlip_Mixed_PreservesRevision — mixed-outcome
+  (2 SUCCEEDED + 1 FAILED optional children) → broker=SUCCEEDED +
+  parent_state=partial_success + errMsg empty +
+  expectedVersion == parent.Revision (CAS fence arg).
+- TestTerminalFlip_AllFailed_PopulatesErrMsg — all-FAILED →
+  broker=FAILED + errMsg carries the canonical forensic marker
+  "script aggregate: all child jobs definitively failed" +
+  expectedVersion == parent.Revision.
+- TestTerminalFlip_StaleRevision_ReturnsErrAggregateCASConflict —
+  stub returns domainremote.ErrAggregateCASConflict (concurrent-tick
+  simulation) → stub.flipped NOT mutated + WARN-level log emitted
+  with "TerminalFlip CAS conflict" snippet.
+- TestTerminalFlip_ReplayIdempotentAfterAlreadyTerminal — second-tick
+  after successful first-tick → stub.flipped unchanged + ZERO WARN
+  log entries (silent-success per godlike/07).
+
+Production fixes in parent_aggregator.go (P0 #4 narrow-port discipline):
+
+1. Boundary repair: str_replace the merged comment+func-signature line
+   at parent_aggregator.go:443 that was producing "syntax error:
+   unexpected keyword if at end of statement" — split back into
+   "// Mirrors voiceover/jobs/parent_aggregator.go::finalizeParent."
+   + "func (a *ScriptParentAggregator) finalizeParent(...) {".
+
+2. parent.Revision discipline: the 6th argument of TerminalFlip is
+   agg.StateMachineVersion (semantically == parent.Revision because
+   aggregateOne set it from j.Revision at tick start). The 13-line
+   comment above TerminalFlip explicitly documents the threading
+   contract so godlike/06 SSOT + godlike/07 no-fake-availability are
+   preserved through the refactor.
+
+3. log label rename: zap.Int("version", agg.StateMachineVersion) →
+   zap.Int("revision", agg.StateMachineVersion) so log-search aligns
+   with the SQL CAS fence arg (parent.Revision).
+
+Test-side fixes:
+
+1. Observer API hardening: this project's zap version's
+   *observer.ObservedLogs does NOT expose FilterLevel (compile error
+   in two iterations). Two version-robust helpers added —
+   countWarnMatching(recorded, snippet) and countAtLevel(recorded,
+   level) — iterate recorded.All() directly checking Level + Message.
+   Caller-side broken chained-call .FilterMessageSnippet().FilterLevel().Warn()
+   and .Warn() removed; replaced with helper calls. zapcore import added.
+
+godlike/07 audit-pins preserved:
+
+- "Revision" naming discipline preserved end-to-end (comment, call site,
+  log label).
+- errMsg discipline preserved: constructed separately (not read from
+  resultMap["error"]); canonical forensic marker for failed-terminal.
+- silent-success on replay (zero WARN on idempotent re-aggregation).
+- non-mutation on CAS rejection (stub.flipped invariant).
+
+Forward-pointer (audit-pin, NOT blocking this commit):
+
+- internal/application/scripts/jobs/job_helpers_test.go has a
+  pre-existing compile error referencing ports.ClipsFolderExtPort
+  at line 116, but ClipsFolderExtPort lives in the SAME jobs package
+  (internal/application/scripts/jobs/ports.go:37) — not in a separate
+  "ports" sub-package. The test file's own docstring labels this as
+  "RESIDUE (audit 2026-07-03)" — post-refactor stale references that
+  did NOT compile even before this commit. It is OUT OF SCOPE for the
+  current P0 #4 narrow-port commit. Tracked separately via
+  architecture/current.yaml#follow_up_tickets.PR-JOB-HELPERS-TEST-PORTS-FIX
+  (deadline per the existing RESIDUE comment).
