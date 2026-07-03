@@ -1578,7 +1578,8 @@
       deadline: 2026-07-02
     - id: STOCK-CUT-6-WIRE-UP
       owner_capability: internal/application/assets/providers/stock/stockpipeline
-      status: pending      deadline: 2026-08-15
+      status: pending
+      deadline: 2026-08-15
 
 # ── P0 #6 — runLease intermediate checkRenew redesign (forward-pointer from P0 #5 closure, July 2026) ──
 # P0 #5 (fail-closed pre-Complete seam: postRenewFailClosedCheck +
