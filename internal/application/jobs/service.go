@@ -428,32 +428,24 @@ func (s *Service) Fail(ctx context.Context, id string, err error) error {
 // Future broker adapters must implement it; the type-assertion probe
 // in Service.TerminalFlip fail-closes non-conformant brokers with a
 // typed error rather than panicking at first aggregator tick.
+//
+// FASE 2 (July 2026): expectedVersion added for version-based CAS.
 type aggregateFlipper interface {
-	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string) error
+	TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
 }
 
 // TerminalFlip applies the canonical post-fan-out parent state flip.
 //
+// FASE 2 (July 2026): expectedVersion added. When > 0, the SQL layer
+// adds `AND revision = expectedVersion` as a second CAS fence alongside
+// the existing (status, parent_state) guard. A zero expectedVersion
+// means "skip the revision check" (backward-compatible).
+//
 // godlike/06 SSOT: this method is the SINGLE app-layer entry point that
-// transitions a parent voiceover.generate job from
-// (status=SUCCEEDED, result.parent_state in {waiting_children, partial_success})
-// to its final terminal posture. No other code path may write
-// jobs.status or jobs.result.parent_state for the voiceover.generate
-// job type after the worker has emitted JOB_COMPLETED. (The legacy
-// voiceover.batch + voiceover.promo paths will be retired in the P1
-// commit chain; today their handlers still reach the in-flight
-// aggregator via this surface only when the orchestrator routes them.)
-//
-// godlike/07 typed-error contract: returns ErrAggregateCASConflict or
-// ErrAlreadyTerminalAggregate via the typed-error surface — callers
-// MUST handle the replay-no-op branch explicitly (the aggregator
-// uses `errors.Is(err, ErrAlreadyTerminalAggregate)` to short-circuit).
-//
-// Audit 2026-07-03 P0 #1 closure surface: wired into the canonical
-// ParentAggregator.updateParentState, replacing the prior Complete-only
-// dispatch that left the broker status at SUCCEEDED even when
-// aggregate=failed_terminal.
-func (s *Service) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string) error {
+// transitions a parent voiceover.generate job to its final terminal
+// posture. No other code path may write jobs.status or
+// jobs.result.parent_state after the worker has emitted JOB_COMPLETED.
+func (s *Service) TerminalFlip(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s == nil {
 		return fmt.Errorf("jobs: TerminalFlip: nil receiver (composition bug)")
 	}
@@ -471,7 +463,7 @@ func (s *Service) TerminalFlip(ctx context.Context, id string, targetStatus job.
 		return fmt.Errorf("jobs: TerminalFlip: underlying broker %T does not implement aggregate fliper — audit 2026-07-03 migration required", s.repo)
 	}
 	resultJSON, _ := json.Marshal(result)
-	return flipper.TerminalFlip(ctx, id, targetStatus, resultJSON, errMsg)
+	return flipper.TerminalFlip(ctx, id, targetStatus, resultJSON, errMsg, expectedVersion)
 }
 
 // Compile-time assertion: *Service satisfies the domain job.Service interface.
