@@ -77,6 +77,15 @@ const (
 	// doesn't match); the job handler should mark the segment
 	// as FAILED, not retry.
 	FailureCodeWriterFailed FailureCode = "writer_failed"
+
+	// FailureCodeFFProbeValidationFailed is returned when the
+	// optional ffprobe validation step detects a corrupted or
+	// truncated download (container not readable, video stream
+	// missing, duration outside ±5% tolerance, invalid dimensions,
+	// or zero FPS). Always terminal — a corrupted file won't self-heal
+	// on retry; the caller must re-download.
+	// Audit 2026-07-03 BLOCKER #3 (ffprobe validation).
+	FailureCodeFFProbeValidationFailed FailureCode = "ffprobe_validation_failed"
 )
 
 // ExtractionError is the typed error the canonical use case returns

@@ -250,3 +250,26 @@ type ClipAtomicWriter interface {
 type ClipMetadataWriter interface {
 	UpdateClipMetadataAndRequestIndex(ctx context.Context, clipID string, m youtubetypes.CanonicalClipMetadata) error
 }
+
+// ── ffprobe validation port (audit 2026-07-03 BLOCKER #3) ───────────────
+
+// FFProbeReport is the structured validation result from ffprobe.
+// The use case reads this to decide whether the downloaded clip file
+// is genuinely playable (not a corrupted/truncated download).
+type FFProbeReport struct {
+	ContainerReadable  bool
+	VideoStreamPresent bool
+	AudioPresent       bool
+	DurationSeconds    float64
+	Width              int
+	Height             int
+	FPS                float64
+	Warnings           []string // non-fatal issues (e.g. FPS slightly off-template)
+}
+
+// FFProbePort validates a downloaded clip file using ffprobe.
+// Nil-tolerant in the use case — when not wired, validation is
+// silently skipped (the pre-existing hash + stat checks remain).
+type FFProbePort interface {
+	ValidateClip(ctx context.Context, localPath string, expectedDurationSec int, keepAudio bool) (*FFProbeReport, error)
+}

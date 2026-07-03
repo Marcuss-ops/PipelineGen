@@ -91,6 +91,13 @@ type ProcessSegmentDeps struct {
 	// yt-dlp. This is genuine bandwidth-saving (one yt-dlp download
 	// per Execute vs N downloads for the retry+replace case).
 	Stager assets.SourceStager
+	// FFProbe is the optional ffprobe validation port (audit 2026-07-03
+	// BLOCKER #3). When non-nil, Step 5a validates the downloaded clip
+	// via ffprobe: container readable, video stream present, duration
+	// within ±5% tolerance, width/height > 0, FPS > 0, audio present
+	// when KeepAudio=true. When nil, the validation step is silently
+	// skipped (pre-existing hash + stat checks remain).
+	FFProbe youtubeports.FFProbePort
 	Log           *zap.Logger
 }
 
@@ -328,6 +335,32 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	out.Item.FileHash = fileHash
 	out.FileHash = fileHash
 
+	// Step 5a — ffprobe validation (audit 2026-07-03 BLOCKER #3).
+	// Optional port: when nil, validation is silently skipped.
+	// Validates: container readable, video stream present, duration
+	// within ±5% tolerance, width/height > 0, FPS > 0, audio present
+	// when KeepAudio=true. A corrupted file fails terminal — the
+	// caller must re-download.
+	if u.deps.FFProbe != nil {
+		report, probeErr := u.deps.FFProbe.ValidateClip(ctx, localPath, duration, keepAudio)
+		if probeErr != nil {
+			typed := NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+				fmt.Sprintf("ffprobe execution failed for %q: %v", localPath, probeErr),
+				probeErr)
+			return u.fail(out, typed)
+		}
+		if ffprobeErr := validateFFProbeReport(report, localPath, duration, keepAudio); ffprobeErr != nil {
+			return u.fail(out, ffprobeErr)
+		}
+		// Log non-fatal warnings for operator dashboards.
+		for _, w := range report.Warnings {
+			u.deps.Log.Warn("ffprobe: non-fatal warning",
+				zap.String("clip_id", clipID),
+				zap.String("local_path", localPath),
+				zap.String("warning", w))
+		}
+	}
+
 	// Step 6 — SliceSubtitles (cache hit per Commit G).
 	if u.deps.Subtitles != nil {
 		if subErr := u.deps.Subtitles.SliceSubtitles(
@@ -504,4 +537,67 @@ func cleanSegmentName(name string, idx int) string {
 		name = fmt.Sprintf("segment_%03d", idx+1)
 	}
 	return name
+}
+
+// validateFFProbeReport checks the structured ffprobe report and
+// returns a typed ExtractionError when a mandatory validation fails.
+// Returns nil when the clip passes all checks. Non-fatal warnings
+// (e.g. audio missing when KeepAudio=false) are NOT surfaced here —
+// the caller logs them separately.
+//
+// Audit 2026-07-03 BLOCKER #3 (ffprobe validation after download).
+//
+// Mandatory checks (terminal failures):
+//   - Container readable (not a .part or truncated file)
+//   - Video stream present
+//   - Duration within ±5% or ±1s tolerance of expected
+//   - Width > 0 and Height > 0
+//   - FPS > 0
+//   - Audio present when keepAudio=true
+func validateFFProbeReport(
+	report *youtubeports.FFProbeReport,
+	localPath string,
+	expectedDurationSec int,
+	keepAudio bool,
+) *ExtractionError {
+	if report == nil {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: nil report for %q", localPath), nil)
+	}
+	if !report.ContainerReadable {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: container not readable for %q (likely truncated or .part file)", localPath), nil)
+	}
+	if !report.VideoStreamPresent {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: no video stream in %q", localPath), nil)
+	}
+	// Duration tolerance: ±5% or ±1 second, whichever is larger.
+	expected := float64(expectedDurationSec)
+	diff := report.DurationSeconds - expected
+	if diff < 0 {
+		diff = -diff
+	}
+	tolerance := expected * 0.05
+	if tolerance < 1.0 {
+		tolerance = 1.0
+	}
+	if diff > tolerance {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: duration mismatch for %q: expected %.1fs, got %.1fs (diff=%.1fs > tolerance=%.1fs)",
+				localPath, expected, report.DurationSeconds, diff, tolerance), nil)
+	}
+	if report.Width <= 0 || report.Height <= 0 {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: invalid dimensions %dx%d for %q", report.Width, report.Height, localPath), nil)
+	}
+	if report.FPS <= 0 {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: invalid FPS %.1f for %q", report.FPS, localPath), nil)
+	}
+	if keepAudio && !report.AudioPresent {
+		return NewExtractionError(FailureCodeFFProbeValidationFailed, false,
+			fmt.Sprintf("ffprobe: audio stream missing in %q but KeepAudio=true", localPath), nil)
+	}
+	return nil
 }
