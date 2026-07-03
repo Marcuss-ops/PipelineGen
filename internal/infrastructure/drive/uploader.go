@@ -16,6 +16,26 @@ import (
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
+// LookupFunc is the seam signature for a file-existence lookup. The
+// production wiring delegates to Uploader.FindFileByName. Tests inject
+// overrides via struct-literal field injection (no package-level
+// mutation).
+//
+// P2.1 (July 2026): the seam was migrated from a package-level var to
+// a struct field on *Uploader. Pre-P2.1 tests using `lookupFunc = ...`
+// + t.Cleanup could leak between parallel runs through cross-test
+// package-state contamination; the field-based surface is per-instance
+// and safe under t.Parallel.
+type LookupFunc func(u *Uploader, ctx context.Context, folderID, filename string) (ExistingFileLookup, error)
+
+// OpenFileFunc is the seam signature for opening a local file. The
+// production wiring delegates to os.Open. Tests inject overrides via
+// struct-literal field injection (no package-level mutation).
+//
+// P2.1 (July 2026): see LookupFunc comment \u2014 same migration rationale
+// (per-instance state, parallel-safe).
+type OpenFileFunc func(path string) (*os.File, error)
+
 // Uploader handles Google Drive file operations.
 //
 // F1.6 (June 2026, P0 #4 + #5 + #6): folderOps is the in-process race-safety
@@ -24,10 +44,19 @@ import (
 // deduplicated by singleflight.Group.Do(key=parentID+":"+canonicalName, ...).
 // The shared call observes only ONE List/Create pair; concurrent callers
 // receive the same result without racing through Create.
+//
+// P2.1 (July 2026): lookupFunc and openFile are the previous package-level
+// test seams migrated to struct fields for per-instance test isolation.\n// Both default to the production helper when nil via u.lookupExisting /\n// u.openReader lazy-default paths; tests inject overrides via struct literal.
 type Uploader struct {
 	Service   *driveapi.Service
 	Log       *zap.Logger
 	folderOps singleflight.Group // F1.6 P0 #5 keyed lock: parentID+":"+canonicalName
+
+	// lookupFunc and openFile are the P2.1 test seams (per-instance,
+	// not package-level). Production code reads them through the lazy
+	// helpers below, so existing callers that use `&Uploader{...}`\n	// struct literals without field overrides continue to behave as\n	// before (lazy default resolves to FindFileByName / os.Open).
+	lookupFunc LookupFunc
+	openFile   OpenFileFunc
 }
 
 // UploadResult holds the result of a file upload.
@@ -120,7 +149,7 @@ func (u *Uploader) doUploadFile(ctx context.Context, localPath, folderID, filena
 		return nil, fmt.Errorf("drive service not configured")
 	}
 
-	f, err := openFile(localPath)
+	f, err := u.openReader(localPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
@@ -295,8 +324,31 @@ func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID,
 	return result, false, nil
 }
 
-// openFile is a helper to open a file (easily mockable for tests).
-var openFile = func(path string) (*os.File, error) {
+// lookupExisting runs the file-existence lookup with lazy default
+// injection. Production code uses this in PutFile. Tests inject
+// `lookupFunc` via struct literal override; the lazy default falls
+// through to Uploader.FindFileByName.
+//
+// Pre-P2.1 the package-level `var lookupFunc` carried the seam;
+// per P2.1 the seam is per-instance.
+func (u *Uploader) lookupExisting(ctx context.Context, folderID, filename string) (ExistingFileLookup, error) {
+	if u.lookupFunc != nil {
+		return u.lookupFunc(u, ctx, folderID, filename)
+	}
+	return u.FindFileByName(ctx, folderID, filename)
+}
+
+// openReader opens a local file with lazy default injection. Production
+// callers (doUploadFile, doPutFile) go through this helper; tests inject
+// `openFile` via struct literal override; the lazy default falls through
+// to os.Open.
+//
+// Pre-P2.1 the package-level `var openFile` carried the seam;
+// per P2.1 the seam is per-instance.
+func (u *Uploader) openReader(path string) (*os.File, error) {
+	if u.openFile != nil {
+		return u.openFile(path)
+	}
 	return os.Open(path)
 }
 

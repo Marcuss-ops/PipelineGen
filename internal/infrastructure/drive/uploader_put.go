@@ -157,7 +157,7 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		//     the filename. The pre-Wave B2 first-match truncation
 		//     silently hid this case, which made overwrite/skip
 		//     non-deterministic on sibling copies.
-		lookup, lookupErr := lookupFunc(u, ctx, req.FolderID, req.Filename)
+		lookup, lookupErr := u.lookupExisting(ctx, req.FolderID, req.Filename)
 		if lookupErr != nil {
 			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", req.Filename, lookupErr)
 		}
@@ -221,7 +221,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			zap.String("folder_id", req.FolderID))
 	}
 
-	f, err := openFile(req.LocalPath)
+	f, err := u.openReader(req.LocalPath)
 	if err != nil {
 		return nil, fmt.Errorf("open local file: %w", err)
 	}
@@ -331,21 +331,7 @@ func renameWithTimestamp(name string, ts int64) string {
 // keep zap + retry imported — both used by the PutFile + doPutFile
 // bodies above. The Package import references are intentional and
 // survive compiler-side import pruning.
-var _ = zap.NewNop
-var _ retry.Options
-
-// lookupFunc is the test seam for *Uploader.PutFile. Production
-// code delegates to Uploader.FindFileByName; tests inject overrides
-// to simulate lookup failures and ambiguous-match responses without
-// spinning up a fake Drive HTTP server. Mirrors the openFile seam
-// in uploader.go (line ~188) and TestOpenFileInjection in
-// uploader_test.go.
-//
-// Wave B2 (June 2026) changed the return type from (*RemoteFile, error)
-// to (ExistingFileLookup, error) so the seam can carry the full match
-// set including the >1 ambiguity case. The default implementation
-// still delegates to Uploader.FindFileByName — the signature change
-// is the only thing that needs to propagate.
-var lookupFunc = func(u *Uploader, ctx context.Context, folderID, filename string) (ExistingFileLookup, error) {
-	return u.FindFileByName(ctx, folderID, filename)
-}
+// (P2.1, July 2026: the lookupFunc package-level var is REMOVED. The
+// seam is now `u.lookupFunc` struct field on *Uploader; see
+// uploader.go::LookupFunc + Uploader.lookupExisting for the migrated
+// surface.)
