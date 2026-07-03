@@ -1,7 +1,6 @@
-// Package jobs — script.generate_item child handler.
-// Decodes the typed ScriptGenerateItemPayload, dispatches to
-// GenerateOneUseCase via the narrow GenerateOneExecutor port, and
-// returns a per-item result map (ok, status, item_id).
+// Package jobs — script.generate_item child handler: decodes
+// ScriptGenerateItemPayload, dispatches to GenerateOneUseCase,
+// returns per-item result map.
 package jobs
 
 import (
@@ -99,25 +98,10 @@ func (h *ScriptGenerateItemJobHandler) Register(jobsSvc *appjobs.Service) error 
 	return nil
 }
 
-// HandleJob processes a script.generate_item child job from the
-// queue. Dispatch contract (P0 #4 + godlike/07 — no fake availability):
-//   - json.Unmarshal failure → (nil, err): dispatcher marks job FAILED.
-//   - oneUC.Execute infra error → (toItemResultMap(res, &item, j.ID, false), err):
-//     dispatcher marks job FAILED. The resultMap carries the per-item
-//     status so operators see exactly which item failed + why.
-//   - oneUC.Execute returns res with res.OK == false (semantic failure,
-//     P0 #1-style false-success gate EXTENDED to scripts P0 #4):
-//     the per-item pipeline returned a failed result without a Go
-//     error. The handler MUST surface this as a dispatcher error so
-//     the worker treats it as FAILED — returning (resultMap, nil) here
-//     would produce a silent false-success at the child layer.
-//   - oneUC.Execute success (res.OK == true) → (resultMap, nil):
-//     dispatcher marks job SUCCEEDED.
-//
-// Progress: tools.Progress is called once at start (5%) and once at
-// end (100%). Per-item progress is reported by the parent's
-// GenerateManyFanoutUseCase aggregate (mirrors voiceover's per-language
-// progress model).
+// HandleJob processes a script.generate_item child job: decodes
+// payload, dispatches to GenerateOneUseCase, returns per-item result.
+// Returns (resultMap, err) so the dispatcher marks the job FAILED
+// or SUCCEEDED correctly (godlike/07 no-fake-availability).
 func (h *ScriptGenerateItemJobHandler) HandleJob(
 	ctx context.Context,
 	j *appjobs.Job,
@@ -183,21 +167,11 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("item_id", item.ID),
 			zap.Error(err))
 		pf(100, "script.generate_item execution failed")
-		return toScriptItemResultMap(res, item.ID, j.ID, parentJobID, false, err.Error()), fmt.Errorf("script.generate_item: execute: %w", err)
+		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, err.Error()), fmt.Errorf("script.generate_item: execute: %w", err)
 	}
 
-	// P0 #4 P0.1-gate-extension: even when err is nil, if the typed
-	// result is structurally empty (no Text, no ScriptID, no
-	// cache.Hit), it's a semantic failure — the engine produced
-	// NOTHING usable. Worker must surface a dispatcher error so the
-	// broker does NOT mark the child SUCCEEDED with result.ok=false.
-	// The structural check is the canonical scripts analog of
-	// voiceover's per-child OK *bool gate; voiceover carries an
-	// explicit `OK *bool` on VoiceoverChildResult, scripts carry
-	// implicit "did this item ship a usable output" via the typed
-	// GenerationResult fields. A future contributor may add an
-	// explicit OK bool to GenerationResult; the heuristic below
-	// would then collapse to `if !res.OK { … }`.
+	// Structural emptiness gate: no Text, ScriptID, or cache.Hit
+	// → semantic failure (false-success gate).
 	ok := scriptItemIsSuccessful(res)
 	if !ok {
 		errMsg := fmt.Sprintf("script.generate_item: per-item pipeline produced structurally empty result (P0 #4 P0.1-gate-extension, ok=false)")
@@ -206,46 +180,24 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("item_id", item.ID),
 			zap.String("result_text_len", fmt.Sprintf("%d", len(res.Output.Text))))
 		pf(100, "script.generate_item semantic failure: ok=false")
-		return toScriptItemResultMap(res, item.ID, j.ID, parentJobID, false, errMsg),
+		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, errMsg),
 			fmt.Errorf("%s", errMsg)
 	}
 
 	pf(100, "script.generate_item execution complete")
-	return toScriptItemResultMap(res, item.ID, j.ID, parentJobID, true, ""), nil
+	return toScriptItemResultMap(item.ID, j.ID, parentJobID, true, ""), nil
 }
 
-// toScriptItemResultMap serialises a per-item GenerationResult into
-// the map[string]any shape the dispatcher writes into job.Result JSON.
-// The aggregator reads `ok`, `status`, `item_id`, `error` to apply the
-// P0.1-style false-success gate + StateMachine.Transition. The shape
-// mirrors voiceover/jobs/generate_item_handler.go::toItemResultMap
-// for symmetry.
-//
-// ok is *bool-style via the ok bool (not pointer) because the
-// aggregator reads "ok" AS A TRUTHY CHECK: false → FAILED (gate),
-// true → SUCCEEDED. The pointer was voiceover-specific to distinguish
-// absent-as-unset from explicit false; scripts use a hardcoded bool
-// because the child ALWAYS emits the field (absent would be a wire-shape
-// future bug, not a deliberate signal).
-func toScriptItemResultMap(res *domainScript.GenerationResult, itemID, childJobID, parentJobID string, ok bool, errStr string) map[string]any {
+// toScriptItemResultMap serialises a per-item outcome into the
+// map[string]any shape the dispatcher writes into job.Result JSON.
+// The aggregator reads `ok`, `status`, `item_id`, `error`.
+func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errStr string) map[string]any {
 	m := map[string]any{
 		"item_id":       itemID,
 		"job_id":        childJobID,
 		"parent_job_id": parentJobID,
 		"ok":            ok,
-		"status":        scriptItemStatus(res, ok),
-	}
-	if res != nil {
-		// Embed the typed result so operators inspecting the DB row
-		// can recover the execution data without an extra join.
-		// The aggregator reads only the high-level fields (ok, status)
-		// from the result map.
-		if res.Title != "" {
-			m["title"] = res.Title
-		}
-		if res.Language != "" {
-			m["language"] = res.Language
-		}
+		"status":        scriptItemStatus(ok),
 	}
 	if errStr != "" {
 		m["error"] = errStr
@@ -253,21 +205,13 @@ func toScriptItemResultMap(res *domainScript.GenerationResult, itemID, childJobI
 	return m
 }
 
-// scriptItemStatus produces the canonical status string for the child
-// result map. "completed" on success, "failed" on any failure. The
-// aggregator's StateMachine.Transition reads this as boolean truth via
-// Succeeded=(status=="completed") mapping.
-func scriptItemStatus(res *domainScript.GenerationResult, ok bool) string {
-	if !ok {
-		return "failed"
+// scriptItemStatus returns "completed" or "failed" based on the
+// caller-computed ok value.
+func scriptItemStatus(ok bool) string {
+	if ok {
+		return "completed"
 	}
-	if res == nil {
-		return "failed"
-	}
-	if !scriptItemIsSuccessful(res) {
-		return "failed"
-	}
-	return "completed"
+	return "failed"
 }
 
 // scriptItemIsSuccessful is the canonical scripts-side P0 #1 gate
@@ -294,6 +238,3 @@ func scriptItemIsSuccessful(res *domainScript.GenerationResult) bool {
 	return false
 }
 
-// (the canonical status→succeeded/failed map lives in the aggregator's
-// PerItemStatusToOutcome helper so the child and aggregator agree on
-// the meaning — see parent_aggregator.go)

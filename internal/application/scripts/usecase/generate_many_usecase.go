@@ -1,27 +1,7 @@
-// Package scripts — generate_many_usecase.go orchestrates
-// multi-item generation with bounded concurrency, structured
-// per-item results, and partial-failure semantics.
-//
-// Each item in the envelope is processed independently through
-// GenerateOneUseCase. The number of concurrent workers is capped
-// by adapters.NormalizationConfig.MaxBatchWorkers (default 4). Items
-// that fail are recorded as per-item errors — a failing item does
-// NOT abort the remaining items (partial-failure schema).
-//
-// Context cancellation is respected: when ctx is cancelled, the
-// loop stops launching new items, but already-running items are
-// allowed to complete. Cancelled-but-not-started items are
-// recorded with a "context cancelled" error.
-//
-// P0 #4 audit (audit 2026-07-03): when a broker is wired via
-// SetFanoutBroker, the multi-item path emits each item as a separate
-// script.generate_item child job (canonical per-item retry via the
-// broker). The aggregator (internal/application/scripts/jobs/
-// / parent_aggregator.go) then aggregates child outcomes and calls
-// FinalizeAggregateParent to set the parent's broker status. The fan-out path
-// preserves the legacy inline execution when no broker is wired
-// (the canonical backward-compat guarantee for tests and current
-// callers).
+// Package scripts — generate_many_usecase.go: multi-item fan-out
+// via child broker jobs (script.generate_item). The aggregator
+// (parent_aggregator.go) collects child outcomes and finalises
+// the parent job.
 package usecase
 
 import (
