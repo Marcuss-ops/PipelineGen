@@ -1731,6 +1731,134 @@
       deadline: 2026-08-01
 
 
+# ── Wave 31 — GOD-OBJECT DECOMPOSITION (Italian audit, July 2026) ──
+# Action plan derived from the static-priority list pasted to the
+# orchestrator on 2026-07-03 (12 files classified by complexity +
+# accumulated risk; godlike/06 + godlike/07 compliant decomposition).
+# Per file:
+#   * target_files (one or more split candidates) — the EXPECTED split
+#   * kill_candidate — the dormant/legacy code physically deleted
+#   * owner_capability — the canonical owning capability per AGENTS.md Pattern 0
+#   * deadline — band-aligned cutoff (absolute/mechanical/cut/small)
+#
+# godlike/06 SSOT discipline: each priority band owns the wave-tracker
+# entry; per-file SHAs land on the matching linked_issue slot. Bands
+# are NOT mutually sequential — the cut-band (10..12) runs in parallel
+# with the mechanical-band (7..9) during EXPAND phase; absolute-band
+# (1..6) takes priority on shared locks (extraction canonical-loop
+# switch + monitor outbox single-owner + jobs/finalizer TX +
+# jobs.svc ledger).
+#
+# godlike/07 honest-limitation: the analysis is STATIC (priority by
+# complexity + accumulated risk). The final canonical ranking MUST
+# cross-validate with git-log frequency (forward-pointer
+# PR-GODOBJ-HOTSPOT-CROSSREF, deadline 2026-08-01). If cross-reference
+# surfaces additional hotspots not in this static list, append them
+# under PR-GODOBJ-HOTSPOT-CROSSREF and extend the deadline accordingly
+# (slim-schema append-only ratchet discipline).
+- id: GODOBJ-2026-07-03
+  status: in_progress
+  exit_signal: false
+  owner: architecture
+  deadline: 2026-08-31
+  exit_gate: |
+    (a) 6 absolute-priority files (`PR-GODOBJ-1..6`) split + their
+        kill_candidates physically deleted from production (rg returns
+        zero hits OUTSIDE narration comments per godlike/07
+        no-fake-availability).
+    (b) 3 mechanical files (`PR-GODOBJ-7..9`) split per band-2
+        topology (separate bundle_*.go per capability).
+    (c) 3 cut-not-split files (`PR-GODOBJ-10..12`) clean-staged:
+        (10) semantic stub explicitly "DISABLED / NOT_CONFIGURED";
+        (11) legacy_deprecation.go carrier, route+DTO+wiring git-rm'd
+        at ticket-counter=0 per the user-fixed removal dates;
+        (12) qdrant_maintenance per-mode dispatch.
+    (d) 3 small-but-dangerous files (`PR-GODOBJ-13..15`) — typed-error
+        semantics corrected (no silent-success, no silent-drop).
+    (e) Post-wave hotspot cross-reference (PR-GODOBJ-HOTSPOT-CROSSREF)
+        lands — git log --since=90.days shows ZERO files in the
+        static-list with HIGH modification frequency (>30/quarter)
+        NOT captured here. If high-frequency hotspots surface, they
+        are appended (append-only) and the wave-deadline rolls forward.
+    (f) Forward-pointer: any cross-package dependency leaks
+        discovered during execution are funnelled into the canonical
+        godlike/06 SSOT remediation (per architecture/deprecations.yaml
+        discipline).
+    Until all 16 linked_issues flip to status: shipped, verified_zero
+    stays false. Each PR's user-spec-vs-canonical-surface mapping is
+    audit-pinned via this wave-tracker entry.
+  linked_issues:
+    # ── Priority absolute (1..6) ────────────────────────────────────────
+    - id: PR-GODOBJ-1-EXTRACTION-SERVICE
+      owner_capability: internal/application/youtube/usecase
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-GODOBJ-2-MONITOR-SCHEDULER
+      owner_capability: internal/application/assets/monitor
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-GODOBJ-3-IMAGES-GENERATION
+      owner_capability: internal/application/images
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-GODOBJ-4-SCRIPTS-GENERATION-JOB
+      owner_capability: internal/application/scripts
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-GODOBJ-5-FINALIZER
+      owner_capability: internal/application/jobs/finalizer
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-GODOBJ-6-JOBS-SERVICE
+      owner_capability: internal/application/jobs
+      status: pending
+      deadline: 2026-08-15
+    # ── Priority mechanical (7..9) ─────────────────────────────────────
+    - id: PR-GODOBJ-7-COMPOSITION
+      owner_capability: internal/app (composition root)
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-GODOBJ-8-ASSETS-REGISTER-ADAPTERS
+      owner_capability: internal/app (assets adapter drawer)
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-GODOBJ-9-CHROME-PROVIDER
+      owner_capability: internal/application/images
+      status: pending
+      deadline: 2026-08-22
+    # ── Cut not split (10..12) ─────────────────────────────────────────
+    - id: PR-GODOBJ-10-SEMANTIC-STUB
+      owner_capability: internal/infrastructure/ai/semantic
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-GODOBJ-11-LEGACY-SCRIPT-HANDLERS
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-12-31
+    - id: PR-GODOBJ-12-QDRANT-MAINT-CMD
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-08-22
+    # ── Small but dangerous (13..15) ───────────────────────────────────
+    - id: PR-GODOBJ-13-BOOKS-JOB-HANDLER
+      owner_capability: internal/application/books
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-GODOBJ-14-WORKER-REGISTRY
+      owner_capability: internal/app (worker_registry)
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-GODOBJ-15-MODULE-MEDIA
+      owner_capability: internal/app (media composition)
+      status: pending
+      deadline: 2026-08-22
+    # ── Cross-references + forward-pointers ─────────────────────────────
+    - id: PR-GODOBJ-HOTSPOT-CROSSREF
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-08-01
+
+
 # Doc #2 (post_cascade_followups) and Doc #3 (legacy_fallback_cleanup) DROPPED - see footer pointer.
 
 # Doc #2 (post_cascade_followups) + Doc #3 (legacy_fallback_cleanup)

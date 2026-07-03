@@ -83,6 +83,35 @@ Regola pratica: qualsiasi PR che tocchi `cmd/worker/`,
 RW-PROD-### nel body della PR. Le capability che non hanno ticket
 non possono diventare production-readiness criteria.
 
+## God-object decomposition wave (July 2026)
+
+12-file God-object decomposition action plan derived from the Italian audit snapshot pasted to the orchestrator on 2026-07-03. Canonical surfaces:
+
+- **`architecture/action-plans/2026-07-03-godobjects-decomposition.md`** — narrative action plan with kill-candidate matrix (per-file `kill_candidate` column + expected split topology + execution order + godlike/07 honest limitations).
+- **`architecture/current.yaml#GODOBJ-2026-07-03`** — wave-tracker entry with 16 slim-shape `linked_issues` (12 per-file + 1 per-band audit-pin via `PR-GODOBJ-HOTSPOT-CROSSREF` + 3 cross-references).
+- **`CHANGELOG.md` `## Unreleased` entry** — closure meta-entry pinning the wave-tracker anchor.
+
+**Priority bands (4):**
+
+| Band | Files | Deadline | Pattern |
+|------|-------|----------|---------|
+| P0 absolute | 6 (extraction_service / monitor_scheduler / images_generation / scripts_generation_job / jobs_finalizer / jobs_service) | 2026-08-15 | Locked — extraction canonical-loop, monitor outbox, finalizer TX, jobs.svc ledger |
+| Mechanical | 3 (composition / assets_register_adapters / chrome_provider) | 2026-08-22 | Bundle separation, mirrors DRIVE-005 4-port surface |
+| Cut-not-split | 3 (semantic_stub / script_handler_legacy_adapters / qdrant_maintenance_cmd) | mixed | Godlike/07 no-fake-availability; explicit removal dates where user-fixed |
+| Small-but-dangerous | 3 (books_job_handler / worker_registry / module_media) | 2026-07-25 | Typed-error semantic correction, NO split |
+
+**Guard rule (per AGENTS.md Git-Lesson-2 — NO BRANCHES, direct-on-main):** each per-file PR lands **directly on `main`** per-file with auto-sufficient granularity (per the FASE 8 / image-territories workflow precedent). Per-band deadlines are wave-ratchet (NOT fixed counters). Each `linked_issues` slot flips to `status: shipped` once its per-file verification gates (`gofmt + go vet + go build + go test -short` on the targeted subtree) are green AND the `kill_candidate` surfaces produce zero `rg <symbol>` hits in production code.
+
+**Cross-reference / godlike/06 SSOT:** the per-band `owner_capability` tags in this wave-tracker entry MUST match `architecture/ownership.generated.yaml` (the aggregated view rebuilt by `cmd/architecture-aggregate`). If per-band ownership shifts post-wave (cross-package impact discovered), both `ownership.generated.yaml` and `current.yaml#GODOBJ-2026-07-03` are updated in lockstep — godlike/06 one-owner-per-fact.
+
+**Execution order (per the audit snapshot's "ordine consigliato"):** extraction_service → semantic stub → images_generation → scripts_generation_job → monitor_scheduler → finalizer (mechanical) → jobs_service (reflection removal) → composition+adapters → legacy routes → admin command cleanup. First 7 share lock acquisition; 8+9+10+12 execute in parallel per godlike/07 EXPAND-phase discipline.
+
+**Honest-limitation disclosure (godlike/07):** the analysis is STATIC (priority by complexity + accumulated risk). The final canonical ranking MUST cross-validate against git-log frequency — forward-pointer entry `PR-GODOBJ-HOTSPOT-CROSSREF` (deadline 2026-08-01) runs `git log --since=90.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30` post-wave and surfaces any high-frequency hotspots NOT captured here. The wave-deadline rolls forward per slim-schema append-only ratchet if high-frequency hotspots are surfaced.
+
+Pre-existing build issues carry forward unchanged (per CHANGELOG forward-pointer convention — out of scope for any per-file PR): `monitor/enqueue.go` / `monitor/scheduler.go` / `stockpipeline/run_upload.go` / `module_media.go` / `images/routing` import cycle. Each split commit lands in isolation on its own subtree and passes its targeted `gofmt + go vet + go build + go test -short` gates independently.
+
+---
+
 ## Instructions
 
 > **Authority**: Database rules (driver lock, FTS5 ban, single-table-per-capability ownership, no cross-DB generic migrations) live canonically in **[`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#database-rules`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#database-rules)**. The bullets below are the agent-facing fast-reference at code-edit time — when in doubt, defer to the canonical doc.
