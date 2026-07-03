@@ -190,7 +190,7 @@ func (a *DriveFolderManagerAdapter) ProbeFolderAccess(ctx context.Context, rootI
 			Context(ctx).
 			Do()
 		if gerr != nil {
-			return struct{}{}, gerr
+			return struct{}{}, retry.ClassifyGoogleAPIError(gerr)
 		}
 		if f.Trashed {
 			return struct{}{}, fmt.Errorf("root folder %q is in the Drive Trash bin", rootID)
@@ -287,7 +287,7 @@ func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookup
 		// empty List is what surfaces "doesn't exist" to the caller.
 		id, err := retry.DoWithValue(ctx, func() (string, error) {
 			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-			return firstFolderID(list), lerr
+			return firstFolderID(list), retry.ClassifyGoogleAPIError(lerr)
 		}, retry.Options{
 			MaxAttempts:    folderLookupMaxAttempts,
 			InitialBackoff: folderLookupInitialBackoff,
@@ -354,7 +354,7 @@ func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, pare
 	}
 	created, err := a.svc.Files.Create(folder).Fields("id").Context(ctx).Do()
 	if err != nil {
-		return "", fmt.Errorf("findOrCreateFolder: create %q under %q: %w", name, parentID, err)
+		return "", fmt.Errorf("findOrCreateFolder: create %q under %q: %w", name, parentID, retry.ClassifyGoogleAPIError(err))
 	}
 	return created.Id, nil
 }
