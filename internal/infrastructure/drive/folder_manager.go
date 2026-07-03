@@ -46,12 +46,14 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
+	"golang.org/x/sync/singleflight"
 
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
@@ -74,6 +76,19 @@ import (
 // The single-method surface here is the canonical F3.14 end-state; future
 // additions should be justified against drive.Reader / delivery.Publisher
 // / drive.FileLifecycle ownerships before they land here.
+// ErrAmbiguousDriveFolder is the canonical sentinel returned when
+// a post-create re-lookup finds more than one non-trashed folder
+// with the same name under the same parent on Drive. This is the
+// folder-level parallel to ErrAmbiguousDriveFile for files.
+//
+// P0.7 (July 2026): the pre-fix findOrCreateFolder created a folder
+// and returned created.Id without checking whether a cross-process
+// race produced a duplicate. The re-lookup after Create now detects
+// the >1 case and surfaces this sentinel so callers can fail-closed
+// rather than silently returning a folder ID that may collide with
+// another instance's folder. Callers errors.Is against this sentinel.
+var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multiple non-trashed folders with the same name+parent exist on Drive")
+
 type DriveFolderManagerAdapter struct {
 	svc *driveapi.Service
 	log *zap.Logger
@@ -82,6 +97,20 @@ type DriveFolderManagerAdapter struct {
 	// WithLookup to verify the no-duplicate contract without spinning
 	// up an httptest server.
 	lookup folderLookupFunc
+
+	// reLookup is the P0.7 seam for post-create duplicate detection.
+	// Production wiring performs a full Files.List (no retry — the
+	// creation just succeeded so Drive is known-reachable) and returns
+	// the count of matching folders + the oldest folder ID. Tests
+	// inject a stub via WithReLookup to simulate duplicate-detected
+	// scenarios without spinning up a Drive httptest server.
+	reLookup folderReLookupFunc
+
+	// folderOps is the P0.7 singleflight keyed lock deduplicating
+	// concurrent EnsureFolder calls for the same (parentID, name)
+	// pair. Key = parentID + ":" + canonicalName. Mirrors Uploader's
+	// folderOps field (uploader.go:58).
+	folderOps singleflight.Group
 }
 
 // NewDriveFolderManagerAdapter constructs the adapter from a configured
@@ -139,10 +168,19 @@ func (a *DriveFolderManagerAdapter) EnsureFolder(ctx context.Context, parent str
 		if seg == "" {
 			return "", fmt.Errorf("ensureFolder: empty segment in path")
 		}
-		folderID, err := a.findOrCreateFolder(ctx, currentParent, seg)
-		if err != nil {
-			return "", fmt.Errorf("ensureFolder: segment %q: %w", seg, err)
+
+		// P0.7: singleflight keyed lock deduplicates concurrent calls
+		// for the same (parentID, name) pair. Key = parent + ":" + seg.
+		// Mirrors Uploader.GetOrCreateFolder's folderOps pattern
+		// (uploader_ops.go:87).
+		key := currentParent + ":" + seg
+		result, sfErr, _ := a.folderOps.Do(key, func() (any, error) {
+			return a.findOrCreateFolder(ctx, currentParent, seg)
+		})
+		if sfErr != nil {
+			return "", fmt.Errorf("ensureFolder: segment %q: %w", seg, sfErr)
 		}
+		folderID := result.(string)
 		leafID = folderID
 		currentParent = folderID
 	}
@@ -238,6 +276,20 @@ func (a *DriveFolderManagerAdapter) ProbeFolderAccess(ctx context.Context, rootI
 // in a single retry-aware function.
 type folderLookupFunc func(ctx context.Context, parent, name string) (id string, err error)
 
+// folderReLookupFunc is the P0.7 seam for post-create duplicate
+// detection. Production wiring performs a full Files.List query
+// (no retry — the creation just succeeded so Drive is
+// known-reachable) and returns count + oldestID. Tests inject a
+// stub via WithReLookup.
+//
+// The contract:
+//   - (0, "", nil):           no matching folders (unexpected; treat as ok)
+//   - (1, oldestID, nil):     exactly one match (the one we just created)
+//   - (>1, oldestID, nil):    duplicate detected → ErrAmbiguousDriveFolder
+//   - (0, "", err):           re-lookup failed (transient); return created.ID
+//     defensively (same policy as uploader_ops.go Stage 3)
+type folderReLookupFunc func(ctx context.Context, parent, name string) (count int, oldestID string, err error)
+
 // folderLookupRetry* constants are the P0.4 production retry policy
 // for the lookup pre-create step. Tighter than upload/download
 // (200ms vs 2s) because the lookup is a lightweight metadata query
@@ -259,6 +311,17 @@ const (
 // err-on-failure") is easy to assert in tests.
 func (a *DriveFolderManagerAdapter) WithLookup(fn folderLookupFunc) *DriveFolderManagerAdapter {
 	a.lookup = fn
+	return a
+}
+
+// WithReLookup overrides the default post-create re-lookup function.
+// Production code never calls this method.
+//
+// P0.7 (July 2026): tests inject a stub via this seam to simulate
+// duplicate-detected (>1 match) scenarios without spinning up a
+// Drive httptest server.
+func (a *DriveFolderManagerAdapter) WithReLookup(fn folderReLookupFunc) *DriveFolderManagerAdapter {
+	a.reLookup = fn
 	return a
 }
 
@@ -332,6 +395,12 @@ func firstFolderID(list *driveapi.FileList) string {
 // the pre-fix soft-error fallback racing with concurrent EnsureFolder
 // calls produced duplicate folders on Drive when the genuine folder
 // existed but a transient error masked the lookup success.
+//
+// P0.7 (July 2026): after a successful Create, a re-lookup (via the
+// reLookup seam) detects cross-process duplicates. If >1 folder with
+// the same name+parent exists, returns ErrAmbiguousDriveFolder
+// (fail-closed) instead of silently returning a possibly-colliding ID.
+// Singleflight deduplication is applied one frame up in EnsureFolder.
 func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, parentID, name string) (string, error) {
 	existingID, err := a.lookup(ctx, parentID, name)
 	if err != nil {
@@ -356,5 +425,71 @@ func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, pare
 	if err != nil {
 		return "", fmt.Errorf("findOrCreateFolder: create %q under %q: %w", name, parentID, retry.ClassifyGoogleAPIError(err))
 	}
+
+	// ── P0.7: cross-process race re-lookup ──────────────────────
+	// If our Create raced with another process's Create, the re-lookup
+	// will see >1 folder with the same name+parent. Return
+	// ErrAmbiguousDriveFolder (fail-closed) so callers don't silently
+	// pick a possibly-colliding ID. Mirrors uploader_ops.go Stage 3
+	// (firstFolderIDByCreatedTimeAsc) but fail-closed on ambiguity
+	// rather than silently returning the oldest.
+	count, oldestID, reLookupErr := a.doReLookup(ctx, parentID, name)
+	if reLookupErr != nil {
+		// Defensive: re-lookup failed transiently → return created.ID.
+		// Same policy as uploader_ops.go Stage 3 ("when this lookup
+		// itself fails transient, return the freshly-created ID so
+		// the caller still observes a usable value").
+		if a.log != nil {
+			a.log.Warn("post-create re-lookup failed, returning freshly-created ID (P0.7 defensive)",
+				zap.String("folder_name", name),
+				zap.String("parent_id", parentID),
+				zap.String("created_id", created.Id),
+				zap.Error(reLookupErr))
+		}
+		return created.Id, nil
+	}
+	if count > 1 {
+		return "", fmt.Errorf("findOrCreateFolder: post-create re-lookup for %q under %q found %d matching folders (oldest=%q, created=%q): %w",
+			name, parentID, count, oldestID, created.Id, ErrAmbiguousDriveFolder)
+	}
 	return created.Id, nil
+}
+
+// doReLookup performs the P0.7 post-create re-lookup. Delegates to
+// the reLookup seam if injected (test path), otherwise does a
+// production Drive Files.List ordered by createdTime asc.
+func (a *DriveFolderManagerAdapter) doReLookup(ctx context.Context, parent, name string) (count int, oldestID string, err error) {
+	if a.reLookup != nil {
+		return a.reLookup(ctx, parent, name)
+	}
+	return a.reLookupProduction(ctx, parent, name)
+}
+
+// reLookupProduction performs a Drive Files.List query for folders
+// matching (name, parent, non-trashed, folder mimeType), ordered by
+// createdTime ascending. Returns (count, oldestID, nil).
+func (a *DriveFolderManagerAdapter) reLookupProduction(ctx context.Context, parent, name string) (count int, oldestID string, err error) {
+	queryParts := []string{
+		fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
+		"trashed = false",
+		"mimeType = 'application/vnd.google-apps.folder'",
+	}
+	if parent != "" {
+		queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parent))
+	}
+	query := strings.Join(queryParts, " and ")
+
+	list, lerr := a.svc.Files.List().
+		Q(query).
+		Fields("files(id, name, createdTime)").
+		OrderBy("createdTime asc").
+		Context(ctx).
+		Do()
+	if lerr != nil {
+		return 0, "", lerr
+	}
+	if list == nil || len(list.Files) == 0 {
+		return 0, "", nil
+	}
+	return len(list.Files), list.Files[0].Id, nil
 }
