@@ -420,14 +420,14 @@ func TestPublish_Duplicate_SameContent_IdempotentReplay_ReusedTrue_NilErr(t *tes
 	va := newVerified(t, "job-002:image_png", localPath, payload)
 
 	cachedPub := &finalization.PublishedArtifact{
-		ArtifactID:    va.ArtifactID,
-		Kind:          va.Kind,
-		Filename:      va.Filename,
-		MIMEType:      va.MIMEType,
-		SizeBytes:     va.SizeBytes,
-		SHA256:        va.SHA256, // SAME sha as in-flight
-		SourceVersion: va.SourceVersion,
-		Requirement:   va.Requirement,
+		ArtifactID:     va.ArtifactID,
+		Kind:           va.Kind,
+		Filename:       va.Filename,
+		MIMEType:       va.MIMEType,
+		SizeBytes:      va.SizeBytes,
+		SHA256:         va.SHA256, // SAME sha as in-flight
+		SourceVersion:  va.SourceVersion,
+		Requirement:    va.Requirement,
 		IdempotencyKey: remote.ArtifactIdempotencyKey("job-002", "image_png", va.SHA256),
 		Location: finalization.AssetLocation{
 			Provider: "drive",
@@ -632,12 +632,12 @@ func TestPublish_P1_14_S2_DifferentContent_ErrIdempotencyKeyConflictDifferingCon
 	// The vaInFlight setup: LocalPath empty so final-checksum gate is skipped
 	// (the collision surface fires BEFORE Prepare).
 	vaInFlight := &finalization.VerifiedArtifact{
-		ArtifactID: "job-P114-S2:scenario_two_collision",
-		Kind:       finalization.KindDocument,
-		Filename:   "scenario.bin",
-		MIMEType:   "application/octet-stream",
-		SizeBytes:  11,
-		SHA256:     "new-sha-for-in-flight-x",
+		ArtifactID:  "job-P114-S2:scenario_two_collision",
+		Kind:        finalization.KindDocument,
+		Filename:    "scenario.bin",
+		MIMEType:    "application/octet-stream",
+		SizeBytes:   11,
+		SHA256:      "new-sha-for-in-flight-x",
 		Requirement: finalization.ArtifactRequirementRequired,
 	}
 
@@ -646,8 +646,8 @@ func TestPublish_P1_14_S2_DifferentContent_ErrIdempotencyKeyConflictDifferingCon
 	// IdempotencyKey but the SHA comparison fails.
 	staleSHA := "stale-sha-from-prior-wiring-bug-y"
 	staleCached := &finalization.PublishedArtifact{
-		ArtifactID:     "job-P114-S2:scenario_two_collision",
-		SHA256:         staleSHA,
+		ArtifactID: "job-P114-S2:scenario_two_collision",
+		SHA256:     staleSHA,
 		IdempotencyKey: remote.ArtifactIdempotencyKey(
 			"job-P114-S2", "scenario_two_collision", vaInFlight.SHA256,
 		), // COLLISION: stale record carries the canonical key for IN-FLIGHT sha
