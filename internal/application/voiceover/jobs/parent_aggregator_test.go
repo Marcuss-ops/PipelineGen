@@ -70,6 +70,20 @@ func (s *stubAggregatorJobsService) List(ctx context.Context, filter job.Filter)
 	return []job.Job{*s.parentJob}, nil
 }
 
+// ListAwaitingAggregation delegates to the in-memory parentJob — the
+// stub does not mirror the SQL-side json_extract filter. The
+// aggregator's aggregateOne still calls IsAwaitingAggregation() on
+// each returned parent and skips non-awaiting entries in memory.
+func (s *stubAggregatorJobsService) ListAwaitingAggregation(ctx context.Context, limit int) ([]job.Job, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	if s.parentJob == nil {
+		return nil, nil
+	}
+	return []job.Job{*s.parentJob}, nil
+}
+
 func (s *stubAggregatorJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
