@@ -412,6 +412,16 @@ var ErrArtifactRemoteSchemaVersionUnsupported = errors.New("artifact uploader: r
 // or the HTTP-side jobbrokerclient.Client. P1 #10 hardening
 // (formerly C6 NIT-1 logged by code-reviewer).
 //
+// Forward-pointer (review nit): Check 52 in scripts/ci-architectural-checks.sh
+// bans raw `.PrepareArtifactUpload(` / `.UploadArtifactFile(` / `.FinalizeArtifactUpload(`
+// callers in application/ + api/. The companion Check-52-extension (rg-based CI gate in scripts/ci-architectural-checks.sh, not
+// yet filed as a forward-pointer CI workitem) would ban raw-string
+// `remote.PrepareContext{...Ctx: nil...}` literals the same way Check 51 bans
+// `.Enqueue(<ctx>, "<literal>")` — the gating rule is "if a caller
+// constructs PrepareContext without setting Ctx, fail-fast at the literal
+// site rather than relying on the seam check". Owner: architecture,
+// deadline: 2026-08-15.
+//
 // godlike/07 no-fake-availability: a nil Ctx would silently behave
 // like context.Background() because net/http's NewRequestWithContext
 // only enforces the supplied ctx, NOT a default. Such a silent

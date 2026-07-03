@@ -1,4 +1,4 @@
-// Package jobbrokerclient — client_test.go (P1 #10, July 2026).
+// Package jobbrokerclient — client_p1_10_test.go (P1 #10, July 2026).
 //
 // End-to-end test surface for the 3-phase upload protocol. Verifies
 // the godlike/07 contract that the HTTP request is bound to
@@ -8,6 +8,15 @@
 //
 // Order-independent: tests do not rely on any package-level singleton
 // state. Each test spins up its own httptest.Server + Client.
+//
+// Coverage gap (forward-pointer): the pre-cancel pattern below proves
+// the Ctx is bound to net/http.Request at request-build time. A
+// streaming-cancellation test (httptest.BlockUntilCtxDone handler
+// that consumes r.Context().Done() during the body send) is the
+// next hardening — deferred because the relapse cost is low
+// (handler-side `handlerCalled.Load()` already logs a regression)
+// and the pre-cancel pattern catches the most likely drift surface
+// (silent reversion to context.Background at the seam).
 package jobbrokerclient_test
 
 import (
