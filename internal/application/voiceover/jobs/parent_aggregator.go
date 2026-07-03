@@ -94,6 +94,17 @@ type AggregatorJobsService interface {
 // Compile-time assertion: *appjobs.Service satisfies AggregatorJobsService.
 var _ AggregatorJobsService = (*appjobs.Service)(nil)
 
+// cachedChildTerminalState records the terminal state of a child
+// from the previous tick so the retry tick can skip re-querying it
+// via Get(). Only terminal children are cached; non-terminal children
+// are always re-queried. The cache is cleared when the parent is
+// finalised (via TerminalFlip) or when the aggregator restarts.
+type cachedChildTerminalState struct {
+	status   job.Status
+	required bool
+	errStr   string
+}
+
 // ParentAggregator is the background poller that re-finalises parent
 // jobs once all their children have reached terminal status.
 type ParentAggregator struct {
@@ -103,6 +114,17 @@ type ParentAggregator struct {
 	// SQLite read-modify-write path in aggregateOne. atomic.Bool keeps
 	// the guard lock-free on the hot path.
 	started atomic.Bool
+
+	// previouslyTerminal caches children that were terminal on the
+	// previous tick, keyed by parentJobID → childID. On retry ticks,
+	// cached children skip the Get() call and are fed directly to the
+	// StateMachine with their cached terminal status. The cache is
+	// cleared when the parent is finalised.
+	//
+	// §15.2 (July 2026): this cache prevents the aggregator from
+	// re-querying already-terminal children (e.g. c-it, c-pt) on a
+	// retry tick when only one child (c-en) changed status.
+	previouslyTerminal map[string]map[string]cachedChildTerminalState
 }
 
 // NewParentAggregator constructs the poller. JobsSvc is mandatory
@@ -230,48 +252,66 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	allTerminal := true
 	requiredFailed := 0
 	for _, childID := range childIDs {
-		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
-		if err != nil {
-			a.deps.Logger.Warn("ParentAggregator: Get child failed",
+		// Step 4a (§15.2, July 2026): check the previously-terminal
+		// cache before hitting Get(). Children that were terminal on
+		// the previous tick are fed directly to the StateMachine
+		// without a broker round-trip. This prevents the retry tick
+		// from re-querying already-terminal siblings when only one
+		// child changed status.
+		var status job.Status
+		var childErr string
+		var childRequired bool
+
+		prev, wasCached := a.previouslyTerminal[j.ID]
+		if cached, ok := prev[childID]; wasCached && ok {
+			status = cached.status
+			childErr = cached.errStr
+			childRequired = cached.required
+			a.deps.Logger.Debug("ParentAggregator: skipping Get for already-terminal child (cache hit)",
 				zap.String("parent_job_id", j.ID),
 				zap.String("child_job_id", childID),
-				zap.Error(err))
-			allTerminal = false
-			continue
-		}
-		status := childJob.Status
-		if status == job.StatusQueued || status == job.StatusLeased || status == job.StatusRunning || status == job.StatusFinalizing || status == job.StatusRetryWait {
-			allTerminal = false
-		}
+				zap.String("cached_status", string(status)))
+		} else {
+			childJob, err := a.deps.JobsSvc.Get(ctx, childID)
+			if err != nil {
+				a.deps.Logger.Warn("ParentAggregator: Get child failed",
+					zap.String("parent_job_id", j.ID),
+					zap.String("child_job_id", childID),
+					zap.Error(err))
+				allTerminal = false
+				continue
+			}
+			status = childJob.Status
+			if status == job.StatusQueued || status == job.StatusLeased || status == job.StatusRunning || status == job.StatusFinalizing || status == job.StatusRetryWait {
+				allTerminal = false
+			}
 
-		// P0.1 gate: typed child result — *bool distinguishes absent (nil)
-		// from present-and-false (gate override). Legacy results without
-		// an "ok" field fall back to broker status.
-		childErr := ""
-		if len(childJob.Result) > 0 {
-			var childResult VoiceoverChildResult
-			if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
-				if childResult.OK != nil && !*childResult.OK {
-					if status == job.StatusSucceeded {
-						a.deps.Logger.Warn("ParentAggregator: child broker-succeeded but result.ok=false (P0.1 gate override)",
-							zap.String("parent_job_id", j.ID),
-							zap.String("child_job_id", childID))
-						status = job.StatusFailed
+			// P0.1 gate: typed child result.
+			if len(childJob.Result) > 0 {
+				var childResult VoiceoverChildResult
+				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
+					if childResult.OK != nil && !*childResult.OK {
+						if status == job.StatusSucceeded {
+							a.deps.Logger.Warn("ParentAggregator: child broker-succeeded but result.ok=false (P0.1 gate override)",
+								zap.String("parent_job_id", j.ID),
+								zap.String("child_job_id", childID))
+							status = job.StatusFailed
+						}
+						childErr = childResult.Error
 					}
-					childErr = childResult.Error
+				}
+			}
+
+			// FASE 2: typed child payload deserialization.
+			if len(childJob.Payload) > 0 {
+				var childPayload VoiceoverChildPayload
+				if jsonErr := json.Unmarshal(childJob.Payload, &childPayload); jsonErr == nil {
+					childRequired = childPayload.Required
 				}
 			}
 		}
 
-		// FASE 2: typed child payload deserialization replaces map access.
-		childRequired := false
-		if len(childJob.Payload) > 0 {
-			var childPayload VoiceoverChildPayload
-			if jsonErr := json.Unmarshal(childJob.Payload, &childPayload); jsonErr == nil {
-				childRequired = childPayload.Required
-			}
-		}
-		if !childJob.Status.IsTerminal() {
+		if !status.IsTerminal() {
 			// Non-terminal children are not yet classified as required-failed.
 			// The count is updated when the child reaches terminal.
 		} else if childRequired && (status == job.StatusFailed || status == job.StatusCancelled) {
@@ -295,6 +335,26 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 				zap.String("parent_job_id", j.ID),
 				zap.String("child_job_id", childID),
 				zap.Error(tErr))
+		}
+
+		// §15.2 (July 2026): cache terminal children in the loop so the
+		// retry tick can skip re-querying them via Get(). Only truly
+		// terminal children are cached (status.IsTerminal() gate
+		// excludes RETRY_WAIT/RUNNING/LEASED/etc.). The Required flag
+		// from the child payload is preserved in the cache so REQUIRED-
+		// failed children are not downgraded to optional on retry ticks.
+		if status.IsTerminal() {
+			if a.previouslyTerminal == nil {
+				a.previouslyTerminal = make(map[string]map[string]cachedChildTerminalState)
+			}
+			if a.previouslyTerminal[j.ID] == nil {
+				a.previouslyTerminal[j.ID] = make(map[string]cachedChildTerminalState)
+			}
+			a.previouslyTerminal[j.ID][childID] = cachedChildTerminalState{
+				status:   status,
+				required: childRequired,
+				errStr:   childErr,
+			}
 		}
 	}
 
@@ -356,6 +416,13 @@ func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID strin
 	if agg.ParentState == voiceover.ParentFailed {
 		targetStatus = job.StatusFailed
 		errMsg = "parent aggregate: all children definitively failed (FASE 2 version CAS)"
+	}
+
+	// Clear the terminal-child cache unconditionally — once we attempt
+	// TerminalFlip, the cached state is no longer needed regardless of
+	// outcome (success, idempotent replay, or CAS conflict).
+	if a.previouslyTerminal != nil {
+		delete(a.previouslyTerminal, parentJobID)
 	}
 
 	if err := a.deps.JobsSvc.TerminalFlip(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {

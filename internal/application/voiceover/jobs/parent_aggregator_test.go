@@ -48,6 +48,11 @@ type stubAggregatorJobsService struct {
 	flippedErr error
 	listErr    error
 	getErr     error
+
+	// getCalls tracks every child ID passed to Get(ctx, id) — used by
+	// §15.2 to assert that the retry tick only re-queries the child
+	// that actually changed status, not the already-terminal siblings.
+	getCalls []string
 }
 
 // flipRecord is the typed audit pin for the P0 #1 closure tests:
@@ -85,6 +90,7 @@ func (s *stubAggregatorJobsService) ListAwaitingAggregation(ctx context.Context,
 }
 
 func (s *stubAggregatorJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
+	s.getCalls = append(s.getCalls, id)
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
@@ -631,6 +637,8 @@ func TestAcceptance_TTSTransientFailure_ChildRetryParentStaysOpen(t *testing.T) 
 	stub.childJobs["c-en"].Result = makeChildResult(true, "completed", "")
 	// Reset stub.flipped for clean assertion.
 	stub.flipped = nil
+	// Reset getCalls so we can assert only c-en is re-queried on the retry tick.
+	stub.getCalls = nil
 	agg.Tick(context.Background())
 
 	require.Contains(t, stub.flipped, "parent-retry",
@@ -638,6 +646,17 @@ func TestAcceptance_TTSTransientFailure_ChildRetryParentStaysOpen(t *testing.T) 
 	got := stub.flipped["parent-retry"]
 	assert.Equal(t, "succeeded", got.result["parent_state"],
 		"§15.2: after retry, parent_state must be 'succeeded' (all terminal, all succeeded)")
+
+	// §15.2 code-review assertion #3 (July 2026): on the retry tick,
+	// the aggregator must only re-query the child whose status changed
+	// (c-en). Already-terminal siblings (c-it, c-pt) are cached in the
+	// previouslyTerminal map and skip the Get() call entirely. This
+	// prevents N redundant broker round-trips per retry tick where
+	// N-1 children were already terminal.
+	assert.Len(t, stub.getCalls, 1,
+		"§15.2: retry tick must re-query only c-en (1 Get call); c-it and c-pt were already terminal and skipped via previouslyTerminal cache")
+	assert.Contains(t, stub.getCalls, "c-en",
+		"§15.2: retry tick must re-query c-en (the retried child)")
 }
 
 // ─────────────────────────────────────────────────────────────────
