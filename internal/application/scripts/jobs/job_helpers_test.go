@@ -113,7 +113,7 @@ func (s *stubVoiceoverGenerator) Generate(_ context.Context, text, language, fil
 
 var _ ports.VoiceoverGroupResolver = (*stubVoiceoverGroupResolver)(nil)
 var _ voiceover.VoiceoverGenerator = (*stubVoiceoverGenerator)(nil)
-var _ ports.ClipsFolderExtPort = (*stubClipsFolderExt)(nil)
+var _ ClipsFolderExtPort = (*stubClipsFolderExt)(nil)
 
 // — Audit §3 case 1: destination routes through port (folder-id non-empty -> direct folder)
 
