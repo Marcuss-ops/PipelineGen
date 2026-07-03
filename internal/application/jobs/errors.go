@@ -9,21 +9,21 @@
 //
 // Usage pattern (from the 10+ handlers refactored in P1 #1 commit 2/2):
 //
-//   if jobsSvc == nil {
-//       return fmt.Errorf(
-//           "%s.Register: jobsSvc is nil (composition root must wire jobs.Service): %w",
-//           handlerTypeName,
-//           ErrMissingDeps,
-//       )
-//   }
+//	if jobsSvc == nil {
+//	    return fmt.Errorf(
+//	        "%s.Register: jobsSvc is nil (composition root must wire jobs.Service): %w",
+//	        handlerTypeName,
+//	        ErrMissingDeps,
+//	    )
+//	}
 //
 // The dual-message pattern preserves operator-visible diagnostics
 // (the prefix names WHICH dep failed and WHICH constructor was
 // invoked) while making the error uniformly detectable:
 //
-//   if errors.Is(err, jobs.ErrMissingDeps) {
-//       // typed assertion succeeds regardless of the handler prefix
-//   }
+//	if errors.Is(err, jobs.ErrMissingDeps) {
+//	    // typed assertion succeeds regardless of the handler prefix
+//	}
 //
 // Tests and the composition-root seam (internal/app/composition.go)
 // use errors.Is rather than substring-matching on the message text
@@ -56,3 +56,28 @@ import "errors"
 // non-nil" + "Register with valid deps -> (nil, HasHandler=true)"
 // pattern (see e.g. voiceover/jobs/generate_handler_test.go).
 var ErrMissingDeps = errors.New("jobs: missing mandatory dependency for handler registration")
+
+// ErrLeaseLost is the canonical typed sentinel for lease-mismatch
+// failures (worker_id / lease_id / expected_revision do not match
+// the canonical job row). Emitted by:
+//
+//   - internal/infrastructure/jobs/local.broker.ensureLease when
+//     a HandleX command races a concurrent state transition (renewal,
+//     cancellation, or terminal) and the revision has advanced.
+//
+//   - internal/infrastructure/remote/jobbrokerclient Client when the
+//     server-side handler returns the typed-error envelope
+//     `{kind:"lease_lost"}` (forward-prevention: the server-side
+//     api/jobs handler emits the envelope in a follow-up PR; client-
+//     side decode is forward-compatible today).
+//
+// Upstream callers benefit from errors.Is(err, jobs.ErrLeaseLost)
+// over both in-process workers (*local.Broker) and remote workers
+// (*jobbrokerclient.Client) without leaking the worker-execution
+// boundary into the assertion surface.
+//
+// Per godlike/07 typed-error contract: callers wrapping the
+// sentinel via `fmt.Errorf("...: %w", ErrLeaseLost)` preserve the
+// errors.Is probe through the wrap chain — do not flatten to a
+// string match.
+var ErrLeaseLost = errors.New("jobs: lease lost (worker_id/lease_id/expected_revision mismatch with the canonical job row)")
