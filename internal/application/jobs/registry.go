@@ -546,19 +546,9 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeScriptVoiceoverSibling, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeScriptImageSibling, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
 
-	// ── P0 #4 audit (audit 2026-07-03) script.generate_item child-job ──
-	// Audit 2026-07-03 P0 #4 closure (mirror of voiceover P0 #1 commit
-	// 7f319edb): each item in a multi-item script.generate batch is
-	// emitted as a separate script.generate_item child job with its
-	// own broker-side retry envelope. Per-item retries are independent
-	// (the per-child terminal-flip drives the parent's aggregate). The
-	// orchestrator (internal/application/scripts/jobs/generation_job.go
-	// Handle multi-item path) emits parent_state=waiting_children on
-	// full-fanout + tail, then the parent aggregator
-	// (internal/application/scripts/jobs/parent_aggregator.go) ticks
-	// the children and calls FinalizeAggregateParent(FAILED) when the aggregate
-	// dictates per godlike/07 no-fake-availability. RequiredCapabilities
-	// stays empty (the children inherit from the parent's broker lease).
+	// ── P0 #4 script.generate_item child-job ──
+	// Per-item retry via broker-emitted child jobs. The parent aggregator
+	// reads child outcomes and finalizes the parent.
 	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 	// ProducesArtifacts=false: the child produces only a result map
 	// (ok, status, item_id) — no artifact manifest.

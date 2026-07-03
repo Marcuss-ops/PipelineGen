@@ -1,40 +1,7 @@
-// Package jobs — parent_aggregator.go (P0 #4 audit 2026-07-03 closure,
-// mirror of voiceover/jobs/parent_aggregator.go at commit 7f319edb).
-//
-// ParentAggregator is the background poller that reads parent
-// script.generate jobs with parent_state=waiting_children,
-// queries their children's terminal
-// statuses from the broker, computes the canonical aggregate
-// ParentState via domain job.StateMachine (5-state machine — all
-// script-batch children are OPTIONAL since GenerationItemV2 has no
-// Required field), and updates the parent's Result map via
-// jobsSvc.FinalizeAggregateParent when the state transitions to a terminal value.
-//
-// P0 #4 mirror (audit 2026-07-03) of voiceover P0 #1 (commit 7f319edb).
-// The structural differences vs voiceover are:
-//   - ScriptParentResult carries script-specific fields
-//     (total_items, succeeded_count, failed_count) instead of
-//     voiceover's per-language counters.
-//   - ScriptChildResult is derived from the result map written by
-//     ScriptGenerateItemJobHandler (key set: ok, status, item_id).
-//   - All script-batch children are OPTIONAL by default (GenerationItemV2
-//     has no Required field); the StateMachine.Transition rule
-//     "① REQUIRED-failed short-circuit" never fires. The aggregate
-//     therefore settles on Succeeded when at least one child succeeded
-//     (some-failed-op-only-OK), and FailedTerminal only when every
-//     child definitively failed.
-//
-// The P0 #1-style false-success gate is EXTENDED to scripts:
-// when a child's broker-status reads SUCCEEDED but its result.ok
-// is false (the engine produced structurally empty output), the
-// aggregator overrides the child to FAILED before feeding the
-// StateMachine. See scriptItemP0_1Gate for the canonical heuristic.
-//
-// Why a background poller (not synchronous in HandleJob): the child job's
-// terminal status is written by the worker AFTER HandleJob returns —
-// a synchronous call inside HandleJob would read a stale RUNNING/LEASED
-// status for the triggering child. A single-threaded ticker avoids
-// the read-modify-write race from concurrent child completions.
+// Package jobs — parent_aggregator.go: background poller that reads
+// script.generate parents with parent_state=waiting_children, queries
+// their children's terminal statuses, and finalizes the parent via
+// FinalizeAggregateParent when the aggregate dictates.
 package jobs
 
 import (
@@ -178,19 +145,6 @@ func (s ScriptParentState) IsTerminal() bool {
 type ScriptParentAggregator struct {
 	deps    ScriptAggregatorDeps
 	started atomic.Bool
-	// previouslyTerminal caches children that were terminal on the
-	// previous tick so the retry tick skips Get() for them (§15.2 voiceover
-	// pattern — same optimisation for scripts).
-	previouslyTerminal map[string]map[string]cachedScriptChildTerminalState
-}
-
-// cachedScriptChildTerminalState records the terminal state of a child
-// from the previous tick so the retry tick skips re-querying it via
-// Get(). Mirrors voiceover's cachedChildTerminalState.
-type cachedScriptChildTerminalState struct {
-	status job.Status
-	ok     bool
-	errStr string
 }
 
 // NewScriptParentAggregator constructs the poller. JobsSvc is mandatory
@@ -308,73 +262,49 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		var childErr string
 		var childOK bool
 
-		prev, wasCached := a.previouslyTerminal[j.ID]
-		if cached, ok := prev[childID]; wasCached && ok {
-			status = cached.status
-			childErr = cached.errStr
-			childOK = cached.ok
-			a.deps.Logger.Debug("ScriptParentAggregator: skipping Get for already-terminal child (cache hit)",
+		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
+		if err != nil {
+			a.deps.Logger.Warn("ScriptParentAggregator: Get child failed",
 				zap.String("parent_job_id", j.ID),
 				zap.String("child_job_id", childID),
-				zap.String("cached_status", string(status)))
-		} else {
-			childJob, err := a.deps.JobsSvc.Get(ctx, childID)
-			if err != nil {
-				a.deps.Logger.Warn("ScriptParentAggregator: Get child failed",
-					zap.String("parent_job_id", j.ID),
-					zap.String("child_job_id", childID),
-					zap.Error(err))
-				allTerminal = false
-				continue
-			}
-			// Commit 3 P0 #4: nil-child guard — the repo can legitimately
-			// return (nil, nil) when the job does not exist. Treating
-			// nil as non-terminal keeps the parent open.
-			if childJob == nil {
-				a.deps.Logger.Warn("ScriptParentAggregator: child job missing",
+				zap.Error(err))
+			allTerminal = false
+			continue
+		}
+		if childJob == nil {
+			a.deps.Logger.Warn("ScriptParentAggregator: child job missing",
+				zap.String("parent_job_id", j.ID),
+				zap.String("child_job_id", childID))
+			allTerminal = false
+			continue
+		}
+		status = childJob.Status
+
+		// P0.1-gate: broker SUCCEEDED + result.ok=false → FAILED.
+		if status == job.StatusSucceeded {
+			if isOKFalseOverride := scriptItemP0_1Gate(childJob.Result); isOKFalseOverride {
+				a.deps.Logger.Warn("ScriptParentAggregator: child broker-succeeded but result.ok=false",
 					zap.String("parent_job_id", j.ID),
 					zap.String("child_job_id", childID))
-				allTerminal = false
-				continue
+				status = job.StatusFailed
 			}
-			status = childJob.Status
-
-			// P0 #4 P0.1-gate-extension: even when broker says
-			// SUCCEEDED, the child result.ok false overrides to FAILED.
-			// The handler writes result.ok via scriptItemIsSuccessful;
-			// the aggregator applies the override HERE so all downstream
-			// gates (StateMachine.Transition, Compute, FinalizeAggregateParent
-			// targetStatus mapping) see one consistent truth.
-			if status == job.StatusSucceeded {
-				if isOKFalseOverride := scriptItemP0_1Gate(childJob.Result); isOKFalseOverride {
-					a.deps.Logger.Warn("ScriptParentAggregator: child broker-succeeded but result.ok=false (P0 #4 P0.1-gate-extension override)",
-						zap.String("parent_job_id", j.ID),
-						zap.String("child_job_id", childID))
-					status = job.StatusFailed
-				}
-			}
-			if !status.IsTerminal() {
-				// Non-terminal children are not classified here.
-				// They will be re-queried on the next tick.
-			}
-			if status == job.StatusFailed || status == job.StatusCancelled {
-				// Decode child result for forensic error string.
-				var childResult ScriptChildResult
-				if len(childJob.Result) > 0 {
-					if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
-						childErr = childResult.Error
-						if childResult.OK != nil {
-							childOK = *childResult.OK
-						}
+		}
+		if status == job.StatusFailed || status == job.StatusCancelled {
+			var childResult ScriptChildResult
+			if len(childJob.Result) > 0 {
+				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
+					childErr = childResult.Error
+					if childResult.OK != nil {
+						childOK = *childResult.OK
 					}
 				}
-			} else if status == job.StatusSucceeded {
-				var childResult ScriptChildResult
-				if len(childJob.Result) > 0 {
-					if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
-						if childResult.OK != nil {
-							childOK = *childResult.OK
-						}
+			}
+		} else if status == job.StatusSucceeded {
+			var childResult ScriptChildResult
+			if len(childJob.Result) > 0 {
+				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
+					if childResult.OK != nil {
+						childOK = *childResult.OK
 					}
 				}
 			}
@@ -409,21 +339,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 				zap.String("child_job_id", childID),
 				zap.Error(tErr))
 		}
-
-		// Cache terminal children (mirrors voiceover §15.2).
-		if status.IsTerminal() {
-			if a.previouslyTerminal == nil {
-				a.previouslyTerminal = make(map[string]map[string]cachedScriptChildTerminalState)
-			}
-			if a.previouslyTerminal[j.ID] == nil {
-				a.previouslyTerminal[j.ID] = make(map[string]cachedScriptChildTerminalState)
-			}
-			a.previouslyTerminal[j.ID][childID] = cachedScriptChildTerminalState{
-				status: status,
-				ok:     childOK,
-				errStr: childErr,
-			}
-		}
 	}
 
 	// Skip until all children are terminal.
@@ -439,9 +354,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	}
 
 	// Build aggregate from the StateMachine result. Incorporate
-	// failed enqueues (items that never became child jobs) into
-	// the total/failed counts so the parent state reflects the
-	// original batch size, not just the enqueued subset.
+	// failed enqueues (items that never became child jobs).
 	state := domainToScriptParentState(sm)
 
 	totalItems := parentResult.TotalItems
@@ -451,7 +364,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	failed := len(sm.Failed()) + parentResult.FailedEnqueue
 	succeeded := len(sm.Succeeded())
 
-	// Override state when failed enqueues make the result partial.
 	if failed > 0 && succeeded > 0 {
 		state = ScriptParentPartialSuccess
 	} else if failed == totalItems && totalItems > 0 {
@@ -497,29 +409,6 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		errMsg = "script aggregate: all child jobs definitively failed (P0 #4 narrow-port discipline)"
 	}
 
-	// Clear the terminal-child cache unconditionally so the next tick
-	// starts from scratch if needed (e.g. a concurrent re-aggregation
-	// after CAS conflict).
-	if a.previouslyTerminal != nil {
-		delete(a.previouslyTerminal, parentJobID)
-	}
-
-	// Canonical narrow-port call: agg.StateMachineVersion (which IS
-	// parent.Revision — aggregateOne set it from j.Revision at tick
-	// start) is the 6th argument. The SQL CAS fence in
-	// repository_lifecycle.go::FinalizeAggregateParent relies on
-	// `revision = ?` matching the row's stored revision. A
-	// StateMachine-local counter (e.g. transition count) would
-	// mismatch the SQL row's `revision` field on the WHERE clause
-	// (CAS fails with ErrAggregateCASConflict on every legitimate
-	// call); only the canonical parent.Revision — threaded into
-	// agg.StateMachineVersion by aggregateOne from j.Revision —
-	// passes the SQL CAS UPDATE. (godlike/07 no-fake-availability /
-	// godlike/06 SSOT.)
-	//
-	// errMsg is constructed separately (init empty above; populated
-	// only on ScriptParentFailedTerminal switch above — NOT read
-	// from resultMap["error"]).
 	if err := a.deps.JobsSvc.FinalizeAggregateParent(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
 		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
 			a.deps.Logger.Info("ScriptParentAggregator: parent already finalised (replay no-op)",

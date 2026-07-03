@@ -367,28 +367,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, log)
 
-	// ── P0 #4 audit (audit 2026-07-03) per-item retry wiring ──
-	// Mirror of voiceover P0 #1 commit 7f319edb: the canonical
-	// child-job architecture for script.generate batches. Each item
-	// in a multi-item script.generate envelope becomes a separate
-	// script.generate_item child job with its own broker-side retry
-	// envelope. The aggregator (parent_aggregator.go) reads child
-	// outcomes and FinalizeAggregateParent-s the parent's broker status based
-	// on the aggregate.
-	//
-	// 4-step composition:
-	//   1. ScriptGenerateItemJobHandler receives the per-item
-	//      GenerateOneExecutor port (oneUC satisfies it implicitly
-	//      via Go interface satisfaction).
-	//   2. Register on jobs.Service for TypeScriptGenerateItem
-	//      (fail-closed at boot per Issue 7 / P1 discipline).
-	//   3. Wire GenerateManyUseCase.SetFanoutBroker with a thin
-	//      adapter that calls jobs.Service.Enqueue with the typed
-	//      per-item script.generate_item JobPolicy.
-	//   4. Construct + Start ScriptParentAggregator with the jobs
-	//      service as the AggregatorJobsService port (satisfied
-	//      implicitly by *appjobs.Service). Ticker polls every 30s
-	//      and applies FinalizeAggregateParent based on the per-item aggregate.
+	// ── P0 #4: per-item retry via child-job fan-out ──
+	// Multi-item batches emit N script.generate_item child jobs.
+	// The parent aggregator reads child outcomes and finalizes the parent.
 	if root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("wireScriptFlow: jobs broker is required (Issue 7 / P1 fail-fast)")
 	}
@@ -488,28 +469,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	return tryRegisterModule(registry, log, sd)
 }
 
-// wireScriptChildJobAuditP04 is the canonical composition helper for
-// the P0 #4 audit (audit 2026-07-03) per-item retry pattern in
-// script.generate batches. Wires:
-//
-//  1. ScriptGenerateItemJobHandler — receives the GenerateOneExecutor
-//     port (pattern 0, narrow surface). Register binds it to the
-//     canonical jobs.Service dispatcher for TypeScriptGenerateItem.
-//
-//  2. GenerateManyUseCase.SetFanoutBroker — passes a thin adapter that
-//     calls jobs.Service.Enqueue with the typed per-item EnqueueCommand.
-//     When fanout broker is wired + envelope has >1 item, the
-//     multi-item path emits N child jobs instead of inline execution.
-//
-//  3. ScriptParentAggregator — background poller (30s tick) reads
-//     script.generate parents with parent_state=waiting_children or
-//     partial_success, queries their children's terminal statuses,
-//     computes the canonical aggregate via domain StateMachine, and
-//     FinalizeAggregateParent-s the parent's broker status based on the
-//     aggregate.
-//
-// All three components are fail-fast on missing dependencies
-// per the AGENTS.md WireUp discipline.
+// wireScriptChildJobAuditP04 wires the P0 #4 per-item retry pattern:
+// child handler registration + fanout broker adapter.
 func wireScriptChildJobAuditP04(
 	jobsSvc *appjobs.Service,
 	oneUC *usecase.GenerateOneUseCase,

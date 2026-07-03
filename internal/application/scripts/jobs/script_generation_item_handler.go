@@ -1,31 +1,7 @@
-// Package jobs — script_generation_item_handler.go (P0 #4 audit 2026-07-03
-// closure: per-item retry in script batches via canonical child-job
-// architecture).
-//
-// ScriptGenerateItemJobHandler is the canonical per-item child handler
-// for script.generate_item jobs scheduled by GenerateManyFanoutUseCase
-// inside generation_job.go::Handle multi-item path. Reaches the canonical
-// single-item pipeline via the narrow GenerateOneExecutor port
-// (Pattern 0 — AGENTS.md) rather than the legacy "use the parent's
-// GenerateOneUseCase directly" indirection.
-//
-// Audit-pin invariants (P0 #4 — pass-through, no recalc):
-//   - item.ID, item.Source, item.Preset are pre-populated by the
-//     fan-out handler; Execute trusts them verbatim. NO re-derivation
-//     in the child handler.
-//   - the handler dispatches oneUC.Execute(ctx, &item) directly with
-//     no envelope re-contextualisation at any layer.
-//
-// NO goroutines are spawned inside the handler — sibling dispatch is
-// regulated by the worker pool's per-job-type Concurrency field
-// (= 4, configured in registry.go::Compose for TypeScriptGenerateItem).
-//
-// godlike/07 fail-closed contract: every failure path returns a
-// non-nil Go error so the broker marks the job FAILED. Per-item
-// result.ok=false on a >StatusCompleted result is the canonical
-// P0.1-style false-success gate — the handler returns
-// (resultMap, wrappedErr) so the broker cannot silently mark
-// the child SUCCEEDED with result.ok=false.
+// Package jobs — script.generate_item child handler.
+// Decodes the typed ScriptGenerateItemPayload, dispatches to
+// GenerateOneUseCase via the narrow GenerateOneExecutor port, and
+// returns a per-item result map (ok, status, item_id).
 package jobs
 
 import (
