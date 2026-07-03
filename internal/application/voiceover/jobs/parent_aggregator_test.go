@@ -527,19 +527,40 @@ func makeChildPayloadWithRequired(required bool) []byte {
 }
 
 // makeMultiChildParentResult builds a parent result with N children.
-func makeMultiChildParentResult(childIDs []string, totalOutputs int) []byte {
+// expectedChildren and enqueuedCount default to len(childIDs) when zero
+// (back-compat with existing tests). For partial fan-out tests, pass
+// explicit values smaller than len(childIDs).
+func makeMultiChildParentResult(childIDs []string, totalOutputs int, expectedChildren int, parentState voiceover.ParentState) []byte {
+	if expectedChildren <= 0 {
+		expectedChildren = len(childIDs)
+	}
+	enqueued := expectedChildren
+	ps := parentState
+	if ps == "" {
+		ps = voiceover.ParentWaitingChildren
+	}
 	m := map[string]any{
 		"ok":              true,
 		"parent_job_id":   "parent-multi",
 		"request_id":      "vo_acceptance",
 		"total_outputs":   totalOutputs,
-		"expected_children": len(childIDs),
-		"enqueued_count":  len(childIDs),
+		"expected_children": expectedChildren,
+		"enqueued_count":  enqueued,
 		"child_job_ids":   childIDs,
-		"parent_state":    string(voiceover.ParentWaitingChildren),
+		"parent_state":    string(ps),
 	}
 	raw, _ := json.Marshal(m)
 	return raw
+}
+
+// makePartialFanoutParentResult builds a parent result simulating what
+// the fan-out handler writes after a partial fan-out (3 items requested,
+// 2 enqueued). expected_children = 2 (matches EnqueuedCount in
+// toFanoutResultMap), parent_state = partial_success (res.OK=false),
+// child_job_ids carries the 2 real IDs + 1 empty string for the failed
+// enqueue. This is the canonical simulation for §15 fan-out parziale tests.
+func makePartialFanoutParentResult(childIDs []string) []byte {
+	return makeMultiChildParentResult(childIDs, 3, 2, voiceover.ParentPartialSuccess)
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -552,7 +573,7 @@ func TestAcceptance_HappyPath_ThreeLanguagesAllSucceeded(t *testing.T) {
 			ID:     "parent-happy",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3),
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
@@ -590,7 +611,7 @@ func TestAcceptance_TTSTransientFailure_ChildRetryParentStaysOpen(t *testing.T) 
 			ID:     "parent-retry",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3),
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
@@ -630,7 +651,7 @@ func TestAcceptance_PermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
 			ID:     "parent-reqfail",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-required", "c-ok"}, 2),
+			Result: makeMultiChildParentResult([]string{"c-required", "c-ok"}, 2, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-required": {
@@ -670,7 +691,7 @@ func TestAcceptance_OptionalVoiceError_ParentSucceedsWithWarning(t *testing.T) {
 			ID:     "parent-optfail",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-opt-fail", "c-ok"}, 2),
+			Result: makeMultiChildParentResult([]string{"c-opt-fail", "c-ok"}, 2, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-opt-fail": {
@@ -716,7 +737,7 @@ func TestAcceptance_FanoutParziale_EmptyChildIDsFiltered(t *testing.T) {
 			ID:     "parent-partial",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-it", "c-en", ""}, 3),
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", ""}, 3, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
@@ -733,6 +754,96 @@ func TestAcceptance_FanoutParziale_EmptyChildIDsFiltered(t *testing.T) {
 		"§15.4: 2 enqueued children both succeeded → parent_state must be 'succeeded'")
 	assert.Equal(t, 2, got.result["total_children"],
 		"§15.4: total_children must be 2 (empty string filtered out)")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §15.4b Fan-out parziale con accurate handler simulation:
+// 3 items richiesti, 2 enqueued, expected_children=2, parent_state=partial_success.
+// One child optional-failed, one child succeeded → TerminalFlip with
+// parent_state=partial_success, broker status SUCCEEDED.
+// ─────────────────────────────────────────────────────────────────
+
+// TestAcceptance_PartialFanout_ExpectedChildrenMatchesEnqueued verifies
+// the complete acceptance criteria for partial fan-out (§15 fan-out parziale):
+//
+//  1. expected_children = 2 (the handler writes res.EnqueuedCount, NOT total_outputs)
+//  2. parent_state = "partial_success" (res.OK=false → partial_success in toFanoutResultMap)
+//  3. TerminalFlip is called correctly — broker status stays SUCCEEDED
+//     (partial_success is not a terminal failure), parent_state emits "partial_success"
+//     in the finalised result.
+//
+// This test uses makePartialFanoutParentResult which accurately simulates what
+// the fan-out handler's toFanoutResultMap produces: expected_children=2, parent_state=
+// partial_success, child_job_ids=["c-it", "c-en", ""] where the empty string
+// represents the failed enqueue for the 3rd language.
+func TestAcceptance_PartialFanout_ExpectedChildrenMatchesEnqueued(t *testing.T) {
+	// c-it: SUCCEEDED (the Italian voiceover completed successfully)
+	// c-en: FAILED (the English voiceover had a TTS failure, but it's OPTIONAL)
+	// 3rd child (e.g. Portuguese): never enqueued (empty string in child_job_ids)
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:       "parent-partial-accurate",
+			Type:     job.TypeVoiceoverGenerate,
+			Status:   job.StatusSucceeded,
+			Result:   makePartialFanoutParentResult([]string{"c-it", "c-en", ""}),
+			Revision: 7,
+		},
+		childJobs: map[string]*job.Job{
+			"c-it": {
+				ID:      "c-it",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusSucceeded,
+				Result:  makeChildResult(true, "completed", ""),
+				Payload: makeChildPayloadWithRequired(false),
+			},
+			"c-en": {
+				ID:      "c-en",
+				Type:    job.TypeVoiceoverGenerateItem,
+				Status:  job.StatusFailed,
+				Result:  makeChildResult(false, "failed", "tts_failed: Deepgram connection timeout"),
+				Payload: makeChildPayloadWithRequired(false), // OPTIONAL
+			},
+		},
+	}
+	agg := NewParentAggregator(AggregatorDeps{JobsSvc: stub, Logger: zap.NewNop(), PollInterval: 30 * time.Second})
+	agg.Tick(context.Background())
+
+	// Criterion 1: aggregator must finalise the parent (TerminalFlip called).
+	require.Contains(t, stub.flipped, "parent-partial-accurate",
+		"§15.4b: aggregator must call TerminalFlip when all enqueued children are terminal")
+
+	got := stub.flipped["parent-partial-accurate"]
+
+	// Criterion 2: broker status stays SUCCEEDED (partial_success ≠ terminal failure).
+	assert.Equal(t, job.StatusSucceeded, got.targetStatus,
+		"§15.4b: partial_success → broker status stays SUCCEEDED (no false-FAILED flip)")
+
+	// Criterion 3: parent_state = "partial_success" (one succeeded, one optional-failed).
+	assert.Equal(t, "partial_success", got.result["parent_state"],
+		"§15.4b: one succeeded + one optional-failed → parent_state='partial_success'")
+
+	// Criterion 4: total_children = 2 (empty string filtered out — the 3rd child
+	// was never enqueued, the aggregator must not count it).
+	assert.Equal(t, 2, got.result["total_children"],
+		"§15.4b: total_children=2 (empty string for failed enqueue filtered out)")
+
+	// Criterion 5: succeeded_count=1, failed_count=1.
+	assert.Equal(t, 1, got.result["succeeded_count"],
+		"§15.4b: 1 child succeeded (c-it)")
+	assert.Equal(t, 1, got.result["failed_count"],
+		"§15.4b: 1 child failed (c-en, optional TTS failure)")
+
+	// Criterion 6: no REQUIRED failures → required_failed_count=0.
+	assert.Equal(t, 0, got.result["required_failed_count"],
+		"§15.4b: optional-only failures → required_failed_count=0")
+
+	// Criterion 7: version CAS guard — StateMachineVersion = j.Revision (7).
+	assert.Equal(t, 7, got.result["_aggregator_version"],
+		"§15.4b: StateMachineVersion must match j.Revision (7) for CAS guard")
+
+	// Criterion 8: no error message on partial_success flip.
+	assert.Empty(t, got.errMsg,
+		"§15.4b: partial_success flip has no error message")
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -786,7 +897,7 @@ func TestAcceptance_DBSucceededWorkerCrash_IdempotentRetry(t *testing.T) {
 			ID:     "parent-idem",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3),
+			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-it": {ID: "c-it", Type: job.TypeVoiceoverGenerateItem, Status: job.StatusSucceeded, Result: makeChildResult(true, "completed", "")},
@@ -816,7 +927,7 @@ func TestAcceptance_RequiredFlagPropagatedFromChildPayload(t *testing.T) {
 			ID:     "parent-reqprop",
 			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
-			Result: makeMultiChildParentResult([]string{"c-req", "c-opt"}, 2),
+			Result: makeMultiChildParentResult([]string{"c-req", "c-opt"}, 2, 0, ""),
 		},
 		childJobs: map[string]*job.Job{
 			"c-req": {
@@ -864,7 +975,7 @@ func TestAcceptance_AggregatorCrash_VersionCASConflictRecovery(t *testing.T) {
 			ID:       "parent-casconflict",
 			Type:     job.TypeVoiceoverGenerate,
 			Status:   job.StatusSucceeded,
-			Result:   makeMultiChildParentResult([]string{"c1", "c2"}, 2),
+			Result:   makeMultiChildParentResult([]string{"c1", "c2"}, 2, 0, ""),
 			Revision: 3,
 		},
 		childJobs: map[string]*job.Job{
