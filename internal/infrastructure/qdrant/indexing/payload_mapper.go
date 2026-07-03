@@ -138,6 +138,93 @@ func isNaNOrInf(v float32) bool {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// Task 4 (July 2026) — canonical dense-vector validation.
+// ══════════════════════════════════════════════════════════════════════════
+
+// channelPolicy classifies each dense vector channel as required,
+// optional, or fatal-if-missing. The classification is per-channel
+// because the embedding pipeline differs:
+//
+//   - text:       REQUIRED — every searchable asset must have a text embedding.
+//   - transcript: OPTIONAL — YouTube-only; dropped when absent (PR 2).
+//   - visual:     OPTIONAL — image/video assets only; dropped when absent.
+//   - audio:      OPTIONAL — audio assets only; dropped when absent.
+//   - any other:  OPTIONAL — future channels default to optional.
+type channelPolicy int
+
+const (
+	policyRequired    channelPolicy = iota // nil → ErrMissingRequiredVector
+	policyOptional                         // nil → silently dropped
+)
+
+// classifyChannel returns the policy for the given Qdrant vector channel.
+func classifyChannel(ch string) channelPolicy {
+	switch ch {
+	case "text":
+		return policyRequired
+	case "transcript", "visual", "audio":
+		return policyOptional
+	default:
+		return policyOptional
+	}
+}
+
+// validateDenseVector performs the canonical 5-step validation of a
+// dense embedding vector before it is included in the IndexDocument.
+//
+// Checks (in order, first failure returned):
+//   1. Nil check      → policyRequired → ErrMissingRequiredVector
+//   2. Zero-length    → ErrEmptyVector
+//   3. Dimension      → ErrVectorDimensionMismatch
+//   4. NaN            → ErrNaNOrInf
+//   5. Inf            → ErrNaNOrInf
+//
+// Returns nil when the vector is valid OR when it is nil AND the
+// channel is optional (policyOptional → silent skip).
+func validateDenseVector(channel string, vec []float32, expectedDim int, assetID string) error {
+	// Step 1: nil check — required vs optional.
+	if vec == nil {
+		if classifyChannel(channel) == policyRequired {
+			return &transport.ErrMissingRequiredVector{
+				Channel: channel,
+				AssetID: assetID,
+			}
+		}
+		return nil // optional channel, absent is allowed
+	}
+
+	// Step 2: zero-length vector — present but corrupted.
+	if len(vec) == 0 {
+		return &transport.ErrEmptyVector{
+			Channel: channel,
+			AssetID: assetID,
+		}
+	}
+
+	// Step 3: dimension mismatch.
+	if len(vec) != expectedDim {
+		return &transport.ErrVectorDimensionMismatch{
+			Channel:  channel,
+			Expected: expectedDim,
+			Actual:   len(vec),
+			AssetID:  assetID,
+		}
+	}
+
+	// Step 4 & 5: NaN / Inf — reuse the canonical helper.
+	for _, v := range vec {
+		if isNaNOrInf(v) {
+			return &transport.ErrNaNOrInf{
+				Channel: channel,
+				AssetID: assetID,
+			}
+		}
+	}
+
+	return nil
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // PR 6 (refactor/qdrant-index-document) — canonical Mapper airlock.
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -387,47 +474,29 @@ func (m *PayloadMapper) AssetToIndexDocument(asset *AssetData, schema *schema.In
 	for _, spec := range schema.DenseVectors {
 		channel := VectorChannel(spec.Channel)
 		vec := m.getVectorForChannel(asset, spec.Channel)
-		// Channel-emptiness policy mirrors the existing AssetToPoint body:
-		//   audio is optional (drop when absent),
-		//   transcript is dropped on nil (NOT a fallback; PR 2 eliminated
-		//     the synthetic text→transcript substitution),
-		//   text is REQUIRED (transport.ErrEmptyVector).
+
+		// Task 4 (July 2026): route through the canonical 5-step
+		// validation helper instead of inline ad-hoc checks.
+		// validateDenseVector returns nil for:
+		//   - valid vectors (all checks pass)
+		//   - optional-channel nil vectors (silent skip)
+		// Returns typed error for:
+		//   - required-channel nil → ErrMissingRequiredVector
+		//   - zero-length vector   → ErrEmptyVector
+		//   - dimension mismatch   → ErrVectorDimensionMismatch
+		//   - NaN/Inf             → ErrNaNOrInf
+		if err := validateDenseVector(spec.Channel, vec, spec.Dimensions, asset.ID); err != nil {
+			return nil, err
+		}
 		if vec == nil {
-			if spec.Channel == "audio" {
-				continue
-			}
-			if spec.Channel == "transcript" {
-				continue
-			}
-			if spec.Channel == "text" {
-				return nil, &transport.ErrEmptyVector{
-					Channel: spec.Channel,
-					AssetID: asset.ID,
-				}
-			}
-			continue
+			continue // optional channel, absent is allowed
 		}
-		if len(vec) != spec.Dimensions {
-			return nil, &transport.ErrVectorDimensionMismatch{
-				Channel:  spec.Channel,
-				Expected: spec.Dimensions,
-				Actual:   len(vec),
-				AssetID:  asset.ID,
-			}
-		}
-		for _, v := range vec {
-			if isNaNOrInf(v) {
-				return nil, &transport.ErrNaNOrInf{
-					Channel: spec.Channel,
-					AssetID: asset.ID,
-				}
-			}
-		}
+
 		doc.Embeddings[channel] = EmbeddingArtifact{
 			Channel:       channel,
 			Values:        vec,
 			Model:         spec.Model,
-			ModelVersion:  spec.ModelVersion, // OBSERVED (write-only provenance; defaults to schema)
+			ModelVersion:  spec.ModelVersion,
 			PreprocessVer: spec.PreprocessVer,
 			Dimensions:    spec.Dimensions,
 			GeneratedAt:   time.Now(),

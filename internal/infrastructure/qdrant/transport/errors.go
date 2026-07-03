@@ -212,14 +212,29 @@ func (e *ErrNaNOrInf) Error() string {
 	return fmt.Sprintf("qdrant vector %q contains NaN or Inf for asset %q", e.Channel, e.AssetID)
 }
 
-// ErrEmptyVector is returned when a required vector is empty.
+// ErrEmptyVector is returned when a required vector is present but has
+// zero elements (len==0). Distinct from ErrMissingRequiredVector which
+// covers the nil (absent) case.
 type ErrEmptyVector struct {
 	Channel string
 	AssetID string
 }
 
 func (e *ErrEmptyVector) Error() string {
-	return fmt.Sprintf("qdrant vector %q is empty for asset %q", e.Channel, e.AssetID)
+	return fmt.Sprintf("qdrant vector %q is empty (zero-length) for asset %q", e.Channel, e.AssetID)
+}
+
+// ErrMissingRequiredVector is returned when a REQUIRED vector channel
+// is nil (absent entirely). Task 4 (July 2026): distinct from
+// ErrEmptyVector to help operators distinguish "never generated" from
+// "generated but corrupted".
+type ErrMissingRequiredVector struct {
+	Channel string
+	AssetID string
+}
+
+func (e *ErrMissingRequiredVector) Error() string {
+	return fmt.Sprintf("qdrant required vector %q is missing (nil) for asset %q", e.Channel, e.AssetID)
 }
 
 // ErrChannelUnavailable is returned when a vector channel is requested but
@@ -390,7 +405,7 @@ func IsRetryable(err error) bool {
 func isPermanent(err error) bool {
 	switch err.(type) {
 	case *ErrSchemaIncompatible, *ErrVectorDimensionMismatch, *ErrNaNOrInf,
-		*ErrEmptyVector, *ErrChannelUnavailable:
+		*ErrEmptyVector, *ErrMissingRequiredVector, *ErrChannelUnavailable:
 		return true
 	}
 	return false
