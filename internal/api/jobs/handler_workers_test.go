@@ -1,0 +1,283 @@
+package jobs
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+)
+
+// Compile-time pins (godlike/06 SSOT discipline): the stubs
+// MUST satisfy the canonical interfaces. Drift in the Broker
+// 9-method surface or the AssetTransferService 4-method
+// surface would otherwise surface as a method-shape panic only
+// at first invocation. Looking through examples like
+// `var _ drive.Admin = (*Uploader)(nil)` in
+// internal/infrastructure/drive/uploader.go: the discipline is
+// used widely to surface contract drift at build-failure rather
+// than runtime.
+var _ appjobs.Broker = (*stubBroker)(nil)
+var _ AssetTransferService = (*stubAssetTransfer)(nil)
+
+// stubBroker is a focused stub for the new CompleteWithArtifacts
+// surface. ALL OTHER Broker methods fail-closed via errors.New —
+// any regression that accidentally routes a non-CWA call into this
+// stub (or vice versa) surfaces immediately in tests rather than
+// silently delegating to a non-existent implementation.
+type stubBroker struct {
+	called    bool
+	lastCmd   appjobs.CompleteWithArtifactsCommand
+	returnErr error
+}
+
+func (s *stubBroker) RegisterWorker(_ context.Context, _ appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+	return nil, errors.New("stubBroker: RegisterWorker not implemented")
+}
+func (s *stubBroker) Heartbeat(_ context.Context, _ appjobs.HeartbeatCommand) error {
+	return errors.New("stubBroker: Heartbeat not implemented")
+}
+func (s *stubBroker) Claim(_ context.Context, _ appjobs.ClaimCommand) (*appjobs.Lease, error) {
+	return nil, errors.New("stubBroker: Claim not implemented")
+}
+func (s *stubBroker) Renew(_ context.Context, _ appjobs.RenewCommand) (*appjobs.Lease, error) {
+	return nil, errors.New("stubBroker: Renew not implemented")
+}
+func (s *stubBroker) Progress(_ context.Context, _ appjobs.ProgressCommand) error {
+	return errors.New("stubBroker: Progress not implemented")
+}
+func (s *stubBroker) Complete(_ context.Context, _ appjobs.CompleteCommand) error {
+	return errors.New("stubBroker: Complete not implemented")
+}
+func (s *stubBroker) CompleteWithArtifacts(_ context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
+	s.called = true
+	s.lastCmd = cmd
+	return s.returnErr
+}
+func (s *stubBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
+	return errors.New("stubBroker: Fail not implemented")
+}
+func (s *stubBroker) IsCancelled(_ context.Context, _, _ string) (bool, error) {
+	return false, errors.New("stubBroker: IsCancelled not implemented")
+}
+
+// stubAssetTransfer is a non-nil AssetTransferService that errors
+// out. The new CompleteWithArtifacts route does NOT call into
+// the asset transfer surface (the artifacts have already been
+// uploaded over /worker-assets/* — this endpoint only references
+// them by ID), but a non-nil service keeps the handler's
+// nil-tolerance consistent with the canonical pattern.
+type stubAssetTransfer struct{}
+
+func (s *stubAssetTransfer) Download(_ context.Context, _ string) (io.ReadCloser, string, error) {
+	return nil, "", errors.New("stubAssetTransfer: Download not implemented")
+}
+func (s *stubAssetTransfer) InitiateUpload(_ context.Context, _ string) (*assets.UploadResponse, error) {
+	return nil, errors.New("stubAssetTransfer: InitiateUpload not implemented")
+}
+func (s *stubAssetTransfer) Upload(_ context.Context, _, _ string, _ io.Reader) error {
+	return errors.New("stubAssetTransfer: Upload not implemented")
+}
+func (s *stubAssetTransfer) FinalizeUpload(_ context.Context, _ string) error {
+	return errors.New("stubAssetTransfer: FinalizeUpload not implemented")
+}
+
+// newTestEngine wires a WorkersBrokerHandler on a fresh gin
+// engine under /internal/v1 (the canonical internal prefix).
+// Mirrors the production wire shape but with stubs.
+func newTestEngine(b Broker, a AssetTransferService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	h := NewWorkersBrokerHandler(b, a, zap.NewNop())
+	group := engine.Group("/internal/v1")
+	h.RegisterRoutes(group)
+	return engine
+}
+
+// TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath pins
+// the canonical wire contract: WorkID/SessionID/LeaseID/Revision
+// round-trip verbatim, ArtifactManifest → PublishedArtifacts
+// (byte-stable), URL :id → cmd.JobID, response JobID/Status
+// shape with forward-declared empty AssetIDs.
+func TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath(t *testing.T) {
+	stub := &stubBroker{}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "worker-1",
+		WorkerSessionID:  "session-1",
+		LeaseID:          "lease-1",
+		ExpectedRevision: 7,
+		ResultData:       json.RawMessage(`{"hello":"world"}`),
+		ArtifactManifest: json.RawMessage(`[{"artifact_id":"art-1","kind":"image/png"},{"artifact_id":"art-2","kind":"image/png"}]`),
+		OutboxEvents:     json.RawMessage(`[]`),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/job-42/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	var resp CompleteArtifactsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
+	}
+	if resp.JobID != "job-42" {
+		t.Errorf("expected job_id=job-42 (from URL param), got %q", resp.JobID)
+	}
+	if resp.Status != "SUCCEEDED" {
+		t.Errorf("expected status=SUCCEEDED, got %q", resp.Status)
+	}
+	if resp.AssetIDs == nil {
+		t.Error("expected non-nil AssetIDs slice (forward-declared wire shape)")
+	}
+	if len(resp.AssetIDs) != 0 {
+		t.Errorf("expected empty AssetIDs (godlike/07 no-fake-availability: never invent IDs that did not come from the typed return), got %v", resp.AssetIDs)
+	}
+
+	if !stub.called {
+		t.Fatal("broker.CompleteWithArtifacts should have been called")
+	}
+	if stub.lastCmd.JobID != "job-42" {
+		t.Errorf("cmd.JobID should mirror URL :id; got %q want %q", stub.lastCmd.JobID, "job-42")
+	}
+	if stub.lastCmd.WorkerID != body.WorkerID {
+		t.Errorf("WorkerID: got %q want %q", stub.lastCmd.WorkerID, body.WorkerID)
+	}
+	if stub.lastCmd.WorkerSessionID != body.WorkerSessionID {
+		t.Errorf("WorkerSessionID: got %q want %q", stub.lastCmd.WorkerSessionID, body.WorkerSessionID)
+	}
+	if stub.lastCmd.LeaseID != body.LeaseID {
+		t.Errorf("LeaseID: got %q want %q", stub.lastCmd.LeaseID, body.LeaseID)
+	}
+	if stub.lastCmd.ExpectedRevision != body.ExpectedRevision {
+		t.Errorf("ExpectedRevision: got %d want %d", stub.lastCmd.ExpectedRevision, body.ExpectedRevision)
+	}
+	if !bytes.Equal(stub.lastCmd.PublishedArtifacts, body.ArtifactManifest) {
+		t.Errorf("PublishedArtifacts byte-mismatch:\n got: %s\nwant: %s", stub.lastCmd.PublishedArtifacts, body.ArtifactManifest)
+	}
+	if !bytes.Equal(stub.lastCmd.OutboxEvents, body.OutboxEvents) {
+		t.Errorf("OutboxEvents byte-mismatch:\n got: %s\nwant: %s", stub.lastCmd.OutboxEvents, body.OutboxEvents)
+	}
+	if !bytes.Equal(stub.lastCmd.ResultData, body.ResultData) {
+		t.Errorf("ResultData byte-mismatch:\n got: %s\nwant: %s", stub.lastCmd.ResultData, body.ResultData)
+	}
+}
+
+// TestWorkersBrokerHandler_CompleteWithArtifacts_BadJSON pins
+// the 400 BadRequest branch and verifies the broker is NOT
+// invoked on malformed body (the typed contract is enforced at
+// the transport boundary, not absorbed by silent delegation).
+func TestWorkersBrokerHandler_CompleteWithArtifacts_BadJSON(t *testing.T) {
+	stub := &stubBroker{}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/job-42/complete-with-artifacts", bytes.NewReader([]byte("not a json{")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 BadRequest, got %d", w.Code)
+	}
+	if stub.called {
+		t.Error("broker must NOT be invoked on malformed JSON body")
+	}
+}
+
+// TestWorkersBrokerHandler_CompleteWithArtifacts_BrokerErr pins
+// the 500 path: when the broker (finalizer spine) returns an
+// error, the handler surfaces it via apiutil.InternalError. The
+// canonical ErrFinalizerNotConfigured raises here in production.
+func TestWorkersBrokerHandler_CompleteWithArtifacts_BrokerErr(t *testing.T) {
+	stub := &stubBroker{returnErr: errors.New("finalizer not wired — JobFinalizer required")}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "worker-1",
+		WorkerSessionID:  "session-1",
+		LeaseID:          "lease-1",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		ArtifactManifest: json.RawMessage(`[]`),
+		OutboxEvents:     nil,
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/job-42/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on broker error, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !stub.called {
+		t.Error("broker must be invoked once before error surfaces")
+	}
+	if stub.lastCmd.JobID != "job-42" {
+		t.Errorf("JobID: %q", stub.lastCmd.JobID)
+	}
+}
+
+// TestWorkersBrokerHandler_CompleteWithArtifacts_URLIsCanonicalJobIDSource
+// pins the canonical rule that the canonical JobID in the URL (:id)
+// is the SOLE source of JobID in the canonical command.
+//
+// IMPORTANT — STRUCTURAL GUARANTEE (not a handler override): the
+// typed CompleteArtifactsRequest struct deliberately has NO
+// `JobID` field. Gin's JSON decoder silently drops unknown body
+// fields, so a stray `"job_id"` field in the request body cannot
+// leak into the command. The handler then sets
+// `cmd.JobID = c.Param("id")` unconditionally — canonical URL
+// value wins by construction.
+//
+// REGRESSION GUARD: if a future PR adds a `JobID string` field to
+// the typed DTO (e.g. for parity with the worker's outer envelope),
+// this test must be updated to verify the handler STILL prefers
+// the URL value over the body field. Otherwise a worker-side
+// regression could leak a stale tenant_job_id into the broker
+// call and silently bypass the lease-CAS check.
+func TestWorkersBrokerHandler_CompleteWithArtifacts_URLIsCanonicalJobIDSource(t *testing.T) {
+	stub := &stubBroker{}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	// Body deliberately contains a stray `job_id` field that
+	// the typed DTO does NOT have — gin will silently drop it.
+	payload := []byte(`{
+		"worker_id": "w",
+		"worker_session_id": "s",
+		"job_id": "STRAY-FROM-BODY",
+		"lease_id": "l",
+		"expected_revision": 3,
+		"result_data": {},
+		"artifact_manifest": []
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/CANONICAL-FROM-URL/complete-with-artifacts", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", w.Code, w.Body.String())
+	}
+	if stub.lastCmd.JobID != "CANONICAL-FROM-URL" {
+		t.Fatalf("URL :id must be canonical JobID source; got %q want %q", stub.lastCmd.JobID, "CANONICAL-FROM-URL")
+	}
+}
