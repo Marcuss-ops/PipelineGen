@@ -75,8 +75,18 @@ var ErrMissingFileUploader = errors.New("drive: NewPublisher: FileUploaderPort d
 
 // FolderManagerPort is the narrow port for creating nested Drive folders.
 // Satisfied by *DriveFolderManagerAdapter.EnsureFolder.
+//
+// P1.3 (July 2026): adds ProbeFolderAccess(ctx, rootID) for the
+// composition-time StartupDriveRootsValidator. ProbeFolderAccess
+// verifies that a configured root folder is reachable on Drive WITHOUT
+// creating any folder — it uses Files.Get with retry-with-jitter and
+// is the canonical fail-closed surface for the registry-driven
+// startup validation. The probe is side-effect-free (read-only) so
+// even validators that loop across dozens of destinations do not
+// produce spurious Drive-side folder creation.
 type FolderManagerPort interface {
 	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
+	ProbeFolderAccess(ctx context.Context, rootID string) error
 }
 
 // PutAction describes what the uploader actually did on Drive. It is

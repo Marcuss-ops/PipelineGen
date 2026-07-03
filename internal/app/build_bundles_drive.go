@@ -240,6 +240,20 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 // BuildDriveBundle still constructs the StyleRegistry (other consumers
 // in the bundle tree may read it), but the start-closure no longer
 // needs a handle to it.
+//
+// P1.3 (July 2026): the legacy images-only Drive folder pre-validation
+// (the `for name, folderID := range map[string]string{"images": dests.ImagesFolder()}`
+// block) is replaced by the registry-driven delivery.StartupDriveRootsValidator.
+// Every DestinationRegistry policy's RootFolderID is now probed via
+// FolderManagerPort.ProbeFolderAccess (read-only, retry-with-jitter);
+// the composition-time stub now honours the strict-mode flag
+// (cfg.Drive.StrictStartupValidation) instead of hard-coding fail-fast
+// on the single images folder. Operators leaving
+// StrictStartupValidation at the default (true) get the legacy
+// "fail-at-boot" behaviour generalised across all 9 destinations;
+// soft-mode (false) logs the per-destination failures and proceeds
+// so the legacy "discover at first upload" surface remains available
+// for staging / DR runs.
 func startDriveBackgroundFolders(
 	ctx context.Context,
 	cfg *config.Config,
@@ -248,18 +262,50 @@ func startDriveBackgroundFolders(
 	dests *DriveDestinations,
 	log *zap.Logger,
 ) error {
-	if driveClient != nil {
-		for name, folderID := range map[string]string{
-			"images": dests.ImagesFolder(),
-		} {
-			if folderID == "" {
-				continue
+	// P1.3: registry-driven startup root validation. Replaces the
+	// pre-P1.3 images-only check with a uniform probe across every
+	// DestinationRegistry policy's RootFolderID. The validator
+	// itself is constructed regardless of `driveClient != nil`
+	// (the typed-NIL-safe construct handles nil service by
+	// returning ErrMissingFolderManager — but NO real validator is
+	// needed when Drive auth failed at composition time, because
+	// Builder already logged the DriveClient-nil case and downstream
+	// surfaces will fail loudly at first publish).
+	if driveClient != nil && driveUploader != nil {
+		registry := delivery.NewDestinationRegistry(cfg)
+		folderMgr := drive.NewDriveFolderManagerAdapter(driveClient, log)
+		validator, vErr := delivery.NewDriveRootsValidator(registry, folderMgr, log)
+		if vErr != nil {
+			// Should be unreachable (registry is constructed, folderMgr
+			// is constructed). Log + halt so a future drift surfaces
+			// loudly at composition time, not at first publish.
+			log.Error("startDriveBackgroundFolders: validator construction failed (P1.3 invariant: registry+folderMgr MUST be non-nil)",
+				zap.Bool("registry_nil", errors.Is(vErr, delivery.ErrMissingStartupValidatorRegistry)),
+				zap.Bool("folders_nil", errors.Is(vErr, delivery.ErrMissingStartupValidatorFolders)),
+				zap.Error(vErr))
+			if cfg.Drive.StrictStartupValidation {
+				return fmt.Errorf("startDriveBackgroundFolders: validator construction failed: %w", vErr)
 			}
-			if _, err := driveClient.Files.Get(folderID).Fields("id, name").Context(ctx).Do(); err != nil {
-				return fmt.Errorf("required Drive folder %q (id=%s) validation failed: %w", name, folderID, err)
+		} else {
+			report, valErr := validator.ValidateDriveRoots(ctx)
+			if valErr != nil {
+				log.Error("startDriveBackgroundFolders: Drive root validation FAILED",
+					zap.Int("failed_count", len(report.FailedDestinations())),
+					zap.Strings("failed_destinations", stringifyDestinations(report.FailedDestinations())),
+					zap.Error(valErr),
+				)
+				if cfg.Drive.StrictStartupValidation {
+					return fmt.Errorf("startDriveBackgroundFolders: %w", valErr)
+				}
+				// Soft mode: log the failures but proceed. The
+				// affected destinations will fail-fast at first Publish
+				// call (the legacy "discover at first upload" surface).
+			} else {
+				log.Info("startDriveBackgroundFolders: all configured Drive roots validated",
+					zap.Int("validated_count", len(report.PerDestination)),
+					zap.Int("skipped_count", len(report.Skipped)),
+				)
 			}
-			log.Info("Drive folder validated",
-				zap.String("folder_name", name), zap.String("folder_id", folderID))
 		}
 	}
 	for _, dir := range []string{
@@ -276,4 +322,18 @@ func startDriveBackgroundFolders(
 		}
 	}
 	return nil
+}
+
+// stringifyDestinations formats []delivery.DestinationKey as a
+// comma-separated string for log readability. Kept local to the
+// composition root so the type's API surface is not polluted with
+// presentation helpers. Called only inside the P1.3 log branch +
+// the soft-mode conditional, so cost is bounded to per-failure log
+// lines (rare).
+func stringifyDestinations(destinations []delivery.DestinationKey) []string {
+	out := make([]string, 0, len(destinations))
+	for _, d := range destinations {
+		out = append(out, string(d))
+	}
+	return out
 }

@@ -149,6 +149,72 @@ func (a *DriveFolderManagerAdapter) EnsureFolder(ctx context.Context, parent str
 	return leafID, nil
 }
 
+// ProbeFolderAccess verifies that a Drive folder with the given ID is
+// reachable on Drive without creating any folder. Implements the
+// FolderManagerPort.ProbeFolderAccess method added in P1.3 (July 2026)
+// for the registry-driven startup validation in delivery package.
+//
+// Probe policy: Files.Get + retry-with-jitter (3 attempts, 200ms → 2s
+// initial backoff, ±30% jitter, IsRetryable gating on transient errors).
+// The probe IS side-effect-free (read-only) — it does NOT call
+// Files.Create. Empty rootID is rejected with an explicit error
+// (not a panic / not a Files.Get("") which Drive would reject with a
+// 400 Bad Request).
+//
+// Why a separate method (vs. EnsureFolder with sentinel segment):
+// EnsureFolder rejects empty segments, and any non-empty segment
+// would either reuse the existing child (masking a root probe
+// failure) or CREATE a child folder (side-effect we want to avoid
+// at startup). Files.Get is the cleanest side-effect-free reach
+// check that Drive offers — same retry policy as the production
+// lookup, same transient classifier.
+func (a *DriveFolderManagerAdapter) ProbeFolderAccess(ctx context.Context, rootID string) error {
+	if a.svc == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(rootID) == "" {
+		return fmt.Errorf("probeFolderAccess: root ID is empty")
+	}
+
+	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
+		// Files.Get with a "trashed = false" soft-check so a folder
+		// that exists but is in the Trash bin surfaces as "not found"
+		// rather than "exists but trashed" — startup wants the
+		// active folder, not the audit trail. Drive's default
+		// Files.Get returns the folder regardless of trashed state;
+		// the Fields("id,name,trashed") projection + the trashed-check
+		// below closes the "root in trash ⇒ false positive" gap.
+		f, gerr := a.svc.Files.Get(rootID).
+			Fields("id,name,trashed").
+			SupportsAllDrives(true).
+			Context(ctx).
+			Do()
+		if gerr != nil {
+			return struct{}{}, gerr
+		}
+		if f.Trashed {
+			return struct{}{}, fmt.Errorf("root folder %q is in the Drive Trash bin", rootID)
+		}
+		return struct{}{}, nil
+	}, retry.Options{
+		MaxAttempts:    folderLookupMaxAttempts,
+		InitialBackoff: folderLookupInitialBackoff,
+		MaxBackoff:     folderLookupMaxBackoff,
+		BackoffFactor:  2.0,
+		JitterFraction: folderLookupJitterFraction,
+		IsRetryable:    retry.IsTransient,
+		OnRetry: func(attempt int, err error) {
+			if a.log != nil {
+				a.log.Warn("transient drive root probe error, retrying (P1.3 StartupDriveRootsValidator)",
+					zap.String("root_id", rootID),
+					zap.Int("attempt", attempt+1),
+					zap.Error(err))
+			}
+		},
+	})
+	return err
+}
+
 // folderLookupFunc is the seam through which findOrCreateFolder
 // resolves "is there already a Drive folder with this name under
 // parent?".

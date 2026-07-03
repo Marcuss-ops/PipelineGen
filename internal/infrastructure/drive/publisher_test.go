@@ -2,6 +2,8 @@ package drive
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -20,6 +22,17 @@ type fakeFolderManager struct {
 	result string
 	// err, if set, is returned by EnsureFolder.
 	err error
+	// probeCalls records each ProbeFolderAccess invocation. P1.3 (July 2026)
+	// adds this tracking so the publisher tests can assert the validator
+	// surface (kept lightweight — only the rootID matters, the SDK
+	// response is irrelevant at this layer).
+	probeCalls []string
+	// probeErr, if set, is returned by ProbeFolderAccess. With
+	// probeErrFn non-nil, probeErr is ignored and probeErrFn is
+	// called per rootID (used for selective tests where some roots
+	// fail and others pass).
+	probeErr error
+	probeErrFn func(rootID string) error
 }
 
 type folderCall struct {
@@ -36,6 +49,22 @@ func (f *fakeFolderManager) EnsureFolder(_ context.Context, parent string, segme
 		return "fake-folder-id", nil
 	}
 	return f.result, nil
+}
+
+// ProbeFolderAccess implements the P1.3 FolderManagerPort extension.
+// Records the rootID for later assertion; returns probeErr (or the
+// probeErrFn result) when set, nil otherwise. Mirrors the
+// production DriveFolderManagerAdapter semantics: empty rootID is
+// rejected with an error, not silently passed through.
+func (f *fakeFolderManager) ProbeFolderAccess(_ context.Context, rootID string) error {
+	f.probeCalls = append(f.probeCalls, rootID)
+	if strings.TrimSpace(rootID) == "" {
+		return fmt.Errorf("probeFolderAccess: root ID is empty")
+	}
+	if f.probeErrFn != nil {
+		return f.probeErrFn(rootID)
+	}
+	return f.probeErr
 }
 
 // fakeFileUploader impl Pattern-0 FileUploaderPort (P0 #1, June 2026):
