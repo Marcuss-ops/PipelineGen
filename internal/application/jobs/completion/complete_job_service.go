@@ -53,6 +53,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
@@ -117,6 +118,16 @@ type TxContext interface {
 	// unique; a replayed replay yields ErrOutboxEnvelopeDuplicate
 	// (typed sentinel at infra layer).
 	InsertOutboxEnvelope(ctx context.Context, envelope OutboxEnvelope) error
+
+	// InsertAssetLocations (P1 wave Azione 6, July 2026) persists
+	// asset_locations rows in the same atomic TX as the job flip +
+	// result insert + artifact map + outbox envelopes. The
+	// (asset_id, location_kind) UNIQUE lets ON CONFLICT DO UPDATE
+	// safely round-trip without breaking the uniqueness invariant
+	// (forward-pointer infra-layer implementation; today the
+	// canonical adapter is the test mock that satisfies the
+	// contract for the service-layer migration to CUTOVER).
+	InsertAssetLocations(ctx context.Context, entries []AssetLocationEntry) error
 }
 
 // ── Domain row types (mirror the canonical DB columns) ───────────────
@@ -162,6 +173,78 @@ type OutboxEnvelope struct {
 	IdempotencyKey string // canonical SHA-256 of (jobID, attempt, event_kind)
 	EventKind      string // e.g. "artifact.uploaded", "job.completed"
 	Payload        []byte // canonical JSON wire-payload for the event
+}
+
+// AssetLocationEntry is the typed in-TX write surface for the
+// asset_locations table (P1 wave Azione 6, July 2026). Mirrors
+// the canonical SQL columns minus db-managed fields (id, created_at,
+// updated_at) — those are filled by the infra-layer adapter at
+// UpsertLocation time. The (asset_id, location_kind) UNIQUE
+// permits ON CONFLICT DO UPDATE round-trips without breaking
+// the uniqueness invariant.
+//
+// godlike/06 SSOT: this struct lives in the completion package
+// (NOT in domain/asset) because the completion service is the
+// single canonical owner of "what asset_locations rows are tied
+// to which artifact_id" — making the typed write surface local
+// prevents other code paths from accidentally writing their own
+// shape to the same table.
+type AssetLocationEntry struct {
+	// ArtifactID is the content-hash artifact_id (from
+	// PublishedArtifact.ArtifactID) preserved for the audit join
+	// that connects the canonical (job_artifacts) row to the
+	// (asset_locations) row.
+	ArtifactID string
+
+	// AssetID is the catalog asset_id resolved from the request's
+	// AssetMappings[ArtifactID]. The SQL row is keyed on this.
+	AssetID string
+
+	// Kind is the typed enum for the location_kind SQL column.
+	// Mirrors asset.LocationKind (Local / Drive / ObjectStorage).
+	Kind asset.LocationKind
+
+	// Provider is the storage backend label (e.g. "drive", "s3").
+	// Distinct from Kind (the type-system enum) — Provider is the
+	// free-form label for telemetry + UI rendering.
+	Provider string
+
+	// ExternalID is the provider-specific file identifier (Drive
+	// file ID, S3 object key, etc.). Mapped to asset_locations.
+	// external_id. Distinct from AccessURL (the human-readable
+	// web view) and DownloadURL (the direct-download URL).
+	ExternalID string
+
+	// AccessURL is the web view link copied from
+	// finalization.AssetLocation.WebViewLink. Mapped to
+	// web_view_link SQL column.
+	AccessURL string
+
+	// DownloadURL is the direct-download URL copied from
+	// finalization.AssetLocation.DownloadLink. Mapped to
+	// download_url SQL column.
+	DownloadURL string
+
+	// MIMEType is the IANA media type (from PublishedArtifact.
+	// MIMEType). Mapped to mime_type SQL column.
+	MIMEType string
+
+	// SizeBytes is the artifact size (from PublishedArtifact.
+	// SizeBytes). Mapped to file_size_bytes SQL column.
+	SizeBytes int64
+
+	// FileHash is the SHA-256 hex digest (from PublishedArtifact.
+	// SHA256). Distinct from any provider-returned checksum —
+	// file_hash stores the canonical content hash so the
+	// round-trip gate can verify byte-stability independent of
+	// the publication backend.
+	FileHash string
+
+	// IsPrimary marks the row as the primary location for the
+	// (asset_id, kind) UNIQUE. Defaults to true for the first
+	// location written; secondary locations (e.g. a backup copy)
+	// flip to false.
+	IsPrimary bool
 }
 
 // ── IdempotencyCachePort (post-TX replay short-circuit) ──────────────
