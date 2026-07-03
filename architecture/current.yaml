@@ -1276,30 +1276,59 @@
         comment block). The closure appended only the 2 migration-094
         columns (`index_state` + `index_state_updated_at`), not 3 as
         the user spec implied.
-    # PR-CLIPINDEXER-FOLD-INVESTIGATE forward-pointer (July 2026):
-    # the clipindexer fold was REVERTED during the CANONICAL-DRIFT-MIG094
-    # closure pass because canonical's `embedding_json TEXT NOT NULL
-    # DEFAULT '[]'` broke the indexer's CAS check in setIndexedAt that
-    # treats embedding_json=NULL as `not yet indexed`. The clipindexer
-    # TestIndexingDoesNotSpawnPythonPerClip test is preserved with the
-    # inline 10-col schema (per canonical.go's SSOT-folding exemption
-    # for semantic-test-contract fixtures). This forward-pointer tracks
-    # the investigation into:
-    #   (a) whether setIndexedAt's CAS check should be expanded to
-    #       accept `embedding_json='[]'` as a "freshly indexed" sentinel
-    #       alongside `embedding_json IS NULL` (semantic equivalent in
-    #       both cases),
-    #   (b) whether the test's contract should be rewritten to assert
-    #       on a different surface (e.g. AudioVector / VisualVector
-    #       rather than the boolean `apiCalled` count),
-    #   (c) whether the production canonical contract can be loosened
-    #       to make `embedding_json` nullable (breaking schema change,
-    #       requires a separate migration decision).
-    # Decision documented via the follow-up PR's CHANGELOG entry.
+    # PR-CLIPINDEXER-FOLD-INVESTIGATE (July 2026, SHIPPED, exit_signal: true).
+    # Original forward-pointer hypothesis was INCORRECT: the truncation
+    # was NOT a `embedding_json=NULL` semantic-CAS mismatch (setIndexedAt's
+    # CAS matches (id, source_version, file_hash, index_state='INDEXING') —
+    # embedding_json is never checked). The actual cause was a setup-
+    # shape mismatch in the test fixture: the inline 10-col media_assets
+    # schema in clipindexer/service_test.go lacked the search_text
+    # column, so computeContentHash errored with `no such column` and
+    # fell back to contentHash=""; the empty hash then accidentally
+    # matched row.file_hash='' (canonical default) in the CAS fence and
+    # the test PASSED BY ACCIDENT — NOT because the fold genuinely
+    # resolved a production-shape fixture mismatch.
+    #
+    # Closure surface (this commit):
+    #   (a) Folded internal/infrastructure/indexing/clipindexer/
+    #       service_test.go inline 10-col backtick block →
+    #       drive.NewTestDBWithSchema(t, drive.CanonicalMediaAssetsSchema).
+    #   (b) NEW seedFileHash helper in service_test.go that calls
+    #       svc.computeContentHash and writes back to media_assets.file_hash
+    #       BEFORE IndexClip — mirrors the preSeedFileHash pattern in
+    #       indexing_api_audio_test.go (already shipped). Threads through
+    #       svc.computeContentHash so algorithm evolution stays in
+    #       lockstep (test cannot drift from production by a missing
+    #       input variable).
+    #   (c) INSERT in the test omits embedding_json so canonical's
+    #       NOT NULL DEFAULT '[]' absorbs the omission (test contract
+    #       is the indexer, not the embedding column).
+    #   (d) Updated canonical.go header doc: clipindexer/service_test.go
+    #       row MOVED out of the 3-item active exemption list into a
+    #       SEPARATE `// Historical audits:` block (NO active exemption;
+    #       archaeology preserved for future agents).
+    #
+    # Validation: all 4 clipindexer AudioChannel* tests + the canonical
+    # TestIndexingDoesNotSpawnPythonPerClip PASS after the fold; full
+    # clipindexer package green (`ok ... 0.097s`); full catalogsync
+    # package green (`ok ... 0.036s`); go vet clean on database +
+    # clipindexer + catalogsync. The pre-existing
+    # TestBoot_OnEmpty_Observability_OnlyApiRequests db-package
+    # failure reproduces on stashed-state origin/main too
+    # (qdrantprojection_dlq table-presence=false) — NOT a regression
+    # from this closure.
+    #
+    # Forward-pointer carried over (godlike/07 honest-limitation): none
+    # of the 3 originally-proposed investigation paths (CAS-expand to
+    # embedding_json='[]' header / rewrite test to AudioVector surface /
+    # loosen canonical embedding_json to nullable) were ACTUALLY needed
+    # — hypothesis (a) was a misdiagnosis, (b)+(c) were never engaged.
+    # The closure is COMPLETE for this scope.
     - id: PR-CLIPINDEXER-FOLD-INVESTIGATE
       owner_capability: internal/infrastructure/indexing/clipindexer
-      status: pending
-      deadline: 2026-08-15
+      status: shipped
+      exit_signal: true
+      deadline: 2026-07-02
 
 
 # ---------------------------------------------------------------------------

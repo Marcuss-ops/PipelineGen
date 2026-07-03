@@ -37,7 +37,7 @@ package storage
 // semantic-test-contract inline schema are exempt — the inline
 // schema in such tests is the test's own pedagogical contract, not
 // a violation of the SSOT. The canonical exempt-fixture list (July
-// 2026, post-CANONICAL-DRIFT-MIG094 closure):
+// 2026, post-PR-CLIPINDEXER-FOLD-INVESTIGATE closure):
 //
 //   - clips_crud_test.go::newAlignTestDB
 //       40-col MediaAssetColumns projection-alignment test; folding
@@ -49,12 +49,24 @@ package storage
 //   - clip_atomic_writer_test.go::clipAtomicWriterSchema
 //       5-step tx shape minimal schema; folding would obscure the
 //       writer's narrow write-surface intent.
+//
+// Historical audits (NOT active exemptions — recorded so future agents
+// can verify the exemption archaeology when re-reading the file):
+//
 //   - clipindexer/service_test.go::TestIndexingDoesNotSpawnPythonPerClip
-//       Fold attempted during CANONICAL-DRIFT-MIG094 closure pass,
-//       REVERTED because canonical's `embedding_json TEXT NOT NULL
-//       DEFAULT '[]'` breaks the indexer's CAS check that treats
-//       embedding_json=NULL as `not yet indexed`. Investigation is
-//       tracked separately under PR-CLIPINDEXER-FOLD-INVESTIGATE.
+//       Was exempted through CANONICAL-DRIFT-MIG094 closure pass
+//       (July 2026) on the (incorrect at the time) hypothesis that
+//       canonical's `embedding_json TEXT NOT NULL DEFAULT '[]'`
+//       broke the indexer's CAS check treating NULL as `not yet
+//       indexed`. PR-CLIPINDEXER-FOLD-INVESTIGATE reopened the
+//       investigation and revealed the real cause was a setup-shape
+//       mismatch: the inline 10-col schema lacked the search_text
+//       column, so computeContentHash errored with `no such column`
+//       and fell back to contentHash=""; the empty hash then matched
+//       row.file_hash='' in the CAS fence and the test passed by
+//       accident. The fold + new seedFileHash helper (above the
+//       test) now exercise the production-shape CAS fence honestly.
+//       Marked closed July 2026.
 //
 // See CANONICAL.md §1 for the SSOT contract; see each exempt test
 // file's header comment for the test-specific exemption rationale.
