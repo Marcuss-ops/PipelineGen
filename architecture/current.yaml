@@ -2289,3 +2289,94 @@ wave_status:
 #   - 511efc86  refactor(images): emit canonical ArtifactManifest for image.generate family
 # Canonical surface (no local duplicates): handler -> ArtifactManifest (sender-side sidecar under
 # __artifact_manifest, V1 schema_version) -> delivery.Publisher.Publish (with ConflictPolicy belt + composition-time sentinels) -> AssetTxFinalizer.FinalizeAsset (atomic media_assets + asset_versions + asset_locations + outbox_events inside the JobFinalizer's *sql.Tx) -> JobFinalizer.CompleteWithArtifacts (single writer of SUCCEEDED via id+lease+attempt CAS) -> result_hash idempotency fingerprint -> publication_intents reconstructable from SUCCEEDED jobs via orphan reconciler. P0 #1+#3+#4+#5 closed at the seam level. Recovery action: per AGENTS.md Git-Lesson-5 (byte-equivalent-replay), local Step 7 was dropped - the canonical SHA on origin/main already encodes the intent. No force-push; commit + ff-push only.
+
+# ── Wave 32 — DRIVE-008 CUTOVER closure (July 2026) ──
+# P2.2 closure (commit `0fa8c065` on origin/main): the 3 legacy drive
+# upload surfaces (clips.ClipDriveUploaderPort.UploadFile +
+# clips.ClipDriveUploaderPort.UploadFileWithDescription +
+# sourcing.DrivePort.UploadFileWithDescription) are converted to fail-
+# closed stubs that return drive.ErrLegacySurfaceRetired on every
+# invocation (sentinel declared in new internal/infrastructure/drive/
+# errors.go, errors.Is compatible through 1x + 2x wrap chains at the
+# handler/aggregator layer). Companion sentinel-test internal/
+# infrastructure/drive/errors_test.go with 2 TDD tests.
+#
+# Companion closures in the same baseline (slim-schema cross-references
+# only — the granular per-PR decomposition lives in CHANGELOG.md
+# `## Unreleased -> P2.4 closure entries`):
+#   - P1.4 (commit `442a4dfe`): Prometheus metrics for StartupDrive
+#     RootsValidator + jitter extension validator-side.
+#   - P1.5 (commit `819c9d95`): typed Google API errors + RFC 7231
+#     §7.1.3 Retry-After + jitter extension uploader-side (6 Drive SDK
+#     exits total).
+#   - P2.1 (commit `96ec87e1`): package-level mutable test seams
+#     (lookupFunc + openFile) migrated to struct fields on *Uploader.
+#
+# godlike/07 honest-limitation: the surfaced TODOs `TODO(Fase 3.3)`
+# and `TODO(Fase 3.5)` in internal/infrastructure/drive/store.go:173
+# and internal/app/adapters_voiceover_use_case.go:203 are LEGITIMATE
+# open work (Fase 3 Spina Dorsale `DRIVE-STORE-UPLOAD-TO-DRIVE` migration
+# is still in migration_phase=EXPAND, status=in_progress, removal_date=
+# 2026-Q3); they remain in place until the canonical image-upload
+# migration closes. No closed TODOs to chase.
+- id: PR-DRIVE-008-CUTOVER
+  status: shipped
+  exit_signal: true
+  owner: drive
+  deadline: 2026-07-03
+  exit_gate: |
+    DRIVE-008 fail-closed stubs landed on origin/main (commit 0fa8c065):
+      * internal/infrastructure/drive/errors.go declares
+        drive.ErrLegacySurfaceRetired (typed sentinel, errors.Is
+        compatible).
+      * internal/infrastructure/drive/errors_test.go pins sentinel
+        existence + message byte-stability + errors.Is probe through
+        1x + 2x fmt.Errorf %w wrap chains (2 TDD tests).
+      * internal/app/clips_adapters_drive.go::(*clipsDriveAdapter)
+        .UploadFile and .UploadFileWithDescription return wrapped
+        sentinel on every invocation (fail-closed per godlike/07);
+        compile-time assertion var _ clips.ClipDriveUploaderPort =
+        (*clipsDriveAdapter)(nil) preserved.
+      * internal/app/assets_register_adapters.go::(*sourcingDriveAdapter)
+        .UploadFileWithDescription returns wrapped sentinel; new
+        compile-time assertion var _ sourcing.DrivePort =
+        (*sourcingDriveAdapter)(nil) added for sourcing-side drift
+        detection.
+      * Dead-code cleanup: driveUploadToDTO helper removed inline
+        (sole post-stub consumer gone).
+      * Survivor scope locked: 9 surviving methods on ClipDriveUploaderPort
+        + 2 surviving methods on sourcingDriveAdapter + the underlying
+        drive.Uploader.Admin.UploadFile chain NOT deprecated by this
+        record.
+      * architecture/deprecations.yaml#DRIVE-008 added (record #21,
+        migration_phase=CUTOVER, status=in_progress, removal_date=
+        2026-Q4) cross-referencing DRIVE-005-FIELDS + DRIVE-STORE-
+        UPLOAD-TO-DRIVE + DRIVE-CUTOVER-P0-1 siblings.
+
+    Verification: go build ./... exits 0 (no compile-time breakage from
+    stub shape). go test ./internal/infrastructure/drive/... -count=1
+    PASS (sentinel tests + pre-existing drive tests). rg
+    `driveUploadToDTO` returns 0 hits live (helper physically removed).
+    rg `drive\.ErrLegacySurfaceRetired` returns 3 hits (the 3 stub
+    bodies) confirming sentinel consumption at every retirement site.
+
+    Forward-pointer (godlike/07 CONTRACT phase, 2026-Q4): the
+    companion CONTRACT phase (physical removal of the 3 methods from
+    the interface + adapters) is deferred until residual callers (the
+    4 sites with TODO(P0.4) markers per DRIVE-CUTOVER-P0-1 forward-
+    pointer in architecture/deprecations.yaml) all migrate to
+    delivery.Publisher.Publish and a zero-callers audit confirms.
+    Until CONTRACT lands, migration_phase=CUTOVER stays in_progress.
+  linked_issues:
+    - id: '0fa8c065'
+      owner_capability: internal/app + internal/infrastructure/drive + internal/application/clips + internal/application/assets/sourcing
+      status: shipped
+      deadline: 2026-07-03
+    - id: 'PR-P2.4-DOCS'
+      owner_capability: architecture (AGENTS.md / CHANGELOG / current.yaml / ARCHITECTURE.md)
+      status: shipped
+      deadline: 2026-07-03
+    - id: 'PR-DRIVE-008-CONTRACT'
+      owner_capability: internal/app + internal/infrastructure/drive + internal/application/clips + internal/application/assets/sourcing
+      status: pending
+      deadline: 2026-Q4
