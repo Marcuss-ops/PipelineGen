@@ -1,0 +1,61 @@
+// Package monitor — shared DTOs and constructor dependencies.
+package monitor
+
+import (
+	"go.uber.org/zap"
+
+	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+)
+
+// Priority levels for batch channel scheduling.
+const (
+	PriorityHot    = 1
+	PriorityNormal = 2
+	PriorityCold   = 3
+)
+
+// DefaultPlaylistEnd is the global default for how many videos to scan per channel check.
+const DefaultPlaylistEnd = 50
+
+// CompositionDeps is the ctor payload for NewChannelMonitor.
+type CompositionDeps struct {
+	Cfg         *config.Config
+	ChannelsSvc *channels.Service
+	Log         *zap.Logger
+	Ytdlp       MonitorDownloaderPort
+	Transcript  TranscriptProvider
+	Analyzer    VideoAnalyzer
+	Enqueuer    JobEnqueuer
+	Discoveries YoutubeDiscoveriesPort
+	Policy      *MonitorRuntimePolicy
+}
+
+// ChannelCheckResult is the typed payload returned by ChannelMonitor.checkChannel.
+type ChannelCheckResult struct {
+	VideosDiscovered       int
+	VideosEnqueued         int
+	VideosSkipped          int
+	VideosAlreadyScheduled int
+	VideosRejected         int
+	InfraFailures          int
+}
+
+// EnqueueOutcome is the typed label for a single video's per-cycle disposition.
+type EnqueueOutcome string
+
+const (
+	OutcomeEnqueued         EnqueueOutcome = "enqueued"
+	OutcomeAlreadyScheduled EnqueueOutcome = "already_scheduled"
+	OutcomeRejected         EnqueueOutcome = "rejected"
+	OutcomeInfraFailure    EnqueueOutcome = "infra_failure"
+)
+
+// Analysis is the analyzer result consumed by enqueue orchestration.
+type Analysis struct {
+	Score          int
+	MatchedKeyword string
+	Category       string
+	Segments       []ytdomain.Segment
+}
