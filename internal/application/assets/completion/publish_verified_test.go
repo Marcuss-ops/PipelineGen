@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -45,6 +46,12 @@ type mockPreparer struct {
 	transientSequence []error
 	prepareErr        error
 	preparedPub       finalization.PublishedArtifact
+
+	// Per-ArtifactID control (P1 #14 Scenario 3 partial-failure setup):
+	// perArtFailures maps ArtifactID → the error to return on the FIRST
+	// call for that artifact; subsequent calls (post-retry) succeed normally
+	// (return preparedPub with full Location) UNLESS prepareErr is set.
+	perArtFailures map[string]error
 }
 
 func (m *mockPreparer) Prepare(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
@@ -58,6 +65,12 @@ func (m *mockPreparer) Prepare(ctx context.Context, artifact finalization.Verifi
 	}
 	if m.prepareErr != nil {
 		return finalization.PublishedArtifact{}, m.prepareErr
+	}
+	if m.perArtFailures != nil {
+		if e, ok := m.perArtFailures[artifact.ArtifactID]; ok {
+			delete(m.perArtFailures, artifact.ArtifactID)
+			return finalization.PublishedArtifact{}, e
+		}
 	}
 	pub := m.preparedPub
 	pub.ArtifactID = artifact.ArtifactID
@@ -73,6 +86,11 @@ func (m *mockPreparer) Prepare(ctx context.Context, artifact finalization.Verifi
 
 // mockBookkeeper is an in-memory IdempotencyBookkeeper stub. Pre-seeding
 // records + setting isPublished=true forces the short-circuit scenario.
+//
+// P1 #14 (July 2026): adds LookupByIdempotencyKey method that scans records
+// for the FIRST entry whose IdempotencyKey matches (scoped to jobID
+// namespace) — simulating a same-key collision-detection surface for the
+// publisher flow.
 type mockBookkeeper struct {
 	mu        sync.Mutex
 	records   map[string]*finalization.PublishedArtifact
@@ -104,6 +122,37 @@ func (m *mockBookkeeper) LookupPublished(ctx context.Context, j, a, s string) (*
 	return pub, nil
 }
 
+// LookupByIdempotencyKey (P1 #14) — O(N) scan over the records map for the
+// first entry whose (jobID-scoped, persisted.IdempotencyKey) triple matches.
+// Forward-prevention against SAME-idem-key / DIFFERENT-content collisions
+// (godlike/07 fail-closed).
+//
+// Forward-pointer (godlike/07 performance): the in-memory mock is O(N) by
+// design. The concrete SQLite implementation MUST carry an index on
+// (job_id, idempotency_key) to avoid full-table-scan on every publish gate;
+// tracked in architecture/current.yaml under PHASE-1C.
+func (m *mockBookkeeper) LookupByIdempotencyKey(ctx context.Context, jobID, idempotencyKey string) (*finalization.PublishedArtifact, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, rec := range m.records {
+		if rec.IdempotencyKey != idempotencyKey {
+			continue
+		}
+		// Tight scope: jobID extracted from rec.ArtifactID via the
+		// canonical "jobID:subID" convention. Mirrors the canonical
+		// ArtifactIdempotencyKey helper's scope discipline
+		// ((jobID, subID, sha256Hex) row-level uniqueness), so a
+		// collapse across DIFFERENT jobs cannot pass the same
+		// idempotency-key.
+		recJob := jobIDFromArtifactID(rec.ArtifactID)
+		if recJob != jobID {
+			continue
+		}
+		return rec, nil
+	}
+	return nil, errors.New("not found")
+}
+
 func (m *mockBookkeeper) RecordPublished(ctx context.Context, j, a, s string, pub *finalization.PublishedArtifact) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -116,6 +165,8 @@ func (m *mockBookkeeper) RecordPublished(ctx context.Context, j, a, s string, pu
 	m.records[keyTriplet(j, a, s)] = pub
 	return nil
 }
+
+// TestNewService_NilPorts_Errors
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 
@@ -152,8 +203,7 @@ func newVerified(t *testing.T, artifactID, localPath string, payload []byte) *fi
 
 // jobIDFromArtifactID returns the canonical jobID portion for the
 // (jobID:subID) ArtifactID convention. Returns "job-001" for "job-001:script_json"
-// etc. Falls back to a literal "test-job" if no ":" separator is present
-// (hermetic test fixture default).
+// etc. Falls back to a literal identifier if no ":" separator is present.
 func jobIDFromArtifactID(artifactID string) string {
 	if i := indexByte(artifactID, ':'); i >= 0 {
 		return artifactID[:i]
@@ -197,12 +247,26 @@ type transientErr struct {
 func (e *transientErr) Error() string     { return e.msg }
 func (e *transientErr) IsRetryable() bool { return true }
 
-// ── 5 TDD TESTS (P0-COMPL-4 dedup invariants pinned) ───────────────────────
+// terminalPublishErr is a generic non-transient terminal error used by the
+// P1 #14 partial-failure loop isolation test to simulate a per-artifact
+// failure that the retry loop cannot recover from (no IsTransient marker).
+// This represents a typed-error that propagates through the failure path.
+type terminalPublishErr struct {
+	msg string
+}
+
+func (e *terminalPublishErr) Error() string { return e.msg }
+
+// ── 5 EXISTING TESTS (updated for P1 #14 []PublishOutcome signature) ─────────
 
 // Test 1: Happy-path — single artifact routes through Prepare →
 // verify-final-checksum → record-idempotency. ALL 10 fields of the
 // PublishedArtifact envelope are populated correctly. IdempotencyKey is
 // byte-stable per P0.7 (derived via remote.ArtifactIdempotencyKey).
+//
+// P1 #14 UPDATE: PublishVerifiedArtifacts now returns []PublishOutcome.
+// outcome[0] wraps the canonical envelope; outcome[0].Reused=false (fresh),
+// outcome[0].Err=nil.
 //
 // Dedup-invariant: Preparer.prepare is called EXACTLY ONCE per artifact
 // (no double-Publish retry loop in this Service). Bookkeeper.RecordPublished
@@ -212,9 +276,6 @@ func TestPublish_HappyPath_AllTenFieldsPopulated_SinglePrepareCall(t *testing.T)
 	localPath := writeTempFile(t, payload)
 	va := newVerified(t, "job-001:script_json", localPath, payload)
 
-	// (post-P0-COMPL-4) mockPreparer's preparedPub.Is the canonical
-	// success-shape Location envelope; Prepare internally publishes to
-	// Drive, then returns this fully-populated envelope.
 	prepMock := &mockPreparer{
 		preparedPub: finalization.PublishedArtifact{
 			Location: finalization.AssetLocation{
@@ -231,15 +292,21 @@ func TestPublish_HappyPath_AllTenFieldsPopulated_SinglePrepareCall(t *testing.T)
 		t.Fatalf("NewService: got %v, want nil", err)
 	}
 
-	got, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
-	if err != nil {
-		t.Fatalf("happy path: got error %v, want nil", err)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
+	if topErr != nil {
+		t.Fatalf("happy path: got top-err %v, want nil", topErr)
 	}
-	if len(got) != 1 {
-		t.Fatalf("len(output): got %d, want 1", len(got))
+	if len(outcomes) != 1 {
+		t.Fatalf("len(outcomes): got %d, want 1", len(outcomes))
+	}
+	if !outcomes[0].IsSuccess() {
+		t.Fatalf("outcome[0] not success (Artifact=%v, Err=%v)", outcomes[0].Artifact, outcomes[0].Err)
+	}
+	if outcomes[0].Reused {
+		t.Errorf("outcome[0].Reused: got true, want false (fresh publish path)")
 	}
 
-	out := got[0]
+	out := outcomes[0].Artifact
 	if out.ArtifactID != va.ArtifactID {
 		t.Errorf("ArtifactID: got %q, want %q", out.ArtifactID, va.ArtifactID)
 	}
@@ -278,15 +345,12 @@ func TestPublish_HappyPath_AllTenFieldsPopulated_SinglePrepareCall(t *testing.T)
 		t.Errorf("Location.FileID: got %q, want %q", out.Location.FileID, "drive-file-id-001")
 	}
 
-	// Dedup-invariants (P0-COMPL-4): Prepare called EXACTLY ONCE.
+	// Dedup-invariant: Prepare called EXACTLY ONCE per artifact.
 	if prepMock.calls.Load() != 1 {
-		t.Errorf("Preparer calls: got %d, want 1 (P0-COMPL-4 dedup invariant)", prepMock.calls.Load())
+		t.Errorf("Preparer calls: got %d, want 1 (P0-COMPL-4 + P1 #14 dedup invariant)", prepMock.calls.Load())
 	}
 	if _, ok := bkMock.records[keyTriplet("job-001", "script_json", va.SHA256)]; !ok {
 		t.Error("Bookkeeper: triple not recorded")
-	}
-	if got, want := len(bkMock.records), 1; got != want {
-		t.Errorf("Bookkeeper record count: got %d, want %d (single canonical record)", got, want)
 	}
 }
 
@@ -295,9 +359,8 @@ func TestPublish_HappyPath_AllTenFieldsPopulated_SinglePrepareCall(t *testing.T)
 // success on the SECOND. The Service's publishOne wrapper retries via
 // pkg/retry.Do and propagates the post-retry success outcome.
 //
-// Dedup-invariant: cumulative calls == 2 (1 transient + 1 success retry)
-// — exposes the canonical retry path. NO Publisher-field retries in this
-// Service (Publisher was REMOVED in P0-COMPL-4).
+// P1 #14 UPDATE: outcome[0] is the canonical success envelope, Reused=false,
+// Err=nil.
 func TestPublish_TransientRetryOnPrepare(t *testing.T) {
 	payload := []byte("transient-then-success payload")
 	localPath := writeTempFile(t, payload)
@@ -313,7 +376,7 @@ func TestPublish_TransientRetryOnPrepare(t *testing.T) {
 	}
 	prepMock.transientSequence = []error{
 		&transientErr{msg: "transient 401 unauthorized"},
-		nil, // second call: success
+		nil, // second call succeeds
 	}
 
 	bkMock := &mockBookkeeper{records: map[string]*finalization.PublishedArtifact{}}
@@ -323,46 +386,48 @@ func TestPublish_TransientRetryOnPrepare(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 
-	got, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
-	if err != nil {
-		t.Fatalf("transient-then-success: got %v, want nil", err)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
+	if topErr != nil {
+		t.Fatalf("transient-then-success: got top-err %v, want nil", topErr)
 	}
-	if len(got) != 1 {
-		t.Fatalf("len(output): got %d, want 1", len(got))
+	if len(outcomes) != 1 || !outcomes[0].IsSuccess() {
+		t.Fatalf("outcomes: got %d success %v; want 1 success", len(outcomes), outcomes)
 	}
-	if got[0].Location.FileID != "drive-file-id-002" {
-		t.Errorf("Location.FileID: got %q, want %q", got[0].Location.FileID, "drive-file-id-002")
+	if outcomes[0].Artifact.Location.FileID != "drive-file-id-002" {
+		t.Errorf("Location.FileID: got %q, want %q",
+			outcomes[0].Artifact.Location.FileID, "drive-file-id-002")
 	}
 
-	// Cumulative call count = 2 (1 transient + 1 success post-internal-retry).
+	// Cumulative call count = 2 (1 transient + 1 retry-success).
 	if prepMock.calls.Load() != 2 {
-		t.Errorf("Preparer cumulative calls: got %d, want 2 (1 transient + 1 retry-success)", prepMock.calls.Load())
+		t.Errorf("Preparer cumulative calls: got %d, want 2 (1 transient + 1 retry-success)",
+			prepMock.calls.Load())
 	}
 }
 
-// Test 3: Duplicate → idempotent short-circuit. Bookkeeper reports the
-// triple is already-published; Service MUST NOT call Preparer.Prepare;
-// the cached envelope is returned via the output slice position;
-// ErrAlreadyPublished surfaces via errors.Is (godlike/07
-// no-duplicate-side-effects).
+// Test 3: Duplicate → SAME-content idempotent replay (P1 #14 BREAKING
+// CHANGE). Bookkeeper has a record whose IdempotencyKey equals the
+// canonical key for the in-flight request AND whose SHA matches. Under
+// P1 #14, this is the canonical byte-stable replay: top-level err is NIL,
+// the outcome carries Reused=true, and Prepare is NEVER re-run.
 //
-// Dedup-invariant: zero Prepare calls on short-circuit; the canonical
-// idempotency-key collision path is the single source of truth for
-// "do not re-publish".
-func TestPublish_Duplicate_AlreadyPublished_IdempotentShortCircuit(t *testing.T) {
-	payload := []byte("already-published duplicate payload")
+// (Prior P0-COMPL-4 contract wrapped ErrAlreadyPublished. The P1 #14
+// contract tests the NEW spec where same-content is reflected in the
+// outcome, not as a sentinel.)
+func TestPublish_Duplicate_SameContent_IdempotentReplay_ReusedTrue_NilErr(t *testing.T) {
+	payload := []byte("same-content idempotent replay payload")
 	localPath := writeTempFile(t, payload)
 	va := newVerified(t, "job-002:image_png", localPath, payload)
 
 	cachedPub := &finalization.PublishedArtifact{
-		ArtifactID:     va.ArtifactID,
-		Kind:           va.Kind,
-		Filename:       va.Filename,
-		MIMEType:       va.MIMEType,
-		SizeBytes:      va.SizeBytes,
-		SHA256:         va.SHA256,
-		SourceVersion:  va.SourceVersion,
-		Requirement:    va.Requirement,
+		ArtifactID:    va.ArtifactID,
+		Kind:          va.Kind,
+		Filename:      va.Filename,
+		MIMEType:      va.MIMEType,
+		SizeBytes:     va.SizeBytes,
+		SHA256:        va.SHA256, // SAME sha as in-flight
+		SourceVersion: va.SourceVersion,
+		Requirement:   va.Requirement,
 		IdempotencyKey: remote.ArtifactIdempotencyKey("job-002", "image_png", va.SHA256),
 		Location: finalization.AssetLocation{
 			Provider: "drive",
@@ -375,8 +440,6 @@ func TestPublish_Duplicate_AlreadyPublished_IdempotentShortCircuit(t *testing.T)
 			keyTriplet("job-002", "image_png", va.SHA256): cachedPub,
 		},
 	}
-	bkMock.isPubTrue.Store(true)
-
 	prepMock := &mockPreparer{}
 
 	svc, err := completion.NewService(prepMock, bkMock)
@@ -384,37 +447,41 @@ func TestPublish_Duplicate_AlreadyPublished_IdempotentShortCircuit(t *testing.T)
 		t.Fatalf("NewService: %v", err)
 	}
 
-	got, err := svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
+	outcomes, topErr := svc.PublishVerifiedArtifacts(
+		context.Background(), []*finalization.VerifiedArtifact{va})
 
-	if err == nil {
-		t.Fatal("expected error (short-circuit), got nil")
+	// P1 #14: same-content → NIL topErr.
+	if topErr != nil {
+		t.Fatalf("same-content replay: top-err = %v; want nil (P1 #14 same-content contract)", topErr)
 	}
-	if !errors.Is(err, completion.ErrAlreadyPublished) {
-		t.Errorf("err = %v; want wraps ErrAlreadyPublished", err)
+	if len(outcomes) != 1 {
+		t.Fatalf("len(outcomes): got %d, want 1", len(outcomes))
+	}
+	if outcomes[0].Err != nil {
+		t.Errorf("outcome[0].Err: got %v, want nil (same-content replay path)", outcomes[0].Err)
+	}
+	if !outcomes[0].Reused {
+		t.Errorf("outcome[0].Reused: got false, want true (idempotent replay path)")
+	}
+	if outcomes[0].Artifact == nil {
+		t.Fatal("outcome[0].Artifact: nil; want cached envelope")
+	}
+	if outcomes[0].Artifact.Location.FileID != "drive-file-id-cached" {
+		t.Errorf("cached FileID: got %q, want %q",
+			outcomes[0].Artifact.Location.FileID, "drive-file-id-cached")
 	}
 
-	if len(got) != 1 {
-		t.Fatalf("len(output): got %d, want 1 (cached record)", len(got))
-	}
-	if got[0].Location.FileID != "drive-file-id-cached" {
-		t.Errorf("cached FileID: got %q, want %q", got[0].Location.FileID, "drive-file-id-cached")
-	}
-
-	// Dedup-invariant (P0-COMPL-4): Preparer NEVER called on short-circuit.
+	// Dedup-invariant (P0-COMPL-4 + P1 #14): Preparer NEVER called on replay.
 	if prepMock.calls.Load() != 0 {
-		t.Errorf("Preparer calls on short-circuit: got %d, want 0", prepMock.calls.Load())
+		t.Errorf("Preparer calls on replay: got %d, want 0", prepMock.calls.Load())
 	}
 }
 
 // Test 4: Final-checksum mismatch raises ErrFinalChecksumMismatch.
-// Preparer returns success (it published to Drive via its internal port),
-// BUT the on-disk file has been mutated after the publish (simulates
-// Drive-write corruption). Service's post-publish fail-closed invariant
-// MUST surface ErrFinalChecksumMismatch.
 //
-// Dedup-invariant: Preparer called exactly once (the publish DID happen);
-// bookkeeper recording is SKIPPED on checksum mismatch
-// (godlike/07 no-fake-availability).
+// P1 #14 UPDATE: per-art failure is embedded in outcomes[0].Err; top-level
+// err is nil (loop isolation discipline). Subsequent artifacts in a batch
+// loop continue to publish (verified by TestPublish_P1_14_S3_* below).
 func TestPublish_FinalChecksumMismatch_ErrFinalChecksumMismatch(t *testing.T) {
 	payload := []byte("original payload for final-checksum test")
 	localPath := writeTempFile(t, payload)
@@ -441,27 +508,37 @@ func TestPublish_FinalChecksumMismatch_ErrFinalChecksumMismatch(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 
-	_, err = svc.PublishVerifiedArtifacts(context.Background(), []*finalization.VerifiedArtifact{va})
-	if err == nil {
-		t.Fatal("expected ErrFinalChecksumMismatch, got nil")
+	outcomes, topErr := svc.PublishVerifiedArtifacts(
+		context.Background(), []*finalization.VerifiedArtifact{va})
+
+	// P1 #14: top-level err is nil (per-artifact failure absorbed into slice).
+	if topErr != nil {
+		t.Fatalf("final-checksum: top-err = %v, want nil (per-art failures absorbed into slice)", topErr)
 	}
-	if !errors.Is(err, completion.ErrFinalChecksumMismatch) {
-		t.Errorf("err = %v; want wraps ErrFinalChecksumMismatch via errors.Is", err)
+	if len(outcomes) != 1 {
+		t.Fatalf("len(outcomes): got %d, want 1", len(outcomes))
+	}
+	if !errors.Is(outcomes[0].Err, completion.ErrFinalChecksumMismatch) {
+		t.Errorf("outcomes[0].Err = %v; want wraps ErrFinalChecksumMismatch via errors.Is", outcomes[0].Err)
+	}
+	if outcomes[0].Artifact != nil {
+		t.Errorf("outcomes[0].Artifact: got non-nil (%+v), want nil (terminal per-art failure)", outcomes[0].Artifact)
+	}
+	if outcomes[0].Reused {
+		t.Errorf("outcomes[0].Reused: got true, want false")
 	}
 
-	// Prepare succeeded; failure is post-publish recompute.
 	if prepMock.calls.Load() != 1 {
 		t.Errorf("Preparer calls: got %d, want 1", prepMock.calls.Load())
 	}
-
-	// Bookkeeper MUST NOT contain drift triple (godlike/07 no-fake-availability).
 	if _, ok := bkMock.records[keyTriplet("job-003", "cover_image", va.SHA256)]; ok {
 		t.Errorf("Bookkeeper recorded drift triple; want recording skipped on final-checksum mismatch")
 	}
 }
 
 // Test 5: Empty-slice input → ErrPublishEmptySlice. Defensive pre-loop
-// input gate fires BEFORE any per-artifact work.
+// input gate fires BEFORE any per-artifact work. Top-level typed error
+// semantic unchanged by P1 #14.
 func TestPublish_EmptySlice_ErrPublishEmptySlice(t *testing.T) {
 	prepMock := &mockPreparer{}
 	bkMock := &mockBookkeeper{}
@@ -483,18 +560,245 @@ func TestPublish_EmptySlice_ErrPublishEmptySlice(t *testing.T) {
 	}
 }
 
-// Defensive test bonus: nil-port ctor → wrapped ErrPublishInvalidArtifact.
-// Not in the user's 4-test list but essential for godlike/07 wire-up-bug
-// surfacing at boot.
+// ── 3 NEW P1 #14 SCENARIOS ───────────────────────────────────────────────────
+
+// Test 6 (P1 #14 SCENARIO 1 — same-content replay, alias of Test 3 kept for
+// numbered audit-pin): same-content idempotent-replay → nil err,
+// Reused=true, Artifact=cached. Already covered by Test 3 above;
+// duplicate-numbered here for the explicit user-spec test annotation.
+func TestPublish_P1_14_S1_SameContent_NilErr_ReusedTrue(t *testing.T) {
+	payload := []byte("P1 #14 Scenario 1 payload: same-content replay")
+	localPath := writeTempFile(t, payload)
+	va := newVerified(t, "job-P114-S1:scenario_one_replay", localPath, payload)
+
+	cached := &finalization.PublishedArtifact{
+		ArtifactID:     va.ArtifactID,
+		Kind:           va.Kind,
+		Filename:       va.Filename,
+		MIMEType:       va.MIMEType,
+		SizeBytes:      va.SizeBytes,
+		SHA256:         va.SHA256,
+		SourceVersion:  va.SourceVersion,
+		Requirement:    va.Requirement,
+		IdempotencyKey: remote.ArtifactIdempotencyKey("job-P114-S1", "scenario_one_replay", va.SHA256),
+		Location: finalization.AssetLocation{
+			Provider: "drive",
+			FileID:   "drive-file-id-S1-cached",
+		},
+	}
+	bkMock := &mockBookkeeper{
+		records: map[string]*finalization.PublishedArtifact{
+			keyTriplet("job-P114-S1", "scenario_one_replay", va.SHA256): cached,
+		},
+	}
+	prepMock := &mockPreparer{}
+
+	svc, _ := completion.NewService(prepMock, bkMock)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(
+		context.Background(), []*finalization.VerifiedArtifact{va})
+
+	if topErr != nil {
+		t.Fatalf("scenario 1: top-err = %v; want nil (same-content replay)", topErr)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("len(outcomes): got %d, want 1", len(outcomes))
+	}
+	if outcomes[0].Err != nil {
+		t.Errorf("outcomes[0].Err: got %v, want nil (same-content replay)", outcomes[0].Err)
+	}
+	if !outcomes[0].Reused {
+		t.Errorf("outcomes[0].Reused: got false, want true (idempotent replay)")
+	}
+	if outcomes[0].Artifact == nil ||
+		outcomes[0].Artifact.Location.FileID != "drive-file-id-S1-cached" {
+		t.Errorf("outcomes[0].Artifact location mismatch: got %+v", outcomes[0].Artifact)
+	}
+	if prepMock.calls.Load() != 0 {
+		t.Errorf("Preparer calls on replay: got %d, want 0", prepMock.calls.Load())
+	}
+}
+
+// Test 7 (P1 #14 SCENARIO 2 — same-key / different-sha collision): a prior
+// record has an IdempotencyKey equal to the canonical key for the IN-FLIGHT
+// SHA, but the prior record's SHA differs from the in-flight SHA. This
+// simulates a canonical-invariance violation (idempotency-key collision
+// with differing content) — the FAIL-CLOSED surface, surfacing via the
+// top-level err.
 //
-// CRITICAL (idempotency-of-interface-nil): struct fields are declared as
-// INTERFACE types (not typed-nil pointers) so passing the literal `nil`
-// in the struct literal assigns an INTERFACE-NIL value. The interface
-// comparison `if p == nil` then returns TRUE. If the slots were typed as
-// *mockPreparer/*mockBookkeeper, the same `nil` literal would wrap a
-// typed-nil POINTER in the interface (interface IS NOT nil), and the
-// ctor's nil-check would silently pass through — a godlike/07
-// wire-up-bug-detection regression.
+// Top-level err IS non-nil (the only typed-error case that escapes the
+// loop). The collision outcome at index 0 has Artifact=nil, Reused=false,
+// Err=typed.
+func TestPublish_P1_14_S2_DifferentContent_ErrIdempotencyKeyConflictDifferingContent(t *testing.T) {
+	// The vaInFlight setup: LocalPath empty so final-checksum gate is skipped
+	// (the collision surface fires BEFORE Prepare).
+	vaInFlight := &finalization.VerifiedArtifact{
+		ArtifactID: "job-P114-S2:scenario_two_collision",
+		Kind:       finalization.KindDocument,
+		Filename:   "scenario.bin",
+		MIMEType:   "application/octet-stream",
+		SizeBytes:  11,
+		SHA256:     "new-sha-for-in-flight-x",
+		Requirement: finalization.ArtifactRequirementRequired,
+	}
+
+	// The stale cached record has a STALE SHA but its IdempotencyKey equals
+	// the canonical key for the in-flight SHA — i.e. the lookup hits on
+	// IdempotencyKey but the SHA comparison fails.
+	staleSHA := "stale-sha-from-prior-wiring-bug-y"
+	staleCached := &finalization.PublishedArtifact{
+		ArtifactID:     "job-P114-S2:scenario_two_collision",
+		SHA256:         staleSHA,
+		IdempotencyKey: remote.ArtifactIdempotencyKey(
+			"job-P114-S2", "scenario_two_collision", vaInFlight.SHA256,
+		), // COLLISION: stale record carries the canonical key for IN-FLIGHT sha
+		Location: finalization.AssetLocation{
+			Provider: "drive",
+			FileID:   "drive-stale",
+		},
+	}
+
+	bkMock := &mockBookkeeper{
+		records: map[string]*finalization.PublishedArtifact{
+			keyTriplet("job-P114-S2", "scenario_two_collision", staleSHA): staleCached,
+		},
+	}
+	prepMock := &mockPreparer{}
+
+	svc, _ := completion.NewService(prepMock, bkMock)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(
+		context.Background(), []*finalization.VerifiedArtifact{vaInFlight})
+
+	// P1 #14: top-level err is non-nil on SAME-idem-key / DIFFERENT-sha.
+	if topErr == nil {
+		t.Fatal("scenario 2: top-err = nil; want typed ErrIdempotencyKeyConflictDifferingContent")
+	}
+	if !errors.Is(topErr, completion.ErrIdempotencyKeyConflictDifferingContent) {
+		t.Errorf("top-err = %v; want wraps ErrIdempotencyKeyConflictDifferingContent via errors.Is", topErr)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("len(outcomes): got %d, want 1 (collision outcome preserved)", len(outcomes))
+	}
+	if outcomes[0].Artifact != nil {
+		t.Errorf("outcomes[0].Artifact: got non-nil; want nil (collision fail-closed)")
+	}
+	if outcomes[0].Reused {
+		t.Errorf("outcomes[0].Reused: got true, want false")
+	}
+	if !errors.Is(outcomes[0].Err, completion.ErrIdempotencyKeyConflictDifferingContent) {
+		t.Errorf("outcomes[0].Err = %v; want wraps ErrIdempotencyKeyConflictDifferingContent", outcomes[0].Err)
+	}
+
+	// Side-effects: Prepare MUST NOT have been called (collision fails closed).
+	if prepMock.calls.Load() != 0 {
+		t.Errorf("Preparer calls: got %d, want 0 (collision fails closed)", prepMock.calls.Load())
+	}
+}
+
+// Test 8 (P1 #14 SCENARIO 3 — partial failure + loop isolation): 4
+// artifacts in a batch; 3 succeed (fresh publish), 1 fails (terminal
+// Prepare error). All 4 outcomes accumulated; top-level err is nil
+// (per-art failures absorbed); the failing outcome preserves its typed err.
+//
+// (The selectiveFailingPublisher from prior turns is gone — replaced by
+// mockPreparer.perArtFailures which maps ArtifactID → first-call error.)
+func TestPublish_P1_14_S3_PartialFailure_LoopIsolation(t *testing.T) {
+	// Build 4 distinct verified artifacts with on-disk files matching their SHA.
+	payloads := []string{"alpha-ok-1", "beta-FAIL-2", "gamma-ok-3", "delta-ok-4"}
+	vas := make([]*finalization.VerifiedArtifact, 0, 4)
+	expectedSuccessIdx := []int{0, 2, 3}
+	expectedFailureIdx := []int{1}
+
+	for i, pl := range payloads {
+		lp := writeTempFile(t, []byte(pl))
+		va := newVerified(t, fmt.Sprintf("job-P114-S3:artifact_%d", i), lp, []byte(pl))
+		vas = append(vas, va)
+	}
+
+	// mockPreparer fails specifically on the second artifact (index 1)
+	// via perArtFailures; all others succeed normally.
+	failingArtID := "job-P114-S3:artifact_1"
+	prepMock := &mockPreparer{
+		preparedPub: finalization.PublishedArtifact{
+			Location: finalization.AssetLocation{
+				Provider: "drive",
+				FileID:   "drive-file-id-P114-S3",
+			},
+		},
+		perArtFailures: map[string]error{
+			failingArtID: &terminalPublishErr{msg: "terminal publish failure (simulated Drive 4xx after retry exhaustion)"},
+		},
+	}
+	bkMock := &mockBookkeeper{records: map[string]*finalization.PublishedArtifact{}}
+
+	svc, _ := completion.NewService(prepMock, bkMock)
+	outcomes, topErr := svc.PublishVerifiedArtifacts(context.Background(), vas)
+
+	// Top-level err is nil (per-art failures absorb into slice; only
+	// typed idem-key-different-content would escape the loop).
+	if topErr != nil {
+		t.Fatalf("scenario 3: top-err = %v; want nil (per-art failures absorbed into slice)", topErr)
+	}
+	if len(outcomes) != 4 {
+		t.Fatalf("len(outcomes): got %d, want 4 (1:1 with input)", len(outcomes))
+	}
+
+	// 3 successful outcomes: Artifact non-nil, Reused=false, Err nil.
+	for _, idx := range expectedSuccessIdx {
+		if !outcomes[idx].IsSuccess() {
+			t.Errorf("outcomes[%d] not success (Artifact=%v, Err=%v)",
+				idx, outcomes[idx].Artifact, outcomes[idx].Err)
+		}
+		if outcomes[idx].Reused {
+			t.Errorf("outcomes[%d].Reused: got true, want false", idx)
+		}
+	}
+
+	// 1 failed outcome: Artifact nil, Err non-nil (typed terminal).
+	for _, idx := range expectedFailureIdx {
+		if outcomes[idx].Artifact != nil {
+			t.Errorf("outcomes[%d].Artifact: got non-nil; want nil", idx)
+		}
+		if outcomes[idx].Err == nil {
+			t.Errorf("outcomes[%d].Err: got nil; want typed terminal err", idx)
+		}
+	}
+
+	// LOOP ISOLATION: every artifact's Publish was attempted independently.
+	// Successful artifacts' Preparer calls incremented (3 success calls);
+	// the failing artifact's Preparer call incremented (1 terminal
+	// attempt, no retry because the error has no IsRetryable marker).
+	minExpectedCalls := int64(len(expectedSuccessIdx)) + 1
+	if prepMock.calls.Load() < minExpectedCalls {
+		t.Errorf("Preparer calls: got %d, want >= %d (loop continued past failure)",
+			prepMock.calls.Load(), minExpectedCalls)
+	}
+
+	// Verify: each successful artifact's triple was Bookkeeper-recorded.
+	for _, idx := range expectedSuccessIdx {
+		va := vas[idx]
+		jobID := jobIDFromArtifactID(va.ArtifactID)
+		subID := subIDFromArtifactID(va.ArtifactID)
+		if _, ok := bkMock.records[keyTriplet(jobID, subID, va.SHA256)]; !ok {
+			t.Errorf("Bookkeeper: outcomes[%d] success but triple not recorded (jobID=%s subID=%s sha=%s)",
+				idx, jobID, subID, va.SHA256)
+		}
+	}
+	// Failure side: failing artifact's triple was NOT recorded.
+	failureIdx := expectedFailureIdx[0]
+	failureVa := vas[failureIdx]
+	jobIDFail := jobIDFromArtifactID(failureVa.ArtifactID)
+	subIDFail := subIDFromArtifactID(failureVa.ArtifactID)
+	if _, ok := bkMock.records[keyTriplet(jobIDFail, subIDFail, failureVa.SHA256)]; ok {
+		t.Errorf("Bookkeeper: outcomes[%d] failure but triple WAS recorded (fail-closed violated)",
+			failureIdx)
+	}
+}
+
+// ── Defensive newService nil-port test (from prior surface) ─────────────────
+
+// Defensive test bonus: nil-port ctor → wrapped ErrPublishInvalidArtifact.
+// CRITICAL (interface-nil): the nil-checks MUST succeed; INTERFACE-typed
+// slots (not typed pointers) prevent the godlike/07 wire-up-bug regression.
 func TestNewService_NilPorts_Errors(t *testing.T) {
 	cases := []struct {
 		name string

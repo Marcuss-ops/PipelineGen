@@ -76,3 +76,31 @@ var ErrPublishInvalidArtifact = errors.New(
 var ErrPublishEmptySlice = errors.New(
 	"completion: empty artifact slice (no-op publish is invalid)",
 )
+
+// ErrIdempotencyKeyConflictDifferingContent (P1 #14, July 2026) — typed
+// sentinel surfaced when a same-idempotency-key / different-content collision
+// is detected. This is the FAIL-CLOSED surface for an upstream wiring bug:
+// the (jobID, artID, sha256) triple is canonical per the canonical
+// ArtifactIdempotencyKey helper, so a SAME idempotency-key / DIFFERENT
+// sha256 collision implies the byte-stability invariant has been violated
+// SOMEWHERE upstream (a manual override of IdempotencyKey, a derivation
+// bug, or a race condition with concurrent re-staging with stale
+// IdempotencyKey strings).
+//
+// Per godlike/07 no-fake-availability, the publish service MUST NOT
+// silently proceed in this case. The sentinel is returned via the
+// top-level error of PublishVerifiedArtifacts (the ONLY typed-error case
+// that escapes the loop-accumulation logic per the P1 #14 contract), and
+// the partial output is preserved in the slice position where the
+// collision was detected.
+//
+// Distinguishing from ErrAlreadyPublished: ErrAlreadyPublished surfaces a
+// SAME-triple short-circuit (canonical idempotent replay path). Under
+// P1 #14, that path is now surfaced via Outcome.Reused=true + Outcome.Err
+// = nil (no error wrap). This sentinel surfaces a SAME-key / DIFFERENT-
+// content mismatch (a corruption surface). They MUST remain distinct
+// under errors.Is probing so callers can route "safe replay" vs
+// "data-corruption fail-closed" via different code paths.
+var ErrIdempotencyKeyConflictDifferingContent = errors.New(
+	"completion: idempotency-key collision with differing content (same idem-key, different sha256 — upstream wiring bug; fail-closed)",
+)
