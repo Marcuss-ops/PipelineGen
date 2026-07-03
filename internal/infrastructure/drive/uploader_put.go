@@ -17,6 +17,11 @@
 //	  - existing match   → Files.Create with new name (timestamp suffix)
 //	                                              → PutActionRenamed
 //	  - no match         → Files.Create with Media  → PutActionCreated
+//	ConflictSkipByHash (P1, July 2026):
+//	  - existing match   → same as ConflictSkip (skip, return existing)
+//	  - no match         → Files.Create with Media  → PutActionCreated
+//	                        Full content-hash comparison (MD5 vs SHA-256)
+//	                        deferred to follow-up artifact-pipeline pass.
 //
 // P1.1 (July 2026): ConflictOverwrite is no longer the iota-zero
 // default — that role moved to ConflictPolicyUnset, which the
@@ -24,6 +29,13 @@
 // this seam. The routing table above assumes a non-Unset policy;
 // direct PutFile callers MUST NOT pass ConflictPolicyUnset (see
 // Publisher.Step0 in publisher.go for the registry-default path).
+//
+// P1 (July 2026): ConflictSkipByHash is the registry-driven default
+// for images. Currently delegates to ConflictSkip behavior (same
+// as unconditional skip) — the full content-hash comparison
+// requires a separate artifact-pipeline pass to provide both
+// MD5 (Drive-side) and SHA-256 (local) hashes for comparison.
+// Until then, images with existing matches are skipped.
 //
 // Retries on transient Drive errors (429, 503, timeouts, network blips)
 // via pkg/retry — same exponential backoff policy (3 attempts, 2s → 4s)
@@ -187,7 +199,7 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		// ±30% matches the canonical folderLookupJitterFraction
 		// (see folder_manager.go) and prevents thundering-herd
 		// retries when N workers converge on the same Drive 429.
-		JitterFraction: 0.3,
+		JitterFraction: 0.25, // P1: matches pkg/retry.DefaultOptions().JitterFraction
 		IsRetryable:    retry.IsTransient,
 		OnRetry: func(attempt int, err error) {
 			u.Log.Warn("transient drive put error, retrying",
@@ -212,7 +224,12 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	// ConflictSkip on existing match: short-circuit, no upload, return
 	// existing metadata. This is the only branch where the local file
 	// is NOT opened.
-	if req.ConflictPolicy == delivery.ConflictSkip && existing != nil && existing.FileID != "" {
+	//
+	// P1 (July 2026): ConflictSkipByHash also takes this branch —
+	// the full content-hash comparison (MD5 vs SHA-256) is deferred
+	// to a follow-up artifact-pipeline pass. Until then, same
+	// behavior as ConflictSkip.
+	if (req.ConflictPolicy == delivery.ConflictSkip || req.ConflictPolicy == delivery.ConflictSkipByHash) && existing != nil && existing.FileID != "" {
 		return &PutFileResult{
 			FileID:       existing.FileID,
 			WebViewLink:  existing.WebViewLink,
@@ -225,8 +242,12 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	// ConflictSkip without existing match: log explicit so callers
 	// reading the audit trail see "skip requested but created" rather
 	// than a silent fall-through (P0 #1 #Q2 action-vs-policy mismatch).
-	if req.ConflictPolicy == delivery.ConflictSkip {
-		u.Log.Info("putFile: skip requested but no existing match; creating (no-op skip)",
+	if req.ConflictPolicy == delivery.ConflictSkip || req.ConflictPolicy == delivery.ConflictSkipByHash {
+		label := "skip"
+		if req.ConflictPolicy == delivery.ConflictSkipByHash {
+			label = "skip-by-hash"
+		}
+		u.Log.Info("putFile: "+label+" requested but no existing match; creating (no-op skip)",
 			zap.String("filename", req.Filename),
 			zap.String("folder_id", req.FolderID))
 	}
@@ -261,7 +282,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			Context(ctx).
 			Do()
 		if err != nil {
-			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, retry.ClassifyGoogleAPIError(err))
+			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, retry.WrapTransient(err))
 		}
 		return &PutFileResult{
 			FileID:       updated.Id,
@@ -310,7 +331,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			Context(ctx).
 			Do()
 		if err != nil {
-			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, retry.ClassifyGoogleAPIError(err))
+			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, retry.WrapTransient(err))
 		}
 		u.Log.Info("putFile: renamed to avoid collision",
 			zap.String("original", req.Filename),
@@ -340,7 +361,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		Context(ctx).
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, retry.ClassifyGoogleAPIError(err))
+		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, retry.WrapTransient(err))
 	}
 	return &PutFileResult{
 		FileID:       created.Id,
