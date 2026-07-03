@@ -1,162 +1,269 @@
-// Package staged — resolver.go: Azione 3 of the
-// CUTOVER-COMPLETE-WITH-ARTIFACTS wave. Resolves an AssetID into
-// the canonical StagedArtifact envelope that the cutover pipeline
-// hands off to ArtifactPreparation / Drive Publisher (Azione 5).
+// Package staged — resolver.go (Azione 1, July 2026,
+// CUTOVER-COMPLETE-WITH-ARTIFACTS wave).
 //
-// Idempotency is achieved by deterministic-by-construction: every
-// invocation re-reads the live file at the looked-up local path
-// and re-derives the SHA-256 from the read bytes. Two consecutive
-// calls with the same AssetID return byte-equivalent StagedArtifacts
-// (assuming the file hasn't been mutated between calls).
+// The staged package owns ONE canonical fact, per godlike/06 SSOT
+// discipline:
 //
-// Note on idempotency vs drift-detection: the resolver's "recompute
-// on every call" choice IS the idempotency mechanism AND the
-// silent-corruption-detector. If the file at the looked-up path
-// is mutated between calls (TTL GC sweep, parallel write, fs
-// corruption), the two calls return DIFFERENT StagedArtifacts
-// — which the cutover pipeline treats as a "stale" event and
-// either re-fetches or fails closed. Per godlike/07 no-fake-
-// availability: never returns a struct with stale crypto state.
+//	"Resolve an abstract artifactID to a concrete StagedArtifact
+//	 describing the local path + SHA + size on the Sender box
+//	 (worker-side local filesystem), via DB lookup in asset_index."
+//
+// godlike/06 SSOT rationale: a single canonical owner of the
+// lookup-result identity contract. The pre-existing StagedAsset type
+// (in internal/application/assets/ports.go, Step 9/12 SourceStager
+// wave) owns a DIFFERENT fact ("freshly staged bytes on disk from a
+// URL"); this new StagedArtifact owns "stable lookup result for an
+// existing artifact's local path + SHA". The two types coexist per
+// godlike/06 "one owner per fact": they document DIFFERENT invocations
+// of the disk state.
+//
+// godlike/07 typed-error contract: every failure path returns a typed
+// sentinel reachable via errors.Is (see errors.go). The 3-step pipeline
+// (DB lookup + os.Stat + SHA recompute) emits one of three typed
+// sentinels on fail-closed paths. There is no zero-value fallback path
+// per godlike/07 §"No fake availability".
+//
+// Idempotency contract: two successive ResolveStagedArtifact(same artifactID) calls
+// return IDENTICAL *StagedArtifact shapes (sans pointer identity):
+//   - Path    : deterministic from DB lookup (stable across calls).
+//   - SHA256  : deterministic from on-disk bytes (recomputed every call
+//     via os.Open + io.Copy + sha256.Sum256 — NEVER cached).
+//   - Bytes   : deterministic from os.Stat.Size() (recomputed every
+//     call — NEVER cached).
+//   - Source  : deterministic from DB lookup (stable across calls).
+//
+// Pattern 0 (AGENTS.md godlike/06 / §"Port abstraction layer"): the
+// resolver exposes a typed port (StagedArtifactResolver, single-method)
+// and accepts a typed-fingerprint lookup seam (ArtifactIndexLookupFn) for
+// the DB dependency. Composition root wires the production concrete +
+// real lookupFn; tests pass stub lookupFn. The compile-time pin (line
+// `var _ StagedArtifactResolver = (*Resolver)(nil)`) catches future drift
+// at build time, not at the first call site.
 package staged
 
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
-// StagedArtifact is the canonical envelope returned by the
-// Resolver. The struct is dedicated to the COMPLETE-side staged
-// lifecycle on the Sender (post remote-worker upload, pre Drive
-// publish) — it is NOT the same as the download-side
-// SourceStager.StagedAsset in internal/application/assets/ports.go.
+// ── StagedArtifact typed envelope ──────────────────────────────────
+
+// StagedArtifact is the stable lookup result for an existing artifact's
+// local path + SHA on the Sender box. All fields are recomputed or
+// look-up-fetched at Resolve-time so two calls with same artifactID are
+// idempotent (identical shape, possibly different *StagedArtifact pointer
+// identity).
 //
-// Splitting the two structs mirrors the 2-stage worker→sender→drive
-// protocol: one struct per staged state, per godlike/06 one-owner-
-// per-fact SSOT discipline. Extending the existing SourceStager
-// struct with a SHA256 field would conflate the two state machines
-// and ripple the SHA recompute contract onto the YouTube / Stock /
-// Artlist adapter tree (each of which already returns its own
-// shape with intentionally benign SHA semantics).
-//
-// Fields:
-//   - AssetID: the canonical ID, byte-stable across retries
-//     (asset_index.asset_id PRIMARY KEY).
-//   - LocalPath: absolute filesystem path on the Sender. Re-derived
-//     from the IndexStore on every call (no in-process memoization,
-//     per godlike/07).
-//   - SHA256: hex-encoded SHA-256 digest of the file content at
-//     LocalPath. Re-computed on every call from the LIVE bytes
-//     (never read from asset_index.content_hash, which is treated
-//     as decorative metadata only).
-//   - SizeBytes: os.Stat size of the file at LocalPath — the
-//     authoritative caller-side payload size for the downstream
-//     ArtifactPreparation.Prepare step (Azione 5).
+// godlike/06 SSOT discipline: distinct from the pre-existing StagedAsset
+// in ports.go (Step 9/12 SourceStager) — that one owns "freshly staged
+// bytes from a URL"; this StagedArtifact owns "stable lookup-result
+// identity for an existing artifact". One owner per fact, two types
+// coexist by design (mirrors the canonical StagedAsset / VerifiedArtifact
+// / PublishedArtifact chain across Azioni 1-3).
 type StagedArtifact struct {
-	AssetID   string
-	LocalPath string
-	SHA256    string
-	SizeBytes int64
+	// AssetID is the input artifact_id; preserved on the result envelope
+	// so downstream call sites can correlate without re-passing it.
+	AssetID string
+	// Path is the local filesystem path on the Sender box. Source: DB
+	// lookup via the lookupFn lambda; stable across Resolve calls.
+	Path string
+	// SHA256 is the hex-encoded SHA-256 hash of the file at Path. Source:
+	// on-disk recompute via os.Open + io.Copy + sha256.Sum256. Recomputed
+	// every call (NOT cached) per the user's idempotency spec.
+	SHA256 string
+	// Bytes is the file size at Path. Source: os.Stat.Size(). Recomputed
+	// every call (NOT cached) per the user's idempotency spec.
+	Bytes int64
+	// Source is the originating provider label (e.g. "artlist",
+	// "voiceover", "images", "stock"). Source: DB lookup. Stable across
+	// calls.
+	Source string
 }
 
-// IndexStore is the narrow typed port (Pattern 0 godlike/06 SSOT)
-// the Resolver depends on. The composition root injects the
-// production binding (an adapter over
-// internal/infrastructure/database/assetindex.Repository); the
-// tests inject hand-rolled stubs via resolver_test.go.
-//
-// GetLocalPath returns the canonical staged local path for the
-// canonical assetID, or ("", nil) when no row exists in
-// asset_index. The Resolver treats an empty returned path AS the
-// not-found signal regardless of the error value to keep the
-// cutover contract branch-consistent (one errors.Is probe
-// covers both DB-miss and DB-error).
-//
-// The signature deliberately does not leak the asset_index
-// AssetRecord shape: the only field the Resolver needs is
-// local_path, so the port is 1-field narrow. Sibling ports in
-// the cutover wave (e.g. for the VerifiedArtifact projection in
-// Azione 4) declare their own field-narrow interfaces; per
-// godlike/06 "one owner per fact" the Resolver Port owns ONLY
-// local_path lookups.
-type IndexStore interface {
-	GetLocalPath(ctx context.Context, assetID string) (string, error)
+// ── Port + lookup seam (Pattern 0) ──────────────────────────────────
+
+// StagedArtifactResolver is the canonical Pattern 0 port entry-point.
+// Composition root wires the production *Resolver; tests mock via the
+// interface. Single-method because the resolver does ONE thing per
+// godlike/06 SSOT discipline — adding more methods is a deliberate
+// contract change (mirrors the canonical SourceRepo /
+// EnrichStateMachinePort shape used elsewhere in the codebase).
+type StagedArtifactResolver interface {
+	// ResolveStagedArtifact returns the canonical 5-field *StagedArtifact
+	// envelope for the given artifactID via the lookupFn → os.Stat →
+	// SHA-256 recompute pipeline. The method name matches the user spec
+	// verbatim (AGENTS.md §"Code Hygiene": exported names referenced in
+	// documentation must match the implementation).
+	ResolveStagedArtifact(ctx context.Context, artifactID string) (*StagedArtifact, error)
 }
 
-// Resolver resolves asset_index rows into canonical StagedArtifact
-// envelopes. Stateless + deterministic. See package doc comment
-// for the idempotency + drift-detection contract.
+// ArtifactIndexLookupFn is the typed-fingerprint lookup seam to the DB.
+// Production wires against a concrete ClipsRepository or future
+// assetindex_repository call; tests pass a stub that returns *IndexRow
+// + error. Returns ErrStagedArtifactMissing wrapped via fmt.Errorf %w
+// when the DB has no row for artifactID — preserves the typed-error
+// chain.
+//
+// The canonical DB schema lives in migrations/sqlite/001_velox_core.sql
+// (asset_index: asset_id PRIMARY KEY, asset_type, source, source_id,
+// operation_key, group_name, subfolder, local_path, drive_link,
+// download_link, file_hash, content_hash, status, metadata_json,
+// created_at, updated_at). Forward-pointer: migration 121 (Azione 15)
+// may add a `staged_at` column for the StagedAsset → StagedArtifact
+// evolution; until then, status='staged' (Azione 15 introduced) marks
+// the canonical pre-publish surface.
+//
+// godlike/06 SSOT: this lambda is the ONLY canonical seam between the
+// resolver and the storage layer. Any future change to the underlying
+// table (column rename, schema evolution) surfaces HERE as a typed
+// envelope, never via a wire-leaked raw string.
+type ArtifactIndexLookupFn func(ctx context.Context, artifactID string) (*IndexRow, error)
+
+// IndexRow carries the lookup result from the storage layer. The
+// SHA256 stored-at-staging-time field is preserved for diagnostic
+// sanity-checks; the canonical Resolver.Resolve recomputes SHA from
+// disk anyway (NOT propagated to *StagedArtifact).
+type IndexRow struct {
+	// Path is the local filesystem path on the Sender box.
+	Path string
+	// Source is the originating provider label (e.g. "artlist").
+	Source string
+	// SHA256 stored at staging time. Optional diagnostic; Resolver.Resolve
+	// does not propagate it (it recomputes live).
+	SHA256 string
+}
+
+// ── Concrete Resolver ──────────────────────────────────────────────
+
+// Resolver is the concrete implementation of StagedArtifactResolver.
+// Thread-safety: stateless post-construction; safe for concurrent use
+// from multiple goroutines (the lookupFn is the only shared outer-state
+// and is expected to be concurrency-safe per Pattern 0 production wiring).
 type Resolver struct {
-	store IndexStore
+	lookup ArtifactIndexLookupFn
 }
 
-// NewResolver constructs a Resolver over the supplied IndexStore.
-// Per Pattern 0 godlike/06 SSOT and godlike/05 wiring-error rule,
-// this constructor returns an explicit error when store is nil
-// — the composition root must surface the missing mandatory dep
-// at startup rather than deferring to a runtime NPE on first
-// resolver request.
-func NewResolver(store IndexStore) (*Resolver, error) {
-	if store == nil {
-		return nil, fmt.Errorf("staged.NewResolver: IndexStore is required (composition root must wire the assetindex.Repository adapter)")
+// NewResolver is the canonical constructor. Fail-closed per godlike/07:
+// returns ErrStagedArtifactNotConfigured when lookup is nil so a
+// half-wired composition surfaces the failure at startup rather than
+// at the first Resolve call (mirrors the canonical fail-closed posture
+// of P0-Commit 7's NewService constructor in the completion package).
+func NewResolver(lookup ArtifactIndexLookupFn) (*Resolver, error) {
+	if lookup == nil {
+		return nil, ErrStagedArtifactNotConfigured
 	}
-	return &Resolver{store: store}, nil
+	return &Resolver{lookup: lookup}, nil
 }
 
-// ResolveStagedArtifact is the canonical entry point per Azione 3
-// of the CUTOVER-COMPLETE-WITH-ARTIFACTS wave.
+// Compile-time pin (Pattern 0): catastrophic drift between the
+// StagedArtifactResolver port and the *Resolver concrete is a build
+// failure, not a runtime panic. Future drift (e.g. adding a method to
+// the port) MUST update *Resolver; this assertion surfaces the
+// regression at build time, not at the first call site.
+var _ StagedArtifactResolver = (*Resolver)(nil)
+
+// ── Resolve (3-step pipeline) ──────────────────────────────────────
+
+// ResolveStagedArtifact executes the canonical 3-step pipeline:
 //
-// Pipeline (3-step verification chain):
+//	(1) DB lookup via lookupFn        — emits ErrStagedArtifactMissing
+//	                                   on miss or empty Path.
 //
-//  1. IndexStore.GetLocalPath(ctx, artifactID) — DB lookup. Empty
-//     returned path OR non-nil error → wrapped ErrStagedArtifactMissing.
-//  2. os.Stat(localPath) — file existence + size. Stat failure
-//     (file deleted/moved/TTL'd) → wrapped ErrStagedArtifactMissing.
-//  3. files.HashFile(localPath, sha256.New()) — live SHA-256
-//     recompute. NEVER falls back to asset_index.content_hash
-//     (godlike/07 no-fake-availability: stale DB hash would
-//     silently publish a corrupted file). Hash failure → wrapped
-//     ErrStagedArtifactMissing.
+//	(2) os.Stat for file existence    — emits ErrStagedArtifactNotOnDisk
+//	                                   when the row points to an absent
+//	                                   local file (godlike/07 tripwire).
 //
-// On success, returns a populated StagedArtifact (AssetID +
-// LocalPath + SHA256 + SizeBytes).
+//	(3) SHA-256 live recompute        — recomputes via os.Open + io.Copy
+//	                                   + sha256.Sum256 every call (NEVER
+//	                                   cached).
 //
-// Per godlike/07 no-fake-availability: the function returns
-// error early on EVERY failure path, never returns a struct with
-// empty path / empty hash / 0 size. The cutover pipeline upstream
-// branches on errors.Is(err, staged.ErrStagedArtifactMissing)
-// exactly once and drops the artifact — no further typed-error
-// discrimination needed.
+// Step (3) is the user-spec idempotency anchor: SHA + Bytes are
+// recomputed at lookup time, NEVER cached, so two successive calls
+// with the same artifactID return identically-shaped *StagedArtifact
+// values (only the pointer identity might differ).
+//
+// Nil-receiver guard: a nil *Resolver returns ErrStagedArtifactNotConfigured
+// (godlike/07 fail-closed posture; the failure mode is operator-visible,
+// not a panic). Nil-empty artifactID returns ErrStagedArtifactMissing
+// wrapped via %w (no fake availability: zero-value Path/SHA is not a
+// valid substitute).
 func (r *Resolver) ResolveStagedArtifact(ctx context.Context, artifactID string) (*StagedArtifact, error) {
-	localPath, err := r.store.GetLocalPath(ctx, artifactID)
-	if err != nil || localPath == "" {
-		// err != nil AND localPath == "" both surface as the canonical
-		// ErrStagedArtifactMissing sentinel (godlike/07 single-sentinel
-		// contract for "is this artifact usable" cutover branch point).
-		// The underlying err + the returned path are STILL preserved via
-		// %v / %q interpolation so the operator log scraper can see
-		// DB diagnostic detail (the %w chain only carries the sentinel
-		// for errors.Is assertions in the cutover caller).
-		return nil, fmt.Errorf("staged.ResolveStagedArtifact[%s]: index lookup failed (err=%v, path=%q): %w", artifactID, err, localPath, ErrStagedArtifactMissing)
+	if r == nil {
+		return nil, ErrStagedArtifactNotConfigured
+	}
+	if artifactID == "" {
+		return nil, fmt.Errorf("%w: artifactID is empty", ErrStagedArtifactMissing)
 	}
 
-	info, err := os.Stat(localPath)
+	// (1) DB lookup. The lookupFn is expected to return
+	// ErrStagedArtifactMissing wrapped via fmt.Errorf %w when the row
+	// is absent — propagate the chain via errors.Is so callers reach
+	// the typed sentinel.
+	row, err := r.lookup(ctx, artifactID)
 	if err != nil {
-		return nil, fmt.Errorf("staged.ResolveStagedArtifact[%s]: stat failed for %q: %w", artifactID, localPath, ErrStagedArtifactMissing)
+		if errors.Is(err, ErrStagedArtifactMissing) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("staged.ResolveStagedArtifact(%q): db lookup: %w", artifactID, err)
+	}
+	if row == nil || row.Path == "" {
+		// DB row present but Path is empty: convert to ErrStagedArtifactMissing.
+		// godlike/07 row-nil guard: a "row without path" is a corrupted row and
+		// MUST throw the typed sentinel, not the zero-value envelope.
+		return nil, fmt.Errorf("%w: row present but path empty (artifactID=%q)",
+			ErrStagedArtifactMissing, artifactID)
 	}
 
-	hashHex, err := files.HashFile(localPath, sha256.New())
+	// (2) os.Stat for existence + file size.
+	info, err := os.Stat(row.Path)
 	if err != nil {
-		return nil, fmt.Errorf("staged.ResolveStagedArtifact[%s]: sha256 recompute failed for %q: %w", artifactID, localPath, ErrStagedArtifactMissing)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("%w: row.Path=%q (artifactID=%q)",
+				ErrStagedArtifactNotOnDisk, row.Path, artifactID)
+		}
+		return nil, fmt.Errorf("staged.ResolveStagedArtifact(%q): stat row.Path=%q: %w",
+			artifactID, row.Path, err)
+	}
+
+	// (3) SHA-256 live recompute. Streaming read via io.Copy with a
+	// tee-reader to sha256 handles arbitrarily-large files without
+	// loading the whole file into memory. The canonical test surface
+	// (Azione 8 E2E test) uses sub-MB PNG fixtures, so the per-read
+	// overhead is negligible at production scale.
+	sha256Hex, err := recomputeSHA256(row.Path)
+	if err != nil {
+		return nil, fmt.Errorf("staged.ResolveStagedArtifact(%q): recompute sha256 row.Path=%q: %w",
+			artifactID, row.Path, err)
 	}
 
 	return &StagedArtifact{
-		AssetID:   artifactID,
-		LocalPath: localPath,
-		SHA256:    hashHex,
-		SizeBytes: info.Size(),
+		AssetID: artifactID,
+		Path:    row.Path,
+		SHA256:  sha256Hex,
+		Bytes:   info.Size(),
+		Source:  row.Source,
 	}, nil
+}
+
+// recomputeSHA256 streams the file through sha256.Sum256 and returns the
+// hex-encoded digest. io.Copy with a hash destination handles arbitrarily-
+// large files (canonical production asset sizes range from KB PNGs to
+// GB-scale videos; streaming avoids peak-memory pressure on large
+// artifacts).
+func recomputeSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open: %w", err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("io.Copy: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

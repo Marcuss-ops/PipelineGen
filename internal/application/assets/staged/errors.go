@@ -1,43 +1,44 @@
-// Package staged — errors.go: canonical typed-error sentinel for
-// the COMPLETE-side staged artifact lifecycle (post-upload,
-// pre-publish on Drive).
+// Package staged — errors.go (Azione 1, July 2026,
+// CUTOVER-COMPLETE-WITH-ARTIFACTS wave).
 //
-// Why a dedicated package: the cutover wave's contract is that
-// "is this artifact ready and verifiable?" is the only branch the
-// caller takes. Splitting the package from the download-side
-// `assets.SourceStager` (see internal/application/assets/ports.go)
-// keeps the two state machines mentally separate, per godlike/06
-// one-owner-per-fact.
+// godlike/07 typed-error contract: every failure path in the staged
+// resolver is surfaced via one of the typed sentinels below. Callers
+// reach them via errors.Is; chains are preserved through fmt.Errorf %w
+// (1x depth; deeper wraps require errors.As typed envelopes per
+// godlike/07 §"Migration sequence"). Each sentinel names the SPECIFIC
+// failure modality so a Retry-via-admin or operator dashboard can
+// disambiguate routes without substring matching (matches the
+// canonical pattern documented in AGENTS.md).
 package staged
 
 import "errors"
 
-// ErrStagedArtifactMissing is the canonical godlike/07 typed sentinel
-// returned by the Resolver when any step in the staged-lookup chain
-// fails:
+// ErrStagedArtifactMissing is returned when the DB asset_index has no
+// row for the requested artifactID, OR when the row's local_path is
+// empty (corrupted row). This is the canonical "no such record" path;
+// per godlike/07 §"No fake availability" the resolver MUST throw the
+// typed sentinel rather than return a zero-value envelope.
 //
-//  1. IndexStore returns "" or an error (DB row absent) — the
-//     artifact is not in the staged surface.
-//  2. os.Stat fails on the looked-up local path (file deleted,
-//     moved, TTL'd by the standalone cleanup daemon, etc.) — the
-//     DB row is stale.
-//  3. files.HashFile fails on the local file (I/O error, truncated
-//     zeros, silent disk corruption) — the staged payload is
-//     unverifiable for downstream ArtifactPreparation.
+// Diagnostic hint: callers seeing this error should re-stage via the
+// canonical staging pipeline (SourceStager.StageSource — Step 9/12
+// wave), not "retry Resolve" the same artifactID.
+var ErrStagedArtifactMissing = errors.New("staged: artifact missing from asset_index lookup")
+
+// ErrStagedArtifactNotOnDisk is returned when the DB row exists (with
+// a non-empty local_path column) but `os.Stat` reports the file as
+// absent. This is a godlike/07 tripwire: the row says the file should
+// exist, but the disk says it does not — never substitute a
+// zero-value Bytes envelope to "satisfy" the call.
 //
-// All three failure paths return wrapped via fmt.Errorf("...: %w",
-// ErrStagedArtifactMissing) so upstream callers branch on
-// errors.Is(err, staged.ErrStagedArtifactMissing) without
-// needing to distinguish internal failure detail. The granular
-// root error is preserved through the %w chain for the operator
-// log scraper.
-//
-// Scope decision (per godlike/07 typed-error contract): a SINGLE
-// sentinel was preferred over three separate sentinels
-// (ErrDBNotFound, ErrFileNotFound, ErrHashFailed) because the
-// cutover-wave caller branches only on "is this artifact usable?"
-// — per-stem sentinels would expose internal diagnostic detail
-// at the cutover boundary without enabling any distinct call-site
-// behavior, which is the canonical godlike/07 anti-pattern of
-// over-typed error surfaces.
-var ErrStagedArtifactMissing = errors.New("staged: artifact missing or unverifiable on the staged surface")
+// Diagnostic hint: a disk-side cleanup race or a Drive-side migration
+// that left a stale asset_index row. The canonical recovery is to
+// delete the row + re-stage the asset via SourceStager.
+var ErrStagedArtifactNotOnDisk = errors.New("staged: artifact row exists but local file is gone")
+
+// ErrStagedArtifactNotConfigured is returned by NewResolver when the
+// lookupFn dependency is nil, AND by *Resolver.Resolve when called on
+// a nil receiver. Composition-time fail-closed posture mirrors the
+// P0-Commit 7 NewService constructor in the completion package:
+// half-wired surfaces surface the failure at startup, not at the first
+// Resolve call.
+var ErrStagedArtifactNotConfigured = errors.New("staged: resolver not configured (nil lookupFn)")
