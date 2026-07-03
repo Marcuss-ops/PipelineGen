@@ -1086,6 +1086,13 @@ the snapshot table above.
 
 ---
 
+
+- **[P0-COMPL-3 STAGED (PENDING 2026-08-01, July 2026)]** `fix(completion)` — wave-tracker entry registered for the artifact-contract rename (`PublishedArtifacts` → `StagedArtifacts` in the HTTP wire-format). Forward-pointer per COMPLETION-CUTOVER-P0 action plan; no implementation commit on origin/main today. No follow-up; the implementer PR is the canonical next step.
+- **[P0-COMPL-4-PUBLISH-DEDUPE (ca73476d, July 2026)]** `refactor(completion)` — Publisher port removed from `completion.Service`. Drift detection enforced via reflection-based `TestDedup_NoPublisherFieldOnServiceStruct` (build-failure on any future re-introduction of a `publisher`/`pub`/`notifier` field). Per godlike/06 SSOT one-canonical-owner-per-fact: Preparer is the canonical Drive-write seam. Forward-pointer: P0.6 (single-TX atomic complete) is a separate concern fed by this capability.
+- **[P0-COMPL-5-WIRE-NAMING (4030081a + bb4a19e8, July 2026)]** `refactor(api+jobs)+feat(completion)` — wire-format rename + canonical `PublishAndCompleteUseCase` single-backbone orchestrator + 3 round-trip TDD tests. Typo fixup commit `bb4a19e8` closes a wire-naming drift from the initial `4030081a` surface. No follow-up on the wire-naming surface itself; P0-COMPL-3 StagedArtifacts rename is a separate forward-pointer (PENDING 2026-08-01; different concern: HTTP wire-format vs internal idempotency key derivation).
+- **[P1-#14 typed-idempotency (88f564d3 + 045bd106 + bc792768, July 2026)]** `fix(jobs) + fix(completion) + test(completion)` — loop-accumulation contract for `PublishVerifiedArtifacts`; per-artifact failures accumulated into `PublishOutcome.Err` (no short-circuit); `ErrIdempotencyKeyConflictDifferingContent` typed sentinel reserves the top-level return for the FAIL-CLOSED same-key/different-sha collision (per godlike/07 P0.7 typed-error contract). Forward-pointer: bookkeeper record failure telemetry (`PR-P1-14-BOOKKEEPER-OBSERVABILITY`, deadline TBD 2026-07-25).
+- **[P1-#15 HTTP completion errors (37ed2b9e, July 2026)]** `fix(jobs+api)` — typed HTTP layer completion errors (7-kind map end-to-end) routing each canonical typed sentinel to its proper HTTP status. Per godlike/07: no string-matching, no leak of internal error types to the wire. Forward-pointer: client-side parser verification (e.g. OpenAPI codegen, generated TypeScript client) is out of scope for this closure — tracked separately as `PR-P1-15-OPENAPI-CLIENT`, deadline TBD 2026-08-01.
+
 ## Core Contracts
 
 All modules must use canonical contracts:

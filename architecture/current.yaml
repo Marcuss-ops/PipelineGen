@@ -3239,3 +3239,152 @@ honest_scope_lock: |
       owner_capability: completion
       status: pending
       deadline: 2026-08-15
+# ── P0-COMPL-3-STAGED (PENDING 2026-08-01, July 2026) ──
+# Per the COMPLETION-CUTOVER-P0 action plan: rename PublishedArtifacts →
+# StagedArtifacts in the HTTP wire-format. The Creator currently does not
+# know the Drive FileID, link, checksum, or action at the time of upload;
+# this contract rename and the corresponding Sender-side converter are
+# intended to fix this naming "lie" (carry-forward from June 2026 Italian
+# audit). Status: PENDING; no implementation commit on origin/main today.
+# godlike/07 no-fake-availability: closure entry registered WITHOUT
+# ship_sha; flippable to `status: shipped` only via the implementer PR.
+- id: P0-COMPL-3-STAGED
+  owner_capability: internal/application/assets/completion
+  status: pending
+  deadline: 2026-08-01
+  linked_issues:
+    - id: PR-P0-COMPL-3-IMPLEMENTATION
+      owner_capability: internal/application/assets/completion
+      status: pending
+      deadline: 2026-08-01
+
+# ── P0-COMPL-4-PUBLISH-DEDUPE (SHIPPED 2026-07-03, July 2026) ──
+# Remove the duplicate Publisher port from completion.Service. Preparer is
+# now the canonical owner of the Drive-write fact per godlike/06 SSOT
+# (one canonical owner per fact; the prior Publisher port was a duplicate
+# publisher that ran after Preparer had already published via its
+# internal finalization.PublisherPort). Drift detection: reflection-based
+# TestDedup_NoPublisherFieldOnServiceStruct fails the build on any future
+# re-introduction of a `publisher`/`pub`/`notifier` field.
+- id: P0-COMPL-4-PUBLISH-DEDUPE
+  owner_capability: internal/application/assets/completion
+  status: shipped
+  deadline: 2026-07-03
+  ship_date: 2026-07-03
+  ship_sha: ca73476d
+  linked_issues:
+    - id: ca73476d
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'refactor(completion): P0-COMPL-4-PUBLISH-DEDUPE — remove Publisher from completion.Service'
+  forward_pointer: |
+    Azione 6 (JobFinalizer CompleteWithArtifacts single-TX atomic
+    complete) is a separate concern fed by this capability — tracked
+    under P0-COMPL-6 (forward-pointer to P0.6 commit chain). No follow-up
+    on the dedup surface itself; reflection-based drift detector is the
+    canonical regression guard.
+
+# ── P0-COMPL-5-WIRE-NAMING (SHIPPED 2026-07-03, July 2026) ──
+# Wire-format rename (4030081a) + typo fixup (bb4a19e8). The wire-format
+# rename is `refactor(api+jobs)+feat(completion)` — the canonical
+# PublishAndCompleteUseCase is the single backbone orchestrator, with
+# 3 round-trip TDD tests pinning the new wire contract. The typo fixup
+# commit closes a wire-naming drift discovered in code review.
+- id: P0-COMPL-5-WIRE-NAMING
+  owner_capability: internal/application/assets/completion
+  status: shipped
+  deadline: 2026-07-03
+  ship_date: 2026-07-03
+  ship_sha: 4030081a
+  linked_issues:
+    - id: 4030081a
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'refactor(api+jobs)+feat(completion): P0-COMPL-5-WIRE-NAMING — wire-format rename + canonical PublishAndCompleteUseCase + 3 round-trip TDD tests'
+    - id: bb4a19e8
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'fix(completion): P0-COMPL-5 wire-naming typo fixup'
+  forward_pointer: |
+    No follow-up on the wire-naming surface itself; the P0-COMPL-3
+    StagedArtifacts rename is a separate forward-pointer (PENDING
+    2026-08-01; different concern: HTTP wire-format vs internal
+    idempotency key derivation).
+
+# ── P1-14-TYPED-IDEMPOTENCY (SHIPPED 2026-07-03, July 2026) ──
+# Loop-accumulation contract for completion.Service.PublishVerifiedArtifacts:
+#   - Loop NO LONGER short-circuits on first non-typed-idempotency error.
+#     Per-artifact failures (Prepare transient bubbles, final-checksum
+#     mismatch, transient-exhausted) are EMBEDDED into the outcome at the
+#     corresponding slice index.
+#   - Top-level error return is reserved for the FAIL-CLOSED collision
+#     surface (ErrIdempotencyKeyConflictDifferingContent) — a
+#     same-idem-key / different-sha256 collision signals an upstream
+#     InvariantViolation per godlike/07 no-fake-availability.
+#   - Reused=true signals SAME-content idempotent-replay path; Outcome
+#     {Artifact=non-nil, Reused=true, Err=nil} is the explicit breaking
+#     contract change vs the prior P0-COMPL-4 wrap-ErrAlreadyPublished
+#     behaviour. Callers route the two surfaces via distinct code paths.
+# 3-commit chain: 88f564d3 (envelope shape) + 045bd106 (collision
+# sentinel) + bc792768 (3 round-trip TDD tests pinning the contract).
+- id: P1-14-TYPED-IDEMPOTENCY
+  owner_capability: internal/application/assets/completion
+  status: shipped
+  deadline: 2026-07-03
+  ship_date: 2026-07-03
+  ship_sha: 88f564d3
+  linked_issues:
+    - id: 88f564d3
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'fix(jobs): P1 #14 — PublishOutcome{Artifact, Reused} envelope (same-content replay = nil error)'
+    - id: 045bd106
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'fix(completion): P1 #14 — ErrIdempotencyKeyConflictDifferingContent typed sentinel'
+    - id: bc792768
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'test(completion): P1 #14 — 3 round-trip TDD tests for loop-accumulation contract'
+  forward_pointer: |
+    Bookkeeper record failure telemetry is a separate forward-pointer
+    (PR-P1-14-BOOKKEEPER-OBSERVABILITY, deadline TBD 2026-07-25). P0.6
+    single-TX atomic complete is a separate concern fed by this
+    capability. No follow-up on the loop-accumulation surface itself;
+    3 round-trip TDD tests are the canonical regression guard.
+
+# ── P1-15-HTTP-COMPLETION-ERRORS (SHIPPED 2026-07-03, July 2026) ──
+# Typed HTTP layer completion errors (7-kind map end-to-end). The
+# canonical typed-error contract from the completion package is now
+# surfaced at the HTTP transport layer with a 7-kind map that routes
+# each typed sentinel to its proper HTTP status (e.g.
+# ErrFinalChecksumMismatch → 422 Unprocessable Entity;
+# ErrIdempotencyKeyConflictDifferingContent → 409 Conflict;
+# ErrAlreadyPublished → 200 OK with reused=true).
+# godlike/07 typed-error contract: no string-matching, no leak of
+# internal error types to the wire — each kind has a typed mapper.
+- id: P1-15-HTTP-COMPLETION-ERRORS
+  owner_capability: internal/application/jobs/completion
+  status: shipped
+  deadline: 2026-07-03
+  ship_date: 2026-07-03
+  ship_sha: 37ed2b9e
+  linked_issues:
+    - id: 37ed2b9e
+      owner_capability: internal/application/jobs/completion
+      status: shipped
+      deadline: 2026-07-03
+      subject: 'fix(jobs+api): P1 #15 — typed HTTP completion errors (7-kind map end-to-end)'
+  forward_pointer: |
+    Client-side parser verification (e.g. OpenAPI codegen, generated
+    TypeScript client) is out of scope for this closure — tracked
+    separately as PR-P1-15-OPENAPI-CLIENT, deadline TBD 2026-08-01.
+    No follow-up on the server-side 7-kind mapper itself; the typed
+    godlike/07 contract is the canonical surface.
+
