@@ -2986,7 +2986,7 @@ echo "OK: Check 54 � $([ -z "$upload_calls" ] && echo 'all UploadFile* sites t
 
 
 
-echo "==== Check 55: Forward-pointer marker + linked_issue cross-ref enforcement ===="
+echo "==== Check 56: Forward-pointer marker + linked_issue cross-ref enforcement ===="
 # Forward-prevention gate (CI complement to compile-time Assumption 1).
 # Rationale (godlike/07 no-fake-availability): A composition-root function in
 # internal/app/*.go that introduces a forward-pointer NIL field MUST carry:
@@ -3001,7 +3001,7 @@ echo "==== Check 55: Forward-pointer marker + linked_issue cross-ref enforcement
 # require explicit owner+deadline in the allowlist row.
 #
 # SLOT-SELECTION NOTE: Spec said "Check 54"; origin/main's Check 54 is
-# canonical (Stock Cutover reset-gate, commit f12eb12f). Using Check 55
+# canonical (Stock Cutover reset-gate, commit f12eb12f). Using Check 56
 # preserves godlike/06 one-canonical-owner-per-fact.
 
 ALLOWLIST_55="docs/migrations/check55-forward-pointer-allowlist.txt"
@@ -3017,7 +3017,7 @@ YAML_IDS_FILE=$(mktemp 2>/dev/null || echo "/tmp/.check55_yaml_pr_ids_v3.txt")
 echo "  Allowlist: $ALLOWLIST_55 ($(wc -l < $ALLOWLIST_55 | tr -d ' ') rows; empty by default per godlike/08)"
 echo "  YAML registered PR-* IDs: $(wc -l < "$YAML_IDS_FILE" | tr -d ' ')"
 
-fail_count55=0
+fail_count56=0
 ok_count55=0
 skip_count55=0
 inspect_output=$(mktemp 2>/dev/null || echo "/tmp/.check55_inspect_v3.txt")
@@ -3061,7 +3061,7 @@ while IFS= read -r gf; do
 done < <(printf '%s\n' "$files_list") > "$inspect_output"
 
 # Iterate status rows. Function-style iteration via process substitution avoids
-# bash subshell scoping (which would lose $fail_count55 updates).
+# bash subshell scoping (which would lose $fail_count56 updates).
 while IFS=$'\t' read -r status payload loc raw; do
   case "$status" in
     OK)
@@ -3069,19 +3069,19 @@ while IFS=$'\t' read -r status payload loc raw; do
       if grep -qxF "$pr" "$YAML_IDS_FILE"; then
         ok_count55=$((ok_count55 + 1))
       else
-        echo "[Check 55] $loc : forward-pointer $pr not registered in architecture/current.yaml::wave_status.linked_issues[*].id (godlike/06 SSOT breach)"
-        fail_count55=$((fail_count55 + 1))
+        echo "[Check 56] $loc : forward-pointer $pr not registered in architecture/current.yaml::wave_status.linked_issues[*].id (godlike/06 SSOT breach)"
+        fail_count56=$((fail_count56 + 1))
       fi
       ;;
     FAIL)
       if [ "$ALLOWLIST_55" != /dev/null ] && grep -qF "$loc" "$ALLOWLIST_55"; then
         skip_count55=$((skip_count55 + 1))
       else
-        echo "[Check 55] $loc : nil field lacks same-line marker `// forward-pointer: PR-<NAME>`"
+        echo "[Check 56] $loc : nil field lacks same-line marker `// forward-pointer: PR-<NAME>`"
         if [ -n "$raw" ]; then
           echo "         raw: $raw"
         fi
-        fail_count55=$((fail_count55 + 1))
+        fail_count56=$((fail_count56 + 1))
       fi
       ;;
   esac
@@ -3095,20 +3095,20 @@ if [ -s "$ALLOWLIST_55" ]; then
     if [ -f "$file" ]; then
       skip_count55=$((skip_count55 + 1))
     else
-      echo "[Check 55] allowlist $arow : target file no longer exists (zero-baseline discipline: clean up)"
-      fail_count55=$((fail_count55 + 1))
+      echo "[Check 56] allowlist $arow : target file no longer exists (zero-baseline discipline: clean up)"
+      fail_count56=$((fail_count56 + 1))
     fi
   done < "$ALLOWLIST_55"
 fi
 
 rm -f "$inspect_output"
 
-echo "  Stats: OK=$ok_count55 FAIL=$fail_count55 SKIP(allowlisted)=$skip_count55"
-if [ "$fail_count55" -gt 0 ]; then
-  echo "RESULT: Check 55 FAIL ($fail_count55 violations)"
+echo "  Stats: OK=$ok_count55 FAIL=$fail_count56 SKIP(allowlisted)=$skip_count55"
+if [ "$fail_count56" -gt 0 ]; then
+  echo "RESULT: Check 56 FAIL ($fail_count56 violations)"
   rm -f "$YAML_IDS_FILE"
   exit 1
 fi
-echo "RESULT: Check 55 OK (forward-pointer markers present + YAML-registered)"
+echo "RESULT: Check 56 OK (forward-pointer markers present + YAML-registered)"
 
 rm -f "$YAML_IDS_FILE"
