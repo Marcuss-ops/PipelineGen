@@ -2467,3 +2467,72 @@ wave_status:
       owner_capability: internal/application/scripts/jobs
       status: pending
       deadline: 2026-07-15
+
+
+# ── ART-001 — FASE-6 reversal (shipped 2026-07-03, canonical SHA e5985003) ──
+# ART-001 restored /api/artlist/* routes via canonical artlist.Build(deps)
+# wiring (registerArtlist body-replace + WireArtlist 4 mandatory gates
+# UPFRONT + 4 Pattern 0 compile-time pins + 1 canonical SemanticEnricher
+# adapter constructed on-the-fly with 8 DIRECT receiver args, no shim).
+# 7 endpoints restored (POST /run, POST /recommend, POST /sync-catalogs +
+# GET /stats, GET /diagnostics, GET /search, GET /search/live). godlike/06
+# SSOT: 1 adapter canonical wiring. godlike/07 no-fake-availability: 4
+# mandatory gates (Publisher / outbox.Dispatcher + repos.ClipsRepo +
+# Jobs.Service) nil → typed fmt.Errorf → registerArtlist downgrades to
+# log.Warn + skip-route + return-nil (NOT boot-abort). 9 forward-pointer
+# nil fields with inline `// forward-pointer: PR-ARTLIST-XXX` audit-pins
+# cross-referenced to linked_issues below (godlike/07 EXPAND-phase
+# discipline). Read-only endpoints wire up unconditionally; write
+# endpoints gate to 503 at handler layer until BACKFILL waves close
+# the 6 forwarded pointers listed below.
+#
+# Pre-existing 5 build issues carry forward unchanged (CHANGELOG-declared,
+# out of scope for ART-001): monitor/enqueue.go + monitor/scheduler.go +
+# stockpipeline/run_upload.go + module_media.go::clips.Deps.MutationsDispatcher
+# + images/routing import cycle.
+- id: ART-001
+  status: shipped
+  exit_signal: true
+  owner: "composition root (internal/app, internal/application/assets/providers/artlist)"
+  deadline: 2026-07-03
+  exit_gate: |
+    ART-001 FASE-6 reversal landed on origin/main at canonical SHA
+    e5985003 (post-rebase + ff-push per AGENTS.md Git-Lesson-2/3/4/5;
+    re-anchored after byte-equivalent-replay race-recovery). 4 Pattern 0
+    compile-time pins (artlist.AssetStore / artlist.Indexer /
+    artlist.Dispatcher / jobdomain.Service cross-package alias safety per
+    composition.go precedent). 4 mandatory gates UPFRONT in WireArtlist
+    (Publisher / outbox.Dispatcher + repos.ClipsRepo + Jobs.Service).
+    9 forward-pointer nil fields tagged inline with
+    `// forward-pointer: PR-ARTLIST-XXX` comments cross-referenced to
+    linked_issues below (godlike/07 EXPAND-phase discipline). 1 canonical
+    SemanticEnricher adapter constructed on-the-fly with 8 DIRECT
+    constructor args (godlike/06 SSOT). Drift-free per
+    scripts/ci-architectural-checks.sh on the 2 touched subtrees (no NEW
+    violations specific to ART-001; 5 pre-existing carry-forward issues
+    stay CHANGELOG-declared out-of-scope).
+  linked_issues:
+    - id: PR-ARTLIST-LIVE-WIRE
+      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/indexing/clipindexer.IsLiveProbe"
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-ARTLIST-SEARCHERS
+      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/search/pixabay + internal/infrastructure/search/pexels"
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-ARTLIST-STAGER
+      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/assets/source_stager"
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-LIFECYCLE
+      owner_capability: "internal/application/assets/providers/artlist + internal/application/assets/lifecycle"
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-REPOS
+      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/database/sqlite/assets"
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-SYNCSERVICE
+      owner_capability: "internal/application/assets/providers/artlist + internal/application/clipresolver"
+      status: pending
+      deadline: 2026-08-15
