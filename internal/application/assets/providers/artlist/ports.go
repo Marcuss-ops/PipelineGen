@@ -301,13 +301,78 @@ type ArtlistConfigPort interface {
 // no-fake-availability:
 //   - (true,  nil)  → service is live (HTTP 2xx within timeout)
 //   - (false, nil)  → service responded but not 2xx (4xx/5xx classified
-//                      as "not live" without surfacing transient details;
-//                      the diagnostic layer decides escalation)
+//     as "not live" without surfacing transient details;
+//     the diagnostic layer decides escalation)
 //   - (false, err)  → transport failure (DNS/TCP/timeout/connection-refused);
-//                      the caller decides retry policy
+//     the caller decides retry policy
 //
 // Probe MUST NOT mutate the request. Probe MUST NOT cache results across
 // calls (compositional callers wrap with their own LRU if desired).
 type IsLiveProbe interface {
 	Probe(ctx context.Context) (bool, error)
 }
+
+// RunRecord is the canonical aggregate stats row for an Artlist run.
+// It maps 1:1 onto the artlist_runs table columns in
+// migrations/sqlite/001_velox_core.sql:46-62.
+//
+// PR-ARTLIST-PERSIST-FIX (July 2026): this struct is the typed surface
+// for the RunRepository port and replaces the silent-degrade path that
+// owned /api/artlist/run orchestration without writing per-run
+// aggregates. godlike/06 SSOT: artlist_runs rows have exactly one
+// canonical writer (RunRepository.Record) and one canonical reader
+// (/api/artlist/stats via the legacy counters).
+//
+// godlike/06 SSOT (column-level reconciliation): the struct fields
+// mirror the canonical schema verbatim. The migration defines 13
+// columns: id PK (RunID), term, status, root_folder_id, tag_folder_id,
+// requested_count, found_count, processed_count, skipped_count,
+// failed_count, error_message, created_at, updated_at. created_at and
+// updated_at are filled by the SQLite DEFAULT datetime('now') clause;
+// the canonical writer supplies only the 11 explicitly-tracked fields.
+// Strategy / DryRun / StartedAt / CompletedAt / LastError are NOT
+// persisted in the current schema — they were aspirational fields in
+// an earlier draft and the schema never adopted them.
+type RunRecord struct {
+	RunID        string
+	Term         string
+	Status       string
+	RootFolderID string
+	TagFolderID  string
+	RequestedN   int
+	FoundN       int
+	ProcessedN   int
+	SkippedN     int
+	FailedN      int
+	ErrorMessage string
+}
+
+// RunRepository is the canonical port for persisting Artlist run
+// aggregates (the aggregate stats row behind /api/artlist/run +
+// /api/artlist/stats).
+//
+// godlike/06 SSOT (one canonical owner per fact): RunRepository is the
+// SOLE writer of artlist_runs rows; no other code path may insert or
+// update that table.
+//
+// godlike/07 no-fake-availability: NewService fails closed
+// (ErrRunRepositoryUnavailable) when this port is nil at composition;
+// production composition MUST wire a concrete from
+// internal/infrastructure/database/sqlite/assets/artlist_runs_repository.go.
+//
+// Record MUST upsert on RunID (UNIQUE-by-RunID key) so concurrent
+// retry of the same logical run collapses into ONE row rather than
+// producing duplicate aggregate stats. Record MUST persist even when
+// the orchestrator discovered zero candidates (the per-run aggregate
+// "found=0" row is observable truth, not silent-omit).
+type RunRepository interface {
+	Record(ctx context.Context, rec RunRecord) error
+}
+
+// ErrRunRepositoryUnavailable is the typed sentinel NewService returns
+// when the canonical RunRepository port is nil at construction time.
+// Mirrors the fail-closed discipline of ErrPublisherUnavailable +
+// ErrAssetMutationDispatcherUnavailable.
+var ErrRunRepositoryUnavailable = errors.New(
+	"artlist: RunRepository port unavailable at composition — production must wire artlist_runs_repository (godlike/07 no-fake-availability: aggregate stats write is mandatory for /api/artlist/run honesty)",
+)
