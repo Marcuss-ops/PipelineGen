@@ -209,6 +209,28 @@ var ErrNoProducedChunk = errors.New("stock: orchestrator produced no Required ch
 // errors.Is from any seam.
 var ErrMetadataMissing = errors.New("stock: orchestrator manifest is missing the Required metadata.json entry (P0 #1 fail-closed — must declare metadata before Run returns nil)")
 
+// ErrStockProductionArtifactPrepMissing surfaces a composition-root wiring
+// gap: the orchestrator's JobFinalizer is wired (production path) but
+// ArtifactPreparation is nil. The stock.publish step cannot upload chunks
+// or metadata.json without a concrete ArtifactPreparation adapter —
+// returning nil error in this state is a silent-success false-positive.
+//
+// Gate fires at RunResilient entry (before any step) so composition
+// roots that forget to call WithAssetPreparation surface the gap
+// immediately rather than at publish time (cf. godlike/07 fail-closed).
+// Test-fixture mode (both nil) is unaffected.
+var ErrStockProductionArtifactPrepMissing = errors.New("stock: production gate — ArtifactPreparation nil while JobFinalizer wired (call WithAssetPreparation before RunResilient)")
+
+// ErrStockProductionJobFinalizerMissing surfaces the symmetric wiring gap:
+// ArtifactPreparation is wired but JobFinalizer is nil. The stock.finalize
+// step cannot execute the single-TX spine write without a concrete
+// JobFinalizer — returning nil error in this state abandons the
+// CompleteWithArtifacts contract silently.
+//
+// Gate fires at RunResilient entry. Test-fixture mode (both nil) is
+// unaffected.
+var ErrStockProductionJobFinalizerMissing = errors.New("stock: production gate — JobFinalizer nil while ArtifactPreparation wired (call WithJobFinalizer before RunResilient)")
+
 // AssertRunSummaryArtifactsRequired is the §12-1 P0 #1 (July 2026)
 // orchestrator-level fail-closed gate. Pure function: easy TDD,
 // zero side-effects on RunSummary. It is the SINGLE owner (godlike/06

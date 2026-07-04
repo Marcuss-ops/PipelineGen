@@ -471,6 +471,26 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 		return nil, ErrOrchestratorNilDeps
 	}
 
+	// §12-1 P0 #2 production gate (July 2026): asymmetric wiring is a
+	// composition error. When EITHER JobFinalizer or ArtifactPreparation
+	// is non-nil (production path), BOTH must be non-nil. A partially-
+	// wired root that has ArtifactPreparation but no JobFinalizer means
+	// stock.finalize cannot call CompleteWithArtifacts; the opposite
+	// means stock.publish cannot upload. Returning nil error in either
+	// state is a silent-success false-positive.
+	//
+	// Test-fixture mode: both nil → gate passes (existing back-compat).
+	// Production mode: both non-nil → gate passes.
+	// Asymmetric: one nil, one non-nil → typed error.
+	hasFinalizer := o.jobFinalizer != nil
+	hasArtPrep := o.artifactPreparation != nil
+	switch {
+	case hasFinalizer && !hasArtPrep:
+		return nil, fmt.Errorf("orchestrator §12-1 P0 #2 production gate: %w", ErrStockProductionArtifactPrepMissing)
+	case hasArtPrep && !hasFinalizer:
+		return nil, fmt.Errorf("orchestrator §12-1 P0 #2 production gate: %w", ErrStockProductionJobFinalizerMissing)
+	}
+
 	state := &runState{}
 	runner := &orchestratorRunner{
 		orch:                o,
