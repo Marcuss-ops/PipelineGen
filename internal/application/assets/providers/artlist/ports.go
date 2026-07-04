@@ -94,10 +94,20 @@ type Searcher interface {
 // returned by the Searcher; DestinationID is the resolved local-path under
 // which the bytes should be staged (application owns the policy; infrastructure
 // decides the actual filesystem layout).
+//
+// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY (July 2026): ClipPageURL and ClipID are
+// optional fields that feed the Node scraper's /download payload
+// (clip_page_url + clip_id in the JSON body). When non-empty, the unified
+// resolver prefers the Node scraper path (browser-authenticated session)
+// over the yt-dlp / HTTP paths. When empty, the resolver detects the
+// transport from the SourceRef URL alone (Artlist-shaped → scraper,
+// .mp4/.mov → HTTP, .m3u8 → yt-dlp).
 type DownloadRequest struct {
 	SourceRef     string
 	DestinationID string
 	Filename      string
+	ClipPageURL   string // optional: Artlist clip page URL for Node scraper navigation
+	ClipID        string // optional: Artlist numeric clip ID for scraper output naming
 }
 
 // DownloadResult carries the result of a successful Download.
