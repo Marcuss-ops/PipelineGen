@@ -5,12 +5,14 @@
 // callers that only need the canonical Embed(ctx, text) ([]float32, error)
 // contract.
 //
-// The existing application/realtime.PythonEmbeddingAdapter stays in place
-// for now because it serves multipurpose calls beyond text embedding
-// (EmbedVisual, EmbedAudio, AnalyzeImage, normalized-text return).
-// Migrating those callers wholesale is deferred to PR-D.5.2b; this
-// file establishes the pattern and a concrete http.TextEmbedder for
-// any consumer that only needs the canonical interface.
+// FASE 1.1 C10 closure (2026-07-04, 213e18a8 + amend): the historical
+// application/realtime.PythonEmbeddingAdapter surface was retired in
+// prior waves (canonical owner per godlike/06 SSOT is *ollama.Generator,
+// fully wired across 39 call sites). The 2-line ghost-comment reference
+// above is removed as part of PR-IMAGES-AI-VS-NORMAL-PLAN action C10
+// (no production dependency on application/realtime.PythonEmbeddingAdapter
+// remains after the retirement; the directional reference was an orphan
+// godlike/06 residue-amendment fossil).
 package embeddings
 
 import (
