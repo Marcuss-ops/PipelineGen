@@ -4833,6 +4833,27 @@ wave_status:
       ship_date: 2026-07-04
       deadline: 2026-08-22
       description: "RenderScene([]*asset.Asset) with asset_locations webViewLink lookup. ErrImageNotFinalized sentinel. SceneRenderer port."
+    # CUTOVER verification audit 2026-07-04 (Azioni 1-5 + 7, godlike/07 no-fake-availability):
+    #   - Azione 1 (staged/resolver.go): go vet + go test -short PASS (StagedArtifactResolver interface).
+    #     typed sentinel: ErrStagedArtifactMissing.
+    #   - Azione 2 (verification/verified.go): go vet + go test -short PASS. typed sentinels:
+    #     ErrStagedChecksumMismatch, ErrStagedSizeMismatch.
+    #   - Azione 3 (completion/publish_verified.go): go vet + go test -short PASS (idempotency-key
+    #     byte-stable via ArtifactIdempotencyKey). typed sentinel: ErrAlreadyPublished.
+    #   - Azione 4 (jobbrokerclient/client.go): rg CompleteWithArtifacts PASS (3 files:
+    #     client.go, wire_decoder.go, client_test.go). surface: POST /internal/v1/jobs/:id/
+    #     complete-with-artifacts.
+    #   - Azione 5 (broker.go): rg + go vet PASS. surface: CompleteWithArtifacts populates
+    #     ack.AssetIDs -> resp.AssetIDs.
+    #   - Azione 7 PATH CORRECTION (godlike/07 honest scope-lock): the action plan listed
+    #     internal/app/runner.go as the Azione 7 target, but the canonical registry-driven
+    #     branch lives at internal/application/jobs/worker/runner.go. Line 274 of runner.go
+    #     carries: `if r.registry.ProducesArtifacts(lease.Job.Type) { return
+    #     tools.CompleteWithArtifacts(...) }`. Action plan path is a stale spec; the canonical
+    #     file is in the worker subpackage, NOT the composition-root app subpackage. Future
+    #     references to Azione 7 should use the worker path.
+    #   All 6 entries (1-5 + 7) were already shipped before 2026-07-04. This commit is
+    #   documentation-only (no status flips, no code changes) per godlike/07 minimum-blast-radius.
     - id: PR-CUTOVER-AZIONE-13-VLM-GATE-AUDIT
       owner_capability: internal/infrastructure/ai/vlm
       status: shipped
