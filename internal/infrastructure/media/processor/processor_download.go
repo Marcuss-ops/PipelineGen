@@ -14,13 +14,33 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	artlist_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
 // downloadStep downloads the asset from the source URL.
+//
+// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): URL
+// classification uses the canonical exported helpers from the
+// artlist/downloader package (IsArtlistURL / IsDirectMediaURL /
+// IsHLSURL), eliminating the byte-equivalent duplicates
+// (p.isArtlistURL / p.isDirectURL / p.isHLSURL) that previously
+// lived in this file.
+//
+// Artlist-clip downloads route through the injected
+// p.artlistDL.DownloadArtlistClip() when non-nil (wired via
+// build_bundles_artlist.go wrapping the Resolver). When nil,
+// the legacy downloadViaScraper method handles Artlist downloads.
+//
+// Ladder:
+//   1. Direct MP4/MOV/AVI → HTTP download
+//   2. Artlist clip (IsArtlistURL / ClipPageURL / numeric ID)
+//      → ArtlistDownloader or legacy downloadViaScraper
+//   3. Non-Artlist HLS (.m3u8) → FFmpeg RemuxHLS
+//   4. Everything else → yt-dlp
 func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput, rawPath string) (actualPath string, err error) {
-	// Try HTTP download first for direct URLs (e.g., Artlist with direct links).
-	if p.httpDL != nil && p.isDirectURL(input.SourceURL) {
+	// Rule 1: Direct progressive media — HTTP download.
+	if p.httpDL != nil && artlist_dl.IsDirectMediaURL(input.SourceURL) {
 		p.log.Info("using HTTP downloader for direct URL", zap.String("id", input.ID), zap.String("url", input.SourceURL))
 		httpReq := &downloader.HTTPDownloadRequest{
 			URL:        input.SourceURL,
@@ -28,45 +48,52 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 		}
 		if err := p.httpDL.Download(ctx, httpReq); err != nil {
 			p.log.Warn("HTTP download failed, falling back to yt-dlp", zap.Error(err))
-			// Fall through to yt-dlp.
 		} else {
 			p.log.Info("HTTP download succeeded", zap.String("path", rawPath))
 			return rawPath, nil
 		}
 	}
 
-	// For Artlist clips, use the Node.js scraper with browser cookies.
-	// Artlist CDN URLs often lack explicit .m3u8 extension but are HLS streams.
-	// FFmpeg/yt-dlp fail with 403 because they lack browser session cookies.
-	// The scraper (Puppeteer/Chromium) carries the proper auth context, opens
-	// the clip page, scrolls into view, clicks play, and captures the stream URL.
-	// Trigger when: the clip is from Artlist (identified by SourceURL, ClipPageURL,
-	// or by having an Artlist-style numeric ID with a name).
-	isArtlistClip := p.isArtlistURL(input.SourceURL) || p.isArtlistURL(input.ClipPageURL) ||
-		(input.ID != "" && input.Name != "" && p.isArtlistNumericID(input.ID))
-	if p.ffmpeg != nil && isArtlistClip {
-		p.log.Info("using Node.js scraper for Artlist download",
-			zap.String("id", input.ID),
-			zap.String("name", input.Name),
-		)
-
-		scraperOutput, scraperErr := p.downloadViaScraper(ctx, input, rawPath)
-		if scraperErr == nil {
-			p.log.Info("Artlist scraper download succeeded", zap.String("path", scraperOutput))
-			return scraperOutput, nil
+	// Rule 2: Artlist clips — route through the canonical Resolver.
+	isArtlistClip := artlist_dl.IsArtlistURL(input.SourceURL) ||
+		artlist_dl.IsArtlistURL(input.ClipPageURL) ||
+		(input.ID != "" && input.Name != "" && isArtlistNumericID(input.ID))
+	if isArtlistClip {
+		if p.artlistDL != nil {
+			p.log.Info("using ArtlistDownloader (Resolver) for Artlist download",
+				zap.String("id", input.ID),
+				zap.String("name", input.Name))
+			localPath, dlErr := p.artlistDL.DownloadArtlistClip(ctx,
+				input.SourceURL, input.ClipPageURL, input.ID,
+				filepath.Dir(rawPath), filepath.Base(rawPath))
+			if dlErr == nil {
+				p.log.Info("ArtlistDownloader succeeded", zap.String("path", localPath))
+				return localPath, nil
+			}
+			p.log.Warn("ArtlistDownloader failed, falling back to yt-dlp",
+				zap.String("id", input.ID),
+				zap.Error(dlErr))
+		} else if p.ffmpeg != nil {
+			// Legacy fallback: Processor's own scraper download.
+			p.log.Info("using legacy downloadViaScraper for Artlist download",
+				zap.String("id", input.ID),
+				zap.String("name", input.Name))
+			scraperOutput, scraperErr := p.downloadViaScraper(ctx, input, rawPath)
+			if scraperErr == nil {
+				p.log.Info("Artlist scraper download succeeded", zap.String("path", scraperOutput))
+				return scraperOutput, nil
+			}
+			p.log.Warn("Artlist scraper download failed, falling back to yt-dlp",
+				zap.String("id", input.ID),
+				zap.Error(scraperErr))
 		}
-		p.log.Warn("Artlist scraper download failed, falling back to yt-dlp",
-			zap.String("id", input.ID),
-			zap.Error(scraperErr),
-		)
 	}
 
-	// Use FFmpeg for other HLS URLs (non-Artlist, e.g. direct m3u8).
-	if p.ffmpeg != nil && p.isHLSURL(input.SourceURL) {
+	// Rule 3: Non-Artlist HLS — FFmpeg RemuxHLS.
+	if p.ffmpeg != nil && artlist_dl.IsHLSURL(input.SourceURL) {
 		p.log.Info("using FFmpeg for HLS URL",
 			zap.String("id", input.ID),
-			zap.String("url", input.SourceURL),
-		)
+			zap.String("url", input.SourceURL))
 
 		hlsOutputPath := rawPath + ".mp4"
 		if err := p.ffmpeg.RemuxHLS(ctx, input.SourceURL, hlsOutputPath); err != nil {
@@ -77,7 +104,7 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 		}
 	}
 
-	// Use yt-dlp for complex URLs (YouTube, etc.).
+	// Rule 4: Fallthrough — yt-dlp for everything else.
 	dlReq := &downloader.DownloadRequest{
 		URL:              input.SourceURL,
 		OutputPath:       rawPath,
@@ -105,39 +132,13 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 	return actualPath, nil
 }
 
-// isDirectURL checks if URL is likely a direct download (not needing yt-dlp).
-func (p *Processor) isDirectURL(url string) bool {
-	// Check for known direct download patterns.
-	directPatterns := []string{
-		"artlist.io/download",
-		"artlist.io/api",
-		".mp4",
-		".mov",
-		".avi",
-	}
-	for _, pattern := range directPatterns {
-		if strings.Contains(url, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-// isHLSURL checks if URL points to an HLS playlist.
-func (p *Processor) isHLSURL(url string) bool {
-	u := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(u, ".m3u8")
-}
-
-// isArtlistURL checks if URL is from Artlist (needs browser cookies to download).
-func (p *Processor) isArtlistURL(url string) bool {
-	u := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(u, "artlist") || strings.Contains(u, "cdn.artlist")
-}
-
 // isArtlistNumericID checks if the clip ID looks like an Artlist numeric identifier.
 // Artlist clip IDs are 4-7 digit numbers (e.g. 694565, 760198, 489828).
-func (p *Processor) isArtlistNumericID(id string) bool {
+//
+// RETAINED — the downloader.Resolver does not replicate numeric-ID
+// detection (it only classifies URLs). The heuristic here gates
+// whether downloadStep tries the Artlist path at all.
+func isArtlistNumericID(id string) bool {
 	id = strings.TrimSpace(id)
 	if len(id) < 4 || len(id) > 7 {
 		return false
@@ -150,26 +151,21 @@ func (p *Processor) isArtlistNumericID(id string) bool {
 	return true
 }
 
-// buildArtlistClipPageURL constructs an Artlist clip page URL from the clip name and ID.
-// Artlist URLs follow the pattern: https://artlist.io/stock-footage/clip/<slug>/<id>
-// where <slug> is a URL-safe version of the clip name.
+// buildArtlistClipPageURL constructs an Artlist clip page URL from name + ID.
+// RETAINED — used by the legacy downloadViaScraper fallback path below.
+// DEPRECATO: remove when downloadViaScraper is retired.
 func buildArtlistClipPageURL(name, id string) string {
 	if id == "" {
 		return ""
 	}
-	// Derive a slug from the clip name: lowercase, remove non-alphanumeric
-	// chars, collapse spaces to hyphens, trim.
 	slug := strings.ToLower(name)
-	// Remove everything after " by " (the author attribution)
 	if idx := strings.Index(slug, " by "); idx >= 0 {
 		slug = slug[:idx]
 	}
-	// Replace common separators and spaces with hyphens
 	slug = strings.ReplaceAll(slug, ",", "")
 	slug = strings.ReplaceAll(slug, "  ", " ")
 	slug = strings.TrimSpace(slug)
 	slug = strings.ReplaceAll(slug, " ", "-")
-	// Remove any remaining non-alpha-numeric-hyphen characters
 	var cleaned strings.Builder
 	for _, c := range slug {
 		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
@@ -177,7 +173,6 @@ func buildArtlistClipPageURL(name, id string) string {
 		}
 	}
 	slug = cleaned.String()
-	// Remove leading/trailing hyphens and collapse multiple hyphens
 	slug = strings.Trim(slug, "-")
 	for strings.Contains(slug, "--") {
 		slug = strings.ReplaceAll(slug, "--", "-")
@@ -188,39 +183,17 @@ func buildArtlistClipPageURL(name, id string) string {
 	return fmt.Sprintf("https://artlist.io/stock-footage/clip/%s/%s", slug, id)
 }
 
-// downloadViaScraper calls the Node.js scraper /download endpoint to download
-// an Artlist clip with browser authentication (cookies).
+// downloadViaScraper calls the Node.js scraper /download endpoint.
 //
-// godlike/06 SSOT back-pointer: this is the **fallback** surface for
-// Artlist HLS streams that the Go-primary `artlist/downloader.Resolver`
-// (wired in `internal/app/build_bundles_artlist.go::WireArtlist`)
-// cannot reach due to browser-session auth requirements. The canonical
-// dual-surface divider + the `LocalPath` short-circuit that prevents a
-// race are documented at
-// `internal/infrastructure/artlist/downloader/downloader.go` package
-// doc under "godlike/06 SSOT — dual download surface". Do not change
-// this fallback path without first reading that godoc — the
-// orchestrator at `run_orchestrator_stages.go::stageProcessBatch`
-// threads the staged `*StagedAsset.LocalPath` into
-// `mediaProcessor.Process`; `Process` then short-circuits at
-// `internal/infrastructure/media/processor/processor.go:146` (the
-// "Step 9/12 wire-up (July 2026): when input.LocalPath != "", the
-// download step is bypassed" comment — verified) and skips the
-// `downloadStep` invocation entirely (so this fallback function is
-// also never reached). `downloadViaScraper` is transitively reached
-// from `Process` via the post-Process `if input.LocalPath == ""`
-// branch that conditionally calls `downloadStep` (exact line not
-// re-verified in this PR — use function-name anchors; line numbers
-// drift as `Process` evolves) — and only when input is detected as
-// Artlist-shaped (isArtlistURL || isArtlistNumericID). Forward-pointer
-// for unification: `PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY` (deadline
-// 2026-08-15).
+// DEPRECATO (PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER, July 2026):
+// when p.artlistDL is wired, downloadStep routes Artlist downloads
+// through the canonical downloader.Resolver. This method remains as
+// the legacy fallback for callers that haven't wired the
+// ArtlistDownloader port. Remove when all composition roots wire
+// the Resolver adapter.
 func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.ProcessInput, rawPath string) (string, error) {
 	scraperURL := strings.TrimSuffix(p.scraperURL, "/") + "/download"
 
-	// Use ClipPageURL if available (the actual Artlist clip page URL for browser navigation).
-	// Fall back to SourceURL (which might be the .m3u8 URL).
-	// If both are empty, construct the URL from clip name + ID.
 	clipPageURL := input.ClipPageURL
 	if clipPageURL == "" {
 		clipPageURL = input.SourceURL
@@ -234,7 +207,6 @@ func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.Process
 		)
 	}
 
-	// The scraper saves to output_dir with filename: {clipId}.ts (for HLS) or {clipId}.mp4.
 	savePath := rawPath + ".mp4"
 
 	payload := map[string]any{

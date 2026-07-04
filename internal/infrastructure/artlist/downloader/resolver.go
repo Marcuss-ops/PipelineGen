@@ -51,11 +51,16 @@
 // The composition root (build_bundles_artlist.go) wires
 // downloader.NewResolver(...) exclusively.
 //
-// Honest scope-lock: the processor_download.go Artlist-specific code
-// (isArtlistURL / isArtlistNumericID / downloadViaScraper) is NOT
-// removed in this PR — the media processor is a generic pipeline that
-// handles multiple providers. The removal is forward-pointer
-// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (deadline 2026-08-15).
+// Honest scope-lock (CUTOVER, July 2026): the 3 duplicate URL helpers
+// in processor_download.go (isArtlistURL / isDirectURL / isHLSURL)
+// have been REMOVED and superseded by the exported canonical helpers
+// above. The remaining processor-specific code is:
+//   - isArtlistNumericID — retained (no Resolver equivalent; gates
+//     whether the Artlist branch fires at all)
+//   - buildArtlistClipPageURL — retained (used by the legacy
+//     downloadViaScraper fallback)
+//   - downloadViaScraper — retained as legacy fallback when
+//     p.artlistDL is nil (backward compat)
 package downloader
 
 import (
@@ -245,15 +250,15 @@ const (
 //  4. Otherwise → fallback ladder.
 func (r *Resolver) resolvePath(req artapp.DownloadRequest) downloadPath {
 	// Rule 1: Artlist assets need browser cookies.
-	if req.ClipPageURL != "" || isArtlistURL(req.SourceRef) {
+	if req.ClipPageURL != "" || IsArtlistURL(req.SourceRef) {
 		return downloadPathScraper
 	}
 	// Rule 2: Direct progressive media.
-	if isDirectMediaURL(req.SourceRef) {
+	if IsDirectMediaURL(req.SourceRef) {
 		return downloadPathHTTP
 	}
 	// Rule 3: HLS streams.
-	if isHLSURL(req.SourceRef) {
+	if IsHLSURL(req.SourceRef) {
 		return downloadPathYTDLP
 	}
 	// Rule 4: Controlled fallback.
@@ -383,22 +388,24 @@ func (r *Resolver) downloadViaScraper(ctx context.Context, req artapp.DownloadRe
 	return nil
 }
 
-// ── URL classification helpers (canonical — supersede processor_download.go) ──
+// ── URL classification helpers (canonical — exported for processor_download.go) ──
 
-// isArtlistURL checks if the URL is from Artlist's CDN.
-func isArtlistURL(url string) bool {
+// IsArtlistURL checks if the URL is from Artlist's CDN.
+// Exported for use by the media processor's downloadStep fallback path
+// (PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER, July 2026).
+func IsArtlistURL(url string) bool {
 	u := strings.ToLower(strings.TrimSpace(url))
 	return strings.Contains(u, "artlist") || strings.Contains(u, "cdn.artlist")
 }
 
-// isDirectMediaURL checks if the URL points to a direct progressive media file.
-func isDirectMediaURL(url string) bool {
+// IsDirectMediaURL checks if the URL points to a direct progressive media file.
+func IsDirectMediaURL(url string) bool {
 	u := strings.ToLower(strings.TrimSpace(url))
 	return strings.HasSuffix(u, ".mp4") || strings.HasSuffix(u, ".mov") || strings.HasSuffix(u, ".avi")
 }
 
-// isHLSURL checks if the URL points to an HLS playlist.
-func isHLSURL(url string) bool {
+// IsHLSURL checks if the URL points to an HLS playlist.
+func IsHLSURL(url string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(url)), ".m3u8")
 }
 

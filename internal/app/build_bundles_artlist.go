@@ -67,6 +67,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -228,6 +229,20 @@ func WireArtlist(
 	_ = (artlistPkg.Downloader)(artlistDownloader)
 	artlistStager := artlistPkg.NewArtlistStager(artlistDownloader)
 
+	// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): inject
+	// the Resolver into the media processor's ArtlistDownloader port
+	// so downloadStep routes Artlist clips through the canonical
+	// Resolver instead of the legacy downloadViaScraper method.
+	// The adapter is the SINGLE translation site between the
+	// processor's narrow ArtlistDownloader interface and the
+	// Resolver's Download(artlist.DownloadRequest) method.
+	if bundle.MediaProcessor != nil {
+		if mp, ok := bundle.MediaProcessor.(*mediaproc.Processor); ok {
+			mp.SetArtlistDownloader(&artlistProcessorDownloadAdapter{resolver: artlistDownloader})
+			log.Info("WireArtlist: ArtlistDownloader wired into media processor (Resolver bridge)")
+		}
+	}
+
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
@@ -328,6 +343,29 @@ func WireArtlist(
 		zap.Bool("godlike_06_ssot", true),
 	)
 	return &ArtlistWiring{Module: ad.Module, Service: ad.Service}, nil
+}
+
+// artlistProcessorDownloadAdapter bridges the processor's narrow
+// ArtlistDownloader interface to the canonical downloader.Resolver.
+// SINGLE translation site per godlike/06 SSOT.
+type artlistProcessorDownloadAdapter struct {
+	resolver *downloader.Resolver
+}
+
+func (a *artlistProcessorDownloadAdapter) DownloadArtlistClip(
+	ctx context.Context, sourceURL, clipPageURL, clipID, destDir, filename string,
+) (string, error) {
+	result, err := a.resolver.Download(ctx, artlistPkg.DownloadRequest{
+		SourceRef:     sourceURL,
+		ClipPageURL:   clipPageURL,
+		ClipID:        clipID,
+		DestinationID: destDir,
+		Filename:      filename,
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.LocalPath, nil
 }
 
 // validateArtlistScraperURL is the canonical fail-closed gate #5
