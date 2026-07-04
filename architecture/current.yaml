@@ -4429,7 +4429,62 @@ wave_status:
             (scripts/ci-architectural-checks.sh Check 5/53/54),
             tighten the ci-gate to fail-closed on the Go scanner,
             and promote `cmd/archcheck` from report-only to gate-promoted."
-          deadline: 2026-08-15
+- id: PR-ARCHCHECK-GO-MIGRATION-PHASE-2
+  owner_capability: scripts/ci-architectural-checks.sh + cmd/archcheck
+  status: pending
+  ship_date:
+  ship_sha:
+  deadline: 2026-08-15
+  forward_pointer:
+    phase_1: PR-ARCHCHECK-GO-MIGRATION-PHASE-1
+  description: |
+    Phase 2 of the archcheck Go-migration wave (deadline 2026-08-15):
+    retire the 3 shell checks (Check 5/53/54) that have Go scanner
+    equivalents, tighten the ci-gate to fail-closed on the Go scanner,
+    and promote `cmd/archcheck` from report-only to gate-promoted.
+
+    **Plan**: `architecture/action-plans/2026-07-04-archcheck-phase-2-action-plan.md`.
+
+    **CRITICAL implementation note** (flagged by `thinker-with-files-gemini`):
+    the 3 target checks are **inline procedural bash blocks** starting with
+    `echo "=== Check N: <title> ==="` and ending before the next check's
+    header — NOT `check_NN() { ... }` functions. The executor MUST match on
+    the SPECIFIC title fragment to avoid deleting the UNRELATED earlier
+    "Check 5" (forbid mutation primitives, ~line 395) or the historical-
+    comment "Check 54" reference (~line 3120).
+
+    **Steps** (godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT):
+    1. EXPAND: 3 grep-assert Go tests in `cmd/archcheck/scan/percheck_*_test.go`
+       that read `scripts/ci-architectural-checks.sh` and assert the canonical
+       header strings are strictly ABSENT — the forward-prevention seam that
+       locks the shell-retirement contract.
+    2. CUTOVER: hard-delete the 3 inline bash blocks. Per godlike/07
+       no-fake-availability: no shims, no deprecation records, no
+       pass-through wrappers.
+    3. BACKFILL: NO-OP — `make verify-main` already chains
+       `go run ./cmd/archcheck --strict` as the canonical fail-closed
+       surface. `cmd/archcheck/main.go` default `--strict false` is
+       PRESERVED (godlike/07 minimum-blast-radius: local `go run
+       ./cmd/archcheck` stays report-only for inspectability).
+    4. CONTRACT: 3-surface lockstep on the canonical 3 surfaces
+       (architecture/current.yaml + CHANGELOG.md + AGENTS.md).
+  linked_issues:
+    - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-2-EXPAND-TESTS
+      owner_capability: cmd/archcheck/scan
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-2-CUTOVER-DELETE
+      owner_capability: scripts/ci-architectural-checks.sh
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-2-BACKFILL-GATE
+      owner_capability: cmd/archcheck + Makefile
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-2-CONTRACT-LOCKSTEP
+      owner_capability: architecture + docs
+      status: pending
+      deadline: 2026-08-15
 
 - id: ARTLIST-PERSIST-FIX-2026-07-04
   owner_capability: internal/application/assets/providers/artlist
