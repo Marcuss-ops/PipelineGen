@@ -4240,7 +4240,7 @@ wave_status:
       owner_capability: internal/application/search
       status: shipped
       ship_date: 2026-07-04
-      ship_sha: TBD
+      ship_sha: ebdba8c899b183e72faa484e94833e678374514a
       deadline: 2026-08-22
       description: |
         Decompose internal/application/search/ports.go (674 LoC) into 6
