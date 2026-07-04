@@ -66,6 +66,18 @@ type ChannelMonitor struct {
 	// operator-visible misconfiguration rather than silently losing dedupe.
 	discoveries YoutubeDiscoveriesPort
 
+	// metrics (FASE 3.7 Commit 2, 2026-07-04) is the typed surface for
+	// emitting the channel-monitor Prometheus counters/histograms.
+	// Replaces the pre-Commit-2 direct `metrics.ChannelMonitor*` calls
+	// in analyzer.go + discovery.go so the monitor package has zero
+	// `internal/infrastructure/observability` imports. Composition wires
+	// the concrete *observability.ObservabilityMetricsRecorder via
+	// CompositionDeps.MetricsRecorder; nil-tolerant at the ctor: a
+	// missing wire installs NoopMetricsRecorder (matches the partial-
+	// deploy / test-fixture safety pattern of the other nil-port
+	// defaults in this ctor).
+	metrics MetricsRecorder
+
 	// policy is the per-instance MonitorRuntimePolicy (Commit A, P1 #10).
 	// Nil falls back to DefaultMonitorRuntimePolicy via policyOrDefault().
 	// Optional so existing tests that construct the struct by literal
@@ -140,6 +152,20 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// wires the concrete adapter; nil is safe for test fixtures and
 	// partial-deploy paths.
 
+	// FASE 3.7 Commit 2: MetricsRecorder nil-guard. A nil
+	// deps.MetricsRecorder installs NoopMetricsRecorder so analyzer +
+	// discovery call sites (m.metrics.IncVideosChecked etc.) never
+	// panic on a missing wire. Production composition always
+	// supplies *observability.ObservabilityMetricsRecorder; the no-op
+	// default exists ONLY for test-fixture paths that construct the
+	// monitor by bare CompositionDeps (without MetricsRecorder) —
+	// preserving the existing "struct-literal + bare ctor"
+	// patterns in monitor_scheduler_test.go / monitor_policy_test.go.
+	recorder := deps.MetricsRecorder
+	if recorder == nil {
+		recorder = NoopMetricsRecorder{}
+	}
+
 	return &ChannelMonitor{
 		cfg:         deps.Cfg,
 		channelsSvc: deps.ChannelsSvc,
@@ -150,6 +176,7 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 		analyzer:    deps.Analyzer,
 		enqueuer:    deps.Enqueuer,
 		discoveries: deps.Discoveries,
+		metrics:     recorder,
 		policy:      deps.Policy,
 
 		// globalSem width comes from the typed policy first (Commit A,

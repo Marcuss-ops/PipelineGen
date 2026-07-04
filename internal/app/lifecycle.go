@@ -21,6 +21,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -275,30 +276,52 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				DefaultCategory: "general",
 			})
 
-			channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
-				Cfg:         cfg,
-				ChannelsSvc: channelsSvc,
-				Log:         log,
-				// Ytdlp wires the concrete *downloader.YTDLPDownloader so
-				// monitor/discovery.go::discoverChannelVideos can call
-				// ListChannel per scheduler tick. Same instance is re-used in
-				// transcripts/YTDLPSubtitleAdapter for the subtitle
-				// subprocess, keeping a single downloader binary+cookies
-				// config across the two adapters.
-				Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
-				Transcript: ytdlpSubtitleAdapter,
-				Analyzer:   ollamaAnalyzer,
-				Enqueuer:   monitoradapter.NewExtractionIntentAdapter(root.Jobs.Service, channelsSvc, log),
-				// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): the per-video
-				// discovery ledger (TryReserve + MarkEnqueued + MarkRejected +
-				// MaxDiscoveredAt) is now wired from the canonical
-				// *assets.YoutubeDiscoveriesRepository. NewChannelMonitor
-				// panics on nil Discoveries when Cfg is wired (per the fail-
-				// fast guard added in scheduler.go alongside this commit),
-				// so a wiring gap surfaces at boot rather than at first
-				// scheduler tick.
-				Discoveries: assets.NewYoutubeDiscoveriesRepository(root.DB.DB),
-			})
+		channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
+			Cfg:         cfg,
+			ChannelsSvc: channelsSvc,
+			Log:         log,
+			// Ytdlp wires the concrete *downloader.YTDLPDownloader so
+			// monitor/discovery.go::discoverChannelVideos can call
+			// ListChannel per scheduler tick. Same instance is re-used in
+			// transcripts/YTDLPSubtitleAdapter for the subtitle
+			// subprocess, keeping a single downloader binary+cookies
+			// config across the two adapters.
+			Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
+			Transcript: ytdlpSubtitleAdapter,
+			Analyzer:   ollamaAnalyzer,
+			Enqueuer:   monitoradapter.NewExtractionIntentAdapter(root.Jobs.Service, channelsSvc, log),
+			// Commit 1/6 (PR-C-YouTube-Cutover, June 2026) — wiring CLOSED
+			// in Commit 2 (2026-07-04). The per-video discovery ledger
+			// (TryReserve + MarkEnqueued + MarkRejected + MaxDiscoveredAt)
+			// is wrapped in monitorDiscoveriesAdapter (struct-embeds
+			// *assets.YoutubeDiscoveriesRepository + overrides DrainPending
+			// / DrainDispatched + MarkEnqueued + MarkRejected + CommitEnqueue
+			// for translations: []assets.OutboxEntry → []monitor.OutboxEntry
+			// + assets.ErrStateConflict → monitor.ErrLedgerStateConflict
+			// multi-%w wrap). Without the adapter wrap the raw repo's
+			// DrainDispatched signature returns []assets.OutboxEntry which
+			// does NOT match monitor.YoutubeDiscoveriesPort's
+			// []monitor.OutboxEntry — vet surfaces this as a build error.
+			// NewChannelMonitor panics on nil Discoveries when Cfg is
+			// wired (per the fail-fast guard in monitor.go), so a wiring
+			// gap surfaces at boot rather than at first scheduler tick.
+			Discoveries: newMonitorDiscoveriesAdapter(assets.NewYoutubeDiscoveriesRepository(root.DB.DB)),
+			// FASE 3.7 Commit 2 (2026-07-04): wire the canonical
+			// *observability.ObservabilityMetricsRecorder so analyzer +
+			// discovery call sites (m.metrics.IncVideosChecked etc.)
+			// invoke the package-level Prometheus counters declared in
+			// internal/infrastructure/observability/metrics_workers.go
+			// WITHOUT a direct `internal/infrastructure/observability`
+			// import in the monitor package — the adapter is the
+			// composition-root bridge that keeps the layering
+			// (application → infra) intact.
+			MetricsRecorder: observability.NewObservabilityMetricsRecorder(
+				observability.ChannelMonitorVideosChecked,
+				observability.ChannelMonitorVideosWithSegments,
+				observability.ChannelMonitorSegmentsFound,
+				observability.ChannelMonitorSegmentsPerVideo,
+			),
+		})
 
 			// Channel monitor: optional background service.
 			cm := channelMon
@@ -1107,3 +1130,23 @@ func newUploadIntentsAdapter(repo *scripts.UploadIntentsRepository) voiceover.Up
 // inline adapter and the canonical port surface is a build-time
 // failure rather than a runtime panic.
 var _ voiceover.UploadIntentsRepository = (*uploadIntentsAdapter)(nil)
+
+// Compile-time assertion (FASE 3.7 Commit 2, 2026-07-04):
+// *observability.ObservabilityMetricsRecorder satisfies the
+// canonical monitor.MetricsRecorder port. The structural identity
+// between the observability-side adapter and the application-side
+// port is pinned HERE (and only here) because lifecycle.go imports
+// both monitor + observability without creating an import cycle —
+// the production-time pinning location. Drift between adapter
+// methods and port methods is a build-time failure at this line.
+//
+// (Alternative pin locations and why they're wrong:
+//   - metrics_adapter.go: production import of monitor from
+//     observability would create an infra→app circular import.
+//   - metrics_adapter_test.go: an earlier draft of the test file
+//     imported monitor for the assertion + tests, but pulled in
+//     the monitor → channels → assets → outbox → observability
+//     chain, creating a Go package cycle in TEST scope. The test
+//     file was simplified to drop the monitor import; the
+//     assertion lives here at the composition root instead.)
+var _ monitor.MetricsRecorder = (*observability.ObservabilityMetricsRecorder)(nil)
