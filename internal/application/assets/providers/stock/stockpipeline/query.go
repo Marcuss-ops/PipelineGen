@@ -58,10 +58,13 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 
 	s.log.Info("searching YouTube", zap.String("term", searchTerm), zap.Int("count", numVideos))
 
+	if s.channelLister == nil {
+		return nil, fmt.Errorf("resolveQuery: channelLister port is nil — must be wired at composition root (P4, July 2026)")
+	}
 	searchURL := fmt.Sprintf("ytsearch%d:%s", numVideos, searchTerm)
-	videos, err := s.ytdlp.ListChannel(ctx, searchURL, numVideos)
+	videos, err := s.channelLister.ListChannel(ctx, searchURL, numVideos)
 	if err != nil {
-		videos, err = s.ytdlp.ListChannel(ctx, query, numVideos)
+		videos, err = s.channelLister.ListChannel(ctx, query, numVideos)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list videos for query %q: %w", query, err)
 		}

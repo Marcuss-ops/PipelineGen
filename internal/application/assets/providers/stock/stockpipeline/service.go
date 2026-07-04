@@ -16,7 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -142,6 +142,14 @@ type stockChunkDispatcher interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, fileHash string) error
 }
 
+// P4 (July 2026): Narrow port for YouTube channel listing.
+// The concrete `*downloader.YTDLPDownloader` satisfies this interface
+// structurally; wiring happens at the composition root. The old
+// `s.ytdlp.ListChannel` direct call in query.go is RETIRED.
+type stockChannelLister interface {
+	ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
+}
+
 // Deps is the canonical constructor input for stockpipeline.Service
 // (PR-D, Wave 22 §D3, June 2026). Sized at 7 top-level fields — well
 // under the AGENTS.md 8-per-bundle cap. Sub-dependencies (StorageDeps
@@ -209,6 +217,14 @@ type Deps struct {
 	// SSOT — there is exactly ONE owner of "how does stock fetch its
 	// source bytes?" and it's the concrete injected here.
 	SourceStager acquisition.SourceStager
+
+	// ChannelLister is the YouTube channel listing port (P4, July 2026).
+	// OPTIONAL at ctor time (nil-tolerant per §F.1 governance) — the
+	// composition root (currently retired/stubbed) wires the concrete
+	// `*downloader.YTDLPDownloader` which satisfies stockChannelLister
+	// structurally. When nil, query.go's resolveQuery fails-closed with
+	// a typed nil-port error at the first search attempt.
+	ChannelLister stockChannelLister
 }
 
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
@@ -228,11 +244,15 @@ type Deps struct {
 // / SetJobsSvc / SetYoutubeService / SetClipIndexer / SetMetadataWriter)
 // were removed. Production wire-up lives in WireStockPipeline at
 // internal/app/module_sources.go (Deps{...} literal).
+//
+// P4 (July 2026): the ytdlp *downloader.YTDLPDownloader field is REMOVED.
+// Every yt-dlp call (ListChannel, formerly in query.go) now routes through
+// the stockChannelLister port. The concrete `*downloader.YTDLPDownloader`
+// satisfies this interface structurally.
 type Service struct {
 	cfg       *config.Config
 	log       *zap.Logger
 	publisher delivery.Publisher
-	ytdlp     *downloader.YTDLPDownloader
 	// cutter + renderer are the PR6 ports. Initialised at ctor time so
 	// every method sees either a non-nil port or an error from NewService;
 	// the per-site nil-guards the setters previously required are gone.
@@ -263,11 +283,13 @@ type Service struct {
 	// (Stock Cutover §12-4, July 2026). REQUIRED at ctor time — the
 	// None-checking ErrStockPipelineNilSourceStager gate surfaces
 	// composition-time wiring gaps before the first stock run hits
-	// the broker. The `ytdlp *downloader.YTDLPDownloader` field is
-	// RETIRED in §12-4: the Service no longer holds the
-	// downloader-handle directly; production concretes inject the
-	// bytes through acquisition.Prepare.
+	// the broker.
 	sourceStager acquisition.SourceStager
+	// channelLister is the YouTube channel listing port (P4, July 2026).
+	// The concrete `*downloader.YTDLPDownloader` satisfies stockChannelLister
+	// structurally. nil-tolerant at ctor time (wire-up deferred pending
+	// composition-root re-enablement).
+	channelLister stockChannelLister
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -351,7 +373,6 @@ func NewService(deps Deps) (*Service, error) {
 		cfg:       deps.Cfg,
 		log:       deps.Log,
 		publisher: deps.Publisher,
-		ytdlp:     downloader.NewYTDLP(deps.Cfg),
 		cutter:    deps.Media.Cutter,
 		renderer:  deps.Media.Renderer,
 		pcfg: PipelineConfig{
@@ -360,15 +381,16 @@ func NewService(deps Deps) (*Service, error) {
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-		jobsSvc:      deps.Jobs,
-		assetIndex:   deps.Storage.AssetIndex,
-		youtubeSvc:   deps.YouTube,
-		clipIndexer:  deps.Media.ClipIndexer,
-		metaWriter:   deps.Media.MetaWriter,
-		clipsRepo:    deps.Storage.ClipsRepo,
-		dispatcher:   deps.Storage.Dispatcher,
-		finalizer:    deps.Finalizer,
-		sourceStager: deps.SourceStager,
+		jobsSvc:       deps.Jobs,
+		assetIndex:    deps.Storage.AssetIndex,
+		youtubeSvc:    deps.YouTube,
+		clipIndexer:   deps.Media.ClipIndexer,
+		metaWriter:    deps.Media.MetaWriter,
+		clipsRepo:     deps.Storage.ClipsRepo,
+		dispatcher:    deps.Storage.Dispatcher,
+		finalizer:     deps.Finalizer,
+		sourceStager:  deps.SourceStager,
+		channelLister: deps.ChannelLister,
 	}, nil
 }
 
