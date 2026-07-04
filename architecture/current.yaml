@@ -5415,6 +5415,105 @@ wave_status:
       deadline: 2026-08-01
 
 
+
+
+# ── QDRANT-PREFLIGHT-EXECUTION-2026-07-04 ── Operator Pre-flight Checklist execution plan (July 2026) ──
+# Per user-selected recovery path (2026-07-04): bring up the ephemeral
+# docker-compose.test-qdrant.yml stack + execute Tests 1+2 (health + schema
+# v3) on the test stack. Tests 3-11 BLOCKED on full-stack + seeded data +
+# active outbox consumer. Phase 1B (full docker-compose up + seed) is a
+# forward-pointer for `PR-QDRANT-FULL-STACK-BRINGUP` + `PR-QDRANT-PREFLIGHT-DATA-SEED`.
+#
+# Action plan narrative: `architecture/action-plans/2026-07-04-qdrant-preflight-execution.md`
+# (this entry is the canonical wave-tracker anchor per godlike/06 SSOT).
+#
+# godlike/07 honest scope-lock: Test 9 (Qdrant down retry recovery) is SRE-only,
+# Test 10 (delete tombstone) is destructive, Test 11 (voiceover → Qdrant) is
+# long-tail — each has dedicated forward-pointer slots below.
+- id: QDRANT-PREFLIGHT-EXECUTION-2026-07-04
+  owner_capability: SRE / architecture
+  status: pending
+  exit_signal: false
+  deadline: 2026-08-01
+  description: |
+    Operator Pre-flight Checklist execution plan for QDRANT-CHAIN-VERIFY-2026-07-04
+    §4 (the 11 SQL/curl sanity probes against the live stack). Pre-diagnosis
+    on 2026-07-04: live stack fully DOWN (HTTP :8080 connection refused,
+    Qdrant :6333 connection refused, data/media/media.db.sqlite MISSING,
+    no PipelineGen process). User-selected recovery path A: bring up
+    docker-compose.test-qdrant.yml (ephemeral Qdrant test stack on port
+    :16333) + run Test 1 (health) + Test 2 (schema v3) on the test stack;
+    Tests 3-11 BLOCKED on full-stack + seeded data. Phase 1B (full
+    docker-compose up + seed) is forward-pointer PR-QDRANT-FULL-STACK-BRINGUP
+    + PR-QDRANT-PREFLIGHT-DATA-SEED.
+  linked_issues:
+    # Phase 1A (test stack bring-up + Tests 1+2, deadline 2026-07-15)
+    - id: PR-QDRANT-TEST-QDRANT-STARTUP
+      owner_capability: SRE
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-QDRANT-PREFLIGHT-TEST-1
+      owner_capability: SRE
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-QDRANT-PREFLIGHT-TEST-2
+      owner_capability: SRE / qdrant
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-QDRANT-PREFLIGHT-SCHEMA-V3-CREATE
+      owner_capability: SRE / qdrant-configservice
+      status: pending
+      deadline: 2026-07-25
+    # Phase 1B (full stack bring-up + Tests 3-11, deadline 2026-07-25 .. 2026-08-01)
+    - id: PR-QDRANT-FULL-STACK-BRINGUP
+      owner_capability: SRE
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-PREFLIGHT-DATA-SEED
+      owner_capability: scripts + SRE
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-PREFLIGHT-TEST-3-OUTBOX-CREATE
+      owner_capability: SRE / outbox
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-PREFLIGHT-TEST-4-OUTBOX-COMPLETE
+      owner_capability: SRE / outbox
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-PREFLIGHT-TEST-5-MEDIA-INDEXED
+      owner_capability: SRE / assets
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-6-QDRANT-SCROLL
+      owner_capability: SRE / qdrant
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-7-HYBRID-SEARCH
+      owner_capability: SRE / search
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-8-SUPERSEDE
+      owner_capability: SRE / outbox
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-9-RETRY-RECOVERY
+      owner_capability: SRE / chaos-engineering
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-10-DELETE-TOMBSTONE
+      owner_capability: SRE / asset-deletion
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-11-VOICEOVER
+      owner_capability: SRE / voiceover
+      status: pending
+      deadline: 2026-08-01
+    # Closure (wave-tracker flip to done / exit_signal: true)
+    - id: PR-QDRANT-PREFLIGHT-CLOSURE
+      owner_capability: SRE / architecture
+      status: pending
+      deadline: 2026-08-01
 - id: PR-VO-COMPLETEPATH-FIX
   status: shipped
   ship_sha: db2f3b1e
