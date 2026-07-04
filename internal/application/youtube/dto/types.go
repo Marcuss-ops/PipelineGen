@@ -271,24 +271,11 @@ type ClipAssetCoordinates struct {
 	Duration int
 }
 
-// ClipMetadata is the canonical rich-metadata struct the use case
-// builds before calling the writer. Commit 2 ships the typed shape
-// (summary/topics/speakers/mentioned_people/transcript_path/
-// source_url/normalized_group per the verdict's P1 #15 + #16
-// canonical list). The full metadata enrichment (Ollama-backed
-// builder) is Commit 4 scope; Commit 2 stamps the values the
-// use case already has access to (segment-level input, drive
-// folder path, video URL, normaliser) and leaves the Ollama
-// fallback for the next wave.
-type ClipMetadata struct {
-	Summary         string
-	Topics          []string
-	Speakers        []string
-	MentionedPeople []string
-	TranscriptPath  string
-	SourceURL       string
-	NormalizedGroup string
-}
+// ClipMetadata is a zero-copy type alias for CanonicalClipMetadata.
+// CLIPS-META-2026-07-04 (Azione 1): the canonical metadata output type
+// is now CanonicalClipMetadata. ClipMetadata exists only for backward
+// compatibility with ClipAsset embedding.
+type ClipMetadata = CanonicalClipMetadata
 
 // ClipAsset is the canonical, strongly-typed internal domain entity
 // the use case passes to the ClipAtomicWriter. The verdict's P1 #6
