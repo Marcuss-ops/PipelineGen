@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
 )
 
@@ -172,11 +171,16 @@ func TestRecordCheckOutcome_PropagatesLeaseOwnerAsLeaseToken(t *testing.T) {
 // ListChannelVideos. Drives the P1 #9 safeCheckChannel test path.
 // Commit 3/6 (PR-4 DateAfter): surface switched from ListChannel
 // (3-arg) to ListChannelVideos (1-arg struct).
+//
+// FASE 3.7 Commit 1b (2026-07-04): the request type switched from
+// `downloader.ListChannelVideosRequest` (infra) to the
+// monitor-owned `ListChannelVideosQuery` (declared in types_dto.go).
+// No `internal/infrastructure` import remains in this file.
 type panicLister struct {
 	panicValue any
 }
 
-func (p *panicLister) ListChannelVideos(_ context.Context, _ downloader.ListChannelVideosRequest) ([]VideoInfo, error) {
+func (p *panicLister) ListChannelVideos(_ context.Context, _ ListChannelVideosQuery) ([]VideoInfo, error) {
 	panic(p.panicValue)
 }
 

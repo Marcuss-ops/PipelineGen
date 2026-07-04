@@ -30,9 +30,9 @@ package monitor
 // callers consume canonical port names; infra is injected via the
 // composition root).
 import (
+	"errors"
+	"fmt"
 	"time"
-
-	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ListChannelVideosQuery is the monitor-owned projection of a
@@ -68,37 +68,85 @@ type OutboxEntry struct {
 	NextRetryAt    string `json:"next_retry_at,omitempty"`
 }
 
-// ErrLedgerStateConflict is a thin alias for the canonical
-// assetsdb.ErrStateConflict (the SSOT owner of the youtube_discoveries
-// ledger state-precondition failure fact) per godlike/06 SSOT (one
-// canonical owner per fact). The infra-side repository methods
-// (MarkEnqueued, MarkRejected) return this sentinel directly when
-// the underlying SQLite row exists but its state does not match the
-// expected source state(s).
+// ErrLedgerStateConflict is the canonical monitor-side sentinel for
+// the youtube_discoveries ledger state-precondition failure fact.
+// Per godlike/06 SSOT (one canonical owner per fact) + godlike/07
+// no-fake-availability, the monitor package owns this sentinel as
+// a fresh `*errors.errorString` value — the application layer is
+// the authoritative source of "what outcome means for the
+// application", and the database layer is the authoritative source
+// of "what SQL actually returned an error".
 //
-// Production callers in the monitor package pattern-match via
-// `errors.Is(err, monitor.ErrLedgerStateConflict)` — this comparison
-// is byte-equivalent to `errors.Is(err, assetsdb.ErrStateConflict)`
-// because both names point at the SAME `*errors.errorString` value
-// (Go sentinel semantics: `errors.Is` compares the pointer chain).
-// The thin re-export eliminates the pre-fix dual-sentinel split
-// (commit 60a61808 declared monitor.ErrLedgerStateConflict as a
-// distinct sentinel value from sqlassets.ErrStateConflict; callers
-// relied on the canonical `fmt.Errorf("...: %w",` wrap chain to bridge
-// the two — a brittle pattern that any unwrap error path silently
-// invalidates). PR-MONITOR-DUAL-SENTINEL-FIX (2026-07-04) collapsed
-// the two sentinels into one with this thin-alias shape; godlike/07
-// no-fake-availability is restored.
+// The infra-side repository method (`assets.MarkEnqueued` etc.)
+// returns `assets.ErrStateConflict` for the same SQL transition
+// failure. Production callers in the monitor package pattern-match
+// via `errors.Is(err, monitor.ErrLedgerStateConflict)` — this
+// resolves to true ONLY after the composition-root adapter
+// (`internal/app/lifecycle.go::monitorDiscoveriesAdapter`) translates
+// `assets.ErrStateConflict` → `monitor.ErrLedgerStateConflict` via
+// `fmt.Errorf("%w: %w", monitor.ErrLedgerStateConflict, err)` (multi-%w
+// wrap chain — Go 1.20+). The adapter is the canonical Hexagonal
+// bridge between infra (SQLite layout detail) and app (canonical
+// application outcome).
 //
-// The other typed sentinels returned by the same repository methods
-// (ErrNotFound = row missing; ErrAlreadyApplied = transition was
-// already applied in a prior call) remain assetsdb-owned and are not
-// re-exported here — monitor callers that need them should import
-// assetsdb directly (they are not yet consumed by monitor code, so
-// no canonical monitor-package re-export is required). Future
-// re-exports MUST be added when a monitor-side caller needs them,
-// to keep the SSOT chain enforced.
-var ErrLedgerStateConflict = assetsdb.ErrStateConflict
+// FASE 3.7 Commit 1b (2026-07-04) replaces the previous pre-fix
+// bridge (commit 60a61808 declared monitor.ErrLedgerStateConflict
+// as a distinct sentinel value from sqlassets.ErrStateConflict;
+// callers relied on a fragile `fmt.Errorf("...: %w",)` wrap chain
+// to bridge the two — any unwrap error path silently invalidated
+// the comparison) and the intermediate thin-alias shape (parallel
+// agent commit `052a3bd7` collapsed to `var ErrLedgerStateConflict =
+// assetsdb.ErrStateConflict` — which created a Go package cycle
+// because infra also needed to import monitor for the new
+// `[]monitor.OutboxEntry` return type).
+//
+// The adapter pattern resolves the cycle without inverting the
+// layering: monitor owns canonical sentinel locally (no infra import
+// in this file), infra owns `assets.ErrStateConflict` locally (no
+// monitor import), and the only place BOTH come together is the
+// composition root where the adapter translates between them. This
+// mirrors the existing `monitorYtdlpAdapter` precedent
+// (lifecycle.go) for the down-loader surface — same composition-
+// root adapter pattern, constrained to a single structural layer.
+//
+// The other typed sentinels returned by the same repository
+// methods (`ErrNotFound` = row missing; `ErrAlreadyApplied` =
+// transition already applied in a prior call) remain
+// assets-owned and are not re-exported here. Monitor callers that
+// need them add thin-alias sentinels below + a mapDiscoveriesErr
+// case in lifecycle.go (mirroring the canonical pattern). Future
+// extensions MUST preserve the adapter-only bridge so the monitor
+// package's zero-infra-import contract stays intact.
+var ErrLedgerStateConflict = errors.New("monitor: youtube_discoveries ledger state conflict — row state does not match expected source state")
+
+// TranslateLedgerSentinel wraps an infra-side state-precondition error
+// with `ErrLedgerStateConflict` while preserving the original error
+// chain via Go 1.20+ multi-%w formatting. The composition-root adapter
+// in `internal/app/lifecycle.go::monitorDiscoveriesAdapter` (see
+// `mapDiscoveriesErr` there) calls this helper when the input error's
+// chain contains `assets.ErrStateConflict`; this helper itself does
+// NOT detect the infra sentinel — it only does the wrap so the
+// adapter's `errors.Is(err, assets.ErrStateConflict)` gate decides
+// whether to translate.
+//
+// nil → nil (canonical pass-through).
+// non-nil → `fmt.Errorf("%w: %w", ErrLedgerStateConflict, err)` so
+// the resulting chain contains BOTH `ErrLedgerStateConflict` and
+// whatever the original chain contained (e.g. `assets.ErrStateConflict`,
+// plus any additional message text from the infra SQL layer).
+//
+// Exporting this helper from the monitor package keeps the
+// composition-root adapter trivial (single `errors.Is` check +
+// delegate to this helper) AND keeps the wrap semantics unit-
+// testable from the monitor package without an infra import
+// (test fixtures wrap a manually-constructed error and assert
+// both sentinels resolve through the chain).
+func TranslateLedgerSentinel(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", ErrLedgerStateConflict, err)
+}
 
 // defaultNowFn is the lazy default clock used by DateAfterFromCursor
 // when the caller passes nil for the now parameter. Production

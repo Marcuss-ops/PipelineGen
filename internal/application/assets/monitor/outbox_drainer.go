@@ -14,6 +14,14 @@
 // handles the actual broker emission asynchronously. On failure,
 // the outbox entry is marked failed so the operator's dashboard
 // can surface undelivered entries.
+//
+// FASE 3.7 Commit 1b (2026-07-04): dispatchOutboxEntry's parameter
+// is `monitor.OutboxEntry` (was `assetsdb.OutboxEntry`) — the
+// composition-root adapter in
+// `internal/app/lifecycle.go::monitorDiscoveriesAdapter` translates
+// the infra-row projection into the monitor canonical projection so
+// this file NEVER imports `internal/infrastructure/*`. Zero infra
+// import in this file.
 package monitor
 
 import (
@@ -23,8 +31,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-
-	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // startOutboxDrainer is the background goroutine that drains pending
@@ -94,7 +100,7 @@ func (m *ChannelMonitor) drainOutboxOnce(ctx context.Context) {
 // dispatchOutboxEntry deserializes the outbox payload and emits a
 // durable job via the JobEnqueuer port. On success, marks the outbox
 // entry as dispatched; on failure, marks it as failed.
-func (m *ChannelMonitor) dispatchOutboxEntry(ctx context.Context, entry assetsdb.OutboxEntry) {
+func (m *ChannelMonitor) dispatchOutboxEntry(ctx context.Context, entry OutboxEntry) {
 	if m.enqueuer == nil {
 		m.log.Warn("outbox drainer: enqueuer port not wired, cannot dispatch entry",
 			zap.Int64("outbox_id", entry.ID),

@@ -9,7 +9,6 @@ import (
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"go.uber.org/zap"
 )
 
@@ -93,10 +92,10 @@ func (s *stubDiscoveriesForEnqueue) CommitEnqueueOutbox(_ context.Context, disco
 	}
 	return nil
 }
-func (s *stubDiscoveriesForEnqueue) DrainPendingOutbox(_ context.Context, _ int, _, _ string) ([]assetsdb.OutboxEntry, error) {
+func (s *stubDiscoveriesForEnqueue) DrainPendingOutbox(_ context.Context, _ int, _, _ string) ([]OutboxEntry, error) {
 	return nil, nil
 }
-func (s *stubDiscoveriesForEnqueue) DrainDispatched(_ context.Context, _ int, _, _ string) ([]assetsdb.OutboxEntry, error) {
+func (s *stubDiscoveriesForEnqueue) DrainDispatched(_ context.Context, _ int, _, _ string) ([]OutboxEntry, error) {
 	return nil, nil
 }
 func (s *stubDiscoveriesForEnqueue) MarkOutboxDispatched(_ context.Context, _ int64, _ string) error {

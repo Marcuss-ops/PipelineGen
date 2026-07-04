@@ -757,25 +757,42 @@ func (a *outboxMonitorAdapter) ListPending(ctx context.Context) ([]outbox.EventD
 // monitorYtdlpAdapter wraps *downloader.YTDLPDownloader (the infra
 // DTO producer) so the channel-monitor's typed port
 // `monitor.MonitorDownloaderPort` (the domain DTO consumer) is
-// satisfied. The only mismatch is the return-slice element type:
-//   - downloader.VideoInfo  (infra DTO, includes downloader-internal fields)
-//   - monitor.VideoInfo     (domain DTO, the monitor's canonical projection)
+// satisfied. The mismatches are:
+//   - request shape:  `downloader.ListChannelVideosRequest` (infra)
+//                     → `monitor.ListChannelVideosQuery` (domain)
+//   - return slice:   `[]downloader.VideoInfo` → `[]monitor.VideoInfo`
 //
-// Field names are stable; the wrapper maps ID + Title + Views +
-// Duration verbatim. New infra fields are dropped on the floor —
-// intentional: the monitor port surface is the canonical SSOT for
-// "what the channel-monitor needs from the yt-dlp layer".
+// FASE 3.7 Commit 1b (2026-07-04): the request-shape translation is
+// added because `monitor.MonitorDownloaderPort.ListChannelVideos`
+// was migrated to `monitor.ListChannelVideosQuery` to drop the
+// downloader import from `internal/application/assets/monitor/
+// ports_downloader.go` (and the call sites in monitor/discovery.go).
+// The composition root is the canonical bridge between the two
+// request shapes — no monitor-side caller now needs to import
+// `internal/infrastructure/downloader`.
+//
+// Field-level projection for the response is unchanged from the
+// pre-FASE-3.7 shape: ID + Title + Views + Duration forwarded
+// verbatim. New infra fields are dropped on the floor — intentional:
+// the monitor port surface is the canonical SSOT for "what the
+// channel-monitor needs from the yt-dlp layer", and the channel-
+// monitor port determines which fields are surfaced.
 type monitorYtdlpAdapter struct {
 	inner *downloader.YTDLPDownloader
 }
 
 // ListChannelVideos satisfies monitor.MonitorDownloaderPort. The
-// request shape (downloader.ListChannelVideosRequest) is
-// structurally identical across infra / domain so it is passed
-// through verbatim.
-func (a *monitorYtdlpAdapter) ListChannelVideos(ctx context.Context, req downloader.ListChannelVideosRequest) ([]monitor.VideoInfo, error) {
+// request shape is translated verbatim (struct field names are
+// stable across both infra / domain shapes); the response-slice
+// element is projected field-by-field as before.
+func (a *monitorYtdlpAdapter) ListChannelVideos(ctx context.Context, query monitor.ListChannelVideosQuery) ([]monitor.VideoInfo, error) {
 	if a == nil || a.inner == nil {
 		return nil, nil
+	}
+	req := downloader.ListChannelVideosRequest{
+		ChannelURL:  query.ChannelURL,
+		DateAfter:   query.DateAfter,
+		PlaylistEnd: query.PlaylistEnd,
 	}
 	rawList, err := a.inner.ListChannelVideos(ctx, req)
 	if err != nil {
@@ -816,6 +833,205 @@ func newMonitorYtdlpAdapter(ytdlp *downloader.YTDLPDownloader) monitor.MonitorDo
 // inline adapter and the canonical port surface is a build-time
 // failure rather than a runtime panic.
 var _ monitor.MonitorDownloaderPort = (*monitorYtdlpAdapter)(nil)
+
+// monitorDiscoveriesAdapter wraps *assets.YoutubeDiscoveriesRepository
+// (the infra-side ledger DB producer) so the channel-monitor's typed
+// port `monitor.YoutubeDiscoveriesPort` (the domain DTO / sentinel
+// consumer) is satisfied.
+//
+// FASE 3.7 Commit 1b (2026-07-04): the mismatch is two-fold:
+//   - Return slice (DrainPendingOutbox/DrainDispatched): infra returns
+//     `[]assets.OutboxEntry` (the row-as-scanned shape from
+//     `monitor_enqueue_outbox`); the monitor port expects
+//     `[]monitor.OutboxEntry` (the monitor-canonical projection
+//     declared in `internal/application/assets/monitor/types_dto.go`).
+//   - Sentinel error (`MarkEnqueued` / `MarkRejected` /
+//     `CommitEnqueueOutbox`): infra wraps `assets.ErrStateConflict`
+//     (the infra-side state-precondition sentinel from
+//     `youtube_discoveries_repository.go`); the monitor port's
+//     callers pattern-match against `monitor.ErrLedgerStateConflict`
+//     (the canonical application-layer sentinel).
+//
+// Per godlike/06 (one owner per fact) + godlike/07 (no-fake-
+// availability) + the FASE 3.7 commitment (zero infra imports in
+// `internal/application/assets/monitor/`), the canonical resolution
+// is the composition-root adapter pattern: monitor owns canonical
+// sentinels + DTOs locally; infra owns its own sentinels + row
+// shapes; the ONLY point where both come together is the composition
+// root where this adapter translates between them. This mirrors the
+// `monitorYtdlpAdapter` precedent above for the downloader surface.
+//
+// Struct embedding (`*assets.YoutubeDiscoveriesRepository`) is used
+// for methods that do NOT require translation (TryReserve,
+// MaxDiscoveredAt, MarkOutboxDispatched, MarkOutboxFailed, and the
+// outbox-pass-through case of CommitEnqueueOutbox — none of those
+// return types or sentinels need re-mapping). Methods that DO require
+// translation (DrainPendingOutbox, DrainDispatched, MarkEnqueued,
+// MarkRejected) override the embedded methods explicitly. The
+// compile-time assertion at the bottom of this block pins the
+// port-surface coverage.
+type monitorDiscoveriesAdapter struct {
+	*assets.YoutubeDiscoveriesRepository
+}
+
+// DrainPendingOutbox translates `[]assets.OutboxEntry` →
+// `[]monitor.OutboxEntry` (struct fields are stable: ID,
+// DiscoveryID, IdempotencyKey, PayloadJSON, State, RetryCount,
+// NextRetryAt — element-wise copy preserves order).
+func (a *monitorDiscoveriesAdapter) DrainPendingOutbox(ctx context.Context, limit int, leaseID, leaseUntil string) ([]monitor.OutboxEntry, error) {
+	if a == nil || a.YoutubeDiscoveriesRepository == nil {
+		return nil, nil
+	}
+	rows, err := a.YoutubeDiscoveriesRepository.DrainPendingOutbox(ctx, limit, leaseID, leaseUntil)
+	if err != nil {
+		return nil, mapDiscoveriesErr(err)
+	}
+	out := make([]monitor.OutboxEntry, len(rows))
+	for i, e := range rows {
+		out[i] = monitor.OutboxEntry{
+			ID:             e.ID,
+			DiscoveryID:    e.DiscoveryID,
+			IdempotencyKey: e.IdempotencyKey,
+			PayloadJSON:    e.PayloadJSON,
+			State:          e.State,
+			RetryCount:     e.RetryCount,
+			NextRetryAt:    e.NextRetryAt,
+		}
+	}
+	return out, nil
+}
+
+// DrainDispatched translates `[]assets.OutboxEntry` →
+// `[]monitor.OutboxEntry` (same element-wise copy as
+// DrainPendingOutbox — both paths read the same `monitor_enqueue_outbox`
+// row shape).
+func (a *monitorDiscoveriesAdapter) DrainDispatched(ctx context.Context, limit int, leaseID, leaseUntil string) ([]monitor.OutboxEntry, error) {
+	if a == nil || a.YoutubeDiscoveriesRepository == nil {
+		return nil, nil
+	}
+	rows, err := a.YoutubeDiscoveriesRepository.DrainDispatched(ctx, limit, leaseID, leaseUntil)
+	if err != nil {
+		return nil, mapDiscoveriesErr(err)
+	}
+	out := make([]monitor.OutboxEntry, len(rows))
+	for i, e := range rows {
+		out[i] = monitor.OutboxEntry{
+			ID:             e.ID,
+			DiscoveryID:    e.DiscoveryID,
+			IdempotencyKey: e.IdempotencyKey,
+			PayloadJSON:    e.PayloadJSON,
+			State:          e.State,
+			RetryCount:     e.RetryCount,
+			NextRetryAt:    e.NextRetryAt,
+		}
+	}
+	return out, nil
+}
+
+// MarkEnqueued translates `assets.ErrStateConflict` →
+// `monitor.ErrLedgerStateConflict` (multi-%w wrap chain — Go 1.20+).
+// The original error's message is preserved as context so a
+// downstream operator inspecting the error chain still sees the
+// full message (e.g. "MarkEnqueued expected state IN
+// ('pending','analyzing'), got 'rejected_terminal' for id=abc").
+//
+// The new structure is:
+//
+//	errors.Is(err, monitor.ErrLedgerStateConflict) == true
+//	          (monitor-side pattern-match resolves correctly)
+//
+// AND for any future caller that wants to test BOTH the infra and
+// monitor sentinels (e.g. a sub-packaged diagnostic tool), the
+// original wrap chain is preserved via the second %w:
+//
+//	errors.Is(err, assets.ErrStateConflict) == true
+//	          (infra-side SSOT still reachable through the chain)
+func (a *monitorDiscoveriesAdapter) MarkEnqueued(ctx context.Context, id, enqueuedAt string) error {
+	if a == nil || a.YoutubeDiscoveriesRepository == nil {
+		return nil
+	}
+	return mapDiscoveriesErr(a.YoutubeDiscoveriesRepository.MarkEnqueued(ctx, id, enqueuedAt))
+}
+
+// MarkRejected translates `assets.ErrStateConflict` →
+// `monitor.ErrLedgerStateConflict` (same multi-%w wrap shape as
+// MarkEnqueued above).
+func (a *monitorDiscoveriesAdapter) MarkRejected(ctx context.Context, id, rejectionReason string, retryable bool) error {
+	if a == nil || a.YoutubeDiscoveriesRepository == nil {
+		return nil
+	}
+	return mapDiscoveriesErr(a.YoutubeDiscoveriesRepository.MarkRejected(ctx, id, rejectionReason, retryable))
+}
+
+// CommitEnqueueOutbox translates `assets.ErrStateConflict` and
+// `monitor_outbox.ErrDuplicateOutboxKey` (the latter is infra-side
+// idempotency sentinel, not yet re-exported in monitor — the
+// adapter just passes the error through with the SSOT wrap). The
+// commit method is the only place that wraps both state-conflict
+// errors AND duplicate-key errors, so the multi-%w chain handles
+// both infra sentinels uniformly. Duplicate-key errors do NOT
+// match `monitor.ErrLedgerStateConflict` (they are not state
+// preconditions), so callers continue to treat them as
+// idem­potent and not as terminal failures.
+func (a *monitorDiscoveriesAdapter) CommitEnqueueOutbox(ctx context.Context, discoveryID, enqueuedAt, idempotencyKey, payloadJSON string) error {
+	if a == nil || a.YoutubeDiscoveriesRepository == nil {
+		return nil
+	}
+	return mapDiscoveriesErr(a.YoutubeDiscoveriesRepository.CommitEnqueueOutbox(ctx, discoveryID, enqueuedAt, idempotencyKey, payloadJSON))
+}
+
+// mapDiscoveriesErr is the canonical sentinel-translator between
+// the infra-side `assets.ErrStateConflict` (the SQLite-row
+// state-precondition failure SSOT in
+// `internal/infrastructure/database/sqlite/assets`) and the
+// monitor-side `monitor.ErrLedgerStateConflict` (the
+// application-layer canonical sentinel in
+// `internal/application/assets/monitor/types_dto.go`).
+//
+// nil → nil. errors.Is(err, assets.ErrStateConflict) → delegates
+// to `monitor.TranslateLedgerSentinel` (the public monitor-package
+// helper that does the actual multi-%w wrap). Any other error →
+// passed through unchanged (so transient SQLite I/O errors and
+// other non-state-conflict errors remain distinguishable in the
+// caller-supplied retry taxonomy).
+//
+// The split between "detect" (this function, knows about
+// assets.ErrStateConflict because only lifecycle.go has the infra
+// import per FASE 3.7) and "wrap" (monitor.TranslateLedgerSentinel,
+// knows nothing about infra, only the multi-%w semantic) keeps the
+// adapter trivial: gate + delegate. The wrap semantic itself is
+// unit-testable from the monitor package without any infra import.
+func mapDiscoveriesErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, assets.ErrStateConflict) {
+		return monitor.TranslateLedgerSentinel(err)
+	}
+	return err
+}
+
+// newMonitorDiscoveriesAdapter constructs the inline
+// assets→monitor bridge. The composition root is the canonical
+// caller; the adapter is private to this file so it cannot be
+// reused outside the lifecycle path. Returns a valid
+// monitor.YoutubeDiscoveriesPort even when repo is nil
+// (no-op: every method surfaces nil-or-empty so a missing wire
+// silently fails-soft in the same way the pre-adapter wiring
+// did). nil repo is NOT a panic — it matches the partial-deploy
+// safety pattern of the other composition-root adapters.
+func newMonitorDiscoveriesAdapter(repo *assets.YoutubeDiscoveriesRepository) monitor.YoutubeDiscoveriesPort {
+	if repo == nil {
+		return nil
+	}
+	return &monitorDiscoveriesAdapter{YoutubeDiscoveriesRepository: repo}
+}
+
+// Compile-time assertion: monitorDiscoveriesAdapter satisfies the
+// canonical monitor YoutubeDiscoveriesPort. Drift between the
+// inline adapter and the canonical port surface is a build-time
+// failure rather than a runtime panic.
+var _ monitor.YoutubeDiscoveriesPort = (*monitorDiscoveriesAdapter)(nil)
 
 // uploadIntentsAdapter wraps *scripts.UploadIntentsRepository so the
 // voiceover.OrphanSweeper's typed port
