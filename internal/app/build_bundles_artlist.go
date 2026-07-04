@@ -197,6 +197,23 @@ func WireArtlist(
 	assetVerRepo := assetSQLiteStore.VersionRepository()
 	assetLocRepo := assetSQLiteStore.LocationRepository()
 
+	// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory RunRepository
+	// wiring (godlike/07 fail-closed) via the composition-root
+	// adapter. NewArtlistRunsRepository is the canonical SOLE
+	// writer of artlist_runs rows; its absence makes /api/artlist/run
+	// return fake-success (the original bug). The concrete is
+	// constructed here and wrapped in the canonical
+	// artlistRunsRepoAdapter (internal/app/artlist_runs_adapter.go)
+	// which holds the SINGLE compile-time pin to
+	// artlist.RunRepository (mirrors the ClipsRepository precedent:
+	// no cycle, adapter in composition root).
+	artlistRunsRepo, err := assets.NewArtlistRunsRepository(bundle.DB.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("WireArtlist: NewArtlistRunsRepository: %w", err)
+	}
+	artlistRunsAdapter := NewArtlistRunsRepoAdapter(artlistRunsRepo)
+	_ = (artlistPkg.RunRepository)(artlistRunsAdapter) // compile-time pin surface
+
 	// Stager (SourceStager port, Step 9/12): wraps the Artlist Downloader
 	// so run_orchestrator_stages.go can use the canonical SourceStager
 	// contract instead of falling through to the legacy mediaProcessor
@@ -274,6 +291,14 @@ func WireArtlist(
 			}),
 			Stager:      artlistStager,
 			IsLiveProbe: isLiveProbe,
+			// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory
+			// RunRepository port wiring (godlike/07 fail-closed).
+			// The concrete in sqlite/assets/ is wrapped via the
+			// canonical artlistRunsRepoAdapter (composition-root,
+			// owns the import-cycle pin) so the ServicePorts field
+			// sees the canonical port type, not the infra-side
+			// local Record interface.
+			RunRepository: artlistRunsAdapter,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (10) — 10 DIRECT.

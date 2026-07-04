@@ -90,3 +90,29 @@ func (s *stubDispatcherForArtlist) EnqueueAndRestore(_ context.Context, _ string
 func (s *stubDispatcherForArtlist) EnqueueAndDelete(_ context.Context, _ string) error {
 	return nil
 }
+
+// stubRunRepoForArtlist is the test-only RunRepository adapter used by
+// artlist-package tests. PRODUCTION CODE MUST NOT USE THIS TYPE.
+//
+// PR-ARTLIST-PERSIST-FIX (2026-07-04): the godlike/07 fail-closed
+// gate in NewService rejects nil RunRepository at composition;
+// tests that don't exercise the artlist_runs aggregate write path
+// (most service-layer unit tests) need a no-op implementation to
+// satisfy NewService. The stub collapses every Record call to nil
+// — it does NOT verify the row was written; tests that exercise
+// the aggregate path should inject a more specific double (e.g.
+// an in-memory map-backed struct).
+type stubRunRepoForArtlist struct{}
+
+// Compile-time assertion: stubRunRepoForArtlist satisfies the
+// production-side RunRepository port. Drift in the port signature
+// surfaces as a build failure rather than a runtime panic.
+var _ RunRepository = (*stubRunRepoForArtlist)(nil)
+
+// Record is a no-op for tests that don't exercise the artlist_runs
+// aggregate write path. Production code goes through the SQLite-
+// backed ArtlistRunsRepository in
+// internal/infrastructure/database/sqlite/assets/artlist_runs_repository.go.
+func (s *stubRunRepoForArtlist) Record(_ context.Context, _ RunRecord) error {
+	return nil
+}

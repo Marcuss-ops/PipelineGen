@@ -87,8 +87,10 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:      artlistRepo,
-			Publisher:       &stubPublisherForArtlist{},
+			AssetStore: artlistRepo,
+			Publisher:  &stubPublisherForArtlist{},
+
+			RunRepository:   &stubRunRepoForArtlist{},
 			ScraperSearcher: scraperSearcher,
 			PixabaySearcher: pixabaySearcher,
 			PexelsSearcher:  pexelsSearcher,

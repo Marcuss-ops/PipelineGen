@@ -233,6 +233,46 @@ func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 // ResponseFromLegacyJob is removed — all callers now use domain *job.Job directly.
 // Kept as a compile-time reference for the diff; callers should use ResponseFromJob.
 
+// buildRunRecordFromResponse assembles a RunRecord from the worker-context
+// domain Job ID + the orchestrator's RunTagResponse. PR-ARTLIST-PERSIST-FIX
+// (2026-07-04): the canonical writer of artlist_runs aggregates.
+//
+// godlike/06 SSOT: this is the SINGLE construction site that maps a
+// (JOB ID + RunTagResponse) pair onto a RunRecord. Future field
+// additions to artlist_runs belong here AND in the adapter's
+// translation (internal/app/artlist_runs_adapter.go) AND in the
+// concrete's SQL column list (internal/infrastructure/database/sqlite/
+// assets/artlist_runs_repository.go) — three sites in lockstep
+// per the schema-reconciliation review of 2026-07-04.
+//
+// Schema reconciliation note: the RunRecord struct was simplified
+// to drop Strategy / DryRun / StartedAt / CompletedAt / LastError —
+// the artlist_runs migration does not have columns for those fields
+// (verified verbatim against migrations/sqlite/001_velox_core.sql:
+// 46-62). Status defaults to "completed" when OK, "failed" when
+// any error path triggers.
+func buildRunRecordFromResponse(jobID string, resp *RunTagResponse) RunRecord {
+	rec := RunRecord{
+		RunID:        jobID,
+		Term:         resp.Term,
+		RootFolderID: resp.RootFolderID,
+		TagFolderID:  resp.TagFolderID,
+		RequestedN:   resp.Requested,
+		FoundN:       resp.Found,
+		ProcessedN:   resp.Processed,
+		SkippedN:     resp.Skipped,
+		FailedN:      resp.Failed,
+	}
+	switch {
+	case resp.Error != "" || !resp.OK:
+		rec.Status = "failed"
+		rec.ErrorMessage = resp.Error
+	default:
+		rec.Status = "completed"
+	}
+	return rec
+}
+
 var jobCodec = &JobCodec{}
 
 // RegisterHandler registers HandleJob as the worker handler for media.artlist.
@@ -302,6 +342,31 @@ func (a *JobAdapter) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.J
 			"failed": resp.Failed,
 		})
 		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory artlist_runs
+	// aggregate write (godlike/07 no-fake-availability). Without this
+	// step the handler can return SUCCEEDED + processed=N + ran the
+	// orchestrator without ever writing a single row to artlist_runs
+	// (the original fake-success bug). s.runRepo is the canonical
+	// RunRepository port (PR-ARTLIST-PERSIST-FIX) — NewService
+	// guarantees non-nil at composition time. If Record fails the
+	// job is marked as failed so the operator sees a real error
+	// rather than a fake-success aggregate row.
+	if s.runRepo != nil && resp != nil {
+		runRecord := buildRunRecordFromResponse(j.ID, resp)
+		if err := s.runRepo.Record(ctx, runRecord); err != nil {
+			tools.Event("error", "artlist_runs aggregate write failed", map[string]any{
+				"run_id": j.ID,
+				"error":  err.Error(),
+			})
+			s.log.Error("artlist_runs aggregate write failed (godlike/07 no-fake-availability)",
+				zap.String("job_id", j.ID),
+				zap.String("term", resp.Term),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("artlist_runs.Record(run_id=%q): %w", j.ID, err)
+		}
 	}
 
 	tools.Event("completed", "artlist run completed", map[string]any{

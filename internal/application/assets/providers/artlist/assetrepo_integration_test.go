@@ -117,7 +117,7 @@ func TestArtlistPR12b_DispatcherRoutesWritesThroughRepo(t *testing.T) {
 	clip.SetDriveLink("https://drive.google.com/file/d/pr12b-artlist-001")
 
 	dispatcher := &stubDispatcherForArtlist{repo: clipsRepo}
-	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo}
+	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo, runRepo: &stubRunRepoForArtlist{}}
 	ss, sErr := NewSearchService(svc, dispatcher)
 	if sErr != nil {
 		t.Fatalf("NewSearchService: %v", sErr)
@@ -177,7 +177,7 @@ func TestArtlistPR12b_DispatcherRoutesWritesThroughRepo(t *testing.T) {
 func TestArtlistPR12b_DispatcherRequiresWiringAtConstruction(t *testing.T) {
 	_, clipsRepo, _ := setupArtlistPR12b(t)
 
-	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo}
+	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo, runRepo: &stubRunRepoForArtlist{}}
 	_, err := NewSearchService(svc, nil)
 	if err != ErrAssetMutationDispatcherUnavailable {
 		t.Fatalf("NewSearchService(nil dispatcher): want ErrAssetMutationDispatcherUnavailable, got %v", err)

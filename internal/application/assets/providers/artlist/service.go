@@ -61,6 +61,13 @@ type ServicePorts struct {
 	// unavailable (no panic — the WireArtlist 4 mandatory gates stay
 	// unchanged per godlike/07). Test fixtures may pass nil.
 	IsLiveProbe IsLiveProbe
+	// RunRepository is the canonical writer for the artlist_runs
+	// aggregate table (PR-ARTLIST-PERSIST-FIX, 2026-07-04). MANDATORY
+	// at composition: NewService rejects nil with
+	// ErrRunRepositoryUnavailable (fail-closed discipline; mirrors
+	// Publisher + Dispatcher). Production wires the SQLite-backed
+	// concrete from internal/infrastructure/database/sqlite/assets.
+	RunRepository RunRepository
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -208,6 +215,12 @@ type Service struct {
 	// unavailable — the WireArtlist 4 mandatory gates stay
 	// unchanged per godlike/07.
 	isLiveProbe IsLiveProbe
+
+	// runRepo is the canonical writer for artlist_runs aggregate
+	// stats (PR-ARTLIST-PERSIST-FIX, 2026-07-04). MANDATORY at
+	// composition: NewService rejects nil with
+	// ErrRunRepositoryUnavailable (fail-closed).
+	runRepo RunRepository
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
@@ -228,6 +241,16 @@ type Service struct {
 func NewService(deps ServiceDeps) (*Service, error) {
 	if deps.Publisher == nil {
 		return nil, ErrPublisherUnavailable
+	}
+	// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory RunRepository at
+	// composition per godlike/07 no-fake-availability. Without this
+	// gate, /api/artlist/run can return SUCCEEDED counts without ever
+	// writing a single row to artlist_runs (the original fake-success
+	// bug). The wire site in build_bundles_artlist.go MUST provide a
+	// non-nil concrete (sqlite-backed); test fixtures may pass a
+	// noopRunRepo implementation.
+	if deps.RunRepository == nil {
+		return nil, ErrRunRepositoryUnavailable
 	}
 	s := &Service{
 		cfg:               deps.Cfg,
@@ -250,6 +273,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		assetLocRepo:      deps.AssetLocRepo,
 		stager:            deps.Stager,
 		isLiveProbe:       deps.IsLiveProbe,
+		runRepo:           deps.RunRepository,
 	}
 
 	// Inizializza i componenti delegati

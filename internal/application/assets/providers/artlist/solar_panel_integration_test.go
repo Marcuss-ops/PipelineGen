@@ -150,7 +150,11 @@ func TestSolarPanelSearch(t *testing.T) {
 	// consolidation). ServiceDeps embeds ServicePorts + ServiceDependencies
 	// so flat construction via field promotion works for terse test fixtures.
 	svc, err := NewService(ServiceDeps{
-		ServicePorts:        ServicePorts{AssetStore: repo, Publisher: &stubPublisherForArtlist{}},
+		ServicePorts: ServicePorts{
+			AssetStore:    repo,
+			Publisher:     &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
+		},
 		ServiceDependencies: ServiceDependencies{Cfg: cfg, MainDB: db, Log: logger, Dispatcher: &stubDispatcherForArtlist{}},
 	})
 	require.NoError(t, err)

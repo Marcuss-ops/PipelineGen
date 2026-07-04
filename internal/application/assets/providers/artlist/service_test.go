@@ -120,6 +120,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
 			Publisher:  &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:        cfg,
@@ -151,6 +152,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
 			Publisher:  &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:        cfg,
@@ -430,6 +432,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
 			Publisher:  &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:            cfg,
@@ -513,6 +516,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
 			Publisher:  &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:            cfg,
@@ -602,6 +606,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
 			Publisher:  &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
 			Cfg:            cfg,

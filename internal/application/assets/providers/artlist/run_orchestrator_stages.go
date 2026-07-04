@@ -18,9 +18,9 @@ import (
 
 // clipWork pairs a RunTagItem with its processor input.
 type clipWork struct {
-	item            RunTagItem
-	processInput    *asset.ProcessInput
-	stagedAsset     *assets.StagedAsset // set when shared SourceStager pre-staged the source
+	item         RunTagItem
+	processInput *asset.ProcessInput
+	stagedAsset  *assets.StagedAsset // set when shared SourceStager pre-staged the source
 }
 
 // pipelineState holds mutable state accumulated across RunTag stages.
@@ -281,7 +281,13 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			arg.w.item.DriveLink = result.DriveLink
 			arg.w.item.DriveFileID = result.DriveFileID
 			arg.w.item.DownloadLink = result.DownloadLink
-			ps.resp.Processed++
+			// PR-ARTLIST-PERSIST-FIX (2026-07-04): ps.resp.Processed++ is
+			// intentionally moved out of stageProcessBatch. The counter is
+			// now the canonical "items actually persisted to media_assets"
+			// tally and is incremented in stagePersistResults AFTER a
+			// successful bridge.Dispatch. The pre-fix code incremented
+			// here BEFORE persist was attempted, producing fake-success
+			// when stagePersistResults could not write through.
 			ps.resp.Items = append(ps.resp.Items, arg.w.item)
 		})
 	}
@@ -293,8 +299,31 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 // stagePersistResults updates the DB records with pipeline results for each processed clip.
 // Routing goes through dispatchBridge so the canonical-vs-legacy decision
 // lives in one place. See dispatch_bridge.go for canonical semantics.
+//
+// PR-ARTLIST-PERSIST-FIX (2026-07-04): the prior implementation
+// silently no-op'd (`continue`) when the clip was absent in media_assets,
+// which was the source of the /api/artlist/run fake-success bug. The
+// fixed flow now:
+//  1. If the clip is in media_assets → hydrate it from item metadata
+//     (existing behaviour) and dispatch.
+//  2. If the clip is NOT in media_assets (the bug case) → build a new
+//     *asset.Asset from item metadata, hydrate it, and dispatch (the
+//     outbox dispatcher EnqueueAndIndex is upsert-safe, so this collapses
+//     to an INSERT-on-absent + INDEX-pair under the hood). The clip is
+//     no longer silently dropped.
+//  3. AFTER a successful bridge.Dispatch, increment resp.Processed —
+//     this is the canonical godlike/07 counter (items actually
+//     persisted to media_assets; the prior code incremented counter
+//     during stageProcessBatch BEFORE persist was verified, producing
+//     fake-success when stagePersistResults failed silently).
 func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
 	if o.svc.assetStore == nil {
+		return
+	}
+
+	bridge, err := o.svc.newDispatchBridge()
+	if err != nil {
+		o.svc.log.Warn("stagePersistResults: dispatcher not wired (cannot persist)", zap.Error(err))
 		return
 	}
 
@@ -308,30 +337,70 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 				zap.String("clip_id", item.ClipID), zap.Error(err))
 			continue
 		}
+		var clip *asset.Asset
 		if existingClip == nil {
-			o.svc.log.Debug("stagePersistResults: clip absent in DB",
+			// PR-ARTLIST-PERSIST-FIX (2026-07-04): bug fix #2 — when
+			// the clip is absent in media_assets, build it from the
+			// item metadata so the dispatch path is upsert-safe
+			// instead of silently no-op-dropping the persist.
+			clip = buildAssetFromRunTagItem(item)
+			o.svc.log.Info("stagePersistResults: clip absent in DB; creating new asset from item metadata",
 				zap.String("clip_id", item.ClipID))
-			continue
+		} else {
+			clip = existingClip
 		}
-		existingClip.SetLocalPath(item.LocalPath)
-		existingClip.SetDriveLink(item.DriveLink)
-		existingClip.SetDriveFileID(item.DriveFileID)
-		existingClip.SetFileHash(item.FileHash)
-		existingClip.SetDownloadLink(item.DownloadLink)
-		existingClip.SetMetadataString("status", "processed")
-		existingClip.LifecycleState = asset.StateActive
-		existingClip.Source = "artlist"
-		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
-		bridge, err := o.svc.newDispatchBridge()
-		if err != nil {
-			o.svc.log.Warn("stagePersistResults: dispatcher not wired", zap.Error(err))
-			continue
-		}
-		if err := bridge.Dispatch(ctx, existingClip, existingClip.FileHash()); err != nil {
+		clip.SetLocalPath(item.LocalPath)
+		clip.SetDriveLink(item.DriveLink)
+		clip.SetDriveFileID(item.DriveFileID)
+		clip.SetFileHash(item.FileHash)
+		clip.SetDownloadLink(item.DownloadLink)
+		clip.SetMetadataString("status", "processed")
+		clip.LifecycleState = asset.StateActive
+		clip.Source = "artlist"
+		clip.MediaType = "video" // ensure media_type is always set for Artlist clips
+		if err := bridge.Dispatch(ctx, clip, clip.FileHash()); err != nil {
 			o.svc.log.Warn("stagePersistResults: dispatch failed",
-				zap.String("clip_id", existingClip.ID), zap.Error(err))
+				zap.String("clip_id", clip.ID), zap.Error(err))
+			continue
 		}
+		// PR-ARTLIST-PERSIST-FIX (2026-07-04): increment Processed ONLY
+		// after a successful bridge.Dispatch — this is the canonical
+		// counter (items actually persisted via the outbox dispatcher).
+		// The pre-fix code incremented the counter in stageProcessBatch
+		// BEFORE persist was attempted, producing fake-success when
+		// stagePersistResults could not write through.
+		resp.Processed++
 	}
+}
+
+// buildAssetFromRunTagItem synthesises a minimal *asset.Asset from a
+// processed RunTagItem so the dispatch path can upsert a brand-new
+// clip (PR-ARTLIST-PERSIST-FIX bug fix #2).
+//
+// godlike/06 SSOT: this is the SINGLE construction site that maps a
+// RunTagItem onto an *asset.Asset for the dispatch path. Future
+// field additions belong here, not at the call site.
+//
+// godlike/07 no-fake-availability: the constructor sets the canonical
+// defaults (Source="artlist", MediaType="video", LifecycleState=
+// asset.StateActive) so the outbox dispatcher has enough context to
+// index the clip even when the caller omitted them.
+//
+// Asset has no public NewAsset() constructor (verified 2026-07-04 via
+// internal/domain/asset/asset_types.go) — direct struct literal
+// initialization is the canonical path. The typed SetDownloadLink
+// helper populates the metadata-derived field consistently with
+// stagePersistResults's pre-fix branch.
+func buildAssetFromRunTagItem(item RunTagItem) *asset.Asset {
+	clip := &asset.Asset{
+		ID:             item.ClipID,
+		Source:         "artlist",
+		Name:           item.Name,
+		MediaType:      "video",
+		LifecycleState: asset.StateActive,
+	}
+	clip.SetDownloadLink(item.DownloadLink)
+	return clip
 }
 
 // stageIndexAsync is a no-op. The canonical dispatcher (required) handles
