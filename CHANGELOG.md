@@ -2655,3 +2655,5 @@ The following 5 closure entries are the P2.4 closure pin (no new code surface; d
   - Verification: gofmt + vet + build + test PASS on `internal/infrastructure/database/sqlite/jobs`
   - Ship SHA: see `architecture/current.yaml#PHASE-9-BUG-REMEDIATION.linked_issues[JOBS-T01-001].ship_sha`
   - Cross-ref: `architecture/issues.yaml#JOBS-T01-SQLITE-REPO` flipped `status: pending → status: done`
+
+  - Canonical ship_sha: `ce1ed492` — matches AGENTS.md + architecture/current.yaml (godlike/06 SSOT 3-surface lockstep).
