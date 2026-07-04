@@ -56,11 +56,13 @@ func NewService(enqueuer ClipJobEnqueuer, log sourcing.Logger) *Service {
 // YouTubeRegistrar.Register loop with async ClipJobEnqueuer.EnqueueClip.
 // Each clip becomes one independent media.clip job; the handler returns
 // immediately with job_ids array so the caller can poll GET /api/jobs/:id.
-// Succeeded/Failed are set to 0 (unknown until jobs complete).
+// OK=false on every BatchClipResult (outcome unknown at enqueue time);
+// BatchRegisterResult.Enqueued counts jobs submitted, EnqueueFailed counts
+// per-clip enqueue errors.
 //
 // godlike/07 typed-error contract: per-clip enqueue failures are captured
 // in BatchClipResult.Error + empty JobID; batch-level failure (nil enqueuer)
-// returns OK:false + all-failed.
+// returns OK:false + all-enqueue-failed.
 func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.RegisterClipCommand) *sourcing.BatchRegisterResult {
 	if s == nil || s.enqueuer == nil {
 		results := make([]sourcing.BatchClipResult, len(commands))
@@ -69,16 +71,16 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 			results[i].Error = "batch enqueuer not wired (composition bug — wire ClipJobEnqueuer at composition time per PR-BATCH-REGISTER-ASYNC)"
 		}
 		return &sourcing.BatchRegisterResult{
-			OK:      false,
-			Total:   len(commands),
-			Failed:  len(commands),
-			Results: results,
+			OK:            false,
+			Total:         len(commands),
+			EnqueueFailed: len(commands),
+			Results:       results,
 		}
 	}
 
 	log := s.log
 	results := make([]sourcing.BatchClipResult, len(commands))
-	var succeeded, failed int
+	var enqueued, enqueueFailed int
 
 	log.Info("starting async batch registration", "service", "batch", "clips", len(commands))
 	for i, cmd := range commands {
@@ -88,7 +90,7 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 		if err != nil {
 			br.Error = fmt.Sprintf("enqueue: %v", err)
 			results[i] = br
-			failed++
+			enqueueFailed++
 			log.Info("batch clip enqueue failed",
 				"index", i+1,
 				"total", len(commands),
@@ -99,10 +101,9 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 			continue
 		}
 
-		br.OK = true
 		br.JobID = jobID
 		results[i] = br
-		succeeded++
+		enqueued++
 		log.Info("batch clip enqueued",
 			"index", i+1,
 			"total", len(commands),
@@ -111,12 +112,12 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 		)
 	}
 
-	log.Info("batch registration enqueued", "service", "batch", "succeeded", succeeded, "failed", failed)
+	log.Info("batch registration enqueued", "service", "batch", "enqueued", enqueued, "enqueueFailed", enqueueFailed)
 	return &sourcing.BatchRegisterResult{
-		OK:        true,
-		Total:     len(commands),
-		Succeeded: succeeded,
-		Failed:    failed,
-		Results:   results,
+		OK:            true,
+		Total:         len(commands),
+		Enqueued:      enqueued,
+		EnqueueFailed: enqueueFailed,
+		Results:       results,
 	}
 }

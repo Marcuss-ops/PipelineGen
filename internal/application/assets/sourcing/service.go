@@ -78,10 +78,10 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []RegisterClipCommand) *BatchRegisterResult {
 	if s == nil || s.batch == nil {
 		return &BatchRegisterResult{
-			OK:      false,
-			Total:   len(commands),
-			Failed:  len(commands),
-			Results: make([]BatchClipResult, len(commands)),
+			OK:            false,
+			Total:         len(commands),
+			EnqueueFailed: len(commands),
+			Results:       make([]BatchClipResult, len(commands)),
 		}
 	}
 	return s.batch.BatchRegister(ctx, commands)

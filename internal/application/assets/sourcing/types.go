@@ -15,18 +15,28 @@ import (
 // architecture/deprecations.yaml#PR-CrossPackage-IndexingStatus-§12-5.
 //
 // RegisterClipCommand is the input for registering a clip from a YouTube URL.
+//
+// PR-RICH-METADATA (July 2026): added Summary, Topics, Speakers, MentionedPeople,
+// Hook fields. These flow through json.Marshal/Unmarshal in the job payload
+// (clipJobEnqueuerAdapter → media.clip handler) and land in
+// ExistingClip → asset.Asset.Metadata → media_assets.metadata_json.
 type RegisterClipCommand struct {
-	URL         string
-	Name        string
-	Description string
-	Tags        []string
-	Source      string
-	Category    string
-	Group       string
-	FolderID    string
-	StartSec    float64
-	EndSec      float64
-	Force       bool
+	URL             string
+	Name            string
+	Description     string
+	Summary         string
+	Topics          []string
+	Speakers        []string
+	MentionedPeople []string
+	Hook            string
+	Tags            []string
+	Source          string
+	Category        string
+	Group           string
+	FolderID        string
+	StartSec        float64
+	EndSec          float64
+	Force           bool
 }
 
 // RegisterClipResult is the output of a clip registration.
@@ -66,10 +76,12 @@ type RegisterClipResult struct {
 
 // BatchClipResult is the result for a single clip in a batch registration.
 //
-// PR-BATCH-REGISTER-ASYNC (July 2026): added JobID field. When the batch
-// service enqueues a job for this clip, JobID carries the async job identifier.
-// Callers poll GET /api/jobs/:id to track completion. Empty JobID means the
-// enqueue failed (check Error).
+// PR-BATCH-REGISTER-ASYNC (July 2026): added JobID field; OK is always false
+// (outcome unknown at enqueue time). OK=true historically meant "clip
+// registered" in the synchronous path; in the async path the handler
+// returns immediately with job_ids and callers MUST poll GET /api/jobs/:id
+// to discover the actual outcome. Duplicate is always false in async mode.
+// Empty JobID means the enqueue failed (check Error).
 type BatchClipResult struct {
 	ClipID    string
 	Name      string
@@ -80,12 +92,17 @@ type BatchClipResult struct {
 }
 
 // BatchRegisterResult is the aggregated result of a batch registration.
+//
+// PR-BATCH-REGISTER-ASYNC (July 2026): Succeeded→Enqueued, Failed→EnqueueFailed.
+// Enqueued counts jobs successfully submitted to the worker queue (not clips
+// that finished processing). EnqueueFailed counts per-clip enqueue errors.
+// Callers poll GET /api/jobs/{id} to track actual clip registration outcomes.
 type BatchRegisterResult struct {
-	OK        bool
-	Total     int
-	Succeeded int
-	Failed    int
-	Results   []BatchClipResult
+	OK            bool
+	Total         int
+	Enqueued      int
+	EnqueueFailed int
+	Results       []BatchClipResult
 }
 
 // SyncDriveFolderCommand is the input for syncing a Drive folder.
