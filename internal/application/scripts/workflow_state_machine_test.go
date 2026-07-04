@@ -14,7 +14,7 @@ func TestWorkflowState_LegalForwardTransitions(t *testing.T) {
 	}{
 		{StateScriptReady, StateImagesPending},
 		{StateImagesPending, StateImagesGenerated},
-		{StateImagesGenerated, StateDocumentReady},
+		{StateImagesGenerated, StateDocumentCreated},
 	}
 	for _, tt := range tests {
 		if !tt.from.IsValidTransition(tt.to) {
@@ -33,9 +33,9 @@ func TestWorkflowState_IllegalBackwardTransitions(t *testing.T) {
 		{StateImagesPending, StateScriptReady},
 		{StateImagesGenerated, StateImagesPending},
 		{StateImagesGenerated, StateScriptReady},
-		{StateDocumentReady, StateImagesGenerated},
-		{StateDocumentReady, StateImagesPending},
-		{StateDocumentReady, StateScriptReady},
+		{StateDocumentCreated, StateImagesGenerated},
+		{StateDocumentCreated, StateImagesPending},
+		{StateDocumentCreated, StateScriptReady},
 	}
 	for _, tt := range tests {
 		if tt.from.IsValidTransition(tt.to) {
@@ -79,7 +79,7 @@ func TestWorkflowState_StickyTerminalSinks(t *testing.T) {
 	terminals := []WorkflowState{StateWorkflowFailed, StateWorkflowDeadLettered}
 	nonTerminals := []WorkflowState{
 		StateScriptReady, StateImagesPending,
-		StateImagesGenerated, StateDocumentReady,
+		StateImagesGenerated, StateDocumentCreated,
 	}
 
 	for _, term := range terminals {
@@ -167,9 +167,9 @@ func TestWorkflowState_CanonicalValuesComplete(t *testing.T) {
 	}
 }
 
-// ── Test 8: DOCUMENT_READY is terminal success (no forward) ────────────
+// ── Test 8: DOCUMENT_CREATED is terminal success (no forward) ────────────
 
-func TestWorkflowState_DocumentReadyTerminalSuccess(t *testing.T) {
+func TestWorkflowState_DocumentCreatedTerminalSuccess(t *testing.T) {
 	// DOCUMENT_READY is terminal success — no forward progression
 	// (unlike the other non-terminal states which can move forward).
 	nonSelfTargets := []WorkflowState{
@@ -177,8 +177,8 @@ func TestWorkflowState_DocumentReadyTerminalSuccess(t *testing.T) {
 		StateWorkflowFailed, StateWorkflowDeadLettered,
 	}
 	for _, to := range nonSelfTargets {
-		if StateDocumentReady.IsValidTransition(to) {
-			t.Errorf("expected DOCUMENT_READY -> %s to be ILLEGAL (terminal success)", to)
+		if StateDocumentCreated.IsValidTransition(to) {
+			t.Errorf("expected DOCUMENT_CREATED -> %s to be ILLEGAL (terminal success)", to)
 		}
 	}
 }
@@ -190,12 +190,12 @@ func TestWorkflowState_SkipForbidden(t *testing.T) {
 	if StateScriptReady.IsValidTransition(StateImagesGenerated) {
 		t.Error("expected SCRIPT_READY -> IMAGES_GENERATED to be ILLEGAL (skip)")
 	}
-	// SCRIPT_READY → DOCUMENT_READY is a skip.
-	if StateScriptReady.IsValidTransition(StateDocumentReady) {
-		t.Error("expected SCRIPT_READY -> DOCUMENT_READY to be ILLEGAL (skip)")
+	// SCRIPT_READY → DOCUMENT_CREATED is a skip.
+	if StateScriptReady.IsValidTransition(StateDocumentCreated) {
+		t.Error("expected SCRIPT_READY -> DOCUMENT_CREATED to be ILLEGAL (skip)")
 	}
-	// IMAGES_PENDING → DOCUMENT_READY is a skip.
-	if StateImagesPending.IsValidTransition(StateDocumentReady) {
-		t.Error("expected IMAGES_PENDING -> DOCUMENT_READY to be ILLEGAL (skip)")
+	// IMAGES_PENDING → DOCUMENT_CREATED is a skip.
+	if StateImagesPending.IsValidTransition(StateDocumentCreated) {
+		t.Error("expected IMAGES_PENDING -> DOCUMENT_CREATED to be ILLEGAL (skip)")
 	}
 }

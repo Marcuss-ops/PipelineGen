@@ -84,9 +84,15 @@ type SourceRef struct {
 // StagedAsset carries the result of a successful StageSource call.
 // The file at LocalPath is ready for subsequent processing (cut,
 // transcode, upload). Bytes is the on-disk size.
+//
+// SourceID is the canonical locator that produced this staged file
+// (e.g. the YouTube URL, Artlist m3u8, stock clip URL). Callers use
+// it to correlate staged files with their originating ClipPlan
+// entries when multiple sources are staged in one orchestrator run.
 type StagedAsset struct {
 	LocalPath string
 	Bytes     int64
+	SourceID  string
 }
 
 // SourceStager downloads source media into a staging location and

@@ -5,7 +5,7 @@
 //
 // States (6 closed values):
 //
-//	SCRIPT_READY    →  IMAGES_PENDING  →  IMAGES_GENERATED  →  DOCUMENT_READY
+//	SCRIPT_READY    →  IMAGES_PENDING  →  IMAGES_GENERATED  →  DOCUMENT_CREATED
 //	   │                    │                   │                    │
 //	   ├──→ FAILED          ├──→ FAILED         ├──→ FAILED          ├──→ FAILED
 //	   └──→ DEAD_LETTERED   └──→ DEAD_LETTERED  └──→ DEAD_LETTERED   └──→ DEAD_LETTERED
@@ -56,9 +56,9 @@ const (
 	// completed successfully; images are staged in Drive.
 	StateImagesGenerated WorkflowState = "IMAGES_GENERATED"
 
-	// StateDocumentReady — the Google Doc has been assembled from
+	// StateDocumentCreated — the Google Doc has been assembled from
 	// rendered scenes + finalized images; terminal success state.
-	StateDocumentReady WorkflowState = "DOCUMENT_READY"
+	StateDocumentCreated WorkflowState = "DOCUMENT_CREATED"
 
 	// StateFailed — workflow terminated with an unrecoverable error.
 	// Sticky-terminal: any further transitions are rejected.
@@ -82,7 +82,7 @@ func CanonicalWorkflowStateValues() []WorkflowState {
 		StateScriptReady,
 		StateImagesPending,
 		StateImagesGenerated,
-		StateDocumentReady,
+		StateDocumentCreated,
 		StateWorkflowFailed,
 		StateWorkflowDeadLettered,
 	}
@@ -94,7 +94,7 @@ func CanonicalWorkflowStateValues() []WorkflowState {
 func (s WorkflowState) Valid() bool {
 	switch s {
 	case StateScriptReady, StateImagesPending, StateImagesGenerated,
-		StateDocumentReady, StateWorkflowFailed, StateWorkflowDeadLettered:
+		StateDocumentCreated, StateWorkflowFailed, StateWorkflowDeadLettered:
 		return true
 	}
 	return false
@@ -105,7 +105,7 @@ func (s WorkflowState) Valid() bool {
 //
 // Legal progression (forward chain):
 //
-//	SCRIPT_READY    → IMAGES_PENDING → IMAGES_GENERATED → DOCUMENT_READY
+//	SCRIPT_READY    → IMAGES_PENDING → IMAGES_GENERATED → DOCUMENT_CREATED
 //	   │                  │                 │                  │
 //	   ├──→ FAILED        ├──→ FAILED       ├──→ FAILED        ├──→ FAILED
 //	   └──→ DEAD_LETTERED └──→ DEAD_LETTERED└──→ DEAD_LETTERED └──→ DEAD_LETTERED
@@ -139,8 +139,8 @@ func (s WorkflowState) IsValidTransition(to WorkflowState) bool {
 	case StateImagesPending:
 		return to == StateImagesGenerated
 	case StateImagesGenerated:
-		return to == StateDocumentReady
-	case StateDocumentReady:
+		return to == StateDocumentCreated
+	case StateDocumentCreated:
 		// Terminal success — no forward progression.
 		return false
 	}
