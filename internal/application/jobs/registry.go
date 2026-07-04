@@ -517,8 +517,35 @@ func Compose() *Registry {
 	// ── Voiceover / subtitles ──
 	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeVoiceoverGenerateItem, Description: "Voiceover per-language child (P0.3 fan-out: parent voiceover.generate schedules 1 job per (language, voice) pair; concurrency 4 = sibling throttle)", Timeout: 10 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
+	// PR-VO-COMPLETEPATH-FIX (July 2026): ProducesArtifacts REMOVED.
+	// The pre-fix voiceover.generate entry declared ProducesArtifacts=true,
+	// which causes the SQL-layer SQLiteStore.Complete reject at
+	// repository_lifecycle.go:56-67 (ErrCompleteJobPathViolation typed
+	// sentinel) AND the typed-service gate at
+	// application/jobs/completion/complete_job_service.go (the same
+	// sentinel). The voiceover pipeline already persists ALL voiceover
+	// artifacts (voiceovers row + media_assets projection + asset.index +
+	// cleanup outbox events) atomically inside the per-item caller-owned tx
+	// through VoiceoverFinalizer.Finalize (internal/application/voiceover/
+	// finalizer.go) — distinct from the JobFinalizer.CompleteWithArtifacts
+	// spine that script.generate uses. Marking ProducesArtifacts=false on
+	// BOTH voiceover job types re-routes the broker's "mark SUCCEEDED" path
+	// through the legacy SQLiteStore.Complete which is the CANONICAL
+	// terminal-flip seam for these types today. godlike/07 minimal-blast-
+	// radius: zero surface contract changes; per-item persistence stays
+	// unchanged. Forward-pointer: if a future godlike/06 SSOT-tighten
+	// requires the voiceover pipeline to ALSO emit job_artifacts rows
+	// (i.e. the canonical Sender-side artifact envelope), migrate BOTH job
+	// types through a JobFinalizer port — today's UNIQUE registry policy
+	// must remain ProducesArtifacts=false until that port exists.
+	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover); artifact persistence delegated to voiceover.Finalizer inside the per-item tx — broker's legacy Complete is the canonical mark-SUCCEEDED seam", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	// PR-VO-COMPLETEPATH-FIX (July 2026): ProducesArtifacts REMOVED.
+	// Mirrors the parent voiceover.generate entry above. Each per-language
+	// child job persists its own voiceovers row + media_assets projection +
+	// outbox events inside its own per-item tx via the unified finalizer.
+	// The broker's legacy SQLiteStore.Complete path is the canonical
+	// mark-SUCCEEDED seam for this child type as well.
+	r.Register(JobPolicy{Type: TypeVoiceoverGenerateItem, Description: "Voiceover per-language child (P0.3 fan-out: parent voiceover.generate schedules 1 job per (language, voice) pair; concurrency 4 = sibling throttle); artifact persistence delegated to voiceover.Finalizer inside the per-item tx — broker's legacy Complete is the canonical mark-SUCCEEDED seam", Timeout: 10 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 	r.Register(JobPolicy{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──
