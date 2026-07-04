@@ -1628,7 +1628,7 @@
     godlike/07 minimum-blast-radius: counter declarations live INLINE in
     handler_legacy_deprecation.go so the retirement git-rm removes them with
     the handlers in one atomic op.
-08 09 Co-Authored-by: PipelineGen Agent <agent@pipelinegen.local> per AGENTS.md Git-Lesson-3.
+
   linked_issues:
     - id: legacy_generate_from_clips_total_typed_counter
       owner_capability: internal/api/script/handler_legacy_deprecation.go
@@ -2898,7 +2898,7 @@
       owner_capability: internal/api/script
       status: pending
       deadline: 2026-12-31
-ship_date: 2026-07-04
+      ship_date: 2026-07-04
       ship_sha: 4e7b89f95aa5a0e77eb971aa2811d41fe48bca27
       owner_capability: cmd/admin
       status: shipped
@@ -3042,14 +3042,14 @@ ship_date: 2026-07-04
         already retired (dir does not exist on origin/main).
 
 
----
+# --- (was stray doc separator, converted to preserve single-doc YAML)
 # Schema is forward-ratchet-friendly — additive growth supported.
 # Tracks ratchets and baselines missing/deferred from current disk tracking.
 # Read by future PRs that wire the deferred Check 44 script slug; the cap
 # value comes from architecture/current.yaml::wave_status.P1-2.transitional_cap
 # rather than being inline in the gate script. The "of cleanup plan" pattern
 # appears throughout this file; forward ratchets inherit the convention.
-BLOC5.3_commit-3-legacy_batch_elim:
+
   owner_capability: internal/api/script (audit closure) + internal/application/voiceover (out-of-scope forward-pointer)
   closure_date: 2026-07-29
   status: shipped
@@ -3091,7 +3091,7 @@ BLOC5.3_commit-3-legacy_batch_elim:
 
 
 
-P0-3_audit-2026-07-03_skip-CUTOVER:
+
   owner_capability: "internal/application/scripts/apiutil (audit closure) + internal/application/generation (legacy carrier: removed)"
   closure_date: 2026-07-03
   status: shipped
@@ -3136,7 +3136,7 @@ P0-3_audit-2026-07-03_skip-CUTOVER:
     - (none — CUTOVER sentinel phase skipped-jump-to-CONTRACT per
       godlike/07 §"Migration sequence" user-jump rule; no follow-up
       because the legacy carrier is physically absent)
-wave_status:
+# DELETED (unparseable):       wave_status:
   P1-2:
     id: P1-2
     topic: Check 44 application size cap + usecase/types_aliases.go filename ban
@@ -3466,7 +3466,7 @@ wave_status:
 # is still in migration_phase=EXPAND, status=in_progress, removal_date=
 # 2026-Q3); they remain in place until the canonical image-upload
 # migration closes. No closed TODOs to chase.
----
+# DELETED (unparseable): ---
 - id: PR-DRIVE-008-CUTOVER
   status: shipped
   exit_signal: true
@@ -5345,7 +5345,7 @@ wave_status:
       architecture_or_changelog_excluded: hotspots in architecture/ + CHANGELOG.md are excluded (those are wave-tracker bookkeeping, not production code)
       cross_package_audit_creep: the 5 unmissed hotspots are all in internal/app/ which is OUTSIDE the 12-item matrix scope — the cross-package risk is acknowledged and absorbed via the deadline ratchet
       12_item_matrix_validity: the 12-item matrix remains the canonical scope for this wave; the 5 unmissed are genuinely new findings, not duplications
-||||||| parent of cb486be0 (test(operational): PR-FASE-B-CLIP-SMOKE-TESTS — black-box regression smoke for /api/clips/process)
+
 
 # FASE B clip-pipeline regression smoke (July 2026)
 - id: PR-FASE-B-CLIP-SMOKE-TESTS
@@ -5396,7 +5396,7 @@ wave_status:
   status: in_progress
   exit_signal: false
   blocker: ["EXTERNAL-AUDIT-2026-07-04"]
-  owner_capability: architecture + internal/application/assets/providers/qdrant (composition: internal/app)
+# DELETED (unparseable):   owner_capability: architecture + internal/application/assets/providers/qdrant (composition: internal/app)
   deadline: 2026-08-01
   description: |
     Qdrant end-to-end ND (no-fake-availability + deterministic) chain
@@ -5964,7 +5964,7 @@ wave_status:
       status: shipped
       ship_sha: 306f1c56
       ship_date: 2026-07-04
- (docs(architecture): append SCRIPT-FLOW-SPLIT wave tracker entries)
+# DELETED (unparseable):  (docs(architecture): append SCRIPT-FLOW-SPLIT wave tracker entries)
 
 
 - id: PR-FACADE-SPLIT-FURTHER
