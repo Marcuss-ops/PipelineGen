@@ -35,7 +35,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -596,46 +595,6 @@ func (h *ScriptFlowHandler) warnIgnoredLegacyFields(req *LegacyGenerateFromClips
 	}
 }
 
-// enqueueEnvelope is the canonical enqueue path for all script generation
-// routes (both the unified /generate endpoint and all legacy adapters).
-// It validates the envelope, reads the Idempotency-Key header for
-// retry-safe dedup, enqueues a script.generate job, and writes the
-// async response.
-//
-// P0 #4 (June 2026): created from enqueueDeprecated with the addition
-// of Idempotency-Key header propagation. Previously legacy routes used
-// enqueueDeprecated which never read the header → two retries could
-// enqueue two distinct jobs. Both canonical and legacy paths now route
-// through this single method.
-func (h *ScriptFlowHandler) enqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
-	if err := env.Validate(); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid envelope: " + err.Error()})
-		return
-	}
-
-	if h.jobsSvc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "jobs service not initialized"})
-		return
-	}
-
-	req := jobs.NewGenerateEnqueueRequest(env)
-	// P0 #4 (June 2026): read Idempotency-Key header for retry-safe
-	// dedup — same logic as the canonical /generate handler. Header
-	// wins over any body field; trim is defensive so whitespace-only
-	// headers don't produce phantom dedup keys.
-	if idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key")); idempotencyKey != "" {
-		req.ActiveKey = idempotencyKey
-	}
-	// Issue 4 (June 2026, P1): pass h.registry so MaxRetries is sourced
-	// from registry.DefaultMaxRetries(script.generate) instead of the
-	// pre-Issue-4 hard-coded 3-retry fallback.
-	enqueuedJob, err := jobs.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log, h.registry)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-
-	resp := GenerateResponse{}
-	resp.async(enqueuedJob.ID, string(enqueuedJob.Status), "/api/jobs/"+enqueuedJob.ID+"/full", "")
-	c.JSON(http.StatusOK, resp)
-}
+// enqueueEnvelope moved to handler_flow.go (thin wrapper) +
+// handler_enqueue.go (body, package-level enqueueEnvelopeFn).
+// AZIONE 1 (July 2026): extraction from the 22-field God Object.
