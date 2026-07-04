@@ -3352,24 +3352,59 @@ honest_scope_lock: |
       owner_capability: completion
       status: pending
       deadline: 2026-08-15
-# ── P0-COMPL-3-STAGED (PENDING 2026-08-01, July 2026) ──
+# ── P0-COMPL-3-STAGED (SHIPPED 2026-07-03 via P0-COMPL-5 umbrella, 26 days early) ──
 # Per the COMPLETION-CUTOVER-P0 action plan: rename PublishedArtifacts →
-# StagedArtifacts in the HTTP wire-format. The Creator currently does not
-# know the Drive FileID, link, checksum, or action at the time of upload;
-# this contract rename and the corresponding Sender-side converter are
-# intended to fix this naming "lie" (carry-forward from June 2026 Italian
-# audit). Status: PENDING; no implementation commit on origin/main today.
-# godlike/07 no-fake-availability: closure entry registered WITHOUT
-# ship_sha; flippable to `status: shipped` only via the implementer PR.
+# StagedArtifacts in the HTTP wire-format + Sender-side converter. The
+# Creator does not know the Drive FileID, link, checksum, or action at
+# the time of upload; this rename + Sender-converter fix the naming
+"lie" (carry-forward from June 2026 Italian audit). Flipped
+# `status: pending` → `status: shipped` per godlike/07 no-fake-availability:
+# the EXPAND-phase subset SHIPPED 2026-07-03 via the P0-COMPL-5-WIRE-NAMING
+# umbrella (4030081a + bb4a19e8), 26 days ahead of the planned 2026-07-29
+# PR-4 deadline. Surface landed (per `4030081a`): canonical
+# `remote.StagedArtifactReference` 3-field envelope at
+# `internal/domain/remote/staged_artifact_reference.go` (NEW); JSON
+# wire-tag `staged_artifacts` on `internal/api/jobs/handler_workers.go`
+# line 241; Sender-side `PublishAndCompleteUseCase.Execute` converter
+# at `internal/application/jobs/completion/publish_and_complete_use_case.go`
+# (`staged.Validate()` → `refToVerifiedArtifact()` per ref →
+# `ArtifactPreparation.Prepare()` → typed `[]*PublishedArtifact`
+# envelopes with Drive Location populated). 4 TDD round-trip tests green.
+# godlike/07 honest scope-lock: `refToVerifiedArtifact()` is a STUB
+# (minimal SourceVersion/IdempotencyKey/SHA256 hints; LocalPath/SHA256/
+# MIMEType capture-the-real-from-media_assets is BACKFILL-phase
+# forward-pointer `P0-COMPL-2-COMPOSITION-WIRE`, deadline 2026-08-01).
+# Pre-closure parentheticals about P0-COMPL-3 being "different concern:
+# HTTP wire-format vs internal idempotency key derivation" were factually
+# wrong (per the action plan, P0-COMPL-3 IS the wire-format rename
+# concern); corrected in this closure flip per godlike/06 SSOT.
 - id: P0-COMPL-3-STAGED
   owner_capability: internal/application/assets/completion
-  status: pending
+  status: shipped
   deadline: 2026-08-01
+  ship_date: 2026-07-03
+  ship_sha: 4030081a
   linked_issues:
-    - id: PR-P0-COMPL-3-IMPLEMENTATION
+    - id: 4030081a
       owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+    - id: bb4a19e8
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-07-03
+    - id: P0-COMPL-2-COMPOSITION-WIRE
+      owner_capability: internal/app
       status: pending
       deadline: 2026-08-01
+      notes: |
+        BACKFILL-phase composition-root wiring forward-pointer (action
+        plan PR-4): StagedResolver + VerifiedArtifactProjector lookup
+        to populate LocalPath/SHA256/MIMEType from media_assets via
+        the canonical resolver interface; replaces refToVerifiedArtifact()
+        stub with media_assets-lookup seam + composition-root bundle
+        thread. Out-of-scope for this closure per godlike/07 minimal-
+        blast-radius discipline.
 
 # ── P0-COMPL-4-PUBLISH-DEDUPE (SHIPPED 2026-07-03, July 2026) ──
 # Remove the duplicate Publisher port from completion.Service. Preparer is
