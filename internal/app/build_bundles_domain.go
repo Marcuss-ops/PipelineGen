@@ -101,7 +101,15 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
-	driveFolderMgr := newDriveFolderMgrAdapter(drive.driveUploader, log)
+	// Phase 1d (July 2026): YouTube → Publisher migration.
+	// The canonical YouTubePublisherDriveAdapter routes UploadFileIfChanged
+	// through delivery.Publisher.Publish (with ConflictSkipByHash for
+	// content-dedupe) instead of the legacy drive.Admin.UploadFileIfChanged.
+	// The legacy driveFolderMgr adapter is retained as the fallback for now;
+	// a future CUTOVER wave will retire it entirely.
+	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
+	driveFolderMgr := newDriveFolderMgrAdapter(drive.driveUploader, log) // Phase 1d: retained as fallback; retire in CUTOVER wave
+	_ = driveFolderMgr                                                 // suppress unused-var while both adapters coexist
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
@@ -171,7 +179,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		Cache:          clipCache,
 		VideoPipeline:  videoPipelineAdapter,
 		Hash:           hashAdapter,
-		DriveFolderMgr: driveFolderMgr,
+		DriveFolderMgr: youtubePubAdapter, // Phase 1d: canonical Publisher.Publish path
 		Writer:         clipWriter,
 		// Commit 4/6 (PR-C-YouTube-Cutover, P1 #15 + #16):
 		// the ClipMetadataWriter is wired as an optional port
@@ -209,7 +217,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		Indexer:           clipIndexerAdapterValue,
 		Ollama:            ai.OllamaClient,
 		MetaFetcher:       metaFetcher,
-		DriveFolderMgr:    driveFolderMgr,
+		DriveFolderMgr:    youtubePubAdapter, // Phase 1d: canonical Publisher.Publish path
 		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
 		SearchRunner:      searchRunnerAdapter,
 		HashSvc:           hashAdapter,
