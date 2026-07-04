@@ -227,10 +227,10 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 // review (CI Check 53 on the production tree enforces the
 // structural shape).
 type CompleteArtifactsRequest struct {
-	WorkerID         string `json:"worker_id"`
-	WorkerSessionID  string `json:"worker_session_id"`
-	LeaseID          string `json:"lease_id"`
-	ExpectedRevision int    `json:"expected_revision"`
+	WorkerID         string          `json:"worker_id"`
+	WorkerSessionID  string          `json:"worker_session_id"`
+	LeaseID          string          `json:"lease_id"`
+	ExpectedRevision int             `json:"expected_revision"`
 	ResultData       json.RawMessage `json:"result_data"`
 	// StagedArtifacts is the canonical pre-publish reference slice
 	// (P0-COMPL-5-WIRE-NAMING, July 2026). The caller ships the
@@ -305,7 +305,8 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		StagedArtifacts:  stagedBytes,
 		OutboxEvents:     req.OutboxEvents,
 	}
-	if err := h.broker.CompleteWithArtifacts(c.Request.Context(), cmd); err != nil {
+	assetIDs, err := h.broker.CompleteWithArtifacts(c.Request.Context(), cmd)
+	if err != nil {
 		// P1 #15 (July 2026): the complete-with-artifacts path
 		// emits the canonical 7-kind wire envelope via
 		// completion.MapErrorToHTTP. Same semantics as Complete:
@@ -317,10 +318,18 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		apiutil.InternalError(c, err)
 		return
 	}
+	// AZIONE 5 (July 2026): coerce nil AssetIDs to empty slice so the
+	// wire field always serializes as "[]" rather than "null". The
+	// SQLite broker returns non-nil (make slice with cap), but stubs
+	// and error paths may return nil. The handler is the canonical
+	// defense boundary.
+	if assetIDs == nil {
+		assetIDs = []string{}
+	}
 	apiutil.OK(c, CompleteArtifactsResponse{
 		JobID:    cmd.JobID,
 		Status:   string(domainjob.StatusSucceeded),
-		AssetIDs: []string{},
+		AssetIDs: assetIDs,
 	})
 }
 

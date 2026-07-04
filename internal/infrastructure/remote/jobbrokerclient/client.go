@@ -156,21 +156,21 @@ func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) erro
 // the 200 response into the typed CWA response envelope (forward-
 // declared fields; expected response shape mirrors
 // internal/api/jobs.CompleteArtifactsResponse).
-func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
+func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) ([]string, error) {
 	bodyBytes, err := json.Marshal(cmd)
 	if err != nil {
-		return fmt.Errorf("complete-with-artifacts: marshal: %w", err)
+		return nil, fmt.Errorf("complete-with-artifacts: marshal: %w", err)
 	}
 	url := c.baseURL + fmt.Sprintf(pathCompleteWithArtifactsFmt, cmd.JobID)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return fmt.Errorf("complete-with-artifacts: create request: %w", err)
+		return nil, fmt.Errorf("complete-with-artifacts: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c.setAuth(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("complete-with-artifacts: do request: %w", err)
+		return nil, fmt.Errorf("complete-with-artifacts: do request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
@@ -185,11 +185,23 @@ func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 		// /complete-with-artifacts path; this decode is the canonical
 		// client-side reconstruction per godlike/06 SSOT.
 		if remErr, ok := decodeCompletionErrorEnvelope(rawBody); ok {
-			return remErr
+			return nil, remErr
 		}
-		return fmt.Errorf("complete-with-artifacts: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(rawBody)))
+		return nil, fmt.Errorf("complete-with-artifacts: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(rawBody)))
 	}
-	return nil
+
+	// AZIONE 5 (July 2026): decode the CompleteArtifactsResponse from
+	// the 200 OK body and extract canonical AssetIDs so the caller
+	// can populate the HTTP-out DTO wire field.
+	var cwaResp struct {
+		JobID    string   `json:"job_id"`
+		Status   string   `json:"status"`
+		AssetIDs []string `json:"asset_ids"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&cwaResp); err != nil {
+		return nil, fmt.Errorf("complete-with-artifacts: decode response: %w", err)
+	}
+	return cwaResp.AssetIDs, nil
 }
 
 func (c *Client) Fail(ctx context.Context, cmd appjobs.FailCommand) error {

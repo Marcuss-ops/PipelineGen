@@ -75,14 +75,23 @@ func TestClient_CompleteWithArtifacts_HappyPath(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(happyResponse{
 			JobID:    "job-42",
 			Status:   "SUCCEEDED",
-			AssetIDs: []string{}, // forward-declared empty per godlike/07
+			AssetIDs: []string{"asset-1", "asset-2"},
 		})
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	if err := c.CompleteWithArtifacts(context.Background(), testCmd); err != nil {
+	assetIDs, err := c.CompleteWithArtifacts(context.Background(), testCmd)
+	if err != nil {
 		t.Fatalf("expected nil err on happy-path, got %v", err)
+	}
+
+	// AZIONE 5 (July 2026): assert AssetIDs are decoded from response.
+	if len(assetIDs) != 2 {
+		t.Errorf("expected 2 AssetIDs from happy-path response, got %d: %v", len(assetIDs), assetIDs)
+	}
+	if assetIDs[0] != "asset-1" || assetIDs[1] != "asset-2" {
+		t.Errorf("AssetIDs mismatch: got %v, want [asset-1 asset-2]", assetIDs)
 	}
 
 	// Verify path / wire-shape.
@@ -147,7 +156,7 @@ func TestClient_CompleteWithArtifacts_LeaseMismatchTypedError(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "")
-	err := c.CompleteWithArtifacts(context.Background(), testCmd)
+	_, err := c.CompleteWithArtifacts(context.Background(), testCmd)
 	if err == nil {
 		t.Fatal("expected non-nil err when server emits lease_lost envelope")
 	}

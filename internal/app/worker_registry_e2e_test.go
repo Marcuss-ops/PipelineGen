@@ -402,6 +402,12 @@ func (m *mockBroker) IsCancelled(_ context.Context, jobID, leaseID string) (bool
 	return false, fmt.Errorf("not implemented in alignment-smoke mock")
 }
 
+// AZIONE 5 (July 2026): broker returns canonical AssetIDs from finalization.
+func (m *mockBroker) CompleteWithArtifacts(_ context.Context, _ appjobs.CompleteWithArtifactsCommand) ([]string, error) {
+	m.t.Errorf("mock broker: unexpected CompleteWithArtifacts (smoke test should only call RegisterWorker/Complete)")
+	return nil, fmt.Errorf("not implemented in alignment-smoke mock")
+}
+
 // containsPath is a tiny helper kept in this file so the test
 // doesn't pull in pkg/sliceutil — the assertion is single-string
 // and the file already imports enough.

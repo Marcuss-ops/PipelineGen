@@ -36,9 +36,10 @@ var _ AssetTransferService = (*stubAssetTransfer)(nil)
 // stub (or vice versa) surfaces immediately in tests rather than
 // silently delegating to a non-existent implementation.
 type stubBroker struct {
-	called    bool
-	lastCmd   appjobs.CompleteWithArtifactsCommand
-	returnErr error
+	called         bool
+	lastCmd        appjobs.CompleteWithArtifactsCommand
+	returnErr      error
+	returnAssetIDs []string
 }
 
 func (s *stubBroker) RegisterWorker(_ context.Context, _ appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
@@ -59,10 +60,10 @@ func (s *stubBroker) Progress(_ context.Context, _ appjobs.ProgressCommand) erro
 func (s *stubBroker) Complete(_ context.Context, _ appjobs.CompleteCommand) error {
 	return errors.New("stubBroker: Complete not implemented")
 }
-func (s *stubBroker) CompleteWithArtifacts(_ context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
+func (s *stubBroker) CompleteWithArtifacts(_ context.Context, cmd appjobs.CompleteWithArtifactsCommand) ([]string, error) {
 	s.called = true
 	s.lastCmd = cmd
-	return s.returnErr
+	return s.returnAssetIDs, s.returnErr
 }
 func (s *stubBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
 	return errors.New("stubBroker: Fail not implemented")
@@ -164,7 +165,7 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath(t *testing.T) {
 		t.Error("expected non-nil AssetIDs slice (forward-declared wire shape)")
 	}
 	if len(resp.AssetIDs) != 0 {
-		t.Errorf("expected empty AssetIDs (godlike/07 no-fake-availability: never invent IDs that did not come from the typed return), got %v", resp.AssetIDs)
+		t.Errorf("expected empty AssetIDs (stub returns nil slice), got %v", resp.AssetIDs)
 	}
 
 	if !stub.called {
@@ -297,5 +298,220 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_URLIsCanonicalJobIDSource(t 
 	}
 	if stub.lastCmd.JobID != "CANONICAL-FROM-URL" {
 		t.Fatalf("URL :id must be canonical JobID source; got %q want %q", stub.lastCmd.JobID, "CANONICAL-FROM-URL")
+	}
+}
+
+// ── AZIONE 5 (July 2026): AssetIDs population through stub broker ────
+//
+// 6 TDD tests that pin the canonical contract: broker.CompleteWithArtifacts
+// returns ([]string, error), and the handler threads those AssetIDs into
+// the CompleteArtifactsResponse wire field.
+
+// TestCompleteArtifactsResponse_AssetIDs_PopulatedFromBroker pins the
+// canonical happy-path: the stub broker returns asset IDs, and the handler
+// propagates them into the JSON response under "asset_ids".
+func TestCompleteArtifactsResponse_AssetIDs_PopulatedFromBroker(t *testing.T) {
+	stub := &stubBroker{returnAssetIDs: []string{"a1", "a2", "a3"}}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "w",
+		WorkerSessionID:  "s",
+		LeaseID:          "l",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/j-1/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp CompleteArtifactsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.AssetIDs) != 3 {
+		t.Errorf("expected 3 AssetIDs, got %d: %v", len(resp.AssetIDs), resp.AssetIDs)
+	}
+	if resp.AssetIDs[0] != "a1" || resp.AssetIDs[1] != "a2" || resp.AssetIDs[2] != "a3" {
+		t.Errorf("AssetIDs mismatch: got %v, want [a1 a2 a3]", resp.AssetIDs)
+	}
+}
+
+// TestCompleteArtifactsResponse_AssetIDs_EmptySlice pins the zero-result
+// contract: when the broker returns no artifacts (nil or empty slice),
+// the handler propagates that faithfully.
+func TestCompleteArtifactsResponse_AssetIDs_EmptySlice(t *testing.T) {
+	stub := &stubBroker{returnAssetIDs: []string{}}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "w",
+		WorkerSessionID:  "s",
+		LeaseID:          "l",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/j-1/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp CompleteArtifactsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.AssetIDs == nil {
+		t.Error("AssetIDs must be non-nil (empty slice, not nil)")
+	}
+	if len(resp.AssetIDs) != 0 {
+		t.Errorf("expected 0 AssetIDs, got %d: %v", len(resp.AssetIDs), resp.AssetIDs)
+	}
+}
+
+// TestCompleteArtifactsResponse_AssetIDs_NilBrokerReturn pins the nil-safe
+// contract: broker returns (nil, nil) → handler sends empty slice.
+func TestCompleteArtifactsResponse_AssetIDs_NilBrokerReturn(t *testing.T) {
+	stub := &stubBroker{returnAssetIDs: nil}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "w",
+		WorkerSessionID:  "s",
+		LeaseID:          "l",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/j-1/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp CompleteArtifactsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.AssetIDs == nil {
+		t.Error("AssetIDs must be non-nil even when broker returns nil slice")
+	}
+}
+
+// TestCompleteArtifactsResponse_AssetIDs_PreservedAcrossBrokerErr pins
+// the error-propagated contract: when broker returns an error, the handler
+// must NOT include AssetIDs in a 200 response (the error path takes over).
+func TestCompleteArtifactsResponse_AssetIDs_PreservedAcrossBrokerErr(t *testing.T) {
+	stub := &stubBroker{returnErr: errors.New("finalizer not wired")}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "w",
+		WorkerSessionID:  "s",
+		LeaseID:          "l",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/j-99/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestCompleteArtifactsResponse_AssetIDs_ByteStableJSON pins the wire
+// shape contract: the response JSON round-trips cleanly with the typed
+// CompleteArtifactsResponse struct.
+func TestCompleteArtifactsResponse_AssetIDs_ByteStableJSON(t *testing.T) {
+	stub := &stubBroker{returnAssetIDs: []string{"asset-x", "asset-y"}}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "w",
+		WorkerSessionID:  "s",
+		LeaseID:          "l",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/j-1/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Round-trip: decode, then re-marshal, then decode again.
+	var resp1 CompleteArtifactsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp1); err != nil {
+		t.Fatalf("unmarshal round 1: %v", err)
+	}
+	remarshalled, err := json.Marshal(resp1)
+	if err != nil {
+		t.Fatalf("marshal round 2: %v", err)
+	}
+	var resp2 CompleteArtifactsResponse
+	if err := json.Unmarshal(remarshalled, &resp2); err != nil {
+		t.Fatalf("unmarshal round 2: %v", err)
+	}
+
+	if resp2.JobID != resp1.JobID || resp2.Status != resp1.Status {
+		t.Errorf("identity fields drift on round-trip: R1=%+v R2=%+v", resp1, resp2)
+	}
+	if len(resp2.AssetIDs) != 2 || resp2.AssetIDs[0] != "asset-x" || resp2.AssetIDs[1] != "asset-y" {
+		t.Errorf("AssetIDs drift on round-trip: R1=%v R2=%v", resp1.AssetIDs, resp2.AssetIDs)
+	}
+}
+
+// TestCompleteArtifactsResponse_AssetIDs_SingleElement pins the singleton
+// contract (common edge case: one artifact per job).
+func TestCompleteArtifactsResponse_AssetIDs_SingleElement(t *testing.T) {
+	stub := &stubBroker{returnAssetIDs: []string{"solo-artifact"}}
+	engine := newTestEngine(stub, &stubAssetTransfer{})
+
+	body := CompleteArtifactsRequest{
+		WorkerID:         "w",
+		WorkerSessionID:  "s",
+		LeaseID:          "l",
+		ExpectedRevision: 1,
+		ResultData:       json.RawMessage(`{}`),
+		StagedArtifacts:  []*remote.StagedArtifactReference{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/jobs/j-1/complete-with-artifacts", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp CompleteArtifactsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.AssetIDs) != 1 || resp.AssetIDs[0] != "solo-artifact" {
+		t.Errorf("expected [solo-artifact], got %v", resp.AssetIDs)
 	}
 }
