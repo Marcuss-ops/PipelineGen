@@ -221,18 +221,21 @@ const (
 // SegmentPolicy is the duration gate applied to every segment
 // (LLM-discovered or API-supplied). MinDuration/MaxDuration are
 // seconds; zero means "use default" (the canonical defaults are
-// 2s / 60s, matching the legacy extraction block).
+// 4s / 60s, matching the user-requested clip-duration window —
+// no effects, no transitions are applied; the YouTube extraction
+// endpoint only cuts, preserves audio, uploads to Drive, writes
+// to media_assets and indexes in Qdrant).
 type SegmentPolicy struct {
 	MinDuration int
 	MaxDuration int
 }
 
-// DefaultSegmentPolicy returns the canonical Min=2s / Max=60s
+// DefaultSegmentPolicy returns the canonical Min=4s / Max=60s
 // bounds. Both the LLM-discovered path and the API-supplied path
 // in ProcessYouTubeSegmentUseCase.Execute apply this when the
 // caller-supplied SegmentPolicy has zero values on either field.
 func DefaultSegmentPolicy() SegmentPolicy {
-	return SegmentPolicy{MinDuration: 2, MaxDuration: 60}
+	return SegmentPolicy{MinDuration: 4, MaxDuration: 60}
 }
 
 // ValidDuration applies Min/Max duration bounds to a derived

@@ -74,8 +74,10 @@ func (stubClipCache) GetExisting(_ context.Context, _ string) (*youtubetypes.Ext
 // validProcessSegmentDeps post-Commit-1 fix: SegmentsSvc MUST be wired
 // (fail-fast panic for nil). DriveFolderMgr / Subtitles /
 // Transcriber are runtime-gated (no panic). SegmentPolicy is the
-// duration gate (Commit 2/6 #3); defaults to Min=2s/Max=60s when
-// zero-valued, so tests don't need to set it.
+// duration gate (Commit 2/6 #3); defaults to Min=4s/Max=60s when
+// zero-valued, so tests don't need to set it. The 4s/60s window
+// matches the user-requested clip-duration policy (no effects,
+// no transitions applied by the YouTube extraction endpoint).
 func validProcessSegmentDeps() ProcessSegmentDeps {
 	return ProcessSegmentDeps{
 		Cache:         stubClipCache{},

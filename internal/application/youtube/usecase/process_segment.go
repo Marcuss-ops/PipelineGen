@@ -12,7 +12,8 @@
 //   - #2 StrategyReplace cache-bypass: when cmd.Strategy == "replace",
 //     the cache lookup is skipped so a re-extract under the same clipID
 //     always re-runs the full 9-step pipeline.
-//   - #3 SegmentPolicy: a Min/Max duration gate (defaults 2s/60s) is
+//   - #3 SegmentPolicy: a Min/Max duration gate (defaults 4s/60s; user-
+//     requested clip-duration window — no effects, no transitions) is
 //     applied at Step 1. Out-of-range segments fail with
 //     FailureCodeDurationOutOfRange.
 //   - #4 policyVersion in filename: BuildClipFilename takes a 5th
@@ -70,7 +71,11 @@ type ProcessSegmentDeps struct {
 	Writer         youtubeports.ClipAtomicWriter
 	SegmentsSvc    *SegmentsService
 	// SegmentPolicy is the duration gate (Min/Max in seconds).
-	// Zero values default to {Min: 2, Max: 60}. Commit 2/6 #3.
+	// Zero values default to {Min: 4, Max: 60}. Commit 2/6 #3.
+	// Per user spec (2026-07-04): no effects, no transitions are
+	// applied to extracted clips; the YouTube endpoint only cuts
+	// the segment, preserves audio, uploads to Drive, writes
+	// media_assets and emits the asset.index.requested outbox event.
 	SegmentPolicy youtubetypes.SegmentPolicy
 	// ClipMetadataWriter is the optional metadata-enrichment writer
 	// (Commit 4/6, P1 #15). When non-nil, Step 10 of the pipeline
@@ -99,7 +104,7 @@ type ProcessSegmentDeps struct {
 	// when KeepAudio=true. When nil, the validation step is silently
 	// skipped (pre-existing hash + stat checks remain).
 	FFProbe youtubeports.FFProbePort
-	Log           *zap.Logger
+	Log     *zap.Logger
 }
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
