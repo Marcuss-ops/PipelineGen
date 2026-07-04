@@ -148,6 +148,18 @@ func WorkerAuth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFun
 	}
 
 	return func(c *gin.Context) {
+		// PG-006 consistency: mirror Auth()'s EnableAuth bypass.
+		// When auth is disabled (dev/test/E2E), every principal is
+		// treated as admin so WorkspaceScopeMiddleware respects the
+		// X-Workspace-ID header and the search handler receives a
+		// non-default workspace. In production (EnableAuth=true)
+		// WorkerAuth remains strict worker-token-only.
+		if !sec.EnableAuth() {
+			c.Set("is_admin", true)
+			c.Next()
+			return
+		}
+
 		token := extractAuthToken(c)
 
 		if log != nil {

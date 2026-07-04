@@ -2,7 +2,7 @@
 //
 // Subcommand registered in cmd/admin/main.go as `qdrant-preflight`.
 // Runs the 11 PR-QDRANT-PREFLIGHT-TEST-* assertions against a running
-// production stack (server :8081 + qdrant :16333). Exit code 0 only
+// production stack (server :8081 + qdrant :6333). Exit code 0 only
 // when ALL 11 PASS (with Test 9 SKIP-allowed under the chaos-day
 // scheduling forward-pointer).
 //
@@ -70,7 +70,7 @@ const (
 
 // Typed sentinel errors (godlike/07 NO-FAKE-AVAILABILITY).
 var (
-	ErrPreflightStackDown    = fmt.Errorf("preflight: stack not ready (server :8081 + qdrant :16333 unreachable)")
+	ErrPreflightStackDown    = fmt.Errorf("preflight: stack not ready (server :8081 + qdrant :6333 unreachable)")
 	ErrPreflightSeedMissing  = fmt.Errorf("preflight: seed asset missing (PR-QDRANT-PREFLIGHT-DATA-SEED not shipped)")
 	ErrPreflightNotImplemented = fmt.Errorf("preflight: not yet implemented (forward-pointer to per-test PR)")
 )
@@ -187,7 +187,7 @@ var AllTests = []PreflightTest{
 func runQdrantPreflight(args []string) error {
 	fs := flag.NewFlagSet("qdrant-preflight", flag.ExitOnError)
 	urlFlag := fs.String("url", "http://127.0.0.1:8081", "PipelineGen server URL")
-	qdrantFlag := fs.String("qdrant-url", "http://127.0.0.1:16333", "Qdrant base URL")
+	qdrantFlag := fs.String("qdrant-url", "http://127.0.0.1:6333", "Qdrant base URL")
 	collectionFlag := fs.String("collection", "media_assets_v3_e5_768_siglip_768", "Qdrant canonical collection name (alias resolved)")
 	tokenFlag := fs.String("admin-token", "", "Admin token (or set VELOX_ADMIN_TOKEN env var)")
 	listFlag := fs.Bool("list", false, "Print all 11 TDD tests + exit 0 (diagnostic-only; no stack interaction)")
@@ -393,11 +393,7 @@ func testSchemaV3Shipped(ctx context.Context, deps *preflightDeps) error {
 			Collections []struct {
 				Name string `json:"name"`
 			} `json:"collections"`
-			Aliases map[string]struct {
-				AliasName string   `json:"alias_name"`
-				Target    string   `json:"target"`
-				Names     []string `json:"names"`
-			} `json:"aliases"`
+			Aliases json.RawMessage `json:"aliases"`
 		} `json:"result"`
 	}
 
@@ -417,36 +413,38 @@ func testSchemaV3Shipped(ctx context.Context, deps *preflightDeps) error {
 		return fmt.Errorf("%w: schema-V3: collection %q not in /collections response", ErrPreflightStackDown, deps.Collection)
 	}
 
-	// (b) Canonical alias target. Embedded under result.aliases first; fall
-	// back to the separate /aliases endpoint if the embedded map is empty.
+	// (b) Canonical alias target. The /collections response may embed
+	// aliases as null, an array, or a map (Qdrant kernel behavior varies
+	// by build). Always use the separate /aliases endpoint which returns
+	// the canonical Qdrant 1.18+ shape.
 	target := ""
-	if alias, ok := apiResp.Result.Aliases["media_assets_current"]; ok {
-		target = alias.Target
-	} else {
-		aliasReq, err := http.NewRequestWithContext(ctx, http.MethodGet, deps.QdrantURL+"/aliases", nil)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrPreflightStackDown, err)
-		}
-		aliasResp, err := deps.HTTPClient.Do(aliasReq)
-		if err != nil {
-			return fmt.Errorf("%w: GET /aliases: %w", ErrPreflightStackDown, err)
-		}
-		defer aliasResp.Body.Close()
-		if aliasResp.StatusCode != http.StatusOK {
-			return fmt.Errorf("schema-V3: GET /aliases => %d", aliasResp.StatusCode)
-		}
-		var aliasesResp struct {
-			Result struct {
-				Aliases map[string]struct {
-					Target string `json:"target"`
-				} `json:"aliases"`
-			} `json:"result"`
-		}
-		if err := json.NewDecoder(aliasResp.Body).Decode(&aliasesResp); err != nil {
-			return fmt.Errorf("schema-V3: decode /aliases response: %w", err)
-		}
-		if fb, ok := aliasesResp.Result.Aliases["media_assets_current"]; ok {
-			target = fb.Target
+	aliasReq, err := http.NewRequestWithContext(ctx, http.MethodGet, deps.QdrantURL+"/aliases", nil)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrPreflightStackDown, err)
+	}
+	aliasResp, err := deps.HTTPClient.Do(aliasReq)
+	if err != nil {
+		return fmt.Errorf("%w: GET /aliases: %w", ErrPreflightStackDown, err)
+	}
+	defer aliasResp.Body.Close()
+	if aliasResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("schema-V3: GET /aliases => %d", aliasResp.StatusCode)
+	}
+	var aliasesResp struct {
+		Result struct {
+			Aliases []struct {
+				AliasName      string `json:"alias_name"`
+				CollectionName string `json:"collection_name"`
+			} `json:"aliases"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(aliasResp.Body).Decode(&aliasesResp); err != nil {
+		return fmt.Errorf("schema-V3: decode /aliases response: %w", err)
+	}
+	for _, a := range aliasesResp.Result.Aliases {
+		if a.AliasName == "media_assets_current" {
+			target = a.CollectionName
+			break
 		}
 	}
 

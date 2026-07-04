@@ -144,6 +144,16 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		publisher = pub
 	}
 
+	// DEV-STUB (July 2026): when Drive is not configured, inject a stub
+	// publisher so the server can start for smoke-testing without Google
+	// credentials. The stub surfaces clear errors on any actual
+	// Publish/ResolveFolder call. Production deployments MUST configure
+	// Drive credentials (this log line is the operator's reminder).
+	if publisher == nil {
+		log.Warn("DEV-STUB: Google Drive not configured — injecting stub publisher (Publish/ResolveFolder will return typed errors). Production MUST set Drive credentials.")
+		publisher = &driveStubPublisher{log: log}
+	}
+
 	var mediaStore *drive.Store
 	var destResolver asset.Resolver
 	if driveClient != nil {
@@ -251,6 +261,29 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		DocClient:     docClient,
 		Lifecycle:     lifecycle,
 	}, startClosure, nil
+}
+
+var _ delivery.Publisher = (*driveStubPublisher)(nil)
+
+// driveStubPublisher is a no-op delivery.Publisher used when Google Drive
+// is not configured (dev/smoke-test environments). Publish and ResolveFolder
+// both return typed errors so callers that actually need Drive surface the
+// gap loudly, while the server can still boot and serve read-only endpoints.
+type driveStubPublisher struct {
+	log *zap.Logger
+}
+
+func (s *driveStubPublisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	s.log.Warn("driveStubPublisher.Publish: Drive not configured",
+		zap.String("destination", string(req.Destination)),
+		zap.String("filename", req.Filename))
+	return nil, fmt.Errorf("drive not configured: cannot publish %q to %q (DEV-STUB)", req.Filename, req.Destination)
+}
+
+func (s *driveStubPublisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
+	s.log.Warn("driveStubPublisher.ResolveFolder: Drive not configured",
+		zap.String("destination", string(req.Destination)))
+	return "", fmt.Errorf("drive not configured: cannot resolve folder for %q (DEV-STUB)", req.Destination)
 }
 
 // startDriveBackgroundFolders (moved from build_drive_startup.go, Phase 5 consolidation, June 2026).

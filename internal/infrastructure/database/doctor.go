@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -39,9 +40,25 @@ func IntegrityCheck(ctx context.Context, db *sql.DB) error {
 // ForeignKeyCheck returns the list of FK violations reported by
 // `PRAGMA foreign_key_check`. An empty slice means clean. Each
 // violation is reported as "table[rowid] -> parent.fk".
+//
+// Schema-level FK mismatches (e.g. a foreign key referencing a
+// non-existent column in the parent table) are surfaced as warnings
+// in the violations slice rather than hard errors, because they
+// indicate a schema inconsistency (not actual data corruption) and
+// `db check` is a diagnostic tool that should report these without
+// failing the entire run.
 func ForeignKeyCheck(ctx context.Context, db *sql.DB) ([]string, error) {
 	rows, err := db.QueryContext(ctx, "PRAGMA foreign_key_check")
 	if err != nil {
+		// SQLite returns "foreign key mismatch" at prepare time when
+		// a FK constraint references a column that doesn't exist in
+		// the parent table (schema-level mismatch, not row-level
+		// violation). Return it as a warning rather than a hard
+		// failure so `db check` can report the schema issue without
+		// aborting the entire diagnostic run.
+		if strings.Contains(err.Error(), "foreign key mismatch") {
+			return []string{fmt.Sprintf("WARNING: schema-level FK mismatch: %v", err)}, nil
+		}
 		return nil, fmt.Errorf("foreign_key_check: %w", err)
 	}
 	defer rows.Close()

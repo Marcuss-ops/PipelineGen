@@ -29,7 +29,11 @@ import (
 //     callers using cached/raw payloads are not broken — controlled
 //     by aliasesEnv.probeShape envelope detector.
 func (c *Client) GetAliasTarget(ctx context.Context, alias string) (string, error) {
-	url := fmt.Sprintf("%s/collections/%s/aliases", c.baseURL, alias)
+	// Use the global /aliases endpoint because /collections/{alias}/aliases
+	// is designed for physical collection names — it returns empty when the
+	// parameter is itself an alias rather than a concrete collection.
+	// PR-ALIAS-RESOLVE-FIX (2026-07-04): verified on Qdrant v1.x.
+	url := fmt.Sprintf("%s/aliases", c.baseURL)
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
