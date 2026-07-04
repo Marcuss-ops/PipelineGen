@@ -318,7 +318,14 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// identical to the legacy probe implementation above. No observable
 	// behaviour change; only the consumer surface moves from raw SDK to
 	// typed port.
-	if root.Drive != nil && root.Drive.Admin != nil {
+	//
+	// PR-DRIVE-SOFT-MODE-PROBE (July 2026): when StrictStartupValidation
+	// is false (soft-mode boot, e.g. VELOX_DRIVE_STRICT_STARTUP_VALIDATION=false),
+	// skip the Drive readiness probe entirely. The credentials are dummy/non-existent
+	// and the probe's Google API call would fail with 401, blocking the entire
+	// readiness barrier. Soft-mode operators already accept that Drive is
+	// unavailable; the probe would be a false-negative.
+	if root.Drive != nil && root.Drive.Admin != nil && cfg.Drive.StrictStartupValidation {
 		admin := root.Drive.Admin
 		driveProbe = func(ctx context.Context) error {
 			return admin.Ping(ctx)
