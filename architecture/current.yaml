@@ -2156,20 +2156,56 @@
         targeted go build ./internal/application/images/... + go test
         -short ./internal/application/images/... exit 0.    - id: PR-QDRANT-MAINT-PER-MODE
       owner_capability: cmd/admin
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: TBD
       deadline: 2026-08-01
       notes: |
-        Split cmd/admin/qdrant_maintenance.go into per-mode dispatch:
-          qdrant_maintenance.go            # dispatch modalità + help
-          qdrant_maintenance_args.go       # parseQdrantMaintArgs + mode enum
-          qdrant_maintenance_audit.go      # audit mode
-          qdrant_maintenance_repair.go     # repair-locators
-          qdrant_maintenance_delete.go     # delete-invalid
-          qdrant_maintenance_output.go     # JSON/human report formatting
-          qdrant_scanner_adapter.go        # qdrantScannerAdapter
-        Refactor meccanico (godlike/06 + AGENTS.md §Modular edit patterns,
-        Pattern 5). High-cohesion per mode keeps the per-file LoC
-        under the AGENTS.md Check 44 transitional cap (66 LoC).
+        Split cmd/admin/qdrant_maintenance.go into per-mode dispatch
+        (shipped 2026-07-04, pre-deadline 28 days early). The actual
+        file layout landed:
+
+          qdrant_maintenance.go                # thin orchestrator + qdrantMaintContext + runQdrantMaintenanceHeavy
+          qdrant_maintenance_args.go           # qdrantMaintDeps + parseQdrantMaintArgs
+          qdrant_maintenance_audit.go          # runQdrantMaintenanceAudit
+          qdrant_maintenance_repair_locators.go # runQdrantMaintenanceRepairLocators
+          qdrant_maintenance_delete_invalid.go # runQdrantMaintenanceDeleteInvalid + collectNonLocatorAssetIDs + isLocatorOnly
+          qdrant_maintenance_classify.go       # classifyForMaintenance (shared by audit + delete-invalid)
+          qdrant_maintenance_scanner.go        # qdrantScannerAdapter + 2 compile-time var _ assertions
+
+        godlike/06 SSOT: each per-mode file owns exactly one capability
+        concern (orchestration / args parsing / mode handler / shared
+        helper / scanner adapter). The qdrantMaintContext struct is the
+        canonical shared-init bundle (cfg + log + ctx always; heavy-init
+        fields sqliteDB + root + client + activeCol + scanner only for
+        audit + delete-invalid per godlike/07 honest-disclosure).
+
+        godlike/07 minimum-blast-radius: NO new tests added (mechanical
+        refactor preserves the existing 0-test baseline; new test coverage
+        is a separate forward-pointer per the LIFECYCLE-SPLIT-BY-CAPABILITY
+        precedent). 3 dead-code lines REMOVED: the pre-existing
+        `_ = sql.ErrNoRows` speculative assertion in the original
+        monolithic file is physically retired; the redundant 3-line
+        scan-limit clamping in the original orchestrator is deleted
+        (newQdrantScannerAdapter already clamps — single source of truth).
+
+        godlike/07 typed-error contract preserved: legacyaudit.ValidateAssetIDs
+        still gates the delete-invalid apply loop; the typed-error
+        contract is unchanged. The 2 compile-time scanner assertions
+        (legacyaudit.QdrantScanner + NextOffsetExtractor) moved to
+        qdrant_maintenance_scanner.go (godlike/06 audit-pin discipline:
+        pins live next to the type they assert).
+
+        Naming convention: `runRepairLocators` renamed to
+        `runQdrantMaintenanceRepairLocators` for symmetry with the other
+        2 mode handlers (godlike/06 SSOT: one canonical naming convention
+        across all 3 modes). `parseQdrantMaintArgs` name RETAINED
+        (godlike/07 minimum-blast-radius — no functional change).
+
+        Pre-existing build issues (carry-forward, OUT OF SCOPE per
+        AGENTS.md scope discipline): the 5-item voiceover carry-forward
+        (Language undefined) reproduces on stashed-state origin/main too
+        — NOT a regression from this PR.
     - id: PR-YT-DRIVE-LEGACY-RETIRE
       owner_capability: internal/app
       status: pending
@@ -4372,3 +4408,43 @@ wave_status:
       status: pending
       deadline: 2026-07-18
       description: Update doc.go with canonical type map for metadata types
+
+
+# ── PERSIST-PROCESSOR-PR6 — PersistenceProcessor PR-6 canonical columns (CLOSED, July 2026) ──
+# godlike/06 SSOT typed-contract alignment: PersistenceProcessor now writes the
+# canonical IdempotencyKey + SpecScene typed fields into migration 100's dedicated
+# idempotency_key + specscene TEXT columns, leaving the legacy Template +
+# TimelineJSON slots empty for newly-inserted rows. The pre-PR-6 literal stored
+# the JSON payload in TimelineJSON and the 16-hex idem key in Template — both
+# read by legacy ListScripts filters but NOT what FindByIdempotencyKey + the
+# SpecScene consumer contract actually read, leaving newly-inserted rows with
+# empty canonical columns. From commit d17c78ae forward, newly-inserted rows
+# start in canonical shape from row zero. Migration 100 backfill already
+# migrated pre-PR-6 rows (template -> idempotency_key when 16-hex,
+# timeline_json -> specscene when Version-prefixed JSON). The 2 t.Skip markers
+# on TestPersistence_FreshInsert + TestPersistence_PersistsSpecSceneJSON
+# (with the wrong reason "Needs SQLite DB" — both tests use an in-memory
+# idemFakeRepo) were REMOVED so the canonical-contract invariant compiles into
+# the test suite for future regressions per godlike/07 typed-error contract.
+- id: PERSIST-PROCESSOR-PR6
+  status: done
+  exit_signal: true
+  owner_capability: architecture
+  deadline: 2026-07-04
+  exit_gate: |
+    PersistenceProcessor canonical-contract alignment landed on origin/main
+    via commit d17c78aeb2f823fe2cdd23aae5fe7e6a0b78ac13 (2026-07-04): the
+    typed IdempotencyKey + SpecScene fields now write to migration 100
+    dedicated idempotency_key + specscene TEXT columns. ports.ScriptRecord
+    typed contract is the SOLE round-trip surface per godlike/06 SSOT
+    one-canonical-owner-per-fact. The 2 t.Skip markers (wrong SQLite-DB
+    reason) REMOVED so the canonical invariant compiles into the test
+    suite for future regressions (godlike/07 typed-error contract).
+  linked_issues:
+    - id: PR-PERSIST-PR6-CANONICAL
+      owner_capability: internal/application/scripts/adapters
+      status: shipped
+      ship_sha: d17c78aeb2f823fe2cdd23aae5fe7e6a0b78ac13
+      ship_date: 2026-07-04
+      deadline: 2026-07-04
+
