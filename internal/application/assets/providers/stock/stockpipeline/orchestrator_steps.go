@@ -35,10 +35,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -150,17 +152,94 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 // ── Step 2: stock.stage_sources ───────────────────────────────────────
 
 // StockStageSourcesStep is the canonical implementation of
-// stock.stage_sources. Today (Commit 5) the body is a Begin/Complete
-// stub — the per-plan SourceStager.Prepare loop wires in Commit 6.
+// stock.stage_sources. P6 (July 2026): wired with real
+// assets.SourceStager.StageSource per unique source URL.
+// Deduplicates by SourceID so multiple ClipPlan entries
+// sharing the same source download once.
 type StockStageSourcesStep struct{}
 
 func (StockStageSourcesStep) Name() string { return StepKeyStockStageSources }
 
-func (StockStageSourcesStep) Run(_ context.Context, runner StepRunner) error {
-	if runner.Log() != nil {
-		runner.Log().Info("orchestrator: stock.stage_sources stub (Commit 6 wires real SourceStager.Prepare)",
-			zap.Int("plan_count", len(runner.State().Plan)))
+func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
+	stager := runner.SourceStager()
+	if stager == nil {
+		// Test-fixture path: no SourceStager wired → skip staging.
+		// Downstream steps (extract_clips, compose_chunks) handle
+		// empty StagedAssets gracefully.
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.stage_sources: SourceStager nil — skipping staging (test-fixture path)")
+		}
+		return nil
 	}
+
+	plans := runner.State().Plan
+	if len(plans) == 0 {
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.stage_sources: empty plan — nothing to stage")
+		}
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var staged []*assets.StagedAsset
+
+	// Deferred cleanup: fires when Step.Run returns (AFTER RunResilient's
+	// loop iteration), which is safe because downstream steps (extract_clips,
+	// compose_chunks) do not read StagedAssets — they consume the planner's
+	// ClipPlan logical IDs directly.
+	defer func() {
+		for _, a := range staged {
+			if cleanErr := stager.Cleanup(ctx, a); cleanErr != nil {
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.stage_sources: Cleanup failed",
+						zap.String("local_path", a.LocalPath),
+						zap.Error(cleanErr))
+				}
+			}
+		}
+	}()
+
+	for _, plan := range plans {
+		if seen[plan.SourceID] {
+			continue
+		}
+		seen[plan.SourceID] = true
+
+		ref := assets.SourceRef{URL: plan.SourceID}
+		asset, stageErr := stager.StageSource(ctx, ref)
+		if stageErr != nil {
+			// Graceful degradation: stage failure logs Warn + continues.
+			// Mirrors YouTube (process_segment.go Step 4a) + Artlist pattern.
+			// The downstream extract_clips step can still proceed with
+			// cached/pre-staged sources if available; no staged asset
+			// for this URL means clips referencing it will fail at cut.
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.stage_sources: StageSource failed — graceful degradation",
+					zap.String("source_id", plan.SourceID),
+					zap.Error(stageErr))
+			}
+			continue
+		}
+		if asset == nil {
+			// Defensive nil-asset path: StageSource returned (nil, nil).
+			// Treated as soft failure (Warn + continue, no defer).
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.stage_sources: StageSource returned nil asset — defensive skip",
+					zap.String("source_id", plan.SourceID))
+			}
+			continue
+		}
+		staged = append(staged, asset)
+
+		if runner.Log() != nil {
+			runner.Log().Info("orchestrator: stock.stage_sources: staged source",
+				zap.String("source_id", plan.SourceID),
+				zap.String("local_path", asset.LocalPath),
+				zap.Int64("bytes", asset.Bytes))
+		}
+	}
+
+	runner.State().StagedAssets = staged
 	return nil
 }
 
@@ -200,20 +279,87 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 // ── Step 4: stock.compose_chunks ───────────────────────────────────────
 
 // StockComposeChunksStep is the canonical implementation of
-// stock.compose_chunks. Today (Commit 5) the body is Begin/Complete
-// stub — the per-cut StockRenderer.Render loop wires in Commit 7.
-// State.ComposedPaths is set 1:1 from State.CutPaths so downstream
-// stock.publish has a typed list to operate on.
+// stock.compose_chunks. P6 (July 2026): wired with real
+// StockRenderer.Render — each cut path is rendered individually
+// (one clip → one composed chunk) preserving the 1:1 cardinality
+// established by the Commit 5 stub.
 type StockComposeChunksStep struct{}
 
 func (StockComposeChunksStep) Name() string { return StepKeyStockComposeChunks }
 
-func (StockComposeChunksStep) Run(_ context.Context, runner StepRunner) error {
-	if runner.Log() != nil {
-		runner.Log().Info("orchestrator: stock.compose_chunks stub (Commit 7 wires real StockRenderer.Render)",
-			zap.Int("cut_count", len(runner.State().CutPaths)))
+func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error {
+	cutPaths := runner.State().CutPaths
+	if len(cutPaths) == 0 {
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.compose_chunks: empty cut paths — nothing to compose")
+		}
+		return nil
 	}
-	runner.State().ComposedPaths = append([]string(nil), runner.State().CutPaths...)
+
+	renderer := runner.Renderer()
+	if renderer == nil {
+		// nil renderer → empty composed paths (test-fixture compat).
+		// The downstream stock.publish step sees zero composed paths
+		// and the stock.finalize gate fires with ErrStockNoChunksFinalized.
+		// Previously the stub passed through logical IDs as composed
+		// paths, but P6 wires real rendering — pass-through of non-file
+		// IDs would cause publish to fail on ErrStockChunkLocalMissing.
+		runner.State().ComposedPaths = nil
+		return nil
+	}
+
+	in := runner.RunInput()
+	noAudio := in != nil && in.NoAudio
+	noTransitions := in != nil && in.NoTransitions
+	noEffects := in != nil && in.NoEffects
+
+	cfg := runner.Cfg()
+	clipDur := cfg.ClipDurationSec
+	if clipDur <= 0 {
+		clipDur = 5
+	}
+
+	composed := make([]string, 0, len(cutPaths))
+	for i, cutPath := range cutPaths {
+		outputPath := filepath.Join(os.TempDir(),
+			fmt.Sprintf("stock_composed_%s_%d.mp4", runner.JobID(), i))
+
+		req := RenderRequest{
+			OutputPath:       outputPath,
+			InputPaths:       []string{cutPath},
+			Width:            1920,
+			Height:           1080,
+			FPS:              30,
+			Codec:            "libx264",
+			Preset:           "medium",
+			CRF:              23,
+			KeyframeInterval: 60,
+			KeepAudio:        !noAudio,
+			NoTransitions:    noTransitions,
+			NoEffects:        noEffects,
+			TransitionEvery:  1,
+			ClipDurationSec:  clipDur,
+			EffectsDir:       DefaultPipelineConfig().EffectsDir,
+			EffectEvery:      DefaultPipelineConfig().EffectInterval,
+			EffectIndexHint:  i,
+			Logger:           runner.Log(),
+			ChunkIndex:       i,
+		}
+
+		_, renderErr := renderer.Render(ctx, req)
+		if renderErr != nil {
+			return fmt.Errorf("orchestrator: stock.compose_chunks: Render chunk %d: %w", i, renderErr)
+		}
+		composed = append(composed, outputPath)
+
+		if runner.Log() != nil {
+			runner.Log().Info("orchestrator: stock.compose_chunks: rendered chunk",
+				zap.Int("chunk_index", i),
+				zap.String("output", outputPath))
+		}
+	}
+
+	runner.State().ComposedPaths = composed
 	return nil
 }
 
@@ -277,26 +423,8 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		if compPath != "" {
 			if err := cs.ComputeAndFillSHA256(); err != nil {
-				// Pre-Commit-7 transitional path: the compose_chunks
-				// stub produces logical IDs (not real file paths).
-				// When the file doesn't exist on disk, skip the
-				// chunk gracefully so the pipeline continues.
-				// Once Commit 7 wires StockRenderer.Render, every
-				// composed path will be a real file on disk.
-				// TODO(Commit-7): restore fail-closed on
-				// ErrStockChunkLocalMissing once compose_chunks
-				// produces real files.
-				if errors.Is(err, ErrStockChunkLocalMissing) {
-					if runner.Log() != nil {
-						runner.Log().Debug("orchestrator: stock.publish: skipping chunk (local file not on disk — pre-Commit-7 compose stub)",
-							zap.Int("chunk_index", i),
-							zap.String("artifact_id", cs.ArtifactID),
-							zap.String("local_path", compPath))
-					}
-					continue
-				}
-				// Non-ErrStockChunkLocalMissing errors (hash failures,
-				// stat I/O errors) are still surfaced loudly.
+				// P6 (July 2026): compose_chunks now produces real
+				// files — ErrStockChunkLocalMissing is a hard failure.
 				return fmt.Errorf("orchestrator: stock.publish: chunk %d (artifact=%s): %w",
 					i, cs.ArtifactID, err)
 			}
@@ -332,6 +460,10 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// ── Phase 2: per-run metadata.json ArtifactPreparation ────────
 	// Always invoked AFTER chunks so the metadata's Chunks[] list
 	// embeds the per-chunk ArtifactIDs + DriveFileIDs.
+	//
+	// P6 (July 2026): compose_chunks now produces real rendered files.
+	// The pre-Commit-7 chunk-skip guard (ErrStockChunkLocalMissing) is
+	// RETIRED — missing chunks surface as hard failures.
 	//
 	// Pre-Commit-7 guard: if zero chunks were prepared (all skipped
 	// because compose_chunks is a stub producing logical IDs), skip
