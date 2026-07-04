@@ -4806,6 +4806,29 @@ wave_status:
       owner_capability: internal/app
       status: shipped
       deadline: 2026-08-15
+      ship_date: 2026-07-04
+      ship_via: |
+        internal/app/completion_e2e_test.go shipps with 4 assertion branches
+        (0 duplicates at retry + 1 PublishedArtifact + 1 asset_location +
+        JobFinalizer SUCCEEDED). On-disk file present at test discovery time.
+      # AZIONE 8 E2E verification note 2026-07-04 (godlike/07 honest scope-lock):
+      # Local CGO_ENABLED=1 go test -run TestCompletionE2E ./internal/app/
+      #   FAILED at completion_e2e_test.go:684 with assertion error:
+      #     expected: string("drive")
+      #     actual:   <nil>(<nil>)
+      #     message:  mock publisher returns Provider='drive' (the typed LocalPath ban path)
+      # Environment is OK (CGO_ENABLED=1, gcc-12.2.0, DB lock compiles clean);
+      # the failure is the test mock returning nil for Provider where a string
+      # is asserted. Per action plan §"Azione 8 E2E Test" + user-pasted 4-commit
+      # plan acceptance, do NOT flip status: shipped_tested until the mock
+      # contract matches the asserted expectation. This commit records the
+      # 2026-07-04 run outcome honestly (godlike/07 no-fake-availability).
+      # The pre-existing 5-item build-issue carry-forward is NOT a regression
+      # of this run (the project compiles through to the test runner).
+      # Forward-pointer: PR-E2E-MOCK-PROVIDER-FIX; deadline 2026-07-25.
+      # Until that PR lands, Azione 8 stays status: shipped (file present) but
+      # FieldBattle-tested is FAIL — operators should not assume CUTOVER
+      # acceptance criteria is fully tested.
       description: "Full E2E happy-path + idempotency-retry coverage. 4 assertions: 1 PublishedArtifact + 1 asset_location + JobFinalizer SUCCEEDED + 0 duplicates at retry."
     - id: PR-CUTOVER-AZIONE-9-RECOVERY-SCRIPT
       owner_capability: scripts/recovery
