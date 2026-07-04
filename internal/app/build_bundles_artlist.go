@@ -6,11 +6,16 @@
 // instantiation in the process — composition root is the canonical owner
 // for adapter wiring by construction.
 //
-// godlike/07 no-fake-availability: 4 mandatory gates are checked UPFRONT
-// (Publisher / Dispatcher / ClipsRepo / Jobs.Service); nil on any yields a
-// typed error, which registerArtlist downgrades to log.Warn + skip-route +
-// return-nil. Operators see 404 on /api/artlist/* rather than a full-system
-// boot abort.
+// godlike/07 no-fake-availability: 5 mandatory gates are checked UPFRONT
+// (Publisher / Dispatcher / ClipsRepo / Jobs.Service are the 4 wiring
+// gates; gate #5 = config validity for the Node scraper URL when
+// artlist_enabled=true). nil on any of the first 4 yields a typed error,
+// which registerArtlist downgrades to log.Warn + skip-route +
+// return-nil. Gate #5 (scraper-server URL) is extracted to
+// validateArtlistScraperURL for direct unit-testability per godlike/06
+// SSOT — it aborts the wiring loudly with an actionable fix hint instead
+// of silently degrading to per-call exec fallback at first /run. Operators
+// see 404 on /api/artlist/* rather than a full-system boot abort.
 //
 // declared explicitly with a linked_issue cross-ref; see
 // architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
@@ -82,8 +87,13 @@ var (
 // were not pre-exposed on ArtlistBundle by PR4d-chunk2 convention. Each of the
 // 5 is a DIRECT receiver from ComposeRoot — not an adapter shim (godlike/06 SSOT).
 //
-// godlike/07: 4 mandatory gates checked UPFRONT. nil on any returns a typed error
-// which the caller (registerArtlist) downgrades to log.Warn + skip-route + return-nil.
+// godlike/07: 5 mandatory gates checked UPFRONT. The first 4 are
+// runtime-wiring gates (Publisher / Dispatcher / ClipsRepo / Jobs.Service);
+// nil on any yields a typed error which the caller (registerArtlist)
+// downgrades to log.Warn + skip-route + return-nil. Gate #5 is the
+// config-validity check (Node scraper URL when artlist_enabled=true)
+// and lives in validateArtlistScraperURL for direct unit-testability
+// per godlike/06 SSOT.
 // godlike/06: SemanticEnricher is the canonical app-layer wrapper matching
 // artlist.MetadataWriter.Enrich (enrich signature verbatim).
 func WireArtlist(
@@ -99,7 +109,8 @@ func WireArtlist(
 ) (*ArtlistWiring, error) {
 	_ = ctx
 
-	// godlike/07 fail-closed: 4 mandatory gates UPFRONT.
+	// godlike/07 fail-closed: 5 mandatory gates UPFRONT (4 wiring + 1 config,
+	// see validateArtlistScraperURL below). Gates #1-4 short-circuit in order.
 	if bundle == nil {
 		return nil, fmt.Errorf("WireArtlist: bundle is nil")
 	}
@@ -117,6 +128,19 @@ func WireArtlist(
 	}
 
 	// jobdomain.Service alias pin is verified at compile time (Pattern 0 + AGENTS.md).
+
+	// godlike/07 fail-closed: gate #5 (ART-002 P0.1, July 2026) — config
+	// validity check. When artlist_enabled=true the Node scraper server
+	// URL MUST be configured (env ARTLIST_SCRAPER_SERVER_URL); without it
+	// the scraper constructor silently degrades to per-call exec fallback
+	// (heavier + less reliable). This gate pins the no-fake-availability
+	// contract at the composition-root layer — see validateArtlistScraperURL
+	// godoc for the underlying rationale and the two valid escape hatches
+	// (disable Artlist via VELOX_FEATURE_ARTLIST_ENABLED=false, or set
+	// ARTLIST_SCRAPER_SERVER_URL to a real Node-scraper URL).
+	if err := validateArtlistScraperURL(cfg); err != nil {
+		return nil, err
+	}
 	_ = (jobdomain.Service)(bundle.Jobs.Service)
 
 	log.Info("WireArtlist: ART-001 reversal wiring starting",
@@ -287,6 +311,43 @@ func WireArtlist(
 		zap.Bool("godlike_06_ssot", true),
 	)
 	return &ArtlistWiring{Module: ad.Module, Service: ad.Service}, nil
+}
+
+// validateArtlistScraperURL is the canonical fail-closed gate #5
+// (ART-002 P0.1, July 2026) for WireArtlist. Returns a non-nil error if
+// the Artlist feature is enabled but the Node scraper server URL is
+// empty.
+//
+// godlike/07 no-fake-availability: deployments with feature enabled but
+// missing URL MUST NOT succeed silently — the underlying scraper.New()
+// field (ServerURL="") would otherwise pass through to per-call exec
+// fallback (heavier + less reliable) and break /run invocations on first
+// use rather than at startup. This gate pins the fail-closed contract at
+// the composition-root layer; the underlying scraper.New() still accepts
+// URL="" for backward compat with non-Artlist providers (test fixtures,
+// smoke tests, the etc/script artifact paths).
+//
+// godlike/06 SSOT: the gate is the SINGLE canonical owner of this check;
+// the 4 TDD tests in build_bundles_artlist_test.go target it directly via
+// (cfg) → error return. Promotion to WireArtlist is via a single call
+// site (no inline duplicate logic anywhere). If the underlying check
+// moves to the scraper package later, mirror it here as a defense-in-depth
+// gate (don't remove the composition-root check — the "fail fast at boot
+// vs fail slow at first /run" distinction is operationally important).
+//
+// Escape hatches (documented in the returned error message):
+//
+//	(a) Disable Artlist:    VELOX_FEATURE_ARTLIST_ENABLED=false (default)
+//	(b) Configure scraper:  ARTLIST_SCRAPER_SERVER_URL=http://artlist-scraper:9123
+//	                        (docker-compose.yml production setup)
+func validateArtlistScraperURL(cfg *config.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("WireArtlist: cfg is nil (gate #5 scraper-URL fail-closed cannot evaluate)")
+	}
+	if cfg.Features.ArtlistEnabled && cfg.External.ArtlistScraperServerURL == "" {
+		return fmt.Errorf("WireArtlist: cfg.Features.ArtlistEnabled=true but cfg.External.ArtlistScraperServerURL is empty (ART-002 P0.1 fail-closed; required env ARTLIST_SCRAPER_SERVER_URL — without it the searcher chain silently degrades to per-call exec fallback). To disable Artlist set VELOX_FEATURE_ARTLIST_ENABLED=false")
+	}
+	return nil
 }
 
 // WireArtlistJobBindings registers the Artlist job handler with the jobs dispatcher.
