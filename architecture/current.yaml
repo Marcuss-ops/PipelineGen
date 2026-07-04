@@ -4754,7 +4754,9 @@
 
   - id: SEARCH-T07-002
     owner_capability: internal/application/search
-    status: pending
+    status: shipped
+    ship_sha: 4bf42dff
+    ship_date: '2026-07-04'
     deadline: 2026-07-15
     notes: |
       Phase 9 cycle 2 closure of the godlike/06 one-canonical-owner-per-fact
