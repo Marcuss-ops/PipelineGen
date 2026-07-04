@@ -1939,7 +1939,7 @@
 #       HandleJob) — eliminate fake-availability surfaces in
 #       `internal/application/images/generation_service.go`;
 #   (c) raw SDK removal (DriveClient *gdrive.Service from DriveBundle)
-#       — eliminate the SSOT bypass risk that DRIVE-005 closed for (aka DRIVE-005)
+#       — eliminate the SSOT bypass risk that DRIVE-005 (aka DRIVE-005) closed for
 #       the rest of the surface.
 # The chrome_provider, qdrant_maintenance, legacy-route-residue
 # items are scoped-LATER because they don't block `go build ./...`
@@ -2060,7 +2060,7 @@
       notes: |
         Retire raw `DriveClient *gdrive.Service` field from
         internal/app/composition.go::DriveBundle. 4 Pattern 0 ports
-        already exist per DRIVE-005 closure (aka DRIVE-005) (architecture/current.yaml#id-27,
+        already exist per DRIVE-005 closure (aka DRIVE-005; architecture/current.yaml#id-27,
         closed via commit a8c781ae): delivery.Publisher / drive.Reader /
         drive.FileLifecycle / drive.DocClient. While raw *gdrive.Service
         leaks into the bundle, callers can bypass the canonical ports.
