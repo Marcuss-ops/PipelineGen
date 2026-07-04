@@ -2,9 +2,13 @@
 # -----------------------------------------------------------------------------
 # Single-source-of-truth for in-flight technical bug tickets (June 2026).
 # Schema per entry (strict, no narrative):
-#   id, title, status, owner?, deadline?, blocker?, linked_issues?
+#   id, title, status, owner?, deadline?, blocker?, linked_issues?,
+#   closed_at?, ship_sha?
 # Status ∈ {pending, in_progress, done}. owner/deadline OMITTED when absent
 # in canonical source — AGENTS.md §7 NO_FAKE_AVAILABILITY / zero-legacy.
+# closed_at + ship_sha present ONLY on status: done entries whose
+# closure commit reaches origin/main (godlike/07 no-fake-availability
+# — verifiable via `git log --grep=<ship_sha>` on main).
 #
 # linked_issues reference form (CANONICAL):
 #   - numeric (wave-ref)   e.g. linked_issues: [22]      (PR-CONTEXT-NO-CANCEL-CI-GATE)
@@ -218,17 +222,20 @@
 
 - id: Q8-ARTLIST-SqlSchemaStatus
   title: "Resolve 'no such column: status' SQL error surfacing in artlist test suite (TestSolarPanelSearch, residual of TestArtlistSearchRequest / TestArtlistRunTagMediaProcessorFailure / TestArtlistPR12b_DispatcherRoutesWritesThroughRepo after Q6 dispatcher-path stub-repo fix uncovered the schema/query mismatch)"
-  status: pending
+  status: done
   owner: internal/application/assets/providers/artlist
-  forward_pointer: ARTLIST-PERSIST-FIX-2026-07-04
+  forward_pointer: ARTLIST-PERSIST-FIX-2026-07-04  # orthogonal next-wave scope (still pending)
   linked_issues:
     - Q6-ARTLIST-DispatcherRoutes
+  closed_at: 2026-06-30
+  ship_sha: 027e606f
 
 - id: Q9-VOICEOVER-FanoutUseCase
   title: "Resolve undefined FanoutVoiceoversUseCase / FanoutResult symbols in internal/application/voiceover/jobs/generate_handler.go (pre-existing build-break blocker that prevents go build ./... / verify-main)"
-  status: pending
+  status: done
   owner: internal/application/voiceover/jobs
-  blocker: true
+  closed_at: 2026-06-30
+  ship_sha: 027e606f
 
 - id: Q10-WORKERSTATS-REINTRODUCE
   title: "Reintroduce pkg/workerstats/ Linux /proc sampler if/when RW-PROD-013 needs live /proc polling on the worker heartbeat path (now blocked on having a real consumer)"
@@ -289,6 +296,8 @@
   title: "Resolved monitor/enqueue.go line 222 isTransientEnqueueError strings.ToLower call site (Phase 1c honesty note flagged as undefined-symbol build error; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — strings package imported at enqueue.go:47 + strings.ToLower call site present at enqueue.go:222 + go build ./internal/application/assets/monitor/... exit 0 per PIPESTATUS[0] verifier)"
   status: done
   owner: internal/application/assets/monitor
+  closed_at: 2026-06-30
+  ship_sha: f92a1970
   linked_issues:
     - Q7-YOUTUBE-ExtractionPhase1c
 
@@ -296,6 +305,8 @@
   title: "Resolved monitor JobEnqueuer concrete binding (Phase 1c honesty note flagged NewUnboundJobEnqueuer undefined in scheduler.go; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — unboundJobEnqueuer stub + ErrJobEnqueuerNotWired sentinel + 511 JobEnqueuer port declared in ports.go + concrete adapter wired at extraction_enqueuer.go:5 + :136 + go build ./internal/application/assets/monitor/... exit 0 per PIPESTATUS[0] verifier)"
   status: done
   owner: internal/application/assets/monitor
+  closed_at: 2026-07-03
+  ship_sha: 792c187d
   linked_issues:
     - Q12-MONITOR-ENQUEUE-stringsToLower-resolved
 
@@ -303,11 +314,15 @@
   title: "Resolved stockpipeline/run_upload.go line-165 syntax build break concern (Phase 1c honesty note flagged pre-existing build error; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — line 165 is clean func indexChunkToClipsDB signature + full file compiles + go build ./internal/application/assets/providers/stock/... exit 0 per PIPESTATUS[0] verifier)"
   status: done
   owner: internal/application/assets/providers/stock/stockpipeline
+  closed_at: 2026-07-04
+  ship_sha: d803d6d8
 
 - id: Q15-APP-MODULE-MEDIA-MutationsDispatcherAdapter-resolved
   title: "Resolved app/module_media.go line 162 newMutationsDispatcherAdapter obsolete-literal concern (Phase 1c honesty note flagged Wave 7 unification residue per clips.Deps field removal; closed upstream by race-recovery upstream pulls during Phase 1c chain rebase (see git reflog + Phase 1c CHANGELOG honesty-note diff for SHA list) — newMutationsDispatcherAdapter defined in registry_adapters.go with full Wave 27 DRIVE-005 unification signature + module_media.go:162 call site valid + go build ./internal/app/... exit 0 per PIPESTATUS[0] verifier)"
   status: done
   owner: internal/app
+  closed_at: 2026-07-04
+  ship_sha: a10b67d0
 
 - id: Q16-CHANGELOG-ARCHYAML-CONTENTION-PRUDENT-2PR
   title: "Coordinate dual commits to CHANGELOG.md + architecture/current.yaml via prudent 2-PR split (3+ push races empirically documented on PR-STOCK-SOURCESTAGER-WIRE land cycle)"
