@@ -21,6 +21,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -486,67 +487,42 @@ func metadataFloat64(m map[string]any, key string) float64 {
 	return 0
 }
 
-// isSponsorSegment returns true when the transcript contains any
-// of the canonical sponsor-segment markers (substring match,
-// case-insensitive). Per user spec (Phase 1c Commit 3/4):
-//
-//   - "sponsored by"
-//   - "this video is brought to you by"
-//   - "ad break"
-//   - "affiliate link"
-//
-// Phase 1c closure (Commit 3b/4, June 2026): replaced the prior
-// canonical-delegation `ytmeta.IsSponsorSegment` (regex anchored
-// on expanded taxonomy) with the user-spec substring match. The
-// canonical helper remains in `metadata/service.go` for callers
-// that want the broader taxonomy; this file follows the user
-// spec literally.
+// isSponsorSegment delegates to the canonical regex in metadata.IsSponsorSegment.
+// CLIPS-META-2026-07-04 (Azione 2): replaced the legacy substring match with
+// the canonical word-boundary-anchored regex.
 func isSponsorSegment(transcript string) bool {
-	lo := strings.ToLower(transcript)
-	return strings.Contains(lo, "sponsored by") ||
-		strings.Contains(lo, "this video is brought to you by") ||
-		strings.Contains(lo, "ad break") ||
-		strings.Contains(lo, "affiliate link")
+	return ytmetadata.IsSponsorSegment(transcript)
 }
 
-// calculateQualityScore produces a deterministic linear-blend
-// quality score in [0.0, 1.0] for a YouTube clip. Per user
-// spec (Phase 1c Commit 3/4):
+// calculateQualityScore delegates to the canonical 40/40/20 weighted formula
+// in metadata.CalculateQualityScore. CLIPS-META-2026-07-04 (Azione 2): replaced
+// the legacy linear-blend formula (transcript_len/2000 + tag_count/10 +
+// duration/600 + title_len/100) with the canonical weighted formula.
 //
-//	score = (transcript_len / 2000)
-//	      + (tag_count / 10)
-//	      + (duration / 600)
-//	      + (title_len / 100)
-//
-// clamped to [0.0, 1.0].
-//
-// Phase 1c closure (Commit 3b/4, June 2026): replaced the prior
-// canonical-delegation (weighted 40/40/20 blend via
-// `ytmeta.CalculateQualityScore` + caller-side sponsor penalty)
-// with the user-spec linear blend above. The canonical
-// weighted formula + sponsor penalty remain in
-// `metadata/service.go` for callers that opt into the broader
-// scoring path; this file follows the user spec literally.
-//
-// External contract: `description` and `meta` are required by
-// `EnrichClip`'s call site (signature compatibility) even
-// though the user-spec formula doesn't consume them — the
-// `_ = description; _ = meta` discards mark them as part of an
-// external contract, not local dead variables. Removing them
-// would force a wider signature change at the call site.
-// `description` and `meta` are signature-only per the user-spec
-// formula (which is verbatim: only transcript+tags+duration
-// +title); the discards above are a deliberate spec-literal
-// interpretation.
+// External contract: `description` and `meta` are required by `EnrichClip`'s
+// call site (signature compatibility). Only meta is consumed for semantic
+// coverage counts; description is a signature-only discard.
 func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.CanonicalClipMetadata) float64 {
-	_ = description
-	_ = meta
+	_ = description // signature-only (kept for EnrichClip call-site compatibility)
 
-	score := float64(len(transcript))/2000.0 +
-		float64(len(tags))/10.0 +
-		duration/600.0 +
-		float64(len(title))/100.0
+	transcriptWordCount := ytmetadata.CountWords(transcript)
+	clipDuration := int(duration)
 
+	topicCount := 0
+	speakerCount := 0
+	mentionedCount := 0
+	if meta != nil {
+		topicCount = len(meta.Topics)
+		speakerCount = len(meta.Speakers)
+		mentionedCount = len(meta.MentionedPeople)
+	}
+
+	score := ytmetadata.CalculateQualityScore(transcriptWordCount, clipDuration, topicCount, speakerCount, mentionedCount)
+
+	// Sponsor penalty: caller-side per the canonical contract
+	if isSponsorSegment(transcript) {
+		score -= 0.20
+	}
 	if score < 0 {
 		score = 0
 	}
