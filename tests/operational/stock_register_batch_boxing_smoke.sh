@@ -274,6 +274,10 @@ test_1_batch_register() {
     if (( succeeded == 0 )); then
         fail "test1_zero_enqueued"
         printf '%sFAIL: zero clips enqueued — check server logs%s\\n' "$RED" "$RESET" >&2
+    elif (( succeeded != total )); then
+        fail "test1_partial_enqueue_${succeeded}_of_${total}"
+        printf '%sWARN: %s/%s jobs enqueued (expected all %s)%s\\n' \\
+            "$YELLOW" "$succeeded" "$total" "$total" "$RESET" >&2
     else
         printf '%s  %s/%s jobs enqueued successfully%s\\n' "$GREEN" "$succeeded" "$total" "$RESET"
     fi
@@ -339,6 +343,7 @@ test_2_poll_jobs() {
     local total_jobs=0
     local completed_jobs=0
     local failed_jobs=0
+    local first_poll=1
 
     # Poll each job individually. smoke_poll_terminal returns 0 when the
     # job reaches a terminal status (completed/failed/cancelled/dead_letter)
@@ -358,6 +363,17 @@ test_2_poll_jobs() {
         fi
 
         printf '  status=%s  ' "$SMOKE_LAST_STATUS"
+
+        # On first successful poll, dump .result shape so the operator
+        # can verify result_map nesting (media.clip handler returns a bare
+        # map[string]any; the wire shape may be .result directly or
+        # .result.result_map depending on the codec).
+        if (( first_poll )); then
+            first_poll=0
+            local result_shape
+            result_shape=$(jq -c '.result | keys' "$SMOKE_LAST_BODY" 2>/dev/null || true)
+            printf 'result.keys=%s  ' "${result_shape:-?}"
+        fi
 
         if [[ "$SMOKE_LAST_STATUS" != "completed" ]]; then
             fail "test2_job_${job_id}_${SMOKE_LAST_STATUS}"
