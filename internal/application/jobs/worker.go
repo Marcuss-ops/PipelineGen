@@ -113,6 +113,15 @@ type Worker struct {
 	notifier   QueueNotifier
 	reg        *Registry
 	timeouts   TimeoutMap
+
+	// broker is the typed narrow port (CompletionPort) consumed by
+	// the Worker for artifact-producing job finalization. nil = legacy
+	// w.repo.Complete path; non-nil = route ProducesArtifacts=true
+	// jobs through broker.CompleteWithArtifacts per
+	// PR-WORKER-RUNNER-INPROCESS-MIGRATION (July 2026). See
+	// WithBroker() below + CompletionPort interface declaration at
+	// internal/application/jobs/broker.go:50 for the contract.
+	broker CompletionPort
 }
 
 // NewWorker constructs a Worker.
@@ -178,6 +187,46 @@ func (w *Worker) WithRegistry(reg *Registry) *Worker {
 	} else {
 		w.timeouts = nil
 	}
+	return w
+}
+
+// WithBroker attaches the canonical CompletionPort narrow port to
+// the Worker for artifact-producing job finalization (PR-WORKER-
+// RUNNER-INPROCESS-MIGRATION, July 2026).
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: the port contract
+// (CompletionPort.CompleteWithArtifacts) is declared EXACTLY ONCE
+// in internal/application/jobs/broker.go:50 and consumed here
+// through the typed narrow interface. The Worker does NOT depend on
+// the broader 9-method Broker surface (RegisterWorker / Heartbeat /
+// Claim / Renew / Progress / Complete / Fail / IsCancelled) because
+// the Worker's finalization block in worker_execution.go calls only
+// `cp.CompleteWithArtifacts` — depending on the narrower port per
+// godlike/07 minimum-bleed.
+//
+// Mirrors the WithRegistry fluent-setter precedent (HC-1 June 2026)
+// so the composition root uses an idiomatic builder-style chain:
+//
+//	jobs.NewWorker(...).WithRegistry(reg).WithBroker(cp)
+//
+// Nil-tolerant: a nil broker means the worker falls through to the
+// legacy w.repo.Complete path inside runJob (worker_execution.go).
+// This preserves the canonical "no broker configured" behaviour that
+// legacy fixtures relied on; production wiring ALWAYS supplies a
+// non-nil broker via the composition root.
+//
+// Returns the receiver to allow builder-style chaining at the
+// composition site.
+//
+// Concrete compatibility: the in-process *local.Broker at
+// internal/infrastructure/jobs/local/broker.go satisfies CompletionPort
+// structurally via its
+// (ctx context.Context, cmd CompleteWithArtifactsCommand) ([]string, error)
+// signature. No compile-time pin needed — Go's structural interface
+// satisfaction handles this at the composition root in
+// `internal/app/build_bundles_workers.go`.
+func (w *Worker) WithBroker(cp CompletionPort) *Worker {
+	w.broker = cp
 	return w
 }
 
