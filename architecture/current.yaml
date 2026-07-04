@@ -5286,3 +5286,91 @@ wave_status:
   blocker: []
 
 
+# ── QDRANT-CHAIN-VERIFY-2026-07-04 ── Qdrant end-to-end ND chain verification wave
+# (in_progress, July 2026). Action plan derived from the user-pasted Italian audit
+# on the Qdrant chain: media_assets -> outbox_events asset.index.requested ->
+# IndexingHandler -> clipindexer.IndexClip -> QdrantRuntime.Writer -> Qdrant
+# runtime alias media_assets_current -> SearchAdapter/HybridSearch.
+# Per the audit: the chain is ben messo architetturalmente (single QdrantRuntime,
+# single client/schema, outbox v1 contract, supersede gate present). The red
+# point: when qdrant.enabled=true AND clipindexer.enabled=false, IndexClip
+# short-circuits (return nil) and outbox marks asset.index.requested as completed
+# WITHOUT writing to Qdrant (silent-success / false-indexing).
+# The wave has 2 PR bands + 1 Operator Pre-flight Checklist (11 SQL/curl probes
+# documented in companion action-plan markdown, NOT in linked_issues per
+# godlike/06 SSOT slim-schema ratchet).
+# Per godlike/06 SSOT (one canonical owner per fact): this wave is parallel +
+# orthogonal to PR-QDRANT-FINAL-DECISION (EXTERNAL-AUDIT-2026-07-04 umbrella)
+# which owns the lifecycle decision on composition.go Qdrant fields.
+- id: QDRANT-CHAIN-VERIFY-2026-07-04
+  status: in_progress
+  exit_signal: false
+  blocker: ["EXTERNAL-AUDIT-2026-07-04"]
+  owner_capability: architecture + internal/application/assets/providers/qdrant (composition: internal/app)
+  deadline: 2026-08-01
+  description: |
+    Qdrant end-to-end ND (no-fake-availability + deterministic) chain
+    verification wave. 2 PR bands + 1 Operator Pre-flight Checklist (11
+    SQL/curl sanity probes documented in the companion action-plan
+    markdown, NOT in linked_issues per slim-schema ratchet). Per the
+    user-pasted analysis, the chain is ben messo architetturalmente
+    but the red point (qdrant.enabled=true + clipindexer.enabled=false
+    = silent-success / false-indexing because IndexClip short-circuits
+    with return nil when clipindexer disabled) MUST be closed before
+    declaring "Qdrant end-to-end funziona".
+    6 net-new slim-shape linked_issues: 2 fail-closed (deadline 2026-07-15)
+    + 4 e2e test suites (deadline 2026-07-25 -> 2026-08-01). Wave is
+    parallel + orthogonal to PR-QDRANT-FINAL-DECISION (lifecycle decision
+    on composition.go Qdrant fields, deadline 2026-08-01). If the decision
+    retires Qdrant, Band B #5 + #6 (supersede gate + lifecycle filter)
+    are closed/obsolete. Band A + Band B #1..#4 ship independently.
+  exit_gate: |
+    Band A (deadline 2026-07-15):
+      (a) PR-QDRANT-CONFIG-MISMATCH-GATE SHIPPED — composition-root
+          fail-closed gate bans qdrant.enabled=true + clipindexer.enabled=false
+          at boot (mirror of ART-002 P0.1 validateArtlistScraperURL pattern).
+          4 TDD tests locked (nil-cfg + both-disabled + both-enabled happy +
+          qdrant-enabled+indexer-disabled fail-closed canonical case).
+      (b) PR-QDRANT-INDEXCLIP-GUARD SHIPPED — typed sentinel
+          ErrIndexClipDisabledButEventRequested + IndexingHandler not
+          silent-success on disabled IndexClip + NEW typed state
+          INDEXING_SKIPPED_NO_INDEXER in media_assets.index_state machine.
+          5 TDD tests locked.
+    Band B (deadline 2026-07-25 -> 2026-08-01):
+      (c) PR-QDRANT-E2E-YOUTUBE SHIPPED — full roundtrip e2e (5 subtests).
+      (d) PR-QDRANT-E2E-VOICEOVER SHIPPED — voiceover finalization (3 subtests).
+      (e) PR-QDRANT-E2E-SUPERSEDE-GATE SHIPPED — source_version invariant (2 subtests).
+      (f) PR-QDRANT-SEARCH-LIFECYCLE-FILTER SHIPPED — search adapter enforces
+          lifecycle_state=ACTIVE on DELETED/DELETE_REQUESTED (3 subtests).
+    Operator Pre-flight Checklist (live in action plan section 4, 11 SQL/curl
+    probes): health + schema + outbox_create + outbox_complete +
+    media_assets_indexed + qdrant_scroll + hybrid_search + supersede_gate +
+    qdrant_down_retry + delete_tombstone + voiceover_e2e. Operators run them
+    BEFORE declaring "Qdrant end-to-end funziona" — i 4 assertion obbligatori
+    sono: media_assets.index_state=INDEXED + Qdrant scroll finds asset_id +
+    Search returns the result + payload.lifecycle_state=ACTIVE.
+  linked_issues:
+    - id: PR-QDRANT-CONFIG-MISMATCH-GATE
+      owner_capability: "internal/app + internal/infrastructure/qdrant"
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-QDRANT-INDEXCLIP-GUARD
+      owner_capability: "internal/application/assets/indexing/handler.go + internal/infrastructure/indexing/clipindexer"
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-QDRANT-E2E-YOUTUBE
+      owner_capability: "tests/e2e/ + internal/application/youtube/usecase"
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-E2E-VOICEOVER
+      owner_capability: "tests/e2e/ + internal/application/voiceover"
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-E2E-SUPERSEDE-GATE
+      owner_capability: "tests/e2e/ + internal/application/assets/indexing"
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-QDRANT-SEARCH-LIFECYCLE-FILTER
+      owner_capability: "internal/application/search + tests/e2e/"
+      status: pending
+      deadline: 2026-08-01
