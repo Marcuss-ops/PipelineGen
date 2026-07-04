@@ -275,8 +275,12 @@ test_2_verify_results() {
             "$WORK_DIR/batch_response.json" 2>/dev/null || true
     fi
 
+        printf '%s  %s clip(s) had hard errors%s\n' \
+            "$RED" "$err_count" "$RESET"
+    fi
+
     if (( dup_count > 0 )); then
-        printf '%s  %s clip(s) were duplicates (already registered)%s\\n' \
+        printf '%s  %s clip(s) were duplicates (already registered)%s\n' \
             "$DIM" "$dup_count" "$RESET"
         printf '  hint: re-run with "force": true in each clip to re-process\\n'
     fi
