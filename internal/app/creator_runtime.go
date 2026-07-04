@@ -440,7 +440,7 @@ type creatorBestEffort struct {
 	name  string
 }
 
-func (p *creatorBestEffort) Name() string { return p.name }
+func (p *creatorBestEffort) Name() adapters.ProcessorName { return adapters.ProcessorName(p.name) }
 
 func (p *creatorBestEffort) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapters.ProcessorPolicy {
 	return adapters.ProcessorBestEffort

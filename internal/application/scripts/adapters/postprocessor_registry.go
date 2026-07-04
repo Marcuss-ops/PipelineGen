@@ -302,7 +302,7 @@ func (r *PostProcessorRegistry) Register(proc PostProcessor) bool {
 	if r.frozen {
 		if r.log != nil {
 			r.log.Warn("postprocessor registry: register called after freeze",
-				zap.String("name", proc.Name()))
+				zap.String("name", string(proc.Name())))
 		}
 		return false
 	}
@@ -311,7 +311,7 @@ func (r *PostProcessorRegistry) Register(proc PostProcessor) bool {
 	if _, exists := r.processors[name]; exists {
 		if r.log != nil {
 			r.log.Warn("postprocessor registry: duplicate registration rejected",
-				zap.String("name", name))
+				zap.String("name", string(name)))
 		}
 		return false
 	}
@@ -321,7 +321,7 @@ func (r *PostProcessorRegistry) Register(proc PostProcessor) bool {
 	r.policies[name] = policy
 	if r.log != nil {
 		r.log.Debug("postprocessor registered",
-			zap.String("name", name),
+			zap.String("name", string(name)),
 			zap.String("policy", string(policy)))
 	}
 	return true
@@ -423,10 +423,10 @@ func (r *PostProcessorRegistry) ValidateRequested(names []string) error {
 			policy = DefaultPolicyFor(name)
 		}
 		if policy == ProcessorRequired {
-			missing = append(missing, name)
+			missing = append(missing, string(name))
 		} else if r.log != nil {
 			r.log.Warn("postprocessor best-effort not registered at preflight",
-				zap.String("name", name))
+				zap.String("name", string(name)))
 		}
 	}
 	if len(missing) == 0 {
@@ -494,14 +494,14 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		if !ok || proc == nil {
-			warn := fmt.Sprintf("postprocessor %q not registered", name)
+			warn := fmt.Sprintf("postprocessor %q not registered", string(name))
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
 				requiredRequested++
-				requiredFails = append(requiredFails, name+" (not registered)")
+				requiredFails = append(requiredFails, string(name)+" (not registered)")
 			} else if r.log != nil {
 				r.log.Warn("postprocessor not registered, skipping (best-effort)",
-					zap.String("name", name),
+					zap.String("name", string(name)),
 					zap.String("item_id", plan.ID))
 			}
 			continue
@@ -512,41 +512,41 @@ func (r *PostProcessorRegistry) Run(
 		elapsed := time.Since(start).Milliseconds()
 
 		if err != nil {
-			result.StageDurations[name] = elapsed
-			warn := fmt.Sprintf("postprocessor %q failed: %v", name, err)
+			result.StageDurations[string(name)] = elapsed
+			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
 				requiredRequested++
-				requiredFails = append(requiredFails, name+" (failed: "+err.Error()+")")
+				requiredFails = append(requiredFails, string(name)+" (failed: "+err.Error()+")")
 			}
 			if r.log != nil {
 				r.log.Warn("postprocessor outcome",
-					zap.String("name", name),
+					zap.String("name", string(name)),
 					zap.Error(err))
 			}
 			continue
 		}
 
 		if ppResult == nil {
-			result.StageDurations[name] = elapsed
-			warn := fmt.Sprintf("postprocessor %q returned nil result", name)
+			result.StageDurations[string(name)] = elapsed
+			warn := fmt.Sprintf("postprocessor %q returned nil result", string(name))
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
 				requiredRequested++
-				requiredFails = append(requiredFails, name+" (nil result)")
+				requiredFails = append(requiredFails, string(name)+" (nil result)")
 			}
 			continue
 		}
 
 		ppResult.DurationMs = elapsed
-		result.StageDurations[name] = elapsed
+		result.StageDurations[string(name)] = elapsed
 
 		if ppResult.IsEmpty() {
-			warn := fmt.Sprintf("postprocessor %q returned empty output", name)
+			warn := fmt.Sprintf("postprocessor %q returned empty output", string(name))
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
 				requiredRequested++
-				requiredFails = append(requiredFails, name+" (empty output)")
+				requiredFails = append(requiredFails, string(name)+" (empty output)")
 			}
 			continue
 		}
