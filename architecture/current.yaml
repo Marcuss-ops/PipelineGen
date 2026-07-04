@@ -5075,7 +5075,7 @@ wave_status:
   status: pending
   exit_signal: false
   owner_capability: architecture
-  deadline: 2026-09-15
+  deadline: 2026-10-15
   exit_gate: |
     All 12 slim-shape linked_issues slots flip to status: shipped.
     Each per-PR commit lands directly on main per-file (auto-sufficient
@@ -5188,10 +5188,10 @@ wave_status:
     slim_schema_ratchet:
       precedent: PR-GODOBJ-HOTSPOT-CROSSREF
       precedent_date: 2026-08-01
-      ratcheted_deadline: 2026-09-15
+      ratcheted_deadline: 2026-10-15
       original_deadline: 2026-08-22
-      ratchet_weeks: 3.4
-      rationale: "5 unmissed hotspots are all in internal/app/ (composition root). The 12-item matrix currently has 1 internal/app/ slot (PR-SCRIPT-WIRE-SPLIT, owner_capability = internal/app) but 5 high-frequency internal/app/ files need 5 forward-pointer PR-APP-* slots — the matrix needs 4 new slots (registry + composition + lifecycle + module_media; wire_script is already covered by the matrix slot). The 3.4-week ratchet absorbs the cross-package audit-creep risk per godlike/07 minimum-blast-radius; the forward-pointers land at their own per-PR deadlines (range 2026-08-15 to 2026-10-15)."
+      ratchet_weeks: 7.1
+      rationale: "5 unmissed hotspots are all in internal/app/ (composition root). The 12-item matrix currently has 1 internal/app/ slot (PR-SCRIPT-WIRE-SPLIT, owner_capability: internal/app) but 5 high-frequency internal/app/ files need 5 forward-pointer PR-APP-* slots — the matrix needs 4 new slots (registry + composition + lifecycle + module_media; wire_script is already covered by the matrix slot). The 3.4-week ratchet absorbs the cross-package audit-creep risk per godlike/07 minimum-blast-radius; the forward-pointers land at their own per-PR deadlines (range 2026-08-15 to 2026-10-15)."
     follow_up_tickets:
       - id: PR-CODE-QUALITY-CROSS-REF-3-SURFACE-LOCKSTEP
         owner_capability: architecture (CHANGELOG.md + AGENTS.md maintainer)
