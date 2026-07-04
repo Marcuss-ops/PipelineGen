@@ -3703,3 +3703,97 @@ wave_status:
     No follow-up on the server-side 7-kind mapper itself; the typed
     godlike/07 contract is the canonical surface.
 
+
+
+# ── FASE 3.7 Commit 3 — monitor/ infra-import ban gate (CLOSED, July 2026) ──
+# Closes the FASE 3.7 zero-infra-imports commitment via a forward-prevention
+# gate in scripts/ci-architectural-checks.sh (Check 54). The gate rg-greps
+# `internal/infrastructure` inside internal/application/assets/monitor/ and:
+#   (a) HARD-FAIL on production imports (non-comment lines excluding
+#       ARCH-ALLOWLIST: monitor-infra-import sites);
+#   (b) WARN (non-fatal) on comment-only references + ARCH-ALLOWLIST sites
+#       for audit-pin observability.
+#
+# Scope rule (per user spec): strictly internal/application/assets/monitor/.
+# Widening to internal/application/** would over-block legitimate cross-layer
+# composition wiring in OTHER packages (every other app package legitimately
+# consumes infra types via its own composition-root adapter). Mirrors the
+# godlike/08 zero-baseline rule (no implementation, no transitional baselines
+# for this gate — monitor/ must NEVER import infra in production).
+#
+# Closure verification (July 2026, Commit 3): Check 54 active against the
+# canonical tree; pre-Committed state already satisfied because Commits 1b + 2
+# collapsed all 4 monitor/ infra-import surfaces into composition-root adapters
+# in internal/app/lifecycle.go (discoveries + downloader + metrics +
+# YouTube-discoveries cycle; see commits 2f45dcfa + e36b98d5).
+#
+# Forward-pointer (godlike/07 EXPAND phase bookkeeping): if a future
+# transitional call site legitimately needs an infra import inside monitor/
+# (e.g. an admin-migration or one-shot operator CLI the composition root
+# cannot abstract cleanly), prepend the `// ARCH-ALLOWLIST:
+# monitor-infra-import` magic marker on the line preceding the `import (`
+# opening paren. Each allowlist row requires explicit owner + deadline per
+# AGENTS.md §7; this gate emits WARN counts every CI run so the audit-pin
+# residue is observable in CI output regardless of fail-closed state.
+- id: FASE-3.7-CHECK-3
+  status: enforcement
+  exit_signal: true
+  owner_capability: scripts/ci-architectural-checks.sh
+  exit_gate: |
+    bash scripts/ci-architectural-checks.sh exits 0 with the Check 54
+    success line "OK: 0 hard-fail internal/infrastructure/ imports in
+    monitor/ (FASE 3.7 Commit 3 invariants upheld)". A synthetic infra
+    import added to any non-comment (.go) file under
+    internal/application/assets/monitor/ triggers a "FAIL: forbidden
+    internal/infrastructure/ import in internal/application/assets/monitor/
+    (FASE 3.7 Commit 3)" hard-fail line and RC=1 from the runbook itself.
+    internal/application/assets/monitor/ commits landing after this gate
+    MUST preserve zero production infra imports — the gate is the forward-
+    prevention rule (godlike/08 zero-baseline rule).
+
+
+# ── FASE 3.7 Commit 3 — monitor/ infra-import ban gate (CLOSED, July 2026) ──
+# Closes the FASE 3.7 zero-infra-imports commitment via a forward-prevention
+# gate in scripts/ci-architectural-checks.sh (Check 54). The gate rg-greps
+# `internal/infrastructure` inside internal/application/assets/monitor/ and:
+#   (a) HARD-FAIL on production imports (non-comment lines excluding
+#       ARCH-ALLOWLIST: monitor-infra-import sites);
+#   (b) WARN (non-fatal) on comment-only references + ARCH-ALLOWLIST sites
+#       for audit-pin observability.
+#
+# Scope rule (per user spec): strictly internal/application/assets/monitor/.
+# Widening to internal/application/** would over-block legitimate cross-layer
+# composition wiring in OTHER packages (every other app package legitimately
+# consumes infra types via its own composition-root adapter). Mirrors the
+# godlike/08 zero-baseline rule (no implementation, no transitional baselines
+# for this gate — monitor/ must NEVER import infra in production).
+#
+# Closure verification (July 2026, Commit 3): Check 54 active against the
+# canonical tree; pre-Committed state already satisfied because Commits 1b + 2
+# collapsed all 4 monitor/ infra-import surfaces into composition-root adapters
+# in internal/app/lifecycle.go (discoveries + downloader + metrics +
+# YouTube-discoveries cycle; see commits 2f45dcfa + e36b98d5).
+#
+# Forward-pointer (godlike/07 EXPAND phase bookkeeping): if a future
+# transitional call site legitimately needs an infra import inside monitor/
+# (e.g. an admin-migration or one-shot operator CLI the composition root
+# cannot abstract cleanly), prepend the `// ARCH-ALLOWLIST:
+# monitor-infra-import` magic marker on the line preceding the `import (`
+# opening paren. Each allowlist row requires explicit owner + deadline per
+# AGENTS.md §7; this gate emits WARN counts every CI run so the audit-pin
+# residue is observable in CI output regardless of fail-closed state.
+- id: FASE-3.7-CHECK-3
+  status: enforcement
+  exit_signal: true
+  owner_capability: scripts/ci-architectural-checks.sh
+  exit_gate: |
+    bash scripts/ci-architectural-checks.sh exits 0 with the Check 54
+    success line "OK: 0 hard-fail internal/infrastructure/ imports in
+    monitor/ (FASE 3.7 Commit 3 invariants upheld)". A synthetic infra
+    import added to any non-comment (.go) file under
+    internal/application/assets/monitor/ triggers a "FAIL: forbidden
+    internal/infrastructure/ import in internal/application/assets/monitor/
+    (FASE 3.7 Commit 3)" hard-fail line and RC=1 from the runbook itself.
+    internal/application/assets/monitor/ commits landing after this gate
+    MUST preserve zero production infra imports — the gate is the forward-
+    prevention rule (godlike/08 zero-baseline rule).
