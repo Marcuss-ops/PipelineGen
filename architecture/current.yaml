@@ -2187,6 +2187,41 @@
           owner_capability: internal/application/youtube/usecase
           deadline: 2026-08-15
           status: pending
+    - id: PR-MONITOR-DUAL-SENTINEL-FIX
+      owner_capability: internal/application/assets/monitor
+      status: shipped
+      deadline: 2026-07-25
+      ship_sha: TBD  # filled in follow-up commit (commit ref self-reference problem)
+      ship_date: 2026-07-04
+      notes: |
+        Retire the dual-sentinel split introduced by commit 60a61808.
+        The pre-fix shape carried `var ErrLedgerStateConflict = errors.New(...)`
+        in internal/application/assets/monitor/types_dto.go as a DISTINCT
+        sentinel value from internal/infrastructure/database/sqlite/assets::ErrStateConflict;
+        callers relied on the canonical `fmt.Errorf("...: %w", assets.ErrStateConflict)`
+        wrap chain to bridge the two — a brittle pattern per godlike/07 that
+        any unwrap error path silently invalidates.
+
+        Post-fix shape: monitor-side `ErrLedgerStateConflict` is now a thin
+        alias for assets.ErrStateConflict:
+          `var ErrLedgerStateConflict = assetsdb.ErrStateConflict`
+        Both names now point at the SAME `*errors.errorString` value, so
+        `errors.Is(err, monitor.ErrLedgerStateConflict)` ≡ `errors.Is(err,
+        assetsdb.ErrStateConflict)` is byte-equivalent (Go sentinel semantics:
+        errors.Is compares the pointer chain). Single owner of the fact
+        per godlike/06 SSOT; brittle wrap chain eliminated per godlike/07.
+
+        Forward-pointer: the dual-shape for monitor.OutboxEntry (declared
+        in types_dto.go but NOT yet wired — ports_discoveries.go STILL
+        imports assetsdb.OutboxEntry) is a separate residue tracked under
+        PR-GODOBJ-MONITOR-OUTBOX-BACKFILL (deadline 2026-08-22, Mechanical band).
+
+        Pre-existing build issues carry forward unchanged: monitor_enqueue_test.go
+        + youtube_discoveries_test.go failures are tracked under
+        architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04
+        (FIX-MONITOR-ENQUEUE-TOLOWER + FIX-MONITOR-SCHEDULER-ENQUEUER,
+        deadline 2026-07-15) — NOT caused by this fix.
+
     - id: PR-GODOBJ-2-MONITOR-SCHEDULER
       owner_capability: internal/application/assets/monitor
       status: shipped

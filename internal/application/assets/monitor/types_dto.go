@@ -20,9 +20,19 @@
 // (would couple the orchestration layer to a specific adapter shape).
 package monitor
 
+// assetsdb is the canonical monitor-package alias for
+// `internal/infrastructure/database/sqlite/assets` — matches the
+// convention used in `ports_discoveries.go` (the canonical port
+// definition for the youtube_discoveries ledger). The monitor
+// package re-exports ports / sentinels from this package under its
+// own canonical names so production callers don't need to import
+// the infra-side package directly (per godlike/06 SSOT, app-layer
+// callers consume canonical port names; infra is injected via the
+// composition root).
 import (
-	"errors"
 	"time"
+
+	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ListChannelVideosQuery is the monitor-owned projection of a
@@ -58,26 +68,37 @@ type OutboxEntry struct {
 	NextRetryAt    string `json:"next_retry_at,omitempty"`
 }
 
-// ErrLedgerStateConflict is the monitor-owned sentinel returned by
-// YoutubeDiscoveriesPort.CommitEnqueueOutbox (and friends) when the
-// underlying SQLite row is in an unexpected state for the requested
-// transition. Replaces the previous `sqlassets.ErrStateConflict`
-// import in enqueue.go.
+// ErrLedgerStateConflict is a thin alias for the canonical
+// assetsdb.ErrStateConflict (the SSOT owner of the youtube_discoveries
+// ledger state-precondition failure fact) per godlike/06 SSOT (one
+// canonical owner per fact). The infra-side repository methods
+// (MarkEnqueued, MarkRejected) return this sentinel directly when
+// the underlying SQLite row exists but its state does not match the
+// expected source state(s).
 //
-// Callers use errors.Is(err, monitor.ErrLedgerStateConflict) to
-// distinguish a state-precondition failure (terminal — operator must
-// reconcile) from a transient SQLite I/O error (retryable — surfaced
-// via the canonical retry.IsTransient predicate).
+// Production callers in the monitor package pattern-match via
+// `errors.Is(err, monitor.ErrLedgerStateConflict)` — this comparison
+// is byte-equivalent to `errors.Is(err, assetsdb.ErrStateConflict)`
+// because both names point at the SAME `*errors.errorString` value
+// (Go sentinel semantics: `errors.Is` compares the pointer chain).
+// The thin re-export eliminates the pre-fix dual-sentinel split
+// (commit 60a61808 declared monitor.ErrLedgerStateConflict as a
+// distinct sentinel value from sqlassets.ErrStateConflict; callers
+// relied on the canonical `fmt.Errorf("...: %w",` wrap chain to bridge
+// the two — a brittle pattern that any unwrap error path silently
+// invalidates). PR-MONITOR-DUAL-SENTINEL-FIX (2026-07-04) collapsed
+// the two sentinels into one with this thin-alias shape; godlike/07
+// no-fake-availability is restored.
 //
-// The infra-side `assets.ErrStateConflict` sentinel remains the
-// authoritative return value; the concrete adapter wraps the error
-// via fmt.Errorf("...: %w", assets.ErrStateConflict) so
-// errors.Is(monitor-side-err, monitor.ErrLedgerStateConflict) is
-// true. This is the canonical pattern for cross-package sentinel
-// translation (see AGENTS.md Pattern 0 + godlike/06 "one owner per
-// fact" — the monitor package is the application-layer owner of the
-// port contract; the infra package owns the SQLite implementation).
-var ErrLedgerStateConflict = errors.New("monitor: youtube_discoveries ledger state conflict — row state does not match expected source state")
+// The other typed sentinels returned by the same repository methods
+// (ErrNotFound = row missing; ErrAlreadyApplied = transition was
+// already applied in a prior call) remain assetsdb-owned and are not
+// re-exported here — monitor callers that need them should import
+// assetsdb directly (they are not yet consumed by monitor code, so
+// no canonical monitor-package re-export is required). Future
+// re-exports MUST be added when a monitor-side caller needs them,
+// to keep the SSOT chain enforced.
+var ErrLedgerStateConflict = assetsdb.ErrStateConflict
 
 // DateAfterFromCursor bridges channel.LastCursor (an RFC3339
 // timestamp stored in category_channels.last_cursor) and channel.LookbackDays
