@@ -37,6 +37,13 @@ import (
 // need to switch shapes mid-call. The cleanup function is a thin
 // wrapper around sourceStager.Release(ctx, PrepareContext.CleanupToken).
 func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, error) {
+	// P6 (July 2026): nil-guard for test-fixture path where
+	// the acquisition.SourceStager is not wired at composition time.
+	// ErrAcquisitionNotWired surfaces a typed sentinel callers can
+	// errors.Is against.
+	if s.sourceStager == nil {
+		return nil, fmt.Errorf("stage source %q: %w", url, acquisition.ErrAcquisitionNotWired)
+	}
 	prepared, err := s.sourceStager.Prepare(ctx, acquisition.PrepareRequest{
 		Source: acquisition.SourceRef{
 			URL:           url,
@@ -86,6 +93,10 @@ func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, e
 //
 // The legacy `s.ytdlp.Download` direct call is RETIRED.
 func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*appassets.StagedAsset, error) {
+	// P6 (July 2026): nil-guard for test-fixture path.
+	if s.sourceStager == nil {
+		return nil, fmt.Errorf("stage section %q: %w", ref.URL, acquisition.ErrAcquisitionNotWired)
+	}
 	prepared, err := s.sourceStager.Prepare(ctx, acquisition.PrepareRequest{
 		Source: acquisition.SourceRef{
 			URL:             ref.URL,

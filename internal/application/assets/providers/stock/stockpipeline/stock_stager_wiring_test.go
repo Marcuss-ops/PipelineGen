@@ -166,7 +166,6 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 //     DirectURLs[0])
 // would not be caught at unit-test time.
 func TestOrchestrator_RunResilient_StageSource_CalledOnceWithFirstSourceURL(t *testing.T) {
-	t.Skip("STOCK-CUT-6: forward-coverage marker per PR-STOCK-SOURCESTAGER-WIRE; remove when Stock Cutover §12-4 Commit 6 wires real o.stager.StageSource in dispatchSteps[stock.stage_sources].")
 	rec := &recordingStager{
 		stagedAsset: &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 1024},
 	}
@@ -209,7 +208,6 @@ func TestOrchestrator_RunResilient_StageSource_CalledOnceWithFirstSourceURL(t *t
 // if it fires BEFORE (e.g. inside stage_sources itself), the
 // chunk-emission step would lose its staged input.
 func TestOrchestrator_RunResilient_CleanupDeferredOnStageSuccess(t *testing.T) {
-	t.Skip("STOCK-CUT-6: forward-coverage marker per PR-STOCK-SOURCESTAGER-WIRE; remove when Stock Cutover §12-4 Commit 6 wires deferred Cleanup against the same *assets.StagedAsset returned from StageSource.")
 	rec := &recordingStager{
 		stagedAsset: &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 4096},
 	}
@@ -253,7 +251,6 @@ func TestOrchestrator_RunResilient_CleanupDeferredOnStageSuccess(t *testing.T) {
 // every grain source whose yt-dlp download is temporarily flaky,
 // defeating the point of having a port-mirror in production.
 func TestOrchestrator_RunResilient_StageFailure_GracefulDegradation(t *testing.T) {
-	t.Skip("STOCK-CUT-6: forward-coverage marker per PR-STOCK-SOURCESTAGER-WIRE; remove when Stock Cutover §12-4 Commit 6 wires graceful-degradation on StageSource error (Warn + continue; no defer; manifest still emitted).")
 	rec := &recordingStager{
 		// Both nil: defensive pointer + intentional error together.
 		stagedAsset: nil,
@@ -300,7 +297,6 @@ func TestOrchestrator_RunResilient_StageFailure_GracefulDegradation(t *testing.T
 // (Warn + continue, no defer, no NPE) so a misbehaving port cannot
 // panic the run.
 func TestOrchestrator_RunResilient_StageReturnsNilAsset_GracefulDegradation(t *testing.T) {
-	t.Skip("STOCK-CUT-6: forward-coverage marker per PR-STOCK-SOURCESTAGER-WIRE; remove when Stock Cutover §12-4 Commit 6 wires defensive nil-asset graceful-degradation (no defer when StageSource returns (nil, nil)).")
 	rec := &recordingStager{
 		stagedAsset: nil,
 		stageErr:    nil, // intentionally defensive-path input
@@ -344,7 +340,6 @@ func TestOrchestrator_RunResilient_StageReturnsNilAsset_GracefulDegradation(t *t
 // StageSource calls against an empty input — wasting a port
 // invocation and possibly leaking pre-flight signals.
 func TestOrchestrator_RunResilient_NoSources_NoStageInvocation(t *testing.T) {
-	t.Skip("STOCK-CUT-6: forward-coverage marker per PR-STOCK-SOURCESTAGER-WIRE; remove when Stock Cutover §12-4 Commit 6 wires the plan_clips-before-stage_sources ladder-order invariant pin (empty input errors at plan step, never reaches stage_sources).")
 	rec := &recordingStager{
 		stagedAsset: &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 1024},
 	}
