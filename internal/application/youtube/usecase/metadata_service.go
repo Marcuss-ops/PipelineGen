@@ -502,6 +502,7 @@ func isSponsorSegment(transcript string) bool {
 // coverage counts; description is a signature-only discard.
 func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.CanonicalClipMetadata) float64 {
 	_ = description // signature-only (kept for EnrichClip call-site compatibility)
+	_ = tags        // signature-only (legacy linear-blend consumed this; canonical formula doesn't)
 
 	transcriptWordCount := ytmetadata.CountWords(transcript)
 	clipDuration := int(duration)
@@ -540,79 +541,7 @@ func getQualityTier(score float64) string {
 	return "low"
 }
 
-// ── Phase 1b stubs (helpers moved to adapters/ during melt) ──────────
-
-func parseClipTimestamps(clipID string) (int, int) {
-	_ = clipID
-	return 0, 0
-}
-
-func ymTags(ym *ports.DownloaderMetadata, clip *asset.Asset) []string {
-	if ym != nil && len(ym.Tags) > 0 {
-		return ym.Tags
-	}
-	return nil
-}
-
-func ymCategories(ym *ports.DownloaderMetadata, clip *asset.Asset) []string {
-	if ym != nil && len(ym.Categories) > 0 {
-		return ym.Categories
-	}
-	return nil
-}
-
-func ymViewCount(ym *ports.DownloaderMetadata, clip *asset.Asset) int64 {
-	if ym != nil {
-		return ym.ViewCount
-	}
-	return 0
-}
-
-func ymUploadDate(ym *ports.DownloaderMetadata, clip *asset.Asset) string {
-	if ym != nil {
-		return ym.UploadDate
-	}
-	return ""
-}
-
-func ymThumbnailURL(ym *ports.DownloaderMetadata, clip *asset.Asset) string {
-	if ym != nil {
-		return ym.ThumbnailURL
-	}
-	return ""
-}
-
-func ymDescription(ym *ports.DownloaderMetadata, clip *asset.Asset) string {
-	if ym != nil {
-		return ym.Description
-	}
-	return ""
-}
-
-func metadataBool(m map[string]any, key string) bool {
-	if m == nil {
-		return false
-	}
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case bool:
-			return val
-		}
-	}
-	return false
-}
-
-func metadataInt(m map[string]any, key string) int {
-	if m == nil {
-		return 0
-	}
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case float64:
-			return int(val)
-		}
-	}
-	return 0
-}
+// ── Phase 1b stubs — removed in CLIPS-META-2026-07-04 (Azione 2).
+// parseClipTimestamps, ymTags, ymCategories, ymViewCount, ymUploadDate,
+// ymThumbnailURL, ymDescription, metadataBool, metadataInt were dead code
+// after WriteClipMetadataFile migrated to the canonical metadata package.
