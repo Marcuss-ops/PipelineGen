@@ -158,12 +158,17 @@ func (r *YoutubeDiscoveriesRepository) CommitEnqueueOutbox(
 }
 
 // DrainPendingOutbox atomically claims up to limit pending outbox entries
-// using UPDATE ... RETURNING. The caller receives exclusively claimed
-// rows in 'dispatching' state with the supplied lease. Rows with
-// next_retry_at in the future are skipped (backoff not yet elapsed).
+// using a SELECT → UPDATE → SELECT transaction. The caller receives
+// exclusively claimed rows in 'dispatching' state with the supplied
+// lease. Rows with next_retry_at in the future are skipped (backoff
+// not yet elapsed).
 //
 // Step 7/12: replaced the pre-migration SELECT-based query with an
 // atomic claim that prevents two drainers from reading the same row.
+//
+// July 2026: replaced UPDATE ... RETURNING (unsupported on SQLite 3.37)
+// with an explicit transaction that SELECTs candidate IDs, UPDATEs them,
+// and SELECTs the full rows — all within a single BEGIN/COMMIT.
 func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, limit int, leaseID, leaseUntil string) ([]OutboxEntry, error) {
 	if limit <= 0 {
 		limit = 10
@@ -172,19 +177,74 @@ func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, l
 		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: ensure table: %w", err)
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-		UPDATE monitor_enqueue_outbox
-		SET state = 'dispatching',
-		    lease_id = ?,
-		    lease_until = ?
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: begin tx: %w", err)
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Step 1: SELECT candidate IDs within the transaction.
+	idRows, err := tx.QueryContext(ctx, `
+		SELECT id FROM monitor_enqueue_outbox
 		WHERE state = 'pending'
 		  AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
 		ORDER BY created_at ASC
 		LIMIT ?
-		RETURNING id, discovery_id, idempotency_key, payload_json, state, retry_count, COALESCE(next_retry_at, '')
-	`, leaseID, leaseUntil, limit)
+	`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: atomic claim: %w", err)
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: select ids: %w", err)
+	}
+	var ids []int64
+	for idRows.Next() {
+		var id int64
+		if scanErr := idRows.Scan(&id); scanErr != nil {
+			idRows.Close()
+			return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: scan id: %w", scanErr)
+		}
+		ids = append(ids, id)
+	}
+	idRows.Close()
+	if err := idRows.Err(); err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: idRows: %w", err)
+	}
+
+	if len(ids) == 0 {
+		if commitErr := tx.Commit(); commitErr != nil {
+			return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: commit empty: %w", commitErr)
+		}
+		tx = nil
+		return nil, nil
+	}
+
+	// Step 2: UPDATE the selected rows.
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, leaseID, leaseUntil)
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	updateQuery := `UPDATE monitor_enqueue_outbox
+		SET state = 'dispatching', lease_id = ?, lease_until = ?
+		WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+	if _, err := tx.ExecContext(ctx, updateQuery, args...); err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: update: %w", err)
+	}
+
+	// Step 3: SELECT the full rows for the caller.
+	selectArgs := make([]any, len(ids))
+	for i, id := range ids {
+		selectArgs[i] = id
+	}
+	selectQuery := `SELECT id, discovery_id, idempotency_key, payload_json, state, retry_count, COALESCE(next_retry_at, '')
+		FROM monitor_enqueue_outbox WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := tx.QueryContext(ctx, selectQuery, selectArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: select rows: %w", err)
 	}
 	defer rows.Close()
 
@@ -196,33 +256,98 @@ func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, l
 		}
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: rows: %w", err)
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: commit: %w", commitErr)
+	}
+	tx = nil
+	return entries, nil
 }
 
 // DrainDispatched reclaims rows stuck in 'dispatching' state with
 // expired leases. On reclamation, the row is reset to 'pending' with
-// a fresh lease so it can be picked up by DrainPendingOutbox.
+// cleared lease so it can be picked up by DrainPendingOutbox.
 //
 // Step 7/12: prevents permanent row loss when a drainer crashes mid-
 // dispatch.
+//
+// July 2026: replaced UPDATE ... RETURNING (unsupported on SQLite 3.37)
+// with an explicit transaction (same pattern as DrainPendingOutbox).
 func (r *YoutubeDiscoveriesRepository) DrainDispatched(ctx context.Context, limit int, leaseID, leaseUntil string) ([]OutboxEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-		UPDATE monitor_enqueue_outbox
-		SET state = 'pending',
-		    lease_id = '',
-		    lease_until = NULL
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: begin tx: %w", err)
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Step 1: SELECT candidate IDs within the transaction.
+	idRows, err := tx.QueryContext(ctx, `
+		SELECT id FROM monitor_enqueue_outbox
 		WHERE state = 'dispatching'
 		  AND lease_until < datetime('now')
 		ORDER BY created_at ASC
 		LIMIT ?
-		RETURNING id, discovery_id, idempotency_key, payload_json, state, retry_count, COALESCE(next_retry_at, '')
 	`, limit)
 	if err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: select ids: %w", err)
+	}
+	var ids []int64
+	for idRows.Next() {
+		var id int64
+		if scanErr := idRows.Scan(&id); scanErr != nil {
+			idRows.Close()
+			return nil, fmt.Errorf("monitor_outbox.DrainDispatched: scan id: %w", scanErr)
+		}
+		ids = append(ids, id)
+	}
+	idRows.Close()
+	if err := idRows.Err(); err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: idRows: %w", err)
+	}
+
+	if len(ids) == 0 {
+		if commitErr := tx.Commit(); commitErr != nil {
+			return nil, fmt.Errorf("monitor_outbox.DrainDispatched: commit empty: %w", commitErr)
+		}
+		tx = nil
+		return nil, nil
+	}
+
+	// Step 2: UPDATE the selected rows — reset to pending + clear lease.
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	updateQuery := `UPDATE monitor_enqueue_outbox
+		SET state = 'pending', lease_id = '', lease_until = NULL
+		WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+	if _, err := tx.ExecContext(ctx, updateQuery, args...); err != nil {
 		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: reclaim: %w", err)
+	}
+
+	// Step 3: SELECT the full rows for the caller.
+	selectArgs := make([]any, len(ids))
+	for i, id := range ids {
+		selectArgs[i] = id
+	}
+	selectQuery := `SELECT id, discovery_id, idempotency_key, payload_json, state, retry_count, COALESCE(next_retry_at, '')
+		FROM monitor_enqueue_outbox WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := tx.QueryContext(ctx, selectQuery, selectArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: select rows: %w", err)
 	}
 	defer rows.Close()
 
@@ -234,7 +359,15 @@ func (r *YoutubeDiscoveriesRepository) DrainDispatched(ctx context.Context, limi
 		}
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: rows: %w", err)
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: commit: %w", commitErr)
+	}
+	tx = nil
+	return entries, nil
 }
 
 // MarkOutboxDispatched marks an outbox entry as successfully dispatched
