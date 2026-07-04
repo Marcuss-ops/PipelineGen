@@ -16,6 +16,13 @@
 //   - Struct literals like `generation.ResolvedStyle{ID: "x"}` compile identically.
 //   - Sentinel errors (`generation.ErrStyleNotFound`) are the same pointer as
 //     styles.ErrStyleNotFound, so `errors.Is(err, generation.ErrStyleNotFound)` works.
+//
+// Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026):
+// the underlying StyleDefinition canonically lives at
+// internal/domain/asset/types_style.go (slim 8-field shape). The 3-level
+// alias chain (image/styles.StyleDefinition = asset.GenerationStyle =
+// asset.StyleDefinition) collapses to a single type identity at compile
+// time, so existing consumers in this shim continue to work unchanged.
 package generation
 
 import "github.com/Marcuss-ops/PipelineGen/internal/application/images/styles"
@@ -27,6 +34,11 @@ import "github.com/Marcuss-ops/PipelineGen/internal/application/images/styles"
 type StyleRegistry = styles.StyleRegistry
 
 // ResolvedStyle is the output of StyleResolver.Resolve.
+//
+// Step-1 typed migration (A1, July 2026): Width/Height were dropped
+// from ResolvedStyle (caller-supplied dimensions through the image
+// generation request). Existing call sites that read ResolvedStyle.W/H
+// must migrate.
 type ResolvedStyle = styles.ResolvedStyle
 
 // StyleResolver resolves a style ID into validated generation parameters.

@@ -17,6 +17,13 @@
 //   - Regex-safe TrimSpace: leading/trailing whitespace stripped via
 //     regexp `^\s+|\s+$` (covers \t, \n, \r, Unicode space etc.) instead
 //     of strings.TrimSpace which only handles ASCII whitespace runes.
+//
+// Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026):
+// dimensions are caller-supplied ONLY. The legacy "style.W/H
+// fallback" path was retired when StyleDefinition lost
+// DefaultWidth/DefaultHeight — callers (image generation request
+// handlers) must pass Width/Height explicitly through the
+// GenerateCommand. The composer just copies them through.
 package generated
 
 import (
@@ -105,9 +112,13 @@ func (*promptComposerImpl) Compose(ctx context.Context, cmd GenerateCommand, sty
 		StyleID:        style.ID,
 		StyleVersion:   style.Version,
 		Provider:       cmd.Provider,
-		Width:          fallbackDim(cmd.Width, style.Width),
-		Height:         fallbackDim(cmd.Height, style.Height),
-		Tags:           cmd.Tags,
+		// Step-1 typed migration (A1, July 2026): dimensions are
+		// caller-supplied. The legacy `fallbackDim(cmd.W, style.W)`
+		// chain was retired when StyleDefinition lost the
+		// per-style DefaultWidth/DefaultHeight fields.
+		Width:  cmd.Width,
+		Height: cmd.Height,
+		Tags:   cmd.Tags,
 	}, nil
 }
 
@@ -133,11 +144,4 @@ func toLowerASCII(s string) string {
 		}
 	}
 	return string(b)
-}
-
-func fallbackDim(cmd, style int) int {
-	if cmd != 0 {
-		return cmd
-	}
-	return style
 }

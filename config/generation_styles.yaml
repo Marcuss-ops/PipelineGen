@@ -13,10 +13,7 @@ styles:
       extremely detailed, realistic, 8k, photorealistic, cinematic lighting
     negative_prompt: >-
       text, watermark, logo, blurry, low resolution, cartoon, anime
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/realistic"
-    tags: [realistic, photorealistic, 8k]
     enabled: true
 
   - name: "cartoon"
@@ -26,10 +23,7 @@ styles:
       cartoon style, 2d, colorful, high quality animation, vibrant
     negative_prompt: >-
       realistic, photorealistic, 3d, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/cartoon"
-    tags: [cartoon, 2d, colorful]
     enabled: true
 
   - name: "medieval"
@@ -39,10 +33,7 @@ styles:
       medieval style, fantasy, historical, detailed oil painting, epic atmosphere
     negative_prompt: >-
       modern, futuristic, sci-fi, text, watermark, blurry
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/medieval"
-    tags: [medieval, fantasy, historical]
     enabled: true
 
   - name: "cyberpunk"
@@ -52,10 +43,7 @@ styles:
       cyberpunk aesthetic, neon lights, futuristic, dark atmosphere, high tech
     negative_prompt: >-
       medieval, historical, bright daylight, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/cyberpunk"
-    tags: [cyberpunk, neon, futuristic]
     enabled: true
 
   - name: "watercolor"
@@ -65,10 +53,7 @@ styles:
       watercolor painting style, soft colors, artistic, fluid textures
     negative_prompt: >-
       realistic, 3d render, digital art, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/watercolor"
-    tags: [watercolor, artistic, soft]
     enabled: true
 
   - name: "3d-render"
@@ -78,10 +63,7 @@ styles:
       3d render, octane render, unreal engine 5 style, volumetric lighting, masterpiece
     negative_prompt: >-
       2d, cartoon, sketch, text, watermark, low poly
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/3d-render"
-    tags: [3d, render, octane]
     enabled: true
 
   - name: "sketch"
@@ -91,10 +73,7 @@ styles:
       hand-drawn sketch, pencil drawing, monochrome, detailed lines, artistic
     negative_prompt: >-
       realistic, 3d, color, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/sketch"
-    tags: [sketch, pencil, monochrome]
     enabled: true
 
   - name: "cinematic"
@@ -105,10 +84,7 @@ styles:
       35mm lens, detailed composition
     negative_prompt: >-
       text, watermark, logo, blurry, low resolution, cartoon, sketch
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/cinematic"
-    tags: [cinematic, dramatic, realistic]
     enabled: true
 
   - name: "whiteboard"
@@ -122,10 +98,7 @@ styles:
       educational diagram aesthetic, single concept per frame
     negative_prompt: >-
       text, words, letters, realistic, 3d, shadows, gradients, color
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/whiteboard"
-    tags: [whiteboard, educational, diagram, infographic]
     enabled: true
 
   - name: "kawaii"
@@ -136,10 +109,7 @@ styles:
       2d vector art, minimalist, adorable
     negative_prompt: >-
       realistic, 3d, dark, gothic, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/kawaii"
-    tags: [kawaii, cute, pastel]
     enabled: true
 
   - name: "anime"
@@ -150,10 +120,7 @@ styles:
       highly detailed 2d digital art
     negative_prompt: >-
       realistic, photorealistic, 3d, text, watermark, low quality
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/anime"
-    tags: [anime, cel-shaded, vibrant]
     enabled: true
 
   - name: "retro-print"
@@ -164,10 +131,7 @@ styles:
       risograph texture, muted warm colors, bold graphic design
     negative_prompt: >-
       photorealistic, 3d, modern, sleek, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/retro-print"
-    tags: [retro, vintage, print]
     enabled: true
 
   - name: "heritage"
@@ -178,10 +142,7 @@ styles:
       cross-hatching, vintage etching, muted natural colors, classical drawing
     negative_prompt: >-
       modern, 3d, color photo, cartoon, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/heritage"
-    tags: [heritage, etching, classical]
     enabled: true
 
   - name: "papercraft"
@@ -192,10 +153,7 @@ styles:
       shadows, textured cardstock, diorama aesthetic
     negative_prompt: >-
       photorealistic, smooth, digital, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/papercraft"
-    tags: [papercraft, diorama, layered]
     enabled: true
 
   - name: "professional-doc"
@@ -206,10 +164,7 @@ styles:
       high detail, realistic, sharp focus, natural lighting
     negative_prompt: >-
       cartoon, sketch, artificial lighting, text, watermark, blurry
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/professional-doc"
-    tags: [documentary, professional, realistic]
     enabled: true
 
   - name: "gothic"
@@ -220,10 +175,7 @@ styles:
       atmosphere, Victorian influence
     negative_prompt: >-
       bright, cheerful, modern, cartoon, text, watermark
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/gothic"
-    tags: [gothic, dark, victorian]
     enabled: true
 
   - name: "oil-painting"
@@ -234,8 +186,5 @@ styles:
       masterpiece, artistic depth
     negative_prompt: >-
       digital, 3d, cartoon, text, watermark, flat
-    default_width: 1920
-    default_height: 1080
     destination_key: "ai-images/oil-painting"
-    tags: [oil-painting, classical, artistic]
     enabled: true

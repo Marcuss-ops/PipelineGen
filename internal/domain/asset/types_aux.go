@@ -3,8 +3,6 @@ package asset
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 	"time"
 )
 
@@ -40,128 +38,31 @@ type Artifact struct {
 	LastAccessedAt *time.Time     `json:"last_accessed_at,omitempty"`
 }
 
-// GenerationStyle defines a reusable prompt style for AI generation.
-// Used by internal/application/assets/generation/style_registry.go, which loads
-// style definitions from config/generation_styles.yaml.
+// ── Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026) ──
 //
-// This type was moved here from the now-deleted internal/domain/media/styles.go
-// during Wave-14. Step 1 (July 2026) enriches it with version, prompt suffix,
-// negative prompt, dimension defaults, allowed providers/models, destination
-// key, tags, and an enabled flag — all optional fields with omitempty so the
-// existing YAML (name + description only) continues to work.
-type GenerationStyle struct {
-	// Name is the canonical style identifier (e.g. "cinematic", "anime").
-	Name string `yaml:"name" json:"name"`
-
-	// Description is the free-text style description appended to prompts.
-	// Legacy field — kept for backward compatibility with existing YAML.
-	// When PromptSuffix is also set, PromptSuffix takes precedence.
-	Description string `yaml:"description" json:"description"`
-
-	// Version is an integer bumped when the style's prompt suffix or
-	// negative prompt changes. 0 means unversioned (legacy).
-	Version int `yaml:"version,omitempty" json:"version,omitempty"`
-
-	// DisplayName is a human-readable label (e.g. "Cinematic").
-	DisplayName string `yaml:"display_name,omitempty" json:"display_name,omitempty"`
-
-	// PromptSuffix is appended to the user prompt after a comma separator.
-	// When set, this replaces the legacy Description-based composition.
-	PromptSuffix string `yaml:"prompt_suffix,omitempty" json:"prompt_suffix,omitempty"`
-
-	// NegativePrompt is injected as the negative prompt for providers
-	// that support it (Flux, NVIDIA, etc.).
-	NegativePrompt string `yaml:"negative_prompt,omitempty" json:"negative_prompt,omitempty"`
-
-	// DefaultWidth / DefaultHeight override the caller-supplied dimensions
-	// when non-zero. 0 means "use caller value or global default".
-	DefaultWidth  int `yaml:"default_width,omitempty" json:"default_width,omitempty"`
-	DefaultHeight int `yaml:"default_height,omitempty" json:"default_height,omitempty"`
-
-	// AllowedProviders restricts which providers can serve this style.
-	// Empty = all providers are allowed (legacy behaviour).
-	AllowedProviders []string `yaml:"allowed_providers,omitempty" json:"allowed_providers,omitempty"`
-
-	// AllowedModels restricts which models can render this style.
-	// Empty = all models are allowed (legacy behaviour).
-	AllowedModels []string `yaml:"allowed_models,omitempty" json:"allowed_models,omitempty"`
-
-	// Tags are metadata labels associated with this style.
-	Tags []string `yaml:"tags,omitempty" json:"tags,omitempty"`
-
-	// DestinationKey is the logical destination identifier (e.g.
-	// "ai-images/cinematic"). Resolved to a Drive folder ID by
-	// DestinationResolver at generation time.
-	DestinationKey string `yaml:"destination_key,omitempty" json:"destination_key,omitempty"`
-
-	// Enabled controls whether the style is available for use.
-	// nil = absent from YAML = enabled (backward-compatible default).
-	// Explicit false = style is present in config but disabled.
-	// Pointer type so omitempty distinguishes "absent" from "explicit false".
-	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
-}
-
-// EffectiveSuffix returns PromptSuffix when set, falling back to
-// Description for backward compatibility with legacy YAML.
-func (s GenerationStyle) EffectiveSuffix() string {
-	if s.PromptSuffix != "" {
-		return s.PromptSuffix
-	}
-	return s.Description
-}
-
-// IsEnabled reports whether the style is active.
-// nil (absent from YAML) → enabled (backward-compatible default).
-// true → explicitly enabled.
-// false → explicitly disabled.
-func (s GenerationStyle) IsEnabled() bool {
-	if s.Enabled == nil {
-		return true
-	}
-	return *s.Enabled
-}
-
-// ── Validation (FASE 1C+1D closure, July 2026) ──────────────────────────
-
-// ErrStyleMissingDisplayName is returned by Validate when
-// DisplayName is unset. DisplayName is required for any
-// modern (post-Step-1) style — the label is surfaced to operators and
-// used as a fallback human-readable key in admin tooling, so an empty
-// value is treated as a hard error.
-var ErrStyleMissingDisplayName = errors.New("GenerationStyle.DisplayName is empty")
-
-// ErrStyleMissingSuffix is returned by Validate when BOTH PromptSuffix
-// AND Description are unset (i.e. EffectiveSuffix() == ""). At least one
-// must be populated so StyleResolver has something to compose into the
-// final prompt.
-var ErrStyleMissingSuffix = errors.New("GenerationStyle has no PromptSuffix and no Description (EffectiveSuffix() is empty)")
-
-// Validate returns nil if the style is well-formed for use by
-// StyleResolver + PromptComposer. Fail-closed rules:
+// The legacy generation-style struct (14 fields including Description /
+// Tags / DefaultWidth / DefaultHeight / AllowedProviders / AllowedModels
+// + *bool tri-state Enabled pointer) was retired. Its slim 8-field
+// replacement + Go type alias now lives in `types_style.go`
+// (godlike/06 one-owner-per-fact).
 //
-//   - DisplayName == ""                  -> ErrStyleMissingDisplayName
-//   - EffectiveSuffix() == ""            -> ErrStyleMissingSuffix
-//     (legacy: Description still satisfies the suffix requirement so
-//      existing "name + description only" YAML entries pass)
+// The legacy methods EffectiveSuffix / IsEnabled / Validate were
+// retired along with the struct. Their semantics are:
 //
-// Validate does NOT touch the Enabled flag — disabled styles are still
-// well-formed (operators may keep them on disk for archival / A-B
-// testing). The Enabled check happens at StyleResolver.Resolve-time.
-func (s GenerationStyle) Validate() error {
-	if strings.TrimSpace(s.DisplayName) == "" {
-		return fmt.Errorf("%w (style %q)", ErrStyleMissingDisplayName, s.Name)
-	}
-	if strings.TrimSpace(s.EffectiveSuffix()) == "" {
-		return fmt.Errorf("%w (style %q)", ErrStyleMissingSuffix, s.Name)
-	}
-	return nil
-}
-
-// GenerationStyles is a container for multiple styles (YAML on-disk shape).
-type GenerationStyles struct {
-	Styles []GenerationStyle `yaml:"styles" json:"styles"`
-}
-
+//   - EffectiveSuffix: PromptSuffix preferred, Description fall-back.
+//     Description is gone, so the only resolved suffix is PromptSuffix
+//     itself. Callers that previously relied on the Description fall-
+//     back must migrate to caller-supplied prompts OR pin a
+//     PromptSuffix in the YAML.
+//   - IsEnabled: *bool tri-state pointer (nil = enabled default).
+//     Replaced by bool (silent-flip: absent defaults to false; the
+//     existing config/generation_styles.yaml pins enabled explicitly
+//     so production is transparent).
+//   - Validate: fail-closed on missing DisplayName + missing both
+//     PromptSuffix+Description. Migrated to StyleDefinition.Valid()
+//     in types_style.go with the new fail-closed contract (DisplayName
+//     + PromptSuffix; ID added).
+//
 // Package embedding defines the canonical contract for text-embedding
 // generators consumed by the application layer. Concrete implementations
 // live in internal/infrastructure/embeddings/ (PR-D.5.1 split:
