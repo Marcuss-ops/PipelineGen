@@ -704,3 +704,130 @@ The following recent closures are documented in detail in the corresponding `AGE
 | P2.2 | `0fa8c065` | DRIVE-008 fail-closed stubs for `ClipDriveUploaderPort.UploadFile*` + `sourcing.DrivePort.UploadFileWithDescription` (canonical replacement: `delivery.Publisher.Publish`) | AGENTS.md entry #15 + CHANGELOG `## Unreleased -> ### Refactor -> P2.2` + `architecture/deprecations.yaml#DRIVE-008` + `architecture/current.yaml#PR-DRIVE-008-CUTOVER` |
 
 godlike/07 honest-limitation: the surfaced TODOs `TODO(Fase 3.3)` (in `internal/infrastructure/drive/store.go:173`) and `TODO(Fase 3.5)` (in `internal/app/adapters_voiceover_use_case.go:203`) are LEGITIMATE open work (Fase 3 Spina Dorsale `DRIVE-STORE-UPLOAD-TO-DRIVE` migration is still in `migration_phase: EXPAND / status: in_progress`); they remain in place until the canonical image-upload migration closes. The 0-closed TODO audit (rg `TODO\(Fase [0-9]+\.[0-9]+\)` returns 2 hits, both active) means P2.4 has no stale-closure work to chase.
+
+---
+
+## 15. Artlist integration
+
+> **Authoritative doc pointer** (per CANONICAL.md §1): this section is the canonical architectural surface for the Artlist integration. Forward-pointers: `AGENTS.md` rules `DL-006` (composition-root fail-closed gate) + `DL-007` (Pattern 0 port routing) + `docs/operations/artlist-runbook.md` (operator-facing SRE runbook) + `architecture/current.yaml#ART-002` (wave-tracker entry).
+
+### 15.1 Architecture zones
+
+The Artlist integration spans 3 application-zone files + 2 infrastructure files + 1 composition-root entry. The decomposition mirrors `godlike/06 SSOT` (one canonical owner per fact) + `AGENTS.md Pattern 5` (capability-stable directory split, NOT file-flattening):
+
+| File | Zone | Role |
+|------|------|------|
+| `internal/application/assets/providers/artlist/` | application | Canonical Artlist service + ports + use cases + semantic enricher + search cache |
+| `internal/infrastructure/artlist/scraper/scraper.go` | infrastructure | Persistent Node scraper server client (httptest.NewServer emulation contract) + exec fallback |
+| `internal/infrastructure/artlist/downloader/downloader.go` | infrastructure | Go-primary downloader (HLS via yt-dlp, progressive via http.Get) |
+| `internal/infrastructure/artlist/health/probe.go` | infrastructure | 60s-tick health probe + 3-consecutive-failures alert (P1.3 SRE surface) |
+| `internal/app/build_bundles_artlist.go` | composition root | `WireArtlist` (4 mandatory fail-closed gates) + `registerArtlist` lifecycle step |
+
+### 15.2 Canonical ports (Pattern 0)
+
+Per `AGENTS.md Pattern 0` + `DRIVE-005` precedent (Wave 27, June 2026), all external I/O in `internal/application/assets/providers/artlist/**` routes through canonical typed ports declared in the application package, with concrete adapters in `internal/infrastructure/`:
+
+| Port (canonical) | Adapter (concrete) | Responsibility |
+|------------------|--------------------|----------------|
+| `artlist.AssetStore` | `*assets.ClipsRepository` | 7-method CRUD on `media_assets` (PR2.5 promoted) |
+| `artlist.Indexer` | `*clipindexer.Service` | `IndexClip` (write to `media_assets`) + `IsEnabled` |
+| `artlist.Dispatcher` | `*outbox.Dispatcher` | `EnqueueAndIndex` + `SaveDiscoveredAsset` (idempotent outbox + media_assets write) |
+| `artlist.Publisher` | `*delivery.Publisher` (DRIVE-005) | Conflict-aware uploads + `ConflictPolicy` + `PutFileRequest`/`PutAction` |
+| `artlist.Reader` | `*drive.Reader` (DRIVE-005) | Download + metadata + listing + existence |
+| `artlist.FileLifecycle` | `*drive.FileLifecycle` (DRIVE-005) | Trash + Move + Rename + Cleanup |
+| `artlist.DocClient` | `*drive.DocClient` (DRIVE-005) | Google Docs creation |
+| `artlist.Searcher` | `*scraper.Provider` | Live search via persistent Node scraper server (httptest emulation) |
+
+**Compile-time pin discipline** (per `AGENTS.md Pattern 0`): each concrete adapter carries `var _ <port> = (*<concrete>)(nil)` at struct declaration site. Future port signature drift surfaces as a build failure, not a runtime panic.
+
+### 15.3 Two download surfaces (godlike/06 SSOT audit-pin)
+
+The Artlist download path has TWO surfaces (per `P0.2` audit-pin, July 2026):
+
+1. **Go-primary** — `internal/infrastructure/artlist/downloader/downloader.go::Provider.Download(ctx, url, LocalPath)` via yt-dlp (HLS detection on URL) or `http.Get` (progressive MP4). Wired by composition root via `downloader.New(cfg, downloader.Config{})` + `NewArtlistStager` at `internal/app/build_bundles_artlist.go::WireArtlist`. Orchestrator at `run_orchestrator_stages.go::stageProcessBatch` always tries `StageSource` first; on graceful-degrade the mediaProcessor takes over.
+
+2. **Node-fallback** — `internal/infrastructure/media/processor/processor_download.go::downloadViaScraper`, invoked by `mediaProcessor.Process` ONLY when `input.LocalPath == ""` AND the URL is Artlist-shaped (per `isArtlistURL` gate in `processor.go`).
+
+**Divider rule** (per `godlike/07 minimum-blast-radius`): Go-primary is the canonical path; Node-fallback is the per-invocation sequential gate for cold-start / server-down scenarios. NO `sync.Mutex` involved. `mediaProcessor.Process` at `processor.go:146` short-circuits the `downloadStep` call when `input.LocalPath != ""` (per the `// Step 9/12 wire-up (July 2026): when input.LocalPath != "", the download step is bypassed` godoc comment, grep-verifiable). The `Process` post-download conditional re-uses the same `input.LocalPath` flag, so the 2 surfaces are mutually-exclusive per call.
+
+**godlike/06 forward-pointer** (`PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY`, deadline 2026-08-15): collapse the duplicated HLS detection (`isHLS` in downloader.go vs `isHLSURL` in processor) + dual-auth strategy (cookies file in Go vs browser session in Node) into ONE canonical surface. Until then, the dual-surface architecture is the SSOT audit-pin.
+
+### 15.4 Node scraper server contract (httptest emulation)
+
+The persistent Node scraper (`node-scraper/artlist_server.js`) exposes 2 endpoints:
+
+- `POST /search` — search request (`{term, limit}` JSON body) returns `{ok, term, clips[], search_url, saved}` JSON envelope. **5xx** or network error → `artapp.ErrTransportFallback` → exec fallback (per `scraper.go:108-117`); **4xx** (non-200) → `artapp.ErrInvalidResponse` (NO fallback per `scraper.go:114` — the `// do NOT fall back to exec on 4xx` comment is the explicit contract).
+- `POST /download` — download request (`{clip_id, destination}` JSON body) returns the binary asset.
+
+The Go client (`scraper.Provider`) is a thin httptest.NewServer-compatible HTTP client: any test that emulates the Node contract via `httptest.NewServer` exercises the production path end-to-end (per `tests/e2e/artlist_live_search_test.go` P2.1 E2E test). The `Response` struct in `scraper.go:36-50` is the canonical mirror of the Node JSON shape; the application never sees this raw shape (the `toCandidates` adapter translates to `artapp.Candidate`).
+
+**Tight timeouts** (P2.3 E2E test discipline): 1s HTTP timeout + 2s exec timeout + 5s ctx timeout — the test fails fast in CI deadlock scenarios. Production wire-up honors `cfg.External.ArtlistHTTPTimeout` (default 2 min) + `cfg.External.ArtlistExecTimeout` (default 4 min).
+
+### 15.5 Prometheus metrics (7 series max)
+
+Per P1.1 + P1.3 SRE surfaces (declared in `internal/infrastructure/observability/metrics_artlist.go`):
+
+| Metric | Type | Labels | Series | Semantic |
+|--------|------|--------|--------|----------|
+| `artlist_download_path_total` | Counter | `path` (`browser` \| `yt-dlp` \| `http` \| `hls`) | 4 max | Per-attempt (NOT per-completion) |
+| `artlist_scraper_probe_total` | Counter | `result` (`success` \| `failure`) | 2 max | Per-tick (60s cadence) |
+| `artlist_scraper_health_alerts_total` | Counter | (none) | 1 | Alert-once-per-3-failure-streak |
+
+**Per-attempt-not-per-completion discipline** (P1.1 `Help` text): a single `Download` that retries 3 times on a flaky HLS CDN adds 3 to the `artlist_download_path_total{path="yt-dlp"}` counter. `rate()` over this metric is the ATTEMPT rate, NOT the success rate. Dashboards MUST treat `rate()` as attempt pressure, not completion volume. To compute the success rate, cross-reference with the `job.StatusSUCCEEDED` counter via the Qdrant-001 reconciliation log.
+
+**3-failure alert semantic** (P1.3): the probe fires `artlist_scraper_health_alerts_total` once per 3-failure streak (3 failures = 1 alert, 6 failures = 2 alerts, streak resets to 0 after each alert). Operators should monitor the alert counter for "Node scraper down for 3+ minutes" signals.
+
+**Reserved path labels** (forward-compat with `PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY`): `browser` and `hls` are not fired today; `yt-dlp` and `http` cover the current Go-primary path. The 4 consts are mandatory at every call site — mis-spelled values create new time-series silently (textbook Prometheus footgun).
+
+### 15.6 Composition-root integration (WireArtlist)
+
+The composition root at `internal/app/build_bundles_artlist.go::WireArtlist` is the canonical wiring site. The 4 mandatory fail-closed gates (P0.1 godlike/07 fail-fast-at-boot > fail-slow-at-first-/run):
+
+1. **Publisher gate** — `cfg.Drive.Publisher != nil` (DRIVE-005 surface; canonical upload port)
+2. **Dispatcher gate** — `*outbox.Dispatcher != nil` (idempotency contract; canonical async surface)
+3. **ClipsRepo gate** — `*assets.ClipsRepository != nil` (canonical 7-method CRUD)
+4. **Jobs.Service gate** — `*appjobs.Service != nil` (canonical job broker spine)
+
+Plus the P0.1 boot-time gate `validateArtlistScraperURL(cfg *config.Config) error`:
+
+- If `cfg.Features.ArtlistEnabled=true` but `cfg.External.ArtlistScraperServerURL=""` → abort loudly with an actionable error naming both escape hatches: set `ARTLIST_SCRAPER_SERVER_URL` to a real Node-scraper URL (e.g. `http://artlist-scraper:9123` from `docker-compose.yml`) OR disable the feature via `VELOX_FEATURE_ARTLIST_ENABLED=false` (default).
+- If `ArtlistEnabled=false` → zero-state skip path (no-op).
+
+The `registerArtlist` caller downgrades any `WireArtlist` error to `log.Warn + wiring.ArtlistSvc=nil + return nil` so composition boot NEVER aborts because Artlist is optional in the architecture. Read-only endpoints (`/stats`, `/diagnostics`, `/search/live`) unaffected by forward-pointer nil; write endpoints (`/run`, `/recommend`, `/sync-catalogs`) return 503 at runtime via the handler's nil-tolerance discipline once per-field wiring closes (forward-pointer entries `PR-ARTLIST-{STAGER,LIFECYCLE,REPOS,SYNCSERVICE}`).
+
+### 15.7 Lifecycle integration (P1.3 health probe)
+
+The `artlist-scraper-health-probe` StartupStep is registered in `internal/app/lifecycle_scheduler.go::buildSchedulerSteps` when BOTH `cfg.Features.ArtlistEnabled=true` AND `cfg.External.ArtlistScraperServerURL!=""`. The step is OMITTED (not `ErrCapabilityDisabled`) when Artlist is off — the capability is intentionally absent in that case, not "disabled at startup" (no fake-availability per godlike/07).
+
+The probe's `Start` closure calls `ap.Start(startCtx)` (probe's own ticker goroutine, no `SafeGo` wrap needed; the probe is panic-safe via `defer recover()` per P1.3 code-reviewer fix). The `Stop` closure calls `ap.Stop(stopCtx)` with the parent lifecycle's stop context (5s wait cap per the probe's internal ctx). First probe fires IMMEDIATELY at boot (per P1.3 code-reviewer fix; without this, `time.NewTicker` waits one interval = 60s, breaking the godlike/07 fail-fast promise).
+
+### 15.8 E2E test surface (P2.1 + P2.2 + P2.3)
+
+3 E2E test scenarios live in `tests/e2e/` (new directory, new `e2e` package):
+
+| Test file | Scenario | TDD scope |
+|-----------|----------|-----------|
+| `tests/e2e/artlist_live_search_test.go` | Node ON live search (4 subtests: happy + 3xx + ok=false + empty) | `scraper.Provider` response contract |
+| `tests/e2e/artlist_full_run_test.go` | Full search → fetch → upload pipeline (3 staged assertions) | Pipeline wiring + mock Drive publisher |
+| `tests/e2e/artlist_fallback_test.go` | 5xx → exec fallback (Case A: exec succeeds / Case B: exec returns env-dependent error) | `scraper.go:108-117` exec branch |
+
+**godlike/07 honest-limitation**: the 3 tests are self-contained and exercise the REAL production `scraper.Provider` (no stub). External dependencies (Node, Drive, Artlist API) are mocked via `httptest.NewServer`. The `FullRun` test uses `http.Get` directly for the download stage (not the production `Downloader`) to avoid pulling in `*config.Config` wiring (which has pre-existing build issues per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04`); the production `Downloader` is exercised by the integration test suite.
+
+### 15.9 Forward-pointers (PR-ARTLIST-* in flight)
+
+The following P0/P1/P2 items have follow-up work documented as PR-ARTLIST-* linked_issues under `architecture/current.yaml#ART-002`:
+
+- `PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY` (deadline 2026-08-15) — collapse the 2 download surfaces to 1 canonical surface (P0.2 godlike/06 forward-pointer).
+- `PR-ARTLIST-FAIL-CLOSED-SCRAPER-URL` (deadline 2026-07-25) — P0.1 gate already shipped; the linked_issue is a wave-tracker entry for audit-pinning the closure.
+- `PR-ARTLIST-DOWNLOAD-PATH-METRIC` (deadline 2026-07-25) — P1.1 already shipped; the linked_issue is a wave-tracker entry for audit-pinning the closure.
+- `PR-ARTLIST-SCRAPER-HEALTH-PROBE` (deadline 2026-07-25) — P1.3 already shipped; the linked_issue is a wave-tracker entry for audit-pinning the closure.
+- `PR-ARTLIST-E2E-P2-{1,2,3}` (deadline 2026-07-25) — P2.1 + P2.2 + P2.3 E2E test scenarios (live search + full run + fallback); all 3 SHAs landed (6082f445 + a116881e + 7c3bd085).
+- `PR-ARTLIST-STAGER` (deadline 2026-08-15) — `Stager` field wiring closure.
+- `PR-ARTLIST-LIFECYCLE` (deadline 2026-08-15) — `LifecycleService` field wiring closure.
+- `PR-ARTLIST-REPOS` (deadline 2026-08-15) — `AssetProcRepo` + `AssetVerRepo` + `AssetLocRepo` field wiring closure.
+- `PR-ARTLIST-SYNCSERVICE` (deadline 2026-08-15) — `ClipResolver` field wiring closure in `Build(Dependencies)`.
+- `PR-ARTLIST-SEARCHERS` (deadline 2026-07-25) — `PixabaySearcher` + `PexelsSearcher` field wiring closure.
+- `PR-ARTLIST-CHIP2` (deadline 2026-08-15) — chip-2 forward-pointer (residual outbox/typed-port hardening).
+- `PR-ARTLIST-STATS-MINIMAL-RESTORE` (deadline 2026-07-25) — minimal `GET /stats` route restoration post-FASE-6.
+
+**Cross-references** (3 surfaces lockstep): this ARCHITECTURE.md section + `AGENTS.md` `## Recent cross-cutting closures (June 2026)` ART-002 mirror + `architecture/current.yaml#ART-002` wave-tracker entry.
