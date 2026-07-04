@@ -100,6 +100,39 @@ type OutboxEntry struct {
 // to keep the SSOT chain enforced.
 var ErrLedgerStateConflict = assetsdb.ErrStateConflict
 
+// defaultNowFn is the lazy default clock used by DateAfterFromCursor
+// when the caller passes nil for the now parameter. Production
+// resolves to time.Now; tests can swap via SetDefaultNowForTests.
+//
+// Lazy-default rationale — mirrors the AGENTS.md Pattern 0 (port
+// abstraction layer) precedent: a package-level function-typed seam
+// (var X = func() time.Time) gives test fixtures a typed injection
+// point without touching the production call sites. SetDefaultNowForTests
+// is the ONLY mutation surface so the swap is auditable at code review;
+// raw mutations from tests bypassing the helper would be a code-review
+// violation.
+//
+// Thread-safety note: defaultNowFn is read+write guarded by Go's data
+// race detector (CI runs with -race). Tests that mutate it must not
+// run in parallel with other monitor tests; production code never
+// mutates it.
+var defaultNowFn = time.Now
+
+// SetDefaultNowForTests replaces the lazy-default clock for
+// DateAfterFromCursor. Pass nil to restore the production default
+// (time.Now). Intended for test fixtures that need a deterministic
+// calendar day without real-time waits.
+//
+// Pair the swap with t.Cleanup(func() { SetDefaultNowForTests(nil) })
+// to avoid cross-test pollution. NOT safe to call from production code.
+func SetDefaultNowForTests(fn func() time.Time) {
+	if fn == nil {
+		defaultNowFn = time.Now
+		return
+	}
+	defaultNowFn = fn
+}
+
 // DateAfterFromCursor bridges channel.LastCursor (an RFC3339
 // timestamp stored in category_channels.last_cursor) and channel.LookbackDays
 // (the channel's lookback fallback) into a YYYYMMDD string the
@@ -112,10 +145,23 @@ var ErrLedgerStateConflict = assetsdb.ErrStateConflict
 // YYYYMMDD). Empty LastCursor + zero LookbackDays → empty DateAfter
 // (yt-dlp's no-filter path).
 //
+// Clock injection (PR-DETERMINISTIC-CLOCK-INJECTION, 2026-07-04):
+// the now parameter is the canonical clock seam. Pass nil for the
+// lazy default (production = time.Now via defaultNowFn) or pass an
+// explicit func() time.Time for deterministic test fixtures.
+// Mirrors the pkg/retry lookupFunc/openFile struct-field precedent
+// (post PR-P2.1): tests can swap the clock at the function boundary
+// without rewriting production callers.
+//
 // Replaces the previous `sqlassets.ResolveDateAfter` import in
 // discovery.go::discoverChannelVideos. The semantics are byte-equivalent
-// to the pre-FASE-3.7 infra-side implementation.
-func DateAfterFromCursor(lastCursorRFC3339 string, lookbackDays int) string {
+// to the pre-FASE-3.7 infra-side implementation (with the additional
+// contract that production callers should pass nil for the lazy
+// default rather than an explicit time.Now literal).
+func DateAfterFromCursor(lastCursorRFC3339 string, lookbackDays int, now func() time.Time) string {
+	if now == nil {
+		now = defaultNowFn
+	}
 	if lastCursorRFC3339 != "" {
 		// Truncate RFC3339 to YYYYMMDD. The first 10 characters of
 		// "2026-06-30T15:04:05Z" are "2026-06-30" — drop the rest.
@@ -130,7 +176,7 @@ func DateAfterFromCursor(lastCursorRFC3339 string, lookbackDays int) string {
 		}
 	}
 	if lookbackDays > 0 {
-		t := time.Now().UTC().Add(-time.Duration(lookbackDays) * 24 * time.Hour)
+		t := now().UTC().Add(-time.Duration(lookbackDays) * 24 * time.Hour)
 		return t.Format("20060102")
 	}
 	return ""
