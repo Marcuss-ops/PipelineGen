@@ -5305,7 +5305,7 @@
     owner_capability: architecture
     status: shipped
     ship_date: 2026-07-25
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: a18a4c81
     deadline: 2026-08-15
     ship_via: |
       Post-wave cross-validation closure (2026-07-25).
@@ -5322,6 +5322,25 @@
       existing 4 linked_issues (PR-QDRANT-CONFIG-MISMATCH-GATE + PR-QDRANT-INDEXCLIP-GUARD +
       PR-GENERATED-SEARCH-FIX + this entry) already cover the major false-success
       surfaces in the wave's scope.
+
+      Explicit cross-references for the 2 highest-frequency borderline files
+      (per code-reviewer concern #3, one-hop visible):
+        * internal/app/lifecycle.go (61 mods) -> PR-WORKSPACE-RETENTION-WIRE
+          (FASE 2.4 cutover, deadline 2026-08-15).
+        * internal/app/wire_assets.go (74 mods, formerly wire_script.go renamed
+          in commit dbb9f569) -> PRE-EXISTING-BUILD-ISSUES-2026-07-04
+          #FIX-APP-WIRE-SCRIPT-SYNTAX (retired, stale-spec) + PR-WIRE-ASSETS-*
+          decomposition wave (FASE 2.5 forward-pointer).
+
+      Raw rg-equivalent diagnostic (godlike/06 audit-pin discipline, concern #5):
+      `git log --since=14.days --pretty=format: --name-only | sort | uniq -c |
+      sort -rn | head -30` captured 2026-07-25 in the orchestrator tool log.
+      14 candidate files all classified as composition-root glue + 3-surface
+      lockstep mirrors + already-covered-by-other-waves.
+
+      Pre-existing carry-forward (godlike/07 honest-disclosure, concern #6):
+      gofmt -l internal/ shows N pre-existing files needing formatting (NOT
+      regressions of this PR, out of scope per AGENTS.md scope discipline).
       owner_capability: architecture
       status: pending
       deadline: "2026-08-15"
