@@ -265,11 +265,16 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 		return ErrFinalizerNotConfigured
 	}
 
-	// Deserialise artifacts from the command.
+	// Deserialise artifacts from the command. The wire-format was renamed
+	// PublishedArtifacts -> StagedArtifacts in P0-COMPL-5-WIRE-NAMING
+	// (July 2026); the Carry value is still json.RawMessage so the unmarshal
+	// shape is byte-stable across the rename. The typed StagedArtifactReference
+	// surface lives on the Sender-side wire envelope at
+	// internal/domain/remote/staged_artifact_reference.go (godlike/06 SSOT).
 	var artifacts []finalization.PublishedArtifact
-	if len(cmd.PublishedArtifacts) > 0 {
-		if err := json.Unmarshal(cmd.PublishedArtifacts, &artifacts); err != nil {
-			return fmt.Errorf("broker: deserialise published artifacts: %w", err)
+	if len(cmd.StagedArtifacts) > 0 {
+		if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
+			return fmt.Errorf("broker: deserialise staged artifacts: %w", err)
 		}
 	}
 

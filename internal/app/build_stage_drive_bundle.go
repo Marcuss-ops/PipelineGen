@@ -62,7 +62,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	finalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/staged"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/verification"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"

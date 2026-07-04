@@ -69,8 +69,8 @@ func (t *Tools) CompleteWithArtifacts(ctx context.Context, resultData json.RawMe
 		LeaseID:            t.leaseID,
 		ExpectedRevision:   int(t.revision.Load()),
 		ResultData:         resultData,
-		PublishedArtifacts: publishedArtifacts,
-		OutboxEvents:       outboxEvents,
+		StagedArtifacts: publishedArtifacts,
+		OutboxEvents:    outboxEvents,
 	})
 }
 

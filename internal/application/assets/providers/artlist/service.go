@@ -233,27 +233,27 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		return nil, ErrPublisherUnavailable
 	}
 	s := &Service{
-		cfg:                deps.Cfg,
-		mainDB:             deps.MainDB,
-		log:                deps.Log,
-		assetStore:         deps.AssetStore,
-		indexer:            deps.Indexer,
-		metadataWriter:     deps.MetadataWriter,
-		dispatcher:         deps.Dispatcher,
-		publisher:          deps.Publisher,
-		mediaProcessor:     deps.MediaProcessor,
-		lifecycleService:   deps.LifecycleService,
-		assetDestResolver:  deps.AssetDestResolver,
-		jobsSvc:            deps.JobsSvc,
-		scraperSearcher:    deps.ScraperSearcher,
-		pixabaySearcher:    deps.PixabaySearcher,
-		pexelsSearcher:     deps.PexelsSearcher,
-		liveCache:          newPersistentLiveSearchCache(deps.MainDB, deps.Log),
-		assetProcessing:    deps.AssetProcRepo,
-		assetVersions:      deps.AssetVerRepo,
-		assetLocRepo:       deps.AssetLocRepo,
-		stager:             deps.Stager,
-		isLiveProbe:        deps.IsLiveProbe,
+		cfg:               deps.Cfg,
+		mainDB:            deps.MainDB,
+		log:               deps.Log,
+		assetStore:        deps.AssetStore,
+		indexer:           deps.Indexer,
+		metadataWriter:    deps.MetadataWriter,
+		dispatcher:        deps.Dispatcher,
+		publisher:         deps.Publisher,
+		mediaProcessor:    deps.MediaProcessor,
+		lifecycleService:  deps.LifecycleService,
+		assetDestResolver: deps.AssetDestResolver,
+		jobsSvc:           deps.JobsSvc,
+		scraperSearcher:   deps.ScraperSearcher,
+		pixabaySearcher:   deps.PixabaySearcher,
+		pexelsSearcher:    deps.PexelsSearcher,
+		liveCache:         newPersistentLiveSearchCache(deps.MainDB, deps.Log),
+		assetProcessing:   deps.AssetProcRepo,
+		assetVersions:     deps.AssetVerRepo,
+		assetLocRepo:      deps.AssetLocRepo,
+		stager:            deps.Stager,
+		isLiveProbe:       deps.IsLiveProbe,
 	}
 
 	// Inizializza i componenti delegati
@@ -329,6 +329,23 @@ func (s *Service) HandleJob(ctx context.Context, j *jobs.Job, tools *appjobs.Job
 // catalog/youtube RegisterHandler precedent in build_bundles_youtube.go.
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	return s.jobAdapter.RegisterHandler(jobsSvc)
+}
+
+// Searchers returns the canonical (scraper, pixabay, pexels) Searcher triplet
+// for diagnostic + observability access. Wired at composition time by
+// build_bundles_artlist.go::WireArtlist from the infrastructure-layer
+// concretes (internal/infrastructure/artlist/scraper + fallback); each
+// satisfies the same Searcher port (godlike/06 one-canonical-owner-per-fact).
+//
+// Per godlike/06 SSOT the construction is the composition root's exclusive
+// responsibility — callers MUST NOT call this method to discover "which
+// searcher should I use" (the canonical answer is the application's
+// SearchLive / DiscoverAndQueueRun fallback chain, NOT a hand-rolled
+// dispatcher at the caller). Use the accessor for diagnostic surfaces
+// (operator visibility into wired capabilities, build_bundles_artlist_test.go
+// PR-ARTLIST-SEARCHERS wiring assertions, future health probes).
+func (s *Service) Searchers() (Searcher, Searcher, Searcher) {
+	return s.scraperSearcher, s.pixabaySearcher, s.pexelsSearcher
 }
 
 // GetJobByRunID ottiene un job per run ID.
