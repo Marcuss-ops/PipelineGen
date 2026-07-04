@@ -15,7 +15,22 @@ import (
 )
 
 func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
-	promptSubject, promptTags := extractSubjectAndTags(description)
+	// PR C9 (July 2026): replace silent-fake `extractSubjectAndTags` stub
+	// with the typed SubjectTagsService port. On error we log a warning
+	// and fall back to empty values (the caller still has its own
+	// slug + tags from upstream), preserving the pre-existing fail-open
+	// behavior but with explicit visibility (godlike/07 no-fake-availability).
+	promptSubject, promptTags, err := s.subjectTags.ExtractSubjectAndTags(ctx, description)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("subject/tags extraction failed; falling back to caller-supplied values",
+				zap.Error(err),
+				zap.String("source", source),
+				zap.String("description", description))
+		}
+		promptSubject = ""
+		promptTags = nil
+	}
 	if slug == "" || slug == "unknown" {
 		slug = textutil.Slugify(promptSubject)
 	}

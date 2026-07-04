@@ -189,3 +189,36 @@ func IsRetryable(err error) bool {
 		errors.Is(err, ErrImageGenQuota) ||
 		errors.Is(err, ErrImageGenAuth)
 }
+
+// ── Subject/Tags extraction port (PR C9, July 2026) ────────────────────
+//
+// Replaces the silent-fake stub `extractSubjectAndTags` (which returned
+// `("", nil)` for any description, violating godlike/07 no-fake-availability).
+// The real port returns typed-error sentinels for hard failures
+// (empty description, no subject derivable) and useful data on success.
+// Callers compose subject/tags from description (e.g. image generation
+// prompt) and use them as a hint when the upstream payload is missing
+// the subject+tags fields.
+
+// ErrEmptyDescription is returned when the description is empty or
+// whitespace-only. NOT retryable.
+var ErrEmptyDescription = errors.New("subject/tags: empty description")
+
+// ErrNoSubjectDerivable is returned when no capitalized word is found
+// in the description (no candidate subject slug). NOT retryable.
+var ErrNoSubjectDerivable = errors.New("subject/tags: no subject derivable from description")
+
+// SubjectTagsService extracts a subject slug + tag list from a free-form
+// description (typically the AI image generation prompt).
+//
+// Returns ErrEmptyDescription if description is empty/whitespace-only.
+// Returns ErrNoSubjectDerivable if no capitalized word is present
+// (cannot derive a slug from the description).
+//
+// On success, the returned subject is a non-empty slug; the returned
+// tags are de-duplicated and the subject slug is filtered out to avoid
+// duplication. The order is stable: subject is the FIRST capitalized
+// word; tags are sorted by extraction order.
+type SubjectTagsService interface {
+	ExtractSubjectAndTags(ctx context.Context, description string) (subject string, tags []string, err error)
+}

@@ -68,10 +68,10 @@ type ImagesCoreDeps struct {
 }
 
 type ImagesStorageDeps struct {
-	ImageRepo   *assets.ImagesRepository
-	ClipsRepo   *assets.ClipsRepository
-	DriveReader drive.Reader
-	MediaStore  *drive.Store
+	ImageRepo    *assets.ImagesRepository
+	ClipsRepo    *assets.ClipsRepository
+	DriveReader  drive.Reader
+	MediaStore   *drive.Store
 	DestResolver destinations.DestinationResolver
 }
 
@@ -148,6 +148,10 @@ func NewService(deps ImagesDeps) *Service {
 		vidsProjectID: deps.External.GACfg.VidsProjectID,
 		meta:          meta,
 		destResolver:  deps.Storage.DestResolver,
+		// PR C9 (July 2026): wire the typed SubjectTagsService port.
+		// Concrete is leaf-only (no external deps), so inline construction
+		// at composition root is safe + minimal-ripple.
+		subjectTags: NewDefaultSubjectTagsService(),
 	}
 
 	retrievalRegistry := deps.Retrieval
@@ -223,7 +227,7 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 }
 
 func (s *Service) SyncFromDrive(ctx context.Context) error { return s.Store.SyncFromDrive(ctx) }
-func (s *Service) FormatDriveLink(id string) string         { return s.Store.FormatDriveLink(id) }
+func (s *Service) FormatDriveLink(id string) string        { return s.Store.FormatDriveLink(id) }
 
 func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, imageAssets []*asset.ImageAsset) {
 	s.Meta.UploadBatchMetadata(ctx, genID, slug, style, prompt, generator, imageAssets)
@@ -245,6 +249,6 @@ func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
 	return s.Diag.AllCapabilities()
 }
 
-func (s *Service) Log() *zap.Logger                    { return s.Diag.Log() }
-func (s *Service) Repo() *assets.ImagesRepository      { return s.Diag.Repo() }
-func (s *Service) SyncAssets() error                   { return s.Diag.SyncAssets() }
+func (s *Service) Log() *zap.Logger               { return s.Diag.Log() }
+func (s *Service) Repo() *assets.ImagesRepository { return s.Diag.Repo() }
+func (s *Service) SyncAssets() error              { return s.Diag.SyncAssets() }

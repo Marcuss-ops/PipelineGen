@@ -39,4 +39,10 @@ type ImageStorageService struct {
 	// retrievalRegistry composes Wikipedia/SearXNG/DuckDuckGo/Drive providers
 	// for finding existing images. It is separate from AI generation.
 	retrievalRegistry *retrieved.RetrievalProviderRegistry
+
+	// subjectTags is the typed port for extracting subject slug + tag list
+	// from a free-form description (PR C9, July 2026). Replaces the
+	// silent-fake `extractSubjectAndTags` stub that violated godlike/07
+	// no-fake-availability. Concrete wiring is inline in service.go::NewService.
+	subjectTags SubjectTagsService
 }
