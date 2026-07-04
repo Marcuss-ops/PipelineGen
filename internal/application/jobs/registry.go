@@ -112,8 +112,12 @@ type RegistryEntry struct {
 	// JobFinalizer spine. Jobs with ProducesArtifacts=true MUST call
 	// CompleteWithArtifacts instead of the legacy Complete path.
 	//
-	// When true, SQLiteStore.Complete will reject completions with
-	// ErrArtifactJobRequiresCompleteWithArtifacts.
+	// When true, SQLiteStore.Complete rejects completions with the canonical
+	// typed sentinel domainremote.ErrCompleteJobPathViolation (godlike/06
+	// SSOT: the typed sentinel at internal/domain/remote/complete_job.go is
+	// the SINGLE canonical owner of the failure mode "legacy Complete path
+	// attempted on artifact-producing job"; the pre-FASE-0.1 package-local
+	// alias ErrArtifactJobRequiresCompleteWithArtifacts was REMOVED).
 	ProducesArtifacts bool
 }
 

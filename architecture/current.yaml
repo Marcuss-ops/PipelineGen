@@ -3768,7 +3768,9 @@ wave_status:
     # ── P0 #1 — Manifest-aware Complete decision ────────────────────────────
     - id: P0-COMPL-1-MANIFEST-DECISION
       owner_capability: internal/application/jobs/worker
-      status: pending
+      status: shipped
+      ship_sha: a641d5cb
+      ship_date: "2026-07-04"
       deadline: 2026-07-25
     # ── P0 #2 — Stage→Drive composition wiring ─────────────────────────────
     - id: P0-COMPL-2-COMPOSITION-WIRE

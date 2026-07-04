@@ -18,6 +18,13 @@
 //   - ErrRemoteArtifactSizeMismatch (in-TX round-trip check against prior SUCCEEDED state)
 //   - ErrCompleteJobIdempotencyConflict (typed sentinel surfaced when a different
 //     (resultHash) re-attempts the same (jobID, attempt) — godlike/07 no-fake-availability)
+//   - ErrCompleteJobPathViolation (FASE 0.1 July 4 2026) — typed sentinel for
+//     legacy-path attempts on artifact-producing jobs. Canonical SSOT surface
+//     (godlike/06 one-owner-per-fact) for the failure mode "tried to call Complete
+//     on a job that should have used CompleteWithArtifacts". Surfaced BOTH at the
+//     typed-Service in-TX gate (CompleteJobService.Complete lookup against
+//     JobTypeRegistry.ProducesArtifacts(jobType)) AND at the SQL-layer legacy
+//     gate (SQLiteStore.Complete rejection when producesArtifacts[type]=true).
 //
 // Migration validation order (locked; surfaces errors in the canonical
 // attribution test suite):
@@ -109,6 +116,36 @@ var ErrRemoteArtifactSizeMismatch = errors.New("complete job: remote artifact si
 // the second call with different intent cannot mask its drift as a
 // replay.
 var ErrCompleteJobIdempotencyConflict = errors.New("complete job: (jobID, attempt) has a prior completed result with DIFFERENT result_hash (godlike/07 no fake availability)")
+
+// ErrCompleteJobPathViolation is the typed sentinel (canonical SSOT for the
+// "legacy-path on artifact-producing job" failure mode) surfaced when the
+// caller attempts to use the short-form Complete path for a job whose
+// registry-declared ProducesArtifacts=true.
+//
+// Per godlike/06 one-canonical-owner-per-fact, this sentinel is the SINGLE
+// typed-error surface for the failure mode, regardless of which layer
+// surfaced it:
+//
+//	(a) CompleteJobService.Complete / completeInTx — in-TX gate that
+//	    looks up jobRow.JobType via the JobTypeRegistry port and rejects
+//	    when registry.ProducesArtifacts(jobType)=true AND the request carries
+//	    no artifacts (the typed-service fail-fast mirror of the SQL gate).
+//	(b) SQLiteStore.Complete (internal/infrastructure/database/sqlite/jobs/
+//	    repository_lifecycle.go) — legacy SQL-layer rejection when
+//	    r.producesArtifacts[jobType]=true. The SQL gate wraps this sentinel
+//	    via fmt.Errorf("%w: ...", ErrCompleteJobPathViolation, ...) so
+//	    callers errors.Is the canonical sentinel — NOT a package-local
+//	    alias (godlike/07 NO-FAKE-AVAILABILITY).
+//
+// Caller contract (godlike/07 + reviewer-verdict):
+//   - ProducesArtifacts=true (registry or SQL map): MUST use
+//     CompleteWithArtifacts (the JobFinalizer spine → CompleteWithArtifacts
+//     single-TX atomic surface). Legacy Complete (Tools.Complete →
+//     broker.Complete → SQLiteStore.Complete) is FORBIDDEN at the SQL gate
+//     and at the typed-service gate.
+//   - ProducesArtifacts=false: both paths are permitted with their
+//     documented surface contracts.
+var ErrCompleteJobPathViolation = errors.New("complete job: legacy Complete path is forbidden for artifact-producing jobs — use CompleteWithArtifacts")
 
 // ── Aggregate-flipped sentinels (P0 #1 audit 2026-07-03 closure) ────────────
 //

@@ -3653,7 +3653,15 @@ if __name__ == '__main__':
       Callers: the runner.go::runLease Azione 7 branch reads
       `r.registry.ProducesArtifacts(job.Type)` and calls
       `tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)`.
-    introduction_date: 2026-04
+      promotion:
+    status: deprecated-with-typed-gate
+    migration_phase: EXPAND-with-typed-gate
+    promotion_date: "2026-07-04"
+    typed_sentinel: domainremote.ErrCompleteJobPathViolation
+    gate_surfaces:
+      - "CompleteJobService.completeInTx::JobTypeRegistry.ProducesArtifacts(jobType) lookup"
+      - "SQLiteStore.Complete::r.producesArtifacts[jobType] lookup"
+  introduction_date: 2026-04
     removal_date: 2026-09-26
     tracking_issue: |
       CUTOVER-COMPLETE-WITH-ARTIFACTS Azione 16c (this deprecation record).

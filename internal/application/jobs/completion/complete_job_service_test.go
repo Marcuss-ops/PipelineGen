@@ -16,6 +16,7 @@ package completion_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -268,7 +269,7 @@ func TestService_Complete_HappyPath_SingleTransaction(t *testing.T) {
 	rxFactory := func(jobID string, leaseID string, attempt int) CompletionTxRunner {
 		return &seedingMockTxRunner{
 			seedJob: &completion.JobRow{
-				JobID: jobID, LeaseID: leaseID, Attempt: attempt, Status: job.StatusRunning,
+				JobID: jobID, JobType: "test.non-artifact", LeaseID: leaseID, Attempt: attempt, Status: job.StatusRunning,
 			},
 		}
 	}
@@ -369,7 +370,7 @@ func TestService_Complete_LeaseStolen_ReturnsTypedErrConcurrentLeaseRefutation(t
 	// Seed the job with WRONG lease so CAS rejects.
 	rx := &seedingMockTxRunner{
 		seedJob: &completion.JobRow{
-			JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
+			JobID: "j-1", JobType: "test.non-artifact", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
 		},
 	}
 	cache := newMockCache()
@@ -426,7 +427,7 @@ func TestService_Complete_HashMismatch_ReturnsTypedErrRemoteArtifactHashMismatch
 	// not work here, so the test wraps the mockTxRunner.
 	wrapped := &seedingWithPriorHashesRunner{
 		seedJob: &completion.JobRow{
-			JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
+			JobID: "j-1", JobType: "test.non-artifact", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
 		},
 		priorHashes: map[string]completion.PriorArtifactHash{
 			"j-1:voiceover": {SHA256: "DIFFERENT-SHA", RemoteAssetID: "ra-prior", Status: job.StatusReady},
@@ -458,6 +459,8 @@ func (s *seedingWithPriorHashesRunner) RunInTx(ctx context.Context, fn func(ctx 
 	return fn(ctx, mock)
 }
 
+// TestService_Complete_HashMismatch_ReturnsTypedErrRemoteArtifactHashMismatch:
+
 func TestService_NilReceiver_ReturnsNotConfigured(t *testing.T) {
 	var svc *completion.Service
 	_, err := svc.Complete(context.Background(), newHappyPathRequest())
@@ -482,5 +485,126 @@ func TestService_Complete_NilReceiver_ReturnsMissingFields(t *testing.T) {
 	}
 	if !errors.Is(err, remote.ErrCompleteJobRequestMissingFields) {
 		t.Errorf("expected ErrCompleteJobRequestMissingFields, got: %v", err)
+	}
+}
+
+// ── FASE 0.1 (July 4, 2026) — JobTypeRegistry port + ErrCompleteJobPathViolation ──
+
+// mockJobTypeRegistry satisfies the completion.JobTypeRegistry port for
+// unit tests. The ProducesArtifacts map is set up at construction; nil-safe
+// lookups return false (godlike/06 SSOT: registry never lies about a
+// job-type-it's-never-heard-of — fail toward the more-permissive path).
+type mockJobTypeRegistry struct {
+	mu     sync.Mutex
+	policy map[string]bool
+}
+
+func newMockJobTypeRegistry() *mockJobTypeRegistry {
+	return &mockJobTypeRegistry{policy: map[string]bool{}}
+}
+
+func (m *mockJobTypeRegistry) ProducesArtifacts(jobType string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.policy[jobType]
+}
+
+func (m *mockJobTypeRegistry) Set(jobType string, produces bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.policy[jobType] = produces
+}
+
+// Compile-time pin (godlike/06 SSOT + Pattern 0 typed-port discipline):
+// signature drift on the JobTypeRegistry interface becomes a build
+// failure at this line rather than a runtime panic in tests.
+var _ completion.JobTypeRegistry = (*mockJobTypeRegistry)(nil)
+
+// FASE 0.1 (July 4, 2026) honest-limitation doc on the in-TX gate tests:
+// the in-TX gate at completeInTx is structurally unreachable today
+// (Validated rejects empty Artifacts at the pre-TX fail-fast gate).
+// The 3 NEW tests below verify STRUCTURAL pieces (port wiring +
+// fluent setter + nil-safety + sentinel distinct-ness). The
+// truth-table test of the gate's actual conditional (registry says
+// ProducesArtifacts=true AND len(Artifacts)==0 → ErrCompleteJobPathViolation)
+// is forward-pointed to PR-Validated-Loosen: a BACKFILL wave softens
+// Validated to permit empty artifacts on the typed-service surface
+// for non-artifact job types, which unlocks the gate's enforcement
+// surface. Until then, defense-in-depth on the SQL layer
+// (SQLiteStore.Complete → domainremote.ErrCompleteJobPathViolation)
+// is the only active enforcement point. The gate's value is to be
+// the canonical SSOT surface for the failure mode when BACKFILL lands.
+
+// TestService_WithJobTypeRegistry_WiresPort_FluentChain verifies the
+// Pattern-0 fluent setter at composition-root time. The setter MUST
+// return the receiver for chainable config (matches pkg/workerstats
+// precedent + the canonical idiom across application-layer ports).
+func TestService_WithJobTypeRegistry_WiresPort_FluentChain(t *testing.T) {
+	cache := newMockCache()
+	rx := &mockTxRunner{}
+	svc, err := completion.NewService(rx, cache)
+	if err != nil {
+		t.Fatalf("new svc: %v", err)
+	}
+	reg := newMockJobTypeRegistry()
+	got := svc.WithJobTypeRegistry(reg)
+	if got != svc {
+		t.Errorf("WithJobTypeRegistry should return the receiver for fluent chain; got %p want %p", got, svc)
+	}
+	// Verify the registry is wired by exercising the registered behavior.
+	reg.Set("artifact.job", true)
+	if !reg.ProducesArtifacts("artifact.job") {
+		t.Error("registry round-trip failed post Set")
+	}
+}
+
+// TestService_WithJobTypeRegistry_NilReceiver_ReturnsNil pins the
+// godlike/07 nil-safe zero-value contract for the fluent setter. A nil
+// receiver composing WithJobTypeRegistry must NOT panic and MUST return
+// nil (callers can chain through a nil receiver without crashing).
+// Mirrors the same idiom as SetProgress (zero-value-make-no-op pattern).
+func TestService_WithJobTypeRegistry_NilReceiver_ReturnsNil(t *testing.T) {
+	var svc *completion.Service
+	got := svc.WithJobTypeRegistry(newMockJobTypeRegistry())
+	if got != nil {
+		t.Errorf("WithJobTypeRegistry on nil receiver should return nil; got %p", got)
+	}
+}
+
+// TestErrCompleteJobPathViolation_DistinctFromExistingSentinels pins the
+// FASE 0.1 godlike/06 SSOT contract: ErrCompleteJobPathViolation is the
+// SINGLE canonical typed sentinel for "legacy COMPLETE path attempted on
+// artifact-producing job". It MUST NOT be aliased to any pre-existing
+// CompleteJob sentinel (each sentinel represents a distinct failure mode).
+func TestErrCompleteJobPathViolation_DistinctFromExistingSentinels(t *testing.T) {
+	// Distinct sentinel: non-empty unique message, distinct from peers.
+	if remote.ErrCompleteJobPathViolation == nil {
+		t.Fatal("ErrCompleteJobPathViolation must be declared")
+	}
+	if remote.ErrCompleteJobPathViolation.Error() == "" {
+		t.Error("ErrCompleteJobPathViolation must have a substantive error message")
+	}
+	// Probe: errors.Is with the new sentinel MUST NOT match the pre-existing
+	// CompleteJob sentinels (each tier-2 surface has a distinct semantic).
+	probe := remote.ErrCompleteJobPathViolation
+	if errors.Is(probe, remote.ErrCompleteJobRequestMissingFields) {
+		t.Error("ErrCompleteJobPathViolation must be distinct from ErrCompleteJobRequestMissingFields")
+	}
+	if errors.Is(probe, remote.ErrCompleteJobNotConfigured) {
+		t.Error("ErrCompleteJobPathViolation must be distinct from ErrCompleteJobNotConfigured")
+	}
+	if errors.Is(probe, remote.ErrConcurrentLeaseRefutation) {
+		t.Error("ErrCompleteJobPathViolation must be distinct from ErrConcurrentLeaseRefutation")
+	}
+	// errors.Is with itself: YES (the typed sentinel + the first wrap in
+	// fmt.Errorf("%w: ...", ErrCompleteJobPathViolation) MUST match).
+	if !errors.Is(probe, remote.ErrCompleteJobPathViolation) {
+		t.Error("ErrCompleteJobPathViolation must be self-identifying via errors.Is")
+	}
+	// Wrap-probe: a fmt.Errorf("%w: jobType=test", ErrCompleteJobPathViolation)
+	// chain MUST be errors.Is-able to the canonical sentinel.
+	wrapped := fmt.Errorf("%w: jobType=%q", remote.ErrCompleteJobPathViolation, "artifact.job")
+	if !errors.Is(wrapped, remote.ErrCompleteJobPathViolation) {
+		t.Error("wrapped ErrCompleteJobPathViolation must remain errors.Is-able per godlike/07 typed-error contract")
 	}
 }

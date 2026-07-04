@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -28,11 +27,19 @@ func (r *SQLiteStore) SetProgress(ctx context.Context, jobID string, progress in
 	return nil
 }
 
-// ErrArtifactJobRequiresCompleteWithArtifacts is returned when a worker
-// calls Complete (the legacy path) on a job type that produces artifacts.
-// Artifact-producing jobs MUST use CompleteWithArtifacts (the
-// JobFinalizer spine) instead.
-var ErrArtifactJobRequiresCompleteWithArtifacts = errors.New("artifact-producing job must use CompleteWithArtifacts — the legacy Complete path is gated for this job type")
+// (FASE 0.1 / July 4, 2026 SSOT cutover)
+// The pre-FASE-0.1 package-local sentinel
+// `ErrArtifactJobRequiresCompleteWithArtifacts` was REMOVED. Per
+// godlike/06 one-canonical-owner-per-fact + godlike/07 no-fake-
+// availability, the canonical typed sentinel for the failure mode
+// "legacy Complete path attempted on artifact-producing job" is
+// domainremote.ErrCompleteJobPathViolation. The SQL-layer gate below
+// wraps it via fmt.Errorf("%w: ...", domainremote.ErrCompleteJobPathViolation,
+// ...). Callers MUST errors.Is against the canonical sentinel name.
+// The deprecation record REMOTE-COMPLETE-LEGACY in
+// architecture/deprecations.yaml tracks the EXPAND-phase deprecation
+// window with removal_date 2026-Q4 (per the REMOTE-COMPLETE-LEGACY
+// migration_phase).
 
 // ── Complete (atomic transaction) ────────────────────────────────────────
 
@@ -40,9 +47,11 @@ var ErrArtifactJobRequiresCompleteWithArtifacts = errors.New("artifact-producing
 //
 // Deprecated: artifact-producing jobs (ProducesArtifacts=true in the
 // registry) MUST use the JobFinalizer.CompleteWithArtifacts path instead.
-// This method will reject artifact-producing job types with
-// ErrArtifactJobRequiresCompleteWithArtifacts. Use broker.CompleteWithArtifacts
-// which routes through the transactional finalization spine.
+// This method rejects artifact-producing job types with the canonical
+// sentinel domainremote.ErrCompleteJobPathViolation (godlike/06 SSOT,
+// REMOTE-COMPLETE-LEGACY EXPAND-phase window, removal_date 2026-Q4).
+// Use broker.CompleteWithArtifacts which routes through the transactional
+// finalization spine.
 func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, result json.RawMessage) error {
 	now := time.Now().UTC()
 	nowStr := timeutil.FormatRFC3339(now)
@@ -75,8 +84,13 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 	}
 
 	// Gate: artifact-producing jobs MUST use CompleteWithArtifacts.
+	// FASE 0.1 (July 4, 2026) SSOT: the canonical typed sentinel for this
+	// failure mode is domainremote.ErrCompleteJobPathViolation (godlike/06
+	// one-owner-per-fact). The SQL-layer surface wraps it via
+	// fmt.Errorf("%w: ...", domainremote.ErrCompleteJobPathViolation, ...)
+	// so callers errors.Is the canonical sentinel.
 	if r.producesArtifacts != nil && r.producesArtifacts[jobType] {
-		return fmt.Errorf("%w: job type %q produces artifacts — use CompleteWithArtifacts instead of Complete", ErrArtifactJobRequiresCompleteWithArtifacts, jobType)
+		return fmt.Errorf("%w: job type %q produces artifacts — use CompleteWithArtifacts instead of Complete", domainremote.ErrCompleteJobPathViolation, jobType)
 	}
 
 	// Atomic update
@@ -199,14 +213,14 @@ type aggregateFlipper interface {
 //
 // Why no-lease CAS: by the time the aggregator ticks this job, the parent
 // job's worker-side lease is released (HandleJob returned → tools.Complete
-// → repo.Complete cleared worker_id='', lease_id='', bumped revision).
+// → repo.Complete cleared worker_id=”, lease_id=”, bumped revision).
 // ValidateOwnership-style worker/lease/revision CAS would always reject —
 // the aggregator has no lease to compare against. The no-lease CAS guard
 // is on (status, json_extract(result_json,'$.parent_state')) instead:
 //
-//   AND status IN ('RUNNING','FINALIZING','SUCCEEDED')   — pre-terminal + worker-just-completed
-//   AND json_extract(result_json,'$.parent_state')
-//       IN ('waiting_children','partial_success')       — awaiting flip
+//	AND status IN ('RUNNING','FINALIZING','SUCCEEDED')   — pre-terminal + worker-just-completed
+//	AND json_extract(result_json,'$.parent_state')
+//	    IN ('waiting_children','partial_success')       — awaiting flip
 //
 // godlike/06 SSOT: this method is the SINGLE canonical writer of
 // post-fan-out parent state transitions. No other code path may mutate
