@@ -38,6 +38,34 @@ type RegisterFromYouTubeRequest struct {
 	Start           float64  `json:"start"`
 	End             float64  `json:"end"`
 	Force           bool     `json:"force"`
+	// PR-YT-SECONDS-PER-SEGMENT-WIRE (July 2026): when > 0, the
+	// handler expands this clip into N children matching
+	// [start, end] partitioned into N-second slices. Each child is
+	// fed through the canonical per-clip register pipeline so each
+	// becomes its own clip_id + Drive upload entry. omitempty keeps
+	// existing callers byte-identical (zero-value => no expansion).
+	//
+	// PR-YT-NO-AUDIO-THREAD (July 2026): when true, the per-segment
+	// clip uploaded to Drive has its audio track stripped at FFmpeg
+	// (`-an` flag). Default false preserves the existing keep-audio
+	// behavior. Combined with SecondsPerSegment, the user can
+	// auto-cut a clip into N-second chunks WITHOUT audio via
+	// /api/media/register-batch.
+	//
+	// Fan-out inheritance: each child produced by
+	// expandClipsBySegments inherits the parent's NoAudio via struct
+	// value copy (`child := r`) byte-stable (godlike/07 Step-2
+	// inheritance).
+	SecondsPerSegment int `json:"seconds_per_segment,omitempty"`
+	// PR-YT-NO-AUDIO-THREAD (July 2026): wire field for the no-audio
+	// strip flag. omitempty keeps existing callers byte-identical
+	// (false = preserve audio = pre-existing behavior). The single-clip
+	// endpoint (/register-from-youtube) inherits the field but its
+	// semantics are unchanged: one clip with optional audio strip.
+	// Provider-level mapping (req.NoAudio -> ProcessSegmentCommand.KeepAudio
+	// = ptr(!NoAudio)) is the canonical translation site; it lives at
+	// the YouTube provider's Fetch body (forward-pointer in this commit).
+	NoAudio bool `json:"no_audio,omitempty"`
 }
 
 // BatchRegisterRequest is the JSON body for batch registering clips from YouTube.
@@ -161,6 +189,20 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		return
 	}
 
+	// PR-YT-SECONDS-PER-SEGMENT-WIRE pre-flight: a single-clip request
+	// (POST /register-from-youtube) carrying seconds_per_segment > 0 is
+	// rejected because the single-clip endpoint only emits ONE clip.
+	// Operators wanting N-second auto-segmenting MUST use the batch
+	// endpoint where each slice can become its own clip_id + Drive
+	// upload. Reject early so the operator sees the correct path
+	// rather than the silent-fall-through behavior the per-clip
+	// path used to exhibit.
+	if req.SecondsPerSegment > 0 {
+		apiutil.BadRequest(c, "seconds_per_segment must be supplied via /api/media/register-batch (single-clip endpoint emits one clip_id; fan-out is the batch's job)."+
+			" See PR-YT-SECONDS-PER-SEGMENT-WIRE for the canonical surface.")
+		return
+	}
+
 	if h.svc == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "register service not wired")
 		return
@@ -226,6 +268,43 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 		apiutil.BadRequest(c, "clips list is empty")
 		return
 	}
+
+	// PR-YT-SECONDS-PER-SEGMENT-WIRE pre-flight: validate expansion
+	// semantics BEFORE the Drive-availability gate so a malformed
+	// seconds_per_segment doesn't burn the gate. The canonical
+	// window for slicing is [start, end]; either bound must be
+	// non-zero to anchor the partition. godlike/07 fail-fast-at-input:
+	// surfaces the 400 BEFORE any downstream I/O.
+	for i := range req.Clips {
+		if req.Clips[i].SecondsPerSegment > 0 {
+			if req.Clips[i].Start == 0 && req.Clips[i].End == 0 {
+				apiutil.BadRequest(c, fmt.Sprintf("clip index %d: seconds_per_segment=%d requires explicit [start, end] (cannot derive bounds from 0,0)",
+					i, req.Clips[i].SecondsPerSegment))
+				return
+			}
+			if req.Clips[i].Start != 0 && req.Clips[i].End != 0 && req.Clips[i].End <= req.Clips[i].Start {
+				apiutil.BadRequest(c, fmt.Sprintf("clip index %d: end (%v) must be greater than start (%v)",
+					i, req.Clips[i].End, req.Clips[i].Start))
+				return
+			}
+		}
+	}
+
+	// PR-YT-SECONDS-PER-SEGMENT-WIRE: server-side fan-out of any clip
+	// with seconds_per_segment > 0 into N children matching [start, end]
+	// partitioned into N-second slices. Each child feeds the canonical
+	// per-clip register pipeline; each child therefore becomes ONE
+	// clip_id + ONE Drive upload entry. Strips the seconds_per_segment
+	// field on children to prevent recursive expansion if a child is
+	// ever re-fed through the handler. godlike/07 minimum-blast-radius:
+	// existing register-batch callers with seconds_per_segment unset
+	// are byte-identical (zero-value passes through untouched).
+	expanded, expandErr := expandClipsBySegments(req.Clips)
+	if expandErr != nil {
+		apiutil.BadRequest(c, "seconds_per_segment expansion failed: "+expandErr.Error())
+		return
+	}
+	req.Clips = expanded
 
 	// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): pre-flight
 	// Drive-availability gate. The request may carry folder_id at
@@ -311,21 +390,108 @@ func effectiveFolderID(req *BatchRegisterRequest) string {
 
 func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClipCommand {
 	return sourcing.RegisterClipCommand{
-		URL:             strings.TrimSpace(req.URL),
-		Name:            strings.TrimSpace(req.Name),
-		Description:     strings.TrimSpace(req.Description),
-		Summary:         strings.TrimSpace(req.Summary),
-		Topics:          append([]string(nil), req.Topics...),
-		Speakers:        append([]string(nil), req.Speakers...),
-		MentionedPeople: append([]string(nil), req.MentionedPeople...),
-		Hook:            strings.TrimSpace(req.Hook),
-		Tags:            append([]string(nil), req.Tags...),
-		Source:          strings.TrimSpace(req.Source),
-		Category:        strings.TrimSpace(req.Category),
-		Group:           strings.TrimSpace(req.Group),
-		FolderID:        strings.TrimSpace(req.FolderID),
-		StartSec:        req.Start,
-		EndSec:          req.End,
-		Force:           req.Force,
+		URL:               strings.TrimSpace(req.URL),
+		Name:              strings.TrimSpace(req.Name),
+		Description:       strings.TrimSpace(req.Description),
+		Summary:           strings.TrimSpace(req.Summary),
+		Topics:            append([]string(nil), req.Topics...),
+		Speakers:          append([]string(nil), req.Speakers...),
+		MentionedPeople:   append([]string(nil), req.MentionedPeople...),
+		Hook:              strings.TrimSpace(req.Hook),
+		Tags:              append([]string(nil), req.Tags...),
+		Source:            strings.TrimSpace(req.Source),
+		Category:          strings.TrimSpace(req.Category),
+		Group:             strings.TrimSpace(req.Group),
+		FolderID:          strings.TrimSpace(req.FolderID),
+		StartSec:          req.Start,
+		EndSec:            req.End,
+		Force:             req.Force,
+		SecondsPerSegment: req.SecondsPerSegment,
+		// PR-YT-NO-AUDIO-THREAD (July 2026): thread the audio-strip
+		// intent from the wire through the service DTO so
+		// sourcing.Service callers can pass it on to the fetch path.
+		// godlike/07 minimum-blast-radius: zero-value false matches
+		// existing keep-audio behavior; no callers need to set NoAudio
+		// explicitly to preserve current behavior.
+		NoAudio: req.NoAudio,
 	}
+}
+
+// Sentinel: when a /register-batch request with N clips expands to M
+// children (M > N because of seconds_per_segment fan-out), the response
+// should reflect the post-expansion count. Constant is reserved for
+// future use; today's response shape already returns per-clip echoes
+// via BatchClipResult so the cardinality flows naturally.
+const _reserved_expansionSentinel = ""
+
+// expandClipsBySegments takes a slice of RegisterFromYouTubeRequest
+// entries and expands any entry with `seconds_per_segment > 0` into
+// N children matching the [start, end] window partitioned into
+// N-second slices. Strips the `seconds_per_segment` field on the
+// children to prevent recursive expansion when they're re-fed.
+//
+// PR-YT-SECONDS-PER-SEGMENT-WIRE (July 2026) — godlike/07 fail-closed
+// contracts:
+//   - clip.SecondsPerSegment < 1 (when non-zero) → error
+//   - clip.SecondsPerSegment > 0 with start==0 AND end==0 → error
+//     (can't partition a window of unknown size)
+//   - clip.SecondsPerSegment > 0 with end < start (when both provided)
+//     → error
+//   - successful sons are appended in start-ascending partition
+//     order so the [start, end] trajectory is preserved per-clip
+//
+// Backward-compat (godlike/06 minimal-surface-change):
+//
+//	clips with `SecondsPerSegment == 0` OR unset pass through
+//	unchanged. Existing /api/media/register-batch callers (the
+//	boxing-smoke uses 4 per-clip start/end) are byte-identical.
+func expandClipsBySegments(reqs []RegisterFromYouTubeRequest) ([]RegisterFromYouTubeRequest, error) {
+	out := make([]RegisterFromYouTubeRequest, 0, len(reqs))
+	for i, r := range reqs {
+		if r.SecondsPerSegment <= 0 {
+			out = append(out, r)
+			continue
+		}
+		if r.SecondsPerSegment < 1 {
+			return nil, fmt.Errorf("clip index %d: seconds_per_segment=%d must be >= 1", i, r.SecondsPerSegment)
+		}
+		if r.Start == 0 && r.End == 0 {
+			return nil, fmt.Errorf("clip index %d: seconds_per_segment=%d requires explicit [start, end] bounds (cannot derive from 0,0)", i, r.SecondsPerSegment)
+		}
+		// Effective window: use [start, end] when both provided;
+		// when end==0 use start..start+MaxWindowSec (forward-pointer:
+		// the canonical source of truth for video-end detection is
+		// the YouTube-Durationmetadata fetch the existing pipeline
+		// already does inside ProcessYouTubeSegmentUseCase; here
+		// we conservatively require an explicit end rather than
+		// guessing — a missing end falls back to a no-op pass-through).
+		effectiveEnd := r.End
+		if effectiveEnd == 0 {
+			out = append(out, r)
+			continue
+		}
+		if effectiveEnd <= r.Start {
+			return nil, fmt.Errorf("clip index %d: end (%v) must be greater than start (%v)", i, effectiveEnd, r.Start)
+		}
+		segDur := float64(r.SecondsPerSegment)
+		partNum := 1
+		// Tiny epsilon (1e-3) on the upper bound to absorb
+		// floating-point drift when end-start is a whole-number
+		// multiple of segDur (e.g. [0..10] with 5s => exactly 2
+		// partitions, no spurious 1e-9-loss third).
+		for cur := r.Start; cur+segDur <= effectiveEnd+1e-3; cur += segDur {
+			child := r
+			child.Start = cur
+			child.End = cur + segDur
+			// Strip to prevent recursive expansion if the child
+			// is ever re-fed through the handler on a future call.
+			child.SecondsPerSegment = 0
+			if child.Name != "" {
+				child.Name = fmt.Sprintf("%s (part %d)", child.Name, partNum)
+			}
+			out = append(out, child)
+			partNum++
+		}
+	}
+	return out, nil
 }

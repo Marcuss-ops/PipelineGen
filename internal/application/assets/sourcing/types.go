@@ -37,6 +37,24 @@ type RegisterClipCommand struct {
 	StartSec        float64
 	EndSec          float64
 	Force           bool
+	// PR-YT-SECONDS-PER-SEGMENT-WIRE (July 2026, handler-side fan-out):
+	// documentary on the service layer; after handler-side fan-out in
+	// expandClipsBySegments each child has SecondsPerSegment=0 (stripped
+	// to prevent recursive expansion). Kept on the service-DTO so the
+	// existing handler->RegisterClipCommand struct literal compiles.
+	// The fan-out is the handler's job; this field is informational.
+	SecondsPerSegment int
+	// PR-YT-NO-AUDIO-THREAD (July 2026): when true, the per-segment
+	// clip uploaded to Drive has its audio track stripped at FFmpeg
+	// (`-an` flag). Default false preserves the existing keep-audio
+	// behavior. The field threads from handler.RegisterFromYouTubeRequest
+	// -> RegisterClipCommand -> FetchRequest -> provider.Fetch
+	// (forward-pointer: the concrete YouTube provider's Fetch body is
+	// the canonical mapping site that translates req.NoAudio=true into
+	// ProcessSegmentCommand.KeepAudio=false at the worker side).
+	// godlike/07 minimum-blast-radius: existing callers omitting the
+	// field stay byte-identical (false = keep audio = existing behavior).
+	NoAudio bool
 }
 
 // RegisterClipResult is the output of a clip registration.

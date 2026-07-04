@@ -27,6 +27,16 @@ type FetchRequest struct {
 	SourceRef    string // URL or video ID
 	SegmentStart time.Duration
 	SegmentEnd   time.Duration
+	// PR-YT-NO-AUDIO-THREAD (July 2026): when true, the per-segment
+	// clip uploaded to Drive has its audio track stripped at FFmpeg.
+	// Default false preserves the existing keep-audio behavior. Threads
+	// from RegisterClipCommand.NoAudio through the provider boundary;
+	// the concrete YouTube provider's Fetch body is the canonical
+	// mapping site that translates this into ProcessSegmentCommand.KeepAudio
+	// (worker-side canonical: pointer-to-bool with omitempty semantics).
+	// godlike/07 minimum-blast-radius: zero-value false = existing
+	// behavior; new no-audio wire users opt-in explicitly.
+	NoAudio bool
 }
 
 // FetchProviderPort downloads a video from an external source (e.g. YouTube via yt-dlp).
