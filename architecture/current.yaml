@@ -5572,17 +5572,17 @@ wave_status:
           (g) verify outbox_events.status = 'completed' AND
               media_assets.index_state = 'INDEXED'
         godlike/07 NO-EXECUTE-TODAY: this is a SCHEDULING entry
-        (documentation-only). Execution is reserved for the next
-        chaos-day maintenance window (2026-07-25..2026-08-01 candidate)
-        under SRE isolated-network conditions; production data must NOT
-        be modified.
+        (documentation-only). Execution schedule is owned by
+        PR-QDRANT-CHAOS-DAY-2026-08-01 (see that slot for the
+        candidate chaos-execution window + isolated-network contract).
+        Production data must NOT be modified.
         Pre-prereq: PR-QDRANT-FULL-STACK-BRINGUP must be green (stack
         brought up via docker compose up -d + PipelineGen server on
         :8081 responds + Qdrant :16333 up) so the chaos sequence has a
         real service topology to disrupt.
     - id: PR-QDRANT-CHAOS-DAY-2026-08-01
       owner_capability: SRE / chaos-engineering
-      status: scheduled
+      status: pending
       deadline: 2026-08-01
       notes: |
         Umbrella scheduling entry for the 2026-Q3 chaos-day maintenance
