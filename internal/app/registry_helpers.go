@@ -95,7 +95,7 @@ func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo ass
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
 	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing, mutationsDisp)
-	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpegtypes.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, publisher)
+	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpegtypes.DefaultNormalizeOptions(cfg), EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, publisher)
 }
 
 // ── Sync target building ────────────────────────────────────────────────────

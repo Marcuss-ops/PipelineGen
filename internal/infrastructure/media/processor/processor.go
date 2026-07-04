@@ -32,9 +32,9 @@ import (
 //
 // PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): the optional
 // ArtlistDownloader field routes Artlist-clip downloads through the
-// canonical downloader.Resolver instead of the processor's own
-// downloadViaScraper method. When nil (default), the processor falls
-// back to the legacy scraper path for backward compatibility.
+// canonical downloader.Resolver. When nil, Artlist clips fall through
+// to yt-dlp (Rule 4). PR-ARTLIST-SCRAPER-RETIRE (July 2026): the
+// legacy downloadViaScraper path is RETIRED.
 type Processor struct {
 	dl           YTDLP
 	httpDL       HTTPDownloader
@@ -43,15 +43,16 @@ type Processor struct {
 	dataDir      string
 	tempDir      string
 	videoCfg     ffmpeg.NormalizeOptions
-	scraperURL   string
+	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL field REMOVED.
+	// Artlist downloads now route exclusively through the
+	// ArtlistDownloader port (wired via build_bundles_artlist.go).
 	embeddingURL string
 	registry     artifacts.Registry
 	publisher    delivery.Publisher
 	// ArtlistDownloader is the canonical Resolver-backed Artlist
-	// download path. nil-safe: when nil, downloadStep falls back
-	// to the legacy downloadViaScraper method (backward compat).
-	// Wired in build_bundles_artlist.go via an adapter wrapping
-	// downloader.Resolver.Download().
+	// download path. nil-safe: when nil, downloadStep falls through
+	// to yt-dlp (Rule 4). Wired in build_bundles_artlist.go via an
+	// adapter wrapping downloader.Resolver.Download().
 	artlistDL ArtlistDownloader
 }
 
@@ -59,7 +60,7 @@ var _ asset.Processor = (*Processor)(nil)
 
 // ArtlistDownloader is the narrow port for Artlist-clip downloads
 // routed through the canonical downloader.Resolver. Nil-safe: when
-// nil, the processor falls back to the legacy downloadViaScraper method.
+// nil, the processor falls through to yt-dlp (Rule 4).
 //
 // Wired in build_bundles_artlist.go via an adapter wrapping
 // downloader.Resolver.Download(artapp.DownloadRequest).
@@ -84,7 +85,7 @@ type ProcessorConfig struct {
 	DataDir            string
 	TempDir            string
 	VideoCfg           ffmpeg.NormalizeOptions
-	ScraperServerURL   string // Artlist persistent scraper server (e.g. http://localhost:9123)
+	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): ScraperServerURL REMOVED.
 	EmbeddingServerURL string // Python embedding/phash server (e.g. http://127.0.0.1:8001)
 }
 
@@ -107,10 +108,7 @@ func NewProcessor(
 	if publisher == nil {
 		panic("processor.NewProcessor: publisher is required (composition root must inject delivery.Publisher from DriveBundle.Publisher)")
 	}
-	scraperURL := cfg.ScraperServerURL
-	if scraperURL == "" {
-		scraperURL = "http://127.0.0.1:9123"
-	}
+	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL init REMOVED.
 	embeddingURL := cfg.EmbeddingServerURL
 	if embeddingURL == "" {
 		embeddingURL = "http://127.0.0.1:8001"
@@ -123,7 +121,6 @@ func NewProcessor(
 		dataDir:      cfg.DataDir,
 		tempDir:      cfg.TempDir,
 		videoCfg:     cfg.VideoCfg,
-		scraperURL:   scraperURL,
 		embeddingURL: embeddingURL,
 		registry:     registry,
 		publisher:    publisher,
