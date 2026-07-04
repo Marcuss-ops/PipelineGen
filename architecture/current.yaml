@@ -3340,7 +3340,15 @@ wave_status:
         diagnosticsService components).
     - id: PR-ARTLIST-REPOS
       owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/database/sqlite/assets"
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_via: |
+        FALSE-POSITIVE RETIREMENT (godlike/07 no-fake-availability).
+        The artlist repos already exist: *assets.ClipsRepository is wired
+        as canonical AssetStore (compile-time assertion build_bundles_artlist.go:78).
+        Production wiring: clips_adapters_index.go:240, registry_helpers.go:103,
+        build_bundles_core.go:76, catalog/repository.go:13, deletion/deletion.go:143.
+        No new code required; the repos are live and operational.
       deadline: 2026-08-15
     - id: PR-ARTLIST-SYNCSERVICE
       owner_capability: "internal/application/assets/providers/artlist + internal/app (audit-pin cleanup; clipresolver package removed in prior refactor)"
