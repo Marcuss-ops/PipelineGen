@@ -11,8 +11,6 @@ package script
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -85,54 +83,13 @@ func ResolveRecommendedDriveFolder(ctx context.Context, svc usecase.ClipServices
 	return usecase.ResolveRecommendedDriveFolder(ctx, svc, title, script, insights)
 }
 
-// ── resolveDriveFolderID (ScriptFlowHandler method) ─────────────────────────
-// Uses the handler's DriveFolderClient instead of concrete
-// *drive.Uploader. Folder resolution logic unchanged.
-
-func (h *ScriptFlowHandler) resolveDriveFolderID(ctx context.Context, input, defaultRootID string) (string, error) {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return defaultRootID, nil
-	}
-
-	isRawID := true
-	if len(input) < 19 || len(input) > 45 {
-		isRawID = false
-	} else {
-		for _, r := range input {
-			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
-				isRawID = false
-				break
-			}
-		}
-	}
-
-	if isRawID {
-		return input, nil
-	}
-
-	if h.driveFolderClient == nil {
-		h.log.Warn("driveFolderClient not initialized, cannot resolve folder name/path; returning defaultRootID",
-			zap.String("input", input))
-		return defaultRootID, nil
-	}
-
-	parts := strings.FieldsFunc(input, func(r rune) bool {
-		return r == '/' || r == '\\'
-	})
-
-	currentID := defaultRootID
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		id, err := h.driveFolderClient.GetOrCreateFolder(ctx, part, currentID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get or create folder %q under %q: %w", part, currentID, err)
-		}
-		currentID = id
-	}
-
-	return currentID, nil
-}
+// resolveDriveFolderID retired (July 2026) as dead code per
+// PR-SCRIPT-FACADE-EXTRACT — canonical impl moved to
+// FacadeHandler.ResolveDriveFolderID (handler_facade.go). The
+// ScriptFlowHandler.ResolveDriveFolderID public method is now a
+// thin delegator. Pre-extraction the helper lived here as a method
+// on ScriptFlowHandler (lowercase = package-private) with a single
+// caller (the public ScriptFlowHandler.ResolveDriveFolderID); post-
+// extraction that single caller hops to h.facade.ResolveDriveFolderID
+// and the lowercase helper becomes unused — removed per godlike/07
+// minimum-blast-radius dead-code discipline.
