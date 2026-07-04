@@ -72,3 +72,4 @@ Per essere considerato "implementabile" e quindi candidato come **executable act
 - Checklist operativa per singolo worker: `../worker-certification-checklist.md`
 - Definizione di Done globale: sezione 3 del runbook.
 - Regola finale di ammissione: sezione 6 del runbook + sezione 2 della checklist.
+- VOICEOVER-STREAM-SUPERSESSION-appendix → archived 2026-07-04 per supersedimento (Step 9 B-3 / commit `665ff194`); vedi `../../../architecture/archive/2026-06-29/`.
