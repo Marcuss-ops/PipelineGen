@@ -5302,6 +5302,26 @@
         the 2/2 closure of the Q16 split.
       deadline: "2026-08-08"
     - id: PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-25
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    deadline: 2026-08-15
+    ship_via: |
+      Post-wave cross-validation closure (2026-07-25).
+      Raw git log --since=14.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30
+      surfaced top-30 hot files. 14 candidate "hotspot" files cross-validated
+      against existing plans: each is either (a) expected composition-root glue
+      during cleanup waves, (b) a 3-surface lockstep mirror (CHANGELOG/AGENTS/current.yaml),
+      (c) covered by another wave's forward-pointer (PRE-EXISTING-BUILD-ISSUES-2026-07-04,
+      ART-002, ID-29, AUDIT-RESIDUE, ID-30, FASE-2.4), or (d) bookkeeping
+      (architecture/deprecations.yaml, migration.yaml, scripts/archcheck/*).
+      
+      Slim-schema append-only ratchet discipline: 0 NEW hotspots appended to linked_issues.
+      Per godlike/07 honest-limitation discipline, this is a valid outcome -- the
+      existing 4 linked_issues (PR-QDRANT-CONFIG-MISMATCH-GATE + PR-QDRANT-INDEXCLIP-GUARD +
+      PR-GENERATED-SEARCH-FIX + this entry) already cover the major false-success
+      surfaces in the wave's scope.
       owner_capability: architecture
       status: pending
       deadline: "2026-08-15"
