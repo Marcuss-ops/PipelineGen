@@ -6,12 +6,19 @@
 // error messages (typo: 429/503 timeouts). The classifier fixes the
 // silent-success hole.
 //
+// Commit F (July 2026, P0-COMPL-2 follow-up): the previous full-success
+// branch required resp.Stats.Processed > 0, which flagged 100% cache-hit
+// re-runs (Processed=0, Skipped=Requested) as terminal failure. The job
+// classifier now mirrors the usecase-level classifier (Correttezza #7,
+// PR-C Commit 2/6): a cache-hit re-run is a full success.
+//
 // Contract:
 //
 //	resp == nil | resp.Stats.Requested == 0 → ErrExtractionTerminal
-//	resp.Stats.Failed == 0 && Processed > 0 → nil                  (full success)
-//	Processed > 0 && Failed > 0               → *PartialSuccessError (nil but typed)
-//	Processed == 0 && Failed == Requested     → retryable substring check
+//	resp.Stats.Failed == 0 && (Processed + Skipped) == Requested
+//	    && Requested > 0                    → nil               (full success)
+//	Processed > 0 && Failed > 0              → *PartialSuccessError (typed)
+//	Processed == 0 && Failed == Requested    → retryable substring check
 //	    any item.Error matches → ErrExtractionRetryable
 //	    otherwise                → ErrExtractionTerminal
 //
@@ -77,8 +84,16 @@ func ClassifyExtractionResult(resp *youtubetypes.ExtractResponse) error {
 		return ErrExtractionTerminal
 	}
 
-	// Full success.
-	if resp.Stats.Failed == 0 && resp.Stats.Processed > 0 {
+	// Full success: zero failures AND (Processed + Skipped) accounts
+	// for every Requested segment. Cache-hit re-runs (Processed=0,
+	// Skipped=Requested) now legitimately classify as full success —
+	// mirrors the usecase-level classifier (Correttezza #7).
+	// The defensive `Requested > 0` guard is redundant with the early
+	// `Stats.Requested == 0` check above but kept for clarity of the
+	// success contract.
+	if resp.Stats.Failed == 0 &&
+		(resp.Stats.Processed+resp.Stats.Skipped == resp.Stats.Requested) &&
+		resp.Stats.Requested > 0 {
 		return nil
 	}
 
