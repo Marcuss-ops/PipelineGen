@@ -100,12 +100,11 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		return
 	}
 
-	// Pre-flight URL validation: invalid URLs return HTTP 400 instead of
-	// HTTP 500 (avoids triggering the yt-dlp subprocess on junk input).
-	// Canonical typed gate at pkg/urlutil/urlutil.go::ExtractVideoID;
-	// for non-YouTube URLs it returns a typed error immediately so the
-	// canonical REST contract surfaces a 4xx (client-bad) without
-	// bubbles from the service layer.
+	// Pre-flight URL validation (godlike/07 input-fail-closed): invalid URLs
+	// now return 400 BEFORE svc dispatch. Pre-fix they bubbled subprocess
+	// exit-1 as 500 (svc wired) or surfaced 503 (svc=nil); post-fix they
+	// surface the canonical "your input is bad" 400. Canonical typed gate
+	// at pkg/urlutil/urlutil.go::ExtractVideoID.
 	if _, err := urlutil.ExtractVideoID(req.URL); err != nil {
 		apiutil.BadRequest(c, "invalid YouTube URL: "+err.Error())
 		return
