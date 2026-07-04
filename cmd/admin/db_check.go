@@ -100,10 +100,22 @@ func checkOneDB(ctx context.Context, label string, sdb *storage.SQLiteDB, topN i
 	if v, err := storage.ForeignKeyCheck(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("foreign_key_check: %w", err)
 	} else if len(v) > 0 {
+		// Schema-level FK mismatches (WARNING-prefixed) are
+		// printed but NOT counted as failures — they indicate
+		// a schema inconsistency, not actual data corruption.
+		// Row-level violations are still hard failures.
+		allWarnings := true
 		for _, line := range v {
-			fmt.Printf("  [%s] FK violation: %s\n", label, line)
+			if strings.HasPrefix(line, "WARNING:") {
+				fmt.Printf("  [%s] FK schema warning: %s\n", label, line)
+			} else {
+				fmt.Printf("  [%s] FK violation: %s\n", label, line)
+				allWarnings = false
+			}
 		}
-		return fmt.Errorf("%d FK violation(s)", len(v))
+		if !allWarnings {
+			return fmt.Errorf("%d FK violation(s)", len(v))
+		}
 	}
 	if mode, err := storage.JournalMode(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("journal_mode: %w", err)

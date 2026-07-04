@@ -158,8 +158,12 @@ CREATE TABLE IF NOT EXISTS offload.api_requests (
 	purged, _ := delRes.RowsAffected()
 	r.PurgedRows = int(purged)
 
-	// VACUUM the table to reclaim disk space within the live DB.
-	if _, err := src.ExecContext(ctx, "VACUUM main.api_requests"); err != nil {
+	// VACUUM the database to reclaim disk space within the live DB.
+	// SQLite VACUUM does NOT support table-qualified syntax
+	// ("VACUUM main.api_requests"); it operates on the entire database.
+	// After the DELETE above, VACUUM rebuilds the db file and reclaims
+	// freed pages.
+	if _, err := src.ExecContext(ctx, "VACUUM"); err != nil {
 		return r, fmt.Errorf("rotation: VACUUM: %w", err)
 	}
 

@@ -68,16 +68,18 @@ func TestDecodeSearchResults_OfficialQueryPoints(t *testing.T) {
 // ── P0.4 — Alias endpoint envelope ──────────────────────────────────
 
 // TestGetAliasTarget_OfficialResolution pins the canonical
-// `result.aliases[]` decoding from
-// https://api.qdrant.tech/api-reference/aliases/get-collection-aliases.
+// `result.aliases[]` decoding from the global /aliases endpoint.
 // The pre-PR1 decoder read `result` as a top-level array which NEVER
 // produced the alias_target under real Qdrant.
+// PR-ALIAS-RESOLVE-FIX (2026-07-04): switched from /collections/{alias}/aliases
+// to /aliases because /collections/{alias}/aliases only resolves aliases for
+// physical collections — it returns empty when the parameter is itself an alias.
 func TestGetAliasTarget_OfficialResolution(t *testing.T) {
 	t.Parallel()
 
 	body := loadFixture(t, "get_collection_aliases_response.json")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/collections/media_assets_current/aliases" {
+		if r.URL.Path != "/aliases" {
 			http.NotFound(w, r)
 			return
 		}
