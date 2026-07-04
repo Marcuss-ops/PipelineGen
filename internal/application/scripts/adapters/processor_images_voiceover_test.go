@@ -40,7 +40,7 @@ type fakeImageGen struct {
 	calls   atomic.Int32
 }
 
-func (f *fakeImageGen) SearchAndDownload(_ context.Context, _, _, _, _ string, _ interface{}) (*adapterspkg.ImageResult, error) {
+func (f *fakeImageGen) SearchAndDownload(_ context.Context, _, _, _, _ string) (*adapterspkg.ImageResult, error) {
 	i := int(f.calls.Add(1) - 1)
 	if i >= len(f.results) {
 		return nil, errors.New("unexpected call index")

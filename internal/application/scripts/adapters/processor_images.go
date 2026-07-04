@@ -37,7 +37,7 @@ type ImageResult struct {
 // Production implementations live in internal/application/images/
 // (concrete *images.Service); stub implementations live in adapters/.
 type ImageGenService interface {
-	SearchAndDownload(ctx context.Context, sceneName, sceneText, altText, language string, opts interface{}) (*ImageResult, error)
+	SearchAndDownload(ctx context.Context, sceneName, sceneText, altText, language string) (*ImageResult, error)
 }
 
 // ImageProcessor generates scene images via ImageGenService.
@@ -118,7 +118,7 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 			query = plan.Title
 		}
 
-		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, query, language, nil)
+		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("image generation failed for scene %d: %v", i, err))
 			images = append(images, SceneImage{Index: i, Text: sceneText})

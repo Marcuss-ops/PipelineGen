@@ -20,9 +20,9 @@ package usecase
 import (
 	"context"
 
+	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
-	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"go.uber.org/zap"
 )
 
@@ -30,18 +30,18 @@ import (
 
 // ClipServices bundles all service dependencies for clip-related functions.
 type ClipServices struct {
-	ClipSearch    ClipSearchService
-	Association   AssociationService
-	DriveCheck    DriveCheckService
-	ImageSearch   ImageSearchService
-	Translation   TextTranslationService
-	JobEnqueue    JobEnqueueService
-	Harvest       HarvestService
-	Voiceover     VoiceoverService
-	RealtimeSvc   RealtimeSearchService
-	HarvestSvc    HarvestService
-	Logger        *zap.Logger
-	Translator    TranslatorService
+	ClipSearch  ClipSearchService
+	Association AssociationService
+	DriveCheck  DriveCheckService
+	ImageSearch ImageSearchService
+	Translation TextTranslationService
+	JobEnqueue  JobEnqueueService
+	Harvest     HarvestService
+	Voiceover   VoiceoverService
+	RealtimeSvc RealtimeSearchService
+	HarvestSvc  HarvestService
+	Logger      *zap.Logger
+	Translator  TranslatorService
 	// TranslationPort is the canonical Fase 9 step 2 surface. New
 	// consumers (e.g. flow_helpers.go::artlistSearchPhrase) call
 	// svc.TranslationPort.Translate(ctx, cmd) directly. The legacy
@@ -126,8 +126,20 @@ type AssocSearchService interface {
 }
 
 // ImageGenService narrows image search + generation operations.
+//
+// PR C8 (July 2026): the `extra interface{}` zombie parameter was
+// removed from SearchAndDownload. Both production callers
+// (internal/application/scripts/usecase/flow_helpers.go::enrichSingleEntity
+// and internal/application/scripts/adapters/processor_images.go::Process)
+// historically passed `nil`; the only file with a non-`nil` type-assertion
+// path was internal/app/wire_script_curation.go::imageGenSvcAdapter,
+// where the `extra.([]string)` cast branches into a `tags` arg for
+// GenerateSmartImage. That cast NEVER fired (no caller passed non-nil
+// extra at composition time), so the entire interface{} channel was
+// untraffic — dropping it preserves byte-equivalent behaviour and
+// satisfies godlike/06 SSOT (no operator-of-untyped-traffic).
 type ImageGenService interface {
-	SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*asset.ImageAsset, error)
+	SearchAndDownload(ctx context.Context, name, description, query, language string) (*asset.ImageAsset, error)
 	GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
 }
 
