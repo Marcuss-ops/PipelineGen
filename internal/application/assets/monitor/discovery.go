@@ -9,7 +9,6 @@
 //
 //   - discoverChannelVideos: a thin wrapper over the MonitorDownloaderPort
 //     that decides the per-channel PlaylistEnd (DefaultPlaylistEnd fallback).
-//   - discoverSearchQueries: a STUB that returns nil.
 //   - checkChannel: orchestrates the per-cycle per-channel check. List
 //     videos → fan out bounded goroutines → per-video processVideo runs
 //     the cheap lexical filter chain + the leader-election INSERT dance.
@@ -108,26 +107,6 @@ func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel chan
 		DateAfter:   dateAfter,
 		PlaylistEnd: playlistEnd,
 	})
-}
-
-// QueryResult is the canonical return-type for the (currently stubbed)
-// discoverSearchQueries. Defined for cross-Step-9 type stability: any
-// future P1 PR re-introducing search-query-driven discovery must
-// return QueryResult, not invent a new shape.
-type QueryResult struct {
-	Query  string
-	Videos []VideoInfo
-}
-
-// discoverSearchQueries is a Step 9 STUB. The previous search_queries.go
-// (channel-by-search-query discovery) was removed earlier in the working
-// tree as part of the Wave A simplification; this stub keeps the signature
-// in the type system so a future P1 PR can fill it in without changing
-// the public API. Returns (nil, nil) so existing callers (none currently
-// — this is purely a future-proofing step) can no-op safely.
-func (m *ChannelMonitor) discoverSearchQueries(_ context.Context, _ string) ([]QueryResult, error) {
-	m.log.Debug("discoverSearchQueries: stub (search-query-driven discovery not re-introduced in Step 9; see P1 follow-up ticket)")
-	return nil, nil
 }
 
 // checkChannel runs the per-cycle loop with bounded concurrency.
