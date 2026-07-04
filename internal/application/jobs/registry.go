@@ -485,7 +485,7 @@ const (
 	// registration pipeline persists its own media_assets row + outbox
 	// events inside a per-clip tx (mirror of youtube_clip.extract); the
 	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
-	TypeClipRegister = "media.clip"
+	TypeClipRegister = job.TypeClipRegister
 )
 
 // Compose builds the standard registry with all known job types.
