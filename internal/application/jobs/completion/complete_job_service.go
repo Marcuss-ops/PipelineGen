@@ -141,7 +141,14 @@ type TxContext interface {
 // without dragging the full envelope through the test surface.
 
 type JobRow struct {
-	JobID   string
+	JobID string
+	// JobType is the canonical job_type from jobs.type column (mirrored from
+	// the SQLite row). Required for the in-TX typed-error gate in
+	// completeInTx that looks up the JobTypeRegistry.ProducesArtifacts
+	// policy per job type (godlike/06 SSOT: the registry is the canonical
+	// owner of "does this job type produce artifacts"; the request envelope
+	// is NOT trusted for policy fields).
+	JobType string
 	LeaseID string
 	Attempt int
 	Status  job.Status
@@ -265,6 +272,35 @@ type IdempotencyCachePort interface {
 	StoreCanonical(ctx context.Context, jobID string, attempt int, resultHash string, resp *remote.CompleteJobResponse) error
 }
 
+// ── JobTypeRegistry (Pattern 0 port for SSOT policy lookup) ───────────
+
+// JobTypeRegistry is the typed port for "does this job type produce
+// artifacts". godlike/06 SSOT: the application-layer JobRegistry
+// (`internal/application/jobs/registry.go::Registry`) is the SINGLE
+// canonical owner of this fact — NOT the request envelope, NOT the
+// SQL column. The in-TX typed-error gate in completeInTx uses this
+// port to look up the policy by jobRow.JobType (fetched in-TX) and
+// reject legacy-shape requests for artifact-producing jobs with
+// remote.ErrCompleteJobPathViolation.
+//
+// EXPAND-phase semantics (godlike/07 fail-closed at composition): the
+// port is OPTIONAL on the Service struct. When registry == nil the
+// in-TX gate is silently skipped (backward-compat for callers that
+// haven't yet wired the JobTypeRegistry). The BACKFILL phase wires
+// the registry via Service.WithJobTypeRegistry(impl) at the composition
+// root. The CONTRACT phase promotes registry to a non-optional
+// constructor argument (fail-closed at boot if nil). Today this PR
+// ships the surface live + 3 TDD tests + the canonical sentinel
+// declaration at internal/domain/remote/complete_job.go.
+type JobTypeRegistry interface {
+	// ProducesArtifacts returns true if jobs of the given type MUST
+	// route through CompleteWithArtifacts (and may NOT route through
+	// the legacy Complete path). The registry is the SSOT; the SQL
+	// map at SQLiteStore.producesArtifacts is a propagation copy
+	// seeded via Registry.ProducesArtifactsMap() at boot.
+	ProducesArtifacts(jobType string) bool
+}
+
 // ── Service (canonical owner of "complete a job") ────────────────────
 
 // Service is the Sender-side atomic CompleteJob orchestrator.
@@ -273,6 +309,13 @@ type IdempotencyCachePort interface {
 type Service struct {
 	rxRunner CompleteJobTxRunner
 	cache    IdempotencyCachePort
+	// registry (FASE 0.1 July 4 2026): optional JobTypeRegistry port.
+	// Nil-safe during EXPAND phase; BACKFILL wires via
+	// WithJobTypeRegistry at the composition root. When non-nil, the
+	// in-TX gate in completeInTx enforces the legacy-COMPLETE-path-
+	// forbidden-for-artifact-producing-jobs contract via
+	// remote.ErrCompleteJobPathViolation.
+	registry JobTypeRegistry
 }
 
 // NewService is the canonical constructor. Returns
@@ -286,6 +329,23 @@ func NewService(rxRunner CompleteJobTxRunner, cache IdempotencyCachePort) (*Serv
 		return nil, fmt.Errorf("%w: cache", remote.ErrCompleteJobNotConfigured)
 	}
 	return &Service{rxRunner: rxRunner, cache: cache}, nil
+}
+
+// WithJobTypeRegistry wires the JobTypeRegistry port (godlike/06 SSOT
+// owner of "does this job type produce artifacts"). Returns the
+// receiver for fluent-chain composition at the composition root:
+//
+//	svc, _ := completion.NewService(rx, cache)
+//	appjobs.CompletionServiceBoot(svc.WithJobTypeRegistry(reg))
+//
+// Idempotent on nil receiver (returns nil; matches the
+// fluent-nil-safe-zero-value idiom used elsewhere in this package).
+func (s *Service) WithJobTypeRegistry(reg JobTypeRegistry) *Service {
+	if s == nil {
+		return nil
+	}
+	s.registry = reg
+	return s
 }
 
 // Compile-time pins (Pattern 0): catastrophic drift between the
@@ -408,6 +468,32 @@ func (s *Service) completeInTx(ctx context.Context, tx TxContext, req *remote.Co
 		if ok && prior != nil {
 			return prior, nil
 		}
+	}
+
+	// (3b-bis) FASE 0.1 (July 4, 2026) in-TX typed-error gate. Placed
+	// AFTER the (3b) idempotency-on-replay short-circuit so a replayed
+	// SUCCEEDED+artifact-producing job returns the cached response
+	// without re-validating the wire-shape (a SUCCEEDED row is no
+	// longer at risk of running the legacy path again). godlike/06
+	// SSOT: JobTypeRegistry is the canonical owner of "does this job
+	// type produce artifacts". godlike/07 fail-closed: a job whose
+	// registry-declared ProducesArtifacts=true MUST route through
+	// CompleteWithArtifacts, NOT through the legacy Complete path.
+	// Nil-safe at EXPAND phase: when s.registry is nil the gate is
+	// silently skipped; BACKFILL wires the registry via
+	// Service.WithJobTypeRegistry.
+	//
+	// Honest scope-lock (godlike/07): today Validated() rejects empty
+	// req.Artifacts.Artifacts at the pre-TX fail-fast gate, so this
+	// in-TX gate fires 0 times in production. Its value is forward-
+	// preventive: BACKFILL phase softens Validated to permit empty
+	// artifacts on the typed-service surface (for non-artifact job
+	// types) and this gate becomes the canonical enforcement point
+	// for artifact-producing job types. Until then, the SQL-layer
+	// SQLiteStore.Complete rejection is the only active enforcement.
+	if s.registry != nil && jobRow.Status != job.StatusSucceeded && s.registry.ProducesArtifacts(jobRow.JobType) && len(req.Artifacts.Artifacts) == 0 {
+		return nil, fmt.Errorf("%w: jobType=%q (registry-declared ProducesArtifacts=true; legacy Complete forbidden — use CompleteWithArtifacts)",
+			remote.ErrCompleteJobPathViolation, jobRow.JobType)
 	}
 
 	// (3c) CAS-update job → SUCCEEDED with the canonical guard

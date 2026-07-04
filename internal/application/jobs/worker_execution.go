@@ -42,6 +42,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
@@ -243,12 +244,15 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		if errors.Is(completeErr, sqljobs.ErrLeaseLost) {
 			w.log.Warn("lease lost during complete — another worker claimed this job",
 				zap.String("job_id", j.ID))
-		} else if errors.Is(completeErr, sqljobs.ErrArtifactJobRequiresCompleteWithArtifacts) {
-			// P0 (July 2026): the legacy Worker path cannot call
-			// CompleteWithArtifacts — the job.Store interface has
-			// no such method. Fail the job so it reaches a terminal
-			// state instead of staying RUNNING forever (godlike/07
-			// no-fake-availability).
+		} else if errors.Is(completeErr, domainremote.ErrCompleteJobPathViolation) {
+			// FASE 0.1 (July 4 2026): the legacy Worker path cannot
+			// call CompleteWithArtifacts — the job.Store interface has
+			// no such method. The canonical typed sentinel
+			// domainremote.ErrCompleteJobPathViolation (per godlike/06
+			// SSOT at internal/domain/remote/complete_job.go) gates the
+			// typoevolee, so this branch fails the job toward a
+			// terminal state instead of staying RUNNING forever
+			// (godlike/07 no-fake-availability).
 			w.log.Error("artifact-producing job cannot complete via legacy Worker path — failing job",
 				zap.String("job_id", j.ID),
 				zap.String("job_type", j.Type),

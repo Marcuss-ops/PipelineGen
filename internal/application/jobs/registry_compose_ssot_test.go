@@ -7,27 +7,27 @@
 // lookup rooted on *Registry.JobTimeout(t). The contract under
 // guard:
 //
-//   (a) FORWARD: every entry registered in Compose() has a
-//       non-zero Timeout. Zero collapses to the canonical 10-minute
-//       fallback — exactly the regression signature we're guarding
-//       against (an inadvertent 2*time.Hour / 0 in a register call
-//       would re-introduce the pre-HC-1 drift).
+//	(a) FORWARD: every entry registered in Compose() has a
+//	    non-zero Timeout. Zero collapses to the canonical 10-minute
+//	    fallback — exactly the regression signature we're guarding
+//	    against (an inadvertent 2*time.Hour / 0 in a register call
+//	    would re-introduce the pre-HC-1 drift).
 //
-//   (b) REVERSE: every canonical Type* constant declared in this
-//       package is registered in Compose(). A new Type* constant
-//       added without a corresponding r.Register(JobPolicy{...})
-//       call would silently fall through to the canonical 10-minute
-//       default at worker dispatch time — a real risk because
-//       handlers/dispatchers/jobs.Service code references Type*
-//       constants directly, not the lookup result.
+//	(b) REVERSE: every canonical Type* constant declared in this
+//	    package is registered in Compose(). A new Type* constant
+//	    added without a corresponding r.Register(JobPolicy{...})
+//	    call would silently fall through to the canonical 10-minute
+//	    default at worker dispatch time — a real risk because
+//	    handlers/dispatchers/jobs.Service code references Type*
+//	    constants directly, not the lookup result.
 //
-//   (c) CHAIN: the TimeoutResolver interface dispatch, the
-//       Registry.JobTimeout method dispatch, and the Compose()
-//       snapshot lookup ALL agree on the same value for any given
-//       job type. The composition root (internal/app/clips_adapters_cfg.go)
-//       consumes via the TimeoutResolver interface; future drifts
-//       between the dispatch surfaces would silently diverge from
-//       the SSOT.
+//	(c) CHAIN: the TimeoutResolver interface dispatch, the
+//	    Registry.JobTimeout method dispatch, and the Compose()
+//	    snapshot lookup ALL agree on the same value for any given
+//	    job type. The composition root (internal/app/clips_adapters_cfg.go)
+//	    consumes via the TimeoutResolver interface; future drifts
+//	    between the dispatch surfaces would silently diverge from
+//	    the SSOT.
 //
 // Pattern 0 / SSOT rationale: the registry is the canonical source
 // for per-job-type timeouts, max-retries, queue labels, concurrency,
@@ -169,16 +169,16 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 // SSOT direction. The HC-1 lookup chain has THREE independent
 // dispatch surfaces:
 //
-//   1. REGISTRY DIRECT: reg.JobTimeout(TypeBulUploadYouTubeClips)
-//      — the canonical method on Registry. Used by JobsHandler
-//      directly via Worker.WithRegistry.
-//   2. INTERFACE: typed-port TimeoutResolver.JobTimeout(...) —
-//      the alias that internal/app/clips_adapters_cfg.go::clipsCfgAdapter
-//      forwards to. Used by the bulk_upload worker via the typed
-//      ClipConfigPort.JobTimeout method.
-//   3. SNAPSHOT: the typed-port TimeoutMap returned by reg.Compose()
-//      — held by each Worker as w.timeouts and indexed per
-//      j.Type at runJob time.
+//  1. REGISTRY DIRECT: reg.JobTimeout(TypeBulUploadYouTubeClips)
+//     — the canonical method on Registry. Used by JobsHandler
+//     directly via Worker.WithRegistry.
+//  2. INTERFACE: typed-port TimeoutResolver.JobTimeout(...) —
+//     the alias that internal/app/clips_adapters_cfg.go::clipsCfgAdapter
+//     forwards to. Used by the bulk_upload worker via the typed
+//     ClipConfigPort.JobTimeout method.
+//  3. SNAPSHOT: the typed-port TimeoutMap returned by reg.Compose()
+//     — held by each Worker as w.timeouts and indexed per
+//     j.Type at runJob time.
 //
 // All three must return the same value for the canonical
 // bulk-upload job type. A future fork in the lookup surfaces would
@@ -239,7 +239,11 @@ func TestCompose_BulkUploadTimeoutResolvesThroughAllSurfaces(t *testing.T) {
 // produces only a result map (ok, status, item_id) — it does NOT
 // produce an artifact manifest. Removing ProducesArtifacts=true fixes
 // the state-machine breakage where SQLiteStore.Complete would reject
-// completions with ErrArtifactJobRequiresCompleteWithArtifacts.
+// completions with the canonical typed sentinel
+// domainremote.ErrCompleteJobPathViolation (per FASE 0.1, July 4 2026:
+// the pre-FASE-0.1 package-local alias ErrArtifactJobRequiresCompleteWithArtifacts
+// was REMOVED; godlike/06 SSOT owner is
+// internal/domain/remote/complete_job.go::ErrCompleteJobPathViolation).
 func TestCompose_ScriptGenerateItem_ProducesArtifactsFalse(t *testing.T) {
 	t.Parallel()
 
@@ -279,9 +283,9 @@ func TestCompose_SnapshotFiltersZeroTimeoutEntries(t *testing.T) {
 
 	reg := NewRegistry()
 	if err := reg.Register(RegistryEntry{
-		Type:             zeroTimeoutType,
-		Description:      "ssot zero-timeout filter pin",
-		Timeout:          0, // explicit zero — must be filtered by Compose()
+		Type:              zeroTimeoutType,
+		Description:       "ssot zero-timeout filter pin",
+		Timeout:           0, // explicit zero — must be filtered by Compose()
 		DefaultMaxRetries: 1,
 	}); err != nil {
 		t.Fatalf("register: %v", err)
