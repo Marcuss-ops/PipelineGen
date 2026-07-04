@@ -248,7 +248,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// per-item pipeline that GenerateItemJobHandler dispatches when
 	// voiceover.generate_item jobs arrive (replacing the legacy
 	// ProcessOneVoiceoverUseCase bridge for Step 12 retirement).
-	voiceoverSvc, voiceoverRepo, voiceoverProcessItem := buildVoiceoverService(ctx, cfg, dbs, log,
+	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.driveUploader,
 		drive.Publisher,
 		search.AssetIndexService, process.ClipIndexerService,
@@ -374,6 +374,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// in BuildDomainBundle; consumed by the late-bindings
 		// block + future EnrichClip migration (PR-4.7).
 		ImageSearchResolver: imageSearchResolver, // FASE 7
+		AudioProcessor:      audioProcessor,        // VO-DECOMPOSITION P0 #1: persistent TTS worker
 	}, nil
 }
 
