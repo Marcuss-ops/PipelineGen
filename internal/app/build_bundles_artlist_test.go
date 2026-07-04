@@ -125,3 +125,92 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 	assert.Contains(t, err.Error(), "Publisher is nil",
 		"mandatory Publisher gate must remain authoritative (gate #1) even when Dispatcher gate #2 is wired")
 }
+
+// ---------- ART-002 P0.1 (July 2026): gate #5 scraper-URL fail-closed ----------
+//
+// The 4 tests below target validateArtlistScraperURL directly per
+// godlike/06 SSOT — the gate is the SINGLE canonical owner of the
+// fail-closed check; its call site inside WireArtlist is one line.
+// Extracting the gate to a package-level helper keeps these tests pure
+// (no httptest, no bundle construction, no httptest/fixture churn — a
+// 4-case table that locks the contract).
+//
+// Coverage scope:
+//   - TestValidateArtlistScraperURL_NilCfg_ReturnsError: defensive nil-guard
+//   - TestValidateArtlistScraperURL_DisabledAndEmptyURL_ReturnsNil: skip path
+//   - TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil: success path
+//   - TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError: fail-closed
+//
+// The 4th test is the canonical godlike/07 no-fake-availability case
+// (the entire reason the gate exists). The 3 companion tests pin the
+// surrounding contract boundaries so a future refactor cannot silently
+// weaken them.
+
+// TestValidateArtlistScraperURL_NilCfg_ReturnsError: defensive coverage
+// for the gate-#5 nil-cfg case. Returns a typed error so WireArtlist's
+// single call site propagates the same pattern as the 4 wiring gates.
+func TestValidateArtlistScraperURL_NilCfg_ReturnsError(t *testing.T) {
+	err := validateArtlistScraperURL(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cfg is nil",
+		"gate #5 helper must fail loudly when cfg is nil (defensive godlike/06 SSOT)")
+	assert.Contains(t, err.Error(), "scraper-URL fail-closed",
+		"error must name the gate so operators can grep it in logs")
+}
+
+// TestValidateArtlistScraperURL_DisabledAndEmptyURL_ReturnsNil: when
+// Artlist is disabled, the gate is intentionally a no-op. The caller
+// registerArtlist also short-circuits at the top of its function, but we
+// keep the gate self-contained for defensive composition correctness
+// (godlike/07 fail-closed at the deepest layer still respects the
+// "feature off = no requirement" precondition).
+func TestValidateArtlistScraperURL_DisabledAndEmptyURL_ReturnsNil(t *testing.T) {
+	cfg := &config.Config{
+		Features: config.FeaturesConfig{ArtlistEnabled: false},
+		External: config.ExternalConfig{ArtlistScraperServerURL: ""},
+	}
+	err := validateArtlistScraperURL(cfg)
+	assert.NoError(t, err,
+		"disabled Artlist + empty URL is the allowed zero-state — gate is a no-op")
+}
+
+// TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil: when
+// Artlist is enabled and the Node scraper URL is configured, the wire
+// proceeds past gate #5 normally. This pins the success-path contract.
+func TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil(t *testing.T) {
+	cfg := &config.Config{
+		Features: config.FeaturesConfig{ArtlistEnabled: true},
+		External: config.ExternalConfig{ArtlistScraperServerURL: "http://artlist-scraper:9123"},
+	}
+	err := validateArtlistScraperURL(cfg)
+	assert.NoError(t, err,
+		"enabled Artlist + valid Node scraper URL must pass gate #5 silently")
+}
+
+// TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError: the
+// canonical godlike/07 fail-closed case. Artlist is enabled but the
+// Node scraper URL is empty — the gate aborts loudly with an actionable
+// fix hint instead of silently degrading to per-call exec fallback at
+// first /run invocation. The associated WireArtlist tests
+// (PublisherGateFailsClosed + ShortCircuitsOverDispatcher) already pin
+// that gate #1 short-circuits BEFORE this gate; this unit test pins
+// gate #5's own contract independently.
+func TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError(t *testing.T) {
+	cfg := &config.Config{
+		Features: config.FeaturesConfig{ArtlistEnabled: true},
+		External: config.ExternalConfig{ArtlistScraperServerURL: ""},
+	}
+	err := validateArtlistScraperURL(cfg)
+	require.Error(t, err,
+		"ART-002 P0.1: enabled Artlist + empty Node scraper URL must fail-closed (godlike/07 no-fake-availability)")
+	assert.Contains(t, err.Error(), "ArtlistEnabled=true",
+		"error must name the failing condition (the feature flag was on)")
+	assert.Contains(t, err.Error(), "ArtlistScraperServerURL is empty",
+		"error must name the failing field (the URL was missing)")
+	assert.Contains(t, err.Error(), "ART-002 P0.1",
+		"error must cite the wave-tracker anchor for audit-traceability")
+	assert.Contains(t, err.Error(), "ARTLIST_SCRAPER_SERVER_URL",
+		"error must name the env var operators must set")
+	assert.Contains(t, err.Error(), "VELOX_FEATURE_ARTLIST_ENABLED=false",
+		"error must include the disable escape hatch for operators who don't need the feature")
+}
