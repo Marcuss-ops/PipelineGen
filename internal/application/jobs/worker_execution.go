@@ -38,6 +38,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -242,6 +243,27 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		if errors.Is(completeErr, sqljobs.ErrLeaseLost) {
 			w.log.Warn("lease lost during complete — another worker claimed this job",
 				zap.String("job_id", j.ID))
+		} else if errors.Is(completeErr, sqljobs.ErrArtifactJobRequiresCompleteWithArtifacts) {
+			// P0 (July 2026): the legacy Worker path cannot call
+			// CompleteWithArtifacts — the job.Store interface has
+			// no such method. Fail the job so it reaches a terminal
+			// state instead of staying RUNNING forever (godlike/07
+			// no-fake-availability).
+			w.log.Error("artifact-producing job cannot complete via legacy Worker path — failing job",
+				zap.String("job_id", j.ID),
+				zap.String("job_type", j.Type),
+				zap.Error(completeErr))
+			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision,
+				fmt.Sprintf("legacy Worker cannot complete artifact-producing job %q: %v", j.Type, completeErr)); failErr != nil {
+				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+					w.log.Warn("lease lost during fail-after-artifact-gate",
+						zap.String("job_id", j.ID))
+				} else {
+					w.log.Error("failed to mark artifact-producing job as failed",
+						zap.String("job_id", j.ID),
+						zap.Error(failErr))
+				}
+			}
 		} else {
 			w.log.Error("failed to mark job as completed",
 				zap.String("job_id", j.ID),
