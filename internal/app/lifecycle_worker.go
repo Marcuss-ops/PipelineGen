@@ -1,0 +1,135 @@
+// Package app — lifecycle worker capability (PR-LIFECYCLE-SPLIT-BY-CAPABILITY, July 2026).
+//
+// Extracted from internal/app/lifecycle.go per AGENTS.md Pattern 5
+// (capability-stable file split). Owns the worker-mode startup steps:
+//
+//   - job-scanner            (sqlitejobs.Scanner ticker)
+//   - metrics-refresher      (appjobs.StartMetricsRefresher)
+//   - voiceover-parent-aggregator (voiceoverjobs.NewParentAggregator)
+//   - script-parent-aggregator   (scriptjobs.NewScriptParentAggregator)
+//
+// Sister file to lifecycle_scheduler.go + lifecycle_maintenance.go
+// (the 3 capability files) + lifecycle_adapters.go (composition-root
+// adapters). Sister file RETAINED from prior waves:
+// lifecycle_job_runner.go (the job-runner step builder).
+//
+// The orchestrator (lifecycle.go::startBackgroundJobs) calls
+// buildWorkerSteps when mode is "all" or "worker". The returned
+// steps are appended to the startup plan BEFORE the scheduler +
+// maintenance steps + the job-runner step.
+package app
+
+import (
+	"context"
+	"time"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
+	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
+	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+)
+
+// workerDeps holds the composition-root dependencies required to build
+// the worker-mode startup steps. Typed, not interface{}: every field
+// is a concrete pointer that callers must provide. Mirrors the
+// jobRunnerDeps pattern in lifecycle_job_runner.go (PR4.8, June 2026).
+type workerDeps struct {
+	root *ComposeRoot
+	log  *zap.Logger
+}
+
+// buildWorkerSteps returns the worker-mode StartupStep list:
+// job-scanner + metrics-refresher + voiceover-parent-aggregator +
+// script-parent-aggregator. The voiceover + script parent-aggregators
+// MUST live under runWorker (NOT runScheduler) because the child job's
+// terminal status only transitions when the job runner processes it —
+// placing the aggregators under runScheduler would orphan parents on
+// mode=worker machines (no aggregator ticks). Per the June 2026
+// "Voiceover parent aggregator (Step 4 / micro-commit #5)" rationale.
+func buildWorkerSteps(deps workerDeps) []StartupStep {
+	var steps []StartupStep
+
+	jobsRepo := deps.root.Jobs.Repo
+	jobsService := deps.root.Jobs.Service
+
+	// Jobs system — Runner and Scanner. Reads from root.Jobs (PR4a).
+	// The scanner + metrics refresher only need the jobs.Store
+	// (*sqljobs.SQLiteStore), so the gate collapses to `jobsRepo != nil`.
+	if jobsRepo != nil {
+		sc := sqlitejobs.NewScanner(jobsRepo, deps.log)
+		// Job scanner: optional background service.
+		steps = append(steps, StartupStep{
+			Name: "job-scanner", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("job-scanner", func() { sc.Start(startCtx, 5*time.Minute) })
+				deps.log.Info("Job scanner started")
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+
+		// Metrics refresher: optional background service.
+		jr := jobsRepo
+		steps = append(steps, StartupStep{
+			Name: "metrics-refresher", Required: false,
+			Start: func(startCtx context.Context) error {
+				appjobs.StartMetricsRefresher(startCtx, jr, 30*time.Second, deps.log)
+				deps.log.Info("Metrics refresher started")
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
+	// Voiceover parent aggregator (Step 4 / micro-commit #5, June 2026):
+	// re-finalises parent jobs once all children have reached terminal
+	// status. MUST live under runWorker (NOT runScheduler) because the
+	// child job's terminal status only transitions when the job runner
+	// processes it — placing the aggregator under runScheduler would
+	// orphan parents on mode=worker machines (no aggregator ticks).
+	if jobsService != nil {
+		voAgg := voiceoverjobs.NewParentAggregator(voiceoverjobs.AggregatorDeps{
+			JobsSvc:      jobsService,
+			Logger:       deps.log,
+			PollInterval: 30 * time.Second,
+		})
+		steps = append(steps, StartupStep{
+			Name: "voiceover-parent-aggregator", Required: false,
+			Start: func(startCtx context.Context) error {
+				voAgg.Start(startCtx)
+				deps.log.Info("Voiceover parent aggregator started (interval=30s)")
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
+	// Script parent aggregator (Commit 4 P0 #4 audit, July 2026):
+	// lifecycle-owns the script.generate parent aggregator with the
+	// server's runtime context (signal.NotifyContext). Previously
+	// started during composition with context.Background() — the
+	// goroutine had no shutdown signal and leaked on re-composition.
+	// Mirrors the voiceover-parent-aggregator pattern above.
+	if jobsService != nil {
+		scriptAgg := scriptjobs.NewScriptParentAggregator(scriptjobs.ScriptAggregatorDeps{
+			JobsSvc:      jobsService,
+			Logger:       deps.log,
+			PollInterval: 30 * time.Second,
+		})
+		steps = append(steps, StartupStep{
+			Name: "script-parent-aggregator", Required: false,
+			Start: func(startCtx context.Context) error {
+				scriptAgg.Start(startCtx)
+				deps.log.Info("Script parent aggregator started (interval=30s)")
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
+	return steps
+}
