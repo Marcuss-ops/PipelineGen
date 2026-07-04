@@ -302,7 +302,7 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 		return
 	}
 
-	s.WriteClipMetadataFile(ctx, existing, ym)
+	ytmetadata.WriteClipMetadataFile(s.log, existing, ym)
 
 	s.log.Info("YouTube clip enriched with metadata",
 		zap.String("clip_id", clipID),
@@ -332,8 +332,6 @@ func (s *MetadataService) GenerateClipMetadata(ctx context.Context, title, trans
 	_ = description
 	return nil
 }
-
-// WriteClipMetadataFile writes and uploads a per-clip metadata file alongside the clip.
 
 // ── Phase 1b stubs (methods moved to adapters/ during melt) ──────────
 
