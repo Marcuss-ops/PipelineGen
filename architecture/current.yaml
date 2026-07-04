@@ -4825,10 +4825,27 @@ wave_status:
       # 2026-07-04 run outcome honestly (godlike/07 no-fake-availability).
       # The pre-existing 5-item build-issue carry-forward is NOT a regression
       # of this run (the project compiles through to the test runner).
-      # Forward-pointer: PR-E2E-MOCK-PROVIDER-FIX; deadline 2026-07-25.
-      # Until that PR lands, Azione 8 stays status: shipped (file present) but
-      # FieldBattle-tested is FAIL — operators should not assume CUTOVER
-      # acceptance criteria is fully tested.
+      # PR-E2E-MOCK-PROVIDER-FIX: shipped 2026-07-04 by the line-684 fix.
+      # Provider SSOT lives at finalization.AssetLocation.Provider (godlike/06
+      # one-canonical-owner-per-fact); the mock wires Location.Provider="drive"
+      # correctly, the test now walks the canonical nested JSON path
+      # (location.provider) instead of the legacy top-level Provider key the
+      # original assertion incorrectly read. File scope: test-only fix to
+      # internal/app/completion_e2e_test.go at line 684; NO production-code
+      # drift, NO gofmt touch, NO test churn on ship_via chain.
+      # Forward-pointer (NEW discovery while running the fix): PR-E2E-MOCK-
+      # COMPLETE-WITH-ARTIFACTS-VALIDATION, deadline 2026-07-25. Once the
+      # line-684 assertion stopped bailing the test early, a NEW downstream
+      # HTTP 500 surfaced at /test/internal/v1/complete-with-artifacts (line
+      # 714). Root cause is NOT a regression of PR-E2E-MOCK-PROVIDER-FIX; the
+      # failure paths were unreachable on prior runs because the test halted
+      # at line 684 first. Likely candidates: (a) Gin's re-bind of the
+      # map[string]any envelope back into typed []*finalization.PublishedArtifact
+      # passes through a shape the WithArtifactsService pre-TX Validate gate
+      # rejects, OR (b) the in-process httptest handler returns 500 via the
+      # generic-error wrap chain when a typed sentinel fires. Until that PR
+      # lands, Azione 8 stays FieldBattle-tested FAIL — operators MUST NOT
+      # treat CUTOVER acceptance criteria as fully verified.
       description: "Full E2E happy-path + idempotency-retry coverage. 4 assertions: 1 PublishedArtifact + 1 asset_location + JobFinalizer SUCCEEDED + 0 duplicates at retry."
     - id: PR-CUTOVER-AZIONE-9-RECOVERY-SCRIPT
       owner_capability: scripts/recovery
