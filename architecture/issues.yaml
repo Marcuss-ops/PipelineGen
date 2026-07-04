@@ -749,3 +749,147 @@
       allowlist.txt (initial content: empty-per-zero-baseline-rule,
       populated ONLY for transitional cases per godlike/07 + AGENTS.md
       §8 zero-baseline rule).
+
+- id: Q17-IMAGES-REGISTERHANDLER-REGRESSION
+  title: "Test file references removed GenerationService.RegisterHandler surface (regression from PR-IMAGES-SHIM-REMOVAL 851c5a93 2026-07-04) — blocks `go test ./internal/application/jobs/...`"
+  status: pending
+  owner: internal/application/images + internal/application/jobs (cross-package)
+  deadline: 2026-07-15
+  blocker: true
+  linked_issues:
+    - 851c5a93  # PR-IMAGES-SHIM-REMOVAL canonical ship SHA on origin/main
+  notes: |
+    Phase 11 battery triage (2026-07-04) detected 1 NEW REVEAL in the
+    jobs subtree that is a true REGRESSION from a prior closure PR
+    (NOT a reincarnation of the 4 known PRE-EXISTING-BUILD-ISSUES
+    carry-forward; all 6 are already shipped/retired per
+    architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04).
+
+    File: internal/application/jobs/register_wiring_test.go:119
+    Error: `(&images.GenerationService{}).RegisterHandler(svc)` undefined
+           on type `*images.GenerationService`
+
+    Cause: PR-IMAGES-SHIM-REMOVAL (commit 851c5a93, ship_date 2026-07-04;
+           AGENTS.md §Recent cross-cutting closures entry) removed 3 surfaces
+           from internal/application/images/generation_service.go:
+             - Service.HandleJob (held JobHandler delegation shim)
+             - Service.RegisterHandler (the shim that registered the
+               image.generate.google JobHandler through the canonical
+               jobs.Service)
+             - Service.GenerateSmartImageWithAccount (account/project
+               params silently dropped per godlike/07 fake-availability)
+           The post-removal GenerationService surface is 2 methods
+           (GenerateSmartImage + TriggerPrewarm) + 4 fields.
+
+    Test impact: register_wiring_test.go is the canonical P1 #1
+           audit-pinned contract test that exercises fail-fast nil-svc
+           on every refactored JobHandler. Its case #6 (line 119)
+           referenced images.GenerationService directly, expecting
+           RegisterHandler + HandleJob to exist. Post-IMAGES-SHIM-REMOVAL
+           both are gone; the test file is STALE and must be updated
+           to reflect the post-removal surface (image.generate.google
+           JobHandler registration is now owned by
+           *images.Service.RegisterHandler at composition root).
+
+    Resolution (1 PR, godlike/07 minimum-blast-radius):
+           Update register_wiring_test.go line 119 to call
+           (&images.Service{}).RegisterHandler(svc) instead of the
+           stale (&images.GenerationService{}).RegisterHandler(svc).
+           The Service wrapper still routes to the generation
+           JobHandler per post-IMAGES-SHIM-REMOVAL architecture.
+           This single-line test update is sufficient to make
+           `go test ./internal/application/jobs/...` pass compile-time
+           AND preserve the canonical P1 #1 nil-svc contract test.
+
+    Diagnostic (machine-checkable):
+           rg -n 'RegisterHandler' internal/application/images/generation_service.go
+              -> 0 hits (post-removal)
+           rg -n 'GenerationService.*RegisterHandler' internal/application/jobs/register_wiring_test.go
+              -> 1 hit at line 119 (stale)
+           go build ./internal/application/jobs/... exit 0
+           go test  ./internal/application/jobs/... non-0
+
+    godlike/07 honest-limitation: this is a TEST-FILE regression.
+           Production `go build` continues to compile cleanly; the
+           blocker is exclusively for the CI test step. Per user spec
+           ("Documenta in architecture/issues.yaml se scopri un nuovo
+           blocker"), the canonical tracker is this file.
+
+- id: Q18-PUBLISH-COMPLETE-USE-CASE-TEST-COMPILE-BLOCKERS
+  title: "publish_and_complete_use_case_test.go has 4 pre-existing test compile errors that block `go test ./internal/application/jobs/...` (P0-COMPL-5 closure residue 4030081a+bb4a19e8)"
+  status: pending
+  owner: internal/application/jobs/completion
+  deadline: 2026-07-15
+  blocker: true
+  linked_issues:
+    - 4030081a  # P0-COMPL-5-WIRE-NAMING canonical ship SHA on origin/main
+    - bb4a19e8  # P0-COMPL-5-WIRE-NAMING typo fixup canonical SHA
+  notes: |
+    Phase 11 battery triage (2026-07-04) detected 4 NEW REVEALs in
+    internal/application/jobs/completion/publish_and_complete_use_case_test.go
+    — all 4 are pre-existing test compile errors that have blocked
+    `go test ./internal/application/jobs/...` since the P0-COMPL-5
+    closure landed on 2026-07-03. Production `go build` is CLEAN.
+
+    Errors (verbatim from `go vet ./internal/application/jobs/...`):
+
+      (1) Line 457: `cannot use (*io.Reader)(nil) as io.Reader value`
+                     `_ io.Reader = (*io.Reader)(nil)` — assigning
+                     a `*io.Reader` pointer where `io.Reader` (interface
+                     value) is expected. `*io.Reader` does not implement
+                     `io.Reader`. Pre-existing typo in the silence-helper.
+
+      (2) Line 153: mockSenderWithArtifacts type mismatch in round-trip
+                     test (TestPublishAndCompleteUseCase_RoundTrip_*).
+
+      (3) Line 262: same interface match error in conversion-correctness
+                     test (TestPublishAndCompleteUseCase_ConversionCorrectness).
+
+      (4) Line 342: same interface match error in invalid-staged test
+                     (TestPublishAndCompleteUseCase_InvalidStagedFailsTypedError).
+
+      (5) Line 72: atomic.Pointer mixed with atomic.Value idiom
+                   `m.recordedInputs.Load().(*[]finalization.VerifiedArtifact)`
+                   — modern `atomic.Pointer[[]T]` (Go 1.19+) returns
+                   `*T` directly, NOT an interface. The type-assertion
+                   idiom is for `atomic.Value`, not `atomic.Pointer`.
+
+    Source attribution (P0-COMPL-5 residue on origin/main):
+           Errors (1) is a malformed silence-helper assignment.
+           Errors (2)(3)(4) share the same root cause: the mock
+           satisfies the CompleteWithArtifacts METHOD but is typed
+           as `*mockSenderWithArtifacts`; the use-case ctor expects
+           `*completion.WithArtifactsService`. TYPE pattern mismatch
+           even though the runtime dispatch is correct.
+           Error (5) is the atomic.Pointer/atomic.Value idiom mix.
+
+    Diagnostic (machine-checkable):
+           rg -nE '\\\\(\\\\*io\\\\.Reader\\\\)\\\\(nil\\\\)' internal/application/jobs/completion/
+              -> 1 hit at test file line 457
+           rg -nE 'mockSenderWithArtifacts' internal/application/jobs/completion/publish_and_complete_use_case_test.go
+              -> 3 hits at lines 153 + 262 + 342
+           go build ./internal/application/jobs/... exit 0 (production clean)
+           go test  ./internal/application/jobs/... non-0 (test compile fails)
+           go vet   ./internal/application/jobs/... non-0 (4 errors)
+
+    Resolution (1 PR, godlike/07 minimum-blast-radius):
+           (a) Replace `_ io.Reader = (*io.Reader)(nil)` with a
+               canonical silence-helper that does NOT assign invalid
+               type. Either drop the line OR use `var _ io.Reader =
+               (*bytes.Reader)(nil)` (assigning an actual io.Reader
+               implementation).
+           (b) Re-type mockSenderWithArtifacts to satisfy the
+               WithArtifactsService surface structurally OR convert
+               ctor to accept the canonical completion.Sender port
+               (forward-pointer: per AGENTS.md Pattern 9 + P0-COMPL-5
+               PORT-EXTRACT forward-pointer).
+           (c) Replace atomic.Pointer Load+assert idiom with direct
+               `*T = u.Load()` usage.
+
+    NOT reincarnation: distinct from all 6 PRE-EXISTING-BUILD-ISSUES
+             carry-forward (different root causes, different fix profiles).
+
+    godlike/07 honest-limitation: TEST-file compile error. Production
+           code (`go build`) continues to compile cleanly. The
+           blocker is exclusively for the CI test step.
+
