@@ -4490,3 +4490,125 @@ wave_status:
       ship_date: 2026-07-04
       deadline: 2026-07-04
 
+
+
+# ── CUTOVER-COMPLETE-WITH-ARTIFACTS (Azione 16b, July 2026) ──
+# 18-Azione wave-tracker entry for migrating artifact-producing jobs to
+# CompleteWithArtifacts and retiring the legacy tools.Complete bypass.
+# Action plan: architecture/action-plans/2026-07-04-CUTOVER-COMPLETE-WITH-ARTIFACTS.md.
+# Deprecation record: architecture/deprecations.yaml#REMOTE-COMPLETE-LEGACY.
+#
+# Bands:
+#   P0 (1-8, 16a-c): 2026-08-15
+#   P1 (9-15): 2026-08-22
+#
+# Migration sequence: EXPAND → BACKFILL → CUTOVER → CONTRACT
+#   EXPAND (now): canonical CompleteWithArtifacts surface live (Azione 6).
+#   CUTOVER (2026-09-01): Azione 7 registry-driven branch.
+#   CONTRACT (2026-09-26): physical removal of legacy tools.Complete fallback.
+- id: CUTOVER-COMPLETE-WITH-ARTIFACTS
+  status: in_progress
+  exit_signal: false
+  owner_capability: architecture
+  deadline: 2026-09-26
+  exit_gate: |
+    All 18 linked_issues status: shipped AND telemetry confirms 0
+    tools.Complete fallback traces for artifact-producing jobTypes.
+    Deprecation record REMOTE-COMPLETE-LEGACY flipped to status: removed.
+  linked_issues:
+    - id: PR-CUTOVER-AZIONE-1-STAGED-RESOLVER
+      owner_capability: internal/application/assets/staged
+      status: shipped
+      deadline: 2026-08-15
+      description: "Local staging lookup: artifact_id -> local path. ResolveStagedAsset(ctx, artifactID). ErrStagedArtifactMissing sentinel."
+    - id: PR-CUTOVER-AZIONE-2-VERIFIER
+      owner_capability: internal/application/assets/verification
+      status: shipped
+      deadline: 2026-08-15
+      description: "SHA-256 + size verification against stage metadata. ErrStagedChecksumMismatch + ErrStagedSizeMismatch sentinels."
+    - id: PR-CUTOVER-AZIONE-3-PUBLISHER
+      owner_capability: internal/application/assets/completion
+      status: shipped
+      deadline: 2026-08-15
+      description: "Route verified artifacts through Prepare -> Publish. ArtifactIdempotencyKey byte-stable. ErrAlreadyPublished short-circuit."
+    - id: PR-CUTOVER-AZIONE-4-JOBBROKERCLIENT-WIRE
+      owner_capability: internal/infrastructure/remote/jobbrokerclient
+      status: shipped
+      deadline: 2026-08-15
+      description: "Client.CompleteWithArtifacts via POST /internal/v1/jobs/:id/complete-with-artifacts. var _ appjobs.CompletionPort = (*Client)(nil) compile-time pin."
+    - id: PR-CUTOVER-AZIONE-5-BROKER-SIGNATURE
+      owner_capability: internal/infrastructure/jobs/local
+      status: shipped
+      deadline: 2026-08-15
+      description: "Broker.CompleteWithArtifacts returns (*FinalizationAck, error) populating AssetIDs in response."
+    - id: PR-CUTOVER-AZIONE-6-COMPLETE-WITH-ARTIFACTS
+      owner_capability: internal/application/jobs/completion
+      status: shipped
+      ship_sha: 2bf7e865
+      ship_date: 2026-07-04
+      deadline: 2026-08-15
+      description: "Sender-side atomic 5-step single-TX chain (CAS + InsertResult + PersistArtifact + AssetLocations + Outbox). 14 PASS (8 C7 + 6 Azione 6)."
+    - id: PR-CUTOVER-AZIONE-7-RUNNER-BRANCH
+      owner_capability: internal/application/jobs/worker
+      status: shipped
+      deadline: 2026-08-15
+      description: "Registry-driven branch in runner.go: ProducesArtifacts -> CompleteWithArtifacts. Zero hard-coded job.Type strings. Check 53/54 enforced."
+    - id: PR-CUTOVER-AZIONE-8-E2E-TEST
+      owner_capability: internal/app
+      status: shipped
+      deadline: 2026-08-15
+      description: "Full E2E happy-path + idempotency-retry coverage. 4 assertions: 1 PublishedArtifact + 1 asset_location + JobFinalizer SUCCEEDED + 0 duplicates at retry."
+    - id: PR-CUTOVER-AZIONE-9-RECOVERY-SCRIPT
+      owner_capability: scripts/recovery
+      status: shipped
+      deadline: 2026-08-22
+      description: "Recover lost PNG fixtures as completed artifacts. Idempotent second run yields zero new artifacts."
+    - id: PR-CUTOVER-AZIONE-10-SCENE-IMAGE-EMITTER
+      owner_capability: internal/application/scripts
+      status: pending
+      deadline: 2026-08-22
+      description: "1-method port EmitSceneImageJob for emitting child images.generate jobs. Pattern 9 Dispatcher.Enqueue. var _ SceneImageJobEmitter compile-time pin."
+    - id: PR-CUTOVER-AZIONE-11-WORKFLOW-STATE-MACHINE
+      owner_capability: internal/application/scripts
+      status: pending
+      deadline: 2026-08-22
+      description: "Typed 6-state machine (SCRIPT_READY/IMAGES_PENDING/IMAGES_GENERATED/DOCUMENT_CREATED/FAILED/DEAD_LETTERED). Validated() gate + sticky sinks."
+    - id: PR-CUTOVER-AZIONE-12-GOOGLE-DOC-TEMPLATE
+      owner_capability: internal/application/scripts/templates
+      status: pending
+      deadline: 2026-08-22
+      description: "RenderScene([]*asset.Asset) with asset_locations webViewLink lookup. ErrImageNotFinalized sentinel. SceneRenderer port."
+    - id: PR-CUTOVER-AZIONE-13-VLM-GATE-AUDIT
+      owner_capability: internal/infrastructure/ai/vlm
+      status: shipped
+      deadline: 2026-08-15
+      description: "Client.IsEnabled() gate respected by all call sites. errors.Is on ErrVLMDisabled."
+    - id: PR-CUTOVER-AZIONE-14-DEAD-LETTER-SCRIPT
+      owner_capability: scripts/admin
+      status: shipped
+      deadline: 2026-08-22
+      description: "Sweep stale-token lease rows into DEAD_LETTERED + audit log. Idempotent UPDATE no-op on already-dead rows."
+    - id: PR-CUTOVER-AZIONE-15-MIGRATION-121
+      owner_capability: internal/domain/asset
+      status: shipped
+      deadline: 2026-08-22
+      description: "Rename AssetStatus::Ready -> Staged with 6-month BC alias. ALTER backward-safe NULL check guard."
+    - id: PR-CUTOVER-AZIONE-16A-ACTION-PLAN
+      owner_capability: architecture
+      status: shipped
+      ship_date: 2026-07-04
+      deadline: 2026-07-04
+      description: "Canonical narrative action plan at architecture/action-plans/2026-07-04-CUTOVER-COMPLETE-WITH-ARTIFACTS.md."
+    - id: PR-CUTOVER-AZIONE-16B-WAVE-TRACKER
+      owner_capability: architecture
+      status: shipped
+      ship_date: 2026-07-04
+      deadline: 2026-07-04
+      description: "This wave-tracker entry in architecture/current.yaml with all 18 linked_issues."
+    - id: PR-CUTOVER-AZIONE-16C-DEPRECATION-RECORD
+      owner_capability: architecture
+      status: shipped
+      ship_sha: e44857d2
+      ship_date: 2026-07-04
+      deadline: 2026-07-04
+      description: "Deprecation record REMOTE-COMPLETE-LEGACY in architecture/deprecations.yaml."
