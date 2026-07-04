@@ -25,10 +25,17 @@ import (
 	"time"
 )
 
-// ListChannelVideosCommand is the monitor-owned projection of a
+// ListChannelVideosQuery is the monitor-owned projection of a
 // structured yt-dlp channel-listing request. Replaces the previous
 // `downloader.ListChannelVideosRequest` import in ports_downloader.go.
-type ListChannelVideosCommand struct {
+//
+// NOTE on naming: this is a READ call (DiscoverChannelVideos returns
+// []VideoInfo, no state mutation); Go convention favours `Query`
+// over `Command` for request shapes that don't mutate state.
+// `Command` is reserved for write/mutating requests. The FASE 3.7
+// reviewer flagged the original `*Command` name as a Go idiom miss
+// — this rename lands BEFORE Commit 1b widens the surface area.
+type ListChannelVideosQuery struct {
 	ChannelURL  string
 	DateAfter   string // YYYYMMDD format, optional
 	PlaylistEnd int    // 0 = all videos, >0 = limit
@@ -76,7 +83,7 @@ var ErrLedgerStateConflict = errors.New("monitor: youtube_discoveries ledger sta
 // timestamp stored in category_channels.last_cursor) and channel.LookbackDays
 // (the channel's lookback fallback) into a YYYYMMDD string the
 // yt-dlp Downloader.ListChannelVideos port accepts in
-// ListChannelVideosCommand.DateAfter.
+// ListChannelVideosQuery.DateAfter.
 //
 // Precedence (caller's intent): LastCursor wins when parseable as
 // RFC3339 (the canonical cursor format from migration 113 onward);
