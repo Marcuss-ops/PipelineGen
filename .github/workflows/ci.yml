@@ -219,14 +219,14 @@ jobs:
         working-directory: node-scraper
         run: npm ci
 
-    - name: Run node-scraper test suite (node --test)
-      # Pin to `npm test` exactly per the Wave 19 / P1-9-namespace
-      # spec; if a future agent wants to expand the gate to also
-      # fail on lint warnings, switch this invocation to
-      # `npm run check` (which is `lint && test` per
-      # node-scraper/package.json).
-      working-directory: node-scraper
-      run: npm test
+      - name: Run node-scraper test suite (node --test)
+        # Pin to `npm test` exactly per the Wave 19 / P1-9-namespace
+        # spec; if a future agent wants to expand the gate to also
+        # fail on lint warnings, switch this invocation to
+        # `npm run check` (which is `lint && test` per
+        # node-scraper/package.json).
+        working-directory: node-scraper
+        run: npm test
 
   fase-b-clip-smoke:
     name: FASE B clip pipeline smoke (dry-mode constraint)
