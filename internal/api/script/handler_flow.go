@@ -39,6 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -87,16 +88,21 @@ type ScriptFlowHandler struct {
 	// wire the registry keep working — EnqueueGenerationJob leaves
 	// MaxRetries=0 in that case and the JobsService fallback (now
 	// registry-aware) becomes the safety net.
-	registry          *appjobs.Registry
+	registry *appjobs.Registry
 	// Commit H Phase 2 (June 2026): memorySvc field dropped (gemmamemory
 	// gemmamemory wrapper gone).
-	harvestSvc        AutoHarvestService
-	driveFolderID     string
-	adminToken        string
+	harvestSvc    AutoHarvestService
+	driveFolderID string
+	adminToken    string
 	// PR-FIX (June 2026): lightweight clip-name searcher for
 	// GET /script/clips/search?q= discovery endpoint.
-	clipsSearcher     ClipSearcher
-	log               *zap.Logger
+	clipsSearcher ClipSearcher
+	log           *zap.Logger
+	// AZIONE 1 (July 2026): HandlerGenerate owns POST /generate.
+	// Extracted from the 22-field God Object so the unified
+	// generation endpoint carries only 3 fields (jobsSvc, log,
+	// registry) instead of all 22.
+	gen *HandlerGenerate
 }
 
 type AutoHarvestService interface {
@@ -126,18 +132,18 @@ type ScriptFlowDeps struct {
 	ScriptsRepo adapters.ScriptRepository
 	// Commit H Phase 2 (June 2026): Memory field dropped (gemmamemory
 	// gemmamemory gate service gone).
-	Jobs        jobservice.Service
-		// Issue 4 (June 2026, P1): optional canonical job-type registry
-		// used by EnqueueGenerationJob to source MaxRetries from
-		// registry.DefaultMaxRetries(jType). Optional — nil preserves
-		// the legacy hard-coded 3-retry fallback path through the
-		// JobsService. Composition root will pass appjobs.Compose().
-		Registry *appjobs.Registry
+	Jobs jobservice.Service
+	// Issue 4 (June 2026, P1): optional canonical job-type registry
+	// used by EnqueueGenerationJob to source MaxRetries from
+	// registry.DefaultMaxRetries(jType). Optional — nil preserves
+	// the legacy hard-coded 3-retry fallback path through the
+	// JobsService. Composition root will pass appjobs.Compose().
+	Registry *appjobs.Registry
 
-		// PR-FIX (June 2026): optional clip-name searcher for
-		// GET /script/clips/search?q= discovery endpoint.
-		// Nil → endpoint returns 503.
-		ClipsSearcher ClipSearcher
+	// PR-FIX (June 2026): optional clip-name searcher for
+	// GET /script/clips/search?q= discovery endpoint.
+	// Nil → endpoint returns 503.
+	ClipsSearcher ClipSearcher
 
 	AdminToken            string
 	DriveFolderClient     DriveFolderClient
@@ -191,6 +197,11 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// registry.DefaultMaxRetries(script.generate)=2 instead of the
 		// pre-Issue-4 hard-coded 3-retry fallback.
 		registry: deps.Registry,
+		// AZIONE 1 (July 2026): construct the 3-field HandlerGenerate
+		// alongside the 22-field ScriptFlowHandler. POST /generate
+		// delegates to h.gen.Generate(c); legacy adapters call
+		// h.enqueueEnvelope(c, env) which wraps enqueueEnvelopeFn.
+		gen: NewHandlerGenerate(deps.Jobs, log, deps.Registry),
 	}
 
 	return h
@@ -260,18 +271,19 @@ func extractHeaderToken(c *gin.Context) string {
 	}
 	bearer := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 	return strings.TrimSpace(bearer)
-}
-
-// RegisterRoutes mounts every script-flow route under r. The unified
+} // RegisterRoutes mounts every script-flow route under r. The unified
 // generation endpoint (POST /generate) handles all generation modes.
 // Legacy routes (generate-from-clips, generate-with-images, curate) are
 // registered as deprecated adapters that translate old request formats to
 // GenerationEnvelopeV2 and forward to the canonical enqueue.
 // FASE 12c (July 2026): legacy batch route REMOVED.
 // Flow routes (regenerate, evict, job status) are always mounted.
+//
+// AZIONE 1 (July 2026): POST /generate is handled by h.gen (HandlerGenerate,
+// 3-field struct) instead of the 22-field ScriptFlowHandler.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// Unified generation endpoint (replaces all legacy per-mode endpoints).
-	r.POST("/generate", h.Generate)
+	h.gen.GenerateRoute(r)
 
 	// Legacy routes — deprecated adapters (PR 11, June 2026).
 	// Each translates the old request shape to GenerationEnvelopeV2,
@@ -323,6 +335,15 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 }
 
 // ── Job endpoints ───────────────────────────────────────────────────────────
+
+// enqueueEnvelope is a thin wrapper around the package-level
+// enqueueEnvelopeFn. Kept as a method on ScriptFlowHandler for
+// backward compatibility with legacy adapter methods that call
+// h.enqueueEnvelope(c, env). AZIONE 1 (July 2026): delegates to the
+// extracted package-level function shared with HandlerGenerate.
+func (h *ScriptFlowHandler) enqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
+	enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry)
+}
 
 func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
