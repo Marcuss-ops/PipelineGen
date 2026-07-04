@@ -254,15 +254,38 @@
 
       fixes this wave-tracker entry to use the correct SHA per
 
-      godlike/07 no-fake-availability. Future wave-tracker readers
-
+      godlike/07 no-fake-availability.      Future wave-tracker readers
       who land in this block first should FOLLOW THE BACKLINK to
-
       the AGENTS.md entry for the correction context before acting
-
       on the broken SHA.
 
       '
+    - id: FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED
+      owner_capability: scripts/ci-architectural-checks.sh
+      status: shipped
+      ship_sha: 5c5ed224
+      ship_date: 2026-07-04
+      deadline: 2026-07-15
+      ship_via: |
+        fix(ci-architectural-checks): defensive REPO_ROOT fallback at line 56.
+        The function extract_known_acceptable_ids_from_yaml (line 50) references
+        ${REPO_ROOT} on its first line, but the canonical REPO_ROOT resolution
+        (lines 198-215) is computed AFTER the function is called at line 192.
+        Under set -euo pipefail (line 39), this fires "REPO_ROOT: unbound variable"
+        on every production invocation that does not pre-export REPO_ROOT.
+
+        Production invocation sites (NONE pre-export REPO_ROOT):
+          - .github/workflows/ci.yml:87 (CI workflow)
+          - Makefile:424 (verify-main target)
+          - scripts/ci-archcheck-e2e.sh:37,60,82 (e2e harness)
+          - .split2-push.sh:42 (push helper)
+
+        Fix: defensive ${REPO_ROOT:-$(pwd)} fallback. The fallback to $(pwd)
+        is correct in 100% of production invocation sites (all run from repo
+        root cwd). Mirrors the canonical defensive pattern in scripts/ci/architecture/
+        checks/*.sh (the new Go-scanner replacement). FASE 7 verification
+        (2026-07-04) surfaced the bug. 1-line minimum-blast-radius change per
+        godlike/07 + AGENTS.md Git-Lesson-2.
 - id: PRE-EXISTING-YAML-PARSE-2026-07-04
   owner_capability: architecture
   status: pending
