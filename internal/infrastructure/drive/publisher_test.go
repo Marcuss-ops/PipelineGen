@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -31,7 +33,7 @@ type fakeFolderManager struct {
 	// probeErrFn non-nil, probeErr is ignored and probeErrFn is
 	// called per rootID (used for selective tests where some roots
 	// fail and others pass).
-	probeErr error
+	probeErr   error
 	probeErrFn func(rootID string) error
 }
 
@@ -190,14 +192,14 @@ func (f *fakeFileUploader) PutFile(_ context.Context, req PutFileRequest) (*PutF
 func testRegistry() *delivery.DestinationRegistry {
 	cfg := &config.Config{
 		Drive: config.DriveConfig{
-			MediaRootFolder:       "media-root",
-			ClipsRootFolder:       "clips-root",
-			ArtlistRootFolder:     "artlist-root",
-			StockRootFolder:       "stock-root",
-			ImagesRootFolder:      "images-root",
-			VoiceoverRootFolder:   "vo-root",
-			BooksRootFolder:       "books-root",
-			ScriptsRootFolder:     "scripts-root",
+			MediaRootFolder:        "media-root",
+			ClipsRootFolder:        "clips-root",
+			ArtlistRootFolder:      "artlist-root",
+			StockRootFolder:        "stock-root",
+			ImagesRootFolder:       "images-root",
+			VoiceoverRootFolder:    "vo-root",
+			BooksRootFolder:        "books-root",
+			ScriptsRootFolder:      "scripts-root",
 			SoundEffectsRootFolder: "sfx-root",
 		},
 	}
@@ -587,10 +589,11 @@ func TestPublisher_Publish_ExplicitOverridesRegistry_P1_1(t *testing.T) {
 // surfaces as a failing test, not a silent overwrite in production.
 //
 // Per-destination mapping rationale:
-//   YouTube / Artlist / Stock / Image / Voiceover / SoundEffect
-//     → ConflictSkip (immutable / versioned assets)
-//   Book / Script / Document
-//     → ConflictOverwrite (regenerable, latest-version-wins outputs)
+//
+//	YouTube / Artlist / Stock / Image / Voiceover / SoundEffect
+//	  → ConflictSkip (immutable / versioned assets)
+//	Book / Script / Document
+//	  → ConflictOverwrite (regenerable, latest-version-wins outputs)
 func TestRegistry_ConflictPolicyPerDestination_P1_1(t *testing.T) {
 	reg := testRegistry()
 
@@ -762,7 +765,7 @@ func TestPublisher_PublishEnrichesPublishResult_F1_5_P0_9(t *testing.T) {
 	folders := &fakeFolderManager{result: "video-folder-id"}
 	files := &fakeFileUploader{
 		putAction:   PutActionUpdated, // non-default to observe translation
-		md5Checksum: "abc123def456",  // non-empty to observe propagation
+		md5Checksum: "abc123def456",   // non-empty to observe propagation
 	}
 	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
 	require.NoError(t, err)
@@ -952,3 +955,180 @@ func TestPublisher_Publish_P0_1_ConflictRename_ExistingMatch(t *testing.T) {
 		"PublishActionCreated must NOT be assumed for a renamed conflict; the no-reconstruction contract requires the actual rename action class")
 }
 
+// ── PR-VO-SUBFOLDER tests (July 2026, commit c96eb1e0) ───────────────────
+//
+// PR-VO-SUBFOLDER fixes the invariant that callers with an explicit
+// RootFolderOverride still benefit from the canonical PathBuilder
+// structure (e.g. voiceover: voiceovers/{project}/{language}). The
+// three tests below pin the three PathBuilder branches of resolveDestination:
+//
+//   1. PathBuilder succeeds + override set → subpath built under override.
+//   2. PathBuilder fails + override set    → direct-to-root fallback (warn).
+//   3. PathBuilder fails + no override     → error propagates to caller.
+//
+// They lock the contract that future refactors of PathBuilder or the
+// registry-driven Resolve cannot silently break the PR-VO-SUBFOLDER
+// contract — any drift surfaces here first.
+
+// TestResolveDestination_VoiceoverWithRootFolderOverride_BuildsSubpath
+// pins the canonical voiceover subpath structure under an explicit
+// RootFolderOverride. Pre-PR-VO-SUBFOLDER the PathBuilder was
+// short-circuited away when RootFolderOverride was non-empty, so the
+// canonical voiceovers/{project}/{language} subtree was being
+// SKIPPED and the MP3 landed directly in the override root. After
+// the fix, PathBuilder runs first, segments under the override, and
+// EnsureFolder is called with the canonical 2-segment structure.
+//
+// References:
+//   - Fix: internal/infrastructure/drive/publisher.go::resolveDestination
+//     (PR-VO-SUBFOLDER, Steps 4-6).
+//   - VoiceoverPath: internal/application/assets/delivery/registry.go
+//     (segments = [project, language] when both non-empty).
+//   - SafeFolderName: pkg/pathutil/pathutil.go (preserves alphanum +
+//     hyphen verbatim, so "storia-boxe-it" / "it-IT" pass through).
+func TestResolveDestination_VoiceoverWithRootFolderOverride_BuildsSubpath(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "voiceover-sub-folder-id"}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	// Caller supplies an explicit Drive folder ID (e.g. via
+	// cmd/admin resolve flow OR voiceover handler's prior
+	// GetOrCreateFolder call). Project + language drive the
+	// canonical {project}/{language} subfolder.
+	override := "explicit-voiceover-folder-id"
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:        delivery.DestinationVoiceover,
+		LocalPath:          "/tmp/storia-boxe-it.mp3",
+		Filename:           "storia-boxe-it.mp3",
+		ProjectID:          "storia-boxe-it",
+		Language:           "it-IT",
+		RootFolderOverride: override,
+		// ConflictPolicy omitted → registry-driven default applies
+		// (Voiceover is ConflictSkip per P1.1 mapping).
+	})
+	require.NoError(t, err)
+
+	// (1) EnsureFolder MUST be called with the EXPLICIT override as the
+	//     parent (NOT the registry vo-root "vo-root") — the PR-VO-SUBFOLDER
+	//     invariant: the override wins for the parent, the PathBuilder
+	//     still owns the canonical subpath segments.
+	require.Len(t, folders.ensureCalls, 1,
+		"voiceover with RootFolderOverride MUST trigger exactly one EnsureFolder call (PR-VO-SUBFOLDER invariant)")
+	require.Equal(t, override, folders.ensureCalls[0].parent,
+		"EnsureFolder MUST be called with the explicit RootFolderOverride as parent — NOT the registry vo-root")
+	require.Equal(t, []string{"storia-boxe-it", "it-IT"}, folders.ensureCalls[0].segments,
+		"EnsureFolder MUST be called with the canonical voiceover subpath [{project},{language}] — SafeFolderName preserves alphanum + hyphen")
+
+	// (2) Upload landed in the sub-folder returned by EnsureFolder (NOT
+	//     the override root directly).
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, "voiceover-sub-folder-id", files.uploadCalls[0].folderID,
+		"Upload MUST land in the canonical sub-folder returned by EnsureFolder")
+}
+
+// TestResolveDestination_PathBuilderFailsWithOverride_FallsBack pins
+// the backward-compat fallback path: PathBuilder fails (missing
+// metadata) AND the caller supplied RootFolderOverride. The fix
+// logs a Warn and UPLOADS DIRECTLY into the override root (no
+// EnsureFolder call). This is the production-PR-VO-SUBFOLDER contract
+// — voiceover handlers that hit the legacy Group="" path still
+// work without surfacing a typed error.
+//
+// Pre-PR-VO-SUBFOLDER this branch surface did not exist at all:
+// PathBuilder was unconditionally skipped when override was set, so
+// the SAME failure mode (no Group, no Subject, with override) would
+// upload into the override root WITHOUT the warn signal, masking
+// upstream metadata failures. The warn + typed continue-path is the
+// load-bearing visibility surface.
+func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+
+	// Capture Warn-level log entries so we can assert the fallback
+	// surfaced a visible diagnostic. The pattern is the canonical
+	// zap testing idiom (see zaptest/observer.New).
+	core, recorded := observer.New(zapcore.WarnLevel)
+	log := zap.New(core)
+
+	pub, err := NewPublisher(reg, folders, files, log)
+	require.NoError(t, err)
+
+	override := "explicit-fallback-folder-id"
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:        delivery.DestinationYouTubeClip,
+		LocalPath:          "/tmp/clip.mp4",
+		Filename:           "clip.mp4",
+		RootFolderOverride: override,
+		// Group + Subject omitted → YouTubeClipPath returns
+		// "group is required".
+		// ConflictPolicy explicit Overwrite so the registry's
+		// ConflictSkip default is bypassed (test focuses on the
+		// PathBuilder branch, not the policy branch).
+		ConflictPolicy: delivery.ConflictOverwrite,
+	})
+	require.NoError(t, err,
+		"PathBuilder failure with explicit override MUST NOT propagate — backward-compat fallback to direct-to-root")
+
+	// (1) EnsureFolder MUST NOT be called (no segments → direct upload).
+	require.Empty(t, folders.ensureCalls,
+		"EnsureFolder MUST NOT be called when PathBuilder fails + RootFolderOverride is set (direct-to-root fallback)")
+
+	// (2) Upload landed directly in the override root.
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, override, files.uploadCalls[0].folderID,
+		"Upload MUST land in the explicit override root (direct-to-root fallback, no subfolder created)")
+
+	// (3) Warn-level diagnostic surfaced the fallback so the operator
+	//     sees the metadata gap in logs (NOT silent).
+	require.NotEmpty(t, recorded.All(), "expected at least one log entry on PathBuilder failure with override — got none")
+	warnFound := false
+	for _, entry := range recorded.All() {
+		if strings.Contains(entry.Message, "PathBuilder failed with RootFolderOverride") {
+			warnFound = true
+			break
+		}
+	}
+	require.True(t, warnFound,
+		"expected Warn log with 'PathBuilder failed with RootFolderOverride set; ...' — got %v (PR-VO-SUBFOLDER diagnostic visibility contract)",
+		recorded.All())
+}
+
+// TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError
+// pins the AUTHORITATIVE error path: PathBuilder fails AND the caller
+// did NOT supply RootFolderOverride. In this branch the PathBuilder
+// failure is the canonical signal — the publisher MUST propagate it
+// so the caller can fix the metadata (Group, Subject, ProjectID,
+// Language, etc.). Silently degrading here would let typos in the
+// metadata inputs slip through to a phantom upload into the registry's
+// root folder — which is exactly the failure mode the fix's
+// RequireSubpath gating is meant to prevent.
+//
+// Contrast with TestResolveDestination_PathBuilderFailsWithOverride_FallsBack:
+// the override-accompanied failure is a legacy escape hatch;
+// the no-override failure is the API-contract surface.
+func TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   "/tmp/clip.mp4",
+		Filename:    "clip.mp4",
+		// Group + Subject omitted → YouTubeClipPath returns
+		// "group is required".
+		// RootFolderOverride omitted (zero value).
+		ConflictPolicy: delivery.ConflictOverwrite,
+	})
+	require.Error(t, err,
+		"PathBuilder failure with NO override MUST propagate to caller — the registry default would otherwise hide a metadata gap")
+	require.Contains(t, err.Error(), "group",
+		"Error must surface PathBuilder's underlying 'group is required' message verbatim — wrapping preserved so callers can errors.Is/As on it")
+	require.Contains(t, err.Error(), "build path",
+		"Error must include the publisher's 'delivery: build path for %q: %w' prefix so the canonical seam is grep-able in logs")
+}
