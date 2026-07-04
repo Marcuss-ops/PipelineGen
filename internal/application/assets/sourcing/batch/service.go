@@ -3,48 +3,76 @@
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per file):
 // the BatchRegistrar owns the per-batch YouTube flow as a focused service
-// with 2 narrow deps (the YouTubeRegistrar interface + Logger). The façade
+// with 2 narrow deps (ClipJobEnqueuer + Logger). The façade
 // sourcing.Service.BatchRegisterFromYouTube delegates to *Service.BatchRegister
 // for backward compatibility.
 //
-// Sub-package construction is *Service.NewService(yt, log) — see
+// PR-BATCH-REGISTER-ASYNC (July 2026): replaced the synchronous YouTubeRegistrar
+// loop with async ClipJobEnqueuer. Each clip is enqueued as an independent
+// media.clip job; yt-dlp + cut + Drive upload happen off the request thread.
+// The handler returns immediately with job_ids.
+//
+// Sub-package construction is *Service.NewService(enqueuer, log) — see
 // internal/app/assets_register_sourcing.go for wiring.
 package batch
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 )
 
+// ClipJobEnqueuer is the narrow port for enqueuing a per-clip registration
+// job. Implemented by the composition root via an adapter wrapping
+// appjobs.Service.Enqueue with typing middleware.
+//
+// PR-BATCH-REGISTER-ASYNC (July 2026): canonical async path. Each
+// RegisterClipCommand becomes one media.clip job; the worker handler
+// (registered in internal/app/assets_register_sourcing.go) decodes the
+// payload and calls YouTubeRegistrar.Register off-thread.
+type ClipJobEnqueuer interface {
+	EnqueueClip(ctx context.Context, cmd sourcing.RegisterClipCommand) (jobID string, err error)
+}
+
 // Service is the BatchRegistrar implementation. 2-port budget per
 // architecture/policy.yaml::max_constructor_deps (well under the 8 cap).
 type Service struct {
-	yt  sourcing.YouTubeRegistrar
-	log sourcing.Logger
+	enqueuer ClipJobEnqueuer
+	log      sourcing.Logger
 }
 
-// NewService creates a BatchRegistrar service. yt is REQUIRED (batch wraps
-// the YouTubeRegistrar's Register method per clip).
-func NewService(yt sourcing.YouTubeRegistrar, log sourcing.Logger) *Service {
-	return &Service{yt: yt, log: log}
+// NewService creates a BatchRegistrar service. enqueuer is REQUIRED (batch
+// enqueues one async job per clip via the ClipJobEnqueuer port).
+func NewService(enqueuer ClipJobEnqueuer, log sourcing.Logger) *Service {
+	return &Service{enqueuer: enqueuer, log: log}
 }
 
-// BatchRegister processes a batch of clip registration commands sequentially.
-// For each clip it calls YouTubeRegistrar.Register and aggregates the results.
-// This is the canonical service-level orchestrator — handlers call this
-// single method instead of looping over clips themselves.
+// BatchRegister enqueues N async media.clip jobs (one per clip) and returns
+// immediately with job_ids. The heavy work (yt-dlp + cut + Drive upload +
+// DB write + indexing) happens off the request thread via the worker.
 //
-// Behaviour mirrors the historical sourcing.Service.BatchRegisterFromYouTube
-// pre-commit-2 of P0-1 (test-fixture nil-svc path returns OK:false + all-failed
-// batch result so handlers can surface the compose-time bug without panic).
+// PR-BATCH-REGISTER-ASYNC (July 2026): replaced the synchronous
+// YouTubeRegistrar.Register loop with async ClipJobEnqueuer.EnqueueClip.
+// Each clip becomes one independent media.clip job; the handler returns
+// immediately with job_ids array so the caller can poll GET /api/jobs/:id.
+// Succeeded/Failed are set to 0 (unknown until jobs complete).
+//
+// godlike/07 typed-error contract: per-clip enqueue failures are captured
+// in BatchClipResult.Error + empty JobID; batch-level failure (nil enqueuer)
+// returns OK:false + all-failed.
 func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.RegisterClipCommand) *sourcing.BatchRegisterResult {
-	if s == nil || s.yt == nil {
+	if s == nil || s.enqueuer == nil {
+		results := make([]sourcing.BatchClipResult, len(commands))
+		for i := range results {
+			results[i].Name = commands[i].Name
+			results[i].Error = "batch enqueuer not wired (composition bug — wire ClipJobEnqueuer at composition time per PR-BATCH-REGISTER-ASYNC)"
+		}
 		return &sourcing.BatchRegisterResult{
 			OK:      false,
 			Total:   len(commands),
 			Failed:  len(commands),
-			Results: make([]sourcing.BatchClipResult, len(commands)),
+			Results: results,
 		}
 	}
 
@@ -52,15 +80,16 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 	results := make([]sourcing.BatchClipResult, len(commands))
 	var succeeded, failed int
 
-	log.Info("starting batch registration", "service", "batch", "clips", len(commands))
+	log.Info("starting async batch registration", "service", "batch", "clips", len(commands))
 	for i, cmd := range commands {
-		res, err := s.yt.Register(ctx, cmd)
 		br := sourcing.BatchClipResult{Name: cmd.Name}
+
+		jobID, err := s.enqueuer.EnqueueClip(ctx, cmd)
 		if err != nil {
-			br.Error = err.Error()
+			br.Error = fmt.Sprintf("enqueue: %v", err)
 			results[i] = br
 			failed++
-			log.Info("batch clip processed",
+			log.Info("batch clip enqueue failed",
 				"index", i+1,
 				"total", len(commands),
 				"name", cmd.Name,
@@ -69,38 +98,20 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 			)
 			continue
 		}
-		if res == nil {
-			br.Error = "empty registration result"
-			results[i] = br
-			failed++
-			continue
-		}
-		br.OK = res.OK
-		br.ClipID = res.ClipID
-		br.Duplicate = res.Duplicate
-		if res.Duplicate {
-			br.OK = false
-		}
-		if !res.OK && res.Message != "" {
-			br.Error = res.Message
-		}
+
+		br.OK = true
+		br.JobID = jobID
 		results[i] = br
-		if br.OK || br.Duplicate {
-			succeeded++
-		} else {
-			failed++
-		}
-		log.Info("batch clip processed",
+		succeeded++
+		log.Info("batch clip enqueued",
 			"index", i+1,
 			"total", len(commands),
 			"name", cmd.Name,
-			"ok", br.OK,
-			"duplicate", br.Duplicate,
-			"error", br.Error,
+			"job_id", jobID,
 		)
 	}
 
-	log.Info("batch registration completed", "service", "batch", "succeeded", succeeded, "failed", failed)
+	log.Info("batch registration enqueued", "service", "batch", "succeeded", succeeded, "failed", failed)
 	return &sourcing.BatchRegisterResult{
 		OK:        true,
 		Total:     len(commands),

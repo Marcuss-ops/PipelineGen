@@ -156,7 +156,7 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: soundeffect: %w", err)
 	}
 
-	rd, err := buildRegisterBundle(cfg, log, deps, driveUploader, providerRegistry, clipsDesc, idemHandler, dispatcher)
+	rd, err := buildRegisterBundle(cfg, log, deps, driveUploader, providerRegistry, clipsDesc, idemHandler, dispatcher, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: register: %w", err)
 	}
@@ -259,8 +259,9 @@ func buildRegisterBundle(
 	clipsDesc *clipsapi.ClipsDescriptor,
 	idemHandler gin.HandlerFunc,
 	dispatcher *outbox.Dispatcher,
+	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher, jobs.Service)
 
 	// PR-DRIVE-AVAILABILITY-GATE: compose the canonical driveChecker
 	// closure. Two-state probe (godlike/06 SSOT one-canonical-owner-per-fact):
