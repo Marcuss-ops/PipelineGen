@@ -1781,6 +1781,129 @@
       status: pending
       deadline: 2026-08-15
 
+# ── ART-002 — Artlist wave Adjournment (P3.1 + P3.2 + P3.3 + this entry, July 2026) ──
+# ART-002 wave closed via 4-ship chain (P0.1 fail-closed gate + P0.2
+# download surface audit-pin + P1.1 download path counter + P1.3 scraper
+# health probe + P2.1 + P2.2 + P2.3 E2E tests + P3.1 architecture section
+# + P3.2 critical rules + P3.3 operator runbook + this Adjournment).
+# All 9 P0/P1/P2 + 3 P3 SHAs landed on origin/main:
+#   * P0.1 `validateArtlistScraperURL` boot-time gate (fail-closed)
+#   * P0.2 download surface dual SSOT audit-pin (godlike/06)
+#   * P1.1 `artlist_download_path_total` Prometheus counter (per-attempt discipline)
+#   * P1.3 `artlist_scraper_probe_total` + `artlist_scraper_health_alerts_total`
+#     (60s tick + 3-consecutive-failure alert semantic)
+#   * P2.1 live-search E2E test (4 subtests: happy + 3xx + ok=false + empty)
+#   * P2.2 full-run + Drive-upload E2E test (search → fetch → upload)
+#   * P2.3 fallback-degradation E2E test (5xx → exec behavioral pin)
+#   * P3.1 ARCHITECTURE.md §15 (canonical architectural surface)
+#   * P3.2 AGENTS.md DL-006 + DL-007 (composition-root + Pattern 0 routing)
+#   * P3.3 docs/operations/artlist-runbook.md (operator-facing SRE runbook)
+#
+# This Adjournment is a doc-only closure: 3 documentation surfaces (ARCHITECTURE.md,
+# AGENTS.md, new runbook) + this wave-tracker entry. The 12 PR-ARTLIST-* forward-pointers
+# (P0.2 + P1.1 + P1.3 + P2.x + 7 Stager/Lifecycle/Repos/SyncService/Searchers/Chip2/Stats
+# follow-up wires) remain in flight with their own deadlines (2026-07-25 to 2026-08-15).
+# Each per-ticket PR lands directly on main per AGENTS.md Git-Lesson-2.
+#
+# Cross-references (3 surfaces lockstep, godlike/06 SSOT): this current.yaml
+# entry + ARCHITECTURE.md §15 + AGENTS.md `## Critical Artlist rules (DL-006, DL-007)`
+# + docs/operations/artlist-runbook.md.
+- id: ART-002
+  status: shipped
+  exit_signal: true
+  owner_capability: internal/application/assets/providers/artlist
+  deadline: 2026-08-15
+  exit_gate: |
+    ART-002 wave is Adjourned: 9 P0/P1/P2 + 3 P3 SHAs all shipped on
+    origin/main. 3 documentation surfaces (ARCHITECTURE.md §15 +
+    AGENTS.md DL-006/DL-007 + docs/operations/artlist-runbook.md) are
+    the canonical user-facing surface for the Artlist integration.
+    Wave-tracker entry (this file) is the architectural owner; the
+    AGENTS.md recent-closures mirror preserves the audit trail.
+  linked_issues:
+    - id: P0.1-FAIL-CLOSED-SCRAPER-URL
+      owner_capability: internal/app
+      status: shipped
+      deadline: 2026-07-15
+    - id: P0.2-DOWNLOAD-SURFACE-DUAL
+      owner_capability: internal/infrastructure/artlist/downloader
+      status: shipped
+      deadline: 2026-07-15
+    - id: P1.1-DOWNLOAD-PATH-METRIC
+      owner_capability: internal/infrastructure/observability
+      status: shipped
+      ship_sha: 8a7c0b2b
+      ship_date: 2026-07-04
+      deadline: 2026-07-25
+    - id: P1.3-SCRAPER-HEALTH-PROBE
+      owner_capability: internal/infrastructure/artlist/health
+      status: shipped
+      ship_sha: 7b6945da
+      ship_date: 2026-07-04
+      deadline: 2026-07-25
+    - id: P2.1-E2E-LIVE-SEARCH
+      owner_capability: tests/e2e
+      status: shipped
+      ship_sha: 6082f445
+      ship_date: 2026-07-04
+      deadline: 2026-07-25
+    - id: P2.2-E2E-FULL-RUN
+      owner_capability: tests/e2e
+      status: shipped
+      ship_sha: a116881e
+      ship_date: 2026-07-04
+      deadline: 2026-07-25
+    - id: P2.3-E2E-FALLBACK
+      owner_capability: tests/e2e
+      status: shipped
+      ship_sha: 7c3bd085
+      ship_date: 2026-07-04
+      deadline: 2026-07-25
+    - id: P3.1-ARCHITECTURE-SECTION
+      owner_capability: architecture
+      status: shipped
+      deadline: 2026-07-25
+    - id: P3.2-DL-006-DL-007
+      owner_capability: architecture
+      status: shipped
+      deadline: 2026-07-25
+    - id: P3.3-OPERATOR-RUNBOOK
+      owner_capability: docs/operations
+      status: shipped
+      deadline: 2026-07-25
+    - id: PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY
+      owner_capability: internal/infrastructure/artlist/downloader
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-STAGER
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-LIFECYCLE
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-REPOS
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-SYNCSERVICE
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-SEARCHERS
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-ARTLIST-CHIP2
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ARTLIST-STATS-MINIMAL-RESTORE
+      owner_capability: internal/api/assets/artlist
+      status: pending
+      deadline: 2026-07-25
+
 # ── P0 #6 — runLease intermediate checkRenew redesign (forward-pointer from P0 #5 closure, July 2026) ──
 # P0 #5 (fail-closed pre-Complete seam: postRenewFailClosedCheck +
 # ErrLeaseLostDuringRun + 4 typed sentinels + 2 helper tests) landed clean:
