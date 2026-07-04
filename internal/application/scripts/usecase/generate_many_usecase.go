@@ -91,10 +91,22 @@ func (uc *GenerateManyUseCase) HasFanoutBroker() bool {
 // GenerateManyItemResult records the outcome of a single item within
 // a multi-item run. Exactly one of Result (success) or Error (failure)
 // is populated.
+//
+// godlike/07 typed-error gate (SCRIPT-T03-USECASE closure, July 2026):
+// the TypedError field carries the canonical typed-error propagation
+// surface per item. Handlers consume TypedError via errors.Is for
+// status-code mapping (parallel to the single-item Execute return
+// path) while Error (string) preserves the existing wire-format
+// compatibility for downstream JSON consumers.
+//
+// The wire format (`error` JSON field) is unchanged — TypedError is
+// excluded from JSON marshalling via the `json:"-"` tag (internal-only,
+// canonical typed-error propagation surface).
 type GenerateManyItemResult struct {
-	ItemID string                      `json:"item_id"`
-	Result *scriptpkg.GenerationResult `json:"result,omitempty"`
-	Error  string                      `json:"error,omitempty"`
+	ItemID     string                      `json:"item_id"`
+	Result     *scriptpkg.GenerationResult `json:"result,omitempty"`
+	Error      string                      `json:"error,omitempty"`
+	TypedError error                       `json:"-"`
 }
 
 // GenerateManySummary holds aggregate counts for a multi-item run.
@@ -171,8 +183,9 @@ func (uc *GenerateManyUseCase) Execute(
 		// Check context before acquiring semaphore.
 		if ctx.Err() != nil {
 			items[i] = GenerateManyItemResult{
-				ItemID: itemID,
-				Error:  fmt.Sprintf("context cancelled: %v", ctx.Err()),
+				ItemID:     itemID,
+				Error:      fmt.Sprintf("context cancelled: %v", ctx.Err()),
+				TypedError: fmt.Errorf("%w: %w", scriptpkg.ErrGenerationFailed, ctx.Err()),
 			}
 			continue
 		}
@@ -182,8 +195,9 @@ func (uc *GenerateManyUseCase) Execute(
 		case sem <- struct{}{}:
 		case <-ctx.Done():
 			items[i] = GenerateManyItemResult{
-				ItemID: itemID,
-				Error:  fmt.Sprintf("context cancelled: %v", ctx.Err()),
+				ItemID:     itemID,
+				Error:      fmt.Sprintf("context cancelled: %v", ctx.Err()),
+				TypedError: fmt.Errorf("%w: %w", scriptpkg.ErrGenerationFailed, ctx.Err()),
 			}
 			continue
 		}
@@ -196,8 +210,9 @@ func (uc *GenerateManyUseCase) Execute(
 			// Check context one more time before work starts.
 			if ctx.Err() != nil {
 				items[idx] = GenerateManyItemResult{
-					ItemID: id,
-					Error:  fmt.Sprintf("context cancelled before start: %v", ctx.Err()),
+					ItemID:     id,
+					Error:      fmt.Sprintf("context cancelled before start: %v", ctx.Err()),
+					TypedError: fmt.Errorf("%w: %w", scriptpkg.ErrGenerationFailed, ctx.Err()),
 				}
 				return
 			}
@@ -206,9 +221,16 @@ func (uc *GenerateManyUseCase) Execute(
 			result, err := uc.one.Execute(ctx, it, env.Preset, tracker)
 
 			if err != nil {
+				// godlike/07 typed-error gate: wrap the per-item error
+				// with the canonical ErrGenerationFailed sentinel so
+				// errors.Is works at the handler layer. The wire-format
+				// Error (string) stays byte-stable for downstream JSON
+				// consumers; TypedError (error) is the internal-only
+				// typed propagation surface.
 				items[idx] = GenerateManyItemResult{
-					ItemID: id,
-					Error:  err.Error(),
+					ItemID:     id,
+					Error:      err.Error(),
+					TypedError: fmt.Errorf("%w: %w", scriptpkg.ErrGenerationFailed, err),
 				}
 				if uc.log != nil {
 					uc.log.Warn("generate-many: item failed",

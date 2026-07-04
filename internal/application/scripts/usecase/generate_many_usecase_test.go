@@ -5,8 +5,12 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -20,10 +24,10 @@ import (
 // test fixtures in scriptflow_usecase_test.go and the rest of the
 // usecase test surface).
 type (
-	GenerateManyResult     =scripts.GenerateManyResult    
+	GenerateManyResult     = scripts.GenerateManyResult
 	GenerateManyItemResult = scripts.GenerateManyItemResult
-	GenerateManySummary    =scripts.GenerateManySummary   
-	GenerateManyUseCase    =scripts.GenerateManyUseCase   
+	GenerateManySummary    = scripts.GenerateManySummary
+	GenerateManyUseCase    = scripts.GenerateManyUseCase
 	NormalizationConfig    = adapters.NormalizationConfig
 )
 
@@ -482,6 +486,121 @@ func TestGenerateManySingleItem(t *testing.T) {
 	}
 	if len(result.Items) != 1 {
 		t.Errorf("expected 1 item, got %d", len(result.Items))
+	}
+}
+
+// ── SCRIPT-T03-USECASE (P0, 2026-07-15) godlike/07 typed-error gate ──
+
+// TestGenerateManyUseCase_TypedErrorPerItem pins the
+// SCRIPT-T03-USECASE (P0, 2026-07-15) godlike/07 typed-error gate
+// for the multi-item path: when a per-item Execute call returns a
+// typed error, GenerateManyUseCase MUST preserve the typed-error
+// propagation surface (TypedError field) so handlers can use
+// errors.Is for status-code mapping (parallel to the single-item
+// Execute return path).
+//
+// Strategy: construct a many usecase with a real single-item usecase
+// having engine=nil (per-item Execute returns errors.Is(ErrGenerationFailed));
+// execute a 3-item envelope; assert:
+//
+//	(a) all 3 items failed (Summary.Failed == 3)
+//	(b) each Items[i].TypedError satisfies errors.Is(ErrGenerationFailed)
+//	(c) each Items[i].Error (string) is non-empty (wire-format compat)
+//	(d) result.Warnings carries the partial-failure summary
+//
+// godlike/07 NO_FAKE_AVAILABILITY: the typed error is the canonical
+// propagation surface; the wire-format string is preserved for
+// downstream JSON consumers. Both surfaces are asserted in this test.
+func TestGenerateManyUseCase_TypedErrorPerItem(t *testing.T) {
+	t.Parallel()
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
+		reg,
+		nil, // engine nil → per-item Execute returns errors.Is(ErrGenerationFailed)
+		nil,
+		zap.NewNop(),
+	)
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+
+	items := []scriptpkg.GenerationItemV2{
+		makeItem("a"),
+		makeItem("b"),
+		makeItem("c"),
+	}
+	env := makeManyEnv(items...)
+	cfg := NormalizationConfig{DefaultLanguage: "en", MaxBatchWorkers: 2}
+
+	result, err := uc.Execute(context.Background(), env, cfg, nil)
+	require.NoError(t, err, "many usecase itself must not error")
+	require.Equal(t, 3, result.Summary.Failed,
+		"SCRIPT-T03-USECASE: all 3 items must fail (engine=nil)")
+
+	for i, item := range result.Items {
+		require.NotNil(t, item.TypedError,
+			"item[%d].TypedError must be populated (SCRIPT-T03-USECASE godlike/07 typed-error gate)", i)
+		assert.True(t, errors.Is(item.TypedError, scriptpkg.ErrGenerationFailed),
+			"item[%d].TypedError must satisfy errors.Is(ErrGenerationFailed), got %v",
+			i, item.TypedError)
+		assert.NotEmpty(t, item.Error,
+			"item[%d].Error (string) must be non-empty for wire-format compat", i)
+	}
+
+	require.NotEmpty(t, result.Warnings,
+		"SCRIPT-T03-USECASE: Warnings must carry the partial-failure summary")
+}
+
+// TestGenerateManyUseCase_TypedErrorPreservesOrderOnPartialFailure
+// pins the ordering guarantee for partial-failure: even when every
+// item fails, Items is returned in input order (not completion
+// order) so handlers can correlate Items[i] with env.Items[i]
+// without ID lookups.
+//
+// Strategy: 3 items with IDs that sort differently from input order
+// (z, a, m) + engine=nil (all fail) + MaxBatchWorkers=2 (forces
+// some concurrency); assert Items[i].ItemID == env.Items[i].ID for
+// all i, and TypedError is populated for all failed items.
+func TestGenerateManyUseCase_TypedErrorPreservesOrderOnPartialFailure(t *testing.T) {
+	t.Parallel()
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
+		reg,
+		nil, // engine nil → all items fail
+		nil,
+		zap.NewNop(),
+	)
+	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+
+	items := []scriptpkg.GenerationItemV2{
+		makeItem("z"),
+		makeItem("a"),
+		makeItem("m"),
+	}
+	env := makeManyEnv(items...)
+	cfg := NormalizationConfig{DefaultLanguage: "en", MaxBatchWorkers: 2}
+
+	result, err := uc.Execute(context.Background(), env, cfg, nil)
+	require.NoError(t, err, "many usecase itself must not error")
+	require.Equal(t, 3, len(result.Items),
+		"SCRIPT-T03-USECASE: 3 items must be returned (1:1 with input)")
+
+	// Ordering: input order preserved even when all items fail.
+	assert.Equal(t, "z", result.Items[0].ItemID,
+		"SCRIPT-T03-USECASE: Items[0] must be 'z' (input index 0)")
+	assert.Equal(t, "a", result.Items[1].ItemID,
+		"SCRIPT-T03-USECASE: Items[1] must be 'a' (input index 1)")
+	assert.Equal(t, "m", result.Items[2].ItemID,
+		"SCRIPT-T03-USECASE: Items[2] must be 'm' (input index 2)")
+
+	// Typed errors: all items failed, so all TypedError must satisfy
+	// errors.Is(ErrGenerationFailed).
+	for i, item := range result.Items {
+		require.NotNil(t, item.TypedError,
+			"SCRIPT-T03-USECASE: item[%d].TypedError must be populated", i)
+		assert.True(t, errors.Is(item.TypedError, scriptpkg.ErrGenerationFailed),
+			"SCRIPT-T03-USECASE: item[%d].TypedError must satisfy errors.Is(ErrGenerationFailed), got %v",
+			i, item.TypedError)
 	}
 }
 

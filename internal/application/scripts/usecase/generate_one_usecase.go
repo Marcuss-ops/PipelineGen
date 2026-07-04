@@ -92,6 +92,15 @@ func (uc *GenerateOneUseCase) SetVoiceoverRouting(resolver scriptports.Voiceover
 // Execute runs the full pipeline for one item and returns a typed
 // GenerationResult. Progress is reported through the tracker when
 // non-nil.
+//
+// godlike/07 typed-error gate (SCRIPT-T03-USECASE closure, July 2026):
+// every `return nil, err` at the orchestrator boundary logs the
+// diagnostic context (item_id, phase, error) via uc.log.Warn BEFORE
+// returning the typed error. The typed error remains the propagation
+// surface (handler reads it via errors.Is for HTTP status mapping)
+// but the operator now has a log trail for every failure. This is
+// the canonical "log+typed-propagate" pattern per godlike/07
+// NO_FAKE_AVAILABILITY + TYPED_ERROR contract.
 func (uc *GenerateOneUseCase) Execute(
 	ctx context.Context,
 	item scriptpkg.GenerationItemV2,
@@ -102,6 +111,10 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, fmt.Errorf("%w: use case not constructed", scriptpkg.ErrGenerationFailed)
 	}
 	if uc.engine == nil {
+		if uc.log != nil {
+			uc.log.Warn("generate-one: construction failed",
+				zap.String("reason", "engine_nil"))
+		}
 		return nil, fmt.Errorf("%w: engine not configured", scriptpkg.ErrGenerationFailed)
 	}
 
@@ -115,7 +128,7 @@ func (uc *GenerateOneUseCase) Execute(
 	// ── Phase 2: Validate ───────────────────────────────────────────
 	tracker.PhaseValidate()
 	if err := ValidateItem(item); err != nil {
-		return nil, fmt.Errorf("%w: %w", scriptpkg.ErrPlanInvalid, err)
+		return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
 	}
 
 	// ── Phase 3: Resolve source ─────────────────────────────────────
@@ -131,7 +144,7 @@ func (uc *GenerateOneUseCase) Execute(
 		resCtx := buildResolutionContext(item)
 		resolved, resolveErr = uc.registry.Resolve(ctx, item.Source, resCtx)
 		if resolveErr != nil {
-			return nil, fmt.Errorf("%w: %w", scriptpkg.ErrSourceResolutionFailed, resolveErr)
+			return nil, uc.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr)
 		}
 	}
 	timings.SourceResolveMs = time.Since(sourceStart).Milliseconds()
@@ -151,6 +164,12 @@ func (uc *GenerateOneUseCase) Execute(
 		ctx, item, uc.voGroupResolver, uc.voRootID, uc.log,
 	)
 	if resolveVOErr != nil {
+		if uc.log != nil {
+			uc.log.Warn("generate-one: phase failed",
+				zap.String("item_id", item.ID),
+				zap.String("phase", "voiceover_resolve"),
+				zap.Error(resolveVOErr))
+		}
 		return nil, resolveVOErr
 	}
 	item = resolvedItem
@@ -195,7 +214,7 @@ func (uc *GenerateOneUseCase) Execute(
 	// are tolerated (registry.Run will warn).
 	if uc.ppReg != nil {
 		if err := uc.ppReg.ValidateRequested(plan.Postprocessors); err != nil {
-			return nil, fmt.Errorf("%w: %w", scriptpkg.ErrPlanInvalid, err)
+			return nil, uc.logPhaseError(item, "registry_validate", scriptpkg.ErrPlanInvalid, err)
 		}
 	}
 
@@ -208,6 +227,12 @@ func (uc *GenerateOneUseCase) Execute(
 	// optional DB persistence. No WriteScriptRequest needed.
 	engineResult, engineErr := uc.engine.Generate(ctx, &plan)
 	if engineErr != nil {
+		if uc.log != nil {
+			uc.log.Warn("generate-one: phase failed",
+				zap.String("item_id", item.ID),
+				zap.String("phase", "engine"),
+				zap.Error(engineErr))
+		}
 		return nil, &scriptpkg.GenerationError{
 			ItemID: item.ID,
 			Phase:  "engine",
@@ -243,6 +268,12 @@ func (uc *GenerateOneUseCase) Execute(
 		}
 		postResult, ppErr = uc.ppReg.Run(ctx, &plan, procInput)
 		if ppErr != nil {
+			if uc.log != nil {
+				uc.log.Warn("generate-one: phase failed",
+					zap.String("item_id", item.ID),
+					zap.String("phase", "postprocess"),
+					zap.Error(ppErr))
+			}
 			return nil, &scriptpkg.PostprocessError{
 				ItemID:    item.ID,
 				Processor: "registry",
@@ -532,3 +563,38 @@ func buildGenerationResult(
 // Deprecated: error types and helpers from the legacy GenerationSpec
 // bridge were removed in PR 3; processors now consume the typed
 // EntityExtractor / MetadataGenerator ports directly.
+
+// ── SCRIPT-T03-USECASE (P0, 2026-07-15) godlike/07 typed-error gate ──
+
+// logPhaseError is the canonical usecase-boundary error-logging helper
+// for the single-item orchestrator. Per godlike/07 typed-error contract
+// + NO_FAKE_AVAILABILITY, every `return nil, err` at the orchestrator
+// boundary MUST log the diagnostic context (item_id, phase, error)
+// BEFORE returning the typed error. The typed error remains the
+// propagation surface (handler reads it via errors.Is for HTTP status
+// mapping) but operators now have a log trail for every failure.
+//
+// The structured log fields let operators correlate the typed error
+// (which surfaces to the client as a 4xx/5xx) with the diagnostic log
+// entry (which carries the full error chain + item_id + phase). This
+// is the canonical "log+typed-propagate" pattern per godlike/07.
+//
+// Returns the wrapped error so callers can write
+//
+//	return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
+//
+// for compactness.
+func (uc *GenerateOneUseCase) logPhaseError(
+	item scriptpkg.GenerationItemV2,
+	phase string,
+	sentinel error,
+	err error,
+) error {
+	if uc.log != nil {
+		uc.log.Warn("generate-one: phase failed",
+			zap.String("item_id", item.ID),
+			zap.String("phase", phase),
+			zap.Error(err))
+	}
+	return fmt.Errorf("%w: %w", sentinel, err)
+}
