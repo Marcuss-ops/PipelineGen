@@ -29,6 +29,12 @@ import (
 // artifacts.Registry → media_assets SQLite table (Wave C SSOT). The
 // Drive-side JSON manifest was a parallel-struct anti-pattern that has
 // no analogue after the Wave-C consolidation.
+//
+// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): the optional
+// ArtlistDownloader field routes Artlist-clip downloads through the
+// canonical downloader.Resolver instead of the processor's own
+// downloadViaScraper method. When nil (default), the processor falls
+// back to the legacy scraper path for backward compatibility.
 type Processor struct {
 	dl           YTDLP
 	httpDL       HTTPDownloader
@@ -41,9 +47,37 @@ type Processor struct {
 	embeddingURL string
 	registry     artifacts.Registry
 	publisher    delivery.Publisher
+	// ArtlistDownloader is the canonical Resolver-backed Artlist
+	// download path. nil-safe: when nil, downloadStep falls back
+	// to the legacy downloadViaScraper method (backward compat).
+	// Wired in build_bundles_artlist.go via an adapter wrapping
+	// downloader.Resolver.Download().
+	artlistDL ArtlistDownloader
 }
 
 var _ asset.Processor = (*Processor)(nil)
+
+// ArtlistDownloader is the narrow port for Artlist-clip downloads
+// routed through the canonical downloader.Resolver. Nil-safe: when
+// nil, the processor falls back to the legacy downloadViaScraper method.
+//
+// Wired in build_bundles_artlist.go via an adapter wrapping
+// downloader.Resolver.Download(artapp.DownloadRequest).
+//
+// godlike/06 SSOT: this interface + the Resolver adapter are the
+// SINGLE canonical bridge between the generic media processor and
+// the Artlist-specific download routing.
+type ArtlistDownloader interface {
+	DownloadArtlistClip(ctx context.Context, sourceURL, clipPageURL, clipID, destDir, filename string) (localPath string, err error)
+}
+
+// SetArtlistDownloader injects the Artlist download bridge.
+// Nil-safe (compiles to no-op when dl is nil).
+func (p *Processor) SetArtlistDownloader(dl ArtlistDownloader) {
+	if dl != nil {
+		p.artlistDL = dl
+	}
+}
 
 // ProcessorConfig holds the constructor dependencies for Processor.
 type ProcessorConfig struct {
