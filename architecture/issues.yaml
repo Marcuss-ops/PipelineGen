@@ -893,3 +893,76 @@
            code (`go build`) continues to compile cleanly. The
            blocker is exclusively for the CI test step.
 
+
+# ============================================================================
+# Phase 1-9 RED finding bug-tickets (2026-07-04 test battery)
+# ============================================================================
+# Source: tests/operational/REPORTS/2026-07-04-pipeline-test-battery.log (Phase 10 closure)
+# Schema: per Q16 prudent 2-PR split convention - this is the ALWAYS-LESS-CONTENDED single-file commit;
+# per-PR fix commits land in isolation on main.
+# Priority mapping per user spec: P0=breaks happy path, P1=degrades, P2=residual.
+# Deadline bands: P0=2026-07-15, P1=2026-07-25, P2=2026-08-01.
+
+- id: REG-T06-YOUTUBE-URL
+  status: done
+  owner_capability: internal/api/assets/register
+  priority: P1
+  deadline: 2026-07-25
+  blocker: false
+  failure_mode: "Invalid YouTube URLs bubbled HTTP 500/503 instead of HTTP 400 before service-boundary check. SHIPPED on origin/main (canonical ship_sha: 4dc73dd3, ship_date: 2026-07-03, see PHASE-9-BUG-REMEDIATION.linked_issues[REG-T06-001])."
+
+- id: CLIPS-T05-API-MOUNT
+  status: pending
+  owner_capability: internal/api/routes + internal/api/clips
+  priority: P2
+  deadline: 2026-08-01
+  blocker: false
+  failure_mode: "Audit-pin disposition only: expected /api/clips/* surface is NOT registered in routes.go, BUT canonical surface exists via /media/clips mount (verified on origin/main HEAD). No code change required; closing requires docs/routing-alignment audit-pin + canonical-route audit table refresh."
+
+- id: JOBS-T01-SQLITE-REPO
+  status: pending
+  owner_capability: internal/infrastructure/database/sqlite/jobs
+  priority: P0
+  deadline: 2026-07-15
+  blocker: true
+  failure_mode: "Job broker infrastructure integration: SQLite repository method signature or return-coverage drift prevents reliable state progression for in-flight jobs (tx-rolled-back on completion path can orphan RUNNING-state jobs in the broker). Blocks the full job-completion happy path until signature parity is restored."
+
+- id: JOBS-T01-ZOMBIE-SWEEP
+  status: pending
+  owner_capability: cmd/admin
+  priority: P1
+  deadline: 2026-07-25
+  blocker: false
+  failure_mode: "Missing admin CLI sweep surface for zombie jobs (status=RUNNING AND progress>=100). Requires cmd/admin/zombie_sweep.go (CLI subcommand + repository SELECT). Pipeline still runs without it (graceful degradation = P1) but operators lose manual recovery surface."
+
+- id: SCRIPT-T03-ERR-MAPPING
+  status: done
+  owner_capability: internal/api/script
+  priority: P1
+  deadline: 2026-07-25
+  blocker: false
+  failure_mode: "Typed script-domain errors (PlanInvalid, InvalidGenerationSpec, etc) bubbled HTTP 500 instead of HTTP 400 on the request seam. SHIPPED on origin/main (canonical ship_sha: 387ea350, ship_date: 2026-07-04, see PHASE-9-BUG-REMEDIATION.linked_issues[SCRIPT-T03-001])."
+
+- id: SCRIPT-T03-USECASE
+  status: pending
+  owner_capability: internal/application/scripts/usecase
+  priority: P0
+  deadline: 2026-07-15
+  blocker: true
+  failure_mode: "Usecase orchestrator failure surface: script-generation flow blocks on usecase exception path (NOT logged+drop, NOT graceful-degrade). Breaks the script-generation happy path until canonical usecase error-path contract is enforced per godlike/07 typed-error gate."
+
+- id: IMAGES-T04-MULTIPART
+  status: pending
+  owner_capability: internal/api/images
+  priority: P1
+  deadline: 2026-07-25
+  blocker: false
+  failure_mode: "Multipart-form upload surface verification gap: the expected surface is in internal/api/images/ but the de facto surface lives in clips/ingest.go (forward-pointer duplicate). Surface misalignment causes operator confusion but does NOT block image-generation happy path."
+
+- id: SEARCH-T07-LIFECYCLE-DEL
+  status: pending
+  owner_capability: internal/application/search/ports.go
+  priority: P0
+  deadline: 2026-07-15
+  blocker: true
+  failure_mode: "Search lifecycle-state filter rejects DELETED states with too-broad coverage, filtering out valid retrieval rows (searchService.GetMany(allowStates=...) drift). Breaks the search happy path until allowStates filter is tightened to lifecycle_state=ACTIVE per godlike/06 one-canonical-owner-per-fact."
