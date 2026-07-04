@@ -221,15 +221,17 @@ test_7_folder_id() {
     job_id=$(enqueue_and_assert "fase_b_folder_id" "$(build_payload_folder_id)") || true
 
     # Defence-in-depth scoped scan (code-reviewer blocker #2): the previous query
-    # matched ALL `youtube_clip.extract` jobs of the past hour — any concurrent
-    # smoke or unrelated clip run emitting "group is required" would falsely
-    # fail THIS test. Scope to THIS run's clip_id pattern in media_assets plus
-    # the actual mysql job_ids just-enqueued.
-    local scoped_scan_ids=""
-    # Find media_assets rows touched by THIS smoke run (within the last 5 min,
-    # matching the canonical CLIP_PATTERN). Join to jobs.error via the asset_id.
+    # used `JOIN media_assets m ON m.id LIKE '$CLIP_PATTERN'` — that's a CROSS JOIN
+    # (no linking key on jobs), inflating the row count by the number of recent
+    # assets matching the pattern.
+    #
+    # Canonical fix: scope the JOBS table directly by clipping the request payload
+    # to the canonical clip_id pattern. `jobs.payload_json` IS the SQLite column
+    # for `EnqueueRequest.Payload` per the SQLiteStore schema — the request body
+    # is JSON-marshaled into that column at enqueue time. INSTR() avoids SQLite
+    # LIKE wildcard semantics for the `_` characters in the clip_id.
     local scoped_errs
-    scoped_errs=$(sqlite_q "SELECT COUNT(*) FROM jobs j JOIN media_assets m ON m.id LIKE '$CLIP_PATTERN' WHERE j.created_at > datetime('now','-5 minutes') AND j.error LIKE '%group is required%' AND m.updated_at > datetime('now','-5 minutes')")
+    scoped_errs=$(sqlite_q "SELECT COUNT(*) FROM jobs WHERE created_at > datetime('now','-5 minutes') AND error LIKE '%group is required%' AND instr(payload_json, 'yt_9u4T_o3FxOU_30_70_v') > 0")
     if (( scoped_errs > 0 )); then
         fail "test7_group_required_observed_in_${scoped_errs}_scoped_jobs"
     fi
