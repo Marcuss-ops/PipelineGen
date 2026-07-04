@@ -11,6 +11,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 // newAssetRegisterService builds the SourcingService façade. After P0-1 /
@@ -194,9 +196,33 @@ func (a *clipJobEnqueuerAdapter) EnqueueClip(ctx context.Context, cmd sourcing.R
 	// Service.Enqueue internally calls json.Marshal(req.Payload); passing
 	// json.RawMessage bypasses the re-encode (RawMessage.MarshalJSON returns
 	// itself). Passing raw []byte would produce a base64-encoded string.
+	//
+	// PR-FIX-FANOUT-JOBID-COLLISION (2026-07-04): derive a payload-scoped
+	// CorrelationID so fan-out children (e.g. BatchRegisterFromYouTube with
+	// seconds_per_segment=N splitting one URL into N clips) do NOT collapse
+	// into one JobID via Service.Enqueue's
+	// FindByTypeAndCorrelation idempotency check (enqueue_service.go:97-110).
+	// Without this, N children inherit the SAME base CorrelationID from
+	// corid.FromContext(ctx) (HTTP request ID), so the broker dedups
+	// (Type, CorrelationID) → all children return the 1st child's JobID →
+	// batch silently collapses to 1 row in jobs + 1 row in media_assets.
+	//
+	// Derivation: base = corid.FromContext(ctx) (HTTP request ID, may be "")
+	//             suffix = "clip-sha256-<16-hex-of-marshalled-payload>"
+	//             empty-base fallback: "clip-sha256-<16-hex>".
+	//
+	// Idempotency-preserving: identical (request, payload) replays return
+	// the same CorrelationID → same JobID (canonical godlike/07 fail-closed
+	// dedup). Distinct payloads get distinct CorrelationIDs → distinct jobs.
+	sum := sha256.Sum256(payload)
+	cid := "clip-sha256-" + fmt.Sprintf("%x", sum[:8])
+	if baseID := corid.FromContext(ctx); baseID != "" {
+		cid = baseID + ":" + cid
+	}
 	job, err := a.svc.Enqueue(ctx, &jobdomain.EnqueueRequest{
-		Type:    appjobs.TypeClipRegister,
-		Payload: json.RawMessage(payload),
+		Type:          appjobs.TypeClipRegister,
+		Payload:       json.RawMessage(payload),
+		CorrelationID: cid,
 	})
 	if err != nil {
 		return "", fmt.Errorf("clipJobEnqueuerAdapter: enqueue media.clip: %w", err)
