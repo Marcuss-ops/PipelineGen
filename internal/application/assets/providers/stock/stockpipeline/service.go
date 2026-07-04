@@ -3,8 +3,6 @@ package stockpipeline
 import (
 	"context"
 	"errors"
-	"math/rand"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -22,8 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
-
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // PipelineConfig holds configuration for the stock pipeline run.
 type PipelineConfig struct {

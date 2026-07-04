@@ -30,7 +30,9 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 
@@ -73,7 +75,12 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Float64("source_duration_sec", vs.DurationSec),
 	)
 
-	startTime := rng.Float64() * math.Max(0, vs.DurationSec-float64(secsPerVideo))
+	// P2 fix (July 2026): deterministic seed from video URL replaces
+	// the package-level var rng (was non-deterministic time.Now().UnixNano()).
+	// Same URL ⇒ same start offset ⇒ reproducible runs per godlike/07.
+	videoSeed := hashFnv64(vs.URL)
+	videoRng := rand.New(rand.NewSource(videoSeed))
+	startTime := videoRng.Float64() * math.Max(0, vs.DurationSec-float64(secsPerVideo))
 	startStr := formatDuration(startTime)
 	endStr := formatDuration(startTime + float64(secsPerVideo))
 	section := fmt.Sprintf("*%s-%s", startStr, endStr)
@@ -143,9 +150,9 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	clipTitles := make([]string, 0, numClips)
 	jobs := make([]CutJob, 0, numClips)
 	for clipIdx := 0; clipIdx < numClips; clipIdx++ {
-		var offset float64
-		for attempt := 0; attempt < 20; attempt++ {
-			offset = rng.Float64() * maxStart
+	var offset float64
+	for attempt := 0; attempt < 20; attempt++ {
+		offset = videoRng.Float64() * maxStart
 			rounded := math.Round(offset)
 			if !usedOffsets[rounded] {
 				usedOffsets[rounded] = true
@@ -245,4 +252,15 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.String("source_url", vs.URL),
 	)
 	return clips, nil
+}
+
+// hashFnv64 returns a deterministic int64 seed from a string using FNV-1a.
+// Used by processSingleVideo to seed the per-video RNG deterministically
+// (same URL ⇒ same clip offsets ⇒ reproducible runs per godlike/07).
+// P2 fix (July 2026): replaces the package-level var rng which used
+// time.Now().UnixNano().
+func hashFnv64(s string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(s))
+	return int64(h.Sum64())
 }
