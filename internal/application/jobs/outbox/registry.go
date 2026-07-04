@@ -24,11 +24,13 @@ package outbox
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
 // Deps bundles the optional dependencies RegisterAll forwards to the
@@ -121,10 +123,10 @@ type Deps struct {
 	// *assets.ClipsRepository, NewDriveDeleterAdapter wraps
 	// *drive.FileLifecycleAdapter, and StateAdvancer wraps
 	// *outbox.Dispatcher.
-	DrivePatchLifecycle    LifecycleStateReader
-	DrivePatchLifecycleW   ClipsLifecycleStateWriter
-	DrivePatchStateAdv     StateAdvancer
-	DriveDeleteHandler     DriveDeleter
+	DrivePatchLifecycle  LifecycleStateReader
+	DrivePatchLifecycleW ClipsLifecycleStateWriter
+	DrivePatchStateAdv   StateAdvancer
+	DriveDeleteHandler   DriveDeleter
 }
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
@@ -169,7 +171,7 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 	// error so missing deps are LOGGED not returned.
 	coreHandlers := []outboxevents.Handler{}
 	if indexer != nil && deps != nil && deps.SourceVersionQuerier != nil {
-		coreHandlers = append(coreHandlers, NewIndexingHandler(indexer, deps.SourceVersionQuerier, log))
+		coreHandlers = append(coreHandlers, buildIndexingHandler(indexer, deps.SourceVersionQuerier, log))
 	} else {
 		log.Info("outbox RegisterAll (legacy): IndexingHandler skipped (missing indexer or SourceVersionQuerier)")
 	}
@@ -238,7 +240,7 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 		return fmtError("outbox RegisterCoreHandlers: IndexDeleteHandler cannot run (AssetDeleter=nil; ClipsRepo was nil at BuildOutboxBundle call site despite cfg.Qdrant.Enabled=true)")
 	}
 	core := []outboxevents.Handler{
-		NewIndexingHandler(indexer, deps.SourceVersionQuerier, log),
+		buildIndexingHandler(indexer, deps.SourceVersionQuerier, log),
 		NewIndexDeleteHandler(log, deps.VectorPointDeleter, deps.AssetDeleter),
 	}
 	for _, h := range core {
@@ -354,3 +356,40 @@ func fmtError(msg string) error { return &registryError{msg: msg} }
 type registryError struct{ msg string }
 
 func (e *registryError) Error() string { return e.msg }
+
+// buildIndexingHandler is the canonical constructor for the
+// IndexingHandler with auto-wired state-updater (PR-QDRANT-INDEXCLIP-GUARD,
+// July 2026).
+//
+// godlike/06 SSOT: the production IndexClipper concrete
+// (*clipindexer.Service) is the SAME instance that satisfies
+// clipindexer.IndexerStateUpdater (compile-time pinned at
+// internal/infrastructure/indexing/clipindexer/state_writer.go:
+// `var _ IndexerStateUpdater = (*Service)(nil)`). When RegisterCoreHandlers
+// / RegisterAll receive a *Service from the composition root, the
+// type-assertion below auto-wires the IndexerStateUpdater port so
+// the ErrIndexClipDisabledButEventRequested branch can stamp
+// INDEXING_SKIPPED_NO_INDEXER on media_assets without a separate
+// Deps field.
+//
+// godlike/07 minimum-blast-radius: test fakes that satisfy
+// IndexClipper but NOT IndexerStateUpdater (e.g. mockIndexClipper in
+// the test files) get a *IndexingHandler with stateUpdater=nil —
+// the sentinel-detect branch still routes to retry correctly (the
+// err is returned regardless of state-update success per
+// godlike/07 fail-closed), but the state-update side-effect is
+// skipped. The handler logs a Warn line so the production wire
+// path's missing-port surface is auditable.
+//
+// Returns the wired handler for inclusion in the registry list.
+func buildIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier, log *zap.Logger) *IndexingHandler {
+	h := NewIndexingHandler(indexer, sourceQuerier, log)
+	if su, ok := indexer.(clipindexer.IndexerStateUpdater); ok {
+		h.WithStateUpdater(su)
+		return h
+	}
+	log.Info("outbox buildIndexingHandler: indexer does not implement IndexerStateUpdater; sentinel-driven state-write will be skipped (retry path still fires)",
+		zap.String("indexer_type", fmt.Sprintf("%T", indexer)),
+	)
+	return h
+}

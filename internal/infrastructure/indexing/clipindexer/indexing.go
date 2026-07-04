@@ -63,8 +63,22 @@ func CollectionVersion() string { return collectionVersion }
 //   - setIndexedAt (terminal INDEXED + sidecar metadata in single atomic UPDATE).
 func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if !s.cfg.Enabled {
-		s.log.Debug("clipindexer disabled, skipping", zap.String("clip_id", clipID))
-		return nil
+		// godlike/07 no-fake-availability (PR-QDRANT-INDEXCLIP-GUARD,
+		// July 2026): when cfg.Enabled=false but an
+		// asset.index.requested event arrived anyway (the upstream
+		// outbox emitted it before the operator flipped the bit),
+		// return the typed sentinel so the IndexingHandler can
+		// distinguish "indexer off" from a real success. The
+		// sentinel triggers a transient skip+retry path
+		// (state INDEXING_SKIPPED_NO_INDEXER + outbox retry) so
+		// the event lands once the indexer is back online.
+		// Pre-fix (return nil) was a silent fake-availability:
+		// outbox marked Completed even though no embedding work
+		// happened — operators only found out via downstream
+		// Qdrant count drift.
+		s.log.Warn("clipindexer disabled, returning sentinel for outbox retry",
+			zap.String("clip_id", clipID))
+		return ErrIndexClipDisabledButEventRequested
 	}
 
 	// Fast early-out: skip metadata-only asset names BEFORE any embedding work.
@@ -216,5 +230,3 @@ func (s *Service) finalizeIndex(ctx context.Context, clipID, contentHash, source
 	s.log.Info("clip fully indexed and upserted to Qdrant", zap.String("clip_id", clipID))
 	return nil
 }
-
-

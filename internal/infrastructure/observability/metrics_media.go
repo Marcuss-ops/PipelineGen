@@ -56,6 +56,22 @@ var (
 		Help: "Total number of asset.index.requested events short-circuited by source_version supersede, by event_type",
 	}, []string{"event_type"})
 
+	// MediaIndexSkippedTotal (PR-QDRANT-INDEXCLIP-GUARD, July 2026):
+	// Total number of asset.index.requested events short-circuited
+	// by the typed ErrIndexClipDisabledButEventRequested sentinel.
+	// The handler stamps media_assets.index_state to
+	// INDEXING_SKIPPED_NO_INDEXER and returns a retryable error so
+	// the outbox pool re-emits the event when the indexer is
+	// re-enabled. Distinct from MediaIndexSupersededTotal
+	// (CAS-detected stale aggregate versioning — terminal, no
+	// retry) and from MediaIndexRetryTotal (transient
+	// network/embedding-server failures — bounded retry until
+	// max_attempts).
+	MediaIndexSkippedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "media_index_skipped_total",
+		Help: "Total number of asset.index.requested events short-circuited because the clipindexer was disabled at runtime, by event_type",
+	}, []string{"event_type"})
+
 	MediaIndexDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "media_index_duration_seconds",
 		Help:    "Duration of asset.index.* handler invocations by outcome",

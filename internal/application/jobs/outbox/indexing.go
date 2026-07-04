@@ -153,20 +153,34 @@ type indexRequestV1 struct {
 // indexer is required for production wiring (BuildOutboxBundle
 // populates it from *clipindexer.Service). sourceQuerier is required
 // for the supersede gate; nil is allowed in tests that exercise only
-// the parse-time / schema-validation branch.
+// the parse-time / schema-validation branch. stateUpdater is OPTIONAL
+// (PR-QDRANT-INDEXCLIP-GUARD, July 2026) — nil is the test-only
+// "ignore IndexerStateUpdater" path; production wires via the
+// fluent WithStateUpdater setter (no caller of NewIndexingHandler is
+// broken). When stateUpdater is nil, the handler logs the
+// sentinel-driven state-update FAILURE at Warn level and still
+// returns the retryable error so the outbox event is NOT silently
+// lost (godlike/07 fail-closed).
 //
-// Both ports nil-safe: the handler guards each call site with a
-// nil-check so partial wiring degrades to "skip the gate" rather
-// than crashing — but production callers MUST wire both.
+// All three ports nil-safe: the handler guards each call site with
+// a nil-check so partial wiring degrades to "skip the gate" rather
+// than crashing — but production callers MUST wire all three.
 type IndexingHandler struct {
 	indexer       IndexClipper
 	sourceQuerier SourceVersionQuerier
+	stateUpdater  clipindexer.IndexerStateUpdater
 	log           *zap.Logger
 }
 
 // NewIndexingHandler wires the producer-side dependencies. log nil →
 // nop logger. Both indexer and sourceQuerier may be nil in tests; the
 // real wire path (BuildOutboxBundle) passes non-nil for both.
+//
+// stateUpdater is wired separately via WithStateUpdater (fluent
+// setter — preserves the existing 3-arg constructor signature per
+// godlike/07 minimum-blast-radius; new PRs SHOULD prefer the
+// setter for new optional dependencies instead of growing the
+// constructor parameter list).
 func NewIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier, log *zap.Logger) *IndexingHandler {
 	if log == nil {
 		log = zap.NewNop()
@@ -176,6 +190,26 @@ func NewIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier
 		sourceQuerier: sourceQuerier,
 		log:           log.Named("index"),
 	}
+}
+
+// WithStateUpdater attaches an IndexerStateUpdater so the handler can
+// stamp transient retry-pending states onto media_assets.index_state
+// without coupling to internal SQLite helpers.
+//
+// PR-QDRANT-INDEXCLIP-GUARD (July 2026): required so the
+// ErrIndexClipDisabledButEventRequested path records
+// INDEXING_SKIPPED_NO_INDEXER on media_assets surface (observable
+// on dashboards). The production wire path (BuildOutboxBundle) MUST
+// pass the SAME *clipindexer.Service concrete that powers the
+// IndexClipper port — godlike/06 SSOT (single concrete for both
+// ports; no second adapter layer).
+//
+// godlike/07 minimum-blast-radius: returns the receiver to preserve
+// the fluent-construction idiom. Nil updater is permitted (test
+// path); production wires non-nil.
+func (h *IndexingHandler) WithStateUpdater(u clipindexer.IndexerStateUpdater) *IndexingHandler {
+	h.stateUpdater = u
+	return h
 }
 
 // EventType returns the canonical outboxevents constant.
@@ -379,6 +413,49 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		)
 	}
 	if ierr := h.indexer.IndexClip(ctx, p.AssetID); ierr != nil {
+		// PR-QDRANT-INDEXCLIP-GUARD (July 2026): the indexer-offline
+		// path. clipindexer.Service.IndexClip returns the typed
+		// sentinel ErrIndexClipDisabledButEventRequested when
+		// cfg.Enabled=false (the indexer is disabled at runtime but
+		// an asset.index.requested event arrived anyway). Detection
+		// branch fires BEFORE the existing CAS-supersede check so
+		// the typed sentinel takes precedence over generic
+		// transient-error classification.
+		//
+		// Outcome: stamp INDEXING_SKIPPED_NO_INDEXER on
+		// media_assets via the IndexerStateUpdater port (best-effort
+		// — log+continue if the updater is nil or fails), then
+		// return a NON-nil retryable error so the outbox pool does
+		// NOT mark the event COMPLETED and the event is re-emitted
+		// when the operator re-enables the indexer (pending+retry
+		// per godlike/07 fail-closed).
+		if errors.Is(ierr, clipindexer.ErrIndexClipDisabledButEventRequested) {
+			metrics.MediaIndexSkippedTotal.WithLabelValues(evt.EventType).Inc()
+			outcome = "skipped_no_indexer"
+			log.Warn("asset.index.requested: indexer disabled, retry pending until re-enabled",
+				append(reqLog, zap.Error(ierr))...,
+			)
+			if h.stateUpdater != nil {
+				if suErr := h.stateUpdater.MarkIndexingSkippedNoIndexer(ctx, p.AssetID); suErr != nil {
+					// godlike/07 fail-closed: a state-update
+					// failure MUST NOT abort the retry path — the
+					// asset row stays in its previous state, the
+					// outbox event is still re-emitted on retry,
+					// and the operator gets a Warn line to
+					// investigate. Returning nil here would
+					// silently lose the retry signal.
+					log.Warn("asset.index.requested: MarkIndexingSkippedNoIndexer failed; retry path continues unchanged",
+						append(reqLog, zap.Error(suErr))...,
+					)
+				}
+			}
+			// Wrap the typed sentinel in a retryable error
+			// (NOT a TerminalError) so the outbox pool's
+			// IsTerminal classifier routes the event back to
+			// the pending bucket. The sentinel itself remains
+			// errors.Is-probe-able for downstream consumers.
+			return fmt.Errorf("asset.index.requested: %w", ierr)
+		}
 		// CAS miss after Qdrant upsert (BLOCKER #2): setIndexedAt's
 		// source_version + file_hash + index_state='INDEXING' fence
 		// matched zero rows — the asset was superseded while embeddings
