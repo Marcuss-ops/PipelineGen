@@ -90,4 +90,7 @@ jobs:
       - name: tear-down-stack
         if: always()
         run: |
-          docker compose down || true
+          # --volumes ensures qdrant/pipelinegen-server volume state does
+          # NOT leak across successive workflow_dispatch re-runs (SRE
+          # diagnostic hygiene; godlike/07 run-once-virgin-state contract).
+          docker compose down --volumes || true
