@@ -650,7 +650,23 @@ of truth.
 9. Qdrant points are projections and may be rebuilt from SQLite.
 10. Architecture changes update this document in the same commit.
 
-## 14. Verification and authoritative references
+## 14. Sub-package inventory
+
+> **Discovery pointer.** This section provides navigation anchors for architectural sub-zones. Per the AGENTS.md "One owner per fact" invariant, the canonical inventory lives in §4 (composition bundles) + §13 (provider/clipsadapter ownership); §14 below is a pointer-only mirror to make sub-zones self-discoverable. Do not duplicate enumerated lists here — that would erode the SSOT invariant.
+
+### 14.1 Composition bundles
+
+Path convention: `internal/app/build_bundles_<name>.go`. **Canonical reference:** see [§4 Composition root and startup order](#4-composition-root-and-startup-order) for the authoritative inventory of the 11 composition bundles (DriveBundle / RepoBundle / SearchBundle / ProcessBundle / AIBundle / DomainBundle / JobsBundle / OutboxBundle / SyncBundle / MaintBundle / UtilityBundle).
+
+### 14.2 Provider sub-packages
+
+Path convention: `internal/application/assets/providers/<source>/`. **Canonical reference:** see the Provider row in [§13 Where a change belongs](#where-a-change-belongs) for the authoritative hierarchy rules (1st-class transport providers `drive` + `http` + `catalog`; source-side adapters `artlist` + `youtube` + `stock` building on top of transport providers — add new source-side logic inside the `providers/` registry to avoid sourcing-switch sprawl in `internal/sources/`).
+
+### 14.3 Transitional clipsadapter sub-package (NOT IMPLEMENTED)
+
+Path convention: `internal/application/assets/clipsadapter/`. **Canonical reference:** see the Clipsadapter row in [§13 Where a change belongs](#where-a-change-belongs) and [`docs/migrations/phase2-residual.md` "## PR-c-1 (sub-package extraction)"](./docs/migrations/phase2-residual.md) for the active status and legacy extraction narrative. Directory does NOT exist on main; multiple tornatas reverted due to bare-reference propagation + global goimports over-spreading qualifier-prefixes. Revisit per the safe-path lesson (manual per-file import management, NOT global goimports).
+
+## 15. Verification and authoritative references
 
 ```bash
 # Full repository verification
@@ -710,11 +726,11 @@ godlike/07 honest-limitation: the surfaced TODOs `TODO(Fase 3.3)` (in `internal/
 
 ---
 
-## 15. Artlist integration
+## 16. Artlist integration
 
 > **Authoritative doc pointer** (per CANONICAL.md §1): this section is the canonical architectural surface for the Artlist integration. Forward-pointers: `AGENTS.md` rules `DL-006` (composition-root fail-closed gate) + `DL-007` (Pattern 0 port routing) + `docs/operations/artlist-runbook.md` (operator-facing SRE runbook) + `architecture/current.yaml#ART-002` (wave-tracker entry).
 
-### 15.1 Architecture zones
+### 16.1 Architecture zones
 
 The Artlist integration spans 3 application-zone files + 2 infrastructure files + 1 composition-root entry. The decomposition mirrors `godlike/06 SSOT` (one canonical owner per fact) + `AGENTS.md Pattern 5` (capability-stable directory split, NOT file-flattening):
 
@@ -726,7 +742,7 @@ The Artlist integration spans 3 application-zone files + 2 infrastructure files 
 | `internal/infrastructure/artlist/health/probe.go` | infrastructure | 60s-tick health probe + 3-consecutive-failures alert (P1.3 SRE surface) |
 | `internal/app/build_bundles_artlist.go` | composition root | `WireArtlist` (4 mandatory fail-closed gates) + `registerArtlist` lifecycle step |
 
-### 15.2 Canonical ports (Pattern 0)
+### 16.2 Canonical ports (Pattern 0)
 
 Per `AGENTS.md Pattern 0` + `DRIVE-005` precedent (Wave 27, June 2026), all external I/O in `internal/application/assets/providers/artlist/**` routes through canonical typed ports declared in the application package, with concrete adapters in `internal/infrastructure/`:
 
@@ -743,7 +759,7 @@ Per `AGENTS.md Pattern 0` + `DRIVE-005` precedent (Wave 27, June 2026), all exte
 
 **Compile-time pin discipline** (per `AGENTS.md Pattern 0`): each concrete adapter carries `var _ <port> = (*<concrete>)(nil)` at struct declaration site. Future port signature drift surfaces as a build failure, not a runtime panic.
 
-### 15.3 Two download surfaces (godlike/06 SSOT audit-pin)
+### 16.3 Two download surfaces (godlike/06 SSOT audit-pin)
 
 The Artlist download path has TWO surfaces (per `P0.2` audit-pin, July 2026):
 
@@ -755,7 +771,7 @@ The Artlist download path has TWO surfaces (per `P0.2` audit-pin, July 2026):
 
 **godlike/06 forward-pointer** (`PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY`, deadline 2026-08-15): collapse the duplicated HLS detection (`isHLS` in downloader.go vs `isHLSURL` in processor) + dual-auth strategy (cookies file in Go vs browser session in Node) into ONE canonical surface. Until then, the dual-surface architecture is the SSOT audit-pin.
 
-### 15.4 Node scraper server contract (httptest emulation)
+### 16.4 Node scraper server contract (httptest emulation)
 
 The persistent Node scraper (`node-scraper/artlist_server.js`) exposes 2 endpoints:
 
@@ -766,7 +782,7 @@ The Go client (`scraper.Provider`) is a thin httptest.NewServer-compatible HTTP 
 
 **Tight timeouts** (P2.3 E2E test discipline): 1s HTTP timeout + 2s exec timeout + 5s ctx timeout — the test fails fast in CI deadlock scenarios. Production wire-up honors `cfg.External.ArtlistHTTPTimeout` (default 2 min) + `cfg.External.ArtlistExecTimeout` (default 4 min).
 
-### 15.5 Prometheus metrics (7 series max)
+### 16.5 Prometheus metrics (7 series max)
 
 Per P1.1 + P1.3 SRE surfaces (declared in `internal/infrastructure/observability/metrics_artlist.go`):
 
@@ -782,7 +798,7 @@ Per P1.1 + P1.3 SRE surfaces (declared in `internal/infrastructure/observability
 
 **Reserved path labels** (forward-compat with `PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY`): `browser` and `hls` are not fired today; `yt-dlp` and `http` cover the current Go-primary path. The 4 consts are mandatory at every call site — mis-spelled values create new time-series silently (textbook Prometheus footgun).
 
-### 15.6 Composition-root integration (WireArtlist)
+### 16.6 Composition-root integration (WireArtlist)
 
 The composition root at `internal/app/build_bundles_artlist.go::WireArtlist` is the canonical wiring site. The 4 mandatory fail-closed gates (P0.1 godlike/07 fail-fast-at-boot > fail-slow-at-first-/run):
 
@@ -798,13 +814,13 @@ Plus the P0.1 boot-time gate `validateArtlistScraperURL(cfg *config.Config) erro
 
 The `registerArtlist` caller downgrades any `WireArtlist` error to `log.Warn + wiring.ArtlistSvc=nil + return nil` so composition boot NEVER aborts because Artlist is optional in the architecture. Read-only endpoints (`/stats`, `/diagnostics`, `/search/live`) unaffected by forward-pointer nil; write endpoints (`/run`, `/recommend`, `/sync-catalogs`) return 503 at runtime via the handler's nil-tolerance discipline once per-field wiring closes (forward-pointer entries `PR-ARTLIST-{STAGER,LIFECYCLE,REPOS,SYNCSERVICE}`).
 
-### 15.7 Lifecycle integration (P1.3 health probe)
+### 16.7 Lifecycle integration (P1.3 health probe)
 
 The `artlist-scraper-health-probe` StartupStep is registered in `internal/app/lifecycle_scheduler.go::buildSchedulerSteps` when BOTH `cfg.Features.ArtlistEnabled=true` AND `cfg.External.ArtlistScraperServerURL!=""`. The step is OMITTED (not `ErrCapabilityDisabled`) when Artlist is off — the capability is intentionally absent in that case, not "disabled at startup" (no fake-availability per godlike/07).
 
 The probe's `Start` closure calls `ap.Start(startCtx)` (probe's own ticker goroutine, no `SafeGo` wrap needed; the probe is panic-safe via `defer recover()` per P1.3 code-reviewer fix). The `Stop` closure calls `ap.Stop(stopCtx)` with the parent lifecycle's stop context (5s wait cap per the probe's internal ctx). First probe fires IMMEDIATELY at boot (per P1.3 code-reviewer fix; without this, `time.NewTicker` waits one interval = 60s, breaking the godlike/07 fail-fast promise).
 
-### 15.8 E2E test surface (P2.1 + P2.2 + P2.3)
+### 16.8 E2E test surface (P2.1 + P2.2 + P2.3)
 
 3 E2E test scenarios live in `tests/e2e/` (new directory, new `e2e` package):
 
@@ -816,7 +832,7 @@ The probe's `Start` closure calls `ap.Start(startCtx)` (probe's own ticker gorou
 
 **godlike/07 honest-limitation**: the 3 tests are self-contained and exercise the REAL production `scraper.Provider` (no stub). External dependencies (Node, Drive, Artlist API) are mocked via `httptest.NewServer`. The `FullRun` test uses `http.Get` directly for the download stage (not the production `Downloader`) to avoid pulling in `*config.Config` wiring (which has pre-existing build issues per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04`); the production `Downloader` is exercised by the integration test suite.
 
-### 15.9 Forward-pointers (PR-ARTLIST-* in flight)
+### 16.9 Forward-pointers (PR-ARTLIST-* in flight)
 
 The following P0/P1/P2 items have follow-up work documented as PR-ARTLIST-* linked_issues under `architecture/current.yaml#ART-002`:
 
