@@ -1,6 +1,7 @@
 package stockpipeline
 
 import (
+	"database/sql"
 	"errors"
 
 	"go.uber.org/zap"
@@ -62,6 +63,14 @@ var (
 	// `*acquisition.YTDLPSourceStager`); nil routing is REJECTED at
 	// ctor time so a missed composition-root injection fails loud.
 	ErrStockPipelineNilSourceStager = errors.New("stockpipeline.NewService: storage.SourceStager is required (Stock Cutover §12-4 — yt-dlp must be hidden behind the acquisition port)")
+
+	// ErrStockPipelineNilDB surfaces a nil *sql.DB at ctor time.
+	// PROSSIMO STEP: make DB REQUIRED when WireStockPipeline is
+	// re-enabled and the SQLite step store survives restarts.
+	// STATO ATTUALE: DB is optional (nil-tolerant) because the
+	// stock Service is routed via imageSvc and WireStockPipeline
+	// is currently stubbed.
+	ErrStockPipelineNilDB = errors.New("stockpipeline.NewService: DB is nil — step store will fall back to in-memory (production should wire media.db.sqlite)")
 
 	// ErrStockPipelineNilFinalizer is NOT a fail-fast sentinel — the
 	// stock Service tolerates a nil Finalizer at ctor time (§12-1
@@ -160,6 +169,14 @@ type Deps struct {
 	// source bytes?" and it's the concrete injected here.
 	SourceStager acquisition.SourceStager
 
+	// DB is the canonical *sql.DB handle (media.db.sqlite). STATO
+	// ATTUALE: optional (nil-tolerant) because WireStockPipeline is
+	// stubbed and the stock Service is routed via imageSvc.
+	// PROSSIMO STEP: make REQUIRED when WireStockPipeline is
+	// re-enabled — the SQLite-backed step store needs this handle
+	// for crash-resume across process restarts.
+	DB *sql.DB
+
 	// ChannelLister is the YouTube channel listing port (P4, July 2026).
 	// OPTIONAL at ctor time (nil-tolerant per §F.1 governance) — the
 	// composition root (currently retired/stubbed) wires the concrete
@@ -224,6 +241,10 @@ type Service struct {
 	// structurally. nil-tolerant at ctor time (wire-up deferred pending
 	// composition-root re-enablement).
 	channelLister stockChannelLister
+
+	// db is the SQLite handle for the step store (Phase 2, July 2026).
+	// nil-tolerant — when nil, the orchestrator falls back to in-memory.
+	db *sql.DB
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -312,6 +333,7 @@ func NewService(deps Deps) (*Service, error) {
 		finalizer:     deps.Finalizer,
 		sourceStager:  deps.SourceStager,
 		channelLister: deps.ChannelLister,
+		db:            deps.DB,
 	}, nil
 }
 

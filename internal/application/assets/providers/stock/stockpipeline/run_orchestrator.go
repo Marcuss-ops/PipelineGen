@@ -20,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -97,6 +98,15 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		PolicyVersion:    "v1",
 		ChunkDurationSec: effectiveChunkDurationSec(input, s),
 		ClipDurationSec:  effectiveClipDurationSec(input, s),
+	}
+	// Phase 2 (July 2026): wire SQLite-backed step store for
+	// crash-resume across process restarts. When db is nil (stock
+	// Service routed via imageSvc, WireStockPipeline stubbed), the
+	// orchestrator falls back to in-memory (NewOrchestrator default).
+	// PROSSIMO STEP: make DB required when WireStockPipeline is
+	// re-enabled.
+	if s.db != nil {
+		cfg.StepStore = steps.NewSQLiteStore(s.db)
 	}
 	o := NewOrchestrator(
 		cfg,
