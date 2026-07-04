@@ -274,20 +274,30 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	}
 
 	// Step 4: Path builder.
-	segments, err := policy.PathBuilder(req)
-	if err != nil {
-		return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
-	}
+	//
+	// When RootFolderOverride is non-empty, the caller has already
+	// resolved the target folder (e.g. via a prior GetOrCreateFolder
+	// call) and may not have supplied the metadata the PathBuilder
+	// requires (Group, Subject, etc.). Skipping the builder + subpath
+	// enforcement avoids spurious "group is required" errors on
+	// RootFolderOverride-backed uploads.
+	var segments []string
+	if req.RootFolderOverride == "" {
+		segments, err = policy.PathBuilder(req)
+		if err != nil {
+			return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
+		}
 
-	// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
-	// Before P0 #2, only Publish checked RequireSubpath; ResolveFolder
-	// could resolve a folder that Publish would have rejected. Now both
-	// paths go through this helper so the surface is consistent.
-	if policy.RequireSubpath && len(segments) == 0 {
-		return nil, fmt.Errorf(
-			"delivery: direct upload into root %q is forbidden for destination %q",
-			rootFolderID, req.Destination,
-		)
+		// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
+		// Before P0 #2, only Publish checked RequireSubpath; ResolveFolder
+		// could resolve a folder that Publish would have rejected. Now both
+		// paths go through this helper so the surface is consistent.
+		if policy.RequireSubpath && len(segments) == 0 {
+			return nil, fmt.Errorf(
+				"delivery: direct upload into root %q is forbidden for destination %q",
+				rootFolderID, req.Destination,
+			)
+		}
 	}
 
 	// Step 6: Folder hierarchy creation.
