@@ -1,0 +1,168 @@
+// Package app — lifecycle scheduler capability (PR-LIFECYCLE-SPLIT-BY-CAPABILITY, July 2026).
+//
+// Extracted from internal/app/lifecycle.go per AGENTS.md Pattern 5.
+// Owns the scheduler-mode startup steps:
+//
+//   - channel-monitor      (monitor.NewChannelMonitor with FASE 3.7
+//     composition-root adapter wiring)
+//   - yt-cache-prewarm     (ErrCapabilityDisabled sentinel, Phase 2+ follow-up)
+//   - yt-nightly-prewarm   (ErrCapabilityDisabled sentinel, Phase 2+ follow-up)
+//
+// Sister file to lifecycle_worker.go + lifecycle_maintenance.go (the 3
+// capability files) + lifecycle_adapters.go (composition-root adapters).
+//
+// buildSchedulerSteps returns the channel-monitor pointer alongside the
+// steps so the orchestrator (lifecycle.go) can surface it to
+// backgroundJobs.channelMonitor for graceful teardown in shutdown.go
+// (channelMonitor.Stop is the only explicit shutdown call in the
+// lifecycle-runtime-ownership wave, June 2026).
+package app
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
+	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+)
+
+// schedulerDeps holds the composition-root dependencies required to
+// build the scheduler-mode startup steps. Typed, not interface{}:
+// mirrors the jobRunnerDeps + workerDeps pattern.
+type schedulerDeps struct {
+	cfg  *config.Config
+	root *ComposeRoot
+	log  *zap.Logger
+}
+
+// buildSchedulerSteps returns the scheduler-mode StartupStep list
+// (channel-monitor + the 2 ErrCapabilityDisabled yt prewarms) plus the
+// *monitor.ChannelMonitor pointer for graceful teardown in
+// shutdown.go. Returns (nil, nil) when cfg.Jobs.EnableChannelMonitor
+// is false AND no YoutubeClipService is wired (caller must handle the
+// nil case — graceful no-op).
+//
+// godlike/06 SSOT: the channel-monitor construction is the canonical
+// place to wire the FASE 3.7 monitor/ ports (Ytdlp + Discoveries +
+// MetricsRecorder) — these are the only infra-leak surfaces that
+// lifecycle.go was previously the sole owner of. The composition-root
+// adapter pattern (per AGENTS.md Pattern 0) keeps the layering
+// (application → infra) intact: monitor owns canonical sentinels +
+// DTOs; infra owns its own; the composition root translates.
+func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []StartupStep) {
+	var steps []StartupStep
+	var channelMon *monitor.ChannelMonitor
+
+	if deps.cfg.Jobs.EnableChannelMonitor {
+		// PR 2 (June 2026): channels are loaded exclusively from
+		// category_channels via channels.Service. The raw *sql.DB is
+		// replaced by the canonical channels service which is the
+		// single source of truth for channel configuration.
+		channelsSvc := channels.NewService(
+			channels.NewRepositoryAdapter(assets.NewChannelsRepository(deps.root.DB.DB)),
+			deps.log,
+		)
+		// Step 9 commit 2 (June 2026): wire the concrete
+		// YTDLPSubtitleAdapter (os/exec + VTT regex) and
+		// OllamaAnalyzer (Score + Classify + FindSegments) as the
+		// monitor's Transcript + Analyzer ports.
+		ytdlpForSubtitles := downloader.NewYTDLP(deps.cfg)
+		ytdlpSubtitleAdapter := transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
+			Ytdlp: ytdlpForSubtitles,
+			Log:   deps.log,
+		})
+		ollamaAnalyzer := semantic.NewOllamaAnalyzer(semantic.Deps{
+			OllamaClient:    deps.root.AI.OllamaClient,
+			Subtitles:       ytdlpSubtitleAdapter,
+			Log:             deps.log,
+			Model:           deps.cfg.External.OllamaModel,
+			DataDir:         deps.cfg.Storage.DataDir,
+			DefaultCategory: "general",
+		})
+
+		channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
+			Cfg:         deps.cfg,
+			ChannelsSvc: channelsSvc,
+			Log:         deps.log,
+			// Ytdlp wires the concrete *downloader.YTDLPDownloader so
+			// monitor/discovery.go::discoverChannelVideos can call
+			// ListChannel per scheduler tick. Same instance is re-used in
+			// transcripts/YTDLPSubtitleAdapter for the subtitle
+			// subprocess, keeping a single downloader binary+cookies
+			// config across the two adapters.
+			Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
+			Transcript: ytdlpSubtitleAdapter,
+			Analyzer:   ollamaAnalyzer,
+			Enqueuer:   monitoradapter.NewExtractionIntentAdapter(deps.root.Jobs.Service, channelsSvc, deps.log),
+			// Commit 1/6 (PR-C-YouTube-Cutover, June 2026) — wiring CLOSED
+			// in Commit 2 (2026-07-04). The per-video discovery ledger
+			// (TryReserve + MarkEnqueued + MarkRejected + MaxDiscoveredAt)
+			// is wrapped in monitorDiscoveriesAdapter (struct-embeds
+			// *assets.YoutubeDiscoveriesRepository + overrides the
+			// translation methods). See lifecycle_adapters.go for the
+			// canonical adapter surface.
+			Discoveries: newMonitorDiscoveriesAdapter(assets.NewYoutubeDiscoveriesRepository(deps.root.DB.DB)),
+			// FASE 3.7 Commit 2 (2026-07-04): wire the canonical
+			// *observability.ObservabilityMetricsRecorder so analyzer +
+			// discovery call sites invoke the package-level Prometheus
+			// counters WITHOUT a direct observability import in the
+			// monitor package — the adapter is the composition-root
+			// bridge that keeps the layering (application → infra) intact.
+			MetricsRecorder: observability.NewObservabilityMetricsRecorder(
+				observability.ChannelMonitorVideosChecked,
+				observability.ChannelMonitorVideosWithSegments,
+				observability.ChannelMonitorSegmentsFound,
+				observability.ChannelMonitorSegmentsPerVideo,
+			),
+		})
+
+		// Channel monitor: optional background service.
+		cm := channelMon
+		steps = append(steps, StartupStep{
+			Name: "channel-monitor", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("channel-monitor", func() { cm.Start(startCtx) })
+				deps.log.Info("Channel monitor started")
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
+	// yt-cache-prewarm + yt-nightly-prewarm (gated on YoutubeClipService).
+	// These return the typed ErrCapabilityDisabled sentinel (not nil) per
+	// godlike/07 no-fake-availability: a step returning nil while
+	// loading NOTHING is a fake success — the operator's view of the
+	// system would otherwise omit the suppressed capability. The
+	// server_lifecycle Start Warn log surfaces the typed error.
+	if deps.root.Domains.YoutubeClipService != nil {
+		_ = deps.root.Domains.YoutubeClipService // late-bound: future Phase 2+ wiring will consume this
+		steps = append(steps, StartupStep{
+			Name: "yt-cache-prewarm", Required: false,
+			Start: func(startCtx context.Context) error {
+				return fmt.Errorf("yt-cache-prewarm: %w", ErrCapabilityDisabled)
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+		steps = append(steps, StartupStep{
+			Name: "yt-nightly-prewarm", Required: false,
+			Start: func(startCtx context.Context) error {
+				return fmt.Errorf("yt-nightly-prewarm: %w", ErrCapabilityDisabled)
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
+	return channelMon, steps
+}

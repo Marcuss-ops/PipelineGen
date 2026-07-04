@@ -4133,7 +4133,8 @@ wave_status:
         AUDIT-2026-07-02 PR-AGGREGATE-FILTER-UNIFORM.
     - id: PR-LIFECYCLE-SPLIT-BY-CAPABILITY
       owner_capability: internal/app
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
       deadline: 2026-08-15
       description: |
         Split internal/app/lifecycle.go (1152 LoC) into 5 single-purpose
