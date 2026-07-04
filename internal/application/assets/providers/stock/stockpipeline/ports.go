@@ -577,3 +577,8 @@ type stockChunkDispatcher interface {
 type stockChannelLister interface {
 	ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
 }
+
+// Compile-time assertion: *downloader.YTDLPDownloader satisfies
+// stockChannelLister. Signature drift on ListChannel is a build
+// failure rather than a runtime panic (godlike/06 SSOT).
+var _ stockChannelLister = (*downloader.YTDLPDownloader)(nil)
