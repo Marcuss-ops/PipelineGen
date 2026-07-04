@@ -4321,7 +4321,9 @@ wave_status:
     # P0 #4 — parent_aggregator state-machine + poll split (4 files)
     - id: PR-VO-PARENT-AGGREGATOR-SPLIT
       owner_capability: internal/application/voiceover/jobs
-      status: pending
+      status: shipped
+      ship_sha: 0d075311
+      ship_date: 2026-07-04
       deadline: 2026-08-01
     # P0 #5 — DRY pair: usecase.go ↔ process_voiceover_item.go
     - id: PR-VO-USECASE-PROCESS-DRY
