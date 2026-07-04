@@ -4,13 +4,17 @@ package artifacts
 
 import "testing"
 
-// TestStatusConstantValues guards against value-drift on the 6 canonical
-// Status constants. These 6 strings (STAGING / VERIFYING / READY /
+// TestStatusConstantValues guards against value-drift on the 7 canonical
+// Status constants. These 7 strings (STAGING / VERIFYING / STAGED /
 // FAILED / QUARANTINED / DELETED) are the production source-of-truth
 // for 25 importers of internal/artifacts; a typo would silently
 // break 25 downstream callers without this guard. Surface drift in
-// CI as 'expected="READY" got="REDAY"' rather than after a runtime
+// CI as 'expected="STAGED" got="STAGEX"' rather than after a runtime
 // regression.
+//
+// AZIONE 15 (July 2026): StatusReady is now a BC alias for StatusStaged
+// (equals "STAGED"). The test asserts the canonical string values,
+// not the alias identity.
 //
 // Mirrors the discipline already established in
 // internal/domain/asset/asset_test.go (TestStateConstantsMatchAssets,
@@ -20,7 +24,7 @@ import "testing"
 //
 // Status is `type Status string`, so `string(tc.actual)` is an identity
 // dereference, not a lossy conversion. Drift like
-// StatusReady = "REDAY" would surface as a string mismatch.
+// StatusStaged = "STAGEX" would surface as a string mismatch.
 //
 // FRAGMENTO (c) (artifact-status fusion) attempted + DEFERRED: a
 // pre-existing import cycle
@@ -40,7 +44,8 @@ func TestStatusConstantValues(t *testing.T) {
 	}{
 		{"StatusStaging", StatusStaging, "STAGING"},
 		{"StatusVerifying", StatusVerifying, "VERIFYING"},
-		{"StatusReady", StatusReady, "READY"},
+		{"StatusStaged", StatusStaged, "STAGED"},
+		{"StatusReady", StatusReady, "STAGED"}, // AZIONE 15 BC alias: StatusReady = StatusStaged = "STAGED"
 		{"StatusFailed", StatusFailed, "FAILED"},
 		{"StatusQuarantined", StatusQuarantined, "QUARANTINED"},
 		{"StatusDeleted", StatusDeleted, "DELETED"},
