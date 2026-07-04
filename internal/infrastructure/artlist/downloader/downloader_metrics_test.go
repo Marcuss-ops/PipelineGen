@@ -2,13 +2,12 @@
 //
 // 2 canonical-surface tests for the Pattern-0 Metrics adapter
 // declared in metrics.go. Each test exercises the adapter
-// directly (NOT through Provider.Download) — the test surface
+// directly (NOT through Resolver.Download) — the test surface
 // is the Metrics struct's incDownloadPath method, which is the
 // only point where the production Prometheus collector is
-// touched. Integration tests for the Provider.Download routing
-// (verifying that .m3u8 detection routes to PathYTDLP vs
-// PathHTTP) are out of scope for the 2-TDD-tests requirement
-// and would require mocking *core_dl.YTDLPDownloader +
+// touched. Integration tests for the Resolver.Download routing
+// (verifying that resolvePath routes to the correct transport)
+// would require mocking *core_dl.YTDLPDownloader +
 // *core_dl.HTTPDownloader (concrete types, not interfaces —
 // refactor is a separate PR).
 //
@@ -81,9 +80,9 @@ func TestMetrics_IncDownloadPath_LabelRouted(t *testing.T) {
 // TestMetrics_NilSafety pins the production safety posture: a
 // nil receiver AND a nil DownloadPath field are both no-ops.
 // This is the partial-deploy + stats-disabled-environment path;
-// the composition root that wires the Provider with
-// downloader.New(cfg, Config{}, nil) MUST NOT panic on first
-// Download call. The same nil-safety contract is pinned for
+// the composition root that wires the Resolver with
+// downloader.NewResolver(cfg, ResolverConfig{}, log, nil)
+// MUST NOT panic on first Download call. The same nil-safety
 // DriveValidatorMetrics in
 // internal/application/assets/delivery/drive_validator_metrics_test.go
 // (P1.4 canonical precedent — the
