@@ -5156,6 +5156,7 @@ wave_status:
       owner_capability: internal/application/assets/finalizer
       status: pending
       deadline: 2026-08-22
+
   cross_refs:
     audit_date: 2026-07-04
     audit_command: "git log --since=90.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30"
@@ -5205,3 +5206,26 @@ wave_status:
       architecture_or_changelog_excluded: hotspots in architecture/ + CHANGELOG.md are excluded (those are wave-tracker bookkeeping, not production code)
       cross_package_audit_creep: the 5 unmissed hotspots are all in internal/app/ which is OUTSIDE the 12-item matrix scope — the cross-package risk is acknowledged and absorbed via the deadline ratchet
       12_item_matrix_validity: the 12-item matrix remains the canonical scope for this wave; the 5 unmissed are genuinely new findings, not duplications
+||||||| parent of cb486be0 (test(operational): PR-FASE-B-CLIP-SMOKE-TESTS — black-box regression smoke for /api/clips/process)
+
+# FASE B clip-pipeline regression smoke (July 2026)
+- id: PR-FASE-B-CLIP-SMOKE-TESTS
+  owner_capability: tests/operational
+  status: in_progress
+  exit_signal: false
+  deadline: 2026-08-15
+  exit_gate: |
+    bash tests/operational/fase_b_clip_pipeline_smoke.sh exits 0 against a live
+    PipelineGen HTTP server (default port 8080, override via VELOX_PORT). All 4
+    FASE B regression tests MUST be GREEN:
+      Test 3  strategy=replace UPSERTs media_assets (no new asset_id rows)
+      Test 7  destination.folder_id + destination.group emit NO 'group is required' string
+      Test 8  group-only destination (PathBuilder canonical) emits NO 'group is required'
+      Test 9  duplicate payload x 2 yields SAME drive_file_id across both runs
+    Until PR-WORKER-RUNNER-INPROCESS-MIGRATION lands, Test 9 expected to FAIL on
+    the legacy Worker gate (ErrCompleteJobPathViolation); smoke harness tolerates
+    timeout and asserts (a)+(b)+(c) DB conditions today. The --dry run mode exercises
+    the curl+sqlite probe surface against the live server without commit-spin.
+  blocker: []
+
+
