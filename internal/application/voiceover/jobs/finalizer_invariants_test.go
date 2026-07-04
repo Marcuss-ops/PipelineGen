@@ -92,6 +92,25 @@ import (
 // (the typed sentinel declared at internal/domain/remote/complete_job.go:148),
 // causing the voiceover.generate parent to be marked FAILED instead of
 // SUCCEEDED — the bug PR-VO-COMPLETEPATH-FIX closed.
+//
+// Forward-pointer (godlike/07 no-revert rationale): the rejection of
+// the Path A design (parent false + child true + CompleteWithArtifacts
+// fork when child terminates) is EXPLICITLY LOCKED in
+// architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
+// (status: keep, migration_phase: not applicable, removal_date: never).
+// The record documents 3 reasons: (1) godlike/06 SSOT double-write
+// race between broker's media_assets UPSERT and finalizer's
+// media_assets UPSERT; (2) godlike/07 no-fake-availability + the
+// SQL-layer guard at repository_lifecycle.go:115 doesn't model the
+// broker's "fork" (binary legacy-Complete-vs-reject surface, no 3rd
+// code path); (3) godlike/07 fail-fast-at-boot vs fail-slow-at-first-
+// /run (Path A's bug surfaces at runtime, Path B's invariant is
+// enforced at registration time). Any revert to Path A MUST open
+// architecture/current.yaml#PR-VOICEOVER-PATH-A-REVISITED (deadline
+// TBD) with a 3-reason rebuttal before the registry change is
+// permitted. The 4 TDD tests in this file are the load-bearing seam
+// — any revert breaks tests (a) Test 1 + (b) Test 2 at the
+// registry-contract level.
 func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 	reg := appjobs.Compose()
 	require.NotNil(t, reg)
@@ -131,6 +150,10 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 //
 // Regression guard: same SQL-layer ErrCompleteJobPathViolation
 // trigger if ProducesArtifacts=true is reintroduced on the child.
+//
+// Forward-pointer: architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
+// (canonical "Path A rejected" record; 3 documented reasons; see
+// Test 1's forward-pointer block for the full rationale).
 func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
 	reg := appjobs.Compose()
 	require.NotNil(t, reg)

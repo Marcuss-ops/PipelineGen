@@ -5478,3 +5478,22 @@ wave_status:
         internal/application/voiceover (canonical finalizer) and
         internal/application/scripts (canonical consumer) per
         godlike/06 SSOT split.
+    - id: PR-VOICEOVER-PATH-A-REVISITED
+      owner_capability: "internal/application/voiceover"
+      status: pending
+      deadline: TBD
+      description: |
+        Forward-pointer (godlike/06 SSOT explicit registration per
+        architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A):
+        the 3-reason rebuttal ticket that a future agent MUST open before
+        reverting the voiceover ProducesArtifacts design to Path A (parent
+        false + child true + CompleteWithArtifacts fork when child terminates).
+        Per the deprecation record's notes section, any revert MUST address
+        all 3 rejection reasons (godlike/06 SSOT double-write race, godlike/07
+        no-fake-availability + SQL-guard binary-surface mismatch, godlike/07
+        fail-fast-at-boot vs fail-slow-at-first-/run) with a substantive
+        rebuttal u2014 not just a re-statement of the original design intent.
+        The 4 TDD tests in finalizer_invariants_test.go (a)+(b)+(c)+(d) are
+        the load-bearing seam; any revert breaks them at the registry-contract
+        level. Closed by completing the rebuttal in this ticket + opening a
+        new wave-tracker entry PR-VOICEOVER-PATH-A-REOPEN for the revert work.
