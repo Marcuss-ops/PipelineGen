@@ -4079,7 +4079,8 @@ wave_status:
         loads NOTHING is a fake success.
     - id: PR-WIRE-ASSETS-NIL-CLASSIFICATION
       owner_capability: internal/app
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
       deadline: 2026-07-25
       description: |
         Type-class every WireAssets dep-getter (!ok || X == nil pattern

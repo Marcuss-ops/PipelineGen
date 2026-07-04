@@ -22,12 +22,12 @@ import (
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
@@ -88,13 +88,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	//    + the new PR-SEARCH-LEGACY-PROVIDERS-AGGREGATOR.
 	searchBackends := deps.Search.SearchBackendRegistry
 	searchFanOut := deps.Search.SearchFanOut
-	if searchFanOut == nil {
-		// Composition-bug guard: WireRegistry is required to
-		// stamp deps.Search.SearchFanOut BEFORE WireAssets runs. A
-		// nil slot is a wiring-time defect; surface it here as
-		// a fail-closed error instead of letting downstream
-		// handlers silently degrade to 503 on every Search call.
-		return nil, fmt.Errorf("WireAssets: deps.Search.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)")
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet("WireAssets: deps.Search.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)", searchFanOut == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
 	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
@@ -265,30 +261,30 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// (newAssetRegisterService → sourcingEnrichmentAdapter →
 	// handler.EnrichAndIndexClip).
 	clipsDescriptor, err := clipsapi.Build(clipsapi.Dependencies{
-		ClipsRepo:      deps.Core.ClipsRepo,
-		AssetRepo:      assetRepo,
-		DeletionSvc:    deletionSvc,
-		DriveAdmin:     driveUploader,
-		MediaProcessor: deps.Core.MediaProcessor,
-		AssetTreeSvc:   deps.Core.AssetTreeService,
-		MetaWriter:     metaWriter,
-		ClipIndexer:    deps.Search.ClipIndexerService,
-		JobsSvc:        jobs.Facade,
-		Cfg:            cfg,
-		Log:            log,
-		VoiceoverRepo:  deps.Core.VoiceoverRepo,
-		ImagesRepo:     deps.Core.ImageRepo,
-		FolderMemSvc:   folderMemSvc,
-		ProcessRunner:  processRunnerAdapter,
-		Dispatcher:     clipsDispatcherPort,
-		EnrichUC:       enrichUC,
-		SearchSvc:      searchAggregator,
+		ClipsRepo:        deps.Core.ClipsRepo,
+		AssetRepo:        assetRepo,
+		DeletionSvc:      deletionSvc,
+		DriveAdmin:       driveUploader,
+		MediaProcessor:   deps.Core.MediaProcessor,
+		AssetTreeSvc:     deps.Core.AssetTreeService,
+		MetaWriter:       metaWriter,
+		ClipIndexer:      deps.Search.ClipIndexerService,
+		JobsSvc:          jobs.Facade,
+		Cfg:              cfg,
+		Log:              log,
+		VoiceoverRepo:    deps.Core.VoiceoverRepo,
+		ImagesRepo:       deps.Core.ImageRepo,
+		FolderMemSvc:     folderMemSvc,
+		ProcessRunner:    processRunnerAdapter,
+		Dispatcher:       clipsDispatcherPort,
+		EnrichUC:         enrichUC,
+		SearchSvc:        searchAggregator,
 		BulkUploadWorker: bulkUploadWorker,
-		ClipOpsService: clipOpsSvc,
-		UploadUC:       uploadUC,
-		ReuploadUC:     reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
-		Idempotency:    idemHandler,
-		EnabledFunc:    func() bool { return true },
+		ClipOpsService:   clipOpsSvc,
+		UploadUC:         uploadUC,
+		ReuploadUC:       reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
+		Idempotency:      idemHandler,
+		EnabledFunc:      func() bool { return true },
 	})
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: clips.Build: %w", err)
@@ -304,8 +300,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// *ClipsDescriptor satisfies api.Descriptor structurally,
 	// so the assetsapi.NewModule call below accepts it).
 	clipsDesc, ok := clipsDescriptor.(*clipsapi.ClipsDescriptor)
-	if !ok {
-		return nil, fmt.Errorf("WireAssets: clips.Build returned unexpected descriptor type %T (want *clipsapi.ClipsDescriptor)", clipsDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper. Also adds the missing `clipsDesc == nil` post-assertion check (the other 6 descriptor sites already had it; this site had only `!ok` — the inconsistency this PR fixes).
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: clips (got %T, want *clipsapi.ClipsDescriptor)", clipsDescriptor), !ok || clipsDesc == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 
 	// Blocco C1-Step 12 (June 2026; user-documented Step 11):
@@ -350,8 +347,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: storage.Build: %w", err)
 	}
 	storageDesc, ok := storageDescriptor.(*assetstorage.StorageDescriptor)
-	if !ok || storageDesc == nil {
-		return nil, fmt.Errorf("WireAssets: storage.Build returned unexpected descriptor type %T (want *assetstorage.StorageDescriptor)", storageDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: storage (got %T, want *assetstorage.StorageDescriptor)", storageDescriptor), !ok || storageDesc == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
@@ -399,8 +397,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: diagnostics.Build: %w", err)
 	}
 	dd, ok := diagnosticsDescriptor.(*assetsdiag.DiagnosticsDescriptor)
-	if !ok || dd == nil {
-		return nil, fmt.Errorf("WireAssets: diagnostics.Build returned unexpected descriptor type %T (want *assetsdiag.DiagnosticsDescriptor)", diagnosticsDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: diagnostics (got %T, want *assetsdiag.DiagnosticsDescriptor)", diagnosticsDescriptor), !ok || dd == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 
 	// Search handler: now consumes the canonical Aggregator
@@ -440,8 +439,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: search.Build: %w", err)
 	}
 	sd, ok := searchDescriptor.(*assetsearch.SearchDescriptor)
-	if !ok || sd == nil {
-		return nil, fmt.Errorf("WireAssets: search.Build returned unexpected descriptor type %T (want *assetsearch.SearchDescriptor)", searchDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: search (got %T, want *assetsearch.SearchDescriptor)", searchDescriptor), !ok || sd == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 	if diagSvc != nil {
 		log.Info("diagnostics and search services wired with production ports")
@@ -486,8 +486,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: voiceover.Build: %w", err)
 	}
 	vd, ok := voiceoverDescriptor.(*assetvoice.VoiceoverDescriptor)
-	if !ok || vd == nil {
-		return nil, fmt.Errorf("WireAssets: voiceover.Build returned unexpected descriptor type %T (want *assetvoice.VoiceoverDescriptor)", voiceoverDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: voiceover (got %T, want *assetvoice.VoiceoverDescriptor)", voiceoverDescriptor), !ok || vd == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 
 	// SoundEffect: wrapped repos + uploader + metaWriter + dispatcher via
@@ -546,8 +547,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: soundeffect.Build: %w", err)
 	}
 	soundeffectDesc, ok := soundeffectDescriptor.(*assetsfx.SoundeffectDescriptor)
-	if !ok || soundeffectDesc == nil {
-		return nil, fmt.Errorf("WireAssets: soundeffect.Build returned unexpected descriptor type %T (want *assetsfx.SoundeffectDescriptor)", soundeffectDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: soundeffect (got %T, want *assetsfx.SoundeffectDescriptor)", soundeffectDescriptor), !ok || soundeffectDesc == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
@@ -596,8 +598,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		return nil, fmt.Errorf("WireAssets: register.Build: %w", err)
 	}
 	rd, ok := registerDescriptor.(*assetregister.RegisterDescriptor)
-	if !ok || rd == nil {
-		return nil, fmt.Errorf("WireAssets: register.Build returned unexpected descriptor type %T (want *assetregister.RegisterDescriptor)", registerDescriptor)
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper.
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: register (got %T, want *assetregister.RegisterDescriptor)", registerDescriptor), !ok || rd == nil, DepRequired, log); err != nil {
+		return nil, err
 	}
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
