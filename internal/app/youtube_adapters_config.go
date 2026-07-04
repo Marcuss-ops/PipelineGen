@@ -1,9 +1,7 @@
-// Package app — sourcing utility adapters extracted from
-// assets_register_adapters.go (PR-GODOBJ-8, July 2026).
+// Package app — sourcing config + transcriber + search adapters
+// split from youtube_metadata_adapter.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// Contains: sourcingMetadataAdapter, sourcingEnrichmentAdapter,
-// sourcingConfigAdapter, sourcingTranscriberAdapter,
-// sourcingSearchAdapter, sourcingHashAdapter, zapSourcingLogger.
+// 3 adapters: sourcingConfigAdapter, sourcingTranscriberAdapter, sourcingSearchAdapter.
 package app
 
 import (
@@ -16,75 +14,11 @@ import (
 
 	"go.uber.org/zap"
 
-	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
-
-// ── sourcingMetadataAdapter ───────────────────────────────────────────
-
-type sourcingMetadataAdapter struct {
-	cfg    *config.Config
-	admin  driveutil.Admin
-	reader driveutil.Reader
-	log    *zap.Logger
-}
-
-func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
-	if a.admin == nil || a.cfg == nil {
-		return nil
-	}
-	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
-	// UpdateCumulativeMetadataJSON no longer uploads; it only trashes old metadata.json.
-	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
-	return nil
-}
-
-// ── zapSourcingLogger ─────────────────────────────────────────────────
-
-type zapSourcingLogger struct {
-	log *zap.Logger
-}
-
-func (a *zapSourcingLogger) Info(msg string, keysAndValues ...any) {
-	a.log.Sugar().Infow(msg, keysAndValues...)
-}
-func (a *zapSourcingLogger) Warn(msg string, keysAndValues ...any) {
-	a.log.Sugar().Warnw(msg, keysAndValues...)
-}
-func (a *zapSourcingLogger) Error(msg string, keysAndValues ...any) {
-	a.log.Sugar().Errorw(msg, keysAndValues...)
-}
-func (a *zapSourcingLogger) Debug(msg string, keysAndValues ...any) {
-	a.log.Sugar().Debugw(msg, keysAndValues...)
-}
-
-// ── sourcingEnrichmentAdapter ─────────────────────────────────────────
-
-type sourcingEnrichmentAdapter struct {
-	handler *clipsapi.Handler
-}
-
-func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
-	if a.handler == nil {
-		return nil
-	}
-	clip := &asset.Asset{
-		ID:        clipID,
-		Source:    asset.Source(source),
-		Name:      clipID,
-		MediaType: asset.MediaType("video"),
-	}
-	clip.SetLocalPath(localPath)
-	a.handler.EnrichAndIndexClip(ctx, clip, source)
-	return nil
-}
 
 // ── sourcingConfigAdapter ─────────────────────────────────────────────
 
@@ -176,13 +110,3 @@ func (a *sourcingSearchAdapter) Search(ctx context.Context, query string, limit 
 	}
 	return out, nil
 }
-
-// ── sourcingHashAdapter ───────────────────────────────────────────────
-
-type sourcingHashAdapter struct{}
-
-func (a *sourcingHashAdapter) MD5File(path string) (string, error) {
-	return hashutil.MD5File(path)
-}
-
-var _ sourcing.HashPort = (*sourcingHashAdapter)(nil)

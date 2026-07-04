@@ -1,5 +1,8 @@
-// Package app — sourcing publisher + dispatcher adapters extracted from
-// assets_register_adapters.go (PR-GODOBJ-8, July 2026).
+// Package app — sourcing publisher + dispatcher adapters
+// consolidated from youtube_publisher_adapter.go
+// (PR-GODOBJ-Azione-4, July 2026).
+//
+// 2 adapters: sourcingPublisherAdapter, sourcingDispatcherAdapter.
 package app
 
 import (
@@ -12,10 +15,6 @@ import (
 )
 
 // ── sourcingPublisherAdapter ──────────────────────────────────────────
-// FASE 5 (June 2026): this adapter bridges the composition-root's
-// delivery.Publisher (from DriveBundle.Publisher) into the sourcing
-// layer so the YouTubeRegistrar can use the canonical Publisher path
-// instead of direct DrivePort calls.
 
 type sourcingPublisherAdapter struct {
 	publisher delivery.Publisher
@@ -29,16 +28,11 @@ func (a *sourcingPublisherAdapter) Publish(ctx context.Context, req delivery.Pub
 }
 
 // ── sourcingDispatcherAdapter ─────────────────────────────────────────
-// Adapts outbox.Dispatcher to sourcing.IndexDispatcherPort.
-// Converts sourcing.ExistingClip → asset.Asset before delegating to the dispatcher.
-// Kept for legacy callers that still reference sourcing.IndexDispatcherPort
-// directly (e.g. test fixtures and the queue-completion audit hook).
 
 type sourcingDispatcherAdapter struct {
 	disp *outbox.Dispatcher
 }
 
-// Compile-time assertion: sourcingDispatcherAdapter satisfies sourcing.IndexDispatcherPort.
 var _ sourcing.IndexDispatcherPort = (*sourcingDispatcherAdapter)(nil)
 
 func (a *sourcingDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error {

@@ -1,22 +1,12 @@
 // Package app — clip_ops port adapters (PR 2, June 2026).
 //
-// Bridge the concrete domain/job.Service and *deletion.DeletionService
-// into the typed ports consumed by application/clips.ClipOpsService.
-// Pattern parity with the existing clips_adapters_*.go files
-// (PG-005, June 2026): the API layer depends on port interfaces, the
-// composition-root adapter wraps the concrete infra, and the
-// compile-time `var _ <Port> = (*<Adapter>)(nil)` assertion catches
-// signature drift at build time.
+// Bridges concrete domain/job.Service, *deletion.DeletionService, and
+// clips.ClipRepositoryPort into the typed ports consumed by
+// application/clips.ClipOpsService.
 //
-// The cutters are minimal:
-//   - CleanupServicePort methods signature-match the canonical
-//     *deletion.DeletionService methods one-for-one. The adapter is
-//     a typed pass-through.
-//   - JobsServicePort.MinimalEnqueue maps the narrowed clips
-//     JobsEnqueueRequest to the canonical EnqueueRequest, drops the
-//     extended fields (CorrelationID / MaxRetries / Project /
-//     VideoName) the ClipOps path doesn't read, and returns the
-//     narrowed {ID} response.
+// PR-GODOBJ-4 (Azione 4, July 2026): consolidated from clips_ops_adapters.go
+// and clipOpsSourceResolverAdapter from clips_adapters_repo.go.
+// 3 adapters: clipsCleanupPortAdapter, clipsJobsPortAdapter, clipOpsSourceResolverAdapter.
 package app
 
 import (
@@ -28,6 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
+// ── clipsCleanupPortAdapter ─────────────────────────────────────────────
+
 // clipsCleanupPortAdapter wraps *deletion.DeletionService to satisfy
 // clips.CleanupServicePort. The 2 methods are exact delegations —
 // CleanupOrphanFiles(ctx,path,dryRun) and DeleteClip(ctx,src,id,hard).
@@ -36,8 +28,6 @@ type clipsCleanupPortAdapter struct {
 }
 
 // Compile-time assertion: clipsCleanupPortAdapter satisfies clips.CleanupServicePort.
-// Latent signature drift in either direction fails `go build` rather
-// than waiting for the first runtime panic.
 var _ clips.CleanupServicePort = (*clipsCleanupPortAdapter)(nil)
 
 func newClipsCleanupPortAdapter(svc *deletion.DeletionService) clips.CleanupServicePort {
@@ -67,14 +57,15 @@ func (a *clipsCleanupPortAdapter) DeleteClip(ctx context.Context, source, clipID
 	return a.inner.DeleteClip(ctx, source, clipID, hardDelete)
 }
 
+// ── clipsJobsPortAdapter ────────────────────────────────────────────────
+
 // clipsJobsPortAdapter wraps the canonical domain/job.Service to
 // satisfy clips.JobsServicePort. The narrowed DTO clips.JobsEnqueueRequest
 // carries only the 4 fields the ClipOps deep-mode → enqueue path
 // actually reads (Type / Payload / Priority / ActiveKey); all other
 // EnqueueRequest fields (CorrelationID, MaxRetries, Project, VideoName)
 // are intentionally left zero on the canonical request and inherit
-// the domain-layer defaults. This is the minimal projection at the
-// composition seam — does NOT round-trip through JSON.
+// the domain-layer defaults.
 type clipsJobsPortAdapter struct {
 	inner job.Service
 }
@@ -113,4 +104,22 @@ func (a *clipsJobsPortAdapter) Enqueue(ctx context.Context, req clips.JobsEnqueu
 		return &clips.JobsEnqueueResponse{}, nil
 	}
 	return &clips.JobsEnqueueResponse{ID: j.ID}, nil
+}
+
+// ── clipOpsSourceResolverAdapter ────────────────────────────────────────
+
+// clipOpsSourceResolverAdapter wraps a single clips.ClipRepositoryPort.
+// Collapse (June 2026): SourceResolver eliminated — all clip-type sources
+// share the same concrete repo in production.
+type clipOpsSourceResolverAdapter struct {
+	clips clips.ClipRepositoryPort
+}
+
+var _ clips.SourceResolverPort = (*clipOpsSourceResolverAdapter)(nil)
+
+func (a *clipOpsSourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryPort {
+	if a == nil {
+		return nil
+	}
+	return a.clips
 }
