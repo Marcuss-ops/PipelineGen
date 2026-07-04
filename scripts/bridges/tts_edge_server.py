@@ -14,20 +14,23 @@ Protocol:
     → {"ok":false, "error":"Edge TTS error message"}
 
   GET /health  → 200 {"status":"ok"}
-  POST /quit   → 200 {"status":"shutting_down"}
+  POST /quit   → 200 {"status":"shutting_down"} (then exits)
 
-Startup: binds to port 0 (OS-assigned), prints the assigned port
-on a single line to stdout (e.g. "PORT=12345"), then starts the
-aiohttp server. The Go side reads that line to discover the port.
+Startup: pre-binds a TCP socket to port 0 (OS-assigned), prints the
+assigned port on a single line to stdout (e.g. "PORT=12345"), then
+starts the aiohttp server. The Go side reads that line to discover
+the port. No private-attribute access — the port is known before
+the server starts.
 
-Graceful shutdown: POST /quit triggers aiohttp graceful shutdown.
-The Go side sends quit, waits 5s, then sends SIGKILL if still alive.
+Graceful shutdown: POST /quit sets a shutdown event, which unblocks
+the startup() coroutine and triggers runner.cleanup(). The Go side
+sends quit, waits 5s, then sends SIGKILL if still alive.
 """
 
 import asyncio
 import json
 import os
-import sys
+import socket
 import argparse
 
 from aiohttp import web
@@ -121,10 +124,8 @@ async def handle_synthesize(request: web.Request) -> web.Response:
             status=400,
         )
 
-    # Resolve voice.
     voice = voice_override or await get_voice_for_lang(lang)
 
-    # Ensure output directory exists.
     out_dir = os.path.dirname(out_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
@@ -156,61 +157,57 @@ async def handle_health(_request: web.Request) -> web.Response:
     return web.json_response({'status': 'ok'})
 
 
-async def handle_quit(_request: web.Request) -> web.Response:
-    """POST /quit — graceful shutdown."""
-    return web.json_response({'status': 'shutting_down'})
-
-
-async def on_quit_signal(app: web.Application):
-    """Callback after POST /quit: initiate graceful shutdown."""
-    await app.shutdown()
-    await app.cleanup()
-
-
 def main():
-    parser = argparse.ArgumentParser(description='Edge TTS persistent HTTP server')
+    parser = argparse.ArgumentParser(
+        description='Edge TTS persistent HTTP server')
     parser.add_argument('--host', default='127.0.0.1',
                         help='Bind host (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=0,
                         help='Bind port (default: 0 = OS-assigned)')
     args = parser.parse_args()
 
+    # Pre-bind a TCP socket to discover the port before starting aiohttp.
+    # This avoids accessing private aiohttp attributes (site._server.sockets).
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((args.host, args.port))
+    actual_port = sock.getsockname()[1]
+
+    # Print port to stdout — the Go side reads this line.
+    print(f"PORT={actual_port}", flush=True)
+
+    # Shutdown event — set by POST /quit.
+    shutdown_event = asyncio.Event()
+
     app = web.Application()
     app.router.add_post('/synthesize', handle_synthesize)
     app.router.add_get('/health', handle_health)
+
+    async def handle_quit(_request: web.Request) -> web.Response:
+        """POST /quit — graceful shutdown."""
+        shutdown_event.set()
+        return web.json_response({'status': 'shutting_down'})
+
     app.router.add_post('/quit', handle_quit)
 
-    # Print the assigned port to stdout so the Go side can discover it.
-    # aiohttp prints startup info to stderr; we use stdout for the port
-    # contract and stderr for logs.
     runner = web.AppRunner(app)
 
     async def startup():
         await runner.setup()
-        site = web.TCPSite(runner, args.host, args.port)
+        site = web.TCPSite(runner, sock=sock)
         await site.start()
 
-        # Read the actual port (may differ from args.port when port=0).
-        for sock in site._server.sockets:
-            addr = sock.getsockname()
-            if len(addr) >= 2:
-                actual_port = addr[1]
-                break
-        else:
-            actual_port = args.port
+        print("SERVER_READY", flush=True)
 
-        # Print port to stdout — the Go side reads this line.
-        print(f"PORT={actual_port}", flush=True)
-        print(f"SERVER_READY", flush=True)
+        # Block until shutdown is requested.
+        await shutdown_event.wait()
 
-        # Block until the app is shut down.
-        await asyncio.Event().wait()
+        # Graceful cleanup.
+        await runner.cleanup()
 
     try:
         asyncio.run(startup())
     except KeyboardInterrupt:
-        pass
-    finally:
         pass
 
 

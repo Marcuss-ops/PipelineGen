@@ -15,6 +15,21 @@ import (
 )
 
 // SetProgress updates progress percentage and emits an event.
+//
+// FASE 0.2 (July 4 2026) silent-drop rewrite per
+// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability: pre-PR
+// the function used `_ = r.AddEvent(...)` — any AddEvent failure
+// (DB hiccup, dup row, partial commit) was silently dropped with
+// zero observability. Post-PR the AddEvent call is error-checked
+// and any drop bumps observability.WorkerEventDropsTotal so the
+// operator dashboard can alert on this failure mode.
+//
+// Cardinality bound: job_type label is "" at this site because the
+// SetProgress wrapper is infra-layer and does not see the
+// jobs.type column (would require a join). Forward-pointer
+// PR-Telemetry-AddEvent-Infra-Type threads job_type through; until
+// then, the "" label partitions "infra-level drops" from per-job_type
+// drops counted by the worker-package sites (worker_metrics.go).
 func (r *SQLiteStore) SetProgress(ctx context.Context, jobID string, progress int, message string) error {
 	query := `UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, progress, timeutil.FormatRFC3339(time.Now()), jobID)
@@ -22,7 +37,14 @@ func (r *SQLiteStore) SetProgress(ctx context.Context, jobID string, progress in
 		return fmt.Errorf("setProgress: %w", err)
 	}
 	if message != "" {
-		_ = r.AddEvent(ctx, jobID, "progress", message, map[string]any{"progress": progress})
+		if addEvtErr := r.AddEvent(ctx, jobID, "progress", message, map[string]any{"progress": progress}); addEvtErr != nil {
+			// godlike/07 typed-error contract: the wrapper has no
+			// logger access (infra layer); the counter is the
+			// canonical observability surface here. The SetProgress
+			// return value is unchanged (nil) so the broker-side
+			// flow continues — this is a non-fatal telemetry emit.
+			observability.WorkerEventDropsTotal.WithLabelValues("").Inc()
+		}
 	}
 	return nil
 }

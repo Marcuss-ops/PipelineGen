@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // Sentinel errors for registry operations.
@@ -166,6 +167,15 @@ func (r *Registry) JobTypes() []string {
 // signature (ctx, *job.Job, *JobExecutionTools) is observed at the
 // actual handler invocation site. The translation is a 1:1
 // forwarding adapter — no field is dropped or remapped.
+//
+// FASE 0.2 (July 4 2026): the third parameter `j *domainjob.Job`
+// is threaded into translateToolsToExecutionTools so the closure
+// layer (Progress / IsCancelled / Event) can attribute its
+// telemetry-emit counters to the canonical job_type label (godlike/06
+// SSOT: domain/job.Job is the canonical owner of job_type
+// metadata; the closure layer reads from the same source rather
+// than a parallel string). Pre-FASE-0.2 `translateToolsToExecutionTools`
+// took only `(ctx, t *Tools)` and could not label the counters.
 func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error) {
 	r.mu.RLock()
 	h, ok := r.handlers[j.Type]
@@ -173,7 +183,7 @@ func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools)
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrHandlerNotRegistered, j.Type)
 	}
-	jen := translateToolsToExecutionTools(ctx, tools)
+	jen := translateToolsToExecutionTools(ctx, tools, j.Type)
 	return h(ctx, j, jen)
 }
 
@@ -189,7 +199,34 @@ func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools)
 // no-op closure so the handler observes the canonical nil-tolerant
 // contract rather than a nil-deref panic. Mirrors the
 // SafeProgressFn(tools) pattern at the application layer.
-func translateToolsToExecutionTools(ctx context.Context, t *Tools) *domainjob.JobExecutionTools {
+//
+// FASE 0.2 (July 4 2026) silent-drop rewrite per
+// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability. Pre-PR
+// the closure layer had `_ = t.Progress(ctx, ...)` and
+// `ok, _ := t.IsCancelled(ctx)` — both silent-drops violating the
+// no-fake-availability contract. Post-PR each emit-failure bumps one
+// of the 3 canonical worker_* counters (WorkerProgressEmittedTotal /
+// WorkerProgressErrorsTotal / WorkerEventDropsTotal) with `jobType`
+// as the bounded label. The IsCancelled closure fail-closes to
+// `false` (NOT cancelled) on broker error so a transient
+// IsCancelled check failure cannot accidentally true-positive the
+// cancellation semantic (godlike/07 — would mask a real cancellation
+// or trigger a premature handler branch).
+//
+// Cardinality bound on the counters: the `jobType` string is the
+// canonical job-type label (godlike/06 SSOT: derived from the
+// canonical domainjob.Job object at the Dispatch call site, not a
+// free-form runtime argument). Empty `jobType` propagates to a ""
+// label on the counter — the gauge-side per-worker_id attribution
+// (separate axis) is unaffected.
+//
+// Pre-PR tooling risk: pre-PR domain/job.JobExecutionTools did NOT
+// expose a logger field (by design — domain layer keeps logger out).
+// The closure cannot emit WARN logs; the canonical observability
+// signal is the counter (godlike/06 SSOT) + the upstream
+// worker-package log to r.log.Warn at the Runner.runJob entry site
+// (see runner.go:210).
+func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType string) *domainjob.JobExecutionTools {
 	if t == nil {
 		return &domainjob.JobExecutionTools{
 			Progress:    func(int, string) {},
@@ -199,18 +236,40 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools) *domainjob.Jo
 	}
 	return &domainjob.JobExecutionTools{
 		Progress: func(progress int, message string) {
-			_ = t.Progress(ctx, progress, message)
+			// FASE 0.2 silent-drop rewrite: error-checked emit with
+			// counter telemetry (NOT log emit because the closure
+			// has no logger access — domain/job.JobExecutionTools
+			// signature deliberately excludes logger per Pattern 0).
+			if err := t.Progress(ctx, progress, message); err != nil {
+				observability.WorkerProgressEmittedTotal.WithLabelValues(jobType, "error").Inc()
+				observability.WorkerProgressErrorsTotal.WithLabelValues(jobType, "broker_emit_failed").Inc()
+				return
+			}
+			observability.WorkerProgressEmittedTotal.WithLabelValues(jobType, "success").Inc()
 		},
 		IsCancelled: func() bool {
-			ok, _ := t.IsCancelled(ctx)
+			// FASE 0.2 silent-drop rewrite: previously dropped the
+			// broker error (`ok, _ := t.IsCancelled(ctx)`) and returned
+			// `ok` regardless — godlike/07 violation. Post-PR:
+			// fail-closed to `false` on broker error so we do NOT
+			// prematurely branch into the cancellation path on a
+			// transient error; counter bumps to alert operators.
+			ok, err := t.IsCancelled(ctx)
+			if err != nil {
+				observability.WorkerProgressErrorsTotal.WithLabelValues(jobType, "is_cancelled_check_failed").Inc()
+				return false
+			}
 			return ok
 		},
-		// Event is a no-op for the worker runtime today: worker.Tools
-		// does not currently expose a typed-event emission port. The
-		// canonical SafeEventFn (forward-pointer, mirrors SafeProgressFn)
-		// will be added in a future PR when the broker side surfaces the
-		// typed EventCommand. Today handlers that call tools.Event observe
-		// a no-op closure.
-		Event: func(string, string, map[string]any) {},
+		// FASE 0.2 silent-drop rewrite: the worker.Tools has no
+		// typed-event port today (forward-pointer: PR-Worker-Typed-
+		// Event-Port), so the Event closure is by construction losing
+		// every emit attempt. Counter-bump on every call so the
+		// operator dashboard surfaces this as a metric — godlike/07
+		// no-fake-availability (the prior no-op closure had zero
+		// observability).
+		Event: func(string, string, map[string]any) {
+			observability.WorkerEventDropsTotal.WithLabelValues(jobType).Inc()
+		},
 	}
 }

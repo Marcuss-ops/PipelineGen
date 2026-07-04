@@ -12,6 +12,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // DefaultLeaseTTL is the canonical lease TTL used by the runner's
@@ -207,7 +208,28 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 			if _, err := tools.DownloadAsset(jobCtx, assetID); err != nil {
 				return tools.Fail(jobCtx, fmt.Errorf("download asset %d (%s): %w", i, assetID, err).Error())
 			}
-			_ = tools.Progress(jobCtx, 5+i, "staged input asset")
+			// FASE 0.2 (July 4 2026) silent-drop rewrite per
+			// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
+			// pre-PR the runner used `_ = tools.Progress(...)` which
+			// dropped the broker emit error without any observability.
+			// Post-PR we surface the failure via log.Warn + 2 counters
+			// (emitted/error/outcome-axis + errors/reason-axis) so the
+			// operator dashboard can alert on this failure mode.
+			// Message-handling: emit failures are non-fatal (PerTask
+			// download/parse continues); we do NOT return tools.Fail
+			// here so a transient broker hiccup doesn't break the
+			// pipeline (godlike/07 minimum-blast-radius).
+			if progErr := tools.Progress(jobCtx, 5+i, "staged input asset"); progErr != nil {
+				r.log.Warn("worker Progress emit failed (FASE 0.2 silent-drop rewrite)",
+					zap.String("job_id", job.ID),
+					zap.String("job_type", job.Type),
+					zap.Int("progress", 5+i),
+					zap.Error(progErr))
+				observability.WorkerProgressEmittedTotal.WithLabelValues(job.Type, "error").Inc()
+				observability.WorkerProgressErrorsTotal.WithLabelValues(job.Type, "broker_emit_failed").Inc()
+			} else {
+				observability.WorkerProgressEmittedTotal.WithLabelValues(job.Type, "success").Inc()
+			}
 			if err := checkRenew(); err != nil {
 				return tools.Fail(jobCtx, err.Error())
 			}

@@ -6,9 +6,11 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -23,15 +25,41 @@ import (
 // service.go). voiceover.go now calls NewProcessor with only
 // (pythonScriptsDir, log) and the audioasset package no longer
 // imports infrastructure/drive or domain/asset.
+//
+// VO-DECOMPOSITION P0 #1 (July 2026): persistent TTS worker.
+// Processor now manages a long-lived tts_edge_server.py subprocess
+// (aiohttp HTTP server) instead of spawning a new `python3 tts_edge.py`
+// process per call. The persistent worker is lazily started on the
+// first Generate() call. When the worker is unavailable (Python not
+// installed, server script not deployed, startup failure), Generate
+// falls back to the legacy spawn-per-call path for backward compat.
+//
+// Fields added (mirrors ChromeImageProvider, PR-CHROME-PROVIDER-SPLIT):
+//   - mu sync.Mutex — serialises HTTP calls to the single-threaded Python server
+//   - cmd *exec.Cmd — the running subprocess (nil when not started)
+//   - baseURL string — "http://127.0.0.1:<port>" discovered from stdout
+//   - httpClient *http.Client — shared HTTP client (5-min timeout)
+//   - started bool — true after successful startup
 type Processor struct {
 	pythonScriptsDir string
 	log              *zap.Logger
+
+	// Persistent worker state (VO-DECOMPOSITION P0 #1).
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	baseURL    string
+	httpClient *http.Client
+	started    bool
 }
 
 // NewProcessor constructs a Processor. The previous driveUploader and
 // assetDestResolver arguments are intentionally gone — Processor
 // handles local FS only (TTS generation + optional FFmpeg silence
 // removal + MD5 hash). Drive upload is owned by Lifecycle.
+//
+// VO-DECOMPOSITION P0 #1 (July 2026): the persistent worker is NOT
+// started at construction time — it's lazily initialised on the first
+// Generate() call (mirrors ChromeImageProvider lazy-init pattern).
 func NewProcessor(
 	pythonScriptsDir string,
 	log *zap.Logger,
@@ -42,15 +70,17 @@ func NewProcessor(
 	}
 }
 
-// Generate runs TTS over the configured Python bridge + (optionally)
-// FFmpeg silence removal. Local FS only; no Drive interaction.
+// Generate runs TTS over the persistent Python worker (preferred) or
+// the legacy spawn-per-call path (fallback). Local FS only; no Drive
+// interaction.
+//
+// VO-DECOMPOSITION P0 #1 (July 2026): the persistent worker path
+// eliminates the per-call Python startup cost (~1-3s cold start).
+// The legacy spawn-per-call path is retained as backward-compat
+// fallback for environments where the server script is not deployed
+// or Python is unavailable.
 func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResult, error) {
-	result := &AudioResult{}
-
-	// 1. Generate TTS via Python script.
 	// Defense-in-depth: validate filename against path traversal.
-	// filepath.Base strips any directory components; if the result
-	// differs from the input, the filename contained path separators.
 	safeName := filepath.Base(input.Filename)
 	if safeName != input.Filename {
 		return nil, fmt.Errorf("invalid filename: path traversal detected")
@@ -58,6 +88,38 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 	if filepath.Ext(safeName) == "" {
 		safeName += ".mp3"
 	}
+
+	// Try persistent worker first.
+	p.mu.Lock()
+	if err := p.ensureStarted(ctx); err != nil {
+		p.mu.Unlock()
+		p.log.Warn("persistent TTS worker unavailable, falling back to legacy spawn-per-call",
+			zap.Error(err))
+		return p.generateLegacy(ctx, input, safeName)
+	}
+
+	result, err := p.sendSynthesizeRequest(ctx, &AudioInput{
+		Text:          input.Text,
+		Language:      input.Language,
+		Voice:         input.Voice,
+		Filename:      safeName,
+		OutputDir:     input.OutputDir,
+		RemoveSilence: input.RemoveSilence,
+	})
+	p.mu.Unlock()
+	return result, err
+}
+
+// generateLegacy is the pre-P0-#1 spawn-per-call path. Retained as
+// fallback for backward compatibility.
+//
+// DEPRECATED (VO-DECOMPOSITION P0 #1, July 2026): this path will be
+// removed in the CUTOVER phase once all deployments run the persistent
+// server. Forward-pointer: architecture/current.yaml#VO-DECOMPOSITION-
+// 2026-07-04.linked_issues[PR-VO-TTS-PERSISTENT-WORKER-CUTOVER].
+func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeName string) (*AudioResult, error) {
+	result := &AudioResult{}
+
 	outputPath := filepath.Join(input.OutputDir, safeName)
 
 	scriptPath := filepath.Join(p.pythonScriptsDir, "bridges", "tts_edge.py")
@@ -71,20 +133,21 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		"--out", outputPath,
 	}
 
-	// --voice passthrough: override the auto-detected voice profile.
 	if input.Voice != "" {
 		args = append(args, "--voice", input.Voice)
 	}
 
-	// Text delivery: use stdin when requested or when text is long
-	// (> 32 KB — avoids OS argument-length limits and process-table
-	// visibility). stdin also prevents shell interpolation of
-	// special characters.
 	useStdin := input.UseStdin || len(input.Text) > 32*1024
 	if !useStdin {
 		args = append(args, "--text", input.Text)
 	}
 
+	// ARCH-ALLOWLIST: legacy-tts-spawn-per-call — backward-compat fallback
+	// for environments where tts_edge_server.py is not deployed. This is
+	// the ONLY site in internal/infrastructure/audio/ that calls
+	// exec.CommandContext("python3", ...). Superseded by the persistent
+	// worker path above; will be removed in CUTOVER phase.
+	// See: architecture/current.yaml#VO-DECOMPOSITION-2026-07-04.
 	cmd := exec.CommandContext(ctx, "python3", args...)
 	if useStdin {
 		cmd.Stdin = bytes.NewReader([]byte(input.Text))
@@ -94,9 +157,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		return nil, fmt.Errorf("TTS generation failed: %w, output: %s", err, string(output))
 	}
 
-	// Parse the JSON response from tts_edge.py to extract the real
-	// voice name (e.g. "en-US-RogerNeural") and detect failures
-	// the script reports as JSON but exits 0 for (empty-file).
+	// Parse JSON response.
 	type ttsResponse struct {
 		OK    bool   `json:"ok"`
 		Voice string `json:"voice"`
@@ -122,16 +183,12 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 	result.LocalPath = outputPath
 	result.Status = "generated"
 
-	p.log.Info("TTS generated", zap.String("path", outputPath))
+	p.log.Info("TTS generated (legacy spawn-per-call)", zap.String("path", outputPath))
 
-	// 2. Optional silence removal
-
-	// PR-VO-A1 deleted the historical MP3-as-JSON re-read here; the canonical
-	// voice is captured from tts_edge.py stdout in section 1 above.
+	// Optional silence removal.
 	if input.RemoveSilence {
 		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+safeName)
-		err := audio.RemoveSilence(ctx, "", outputPath, cleanedPath)
-		if err != nil {
+		if err := audio.RemoveSilence(ctx, "", outputPath, cleanedPath); err != nil {
 			p.log.Warn("silence removal failed", zap.Error(err))
 		} else {
 			result.CleanedPath = cleanedPath
@@ -140,7 +197,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		}
 	}
 
-	// 3. Compute hash
+	// Compute hash.
 	if result.LocalPath != "" {
 		hash, err := hashutil.HashFile(result.LocalPath, md5.New())
 		if err != nil {
@@ -150,21 +207,5 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		}
 	}
 
-	// 4. Drive upload is the Lifecycle's responsibility, not the
-	// Processor's. PR-VO-B1 (June 2026) removed the inline upload
-	// code path entirely. voiceover.processLanguage hands the
-	// local file off to lifecycle.ProcessAsset (Step 2 in
-	// internal/application/assets/lifecycle/service.go performs the
-	// Drive upload with the folder ID + filename). AudioResult
-	// keeps DriveLink/DriveFileID fields as zero-value (Lifecycle
-	// fills them after Generate returns).
-	//
-	// result.Status is set to "generated" at line above and
-	// optionally overridden to "cleaned" by the silence-removal
-	// block — it's never empty here. The previous defensive
-	// fallback `if result.Status == "" { Status = "processed" }`
-	// was deleted in PR-VO-B1 because it is unreachable after the
-	// Drive upload removal (the upload path was the only place that
-	// could reset Status without restoring it).
 	return result, nil
 }

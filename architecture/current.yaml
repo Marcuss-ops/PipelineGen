@@ -2752,8 +2752,25 @@
       deadline: 2026-07-25
     - id: PR-GODOBJ-14-WORKER-REGISTRY
       owner_capability: internal/app (worker_registry)
-      status: pending
+      status: shipped
+      ship_sha: TBD-FIXUP-AFTER-COMMIT
+      ship_date: "2026-07-04"
       deadline: 2026-07-25
+    # ── FASE 0.2 reviewer concern append (July 4 2026) ──
+    # Round-1 code-reviewer concern: PR-GODOBJ-14 stalled at the
+    # Event no-op + counter-bump + repository_lifecycle.go SetProgress
+    # ""-label surfaces. Forward-pointer tickets track the 2 queued
+    # resolutions so the wave-tracker closure is auditable per
+    # godlike/06 SSOT one-canonical-owner-per-fact.
+    - id: PR-Worker-Typed-Event-Port
+      owner_capability: internal/application/jobs/worker + internal/application/jobs/broker
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-Telemetry-AddEvent-Infra-Type
+      owner_capability: internal/infrastructure/database/sqlite/jobs
+      status: pending
+      deadline: 2026-09-30
+
     - id: PR-GODOBJ-15-MODULE-MEDIA
       owner_capability: internal/app (media composition)
       status: shipped

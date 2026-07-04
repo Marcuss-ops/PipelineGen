@@ -207,6 +207,86 @@ var WorkerEmergencyPathTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "Total emergency-path activations by kind (mount_drive_via_python, bypass_normalizer, ignore_artifact_checksum).",
 }, []string{"kind"})
 
+// ── Telemetry silent-drop counters (PR-GODOBJ-14-WORKER-REGISTRY, FASE 0.2, July 4 2026) ─
+//
+// PR-GODOBJ-14-WORKER-REGISTRY closure (part of GODOBJ-2026-07-03
+// god-object decomposition wave). Pre-FASE-0.2 the worker package
+// carried several `_ = X(...)` + `_, _ := X(...)` silent-drops in
+// the Progress / Event / IsCancelled emit paths — godlike/07
+// no-fake-availability violation. Post-FASE-0.2 every emit failure
+// bumps one of these 3 counters BEFORE propagating (or non-fatally
+// failing-closed) the error so the operator dashboard can alert
+// on the failure mode.
+//
+// Cardinality bound (godlike/07): job_type (~30 distinct types
+// today, bounded enumerator not a free string) × outcome (~3
+// values: success/error/dropped) × reason (~4 values:
+// broker_emit_failed / add_event_failed / is_cancelled_err /
+// lease_renew_lost) = ~360 series per metric. Well under Prometheus
+// cardinality guidance. The worker_id dimension is intentionally
+// NOT included (matches the convention documented at the top of
+// this file: counters carry failure-mode-axis labels, per-worker
+// liveness lives on the gauge side).
+//
+// godlike/06 SSOT (one-canonical-owner-per-fact): the 3 counters
+// below own "did telemetry emit succeed or fail" for workers.
+// WorkerReconnectTotal + WorkerLeaseRenewalFailuresTotal +
+// WorkerArtifactUploadFailuresTotal + WorkerFallbackTotal +
+// WorkerEmergencyPathTotal (above) own lease / artifact / fallback
+// / emergency paths distinctly so dashboards can split the alert
+// surface per failure-mode.
+//
+// FASE 0.2 SCOPE:
+//   (a) worker_progress_emitted_total: every Progress emit attempt.
+//   (b) worker_progress_errors_total: Progress emit failures.
+//   (c) worker_event_drops_total: events that worker.Tools.dropped
+//       (in the Event closure we surface as counters because the
+//       underlying Event port is not yet wired through worker.Tools).
+//
+// Tracking: architecture/current.yaml#GODOBJ-2026-07-03.linked_issues
+// [PR-GODOBJ-14-WORKER-REGISTRY].
+
+// WorkerProgressEmittedTotal counts worker Progress emit attempts
+// by job_type and outcome (success | error). Pair with
+// WorkerProgressErrorsTotal for the failure-mode attribution; a
+// non-zero rate on the "error" axis means telemetry emit is
+// silently breaking on this job type (godlike/07 no-fake-availability
+// surface).
+var WorkerProgressEmittedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "worker_progress_emitted_total",
+	Help: "Total worker Progress emit attempts by job_type and outcome (success|error). Pairs with worker_progress_errors_total for failure attribution.",
+}, []string{"job_type", "outcome"})
+
+// WorkerProgressErrorsTotal counts worker Progress emit FAILURES
+// by job_type and reason (broker_emit_failed | lease_lost |
+// context_canceled | unknown). A sustained non-zero rate is the
+// canonical "telemetry is breaking on this job_type" signal — the
+// operator dashboard reads this metric to alert on silent-dropped
+// progress emissions (the pre-FASE-0.2 failure mode).
+var WorkerProgressErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "worker_progress_errors_total",
+	Help: "Total worker Progress emit FAILURES by job_type and reason (broker_emit_failed|lease_lost|context_canceled|unknown). Sustained non-zero rate = telemetry silently broken on this job_type.",
+}, []string{"job_type", "reason"})
+
+// WorkerEventDropsTotal counts worker Event emit attempts that
+// dropped silently because the underlying AddEvent (or vendor
+// equivalent) returned an error. Pre-FASE-0.2 the wrapper at
+// repository_lifecycle.go::SetProgress used `_ = r.AddEvent(...)`
+// — zero telemetry on the drop. Post-FASE-0.2 the wrapper now
+// emits WorkerEventDropsTotal with a job_type label when available.
+//
+// Cardinality note: job_type label is "" today because the
+// SetProgress wrapper is infra-layer and does not see the job_type
+// (the job_id is passed but the addition of job_type would require
+// a join with jobs.type). Forward-pointer PR-Telemetry-AddEvent-
+// Infra-Type threads job_type through; deadline TBD. Until then,
+// the "" label partitions "infra-level drops" from per-job_type
+// drops counted by the worker-package sites.
+var WorkerEventDropsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "worker_event_drops_total",
+	Help: "Total worker events silently dropped due to DB error. Pre-FASE-0.2 the drop had zero telemetry (godlike/07 no-fake-availability).",
+}, []string{"job_type"})
+
 // ── Logger decorator ───────────────────────────────────────────────
 // WithWorker attaches worker_id + session_id fields to the
 // supplied zap.Logger. Calling convention: production handlers

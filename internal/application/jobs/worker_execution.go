@@ -44,6 +44,7 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )
@@ -133,24 +134,53 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 
 	tools := &JobTools{
 		Progress: func(progress int, message string) {
+			// FASE 0.2 (July 4 2026) silent-drop rewrite per
+			// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
+			// pre-PR the log.Warn was the only observable signal; a DB
+			// hiccup would log but the operator dashboard could not
+			// quantify it. Post-PR we increment both
+			// WorkerProgressEmittedTotal{outcome="error"} and
+			// WorkerProgressErrorsTotal{reason="broker_emit_failed"}
+			// so dashboards can alert on the failure rate. The log
+			// is preserved for diagnostic-context value (job_id +
+			// progress value + error chain).
 			if err := w.repo.SetProgress(jobCtx, j.ID, progress, message); err != nil {
 				w.log.Warn("failed to report progress",
 					zap.String("job_id", j.ID),
 					zap.Int("progress", progress),
 					zap.Error(err))
+				observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "error").Inc()
+				observability.WorkerProgressErrorsTotal.WithLabelValues(j.Type, "broker_emit_failed").Inc()
+				return
 			}
+			observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "success").Inc()
 		},
 		Event: func(eventType string, message string, data map[string]any) {
+			// FASE 0.2 silent-drop rewrite: same reasoning as Progress
+			// above; on AddEvent failure bump WorkerEventDropsTotal
+			// with the canonical job_type label so dashboards can
+			// alert per-job_type on silent event drops.
 			if err := w.repo.AddEvent(jobCtx, j.ID, eventType, message, data); err != nil {
 				w.log.Warn("failed to record event",
 					zap.String("job_id", j.ID),
 					zap.String("event_type", eventType),
 					zap.Error(err))
+				observability.WorkerEventDropsTotal.WithLabelValues(j.Type).Inc()
+				return
 			}
 		},
 		IsCancelled: func() bool {
 			domJob, err := w.repo.Get(jobCtx, j.ID)
 			if err != nil {
+				// FASE 0.2 silent-drop rewrite: previously
+				// swallowed err entirely (godlike/07 violation).
+				// Post-PR we surface the IsCancelled check failure
+				// via the counter (WorkerProgressErrors is the
+				// canonical signal surface for runtime telemetry
+				// failures) and fail-closed to `false` so a
+				// transient broker/DB error does NOT prematurely
+				// trip the cancellation branch.
+				observability.WorkerProgressErrorsTotal.WithLabelValues(j.Type, "is_cancelled_check_failed").Inc()
 				return false
 			}
 			return domJob != nil && domJob.Status == job.StatusCancelled
