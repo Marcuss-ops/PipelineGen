@@ -4,12 +4,23 @@
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per file):
 // the YouTubeRegistrar owns the single-clip YouTube flow as a focused service
-// with 8 narrow ports (Fetcher, Clips, Drive, Transcriber, Metadata,
+// with 8 narrow ports (Fetcher, Clips, Publisher, Transcriber, Metadata,
 // IndexDispatcher, Enrichment, Log — the latter two are v2 ports that merge
 // AssetTree + Jobs + Search + Config + legacy Enrichment into a single surface,
 // and have adapters built in the composition root). Pre-extraction the ctor
 // took 13 deps; v2 port-merging lands at 8 per
 // architecture/policy.yaml::max_constructor_deps.
+//
+// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): the legacy
+// `sourcing.DrivePort` field is retired — Publisher is the canonical
+// Drive upload canal since FASE 5 and the field had zero production
+// reads. Ctor dropped from 9 to 8 positional args; the composition
+// root (internal/app/assets_register_sourcing.go) no longer passes
+// a sourcingDriveAdapter. Forward-pointer: PR-YT-DRIVE-LEGACY-RETIRE
+// will git-rm the sourcingDriveAdapter struct + remove the
+// sourcing.DrivePort interface once the 3 active call sites of
+// the legacy surface are migrated (tracked in
+// architecture/deprecations.yaml#DRIVE-008 migration_required).
 //
 // The façade sourcing.Service.RegisterFromYouTube delegates to
 // *Service.Register for API stability. Composition root
@@ -35,14 +46,15 @@ import (
 // the Publisher fails (P0.2, July 2026). Callers can probe with errors.Is.
 var ErrYouTubeDriveRequired = errors.New("youtube.Register: Drive upload is required but Publisher failed")
 
-// Service is the YouTubeRegistrar implementation. 9-port budget (8 + 1
-// transitional for Publisher migration). The `drive` field is retained
-// as fallback during FASE 5-8 migration; once all callers pass
-// Publisher-only, drive will be removed and the port count returns to 8.
+// Service is the YouTubeRegistrar implementation. 8-port surface
+// (Fetcher, Clips, Publisher, Transcriber, Metadata, IndexDispatcher,
+// Enrichment, Log). Publisher is the canonical Drive upload canal
+// since FASE 5; the legacy `sourcing.DrivePort` field is retired
+// (PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP, July 2026) and the
+// sourcingDriveAdapter wiring was removed from the composition root.
 type Service struct {
 	fetcher     sourcing.FetchProviderPort
 	clips       sourcing.ClipStorePort
-	drive       sourcing.DrivePort     // Deprecated: fallback during Publisher migration
 	publisher   sourcing.PublisherPort // FASE 5: canonical Drive upload canal
 	transcriber sourcing.TranscriptionPort
 	metadata    sourcing.MetadataUploadPort
@@ -61,10 +73,14 @@ type Service struct {
 // (QDRANT-asset-mutation isolation June 2026 forbids the legacy UpsertClip
 // fallback). All other ports are best-effort: nil causes the corresponding
 // sub-operation to be skipped gracefully.
+//
+// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): ctor signature
+// dropped from 9 to 8 positional args after retiring the legacy
+// `sourcing.DrivePort` field (Publisher is the canonical Drive
+// upload canal since FASE 5; the field had zero production reads).
 func NewService(
 	fetcher sourcing.FetchProviderPort,
 	clips sourcing.ClipStorePort,
-	drive sourcing.DrivePort,
 	publisher sourcing.PublisherPort,
 	transcriber sourcing.TranscriptionPort,
 	metadata sourcing.MetadataUploadPort,
@@ -75,7 +91,6 @@ func NewService(
 	return &Service{
 		fetcher:     fetcher,
 		clips:       clips,
-		drive:       drive,
 		publisher:   publisher,
 		transcriber: transcriber,
 		metadata:    metadata,
@@ -267,14 +282,22 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		}
 	} else {
 		// P2.6 closure (DRIVE-CUTOVER-P0-1): the pre-FASE-9 dead-path
-		// `else if s.drive != nil { s.drive.UploadFileWithDescription(...) }`
-		// fallback block has been retired. The composition root
+		// fallback block (which routed Drive uploads through a
+		// deprecated `sourcing.DrivePort` field) has been retired.
+		// The composition root
 		// (`internal/app/assets_register_sourcing.go::newAssetRegisterService`)
 		// wires `&sourcingPublisherAdapter{publisher: publisher}` non-nil at
 		// all production sites — a nil `s.publisher` here is a wiring bug
 		// (no test harness relies on the dead-path branch post-CUTOVER).
 		// This branch only logs + falls through to the local-only
 		// delivery path; no Drive-side recovery is attempted here.
+		//
+		// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): the
+		// `sourcing.DrivePort` field itself is now retired (no
+		// longer in the Service struct). The historical
+		// `s.drive.UploadFileWithDescription(...)` call site this
+		// comment block previously documented no longer exists
+		// in this file.
 		s.log.Warn("Drive Publisher unwired — wiring bug or pre-CUTOVER composition site; recording local-only deliveryStatus; investigate composition wiring",
 			"video_id", videoID, "delivery_status", asset.AssetPublishLocalOnly)
 	}
