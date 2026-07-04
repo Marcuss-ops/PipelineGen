@@ -4011,7 +4011,10 @@ wave_status:
         (line 91 fail-closed); other deps silent-error/fallback.
     - id: PR-QDRANT-FINAL-DECISION
       owner_capability: internal/app + internal/infrastructure/qdrant
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      decision: live
+      forward_cite: PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION
       deadline: 2026-08-01
       description: |
         Decide live-or-dead for Qdrant's 8 fields still resident on

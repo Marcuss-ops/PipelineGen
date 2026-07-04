@@ -136,13 +136,25 @@ type backgroundJobs struct {
 //
 // 10. Job runner (REQUIRED, always last)
 //
-// Three Qdrant-driven background steps were removed:
+// Three Qdrant-driven background-cleanup steps were removed earlier:
 //   - qdrant-stale-cleaner
 //   - qdrant-ghost-sweeper
 //   - qdrant-health-monitor
 //
-// Qdrant is gone; its embeddings are now stored solely in SQLite
-// (media_assets.embedding_json / transcript_embedding).
+// PR-QDRANT-FINAL-DECISION (2026-07-04, decision: live, forward-cite
+// PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION): Qdrant is the canonical
+// data-path vector store (Wave 30 / QDRANT-003 + QDRANT-005). The data-path
+// is owned by composition.go::ProcessBundle (8 typed Qdrant fields:
+// CollectionManager, QdrantDeleter, QdrantRuntime, VectorSvc,
+// LocatorCleaner, QdrantClient, QdrantHealthProbe, QdrantSearcher) +
+// build_process_qdrant.go; the qdrant-collection EnsureSchema step is a
+// REAL production startup step in wire_services.go. Embedding persistence
+// is dual-write: SQLite (canonical metadata store) + Qdrant (derived
+// projection per godlike/06 qdrant-projection). The 3 background-cleanup
+// steps listed above were removed earlier (godlike/07 no-fake-availability:
+// they no longer represented the canonical background-cleanup topology);
+// Wave 30 BACKFILL will re-introduce them with the canonical scope pinned
+// to the new ProcessBundle / wire_services.go wiring.
 //
 // Mode mapping (matches previous semantics):
 //   - "all"        → runWorker + runScheduler + runMaintenance

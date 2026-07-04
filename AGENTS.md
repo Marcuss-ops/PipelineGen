@@ -997,6 +997,7 @@ quella che ha prodotto questa tabella (vedi storico commit di giugno
 2026).
 
 ### Recent cross-cutting closures (June 2026)
+- **[PR-QDRANT-FINAL-DECISION closure (2026-07-04)]** `chore(architecture) + refactor(app)` — Qdrant decision: LIVE (forced by 7+ actively-wired production code paths). 8 ProcessBundle Qdrant fields + build_process_qdrant.go + wire_services.go qdrant-collection EnsureSchema step all RETAINED. 2 dead-code test stubs (qdrant-cleaner + qdrant-health-monitor in lifecycle_integration_test.go) RETIRED. lifecycle.go:117 stale "Qdrant is gone" comment → accurate "Qdrant is the canonical data-path vector store" framing. Wave-tracker entry flipped status:pending → status:shipped with ship_date 2026-07-04 + decision: live + forward_cite: PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION. Honest scope correction: audit said "3 qdrant-* Stop stubs" but only 2 are dead-code (qdrant-collection is a real production step in wire_services.go:170). Closes architecture/current.yaml#EXTERNAL-AUDIT-2026-07-04.linked_issues[PR-QDRANT-FINAL-DECISION]. Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
 
 This sub-section tracks P0/P1 closures that span architecture + atomicity
 + accounting — not wave migration per se. Wave-only entries stay in
