@@ -10,6 +10,14 @@ web-admin/node_modules/
 # Logs and temp files
 # ============================================
 *.log
+# PR-A (June 2026): exception for CI baseline logs in the operational
+# reports directory. These logs are deliberately committed as a stable
+# baseline for the wave-tracker pass-rate check (PR-CI-WAVE-ALLOWLIST,
+# July 2026) so the next-run can diff against the previous baseline
+# without needing `git add -f` bypass per AGENTS.md Git-Lesson-2
+# minimum-ripple. The negation rule MUST stay directly after `*.log`
+# so git's last-match-wins semantics apply.
+!tests/operational/REPORTS/*.log
 *.tmp
 tmp/
 logs/
