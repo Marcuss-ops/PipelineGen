@@ -3433,7 +3433,7 @@ wave_status:
 # StagedArtifacts in the HTTP wire-format + Sender-side converter. The
 # Creator does not know the Drive FileID, link, checksum, or action at
 # the time of upload; this rename + Sender-converter fix the naming
-"lie" (carry-forward from June 2026 Italian audit). Flipped
+# "lie" (carry-forward from June 2026 Italian audit). Flipped
 # `status: pending` → `status: shipped` per godlike/07 no-fake-availability:
 # the EXPAND-phase subset SHIPPED 2026-07-03 via the P0-COMPL-5-WIRE-NAMING
 # umbrella (4030081a + bb4a19e8), 26 days ahead of the planned 2026-07-29
