@@ -37,6 +37,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -266,6 +267,97 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				zap.String("job_id", j.ID),
 				zap.Int("retry_count", j.RetryCount),
 				zap.Error(dispatchErr))
+		}
+		return
+	}
+
+	// PR-WORKER-RUNNER-INPROCESS-MIGRATION (July 2026): artifact-
+	// producing jobs MUST be completed via the typed CompletionPort
+	// (broker.CompleteWithArtifacts) — NOT the legacy w.repo.Complete
+	// path. The SQL-layer gate at
+	// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+	// returns the typed sentinel domainremote.ErrCompleteJobPathViolation
+	// for artifact-producing jobs that attempt the legacy path, which
+	// failed FASE B Smoke Test 9 (duplicate payload → same drive_file_id
+	// across 2 runs; the SUCCEEDED transition never fired because the
+	// asset's drive_file_id write requires a clean broker closure).
+	// This branch routes those jobs through the typed narrow port,
+	// unblocking the canonical mark-SUCCEEDED.
+	//
+	// godlike/06 SSOT: ProducesArtifacts lookup lives ONLY on the typed
+	// JobTypeRegistry (reg.ProducesArtifacts) at
+	// internal/application/jobs/registry.go; nil reg = legacy behaviour,
+	// preserving existing test fixtures that don't build a registry.
+	//
+	// godlike/07 typed-error contract: nil broker + ProducesArtifacts=true
+	// fails closed via w.repo.Fail with a diagnostic naming the
+	// (.WithBroker) composition miss. NO silent fallback to legacy path;
+	// the SQL-layer ErrCompleteJobPathViolation rejection is replaced
+	// with a clean Fail row that surfaces the wiring gap in the audit
+	// timeline.
+	producesArtifacts := w.reg != nil && w.reg.ProducesArtifacts(j.Type)
+	if producesArtifacts {
+		if w.broker == nil {
+			w.log.Error("artifact-producing job encountered without CompletionPort wired — failing job",
+				zap.String("job_id", j.ID),
+				zap.String("job_type", j.Type),
+				zap.Error(fmt.Errorf("worker.CompletionPort unset (call WithBroker(cp) at composition time)")))
+			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision,
+				fmt.Sprintf("worker.CompletionPort not wired for artifact-producing job %q; call WithBroker(cp) on the Worker constructor", j.Type)); failErr != nil {
+				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+					w.log.Warn("lease lost during fail-after-missing-broker",
+						zap.String("job_id", j.ID))
+				} else {
+					w.log.Error("failed to mark artifact-producing job as failed (after missing-broker gate)",
+						zap.String("job_id", j.ID),
+						zap.Error(failErr))
+				}
+			}
+			return
+		}
+
+		// Build the CompleteWithArtifactsCommand. Worker today does NOT
+		// have access to a typed StagedArtifacts slice (handlers don't
+		// pass it through tools / result); the Worker's role here is
+		// write job.status = SUCCEEDED via the canonical surface, leaving
+		// artifact manifest construction to the caller/controller (the
+		// handlers persist the actual asset rows + drive_file_id in
+		// media_assets inside their own per-item tx). The empty JSON
+		// array is the byte-stable "no artifact manifest" sentinel.
+		//
+		// OutboxEvents is nil because the in-process Worker does NOT
+		// emit typed outbox events from this runJob finalization path
+		// (typed EventCommand surface is forward-pointer to PR-VO-B3 /
+		// PR-YOU-E1 / PR-IMG-D2 per AGENTS.md Pattern 9).
+		//
+		// godlike/07 minimal-blast-radius: ResultData + StagedArtifacts
+		// + WorkerSessionID are the only fields populated beyond the
+		// canonical WorkerID/JobID/LeaseID/ExpectedRevision quartet.
+		// WorkerSessionID is empty today (the in-process Worker does
+		// not use the typed WorkerSession surface); the future typed
+		// WorkerSession port (forward-pointer, deadline 2026-Q4) will
+		// populate this field from the worker's session state.
+		cmd := CompleteWithArtifactsCommand{
+			WorkerID:         w.id,
+			WorkerSessionID:  "",
+			JobID:            j.ID,
+			LeaseID:          leaseID,
+			ExpectedRevision: finalRevision,
+			CorrelationID:    j.CorrelationID,
+			ResultData:       mapToRawMessage(result),
+			StagedArtifacts:  json.RawMessage("[]"),
+			OutboxEvents:     nil,
+		}
+
+		if _, err := w.broker.CompleteWithArtifacts(finalizationCtx, cmd); err != nil {
+			w.log.Error("failed to mark artifact-producing job as completed via CompletionPort",
+				zap.String("job_id", j.ID),
+				zap.String("job_type", j.Type),
+				zap.Error(err))
+		} else {
+			w.log.Info("job completed with artifacts",
+				zap.String("job_id", j.ID),
+				zap.String("job_type", j.Type))
 		}
 		return
 	}
