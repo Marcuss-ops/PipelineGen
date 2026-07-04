@@ -3458,3 +3458,39 @@ if [ -n "$literal_calls" ]; then
     exit 1
 fi
 echo "OK: no legacy Template:/TimelineJSON: writes outside canonical allowlist (godlike/06 SSOT)"
+
+
+# === Check 59: Azione 13 VLM direct-caller ban (forward-prevention godlike/07) ===
+# Bypass callers that hit /vlm/<verb> without going through the canonical
+# *vlm.Client proxy are godlike/06 SSOT regressions. Canonical call surface
+#   (SSOT): internal/infrastructure/ai/vlm/ (4 methods: AutoTagImage,
+#   ValidateScript, DedupCheck, AutoTagLocal).
+# Production callers MUST consume *vlm.Client via composition root.
+# Permitted exceptions carry // ARCH-ALLOWLIST: vlm-direct-caller on the
+# line preceding the call site (mirrors Check 54 + 58 posture).
+vlm_bypass_hits=$(rg -n --hidden '\bhttp(|Get|Post|NewRequest|NewRequestWithContext)\(.*"/vlm/' internal/application internal/api 2>/dev/null || true)
+filtered_hits=""
+if [ -n "$vlm_bypass_hits" ]; then
+  filtered_hits=$(echo "$vlm_bypass_hits" | while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    f=$(echo "$hit" | cut -d: -f1)
+    l=$(echo "$hit" | cut -d: -f2)
+    prev=$((l - 1))
+    allow=$(sed -n "${prev}p" "$f" 2>/dev/null | grep -c "ARCH-ALLOWLIST: vlm-direct-caller" || true)
+    if [ "$allow" = "0" ]; then
+      echo "$hit"
+    fi
+  done)
+fi
+fail_count=0
+if [ -n "$filtered_hits" ]; then
+  echo "Check 59 (VLM direct-caller ban): FAIL" >&2
+  echo "  Direct http.*"/vlm/" callers in application/api without ARCH-ALLOWLIST:" >&2
+  echo "$filtered_hits" | sed 's/^/    /' >&2
+  echo "  Apply // ARCH-ALLOWLIST: vlm-direct-caller on the line preceding the call." >&2
+  fail_count=$((fail_count + 1))
+fi
+if [ "$fail_count" -gt 0 ]; then
+  exit 1
+fi
+echo "Check 59 (VLM direct-caller ban): OK (0 http.*"/vlm/" hits)"
