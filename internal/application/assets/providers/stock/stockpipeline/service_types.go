@@ -1,0 +1,146 @@
+// Package stockpipeline — service_types.go (PR-STOCK-SERVICE-SPLIT,
+// July 2026).
+//
+// SOLE owner of the public-facing struct types that compose the
+// stock pipeline Service constructor input (godlike/06 SSOT —
+// one canonical owner per fact). The constructor body lives in
+// service.go::NewService; the field-name list lives here.
+//
+// godlike/07 minimum-blast-radius: zero new types added; this
+// file is pure code-motion from the pre-split service.go. The
+// 4 types (PipelineConfig + StorageDeps + MediaDeps + Deps) are
+// unchanged byte-stable; the only delta is the file path. All
+// public API (ServiceDeps, NewService call sites, all internal
+// readers) compile without modification because Go resolves the
+// type identifier by symbol + package, not by source file.
+//
+// PR-STOCK-SERVICE-SPLIT extracted these from service.go on
+// 2026-07-04. The pre-split file was 380 LoC (the user spec
+// referenced a 914-LoC pre-Commit-4-expanded view of service.go
+// that no longer exists; see service_errors.go preamble for the
+// full honest scope disclosure).
+package stockpipeline
+
+import (
+	"database/sql"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+)
+
+// PipelineConfig holds configuration for the stock pipeline run.
+type PipelineConfig struct {
+	ChunkDuration  int
+	MaxResults     int
+	EffectInterval int
+	EffectsDir     string
+}
+
+// DefaultPipelineConfig returns a PipelineConfig with sensible defaults.
+func DefaultPipelineConfig() PipelineConfig {
+	return PipelineConfig{
+		ChunkDuration:  25,
+		MaxResults:     25,
+		EffectInterval: 4,
+		EffectsDir:     "assets/effects/EffettiVisiv",
+	}
+}
+
+// StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
+// P8 (July 2026): narrowed to narrow interfaces so service.go has zero
+// internal/infrastructure imports. Concrete types (*assets.ClipsRepository,
+// *assetindex.Service, *outbox.Dispatcher) satisfy these interfaces
+// structurally at the composition root.
+type StorageDeps struct {
+	ClipsRepo  stockClipsSearchTermUpdater
+	AssetIndex stockAssetIndexUpserter
+	Dispatcher stockChunkDispatcher
+}
+
+// MediaDeps groups the PR6 ports. P8 (July 2026): ClipIndexer + MetaWriter
+// fields REMOVED — they were unused dead code (zero call sites in the
+// stockpipeline package).
+type MediaDeps struct {
+	Cutter   VideoCutter
+	Renderer StockRenderer
+}
+
+// Deps is the canonical constructor input for stockpipeline.Service
+// (PR-D, Wave 22 §D3, June 2026). Sized at 7 top-level fields — well
+// under the AGENTS.md 8-per-bundle cap. Sub-dependencies (StorageDeps
+// + MediaDeps) group related concerns so the field-name list reads as
+// the canonical composition pattern:
+//
+//	Cfg, Log, Drive         — pure data + Drive SDK
+//	Storage                 — media_assets + outbox + asset-index stack
+//	Media                   — PR6 ports + semantic enrichment
+//	YouTube                 — provider for metadata enrichment
+//	Jobs                    — async job tracker
+//
+// Pattern source: artlist.ServiceDeps (PR2.5, June 2026) — `ServiceDeps`
+// embeds `ServicePorts + ServiceDependencies` for terse construction;
+// here the sub-struct names carry semantic meaning rather than the
+// "ports vs dependencies" split at the artlist boundary (the stock
+// pipeline has fewer ports to lift out).
+//
+// PR-D: setter pattern (SetCutter, SetRenderer, SetClipsRepo,
+// SetAssetIndex, SetDispatcher, SetJobsSvc, SetYoutubeService,
+// SetClipIndexer, SetMetadataWriter) is REMOVED. All dependencies
+// are constructor arguments on Deps — replaces the late-bind ordering
+// hazard that swapped the canonical ingestion path on every
+// composition-time race in WireStockPipeline.
+type Deps struct {
+	// F2.10: Drive field dropped — every Drive write routes through
+	// delivery.Publisher (Publisher field below). The legacy
+	// driveup.Admin surface (UploadFile + GetOrCreateFolder + Trash +
+	// Delete etc.) was retired (override brutal). Folder resolution
+	// inside the pipeline run uses publisher.ResolveFolder
+	// (DestinationStock policy) instead of driveutil.EnsureFolderPath.
+	Cfg       *config.Config
+	Log       *zap.Logger
+	Publisher delivery.Publisher
+	Storage   StorageDeps
+	Media     MediaDeps
+	Jobs      *appjobs.Service
+
+	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
+	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes
+	// it OPTIONAL — nil routing keeps the legacy return-map path
+	// alive for un-wired composition roots. §F.2 follow-up makes
+	// it REQUIRED + wires the *finalizer.Finalizer concrete at
+	// the composition root (currently routed via imageSvc per
+	// registry_internal_modules.go::registerInternalModules).
+	Finalizer finalization.JobFinalizer
+
+	// SourceStager is the canonical acquisition.SourceStager port
+	// (Stock Cutover §12-4, July 2026). Every yt-dlp / HTTP byte-fetch
+	// call in stock routes through Prepare / Release on this port —
+	// the underlying `*downloader.YTDLPDownloader` is HIDDEN behind
+	// the acquisition abstraction so future §§ (DRIVE-005 forward-pointer,
+	// Drive-stager, etc.) can swap the concrete without touching
+	// stock surface. The port is REQUIRED at ctor time per godlike/06
+	// SSOT — there is exactly ONE owner of "how does stock fetch its
+	// source bytes?" and it's the concrete injected here.
+	SourceStager acquisition.SourceStager
+
+	// DB is the canonical *sql.DB handle (media.db.sqlite). STATO
+	// ATTUALE: optional (nil-tolerant) because WireStockPipeline is
+	// stubbed and the stock Service is routed via imageSvc.
+	// PROSSIMO STEP: make REQUIRED when WireStockPipeline is
+	// re-enabled — the SQLite-backed step store needs this handle
+	// for crash-resume across process restarts.
+	DB *sql.DB
+
+	// ChannelLister is the YouTube channel listing port (P4, July 2026).
+	// OPTIONAL at ctor time (nil-tolerant per §F.1 governance) — the
+	// composition root (currently retired/stubbed) wires the concrete
+	// `*downloader.YTDLPDownloader` which satisfies stockChannelLister
+	// structurally. When nil, query.go's resolveQuery fails-closed with
+	// a typed nil-port error at the first search attempt.
+	ChannelLister stockChannelLister
+}
