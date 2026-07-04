@@ -54,12 +54,17 @@ type Scene struct {
 // SceneRenderer resolves asset_locations webViewLinks for finalized
 // assets. The concrete implementation (wired in composition root)
 // performs the DB lookup against the asset_locations table.
+//
+// Returns ("", ErrImageNotFinalized) if the asset is not found or
+// the lookup fails — the caller can errors.Is against the sentinel
+// to distinguish "asset not finalized" from "DB lookup failed."
 type SceneRenderer interface {
 	// WebViewLink returns the canonical Drive webViewLink for the
 	// given asset ID. Sourced from asset_locations with
-	// location_kind='drive'. Returns ("", ErrImageNotFinalized)
-	// if the asset is not finalized.
-	WebViewLink(assetID string) string
+	// location_kind='drive'. Returns ("", error) on lookup failure
+	// so the caller can surface the error rather than silently
+	// producing a dead link (godlike/07 no-fake-availability).
+	WebViewLink(assetID string) (string, error)
 }
 
 // RenderScene assembles a Scene from the given asset.Asset inputs.
@@ -100,7 +105,11 @@ func RenderScene(assets []*asset.Asset, renderer SceneRenderer) (*Scene, error) 
 
 	// Look up the canonical webViewLink from asset_locations.
 	if renderer != nil {
-		scene.ImageURL = renderer.WebViewLink(primary.ID)
+		link, err := renderer.WebViewLink(primary.ID)
+		if err != nil {
+			return nil, fmt.Errorf("google doc template: webViewLink lookup for asset %s: %w", primary.ID, err)
+		}
+		scene.ImageURL = link
 	}
 	// If renderer is nil (test-only path), ImageURL stays empty.
 	// Production code MUST wire a real SceneRenderer.
@@ -116,11 +125,14 @@ func RenderScene(assets []*asset.Asset, renderer SceneRenderer) (*Scene, error) 
 		}
 	}
 	scene.Description = strings.Join(descParts, "\n\n")
-	if scene.Description == "" {
+	if scene.Description == "" && primary.Name != "" {
 		// Fallback: use the primary asset's name + search terms.
 		scene.Description = fmt.Sprintf("Scene: %s\nKeywords: %s",
 			primary.Name,
 			strings.Join(primary.SearchTerms, ", "))
+	}
+	if scene.Description == "" {
+		scene.Description = "(untitled scene)"
 	}
 
 	return scene, nil
