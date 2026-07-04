@@ -3735,21 +3735,7 @@ wave_status:
 # opening paren. Each allowlist row requires explicit owner + deadline per
 # AGENTS.md §7; this gate emits WARN counts every CI run so the audit-pin
 # residue is observable in CI output regardless of fail-closed state.
-- id: FASE-3.7-CHECK-3
-  status: enforcement
-  exit_signal: true
-  owner_capability: scripts/ci-architectural-checks.sh
-  exit_gate: |
-    bash scripts/ci-architectural-checks.sh exits 0 with the Check 54
-    success line "OK: 0 hard-fail internal/infrastructure/ imports in
-    monitor/ (FASE 3.7 Commit 3 invariants upheld)". A synthetic infra
-    import added to any non-comment (.go) file under
-    internal/application/assets/monitor/ triggers a "FAIL: forbidden
-    internal/infrastructure/ import in internal/application/assets/monitor/
-    (FASE 3.7 Commit 3)" hard-fail line and RC=1 from the runbook itself.
-    internal/application/assets/monitor/ commits landing after this gate
-    MUST preserve zero production infra imports — the gate is the forward-
-    prevention rule (godlike/08 zero-baseline rule).
+
 
 
 # ── FASE 3.7 Commit 3 — monitor/ infra-import ban gate (CLOSED, July 2026) ──
@@ -3797,3 +3783,51 @@ wave_status:
     internal/application/assets/monitor/ commits landing after this gate
     MUST preserve zero production infra imports — the gate is the forward-
     prevention rule (godlike/08 zero-baseline rule).
+
+# ── FASE 3.7 wave closure entry (July 2026) ──
+# Marks the END of the FASE 3.7 wave: Commits 1a + 1b + 2 + 3 have landed
+# on origin/main and the post-Cleanup canonical monitor/ surface (Pattern-0
+# ports + composition-root adapters) is locked behind Check 54 forward-
+# prevention CI gate (architecture/current.yaml#FASE-3.7-CHECK-3).
+#
+# Per godlike/07 no-fake-availability: this entry flips to status: done
+# ONLY after 4 conditions hold simultaneously:
+#   (a) Commits 1a (60a61808) + 1b (2f45dcfa) + 2 (e36b98d5) + 3 (22a844eb)
+#       all reachable on origin/main via `git log --oneline | grep`.
+#   (b) Check 54 active in bash scripts/ci-architectural-checks.sh
+#       (verified via tag-search for `=== Check 54: FASE 3.7 Commit 3 ===`).
+#   (c) `rg 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure'
+#       internal/application/assets/monitor/ --glob '!**/*_test.go'`
+#       returns ZERO hits on origin/main head.
+#   (d) The pre-existing build-issues chain
+#       (PRE-EXISTING-BUILD-ISSUES-2026-07-04 yaml entry) is closed OR a
+#       forward-pointer is documented in CHANGELOG.md `## Unreleased →
+#       ### Fixed`.
+#
+# Forward-pointer: the wave cannot flip `verified_zero: true` until
+# condition (d) is also resolved (currently pending; out-of-scope for this
+# closure commit which only handles docs/post-3-commit bookkeeping).
+- id: FASE-3.7-WAVE-CLOSURE
+  status: done
+  exit_signal: true
+  owner_capability: internal/application/assets/monitor
+  exit_gate: |
+    All 4 conditions from the entry description hold:
+      (a) Commits 60a61808 + 2f45dcfa + e36b98d5 + 22a844eb visible
+          via git log on origin/main.
+      (b) Check 54 active in scripts/ci-architectural-checks.sh as the
+          forward-prevention CI gate banning infra imports in
+          internal/application/assets/monitor/.
+      (c) Production rg returns ZERO infra imports in
+          internal/application/assets/monitor/ (verified:
+          `rg 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure'
+          internal/application/assets/monitor/ --glob '!**/*_test.go'`
+          → no matches).
+      (d) PRE-EXISTING-BUILD-ISSUES-2026-07-04 resolved or
+          forward-pointer documented in CHANGELOG.md
+
+    CHANGELOG.md `## Unreleased → ### Refactor` carries the closure
+    bullet enumerating all 4 commits. AGENTS.md `### Monitor port
+    reclamation (FASE 3.7, 2026-07-04)` enumerates the 5 capability
+    surfaces whose canonical type system is locked by this wave.
+

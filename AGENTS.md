@@ -126,6 +126,80 @@ Pre-existing build issues carry forward unchanged (per CHANGELOG forward-pointer
 
 *(DB driver lock, FTS5 ban, single-table-per-capability ownership, EXPAND/BACKFILL/CUTOVER/CONTRACT sequence — the rules previously restated under a `> Authority` blockquote citing `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#database-rules` — now live in CANONICAL.md §1 as the authoritative pointer; the bullet content above remains the agent-facing fast-reference at code-edit time.)*
 
+### Monitor port reclamation (FASE 3.7, 2026-07-04)
+
+The FASE 3.7 wave (Commits 1a + 1b + 2 + 3) closed the pre-existing
+monitor/ infra-import leak by moving every infra access through
+composition-root adapters. The canonical monitor/ surface now holds
+ONLY Pattern-0 ports + sentinel helpers; infra access is wired
+exclusively through `internal/app/lifecycle.go` (composition root).
+
+**5 reclaimed capability surfaces** (each consuming only monitor-owned
+types; infrafacing done via the composition-root adapter pattern):
+
+1. **Downloader** — `monitor.MonitorDownloaderPort` (formerly
+   `internal/infrastructure/downloader.ListChannelVideos` direct-call
+   surface). Consumes monitor-owned `monitor.ListChannelVideosQuery`
+   DTO. Adapter: `monitorYtdlpAdapter` in lifecycle.go wraps
+   `*transcripts.YTDLPSubtitleAdapter` + request-shape translation.
+
+2. **Transcript** — `monitor.TranscriptProvider` (consumed by Analyzer).
+   Monitor-owned `Transcript` + `TranscriptEntry` types. Adapters:
+   composition-root injects `transcripts.YTDLPSubtitleAdapter` (or
+   nil-safe default).
+
+3. **Analyzer** — `monitor.VideoAnalyzer`. Consumes only
+   `monitor.Analyzer*` types + the typed `MetricsRecorder` port (added
+   in Commit 2 to replace the legacy `internal/infrastructure/observability`
+   direct call). Adapter: composition-root injects `*semantic.Analyzer`.
+
+4. **Enqueuer** — `monitor.ExtractionEnqueuer` (formerly
+   `NewUnboundJobEnqueuer` shipping in Commit 1b to replace the
+   risky nil-dispatcher silent-success path). Consumes monitor-owned
+   `EnqueueRequest` types. Adapter: composition-root injects
+   `*jobsextractor.Enqueuer`.
+
+5. **Channels** — `monitor.ChannelMonitor`. Consumes typed
+   `monitor.CompositionDeps` (`MetricsRecorder` added in Commit 2;
+   `Discoveries` port added in Commit 1b). Adapter:
+   `monitorDiscoveriesAdapter` in lifecycle.go wraps
+   `*assets.YoutubeDiscoveriesRepository` + sentinel-translation.
+
+**Forward-prevention rule (CI gate, FASE 3.7 Commit 3)**:
+`bash scripts/ci-architectural-checks.sh` invokes
+**Check 54 (architecture/current.yaml#FASE-3.7-CHECK-3)** which
+canonically bans `internal/infrastructure/...` imports inside
+`internal/application/assets/monitor/`. The gate enforces:
+
+- HARD-FAIL: production import not preceded by an
+  `// ARCH-ALLOWLIST: monitor-infra-import` marker line.
+- WARN (non-fatal): comment-only references + ARCH-ALLOWLIST sites
+  (residue accounting per godlike/07 no-fake-availability).
+- Marker window: zero scroll-tolerance (covers BOTH canonical Go
+  patterns: marker-on-`import (`-line AND marker-directly-above-import
+  line).
+
+Future agents that need to add infra access to monitor/ MUST route
+through the composition-root adapter pattern (NOT a direct import).
+The Check 54 gate is the canonical lock that rejects regressions.
+
+**Related canonical anchors**:
+
+- `architecture/current.yaml#FASE-3.7-WAVE-CLOSURE` — wave-level closure marker.
+- `architecture/current.yaml#FASE-3.7-CHECK-3` — gate-level enforcement marker.
+- `CHANGELOG.md` `## Unreleased → ### Refactor` — closure bullet enumerating the 4 commits.
+
+**Per godlike/06 SSOT (one canonical owner per fact)**: the
+monitor/ package is the canonical SOLE owner of all 5 port
+types' production definitions (the typed interfaces + their
+shapes). Composition-root owns the wiring; infrastructure
+owns the concrete adapters. Test files in monitor/ MAY also
+import infra-side concretes to satisfy compile-time
+`var _ Port = (*Adapter)(nil)` pins (per Check 54's
+`*_test.go`-inclusive rationale in
+`scripts/ci-architectural-checks.sh`). No other production
+package may redefine these types.
+
 ## Qdrant Entity Associations
 
 > **Authority**: Qdrant's role as a derived projection, the canonical 5-step projection sequence (commit metadata in SQLite → persist outbox record in same transaction → update Qdrant asynchronously and idempotently → track projection version and outcome → allow a complete rebuild from SQLite), and the SQLite-vs-Qdrant dual-store carve-out live canonically in **[`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#qdrant-projection`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#qdrant-projection)**. The schema/architecture tables below are agent-facing operational facts.
