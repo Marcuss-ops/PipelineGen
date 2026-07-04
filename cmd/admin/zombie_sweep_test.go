@@ -12,6 +12,10 @@
 //  2. formatDryRunReport(cutoff, reason) — output stays
 //     byte-stable so operators can rely on the format
 //     (e.g. for monitoring scripts that grep the output).
+//  3. resolveDBPath(cfg, flag) — canonical SSOT delegation to
+//     cfg.Storage.PrimaryDBFullPath() (the helper shared by
+//     24+ cmd/admin/ callers per the qdrant_readiness.go
+//     precedent). Added in the round-2b refactor.
 //
 // godlike/06 SSOT: the typed-error sentinels
 // (ErrZombieSweepNoDB + ErrZombieSweepOpenDB) are tested via
@@ -26,6 +30,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // TestComputeCutoff_DefaultDuration pins the 1h default
@@ -139,6 +145,84 @@ func TestErrZombieSweepOpenDB_IsExported(t *testing.T) {
 	}
 	if errors.Is(wrapped, ErrZombieSweepNoDB) {
 		t.Errorf("ErrZombieSweepOpenDB must be distinct from ErrZombieSweepNoDB (different failure modes)")
+	}
+}
+
+// TestResolveDBPath_FlagWins pins the precedence: --db-path flag
+// always wins, even if cfg is non-nil and PrimaryDBFullPath returns
+// a different path. godlike/07 minimum-blast-radius: the flag
+// is the operator-explicit override; cfg is the default.
+func TestResolveDBPath_FlagWins(t *testing.T) {
+	flagPath := "/explicit/override.db.sqlite"
+	cfg := &config.Config{Storage: config.StorageConfig{MediaDir: "/from/cfg"}}
+	got := resolveDBPath(cfg, flagPath)
+	if got != flagPath {
+		t.Errorf("resolveDBPath: --db-path flag must win (got %q, want %q)", got, flagPath)
+	}
+}
+
+// TestResolveDBPath_CfgNil_FallsThroughToEmpty pins the cfg=nil
+// fallback: when the flag is empty AND cfg is nil, the function
+// returns "" so the caller surfaces ErrZombieSweepNoDB. Per
+// godlike/07 NO-FAKE-AVAILABILITY: never silently default to a
+// hard-coded path; an unconfigured caller must see the typed
+// error.
+func TestResolveDBPath_CfgNil_FallsThroughToEmpty(t *testing.T) {
+	got := resolveDBPath(nil, "")
+	if got != "" {
+		t.Errorf(`resolveDBPath: cfg=nil + empty flag must return empty string (caller surfaces ErrZombieSweepNoDB); got %q`, got)
+	}
+}
+
+// TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath pins the
+// canonical SSOT delegation: when the flag is empty AND cfg is
+// non-nil, the function delegates to cfg.Storage.PrimaryDBFullPath()
+// (the canonical helper, shared by 24+ cmd/admin/ callers per
+// the qdrant_readiness.go precedent). We do not assert the
+// exact path value here (that is the config package's job); we
+// assert the delegation happens AND the result is non-empty
+// (the config helper has a default <MediaDir>/media.db.sqlite).
+//
+// godlike/07 minimum-blast-radius: the test sets MediaDir
+// (NOT DataDir — the canonical helper reads MediaDir per
+// internal/platform/config/types.go:485; using DataDir would
+// silently break on a future FullPath refactor).
+func TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath(t *testing.T) {
+	cfg := &config.Config{Storage: config.StorageConfig{MediaDir: "/data/from/cfg"}}
+	got := resolveDBPath(cfg, "")
+	want := cfg.Storage.PrimaryDBFullPath()
+	if got != want {
+		t.Errorf("resolveDBPath: must delegate to cfg.Storage.PrimaryDBFullPath() (got %q, want %q)", got, want)
+	}
+	if got == "" {
+		t.Error(`resolveDBPath: cfg provided + PrimaryDBFullPath must return non-empty (the helper has a default <MediaDir>/media.db.sqlite); got empty string - config defaults broken?`)
+	}
+}
+
+// TestErrZombieSweepOpenDB_DualWWrapChain pins the production
+// wrapping pattern: storage.OpenSQLiteDB returns a wrapped error,
+// and runZombieSweep wraps it again via
+// fmt.Errorf("%w: %w", ErrZombieSweepOpenDB, openErr).
+// errors.Is must traverse the dual-%w chain (Go 1.20+).
+// This test pins the PRODUCTION dual-%w wrapping pattern
+// (which is the contract downstream error-probe callers will
+// see at runtime). The TestErrZombieSweepOpenDB_IsExported test
+// (defined elsewhere in this file) pins the sentinel as-is; the
+// two tests together cover both ends of the wrap contract.
+func TestErrZombieSweepOpenDB_DualWWrapChain(t *testing.T) {
+	// Simulate the production wrap: a plain inner error wrapped
+	// through a 2x fmt.Errorf %w chain (mirrors the call site
+	// in runZombieSweep where ErrZombieSweepOpenDB is wrapped
+	// around the storage-layer error). Use errors.New for the
+	// inner (NOT a typed sentinel) to avoid cross-sentinel
+	// confusion in the assertion.
+	inner := errors.New("simulated storage error")
+	wrapped := fmt.Errorf("%w: %w", ErrZombieSweepOpenDB, inner)
+	if !errors.Is(wrapped, ErrZombieSweepOpenDB) {
+		t.Errorf("ErrZombieSweepOpenDB: errors.Is must traverse the dual-%%w chain; got %v (raw: %s)", wrapped, wrapped.Error())
+	}
+	if !errors.Is(wrapped, inner) {
+		t.Errorf("ErrZombieSweepOpenDB dual-%%w chain: errors.Is must also find the inner storage error; got %v", wrapped)
 	}
 }
 
