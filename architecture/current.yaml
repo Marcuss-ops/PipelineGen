@@ -53,8 +53,9 @@
       ship_via: "chore(stock): ship closure — file already removed in 65e75ba7; 0 active code callers remain; 8 audit-pin comments in {service.go, run.go} RETAINED per AGENTS.md Item 13 + godlike/06/07 audit-pin discipline. build+vet on stockpackage + project-wide all exit 0. The user-flagged `MISSING from disk` symptom was the file retirement itself, not a build regression."
     - id: FIX-APP-MODULE-MEDIA-DISPATCHER
       owner_capability: "internal/app"
-      status: pending
-      deadline: 2026-07-25
+      status: shipped
+      ship_date: 2026-07-04
+      ship_via: "chore(app): ship closure — file was renamed to wire_assets.go in commit dbb9f569 (PR-GODOBJ-7 — composition mechanical split + bundle separation). The user-flagged `clips.Deps.MutationsDispatcher` literal is already gone (the file rename physically retired the surface). 0 active code callers remain; 0 reference to `MutationsDispatcher` in any *.go / *.md / *.yaml file. go build ./... project-wide exits 0. The separate go build ./internal/app/... failure in workerruntime/{preflight.go, run.go} is the FIX-APP-WIRE-SCRIPT-SYNTAX pre-existing build issue (carry-forward, out of scope for this commit per AGENTS.md scope discipline)."
     - id: FIX-IMAGES-ROUTING-CYCLE
       owner_capability: "internal/application/images/routing + internal/application/images"
       status: pending
