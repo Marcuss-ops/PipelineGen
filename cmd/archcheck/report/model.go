@@ -39,6 +39,17 @@ type Report struct {
 	Summary       Summary         `json:"summary"`
 	Violations    []Violation     `json:"violations"`
 	Grandfathered []string        `json:"grandfathered_known"`
+	// Warnings is the per-run audit-pin residue accounting surface
+	// (godlike/07 no-fake-availability). Comment-only hits +
+	// ARCH-ALLOWLIST marker sites in per-check checks (e.g. Check 54
+	// monitor-infra-import ban) are logged here so future drift is
+	// visible in CI output every run, without contributing to the
+	// hard-fail Violations set. The field is forward-compatible
+	// (existing JSON consumers ignore unknown fields) so Phase 0
+	// reports without a Warnings entry remain byte-stable in their
+	// other fields. PR-ARCHCHECK-GO-MIGRATION-PHASE-1 (July 2026)
+	// is the first PR to populate the field.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Violation is the JSON shape emitted per rule violation.
