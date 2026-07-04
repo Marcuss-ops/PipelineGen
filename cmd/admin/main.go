@@ -16,6 +16,13 @@
 //     and cleanup-qdrant-legacy (PR 14).
 //   - cleanup-stock-orphans       (cmd/admin/cleanup.go)
 //   - delete-specific-folders     (cmd/admin/cleanup.go)
+//   - zombie-sweep                (cmd/admin/zombie_sweep.go) — JOBS-T01-ZOMBIE-SWEEP:
+//     operator CLI subcommand for sweeping zombie jobs (status IN
+//     (LEASED, RUNNING, FINALIZING) AND lease_expiry < cutoff).
+//     Wraps the canonical (*SQLiteStore).MarkRunningJobsOlderThanFailed
+//     (internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go)
+//     per godlike/06 one-canonical-owner-per-fact. --dry-run is the
+//     default; --apply is the operator-explicit opt-in.
 //   - dr-qdrant                   (cmd/admin/dr_qdrant.go) — QDRANT-005C PR3:
 //     list-snapshots / take-snapshot / restore-snapshot / apply-retention.
 //   - list-drive-folder           (cmd/admin/list_drive_folder.go)
@@ -53,6 +60,7 @@ import (
 var availableCommands = []string{
 	"backfill-missing",
 	"benchmark",
+	"zombie-sweep",
 	"cleanup-all-orphans",
 	"cleanup-artlist-empty-folders",
 	"cleanup-orphans",
@@ -99,6 +107,8 @@ func main() {
 		err = runBackfillVisualEmbeddings(args)
 	case "benchmark":
 		err = runBenchmark(args)
+	case "zombie-sweep":
+		err = runZombieSweep(args)
 	case "cleanup-all-orphans":
 		err = runCleanupAllOrphans(args)
 	case "cleanup-artlist-empty-folders":

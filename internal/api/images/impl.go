@@ -1,3 +1,22 @@
+// ARCH-ALLOWLIST: im-001-multipart-canonical-surface
+// Per IMAGES-T04-MULTIPART (Phase 9 cycle 2, 2026-07-04):
+// the canonical multipart-form upload surface for clip assets
+// lives in internal/api/assets/clips/ingest.go::UploadVideoClip
+// (the IngestHandler POST /upload-video route), NOT in this
+// package. This package's /upload handler binds JSON (UploadRequest
+// with image_url field), not multipart. The two surfaces are
+// distinct concerns:
+//   - clips/ingest.go::UploadVideoClip  (multipart) -- clip video files
+//     via *upload.UseCase + dispatcher + outbox event pipeline.
+//   - images/impl.go::Upload           (JSON, image_url) -- legacy
+//     image-asset URL ingestion (kept for back-compat with the
+//     image-search surface).
+// godlike/06 SSOT: one canonical owner per fact -- the clip
+// multipart path lives at clips/ingest.go; the image URL path lives
+// here. Operators MUST NOT migrate clip uploads to /api/images/upload
+// (wrong surface; the dispatcher + outbox pipeline is the
+// load-bearing infrastructure for clip indexing).
+
 package images
 
 import (
@@ -65,11 +84,11 @@ type UploadRequest struct {
 
 // GenerateImageRequest is the request type for POST /api/images/generate.
 type GenerateImageRequest struct {
-	Prompt    string   `json:"prompt" binding:"required"`
-	Width     int      `json:"width"`
-	Height    int      `json:"height"`
-	Style     string   `json:"style" example:"medievale"`
-	Tags      []string `json:"tags"`
+	Prompt string   `json:"prompt" binding:"required"`
+	Width  int      `json:"width"`
+	Height int      `json:"height"`
+	Style  string   `json:"style" example:"medievale"`
+	Tags   []string `json:"tags"`
 	// Account/ProjectID RETIRED per PR-IMAGES-SHIM-REMOVAL (2026-07-04):
 	// canonical surface has no account/project params (fake-availability
 	// retirement per godlike/07 no-fake-availability). Tenant identity
