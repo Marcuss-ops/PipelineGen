@@ -681,9 +681,19 @@ func TestCompletionE2E(t *testing.T) {
 
 	publishedMap, ok := publishResp["published"].(map[string]any)
 	require.True(t, ok, "publish response missing 'published' object")
-	require.Equal(t, "drive", publishedMap["Provider"],
-		"mock publisher returns Provider='drive' (the typed LocalPath ban path)")
-	require.Equal(t, "drive_test_art1", publishedMap["FileID"])
+	// Provider SSOT lives at AssetLocation.Provider (godlike/06 one-
+	// canonical-owner-per-fact); the mock wires Location.Provider="drive",
+	// the JSON wire-shape exposes it at the nested location.provider
+	// (snake_case via AssetLocation's `json:"provider"` tag, see
+	// internal/domain/finalization/types.go:103). Reading the wrong
+	// top-level key would silently fail the typed LocalPath ban path
+	// (godlike/07).
+	locationMap, ok := publishedMap["location"].(map[string]any)
+	require.True(t, ok, "publish response missing nested 'location' object (AssetLocation.Provider is the SSOT)")
+	require.Equal(t, "drive", locationMap["provider"],
+		"mock publisher returns Provider='drive' at AssetLocation.Provider (the typed LocalPath ban path)")
+	require.Equal(t, "drive_test_art1", locationMap["file_id"],
+		"mock publisher returns FileID='drive_test_art1' at AssetLocation.FileID")
 
 	// (d) HTTP POST /complete-with-artifacts  →  WithArtifactsService 5-step TX → SUCCEEDED
 	completeReq := &remote.CompleteWithArtifactsRequest{
