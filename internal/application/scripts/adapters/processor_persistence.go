@@ -1,5 +1,5 @@
 // Package scripts — processor_persistence.go is the SINGLE PERSISTENCE
-// OWNER (PR 5, June 2026). The engine no longer writes to the scripts
+// OWNER (PR 5/6, June 2026). The engine no longer writes to the scripts
 // table; this processor is the only writer. Enabled as "persistence"
 // in the plan's Postprocessors list.
 //
@@ -13,16 +13,27 @@
 //     {ScriptID: existing.ID, AlreadyPersisted: true} — no insert.
 //   - If not found, build the ScriptRecord with all canonical fields
 //     (FinalWordCount from input.WordCount, SpecScene JSON serialised
-//     into TimelineJSON, ModelUsed, CacheStatus) and SaveScript.
+//     into the canonical SpecScene column, ModelUsed, CacheStatus) and
+//     SaveScript.
 //   - The idem key MUST include target_words + language so that
 //     callers who change sizing produce distinct rows rather than
 //     colliding with prior runs.
 //
-// PR 5 storage strategy: the IdempotencyKey is currently stored on
-// the existing ScriptRecord.Template slot. A dedicated
-// `idempotency_key TEXT` column is on the PR 6 migration plan (the
-// schema-independent resolver short-circuits a one-off migration in
-// this PR window while keeping the contract uniform).
+// PR 6 storage strategy (June 2026): dedicated `idempotency_key TEXT`
+// and `specscene TEXT` columns on the scripts table (see
+// migrations/sqlite/100_add_idempotency_key_and_specscene_columns.sql)
+// are the canonical storage. The legacy Template + TimelineJSON slots
+// are intentionally LEFT EMPTY for newly-inserted rows — migration 100
+// already backfilled pre-PR-6 rows into the dedicated columns (when
+// the legacy shape is identifiable). ListScripts filters that still
+// query `WHERE template = ?` keep working on pre-PR-6 rows; new rows
+// surface under `WHERE idempotency_key = ?` which is the canonical
+// lookup the persistence layer was already wired for.
+//
+// PersistenceProcessor is the SOLE writer of IdempotencyKey +
+// SpecScene (godlike/06 single-owner-per-fact) — the engine, the
+// handlers, and every other consumer MUST go through this processor
+// for canonical script-row persistence.
 package adapters
 
 import (
@@ -33,8 +44,8 @@ import (
 	"fmt"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
 )
@@ -124,16 +135,23 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		OutputText:     input.Text,
 		NarrativeText:  input.Text,
 		FullDocument:   input.Text,
-		// PR 5: store the canonical SpecScene serialised into the
-		// existing TimelineJSON slot — saves a schema migration
-		// (PR 6 territory when a dedicated specscene column lands).
-		TimelineJSON: string(specSceneJSON),
-		// IdempotencyKey stored on Template slot. Concrete repo
-		// FindByIdempotencyKey reads this back. Same migration-
-		// deferral reasoning as TimelineJSON — PR 6 introduces a
-		// dedicated idempotency_key column.
-		Template: idemKey,
-		Version:  1,
+		// PR 6 canonical fields — write directly to the dedicated
+		// idempotency_key + specscene columns on the scripts table.
+		// godlike/06 single-owner-per-fact: this processor is the
+		// SOLE writer; engine / handlers MUST NOT bypass via direct
+		// SaveScript calls (forbidden by Check 53-style gate
+		// semantics on the persistence seam).
+		SpecScene:      string(specSceneJSON),
+		IdempotencyKey: idemKey,
+		// Legacy slots left empty under PR 6: newly-inserted rows
+		// start in the canonical shape from row zero. Pre-PR-6 rows
+		// are already backfilled (migration 100) for listable
+		// semantics; from this commit forward, ListScripts filters
+		// reading `WHERE template = ?` no longer encounter freshly-
+		// written idem-key values — they read the dedicated column.
+		Template:     "",
+		TimelineJSON: "",
+		Version:      1,
 	}
 
 	sections := buildSectionsFromScenes(input.SpecScene.Scenes)
