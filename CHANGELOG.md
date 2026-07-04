@@ -2643,3 +2643,15 @@ The following 5 closure entries are the P2.4 closure pin (no new code surface; d
 
 - **[SCRIPT-T03-001 closure (PHASE-9-BUG-REMEDIATION-2026-07-04, 2026-07-04)]** `fix(script)` — canonical-error-mapper routes typed script errors to the correct HTTP status instead of leaking 5xx. New file `internal/api/script/canonical_errors.go` exports `CanonicalHTTPStatus(err) int` + `CanonicalErrorMessage(err) string` (gofmt/vet/build clean, 11 TDD tests pass). errors.As + errors.Is disjunct walks both typed-envelope shapes AND bare sentinels + fmt.Errorf %w wrap chains. 3-branch switch covers ONLY 4xx envelopes (PlanInvalid / NoSource / SourceResolution -> 400); typed 5xx envelopes (GenerationError / PostprocessError for Ollama / TTS / Drive failures) intentionally fall through to default -> 500 because those signal server-side concerns (godlike/07 typed-error contract for ops-dashboard status-class fidelity). Wire-up site: `handler_enqueue.go::enqueueEnvelopeFn` error branch (replaces `c.JSON(http.StatusInternalServerError, ...)` with `c.JSON(CanonicalHTTPStatus(err), ...)` + `CanonicalErrorMessage(err)`). handler_clip_search.go correctly EXCLUDED per godlike/07 minimum-blast-radius (its SQLite LIKE-query errors never carry typed envelopes). Behavior change disclosure: typed PlanInvalid + NoSource + SourceResolution now return HTTP 400 (was HTTP 500). Non-typed errors still return HTTP 500 with opaque "internal server error" message (no stack/file-path leak). Pre-existing 5-item build issue carry-forward unchanged (NOT regressions). Wave-tracker cross-reference: `architecture/current.yaml#PHASE-9-BUG-REMEDIATION-2026-07-04.linked_issues[SCRIPT-T03-001]` flipped `pending -> shipped` with `ship_sha + ship_date`. AGENTS.md mirror entry under `## Recent cross-cutting closures`. Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
 
+
+## Unreleased
+
+### Fixed
+
+- **RED-2 / JOBS-T01-001 — events Scan error closure (2026-07-04)** `fix(jobs): resolve events Scan error via strftime canonical wrap + rfc3339TimeScanner`
+  - Wraps the `created_at` DATETIME column with `strftime('%Y-%m-%dT%H:%M:%fZ', created_at)` in `internal/infrastructure/database/sqlite/jobs/repository.go::ListEvents`
+  - New helper type `rfc3339TimeScanner` in separate file `repository_scanner.go` handles the strftime TEXT output via `time.Parse(time.RFC3339Nano, str)`
+  - New TDD test coverage: `repository_events_test.go` with 3 tests (roundtrip canonical scan + empty-result no-scan + legacy format sentinel scan)
+  - Verification: gofmt + vet + build + test PASS on `internal/infrastructure/database/sqlite/jobs`
+  - Ship SHA: see `architecture/current.yaml#PHASE-9-BUG-REMEDIATION.linked_issues[JOBS-T01-001].ship_sha`
+  - Cross-ref: `architecture/issues.yaml#JOBS-T01-SQLITE-REPO` flipped `status: pending → status: done`

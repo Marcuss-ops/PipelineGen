@@ -550,7 +550,11 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 // ListEvents returns all events for a given job.
 func (r *SQLiteStore) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, job_id, type, message, data_json, created_at FROM job_events WHERE job_id = ? ORDER BY created_at ASC`, jobID)
+		`SELECT id, job_id, type, message, data_json,
+			strftime('%Y-%m-%dT%H:%M:%fZ', created_at) AS created_at
+		FROM job_events
+		WHERE job_id = ?
+		ORDER BY strftime('%Y-%m-%dT%H:%M:%fZ', created_at) ASC`, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("listEvents: %w", err)
 	}
@@ -560,7 +564,8 @@ func (r *SQLiteStore) ListEvents(ctx context.Context, jobID string) ([]job.Event
 	for rows.Next() {
 		var evt job.Event
 		var dataJSON string
-		if err := rows.Scan(&evt.ID, &evt.JobID, &evt.Type, &evt.Message, &dataJSON, &evt.CreatedAt); err != nil {
+		createdAt := &evt.CreatedAt
+		if err := rows.Scan(&evt.ID, &evt.JobID, &evt.Type, &evt.Message, &dataJSON, &rfc3339TimeScanner{t: createdAt}); err != nil {
 			return nil, fmt.Errorf("listEvents: scan: %w", err)
 		}
 		if len(dataJSON) > 0 {
