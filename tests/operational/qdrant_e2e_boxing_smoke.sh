@@ -537,6 +537,13 @@ elif [[ -f "$SMOKE_DB" ]]; then
             "$RED" "$outbox_dead" "$RESET" >&2
         fail_count=$((fail_count + 1))
     fi
+
+    # 4b — Classified per-clip outbox chain verification.
+    # Classifies each clip as COMPLETED / PENDING / DEAD_LETTER /
+    # SUPERSEDED / MISSING using smoke_outbox_chain_verify from common.sh.
+    if ! smoke_outbox_chain_verify "$SMOKE_DB" "$clip_ids_file"; then
+        fail_count=$((fail_count + 1))
+    fi
 fi
 
 # ── Test 5: semantic search with 3 rich queries ───────────────────────────
