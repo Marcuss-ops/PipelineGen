@@ -21,6 +21,10 @@ import (
 	"errors"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
 // ── Port ────────────────────────────────────────────────────────────────
@@ -532,3 +536,44 @@ func (noOpCutter) Cut(ctx context.Context, req CutRequest) (CutBatchResult, erro
 // error). Distinct ErrCutFailed wording so callers can
 // errors.Is on no-op failures vs real ffmpeg failures.
 var ErrNoOpCutter = errors.New("cutter: noOpCutter (test fixture)")
+
+// ── Narrow Ports (P7, July 2026) ────────────────────────────────────
+//
+// Moved from service.go so infrastructure imports are confined to
+// ports.go — service.go stays clean of internal/infrastructure/...
+// imports (godlike/06 import-boundary discipline). Each interface
+// exposes only the methods the stock pipeline actually calls, so
+// test fakes satisfy them via Go's structural subtyping without
+// dragging the full concrete surface into test fixtures.
+
+// stockAssetIndexUpserter is the narrow surface the stock pipeline
+// uses from *assetindex.Service. Only Upsert is invoked
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+type stockAssetIndexUpserter interface {
+	Upsert(ctx context.Context, rec *assetindex.AssetRecord) error
+}
+
+// stockClipsSearchTermUpdater is the narrow surface the stock pipeline
+// uses from *assets.ClipsRepository. Only UpdateSearchTerms is invoked
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+type stockClipsSearchTermUpdater interface {
+	UpdateSearchTerms(ctx context.Context, clipID, source, name string, tags []string, searchText string) error
+}
+
+// stockChunkDispatcher is the narrow surface the stock pipeline
+// uses from *outbox.Dispatcher. Only EnqueueAndIndex is invoked.
+//
+//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
+type stockChunkDispatcher interface {
+	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, fileHash string) error
+}
+
+// stockChannelLister is the narrow port for YouTube channel listing
+// (P4, July 2026). The concrete `*downloader.YTDLPDownloader` satisfies
+// this interface structurally; wiring happens at the composition root.
+// The old `s.ytdlp.ListChannel` direct call in query.go is RETIRED.
+type stockChannelLister interface {
+	ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
+}
