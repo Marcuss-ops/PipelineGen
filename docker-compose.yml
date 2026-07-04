@@ -118,8 +118,15 @@ services:
     container_name: pipelinegen-qdrant
     restart: unless-stopped
     ports:
+      # Production: 6333 (gRPC), 6334 (HTTP)
       - "6333:6333"
       - "6334:6334"
+      # Preflight CI smoke: 16333 (per preflight-ci.yml contract)
+      # Per godlike/07 minimum-blast-radius: the additional port
+      # is exposed on localhost only when the host runs preflight.
+      # Production users that do not run preflight ignore this
+      # port; the qdrant container is not materially affected.
+      - "16333:6333"
     volumes:
       - qdrant-storage:/qdrant/storage
     networks:
