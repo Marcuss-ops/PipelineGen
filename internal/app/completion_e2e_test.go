@@ -325,18 +325,17 @@ func (c *inMemCache) StoreCanonical(_ context.Context, jobID string, attempt int
 
 // ── Helpers (test-scoped; prim types live in pkg/ or internal/ in production) ──
 
-// minimalPNG is the canonical 67-byte transparent 1x1 PNG, hex-encoded.
+// minimalPNG is the canonical 68-byte transparent 1x1 PNG, hex-encoded.
 // Embedding avoids the image/png stdlib import (which transitively
-// pulls in golang.org/x/image) for hermeticity. Decoded size is 67
+// pulls in golang.org/x/image) for hermeticity. Decoded size is 68
 // bytes; SHA-256 is computed at runtime and pinned via t.Run assertions.
-const minimalPNG = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c48900000" +
-	"00a49444154789c63000100000005000179c9a9e80000000049454e44ae426082"
+const minimalPNG = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000005000179c9a9e80000000049454e44ae426082"
 
 func loadMinimalPNG(t *testing.T) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(minimalPNG)
 	require.NoError(t, err)
-	require.Len(t, b, 67, "minimal PNG must decode to exactly 67 bytes")
+	require.Len(t, b, 68, "minimal PNG must decode to exactly 68 bytes")
 	return b
 }
 

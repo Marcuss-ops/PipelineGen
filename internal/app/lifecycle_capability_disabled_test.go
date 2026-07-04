@@ -105,7 +105,7 @@ func TestYTCachePrewarmStartupStep_ProductionShape(t *testing.T) {
 		t.Fatal("yt-cache-prewarm Start MUST return non-nil error per godlike/07 no-fake-availability (a step returning success while loading NOTHING is a fake success)")
 	}
 	if !errors.Is(err, ErrCapabilityDisabled) {
-		t.Errorf("yt-cache-prewarm Start MUST errors.Is(err, ErrCapabilityDisabled) == true (via %w chain); got err=%v, ErrCapabilityDisabled=%v", err, ErrCapabilityDisabled)
+		t.Errorf("yt-cache-prewarm Start MUST errors.Is(err, ErrCapabilityDisabled) == true (via %%w chain); got err=%v, ErrCapabilityDisabled=%v", err, ErrCapabilityDisabled)
 	}
 	if !strings.Contains(err.Error(), "yt-cache-prewarm") {
 		t.Errorf("yt-cache-prewarm Start error message MUST include the step name as diagnostic context; got %q", err.Error())
@@ -127,7 +127,7 @@ func TestYTNightlyPrewarmStartupStep_ProductionShape(t *testing.T) {
 		t.Fatal("yt-nightly-prewarm Start MUST return non-nil error per godlike/07 no-fake-availability")
 	}
 	if !errors.Is(err, ErrCapabilityDisabled) {
-		t.Errorf("yt-nightly-prewarm Start MUST errors.Is(err, ErrCapabilityDisabled) == true (via %w chain); got err=%v", err)
+		t.Errorf("yt-nightly-prewarm Start MUST errors.Is(err, ErrCapabilityDisabled) == true (via %%w chain); got err=%v", err)
 	}
 	if !strings.Contains(err.Error(), "yt-nightly-prewarm") {
 		t.Errorf("yt-nightly-prewarm Start error message MUST include the step name as diagnostic context; got %q", err.Error())
