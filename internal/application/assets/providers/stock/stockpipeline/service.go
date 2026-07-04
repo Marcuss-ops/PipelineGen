@@ -1,8 +1,57 @@
+// Package stockpipeline — service.go (PR-STOCK-SERVICE-SPLIT, July 2026).
+//
+// The stock pipeline Service is the typed orchestrator that drives the
+// 6-step stock pipeline (plan → stage_sources → extract_clips →
+// compose_chunks → publish → finalize) and the broker-side job
+// entrypoint. This file is the SOLE owner of:
+//
+//   - The Service struct (private fields + 4 unexported port-shaped
+//     accessors: cutter / renderer / dispatcher / finalizer /
+//     sourceStager / channelLister / db).
+//   - The NewService constructor (12-step validation ladder that
+//     surfaces each missing dep as a typed sentinel from
+//     service_errors.go).
+//   - The factory wiring that copies Deps fields into the
+//     unexported Service struct fields.
+//
+// godlike/06 SSOT (one canonical owner per fact):
+//
+//   - Sentinel errors (ErrStockPipelineNil*):  service_errors.go
+//   - Constructor input types (Deps + StorageDeps + MediaDeps +
+//     PipelineConfig):                          service_types.go
+//   - Job handler methods (RegisterHandler /
+//     HandleJob / extractLease / manifestBytes): job_handler.go
+//   - Run types (RunInput, ChunkResult,
+//     PipelineResult, DTOs):                     types_run.go
+//   - Source staging methods (StageSource,
+//     stageSection):                             source_staging.go
+//   - Pattern 0 resilience ports (3) +
+//     4 typed sentinels:                        upload_orchestration.go
+//   - 6-step orchestrator + StepRunner + 2
+//     more typed sentinels:                     orchestrator_steps.go
+//   - StepRunner interface + runState + 6
+//     accessors:                                step_runner.go
+//   - Orchestrator defaults + compile-time
+//     assertions:                               orchestrator_defaults.go
+//   - Artifact ID helpers:                      orchestrator_fingerprint.go
+//   - Metadata helpers:                         orchestrator_metadata.go
+//
+// PR-STOCK-SERVICE-SPLIT extracted (a) the sentinels to
+// service_errors.go + (b) the constructor input types to
+// service_types.go on 2026-07-04. The pre-split file was 380 LoC
+// (the user spec referenced a 914-LoC pre-Commit-4-expanded view
+// of service.go that no longer exists; the spec's
+// "service_resilience.go / service_state.go / service_steps.go /
+// service_metrics.go" files would have been empty per godlike/07
+// no-fake-availability — the resilience ports + state machine +
+// Stage 1-5 + Prometheus metrics live in upload_orchestration.go,
+// job_handler.go, orchestrator_steps.go and are NOT in service.go
+// post-Commit-4-expanded; see service_errors.go preamble + commit
+// body for the full honest scope disclosure).
 package stockpipeline
 
 import (
 	"database/sql"
-	"errors"
 
 	"go.uber.org/zap"
 
@@ -12,179 +61,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
-
-// PipelineConfig holds configuration for the stock pipeline run.
-type PipelineConfig struct {
-	ChunkDuration  int
-	MaxResults     int
-	EffectInterval int
-	EffectsDir     string
-}
-
-// DefaultPipelineConfig returns a PipelineConfig with sensible defaults.
-func DefaultPipelineConfig() PipelineConfig {
-	return PipelineConfig{
-		ChunkDuration:  25,
-		MaxResults:     25,
-		EffectInterval: 4,
-		EffectsDir:     "assets/effects/EffettiVisiv",
-	}
-}
-
-// Sentinel errors returned by NewService validation. Each error names a
-// missing dependency so composition-time call sites can forward a single
-// error to operators and tests can assert the precise missing dep without
-// reading through the wrapped fmt chain.
-var (
-	ErrStockPipelineNilCfg = errors.New("stockpipeline.NewService: cfg is required")
-	ErrStockPipelineNilLog = errors.New("stockpipeline.NewService: log is required")
-	// F2.10: ErrStockPipelineNilDriveSvc RETIRED. The legacy
-	// DriveSvc surface (driveup.Admin + its upload/folder-resolution
-	// methods) was dropped entirely (override brutal). Every Drive
-	// write from the stock pipeline now routes through
-	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
-	ErrStockPipelineNilClipsRepo      = errors.New("stockpipeline.NewService: storage.ClipsRepo is required (production path)")
-	ErrStockPipelineNilAssetIndex     = errors.New("stockpipeline.NewService: storage.AssetIndex is required (production path)")
-	ErrStockPipelineNilDispatcher     = errors.New("stockpipeline.NewService: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
-	ErrStockPipelineNilCutter         = errors.New("stockpipeline.NewService: media.Cutter is required (PR6 port)")
-	ErrStockPipelineNilRenderer       = errors.New("stockpipeline.NewService: media.Renderer is required (PR6 port)")
-	ErrStockPipelineNilJobs           = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
-
-	// P8 (July 2026): ErrStockPipelineNilYouTube + ErrStockPipelineNilClipIndexer +
-	// ErrStockPipelineNilMetadataWriter RETIRED. YouTube was never wired at
-	// the composition root; ClipIndexer + MetaWriter were dead code (zero
-	// call sites in the stockpipeline package).
-
-	// §12-4 (July 2026): stock pipeline no longer threads
-	// `*downloader.YTDLPDownloader` directly. Every yt-dlp / HTTP / Drive
-	// byte-fetch call routes through the canonical
-	// acquisition.SourceStager port (Prepare / Release). Production
-	// wiring supplies an `*acquisition.FilesystemStager` (or future
-	// `*acquisition.YTDLPSourceStager`); nil routing is REJECTED at
-	// ctor time so a missed composition-root injection fails loud.
-	ErrStockPipelineNilSourceStager = errors.New("stockpipeline.NewService: storage.SourceStager is required (Stock Cutover §12-4 — yt-dlp must be hidden behind the acquisition port)")
-
-	// ErrStockPipelineNilDB surfaces a nil *sql.DB at ctor time.
-	// PROSSIMO STEP: make DB REQUIRED when WireStockPipeline is
-	// re-enabled and the SQLite step store survives restarts.
-	// STATO ATTUALE: DB is optional (nil-tolerant) because the
-	// stock Service is routed via imageSvc and WireStockPipeline
-	// is currently stubbed.
-	ErrStockPipelineNilDB = errors.New("stockpipeline.NewService: DB is nil — step store will fall back to in-memory (production should wire media.db.sqlite)")
-
-	// ErrStockPipelineNilFinalizer is NOT a fail-fast sentinel — the
-	// stock Service tolerates a nil Finalizer at ctor time (§12-1
-	// §F.1 governance, July 2026) so existing composition-root
-	// wiring (which doesn't yet inject the Spina Dorsale finalizer)
-	// does not break. When nil:
-	//   - Service.HandleJob STILL runs the gates via
-	//     BuildFinalizationRequest (the gates fail-closed today
-	//     on ErrStockNoChunksFinalized until Commit 4-7 wires
-	//     the chunk-rendering ladder).
-	//   - When gates pass, HandleJob logs a Warn + skips the
-	//     finalizer.CompleteWithArtifacts call (legacy
-	//     return-map path remains active).
-	//
-	// §F.2 follow-up: make Finalizer REQUIRED at ctor time +
-	// wire the *finalizer.Finalizer concrete at the composition
-	// root (currently routed via imageSvc per
-	// registry_internal_modules.go::registerInternalModules).
-	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewService: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
-)
-
-// StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
-// P8 (July 2026): narrowed to narrow interfaces so service.go has zero
-// internal/infrastructure imports. Concrete types (*assets.ClipsRepository,
-// *assetindex.Service, *outbox.Dispatcher) satisfy these interfaces
-// structurally at the composition root.
-type StorageDeps struct {
-	ClipsRepo  stockClipsSearchTermUpdater
-	AssetIndex stockAssetIndexUpserter
-	Dispatcher stockChunkDispatcher
-}
-
-// MediaDeps groups the PR6 ports. P8 (July 2026): ClipIndexer + MetaWriter
-// fields REMOVED — they were unused dead code (zero call sites in the
-// stockpipeline package).
-type MediaDeps struct {
-	Cutter   VideoCutter
-	Renderer StockRenderer
-}
-
-// Deps is the canonical constructor input for stockpipeline.Service
-// (PR-D, Wave 22 §D3, June 2026). Sized at 7 top-level fields — well
-// under the AGENTS.md 8-per-bundle cap. Sub-dependencies (StorageDeps
-// + MediaDeps) group related concerns so the field-name list reads as
-// the canonical composition pattern:
-//
-//	Cfg, Log, Drive         — pure data + Drive SDK
-//	Storage                 — media_assets + outbox + asset-index stack
-//	Media                   — PR6 ports + semantic enrichment
-//	YouTube                 — provider for metadata enrichment
-//	Jobs                    — async job tracker
-//
-// Pattern source: artlist.ServiceDeps (PR2.5, June 2026) — `ServiceDeps`
-// embeds `ServicePorts + ServiceDependencies` for terse construction;
-// here the sub-struct names carry semantic meaning rather than the
-// "ports vs dependencies" split at the artlist boundary (the stock
-// pipeline has fewer ports to lift out).
-//
-// PR-D: setter pattern (SetCutter, SetRenderer, SetClipsRepo,
-// SetAssetIndex, SetDispatcher, SetJobsSvc, SetYoutubeService,
-// SetClipIndexer, SetMetadataWriter) is REMOVED. All dependencies
-// are constructor arguments on Deps — replaces the late-bind ordering
-// hazard that swapped the canonical ingestion path on every
-// composition-time race in WireStockPipeline.
-type Deps struct {
-	// F2.10: Drive field dropped — every Drive write routes through
-	// delivery.Publisher (Publisher field below). The legacy
-	// driveup.Admin surface (UploadFile + GetOrCreateFolder + Trash +
-	// Delete etc.) was retired (override brutal). Folder resolution
-	// inside the pipeline run uses publisher.ResolveFolder
-	// (DestinationStock policy) instead of driveutil.EnsureFolderPath.
-	Cfg       *config.Config
-	Log       *zap.Logger
-	Publisher delivery.Publisher
-	Storage   StorageDeps
-	Media     MediaDeps
-	Jobs *appjobs.Service
-
-	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
-	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes
-	// it OPTIONAL — nil routing keeps the legacy return-map path
-	// alive for un-wired composition roots. §F.2 follow-up makes
-	// it REQUIRED + wires the *finalizer.Finalizer concrete at
-	// the composition root (currently routed via imageSvc per
-	// registry_internal_modules.go::registerInternalModules).
-	Finalizer finalization.JobFinalizer
-
-	// SourceStager is the canonical acquisition.SourceStager port
-	// (Stock Cutover §12-4, July 2026). Every yt-dlp / HTTP byte-fetch
-	// call in stock routes through Prepare / Release on this port —
-	// the underlying `*downloader.YTDLPDownloader` is HIDDEN behind
-	// the acquisition abstraction so future §§ (DRIVE-005 forward-pointer,
-	// Drive-stager, etc.) can swap the concrete without touching
-	// stock surface. The port is REQUIRED at ctor time per godlike/06
-	// SSOT — there is exactly ONE owner of "how does stock fetch its
-	// source bytes?" and it's the concrete injected here.
-	SourceStager acquisition.SourceStager
-
-	// DB is the canonical *sql.DB handle (media.db.sqlite). STATO
-	// ATTUALE: optional (nil-tolerant) because WireStockPipeline is
-	// stubbed and the stock Service is routed via imageSvc.
-	// PROSSIMO STEP: make REQUIRED when WireStockPipeline is
-	// re-enabled — the SQLite-backed step store needs this handle
-	// for crash-resume across process restarts.
-	DB *sql.DB
-
-	// ChannelLister is the YouTube channel listing port (P4, July 2026).
-	// OPTIONAL at ctor time (nil-tolerant per §F.1 governance) — the
-	// composition root (currently retired/stubbed) wires the concrete
-	// `*downloader.YTDLPDownloader` which satisfies stockChannelLister
-	// structurally. When nil, query.go's resolveQuery fails-closed with
-	// a typed nil-port error at the first search attempt.
-	ChannelLister stockChannelLister
-}
 
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
 // effect overlay, chunk rendering, and Drive upload. All video parameters are read
@@ -198,24 +74,26 @@ type Deps struct {
 //   - stock.StockRenderer (cross-clip concatenation + transition/overlay)
 //
 // PR-D (June 2026): all dependencies — including the PR6 ports —
-// arrive via the ctor-injected Deps struct. The 9 legacy setters
-// (SetCutter / SetRenderer / SetClipsRepo / SetAssetIndex / SetDispatcher
-// / SetJobsSvc / SetYoutubeService / SetClipIndexer / SetMetadataWriter)
-// were removed. Production wire-up lives in WireStockPipeline at
+// arrive via the ctor-injected Deps struct (defined in
+// service_types.go). The 9 legacy setters (SetCutter / SetRenderer /
+// SetClipsRepo / SetAssetIndex / SetDispatcher / SetJobsSvc /
+// SetYoutubeService / SetClipIndexer / SetMetadataWriter) were
+// removed. Production wire-up lives in WireStockPipeline at
 // internal/app/module_sources.go (Deps{...} literal).
-//// P4+P8 (July 2026): the ytdlp, clipIndexer, metaWriter, youtubeSvc fields
+//
+// P4+P8 (July 2026): the ytdlp, clipIndexer, metaWriter, youtubeSvc fields
 // are REMOVED — dead code or port-abstracted. All infra imports are
 // eliminated from service.go (godlike/06 import-boundary discipline).
 type Service struct {
-	cfg       *config.Config
-	log       *zap.Logger
-	publisher delivery.Publisher
-	cutter    VideoCutter
-	renderer  StockRenderer
-	pcfg      PipelineConfig
-	jobsSvc   *appjobs.Service
-	assetIndex  stockAssetIndexUpserter
-	clipsRepo   stockClipsSearchTermUpdater
+	cfg        *config.Config
+	log        *zap.Logger
+	publisher  delivery.Publisher
+	cutter     VideoCutter
+	renderer   StockRenderer
+	pcfg       PipelineConfig
+	jobsSvc    *appjobs.Service
+	assetIndex stockAssetIndexUpserter
+	clipsRepo  stockClipsSearchTermUpdater
 	// dispatcher is the canonical media_index_outbox dispatcher,
 	// required at ctor time per QDRANT-002 PR7. NewService rejects
 	// nil dispatcher with ErrStockPipelineNilDispatcher.
@@ -252,9 +130,9 @@ type Service struct {
 // only *Service + relied on per-call nil guards; the new contract surfaces
 // missing deps at composition time, the only safe window).
 //
-// Validation order: pure data (Cfg, Log, Drive) → transport (Storage) →
+// Validation order: pure data (Cfg, Log) → transport (Storage) →
 // ports (Media) → cross-cutting. Each missing dep surfaces its own
-// sentinel error (see ErrStockPipelineNil* above) so production wiring
+// sentinel error (declared in service_errors.go) so production wiring
 // can forward a single error verbatim and tests can assert the precise
 // field-name without unwrapping the chain.
 //
@@ -326,9 +204,9 @@ func NewService(deps Deps) (*Service, error) {
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-		jobsSvc:     deps.Jobs,
-		assetIndex:  deps.Storage.AssetIndex,
-		clipsRepo:   deps.Storage.ClipsRepo,
+		jobsSvc:       deps.Jobs,
+		assetIndex:    deps.Storage.AssetIndex,
+		clipsRepo:     deps.Storage.ClipsRepo,
 		dispatcher:    deps.Storage.Dispatcher,
 		finalizer:     deps.Finalizer,
 		sourceStager:  deps.SourceStager,
@@ -336,14 +214,3 @@ func NewService(deps Deps) (*Service, error) {
 		db:            deps.DB,
 	}, nil
 }
-
-// ────────────────────────────────────────────────────────────────────
-// Job handler methods (RegisterHandler / HandleJob / extractLease /
-// manifestBytes) live in job_handler.go (Stock P0 split, July 2026).
-//
-// Run types (RunInput, ChunkResult, PipelineResult, DTOs) live in
-// types_run.go (Stock P0 split, July 2026).
-//
-// Source staging methods (StageSource, stageSection) live in
-// source_staging.go (Stock P0 split, July 2026).
-// ────────────────────────────────────────────────────────────────────
