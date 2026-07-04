@@ -6,6 +6,16 @@
 // SQLite → Qdrant → aggregator → response.
 //
 // The check is NON-DESTRUCTIVE: it only reads, never writes.
+//
+// No-internal-locator invariant: this readiness check does NOT scan the
+// response for LocalPath / DriveLink / similar internal-locator fields.
+// The invariant is enforced at the TYPE level: search.Candidate has no
+// such fields by design (PR-SEARCH-PORTS-SPLIT, 2026-07-04; QDRANT-004
+// in types_result.go preamble). A runtime check would be unreachable
+// and any rewrite against c.PreviewURL (a public URL, intentionally
+// non-empty) would always false-fail. If a future maintainer is tempted
+// to add such a check, the right defense-in-depth is a JSON-tag-based
+// assertion on the wire shape, not a struct-field scan.
 package main
 
 import (
@@ -55,12 +65,14 @@ func checkSemanticSearchReal(ctx context.Context, deps readinessDeps) checkStatu
 	for _, c := range result.Items {
 		if c.AssetID == canary.assetID {
 			found = true
-			if strings.TrimSpace(c.LocalPath) != "" {
-				return checkStatus{Err: fmt.Sprintf(
-					"semantic canary integrity: result for asset %q exposes local_path=%q",
-					canary.assetID, c.LocalPath,
-				)}
-			}
+			// LocalPath-leak check REMOVED (2026-07-04): search.Candidate
+			// no longer exposes a LocalPath field per PR-SEARCH-PORTS-SPLIT
+			// (QDRANT-004 invariant — see types_result.go preamble). The
+			// godlike/07 no-fake-availability invariant is enforced at the
+			// type level (struct has no server-internal locators by design),
+			// so this readiness check is now obsolete and would only ever
+			// produce false-positives if rewritten against PreviewURL
+			// (which is intentionally non-empty in normal responses).
 			break
 		}
 	}

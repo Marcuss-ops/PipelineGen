@@ -84,7 +84,7 @@ type qdrantMaintContext struct {
 
 	// Heavy-init fields (audit + delete-invalid only).
 	sqliteDB  *sql.DB
-	root      *app.Root
+	root      *app.ComposeRoot
 	client    *qdrant.Client
 	activeCol string
 	scanner   *qdrantScannerAdapter
@@ -171,7 +171,7 @@ func runQdrantMaintenanceHeavy(
 		return fmt.Errorf("runtime alias %q has no target; run EnsureSchema first", schema.RuntimeAlias)
 	}
 
-	mctx.sqliteDB = sqliteDB
+	mctx.sqliteDB = sqliteDB.DB
 	mctx.root = root
 	mctx.client = client
 	mctx.activeCol = active

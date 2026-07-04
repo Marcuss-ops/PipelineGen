@@ -91,7 +91,14 @@ func TestReadinessRunsRealSemanticSearch(t *testing.T) {
 	searcher := &stubSemanticSearcher{
 		searchFn: func(_ context.Context, q search.Query) (*search.Result, error) {
 			if q.Actor.WorkspaceID != "ws-prod" {
-				t.Errorf("searcher received workspace %q, want ws-prod", q.Actor.WorkspaceID)
+				// Cross-workspace call: return empty (no canary). The
+				// readiness check requires a DIFFERENT workspace to NOT
+				// see the canary asset; returning empty here is the
+				// canonical "workspace isolation working" stub. Pre-fix
+				// (2026-07-04) this branch logged t.Errorf and STILL
+				// returned the canary items, which made the happy-path
+				// test fail with a false cross-workspace-leak detection.
+				return &search.Result{}, nil
 			}
 			return &search.Result{
 				Items: []search.Candidate{
@@ -178,35 +185,11 @@ func TestReadinessSemanticCanaryUnavailable(t *testing.T) {
 	}
 }
 
-// TestReadinessSemanticLocalPathLeak verifies local_path exposure
-// is detected and the check fails.
-func TestReadinessSemanticLocalPathLeak(t *testing.T) {
-	db := openSemanticTestDB(t, "asset-path", "ws-path", "path test", "ACTIVE", "[0.5]")
-	defer db.Close()
-
-	searcher := &stubSemanticSearcher{
-		searchFn: func(_ context.Context, q search.Query) (*search.Result, error) {
-			return &search.Result{
-				Items: []search.Candidate{
-					{AssetID: "asset-path", Title: "Leak", Score: 0.99, LocalPath: "/secret/file.mp4"},
-				},
-			}, nil
-		},
-	}
-
-	deps := readinessDeps{
-		DB:  db,
-		Log: zap.NewNop(),
-		Root: &compositionRoot{
-			SemanticSearch: searcher,
-		},
-	}
-
-	res := checkSemanticSearchReal(context.Background(), deps)
-	if res.Pass {
-		t.Error("expected fail when local_path leaks, got pass")
-	}
-	if !strings.Contains(res.Err, "local_path") {
-		t.Errorf("error should mention local_path, got: %s", res.Err)
-	}
-}
+// TestReadinessSemanticLocalPathLeak REMOVED (2026-07-04): the underlying
+// check was retired in the production file (qdrant_readiness_semantic.go)
+// because search.Candidate no longer exposes a LocalPath field per
+// PR-SEARCH-PORTS-SPLIT (QDRANT-004 invariant — see types_result.go
+// preamble). The godlike/07 no-fake-availability invariant is enforced at
+// the type level; the test was both uncompilable (LocalPath undefined on
+// Candidate) and obsolete (the invariant it pinned now lives in the
+// struct shape itself, not in a runtime check).
