@@ -2,6 +2,7 @@
 package register
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -53,10 +54,21 @@ type BatchRegisterResponse struct {
 // registrations — replay semantics per clip are preserved by the
 // underlying dedup logic (FindByExternalRef), but the response is
 // the per-call batch summary. nil disables idempotency for tests.
+//
+// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): added DriveChecker field.
+// BatchRegisterFromYouTube probes it BEFORE any folder_id routing —
+// if any folder_id in the request is non-empty AND the checker
+// returns a non-nil error, the handler fail-closed 503 (NOT 500
+// nil-panic). The probe is wired by the composition root from a
+// closure that mirrors the boot-time validateDriveServiceAvailability
+// check (composition-root + handler-level defense-in-depth). nil
+// checker → defensive always-fail (godlike/07 no-fake-availability;
+// never accept folder_id traffic when wiring is unconfirmed).
 type Handler struct {
-	svc         *sourcing.Service
-	log         *zap.Logger
-	Idempotency gin.HandlerFunc
+	svc          *sourcing.Service
+	log          *zap.Logger
+	Idempotency  gin.HandlerFunc
+	driveChecker func() error // PR-DRIVE-AVAILABILITY-GATE: fail-closed probe for folder_id routing
 }
 
 // NewHandler creates a YouTube registration handler.
@@ -64,7 +76,17 @@ type Handler struct {
 // PR8 (June 2026): idempotencyMiddleware is the reusable Gin
 // idempotency middleware instance from middleware.NewIdempotency
 // (constructed in WireAssets). nil disables idempotency for tests.
-func NewHandler(svc *sourcing.Service, log *zap.Logger, idempotencyMiddleware gin.HandlerFunc) *Handler {
+//
+// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): driveChecker is the
+// canonical probe closure wired by the composition root from a
+// closure mirroring validateDriveServiceAvailability (returns nil iff
+// *drive.Uploader.Service is wired + cfg stat-OK). nil → defensive
+// always-fail closure (godlike/07 no-fake-availability; an unwired
+// handler must NEVER silently accept folder_id traffic). The
+// composition root wires a real closure via Dependencies.DriveChecker;
+// direct NewHandler callers (tests) may pass nil and accept the
+// fail-closed-on-folder-id surface.
+func NewHandler(svc *sourcing.Service, log *zap.Logger, idempotencyMiddleware gin.HandlerFunc, driveChecker func() error) *Handler {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -72,7 +94,20 @@ func NewHandler(svc *sourcing.Service, log *zap.Logger, idempotencyMiddleware gi
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
 	}
-	return &Handler{svc: svc, log: log, Idempotency: idem}
+	// godlike/07 nil-tolerant defensive default: a handler constructed
+	// without a driveChecker (test fixture, unwired composition root) MUST
+	// NEVER accept folder_id traffic. We wire an "always-fail" closure
+	// that returns a typed error so the preflight at BatchRegisterFromYouTube
+	// has a consistent surface to probe. The error message names the
+	// "driveChecker not wired" condition so operators reading the 503
+	// response body understand the misconfiguration.
+	var dc func() error = func() error {
+		return fmt.Errorf("driveChecker not wired (composition root must thread Dependencies.DriveChecker from build_bundles_drive.go::BuildDriveBundle; nil-fallback blocks folder_id traffic per PR-DRIVE-AVAILABILITY-GATE fail-closed contract)")
+	}
+	if driveChecker != nil {
+		dc = driveChecker
+	}
+	return &Handler{svc: svc, log: log, Idempotency: idem, driveChecker: dc}
 }
 
 // RegisterRoutes registers the registration endpoints.
@@ -151,12 +186,21 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 // BatchRegisterFromYouTube handles POST /api/media/register-batch.
 // Thin transport: delegates all orchestration to sourcing.Service.BatchRegisterFromYouTube.
+//
+// Handler order (godlike/07 fail-fast-at-input before fail-slow-at-svc):
+//  1. BindJSON — surface malformed-JSON 400 before any downstream I/O.
+//  2. clips-empty check — surface 400 before any downstream I/O.
+//  3. Pre-flight Drive-availability gate (PR-DRIVE-AVAILABILITY-GATE) —
+//     if any folder_id in the request is non-empty AND the canonical
+//     DriveChecker probe returns a non-nil error, surface 503 with
+//     the diagnostic BEFORE attempting any svc dispatch (which would
+//     500-panic on *drive.Uploader.Service==nil). MUST precede svc=nil
+//     check so the gate surface reaches the client even when svc is
+//     unconfigured (godlike/07 fail-fast-at-input semantics).
+//  4. svc=nil guard — surface 503 if the composition root forgot to wire.
+//  5. folder_id backfill — mirrors the original-shape behaviour.
+//  6. svc.RegisterFromYouTube + response.
 func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
-	if h.svc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "register service not wired")
-		return
-	}
-
 	var req BatchRegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, "invalid request: "+err.Error())
@@ -164,6 +208,35 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	}
 	if len(req.Clips) == 0 {
 		apiutil.BadRequest(c, "clips list is empty")
+		return
+	}
+
+	// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): pre-flight
+	// Drive-availability gate. The request may carry folder_id at
+	// two levels: (a) the request-level BatchRegisterRequest.FolderID
+	// default that backfills per-clip FolderID below, or (b)
+	// individual clip FolderID overrides. Either path triggers
+	// the *drive.Uploader.Service dereference INSIDE
+	// sourcing.Service.BatchRegisterFromYouTube — pre-gate this
+	// panics with 500 because the composition-root
+	// log.Warn("Google Drive client not initialized") silently
+	// continues with driveClient=nil. We probe the canonical
+	// DriveChecker (composition-root closure mirror of
+	// validateDriveServiceAvailability) and fail-closed 503 with
+	// the actionable diagnostic if it returns non-nil. Operators
+	// reading the 503 body see the cached error envelope and
+	// rerun `python3 scripts/generate_drive_token.py` to fix.
+	if effectiveFolderID(&req) != "" {
+		if err := h.driveChecker(); err != nil {
+			apiutil.Error(c, http.StatusServiceUnavailable,
+				"Drive service not configured (folder_id routing requires *drive.Uploader.Service; "+
+					"see PR-DRIVE-AVAILABILITY-GATE fail-closed contract): "+err.Error())
+			return
+		}
+	}
+
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "register service not wired")
 		return
 	}
 
@@ -189,6 +262,35 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 		Failed:    result.Failed,
 		Results:   result.Results,
 	})
+}
+
+// effectiveFolderID returns the first non-empty folder_id found in the
+// request (request-level default OR any per-clip override). Used by
+// PR-DRIVE-AVAILABILITY-GATE to short-circuit folder_id traffic BEFORE
+// any svc dispatch when *drive.Uploader.Service is nil. Mirrors the
+// backfill semantics below but inverted: we want ANY non-empty folder_id
+// (including buried per-clip overrides) to trigger the gate so an
+// attacker cannot bypass via spreading folder_ids across individual
+// clips while leaving the request-level default empty.
+//
+// godlike/07 input-validation hygiene: TrimSpace is applied uniformly
+// to BOTH the request-level default AND per-clip overrides so whitespace-
+// only folder_id values cannot bypass the gate (e.g. `"   "` is treated
+// as the canonical empty string). Otherwise an attacker could send
+// `{"folder_id":"   "}` and have the gate mistakenly pass.
+func effectiveFolderID(req *BatchRegisterRequest) string {
+	if req == nil {
+		return ""
+	}
+	if strings.TrimSpace(req.FolderID) != "" {
+		return strings.TrimSpace(req.FolderID)
+	}
+	for i := range req.Clips {
+		if trimmed := strings.TrimSpace(req.Clips[i].FolderID); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClipCommand {

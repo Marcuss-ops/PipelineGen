@@ -61,7 +61,31 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 // FASE 2.B PR1 (June 2026): extracted to this file from
 // build_bundles_process.go. Surface preserved (no signature change).
 // Call site at composition.go::NewComposition is unchanged.
+//
+// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): the TOF now invokes
+// validateDriveServiceAvailability(cfg) which fail-closes at boot
+// when strict-mode is on AND credentials.json / token.json are
+// missing from disk. The gate precedes ALL existing wire-up
+// statements so the godlike/06 SSOT "one canonical owner per fact"
+// invariant holds: this composition site delegates the
+// Drive-availability decision to the sole canonical helper. Soft-mode
+// (cfg.Drive.StrictStartupValidation=false) bypasses the gate; the
+// handler-level preflight at BatchRegisterFromYouTube still
+// fail-closed 503 at request time per godlike/07 defense-in-depth.
 func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, search *SearchBundle) (*DriveBundle, IOpaqueStartFunc, error) {
+	// PR-DRIVE-AVAILABILITY-GATE: boot-time fail-closed gate. Surfaces a
+	// typed error with an actionable fix hint when the operator has
+	// strict-mode on but credentials.json + token.json are missing
+	// from disk (the canonical silent-failure mode that previously
+	// caused *drive.Uploader.Service to be nil and POST register-batch
+	// with folder_id non-empty to 500-panic). Soft-mode operators
+	// (StrictStartupValidation=false) bypass this gate; the
+	// handler-level preflight at internal/api/assets/register/handler.go::BatchRegisterFromYouTube
+	// still fail-closes 503 at request time.
+	if err := validateDriveServiceAvailability(cfg); err != nil {
+		return nil, nil, err
+	}
+
 	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
 
 	docClient, err := drive.NewDocClient(ctx, cfg.GetCredentialsPath(), cfg.GetTokenPath())
@@ -204,7 +228,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 
 	return &DriveBundle{
 		// Canonical Pattern 0 ports (FASE 9 P0.1 / DRIVE-005).
-		Admin: admin,
+		Admin:  admin,
 		Reader: reader,
 		// PR-DRIVECLIENT-RAW-RETIRE (2026-07-04): the previous
 		// `DriveClient: driveClient,` field assignment is REMOVED. The
@@ -218,14 +242,14 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// canonical Drive surface on the bundle per godlike/06 SSOT
 		// (one owner per fact). Deprecation record:
 		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
-		driveUploader:  driveUploader, // unexported; for internal wiring within package app
-		DriveDests:     dests,
-		MediaStore:     mediaStore,
-		DestResolver:   destResolver,
-		StyleRegistry:  styleRegistry,
-		Publisher:      publisher,
-		DocClient:      docClient,
-		Lifecycle:      lifecycle,
+		driveUploader: driveUploader, // unexported; for internal wiring within package app
+		DriveDests:    dests,
+		MediaStore:    mediaStore,
+		DestResolver:  destResolver,
+		StyleRegistry: styleRegistry,
+		Publisher:     publisher,
+		DocClient:     docClient,
+		Lifecycle:     lifecycle,
 	}, startClosure, nil
 }
 

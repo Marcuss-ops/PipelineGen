@@ -41,15 +41,30 @@ import (
 // ctor so Idempotency middleware is wired (no-op pass-through when
 // nil is passed). DO NOT use &Handler{...} directly — Gin panics on
 // nil middleware installed via r.POST("/path", h.Idempotency, handler).
+//
+// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): a 4th-arg nil driveChecker
+// is passed intentionally — NewHandler's nil-tolerant default returns
+// an always-fail closure, so any folder_id traffic in these tests
+// surfaces 503 (the canonical godlike/07 fail-closed contract). The
+// separate newTestHandlerWithDriveChecker helper below wires a real
+// (pass-through) closure for the preflight-pass tests.
 func newTestHandler() *Handler {
-	return NewHandler(nil, zap.NewNop(), nil)
+	return NewHandler(nil, zap.NewNop(), nil, nil)
 }
 
 // newTestHandlerWithSvc returns a handler with a non-nil svc. Used by
 // the invariant-pin test where svc=nil would suppress the gate that
 // fires AFTER the svc call (a regression would NOT panic on svc=nil).
 func newTestHandlerWithSvc(svc *sourcing.Service) *Handler {
-	return NewHandler(svc, zap.NewNop(), nil)
+	return NewHandler(svc, zap.NewNop(), nil, nil)
+}
+
+// newTestHandlerWithChecker returns a handler with a real driveChecker
+// closure (the gate passes when returned-error is nil). Used by the
+// preflight-pass TDD tests so the test can drive the underlying svc
+// surface (svc=nil in tests → 503 svc-not-wired, NOT drive-gate).
+func newTestHandlerWithChecker(svc *sourcing.Service, driveChecker func() error) *Handler {
+	return NewHandler(svc, zap.NewNop(), nil, driveChecker)
 }
 
 // newTestRouter mounts the handler's canonical routes on a fresh
@@ -176,4 +191,127 @@ func TestRegisterFromYouTube_PreflightGated_BeforeSVCCall(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Contains(t, w.Body.String(), "invalid YouTube URL")
+}
+
+// ── BatchRegisterFromYouTube pre-flight TDD tests (PR-DRIVE-AVAILABILITY-GATE) ──
+//
+// These tests pin the handler-level defense-in-depth gate added on top
+// of the composition-root validateDriveServiceAvailability. They prove:
+//  1. folder_id at request-level default triggers the gate.
+//  2. per-clip folder_id override triggers the gate (effectiveFolderID
+//     scans the clip list to defeat the backfill-bypass attack surface).
+//  3. no folder_id → no gate call (preserves the pre-existing media-only
+//     batch traffic).
+//  4. driveChecker returns nil → preflight passes; svc=nil surfaces the
+//     canonical 503 svc-not-wired (proves the gate did NOT suppress the
+//     downstream svc dispatch when wiring is correct).
+
+// TestBatchRegister_RequestLevelFolderID_NilDriveChecker_Returns503:
+// the canonical godlike/07 no-fake-availability case. Request-level
+// folder_id is non-empty AND driveChecker is nil (handler constructed
+// via NewHandler with 4th-arg nil → defensive always-fail closure).
+// The handler must surface 503 with the actionable error envelope
+// instead of 500 nil-panic. The body MUST contain the canonical
+// "Drive service not configured" header AND the PR-DRIVE-...
+// audit-pin so future log-scanners can grep it.
+func TestBatchRegister_RequestLevelFolderID_NilDriveChecker_Returns503(t *testing.T) {
+	h := newTestHandler()
+	r := newTestRouter(h)
+
+	body := `{
+		"folder_id": "1Bxv-LdrldSkYu4jOfYQ3j4TnPvA3Rv0x",
+		"clips": [{"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU"}]
+	}`
+	req := httptest.NewRequest("POST", "/api/media/register-batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"PR-DRIVE-AVAILABILITY-GATE: folder_id non-empty + nil driveChecker MUST be 503, NEVER 500 nil-panic")
+	require.Contains(t, w.Body.String(), "Drive service not configured",
+		"error body must surface the gateway diagnostic message")
+	require.Contains(t, w.Body.String(), "PR-DRIVE-AVAILABILITY-GATE",
+		"error body must cite the wave-tracker anchor for audit-trail grep-ability")
+}
+
+// TestBatchRegister_PerClipFolderID_NilDriveChecker_Returns503:
+// same fail-closed contract for the per-clip override path. An
+// attacker cannot bypass the gate by spreading folder_ids across
+// individual clips while leaving the request-level default empty —
+// effectiveFolderID scans the clip list to defeat this attack
+// surface (godlike/06 SSOT one-canonical-owner-per-fact).
+func TestBatchRegister_PerClipFolderID_NilDriveChecker_Returns503(t *testing.T) {
+	h := newTestHandler()
+	r := newTestRouter(h)
+
+	body := `{
+		"clips": [
+			{"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU", "folder_id": "1Bxv-LdrldSkYu4jOfYQ3j4TnPvA3Rv0x"}
+		]
+	}`
+	req := httptest.NewRequest("POST", "/api/media/register-batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"PR-DRIVE-AVAILABILITY-GATE: per-clip folder_id override MUST also fail-closed")
+	require.Contains(t, w.Body.String(), "Drive service not configured")
+}
+
+// TestBatchRegister_NoFolderID_DoesNotInvokeDriveChecker: the inverse
+// canonical case. With folder_id empty at every level, the preflight
+// gate MUST NOT fire — the gate is invoked ONLY when folder_id is
+// non-empty. We prove the gate is bypassed by wiring a driveChecker
+// that panics if called; srv=nil surfaces 503 svc-not-wired REACHABLE
+// because the preflight was bypassed.
+func TestBatchRegister_NoFolderID_DoesNotInvokeDriveChecker(t *testing.T) {
+	// panicIfCalled: driveChecker must NOT be reached when folder_id
+	// is empty. The test relies on this surface to prove the
+	// preflight gating is conditional on folder_id.
+	panicIfCalled := func() error {
+		panic("driveChecker called for folder_id-empty request — preflight is over-gating non-Drive traffic")
+	}
+	h := newTestHandlerWithChecker(nil /*svc=nil*/, panicIfCalled)
+	r := newTestRouter(h)
+
+	body := `{"clips": [{"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU"}]}`
+	req := httptest.NewRequest("POST", "/api/media/register-batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	// NotPanics PROVES the preflight was bypassed (panicIfCalled
+	// would panic if reached). The svc=nil check fires AFTER the
+	// driveChecker path so we surface the canonical 503.
+	require.NotPanics(t, func() {
+		r.ServeHTTP(w, req)
+	}, "driveChecker must NOT fire for folder_id-empty requests")
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Contains(t, w.Body.String(), "register service not wired")
+}
+
+// TestBatchRegister_PreflightPasses_SvcNilReturns503: driveChecker
+// returns nil (canonical wired-Drive success path) AND svc is nil.
+// The handler MUST surface the canonical 503 svc-not-wired (NOT the
+// gate's 503, NOT 500). This pin proves the upstream gate does
+// NOT suppress the downstream svc dispatch when wiring is correct.
+func TestBatchRegister_PreflightPasses_SvcNilReturns503(t *testing.T) {
+	passThrough := func() error { return nil } // Drive wired
+	h := newTestHandlerWithChecker(nil /*svc=nil*/, passThrough)
+	r := newTestRouter(h)
+
+	body := `{
+		"folder_id": "1Bxv-LdrldSkYu4jOfYQ3j4TnPvA3Rv0x",
+		"clips": [{"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU"}]
+	}`
+	req := httptest.NewRequest("POST", "/api/media/register-batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"driveChecker returned nil: preflight passes, downstream svc=nil short-circuits to 503")
+	require.Contains(t, w.Body.String(), "register service not wired",
+		"svc=nil surface (NOT drive-gate surface) MUST reach the client when wiring is correct")
 }
