@@ -311,6 +311,98 @@ altro caso (incluso opt-in delle scene images via `generate_scene_images=true`).
 Use `POST /api/script-docs/generate` only when you specifically need
 the Python ReAct agent in the loop and can tolerate the 15-min sync timeout.
 
+## Critical Artlist rules (DL-006, DL-007)
+
+> **Authoritative surface** (per `CANONICAL.md` §1 + `ARCHITECTURE.md` §15):
+> these 2 rules are the agent-facing fast-reference for the Artlist
+> integration. The canonical doc surface is `ARCHITECTURE.md` §15
+> (architecture zones + ports + 2 download surfaces + composition-root
+> wiring + lifecycle integration + E2E tests). The SRE surface is
+> `docs/operations/artlist-runbook.md` (operator-facing). The wave-tracker
+> is `architecture/current.yaml#ART-002`. **DL-006** + **DL-007** are the
+> critical invariants; PR-ARTLIST-* tickets in flight track the
+> follow-up work.
+
+### DL-006 — Composition-root fail-closed gate
+
+**Rule**: any caller that wires the Artlist integration MUST honor the
+canonical composition-root fail-closed gates at
+`internal/app/build_bundles_artlist.go::WireArtlist`. The 4 mandatory
+gates (P0.1) + the 1 boot-time URL gate MUST be checked UPFRONT in
+`WireArtlist` BEFORE constructing the `*artlist.Service`:
+
+1. **Publisher gate** — `cfg.Drive.Publisher != nil` (DRIVE-005 surface)
+2. **Dispatcher gate** — `*outbox.Dispatcher != nil` (idempotency contract)
+3. **ClipsRepo gate** — `*assets.ClipsRepository != nil` (canonical 7-method CRUD)
+4. **Jobs.Service gate** — `*appjobs.Service != nil` (canonical job broker spine)
+5. **Boot-time URL gate** — `validateArtlistScraperURL(cfg *config.Config) error`:
+   if `cfg.Features.ArtlistEnabled=true` but
+   `cfg.External.ArtlistScraperServerURL=""`, abort loudly with an
+   actionable error naming both escape hatches (set
+   `ARTLIST_SCRAPER_SERVER_URL` to a real URL OR disable via
+   `VELOX_FEATURE_ARTLIST_ENABLED=false`).
+
+**godlike/07 fail-fast-at-boot > fail-slow-at-first-/run**: never
+silently degrade to per-call exec fallback when `ArtlistEnabled=true`
+but `ScraperServerURL=""`. The underlying `scraper.New(ServerURL="")`
+would silently degrade to per-call exec fallback (heavier + less
+reliable) and break `/run` invocations on first use rather than at
+startup. Fail-closed at the composition layer per `godlike/07`
+(`docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md`).
+
+**Composition root caller discipline**: the `registerArtlist` caller
+downgrades any `WireArtlist` error to `log.Warn + wiring.ArtlistSvc=nil
++ return nil` so composition boot NEVER aborts because Artlist is
+optional in the architecture. Read-only endpoints (`/stats`,
+`/diagnostics`, `/search/live`) unaffected by forward-pointer nil;
+write endpoints (`/run`, `/recommend`, `/sync-catalogs`) return 503 at
+runtime via the handler's nil-tolerance discipline once per-field
+wiring closes (forward-pointer entries
+`PR-ARTLIST-{STAGER,LIFECYCLE,REPOS,SYNCSERVICE}`).
+
+**Enforcement** (canonical test surface): 4 TDD tests in
+`internal/app/build_bundles_artlist_test.go` lock the gate contract per
+godlike/06 SSOT: `TestValidateArtlistScraperURL_NilCfg_ReturnsError` +
+`TestValidateArtlistScraperURL_DisabledAndEmptyURL_ReturnsNil` +
+`TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil` +
+`TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError` (the
+canonical godlike/07 fail-closed case asserting 5 substrings:
+`ArtlistEnabled=true` + `ArtlistScraperServerURL is empty` +
+`ART-002 P0.1` audit-pin + `ARTLIST_SCRAPER_SERVER_URL` env-var +
+`VELOX_FEATURE_ARTLIST_ENABLED=false` disable-hint).
+
+### DL-007 — Pattern 0 port routing (no direct external I/O)
+
+**Rule**: all external I/O in `internal/application/assets/providers/artlist/**`
+MUST route through the canonical Pattern 0 typed ports
+(`AGENTS.md` Pattern 0). Never call `*gdrive.Service`, `database/sql`,
+or `os/exec` directly from the artlist service layer. The 8 canonical
+ports are documented in `ARCHITECTURE.md` §15.2:
+`artlist.AssetStore` + `artlist.Indexer` + `artlist.Dispatcher` +
+`artlist.Publisher` (DRIVE-005) + `artlist.Reader` (DRIVE-005) +
+`artlist.FileLifecycle` (DRIVE-005) + `artlist.DocClient` (DRIVE-005) +
+`artlist.Searcher`.
+
+**One exception** (godlike/07 minimum-blast-radius + PR2.2): the
+`scraper.Provider` is the ONE entry point for `os/exec` fallback
+(Node cold-start), accessed via `scraper.New(cfg, log)`. Direct
+`os/exec` calls from `internal/application/assets/providers/artlist/**`
+are FORBIDDEN — the application layer is forbidden from managing
+process lifecycle (per PR2.2 godlike/06 SSOT).
+
+**Compile-time pin discipline** (Pattern 0 + godlike/06 SSOT): each
+concrete adapter carries `var _ <port> = (*<concrete>)(nil)` at struct
+declaration site. Future port signature drift surfaces as a build
+failure, not a runtime panic. The composition root at
+`internal/app/build_bundles_artlist.go::WireArtlist` is the canonical
+construction site; future drift in artlist port signatures surfaces as
+a build failure at the `var _ pin` site.
+
+**Cross-references** (3 surfaces lockstep): this `AGENTS.md` section +
+`ARCHITECTURE.md` §15.2 + `architecture/current.yaml#ART-002`. Each
+PR-ARTLIST-* closure MUST land its SHA in the matching `linked_issue`
+slot per godlike/06 SSOT one-owner-per-fact discipline.
+
 ---
 
 ## Known Issues & Fixes
