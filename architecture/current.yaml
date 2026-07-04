@@ -6144,3 +6144,88 @@ wave_status:
       owner_capability: internal/api/assets/search
       status: pending
       deadline: 2026-08-01
+- id: PR-COMPLETE-WORKER-BROAD-FIX
+  owner_capability: "internal/application/jobs (registry + worker) + per-job-type owner"
+  status: pending
+  exit_signal: false
+  deadline: 2026-08-15
+  description: |
+    Audit of all 15 remaining ProducesArtifacts=true job types in
+    internal/application/jobs/registry.go on origin/main@b8c96035
+    (TypeYouTubeClipExtract already closed via commit b8c96035
+    mirror of voiceover db2f3b1e; TypeVoiceoverGenerate +
+    TypeVoiceoverGenerateItem already closed in db2f3b1e).
+    Goal: classify each job type into a closure path BEFORE any
+    is exercised in production. The SQL-layer guard at
+    internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:108-115
+    rejects legacy tools.Complete for all 15 via the typed
+    ErrCompleteJobPathViolation sentinel (declared at
+    internal/domain/remote/complete_job.go:148).
+
+    Closure paths (per audit, 2026-07-04):
+      * Path A (Flip-to-False, mirror b8c96035): safe IF the
+        handler owns a single *sql.Tx and writes media_assets +
+        outbox + job-state in that tx. The broker then uses
+        legacy Complete and the mark-SUCCEEDED happens in its
+        own tx. No double-write race.
+      * Path B (Already on CompleteWithArtifacts, no change):
+        the handler emits an __artifact_manifest sidecar that
+        the runner routes through Broker.CompleteWithArtifacts.
+        ProducesArtifacts=true is the correct setting.
+      * Path D (Registry-only, no production handler; godlike/07
+        finding): the JobPolicy entry exists in registry.go but
+        no production code statically registers a handler via
+        jobsSvc.RegisterHandler. The job type is dispatched via
+        worker profile (internal/app/workerruntime/profiles.go)
+        only. REQUIRES separate audit to confirm handler
+        implementation exists in worker-side code OR registry
+        entry should be retired as orphaned.
+
+    Per-job-type classification (15 remaining):
+      PATH A (3): TypeMediaStock, TypeVoiceoverBatch, TypeVoiceoverPromo
+      PATH B (4): TypeScriptGenerate, TypeImageGenerateGoogle,
+                  TypeBooksProcess, TypeLessonsProcess
+      PATH D (8): TypeMediaExtract, TypeMediaGenerate,
+                  TypeBulUploadYouTubeClips, TypeVideoGenerate,
+                  TypeRenderVideo, TypeYouTubeUpload,
+                  TypeScriptVoiceoverSibling, TypeScriptImageSibling
+
+    godlike/07 honest-limitation (Path D, 8 orphaned entries):
+    rg 'RegisterHandler\(.*(TypeMediaExtract|TypeMediaGenerate|
+    TypeBulUploadYouTubeClips|TypeVideoGenerate|TypeRenderVideo|
+    TypeYouTubeUpload|TypeScriptVoiceoverSibling|TypeScriptImageSibling)'
+    internal/ --type go returns ZERO production-code hits today
+    (the only matches are in test profiles in
+    internal/app/workerruntime/profiles_test.go and in
+    internal/app/worker_registry_test.go dispatcher.Register
+    helper). A separate audit PR (PR-COMPLETE-WORKER-AUDIT-ORPHANED-
+    REGISTRY-ENTRIES, deadline 2026-08-08) is required to
+    either (a) confirm the worker-side handler exists in
+    cmd/worker + composition root, OR (b) retire the registry
+    entry as orphaned. Until that audit lands, Path D items
+    remain in the SQL-layer guard and cannot be exercised
+    safely in production.
+
+    godlike/07 minimum-blast-radius: this entry is documentation-
+    only (no production code change in this commit). The 3-surface
+    lockstep is the canonical wave-tracker surface; the per-type
+    PRs (one per Path A item, mirror b8c96035) land incrementally
+    on main with targeted gofmt + go vet + go build + go test
+    gates per AGENTS.md Git-Lesson-2.
+  linked_issues:
+    - id: PR-COMPLETE-WORKER-FIX-TYPE-MEDIA-STOCK
+      owner_capability: "internal/application/assets/providers/stock/stockpipeline"
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH
+      owner_capability: "internal/application/voiceover"
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO
+      owner_capability: "internal/application/voiceover"
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-COMPLETE-WORKER-AUDIT-ORPHANED-REGISTRY-ENTRIES
+      owner_capability: "internal/application/jobs (registry) + cmd/worker"
+      status: pending
+      deadline: 2026-08-08
