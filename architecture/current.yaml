@@ -6127,7 +6127,9 @@ wave_status:
       deadline: 2026-08-01
     - id: SCRIPT-T03-001
       owner_capability: internal/api/script
-      status: pending
+      status: shipped
+      ship_sha: 5971eec9e3a3aed7fd9af4331b0147099bff91f5
+      ship_date: 2026-07-04
       deadline: 2026-08-01
     - id: SCRIPT-T03-002
       owner_capability: internal/api/script
