@@ -112,6 +112,28 @@ func TestWorkerMetricsRegistered(t *testing.T) {
 			seed: func() { WorkerEmergencyPathTotal.WithLabelValues("test_kind").Inc() },
 			del:  func() { WorkerEmergencyPathTotal.DeleteLabelValues("test_kind") },
 		},
+		// FASE 0.2 (July 4 2026) silent-drop counters per
+		// PR-GODOBJ-14-WORKER-REGISTRY. The 3 new metrics surface
+		// telemetry-emit failures that were previously silent-dropped
+		// via `_ = X(...)` patterns in worker/*.go. Cardinality bound
+		// is enforced by the (job_type, outcome|reason) label tuples;
+		// worker_id dimension is intentionally absent (see godlike/06
+		// SSOT comment block in worker_metrics.go).
+		{
+			name: "worker_progress_emitted_total",
+			seed: func() { WorkerProgressEmittedTotal.WithLabelValues("__test__", "success").Inc() },
+			del:  func() { WorkerProgressEmittedTotal.DeleteLabelValues("__test__", "success") },
+		},
+		{
+			name: "worker_progress_errors_total",
+			seed: func() { WorkerProgressErrorsTotal.WithLabelValues("__test__", "broker_emit_failed").Inc() },
+			del:  func() { WorkerProgressErrorsTotal.DeleteLabelValues("__test__", "broker_emit_failed") },
+		},
+		{
+			name: "worker_event_drops_total",
+			seed: func() { WorkerEventDropsTotal.WithLabelValues("__test__").Inc() },
+			del:  func() { WorkerEventDropsTotal.DeleteLabelValues("__test__") },
+		},
 	}
 
 	found := make(map[string]bool, len(warmup))
