@@ -68,4 +68,39 @@ var (
 		Name: "artlist_download_path_total",
 		Help: "Total number of Artlist download attempts partitioned by the path/transport that carried the bytes (browser | yt-dlp | http | hls). Increments PER ATTEMPT (not per completion) — a single Download that retries 3 times on a flaky HLS CDN adds 3 to the counter; rate() over this metric is the attempt rate, not the success rate. Dashboards MUST treat rate() as attempt pressure, not completion volume.",
 	}, []string{"path"})
+
+	// ArtlistScraperHealthAlertsTotal counts alerts fired by the
+	// Artlist Node scraper health probe (ART-002 P1.3, July 2026)
+	// when the consecutive-failure counter crosses the threshold
+	// (default 3). One increment per alert (not per failed probe) —
+	// the alert-once-per-streak semantic is the canonical SRE
+	// contract: 3 consecutive failures = 1 alert, 6 consecutive
+	// failures = 2 alerts (one per streak of 3).
+	//
+	// Cardinality: 1 series. Dashboards: rate() this for alert
+	// pressure over time; pair with artlist_scraper_probe_total
+	// to compute the alert-to-failure ratio.
+	ArtlistScraperHealthAlertsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "artlist_scraper_health_alerts_total",
+		Help: "Total number of Artlist Node scraper health alerts fired when the consecutive-failure counter crossed the threshold (default 3). One increment per alert event (alert-once-per-streak).",
+	})
+
+	// ArtlistScraperProbeResultTotal counts each probe attempt
+	// (NOT per alert). Labels:
+	//   - "success": HTTP response received (any 2xx/3xx/4xx/5xx
+	//                — the probe is a liveness check, not a
+	//                functional smoke test; any response means the
+	//                server is accepting connections).
+	//   - "failure": transport-level error (connection refused,
+	//                timeout, DNS failure, TLS error). The
+	//                consecutive-failure counter is incremented
+	//                ONLY on "failure" outcomes; "success" resets
+	//                it to 0.
+	//
+	// Cardinality: 2 series max. Dashboards: rate() per label to
+	// see success vs failure pressure; alert ratio = alerts / failures.
+	ArtlistScraperProbeResultTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "artlist_scraper_probe_total",
+		Help: "Total number of Artlist Node scraper health probe attempts partitioned by result (success | failure). Success = any HTTP response received (liveness check); failure = transport-level error. Increments PER ATTEMPT (one per 60s tick by default).",
+	}, []string{"result"})
 )
