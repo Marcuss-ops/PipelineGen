@@ -49,6 +49,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -345,6 +346,9 @@ type DomainBundle struct {
 	// handlers + lifecycle Stop consumers. Reaches the HTTP layer
 	// via api.ServerDeps.ImageSearchResolver (composition → server).
 	ImageSearchResolver routing.ImageSearchResolver
+	// AudioProcessor is the persistent TTS worker (VO-DECOMPOSITION P0 #1).
+	// nil-safe: Stop() is only called during shutdown when non-nil.
+	AudioProcessor *audioasset.Processor
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and

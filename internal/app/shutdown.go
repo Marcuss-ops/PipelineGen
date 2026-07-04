@@ -76,6 +76,18 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 		// (with up to ~1 s margin to the outer cap) and we still benefit
 		// from an early return if the pool drains faster. Picking 15 s here
 		// would be unreachable — the outer cap would always fire first.
+		// VO-DECOMPOSITION P0 #1 (July 2026): stop the persistent TTS
+		// worker so the python3 subprocess doesn't leak on restart.
+		if root != nil && root.Domains != nil && root.Domains.AudioProcessor != nil {
+			wg.Add(1)
+			concurrent.SafeGo("cleanup-tts-worker", func() {
+				defer wg.Done()
+				if err := root.Domains.AudioProcessor.Stop(); err != nil {
+					log.Warn("tts worker stop returned error", zap.Error(err))
+				}
+			})
+		}
+
 		if root != nil && root.Outbox != nil && root.Outbox.EventsPool != nil {
 			const eventsPoolStopTimeout = 4 * time.Second
 			wg.Add(1)

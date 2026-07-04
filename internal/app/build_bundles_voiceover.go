@@ -76,7 +76,7 @@ func buildVoiceoverService(
 	metaWriter *semantic.MetadataWriter,
 	scriptGen *ollama.Generator,
 	outboxDispatcher *outbox.Dispatcher,
-) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor) {
+) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor) {
 
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
@@ -304,7 +304,7 @@ func buildVoiceoverService(
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	return voService, voRepo, processItemUseCase
+	return voService, voRepo, processItemUseCase, audioProcessor
 }
 
 // wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +
