@@ -5279,10 +5279,18 @@ wave_status:
       Test 7  destination.folder_id + destination.group emit NO 'group is required' string
       Test 8  group-only destination (PathBuilder canonical) emits NO 'group is required'
       Test 9  duplicate payload x 2 yields SAME drive_file_id across both runs
-    Until PR-WORKER-RUNNER-INPROCESS-MIGRATION lands, Test 9 expected to FAIL on
-    the legacy Worker gate (ErrCompleteJobPathViolation); smoke harness tolerates
-    timeout and asserts (a)+(b)+(c) DB conditions today. The --dry run mode exercises
-    the curl+sqlite probe surface against the live server without commit-spin.
+    PR-WORKER-RUNNER-INPROCESS-MIGRATION CLOSED (July 2026, 4 commits on
+    origin/main: db2f3b1e PR-VO-COMPLETEPATH-FIX unblocker + 527431e9
+    Worker consumes CompletionPort + 0ed94dea runJob routes
+    ProducesArtifacts=true via broker.CompleteWithArtifacts + 3d738013
+    TDD wiring contract). The legacy CompleteJobPathViolation gate is
+    bypassed; the new typed narrow CompletionPort (broker.go:50)
+    writes job.status=SUCCEEDED by canonical port per godlike/06 SSOT.
+    Test 9 duplicate-payload contract now expected to PASS; smoke
+    harness asserts (a)+(b)+(c)+(d) DB conditions with the new
+    drive_file_id consistency probe. The --dry run mode exercises
+    the curl+sqlite probe surface against the live server without
+    commit-spin.
   blocker: []
 
 
