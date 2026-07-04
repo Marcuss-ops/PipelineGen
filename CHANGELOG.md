@@ -2421,6 +2421,10 @@ deprecated in favour of the typed-pattern ports
 **Honest scope-lock declaration (per godlike/07):** the canonical image strands (provider_registry seam + sentinel retention) and the canonical Ollama chat config pin (`s.cfg.DefaultModel`) are the only intentional residue. Future drifts toward caller-side model selection will be detected by `architecture/current.yaml` wave-tracker entries (current link: `id-17 / id-29 / id-30`) + CI gate Check 51 (raw-string `.Enqueue` caller ban) + Check 52 (ArtifactUploader port-call ban) + Check 53 (TxContext method ban) + future Check 54 if `HasModelKey` fail-closed handler is implemented for the legacy JSON keys per CHANGELOG.md L245 forward-pointer.
 
 
+### Refactor
+
+* FASE 3.7 (2026-07-04): monitor-owned DTOs + sentinel + cursor-to-date helper (Commit 1a, SHA 60a61808); port signature cutover + infra adapter composition (Commit 1b); MetricsRecorder port + observability adapter (Commit 2); archcheck gate banning infra imports in internal/application/assets/monitor/ (Commit 3). Canonical SSOT: `architecture/current.yaml#FASE-3.7-WAVE-CLOSURE`.
+
 ## Earlier (June 2026 wave)
 
 ### Added
