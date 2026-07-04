@@ -9,10 +9,8 @@ post-PR-5 cleanup tornata.
 
 | Wave / Item | Status (3-state taxonomy) | Closure Commit |
 |---|---|---|
-| Wave 1 (middleware, 3 files / 14 refs) | **CLOSED-NO-OP** (closed as docs-only after verify) | 9a949ec8 |
 | Wave 2 (generic handlers) | **CLOSED-NO-OP** (originally documented as 0 files; effectively no-op from the start) | n/a |
 | Wave 3 (cmd/) | **CLOSED-NO-OP** (originally documented as 0 files; effectively no-op from the start) | n/a |
-| Wave 4 (sources / artlist + youtube, 20 files / 102 refs) | **CLOSED-NO-OP** (closed as docs-only after verify) | f79c8810 |
 | Wave 5 (multi-PR FRAGMENTO-c overlap) | **CLOSED-NO-OP** (code-blocked via cycle-misdiagnosis + structurally absent target files). NOTE: Wave 5 file paths listed in legacy narrative (`internal/artifacts/{clips_adapter.go, converters.go}` + `internal/domain/asset/{asset.go, asset_test.go}`) are SEMANTIC; the actual paths after prior tornatas are `internal/application/assets/artifacts/{clips_adapter.go, converters.go}` + `internal/application/assets/artifacts/types_test.go` (the latter shipping the canonical Status parity test). Forensic breadcrumb for future agents receiving prompts referencing the SEMANTIC paths. | da57a7df |
 | FRAGMENTO (b) Phase 1 (providers extraction) | **CLOSED-NO-OP** (impl.go files never created, source files structurally absent) | 74c5bb5e |
 | PR-c-1 (clipsadapter sub-package extraction) | **DEFERRED** (cycle-blocked; sub-package directory does NOT exist; safe-path documented but unshipped) | n/a |
@@ -39,7 +37,7 @@ PR-c chain:
   `internal/assets/artifact.go` was already gone (closed as docs-only ALREADY-DONE,
   da57a7df).
 
-Legacy verification narrative (collapsed from earlier verbose tables):
+Legacy verification narrative (collapsed from earlier verbose tables, July 2026). Wave 1 + Wave 4 ALREADY-DONE blocks were relocated to [`docs/migrations/phase2-residual-archive.md`](./phase2-residual-archive.md) per the prior-tornata audit-pin preservation rationale (`ba4f664d`) + the code-reviewer HIGH-1 mitigation. The blocks below (FRAGMENTO (c) closure rationale, Per-closure footer log header, PR-c-1 DEFERRED, PR-c-3 ALREADY-DONE, FRAGMENTO (b) Phase 1 ALREADY-DONE) remain preserved verbatim inline here for grep-by-author + commit-tracing purposes.
 
 ## FRAGMENTO (c) closure rationale
 
@@ -108,50 +106,6 @@ None of these paths reach `internal/assets`. So the alleged transitive cycle was
 **What was implied vs what shipped:** The user's request implied a multi-file operation (git rm + doc-comment update + YAGNI aliases). All of these are no-ops on the current state. PR-c-3 is closed without code change.
 
 **Why the user rule "no branches, commit + push directly to main, frequently" still wins:** an explicit close-commit documents the discovery + prevents future agents from re-attempting PR-c-3 against a different premise. The cost is one docs-only commit; the benefit is permanent closure of the Wave 12 follow-up FRAGMENTO (c) line item.
-
----
-
-## Wave 1 (middleware migration) — VERIFIED ALREADY-DONE, July 2026
-
-**Action taken this tornata:** zero code changes. Atomic docs-only close commit.
-
-**Verifications on HEAD `18b30c45` (independent bash recon):**
-- `internal/assets/` directory — DOES NOT EXIST (`find . -path '*/internal/assets*'` returns zero). Zero importers of `github.com/Marcuss-ops/PipelineGen/internal/assets` in the entire repo.
-- `internal/app/bootstrap.go` — 0 refs to `internal/assets`. Domain-asset imports handled elsewhere.
-- `internal/app/registry.go` — 0 refs to `internal/assets`. Imports `internal/application/assets/providers` directly for source wiring.
-- `internal/app/dependencies.go` — DOES NOT EXIST (file deleted earlier during the AGENTS.md "God Object splits" cleanup pass).
-
-The user-reported 14-ref-count (bootstrap=1, dependencies=12, registry=1) is a phantom from a stale mental model. The actual filesystem state matches a clean migration of these three files (or their replacements/splits) that was completed by prior code-improvement passes.
-
-**What was implied vs what shipped:** No new code changes needed. The user rule "no cose strane + commit + push directly main, frequently, no branches" is honored by an atomic docs-only close.
-
-**Phase-2 PR-5 wave ordering note:** Per docs/migrations/phase2-residual.md count, Wave 1 was the smallest of the 5 waves (3 files, 14 refs). Mid-tornata, the larger waves (Wave 4 sources: 20 files, 102 refs; Wave 5 FRAGMENTO-c: 4 files) become the natural next steps via fresh tornatas. Each closes via the same pattern (recon + atomic commit + push) without code changes if structurally already done.
-
-**Why this commit is explicit:** The user standing rule ("5+ suggested followups" + "no cose strane") implies that an explicit close-commit is preferable to a silent no-op that leaves the Wave 1 line item dangling in the next assistant turn's queue. Future tornatas can grep `ALREADY-DONE` to fast-skip the closed waves.
-
----
-
-## Wave 4 (sources migration) — VERIFIED ALREADY-DONE, July 2026
-
-**Action taken this tornata:** zero code changes. Atomic docs-only close commit.
-
-**Verifications on HEAD `9a949ec8`:**
-- `internal/assets/` directory — DOES NOT EXIST (`find . -path '*/internal/assets*'` zero hits repo-wide).
-- 0 importers of `github.com/Marcuss-ops/PipelineGen/internal/assets` repo-wide.
-- `internal/sources/artlist/*` — 0 refs to `internal/assets`. The 9 files (per user-reported count) reference `internal/domain/asset` or `internal/application/assets/...` already.
-- `internal/sources/youtube/*` — 0 refs to `internal/assets`. The 11 files (per user-reported count) also reference internal/domain/asset or internal/application/assets/... already.
-
-The user-reported 102-ref-count (artlist: 9 files / 57 refs; youtube: 11 files / 45 refs) is a phantom from a stale mental model. The actual filesystem state matches a clean migration of these 20 source-package files that was completed by prior code-improvement passes.
-
-**No 2-atomic-commit split needed:** the entire Wave 4 is structurally complete from prior tornatas. A single docs-only close commit captures it.
-
-**Phase-2 PR-5 wave ordering (post Wave 4 close):** all 5 documented waves are now either fully done or pending separate, non-conflicting paths:
-  - Wave 1 (middleware): DONE (9a949ec8).
-  - Waves 2 + 3 (generic handlers, cmd/): originally documented as 0 files in phase2-residual.md; effectively no-op from the start.
-  - Wave 4 (sources / artlist + youtube): DONE this tornata.
-  - Wave 5 (multi-PR FRAGMENTO-c overlap): partially DONE (PR-c-2 forward-looking guard test lands in 18b30c45; PR-c-1 + PR-c-3 closed as docs-only ALREADY-DONE in prior tornatas).
-
-Per the user rule: commit + push directly to main, no branches.
 
 ---
 
