@@ -36,11 +36,15 @@
   linked_issues:
     - id: FIX-MONITOR-ENQUEUE-TOLOWER
       owner_capability: "internal/application/assets/monitor"
-      status: pending
+      status: shipped
+      ship_sha: f92a1970
+      ship_date: 2026-06-30
       deadline: 2026-07-15
     - id: FIX-MONITOR-SCHEDULER-ENQUEUER
       owner_capability: "internal/application/assets/monitor"
-      status: pending
+      status: shipped
+      ship_sha: 792c187d
+      ship_date: 2026-07-03
       deadline: 2026-07-15
     - id: FIX-STOCKPIPELINE-REDECLARATION
       owner_capability: "internal/application/assets/providers/stock/stockpipeline"
