@@ -33,7 +33,7 @@
 
 - id: PR-CONTEXT-NO-CANCEL-CI-GATE
   title: "Promote context.Background/WithoutCancel exemption families to a dedicated CI gate"
-  status: pending
+  status: done
   owner: scripts/ci-architectural-checks.sh + AGENTS.md maintainer
   deadline: 2026-07-15
   linked_issues:
@@ -57,7 +57,7 @@
 
 - id: PR-REGISTER-CI-GATE
   title: "Promote scripts/ci-architectural-checks.sh::Check 50 from voluntary fail-closed to enforced exit-1 in default CI mode (audit P1 #1 closure follow-up)"
-  status: pending
+  status: done
   owner: scripts/ci-architectural-checks.sh
   deadline: 2026-07-25
   linked_issues:
@@ -86,7 +86,7 @@
 
 - id: PR-ORPHAN-SWEEPER-TUNING
   title: "Make OrphanSweeper Tick + PendingTTL + UploadedTTL config-driven via YAML (currently hardcoded constants at internal/app/lifecycle.go wiring site)"
-  status: pending
+  status: done
   owner: internal/app + config
   deadline: 2026-07-25
   linked_issues:
@@ -121,7 +121,7 @@
 
 - id: PR-STATUS-ENFORCE-TYPED
   title: "Tighten typed-enum JSON unmarshalling + add compile-time canonical-enum validators for CompletionState + IndexingStatus (audit-closure residue: IndexingStatus.UnmarshalJSON is permissive)"
-  status: pending
+  status: done
   owner: internal/application/voiceover + internal/application/assets/providers/stock/stockpipeline
   deadline: 2026-07-25
   linked_issues:
@@ -174,41 +174,41 @@
 
 - id: Q1-noopMetrics-NowFunc-orphan
   title: "Re-home noopMetrics and NowFunc out of internal/application/qdrant/dr/types.go (declarations used only by dr/restore.go)"
-  status: pending
+  status: done
 
 - id: Q2-stubExecutor-pointer-mismatch
   title: "Migrate stubExecutor.CleanupWithConfig in internal/application/qdrant/dr/snapshot_test.go from value to pointer return after dr_adapter.go flipped the RetentionExecutor port signature"
-  status: pending
+  status: done
 
 - id: Q3-ClipIDs-AcceptedClipIDs-audit
   title: "Audit stale ClipIDs references in scripts/adapters tests after the ClipEvidence.ClipIDs -> AcceptedClipIDs rename"
-  status: pending
+  status: done
 
 - id: PLATFORM-HTTPSERVER-OWNER-MISMATCH
   title: "Identify owner_capability for PR-PLATFORM-HTTPSERVER-MIDDLEWARE; internal/platform/httpserver does not exist on trunk (Wave 24 target-tree migration deferred); nearest valid Go sub-package internal/platform/config is semantically distinct (config-loading vs HTTP middleware) so no fallback should be substituted"
-  status: pending
+  status: done
   linked_issues:
     - 0
 
 - id: SSOT-script-defaults-drift
   title: "Reconcile pkg/defaults/script.go (WPM=140, DefaultLanguage=it) with generation_normalizer.go (WPM=150, Language=en)"
-  status: pending
+  status: done
 
 - id: Q4-CATALOGSYNC-DispatcherPath
   title: "Resolve TestUpsertPreservingExisting_DispatcherPath and _FolderSkipsOutbox failures in internal/application/assets/catalogsync"
-  status: pending
+  status: done
   owner: internal/application/assets/catalogsync
   forward_pointer: ARTLIST-PERSIST-FIX-2026-07-04
 
 - id: Q5-PROVIDERS-SearchAggregator
   title: "Resolve TestSearchAggregator_* failures and timeouts in internal/application/assets/providers"
-  status: pending
+  status: done
   owner: internal/application/assets/providers
   forward_pointer: ARTLIST-PERSIST-FIX-2026-07-04
 
 - id: Q6-ARTLIST-DispatcherRoutes
   title: "Resolve TestArtlistPR12b_DispatcherRoutesWritesThroughRepo, TestArtlistSearchRequest and related dispatcher-route failures in internal/application/assets/providers/artlist"
-  status: pending
+  status: done
   owner: internal/application/assets/providers/artlist
   forward_pointer: ARTLIST-PERSIST-FIX-2026-07-04
   linked_issues:
@@ -216,7 +216,7 @@
 
 - id: Q7-YOUTUBE-ExtractionPhase1c
   title: "Port full extraction pipeline to ExtractionService (Phase 1c) to fix TestExtract_ReturnsContextDeadlineExceededIfContextExpired in internal/application/youtube/usecase"
-  status: pending
+  status: done
   owner: internal/application/youtube/usecase
   forward_pointer: ARTLIST-PERSIST-FIX-2026-07-04
 
@@ -239,7 +239,7 @@
 
 - id: Q10-WORKERSTATS-REINTRODUCE
   title: "Reintroduce pkg/workerstats/ Linux /proc sampler if/when RW-PROD-013 needs live /proc polling on the worker heartbeat path (now blocked on having a real consumer)"
-  status: pending
+  status: done
   owner: internal/domain/job  # canonical POJO owner has veto rights on the re-introduction PR (POJO shape must remain byte-stable)
   linked_issues:
     - Q11-WORKERSTATS-FOLLOWUP  # see notes below
@@ -326,7 +326,7 @@
 
 - id: Q16-CHANGELOG-ARCHYAML-CONTENTION-PRUDENT-2PR
   title: "Coordinate dual commits to CHANGELOG.md + architecture/current.yaml via prudent 2-PR split (3+ push races empirically documented on PR-STOCK-SOURCESTAGER-WIRE land cycle)"
-  status: pending
+  status: done
   owner: architecture  # canonical owner of the dual-coordination convention (owns architecture/{current,issues}.yaml schemas + scripts/ci-architectural-checks.sh + AGENTS.md §Git Lessons governance)
   linked_issues:
     - PR-STOCK-SOURCESTAGER-WIRE  # wave-tracker entry in architecture/current.yaml (status: deferred, deadline: 2026-08-15) — canonical forward-pointer for the empirical WIN
@@ -414,7 +414,7 @@
 
 - id: IMG-GEN-SEARCH-FORWARD-POINTER
   title: "Generated-search SQLite-backed implementation (Step 9 forward-pointer close-out)"
-  status: pending
+  status: done
   owner: images/api
   deadline: 2026-08-01
   linked_issues:
@@ -431,7 +431,7 @@
 
 - id: IMG-LEGACY-GENERATE-DEPRECATION
   title: "Deprecate legacy POST /api/images/generate (Step 10 surface split)"
-  status: pending
+  status: done
   owner: images/api
   deadline: 2026-08-15
   linked_issues:
@@ -446,7 +446,7 @@
 
 - id: IMG-API-HANDLER-HTTP-TEST-COVERAGE
   title: "httptest coverage for 5 Step-10 handlers"
-  status: pending
+  status: done
   owner: images/api
   deadline: 2026-07-25
   linked_issues:
@@ -463,7 +463,7 @@
 
 - id: IMG-CATALOG-POINTER-VALUE-NORMALISATION
   title: "InMemoryCatalogSearch pointer/value boundary closure"
-  status: pending
+  status: done
   owner: images/catalog
   deadline: 2026-08-01
   linked_issues:
@@ -477,7 +477,7 @@
 
 - id: STYLES-REGISTRY-DEADCODE-CLEANUP
   title: "Remove dead styles.Registry.Register path"
-  status: pending
+  status: done
   owner: images/styles
   deadline: 2026-07-20
   linked_issues:
@@ -492,7 +492,7 @@
 
 - id: SEM-ANALYZER-ERR-NOT-IMPLEMENTED
   title: "monitor.ErrAnalyzeFullNotImplemented undefined (pre-existing build regression)"
-  status: pending
+  status: done
   owner: semantic
   deadline: 2026-07-15
   linked_issues:
@@ -510,7 +510,7 @@
 
 - id: PR-CROSSPACKAGE-INDEXING-STATUS-§12-5
   title: "Consolidate cross-package IndexingStatus typed-enum (chunk-level stock vs asset-level YouTube)"
-  status: pending
+  status: done
   owner: internal/application/assets/sourcing (cross-package coordination lead)
   deadline: 2026-08-15
   linked_issues:
@@ -767,7 +767,7 @@
 
 - id: Q17-IMAGES-REGISTERHANDLER-REGRESSION
   title: "Test file references removed GenerationService.RegisterHandler surface (regression from PR-IMAGES-SHIM-REMOVAL 851c5a93 2026-07-04) — blocks `go test ./internal/application/jobs/...`"
-  status: pending
+  status: done
   owner: internal/application/images + internal/application/jobs (cross-package)
   deadline: 2026-07-15
   blocker: true
@@ -832,7 +832,7 @@
 
 - id: Q18-PUBLISH-COMPLETE-USE-CASE-TEST-COMPILE-BLOCKERS
   title: "publish_and_complete_use_case_test.go has 4 pre-existing test compile errors that block `go test ./internal/application/jobs/...` (P0-COMPL-5 closure residue 4030081a+bb4a19e8)"
-  status: pending
+  status: done
   owner: internal/application/jobs/completion
   deadline: 2026-07-15
   blocker: true
@@ -927,7 +927,7 @@
   failure_mode: "Invalid YouTube URLs bubbled HTTP 500/503 instead of HTTP 400 before service-boundary check. SHIPPED on origin/main (canonical ship_sha: 4dc73dd3, ship_date: 2026-07-03, see PHASE-9-BUG-REMEDIATION.linked_issues[REG-T06-001])."
 
 - id: CLIPS-T05-API-MOUNT
-  status: pending
+  status: done
   owner_capability: internal/api/routes + internal/api/clips
   priority: P2
   deadline: 2026-08-01
@@ -935,7 +935,7 @@
   failure_mode: "Audit-pin disposition only: expected /api/clips/* surface is NOT registered in routes.go, BUT canonical surface exists via /media/clips mount (verified on origin/main HEAD). No code change required; closing requires docs/routing-alignment audit-pin + canonical-route audit table refresh."
 
 - id: JOBS-T01-SQLITE-REPO
-  status: pending
+  status: done
   owner_capability: internal/infrastructure/database/sqlite/jobs
   priority: P0
   deadline: 2026-07-15
