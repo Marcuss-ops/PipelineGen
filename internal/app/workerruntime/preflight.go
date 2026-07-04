@@ -18,13 +18,14 @@
 package workerruntime
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // Pre-flight constants — 30s is long enough for a healthy master

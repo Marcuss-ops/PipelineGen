@@ -68,6 +68,25 @@
       retire_date: 2026-07-04
       retire_audit_sha: 85e96411
       deadline: 2026-08-01
+    - id: FIX-APP-WORKERRUNTIME-SYNTAX
+      owner_capability: "internal/app/workerruntime"
+      status: shipped
+      ship_date: 2026-07-04
+      ship_via: |
+        fix(app): ship real syntax fix — internal/app/workerruntime/{preflight.go, run.go}
+        had 4 pre-existing compile errors (P1-3, June 2026 split from cmd/worker/main.go).
+        Fixed: (1) preflight.go:21 "errors" imported but not used → removed; (2)
+        preflight.go:118 undefined: context → added "context" to imports; (3)
+        preflight.go:133 undefined: retry → added
+        "github.com/Marcuss-ops/PipelineGen/pkg/retry" to imports (per the code comment
+        that documents the pkg/retry.Do usage); (4) run.go:95 err redeclared in this
+        block (referenced at 58:7) → removed the redundant `err error` declaration from
+        the var (...) block (err was already declared in the function scope via the
+        earlier `cfg, err := LoadConfig(cfgPath)` and `log, err := LoadLogger(cfg)`
+        statements). This is the gate that unblocks all PR-ARTLIST-* follow-up work
+        (ART-001 closure forward-pointers depend on internal/app/workerruntime
+        compiling cleanly for the wire_assets.go composition). go build ./...
+        project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files.errors" imported but not used → removed; (2) preflight.go:118 undefined: context → added "context" to imports; (3) preflight.go:133 undefined: retry → added "github.com/Marcuss-ops/PipelineGen/pkg/retry" to imports (per the code comment that documents the pkg/retry.Do usage); (4) run.go:95 err redeclared in this block (referenced at 58:7) → removed the redundant `err error` declaration from the var (...) block (err was already declared in the function scope via the earlier `cfg, err := LoadConfig(cfgPath)` and `log, err := LoadLogger(cfg)` statements). This is the gate that unblocks all PR-ARTLIST-* follow-up work (ART-001 closure forward-pointers depend on internal/app/workerruntime compiling cleanly for the wire_assets.go composition). go build ./... project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files."
 
 - id: 0
   status: done
