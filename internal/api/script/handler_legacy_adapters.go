@@ -12,14 +12,16 @@
 // Legacy routes registered here:
 //   - POST /api/script/generate-from-clips   → unified pipeline  (removal: 2026-12-31)
 //   - POST /api/script/generate-with-images  → unified pipeline  (removal: 2026-12-31)
-//   - POST /api/script/curate                → unified pipeline  (removal: 2026-09-30)
+//
+// AZIONE 5 (July 2026): /curate REMOVED — removal date 2026-09-30
+// reached early per decision to accelerate the deprecation schedule.
 //
 // FASE 12c (July 2026): legacy batch route REMOVED — clients
 // must use POST /api/script/generate with multiple items.
 //
 // PR 11 (June 2026): created as part of the legacy-route deprecation wave.
 // P0.7 (June 2026): replaced atomic.Int64 with prometheus.CounterVec;
-// eliminated double-default in LegacyCurate; established concrete removal dates.
+// added concrete removal dates. AZIONE 5 (July 2026): LegacyCurate removed.
 
 package script
 
@@ -55,7 +57,7 @@ var legacyRouteInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 // counter (dto.Metric writeback pattern).
 func DeprecationCount() int64 {
 	var total int64
-	for _, route := range []string{"generate-from-clips", "generate-with-images", "curate"} {
+	for _, route := range []string{"generate-from-clips", "generate-with-images"} {
 		counter, err := legacyRouteInvocationsTotal.GetMetricWithLabelValues(route)
 		if err != nil {
 			continue
@@ -84,15 +86,12 @@ func addDeprecationHeader(c *gin.Context, route string, removalDate string) {
 // ── Removal dates ─────────────────────────────────────────────────────
 // Established P0.7 (June 2026):
 //   - generate-from-clips  / generate-with-images: 6-month grace (2026-12-31)
-//   - curate:                                      3-month grace (2026-09-30)
-// Reasoning: batch and curate are lower-usage routes historically;
-// from-clips and with-images are the original entry points, still
-// used by external API consumers.
+// Reason: from-clips and with-images are the original entry points,
+// still used by external API consumers.
 
 const (
 	removalDateFromClips  = "2026-12-31"
 	removalDateWithImages = "2026-12-31"
-	removalDateCurate     = "2026-09-30"
 )
 
 // ── Legacy request types ────────────────────────────────────────────────
@@ -356,82 +355,6 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 	}
 }
 
-// ── Legacy curate adapter ───────────────────────────────────────────────
-
-// LegacyCurateRequest is the deprecated request for
-// POST /api/script/curate.
-type LegacyCurateRequest struct {
-	Query             string   `json:"query"`
-	Title             string   `json:"title"`
-	Language          string   `json:"language"`
-	Tone              string   `json:"tone"`
-	Model             string   `json:"model"`
-	MaxClips          int      `json:"max_clips"`
-	SelectableClips   int      `json:"selectable_clips"`
-	TargetWords       int      `json:"target_words"`
-	MaxCharsPerScene  int      `json:"max_chars_per_scene"`
-	MinScore          float64  `json:"min_score"`
-	Source            string   `json:"source"`
-	MediaType         string   `json:"media_type"`
-	Type              string   `json:"type"`
-	Style             string   `json:"style"`
-	StyleInstructions string   `json:"style_instructions"`
-	ForceRefresh      bool     `json:"force_refresh"`
-	Languages         []string `json:"languages"`
-	VoiceoverGroup    string   `json:"voiceover_group"`
-	VoiceoverFolderID string   `json:"voiceover_folder_id"`
-	GenerateVoiceover bool     `json:"generate_voiceover"`
-	DriveFolderID     string   `json:"drive_folder_id"`
-	Search            bool     `json:"search"`
-	AllowTextOnly     bool     `json:"allow_text_only"`
-	HintClipIDs       []string `json:"hint_clip_ids"`
-}
-
-// toEnvelope translates a legacy curate request.
-func (r *LegacyCurateRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
-	item := domainScript.GenerationItemV2{
-		ID:       r.Title,
-		Title:    r.Title,
-		Language: r.Language,
-		Tone:     r.Tone,
-		Model:    r.Model,
-		Style:    r.Style,
-		Source: domainScript.SourceSpec{
-			Type:            domainScript.SourceCurate,
-			Query:           r.Query,
-			MaxClips:        r.MaxClips,
-			SourceFilter:    r.Source,
-			MediaTypeFilter: r.MediaType,
-			ForceRefresh:    r.ForceRefresh,
-			Search:          r.Search,
-			AllowTextOnly:   r.AllowTextOnly,
-			ClipIDs:         r.HintClipIDs,
-		},
-		ScriptParams: domainScript.ScriptSpec{
-			TargetWords:  r.TargetWords,
-			ForceRefresh: r.ForceRefresh,
-		},
-		Output: domainScript.OutputSpec{
-			SaveToDB:          true,
-			GenerateVoiceover: r.GenerateVoiceover,
-			GenerateDocument:  true,
-			VoiceoverGroup:    r.VoiceoverGroup,
-			VoiceoverFolderID: r.VoiceoverFolderID,
-			DriveFolderID:     r.DriveFolderID,
-			Languages:         r.Languages,
-		},
-	}
-	if r.MinScore > 0 {
-		score := r.MinScore
-		item.Source.MinQualityScore = &score
-	}
-	return domainScript.GenerationEnvelopeV2{
-		Version: 2,
-		Preset:  domainScript.PresetCustom,
-		Items:   []domainScript.GenerationItemV2{item},
-	}
-}
-
 // ── Adapter handlers ────────────────────────────────────────────────────
 
 // LegacyGenerateFromClips handles POST /api/script/generate-from-clips.
@@ -495,30 +418,6 @@ func (h *ScriptFlowHandler) LegacyGenerateWithImages(c *gin.Context) {
 			zap.String("endpoint", "generate-with-images"),
 			zap.String("value", req.TranscriptPolicy),
 			zap.String("note", "not fully enforced; 500-char transcript excerpt always used"))
-	}
-
-	env := req.toEnvelope()
-	h.enqueueEnvelope(c, env)
-}
-
-// LegacyCurate handles POST /api/script/curate (deprecated — use
-// POST /api/script/generate with source.type=curate).
-// Removal target: 2026-09-30.
-func (h *ScriptFlowHandler) LegacyCurate(c *gin.Context) {
-	addDeprecationHeader(c, "curate", removalDateCurate)
-
-	var req LegacyCurateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
-		return
-	}
-
-	if req.Query == "" {
-		req.Query = req.Title
-	}
-	if req.Query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "query is required"})
-		return
 	}
 
 	env := req.toEnvelope()
