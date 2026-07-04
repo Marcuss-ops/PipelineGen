@@ -2761,9 +2761,10 @@
       owner_capability: internal/api/script
       status: pending
       deadline: 2026-12-31
-    - id: PR-GODOBJ-12-QDRANT-MAINT-CMD
+ship_date: 2026-07-04
+      ship_sha: 4e7b89f95aa5a0e77eb971aa2811d41fe48bca27
       owner_capability: cmd/admin
-      status: pending
+      status: shipped
       deadline: 2026-08-22
     # ── Small but dangerous (13..15) ───────────────────────────────────
     - id: PR-GODOBJ-13-BOOKS-JOB-HANDLER

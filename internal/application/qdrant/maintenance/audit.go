@@ -8,6 +8,13 @@
 // FASE 1.2 PR-GODOBJ-12 closure (2026-07-04): verbatim migration from
 // cmd/admin/qdrant_maintenance_audit.go per godlike/06 SSOT — the
 // application layer is the canonical owner of use-case orchestration.
+//
+// Compile-drift fixup (2026-07-04, post-review): replace local helper
+// `reportString(report interface{Stringify() string})` with direct
+// `legacyaudit.StringifyReport(report)` package-function call (the
+// canonical stringifier is a pkg-level func, not a Report method).
+// Also: remove the now-unused `interface{...}` happy-indirection that
+// would drift from the canonical func signature.
 package maintenance
 
 import (
@@ -16,6 +23,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
 )
 
 // AuditOptions is the typed-input envelope for the Service.Audit method.
@@ -54,16 +63,8 @@ func (s *Service) Audit(ctx context.Context, opts AuditOptions) error {
 	}
 
 	fmt.Println("=== qdrant-maintenance audit ===")
-	fmt.Println(reportString(report))
+	fmt.Println(legacyaudit.StringifyReport(report))
 	fmt.Println("\nRe-run with 'repair-locators' to strip legacy payload keys,")
 	fmt.Println("or 'delete-invalid' to dispatch canonical outbox DELETE events for non-locator findings.")
 	return nil
-}
-
-// reportString formats the classification report for human-readable
-// output. Imported locally via the helper referenced from legacyaudit
-// (the canonical stringifier lives at legacyaudit.StringifyReport).
-// FASE 1.2 PR-GODOBJ-12 verbatim migration.
-func reportString(report interface{ Stringify() string }) string {
-	return report.Stringify()
 }
