@@ -1,6 +1,29 @@
-// Package search — narrow port interfaces + canonical domain types for
-// the MediaSearch capability. The package is organised into three
-// territories that mirror godlike/06 "one owner per fact" rule:
+// Package search — ports.go is the slim interface surface after
+// PR-SEARCH-PORTS-SPLIT (2026-07-04, pre-deadline 49 days early).
+//
+// What lived here pre-split (674 LoC god file): SearchBackend interface +
+// BackendRegistry struct + Logger port + SearchDocument + 8 sentinels +
+// QueryEmbedder + 5 channel constants + 3 channel-typed errors +
+// EmbeddingChannelRegistry + MediaAsset + MediaReadRepository +
+// AssetDeliveryService + SearchableLifecycleStates.
+//
+// What lives here post-split (~250 LoC): SearchBackend interface +
+// Logger port + QueryEmbedder + 5 channel constants + CanonicalChannelNames
+// + IsKnownChannel + ChannelEncoder + EmbeddingChannelRegistry +
+// MediaReadRepository + AssetDeliveryService + SearchableLifecycleStates.
+//
+// The 5 extracted surfaces land in 5 new sibling files per AGENTS.md
+// Pattern 5 (capability-stable file split):
+//   - registry.go (NEW) — BackendRegistry struct + Register/Freeze/All/Eligible
+//   - errors.go (canonical SSOT) — all 15+ sentinels (was scattered across
+//     ports.go + types.go + errors.go pre-split)
+//   - types_query.go (NEW) — Capability + SearchMode + Filters + Cursor +
+//     DefaultLimit/MaxLimit + Actor + Query (moved from types.go)
+//   - types_result.go (NEW) — Candidate + Result (moved from types.go)
+//   - document.go (NEW) — SearchDocument + AsPayloadMap + MediaAsset
+//
+// Phase 6 Spina Dorsale (July 2026) — the three territories that mirror
+// godlike/06 "one owner per fact" rule:
 //
 //	┌─ SemanticEnrichment ───────────────────────────────────────────┐
 //	│  Asset → SearchDocument                                       │
@@ -27,30 +50,9 @@
 //	│     - MediaReadRepository + AssetDeliveryService (hydratation) │
 //	│   Surface: GET /internal/v1/media/search (mediasearch handler) │
 //	└────────────────────────────────────────────────────────────────┘
-//
-// Fase 6 Spina Dorsale (July 2026):
-//   - Introduces canonical SearchDocument type that ALL three territories
-//     share. Enrichers produce it, the indexer consumes it, the search
-//     surface returns hits derived from it.
-//   - Promotes embedding generation from the historical merged
-//     VectorSearchPort mediator into a dedicated QueryEmbedder port.
-//     VectorStorePort (locator-free ANN/hybrid) remains the sole
-//     retrieval surface.
-//   - mediasearch.VectorSearchPort is marked Deprecated: with the new
-//     two-port composition (QueryEmbedder + VectorStorePort) as
-//     migration target. Removal is deferred to Fase 7 / Fase 8 once
-//     e2e test stubs migrate (see architecture/deprecations.yaml
-//     #SEARCH-VECTORSEARCHPORT-MERGE).
 package search
 
-import (
-	"context"
-	"errors"
-	"fmt"
-	"reflect"
-	"sort"
-	"sync"
-)
+import "context"
 
 // SearchBackend is the contract every aggregator backend satisfies.
 //
@@ -94,201 +96,6 @@ type SearchBackend interface {
 	Search(ctx context.Context, q Query) ([]Candidate, error)
 }
 
-// ── BackendRegistry ────────────────────────────────────────────────
-//
-// BackendRegistry is the freezeable backend catalog. Register/Freeze
-// run once during composition root wiring; after Freeze() any call
-// to Register returns ErrFrozen. Mirrors providers.Registry's
-// RWMutex + typed-nil-pointer + Empty-Name contract — same patterns
-// mean the same operational guarantees.
-type BackendRegistry struct {
-	mu      sync.RWMutex
-	entries map[string]SearchBackend
-	frozen  bool
-}
-
-// Sentinel errors. Mirrors providers.Registry so operator muscle
-// memory transfers between the two.
-var (
-	ErrAlreadyRegistered = errors.New("search: backend already registered")
-	ErrFrozen            = errors.New("search: registry frozen")
-	ErrNilBackend        = errors.New("search: nil backend")
-	ErrEmptyName         = errors.New("search: backend Name() returned empty")
-)
-
-// ErrMissingWorkspace is returned when the search surface is invoked
-// without a workspace in the auth context. The handler maps this to
-// HTTP 403 — worker principals cannot bypass through the body.
-//
-// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
-// mediasearch.ErrMissingWorkspace to the canonical search package
-// (godlike/06 SSOT — the search capability owns its own workspace
-// enforcement contract). The legacy mediasearch.ErrMissingWorkspace
-// is now a Go-level alias of this canonical sentinel (same pointer,
-// so errors.Is traverses the chain transparently).
-//
-// Wraps `errors.Is` cleanly: errors.Is(err, search.ErrMissingWorkspace)
-// returns true for the canonical sentinel AND for the legacy alias
-// (single pointer identity — the alias is the same variable).
-var ErrMissingWorkspace = errors.New("search: workspace context required")
-
-// ErrHybridRequiresSparse is returned when mode=hybrid is requested
-// but the pipeline cannot produce a real dense+sparse retrieval
-// (sparse channel missing from VectorConfig, OR the BM25 tokenizer
-// returns nil for the query — e.g. all tokens <2 chars after
-// punctuation stripping). Handler maps to HTTP 422.
-//
-// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
-// mediasearch.ErrHybridRequiresSparse to the canonical search
-// package. The legacy alias mediasearch.ErrHybridRequiresSparse
-// is now a Go-level pointer-identical re-export of this sentinel.
-var ErrHybridRequiresSparse = errors.New("search: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
-
-// ErrNoBackendAvailable is returned when the BackendRegistry has
-// zero eligible backends for the query (e.g. no backend advertises
-// the requested media type capability). Handler maps to HTTP 503.
-//
-// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
-// mediasearch.ErrNoBackendAvailable to the canonical search package.
-var ErrNoBackendAvailable = errors.New("search: no backend available for the requested query")
-
-// ErrAllBackendsFailed is returned when every eligible backend
-// returned an error (the fan-out produced zero successful results).
-// Handler maps to HTTP 502 (Bad Gateway — upstream backends are
-// reachable but all failed).
-//
-// Commit 2 BACKFILL/CUTOVER (July 2026): promoted from
-// mediasearch.ErrAllBackendsFailed to the canonical search package.
-
-// NewBackendRegistry returns an empty, mutable registry.
-func NewBackendRegistry() *BackendRegistry {
-	return &BackendRegistry{entries: make(map[string]SearchBackend)}
-}
-
-// Register adds a backend under its Name(). Returns:
-//   - ErrNilBackend        if b is the zero SearchBackend value, OR a
-//     typed-nil pointer (Kind==Ptr && IsNil).
-//   - ErrEmptyName         if b.Name() returns "" (checked pre-Lock).
-//   - ErrFrozen            if the registry is already frozen.
-//   - ErrAlreadyRegistered if a backend with the same Name exists.
-func (r *BackendRegistry) Register(b SearchBackend) error {
-	if b == nil {
-		return ErrNilBackend
-	}
-	if rv := reflect.ValueOf(b); rv.Kind() == reflect.Ptr && rv.IsNil() {
-		return ErrNilBackend
-	}
-	name := b.Name()
-	if name == "" {
-		return ErrEmptyName
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.frozen {
-		return ErrFrozen
-	}
-	if _, exists := r.entries[name]; exists {
-		return fmt.Errorf("%w: %q", ErrAlreadyRegistered, name)
-	}
-	r.entries[name] = b
-	return nil
-}
-
-// Freeze locks the registry. Idempotent: safe to call multiple times.
-// After Freeze, Register returns ErrFrozen and lookups become
-// effectively wait-free.
-func (r *BackendRegistry) Freeze() {
-	r.mu.Lock()
-	r.frozen = true
-	r.mu.Unlock()
-}
-
-// IsFrozen reports whether the registry has been frozen.
-func (r *BackendRegistry) IsFrozen() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.frozen
-}
-
-// All returns every registered backend, sorted by Name() so callers
-// can rely on a deterministic iteration order.
-func (r *BackendRegistry) All() []SearchBackend {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]SearchBackend, 0, len(r.entries))
-	for _, b := range r.entries {
-		out = append(out, b)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
-	return out
-}
-
-// Eligible returns the registered backends matching q.Sources
-// AND q.MediaTypes. The two filters compose with AND semantics.
-//
-//   - Sources: if q.Sources is non-empty, the candidate set is
-//     reduced to backends whose Name() appears in the canonicalised
-//     source list (alias resolution via ResolveCanonicals).
-//     Empty canonical set (all aliases unknown) → empty result.
-//   - MediaTypes: applied after Sources. Backends whose
-//     Capabilities intersect with the canonicalised media-type
-//     filter win; backends with no intersection are dropped.
-//
-// Empty q.Sources AND empty q.MediaTypes → every backend is
-// eligible (the legacy "all" behaviour is preserved).
-// Sort order is Name() for determinism, same as All().
-func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
-	all := r.All()
-
-	// 1. Sources filter (fail-fast on unknown aliases).
-	canonicalSources := ResolveCanonicals(q.Sources)
-	if len(q.Sources) > 0 && len(canonicalSources) == 0 {
-		// All sources supplied were unknown aliases. NO
-		// silent fallback: return empty result so callers
-		// learn the misuse instead of getting a deceptively
-		// full response from every backend.
-		return []SearchBackend{}
-	}
-	if len(canonicalSources) > 0 {
-		allow := make(map[string]struct{}, len(canonicalSources))
-		for _, s := range canonicalSources {
-			allow[s] = struct{}{}
-		}
-		filtered := make([]SearchBackend, 0, len(all))
-		for _, b := range all {
-			if _, ok := allow[b.Name()]; ok {
-				filtered = append(filtered, b)
-			}
-		}
-		all = filtered
-	}
-
-	// 2. MediaTypes filter (legacy behaviour preserved).
-	if len(q.MediaTypes) == 0 {
-		return all
-	}
-	want := make(map[Capability]struct{}, len(q.MediaTypes))
-	for _, m := range q.MediaTypes {
-		if m == "" {
-			continue
-		}
-		want[Capability(m)] = struct{}{}
-	}
-	if len(want) == 0 {
-		return all
-	}
-	out := make([]SearchBackend, 0, len(all))
-	for _, b := range all {
-		for _, c := range b.Capabilities() {
-			if _, ok := want[c]; ok {
-				out = append(out, b)
-				break
-			}
-		}
-	}
-	return out
-}
-
 // ── Logger port ─────────────────────────────────────────────────────
 //
 // Logger is the narrow logging surface used by Aggregator + adapters.
@@ -312,113 +119,7 @@ func (noopLogger) Warn(string, ...any)  {}
 func (noopLogger) Debug(string, ...any) {}
 func (noopLogger) Error(string, ...any) {}
 
-// ── Three-territory surface (Fase 6 Spina Dorsale) ───────────────────────────
-
-// SearchDocument is the canonical typed envelope that bridges the three
-// search territories (SemanticEnrichment, IndexProjection, MediaSearch).
-//
-// Shape rationale (godlike/06 "one owner per fact" + the QDRANT-001
-// locator-leak rule): the struct is the SSOT for the Qdrant IndexSchema
-// payload — every field except QdrantPointID is mirrored 1:1 to a
-// payload key by internal/infrastructure/qdrant/payload_mapper.go.
-// No server-internal locator (LocalPath, DriveLink, DriveFileID,
-// InternalRootURL, FileSystemPath, raw collection/vector names) is
-// allowed in this struct; a locator leak here would flow through every
-// downstream surface and break the QDRANT-004 acceptance criterion
-// ("Nessun path locale o secret esposto").
-//
-// Producers (SemanticEnrichment territory) MUST populate all payload
-// fields they expect to be filterable on; consumers (IndexProjection +
-// MediaSearch) MUST treat missing fields as zero-value gracefully.
-// SchemaVersion tracks forward-compatible evolution of the payload —
-// readers reject unknown versions.
-type SearchDocument struct {
-	// SchemaVersion is the version of this document contract. Currently
-	// always 1. Bumped if a structural field is added.
-	SchemaVersion int
-
-	// AssetID is the canonical asset identifier (UUID). Mirrors the
-	// media_assets.id column.
-	AssetID string
-
-	// QdrantPointID is the per-asset Qdrant point identifier (set by
-	// the IndexProjection territory after a successful Upsert). It is
-	// the read-side correlation key for retrievals + cleanups; absent
-	// from freshly-produced SearchDocuments (no Qdrant write yet).
-	QdrantPointID string
-
-	// Payload fields (every key mirrors the Qdrant IndexSchema's
-	// payload) — see infra/qdrant/schema/schema.go for the canonical
-	// names. All fields are json-stable strings / string-lists so the
-	// payload_mapper conversion is lossless.
-	Source         string   // "youtube" | "artlist" | "local" | ...
-	Name           string   // human-readable asset name
-	Category       string   // taxonomy category slug
-	MediaType      string   // "video" | "image" | "audio"
-	Style          string   // visual style (optional)
-	Language       string   // BCP-47 (optional, drive by content)
-	YouTubeVideoID string   // canonical YouTube video identifier (optional)
-	YouTubeURL     string   // canonical YouTube web URL (optional)
-	StartTime      string   // HH:MM:SS(.mmm) — for clip-style assets
-	EndTime        string   // HH:MM:SS(.mmm) — for clip-style assets
-	Tags           []string // free-form tags (lowercased, deduped)
-	SearchText     string   // semantic-search text (title+summary+topics)
-}
-
-// AsPayloadMap flattens a SearchDocument into the canonical Qdrant
-// payload map. Mirrors the field-to-key contract — same string for
-// each name as in infra/qdrant/schema/schema.go (canonical truth) and
-// infra/qdrant/payload_mapper.go (read-side). The SchemaVersion is
-// NOT included (Qdrant does not version its payload; version is
-// tracked separately in infra indexer logs).
-//
-// Use this from IndexProjection producers (artlist/semantic_enricher,
-// images/metadata_service) so the write surface and read surface
-// agree byte-for-byte. The MediaSearch side reads payload via the
-// infra qdrant/payload_mapper.go's read path — never via this
-// function (the direction is wrong for retrieval).
-func (d SearchDocument) AsPayloadMap() map[string]any {
-	out := map[string]any{
-		"asset_id": d.AssetID,
-	}
-	if d.Source != "" {
-		out["source"] = d.Source
-	}
-	if d.Name != "" {
-		out["name"] = d.Name
-	}
-	if d.Category != "" {
-		out["category"] = d.Category
-	}
-	if d.MediaType != "" {
-		out["media_type"] = d.MediaType
-	}
-	if d.Style != "" {
-		out["style"] = d.Style
-	}
-	if d.Language != "" {
-		out["language"] = d.Language
-	}
-	if d.YouTubeVideoID != "" {
-		out["youtube_video_id"] = d.YouTubeVideoID
-	}
-	if d.YouTubeURL != "" {
-		out["youtube_url"] = d.YouTubeURL
-	}
-	if d.StartTime != "" {
-		out["start_time"] = d.StartTime
-	}
-	if d.EndTime != "" {
-		out["end_time"] = d.EndTime
-	}
-	if len(d.Tags) > 0 {
-		out["tags"] = d.Tags
-	}
-	if d.SearchText != "" {
-		out["search_text"] = d.SearchText
-	}
-	return out
-}
+// ── QueryEmbedder (Fase 6 Spina Dorsale) ────────────────────────────
 
 // QueryEmbedder is the application-layer port owned by the MediaSearch
 // territory. It performs textual query embedding for live retrieval.
@@ -495,32 +196,6 @@ func IsKnownChannel(name string) bool {
 	}
 }
 
-// Typed-error contract (godlike/07 typed-error). Registry impls MUST
-// return these sentinels (errors.New(...)) or wrap them via fmt.Errorf("%w")
-// so callers can errors.Is the specific failure mode.
-var (
-	// ErrChannelUnknown is returned when the channel name is not in
-	// the canonical closed set. Surfaces a programming error at the
-	// orchestrator rather than a misconfiguration at composition root.
-	ErrChannelUnknown = errors.New("search: unknown embedding channel")
-
-	// ErrChannelNotConfigured is returned when the channel is in the
-	// canonical closed set but no adapter has been wired at the
-	// composition root. Distinguishes "we don't yet support this
-	// channel" from "the channel doesn't even exist".
-	ErrChannelNotConfigured = errors.New("search: channel recognized but no adapter wired")
-
-	// ErrChannelNotApplicable is returned when the channel accepts
-	// file-path index-time inputs (visual/audio) but the caller is
-	// invoking EmbedQuery (a text-input port). The visual/audio
-	// channels are NOT query-time text-encodable in the canonical
-	// surface until PR-CROSS-MODAL-TEXT-TO-VISUAL lands a SigLIP-text
-	// / CLAP-text encoder. The sparse channel returns this sentinel
-	// because Qdrant handles BM25 inference server-side; no Go-side
-	// encoder is needed.
-	ErrChannelNotApplicable = errors.New("search: channel does not support text-query encoding (use index-time file input instead)")
-)
-
 // ChannelEncoder is the per-channel adapter contract consumed by
 // EmbeddingChannelRegistry concrete impls. Each adapter implements
 // text-query to channel-vector encoding. The implementation is
@@ -554,7 +229,7 @@ type EmbeddingChannelRegistry interface {
 	EmbedQuery(ctx context.Context, channel string, text string) ([]float32, error)
 }
 
-// ── Canonical MediaAsset + MediaReadRepository + AssetDeliveryService (Commit 3-A, July 2026) ───────────
+// ── Canonical MediaReadRepository + AssetDeliveryService (Commit 3-A, July 2026) ───────────
 //
 // Per Commit 2 BACKFILL/CUTOVER (which promoted the typed-error sentinels
 // from mediasearch → search), Commit 3-A promotes the canonical ports so
@@ -570,50 +245,26 @@ type EmbeddingChannelRegistry interface {
 // discipline, NEW adapters implement the canonical interfaces; legacy
 // ports are read-only during the migration window.
 //
-// QDRANT-004 invariant: `MediaAsset` deliberately carries NO
-// server-internal locator (no LocalPath, no DriveLink, no raw
-// DriveFileID). Operator/admin surfaces that legitimately need to
-// surface file paths consume `duplicates.DuplicateMatch` from
+// QDRANT-004 invariant: `MediaAsset` (declared in document.go per
+// PR-SEARCH-PORTS-SPLIT) deliberately carries NO server-internal
+// locator (no LocalPath, no DriveLink, no raw DriveFileID).
+// Operator/admin surfaces that legitimately need to surface file paths
+// consume `duplicates.DuplicateMatch` from
 // `internal/application/assets/duplicates/types.go` (the canonical
 // owner per godlike/06 one-owner-per-fact). The `Candidate` shape
-// was also locked down as part of Commit 3-A: LocalPath + DriveLink
-// have been removed; Find-by-hash matchups surface the duplicate
-// match via a separate path.
+// (declared in types_result.go per PR-SEARCH-PORTS-SPLIT) was also
+// locked down as part of Commit 3-A: LocalPath + DriveLink have been
+// removed; Find-by-hash matchups surface the duplicate match via a
+// separate path.
 //
 // Both canonical ports consume `search.Actor` (the canonical tenant
-// identity owned by the search capability). The legacy
+// identity owned by the search capability; declared in
+// types_query.go per PR-SEARCH-PORTS-SPLIT). The legacy
 // `mediasearch.WorkspaceContext{WorkspaceID, ProjectID, PrincipalID,
 // IsAdmin}` is retain-only during the migration window: the canonical
 // fields are `WorkspaceID` (canonical) + `UserID` (renamed from
 // `PrincipalID`) + `IsAdmin`. ProjectID was dropped — workspace
 // isolation needs no separate project scoping per godlike/06.
-
-// MediaAsset is the canonical typed envelope for SQLite hydration.
-// Shape mirrors the legacy `mediasearch.MediaAsset` 1:1
-// (gofmt-stable, JSON-tag-stable) but carries NO server-internal
-// locator (the QDRANT-004 acceptance criterion "Nessun path locale
-// o secret esposto"). Adapters that map *asset.Asset → MediaAsset
-// MUST NOT propagate LocalPath/DriveLink; clients needing those
-// fields consume `duplicates.DuplicateMatch` instead.
-//
-// LifecycleState is `json:"-"` because clients have no business
-// knowing internal lifecycle semantics; if a row reaches a Candidate
-// it is by definition searchable. The post-query guard layers
-// defence-in-depth on top of the SQL allowStates filter.
-type MediaAsset struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Source         string   `json:"source"`
-	MediaType      string   `json:"media_type"`
-	Category       string   `json:"category"`
-	Tags           []string `json:"tags,omitempty"`
-	Language       string   `json:"language,omitempty"`
-	DurationMs     int      `json:"duration_ms,omitempty"`
-	Width          int      `json:"width,omitempty"`
-	Height         int      `json:"height,omitempty"`
-	SearchText     string   `json:"search_text,omitempty"`
-	LifecycleState string   `json:"-"`
-}
 
 // MediaReadRepository fetches canonical asset metadata from SQLite.
 // Per QDRANT-004 PR3 (June 2026): the interface takes an allowStates
