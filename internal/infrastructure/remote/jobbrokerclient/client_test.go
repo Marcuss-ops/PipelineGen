@@ -24,14 +24,14 @@ var _ appjobs.CompleteWithArtifactsCommand = testCmd
 // 2 tests. Centralised so the JSON wire-shape is fixed and any
 // future field addition is reflected in BOTH Tests simultaneously.
 var testCmd = appjobs.CompleteWithArtifactsCommand{
-	WorkerID:           "worker-1",
-	WorkerSessionID:    "session-1",
-	JobID:              "job-42",
-	LeaseID:            "lease-1",
-	ExpectedRevision:   7,
-	ResultData:         json.RawMessage(`{"hello":"world"}`),
-	PublishedArtifacts: json.RawMessage(`[{"artifact_id":"art-1","kind":"image/png"}]`),
-	OutboxEvents:       json.RawMessage(`[]`),
+	WorkerID:         "worker-1",
+	WorkerSessionID:  "session-1",
+	JobID:            "job-42",
+	LeaseID:          "lease-1",
+	ExpectedRevision: 7,
+	ResultData:       json.RawMessage(`{"hello":"world"}`),
+	StagedArtifacts:  json.RawMessage(`[{"artifact_id":"art-1","kind":"image/png"}]`),
+	OutboxEvents:     json.RawMessage(`[]`),
 }
 
 // happyResponse is the canonical 200 OK body shape that the
@@ -111,7 +111,7 @@ func TestClient_CompleteWithArtifacts_HappyPath(t *testing.T) {
 
 	for _, field := range []string{
 		"worker_id", "worker_session_id", "job_id", "lease_id",
-		"expected_revision", "result_data", "published_artifacts",
+		"expected_revision", "result_data", "staged_artifacts",
 		"outbox_events",
 	} {
 		if !bytes.Equal(gotDecoded[field], wantDecoded[field]) {
