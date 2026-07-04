@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
-	)
+)
 
 type ImagesRepository struct {
 	db *sql.DB
@@ -62,7 +62,7 @@ func (r *ImagesRepository) CreateSubject(ctx context.Context, s *asset.Subject) 
 // metadata_json (unreliable; see FASE 0 audit §1.4). Callers that
 // populate ImageAsset.Origin / .Provider will see those values land
 // in the dedicated columns; callers that don't populate them get the
-// DEFAULT '' (unclassified) and are eligible for FASE 4 backfill to
+// DEFAULT ” (unclassified) and are eligible for FASE 4 backfill to
 // promote them to a canonical territory.
 func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) (int64, error) {
 	id := img.Hash
@@ -139,7 +139,7 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 // generation_job_id for generated; license, author, search_query for
 // retrieved).
 //
-// FASE 4 CUTOVER: when origin='' or origin=ImageOriginUploaded the
+// FASE 4 CUTOVER: when origin=” or origin=ImageOriginUploaded the
 // function returns nil silently (unclassified rows are eligible for the
 // FASE 4 step-4D backfill later).
 func (r *ImagesRepository) dualWriteImageDetails(ctx context.Context, assetID string, img *asset.ImageAsset) error {
@@ -222,7 +222,7 @@ func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *asset.
 
 // UpdateOrigin updates media_assets.origin and media_assets.provider for
 // the row keyed by file_hash. Used by the FASE 4 step-4D backfill admin
-// command to promote unclassified rows (origin='') to a canonical
+// command to promote unclassified rows (origin=”) to a canonical
 // territory. FASE 4 CUTOVER.
 func (r *ImagesRepository) UpdateOrigin(ctx context.Context, hash, origin, provider string) error {
 	if hash == "" {
@@ -267,7 +267,7 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*as
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query, hash)
-	return scanImageAsset(row)
+	return scanImageAssetFromRow(row)
 }
 
 // GetByID recupera un'immagine tramite il suo ID stringa.
@@ -280,7 +280,7 @@ func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*asset.ImageAss
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query, id)
-	return scanImageAsset(row)
+	return scanImageAssetFromRow(row)
 }
 
 // Delete elimina un'immagine
@@ -301,7 +301,7 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query, fileID, "%"+fileID+"%")
-	return scanImageAsset(row)
+	return scanImageAssetFromRow(row)
 }
 
 // DEPRECATED (FASE 6, July 2026, image-territories action plan).
@@ -328,7 +328,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 
 	var images []asset.ImageAsset
 	for rows.Next() {
-		img, err := scanImageAssetRows(rows)
+		img, err := scanImageAssetFromRow(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -354,7 +354,7 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, er
 
 	var images []*asset.ImageAsset
 	for rows.Next() {
-		img, err := scanImageAssetRows(rows)
+		img, err := scanImageAssetFromRow(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -363,11 +363,26 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, er
 	return images, rows.Err()
 }
 
-// scanImageAsset scans one *sql.Row into an ImageAsset. FASE 1B reads
-// origin and provider as first-class columns (added by migration 115),
-// surfacing them on ImageAsset.Origin / ImageProvider for downstream
-// ImageSearchResolver routing (FASE 6).
-func scanImageAsset(row interface {
+// scanImageAssetFromRow is the canonical (godlike/06 SSOT) helper that
+// scans a single image row into *asset.ImageAsset. Replaces the
+// pre-B6 byte-equivalent duplication between scanImageAsset
+// (*sql.Row-shaped) and scanImageAssetRows (Rows-shaped). Both old
+// helpers are gone; this single typed-(structural-interface) helper
+// covers every caller because both *sql.Row.Scan(...) and
+// *sql.Rows.Scan(...) satisfy `interface{ Scan(dest ...any) error }`.
+//
+// FASE 1B reads origin and provider as first-class columns (added by
+// migration 115), surfacing them on ImageAsset.Origin / .Provider for
+// downstream ImageSearchResolver routing (FASE 6).
+//
+// Column projection MUST match the SELECT in:
+//   - GetImageByHash, GetByID, GetByDriveFileID (Row path, this file)
+//   - ListImagesBySubject, ListAll (Rows path, this file)
+//
+// B6 SSOT refactor (PR-IMAGES-AI-VS-NORMAL-PLAN, July 2026). Property
+// tests in images_repository_test.go assert byte-equivalence across
+// *sql.Row and *sql.Rows paths.
+func scanImageAssetFromRow(s interface {
 	Scan(dest ...any) error
 }) (*asset.ImageAsset, error) {
 	var img asset.ImageAsset
@@ -376,51 +391,7 @@ func scanImageAsset(row interface {
 	var url sql.NullString
 	var fileHash, localPath, driveFileID sql.NullString
 
-	err := row.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
-	if err != nil {
-		return nil, err
-	}
-
-	img.Description = name.String
-	img.SourceURL = url.String
-	img.Hash = fileHash.String
-	img.PathRel = localPath.String
-	img.DriveFileID = driveFileID.String
-	img.Origin = asset.ImageOrigin(origin.String)
-	img.Provider = asset.ImageProvider(provider.String)
-
-	if createdAtStr.Valid {
-		img.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
-	}
-
-	if tagsJSON.Valid && tagsJSON.String != "" {
-		_ = json.Unmarshal([]byte(tagsJSON.String), &img.Tags)
-	}
-
-	if metaJSON.Valid && metaJSON.String != "" {
-		img.MetadataJSON = metaJSON.String
-		var metaMap map[string]any
-		_ = json.Unmarshal([]byte(metaJSON.String), &metaMap)
-
-		if v, ok := metaMap["subject_id"].(string); ok {
-			img.SubjectID = v
-		}
-		if v, ok := metaMap["status"].(string); ok {
-			img.Status = v
-		}
-	}
-
-	return &img, nil
-}
-
-func scanImageAssetRows(rows *sql.Rows) (*asset.ImageAsset, error) {
-	var img asset.ImageAsset
-	var tagsJSON, metaJSON, createdAtStr sql.NullString
-	var name, origin, provider sql.NullString
-	var url sql.NullString
-	var fileHash, localPath, driveFileID sql.NullString
-
-	err := rows.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
+	err := s.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
 	if err != nil {
 		return nil, err
 	}
@@ -660,8 +631,8 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 	for rows.Next() {
 		var (
 			id, originStr, providerID, subjectID, previewURL sql.NullString
-			width, height                                     sql.NullInt64
-			promptResolved, styleID, styleVersion             sql.NullString
+			width, height                                    sql.NullInt64
+			promptResolved, styleID, styleVersion            sql.NullString
 		)
 		err := rows.Scan(&id, &originStr, &providerID, &subjectID, &previewURL, &width, &height, &promptResolved, &styleID, &styleVersion)
 		if err != nil {
