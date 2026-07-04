@@ -290,3 +290,122 @@ smoke_assert_http_2xx() {
         return 1
     fi
 }
+
+# ── Outbox chain verification ────────────────────────────────────────────
+# smoke_outbox_chain_verify — classified per-clip outbox chain probe.
+#
+# Runs a GROUP BY query on outbox_events for the given clip IDs and
+# classifies each clip as COMPLETED / PENDING / DEAD_LETTER / SUPERSEDED /
+# MISSING. The classification uses the most severe event status present
+# for that aggregate_id:
+#
+#   DEAD_LETTER  ≥1 dead_letter event (inspection required)
+#   COMPLETED    ≥1 completed event (chain healthy)
+#   SUPERSEDED   ≥1 superseded event AND zero completed (waiting on reindex)
+#   PENDING      ≥1 pending event AND zero terminal (dispatcher not yet run)
+#   MISSING      zero outbox_events rows (register-batch may have failed)
+#
+# Outputs a header-column table + summary line. Returns 0 when every clip
+# is COMPLETED (chain fully healthy). Returns 1 when any clip has
+# DEAD_LETTER, MISSING, or is not yet COMPLETED (PENDING/SUPERSEDED).
+# Returns 2 on setup error.
+#
+# Usage:
+#   smoke_outbox_chain_verify <db_path> <clip_ids_file>
+#   if ! smoke_outbox_chain_verify "$SMOKE_DB" "$clip_ids_file"; then
+#       fail_count=$((fail_count + 1))
+#   fi
+smoke_outbox_chain_verify() {
+    local db_path="$1"
+    local clip_ids_file="$2"
+
+    if [[ ! -f "$db_path" ]]; then
+        printf '%sFAIL: outbox chain verify — DB %s not found%s\n' \
+            "$RED" "$db_path" "$RESET" >&2
+        return 2
+    fi
+    if [[ ! -s "$clip_ids_file" ]]; then
+        printf '%sFAIL: outbox chain verify — no clip IDs in %s%s\n' \
+            "$RED" "$clip_ids_file" "$RESET" >&2
+        return 2
+    fi
+
+    # Build quoted IN-clause from the newline-separated clip_ids_file.
+    local in_list
+    in_list=$(awk 'BEGIN{ORS=","; q=sprintf("%c",39)}
+                  {printf q "%s" q, $0}' "$clip_ids_file" | sed 's/,$//')
+
+    # Per-clip classification: GROUP BY aggregate_id with CASE over status
+    # counts. MISSING clips (no outbox row) are detected by comparing the
+    # result row count with the input clip count in bash after the query.
+    local chain_sql="SELECT
+    aggregate_id AS clip_id,
+    CASE
+        WHEN SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) > 0 THEN 'DEAD_LETTER'
+        WHEN SUM(CASE WHEN status='completed'   THEN 1 ELSE 0 END) > 0 THEN 'COMPLETED'
+        WHEN SUM(CASE WHEN status='superseded'  THEN 1 ELSE 0 END) > 0 THEN 'SUPERSEDED'
+        WHEN SUM(CASE WHEN status='pending'     THEN 1 ELSE 0 END) > 0 THEN 'PENDING'
+        ELSE 'UNKNOWN'
+    END AS chain_status,
+    SUM(CASE WHEN status='completed'   THEN 1 ELSE 0 END) AS completed,
+    SUM(CASE WHEN status='superseded'  THEN 1 ELSE 0 END) AS superseded,
+    SUM(CASE WHEN status='pending'     THEN 1 ELSE 0 END) AS pending,
+    SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) AS dead_letter,
+    COUNT(*) AS total_events,
+    MAX(created_at) AS last_event_at,
+    substr(COALESCE(
+        (SELECT error FROM outbox_events oe2
+         WHERE oe2.aggregate_id = oe.aggregate_id
+           AND oe2.event_type = 'asset.index.requested'
+           AND oe2.error IS NOT NULL AND oe2.error != ''
+         ORDER BY oe2.created_at DESC LIMIT 1), ''
+    ), 1, 80) AS last_error
+FROM outbox_events oe
+WHERE event_type = 'asset.index.requested'
+  AND aggregate_id IN (${in_list})
+GROUP BY aggregate_id
+ORDER BY aggregate_id;"
+
+    printf '\n  %s--- outbox chain classification ---%s\n' "$DIM" "$RESET"
+
+    # Run query ONCE, save to temp file for display + parsing.
+    local chain_out="$WORK_DIR/outbox_chain.txt"
+    sqlite3 -header -column "$db_path" "$chain_sql" > "$chain_out" 2>&1
+    cat "$chain_out"
+
+    # Parse counts from saved output (avoids redundant sqlite3 invocations).
+    # Column 3 is chain_status in -header -column format.
+    local completed_count dead_count rows_returned total_input
+    completed_count=$(awk 'NR>=3 && $3 == "COMPLETED" {n++} END{print n+0}' "$chain_out")
+    dead_count=$(awk 'NR>=3 && $3 == "DEAD_LETTER" {n++} END{print n+0}' "$chain_out")
+    rows_returned=$(awk 'NR>=3 && $1 != "" {n++} END{print n+0}' "$chain_out")
+    total_input=$(wc -l < "$clip_ids_file" | tr -d ' ')
+    local missing_count=$(( total_input - rows_returned ))
+    (( missing_count < 0 )) && missing_count=0
+
+    printf '\n  chain summary: COMPLETED=%s  DEAD_LETTER=%s  MISSING=%s  input=%s\n' \
+        "$completed_count" "$dead_count" "$missing_count" "$total_input"
+
+    local fail=0
+    if (( dead_count > 0 )); then
+        printf '%sFAIL: %s clip(s) have dead_letter outbox events — inspection required%s\n' \
+            "$RED" "$dead_count" "$RESET" >&2
+        fail=1
+    fi
+    if (( missing_count > 0 )); then
+        printf '%sFAIL: %s clip(s) have NO outbox event (MISSING) — register-batch may have failed%s\n' \
+            "$RED" "$missing_count" "$RESET" >&2
+        fail=1
+    fi
+    if (( completed_count < total_input )); then
+        local non_terminal=$(( total_input - completed_count - missing_count ))
+        printf '%sWARN: %s clip(s) not yet COMPLETED (PENDING/SUPERSEDED) — outbox lagging%s\n' \
+            "$YELLOW" "$non_terminal" "$RESET" >&2
+        fail=1
+    fi
+    if (( fail == 0 )); then
+        printf '%soutbox chain OK (%s/%s clips COMPLETED)%s\n' \
+            "$GREEN" "$completed_count" "$total_input" "$RESET"
+    fi
+    return $fail
+}
