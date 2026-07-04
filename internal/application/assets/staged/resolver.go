@@ -71,14 +71,28 @@ type StagedArtifact struct {
 	AssetID string
 	// Path is the local filesystem path on the Sender box. Source: DB
 	// lookup via the lookupFn lambda; stable across Resolve calls.
+	// Canonical alias: LocalPath carries the same value (same byte-stream
+	// read from the same DB row); callers may dereference either name.
 	Path string
+	// LocalPath is the canonical-typed alias of Path (the
+	// verification.Verifier contract reads sa.LocalPath — see verification/
+	// verified.go). Populated from row.Path at Resolve time. Identical
+	// byte-stream to Path; future golangci-lint rule may collapse the
+	// short/long pair once verified.go is migrated.
+	LocalPath string
 	// SHA256 is the hex-encoded SHA-256 hash of the file at Path. Source:
 	// on-disk recompute via os.Open + io.Copy + sha256.Sum256. Recomputed
 	// every call (NOT cached) per the user's idempotency spec.
 	SHA256 string
 	// Bytes is the file size at Path. Source: os.Stat.Size(). Recomputed
-	// every call (NOT cached) per the user's idempotency spec.
+	// every call (NOT cached) per the user's idempotency spec. Canonical
+	// alias: SizeBytes carries the same value.
 	Bytes int64
+	// SizeBytes is the canonical-typed alias of Bytes (the
+	// verification.Verifier contract reads sa.SizeBytes — see
+	// verification/verified.go). Populated from info.Size() at Resolve
+	// time. Identical byte-stream to Bytes.
+	SizeBytes int64
 	// Source is the originating provider label (e.g. "artlist",
 	// "voiceover", "images", "stock"). Source: DB lookup. Stable across
 	// calls.
@@ -242,11 +256,13 @@ func (r *Resolver) ResolveStagedArtifact(ctx context.Context, artifactID string)
 	}
 
 	return &StagedArtifact{
-		AssetID: artifactID,
-		Path:    row.Path,
-		SHA256:  sha256Hex,
-		Bytes:   info.Size(),
-		Source:  row.Source,
+		AssetID:   artifactID,
+		Path:      row.Path,
+		LocalPath: row.Path,
+		SHA256:    sha256Hex,
+		Bytes:     info.Size(),
+		SizeBytes: info.Size(),
+		Source:    row.Source,
 	}, nil
 }
 

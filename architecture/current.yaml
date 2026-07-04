@@ -3058,8 +3058,10 @@ wave_status:
       ship_date: "2026-07-03"
       deadline: 2026-07-25
     - id: PR-ARTLIST-SEARCHERS
-      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/search/pixabay + internal/infrastructure/search/pexels"
-      status: pending
+      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/artlist/scraper + internal/infrastructure/artlist/fallback"
+      status: shipped
+      ship_sha: 449dd129
+      ship_date: "2026-07-04"
       deadline: 2026-07-25
     - id: PR-ARTLIST-STAGER
       owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/assets/source_stager"

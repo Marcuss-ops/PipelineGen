@@ -12,15 +12,17 @@
 // return-nil. Operators see 404 on /api/artlist/* rather than a full-system
 // boot abort.
 //
-// 6 forward-pointer nil fields (4 in ServiceDeps + 2 in Build(Dependencies))
+// 2 forward-pointer nil fields (1 in ServiceDependencies + 1 in Build(Dependencies))
 // are declared explicitly with linked_issue cross-refs; see
 // architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
 // discipline). The 3 repo fields (AssetProcRepo / AssetVerRepo / AssetLocRepo)
 // are now WIRED via sqassets.NewAssetStoreSQLite (PRIORITÀ ASSOLUTA — nil would
-// panic in run_orchestrator_stages.go). Read-only endpoints (/stats, /diagnostics,
-// /search/live) remain live even with forward-pointers nil; write endpoints
-// (/run, /recommend, /sync-catalogs) return 503 at runtime via the handler's
-// nil-tolerance.
+// panic in run_orchestrator_stages.go); the 3 searcher fields
+// (ScraperSearcher / PixabaySearcher / PexelsSearcher) are now WIRED inline from
+// the canonical infra concretes (PR-ARTLIST-SEARCHERS closed 2026-07-04).
+// Read-only endpoints (/stats, /diagnostics, /search/live) remain live; write
+// endpoints (/run, /recommend, /sync-catalogs) no longer return 503 from the
+// searcher-tier forward-pointers.
 //
 // Single-function shape (WireArtlist) mirrors the existing WireMediaIngest
 // precedent in registry_internal_modules.go (Blocco C1-Step 3 scope).
@@ -41,6 +43,8 @@ import (
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -171,20 +175,36 @@ func WireArtlist(
 	artlistStager := artlistPkg.NewArtlistStager(artlistDownloader)
 
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
-	// + 11 ServiceDependencies). 6 forward-pointer nil fields tagged with
-	// linked_issue id per architecture/current.yaml#ART-001.linked_issues.
+	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
+	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
+	// (PR-ARTLIST-SEARCHERS closed 2026-07-04: 3 searchers wired inline).
 	service, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
 		ServicePorts: artlistPkg.ServicePorts{
-			// ServicePorts (9) — 6 DIRECT, 3 FORWARD_POINTER nil.
-			AssetStore:      bundle.ClipsRepo,
-			Indexer:         bundle.ClipIndexerService,
-			MetadataWriter:  semanticEnricher,
-			Publisher:       bundle.Publisher,
-			ScraperSearcher: nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
-			PixabaySearcher: nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
-			PexelsSearcher:  nil,         // forward-pointer: PR-ARTLIST-SEARCHERS
-			Stager:          artlistStager,
-			IsLiveProbe:     isLiveProbe,
+			// ServicePorts (9) — 9 DIRECT (PR-ARTLIST-SEARCHERS closed: 3 searchers
+			// constructed inline from cfg + the canonical infra concretes; runtime
+			// returns ErrUnavailable when API keys are empty per godlike/07 graceful
+			// degradation, instead of nil-tolerated 503 at the handler layer).
+			AssetStore:     bundle.ClipsRepo,
+			Indexer:        bundle.ClipIndexerService,
+			MetadataWriter: semanticEnricher,
+			Publisher:      bundle.Publisher,
+			ScraperSearcher: scraper.New(scraper.Config{
+				ServerURL:  cfg.External.ArtlistScraperServerURL,
+				ScraperDir: cfg.External.NodeScraperDir,
+				ScriptName: "artlist_search.js",
+			}, log),
+			PixabaySearcher: fallback.NewPixabay(fallback.Config{
+				APIKey:     cfg.External.PixabayAPIKey,
+				BaseURL:    cfg.External.PixabayBaseURL,
+				SourceName: "pixabay",
+			}),
+			PexelsSearcher: fallback.NewPexels(fallback.Config{
+				APIKey:     cfg.External.PexelsAPIKey,
+				BaseURL:    cfg.External.PexelsBaseURL,
+				SourceName: "pexels",
+			}),
+			Stager:      artlistStager,
+			IsLiveProbe: isLiveProbe,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (11) — 10 DIRECT, 1 FORWARD_POINTER nil.
@@ -213,7 +233,7 @@ func WireArtlist(
 		NodeScraperDir: cfg.External.NodeScraperDir,
 		CfgPort:        newArtlistConfigAdapter(cfg),
 		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },
-		ModuleOpts: nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
+		ModuleOpts:     nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
 		Logger:         log,
 	})
 	if err != nil {
