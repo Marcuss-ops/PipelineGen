@@ -5557,6 +5557,47 @@ wave_status:
       owner_capability: SRE / chaos-engineering
       status: pending
       deadline: 2026-08-01
+      notes: |
+        SRE-only operation scheduled for PR-QDRANT-CHAOS-DAY-2026-08-01.
+        Validates outbox retry-recovery semantics when the Qdrant sink
+        is killed mid-flight. 7-step chaos sequence (per action plan §3
+        honest scope-lock):
+          (a) docker stop pipelinegen-qdrant
+          (b) POST a new asset to trigger outbox enqueue
+          (c) wait 60s for the retry-loop to engage
+          (d) verify outbox_events.status = 'retry_pending'
+              (= not dead-lettered: the worker keeps the event alive)
+          (e) docker start pipelinegen-qdrant (restore sink)
+          (f) wait 30s for the worker to rediscover + flush
+          (g) verify outbox_events.status = 'completed' AND
+              media_assets.index_state = 'INDEXED'
+        godlike/07 NO-EXECUTE-TODAY: this is a SCHEDULING entry
+        (documentation-only). Execution is reserved for the next
+        chaos-day maintenance window (2026-07-25..2026-08-01 candidate)
+        under SRE isolated-network conditions; production data must NOT
+        be modified.
+        Pre-prereq: PR-QDRANT-FULL-STACK-BRINGUP must be green (stack
+        brought up via docker compose up -d + PipelineGen server on
+        :8081 responds + Qdrant :16333 up) so the chaos sequence has a
+        real service topology to disrupt.
+    - id: PR-QDRANT-CHAOS-DAY-2026-08-01
+      owner_capability: SRE / chaos-engineering
+      status: scheduled
+      deadline: 2026-08-01
+      notes: |
+        Umbrella scheduling entry for the 2026-Q3 chaos-day maintenance
+        window. Aggregates the chaos-sequence tests under godlike/06
+        SSOT (one canonical owner per fact: the chaos-execution date).
+        Candidate tests under umbrella (forward-pointers):
+          1. PR-QDRANT-PREFLIGHT-TEST-9-RETRY-RECOVERY (retry-recovery
+             when Qdrant sink is killed mid-flight) -- 7 steps.
+        Pre-prereq (per action plan §3): full stack must be green
+        (PR-QDRANT-FULL-STACK-BRINGUP shipped, server on :8081
+        responding, Qdrant on :16333 healthy).
+        godlike/07 isolated-network contract: chaos exercises MUST run
+        under isolated-network conditions (SRE maintains a separate
+        chaos-cluster point-in-time snapshot) so production data is
+        never at risk.
     - id: PR-QDRANT-PREFLIGHT-TEST-10-DELETE-TOMBSTONE
       owner_capability: SRE / asset-deletion
       status: pending
