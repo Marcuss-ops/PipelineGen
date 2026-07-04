@@ -132,6 +132,9 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 
 		// ── AI Image Generation ──
 		{"TypeImageGenerateGoogle", TypeImageGenerateGoogle},
+
+		// ── Clip registration (async batch, PR-BATCH-REGISTER-ASYNC) ──
+		{"TypeClipRegister", TypeClipRegister},
 	}
 
 	for _, c := range cases {
