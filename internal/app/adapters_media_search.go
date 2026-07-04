@@ -50,6 +50,16 @@ func newSearchReadAdapter(repo *assets.ClipsRepository) search.MediaReadReposito
 // The workspace context is accepted for forward-compat with
 // QDRANT-001 multi-tenancy but is currently unused (the
 // media_assets.workspace_id column doesn't exist yet).
+//
+// SEARCH-T07-001 fail-closed default (2026-07-04, Phase 9 closure):
+// when the caller passes an empty `allowStates`, we default to
+// `search.SearchableLifecycleStates` (the canonical search-owned
+// allowlist = []string{"ACTIVE"}) instead of bypassing the filter.
+// This closes the fail-open path where `len(allowSet) > 0` would
+// short-circuit the guard and let deleted/archived/pending rows
+// reach the semantic backend. godlike/07 no-fake-availability:
+// the canonical allowlist is the single source of truth — callers
+// that want to override MUST pass the explicit allowlist slice.
 func (a *searchReadAdapter) GetMany(
 	ctx context.Context,
 	_ search.Actor,
@@ -61,6 +71,13 @@ func (a *searchReadAdapter) GetMany(
 	}
 	if len(assetIDs) == 0 {
 		return nil, nil
+	}
+
+	// SEARCH-T07-001 fail-closed default: empty allowStates → canonical
+	// SearchableLifecycleStates. Closes the pre-PR fail-open path
+	// where `len(allowSet) > 0` short-circuited the lifecycle filter.
+	if len(allowStates) == 0 {
+		allowStates = search.SearchableLifecycleStates
 	}
 
 	// Build the allow-set for O(1) lookup.
@@ -82,7 +99,7 @@ func (a *searchReadAdapter) GetMany(
 		// The primary enforcement lives in the Qdrant adapter;
 		// this guard catches SQL drift or mock adapters that
 		// ignore allowStates.
-		if len(allowSet) > 0 && !allowSet[string(row.LifecycleState)] {
+		if !allowSet[string(row.LifecycleState)] {
 			continue
 		}
 		out = append(out, assetToMediaAsset(row))

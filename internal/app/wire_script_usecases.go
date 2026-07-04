@@ -86,7 +86,7 @@ func buildScriptUseCases(
 	// ── Section regenerator ─────────────────────────────────────────
 	sectionRegen := usecase.NewSectionRegenerator(
 		scriptsRepoAdapter, gen,
-		root.Drive.DocClient, cfg, log,
+		root.Drive.DocClient, log,
 	)
 
 	// ── Cache eviction ──────────────────────────────────────────────

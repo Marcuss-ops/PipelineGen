@@ -90,6 +90,21 @@ type Dependencies struct {
 	// in its closure. The descriptor is the single canonical
 	// surface for the clips capability — no caller outside the
 	// package reads *clips.Handler directly anymore.
+	//
+	// CLIPS-T05-001 audit-pin (2026-07-04, Phase 9 closure): the
+	// clips module's canonical HTTP surface lives in
+	// `internal/api/assets/clips/` (routes `GET /:source/clips`,
+	// `GET /:source/clips/:id`, `POST /:source/clips/:id/status`,
+	// `POST /:source/clips/:id/verify`, `POST /:source/clips/:id/fix-hash`,
+	// `DELETE /:source/clips/:id`) and is mounted on the parent
+	// `/api/media` group via the `Clips api.Descriptor` wire below.
+	// The full mount path is `/api/media/:source/clips/*` — there is
+	// no separate `/api/clips` or `/api/media/clips` prefix; the
+	// source segment is the dynamic part. godlike/06 SSOT: this
+	// field is the SOLE canonical owner of the clips HTTP surface
+	// wire (composition root constructs the *clips.ClipsDescriptor
+	// in `internal/app/wire_assets_clips.go::buildClipsBundle` and
+	// hands it here).
 	Clips api.Descriptor
 
 	// Blocco C1-Step 7 (June 2026): Voiceover is now an api.Descriptor

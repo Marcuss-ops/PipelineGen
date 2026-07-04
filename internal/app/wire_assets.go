@@ -37,6 +37,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
@@ -241,6 +242,14 @@ func buildSoundeffectBundle(
 // consumer of the clips orchestrator — it calls
 // handler.EnrichAndIndexClip(ctx, clip, source) — which the
 // ClipsDescriptor exposes via its Handler field.
+//
+// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): builds a driveChecker
+// closure that mirrors the boot-time validateDriveServiceAvailability
+// check — returns nil iff driveUploader is wired AND cfg stat-OK.
+// Threaded through assetregister.Dependencies.DriveChecker so the
+// handler-level preflight at BatchRegisterFromYouTube fail-closed 503
+// when folder_id is non-empty AND *drive.Uploader.Service is nil
+// (the canonical silent-failure mode before this PR).
 func buildRegisterBundle(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -252,12 +261,46 @@ func buildRegisterBundle(
 	dispatcher *outbox.Dispatcher,
 ) (*assetregister.RegisterDescriptor, error) {
 	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher)
+
+	// PR-DRIVE-AVAILABILITY-GATE: compose the canonical driveChecker
+	// closure. Two-state probe (godlike/06 SSOT one-canonical-owner-per-fact):
+	//   (a) runtime — driveUploader != nil means BuildDriveBundle wired
+	//       Drive successfully at boot AND validateDriveServiceAvailability
+	//       passed; the *drive.Uploader.Service field is non-nil reachable
+	//       from sourcing.Service.BatchRegisterFromYouTube routing.
+	//   (b) config — cfg.Paths.CredentialsFile + cfg.Paths.TokenFile
+	//       exist on disk (mirrors validateDriveServiceAvailability;
+	//       belt-and-suspenders for the operator-toggled
+	//       StrictStartupValidation=false soft-mode escape hatch).
+	// Either state failing returns a typed error that BatchRegisterFromYouTube
+	// surfaces as HTTP 503 with the actionable diagnostic — pre-PR, the
+	// same request 500-panicked on first clip dispatch.
+	driveChecker := func() error {
+		if driveUploader == nil {
+			return fmt.Errorf("drive uploader not wired at composition time (build_bundles_drive.go::BuildDriveBundle returned driveClient==nil; PR-DRIVE-AVAILABILITY-GATE fail-closed forbids folder_id traffic)")
+		}
+		if driveUploader.Service == nil {
+			return fmt.Errorf("driveUploader.Service is nil despite driveUploader non-nil (typed-NIL interface trap; PR-DRIVE-AVAILABILITY-GATE fail-closed forbids folder_id traffic)")
+		}
+		if cfg == nil {
+			return fmt.Errorf("cfg is nil at driveChecker invocation (composition root invariant violated; PR-DRIVE-AVAILABILITY-GATE fail-closed)")
+		}
+		if _, err := os.Stat(cfg.GetCredentialsPath()); err != nil {
+			return fmt.Errorf("Drive credentials missing at driveChecker invocation: %w (PR-DRIVE-AVAILABILITY-GATE fail-closed; rerun python3 scripts/generate_drive_token.py to fix)", err)
+		}
+		if _, err := os.Stat(cfg.GetTokenPath()); err != nil {
+			return fmt.Errorf("Drive token missing at driveChecker invocation: %w (PR-DRIVE-AVAILABILITY-GATE fail-closed; rerun python3 scripts/generate_drive_token.py to fix)", err)
+		}
+		return nil
+	}
+
 	descriptor, err := assetregister.Build(assetregister.Dependencies{
-		Service:     registerSvc,
-		Idempotency: idemHandler,
-		EnabledFunc: func() bool { return true },
-		ModuleOpts:  nil,
-		Logger:      log,
+		Service:      registerSvc,
+		Idempotency:  idemHandler,
+		EnabledFunc:  func() bool { return true },
+		ModuleOpts:   nil,
+		Logger:       log,
+		DriveChecker: driveChecker,
 	})
 	if err != nil {
 		return nil, err

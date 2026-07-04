@@ -53,6 +53,14 @@
 // Dependencies field (nil → no-op pass-through, preserves the
 // test-fixture / dry-run path). The only mandatory deps are
 // Service + EnabledFunc.
+//
+// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): a NEW optional
+// DriveChecker Dependencies field threads a probe closure from
+// the composition root into the Handler so BatchRegisterFromYouTube
+// can fail-closed at request time (HTTP 503) when folder_id is
+// non-empty AND *drive.Uploader.Service is nil (the canonical
+// silent-failure mode before the gate). nil → defensive
+// always-fail checker (no Service==nil silent-success path).
 package register
 
 import (
@@ -120,6 +128,23 @@ type Dependencies struct {
 	// Logger is the canonical structured logger. nil →
 	// zap.NewNop() (composition-root-friendly default).
 	Logger *zap.Logger
+
+	// DriveChecker is the canonical probe closure that
+	// BatchRegisterFromYouTube fires BEFORE any folder_id
+	// routing — returns nil iff *drive.Uploader.Service is
+	// wired (godlike/06 SSOT one-canonical-owner-per-fact:
+	// the composition root owns the wiring; the api/ layer
+	// owns the probe call). PR-DRIVE-AVAILABILITY-GATE (2026-07-04)
+	// fail-closes the silent-success mode where the
+	// composition root logs `driveClient not initialized`
+	// while the handler attempts Drive publication anyway
+	// (would 500-panic on first folder_id request). nil →
+	// defensive always-fail checker (never accepts folder_id
+	// traffic). The composition root wires a closure that
+	// probes both runtime (deps.DriveUploader != nil) AND
+	// config-level (cfg.Paths.CredentialsFile + cfg.Paths.TokenFile
+	// stat-OK) state.
+	DriveChecker func() error
 }
 
 // RegisterDescriptor is the concrete capability Descriptor returned
@@ -195,11 +220,16 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// Construct the canonical Handler. NewHandler has no
 	// fail-closed checks (preserves the pre-Step-9 behavior for
 	// direct callers that bypass Build); Build's checks above
-	// are the new defensive layer.
+	// are the new defensive layer. The 4th-arg DriveChecker is
+	// nil-tolerant inside NewHandler — passing nil here
+	// preserves the pre-PR-DRIVE-AVAILABILITY-GATE behaviour
+	// for direct-NewHandler callers; the composition root
+	// wires a real closure via Dependencies.DriveChecker.
 	handler := NewHandler(
 		deps.Service,
 		log,
-		deps.Idempotency, // nil-tolerant (no-op pass-through inside NewHandler)
+		deps.Idempotency,  // nil-tolerant (no-op pass-through inside NewHandler)
+		deps.DriveChecker, // nil-tolerant in NewHandler (returns "driveChecker not wired" error)
 	)
 
 	// Construct the route Module. The closure inside
