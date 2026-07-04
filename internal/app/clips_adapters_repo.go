@@ -4,10 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
@@ -226,64 +224,4 @@ func (a *imageRepoAdapter) ListAll(ctx context.Context) ([]*asset.ImageAsset, er
 	return a.inner.ListAll(ctx)
 }
 
-// ── CleanupService adapter ────────────────────────────────────────
 
-// clipsCleanupAdapter wraps *deletion.DeletionService to satisfy
-// clips.CleanupServicePort. The port exposes only CleanupOrphanFiles
-// and DeleteClip — the two methods ClipOpsService needs.
-type clipsCleanupAdapter struct {
-	inner *deletion.DeletionService
-}
-
-var _ clips.CleanupServicePort = (*clipsCleanupAdapter)(nil)
-
-func (a *clipsCleanupAdapter) CleanupOrphanFiles(ctx context.Context, path string, dryRun bool) (int, error) {
-	return a.inner.CleanupOrphanFiles(ctx, path, dryRun)
-}
-
-func (a *clipsCleanupAdapter) DeleteClip(ctx context.Context, source, clipID string, hardDelete bool) error {
-	return a.inner.DeleteClip(ctx, source, clipID, hardDelete)
-}
-
-// ── JobsService adapter ───────────────────────────────────────────
-
-// clipsJobsServiceAdapter wraps job.Service to satisfy
-// clips.JobsServicePort. Translates the canonical EnqueueRequest
-// into the minimal DTO the port exposes.
-type clipsJobsServiceAdapter struct {
-	inner job.Service
-}
-
-var _ clips.JobsServicePort = (*clipsJobsServiceAdapter)(nil)
-
-func (a *clipsJobsServiceAdapter) Enqueue(ctx context.Context, req clips.JobsEnqueueRequest) (*clips.JobsEnqueueResponse, error) {
-	domainReq := &job.EnqueueRequest{
-		Type:      req.Type,
-		Payload:   req.Payload,
-		Priority:  req.Priority,
-		ActiveKey: req.ActiveKey,
-	}
-	j, err := a.inner.Enqueue(ctx, domainReq)
-	if err != nil {
-		return nil, err
-	}
-	return &clips.JobsEnqueueResponse{ID: j.ID}, nil
-}
-
-// ── SourceResolver adapter for ClipOpsService ─────────────────────
-
-// clipOpsSourceResolverAdapter wraps a single clips.ClipRepositoryPort.
-// Collapse (June 2026): SourceResolver eliminated — all clip-type sources
-// share the same concrete repo in production.
-type clipOpsSourceResolverAdapter struct {
-	clips clips.ClipRepositoryPort
-}
-
-var _ clips.SourceResolverPort = (*clipOpsSourceResolverAdapter)(nil)
-
-func (a *clipOpsSourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryPort {
-	if a == nil {
-		return nil
-	}
-	return a.clips
-}
