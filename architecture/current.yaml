@@ -2593,6 +2593,84 @@
 #   architecture/archive/2026-06-29/current-snapshot-2026-06-29.yaml
 # (see INDEX.md). Slim current.yaml is doc #1 (wave tracker) only.
 
+
+
+
+# ── PR-IMAGES-AI-VS-NORMAL-PLAN (2026-07-04) — 10 actions across 3 bands (A: tipizzazione style, B: DRY+perf, C: cleanup YAGNI) ──
+# Source arch-plan: architecture/action-plans/2026-07-04-images-ai-vs-normal-action-plan.md
+# Cross-ref block: PR-GODOBJ-3-IMAGES-GENERATION (decomposition of the 46-commits hotspot `internal/application/images/service.go`
+# per docs/plans/image-territories-audit.md §2 + AGENTS.md PR-GODOBJ-3 closure narrative). Forward-pointer, not hard block — the
+# 10 actions target the OTHER ~50 hot-LoC in the same domain, not the service.go bulk decomposition.
+# Godlike/07 honest-limitation disclosure: 6 limits enumerated in arch-plan §"Honest limitations" + cross-reference
+# forward-pointer PR-IMAGES-AI-VS-NORMAL-CROSSREF-2026-08-15 (re-runs git log --since=90.days post-wave for matrix delta).
+# Direct-to-main convention applies; each per-action PR lands auto-sufficient on `origin/main` per AGENTS.md Git-Lesson-2
+# (no topic branches, no --force, no PRs — Co-authored-by: trailers per Git-Lesson-3).
+- id: PR-IMAGES-AI-VS-NORMAL-PLAN
+  name: "Images AI vs Normal — Refactor & Stabilization Wave"
+  status: active
+  owner: "architecture (waves-domain)"
+  deadline: 2026-08-25
+  exit_signal: false
+  exit_gate: |
+    All A-band (A1+A2+A3), B-band (B4+B5+B6+B7), and C-band (C8+C9+C10) actions landed on origin/main with
+    auto-sufficient per-action commits; go test ./... -count=1 green; bash scripts/ci-architectural-checks.sh
+    zero new violations specific to this wave; rg 'style string' magic literal sweep ≤ 11 occurrences (down
+    from 11+ pre-wave via A1+A2+A3 typed-id migration); rg 'extra interface{}' internal/ --glob '!**/*_test.go'
+    → 0 (C8 closure); rg 'pythonEmbeddingAdapter' internal/ --glob '!**/*_test.go' → 0 (C10 closure);
+    post-wave audit PR-IMAGES-AI-VS-NORMAL-CROSSREF-2026-08-15 closes the wave-tracker (status: shipped + exit_signal: true).
+  linked_issues:
+    - id: A1
+      label: "StyleID typed + StyleDefinition value-object"
+      owner_capability: "internal/domain/asset + internal/application/assets/generation (style_registry)"
+      status: pending
+      deadline: 2026-08-04
+    - id: A2
+      label: "StyleResolver fail-closed + ErrUnknownStyle sentinel"
+      owner_capability: "internal/application/assets/generation + pkg/styleerrors"
+      status: pending
+      deadline: 2026-08-11
+    - id: A3
+      label: "GenerationStyle shape v2 (YML v2: Version, DisplayName, PromptSuffix, NegativePrompt, DestinationKey, Enabled)"
+      owner_capability: "internal/domain/asset + internal/application/assets/generation"
+      status: pending
+      deadline: 2026-08-18
+    - id: B4
+      label: "pkg/httpjson.GetJSON[T] helper (DRY the 5+ inline search helpers)"
+      owner_capability: "pkg/httpjson + internal/application/images/storage_search"
+      status: pending
+      deadline: 2026-08-11
+    - id: B5
+      label: "errgroup fan-out in searchAndDownloadInner (5 backend serial → parallel first-error-wins)"
+      owner_capability: "internal/application/images/storage_search"
+      status: pending
+      deadline: 2026-08-18
+    - id: B6
+      label: "DRY scanImageAsset (2 byte-equivalent funcs → 1)"
+      owner_capability: "internal/infrastructure/database/sqlite/assets/images_repository"
+      status: pending
+      deadline: 2026-08-04
+    - id: B7
+      label: "Dedupe SearchAll across territories (Router.SearchAll)"
+      owner_capability: "internal/application/images/routing"
+      status: pending
+      deadline: 2026-08-25
+    - id: C8
+      label: "Remove extra interface{} zombie param from ImageGenService.SearchAndDownload"
+      owner_capability: "internal/application/scripts/usecase"
+      status: pending
+      deadline: 2026-07-25
+    - id: C9
+      label: "Resolve or remove extractSubjectAndTags stub (godlike/07 no-fake-availability)"
+      owner_capability: "internal/application/images/ingest_direct"
+      status: pending
+      deadline: 2026-07-25
+    - id: C10
+      label: "Remove pythonEmbeddingAdapter zombie (or rewrite via vectorstore.LocalEmbedder port)"
+      owner_capability: "internal/application/images/ingest_semantic"
+      status: pending
+      deadline: 2026-07-25
+
+
 ---
 # Schema is forward-ratchet-friendly — additive growth supported.
 # Tracks ratchets and baselines missing/deferred from current disk tracking.
