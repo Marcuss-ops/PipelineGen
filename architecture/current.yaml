@@ -2191,7 +2191,7 @@
       owner_capability: internal/application/assets/monitor
       status: shipped
       deadline: 2026-07-25
-      ship_sha: TBD  # filled in follow-up commit (commit ref self-reference problem)
+      ship_sha: 99db9fe90d8dd9bf191a0efa27208c1f8e76b04f
       ship_date: 2026-07-04
       notes: |
         Retire the dual-sentinel split introduced by commit 60a61808.
