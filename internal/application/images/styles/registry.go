@@ -7,14 +7,15 @@
 // package and uses Go type aliases for back-compat.
 //
 // StyleRegistry loads style definitions from YAML and exposes both
-// the legacy query methods (Get, List, ListEnabled, ApplyStyle) and
-// the fail-closed StyleResolver interface (Resolve + Validate).
+// the legacy query methods (Get, List, ListEnabled) and the
+// fail-closed StyleResolver interface (Resolve + Validate).
 //
 // Key design decisions:
 //   - Resolve(styleID, provider, model) is fail-closed: unknown style
 //     or disabled style → typed error.
 //   - Empty styleID → no-op default (zero ResolvedStyle, no error).
-//   - ApplyStyle is deprecated — callers should use Resolve + PromptComposer.
+//   - ApplyStyle is the canonical compose surface — fail-closed
+//     under A2 (returns (*StyleComposedPrompt, error), see below).
 //   - StyleRegistry implements StyleResolver, so existing wiring passes
 //     *StyleRegistry as the StyleResolver dependency.
 //   - Uses ONLY local types from this package (types.go, resolver.go) —
@@ -27,10 +28,13 @@
 //     ID = StyleID(s.Name) so the typed id stays in sync with the
 //     yaml "name" key.
 //   - ResolvedStyle.Width/Height were dropped (caller-supplied).
-//   - ApplyStyle no longer falls back to Description (the Description
-//     field was retired).
 //   - The per-style allowlist checks were already retired in
 //     surface-3 (July 2026); this cut inherits the cleanup.
+//
+// Step-2 typed migration (A2, July 2026):
+//   - ApplyStyle signature changed from
+//     `(prompt, styleName string) string`  to
+//     `(prompt, styleName string, version int) (*StyleComposedPrompt, error)`.
 package styles
 
 import (
@@ -41,6 +45,7 @@ import (
 	"sync"
 
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/styleerrors"
 	"gopkg.in/yaml.v3"
 )
 
@@ -173,38 +178,110 @@ func (r *StyleRegistry) Register(_ StyleDefinition) error {
 	return ErrRegistryReadOnly
 }
 
-// ApplyStyle appends the style suffix to the prompt. Deprecated: prefer
-// Resolve + PromptComposer for fail-closed resolution. Kept for backward
-// compatibility. Empty or unknown styleName returns the prompt unchanged
-// (silent fallback — the old behaviour).
+// ── ApplyStyle — fail-closed contract (A2, July 2026) ──────────────────
+
+// ApplyStyle composes a prompt using the resolved style's
+// prompt suffix + negative prompt. Returns
+// (*StyleComposedPrompt, error) where every input failure mode
+// surfaces a typed pkg/styleerrors sentinel (godlike/07
+// fail-closed contract; A2 closure of pre-A2 silent fallback).
 //
-// Step-1 typed migration (A1, July 2026): the legacy Description
-// fall-back was retired. ApplyStyle now uses PromptSuffix directly;
-// unknown style returns the prompt unchanged (silent fallback to the
-// prompt-only rendering path).
+// version is the caller's pin: 0 means "wildcard, accept whatever
+// the registry loaded"; > 0 means "exact-match required". A
+// non-zero pin that doesn't match the loaded StyleVersion emits
+// ErrStyleVersionMismatch.
 //
-// Deprecated: use StyleResolver.Resolve instead.
-func (r *StyleRegistry) ApplyStyle(prompt, styleName string) string {
-	if styleName == "" {
-		return prompt
+// Per the godlike/06 SSOT owner-pkg/styleerrors contract, every
+// emitted sentinel is dispatched via errors.Is — callers
+// pattern-match on the typed value, not the message text.
+//
+// Sentinel triggers (canonical):
+//   - ErrUnknownStyle        empty styleName OR name absent in registry
+//   - ErrStyleDisabled       style found but Enabled=false
+//   - ErrEmptyPrompt         prompt empty AND PromptSuffix empty (no rendered text)
+//   - ErrStyleVersionMismatch version > 0 AND style.Version != version
+//
+// Pre-A2 silent fallback (now CLOSED): every failure mode returned
+// the prompt unchanged; an unknown style + a non-empty prompt was
+// the canonical silent-fall-through anti-pattern. Post-A2: every
+// failure mode is a typed error so the caller learns that the
+// prompt was rendered as offered (no style applied) vs. rejected
+// (style requested but unfulfilled).
+//
+// Step-1 typed migration (A1, July 2026): PromptSuffix is the sole
+// suffix source (the legacy Description fallback was retired). The
+// new A2 contract surfacing ErrEmptyPrompt when BOTH prompt and
+// PromptSuffix are empty ensures the caller knows the render is
+// empty rather than emitting an empty string downstream.
+func (r *StyleRegistry) ApplyStyle(prompt, styleName string, version int) (*StyleComposedPrompt, error) {
+	// Step-2 typed migration (A2, July 2026): the canonical
+	// fail-closed gates, in deterministic order:
+	//
+	//   1. nil-receiver                     -> ErrUnknownStyle (registry not initialised — silent fail-open pre-A2)
+	//   2. empty styleName                  -> ErrUnknownStyle
+	//   3. style absent from registry       -> ErrUnknownStyle
+	//   4. style found but Enabled=false    -> ErrStyleDisabled
+	//   5. prompt empty AND suffix empty    -> ErrEmptyPrompt
+	//   6. version > 0 AND style.Version != -> ErrStyleVersionMismatch
+	//   7. success                          -> *StyleComposedPrompt
+
+	if r == nil {
+		return nil, fmt.Errorf("%w: registry receiver is nil", styleerrors.ErrUnknownStyle)
 	}
 
-	style, ok := r.Get(styleName)
+	name := strings.TrimSpace(styleName)
+	if name == "" {
+		return nil, fmt.Errorf("%w: styleName is empty", styleerrors.ErrUnknownStyle)
+	}
+
+	style, ok := r.Get(name)
 	if !ok {
-		return prompt
+		return nil, fmt.Errorf("%w: %q", styleerrors.ErrUnknownStyle, name)
 	}
 
-	suffix := style.PromptSuffix
-	if suffix == "" {
-		return prompt
+	if !style.Enabled {
+		return nil, fmt.Errorf("%w: %q", styleerrors.ErrStyleDisabled, name)
 	}
 
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return suffix
+	// Step-2 typed migration (A2, July 2026): the canonical
+	// fail-closed ErrEmptyPrompt gate. Both the user-supplied
+	// prompt and the style's PromptSuffix must be non-empty
+	// (TrimSpace-stripped) for a composed text to be produced;
+	// otherwise surface a typed error so the caller knows the
+	// render is empty rather than emitting "" downstream.
+	trimmedPrompt := strings.TrimSpace(prompt)
+	trimmedSuffix := strings.TrimSpace(style.PromptSuffix)
+	if trimmedPrompt == "" && trimmedSuffix == "" {
+		return nil, fmt.Errorf("%w: %q", styleerrors.ErrEmptyPrompt, name)
 	}
 
-	return prompt + ", " + suffix
+	if version > 0 && int(style.Version) != version {
+		return nil, fmt.Errorf("%w: %q loaded=%d want=%d",
+			styleerrors.ErrStyleVersionMismatch, name, int(style.Version), version)
+	}
+
+	destKey := strings.TrimSpace(style.DestinationKey)
+	if destKey == "" {
+		destKey = "ai-images/" + style.Name
+	}
+
+	composed := trimmedPrompt
+	if trimmedSuffix != "" {
+		if composed == "" {
+			composed = trimmedSuffix
+		} else {
+			composed = composed + ", " + trimmedSuffix
+		}
+	}
+
+	return &StyleComposedPrompt{
+		ComposedText:   composed,
+		StyleID:        style.Name,
+		StyleVersion:   int(style.Version),
+		PromptSuffix:   style.PromptSuffix,
+		NegativePrompt: style.NegativePrompt,
+		DestinationKey: destKey,
+	}, nil
 }
 
 // ── Fail-closed resolution (canonical) ──────────────────────────────────
@@ -237,6 +314,10 @@ func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle,
 	}
 
 	if !style.Enabled {
+		// godlike/06: image/styles.ErrStyleDisabled is byte-identical
+		// to pkg/styleerrors.ErrStyleDisabled via the value-alias in
+		// types.go; the wrap chain dispatches transparently across
+		// both import paths.
 		return ResolvedStyle{}, fmt.Errorf("%w: %q", ErrStyleDisabled, styleID)
 	}
 
