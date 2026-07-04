@@ -1,0 +1,84 @@
+# PipelineGen — Wave-Tracker Archive Snapshot (2026-07-04)
+# -----------------------------------------------------------------------------
+# Frozen byte-equivalent snapshot of 4 wave-tracker entries archived from
+# architecture/current.yaml on 2026-07-04, per PR-WORKERSTATS-ELIMINATE-
+# FAKE-AVAIL precedent (see architecture/deprecations.yaml#15). Pattern
+# mirrored from architecture/archive/2026-06-29/current-snapshot-2026-06-
+# 29.yaml.
+#
+# Archive discipline (godlike/06 SSOT + godlike/07 no-fake-availability +
+# godlike/08 zero-baseline rule):
+#   * Each entry below is verbatim byte-equivalent to origin/main state
+#     at snapshot_at=4ba5e43c (post-FASE-6 Q-ticket closure commit;
+#     pre-FASE-5 wave-tracker cleanup commit).
+#   * The live architecture/current.yaml now carries only an `# ARCHIVED`
+#     pointer-comment + 8-key-whitelist fields (id, status, exit_signal)
+#     per cmd/archcheck/main.go::scanYAML 8-key whitelist enforcement.
+#   * Future agents auditing "what did entry ID NN look like before it
+#     was archived?" read THIS file, not the live architecture/current.yaml.
+#
+# Archived entries (4 — all exit_signal:true, all linked_issues shipped/
+# removed/vacuous):
+#   * id: 17 — PR-C-YouTube-Cutover P1 closure (Commit 6/6, June 2026)
+#   * id: 18 — minimal done-state marker
+#   * id: 27 — DRIVE-005 4-port Drive surface consolidation
+#   * id: 28 — Blocco 3.1 deletion state machine canonical
+#
+# Watch-list (NOT archived in FASE 5; deferred to FASE 5-bis because
+# linked_issues have pending slots that disqualify them per the FASE 5
+# "all linked_issues shipped" criterion):
+#   * id: 29      (has P0.18 pending)
+#   * S7-Step-7   (has 4 PR-RETRY-CLASSIFIER-* pending)
+#   * Step-10-C-closure (has 3 PR-STEP-10-* pending)
+# -----------------------------------------------------------------------------
+
+- id: 17
+  status: done
+  exit_signal: true
+  blocker: ["16"]
+  # PR-C-YouTube-Cutover P1 #17 final closure (Commit 6/6, June 2026):
+  # durable channel sync flows through jobs.Service.TypeYouTubeChannelSync
+  # (HandleChannelSyncJob rewrite + safeCheckChannel + recordCheckOutcome +
+  # top-level defer recover + nested func{} recover + tryMarkFailed +
+  # section 4b defensive lease-token re-override). Registry Concurrency
+  # locked to 1 on TypeYouTubeChannelSync so the canonical serial-mode
+  # dedupe contract holds in production (matches the e2e_no_duplicates_test.go
+  # harness's Policy.MaxConcurrentVideos=1 invariant; mitigates the
+  # PR-MONITOR-FANOUT-MARKENQUEUED-RACE parallel-mode regression until
+  # the follow-up ticket ships). ChannelsCursorSvc is intentionally
+  # preserved as a test-surface sentinel per Commit D (6 test assertions
+  # in extraction_enqueuer_test.go pin the no-UpdateCursor contract).
+
+- id: 18
+  status: done
+  exit_signal: true
+
+- id: 27
+  status: done
+  exit_signal: true
+  exit_gate: |
+    Drive surface is consolidated to 4 canonical Pattern 0 ports.
+    All raw `root.Drive.DriveClient` + `root.Drive.DriveUploader` readsites
+    physically retired from `internal/app.DriveBundle` in commit `a8c781ae`.
+    DRIVE-005-FIELDS (aka DRIVE-005) deprecation record closed (status: removed,
+    migration_phase: "CONTRACT, removal_date: 2026-06-30)."
+  linked_issues:
+    - id: DRIVE-005-FIELDS
+      owner_capability: internal/app (composition root) + internal/infrastructure/drive
+      status: removed
+      deadline: 2026-06-30
+
+- id: 28
+  status: done
+  exit_signal: true
+  exit_gate: |
+    Bloco 3.1 deletion state machine is canonical: 5-state machine (ACTIVE
+    -> DELETE_REQUESTED -> DRIVE_DELETE_PENDING -> INDEX_DELETE_PENDING ->
+    DELETED) with tx-bound advance + emit primitive on *outbox.Dispatcher
+    :: AdvanceAndEmit. Drive side-effects (Trash/Delete) are dispatched
+    through the canonical drive.FileLifecycle pattern-0 port.
+  linked_issues:
+    - id: PR-DRIVE-DELETE-STM
+      owner_capability: internal/application/jobs/outbox + internal/infrastructure/drive
+      status: removed
+      deadline: 2026-07-01
