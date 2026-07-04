@@ -5,15 +5,10 @@
 package usecase
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	types "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -89,103 +84,9 @@ func (s *SegmentsService) SanitizeTimestamp(ts string) error {
 	return nil
 }
 
-// ── Metadata builder ───────────────────────────────────────────────────────
-
-// BuildClipMetadataInput groups all parameters needed to construct a
-// lifecycle.FinalizeInput for a processed YouTube clip. Replaces the
-// previous 17-parameter function signature (PR5 Phase 4).
-type BuildClipMetadataInput struct {
-	ClipID, Name, LocalPath, VideoID, Start, End string
-	StartSec, EndSec, Duration                   int
-	FolderSlug                                   string
-	ShouldNormalize, KeepAudio                   bool
-	DriveFolderID, FolderPath, FileHash, Group   string
-	YouTubeMeta                                  *ports.DownloaderMetadata
-	Segment                                      *types.Segment
-}
-
-// BuildClipMetadata creates the lifecycle.FinalizeInput for a processed clip.
-func (s *SegmentsService) BuildClipMetadata(in BuildClipMetadataInput) *lifecycle.FinalizeInput {
-	metadataMap := map[string]any{
-		"video_id":         in.VideoID,
-		"start":            in.Start,
-		"end":              in.End,
-		"start_seconds":    in.StartSec,
-		"end_seconds":      in.EndSec,
-		"duration_seconds": in.Duration,
-		"folder_slug":      in.FolderSlug,
-		"normalized":       in.ShouldNormalize,
-		"keep_audio":       in.KeepAudio,
-	}
-
-	// Include custom metadata from request if provided
-	if in.Segment != nil {
-		seg := in.Segment
-		if seg.Summary != "" {
-			metadataMap["clip_summary"] = seg.Summary
-		}
-		if len(seg.Topics) > 0 {
-			metadataMap["topics"] = seg.Topics
-		}
-		if len(seg.Speakers) > 0 {
-			metadataMap["speakers"] = seg.Speakers
-		}
-		if len(seg.MentionedPeople) > 0 {
-			metadataMap["mentioned_people"] = seg.MentionedPeople
-		}
-		if seg.Hook != "" {
-			metadataMap["hook"] = seg.Hook
-		}
-		if seg.QualityScore > 0 {
-			metadataMap["quality_score"] = seg.QualityScore
-		}
-		if seg.SearchVisibility != "" {
-			metadataMap["search_visibility"] = seg.SearchVisibility
-		}
-		if len(seg.Tags) > 0 {
-			metadataMap["segment_tags"] = seg.Tags
-		}
-	}
-
-	// Include YouTube video metadata if available
-	if in.YouTubeMeta != nil {
-		metadataMap["youtube_title"] = in.YouTubeMeta.Title
-		metadataMap["youtube_description"] = in.YouTubeMeta.Description
-		metadataMap["youtube_language"] = in.YouTubeMeta.Language
-		metadataMap["youtube_uploader"] = in.YouTubeMeta.Uploader
-		metadataMap["youtube_upload_date"] = in.YouTubeMeta.UploadDate
-		metadataMap["youtube_view_count"] = in.YouTubeMeta.ViewCount
-		metadataMap["youtube_duration"] = in.YouTubeMeta.Duration
-		metadataMap["youtube_video_id"] = in.YouTubeMeta.ID
-		metadataMap["youtube_url"] = fmt.Sprintf("https://www.youtube.com/watch?v=%s", in.YouTubeMeta.ID)
-		if len(in.YouTubeMeta.Tags) > 0 {
-			metadataMap["youtube_tags"] = in.YouTubeMeta.Tags
-		}
-		if len(in.YouTubeMeta.Chapters) > 0 {
-			metadataMap["youtube_chapters"] = in.YouTubeMeta.Chapters
-		}
-	}
-	metadataBytes, _ := json.Marshal(metadataMap)
-
-	return &lifecycle.FinalizeInput{
-		ID:           in.ClipID,
-		Name:         in.Name,
-		Filename:     filepath.Base(in.LocalPath),
-		Kind:         lifecycle.AssetKindVideo,
-		Source:       "youtube",
-		Group:        in.Group,
-		Subfolder:    "",
-		LocalPath:    in.LocalPath,
-		FolderID:     in.DriveFolderID,
-		FolderPath:   in.FolderPath,
-		DriveLink:    "",
-		DriveFileID:  "",
-		DownloadLink: "",
-		FileHash:     in.FileHash,
-		Metadata:     string(metadataBytes),
-		RequireLocal: true,
-		RequireHash:  true,
-		RequireDrive: in.DriveFolderID != "",
-		VerifyDB:     true,
-	}
-}
+// BuildClipMetadataInput removed (CLIPS-META A6+A7, July 2026).
+// The type was dead code — zero production callers. The canonical
+// ClipMetadataInput (dto/metadata_types.go) is the single builder
+// input type for clip metadata enrichment. The lifecycle.FinalizeInput
+// construction that BuildClipMetadata performed is now owned by
+// process_segment.go::ProcessYouTubeSegmentUseCase directly.
