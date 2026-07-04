@@ -22,12 +22,20 @@
 // the canonical infra concretes (PR-ARTLIST-SEARCHERS closed 2026-07-04).
 // Read-only endpoints (/stats, /diagnostics, /search/live) remain live; write
 // endpoints (/run, /recommend, /sync-catalogs) no longer return 503 from the
-// searcher-tier forward-pointers. The Build(Dependencies).ClipResolver
-// forward-pointer (PR-ARTLIST-SYNCSERVICE) is OBSOLETE — the clipresolver
-// package was removed in a prior refactor; the field is intentionally unset
-// in WireArtlist and the handler's nil-tolerance continues to return 503
-// on /recommend (unchanged runtime behavior; see
-// architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE closed 2026-07-04).
+// searcher-tier forward-pointers. The Build(Dependencies).ClipResolver field
+// is now WIRED via the new clipResolverRecommendAdapter
+// (PR-ARTLIST-RECOMMEND-ADAPTER, closed 2026-07-04) which bridges the
+// handler-side artlist.ClipResolverPort.Recommend method to the canonical
+// *scripts.ClipResolver.Resolve method + a real field-weighted Jaccard
+// scoring layer (Name 0.30 + Filename 0.10 + Description 0.20 + Tags 0.30 +
+// Transcript 0.10, see internal/app/clip_resolver_recommend_adapter.go). The
+// /recommend endpoint now returns real recommendations (not 503) when the
+// canonical resolver is available; nil canonical yields a nil adapter
+// (godlike/07 fail-closed fast path) and the handler's nil-tolerance returns
+// 503 only in that case. The audit-pin closure of the obsolete clipresolver
+// forward-pointer is in architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE
+// (closed 2026-07-04) — the clipresolver package was already removed in a
+// prior refactor, so the deprecation was paperwork only.
 //
 // Single-function shape (WireArtlist) mirrors the existing WireMediaIngest
 // precedent in registry_internal_modules.go (Blocco C1-Step 3 scope).
@@ -44,6 +52,7 @@ import (
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -230,17 +239,30 @@ func WireArtlist(
 		return nil, fmt.Errorf("WireArtlist: artlist.NewService: %w", err)
 	}
 
+	// PR-ARTLIST-RECOMMEND-ADAPTER (closed 2026-07-04): wire the
+	// canonical *scripts.ClipResolver (Resolve method, ID-based
+	// dispatch) into the handler-side artlist.ClipResolverPort
+	// (Recommend method) via the new clipResolverRecommendAdapter
+	// (field-weighted Jaccard scoring layer). The adapter is the
+	// SINGLE translation site per godlike/06 SSOT. godlike/07
+	// fail-closed: nil ClipsRepo (mandatory gate above) or nil
+	// canonical would yield a nil adapter; the handler's nil-
+	// tolerance continues to return 503 on /recommend in that
+	// case (unchanged runtime contract for unavailable canonical).
+	bundle.ClipResolver = NewClipResolverRecommendAdapter(
+		scripts_usecase.NewClipResolver(bundle.ClipsRepo, log),
+		log,
+	)
+
 	descriptor, err := artlistapi.Build(artlistapi.Dependencies{
 		Service:     service,
 		CatalogSync: bundle.CatalogSyncService,
 		Jobs:        bundle.Jobs.Service,
-		// ClipResolver is intentionally omitted (zero-value nil): the
-		// clipresolver package was removed in a prior refactor (the
-		// canonical *scripts.ClipResolver has a different Resolve
-		// contract, NOT a Recommend method). The handler's nil-tolerance
-		// returns 503 on /recommend — unchanged runtime behavior. See
-		// architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE
-		// (closed 2026-07-04) for the audit-pin record.
+		// PR-ARTLIST-RECOMMEND-ADAPTER (closed 2026-07-04): now
+		// WIRED via the new clipResolverRecommendAdapter (built
+		// above) — no longer an unset forward-pointer. /recommend
+		// returns real recommendations when canonical is available.
+		ClipResolver:   bundle.ClipResolver,
 		NodeScraperDir: cfg.External.NodeScraperDir,
 		CfgPort:        newArtlistConfigAdapter(cfg),
 		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },

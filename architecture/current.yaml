@@ -3084,6 +3084,13 @@ wave_status:
       ship_sha: f02ae683daec5b6e3d1ba0a64ce3e8e0a64a37ae
       ship_date: "2026-07-04"
       deadline: 2026-08-15
+    - id: PR-ARTLIST-RECOMMEND-ADAPTER
+      owner_capability: "internal/app (composition root adapter) + internal/api/assets/artlist (handler port) + internal/application/scripts/usecase (canonical resolver)"
+      status: shipped
+      ship_sha: <TBD-by-commit>
+      ship_date: "2026-07-04"
+      deadline: 2026-08-15
+
 
 
 # ── PR-SCRIPTS-CLEANUP-2026-07-04 — artifact/zombie-code sweep (4-commit chain) ──

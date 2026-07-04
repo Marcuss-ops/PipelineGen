@@ -61,12 +61,20 @@ import (
 // PR4d-chunk2 (June 2026): wraps the 25 cross-bundle reads of WireArtlist
 // into 10 typed fields.
 type ArtlistBundle struct {
-	DB                 *storage.SQLiteDB
-	Assets             *asset.Service
-	ClipsRepo          *assets.ClipsRepository
-	DriveClient        *gdrive.Service
-	DriveUploader      *driveup.Uploader
-	Publisher          delivery.Publisher
+	DB            *storage.SQLiteDB
+	Assets        *asset.Service
+	ClipsRepo     *assets.ClipsRepository
+	DriveClient   *gdrive.Service
+	DriveUploader *driveup.Uploader
+	Publisher     delivery.Publisher
+	// ClipResolver is the Recommend-shaped adapter (PR-ARTLIST-RECOMMEND-ADAPTER,
+	// closed 2026-07-04) that bridges the handler-side artlist.ClipResolverPort
+	// (Recommend method) to the canonical *scripts.ClipResolver (Resolve method)
+	// + a real field-weighted Jaccard scoring layer. Constructed in WireArtlist
+	// via NewClipResolverRecommendAdapter(scripts_usecase.NewClipResolver(ClipsRepo, log), log);
+	// nil when the canonical resolver is unavailable (godlike/07 fail-closed
+	// fast path — the handler returns 503 on /recommend in that case).
+	ClipResolver       *clipResolverRecommendAdapter
 	AssetIndexService  *assetindex.Service
 	ClipIndexerService *clipindexer.Service
 	MediaProcessor     asset.Processor
