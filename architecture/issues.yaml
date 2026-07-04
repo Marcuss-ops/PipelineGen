@@ -949,7 +949,7 @@
   deadline: 2026-07-25
   blocker: false
   closed_at: 2026-07-04
-  ship_sha: TBD
+  ship_sha: 04235a7c
   failure_mode: "Missing admin CLI sweep surface for zombie jobs. SHIPPED 2026-07-04 via Phase 9 cycle 2 closure: cmd/admin/zombie_sweep.go (~270 LoC) wraps the canonical (*jobs.SQLiteStore).MarkRunningJobsOlderThanFailed per godlike/06 one-canonical-owner-per-fact. Registered in cmd/admin/main.go as the `zombie-sweep` case arm. godlike/07 NO-FAKE-AVAILABILITY: --dry-run is the default + --apply is operator-explicit opt-in. TDD coverage on 2 pure-function seams (computeCutoff + formatDryRunReport) in cmd/admin/zombie_sweep_test.go."
 
 - id: SCRIPT-T03-ERR-MAPPING

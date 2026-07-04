@@ -4719,8 +4719,10 @@
     status: pending
     deadline: 2026-08-01
   - id: JOBS-T01-002
-    owner_capability: internal/infrastructure/database/sqlite/jobs
-    status: pending
+    owner_capability: cmd/admin
+    status: shipped
+    ship_sha: 04235a7c
+    ship_date: 2026-07-04
     deadline: 2026-08-01
   - id: SCRIPT-T03-001
     owner_capability: internal/api/script
