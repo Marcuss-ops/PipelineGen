@@ -26,7 +26,9 @@
     ship_date: '2026-07-04'
 - id: PRE-EXISTING-BUILD-ISSUES-2026-07-04
   owner_capability: architecture
-  status: in_progress
+  status: shipped
+  ship_date: 2026-07-04
+  exit_signal: true
   exit_signal: false
   deadline: 2026-08-01
   description: 'Pre-existing build issues carried forward unchanged after ART-001
@@ -1299,6 +1301,20 @@
     owner_capability: internal/application/images
     status: pending
     deadline: 2026-07-25
+- id: PR-JOBS-T01-ZOMBIE-SWEEP
+  owner_capability: cmd/admin
+  status: shipped
+  ship_date: 2026-07-04
+  deadline: 2026-07-25
+  description: "JOBS-T01-ZOMBIE-SWEEP (Phase 9 cycle 2 closure, 2026-07-04): cmd/admin/zombie_sweep.go (~270 LoC). Operator CLI subcommand registered in cmd/admin/main.go::main() switch as the `zombie-sweep` case. Thin wrapper over the canonical (*jobs.SQLiteStore).MarkRunningJobsOlderThanFailed (internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go) per godlike/06 one-canonical-owner-per-fact. godlike/07 NO-FAKE-AVAILABILITY: --dry-run is the default (no DB write); --apply is the operator-explicit opt-in. TDD coverage on the 2 pure-function seams (computeCutoff + formatDryRunReport) in cmd/admin/zombie_sweep_test.go. Flags: --cutoff-duration (default 1h) + --reason + --apply + --db-path. Forward-pointer PR-ZOMBIE-SWEEP-INT-DURATION-CONFIG (deadline TBD) -- replace --cutoff-duration flag with cfg.Server.ZombieSweepCutoff (mirrors PR-ORPHAN-SWEEPER-TUNING precedent). godlike/07 typed-error contract: ErrZombieSweepNoDB + ErrZombieSweepOpenDB sentinels (errors.Is-compatible)."
+
+- id: PR-IMAGES-T04-MULTIPART
+  owner_capability: internal/api/assets/clips (canonical surface) + internal/api/images (audit-pin cross-reference)
+  status: shipped
+  ship_date: 2026-07-04
+  deadline: 2026-07-25
+  description: "IMAGES-T04-MULTIPART (Phase 9 cycle 2 closure, 2026-07-04): audit-pin disposition per godlike/06 one-canonical-owner-per-fact. The canonical multipart-form upload surface for clip assets lives in internal/api/assets/clips/ingest.go::UploadVideoClip (IngestHandler POST /upload-video route), NOT in internal/api/images/. The 2 surfaces are distinct concerns: (1) clips/ingest.go::UploadVideoClip = multipart upload for clip video files via *upload.UseCase + dispatcher + outbox event pipeline (canonical); (2) images/impl.go::Upload = JSON image_url field for legacy image-asset URL ingestion (kept for back-compat with image-search surface). 22-line ARCH-ALLOWLIST: im-001-multipart-canonical-surface audit-pin added to internal/api/images/impl.go documenting the canonical surface at clips/ingest.go. godlike/07 minimum-blast-radius: zero Go code changes for the image-side (canonical path was already live at clips/ingest.go); only the audit-pin annotation was added."
+
 - id: AUDIT-RESIDUE-2026-07-04
   status: in_progress
   exit_signal: false
@@ -1313,7 +1329,9 @@
   linked_issues:
   - id: PR-BLOCKER-Q9-VOICEOVER-FANOUTUSE-CASE
     owner_capability: internal/application/voiceover/jobs
-    status: pending
+    status: shipped
+    ship_sha: 027e606f
+    ship_date: 2026-06-30
     deadline: 2026-07-15
     notes: 'Forward-pointer to architecture/issues.yaml#Q9-VOICEOVER-FanoutUseCase
 
