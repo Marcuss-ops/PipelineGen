@@ -512,7 +512,30 @@ func Compose() *Registry {
 
 	// ── YouTube ──
 	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction", Timeout: 60 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-YT-FIX (July 2026): ProducesArtifacts REMOVED.
+	// The pre-fix youtube_clip.extract entry declared ProducesArtifacts=true,
+	// which causes the SQL-layer SQLiteStore.Complete reject at
+	// repository_lifecycle.go:108-115 (ErrCompleteJobPathViolation typed
+	// sentinel) AND the typed-service gate at
+	// application/jobs/completion/complete_job_service.go (the same
+	// sentinel). The YouTube pipeline already persists ALL clip
+	// artifacts (media_assets row + outbox events for asset.index +
+	// voiceover_cleanup) atomically inside the per-segment caller-owned
+	// tx via process_segment + ClipAtomicWriter.CommitClipAndIndexEvent
+	// (internal/application/youtube/usecase/callbacks.go +
+	// application/youtube/ports/ports.go::ClipAtomicWriter) — distinct
+	// from the JobFinalizer.CompleteWithArtifacts spine that
+	// script.generate uses. Marking ProducesArtifacts=false re-routes
+	// the broker's "mark SUCCEEDED" path through the legacy
+	// SQLiteStore.Complete which is the CANONICAL terminal-flip seam
+	// for this job type today. godlike/07 minimal-blast-radius: zero
+	// surface contract changes; per-segment persistence stays unchanged.
+	// Forward-pointer: if a future godlike/06 SSOT-tighten requires the
+	// YouTube pipeline to ALSO emit job_artifacts rows (i.e. the
+	// canonical Sender-side artifact envelope), migrate through a
+	// JobFinalizer port — today's UNIQUE registry policy must remain
+	// ProducesArtifacts=false until that port exists.
+	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction (per-segment artifacts persisted inside the per-segment caller-owned tx via process_segment + ClipAtomicWriter; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeYouTubeRebuildST, Description: "Rebuild YouTube search text", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 	// ── Voiceover / subtitles ──
 	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
