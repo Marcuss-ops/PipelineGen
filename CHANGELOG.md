@@ -2328,6 +2328,11 @@ No production-wiring change beyond the ytdlp interface swap (which Go boxes tran
 
 ### Added
 
+**[FASE 3.7, July 2026]** FASE 3.7 closure: canonical `monitor.{MonitorDownloaderPort, YoutubeDiscoveriesPort, MetricsRecorder}` Pattern-0 surfaced ports + composition-root adapters in `internal/app/lifecycle.go` (Commits 1b + 2), plus the FASE 3.7 Commit 3 CI-gate forward-prevention rule. The gate canonically bans `internal/infrastructure/...` imports inside `internal/application/assets/monitor/` (strict scope per user spec; widening to `internal/application/**` would over-block legitimate cross-layer wiring) with:
+  - **Check 54** in `scripts/ci-architectural-checks.sh` — HARD-FAIL on production imports not preceded by the ARCH-ALLOWLIST marker (zero scroll-window tolerance, supports both marker-on-`import (`-line and marker-directly-above-import patterns per canonical Go syntax); WARN only on comment-only references + ARCH-ALLOWLIST sites (godlike/07 auditability).
+  - **`_*test.go` is NOT excluded** (rationale documented in the Check 54 header comment: the test layer in monitor/ asserts the canonical Pattern-0 surface via `var _ monitor.Port = (*Adapter)(nil)` pins, which legitimately imports the infra-side concrete; excluding tests would blind-spot drift in the test-side structural-identity guard).
+  - **Gate-tracker entry** `architecture/current.yaml#FASE-3.7-CHECK-3` (status: enforcement, exit_signal: true) — the canonical anchor for future migrations.
+
 **[FASE 9, DRIVE-005, June 2026]** Drive canonical `Admin` + `Reader`
 port abstractions (Pattern 0) — the composition root's readiness barrier
 now consumes a typed port instead of leaking the raw `*gdrive.Service`
