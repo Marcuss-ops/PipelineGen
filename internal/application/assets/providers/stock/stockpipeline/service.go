@@ -8,13 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -53,10 +47,12 @@ var (
 	ErrStockPipelineNilDispatcher     = errors.New("stockpipeline.NewService: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
 	ErrStockPipelineNilCutter         = errors.New("stockpipeline.NewService: media.Cutter is required (PR6 port)")
 	ErrStockPipelineNilRenderer       = errors.New("stockpipeline.NewService: media.Renderer is required (PR6 port)")
-	ErrStockPipelineNilClipIndexer    = errors.New("stockpipeline.NewService: media.ClipIndexer is required")
-	ErrStockPipelineNilMetadataWriter = errors.New("stockpipeline.NewService: media.MetaWriter is required (semantic enrichment for Drive metadata.json upload)")
-	ErrStockPipelineNilYouTube        = errors.New("stockpipeline.NewService: YouTube is required (provider metadata enrichment for direct URL sources)")
 	ErrStockPipelineNilJobs           = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+
+	// P8 (July 2026): ErrStockPipelineNilYouTube + ErrStockPipelineNilClipIndexer +
+	// ErrStockPipelineNilMetadataWriter RETIRED. YouTube was never wired at
+	// the composition root; ClipIndexer + MetaWriter were dead code (zero
+	// call sites in the stockpipeline package).
 
 	// §12-4 (July 2026): stock pipeline no longer threads
 	// `*downloader.YTDLPDownloader` directly. Every yt-dlp / HTTP / Drive
@@ -88,21 +84,22 @@ var (
 )
 
 // StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
-// Three fields — under the AGENTS.md 10-per-bundle cap.
+// P8 (July 2026): narrowed to narrow interfaces so service.go has zero
+// internal/infrastructure imports. Concrete types (*assets.ClipsRepository,
+// *assetindex.Service, *outbox.Dispatcher) satisfy these interfaces
+// structurally at the composition root.
 type StorageDeps struct {
-	ClipsRepo  *assets.ClipsRepository
-	AssetIndex *assetindex.Service
-	Dispatcher *outbox.Dispatcher
+	ClipsRepo  stockClipsSearchTermUpdater
+	AssetIndex stockAssetIndexUpserter
+	Dispatcher stockChunkDispatcher
 }
 
-// MediaDeps groups the PR6 ports + semantic enrichment. Four fields —
-// under the 10-per-bundle cap. The Cutter / Renderer ports are PR6-defined
-// (see ports.go); MetaWriter / ClipIndexer are cross-cutting enrichment.
+// MediaDeps groups the PR6 ports. P8 (July 2026): ClipIndexer + MetaWriter
+// fields REMOVED — they were unused dead code (zero call sites in the
+// stockpipeline package).
 type MediaDeps struct {
-	Cutter      VideoCutter
-	Renderer    StockRenderer
-	ClipIndexer *clipindexer.Service
-	MetaWriter  *semantic.MetadataWriter
+	Cutter   VideoCutter
+	Renderer StockRenderer
 }
 
 // Deps is the canonical constructor input for stockpipeline.Service
@@ -141,17 +138,7 @@ type Deps struct {
 	Publisher delivery.Publisher
 	Storage   StorageDeps
 	Media     MediaDeps
-	// DELIBERATELY FLAT — YouTube + Jobs are cross-cutting fields, intentionally
-	// NOT nested under a sub-group. They are conceptually distinct from the
-	// Storage (DB stack) and Media (PR6 ports + semantic enrichment) buckets
-	// even though they share a "cross-cutting" semantic cluster. Grouping
-	// them under a CrossCuttingDeps struct would add a third embedded
-	// sub-group without any concrete shared-validation benefit (each field
-	// has its own per-field sentinel). The Deps doc-comment explicitly
-	// enumerates this bucketing; future maintainers should preserve the
-	// shape rather than introduce a CrossCuttingDeps for symmetry.
-	YouTube *youtube.Service
-	Jobs    *appjobs.Service
+	Jobs *appjobs.Service
 
 	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
 	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes
@@ -199,26 +186,18 @@ type Deps struct {
 // / SetJobsSvc / SetYoutubeService / SetClipIndexer / SetMetadataWriter)
 // were removed. Production wire-up lives in WireStockPipeline at
 // internal/app/module_sources.go (Deps{...} literal).
-//
-// P4 (July 2026): the ytdlp *downloader.YTDLPDownloader field is REMOVED.
-// Every yt-dlp call (ListChannel, formerly in query.go) now routes through
-// the stockChannelLister port. The concrete `*downloader.YTDLPDownloader`
-// satisfies this interface structurally.
+//// P4+P8 (July 2026): the ytdlp, clipIndexer, metaWriter, youtubeSvc fields
+// are REMOVED — dead code or port-abstracted. All infra imports are
+// eliminated from service.go (godlike/06 import-boundary discipline).
 type Service struct {
 	cfg       *config.Config
 	log       *zap.Logger
 	publisher delivery.Publisher
-	// cutter + renderer are the PR6 ports. Initialised at ctor time so
-	// every method sees either a non-nil port or an error from NewService;
-	// the per-site nil-guards the setters previously required are gone.
-	cutter      VideoCutter
-	renderer    StockRenderer
-	pcfg        PipelineConfig
-	jobsSvc     *appjobs.Service
+	cutter    VideoCutter
+	renderer  StockRenderer
+	pcfg      PipelineConfig
+	jobsSvc   *appjobs.Service
 	assetIndex  stockAssetIndexUpserter
-	youtubeSvc  *youtube.Service
-	clipIndexer *clipindexer.Service
-	metaWriter  *semantic.MetadataWriter
 	clipsRepo   stockClipsSearchTermUpdater
 	// dispatcher is the canonical media_index_outbox dispatcher,
 	// required at ctor time per QDRANT-002 PR7. NewService rejects
@@ -293,22 +272,12 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Media.Renderer == nil {
 		return nil, ErrStockPipelineNilRenderer
 	}
-	if deps.Media.ClipIndexer == nil {
-		return nil, ErrStockPipelineNilClipIndexer
-	}
-	if deps.Media.MetaWriter == nil {
-		return nil, ErrStockPipelineNilMetadataWriter
-	}
-	// PR-D post-review (Wave 22 §D3 reviewer #2): YouTube and Jobs are
-	// required at ctor time. Previously nil-tolerant; the silent
-	// nil-passthrough was a regression surface — RegisterHandler(bundle.Jobs)
-	// resolves the jobs.JobsFacade at handler dispatch, and processSingleVideo
-	// touches youtube metadata for direct-URL sources. Validate them
-	// like every other required dep so composition-time pre-rejection
-	// catches the missing wiring without waiting for the first job.
-	if deps.YouTube == nil {
-		return nil, ErrStockPipelineNilYouTube
-	}
+	// P8 (July 2026): ClipIndexer + MetaWriter + YouTube validation RETIRED
+	// — dead code (zero call sites in the stockpipeline package).
+	// Jobs is required at ctor time per PR-D (Wave 22 §D3). Previously
+	// nil-tolerant; the silent nil-passthrough was a regression surface.
+	// Validate like every other required dep so composition-time
+	// pre-rejection catches missing wiring without waiting for the first job.
 	if deps.Jobs == nil {
 		return nil, ErrStockPipelineNilJobs
 	}
@@ -336,12 +305,9 @@ func NewService(deps Deps) (*Service, error) {
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-		jobsSvc:       deps.Jobs,
-		assetIndex:    deps.Storage.AssetIndex,
-		youtubeSvc:    deps.YouTube,
-		clipIndexer:   deps.Media.ClipIndexer,
-		metaWriter:    deps.Media.MetaWriter,
-		clipsRepo:     deps.Storage.ClipsRepo,
+		jobsSvc:     deps.Jobs,
+		assetIndex:  deps.Storage.AssetIndex,
+		clipsRepo:   deps.Storage.ClipsRepo,
 		dispatcher:    deps.Storage.Dispatcher,
 		finalizer:     deps.Finalizer,
 		sourceStager:  deps.SourceStager,

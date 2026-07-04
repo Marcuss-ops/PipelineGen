@@ -89,11 +89,10 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 }
 
 // getDirectVideoInfo fetches metadata for a direct YouTube URL.
-func (s *Service) getDirectVideoInfo(ctx context.Context, videoURL string) (*youtubeports.DownloaderMetadata, error) {
-	if s.youtubeSvc == nil {
-		return nil, nil
-	}
-	return s.youtubeSvc.GetVideoInfo(ctx, videoURL)
+// P8 (July 2026): youtubeSvc field REMOVED from Service — dead code
+// (never wired at composition root). Always returns nil, nil.
+func (s *Service) getDirectVideoInfo(_ context.Context, _ string) (*youtubeports.DownloaderMetadata, error) {
+	return nil, nil
 }
 
 // expandSearchQueries parses flags like --interview 5 and splits/adjusts query counts.
