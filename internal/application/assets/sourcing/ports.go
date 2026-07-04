@@ -66,6 +66,11 @@ type PublisherPort interface {
 // ── Clip store ports ───────────────────────────────────────────────────
 
 // ExistingClip is the minimal info for dedup checks and result building.
+//
+// PR-RICH-METADATA (July 2026): added Summary, Topics, Speakers,
+// MentionedPeople, Hook fields. These flow through the sourcing
+// adapter chain into asset.Asset.Metadata → media_assets.metadata_json
+// for Qdrant semantic search enrichment.
 type ExistingClip struct {
 	ID          string
 	Name        string
@@ -78,6 +83,13 @@ type ExistingClip struct {
 	DriveLink   string
 	DriveFileID string
 	FileHash    string
+
+	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
+	Summary         string   `json:"summary,omitempty"`
+	Topics          []string `json:"topics,omitempty"`
+	Speakers        []string `json:"speakers,omitempty"`
+	MentionedPeople []string `json:"mentioned_people,omitempty"`
+	Hook            string   `json:"hook,omitempty"`
 }
 
 // ClipStorePort persists and queries clip metadata.
