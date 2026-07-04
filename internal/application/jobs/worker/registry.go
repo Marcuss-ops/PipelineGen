@@ -37,14 +37,22 @@ type Handler = domainjob.Handler
 // Registry maps job types to handler functions. Once frozen, no new
 // registrations are accepted — this prevents the claim loop from picking
 // up handlers added after startup. Safe for concurrent reads.
+//
+// AZIONE 7 (July 2026): added producesArtifacts map so the runner can
+// branch to CompleteWithArtifacts for artifact-producing jobs instead of
+// hard-coding job.Type string checks.
 type Registry struct {
-	mu       sync.RWMutex
-	handlers map[string]Handler
-	frozen   bool
+	mu                sync.RWMutex
+	handlers          map[string]Handler
+	producesArtifacts map[string]bool
+	frozen            bool
 }
 
 func NewRegistry() *Registry {
-	return &Registry{handlers: make(map[string]Handler)}
+	return &Registry{
+		handlers:          make(map[string]Handler),
+		producesArtifacts: make(map[string]bool),
+	}
 }
 
 // Register adds a handler for the given job type. Returns a sentinel error
@@ -92,6 +100,46 @@ func (r *Registry) Has(jobType string) bool {
 	defer r.mu.RUnlock()
 	_, ok := r.handlers[jobType]
 	return ok
+}
+
+// ProducesArtifacts returns whether the given job type is declared to
+// produce artifacts. Workers that produce artifacts (videos, images,
+// documents, voiceovers) MUST be completed via CompleteWithArtifacts so
+// asset records, versions, locations, and outbox events are written in
+// the same transaction as the job SUCCEEDED transition.
+//
+// Returns false for unknown job types (nil-safe: also returns false when
+// the receiver is nil).
+//
+// AZIONE 7 (July 2026): replaces hard-coded job.Type string checks in
+// the runner's terminal completion path.
+func (r *Registry) ProducesArtifacts(jobType string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.producesArtifacts[jobType]
+}
+
+// SetProducesArtifacts records whether the given job type produces
+// artifacts. Called during composition to seed the worker registry from
+// the compiled job registry's ProducesArtifactsMap. Unlike Register, this
+// method is callable both before and after Freeze() — metadata seeding
+// from the compiled registry typically happens after handler registration
+// is complete.
+//
+// Returns the receiver for fluent chaining. Nil-safe no-op.
+//
+// AZIONE 7 (July 2026): seeds the map consumed by ProducesArtifacts above.
+func (r *Registry) SetProducesArtifacts(jobType string, v bool) *Registry {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.producesArtifacts[jobType] = v
+	return r
 }
 
 // JobTypes returns a sorted, defensive copy of all registered job types.

@@ -542,3 +542,151 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 		t.Errorf("expected ≥1 Renew call (mock.renewed closed via first Renew), got %d", got)
 	}
 }
+
+// ── AZIONE 7: registry.ProducesArtifacts → terminal routing ─────────
+//
+// Two integration tests pin the contract:
+//   1. ProducesArtifacts=true  → runner calls CompleteWithArtifacts
+//   2. ProducesArtifacts=false → runner calls Complete (unchanged)
+
+// azione7Broker records which terminal method was called so the test can
+// assert the runner's AZIONE 7 routing decision.
+type azione7Broker struct {
+	completeCalled              int32
+	completeWithArtifactsCalled int32
+	failCalled                  int32
+}
+
+func (b *azione7Broker) RegisterWorker(_ context.Context, _ appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+	return nil, nil
+}
+func (b *azione7Broker) Heartbeat(_ context.Context, _ appjobs.HeartbeatCommand) error { return nil }
+func (b *azione7Broker) Claim(_ context.Context, _ appjobs.ClaimCommand) (*appjobs.Lease, error) {
+	return &appjobs.Lease{
+		Job: &job.Job{
+			ID:       "azione7-job",
+			Type:     "azione7.test",
+			Revision: 1,
+			LeaseID:  "lease-1",
+		},
+		LeaseID: "lease-1",
+	}, nil
+}
+func (b *azione7Broker) Renew(_ context.Context, _ appjobs.RenewCommand) (*appjobs.Lease, error) {
+	return &appjobs.Lease{Job: &job.Job{Revision: 2, LeaseID: "lease-1", ID: "azione7-job", Type: "azione7.test"}, LeaseID: "lease-1"}, nil
+}
+func (b *azione7Broker) Progress(_ context.Context, _ appjobs.ProgressCommand) error { return nil }
+func (b *azione7Broker) Complete(_ context.Context, _ appjobs.CompleteCommand) error {
+	atomic.AddInt32(&b.completeCalled, 1)
+	return nil
+}
+func (b *azione7Broker) CompleteWithArtifacts(_ context.Context, _ appjobs.CompleteWithArtifactsCommand) error {
+	atomic.AddInt32(&b.completeWithArtifactsCalled, 1)
+	return nil
+}
+func (b *azione7Broker) Fail(_ context.Context, _ appjobs.FailCommand) error {
+	atomic.AddInt32(&b.failCalled, 1)
+	return nil
+}
+func (b *azione7Broker) IsCancelled(_ context.Context, _ string, _ string) (bool, error) {
+	return false, nil
+}
+
+var _ appjobs.Broker = (*azione7Broker)(nil)
+
+// TestRunLease_ProducesArtifactsTrue_CallsCompleteWithArtifacts pins the
+// AZIONE 7 contract: when registry.ProducesArtifacts(job.Type) is true,
+// the runner MUST call tools.CompleteWithArtifacts (NOT tools.Complete).
+// Pre-AZIONE 7 the runner always called Complete regardless of the job
+// type — artifact records were never written in the same TX as the
+// job SUCCEEDED transition.
+func TestRunLease_ProducesArtifactsTrue_CallsCompleteWithArtifacts(t *testing.T) {
+	broker := &azione7Broker{}
+	handler := func(_ context.Context, _ *job.Job, _ *appjobs.JobExecutionTools) (appjobs.Result, error) {
+		return appjobs.Result{}, nil
+	}
+
+	reg := NewRegistry()
+	if err := reg.Register("azione7.test", handler); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	reg.SetProducesArtifacts("azione7.test", true)
+
+	tmpDir := t.TempDir()
+	workspace, err := NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+
+	runner := NewRunner(broker, reg, workspace, nil, zap.NewNop(), "worker-1", "session-1", []string{"azione7.test"})
+	runner.SetRenewInterval(minRenewInterval)
+
+	lease := &appjobs.Lease{
+		Job: &job.Job{
+			ID:       "azione7-job",
+			Type:     "azione7.test",
+			Revision: 1,
+			LeaseID:  "lease-1",
+		},
+		LeaseID: "lease-1",
+	}
+
+	err = runner.runLease(context.Background(), lease)
+	if err != nil {
+		t.Fatalf("runLease: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&broker.completeWithArtifactsCalled); got != 1 {
+		t.Errorf("ProducesArtifacts=true: CompleteWithArtifacts called %d times, want 1", got)
+	}
+	if got := atomic.LoadInt32(&broker.completeCalled); got != 0 {
+		t.Errorf("ProducesArtifacts=true: Complete called %d times, want 0 (must route to CompleteWithArtifacts)", got)
+	}
+}
+
+// TestRunLease_ProducesArtifactsFalse_CallsComplete pins the backward-compat
+// contract: when registry.ProducesArtifacts(job.Type) is false (or unset),
+// the runner calls tools.Complete (the legacy path, unchanged).
+func TestRunLease_ProducesArtifactsFalse_CallsComplete(t *testing.T) {
+	broker := &azione7Broker{}
+	handler := func(_ context.Context, _ *job.Job, _ *appjobs.JobExecutionTools) (appjobs.Result, error) {
+		return appjobs.Result{}, nil
+	}
+
+	reg := NewRegistry()
+	if err := reg.Register("azione7.test", handler); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	// ProducesArtifacts is NOT set — defaults to false.
+
+	tmpDir := t.TempDir()
+	workspace, err := NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+
+	runner := NewRunner(broker, reg, workspace, nil, zap.NewNop(), "worker-1", "session-1", []string{"azione7.test"})
+	runner.SetRenewInterval(minRenewInterval)
+
+	lease := &appjobs.Lease{
+		Job: &job.Job{
+			ID:       "azione7-job",
+			Type:     "azione7.test",
+			Revision: 1,
+			LeaseID:  "lease-1",
+		},
+		LeaseID: "lease-1",
+	}
+
+	err = runner.runLease(context.Background(), lease)
+	if err != nil {
+		t.Fatalf("runLease: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&broker.completeCalled); got != 1 {
+		t.Errorf("ProducesArtifacts=false: Complete called %d times, want 1", got)
+	}
+	if got := atomic.LoadInt32(&broker.completeWithArtifactsCalled); got != 0 {
+		t.Errorf("ProducesArtifacts=false: CompleteWithArtifacts called %d times, want 0 (must route to Complete)", got)
+	}
+}

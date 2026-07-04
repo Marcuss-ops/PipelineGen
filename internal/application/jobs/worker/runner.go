@@ -263,6 +263,29 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	if preCompleteErr := postRenewFailClosedCheck(renewErrs); preCompleteErr != nil {
 		return preCompleteErr
 	}
+
+	// AZIONE 7 (July 2026): branch on registry.ProducesArtifacts —
+	// artifact-producing jobs (videos, images, documents, voiceovers, etc.)
+	// MUST complete via CompleteWithArtifacts so asset records, versions,
+	// locations, and outbox events are written in the same transaction as
+	// the job SUCCEEDED transition. Replaces hard-coded job.Type string
+	// checks with registry-driven metadata (godlike/06 SSOT:
+	// ProducesArtifacts lives once in the compiled job registry).
+	if r.registry.ProducesArtifacts(lease.Job.Type) {
+		var publishedJSON json.RawMessage
+		if uploaded != nil {
+			publishedJSON, err = json.Marshal(uploaded)
+			if err != nil {
+				return tools.Fail(jobCtx, err.Error())
+			}
+		}
+		// Forward-pointer: outboxEvents is nil today because the runner
+		// does not yet collect typed outbox events from handler execution.
+		// When the broker-side typed EventCommand surface is available
+		// (see AGENTS.md Pattern 9 — Jobs.OutboxPort), the runner will
+		// collect and pass them here.
+		return tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)
+	}
 	return tools.Complete(jobCtx, resultJSON)
 }
 

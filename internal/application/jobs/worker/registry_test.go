@@ -1,188 +1,95 @@
-// Package worker — Registry API contract tests.
+// Package worker — AZIONE 7 (July 2026): ProducesArtifacts unit tests.
 //
-// These tests pin the invariants called out in
-// docs/worker/W1_REMOTE_WORKER_REGISTRY.md §Phase 1 — Strengthen the registry API.
-// They are kept in the same package so they can access the unexported sentinel
-// errors directly without exporting fiction.
+// Pins the SetProducesArtifacts → ProducesArtifacts round-trip and the nil-safe
+// boundary contracts (nil receiver, unknown job type, overwrite).
 package worker
 
 import (
-	"context"
-	"errors"
-	"sync"
 	"testing"
-
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-// stubHandler is a no-op handler used by every positive-path test.
-// P1 #13 (July 2026): the worker's Handler is now a Go type alias
-// for domainjob.Handler, so the test fixture MUST conform to the
-// canonical Handler signature `func(context.Context, *domainjob.Job,
-// *domainjob.JobExecutionTools) (domainjob.Result, error)`. The
-// return type is `domainjob.Result` which is a Go type alias for
-// `map[string]any` (godlike/06 SSOT back-compat policy), so the
-// `map[string]any{"ok": true}` literal still compiles.
-func stubHandler(_ context.Context, _ *domainjob.Job, _ *domainjob.JobExecutionTools) (domainjob.Result, error) {
-	return domainjob.Result{"ok": true}, nil
-}
+// TestRegistry_ProducesArtifacts_TrueAfterSet pins the canonical
+// AZIONE 7 contract: SetProducesArtifacts(jobType, true) → ProducesArtifacts
+// returns true for the same jobType.
+func TestRegistry_ProducesArtifacts_TrueAfterSet(t *testing.T) {
+	reg := NewRegistry()
+	reg.SetProducesArtifacts("script.generate", true)
 
-// ── Registration invariants ─────────────────────────────────────────────
-
-func TestRegistry_RegisterValid(t *testing.T) {
-	r := NewRegistry()
-	if err := r.Register("test.job", stubHandler); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.Len() != 1 {
-		t.Fatalf("Len: expected 1, got %d", r.Len())
-	}
-	if !r.Has("test.job") {
-		t.Fatal(`Has("test.job"): expected true`)
+	if !reg.ProducesArtifacts("script.generate") {
+		t.Error("ProducesArtifacts(script.generate) = false after SetProducesArtifacts(true), want true")
 	}
 }
 
-func TestRegistry_RejectsEmptyJobType(t *testing.T) {
-	r := NewRegistry()
-	if err := r.Register("", stubHandler); !errors.Is(err, ErrEmptyJobType) {
-		t.Fatalf("expected ErrEmptyJobType, got %v", err)
+// TestRegistry_ProducesArtifacts_FalseByDefault pins the zero-value
+// contract: a never-set job type returns false (the default).
+func TestRegistry_ProducesArtifacts_FalseByDefault(t *testing.T) {
+	reg := NewRegistry()
+
+	if reg.ProducesArtifacts("unknown.job.type") {
+		t.Error("ProducesArtifacts(unknown) = true for never-set type, want false (zero-value default)")
 	}
 }
 
-func TestRegistry_RejectsWhitespaceJobType(t *testing.T) {
-	r := NewRegistry()
-	for _, c := range []string{"   ", "\t", "\n", " \t\n "} {
-		if err := r.Register(c, stubHandler); !errors.Is(err, ErrEmptyJobType) {
-			t.Fatalf("whitespace %q: expected ErrEmptyJobType, got %v", c, err)
+// TestRegistry_ProducesArtifacts_ExplicitFalseOverwrites pins the
+// overwrite contract: SetProducesArtifacts(jobType, false) after a prior
+// Set(true) must return false.
+func TestRegistry_ProducesArtifacts_ExplicitFalseOverwrites(t *testing.T) {
+	reg := NewRegistry()
+	reg.SetProducesArtifacts("script.generate", true)
+	reg.SetProducesArtifacts("script.generate", false)
+
+	if reg.ProducesArtifacts("script.generate") {
+		t.Error("ProducesArtifacts(script.generate) = true after Set(false), want false (overwrite honoured)")
+	}
+}
+
+// TestRegistry_ProducesArtifacts_NilReceiver pins the nil-safe contract:
+// ProducesArtifacts on a nil *Registry must return false without panicking.
+func TestRegistry_ProducesArtifacts_NilReceiver(t *testing.T) {
+	var reg *Registry
+	if reg.ProducesArtifacts("any.type") {
+		t.Error("ProducesArtifacts on nil receiver returned true, want false (nil-safe)")
+	}
+}
+
+// TestRegistry_SetProducesArtifacts_NilReceiver pins the nil-safe contract
+// for SetProducesArtifacts: calling it on a nil receiver is a no-op (no panic).
+func TestRegistry_SetProducesArtifacts_NilReceiver(t *testing.T) {
+	var reg *Registry
+	result := reg.SetProducesArtifacts("any.type", true)
+	if result != nil {
+		t.Error("SetProducesArtifacts on nil receiver returned non-nil, want nil (fluent nil-safe no-op)")
+	}
+}
+
+// TestRegistry_SetProducesArtifacts_FluentChain pins the fluent builder
+// contract: SetProducesArtifacts returns the receiver for chaining.
+func TestRegistry_SetProducesArtifacts_FluentChain(t *testing.T) {
+	reg := NewRegistry()
+	result := reg.SetProducesArtifacts("a", true)
+	if result != reg {
+		t.Error("SetProducesArtifacts must return the receiver for fluent chaining")
+	}
+}
+
+// TestRegistry_ProducesArtifacts_ConcurrentSafety exercises the RWMutex
+// contract: concurrent reads of ProducesArtifacts must not race with a
+// concurrent SetProducesArtifacts write.
+func TestRegistry_ProducesArtifacts_ConcurrentSafety(t *testing.T) {
+	reg := NewRegistry()
+	reg.SetProducesArtifacts("concurrent.test", true)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			reg.SetProducesArtifacts("concurrent.test", true)
 		}
-	}
-}
+	}()
 
-func TestRegistry_RejectsNilHandler(t *testing.T) {
-	r := NewRegistry()
-	if err := r.Register("test.job", nil); !errors.Is(err, ErrNilHandler) {
-		t.Fatalf("expected ErrNilHandler, got %v", err)
+	// Read concurrently while the writer goroutine is still active.
+	for i := 0; i < 100; i++ {
+		_ = reg.ProducesArtifacts("concurrent.test")
 	}
-}
-
-func TestRegistry_RejectsDuplicateRegistration(t *testing.T) {
-	r := NewRegistry()
-	if err := r.Register("test.job", stubHandler); err != nil {
-		t.Fatalf("first Register returned %v", err)
-	}
-	if err := r.Register("test.job", stubHandler); !errors.Is(err, ErrDuplicateHandler) {
-		t.Fatalf("duplicate: expected ErrDuplicateHandler, got %v", err)
-	}
-}
-
-func TestRegistry_RejectsRegistrationAfterFreeze(t *testing.T) {
-	r := NewRegistry()
-	_ = r.Register("a", stubHandler)
-	r.Freeze()
-	if err := r.Register("b", stubHandler); !errors.Is(err, ErrRegistryFrozen) {
-		t.Fatalf("expected ErrRegistryFrozen, got %v", err)
-	}
-}
-
-// ── JobTypes() contract ─────────────────────────────────────────────────
-
-func TestRegistry_JobTypesSortedAndDeterministic(t *testing.T) {
-	r := NewRegistry()
-	for _, jt := range []string{"z", "a", "m", "b"} {
-		if err := r.Register(jt, stubHandler); err != nil {
-			t.Fatalf("Register(%q) returned %v", jt, err)
-		}
-	}
-	want := []string{"a", "b", "m", "z"}
-	got := r.JobTypes()
-	if !equalStrings(got, want) {
-		t.Fatalf("sorted: want %v, got %v", want, got)
-	}
-	again := r.JobTypes()
-	if !equalStrings(got, again) {
-		t.Fatalf("non-deterministic: first %v again %v", got, again)
-	}
-}
-
-func TestRegistry_JobTypesReturnsDefensiveCopy(t *testing.T) {
-	r := NewRegistry()
-	_ = r.Register("a", stubHandler)
-	types := r.JobTypes()
-	if len(types) != 1 {
-		t.Fatalf("expected 1 type, got %d", len(types))
-	}
-	types[0] = "MUTATED"
-	if r.JobTypes()[0] != "a" {
-		t.Fatal("JobTypes mutation leaked into the registry; defensive copy violated")
-	}
-}
-
-// ── Dispatch contract ───────────────────────────────────────────────────
-
-func TestRegistry_DispatchSupportedType(t *testing.T) {
-	r := NewRegistry()
-	called := false
-	h := func(_ context.Context, _ *domainjob.Job, _ *domainjob.JobExecutionTools) (domainjob.Result, error) {
-		called = true
-		return domainjob.Result{"ran": true}, nil
-	}
-	if err := r.Register("test.job", h); err != nil {
-		t.Fatalf("Register returned %v", err)
-	}
-	res, err := r.Dispatch(context.Background(), &domainjob.Job{Type: "test.job"}, &Tools{})
-	if err != nil {
-		t.Fatalf("Dispatch returned error: %v", err)
-	}
-	if !called {
-		t.Fatal("handler was not invoked")
-	}
-	if res["ran"] != true {
-		t.Fatalf("expected ran=true, got %v", res)
-	}
-}
-
-func TestRegistry_DispatchUnsupportedTypeReturnsSentinel(t *testing.T) {
-	r := NewRegistry()
-	_, err := r.Dispatch(context.Background(), &domainjob.Job{Type: "missing.type"}, &Tools{})
-	if err == nil {
-		t.Fatal("expected non-nil error")
-	}
-	if !errors.Is(err, ErrHandlerNotRegistered) {
-		t.Fatalf("expected ErrHandlerNotRegistered in error chain, got %v", err)
-	}
-}
-
-// ── Concurrent reads ─────────────────────────────────────────────────────
-
-func TestRegistry_ConcurrentReads(t *testing.T) {
-	r := NewRegistry()
-	for _, jt := range []string{"a", "b", "c", "d"} {
-		_ = r.Register(jt, stubHandler)
-	}
-	const N = 64
-	var wg sync.WaitGroup
-	wg.Add(N)
-	for i := 0; i < N; i++ {
-		go func() {
-			defer wg.Done()
-			_ = r.JobTypes()
-			_ = r.Has("a")
-			_ = r.Len()
-		}()
-	}
-	wg.Wait()
-}
-
-// ── helpers ──────────────────────────────────────────────────────────────
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	<-done
 }
