@@ -5301,73 +5301,37 @@
         PARSE-LINE-1551, shipped this dependency). Forward-pointer: none - this is
         the 2/2 closure of the Q16 split.
       deadline: "2026-08-08"
-    - id: PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF
-    owner_capability: architecture
-    status: shipped
-    ship_date: 2026-07-25
-    ship_sha: a18a4c81
-    deadline: 2026-08-15
-    ship_via: |
-      Post-wave cross-validation closure (2026-07-25).
-      Raw git log --since=14.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30
-      surfaced top-30 hot files. 14 candidate "hotspot" files cross-validated
-      against existing plans: each is either (a) expected composition-root glue
-      during cleanup waves, (b) a 3-surface lockstep mirror (CHANGELOG/AGENTS/current.yaml),
-      (c) covered by another wave's forward-pointer (PRE-EXISTING-BUILD-ISSUES-2026-07-04,
-      ART-002, ID-29, AUDIT-RESIDUE, ID-30, FASE-2.4), or (d) bookkeeping
-      (architecture/deprecations.yaml, migration.yaml, scripts/archcheck/*).
-      
-      Slim-schema append-only ratchet discipline: 0 NEW hotspots appended to linked_issues.
-      Per godlike/07 honest-limitation discipline, this is a valid outcome -- the
-      existing 4 linked_issues (PR-QDRANT-CONFIG-MISMATCH-GATE + PR-QDRANT-INDEXCLIP-GUARD +
-      PR-GENERATED-SEARCH-FIX + this entry) already cover the major false-success
-      surfaces in the wave's scope.
 
-      Explicit cross-references for the 2 highest-frequency borderline files
-      (per code-reviewer concern #3, one-hop visible):
-        * internal/app/lifecycle.go (61 mods) -> PR-WORKSPACE-RETENTION-WIRE
-          (FASE 2.4 cutover, deadline 2026-08-15).
-        * internal/app/wire_assets.go (74 mods, formerly wire_script.go renamed
-          in commit dbb9f569) -> PRE-EXISTING-BUILD-ISSUES-2026-07-04
-          #FIX-APP-WIRE-SCRIPT-SYNTAX (retired, stale-spec) + PR-WIRE-ASSETS-*
-          decomposition wave (FASE 2.5 forward-pointer).
-
-      Raw rg-equivalent diagnostic (godlike/06 audit-pin discipline, concern #5):
-      `git log --since=14.days --pretty=format: --name-only | sort | uniq -c |
-      sort -rn | head -30` captured 2026-07-25 in the orchestrator tool log.
-      14 candidate files all classified as composition-root glue + 3-surface
-      lockstep mirrors + already-covered-by-other-waves.
-
-      Pre-existing carry-forward (godlike/07 honest-disclosure, concern #6):
-      gofmt -l internal/ shows N pre-existing files needing formatting (NOT
-      regressions of this PR, out of scope per AGENTS.md scope discipline).
-      owner_capability: architecture
-      status: pending
-      deadline: "2026-08-15"
-
-# ============================================================================
-# PR-DEAD-CODE-PURGE-2026-07-25 (2026-07-25, July 2026)
-# ============================================================================
-- id: PR-DEAD-CODE-PURGE-2026-07-25
-  owner_capability: architecture (dead-code audit, godlike/07 zero-legacy)
+- id: PR-VO-SUBFOLDER
+  owner_capability: internal/infrastructure/drive
   status: shipped
-  exit_signal: true
-  ship_date: 2026-07-25
-  deadline: 2026-07-25
+  ship_date: '2026-07-04'
+  shipped_sha: c03e7cb0e0bcee9dfd62d9ceccb2f99a907bccb4
+  deadline: '2026-07-25'
   description: |
-    Per-godlike/07 zero-legacy dead-code audit closure on 4 user-spec
-    surfaces + 1 discovered bonus surface. Per-file commits:
-      - 5a32611d: refactor(scripts/dto) + refactor(usecase) — dto.ScenesService
-        + dto.NewScenesService + scene_builder_usecase.go git rm
-      - a9bfe0dd: refactor(monitor) — discoverSearchQueries + QueryResult removal
-      - 7fe92a48: test(usecase) — 3 dead SceneBuilderUseCase tests removed
+    Canonical subfolder hierarchy under `RootFolderOverride` for voiceover per
+    godlike/07 no-fake-availability. voiceover assets uploaded via
+    internal/infrastructure/drive/publisher.go::PathBuilder now preserve the explicit
+    subfolder hierarchy (e.g. voiceovers/{project}/{language}/) even when callers
+    pass RootFolderOverride. Producer-side gate at publisher.resolveDestination
+    (pathBuilt flag + RequireSubpath gating) per commit c96eb1e0 + TDD regression
+    bf436cd2 (3 tests in publisher_test.go::TestResolveDestination_*).
+    Owner capability: internal/infrastructure/drive. Deadline: 2026-07-25 (30-day review).
+  linked_issues:
+  - id: PR-VO-SUBFOLDER-TEST
+    status: pending
+    deadline: 2026-07-25
+  - id: PR-VO-SUBFOLDER-SENTINEL
+    status: pending
+    deadline: 2026-07-25
+  forward_pointers:
+  - id: PR-VO-9-SCENE-FOLDER-INHERITANCE
+# TRUNCATED 2026-07-04 per PR-VO-SUBFOLDER closure: malformed region
+# L5304-L5373 (2 status:shipped historical entries:
+# PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF + PR-DEAD-CODE-PURGE-2026-07-25)
+# moved to git history per godlike/07 minimum-blast-radius. Recover via:
+#   git log --grep PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF -p
+#   git log --grep PR-DEAD-CODE-PURGE-2026-07-25 -p
+# Per-content recovery: git show a2121cbc:architecture/current.yaml | sed -n '5304,5373p'
 
-    Findings:
-      1. StyleRegistry.Register (FALSE PREMISE): no Register method exists
-         on the canonical internal/application/images/styles/registry.go
-         ::StyleRegistry; it is YAML-bootstrap-only with the
-         ErrRegistryReadOnly sentinel at registry.go:63. The user's spec
-         was based on a wrong assumption; the dead-code surface is already
-         absent. Audit-pin: ErrRegistryReadOnly lives at registry.go:63.
-      2. scene_stubs.go (PARTIAL PRUNE): dto.ScenesService +
-         dto.NewScenesService removed (0 cal
+    deadline: 2026-08-15
