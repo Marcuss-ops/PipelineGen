@@ -1,20 +1,15 @@
-// Package stockpipeline — run_orchestrator.go (Stock Cutover Commit 2, July 2026).
+// Package stockpipeline — run_orchestrator.go (Stock Cutover, July 2026).
 //
-// Service.runOrchestrator is the canonical entrypoint for the
-// new Orchestrator-driven pipeline. It supersedes the legacy
-// Service.Run body for production traffic:
+// STATO ATTUALE: Service.runOrchestratorResilient è il canonical
+// entrypoint per traffico produzione (Service.HandleJob).
+// Service.runOrchestrator è la versione manifest-only usata dal
+// path legacy Service.Run (ServiceRunner interface back-compat).
 //
-//   - Service.HandleJob → s.runOrchestrator(ctx, input, job.ID)
-//     (broker-driven; the typed manifest is exposed via the
-//     __artifact_manifest map key for the worker runner).
-//   - Service.Run → s.runOrchestrator(ctx, input, "")
-//     (legacy-signature shim for ServiceRunner interface callers;
-//     the empty JobId falls back to DefaultOrchestratorJobId).
+// PROSSIMO STEP: migrare Service.runOrchestrator →
+// runOrchestratorResilient e collassare Run in RunResilient.
 //
-// projectManifestToPipelineResult projects the typed
-// *job.ArtifactManifest back into the legacy *PipelineResult
-// shape (zero-fields today — Commit 4-7 hydrates once chunk
-// rendering is wired).
+// DEPRECATO: projectManifestToPipelineResult proietta il manifesto
+// nel legacy *PipelineResult per il ServiceRunner interface.
 package stockpipeline
 
 import (
@@ -29,29 +24,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
-// runOrchestrator is the Stock Cutover Commit 2 canonical entry
-// point. Constructs a fresh *Orchestrator per call (the planner +
-// step store are cheap; per-call construction sidesteps the
-// thread-safety concern of caching stateful components).
+// runOrchestrator is the manifest-only entry point for legacy
+// Service.Run callers (ServiceRunner interface back-compat).
+// Production traffic uses runOrchestratorResilient instead.
 //
-// jobID is stamped on the returned ArtifactManifest.JobID.
-// Service.HandleJob passes the broker-assigned job.ID; Service.Run
-// passes "" (the placeholder DefaultOrchestratorJobId kicks in via
-// NewOrchestrator).
+// PROSSIMO STEP: migrate all callers to runOrchestratorResilient
+// and collapse this function.
 //
-// Configuration precedence (preserves the legacy run.go override
-// chain):
-//   - ChunkDurationSec: input.ChunkDuration → s.pcfg.ChunkDuration →
-//     s.cfg.Video.WithDefaults().ChunkDuration
-//   - ClipDurationSec:  input.ClipDuration  → s.cfg.Video.WithDefaults().ClipDuration
-//
-// The orchestrator's chunk ladder (resolve_sources → plan_clips →
-// stage_sources) runs through the planner + steps + noop-stager
-// today. The cutter + renderer ports are wired but not yet
-// invoked — Commit 4-7 (Cut → Render → Stage → Publish ladder)
-// connects them to the orchestrator's step ladder; the orchestrator
-// already accepts them as Orchestrator fields so production wiring
-// in Commit 4-7 is type-stable.
+// Configuration precedence (preserves the legacy run.go override chain;
+// see effectiveChunkDurationSec / effectiveClipDurationSec below).
 func (s *Service) runOrchestrator(ctx context.Context, input *RunInput, jobID string) (*job.ArtifactManifest, error) {
 	if s == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestrator: nil receiver")
@@ -92,20 +73,17 @@ func (s *Service) runOrchestrator(ctx context.Context, input *RunInput, jobID st
 	return manifest, nil
 }
 
-// runOrchestratorResilient is the Stock Cutover Commit 4-expanded sibling
-// of runOrchestrator. It calls Orchestrator.RunResilient (not
-// Orchestrator.Run) to obtain the *RunSummary that pairs the typed
-// *job.ArtifactManifest with the per-run FinalStatus the broker
-// JobFinalizer stamps on the job row (canonical resilience contract:
-// artifacts on Drive + Qdrant projection failed ⇒ job.StatusIndexPending;
-// artifacts on Drive + Qdrant projection OK ⇒ job.StatusSucceeded;
-// signature/manifest-gate failed ⇒ typed sentinel ⇒ JobFailed).
+// runOrchestratorResilient is the canonical production entry point.
+// Calls Orchestrator.RunResilient to obtain the *RunSummary that pairs
+// the typed *job.ArtifactManifest with the per-run FinalStatus.
 //
-// Surface NON-BREAKING: runOrchestrator (manifest-only) remains active
-// for the existing run_orchestrator_test.go tests + the legacy
-// ServiceRunner interface (stock -> usecase). Only HandleJob
-// (production broker traffic) uses this variant so FinalStatus surfaces
-// in the result map under "final_status".
+// STATO ATTUALE: Service.HandleJob (production broker traffic) uses
+// this variant so FinalStatus surfaces in the result map.
+// Service.runOrchestrator (manifest-only) remains for legacy callers.
+//
+// Resilience contract: artifacts on Drive + Qdrant OK ⇒ SUCCEEDED;
+// artifacts on Drive + Qdrant failed ⇒ INDEX_PENDING;
+// manifest-gate failed ⇒ typed sentinel ⇒ JobFailed.
 func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (*RunSummary, error) {
 	if s == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil receiver")
@@ -155,27 +133,17 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 }
 
 // projectManifestToPipelineResult converts the typed
-// *job.ArtifactManifest (canonical post-cutover shape, C12
-// 5-artifact envelope) into the legacy *PipelineResult used by
-// pre-cutover callers via the ServiceRunner interface
-// (stockpipeline.StockUseCase.Submit sync path) and stock.Adapter
-// via stockRunner.
+// *job.ArtifactManifest into the legacy *PipelineResult used by
+// pre-cutover callers via the ServiceRunner interface.
 //
-// Today the projection is identity-shaped: the orchestrator's
-// 5 fixed C12 envelope entries have empty Paths (Required:false)
-// so PipelineResult.Chunks/MetadataLink/MetadataFileID stay at
-// their zero values. Commit 4-7 (chunk ladder) hydrates these
-// fields once the orchestrator emits per-chunk Artifact entries
-// with real drive links / metadata paths from the binder run.
+// STATO ATTUALE: la proiezione è identity-shaped (campi zero)
+// perché il ServiceRunner interface non è ancora stato migrato.
 //
-// Why keep this shim rather than changing Service.Run's signature?
-// The ServiceRunner interface compile-time assertion
-// (var _ ServiceRunner = (*Service)(nil) in stockpipeline/usecase.go)
-// locks Service.Run's return type to *PipelineResult. Changing it
-// would force a ServiceRunner + stockRunner + StockUseCase +
-// Adapter + Submit sync-path rewrite, which is out of scope for
-// Commit 2. Post-cutover (Commit 9 cleanup wave), the legacy shape
-// can be retired and the projection collapses.
+// PROSSIMO STEP: quando ServiceRunner viene ritirato (post-Commit-9
+// cleanup wave), questa funzione e *PipelineResult possono essere
+// rimossi.
+//
+// DEPRECATO: tenere solo per back-compat ServiceRunner.
 func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineResult {
 	if manifest == nil {
 		return &PipelineResult{}
