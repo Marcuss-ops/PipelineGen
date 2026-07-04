@@ -5912,3 +5912,85 @@ wave_status:
       owner_capability: internal/api/script
       status: pending
       deadline: 2026-08-01
+
+
+# ── Voiceover end-to-end testing plan wave-tracker (July 2026) ──────────────
+# Anchors the canonical voiceover test surface (FASE B1 happy path + FASE
+# C1-C4 failure paths + FASE D2-D3 state machine + required/optional)
+# currently landing in tests/operational/voiceover_{b1,c1,c2,c3,c4,d2,d3}_*.sh
+# smokes + thin Go wrappers. The entry is documentation-only forward-pointer
+# discipline per godlike/07 minimum-blast-radius: the test surface ships
+# FIRST (each FASE PR lands its own smoke on main, auto-sufficient, with
+# targeted gofmt+go vet+bash -n gates), the canonical-surface migration
+# follows incrementally on separate per-ticket PRs.
+#
+# 2 net-new slim-shape linked_issues per godlike/06 SSOT:
+#   (1) PR-VO-PUBLISHER-MIGRATION — migrate voiceover Stage 3 Drive upload
+#       from the legacy drive.Admin.UploadFile raw SDK call to the canonical
+#       delivery.Publisher.Publish Pattern 0 port (per AGENTS.md Pattern 0
+#       + godlike/06 SSOT one-canonical-owner-per-fact). The canonical 4-port
+#       Drive surface (delivery.Publisher + drive.Reader + drive.FileLifecycle
+#       + drive.DocClient) is the locked SSOT post-DRIVE-005 closure.
+#   (2) PR-VO-CREATOR-IMPL — placeholder for the Creator-side implementation
+#       that the voiceover tests can exercise end-to-end. Today the test
+#       surface exercises the test/server harness (in-process server with
+#       stubbed Drive uploader); the production Creator-side wire (which
+#       uploads via jobbrokerclient.Client + state-machine 3-phase upload
+#       protocol per AGENTS.md Pattern 10) is forward-pointed to a future
+#       wave. Test smokes are intentionally server-side + black-box so they
+#       continue to pass as the Creator-side implementation lands.
+#
+# Migration sequence (godlike/07 EXPAND -> BACKFILL -> CUTOVER -> CONTRACT):
+#   EXPAND  (done)   — each FASE test PR lands incrementally on main (B1 +
+#                       C1-C4 + D2-D3).
+#   BACKFILL (next)  — PR-VO-PUBLISHER-MIGRATION migrates the upload surface
+#                       to the canonical delivery.Publisher port.
+#   CUTOVER  (later) — PR-VO-CREATOR-IMPL extends the test surface to
+#                       exercise the Creator-side wire (state-machine +
+#                       3-phase upload protocol).
+#   CONTRACT (last)  — physical git-rm of the legacy drive.Admin.UploadFile
+#                       surface (forward-pointer only; deadline TBD).
+- id: VO-TESTING-PLAN-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner_capability: tests/operational (test surface) + internal/application/voiceover (canonical surface)
+  deadline: 2026-09-15
+  description: |
+    Voiceover end-to-end testing plan forward-pointer wave-tracker
+    (July 2026). Anchors the canonical voiceover test surface under
+    a single wave-tracker entry so the test/ops coverage story is
+    auditable. The test surface is intentionally server-side +
+    black-box per godlike/07 minimum-blast-radius: the smokes
+    exercise the HTTP transport (POST /api/media/voiceover/generate
+    + parent/child job state + voiceovers/media_assets/outbox_events
+    table projections + parent_state state-machine) end-to-end,
+    but do NOT pin any single internal seam. The 2 forward-pointer
+    migration tickets close the canonical-surface gaps surfaced by
+    the test surface; the test surface itself remains the audit
+    surface for the future migration waves.
+  exit_gate: |
+    (a) All 7 FASE test smokes shipped (B1 happy path + C1 TTS-missing +
+        C2 legacy fallback + C3 Drive-folder-invalid + C4 outbox-decoupling
+        + D2 state-machine + D3 required/optional) on origin/main with
+        targeted gofmt+go vet+bash -n gates green.
+    (b) PR-VO-PUBLISHER-MIGRATION SHIPPED: voiceover Stage 3 Drive upload
+        routes through *delivery.Publisher.Publish (no raw *drive.Uploader
+        direct call sites remain in the voiceover package); 5 TDD tests
+        lock the publisher-port contract; `var _ voiceover.UploadPort =
+        (*delivery.Publisher)(nil)` compile-time pin in place.
+    (c) PR-VO-CREATOR-IMPL SHIPPED: Creator-side wire is implementable
+        (state-machine 6-state + 3-phase upload protocol + typed-error
+        contract); voiceover test surface exercises the Creator path
+        end-to-end; Check 52 forward-prevention gate confirmed clean.
+    Until all 3 sub-gates flip to status: shipped, verified_zero stays
+    false; the test surface remains the audit surface for the
+    canonical-surface migration.
+  linked_issues:
+    - id: PR-VO-PUBLISHER-MIGRATION
+      owner_capability: internal/application/voiceover + internal/app (composition root)
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-VO-CREATOR-IMPL
+      owner_capability: internal/infrastructure/remote/creator (forward-pointer) + internal/application/voiceover
+      status: pending
+      deadline: 2026-09-15
