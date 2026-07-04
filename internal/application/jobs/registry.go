@@ -538,8 +538,29 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction (per-segment artifacts persisted inside the per-segment caller-owned tx via process_segment + ClipAtomicWriter; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeYouTubeRebuildST, Description: "Rebuild YouTube search text", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 	// ── Voiceover / subtitles ──
-	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH (July 2026):
+	// ProducesArtifacts REMOVED. The voiceover batch pipeline persists ALL
+	// voiceover artifacts (voiceovers row + media_assets projection +
+	// asset.index outbox event + voiceover.cleanup outbox event) atomically
+	// inside the per-item caller-owned tx through
+	// VoiceoverFinalizer.Finalize (internal/application/voiceover/finalizer.go)
+	// — distinct from the JobFinalizer.CompleteWithArtifacts spine that
+	// script.generate uses. Marking ProducesArtifacts=false re-routes the
+	// broker's "mark SUCCEEDED" path through the legacy SQLiteStore.Complete
+	// which is the CANONICAL terminal-flip seam for this job type today.
+	// Mirrors the voiceover.generate db2f3b1e + the YouTube
+	// youtube_clip.extract b8c96035 fixes. godlike/07 minimal-blast-radius:
+	// zero surface contract changes; per-item persistence stays unchanged.
+	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation (per-item artifacts persisted inside the per-item caller-owned tx via Service.GenerateBatch → finalizeStage → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	// PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO (July 2026):
+	// ProducesArtifacts REMOVED. Mirrors the voiceover batch fix above.
+	// The promo pipeline routes through Service.GeneratePromo →
+	// promo.NewGenerator → voiceoverGenBridge → Service.GenerateWithDestination
+	// → per-item path → voiceover.Finalizer.Finalize → tx.Commit — the
+	// artifact-persistence contract is therefore IDENTICAL to the batch
+	// pipeline: voiceovers + media_assets + outbox events written INSIDE
+	// the caller's tx BEFORE the broker's mark-SUCCEEDED call.
+	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate) (per-item artifacts persisted inside the per-item caller-owned tx via Service.GeneratePromo → promo.NewGenerator → voiceoverGenBridge → Service.GenerateWithDestination → per-item path → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	// PR-VO-COMPLETEPATH-FIX (July 2026): ProducesArtifacts REMOVED.
 	// The pre-fix voiceover.generate entry declared ProducesArtifacts=true,
 	// which causes the SQL-layer SQLiteStore.Complete reject at
