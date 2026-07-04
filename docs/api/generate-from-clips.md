@@ -1,6 +1,6 @@
 # POST /api/script/generate-from-clips
 
-Genera uno script compilation-style a partire da clip fornite nel payload. Ogni scena viene associata a una clip diversa in sequenza (top-10 style); il Google Doc risultante mostra solo il JSON strutturato con i `drive_links` per scena.
+Genera uno script compilation-style a partire da clip fornite nel payload. Ogni scena viene associata a una clip diversa in sequenza (top-10 style); il Google Doc risultante include un blocco **SpecScene JSON** canonico dove l'URL della clip risiede in `scene.bindings.clip.drive_link` (singleton, lived dentro l'oggetto `bindings` — non un array `drive_links` alla radice della scena).
 
 ## Request
 
@@ -87,7 +87,7 @@ curl -X POST http://localhost:8000/api/script/generate-from-clips \
 
 ## Struttura del Google Doc
 
-Il documento Google Doc generato contiene sia il testo narrativo completo che il blocco **SpecScene JSON** formattato:
+Il documento Google Doc generato contiene sia il testo narrativo completo che il blocco **SpecScene JSON** canonico (vedi `internal/application/scripts/usecase/specscene_validator.go` per la validazione del wire shape; vedi `docs/api/ACTIVE_API_GENERATED.md` per il multi-endpoint consistency).
 
 ```html
 <h1>Titolo script</h1>
@@ -99,18 +99,26 @@ Il documento Google Doc generato contiene sia il testo narrativo completo che il
     {
       "id": "scene-0",
       "index": 0,
-      "text": "Testo narrativo della scena...",
+      "text": "Testo narrativo della scena 0...",
       "kind": "intro",
-      "description": "Titolo/Descrizione reale estratta dai metadati della clip",
-      "drive_links": ["https://drive.google.com/file/d/.../view?usp=drivesdk"]
+      "bindings": {
+        "clip": {
+          "clip_id": "f457b501-143d-5283-82b2-1bc165eef998",
+          "drive_link": "https://drive.google.com/file/d/.../view?usp=drivesdk"
+        }
+      }
     },
     {
       "id": "scene-1",
       "index": 1,
       "text": "Testo narrativo della scena 1...",
       "kind": "clip",
-      "description": "Descrizione reale della seconda clip",
-      "drive_links": ["https://drive.google.com/file/d/.../view?usp=drivesdk"]
+      "bindings": {
+        "clip": {
+          "clip_id": "e9455645-1a2c-550f-8aa0-d93dca9afe27",
+          "drive_link": "https://drive.google.com/file/d/.../view?usp=drivesdk"
+        }
+      }
     }
   ]
 }
@@ -119,8 +127,14 @@ Il documento Google Doc generato contiene sia il testo narrativo completo che il
 
 Ogni scena include:
 - `kind`: Ruolo visivo/narrativo (`intro`, `outro`, `clip`, `narration`). La prima scena viene automaticamente contrassegnata come `intro`.
-- `description`: Titolo e descrizione reali recuperati dai metadati dell'asset in SQLite / Qdrant.
-- `drive_links`: Array contenente gli URL Google Drive per il download diretto del media.
+- `text`: Testo narrativo della prosa generata dal modello (canonical V1 `ModelScriptOutputV1.text`).
+- `bindings`: Bag tipizzata degli artifact producers che hanno contribuito alla scena. Possibili sotto-binding:
+  - `bindings.clip`: `{ "clip_id": "...", "drive_link": "https://..." }` — singleton URL della clip associata a questa scena (NON un array).
+  - `bindings.image`: `{ "url": "https://...", "status": "generated" | "failed" | "pending" }` — popolato dal `ImageProcessor` quando `output.generate_scene_images=true`.
+  - `bindings.voiceover`: `{ "status": "completed" | "failed", "link": "https://..." }` — popolato dal `VoiceoverProcessor` quando `output.generate_voiceover=true`.
+  - `bindings.stock`: `{ "url": "https://..." }` — popolato dal `StockAssociationProcessor` quando Qdrant matcha uno stock alla scena.
+
+> **Canonical-SSOT discipline (godlike/06 / godlike/07)**: il wire shape qui sopra è l'unica forma accettata dai nuovi writer. I vecchi campi alla radice della scena (`description`, `drive_links` come array) sono **legacy** e sono stati rimossi dal contratto canonico a partire dalla PR6 (June 2026). Se devi consumare scene da un sistema esterno che ancora emette la forma legacy, converti via `internal/application/scripts/usecase/specscene_validator.go::ValidateAndEnrichSpecScene` prima di scriverle nel `SpecScene` envelope canonico. Per la corrispondente chiusura del bug P0 sulla persistenza (commit `d17c78ae`) vedi `CHANGELOG.md` §Unreleased.
 
 ## Voiceover
 
@@ -144,6 +158,6 @@ Le mappature dei gruppi voiceover sono seedate in `migrations/sqlite/037_seed_vo
 ## Note
 
 - Le clip devono esistere nel DB (`media_assets` table / Qdrant) per essere risolte — il `clip_id` deve corrispondere a un asset presente
-- I `drive_links` vengono dal campo `drive_link` dell'assest nel DB — se manca, la clip non viene associata
+- L'URL dentro `scene.bindings.clip.drive_link` viene dal campo `drive_link` dell'asset nel DB (popolato dal `ClipBindingsProcessor` leggendo `ClipEvidence.DriveLinks[clip_id]`); se manca, la clip non viene associata e il `bindings.clip` rimane vuoto a parte `clip_id`.
 - Lo script è generato dal modello Ollama (`gemma4:e4b` di default) — il modello non vede le clip, genera solo testo libero; l'associazione scene→clip avviene dopo
 - `clip_ids` (array di stringhe) è supportato come alternativa a `clips` per retrocompatibilità
