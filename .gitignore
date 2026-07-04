@@ -273,3 +273,19 @@ TODO[0-9]*.go
 /*.mp3
 /*.wav
 /*.ogg
+
+# ============================================
+# Voiceover test artifacts - user-spec defense-in-depth (2026-07-04)
+# ============================================
+# User-spec 2026-07-04: 6 patterns added per explicit user instruction.
+# The 5 anchored root-level patterns (below) ARE redundant with the existing
+# /*.mp3 canonical pattern; the unanchored *.mp3 is the only NEW pattern
+# (catches any .mp3 file anywhere in the tree - regression risk on legitimate
+# test subdir fixtures was explicitly accepted by the user per godlike/07
+# no-fake-availability disclosure in this commit body).
+*.mp3
+/prima-frase-*.mp3
+/smoke-test-voiceover-pipeline*.mp3
+/test-*.mp3
+/verifica-postfix-*.mp3
+/questo-*.mp3
