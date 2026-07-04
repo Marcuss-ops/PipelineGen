@@ -10,6 +10,10 @@
 // The OutboxDispatcher port (defined in service.go) replaces the direct
 // mctx.root.Outbox.Dispatcher import so the application-layer code
 // stays decoupled from internal/app (composition root).
+//
+// Compile-drift fixup (2026-07-04, post-review): replace local helper
+// `reportString(report interface{Stringify() string})` with direct
+// `legacyaudit.StringifyReport(report)` package-function call.
 package maintenance
 
 import (
@@ -77,7 +81,7 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 
 	if !opts.JSON {
 		fmt.Printf("=== qdrant-maintenance delete-invalid ===\n")
-		fmt.Println(reportString(report))
+		fmt.Println(legacyaudit.StringifyReport(report))
 		fmt.Printf("\nNon-locator assets to delete: %d\n", len(assetIDs))
 		fmt.Println("\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path; " +
 			"never DELETE FROM media_assets directly)...")

@@ -8,19 +8,23 @@
 // string-formatting + JSON serialization + outbox-enqueue loop semantics;
 // internal/infrastructure/qdrant/maintenance/ continues to own the wire
 // adapters (dr_adapter.go + locator_cleaner.go + reaper.go) per
-// PR-QDRANT-FINAL-DECISION. cmd/admin now imports ONLY this package
+// PR-QDRANT-FINAL-DECISION. cmd/admin imports ONLY this package
 // (no internal/infrastructure/qdrant direct import — godlike/07
 // minimum-blast-radius on the boundary).
 //
 // Ports (typed interfaces defined here per AGENTS.md Pattern 0):
 //   - QdrantCleaner     (drive_link/local_path key stripping w/ report)
-//   - OutboxDispatcher  (canonical EnqueueAndDelete path)
-//   - QdrantClient      (GetAliasTarget for active collection resolve)
 //
-// The Service struct holds concrete adapters (QdrantScannerAdapter for
-// the application-layer audit path, infrastructure/qdrant.NewClient
-// instance for the repair-locators fast path, and the OutboxDispatcher
-// port injected at composition time).
+// Compile-drift fixup (2026-07-04, post-review): the OutboxDispatcher
+// port was REMOVED from the constructor input surface. Service.initHeavy
+// (called for audit + delete modes) lazy-opens the composition root via
+// app.InitComposition and pulls root.Outbox.Dispatcher into the
+// Service.dispatcher field — the canonical pre-split path (used by
+// cmd/admin/qdrant_maintenance_delete_invalid.go before the split).
+// For repair-locators mode the dispatcher is unused (the cleaner port
+// is the only one consumed); initHeavy is intentionally NOT called for
+// repair mode (the fast path that doesn't require SQLite or
+// app.InitComposition).
 package maintenance
 
 import (
@@ -43,10 +47,18 @@ type QdrantCleaner interface {
 	CleanLocators(ctx context.Context, apply bool) (*LocatorCleanupReport, error)
 }
 
-// OutboxDispatcher is the godlike/06 SSOT port for the canonical
-// EnqueueAndDelete path. Concrete: application.outbox.Dispatcher (wrapped
-// from internal/app.ComposeRoot.Outbox.Dispatcher at composition time).
-type OutboxDispatcher interface {
+// DispatcherPort is the godlike/06 SSOT typed-interface port for the
+// canonical EnqueueAndDelete path (the application-layer Delete mode uses
+// it to dispatch canonical outbox DELETE events for non-locator assets).
+//
+// Per godlike/07 minimum-blast-radius (post-review fixup): this interface
+// lives in the maintenance package so the Service struct can hold a
+// typed dispatcher field without forcing Service to import
+// internal/application/jobs or any other concrete type. The composition root
+// (internal/app.ComposeRoot.Outbox.Dispatcher) provides a concrete value at
+// Service.initHeavy time that structurally satisfies this interface via
+// Go's implicit interface satisfaction.
+type DispatcherPort interface {
 	EnqueueAndDelete(ctx context.Context, assetID string) error
 }
 
@@ -65,11 +77,11 @@ type qdrantClient interface {
 // Field access pattern per mode (godlike/07 honest-disclosure):
 //
 //   - Repair (repair-locators mode): reads s.cleaner (QdrantCleaner port).
-//     The heavy-init fields (sqliteDB, root, scanner) remain nil — this
-//     mode handler does NOT touch them.
+//     The heavy-init fields (sqliteDB, root, scanner, dispatcher) remain
+//     nil — this mode handler does NOT touch them.
 //   - Audit: reads s.scanner + s.activeCol (via classifyForMaintenance).
-//     The orchestrator-internal fields (client, sqliteDB) are NOT read by
-//     this mode handler.
+//     The orchestrator-internal fields (client, sqliteDB, dispatcher) are
+//     NOT read by this mode handler.
 //   - Delete (delete-invalid mode): reads s.scanner + s.activeCol (via
 //     classifyForMaintenance) + s.dispatcher (for EnqueueAndDelete).
 //     The orchestrator-internal fields (client, sqliteDB) are NOT read by
@@ -84,20 +96,23 @@ type Service struct {
 	client    qdrantClient
 	activeCol string
 	scanner   *QdrantScannerAdapter
+	dispatcher DispatcherPort
 
-	// Ports typed-injected at composition time.
-	cleaner    QdrantCleaner
-	dispatcher OutboxDispatcher
+	// Port typed-injected at construction time.
+	cleaner QdrantCleaner
 }
 
 // Deps is the canonical constructor-input envelope for NewService.
 // godlike/06 SSOT: this struct is the canonical SOLE owner of the
 // dependency-contract shape for the maintenance package.
+//
+// Per godlike/07 minimum-blast-radius (post-review): OutboxDispatcher
+// removed — Service.initHeavy populates the dispatcher lazily from the
+// composition root it opens for audit + delete modes.
 type Deps struct {
-	Cfg        *config.Config
-	Log        *zap.Logger
-	Cleaner    QdrantCleaner
-	Dispatcher OutboxDispatcher
+	Cfg     *config.Config
+	Log     *zap.Logger
+	Cleaner QdrantCleaner
 }
 
 // NewService is the canonical fail-closed constructor for Service.
@@ -105,11 +120,10 @@ type Deps struct {
 //   - cfg.Qdrant.Enabled = true (validated by caller; qdrant-maintenance
 //     requires qdrant.enabled=true)
 //   - cleaner is non-nil (Repair mode requires it)
-//   - dispatcher is non-nil (Delete mode requires it)
 //
-// Lazy fields (sqliteDB, root, client, activeCol, scanner) are NOT
-// populated at construction time — Service.initHeavy populates them
-// only when Audit or Delete mode is requested. This avoids the heavy
+// Lazy fields (sqliteDB, root, client, activeCol, scanner, dispatcher)
+// are NOT populated at construction time — Service.initHeavy populates
+// them only when Audit or Delete mode is requested. This avoids the heavy
 // composition-root initialize cost when only Repair mode is in play
 // (the fast path that doesn't require SQLite or app.InitComposition).
 func NewService(d Deps) (*Service, error) {
@@ -128,14 +142,10 @@ func NewService(d Deps) (*Service, error) {
 	if d.Cleaner == nil {
 		return nil, errors.New("maintenance.NewService: cleaner is nil (composition root missing QdrantCleaner port)")
 	}
-	if d.Dispatcher == nil {
-		return nil, errors.New("maintenance.NewService: dispatcher is nil (composition root missing OutboxDispatcher port)")
-	}
 	return &Service{
-		cfg:        d.Cfg,
-		log:        d.Log,
-		cleaner:    d.Cleaner,
-		dispatcher: d.Dispatcher,
+		cfg:     d.Cfg,
+		log:     d.Log,
+		cleaner: d.Cleaner,
 	}, nil
 }
 
@@ -148,6 +158,14 @@ func NewService(d Deps) (*Service, error) {
 // no-fake-availability, the 4th mode is NOT implemented; the closure
 // documents this in the wave-tracker notes (see architecture/current.yaml
 // PR-GODOBJ-12 linked_issues field).
+//
+// The string values here are the canonical mode identifiers —
+// cmd/admin/qdrant_maintenance.go and cmd/admin/qdrant_maintenance_args.go
+// MUST keep their mode-name string keys in lockstep with this enum.
+// The dependency is documented at both surfaces (godlike/06 SSOT
+// one-canonical-owner-per-fact: application owns the typed Mode enum;
+// cmd/admin owns the CLI parse surface that validates against the
+// stringified enum values).
 type Mode string
 
 const (
@@ -168,6 +186,16 @@ func (m Mode) IsValid() bool {
 // Run is the canonical main entry point for the Service. Per mode it
 // populates the lazy fields (if needed) and dispatches to the typed
 // per-mode handler.
+//
+// For audit + delete modes, initHeavy opens the composition root and
+// extracts root.Outbox.Dispatcher into the Service's dispatcher field —
+// godlike/07 minimum-blast-radius: the dispatcher is NOT a constructor
+// arg (matches the pre-split mctx.root.Outbox.Dispatcher reach-through).
+//
+// godlike/07 fail-closed (post-review fixup): for Delete mode, surface
+// ErrDispatcherNil immediately after initHeavy if the dispatcher wire
+// failed — same fail-closed-at-boot contract as the pre-split code
+// (mctx.root.Outbox.Dispatcher == nil check at mode-handler entry).
 func (s *Service) Run(ctx context.Context, mode Mode, opts RunOptions) error {
 	switch mode {
 	case ModeRepairLocators:
@@ -182,6 +210,9 @@ func (s *Service) Run(ctx context.Context, mode Mode, opts RunOptions) error {
 	case ModeDeleteInvalid:
 		if err := s.initHeavy(ctx, opts.Limit); err != nil {
 			return err
+		}
+		if s.dispatcher == nil {
+			return ErrDispatcherNil
 		}
 		return s.Delete(ctx, DeleteOptions{JSON: opts.JSON, Limit: opts.Limit})
 	}
@@ -204,12 +235,10 @@ type RunOptions struct {
 // Deferred cleanups (sqliteDB.Close + rootCleanup) fire AFTER Run
 // returns — the defers are scoped to Run, not the closure handler.
 //
-// godlike/07 minimum-blast-radius: the heavy-init path mirrors the
-// pre-split cmd/admin runQdrantMaintenanceHeavy verbatim; no logic
-// drift is introduced (the only change is where the per-mode handlers
-// read the lazy fields: pre-split they read mctx.scan/mctx.activeCol/
-// mctx.root directly; post-split they read s.scanner/s.activeCol/
-// s.dispatcher via the typed ports).
+// Per godlike/07 (post-review fixup): also extracts root.Outbox.Dispatcher
+// into the Service.dispatcher field. The pre-split cmd/admin reached
+// through this exact path (`mctx.root.Outbox.Dispatcher.EnqueueAndDelete`),
+// so the post-split lazy-init preserves byte-equivalent runtime behavior.
 func (s *Service) initHeavy(ctx context.Context, limit int) error {
 	sqliteDB, err := storage.OpenSQLiteDB(s.cfg.Storage.PrimaryDBFullPath(), s.log)
 	if err != nil {
@@ -242,5 +271,30 @@ func (s *Service) initHeavy(ctx context.Context, limit int) error {
 	s.client = client
 	s.activeCol = active
 	s.scanner = NewQdrantScannerAdapter(client, active, limit)
+
+	// godlike/07 fixup (post-review): wire the outbox dispatcher from
+	// the composition root. Matches the pre-split
+	// `mctx.root.Outbox.Dispatcher.EnqueueAndDelete` reach-through.
+	if root != nil && root.Outbox != nil && root.Outbox.Dispatcher != nil {
+		s.dispatcher = root.Outbox.Dispatcher
+	}
+
+	// godlike/07 fail-closed-at-boot gate (per DL-006 disposition):
+	// if the orchestrator couldn't wire a dispatcher but Delete mode
+	// is going to be used, surface a typed error NOW (at composition
+	// time) rather than crashing mid-loop on nil-deref at first
+	// EnqueueAndDelete call site.
+	//
+	// Per AGENTS.md Git-Lesson-3 audit-pin discipline: the fail-closed
+	// gate preserves the pre-split `mctx.root.Outbox.Dispatcher ==
+	// nil` behavior byte-equivalently (the pre-split handler returned
+	// `ErrDispatcherNil` at mode-handler entry time; post-split we
+	// surface the same NOT-available state at initHeavy time so the
+	// call to Service.Run fails fast before any per-asset loop runs).
 	return nil
 }
+
+// ErrDispatcherNil is the godlike/07 fail-closed typed sentinel used
+// when the outbox dispatcher cannot be wired during Service.initHeavy
+// for Delete mode (per DL-006 fail-closed-at-boot contract).
+var ErrDispatcherNil = errors.New("maintenance: outbox dispatcher is nil after composition root init (delete-invalid mode requires root.Outbox.Dispatcher; verify composition root initialization per DL-006 fail-closed-at-boot)")
