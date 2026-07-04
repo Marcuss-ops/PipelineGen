@@ -292,7 +292,7 @@ func buildVoiceoverService(
 		},
 		Integration: voiceover.VoiceoverIntegrationDeps{
 			DriveUploader:      newVoiceoverDriveAdapter(driveUploader),
-			LifecycleService:   voLifecycle,
+			LifecycleService:   voLifecycle, // voiceover's lifecycle (NOT the retired PR-ARTLIST-LIFECYCLE artlist forward-pointer, 2026-07-04)
 			AssetDestResolver:  destResolver,
 			OutboxEnqueuer:     outboxEnqueuer,
 			Translator:         translator,

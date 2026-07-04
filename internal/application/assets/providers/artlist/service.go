@@ -9,7 +9,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -75,7 +74,7 @@ type ServicePorts struct {
 // DriveFolderManager.
 //
 // Cfg, MainDB, Log are pure data. Dispatcher is a transport integration
-// point. MediaProcessor, LifecycleService, AssetDestResolver, JobsSvc
+// point. MediaProcessor, AssetDestResolver, JobsSvc
 // are cross-cutting domain services that already implement interfaces
 // in internal/core but whose concrete instances the application holds
 // directly. AssetProcRepo / AssetVerRepo / AssetLocRepo are the
@@ -96,7 +95,6 @@ type ServiceDependencies struct {
 	Log               *zap.Logger
 	Dispatcher        Dispatcher
 	MediaProcessor    asset.Processor
-	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
 	JobsSvc           jobs.Service
 	AssetProcRepo     asset.ProcessingRepository
@@ -191,7 +189,6 @@ type Service struct {
 
 	// Cross-cutting domain services.
 	mediaProcessor    asset.Processor
-	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
 	jobsSvc           jobs.Service
 
@@ -242,7 +239,6 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		dispatcher:        deps.Dispatcher,
 		publisher:         deps.Publisher,
 		mediaProcessor:    deps.MediaProcessor,
-		lifecycleService:  deps.LifecycleService,
 		assetDestResolver: deps.AssetDestResolver,
 		jobsSvc:           deps.JobsSvc,
 		scraperSearcher:   deps.ScraperSearcher,

@@ -152,7 +152,7 @@
           the workerruntime gate closure)
     forward_pointer:
       unblocked_work: PR-ARTLIST-* follow-up (BACKFILL phase)
-      remaining_pending: PR-ARTLIST-LIFECYCLE, PR-ARTLIST-REPOS
+      remaining_pending: PR-ARTLIST-REPOS
       shipped_already: PR-ARTLIST-LIVE-WIRE, PR-ARTLIST-SEARCHERS,
         PR-ARTLIST-SYNCSERVICE, PR-ARTLIST-RECOMMEND-ADAPTER
     future_test_wave: PR-ARTLIST-STAGER-TEST (port the 5 TDD tests from
@@ -3281,8 +3281,25 @@ wave_status:
         for future PR-ARTLIST-STAGER-TEST wave). 0 Go code changes.
     - id: PR-ARTLIST-LIFECYCLE
       owner_capability: "internal/application/assets/providers/artlist + internal/application/assets/lifecycle"
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
       deadline: 2026-08-15
+      ship_via: |
+        chore(artlist): ship PR-ARTLIST-LIFECYCLE closure - false-positive retirement.
+        The canonical `lifecycleService` field on artlist.Service was dead code (0
+        production callers; never invoked by any downstream orchestrator or handler
+        in the artlist package). Per godlike/07 no-fake-availability, the dead field
+        + the nil forward-pointer in WireArtlist + the doc comments have been
+        physically removed (mirrors the PR-ARTLIST-SYNCSERVICE closure pattern
+        at SHA f02ae683). Deprecation record added at
+        architecture/deprecations.yaml#PR-ARTLIST-LIFECYCLE-DEPRECATION
+        (status: removed, migration_phase: CONTRACT). 0 active code callers
+        post-removal; 0 reference to LifecycleService in artlist or app packages.
+        godlike/06 SSOT (one canonical owner per fact): the lifecycle.Service
+        type lives ONLY in internal/application/assets/lifecycle/; the artlist
+        package never needed it (LifecycleService is unused in artlist's
+        searchService / runOrchestrator / destinationService / jobAdapter /
+        diagnosticsService components).
     - id: PR-ARTLIST-REPOS
       owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/database/sqlite/assets"
       status: pending
