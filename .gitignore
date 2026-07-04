@@ -258,3 +258,18 @@ TODO[0-9]*.go
 /cleaned_*.mp3
 /cleaned_*.wav
 /cleaned_*.ogg
+
+# ============================================
+# Root-level voiceover test artifacts (Phase 0 carry-forward, 2026-07-04)
+# ============================================
+# 7 untracked MP3 files appeared at repo root after manual voiceover
+# test runs during Phase 0 of the operator test battery (filename
+# patterns: prima-frase-*, questo-*, smoke-test-*, test-*, verifica-*).
+# Anchor with leading '/' so the pattern matches only root-level
+# artifacts (NOT legitimate .mp3 fixtures anywhere else in the tree).
+# Mirrors the anchored-binary pattern of /pipelinegen + /server +
+# /worker. Forward-pointer: PR-PHASE-0-VOICEOVER-CLEANUP if user later
+# wants to whitelist specific MP3 fixtures.
+/*.mp3
+/*.wav
+/*.ogg
