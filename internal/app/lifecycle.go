@@ -76,6 +76,27 @@ type StartupStep struct {
 	Stop     func(ctx context.Context) error
 }
 
+// ErrCapabilityDisabled is the typed sentinel surface for startup
+// steps that are intentionally NOT running per operator-facing policy
+// (e.g. capability pending a future phase, feature-flag gated off,
+// dependency not yet wired). Per godlike/07 no-fake-availability:
+// a step returning nil while loading NOTHING is a fake success —
+// the operator's view of the system would otherwise omit the
+// suppressed capability. Returning ErrCapabilityDisabled from a
+// Required:false step preserves the "startup survives" semantics
+// (server_lifecycle.Start's optional-failure branch in
+// server_lifecycle.go log+continues on any non-nil error) while
+// making the disabled state typed-typed-queryable via
+// `errors.Is(step.Err(), ErrCapabilityDisabled)` from any caller
+// wanting to enumerate disabled-at-startup capabilities.
+//
+// Wire shape: errors.New (godlike/07 typed-error contract —
+// composable via fmt.Errorf("%w"), reachable via errors.Is from
+// any wrapping context). Single surface, no typed-data envelope:
+// the actionable context lives in the wrap message (e.g.
+// "yt-cache-prewarm: capability disabled pending Phase 2+").
+var ErrCapabilityDisabled = errors.New("lifecycle: capability disabled (operator-facing policy decision; the surrounding step is intentionally not running)")
+
 // backgroundJobs holds references to services started by startBackgroundJobs
 // that need explicit Stop() during shutdown, plus the startup plan that
 // defers ALL goroutine launches to serverLifecycle.Start.
@@ -276,52 +297,52 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				DefaultCategory: "general",
 			})
 
-		channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
-			Cfg:         cfg,
-			ChannelsSvc: channelsSvc,
-			Log:         log,
-			// Ytdlp wires the concrete *downloader.YTDLPDownloader so
-			// monitor/discovery.go::discoverChannelVideos can call
-			// ListChannel per scheduler tick. Same instance is re-used in
-			// transcripts/YTDLPSubtitleAdapter for the subtitle
-			// subprocess, keeping a single downloader binary+cookies
-			// config across the two adapters.
-			Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
-			Transcript: ytdlpSubtitleAdapter,
-			Analyzer:   ollamaAnalyzer,
-			Enqueuer:   monitoradapter.NewExtractionIntentAdapter(root.Jobs.Service, channelsSvc, log),
-			// Commit 1/6 (PR-C-YouTube-Cutover, June 2026) — wiring CLOSED
-			// in Commit 2 (2026-07-04). The per-video discovery ledger
-			// (TryReserve + MarkEnqueued + MarkRejected + MaxDiscoveredAt)
-			// is wrapped in monitorDiscoveriesAdapter (struct-embeds
-			// *assets.YoutubeDiscoveriesRepository + overrides DrainPending
-			// / DrainDispatched + MarkEnqueued + MarkRejected + CommitEnqueue
-			// for translations: []assets.OutboxEntry → []monitor.OutboxEntry
-			// + assets.ErrStateConflict → monitor.ErrLedgerStateConflict
-			// multi-%w wrap). Without the adapter wrap the raw repo's
-			// DrainDispatched signature returns []assets.OutboxEntry which
-			// does NOT match monitor.YoutubeDiscoveriesPort's
-			// []monitor.OutboxEntry — vet surfaces this as a build error.
-			// NewChannelMonitor panics on nil Discoveries when Cfg is
-			// wired (per the fail-fast guard in monitor.go), so a wiring
-			// gap surfaces at boot rather than at first scheduler tick.
-			Discoveries: newMonitorDiscoveriesAdapter(assets.NewYoutubeDiscoveriesRepository(root.DB.DB)),
-			// FASE 3.7 Commit 2 (2026-07-04): wire the canonical
-			// *observability.ObservabilityMetricsRecorder so analyzer +
-			// discovery call sites (m.metrics.IncVideosChecked etc.)
-			// invoke the package-level Prometheus counters declared in
-			// internal/infrastructure/observability/metrics_workers.go
-			// WITHOUT a direct `internal/infrastructure/observability`
-			// import in the monitor package — the adapter is the
-			// composition-root bridge that keeps the layering
-			// (application → infra) intact.
-			MetricsRecorder: observability.NewObservabilityMetricsRecorder(
-				observability.ChannelMonitorVideosChecked,
-				observability.ChannelMonitorVideosWithSegments,
-				observability.ChannelMonitorSegmentsFound,
-				observability.ChannelMonitorSegmentsPerVideo,
-			),
-		})
+			channelMon = monitor.NewChannelMonitor(monitor.CompositionDeps{
+				Cfg:         cfg,
+				ChannelsSvc: channelsSvc,
+				Log:         log,
+				// Ytdlp wires the concrete *downloader.YTDLPDownloader so
+				// monitor/discovery.go::discoverChannelVideos can call
+				// ListChannel per scheduler tick. Same instance is re-used in
+				// transcripts/YTDLPSubtitleAdapter for the subtitle
+				// subprocess, keeping a single downloader binary+cookies
+				// config across the two adapters.
+				Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
+				Transcript: ytdlpSubtitleAdapter,
+				Analyzer:   ollamaAnalyzer,
+				Enqueuer:   monitoradapter.NewExtractionIntentAdapter(root.Jobs.Service, channelsSvc, log),
+				// Commit 1/6 (PR-C-YouTube-Cutover, June 2026) — wiring CLOSED
+				// in Commit 2 (2026-07-04). The per-video discovery ledger
+				// (TryReserve + MarkEnqueued + MarkRejected + MaxDiscoveredAt)
+				// is wrapped in monitorDiscoveriesAdapter (struct-embeds
+				// *assets.YoutubeDiscoveriesRepository + overrides DrainPending
+				// / DrainDispatched + MarkEnqueued + MarkRejected + CommitEnqueue
+				// for translations: []assets.OutboxEntry → []monitor.OutboxEntry
+				// + assets.ErrStateConflict → monitor.ErrLedgerStateConflict
+				// multi-%w wrap). Without the adapter wrap the raw repo's
+				// DrainDispatched signature returns []assets.OutboxEntry which
+				// does NOT match monitor.YoutubeDiscoveriesPort's
+				// []monitor.OutboxEntry — vet surfaces this as a build error.
+				// NewChannelMonitor panics on nil Discoveries when Cfg is
+				// wired (per the fail-fast guard in monitor.go), so a wiring
+				// gap surfaces at boot rather than at first scheduler tick.
+				Discoveries: newMonitorDiscoveriesAdapter(assets.NewYoutubeDiscoveriesRepository(root.DB.DB)),
+				// FASE 3.7 Commit 2 (2026-07-04): wire the canonical
+				// *observability.ObservabilityMetricsRecorder so analyzer +
+				// discovery call sites (m.metrics.IncVideosChecked etc.)
+				// invoke the package-level Prometheus counters declared in
+				// internal/infrastructure/observability/metrics_workers.go
+				// WITHOUT a direct `internal/infrastructure/observability`
+				// import in the monitor package — the adapter is the
+				// composition-root bridge that keeps the layering
+				// (application → infra) intact.
+				MetricsRecorder: observability.NewObservabilityMetricsRecorder(
+					observability.ChannelMonitorVideosChecked,
+					observability.ChannelMonitorVideosWithSegments,
+					observability.ChannelMonitorSegmentsFound,
+					observability.ChannelMonitorSegmentsPerVideo,
+				),
+			})
 
 			// Channel monitor: optional background service.
 			cm := channelMon
@@ -408,13 +429,18 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			Start: func(startCtx context.Context) error {
 				// Phase 2 followup (June 2026): PrewarmHotVideoMetadataCache was removed
 				// when the metadata flow moved to the ytmetadata capability service.
-				// Logging the disabled prewarm is loud so operators see the gap;
-				// restoring the cache warming requires wiring the metadata capability
-				// service's cache loader (Phase 2+ follow-up).
-				if ytSvc != nil {
-					log.Info("yt-cache-prewarm: disabled pending Phase 2+ follow-up (ytmetadata capability cache loader not yet exposed to *youtube.Service)")
-				}
-				return nil
+				// Per godlike/07 no-fake-availability: the disabled prewarm MUST surface
+				// as the typed ErrCapabilityDisabled sentinel — NOT as `return nil` —
+				// so server_lifecycle.Start's optional-failure branch (log+continue
+				// on Required:false + err != nil) Warn-logs the typed error via
+				// zap.Error with the canonical typed-error name. The server_lifecycle
+				// log line carries both the step name (zap.String("step", step.Name))
+				// AND the typed error message (zap.Error(err)) which IS the
+				// diagnostic — the inner `log.Info` was redundant and removed per
+				// godlike/07 minimum-blast-radius (one diagnostic surface per fact).
+				// Restoring the cache warming requires wiring the metadata
+				// capability service's cache loader (Phase 2+ follow-up).
+				return fmt.Errorf("yt-cache-prewarm: %w", ErrCapabilityDisabled)
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
@@ -422,10 +448,11 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			Name: "yt-nightly-prewarm", Required: false,
 			Start: func(startCtx context.Context) error {
 				// Phase 2 followup (June 2026): see note above in yt-cache-prewarm.
-				if ytSvc != nil {
-					log.Info("yt-nightly-prewarm: disabled pending Phase 2+ follow-up")
-				}
-				return nil
+				// Per godlike/07 no-fake-availability: same typed-error contract as
+				// yt-cache-prewarm above. Required:false keeps startup alive; the
+				// typed ErrCapabilityDisabled surfaces the disabled state to the
+				// server_lifecycle.Start Warn log (one surface per fact).
+				return fmt.Errorf("yt-nightly-prewarm: %w", ErrCapabilityDisabled)
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
@@ -782,7 +809,7 @@ func (a *outboxMonitorAdapter) ListPending(ctx context.Context) ([]outbox.EventD
 // `monitor.MonitorDownloaderPort` (the domain DTO consumer) is
 // satisfied. The mismatches are:
 //   - request shape:  `downloader.ListChannelVideosRequest` (infra)
-//                     → `monitor.ListChannelVideosQuery` (domain)
+//     → `monitor.ListChannelVideosQuery` (domain)
 //   - return slice:   `[]downloader.VideoInfo` → `[]monitor.VideoInfo`
 //
 // FASE 3.7 Commit 1b (2026-07-04): the request-shape translation is
