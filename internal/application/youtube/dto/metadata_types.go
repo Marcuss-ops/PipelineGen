@@ -91,13 +91,15 @@ type ClipMetadataInput struct {
 
 // ── CanonicalClipMetadata ────────────────────────────────────────────
 
-// CanonicalClipMetadata is the typed output envelope the ClipMetadataBuilder
-// port produces. It bundles all metadata fields the ClipMetadataWriter
-// persists into media_assets.metadata_json AND the outbox event payload.
+// CanonicalClipMetadata is the single canonical clip metadata type.
+// It bundles ALL metadata fields the ClipMetadataWriter persists into
+// media_assets.metadata_json AND the outbox event payload.
 //
-// The 11 verdict-canonical base fields (ClipID through NormalizedGroup)
-// are always populated; Hook + SearchVisibility are populated only when
-// the upstream segment analysis discovered them (Commit 4 upstream signal).
+// CLIPS-META-2026-07-04 (Azione 1): expanded from 14 to 23 fields,
+// absorbing ClipRichMetadata's tag-level enrichment + semantic
+// embedding fields. This is now the SINGLE source of truth for
+// clip metadata output — ClipRichMetadata is a zero-copy alias;
+// ClipMetadata is retired.
 type CanonicalClipMetadata struct {
 	// ClipID is the canonical clip identifier. Must equal the clipID
 	// passed to the writer; a mismatch is a caller bug that fails the
@@ -173,4 +175,36 @@ type CanonicalClipMetadata struct {
 	// SearchVisibility is the LLM-assigned visibility tier (Commit 4
 	// upstream signal). Same nil-vs-empty contract as Hook.
 	SearchVisibility string
+
+	// ── Absorbed from ClipRichMetadata (CLIPS-META-2026-07-04) ──────
+
+	// SourceTags carries source/channel-level tags extracted from
+	// the video title + description.
+	SourceTags []string
+
+	// ClipTags carries clip-level topic tags.
+	ClipTags []string
+
+	// SearchKeywords carries SEO-oriented keyword phrases.
+	SearchKeywords []string
+
+	// People is the union of Speakers + MentionedPeople (deduplicated).
+	People []string
+
+	// CleanTitle is the canonical cleaned clip title.
+	CleanTitle string
+
+	// ShortTitle is the shortened (≤4 word) display title.
+	ShortTitle string
+
+	// CleanTranscript is the cleaned, normalized transcript text.
+	CleanTranscript string
+
+	// EmbeddingText is the structured text block fed to the embedding
+	// model for semantic search indexing.
+	EmbeddingText string
+
+	// Tags is the merged-deduplicated union of SourceTags + ClipTags +
+	// SearchKeywords + Topics + Speakers + MentionedPeople.
+	Tags []string
 }
