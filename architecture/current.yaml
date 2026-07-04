@@ -19,6 +19,56 @@
 # Zero-fabrication policy: owner / deadline / linked_issues OMITTED when absent in source.
 
 
+- id: PR-QDRANT-FULL-STACK-AUTOMATED
+  owner_capability: "cmd/admin/ (admin CLI subcommand) + .github/workflows/preflight-ci.yml + architecture/CI gate"
+  status: shipped
+  ship_date: 2026-07-04
+  deadline: 2026-08-01
+  description: |
+    Ships the Qdrant preflight CI smoke binary + workflow as 3-surface
+    lockstep per godlike/06 SSOT one-canonical-owner-per-fact:
+      * cmd/admin/qdrant_preflight.go (~470 LoC) -- thin CLI dispatcher
+        registered in cmd/admin/main.go::main() switch as the
+        `qdrant-preflight` subcommand. var AllTests (11 entries) is
+        the SOLE source of truth for the PR-QDRANT-PREFLIGHT-TEST-*
+        linked_issue list.
+      * .github/workflows/preflight-ci.yml (~80 LoC) -- GitHub Actions
+        workflow. workflow_dispatch only initial shipping posture
+        (push-on-main promotion is a forward-pointer gated on the
+        5-item pre-existing build issue carry-forward + PR-QDRANT-FULL-STACK-BRINGUP +
+        PR-QDRANT-PREFLIGHT-DATA-SEED all shipping first).
+      * architecture/current.yaml (this slot) + CHANGELOG.md ## Unreleased
+        -> ### Added + AGENTS.md ## Recent cross-cutting closures
+        (June 2026) -- 3-surface lockstep mirrors the canonical surface.
+    Canonical test registry (11 entries verbatim, godlike/06 SSOT mirror):
+      1. PR-QDRANT-PREFLIGHT-TEST-1 (qdrant-stack-healthy)
+      2. PR-QDRANT-PREFLIGHT-TEST-2 (schema-v3-shipped)
+      3. PR-QDRANT-PREFLIGHT-TEST-3 (outbox-events-created)
+      4. PR-QDRANT-PREFLIGHT-TEST-4 (outbox-events-completed)
+      5. PR-QDRANT-PREFLIGHT-TEST-5 (media-assets-index-state-indexed)
+      6. PR-QDRANT-PREFLIGHT-TEST-6 (qdrant-scroll-finds-asset)
+      7. PR-QDRANT-PREFLIGHT-TEST-7 (hybrid-search-score-gt-half)
+      8. PR-QDRANT-PREFLIGHT-TEST-8 (supersede-gate-2-source-versions)
+      9. PR-QDRANT-PREFLIGHT-TEST-9-RETRY-RECOVERY (chaos-day-scheduling; SKIP-allowed)
+      10. PR-QDRANT-PREFLIGHT-TEST-10-DELETE-TOMBSTONE (delete-tombstone)
+      11. PR-QDRANT-PREFLIGHT-TEST-11-VOICEOVER (voiceover-piggyback)
+    godlike/07 NO-FAKE-AVAILABILITY: Tests 3-11 currently return typed
+    ErrPreflightNotImplemented (FAIL-closed) when the production stack
+    + seed CLI are not available. Per-test fill-in lands in per-test
+    follow-up PRs as individual gates flip green (one PR per test =
+    AGENTS.md Pattern 6 per-file granularity).
+    godlike/07 minimum-blast-radius: tests run SEQUENTIALLY with per-test
+    context.WithTimeout; Test 9 SKIP-allowed (chaos-day requires manual
+    Qdrant teardown); exit 0 iff zero FAIL.
+    CI trigger philosophy (per thinker-with-files-gemini validation):
+    workflow_dispatch ONLY initially (push-on-main promotion would
+    paint main RED due to the 5-item PRE-EXISTING-BUILD-ISSUES-2026-07-04
+    carry-forward, violating CI hygiene). Forward-pointer PR-QDRANT-FULL-STACK-AUTOMATED-PROMOTE
+    gates the promotion on (a) the 5 carry-forward items shipped +
+    (b) PR-QDRANT-FULL-STACK-BRINGUP + PR-QDRANT-PREFLIGHT-DATA-SEED
+    both green, + (c) Tests 1+2 confirmed green for 14 consecutive
+    nightly runs.
+
 - id: PRE-EXISTING-BUILD-ISSUES-2026-07-04
   owner_capability: architecture
   status: in_progress
