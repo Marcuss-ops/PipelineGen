@@ -1,12 +1,7 @@
 package processor
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -28,14 +23,18 @@ import (
 // lived in this file.
 //
 // Artlist-clip downloads route through the injected
-// p.artlistDL.DownloadArtlistClip() when non-nil (wired via
-// build_bundles_artlist.go wrapping the Resolver). When nil,
-// the legacy downloadViaScraper method handles Artlist downloads.
+// p.artlistDL.DownloadArtlistClip() (wired via
+// build_bundles_artlist.go wrapping the Resolver).
+// When nil, Artlist clips fall through to yt-dlp (Rule 4).
+//
+// PR-ARTLIST-SCRAPER-RETIRE (July 2026): the legacy
+// downloadViaScraper fallback, buildArtlistClipPageURL helper,
+// and processor.scraperURL field are RETIRED.
 //
 // Ladder:
 //   1. Direct MP4/MOV/AVI → HTTP download
 //   2. Artlist clip (IsArtlistURL / ClipPageURL / numeric ID)
-//      → ArtlistDownloader or legacy downloadViaScraper
+//      → ArtlistDownloader or yt-dlp
 //   3. Non-Artlist HLS (.m3u8) → FFmpeg RemuxHLS
 //   4. Everything else → yt-dlp
 func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput, rawPath string) (actualPath string, err error) {
@@ -73,20 +72,12 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 			p.log.Warn("ArtlistDownloader failed, falling back to yt-dlp",
 				zap.String("id", input.ID),
 				zap.Error(dlErr))
-		} else if p.ffmpeg != nil {
-			// Legacy fallback: Processor's own scraper download.
-			p.log.Info("using legacy downloadViaScraper for Artlist download",
-				zap.String("id", input.ID),
-				zap.String("name", input.Name))
-			scraperOutput, scraperErr := p.downloadViaScraper(ctx, input, rawPath)
-			if scraperErr == nil {
-				p.log.Info("Artlist scraper download succeeded", zap.String("path", scraperOutput))
-				return scraperOutput, nil
-			}
-			p.log.Warn("Artlist scraper download failed, falling back to yt-dlp",
-				zap.String("id", input.ID),
-				zap.Error(scraperErr))
 		}
+		// PR-ARTLIST-SCRAPER-RETIRE (July 2026): the legacy
+		// downloadViaScraper fallback is RETIRED. When
+		// artlistDL is nil, the Artlist clip falls through
+		// to yt-dlp (Rule 4). The processor.scraperURL field
+		// + buildArtlistClipPageURL helper were also removed.
 	}
 
 	// Rule 3: Non-Artlist HLS — FFmpeg RemuxHLS.
@@ -151,111 +142,4 @@ func isArtlistNumericID(id string) bool {
 	return true
 }
 
-// buildArtlistClipPageURL constructs an Artlist clip page URL from name + ID.
-// RETAINED — used by the legacy downloadViaScraper fallback path below.
-// DEPRECATO: remove when downloadViaScraper is retired.
-func buildArtlistClipPageURL(name, id string) string {
-	if id == "" {
-		return ""
-	}
-	slug := strings.ToLower(name)
-	if idx := strings.Index(slug, " by "); idx >= 0 {
-		slug = slug[:idx]
-	}
-	slug = strings.ReplaceAll(slug, ",", "")
-	slug = strings.ReplaceAll(slug, "  ", " ")
-	slug = strings.TrimSpace(slug)
-	slug = strings.ReplaceAll(slug, " ", "-")
-	var cleaned strings.Builder
-	for _, c := range slug {
-		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
-			cleaned.WriteRune(c)
-		}
-	}
-	slug = cleaned.String()
-	slug = strings.Trim(slug, "-")
-	for strings.Contains(slug, "--") {
-		slug = strings.ReplaceAll(slug, "--", "-")
-	}
-	if slug == "" {
-		return ""
-	}
-	return fmt.Sprintf("https://artlist.io/stock-footage/clip/%s/%s", slug, id)
-}
 
-// downloadViaScraper calls the Node.js scraper /download endpoint.
-//
-// DEPRECATO (PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER, July 2026):
-// when p.artlistDL is wired, downloadStep routes Artlist downloads
-// through the canonical downloader.Resolver. This method remains as
-// the legacy fallback for callers that haven't wired the
-// ArtlistDownloader port. Remove when all composition roots wire
-// the Resolver adapter.
-func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.ProcessInput, rawPath string) (string, error) {
-	scraperURL := strings.TrimSuffix(p.scraperURL, "/") + "/download"
-
-	clipPageURL := input.ClipPageURL
-	if clipPageURL == "" {
-		clipPageURL = input.SourceURL
-	}
-	if clipPageURL == "" && input.ID != "" {
-		clipPageURL = buildArtlistClipPageURL(input.Name, input.ID)
-		p.log.Info("constructed Artlist clip page URL from name+ID",
-			zap.String("url", clipPageURL),
-			zap.String("name", input.Name),
-			zap.String("id", input.ID),
-		)
-	}
-
-	savePath := rawPath + ".mp4"
-
-	payload := map[string]any{
-		"clip_page_url": clipPageURL,
-		"clip_id":       input.ID,
-		"output_dir":    filepath.Dir(savePath),
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal scraper request: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, scraperURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("create scraper request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("scraper request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("scraper returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	var result struct {
-		OK        bool   `json:"ok"`
-		LocalPath string `json:"local_path"`
-		Error     string `json:"error,omitempty"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode scraper response: %w", err)
-	}
-
-	if !result.OK {
-		return "", fmt.Errorf("scraper download failed: %s", result.Error)
-	}
-
-	if result.LocalPath == "" {
-		return "", fmt.Errorf("scraper returned empty local_path")
-	}
-
-	return result.LocalPath, nil
-}
