@@ -7,7 +7,9 @@
 //     re-extraction under the same clipID always re-runs the
 //     9-step pipeline.
 //   - #3 SegmentPolicy: a Min/Max duration gate (defaults
-//     2s/60s) is applied at Step 1. Out-of-range segments
+//     4s/60s — user-requested clip-duration policy: no effects,
+//     no transitions applied by the YouTube extraction endpoint)
+//     is applied at Step 1. Out-of-range segments
 //     fail with FailureCodeDurationOutOfRange.
 //   - #4 policyVersion in filename: BuildClipFilename takes a
 //     5th parameter (policyVersion) so two policy versions
@@ -80,6 +82,9 @@ func TestProcessSegment_StrategyReplaceBypassesCache(t *testing.T) {
 }
 
 // ── Test 3: SegmentPolicy duration gate ────────────────────────────
+// Note: policy is now Min=4s/Max=60s (per user spec, 2026-07-04).
+// A 2-hour segment stays well above the 60s Max → still rejected.
+// A 1-second segment stays below the 4s Min → still rejected.
 
 // TestProcessSegment_SegmentPolicyEnforced pins #3: a segment
 // outside the [Min, Max] window fails with

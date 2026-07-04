@@ -109,7 +109,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// a future CUTOVER wave will retire it entirely.
 	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
 	driveFolderMgr := newDriveFolderMgrAdapter(drive.driveUploader, log) // Phase 1d: retained as fallback; retire in CUTOVER wave
-	_ = driveFolderMgr                                                 // suppress unused-var while both adapters coexist
+	_ = driveFolderMgr                                                   // suppress unused-var while both adapters coexist
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
@@ -195,9 +195,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #3):
 		// SegmentPolicy is the duration gate applied to every
 		// segment (LLM-discovered and API-supplied). Default
-		// Min=2s / Max=60s matches the legacy extraction block
-		// (the verdict's P1 #9 explicit numeric choice). A
-		// future config-driven value can flow through here via
+		// Min=4s / Max=60s is the user-requested clip-duration
+		// policy (no effects, no transitions applied by the
+		// YouTube extraction endpoint — only cut + audio + Drive
+		// upload + media_assets write + Qdrant indexing event).
+		// A future config-driven value can flow through here via
 		// cfg.YouTube.MinSegmentDuration / MaxSegmentDuration.
 		SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
 		Log:           log,
@@ -374,7 +376,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// in BuildDomainBundle; consumed by the late-bindings
 		// block + future EnrichClip migration (PR-4.7).
 		ImageSearchResolver: imageSearchResolver, // FASE 7
-		AudioProcessor:      audioProcessor,        // VO-DECOMPOSITION P0 #1: persistent TTS worker
+		AudioProcessor:      audioProcessor,      // VO-DECOMPOSITION P0 #1: persistent TTS worker
 	}, nil
 }
 
