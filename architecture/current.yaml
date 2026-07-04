@@ -4238,7 +4238,9 @@ wave_status:
         is the canonical Band-2 target #7).
     - id: PR-SEARCH-PORTS-SPLIT
       owner_capability: internal/application/search
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: TBD
       deadline: 2026-08-22
       description: |
         Decompose internal/application/search/ports.go (674 LoC) into 6

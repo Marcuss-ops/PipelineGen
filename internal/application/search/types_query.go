@@ -1,28 +1,25 @@
-// Package search is the canonical Search capability (Wave 21 — Fase 4,
-// June 2026).
+// Package search — types_query.go holds the canonical request-side
+// types for the search capability (PR-SEARCH-PORTS-SPLIT, 2026-07-04).
 //
-// Background. Three legacy subsystems fan out media-asset search today:
-//   - internal/application/assets/clipssearch        (advanced, multi-source)
-//   - internal/application/assets/search             (cross-provider, ProviderResult)
-//   - internal/application/mediasearch               (semantic, vector-backed)
+// Pre-split, these types lived in types.go alongside the response-side
+// types (Candidate + Result). The split separates them by concern so
+// the canonical "what callers send" surface is co-located and the
+// canonical "what callers receive" surface lives in types_result.go.
 //
-// Wave 21 (this PR + PR 9 + PR 10) consolidates the three under a single
-// Query/Result/Candidate/Filters contract living in this package. PR 8 ships
-// the contract + Go-level type-identity with mediasearch. PR 9 ships the
-// real SearchAggregator with fanout, dedup, ranking, cursor. PR 10 cuts over
-// the handlers and deletes the legacy packages.
+// What lives here (request-side):
+//   - Capability enum (advertises which MediaTypes a SearchBackend serves)
+//   - SearchMode enum (ANN vs. hybrid toggle)
+//   - Filters (unified search filter set)
+//   - Cursor (opaque pagination token; wire format in cursor.go)
+//   - DefaultLimit + MaxLimit (centralised limit bounds)
+//   - Actor (tenant identity; promoted to canonical via Commit 2)
+//   - Query (canonical orchestrator input)
 //
-// Wave 19 — internal/application/<capA>/ must NOT import
-// internal/application/<capB>/ unless via a shared port. search exports
-// backend interfaces (SearchBackend, BackendRegistry); concrete adapters
-// live under internal/app (composition root only). mediasearch consumes
-// the canonical Filters/SearchMode via Go type aliases declared at the
-// top of internal/application/mediasearch/types.go — Go aliases are
-// bidirectional identity, so the cross-capability reference resolves at
-// the type-system level (compile-time) without violating Wave 19.
+// What lives in types_result.go (response-side): Candidate + Result.
+//
+// What moved to errors.go: ErrInvalidCursor + ErrEmptyCandidate
+// (godlike/06 SSOT — every sentinel in one place).
 package search
-
-import "errors"
 
 // ── Capability enum ────────────────────────────────────────────────
 //
@@ -83,22 +80,6 @@ const (
 	MaxLimit     = 100
 )
 
-// ── Error sentinels ─────────────────────────────────────────────────
-
-var (
-	// ErrInvalidCursor is returned by DecodeCursor for malformed input
-	// (bad base64, bad JSON, unknown version marker, etc.). Handlers map
-	// this to HTTP 422 (semantic error, not a transient failure).
-	ErrInvalidCursor = errors.New("search: invalid cursor")
-
-	// ErrEmptyCandidate is returned by dedupKey when a Candidate carries
-	// no identity (no AssetID, no SourceRef, no URL, no Hash). The
-	// aggregator drops empty-identity candidates silently per dedup
-	// policy; callers see ErrEmptyCandidate only when a builder
-	// callback tries to mint an empty cursor from them.
-	ErrEmptyCandidate = errors.New("search: empty candidate")
-)
-
 // ── Actor ────────────────────────────────────────────────────────────
 //
 // Actor carries the tenant identity propagated to every backend.
@@ -146,39 +127,4 @@ type Query struct {
 	Mode       SearchMode // applied to the semantic backend only
 	Actor      Actor      // PR-1: tenant identity forwarded to every backend
 	MinScore   float64    // 0 → use backend default (semanticMinScore 0.50); >0 overrides the score floor
-}
-
-// ── Candidate ──────────────────────────────────────────────────────
-//
-// Candidate is the universal search hit. JSON tags deliberately avoid
-// server-internal locators — QDRANT-004 invariant. Only signed delivery
-// URLs or external provider references (YouTube VideoID, etc.) survive
-// to clients.
-//
-// Score is normalised [0,1] across backends. Hash is a content hash
-// when known (used by dedup policy rank-order 4).
-type Candidate struct {
-	AssetID      string  `json:"asset_id"`
-	Source       string  `json:"source"`               // "youtube","artlist","local","semantic"
-	SourceRef    string  `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
-	MediaType    string  `json:"media_type,omitempty"`
-	Title        string  `json:"title,omitempty"`
-	Name         string  `json:"name,omitempty"` // canonical asset name; may differ from Title when localizations differ
-	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
-	PreviewURL   string  `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
-	Score        float64 `json:"score"`
-	Hash         string  `json:"hash,omitempty"`
-}
-
-// ── Result ──────────────────────────────────────────────────────────
-//
-// Result is the canonical typed output. NO `map[string]ProviderResult`
-// shape, per project rule "niente map[string]ProviderResult come
-// risposta finale primaria" (PR 8 spec).
-type Result struct {
-	Items          []Candidate
-	NextCursor     string            // "" = end of stream
-	ProviderErrors map[string]string // backend name → error string (e.g. "youtube" → "rate-limited")
-	ChannelsUsed   []string          // which search channels were used (e.g. ["text", "bm25"]); empty when unknown
-	Partial        bool              // true if any backend errored
 }
