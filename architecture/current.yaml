@@ -88,6 +88,88 @@
         compiling cleanly for the wire_assets.go composition). go build ./...
         project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files.errors" imported but not used → removed; (2) preflight.go:118 undefined: context → added "context" to imports; (3) preflight.go:133 undefined: retry → added "github.com/Marcuss-ops/PipelineGen/pkg/retry" to imports (per the code comment that documents the pkg/retry.Do usage); (4) run.go:95 err redeclared in this block (referenced at 58:7) → removed the redundant `err error` declaration from the var (...) block (err was already declared in the function scope via the earlier `cfg, err := LoadConfig(cfgPath)` and `log, err := LoadLogger(cfg)` statements). This is the gate that unblocks all PR-ARTLIST-* follow-up work (ART-001 closure forward-pointers depend on internal/app/workerruntime compiling cleanly for the wire_assets.go composition). go build ./... project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files."
 
+  meta_closure_2026_07_04:
+    status: shipped
+    ship_date: 2026-07-04
+    summary: |
+      All 7 PRE-EXISTING-BUILD-ISSUES-2026-07-04 carry-forward items
+      are now closed (6 false-positive retirements + 1 real Go fix).
+      The closure pattern followed godlike/07 no-fake-availability
+      discipline: each closure was diagnostic-first (build / vet /
+      cycle-absence / import-traversal / historical-grep audit),
+      then a minimal-scope commit (often 0 Go code changes for
+      false-positive retirements; the commit body honestly documents
+      the scope-lock per the user's literal spec, not the assumed
+      spec). The single real Go fix (FIX-APP-WORKERRUNTIME-SYNTAX)
+      was TDD-locked + 1 follow-up refactor commit (cleanup-leak fix
+      via named return + smart defer). The closure pattern is
+      documented as a forward-pointer for future agents encountering
+      similar stale-spec / file-retirement / file-rename /
+      import-cycle false-positive pre-existing build issues.
+    breakdown:
+      false_positive_retirements: 6
+      real_fixes: 1
+      total_closures: 7
+    closure_shas:
+      - id: FIX-MONITOR-ENQUEUE-TOLOWER
+        sha: f92a1970
+        ship_date: 2026-06-30
+        pattern: false_positive_retirement
+      - id: FIX-MONITOR-SCHEDULER-ENQUEUER
+        sha: 792c187d
+        ship_date: 2026-07-03
+        pattern: false_positive_retirement
+      - id: FIX-STOCKPIPELINE-REDECLARATION
+        sha: d803d6d8
+        ship_date: 2026-07-04
+        pattern: file_retirement_closure
+      - id: FIX-APP-MODULE-MEDIA-DISPATCHER
+        sha: a10b67d0
+        ship_date: 2026-07-04
+        pattern: file_rename_closure
+      - id: FIX-IMAGES-ROUTING-CYCLE
+        sha: ce01d698
+        ship_date: 2026-07-04
+        pattern: false_positive_retirement
+      - id: FIX-APP-WIRE-SCRIPT-SYNTAX
+        sha: 85e96411
+        ship_date: 2026-07-04
+        pattern: false_positive_retirement
+      - id: FIX-APP-WORKERRUNTIME-SYNTAX
+        sha: 03d42b0c
+        ship_date: 2026-07-04
+        pattern: real_go_fix
+    related_closure_shas:
+      - id: workerruntime_refactor
+        sha: 1fde1c1a
+        ship_date: 2026-07-04
+        description: 3 critical improvements from the code-reviewer on
+          FIX-APP-WORKERRUNTIME-SYNTAX + bonus cleanup-leak fix
+      - id: PR-ARTLIST-STAGER
+        sha: 71807a03
+        ship_date: 2026-07-04
+        description: First PR-ARTLIST-* BACKFILL closure (unblocked by
+          the workerruntime gate closure)
+    forward_pointer:
+      unblocked_work: PR-ARTLIST-* follow-up (BACKFILL phase)
+      remaining_pending: PR-ARTLIST-LIFECYCLE, PR-ARTLIST-REPOS
+      shipped_already: PR-ARTLIST-LIVE-WIRE, PR-ARTLIST-SEARCHERS,
+        PR-ARTLIST-SYNCSERVICE, PR-ARTLIST-RECOMMEND-ADAPTER
+    future_test_wave: PR-ARTLIST-STAGER-TEST (port the 5 TDD tests from
+      stock_stager_wiring_test.go to the Artlist side)
+    future_owner_cleanup: PR-ARTLIST-STAGER-OWNER-CLEANUP (tighten the
+      plus notation in owner_capability field)
+    user_framing_note: |
+      The user-supplied framing was "6 carry-forward items (5
+      false-positive + 1 real fix)" but the actual count is 7
+      (6 false-positive + 1 real fix). The 7th item is
+      FIX-APP-WIRE-SCRIPT-SYNTAX which was closed as a
+      false-positive retirement (retired status, not shipped) in
+      Step 0 of the carry-forward resolution. The meta-entry uses
+      the actual count (7) per godlike/07 no-fake-availability
+      discipline.
+
+
 - id: 0
   status: done
   exit_gate: "All artifacts present; archcheck focused gate passes."
