@@ -282,7 +282,7 @@ func TestIsMarkerAllowedForImportLine(t *testing.T) {
 		name        string
 		markerLines []int
 		lines       []string // 0-indexed slice
-		currentLine int       // 1-indexed
+		currentLine int      // 1-indexed
 		want        bool
 	}{
 		{
