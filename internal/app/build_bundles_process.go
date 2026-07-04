@@ -44,9 +44,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
-	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
@@ -95,6 +95,18 @@ import (
 func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver) (*OutboxBundle, IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
+	}
+
+	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
+	// gate at all 4 Qdrant composition sites. THIRD wire site (the
+	// outbox is the PRIMARY consumer of the Qdrant stack — it registers
+	// IndexingHandler + IndexDeleteHandler when cfg.Qdrant.Enabled=true).
+	// godlike/07 no-fake-availability: any operator misconfiguration
+	// is caught BEFORE the outbox handler registry wires up malformed
+	// mandatory deps. Cross-ref:
+	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
+	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
+		return nil, nil, err
 	}
 	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
 

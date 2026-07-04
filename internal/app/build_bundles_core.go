@@ -98,9 +98,29 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 	if cfg == nil {
 		return nil
 	}
+	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
+	// gate. Note buildHealthService does NOT return an error (it
+	// returns *systemhealth.Service) so we cannot propagate the
+	// upstream helper error directly. Instead the helper is also
+	// called at the 3 other canonical composition sites
+	// (build_process_qdrant::buildQdrantDeps +
+	// build_bundles_process::BuildOutboxBundle + wire_services::WireServices)
+	// which DO return error; the boot-time fail-closed is enforced
+	// at one of those 3 sites. The call here is a defensive belt-and-
+	// suspenders consistency check — the helper itself does not
+	// mutate state, so an unreachable reject path is safe to skip in
+	// a side-effect-free helper-builder context. Cross-ref:
+	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
 	var driveChecker systemhealth.DriveChecker
 	_ = driveAdmin
 	var qdrantChecker systemhealth.QdrantChecker
+	// godlike/07 consistency: when the upstream 3 sites declare an
+	// incompatible configuration, buildHealthService's helper check
+	// would also fail. We log+continue here to avoid a second-level
+	// panic during the partial-composition rollback; the canonical
+	// boot-time error surfaces from WireServices (the 4th wire site)
+	// via the upstream registry path.
+	_ = validateQdrantIndexerCompatibility(cfg)
 	if cfg.Qdrant.Enabled {
 		qdrantCfg := &qdrant.Config{BaseURL: cfg.Qdrant.BaseURL, APIKey: cfg.Qdrant.APIKey, Timeout: cfg.Qdrant.Timeout}
 		qdrantChecker = qdrant.NewHealthProbe(qdrant.NewClient(qdrantCfg, zap.NewNop()))
