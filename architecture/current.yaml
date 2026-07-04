@@ -2883,8 +2883,14 @@
     - id: C10
       label: "Remove pythonEmbeddingAdapter zombie (or rewrite via vectorstore.LocalEmbedder port)"
       owner_capability: "internal/application/images/ingest_semantic"
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: 667d2130
       deadline: 2026-07-25
+      notes: |
+        SHIPPED 2026-07-04 via 667d2130: 2-line ghost comment in
+        http_text_embedder.go retired. application/realtime/PythonEmbeddingAdapter
+        already retired (dir does not exist on origin/main).
 
 
 ---
