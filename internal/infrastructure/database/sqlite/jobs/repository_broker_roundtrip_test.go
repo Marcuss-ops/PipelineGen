@@ -50,6 +50,16 @@
 // additional columns like `parent_state_typed` from migration
 // 129, `embedding_json`, etc. that the 4 state transitions do
 // not touch).
+//
+// godlike/07 minimum-blast-radius: the read-path uses a single
+// `readJob` helper that scans all 9 canonical fields in one
+// query (was 6 separate round-trip helpers; see Defect 4 in
+// the code-review for the prior refactor rationale). The
+// `readLatestEventForJob` helper is retained because it queries
+// a different table (job_events) and is a different concern.
+// seedRunningJob uses the production timeutil.FormatRFC3339
+// canonical format for consistency with the production code
+// path (was SQL DATETIME literal format; see Defect 3).
 package jobs
 
 import (
@@ -60,6 +70,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
+
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // jobsTestSchema is the canonical SUBSET of the production jobs
@@ -127,118 +139,63 @@ func newBrokerTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// seedRunningJob inserts a job in RUNNING state with the given
-// (workerID, leaseID, revision, leaseTTL) tuple. The test caller
-// then exercises a state transition (Complete / Fail / Cancel /
-// RenewLease) and asserts the post-state. Returns the jobID.
-func seedRunningJob(t *testing.T, db *sql.DB, workerID, leaseID string, revision int, leaseTTL time.Duration) string {
-	t.Helper()
-	jobID := "job_test_" + time.Now().Format("150405.000000000")
-	now := time.Now().UTC()
-	leaseExpiry := now.Add(leaseTTL)
-	_, err := db.ExecContext(context.Background(), `
-		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
-			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, jobID, "test.job", "RUNNING", 0, "test-project", "test-video", "",
-		"corr-test", "{}", "{}", 0, "", 0, 3,
-		workerID, leaseID, leaseExpiry.UTC().Format("2006-01-02 15:04:05.999999999"),
-		now.UTC().Format("2006-01-02 15:04:05.999999999"),
-		now.UTC().Format("2006-01-02 15:04:05.999999999"),
-		now.UTC().Format("2006-01-02 15:04:05.999999999"),
-		nil, nil, revision)
-	if err != nil {
-		t.Fatalf("seed RUNNING job %q: %v", jobID, err)
-	}
-	return jobID
+// jobSnapshot is the canonical row-level projection read by the 4
+// round-trip tests. All fields the tests assert on are present
+// in a single SELECT (see readJob) — this avoids the 6 separate
+// round-trip helpers that the pre-refactor code carried
+// (readJobStatus / readJobCompletedAt / readJobCancelledAt /
+// readJobError / readJobProgress / readJobLeaseExpiry). The
+// `*NullString` fields are nullable per the schema (lease_expiry
+// is set on ClaimNext, completed_at is set on Complete/Fail,
+// cancelled_at is set on Cancel) — `Valid` distinguishes
+// "column is NULL" from "column is empty string".
+type jobSnapshot struct {
+	Status      string         // current status (RUNNING, SUCCEEDED, FAILED, CANCELLED, ...)
+	Revision    int            // current revision counter (bumped on fenced state transitions)
+	CompletedAt sql.NullString // set after Complete/Fail; NULL while pre-terminal
+	CancelledAt sql.NullString // set after Cancel; NULL while pre-terminal
+	Error       string         // error message (set after Fail)
+	Progress    int            // progress percentage (100 after Complete)
+	LeaseExpiry sql.NullString // set on ClaimNext; extended on RenewLease
+	WorkerID    string         // owning worker (set on Claim, cleared on Complete/Fail)
+	LeaseID     string         // lease identifier (set on Claim, cleared on Complete/Fail)
 }
 
-// readJobStatus returns the current (status, revision) for the
-// given jobID, post-transition. Used by the round-trip assertions.
-func readJobStatus(t *testing.T, db *sql.DB, jobID string) (string, int) {
+// readJob returns the canonical row-level projection for the
+// given jobID in a single SELECT. Replaces the 6 pre-refactor
+// read-helpers (one query per field) with a single query per
+// row — 5 round-trips saved per test (4 tests × 5 saved
+// round-trips = 20 round-trips saved across the suite).
+//
+// godlike/06 SSOT (one canonical owner per fact): the SELECT
+// column list is the canonical SUBSET of the production
+// `jobs` row that the 4 state transitions touch. The schema
+// constant jobsTestSchema is the load-bearing invariant —
+// adding a column to the SELECT WITHOUT extending the
+// schema constant is a godlike/07 silent-fake-availability
+// regression (the scan would fail at test-time).
+func readJob(t *testing.T, db *sql.DB, jobID string) jobSnapshot {
 	t.Helper()
-	var status string
-	var revision int
+	var s jobSnapshot
 	err := db.QueryRowContext(context.Background(),
-		`SELECT status, revision FROM jobs WHERE id = ?`, jobID,
-	).Scan(&status, &revision)
+		`SELECT status, revision, completed_at, cancelled_at, error, progress, lease_expiry, worker_id, lease_id
+		 FROM jobs WHERE id = ?`, jobID,
+	).Scan(
+		&s.Status, &s.Revision, &s.CompletedAt, &s.CancelledAt,
+		&s.Error, &s.Progress, &s.LeaseExpiry, &s.WorkerID, &s.LeaseID,
+	)
 	if err != nil {
-		t.Fatalf("read job %q status: %v", jobID, err)
+		t.Fatalf("readJob %q: %v", jobID, err)
 	}
-	return status, revision
-}
-
-// readJobCompletedAt returns the completed_at value (nullable) for
-// post-Complete assertions.
-func readJobCompletedAt(t *testing.T, db *sql.DB, jobID string) sql.NullString {
-	t.Helper()
-	var completedAt sql.NullString
-	err := db.QueryRowContext(context.Background(),
-		`SELECT completed_at FROM jobs WHERE id = ?`, jobID,
-	).Scan(&completedAt)
-	if err != nil {
-		t.Fatalf("read job %q completed_at: %v", jobID, err)
-	}
-	return completedAt
-}
-
-// readJobCancelledAt returns the cancelled_at value (nullable) for
-// post-Cancel assertions.
-func readJobCancelledAt(t *testing.T, db *sql.DB, jobID string) sql.NullString {
-	t.Helper()
-	var cancelledAt sql.NullString
-	err := db.QueryRowContext(context.Background(),
-		`SELECT cancelled_at FROM jobs WHERE id = ?`, jobID,
-	).Scan(&cancelledAt)
-	if err != nil {
-		t.Fatalf("read job %q cancelled_at: %v", jobID, err)
-	}
-	return cancelledAt
-}
-
-// readJobError returns the error column for post-Fail assertions.
-func readJobError(t *testing.T, db *sql.DB, jobID string) string {
-	t.Helper()
-	var errMsg string
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT error FROM jobs WHERE id = ?`, jobID,
-	).Scan(&errMsg); err != nil {
-		t.Fatalf("read job %q error: %v", jobID, err)
-	}
-	return errMsg
-}
-
-// readJobProgress returns the progress column for post-Complete
-// assertions (Complete must stamp progress=100).
-func readJobProgress(t *testing.T, db *sql.DB, jobID string) int {
-	t.Helper()
-	var progress int
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT progress FROM jobs WHERE id = ?`, jobID,
-	).Scan(&progress); err != nil {
-		t.Fatalf("read job %q progress: %v", jobID, err)
-	}
-	return progress
-}
-
-// readJobLeaseExpiry returns the lease_expiry value (nullable) for
-// post-RenewLease assertions.
-func readJobLeaseExpiry(t *testing.T, db *sql.DB, jobID string) sql.NullString {
-	t.Helper()
-	var leaseExpiry sql.NullString
-	err := db.QueryRowContext(context.Background(),
-		`SELECT lease_expiry FROM jobs WHERE id = ?`, jobID,
-	).Scan(&leaseExpiry)
-	if err != nil {
-		t.Fatalf("read job %q lease_expiry: %v", jobID, err)
-	}
-	return leaseExpiry
+	return s
 }
 
 // readLatestEventForJob returns the type + message of the most
 // recently inserted event for the given jobID. Used to assert
-// the canonical event types per state transition.
+// the canonical event types per state transition. RETAINED as
+// a separate helper (not folded into readJob) because it
+// queries the `job_events` table, not `jobs` — a different
+// concern per godlike/06 SSOT one-canonical-owner-per-fact.
 func readLatestEventForJob(t *testing.T, db *sql.DB, jobID string) (string, string) {
 	t.Helper()
 	var evtType, msg string
@@ -250,6 +207,40 @@ func readLatestEventForJob(t *testing.T, db *sql.DB, jobID string) (string, stri
 		t.Fatalf("read latest event for job %q: %v", jobID, err)
 	}
 	return evtType, msg
+}
+
+// seedRunningJob inserts a job in RUNNING state with the given
+// (workerID, leaseID, revision, leaseTTL) tuple. The test caller
+// then exercises a state transition (Complete / Fail / Cancel /
+// RenewLease) and asserts the post-state. Returns the jobID.
+//
+// Timestamp format: timeutil.FormatRFC3339 (RFC3339 canonical
+// format) for consistency with the production code path
+// (godlike/06 SSOT — one canonical owner per fact). The SQL
+// DATETIME column accepts both the SQL literal format
+// ("YYYY-MM-DD HH:MM:SS") AND the RFC3339 format, so this is
+// a refactor-only change with no behavioral drift.
+func seedRunningJob(t *testing.T, db *sql.DB, workerID, leaseID string, revision int, leaseTTL time.Duration) string {
+	t.Helper()
+	jobID := "job_test_" + time.Now().Format("150405.000000000")
+	now := time.Now().UTC()
+	leaseExpiry := now.Add(leaseTTL)
+	nowStr := timeutil.FormatRFC3339(now)
+	leaseExpiryStr := timeutil.FormatRFC3339(leaseExpiry)
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
+			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, jobID, "test.job", "RUNNING", 0, "test-project", "test-video", "",
+		"corr-test", "{}", "{}", 0, "", 0, 3,
+		workerID, leaseID, leaseExpiryStr,
+		nowStr, nowStr, nowStr,
+		nil, nil, revision)
+	if err != nil {
+		t.Fatalf("seed RUNNING job %q: %v", jobID, err)
+	}
+	return jobID
 }
 
 // TestBroker_RoundTrip_Complete_RunningToSucceeded pins the
@@ -275,11 +266,12 @@ func TestBroker_RoundTrip_Complete_RunningToSucceeded(t *testing.T) {
 	jobID := seedRunningJob(t, db, workerID, leaseID, revision, 30*time.Second)
 
 	// Pre-assert: status=RUNNING, revision=5, completed_at NULL.
-	if status, _ := readJobStatus(t, db, jobID); status != "RUNNING" {
-		t.Fatalf("pre-condition: expected status=RUNNING, got %q", status)
+	pre := readJob(t, db, jobID)
+	if pre.Status != "RUNNING" {
+		t.Fatalf("pre-condition: expected status=RUNNING, got %q", pre.Status)
 	}
-	if completedAt := readJobCompletedAt(t, db, jobID); completedAt.Valid {
-		t.Fatalf("pre-condition: expected completed_at NULL, got %q", completedAt.String)
+	if pre.CompletedAt.Valid {
+		t.Fatalf("pre-condition: expected completed_at NULL, got %q", pre.CompletedAt.String)
 	}
 
 	// Exercise: Complete with the matching (workerID, leaseID, expectedRevision).
@@ -288,18 +280,18 @@ func TestBroker_RoundTrip_Complete_RunningToSucceeded(t *testing.T) {
 	}
 
 	// Post-assert: status=SUCCEEDED, completed_at NOT NULL, progress=100.
-	status, newRevision := readJobStatus(t, db, jobID)
-	if status != "SUCCEEDED" {
-		t.Fatalf("post-Complete: expected status=SUCCEEDED, got %q (ORPHAN)", status)
+	post := readJob(t, db, jobID)
+	if post.Status != "SUCCEEDED" {
+		t.Fatalf("post-Complete: expected status=SUCCEEDED, got %q (ORPHAN)", post.Status)
 	}
-	if newRevision != revision+1 {
-		t.Errorf("post-Complete: expected revision=%d (one bump from fenced state transition), got %d", revision+1, newRevision)
+	if post.Revision != revision+1 {
+		t.Errorf("post-Complete: expected revision=%d (one bump from fenced state transition), got %d", revision+1, post.Revision)
 	}
-	if completedAt := readJobCompletedAt(t, db, jobID); !completedAt.Valid {
+	if !post.CompletedAt.Valid {
 		t.Errorf("post-Complete: expected completed_at NOT NULL, got NULL")
 	}
-	if progress := readJobProgress(t, db, jobID); progress != 100 {
-		t.Errorf("post-Complete: expected progress=100, got %d", progress)
+	if post.Progress != 100 {
+		t.Errorf("post-Complete: expected progress=100, got %d", post.Progress)
 	}
 
 	// Event assertion: the canonical `job_completed` event was
@@ -334,8 +326,9 @@ func TestBroker_RoundTrip_Fail_RunningToFailed(t *testing.T) {
 	jobID := seedRunningJob(t, db, workerID, leaseID, revision, 30*time.Second)
 
 	// Pre-assert: status=RUNNING.
-	if status, _ := readJobStatus(t, db, jobID); status != "RUNNING" {
-		t.Fatalf("pre-condition: expected status=RUNNING, got %q", status)
+	pre := readJob(t, db, jobID)
+	if pre.Status != "RUNNING" {
+		t.Fatalf("pre-condition: expected status=RUNNING, got %q", pre.Status)
 	}
 
 	// Exercise: Fail with the matching (workerID, leaseID, expectedRevision).
@@ -345,18 +338,18 @@ func TestBroker_RoundTrip_Fail_RunningToFailed(t *testing.T) {
 	}
 
 	// Post-assert: status=FAILED, completed_at NOT NULL, error set.
-	status, newRevision := readJobStatus(t, db, jobID)
-	if status != "FAILED" {
-		t.Fatalf("post-Fail: expected status=FAILED, got %q (ORPHAN)", status)
+	post := readJob(t, db, jobID)
+	if post.Status != "FAILED" {
+		t.Fatalf("post-Fail: expected status=FAILED, got %q (ORPHAN)", post.Status)
 	}
-	if newRevision != revision+1 {
-		t.Errorf("post-Fail: expected revision=%d (one bump from fenced state transition), got %d", revision+1, newRevision)
+	if post.Revision != revision+1 {
+		t.Errorf("post-Fail: expected revision=%d (one bump from fenced state transition), got %d", revision+1, post.Revision)
 	}
-	if completedAt := readJobCompletedAt(t, db, jobID); !completedAt.Valid {
+	if !post.CompletedAt.Valid {
 		t.Errorf("post-Fail: expected completed_at NOT NULL, got NULL")
 	}
-	if errMsg := readJobError(t, db, jobID); errMsg != failMsg {
-		t.Errorf("post-Fail: expected error=%q, got %q", failMsg, errMsg)
+	if post.Error != failMsg {
+		t.Errorf("post-Fail: expected error=%q, got %q", failMsg, post.Error)
 	}
 
 	// Event assertion: the canonical `job_failed` event was recorded.
@@ -389,8 +382,9 @@ func TestBroker_RoundTrip_Cancel_RunningToCancelled(t *testing.T) {
 	jobID := seedRunningJob(t, db, workerID, leaseID, revision, 30*time.Second)
 
 	// Pre-assert: status=RUNNING.
-	if status, _ := readJobStatus(t, db, jobID); status != "RUNNING" {
-		t.Fatalf("pre-condition: expected status=RUNNING, got %q", status)
+	pre := readJob(t, db, jobID)
+	if pre.Status != "RUNNING" {
+		t.Fatalf("pre-condition: expected status=RUNNING, got %q", pre.Status)
 	}
 
 	// Exercise: Cancel (Cancel does not take a worker/lease tuple
@@ -400,14 +394,14 @@ func TestBroker_RoundTrip_Cancel_RunningToCancelled(t *testing.T) {
 	}
 
 	// Post-assert: status=CANCELLED, cancelled_at NOT NULL.
-	status, newRevision := readJobStatus(t, db, jobID)
-	if status != "CANCELLED" {
-		t.Fatalf("post-Cancel: expected status=CANCELLED, got %q (ORPHAN)", status)
+	post := readJob(t, db, jobID)
+	if post.Status != "CANCELLED" {
+		t.Fatalf("post-Cancel: expected status=CANCELLED, got %q (ORPHAN)", post.Status)
 	}
-	if newRevision != revision+1 {
-		t.Errorf("post-Cancel: expected revision=%d (one bump from fenced state transition), got %d", revision+1, newRevision)
+	if post.Revision != revision+1 {
+		t.Errorf("post-Cancel: expected revision=%d (one bump from fenced state transition), got %d", revision+1, post.Revision)
 	}
-	if cancelledAt := readJobCancelledAt(t, db, jobID); !cancelledAt.Valid {
+	if !post.CancelledAt.Valid {
 		t.Errorf("post-Cancel: expected cancelled_at NOT NULL, got NULL")
 	}
 
@@ -456,15 +450,14 @@ func TestBroker_RoundTrip_RenewLease_DoesNotBumpRevision(t *testing.T) {
 	jobID := seedRunningJob(t, db, workerID, leaseID, revision, 30*time.Second)
 
 	// Capture pre-state.
-	preStatus, preRevision := readJobStatus(t, db, jobID)
-	if preStatus != "RUNNING" {
-		t.Fatalf("pre-condition: expected status=RUNNING, got %q", preStatus)
+	pre := readJob(t, db, jobID)
+	if pre.Status != "RUNNING" {
+		t.Fatalf("pre-condition: expected status=RUNNING, got %q", pre.Status)
 	}
-	if preRevision != revision {
-		t.Fatalf("pre-condition: expected revision=%d, got %d", revision, preRevision)
+	if pre.Revision != revision {
+		t.Fatalf("pre-condition: expected revision=%d, got %d", revision, pre.Revision)
 	}
-	preLeaseExpiry := readJobLeaseExpiry(t, db, jobID)
-	if !preLeaseExpiry.Valid {
+	if !pre.LeaseExpiry.Valid {
 		t.Fatalf("pre-condition: expected lease_expiry NOT NULL, got NULL")
 	}
 
@@ -480,21 +473,20 @@ func TestBroker_RoundTrip_RenewLease_DoesNotBumpRevision(t *testing.T) {
 	// This is the load-bearing assertion: if RenewLease silently bumps
 	// the revision, the worker's expectedRevision is invalidated and
 	// subsequent Complete / Fail calls will hit CAS mismatch.
-	postStatus, postRevision := readJobStatus(t, db, jobID)
-	if postStatus != "RUNNING" {
-		t.Errorf("post-RenewLease: expected status=RUNNING, got %q", postStatus)
+	post := readJob(t, db, jobID)
+	if post.Status != "RUNNING" {
+		t.Errorf("post-RenewLease: expected status=RUNNING, got %q", post.Status)
 	}
-	if postRevision != preRevision {
+	if post.Revision != pre.Revision {
 		t.Errorf("post-RenewLease: revision DRIFT — expected unchanged revision=%d, got %d (signature-drift regression: RenewLease silently bumps revision, invalidating the worker's expectedRevision for subsequent Complete / Fail CAS checks -> ORPHAN)",
-			preRevision, postRevision)
+			pre.Revision, post.Revision)
 	}
 
 	// Post-assert: lease_expiry was extended (the positive effect).
-	postLeaseExpiry := readJobLeaseExpiry(t, db, jobID)
-	if !postLeaseExpiry.Valid {
+	if !post.LeaseExpiry.Valid {
 		t.Errorf("post-RenewLease: expected lease_expiry NOT NULL, got NULL")
 	}
-	if postLeaseExpiry.String == preLeaseExpiry.String {
-		t.Errorf("post-RenewLease: expected lease_expiry to be EXTENDED, got unchanged value %q", postLeaseExpiry.String)
+	if post.LeaseExpiry.String == pre.LeaseExpiry.String {
+		t.Errorf("post-RenewLease: expected lease_expiry to be EXTENDED, got unchanged value %q", post.LeaseExpiry.String)
 	}
 }

@@ -111,10 +111,21 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 // ── RenewLease ───────────────────────────────────────────────────────────
 
 // RenewLease extends an existing lease for a running or finalizing job.
+//
+// JOBS-T01-SQLITE-REPO (P0, 2026-07-15) signature-drift fix: the
+// previous UPDATE silently bumped `revision = revision + 1`, which
+// invalidated the worker's expectedRevision for subsequent Complete /
+// Fail CAS checks (the kernel/job.Store::RenewLease signature has NO
+// return channel for the new revision). Result: stale expectedRevision
+// → CAS mismatch → tx rollback → RUNNING-state job orphaned in the
+// broker. The fix removes the silent revision bump; the canonical
+// invariant is that revision is bumped ONLY on fenced state
+// transitions (Complete / Fail / ScheduleRetry / Cancel / Retry /
+// FinalizeAggregateParent), NOT on lease extensions.
 func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) error {
 	newExpiry := time.Now().Add(leaseTTL)
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE jobs SET lease_expiry = ?, revision = revision + 1, updated_at = ?
+		`UPDATE jobs SET lease_expiry = ?, updated_at = ?
 		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
 		 AND worker_id = ?`,
 		timeutil.FormatRFC3339(newExpiry), timeutil.FormatRFC3339(time.Now()),
