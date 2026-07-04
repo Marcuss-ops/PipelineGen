@@ -76,14 +76,25 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 		// (with up to ~1 s margin to the outer cap) and we still benefit
 		// from an early return if the pool drains faster. Picking 15 s here
 		// would be unreachable — the outer cap would always fire first.
-		// VO-DECOMPOSITION P0 #1 (July 2026): stop the persistent TTS
-		// worker so the python3 subprocess doesn't leak on restart.
+		// VO-DECOMPOSITION P0 #1 (July 2026): stop persistent workers
+		// so the python3 subprocesses don't leak on restart.
+		// TTS worker (tts_edge_server.py).
 		if root != nil && root.Domains != nil && root.Domains.AudioProcessor != nil {
 			wg.Add(1)
 			concurrent.SafeGo("cleanup-tts-worker", func() {
 				defer wg.Done()
 				if err := root.Domains.AudioProcessor.Stop(); err != nil {
 					log.Warn("tts worker stop returned error", zap.Error(err))
+				}
+			})
+		}
+		// Chrome image worker (slide_worker.py).
+		if root != nil && root.Domains != nil && root.Domains.ImageService != nil {
+			wg.Add(1)
+			concurrent.SafeGo("cleanup-chrome-worker", func() {
+				defer wg.Done()
+				if err := root.Domains.ImageService.StopChromeProvider(); err != nil {
+					log.Warn("chrome worker stop returned error", zap.Error(err))
 				}
 			})
 		}
