@@ -1,6 +1,6 @@
 // Package job — canonical_definitions.go (P0 Commit 3, July 2026).
 //
-// Exported canonical JobDefinition literals for the 4 workflow
+// Exported canonical JobDefinition literals for the 5 workflow
 // job families. These live OUTSIDE job_definition_test.go so the
 // composition root (internal/app/registry.go::WireRegistry) can
 // reference them at startup wiring time — Go's `_test.go` files
@@ -9,10 +9,11 @@
 //
 // ── Increment table ─────────────────────────────────────────────────
 //
-//	CanonicalScriptGenerate    script.generate / creator_allowed / heavy artifacts
-//	CanonicalImagesGenerate    images.generate / creator_allowed / multi-image artifacts
-//	CanonicalDocumentGenerate  document.generate / creator_allowed / single-DOCX artifact
 //	CanonicalAssetsResolve     assets.resolve  / creator_allowed / pure-data (zero Artifacts)
+//	CanonicalClipRegister      media.clip      / creator_allowed / pure-data (zero Artifacts)
+//	CanonicalDocumentGenerate  document.generate / creator_allowed / single-DOCX artifact
+//	CanonicalImagesGenerate    images.generate / creator_allowed / multi-image artifacts
+//	CanonicalScriptGenerate    script.generate / creator_allowed / heavy artifacts
 //
 // ── Update discipline ───────────────────────────────────────────────
 //
@@ -130,14 +131,41 @@ var CanonicalAssetsResolve = JobDefinition{
 	HandlerKey: "assets.resolve.handler",
 }
 
+// CanonicalClipRegister is the canonical JobDefinition for
+// media.clip — async clip registration from the batch-register
+// endpoint. Each clip becomes an independent job; yt-dlp + cut +
+// Drive upload + DB write happen off the request thread.
+//
+// ProducesArtifacts=false because the registration pipeline persists
+// its own media_assets row + outbox events inside a per-clip tx
+// (mirror of youtube_clip.extract); the broker's legacy Complete is
+// the canonical mark-SUCCEEDED seam.
+var CanonicalClipRegister = JobDefinition{
+	Type:           TypeClipRegister,
+	ExecutionClass: ExecutionCreatorAllowed,
+	Queue:          "default",
+	Timeout:        30 * time.Minute,
+	RetryPolicyKey: "max_retries_2",
+	ConcurrencyKey: "single_global",
+	RequiredCapabilities: []Capability{
+		"media.clip.extract",
+		"drive.write",
+	},
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", TypeClipRegister),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", TypeClipRegister),
+	// ProducesArtifacts=false: per-item tx owns artifact persistence.
+	HandlerKey: "media.clip.handler",
+}
+
 // CanonicalJobDefinitions is the slice used by composition-root
 // startup wiring (internal/app/registry.go::WireRegistry) to
-// register all 4 canonical families into the C3 MutableJobRegistry
+// register all 5 canonical families into the C3 MutableJobRegistry
 // in a single loop. Order is deterministic (alphabetical-by-Type)
 // because CreatorCapabilities() derives from this slice via
 // sorted-union across RequiredCapabilities.
 var CanonicalJobDefinitions = []JobDefinition{
 	CanonicalAssetsResolve,    // a
+	CanonicalClipRegister,     // c (media.clip — async batch-register)
 	CanonicalDocumentGenerate, // d
 	CanonicalImagesGenerate,   // i
 	CanonicalScriptGenerate,   // s

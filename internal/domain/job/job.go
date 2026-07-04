@@ -160,4 +160,13 @@ const (
 	// pattern is replicated here — child jobs are an OWNED fact of
 	// the script-batch capability (godlike/06 one-canonical-owner-per-fact).
 	TypeScriptGenerateItem = "script.generate_item"
+
+	// PR-BATCH-REGISTER-ASYNC (July 2026): async clip registration via
+	// the /api/media/register-batch endpoint. Each clip becomes an
+	// independent media.clip job; yt-dlp + cut + Drive upload + DB write
+	// happen off the request thread. ProducesArtifacts=false because the
+	// registration pipeline persists its own media_assets row + outbox
+	// events inside a per-clip tx (mirror of youtube_clip.extract); the
+	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
+	TypeClipRegister = "media.clip"
 )
