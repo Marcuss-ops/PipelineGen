@@ -31,24 +31,28 @@ func runListStyles(args []string) error {
 	enabledCount := 0
 	for _, s := range styles {
 		status := "enabled"
-		if !s.IsEnabled() {
+		// Step-1 typed migration (A1, July 2026): the *bool
+		// tri-state IsEnabled() method was retired along with
+		// the legacy 14-field struct. The plain `Enabled bool`
+		// field replaces it (silent-flip absent → false; the
+		// existing config/generation_styles.yaml pins enabled
+		// explicitly on every entry, so production is transparent).
+		if !s.Enabled {
 			status = "DISABLED"
 		} else {
 			enabledCount++
 		}
 
 		fmt.Printf("  %-18s v%-2d [%s] → %s\n", s.Name, s.Version, status, s.DestinationKey)
-		fmt.Printf("    prompt:     %s\n", textutil.Truncate(s.EffectiveSuffix(), 80))
-		// surface-3 (July 2026): per-style AllowedProviders retired.
-		// google-slides is the sole image-generation provider; the
-		// row is now a static statement rather than a dynamic
-		// lookup on s.AllowedProviders.
+		fmt.Printf("    prompt:     %s\n", textutil.Truncate(s.PromptSuffix, 80))
+		// Step-1 typed migration (A1, July 2026): the per-style
+		// AllowedProviders check was retired in surface-3 and the
+		// field itself was removed in A1. Hard-coded static
+		// statement below matches the same canonical provider
+		// surface.
 		fmt.Printf("    providers:  google-slides (only)\n")
 		if s.NegativePrompt != "" {
 			fmt.Printf("    negative:   %s\n", textutil.Truncate(s.NegativePrompt, 80))
-		}
-		if len(s.Tags) > 0 {
-			fmt.Printf("    tags:       %v\n", s.Tags)
 		}
 		fmt.Println()
 	}

@@ -4,19 +4,19 @@
 // Per the July 2026 image-restructuring plan, the canonical
 // image search API is split by territory:
 //
-//   GET  /api/images/retrieved/search → SearchAndDownload +
-//                                       multimedia fallback chain
-//   GET  /api/images/generated/search → step-9 forward-pointer
-//                                       (returns empty DTO list today;
-//                                        SQLite-backed read-only filter is
-//                                        a follow-up).
-//   POST /api/images/generated/generate → GenerateSmartImage (PR-IMAGES-SHIM-REMOVAL, 2026-07-04)
-//                                         (matches the existing /generate
-//                                          payload semantics but mounted
-//                                          under /generated/*).
-//   GET  /api/images/generated/styles   → StyleRegistry.List
-//   GET  /api/images/search?territory=retrieved|generated|all
-//                                       → Aggregator; default = retrieved
+//	GET  /api/images/retrieved/search → SearchAndDownload +
+//	                                    multimedia fallback chain
+//	GET  /api/images/generated/search → step-9 forward-pointer
+//	                                    (returns empty DTO list today;
+//	                                     SQLite-backed read-only filter is
+//	                                     a follow-up).
+//	POST /api/images/generated/generate → GenerateSmartImage (PR-IMAGES-SHIM-REMOVAL, 2026-07-04)
+//	                                      (matches the existing /generate
+//	                                       payload semantics but mounted
+//	                                       under /generated/*).
+//	GET  /api/images/generated/styles   → StyleRegistry.List
+//	GET  /api/images/search?territory=retrieved|generated|all
+//	                                    → Aggregator; default = retrieved
 //
 // All handlers use the unified ImageSearchResult DTO (see
 // types_search.go). Each handler is registered in
@@ -145,11 +145,11 @@ func (h *ImagesHandler) GeneratedSearch(c *gin.Context) {
 // GenerateImageRequest shape but is mounted under /generated/*
 // to emphasise territory separation.
 type GeneratedGenerateRequest struct {
-	Prompt    string   `json:"prompt" binding:"required"`
-	Width     int      `json:"width"`
-	Height    int      `json:"height"`
-	Style     string   `json:"style" example:"medievale"`
-	Tags      []string `json:"tags"`
+	Prompt string   `json:"prompt" binding:"required"`
+	Width  int      `json:"width"`
+	Height int      `json:"height"`
+	Style  string   `json:"style" example:"medievale"`
+	Tags   []string `json:"tags"`
 }
 
 // GeneratedGenerate handles POST /api/images/generated/generate.
@@ -216,27 +216,27 @@ func (h *ImagesHandler) GeneratedStyles(c *gin.Context) {
 // styleDefToInfo projects a canonical GenerationStyle to a StyleInfo
 // DTO for the admin styles endpoint.
 //
-// surface-3 (July 2026): per-style AllowedProviders / AllowedModels
-// were retired from the StyleInfo DTO + this projection once
-// google-slides became the sole image-generation provider (commit
-// d54728dc — surface 1 cut). The canonical GenerationStyle fields
-// stay on the domain type (domain/asset/types_aux.go:83,87) for
-// yaml back-compat; existing config/generation_styles.yaml files
-// still carry the keys but are no longer surfaced via the admin
-// endpoint or enforced at resolve time.
+// Step-1 typed migration (A1, July 2026): the slim 8-field
+// StyleDefinition is the source-of-truth for the projection here.
+// s.EffectiveSuffix() was retired along with the Description
+// fall-back — s.PromptSuffix is the sole resolved suffix. The
+// *bool-tri-state IsEnabled() method was replaced by the plain
+// bool `Enabled` field (silent flip absent → false; existing
+// config pins enabled explicitly so production is transparent).
 //
-// Note: the canonical GenerationStyle lives in
-// internal/domain/asset (not generation/), since Step 3
-// moved the type definitions to the domain layer.
+// The StyleID JSON wire format preserves the canonical case
+// ("Cinematic" → "Cinematic") to stay byte-compatible with the
+// pre-A1 wire-format. A future canonical-case policy can revisit
+// this conservatively.
 func styleDefToInfo(s domain.GenerationStyle) StyleInfo {
 	return StyleInfo{
 		StyleID:        s.Name,
 		Name:           s.Name,
-		Version:        s.Version,
-		PromptSuffix:   s.EffectiveSuffix(),
+		Version:        int(s.Version),
+		PromptSuffix:   s.PromptSuffix,
 		NegativePrompt: s.NegativePrompt,
 		DestinationKey: s.DestinationKey,
-		Enabled:        s.IsEnabled(),
+		Enabled:        s.Enabled,
 	}
 }
 
@@ -249,12 +249,15 @@ func styleDefToInfo(s domain.GenerationStyle) StyleInfo {
 //
 // territory=retrieved → delegates to SearchAndDownload (single result).
 // territory=generated → empty list (Step-9 forward-pointer, see
-//                        GeneratedSearch comment for context).
+//
+//	GeneratedSearch comment for context).
+//
 // territory=all      → fan-out to generated + retrieved and
-//                       merge in deterministic order: retrieved
-//                       first (canonical search behaviour), then
-//                       generated (forward-pointer empty list today
-//                       so behaviour == retrieved in practice).
+//
+//	merge in deterministic order: retrieved
+//	first (canonical search behaviour), then
+//	generated (forward-pointer empty list today
+//	so behaviour == retrieved in practice).
 func (h *ImagesHandler) TerritorySearch(c *gin.Context) {
 	territory := c.DefaultQuery("territory", "retrieved")
 	switch territory {
@@ -338,5 +341,3 @@ func (h *ImagesHandler) allTerritoriesAggregate(c *gin.Context) {
 		Count:   len(results),
 	})
 }
-
-

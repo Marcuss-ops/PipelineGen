@@ -10,6 +10,14 @@
 // rejected at construction time (godlike/07 "no fake availability"):
 // New(nil) returns a failingResolver that emits ErrStyleNotFound for
 // every Resolve/Validate call.
+//
+// Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026):
+// StyleSnapshot lost Width/Height + AllowedProviders/AllowedModels
+// because StyleDefinition no longer carries the source fields
+// (DefaultWidth/DefaultHeight were removed, the per-style allowlist
+// checks were already retired in surface-3). The shape is now the
+// storage-agnostic projection that maps 1:1 onto StyleDefinition
+// after the registry's post-load ID normalisation.
 package styles
 
 import (
@@ -30,29 +38,30 @@ type SourceBackend interface {
 // StyleSnapshot. The resolver translates snap -> ResolvedStyle after
 // every fail-closed gate passes.
 //
-// AllowedProviders / AllowedModels are retained on the snapshot for
-// yaml back-compat (config/generation_styles.yaml still carries the
-// keys). As of surface-3 (July 2026) the canonical resolver no longer
-// reads these fields — see Resolve's doc-comment for the rationale.
+// Step-1 typed migration (A1, July 2026): the snapshot was slimmed
+// down dramatically. Width/Height dropped together with the underlying
+// StyleDefinition.DefaultWidth/DefaultHeight fields; Allowlists dropped
+// with StyleDefinition.AllowedProviders/AllowedModels (the surface-3
+// retirement). What's left maps 1:1 onto the canonical 8-field
+// StyleDefinition plus optional source-side metadata.
 type StyleSnapshot struct {
-	ID               string
-	Version          int
-	PromptSuffix     string
-	NegativePrompt   string
-	Width, Height    int
-	DestinationKey   string
-	Enabled          bool
-	AllowedProviders []string
-	AllowedModels    []string
+	ID             string
+	Version        int
+	PromptSuffix   string
+	NegativePrompt string
+	DestinationKey string
+	Enabled        bool
 }
 
 // StyleResolver resolves a style by ID. Fail-closed contract.
 // Validate is the void variant: callers only need the error.
 //
-// The provider/model compatibility checks that historically lived
-// inside Resolve (formerly steps 5 and 6 of the fail-closed chain)
-// were retired in surface-3 (July 2026) — see Resolve's doc-comment
-// for the canonical rationale.
+// Step-1 (A1, July 2026): the per-style provider/model compatibility
+// checks were retired already in surface-3 (July 2026 cut) once
+// google-slides became the sole image-generation provider
+// (commit d54728dc). The associated sentinels stay defined as
+// re-export audit-pinning (godlike/06) so consumers can import them
+// from this package even though they are never raised.
 type StyleResolver interface {
 	Resolve(styleID, provider, model string) (ResolvedStyle, error)
 	Validate(styleID, provider, model string) error
@@ -96,26 +105,19 @@ var _ StyleResolver = (*failingResolver)(nil)
 //  1. nil-receiver/nil-source                     -> ErrStyleNotFound.
 //  2. empty styleID                                -> fall back to
 //     DefaultStyleID ("default"); if absent in source
-//                                                    -> ErrStyleNotFound.
+//     -> ErrStyleNotFound.
 //  3. ID absent in source                          -> ErrStyleNotFound.
 //  4. ID found but Enabled = false                 -> ErrStyleDisabled.
 //  5. success                                       -> ResolvedStyle populated.
 //
-// Dead-code (surface-3, July 2026): the per-style AllowedProviders /
-// AllowedModels checks (formerly steps 5 and 6 of this list, which
-// raised ErrStyleProviderUnsupported / ErrStyleModelUnsupported via
-// the containsString helper) were retired once google-slides became
-// the sole image-generation provider (commit d54728dc — surface 1
-// cut). The GenerationStyle.AllowedProviders / AllowedModels fields
-// (types_aux.go:83,87) remain on the domain type for yaml
-// back-compat (existing config/generation_styles.yaml files still
-// carry the keys; ignored at resolve time). The
+// Step-1 typed migration (A1, July 2026): Width/Height were dropped
+// from ResolvedStyle because StyleDefinition no longer carries
+// DefaultWidth/DefaultHeight — dimensions are caller-supplied via
+// the image generation request. The provider/model compatibility
+// checks were retired already in surface-3 (July 2026) once
+// google-slides became the sole image-generation provider; the
 // ErrStyleProviderUnsupported / ErrStyleModelUnsupported sentinels
-// stay defined for re-export audit-pinning (godlike/06) — see
-// internal/application/assets/generation/style_registry.go for the
-// stable re-export surface, and
-// resolver_test.go::TestStyleResolver_AllSentinelErrorsNonNil for
-// the non-nil semantic contract that callers can rely on.
+// stay defined for re-export audit-pinning (godlike/06).
 func (r *styleResolverImpl) Resolve(styleID, provider, model string) (ResolvedStyle, error) {
 	if r == nil || r.source == nil {
 		return ResolvedStyle{}, ErrStyleNotFound
@@ -133,9 +135,10 @@ func (r *styleResolverImpl) Resolve(styleID, provider, model string) (ResolvedSt
 	if !snap.Enabled {
 		return ResolvedStyle{}, fmt.Errorf("%w: %s", ErrStyleDisabled, styleID)
 	}
-	// surface-3 (July 2026): per-style allowlist checks retired. See
-	// the doc-comment above for the rationale + audit-pinning chain.
-	// The sentinels stay defined for re-export but are never raised.
+	// Step-1 typed migration (A1, July 2026): the per-style
+	// allowlist checks were retired already in surface-3; the
+	// ErrStyleProviderUnsupported / ErrStyleModelUnsupported
+	// sentinels stay defined for re-export audit-pinning.
 	_ = ErrStyleProviderUnsupported
 	_ = ErrStyleModelUnsupported
 	return ResolvedStyle{
@@ -143,8 +146,6 @@ func (r *styleResolverImpl) Resolve(styleID, provider, model string) (ResolvedSt
 		Version:        snap.Version,
 		PromptSuffix:   snap.PromptSuffix,
 		NegativePrompt: snap.NegativePrompt,
-		Width:          snap.Width,
-		Height:         snap.Height,
 		DestinationKey: snap.DestinationKey,
 		Enabled:        snap.Enabled,
 	}, nil

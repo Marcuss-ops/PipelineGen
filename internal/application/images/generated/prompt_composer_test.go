@@ -147,11 +147,22 @@ func TestPromptComposer_RegexSafeTrimSpace(t *testing.T) {
 	}
 }
 
-// TestPromptComposer_DimensionFallback: caller-supplied dims win, else style.
-func TestPromptComposer_DimensionFallback(t *testing.T) {
-	style := generation.ResolvedStyle{ID: "cinematic", PromptSuffix: "cinematic lighting", Width: 1280, Height: 720}
+// TestPromptComposer_DimensionPassThrough: dimensions are copied from
+// the caller-supplied GenerateCommand. Step-1 typed migration (A1,
+// July 2026) retired the legacy "style-dims fallback" — the canonical
+// StyleDefinition no longer carries DefaultWidth/DefaultHeight, so
+// the composer is a pure pass-through for dimensions.
+//
+// This test locks the new contract: caller-supplied dims ALWAYS
+// win. Style such as `cinematic` carries no per-style dimension
+// defaults, so callers must always provide Width/Height (or accept
+// the zero-value "caller omitted dims" output that flows through
+// resolution_usecase's canonical 1920x1080 default in the dispatcher
+// pre-flight, see generation_usecase.go).
+func TestPromptComposer_DimensionPassThrough(t *testing.T) {
+	style := generation.ResolvedStyle{ID: "test-style", PromptSuffix: "test suffix"}
 
-	explicit, err := fakeComposer().Compose(
+	got, err := fakeComposer().Compose(
 		context.Background(),
 		GenerateCommand{Prompt: "castle", Width: 1920, Height: 1080},
 		style,
@@ -159,21 +170,9 @@ func TestPromptComposer_DimensionFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if explicit.Width != 1920 || explicit.Height != 1080 {
-		t.Fatalf("explicit dims should win: got %dx%d", explicit.Width, explicit.Height)
-	}
-
-	fallback, err := fakeComposer().Compose(
-		context.Background(),
-		GenerateCommand{Prompt: "castle"},
-		style,
-	)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if fallback.Width != 1280 || fallback.Height != 720 {
-		t.Fatalf("style-dim fallback failed: got %dx%d, want 1280x720",
-			fallback.Width, fallback.Height)
+	if got.Width != 1920 || got.Height != 1080 {
+		t.Fatalf("caller-supplied dims must pass through verbatim: got %dx%d, want 1920x1080",
+			got.Width, got.Height)
 	}
 }
 
@@ -193,11 +192,14 @@ func TestPromptComposer_ContextCancelled(t *testing.T) {
 
 // TestPromptComposer_StyleProvenance: StyleID + StyleVersion populate.
 func TestPromptComposer_StyleProvenance(t *testing.T) {
-	style := generation.ResolvedStyle{ID: "cinematic-v2", PromptSuffix: "cinematic lighting", Width: 1920, Height: 1080, Version: 2}
+	// Step-1 typed migration (A1, July 2026): no Width/Height in the
+	// slim 8-field StyleDefinition. The fixture passes dimensions
+	// through the GenerateCommand, not the resolved style.
+	style := generation.ResolvedStyle{ID: "cinematic-v2", PromptSuffix: "cinematic lighting", Version: 2}
 
 	got, err := fakeComposer().Compose(
 		context.Background(),
-		GenerateCommand{Prompt: "castle"},
+		GenerateCommand{Prompt: "castle", Width: 1920, Height: 1080},
 		style,
 	)
 	if err != nil {
@@ -208,6 +210,9 @@ func TestPromptComposer_StyleProvenance(t *testing.T) {
 	}
 	if got.StyleVersion != 2 {
 		t.Fatalf("StyleVersion = %d, want 2", got.StyleVersion)
+	}
+	if got.Width != 1920 || got.Height != 1080 {
+		t.Fatalf("caller-supplied dims must pass through: got %dx%d", got.Width, got.Height)
 	}
 }
 

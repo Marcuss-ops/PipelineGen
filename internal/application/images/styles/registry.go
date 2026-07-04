@@ -6,8 +6,8 @@
 // the styles → generation import cycle. generation/ now imports this
 // package and uses Go type aliases for back-compat.
 //
-// StyleRegistry loads GenerationStyle definitions from YAML and exposes
-// both the legacy query methods (Get, List, ListEnabled, ApplyStyle) and
+// StyleRegistry loads style definitions from YAML and exposes both
+// the legacy query methods (Get, List, ListEnabled, ApplyStyle) and
 // the fail-closed StyleResolver interface (Resolve + Validate).
 //
 // Key design decisions:
@@ -20,13 +20,17 @@
 //   - Uses ONLY local types from this package (types.go, resolver.go) —
 //     no import of generation/ to keep the dependency graph cycle-free.
 //
-// Surface-3 (July 2026): the per-style AllowedProviders / AllowedModels
-// compatibility checks that historically fired ErrStyleProviderUnsupported
-// / ErrStyleModelUnsupported were retired from Resolve. The
-// GenerationStyle fields stay loaded from yaml for back-compat; the
-// helper stringInSlice was removed (was only called from the
-// retired checks). See resolver.go's doc-comment for the canonical
-// rationale + audit-pinning chain.
+// Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026):
+//   - StyleDefinition is now the slim 8-field shape (no Description /
+//     Tags / DefaultWidth / DefaultHeight / AllowedProviders /
+//     AllowedModels). The registry's Load post-processes
+//     ID = StyleID(s.Name) so the typed id stays in sync with the
+//     yaml "name" key.
+//   - ResolvedStyle.Width/Height were dropped (caller-supplied).
+//   - ApplyStyle no longer falls back to Description (the Description
+//     field was retired).
+//   - The per-style allowlist checks were already retired in
+//     surface-3 (July 2026); this cut inherits the cleanup.
 package styles
 
 import (
@@ -56,6 +60,13 @@ var ErrRegistryReadOnly = errors.New("styles.StyleRegistry: runtime Register not
 // ── StyleRegistry ──────────────────────────────────────────────────────
 
 // StyleRegistry manages a collection of generation styles loaded from YAML.
+//
+// Step-1 typed migration (A1, July 2026): the inner map is keyed by
+// the lowercased Name string (not the typed ID) because the ID is
+// post-processed after unmarshal. Lookup-then-name path matches the
+// legacy behaviour; Lookup via StyleID is supported because ID is
+// a typed alias of string and Go's type system treats them
+// transparently.
 type StyleRegistry struct {
 	styles map[string]domain.GenerationStyle
 	mu     sync.RWMutex
@@ -74,6 +85,12 @@ func NewStyleRegistry(yamlPath string) (*StyleRegistry, error) {
 }
 
 // Load reads styles from a YAML file. Existing styles are replaced atomically.
+//
+// Step-1 typed migration (A1, July 2026): post-processes
+// ID = StyleID(s.Name) so the typed id stays in sync with the yaml
+// "name" key. Load is the canonical surface for that normalisation;
+// callers that build StyleRegistry directly via composite literals
+// must perform the same normalisation themselves.
 func (r *StyleRegistry) Load(yamlPath string) error {
 	data, err := os.ReadFile(yamlPath)
 	if err != nil {
@@ -89,8 +106,12 @@ func (r *StyleRegistry) Load(yamlPath string) error {
 	defer r.mu.Unlock()
 
 	r.styles = make(map[string]domain.GenerationStyle, len(container.Styles))
-	for _, s := range container.Styles {
-		r.styles[strings.ToLower(s.Name)] = s
+	for i := range container.Styles {
+		// ID is yaml:"-" so it didn't get populated by unmarshal —
+		// sync it with Name post-load so the typed shape stays
+		// consistent across the registry + resolver surfaces.
+		container.Styles[i].ID = domain.StyleID(container.Styles[i].Name)
+		r.styles[strings.ToLower(container.Styles[i].Name)] = container.Styles[i]
 	}
 
 	return nil
@@ -114,7 +135,11 @@ func (r *StyleRegistry) Lookup(name string) (StyleDefinition, bool) {
 }
 
 // List returns all available styles (including disabled ones — callers
-// should filter via IsEnabled() if they only want active styles).
+// should filter via Enabled if they only want active styles).
+//
+// Step-1 typed migration (A1, July 2026): the legacy
+// `s.IsEnabled()` method was retired along with the *bool tri-state
+// pointer. The remaining `bool` field reads directly via style.Enabled.
 func (r *StyleRegistry) List() []domain.GenerationStyle {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -126,14 +151,14 @@ func (r *StyleRegistry) List() []domain.GenerationStyle {
 	return res
 }
 
-// ListEnabled returns only styles where IsEnabled() is true.
+// ListEnabled returns only styles where Enabled is true.
 func (r *StyleRegistry) ListEnabled() []domain.GenerationStyle {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	res := make([]domain.GenerationStyle, 0, len(r.styles))
 	for _, s := range r.styles {
-		if s.IsEnabled() {
+		if s.Enabled {
 			res = append(res, s)
 		}
 	}
@@ -153,6 +178,11 @@ func (r *StyleRegistry) Register(_ StyleDefinition) error {
 // compatibility. Empty or unknown styleName returns the prompt unchanged
 // (silent fallback — the old behaviour).
 //
+// Step-1 typed migration (A1, July 2026): the legacy Description
+// fall-back was retired. ApplyStyle now uses PromptSuffix directly;
+// unknown style returns the prompt unchanged (silent fallback to the
+// prompt-only rendering path).
+//
 // Deprecated: use StyleResolver.Resolve instead.
 func (r *StyleRegistry) ApplyStyle(prompt, styleName string) string {
 	if styleName == "" {
@@ -164,17 +194,17 @@ func (r *StyleRegistry) ApplyStyle(prompt, styleName string) string {
 		return prompt
 	}
 
-	effectiveSuffix := style.EffectiveSuffix()
-	if effectiveSuffix == "" {
+	suffix := style.PromptSuffix
+	if suffix == "" {
 		return prompt
 	}
 
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
-		return effectiveSuffix
+		return suffix
 	}
 
-	return prompt + ", " + effectiveSuffix
+	return prompt + ", " + suffix
 }
 
 // ── Fail-closed resolution (canonical) ──────────────────────────────────
@@ -185,13 +215,13 @@ func (r *StyleRegistry) ApplyStyle(prompt, styleName string) string {
 // Empty styleID is permitted and returns a zero ResolvedStyle with no
 // error — the caller can treat this as "no style requested".
 //
-// surface-3 (July 2026): the per-style AllowedProviders / AllowedModels
-// compatibility checks (formerly raising ErrStyleProviderUnsupported /
-// ErrStyleModelUnsupported via the stringInSlice helper) were retired
-// once google-slides became the sole image-generation provider. See
-// resolver.go for the canonical rationale + godlike/06 audit-pinning
-// chain — the GenerationStyle fields stay loaded from yaml for
-// back-compat but are no longer enforced here.
+// Step-1 typed migration (A1, July 2026): the per-style allowlist
+// checks (width/height, providers, models) were retired in
+// surface-3. The Resolve body now reads PromptSuffix + Enabled +
+// DestinationKey directly off the slim 8-field StyleDefinition; the
+// helper stringInSlice was removed (was only called from the
+// retired checks). ResolvedStyle lost Width/Height in lockstep —
+// see types.go for the surface-1 cut rationale.
 func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle, error) {
 	// Empty styleID = no style requested → no-op default.
 	if styleID == "" {
@@ -206,21 +236,17 @@ func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle,
 		return ResolvedStyle{}, fmt.Errorf("%w: %q", ErrStyleNotFound, styleID)
 	}
 
-	if !style.IsEnabled() {
+	if !style.Enabled {
 		return ResolvedStyle{}, fmt.Errorf("%w: %q", ErrStyleDisabled, styleID)
 	}
 
-	// surface-3 (July 2026): per-style allowlist checks retired. See
-	// resolver.go's doc-comment for the canonical rationale. The
-	// helper stringInSlice was removed; the re-exported sentinels
+	// Step-1 typed migration (A1, July 2026): per-style allowlist
+	// checks retired (surface-3 cut). The re-exported sentinels
 	// stay defined for godlike/06 audit-pinning (the canonical
 	// non-nil contract is locked in by
 	// resolver_test.go::TestStyleResolver_AllSentinelErrorsNonNil).
 	_ = ErrStyleProviderUnsupported
 	_ = ErrStyleModelUnsupported
-
-	width := style.DefaultWidth
-	height := style.DefaultHeight
 
 	destKey := style.DestinationKey
 	if destKey == "" {
@@ -229,11 +255,9 @@ func (r *StyleRegistry) Resolve(styleID, provider, model string) (ResolvedStyle,
 
 	return ResolvedStyle{
 		ID:             style.Name,
-		Version:        style.Version,
-		PromptSuffix:   style.EffectiveSuffix(),
+		Version:        int(style.Version),
+		PromptSuffix:   style.PromptSuffix,
 		NegativePrompt: style.NegativePrompt,
-		Width:          width,
-		Height:         height,
 		DestinationKey: destKey,
 		Enabled:        true,
 	}, nil

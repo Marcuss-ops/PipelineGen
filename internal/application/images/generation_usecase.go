@@ -19,14 +19,15 @@
 // + per-capability helper files (≤30 LoC each).
 //
 // KILL LIST applied (PR-GODOBJ-3):
-//   (a) NO legacy imageGen.Generate fallback — ErrNoGenerationProviderWired
-//       when registry is nil (godlike/07 typed-error contract).
-//   (b) NO inline IngestImage call — sync adapter + async finalizer own
-//       persistence; usecase produces ONLY (output, manifest).
-//   (c) NO account/project params — GenerateSmartImageWithAccount is
-//       REMOVED; this file's UsecaseCommand lacks those fields. Tenant
-//       identity lives in a separate auth/tenancy port (not in image
-//       generation).
+//
+//	(a) NO legacy imageGen.Generate fallback — ErrNoGenerationProviderWired
+//	    when registry is nil (godlike/07 typed-error contract).
+//	(b) NO inline IngestImage call — sync adapter + async finalizer own
+//	    persistence; usecase produces ONLY (output, manifest).
+//	(c) NO account/project params — GenerateSmartImageWithAccount is
+//	    REMOVED; this file's UsecaseCommand lacks those fields. Tenant
+//	    identity lives in a separate auth/tenancy port (not in image
+//	    generation).
 package images
 
 import (
@@ -66,7 +67,7 @@ type UsecaseCommand struct {
 // UsecaseOutput is the persistence-agnostic envelope returned by the usecase:
 //   - OutputPath: on-disk path where the provider wrote the image.
 //   - Manifest:   typed *job.ArtifactManifest sidecar (sync adapter drops
-//                 this; async job emits it via job.ManifestKey in handlerResult).
+//     this; async job emits it via job.ManifestKey in handlerResult).
 //   - Result:     *GeneratedImage with Data/Format/PromptUsed metadata.
 type UsecaseOutput struct {
 	OutputPath string
@@ -75,13 +76,20 @@ type UsecaseOutput struct {
 }
 
 // RunUsage is the deterministic 5-step image-generation pipeline.
-//   (1) Resolve style fail-closed via StyleResolver (nil-tolerant).
-//   (2) Compose prompt via promptComposer (request-side + style suffix).
-//   (3) Merge dimensions (caller < resolved < canonical default).
-//   (4) Dispatch through registry ONLY (KILL LIST a — NO imageGen fallback).
-//   (5) Build typed ArtifactManifest for the Sender-side upload cycle.
+//
+//	(1) Resolve style fail-closed via StyleResolver (nil-tolerant).
+//	(2) Compose prompt via promptComposer (request-side + style suffix).
+//	(3) Validate dimensions (caller < canonical default).
+//	(4) Dispatch through registry ONLY (KILL LIST a — NO imageGen fallback).
+//	(5) Build typed ArtifactManifest for the Sender-side upload cycle.
 //
 // NO DB writes. The usecase is persistence-agnostic per KILL LIST b.
+//
+// Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026):
+// step (3) lost the `resolved.W/H fallback` tier — StyleDefinition
+// no longer carries DefaultWidth/DefaultHeight, so dimensions are
+// caller-supplied OR default to 1920x1080 (PipelineGen's canonical
+// 16:9 image-generation aspect).
 func RunUsage(ctx context.Context, deps UsecaseDeps, cmd UsecaseCommand) (*UsecaseOutput, error) {
 	if deps.Registry == nil {
 		return nil, ErrNoGenerationProviderWired
@@ -94,17 +102,15 @@ func RunUsage(ctx context.Context, deps UsecaseDeps, cmd UsecaseCommand) (*Useca
 
 	finalPrompt := promptComposer(cmd.Prompt, resolved.PromptSuffix)
 
+	// Step-1 typed migration (A1, July 2026): removed
+	// `finalWidth = resolved.Width` / `finalHeight = resolved.Height`
+	// fallback tiers. Dimensions are caller-supplied OR canonical,
+	// NO per-style overrides.
 	finalWidth := cmd.Width
-	if finalWidth == 0 {
-		finalWidth = resolved.Width
-	}
 	if finalWidth == 0 {
 		finalWidth = 1920
 	}
 	finalHeight := cmd.Height
-	if finalHeight == 0 {
-		finalHeight = resolved.Height
-	}
 	if finalHeight == 0 {
 		finalHeight = 1080
 	}
