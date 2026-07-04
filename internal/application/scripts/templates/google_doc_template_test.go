@@ -7,16 +7,28 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
+// errStubDBOffline is a package-level sentinel used by the stub renderer
+// to simulate a DB-lookup failure. Shared between the stub and the
+// TestRenderScene_WebViewLinkError_Propagated assertion so errors.Is
+// can traverse the %w chain correctly.
+var errStubDBOffline = errors.New("asset_locations: database offline")
+
 // stubRenderer implements SceneRenderer for testing.
 type stubRenderer struct {
 	links map[string]string
+	err   error
 }
 
-func (s *stubRenderer) WebViewLink(assetID string) string {
-	if s.links != nil {
-		return s.links[assetID]
+func (s *stubRenderer) WebViewLink(assetID string) (string, error) {
+	if s.err != nil {
+		return "", s.err
 	}
-	return ""
+	if s.links != nil {
+		if link, ok := s.links[assetID]; ok {
+			return link, nil
+		}
+	}
+	return "", nil
 }
 
 func makeTestAsset(id, name string, state asset.LifecycleState) *asset.Asset {
@@ -195,7 +207,31 @@ func TestRenderScene_TitlePrecedence(t *testing.T) {
 	}
 }
 
-// ── Test 7: RenderScenes batch ────────────────────────────────────────
+// ── Test 7: WebViewLink error propagation ─────────────────────────────
+
+func TestRenderScene_WebViewLinkError_Propagated(t *testing.T) {
+	a := makeTestAsset("asset-001", "Test Scene", asset.StateActive)
+	renderer := &stubRenderer{
+		err: errStubDBOffline,
+	}
+
+	_, err := RenderScene([]*asset.Asset{a}, renderer)
+	if err == nil {
+		t.Fatal("expected error from WebViewLink lookup failure")
+	}
+
+	// The error should wrap the original error, NOT the sentinel.
+	if errors.Is(err, ErrImageNotFinalized) {
+		t.Error("expected WebViewLink lookup error, NOT ErrImageNotFinalized")
+	}
+
+	// The original error should be reachable via errors.Is.
+	if !errors.Is(err, errStubDBOffline) {
+		t.Errorf("expected wrapped error to contain 'asset_locations: database offline', got: %v", err)
+	}
+}
+
+// ── Test 8: RenderScenes batch ────────────────────────────────────────
 
 func TestRenderScenes_Batch(t *testing.T) {
 	a1 := makeTestAsset("asset-001", "Scene One", asset.StateActive)
