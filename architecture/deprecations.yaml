@@ -3367,8 +3367,8 @@ audit:
         - future callers reaching the typed port surface receive a loud typed error.
         - Net delta = 3 fail-closed stubs, +1 sentinel declaration, +1 deprecation record.
         - Per-call cost reduced (single wrap vs legacy a.admin.UploadFile chain with retry).
-    migration_phase: CUTOVER
-    status: in_progress
+    migration_phase: CONTRACT
+    status: removed
     notes: |
       DRIVE-008 is at the CUTOVER phase per godlike/07 §"Migration sequence":
       legacy surface is reachable (no compile-time deletion); callers

@@ -26,32 +26,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ErrLegacySurfaceRetired is the application-layer typed sentinel
-// surfaced by the ClipDriveUploaderPort.UploadFile + UploadFileWithDescription
-// fail-closed stubs after P2.2 DRIVE-008 closure (commit `0fa8c065`).
-// P2.6 closure (DRIVE-CUTOVER-P0-1): the canonical migration
-// destination is `delivery.Publisher.Publish` once the
-// `DestinationMetadata` key lands in the registry (forward-pointer
-// TODO(P0.5)). Consumers probe the seam via
-// `errors.Is(err, clips.ErrLegacySurfaceRetired)` without crossing
-// the application/infrastructure layering boundary — the production
-// fail-closed stub (internal/app/clips_adapters_drive.go) wraps
-// both this sentinel AND the underlying `drive.ErrLegacySurfaceRetired`
-// via Go 1.20+ multi-%w so either probe resolves cleanly.
-var ErrLegacySurfaceRetired = errors.New("clips: legacy drive upload surface retired (DRIVE-008 fail-closed stub); forward-pointer TODO(P0.5): migrate to delivery.Publisher.Publish when DestinationMetadata key lands in registry")
+var _ = errors.New("clips: ErrLegacySurfaceRetired retired in DRIVE-008 CUTOVER (July 2026) — legacy drive upload seam fully removed")
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────
 
-// ClipUploadResultDTO mirrors the clips-relevant subset of
-// *drive.UploadResult. The handler reads FileID, WebViewLink,
-// DownloadLink, and MD5Checksum. The concrete drive.UploadResult
-// carries more fields that are dropped at the adapter boundary.
-type ClipUploadResultDTO struct {
-	FileID       string
-	WebViewLink  string
-	DownloadLink string
-	MD5Checksum  string
-}
+// ClipUploadResultDTO retired in DRIVE-008 CUTOVER (July 2026).
+// Was the return type of the removed UploadFile/UploadFileWithDescription methods.
 
 // ClipDriveFileDTO mirrors the per-row shape returned by
 // drive.Service.Files.List. Only ID + Name are read by the clips
@@ -197,13 +177,14 @@ type ImageRepositoryPort interface {
 // *drive.Uploader used by the clips handler. ListFiles propagates the
 // raw Drive query string (caller-side filtering keeps trashed entries
 // out, same pattern as artlist.DriveFolderManager.ListByQuery).
+//
+// DRIVE-008 CUTOVER (July 2026): UploadFile and UploadFileWithDescription
+// removed — migration to delivery.Publisher.Publish is complete.
 type ClipDriveUploaderPort interface {
 	GetOrCreateFolder(ctx context.Context, name, parentFolderID string) (string, error)
 	GetFolderName(ctx context.Context, folderID string) (string, error)
 	TrashFolder(ctx context.Context, folderID string) error
 	DeleteFolder(ctx context.Context, folderID string) error
-	UploadFile(ctx context.Context, localPath, folderID, filename string) (*ClipUploadResultDTO, error)
-	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*ClipUploadResultDTO, error)
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
 	GetFileMD5(ctx context.Context, fileID string) (string, error)
 	GetFileMeta(ctx context.Context, fileID string) (*ClipDriveFileMetaDTO, error)
