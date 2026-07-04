@@ -1976,7 +1976,7 @@
 - id: AUDIT-2026-07-02
   status: in_progress
   exit_signal: false
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-08-15
   exit_gate: |
     All AUDIT-2026-07-02 linked_issues reach status: shipped (one PR
@@ -2072,7 +2072,7 @@
 - id: AUDIT-RESIDUE-2026-07-04
   status: in_progress
   exit_signal: false
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-08-15
   exit_gate: |
     (a) PR-BLOCKER-Q9-VOICEOVER-FANOUTUSE-CASE flips to status: shipped
@@ -2411,7 +2411,7 @@
 - id: GODOBJ-2026-07-03
   status: in_progress
   exit_signal: false
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-08-31
   exit_gate: |
     (a) 6 absolute-priority files (`PR-GODOBJ-1..6`) split + their
@@ -3603,7 +3603,7 @@ wave_status:
 - id: PR-P1.5-CLOSURE
   status: done
   exit_signal: true
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-07-03
   exit_gate: |-
     Typed-path transient classifier + Retry-After header + jitter extension landed:
@@ -3623,7 +3623,7 @@ wave_status:
 - id: PR-P2.1-CLOSURE
   status: done
   exit_signal: true
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-07-03
   exit_gate: |-
     Package-level mutable test seams in `internal/infrastructure/drive` eliminated:
@@ -3641,7 +3641,7 @@ wave_status:
 - id: PR-P2.2-CLOSURE
   status: done
   exit_signal: true
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-07-03
   exit_gate: |-
     DRIVE-008 fail-closed stubs shipped: 3 production fail-closed stubs in
@@ -3681,7 +3681,7 @@ wave_status:
 - id: PR-P2.3-CLOSURE
   status: done
   exit_signal: true
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-07-03
   exit_gate: |-
     `delivery.PublishAction` → `delivery.UploadOutcome` rename +
@@ -3706,7 +3706,7 @@ wave_status:
 - id: PR-P2.4-CLOSURE
   status: done
   exit_signal: true
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-07-03
   exit_gate: |-
     Documentation hygiene across 4 doc files: AGENTS.md "Known Issues & Fixes"
@@ -3814,7 +3814,7 @@ wave_status:
 - id: COMPLETION-HARDENING-P1P2-2026-07-04
   status: in_progress
   exit_signal: false
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-08-15
   description: |
     Wave tracker for the P1+P2 hardening items (TYP 1/2) surfaced from the
@@ -4256,7 +4256,7 @@ wave_status:
 - id: EXTERNAL-AUDIT-2026-07-04
   status: in_progress
   exit_signal: false
-  owner: architecture
+  owner_capability: architecture
   deadline: 2026-08-22
   exit_gate: |
     All 9 linked_issues reach status: shipped (or merged into their
@@ -4867,3 +4867,119 @@ wave_status:
       ship_date: 2026-07-04
       deadline: 2026-07-04
       description: "Deprecation record REMOTE-COMPLETE-LEGACY in architecture/deprecations.yaml."
+# ── Wave 33 — CODE-QUALITY-CLEANUP-2026-07-04 (pending, July 2026) ──
+# Action plan derived from the Italian audit snapshot pasted to the
+# orchestrator on 2026-07-04. Captures 12 dirty areas across 4 priority
+# bands (P0 absolute 2026-07-15 / P0 structural 2026-08-01 / P1
+# typed-primitive 2026-08-15 / P2 cleanup 2026-08-22). Companion
+# narrative: architecture/action-plans/2026-07-04-code-quality-cleanup-action-plan.md
+#
+# godlike/07 honest-limitation: prioritization is STATIC (complexity +
+# accumulated risk). Forward-pointer PR-CODE-QUALITY-HOTSPOT-CROSSREF
+# (deadline 2026-08-15) runs git-log frequency analysis post-wave to
+# surface missed hotspots; plan-deadline rolls forward per slim-schema
+# append-only ratchet. Forward-pointer PR-CODE-QUALITY-AUDIT-NEXT-CYCLE
+# (deadline 2026-08-22) captures the next batch of dirty areas.
+#
+# No new feature work; pure structural / cleanup per AGENTS.md
+# Git-Lesson-2 (direct-to-main, NO BRANCHES, NO PRs, NO --force).
+# Each per-PR commit lands directly on main per-file (auto-sufficient
+# granularity per the FASE 8 image-territories workflow precedent).
+# Block-scalar | idiom used for all multi-line strings per AGENTS.md
+# Pattern B (YAML block-scalar fix from carry-forward resolution).
+#
+# Cross-references (forward-pointers, NOT in linked_issues slim-shape):
+#   - PR-CODE-QUALITY-HOTSPOT-CROSSREF (deadline 2026-08-15) —
+#     git-log frequency analysis to validate static prioritization.
+#   - PR-CODE-QUALITY-AUDIT-NEXT-CYCLE (deadline 2026-08-22) —
+#     capture the next batch of dirty areas.
+#   - architecture/current.yaml#AUDIT-RESIDUE-2026-07-04 (10 SHAs shipped)
+#   - architecture/current.yaml#VO-DECOMPOSITION-2026-07-04 (8 in flight)
+#   - architecture/current.yaml#PERSIST-PR6 (PR-PERSIST-PR6-CANONICAL shipped)
+#   - architecture/current.yaml#GODOBJ-2026-07-03 (16 slim-shape linked_issues)
+#   - architecture/deprecations.yaml#LEGACY-SCRIPT-ENDPOINTS (forward-pointer)
+#   - architecture/deprecations.yaml#PUBLICATION-INTENT-DIRECT-DB (forward-pointer)
+- id: CODE-QUALITY-CLEANUP-2026-07-04
+  status: pending
+  exit_signal: false
+  owner_capability: architecture
+  deadline: 2026-08-22
+  exit_gate: |
+    All 12 slim-shape linked_issues slots flip to status: shipped.
+    Each per-PR commit lands directly on main per-file (auto-sufficient
+    granularity per AGENTS.md Git-Lesson-2 + FASE 8 image-territories
+    workflow precedent) and passes per-file gofmt + go vet + go build
+    + go test -short gates independently.
+
+    The 4 per-band deadline anchors are: 2026-07-15 (P0 absolute) /
+    2026-08-01 (P0 structural) / 2026-08-15 (P1 typed-primitive +
+    policy-align) / 2026-08-22 (P2 cleanup).
+
+    The 2 cross-ref forward-pointers flip to status: shipped by their
+    respective deadlines to validate the static prioritization
+    (PR-CODE-QUALITY-HOTSPOT-CROSSREF, 2026-08-15) and capture the
+    next batch of dirty areas (PR-CODE-QUALITY-AUDIT-NEXT-CYCLE,
+    2026-08-22).
+
+    godlike/07 honest-limitation: zero active code callsite additions;
+    pure structural / cleanup. The 6 pre-existing build issues
+    (FIX-MONITOR-ENQUEUE-TOLOWER + FIX-MONITOR-SCHEDULER-ENQUEUER +
+    FIX-STOCKPIPELINE-REDECLARATION + FIX-APP-MODULE-MEDIA-DISPATCHER +
+    FIX-IMAGES-ROUTING-CYCLE + FIX-APP-WIRE-SCRIPT-SYNTAX [retired])
+    are NOT regressions and carry forward per the canonical 6-item
+    carry-forward convention. Each per-PR commit must be runnable in
+    isolation on its own subtree per godlike/07 minimum-blast-radius
+    without depending on the pre-existing issues being fixed.
+  linked_issues:
+    # P0 absolute (deadline 2026-07-15)
+    - id: PR-PERSIST-6-CANONICAL-CI-GATES
+      owner_capability: scripts/ci-architectural-checks.sh
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-STOCK-FAKE-AVAILABILITY-REMOVAL
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-07-15
+    # P0 structural (deadline 2026-08-01)
+    - id: PR-STOCK-SERVICE-SPLIT
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-STOCK-ORCHESTRATOR-SPLIT
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-08-01
+    # P1 typed-primitive / policy-align (deadline 2026-08-15)
+    - id: PR-POSTPROCESSOR-TYPED-CONSTANTS
+      owner_capability: internal/application/scripts/processors
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-DOCUMENT-POLICY-ALIGN
+      owner_capability: internal/application/scripts/processors
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-ENGINE-TYPED-INTERFACES
+      owner_capability: internal/application/scripts/usecase
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-SCRIPT-HANDLER-SPLIT
+      owner_capability: internal/application/scripts
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-SCRIPT-WIRE-SPLIT
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    # P2 cleanup (deadline 2026-08-22)
+    - id: PR-LEGACY-QUARANTINE
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-BOOKS-REGRESSION-TEST
+      owner_capability: internal/application/books
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-RECONCILER-PORT-EXTRACT
+      owner_capability: internal/application/assets/finalizer
+      status: pending
+      deadline: 2026-08-22
