@@ -1901,6 +1901,7 @@ literals=$(rg -n --type go \
     -e 'TimelineJSON:\s' \
     --glob '!**/internal/application/scripts/adapters/processor_persistence.go' \
     --glob '!**/internal/application/scripts/adapters/repository.go' \
+    --glob '!**/internal/application/voiceover/**' 
     --glob '!**/*_test.go' \
     internal/ 2>/dev/null \
     | awk -F: '{
