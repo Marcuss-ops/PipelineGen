@@ -68,6 +68,7 @@ var availableCommands = []string{
 	"reset-video-ai",
 	"qdrant-maintenance",
 	"qdrant-readiness",
+	"qdrant-preflight",
 	"stock-reset",
 	"stock-subfolders-reset",
 	"summarize-book",
@@ -120,6 +121,8 @@ func main() {
 		err = runResetVideoAI(args)
 	case "qdrant-readiness":
 		err = runQdrantReadiness(args)
+	case "qdrant-preflight":
+		err = runQdrantPreflight(args)
 	case "sync-all-drive":
 		err = runSyncAllDrive(args)
 	case "test-youtube":
