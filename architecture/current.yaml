@@ -5305,3 +5305,30 @@
       owner_capability: architecture
       status: pending
       deadline: "2026-08-15"
+
+# ============================================================================
+# PR-DEAD-CODE-PURGE-2026-07-25 (2026-07-25, July 2026)
+# ============================================================================
+- id: PR-DEAD-CODE-PURGE-2026-07-25
+  owner_capability: architecture (dead-code audit, godlike/07 zero-legacy)
+  status: shipped
+  exit_signal: true
+  ship_date: 2026-07-25
+  deadline: 2026-07-25
+  description: |
+    Per-godlike/07 zero-legacy dead-code audit closure on 4 user-spec
+    surfaces + 1 discovered bonus surface. Per-file commits:
+      - 5a32611d: refactor(scripts/dto) + refactor(usecase) — dto.ScenesService
+        + dto.NewScenesService + scene_builder_usecase.go git rm
+      - a9bfe0dd: refactor(monitor) — discoverSearchQueries + QueryResult removal
+      - 7fe92a48: test(usecase) — 3 dead SceneBuilderUseCase tests removed
+
+    Findings:
+      1. StyleRegistry.Register (FALSE PREMISE): no Register method exists
+         on the canonical internal/application/images/styles/registry.go
+         ::StyleRegistry; it is YAML-bootstrap-only with the
+         ErrRegistryReadOnly sentinel at registry.go:63. The user's spec
+         was based on a wrong assumption; the dead-code surface is already
+         absent. Audit-pin: ErrRegistryReadOnly lives at registry.go:63.
+      2. scene_stubs.go (PARTIAL PRUNE): dto.ScenesService +
+         dto.NewScenesService removed (0 cal
