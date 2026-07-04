@@ -6035,3 +6035,59 @@ wave_status:
       owner_capability: internal/infrastructure/remote/creator (forward-pointer) + internal/application/voiceover
       status: pending
       deadline: 2026-09-15
+
+- id: PHASE-9-BUG-REMEDIATION-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner_capability: tests/operational
+  deadline: 2026-08-01
+  description: |
+    Bug Remediation Workflow for 8 RED findings identified by Phases 1-8
+    testing. Wave-tracker entry per godlike/06 SSOT (one canonical owner
+    per fact: tests/operational owns the RED-finding inventory + per-PR
+    ship discipline; per-PR ships land in their respective canonical
+    owner_capability boundaries).
+
+    RED-3 (REG-T06-001) ships 2026-07-04 via register/handler.go preflight
+    URL validation gate (godlike/07 fail-fast-at-input principle); the
+    remaining 7 RED-# items ship incrementally via direct-to-main per
+    AGENTS.md Git-Lesson-2 with per-PR atomic granularity.
+
+    Per godlike/07 honest-limitation: 7 REDs forward-cited to a follow-up
+    wave. Each per-PR carries full TDD coverage + 3-surface lockstep
+    closure entries (current.yaml + CHANGELOG.md + AGENTS.md).
+  linked_issues:
+    - id: REG-T06-001
+      owner_capability: internal/api/assets/register
+      status: shipped
+      ship_sha: 1d424140
+      ship_date: 2026-07-04
+      deadline: 2026-07-15
+    - id: CLIPS-T05-001
+      owner_capability: internal/api/routes
+      status: pending
+      deadline: 2026-08-01
+    - id: JOBS-T01-001
+      owner_capability: internal/infrastructure/database/sqlite/jobs
+      status: pending
+      deadline: 2026-08-01
+    - id: JOBS-T01-002
+      owner_capability: internal/infrastructure/database/sqlite/jobs
+      status: pending
+      deadline: 2026-08-01
+    - id: SCRIPT-T03-001
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-08-01
+    - id: SCRIPT-T03-002
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-08-01
+    - id: IMAGES-T04-001
+      owner_capability: internal/api/images
+      status: pending
+      deadline: 2026-08-01
+    - id: SEARCH-T07-001
+      owner_capability: internal/api/assets/search
+      status: pending
+      deadline: 2026-08-01
