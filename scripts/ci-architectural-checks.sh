@@ -53,7 +53,14 @@ set -euo pipefail
 # integration can opt-in by calling `is_known_acceptable <PR_ID>`.
 KNOWN_ACCEPTABLE_IDS=""
 extract_known_acceptable_ids_from_yaml() {
-    local yaml_path="${REPO_ROOT}/architecture/current.yaml"
+    # FASE 10 (2026-07-04) defensive fallback: the function is called BEFORE
+    # the canonical REPO_ROOT resolution at line ~215, so `${REPO_ROOT}` is
+    # unbound under `set -euo pipefail` (line 39). The fallback to `$(pwd)`
+    # is correct in 100% of production invocation sites (CI workflow + Makefile
+    # verify-main + ci-archcheck-e2e.sh all run from repo root cwd). This
+    # bug was surfaced by FASE 7 verification (2026-07-04); forward-pointer
+    # `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04.linked_issues[FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED]`.
+    local yaml_path="${REPO_ROOT:-$(pwd)}/architecture/current.yaml"
     KNOWN_ACCEPTABLE_IDS=""
     if [ ! -f "${yaml_path}" ]; then
         return 0
