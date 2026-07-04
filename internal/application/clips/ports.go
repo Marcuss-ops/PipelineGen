@@ -17,7 +17,6 @@ package clips
 
 import (
 	"context"
-	"errors"
 	"io"
 	"time"
 
@@ -26,7 +25,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var _ = errors.New("clips: ErrLegacySurfaceRetired retired in DRIVE-008 CUTOVER (July 2026) — legacy drive upload seam fully removed")
+// ErrLegacySurfaceRetired was retired in DRIVE-008 CUTOVER (June 2026,
+// commit 0fa8c065) at the application-layer (clips) side. The
+// sentinel is preserved as a comment-only historical audit-pin (no
+// live var) so future agents can trace the DRIVE-008 fail-closed
+// stub lineage. FASE 0.3 (July 2026): the 3 fail-closed stubs
+// (UploadFile + UploadFileWithDescription + sourcing.DrivePort.
+// UploadFileWithDescription) retired via PR-YT-DRIVE-LEGACY-RETIRE.
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────
 

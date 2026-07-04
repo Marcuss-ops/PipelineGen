@@ -43,13 +43,13 @@ type DriveUploadResult struct {
 	DownloadLink string
 }
 
-// DrivePort handles Drive folder operations for sourcing.
-// Deprecated: new code should use PublisherPort instead.
-// DRIVE-008 CUTOVER (July 2026): UploadFileWithDescription removed.
-type DrivePort interface {
-	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
-	GetFolderName(ctx context.Context, folderID string) (string, error)
-}
+// Legacy sourcing.DrivePort was retired in FASE 0.3 (July 2026) per
+// PR-YT-DRIVE-LEGACY-RETIRE (godlike/07 no-fake-availability: zero
+// live concrete remained). The canonical Publisher-port path
+// (delivery.Publisher.Publish, FASE 5 since June 2026) is the sole
+// Drive upload canal for the YouTube registrar. See
+// architecture/deprecations.yaml#PR-YT-DRIVE-LEGACY-RETIRE for the
+// full retirement audit-trail.
 
 // PublisherPort is the canonical Drive publish surface for sourcing.
 // It wraps delivery.Publisher and is the preferred way to upload files

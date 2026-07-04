@@ -2335,7 +2335,9 @@
         — NOT a regression from this PR.
     - id: PR-YT-DRIVE-LEGACY-RETIRE
       owner_capability: internal/app
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: 9bf45abbab255c1fd7489402624f0876ddb7d90e
       deadline: 2026-08-15
       notes: |
         Retire internal/app/youtube_drive_legacy_adapter.go
@@ -2345,6 +2347,24 @@
         internal/ cmd/ returns ONLY dead wiring (zero active callers).
         On trigger: git-rm file + retire sourcing.DrivePort + deprecation
         record in architecture/deprecations.yaml per godlike/07.
+
+        SHIPPED 2026-07-04 as FASE 0.3 closure. The historical
+        youtube_drive_legacy_adapter.go file was already merged into
+        internal/app/youtube_adapters_drive.go in PR-GODOBJ-Azione-4,
+        so the canonical retire path physically deletes the
+        sourcingDriveAdapter struct + 2 surviving methods + compile-time
+        pin in youtube_adapters_drive.go, AND physically deletes the
+        sourcing.DrivePort interface in
+        internal/application/assets/sourcing/ports.go (zero concrete
+        adapters remain — the interface is rot per godlike/06).
+        The fail-closed drive.ErrLegacySurfaceRetired sentinel in
+        internal/infrastructure/drive/errors.go is replaced with a pure-Go
+        audit-pin comment per godlike/06 residue-amendment policy.
+        godlike/06 SSOT cross-references:
+        architecture/deprecations.yaml#PR-YT-DRIVE-LEGACY-RETIRE
+        (status:removed) + AGENTS.md §Recent cross-cutting closures mirror
+        + CHANGELOG.md ## Unreleased > ### Removed entry. 2 forward-pointers
+        lifted to godlike/07 minimum-blast-radius scope.
     - id: Q4-CATALOGSYNC-DispatcherPath
       owner_capability: internal/application/assets/catalogsync
       status: pending

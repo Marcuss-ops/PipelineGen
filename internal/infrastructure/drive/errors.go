@@ -34,4 +34,10 @@ import "errors"
 // to distinguish ambiguity from transient failures.
 var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multiple non-trashed folders with the same name+parent exist on Drive")
 
-var _ = errors.New("drive: ErrLegacySurfaceRetired retired in DRIVE-008 CUTOVER (July 2026)")
+// ErrLegacySurfaceRetired was retired in DRIVE-008 CUTOVER (June 2026,
+// commit 0fa8c065). The sentinel is preserved as a comment-only
+// historical audit-pin (no live var) so future agents can trace
+// the DRIVE-008 fail-closed stub lineage from the codebase.
+// FASE 0.3 (July 2026): the 3 fail-closed stubs (UploadFile +
+// UploadFileWithDescription + sourcing.DrivePort.UploadFileWithDescription)
+// retired via PR-YT-DRIVE-LEGACY-RETIRE.

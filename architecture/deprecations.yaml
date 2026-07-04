@@ -3852,3 +3852,43 @@ if __name__ == '__main__':
         - CONTRACT: physical removal of assets.SourceStager from ports.go.
       Cross-refs: godlike/06 §"One owner per fact", godlike/07 §"No fake
       availability", AGENTS.md Pattern 0.
+
+    - id: PR-YT-DRIVE-LEGACY-RETIRE
+      owner_capability: internal/app (sourcing composition)
+      migration_phase: CONTRACT
+      status: removed
+      introduction_date: 2026-05-15
+      removal_date: 2026-07-04
+      compatibility_test_count: 0
+      usage_metric: |
+        Pre-removal rg "UploadFileWithDescription|sourcingDriveAdapter|DrivePort"
+        internal/ cmd/ returned 19 raw hits (15 comment audit-pins +
+        3 surface method refs + 1 misspelled e2eDriveAdmin stub impl).
+        Post-removal: 0 production-code active use. Only documentation
+        audit-pins remain per godlike/06 residue-amendment policy.
+      replacement: |
+        None - the underlying capability is delegated to the canonical
+        4 DRIVE-005-FIELDS Pattern 0 ports (delivery.Publisher +
+        drive.Reader + drive.FileLifecycle + drive.DocClient) surfaced
+        via DriveBundle. The 2 surviving methods (GetOrCreateFolder +
+        GetFolderName) have zero callers after audit-pin discovery.
+      cross_refs:
+        - DRIVE-005-FIELDS (typed-port migration upstream)
+        - DRIVE-008 (fail-closed stub rollback)
+        - DRIVE-STORE-UPLOAD-TO-DRIVE
+      notes: |
+        FASE 0.3 closure (2026-07-04). Historical context:
+        youtube_drive_legacy_adapter.go was merged into
+        youtube_adapters_drive.go in PR-GODOBJ-Azione-4 (June 2026)
+        leaving only the sourcingDriveAdapter struct + 2 surviving
+        methods. The DRIVE-008 CUTOVER (July 2026) had already
+        fail-closed the legacy UploadFileWithDescription method via the
+        canonical drive.ErrLegacySurfaceRetired sentinel; this PR
+        physically removes the now-zero-caller struct + underlying
+        sourcing.DrivePort interface + the sentinel from its legacy
+        surfaces. godlike/07 no-fake-availability audit-pin preserved
+        on the dead sentinel line in
+        internal/infrastructure/drive/errors.go (1 comment line) so
+        future agents can verify the retirement lineage without
+        resurrecting the shipping-erred surface. Direct-to-main per
+        AGENTS.md Git-Lesson-2 + Git-Lesson-3 trailer convention.
