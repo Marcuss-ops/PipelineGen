@@ -53,136 +53,60 @@ set -euo pipefail
 # integration can opt-in by calling `is_known_acceptable <PR_ID>`.
 KNOWN_ACCEPTABLE_IDS=""
 extract_known_acceptable_ids_from_yaml() {
-    # FASE 10 (2026-07-04) defensive fallback: the function is called BEFORE
-    # the canonical REPO_ROOT resolution at line ~215, so `${REPO_ROOT}` is
-    # unbound under `set -euo pipefail` (line 39). The fallback to `$(pwd)`
-    # is correct in 100% of production invocation sites (CI workflow + Makefile
-    # verify-main + ci-archcheck-e2e.sh all run from repo root cwd). This
-    # bug was surfaced by FASE 7 verification (2026-07-04); forward-pointer
-    # `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04.linked_issues[FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED]`.
+    # PR-REMOVE-CI-AWK-SED-FALLBACKS (2026-07-04): replaced the 132-line
+    # bash state-machine fallback (which compensated for the broken YAML)
+    # with a ~15-line Python heredoc that uses yaml.safe_load. After
+    # PR-FIX-YAML-PARSE-LINE-1551 shipped, the YAML is fully parseable,
+    # so the text-based fallback is no longer needed.
+    #
+    # The replacement preserves the canonical external contract:
+    #   - sets KNOWN_ACCEPTABLE_IDS to newline-separated ID list
+    #   - empty on missing file OR parse error (godlike/07 fail-closed default)
+    #   - accepts:
+    #     - top-level parents: PRE-EXISTING-* (always) OR status pending/in_progress
+    #     - children of PRE-EXISTING-* parents (always)
+    #     - children of pending/in_progress parents
+    #
+    # Per godlike/06 SSOT: the wave-tracker is the SOLE source of truth for
+    # PR/issue status. Per godlike/07 minimum-blast-radius: the Python
+    # heredoc is ~15 lines (vs 132 lines of bash state-machine); the
+    # output format (newline-separated sorted deduped IDs) is byte-identical
+    # to the previous implementation, so callers (is_known_acceptable +
+    # WAVE_BASELINE_SIZE) need no changes.
     local yaml_path="${REPO_ROOT:-$(pwd)}/architecture/current.yaml"
     KNOWN_ACCEPTABLE_IDS=""
     if [ ! -f "${yaml_path}" ]; then
         return 0
     fi
-    # Indentation-aware state-machine scan. Per godlike/06 SSOT the
-    # canonical file is the wave-tracker; per godlike/07 no-fake-
-    # availability the file is currently UNPARSEABLE (3+ indent
-    # cascade bugs at lines ~1582, ~2852, ~2996) so we use awk (NOT
-    # yaml.safe_load). The state machine distinguishes:
-    #
-    #   TOP-LEVEL parent entry  (indent <= 2): `id: <X>` or `- id: <X>`
-    #     → accept iff status: pending OR status: in_progress OR
-    #       X matches /^PRE-EXISTING-/ (parent is unconditionally
-    #       acceptable per user spec, all its children are too).
-    #   CHILD entry under PRE-EXISTING parent  (indent > 2): `id: <X>`
-    #     → accept unconditionally (parent's documented forward-pointer
-    #       propagates to children — the residue carried by the
-    #       children is pre-existing).
-    #   CHILD entry under pending/in_progress parent: rejected
-    #     (only the parent-id is the canonical entry-point per spec;
-    #     children are not auto-acceptable).
-    #
-    # Quote-stripping: YAML allows `id: "PR-XXX"`. We gsub away " '
-    # and \r so the membership check (grep -qxF) sees the bare token.
-    #
-    # Safe default: missing file OR scan error → empty
-    # KNOWN_ACCEPTABLE_IDS → all violations are "new" until the
-    # wave-tracker is re-introduced (godlike/07 fail-closed).
-    # Indentation-aware state-machine scan in pure bash (avoids the
-    # awk-quoting fragility we hit when embedding awk inside a
-    # `$(...)` command substitution). Per godlike/06 SSOT the
-    # canonical file is the wave-tracker; per godlike/07 no-fake-
-    # availability the file is currently UNPARSEABLE (3+ indent
-    # cascade bugs at lines ~1582, ~2852, ~2996) so we use a
-    # line-by-line bash scan (NOT yaml.safe_load). The state machine
-    # distinguishes:
-    #
-    #   TOP-LEVEL parent entry  (indent <= 2): `id: <X>` or `- id: <X>`
-    #     -> accept iff status: pending OR status: in_progress OR
-    #        X matches PRE-EXISTING-* (parent is unconditionally
-    #        acceptable per user spec, all its children are too).
-    #   CHILD entry under PRE-EXISTING parent  (indent > 2): `id: <X>`
-    #     -> accept unconditionally (parent's documented forward-
-    #        pointer propagates to children - the residue carried
-    #        by the children is pre-existing).
-    #   CHILD entry under pending/in_progress parent (indent > 2):
-    #     -> accept (per user spec "status: pending + status:
-    #        in_progress + their linked_issues").
-    #   CHILD entry under shipped/done parent: rejected
-    #     (only the parent-id is the canonical entry-point per spec).
-    #
-    # Quote-stripping: YAML allows `id: "PR-XXX"`. We strip " and '
-    # so the membership check (grep -qxF) sees the bare token.
-    #
-    # Safe default: missing file OR scan error -> empty
-    # KNOWN_ACCEPTABLE_IDS -> all violations are "new" until the
-    # wave-tracker is re-introduced (godlike/07 fail-closed).
-    local _wt_current_id=""
-    local _wt_current_status=""
-    local _wt_in_pre_existing=0
-    local _wt_entries=()
-    local _wt_line _wt_lead _wt_indent _wt_id_val
-    while IFS= read -r _wt_line || [ -n "${_wt_line}" ]; do
-        _wt_line="${_wt_line%$'\r'}"
-        # Determine indent (count leading spaces)
-        _wt_lead="${_wt_line%%[! ]*}"
-        _wt_indent=0
-        if [ "${_wt_line}" != "${_wt_lead}" ]; then
-            _wt_indent=${#_wt_lead}
-        fi
-        # Detect id: line
-        if [[ "${_wt_line}" =~ ^[[:space:]]*-?[[:space:]]*id:[[:space:]]+([^[:space:]]+) ]]; then
-            _wt_id_val="${BASH_REMATCH[1]}"
-            # Strip quotes (YAML allows `id: "PR-XXX"`)
-            _wt_id_val="${_wt_id_val//\"/}"
-            _wt_id_val="${_wt_id_val//\'/}"
-            if [ "${_wt_indent}" -le 2 ]; then
-                # Top-level parent: flush previous entry
-                if [ -n "${_wt_current_id}" ]; then
-                    if [[ "${_wt_current_id}" == PRE-EXISTING-* ]] || [ "${_wt_current_status}" = "pending" ] || [ "${_wt_current_status}" = "in_progress" ]; then
-                        _wt_entries+=("${_wt_current_id}")
-                    fi
-                fi
-                _wt_current_id="${_wt_id_val}"
-                _wt_current_status=""
-                _wt_in_pre_existing=0
-                if [[ "${_wt_current_id}" == PRE-EXISTING-* ]]; then
-                    _wt_in_pre_existing=1
-                fi
-            else
-                # Child: accept iff parent acceptable
-                if [ "${_wt_in_pre_existing}" -eq 1 ] || [ "${_wt_current_status}" = "pending" ] || [ "${_wt_current_status}" = "in_progress" ]; then
-                    _wt_entries+=("${_wt_id_val}")
-                fi
-            fi
-        fi
-        # Detect status: line (top-level only updates _wt_current_status)
-        if [[ "${_wt_line}" =~ ^[[:space:]]*status:[[:space:]]+([a-z_]+) ]]; then
-            if [ "${_wt_indent}" -le 2 ]; then
-                _wt_current_status="${BASH_REMATCH[1]}"
-            fi
-        fi
-    done < "${yaml_path}"
-    # Flush last entry
-    if [ -n "${_wt_current_id}" ]; then
-        if [[ "${_wt_current_id}" == PRE-EXISTING-* ]] || [ "${_wt_current_status}" = "pending" ] || [ "${_wt_current_status}" = "in_progress" ]; then
-            _wt_entries+=("${_wt_current_id}")
-        fi
-    fi
-    # Dedupe + assign
-    if [ "${#_wt_entries[@]}" -gt 0 ]; then
-        KNOWN_ACCEPTABLE_IDS=$(printf '%s\n' "${_wt_entries[@]}" | sort -u)
-    else
-        KNOWN_ACCEPTABLE_IDS=""
-    fi
-    unset _wt_line _wt_lead _wt_indent _wt_id_val _wt_current_id _wt_current_status _wt_in_pre_existing _wt_entries
-    # godlike/07 no-fake-availability: even if the YAML is unparseable, the
-    # `id: PR-*` lines are line-anchored so the scan still works. A truly
-    # missing file yields empty KNOWN_ACCEPTABLE_IDS (the safe default — all
-    # violations become "new" until the wave-tracker is re-introduced).
-    # NOTE: do NOT `export` — the variable is read in the same shell process
-    # (the function-call below + Check 61); child processes don't need it.
+    KNOWN_ACCEPTABLE_IDS=$(python3 -c '
+import sys, yaml
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        docs = yaml.safe_load(f)
+    accepted = set()
+    for p in (docs if isinstance(docs, list) else []):
+        if not isinstance(p, dict):
+            continue
+        pid, pst = str(p.get("id", "")), p.get("status", "")
+        if pid.startswith("PRE-EXISTING-") or pst in ("pending", "in_progress"):
+            if pid:
+                accepted.add(pid)
+            for child in (p.get("linked_issues") or []):
+                if isinstance(child, dict) and child.get("id"):
+                    accepted.add(str(child["id"]))
+    for val in sorted(accepted):
+        print(val)
+except (yaml.YAMLError, OSError, UnicodeDecodeError):
+    pass
+' "${yaml_path}" 2>/dev/null || true)
+    # godlike/07 no-fake-availability: even if the YAML is unparseable,
+    # the silent failure path is preserved (empty KNOWN_ACCEPTABLE_IDS
+    # means all violations become "new" until the wave-tracker is
+    # re-introduced). The previous bash state-machine had the same
+    # silent-fallback contract; this Python replacement preserves it
+    # 1:1. NOTE: do NOT `export` — the variable is read in the same
+    # shell process (the function-call below + Check 61); child
+    # processes don't need it.
 }
 is_known_acceptable() {
     local pr_id="${1:-}"

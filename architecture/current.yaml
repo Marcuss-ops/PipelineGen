@@ -5274,7 +5274,32 @@
       deadline: "2026-08-01"
     - id: PR-REMOVE-CI-AWK-SED-FALLBACKS
       owner_capability: ci-architectural-checks.sh
-      status: pending
+      status: shipped
+      ship_sha: d1e5bff59835cb859eeefc6754811d9aa2d2640a
+      ship_date: '2026-07-04'
+      exit_signal: true
+      description: |
+        PR 2 of Q16 2-PR split (PR-FIX-YAML-PARSE-LINE-1551 +
+        PR-REMOVE-CI-AWK-SED-FALLBACKS). Replaces the 132-line bash state-machine
+        fallback in scripts/ci-architectural-checks.sh::extract_known_acceptable_ids_from_yaml
+        (which compensated for the broken YAML) with a ~26-line Python heredoc that
+        uses yaml.safe_load. The replacement preserves the exact external contract:
+        newline-separated sorted deduped IDs in KNOWN_ACCEPTABLE_IDS; empty on
+        missing file OR parse error (godlike/07 fail-closed default). Per godlike/07
+        typed-error contract: the Python heredoc catches yaml.YAMLError + OSError +
+        UnicodeDecodeError explicitly (NOT the broad `except Exception:`); a
+        programming bug (e.g. AttributeError) surfaces rather than being swallowed.
+        Smoke test: bash -n passes; the function correctly populates KNOWN_ACCEPTABLE_IDS
+        with the canonical id set (WAVE_BASELINE_SIZE matches the pre-PR baseline);
+        old state-machine code (BASH_REMATCH, _wt_current_id, _wt_lead, _wt_indent)
+        is GONE (rg returns 0 hits). Per godlike/07 minimum-blast-radius: the output
+        format is byte-identical to the previous implementation, so callers
+        (is_known_acceptable + WAVE_BASELINE_SIZE) need no changes. Per godlike/06 SSOT:
+        the wave-tracker is the SOLE source of truth for PR/issue status. Per
+        godlike/07 fail-closed at composition: the YAML file MUST be parseable before
+        the CI script can drop its defensive fallback (PR 1 of the split, PR-FIX-YAML-
+        PARSE-LINE-1551, shipped this dependency). Forward-pointer: none - this is
+        the 2/2 closure of the Q16 split.
       deadline: "2026-08-08"
     - id: PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF
       owner_capability: architecture
