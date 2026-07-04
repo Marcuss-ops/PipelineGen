@@ -89,8 +89,8 @@ if [ "${1:-}" = "--self-check" ]; then
         "Check 15 (qdrant.NewClient construction)|qdrant\\.NewClient\\(&qdrant\\.Config\\{|check_15_qdrant_config_apikey.go"
         "Check 50 (forbid void Register* signature)|func \\(\\w+ \\*?\\w+\\) [A-Z][A-Za-z0-9_]*[Rr]egister\\([^)]*\\bjobs\\.?Service[^)]*\\)[[:space:]]*\\{|check_50_void_register.go"
         "Check 57 (forbid ports.ScriptRecord literal outside canonical allowlist)|ports\\.ScriptRecord\\{|check_57_scriptrecord_prod_literal.go"
-        "Check 58 (forbid legacy Template writes outside canonical allowlist)|Template:\\s|check_58_template_timeline_literal.go"
-        "Check 58 (forbid legacy TimelineJSON writes outside canonical allowlist)|TimelineJSON:\\s|check_58_template_timeline_literal.go"
+        "Check 55 (forbid legacy Template writes outside canonical allowlist)|Template:\\s|check_55_template_timeline_literal.go"
+        "Check 55 (forbid legacy TimelineJSON writes outside canonical allowlist)|TimelineJSON:\\s|check_55_template_timeline_literal.go"
     )
 
     failed=0
@@ -1868,6 +1868,64 @@ if [ "$allowlist_count" -gt 0 ]; then
     echo "      (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)"
 fi
 echo "OK: 0 hard-fail internal/infrastructure/ imports in monitor/ (FASE 3.7 Commit 3 invariants upheld)"
+
+# ── Check 55: forbid legacy Template / TimelineJSON writes outside canonical allowlist (PR-PERSIST-6-CANONICAL-FIX) ──
+# The canonical script-row write seam is processor_persistence.go (PR 6, June 2026);
+# the canonical READ translators live in repository.go (toSQLiteScriptRecord /
+# fromSQLiteScriptRecord). The legacy Template + TimelineJSON slots are
+# intentionally LEFT EMPTY for newly-inserted rows — migration 100 already
+# backfilled pre-PR-6 rows into the dedicated idempotency_key + specscene
+# columns. Any struct-literal assignment to Template: or TimelineJSON: outside
+# the canonical allowlist is a SSOT regression (godlike/06 one-owner-per-fact).
+#
+# Forward-prevention gate: catches future drift at pre-CI time. The current
+# production tree is canonical (per PR-PERSIST-PR6-CANONICAL, commit d17c78ae)
+# so this gate MUST exit 0 today; the gate exists to lock the contract.
+#
+# Pattern anchors (ripgrep -E syntax; mirrored 1:1 by the self-check entry):
+#   Template:\s     — struct-literal field assignment to Template
+#   TimelineJSON:\s — struct-literal field assignment to TimelineJSON
+#
+# Allowlist (the ONLY legitimate production-code struct literals):
+#   - internal/application/scripts/adapters/processor_persistence.go — canonical writer
+#   - internal/application/scripts/adapters/repository.go          — canonical READ translators
+#
+# Tests are excluded via --glob '!**/*_test.go' so test fixtures may construct
+# field assignments freely (per the canonical pattern across all ci-gates).
+# The rg scope is restricted to internal/ so the test fixture at
+# tests/fixtures/zero_legacy/check_55_template_timeline_literal.go is NOT
+# scanned by the production gate (it is scanned ONLY by the self-check mode).
+echo "=== Check 55: forbid legacy Template / TimelineJSON writes outside canonical allowlist (PR-PERSIST-6-CANONICAL-FIX) ==="
+literals=$(rg -n --type go \
+    -e 'Template:\s' \
+    -e 'TimelineJSON:\s' \
+    --glob '!**/internal/application/scripts/adapters/processor_persistence.go' \
+    --glob '!**/internal/application/scripts/adapters/repository.go' \
+    --glob '!**/*_test.go' \
+    internal/ 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$literals" ]; then
+    echo "FAIL: legacy Template: or TimelineJSON: struct-literal assignment detected outside canonical allowlist:"
+    echo "$literals"
+    echo ""
+    echo "Fix: route script-row writes through the canonical PersistenceProcessor"
+    echo "      (internal/application/scripts/adapters/processor_persistence.go) which"
+    echo "      writes the canonical IdempotencyKey + SpecScene columns. The legacy"
+    echo "      Template + TimelineJSON slots are intentionally left empty for newly-"
+    echo "      inserted rows (PR-PERSIST-6-CANONICAL, commit d17c78ae). The canonical"
+    echo "      READ translators in repository.go (toSQLiteScriptRecord /"
+    echo "      fromSQLiteScriptRecord) are the ONLY legitimate read-path owners."
+    echo "      Every other production-code struct literal assigning Template: or"
+    echo "      TimelineJSON: is a godlike/06 SSOT regression."
+    exit 1
+fi
+echo "OK: no legacy Template: or TimelineJSON: struct-literal writes outside canonical allowlist"
 
 # ── Check 49: go vet ./internal/... drift gate (FASE 9 post-rename follow-up, June 2026) ──
 # Canonical fail-closed `go vet` pass (covering internal/ entirely).

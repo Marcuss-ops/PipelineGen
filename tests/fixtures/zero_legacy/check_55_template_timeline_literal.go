@@ -1,4 +1,4 @@
-// Package fixture — fixture for Check 58 (forbid legacy Template/TimelineJSON
+// Package fixture — fixture for Check 55 (forbid legacy Template/TimelineJSON
 // writes outside canonical allowlist).
 //
 // This file exists ONLY so that `bash scripts/ci-architectural-checks.sh
@@ -8,7 +8,7 @@
 // (which never sees this file — self-check mode reads each fixture directly).
 //
 // The lines below contain `Template: "some_value"` and `TimelineJSON: "some_json"`
-// which the regex MUST match. If a future contributor edits the Check 58 regex
+// which the regex MUST match. If a future contributor edits the Check 55 regex
 // and accidentally regresses its precision, the self-check loop will detect it
 // (rg returns nothing on this fixture → self-check exit 1).
 //
