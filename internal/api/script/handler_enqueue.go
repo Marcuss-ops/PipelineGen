@@ -60,7 +60,13 @@ func enqueueEnvelopeFn(
 	// pre-Issue-4 hard-coded 3-retry fallback.
 	enqueuedJob, err := jobs.EnqueueGenerationJob(c.Request.Context(), jobsSvc, req, log, registry)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		// RED-6 (SCRIPT-T03-001): route typed client-validation failures to
+		// 4xx via canonical mapper (godlike/06 SSOT one-owner-per-fact in
+		// canonical_errors.go). Stays 500 with obfuscated message for any
+		// unrecognized error so we never leak stack/file paths to the wire.
+		status := CanonicalHTTPStatus(err)
+		msg := CanonicalErrorMessage(err)
+		c.JSON(status, gin.H{"ok": false, "error": msg})
 		return
 	}
 
