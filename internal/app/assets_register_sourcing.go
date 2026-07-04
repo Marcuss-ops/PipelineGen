@@ -1,3 +1,12 @@
+// Package app — SourcingService façade composition root.
+//
+// This file is the composition site for the unified SourcingService
+// (PR-WIRE-ASSETS-CAPABILITY-SPLIT, July 2026). It builds the
+// YouTubeRegistrar + BatchRegistrar + DriveFolderSynchronizer +
+// LocalImporter sub-services and wires them into the slim
+// sourcing.NewService ctor. PR-BATCH-REGISTER-ASYNC (July 2026)
+// added the jobsSvc parameter so the batch sub-service can
+// enqueue media.clip jobs async via appjobs.Service.Enqueue.
 package app
 
 import (
@@ -23,15 +32,6 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
-
-// clipRegisterJobType is the canonical job type for async clip registration
-// (PR-BATCH-REGISTER-ASYNC, July 2026). Each clip enqueued via the batch endpoint
-// becomes a media.clip job; the worker handler decodes RegisterClipCommand and
-// calls YouTubeRegistrar.Register off the request thread.
-//
-// PR-BATCH-REGISTER-ASYNC-CONSTANT (forward-pointer): promote this constant
-// to appjobs.TypeClipRegister and add a JobPolicy entry in Compose().
-const clipRegisterJobType = "media.clip"
 
 // newAssetRegisterService builds the SourcingService façade. After P0-1 /
 // commit 1 (June 2026) it first constructs the YouTubeRegistrar sub-service
@@ -102,9 +102,8 @@ func newAssetRegisterService(
 	// (registered below) decodes RegisterClipCommand and calls ytSvc.Register
 	// off the request thread.
 	//
-	// PR-BATCH-REGISTER-ASYNC-CONSTANT (forward-pointer): extract
-	// clipRegisterJobType to a shared package-level constant across
-	// adapter + handler + Compose() JobPolicy entry.
+	// PR-BATCH-REGISTER-ASYNC-CONSTANT (closed July 2026): clipRegisterJobType
+	// is now appjobs.TypeClipRegister (canonical SSOT per godlike/06).
 	batchEnqueuer := &clipJobEnqueuerAdapter{svc: jobsSvc}
 	batchSvc := batch.NewService(batchEnqueuer, &zapSourcingLogger{log: log})
 
@@ -116,7 +115,7 @@ func newAssetRegisterService(
 	// (the batch enqueuer adapter also returns ErrEnqueuerNotWired on
 	// nil svc, so the surface is consistent).
 	if jobsSvc != nil {
-		if err := jobsSvc.RegisterHandler(clipRegisterJobType, appjobs.HandlerFunc(func(ctx context.Context, j *jobdomain.Job, tools *appjobs.JobTools) (map[string]any, error) {
+		if err := jobsSvc.RegisterHandler(appjobs.TypeClipRegister, appjobs.HandlerFunc(func(ctx context.Context, j *jobdomain.Job, tools *appjobs.JobTools) (map[string]any, error) {
 			var cmd sourcing.RegisterClipCommand
 			if len(j.Payload) > 0 {
 				if err := json.Unmarshal(j.Payload, &cmd); err != nil {
@@ -195,13 +194,8 @@ func (a *clipJobEnqueuerAdapter) EnqueueClip(ctx context.Context, cmd sourcing.R
 	// Service.Enqueue internally calls json.Marshal(req.Payload); passing
 	// json.RawMessage bypasses the re-encode (RawMessage.MarshalJSON returns
 	// itself). Passing raw []byte would produce a base64-encoded string.
-	//
-	// Note: Service.Enqueue takes the request BY VALUE (not pointer)
-	// per jobdomain.JobStore interface — godlike/07 typed-error contract.
-	// (Earlier draft used &jobdomain.EnqueueRequest{...}; that produced
-	// a type-mismatch build error at the call site.)
-	job, err := a.svc.Enqueue(ctx, jobdomain.EnqueueRequest{
-		Type:    clipRegisterJobType,
+	job, err := a.svc.Enqueue(ctx, &jobdomain.EnqueueRequest{
+		Type:    appjobs.TypeClipRegister,
 		Payload: json.RawMessage(payload),
 	})
 	if err != nil {
