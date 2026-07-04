@@ -65,12 +65,18 @@ type RegisterClipResult struct {
 }
 
 // BatchClipResult is the result for a single clip in a batch registration.
+//
+// PR-BATCH-REGISTER-ASYNC (July 2026): added JobID field. When the batch
+// service enqueues a job for this clip, JobID carries the async job identifier.
+// Callers poll GET /api/jobs/:id to track completion. Empty JobID means the
+// enqueue failed (check Error).
 type BatchClipResult struct {
 	ClipID    string
 	Name      string
 	OK        bool
 	Error     string
 	Duplicate bool
+	JobID     string // forward-pointer PR-BATCH-REGISTER-ASYNC: async job identifier
 }
 
 // BatchRegisterResult is the aggregated result of a batch registration.
