@@ -184,7 +184,7 @@ func (r *LegacyGenerateFromClipsRequest) resolveAliases() []string {
 // LegacyGenerateFromClips handles POST /api/script/generate-from-clips.
 // Removal target: 2026-12-31.
 func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
-	addDeprecationHeader(c, "generate-from-clips", removalDateFromClips)
+	addGenerateFromClipsDeprecationHeader(c, removalDateFromClips)
 
 	var req LegacyGenerateFromClipsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -92,7 +92,7 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 // LegacyGenerateWithImages handles POST /api/script/generate-with-images.
 // Removal target: 2026-12-31.
 func (h *ScriptFlowHandler) LegacyGenerateWithImages(c *gin.Context) {
-	addDeprecationHeader(c, "generate-with-images", removalDateWithImages)
+	addGenerateWithImagesDeprecationHeader(c, removalDateWithImages)
 
 	var req LegacyGenerateWithImagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
