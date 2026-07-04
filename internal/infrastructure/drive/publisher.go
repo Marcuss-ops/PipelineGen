@@ -275,29 +275,45 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 
 	// Step 4: Path builder.
 	//
-	// When RootFolderOverride is non-empty, the caller has already
-	// resolved the target folder (e.g. via a prior GetOrCreateFolder
-	// call) and may not have supplied the metadata the PathBuilder
-	// requires (Group, Subject, etc.). Skipping the builder + subpath
-	// enforcement avoids spurious "group is required" errors on
-	// RootFolderOverride-backed uploads.
+	// PR-VO-SUBFOLDER (July 2026): run the PathBuilder unconditionally so
+	// callers with an explicit RootFolderOverride still get the canonical
+	// subpath structure (e.g. voiceover: {project}/{language}). When the
+	// caller supplies a target folder but the PathBuilder fails because
+	// metadata (Group / Subject / Language, etc.) is missing, gracefully
+	// fall back to a direct upload into that root folder rather than
+	// failing the whole publish — backward-compatible with callers that
+	// opt out of the subpath structure by passing a pre-resolved root.
 	var segments []string
-	if req.RootFolderOverride == "" {
-		segments, err = policy.PathBuilder(req)
-		if err != nil {
-			return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
-		}
+	pathBuilt := false
+	if segments, err = policy.PathBuilder(req); err == nil {
+		pathBuilt = true
+	} else if req.RootFolderOverride != "" {
+		p.log.Warn(
+			"delivery: PathBuilder failed with RootFolderOverride set; uploading directly into root folder",
+			zap.String("destination", string(req.Destination)),
+			zap.String("root_folder_id", rootFolderID),
+			zap.Error(err),
+		)
+		segments = nil
+		err = nil
+	} else {
+		return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
+	}
 
-		// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
-		// Before P0 #2, only Publish checked RequireSubpath; ResolveFolder
-		// could resolve a folder that Publish would have rejected. Now both
-		// paths go through this helper so the surface is consistent.
-		if policy.RequireSubpath && len(segments) == 0 {
-			return nil, fmt.Errorf(
-				"delivery: direct upload into root %q is forbidden for destination %q",
-				rootFolderID, req.Destination,
-			)
-		}
+	// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
+	// Before P0 #2, only Publish checked RequireSubpath; ResolveFolder
+	// could resolve a folder that Publish would have rejected. Now both
+	// paths go through this helper so the surface is consistent. With
+	// the PR-VO-SUBFOLDER change above, RequireSubpath is enforced ONLY
+	// when PathBuilder ran successfully (pathBuilt=true) — the
+	// explicit-root-fallback path is intentionally opted out (the caller
+	// already provided their own target folder, so demanding a subpath
+	// would contradict the caller intent).
+	if policy.RequireSubpath && len(segments) == 0 && pathBuilt {
+		return nil, fmt.Errorf(
+			"delivery: direct upload into root %q is forbidden for destination %q",
+			rootFolderID, req.Destination,
+		)
 	}
 
 	// Step 6: Folder hierarchy creation.
