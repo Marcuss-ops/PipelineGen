@@ -5434,10 +5434,29 @@ wave_status:
       owner_capability: "internal/infrastructure/database/sqlite/outboxevents/ + tests/e2e/"
       status: pending
       deadline: 2026-07-25
+      notes: |
+        SQLite SHM lock on outbox_events during the second commit's
+        ON CONFLICT-suppressed SELECT path in TestE2E_Qdrant_ReplayIsNoOp
+        (PR-QDRANT-E2E-YOUTUBE). Attempted fixes that did NOT resolve:
+        (a) db.SetMaxOpenConns(1) deadlocks under production
+        ClipAtomicWriterAdapter; (b) file::memory:?cache=shared does
+        not unblock the SHM lock. Root cause: WAL+SHM pool contention
+        between the writer's connection and the second commit's
+        ON-CONFLICT-suppressed SELECT under mattn/go-sqlite3.
     - id: PR-QDRANT-E2E-TEST-TRANSCRIPT-HOOK
       owner_capability: "internal/infrastructure/qdrant/transport/ + tests/e2e/"
       status: pending
       deadline: 2026-07-25
+      notes: |
+        TestE2E_Qdrant_DiscoverSearchViaTranscript (PR-QDRANT-E2E-YOUTUBE)
+        returns 0 results because the test's query hook reads the
+        wire-shape field name vector_name from the request body, but
+        the production /points/query envelope uses a different field
+        name (likely "using" per Qdrant native convention). Root
+        cause: test fixture drifted from production wire shape. Fix
+        path: read internal/infrastructure/qdrant/transport/client_search.go
+        to confirm the actual field name, update the test's query hook
+        to match.
     - id: PR-QDRANT-E2E-VOICEOVER
       owner_capability: "tests/e2e/ + internal/application/voiceover"
       status: pending
