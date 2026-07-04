@@ -39,7 +39,7 @@ func NewMetadataProcessor(generator MetadataGenerator) *MetadataProcessor {
 	return &MetadataProcessor{generator: generator}
 }
 
-func (p *MetadataProcessor) Name() string { return "metadata" }
+func (p *MetadataProcessor) Name() ProcessorName { return ProcessorMetadata }
 
 // Policy classifies metadata as ProcessorRequired. Static for now;
 // future PR can read plan.OutputSpec.GenerateMetadata (or similar

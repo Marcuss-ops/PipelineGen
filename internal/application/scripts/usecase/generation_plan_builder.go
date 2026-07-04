@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -83,7 +84,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	}
 
 	// Build postprocessor list from output flags.
-	plan.Postprocessors = buildPostprocessorList(item.Output)
+	plan.Postprocessors = adapters.ProcessorNamesToStrings(buildPostprocessorList(item.Output))
 
 	// PR 2: split of the legacy ambiguous `Prompt` field.
 	//   - RenderedPrompt carries real editorial instructions
@@ -152,33 +153,33 @@ func modeForSource(st scriptpkg.SourceType) string {
 //     clip evidence might skip the binder while one without it would
 //     run it; both diverge silently. Unconditional inclusion makes
 //     centralization tautological.
-func buildPostprocessorList(out scriptpkg.OutputSpec) []string {
-	var pp []string
+func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
+	var pp []adapters.ProcessorName
 	if out.ExtractEntities {
-		pp = append(pp, "entities")
+		pp = append(pp, adapters.ProcessorEntities)
 	}
 	if out.GenerateMetadata {
-		pp = append(pp, "metadata")
+		pp = append(pp, adapters.ProcessorMetadata)
 	}
 	// Scene-normalisation stages: MUST run before artifact producers
 	// (voiceover, images, document) so prose-fallback synthesised
 	// scenes are visible to downstream renderers.
-	pp = append(pp, "clip_bindings")
+	pp = append(pp, adapters.ProcessorClipBindings)
 	// stock_association is unconditional (BestEffort, no-op when
 	// Qdrant is unavailable). Runs after clip_bindings so it can
 	// fall back to scene.Bindings.Clip.DriveLink.
-	pp = append(pp, "stock_association")
+	pp = append(pp, adapters.ProcessorStockAssociation)
 	if out.GenerateVoiceover {
-		pp = append(pp, "voiceover")
+		pp = append(pp, adapters.ProcessorVoiceover)
 	}
 	if out.GenerateSceneImages {
-		pp = append(pp, "images")
+		pp = append(pp, adapters.ProcessorImages)
 	}
 	if out.GenerateDocument {
-		pp = append(pp, "document")
+		pp = append(pp, adapters.ProcessorDocument)
 	}
 	if out.SaveToDB {
-		pp = append(pp, "persistence")
+		pp = append(pp, adapters.ProcessorPersistence)
 	}
 	return pp
 }

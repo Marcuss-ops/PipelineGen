@@ -25,7 +25,7 @@ func NewClipBindingsProcessor(log *zap.Logger) *ClipBindingsProcessor {
 	return &ClipBindingsProcessor{log: log}
 }
 
-func (p *ClipBindingsProcessor) Name() string { return "clip_bindings" }
+func (p *ClipBindingsProcessor) Name() ProcessorName { return ProcessorClipBindings }
 
 // Policy classifies clip_bindings as ProcessorBestEffort: a nil or
 // empty ClipEvidence is a no-op (Process returns early with empty

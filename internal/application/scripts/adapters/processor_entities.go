@@ -39,7 +39,7 @@ func NewEntitiesProcessor(extractor EntityExtractor) *EntitiesProcessor {
 	return &EntitiesProcessor{extractor: extractor}
 }
 
-func (p *EntitiesProcessor) Name() string { return "entities" }
+func (p *EntitiesProcessor) Name() ProcessorName { return ProcessorEntities }
 
 // Policy classifies entities as ProcessorRequired. The plan arg is
 // accepted for interface uniformity but ignored for now — a future

@@ -19,18 +19,18 @@ import (
 // ── Fakes ──────────────────────────────────────────────────────────
 
 type countingProcessor struct {
-	name      string
+	name      adapterspkg.ProcessorName
 	calls     int
 	docID     string
 	err       error
 	policy    adapterspkg.ProcessorPolicy // PR 2 (June 2026): per-test override
-	warnings  []string                // PR 2 (June 2026): populated into PostProcessResult.Warnings
-	resultNil bool                    // PR 2 (June 2026): when true, returns (nil, nil) to exercise nil-handling
-	empty     bool                    // PR 2 (June 2026): when true, returns empty PostProcessResult
-	changed   bool                    // P1 #10 (June 2026): set on result when true
+	warnings  []string                    // PR 2 (June 2026): populated into PostProcessResult.Warnings
+	resultNil bool                        // PR 2 (June 2026): when true, returns (nil, nil) to exercise nil-handling
+	empty     bool                        // PR 2 (June 2026): when true, returns empty PostProcessResult
+	changed   bool                        // P1 #10 (June 2026): set on result when true
 }
 
-func (p *countingProcessor) Name() string { return p.name }
+func (p *countingProcessor) Name() adapterspkg.ProcessorName { return p.name }
 
 // PR 2 (June 2026): countingProcessor satisfies the Policy method
 // from the PostProcessor interface. Default is Required so tests

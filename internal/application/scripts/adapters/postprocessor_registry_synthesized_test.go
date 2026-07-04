@@ -41,13 +41,13 @@ import (
 // into the "Required-empty-output-counts-as-failure" path.
 // Code-reviewer-minimax-m3 (Issue #1 PR, June 2026).
 type synthesisingProcessor struct {
-	name            string
+	name            adapterspkg.ProcessorName
 	contributeSynth []scriptpkg.SpecScene
 	lastInputScenes []scriptpkg.SpecScene
 	policy          adapterspkg.ProcessorPolicy // explicit per-policy test authorship
 }
 
-func (p *synthesisingProcessor) Name() string { return p.name }
+func (p *synthesisingProcessor) Name() adapterspkg.ProcessorName { return p.name }
 func (p *synthesisingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapterspkg.ProcessorPolicy {
 	if p.policy == "" {
 		// FAIL-FAST — neither default nor silent fallback. The
@@ -74,7 +74,9 @@ type voiceoverEmittingProcessor struct {
 	policy          adapterspkg.ProcessorPolicy
 }
 
-func (p *voiceoverEmittingProcessor) Name() string { return "voiceover" }
+func (p *voiceoverEmittingProcessor) Name() adapterspkg.ProcessorName {
+	return adapterspkg.ProcessorVoiceover
+}
 func (p *voiceoverEmittingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapterspkg.ProcessorPolicy {
 	if p.policy == "" {
 		return adapterspkg.ProcessorBestEffort
@@ -378,7 +380,7 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 			// scenes. Leaving other flags false keeps the plan
 			// small (4 postprocessors) and avoids missing-
 			// registered Required-class failures.
-			GenerateVoiceover:  true,
+			GenerateVoiceover:   true,
 			GenerateSceneImages: true,
 		},
 	}

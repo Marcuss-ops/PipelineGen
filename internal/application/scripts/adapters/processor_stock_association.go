@@ -28,7 +28,7 @@ func NewStockAssociationProcessor(stockSearch ports.StockSearchPort, log *zap.Lo
 	return &StockAssociationProcessor{stockSearch: stockSearch, log: log}
 }
 
-func (p *StockAssociationProcessor) Name() string { return "stock_association" }
+func (p *StockAssociationProcessor) Name() ProcessorName { return ProcessorStockAssociation }
 
 func (p *StockAssociationProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
