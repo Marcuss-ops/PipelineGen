@@ -103,6 +103,11 @@ var ErrEmitMissingParentJobID = errors.New("scene orchestrator: ParentJobID is r
 // is empty. The prompt is the core input for image generation.
 var ErrEmitMissingPrompt = errors.New("scene orchestrator: Prompt is required")
 
+// Compile-time assertion: *Emitter satisfies SceneImageJobEmitter.
+// Pins the contract at build time — any future drift in the EmitSceneImageJob
+// signature is a build failure, not a runtime panic (godlike/07).
+var _ SceneImageJobEmitter = (*Emitter)(nil)
+
 // ── Emitter (concrete implementation) ──────────────────────────────────
 
 // Emitter is the concrete SceneImageJobEmitter that delegates to
