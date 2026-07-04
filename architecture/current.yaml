@@ -5617,24 +5617,39 @@ wave_status:
       deadline: 2026-07-25
     - id: PR-SCRIPT-AUTH-EXTRACT
       owner_capability: internal/api/script
-      status: pending
-      deadline: 2026-07-25
+      status: shipped
+      ship_sha: 92c65632
+      ship_date: 2026-07-04
     - id: PR-SCRIPT-JOBS-EXTRACT
       owner_capability: internal/api/script
-      status: pending
-      deadline: 2026-07-25
+      status: shipped
+      ship_sha: 92c65632
+      ship_date: 2026-07-04
     - id: PR-SCRIPT-FACADE-EXTRACT
       owner_capability: internal/api/script
-      status: pending
-      deadline: 2026-07-25
+      status: shipped
+      ship_sha: 92c65632
+      ship_date: 2026-07-04
     - id: PR-SCRIPT-TRIM-ORCHESTRATOR
       owner_capability: internal/api/script
-      status: pending
-      deadline: 2026-07-25
+      status: shipped
+      ship_sha: 92c65632
+      ship_date: 2026-07-04
     - id: PR-SCRIPT-CHECK56-INLINE-MIDDLEWARE
       owner_capability: scripts/ci-architectural-checks.sh
-      status: pending
-      deadline: 2026-07-25
+      status: shipped
+      ship_sha: 306f1c56
+      ship_date: 2026-07-04
+    - id: PR-SCRIPT-DEPENDENCIES-EXTRACT
+      owner_capability: internal/api/script
+      status: shipped
+      ship_sha: 92c65632
+      ship_date: 2026-07-04
+    - id: PR-CHECK-58-INLINE-MIDDLEWARE
+      owner_capability: scripts/ci-architectural-checks.sh
+      status: shipped
+      ship_sha: 306f1c56
+      ship_date: 2026-07-04
  (docs(architecture): append SCRIPT-FLOW-SPLIT wave tracker entries)
 
 
