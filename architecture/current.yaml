@@ -2878,8 +2878,13 @@
     - id: C9
       label: "Resolve or remove extractSubjectAndTags stub (godlike/07 no-fake-availability)"
       owner_capability: "internal/application/images/ingest_direct"
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: d6018420
       deadline: 2026-07-25
+      notes: |
+        SHIPPED 2026-07-04 via d6018420: silent-fake extractSubjectAndTags stub
+        replaced by typed SubjectTagsService port (DefaultSubjectTagsService).
     - id: C10
       label: "Remove pythonEmbeddingAdapter zombie (or rewrite via vectorstore.LocalEmbedder port)"
       owner_capability: "internal/application/images/ingest_semantic"
