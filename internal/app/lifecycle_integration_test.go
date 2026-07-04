@@ -63,13 +63,16 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	baseline := runtime.NumGoroutine()
 
 	// Build mock services.
+	// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner + qdrant-health-monitor
+	// are removed (3 background-cleanup steps retired earlier per the
+	// stale-cleaner / ghost-sweeper / health-monitor audit at
+	// lifecycle.go:117-128). qdrant-collection is RETAINED — it is a REAL
+	// production step (wire_services.go:170 calls cm.EnsureSchema).
 	driveSvc := newMockService("drive-init")
 	qdrantSvc := newMockService("qdrant-collection")
 	outboxSvc := newMockService("outbox-pool")
 	scannerSvc := newMockService("job-scanner")
 	monitorSvc := newMockService("channel-monitor")
-	sweeperSvc := newMockService("qdrant-cleaner")
-	healthSvc := newMockService("qdrant-health-monitor")
 
 	rec := &recorder{}
 
@@ -123,24 +126,10 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 			},
 			Stop: func(_ context.Context) error { rec.record("channel-monitor:stop"); return nil },
 		},
-		{
-			Name: "qdrant-cleaner", Required: false,
-			Start: func(startCtx context.Context) error {
-				rec.record("qdrant-cleaner")
-				sweeperSvc.start(startCtx)
-				return nil
-			},
-			Stop: func(_ context.Context) error { rec.record("qdrant-cleaner:stop"); return nil },
-		},
-		{
-			Name: "qdrant-health-monitor", Required: false,
-			Start: func(startCtx context.Context) error {
-				rec.record("qdrant-health-monitor")
-				healthSvc.start(startCtx)
-				return nil
-			},
-			Stop: func(_ context.Context) error { rec.record("qdrant-health-monitor:stop"); return nil },
-		},
+		// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner + qdrant-health-monitor
+		// steps removed (background-cleanup topology retired per
+		// lifecycle.go:117-128). qdrant-collection above is the only Qdrant step
+		// remaining in the production startup plan (wire_services.go:170).
 		// Job runner: always last, required.
 		{
 			Name: "job-runner", Required: true,
@@ -175,10 +164,12 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	}
 
 	// Verify startup order: prerequisite → optional → job runner.
+	// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner + qdrant-health-monitor
+	// removed from the expected order.
 	stepOrder := rec.stepCallsOnly()
 	wantOrder := []string{
 		"drive-init", "qdrant-collection", "outbox-pool",
-		"job-scanner", "channel-monitor", "qdrant-cleaner", "qdrant-health-monitor",
+		"job-scanner", "channel-monitor",
 		"job-runner",
 	}
 	if len(stepOrder) != len(wantOrder) {
@@ -196,7 +187,8 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	}
 
 	// Wait for all mock goroutines to signal they started.
-	waitStarted(t, driveSvc, qdrantSvc, outboxSvc, scannerSvc, monitorSvc, sweeperSvc, healthSvc)
+	// PR-QDRANT-FINAL-DECISION (2026-07-04): sweeperSvc + healthSvc removed.
+	waitStarted(t, driveSvc, qdrantSvc, outboxSvc, scannerSvc, monitorSvc)
 
 	// Verify goroutines are running.
 	mid := runtime.NumGoroutine()
@@ -224,10 +216,10 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	copy(stopOrder, rec.calls)
 	rec.mu.Unlock()
 
+	// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner:stop +
+	// qdrant-health-monitor:stop removed from the expected stop order.
 	wantStops := []string{
 		"job-runner:stop",
-		"qdrant-health-monitor:stop",
-		"qdrant-cleaner:stop",
 		"channel-monitor:stop",
 		"job-scanner:stop",
 		"outbox-pool:stop",
@@ -244,8 +236,9 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	}
 
 	// Cancel context to signal remaining goroutines, then wait for them.
+	// PR-QDRANT-FINAL-DECISION (2026-07-04): sweeperSvc + healthSvc removed.
 	cancel()
-	waitStopped(t, driveSvc, qdrantSvc, outboxSvc, scannerSvc, monitorSvc, sweeperSvc, healthSvc)
+	waitStopped(t, driveSvc, qdrantSvc, outboxSvc, scannerSvc, monitorSvc)
 
 	// No goroutine leak.
 	time.Sleep(100 * time.Millisecond)
