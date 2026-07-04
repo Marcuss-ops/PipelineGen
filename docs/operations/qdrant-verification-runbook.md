@@ -17,6 +17,9 @@ metadata (summary, topics, speakers, mentioned_people, hook).
 - `sqlite3` available for direct DB probes
 - `jq` available for JSON parsing
 - `curl` available for HTTP requests
+- **Bash 4.0+** required for `declare -A` (associative arrays) and `mapfile`
+  builtins used in Test 4 (§6b) and Test 5 (§7b). Check with `bash --version`.
+  macOS ships bash 3.2 by default; install bash 5 via `brew install bash`.
 - The 8 clips from the Pacquiao vs Broner WBA highlight video
   (`RRJvrDKunyA`) must already be registered via
   `POST /api/media/register-batch`. If they aren't, run the
@@ -33,17 +36,21 @@ export VELOX_ADMIN_TOKEN="<your-token>"
 export SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
 ```
 
-## 2. The 8 Deterministic ClipIDs
+## 2. The 8 ClipIDs (Operator Reference)
 
-Each clip is identified by a deterministic ID based on the video ID, start
-second, and end second:
+> **⚠️ IMPORTANT:** The server-side ClipID is an MD5-based hash
+> (`yt_<videoID>_<hash8>`, computed at `service.go:225`). The IDs below
+> use a start/end-based format (`yt_RRJvrDKunyA_<startSec>_<endSec>_v1`)
+> as **documentation-only reference labels** — they do NOT match the
+> actual `media_assets.id` column. Do NOT use these IDs in curl commands
+> or SQL WHERE clauses. Instead, extract the real IDs from the database:
+> ```bash
+> sqlite3 "$SMOKE_DB" "SELECT id FROM media_assets WHERE source='youtube'
+>   AND json_extract(metadata_json, '$.youtube_id') = 'RRJvrDKunyA' ORDER BY name;"
+> ```
 
-```
-yt_RRJvrDKunyA_<startSec>_<endSec>_v1
-```
-
-| # | Round | Start (s) | End (s) | ClipID |
-|---|-------|-----------|---------|--------|
+| # | Round | Start (s) | End (s) | Reference ID (documentation only) |
+|---|-------|-----------|---------|-----------------------------------|
 | 1 | 1 | 32 | 231 | `yt_RRJvrDKunyA_32_231_v1` |
 | 2 | 2 | 247 | 345 | `yt_RRJvrDKunyA_247_345_v1` |
 | 3 | 5 | 628 | 767 | `yt_RRJvrDKunyA_628_767_v1` |
@@ -52,13 +59,6 @@ yt_RRJvrDKunyA_<startSec>_<endSec>_v1
 | 6 | 10 | 1382 | 1626 | `yt_RRJvrDKunyA_1382_1626_v1` |
 | 7 | 11 | 1657 | 1698 | `yt_RRJvrDKunyA_1657_1698_v1` |
 | 8 | 12 | 1727 | 1769 | `yt_RRJvrDKunyA_1727_1769_v1` |
-
-> **Note:** The server-side ClipID uses the first 8 characters of the MD5
-> file hash (`yt_<videoID>_<hash8>`). The start/end-based IDs above are the
-> canonical operator-facing reference; the actual stored ID may differ.
-> When querying media_assets, use `WHERE name LIKE '%Round N%'` or
-> `WHERE json_extract(metadata_json, '$.youtube_id') = 'RRJvrDKunyA'`
-> to locate clips.
 
 ## 3. Test 1 — Index Health Preflight
 
@@ -108,6 +108,12 @@ ORDER BY name;
 - `has_drive` = 1 for every row that completed Drive upload
 
 ### 4b — Rich metadata field assertions
+
+> **⚠️ Precondition:** This section is gated on `PR-RICH-METADATA-DTO-EXTEND`
+> (deadline 2026-07-25). Before that PR ships, rich fields are packed into
+> the `description` string and the dedicated `clip_summary`, `topics`,
+> `speakers`, `mentioned_people`, and `hook` keys will be **absent** from
+> `metadata_json`. Skip §4b and use §4a only for pre-extension verification.
 
 ```bash
 sqlite3 -header -column "$SMOKE_DB" "
@@ -293,21 +299,32 @@ echo "Search results: $pass PASS, $fail FAIL (of ${#QUERIES[@]})"
   capture the semantic content. Check `metadata_json.clip_summary` for
   content quality; re-index via `POST /api/media/clips/{id}/reindex`.
 
-### 6c — Rich-field verification via search
+### 6c — Rich-field verification via search (post-DTO-extension)
 
-If `PR-RICH-METADATA-DTO-EXTEND` has shipped, verify that Qdrant returns
-rich metadata in search results:
+> **⚠️ Precondition:** This section is gated on `PR-RICH-METADATA-DTO-EXTEND`
+> (deadline 2026-07-25). The Qdrant payload key paths for rich fields depend
+> on how `payload_mapper.go` flattens `media_assets.metadata_json`. Until the
+> mapper is updated to promote `clip_summary` / `topics` / `hook` into the
+> Qdrant payload, these fields are only queryable via SQLite (§4b), not via
+> the search API response. Skip this section for pre-extension verification.
+
+After the DTO extension lands and the payload mapper is updated, verify
+that Qdrant returns rich metadata in search results:
 
 ```bash
+# NOTE: the exact payload key path (.metadata.summary vs .summary vs
+# .metadata_json.clip_summary) depends on the payload_mapper.go
+# flattening logic. Adjust the jq path after the mapper update ships.
 curl -s -X POST \
     -H "Authorization: Bearer $VELOX_ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"query":"Pacquiao hurts Broner near the ropes","sources":["youtube"],"mode":"hybrid","limit":1}' \
-    "http://${API_BASE}/api/media/search" | jq '.items[0] | {name, summary: .metadata.summary, topics: .metadata.topics, hook: .metadata.hook}'
+    "http://${API_BASE}/api/media/search" | jq '{name: .items[0].name, payload_keys: .items[0] | keys}'
 ```
 
-**Expected:** The `metadata` sub-object contains `summary`, `topics`, and
-`hook` fields with non-empty values (post-DTO-extension).
+**Expected:** The response payload contains rich metadata keys (exact path
+TBD after mapper update). At minimum, verify the search returns the correct
+clip and inspect `payload_keys` to confirm the rich keys are present.
 
 ## 7. Test 5 — Per-Clip Download
 
@@ -400,9 +417,10 @@ echo "Download results: $pass PASS, $fail FAIL (of ${#clip_ids[@]})"
 - Small response (< 1 KB) → the server returned an error envelope. Inspect
   the response body: `cat /tmp/clip_dl.mp4 | jq .`.
 
-## 8. Full Verification Script
+## 8. Quick Sanity Script (First-Clip Only)
 
-Combine all 5 tests into a single operator script:
+For a fast smoke check (doesn't download all 8 clips — see §7b for the
+full per-clip loop), combine Tests 1-5 into a single script:
 
 ```bash
 #!/usr/bin/env bash
