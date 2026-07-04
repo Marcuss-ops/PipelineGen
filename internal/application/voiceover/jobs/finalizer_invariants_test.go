@@ -1,0 +1,578 @@
+// Package jobs — finalizer_invariants_test.go (PR-VO-COMPLETEPATH-FIX
+// closure mirror tests, July 2026).
+//
+// 4 TDD regression tests that pin the canonical contracts of the
+// voiceover pipeline after PR-VO-COMPLETEPATH-FIX (commit db2f3b1e,
+// July 4 2026). Each test is a regression guard for the post-fix
+// invariants; if a future change re-introduces ProducesArtifacts=true
+// on the voiceover job types OR breaks the finalizer's atomic-write
+// contract OR bypasses the parent-aggregator awaiting-state gate,
+// the matching test will fail loudly.
+//
+// Test map (per the original Italian audit action plan):
+//
+//  1. TestVoiceoverGenerate_RoutesToLegacyComplete
+//     Verifies that the canonical registry (appjobs.Compose) declares
+//     job.TypeVoiceoverGenerate with ProducesArtifacts=false post-fix.
+//     The runner's runLease uses registry.ProducesArtifacts(jobType)
+//     to decide between tools.Complete and tools.CompleteWithArtifacts;
+//     the contract value drives the routing.
+//
+//  2. TestVoiceoverGenerateItem_RoutesToLegacyComplete
+//     Same as #1 for the per-language child job type. Mirrors the
+//     production canonical registration at internal/application/jobs/
+//     registry.go:548.
+//
+//  3. TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn
+//     Verifies that voiceover.finalizer.Finalize writes voiceovers +
+//     media_assets + outbox_events in the SAME caller-owned *sql.Tx.
+//     Uses the canonical rollback trick: call Finalize with a tx,
+//     then rollback the tx — if the writes were in the caller's tx,
+//     the rollback undoes them; if the finalizer had opened its own
+//     tx, the writes would survive. The 3 adapters (voiceoverRepo,
+//     lifecycleService, outbox) record the *sql.Tx they receive and
+//     assert.Same verifies tx-pointer identity (= SAME tx as caller).
+//
+//     Honest scope-lock (audit discovery, NOT a regression of this
+//     fix): voiceover.finalizer does NOT write to asset_locations.
+//     The asset_locations table is written by AssetFinalizerTx
+//     (internal/application/assets/finalizer/asset_finalizer_tx.go)
+//     for artlist + stock pipelines; voiceover's canonical location
+//     surface is media_assets (Source='voiceover', MediaType='audio',
+//     DriveFileID, DriveLink, DownloadLink). This test is calibrated
+//     on path B (the chosen fix): the 3 tables the finalizer DOES
+//     write. The asset_locations gap is a forward-pointer
+//     (PR-VO-ASSET-LOCATIONS-CONSUMER-AUDIT) tracked separately.
+//
+//  4. TestParentAggregator_TriggeredOnlyAfterWaitingChildren
+//     Verifies that the background parent aggregator is invoked
+//     ONLY for parents in waiting_children (or partial_success)
+//     state. Parents in terminal states (succeeded, failed,
+//     cancelled) MUST be skipped — re-finalising an already-terminal
+//     parent would cause aggregate-state regression per the
+//     audit-P0 #1 contract.
+package jobs
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"testing"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+)
+
+// ─────────────────────────────────────────────────────────────────────
+// Test 1: voiceover.generate → legacy Complete, NOT CompleteWithArtifacts
+// ─────────────────────────────────────────────────────────────────────
+
+// TestVoiceoverGenerate_RoutesToLegacyComplete pins the AZIONE 7
+// routing contract for the parent voiceover job type. The runner's
+// runLease consults registry.ProducesArtifacts(jobType) to decide
+// between tools.Complete (legacy, plain) and tools.CompleteWithArtifacts
+// (artifact-emitter spine). Post-PR-VO-COMPLETEPATH-FIX the canonical
+// registry MUST declare job.TypeVoiceoverGenerate with ProducesArtifacts=
+// false so the runner routes to legacy Complete — voiceover.finalizer
+// is the canonical owner of the per-item artifact writes
+// (voiceovers + media_assets + outbox events) inside the caller-owned
+// tx, NOT the broker's CompleteWithArtifacts path.
+//
+// Regression guard: if a future commit re-introduces ProducesArtifacts=
+// true on job.TypeVoiceoverGenerate, the SQL-layer guard at
+// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+// will reject the legacy Complete with domainremote.ErrCompleteJobPathViolation
+// (the typed sentinel declared at internal/domain/remote/complete_job.go:148),
+// causing the voiceover.generate parent to be marked FAILED instead of
+// SUCCEEDED — the bug PR-VO-COMPLETEPATH-FIX closed.
+func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
+	reg := appjobs.Compose()
+	require.NotNil(t, reg)
+	require.True(t, reg.IsRegistered(job.TypeVoiceoverGenerate),
+		"job.TypeVoiceoverGenerate MUST be registered in the canonical registry (Compose())")
+
+	assert.False(t, reg.ProducesArtifacts(job.TypeVoiceoverGenerate),
+		"job.TypeVoiceoverGenerate MUST have ProducesArtifacts=false post-PR-VO-COMPLETEPATH-FIX (commit db2f3b1e, 2026-07-04). "+
+			"voiceover.finalizer.Finalize is the canonical owner of media_assets + outbox writes inside the per-item tx; "+
+			"the broker's legacy Complete is the canonical mark-SUCCEEDED seam. "+
+			"If ProducesArtifacts=true is reintroduced, the SQL-layer guard at "+
+			"internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
+			"with domainremote.ErrCompleteJobPathViolation, causing the voiceover.generate parent to be marked FAILED "+
+			"instead of SUCCEEDED — the exact bug PR-VO-COMPLETEPATH-FIX closed.")
+
+	// Also verify the canonical registration surface (registry.go:541)
+	// uses the JobPolicy literal and not the ProducesArtifacts flag.
+	entry, ok := reg.Get(job.TypeVoiceoverGenerate)
+	require.True(t, ok, "job.TypeVoiceoverGenerate must be a registered entry")
+	assert.Equal(t, "voiceover.generate", entry.Type)
+	assert.False(t, entry.ProducesArtifacts,
+		"registry entry's ProducesArtifacts field MUST be false (registry.go:541 post-db2f3b1e)")
+	assert.Contains(t, entry.Description, "voiceover.Finalizer",
+		"registry entry's Description MUST mention voiceover.Finalizer as the canonical artifact owner (godlike/06 SSOT documentation discipline)")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Test 2: voiceover.generate_item → legacy Complete, NOT CompleteWithArtifacts
+// ─────────────────────────────────────────────────────────────────────
+
+// TestVoiceoverGenerateItem_RoutesToLegacyComplete pins the AZIONE 7
+// routing contract for the per-language child job type. Same shape
+// as Test 1 but for the child fan-out. Each per-language child
+// persists its own voiceovers row + media_assets projection + outbox
+// events inside its own per-item tx via the unified finalizer; the
+// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
+//
+// Regression guard: same SQL-layer ErrCompleteJobPathViolation
+// trigger if ProducesArtifacts=true is reintroduced on the child.
+func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
+	reg := appjobs.Compose()
+	require.NotNil(t, reg)
+	require.True(t, reg.IsRegistered(job.TypeVoiceoverGenerateItem),
+		"job.TypeVoiceoverGenerateItem MUST be registered in the canonical registry (Compose())")
+
+	assert.False(t, reg.ProducesArtifacts(job.TypeVoiceoverGenerateItem),
+		"job.TypeVoiceoverGenerateItem MUST have ProducesArtifacts=false post-PR-VO-COMPLETEPATH-FIX (commit db2f3b1e, 2026-07-04). "+
+			"Each per-language child persists its own voiceovers row + media_assets projection + outbox events inside "+
+			"its own per-item tx via the unified finalizer. The broker's legacy Complete is the canonical mark-SUCCEEDED "+
+			"seam for this child type as well. "+
+			"If ProducesArtifacts=true is reintroduced, the SQL-layer guard at "+
+			"internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
+			"with domainremote.ErrCompleteJobPathViolation, mirroring the parent-type bug.")
+
+	entry, ok := reg.Get(job.TypeVoiceoverGenerateItem)
+	require.True(t, ok)
+	assert.Equal(t, "voiceover.generate_item", entry.Type)
+	assert.False(t, entry.ProducesArtifacts,
+		"registry entry's ProducesArtifacts field MUST be false (registry.go:548 post-db2f3b1e)")
+	assert.Equal(t, 4, entry.Concurrency,
+		"job.TypeVoiceoverGenerateItem Concurrency MUST remain 4 (per-language sibling throttle — production canonical)")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Test 3: voiceover.finalizer writes in same caller-owned *sql.Tx
+// ─────────────────────────────────────────────────────────────────────
+
+// txRecordingOutbox records the *sql.Tx passed to each Enqueue*Event call.
+// The proof of "same-tx atomicity" is tx-pointer identity: if the production
+// TxOutboxEnqueuer implementation receives the SAME *sql.Tx that the
+// caller opened via VoiceoverRepository.BeginTx, the writes it issues
+// via tx.ExecContext are part of the caller's tx. Rolling back the
+// caller's tx would undo them.
+type txRecordingOutbox struct {
+	// lastTx is the most-recent *sql.Tx pointer passed to any
+	// Enqueue* call. Used to assert tx-pointer identity (the
+	// canonical atomicity proof: every Enqueue call MUST receive
+	// the SAME *sql.Tx the caller opened).
+	lastTx *sql.Tx
+	// indexEventCalls + cleanupEventCalls record the specific call
+	// sequences for the per-step execution-marker assertions.
+	indexEventCalls   int
+	cleanupEventCalls int
+}
+
+func (s *txRecordingOutbox) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, _ string, _ string) error {
+	s.lastTx = tx
+	s.indexEventCalls++
+	return nil
+}
+func (s *txRecordingOutbox) EnqueueCleanupEvent(_ context.Context, tx *sql.Tx, _ string, _ string, _ string, _ []string) error {
+	s.lastTx = tx
+	s.cleanupEventCalls++
+	return nil
+}
+
+var _ voiceover.TxOutboxEnqueuer = (*txRecordingOutbox)(nil)
+
+// txRecordingLifecycle records the *sql.Tx passed to UpsertVoiceoverProjectionTx.
+// The production concrete *lifecycle.Service.UpsertVoiceoverProjectionTx
+// (internal/application/assets/lifecycle/service.go:405) takes a
+// *sql.Tx and uses it for the media_assets UPSERT — if the test stub
+// receives the SAME tx as the caller, the production impl would also
+// write to that tx.
+type txRecordingLifecycle struct {
+	// lastTx is the *sql.Tx passed to UpsertVoiceoverProjectionTx.
+	// Used to assert the production concrete would have written the
+	// media_assets row in the caller's tx.
+	lastTx *sql.Tx
+	calls  int
+}
+
+func (s *txRecordingLifecycle) UpsertVoiceoverProjectionTx(_ context.Context, tx *sql.Tx, _ *voiceover.VoiceoverProjectionInput) error {
+	s.lastTx = tx
+	s.calls++
+	return nil
+}
+
+var _ voiceover.LifecycleProjectionUpserter = (*txRecordingLifecycle)(nil)
+
+// txRecordingVoiceoverRepo records the *sql.Tx passed to each
+// VoiceoverRepository call. The InsertTx is exercised in the test
+// (the finalizer's Step 3 calls it for the voiceovers row). The
+// actual SQL write to the in-memory voiceovers table is verified
+// by the rollback trick below.
+type txRecordingVoiceoverRepo struct {
+	db      *sql.DB
+	lastTx  *sql.Tx
+	insertN int
+	deleteN int
+	dedupeN int
+}
+
+func (s *txRecordingVoiceoverRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	return s.db.BeginTx(ctx, nil)
+}
+
+func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx *sql.Tx, rec *voiceover.VoiceoverRecord) error {
+	s.lastTx = tx
+	s.insertN++
+	_, err := tx.ExecContext(context.Background(), `
+		INSERT INTO voiceovers (
+			id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, status, terror, strategy,
+			metadata, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice, rec.Filename,
+		rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath, rec.DriveFileID,
+		rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.Status, rec.Error, rec.Strategy,
+		rec.Metadata, rec.CreatedAt, rec.UpdatedAt,
+	)
+	return err
+}
+
+func (s *txRecordingVoiceoverRepo) DeleteByIDTx(_ context.Context, tx *sql.Tx, _ string) error {
+	s.lastTx = tx
+	s.deleteN++
+	return nil
+}
+
+func (s *txRecordingVoiceoverRepo) PreReadByID(_ context.Context, _ string) (*voiceover.VoiceoverRecord, error) {
+	// The production finalizer does NOT call PreReadByID (the dedupe
+	// gate uses CountByDriveFileIDTx). This stub is present only to
+	// satisfy the persistence.Repository interface contract; callers
+	// MUST NOT observe it during a canonical Finalize() call.
+	return nil, nil
+}
+
+func (s *txRecordingVoiceoverRepo) CountByDriveFileIDTx(_ context.Context, tx *sql.Tx, _ string, _ string) (string, int, error) {
+	s.lastTx = tx
+	s.dedupeN++
+	// count=0 → DecideDedupe returns DedupeContinue → finalizer proceeds
+	// with Step 2 (DELETE) + Step 3 (INSERT) + Step 4 (projection) +
+	// Step 5 (outbox index) + Step 6 (outbox cleanup, guard-skipped if
+	// ShouldSwap=false). Step 1 dedupe-lookup is recorded (s.dedupeN++)
+	// but the dedupe-lookup is the FIRST tx-bound call.
+	return "", 0, nil
+}
+
+var _ voiceover.VoiceoverRepository = (*txRecordingVoiceoverRepo)(nil)
+
+// openInvariantsTestDB opens an in-memory SQLite with the canonical
+// voiceovers table schema. The finalizer's Step 3 InsertTx writes to
+// this table; the rollback trick at the end of the test verifies the
+// write was in the caller's tx.
+func openInvariantsTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE voiceovers (
+			id TEXT PRIMARY KEY,
+			request_id TEXT NOT NULL DEFAULT '',
+			text_hash TEXT NOT NULL DEFAULT '',
+			text_preview TEXT NOT NULL DEFAULT '',
+			language TEXT NOT NULL DEFAULT '',
+			voice TEXT NOT NULL DEFAULT '',
+			filename TEXT NOT NULL DEFAULT '',
+			local_path TEXT NOT NULL DEFAULT '',
+			cleaned_path TEXT NOT NULL DEFAULT '',
+			folder_id TEXT NOT NULL DEFAULT '',
+			folder_path TEXT NOT NULL DEFAULT '',
+			drive_file_id TEXT NOT NULL DEFAULT '',
+			drive_link TEXT NOT NULL DEFAULT '',
+			download_link TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT '',
+			terror TEXT NOT NULL DEFAULT '',
+			strategy TEXT NOT NULL DEFAULT '',
+			metadata TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)
+	`)
+	require.NoError(t, err)
+	return db
+}
+
+// TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn pins the
+// canonical atomicity contract of voiceover.finalizer.Finalize (P0.4
+// Fase 3a, July 2026): the 6-step commit sequence runs inside the
+// caller-owned *sql.Tx, so all writes (voiceovers + media_assets
+// projection + outbox asset.index + outbox voiceover.cleanup) commit
+// or rollback together.
+//
+// The proof is a 2-arm assertion:
+//
+//	(a) tx-pointer identity: each of the 3 adapters (voiceoverRepo,
+//	    lifecycleService, outbox) MUST receive the SAME *sql.Tx that
+//	    the caller opened via BeginTx. If the finalizer had opened
+//	    a separate tx for any of the 3 writes, the *sql.Tx pointer
+//	    would differ.
+//
+//	(b) rollback trick: after Finalize returns, the caller rolls
+//	    back the tx. If the writes were in the caller's tx, the
+//	    voiceovers table will be EMPTY afterwards. If the finalizer
+//	    had committed to a separate tx, the voiceovers row would
+//	    survive the rollback.
+//
+// Honest scope-lock (audit discovery, NOT a regression of this fix):
+// voiceover.finalizer does NOT write to asset_locations. The
+// asset_locations table is written by AssetFinalizerTx
+// (internal/application/assets/finalizer/asset_finalizer_tx.go) for
+// artlist + stock pipelines; voiceover's canonical location surface
+// is media_assets (Source='voiceover', MediaType='audio', DriveFileID,
+// DriveLink, DownloadLink). Forward-pointer: PR-VO-ASSET-LOCATIONS-
+// CONSUMER-AUDIT (deadline TBD) decides between Strada A (adapt
+// SceneRenderer to media_assets.DriveLink) or Strada B (extend the
+// finalizer with a 7th step writing asset_locations in the same tx).
+func TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn(t *testing.T) {
+	db := openInvariantsTestDB(t)
+
+	outbox := &txRecordingOutbox{}
+	lifecycle := &txRecordingLifecycle{}
+	repo := &txRecordingVoiceoverRepo{db: db}
+
+	// Construct the production concrete finalizer via the exported
+	// canonical constructor (godlike/06 Pattern 0 — voiceover.finalizer
+	// is the SINGLE canonical implementation of the VoiceoverFinalizer
+	// port per P0.4 Fase 3a, July 2026).
+	f := voiceover.NewVoiceoverFinalizer(repo, outbox, lifecycle, zap.NewNop())
+
+	// Open the caller's tx — the canonical "atomicity envelope" the
+	// finalizer is expected to honour.
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err, "BeginTx must succeed (in-memory SQLite)")
+
+	// Call Finalize with the caller's tx. All 6 sub-steps (Step 1
+	// dedupe-lookup, Step 2 DeleteByIDTx, Step 3 InsertTx, Step 4
+	// UpsertVoiceoverProjectionTx, Step 5 EnqueueIndexEvent, Step 6
+	// executeCleanupOutboxStep → EnqueueCleanupEvent) run inside this tx.
+	// FinalizeCommand.Language is the typed voiceover.Language named
+	// string type (PR-VO-TYPED-PRIMITIVES, July 2026); the test
+	// converts the literal "en" via voiceover.Language("en") to match
+	// the canonical typed surface.
+	res, err := f.Finalize(context.Background(), tx, &voiceover.FinalizeCommand{
+		ID:           "vo-atomicity",
+		RequestID:    "req-atomicity",
+		TextHash:     "hash-atomicity",
+		Text:         "atomicity-test text",
+		Language:     voiceover.Language("en"),
+		Voice:        "en_female",
+		Filename:     "atomicity.mp3",
+		LocalPath:    "/tmp/atomicity.mp3",
+		DriveFileID:  "drive-atomicity",
+		DriveLink:    "https://drive.google.com/file/d/drive-atomicity/view",
+		DownloadLink: "https://drive.google.com/uc?id=drive-atomicity",
+		FileHash:     "abc123",
+		FolderID:     "folder-atomicity",
+		FolderPath:   "/tmp/vo-atomicity",
+		// ShouldSwap=false → Step 6 (cleanup outbox) is guard-skipped.
+		// Step 5 (index outbox) executes because FileHash="abc123".
+		ShouldSwap: false,
+	})
+	require.NoError(t, err, "Finalize must succeed with all required deps wired (no nil-receiver / wiring errors)")
+	require.NotNil(t, res)
+	assert.False(t, res.Reused, "Step 1 dedupe-lookup returned count=0 → Reused must be false")
+
+	// ── Assertion (a): tx-pointer identity ──
+	// Every adapter received the SAME *sql.Tx as the caller. This
+	// proves each adapter's write (had it been issued) would land in
+	// the caller's tx — atomicity-by-pointer-identity.
+	assert.Same(t, tx, repo.lastTx,
+		"VoiceoverRepository.InsertTx (Step 3) MUST receive the caller's *sql.Tx (atomicity contract)")
+	assert.Same(t, tx, lifecycle.lastTx,
+		"LifecycleService.UpsertVoiceoverProjectionTx (Step 4, media_assets projection) MUST receive the caller's *sql.Tx")
+	assert.Same(t, tx, outbox.lastTx,
+		"Outbox.EnqueueIndexEvent (Step 5) MUST receive the caller's *sql.Tx (most-recent tx pointer)")
+
+	// Step 1 (dedupe-lookup) MUST have been called once. The dedupe
+	// is a tx-bound SELECT — proves the dedupe gate also runs in the
+	// caller's tx.
+	assert.Equal(t, 1, repo.dedupeN,
+		"Step 1 (CountByDriveFileIDTx) MUST run inside the caller's tx (so the count is consistent with Step 3 INSERT)")
+	assert.Equal(t, 1, repo.insertN, "Step 3 (InsertTx) MUST have been called once")
+	assert.Equal(t, 1, repo.deleteN, "Step 2 (DeleteByIDTx) MUST have been called once")
+	assert.Equal(t, 1, lifecycle.calls, "Step 4 (UpsertVoiceoverProjectionTx) MUST have been called once")
+	assert.Equal(t, 1, outbox.indexEventCalls, "Step 5 (EnqueueIndexEvent) MUST have been called once")
+	// Step 6 (cleanup outbox) is guard-skipped because ShouldSwap=false
+	// → EnqueueCleanupEvent NOT called. This is the data-state guard
+	// documented in finalizer.go step 6.
+	assert.Equal(t, 0, outbox.cleanupEventCalls,
+		"Step 6 (EnqueueCleanupEvent) MUST be guard-skipped when ShouldSwap=false (data-state guard, not wiring error)")
+
+	// ── Assertion (b): rollback trick ──
+	// Rollback the caller's tx. The voiceovers row written by Step 3
+	// (InsertTx) MUST be undone. If it survives, the InsertTx was NOT
+	// in the caller's tx (regression: finalizer opened its own tx).
+	require.NoError(t, tx.Rollback(), "rollback after Finalize — proves writes were in the caller's tx")
+
+	// Open a fresh read-only tx to verify the rollback undid the writes.
+	readTx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	defer func() { _ = readTx.Rollback() }()
+
+	var voiceoverCount int
+	err = readTx.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM voiceovers WHERE id = ?`, "vo-atomicity").Scan(&voiceoverCount)
+	require.NoError(t, err, "read-back query must succeed")
+	assert.Equal(t, 0, voiceoverCount,
+		"voiceovers row MUST NOT survive rollback (proves Step 3 InsertTx was in the caller's tx — atomicity contract)")
+
+	// FinalizeResult.RequiredSteps MUST report all 3 required steps
+	// as executed (Steps 4 + 5 + 6; Step 6 is guarded in this test).
+	// This pins the per-step execution-state marker discipline
+	// (audit P0 #2, July 2026).
+	require.NotEmpty(t, res.RequiredSteps,
+		"FinalizeResult.RequiredSteps MUST be populated (audit P0 #2 surface contract)")
+	assert.Contains(t, res.RequiredSteps, "media_assets_projection: executed",
+		"Step 4 MUST record 'media_assets_projection: executed' (RequiredStep marker)")
+	assert.Contains(t, res.RequiredSteps, "index_outbox: executed",
+		"Step 5 MUST record 'index_outbox: executed' (RequiredStep marker)")
+	assert.Contains(t, res.RequiredSteps, "cleanup_outbox: guarded (ShouldSwap=false)",
+		"Step 6 MUST record 'cleanup_outbox: guarded (ShouldSwap=false)' (data-state guard, not wiring error)")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Test 4: parent_aggregator is triggered ONLY for waiting_children
+// ─────────────────────────────────────────────────────────────────────
+
+// TestParentAggregator_TriggeredOnlyAfterWaitingChildren pins the
+// IsParentAwaitingAggregation gate of internal/application/voiceover/jobs/
+// parent_aggregator.go::aggregateOne. The background aggregator MUST
+// process only parents in waiting_children (or partial_success) state;
+// parents in terminal states (succeeded, failed, cancelled) MUST be
+// skipped — re-finalising an already-terminal parent would corrupt
+// the canonical aggregate (the audit-P0 #1 closure test
+// TestAcceptance_CancelParent_AggregatorSkips pins the failed-state
+// case; this test extends coverage to the other 2 terminal states).
+//
+// 3 sub-cases (table-driven):
+//
+//	A. parent_state=waiting_children  → aggregator processes (asserts FinalizeAggregateParent called)
+//	B. parent_state=succeeded         → aggregator SKIPS (asserts FinalizeAggregateParent NOT called)
+//	C. parent_state=cancelled         → aggregator SKIPS (asserts FinalizeAggregateParent NOT called)
+func TestParentAggregator_TriggeredOnlyAfterWaitingChildren(t *testing.T) {
+	// Shared child job — all 3 sub-cases use the same SUCCEEDED child
+	// shape. The aggregator's per-child logic is identical across the
+	// sub-cases; what varies is the parent's parent_state.
+	childSucceeded := func(id string) *job.Job {
+		return &job.Job{
+			ID:     id,
+			Type:   job.TypeVoiceoverGenerateItem,
+			Status: job.StatusSucceeded,
+			Result: []byte(`{"ok":true,"status":"completed"}`),
+		}
+	}
+
+	t.Run("A. waiting_children → aggregator processes", func(t *testing.T) {
+		// makeParentResult (defined in parent_aggregator_test.go) sets
+		// parent_state="waiting_children" by default.
+		stub := &stubAggregatorJobsService{
+			parentJob: &job.Job{
+				ID:     "parent-waiting",
+				Type:   job.TypeVoiceoverGenerate,
+				Status: job.StatusSucceeded,
+				Result: makeParentResult([]string{"child-w1"}),
+			},
+			childJobs: map[string]*job.Job{
+				"child-w1": childSucceeded("child-w1"),
+			},
+		}
+		agg := NewParentAggregator(AggregatorDeps{
+			JobsSvc:      stub,
+			Logger:       zap.NewNop(),
+			PollInterval: 30 * time.Second,
+		})
+		agg.Tick(context.Background())
+
+		// Canonical assertion: aggregator's FinalizeAggregateParent
+		// (the typed post-fan-out finalise path) MUST have been invoked.
+		assert.NotEmpty(t, stub.flipped,
+			"Case A: aggregator MUST invoke FinalizeAggregateParent for parents in waiting_children state (per IsParentAwaitingAggregation gate)")
+	})
+
+	t.Run("B. succeeded → aggregator skips", func(t *testing.T) {
+		// Build parent result with parent_state="succeeded" (terminal).
+		terminalResult := map[string]any{
+			"ok":            true,
+			"parent_job_id": "parent-succeeded",
+			"parent_state":  "succeeded",
+			"child_job_ids": []string{"child-s1"},
+		}
+		terminalRaw, _ := json.Marshal(terminalResult)
+		stub := &stubAggregatorJobsService{
+			parentJob: &job.Job{
+				ID:     "parent-succeeded",
+				Type:   job.TypeVoiceoverGenerate,
+				Status: job.StatusSucceeded,
+				Result: terminalRaw,
+			},
+			childJobs: map[string]*job.Job{
+				"child-s1": childSucceeded("child-s1"),
+			},
+		}
+		agg := NewParentAggregator(AggregatorDeps{
+			JobsSvc:      stub,
+			Logger:       zap.NewNop(),
+			PollInterval: 30 * time.Second,
+		})
+		agg.Tick(context.Background())
+
+		assert.Empty(t, stub.flipped,
+			"Case B: aggregator MUST NOT re-finalise parents in terminal 'succeeded' state (would corrupt aggregate per audit-P0 #1 contract)")
+	})
+
+	t.Run("C. cancelled → aggregator skips", func(t *testing.T) {
+		// Build parent result with parent_state="cancelled" (terminal).
+		// Mirrors the audit-P0 #1 closure test
+		// TestAcceptance_CancelParent_AggregatorSkips but uses
+		// "cancelled" instead of "failed" to extend coverage.
+		cancelledResult := map[string]any{
+			"ok":            false,
+			"parent_job_id": "parent-cancelled",
+			"parent_state":  "cancelled",
+			"child_job_ids": []string{"child-c1"},
+		}
+		cancelledRaw, _ := json.Marshal(cancelledResult)
+		stub := &stubAggregatorJobsService{
+			parentJob: &job.Job{
+				ID:     "parent-cancelled",
+				Type:   job.TypeVoiceoverGenerate,
+				Status: job.StatusCancelled,
+				Result: cancelledRaw,
+			},
+			childJobs: map[string]*job.Job{
+				"child-c1": childSucceeded("child-c1"),
+			},
+		}
+		agg := NewParentAggregator(AggregatorDeps{
+			JobsSvc:      stub,
+			Logger:       zap.NewNop(),
+			PollInterval: 30 * time.Second,
+		})
+		agg.Tick(context.Background())
+
+		assert.Empty(t, stub.flipped,
+			"Case C: aggregator MUST NOT re-finalise parents in terminal 'cancelled' state (mirrors the audit-P0 #1 'failed'-state contract)")
+	})
+}
