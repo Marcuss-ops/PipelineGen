@@ -4415,7 +4415,7 @@ wave_status:
       description: Update doc.go with canonical type map for metadata types
 
 
-# ── PERSIST-PROCESSOR-PR6 — PersistenceProcessor PR-6 canonical columns (CLOSED, July 2026) ──
+# ── PERSIST-PR6 — PersistenceProcessor PR-6 canonical columns (CLOSED, July 2026) ──
 # godlike/06 SSOT typed-contract alignment: PersistenceProcessor now writes the
 # canonical IdempotencyKey + SpecScene typed fields into migration 100's dedicated
 # idempotency_key + specscene TEXT columns, leaving the legacy Template +
@@ -4431,7 +4431,10 @@ wave_status:
 # (with the wrong reason "Needs SQLite DB" — both tests use an in-memory
 # idemFakeRepo) were REMOVED so the canonical-contract invariant compiles into
 # the test suite for future regressions per godlike/07 typed-error contract.
-- id: PERSIST-PROCESSOR-PR6
+# Cross-reference precedents (godlike/06 audit-pin, narrative only — not schema fields):
+#   PR-CHROME-PROVIDER-SPLIT — godlike/06 same-package reflection legacy retirement precedent (architecture/current.yaml#PR-CHROME-PROVIDER-SPLIT, ship_sha cd7e1799, ship_date 2026-07-04)
+#   DRIVE-005-FIELDS        — canonical-port-audit precedent (architecture/current.yaml#DRIVE-005-FIELDS, ship_sha 1dc40709, ship_date 2026-06-30)
+- id: PERSIST-PR6
   status: done
   exit_signal: true
   owner_capability: architecture
