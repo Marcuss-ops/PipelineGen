@@ -5075,7 +5075,7 @@ wave_status:
   status: pending
   exit_signal: false
   owner_capability: architecture
-  deadline: 2026-08-22
+  deadline: 2026-09-15
   exit_gate: |
     All 12 slim-shape linked_issues slots flip to status: shipped.
     Each per-PR commit lands directly on main per-file (auto-sufficient
@@ -5155,3 +5155,52 @@ wave_status:
       owner_capability: internal/application/assets/finalizer
       status: pending
       deadline: 2026-08-22
+  cross_refs:
+    audit_date: 2026-07-04
+    audit_command: "git log --since=90.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30"
+    analysis_window_days: 90
+    unmissed_hotspots:
+      - file: internal/app/registry.go
+        commit_count_90d: 121
+        reason: composition-root module registration; not in 12-item matrix because the matrix is scoped to assets/scripts subtrees
+        forward_pointer: PR-APP-REGISTRY-SPLIT
+        proposed_deadline: 2026-09-01
+      - file: internal/app/composition.go
+        commit_count_90d: 119
+        reason: composition-root bundle struct; not in 12-item matrix because the matrix is scoped to assets/scripts subtrees
+        forward_pointer: PR-APP-COMPOSITION-SPLIT
+        proposed_deadline: 2026-09-01
+      - file: internal/app/wire_script.go
+        commit_count_90d: 74
+        reason: script wiring glue; 2026-07-04 carry-forward (FIX-APP-WIRE-SCRIPT-SYNTAX) was a stale audit-pin per the meta-closure at SHA 73384188 — actual broken code lived in workerruntime/{preflight.go, run.go} and was fixed at SHA 03d42b0c
+        forward_pointer: PR-APP-WIRE-SCRIPT-CLEANUP
+        proposed_deadline: 2026-08-15
+      - file: internal/app/lifecycle.go
+        commit_count_90d: 74
+        reason: composition-root lifecycle wiring; partially split in PR-LIFECYCLE-SPLIT-BY-CAPABILITY (2026-07-04) but the slim orchestrator still carries audit-pins for godlike/06 SSOT discipline
+        forward_pointer: PR-APP-LIFECYCLE-AUDIT-PIN-CLEANUP
+        proposed_deadline: 2026-10-15
+      - file: internal/app/module_media.go
+        commit_count_90d: 54
+        reason: media module descriptor; 2026-07-04 carry-forward (FIX-APP-MODULE-MEDIA-DISPATCHER) retired the obsolete MutationsDispatcher literal at SHA a10b67d0 — this hotspot is now stable
+        forward_pointer: PR-APP-MODULE-MEDIA-STABILIZE
+        proposed_deadline: 2026-10-15
+    slim_schema_ratchet:
+      precedent: PR-GODOBJ-HOTSPOT-CROSSREF
+      precedent_date: 2026-08-01
+      ratcheted_deadline: 2026-09-15
+      original_deadline: 2026-08-22
+      ratchet_weeks: 3.4
+      rationale: "5 unmissed hotspots are all in internal/app/ (composition root). The 12-item matrix currently has 1 internal/app/ slot (PR-SCRIPT-WIRE-SPLIT, owner_capability = internal/app) but 5 high-frequency internal/app/ files need 5 forward-pointer PR-APP-* slots — the matrix needs 4 new slots (registry + composition + lifecycle + module_media; wire_script is already covered by the matrix slot). The 3.4-week ratchet absorbs the cross-package audit-creep risk per godlike/07 minimum-blast-radius; the forward-pointers land at their own per-PR deadlines (range 2026-08-15 to 2026-10-15)."
+    follow_up_tickets:
+      - id: PR-CODE-QUALITY-CROSS-REF-3-SURFACE-LOCKSTEP
+        owner_capability: architecture (CHANGELOG.md + AGENTS.md maintainer)
+        status: pending
+        deadline: 2026-07-15
+        description: "3-surface lockstep mirror entries — CHANGELOG.md ## Unreleased ### Added + AGENTS.md ## Recent cross-cutting closures entry mirroring this wave-tracker amendment. Per the prior PR closures (PR-STOCK-SERVICE-SPLIT, PR-STOCK-ORCHESTRATOR-SPLIT) the 3-surface lockstep is the standard pattern for doc-only wave-tracker amendments; this forward-pointer absorbs the carry-forward gap flagged on the previous PR closures."
+    godlike_07_honest_limitation:
+      time_window_choice: 90 days is the canonical AGENTS.md Git-Lesson-3 + GODOBJ precedent window; 60/180-day windows might surface different hotspots and are not enumerated here
+      test_files_excluded: hotspots in *_test.go files are out of scope (test churn is expected and not a cleanup signal)
+      architecture_or_changelog_excluded: hotspots in architecture/ + CHANGELOG.md are excluded (those are wave-tracker bookkeeping, not production code)
+      cross_package_audit_creep: the 5 unmissed hotspots are all in internal/app/ which is OUTSIDE the 12-item matrix scope — the cross-package risk is acknowledged and absorbed via the deadline ratchet
+      12_item_matrix_validity: the 12-item matrix remains the canonical scope for this wave; the 5 unmissed are genuinely new findings, not duplications
