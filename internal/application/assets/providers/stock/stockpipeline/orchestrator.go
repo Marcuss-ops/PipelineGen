@@ -481,6 +481,34 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 		jobFinalizer:        o.jobFinalizer,
 	}
 
+	// Phase 1 (July 2026): orchestrator-level cleanup of staged
+	// sources. The staged files MUST survive the entire run —
+	// extract_clips and compose_chunks read them. Cleanup fires
+	// AFTER all 6 steps complete (success or failure) so the
+	// deferred body always runs even when a step aborts.
+	//
+	// Uses context.WithoutCancel(ctx) so cleanup survives even
+	// when the original ctx is cancelled (e.g. a step returned an
+	// error and the caller cancelled the context). Per AGENTS.md
+	// §Known Issues context.Background() allowlist pattern.
+	defer func() {
+		stager := o.stager
+		if stager == nil {
+			return
+		}
+		cleanupCtx := context.WithoutCancel(ctx)
+		for _, sa := range state.StagedAssets {
+			if cleanErr := stager.Cleanup(cleanupCtx, sa); cleanErr != nil {
+				if o.executorLog != nil {
+					o.executorLog.Warn("orchestrator: staged source cleanup failed",
+						zap.String("local_path", sa.LocalPath),
+						zap.String("source_id", sa.SourceID),
+						zap.Error(cleanErr))
+				}
+			}
+		}
+	}()
+
 	for _, step := range o.dispatchSteps {
 		key := steps.StepKey{
 			JobID:            o.cfg.JobId,

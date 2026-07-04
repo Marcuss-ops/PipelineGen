@@ -183,21 +183,11 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 	seen := make(map[string]bool)
 	var staged []*assets.StagedAsset
 
-	// Deferred cleanup: fires when Step.Run returns (AFTER RunResilient's
-	// loop iteration), which is safe because downstream steps (extract_clips,
-	// compose_chunks) do not read StagedAssets — they consume the planner's
-	// ClipPlan logical IDs directly.
-	defer func() {
-		for _, a := range staged {
-			if cleanErr := stager.Cleanup(ctx, a); cleanErr != nil {
-				if runner.Log() != nil {
-					runner.Log().Warn("orchestrator: stock.stage_sources: Cleanup failed",
-						zap.String("local_path", a.LocalPath),
-						zap.Error(cleanErr))
-				}
-			}
-		}
-	}()
+	// Phase 1 (July 2026): REMOVED defer Cleanup from this step.
+	// The staged source MUST survive for the entire orchestrator run
+	// — downstream steps (extract_clips, compose_chunks) need the real
+	// files on disk. Cleanup now lives at the orchestrator level
+	// (orchestrator.go::RunResilient), fired after ALL steps complete.
 
 	for _, plan := range plans {
 		if seen[plan.SourceID] {
@@ -206,7 +196,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 		seen[plan.SourceID] = true
 
 		ref := assets.SourceRef{URL: plan.SourceID}
-		asset, stageErr := stager.StageSource(ctx, ref)
+		sa, stageErr := stager.StageSource(ctx, ref)
 		if stageErr != nil {
 			// Graceful degradation: stage failure logs Warn + continues.
 			// Mirrors YouTube (process_segment.go Step 4a) + Artlist pattern.
@@ -220,7 +210,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 			continue
 		}
-		if asset == nil {
+		if sa == nil {
 			// Defensive nil-asset path: StageSource returned (nil, nil).
 			// Treated as soft failure (Warn + continue, no defer).
 			if runner.Log() != nil {
@@ -229,13 +219,16 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 			continue
 		}
-		staged = append(staged, asset)
+		// Phase 1 (July 2026): stamp the SourceID on the StagedAsset
+		// so downstream steps can map ClipPlan.SourceID → LocalPath.
+		sa.SourceID = plan.SourceID
+		staged = append(staged, sa)
 
 		if runner.Log() != nil {
 			runner.Log().Info("orchestrator: stock.stage_sources: staged source",
 				zap.String("source_id", plan.SourceID),
-				zap.String("local_path", asset.LocalPath),
-				zap.Int64("bytes", asset.Bytes))
+				zap.String("local_path", sa.LocalPath),
+				zap.Int64("bytes", sa.Bytes))
 		}
 	}
 
@@ -246,32 +239,168 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 // ── Step 3: stock.extract_clips ───────────────────────────────────────
 
 // StockExtractClipsStep is the canonical implementation of
-// stock.extract_clips. For each ClipPlan entry the step constructs
-// a typed *asset.Asset and invokes Writer.WriteAndEnqueue — the
-// canonical atomic UPSERT + outbox-enqueue entry-point. A returned
-// non-nil error aborts the orchestrator with the typed
-// ErrAtomicDispatchFailed envelope (per run_upload_indexing_test.go
-// contract, test (a)).
+// stock.extract_clips. Phase 1 (July 2026): rewired to use the
+// real VideoCutter.Cut port instead of emitting logical IDs.
+//
+// The step:
+//  1. Builds a sourceID → localPath map from StagedAssets.
+//  2. Groups ClipPlan entries by SourceID.
+//  3. For each group, constructs CutRequest with the real SourcePath
+//     and calls runner.Cutter().Cut(ctx, req).
+//  4. Collects OutputPath values from SuccessfulItems() → CutPaths.
+//  5. Writes asset/outbox via Writer.WriteAndEnqueue for each
+//     successfully cut clip.
+//
+// Fail-closed contracts:
+//   - Cutter nil → test-fixture path (CutPaths = nil, no error).
+//   - Source not staged → Warn + skip (graceful degradation).
+//   - All cuts fail for a source → error (terminal).
+//   - Zero cut files across all sources → error (production gate).
 type StockExtractClipsStep struct{}
 
 func (StockExtractClipsStep) Name() string { return StepKeyStockExtractClips }
 
 func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
+	cutter := runner.Cutter()
 	plans := runner.State().Plan
-	var cutPaths []string
-	for i, plan := range plans {
-		clip := &asset.Asset{
-			ID:        plan.OutputLogicalID,
-			Name:      fmt.Sprintf("chunk_%d", i),
-			Source:    asset.Source("stock"),
-			MediaType: asset.MediaType("video"),
+
+	// Test-fixture path: no cutter wired → skip (downstream
+	// compose_chunks handles empty CutPaths gracefully).
+	if cutter == nil {
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.extract_clips: VideoCutter nil — skipping cut (test-fixture path)")
 		}
-		if err := runner.Writer().WriteAndEnqueue(ctx, clip, ""); err != nil {
-			return fmt.Errorf("%w: chunk %d (%s): %v",
-				ErrAtomicDispatchFailed, i, clip.ID, err)
-		}
-		cutPaths = append(cutPaths, plan.OutputLogicalID)
+		runner.State().CutPaths = nil
+		return nil
 	}
+
+	if len(plans) == 0 {
+		if runner.Log() != nil {
+			runner.Log().Debug("orchestrator: stock.extract_clips: empty plan — nothing to extract")
+		}
+		runner.State().CutPaths = nil
+		return nil
+	}
+
+	// Build sourceID → localPath map from StagedAssets.
+	stagedBySource := make(map[string]string)
+	for _, sa := range runner.State().StagedAssets {
+		if sa.SourceID != "" && sa.LocalPath != "" {
+			stagedBySource[sa.SourceID] = sa.LocalPath
+		}
+	}
+
+	// Group ClipPlan by SourceID.
+	grouped := make(map[string][]ClipPlan)
+	for _, plan := range plans {
+		grouped[plan.SourceID] = append(grouped[plan.SourceID], plan)
+	}
+
+	in := runner.RunInput()
+	noAudio := in != nil && in.NoAudio
+	writer := runner.Writer()
+
+	var cutPaths []string
+	sourceIdx := 0
+
+	for sourceID, groupPlans := range grouped {
+		sourcePath := stagedBySource[sourceID]
+		if sourcePath == "" {
+			// Source not staged — skip gracefully. The upstream
+			// stock.stage_sources step logs Warn on stage failure;
+			// here we surface the downstream impact without aborting
+			// (other sources may still have staged files).
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.extract_clips: source not staged — skipping cuts",
+					zap.String("source_id", sourceID),
+					zap.Int("clip_count", len(groupPlans)))
+			}
+			sourceIdx++
+			continue
+		}
+
+		// Build CutJobs from ClipPlan entries. Each job gets a
+		// unique output path via the per-clip index, avoiding the
+		// collision where all clips in a source group shared the
+		// same OutputLogicalID prefix.
+		jobs := make([]CutJob, 0, len(groupPlans))
+		for clipIdx, plan := range groupPlans {
+			outputPath := filepath.Join(os.TempDir(),
+				fmt.Sprintf("stock_cut_%s_%d_%d.mp4", runner.JobID(), sourceIdx, clipIdx))
+			jobs = append(jobs, CutJob{
+				StartSec:   plan.StartSec,
+				EndSec:     plan.EndSec,
+				OutputPath: outputPath,
+			})
+		}
+
+		req := CutRequest{
+			SourcePath: sourcePath,
+			Jobs:       jobs,
+			Codec:      "libx264",
+			Preset:     "medium",
+			CRF:        23,
+			NoAudio:    noAudio,
+			Logger:     runner.Log(),
+			SourceIdx:  sourceIdx,
+		}
+
+		result, cutErr := cutter.Cut(ctx, req)
+
+		// Process successful items. The port contract guarantees
+		// len(Items) == len(req.Jobs) (mai-nil-with-zero-output
+		// invariant); SuccessfulItems() filters to file-on-disk-
+		// playable outcomes (Succeeded | Validated | ProbeFailed).
+		for clipIdx, item := range result.SuccessfulItems() {
+			// CutPaths carries REAL file paths (for compose_chunks).
+			cutPaths = append(cutPaths, item.OutputPath)
+
+			// Write asset/outbox for this successfully cut clip.
+			// Asset ID uses the planner's OutputLogicalID (stable
+			// across retries) so retry dedupe works; the real file
+			// path is in CutPaths for downstream consumption.
+			if writer != nil && clipIdx < len(groupPlans) {
+				plan := groupPlans[clipIdx]
+				clip := &asset.Asset{
+					ID:        plan.OutputLogicalID,
+					Name:      fmt.Sprintf("chunk_%d_%d", sourceIdx, clipIdx),
+					Source:    asset.Source("stock"),
+					MediaType: asset.MediaType("video"),
+				}
+				if err := writer.WriteAndEnqueue(ctx, clip, ""); err != nil {
+					if runner.Log() != nil {
+						runner.Log().Warn("orchestrator: stock.extract_clips: WriteAndEnqueue failed — clip cut but not persisted",
+							zap.String("logical_id", plan.OutputLogicalID),
+							zap.String("output_path", item.OutputPath),
+							zap.Error(err))
+					}
+				}
+			}
+		}
+
+		if cutErr != nil && len(result.SuccessfulItems()) == 0 {
+			return fmt.Errorf("orchestrator: stock.extract_clips: VideoCutter.Cut failed for source %s with zero clips produced: %w",
+				sourceID, cutErr)
+		}
+
+		if runner.Log() != nil {
+			runner.Log().Info("orchestrator: stock.extract_clips: cut batch complete",
+				zap.String("source_id", sourceID),
+				zap.Int("planned", len(jobs)),
+				zap.Int("produced", len(result.SuccessfulItems())))
+		}
+
+		sourceIdx++
+	}
+
+	// Production gate: cutter wired (non-nil) + zero cut files
+	// across all sources → terminal error. This closes the
+	// false-success class where extract_clips "succeeds" without
+	// producing any real files on disk.
+	if len(cutPaths) == 0 {
+		return fmt.Errorf("orchestrator: stock.extract_clips: zero cut files produced across %d sources — all sources either unstaged or all cuts failed", len(grouped))
+	}
+
 	runner.State().CutPaths = cutPaths
 	return nil
 }
