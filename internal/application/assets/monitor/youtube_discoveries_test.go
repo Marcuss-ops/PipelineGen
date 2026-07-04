@@ -1437,12 +1437,30 @@ func TestIsTransientEnqueueError(t *testing.T) {
 // errors.New(...)`) breaks both assertions — godlike/07 "no fake
 // availability" invariant is upheld iff both return true.
 func TestSentinelWrap_Conflict(t *testing.T) {
-    wrapErr := fmt.Errorf("monitoring transition: %w", sqlassets.ErrStateConflict)
-    if !errors.Is(wrapErr, ErrLedgerStateConflict) {
-        t.Errorf("TestSentinelWrap_Conflict: errors.Is(wrapped sqlassets.ErrStateConflict, ErrLedgerStateConflict) = false; want true (alias contract)")
+    // (i) Direct wrap chain with ErrLedgerStateConflict (canonical
+    // monitor-internal constructor pattern).
+    directWrap := fmt.Errorf("monitoring transition: %w", ErrLedgerStateConflict)
+    if !errors.Is(directWrap, ErrLedgerStateConflict) {
+        t.Errorf("TestSentinelWrap_Conflict (direct): errors.Is(direct wrap of ErrLedgerStateConflict, ErrLedgerStateConflict) = false; want true")
     }
-    if !errors.Is(wrapErr, sqlassets.ErrStateConflict) {
-        t.Error("TestSentinelWrap_Conflict: errors.Is(wrapped ..., sqlassets.ErrStateConflict) = false; want true")
+
+    // (ii) Adapter simulation via TranslateLedgerSentinel: the
+    // production composition-root adapter path on a manually
+    // constructed error wrapping sqlassets.ErrStateConflict. The
+    // multi-%w wiring MUST preserve BOTH sentinels (ErrLedgerStateConflict
+    // added by adapter + sqlassets.ErrStateConflict preserved via
+    // the second %w).
+    infraWrap := fmt.Errorf("infra: row state precondition failed: %w", sqlassets.ErrStateConflict)
+    translated := TranslateLedgerSentinel(infraWrap)
+    if !errors.Is(translated, ErrLedgerStateConflict) {
+        t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain)")
+    }
+    if !errors.Is(translated, sqlassets.ErrStateConflict) {
+        // NOTE: `%%w` (escaped percent) prints the literal `%w` token in
+        // the test-failure message; Go vet treats the unescaped `%w`
+        // as an error-wrapping format directive incompatible with
+        // t.Errorf (which discards the format error arg).
+        t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain)")
     }
 }
 
@@ -1517,10 +1535,20 @@ func TestSentinelWrap_InfraReturnsCanonical(t *testing.T) {
     if !errors.Is(enqErr, sqlassets.ErrStateConflict) {
         t.Errorf("step 3: infra error NOT matching sqlassets.ErrStateConflict: %v", enqErr)
     }
-    // FASE 3.7 contract assertion: the alias MUST resolve. If a future
-    // refactor breaks the alias (e.g. var X = errors.New(...) instead of
-    // var X = assetsdb.ErrStateConflict), only this assertion fails.
-    if !errors.Is(enqErr, ErrLedgerStateConflict) {
-        t.Errorf("step 3: infra error NOT matching ErrLedgerStateConflict (alias contract broken): %v", enqErr)
+    // Adapter simulation: apply TranslateLedgerSentinel to mimic the
+    // production adapter. BOTH sentinels MUST resolve after translation
+    // (multi-%w preservation). This is the production-shape contract:
+    // the monitor-side pattern-match `errors.Is(err,
+    // ErrLedgerStateConflict)` only resolves correctly when the full
+    // adapter path is exercised.
+    translated := TranslateLedgerSentinel(enqErr)
+    if !errors.Is(translated, ErrLedgerStateConflict) {
+        t.Errorf("step 3 (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain): %v", translated)
+    }
+    if !errors.Is(translated, sqlassets.ErrStateConflict) {
+        // NOTE: `%%w` (escaped percent) prints the literal `%w` token in
+        // the test-failure message; see TestSentinelWrap_Conflict for
+        // the full vet rationale.
+        t.Errorf("step 3 (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain): %v", translated)
     }
 }

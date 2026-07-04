@@ -53,7 +53,6 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -160,10 +159,22 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info VideoInfo
 			zap.String("video_id", videoID),
 			zap.String("ledger_id", ledgerID),
 			zap.Error(commitErr))
-		// If the error is an ErrStateConflict (row not in pending/analyzing),
-		// record as terminal — the row is in an unexpected state.
+		// FASE 3.7 Commit 1b (2026-07-04): pattern-match against the
+		// canonical monitor-side sentinel ErrLedgerStateConflict
+		// instead of the previous `sqlassets.ErrStateConflict`. The
+		// composition-root adapter
+		// (`internal/app/lifecycle.go::monitorDiscoveriesAdapter` +
+		// `mapDiscoveriesErr`) translates `assets.ErrStateConflict` →
+		// `monitor.ErrLedgerStateConflict` via `fmt.Errorf("%w: %w", ...)`
+		// multi-%w wrap (Go 1.20+). If the error chain contains the
+		// infra sentinel, the monitor-side pattern-match still resolves
+		// to true because errors.Is walks the entire chain. If it does
+		// NOT (e.g. SQLite I/O errors that aren't a state-conflict),
+		// the monitor-side match resolves to false → retryable stays
+		// driven by retry.IsTransient (the canonical transient-error
+		// taxonomy).
 		retryable := retry.IsTransient(commitErr)
-		if errors.Is(commitErr, sqlassets.ErrStateConflict) {
+		if errors.Is(commitErr, ErrLedgerStateConflict) {
 			retryable = false
 		}
 		if ledgerID != "" {

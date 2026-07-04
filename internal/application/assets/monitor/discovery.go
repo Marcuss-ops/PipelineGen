@@ -44,8 +44,6 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
@@ -94,8 +92,19 @@ func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel chan
 		return nil, fmt.Errorf("discoverChannelVideos: ytdlp port not wired")
 	}
 	playlistEnd := effectivePlaylistEnd(channel, DefaultPlaylistEnd)
-	dateAfter := sqlassets.ResolveDateAfter(channel.LastCursor, channel.LookbackDays)
-	return m.ytdlp.ListChannelVideos(ctx, downloader.ListChannelVideosRequest{
+	// FASE 3.7 Commit 1b (2026-07-04): DateAfter is produced by
+	// monitor.DateAfterFromCursor (formerly `sqlassets.ResolveDateAfter`
+	// — the previous infra-supplied helper was equivalent but
+	// imported `internal/infrastructure/database/sqlite/assets`,
+	// violating the FASE 3.7 zero-infra-import commitment in
+	// monitor/). The monitor-owned helper preserves the same
+	// precedence: LastCursor (RFC3339 truncated to YYYYMMDD) wins
+	// over LookbackDays (now - N days formatted as YYYYMMDD). An
+	// empty LastCursor + zero LookbackDays → empty DateAfter
+	// (yt-dlp's no-filter path). Pass nil for the now-function so
+	// the lazy-default clock (time.Now via defaultNowFn) is used.
+	dateAfter := DateAfterFromCursor(channel.LastCursor, channel.LookbackDays, nil)
+	return m.ytdlp.ListChannelVideos(ctx, ListChannelVideosQuery{
 		ChannelURL:  channel.ChannelURL,
 		DateAfter:   dateAfter,
 		PlaylistEnd: playlistEnd,
