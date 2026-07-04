@@ -2230,6 +2230,91 @@
         FIX-MONITOR-SCHEDULER-ENQUEUER). Verified via per-test -run
         filter that ONLY the new test surface passes.
 
+    - id: PR-MONITOR-TYPES-DTO-BACKFILL-1
+      owner_capability: "internal/infrastructure/downloader"
+      status: pending
+      deadline: 2026-07-25
+      notes: |
+        FASE-3.7 BACKFILL-1: migrate the 1 remaining infra-side import
+        site for downloader.ListChannelVideosRequest (currently in
+        discovery.go::discoverChannelVideos) to the canonical
+        monitor.ListChannelVideosQuery projection (declared in
+        internal/application/assets/monitor/types_dto.go since
+        FASE-3.7 EXPAND-phase commit 60a61808). Pre-fix the source-side
+        is internal/infrastructure/downloader.ListChannelVideosRequest;
+        post-fix discovery.go will import monitor.ListChannelVideosQuery
+        via the package boundary. The Hexagonal Architecture direction
+        infra -> app for re-exports is permitted (PR-MONITOR-DUAL-SENTINEL-
+        FIX established the same sentinel re-export precedent; here it
+        extends to a struct projection). Per AGENTS.md Pattern 0 SSOT,
+        the canonical owner is monitor (application layer); the
+        infra-layer downloader becomes a thin adapter that delegates
+        to the canonical port. Status pending until the wire-up lands.
+
+    - id: PR-MONITOR-TYPES-DTO-BACKFILL-2
+      owner_capability: "internal/infrastructure/database/sqlite/assets"
+      status: pending
+      deadline: 2026-07-25
+      notes: |
+        FASE-3.7 BACKFILL-2: wire the monitor.OutboxEntry projection
+        to the canonical consumer sites. The type is DECLARED in
+        internal/application/assets/monitor/types_dto.go (FASE-3.7
+        EXPAND-phase commit 60a61808) but NOT YET WIRED — the
+        canonical consumer sites (internal/application/assets/monitor/
+        ports_discoveries.go::YoutubeDiscoveriesPort.DrainPendingOutbox
+        + DrainDispatched + internal/application/assets/monitor/
+        outbox_drainer.go) STILL import assetsdb.OutboxEntry directly.
+        Post-fix: a thin translator (internal/application/assets/
+        monitor/adapters/outbox_translator.go) maps []assetsdb.OutboxEntry
+        to []monitor.OutboxEntry; the concrete YoutubeDiscoveries
+        Repository adapter returns monitor-typed entries directly. The
+        godlike/06 SSOT chain is restored (one canonical owner per fact).
+        Code-reviewer flagged this carry-forward from PR-MONITOR-DUAL-
+        SENTINEL-FIX (commit 99db9fe9) as MEDIUM-2 (OutboxEntry drift);
+        this slot is the explicit tracker for the close-out.
+
+    - id: PR-MONITOR-TYPES-DTO-BACKFILL-3
+      owner_capability: "internal/infrastructure/database/sqlite/assets"
+      status: pending
+      deadline: 2026-07-25
+      notes: |
+        FASE-3.7 BACKFILL-3: sentinel migration. Per PR-MONITOR-DUAL-
+        SENTINEL-FIX (commit 99db9fe9, shipped 2026-07-04) the sentinel
+        is ALREADY a thin alias: `var monitor.ErrLedgerStateConflict
+        = assetsdb.ErrStateConflict` (both names point at the same
+        `*errors.errorString` value; errors.Is is byte-equivalent
+        across both names). The slot is added to the BACKFILL queue
+        for completeness per user spec ("4 slot pending") even though
+        the work already shipped — a follow-up audit can flip
+        status: pending -> status: shipped with ship_sha: 99db9fe9
+        and ship_date: 2026-07-04. Honest scope-lock per godlike/07:
+        this PR is NOT a "fix" but a tracker-entry for the BACKFILL
+        queue. No code changes required; the migration already lives
+        on origin/main. The deadline 2026-07-25 is a forward-pointer
+        for the audit-flip, not for code work.
+
+    - id: PR-MONITOR-TYPES-DTO-BACKFILL-4
+      owner_capability: "internal/infrastructure/database/sqlite/assets"
+      status: pending
+      deadline: 2026-07-25
+      notes: |
+        FASE-3.7 BACKFILL-4: migrate the 1 remaining infra-side caller
+        of sqlassets.ResolveDateAfter (currently in discovery.go::
+        discoverChannelVideos) to the canonical monitor.DateAfterFromCursor
+        helper (declared in internal/application/assets/monitor/types_dto.go
+        since FASE-3.7 EXPAND-phase commit 60a61808, and re-validated by
+        PR-DETERMINISTIC-CLOCK-INJECTION commit f1bbe8fb which added
+        the deterministic-clock seam). Pre-fix the source-side is
+        internal/infrastructure/database/sqlite/assets.ResolveDateAfter;
+        post-fix discovery.go will import monitor.DateAfterFromCursor
+        directly. The migration is mechanical: same precedence rules
+        (LastCursor wins when parseable, LookbackDays fallback, empty
+        LastCursor + zero LookbackDays -> empty), same byte-stable
+        output. The deterministic-clock seam added in PR-DETERMINISTIC-
+        CLOCK-INJECTION propagates automatically because the canonical
+        monitor-side function threads the now parameter through the
+        call site. Status pending until the wire-up lands.
+
     - id: PR-MONITOR-DUAL-SENTINEL-FIX
       owner_capability: internal/application/assets/monitor
       status: shipped
