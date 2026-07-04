@@ -15,6 +15,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -471,5 +472,199 @@ func TestScanImageAssetFromRow_SwallowMalformedJSON(t *testing.T) {
 	}
 	if len(rowsDecoded.Tags) != 0 {
 		t.Errorf("Rows path: expected 0 tags (malformed JSON silent), got %v", rowsDecoded.Tags)
+	}
+}
+
+// ── PR-GENERATED-SEARCH-FIX (July 2026) TDD coverage ────────────────────
+//
+// Canonical read seam for the generated territory at
+// GET /api/images/generated/search (Blocco 1 of
+// cut-false-success-first, per architecture/action-plans/2026-07-04-cut-false-success-first.md).
+// The Step 9 forward-pointer stub ("endpoint alive but feature
+// pending", 200+[]) is retired: this method returns the real
+// generated-territory rows now.
+//
+// The 5 tests below lock the contract that the handler relies on:
+//   1. Empty          — no rows match → empty slice, nil error
+//   2. OneRow         — single matching row → byte-stable fields
+//   3. MultiRowDesc   — ordering contract (most recent first)
+//   4. Limit200Cap    — hard cap (godlike/07 minimum-blast-radius)
+//   5. DifferentOrigins — origin filter isolation (no retrieved
+//      or uploaded leak into the generated territory result)
+//
+// Forward-pointer (godlike/07 honest-limitation): the
+// "filter-by-locale opzionale" surface from the action plan is
+// NOT implemented here — the media_assets table has no `locale`
+// column (locale is implicitly carried by subject_id or by the
+// generated_image_details.prompt_original context). Adding the
+// filter would require a JOIN + new schema. A future PR can lift
+// this to a richer filter shape (subject_id, locale, prompt_locale)
+// once the schema decision is made.
+
+// TestListImagesByOrigin_Empty: no rows match the origin → returns
+// empty slice (NOT nil — godlike/07 typed-error contract pins the
+// non-nil empty slice surface so callers don't have to nil-check
+// before ranging).
+func TestListImagesByOrigin_Empty(t *testing.T) {
+	db := testDB(t)
+	repo := NewImagesRepository(db)
+
+	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	if err != nil {
+		t.Fatalf("ListImagesByOrigin (empty): %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil empty slice (godlike/07 typed-error contract), got nil")
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 rows, got %d", len(got))
+	}
+}
+
+// TestListImagesByOrigin_OneRow: insert 1 row with origin=generated,
+// expect exactly 1 result with byte-stable field population. Pins
+// the per-row field mapping (Hash, Origin, Description).
+func TestListImagesByOrigin_OneRow(t *testing.T) {
+	db := testDB(t)
+	repo := NewImagesRepository(db)
+	seedFullImageAsset(t, db, "img-gen-1", "hash-gen-1")
+
+	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	if err != nil {
+		t.Fatalf("ListImagesByOrigin: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(got))
+	}
+	if got[0].Hash != "hash-gen-1" {
+		t.Errorf("Hash mismatch: got %q, want %q", got[0].Hash, "hash-gen-1")
+	}
+	if got[0].Origin != asset.ImageOriginGenerated {
+		t.Errorf("Origin mismatch: got %q, want %q", got[0].Origin, asset.ImageOriginGenerated)
+	}
+	if got[0].Description != "Image of img-gen-1" {
+		t.Errorf("Description mismatch: got %q", got[0].Description)
+	}
+}
+
+// TestListImagesByOrigin_MultipleRowsOrderedDesc: insert 3 rows with
+// staggered created_at, expect ORDER BY created_at DESC (most recent
+// first). Pins the ordering contract that the handler relies on for
+// stable test fixtures + user-facing list stability.
+func TestListImagesByOrigin_MultipleRowsOrderedDesc(t *testing.T) {
+	db := testDB(t)
+	repo := NewImagesRepository(db)
+
+	inserts := []struct {
+		id        string
+		hash      string
+		createdAt string
+	}{
+		{"img-gen-old", "hash-old", "2026-07-01T00:00:00Z"},
+		{"img-gen-mid", "hash-mid", "2026-07-02T00:00:00Z"},
+		{"img-gen-new", "hash-new", "2026-07-03T00:00:00Z"},
+	}
+	for _, ins := range inserts {
+		_, err := db.ExecContext(context.Background(),
+			`INSERT INTO media_assets (id, source, name, file_hash, origin, created_at)
+			 VALUES (?, 'image', ?, ?, 'generated', ?)`,
+			ins.id, "Image of "+ins.id, ins.hash, ins.createdAt)
+		if err != nil {
+			t.Fatalf("seed %s: %v", ins.id, err)
+		}
+	}
+
+	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	if err != nil {
+		t.Fatalf("ListImagesByOrigin: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got))
+	}
+	// ORDER BY created_at DESC: most recent first.
+	wantHashes := []string{"hash-new", "hash-mid", "hash-old"}
+	for i, want := range wantHashes {
+		if got[i].Hash != want {
+			t.Errorf("row %d: got Hash=%q, want %q", i, got[i].Hash, want)
+		}
+	}
+}
+
+// TestListImagesByOrigin_Limit200Cap: insert 250 rows, ask for
+// limit=300, expect exactly 200 (the canonical cap). Pins the
+// godlike/07 minimum-blast-radius surface: callers asking for
+// "more than the cap" don't get unbounded responses.
+func TestListImagesByOrigin_Limit200Cap(t *testing.T) {
+	db := testDB(t)
+	repo := NewImagesRepository(db)
+
+	// Bulk-insert 250 rows via prepared statement for speed.
+	stmt, err := db.PrepareContext(context.Background(),
+		`INSERT INTO media_assets (id, source, name, file_hash, origin, created_at)
+		 VALUES (?, 'image', ?, ?, 'generated', ?)`)
+	if err != nil {
+		t.Fatalf("prepare bulk insert: %v", err)
+	}
+	defer stmt.Close()
+	for i := 0; i < 250; i++ {
+		_, err := stmt.ExecContext(context.Background(),
+			fmt.Sprintf("img-bulk-%03d", i),
+			fmt.Sprintf("Image of img-bulk-%03d", i),
+			fmt.Sprintf("hash-bulk-%03d", i),
+			"2026-07-01T00:00:00Z")
+		if err != nil {
+			t.Fatalf("bulk insert %d: %v", i, err)
+		}
+	}
+
+	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 300)
+	if err != nil {
+		t.Fatalf("ListImagesByOrigin (over-cap): %v", err)
+	}
+	if len(got) != ListImagesByOriginMaxLimit {
+		t.Fatalf("expected hard-cap of %d rows, got %d (godlike/07 fail-closed cap broken)",
+			ListImagesByOriginMaxLimit, len(got))
+	}
+}
+
+// TestListImagesByOrigin_DifferentOriginsIsolated: insert mixed
+// origins (generated + retrieved + uploaded), expect only the
+// requested origin returned. Pins the WHERE origin = ? filter
+// contract so a future schema/query drift doesn't leak retrieved
+// or uploaded rows into the generated territory.
+func TestListImagesByOrigin_DifferentOriginsIsolated(t *testing.T) {
+	db := testDB(t)
+	repo := NewImagesRepository(db)
+
+	inserts := []struct {
+		id     string
+		origin string
+	}{
+		{"img-a-gen", "generated"},
+		{"img-b-ret", "retrieved"},
+		{"img-c-gen", "generated"},
+		{"img-d-up", "uploaded"},
+	}
+	for _, ins := range inserts {
+		_, err := db.ExecContext(context.Background(),
+			`INSERT INTO media_assets (id, source, name, file_hash, origin)
+			 VALUES (?, 'image', ?, ?, ?)`,
+			ins.id, "Image of "+ins.id, "hash-"+ins.id, ins.origin)
+		if err != nil {
+			t.Fatalf("seed %s: %v", ins.id, err)
+		}
+	}
+
+	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	if err != nil {
+		t.Fatalf("ListImagesByOrigin (generated only): %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 generated rows, got %d (filter broken)", len(got))
+	}
+	for _, row := range got {
+		if row.Origin != asset.ImageOriginGenerated {
+			t.Errorf("row %q has non-generated origin %q (filter broken)", row.Hash, row.Origin)
+		}
 	}
 }

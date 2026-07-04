@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
@@ -37,6 +38,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// ErrInvalidGeneratedSearchLimit is the typed sentinel returned by
+// the data-only listGeneratedTerritoryResults helper when the
+// caller supplies a malformed `limit` query parameter. Wrapped via
+// fmt.Errorf %w so callers probe via errors.Is — godlike/07
+// typed-error contract (no string-sniffing at the call site).
+// Maps to 400 BadRequest at the handler layer; other errors map to
+// 500 InternalError.
+//
+// godlike/06 SSOT: package-level sentinels in this repo use
+// capitalised `ErrXxx` (per the ErrCompleteJobPathViolation,
+// ErrInvalidPayload, ... precedent in internal/domain/remote/);
+// the lowercase variant was a round-1 drift caught by code review
+// and renamed in this commit.
+var ErrInvalidGeneratedSearchLimit = errors.New("invalid generated-search limit (must be a non-negative integer)")
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -123,19 +139,34 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 
 // GeneratedSearch handles GET /api/images/generated/search.
 //
-// Step 9 forward-pointer: the underlying SQLite-backed
-// ListImagesByOrigin method doesn't exist on
-// *ImageStorageService today. Returning a stable 200 OK +
-// empty ImageSearchResults list gives callers a contract to
-// code against while the read-only filter ships in a
-// follow-up. The behavior marks this as "endpoint alive
-// but feature pending" rather than 501 Not Implemented so
-// the smoke-test can verify 200 OK + correct DTO shape.
+// PR-GENERATED-SEARCH-FIX (July 2026, Blocco 1 of
+// cut-false-success-first): the underlying SQLite-backed read
+// seam is now live. Query parameters:
+//
+//	?origin=<asset.ImageOrigin>  default "generated" (canonical
+//	                              generated-territory territory)
+//	?limit=<int>                 default + cap = 200
+//	                              (ListImagesByOriginMaxLimit on
+//	                              the canonical repo surface)
+//
+// Returns the matching media_assets rows projected to the unified
+// ImageSearchResult DTO (per types_search.go), ordered by
+// created_at DESC. Per godlike/07 no-fake-availability, the
+// canonical "endpoint alive but feature pending" 200+[] stub
+// (Step 9 forward-pointer, pre-PR) is RETIRED — the handler now
+// returns real data when rows exist, and an empty list when the
+// query matches no rows. The DTO envelope is unchanged so callers
+// that coded against the stable contract keep working.
+//
+// godlike/06 SSOT: this handler is the SOLE production caller of
+// *imgservice.Service.ListImagesByOrigin today. Future
+// generated-territory read concerns (admin tools, CLI exports)
+// MUST route through the canonical service method. The handler
+// body delegates to searchGeneratedTerritory (the canonical
+// generated-territory read seam) so the response envelope lives
+// in exactly one place.
 func (h *ImagesHandler) GeneratedSearch(c *gin.Context) {
-	apiutil.OK(c, ImageSearchResults{
-		Results: []ImageSearchResult{},
-		Count:   0,
-	})
+	h.searchGeneratedTerritory(c)
 }
 
 // ── 3. POST /api/images/generated/generate ─────────────────────────────
@@ -304,14 +335,29 @@ func (h *ImagesHandler) retrievedAggregate(c *gin.Context) {
 	apiutil.OK(c, out)
 }
 
-// generatedAggregate is the territory=generated branch.
-// Returns empty DTO list (Step-9 forward-pointer).
+// generatedAggregate is the territory=generated branch of
+// TerritorySearch. PR-GENERATED-SEARCH-FIX (July 2026): now wires
+// through the canonical ListImagesByOrigin read seam so the
+// false-success class retired on /api/images/generated/search is
+// ALSO retired on /api/images/search?territory=generated — same
+// underlying data, same response envelope.
 func (h *ImagesHandler) generatedAggregate(c *gin.Context) {
-	apiutil.OK(c, ImageSearchResults{Results: []ImageSearchResult{}, Count: 0})
+	h.searchGeneratedTerritory(c)
 }
 
 // allTerritoriesAggregate fans out across both wired
 // territories and merges results in canonical order.
+//
+// PR-GENERATED-SEARCH-FIX (July 2026, round 2): the generated
+// branch no longer returns 200+[] — it routes through the
+// canonical ListImagesByOrigin read seam so the user-facing
+// aggregator (territory=all) sees the same generated-territory
+// rows as the canonical /api/images/generated/search endpoint.
+// Errors from the data helper are surfaced to the caller as
+// 400/500 (typed) and short-circuit the merge — the round-1
+// helper wrote responses inline which caused Gin to log
+// "write response after body already written" when this
+// aggregator's own apiutil.OK fired afterwards.
 func (h *ImagesHandler) allTerritoriesAggregate(c *gin.Context) {
 	results := make([]ImageSearchResult, 0, 8)
 
@@ -328,8 +374,22 @@ func (h *ImagesHandler) allTerritoriesAggregate(c *gin.Context) {
 		}
 	}
 
-	// Generated second — empty list today (forward-pointer).
-	// Future PR adds the SQLite-backed list.
+	// Generated second — canonical read seam (PR-GENERATED-SEARCH-FIX).
+	// Appends the real generated-territory rows (capped at 200 per the
+	// canonical hard cap on the repo surface). Order is canonical:
+	// retrieved first, generated second. Error from the data helper
+	// short-circuits the merge and writes the typed 400/500 envelope
+	// (no double-write with this aggregator's own apiutil.OK).
+	genResults, err := h.listGeneratedTerritoryResults(c)
+	if err != nil {
+		if errors.Is(err, ErrInvalidGeneratedSearchLimit) {
+			apiutil.BadRequest(c, err.Error())
+			return
+		}
+		apiutil.InternalError(c, err)
+		return
+	}
+	results = append(results, genResults...)
 
 	if h.service.Log() != nil {
 		h.service.Log().Info("territory=all aggregate: count",
@@ -340,4 +400,80 @@ func (h *ImagesHandler) allTerritoriesAggregate(c *gin.Context) {
 		Results: results,
 		Count:   len(results),
 	})
+}
+
+// searchGeneratedTerritory is the canonical generated-territory
+// read seam: query params + service call + 200 OK response envelope.
+// Extracted from GeneratedSearch so generatedAggregate (the
+// territory=generated branch of TerritorySearch) can share the
+// exact same read path — godlike/06 SSOT one-canonical-owner-per-fact
+// for the generated territory across both routes.
+//
+// godlike/07 no-fake-availability: this helper RETIRES the Step 9
+// forward-pointer "endpoint alive but feature pending" 200+[] stub
+// on ALL three surfaces (GeneratedSearch + generatedAggregate +
+// allTerritoriesAggregate). Every generated-territory read seam
+// now sees the real canonical ListImagesByOrigin data.
+//
+// godlike/07 typed-error contract: invalid limit surfaces as
+// 400 BadRequest via errors.Is(ErrInvalidGeneratedSearchLimit);
+// any other error surfaces as 500 InternalError. The data-only
+// helper (listGeneratedTerritoryResults) does NOT write to the
+// response — callers own the response envelope so concurrent
+// handlers (allTerritoriesAggregate) don't double-write.
+func (h *ImagesHandler) searchGeneratedTerritory(c *gin.Context) {
+	results, err := h.listGeneratedTerritoryResults(c)
+	if err != nil {
+		if errors.Is(err, ErrInvalidGeneratedSearchLimit) {
+			apiutil.BadRequest(c, err.Error())
+			return
+		}
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, ImageSearchResults{
+		Results: results,
+		Count:   len(results),
+	})
+}
+
+// listGeneratedTerritoryResults is the read-only core: parses
+// query params, calls the canonical service method, projects to
+// the unified ImageSearchResult DTO. Returns the slice (possibly
+// empty) and a typed error — the caller decides the response
+// envelope. PURE data helper: never writes to the response
+// (that contract is what prevents the Gin double-write bug fixed
+// in PR-GENERATED-SEARCH-FIX round 2).
+//
+// godlike/07 input validation: invalid limit wraps the typed
+// sentinel ErrInvalidGeneratedSearchLimit so callers probe via
+// errors.Is (canonical godlike/07 typed-error contract — no
+// string-sniffing). Unknown origin is intentionally tolerated
+// (the SQL returns 0 rows for `WHERE origin = 'garbage'` so the
+// response is the canonical empty-list shape — the godlike/07
+// fail-closed surface is the empty-list itself, not a 400 on
+// unknown origin). The forward-pointer to a stricter
+// 400-on-unknown-origin surface is in architecture/issues.yaml.
+func (h *ImagesHandler) listGeneratedTerritoryResults(c *gin.Context) ([]ImageSearchResult, error) {
+	origin := c.DefaultQuery("origin", string(domain.ImageOriginGenerated))
+	limitStr := c.DefaultQuery("limit", "200")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 0 {
+		return nil, fmt.Errorf("invalid limit=%q: %w", limitStr, ErrInvalidGeneratedSearchLimit)
+	}
+
+	assets, err := h.service.ListImagesByOrigin(
+		c.Request.Context(),
+		domain.ImageOrigin(origin),
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]ImageSearchResult, 0, len(assets))
+	for i := range assets {
+		results = append(results, assetToResult(&assets[i]))
+	}
+	return results, nil
 }
