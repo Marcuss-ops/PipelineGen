@@ -22,6 +22,7 @@
 - id: PR-QDRANT-FULL-STACK-AUTOMATED
   owner_capability: "cmd/admin/ (admin CLI subcommand) + .github/workflows/preflight-ci.yml + architecture/CI gate"
   status: shipped
+  ship_sha: 2352163c
   ship_date: 2026-07-04
   deadline: 2026-08-01
   description: |
