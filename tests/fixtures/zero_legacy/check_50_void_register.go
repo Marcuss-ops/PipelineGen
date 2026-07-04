@@ -30,7 +30,7 @@
 // matchers already gate the tree); a maintainer adding a NEW void
 // Register* signature would surface at PR time AND the
 // self-check fixture would trip the post-CI run.
-package fixtures
+package fixture
 
 import "log"
 
@@ -43,7 +43,7 @@ type BrokenJobHandler struct{}
 // the regex against this fixture file. Operators iterating on the
 // regex are expected to keep this fixture's signature intact (the
 // `Register` method name + `*jobs.Service` argument + `{` opener).
-func (h *BrokenJobHandler) Register(svc *jobs.Service) {
+func (h *BrokenJobHandler) Register(svc *Service) {
 	log.Println("this is a deliberate P1 #1 audit violation fixture (forbidden void-return on Register* taking jobs.Service)")
 }
 

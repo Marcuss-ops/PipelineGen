@@ -12,7 +12,7 @@
 // MUST match. If a future contributor edits the Check 57 regex and
 // accidentally regresses its precision, the self-check loop will
 // detect it (rg returns nothing on this fixture → self-check exit 1).
-package zero_legacy
+package fixture
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"

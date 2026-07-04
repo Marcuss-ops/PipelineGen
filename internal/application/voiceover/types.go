@@ -14,6 +14,26 @@ import (
 	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
+// Language is the typed BCP-47 envelope for voiceover languages
+// (PR-VO-TYPED-PRIMITIVES EXPAND phase, July 2026). Defined as a
+// type-alias to string for backward compatibility during the
+// EXPAND-phase transition; a future BACKFILL wave will replace the
+// alias with a proper `type Language string` value-type carrying
+// validation (ParseBCP47, IsValid, Compact form) and typed
+// constructors at API boundaries.
+//
+// Production consumers: treated as typed string for compile-time
+// documentation (the alias preserves `language Language` parameter
+// readability in stage files). Wire shape: serialises as a plain
+// JSON string (the underlying string type).
+//
+// godlike/07 honest-limitation: a type-alias provides zero
+// compile-time safety — a bare string literal is assignable to
+// Language without a constructor gate. The full typed-primitive
+// migration (P1.1 in VO-DECOMPOSITION-2026-07-04, deadline
+// 2026-07-25) will define the value-type + ParseBCP47 validator.
+type Language = string
+
 // P1-2 back-compat aliases (June 2026): the canonical wire-shape
 // types moved into internal/application/voiceover/persistence/
 // (Repository interface, VoiceoverRecord struct). Type aliases
