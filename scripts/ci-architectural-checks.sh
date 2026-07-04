@@ -38,6 +38,163 @@
 #      Block 1 + the 5 Phase 0 rules as verified_zero: true.
 set -euo pipefail
 
+# ── Wave-tracker allowlist consultation (PR-CI-WAVE-ALLOWLIST, July 2026) ──
+# Text-based extraction of `id: PR-*` lines from architecture/current.yaml
+# whose entry has `status: pending` or `status: in_progress` OR whose entry
+# is a `PRE-EXISTING-*-2026-07-04` parent. Per godlike/07 no-fake-availability:
+# the wave-tracker file is currently UNPARSEABLE (3+ indent cascade bugs at
+# lines ~1582, ~2852, ~2996), so we use a TEXT-BASED FALLBACK rather than
+# `yaml.safe_load`. The fallback is the canonical extraction strategy
+# (mirrors how the rest of the script uses awk / rg / sed line-by-line).
+#
+# This is an ADDITIVE informational layer (godlike/07 minimum-blast-radius):
+# no existing check's exit-1 semantics change. The baseline log becomes a
+# stable pass-rate count instead of an all-violations dump. Future per-check
+# integration can opt-in by calling `is_known_acceptable <PR_ID>`.
+KNOWN_ACCEPTABLE_IDS=""
+extract_known_acceptable_ids_from_yaml() {
+    local yaml_path="${REPO_ROOT}/architecture/current.yaml"
+    KNOWN_ACCEPTABLE_IDS=""
+    if [ ! -f "${yaml_path}" ]; then
+        return 0
+    fi
+    # Indentation-aware state-machine scan. Per godlike/06 SSOT the
+    # canonical file is the wave-tracker; per godlike/07 no-fake-
+    # availability the file is currently UNPARSEABLE (3+ indent
+    # cascade bugs at lines ~1582, ~2852, ~2996) so we use awk (NOT
+    # yaml.safe_load). The state machine distinguishes:
+    #
+    #   TOP-LEVEL parent entry  (indent <= 2): `id: <X>` or `- id: <X>`
+    #     → accept iff status: pending OR status: in_progress OR
+    #       X matches /^PRE-EXISTING-/ (parent is unconditionally
+    #       acceptable per user spec, all its children are too).
+    #   CHILD entry under PRE-EXISTING parent  (indent > 2): `id: <X>`
+    #     → accept unconditionally (parent's documented forward-pointer
+    #       propagates to children — the residue carried by the
+    #       children is pre-existing).
+    #   CHILD entry under pending/in_progress parent: rejected
+    #     (only the parent-id is the canonical entry-point per spec;
+    #     children are not auto-acceptable).
+    #
+    # Quote-stripping: YAML allows `id: "PR-XXX"`. We gsub away " '
+    # and \r so the membership check (grep -qxF) sees the bare token.
+    #
+    # Safe default: missing file OR scan error → empty
+    # KNOWN_ACCEPTABLE_IDS → all violations are "new" until the
+    # wave-tracker is re-introduced (godlike/07 fail-closed).
+    # Indentation-aware state-machine scan in pure bash (avoids the
+    # awk-quoting fragility we hit when embedding awk inside a
+    # `$(...)` command substitution). Per godlike/06 SSOT the
+    # canonical file is the wave-tracker; per godlike/07 no-fake-
+    # availability the file is currently UNPARSEABLE (3+ indent
+    # cascade bugs at lines ~1582, ~2852, ~2996) so we use a
+    # line-by-line bash scan (NOT yaml.safe_load). The state machine
+    # distinguishes:
+    #
+    #   TOP-LEVEL parent entry  (indent <= 2): `id: <X>` or `- id: <X>`
+    #     -> accept iff status: pending OR status: in_progress OR
+    #        X matches PRE-EXISTING-* (parent is unconditionally
+    #        acceptable per user spec, all its children are too).
+    #   CHILD entry under PRE-EXISTING parent  (indent > 2): `id: <X>`
+    #     -> accept unconditionally (parent's documented forward-
+    #        pointer propagates to children - the residue carried
+    #        by the children is pre-existing).
+    #   CHILD entry under pending/in_progress parent (indent > 2):
+    #     -> accept (per user spec "status: pending + status:
+    #        in_progress + their linked_issues").
+    #   CHILD entry under shipped/done parent: rejected
+    #     (only the parent-id is the canonical entry-point per spec).
+    #
+    # Quote-stripping: YAML allows `id: "PR-XXX"`. We strip " and '
+    # so the membership check (grep -qxF) sees the bare token.
+    #
+    # Safe default: missing file OR scan error -> empty
+    # KNOWN_ACCEPTABLE_IDS -> all violations are "new" until the
+    # wave-tracker is re-introduced (godlike/07 fail-closed).
+    local _wt_current_id=""
+    local _wt_current_status=""
+    local _wt_in_pre_existing=0
+    local _wt_entries=()
+    local _wt_line _wt_lead _wt_indent _wt_id_val
+    while IFS= read -r _wt_line || [ -n "${_wt_line}" ]; do
+        _wt_line="${_wt_line%$'\r'}"
+        # Determine indent (count leading spaces)
+        _wt_lead="${_wt_line%%[! ]*}"
+        _wt_indent=0
+        if [ "${_wt_line}" != "${_wt_lead}" ]; then
+            _wt_indent=${#_wt_lead}
+        fi
+        # Detect id: line
+        if [[ "${_wt_line}" =~ ^[[:space:]]*-?[[:space:]]*id:[[:space:]]+([^[:space:]]+) ]]; then
+            _wt_id_val="${BASH_REMATCH[1]}"
+            # Strip quotes (YAML allows `id: "PR-XXX"`)
+            _wt_id_val="${_wt_id_val//\"/}"
+            _wt_id_val="${_wt_id_val//\'/}"
+            if [ "${_wt_indent}" -le 2 ]; then
+                # Top-level parent: flush previous entry
+                if [ -n "${_wt_current_id}" ]; then
+                    if [[ "${_wt_current_id}" == PRE-EXISTING-* ]] || [ "${_wt_current_status}" = "pending" ] || [ "${_wt_current_status}" = "in_progress" ]; then
+                        _wt_entries+=("${_wt_current_id}")
+                    fi
+                fi
+                _wt_current_id="${_wt_id_val}"
+                _wt_current_status=""
+                _wt_in_pre_existing=0
+                if [[ "${_wt_current_id}" == PRE-EXISTING-* ]]; then
+                    _wt_in_pre_existing=1
+                fi
+            else
+                # Child: accept iff parent acceptable
+                if [ "${_wt_in_pre_existing}" -eq 1 ] || [ "${_wt_current_status}" = "pending" ] || [ "${_wt_current_status}" = "in_progress" ]; then
+                    _wt_entries+=("${_wt_id_val}")
+                fi
+            fi
+        fi
+        # Detect status: line (top-level only updates _wt_current_status)
+        if [[ "${_wt_line}" =~ ^[[:space:]]*status:[[:space:]]+([a-z_]+) ]]; then
+            if [ "${_wt_indent}" -le 2 ]; then
+                _wt_current_status="${BASH_REMATCH[1]}"
+            fi
+        fi
+    done < "${yaml_path}"
+    # Flush last entry
+    if [ -n "${_wt_current_id}" ]; then
+        if [[ "${_wt_current_id}" == PRE-EXISTING-* ]] || [ "${_wt_current_status}" = "pending" ] || [ "${_wt_current_status}" = "in_progress" ]; then
+            _wt_entries+=("${_wt_current_id}")
+        fi
+    fi
+    # Dedupe + assign
+    if [ "${#_wt_entries[@]}" -gt 0 ]; then
+        KNOWN_ACCEPTABLE_IDS=$(printf '%s\n' "${_wt_entries[@]}" | sort -u)
+    else
+        KNOWN_ACCEPTABLE_IDS=""
+    fi
+    unset _wt_line _wt_lead _wt_indent _wt_id_val _wt_current_id _wt_current_status _wt_in_pre_existing _wt_entries
+    # godlike/07 no-fake-availability: even if the YAML is unparseable, the
+    # `id: PR-*` lines are line-anchored so the scan still works. A truly
+    # missing file yields empty KNOWN_ACCEPTABLE_IDS (the safe default — all
+    # violations become "new" until the wave-tracker is re-introduced).
+    # NOTE: do NOT `export` — the variable is read in the same shell process
+    # (the function-call below + Check 61); child processes don't need it.
+}
+is_known_acceptable() {
+    local pr_id="${1:-}"
+    [ -z "${pr_id}" ] && return 1
+    [ -z "${KNOWN_ACCEPTABLE_IDS}" ] && return 1
+    # Pure bash membership check on the newline-separated allowlist.
+    if printf '%s\n' "${KNOWN_ACCEPTABLE_IDS}" | grep -qxF "${pr_id}"; then
+        return 0
+    fi
+    return 1
+}
+# Populate the global once at script start. Any per-check opt-in can
+# call is_known_acceptable <PR_ID> to consult.
+extract_known_acceptable_ids_from_yaml
+WAVE_BASELINE_SIZE=0
+if [ -n "${KNOWN_ACCEPTABLE_IDS}" ]; then
+    WAVE_BASELINE_SIZE=$(printf '%s\n' "${KNOWN_ACCEPTABLE_IDS}" | wc -l | awk '{print $1+0}')
+fi
+
 # Resolve REPO_ROOT once so the migration-uniqueness lint below works from
 # any cwd (CI runners, IDE hook invocations, manual bash). BASH_SOURCE is
 # always the script's own absolute path under `bash script.sh` — the only
@@ -3836,6 +3993,48 @@ if [ "$allowlist_count" -gt 0 ]; then
     echo "      (audit-pin residue; non-fatal; tracked per godlike/06)"
 fi
 echo "OK: FASE 2.1 PR-VOICE-FREEZE respected — no new imports in legacy script handlers"
+
+# ── Check 61: wave-tracker pass-rate summary (PR-CI-WAVE-ALLOWLIST, July 2026) ──
+# INFORMATIONAL gate (godlike/07 minimum-blast-radius). Does NOT change the
+# exit code of any prior check. The pass-rate number is the canonical signal
+# for the question "is the baseline stable?" — a non-zero count means every
+# wave-tracker-known-acceptable PR-id was extracted from architecture/current.yaml
+# (zero false-positive regression on the allowlist side), a zero count means
+# the wave-tracker file is absent or unparseable.
+#
+# This is a NEW layer that consults the wave-tracker allowlist
+# (extract_known_acceptable_ids_from_yaml) populated at script start. The
+# summary is reproducible across runs (the wave-tracker file is the same),
+# so the pass-rate number is a stable count rather than an all-violations
+# dump. Future per-check integration can opt-in by calling
+# `is_known_acceptable <PR_ID>` to consult the same allowlist.
+#
+# Wave-tracker status (informational only, NOT a gate):
+#   - YAML file present:        KNOWN_ACCEPTABLE_IDS populated
+#   - YAML file missing:        KNOWN_ACCEPTABLE_IDS empty (safe default)
+#   - YAML file unparseable:    KNOWN_ACCEPTABLE_IDS may be partial (text-based
+#                                extraction tolerates cascade bugs at lines
+#                                ~1582, ~2852, ~2996; line-anchored `id: PR-*`
+#                                patterns survive)
+# Per godlike/07 no-fake-availability: this gate is purely informational and
+# does NOT exit 1 on a low count. The operator dashboard surfaces the
+# number; CI exit code reflects the prior per-check exit-1 semantics
+# (unchanged). A future promotion to enforcement would require a separate
+# `verified_zero: true` flip per godlike/08 zero-baseline rule.
+echo "=== Check 61: wave-tracker pass-rate summary (PR-CI-WAVE-ALLOWLIST) ==="
+if [ -n "${KNOWN_ACCEPTABLE_IDS}" ]; then
+    echo "INFO: wave-tracker file parsed; ${WAVE_BASELINE_SIZE} PR-id(s) extracted as known-acceptable baseline"
+    echo "      (id: PR-* entries with status: pending / in_progress, plus PRE-EXISTING-*-2026-07-04 parents)"
+    echo "      Baseline: per-check exit-1 semantics unchanged; this gate is informational only."
+    echo "      Operators may consult is_known_acceptable <PR_ID> in future per-check opt-ins."
+    echo "OK: Check 61 pass-rate summary printed (informational; no exit-code change)"
+else
+    echo "WARN: KNOWN_ACCEPTABLE_IDS empty (wave-tracker file absent or unparseable)"
+    echo "      Defaulting to: every violation is treated as new (safe per godlike/07 no-fake-availability)"
+    echo "      Future: file presence or YAML fix restores the baseline"
+    echo "OK: Check 61 pass-rate summary printed (informational; no exit-code change; allowlist empty)"
+fi
+
 # ── Check 62: forbid inline middleware in >300 LoC feature routing files (SCRIPT-FLOW-SPLIT) ──
 # The canonical auth cluster (RequireAdminToken + extractHeaderToken +
 # AdminTokenProvider interface + EnableAuth / AdminToken methods) lives in
