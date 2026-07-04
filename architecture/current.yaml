@@ -5502,8 +5502,10 @@ wave_status:
         new wave-tracker entry PR-VOICEOVER-PATH-A-REOPEN for the revert work.
     - id: PR-VO-FINALIZER-ATOMIC-CONTRACT-DOCS
       owner_capability: "internal/application/voiceover"
-      status: pending
-      deadline: TBD
+      status: shipped
+      deadline: never
+      ship_sha: c0ecdc1b
+      ship_date: "2026-07-04"
       description: |
         Forward-pointer to remember the load-bearing contract of
         voiceover.finalizer (the canonical application-layer seam for
@@ -5555,6 +5557,58 @@ wave_status:
         open sibling entries (e.g. PR-SCRIPT-FINALIZER-ATOMIC-CONTRACT,
         PR-BOOKS-FINALIZER-ATOMIC-CONTRACT) following this same
         template rather than re-litigating the contract per-capability.
+      contract: |
+        voiceover.Finalizer.Finalize (internal/application/voiceover/finalizer.go:356)
+        is the CANONICAL application-layer seam that persists `voiceovers` +
+        `media_assets` (via `UpsertVoiceoverProjectionTx`) + `outbox` events
+        (via `EnqueueIndexEvent` + `EnqueueCleanupEvent` in
+        `finalizer_cleanup_outbox.go:101`) for ALL voiceover jobs:
+        `TypeVoiceoverGenerate` (parent, registry.go:541) AND
+        `TypeVoiceoverGenerateItem` (per-language child, registry.go:548).
+        The 6-step Finalize chain (dedupe -> DeleteByIDTx -> InsertTx ->
+        UpsertVoiceoverProjectionTx -> EnqueueIndexEvent -> EnqueueCleanupEvent)
+        writes all 3 surfaces in the SAME caller-owned *sql.Tx. This is the
+        Path B closure per architecture/current.yaml#PR-VO-COMPLETEPATH-FIX
+        (ship_sha db2f3b1e, 2026-07-04): ProducesArtifacts=false on BOTH
+        voiceover job types routes mark-SUCCEEDED through the legacy
+        SQLiteStore.Complete path; the finalizer owns the in-TX media_assets
+        + outbox writes.
+        `asset_locations` is EXPLICITLY OUT OF SCOPE for this finalizer
+        (forward-pointer: PR-VO-ASSET-LOCATIONS-CONSUMER-AUDIT) --
+        voiceover.finalizer does NOT write asset_locations; that is a
+        different surface, `AssetFinalizerTx` (defined in
+        internal/domain/finalization/interfaces.go:147-172).
+      failure_mode: |
+        If a future agent proposes to MOVE the `media_assets` write OUT of
+        voiceover.Finalize (e.g. into a separate post-write save context, a
+        new use case, or the broker's `CompleteWithArtifacts` fork), the
+        system breaks NON-OBVIOUSLY:
+          (1) DOUBLE-WRITE RACE: if media_assets is written in TX1 (outside
+              the finalizer's *sql.Tx) and the broker complete fork is in TX2,
+              a crash between TX1 and TX2 results in EITHER (a) orphan
+              media_assets row pointing to a job that was never marked
+              SUCCEEDED, OR (b) job marked SUCCEEDED but no media_assets row.
+              The system appears to work in normal operation; the
+              inconsistency only surfaces on crash recovery or rollback.
+          (2) SSOT VIOLATION: voiceover.finalizer is the canonical owner of
+              the voiceover artifact persistence (per godlike/06
+              one-owner-per-fact). Splitting the writes across 2 transactions
+              violates the SSOT contract and breaks the 3rd TDD test
+              `TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn` which
+              uses tx-pointer identity to prove atomicity.
+          (3) SQL-GUARD BINARY-SURFACE MISMATCH: voiceover.finalizer is the
+              only application-layer surface that knows about the in-TX
+              media_assets write; the SQL-layer `ErrCompleteJobPathViolation`
+              guard at repository_lifecycle.go:115 only knows about
+              `ProducesArtifacts=true/false`. Moving the write to a surface
+              the guard doesn't know about creates a binary-surface mismatch
+              that no CI gate can detect.
+        Any future agent proposing such a refactor MUST open a new
+        wave-tracker entry (e.g. `PR-VOICEOVER-PATH-A-REVISITED`) and
+        address all 3 failure-mode concerns with substantive rebuttal per
+        godlike/07 no-fake-availability. The 4 TDD tests in
+        internal/application/voiceover/jobs/finalizer_invariants_test.go
+        are the canonical guard against silent regression.
 
 
 - id: SCRIPT-FLOW-SPLIT
