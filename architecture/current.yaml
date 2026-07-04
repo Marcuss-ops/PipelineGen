@@ -5480,6 +5480,7 @@ wave_status:
         internal/application/voiceover (canonical finalizer) and
         internal/application/scripts (canonical consumer) per
         godlike/06 SSOT split.
+
     - id: PR-VOICEOVER-PATH-A-REVISITED
       owner_capability: "internal/application/voiceover"
       status: pending
@@ -5554,3 +5555,84 @@ wave_status:
         open sibling entries (e.g. PR-SCRIPT-FINALIZER-ATOMIC-CONTRACT,
         PR-BOOKS-FINALIZER-ATOMIC-CONTRACT) following this same
         template rather than re-litigating the contract per-capability.
+
+
+- id: SCRIPT-FLOW-SPLIT
+  status: in_progress
+  exit_signal: false
+  owner: internal/api/script + internal/application/scripts (composition at internal/app)
+  deadline: 2026-07-25
+  blocker: ["16"]
+  description: |
+    Godlock at internal/api/script/handler_flow.go (366 LoC,
+    44 commits in 60gg — highest single-file modification frequency
+    in repo). Pre-AZIONE-1 partial extract (HandlerGenerate,
+    3-field struct) landed as precedent; this wave closes the
+    residual 4-capability-cluster gap (auth / job observation /
+    domain facade / orchestrator) co-located in the same file.
+    Mechanical split per AGENTS.md Pattern 5 with godlike/07
+    minimum-blast-radius (surface contract preserved byte-stable).
+
+    Cross-references (3-surface lockstep, audit-trail anchors):
+      * AGENTS.md Recent cross-cutting closures -> PR-SCRIPT-FLOW-SPLIT
+      * CHANGELOG.md Unreleased -> Refactor -> PR-SCRIPT-FLOW-SPLIT
+    Each closure MUST land its SHA in the matching linked_issue
+    slot per godlike/06 SSOT one-canonical-owner-per-fact.
+
+    Per-file ownership discipline (godlike/06 slice 4/4):
+      - PR-SCRIPT-FLOW-SPLIT own = internal/api/script + application/scripts
+      - PR-SCRIPT-AUTH-EXTRACT own = internal/api/script
+      - PR-SCRIPT-JOBS-EXTRACT own = internal/api/script
+      - PR-SCRIPT-FACADE-EXTRACT own = internal/api/script
+      - PR-SCRIPT-TRIM-ORCHESTRATOR own = internal/api/script
+      - PR-SCRIPT-CHECK56-INLINE-MIDDLEWARE own = scripts/ci-architectural-checks.sh
+  exit_gate: |
+    (a) PR-SCRIPT-AUTH-EXTRACT SHIPPED (middleware_auth.go owns
+        RequireAdminToken + extractHeaderToken + AdminTokenProvider;
+        KEEP AdminTokenProvider in api/script package per godlike/07
+        minimum-blast-radius).
+    (b) PR-SCRIPT-JOBS-EXTRACT SHIPPED (handler_jobs.go owns
+        registerJobRoutes + enqueueEnvelope + GetJobStatus).
+    (c) PR-SCRIPT-FACADE-EXTRACT SHIPPED (handler_facade.go owns
+        GetVoiceoverService + GetGroupsResolver + ResolveDriveFolderID
+        + MaybeCreateGoogleDoc; EnableAuth + AdminToken methods stay
+        on ScriptFlowHandler).
+    (d) PR-SCRIPT-TRIM-ORCHESTRATOR SHIPPED (handler_flow.go trimmed
+        to thin orchestrator ~120 LoC; NewScriptFlowHandler preserves
+        ScriptFlowDeps signature byte-stable; RegisterRoutes delegates
+        to h.gen + h.jobs + facade helpers; DriveFolderClient +
+        DocumentCreator stay per godlike/06 SSOT).
+    (e) PR-SCRIPT-CHECK56-INLINE-MIDDLEWARE SHIPPED (Check 56 in
+        ci-architectural-checks.sh bans inline middleware signatures
+        RequireAdminToken + extractHeaderToken + EnableAuth +
+        AdminTokenProvider in api/<feature>/ files exceeding 300 LoC).
+    (f) Surface contract preserved byte-stable:
+        wc -l internal/api/script/handler_flow.go <= 130 LoC.
+    (g) gofmt + go vet + go test -short on internal/api/script/...
+        all exit 0.
+  linked_issues:
+    - id: PR-SCRIPT-FLOW-SPLIT
+      owner_capability: internal/api/script + internal/application/scripts (composition at internal/app)
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SCRIPT-AUTH-EXTRACT
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SCRIPT-JOBS-EXTRACT
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SCRIPT-FACADE-EXTRACT
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SCRIPT-TRIM-ORCHESTRATOR
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SCRIPT-CHECK56-INLINE-MIDDLEWARE
+      owner_capability: scripts/ci-architectural-checks.sh
+      status: pending
+      deadline: 2026-07-25
+ (docs(architecture): append SCRIPT-FLOW-SPLIT wave tracker entries)
