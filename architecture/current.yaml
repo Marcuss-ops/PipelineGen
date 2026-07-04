@@ -748,7 +748,7 @@
 #   3. drive.FileLifecycle (Trash + Move + Rename + Cleanup)
 #   4. drive.DocClient     (Google Docs creation)
 # Commit a8c781ae physically retired DriveClient + DriveUploader from
-# DriveBundle. Dep record architecture/deprecations.yaml#DRIVE-005-FIELDS
+# DriveBundle. Dep record architecture/deprecations.yaml#DRIVE-005-FIELDS (aka DRIVE-005)
 # reaches status: removed today (2026-06-30).
 - id: 27
   status: done
@@ -757,7 +757,7 @@
     Drive surface is consolidated to 4 canonical Pattern 0 ports.
     All raw `root.Drive.DriveClient` + `root.Drive.DriveUploader` readsites
     physically retired from `internal/app.DriveBundle` in commit `a8c781ae`.
-    DRIVE-005-FIELDS deprecation record closed (status: removed,
+    DRIVE-005-FIELDS (aka DRIVE-005) deprecation record closed (status: removed,
     migration_phase: "CONTRACT, removal_date: 2026-06-30)."
   linked_issues:
     - id: DRIVE-005-FIELDS
@@ -1939,7 +1939,7 @@
 #       HandleJob) — eliminate fake-availability surfaces in
 #       `internal/application/images/generation_service.go`;
 #   (c) raw SDK removal (DriveClient *gdrive.Service from DriveBundle)
-#       — eliminate the SSOT bypass risk that DRIVE-005 closed for
+#       — eliminate the SSOT bypass risk that DRIVE-005 closed for (aka DRIVE-005)
 #       the rest of the surface.
 # The chrome_provider, qdrant_maintenance, legacy-route-residue
 # items are scoped-LATER because they don't block `go build ./...`
@@ -2060,7 +2060,7 @@
       notes: |
         Retire raw `DriveClient *gdrive.Service` field from
         internal/app/composition.go::DriveBundle. 4 Pattern 0 ports
-        already exist per DRIVE-005 closure (architecture/current.yaml#id-27,
+        already exist per DRIVE-005 closure (aka DRIVE-005) (architecture/current.yaml#id-27,
         closed via commit a8c781ae): delivery.Publisher / drive.Reader /
         drive.FileLifecycle / drive.DocClient. While raw *gdrive.Service
         leaks into the bundle, callers can bypass the canonical ports.
@@ -2087,7 +2087,7 @@
         Pre-existing build issue FIX-IMAGES-ROUTING-CYCLE blocks
         full build verification (reproduces on stashed pre-PR tree,
         NOT a regression).
-        godlike/06 SSOT one-owner-per-fact: per DRIVE-005 closure the
+        godlike/06 SSOT one-owner-per-fact: per DRIVE-005 closure (aka DRIVE-005) the
         Drive surface has 4 canonical owners; the raw handle is an SSOT
         regression risk.
     - id: PR-CHROME-PROVIDER-SPLIT
@@ -3181,7 +3181,7 @@ wave_status:
         record.
       * architecture/deprecations.yaml#DRIVE-008 added (record #21,
         migration_phase=CUTOVER, status=in_progress, removal_date=
-        2026-Q4) cross-referencing DRIVE-005-FIELDS + DRIVE-STORE-
+        2026-Q4) cross-referencing DRIVE-005-FIELDS (aka DRIVE-005) + DRIVE-STORE-
         UPLOAD-TO-DRIVE + DRIVE-CUTOVER-P0-1 siblings.
 
     Verification: go build ./... exits 0 (no compile-time breakage from
@@ -3690,7 +3690,7 @@ wave_status:
     godlike/06 SSOT. This entry tracks the 6 P1 + 2 P2 forward-pointer
     items only. Each `linked_issue` is associated with one of three
     audit-pin bands: (a) typed-error semantic correction (P0 Commit 6/7
-    precedent), (b) mechanical bundle separation mirroring DRIVE-005 4-port
+    precedent), (b) mechanical bundle separation mirroring DRIVE-005 4-port (aka DRIVE-005)
     surface, (c) cut-not-split tombstone (godlike/07 no-fake-availability).
     Forward-pointers re-use `GODOBJ-2026-07-03` `linked_issues` slots where
     the work already lives — avoids creating duplicate wave-tracking
@@ -4448,7 +4448,18 @@ wave_status:
 # the test suite for future regressions per godlike/07 typed-error contract.
 # Cross-reference precedents (godlike/06 audit-pin, narrative only — not schema fields):
 #   PR-CHROME-PROVIDER-SPLIT — godlike/06 same-package reflection legacy retirement precedent (architecture/current.yaml#PR-CHROME-PROVIDER-SPLIT, ship_sha cd7e1799, ship_date 2026-07-04)
-#   DRIVE-005-FIELDS        — canonical-port-audit precedent (architecture/current.yaml#DRIVE-005-FIELDS, ship_sha 1dc40709, ship_date 2026-06-30)
+#   DRIVE-005-FIELDS (aka DRIVE-005)       — canonical-port-audit precedent (architecture/current.yaml#DRIVE-005-FIELDS, ship_sha 1dc40709, ship_date 2026-06-30)
+# YAML ship_date convention (TZ-adjusted, July 2026): all ship_date values in
+# this file are UTC ISO-8601 dates (YYYY-MM-DD) representing the calendar day
+# in the committer's local timezone. Two commits on the same UTC date but
+# different local calendar days across DST boundaries may carry different
+# ship_date values. The canonical resolution rule: ship_date is the local
+# calendar date at commit time, NOT the UTC date. Future agents auditing
+# ship_date values with git log --date=local must account for this TZ adjustment
+# (the git author date in local timezone is the SSOT; the YAML ship_date
+# mirrors it 1:1). Per godlike/06 SSOT: the git author date (local) is the
+# single canonical owner of the commit-date fact; ship_date is a mirror.
+#
 - id: PERSIST-PR6
   status: done
   exit_signal: true
