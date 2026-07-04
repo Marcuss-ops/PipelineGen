@@ -437,6 +437,17 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 	if err != nil {
 		return nil, err
 	}
+	// PR-DRIVE-LIST-NIL-GUARD (July 2026): guard against (nil, nil)
+	// edge case in google-api-go-client Files.List. Without this
+	// guard `len(list.Files)` below panics with nil deref. The
+	// typed ErrDriveListNil sentinel lets callers errors.Is to
+	// distinguish the empty-result from transient errors. Mirrors
+	// the nil-guard pattern already in lookupFolderExact + the
+	// `if list == nil || len(list.Files) == 0` short-circuit in
+	// folder_manager.go::firstFolderID.
+	if list == nil {
+		return nil, fmt.Errorf("ListFiles: %w", ErrDriveListNil)
+	}
 
 	result := make([]DriveFileInfo, 0, len(list.Files))
 	for _, f := range list.Files {
@@ -528,6 +539,17 @@ func (u *Uploader) SearchFiles(ctx context.Context, query string) ([]DriveFileIn
 		Context(ctx).Do()
 	if err != nil {
 		return nil, err
+	}
+	// PR-DRIVE-LIST-NIL-GUARD (July 2026): guard against the same
+	// (nil, nil) edge case Files.List can return as ListFiles
+	// above. Without this guard `len(list.Files)` below panics
+	// with nil deref — the panic stack frame that triggered this
+	// fix path was this exact SearchFiles function (called from
+	// the async clip-enqueue adapter during POST
+	// /api/media/register-batch on the wire-shape only flow
+	// shipped in commit 4fda04e7).
+	if list == nil {
+		return nil, fmt.Errorf("SearchFiles: %w", ErrDriveListNil)
 	}
 	result := make([]DriveFileInfo, 0, len(list.Files))
 	for _, f := range list.Files {

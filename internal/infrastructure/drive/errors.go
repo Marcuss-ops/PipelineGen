@@ -34,6 +34,27 @@ import "errors"
 // to distinguish ambiguity from transient failures.
 var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multiple non-trashed folders with the same name+parent exist on Drive")
 
+// ErrDriveListNil is the canonical sentinel returned when a Drive
+// Files.List call returns (nil, nil) — a known edge case in the
+// google-api-go-client where context cancellation or partial response
+// produces a nil list without an error. Without this sentinel the
+// next nil-deref on `list.Files` triggers HTTP 500 via panic-recovery
+// in the handler middleware (panic stack frame
+// "internal/infrastructure/drive.(*Uploader).SearchFiles" fired during
+// POST /api/media/register-batch — the wire-shape only flow that
+// reaches SearchFiles through the async clip-enqueue adapter).
+//
+// godlike/07 no-fake-availability: callers errors.Is against this
+// sentinel so the empty-result (genuinely-empty Drive query) and the
+// nil-list (client edge case) are distinct from transient errors
+// (HTTP 500 → retryable via pkg/retry.IsTransient) and from real
+// failures (HTTP 500 → actionable).
+//
+// Forward-pointer: PR-DRIVE-LIST-NIL-GUARD-AUDIT (deadline 2026-08-01)
+// audits the other internal/infrastructure/drive/*.go list-response
+// dereferences for the same nil-list edge case.
+var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil error (known client edge case; callers must errors.Is to distinguish from empty)")
+
 // ErrLegacySurfaceRetired was retired in DRIVE-008 CUTOVER (June 2026,
 // commit 0fa8c065). The sentinel is preserved as a comment-only
 // historical audit-pin (no live var) so future agents can trace
