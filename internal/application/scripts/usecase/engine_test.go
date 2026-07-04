@@ -163,20 +163,6 @@ func TestEngineGenerate_NilOllamaGen(t *testing.T) {
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-func TestEngineGenerate_WrongShapeOllamaGen(t *testing.T) {
-	t.Parallel()
-	e := &Engine{
-		ollamaGen: struct{}{},
-		log:       zap.NewNop(),
-	}
-	_, err := e.Generate(context.Background(), &scriptpkg.ResolvedGenerationPlan{
-		Topic:    "test",
-		Language: "en",
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not properly configured")
-}
-
 // ── Successful generation ──────────────────────────────────────────────────
 
 func TestEngineGenerate_Success(t *testing.T) {
@@ -239,7 +225,7 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 		Mode:     "clip_to_script",
 		ClipEvidence: &scriptpkg.ClipEvidence{
 			AcceptedClipIDs: []string{"clip-a", "clip-b"},
-			ClipCount: 2,
+			ClipCount:       2,
 			DriveLinks: map[string]string{
 				"clip-a": "https://drive.google.com/a",
 				"clip-b": "https://drive.google.com/b",
@@ -273,7 +259,7 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 		RenderedPrompt: "Write about the supplied clips.",
 		ClipEvidence: &scriptpkg.ClipEvidence{
 			AcceptedClipIDs: []string{"clip-1", "clip-2"},
-			ClipCount: 2,
+			ClipCount:       2,
 			DriveLinks: map[string]string{
 				"clip-1": "https://drive.google.com/file/d/clip-1/view",
 				"clip-2": "https://drive.google.com/file/d/clip-2/view",

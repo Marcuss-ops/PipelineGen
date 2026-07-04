@@ -56,17 +56,21 @@ import (
 
 // Engine is the canonical script generation engine backed by
 // ollama.Generator and gemmamemory.Service. All fields are
-// concrete typed; the ollamaGen field stores a
-// scriptOllamaGenerator (narrow interface) so tests can inject
-// fakes without depending on the concrete *ollama.Generator.
+// typed with narrow interfaces so tests can inject fakes
+// without depending on concrete implementations.
+//
+// AZIONE 4 (July 2026): ollamaGen and memorySvc fields changed
+// from interface{} to the typed narrow interfaces
+// scriptOllamaGenerator and memoryGateChecker. Type assertions
+// in Generate() removed — the compiler enforces the contract.
 //
 // PR 5 (June 2026): the `repo ScriptRepository` field was removed.
 // Persistence is no longer the engine's responsibility — the
 // single owner is PersistenceProcessor, registered in the plan's
 // Postprocessors list.
 type Engine struct {
-	ollamaGen interface{} // scriptOllamaGenerator
-	memorySvc interface{} // memoryGateChecker
+	ollamaGen scriptOllamaGenerator
+	memorySvc memoryGateChecker
 	log       *zap.Logger
 }
 
@@ -160,14 +164,20 @@ type EngineResult struct {
 }
 
 // NewEngine constructs a real Engine backed by the canonical
-// *ollama.Generator. Accepts concrete typed args.
+// *ollama.Generator. Accepts typed narrow-interface args so
+// tests can inject fakes directly.
+//
+// AZIONE 4 (July 2026): params changed from concrete types to
+// narrow interfaces (scriptOllamaGenerator, memoryGateChecker).
+// Call sites pass *ollama.Generator and nil (which satisfy
+// the interfaces implicitly).
 //
 // PR 5 (June 2026): the `repo ScriptRepository` argument was
 // removed. Persistence is owned by PersistenceProcessor; the
 // engine does NOT receive a ScriptRepository.
 func NewEngine(
-	ollamaGen *ollama.Generator,
-	memorySvc memoryCache,
+	ollamaGen scriptOllamaGenerator,
+	memorySvc memoryGateChecker,
 	log *zap.Logger,
 ) *Engine {
 	return &Engine{
@@ -198,10 +208,9 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		return nil, fmt.Errorf("engine: plan is nil")
 	}
 
-	ollamaGen, ok := e.ollamaGen.(scriptOllamaGenerator)
-	if !ok || ollamaGen == nil {
-		return nil, fmt.Errorf("engine: ollama generator not properly configured")
-	}
+	// AZIONE 4 (July 2026): ollamaGen is typed (scriptOllamaGenerator);
+	// the nil check above covers the only runtime failure mode.
+	// No type assertion needed — the compiler enforces the contract.
 
 	// Extract parameters from the resolved plan.
 	title := plan.Title
@@ -260,58 +269,58 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 
 	// Memory gate: check if we have a cached result.
 	// ForceRefresh bypasses the cache read even when UseMemory is true.
+	// AZIONE 4 (July 2026): memorySvc is typed (memoryGateChecker);
+	// no type assertion needed — the compiler enforces the contract.
 	if useMemory && !skipMemory && e.memorySvc != nil {
-		if memSvc, ok := e.memorySvc.(memoryGateChecker); ok {
-			memoryReq := memoryGateRequest{
-				Title:    title,
-				Language: language,
-				Mode:     mode,
-				// PR 2: feed the canonical cache key alongside the
-				// legacy Title/Language/Mode lookup. The gemmamemory
-				// stub still returns nil; production wiring uses
-				// CacheKey when the real Service lands.
-				CacheKey: cacheKey,
+		memoryReq := memoryGateRequest{
+			Title:    title,
+			Language: language,
+			Mode:     mode,
+			// PR 2: feed the canonical cache key alongside the
+			// legacy Title/Language/Mode lookup. The gemmamemory
+			// stub still returns nil; production wiring uses
+			// CacheKey when the real Service lands.
+			CacheKey: cacheKey,
+		}
+		if result, memErr := e.memorySvc.CheckGate(ctx, memoryReq); memErr == nil && result != nil && result.Output != "" {
+			if e.log != nil {
+				e.log.Info("engine: memory gate cache hit",
+					zap.String("title", title),
+					zap.Int("word_count", result.WordCount))
 			}
-			if result, memErr := memSvc.CheckGate(ctx, memoryReq); memErr == nil && result != nil && result.Output != "" {
-				if e.log != nil {
-					e.log.Info("engine: memory gate cache hit",
-						zap.String("title", title),
-						zap.Int("word_count", result.WordCount))
-				}
-				// P0.8 (June 2026): jsonextract.Scanner in ModeCompatibility —
-				// cascading fallback: V1 → legacy array → plain-text wrapper.
-				// All fallbacks are declared and measured via Prometheus counters.
-				scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
-				output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
-				if decodeErr != nil {
-					return nil, decodeErr
-				}
-				// PR 3 (June 2026): stamp engine-side provenance
-				// fields onto the canonical typed MSOV1 so post-
-				// processors (notably PersistenceProcessor) read
-				// WordCount / ModelUsed / CacheStatus uniformly on
-				// the cache-hit path. Without this stamp, replay
-				// rows would persist FinalWordCount=0 + empty
-				// ModelUsed.
-				output.WordCount = result.WordCount
-				output.ModelUsed = result.Model
-				output.CacheStatus = "exact_hit"
-				return &EngineResult{
-					Output:       *output,
-					WordCount:    result.WordCount,
-					Model:        result.Model,
-					CacheStatus:  "exact_hit",
-					EstDuration:  (result.WordCount * 60) / cfg.WordsPerMinute,
-					ClipEvidence: plan.ClipEvidence,
-					// ScriptID intentionally absent: PR 5 moved
-					// persistence to PersistenceProcessor; the cached
-					// payload does NOT trigger an extra DB lookup from
-					// the engine. The use case resolves ScriptID through
-					// the postprocessor pipeline (which sees
-					// idem-key collision on replay and returns the
-					// existing ID).
-				}, nil
+			// P0.8 (June 2026): jsonextract.Scanner in ModeCompatibility —
+			// cascading fallback: V1 → legacy array → plain-text wrapper.
+			// All fallbacks are declared and measured via Prometheus counters.
+			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
+			output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
+			if decodeErr != nil {
+				return nil, decodeErr
 			}
+			// PR 3 (June 2026): stamp engine-side provenance
+			// fields onto the canonical typed MSOV1 so post-
+			// processors (notably PersistenceProcessor) read
+			// WordCount / ModelUsed / CacheStatus uniformly on
+			// the cache-hit path. Without this stamp, replay
+			// rows would persist FinalWordCount=0 + empty
+			// ModelUsed.
+			output.WordCount = result.WordCount
+			output.ModelUsed = result.Model
+			output.CacheStatus = "exact_hit"
+			return &EngineResult{
+				Output:       *output,
+				WordCount:    result.WordCount,
+				Model:        result.Model,
+				CacheStatus:  "exact_hit",
+				EstDuration:  (result.WordCount * 60) / cfg.WordsPerMinute,
+				ClipEvidence: plan.ClipEvidence,
+				// ScriptID intentionally absent: PR 5 moved
+				// persistence to PersistenceProcessor; the cached
+				// payload does NOT trigger an extra DB lookup from
+				// the engine. The use case resolves ScriptID through
+				// the postprocessor pipeline (which sees
+				// idem-key collision on replay and returns the
+				// existing ID).
+			}, nil
 		}
 	}
 
@@ -363,7 +372,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		OutputMode:  ollamatypes.OutputModeScriptV1,
 	}
 
-	genResult, err := ollamaGen.GenerateScript(ctx, ollamaReq)
+	genResult, err := e.ollamaGen.GenerateScript(ctx, ollamaReq)
 	if err != nil {
 		return nil, fmt.Errorf("engine: ollama generation failed: %w", err)
 	}
