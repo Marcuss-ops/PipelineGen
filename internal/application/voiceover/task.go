@@ -26,8 +26,10 @@ type Task struct {
 	// output ordering (irrespective of completion order).
 	Index int
 
-	// Language is the BCP-47 code to synthesise.
-	Language string
+	// Language is the BCP-47 code to synthesise. Typed (Language)
+	// per PR-VO-TYPED-PRIMITIVES — JSON wire + DB column are
+	// byte-equivalent with the pre-refactor string field.
+	Language Language
 
 	// VoiceOverride is the per-language voice (cmd.VoiceOverrides[Language]).
 	// Empty means "use TTSProvider's default voice".
@@ -45,9 +47,10 @@ type Task struct {
 	// batch shares the same request_id column value.
 	RequestID string
 
-	// TextHash is the per-batch content hash (hashutil.SHA256String
-	// of cmd.Text). All rows in this batch share the same hash.
-	TextHash string
+	// TextHash is the per-batch content hash (ComputeTextHash of
+	// itemSpec.Text). All rows in this batch share the same hash.
+	// Typed (TextHash) per PR-VO-TYPED-PRIMITIVES.
+	TextHash TextHash
 
 	// Destination is the resolved destination shared across all
 	// languages in this batch (FolderID + FolderPath + StyleGroup).

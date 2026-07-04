@@ -130,6 +130,9 @@ func (e *Executor) Run(
 				ID:       t.ID,
 				Filename: t.Filename,
 			}
+			// PR-VO-TYPED-PRIMITIVES (July 2026): the prog callback
+			// (if non-nil) receives the typed Language verbatim.
+			// No string conversion needed at the TaskResult literal.
 			if prog != nil {
 				prog(ctx, out[i])
 			}
@@ -213,8 +216,11 @@ func (e *Executor) runTaskFnWithRecover(ctx context.Context, task Task, fn TaskF
 	defer func() {
 		if rec := recover(); rec != nil {
 			if e.logger != nil {
+				// PR-VO-TYPED-PRIMITIVES (July 2026): task.Language
+				// is the typed Language envelope; zap.String requires
+				// a string argument. Convert at the log-seam.
 				e.logger.Error("Executor: task panicked (recovered)",
-					zap.String("language", task.Language),
+					zap.String("language", string(task.Language)),
 					zap.Int("index", task.Index),
 					zap.String("id", task.ID),
 					zap.Any("panic", rec),

@@ -77,7 +77,10 @@ type GenerateVoiceoversResult struct {
 // code (NOT by index — a safer correlation field for callers iterating
 // the result without preserving the input index ordering).
 type VoiceoverItemResult struct {
-	Language string
+	// Language is the typed BCP-47 envelope (voiceover.Language)
+	// per PR-VO-TYPED-PRIMITIVES — JSON wire shape is
+	// byte-equivalent with the pre-refactor string field.
+	Language Language
 
 	// Voice is the BCP-47-tied voice name reported by TTSProvider
 	// (empty if TTSProvider did not surface a voice field).

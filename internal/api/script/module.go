@@ -66,7 +66,7 @@ type Dependencies struct {
 	Harvest           AutoHarvestService
 	ScriptsRepo       adapters.ScriptRepository
 	// Commit H Phase 2 (June 2026): Memory field dropped.
-	Jobs              jobservice.Service
+	Jobs jobservice.Service
 	// Registry is the canonical job-type registry (appjobs.Compose())
 	// used by EnqueueGenerationJob to source MaxRetries via
 	// registry.DefaultMaxRetries(jType). Nil falls back to the
@@ -174,18 +174,18 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// for direct callers that bypass Build); Build's checks above
 	// are the new defensive layer.
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
-		Engine:                deps.Engine,
-		Section:               deps.Section,
-		CacheEviction:         deps.CacheEviction,
-		Image:                 deps.Image,
-		Realtime:              deps.Realtime,
-		Association:           deps.Association,
-		Voiceover:             deps.Voiceover,
-		AssetTree:             deps.AssetTree,
-		ClipSourceBuilder:     deps.ClipSourceBuilder,
-		MediaCurator:          deps.MediaCurator,
-		Harvest:               deps.Harvest,
-		ScriptsRepo:           deps.ScriptsRepo,
+		Engine:            deps.Engine,
+		Section:           deps.Section,
+		CacheEviction:     deps.CacheEviction,
+		Image:             deps.Image,
+		Realtime:          deps.Realtime,
+		Association:       deps.Association,
+		Voiceover:         deps.Voiceover,
+		AssetTree:         deps.AssetTree,
+		ClipSourceBuilder: deps.ClipSourceBuilder,
+		MediaCurator:      deps.MediaCurator,
+		Harvest:           deps.Harvest,
+		ScriptsRepo:       deps.ScriptsRepo,
 		// Commit H Phase 2 (June 2026): Memory: deps.Memory dropped.
 		Jobs:                  deps.Jobs,
 		Registry:              deps.Registry,

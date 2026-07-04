@@ -116,10 +116,10 @@ func TestHandler_AcceptsIdempotencyKey(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name  string
-		raw   string // header value as the client sent it
-		want  string // expected ActiveKey the broker sees
-		setH  bool   // whether to send the Idempotency-Key header at all
+		name string
+		raw  string // header value as the client sent it
+		want string // expected ActiveKey the broker sees
+		setH bool   // whether to send the Idempotency-Key header at all
 	}{
 		{
 			name: "header canonical value",

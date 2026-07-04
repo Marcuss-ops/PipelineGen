@@ -86,8 +86,13 @@ func newUseCaseTTSAdapter(proc *audioasset.Processor) *useCaseTTSAdapter {
 
 func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInput) (voiceover.TTSOutput, error) {
 	res, err := a.proc.Generate(ctx, &audioasset.AudioInput{
-		Text:          in.Text,
-		Language:      in.Language,
+		Text: in.Text,
+		// PR-VO-TYPED-PRIMITIVES (July 2026): in.Language is the
+		// typed voiceover.Language envelope. The cross-package seam
+		// converts to the raw string for audioasset.AudioInput
+		// (the infrastructure layer stays un-typed per the audit
+		// scope discipline).
+		Language:      string(in.Language),
 		Voice:         in.Voice,
 		Filename:      in.Filename,
 		OutputDir:     in.OutputDir,
@@ -339,11 +344,15 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *voiceover.VoiceoverRecord) *sqas
 		return nil
 	}
 	return &sqassets.Record{
-		ID:              rec.ID,
-		RequestID:       rec.RequestID,
-		TextHash:        rec.TextHash,
+		ID:          rec.ID,
+		RequestID:   rec.RequestID,
+		// PR-VO-TYPED-PRIMITIVES (July 2026): the typed envelopes
+		// (TextHash + Language) are converted to the underlying
+		// string for the sqassets.Record wire shape (infrastructure
+		// layer stays un-typed per the audit scope discipline).
+		TextHash:        string(rec.TextHash),
 		TextPreview:     rec.TextPreview,
-		Language:        rec.Language,
+		Language:        string(rec.Language),
 		Voice:           rec.Voice,
 		Filename:        rec.Filename,
 		LocalPath:       rec.LocalPath,
@@ -380,12 +389,18 @@ func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *voiceover.Voic
 		updatedAt = timeutil.FormatRFC3339(r.UpdatedAt)
 	}
 	return &voiceover.VoiceoverRecord{
-		ID:           r.ID,
-		RequestID:    r.RequestID,
-		TextHash:     r.TextHash,
-		TextPreview:  r.TextPreview,
-		Language:     r.Language,
-		Voice:        r.Voice,
+		ID:        r.ID,
+		RequestID: r.RequestID,
+		// PR-VO-TYPED-PRIMITIVES (July 2026): the persistence layer
+		// (VoiceoverRecord) carries raw string fields for TextHash
+		// and Language (per the Go-circular-import constraint — the
+		// persistence sub-package cannot import the parent voiceover
+		// package). The raw strings from the DB are forwarded verbatim
+		// — the persistence layer IS the canonical source of truth.
+		TextHash:    r.TextHash,
+		TextPreview: r.TextPreview,
+		Language:    r.Language,
+		Voice:       r.Voice,
 		Filename:     r.Filename,
 		LocalPath:    r.LocalPath,
 		CleanedPath:  r.CleanedPath,
@@ -493,7 +508,7 @@ func (a *useCaseDestResolverAdapter) Resolve(ctx context.Context, dest *voiceove
 		FolderPath:      dest.FolderPath,
 		SubfolderName:   dest.SubfolderName,
 		CreateSubfolder: dest.CreateSubfolder,
-		StyleGroup:      dest.StyleGroup,
+		StyleGroup:      string(dest.StyleGroup),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("useCaseDestResolverAdapter.Resolve: resolver failed: %w", err)
@@ -654,9 +669,13 @@ func (a *voiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Con
 		DriveLink:    in.DriveLink,
 		DownloadLink: in.DownloadLink,
 		FileHash:     in.FileHash,
-		Language:     in.Language,
-		Status:       in.Status,
-		Metadata:     in.Metadata,
+		// PR-VO-TYPED-PRIMITIVES (July 2026): typed Language is
+		// converted to the raw string for the lifecycle package's
+		// wire shape (infrastructure layer stays un-typed per the
+		// audit scope discipline).
+		Language: string(in.Language),
+		Status:   in.Status,
+		Metadata: in.Metadata,
 	})
 }
 

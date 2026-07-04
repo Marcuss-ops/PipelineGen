@@ -66,8 +66,10 @@ type VoiceoverItem struct {
 	Text string `json:"text"`
 
 	// Language is the BCP-47 code for THIS item. Required; must pass
-	// LanguageCodeValid (alphanumeric + hyphens only).
-	Language string `json:"language"`
+	// LanguageCodeValid (alphanumeric + hyphens only). Typed
+	// (Language) per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire
+	// shape is byte-equivalent with the pre-refactor string field.
+	Language Language `json:"language"`
 
 	// Voice is the per-item voice override. Empty falls through to
 	// TTSProvider's default voice (nil-safe at every layer).
@@ -190,7 +192,8 @@ type GenerateVoiceoverItemCommand struct {
 	Text string `json:"text"`
 
 	// Language is the BCP-47 code for THIS child. Exactly one.
-	Language string `json:"language"`
+	// Typed (Language) per PR-VO-TYPED-PRIMITIVES.
+	Language Language `json:"language"`
 
 	// Voice is the BCP-47-tied voice override for THIS child.
 	// Empty falls through to TTSProvider default voice.
@@ -202,7 +205,8 @@ type GenerateVoiceoverItemCommand struct {
 
 	// TextHash is the per-batch SHA-256(Text). Pre-computed by the
 	// parent so every child writes the same text_hash into its row.
-	TextHash string `json:"text_hash"`
+	// Typed (TextHash) per PR-VO-TYPED-PRIMITIVES.
+	TextHash TextHash `json:"text_hash"`
 
 	// Destination is the per-batch routing payload (nullable: if absent,
 	// the child uses the canonical config-level voiceover folder).
@@ -235,7 +239,9 @@ func (c *GenerateVoiceoverItemCommand) Validate() error {
 	if strings.TrimSpace(c.Text) == "" {
 		return fmt.Errorf("text: must be non-empty")
 	}
-	if !LanguageCodeValid(c.Language) {
+	// PR-VO-TYPED-PRIMITIVES (July 2026): route through the canonical
+	// LanguageCodeValid gate (preserves the existing test surface).
+	if !LanguageCodeValid(string(c.Language)) {
 		return fmt.Errorf("language: invalid code %q (only alphanumeric + hyphens allowed)", c.Language)
 	}
 	if strings.TrimSpace(c.Filename) == "" {

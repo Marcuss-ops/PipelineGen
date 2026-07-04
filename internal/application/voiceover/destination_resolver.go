@@ -147,7 +147,7 @@ func ResolveVoiceoverDestination(
 			FolderID:      folderID,
 			FolderPath:    folderPath,
 			SubfolderName: dest.SubfolderName,
-			StyleGroup:    dest.StyleGroup,
+			StyleGroup: dest.StyleGroup,
 		}, nil
 	}
 
@@ -162,7 +162,9 @@ func ResolveVoiceoverDestination(
 		result, err := resolver.Resolve(ctx, &asset.ResolveRequest{
 			Source:     "voiceover",
 			Group:      dest.Group,
-			StyleGroup: dest.StyleGroup,
+			// PR-VO-TYPED-PRIMITIVES (July 2026): asset.ResolveRequest.StyleGroup
+			// is raw string; convert at the typed→string boundary.
+			StyleGroup: string(dest.StyleGroup),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("destination.resolver: %w", err)
@@ -178,8 +180,13 @@ func ResolveVoiceoverDestination(
 			FolderID:      result.FolderID,
 			FolderPath:    result.FolderPath,
 			DriveLink:     result.DriveLink,
-			SubfolderName: dest.SubfolderName,
-			StyleGroup:    dest.StyleGroup, // MIRROR verbatim (NOT from resolver result).
+		SubfolderName: dest.SubfolderName,
+		// PR-VO-TYPED-PRIMITIVES (July 2026): StyleGroup field is
+		// the typed envelope; explicit string() conversion at the
+		// resolver→dto boundary (dto is also typed but explicit
+		// conversion is godlike/07 safer for future field-type
+		// changes). MIRROR verbatim (NOT from resolver result).
+		StyleGroup: dest.StyleGroup,
 		}, nil
 	}
 

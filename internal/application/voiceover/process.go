@@ -54,12 +54,12 @@ func stageLog(log *zap.Logger, requestID, stage, language string) func() {
 	log.Info("pipeline_stage_started",
 		zap.String("stage", stage),
 		zap.String("job_id", requestID),
-		zap.String("language", language))
+		zap.String("language", string(language)))
 	return func() {
 		log.Info("pipeline_stage_completed",
 			zap.String("stage", stage),
 			zap.String("job_id", requestID),
-			zap.String("language", language),
+			zap.String("language", string(language)),
 			zap.Int64("duration_ms", time.Since(start).Milliseconds()))
 	}
 }
@@ -80,7 +80,9 @@ func stageLog(log *zap.Logger, requestID, stage, language string) func() {
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	req := &BatchRequest{
 		Text:             text,
-		Languages:        []string{language},
+		// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string literal
+		// implicitly converts to the Language named type.
+		Languages:        []Language{Language(language)},
 		FilenameTemplate: filename,
 		RemoveSilence:    ptrutil.Bool(false),
 		Strategy:         "replace",
@@ -115,8 +117,12 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 func (s *Service) processLanguage(
 	ctx context.Context,
 	requestID string,
+	// PR-VO-TYPED-PRIMITIVES (July 2026): textHash is raw string
+	// (the legacy 64-char full SHA-256 of req.Text from
+	// GenerateBatch). The typed TextHash envelope is canonical ONLY
+	// for the per-item 16-char value used in the fan-out path.
 	textHash string,
-	language string,
+	language Language,
 	req *BatchRequest,
 	dest *ResolvedDestination,
 ) BatchItem {
@@ -199,7 +205,7 @@ func (s *Service) processLanguage(
 		safeSub, subErr := pathutil.SanitizeSubfolderSegment(req.Destination.SubfolderName)
 			if subErr != nil {
 				s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
-					zap.String("language", language),
+					zap.String("language", string(language)),
 					zap.String("subfolder_name", req.Destination.SubfolderName),
 					zap.Error(subErr))
 				return item.fail(FailureInvalidSubfolder, fmt.Errorf("path traversal rejected: %w", subErr))
@@ -227,7 +233,7 @@ func (s *Service) processLanguage(
 	item.Filename = filename // keep persisted metadata in sync with sanitized path
 
 	// ── Stage 1: synthesize (TTS) ──────────────────────────────────────
-	emitSynthesizeCompleted := stageLog(s.log, requestID, "synthesize", language)
+	emitSynthesizeCompleted := stageLog(s.log, requestID, "synthesize", string(language))
 	item = s.synthesizeStage(ctx, item, req, outputDir, filename, language)
 	emitSynthesizeCompleted()
 	if item.Status == StatusFailed {
@@ -236,6 +242,12 @@ func (s *Service) processLanguage(
 
 	// Build meta map (kept inline — the bridge between synthesize and
 	// destination stages; not its own stage file).
+	//
+	// PR-VO-TYPED-PRIMITIVES (July 2026): the "language" + "style_group"
+	// values are now typed (Language / StyleGroup) — Go's named-type
+	// rules let the typed string value live in a map[string]any
+	// unchanged (the value IS a string at the interface{} level).
+	// The JSON wire shape is byte-equivalent.
 	meta := map[string]any{
 		"text_hash":    textHash,
 		"text_preview": textutil.Truncate(req.Text, 100),
@@ -261,7 +273,7 @@ func (s *Service) processLanguage(
 	metaJSON, _ := json.Marshal(meta)
 
 	// ── Stage 2: destination (Drive upload via Lifecycle) ──────────────
-	emitDestinationCompleted := stageLog(s.log, requestID, "destination", language)
+	emitDestinationCompleted := stageLog(s.log, requestID, "destination", string(language))
 	item = s.destinationStage(ctx, item, req, dest, metaJSON)
 	emitDestinationCompleted()
 	if item.Status == StatusFailed {
@@ -269,7 +281,7 @@ func (s *Service) processLanguage(
 	}
 
 	// ── Stage 3: finalize (dedupe gate + atomic swap + cleanup) ───────
-	emitFinalizeCompleted := stageLog(s.log, requestID, "finalize", language)
+	emitFinalizeCompleted := stageLog(s.log, requestID, "finalize", string(language))
 	item = s.finalizeStage(ctx, item, requestID, textHash, language, req, dest, metaJSON,
 		shouldSwap, oldDriveFileID, oldLocalPath, oldCleanedPath)
 	emitFinalizeCompleted()

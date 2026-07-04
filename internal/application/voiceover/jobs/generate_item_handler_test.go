@@ -57,9 +57,9 @@ type recordingVoiceoverItemExecutor struct {
 func (r *recordingVoiceoverItemExecutor) Execute(ctx context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
 	r.calls = append(r.calls, item)
 	if item != nil {
-		r.languages = append(r.languages, item.Language)
+		r.languages = append(r.languages, string(item.Language))
 		r.filenames = append(r.filenames, item.Filename)
-		r.hashes = append(r.hashes, item.TextHash)
+		r.hashes = append(r.hashes, string(item.TextHash))
 		r.requestIDs = append(r.requestIDs, item.RequestID)
 		r.voices = append(r.voices, item.Voice)
 	}
@@ -75,10 +75,10 @@ func makeItemCmd(parent, rid, lang, voice, file, hash string) *voiceover.Generat
 		ParentJobID: parent,
 		RequestID:   rid,
 		Text:        "hello " + lang,
-		Language:    lang,
+		Language:    voiceover.Language(lang),
 		Voice:       voice,
 		Filename:    file,
-		TextHash:    hash,
+		TextHash:    voiceover.TextHash(hash),
 		Destination: &voiceover.DestinationRequest{
 			Group: "test-group",
 		},

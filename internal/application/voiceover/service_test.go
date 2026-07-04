@@ -23,13 +23,13 @@ func TestNormalizeBatchRequestDefaults(t *testing.T) {
 
 	assert.Equal(t, "{slug}_{lang}.mp3", req.FilenameTemplate, "default filename template")
 	assert.Equal(t, "verify", req.Strategy, "default strategy")
-	assert.Equal(t, []string{"en"}, req.Languages, "default language")
+	assert.Equal(t, []Language{"en"}, req.Languages, "default language")
 }
 
 func TestNormalizeBatchRequestPreservesCustom(t *testing.T) {
 	req := &BatchRequest{
 		Text:             "Ciao mondo",
-		Languages:        []string{"it"},
+		Languages:        []Language{"it"},
 		FilenameTemplate: "{slug}_{lang}_{hash}.mp3",
 		Strategy:         "replace",
 	}
@@ -37,7 +37,7 @@ func TestNormalizeBatchRequestPreservesCustom(t *testing.T) {
 
 	assert.Equal(t, "{slug}_{lang}_{hash}.mp3", req.FilenameTemplate)
 	assert.Equal(t, "replace", req.Strategy)
-	assert.Equal(t, []string{"it"}, req.Languages)
+	assert.Equal(t, []Language{"it"}, req.Languages)
 }
 
 func TestTruncateString(t *testing.T) {
@@ -224,7 +224,7 @@ func TestBuildFilename(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			filename, err := BuildVoiceoverFilename(FilenameSpec{
 				Text:     tc.text,
-				Language: tc.lang,
+				Language: Language(tc.lang),
 				TextHash: tc.hash,
 				Template: tc.template,
 			})
@@ -239,7 +239,7 @@ func TestBuildFilename(t *testing.T) {
 func TestBatchItemFail(t *testing.T) {
 	item := BatchItem{
 		ID:       "test-id",
-		Language: "en",
+		Language: Language("en"),
 		Status:   StatusProcessing,
 	}
 
@@ -255,8 +255,8 @@ func TestBatchResponseConstruction(t *testing.T) {
 		OK:        true,
 		RequestID: "vo_20250101_120000_abc123",
 		Items: []BatchItem{
-			{ID: "item-1", Language: "en", Status: StatusCompleted},
-			{ID: "item-2", Language: "it", Status: StatusCompleted},
+			{ID: "item-1", Language: Language("en"), Status: StatusCompleted},
+			{ID: "item-2", Language: Language("it"), Status: StatusCompleted},
 		},
 	}
 
@@ -270,8 +270,8 @@ func TestBatchResponseWithError(t *testing.T) {
 		OK:    false,
 		Error: "some batch items failed",
 		Items: []BatchItem{
-			{ID: "item-1", Language: "en", Status: StatusCompleted},
-			{ID: "item-2", Language: "it", Status: StatusFailed, Error: "tts error"},
+			{ID: "item-1", Language: Language("en"), Status: StatusCompleted},
+			{ID: "item-2", Language: Language("it"), Status: StatusFailed, Error: "tts error"},
 		},
 	}
 
@@ -325,7 +325,7 @@ func TestGenerateBatch_NilDestination_NoDefault_ReturnsMissingFolder(t *testing.
 	}
 	req := &BatchRequest{
 		Text:      "hello world",
-		Languages: []string{"en"},
+		Languages: []Language{"en"},
 		Strategy:  "replace",
 		// Destination intentionally nil.
 	}
@@ -372,7 +372,7 @@ func TestGenerateBatch_RejectsPathTraversalPayload(t *testing.T) {
 			}
 			req := &BatchRequest{
 				Text:      "hello world",
-				Languages: []string{"en"},
+				Languages: []Language{"en"},
 				Strategy:  "replace",
 				Destination: &DestinationRequest{
 					SubfolderName:   sub,

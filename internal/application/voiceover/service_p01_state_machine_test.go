@@ -204,7 +204,7 @@ func TestGenerateBatch_TTSFailureDoesNotComplete(t *testing.T) {
 
 	req := &BatchRequest{
 		Text:      "hello world",
-		Languages: []string{"en"},
+		Languages: []Language{"en"},
 		Strategy:  "replace",
 		Destination: &DestinationRequest{
 			Group:    "test-group",
@@ -259,7 +259,7 @@ func TestGenerateBatch_MissingFolderDoesNotComplete(t *testing.T) {
 
 	req := &BatchRequest{
 		Text:      "hello world",
-		Languages: []string{"en"},
+		Languages: []Language{"en"},
 		Strategy:  "replace",
 		Destination: &DestinationRequest{
 			Group:    "test-group",
@@ -320,7 +320,7 @@ func TestGenerateBatch_UploadFailureDoesNotComplete(t *testing.T) {
 
 	resp, err := svc.GenerateBatch(context.Background(), &BatchRequest{
 		Text:      "hello world",
-		Languages: []string{"en"},
+		Languages: []Language{"en"},
 		Strategy:  "replace",
 		Destination: &DestinationRequest{
 			Group:    "test-group",

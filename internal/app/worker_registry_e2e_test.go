@@ -523,23 +523,19 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	dispatcher := appjobs.NewDispatcher()
 	require.NoError(t, dispatcher.Register(appjobs.TypeMediaReindex, clipSvc.HandleJob))
 
-	// 5. Bridge via an inline adaptHandler — byte-for-byte the same
-	//    adapter BuildWorkerRegistry uses in production. We inline
-	//    here (it's an unexported func in package app) and iterate
-	//    AllHandlers so the test exercises the same dispatch-look-up
-	//    loop the production worker uses.
+	// 5. P1 #13 (July 2026): appjobs.HandlerFunc = worker.Handler =
+	//    domainjob.Handler — the handler already takes *JobExecutionTools;
+	//    the adapt bridge is now a no-op identity cast (previously it
+	//    converted *worker.Tools → *appjobs.JobTools). worker.Runner
+	//    translates *worker.Tools → *domainjob.JobExecutionTools at
+	//    Dispatch time, so the handler sees the same shape from both
+	//    the in-process Dispatcher call and the remote-worker call.
+	//
+	// godlike/06 SSOT: both adapt here and the production
+	//    app.BuildWorkerRegistry consume the same domainjob.Handler;
+	//    no inline bridge is needed.
 	adapt := func(handler appjobs.HandlerFunc) worker.Handler {
-		return func(ctx context.Context, j *domainjob.Job, tools *worker.Tools) (map[string]any, error) {
-			jobTools := &appjobs.JobTools{
-				Progress: func(p int, msg string) { _ = tools.Progress(ctx, p, msg) },
-				Event:    func(_, _ string, _ map[string]any) {},
-				IsCancelled: func() bool {
-					ok, _ := tools.IsCancelled(ctx)
-					return ok
-				},
-			}
-			return handler(ctx, j, jobTools)
-		}
+		return handler
 	}
 	workerReg := worker.NewRegistry()
 	for jt, h := range dispatcher.AllHandlers() {
@@ -781,7 +777,10 @@ func TestE2E_RemoteWorkerRenewsLease(t *testing.T) {
 	//    block-until-signal pattern proves the RUNNER's renewal
 	//    loop fires while the handler is mid-execution, which is
 	//    the W1 Phase 7 contract.
-	handler := func(ctx context.Context, _ *domainjob.Job, _ *worker.Tools) (map[string]any, error) {
+	// P1 #13 (July 2026): worker.Handler = domainjob.Handler takes
+	// *JobExecutionTools (not *worker.Tools). The tools parameter is
+	// unused (_) so the parameter type change is cosmetic-only.
+	handler := func(ctx context.Context, _ *domainjob.Job, _ *domainjob.JobExecutionTools) (domainjob.Result, error) {
 		select {
 		case <-mock.renewSeen:
 			// broker mock observed ≥1 renew — unblock and

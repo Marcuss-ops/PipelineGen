@@ -17,12 +17,10 @@ package voiceover
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -55,15 +53,37 @@ import (
 // the "no fake availability" rule (godlike/07) intact for deployments
 // without a configured voiceover_root_folder: those requests still fail
 // loudly with missing_folder_id rather than silently writing to /tmp.
+//
+// Finalizer (PR-VO-USECASE-PROCESS-DRY, July 2026) is MANDATORY —
+// the use case now delegates the per-item finalization (Steps 4-6
+// including the dedupe gate + media_assets projection + cleanup
+// outbox) to the unified VoiceoverFinalizer port (P0.4 Fase 3a,
+// July 2026). Pre-DRY the batch path did manual TX orchestration
+// (BeginTx → DeleteByIDTx → InsertTx → outbox → Commit) which
+// MISSED the dedupe gate, media_assets projection, and cleanup
+// outbox — godlike/07 "no fake availability" gap closed by the
+// post-DRY migration. The composition root wires the SAME
+// finalizer instance used by the per-item path so both call
+// paths share a single canonical finalization port.
+//
+// godlike/07 minimal-blast-radius: TransactionalOutbox is
+// RETAINED as a field (nil-safe, currently unused by the use case
+// body post-DRY) so the composition root call site can keep the
+// same UseCaseDeps shape. A future CONTRACT-phase PR will
+// physically remove the field.
 type UseCaseDeps struct {
 	TTSProvider           TTSProvider
 	DestinationResolver   DestinationResolver
 	AudioPostProcessor    AudioPostProcessor
 	Publisher             VoiceoverPublisher
 	VoiceoverRepository   VoiceoverRepository
-	TransactionalOutbox   TransactionalOutbox
+	TransactionalOutbox   TransactionalOutbox // RETAINED but unused post-DRY (forward-pointer for CONTRACT removal)
 	Logger                *zap.Logger
 	DefaultFolderResolver VoiceoverDefaultFolderResolver
+	// Finalizer is the unified finalization port (P0.4 Fase 3a).
+	// MANDATORY post-DRY. Composition root injects the same
+	// *voiceoverFinalizer shared by the per-item use case.
+	Finalizer VoiceoverFinalizer
 
 	// DefaultParallelism is the fallback when cmd.Parallelism == 0.
 	// Clamped to >= 1. Production: 3.
@@ -77,14 +97,29 @@ type UseCaseDeps struct {
 // use case. Block 2 ships with sequential per-language fan-out via
 // the 7 ports; Block 3 wraps the per-language loop in a bounded pool
 // so concurrent languages stay under MaxParallelism.
+//
+// PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body
+// (processOneLanguage) now delegates to the SHARED
+// PipelineExecutor (pipeline_executor.go) — the same neutral
+// struct consumed by ProcessVoiceoverItemUseCase (per-item path).
+// Pre-DRY the batch path did manual TX orchestration; post-DRY
+// the batch path uses the finalizer via the PipelineExecutor,
+// gaining the dedupe gate + media_assets projection + cleanup
+// outbox that it was missing.
 type GenerateVoiceoversUseCase struct {
-	deps     UseCaseDeps
-	executor *Executor
+	deps            UseCaseDeps
+	executor        *Executor             // bounded parallel fan-out (worker pool)
+	pipelineExec    *PipelineExecutor     // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
 }
 
 // NewGenerateVoiceoversUseCase constructs the canonical use case.
 // Mandatory deps are fail-fast (panic on nil) per AGENTS.md WireUp
 // pattern; optional deps are nil-safe.
+//
+// PR-VO-USECASE-PROCESS-DRY: Finalizer is now a mandatory dep
+// (panics on nil). The constructor builds the PipelineExecutor
+// from the same deps so the per-item body is shared with the
+// per-item use case.
 func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	if deps.TTSProvider == nil {
 		panic("GenerateVoiceoversUseCase: TTSProvider is required (UseCaseDeps.TTSProvider)")
@@ -98,8 +133,16 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	if deps.VoiceoverRepository == nil {
 		panic("GenerateVoiceoversUseCase: VoiceoverRepository is required (UseCaseDeps.VoiceoverRepository)")
 	}
+	// PR-VO-USECASE-PROCESS-DRY: TransactionalOutbox is RETAINED
+	// as a field (composition root call site unchanged) but
+	// unused post-DRY. The Finalizer owns the outbox path now.
+	// Keep the nil-check for back-compat — a missing wire-up is
+	// still a hard fail.
 	if deps.TransactionalOutbox == nil {
-		panic("GenerateVoiceoversUseCase: TransactionalOutbox is required (UseCaseDeps.TransactionalOutbox)")
+		panic("GenerateVoiceoversUseCase: TransactionalOutbox is required (UseCaseDeps.TransactionalOutbox — RETAINED for back-compat with composition root)")
+	}
+	if deps.Finalizer == nil {
+		panic("GenerateVoiceoversUseCase: Finalizer is required (PR-VO-USECASE-PROCESS-DRY — post-DRY the per-item body delegates to the finalizer)")
 	}
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
@@ -111,8 +154,16 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 		deps.MaxParallelism = 8
 	}
 	return &GenerateVoiceoversUseCase{
-		deps:     deps,
-		executor: NewExecutor(deps.Logger),
+		deps:         deps,
+		executor:     NewExecutor(deps.Logger),
+		pipelineExec: NewPipelineExecutor(PipelineItemDeps{
+			TTSProvider:         deps.TTSProvider,
+			AudioPostProcessor:  deps.AudioPostProcessor,
+			Publisher:           deps.Publisher,
+			VoiceoverRepository: deps.VoiceoverRepository,
+			Finalizer:           deps.Finalizer,
+			Logger:              deps.Logger,
+		}),
 	}
 }
 
@@ -239,6 +290,10 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 		requested = u.deps.DefaultParallelism
 	}
 	concurrency := EffectiveParallelism(requested, u.deps.MaxParallelism, len(tasks))
+	// PR-VO-TYPED-PRIMITIVES (July 2026): the per-task textHash is
+	// threaded from Task.TextHash (typed envelope) verbatim. The
+	// underlying string representation is byte-equivalent with the
+	// pre-refactor value at every wire boundary.
 	taskFn := func(ctx context.Context, t Task) TaskResult {
 		return u.processOneTask(ctx, t)
 	}
@@ -280,188 +335,116 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 // *GenerateVoiceoversCommand still carries the batch-level
 // configuration (Strategy, RemoveSilence, Metadata, Destination)
 // — those fields are shared across the whole batch.
+//
+// PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body is
+// now a THIN WRAPPER around the shared PipelineExecutor
+// (pipeline_executor.go). Pre-DRY the body did manual TX
+// orchestration (BeginTx → DeleteByIDTx → InsertTx → outbox →
+// Commit) which MISSED the dedupe gate + media_assets projection
+// + cleanup outbox that the per-item path already had. Post-DRY
+// both paths share the SAME canonical per-item pipeline
+// (delegated to the VoiceoverFinalizer).
+//
+// godlike/07 minimal-blast-radius: the caller-side concerns stay
+// in processOneLanguage (buildVoiceoverID + BuildVoiceoverFilename
+// are pre-computed here, not in the PipelineExecutor, because the
+// per-item path also needs them and the PipelineExecutor trusts
+// the inputs verbatim per the BLOC4 P0.6 pass-through invariant).
+// The cmd.RemoveSilence *bool dereference stays here (per-item
+// shape is bool; the typed-wire surface for the use case is *bool).
 func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	ctx context.Context,
 	cmd *GenerateVoiceoversCommand,
 	itemSpec VoiceoverItem,
 	requestID string,
-	textHash string,
+	// PR-VO-TYPED-PRIMITIVES (July 2026): textHash is the typed
+	// 16-char per-item TextHash envelope (Task.TextHash from
+	// planner.go::Plan).
+	textHash TextHash,
 	dest *ResolvedDestination,
 ) VoiceoverItemResult {
-	item := VoiceoverItemResult{
-		Language: itemSpec.Language,
-		Status:   StatusFailed,
-	}
-
+	// Pre-flight: destination check. The PipelineExecutor would also
+	// surface this, but we check here so the per-item path can
+	// return a zero-value result with a clean error message WITHOUT
+	// invoking the TTSProvider (mirrors the pre-DRY short-circuit
+	// that processOneLanguage had at the top of the body).
 	if dest == nil || dest.FolderID == "" {
-		item.Error = "missing_folder_id: voiceover destination has no FolderID for upload"
-		return item
+		return VoiceoverItemResult{
+			Language: itemSpec.Language,
+			Status:   StatusFailed,
+			Error:    "missing_folder_id: voiceover destination has no FolderID for upload",
+		}
 	}
 
-	id := buildVoiceoverID(textHash, itemSpec.Language, dest.FolderID)
+	// PR-VO-TYPED-PRIMITIVES (July 2026): textHash is the typed
+	// TextHash envelope. buildVoiceoverID first param is raw string
+	// (the filename-generation + ID-generation paths consume a
+	// polymorphic fingerprint); explicit string() conversion at the
+	// seam.
+	id := buildVoiceoverID(string(textHash), itemSpec.Language, dest.FolderID)
 	// E4: buildCommandFilenameForItem → canonical BuildVoiceoverFilename.
 	// Inputs are pre-validated by itemSpec via the higher-layer
 	// GenerateVoiceoversCommand.Validate / GenerateVoiceoverItemCommand.Validate
 	// gates, so the error path is unreachable in production; panic
 	// surfaces regressions loud-fast in tests.
+	//
+	// PR-VO-TYPED-PRIMITIVES (July 2026): same string() conversion
+	// for the FilenameSpec.TextHash field.
 	filename, err := BuildVoiceoverFilename(FilenameSpec{
 		Text:     itemSpec.Text,
 		Language: itemSpec.Language,
-		TextHash: textHash,
+		TextHash: string(textHash),
 		Template: itemSpec.Filename,
 	})
 	if err != nil {
 		panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (processOneLanguage): %v (item=%+v)", err, itemSpec))
 	}
-	item.Filename = filename
-	item.ID = id
 
-	// Step 1: TTSProvider.Synthesize — uses the item's text/voice.
-	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
+	// Derive RemoveSilence (cmd carries bool; PipelineItemInput
+	// carries plain bool). The TTS provider (Stage 1 of the
+	// PipelineExecutor) NEVER receives RemoveSilence=true (P0.2
+	// Fase 2c); AudioPostProcessor (Stage 2) is the sole owner of
+	// silence removal.
+	removeSilence := cmd.RemoveSilence
+
+	// Build the neutral DTO consumed by the shared PipelineExecutor.
+	in := &PipelineItemInput{
+		ID:            id,
+		RequestID:     requestID,
+		TextHash:      textHash,
 		Text:          itemSpec.Text,
 		Language:      itemSpec.Language,
 		Voice:         itemSpec.Voice,
 		Filename:      filename,
-		OutputDir:     dest.FolderPath, // composition-root derived output dir
-		RemoveSilence: cmd.RemoveSilence,
-	})
-	if err != nil {
-		item.Error = fmt.Sprintf("tts_failed: %v", err)
-		return item
-	}
-	item.LocalPath = ttsOut.LocalPath
-	item.CleanedPath = ttsOut.CleanedPath
-	item.Voice = ttsOut.Voice
-	item.FileHash = ttsOut.FileHash
-
-	// Step 2: optional AudioPostProcessor — nil-safe.
-	if cmd.RemoveSilence && u.deps.AudioPostProcessor != nil && ttsOut.LocalPath != "" {
-		postOut, err := u.deps.AudioPostProcessor.Process(ctx, AudioPostInput{
-			LocalPath: ttsOut.LocalPath,
-			OutputDir: dest.FolderPath,
-			Filename:  filename,
-		})
-		if err != nil {
-			item.Error = fmt.Sprintf("audio_post_process_failed: %v", err)
-			return item
-		}
-		if postOut.CleanedPath != "" {
-			item.CleanedPath = postOut.CleanedPath
-		}
+		Strategy:      string(cmd.Strategy),
+		Metadata:      cmd.Metadata,
+		RemoveSilence: removeSilence,
+		Dest:          dest,
+		// ShouldSwap stays false: the batch path does not capture
+		// old-row swap context today (the pre-DRY code had a
+		// PreReadByID call but explicitly discarded the result —
+		// the legacy Service.GenerateBatch path's replace-mode
+		// cleanup lives in Service.cleanupOrphanVoiceover, not
+		// here). A future CUTOVER wave can wire the swap context.
 	}
 
-	if item.LocalPath == "" && item.CleanedPath == "" {
-		item.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
-		return item
-	}
-	uploadPath := item.CleanedPath
-	if uploadPath == "" {
-		uploadPath = item.LocalPath
-	}
-
-	// Step 3: VoiceoverPublisher.Publish — populates Drive URLs (canonical fileID then URL helpers).
-	metaBuf := map[string]any{
-		"text_hash":    textHash,
-		"text_preview": textutil.Truncate(itemSpec.Text, 100),
-		"language":     itemSpec.Language,
-		"voice":        item.Voice,
-		"strategy":     string(cmd.Strategy),
-		"cleaned_path": item.CleanedPath,
-	}
-	// Delegate the user-meta overlay to the canonical mergeUserMetadata
-	// function so the process_metadata_test.go contract (collision-drop,
-	// StyleGroup injection) is preserved by ONE implementation, not two.
-	mergeUserMetadata(metaBuf, dest, cmd.Metadata, u.deps.Logger)
-	metaJSON, _ := json.Marshal(metaBuf)
-
-	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-		ID:        id,
-		LocalPath: uploadPath,
-		Filename:  filename,
-		FolderID:  dest.FolderID,
-	})
-	if err != nil {
-		item.Error = fmt.Sprintf("upload_failed: %v", err)
-		return item
-	}
-	item.DriveFileID = fileID
-	item.DriveLink = CanonicalDriveWebURL(fileID)
-	item.DownloadLink = CanonicalDriveDownloadURL(fileID)
-
-	// Step 4a: pre-read the OLD row to capture orphan paths for the
-	// post-commit cleanup goroutine (lazy-deferred to Block 7). The
-	// pre-read MUST run BEFORE the BeginTx so the orphan paths
-	// captured here are committed-state, not stale-from-another-tx.
-	// The result is intentionally not used here — the legacy
-	// Service.GenerateBatch path's replace-mode cleanup lives in
-	// Service.cleanupOrphanVoiceover (stages.go). The pre-read is
-	// captured for the eventual Block 7 CONTRACT migration.
-	_, _ = u.deps.VoiceoverRepository.PreReadByID(ctx, id)
-
-	// Step 4b: atomic SQLite swap + outbox enqueue (single tx).
-	// The PR-VO-A2 contract requires the OLD voiceover record is
-	// never removed until the NEW one is durably persisted; we
-	// thread DELETE+INSERT+outbox-ENQUEUE into one BeginTx/Commit
-	// cycle so neither is observable alone.
-	tx, err := u.deps.VoiceoverRepository.BeginTx(ctx)
-	if err != nil {
-		item.Error = fmt.Sprintf("tx_begin_failed: %v", err)
-		return item
-	}
-	defer func() { _ = tx.Rollback() }() // safe after Commit
-
-	if err := u.deps.VoiceoverRepository.DeleteByIDTx(ctx, tx, id); err != nil {
-		item.Error = fmt.Sprintf("db_delete_failed: %v", err)
-		return item
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	rec := &VoiceoverRecord{
-		ID:           id,
-		RequestID:    requestID,
-		TextHash:     textHash,
-		TextPreview:  textutil.Truncate(itemSpec.Text, 100),
-		Language:     itemSpec.Language,
-		Voice:        item.Voice,
-		Filename:     filename,
-		LocalPath:    item.LocalPath,
-		CleanedPath:  item.CleanedPath,
-		FolderID:     dest.FolderID,
-		FolderPath:   dest.FolderPath,
-		DriveFileID:  item.DriveFileID,
-		DriveLink:    item.DriveLink,
-		DownloadLink: item.DownloadLink,
-		FileHash:     item.FileHash,
-		// PR-VO-AUDIT-P01: cast typed Status to plain string for the
-		// SQLite voiceovers.status column. The persistence layer keeps
-		// its DB wire shape unchanged; the in-process state machine is
-		// typed so the aggregate check is exhaustive at compile time.
-		Status:       string(StatusGenerated),
-		Strategy:     string(cmd.Strategy),
-		Metadata:     string(metaJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if err := u.deps.VoiceoverRepository.InsertTx(ctx, tx, rec); err != nil {
-		item.Error = fmt.Sprintf("db_insert_failed: %v", err)
-		return item
-	}
-
-	// PR-VO-A3 outbox enqueue inside the same tx.
-	if item.FileHash != "" {
-		if err := u.deps.TransactionalOutbox.EnqueueIndexEvent(ctx, tx, id, item.FileHash); err != nil {
-			item.Error = fmt.Sprintf("outbox_enqueue_failed: %v", err)
-			return item
+	out, runErr := u.pipelineExec.RunPipeline(ctx, in)
+	if out == nil {
+		// Defensive: PipelineExecutor.RunPipeline returns nil out
+		// only for nil input (already checked above) or other
+		// catastrophic failures. Surface a typed failed result
+		// so the bounded executor's PerLanguage[] slice stays
+		// length-preserved.
+		return VoiceoverItemResult{
+			Language: itemSpec.Language,
+			Voice:    itemSpec.Voice,
+			Filename: filename,
+			ID:       id,
+			Status:   StatusFailed,
+			Error:    fmt.Sprintf("pipeline_run_failed: %v", runErr),
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		item.Error = fmt.Sprintf("tx_commit_failed: %v", err)
-		return item
-	}
-
-	item.Status = StatusCompleted
-	return item
+	return *out
 }
 
 // processOneTask is the Task-based adapter for the bounded executor

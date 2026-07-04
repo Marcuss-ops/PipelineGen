@@ -140,7 +140,7 @@ func TestResolveRequestForVoiceover_CarriesStyleGroup(t *testing.T) {
 	dest := &DestinationRequest{StyleGroup: "anime"}
 	req := &asset.ResolveRequest{
 		Source:     "voiceover",
-		StyleGroup: dest.StyleGroup,
+		StyleGroup: string(dest.StyleGroup),
 	}
 	if req.StyleGroup != "anime" {
 		t.Fatalf("ResolveRequest.StyleGroup should carry DestinationRequest.StyleGroup; got %q", req.StyleGroup)
@@ -153,7 +153,7 @@ func TestResolveRequestForVoiceover_CarriesStyleGroup(t *testing.T) {
 func TestBatchRequest_RoundTripsStyleGroupAndMetadata(t *testing.T) {
 	req := &BatchRequest{
 		Text:             "Hello world",
-		Languages:        []string{"it", "en"},
+		Languages:        []Language{"it", "en"},
 		FilenameTemplate: "{slug}_{lang}.mp3",
 		VoiceOverrides:   map[string]string{"it": "it-IT-Voice"},
 		Strategy:         "replace",
@@ -223,7 +223,7 @@ func TestBatchRequest_RoundTripsStyleGroupAndMetadata(t *testing.T) {
 func TestBatchRequest_UnicodeAndSpecialCharsRoundTrips(t *testing.T) {
 	req := &BatchRequest{
 		Text:      "こんにちは",
-		Languages: []string{"ja"},
+		Languages: []Language{"ja"},
 		Strategy:  "replace",
 		Destination: &DestinationRequest{
 			Group:      "海外ドキュメンタリー",

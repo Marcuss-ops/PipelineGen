@@ -18,8 +18,6 @@ package voiceover
 
 import (
 	"fmt"
-
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // Plan materialises []Task for the per-item fan-out. Returns the
@@ -64,29 +62,33 @@ func (u *GenerateVoiceoversUseCase) Plan(
 		// hash reflects THIS item's text (Step 5 invariant — mixed
 		// texts are first-class and each row's text_hash must match).
 		//
-		// IMPORTANT: this MUST stay in lock-step with
-		// internal/application/voiceover/jobs/fanout.go::textHashSHA256
-		// (16 hex chars / 64-bit SHA-256 prefix). Two paths produce
-		// text_hash column values for the same item — fanout.go writes
-		// the child's JSON TextHash field, this Planner path writes the
-		// Task.TextHash that processOneLanguage persists into the row.
-		// A length drift here makes the voiceovers.text_hash column
-		// inconsistent (16 chars vs 64 chars) and silently breaks the
-		// Step 4 aggregator's dedupe. Step 5 audit-pin.
-		perItemTextHash := truncationHash(itemSpec.Text)
+		// PR-VO-TYPED-PRIMITIVES (July 2026): the canonical impl
+		// lives in voiceover/texthash.go::ComputeTextHash. The
+		// pre-refactor planner.go::truncationHash + jobs/fanout.go::
+		// textHashSHA256 duplicates are collapsed to this single
+		// source of truth (byte-equivalent with both — see the
+		// audit-pin in the canonical impl's package doc).
+		perItemTextHash := ComputeTextHash(itemSpec.Text)
 		// E4: buildCommandFilenameForItem → canonical BuildVoiceoverFilename.
 		// Inputs are pre-validated by itemSpec via the higher-layer
 		// GenerateVoiceoversCommand.Validate gate.
+		//
+		// PR-VO-TYPED-PRIMITIVES (July 2026): perItemTextHash is the
+		// typed TextHash envelope. FilenameSpec.TextHash + buildVoiceoverID
+		// first param are raw string (the typed TextHash is canonical
+		// ONLY for the per-item 16-char value, but the filename
+		// generation + ID generation paths consume a polymorphic
+		// fingerprint — explicit string() conversion at the seam).
 		filename, err := BuildVoiceoverFilename(FilenameSpec{
 			Text:     itemSpec.Text,
 			Language: itemSpec.Language,
-			TextHash: perItemTextHash,
+			TextHash: string(perItemTextHash),
 			Template: itemSpec.Filename,
 		})
 		if err != nil {
 			panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (Plan): %v (item=%+v)", err, itemSpec))
 		}
-		id := buildVoiceoverID(perItemTextHash, itemSpec.Language, folderID)
+		id := buildVoiceoverID(string(perItemTextHash), itemSpec.Language, folderID)
 		tasks[i] = Task{
 			Index:         i,
 			Language:      itemSpec.Language,
@@ -102,20 +104,12 @@ func (u *GenerateVoiceoversUseCase) Plan(
 	return tasks, requestID, ""
 }
 
-// truncationHash returns the first 16 hex chars of SHA-256(text).
-// MUST stay byte-identical with
-// internal/application/voiceover/jobs/fanout.go::textHashSHA256 so
-// the per-child text_hash column is consistent across paths.
-//
-// INTERNAL CONTRACT: hashutil.SHA256String returns lowercase hex
-// (Go stdlib encoding/hex.EncodeToString default). If that ever
-// changes, this helper MUST produce uppercase OR the cross-package
-// equality breaks silently. The reviewer-flagged duplication is
-// closed by Step 12 cleanup (extract to voiceover/texthash.go) —
-// until then this comment is the audit-pin.
-//
-// 16 hex chars = 64 bits of entropy, sufficient for collision
-// resistance at expected row counts (~10^5 distinct texts).
-func truncationHash(text string) string {
-	return hashutil.SHA256String(text)[:16]
-}
+// truncationHash — REMOVED in PR-VO-TYPED-PRIMITIVES (July 2026).
+// The canonical impl now lives at voiceover/texthash.go::
+// ComputeTextHash. The pre-refactor function was a duplicate of
+// jobs/fanout.go::textHashSHA256 (byte-equivalent per the
+// audit-pin) and the consolidation collapses both into the typed
+// envelope + canonical impl. The audit-pin comment block above
+// (Per-item textHash MUST stay in lock-step with …) is preserved
+// on the call site in Plan() so future readers see the original
+// invariant context.
