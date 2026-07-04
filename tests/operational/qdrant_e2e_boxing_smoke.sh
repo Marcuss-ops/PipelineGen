@@ -29,18 +29,23 @@
 #   source | category | group | folder_id | start | end | force
 #
 # So this script folds every rich semantic field into `description`
-# (one natural-language paragraph the LLM extraction pipeline can later
-# ingest for entity/topic detection) AND packs searchable keywords
-# into `tags` (the BM25 sparse-vector channel that Qdrant indexes for
-# hybrid retrieval). Summary/Hook/Speakers/MentionedPeople are encoded
-# in description; topics + tags are merged into the `tags` array.
+# (one natural-language paragraph that the server stores verbatim —
+# whether a downstream service later extracts entities/topics is
+# server-internal and NOT asserted by this test).
+# AND packs searchable keywords into `tags` (the BM25 sparse-vector
+# channel that Qdrant indexes for hybrid retrieval). Topics + tags
+# are merged into the `tags` array.
 #
-# This is documented honestly: per godlike/07 no-fake-availability,
-# the wire shape is the source of truth, and a future PR that adds
-# `Summary string` / `Topics []string` / `MentionedPeople []string` /
-# `Hook string` to RegisterFromYouTubeRequest would unblock the
-# split-field layout directly. Until then, this script demonstrates
-# the canonical packed-layout chain works end-to-end.
+# Per godlike/07 no-fake-availability:
+#   (a) The wire shape is the source of truth.
+#   (b) This test does NOT advertise downstream entity extraction
+#       behaviour that the server may or may not implement.
+#   (c) A future PR that adds `Summary string` / `Topics []string`
+#       / `MentionedPeople []string` / `Hook string` /
+#       `Speakers []string` to RegisterFromYouTubeRequest would
+#       unblock the canonical split-field layout directly. Until
+#       then, this script demonstrates that the packed layout
+#       preserves the right content end-to-end.
 #
 # ── Run modes ─────────────────────────────────────────────────────────────
 #
@@ -238,6 +243,9 @@ build_batch_payload \
 
 code=$(smoke_curl POST "/api/media/register-batch" --data-binary "@${batch_a_file}")
 smoke_assert_http_2xx "register-batch (batch_A)"
+# Fail loud if mid-batch wall clock exceeds the per-script budget (4 clips + YouTube
+# download ≈ 60–90s; if SMOKE_TIMEOUT_SECONDS is short, we'll see it here).
+smoke_wallclock_check
 cp "$SMOKE_LAST_BODY" "$WORK_DIR/batch_a_response.json"
 
 succeeded_a=$(jq -r '.succeeded // 0' "$WORK_DIR/batch_a_response.json")
@@ -246,6 +254,17 @@ if (( succeeded_a < 3 )); then
     printf '%sFAIL: batch_A succeeded=%s (expected ≥3 of 4)%s\n' \
         "$RED" "$succeeded_a" "$RESET" >&2
     smoke_log_response "batch_a_response"
+    # Operator triage: one-line summary first, then per-clip names only when ≥1
+    # clip really failed (avoid noisy 20-line dumps when the batch succeeded).
+    jq -r '.results | (map(select(.OK != true)) | length) as $n |
+          "  \($n) of \(length) clip(s) failed in batch_A"' \
+        "$WORK_DIR/batch_a_response.json" 2>/dev/null >&2 || true
+    failed_count_a=$(jq -r '[.results[]? | select(.OK != true)] | length' \
+        "$WORK_DIR/batch_a_response.json" 2>/dev/null || echo 0)
+    if (( failed_count_a > 0 && failed_count_a <= 8 )); then
+        jq -r '.results[]? | select(.OK != true) | "    \(.Name // "?") error=\(.Error)"' \
+            "$WORK_DIR/batch_a_response.json" 2>/dev/null | head -8 >&2 || true
+    fi
     fail_count=$((fail_count + 1))
 else
     printf '%sbatch_A OK (succeeded=%s / total=%s)%s\n' \
@@ -266,6 +285,7 @@ build_batch_payload \
 
 code=$(smoke_curl POST "/api/media/register-batch" --data-binary "@${batch_b_file}")
 smoke_assert_http_2xx "register-batch (batch_B)"
+smoke_wallclock_check
 cp "$SMOKE_LAST_BODY" "$WORK_DIR/batch_b_response.json"
 
 succeeded_b=$(jq -r '.succeeded // 0' "$WORK_DIR/batch_b_response.json")
@@ -274,6 +294,15 @@ if (( succeeded_b < 3 )); then
     printf '%sFAIL: batch_B succeeded=%s (expected ≥3 of 4)%s\n' \
         "$RED" "$succeeded_b" "$RESET" >&2
     smoke_log_response "batch_b_response"
+    jq -r '.results | (map(select(.OK != true)) | length) as $n |
+          "  \($n) of \(length) clip(s) failed in batch_B"' \
+        "$WORK_DIR/batch_b_response.json" 2>/dev/null >&2 || true
+    failed_count_b=$(jq -r '[.results[]? | select(.OK != true)] | length' \
+        "$WORK_DIR/batch_b_response.json" 2>/dev/null || echo 0)
+    if (( failed_count_b > 0 && failed_count_b <= 8 )); then
+        jq -r '.results[]? | select(.OK != true) | "    \(.Name // "?") error=\(.Error)"' \
+            "$WORK_DIR/batch_b_response.json" 2>/dev/null | head -8 >&2 || true
+    fi
     fail_count=$((fail_count + 1))
 else
     printf '%sbatch_B OK (succeeded=%s / total=%s)%s\n' \
@@ -283,6 +312,18 @@ fi
 # Aggregate the ClipIDs (PascalCase per sourcing.BatchClipResult struct
 # which has NO explicit json tags → Go identifier names win).
 clip_ids_file="$WORK_DIR/clip_ids.txt"
+
+# Early-exit guard: if batch_A + batch_B returned fewer than 4 successful
+# clips combined, downstream Tests 3-6 would run against an empty
+# clip_ids_file (no rows to query, no IDs to search, no IDs to download).
+# Surface this loudly and abort instead of producing a cascade of
+# false failures from garbage data.
+total_succeeded=$(( succeeded_a + succeeded_b ))
+if (( total_succeeded < 4 )); then
+    printf '%sABORT: only %s clips succeeded across batch_A + batch_B (< 4 threshold); downstream Tests 3-6 would run on empty data.%s\n' \
+        "$RED" "$total_succeeded" "$RESET" >&2
+    exit 1
+fi
 {
     jq -r '.results[]? | select(.OK == true) | .ClipID' "$WORK_DIR/batch_a_response.json"
     jq -r '.results[]? | select(.OK == true) | .ClipID' "$WORK_DIR/batch_b_response.json"
@@ -299,8 +340,9 @@ fi
 # ── Test 3: media_assets rows present + INDEXED ────────────────────────────
 smoke_log_section "Test 3: SQLite media_assets query"
 if [[ ! -f "$SMOKE_DB" ]]; then
-    printf '%swarning: SMOKE_DB=%s not found — skipping Test 3+4 (run after server starts)%s\n' \
-        "$YELLOW" "$SMOKE_DB" "$RESET" >&2
+    printf '%sFAIL: SMOKE_DB=%s not found — Tests 3+4 cannot run without SQLite data%s\n' \
+        "$RED" "$SMOKE_DB" "$RESET" >&2
+    fail_count=$((fail_count + 1))
 else
     # Build SQL IN-clause from the captured ClipIDs.
     # Use \047 (octal single-quote) for portability across gawk/mawk/BusyBox awk
@@ -313,10 +355,13 @@ else
     sqlite3 -header -column "$SMOKE_DB" "$media_sql" > "$WORK_DIR/media_assets.txt"
     cat "$WORK_DIR/media_assets.txt"
 
-    # sqlite3 -header -column emits 2 header lines (column names + dashes), then
-    # data rows. Skip lines 1-2 (NR > 2) to land on row 1.
-    media_count=$(awk 'NR>2 && $1 != "" {n++} END{print n+0}' "$WORK_DIR/media_assets.txt")
-    indexed_count=$(awk 'NR>2 && $4 == "INDEXED" {n++} END{print n+0}' "$WORK_DIR/media_assets.txt")
+    # sqlite3 -header -column emits 2 header lines (column names + dashes),
+    # then data rows. Skip any header-shape line via shape match so future
+    # sqlite3 invocations with -bail / -echo don't accidentally drop rows.
+    media_count=$(awk 'NR>=3 && $0 !~ /^[-[:space:]]*$/ && $1 != "" {n++} END{print n+0}' \
+        "$WORK_DIR/media_assets.txt")
+    indexed_count=$(awk 'NR>=3 && $0 !~ /^[-[:space:]]*$/ && $4 == "INDEXED" {n++} END{print n+0}' \
+        "$WORK_DIR/media_assets.txt")
     printf 'media_assets rows present: %s / INDEXED: %s\n' "$media_count" "$indexed_count"
     if (( media_count < 4 )); then
         printf '%sFAIL: too few media_assets rows (got %s, need ≥4)%s\n' \
@@ -325,18 +370,33 @@ else
     fi
     if (( indexed_count < media_count / 2 )); then
         printf '%swarning: only %s/%s rows are INDEXED — outbox may be lagging
-  (waiting %s seconds for the dispatcher to catch up…)%s\n' \
+  polling for up to %s seconds for the dispatcher to catch up…%s\n' \
             "$YELLOW" "$indexed_count" "$media_count" "$SEMANTIC_INDEXING_WAIT_SECONDS" "$RESET" >&2
-        sleep "$SEMANTIC_INDEXING_WAIT_SECONDS"
-        sqlite3 -header -column "$SMOKE_DB" "$media_sql" > "$WORK_DIR/media_assets_after.txt"
-        indexed_count=$(awk 'NR>2 && $4 == "INDEXED" {n++} END{print n+0}' "$WORK_DIR/media_assets_after.txt")
+        # Poll in shorter slices so smoke_wallclock_check can abort cleanly.
+        deadline=$(( $(date +%s) + SEMANTIC_INDEXING_WAIT_SECONDS ))
+        while (( $(date +%s) < deadline )); do
+            smoke_wallclock_check
+            sleep 5
+            smoke_wallclock_check
+            sqlite3 -header -column "$SMOKE_DB" "$media_sql" > "$WORK_DIR/media_assets_after.txt"
+            indexed_count=$(awk 'NR>=3 && $0 !~ /^[-[:space:]]*$/ && $4 == "INDEXED" {n++} END{print n+0}' \
+                "$WORK_DIR/media_assets_after.txt")
+            if (( indexed_count * 2 >= media_count )); then
+                break
+            fi
+        done
         printf 'after wait: indexed_count=%s\n' "$indexed_count"
     fi
 fi
 
 # ── Test 4: outbox_events asset.index.requested ───────────────────────────
 smoke_log_section "Test 4: SQLite outbox_events asset.index.requested"
-if [[ -f "$SMOKE_DB" ]]; then
+# If the DB was missing at Test 3 we already incremented fail_count; skip Test 4
+# as a no-op so the script still produces a single coherent verdict at the end.
+if [[ ! -f "$SMOKE_DB" ]]; then
+    printf '%sskipping Test 4 (Test 3 already failed for missing SMOKE_DB)%s\n' \
+        "$DIM" "$RESET" >&2
+elif [[ -f "$SMOKE_DB" ]]; then
     in_list=$(awk 'BEGIN{ORS=","; q=sprintf("%c",39)} {printf q "%s" q, $0}' "$clip_ids_file" | sed 's/,$//')
     outbox_sql="SELECT aggregate_id, event_type, status, attempt_count,
                        substr(error, 1, 80) AS error_excerpt, created_at, updated_at
@@ -347,9 +407,12 @@ if [[ -f "$SMOKE_DB" ]]; then
     sqlite3 -header -column "$SMOKE_DB" "$outbox_sql" > "$WORK_DIR/outbox_events.txt"
     cat "$WORK_DIR/outbox_events.txt"
 
-    outbox_total=$(awk 'NR>2 && $1 != "" {n++} END{print n+0}' "$WORK_DIR/outbox_events.txt")
-    outbox_completed=$(awk 'NR>2 && $3 == "completed" {n++} END{print n+0}' "$WORK_DIR/outbox_events.txt")
-    outbox_dead=$(awk 'NR>2 && $3 == "dead_letter" {n++} END{print n+0}' "$WORK_DIR/outbox_events.txt")
+    outbox_total=$(awk 'NR>=3 && $0 !~ /^[-[:space:]]*$/ && $1 != "" {n++} END{print n+0}' \
+        "$WORK_DIR/outbox_events.txt")
+    outbox_completed=$(awk 'NR>=3 && $0 !~ /^[-[:space:]]*$/ && $3 == "completed" {n++} END{print n+0}' \
+        "$WORK_DIR/outbox_events.txt")
+    outbox_dead=$(awk 'NR>=3 && $0 !~ /^[-[:space:]]*$/ && $3 == "dead_letter" {n++} END{print n+0}' \
+        "$WORK_DIR/outbox_events.txt")
     printf 'outbox events: total=%s / completed=%s / dead_letter=%s\n' \
         "$outbox_total" "$outbox_completed" "$outbox_dead"
     if (( outbox_total < 4 )); then
