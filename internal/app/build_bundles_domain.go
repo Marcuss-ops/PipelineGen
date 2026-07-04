@@ -200,7 +200,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		Log:               log,
 		MediaProcessor:    process.MediaProcessor,
 		VideoPipeline:     videoPipelineAdapter,
-		LifecycleService:  youtubeLifecycle,
+		LifecycleService:  youtubeLifecycle, // youtube's lifecycle (NOT the retired PR-ARTLIST-LIFECYCLE artlist forward-pointer, 2026-07-04)
 		AssetDestResolver: drive.DestResolver,
 		AssetRepo:         repos.Assets.Repository(),
 		Clips:             newClipStoreAdapter(repos.ClipsRepo),

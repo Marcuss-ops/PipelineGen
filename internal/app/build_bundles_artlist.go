@@ -12,7 +12,6 @@
 // return-nil. Operators see 404 on /api/artlist/* rather than a full-system
 // boot abort.
 //
-// 1 forward-pointer nil field (ServiceDependencies.LifecycleService) is
 // declared explicitly with a linked_issue cross-ref; see
 // architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
 // discipline). The 3 repo fields (AssetProcRepo / AssetVerRepo / AssetLocRepo)
@@ -221,13 +220,12 @@ func WireArtlist(
 			IsLiveProbe: isLiveProbe,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
-			// ServiceDependencies (11) — 10 DIRECT, 1 FORWARD_POINTER nil.
+			// ServiceDependencies (10) — 10 DIRECT.
 			Cfg:               cfg,
 			MainDB:            bundle.DB.DB,
 			Log:               log,
 			Dispatcher:        dispatcher,
 			MediaProcessor:    bundle.MediaProcessor,
-			LifecycleService:  nil, // forward-pointer: PR-ARTLIST-LIFECYCLE
 			AssetDestResolver: destResolver,
 			JobsSvc:           bundle.Jobs.Service,
 			AssetProcRepo:     assetProcRepo,

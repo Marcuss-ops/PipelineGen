@@ -3548,3 +3548,34 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# PR-ARTLIST-LIFECYCLE-DEPRECATION (2026-07-04)
+# Retired the `lifecycleService *lifecycle.Service` field on artlist.Service
+# (was a forward-pointer nil field on internal/app.WireArtlist; never wired
+# in production; never invoked by any downstream orchestrator or handler in
+# the artlist package). The canonical lifecycle.Service type lives ONLY in
+# internal/application/assets/lifecycle/; the artlist package never needed
+# it. The dead field + the nil forward-pointer in WireArtlist + the doc
+# comments have been physically removed. Closure of
+# architecture/current.yaml#ART-001.linked_issues[PR-ARTLIST-LIFECYCLE]
+# mirrors the PR-ARTLIST-SYNCSERVICE closure pattern (retired status,
+# no-fake-availability).
+- id: PR-ARTLIST-LIFECYCLE-DEPRECATION
+  owner_capability: "internal/application/assets/providers/artlist + internal/application/assets/lifecycle"
+  exact_symbol: "artlist.Service.lifecycleService (was nil; never invoked in production)"
+  file: "internal/application/assets/providers/artlist/service.go (field removed)"
+  replacement: "removed (the artlist package never invoked this field; the canonical lifecycle.Service type lives in internal/application/assets/lifecycle/ and is consumed by youtube + voiceover only)"
+  introduction_date: 2026-06-30
+  removal_date: 2026-07-04
+  tracking_issue: "architecture/current.yaml#ART-001.linked_issues[PR-ARTLIST-LIFECYCLE]"
+  compatibility_test: |
+    5-layer godlike/07 audit-pin:
+    1) rg lifecycleService internal/application/assets/providers/artlist/ --glob '!**/*_test.go' == 0 hits
+    2) rg LifecycleService internal/app/build_bundles_artlist.go == 0 hits
+    3) go build ./internal/app/ exit 0
+    4) Service struct field absent (compile-time pin)
+    5) wave-tracker status: shipped
+  usage_metric: "0 production callers at deprecation time; 0 active code references after removal"
+  status: removed
+  migration_phase: CONTRACT
