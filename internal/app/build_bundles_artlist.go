@@ -199,22 +199,31 @@ func WireArtlist(
 	// Stager (SourceStager port, Step 9/12): wraps the Artlist Downloader
 	// so run_orchestrator_stages.go can use the canonical SourceStager
 	// contract instead of falling through to the legacy mediaProcessor
-	// pipeline. The downloader is the same yt-dlp + HTTPDownloader
-	// composition that mediaProcessor uses internally — just exposed
-	// through a different port shape.
+	// pipeline.
 	//
-	// godlike/06 SSOT: internal/infrastructure/artlist/downloader.Provider
-	// is the canonical concrete implementing artlist.Downloader. Config{} =
-	// all defaults (3 retries, 1s/30s backoff, 0.3 jitter, 5m HTTP timeout).
-	// ART-002 P1.1 (July 2026): wire the Prometheus metrics
-	// surface into the downloader.Provider via the 3rd
-	// Pattern-0 arg. NewMetrics() returns a struct pointing at
+	// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY (July 2026): wire the unified
+	// Resolver instead of the legacy Provider. Resolver consolidates
+	// all three transport paths (Node scraper / yt-dlp / HTTP) into a
+	// single resolvePath decision — the duplicated isArtlistURL /
+	// isDirectURL / isHLSURL detection in processor_download.go is
+	// superseded by the canonical routing in resolver.go.
+	//
+	// godlike/06 SSOT: internal/infrastructure/artlist/downloader.Resolver
+	// is the SINGLE canonical owner of Artlist download routing.
+	// ResolverConfig{ScraperURL: cfg.External.ArtlistScraperServerURL}
+	// feeds the Node scraper path; Config defaults (3 retries, 1s/30s
+	// backoff, 0.3 jitter, 5m HTTP timeout, 5m scraper timeout) are the
+	// same as the legacy Provider.
+	//
+	// ART-002 P1.1 (July 2026): wire the Prometheus metrics surface via
+	// the 4th Pattern-0 arg. NewMetrics() returns a struct pointing at
 	// the promauto global observability.ArtlistDownloadPathTotal
-	// (auto-registered with prometheus.DefaultRegisterer +
-	// surfaced via /metrics). The PathBrowser / PathHLS labels
-	// are reserved for future surface additions — only PathYTDLP
-	// + PathHTTP are fired by the current Download implementation.
-	artlistDownloader := downloader.New(cfg, downloader.Config{}, downloader.NewMetrics())
+	// (auto-registered with prometheus.DefaultRegisterer + surfaced via
+	// /metrics). All 4 path labels (PathBrowser / PathYTDLP / PathHTTP /
+	// PathHLS) are now fired by the unified resolver.
+	artlistDownloader := downloader.NewResolver(cfg, downloader.ResolverConfig{
+		ScraperURL: cfg.External.ArtlistScraperServerURL,
+	}, log, downloader.NewMetrics())
 	// Compile-time pin lives in the infra package.
 	_ = (artlistPkg.Downloader)(artlistDownloader)
 	artlistStager := artlistPkg.NewArtlistStager(artlistDownloader)
