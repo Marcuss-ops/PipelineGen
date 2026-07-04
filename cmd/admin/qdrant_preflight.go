@@ -385,7 +385,7 @@ func testSchemaV3Shipped(ctx context.Context, deps *preflightDeps) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("schema-V3: GET /collections => %d", resp.StatusCode)
+		return fmt.Errorf("%w: schema-V3: GET /collections => %d", ErrPreflightStackDown, resp.StatusCode)
 	}
 
 	var apiResp struct {
@@ -414,7 +414,7 @@ func testSchemaV3Shipped(ctx context.Context, deps *preflightDeps) error {
 		}
 	}
 	if !found {
-		return fmt.Errorf("schema-V3: collection %q not in /collections response", deps.Collection)
+		return fmt.Errorf("%w: schema-V3: collection %q not in /collections response", ErrPreflightStackDown, deps.Collection)
 	}
 
 	// (b) Canonical alias target. Embedded under result.aliases first; fall
@@ -452,13 +452,13 @@ func testSchemaV3Shipped(ctx context.Context, deps *preflightDeps) error {
 
 	// (c) Canonical alias present?
 	if target == "" {
-		return fmt.Errorf("schema-V3: canonical alias media_assets_current missing from /collections + /aliases responses")
+		return fmt.Errorf("%w: schema-V3: canonical alias media_assets_current missing from /collections + /aliases responses", ErrPreflightStackDown)
 	}
 
 	// (d) Target==deps.Collection assertion. AGENTS.md Qdrant Entity Associations:
 	// media_assets_current -> media_assets_v3_e5_768_siglip_768.
 	if target != deps.Collection {
-		return fmt.Errorf("schema-V3: alias target drift: expected %q, got %q (canonical routing per AGENTS.md Qdrant Entity Associations table)", deps.Collection, target)
+		return fmt.Errorf("%w: schema-V3: alias target drift: expected %q, got %q (canonical routing per AGENTS.md Qdrant Entity Associations table)", ErrPreflightStackDown, deps.Collection, target)
 	}
 
 	return nil
