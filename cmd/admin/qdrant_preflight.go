@@ -232,7 +232,7 @@ func runQdrantPreflight(args []string) error {
 		QdrantURL:  *qdrantFlag,
 		Collection: *collectionFlag,
 		AdminToken: token,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{}, // per-test context.WithTimeout is the only deadline (see runQdrantPreflight); a static 30s Client.Timeout would preempt Tests 4/8/11 which carry 90s/60s/5m ctx budgets
 		Log:        log,
 	}
 
