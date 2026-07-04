@@ -363,16 +363,92 @@ if (( job_id_count < 4 )); then
     fail_count=$((fail_count + 1))
 fi
 
-# The old sync ClipID extraction block (select(.OK == true) | .ClipID) is
-# DELETED — OK is always false in async mode, so this would silently produce
-# zero ClipIDs. Forward-pointer PR-BATCH-REGISTER-ASYNC-CLIPID-EXTRACTION
-# tracks the async job-polling migration for Tests 3-6. The orphan
-# clip_id_count assertion below was also removed (clip_ids_file is never
-# populated in async mode).
+# ── Poll async media.clip jobs → extract ClipIDs for Tests 3-6 ────────────
+# PR-BATCH-REGISTER-ASYNC (July 2026): each clip is an independent async job.
+# Poll every JobID, extract clip_id from the completed result, and write to
+# $clip_ids_file so downstream Tests 3-6 can query/search/download.
+SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-600}"
+smoke_log_section "Poll async media.clip jobs → extract ClipIDs (per-job timeout ${SMOKE_POLL_TIMEOUT_SECONDS}s)"
+
+if [[ ! -s "$job_ids_file" ]]; then
+    printf '%sFAIL: zero JobIDs to poll — enqueue may have failed for all clips%s\n' \
+        "$RED" "$RESET" >&2
+    fail_count=$((fail_count + 1))
+else
+    polled_total=0
+    polled_completed=0
+    polled_failed=0
+    > "$clip_ids_file"
+
+    while IFS= read -r job_id; do
+        [[ -z "$job_id" ]] && continue
+        polled_total=$((polled_total + 1))
+        printf '  [%d] polling job %s ...' "$polled_total" "$job_id"
+
+        # smoke_poll_terminal sets SMOKE_LAST_STATUS + SMOKE_LAST_BODY.
+        # Returns 0 on terminal, 124 on timeout, 1 on HTTP error.
+        if ! smoke_poll_terminal "$job_id"; then
+            polled_failed=$((polled_failed + 1))
+            printf ' %sTIMEOUT/ERROR (last-status=%s)%s\n' \
+                "$RED" "${SMOKE_LAST_STATUS:-?}" "$RESET"
+            smoke_wallclock_check
+            continue
+        fi
+
+        printf ' status=%s  ' "$SMOKE_LAST_STATUS"
+
+        if [[ "$SMOKE_LAST_STATUS" != "completed" ]]; then
+            polled_failed=$((polled_failed + 1))
+            printf '%s%s%s\n' "$RED" "$SMOKE_LAST_STATUS" "$RESET"
+            # Surface error message for dead_letter / failed jobs.
+            jq -r '.error // "?"' "$SMOKE_LAST_BODY" 2>/dev/null | head -1 >&2 || true
+            continue
+        fi
+
+        # media.clip handler returns {ok, clip_id, duplicate, name, …} under
+        # result.result_map in /api/jobs/{id}/full.
+        polled_clip_id=$(jq -r '.result.result_map.clip_id // ""' "$SMOKE_LAST_BODY")
+        polled_clip_name=$(jq -r '.result.result_map.name // "?"' "$SMOKE_LAST_BODY")
+
+        if [[ -z "$polled_clip_id" || "$polled_clip_id" == "null" ]]; then
+            polled_failed=$((polled_failed + 1))
+            printf '%sempty clip_id (job completed but handler returned no clip)%s\n' \
+                "$RED" "$RESET"
+            continue
+        fi
+
+        printf '%sclip_id=%s  name=%s%s\n' \
+            "$GREEN" "${polled_clip_id:0:50}" "$polled_clip_name" "$RESET"
+        printf '%s\n' "$polled_clip_id" >> "$clip_ids_file"
+        polled_completed=$((polled_completed + 1))
+    done < "$job_ids_file"
+    unset polled_clip_id
+    unset polled_clip_name
+
+    printf '\n  %s--- async job poll summary ---%s\n' "$DIM" "$RESET"
+    printf '  total=%s  completed=%s  failed=%s\n' \
+        "$polled_total" "$polled_completed" "$polled_failed"
+
+    clip_id_count=$(wc -l < "$clip_ids_file" | tr -d ' ')
+    printf '  clip_ids extracted: %s\n' "$clip_id_count"
+
+    if (( clip_id_count < 4 )); then
+        printf '%sFAIL: too few clip_ids extracted (got %s, need ≥4)%s\n' \
+            "$RED" "$clip_id_count" "$RESET" >&2
+        fail_count=$((fail_count + 1))
+    else
+        printf '%s  %s clip_ids ready for Tests 3-6%s\n' \
+            "$GREEN" "$clip_id_count" "$RESET"
+    fi
+fi
 
 # ── Test 3: media_assets rows present + INDEXED ────────────────────────────
 smoke_log_section "Test 3: SQLite media_assets query"
-if [[ ! -f "$SMOKE_DB" ]]; then
+if [[ ! -s "$clip_ids_file" ]]; then
+    printf '%sFAIL: no clip_ids extracted from async jobs — skipping Test 3%s\n' \
+        "$RED" "$RESET" >&2
+    fail_count=$((fail_count + 1))
+elif [[ ! -f "$SMOKE_DB" ]]; then
     printf '%sFAIL: SMOKE_DB=%s not found — Tests 3+4 cannot run without SQLite data%s\n' \
         "$RED" "$SMOKE_DB" "$RESET" >&2
     fail_count=$((fail_count + 1))
@@ -424,9 +500,12 @@ fi
 
 # ── Test 4: outbox_events asset.index.requested ───────────────────────────
 smoke_log_section "Test 4: SQLite outbox_events asset.index.requested"
-# If the DB was missing at Test 3 we already incremented fail_count; skip Test 4
-# as a no-op so the script still produces a single coherent verdict at the end.
-if [[ ! -f "$SMOKE_DB" ]]; then
+# If no clip_ids were extracted from async jobs, skip Test 4.
+if [[ ! -s "$clip_ids_file" ]]; then
+    printf '%sFAIL: no clip_ids extracted from async jobs — skipping Test 4%s\n' \
+        "$RED" "$RESET" >&2
+    fail_count=$((fail_count + 1))
+elif [[ ! -f "$SMOKE_DB" ]]; then
     printf '%sskipping Test 4 (Test 3 already failed for missing SMOKE_DB)%s\n' \
         "$DIM" "$RESET" >&2
 elif [[ -f "$SMOKE_DB" ]]; then
