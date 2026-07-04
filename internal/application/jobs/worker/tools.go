@@ -61,17 +61,22 @@ func (t *Tools) Complete(ctx context.Context, result json.RawMessage) error {
 //
 // Workers that produce artifacts (videos, images, documents,
 // voiceovers, etc.) MUST call this instead of Complete.
+//
+// AZIONE 5 (July 2026): broker now returns canonical AssetIDs from
+// finalization. The runner does not need these IDs (only the HTTP
+// handler does), so Tools discards them and returns only the error.
 func (t *Tools) CompleteWithArtifacts(ctx context.Context, resultData json.RawMessage, publishedArtifacts json.RawMessage, outboxEvents json.RawMessage) error {
-	return t.broker.CompleteWithArtifacts(ctx, appjobs.CompleteWithArtifactsCommand{
-		WorkerID:           t.workerID,
-		WorkerSessionID:    t.sessionID,
-		JobID:              t.jobID,
-		LeaseID:            t.leaseID,
-		ExpectedRevision:   int(t.revision.Load()),
-		ResultData:         resultData,
-		StagedArtifacts: publishedArtifacts,
-		OutboxEvents:    outboxEvents,
+	_, err := t.broker.CompleteWithArtifacts(ctx, appjobs.CompleteWithArtifactsCommand{
+		WorkerID:         t.workerID,
+		WorkerSessionID:  t.sessionID,
+		JobID:            t.jobID,
+		LeaseID:          t.leaseID,
+		ExpectedRevision: int(t.revision.Load()),
+		ResultData:       resultData,
+		StagedArtifacts:  publishedArtifacts,
+		OutboxEvents:     outboxEvents,
 	})
+	return err
 }
 
 // Fail forwards a terminal job outcome (with a stringified error)

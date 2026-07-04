@@ -324,9 +324,9 @@ func (b *stubLeaseBroker) Complete(_ context.Context, _ appjobs.CompleteCommand)
 	return nil
 }
 
-func (b *stubLeaseBroker) CompleteWithArtifacts(_ context.Context, _ appjobs.CompleteWithArtifactsCommand) error {
+func (b *stubLeaseBroker) CompleteWithArtifacts(_ context.Context, _ appjobs.CompleteWithArtifactsCommand) ([]string, error) {
 	atomic.AddInt32(&b.completeCalls, 1)
-	return nil
+	return nil, nil
 }
 
 func (b *stubLeaseBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
@@ -580,9 +580,9 @@ func (b *azione7Broker) Complete(_ context.Context, _ appjobs.CompleteCommand) e
 	atomic.AddInt32(&b.completeCalled, 1)
 	return nil
 }
-func (b *azione7Broker) CompleteWithArtifacts(_ context.Context, _ appjobs.CompleteWithArtifactsCommand) error {
+func (b *azione7Broker) CompleteWithArtifacts(_ context.Context, _ appjobs.CompleteWithArtifactsCommand) ([]string, error) {
 	atomic.AddInt32(&b.completeWithArtifactsCalled, 1)
-	return nil
+	return nil, nil
 }
 func (b *azione7Broker) Fail(_ context.Context, _ appjobs.FailCommand) error {
 	atomic.AddInt32(&b.failCalled, 1)

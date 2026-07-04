@@ -255,14 +255,14 @@ var ErrFinalizerNotConfigured = errors.New("broker: JobFinalizer not configured 
 // The lease is constructed from the broker's knowledge of the job row
 // (workerID, leaseID, attempt) combined with the command's expiration
 // hint.
-func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) error {
+func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.CompleteWithArtifactsCommand) ([]string, error) {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
-		return err
+		return nil, err
 	}
 	b.flushPendingProgress(ctx, cmd.JobID)
 
 	if b.finalizer == nil {
-		return ErrFinalizerNotConfigured
+		return nil, ErrFinalizerNotConfigured
 	}
 
 	// Deserialise artifacts from the command. The wire-format was renamed
@@ -274,7 +274,7 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	var artifacts []finalization.PublishedArtifact
 	if len(cmd.StagedArtifacts) > 0 {
 		if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
-			return fmt.Errorf("broker: deserialise staged artifacts: %w", err)
+			return nil, fmt.Errorf("broker: deserialise staged artifacts: %w", err)
 		}
 	}
 
@@ -282,17 +282,17 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	var events []finalization.OutboxEvent
 	if len(cmd.OutboxEvents) > 0 {
 		if err := json.Unmarshal(cmd.OutboxEvents, &events); err != nil {
-			return fmt.Errorf("broker: deserialise outbox events: %w", err)
+			return nil, fmt.Errorf("broker: deserialise outbox events: %w", err)
 		}
 	}
 
 	// Get the job row to compute the attempt counter and lease expiry.
 	j, err := b.jobs.Get(ctx, cmd.JobID)
 	if err != nil {
-		return fmt.Errorf("broker: get job for finalization: %w", err)
+		return nil, fmt.Errorf("broker: get job for finalization: %w", err)
 	}
 	if j == nil {
-		return fmt.Errorf("broker: job %q not found for finalization", cmd.JobID)
+		return nil, fmt.Errorf("broker: job %q not found for finalization", cmd.JobID)
 	}
 
 	// LeaseExpiry is a *time.Time in the Job struct; default to 30s
@@ -319,12 +319,20 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 		Events:    events,
 	}
 
-	_, err = b.finalizer.CompleteWithArtifacts(ctx, req)
+	finResult, err := b.finalizer.CompleteWithArtifacts(ctx, req)
 	if err != nil {
-		return fmt.Errorf("broker: finalizer.CompleteWithArtifacts: %w", err)
+		return nil, fmt.Errorf("broker: finalizer.CompleteWithArtifacts: %w", err)
 	}
 
-	return nil
+	// AZIONE 5 (July 2026): extract canonical AssetIDs from the finalizer
+	// result and return them so the HTTP handler can populate the
+	// CompleteArtifactsResponse.AssetIDs wire field.
+	assetIDs := make([]string, 0, len(finResult.ArtifactRefs))
+	for _, ref := range finResult.ArtifactRefs {
+		assetIDs = append(assetIDs, ref.AssetID)
+	}
+
+	return assetIDs, nil
 }
 
 // Fail — same flush-pending-progress ordering as Complete.

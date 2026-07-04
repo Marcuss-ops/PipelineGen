@@ -21,7 +21,11 @@ type Broker interface {
 	// this instead of Complete so that asset records, versions, locations,
 	// and outbox events are written in the same transaction as the job
 	// SUCCEEDED transition.
-	CompleteWithArtifacts(ctx context.Context, cmd CompleteWithArtifactsCommand) error
+	//
+	// Returns the list of canonical AssetIDs that were created or updated
+	// during finalization (derived from FinalizationResult.ArtifactRefs).
+	// AZIONE 5 (July 2026): changed return from error to ([]string, error).
+	CompleteWithArtifacts(ctx context.Context, cmd CompleteWithArtifactsCommand) ([]string, error)
 	Fail(ctx context.Context, cmd FailCommand) error
 	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
 }
@@ -44,5 +48,5 @@ type Broker interface {
 // across both adapters, surfacing drift as a build failure rather than
 // a runtime panic.
 type CompletionPort interface {
-	CompleteWithArtifacts(ctx context.Context, cmd CompleteWithArtifactsCommand) error
+	CompleteWithArtifacts(ctx context.Context, cmd CompleteWithArtifactsCommand) ([]string, error)
 }
