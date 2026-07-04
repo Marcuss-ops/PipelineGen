@@ -329,6 +329,22 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			"drive_file_id": "",
 			"drive_link":    "",
 		}
+		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
+		if cmd.Summary != "" {
+			clipEntry["clip_summary"] = cmd.Summary
+		}
+		if len(cmd.Topics) > 0 {
+			clipEntry["topics"] = cmd.Topics
+		}
+		if len(cmd.Speakers) > 0 {
+			clipEntry["speakers"] = cmd.Speakers
+		}
+		if len(cmd.MentionedPeople) > 0 {
+			clipEntry["mentioned_people"] = cmd.MentionedPeople
+		}
+		if cmd.Hook != "" {
+			clipEntry["hook"] = cmd.Hook
+		}
 		if title := fetched.Metadata["youtube_title"]; title != "" {
 			clipEntry["youtube_title"] = title
 		}
@@ -379,6 +395,12 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		Duration:  time.Duration(duration) * time.Second,
 		LocalPath: fetched.LocalPath,
 		FileHash:  fileHash,
+		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
+		Summary:         cmd.Summary,
+		Topics:          append([]string(nil), cmd.Topics...),
+		Speakers:        append([]string(nil), cmd.Speakers...),
+		MentionedPeople: append([]string(nil), cmd.MentionedPeople...),
+		Hook:            cmd.Hook,
 	}
 	if uploadResult != nil {
 		clip.DriveLink = uploadResult.WebViewLink
