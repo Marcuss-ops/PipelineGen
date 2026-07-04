@@ -109,7 +109,7 @@ type DedupResult struct {
 // VisualTagImage calls /vlm/visual-tag for a single image.
 func (c *Client) VisualTagImage(ctx context.Context, imageURL string) (*VisualTag, error) {
 	if !c.IsEnabled() {
-		return nil, fmt.Errorf("vlm client disabled")
+		return nil, ErrVLMDisabled
 	}
 
 	url := fmt.Sprintf("%s/vlm/visual-tag?image_url=%s", c.cfg.Endpoint, imageURL)
@@ -139,7 +139,7 @@ func (c *Client) VisualTagImage(ctx context.Context, imageURL string) (*VisualTa
 // ValidateScript calls /vlm/validate-script to check script visual coherence.
 func (c *Client) ValidateScript(ctx context.Context, scriptText string, imageURLs []string) (*ScriptValidation, error) {
 	if !c.IsEnabled() {
-		return nil, fmt.Errorf("vlm client disabled")
+		return nil, ErrVLMDisabled
 	}
 
 	payload := map[string]any{
@@ -179,7 +179,7 @@ func (c *Client) ValidateScript(ctx context.Context, scriptText string, imageURL
 // DedupCheck calls /vlm/dedup-check to find visually similar images.
 func (c *Client) DedupCheck(ctx context.Context, imageURLs []string, threshold float64) (*DedupResult, error) {
 	if !c.IsEnabled() {
-		return nil, fmt.Errorf("vlm client disabled")
+		return nil, ErrVLMDisabled
 	}
 
 	payload := map[string]any{
@@ -218,7 +218,7 @@ func (c *Client) DedupCheck(ctx context.Context, imageURLs []string, threshold f
 // AutoTagLocal calls /vlm/autotag/analyze-file for a local file (image or video).
 func (c *Client) AutoTagLocal(ctx context.Context, localPath, mediaType string) (*VisualTag, error) {
 	if !c.IsEnabled() {
-		return nil, fmt.Errorf("vlm client disabled")
+		return nil, ErrVLMDisabled
 	}
 
 	u := fmt.Sprintf("%s/vlm/autotag/analyze-file?local_path=%s&media_type=%s",
@@ -246,3 +246,12 @@ func (c *Client) AutoTagLocal(ctx context.Context, localPath, mediaType string) 
 
 	return &result.Tags, nil
 }
+
+// godlike/06 SSOT compile-time pin: ErrVLMDisabled surface is canonically
+// defined in errors.go (same package). The var _ = ErrVLMDisabled reference
+// below is the SSOT-lock per AGENTS.md Pattern 0 + godlike/06 one-owner-per-
+// fact; any future file that tries to redefine ErrVLMDisabled would collide
+// at compile-time thanks to Go's package-private scope. The explicit
+// reference here just keeps the cross-file surface pingable for future
+// code-reviewer audits. Zero runtime cost.
+var _ = ErrVLMDisabled
