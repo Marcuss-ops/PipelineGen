@@ -1,8 +1,19 @@
-// Package scripts — scene_stubs.go provides minimal stub definitions
-// for types that lived in the now-deleted scenes_service.go and types.go.
-// These stubs satisfy the compiler; the real implementations were deleted
-// in origin/main and will be re-introduced when the scene pipeline is
-// re-constituted.
+// Package scripts — scene_stubs.go: per-godlike/07-zero-legacy cleanup
+// (2026-07-25), the `ScenesService` struct + `NewScenesService` ctor
+// were REMOVED (0 callers, "PR G placeholder, canonical impl deleted"
+// per the pre-cleanup file doc). The remaining types are ACTIVE
+// surface and must NOT be moved:
+//
+//   - FolderResolver: drive-folder ID resolution with fallback; used by
+//     voiceover/document pipelines (see `voiceover/usecase.go`,
+//     `documents_usecase.go`).
+//   - SceneVoiceover / SceneImage: per-scene postprocessor output rows.
+//   - PipelineResult: the canonical postprocessor-output aggregator
+//     returned by `Run` for both voiceover + image sub-pipelines.
+//
+// A future re-introduction of the per-scene service MUST be a fresh
+// canonical implementation in `internal/application/scripts/usecase/`
+// (NOT a stub re-added to this file) per godlike/07 minimum-blast-radius.
 package dto
 
 import (
@@ -10,15 +21,6 @@ import (
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
-
-// ScenesService handles scene image/voiceover generation.
-// Real implementation was in scenes_service.go (deleted).
-type ScenesService struct{}
-
-// NewScenesService creates a new ScenesService (stub).
-func NewScenesService(imgSvc, voSvc, log, cfg, resolveFolder, groupsRes interface{}, albumCapacity int) *ScenesService {
-	return &ScenesService{}
-}
 
 // FolderResolver resolves drive folder IDs with a fallback.
 type FolderResolver = func(ctx context.Context, folderID, defaultFolderID string) (string, error)
