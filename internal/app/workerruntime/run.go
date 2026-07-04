@@ -92,7 +92,6 @@ func Run(ctx context.Context, cfgPath string) error {
 		ws             *worker.Workspace
 		workspaceRoot  string
 		cleanup        func()
-		err            error
 	)
 
 	identity := WorkerIdentity()
