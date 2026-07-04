@@ -6060,7 +6060,7 @@ wave_status:
     - id: REG-T06-001
       owner_capability: internal/api/assets/register
       status: shipped
-      ship_sha: 1d424140
+      ship_sha: 4dc73dd3
       ship_date: 2026-07-04
       deadline: 2026-07-15
     - id: CLIPS-T05-001
