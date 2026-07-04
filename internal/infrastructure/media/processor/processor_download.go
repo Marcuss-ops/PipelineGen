@@ -192,7 +192,7 @@ func buildArtlistClipPageURL(name, id string) string {
 // an Artlist clip with browser authentication (cookies).
 //
 // godlike/06 SSOT back-pointer: this is the **fallback** surface for
-// Artlist HLS streams that the Go-primary `artlist/downloader.Provider`
+// Artlist HLS streams that the Go-primary `artlist/downloader.Resolver`
 // (wired in `internal/app/build_bundles_artlist.go::WireArtlist`)
 // cannot reach due to browser-session auth requirements. The canonical
 // dual-surface divider + the `LocalPath` short-circuit that prevents a

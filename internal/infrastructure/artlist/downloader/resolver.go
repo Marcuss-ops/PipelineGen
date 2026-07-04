@@ -45,10 +45,11 @@
 // primary routes, add a resolvePathWithFallback enum and thread it
 // through the retry.DoWithValue body.
 //
-// godlike/07 minimal-blast-radius (EXPAND phase): the legacy Provider
-// struct in downloader.go is RETAINED. Existing call sites that construct
-// Provider directly continue to compile; the CUTOVER wave will retire
-// Provider. Until then, both coexist.
+// godlike/07 minimal-blast-radius (CUTOVER phase): the legacy Provider
+// struct in downloader.go has been RETIRED. Resolver is the SINGLE
+// canonical owner of Artlist download routing per godlike/06 SSOT.
+// The composition root (build_bundles_artlist.go) wires
+// downloader.NewResolver(...) exclusively.
 //
 // Honest scope-lock: the processor_download.go Artlist-specific code
 // (isArtlistURL / isArtlistNumericID / downloadViaScraper) is NOT

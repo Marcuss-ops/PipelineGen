@@ -84,29 +84,24 @@ func (m *Metrics) incDownloadPath(path string) {
 // (which carries the per-label semantics). Always use these
 // consts at call sites — never raw strings.
 const (
-	// PathBrowser is the Node Puppeteer fallback path. Fired
-	// when the Artlist orchestrator's stageProcessBatch
-	// graceful-degrade path (LocalPath == "" post-StageSource)
-	// routes a download to the Node scraper's /download
-	// endpoint. Today this label is fired from
-	// internal/infrastructure/media/processor/processor_download.go
-	// ::downloadViaScraper; the Go package reserves the constant
-	// for the cross-surface observability consolidation in
-	// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY.
+	// PathBrowser is the Node Puppeteer path. Fired by
+	// downloader.Resolver.Download when resolvePath picks the
+	// scraper transport (Rule 1: ClipPageURL set OR Artlist-shaped
+	// URL) or as the first-resort in the controlled fallback ladder.
 	PathBrowser = "browser"
 
 	// PathYTDLP is the HLS-via-yt-dlp path. Fired by
-	// downloader.Provider.Download when the .m3u8 detection
-	// gate routes the request to the canonical yt-dlp
-	// downloader. This is the dominant path for Artlist's
-	// HLS-CDN assets where cookie impersonation succeeds.
+	// downloader.Resolver.Download when resolvePath picks the
+	// yt-dlp transport (Rule 3: .m3u8 URL, non-Artlist). This
+	// is the dominant path for HLS-CDN assets where yt-dlp's
+	// cookie impersonation succeeds (non-Artlist sources).
 	PathYTDLP = "yt-dlp"
 
 	// PathHTTP is the progressive-HTTP path. Fired by
-	// downloader.Provider.Download when the SourceRef is not
-	// an .m3u8 (the else branch in downloader.go::Download).
-	// This is the dominant path for Artlist's MP4/MOV direct
-	// progressive assets.
+	// downloader.Resolver.Download when resolvePath picks the
+	// HTTP transport (Rule 2: direct .mp4/.mov/.avi URLs) or
+	// as the last-resort fallback in the controlled ladder.
+	// This is the dominant path for direct progressive assets.
 	PathHTTP = "http"
 
 	// PathHLS is the direct-HLS-without-yt-dlp path. Reserved
