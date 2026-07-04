@@ -59,6 +59,20 @@ func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Processo
 }
 
 // PR 5 (June 2026): signature now takes ProcessInput envelope.
+//
+// FASE-document-canonical (July 2026): ALWAYS calls the canonical
+// renderer BuildGenerationDocumentHTML (was: dual-branch
+// BuildClipSpecSceneDocumentHTML vs BuildSectionDocHTML). Per
+// godlike/06 SSOT one-canonical-owner-per-fact the production doc
+// surface has a single canonical renderer; BuildGenerationDocumentHTML
+// gracefully handles both the with-SpecScene and empty-SpecScene
+// cases (the empty case skips the <h2>Scenes</h2> section via the
+// `len(model.SpecScene.Scenes) > 0` guard internally). The optional
+// `includeSpecSceneBlock` 6th parameter is set to false for production
+// pristine output — the SpecScene JSON textual dump is opt-in
+// (godlike/07 minimal-blast-radius; operators wanting the debug
+// block can call the canonical renderer with includeSpecSceneBlock
+// =true directly).
 func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
@@ -72,17 +86,38 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
-	htmlContent := ""
-	if len(input.SpecScene.Scenes) > 0 {
-		model := &scriptpkg.ModelScriptOutputV1{
-			SchemaVersion: 1,
-			Text:          input.Text,
-			SpecScene:     input.SpecScene,
-		}
-		htmlContent = BuildClipSpecSceneDocumentHTML(model, docTitle, input.SourceTrace)
-	} else {
-		htmlContent = BuildSectionDocHTML(docTitle, []string{""}, []string{input.Text}, true, plan.Language)
+	// Canonical single-renderer call (was: BuildClipSpecSceneDocumentHTML
+	// when len(SpecScene.Scenes) > 0, BuildSectionDocHTML otherwise).
+	model := &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          input.Text,
+		SpecScene:     input.SpecScene,
 	}
+
+	// ── Honest-limitation audit-pin (godlike/07 no-fake-availability) ──
+	// BuildGenerationDocumentHTML accepts entities (scriptpkg.EntityResult)
+	// and metadata ([]scriptpkg.VideoMetadata) explicitly — but we pass
+	// `nil, nil` here because adapters.ProcessInput (the canonical envelope
+	// wired from GenerateOneUseCase through the registry) doesn't carry
+	// them today. The pre-FASE-document-canonical dual-branch renderer
+	// (`BuildClipSpecSceneDocumentHTML` + `BuildSectionDocHTML`) ALSO
+	// didn't propagate them, so this refactor doesn't regress behaviour
+	// (the title, prose, scenes, bindings, and per-scene <a href> drive
+	// links render in BOTH before/after paths); it just doesn't YET
+	// expose them.
+	//
+	// Forward-pointer: PR-PROCESS-INPUT-ENTITIES-METADATA (deferred; the
+	// canonical migration is to extend adapters.ProcessInput with two new
+	// optional fields — `Entities *scriptpkg.EntityResult` (omitempty,
+	// populated by the entity_parser adapter) and `Metadata
+	// []scriptpkg.VideoMetadata` (omitempty, populated by the
+	// metadata_generator adapter) — and thread them from
+	// GenerateOneUseCase's postResult.Entities + postResult.VideoMetadata
+	// into the canonical call site here. Once that lands the `nil, nil`
+	// literal below becomes `entities, metadata` and the canonical
+	// renderer auto-surfaces the `<h2>Entities</h2>` + `<h2>Video
+	// Metadata</h2>` sections without further changes).
+	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, nil, nil, false)
 
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
 	if link == "" {

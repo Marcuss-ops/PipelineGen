@@ -6,6 +6,33 @@
 // took a flat list of section titles + contents. The new shape
 // renders (title, full text, scenes with clip/image/voiceover
 // bindings, entities, metadata) directly from the typed inputs.
+//
+// FASE-document-canonical (July 2026): BuildGenerationDocumentHTML
+// remains the SOLE canonical production renderer (per AGENTS.md
+// Pattern 0 / godlike/06 one-canonical-owner-per-fact). When the
+// 6th parameter `includeSpecSceneBlock` is true, it ALSO appends an
+// optional `<h2>SpecScene JSON</h2><pre>{json}</pre>` debug block
+// that surfaces the canonical SpecSceneOutput shape verbatim
+// (json.MarshalIndent + html.EscapeString), useful for troubleshooting
+// or downstream tooling that wants a textual dump of the macro-
+// structure next to the rendered prose. The default (false) keeps
+// production docs pristine.
+//
+// BuildClipSpecSceneDocumentHTML is preserved as a DEPRECATED thin
+// helper that emits ONLY the SpecScene JSON debug block wrapped in
+// the canonical `<h1>title</h1><h2>SpecScene JSON</h2><pre>...</pre>`
+// envelope. It is NOT used by DocumentProcessor (the production
+// renderer chooses to opt-in via the 6th parameter instead), but
+// remains as the load-bearing PR 7 byte-level diff-test surface
+// (`TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7`) and
+// a debug-only standalone helper. New callers MUST use
+// BuildGenerationDocumentHTML with `includeSpecSceneBlock=true`.
+//
+// BuildSectionDocHTML is a separate utility retained for pre-PR-3
+// batch pipeline compat (uses the legacy "flat titles+contents"
+// shape). DocumentProcessor's migration off of BuildSectionDocHTML
+// to BuildGenerationDocumentHTML is canonical; the legacy helper
+// stays for tools that still rely on the flat shape.
 package adapters
 
 import (
@@ -18,7 +45,11 @@ import (
 )
 
 // BuildGenerationDocumentHTML renders the Google Doc HTML body for a
-// canonical typed model + aggregate entities + metadata.
+// canonical typed model + aggregate entities + metadata. This is the
+// SOLE canonical production renderer (per AGENTS.md Pattern 0 +
+// godlike/06 SSOT one-canonical-owner-per-fact); DocumentProcessor
+// and any new caller MUST use this function rather than build their
+// own ad-hoc HTML body.
 //
 // Sections:
 //
@@ -31,6 +62,13 @@ import (
 //	  The Raw field is shown as a <pre> block when present (legacy
 //	  pre-PR-3 read-compat rows).
 //	<h2>Video Metadata</h2> — per-language title, description, tags.
+//	<h2>SpecScene JSON</h2><pre>...</pre> — OPTIONAL debug block
+//	  emitted only when includeSpecSceneBlock=true (default false for
+//	  production canonical output). Surfaces the canonical
+//	  SpecSceneOutput shape verbatim via json.MarshalIndent +
+//	  html.EscapeString, useful for downstream tooling or operators
+//	  who want a textual dump of the macro-structure next to the
+//	  rendered prose.
 //
 // language is used for localised chapter-label aliases (matching
 // BuildSectionDocHTML's "Chapter" / "Capitolo" / "Chapitre" /
@@ -45,6 +83,7 @@ func BuildGenerationDocumentHTML(
 	language string,
 	entities *scriptpkg.EntityResult,
 	metadata []scriptpkg.VideoMetadata,
+	includeSpecSceneBlock bool,
 ) string {
 	if model == nil {
 		return ""
@@ -226,6 +265,33 @@ func BuildGenerationDocumentHTML(
 		}
 	}
 
+	// ── Optional SpecScene JSON debug block ──────────────────────────
+	// Per godlike/06 SSOT (one canonical owner per fact): the production
+	// renderer is BuildGenerationDocumentHTML; when callers want the
+	// SpecScene JSON textual dump, the canonical path is to pass
+	// includeSpecSceneBlock=true and let THIS function emit the block
+	// at the canonical position (immediately before </body></html>).
+	// BuildClipSpecSceneDocumentHTML remains as a deprecated
+	// standalone helper for the PR 7 byte-level diff-test surface
+	// ONLY — production code MUST use BuildGenerationDocumentHTML.
+	//
+	// Per godlike/07 no-fake-availability: GUARD the emission on
+	// `len(model.SpecScene.Scenes) > 0` so an empty-specscene payload
+	// does NOT emit a misleading `<h2>SpecScene JSON</h2><pre>{"version":0,"scenes":null}</pre>`
+	// block. Downstream tooling that greps for the block on every
+	// payload could otherwise mistake `scenes:null` for a real empty-
+	// result render. The canonical scenes-section block already skips
+	// on empty SpecScene via its own `len(...) > 0` guard — the debug
+	// block must mirror that discipline for consistency.
+	if includeSpecSceneBlock && len(model.SpecScene.Scenes) > 0 {
+		raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
+		if err == nil {
+			b.WriteString("<h2>SpecScene JSON</h2><pre>")
+			b.WriteString(html.EscapeString(string(raw)))
+			b.WriteString("</pre>")
+		}
+	}
+
 	b.WriteString("</body></html>")
 	return b.String()
 }
@@ -253,6 +319,27 @@ func chapterLabel(language string) string {
 // structure (SpecSceneOutput) instead of a legacy format with
 // description/drive_links arrays. Every scene uses the canonical
 // Bindings.Clip.DriveLink and Bindings.Clip.ClipTitle fields.
+//
+// DEPRECATED (FASE-document-canonical, July 2026): the canonical
+// production renderer is BuildGenerationDocumentHTML (called by
+// DocumentProcessor). The SpecScene JSON debug block is available via
+// BuildGenerationDocumentHTML's `includeSpecSceneBlock=true` parameter
+// — production callers MUST go through that path. This function is
+// RETAINED as a debug-only standalone helper used by:
+//
+//  1. The PR 7 byte-level diff test
+//     (`TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7`),
+//     which compares the doc-rendered SpecScene JSON with the
+//     response-writer wire shape — a load-bearing regression pin
+//     for the slice-header-sharing discipline.
+//
+//  2. Tooling that only wants the SpecScene JSON dump, not the full
+//     script body.
+//
+// It accepts an `evidence *scriptpkg.ClipEvidence` parameter for
+// backward-compat with the PR 7 test fixture (the field is unused
+// here — the canonical SpecScene is read from model.SpecScene so the
+// evidence never leaks into the rendered JSON).
 func BuildClipSpecSceneDocumentHTML(
 	model *scriptpkg.ModelScriptOutputV1,
 	title string,
