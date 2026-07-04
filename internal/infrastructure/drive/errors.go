@@ -62,3 +62,34 @@ var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil
 // FASE 0.3 (July 2026): the 3 fail-closed stubs (UploadFile +
 // UploadFileWithDescription + sourcing.DrivePort.UploadFileWithDescription)
 // retired via PR-YT-DRIVE-LEGACY-RETIRE.
+
+// ErrPathBuilderIncompleteForOverride is the canonical sentinel returned
+// when a Destination's PathBuilder fails (e.g., missing Group/Subject/Language
+// metadata) AND the caller supplied a RootFolderOverride (the back-compat
+// escape hatch for pre-subpath-era callers).
+//
+// godlike/07 typed-error contract (PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE,
+// July 2026; replaces the original log.Warn + silent-swallow emission in
+// Publisher.resolveDestination Step 4): callers can errors.Is to detect
+// "incomplete subpath tolerated because override was set". The sentinel is
+// wrapped via fmt.Errorf dual-%w (Go 1.20+) per godlike/07 dual-wrapping
+// discipline — the underlying PathBuilder cause is preserved via the first
+// %w for errors.As recovery while the typed sentinel is exposed via the
+// second %w for errors.Is probes. Single-line message avoids the
+// newline-separated stderr noise of errors.Join, preserving
+// grep-ability for log aggregators.
+//
+// Decision: this is a SEMANTIC CHANGE from prior behaviour (silent swallow
+// with log.Warn) to explicit typed-error (caller-decision via errors.Is +
+// log.Debug ack). The pre-existing Publish/ResolveFolder call sites still
+// opt-in to swallow the sentinel (preserving caller backward-compat per
+// godlike/07 minimum-blast-radius). Aggressive-mode callers (future wiring
+// of pre-publish integral checks, see forward-pointer
+// PR-VO-AGGREGATE-SUBPATH-CASCADE) can errors.Is + return an error to
+// fail-closed at fallback.
+//
+// Production timestamps: PR-VO-SUBFOLDER closure (commit 556bf906,
+// 2026-07-04) shipped the originally-swallowed fallback. This sentinel
+// migration is the typed-error contract that user-spec asked for in the
+// PR-VO-SUBFOLDER follow-up.
+var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incomplete but RootFolderOverride is set (direct-to-root fallback)")

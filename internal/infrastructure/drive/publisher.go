@@ -119,11 +119,11 @@ type PutFileRequest struct {
 	LocalPath      string
 	FolderID       string
 	Filename       string
-	Description    string                   // optional; empty means "no description"
-	ConflictPolicy delivery.ConflictPolicy   // zero = ConflictOverwrite (legacy default)
-	IdempotencyKey string                   // P0.6: Drive appProperties key for conflict detection
-	ContentHash    string                   // P0.6: hex-encoded SHA-256 of file content
-	SourceVersion  int64                    // P0.6: logical source version
+	Description    string                  // optional; empty means "no description"
+	ConflictPolicy delivery.ConflictPolicy // zero = ConflictOverwrite (legacy default)
+	IdempotencyKey string                  // P0.6: Drive appProperties key for conflict detection
+	ContentHash    string                  // P0.6: hex-encoded SHA-256 of file content
+	SourceVersion  int64                   // P0.6: logical source version
 }
 
 // PutFileResult is the structured return value. Action tells callers
@@ -288,14 +288,34 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	if segments, err = policy.PathBuilder(req); err == nil {
 		pathBuilt = true
 	} else if req.RootFolderOverride != "" {
-		p.log.Warn(
-			"delivery: PathBuilder failed with RootFolderOverride set; uploading directly into root folder",
-			zap.String("destination", string(req.Destination)),
-			zap.String("root_folder_id", rootFolderID),
-			zap.Error(err),
-		)
+		// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE (July 2026): the
+		// PathBuilder failed AND RootFolderOverride is set — previously
+		// this branch silently swallowed the error and emitted a
+		// log.Warn (godlike/07 no-fake-availability violation: a filtered
+		// warn was the only diagnostic when subpath construction missed
+		// Group/Subject/Language metadata). We now return BOTH the typed
+		// sentinel wrapped with the original cause AND the resolved struct
+		// (root-folder fallback) so callers can errors.Is and decide
+		// whether to opt-in to the fallback. Publish/ResolveFolder
+		// preserve prior compat by errors.Is'ing the sentinel at the
+		// call site + log.Debug ack + err=nil (godlike/07
+		// minimum-blast-radius). Aggressive-mode callers can errors.Is
+		// and return to fail-closed at fallback (forward-pointer
+		// PR-VO-AGGREGATE-SUBPATH-CASCADE).
+		//
+		// Wrap strategy: dual-%w fmt.Errorf (Go 1.20+) exposes BOTH the
+		// underlying PathBuilder cause AND the typed sentinel as separate
+		// wrap targets in the chain. errors.Is at any depth recovers the
+		// sentinel; errors.As at the same depth recovers the typed
+		// PathBuilder cause — preserving the full godlike/07 typed-error
+		// contract that callers (composition root, voiceover handler,
+		// artlist handler, etc.) debug against. Single-line message
+		// avoids the newline-separated stderr noise of errors.Join (which
+		// breaks single-line log aggregators + grep-ability).
+		//
+		// segments=nil so Step 6 falls through to direct-to-root upload.
+		err = fmt.Errorf("delivery: PathBuilder failed under RootFolderOverride (cause: %w): %w", err, ErrPathBuilderIncompleteForOverride)
 		segments = nil
-		err = nil
 	} else {
 		return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
 	}
@@ -325,12 +345,20 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 		}
 	}
 
+	// godlike/07 typed-error contract: the dual-return shape (resolved
+	// struct + sentinel error) requires `return ..., err` so the sentinel
+	// survives the explicit return. Pre-PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE
+	// the last return was `return ..., nil` which silently zeroed out the
+	// err value — the prior log.Warn + err=nil discipline accidentally
+	// matched this because the wrap was never set in the first place.
+	// The typed-error contract demands err be preserved verbatim so
+	// callers errors.Is at the call site.
 	return &ResolvedDriveDestination{
 		Destination:  req.Destination,
 		RootFolderID: rootFolderID,
 		FolderID:     folderID,
 		PathSegments: segments,
-	}, nil
+	}, err
 }
 
 // Publish resolves the destination, builds the folder path, creates folders,
@@ -379,7 +407,27 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	// ResolveFolder, eliminating the previous ResolveFolder bypass.
 	resolved, err := p.resolveDestination(ctx, req)
 	if err != nil {
-		return nil, err
+		// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE (July 2026): the
+		// PathBuilder failed under RootFolderOverride. The helper
+		// returns BOTH the typed sentinel error AND the resolved
+		// struct (with direct-to-root fallback). We preserve caller
+		// backward-compat by errors.Is'ing the sentinel + log.Debug
+		// ack + err=nil (godlike/07 minimum-blast-radius); the
+		// struct's RootFolderID/PathSegments (with PathSegments=nil)
+		// are still valid for the Step 6 PutFile seam. Aggressive-mode
+		// callers can detect this case via the same errors.Is probe
+		// and fail-closed (forward-pointer PR-VO-AGGREGATE-SUBPATH-CASCADE).
+		if errors.Is(err, ErrPathBuilderIncompleteForOverride) {
+			p.log.Debug(
+				"delivery: incomplete subpath tolerated because override was set",
+				zap.String("destination", string(req.Destination)),
+				zap.String("root_folder_id", resolved.RootFolderID),
+				zap.Error(err),
+			)
+			err = nil
+		} else {
+			return nil, err
+		}
 	}
 
 	// Step 5: Normalise the filename.
@@ -462,7 +510,24 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 func (p *Publisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
 	resolved, err := p.resolveDestination(ctx, req)
 	if err != nil {
-		return "", err
+		// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE (July 2026): companion
+		// to Publish — see Publish for the full context. ResolveFolder
+		// preserves caller backward-compat via the same errors.Is +
+		// log.Debug ack + err=nil pattern. The resolved.FolderID is
+		// still the override root (segments=nil → direct-to-root),
+		// which is the canonical return value for callers that
+		// ResolveFolder'd to learn the upload destination pre-publish.
+		if errors.Is(err, ErrPathBuilderIncompleteForOverride) {
+			p.log.Debug(
+				"delivery: incomplete subpath tolerated because override was set",
+				zap.String("destination", string(req.Destination)),
+				zap.String("root_folder_id", resolved.RootFolderID),
+				zap.Error(err),
+			)
+			err = nil
+		} else {
+			return "", err
+		}
 	}
 
 	p.log.Info("delivery: folder resolved",
