@@ -104,107 +104,100 @@ type CanonicalClipMetadata struct {
 	// ClipID is the canonical clip identifier. Must equal the clipID
 	// passed to the writer; a mismatch is a caller bug that fails the
 	// write (ClipMetadataWriterAdapter validates this).
-	ClipID string
+	ClipID string `json:"clip_id,omitempty"`
 
 	// AssetID is the canonical media_assets row identifier. Set to
 	// ClipID by the metadata builder (the two are the same in the
 	// canonical schema).
-	AssetID string
+	AssetID string `json:"asset_id,omitempty"`
 
 	// Summary is the 240-char-max clip summary. Populated either by
 	// the Ollama builder or by the deterministic fallback (truncated
-	// title).
-	Summary string
+	// title). JSON key "clip_summary" preserves Ollama response
+	// compatibility (was ClipRichMetadata.ClipSummary).
+	Summary string `json:"clip_summary,omitempty"`
 
 	// Topics is the LLM-discovered topic list for semantic search
 	// indexing. Nil/empty is valid (no topics discovered).
-	Topics []string
+	Topics []string `json:"topics,omitempty"`
 
 	// Speakers is the LLM-discovered speaker list. Nil/empty is valid.
-	Speakers []string
+	Speakers []string `json:"speakers,omitempty"`
 
 	// MentionedPeople is the LLM-discovered mentioned-people list.
 	// Nil/empty is valid.
-	MentionedPeople []string
+	MentionedPeople []string `json:"mentioned_people,omitempty"`
 
 	// QualityScore is the weighted composite score in [0.0, 1.0]
 	// computed from transcript coverage, duration sweet-spot, and
-	// semantic metadata richness. The Ollama builder and the
-	// deterministic fallback use the same formula so scores are
-	// comparable across both paths.
-	QualityScore float64
+	// semantic metadata richness.
+	QualityScore float64 `json:"quality_score,omitempty"`
 
 	// SponsorSegment is true when the clip transcript matches the
 	// sponsored-content regex (IsSponsorSegment). The indexing layer
 	// applies a -0.20 penalty on top of the raw QualityScore when
 	// this flag is set.
-	SponsorSegment bool
+	SponsorSegment bool `json:"sponsor_segment,omitempty"`
 
 	// TranscriptPath is the local filesystem path to the transcript
 	// text file (VTT/TXT) produced by Whisper or yt-dlp subtitle
 	// extraction. May be empty when no transcript was extracted.
-	TranscriptPath string
+	TranscriptPath string `json:"transcript_path,omitempty"`
 
 	// SourceURL is the original YouTube video URL. Stamped for
 	// operator audit.
-	SourceURL string
+	SourceURL string `json:"source_url,omitempty"`
 
 	// NormalizedGroup is the canonical group name for folder routing
 	// (e.g. "general", "tutorial"). Defaults to "general" when the
 	// input didn't carry a group.
-	NormalizedGroup string
+	NormalizedGroup string `json:"normalized_group,omitempty"`
 
 	// SourceVersion is the deterministic content fingerprint used as
-	// the outbox event_key suffix. Computed by the builder as either
-	// the file hash or Md5(clipID + transcript + qualityScore).
-	// Empty SourceVersion is fail-closed at the writer level.
-	SourceVersion string
+	// the outbox event_key suffix.
+	SourceVersion string `json:"source_version,omitempty"`
 
 	// JobID is the optional job identifier stamped into the outbox
-	// payload. Populated by the service-instance field when set;
-	// empty when the builder runs outside a job context (e.g. the
-	// Ollama builder's deterministic fallback).
-	JobID string
+	// payload.
+	JobID string `json:"job_id,omitempty"`
 
 	// Hook is the LLM-discovered hook phrase (Commit 4 upstream
-	// signal). When non-empty, stamped into metadata_json AND the
-	// outbox event payload. When empty, omitted entirely from
-	// the json_set chain (no empty semantic marker persisted).
-	Hook string
+	// signal).
+	Hook string `json:"hook,omitempty"`
 
 	// SearchVisibility is the LLM-assigned visibility tier (Commit 4
 	// upstream signal). Same nil-vs-empty contract as Hook.
-	SearchVisibility string
+	SearchVisibility string `json:"search_visibility,omitempty"`
 
 	// ── Absorbed from ClipRichMetadata (CLIPS-META-2026-07-04) ──────
 
 	// SourceTags carries source/channel-level tags extracted from
 	// the video title + description.
-	SourceTags []string
+	SourceTags []string `json:"source_tags,omitempty"`
 
 	// ClipTags carries clip-level topic tags.
-	ClipTags []string
+	ClipTags []string `json:"clip_tags,omitempty"`
 
 	// SearchKeywords carries SEO-oriented keyword phrases.
-	SearchKeywords []string
+	SearchKeywords []string `json:"search_keywords,omitempty"`
 
 	// People is the union of Speakers + MentionedPeople (deduplicated).
-	People []string
+	People []string `json:"people,omitempty"`
 
 	// CleanTitle is the canonical cleaned clip title.
-	CleanTitle string
+	CleanTitle string `json:"clean_title,omitempty"`
 
 	// ShortTitle is the shortened (≤4 word) display title.
-	ShortTitle string
+	ShortTitle string `json:"short_title,omitempty"`
 
 	// CleanTranscript is the cleaned, normalized transcript text.
-	CleanTranscript string
+	CleanTranscript string `json:"clean_transcript,omitempty"`
 
 	// EmbeddingText is the structured text block fed to the embedding
 	// model for semantic search indexing.
-	EmbeddingText string
+	EmbeddingText string `json:"embedding_text,omitempty"`
 
 	// Tags is the merged-deduplicated union of SourceTags + ClipTags +
 	// SearchKeywords + Topics + Speakers + MentionedPeople.
-	Tags []string
+	Tags []string `json:"tags,omitempty"`
 }

@@ -253,7 +253,7 @@ func isSponsorSegment(text string) bool {
 
 // ── Quality scoring ───────────────────────────────────────────────────────
 
-func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64 {
+func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.CanonicalClipMetadata) float64 {
 	heuristic := calculateHeuristicQualityScore(transcript, title, description, tags, duration, meta)
 	if meta != nil && meta.QualityScore > 0 {
 		score := (heuristic * 0.72) + (meta.QualityScore * 0.28)
@@ -277,7 +277,7 @@ func calculateQualityScore(transcript, title, description string, tags []string,
 	return heuristic
 }
 
-func calculateHeuristicQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64 {
+func calculateHeuristicQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.CanonicalClipMetadata) float64 {
 	score := 0.08
 	transcriptLen := len(transcript)
 	switch {
@@ -332,7 +332,7 @@ func calculateHeuristicQualityScore(transcript, title, description string, tags 
 		score -= 0.05
 	}
 	if meta != nil {
-		if meta.ClipSummary != "" {
+		if meta.Summary != "" {
 			score += 0.10
 		}
 		if meta.Hook != "" {
@@ -378,13 +378,13 @@ func calculateHeuristicQualityScore(transcript, title, description string, tags 
 		if len(meta.EmbeddingText) > 300 {
 			score += 0.02
 		}
-		if duration >= 25 && duration <= 180 && meta.ClipSummary != "" && meta.Hook != "" && len(meta.Topics) >= 3 {
+		if duration >= 25 && duration <= 180 && meta.Summary != "" && meta.Hook != "" && len(meta.Topics) >= 3 {
 			score += 0.18
 		}
 		if duration >= 45 && duration <= 180 && len(meta.MentionedPeople) >= 1 && len(meta.SearchKeywords) >= 2 {
 			score += 0.08
 		}
-		if duration >= 45 && duration <= 180 && meta.ClipSummary != "" && meta.Hook != "" && len(meta.Topics) >= 3 && len(meta.Speakers) >= 1 && score < 0.72 {
+		if duration >= 45 && duration <= 180 && meta.Summary != "" && meta.Hook != "" && len(meta.Topics) >= 3 && len(meta.Speakers) >= 1 && score < 0.72 {
 			score = 0.72
 		}
 	}
