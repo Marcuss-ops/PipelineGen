@@ -122,11 +122,7 @@
 
       compiling cleanly for the wire_assets.go composition). go build ./...
 
-      project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files.errors" imported but not used → removed; (2) preflight.go:118 undefined: context → added "context" to imports; (3) preflight.go:133
-      undefined: retry → added "github.com/Marcuss-ops/PipelineGen/pkg/retry" to imports (per the code comment that documents the pkg/retry.Do usage); (4) run.go:95 err redeclared in this block (referenced
-      at 58:7) → removed the redundant `err error` declaration from the var (...) block (err was already declared in the function scope via the earlier `cfg, err := LoadConfig(cfgPath)` and `log, err :=
-      LoadLogger(cfg)` statements). This is the gate that unblocks all PR-ARTLIST-* follow-up work (ART-001 closure forward-pointers depend on internal/app/workerruntime compiling cleanly for the wire_assets.go
-      composition). go build ./... project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files."
+      project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files..""
 
       '
   meta_closure_2026_07_04:
@@ -260,32 +256,32 @@
       on the broken SHA.
 
       '
-    - id: FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED
-      owner_capability: scripts/ci-architectural-checks.sh
-      status: shipped
-      ship_sha: 5c5ed224
-      ship_date: 2026-07-04
-      deadline: 2026-07-15
-      ship_via: |
-        fix(ci-architectural-checks): defensive REPO_ROOT fallback at line 56.
-        The function extract_known_acceptable_ids_from_yaml (line 50) references
-        ${REPO_ROOT} on its first line, but the canonical REPO_ROOT resolution
-        (lines 198-215) is computed AFTER the function is called at line 192.
-        Under set -euo pipefail (line 39), this fires "REPO_ROOT: unbound variable"
-        on every production invocation that does not pre-export REPO_ROOT.
+- id: FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED
+  owner_capability: scripts/ci-architectural-checks.sh
+  status: shipped
+  ship_sha: 5c5ed224
+  ship_date: 2026-07-04
+  deadline: 2026-07-15
+  ship_via: |
+    fix(ci-architectural-checks): defensive REPO_ROOT fallback at line 56.
+    The function extract_known_acceptable_ids_from_yaml (line 50) references
+    ${REPO_ROOT} on its first line, but the canonical REPO_ROOT resolution
+    (lines 198-215) is computed AFTER the function is called at line 192.
+    Under set -euo pipefail (line 39), this fires "REPO_ROOT: unbound variable"
+    on every production invocation that does not pre-export REPO_ROOT.
 
-        Production invocation sites (NONE pre-export REPO_ROOT):
-          - .github/workflows/ci.yml:87 (CI workflow)
-          - Makefile:424 (verify-main target)
-          - scripts/ci-archcheck-e2e.sh:37,60,82 (e2e harness)
-          - .split2-push.sh:42 (push helper)
+    Production invocation sites (NONE pre-export REPO_ROOT):
+      - .github/workflows/ci.yml:87 (CI workflow)
+      - Makefile:424 (verify-main target)
+      - scripts/ci-archcheck-e2e.sh:37,60,82 (e2e harness)
+      - .split2-push.sh:42 (push helper)
 
-        Fix: defensive ${REPO_ROOT:-$(pwd)} fallback. The fallback to $(pwd)
-        is correct in 100% of production invocation sites (all run from repo
-        root cwd). Mirrors the canonical defensive pattern in scripts/ci/architecture/
-        checks/*.sh (the new Go-scanner replacement). FASE 7 verification
-        (2026-07-04) surfaced the bug. 1-line minimum-blast-radius change per
-        godlike/07 + AGENTS.md Git-Lesson-2.
+    Fix: defensive ${REPO_ROOT:-$(pwd)} fallback. The fallback to $(pwd)
+    is correct in 100% of production invocation sites (all run from repo
+    root cwd). Mirrors the canonical defensive pattern in scripts/ci/architecture/
+    checks/*.sh (the new Go-scanner replacement). FASE 7 verification
+    (2026-07-04) surfaced the bug. 1-line minimum-blast-radius change per
+    godlike/07 + AGENTS.md Git-Lesson-2.
 - id: PRE-EXISTING-YAML-PARSE-2026-07-04
   owner_capability: architecture
   status: pending
@@ -313,7 +309,25 @@
   linked_issues:
   - id: PR-FIX-YAML-PARSE-LINE-1551
     owner_capability: architecture
-    status: pending
+    status: shipped
+    ship_sha: 2549f455d78a960c65536ef9c597113b6b1a5c9c
+    ship_date: '2026-07-04'
+    exit_signal: true
+    description: |
+      PR 1 of Q16 2-PR split (PR-FIX-YAML-PARSE-LINE-1551 +
+      PR-REMOVE-CI-AWK-SED-FALLBACKS). The pre-existing YAML parse error
+      in architecture/current.yaml (duplicate ship_via body at line 125
+      of FIX-APP-WORKERRUNTIME-SYNTAX + over-indented FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED
+      block at line 259) is fixed. yaml.safe_load now parses the full file
+      (79 top-level entries + bare integer wave markers 0/14/15/16/17/18/19/20/21/22/26)
+      and the PR-REMOVE-CI-AWK-SED-FALLBACKS follow-up PR (Q16 2/2) can
+      replace the 150-line bash state-machine in scripts/ci-architectural-checks.sh
+      with a simple yaml.safe_load call. Per godlike/07 fail-closed at composition:
+      the YAML file MUST be parseable before the CI script can drop its
+      defensive fallback. Per godlike/06 SSOT: the wave-tracker is the SOLE
+      source of truth for PR/issue status; the CHANGELOG.md + AGENTS.md mirror
+      entries carry the audit-trail. Forward-pointer PR-REMOVE-CI-AWK-SED-FALLBACKS
+      (deadline 2026-08-08) carries the 2/2 lockstep.
     deadline: 2026-08-01
 - id: 0
   status: done
