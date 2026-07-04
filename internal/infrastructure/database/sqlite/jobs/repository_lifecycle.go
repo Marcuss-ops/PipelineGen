@@ -271,6 +271,23 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		resultJSON = "{}"
 	}
 
+	// PR-P1.2-SQL-DUAL-WRITE (July 2026): extract parent_state from
+	// the result JSON so the typed parent_state_typed column is
+	// written in the same transaction as the JSON result column.
+	// The typed column is the AUTHORITATIVE source going forward
+	// (godlike/06 SSOT — one canonical column per fact). When the
+	// result JSON has no parent_state key, the typed column stays
+	// empty (the DEFAULT '' from the migration preserves back-compat).
+	var parentStateTyped string
+	if len(result) > 0 {
+		var resultMap map[string]any
+		if err := json.Unmarshal(result, &resultMap); err == nil {
+			if ps, ok := resultMap["parent_state"].(string); ok {
+				parentStateTyped = ps
+			}
+		}
+	}
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("terminalFlip: begin tx: %w", err)
@@ -283,16 +300,20 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 	// Fail, FinalizeAggregateParent) so a concurrent tick that already landed the
 	// flip will have incremented revision, causing this UPDATE to
 	// return 0 rows-affected → ErrAggregateCASConflict.
+	//
+	// PR-P1.2-SQL-DUAL-WRITE (July 2026): parent_state_typed column
+	// is written atomically with result_json in the same UPDATE.
 	query := `UPDATE jobs SET status = ?,
 		completed_at = COALESCE(completed_at, ?),
 		error = CASE WHEN ? = '' THEN error ELSE ? END,
 		result_json = ?,
+		parent_state_typed = ?,
 		progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		revision = revision + 1, updated_at = ?
 	WHERE id = ?
 		AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
 		AND json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')`
-	args := []any{string(targetStatus), nowStr, errMsg, errMsg, resultJSON, nowStr, id}
+	args := []any{string(targetStatus), nowStr, errMsg, errMsg, resultJSON, parentStateTyped, nowStr, id}
 	if expectedVersion > 0 {
 		query += `
 		AND revision = ?`
