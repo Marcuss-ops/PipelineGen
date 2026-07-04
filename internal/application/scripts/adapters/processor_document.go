@@ -51,11 +51,37 @@ func NewDocumentProcessor(docsSvc DocumentsService, resolveFolder FolderResolver
 
 func (p *DocumentProcessor) Name() ProcessorName { return ProcessorDocument }
 
-// Policy classifies document as ProcessorRequired: a missing-registered
-// document service or a runtime failure or empty DocLink output is a
-// hard failure.
+// Policy classifies document as ProcessorBestEffort (Fase 2 canonical,
+// July 2026).
+//
+// Single canonical source of truth for the document postprocessor's
+// policy — per godlike/06 SSOT one-canonical-owner-per-fact. The
+// PostProcessorRegistry records this value at Register() time
+// (postprocessor_registry.go:319 `policy := proc.Policy(nil)`) so
+// downstream LookupPolicy / ValidateRequested / Run all consume the
+// SAME value. Previously this method returned ProcessorRequired,
+// which DRIFTED from the Fase 2 registry-default table
+// (postprocessor_registry.go:163: `document: ProcessorBestEffort`).
+// Flipping it here threads the canonical decision in ONE point.
+//
+// Fase 2 contract for document:
+//   - Missing-registered document service (docsSvc==nil at composition)
+//     becomes a warning, NOT a hard pipeline abort.
+//   - Runtime Drive failure (auth/permission/quota) becomes a warning.
+//   - Empty DocLink from CreateDoc() becomes a warning.
+//   - Pipeline continues with the rest of the postprocessors and
+//     emits a "document skipped" warning the operator sees in
+//     PipelineResult.Warnings (the canonical client-facing envelope
+//     per the existing voiceover_propagate_warnings precedent).
+//
+// The "log+continue" pattern: DocumentProcessor.Process()'s existing
+// nil-docsSvc guard now returns an ErrPostprocessFailed but the
+// registry's ProcessorBestEffort classification aborts the
+// whole-pipeline gate and converts it into a typed warning propagated
+// through PostProcessResult.Warnings + PipelineResult.Warnings.
+// Failure visibility is preserved (no silent skip).
 func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorRequired
+	return ProcessorBestEffort
 }
 
 // PR 5 (June 2026): signature now takes ProcessInput envelope.
