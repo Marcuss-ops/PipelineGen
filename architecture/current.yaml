@@ -3906,14 +3906,16 @@ wave_status:
       deadline: 2026-08-15
     # ── P0 #6 — WorkspaceRetentionPolicy ────────────────────────────────────
     - id: P0-COMPL-6-WORKSPACE-RETENTION
-      owner_capability: internal/application/jobs/worker + internal/infrastructure/jobs/local
-      status: pending
-      deadline: 2026-08-01
+      owner_capability: internal/domain/completion (FASE 2.2 canonical SSOT)
+      status: shipped
+      exit_signal: true
+      deadline: 2026-08-15
     # ── P0 #7 — Workspace path owner ───────────────────────────────────────
     - id: P0-COMPL-7-WORKSPACE-PATH-OWNER
-      owner_capability: internal/application/jobs/worker + internal/app
-      status: pending
-      deadline: 2026-08-01
+      owner_capability: internal/domain/completion (FASE 2.2 canonical SSOT)
+      status: shipped
+      exit_signal: true
+      deadline: 2026-08-15
     # ── P0 #8 — Atomic staged upload (.part + fsync + sha256 + atomic rename) ──
     - id: P0-COMPL-8-STAGED-UPLOAD-ATOMIC
       owner_capability: internal/infrastructure/remote/jobbrokerclient

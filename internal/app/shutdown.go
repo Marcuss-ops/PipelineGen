@@ -39,7 +39,6 @@ import (
 // ctx was just cancelled in step 1, so there is no parent ctx to
 // honor.
 func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
-	_ = root // placeholder: future per-bundle teardown hooks (Outbox pool stop, etc.) live here
 	return func() {
 		// 1. Cancel parent context to signal all background jobs to stop
 		if cancel != nil {
