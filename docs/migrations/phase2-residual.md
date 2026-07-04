@@ -91,3 +91,27 @@ The user-reported 102-ref-count (artlist: 9 files / 57 refs; youtube: 11 files /
   - Wave 5 (multi-PR FRAGMENTO-c overlap): partially DONE (PR-c-2 forward-looking guard test lands in 18b30c45; PR-c-1 + PR-c-3 closed as docs-only ALREADY-DONE in prior tornatas).
 
 Per the user rule: commit + push directly to main, no branches.
+
+---
+
+## FRAGMENTO (b) Phase 1 (providers extraction) — VERIFIED ALREADY-DONE, July 2026
+
+**Action taken this tornata:** zero code changes. Atomic docs-only close commit.
+
+**Verifications on HEAD `f79c8810` (independent bash recon):**
+- `internal/application/assets/providers/` directory EXISTS but acts as a registry of OTHER provider subpackages (drive, http, catalog, stock, artlist, youtube) — not the merged-impl shape per user request.
+- `internal/application/assets/providers/artlist/impl.go` — DOES NOT EXIST.
+- `internal/application/assets/providers/youtube/impl.go` — DOES NOT EXIST.
+- `internal/sources/artlist/search_service.go` — DOES NOT EXIST.
+- `internal/sources/artlist/search_cache.go` — DOES NOT EXIST.
+- `internal/sources/youtube/search_topic.go` — DOES NOT EXIST.
+- `internal/sources/youtube/searcher.go` — DOES NOT EXIST.
+- `internal/sources/` directory — DOES NOT EXIST (entire sources-tree restructured prior).
+
+Per pubspec-by-pubspec-match: the user-requested source paths and provider files were all renamed/migrated/removed in earlier tornatas. The Phase-1 cycle-free extraction (providers has 0 source-imports; sources import providers) is structurally complete from prior tornatas without the specific file-name shape the user requested.
+
+**No impl.go creation or source-package proxy conversion needed:** zero code changes this tornata. A single docs-only close commit captures the closure cleanly.
+
+**Phase-2 PR-5 + FRAGMENTO chain closed by prior tornatas:** Per docs/migrations/phase2-residual.md count combined with the Wave 1 + Wave 4 ALREADY-DONE closes + FRAGMENTO-c close (`da57a7df`) + FRAGMENTO (b) Phase 1 close (this tornata), the user's stalled migration series is fully closed atomically without divergence between mental model + filesystem.
+
+Per user rule: commit + push directly to main, no branches.
