@@ -137,11 +137,11 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 	hasUserSummary := existing.GetMetadataString("clip_summary") != ""
 	hasUserTopics := len(metadataStringSlice(existing.Metadata, "topics")) > 0
 
-	var clipMetadata *dto.ClipRichMetadata
+	var clipMetadata *dto.CanonicalClipMetadata
 	if hasUserSummary && hasUserTopics {
 		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment", zap.String("clip_id", clipID))
-		clipMetadata = &dto.ClipRichMetadata{
-			ClipSummary:      existing.GetMetadataString("clip_summary"),
+		clipMetadata = &dto.CanonicalClipMetadata{
+			Summary:          existing.GetMetadataString("clip_summary"),
 			Topics:           metadataStringSlice(existing.Metadata, "topics"),
 			Speakers:         metadataStringSlice(existing.Metadata, "speakers"),
 			MentionedPeople:  metadataStringSlice(existing.Metadata, "mentioned_people"),
@@ -192,7 +192,7 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 		}
 		if clipMetadata.EmbeddingText == "" {
 			clipMetadata.EmbeddingText = tagutil.BuildEmbeddingText(
-				clipMetadata.CleanTitle, clipMetadata.ClipSummary, clipMetadata.Hook,
+				clipMetadata.CleanTitle, clipMetadata.Summary, clipMetadata.Hook,
 				clipMetadata.Topics, clipMetadata.Speakers, clipMetadata.MentionedPeople,
 				clipMetadata.SourceTags, clipMetadata.ClipTags, clipMetadata.SearchKeywords,
 				cleanedTranscript,
@@ -206,7 +206,7 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 			embeddingText = clipMetadata.EmbeddingText
 		} else {
 			embeddingText = tagutil.BuildEmbeddingText(
-				clipMetadata.CleanTitle, clipMetadata.ClipSummary, clipMetadata.Hook,
+				clipMetadata.CleanTitle, clipMetadata.Summary, clipMetadata.Hook,
 				clipMetadata.Topics, clipMetadata.Speakers, clipMetadata.MentionedPeople,
 				clipMetadata.SourceTags, clipMetadata.ClipTags, clipMetadata.SearchKeywords,
 				cleanedTranscript,
@@ -221,7 +221,7 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 		if existing.Metadata == nil {
 			existing.Metadata = make(map[string]any)
 		}
-		existing.Metadata["clip_summary"] = clipMetadata.ClipSummary
+		existing.Metadata["clip_summary"] = clipMetadata.Summary
 		existing.Metadata["topics"] = clipMetadata.Topics
 		existing.Metadata["speakers"] = clipMetadata.Speakers
 		existing.Metadata["mentioned_people"] = clipMetadata.MentionedPeople
@@ -324,7 +324,7 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 // implementation is a follow-up tracked in CHANGELOG.md under
 // `### Deferred` — not inlined here to avoid a fake-tracking comment
 // referencing an unlanded YAML ticket (godlike/07).
-func (s *MetadataService) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.ClipRichMetadata {
+func (s *MetadataService) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.CanonicalClipMetadata {
 	_ = ctx
 	_ = title
 	_ = transcript
@@ -538,7 +538,7 @@ func isSponsorSegment(transcript string) bool {
 // formula (which is verbatim: only transcript+tags+duration
 // +title); the discards above are a deliberate spec-literal
 // interpretation.
-func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.ClipRichMetadata) float64 {
+func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.CanonicalClipMetadata) float64 {
 	_ = description
 	_ = meta
 

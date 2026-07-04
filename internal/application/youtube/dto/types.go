@@ -40,27 +40,12 @@ type Segment struct {
 	SearchVisibility string   `json:"search_visibility,omitempty"`
 }
 
-// ClipRichMetadata is the structured result from Ollama metadata generation.
-// Used by generateClipMetadata (ollama_calls.go), enrichment.go,
-// tag_utils.go, and extractor_clean.go for quality scoring.
-type ClipRichMetadata struct {
-	ClipSummary      string   `json:"clip_summary"`
-	Topics           []string `json:"topics"`
-	Speakers         []string `json:"speakers"`
-	MentionedPeople  []string `json:"mentioned_people"`
-	SourceTags       []string `json:"source_tags"`
-	ClipTags         []string `json:"clip_tags"`
-	SearchKeywords   []string `json:"search_keywords"`
-	People           []string `json:"people"`
-	Hook             string   `json:"hook"`
-	CleanTitle       string   `json:"clean_title"`
-	ShortTitle       string   `json:"short_title"`
-	CleanTranscript  string   `json:"clean_transcript"`
-	EmbeddingText    string   `json:"embedding_text"`
-	Tags             []string `json:"tags"`
-	QualityScore     float64  `json:"quality_score"`
-	SearchVisibility string   `json:"search_visibility"`
-}
+// ClipRichMetadata is a zero-copy type alias for CanonicalClipMetadata.
+// CLIPS-META-2026-07-04 (Azione 1): the canonical metadata output type
+// is now CanonicalClipMetadata. ClipRichMetadata exists only for
+// backward compatibility — all new code should use CanonicalClipMetadata.
+// The field formerly named ClipSummary is now Summary.
+type ClipRichMetadata = CanonicalClipMetadata
 
 // ── PR5 Phase 3: Extraction DTOs moved from parent package ──────────────
 

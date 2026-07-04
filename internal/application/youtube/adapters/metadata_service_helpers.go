@@ -46,7 +46,7 @@ func (s *Service) BuildFallbackSearchText(clip *asset.Asset) {
 	}
 }
 
-func (s *Service) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.ClipRichMetadata {
+func (s *Service) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.CanonicalClipMetadata {
 	if s.ollama == nil {
 		return nil
 	}
@@ -116,7 +116,7 @@ Rules:
 	}
 	jsonStr := response[start : end+1]
 
-	var result dto.ClipRichMetadata
+	var result dto.CanonicalClipMetadata
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		s.log.Warn("failed to parse ollama JSON response for clip metadata", zap.Error(err))
 		return tagutil.FallbackClipRichMetadata(title, transcript, description)

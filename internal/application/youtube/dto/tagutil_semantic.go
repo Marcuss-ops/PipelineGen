@@ -235,15 +235,15 @@ func DeriveSearchVisibility(qualityScore float64) string {
 	}
 }
 
-// FallbackClipRichMetadata builds a ClipRichMetadata from text heuristics.
-func FallbackClipRichMetadata(title, transcript, description string) *ClipRichMetadata {
+// FallbackClipRichMetadata builds a CanonicalClipMetadata from text heuristics.
+func FallbackClipRichMetadata(title, transcript, description string) *CanonicalClipMetadata {
 	summary := DeriveFallbackClipSummary(transcript, description)
 	cleanTitle := DeriveFallbackClipTitle(title, transcript, description)
 	shortTitle := DeriveFallbackShortTitle(cleanTitle)
 	topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, tags, hook := DeriveFallbackSemanticFields(title, transcript, description, cleanTitle)
 	embeddingText := BuildEmbeddingText(cleanTitle, summary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, transcript)
-	return &ClipRichMetadata{
-		ClipSummary:     summary,
+	return &CanonicalClipMetadata{
+		Summary:         summary,
 		Topics:          topics,
 		Speakers:        speakers,
 		MentionedPeople: mentionedPeople,
@@ -259,12 +259,13 @@ func FallbackClipRichMetadata(title, transcript, description string) *ClipRichMe
 	}
 }
 
-// NormalizeClipRichMetadata normalizes and fills gaps in a clipRichMetadata.
-func NormalizeClipRichMetadata(meta *ClipRichMetadata, title, transcript, description string) *ClipRichMetadata {
+// NormalizeClipRichMetadata normalizes and fills gaps in a ClipRichMetadata
+// (which is a CanonicalClipMetadata alias). Returns the canonical type.
+func NormalizeClipRichMetadata(meta *CanonicalClipMetadata, title, transcript, description string) *CanonicalClipMetadata {
 	if meta == nil {
 		return FallbackClipRichMetadata(title, transcript, description)
 	}
-	meta.ClipSummary = strings.TrimSpace(meta.ClipSummary)
+	meta.Summary = strings.TrimSpace(meta.Summary)
 	meta.CleanTitle = strings.TrimSpace(meta.CleanTitle)
 	meta.ShortTitle = strings.TrimSpace(meta.ShortTitle)
 	meta.Hook = strings.TrimSpace(meta.Hook)
@@ -289,8 +290,8 @@ func NormalizeClipRichMetadata(meta *ClipRichMetadata, title, transcript, descri
 	if meta.ShortTitle == "" {
 		meta.ShortTitle = DeriveFallbackShortTitle(meta.CleanTitle)
 	}
-	if meta.ClipSummary == "" {
-		meta.ClipSummary = DeriveFallbackClipSummary(transcript, description)
+	if meta.Summary == "" {
+		meta.Summary = DeriveFallbackClipSummary(transcript, description)
 	}
 	fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook := DeriveFallbackSemanticFields(title, transcript, description, meta.CleanTitle)
 	if len(meta.Topics) == 0 {
@@ -318,7 +319,7 @@ func NormalizeClipRichMetadata(meta *ClipRichMetadata, title, transcript, descri
 		meta.Tags = MergeTagLists(meta.SourceTags, meta.ClipTags, meta.SearchKeywords, meta.Topics, meta.Speakers, meta.MentionedPeople)
 	}
 	if meta.EmbeddingText == "" {
-		meta.EmbeddingText = BuildEmbeddingText(meta.CleanTitle, meta.ClipSummary, meta.Hook, meta.Topics, meta.Speakers, meta.MentionedPeople, meta.SourceTags, meta.ClipTags, meta.SearchKeywords, transcript)
+		meta.EmbeddingText = BuildEmbeddingText(meta.CleanTitle, meta.Summary, meta.Hook, meta.Topics, meta.Speakers, meta.MentionedPeople, meta.SourceTags, meta.ClipTags, meta.SearchKeywords, transcript)
 	}
 	if meta.Hook == "" {
 		meta.Hook = fallbackHook
@@ -327,7 +328,7 @@ func NormalizeClipRichMetadata(meta *ClipRichMetadata, title, transcript, descri
 }
 
 // MergeYouTubeClipTags combines existing tags, YouTube tags, and clip metadata fields.
-func MergeYouTubeClipTags(existingTags, ytTags []string, clipMetadata *ClipRichMetadata) []string {
+func MergeYouTubeClipTags(existingTags, ytTags []string, clipMetadata *CanonicalClipMetadata) []string {
 	combined := make([]string, 0, len(existingTags)+len(ytTags))
 	combined = append(combined, existingTags...)
 	combined = append(combined, ytTags...)
