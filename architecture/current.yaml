@@ -155,9 +155,11 @@
       remaining_pending: PR-ARTLIST-REPOS
       shipped_already: PR-ARTLIST-LIVE-WIRE, PR-ARTLIST-SEARCHERS,
         PR-ARTLIST-SYNCSERVICE, PR-ARTLIST-RECOMMEND-ADAPTER
-    future_test_wave: PR-ARTLIST-STAGER-TEST -- CLOSED 2026-07-04: false-positive. ArtlistStager already exists (stager_adapter.go).
+    future_test_wave: |
+      PR-ARTLIST-STAGER-TEST -- CLOSED 2026-07-04: false-positive. ArtlistStager already exists (stager_adapter.go).
       stock_stager_wiring_test.go to the Artlist side)
-    future_owner_cleanup: PR-ARTLIST-STAGER-OWNER-CLEANUP -- CLOSED 2026-07-04: owner_capability cleaned (obsolete source_stager path removed).
+    future_owner_cleanup: |
+      PR-ARTLIST-STAGER-OWNER-CLEANUP -- CLOSED 2026-07-04: owner_capability cleaned (obsolete source_stager path removed).
       plus notation in owner_capability field)
     user_framing_note: |
       The user-supplied framing was "6 carry-forward items (5
@@ -4215,7 +4217,7 @@ wave_status:
       owner_capability: internal/app
       status: shipped
       ship_date: 2026-07-04
-      ship_sha: e546a89a48da0daae0ad5e590b4d4861569c9bf3
+      ship_sha: f241568c
       deadline: 2026-08-15
       description: |
         Split internal/app/wire_assets.go (was 636 LoC) into 5 single-purpose
@@ -4233,10 +4235,10 @@ wave_status:
         root.Repos.CatalogRepo arg.
       linked_issues:
         - id: PR-WIRE-ASSETS-CAPABILITY-SPLIT-POST-SPLIT-CLEANUP
-          owner_capability: internal/app
-          status: shipped
+          owner_capability: internal/app + cmd/archcheck + internal/application/assets/providers/artlist
+          status: shipped_through
           ship_date: 2026-07-04
-          ship_sha: e546a89a48da0daae0ad5e590b4d4861569c9bf3
+          ship_sha: f241568c
           deadline: 2026-07-25
           description: |
             Post-PR-WIRE-ASSETS-CAPABILITY-SPLIT cleanup wave landed on
