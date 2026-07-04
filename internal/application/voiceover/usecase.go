@@ -217,48 +217,18 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 	// Step 2: resolve destination once. Cross-cutting failure path —
 	// bubble up so the caller short-circuits (no per-item fan-out).
 	//
-	// PR 6 P0.2 (June 2026) destination-fallback chain:
-	//   1. cmd.Destination supplied → resolve via DestinationResolver
-	//      (the canonical explicit/Kind-based routing per PR-VO-C1).
-	//   2. cmd.Destination nil AND DefaultFolderResolver wired AND
-	//      returns ("<folderID>", true) → synthesise ResolvedDestination
-	//      with the configured folder (mirrors legacy
-	//      *Service.processLanguage fallback at process.go:75-79) and
-	//      log "destination fallback to voiceover default folder" so
-	//      operators see the fallback in audit logs.
-	//   3. cmd.Destination nil AND DefaultFolderResolver nil OR
-	//      returns ("", false) → leave dest = nil; processOneLanguage
-	//      short-circuits with `missing_folder_id` (pre-P0.2 behavior
-	//      preserved per godlike/07 — no fake availability for
-	//      deployments without voiceover_root_folder configured).
-	var dest *ResolvedDestination
-	switch {
-	case cmd.Destination != nil:
-		d, err := u.deps.DestinationResolver.Resolve(ctx, cmd.Destination)
-		if err != nil {
-			result.OK = false
-			result.Error = fmt.Sprintf("destination resolve: %v", err)
-			result.CompletedAt = time.Now().UTC()
-			return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: resolve destination: %w", err)
-		}
-		dest = d
-	case u.deps.DefaultFolderResolver != nil:
-		// Top-down switch semantics: at this point cmd.Destination is
-		// verifiably nil (case-1 was false). The redundant
-		// `cmd.Destination == nil` half is dropped per idiomatic
-		// Go-switch practice.
-		driveFolderID, localOutputDir, ok := u.deps.DefaultFolderResolver.Resolve(ctx)
-		if ok && driveFolderID != "" {
-			dest = &ResolvedDestination{
-				FolderID:   driveFolderID,
-				FolderPath: localOutputDir,
-			}
-			if u.deps.Logger != nil {
-				u.deps.Logger.Info("destination fallback to voiceover default folder",
-					zap.String("folder_id", driveFolderID),
-					zap.String("output_dir", localOutputDir))
-			}
-		}
+	// PR-VO-DRY-PAIR (July 2026): delegate to the shared
+	// ResolveDestinationWithFallback free function (destination_helpers.go).
+	// Pre-DRY this was a ~25-line switch block duplicated in
+	// process_voiceover_item.go::Execute. Post-DRY both callers
+	// route through the same single function.
+	dest, err := ResolveDestinationWithFallback(ctx, cmd.Destination,
+		u.deps.DestinationResolver, u.deps.DefaultFolderResolver, u.deps.Logger)
+	if err != nil {
+		result.OK = false
+		result.Error = fmt.Sprintf("destination resolve: %v", err)
+		result.CompletedAt = time.Now().UTC()
+		return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: resolve destination: %w", err)
 	}
 
 	// Step 2b: textHash is computed lazily by Plan() (one SHA256 per

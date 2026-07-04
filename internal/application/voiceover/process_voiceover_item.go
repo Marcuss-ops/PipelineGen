@@ -187,40 +187,14 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		return nil, fmt.Errorf("ProcessVoiceoverItemUseCase.Execute: validate (lang=%s, request_id=%s): %w", string(item.Language), item.RequestID, err)
 	}
 
-	// Stage 0b: destination resolution. When the caller supplies an
-	// explicit destination, resolve it through the canonical resolver.
-	// When Destination is nil (e.g. API caller omitted the field),
-	// fall back to the configured default Voiceover folder via
-	// DefaultFolderResolver (P0.2 nil-destination fallback, July 2026).
-	// If the resolver is not wired or returns ok=false, surface a
-	// permanent missing-destination error.
-	destReq := item.Destination
-	if destReq == nil {
-		if u.deps.DefaultFolderResolver != nil {
-			folderID, _, ok := u.deps.DefaultFolderResolver.Resolve(ctx)
-			if ok && folderID != "" {
-				// Synthesise a minimal DestinationRequest from the
-				// resolved default folder so the downstream resolver
-				// and the per-language pipeline see a uniform shape.
-				destReq = &DestinationRequest{
-					FolderID: folderID,
-				}
-			} else {
-				return &VoiceoverItemResult{
-					Language: item.Language,
-					Status:   StatusFailed,
-					Error:    "missing_destination: no default Voiceover folder configured (resolve returned ok=false)",
-				}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_destination: no default Voiceover folder configured"))
-			}
-		} else {
-			return &VoiceoverItemResult{
-				Language: item.Language,
-				Status:   StatusFailed,
-				Error:    "missing_destination: GenerateVoiceoverItemCommand.Destination is nil and DefaultFolderResolver is not wired",
-			}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_destination: DefaultFolderResolver not wired"))
-		}
-	}
-	dest, err := u.deps.DestinationResolver.Resolve(ctx, destReq)
+	// Stage 0b: destination resolution with DefaultFolderResolver
+	// fallback. Delegates to the shared ResolveDestinationWithFallback
+	// free function (destination_helpers.go, PR-VO-DRY-PAIR July 2026).
+	// Pre-DRY this was a ~30-line if-else cascade duplicated in
+	// usecase.go::Execute. Post-DRY both callers route through the
+	// same single function.
+	dest, err := ResolveDestinationWithFallback(ctx, item.Destination,
+		u.deps.DestinationResolver, u.deps.DefaultFolderResolver, u.deps.Logger)
 	if err != nil {
 		return &VoiceoverItemResult{
 			Language: item.Language,
