@@ -1,14 +1,30 @@
 // Package dto holds pure-data transfer shapes that cross the
 // youtube-package boundary.
 //
-// CLIPS-META-2026-07-04 (Azione 1): CanonicalClipMetadata is the SINGLE
-// canonical clip metadata output type. ClipRichMetadata and ClipMetadata
-// are zero-copy type aliases (= CanonicalClipMetadata) for backward
-// compatibility. ClipMetadataInput is the canonical builder input type.
-// ClipMetadataFile is a separate on-disk JSON serialization DTO.
+// ── Surviving metadata types (CLIPS-META A6+A7, July 2026) ──────────
 //
-// Non-metadata types: ExtractRequest/Response, DownloaderMetadata,
-// Segment, TopicSearchRequest, ClipAsset (writer-bound entity).
+// CanonicalClipMetadata — single canonical output type (23 fields).
+//   Absorbed ClipRichMetadata (tags + semantic embedding fields)
+//   and ClipMetadata (was a separate type pre-Azione 1).
+//
+// ClipMetadataInput — single canonical builder input type (11 fields).
+//   Consumed by ClipMetadataBuilder.Build() and MetadataService
+//   methods (GenerateClipMetadata, EnrichClip, FallbackMetadata).
+//   BuildClipMetadataInput (usecase/segments_service.go) was removed
+//   as dead code — zero production callers, different purpose
+//   (lifecycle.FinalizeInput construction, not metadata enrichment).
+//
+// ClipMetadataFile — on-disk JSON serialization DTO for per-clip
+//   metadata.json files written by WriteClipMetadataFile.
+//
+// Quality score constants: QualityScoreTranscriptWeight (0.40),
+//   QualityScoreDurationWeight (0.40), QualityScoreSemanticWeight
+//   (0.20), QualityScoreSponsorPenalty (0.20).
+//
+// ── Non-metadata types ─────────────────────────────────────────────
+//
+// ExtractRequest/Response, DownloaderMetadata, Segment,
+// TopicSearchRequest, ClipAsset (writer-bound entity).
 //
 // PR-G (Wave 22, June 2026, ADR-0002 §D4): BREAKING RENAME from
 // youtube/types/ → youtube/dto/. The 26 internal importers using the
