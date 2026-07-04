@@ -56,16 +56,45 @@ func TestCacheAge_Miss(t *testing.T) {
 	}
 }
 
+// TestCacheIsFresh_WithinTTL pins the canonical isFresh semantic:
+// entries within the TTL are fresh; entries past the TTL are stale.
+//
+// Implementation note (godlike/07 honest-limitation): the test
+// manually sets CachedAt to a fixed past time rather than relying on
+// the time.Since resolution of the dev platform. On Windows the
+// system clock has coarse resolution (~15ms) and time.Now() called
+// back-to-back can return identical timestamps, so a freshly-set
+// entry's age is unreliable for testing sub-microsecond TTL
+// boundaries. The original version of this test used a 1ns TTL on
+// a freshly-set entry (relying on the inter-call time to be at least
+// 1ns); that was flaky on Windows because the inter-call time was
+// frequently 0ns (rounded to the clock tick). The fixed version uses
+// a 2s-old entry with 1h/1s TTLs — the same semantic boundary
+// (within-TTL=fresh, past-TTL=stale) on a timescale that is robust
+// to the dev platform's clock resolution.
+//
+// Mirrors the manual-CachedAt pattern already used in
+// TestCacheIsGettingStale_NearExpiry (this file) so future readers
+// see one consistent way to test time-dependent cache behavior.
 func TestCacheIsFresh_WithinTTL(t *testing.T) {
 	c := newTestCache()
-	c.set("term", []Candidate{{ID: "3"}})
 
+	// Manually insert an entry with a known CachedAt.
+	c.mu.Lock()
+	c.items["term"] = liveSearchCacheEntry{
+		Clips:    []Candidate{{ID: "3"}},
+		CachedAt: time.Now().Add(-2 * time.Second), // deterministically 2s old
+	}
+	c.mu.Unlock()
+
+	// 1h TTL: entry is well within TTL → fresh
 	if !c.isFresh("term", 1*time.Hour) {
-		t.Fatal("expected entry to be fresh within 1h TTL")
+		t.Fatal("expected 2s-old entry to be fresh within 1h TTL")
 	}
 
-	if c.isFresh("term", 1*time.Nanosecond) {
-		t.Fatal("expected entry to NOT be fresh with 1ns TTL")
+	// 1s TTL: entry is 2s old > 1s TTL → stale
+	if c.isFresh("term", 1*time.Second) {
+		t.Fatal("expected 2s-old entry to NOT be fresh with 1s TTL")
 	}
 }
 
