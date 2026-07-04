@@ -44,7 +44,6 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // effectivePlaylistEnd picks the playlist-end limit for the caller's
@@ -434,11 +433,17 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info VideoInfo, chann
 	}
 
 	// ── Per-video Prometheus observation ─────────────────────────────
+	// FASE 3.7 Commit 2 (2026-07-04): emit via m.metrics (the typed
+	// port in ports_metrics.go) instead of the legacy direct
+	// `metrics.ChannelMonitorVideosChecked` call into
+	// `internal/infrastructure/observability`. Composition wires an
+	// *observability.ObservabilityMetricsRecorder adapter; tests +
+	// partial-deploy paths get a NoopMetricsRecorder default.
 	channelHandle := extractChannelHandle(channel.ChannelURL)
 	if channelHandle == "" {
 		channelHandle = "unknown"
 	}
-	metrics.ChannelMonitorVideosChecked.WithLabelValues(channelHandle).Inc()
+	m.metrics.IncVideosChecked(channelHandle)
 
 	// ── Leader-election INSERT + broker-side dispatch (Commit D) ────────
 	// recordDiscoveryAndClassify orchestrates:

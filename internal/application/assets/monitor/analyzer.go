@@ -36,7 +36,6 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // analyzeVideo runs the AI gate for a single video using the one-shot
@@ -99,13 +98,20 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, chann
 	// ── Step 3: Check segments — soft-skip if empty ───────────────────
 	segments := analysis.Segments
 
-	// Metrics observations
+	// Metrics observations — FASE 3.7 Commit 2 (2026-07-04):
+	// emit via the typed m.metrics port (declared in
+	// internal/application/assets/monitor/ports_metrics.go) instead
+	// of the legacy `internal/infrastructure/observability`
+	// package-level vars. The composition root wires an
+	// *observability.ObservabilityMetricsRecorder adapter; tests
+	// + partial-deploy paths get a NoopMetricsRecorder default so
+	// these calls are always safe.
 	channelHandle := extractChannelHandle(channel.ChannelURL)
 	metricsLabel := channelHandle
 	if metricsLabel == "" {
 		metricsLabel = "unknown"
 	}
-	metrics.ChannelMonitorSegmentsPerVideo.WithLabelValues(metricsLabel).Observe(float64(len(segments)))
+	m.metrics.ObserveSegmentsPerVideo(metricsLabel, len(segments))
 
 	if len(segments) == 0 {
 		m.log.Info("no interesting segments found, skipping video",
@@ -114,8 +120,8 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, chann
 		return Analysis{}, nil
 	}
 
-	metrics.ChannelMonitorVideosWithSegments.WithLabelValues(metricsLabel).Inc()
-	metrics.ChannelMonitorSegmentsFound.WithLabelValues(metricsLabel).Add(float64(len(segments)))
+	m.metrics.IncVideosWithSegments(metricsLabel)
+	m.metrics.AddSegmentsFound(metricsLabel, len(segments))
 
 	// ── Step 4: Prefix category to segment names ──────────────────────
 	// So the extraction pipeline downstream renders "Comedy: Funny bit

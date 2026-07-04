@@ -21,15 +21,22 @@ const DefaultPlaylistEnd = 50
 
 // CompositionDeps is the ctor payload for NewChannelMonitor.
 type CompositionDeps struct {
-	Cfg         *config.Config
-	ChannelsSvc *channels.Service
-	Log         *zap.Logger
-	Ytdlp       MonitorDownloaderPort
-	Transcript  TranscriptProvider
-	Analyzer    VideoAnalyzer
-	Enqueuer    JobEnqueuer
-	Discoveries YoutubeDiscoveriesPort
-	Policy      *MonitorRuntimePolicy
+	Cfg            *config.Config
+	ChannelsSvc    *channels.Service
+	Log            *zap.Logger
+	Ytdlp          MonitorDownloaderPort
+	Transcript     TranscriptProvider
+	Analyzer       VideoAnalyzer
+	Enqueuer       JobEnqueuer
+	Discoveries    YoutubeDiscoveriesPort
+	Policy         *MonitorRuntimePolicy
+	// MetricsRecorder (FASE 3.7 Commit 2, 2026-07-04): optional
+	// Prometheus-shaped counter/histogram recorder. nil-safe —
+	// the ctor installs a NoopMetricsRecorder default so tests
+	// + partial-deploy paths don't need to wire it. Production
+	// composition (lifecycle.go) wires the concrete
+	// *observability.ObservabilityMetricsRecorder.
+	MetricsRecorder MetricsRecorder
 }
 
 // ChannelCheckResult is the typed payload returned by ChannelMonitor.checkChannel.
