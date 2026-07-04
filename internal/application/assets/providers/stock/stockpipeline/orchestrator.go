@@ -1,19 +1,18 @@
-// Package stock — orchestrator.go (Stock Cutover Commit 1, July 2026).
+// Package stockpipeline — orchestrator.go (Stock Cutover, July 2026).
 //
-// Orchestrator is the new code-driven pipeline entrypoint that
-// replaces the legacy Service.Run path. Uses the deterministic
-// ClipPlanner + ExecutionStepStore + SourceStager ladder, emitting
-// a typed domain/job.ArtifactManifest so the worker can route it
-// through the JobFinalizer.
+// STATO ATTUALE: Orchestrator è il code-driven pipeline entrypoint
+// canonico. Usa ClipPlanner + SourceStager + VideoCutter + StockRenderer
+// + ArtifactPreparation + JobFinalizer per produrre chunk reali, upload
+// Drive, e single-TX spine write.
 //
-// Commit 1 DUAL WRITE: the Orchestrator type and Service.Run coexist;
-// Commit 2 flips media.stock traffic to the orchestrator.
+// PROSSIMO STEP: buildStockManifest emette 5 entry Required:false;
+// il chunk-rendering ladder (già wired) flippa Required:true quando
+// LocalPath è hydrated. La projection Qdrant è best-effort con
+// fallback INDEX_PENDING.
 //
-// This Commit 1 implementation is intentionally minimal — it
-// exercises the planner + steps ladder on a demo source but does
-// NOT yet produce real chunks. Commit 2 wires the cutter+renderer
-// legacy -> ArtifactPreparationService pipeline so the orchestrator
-// emits full chunk entries.
+// DEPRECATO: Service.Run (legacy path) coesiste per back-compat
+// ServiceRunner interface; il traffico produzione va via
+// Service.HandleJob → runOrchestratorResilient.
 package stockpipeline
 
 import (
@@ -58,8 +57,8 @@ type OrchestratorConfig struct {
 	// semantic). Empty value surfaces ErrStockFnRequired.
 	PolicyVersion string
 	// ChunkDurationSec is the per-chunk video budget. The output
-	// ArtifactManifest emits one entry per chunk; today only the
-	// planner ladder runs, no chunk entries are produced.
+	// ArtifactManifest emits one entry per chunk; the cutter + renderer
+	// ladder (Phase 1, July 2026) produces real .mp4 files.
 	ChunkDurationSec int
 	// ClipDurationSec is the per-clip video budget (passed through
 	// to the planner for budget-vs-clipDuration validation).
@@ -87,9 +86,9 @@ const DefaultMaxConcurrentJobs = 3
 // DefaultOrchestratorJobId is the Orchestrator's fallback when
 // OrchestratorConfig.JobId is empty — used by Service.Run (the
 // legacy signature path that has no broker JobID in scope) and by
-// tests/CLI callers. Stock Cutover Commit 2 wires the real broker
-// JobID through Service.runOrchestrator → NewOrchestrator so the
-// placeholder is NOT used in production HandleJob traffic.
+// tests/CLI callers. Production HandleJob traffic passes the real
+// broker JobID via runOrchestratorResilient so the placeholder is
+// NOT used in production.
 const DefaultOrchestratorJobId = "stock_orchestrator_v1"
 
 // StockArtifactId* are the canonical stable IDs of the 5 C12 fixed
@@ -220,12 +219,13 @@ func buildStockManifest(workflowID, jobID string) *job.ArtifactManifest {
 // the composition root) is expected to validate-or-default.
 var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/steps/stager must be non-nil")
 
-// Orchestrator is the new pipeline entrypoint. Dual-writes with
-// legacy Service.Run during Commit 1; the legacy path is retired
-// in Commit 5.
+// Orchestrator is the canonical pipeline entrypoint (STATO ATTUALE).
+// Service.Run coexists for ServiceRunner interface back-compat
+// (DEPRECATO); production traffic routes via runOrchestratorResilient.
 //
-// Stock Cutover Commit 4-expanded (July 2026): the orchestrator gained
-// three resilience ports (builder / writer / projection). The ports
+// Resilience ports (builder / writer / projection) are wired and
+// exercised by RunResilient. The fluent setters WithAssetPreparation
+// and WithJobFinalizer thread the finalizer-side ports. The ports
 // are wired to canonical default implementations
 // (stockManifestBuilder + noopWriter + noopProjection) by
 // NewOrchestrator; production wiring can override them via
@@ -237,14 +237,10 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/steps/stager must
 type Orchestrator struct {
 	cfg      OrchestratorConfig
 	planner  ClipPlanner
-	// legacySteps is the pre-§12-5 in-process step store; kept as a
-	// constructor-injected field for backwards compatibility with the
-	// Service.runOrchestrator signature (which continues to pass a
-	// *InMemoryStepStore). The canonical §12-3 step checkpointing in
-	// RunResilient uses stepStore (below); legacySteps is no longer
-	// referenced from any production path. Forward-pointer: §12-5.x
-	// can retire this field once composition-root wiring drops the
-	// local InMemoryStepStore calls entirely.
+	// DEPRECATO: legacySteps is the pre-§12-5 in-process step store.
+	// PROSSIMO STEP: retire this field once Service.runOrchestrator
+	// callers migrate to runOrchestratorResilient (which uses stepStore).
+	// STATO ATTUALE: not referenced from any production path.
 	legacySteps ExecutionStepStore
 	stager      assets.SourceStager
 	cutter      VideoCutter
@@ -391,13 +387,13 @@ func NewOrchestratorWithResilience(
 	return o
 }
 
-// Run executes the orchestrator pipeline and returns the typed
-// *job.ArtifactManifest component of the RunSummary.
-//
-// Commit 1–2 (PR-D): Run is a thin wrapper around RunResilient that
-// drops the FinalStatus + Project surface. This keeps the existing
+// Run is a thin wrapper around RunResilient that drops the
+// FinalStatus + Project surface. This keeps the existing
 // Service.runOrchestrator callers chain-stable (Manifest-shaped
 // return) while the resilience flow lives behind RunResilient.
+//
+// PROSSIMO STEP: migrate Service.runOrchestrator callers to
+// runOrchestratorResilient, then collapse Run into RunResilient.
 //
 // For the canonical 3-test failure-mode contract (outbox rollback,
 // manifest-completeness gate, Qdrant-offline → INDEX_PENDING) see
@@ -410,39 +406,32 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 	return summary.Manifest, nil
 }
 
-// RunResilient is the canonical orchestrator entry point for the
-// Stock Cutover §12-7 (July 2026) resilience flow. It threads the
-// typed *job.ArtifactManifest + the per-run FinalStatus + the
-// per-run FinalizationResult through a single RunSummary envelope
-// so the broker JobStatusResponse can render all three.
+// STATO ATTUALE: RunResilient is the canonical orchestrator entry point
+// for production traffic. It threads the typed *job.ArtifactManifest +
+// per-run FinalStatus + per-run FinalizationResult through a single
+// RunSummary envelope so the broker JobStatusResponse can render all three.
 //
-// §12-7 step ladder: the 6 typed Steps declared in
-// orchestrator_steps.go iterate dispatchSteps (a typed []Step
-// slice) in canonical pipeline order:
+// The 6 typed Steps declared in orchestrator_steps.go iterate in
+// canonical pipeline order:
 //
-//  1. stock.plan           — deterministic ClipPlanner.Plan round-trip.
-//  2. stock.stage_sources  — SourceStager.Prepare (future Commit 6 wires real Stage).
-//  3. stock.extract_clips  — atomic TransactionalAssetWriter
-//                            WriteAndEnqueue per ClipPlan
-//                            (test (a) verifies writer error ⇒ ErrAtomicDispatchFailed).
-//  4. stock.compose_chunks — StockRenderer.Render (future Commit 7 wires real Render).
-//  5. stock.publish        — §12-7: ArtifactPreparation.Prepare per
-//                            chunk + per metadata.json. Uploads
-//                            Drive (or remote equivalent); the
-//                            State.Published []ChunkState carries
-//                            the per-chunk RemoteFileID + Location.
-//                            nil ArtifactPreparation ⇒ test-fixture
-//                            path (State.Published empty, spine
-//                            write skipped).
-//  6. stock.finalize       — §12-7: ManifestBuilder.Build +
-//                            Validate + ProjectionPort.Project (best-
-//                            effort Qdrant → flips FinalStatus to
-//                            StatusIndexPending) + BuildFinalizationRequest
-//                            + JobFinalizer.CompleteWithArtifacts
-//                            SINGLE-TX SPINE WRITE (asset + version
-//                            + location + outbox + SUCCEEDED).
-//                            nil JobFinalizer ⇒ test-fixture path
-//                            (spine write skipped).
+//  1. stock.plan           — ClipPlanner.Plan round-trip.
+//  2. stock.stage_sources  — SourceStager.StageSource per unique URL.
+//  3. stock.extract_clips  — VideoCutter.Cut per source group
+//                            (test (a): writer error ⇒ ErrAtomicDispatchFailed).
+//  4. stock.compose_chunks — StockRenderer.Render per cut path.
+//  5. stock.publish        — ArtifactPreparation.Prepare per chunk
+//                            + per metadata.json. Uploads Drive;
+//                            nil ArtifactPreparation ⇒ test-fixture skip.
+//  6. stock.finalize       — ManifestBuilder.Build + Validate +
+//                            ProjectionPort.Project (best-effort Qdrant
+//                            → flips FinalStatus to StatusIndexPending) +
+//                            BuildFinalizationRequest +
+//                            JobFinalizer.CompleteWithArtifacts
+//                            (single-TX spine write).
+//                            nil JobFinalizer ⇒ test-fixture skip.
+//
+// PROSSIMO STEP: SQLite-backed step store per §12-3 Design A for
+// crash-resume across process restarts. Currently in-memory only.
 //
 // Per-step checkpointing: every step calls
 //

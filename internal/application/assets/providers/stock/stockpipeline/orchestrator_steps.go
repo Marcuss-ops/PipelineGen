@@ -1,33 +1,23 @@
-// Package stockpipeline — orchestrator_steps.go (Stock Cutover
-// §12-7, July 2026).
+// Package stockpipeline — orchestrator_steps.go (Stock Cutover,
+// July 2026).
 //
-// §12-7 lifts AssetPreparation (Drive upload) into StockPublishStep
-// and the Single-TX spine write into StockFinalizeStep. The
-// orchestrator owns the full chunk-rendering ladder end-to-end:
-// chunk → ArtifactPreparation → metadata-json → ArtifactPreparation
-// → manifest → validate → project → BuildFinalizationRequest →
-// JobFinalizer.CompleteWithArtifacts → SUCCEEDED. Service.HandleJob
-// becomes a thin wrapper that just calls RunResilient + return-map.
+// STATO ATTUALE: StockPublishStep guida ArtifactPreparation.Prepare
+// per-chunk + per-metadata.json; StockFinalizeStep guida la single-TX
+// spine write via JobFinalizer.CompleteWithArtifacts. I 6 step canonici
+// sono tutti wired con implementazioni reali (cutter, renderer, stager).
 //
-// godlike/06 SSOT: orchestrator_steps.go is the single owner of
-// (a) what the stock pipeline's six canonical steps are and
-// (b) what each step's Run contract looks like. Orchestrator.go's
-// dispatchSteps field is initialised to DefaultStockSteps(); every
-// orchestration-logic change lands here.
+// PROSSIMO STEP: rimuovere il guard "zero chunks prepared → skip
+// metadata" in StockPublishStep quando compose_chunks è sempre wired
+// in produzione (mai nil renderer).
 //
-// godlike/06 (FileID = LOCATION, NOT identity): each chunk's
-// logical ArtifactID is stable per (run_fingerprint, index) — so a
-// retry with the same logical run produces the same ArtifactID.
-// The Publisher returns a Location.FileID which is a separate
-// per-publish identifier (changes on Drive-upload retry). The
-// JobFinalizer stores Drive FileID in the location column; the
-// ArtifactID stays in the identity column — `stock:<fp>:chunk:<i>`
+// godlike/06 SSOT: orchestrator_steps.go è il single owner di (a) quali
+// sono i 6 step canonici e (b) il contratto Run di ogni step.
 //
-// godlike/07 (no-fake-availability): the run_fingerprint is
-// SHA256(PolicyVersion | FolderID | Subfolder | FolderName |
-// joined DirectURLs | joined SearchQueries | numeric(plan knobs)
-// | boolean(plan flags)). Same logical input ⇒ same fingerprint
-// ⇒ same ArtifactID ⇒ single AssetVersions row even on retry.
+// godlike/06 (FileID = LOCATION, NOT identity): ogni chunk ha un
+// ArtifactID stabile per (run_fingerprint, index). Il Publisher
+// restituisce un Location.FileID separato (cambia a ogni retry Drive).
+// Il JobFinalizer salva Drive FileID nella colonna location;
+// l'ArtifactID resta nella colonna identity.
 package stockpipeline
 
 import (
@@ -590,15 +580,12 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// Always invoked AFTER chunks so the metadata's Chunks[] list
 	// embeds the per-chunk ArtifactIDs + DriveFileIDs.
 	//
-	// P6 (July 2026): compose_chunks now produces real rendered files.
-	// The pre-Commit-7 chunk-skip guard (ErrStockChunkLocalMissing) is
-	// RETIRED — missing chunks surface as hard failures.
+	// STATO ATTUALE: compose_chunks produce file reali. L'ErrStockChunkLocalMissing
+	// è RIMOSSO — chunk mancanti sono hard failure.
 	//
-	// Pre-Commit-7 guard: if zero chunks were prepared (all skipped
-	// because compose_chunks is a stub producing logical IDs), skip
-	// metadata publication too — there are no chunk entries to embed.
-	// This preserves the PublisherUnreached contract (recordingPublisher
-	// must record 0 publish calls).
+	// PROSSIMO STEP: rimuovere questo guard quando compose_chunks
+	// è sempre wired in produzione. Oggi il renderer può essere nil
+	// in test-fixture mode, quindi il guard è ancora necessario.
 	if len(chunks) == 0 {
 		if runner.Log() != nil {
 			runner.Log().Debug("orchestrator: stock.publish: zero chunks prepared — skipping metadata publication (pre-Commit-7 stub)")
