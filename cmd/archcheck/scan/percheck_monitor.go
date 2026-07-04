@@ -158,15 +158,24 @@ func scanMonitorInfraFile(path, relPath string, r *report.Report) {
 	}
 
 	commentCount := 0
-	allowlistCount := 0
+	// Count ALL marker sites up-front (the marker line itself
+	// does NOT contain the canonical infraImportPath substring —
+	// it only contains the "monitor-infra-import" suffix, so the
+	// loop below that filters by Contains(line, infraImportPath)
+	// would never increment allowlistCount for the marker line.
+	// Per godlike/07 no-fake-availability residue accounting,
+	// every marker site is logged as a warning so future drift
+	// is visible in CI output every run.
+	allowlistCount := len(markerLines)
 	for i, line := range lines {
 		if !strings.Contains(line, infraImportPath) {
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
-		// Bucket 1: the marker line itself.
+		// Bucket 1: the marker line itself (defensive: skip
+		// without re-counting, since allowlistCount is set
+		// up-front from markerLines).
 		if isMarkerLine(line) {
-			allowlistCount++
 			continue
 		}
 		// Bucket 2: full-line comment (descriptive
@@ -268,10 +277,27 @@ func isMarkerLine(line string) bool {
 // should NOT allow the import (the marker was likely
 // intended for a different import block).
 func isMarkerAllowedForImportLine(markerLines []int, lines []string, currentLine int) bool {
-	// Case 1: single-line import. Marker is on currentLine-1.
-	for _, m := range markerLines {
-		if m == currentLine-1 {
-			return true
+	// Defensive bounds check: currentLine is 1-indexed; lines
+	// is 0-indexed. currentLine-1 is the slice position of the
+	// offending line; currentLine-2 is the slice position of
+	// the line above it.
+	if currentLine < 1 || currentLine > len(lines) {
+		return false
+	}
+	// Case 1: single-line import. The offending line MUST be
+	// an import statement (starts with "import " after trim);
+	// otherwise a non-import line that contains the infra path
+	// as a string literal (e.g. `var Y = ".../infrastructure"`)
+	// would be incorrectly allowed by a marker on the line
+	// above. The defensive check preserves the canonical
+	// godlike/06 contract: markers allow infra IMPORTS, not
+	// arbitrary string literals.
+	currentLineContent := strings.TrimSpace(lines[currentLine-1])
+	if strings.HasPrefix(currentLineContent, "import ") {
+		for _, m := range markerLines {
+			if m == currentLine-1 {
+				return true
+			}
 		}
 	}
 	// Case 2: multi-line import block. Scan upward from
