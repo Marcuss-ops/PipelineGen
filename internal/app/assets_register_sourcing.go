@@ -50,10 +50,20 @@ func newAssetRegisterService(
 		// composition site, and matches what the thinker audit suggested as
 		// the conservative interpretation).
 	}
+	// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): the legacy
+	// `&sourcingDriveAdapter{drive: driveUploader}` 3rd positional arg
+	// is dropped — the corresponding field on youtube.Service was
+	// retired (zero production reads; Publisher is the canonical Drive
+	// upload canal since FASE 5). The `sourcingDriveAdapter` struct
+	// itself is preserved in internal/app/youtube_drive_legacy_adapter.go
+	// for the 9 surviving methods on clips.ClipDriveUploaderPort +
+	// the 2 surviving methods on sourcingDriveAdapter itself +
+	// the sourcing.DrivePort compile-time check; PR-YT-DRIVE-LEGACY-RETIRE
+	// will git-rm that file once architecture/deprecations.yaml#DRIVE-008
+	// migration_required lands.
 	ytSvc := youtube.NewService(
 		&sourcingFetchAdapter{registry: providerRegistry},
 		&sourcingClipStoreAdapter{repo: clipsRepo},
-		&sourcingDriveAdapter{drive: driveUploader},
 		&sourcingPublisherAdapter{publisher: publisher},
 		&sourcingTranscriberAdapter{cfg: cfg, log: log},
 		&sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, log: log},
