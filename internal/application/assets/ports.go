@@ -53,16 +53,29 @@ type DBHealthChecker interface {
 
 // ── SourceStager port (Step 9/12, July 2026) ────────────────────────────
 //
-// SourceStager is the shared port for downloading source media into a
-// staging location. It is implemented by YouTube, stock, and Artlist
-// adapters so callers (ingest pipelines, channel monitors, fetch
-// providers) can stage source bytes without knowing which provider
-// owns the download.
+// assets.SourceStager is the LEGACY per-call staging port. It downloads
+// source media into a temp location that the caller owns and must
+// explicitly Cleanup after use. Every call to StageSource allocates a
+// fresh download; there is no persistent registry, no TTL eviction, no
+// cross-call dedupe.
+//
+// CURRENT CONSUMERS (July 2026):
+//   - YouTube (usecase/process_segment.go Step 4a — pre-stage full video)
+//   - Artlist (stager_adapter.go — per-asset download)
+//
+// CANONICAL REPLACEMENT: acquisition.SourceStager
+//   - internal/application/acquisition/port.go
+//   - Persistent staging with Prepare/Release lifecycle, TTL eviction,
+//     deterministic CleanupToken for idempotent release-on-retry.
+//   - Stock pipeline already consumes acquisition.SourceStager
+//     (internal/application/assets/providers/stock/stockpipeline/).
+//   - Forward-pointer: YouTube and Artlist will migrate to
+//     acquisition.SourceStager per §12-4.2 (tracked in
+//     architecture/deprecations.yaml#ASSETS-SOURCESTAGER-LEGACY).
 //
 // SourceStager MUST NOT decide asset lifecycle transitions, emit
 // Qdrant upserts, or decide Drive destinations. It just stages bytes
-// to disk and returns the local path. The caller is responsible for
-// cleanup of the temp directory that contains the staged file.
+// to disk and returns the local path.
 //
 // Per Pattern 0 (AGENTS.md): the port lives at the application layer;
 // concrete implementations live in infrastructure or provider packages.
