@@ -245,3 +245,8 @@ docs/notes/scratch/
 tmp-diag/
 CURRENT_*.go
 TODO[0-9]*.go
+
+# TTS-cleaned voiceover artifacts (regenerated from lyrics pipeline)
+/cleaned_*.mp3
+/cleaned_*.wav
+/cleaned_*.ogg
