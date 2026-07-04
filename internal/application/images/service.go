@@ -210,6 +210,33 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 	return s.Store.SearchAndDownload(ctx, subjectSlug, displayName, query, lang, tags)
 }
 
+// ListImagesByOrigin returns all image media_assets rows with the
+// specified origin, ordered by created_at DESC, hard-capped at
+// 200 (per PR-GENERATED-SEARCH-FIX, July 2026). Thin delegate to
+// the canonical repo surface at
+// internal/infrastructure/database/sqlite/assets/images_repository.go.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this method is the
+// canonical SOLE application-layer entry point for the generated
+// territory read seam. The handler at
+// internal/api/images/territory_handlers.go::GeneratedSearch routes
+// through here; the port interface GeneratedSearchServicePort at
+// internal/application/images/generated/generated_search.go is the
+// structural contract (parent *ImageStorageService satisfies it
+// transitively via s.Repo().ListImagesByOrigin). Future cross-cutting
+// concerns (caching, metrics, additional filtering) can be added in
+// one place — the handler does not bypass the service.
+func (s *Service) ListImagesByOrigin(ctx context.Context, origin asset.ImageOrigin, limit int) ([]asset.ImageAsset, error) {
+	if s == nil {
+		return nil, nil
+	}
+	repo := s.Repo()
+	if repo == nil {
+		return nil, nil
+	}
+	return repo.ListImagesByOrigin(ctx, origin, limit)
+}
+
 func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {
 	return s.Store.SearchWebImage(ctx, prompt, slug, tags)
 }
