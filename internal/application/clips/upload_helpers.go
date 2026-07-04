@@ -16,7 +16,6 @@ package clips
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -173,31 +172,14 @@ func UpdateCumulativeMetadataJSON(
 		log.Warn("failed to write metadata json temp file", zap.Error(err))
 		return
 	}
-	if _, err := uploader.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
-		// P2.6 closure (DRIVE-CUTOVER-P0-1, forward-pointer TODO(P0.5)):
-		// runtime is already fail-closed at the composition-root
-		// `clipsDriveAdapter.UploadFile` stub per DRIVE-008 (P2.2
-		// commit `0fa8c065`). The seam returns a Go 1.20+ multi-%w
-		// wrap of `clips.ErrLegacySurfaceRetired` AND the underlying
-		// `drive.ErrLegacySurfaceRetired` so either probe resolves.
-		// The canonical migration to
-		// `delivery.Publisher.Publish(ctx, delivery.PublishRequest{
-		//   Destination: delivery.DestinationMetadata, …})` requires a
-		// new `DestinationMetadata` key + registry entry (P0.5 wave).
-		// Until then, we log-and-degrade rather than bubble the
-		// typed error up the call chain so the rest of the
-		// cumulative-metadata update continues. Probes the
-		// application-layer sentinel (declared at clips/ports.go) to
-		// avoid the cross-layer import; the underlying drive sentinel
-		// remains wrapped for any infra-side audit tools.
-		if errors.Is(err, ErrLegacySurfaceRetired) {
-			log.Warn("metadata.json upload skipped — legacy surface retired (DRIVE-008 fail-closed stub); forward-pointer TODO(P0.5): migrate to delivery.Publisher.Publish when DestinationMetadata key lands in registry", zap.Error(err))
-		} else {
-			log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-		}
-	} else {
-		log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
-	}
+	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
+	// The metadata.json upload has been degraded since P2.2 (DRIVE-008 fail-closed stub).
+	// A future wave can reintroduce the upload via delivery.Publisher.Publish when a
+	// dedicated DestinationKey (e.g. DestinationClipMetadata) is added to the registry.
+	log.Debug("metadata.json upload skipped — legacy surface retired (DRIVE-008 CUTOVER)",
+		zap.String("clip_id", clipID),
+		zap.Int("entries", len(existing)),
+	)
 	os.Remove(metaTempPath)
 
 	cleanupLegacyMetadataJSON(ctx, uploader, folderID, log)

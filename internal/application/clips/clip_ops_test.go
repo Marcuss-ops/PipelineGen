@@ -132,12 +132,6 @@ func (d *testDriveUploader) GetFolderName(_ context.Context, _ string) (string, 
 }
 func (d *testDriveUploader) TrashFolder(_ context.Context, _ string) error  { return nil }
 func (d *testDriveUploader) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (d *testDriveUploader) UploadFile(_ context.Context, _, _, _ string) (*ClipUploadResultDTO, error) {
-	return &ClipUploadResultDTO{}, nil
-}
-func (d *testDriveUploader) UploadFileWithDescription(_ context.Context, _, _, _, _ string) (*ClipUploadResultDTO, error) {
-	return &ClipUploadResultDTO{}, nil
-}
 func (d *testDriveUploader) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
 	return nil, "", nil
 }

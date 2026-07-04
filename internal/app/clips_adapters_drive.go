@@ -59,39 +59,9 @@ func (a *clipsDriveAdapter) DeleteFolder(ctx context.Context, folderID string) e
 	return a.admin.DeleteFolder(ctx, folderID)
 }
 
-// UploadFile is the legacy drive upload seam. DRIVE-008 (July 2026):
-// retired to fail-closed — converted to a typed-error stub that
-// returns drive.ErrLegacySurfaceRetired on every invocation. The
-// canonical upload path is delivery.Publisher.Publish (used by the
-// bulk_upload_worker + UploadService after FASE 3). Production
-// callers that still reach this seam receive a loud typed error at
-// runtime per godlike/07 §"No fake availability" — no silent
-// fallback, no faux-200 from a cancelled path.
-//
-// Compile-time assertion `var _ clips.ClipDriveUploaderPort =
-// (*clipsDriveAdapter)(nil)` remains valid: the interface method
-// signature is unchanged; the body is now a fail-closed shim that
-// propagates the canonical sentinel via %w so callers can detect
-// via errors.Is(err, drive.ErrLegacySurfaceRetired).
-// P2.6 closure (DRIVE-CUTOVER-P0-1): multi-wrap so both
-// `errors.Is(err, drive.ErrLegacySurfaceRetired)` (infra-side probe,
-// kept for backwards-compat) AND `errors.Is(err, clips.ErrLegacySurfaceRetired)`
-// (app-side probe, layered-safe per AGENTS.md Pattern 5) resolve.
-// Go 1.20+ supports multi-%w wrapping; both sentinel pointers survive
-// through the error chain.
-func (a *clipsDriveAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*clips.ClipUploadResultDTO, error) {
-	return nil, fmt.Errorf("clipsDriveAdapter.UploadFile(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w: %w", localPath, folderID, filename, clips.ErrLegacySurfaceRetired, drive.ErrLegacySurfaceRetired)
-}
-
-// UploadFileWithDescription is the legacy drive upload seam with
-// description metadata. DRIVE-008 (July 2026): retired to
-// fail-closed — same shape as UploadFile above. Canonical path:
-// delivery.Publisher.Publish(ctx, PublishRequest{Destination: ...,
-// Description: description, ...}).
-// P2.6 multi-wrap (see UploadFile above for rationale).
-func (a *clipsDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*clips.ClipUploadResultDTO, error) {
-	return nil, fmt.Errorf("clipsDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w: %w", localPath, folderID, filename, clips.ErrLegacySurfaceRetired, drive.ErrLegacySurfaceRetired)
-}
+// UploadFile and UploadFileWithDescription removed in DRIVE-008 CUTOVER (July 2026).
+// The legacy upload seams are retired; the canonical path is delivery.Publisher.Publish.
+// The ClipDriveUploaderPort interface no longer carries these methods.
 
 func (a *clipsDriveAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
 	if a.reader == nil {

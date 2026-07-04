@@ -34,27 +34,4 @@ import "errors"
 // to distinguish ambiguity from transient failures.
 var ErrAmbiguousDriveFolder = errors.New("drive: ambiguous folder match: multiple non-trashed folders with the same name+parent exist on Drive")
 
-// ErrLegacySurfaceRetired is the infrastructure-layer typed sentinel
-// surfaced by the legacy Drive-upload surface fail-closed stubs after
-// P2.2 DRIVE-008 closure (commit `0fa8c065`).
-//
-// godlike/06 §"one owner per fact" + godlike/07 typed-error contract:
-// the canonical migration destination is `delivery.Publisher.Publish`.
-// Consumers probe the seam via `errors.Is(err, drive.ErrLegacySurfaceRetired)`
-// without crossing the application/infrastructure layering boundary.
-// The application-layer counterpart at
-// `internal/application/clips/ports.go::clips.ErrLegacySurfaceRetired`
-// is wrapped alongside this sentinel via Go 1.20+ multi-%w in the
-// production fail-closed stub (`internal/app/clips_adapters_drive.go`)
-// so either probe resolves cleanly. P0.8 inadvertently dropped this
-// declaration during the ErrAmbiguousDriveFolder extraction; P2.5
-// closure restored it because both the test surface (this package's
-// `errors_test.go`) AND the production fail-closed stub call sites
-// depend on the symbol being present.
-//
-// godlike/07 honest-limitation: the message string is byte-stable —
-// `internal/infrastructure/drive/errors_test.go::TestErrLegacySurfaceRetired_Exists`
-// pins the literal via the `want` constant, and any drift in this
-// message string breaks the test layer (forward detection) before
-// any wire consumer observes the drift.
-var ErrLegacySurfaceRetired = errors.New("legacy drive upload surface retired: use delivery.Publisher.Publish (DRIVE-008)")
+var _ = errors.New("drive: ErrLegacySurfaceRetired retired in DRIVE-008 CUTOVER (July 2026)")

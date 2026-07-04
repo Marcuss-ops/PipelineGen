@@ -43,10 +43,10 @@ type DriveUploadResult struct {
 	DownloadLink string
 }
 
-// DrivePort handles Drive upload and folder operations for sourcing.
+// DrivePort handles Drive folder operations for sourcing.
 // Deprecated: new code should use PublisherPort instead.
+// DRIVE-008 CUTOVER (July 2026): UploadFileWithDescription removed.
 type DrivePort interface {
-	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*DriveUploadResult, error)
 	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
 	GetFolderName(ctx context.Context, folderID string) (string, error)
 }

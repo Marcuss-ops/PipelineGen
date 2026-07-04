@@ -40,6 +40,8 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	if a.admin == nil || a.cfg == nil {
 		return nil
 	}
+	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
+	// UpdateCumulativeMetadataJSON no longer uploads; it only trashes old metadata.json.
 	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
 	return nil
 }

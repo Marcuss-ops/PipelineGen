@@ -29,31 +29,9 @@ type sourcingDriveAdapter struct {
 // is preserved because the method signature is unchanged.
 var _ sourcing.DrivePort = (*sourcingDriveAdapter)(nil)
 
-// UploadFileWithDescription is the legacy drive upload seam for
-// the sourcing layer. DRIVE-008 (July 2026): retired to fail-closed
-// per godlike/07 §"No fake availability" — invoked callers receive
-// drive.ErrLegacySurfaceRetired immediately at runtime, no silent
-// fallback. Canonical upload path is delivery.Publisher.Publish
-// (sourcingDriven layer migrates to sourcing.PublisherPort which
-// wraps delivery.Publisher, see internal/application/assets/
-// sourcing/ports.go::PublisherPort).
-//
-// Compile-time assembly: sourcingDriveAdapter satisfies
-// sourcing.DrivePort (and indirectly the CompositionRoot's typed
-// wiring). The interface signature still matches the legacy shape
-// even though the body is now a fail-closed shim — callers detect
-// the failure via errors.Is(err, drive.ErrLegacySurfaceRetired).
-// P2.6 (DRIVE-CUTOVER-P0-1): sourcing-side multi-wrap mirrors the
-// clips adapter; the underlying driveutil.ErrLegacySurfaceRetired
-// is preserved alongside the facade surface for any future
-// forward-port. SourcingPkg doesn't currently have its own
-// application-layer sentinel (the sourcing side is mid-renaming
-// per the FASE 5 fallback retirement); the drive-package sentinel
-// is the only probe the sourcing consumer uses. Errors.Is at the
-// sourcing consumption layer will continue to resolve cleanly.
-func (a *sourcingDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*sourcing.DriveUploadResult, error) {
-	return nil, fmt.Errorf("sourcingDriveAdapter.UploadFileWithDescription(localPath=%q folderID=%q filename=%q) retired by DRIVE-008: %w", localPath, folderID, filename, driveutil.ErrLegacySurfaceRetired)
-}
+// UploadFileWithDescription removed in DRIVE-008 CUTOVER (July 2026).
+// The legacy upload seam is retired; the canonical path is sourcing.PublisherPort.Publish.
+// The sourcing.DrivePort interface no longer carries this method.
 
 func (a *sourcingDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
 	if a.drive == nil {

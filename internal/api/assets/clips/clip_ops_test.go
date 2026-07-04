@@ -133,12 +133,6 @@ func (d *handlerDriveAdmin) GetFolderName(_ context.Context, _ string) (string, 
 }
 func (d *handlerDriveAdmin) TrashFolder(_ context.Context, _ string) error  { return nil }
 func (d *handlerDriveAdmin) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (d *handlerDriveAdmin) UploadFile(_ context.Context, _, _, _ string) (*appclips.ClipUploadResultDTO, error) {
-	return &appclips.ClipUploadResultDTO{}, nil
-}
-func (d *handlerDriveAdmin) UploadFileWithDescription(_ context.Context, _, _, _, _ string) (*appclips.ClipUploadResultDTO, error) {
-	return &appclips.ClipUploadResultDTO{}, nil
-}
 func (d *handlerDriveAdmin) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
 	return nil, "", nil
 }
