@@ -229,8 +229,13 @@ test_1_batch_register() {
     cp "$last_body" "$WORK_DIR/batch_response.json"
 
     # Print per-clip summary
+    # NOTE: BatchClipResult fields are PascalCase because the struct has no
+    # explicit json tags and Go uses Go identifier names by default:
+    #   ClipID, Name, OK, Error, Duplicate. Top-level fields (ok, total,
+    #   succeeded, failed) use lowercase because BatchRegisterResponse has
+    #   explicit json:"..." tags — the asymmetry is intentional.
     printf '\n  %s--- per-clip results ---%s\n' "$DIM" "$RESET"
-    jq -r '.results[] | "    \(.name // "?")  ok=\(.ok)  dup=\(.duplicate)  err=\(.error // "none")  clip_id=\(.clip_id // "-")"' \
+    jq -r '.results[] | "    \(.Name // "?")  ok=\(.OK)  dup=\(.Duplicate)  err=\(.Error // "none")  clip_id=\(.ClipID // "-")"' \
         "$WORK_DIR/batch_response.json" 2>/dev/null || true
 }
 
@@ -246,10 +251,14 @@ test_2_verify_results() {
         return 1
     fi
 
+    # BatchClipResult fields are PascalCase (ClipID/Name/OK/Error/Duplicate)
+    # because the struct has NO explicit json tags — Go serialises by the
+    # Go field name. Top-level fields are lowercase because BatchRegisterResponse
+    # has explicit tags. Asymmetry is canonical.
     local ok_count err_count dup_count
-    ok_count=$(jq '[.results[] | select(.ok == true)] | length' "$WORK_DIR/batch_response.json")
-    err_count=$(jq '[.results[] | select(.error != null and .error != "")] | length' "$WORK_DIR/batch_response.json")
-    dup_count=$(jq '[.results[] | select(.duplicate == true)] | length' "$WORK_DIR/batch_response.json")
+    ok_count=$(jq '[.results[] | select(.OK == true)] | length' "$WORK_DIR/batch_response.json")
+    err_count=$(jq '[.results[] | select(.Error != null and .Error != "")] | length' "$WORK_DIR/batch_response.json")
+    dup_count=$(jq '[.results[] | select(.Duplicate == true)] | length' "$WORK_DIR/batch_response.json")
 
     printf '  ok=%s  errors=%s  duplicates=%s\\n' "$ok_count" "$err_count" "$dup_count"
 
@@ -274,7 +283,7 @@ test_2_verify_results() {
 
     # Verify clip_id is present for successful clips
     local clip_id_count
-    clip_id_count=$(jq '[.results[] | select(.clip_id != null and .clip_id != "")] | length' "$WORK_DIR/batch_response.json")
+    clip_id_count=$(jq '[.results[] | select(.ClipID != null and .ClipID != "")] | length' "$WORK_DIR/batch_response.json")
     printf '  clips with clip_id: %s\\n' "$clip_id_count"
 
     if (( clip_id_count > 0 )); then
