@@ -17,6 +17,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -203,5 +204,53 @@ func TestRun_VOAssetIDPropagation(t *testing.T) {
 	}
 	if atomic.LoadInt32(&seedCalls) != 1 {
 		t.Errorf("seed endpoint called %d times, want 1", seedCalls)
+	}
+}
+
+// TestBuildAggregateID_ExplicitValue covers godlike/06 SSOT: when the CLI flag
+// --aggregate-id is provided, the value is used verbatim. This is the
+// canonical path for Test 8 (supersede-gate-2-source-versions): the
+// preflight binary invokes the seed CLI twice with the same --aggregate-id
+// but different --source-version values to create 2 source versions per
+// the same logical asset.
+func TestBuildAggregateID_ExplicitValue(t *testing.T) {
+	cfg := SeedConfig{AggregateID: "agg_explicit_xyz", AssetName: "test-asset"}
+	got := buildAggregateID(cfg)
+	if got != "agg_explicit_xyz" {
+		t.Errorf("buildAggregateID with explicit value: got %q, want %q", got, "agg_explicit_xyz")
+	}
+}
+
+// TestBuildAggregateID_EmptyValueFallback covers godlike/07 NO-FAKE-AVAILABILITY:
+// when the CLI flag is not provided, the helper falls back to the
+// deterministic agg_<asset_name>_<unix_nano> format (NOT a fake empty value).
+func TestBuildAggregateID_EmptyValueFallback(t *testing.T) {
+	cfg := SeedConfig{AggregateID: "", AssetName: "test-asset"}
+	got := buildAggregateID(cfg)
+	if got == "" {
+		t.Errorf("buildAggregateID with empty value: got empty string, want deterministic prefix")
+	}
+	if !strings.HasPrefix(got, "agg_test-asset_") {
+		t.Errorf("buildAggregateID with empty value: got %q, want prefix agg_test-asset_", got)
+	}
+}
+
+// TestBuildSourceVersion_ExplicitValue covers the Test 8 second-call path:
+// the preflight binary passes --source-version=2 for the second seed
+// invocation; the helper must return 2 verbatim.
+func TestBuildSourceVersion_ExplicitValue(t *testing.T) {
+	cfg := SeedConfig{SourceVersion: 2}
+	if got := buildSourceVersion(cfg); got != 2 {
+		t.Errorf("buildSourceVersion=2: got %d, want 2", got)
+	}
+}
+
+// TestBuildSourceVersion_ZeroValueDefault covers godlike/07 explicit-zero-value:
+// when the CLI flag is not provided (zero int value), the helper defaults
+// to 1 (the canonical initial source_version for PipelineGen assets).
+func TestBuildSourceVersion_ZeroValueDefault(t *testing.T) {
+	cfg := SeedConfig{SourceVersion: 0}
+	if got := buildSourceVersion(cfg); got != 1 {
+		t.Errorf("buildSourceVersion=0 (default): got %d, want 1", got)
 	}
 }
