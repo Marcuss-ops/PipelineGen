@@ -4174,15 +4174,18 @@ wave_status:
         PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION).
     - id: PR-MEDIASEARCH-HANDLER-SPLIT
       owner_capability: internal/api/mediasearch
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: d108187b437336c2c27bea1d45b983bd9cdfb49f
       deadline: 2026-08-01
       description: |
         Decompose internal/api/mediasearch/handler.go (766 LoC) into 5
         single-purpose capability files per AGENTS.md Pattern 5:
         dto.go + readiness.go + errors.go + sanitize.go +
         response_mapper.go. handler.go retains only RegisterRoutes +
-        Search + Ready + IndexBulk thin transport. Forward-cites
-        AUDIT-2026-07-02 PR-MANIFEST-STREAM-RECOVERY +
+        Search + Ready thin transport (no IndexBulk — bulk indexing
+        lives on a separate route tree per package-doc audit-trail).
+        Forward-cites AUDIT-2026-07-02 PR-MANIFEST-STREAM-RECOVERY +
         AUDIT-2026-07-02 PR-AGGREGATE-FILTER-UNIFORM.
     - id: PR-LIFECYCLE-SPLIT-BY-CAPABILITY
       owner_capability: internal/app

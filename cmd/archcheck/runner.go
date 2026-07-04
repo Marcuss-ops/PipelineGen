@@ -93,6 +93,19 @@ func DefaultChecks() []CheckSpec {
 		{"agent_playbook_doc", scan.ScanAgentPlaybookDoc},
 		{"removal_doc", scan.ScanRemovalDoc},
 		{"stale_prose_paths", scan.ScanStaleProsePaths},
+		// PR-ARCHCHECK-GO-MIGRATION-PHASE-1 (July 2026,
+		// deadline 2026-08-15): 3 new per-check ripgrep-equivalent
+		// scanners (Check 5 type-redecl, Check 53 TxContext-ban,
+		// Check 54 monitor-infra-import ban) migrated from
+		// scripts/ci-architectural-checks.sh. Shell check is
+		// RETAINED as a transitional baseline per godlike/08
+		// §"Zero-baseline rule". See architecture/current.yaml
+		// #PR-ARCHCHECK-GO-MIGRATION-PHASE-1 for the wave-tracker
+		// entry. The three checks run in parallel with their
+		// shell counterparts; both must exit 0 for CI to be green.
+		{"percheck_type_redecl", scan.ScanTypeRedeclarations},
+		{"percheck_txcontext_ban", scan.ScanTxContextBan},
+		{"percheck_monitor_infra_import", scan.ScanMonitorInfraImport},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in

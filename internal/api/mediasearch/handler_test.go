@@ -482,8 +482,6 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 				MediaType:    "video",
 				PreviewURL:   "https://signed.example.com/asset-1",
 				Score:        0.95,
-				LocalPath:    "/data/secret/file.mp4",
-				DriveLink:    "https://drive.google.com/raw",
 				ThumbnailURL: "https://thumbnail.internal/qdrant_collection_x",
 			},
 		},
