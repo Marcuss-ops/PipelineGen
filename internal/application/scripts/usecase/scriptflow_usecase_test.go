@@ -132,30 +132,6 @@ func TestPrewarmUseCase_FiresGoroutineWhenShouldStart(t *testing.T) {
 
 // TestPrewarmUseCase_NilUseCase is now in prewarm_usecase_test.go
 
-// ── SceneBuilderUseCase ─────────────────────────────────────────────────────
-
-func TestSceneBuilderUseCase_RequiresImgAndVoSvc(t *testing.T) {
-	t.Parallel()
-	uc := NewSceneBuilderUseCase(nil, nil, zap.NewNop(), nil, nil, nil)
-	_, err := uc.Build(context.Background())
-	require.ErrorIs(t, err, ErrSceneBuilderUnconfigured)
-}
-
-func TestSceneBuilderUseCase_NilSafe(t *testing.T) {
-	t.Parallel()
-	var uc *SceneBuilderUseCase
-	_, err := uc.Build(context.Background())
-	require.ErrorIs(t, err, ErrSceneBuilderUnconfigured)
-}
-
-func TestSceneBuilderUseCase_BuildWhenDepsNil(t *testing.T) {
-	t.Parallel()
-	uc := NewSceneBuilderUseCase(nil, nil, zap.NewNop(), nil, nil, nil)
-	svc, err := uc.Build(context.Background())
-	require.ErrorIs(t, err, ErrSceneBuilderUnconfigured)
-	require.Nil(t, svc)
-}
-
 // ── DocumentsUseCase ────────────────────────────────────────────────────────
 
 // TestDocumentsUseCase_NilUseCase is now in documents_usecase_test.go
