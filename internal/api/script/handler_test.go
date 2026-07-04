@@ -123,10 +123,9 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	}{
 		{"POST", "/api/script/generate"},
 		// Legacy routes — now registered as deprecated adapters (PR 11).
-	// FASE 12c: legacy batch route REMOVED.
+		// FASE 12c: legacy batch route REMOVED.
 		{"POST", "/api/script/generate-from-clips"},
 		{"POST", "/api/script/generate-with-images"},
-		{"POST", "/api/script/curate"},
 		{"GET", "/api/script/jobs/:id"},
 		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
 		{"POST", "/api/script/cache/evict"},
@@ -138,6 +137,10 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	}
 }
 
+// TestScriptFlowAsyncRoutes_EnqueueJobs verifies that legacy adapter routes
+// add the X-Deprecated header and enqueue as script.generate.
+// AZIONE 5 (July 2026): changed from /curate to /generate-from-clips
+// after /curate was removed.
 func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	t.Parallel()
 
@@ -147,14 +150,14 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
 
-	req := httptest.NewRequest("POST", "/api/script/curate", strings.NewReader(`{"query":"why observability matters","language":"it"}`))
+	req := httptest.NewRequest("POST", "/api/script/generate-from-clips", strings.NewReader(`{"topic":"observability","clip_ids":["clip-a"],"language":"it"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", "req-123")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	// PR 11: /curate now enqueues as script.generate (deprecation adapter).
+	// Legacy adapters enqueue as script.generate with deprecation header.
 	assert.NotNil(t, fake.lastReq)
 	assert.Equal(t, "script.generate", fake.lastReq.Type)
 	assert.Contains(t, w.Header().Get("X-Deprecated"), "true")
