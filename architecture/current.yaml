@@ -4535,6 +4535,90 @@
   description: 'Voiceover end-to-end testing plan forward-pointer wave-tracker
 
     (July 2026). Anchors the canonical voiceover test surface under
+  cross_refs:
+    audit_date: 2026-07-04
+    audit_command: "git log --since=90.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30"
+    analysis_window_days: 90
+    unmissed_hotspots:
+      - file: internal/app/registry.go
+        commit_count_90d: 121
+        reason: composition-root module registration; not in 12-item matrix because the matrix is scoped to assets/scripts subtrees
+        forward_pointer: PR-APP-REGISTRY-SPLIT
+        proposed_deadline: 2026-09-01
+      - file: internal/app/composition.go
+        commit_count_90d: 119
+        reason: composition-root bundle struct; not in 12-item matrix because the matrix is scoped to assets/scripts subtrees
+        forward_pointer: PR-APP-COMPOSITION-SPLIT
+        proposed_deadline: 2026-09-01
+      - file: internal/app/wire_script.go
+        commit_count_90d: 74
+        reason: script wiring glue; 2026-07-04 carry-forward (FIX-APP-WIRE-SCRIPT-SYNTAX) was a stale audit-pin per the meta-closure at SHA 73384188 — actual broken code lived in workerruntime/{preflight.go, run.go} and was fixed at SHA 03d42b0c
+        forward_pointer: PR-APP-WIRE-SCRIPT-CLEANUP
+        proposed_deadline: 2026-08-15
+      - file: internal/app/lifecycle.go
+        commit_count_90d: 74
+        reason: composition-root lifecycle wiring; partially split in PR-LIFECYCLE-SPLIT-BY-CAPABILITY (2026-07-04) but the slim orchestrator still carries audit-pins for godlike/06 SSOT discipline
+        forward_pointer: PR-APP-LIFECYCLE-AUDIT-PIN-CLEANUP
+        proposed_deadline: 2026-10-15
+      - file: internal/app/module_media.go
+        commit_count_90d: 54
+        reason: media module descriptor; 2026-07-04 carry-forward (FIX-APP-MODULE-MEDIA-DISPATCHER) retired the obsolete MutationsDispatcher literal at SHA a10b67d0 — this hotspot is now stable
+        forward_pointer: PR-APP-MODULE-MEDIA-STABILIZE
+        proposed_deadline: 2026-10-15
+    slim_schema_ratchet:
+      precedent: PR-GODOBJ-HOTSPOT-CROSSREF
+      precedent_date: 2026-08-01
+      ratcheted_deadline: 2026-10-15
+      original_deadline: 2026-08-22
+      ratchet_weeks: 7.7
+      rationale: "5 unmissed hotspots are all in internal/app/ (composition root). The 12-item matrix currently has 1 internal/app/ slot (PR-SCRIPT-WIRE-SPLIT, owner_capability: internal/app) but 5 high-frequency internal/app/ files need 5 forward-pointer PR-APP-* slots — the matrix needs 4 new slots (registry + composition + lifecycle + module_media; wire_script is already covered by the matrix slot). The 3.4-week ratchet absorbs the cross-package audit-creep risk per godlike/07 minimum-blast-radius; the forward-pointers land at their own per-PR deadlines (range 2026-08-15 to 2026-10-15)."
+    follow_up_tickets:
+      - id: PR-CODE-QUALITY-CROSS-REF-3-SURFACE-LOCKSTEP
+      - id: PR-WORKSPACE-RETENTION-CONFIG
+        owner_capability: internal/app
+        status: shipped
+        deadline: 2026-07-25
+        exit_signal: true
+        description: |
+          FASE 2.4 P0-COMPL-6 follow-up — canonical platform-side
+          adapter for the worker-retention TTL config (forward-pointer
+          in `internal/domain/completion/ttl_config.go` godoc). Ships:
+            - `internal/platform/config/types.go::WorkerRetentionConfig`
+              (4 fields: DefaultTTLSeconds / MaxTTLSeconds /
+              SweepIntervalSeconds / EvictionMode — all with `yaml:`
+              + `env: VELOX_WORKER_RETENTION_*` + `default:` struct tags).
+            - `internal/app/workspace_retention_config.go` (~210 LoC):
+              `ParseTTLConfig` (parse + canonical `TTLConfig.Validate()`
+              fail-closed gate) + `NewRetentionPolicyFromConfig` (parse
+              + `ToRetentionPolicy` + `RetentionPolicy.Validate()`,
+              3-layer fail-closed) + `DefaultWorkerRetentionConfig()`
+              helper (production-default 24h/7d/1h/EvictionDeferred).
+            - 14 TDD tests in
+              `internal/app/workspace_retention_config_test.go` (2
+              happy-path + 6 per-field Validate() sentinels via
+              `errors.Is` + 2 EvictionMode mapping + 1 round-trip
+              byte-stability + 3 fail-closed propagation).
+          godlike/06 SSOT: domain-side `TTLConfig` is the canonical
+          typed envelope (CANONICAL); platform-side struct is the
+          SECONDARY source; `DefaultWorkerRetentionConfig()` helper
+          is the TERTIARY. godlike/07 fail-closed at composition root
+          (no silent fallbacks). Forward-pointer: PR-WORKSPACE-
+          RETENTION-WIRE (deadline 2026-08-15) for the FASE 2.4
+          cutover PR that migrates `internal/app/lifecycle.go` from
+          the legacy raw-int surface to `NewRetentionPolicyFromConfig`.
+        linked_issues:
+          - PR-WORKSPACE-RETENTION-WIRE
+
+        owner_capability: architecture (CHANGELOG.md + AGENTS.md maintainer)
+        status: pending
+        deadline: 2026-07-15
+        description: "3-surface lockstep mirror entries — CHANGELOG.md ## Unreleased ### Added + AGENTS.md ## Recent cross-cutting closures entry mirroring this wave-tracker amendment. Per the prior PR closures (PR-STOCK-SERVICE-SPLIT, PR-STOCK-ORCHESTRATOR-SPLIT) the 3-surface lockstep is the standard pattern for doc-only wave-tracker amendments; this forward-pointer absorbs the carry-forward gap flagged on the previous PR closures."
+    godlike_07_honest_limitation:
+      time_window_choice: 90 days is the canonical AGENTS.md Git-Lesson-3 + GODOBJ precedent window; 60/180-day windows might surface different hotspots and are not enumerated here
+      test_files_excluded: hotspots in *_test.go files are out of scope (test churn is expected and not a cleanup signal)
+      architecture_or_changelog_excluded: hotspots in architecture/ + CHANGELOG.md are excluded (those are wave-tracker bookkeeping, not production code)
+      cross_package_audit_creep: the 5 unmissed hotspots are all in internal/app/ which is OUTSIDE the 12-item matrix scope — the cross-package risk is acknowledged and absorbed via the deadline ratchet
+      12_item_matrix_validity: the 12-item matrix remains the canonical scope for this wave; the 5 unmissed are genuinely new findings, not duplications
 
     a single wave-tracker entry so the test/ops coverage story is
 
@@ -4635,34 +4719,6 @@
     status: shipped
     ship_date: '2026-07-04'
     deadline: 2026-08-01
-  - id: SCRIPT-T03-003
-    owner_capability: internal/application/scripts/usecase
-    status: shipped
-    ship_sha: 9a56a4849f39507d90c30f8b18c56be36db92bd6
-    ship_date: 2026-07-04
-    deadline: 2026-07-15
-    notes: |
-      Phase 9 cycle 2 closure of the godlike/07 typed-error gate at
-      the script-generation orchestrator. logPhaseError helper
-      enforces the canonical usecase error-path contract: every
-      `return nil, err` at the orchestrator boundary now logs the
-      diagnostic context (item_id, phase, error) BEFORE returning
-      the typed error. Multi-item per-item propagation surface
-      (GenerateManyItemResult.TypedError) carries the typed error
-      wrapped via fmt.Errorf("%w: %w", scriptpkg.ErrGenerationFailed,
-      err) so handlers can errors.Is at the handler layer while
-      preserving wire-format compat (json:"-" tag excludes TypedError
-      from JSON marshalling). 5 new TDD tests cover typed-error
-      propagation through the usecase boundary (single-item engine=nil,
-      single-item validate-fail, multi-item typed-error-per-item,
-      multi-item json:"-" wire-compat, multi-item ordering preservation).
-      Closes architecture/issues.yaml#SCRIPT-T03-USECASE (status: done).
-      Fix commit: 9a56a484. Tracking-flip commit (this): the canonical
-      Q16 prudent 2-PR split (fix commit first, then tracking-flip)
-      prevents the ship_sha from being wrong if the fix commit is
-      superseded by a parallel-agent race; the ship_sha in this slot
-      is the canonical origin/main SHA at push time.
-
   - id: IMAGES-T04-001
     owner_capability: internal/api/images
     status: pending
@@ -4844,60 +4900,253 @@
     deadline: 2026-08-01
 - id: GODOBJ-2026-07-03
   linked_issues_count: 35 (forward-pointer for full list)
-- id: PR-BATCH-REGISTER-ASYNC
-  owner_capability: internal/application/assets/sourcing + internal/api/assets/register + tests/operational
+- id: PR-VO-COMPLETEPATH-FIX
+  status: shipped
+  ship_sha: db2f3b1e
+  ship_date: 2026-07-04
+  exit_signal: true
+  deadline: 2026-07-04
+  description: |
+    PR-VO-COMPLETEPATH-FIX (July 2026) — voiceover ProducesArtifacts=true
+    removed from BOTH TypeVoiceoverGenerate (parent) AND
+    TypeVoiceoverGenerateItem (child) in
+    internal/application/jobs/registry.go:541+548. The SQL-layer
+    ErrCompleteJobPathViolation guard at
+    internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+    was rejecting the legacy Complete for these job types, marking
+    them FAILED with "legacy Worker cannot complete artifact-producing
+    job". Path B (the chosen db2f3b1e fix) re-routes the broker
+    mark-SUCCEEDED through the legacy SQLiteStore.Complete path; the
+    voiceover pipeline persists its own voiceovers + media_assets
+    projection + outbox events atomically inside the per-item
+    caller-owned *sql.Tx via VoiceoverFinalizer.Finalize (the
+    canonical owner of the per-item artifact writes). The 3 Required
+    Steps in Finalize (4-5-6: media_assets projection + index outbox
+    + cleanup outbox) fail-fast on nil LifecycleService or nil Outbox
+    at Finalize() entry per godlike/07 ZERO LEGACY. godlike/06 SSOT
+    split: voiceover.finalizer.Finalize owns the artifact writes;
+    broker legacy SQLiteStore.Complete owns the jobs.status→SUCCEEDED
+    flip. Two surfaces no longer entangled (no double-write race).
+  linked_issues:
+    - id: db2f3b1e
+      owner_capability: "internal/application/jobs + internal/application/voiceover"
+      status: shipped
+      ship_sha: db2f3b1e
+      ship_date: 2026-07-04
+      ship_via: |
+        fix(jobs): PR-VO-COMPLETEPATH-FIX remove ProducesArtifacts=true
+        from voiceover jobs (path B; voiceover.finalizer is canonical
+        owner for media_assets + outbox writes inside per-item tx).
+    - id: PR-VO-COMPLETEPATH-FIX-TESTS
+      owner_capability: "internal/application/voiceover/jobs"
+      status: shipped
+      ship_sha: e71d10ad
+      ship_date: 2026-07-04
+      ship_via: |
+        test(voiceover): 4 TDD regression tests for voiceover finalizer
+        invariants (registry contract + tx-pointer identity atomicity
+        proof + parent aggregator eligibility gate). Closes the
+        test-surface gap for the db2f3b1e closure.
+    - id: PR-VO-ASSET-LOCATIONS-CONSUMER-AUDIT
+      owner_capability: "internal/application/voiceover + internal/application/scripts"
+      status: pending
+      deadline: 2026-08-01
+      description: |
+        Forward-pointer (audit discovery during post-ff audit of
+        db2f3b1e, NOT a regression of that fix): voiceover.finalizer
+        does NOT write asset_locations (the table is owned by
+        AssetFinalizerTx for artlist+stock pipelines). The consumer
+        internal/application/scripts/templates/google_doc_template.go
+        ::SceneRenderer.ResolveAssetWebViewLink does not find
+        voiceover assets. Decision needed between Strada A (adapt
+        SceneRenderer to fall back on media_assets.DriveLink) or
+        Strada B (extend finalizer with 7th step writing
+        asset_locations in the same tx). Owner capability straddles
+        internal/application/voiceover (canonical finalizer) and
+        internal/application/scripts (canonical consumer) per
+        godlike/06 SSOT split.
+    - id: PR-VOICEOVER-PATH-A-REVISITED
+      owner_capability: "internal/application/voiceover"
+      status: pending
+      deadline: TBD
+      description: |
+        Forward-pointer (godlike/06 SSOT explicit registration per
+        architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A):
+        the 3-reason rebuttal ticket that a future agent MUST open before
+        reverting the voiceover ProducesArtifacts design to Path A (parent
+        false + child true + CompleteWithArtifacts fork when child terminates).
+        Per the deprecation record's notes section, any revert MUST address
+        all 3 rejection reasons (godlike/06 SSOT double-write race, godlike/07
+        no-fake-availability + SQL-guard binary-surface mismatch, godlike/07
+        fail-fast-at-boot vs fail-slow-at-first-/run) with a substantive
+        rebuttal u2014 not just a re-statement of the original design intent.
+        The 4 TDD tests in finalizer_invariants_test.go (a)+(b)+(c)+(d) are
+        the load-bearing seam; any revert breaks them at the registry-contract
+        level. Closed by completing the rebuttal in this ticket + opening a
+        new wave-tracker entry PR-VOICEOVER-PATH-A-REOPEN for the revert work.
+    - id: PR-VO-FINALIZER-ATOMIC-CONTRACT-DOCS
+      owner_capability: "internal/application/voiceover"
+      status: pending
+      deadline: TBD
+      description: |
+        Forward-pointer to remember the load-bearing contract of
+        voiceover.finalizer (the canonical application-layer seam for
+        voiceover job completion, per the canonical surface
+        internal/application/voiceover/finalizer.go + the 4 TDD
+        tests in finalizer_invariants_test.go). The contract is:
+        media_assets MUST be persisted in the SAME SQLite transaction
+        as the broker complete fork (Path B closure per
+        architecture/current.yaml#PR-VO-COMPLETEPATH-FIX, ship_sha
+        db2f3b1e, 2026-07-04), NOT in a separate post-write save
+        context. Path A (parent ProducesArtifacts=false + child
+        ProducesArtifacts=true + CompleteWithArtifacts fork when
+        child terminates) was explicitly rejected per
+        architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
+        (status: keep, migration_phase: not applicable, removal_date:
+        never) with 3 documented rejection reasons: godlike/06 SSOT
+        double-write race, godlike/07 no-fake-availability +
+        SQL-guard binary-surface mismatch, godlike/07 fail-fast-at-boot
+        vs fail-slow-at-first-/run. Any future agent proposing to
+        revert the design MUST open a wave-tracker entry (the
+        forward-pointer sibling PR-VOICEOVER-PATH-A-REVISITED) and
+        address all 3 rejection reasons with substantive rebuttal.
+        Load-bearing TDD tests pinning the contract:
+        TestVoiceoverGenerate_RoutesToLegacyComplete + 
+        TestVoiceoverGenerateItem_RoutesToLegacyComplete +
+        TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn +
+        TestParentAggregator_TriggeredOnlyAfterWaitingChildren.
+        Cross-refs: registry.go:541+548 (parent + child registry
+        entries) + repository_lifecycle.go:115 (SQL-layer
+        ErrCompleteJobPathViolation guard) + voiceover/finalizer.go
+        (in-TX persist + post-write outbox + cleanup steps).
+        Documentation drift surface (this entry) is intentionally
+        distinct from the test surface (the 4 TDD tests above) per
+        godlike/06 one-owner-per-fact: the tests assert the
+        contract, this entry REMEMBERS the rationale so a future
+        agent does not silently delete the tests as "obsolete
+        duplicate coverage" without addressing the contract first.
+        Honest scope-lock (godlike/07): the 16 OTHER
+        ProducesArtifacts=true job types (script.generate_with_images,
+        script.generate_document, books.publish, voiceover fanout,
+        stock upload-chunk, etc.) remain under the same SQL-layer
+        guard (ErrCompleteJobPathViolation at
+        internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115);
+        this entry documents the contract for the voiceover.finalizer
+        family specifically (TypeVoiceoverGenerate +
+        TypeVoiceoverGenerateItem) because that is where the
+        Path-A-rejection debate originated. Future agents auditing
+        the other 16 job types' ProducesArtifacts setting should
+        open sibling entries (e.g. PR-SCRIPT-FINALIZER-ATOMIC-CONTRACT,
+        PR-BOOKS-FINALIZER-ATOMIC-CONTRACT) following this same
+        template rather than re-litigating the contract per-capability.
+
+# ============================================================================
+# FASE 2.3 — DiskWorkspaceStore ADAPTER closure (2026-07-04)
+# ============================================================================
+- id: PR-WORKSPACE-STORE-ADAPTER
+  owner_capability: internal/infrastructure/completion
   status: shipped
   exit_signal: true
-  ship_date: 2026-07-04
-  deadline: 2026-08-15
-  description: |
-    3-commit chain migrating the batch-register smoke suite from synchronous
-    ClipID extraction to async JobID polling, renaming BatchRegisterResult
-    fields, and adding async job-polling to the qdrant e2e smoke.
-
-    (a) Commit 6c97c19c (stock register-batch smoke rewrite):
-    tests/operational/stock_register_batch_boxing_smoke.sh rewritten for async
-    mode — Test 1 parses JobID from results[].JobID (PascalCase, no json tag),
-    asserts total=8 and succeeded=total (numeric comparison); Test 2 polls
-    GET /api/jobs/{JobID}/full per-clip via smoke_poll_terminal (600s timeout),
-    verifies terminal=completed, asserts result_map.clip_id populated.
-    SMOKE_API_BASE override defaults to port 8000.
-
-    (b) Commit f76507d0 (field renames):
-    BatchRegisterResult.Succeeded→Enqueued, Failed→EnqueueFailed in 6 files
-    (types.go + batch/service.go + service.go facade nil-guard + handler.go
-    response DTO + both smoke scripts). BatchClipResult.OK=false for all async
-    results (br.OK=true removed). Handler JSON: "succeeded"→"enqueued",
-    "failed"→"enqueue_failed". Zero dead references confirmed via project-wide
-    rg sweep.
-
-    (c) Commit 4044ed3d (qdrant e2e async polling):
-    tests/operational/qdrant_e2e_boxing_smoke.sh — job-polling phase between
-    Test 2 and Test 3. Polls each JobID via smoke_poll_terminal, extracts
-    clip_id from result.result_map.clip_id, populates $clip_ids_file.
-    Empty $clip_ids_file guards on Tests 3-4 prevent invalid SQL.
-    Closes PR-BATCH-REGISTER-ASYNC-CLIPID-EXTRACTION forward-pointer.
-
-    godlike/06 SSOT 3-surface lockstep: this architecture/current.yaml entry ≡
-    CHANGELOG.md ## Unreleased → ### Fixed entry ≡ AGENTS.md ## Recent
-    cross-cutting closures mirror.
-
-    godlike/07 minimum-blast-radius: 6 files across 3 commits; no
-    production-code behavior change (field renames are wire-format-only;
-    smoke tests are diagnostic-only).
-
-    Honest scope-lock (godlike/07): the pre-existing 6-item carry-forward
-    (PRE-EXISTING-BUILD-ISSUES-2026-07-04) is unchanged — NOT regressions.
+  deadline: "2026-08-15"
   linked_issues:
-  - id: 6c97c19c
-    owner_capability: tests/operational
-    status: shipped
-    ship_date: 2026-07-04
-  - id: f76507d0
-    owner_capability: internal/application/assets/sourcing
-    status: shipped
-    ship_date: 2026-07-04
-  - id: 4044ed3d
-    owner_capability: tests/operational
-    status: shipped
-    ship_date: 2026-07-04
+    - id: FASE-2.3-disk-workspace-store-adapter
+      status: shipped
+      description: |
+        FASE 2.3 — DiskWorkspaceStore adapter closure. 5-method port
+        (Prepare/Complete/Evict/MarkTTL/Path) + 5 typed-error sentinels
+        live in internal/domain/completion/workspace_store.go (FASE 2.2);
+        FASE 2.3 ships the canonical local-disk adapter at
+        internal/infrastructure/completion/workspace_store.go with 18 TDD
+        tests. godlike/06 SSOT: var _ compile-time pin at construction site.
+        godlike/07 minimum-blast-radius: legacy *workspace.Workspace
+        RETAINED; FASE-2.4 cutover PR migrates the runner.
+        Forward-pointers (sweeper + CLI + FASE-2.4 cutover) and the
+        pre-existing build issues carry-forward are documented in
+        CHANGELOG.md and AGENTS.md per godlike/06 SSOT 3-surface
+        lockstep (this entry keeps the slim-schema whitelist clean).
+
+
+# ============================================================================
+# CUT-FALSE-SUCCESS-FIRST-2026-07-04 \u2014 review-driven cleanup plan
+# ============================================================================
+- id: CUT-FALSE-SUCCESS-FIRST-2026-07-04
+  owner_capability: architecture
+  status: pending
+  exit_signal: false
+  deadline: "2026-08-15"
+  description: |
+    Review del 2026-07-04 (Marcuss-ops): priorit� false-success-first
+    SOPRA a split estetico. 4 P0 dove il sistema pu� mentire
+    (Qdrant outbox-completed-no-write, generated search 200-vuoto,
+    monitor watermark incoerente, stock error swallow). 5 blocchi
+    operativi: P0 fix (Blocco 1) + stock correctness+split (Blocco 2)
+    + dead code removal (Blocco 3) + dedup endpoint (Blocco 4) +
+    CI YAML fix (Blocco 5). 15 linked_issues ordinate per
+    priorit� operativa. Cross-validation post-wave via
+    PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF (deadline 2026-08-15)
+    se emergono hotspot ad alta frequenza non catturati qui.
+  linked_issues:
+    - id: PR-QDRANT-CONFIG-MISMATCH-GATE
+      owner_capability: internal/app
+      status: pending
+      deadline: "2026-07-15"
+    - id: PR-QDRANT-INDEXCLIP-GUARD
+      owner_capability: internal/application/jobs/outbox
+      status: pending
+      deadline: "2026-07-15"
+    - id: PR-GENERATED-SEARCH-FIX
+      owner_capability: internal/api/images
+      status: pending
+      deadline: "2026-07-15"
+    - id: PR-MONITOR-WATERMARK-HONESTY
+      owner_capability: internal/application/assets/monitor
+      status: pending
+      deadline: "2026-07-15"
+    - id: PR-STOCK-CORRECTNESS-FIX
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: "2026-07-22"
+    - id: PR-STOCK-SERVICE-SPLIT
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: "2026-08-01"
+    - id: PR-STOCK-ORCHESTRATOR-SPLIT
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: "2026-08-01"
+    - id: PR-STYLE-REGISTRY-REGISTER-AUDIT
+      owner_capability: internal/application/styles
+      status: pending
+      deadline: "2026-07-25"
+    - id: PR-SCENE-STUBS-AUDIT
+      owner_capability: internal/application/scripts
+      status: pending
+      deadline: "2026-07-25"
+    - id: PR-MEDIA-CURATOR-STUBS-AUDIT
+      owner_capability: internal/application/scripts
+      status: pending
+      deadline: "2026-07-25"
+    - id: PR-MONITOR-DISCOVERY-QUERIES-AUDIT
+      owner_capability: internal/application/assets/monitor
+      status: pending
+      deadline: "2026-07-25"
+    - id: PR-DEDUP-IMAGES-ENDPOINT
+      owner_capability: internal/api/images
+      status: pending
+      deadline: "2026-08-01"
+    - id: PR-REMOVE-FUTURE-WAVE-COMMENTS
+      owner_capability: architecture (CHANGELOG.md + AGENTS.md maintainer)
+      status: pending
+      deadline: "2026-07-25"
+    - id: PR-FIX-YAML-PARSE-LINE-1551
+      owner_capability: architecture
+      status: pending
+      deadline: "2026-08-01"
+    - id: PR-REMOVE-CI-AWK-SED-FALLBACKS
+      owner_capability: ci-architectural-checks.sh
+      status: pending
+      deadline: "2026-08-08"
+    - id: PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF
+      owner_capability: architecture
+      status: pending
+      deadline: "2026-08-15"
