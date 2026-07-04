@@ -14120,6 +14120,12 @@
     ship_sha: fdccf178c5273f503f4514ce319275027f0189dd
     ship_date: '2026-07-04'
     owner_capability: internal/infrastructure/database/sqlite/jobs
+  - id: JOBS-T01-SQLITE-REPO
+    owner_capability: internal/infrastructure/database/sqlite/jobs
+    status: shipped
+    ship_sha: fdccf178c5273f503f4514ce319275027f0189dd
+    ship_date: '2026-07-04'
+    deadline: 2026-08-01
     ship_sha: fdccf178c5273f503f4514ce319275027f0189dd
     ship_date: '2026-07-04'
     status: shipped
