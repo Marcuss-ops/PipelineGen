@@ -15,18 +15,29 @@ import (
 )
 
 // RegisterFromYouTubeRequest is the JSON body for registering a clip from a YouTube URL.
+//
+// PR-RICH-METADATA (July 2026): added Summary, Topics, Speakers, MentionedPeople,
+// Hook fields. All are omitempty for backward compatibility — existing callers
+// that pack everything into Description continue to work unchanged. The rich
+// fields flow through: handler → RegisterClipCommand → job payload →
+// ExistingClip → asset.Asset.Metadata → media_assets.metadata_json.
 type RegisterFromYouTubeRequest struct {
-	URL         string   `json:"url" binding:"required"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-	Source      string   `json:"source"`
-	Category    string   `json:"category"`
-	Group       string   `json:"group"`
-	FolderID    string   `json:"folder_id"`
-	Start       float64  `json:"start"`
-	End         float64  `json:"end"`
-	Force       bool     `json:"force"`
+	URL             string   `json:"url" binding:"required"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Summary         string   `json:"summary,omitempty"`
+	Topics          []string `json:"topics,omitempty"`
+	Speakers        []string `json:"speakers,omitempty"`
+	MentionedPeople []string `json:"mentioned_people,omitempty"`
+	Hook            string   `json:"hook,omitempty"`
+	Tags            []string `json:"tags"`
+	Source          string   `json:"source"`
+	Category        string   `json:"category"`
+	Group           string   `json:"group"`
+	FolderID        string   `json:"folder_id"`
+	Start           float64  `json:"start"`
+	End             float64  `json:"end"`
+	Force           bool     `json:"force"`
 }
 
 // BatchRegisterRequest is the JSON body for batch registering clips from YouTube.
@@ -36,12 +47,17 @@ type BatchRegisterRequest struct {
 }
 
 // BatchRegisterResponse is the response for batch registration.
+//
+// PR-BATCH-REGISTER-ASYNC (July 2026): Succeeded→Enqueued, Failed→EnqueueFailed.
+// Enqueued counts jobs successfully submitted to the worker queue;
+// EnqueueFailed counts per-clip enqueue errors. Per-clip BatchClipResult.OK
+// is always false (outcome unknown at enqueue time).
 type BatchRegisterResponse struct {
-	OK        bool                       `json:"ok"`
-	Total     int                        `json:"total"`
-	Succeeded int                        `json:"succeeded"`
-	Failed    int                        `json:"failed"`
-	Results   []sourcing.BatchClipResult `json:"results"`
+	OK            bool                       `json:"ok"`
+	Total         int                        `json:"total"`
+	Enqueued      int                        `json:"enqueued"`
+	EnqueueFailed int                        `json:"enqueue_failed"`
+	Results       []sourcing.BatchClipResult `json:"results"`
 }
 
 // Handler manages YouTube clip registration. All business orchestration
@@ -256,11 +272,11 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	result := h.svc.BatchRegisterFromYouTube(c.Request.Context(), commands)
 
 	apiutil.OK(c, BatchRegisterResponse{
-		OK:        result.OK,
-		Total:     result.Total,
-		Succeeded: result.Succeeded,
-		Failed:    result.Failed,
-		Results:   result.Results,
+		OK:            result.OK,
+		Total:         result.Total,
+		Enqueued:      result.Enqueued,
+		EnqueueFailed: result.EnqueueFailed,
+		Results:       result.Results,
 	})
 }
 
@@ -295,16 +311,21 @@ func effectiveFolderID(req *BatchRegisterRequest) string {
 
 func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClipCommand {
 	return sourcing.RegisterClipCommand{
-		URL:         strings.TrimSpace(req.URL),
-		Name:        strings.TrimSpace(req.Name),
-		Description: strings.TrimSpace(req.Description),
-		Tags:        append([]string(nil), req.Tags...),
-		Source:      strings.TrimSpace(req.Source),
-		Category:    strings.TrimSpace(req.Category),
-		Group:       strings.TrimSpace(req.Group),
-		FolderID:    strings.TrimSpace(req.FolderID),
-		StartSec:    req.Start,
-		EndSec:      req.End,
-		Force:       req.Force,
+		URL:             strings.TrimSpace(req.URL),
+		Name:            strings.TrimSpace(req.Name),
+		Description:     strings.TrimSpace(req.Description),
+		Summary:         strings.TrimSpace(req.Summary),
+		Topics:          append([]string(nil), req.Topics...),
+		Speakers:        append([]string(nil), req.Speakers...),
+		MentionedPeople: append([]string(nil), req.MentionedPeople...),
+		Hook:            strings.TrimSpace(req.Hook),
+		Tags:            append([]string(nil), req.Tags...),
+		Source:          strings.TrimSpace(req.Source),
+		Category:        strings.TrimSpace(req.Category),
+		Group:           strings.TrimSpace(req.Group),
+		FolderID:        strings.TrimSpace(req.FolderID),
+		StartSec:        req.Start,
+		EndSec:          req.End,
+		Force:           req.Force,
 	}
 }

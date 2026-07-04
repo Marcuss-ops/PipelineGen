@@ -258,35 +258,36 @@ test_1_batch_register() {
     printf '%s  HTTP 200 OK%s\n' "$GREEN" "$RESET"
 
     # Parse response — PR-BATCH-REGISTER-ASYNC: BatchRegisterResponse has
-    # total, succeeded, failed fields (lowercase json tags). `succeeded` now
-    # counts successfully ENQUEUED jobs, not successfully registered clips.
-    local total succeeded failed
+    # total, enqueued, enqueue_failed fields (lowercase json tags).
+    # enqueued counts successfully ENQUEUED jobs, not successfully
+    # registered clips. Per-clip BatchClipResult.OK is always false
+    # (outcome unknown at enqueue time); use JobID presence instead.
+    local total enqueued enqueue_failed
     total=$(jq -r '.total // 0' "$last_body")
-    succeeded=$(jq -r '.succeeded // 0' "$last_body")
-    failed=$(jq -r '.failed // 0' "$last_body")
+    enqueued=$(jq -r '.enqueued // 0' "$last_body")
+    enqueue_failed=$(jq -r '.enqueue_failed // 0' "$last_body")
 
-    printf '  total=%s  enqueue_succeeded=%s  enqueue_failed=%s\\n' "$total" "$succeeded" "$failed"
+    printf '  total=%s  enqueued=%s  enqueue_failed=%s\\n' "$total" "$enqueued" "$enqueue_failed"
 
     if [[ "$total" != "8" ]]; then
         fail "test1_total_${total}_expected_8"
     fi
 
-    if (( succeeded == 0 )); then
+    if (( enqueued == 0 )); then
         fail "test1_zero_enqueued"
         printf '%sFAIL: zero clips enqueued — check server logs%s\\n' "$RED" "$RESET" >&2
-    elif (( succeeded != total )); then
-        fail "test1_partial_enqueue_${succeeded}_of_${total}"
+    elif (( enqueued != total )); then
+        fail "test1_partial_enqueue_${enqueued}_of_${total}"
         printf '%sWARN: %s/%s jobs enqueued (expected all %s)%s\\n' \\
-            "$YELLOW" "$succeeded" "$total" "$total" "$RESET" >&2
+            "$YELLOW" "$enqueued" "$total" "$total" "$RESET" >&2
     else
-        printf '%s  %s/%s jobs enqueued successfully%s\\n' "$GREEN" "$succeeded" "$total" "$RESET"
+        printf '%s  %s/%s jobs enqueued successfully%s\\n' "$GREEN" "$enqueued" "$total" "$RESET"
     fi
 
     # PR-BATCH-REGISTER-ASYNC: BatchClipResult fields are PascalCase
-    # (ClipID, Name, OK, Error, Duplicate, JobID). JobID is the async
-    # job identifier; ClipID is empty in the enqueue response (the clip
-    # hasn't been registered yet). OK=true means "job enqueued", not
-    # "clip registered". Duplicate is always false in async mode.
+    # (Name, Error, JobID). OK is always false in async mode (outcome
+    # unknown at enqueue time); use JobID presence to detect enqueue
+    # success. ClipID + Duplicate are empty/false in enqueue response.
     cp "$last_body" "$WORK_DIR/batch_response.json"
 
     # Extract JobID for every clip — these are used in Test 2 for polling.

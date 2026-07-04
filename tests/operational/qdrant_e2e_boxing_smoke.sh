@@ -9,7 +9,7 @@
 #
 #   Test 1  GET  /api/media/index-health           → ok=true, degraded=false
 #   Test 2  POST /api/media/register-batch         → 2 sub-batches (4 + 4 clips)
-#                                                  → succeeded=4 per batch
+#                  → enqueued=4 per batch (async, jobs enqueued not clips processed)
 #   Test 3  SQLite media_assets                    → ClipIDs present + INDEXED
 #   Test 4  SQLite outbox_events                   → asset.index.requested emitted
 #                                                  → status='completed' (after wait)
@@ -266,7 +266,7 @@ smoke_assert_http_2xx "register-batch (batch_A)"
 smoke_wallclock_check
 cp "$SMOKE_LAST_BODY" "$WORK_DIR/batch_a_response.json"
 
-succeeded_a=$(jq -r '.succeeded // 0' "$WORK_DIR/batch_a_response.json")
+succeeded_a=$(jq -r '.enqueued // 0' "$WORK_DIR/batch_a_response.json")
 total_a=$(jq -r '.total // 0' "$WORK_DIR/batch_a_response.json")
 if (( succeeded_a < 3 )); then
     printf '%sFAIL: batch_A succeeded=%s (expected ≥3 of 4)%s\n' \
@@ -274,13 +274,13 @@ if (( succeeded_a < 3 )); then
     smoke_log_response "batch_a_response"
     # Operator triage: one-line summary first, then per-clip names only when ≥1
     # clip really failed (avoid noisy 20-line dumps when the batch succeeded).
-    jq -r '.results | (map(select(.OK != true)) | length) as $n |
+    jq -r '.results | (map(select(.Error != "" and .Error != null)) | length) as $n |
           "  \($n) of \(length) clip(s) failed in batch_A"' \
         "$WORK_DIR/batch_a_response.json" 2>/dev/null >&2 || true
-    failed_count_a=$(jq -r '[.results[]? | select(.OK != true)] | length' \
+    failed_count_a=$(jq -r '[.results[]? | select(.Error != "" and .Error != null)] | length' \
         "$WORK_DIR/batch_a_response.json" 2>/dev/null || echo 0)
     if (( failed_count_a > 0 && failed_count_a <= 8 )); then
-        jq -r '.results[]? | select(.OK != true) | "    \(.Name // "?") error=\(.Error)"' \
+        jq -r '.results[]? | select(.Error != "" and .Error != null) | "    \(.Name // "?") error=\(.Error)"' \
             "$WORK_DIR/batch_a_response.json" 2>/dev/null | head -8 >&2 || true
     fi
     fail_count=$((fail_count + 1))
@@ -306,19 +306,19 @@ smoke_assert_http_2xx "register-batch (batch_B)"
 smoke_wallclock_check
 cp "$SMOKE_LAST_BODY" "$WORK_DIR/batch_b_response.json"
 
-succeeded_b=$(jq -r '.succeeded // 0' "$WORK_DIR/batch_b_response.json")
+succeeded_b=$(jq -r '.enqueued // 0' "$WORK_DIR/batch_b_response.json")
 total_b=$(jq -r '.total // 0' "$WORK_DIR/batch_b_response.json")
 if (( succeeded_b < 3 )); then
     printf '%sFAIL: batch_B succeeded=%s (expected ≥3 of 4)%s\n' \
         "$RED" "$succeeded_b" "$RESET" >&2
     smoke_log_response "batch_b_response"
-    jq -r '.results | (map(select(.OK != true)) | length) as $n |
+    jq -r '.results | (map(select(.Error != "" and .Error != null)) | length) as $n |
           "  \($n) of \(length) clip(s) failed in batch_B"' \
         "$WORK_DIR/batch_b_response.json" 2>/dev/null >&2 || true
-    failed_count_b=$(jq -r '[.results[]? | select(.OK != true)] | length' \
+    failed_count_b=$(jq -r '[.results[]? | select(.Error != "" and .Error != null)] | length' \
         "$WORK_DIR/batch_b_response.json" 2>/dev/null || echo 0)
     if (( failed_count_b > 0 && failed_count_b <= 8 )); then
-        jq -r '.results[]? | select(.OK != true) | "    \(.Name // "?") error=\(.Error)"' \
+        jq -r '.results[]? | select(.Error != "" and .Error != null) | "    \(.Name // "?") error=\(.Error)"' \
             "$WORK_DIR/batch_b_response.json" 2>/dev/null | head -8 >&2 || true
     fi
     fail_count=$((fail_count + 1))
@@ -327,33 +327,48 @@ else
         "$GREEN" "$succeeded_b" "$total_b" "$RESET"
 fi
 
-# Aggregate the ClipIDs (PascalCase per sourcing.BatchClipResult struct
-# which has NO explicit json tags → Go identifier names win).
+# PR-BATCH-REGISTER-ASYNC (July 2026): OK is always false in async mode
+# (outcome unknown at enqueue time). Use JobID presence instead of OK.
+# Forward-pointer: the downstream Tests 3-6 that extract ClipIDs from the
+# batch response need to be updated to poll /api/jobs/{JobID}/full first
+# (ClipID is empty in the enqueue response — clips haven't been registered
+# yet). The current smoke extracts ClipID from JobID for transition.
 clip_ids_file="$WORK_DIR/clip_ids.txt"
+
+# Aggregate JobIDs first (not ClipIDs — those are empty in async mode).
+# Forward-pointer PR-BATCH-REGISTER-ASYNC-CLIPID-EXTRACTION: Tests 3-6
+# need a separate async-poll phase before ClipID extraction.
+job_ids_file="$WORK_DIR/job_ids.txt"
+{
+    jq -r '.results[]? | select(.JobID != null and .JobID != "") | .JobID' "$WORK_DIR/batch_a_response.json"
+    jq -r '.results[]? | select(.JobID != null and .JobID != "") | .JobID' "$WORK_DIR/batch_b_response.json"
+} > "$job_ids_file" 2>/dev/null || true
 
 # Early-exit guard: if batch_A + batch_B returned fewer than 4 successful
 # clips combined, downstream Tests 3-6 would run against an empty
 # clip_ids_file (no rows to query, no IDs to search, no IDs to download).
 # Surface this loudly and abort instead of producing a cascade of
 # false failures from garbage data.
-total_succeeded=$(( succeeded_a + succeeded_b ))
-if (( total_succeeded < 4 )); then
-    printf '%sABORT: only %s clips succeeded across batch_A + batch_B (< 4 threshold); downstream Tests 3-6 would run on empty data.%s\n' \
-        "$RED" "$total_succeeded" "$RESET" >&2
+total_enqueued=$(( succeeded_a + succeeded_b ))
+if (( total_enqueued < 4 )); then
+    printf '%sABORT: only %s jobs enqueued across batch_A + batch_B (< 4 threshold); downstream Tests 3-6 would run on empty data.%s\n' \
+        "$RED" "$total_enqueued" "$RESET" >&2
     exit 1
 fi
-{
-    jq -r '.results[]? | select(.OK == true) | .ClipID' "$WORK_DIR/batch_a_response.json"
-    jq -r '.results[]? | select(.OK == true) | .ClipID' "$WORK_DIR/batch_b_response.json"
-} > "$clip_ids_file" 2>/dev/null || true
-
-clip_id_count=$(wc -l < "$clip_ids_file" | tr -d ' ')
-printf 'Total ClipIDs captured: %s\n' "$clip_id_count"
-if (( clip_id_count < 4 )); then
-    printf '%sFAIL: too few ClipIDs returned (got %s, need ≥4)%s\n' \
-        "$RED" "$clip_id_count" "$RESET" >&2
+job_id_count=$(wc -l < "$job_ids_file" | tr -d ' ')
+printf 'Total JobIDs captured (async): %s\n' "$job_id_count"
+if (( job_id_count < 4 )); then
+    printf '%sFAIL: too few JobIDs returned (got %s, need >=4) — enqueue may have failed for some clips%s\n' \
+        "$RED" "$job_id_count" "$RESET" >&2
     fail_count=$((fail_count + 1))
 fi
+
+# The old sync ClipID extraction block (select(.OK == true) | .ClipID) is
+# DELETED — OK is always false in async mode, so this would silently produce
+# zero ClipIDs. Forward-pointer PR-BATCH-REGISTER-ASYNC-CLIPID-EXTRACTION
+# tracks the async job-polling migration for Tests 3-6. The orphan
+# clip_id_count assertion below was also removed (clip_ids_file is never
+# populated in async mode).
 
 # ── Test 3: media_assets rows present + INDEXED ────────────────────────────
 smoke_log_section "Test 3: SQLite media_assets query"
