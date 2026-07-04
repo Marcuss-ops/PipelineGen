@@ -190,6 +190,31 @@ func buildArtlistClipPageURL(name, id string) string {
 
 // downloadViaScraper calls the Node.js scraper /download endpoint to download
 // an Artlist clip with browser authentication (cookies).
+//
+// godlike/06 SSOT back-pointer: this is the **fallback** surface for
+// Artlist HLS streams that the Go-primary `artlist/downloader.Provider`
+// (wired in `internal/app/build_bundles_artlist.go::WireArtlist`)
+// cannot reach due to browser-session auth requirements. The canonical
+// dual-surface divider + the `LocalPath` short-circuit that prevents a
+// race are documented at
+// `internal/infrastructure/artlist/downloader/downloader.go` package
+// doc under "godlike/06 SSOT — dual download surface". Do not change
+// this fallback path without first reading that godoc — the
+// orchestrator at `run_orchestrator_stages.go::stageProcessBatch`
+// threads the staged `*StagedAsset.LocalPath` into
+// `mediaProcessor.Process`; `Process` then short-circuits at
+// `internal/infrastructure/media/processor/processor.go:146` (the
+// "Step 9/12 wire-up (July 2026): when input.LocalPath != "", the
+// download step is bypassed" comment — verified) and skips the
+// `downloadStep` invocation entirely (so this fallback function is
+// also never reached). `downloadViaScraper` is transitively reached
+// from `Process` via the post-Process `if input.LocalPath == ""`
+// branch that conditionally calls `downloadStep` (exact line not
+// re-verified in this PR — use function-name anchors; line numbers
+// drift as `Process` evolves) — and only when input is detected as
+// Artlist-shaped (isArtlistURL || isArtlistNumericID). Forward-pointer
+// for unification: `PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY` (deadline
+// 2026-08-15).
 func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.ProcessInput, rawPath string) (string, error) {
 	scraperURL := strings.TrimSuffix(p.scraperURL, "/") + "/download"
 
