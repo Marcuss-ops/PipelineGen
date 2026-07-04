@@ -4311,7 +4311,9 @@ wave_status:
     # P0 #3 — Extract Step 6 outbox cleanup from finalizer.go
     - id: PR-VO-FINALIZER-STEP6-EXTRACT
       owner_capability: internal/application/voiceover
-      status: pending
+      status: shipped
+      ship_sha: 0f64965e
+      ship_date: 2026-07-04
       deadline: 2026-08-01
     # P0 #4 — parent_aggregator state-machine + poll split (4 files)
     - id: PR-VO-PARENT-AGGREGATOR-SPLIT
