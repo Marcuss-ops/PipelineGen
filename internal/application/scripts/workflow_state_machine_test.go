@@ -170,16 +170,25 @@ func TestWorkflowState_CanonicalValuesComplete(t *testing.T) {
 // ── Test 8: DOCUMENT_CREATED is terminal success (no forward) ────────────
 
 func TestWorkflowState_DocumentCreatedTerminalSuccess(t *testing.T) {
-	// DOCUMENT_READY is terminal success — no forward progression
-	// (unlike the other non-terminal states which can move forward).
+	// DOCUMENT_CREATED is terminal success — no forward progression
+	// to any non-terminal state (backward edges are rejected).
+	// It CAN still transition to FAILED/DEAD_LETTERED via the
+	// early-return in IsValidTransition (post-document-creation
+	// failure is legitimate).
 	nonSelfTargets := []WorkflowState{
 		StateScriptReady, StateImagesPending, StateImagesGenerated,
-		StateWorkflowFailed, StateWorkflowDeadLettered,
 	}
 	for _, to := range nonSelfTargets {
 		if StateDocumentCreated.IsValidTransition(to) {
 			t.Errorf("expected DOCUMENT_CREATED -> %s to be ILLEGAL (terminal success)", to)
 		}
+	}
+	// DOCUMENT_CREATED CAN legitimately transition to FAILED / DEAD_LETTERED.
+	if !StateDocumentCreated.IsValidTransition(StateWorkflowFailed) {
+		t.Error("expected DOCUMENT_CREATED -> FAILED to be VALID (post-creation failure)")
+	}
+	if !StateDocumentCreated.IsValidTransition(StateWorkflowDeadLettered) {
+		t.Error("expected DOCUMENT_CREATED -> DEAD_LETTERED to be VALID (post-creation failure)")
 	}
 }
 
