@@ -1222,6 +1222,14 @@ deprecations:
           project build is green at fix time (otherwise pre-fix FAILs
           get masked by other build errors and the audit trail is muddied).
 
+      2026-07-04 FASE 4 audit DEFERRED: live `rg '72e1d5c9' internal/ --type go`
+      returned 0 hits. Compat-test (a) requires `go test -count=1 -run
+      'TestNormalizeItemPrecedenceConfigBeatsHardDefault|TestNormalizeItemDurationToWords|
+      TestRegistry_RunCallsEnabledProcessors|TestRegistry_MergeAllFields'` exit 0,
+      which is blocked by PRE-EXISTING-BUILD-ISSUES-2026-07-04 (deadline 2026-08-01).
+      The 4 test functions' status is UNVERIFIED today; the rg evidence does NOT
+      imply a pass per godlike/07 no-fake-availability.
+
       Classification note (per godlike/07 §“Migration phases”): bug-fixing
       tracked via deprecation record is rare but legitimate when the
       test itself is the migration artefact (the test surfaces the bug,
@@ -1314,6 +1322,16 @@ deprecations:
       the EXPAND phase for the COMPATIBILITY surface (current commit)
       and BACKFILL / CUTOVER / CONTRACT follow as the legacy sites are
       rewritten.
+
+      2026-07-04 FASE 4 audit refresh: live `rg 'root\.Drive\.DriveClient|root\.Drive\.DriveUploader'
+      internal/ --type go` returned 0 hits (pre-removed baseline: 86 readsites per the
+      audit-baseline above). The canonical Admin/Reader surface is now the SOLE read
+      path; the 86 legacy readsites have been collapsed to zero per the FASE 9 + Wave
+      B + Wave C + CARD-3 + PutFile + FileLifecycle chain. Compat-test (d) above
+      ("`rg` returns zero hits") is satisfied. Forward-pointer for the physical
+      field-removal: `architecture/archive/current-snapshot-2026-07-04.yaml#id-27`
+      (FASE 5 archive of the wave-tracker entry) + sibling record
+      `architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK`.
     migration_phase: CONTRACT
     status: removed
     notes: |
