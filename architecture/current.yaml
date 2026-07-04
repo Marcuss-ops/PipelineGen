@@ -3862,3 +3862,141 @@ wave_status:
     reclamation (FASE 3.7, 2026-07-04)` enumerates the 5 capability
     surfaces whose canonical type system is locked by this wave.
 
+
+
+# ── EXTERNAL-AUDIT-2026-07-04 — User-pasted Italian audit reconciliation (in_progress, July 2026) ──
+# Per godlike/06 SSOT (one canonical owner per fact), this entry reconciles
+# the user-pasted Italian audit ("size:>40000", "ci sono 51 commit", etc.,
+# taken against the public Marcuss-ops/PipelineGen snapshot of ~80+ closed
+# waves ago) against the LOCAL refactored tree at this commit's tip.
+# Each remaining hotspot is a SEMANTIC smell still present in the smaller
+# refactored file, NOT a size-of-file problem (per godlike/07
+# honest-disclosure §1 of the companion action plan). The 9 net-new
+# linked_issues map 1:1 to the audit's 10 items (with A2 ≡ S4 merged;
+# A5 + A6 forward-cite AUDIT-2026-07-02 + Wave 30 respectively per
+# godlike/06 SSOT, no duplicate tracking).
+- id: EXTERNAL-AUDIT-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner: architecture
+  deadline: 2026-08-22
+  exit_gate: |
+    All 9 linked_issues reach status: shipped (or merged into their
+    forward-cited canonical-owners). EXPAND→BACKFILL→CUTOVER→CONTRACT
+    migration sequence per the action plan companion file
+    architecture/action-plans/2026-07-04-external-audit-action-plan.md
+    §5. Per-ticket test surface is the 8-item ratchet (gofmt + go vet +
+    go build + go test -short on touched subtree; standalone).
+    Pre-existing build issues (per architecture/current.yaml entry
+    PRE-EXISTING-BUILD-ISSUES-2026-07-04) are NOT a regression of any
+    ticket in this wave.
+  linked_issues:
+    - id: PR-LIFECYCLE-CAPABILITY-DISABLED-SENTINEL
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-15
+      description: |
+        Replace return nil + INFO log + Stop: return nil idiom in the 2
+        surviving prewarm StartupStep Start funcs at
+        internal/app/lifecycle.go:407-430 (yt-cache-prewarm +
+        yt-nightly-prewarm) with explicit CapabilityDisabled typed
+        sentinel that surfaces in startup diagnostics. godlike/07
+        no-fake-availability: a step returning "success" while it
+        loads NOTHING is a fake success.
+    - id: PR-WIRE-ASSETS-NIL-CLASSIFICATION
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-25
+      description: |
+        Type-class every WireAssets dep-getter (!ok || X == nil pattern
+        at wire_assets.go:91/307/353/402/443/489/549/599) into
+        required / optional-disabled / test-only taxonomy per godlike/06
+        SSOT. Inconsistency today: searchFanOut nil = composition error
+        (line 91 fail-closed); other deps silent-error/fallback.
+    - id: PR-QDRANT-FINAL-DECISION
+      owner_capability: internal/app + internal/infrastructure/qdrant
+      status: pending
+      deadline: 2026-08-01
+      description: |
+        Decide live-or-dead for Qdrant's 8 fields still resident on
+        internal/app/composition.go::ProcessBundle (CollectionManager +
+        QdrantDeleter + QdrantRuntime + LocatorCleaner + QdrantClient +
+        QdrantHealthProbe + QdrantSearcher + audit-pin comments at
+        lines 165-211). MUST lock BEFORE Wave 30 BACKFILL phase flips
+        ingestion-side choreography (forward-cite
+        PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION).
+    - id: PR-MEDIASEARCH-HANDLER-SPLIT
+      owner_capability: internal/api/mediasearch
+      status: pending
+      deadline: 2026-08-01
+      description: |
+        Decompose internal/api/mediasearch/handler.go (766 LoC) into 5
+        single-purpose capability files per AGENTS.md Pattern 5:
+        dto.go + readiness.go + errors.go + sanitize.go +
+        response_mapper.go. handler.go retains only RegisterRoutes +
+        Search + Ready + IndexBulk thin transport. Forward-cites
+        AUDIT-2026-07-02 PR-MANIFEST-STREAM-RECOVERY +
+        AUDIT-2026-07-02 PR-AGGREGATE-FILTER-UNIFORM.
+    - id: PR-LIFECYCLE-SPLIT-BY-CAPABILITY
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+      description: |
+        Split internal/app/lifecycle.go (1152 LoC) into 5 single-purpose
+        capability files per AGENTS.md Pattern 5: thin lifecycle.go
+        orchestrator (assemble startup plan only) + lifecycle_worker.go
+        + lifecycle_scheduler.go + lifecycle_maintenance.go +
+        lifecycle_monitor_adapters.go (composition-root adapter wiring
+        for monitor/ ports per FASE 3.7). Sister files
+        lifecycle_sweepers.go (259) + lifecycle_job_runner.go (204) +
+        server_lifecycle.go (251) are RETAINED.
+    - id: PR-WIRE-ASSETS-CAPABILITY-SPLIT
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+      description: |
+        Split internal/app/wire_assets.go (633 LoC) into 5 single-purpose
+        capability files per AGENTS.md Pattern 5: thin wire_assets.go
+        orchestrator + wire_assets_clips.go + wire_assets_storage.go +
+        wire_assets_search.go + wire_assets_diagnostics.go. Voiceover
+        remains in pre-existing adapters_voiceover_use_case.go (no
+        change).
+    - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-1
+      owner_capability: scripts/ci-architectural-checks.sh + cmd/archcheck
+      status: pending
+      deadline: 2026-08-15
+      description: |
+        Begin migration of per-check-per-Nord pattern in
+        scripts/ci-architectural-checks.sh (54 known checks:
+        1/5/8/9/50/51/52/53/54) into a Go cmd/archcheck/ registry.
+        Phase 1: pick the 3 most-ripgrep-able checks (Check 54
+        infra-import ban; Check 5 type-redecl ban per id-20; Check 53
+        TxContext-ban per C7) and migrate 1:1 to Go. Shell checks
+        RETAINED as transitional baselines (godlike/08 zero-baseline
+        rule with owner + deadline per transitional window).
+        Forward-cites S7-Step-7 (Check 50 migration precedent).
+    - id: PR-COMPOSITION-BUNDLE-SPLIT
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-22
+      description: |
+        Decompose internal/app/composition.go (657 LoC) into
+        bundle-per-capability split per AGENTS.md Pattern 5 — AFTER
+        PR-QDRANT-FINAL-DECISION locks the Qdrant disposition.
+        Forward-cites GODOBJ-2026-07-03 Band 2 mechanical (composition.go
+        is the canonical Band-2 target #7).
+    - id: PR-SEARCH-PORTS-SPLIT
+      owner_capability: internal/application/search
+      status: pending
+      deadline: 2026-08-22
+      description: |
+        Decompose internal/application/search/ports.go (674 LoC) into 6
+        single-purpose capability files per AGENTS.md Pattern 5:
+        ports.go (interfaces only) + registry.go (NEW — does not exist
+        today; BackendRegistry shape) + errors.go (53 LoC; canonical
+        ErrAllBackendsFailed site) + types_query.go (search.Query +
+        search.SearchMode + search.Actor) + types_result.go (search.Result
+        + search.Hit + scoring envelopes) + document.go (search.Document
+        contract). Sister files aggregator.go (842) + embed* + cursor.go
+        + dedup.go + rank.go + score_local.go + telemetry.go are
+        RETAINED. Forward-cites Wave 30 (id: 30).
