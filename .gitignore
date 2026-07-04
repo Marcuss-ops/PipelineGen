@@ -289,3 +289,16 @@ TODO[0-9]*.go
 /test-*.mp3
 /verifica-postfix-*.mp3
 /questo-*.mp3
+
+# ============================================
+# Voiceover fixture negation patterns (cfa088cf follow-up, 2026-07-04)
+# ============================================
+# Defense-in-depth against the unanchored `*.mp3` pattern (added in
+# cfa088cf). The unanchored pattern catches ANY .mp3 file in the tree;
+# if a legitimate voiceover/audio test fixture ships at tests/fixtures/
+# or internal/**/testdata/, it would be silently ignored without these
+# negations. The two negation patterns preserve legitimate fixtures
+# without restoring untracked root-level test output (the latter still
+# receives defensive coverage via /*.mp3 + /prima-frase-*.mp3 etc.).
+!tests/fixtures/**/*.mp3
+!internal/**/testdata/**/*.mp3
