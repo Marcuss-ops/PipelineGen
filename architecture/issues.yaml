@@ -961,12 +961,14 @@
   failure_mode: "Typed script-domain errors (PlanInvalid, InvalidGenerationSpec, etc) bubbled HTTP 500 instead of HTTP 400 on the request seam. SHIPPED on origin/main (canonical ship_sha: 387ea350, ship_date: 2026-07-04, see PHASE-9-BUG-REMEDIATION.linked_issues[SCRIPT-T03-001])."
 
 - id: SCRIPT-T03-USECASE
-  status: pending
+  status: done
   owner_capability: internal/application/scripts/usecase
   priority: P0
   deadline: 2026-07-15
-  blocker: true
-  failure_mode: "Usecase orchestrator failure surface: script-generation flow blocks on usecase exception path (NOT logged+drop, NOT graceful-degrade). Breaks the script-generation happy path until canonical usecase error-path contract is enforced per godlike/07 typed-error gate."
+  blocker: false
+  closed_at: 2026-07-04
+  ship_sha: TBD
+  failure_mode: "Usecase orchestrator failure surface: script-generation flow blocks on usecase exception path (NOT logged+drop, NOT graceful-degrade). Breaks the script-generation happy path until canonical usecase error-path contract is enforced per godlike/07 typed-error gate. SHIPPED 2026-07-04: godlike/07 typed-error gate enforced at the single-item orchestrator (internal/application/scripts/usecase/generate_one_usecase.go) via new logPhaseError + logTypedPhaseError helpers — every `return nil, err` at the orchestrator boundary now logs the diagnostic context (item_id, phase, error) BEFORE returning the typed error. Multi-item per-item propagation surface (internal/application/scripts/usecase/generate_many_usecase.go::GenerateManyItemResult.TypedError) carries the typed error wrapped via fmt.Errorf(%w: %w, scriptpkg.ErrGenerationFailed, err) so handlers can errors.Is at the handler layer while preserving wire-format compat (json:\"-\" tag excludes TypedError from JSON marshalling). 4 new TDD tests cover typed-error propagation through the usecase boundary: single-item engine=nil + validate phase + multi-item per-item typed error + JSON wire-format compat."
 
 - id: IMAGES-T04-MULTIPART
   status: done

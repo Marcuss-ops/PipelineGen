@@ -4635,6 +4635,27 @@
     status: shipped
     ship_date: '2026-07-04'
     deadline: 2026-08-01
+  - id: SCRIPT-T03-003
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: 2026-07-15
+    notes: |
+      Phase 9 cycle 2 closure of the godlike/07 typed-error gate at
+      the script-generation orchestrator. logPhaseError + logTypedPhaseError
+      helpers enforce the canonical usecase error-path contract: every
+      `return nil, err` at the orchestrator boundary now logs the diagnostic
+      context (item_id, phase, error) BEFORE returning the typed error.
+      Multi-item per-item propagation surface (GenerateManyItemResult.TypedError)
+      carries the typed error wrapped via fmt.Errorf("%w: %w",
+      scriptpkg.ErrGenerationFailed, err) so handlers can errors.Is at the
+      handler layer while preserving wire-format compat (json:"-" tag excludes
+      TypedError from JSON marshalling). 5 new TDD tests cover typed-error
+      propagation through the usecase boundary (single-item engine=nil,
+      single-item validate-fail, multi-item typed-error-per-item, multi-item
+      json:"-" wire-compat, multi-item ordering preservation). Closes
+      architecture/issues.yaml#SCRIPT-T03-USECASE (status: pending
+      -> status: done, ship_sha pending commit).
+
   - id: IMAGES-T04-001
     owner_capability: internal/api/images
     status: pending
