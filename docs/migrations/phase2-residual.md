@@ -7,14 +7,21 @@ user-mental-model counts and shipped a single docs-only close (no code
 destructive operations). Original per-file tables were trimmed in this
 post-PR-5 cleanup tornata.
 
-| Wave / Item | Status | Closure Commit |
+| Wave / Item | Status (3-state taxonomy) | Closure Commit |
 |---|---|---|
-| Wave 1 (middleware, 3 files / 14 refs) | VERIFIED ALREADY-DONE | 9a949ec8 |
-| Wave 2 (generic handlers) | Originally documented as 0 files; effectively no-op from the start | n/a |
-| Wave 3 (cmd/) | Originally documented as 0 files; effectively no-op from the start | n/a |
-| Wave 4 (sources / artlist + youtube, 20 files / 102 refs) | VERIFIED ALREADY-DONE | f79c8810 |
-| Wave 5 (multi-PR FRAGMENTO-c overlap) | Verifier-locked via PR-c-3 docs-close (no code change) | da57a7df |
-| FRAGMENTO (b) Phase 1 (providers extraction) | VERIFIED ALREADY-DONE (impl.go files never created, source files structurally absent) | 74c5bb5e |
+| Wave 1 (middleware, 3 files / 14 refs) | **CLOSED-NO-OP** (closed as docs-only after verify) | 9a949ec8 |
+| Wave 2 (generic handlers) | **CLOSED-NO-OP** (originally documented as 0 files; effectively no-op from the start) | n/a |
+| Wave 3 (cmd/) | **CLOSED-NO-OP** (originally documented as 0 files; effectively no-op from the start) | n/a |
+| Wave 4 (sources / artlist + youtube, 20 files / 102 refs) | **CLOSED-NO-OP** (closed as docs-only after verify) | f79c8810 |
+| Wave 5 (multi-PR FRAGMENTO-c overlap) | **CLOSED-NO-OP** (code-blocked via cycle-misdiagnosis + structurally absent target files). NOTE: Wave 5 file paths listed in legacy narrative (`internal/artifacts/{clips_adapter.go, converters.go}` + `internal/domain/asset/{asset.go, asset_test.go}`) are SEMANTIC; the actual paths after prior tornatas are `internal/application/assets/artifacts/{clips_adapter.go, converters.go}` + `internal/application/assets/artifacts/types_test.go` (the latter shipping the canonical Status parity test). Forensic breadcrumb for future agents receiving prompts referencing the SEMANTIC paths. | da57a7df |
+| FRAGMENTO (b) Phase 1 (providers extraction) | **CLOSED-NO-OP** (impl.go files never created, source files structurally absent) | 74c5bb5e |
+| PR-c-1 (clipsadapter sub-package extraction) | **DEFERRED** (cycle-blocked; sub-package directory does NOT exist; safe-path documented but unshipped) | n/a |
+| PR-c-2 (alias redirect Asset = artifacts.Asset) | **CLOSED-GUARD** (struct field-shape blockade; shipped forward-looking guard test `TestArtifactIsHardAliasFromArtifacts` instead) | 18b30c45 |
+
+Status taxonomy:
+- **CLOSED-NO-OP**: the proposed migration/feature already-done by prior tornatas; this tornata closed it with a docs-only ALREADY-DONE entry (no code change).
+- **CLOSED-GUARD**: the migration is structurally blocked but a forward-looking guard test / parity-test was shipped as a regression-prevention sentinel.
+- **DEFERRED**: the migration is blocked + no shipped guard; remains an open architectural choice for future tornatas.
 
 PR-c chain:
 

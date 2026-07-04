@@ -604,8 +604,8 @@ of truth.
 ## 13. Ownership, extension rules, and known transition boundaries
 
 ### Where a change belongs
-| New source/provider package | `internal/application/assets/providers/<source>/` (drive, http, catalog, artlist, youtube, stock) | Provider registry + per-source adapters. Add new provider here, do not spread source switches across `internal/sources/`. |
-| Clipsadapter sub-package | `internal/application/assets/clipsadapter/` | Adapter glue for ClipsRegistry + Voiceover/Image converters + boundary types extracted from `artifacts/`. Use `assets.MediaRecord`‑qualified references; pattern documented in FRAGMENTO (b) Phase 1 close. |
+| New source/provider package | `internal/application/assets/providers/<source>/` (sub-packages: drive, http, catalog, artlist, youtube, stock) | Provider registry + per-source adapters. **Hierarchy note:** 1st-class transport-side providers are `drive` + `http` + `catalog` (persistence + retrieval primitives). Source-side adapters (`artlist`, `youtube`, `stock`) are sub-facades that build on the transport providers — add new source-side logic there to avoid sourcing-switch sprawl in `internal/sources/`. |
+| Clipsadapter sub-package | `internal/application/assets/clipsadapter/` **(NOT IMPLEMENTED — see docs/migrations/phase2-residual.md "## PR-c-1 (sub-package extraction)" section under LEGACY VERIFICATION NARRATIVE)** | Transitional adapter-glue and boundary-type facade for ClipsRegistry + Voiceover/Image converters. Directory does NOT exist as of main HEAD `ba4f664d`; multiple PR-c-1 tornatas reverted due to bare-reference propagation + global goimports over-spreading qualifier-prefixes. Will revisit per docs/migrations/phase2-residual.md "safe-path lesson" (manual per-file import management, NOT global goimports). |
 
 
 | Change | Canonical location |
