@@ -882,7 +882,9 @@
       deadline: 2026-07-02
     - id: PR-CrossPackage-IndexingStatus-§12-5
       owner_capability: internal/application/assets/sourcing (cross-package coordination)
-      status: pending
+      status: shipped
+      ship_sha: 2c81fea1
+      ship_date: 2026-07-04
       deadline: 2026-08-15
     - id: P0.18
       owner_capability: internal/application/assets/providers/stock/stockpipeline
