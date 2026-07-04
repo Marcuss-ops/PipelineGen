@@ -5384,3 +5384,68 @@ wave_status:
       owner_capability: "internal/application/search + tests/e2e/"
       status: pending
       deadline: 2026-08-01
+
+
+- id: PR-VO-COMPLETEPATH-FIX
+  status: done
+  exit_signal: true
+  deadline: 2026-07-04
+  description: |
+    PR-VO-COMPLETEPATH-FIX (July 2026) — voiceover ProducesArtifacts=true
+    removed from BOTH TypeVoiceoverGenerate (parent) AND
+    TypeVoiceoverGenerateItem (child) in
+    internal/application/jobs/registry.go:541+548. The SQL-layer
+    ErrCompleteJobPathViolation guard at
+    internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+    was rejecting the legacy Complete for these job types, marking
+    them FAILED with "legacy Worker cannot complete artifact-producing
+    job". Path B (the chosen db2f3b1e fix) re-routes the broker
+    mark-SUCCEEDED through the legacy SQLiteStore.Complete path; the
+    voiceover pipeline persists its own voiceovers + media_assets
+    projection + outbox events atomically inside the per-item
+    caller-owned *sql.Tx via VoiceoverFinalizer.Finalize (the
+    canonical owner of the per-item artifact writes). The 3 Required
+    Steps in Finalize (4-5-6: media_assets projection + index outbox
+    + cleanup outbox) fail-fast on nil LifecycleService or nil Outbox
+    at Finalize() entry per godlike/07 ZERO LEGACY. godlike/06 SSOT
+    split: voiceover.finalizer.Finalize owns the artifact writes;
+    broker legacy SQLiteStore.Complete owns the jobs.status→SUCCEEDED
+    flip. Two surfaces no longer entangled (no double-write race).
+  linked_issues:
+    - id: db2f3b1e
+      owner_capability: "internal/application/jobs + internal/application/voiceover"
+      status: shipped
+      ship_sha: db2f3b1e
+      ship_date: 2026-07-04
+      ship_via: |
+        fix(jobs): PR-VO-COMPLETEPATH-FIX remove ProducesArtifacts=true
+        from voiceover jobs (path B; voiceover.finalizer is canonical
+        owner for media_assets + outbox writes inside per-item tx).
+    - id: PR-VO-COMPLETEPATH-FIX-TESTS
+      owner_capability: "internal/application/voiceover/jobs"
+      status: shipped
+      ship_sha: e71d10ad
+      ship_date: 2026-07-04
+      ship_via: |
+        test(voiceover): 4 TDD regression tests for voiceover finalizer
+        invariants (registry contract + tx-pointer identity atomicity
+        proof + parent aggregator eligibility gate). Closes the
+        test-surface gap for the db2f3b1e closure.
+    - id: PR-VO-ASSET-LOCATIONS-CONSUMER-AUDIT
+      owner_capability: "internal/application/voiceover + internal/application/scripts"
+      status: pending
+      deadline: 2026-08-01
+      description: |
+        Forward-pointer (audit discovery during post-ff audit of
+        db2f3b1e, NOT a regression of that fix): voiceover.finalizer
+        does NOT write asset_locations (the table is owned by
+        AssetFinalizerTx for artlist+stock pipelines). The consumer
+        internal/application/scripts/templates/google_doc_template.go
+        ::SceneRenderer.ResolveAssetWebViewLink does not find
+        voiceover assets. Decision needed between Strada A (adapt
+        SceneRenderer to fall back on media_assets.DriveLink) or
+        Strada B (extend finalizer with 7th step writing
+        asset_locations in the same tx). Owner capability straddles
+        internal/application/voiceover (canonical finalizer) and
+        internal/application/scripts (canonical consumer) per
+        godlike/06 SSOT split.
