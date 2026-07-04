@@ -52,14 +52,14 @@ type SceneImage struct {
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
-	Entities          *scriptpkg.EntityResult
-	VideoMetadata     []scriptpkg.VideoMetadata
-	Voiceovers        []SceneVoiceover
-	Scenes            []SceneImage
-	DocLink           string
-	DocID             string
-	ScriptID          int64
-	AlreadyPersisted  bool
+	Entities         *scriptpkg.EntityResult
+	VideoMetadata    []scriptpkg.VideoMetadata
+	Voiceovers       []SceneVoiceover
+	Scenes           []SceneImage
+	DocLink          string
+	DocID            string
+	ScriptID         int64
+	AlreadyPersisted bool
 	// StageDurations maps processor name → wall-clock milliseconds
 	// consumed. Populated by Run() before merge. P1 #10 (June 2026).
 	StageDurations map[string]int64 `json:"stage_durations,omitempty"`
@@ -70,7 +70,7 @@ type PipelineResult struct {
 	// heuristic. omitempty keeps the JSON envelope stable for
 	// callers that did not opt into the heuristic.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
-	Warnings           []string             `json:"warnings,omitempty"`
+	Warnings          []string              `json:"warnings,omitempty"`
 	// FinalSpecScene (Issue #1, June 2026) is the canonical
 	// post-walk SpecScene surface consumed by buildGenerationResult.
 	// Pre-fix: buildGenerationResult read from engineResult.Output
@@ -158,20 +158,20 @@ const (
 // voiceover.generate). Until the full CUTOVER phase, they remain
 // registered but with BestEffort policy so legacy callers that
 // still request them do not trigger a hard preflight failure.
-var defaultPolicyByName = map[string]ProcessorPolicy{
-	"persistence": ProcessorRequired,
-	"document":    ProcessorBestEffort, // Fase 2: downgraded (→ document.generate job)
-	"images":      ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
-	"voiceover":   ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
-	"entities":    ProcessorRequired,
-	"metadata":    ProcessorRequired,
+var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
+	ProcessorPersistence: ProcessorRequired,
+	ProcessorDocument:    ProcessorBestEffort, // Fase 2: downgraded (→ document.generate job)
+	ProcessorImages:      ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
+	ProcessorVoiceover:   ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
+	ProcessorEntities:    ProcessorRequired,
+	ProcessorMetadata:    ProcessorRequired,
 }
 
 // DefaultPolicyFor returns the canonical default policy for a
 // named postprocessor. Returns empty string for unknown names —
 // callers MUST treat unknown names as a hard fail or warn per
 // their own classification logic.
-func DefaultPolicyFor(name string) ProcessorPolicy {
+func DefaultPolicyFor(name ProcessorName) ProcessorPolicy {
 	return defaultPolicyByName[name]
 }
 
@@ -181,7 +181,7 @@ func DefaultPolicyFor(name string) ProcessorPolicy {
 // to `input ProcessInput`. The envelope carries the canonical
 // output text plus typed fields required by individual processors.
 type PostProcessor interface {
-	Name() string
+	Name() ProcessorName
 	Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy
 	Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error)
 }
@@ -217,7 +217,7 @@ type PostProcessResult struct {
 	// metadata / voiceover / images / document / persistence) do
 	// not see a serialisation diff.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
-	Warnings           []string             `json:"warnings,omitempty"`
+	Warnings          []string              `json:"warnings,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -275,8 +275,8 @@ type ProcessInput struct {
 
 // PostProcessorRegistry runs enabled processors in order.
 type PostProcessorRegistry struct {
-	processors map[string]PostProcessor
-	policies   map[string]ProcessorPolicy
+	processors map[ProcessorName]PostProcessor
+	policies   map[ProcessorName]ProcessorPolicy
 	frozen     bool
 	mu         sync.RWMutex
 	log        *zap.Logger
@@ -285,8 +285,8 @@ type PostProcessorRegistry struct {
 // NewPostProcessorRegistry creates an empty, unfrozen registry.
 func NewPostProcessorRegistry(log *zap.Logger) *PostProcessorRegistry {
 	return &PostProcessorRegistry{
-		processors: make(map[string]PostProcessor),
-		policies:   make(map[string]ProcessorPolicy),
+		processors: make(map[ProcessorName]PostProcessor),
+		policies:   make(map[ProcessorName]ProcessorPolicy),
 		log:        log,
 	}
 }
@@ -328,7 +328,7 @@ func (r *PostProcessorRegistry) Register(proc PostProcessor) bool {
 }
 
 // Registered returns true when a processor with the given name is registered.
-func (r *PostProcessorRegistry) Registered(name string) bool {
+func (r *PostProcessorRegistry) Registered(name ProcessorName) bool {
 	if r == nil {
 		return false
 	}
@@ -339,7 +339,7 @@ func (r *PostProcessorRegistry) Registered(name string) bool {
 }
 
 // LookupPolicy returns the registered policy for the named processor.
-func (r *PostProcessorRegistry) LookupPolicy(name string) ProcessorPolicy {
+func (r *PostProcessorRegistry) LookupPolicy(name ProcessorName) ProcessorPolicy {
 	if r == nil {
 		return ""
 	}
@@ -394,9 +394,15 @@ func (r *PostProcessorRegistry) ValidateRequested(names []string) error {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, len(names))
-	unique := make([]string, 0, len(names))
-	for _, n := range names {
+	// Convert from plan's []string to typed ProcessorName slice.
+	typed := make([]ProcessorName, len(names))
+	for i, n := range names {
+		typed[i] = ProcessorName(n)
+	}
+
+	seen := make(map[ProcessorName]struct{}, len(typed))
+	unique := make([]ProcessorName, 0, len(typed))
+	for _, n := range typed {
 		if _, ok := seen[n]; ok {
 			continue
 		}
@@ -443,11 +449,11 @@ func (r *PostProcessorRegistry) Run(
 		return &PipelineResult{}, nil
 	}
 	r.mu.RLock()
-	procs := make(map[string]PostProcessor, len(r.processors))
+	procs := make(map[ProcessorName]PostProcessor, len(r.processors))
 	for k, v := range r.processors {
 		procs[k] = v
 	}
-	policies := make(map[string]ProcessorPolicy, len(r.policies))
+	policies := make(map[ProcessorName]ProcessorPolicy, len(r.policies))
 	for k, v := range r.policies {
 		policies[k] = v
 	}
@@ -479,7 +485,8 @@ func (r *PostProcessorRegistry) Run(
 		requiredFails     []string
 	)
 
-	for _, name := range plan.Postprocessors {
+	for _, rawName := range plan.Postprocessors {
+		name := ProcessorName(rawName)
 		proc, ok := procs[name]
 		policy := policies[name]
 		if policy == "" {

@@ -39,7 +39,7 @@ func NewVoiceoverProcessor(gen VoiceoverService, log *zap.Logger) *VoiceoverProc
 	return &VoiceoverProcessor{gen: gen, log: log}
 }
 
-func (p *VoiceoverProcessor) Name() string { return "voiceover" }
+func (p *VoiceoverProcessor) Name() ProcessorName { return ProcessorVoiceover }
 
 // Policy classifies voiceover as ProcessorBestEffort: a missing
 // voiceover service (typed adapter nil at composition time) or a

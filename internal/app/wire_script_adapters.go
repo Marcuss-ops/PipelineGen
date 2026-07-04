@@ -9,28 +9,28 @@
 // wire_script_postprocess.go), and the two responsibilities
 // collected here — concrete port adapters + composition invariants.
 //
-// 1. driveFolderAdapterImpl + docCreatorImpl — these are the ONLY
-//    adapter structs that bridge *drive.Uploader and drive.DocClient
-//    into scriptapi.DriveFolderClient / scriptapi.DocumentCreator
-//    ports used by the script handler. Source-resolver adapters live
-//    in wire_script_sources.go (Qdrant + ClipsRepository bridges);
-//    curation adapters live in wire_script_curation.go
-//    (imgservice → ImageGenService bridge). Promoting *drive usage
-//    to its own composition-root-local file keeps the
-//    `package app` cleanly sliced: wire_script.go itself no longer
-//    imports `internal/infrastructure/drive` directly (the
-//    drive.DocClient usage stays here, where it has natural ownership).
+//  1. driveFolderAdapterImpl + docCreatorImpl — these are the ONLY
+//     adapter structs that bridge *drive.Uploader and drive.DocClient
+//     into scriptapi.DriveFolderClient / scriptapi.DocumentCreator
+//     ports used by the script handler. Source-resolver adapters live
+//     in wire_script_sources.go (Qdrant + ClipsRepository bridges);
+//     curation adapters live in wire_script_curation.go
+//     (imgservice → ImageGenService bridge). Promoting *drive usage
+//     to its own composition-root-local file keeps the
+//     `package app` cleanly sliced: wire_script.go itself no longer
+//     imports `internal/infrastructure/drive` directly (the
+//     drive.DocClient usage stays here, where it has natural ownership).
 //
-// 2. validateScriptGenerateWiring + validateRequiredProcessors +
-//    requiredProcessorNames — these are composition-time invariants
-//    that gate fail-closed on missing components. Issue 7 / P1
-//    (June 2026) replaced the pre-Issue-7 log.Warn with explicit
-//    composition-time errors; PR 2 (June 2026) closed the
-//    "partial registration" gap with the post-freeze required-names
-//    check. Grouping them with the adapter types is intentional:
-//    both are infrastructure-bridging concerns (adapters bridge
-//    concrete services into typed ports; validators bridge
-//    composition-time state into fail-closed startup semantics).
+//  2. validateScriptGenerateWiring + validateRequiredProcessors +
+//     requiredProcessorNames — these are composition-time invariants
+//     that gate fail-closed on missing components. Issue 7 / P1
+//     (June 2026) replaced the pre-Issue-7 log.Warn with explicit
+//     composition-time errors; PR 2 (June 2026) closed the
+//     "partial registration" gap with the post-freeze required-names
+//     check. Grouping them with the adapter types is intentional:
+//     both are infrastructure-bridging concerns (adapters bridge
+//     concrete services into typed ports; validators bridge
+//     composition-time state into fail-closed startup semantics).
 //
 // Package boundary: same `package app` as wire_script.go. Promoting
 // either cluster to a sub-package would force wire_script.go to
@@ -60,7 +60,7 @@
 //   - internal/domain/script: scriptpkg.PlanInvalidError (the
 //     typed error returned from validateRequiredProcessors).
 //   - internal/application/scripts/adapters: PostProcessorRegistry
-//     + ProcessorRequired policy classification (the validator's
+//   - ProcessorRequired policy classification (the validator's
 //     scanning surface).
 package app
 
@@ -233,10 +233,10 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 // requiredProcessorNames. Document generation is now a downstream
 // job (document.generate), not an inline postprocessor. The
 // document processor is no longer registered in the script pipeline.
-var requiredProcessorNames = []string{
-	"persistence",
-	"entities",
-	"metadata",
+var requiredProcessorNames = []adapters.ProcessorName{
+	adapters.ProcessorPersistence,
+	adapters.ProcessorEntities,
+	adapters.ProcessorMetadata,
 }
 
 // validateRequiredProcessors checks the post-freeze registry for
@@ -254,7 +254,7 @@ var requiredProcessorNames = []string{
 // (where composition would silently skip a Register call when the
 // underlying dep was nil, then runtime would silently skip the
 // postprocessor — leaving the script row unwritten).
-func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
+func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required []adapters.ProcessorName) *scriptpkg.PlanInvalidError {
 	if ppReg == nil {
 		return &scriptpkg.PlanInvalidError{
 			ItemID:  "wireScriptFlow",
@@ -270,7 +270,7 @@ func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required 
 	var missing []string
 	for _, name := range required {
 		if !ppReg.Registered(name) {
-			missing = append(missing, name)
+			missing = append(missing, string(name))
 		} else if ppReg.LookupPolicy(name) != adapters.ProcessorRequired {
 			// Defensive: composition-side invariant. A name in the
 			// required list MUST have the ProcessorRequired
@@ -278,7 +278,7 @@ func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required 
 			// policy to BestEffort, this check surfaces the
 			// dependency drift loudly — the operator MUST update
 			// requiredProcessorNames to match.
-			missing = append(missing, name+" (registered with non-required policy)")
+			missing = append(missing, string(name)+" (registered with non-required policy)")
 		}
 	}
 	if len(missing) == 0 {

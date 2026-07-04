@@ -54,7 +54,7 @@ func NewImageProcessor(gen ImageGenService, log *zap.Logger) *ImageProcessor {
 	return &ImageProcessor{gen: gen, log: log}
 }
 
-func (p *ImageProcessor) Name() string { return "images" }
+func (p *ImageProcessor) Name() ProcessorName { return ProcessorImages }
 
 // Policy classifies images as ProcessorBestEffort: a missing image
 // service (typed adapter nil at composition time) or a runtime failure

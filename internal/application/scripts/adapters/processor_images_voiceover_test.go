@@ -295,14 +295,14 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 
 func TestImageProcessorName(t *testing.T) {
 	proc := adapterspkg.NewImageProcessor(&fakeImageGen{results: []*adapterspkg.ImageResult{}}, zap.NewNop())
-	if proc.Name() != "images" {
+	if proc.Name() != adapterspkg.ProcessorImages {
 		t.Errorf("expected name \"images\", got %q", proc.Name())
 	}
 }
 
 func TestVoiceoverProcessorName(t *testing.T) {
 	proc := adapterspkg.NewVoiceoverProcessor(&fakeVoiceoverGen{}, zap.NewNop())
-	if proc.Name() != "voiceover" {
+	if proc.Name() != adapterspkg.ProcessorVoiceover {
 		t.Errorf("expected name \"voiceover\", got %q", proc.Name())
 	}
 }

@@ -63,7 +63,7 @@ func NewPersistenceProcessor(repo ScriptRepository, log *zap.Logger) *Persistenc
 	return &PersistenceProcessor{repo: repo, log: log}
 }
 
-func (p *PersistenceProcessor) Name() string { return "persistence" }
+func (p *PersistenceProcessor) Name() ProcessorName { return ProcessorPersistence }
 
 // Policy classifies persistence as ProcessorRequired: a missing-registered
 // persistence or a runtime failure or empty ScriptID output is a hard

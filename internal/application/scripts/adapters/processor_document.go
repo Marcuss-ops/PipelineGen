@@ -49,7 +49,7 @@ func NewDocumentProcessor(docsSvc DocumentsService, resolveFolder FolderResolver
 	}
 }
 
-func (p *DocumentProcessor) Name() string { return "document" }
+func (p *DocumentProcessor) Name() ProcessorName { return ProcessorDocument }
 
 // Policy classifies document as ProcessorRequired: a missing-registered
 // document service or a runtime failure or empty DocLink output is a
