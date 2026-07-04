@@ -3087,7 +3087,7 @@ wave_status:
     - id: PR-ARTLIST-RECOMMEND-ADAPTER
       owner_capability: "internal/app (composition root adapter) + internal/api/assets/artlist (handler port) + internal/application/scripts/usecase (canonical resolver)"
       status: shipped
-      ship_sha: <TBD-by-commit>
+      ship_sha: 179e05a66f8bd93fadb782a92d50fb1d50d479e3
       ship_date: "2026-07-04"
       deadline: 2026-08-15
 
