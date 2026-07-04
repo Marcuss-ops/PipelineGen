@@ -47,6 +47,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 )
 
 // (database/sql is required for outboxRepairAdapter.db which is *sql.DB — the OpenSQLiteDB return type)
@@ -220,7 +221,7 @@ func runReconcileQdrant(args []string) error {
 		Payload:      payloadAdapter,
 		PointIDFor:   pointIDFor,
 		ReportWriter: nil, // default filesystem report writer
-		Metrics:      qdrant.PromMetricsAdapter{},
+		Metrics:      qdrantsearch.PromMetricsAdapter{},
 		Log:          log,
 	})
 

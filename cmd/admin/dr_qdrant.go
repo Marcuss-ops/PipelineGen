@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/dr"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -338,7 +339,7 @@ func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *qdran
 
 	svc := dr.NewRestoreServiceFromDeps(dr.RestoreServiceDeps{
 		Store:    qdrant.NewSnapshotStoreAdapter(client),
-		Switcher: qdrant.NewAliasSwitcherAdapter(client),
+		Switcher: qdrantmaintenance.NewAliasSwitcherAdapter(client),
 		Creator:  qdrant.NewCollectionCreatorAdapter(cm),
 		Verifier: qdrant.NewVerifierAdapter(client, assetStore, schema, log),
 		Metrics:  qdrant.NewPromDRMetricsAdapter(),
