@@ -4268,7 +4268,9 @@ wave_status:
     # P0 #2 — Split stages.go (605 LoC -> 5 files)
     - id: PR-VO-STAGES-SPLIT
       owner_capability: internal/application/voiceover
-      status: pending
+      status: shipped
+      ship_sha: 89b7e810
+      ship_date: 2026-07-04
       deadline: 2026-08-01
     # P0 #3 — Extract Step 6 outbox cleanup from finalizer.go
     - id: PR-VO-FINALIZER-STEP6-EXTRACT
