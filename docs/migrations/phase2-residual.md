@@ -47,3 +47,23 @@ None of these paths reach `internal/assets`. So the alleged transitive cycle was
 **What was implied vs what shipped:** The user's request implied a multi-file operation (git rm + doc-comment update + YAGNI aliases). All of these are no-ops on the current state. PR-c-3 is closed without code change.
 
 **Why the user rule "no branches, commit + push directly to main, frequently" still wins:** an explicit close-commit documents the discovery + prevents future agents from re-attempting PR-c-3 against a different premise. The cost is one docs-only commit; the benefit is permanent closure of the Wave 12 follow-up FRAGMENTO (c) line item.
+
+---
+
+## Wave 1 (middleware migration) — VERIFIED ALREADY-DONE, July 2026
+
+**Action taken this tornata:** zero code changes. Atomic docs-only close commit.
+
+**Verifications on HEAD `18b30c45` (independent bash recon):**
+- `internal/assets/` directory — DOES NOT EXIST (`find . -path '*/internal/assets*'` returns zero). Zero importers of `github.com/Marcuss-ops/PipelineGen/internal/assets` in the entire repo.
+- `internal/app/bootstrap.go` — 0 refs to `internal/assets`. Domain-asset imports handled elsewhere.
+- `internal/app/registry.go` — 0 refs to `internal/assets`. Imports `internal/application/assets/providers` directly for source wiring.
+- `internal/app/dependencies.go` — DOES NOT EXIST (file deleted earlier during the AGENTS.md "God Object splits" cleanup pass).
+
+The user-reported 14-ref-count (bootstrap=1, dependencies=12, registry=1) is a phantom from a stale mental model. The actual filesystem state matches a clean migration of these three files (or their replacements/splits) that was completed by prior code-improvement passes.
+
+**What was implied vs what shipped:** No new code changes needed. The user rule "no cose strane + commit + push directly main, frequently, no branches" is honored by an atomic docs-only close.
+
+**Phase-2 PR-5 wave ordering note:** Per docs/migrations/phase2-residual.md count, Wave 1 was the smallest of the 5 waves (3 files, 14 refs). Mid-tornata, the larger waves (Wave 4 sources: 20 files, 102 refs; Wave 5 FRAGMENTO-c: 4 files) become the natural next steps via fresh tornatas. Each closes via the same pattern (recon + atomic commit + push) without code changes if structurally already done.
+
+**Why this commit is explicit:** The user standing rule ("5+ suggested followups" + "no cose strane") implies that an explicit close-commit is preferable to a silent no-op that leaves the Wave 1 line item dangling in the next assistant turn's queue. Future tornatas can grep `ALREADY-DONE` to fast-skip the closed waves.
