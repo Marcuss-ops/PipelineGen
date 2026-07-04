@@ -78,7 +78,7 @@ func newFakeImageGenSvc(sourceURL string) *fakeImageGenSvc {
 	return &fakeImageGenSvc{sourceURL: sourceURL}
 }
 
-func (f *fakeImageGenSvc) SearchAndDownload(_ context.Context, sceneName, _sceneText, _altText, _language string, _opts interface{}) (*adapters.ImageResult, error) {
+func (f *fakeImageGenSvc) SearchAndDownload(_ context.Context, sceneName, _sceneText, _altText, _language string) (*adapters.ImageResult, error) {
 	f.calls++
 	f.lastName = sceneName
 	return &adapters.ImageResult{SourceURL: f.sourceURL}, nil

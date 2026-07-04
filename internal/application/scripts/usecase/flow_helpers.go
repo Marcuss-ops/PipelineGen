@@ -610,7 +610,7 @@ func enrichSingleEntity(ctx context.Context, svc ClipServices, name string) Scri
 	entityCtx, entityCancel := context.WithTimeout(ctx, 90*time.Second)
 	defer entityCancel()
 
-	asset, err := svc.ImgSvc.SearchAndDownload(entityCtx, name, name, name, "en", nil)
+	asset, err := svc.ImgSvc.SearchAndDownload(entityCtx, name, name, name, "en")
 	if err == nil && asset != nil {
 		populateEntityImage(&img, asset, "")
 		return img

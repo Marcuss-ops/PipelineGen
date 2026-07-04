@@ -73,19 +73,12 @@ type imageGenSvcAdapter struct {
 //
 // AI-first: GenerateSmartImage is called with the scene query as
 // prompt. On failure the error is propagated — no web search fallback.
-func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*adapters.ImageResult, error) {
+func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string) (*adapters.ImageResult, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
 
-	var tags []string
-	if extra != nil {
-		if t, ok := extra.([]string); ok {
-			tags = t
-		}
-	}
-
-	imgAsset, err := a.svc.GenerateSmartImage(ctx, name, query, "", []string{query}, tags, 1920, 1080, "", false)
+	imgAsset, err := a.svc.GenerateSmartImage(ctx, name, query, "", []string{query}, nil, 1920, 1080, "", false)
 	if err != nil {
 		return nil, fmt.Errorf("AI image generation failed for %q: %w", name, err)
 	}
