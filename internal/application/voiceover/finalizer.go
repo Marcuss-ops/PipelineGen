@@ -65,13 +65,24 @@ type FinalizeCommand struct {
 	// Identity & Content
 	ID        string
 	RequestID string
-	TextHash  string
-	Text      string // Full text; truncated to 100 chars for preview column
-	Language  string
-	Voice     string
-	Filename  string
-	Strategy  string
-	MetaJSON  []byte // Canonical JSON metadata map
+	// TextHash is raw string (NOT the typed TextHash envelope)
+	// because the finalizer is called from BOTH paths:
+	//   - Legacy per-batch path (stages.go::finalizeStage) passes
+	//     the 64-char full SHA-256 of req.Text.
+	//   - Per-item fan-out path (process_voiceover_item.go::Execute)
+	//     passes the 16-char ComputeTextHash prefix.
+	// The DB column stores whichever length the call path
+	// supplied. The typed TextHash envelope is canonical ONLY
+	// for the per-item 16-char value.
+	TextHash string
+	Text     string // Full text; truncated to 100 chars for preview column
+	// Language is the typed BCP-47 envelope (voiceover.Language)
+	// per PR-VO-TYPED-PRIMITIVES — wire byte-equivalent.
+	Language Language
+	Voice    string
+	Filename string
+	Strategy string
+	MetaJSON []byte // Canonical JSON metadata map
 
 	// Audio Asset State
 	LocalPath   string
@@ -197,10 +208,10 @@ type FinalizeResult struct {
 // concrete finalizer. All ports are optional (nil-safe) except
 // voiceoverRepo which is mandatory (INSERT/DELETE are always needed).
 type voiceoverFinalizerDeps struct {
-	VoiceoverRepo    VoiceoverRepository // mandatory
-	Outbox           TxOutboxEnqueuer    // nil-safe (skip index + cleanup)
+	VoiceoverRepo    VoiceoverRepository         // mandatory
+	Outbox           TxOutboxEnqueuer            // nil-safe (skip index + cleanup)
 	LifecycleService LifecycleProjectionUpserter // nil-safe (skip media_assets)
-	Logger           *zap.Logger         // nil-safe via zap.NewNop()
+	Logger           *zap.Logger                 // nil-safe via zap.NewNop()
 }
 
 // LifecycleProjectionUpserter is the narrow port for writing the
@@ -226,9 +237,13 @@ type VoiceoverProjectionInput struct {
 	DriveLink    string
 	DownloadLink string
 	FileHash     string
-	Language     string
-	Status       string
-	Metadata     string
+	// Language is the typed BCP-47 envelope (voiceover.Language)
+	// per PR-VO-TYPED-PRIMITIVES. The cross-package seam at
+	// internal/app/adapters_voiceover_use_case.go converts to
+	// the raw string when forwarding to lifecycle.VoiceoverProjectionInput.
+	Language Language
+	Status   string
+	Metadata string
 }
 
 // voiceoverFinalizer is the concrete implementation of VoiceoverFinalizer.
@@ -306,9 +321,14 @@ const (
 	// fire. The SEMANTIC improvement is the OptionalSteps /
 	// RequiredSteps SPLIT (separate fields); the step-name prefixes
 	// are wire-stable per godlike/06 (one canonical owner per fact).
+	//
+	// PR-VO-FINALIZER-STEP6-EXTRACT (P0 #3 in VO-DECOMPOSITION-2026-07-04,
+	// deadline 2026-08-01): requiredStepCleanupOutbox moved to
+	// finalizer_cleanup_outbox.go so the cleanup outbox step is
+	// owned by the file that implements it (godlike/06 SSOT).
 	requiredStepMediaAssetsProjection = "media_assets_projection"
 	requiredStepIndexOutbox           = "index_outbox"
-	requiredStepCleanupOutbox         = "cleanup_outbox"
+	// requiredStepCleanupOutbox REMOVED — moved to finalizer_cleanup_outbox.go
 
 	// Execution-state markers appended to RequiredSteps on a
 	// successful Finalize. "executed" means the deps were wired AND
@@ -422,7 +442,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		RequestID:    cmd.RequestID,
 		TextHash:     cmd.TextHash,
 		TextPreview:  textPreview,
-		Language:     cmd.Language,
+		Language:     string(cmd.Language),
 		Voice:        cmd.Voice,
 		Filename:     cmd.Filename,
 		LocalPath:    cmd.LocalPath,
@@ -483,38 +503,19 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	}
 
 	// ── Step 6: Outbox — voiceover.cleanup.requested (REQUIRED) ──
-	// Audit P0 #2: Outbox nil is fatal (fail-fast above).
-	// ShouldSwap=false OR no prior artefacts are data-state
-	// guard-skips with execution markers.
-	cleanupExecuted := false
-	if cmd.ShouldSwap {
-		var oldLocalPaths []string
-		if cmd.OldLocalPath != "" {
-			oldLocalPaths = append(oldLocalPaths, cmd.OldLocalPath)
-		}
-		if cmd.OldCleanedPath != "" && cmd.OldCleanedPath != cmd.OldLocalPath {
-			oldLocalPaths = append(oldLocalPaths, cmd.OldCleanedPath)
-		}
-		if cmd.OldDriveFileID != "" || len(oldLocalPaths) > 0 {
-			if err := f.deps.Outbox.EnqueueCleanupEvent(ctx, tx,
-				cmd.ID,
-				cmd.OldDriveFileID,
-				cmd.DriveFileID,
-				oldLocalPaths,
-			); err != nil {
-				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueCleanupEvent: %w", err)
-			}
-			cleanupExecuted = true
-		}
+	// Extracted to finalizer_cleanup_outbox.go (PR-VO-FINALIZER-STEP6-EXTRACT,
+	// P0 #3 in VO-DECOMPOSITION-2026-07-04, deadline 2026-08-01).
+	// The P0.7 Step 10/12 atomic swap-and-cleanup triplo contract
+	// (OldDriveFileID + OldLocalPath + OldCleanedPath) is preserved
+	// VERBATIM inside the extracted function. The fail-fast Outbox
+	// nil check stays at Finalize() entry above (godlike/07 ZERO
+	// LEGACY: wiring is a precondition for BOTH Step 5 index outbox
+	// AND Step 6 cleanup outbox).
+	step6Marker, err := executeCleanupOutboxStep(ctx, tx, f.deps.Outbox, cmd)
+	if err != nil {
+		return nil, err
 	}
-	switch {
-	case cleanupExecuted:
-		required = append(required, formatRequiredState(requiredStepCleanupOutbox, requiredStateExecuted))
-	case !cmd.ShouldSwap:
-		required = append(required, formatRequiredState(requiredStepCleanupOutbox, requiredStateGuarded, "ShouldSwap=false"))
-	default:
-		required = append(required, formatRequiredState(requiredStepCleanupOutbox, requiredStateGuarded, "no prior artefacts"))
-	}
+	required = append(required, step6Marker)
 
 	return &FinalizeResult{
 		ID:            cmd.ID,
