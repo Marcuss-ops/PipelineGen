@@ -66,6 +66,7 @@ func TestBuildGenerationDocumentHTML_RendersTitleAndScenes(t *testing.T) {
 		"en",
 		nil,
 		nil,
+		false, // includeSpecSceneBlock — canonical production default
 	)
 
 	if html == "" {
@@ -103,6 +104,7 @@ func TestBuildGenerationDocumentHTML_RendersEntities(t *testing.T) {
 			Concepts: []scriptpkg.Entity{{Value: "relativity"}},
 		},
 		nil,
+		false, // includeSpecSceneBlock — canonical production default
 	)
 
 	for _, want := range []string{
@@ -134,6 +136,7 @@ func TestBuildGenerationDocumentHTML_NoEntities_NoHeader(t *testing.T) {
 		"en",
 		&scriptpkg.EntityResult{}, // empty
 		nil,
+		false, // includeSpecSceneBlock — canonical production default
 	)
 	if strings.Contains(html, "<h2>Entities</h2>") {
 		t.Errorf("expected no Entities header when EntityResult is fully empty; got HTML=%s", html)
@@ -163,6 +166,7 @@ func TestBuildGenerationDocumentHTML_RendersVideoMetadata(t *testing.T) {
 				Title:    "Titolo Italiano",
 			},
 		},
+		false, // includeSpecSceneBlock — canonical production default
 	)
 
 	for _, want := range []string{
@@ -185,7 +189,7 @@ func TestBuildGenerationDocumentHTML_RendersVideoMetadata(t *testing.T) {
 // nil-model behaviour: empty string with a nil receiver.
 func TestBuildGenerationDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	t.Parallel()
-	html := adapters.BuildGenerationDocumentHTML(nil, "t", "en", nil, nil)
+	html := adapters.BuildGenerationDocumentHTML(nil, "t", "en", nil, nil, false)
 	if html != "" {
 		t.Errorf("expected empty string for nil model, got %d chars", len(html))
 	}
@@ -209,6 +213,7 @@ func TestBuildGenerationDocumentHTML_LocalisedChapterLabel(t *testing.T) {
 		"Script",
 		"it",
 		nil, nil,
+		false, // includeSpecSceneBlock — canonical production default
 	)
 	if !strings.Contains(html, "Capitolo 1") {
 		t.Errorf("expected Italian localised chapter label 'Capitolo 1'; HTML=%s", html)
@@ -223,6 +228,7 @@ func TestBuildGenerationDocumentHTML_EmptyModelMinimal(t *testing.T) {
 	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1},
 		"", "en", nil, nil,
+		false, // includeSpecSceneBlock — canonical production default
 	)
 	if html == "" {
 		t.Fatal("expected non-empty shell even for empty model")
@@ -232,6 +238,125 @@ func TestBuildGenerationDocumentHTML_EmptyModelMinimal(t *testing.T) {
 	}
 	if !strings.Contains(html, "</body></html>") {
 		t.Error("expected closing body+html tags")
+	}
+}
+
+// TestBuildGenerationDocumentHTML_IncludeSpecSceneBlockTrue_AppendsDebugBlock
+// pins the FASE-document-canonical (July 2026) optional SpecScene JSON
+// debug block: when includeSpecSceneBlock=true, the canonical renderer
+// appends a `<h2>SpecScene JSON</h2><pre>{json}</pre>` block immediately
+// before the closing </body></html> tag, surfacing the canonical
+// SpecSceneOutput shape verbatim via json.MarshalIndent +
+// html.EscapeString. The per-scene scenes-section rendering is
+// unchanged on top of this addendum (canonical behaviour).
+func TestBuildGenerationDocumentHTML_IncludeSpecSceneBlockTrue_AppendsDebugBlock(t *testing.T) {
+	t.Parallel()
+
+	html := adapters.BuildGenerationDocumentHTML(
+		&scriptpkg.ModelScriptOutputV1{
+			SchemaVersion: 1,
+			Text:          "Body prose.",
+			SpecScene: scriptpkg.SpecSceneOutput{
+				Version: 1,
+				Scenes: []scriptpkg.SpecScene{
+					{
+						ID:    "scene-X",
+						Index: 0,
+						Kind:  scriptpkg.SceneImage,
+						Text:  "Narration.",
+						Bindings: scriptpkg.SceneBindings{
+							Clip: &scriptpkg.ClipBinding{
+								ClipID:    "drive-file-X",
+								DriveLink: "https://drive.google.com/file/d/drive-file-X/view",
+							},
+						},
+					},
+				},
+			},
+		},
+		"Debug Script",
+		"en",
+		nil, nil,
+		true, // includeSpecSceneBlock — opt-in debug surface
+	)
+
+	// Canonical production sections still present.
+	for _, want := range []string{
+		"<h1>Debug Script</h1>",
+		"<h2>Script</h2>",
+		"Body prose.",
+		"<h2>Scenes</h2>",
+		"drive-file-X",
+		"https://drive.google.com/file/d/drive-file-X/view",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected HTML to contain canonical section %q; not found", want)
+		}
+	}
+
+	// Optional debug block emitted at the canonical position
+	// (immediately before </body></html>).
+	if !strings.Contains(html, "<h2>SpecScene JSON</h2><pre>") {
+		t.Errorf("expected <h2>SpecScene JSON</h2><pre> debug block; HTML=%s", html)
+	}
+	// Inline-encoded JSON inside <pre>html-escaped</pre>: the inner
+	// SpecScene JSONMarshalIndent ship with literal quote marks; the
+	// html.EscapeString call converts them to &#34; — we assert on
+	// the escaped form so the pin is faithful to the actual byte
+	// stream emitted.
+	if !strings.Contains(html, "&#34;drive_link&#34;") {
+		t.Errorf("expected html-escaped drive_link JSON key inside debug block; HTML=%s", html)
+	}
+	// Position invariant: the debug block must come immediately
+	// before the closing </body></html> tag (canonical placement).
+	specIdx := strings.Index(html, "<h2>SpecScene JSON</h2><pre>")
+	closeIdx := strings.Index(html, "</body></html>")
+	if specIdx == -1 || closeIdx == -1 || specIdx >= closeIdx {
+		t.Errorf("SpecScene JSON block must appear before </body></html>; specIdx=%d closeIdx=%d",
+			specIdx, closeIdx)
+	}
+}
+
+// TestBuildGenerationDocumentHTML_IncludeSpecSceneBlockFalse_DoesNotEmitDebugBlock
+// pins the canonical production default: with includeSpecSceneBlock
+// =false, no <h2>SpecScene JSON</h2><pre>...</pre> debug block is
+// emitted. The canonical renderer stays a pristine typed renderer
+// (production pristine — only the human-readable prose sections).
+func TestBuildGenerationDocumentHTML_IncludeSpecSceneBlockFalse_DoesNotEmitDebugBlock(t *testing.T) {
+	t.Parallel()
+
+	html := adapters.BuildGenerationDocumentHTML(
+		&scriptpkg.ModelScriptOutputV1{
+			SchemaVersion: 1,
+			Text:          "Body prose.",
+			SpecScene: scriptpkg.SpecSceneOutput{
+				Version: 1,
+				Scenes: []scriptpkg.SpecScene{
+					{ID: "scene-X", Index: 0, Kind: scriptpkg.SceneImage, Text: "Narration."},
+				},
+			},
+		},
+		"Canonical Doc",
+		"en",
+		nil, nil,
+		false, // includeSpecSceneBlock — canonical production default
+	)
+
+	// Canonical sections are present.
+	for _, want := range []string{
+		"<h1>Canonical Doc</h1>",
+		"<h2>Scenes</h2>",
+		"Narration.",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected HTML to contain %q; not found", want)
+		}
+	}
+
+	// The optional debug block MUST NOT appear in canonical
+	// production output.
+	if strings.Contains(html, "<h2>SpecScene JSON</h2>") {
+		t.Errorf("expected no <h2>SpecScene JSON</h2> debug block in canonical production render; HTML=%s", html)
 	}
 }
 
