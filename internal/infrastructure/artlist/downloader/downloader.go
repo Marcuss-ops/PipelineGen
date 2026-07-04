@@ -142,16 +142,31 @@ type Config struct {
 // Provider implements artlist.Downloader for Artlist assets.
 // It composes the canonical yt-dlp + HTTPDownloader and applies the
 // retry policy + sentinel mapping on top.
+//
+// ART-002 P1.1 (July 2026): the optional metrics field carries a
+// Pattern-0 metrics handle (per metrics.go) that increments the
+// artlist_download_path_total{path=...} counter at the start of
+// each retry-callback invocation. The field is nil-safe — passing
+// nil to New disables metrics emission (no-op observers) without
+// guarding every call site; the canonical composition root
+// (internal/app/build_bundles_artlist.go::WireArtlist) passes
+// downloader.NewMetrics() to wire the promauto global.
 type Provider struct {
-	cfg    Config
-	ytdlp  *core_dl.YTDLPDownloader
-	httpDl *core_dl.HTTPDownloader
+	cfg     Config
+	ytdlp   *core_dl.YTDLPDownloader
+	httpDl  *core_dl.HTTPDownloader
+	metrics *Metrics // ART-002 P1.1: nil-safe; see metrics.go
 }
 
 // New constructs a Provider by composing the canonical yt-dlp +
 // HTTPDownloader. cfg is mandatory (drives yt-dlp path, cookies, JS
-// runtime). downloadCfg is optional; zero values fall back to defaults.
-func New(cfg *config.Config, downloadCfg Config) *Provider {
+// runtime). downloadCfg is optional; zero values fall back to
+// defaults. metrics is optional — pass nil to disable metrics
+// emission (no-op observers per the nil-safety contract in
+// metrics.go); the canonical production wiring is downloader.NewMetrics()
+// (which backs the struct field with the promauto global from
+// observability.ArtlistDownloadPathTotal).
+func New(cfg *config.Config, downloadCfg Config, metrics *Metrics) *Provider {
 	if downloadCfg.MaxAttempts <= 0 {
 		downloadCfg.MaxAttempts = 3
 	}
@@ -170,9 +185,10 @@ func New(cfg *config.Config, downloadCfg Config) *Provider {
 		downloadCfg.HTTPDownloadTimeout = 5 * time.Minute
 	}
 	return &Provider{
-		cfg:    downloadCfg,
-		ytdlp:  core_dl.NewYTDLP(cfg),
-		httpDl: core_dl.NewHTTPDownloader(downloadCfg.HTTPDownloadTimeout),
+		cfg:     downloadCfg,
+		ytdlp:   core_dl.NewYTDLP(cfg),
+		httpDl:  core_dl.NewHTTPDownloader(downloadCfg.HTTPDownloadTimeout),
+		metrics: metrics,
 	}
 }
 
@@ -229,6 +245,11 @@ func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 
 	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
 		if isHLS {
+			// ART-002 P1.1: count per-attempt (not per-invocation) so
+			// retry storms on a flaky HLS CDN surface as a rate spike
+			// in dashboards, not a single point. nil-safe via the
+			// incDownloadPath receiver guard.
+			p.metrics.incDownloadPath(PathYTDLP)
 			dlReq := &core_dl.DownloadRequest{
 				URL:        req.SourceRef,
 				OutputPath: outPath,
@@ -239,6 +260,11 @@ func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 			}
 			return struct{}{}, p.ytdlp.Download(ctx, dlReq)
 		}
+		// ART-002 P1.1: same per-attempt counter discipline as the
+		// HLS branch above. PathHTTP is the only label currently
+		// fired from the progressive branch; PathBrowser /
+		// PathHLS are reserved for future surface additions.
+		p.metrics.incDownloadPath(PathHTTP)
 		httpReq := &core_dl.HTTPDownloadRequest{
 			URL:        req.SourceRef,
 			OutputPath: outPath,
