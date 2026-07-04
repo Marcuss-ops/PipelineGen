@@ -3,7 +3,7 @@
 //
 // File layout (1-orientation-per-file convention, AGENTS.md Pattern 5):
 //
-//	run.go          — this file; Run() orchestrator + log-fatals
+//	run.go          — this file; Run() orchestrator + WorkerComposition + buildWorkerComposition
 //	config.go       — LoadConfig (cfgPath -> *config.Config, error)
 //	identity.go     — WorkerIdentity tuple (id/name/version/hostname)
 //	capabilities.go — ParseAndValidateCaps (env-raw JSON -> WorkerCapabilities)
@@ -34,7 +34,215 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+// WorkerComposition is the canonical post-build surface for the
+// worker. The buildWorkerComposition helper returns this for both
+// profile-gated and legacy (no-profile) worker startup.
+//
+// Field semantics:
+//
+//	Registry       — frozen handler registry (no more registrations
+//	                 allowed post-helper)
+//	RegisteredCaps — handler-derived cap slice the worker registered
+//	                 with the broker
+//	Caps           — effective capability set the worker advertises
+//	                 (may be narrowed from RegisteredCaps by env
+//	                 override or profile ceiling)
+//	Workspace      — pre-built *worker.Workspace for ALL paths
+//	                 (unified: the original pre-refactor code only
+//	                 pre-built it for Creator; non-Creator paths
+//	                 called initWorkspace() after the switch — the
+//	                 refactor unifies both into the helper)
+//	WorkspaceRoot  — the directory path for job-artefact staging
+//	Cleanup        — runs on Run() exit via `defer comp.Cleanup()`
+//	                 (LIFO: defer order is comp.Cleanup() first,
+//	                 then `defer cancel()` so cancel() runs first at
+//	                 shutdown, freeing the runner, then comp.Cleanup
+//	                 flushes any in-flight writes)
+type WorkerComposition struct {
+	Registry       *worker.Registry
+	RegisteredCaps []string
+	Caps           appjobs.WorkerCapabilities
+	Workspace      *worker.Workspace
+	WorkspaceRoot  string
+	Cleanup        func()
+}
+
+// buildWorkerComposition builds the canonical worker composition
+// for the given profile (or legacy no-profile path). 3 startup paths
+// converge on a single returned *WorkerComposition:
+//
+//	profile=nil              → legacy (no-profile) path
+//	profile.Name="creator"   → Creator runtime (minimal, no DB/Drive/Qdrant)
+//	profile.Name=other       → standard profile-gated worker
+//
+// Cleanup invariant: if any step fails, the helper calls cleanup()
+// BEFORE returning the error. This fixes a pre-refactor resource leak
+// where returning from inside the switch block never called the
+// workerCleanup / creatorCleanup returned by InitWorkerComposition /
+// BuildCreatorRuntime (defer cleanup() was registered after the switch,
+// so the cleanup func was never executed on failure paths). The named
+// return + smart defer pattern below guarantees cleanup runs on
+// ANY error path (workerErr, registryErr, capsErr, wsErr).
+func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *WorkerProfile, log *zap.Logger) (comp *WorkerComposition, err error) {
+	var cleanup func()
+	defer func() {
+		// Cleanup invariant: any returned error (named return `err`)
+		// triggers cleanup() exactly once. The local `cleanup` var
+		// captures the func returned by InitWorkerComposition /
+		// BuildCreatorRuntime; subsequent failed steps leak the
+		// composition-root resources if not invoked. The named
+		// return pattern makes the error value visible to this
+		// defer (it sees the FINAL value of `err` at function
+		// return, not the value at defer-registration time).
+		if err != nil && cleanup != nil {
+			cleanup()
+		}
+	}()
+	_ = ctx // reserved for future ctx-aware error wrapping (e.g. ctx-aware retry on registry build)
+
+	if profile == nil {
+		// Legacy (no-profile) path
+		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
+		if workerErr != nil {
+			log.Error("failed to build worker composition", zap.Error(workerErr))
+			err = fmt.Errorf("worker composition: %w", workerErr)
+			return nil, err
+		}
+		cleanup = workerCleanup
+
+		registry, registeredCaps, registryErr := app.BuildWorkerRegistry(compositionRoot)
+		if registryErr != nil {
+			log.Error("failed to build worker registry", zap.Error(registryErr))
+			err = fmt.Errorf("worker registry: %w", registryErr)
+			return nil, err
+		}
+		if registry.Len() == 0 {
+			log.Error("worker has no registered handlers — aborting startup")
+			err = fmt.Errorf("worker registry empty (no registered handlers)")
+			return nil, err
+		}
+		log.Info("worker registry built",
+			zap.Int("handlers", registry.Len()),
+			zap.Strings("capabilities", registeredCaps),
+		)
+
+		caps, capsErr := ParseAndValidateCaps(Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+		if capsErr != nil {
+			log.Error("invalid worker capabilities", zap.Error(capsErr))
+			err = fmt.Errorf("worker capabilities: %w", capsErr)
+			return nil, err
+		}
+
+		workspaceRoot, ws, wsErr := initWorkspace()
+		if wsErr != nil {
+			log.Error("workspace init failed", zap.Error(wsErr))
+			err = fmt.Errorf("worker workspace: %w", wsErr)
+			return nil, err
+		}
+		registry.Freeze()
+		return &WorkerComposition{
+			Registry:       registry,
+			RegisteredCaps: registeredCaps,
+			Caps:           caps,
+			Workspace:      ws,
+			WorkspaceRoot:  workspaceRoot,
+			Cleanup:        cleanup,
+		}, nil
+	}
+
+	log.Info("worker profile loaded",
+		zap.String("profile", profile.Name),
+		zap.Strings("allowed_job_types", profile.AllowedJobTypes),
+		zap.Int("max_parallel", profile.MaxParallel),
+	)
+
+	switch profile.Name {
+	case "creator":
+		// Creator Blocco 3.1 (now P0 C8 — July 2026): minimal
+		// composition without DB, Drive, Qdrant, Scheduler, or
+		// CatalogSync reach. Registry + workspace are built by
+		// the canonical CreatorRuntime factory
+		// (app.BuildCreatorRuntime in creator_runtime.go).
+		// The no-DB / no-Qdrant / no-Scheduler / no-CatalogSync
+		// contract is enforced at the canonical surface via
+		// compile-time orphan pin + import-allowlist AST scan.
+		creatorRuntime, creatorCleanup, creatorErr := app.BuildCreatorRuntime(cfg, log)
+		if creatorErr != nil {
+			log.Error("failed to build creator runtime", zap.Error(creatorErr))
+			err = fmt.Errorf("creator runtime: %w", creatorErr)
+			return nil, err
+		}
+		cleanup = creatorCleanup
+
+		registeredCaps := creatorRuntime.Caps.JobTypes
+		log.Info("creator runtime ready",
+			zap.Int("handlers", creatorRuntime.Registry.Len()),
+			zap.Strings("capabilities", registeredCaps),
+			zap.String("workspace_root", creatorRuntime.Workspace.Root),
+		)
+		creatorRuntime.Registry.Freeze()
+		return &WorkerComposition{
+			Registry:       creatorRuntime.Registry,
+			RegisteredCaps: registeredCaps,
+			Caps:           creatorRuntime.Caps,
+			Workspace:      creatorRuntime.Workspace,
+			WorkspaceRoot:  creatorRuntime.Workspace.Root,
+			Cleanup:        cleanup,
+		}, nil
+
+	default:
+		// Standard profile-gated worker: full ComposeRoot with DB, Drive, etc.
+		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
+		if workerErr != nil {
+			log.Error("failed to build worker composition", zap.Error(workerErr))
+			err = fmt.Errorf("worker composition: %w", workerErr)
+			return nil, err
+		}
+		cleanup = workerCleanup
+
+		registry, registeredCaps, registryErr := app.BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
+		if registryErr != nil {
+			log.Error("failed to build profile worker registry", zap.Error(registryErr))
+			err = fmt.Errorf("profile worker registry: %w", registryErr)
+			return nil, err
+		}
+		if registry.Len() == 0 {
+			log.Error("profile worker has no registered handlers — aborting startup")
+			err = fmt.Errorf("profile worker registry empty (no registered handlers)")
+			return nil, err
+		}
+		log.Info("profile worker registry built",
+			zap.Int("handlers", registry.Len()),
+			zap.Strings("capabilities", registeredCaps),
+		)
+
+		caps, capsErr := ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
+		if capsErr != nil {
+			log.Error("invalid worker capabilities", zap.Error(capsErr))
+			err = fmt.Errorf("worker capabilities: %w", capsErr)
+			return nil, err
+		}
+
+		workspaceRoot, ws, wsErr := initWorkspace()
+		if wsErr != nil {
+			log.Error("workspace init failed", zap.Error(wsErr))
+			err = fmt.Errorf("worker workspace: %w", wsErr)
+			return nil, err
+		}
+		registry.Freeze()
+		return &WorkerComposition{
+			Registry:       registry,
+			RegisteredCaps: registeredCaps,
+			Caps:           caps,
+			Workspace:      ws,
+			WorkspaceRoot:  workspaceRoot,
+			Cleanup:        cleanup,
+		}, nil
+	}
+}
 
 // Run is the canonical entry for the worker binary. main.go is
 // responsible for flag parsing + signal.NotifyContext wiring; Run
@@ -84,135 +292,31 @@ func Run(ctx context.Context, cfgPath string) error {
 
 	// Detect profile BEFORE building composition — the Creator uses a
 	// minimal graph (no DB, Drive, Qdrant, Repos).
-	profileName := Env("VELOX_WORKER_PROFILE", "")
-	var (
-		registry       *worker.Registry
-		registeredCaps []string
-		caps           appjobs.WorkerCapabilities
-		ws             *worker.Workspace
-		workspaceRoot  string
-		cleanup        func()
-	)
-
-	identity := WorkerIdentity()
-
-	if profileName != "" {
+	//
+	// Audit-pin (FIX-APP-WORKERRUNTIME-SYNTAX, July 2026): err is already in scope via the earlier cfg/log := LoadConfig/LoadLogger calls; the slim 7-file split pins err to the smallest possible scope (no var err error).
+	var profile *WorkerProfile
+	if profileName := Env("VELOX_WORKER_PROFILE", ""); profileName != "" {
 		profileReg := NewProfileRegistry()
-		profile, lookupErr := profileReg.Lookup(profileName)
+		p, lookupErr := profileReg.Lookup(profileName)
 		if lookupErr != nil {
 			log.Error("invalid worker profile", zap.String("profile", profileName), zap.Error(lookupErr))
 			return fmt.Errorf("worker profile: %w", lookupErr)
 		}
-		log.Info("worker profile loaded",
-			zap.String("profile", profile.Name),
-			zap.Strings("allowed_job_types", profile.AllowedJobTypes),
-			zap.Int("max_parallel", profile.MaxParallel),
-		)
-
-		switch profile.Name {
-		case "creator":
-			// Creator Blocco 3.1 (now P0 C8 — July 2026): minimal
-			// composition without DB, Drive, Qdrant, Scheduler, or
-			// CatalogSync reach. Registry + workspace are built by
-			// the canonical CreatorRuntime factory
-			// (app.BuildCreatorRuntime in creator_runtime.go).
-			// The no-DB / no-Qdrant / no-Scheduler / no-CatalogSync
-			// contract is enforced at the canonical surface via
-			// compile-time orphan pin + import-allowlist AST scan.
-			creatorRuntime, creatorCleanup, creatorErr := app.BuildCreatorRuntime(cfg, log)
-			if creatorErr != nil {
-				log.Error("failed to build creator runtime", zap.Error(creatorErr))
-				return fmt.Errorf("creator runtime: %w", creatorErr)
-			}
-			cleanup = creatorCleanup
-			registry = creatorRuntime.Registry
-			caps = creatorRuntime.Caps
-			ws = creatorRuntime.Workspace
-			workspaceRoot = creatorRuntime.Workspace.Root
-			registeredCaps = caps.JobTypes
-
-			log.Info("creator runtime ready",
-				zap.Int("handlers", registry.Len()),
-				zap.Strings("capabilities", registeredCaps),
-				zap.String("workspace_root", workspaceRoot),
-			)
-
-		default:
-			// Standard worker: full ComposeRoot with DB, Drive, etc.
-			compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
-			if workerErr != nil {
-				log.Error("failed to build worker composition", zap.Error(workerErr))
-				return fmt.Errorf("worker composition: %w", workerErr)
-			}
-			cleanup = workerCleanup
-
-			registry, registeredCaps, err = app.BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
-			if err != nil {
-				log.Error("failed to build profile worker registry", zap.Error(err))
-				return fmt.Errorf("profile worker registry: %w", err)
-			}
-			if registry.Len() == 0 {
-				log.Error("profile worker has no registered handlers — aborting startup")
-				return fmt.Errorf("profile worker registry empty (no registered handlers)")
-			}
-			log.Info("profile worker registry built",
-				zap.Int("handlers", registry.Len()),
-				zap.Strings("capabilities", registeredCaps),
-			)
-
-			caps, err = ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
-			if err != nil {
-				log.Error("invalid worker capabilities", zap.Error(err))
-				return fmt.Errorf("worker capabilities: %w", err)
-			}
-		}
-	} else {
-		// Legacy path (no profile): full ComposeRoot.
-		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
-		if workerErr != nil {
-			log.Error("failed to build worker composition", zap.Error(workerErr))
-			return fmt.Errorf("worker composition: %w", workerErr)
-		}
-		cleanup = workerCleanup
-
-		registry, registeredCaps, err = app.BuildWorkerRegistry(compositionRoot)
-		if err != nil {
-			log.Error("failed to build worker registry", zap.Error(err))
-			return fmt.Errorf("worker registry: %w", err)
-		}
-		if registry.Len() == 0 {
-			log.Error("worker has no registered handlers — aborting startup")
-			return fmt.Errorf("worker registry empty (no registered handlers)")
-		}
-		log.Info("worker registry built",
-			zap.Int("handlers", registry.Len()),
-			zap.Strings("capabilities", registeredCaps),
-		)
-
-		caps, err = ParseAndValidateCaps(Env("VELOX_WORKER_CAPABILITIES", ""), registeredCaps)
-		if err != nil {
-			log.Error("invalid worker capabilities", zap.Error(err))
-			return fmt.Errorf("worker capabilities: %w", err)
-		}
+		profile = p
 	}
-	defer cleanup()
 
-	// Freeze the registry after capabilities are resolved — no more
-	// registrations are possible from this point.
-	registry.Freeze()
+	identity := WorkerIdentity()
 
-	// Creator workspace is pre-built; standard workers create it now.
-	if ws == nil {
-		workspaceRoot, ws, err = initWorkspace()
-		if err != nil {
-			log.Error("workspace init failed", zap.Error(err))
-			return fmt.Errorf("worker workspace: %w", err)
-		}
+	comp, err := buildWorkerComposition(ctx, cfg, profile, log)
+	if err != nil {
+		return err
 	}
-	log.Info("worker workspace ready", zap.String("workspace_root", workspaceRoot))
+	defer comp.Cleanup()
+
+	log.Info("worker workspace ready", zap.String("workspace_root", comp.WorkspaceRoot))
 
 	broker, assetClient := NewRegistrationClients(masterURL)
-	session, err := RegisterWorkerSession(ctx, broker, identity, caps)
+	session, err := RegisterWorkerSession(ctx, broker, identity, comp.Caps)
 	if err != nil {
 		log.Error("failed to register worker", zap.Error(err))
 		return fmt.Errorf("worker registration: %w", err)
@@ -226,7 +330,7 @@ func Run(ctx context.Context, cfgPath string) error {
 	defer cancel()
 	go HeartbeatLoop(runCtx, broker, identity.WorkerID, session.SessionID, log)
 
-	runner := worker.NewRunner(broker, registry, ws, assetClient, log, identity.WorkerID, session.SessionID, caps.JobTypes)
+	runner := worker.NewRunner(broker, comp.Registry, comp.Workspace, assetClient, log, identity.WorkerID, session.SessionID, comp.Caps.JobTypes)
 	if rErr := runner.Run(runCtx); rErr != nil && runCtx.Err() == nil {
 		log.Error("worker runner failed", zap.Error(rErr))
 		return fmt.Errorf("worker runner: %w", rErr)
