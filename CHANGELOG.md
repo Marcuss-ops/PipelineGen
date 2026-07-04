@@ -2433,6 +2433,11 @@ deprecated in favour of the typed-pattern ports
 
 * FASE 3.7 (2026-07-04): monitor-owned DTOs + sentinel + cursor-to-date helper (Commit 1a, SHA 60a61808); port signature cutover + infra adapter composition (Commit 1b); MetricsRecorder port + observability adapter (Commit 2); archcheck gate banning infra imports in internal/application/assets/monitor/ (Commit 3). Canonical SSOT: `architecture/current.yaml#FASE-3.7-WAVE-CLOSURE`.
 
+### Added
+
+- **Forward-pointer discipline: 2-commit / 3-line-number YAML cascade in `architecture/current.yaml` (L2753 → L2926 → L3397)** — when adding new `linked_issues` entries to the wave-tracker, column-0 orphaned prose between list items breaks YAML 1.2 parsing. Fix patterns used: (a) insert `---` document separator between docs; (b) correct the entry shape (the `id:` / `owner_capability:` / `status:` block must be on consecutive lines under the `- ` dash, not floating); (c) comment out orphaned prose with `# ` prefix to preserve the human-readable audit narrative while restoring parse validity. **SHAs**: `052a3bd7` (L2753 `---` separator + L2926 PR-SCRIPTS-CLEANUP-2026-07-04 entry shape) and `e9ca12be` (L3397 comment-out orphaned prose — the canonical SHA on `origin/main` after byte-equivalent-replay race-recovery per AGENTS.md §Git-Lesson-5). **Race-handled rebase+ff-push**: each closure of this cascade was a non-fast-forward push race that was resolved per AGENTS.md §Git-Lesson-4 (clean rebase + ff-push, no `--force`). **Future-agent checklist** when adding wave-tracker entries: (1) run `python3 -c "import yaml; docs=list(yaml.safe_load_all(open('architecture/current.yaml').read())); print(len(docs))"` — must return `3` (one per `---` doc-separator); (2) `git diff architecture/current.yaml` — verify no column-0 orphaned prose (lines that are not part of any list `- `, key `:` mapping, or `#` comment); (3) push via `git fetch && git rebase origin/main && git push origin main` (per AGENTS.md §Git-Lesson-2 direct-to-main workflow, no `--force`). The cascade started at L2223/2640 in the original user report; the 2-commit fix landed all 3 sites in `origin/main` by 2026-07-04.
+
+
 ## Earlier (June 2026 wave)
 
 ### Added
