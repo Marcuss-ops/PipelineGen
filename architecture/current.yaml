@@ -2873,8 +2873,14 @@
     - id: C8
       label: "Remove extra interface{} zombie param from ImageGenService.SearchAndDownload"
       owner_capability: "internal/application/scripts/usecase"
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: 667d2130
       deadline: 2026-07-25
+      notes: |
+        CLOSED 0-code-change: canonical ImageGenService port at services.go:141
+        is 5-arg (no  extra param) per prior-wave cleanup.
+        User spec referenced zombie that does not exist on origin/main.
     - id: C9
       label: "Resolve or remove extractSubjectAndTags stub (godlike/07 no-fake-availability)"
       owner_capability: "internal/application/images/ingest_direct"
