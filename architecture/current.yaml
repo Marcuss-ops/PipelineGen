@@ -58,8 +58,9 @@
       ship_via: "chore(app): ship closure — file was renamed to wire_assets.go in commit dbb9f569 (PR-GODOBJ-7 — composition mechanical split + bundle separation). The user-flagged `clips.Deps.MutationsDispatcher` literal is already gone (the file rename physically retired the surface). 0 active code callers remain; 0 reference to `MutationsDispatcher` in any *.go / *.md / *.yaml file. go build ./... project-wide exits 0. The separate go build ./internal/app/... failure in workerruntime/{preflight.go, run.go} is the FIX-APP-WIRE-SCRIPT-SYNTAX pre-existing build issue (carry-forward, out of scope for this commit per AGENTS.md scope discipline)."
     - id: FIX-IMAGES-ROUTING-CYCLE
       owner_capability: "internal/application/images/routing + internal/application/images"
-      status: pending
-      deadline: 2026-08-01
+      status: shipped
+      ship_date: 2026-07-04
+      ship_via: "chore(images): ship closure — import cycle never existed. Diagnostic confirms: (a) the import direction is strictly `internal/application/images/ -> internal/application/images/routing/` (one-way, NOT bidirectional); (b) ZERO files in `internal/application/images/routing/` import from `internal/application/images/`; (c) `go build ./internal/application/images/...` exits 0; (d) `go build ./...` (project-wide) exits 0. Commit e52005cc was a dependency-correction commit that landed the `ImageSearchResolver` interface to resolve build-time orphan references (FASE 8 image-territories) — it did NOT introduce or break a cycle. The wave-tracker entry tracked a non-existent problem; the closure is the cycle-absence verification, not a DTO relocation (the DTOs in `images/` and `images/routing/` are distinct concerns — generation/metadata vs search/retrieval — and are correctly co-located with their consumers per godlike/06 SSOT one-owner-per-fact)."
     - id: FIX-APP-WIRE-SCRIPT-SYNTAX
       owner_capability: "internal/app"
       status: retired
