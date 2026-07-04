@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // RegisterFromYouTubeRequest is the JSON body for registering a clip from a YouTube URL.
@@ -86,14 +87,32 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 // RegisterFromYouTube handles POST /api/media/register-from-youtube.
+//
+// Handler order (godlike/07 fail-fast-at-rest before fail-slow-at-svc):
+//  1. BindJSON — surface malformed-JSON 400 before any downstream I/O.
+//  2. Pre-flight URL validation — invalid URLs surface 400 BEFORE the
+//     svc=nil short-circuit AND BEFORE the yt-dlp subprocess.
+//  3. svc=nil guard — surface 503 only after the input is known-good.
+//  4. svc call — typed Layer 1 transport, no business orchestration here.
 func (h *Handler) RegisterFromYouTube(c *gin.Context) {
-	if h.svc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "register service not wired")
+	req, ok := apiutil.BindJSON[RegisterFromYouTubeRequest](c)
+	if !ok {
 		return
 	}
 
-	req, ok := apiutil.BindJSON[RegisterFromYouTubeRequest](c)
-	if !ok {
+	// Pre-flight URL validation: invalid URLs return HTTP 400 instead of
+	// HTTP 500 (avoids triggering the yt-dlp subprocess on junk input).
+	// Canonical typed gate at pkg/urlutil/urlutil.go::ExtractVideoID;
+	// for non-YouTube URLs it returns a typed error immediately so the
+	// canonical REST contract surfaces a 4xx (client-bad) without
+	// bubbles from the service layer.
+	if _, err := urlutil.ExtractVideoID(req.URL); err != nil {
+		apiutil.BadRequest(c, "invalid YouTube URL: "+err.Error())
+		return
+	}
+
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "register service not wired")
 		return
 	}
 
