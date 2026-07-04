@@ -5636,3 +5636,42 @@ wave_status:
       status: pending
       deadline: 2026-07-25
  (docs(architecture): append SCRIPT-FLOW-SPLIT wave tracker entries)
+
+
+- id: PR-FACADE-SPLIT-FURTHER
+  owner_capability: internal/api/script
+  status: pending
+  exit_signal: false
+  deadline: 2026-08-01
+  description: |
+    Forward-pointer registered by code-reviewer (round 2 BLOCKING #1)
+    after the SCRIPT-FLOW-SPLIT trim landed: handler_facade.go is
+    currently 177 LoC, which is +93 LoC over the user-spec ceiling
+    of target 70 ±20% (= 56-84 LoC; AGENTS.md Pattern 5 boundary).
+    Per godlike/07 minimum-blast-radius, splitting further is the
+    cleanest fix; the bundled commit's auto-sufficiency rationale
+    (5 NEW files share compilation deps with handler_deps.go)
+    held for the FIRST wave but does NOT excuse the LoC overshoot
+    in the longer-term. The mechanical further-split will follow
+    AGENTS.md Pattern 5 again: facade.go + facade_<capability>.go
+    files (e.g. facade_legacy.go + facade_curate.go + facade_batch.go)
+    bringing each under the ±20% ceiling. Per godlike/06 SSOT,
+    the forward-pointer is registered HERE (canonical append-only
+    position per the wave-tracker slim schema) AND the SCRIPT-FLOW-SPLIT
+    entry at line 5560 will gain a backreference via a follow-up
+    docs sync PR (forward-pointer recorded in this entry's
+    `forward_pointer: SCRIPT-FLOW-SPLIT` field below).
+  forward_pointer: SCRIPT-FLOW-SPLIT
+  linked_issues:
+    - id: pre_split_filename_facade_legacy
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-08-01
+    - id: pre_split_filename_facade_curate
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-08-01
+    - id: pre_split_filename_facade_batch
+      owner_capability: internal/api/script
+      status: pending
+      deadline: 2026-08-01
