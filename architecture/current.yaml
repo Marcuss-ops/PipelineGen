@@ -6219,11 +6219,15 @@ wave_status:
       deadline: 2026-08-01
     - id: PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH
       owner_capability: "internal/application/voiceover"
-      status: pending
+      status: shipped
+      ship_sha: 75c1d585192d273fd166c6cf634fc2805dbcddd2
+      ship_date: "2026-07-04"
       deadline: 2026-08-01
     - id: PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO
       owner_capability: "internal/application/voiceover"
-      status: pending
+      status: shipped
+      ship_sha: 75c1d585192d273fd166c6cf634fc2805dbcddd2
+      ship_date: "2026-07-04"
       deadline: 2026-08-01
     - id: PR-COMPLETE-WORKER-AUDIT-ORPHANED-REGISTRY-ENTRIES
       owner_capability: "internal/application/jobs (registry) + cmd/worker"
