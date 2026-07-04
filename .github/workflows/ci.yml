@@ -219,11 +219,41 @@ jobs:
         working-directory: node-scraper
         run: npm ci
 
-      - name: Run node-scraper test suite (node --test)
-        # Pin to `npm test` exactly per the Wave 19 / P1-9-namespace
-        # spec; if a future agent wants to expand the gate to also
-        # fail on lint warnings, switch this invocation to
-        # `npm run check` (which is `lint && test` per
-        # node-scraper/package.json).
-        working-directory: node-scraper
-        run: npm test
+    - name: Run node-scraper test suite (node --test)
+      # Pin to `npm test` exactly per the Wave 19 / P1-9-namespace
+      # spec; if a future agent wants to expand the gate to also
+      # fail on lint warnings, switch this invocation to
+      # `npm run check` (which is `lint && test` per
+      # node-scraper/package.json).
+      working-directory: node-scraper
+      run: npm test
+
+  fase-b-clip-smoke:
+    name: FASE B clip pipeline smoke (dry-mode constraint)
+    # godlike/07 no-fake-availability cheap syntax + payload gate
+    # for tests/operational/fase_b_clip_pipeline_smoke.sh on every
+    # push + PR. Heavy server-boot end-to-end exercise remains in
+    # .github/workflows/smoke.yml (`make smoke-run-all`).
+    runs-on: ubuntu-latest
+    needs: verify-main
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Install jq (script runtime requirement)
+        # common.sh::smoke_require jq blocks script entry without jq
+        # (exit 2). sqlite3 is preinstalled on ubuntu-latest so we
+        # install ONLY the missing dependency (godlike/07 narrow).
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run fase_b_clip_pipeline_smoke.sh in dry mode
+        # common.sh honours SMOKE_DRY_RUN=1 (L78-83) by short-
+        # circuiting token + HTTP probes. --dry exits 0 if bash
+        # syntax + jq payload builders + sqlite3 query syntax
+        # are all valid. Wall-clock cost: sub-second.
+        env:
+          SMOKE_DRY_RUN: "1"
+        run: bash tests/operational/fase_b_clip_pipeline_smoke.sh --dry
