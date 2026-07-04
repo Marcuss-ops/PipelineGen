@@ -4205,7 +4205,7 @@ wave_status:
       owner_capability: internal/app
       status: shipped
       ship_date: 2026-07-04
-      ship_sha: TBD
+      ship_sha: e546a89a48da0daae0ad5e590b4d4861569c9bf3
       deadline: 2026-08-15
       description: |
         Split internal/app/wire_assets.go (was 636 LoC) into 5 single-purpose
