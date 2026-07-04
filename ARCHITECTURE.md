@@ -604,6 +604,9 @@ of truth.
 ## 13. Ownership, extension rules, and known transition boundaries
 
 ### Where a change belongs
+| New source/provider package | `internal/application/assets/providers/<source>/` (drive, http, catalog, artlist, youtube, stock) | Provider registry + per-source adapters. Add new provider here, do not spread source switches across `internal/sources/`. |
+| Clipsadapter sub-package | `internal/application/assets/clipsadapter/` | Adapter glue for ClipsRegistry + Voiceover/Image converters + boundary types extracted from `artifacts/`. Use `assets.MediaRecord`‑qualified references; pattern documented in FRAGMENTO (b) Phase 1 close. |
+
 
 | Change | Canonical location |
 |---|---|

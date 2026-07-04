@@ -1,5 +1,59 @@
+# Phase 2 PR-5 + FRAGMENTO chain — closure summary (July 2026)
 
----
+All 5 documented waves + FRAGMENTO (b) Phase 1 closed by docs-only ALREADY-DONE
+atomic commits between July 2026 main `9a949ec8` → `74c5bb5e`. Each Wave /
+PR-c-X / FRAGMENTO-b tornata verified the actual filesystem state against the
+user-mental-model counts and shipped a single docs-only close (no code
+destructive operations). Original per-file tables were trimmed in this
+post-PR-5 cleanup tornata.
+
+| Wave / Item | Status | Closure Commit |
+|---|---|---|
+| Wave 1 (middleware, 3 files / 14 refs) | VERIFIED ALREADY-DONE | 9a949ec8 |
+| Wave 2 (generic handlers) | Originally documented as 0 files; effectively no-op from the start | n/a |
+| Wave 3 (cmd/) | Originally documented as 0 files; effectively no-op from the start | n/a |
+| Wave 4 (sources / artlist + youtube, 20 files / 102 refs) | VERIFIED ALREADY-DONE | f79c8810 |
+| Wave 5 (multi-PR FRAGMENTO-c overlap) | Verifier-locked via PR-c-3 docs-close (no code change) | da57a7df |
+| FRAGMENTO (b) Phase 1 (providers extraction) | VERIFIED ALREADY-DONE (impl.go files never created, source files structurally absent) | 74c5bb5e |
+
+PR-c chain:
+
+- **PR-c-1** (sub-package extraction of clips_adapter.go + converters.go into
+  `internal/application/assets/clipsadapter/`): multiple attempts across tornatas
+  failed due to bare-reference propagation and global goimports -w over-spread.
+  Diagnostic lesson captured inline under "PR-c-1 (sub-package extraction)" in
+  the legacy narrative blocks.
+- **PR-c-2** (alias redirect: `Asset = artifacts.Asset`): INFASIBLE because
+  `asset.Asset` is a 30+ field rich struct with 30+ Get/Set receiver methods
+  while canonical Artifacts are shape-different (physical-output vs
+  content-addressed). Shipped as 1-file SCOPED commit with
+  `TestArtifactIsHardAliasFromArtifacts` forward-looking guard test (18b30c45).
+- **PR-c-3** (artifact-status fusion finalization): the file
+  `internal/assets/artifact.go` was already gone (closed as docs-only ALREADY-DONE,
+  da57a7df).
+
+Legacy verification narrative (collapsed from earlier verbose tables):
+
+## FRAGMENTO (c) closure rationale
+
+The originally-alleged `internal/artifacts -> internal/assets` cycle was a
+misdiagnosis: the cycle-source files
+(`internal/application/assets/artifacts/{clips_adapter.go,converters.go}`) do
+NOT import `internal/assets`. They import:
+
+- `internal/application/assets/mutations` (canonical dispatcher SSOT)
+- `internal/domain/asset` (domain types)
+- `internal/infrastructure/database/sqlite/assets` (infrastructure)
+
+None of these paths reach `internal/assets`. Cycle-misdiagnosis sealed the
+FRAGMENTO (c) closure. The sub-package extraction was the right architectural
+move anyway for code organization but required the safe-path lessons
+(`goimports -w` ONLY on moved files; per-file imports manually adjusted).
+
+## Per-closure footer log
+
+The full per-Wave / per-PR-c / per-FRAGMENTO-b ALREADY-DONE blocks are preserved
+verbatim below this top section for grep-by-author + commit-tracing purposes.
 
 ## PR-c-1 (sub-package extraction) — DEFERRED, July 2026
 
