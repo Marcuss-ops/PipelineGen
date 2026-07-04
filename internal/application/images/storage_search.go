@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -37,8 +37,8 @@ var ErrImageNotFound = errors.New("image: not found (HTTP 404)")
 // matching. Retryable with backoff.
 type errImageTransient struct{}
 
-func (e *errImageTransient) Error() string      { return "image: transient error (retryable)" }
-func (e *errImageTransient) IsRetryable() bool  { return true }
+func (e *errImageTransient) Error() string     { return "image: transient error (retryable)" }
+func (e *errImageTransient) IsRetryable() bool { return true }
 
 var ErrImageTransient error = &errImageTransient{}
 
@@ -202,31 +202,24 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 			return ctx.Err()
 		}
 
-		req, reqErr := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
-		if reqErr != nil {
-			return fmt.Errorf("%w: create download request: %v", ErrImageTransient, reqErr)
-		}
-		req.Header.Set("User-Agent", userAgent)
-
-		resp, doErr := s.client.Do(req)
-		if doErr != nil {
-			return fmt.Errorf("%w: download: %v", ErrImageTransient, doErr)
-		}
-		defer resp.Body.Close()
-
-		// Classify HTTP status.
-		switch {
-		case resp.StatusCode == http.StatusNotFound:
-			return fmt.Errorf("%w: url=%s", ErrImageNotFound, imgURL)
-		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-			return fmt.Errorf("%w: HTTP %d", ErrImageTransient, resp.StatusCode)
-		case resp.StatusCode != http.StatusOK:
-			return fmt.Errorf("%w: unexpected HTTP %d", ErrImageInvalidResponse, resp.StatusCode)
-		}
-
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
-		if readErr != nil {
-			return fmt.Errorf("%w: read body: %v", ErrImageTransient, readErr)
+		body, getErr := httpjson.GetBytes(ctx, s.client, imgURL, &httpjson.Options{
+			UserAgent:    userAgent,
+			MaxBodyBytes: 20 * 1024 * 1024,
+		})
+		if getErr != nil {
+			var se *httpjson.StatusError
+			if errors.As(getErr, &se) {
+				switch {
+				case se.StatusCode == http.StatusNotFound:
+					return fmt.Errorf("%w: url=%s", ErrImageNotFound, imgURL)
+				case se.StatusCode == http.StatusTooManyRequests || se.StatusCode >= 500:
+					return fmt.Errorf("%w: HTTP %d", ErrImageTransient, se.StatusCode)
+				default:
+					return fmt.Errorf("%w: unexpected HTTP %d", ErrImageInvalidResponse, se.StatusCode)
+				}
+			}
+			// Transport / ctx / timeout → transient (retryable).
+			return fmt.Errorf("%w: %v", ErrImageTransient, getErr)
 		}
 		if len(body) == 0 {
 			return fmt.Errorf("%w: downloaded image is empty", ErrImageInvalidResponse)
@@ -348,14 +341,11 @@ func (s *ImageStorageService) runRetrievalFallback(ctx context.Context, query, l
 
 func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) string {
 	vqdURL := fmt.Sprintf("https://duckduckgo.com/?q=%s&iax=images&ia=images", url.QueryEscape(query))
-	req, _ := http.NewRequest("GET", vqdURL, nil)
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := s.client.Do(req)
+	body, err := httpjson.GetBytes(ctx, s.client, vqdURL, &httpjson.Options{UserAgent: userAgent})
 	if err != nil {
+		s.log.Warn("DDG vqd extraction failed", zap.Error(err))
 		return ""
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
 	vqd := extractVQD(string(body))
 	if vqd == "" {
 		return ""
@@ -365,16 +355,17 @@ func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) s
 			url.QueryEscape(query), vqd, attempt)
 
 		// Retry the per-page HTTP call up to 3 times on transient errors.
-		var resp *http.Response
+		// httpjson.GetBytes wraps transport / status / decode errors;
+		// ErrImageTransient shim makes retry.IsTransient recognise the
+		// retryable subset byte-stable with the pre-B4 substring-match.
+		var body []byte
 		err := retry.Do(ctx, func() error {
-			req, reqErr := http.NewRequest("GET", apiURL, nil)
-			if reqErr != nil {
-				return reqErr
+			gotBody, getErr := httpjson.GetBytes(ctx, s.client, apiURL, &httpjson.Options{UserAgent: userAgent})
+			if getErr != nil {
+				return fmt.Errorf("%w: %v", ErrImageTransient, getErr)
 			}
-			req.Header.Set("User-Agent", userAgent)
-			var doErr error
-			resp, doErr = s.client.Do(req)
-			return doErr
+			body = gotBody
+			return nil
 		}, retry.Options{
 			MaxAttempts:    3,
 			InitialBackoff: 200 * time.Millisecond,
@@ -386,8 +377,6 @@ func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) s
 			}
 			continue
 		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
 		var payload struct {
 			Results []struct {
 				Image     string `json:"image"`
@@ -415,13 +404,10 @@ func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query str
 	probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer probeCancel()
 	probeURL := strings.TrimRight(s.cfg.External.SearxngURL, "/") + "/healthz"
-	probeReq, _ := http.NewRequestWithContext(probeCtx, "GET", probeURL, nil)
-	probeResp, probeErr := s.client.Do(probeReq)
-	if probeErr != nil {
+	if _, probeErr := httpjson.GetBytes(probeCtx, s.client, probeURL, &httpjson.Options{UserAgent: userAgent}); probeErr != nil {
 		s.log.Warn("SearXNG unreachable, skipping SearXNG search", zap.Error(probeErr))
 		return ""
 	}
-	probeResp.Body.Close()
 
 	searchCtx, searchCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer searchCancel()
@@ -431,23 +417,7 @@ func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query str
 	params.Set("format", "json")
 	params.Set("categories", "images")
 	reqURL := fmt.Sprintf("%s/search?%s", strings.TrimRight(s.cfg.External.SearxngURL, "/"), params.Encode())
-	req, err := http.NewRequestWithContext(searchCtx, "GET", reqURL, nil)
-	if err != nil {
-		s.log.Error("Failed to create SearXNG request", zap.Error(err))
-		return ""
-	}
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		s.log.Error("SearXNG request failed", zap.Error(err))
-		return ""
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		s.log.Warn("SearXNG returned non-200 status", zap.Int("status", resp.StatusCode))
-		return ""
-	}
-	var data struct {
+	data, err := httpjson.GetJSON[struct {
 		Results []struct {
 			URL          string `json:"url"`
 			ImgSrc       string `json:"img_src"`
@@ -456,9 +426,14 @@ func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query str
 			Width        int    `json:"width,omitempty"`
 			Height       int    `json:"height,omitempty"`
 		} `json:"results"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		s.log.Error("Failed to decode SearXNG response", zap.Error(err))
+	}](searchCtx, s.client, reqURL, &httpjson.Options{UserAgent: userAgent})
+	if err != nil {
+		var se *httpjson.StatusError
+		if errors.As(err, &se) {
+			s.log.Warn("SearXNG returned non-200 status", zap.Int("status", se.StatusCode))
+		} else {
+			s.log.Error("SearXNG request failed", zap.Error(err))
+		}
 		return ""
 	}
 	if len(data.Results) == 0 {
@@ -496,21 +471,17 @@ func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query str
 
 func (s *ImageStorageService) searchWikidata(query, lang string) (string, string, string) {
 	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=10", url.QueryEscape(query), lang)
-	req, _ := http.NewRequest("GET", apiURL, nil)
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", "", ""
-	}
-	defer resp.Body.Close()
-	var payload struct {
+	payload, err := httpjson.GetJSON[struct {
 		Search []struct {
 			ID          string `json:"id"`
 			Label       string `json:"label"`
 			Description string `json:"description"`
 		} `json:"search"`
+	}](context.Background(), s.client, apiURL, &httpjson.Options{UserAgent: userAgent})
+	if err != nil {
+		return "", "", ""
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil || len(payload.Search) == 0 {
+	if len(payload.Search) == 0 {
 		return "", "", ""
 	}
 	bestLabel, bestID, bestDescription := selectBestWikidataHit(query, payload.Search)
@@ -534,26 +505,17 @@ func (s *ImageStorageService) searchWikipedia(query, lang string) (string, strin
 			continue
 		}
 		searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=5", lang, url.QueryEscape(searchQuery))
-		req, _ := http.NewRequest("GET", searchURL, nil)
-		req.Header.Set("User-Agent", userAgent)
-		resp, err := s.client.Do(req)
-		if err != nil {
-			s.log.Error("Wikipedia search request failed", zap.Error(err))
-			continue
-		}
-		var searchPayload struct {
+		searchPayload, err := httpjson.GetJSON[struct {
 			Query struct {
 				Search []struct {
 					Title string `json:"title"`
 				} `json:"search"`
 			} `json:"query"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
-			resp.Body.Close()
-			s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
+		}](context.Background(), s.client, searchURL, &httpjson.Options{UserAgent: userAgent})
+		if err != nil {
+			s.log.Error("Wikipedia search request failed", zap.Error(err))
 			continue
 		}
-		resp.Body.Close()
 		bestTitle = selectBestWikiTitle(query, searchPayload.Query.Search)
 		if bestTitle != "" {
 			s.log.Info("Wikipedia best match found", zap.String("title", bestTitle), zap.String("query", searchQuery))
@@ -565,14 +527,7 @@ func (s *ImageStorageService) searchWikipedia(query, lang string) (string, strin
 		return "", ""
 	}
 	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&piprop=original|thumbnail&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(bestTitle))
-	req2, _ := http.NewRequest("GET", apiURL, nil)
-	req2.Header.Set("User-Agent", userAgent)
-	resp2, err := s.client.Do(req2)
-	if err != nil {
-		return "", ""
-	}
-	defer resp2.Body.Close()
-	var payload2 struct {
+	payload2, err := httpjson.GetJSON[struct {
 		Query struct {
 			Pages map[string]struct {
 				Original struct {
@@ -583,8 +538,8 @@ func (s *ImageStorageService) searchWikipedia(query, lang string) (string, strin
 				} `json:"thumbnail"`
 			} `json:"pages"`
 		} `json:"query"`
-	}
-	if err := json.NewDecoder(resp2.Body).Decode(&payload2); err != nil {
+	}](context.Background(), s.client, apiURL, &httpjson.Options{UserAgent: userAgent})
+	if err != nil {
 		return "", ""
 	}
 	for _, page := range payload2.Query.Pages {
@@ -600,14 +555,7 @@ func (s *ImageStorageService) searchWikipedia(query, lang string) (string, strin
 
 func (s *ImageStorageService) wikipediaThumbnailByExactTitle(title, lang string) (string, string) {
 	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&piprop=original|thumbnail&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(title))
-	req, _ := http.NewRequest("GET", apiURL, nil)
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", ""
-	}
-	defer resp.Body.Close()
-	var payload struct {
+	payload, err := httpjson.GetJSON[struct {
 		Query struct {
 			Pages map[string]struct {
 				Title    string `json:"title"`
@@ -619,8 +567,8 @@ func (s *ImageStorageService) wikipediaThumbnailByExactTitle(title, lang string)
 				} `json:"thumbnail"`
 			} `json:"pages"`
 		} `json:"query"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	}](context.Background(), s.client, apiURL, &httpjson.Options{UserAgent: userAgent})
+	if err != nil {
 		return "", ""
 	}
 	for _, page := range payload.Query.Pages {
