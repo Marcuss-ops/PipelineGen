@@ -5499,7 +5499,7 @@ wave_status:
         the load-bearing seam; any revert breaks them at the registry-contract
         level. Closed by completing the rebuttal in this ticket + opening a
         new wave-tracker entry PR-VOICEOVER-PATH-A-REOPEN for the revert work.
-    - id: PR-VO-FINALIZER-ATOMIC-CONTRACT
+    - id: PR-VO-FINALIZER-ATOMIC-CONTRACT-DOCS
       owner_capability: "internal/application/voiceover"
       status: pending
       deadline: TBD
