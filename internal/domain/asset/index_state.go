@@ -29,7 +29,7 @@
 // Core principle: embedding saved != asset indexed.
 //   - EMBEDDED = embeddings in SQLite, Qdrant NOT yet updated.
 //   - INDEXED  = Qdrant upsert succeeded AND point verified AND
-//                vectors validated AND payload verified.
+//     vectors validated AND payload verified.
 //
 // Do NOT add a sub-state "RETRYING" — the canonical states reflect
 // stable state, not transient worker activity. QDRANT-002 PR4's supersede
@@ -100,6 +100,29 @@ const (
 	// --only-missing flag recognises this state and re-upserts.
 	StateIndexingFailed IndexState = "INDEXING_FAILED"
 
+	// StateIndexingSkippedNoIndexer (PR-QDRANT-INDEXCLIP-GUARD,
+	// July 2026) — transient retry-pending state stamped by
+	// IndexingHandler when indexer.IndexClip returns
+	// ErrIndexClipDisabledButEventRequested: "we tried, indexer
+	// was offline, do not retry as a fresh success; the outbox
+	// event stays pending and IndexClip re-runs when the
+	// indexer comes back online".
+	//
+	// godlike/06 SSOT — mirrors the supersede gate's
+	// "noise-suppressor" pattern: the recorded state stops
+	// downstream consumers from treating the absence of a
+	// Qdrant embedding as a failure. Distinct from
+	// StateIndexingFailed (operator must intervene to recover)
+	// and from the deprecated StateIndexPending (legacy
+	// retryable terminology from a pre-Task-2 model).
+	//
+	// Non-terminal: IsTerminal() intentionally does NOT
+	// include this state — a row in INDEXING_SKIPPED_NO_INDEXER
+	// is pending retry, NOT done. The handler returns a
+	// non-nil retryable error so the outbox pool re-emits
+	// the event. Use IsRetryPending() to branch on this state.
+	StateIndexingSkippedNoIndexer IndexState = "INDEXING_SKIPPED_NO_INDEXER"
+
 	// StateIndexDeletePending — IndexDeleteHandler has acknowledged the
 	// Qdrant DeletePoints call but the SQLite SoftDelete has not yet
 	// committed (retryable window). Same lease-fence guarantees as
@@ -159,6 +182,10 @@ func (s IndexState) Valid() bool {
 		StateEmbedding, StateEmbedded,
 		StateIndexing, StateIndexed,
 		StateEmbeddingFailed, StateIndexingFailed,
+		// PR-QDRANT-INDEXCLIP-GUARD: transient retry-pending
+		// state stamped when the indexer was offline at the
+		// moment a new event arrived.
+		StateIndexingSkippedNoIndexer,
 		// Deletion states
 		StateIndexDeletePending, StateDELETED,
 		// Deprecated pre-Task 2 states (backward-compat)
@@ -198,4 +225,22 @@ func (s IndexState) IsFailedTerminal() bool {
 // LifecycleState — see index_delete.go for the contract.
 func (s IndexState) IsDeletedCanonical() bool {
 	return s == StateIndexDeletePending || s == StateDELETED
+}
+
+// IsRetryPending returns true if the state is a transient
+// retry-pending marker. PR-QDRANT-INDEXCLIP-GUARD (July 2026):
+// StateIndexingSkippedNoIndexer is the canonical "we tried, the
+// indexer was offline" state — the event stays in the outbox
+// pool's pending bucket and is re-emitted when the operator
+// re-enables the indexer.
+//
+// Distinct from IsTerminal (which is the "no further automatic
+// transitions expected" predicate) and from IsFailedTerminal
+// (which is the "operator must intervene to recover" predicate):
+// a retry-pending row is neither done nor stuck — it is
+// mid-loop. godlike/07 fail-closed: a row in this state should
+// NOT be promoted to terminal until the next retry attempt
+// returns its real outcome.
+func (s IndexState) IsRetryPending() bool {
+	return s == StateIndexingSkippedNoIndexer
 }
