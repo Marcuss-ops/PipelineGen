@@ -12,7 +12,7 @@
 //   - build_qdrant_runtime.go owns ONLY initQdrantProcessSubsystems
 //     (Qdrant runtime → ProcessBundle mapping via named returns) +
 //     the 2 QDRANT-003-style composition-time port assertions (clipindexer
-//     + jobsoutbox/sqassets).
+//   - jobsoutbox/sqassets).
 //   - THIS file is reduced to a thin BuildProcessBundle orchestrator
 //     that calls the 3 helpers above and assembles the canonical
 //     *ProcessBundle return value.
@@ -164,13 +164,21 @@ func initQdrantProcessSubsystems(
 func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*QdrantDeps, error) {
 	_ = ctx
 
-	// BLOCKER #3 (Qdrant Verdetto, July 2026): ClipIndexer without Qdrant
-	// is a misconfiguration — the vector store is required for indexing
-	// completion. Without it, UpsertVectorStore would silently skip the
-	// Qdrant write and mark the asset as INDEXED, producing a false-success
-	// path. Fail-closed at composition time.
-	if cfg.ClipIndexer.Enabled && !cfg.Qdrant.Enabled {
-		return nil, fmt.Errorf("invalid configuration: clipindexer.enabled=true but qdrant.enabled=false — Qdrant vector store is required when the ClipIndexer is active")
+	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): canonical
+	// godlike/06 SSOT helper. Replaces the pre-PR inline check
+	// (BLOCKER #3 direction A: ClipIndexer=true AND Qdrant=false)
+	// with a single canonical helper that covers BOTH directions
+	// of the compatibility check. Direction B (Qdrant=true AND
+	// ClipIndexer=false) is the CRITICAL RED POINT surfaced by the
+	// QDRANT-CHAIN-VERIFY-2026-07-04 audit — IndexClip short-circuits
+	// and outbox marks asset.index.requested as COMPLETED without
+	// writing to Qdrant. godlike/07 no-fake-availability: fail-closed
+	// at composition time. Cross-ref:
+	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility
+	// (SECOND wire site; build_qdrant_gates.go is the canonical
+	// godlike/06 SSOT surface, this is one of 4 wire sites).
+	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
+		return nil, err
 	}
 
 	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
@@ -234,4 +242,3 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	}
 	return qd, nil
 }
-

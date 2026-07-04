@@ -30,13 +30,13 @@ import (
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
-	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -156,6 +156,19 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
+	}
+
+	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
+	// gate at all 4 Qdrant composition sites. FOURTH wire site
+	// (WireServices is the registry-level composition orchestrator
+	// that adds EnsureSchema as part of the startup plan). godlike/07
+	// no-fake-availability: catch the misconfiguration at the registry
+	// level so the startup plan aborts BEFORE EnsureSchema is wired
+	// against a half-built Qdrant runtime. Cross-ref:
+	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
+	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
+		coreClean()
+		return nil, err
 	}
 
 	// QDRANT-003: EnsureSchema step — creates/validates the versioned Qdrant collection
@@ -388,7 +401,7 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 		return nil, err
 	}
 	return &AppDeps{
-		Registry: nil, // forward-pointer: PR-COMPOSITION-REGISTRY-LIVE-WIRE
+		Registry:  nil, // forward-pointer: PR-COMPOSITION-REGISTRY-LIVE-WIRE
 		Lifecycle: &minimalLifecycle{stop: coreClean},
 	}, nil
 }
