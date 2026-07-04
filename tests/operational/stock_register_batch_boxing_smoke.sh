@@ -11,6 +11,14 @@
 #     API_BASE                  host:port (default 127.0.0.1:${VELOX_PORT:-8080})
 #     SMOKE_DRIVE_FOLDER_ID     Google Drive folder (default: boxing match folder)
 #     SMOKE_POLL_TIMEOUT_SECONDS poll ceiling (default 300 — 8 clips take time)
+#     SMOKE_FORCE_REDOWNLOAD    1 = inject `force: true` on every clip in
+#                               build_batch_payload (re-process even when the
+#                               clip-hash already exists in media_assets).
+#                               Default: unset/0 = force field absent/omitted
+#                               → preserve idempotency on first run; subsequent
+#                               runs dedupe by clip hash. Set to 1 when the
+#                               server side has changed and the existing rows
+#                               need to be overwritten.
 #
 # Tests:
 #   Test 1 — POST /api/media/register-batch with 8 boxing rounds
@@ -41,6 +49,17 @@ smoke_require sqlite3
 VIDEO_URL="https://www.youtube.com/watch?v=RRJvrDKunyA"
 DRIVE_FOLDER_ID="${SMOKE_DRIVE_FOLDER_ID:-1DeDTQK0CvrteF2MO5XhiXyp64amXvRqf}"
 SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+
+# SMOKE_FORCE_REDOWNLOAD — preserves idempotency by default. SMOKE_FORCE_REDOWNLOAD=1
+# sets the per-clip `force` wire field to true so register-batch re-processes every
+# clip even when its derived clip-hash already exists in media_assets. Mapped here
+# to a JSON boolean (force_field) consumed by build_batch_payload (post-process).
+SMOKE_FORCE_REDOWNLOAD="${SMOKE_FORCE_REDOWNLOAD:-0}"
+if [[ "$SMOKE_FORCE_REDOWNLOAD" == "1" ]]; then
+    force_field="true"
+else
+    force_field="false"
+fi
 
 # ── Help text ──────────────────────────────────────────────────────────
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -83,8 +102,16 @@ sqlite_q() {
 # ── Build the batch payload ──────────────────────────────────────────
 # 8 rounds from the Pacquiao vs Broner highlights video.
 # Timestamps converted to float seconds.
+#
+# SMOKE_FORCE_REDOWNLOAD knob: the per-clip `force` field is injected via
+# post-processing (jq ... --argjson force "$force_field" '.clips |=
+# map(. + {force: $force})') so the 8 hardcoded clip literals stay untouched.
+# - force_field=true  → server re-processes every clip (drop, re-Drive-upload,
+#                       re-register from the source URL)
+# - force_field=false → server preserves idempotency via clip-hash dedup
 build_batch_payload() {
-    jq -n --arg url "$VIDEO_URL" --arg fid "$DRIVE_FOLDER_ID" '{
+    local raw
+    raw=$(jq -n --arg url "$VIDEO_URL" --arg fid "$DRIVE_FOLDER_ID" '{
         folder_id: $fid,
         clips: [
             {
@@ -176,7 +203,10 @@ build_batch_payload() {
                 end: 1769.0
             }
         ]
-    }'
+    }')
+    # Inject per-clip `force` from SMOKE_FORCE_REDOWNLOAD knob in one pass.
+    printf '%s' "$raw" | jq --argjson force "$force_field" \
+        '.clips |= map(. + {force: $force})'
 }
 
 # ── Test 1: POST /api/media/register-batch ───────────────────────────
@@ -277,7 +307,6 @@ test_2_verify_results() {
 
         printf '%s  %s clip(s) had hard errors%s\n' \
             "$RED" "$err_count" "$RESET"
-    fi
 
     if (( dup_count > 0 )); then
         printf '%s  %s clip(s) were duplicates (already registered)%s\n' \

@@ -61,6 +61,13 @@
 #   SMOKE_DRIVE_FOLDER_ID=""        # empty Drive folder = synchronous path
 #   SMOKE_HTTP_TIMEOUT_SECONDS=300   # per-curl --max-time
 #   SMOKE_TIMEOUT_SECONDS=900       # overall wall clock
+#   SMOKE_FORCE_REDOWNLOAD=1        # inject `force: true` on every clip in
+#                                   # build_batch_payload (re-Drive-upload +
+#                                   # re-register even when clip-hash matches
+#                                   # an existing media_assets row).
+#                                   # Default: unset/0 → force omitted from the
+#                                   # wire → server-side dedup preserves
+#                                   # idempotency on first and subsequent runs.
 
 set -euo pipefail
 
@@ -76,6 +83,16 @@ smoke_require sqlite3 jq
 VIDEO_URL="https://www.youtube.com/watch?v=RRJvrDKunyA"
 DRIVE_FOLDER_ID="${SMOKE_DRIVE_FOLDER_ID:-}"
 SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
+
+# SMOKE_FORCE_REDOWNLOAD — per-clip wire field toggled by build_batch_payload.
+#   1 → force=true  on every clip (re-process even when clip-hash matches)
+#   0 (default) → force=false → register-batch preserves idempotency via dedup.
+SMOKE_FORCE_REDOWNLOAD="${SMOKE_FORCE_REDOWNLOAD:-0}"
+if [[ "$SMOKE_FORCE_REDOWNLOAD" == "1" ]]; then
+    FORCE_FIELD="true"
+else
+    FORCE_FIELD="false"
+fi
 
 # Polling ceiling for the post-registration waitloop that lets the outbox
 # dispatcher process asset.index.requested events into Qdrant. Without this
@@ -165,7 +182,8 @@ build_batch_payload() {
             --argjson start "$start_val" \
             --argjson end "$end_val" \
             --argjson tags "$tags_val" \
-            '{url:$url,name:$name,description:$desc,tags:$tags,source:"youtube",category:"boxing",group:"pacquiao-vs-broner",folder_id:$folder,start:$start,end:$end}')
+            --argjson force "$FORCE_FIELD" \
+            '{url:$url,name:$name,description:$desc,tags:$tags,source:"youtube",category:"boxing",group:"pacquiao-vs-broner",folder_id:$folder,start:$start,end:$end,force:$force}')
         if [[ -z "$batch_json" ]]; then
             batch_json="$clip_json"
         else
