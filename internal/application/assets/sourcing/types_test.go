@@ -1,11 +1,11 @@
-// Tests for the sourcing.IndexingStatus canonical type-alias.
+// Tests for the domain.SourcingIndexStatus canonical typed-enum.
 //
-// Per user spec §12-5 EXPAND test pins:
+// Per §12-5 CONTRACT test pins:
 //
 //	(1) marshal/unmarshal round-trip JSON wire field `indexing_status`;
-//	(2) compile-time assertion `var _ domain.SourcingIndexStatus = IndexingStatus("")`;
-//	(3) residue grep test in sourcing/ — zero references to IndexingStatus
-//	    standalone (alias call-sites via TYPE only).
+//	(2) compile-time assertion that the canonical type compiles;
+//	(3) residue grep test — zero references to the retired IndexingStatus
+//	    alias (the alias was removed in §12-5 CONTRACT).
 package sourcing
 
 import (
@@ -44,32 +44,20 @@ func repoRoot(t *testing.T) string {
 	return ""
 }
 
-// TestIndexingStatus_TypeIdentity proves type-alias identity via the
-// canonical compile-time pattern. `IndexingStatus("X")` must be
-// assignable to BOTH IndexingStatus and domain.SourcingIndexStatus
-// variables — the Go type-alias is byte-transparent at the package
-// boundary.
-//
-// Spec pin (2): var _ domain.SourcingIndexStatus = IndexingStatus("")
-// — empty-string convert is byte-equivalent via alias; type-identity
-// proof (NOT runtime-validity; runtime validity tested in
-// domain/sourcing/index_status_test.go via IsValid()).
+// TestIndexingStatus_TypeIdentity proves that domain.SourcingIndexStatus
+// is the canonical typed-enum for the `indexing_status` JSON wire field.
+// After §12-5 CONTRACT, the sourcing.IndexingStatus alias was removed;
+// production code consumes domain.SourcingIndexStatus directly.
 func TestIndexingStatus_TypeIdentity(t *testing.T) {
-	// Spec pin (2) verbatim — type-identity proof.
-	var _ domain.SourcingIndexStatus = IndexingStatus("")
-
-	// Stronger form: explicit constant assignment (still type-only).
-	var _ domain.SourcingIndexStatus = IndexingStatus(domain.SourcingIndexStatusPending)
-
-	// Round-trip alias identity (functional check beyond compile-time).
-	var x IndexingStatus = domain.SourcingIndexStatusPending
+	// Canonical constant assignment.
+	var x domain.SourcingIndexStatus = domain.SourcingIndexStatusPending
 	var y domain.SourcingIndexStatus = x
 	if y != domain.SourcingIndexStatusPending {
-		t.Fatalf("round-trip alias mismatch: x=%q y=%q", x, y)
+		t.Fatalf("round-trip identity mismatch: x=%q y=%q", x, y)
 	}
 
 	// Empty-marker round-trip.
-	var empty IndexingStatus = ""
+	var empty domain.SourcingIndexStatus = ""
 	var back domain.SourcingIndexStatus = empty
 	if back != "" {
 		t.Fatalf("empty string round-trip mismatch: empty=%q back=%q", empty, back)
@@ -77,17 +65,13 @@ func TestIndexingStatus_TypeIdentity(t *testing.T) {
 }
 
 // TestIndexingStatus_TypedAliasRoundTrip is the JSON round-trip test
-// on the sourcing.IndexingStatus alias (parallel to
-// TestSourcingIndexStatus_JSONRoundTrip in package domain).
-// Verifies the alias is byte-transparent at the JSON layer.
-//
-// Spec pin (1): marshal/unmarshal round-trip JSON wire field
-// `indexing_status`.
+// on the domain.SourcingIndexStatus canonical enum.
+// Verifies byte-stability at the JSON layer after §12-5 CONTRACT.
 func TestIndexingStatus_TypedAliasRoundTrip(t *testing.T) {
 	type payload struct {
-		IndexingStatus IndexingStatus `json:"indexing_status"`
+		IndexingStatus domain.SourcingIndexStatus `json:"indexing_status"`
 	}
-	for _, status := range []IndexingStatus{
+	for _, status := range []domain.SourcingIndexStatus{
 		domain.SourcingIndexStatusPending,
 		domain.SourcingIndexStatusSkipped,
 		domain.SourcingIndexStatusCompleted,
@@ -184,10 +168,9 @@ func TestSourcingNoLegacyIndexingStrings(t *testing.T) {
 	}
 }
 
-// TestSourcingAliasCohesion verifies the canonical alias declaration
-// site has at least one declaration of `type IndexingStatus` in
-// internal/application/assets/sourcing/types.go. If the alias is
-// removed accidentally, this test fails.
+// TestSourcingAliasCohesion verifies the canonical IndexingStatus alias
+// has been PHYSICALLY REMOVED from types.go (§12-5 CONTRACT). The alias
+// was retired in favour of direct consumption of domain.SourcingIndexStatus.
 func TestSourcingAliasCohesion(t *testing.T) {
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, "internal/application/assets/sourcing/types.go"))
@@ -195,13 +178,9 @@ func TestSourcingAliasCohesion(t *testing.T) {
 		t.Fatal(err)
 	}
 	contents := string(data)
-	// At least ONE declaration of the type alias is expected.
+	// §12-5 CONTRACT: the alias MUST be gone.
 	aliasCount := strings.Count(contents, "type IndexingStatus")
-	if aliasCount < 1 {
-		t.Errorf("expected at least one declaration of type IndexingStatus in types.go, got %d", aliasCount)
-	}
-	// And it MUST be an alias (=), not a new-type (no =).
-	if !strings.Contains(contents, "type IndexingStatus =") {
-		t.Errorf("expected `type IndexingStatus =` (godlike/06 SSOT-type-alias) in types.go; absent")
+	if aliasCount != 0 {
+		t.Errorf("expected ZERO declarations of type IndexingStatus in types.go after §12-5 CONTRACT, got %d", aliasCount)
 	}
 }
