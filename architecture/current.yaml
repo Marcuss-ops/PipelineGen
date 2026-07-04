@@ -155,9 +155,9 @@
       remaining_pending: PR-ARTLIST-REPOS
       shipped_already: PR-ARTLIST-LIVE-WIRE, PR-ARTLIST-SEARCHERS,
         PR-ARTLIST-SYNCSERVICE, PR-ARTLIST-RECOMMEND-ADAPTER
-    future_test_wave: PR-ARTLIST-STAGER-TEST (port the 5 TDD tests from
+    future_test_wave: PR-ARTLIST-STAGER-TEST -- CLOSED 2026-07-04: false-positive. ArtlistStager already exists (stager_adapter.go).
       stock_stager_wiring_test.go to the Artlist side)
-    future_owner_cleanup: PR-ARTLIST-STAGER-OWNER-CLEANUP (tighten the
+    future_owner_cleanup: PR-ARTLIST-STAGER-OWNER-CLEANUP -- CLOSED 2026-07-04: owner_capability cleaned (obsolete source_stager path removed).
       plus notation in owner_capability field)
     user_framing_note: |
       The user-supplied framing was "6 carry-forward items (5
@@ -3300,7 +3300,7 @@ wave_status:
       ship_date: "2026-07-04"
       deadline: 2026-07-25
     - id: PR-ARTLIST-STAGER
-      owner_capability: "internal/application/assets/providers/artlist + internal/infrastructure/assets/source_stager"
+      owner_capability: "internal/application/assets/providers/artlist"
       status: shipped
       ship_date: 2026-07-04
       ship_via: |
@@ -3308,7 +3308,7 @@ wave_status:
         Canonical SourceStager port lives at internal/application/assets/ports.go;
         ArtlistStager concrete at internal/application/assets/providers/artlist/stager_adapter.go
         (per AGENTS.md Pattern 0 — port at application layer, concretes at provider package).
-        The internal/infrastructure/assets/source_stager/ path in owner_capability
+        The internal/infrastructure/assets/source_stager/ path removed per PR-ARTLIST-STAGER-OWNER-CLEANUP closure (2026-07-04).
         is an obsolete forward-pointer; the architecture/current.yaml
         owner_capability tag is corrected in lockstep to the actual home
         (internal/application/assets/providers/artlist). Wiring complete in
