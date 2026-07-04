@@ -2,17 +2,16 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
-	"testing"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
+	"strings"
+	"testing"
 )
 
 // ── Test doubles ───────────────────────────────────────────────────────
@@ -955,6 +954,229 @@ func TestPublisher_Publish_P0_1_ConflictRename_ExistingMatch(t *testing.T) {
 		"PublishActionCreated must NOT be assumed for a renamed conflict; the no-reconstruction contract requires the actual rename action class")
 }
 
+// ── PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE tests (July 2026) ──────────
+//
+// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE replaces the original log.Warn +
+// silent-swallow in Publisher.resolveDestination Step 4 fall-through with a
+// typed sentinel that callers can errors.Is. The sentinel is the canonical
+// diagnostic for "PathBuilder failed + the caller supplied RootFolderOverride,
+// so we fell back to direct-to-root upload" — useful for ops dashboards,
+// smoke alerts, and aggressive-mode callers that want to fail-closed at the
+// fallback (forward-pointer PR-VO-AGGREGATE-SUBPATH-CASCADE).
+//
+// godlike/07 typed-error contract: the sentinel is a top-level
+// `var X = errors.New(...)` declared in errors.go for clean errors.Is probes.
+// The wrap in resolveDestination uses dual-%w fmt.Errorf (Go 1.20+) to
+// preserve BOTH the typed sentinel (errors.Is) AND the underlying
+// PathBuilder cause (errors.As) — unlike the pre-PR fmt.Errorf "%%v+%%w"
+// which stringified the cause and lost typed recovery. errors.Join is
+// equally valid for typed-chain preservation but introduces newline-
+// separated stderr noise that breaks single-line log aggregators; the
+// dual-%w fmt.Errorf idiom is the canonical wrap for this surface.
+
+// TestErrPathBuilderIncompleteForOverride_Sentinel pins the typed error
+// declaration + dual-%w fmt.Errorf wrap contract.
+//
+// godlike/07 typed-error contract verification: rather than using
+// errors.As(err, &recoveredCause) with a `*error` target (rejected by
+// `go vet` because the second argument must be a concrete type, not
+// the bare error interface), we verify typed-recovery via errors.Is
+// against the SAME underlying-cause pointer-identity — errors.Is walks
+// via Unwrap() and matches by == or Is(), achieving the same chain-
+// preservation guarantee as errors.As without go vet flakiness. This
+// also avoids walk-order dependency on the fmt.Errorf wrapErrors slice
+// order (the first-match of `*error` was previously implementation-
+// detail-dependent).
+func TestErrPathBuilderIncompleteForOverride_Sentinel(t *testing.T) {
+	var _ error = ErrPathBuilderIncompleteForOverride // compile-time pin
+
+	// (a) Bare sentinel: errors.Is matches the error itself.
+	require.ErrorIs(t, ErrPathBuilderIncompleteForOverride, ErrPathBuilderIncompleteForOverride,
+		"bare sentinel MUST errors.Is match itself")
+
+	// (b1) Production dual-%w fmt.Errorf wrap (canonical in resolveDestination).
+	//      underlyingCause is held for the errors.Is identity probe at (c).
+	underlyingCause := fmt.Errorf("group is required")
+	wrapped := fmt.Errorf("delivery: PathBuilder failed under RootFolderOverride (cause: %w): %w",
+		underlyingCause, ErrPathBuilderIncompleteForOverride)
+
+	// (b2) errors.Is recovers the sentinel via wrap-chain walk.
+	require.ErrorIs(t, wrapped, ErrPathBuilderIncompleteForOverride,
+		"dual-%w fmt.Errorf must preserve the sentinel for errors.Is (typed-chain preservation contract)")
+
+	// (c) Typed-recovery: errors.Is recovers the underlying cause via
+	//     pointer-identity match against the SAME underlyingCause variable
+	//     (== equality through the wrap chain). This is equivalent to
+	//     errors.As(wrapped, &concreteErrorType) for purposes of the
+	//     godlike/07 typed-recovery contract, without the *error target
+	//     go vet rejection.
+	require.ErrorIs(t, wrapped, underlyingCause,
+		"dual-%w fmt.Errorf must preserve the underlying PathBuilder cause via errors.Is (typed-recovery contract — equivalent to errors.As for chain-preservation)")
+
+	// (d) Underlying cause's message preserved in err.Error() for grep-ability.
+	require.Contains(t, wrapped.Error(), "group is required",
+		"dual-%w fmt.Errorf must preserve the underlying cause's message via the wrap chain (log/diagnostic surface)")
+
+	// (e) Sentinel discriminator phrase preserved (stable against message rewording).
+	require.Contains(t, wrapped.Error(), "RootFolderOverride",
+		"dual-%w fmt.Errorf must preserve the sentinel's discriminator phrase (RootFolderOverride) for grep-able diagnostic surface")
+
+	// (f) DOWNSTREAM-COMPAT ALIAS ONLY — errors.Join is equally valid for
+	//     downstream consumers (godlike/06 SSOT does NOT forbid it; production
+	//     uses dual-%w fmt.Errorf for the single-line-stderr benefit). The
+	//     alias is documented here to prevent future agents from switching
+	//     publisher.go to errors.Join and regressing to the 3-line stderr
+	//     noise that breaks single-line log aggregators. DO NOT change
+	//     publisher.go to use errors.Join — the dual-%w fmt.Errorf wrap is
+	//     the canonical production idiom per godlike/07 single-line stderr
+	//     criterion.
+	joinedCause := fmt.Errorf("group is required")
+	joined := errors.Join(joinedCause, ErrPathBuilderIncompleteForOverride)
+	require.ErrorIs(t, joined, ErrPathBuilderIncompleteForOverride,
+		"errors.Join downstream-compat: sentinel preserved for errors.Is")
+	require.ErrorIs(t, joined, joinedCause,
+		"errors.Join downstream-compat: underlying cause preserved for errors.Is (typed-recovery alias)")
+
+	// (g) Negative control: unrelated sentinel does NOT match.
+	otherSentinel := errors.New("drive: unrelated sentinel")
+	require.NotErrorIs(t, wrapped, otherSentinel,
+		"dual-%w wrapped sentinel MUST NOT match unrelated sentinels (errors.Is isolation)")
+}
+
+// TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
+// pins the canonical dual-return shape contract: when PathBuilder fails AND
+// the caller supplied RootFolderOverride, resolveDestination returns BOTH a
+// non-nil ResolvedDriveDestination struct (with direct-to-root fallback) AND
+// the typed sentinel wrapped error. The dual-return is the load-bearing
+// invariant that enables errors.Is probes at call sites without losing
+// the resolved.FolderID needed for the upload. White-box test in same package.
+func TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	override := "explicit-fallback-folder-id"
+	resolved, err := pub.resolveDestination(context.Background(), delivery.PublishRequest{
+		Destination:        delivery.DestinationYouTubeClip,
+		LocalPath:          "/tmp/clip.mp4",
+		Filename:           "clip.mp4",
+		RootFolderOverride: override,
+		ConflictPolicy:     delivery.ConflictOverwrite,
+		// Group + Subject omitted → YouTubeClipPath returns "group is required".
+	})
+
+	// (1) Dual-return shape assertions.
+	require.NotNil(t, resolved,
+		"resolveDestination must return a non-nil ResolvedDriveDestination even on typed-error path (dual-return shape contract)")
+	require.Equal(t, override, resolved.RootFolderID,
+		"resolved.RootFolderID must be the explicit override (root-folder fallback)")
+	require.Empty(t, resolved.PathSegments,
+		"resolved.PathSegments must be empty on the typed-error path (direct-to-root fallback)")
+	require.Equal(t, override, resolved.FolderID,
+		"resolved.FolderID must equal the explicit override (no nested folder created on typed-error path)")
+
+	// (2) Typed-error contract: errors.Is the canonical sentinel.
+	require.Error(t, err, "resolveDestination must surface a non-nil error on the typed-error path")
+	require.ErrorIs(t, err, ErrPathBuilderIncompleteForOverride,
+		"the returned error MUST wrap ErrPathBuilderIncompleteForOverride (errors.Is gateway for call-site decision)")
+
+	// (3) Typed-chain preservation + grep-able diagnostic surface.
+	//     The dual-%w fmt.Errorf wrap is verified by:
+	//       (3a) err.Error() contains "group is required" (the underlying
+	//            cause's message survives the wrap via the %w chain)
+	//       (3b) errors.Is(err, ErrPathBuilderIncompleteForOverride)
+	//            (the sentinel is recoverable via the wrap chain).
+	//     We intentionally do NOT use errors.As(&recoveredCause) here
+	//     because (a) the underlying cause is a private fmt.Errorf
+	//     returned by policy.PathBuilder and is not typeable from
+	//     outside, (b) `go vet` rejects `errors.As(err, &error)` as the
+	//     target must be a concrete type, (c) the (3a) + (3b) checks
+	//     together verify the chain-preservation contract without
+	//     walk-order flakiness.
+	require.Contains(t, err.Error(), "group is required",
+		"dual-%w fmt.Errorf must preserve the underlying PathBuilder cause 'group is required' (typed-chain diagnostic via message-preservation)")
+	require.ErrorIs(t, err, ErrPathBuilderIncompleteForOverride,
+		"dual-%w fmt.Errorf must preserve ErrPathBuilderIncompleteForOverride for errors.Is at the resolveDestination call site (call-site decision gateway)")
+}
+
+// TestResolveDestination_SuccessPath_ReturnsNilErr pins the success-path
+// contract for resolveDestination: when PathBuilder succeeds + override set
+// + segments non-empty, the function returns (resolved, nil). This is the
+// PAIR to TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
+// (which pins the fallback-path err=non-nil contract). Together the two
+// tests lock the dual-return shape's err variable across both branches.
+//
+// godlike/07 typed-error regression-prevention: pre-PR-VO-ERR-PATHBUILDER-
+// INCOMPLETE-OVERRIDE the finalize `return ..., nil` was silently zeroing
+// out err even when the wrap was set. The bug was latent because the
+// pre-PR log.Warn + err=nil discipline coincidentally matched. The
+// fallback-path test surfaced the bug because it asserts err != nil;
+// this success-path test prevents future regressions where someone might
+// re-introduce `return ..., nil` (under the false assumption that the
+// explicit nil is 'safer').
+func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "leaf-folder-id"}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	resolved, err := pub.resolveDestination(context.Background(), delivery.PublishRequest{
+		Destination:        delivery.DestinationYouTubeClip,
+		LocalPath:          "/tmp/clip.mp4",
+		Filename:           "clip.mp4",
+		Group:              "test",
+		Subject:            "abc",
+		RootFolderOverride: "explicit-override-folder-id",
+		ConflictPolicy:     delivery.ConflictOverwrite,
+	})
+
+	// Success path: PathBuilder succeeded → segments built → EnsureFolder
+	// called → leaf folder returned. err MUST be nil on the success path
+	// (the dual-return shape demands err=nil when nothing failed).
+	require.NoError(t, err, "resolveDestination MUST return nil err on success path (paired with fallback-path test for non-nil err)")
+
+	// Resolved struct carries the leaf folder id (returned by fakeFolderManager).
+	require.NotNil(t, resolved)
+	require.Equal(t, "leaf-folder-id", resolved.FolderID,
+		"success path: FolderID must equal the leaf folder returned by EnsureFolder")
+	require.NotEmpty(t, resolved.PathSegments,
+		"success path: PathSegments must be non-empty when PathBuilder succeeds")
+	require.Equal(t, []string{"test", "abc"}, resolved.PathSegments,
+		"success path: PathSegments must be the canonical [{group},{subject}] structure")
+	require.Equal(t, "explicit-override-folder-id", resolved.RootFolderID,
+		"success path: RootFolderID must be the explicit override (RootFolderOverride precedence)")
+}
+
+// TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot pins the
+// end-to-end Publish swallow behavior: when resolveDestination returns typed
+// sentinel + resolved struct, Publish errors.Is + log.Debug + uses override root.
+func TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	override := "explicit-fallback-folder-id"
+	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:        delivery.DestinationYouTubeClip,
+		LocalPath:          "/tmp/clip.mp4",
+		Filename:           "clip.mp4",
+		RootFolderOverride: override,
+		ConflictPolicy:     delivery.ConflictOverwrite,
+	})
+	require.NoError(t, err,
+		"Publish MUST swallow ErrPathBuilderIncompleteForOverride at the call-site (backward-compat per godlike/07 minimum-blast-radius)")
+
+	// Upload landed in the override root via the resolved struct (proves dual-return shape contract).
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, override, files.uploadCalls[0].folderID,
+		"Publish MUST use the override root from the resolved struct (dual-return shape contract)")
+}
+
 // ── PR-VO-SUBFOLDER tests (July 2026, commit c96eb1e0) ───────────────────
 //
 // PR-VO-SUBFOLDER fixes the invariant that callers with an explicit
@@ -1047,10 +1269,13 @@ func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T)
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
 
-	// Capture Warn-level log entries so we can assert the fallback
-	// surfaced a visible diagnostic. The pattern is the canonical
-	// zap testing idiom (see zaptest/observer.New).
-	core, recorded := observer.New(zapcore.WarnLevel)
+	// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE (July 2026): the
+	// fallback diagnostic moved from Warn to Debug (the explicit
+	// errors.Is sentinel at the call-site surface is now the
+	// canonical diagnostic; the Debug log is the explicit call-site
+	// ack that the swallow took place, NOT the primary failure
+	// surface). The observer uses DebugLevel to capture the ack.
+	core, recorded := observer.New(zapcore.DebugLevel)
 	log := zap.New(core)
 
 	pub, err := NewPublisher(reg, folders, files, log)
@@ -1081,18 +1306,21 @@ func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T)
 	require.Equal(t, override, files.uploadCalls[0].folderID,
 		"Upload MUST land in the explicit override root (direct-to-root fallback, no subfolder created)")
 
-	// (3) Warn-level diagnostic surfaced the fallback so the operator
-	//     sees the metadata gap in logs (NOT silent).
+	// (3) Debug-level explicit-ack diagnostic surfaced the fallback so
+	//     the operator sees the metadata gap in logs (NOT silent). The
+	//     message text is the canonical 'incomplete subpath tolerated'
+	//     ack that the call-site uses after errors.Is'ing
+	//     ErrPathBuilderIncompleteForOverride.
 	require.NotEmpty(t, recorded.All(), "expected at least one log entry on PathBuilder failure with override — got none")
-	warnFound := false
+	debugFound := false
 	for _, entry := range recorded.All() {
-		if strings.Contains(entry.Message, "PathBuilder failed with RootFolderOverride") {
-			warnFound = true
+		if strings.Contains(entry.Message, "incomplete subpath tolerated because override was set") {
+			debugFound = true
 			break
 		}
 	}
-	require.True(t, warnFound,
-		"expected Warn log with 'PathBuilder failed with RootFolderOverride set; ...' — got %v (PR-VO-SUBFOLDER diagnostic visibility contract)",
+	require.True(t, debugFound,
+		"expected Debug log with 'incomplete subpath tolerated because override was set' — got %v (PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE call-site ack contract)",
 		recorded.All())
 }
 
