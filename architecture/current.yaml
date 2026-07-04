@@ -4203,15 +4203,24 @@ wave_status:
         server_lifecycle.go (251) are RETAINED.
     - id: PR-WIRE-ASSETS-CAPABILITY-SPLIT
       owner_capability: internal/app
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: TBD
       deadline: 2026-08-15
       description: |
-        Split internal/app/wire_assets.go (633 LoC) into 5 single-purpose
+        Split internal/app/wire_assets.go (was 636 LoC) into 5 single-purpose
         capability files per AGENTS.md Pattern 5: thin wire_assets.go
-        orchestrator + wire_assets_clips.go + wire_assets_storage.go +
-        wire_assets_search.go + wire_assets_diagnostics.go. Voiceover
-        remains in pre-existing adapters_voiceover_use_case.go (no
-        change).
+        orchestrator (274 LoC, linear pipeline of 7 Build*Bundle calls) +
+        wire_assets_clips.go (264 LoC, buildClipsBundle — largest capability,
+        12 args) + wire_assets_storage.go (67 LoC, buildStorageBundle) +
+        wire_assets_diagnostics.go (84 LoC, buildDiagnosticsBundle) +
+        wire_assets_search.go (59 LoC, buildSearchBundle — thinnest) +
+        wire_assets_voiceover.go (62 LoC, buildVoiceoverBundle). Soundeffect
+        + register stay inline in wire_assets.go (not in user 5-file list).
+        Also eliminates YAGNI catalogRepo param (was at position 8; the
+        appsearch.Service consumer that 'may reuse' it was deleted in Wave 21
+        PR 10). registry_assets.go caller updated to drop the
+        root.Repos.CatalogRepo arg.
     - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-1
       owner_capability: scripts/ci-architectural-checks.sh + cmd/archcheck
       status: pending

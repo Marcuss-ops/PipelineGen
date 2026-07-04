@@ -102,7 +102,14 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
 	// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
 	// (typed-to-typed, no auto-bridge required).
-	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
+	//
+	// PR-WIRE-ASSETS-CAPABILITY-SPLIT (2026-07-04, deadline 2026-08-15):
+	// the YAGNI `catalogRepo "may reuse"` arg (was at position 8 in the
+	// pre-split signature) is removed from the WireAssets call. The
+	// appsearch.Service consumer that "may reuse" catalogRepo was
+	// deleted in Wave 21 PR 10 (June 2026) and the param survived as
+	// dead code until this split.
+	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
 	if err != nil || aw == nil {
 		return nil
 	}
