@@ -42,6 +42,8 @@ func main() {
 	pollFlag := fs.Duration("poll", 2*time.Second, "Poll interval for index_state check")
 	assetNameFlag := fs.String("asset-name", "preflight-test-asset", "Human-readable identifier for the seed asset")
 	voAssetFlag := fs.String("vo-asset", "", "Optional vo-asset-id for Test 11 voiceover piggyback")
+	aggregateIDFlag := fs.String("aggregate-id", "", "Override the deterministic aggregate_id (Test 8 supersede-gate; same value across 2 invocations)")
+	sourceVersionFlag := fs.Int("source-version", 1, "Source version (Test 8 supersede-gate; defaults to 1, call twice with {1,2} for the 2-version gate)")
 	listOnlyFlag := fs.Bool("list", false, "Print the seed plan and exit (no network calls)")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "seed-test-asset: flag parse: %v\n", err)
@@ -76,6 +78,8 @@ func main() {
 			PollEvery:  *pollFlag,
 			AssetName:  *assetNameFlag,
 			VOAssetID:  *voAssetFlag,
+			AggregateID: *aggregateIDFlag,
+			SourceVersion: *sourceVersionFlag,
 		},
 	})
 	if err != nil {

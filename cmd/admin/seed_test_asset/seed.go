@@ -45,14 +45,16 @@ var (
 
 // SeedConfig carries the resolved CLI flags.
 type SeedConfig struct {
-	URL        string        // PipelineGen server URL (e.g. http://127.0.0.1:8081)
-	QdrantURL  string        // Qdrant base URL (e.g. http://127.0.0.1:16333)
-	Collection string        // Qdrant canonical collection alias (e.g. media_assets_current)
-	AdminToken string        // VELOX_ADMIN_TOKEN value
-	Timeout    time.Duration // max wait for index_state=INDEXED
-	PollEvery  time.Duration // poll interval (default 2s)
-	AssetName  string        // human-readable identifier
-	VOAssetID  string        // optional vo-asset-id for Test 11 piggyback
+	URL           string        // PipelineGen server URL (e.g. http://127.0.0.1:8081)
+	QdrantURL     string        // Qdrant base URL (e.g. http://127.0.0.1:16333)
+	Collection    string        // Qdrant canonical collection alias (e.g. media_assets_current)
+	AdminToken    string        // VELOX_ADMIN_TOKEN value
+	Timeout       time.Duration // max wait for index_state=INDEXED
+	PollEvery     time.Duration // poll interval (default 2s)
+	AssetName     string        // human-readable identifier
+	VOAssetID     string        // optional vo-asset-id for Test 11 piggyback
+	AggregateID   string        // optional override for the deterministic aggregate_id (Test 8 supersede-gate)
+	SourceVersion int           // source version (Test 8 supersede-gate; defaults to 1, second call passes 2)
 }
 
 // SeedDeps is the testable surface — production wires real *http.Client;
@@ -60,6 +62,33 @@ type SeedConfig struct {
 type SeedDeps struct {
 	HTTPClient *http.Client
 	Config     SeedConfig
+}
+
+// buildAggregateID returns the configured override if set, else the deterministic
+// fallback (agg_<asset_name>_<unix_nano>). The override path is required for
+// Test 8 (supersede-gate-2-source-versions): the preflight binary calls the seed
+// CLI twice with the same --aggregate-id but --source-version=1 + =2.
+func buildAggregateID(cfg SeedConfig) string {
+	if cfg.AggregateID != "" {
+		return cfg.AggregateID
+	}
+	return fmt.Sprintf("agg_%s_%d", cfg.AssetName, time.Now().UnixNano())
+}
+
+// buildSourceVersion returns the configured source version (default 1).
+// Test 8 calls the seed CLI twice: first with --source-version=1, then with
+// --source-version=2 (same --aggregate-id both times) so the supersede gate
+// can verify exactly 2 source_versions per aggregate_id.
+//
+// godlike/07 explicit-zero-value: the `== 0` check is the canonical
+// "unset" sentinel for int. SourceVersion=0 is not a valid semver for
+// PipelineGen assets (we start at 1) so defaulting 0 to 1 is safe and
+// matches the CLI flag's default value at main.go declaration site.
+func buildSourceVersion(cfg SeedConfig) int {
+	if cfg.SourceVersion == 0 {
+		return 1
+	}
+	return cfg.SourceVersion
 }
 
 // Run executes the canonical seed flow. Returns the SeedResult on success
@@ -76,9 +105,9 @@ func Run(ctx context.Context, deps SeedDeps) (*SeedResult, error) {
 	// Step 1: POST /api/script/generate-from-clips to create the asset.
 	seedReq := SeedRequest{
 		ProjectName:   deps.Config.AssetName,
-		AggregateID:   fmt.Sprintf("agg_%s_%d", deps.Config.AssetName, time.Now().UnixNano()),
+		AggregateID:   buildAggregateID(deps.Config),
 		IsSandbox:     true,
-		SourceVersion: 1,
+		SourceVersion: buildSourceVersion(deps.Config),
 		VOAssetID:     deps.Config.VOAssetID,
 		Clips: []SeedClip{
 			{
