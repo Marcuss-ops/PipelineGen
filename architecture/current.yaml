@@ -2187,6 +2187,45 @@
           owner_capability: internal/application/youtube/usecase
           deadline: 2026-08-15
           status: pending
+
+    - id: PR-DETERMINISTIC-CLOCK-INJECTION
+      owner_capability: internal/application/assets/monitor
+      status: shipped
+      deadline: 2026-07-25
+      ship_sha: TBD
+      ship_date: 2026-07-04
+      notes: |
+        Inject a deterministic clock seam into DateAfterFromCursor per
+        the pkg/retry lookupFunc + internal/infrastructure/drive openFile
+        precedent (PR-P2.1, June 2026). The pre-fix shape carried a
+        hardcoded  inside the LookbackDays
+        fallback branch — non-deterministic by construction, so any
+        test invoking the function could roll over a calendar boundary
+        between invocations and produce non-deterministic YYYYMMDD
+        output.
+
+        Post-fix shape: DateAfterFromCursor now accepts  as a third parameter (nil → lazy defaultNowFn →
+        time.Now in production). Tests pass an explicit function
+        returning a fixed calendar day (the canonical anchor in this
+        test suite is 2026-01-15 UTC). defaultNowFn is the
+        package-level function-typed seam; SetDefaultNowForTests(fn)
+        is the ONLY mutation surface (paired with t.Cleanup so test
+        fixtures cannot pollute production code).
+
+        Test surface (NEW file: types_dto_clock_test.go, ~190 LoC,
+        7 tests / 11 sub-cases): covers precedence (RFC3339 wins),
+        lookback fallback at fixed clock, empty-cursor empty-lookback,
+        lazy-default nil-resolve, malformed-cursor fallthrough,
+        cursor-tail-ignored len-10 semantic, SetDefaultNowForTests
+        swap with cleanup restoration.
+
+        Pre-existing build issues carry forward unchanged:
+        monitor_enqueue_test.go + youtube_discoveries_test.go failures
+        are tracked under architecture/current.yaml#PRE-EXISTING-BUILD-
+        ISSUES-2026-07-04.linked_issues (FIX-MONITOR-ENQUEUE-TOLOWER +
+        FIX-MONITOR-SCHEDULER-ENQUEUER). Verified via per-test -run
+        filter that ONLY the new test surface passes.
+
     - id: PR-MONITOR-DUAL-SENTINEL-FIX
       owner_capability: internal/application/assets/monitor
       status: shipped
