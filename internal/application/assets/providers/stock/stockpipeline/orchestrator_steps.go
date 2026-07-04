@@ -82,6 +82,28 @@ var (
 	// the canonical godlike/07 "every deployment-fingerprint-derived
 	// ID must be non-empty" gate. Composition-time wiring gap.
 	ErrStockFnRequired = errors.New("stock.finalize: run fingerprint empty (policyVersion / inputs missing)")
+
+	// ErrStockStageSourcesAllFailed is raised when StockStageSourcesStep.Run
+	// was wired with a non-nil SourceStager AND had non-empty plans AND
+	// every source in the plan failed to stage (zero *assets.StagedAsset
+	// appended to the staged slice). This closes the godlike/07
+	// no-fake-availability class where a job could report SUCCEEDED
+	// with zero staged assets on Drive. The per-source graceful
+	// degradation (Warn + continue on err/nil) is preserved so partial
+	// successes still produce partial artifacts — only the all-failed
+	// case surfaces this sentinel. PR-STOCK-FAKE-AVAILABILITY-REMOVAL
+	// (Wave 1 P0 #2, deadline 2026-07-15).
+	ErrStockStageSourcesAllFailed = errors.New("stock.stage_sources: all sources failed to stage")
+
+	// ErrStockComposeChunksAllFailed is raised when StockComposeChunksStep.Run
+	// was wired with a non-nil Renderer AND had non-empty CutPaths AND
+	// every chunk failed to render (zero string paths appended to the
+	// composed slice). Mirrors ErrStockStageSourcesAllFailed — the
+	// godlike/07 no-fake-availability class for the compose step.
+	// The per-chunk graceful degradation (Warn + continue on err) is
+	// preserved so partial successes still produce partial artifacts.
+	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2).
+	ErrStockComposeChunksAllFailed = errors.New("stock.compose_chunks: all chunks failed to render")
 )
 
 // ── Step contract ──────────────────────────────────────────────────────
@@ -220,6 +242,20 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 				zap.String("local_path", sa.LocalPath),
 				zap.Int64("bytes", sa.Bytes))
 		}
+	}
+
+	// Fail-closed gate (PR-STOCK-FAKE-AVAILABILITY-REMOVAL, 2026-07-04):
+	// if the stager was wired (non-nil check above) AND we had plans
+	// (len(plans) > 0 check above) AND every source failed to stage
+	// (zero *assets.StagedAsset appended to the staged slice), surface
+	// ErrStockStageSourcesAllFailed as a job failure. This closes the
+	// godlike/07 no-fake-availability class where a job could report
+	// SUCCEEDED with zero staged assets on Drive. The per-source
+	// graceful degradation (Warn + continue on err/nil) is preserved
+	// above so partial successes still produce partial artifacts —
+	// only the all-failed case surfaces this sentinel.
+	if len(staged) == 0 {
+		return ErrStockStageSourcesAllFailed
 	}
 
 	runner.State().StagedAssets = staged
@@ -402,6 +438,15 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 // StockRenderer.Render — each cut path is rendered individually
 // (one clip → one composed chunk) preserving the 1:1 cardinality
 // established by the Commit 5 stub.
+//
+// Per-chunk failures degrade gracefully (Warn + continue); the
+// all-failed case is caught by ErrStockComposeChunksAllFailed
+// at the end of the step so the orchestrator surfaces it as a
+// job failure (NOT as a job success with zero composed chunks).
+// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2, 2026-07-04).
+// Do NOT revert the per-chunk `continue` to `return fmt.Errorf`
+// — that would reintroduce the godlike/07 no-fake-availability
+// regression where a single bad chunk tanked the whole compose.
 type StockComposeChunksStep struct{}
 
 func (StockComposeChunksStep) Name() string { return StepKeyStockComposeChunks }
@@ -467,7 +512,18 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 
 		_, renderErr := renderer.Render(ctx, req)
 		if renderErr != nil {
-			return fmt.Errorf("orchestrator: stock.compose_chunks: Render chunk %d: %w", i, renderErr)
+			// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (2026-07-04): per-chunk
+			// graceful degradation (Warn + continue) mirrors the
+			// StockStageSourcesStep pattern — a single bad chunk
+			// shouldn't tank the whole compose. The fail-closed
+			// gate at the end of the step catches the all-failed
+			// case via ErrStockComposeChunksAllFailed so the
+			// orchestrator surfaces it as a job failure.
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.compose_chunks: Render chunk failed — graceful degradation",
+					zap.Int("chunk_index", i), zap.Error(renderErr))
+			}
+			continue
 		}
 		composed = append(composed, outputPath)
 
@@ -476,6 +532,18 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 				zap.Int("chunk_index", i),
 				zap.String("output", outputPath))
 		}
+	}
+
+	// Fail-closed gate (PR-STOCK-FAKE-AVAILABILITY-REMOVAL, 2026-07-04):
+	// if the renderer was wired (non-nil check above) AND we had cut
+	// paths (len(cutPaths) > 0 check above) AND every chunk failed to
+	// render (zero string paths appended to the composed slice), surface
+	// ErrStockComposeChunksAllFailed as a job failure. Mirrors the
+	// StockStageSourcesStep fail-closed pattern. The per-chunk graceful
+	// degradation (Warn + continue on err) is preserved above so
+	// partial successes still produce partial artifacts.
+	if len(composed) == 0 {
+		return ErrStockComposeChunksAllFailed
 	}
 
 	runner.State().ComposedPaths = composed
@@ -553,17 +621,17 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			return fmt.Errorf("%w: chunk %d (artifact=%s) idem-key: %v",
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, idemErr)
 		}
-	va := finalization.VerifiedArtifact{
-		ArtifactID:     cs.ArtifactID,
-		Kind:           finalization.KindVideo,
-		Filename:       cs.Filename,
-		MIMEType:       "video/mp4",
-		LocalPath:      cs.LocalPath,
-		SizeBytes:      cs.SizeBytes,
-		SHA256:         cs.SHA256,
-		Requirement:    finalization.ArtifactRequirementRequired,
-		IdempotencyKey: idem + ":c" + strconv.Itoa(i),
-	}
+		va := finalization.VerifiedArtifact{
+			ArtifactID:     cs.ArtifactID,
+			Kind:           finalization.KindVideo,
+			Filename:       cs.Filename,
+			MIMEType:       "video/mp4",
+			LocalPath:      cs.LocalPath,
+			SizeBytes:      cs.SizeBytes,
+			SHA256:         cs.SHA256,
+			Requirement:    finalization.ArtifactRequirementRequired,
+			IdempotencyKey: idem + ":c" + strconv.Itoa(i),
+		}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
 		if prepErr != nil {
 			return fmt.Errorf("%w: chunk %d (artifact=%s): %v",

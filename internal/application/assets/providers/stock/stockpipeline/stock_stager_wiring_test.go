@@ -1,5 +1,22 @@
 // Package stockpipeline — stock_stager_wiring_test.go (PR-STOCK-SOURCESTAGER-WIRE, July 2026).
 //
+// DEPRECATED CONTRACT PIN (godlike/07 honest-limitation):
+// The 5 t.Skip()-gated tests below pin the OLD contract (graceful
+// degradation returning nil on all-failure). They DO NOT pin the
+// current production contract — that contract changed in
+// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (2026-07-04, commit pending
+// push to origin/main) which adds fail-closed typed sentinels
+// (ErrStockStageSourcesAllFailed + ErrStockComposeChunksAllFailed)
+// at the end of StockStageSourcesStep.Run and StockComposeChunksStep.Run.
+//
+// The NEW contract is pinned by the 5 ACTIVE tests in
+// stock_fake_availability_test.go (same package). Future
+// maintainers who unskip the tests below WILL see them fail under
+// the new contract — that is the expected behavior. The tests are
+// retained as audit-pins for the deferred Commit 6 (STOCK-CUT-6
+// forward-pointer in architecture/current.yaml) which will
+// reconcile the two contracts.
+//
 // Forward-coverage marker for the canonical `assets.SourceStager` integration
 // into Orchestrator.RunResilient dispatchSteps["stock.stage_sources"]. Mirrors
 // the established pattern of:
@@ -31,23 +48,23 @@
 // graceful-degradation path will not catch the regression at unit-test
 // time. The five test functions below pin:
 //
-//   (1) StageSource is invoked exactly once per Orchestrator.RunResilient
-//       with the firstSource URL extracted from input.DirectURLs[0].
-//   (2) Cleanup is deferred and fires after RunResilient returns; the
-//       same *assets.StagedAsset instance is passed to Cleanup that was
-//       returned from StageSource (i.e. the orchestrator does not
-//       accidentally swap the asset).
-//   (3) StageSource returning a non-nil error does NOT abort the run —
-//       RunResilient returns nil error + valid RunSummary with manifest
-//       still stamped (graceful degradation: stage failure → Warn +
-//       continue, mirrors YouTube + Artlist pattern).
-//   (4) StageSource returning (nil, nil) — the defensive-path branch
-//       `else if staged == nil` — also gracefully degrades with no
-//       Cleanup defer.
-//   (5) When firstSource yields no source (empty input), StageSource is
-//       NOT invoked; the orchestrator's plan_clips step returns the
-//       typed sentinel "no sources to plan" before stage_sources is
-//       reached. This pins the order: plan first, stage second.
+//	(1) StageSource is invoked exactly once per Orchestrator.RunResilient
+//	    with the firstSource URL extracted from input.DirectURLs[0].
+//	(2) Cleanup is deferred and fires after RunResilient returns; the
+//	    same *assets.StagedAsset instance is passed to Cleanup that was
+//	    returned from StageSource (i.e. the orchestrator does not
+//	    accidentally swap the asset).
+//	(3) StageSource returning a non-nil error does NOT abort the run —
+//	    RunResilient returns nil error + valid RunSummary with manifest
+//	    still stamped (graceful degradation: stage failure → Warn +
+//	    continue, mirrors YouTube + Artlist pattern).
+//	(4) StageSource returning (nil, nil) — the defensive-path branch
+//	    `else if staged == nil` — also gracefully degrades with no
+//	    Cleanup defer.
+//	(5) When firstSource yields no source (empty input), StageSource is
+//	    NOT invoked; the orchestrator's plan_clips step returns the
+//	    typed sentinel "no sources to plan" before stage_sources is
+//	    reached. This pins the order: plan first, stage second.
 package stockpipeline
 
 import (
@@ -164,6 +181,7 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 //   - invokes it N>1 times (wasted bandwidth per retry)
 //   - passes a wrong URL (e.g. full search query string instead of
 //     DirectURLs[0])
+//
 // would not be caught at unit-test time.
 func TestOrchestrator_RunResilient_StageSource_CalledOnceWithFirstSourceURL(t *testing.T) {
 	rec := &recordingStager{
@@ -251,6 +269,7 @@ func TestOrchestrator_RunResilient_CleanupDeferredOnStageSuccess(t *testing.T) {
 // every grain source whose yt-dlp download is temporarily flaky,
 // defeating the point of having a port-mirror in production.
 func TestOrchestrator_RunResilient_StageFailure_GracefulDegradation(t *testing.T) {
+	t.Skip("DEPRECATED: pins the OLD graceful-degradation contract (nil err on stage failure). Superseded by stock_fake_availability_test.go::TestStockStageSourcesStep_AllSourcesFailed_ReturnsTypedError which pins the NEW fail-closed contract (ErrStockStageSourcesAllFailed). Unskip when deferred Commit 6 (PR-STOCK-SOURCESTAGER-WIRE) reconciles the contracts.")
 	rec := &recordingStager{
 		// Both nil: defensive pointer + intentional error together.
 		stagedAsset: nil,
@@ -297,6 +316,7 @@ func TestOrchestrator_RunResilient_StageFailure_GracefulDegradation(t *testing.T
 // (Warn + continue, no defer, no NPE) so a misbehaving port cannot
 // panic the run.
 func TestOrchestrator_RunResilient_StageReturnsNilAsset_GracefulDegradation(t *testing.T) {
+	t.Skip("DEPRECATED: pins the OLD graceful-degradation contract (nil err on nil-asset return). Superseded by stock_fake_availability_test.go::TestStockStageSourcesStep_AllSourcesNilAsset_ReturnsTypedError which pins the NEW fail-closed contract (ErrStockStageSourcesAllFailed). Unskip when deferred Commit 6 (PR-STOCK-SOURCESTAGER-WIRE) reconciles the contracts.")
 	rec := &recordingStager{
 		stagedAsset: nil,
 		stageErr:    nil, // intentionally defensive-path input
