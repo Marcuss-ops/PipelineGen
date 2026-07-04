@@ -188,6 +188,35 @@
       the AGENTS.md entry for the correction context before acting
       on the broken SHA.
 
+# ── PRE-EXISTING-YAML-PARSE-2026-07-04 ────────────────────────────────────
+# Forward-pointer for pre-existing YAML parse error in this very file.
+# A stray '?' character at line ~1551 col 1 (block collection starting at
+# line 22) breaks Check 19 of scripts/ci-architectural-checks.sh
+# (yaml.safe_load gate on the wave-tracker). Discovered 2026-07-04 during
+# the chore(ci) CI-baseline run. Per user spec + godlike/07
+# minimum-blast-radius: documented as a forward-pointer here, NOT fixed
+# inline. Closure: PR-FIX-YAML-PARSE-LINE-~1551.
+- id: PRE-EXISTING-YAML-PARSE-2026-07-04
+  owner_capability: architecture
+  status: pending
+  exit_signal: false
+  deadline: 2026-08-01
+  description: |
+    Pre-existing YAML parse error in architecture/current.yaml
+    (stray '?' character around line 1551 col 1 inside the block
+    collection starting at line 22) breaks Check 19 of
+    scripts/ci-architectural-checks.sh (the yaml.safe_load gate
+    that validates this wave-tracker file). Discovered 2026-07-04
+    during the chore(ci) CI-baseline run. Per user spec +
+    godlike/07 minimum-blast-radius: documented as a forward-
+    pointer here, NOT fixed inline. The fix is a separate closure
+    PR (forward-pointer id PR-FIX-YAML-PARSE-LINE-~1551 below).
+  linked_issues:
+    - id: PR-FIX-YAML-PARSE-LINE-1551
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-08-01
+
 - id: 0
   status: done
   exit_gate: "All artifacts present; archcheck focused gate passes."

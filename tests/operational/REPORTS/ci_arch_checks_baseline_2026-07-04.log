@@ -1,0 +1,64 @@
+
+===== CI Architectural Checks baseline run (commit-certifying, 2026-07-04) =====
+// Capture for architecture/current.yaml#PRE-EXISTING-YAML-PARSE-2026-07-04 forward-pointer.
+// Per user spec: documented as forward-pointer, NOT fixed inline.
+// godlike/07 minimum-blast-radius + AGENTS.md Git-Lesson-2 (atomic single-commit per file).
+
+=== Check 0: forbid literal job-type strings (PR-B, Wave 19 §7) ===
+OK: no literal job-type strings outside canonical domain/job/job.go
+=== Check 1: forbid direct IndexWriter callers (QDRANT-002, Wave 14 §3) ===
+OK: no direct IndexWriter constructors outside the canonical allowlist
+=== Check N: symbol_refs unresolved references (action P0-5 slice 4/4) ===
+Check N: 0 unresolved architecture-symbol references
+=== Check 2: QDRANT-001 canonical sidecar envelope + zero-legacy search contract ===
+OK: QDRANT-001 gates pass
+=== Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR-6) ===
+OK: no direct engine.Generate() calls outside GenerateOneUseCase
+=== Check 5: forbid mutation primitives in production callers (QDRANT-asset-mutation) ===
+OK: no forbidden mutation primitive calls in production callers
+OK: no duplicate migration version prefixes in /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/migrations/sqlite/
+=== Check 5: same-package duplicate-type-declarations (QDRANT-RECOVERY-001 follow-up) ===
+FAIL: same-package type-redeclaration(s) detected in internal/
+
+  youtube.YouTubeStager  (count=2 in same package)
+    sites: internal/application/assets/providers/youtube/stager_adapter.go:72, internal/application/youtube/stager_adapter.go:30
+
+  completion.Service  (count=2 in same package)
+    sites: internal/application/assets/completion/publish_verified.go:175, internal/application/jobs/completion/complete_job_service.go:309
+
+  .  (count=480 in same package)
+    sites: 
+
+  reconciler.Service  (count=2 in same package)
+    sites: internal/application/assets/deletion/reconciler/service.go:34, internal/application/qdrant/reconciler/service.go:31
+
+  translation.TranslationCommand  (count=2 in same package)
+    sites: internal/application/translation/ports.go:120, internal/domain/translation/translation.go:88
+
+  voiceover.VoiceoverItem  (count=2 in same package)
+    sites: internal/api/assets/voiceover/types.go:78, internal/application/voiceover/command.go:63
+
+  translation.ModelPolicy  (count=2 in same package)
+    sites: internal/application/translation/ports.go:281, internal/domain/translation/translation.go:67
+
+  maintenance.Service  (count=2 in same package)
+    sites: internal/application/assets/maintenance/service.go:34, internal/application/qdrant/maintenance/service.go:89
+
+  reconciler.Metrics  (count=2 in same package)
+    sites: internal/application/assets/deletion/reconciler/ports.go:103, internal/application/qdrant/reconciler/ports.go:139
+
+  translation.TranslationResult  (count=2 in same package)
+    sites: internal/application/translation/ports.go:224, internal/domain/translation/translation.go:115
+
+  reconciler.ServiceDeps  (count=2 in same package)
+    sites: internal/application/assets/deletion/reconciler/service.go:53, internal/application/qdrant/reconciler/service.go:54
+
+Resolution order:
+  1. Pick one file as canonical; remove the duplicate from every other file;
+  2. Or if the redeclaration is intentional (documented wire-mirror), add
+     an entry to docs/architecture/godlike/duplicate-types-allowlist.txt
+     in the form '<package>:<TypeName>   # rationale + owner + deadline'.
+
+Per AGENTS.md §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new
+allowlist entry requires explicit owner + deadline; transitional
+baselines default-block the lint rather than silently pass.
