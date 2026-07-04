@@ -170,6 +170,22 @@
       discipline.
 
 
+    sha_correction_note: |
+      The closure_shas[5] (FIX-APP-WIRE-SCRIPT-SYNTAX) SHA `85e96411`
+      is NOT REACHABLE on origin/main (verified via
+      `git cat-file -t 85e96411` returning `NOT FOUND`). The correct
+      SHA is `b2e880e0` (`docs(arch): retire FIX-APP-WIRE-SCRIPT-SYNTAX
+      (wire_script.go spec was stale)`). See `AGENTS.md section
+      Recent cross-cutting closures, Session carry-forward resolution
+      (2026-07-04)` for the full correction note (item #6 in the
+      closure trail) and the forward-pointer
+      `PR-META-CLOSURE-SHA-CORRECTION` (deadline 2026-07-15) that
+      fixes this wave-tracker entry to use the correct SHA per
+      godlike/07 no-fake-availability. Future wave-tracker readers
+      who land in this block first should FOLLOW THE BACKLINK to
+      the AGENTS.md entry for the correction context before acting
+      on the broken SHA.
+
 - id: 0
   status: done
   exit_gate: "All artifacts present; archcheck focused gate passes."
