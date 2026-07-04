@@ -477,6 +477,15 @@ const (
 	// with target_status=FAILED when aggregate=failed_terminal per
 	// godlike/07 (no fake availability), otherwise SUCCEEDED.
 	TypeScriptGenerateItem = job.TypeScriptGenerateItem
+
+	// PR-BATCH-REGISTER-ASYNC (July 2026): async clip registration via
+	// the /api/media/register-batch endpoint. Each clip becomes an
+	// independent media.clip job; yt-dlp + cut + Drive upload + DB write
+	// happen off the request thread. ProducesArtifacts=false because the
+	// registration pipeline persists its own media_assets row + outbox
+	// events inside a per-clip tx (mirror of youtube_clip.extract); the
+	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
+	TypeClipRegister = "media.clip"
 )
 
 // Compose builds the standard registry with all known job types.
@@ -500,7 +509,40 @@ func Compose() *Registry {
 
 	// ── Media processing ──
 	r.Register(JobPolicy{Type: TypeMediaExtract, Description: "Media extraction", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-FIX-TYPE-MEDIA-STOCK (July 2026):
+	// ProducesArtifacts=true RETAINED. The entry is closed as
+	// "verified-canonical-spine-surface" rather than as a flip.
+	// The stock pipeline uses the canonical JobFinalizer.CompleteWithArtifacts
+	// SPINE (not a per-item tx like voiceover/YouTube) for the terminal-flip
+	// + artifact write: Service.runOrchestratorResilient → Orchestrator.RunResilient
+	// step 6 stock.finalize calls BuildFinalizationRequest + ApplyFinalizationSpine
+	// → JobFinalizer.CompleteWithArtifacts which does the SINGLE-TX spine write
+	// (UpdateJobToSucceededCAS + InsertResultOnConflict + PersistArtifactMap +
+	// InsertOutboxEnvelope per Pattern 11 in AGENTS.md). The spine call IS the
+	// terminal-flip seam for this job type — NOT the legacy SQLiteStore.Complete.
+	// Mirrors the voiceover/YouTube audit-pin discipline but inverts the
+	// semantic (voiceover/YouTube flipped to ProducesArtifacts=false because
+	// their worker writes artifacts in a per-item/per-segment tx and relies
+	// on the broker's legacy Complete for the terminal-flip; stock's worker
+	// does BOTH the artifact write AND the terminal-flip in one TX via the
+	// spine). Flipping to ProducesArtifacts=false would (a) corrupt the
+	// godlike/06 SSOT (the job DOES produce artifacts — chunks, metadata.json,
+	// thumbnail.png, bindings.json, report.json, summary.txt per the C12
+	// 5-artifact envelope in buildStockManifest), AND (b) silently introduce
+	// a double-write race (the spine call would still do the terminal-flip;
+	// the now-allowed legacy Complete would either no-op on already-terminal
+	// rows or fail with ErrInvalidState on the CAS fence), AND (c) break the
+	// operator-dashboard cardinality (the gate's view of "this job type
+	// produces artifacts" is the registry flag). godlike/07 fail-closed: a
+	// future contributor who flips ProducesArtifacts=false on this entry
+	// would NOT re-introduce the SQL-layer ErrCompleteJobPathViolation gate
+	// (the spine path doesn't go through legacy Complete) — they would
+	// silently corrupt the SSOT and break the registry-driven operator
+	// dashboards. The verified-canonical-spine-surface contract is locked
+	// via internal/application/assets/providers/stock/stockpipeline/
+	// registry_contract_test.go (2 TDD tests + compile-time pin on
+	// Orchestrator.jobFinalizer + Orchestrator.WithJobFinalizer).
+	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
 	r.Register(JobPolicy{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
 	r.Register(JobPolicy{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
@@ -627,6 +669,18 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 	// ProducesArtifacts=false: the child produces only a result map
 	// (ok, status, item_id) — no artifact manifest.
+
+	// ── Clip registration (async batch, PR-BATCH-REGISTER-ASYNC) ──
+	// Each clip from POST /api/media/register-batch becomes one media.clip
+	// job. The worker handler (registered inline in
+	// internal/app/assets_register_sourcing.go) decodes RegisterClipCommand
+	// and calls YouTubeRegistrar.Register off the request thread.
+	// ProducesArtifacts=false: registration persists its own media_assets
+	// row + outbox events inside a per-clip tx (mirror of youtube_clip.extract
+	// with the same rationale — the broker's legacy Complete is the canonical
+	// mark-SUCCEEDED seam). Timeout=30min covers yt-dlp download (~10min) +
+	// Drive upload (~5min) + transcoding + DB write.
+	r.Register(JobPolicy{Type: TypeClipRegister, Description: "Async clip registration (PR-BATCH-REGISTER-ASYNC: yt-dlp download + cut + Drive upload + DB write off the request thread)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency
