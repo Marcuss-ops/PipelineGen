@@ -206,7 +206,15 @@ func WireArtlist(
 	// godlike/06 SSOT: internal/infrastructure/artlist/downloader.Provider
 	// is the canonical concrete implementing artlist.Downloader. Config{} =
 	// all defaults (3 retries, 1s/30s backoff, 0.3 jitter, 5m HTTP timeout).
-	artlistDownloader := downloader.New(cfg, downloader.Config{})
+	// ART-002 P1.1 (July 2026): wire the Prometheus metrics
+	// surface into the downloader.Provider via the 3rd
+	// Pattern-0 arg. NewMetrics() returns a struct pointing at
+	// the promauto global observability.ArtlistDownloadPathTotal
+	// (auto-registered with prometheus.DefaultRegisterer +
+	// surfaced via /metrics). The PathBrowser / PathHLS labels
+	// are reserved for future surface additions — only PathYTDLP
+	// + PathHTTP are fired by the current Download implementation.
+	artlistDownloader := downloader.New(cfg, downloader.Config{}, downloader.NewMetrics())
 	// Compile-time pin lives in the infra package.
 	_ = (artlistPkg.Downloader)(artlistDownloader)
 	artlistStager := artlistPkg.NewArtlistStager(artlistDownloader)
