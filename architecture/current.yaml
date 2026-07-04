@@ -5416,7 +5416,9 @@ wave_status:
 
 
 - id: PR-VO-COMPLETEPATH-FIX
-  status: done
+  status: shipped
+  ship_sha: db2f3b1e
+  ship_date: 2026-07-04
   exit_signal: true
   deadline: 2026-07-04
   description: |
@@ -5497,3 +5499,58 @@ wave_status:
         the load-bearing seam; any revert breaks them at the registry-contract
         level. Closed by completing the rebuttal in this ticket + opening a
         new wave-tracker entry PR-VOICEOVER-PATH-A-REOPEN for the revert work.
+    - id: PR-VO-FINALIZER-ATOMIC-CONTRACT
+      owner_capability: "internal/application/voiceover"
+      status: pending
+      deadline: TBD
+      description: |
+        Forward-pointer to remember the load-bearing contract of
+        voiceover.finalizer (the canonical application-layer seam for
+        voiceover job completion, per the canonical surface
+        internal/application/voiceover/finalizer.go + the 4 TDD
+        tests in finalizer_invariants_test.go). The contract is:
+        media_assets MUST be persisted in the SAME SQLite transaction
+        as the broker complete fork (Path B closure per
+        architecture/current.yaml#PR-VO-COMPLETEPATH-FIX, ship_sha
+        db2f3b1e, 2026-07-04), NOT in a separate post-write save
+        context. Path A (parent ProducesArtifacts=false + child
+        ProducesArtifacts=true + CompleteWithArtifacts fork when
+        child terminates) was explicitly rejected per
+        architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
+        (status: keep, migration_phase: not applicable, removal_date:
+        never) with 3 documented rejection reasons: godlike/06 SSOT
+        double-write race, godlike/07 no-fake-availability +
+        SQL-guard binary-surface mismatch, godlike/07 fail-fast-at-boot
+        vs fail-slow-at-first-/run. Any future agent proposing to
+        revert the design MUST open a wave-tracker entry (the
+        forward-pointer sibling PR-VOICEOVER-PATH-A-REVISITED) and
+        address all 3 rejection reasons with substantive rebuttal.
+        Load-bearing TDD tests pinning the contract:
+        TestVoiceoverGenerate_RoutesToLegacyComplete + 
+        TestVoiceoverGenerateItem_RoutesToLegacyComplete +
+        TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn +
+        TestParentAggregator_TriggeredOnlyAfterWaitingChildren.
+        Cross-refs: registry.go:541+548 (parent + child registry
+        entries) + repository_lifecycle.go:115 (SQL-layer
+        ErrCompleteJobPathViolation guard) + voiceover/finalizer.go
+        (in-TX persist + post-write outbox + cleanup steps).
+        Documentation drift surface (this entry) is intentionally
+        distinct from the test surface (the 4 TDD tests above) per
+        godlike/06 one-owner-per-fact: the tests assert the
+        contract, this entry REMEMBERS the rationale so a future
+        agent does not silently delete the tests as "obsolete
+        duplicate coverage" without addressing the contract first.
+        Honest scope-lock (godlike/07): the 16 OTHER
+        ProducesArtifacts=true job types (script.generate_with_images,
+        script.generate_document, books.publish, voiceover fanout,
+        stock upload-chunk, etc.) remain under the same SQL-layer
+        guard (ErrCompleteJobPathViolation at
+        internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115);
+        this entry documents the contract for the voiceover.finalizer
+        family specifically (TypeVoiceoverGenerate +
+        TypeVoiceoverGenerateItem) because that is where the
+        Path-A-rejection debate originated. Future agents auditing
+        the other 16 job types' ProducesArtifacts setting should
+        open sibling entries (e.g. PR-SCRIPT-FINALIZER-ATOMIC-CONTRACT,
+        PR-BOOKS-FINALIZER-ATOMIC-CONTRACT) following this same
+        template rather than re-litigating the contract per-capability.
