@@ -3078,7 +3078,7 @@ wave_status:
     - id: PR-ARTLIST-SYNCSERVICE
       owner_capability: "internal/application/assets/providers/artlist + internal/app (audit-pin cleanup; clipresolver package removed in prior refactor)"
       status: shipped
-      ship_sha: fa6dd4279935a75ed7cb3bc80f21aa81bd14f64d
+      ship_sha: f02ae683daec5b6e3d1ba0a64ce3e8e0a64a37ae
       ship_date: "2026-07-04"
       deadline: 2026-08-15
 
