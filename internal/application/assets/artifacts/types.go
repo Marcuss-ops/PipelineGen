@@ -26,10 +26,15 @@ type Status string
 const (
 	StatusStaging     Status = "STAGING"
 	StatusVerifying   Status = "VERIFYING"
-	StatusReady       Status = "READY"
+	StatusStaged      Status = "STAGED" // AZIONE 15 (July 2026): renamed from READY
 	StatusFailed      Status = "FAILED"
 	StatusQuarantined Status = "QUARANTINED"
 	StatusDeleted     Status = "DELETED"
+
+	// StatusReady is the backward-compatible alias for StatusStaged.
+	// DEPRECATED — will be removed after 2027-01-04 (6-month grace).
+	// Use StatusStaged for all new code.
+	StatusReady Status = StatusStaged
 )
 
 // ── Artifact ───────────────────────────────────────────────────────
