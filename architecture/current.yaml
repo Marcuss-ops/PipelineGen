@@ -2158,7 +2158,7 @@
       owner_capability: cmd/admin
       status: shipped
       ship_date: 2026-07-04
-      ship_sha: TBD
+      ship_sha: 4e7b89f95aa5a0e77eb971aa2811d41fe48bca27
       deadline: 2026-08-01
       notes: |
         Split cmd/admin/qdrant_maintenance.go into per-mode dispatch
