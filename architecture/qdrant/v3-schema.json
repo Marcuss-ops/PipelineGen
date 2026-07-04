@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "schema_version": "v3",
+    "wave_tracker_id": "PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED",
+    "target_collection_name": "media_assets_v3_e5_768_siglip_768",
+    "runtime_alias": "media_assets_current",
+    "canonical_source": "internal/infrastructure/qdrant/schema/schema.go::DefaultV3Schema()",
+    "lockstep_refs": [
+      "architecture/current.yaml#QDRANT-PREFLIGHT-EXECUTION-2026-07-04.linked_issues[PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED]",
+      "CHANGELOG.md##Unreleased->###Added->QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED",
+      "AGENTS.md###Recent-cross-cutting-closures->PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED"
+    ],
+    "embeddings": {
+      "text": "multilingual-e5-base",
+      "transcript": "multilingual-e5-base",
+      "visual": "siglip-so400m-patch14-384",
+      "audio": "clap-htsat-fused"
+    },
+    "deferred_to_followup": [
+      "v3-payload-indexes.json (16 payload indexes from DefaultV3Schema.PayloadIndexes; Qdrant PUT /collections does not accept them inline so they must be applied via separate PUT /collections/<name>/index calls)",
+      "tests/fixtures/qdrant_v3_schema_consistency_test.go (round-trip drift test that decodes this JSON, calls DefaultV3Schema(), asserts per-channel dimension + distance equality)"
+    ],
+    "qdrant_1_18_caveat": "sparse_vectors.bm25_text.model field is accepted on PUT but not echoed back on GET; the field is preserved on disk and used at server-side BM25 inference time. The schema-diff compatible:false flag is a false-negative for this single field — dense vector dimensions + sparse modifier are the load-bearing assertions."
+  },
+  "vectors": {
+    "text": {
+      "size": 768,
+      "distance": "Cosine"
+    },
+    "transcript": {
+      "size": 768,
+      "distance": "Cosine"
+    },
+    "visual": {
+      "size": 768,
+      "distance": "Cosine"
+    },
+    "audio": {
+      "size": 512,
+      "distance": "Cosine"
+    }
+  },
+  "sparse_vectors": {
+    "bm25_text": {
+      "modifier": "idf",
+      "model": "qdrant/bm25"
+    }
+  }
+}

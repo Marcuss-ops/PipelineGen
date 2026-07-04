@@ -5514,6 +5514,19 @@ wave_status:
       owner_capability: SRE / architecture
       status: pending
       deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED
+      owner_capability: Configservice / qdrant-configservice
+      status: shipped
+      ship_date: 2026-07-04
+      deadline: 2026-07-15
+      notes: |
+        Ships the canonical v3 collection wire format as architecture/qdrant/v3-schema.json + README.md.
+        Derived from internal/infrastructure/qdrant/schema/schema.go::DefaultV3Schema() (canonical source).
+        Phase 1A Test 1 (GET /healthz + /collections) + Test 2 (PUT + verify 5 named vectors) verified on
+        Qdrant 1.18 test stack at :16333. Sparse bm25_text model field accepted on PUT but not echoed
+        on GET (Qdrant 1.18 server behavior; documented in _meta.qdrant_1_18_caveat + README).
+        Payload indexes (16 from DefaultV3Schema.PayloadIndexes) deferred to PR-QDRANT-PREFLIGHT-PAYLOAD-INDEXES.
+        Round-trip drift test deferred to PR-QDRANT-SCHEMA-DRIFT-TEST.
 - id: PR-VO-COMPLETEPATH-FIX
   status: shipped
   ship_sha: db2f3b1e
