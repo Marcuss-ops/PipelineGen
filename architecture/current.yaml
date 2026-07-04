@@ -4774,6 +4774,48 @@
     owner_capability: internal/application/jobs (registry) + cmd/worker
     status: pending
     deadline: 2026-08-08
+- id: RICH-METADATA-QDRANT-VERIFY-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner_capability: internal/application/assets/sourcing + internal/app (composition root) + tests/operational
+  deadline: 2026-08-15
+  exit_gate: |
+    (a) PR-RICH-METADATA-DTO-EXTEND shipped -- 5 rich fields (Summary,
+    Topics, Speakers, MentionedPeople, Hook) propagate through the
+    full wire chain: RegisterFromYouTubeRequest -> RegisterClipCommand
+    -> job payload -> ExistingClip -> asset.Asset.Metadata ->
+    media_assets.metadata_json -> Qdrant semantic search.
+    (b) PR-RICH-METADATA-SMOKE-TEST shipped -- operational smoke test
+    covers full async chain: register-batch with 8 rich-timestamp
+    boxing clips -> poll async media.clip jobs -> verify
+    Summary/Topics/Speakers/MentionedPeople/Hook in metadata_json ->
+    Qdrant search with natural-language queries.
+    (c) PR-RICH-METADATA-RUNBOOK shipped -- operator runbook fragment
+    for verifying rich metadata end-to-end (9-point verdict per
+    architecture/action-plans/2026-07-04-rich-metadata-qdrant-verification.md).
+    (d) PR-RICH-METADATA-HOTSPOT-CROSSREF shipped -- git-log frequency
+    cross-validation confirms no high-frequency hotspots NOT captured
+    in this wave.  Per action plan cross-reference:
+    architecture/action-plans/2026-07-04-rich-metadata-qdrant-verification.md.
+  linked_issues:
+  - id: PR-RICH-METADATA-DTO-EXTEND
+    owner_capability: internal/application/assets/sourcing + internal/app
+    status: shipped
+    ship_sha: 17e8396d
+    ship_date: 2026-07-04
+    deadline: 2026-07-25
+  - id: PR-RICH-METADATA-SMOKE-TEST
+    owner_capability: tests/operational
+    status: pending
+    deadline: 2026-08-01
+  - id: PR-RICH-METADATA-RUNBOOK
+    owner_capability: docs/operations
+    status: pending
+    deadline: 2026-08-15
+  - id: PR-RICH-METADATA-HOTSPOT-CROSSREF
+    owner_capability: architecture
+    status: pending
+    deadline: 2026-08-31
 - id: QDRANT-CHAIN-VERIFY-2026-07-04
   status: in_progress
   exit_signal: false
