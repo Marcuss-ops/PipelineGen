@@ -1,9 +1,13 @@
 // Package app — YouTube drive + folder adapters
 // split from youtube_adapters.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// 4 adapters: driveFolderMgrAdapter (legacy, wraps drive.Admin),
+// 3 adapters: driveFolderMgrAdapter (legacy, wraps drive.Admin),
 // YouTubePublisherDriveAdapter (canonical, wraps delivery.Publisher),
-// folderMemoryAdapter, sourcingDriveAdapter.
+// folderMemoryAdapter.
+// FASE 0.3 (July 2026): sourcingDriveAdapter retired via
+// PR-YT-DRIVE-LEGACY-RETIRE; the canonical Publisher-port path
+// (delivery.Publisher.Publish, FASE 5 since June 2026) is the sole
+// Drive upload canal for the YouTube registrar.
 package app
 
 import (
@@ -13,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -166,25 +169,9 @@ func (a *folderMemoryAdapter) ComputeManifestStats(manifest *asset.ClipManifest)
 }
 
 // ── sourcingDriveAdapter ──────────────────────────────────────────────
-// Merged from youtube_drive_legacy_adapter.go (PR-GODOBJ-Azione-4, July 2026).
-
-type sourcingDriveAdapter struct {
-	drive driveutil.Admin
-}
-
-// Compile-time pin: sourcingDriveAdapter satisfies sourcing.DrivePort.
-var _ sourcing.DrivePort = (*sourcingDriveAdapter)(nil)
-
-func (a *sourcingDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	if a.drive == nil {
-		return parentID, fmt.Errorf("drive not configured")
-	}
-	return a.drive.GetOrCreateFolder(ctx, name, parentID)
-}
-
-func (a *sourcingDriveAdapter) GetFolderName(ctx context.Context, folderID string) (string, error) {
-	if a.drive == nil {
-		return "", fmt.Errorf("drive not configured")
-	}
-	return a.drive.GetFolderName(ctx, folderID)
-}
+// FASE 0.3 (July 2026): sourcingDriveAdapter + sourcing.DrivePort
+// retired per PR-YT-DRIVE-LEGACY-RETIRE (godlike/07 no-fake-availability
+// — zero live concrete remained). The 2 surviving methods (GetOrCreateFolder
+// + GetFolderName) had no production caller; YouTube drive uploads
+// route through delivery.Publisher.Publish (canonical, FASE 5).
+// See architecture/deprecations.yaml#PR-YT-DRIVE-LEGACY-RETIRE.
