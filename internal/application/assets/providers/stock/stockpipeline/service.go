@@ -1,7 +1,6 @@
 package stockpipeline
 
 import (
-	"context"
 	"errors"
 
 	"go.uber.org/zap"
@@ -10,13 +9,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -106,48 +103,6 @@ type MediaDeps struct {
 	Renderer    StockRenderer
 	ClipIndexer *clipindexer.Service
 	MetaWriter  *semantic.MetadataWriter
-}
-
-// ────────────────────────────────────────────────────────────────────
-// Audit P0 #6 (July 2026): narrow port types so test fakes can satisfy
-// them via Go's structural subtyping without mocking the full
-// *assetindex.Service (60+ methods), *assets.ClipsRepository (25+ methods),
-// or *outbox.Dispatcher surface. Production wiring passes concrete
-// pointers which satisfy these interfaces structurally — the
-// `Deps` shape above is unchanged and module_sources.go::WireStockPipeline
-// is NOT modified.
-// ────────────────────────────────────────────────────────────────────
-
-// stockAssetIndexUpserter is the narrow surface the stock pipeline
-// uses from *assetindex.Service. Only Upsert is invoked
-//
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-type stockAssetIndexUpserter interface {
-	Upsert(ctx context.Context, rec *assetindex.AssetRecord) error
-}
-
-// stockClipsSearchTermUpdater is the narrow surface the stock pipeline
-// uses from *assets.ClipsRepository. Only UpdateSearchTerms is invoked
-//
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-type stockClipsSearchTermUpdater interface {
-	UpdateSearchTerms(ctx context.Context, clipID, source, name string, tags []string, searchText string) error
-}
-
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-type stockChunkDispatcher interface {
-	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, fileHash string) error
-}
-
-// P4 (July 2026): Narrow port for YouTube channel listing.
-// The concrete `*downloader.YTDLPDownloader` satisfies this interface
-// structurally; wiring happens at the composition root. The old
-// `s.ytdlp.ListChannel` direct call in query.go is RETIRED.
-type stockChannelLister interface {
-	ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
 }
 
 // Deps is the canonical constructor input for stockpipeline.Service

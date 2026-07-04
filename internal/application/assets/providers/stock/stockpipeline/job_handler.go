@@ -24,6 +24,51 @@ import (
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
+// StockJobResult is the typed result envelope returned by HandleJob.
+// Replaces the opaque map[string]any literal so the wire shape is
+// declared in a single struct (godlike/06 one-owner-per-fact).
+//
+// P5 (July 2026): added as part of the stock action-plan wave.
+// The return surface stays map[string]any (domainjob.Result) for
+// broker compatibility; ToResultMap() bridges the typed struct to
+// the canonical wire representation.
+type StockJobResult struct {
+	Manifest           *jobdomain.ArtifactManifest `json:"__artifact_manifest"`
+	FinalStatus        string                      `json:"final_status"`
+	TotalClips         int                         `json:"total_clips"`
+	TotalChunks        int                         `json:"total_chunks"`
+	Chunks             []ChunkResult               `json:"chunks"`
+	MetadataLink       string                      `json:"metadata_link"`
+	MetadataFileID     string                      `json:"metadata_file_id"`
+	FinalizationStatus string                      `json:"__finalization_status,omitempty"`
+	FinalizationCompletedAt time.Time               `json:"__finalization_completed_at,omitempty"`
+}
+
+// ToResultMap converts the typed StockJobResult to the canonical
+// map[string]any wire representation consumed by the broker's
+// downstream runner and dashboard projections.
+//
+// omitempty fields are only populated when their zero-value guard
+// passes (non-empty string / non-zero time).
+func (r StockJobResult) ToResultMap() map[string]any {
+	m := map[string]any{
+		jobdomain.ManifestKey: r.Manifest,
+		"final_status":        r.FinalStatus,
+		"total_clips":         r.TotalClips,
+		"total_chunks":        r.TotalChunks,
+		"chunks":              r.Chunks,
+		"metadata_link":       r.MetadataLink,
+		"metadata_file_id":    r.MetadataFileID,
+	}
+	if r.FinalizationStatus != "" {
+		m["__finalization_status"] = r.FinalizationStatus
+	}
+	if !r.FinalizationCompletedAt.IsZero() {
+		m["__finalization_completed_at"] = r.FinalizationCompletedAt
+	}
+	return m
+}
+
 // RegisterHandler registers the stock pipeline job handler with the jobs
 // system.
 //
@@ -220,26 +265,20 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	// post-cutover chunks populate them in Commit 4-7).
 	projected := projectManifestToPipelineResult(manifest)
 
-	// Note on `jobdomain` (alias vs HandleJob's `job` parameter): the
-	// HandleJob parameter is named `job *appjobs.Job` so the bare
-	// identifier `job` resolves to the broker job, NOT to a package
-	// alias. We therefore import domain/job as `jobdomain` so the
-	// artifact-manifest constants (jobdomain.ManifestKey,
-	// jobdomain.SchemaVersionArtifactManifestV1) are unambiguous.
-	result := map[string]any{
-		jobdomain.ManifestKey: manifest,                    // "__artifact_manifest" — canonical wire artefact
-		"final_status":        string(summary.FinalStatus), // "SUCCEEDED" | "INDEX_PENDING" | "FAILED" | ...
-		"total_clips":         projected.TotalClips,
-		"total_chunks":        projected.TotalChunks,
-		"chunks":              projected.Chunks,
-		"metadata_link":       projected.MetadataLink,
-		"metadata_file_id":    projected.MetadataFileID,
+	out := StockJobResult{
+		Manifest:       manifest,
+		FinalStatus:    string(summary.FinalStatus),
+		TotalClips:     projected.TotalClips,
+		TotalChunks:    projected.TotalChunks,
+		Chunks:         projected.Chunks,
+		MetadataLink:   projected.MetadataLink,
+		MetadataFileID: projected.MetadataFileID,
 	}
 	if finResult != nil {
-		result["__finalization_status"] = finResult.Status
-		result["__finalization_completed_at"] = finResult.CompletedAt
+		out.FinalizationStatus = finResult.Status
+		out.FinalizationCompletedAt = finResult.CompletedAt
 	}
-	return result, nil
+	return out.ToResultMap(), nil
 }
 
 // extractLease projects the legacy *appjobs.Job (broker-routed,
