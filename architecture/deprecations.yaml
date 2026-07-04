@@ -3500,3 +3500,51 @@ audit:
       for the cmd/admin/ + composition-root callers. This record
       closes the residual DriveBundle.DriveClient struct field
       retirement per godlike/06 SSOT.
+
+import os
+import sys
+
+TARGET = 'architecture/deprecations.yaml'
+NEW_RECORD_PATH = 'scripts/_tmp_deprecation_record.yaml'
+
+
+def main():
+    # Read the new record from this script's companion file
+    # (sibling in the project tree, so it's not in .gitignore).
+    if not os.path.exists(NEW_RECORD_PATH):
+        print('ERROR: companion record file not found at', NEW_RECORD_PATH)
+        sys.exit(1)
+    with open(NEW_RECORD_PATH, 'r', encoding='utf-8') as f:
+        new_record = f.read()
+
+    # Strip the header comment lines (lines starting with #) so we only
+    # append the YAML record proper.
+    lines = new_record.splitlines()
+    yaml_start = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#'):
+            yaml_start = i
+            break
+    yaml_body = '\n'.join(lines[yaml_start:]).rstrip() + '\n'
+
+    # Append to the target deprecations.yaml
+    with open(TARGET, 'r', encoding='utf-8') as f:
+        existing = f.read()
+
+    if not existing.endswith('\n'):
+        existing = existing + '\n'
+
+    if '- id: PR-ARTLIST-SYNCSERVICE\n' in existing:
+        # Idempotent: if the record already exists, skip.
+        print('SKIP: PR-ARTLIST-SYNCSERVICE record already present in', TARGET)
+        return
+
+    new_content = existing + '\n' + yaml_body
+    with open(TARGET, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    print('OK: appended PR-ARTLIST-SYNCSERVICE record to', TARGET, 'new size:', len(new_content))
+
+
+if __name__ == '__main__':
+    main()

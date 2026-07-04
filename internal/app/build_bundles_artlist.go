@@ -12,8 +12,8 @@
 // return-nil. Operators see 404 on /api/artlist/* rather than a full-system
 // boot abort.
 //
-// 2 forward-pointer nil fields (1 in ServiceDependencies + 1 in Build(Dependencies))
-// are declared explicitly with linked_issue cross-refs; see
+// 1 forward-pointer nil field (ServiceDependencies.LifecycleService) is
+// declared explicitly with a linked_issue cross-ref; see
 // architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
 // discipline). The 3 repo fields (AssetProcRepo / AssetVerRepo / AssetLocRepo)
 // are now WIRED via sqassets.NewAssetStoreSQLite (PRIORITÀ ASSOLUTA — nil would
@@ -22,7 +22,12 @@
 // the canonical infra concretes (PR-ARTLIST-SEARCHERS closed 2026-07-04).
 // Read-only endpoints (/stats, /diagnostics, /search/live) remain live; write
 // endpoints (/run, /recommend, /sync-catalogs) no longer return 503 from the
-// searcher-tier forward-pointers.
+// searcher-tier forward-pointers. The Build(Dependencies).ClipResolver
+// forward-pointer (PR-ARTLIST-SYNCSERVICE) is OBSOLETE — the clipresolver
+// package was removed in a prior refactor; the field is intentionally unset
+// in WireArtlist and the handler's nil-tolerance continues to return 503
+// on /recommend (unchanged runtime behavior; see
+// architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE closed 2026-07-04).
 //
 // Single-function shape (WireArtlist) mirrors the existing WireMediaIngest
 // precedent in registry_internal_modules.go (Blocco C1-Step 3 scope).
@@ -226,10 +231,16 @@ func WireArtlist(
 	}
 
 	descriptor, err := artlistapi.Build(artlistapi.Dependencies{
-		Service:        service,
-		CatalogSync:    bundle.CatalogSyncService,
-		Jobs:           bundle.Jobs.Service,
-		ClipResolver:   nil, // forward-pointer: PR-ARTLIST-SYNCSERVICE
+		Service:     service,
+		CatalogSync: bundle.CatalogSyncService,
+		Jobs:        bundle.Jobs.Service,
+		// ClipResolver is intentionally omitted (zero-value nil): the
+		// clipresolver package was removed in a prior refactor (the
+		// canonical *scripts.ClipResolver has a different Resolve
+		// contract, NOT a Recommend method). The handler's nil-tolerance
+		// returns 503 on /recommend — unchanged runtime behavior. See
+		// architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE
+		// (closed 2026-07-04) for the audit-pin record.
 		NodeScraperDir: cfg.External.NodeScraperDir,
 		CfgPort:        newArtlistConfigAdapter(cfg),
 		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },

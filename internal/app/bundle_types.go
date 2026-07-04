@@ -76,12 +76,16 @@ type ArtlistBundle struct {
 
 // ArtlistWiring holds the Artlist module wiring.
 //
-// PR4d-chunk2 (June 2026): Resolver field removed. clipresolver.Service
-// does not implement script.AutoHarvestService (no EnqueueHarvest method),
-// so the harvest service is constructed locally in WireRegistry from
-// root.Jobs.Facade (the same path used pre-PR4d). WireArtlist remains the
-// canonical owner of the clipresolver construction; ArtlistWiring no longer
-// needs to expose it.
+// PR4d-chunk2 (June 2026): Resolver field removed (historical: at the
+// time, the canonical clip-resolver lived in
+// `internal/application/assets/clipresolver/`, but that package was
+// subsequently completely removed in a downstream refactor — see
+// architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE, closed 2026-07-04).
+// The harvest service was constructed locally in WireRegistry from
+// root.Jobs.Facade (the same path used pre-PR4d); the carve-out was
+// deliberate because the then-existing clipresolver.Service did not
+// implement script.AutoHarvestService (no EnqueueHarvest method), not
+// a side-effect.
 //
 // Blocco C1-Step 3 (June 2026): Handler field removed. The HTTP Handler
 // is constructed inside `artsources.Build(deps)` and captured by the

@@ -3076,8 +3076,10 @@ wave_status:
       status: pending
       deadline: 2026-08-15
     - id: PR-ARTLIST-SYNCSERVICE
-      owner_capability: "internal/application/assets/providers/artlist + internal/application/clipresolver"
-      status: pending
+      owner_capability: "internal/application/assets/providers/artlist + internal/app (audit-pin cleanup; clipresolver package removed in prior refactor)"
+      status: shipped
+      ship_sha: <TBD-by-commit>
+      ship_date: "2026-07-04"
       deadline: 2026-08-15
 
 
