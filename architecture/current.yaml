@@ -4187,3 +4187,70 @@ wave_status:
       owner_capability: architecture
       status: pending
       deadline: 2026-08-15
+
+# ── CLIPS-META-2026-07-04 — Clips & Metadata Consolidation (July 2026) ──
+# 7-action plan: collapse 7 duplicate metadata types into 1 canonical type,
+# unify 2 MetadataService implementations, complete DRIVE-008 CUTOVER
+# (remove 3 fail-closed stubs), consolidate 17+ adapter files into ~10,
+# unify 4 quality-score formulas into 1, remove BuildClipMetadataInput
+# duplicate, update doc.go with type map.
+#
+# godlike/06 SSOT: CanonicalClipMetadata is the single metadata output type;
+# ClipMetadataInput is the single metadata input type; ClipMetadataFile is
+# a serialization helper (NOT a domain type); ClipAsset is the writer-bound
+# entity. All other metadata types are aliases or removed.
+- id: CLIPS-META-2026-07-04
+  status: in_progress
+  exit_signal: false
+  owner_capability: internal/application/youtube + internal/application/clips + internal/app
+  deadline: 2026-08-01
+  exit_gate: |
+    (a) AZIONE 1 SHIPPED: 1 canonical metadata type (CanonicalClipMetadata),
+        1 input type (ClipMetadataInput), 1 serialization helper (ClipMetadataFile).
+        Zero references to ClipRichMetadata or ClipMetadata as distinct types.
+    (b) AZIONE 2 SHIPPED: 1 canonical MetadataService (youtube/metadata/).
+        Zero references to usecase.MetadataService.
+    (c) AZIONE 3 SHIPPED: 0 DRIVE-008 fail-closed stubs. ClipDriveUploaderPort
+        no longer carries UploadFile/UploadFileWithDescription.
+    (d) AZIONE 4 SHIPPED: adapter files consolidated; each file ≤3 adapters.
+    (e) AZIONE 5 SHIPPED: 1 quality-score formula (CalculateQualityScore)
+        used everywhere; zero remaining variants.
+    (f) AZIONE 6 SHIPPED: 0 references to BuildClipMetadataInput.
+    (g) AZIONE 7 SHIPPED: doc.go updated with canonical type map.
+    rg + go build + go vet + go test -short green on target subtrees.
+  linked_issues:
+    - id: PR-CLIPS-META-AZIONE-1
+      owner_capability: internal/application/youtube/dto
+      status: pending
+      deadline: 2026-07-18
+      description: Collapse 7 metadata types → 1 canonical + 1 input + 1 helper
+    - id: PR-CLIPS-META-AZIONE-2
+      owner_capability: internal/application/youtube/metadata
+      status: pending
+      deadline: 2026-07-25
+      description: Unify 2 MetadataService implementations → 1 canonical service
+    - id: PR-CLIPS-META-AZIONE-3
+      owner_capability: internal/app + internal/application/clips
+      status: pending
+      deadline: 2026-07-18
+      description: Complete DRIVE-008 CUTOVER — remove 3 fail-closed stubs
+    - id: PR-CLIPS-META-AZIONE-4
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-01
+      description: Consolidate 17+ adapter files → ~10 files grouped by domain
+    - id: PR-CLIPS-META-AZIONE-5
+      owner_capability: internal/application/youtube/metadata
+      status: pending
+      deadline: 2026-07-18
+      description: Unify 4 quality-score formulas → 1 canonical CalculateQualityScore
+    - id: PR-CLIPS-META-AZIONE-6
+      owner_capability: internal/application/youtube/usecase
+      status: pending
+      deadline: 2026-07-18
+      description: Remove BuildClipMetadataInput duplicate → use ClipMetadataInput
+    - id: PR-CLIPS-META-AZIONE-7
+      owner_capability: internal/application/youtube/dto
+      status: pending
+      deadline: 2026-07-18
+      description: Update doc.go with canonical type map for metadata types
