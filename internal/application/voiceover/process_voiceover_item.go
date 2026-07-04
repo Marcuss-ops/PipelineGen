@@ -24,14 +24,25 @@
 // single BeginTx/Commit so the DELETE of the OLD row + INSERT of the new
 // + outbox EnqueueIndexEvent all commit atomically. The swap tx is
 // caller-owned; the use case holds the *sql.Tx across the 3 calls.
+//
+// PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body is now a
+// THIN WRAPPER around the shared PipelineExecutor (pipeline_executor.go).
+// The same neutral struct is consumed by usecase.go::processOneLanguage
+// (batch path) — godlike/06 SSOT "one canonical owner per fact" for the
+// per-item pipeline. Pre-DRY the per-item body carried the full 5-stage
+// inline code; post-DRY the per-item body just (1) validates, (2)
+// resolves destination with DefaultFolderResolver fallback, (3) builds
+// a PipelineItemInput, (4) delegates to PipelineExecutor.RunPipeline,
+// and (5) wraps the plain error in a typed PipelineError based on the
+// error-message prefix (preserves the per-item path's stage
+// classification contract pinned by P0.1 Fase 1b).
 package voiceover
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -77,14 +88,26 @@ type ProcessVoiceoverItemDeps struct {
 // bottom of this file pins the narrow VoiceoverItemExecutor interface
 // conformance so legacy consumers (promo bridge, future call-site
 // migrations) can depend on the interface rather than the concrete.
+//
+// PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body delegates
+// to the SHARED PipelineExecutor (pipeline_executor.go). The
+// constructor builds a PipelineExecutor from the same deps so the
+// per-item body is shared with the batch use case.
 type ProcessVoiceoverItemUseCase struct {
-	deps ProcessVoiceoverItemDeps
+	deps         ProcessVoiceoverItemDeps
+	pipelineExec *PipelineExecutor // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
 }
 
 // NewProcessVoiceoverItemUseCase constructs the canonical use case.
 // All required deps are mandatory (panic on nil — fail-fast per
 // AGENTS.md WireUp pattern). TransactionalOutbox is the only optional
 // dep (nil-safe skip-indexing). Logger is nil-safe via zap.NewNop().
+//
+// PR-VO-USECASE-PROCESS-DRY: the constructor now builds a
+// PipelineExecutor from the same deps (TTSProvider, AudioPostProcessor,
+// Publisher, VoiceoverRepository, Finalizer, Logger). The
+// PipelineExecutor is the SINGLE canonical per-item pipeline
+// runner; the use case just builds the DTO and delegates.
 func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoiceoverItemUseCase {
 	if deps.TTSProvider == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: TTSProvider is required (ProcessVoiceoverItemDeps.TTSProvider)")
@@ -107,21 +130,43 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
 	}
-	return &ProcessVoiceoverItemUseCase{deps: deps}
+	return &ProcessVoiceoverItemUseCase{
+		deps:         deps,
+		pipelineExec: NewPipelineExecutor(PipelineItemDeps{
+			TTSProvider:         deps.TTSProvider,
+			AudioPostProcessor:  deps.AudioPostProcessor,
+			Publisher:           deps.Publisher,
+			VoiceoverRepository: deps.VoiceoverRepository,
+			Finalizer:           deps.Finalizer,
+			Logger:              deps.Logger,
+		}),
+	}
 }
 
-// Execute runs the canonical 5-stage per-item pipeline:
+// Execute runs the canonical per-item voiceover pipeline via the
+// shared PipelineExecutor (PR-VO-USECASE-PROCESS-DRY, July 2026).
 //
-//	Stage 1 (TTS)            → TTSProvider.Synthesize
-//	Stage 2 (audio cleanup)  → AudioPostProcessor (only when RemoveSilence)
-//	Stage 3 (Drive upload)   → VoiceoverPublisher.Publish
-//	Stage 4 (atomic swap)    → VoiceoverRepository.BeginTx + DeleteByIDTx
-//	                            + InsertTx + TransactionalOutbox.EnqueueIndexEvent
+// Pre-DRY the body carried the full 5-stage inline code (TTS →
+// AudioPost → Publish → BeginTx → Finalize → Commit). Post-DRY the
+// body is a thin wrapper that:
 //
-// The destination is resolved once at Stage 0 (before TTS) so the
-// stages reuse the same FolderID + FolderPath + StyleGroup. The item
-// is validated first (Pre-flight) so a malformed child command
-// surfaces at the use case boundary rather than mid-pipeline.
+//  1. Pre-flight: nil-safe + validate gate.
+//  2. Stage 0b: destination resolution with DefaultFolderResolver
+//     fallback (caller-side concern; the per-item path resolves
+//     per-item, the batch path resolves once).
+//  3. ID derivation (caller-side; the BLOC4 P0.6 pass-through
+//     invariant pins this at the caller layer).
+//  4. Builds a PipelineItemInput neutral DTO and calls
+//     u.pipelineExec.RunPipeline(ctx, in).
+//  5. Wraps the plain error in a typed PipelineError based on the
+//     error-message prefix (preserves the per-item path's stage
+//     classification contract pinned by P0.1 Fase 1b).
+//
+// The pre-flight, destination resolution, and ID derivation are
+// caller-side concerns that BOTH the batch and per-item paths share
+// (with different inputs); the PipelineExecutor handles the 4-stage
+// pipeline (TTS → AudioPost → Publish → BeginTx + Finalize + Commit)
+// for both.
 //
 // Per the BLOC4 IN-VOICEOVER PASS-THROUGH invariant (P0.6):
 //  - item.TextHash is used verbatim (no re-derivation)
@@ -129,30 +174,17 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 //  - item.Filename is used verbatim (no template re-substitution)
 //
 // The handler dispatches (result, error) per the godlike/07 contract:
-// Stage 0 failures (nil item, validate) return (nil, error). All
-// other stages return (out, *PipelineError) with Retryable flag so
-// the handler/worker can distinguish transient (TTS/Drive/SQLite busy)
-// from permanent (validation, missing destination, bad payload).
-// P0.1 Fase 1b (July 2026): every stage failure now returns a typed
-// PipelineError instead of (out, nil) — pre-Fase-1b the handler saw
-// err==nil and returned (resultMap, nil) → silent false-success.
+// Stage 0 failures (nil item, validate, destination resolve) return
+// (nil or *VoiceoverItemResult, *PipelineError). Stage 1-4 failures
+// (delegated to PipelineExecutor) return (out, *PipelineError) with
+// the stage classification derived from the error-message prefix.
 func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error) {
 	// Pre-flight: nil-safe + validate gate.
 	if item == nil {
 		return nil, fmt.Errorf("ProcessVoiceoverItemUseCase.Execute: nil item (callers must pass a non-nil *GenerateVoiceoverItemCommand)")
 	}
 	if err := item.Validate(); err != nil {
-		return nil, fmt.Errorf("ProcessVoiceoverItemUseCase.Execute: validate (lang=%s, request_id=%s): %w",
-			item.Language, item.RequestID, err)
-	}
-
-	// Initialize the per-item result envelope. Stage 0 pre-populates
-	// what we know; downstream stages fill in URL/Hash/DriveFileID.
-	out := &VoiceoverItemResult{
-		Language: item.Language,
-		Voice:    item.Voice,
-		Filename: item.Filename,
-		Status:   StatusFailed,
+		return nil, fmt.Errorf("ProcessVoiceoverItemUseCase.Execute: validate (lang=%s, request_id=%s): %w", string(item.Language), item.RequestID, err)
 	}
 
 	// Stage 0b: destination resolution. When the caller supplies an
@@ -174,199 +206,112 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 					FolderID: folderID,
 				}
 			} else {
-				out.Error = "missing_destination: no default Voiceover folder configured (resolve returned ok=false)"
-				return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
+				return &VoiceoverItemResult{
+					Language: item.Language,
+					Status:   StatusFailed,
+					Error:    "missing_destination: no default Voiceover folder configured (resolve returned ok=false)",
+				}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_destination: no default Voiceover folder configured"))
 			}
 		} else {
-			out.Error = "missing_destination: GenerateVoiceoverItemCommand.Destination is nil and DefaultFolderResolver is not wired"
-			return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
+			return &VoiceoverItemResult{
+				Language: item.Language,
+				Status:   StatusFailed,
+				Error:    "missing_destination: GenerateVoiceoverItemCommand.Destination is nil and DefaultFolderResolver is not wired",
+			}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_destination: DefaultFolderResolver not wired"))
 		}
 	}
 	dest, err := u.deps.DestinationResolver.Resolve(ctx, destReq)
 	if err != nil {
-		out.Error = fmt.Sprintf("destination_resolve_failed: %v", err)
-		return out, newPipelineError(StageDestinationResolve, false, err)
+		return &VoiceoverItemResult{
+			Language: item.Language,
+			Status:   StatusFailed,
+			Error:    fmt.Sprintf("destination_resolve_failed: %v", err),
+		}, newPipelineError(StageDestinationResolve, false, err)
 	}
 	if dest == nil || dest.FolderID == "" {
-		out.Error = "missing_folder_id: voiceover destination has no FolderID for upload"
-		return out, newPipelineError(StageDestinationResolve, false, fmt.Errorf("%s", out.Error))
+		return &VoiceoverItemResult{
+			Language: item.Language,
+			Status:   StatusFailed,
+			Error:    "missing_folder_id: voiceover destination has no FolderID for upload",
+		}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_folder_id"))
 	}
 
 	// Trust item.TextHash from fanout (P0.6 invariant — no re-derive).
+	// PR-VO-TYPED-PRIMITIVES (July 2026): item.TextHash is the typed
+	// TextHash envelope; buildVoiceoverID first param is raw string,
+	// so convert at the seam.
 	itemHash := item.TextHash
 
 	// ID is derived deterministically from (textHash, language, folderID).
-	id := buildVoiceoverID(itemHash, item.Language, dest.FolderID)
-	out.ID = id
+	id := buildVoiceoverID(string(itemHash), item.Language, dest.FolderID)
 
-	// Stage 1: TTSProvider.Synthesize (Stage 0 uses ttsProvider, Stage 1+ runs).
-	// P0.2 Fase 2c (July 2026): RemoveSilence is ALWAYS false here.
-	// The TTS provider must never handle silence removal — only
-	// AudioPostProcessor.Process (Stage 2) owns that responsibility.
-	// Passing item.RemoveSilence=true to Synthesize would cause the
-	// TTS bridge (Python tts_edge.py) to strip silence inline,
-	// and then AudioPostProcessor would re-process an already-cleaned
-	// file — double-processing that wastes CPU and risks audio artifacts.
-	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
+	// Build the neutral DTO consumed by the shared PipelineExecutor.
+	// The StyleGroup injection (metaBuf["style_group"] if !empty) is
+	// now inside the PipelineExecutor; the per-item path's prior
+	// meta-merge logic is preserved by passing item.Metadata
+	// through (mergeUserMetadata in the PipelineExecutor handles
+	// the user-meta overlay + StyleGroup injection in one place).
+	in := &PipelineItemInput{
+		ID:            id,
+		RequestID:     item.RequestID,
+		TextHash:      itemHash,
 		Text:          item.Text,
 		Language:      item.Language,
 		Voice:         item.Voice,
 		Filename:      item.Filename,
-		OutputDir:     dest.FolderPath,
-		RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS
-	})
-	if err != nil {
-		out.Error = fmt.Sprintf("tts_failed: %v", err)
-		u.deps.Logger.Warn("voiceover.processItem: stage 1 TTS failed",
-			zap.String("language", item.Language),
-			zap.String("request_id", item.RequestID),
-			zap.Error(err))
-		return out, newPipelineError(StageTTS, true, err)
-	}
-	out.LocalPath = ttsOut.LocalPath
-	out.CleanedPath = ttsOut.CleanedPath
-	if ttsOut.Voice != "" {
-		out.Voice = ttsOut.Voice
-	}
-	out.FileHash = ttsOut.FileHash
-
-	// Stage 2: optional AudioPostProcessor (silence removal). Nil-safe: only
-	// invoked when RemoveSilence is true AND the processor is wired.
-	if item.RemoveSilence && u.deps.AudioPostProcessor != nil && ttsOut.LocalPath != "" {
-		postOut, err := u.deps.AudioPostProcessor.Process(ctx, AudioPostInput{
-			LocalPath: ttsOut.LocalPath,
-			OutputDir: dest.FolderPath,
-			Filename:  item.Filename,
-		})
-		if err != nil {
-			out.Error = fmt.Sprintf("audio_post_process_failed: %v", err)
-			u.deps.Logger.Warn("voiceover.processItem: stage 2 audio_post failed",
-				zap.String("language", item.Language),
-				zap.String("request_id", item.RequestID),
-				zap.Error(err))
-			return out, newPipelineError(StageAudioPost, false, err)
-		}
-		if postOut.CleanedPath != "" {
-			out.CleanedPath = postOut.CleanedPath
-		}
-	}
-
-	if out.LocalPath == "" && out.CleanedPath == "" {
-		out.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
-		return out, newPipelineError(StageTTS, false, fmt.Errorf("%s", out.Error))
-	}
-	uploadPath := out.CleanedPath
-	if uploadPath == "" {
-		uploadPath = out.LocalPath
-	}
-
-	// Stage 3: VoiceoverPublisher.Publish — populates Drive URLs (canonical fileID then URL helpers).
-	metaBuf := map[string]any{
-		"text_hash":    itemHash,
-		"text_preview": textutil.Truncate(item.Text, 100),
-		"language":     item.Language,
-		"voice":        out.Voice,
-		"strategy":     string(item.Strategy),
-		"cleaned_path": out.CleanedPath,
-	}
-	if dest.StyleGroup != "" {
-		metaBuf["style_group"] = dest.StyleGroup
-	}
-	if item.Metadata != nil {
-		mergeUserMetadata(metaBuf, dest, item.Metadata, u.deps.Logger)
-	}
-	metaJSON, _ := json.Marshal(metaBuf)
-
-	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-		ID:        id,
-		LocalPath: uploadPath,
-		Filename:  item.Filename,
-		FolderID:  dest.FolderID,
-	})
-	if err != nil {
-		out.Error = fmt.Sprintf("upload_failed: %v", err)
-		u.deps.Logger.Warn("voiceover.processItem: stage 3 publisher.Publish failed",
-			zap.String("language", item.Language),
-			zap.String("request_id", item.RequestID),
-			zap.Error(err))
-		return out, newPipelineError(StageUpload, true, err)
-	}
-	out.DriveFileID = fileID
-	out.DriveLink = CanonicalDriveWebURL(fileID)
-	out.DownloadLink = CanonicalDriveDownloadURL(fileID)
-
-	// Stage 4: Unified atomic finalization via VoiceoverFinalizer
-	// (P0.4 Fase 3a, July 2026). Replaces the previous inline
-	// BeginTx → DeleteByIDTx → InsertTx → outbox → Commit sequence
-	// with a single call to the finalizer which runs all 6 steps
-	// (dedupe, delete, insert, media_assets projection, index
-	// outbox, cleanup outbox) inside a caller-owned tx.
-	//
-	// Pre-Fase-3a: steps 1 (dedupe), 4 (media_assets), and 6
-	// (cleanup) were MISSING from the child pipeline. The legacy
-	// batch path (finalizeStage) had all 6. Post-Fase-3a both
-	// paths share the same finalizer.
-	tx, err := u.deps.VoiceoverRepository.BeginTx(ctx)
-	if err != nil {
-		out.Error = fmt.Sprintf("tx_begin_failed: %v", err)
-		u.deps.Logger.Warn("voiceover.processItem: stage 4 tx_begin failed",
-			zap.String("language", item.Language),
-			zap.String("request_id", item.RequestID),
-			zap.Error(err))
-		return out, newPipelineError(StageTxBegin, true, err)
-	}
-	defer func() { _ = tx.Rollback() }() // safe after Commit
-
-	finalizeCmd := &FinalizeCommand{
-		ID:             id,
-		RequestID:      item.RequestID,
-		TextHash:       itemHash,
-		Text:           item.Text,
-		Language:       item.Language,
-		Voice:          out.Voice,
-		Filename:       item.Filename,
-		Strategy:       string(item.Strategy),
-		MetaJSON:       metaJSON,
-		LocalPath:      out.LocalPath,
-		CleanedPath:    out.CleanedPath,
-		FileHash:       out.FileHash,
-		FolderID:       dest.FolderID,
-		FolderPath:     dest.FolderPath,
-		DriveFileID:    out.DriveFileID,
-		DriveLink:      out.DriveLink,
-		DownloadLink:   out.DownloadLink,
+		Strategy:      string(item.Strategy),
+		Metadata:      item.Metadata,
+		RemoveSilence: item.RemoveSilence,
+		Dest:          dest,
 		// Per-item path (child pipeline): no old-row swap context.
 		// ShouldSwap stays false (no cleanup event).
-		ShouldSwap:     false,
-		OldDriveFileID: "",
-		OldLocalPath:   "",
-		OldCleanedPath: "",
 	}
 
-	finalizeRes, err := u.deps.Finalizer.Finalize(ctx, tx, finalizeCmd)
+	out, err := u.pipelineExec.RunPipeline(ctx, in)
 	if err != nil {
-		out.Error = fmt.Sprintf("finalize_failed: %v", err)
-		u.deps.Logger.Warn("voiceover.processItem: stage 4 finalize failed",
-			zap.String("language", item.Language),
+		// Wrap the plain error from PipelineExecutor in a typed
+		// PipelineError based on the error prefix. The PipelineExecutor
+		// sets out.Error with a stable prefix per stage (see
+		// pipeline_executor.go for the prefix table). The mapping
+		// preserves the pre-DRY per-item path's stage classification
+		// contract (P0.1 Fase 1b, July 2026).
+		var stage Stage
+		var retryable bool
+		switch {
+		case strings.HasPrefix(out.Error, "tts_failed:"):
+			stage, retryable = StageTTS, true
+		case strings.HasPrefix(out.Error, "audio_post_process_failed:"):
+			stage, retryable = StageAudioPost, false
+		case strings.HasPrefix(out.Error, "no_local_payload:"):
+			stage, retryable = StageTTS, false
+		case strings.HasPrefix(out.Error, "upload_failed:"):
+			stage, retryable = StageUpload, true
+		case strings.HasPrefix(out.Error, "tx_begin_failed:"):
+			stage, retryable = StageTxBegin, true
+		case strings.HasPrefix(out.Error, "finalize_failed:"):
+			stage, retryable = StageTxCommit, true
+		case strings.HasPrefix(out.Error, "tx_commit_failed:"):
+			stage, retryable = StageTxCommit, true
+		case strings.HasPrefix(out.Error, "missing_folder_id:"):
+			stage, retryable = StageDestinationResolve, false
+		default:
+			// Unknown prefix — surface as StageTxCommit (the closest
+			// generic stage) + retryable=true. Caller can re-classify
+			// by inspecting the error message if needed.
+			stage, retryable = StageTxCommit, true
+		}
+		u.deps.Logger.Warn("voiceover.processItem: pipeline run failed",
+			zap.String("language", string(item.Language)),
 			zap.String("request_id", item.RequestID),
+			zap.String("stage", string(stage)),
+			zap.Bool("retryable", retryable),
+			zap.String("error", out.Error),
 			zap.Error(err))
-		return out, newPipelineError(StageTxCommit, true, err)
+		return out, newPipelineError(stage, retryable, err)
 	}
 
-	// If the dedupe gate matched an existing row (Reused=true),
-	// adopt the matched ID as the canonical identifier.
-	if finalizeRes != nil && finalizeRes.Reused {
-		out.ID = finalizeRes.ID
-	}
-
-	if err := tx.Commit(); err != nil {
-		out.Error = fmt.Sprintf("tx_commit_failed: %v", err)
-		return out, newPipelineError(StageTxCommit, true, err)
-	}
-
-	out.Status = StatusCompleted
 	u.deps.Logger.Info("voiceover.processItem: success",
-		zap.String("language", item.Language),
+		zap.String("language", string(item.Language)),
 		zap.String("request_id", item.RequestID),
 		zap.String("id", out.ID),
 		zap.String("drive_link", out.DriveLink))

@@ -161,6 +161,14 @@ func (r *GenerateVoiceoversRequest) Validate() error {
 func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCommand {
 	items := make([]voiceover.VoiceoverItem, len(r.Items))
 	for i, it := range r.Items {
+		// PR-VO-TYPED-PRIMITIVES (July 2026): VoiceoverItem is a
+		// type alias for voiceover.VoiceoverItem (canonical
+		// typed-envelope shape), so the item-to-item copy is a
+		// 1:1 field-for-field pass-through with no conversion
+		// needed at the wire boundary. The API handler's
+		// request-level Validate gate has already enforced the
+		// canonical BCP-47 alphanumeric+hyphen shape on
+		// each it.Language value before this function runs.
 		items[i] = voiceover.VoiceoverItem{
 			Text:     it.Text,
 			Language: it.Language,
@@ -222,7 +230,12 @@ func (r *GenerateVoiceoversRequest) parentActiveKey() string {
 	for _, it := range r.Items {
 		h.Write([]byte(it.Text))
 		h.Write([]byte("|"))
-		h.Write([]byte(strings.ToLower(it.Language)))
+		// PR-VO-TYPED-PRIMITIVES (July 2026): it.Language is the
+		// typed voiceover.Language envelope (via the VoiceoverItem
+		// type alias). strings.ToLower requires a string argument;
+		// explicit conversion at this seam preserves the wire-stable
+		// canonical-lowercase hash.
+		h.Write([]byte(strings.ToLower(string(it.Language))))
 		h.Write([]byte("|"))
 	}
 	if r.Destination != nil && r.Destination.FolderID != "" {

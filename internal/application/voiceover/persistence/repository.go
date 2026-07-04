@@ -108,12 +108,25 @@ type Repository interface {
 // a future schema migration requires only ONE place (the
 // converter), not N.
 type VoiceoverRecord struct {
-	ID           string
-	RequestID    string
-	TextHash     string
-	TextPreview  string
-	Language     string
-	Voice        string
+	ID          string
+	RequestID   string
+	// TextHash is raw string (NOT the typed TextHash envelope) for
+	// the same reason as FinalizeCommand.TextHash — the DB column
+	// stores either the 64-char legacy full SHA-256 or the 16-char
+	// ComputeTextHash prefix depending on the call path. Labelling
+	// it TextHash would be a type-system lie. The typed envelope
+	// is canonical ONLY for the per-item 16-char value (used in
+	// the per-item fan-out path before the finalizer writes it).
+	TextHash    string
+	TextPreview string
+	// Language is raw string (NOT the typed Language envelope) because
+	// the persistence sub-package cannot import the parent voiceover
+	// package (Go circular import rule). The adapter in
+	// internal/app/adapters_voiceover_use_case.go converts between
+	// the raw string (DB wire shape) and the typed envelope
+	// (voiceover-package surface) at the persistence boundary.
+	Language string
+	Voice    string
 	Filename     string
 	LocalPath    string
 	CleanedPath  string

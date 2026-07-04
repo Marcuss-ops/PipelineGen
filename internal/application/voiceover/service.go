@@ -194,7 +194,7 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
 	req := &BatchRequest{
 		Text:             text,
-		Languages:        []string{language},
+		Languages: []Language{Language(language)},
 		FilenameTemplate: filename,
 		RemoveSilence:    ptrutil.Bool(false),
 		Strategy:         "replace",

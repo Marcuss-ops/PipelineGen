@@ -27,12 +27,11 @@ import (
 // readability in stage files). Wire shape: serialises as a plain
 // JSON string (the underlying string type).
 //
-// godlike/07 honest-limitation: a type-alias provides zero
-// compile-time safety — a bare string literal is assignable to
-// Language without a constructor gate. The full typed-primitive
-// migration (P1.1 in VO-DECOMPOSITION-2026-07-04, deadline
-// 2026-07-25) will define the value-type + ParseBCP47 validator.
-type Language = string
+// Language — REMOVED (PR-VO-TYPED-PRIMITIVES, July 2026).
+// The canonical typed envelope now lives in language.go as
+// `type Language string` (named type, NOT alias). The migration
+// from alias to named type closes the audit-flagged primitive-
+// obsession on Language across 14+ raw-string sites.
 
 // P1-2 back-compat aliases (June 2026): the canonical wire-shape
 // types moved into internal/application/voiceover/persistence/
@@ -250,8 +249,12 @@ const (
 )
 
 type BatchRequest struct {
-	Text             string              `json:"text"`
-	Languages        []string            `json:"languages"`
+	Text string `json:"text"`
+	// Languages is the typed BCP-47 list per PR-VO-TYPED-PRIMITIVES
+	// (July 2026). JSON wire shape is byte-equivalent with the
+	// pre-refactor []string (typed-string slice serialises as the
+	// underlying []string). Existing wire consumers see no change.
+	Languages        []Language          `json:"languages"`
 	FilenameTemplate string              `json:"filename_template"`
 	RemoveSilence    *bool               `json:"remove_silence,omitempty"`
 	Strategy         string              `json:"strategy"`
@@ -362,7 +365,10 @@ type DestinationRequest struct {
 	// (Qdrant re-rankers, style-cohort analytics, audit replay) can
 	// recover the original selection verbatim. omitempty so legacy
 	// callers (no field set) don't carry a bogus empty key.
-	StyleGroup string `json:"style_group,omitempty"`
+	//
+	// Typed (StyleGroup) per PR-VO-TYPED-PRIMITIVES — JSON wire
+	// shape is byte-equivalent with the pre-refactor string field.
+	StyleGroup StyleGroup `json:"style_group,omitempty"`
 }
 
 // Validate runs the security-relevant bounds-checks on a request that
@@ -414,7 +420,6 @@ type BatchResponse struct {
 
 type BatchItem struct {
 	ID           string   `json:"id"`
-	Language     string   `json:"language"`
 	Voice        string   `json:"voice,omitempty"`
 	Filename     string   `json:"filename"`
 	LocalPath    string   `json:"local_path,omitempty"`
@@ -423,11 +428,10 @@ type BatchItem struct {
 	DriveFileID  string   `json:"drive_file_id,omitempty"`
 	DownloadLink string   `json:"download_link,omitempty"`
 	FileHash     string   `json:"file_hash,omitempty"`
-	// Status is the canonical per-item terminal/active state. Typed
-	// (Status) so the runtime aggregate check (Status == StatusFailed)
-	// is exhaustively typed at compile time. The JSON wire shape
-	// serialises the underlying string ("processing"/"generated"/
-	// "uploaded"/"completed"/"failed") so API consumers see no change.
+	// Language is the typed BCP-47 envelope (voiceover.Language)
+	// per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire shape is
+	// byte-equivalent with the pre-refactor string field.
+	Language     Language `json:"language"`
 	//
 	// PR-VO-AUDIT-P01 (June 2026): the legacy checks
 	// `if strings.TrimSpace(item.Status) == "failed"` (process.go)
@@ -473,7 +477,9 @@ type ResolvedDestination struct {
 	// mapping layer, not a style-routing layer, so we set it from the
 	// caller-supplied destination after the resolver returns — see
 	// resolveDestination in process.go.
-	StyleGroup string
+	//
+	// Typed (StyleGroup) per PR-VO-TYPED-PRIMITIVES.
+	StyleGroup StyleGroup
 }
 
 // Promo types moved to workflow/promo (PR 6, June 2026).
@@ -576,7 +582,10 @@ func normalizeBatchRequest(req *BatchRequest) *BatchRequest {
 	// historically documented "no force" behaviour of NormalizeStrategy.
 	req.Strategy = string(asset.NormalizeStrategy(req.Strategy, false))
 	if len(req.Languages) == 0 {
-		req.Languages = []string{"en"}
+		// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string literal
+		// implicitly converts to the Language named type — wire shape
+		// unchanged.
+		req.Languages = []Language{"en"}
 	}
 	if len(req.VoiceOverrides) == 0 {
 		if hydrated := voiceOverridesFromMetadata(req.Metadata); len(hydrated) > 0 {

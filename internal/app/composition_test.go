@@ -725,7 +725,6 @@ func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
 		"BLOCKER #3: error message must mention the missing flag so operators can grep the boot log and correct config:\n\tgot: %v", err)
 }
 
-
 // TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed pins
 // PR 3 #4 + #5: with cfg.Qdrant.Enabled=true but repos.ClipsRepo=nil,
 // BuildOutboxBundle MUST abort boot via RegisterCoreHandlers's
@@ -771,7 +770,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	// to trigger.
 	repos.ClipsRepo = nil
 
-	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle)
+	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil)
 	require.Error(t, err,
 		"PR 3: cfg.Qdrant.Enabled=true + nil ClipsRepo must abort BuildOutboxBundle (fail-closed at boot, never warn-as-warning)")
 	require.Contains(t, err.Error(), "core outbox handlers",

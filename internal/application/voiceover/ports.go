@@ -200,8 +200,12 @@ type TTSProvider interface {
 // TTSProvider.Synthesize. Mirrors audioasset.AudioInput fields so a
 // future thin adapter is a one-line forward.
 type TTSInput struct {
-	Text          string
-	Language      string
+	Text string
+	// Language is the typed BCP-47 envelope (voiceover.Language).
+	// The cross-package seam (useCaseTTSAdapter at
+	// internal/app/adapters_voiceover_use_case.go) converts to
+	// the raw string when forwarding to audioasset.AudioInput.
+	Language      Language
 	Voice         string
 	Filename      string
 	OutputDir     string

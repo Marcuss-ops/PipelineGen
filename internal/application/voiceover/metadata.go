@@ -77,7 +77,11 @@ func mergeUserMetadata(
 	}
 
 	// Step 1: StyleGroup injection (omitempty contract).
-	if dest != nil && dest.StyleGroup != "" {
+	//
+	// PR-VO-TYPED-PRIMITIVES (July 2026): dest.StyleGroup is the
+	// typed StyleGroup envelope; the IsEmpty() predicate is the
+	// typed-envelope equivalent of the pre-refactor `!= ""` check.
+	if dest != nil && !dest.StyleGroup.IsEmpty() {
 		meta["style_group"] = dest.StyleGroup
 	}
 

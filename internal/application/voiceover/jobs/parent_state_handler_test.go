@@ -230,8 +230,8 @@ func TestGenerateJobHandler_MixedTextsEnqueueDistinctActiveKeys(t *testing.T) {
 		"Step 5 audit-pin: distinct item texts must produce distinct child ActiveKeys (per-item textHash in the ActiveKey format protects against phantom-retry dedup)")
 
 	for i, req := range stub.requests {
-		if !strings.Contains(req.ActiveKey, cmd.Items[i].Language) {
-			t.Errorf("Step 5: child[%d] ActiveKey missing language %q (got %q)", i, cmd.Items[i].Language, req.ActiveKey)
+		if !strings.Contains(req.ActiveKey, string(cmd.Items[i].Language)) {
+			t.Errorf("Step 5: child[%d] ActiveKey missing language %q (got %q)", i, string(cmd.Items[i].Language), req.ActiveKey)
 		}
 	}
 }

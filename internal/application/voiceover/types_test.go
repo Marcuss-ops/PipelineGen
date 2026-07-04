@@ -9,7 +9,7 @@ func TestBatchRequestPayloadMapIncludesDestinationAndMetadata(t *testing.T) {
 	removeSilence := true
 	req := &BatchRequest{
 		Text:             "Hello world",
-		Languages:        []string{"it", "en"},
+		Languages:        []Language{"it", "en"},
 		FilenameTemplate: "{slug}_{lang}.mp3",
 		RemoveSilence:    &removeSilence,
 		Strategy:         "replace",
@@ -94,7 +94,7 @@ func TestBatchRequest_StrategyReplace_Roundtrip(t *testing.T) {
 	mkReq := func() *BatchRequest {
 		return &BatchRequest{
 			Text:             "Hello world async",
-			Languages:        []string{"en"},
+			Languages:        []Language{"en"},
 			FilenameTemplate: "hello-world_en.mp3",
 			Strategy:         "replace",
 		}
@@ -121,8 +121,7 @@ func TestBatchRequest_StrategyReplace_Roundtrip(t *testing.T) {
 // the drift loudly.
 func TestNormalizeBatchRequest_DefaultsVerifyWhenEmpty(t *testing.T) {
 	req := &BatchRequest{
-		Text:      "implicit-strategy",
-		Languages: []string{"en"},
+		Text:      "implicit-strategy",		Languages:        []Language{"en"},
 	}
 	normalized := normalizeBatchRequest(req)
 	if normalized.Strategy != "verify" {
@@ -140,7 +139,7 @@ func TestNormalizeBatchRequest_DefaultsVerifyWhenEmpty(t *testing.T) {
 func TestNormalizeBatchRequest_FillsEmptyFilenameTemplate(t *testing.T) {
 	req := &BatchRequest{
 		Text:      "no-filename",
-		Languages: []string{"it"},
+		Languages: []Language{"it"},
 		Strategy:  "replace",
 	}
 	normalized := normalizeBatchRequest(req)

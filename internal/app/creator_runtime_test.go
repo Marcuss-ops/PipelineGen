@@ -28,7 +28,6 @@ package app
 import (
 	"context"
 	"database/sql" // ← mirror the canonical orphan-pin import; used by TestCreatorRuntime_CompilePinDBOrphanResolved
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"

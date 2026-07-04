@@ -25,12 +25,19 @@ type FilenameSpec struct {
 	Text string
 
 	// Language is the BCP-47 language code (inserted under the {lang}
-	// token; non-empty by Validate() contract).
-	Language string
+	// token; non-empty by Validate() contract). Typed (Language)
+	// per PR-VO-TYPED-PRIMITIVES.
+	Language Language
 
-	// TextHash is the per-batch SHA-256 prefix (inserted under the
-	// {hash} token, first 8 chars; if shorter than 8 the empty string
-	// is inserted — no panic).
+	// TextHash is the text fingerprint inserted under the {hash} token,
+	// first 8 chars; if shorter than 8 the empty string is inserted —
+	// no panic. Raw string (NOT the typed TextHash envelope) because
+	// the filename-generation path consumes a per-batch content
+	// fingerprint (full SHA-256 in the legacy GenerateBatch path,
+	// 16-char prefix in the per-item fan-out path) and the
+	// "first 8 chars" truncation works byte-identically for both.
+	// The typed TextHash envelope is canonical ONLY for the per-item
+	// 16-char value (Task.TextHash / GenerateVoiceoverItemCommand.TextHash).
 	TextHash string
 
 	// Template is the optional user template (with {slug}/{lang}/{hash}/
@@ -72,7 +79,7 @@ func BuildVoiceoverFilename(spec FilenameSpec) (string, error) {
 	if strings.TrimSpace(spec.Text) == "" {
 		return "", fmt.Errorf("BuildVoiceoverFilename: Text must be non-empty")
 	}
-	if strings.TrimSpace(spec.Language) == "" {
+	if strings.TrimSpace(string(spec.Language)) == "" {
 		return "", fmt.Errorf("BuildVoiceoverFilename: Language must be non-empty")
 	}
 
@@ -83,7 +90,9 @@ func BuildVoiceoverFilename(spec FilenameSpec) (string, error) {
 
 	slug := textutil.SlugifyWithMax(spec.Text, 30)
 	filename := strings.ReplaceAll(template, "{slug}", slug)
-	filename = strings.ReplaceAll(filename, "{lang}", spec.Language)
+	// PR-VO-TYPED-PRIMITIVES (July 2026): spec.Language is the typed
+	// Language envelope; strings.ReplaceAll requires string args.
+	filename = strings.ReplaceAll(filename, "{lang}", string(spec.Language))
 
 	hashPrefix := spec.TextHash
 	if len(hashPrefix) > 8 {
@@ -100,7 +109,20 @@ func BuildVoiceoverFilename(spec FilenameSpec) (string, error) {
 	return filename, nil
 }
 
-func buildVoiceoverID(textHash, language, folderID string) string {
+// buildVoiceoverID hashes (textHash + language + folderID) and returns
+// the canonical "vo_<sha256[:16]>" row identifier.
+//
+// PR-VO-TYPED-PRIMITIVES (July 2026): textHash is raw string (NOT the
+// typed TextHash envelope) because buildVoiceoverID is called from
+// BOTH paths:
+//   - Legacy per-batch path (processLanguage) passes the 64-char
+//     full SHA-256 of req.Text.
+//   - Per-item fan-out path (planner.go::Plan / process_voiceover_item.go
+//     fallback) passes the 16-char ComputeTextHash prefix.
+// The inner SHA256 is stable for both lengths — labelling the param
+// as `TextHash` would be a type-system lie. The typed envelope is
+// canonical ONLY for the per-item 16-char value.
+func buildVoiceoverID(textHash string, language Language, folderID string) string {
 	data := fmt.Sprintf("%s:%s:%s", textHash, language, folderID)
 	return "vo_" + hashutil.SHA256Bytes([]byte(data))[:16]
 }

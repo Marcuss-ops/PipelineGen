@@ -26,8 +26,6 @@ package jobs
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -84,8 +82,8 @@ type FanoutResult struct {
 	TotalOutputs       int      `json:"total_outputs"`
 	EnqueuedCount      int      `json:"enqueued_count"`
 	FailedEnqueueCount int      `json:"failed_enqueue_count"`
-	ChildJobIDs        []string `json:"child_job_ids"`
-	PerLanguage        []string `json:"per_language"`
+	ChildJobIDs        []string    `json:"child_job_ids"`
+	PerLanguage        []voiceover.Language `json:"per_language"`
 }
 
 // Compile-time assertion: *appjobs.Service satisfies Enqueuer.
@@ -172,7 +170,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		RequestID:    requestID,
 		TotalOutputs: total,
 		ChildJobIDs:  make([]string, 0, total),
-		PerLanguage:  make([]string, 0, total),
+		PerLanguage: make([]voiceover.Language, 0, total),
 	}
 
 	for idx, itemSpec := range cmd.Items {
@@ -180,7 +178,11 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		// hash is NOT shared across siblings. This protects per-item
 		// dedupe (Step 5 invariant: never merge items with different
 		// texts into the same ActiveKey footprint).
-		itemTextHash := textHashSHA256(itemSpec.Text)
+		//
+		// PR-VO-TYPED-PRIMITIVES (July 2026): the canonical impl is
+		// voiceover.ComputeTextHash (the pre-refactor textHashSHA256
+		// helper here was a byte-equivalent duplicate, now collapsed).
+		itemTextHash := voiceover.ComputeTextHash(itemSpec.Text)
 
 		// E4: per-item filename via canonical BuildVoiceoverFilename with
 		// the per-item textHash threaded into the {hash} token slot (so
@@ -191,7 +193,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		filename, ferr := voiceover.BuildVoiceoverFilename(voiceover.FilenameSpec{
 			Text:     itemSpec.Text,
 			Language: itemSpec.Language,
-			TextHash: itemTextHash,
+			TextHash: string(itemTextHash),
 		})
 		if ferr != nil {
 			panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (FanoutUseCase.Execute): %v (item=%+v, parent_job_id=%s)",
@@ -216,7 +218,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			u.deps.Logger.Warn("FanoutUseCase: child command validation failed",
 				zap.String("parent_job_id", parentJobID),
 				zap.Int("item_index", idx),
-				zap.String("language", itemSpec.Language),
+				zap.String("language", string(itemSpec.Language)),
 				zap.Error(err))
 			result.FailedEnqueueCount++
 			result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
@@ -243,7 +245,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			u.deps.Logger.Warn("FanoutUseCase: enqueue child failed",
 				zap.String("parent_job_id", parentJobID),
 				zap.Int("item_index", idx),
-				zap.String("language", itemSpec.Language),
+				zap.String("language", string(itemSpec.Language)),
 				zap.Error(err))
 			result.FailedEnqueueCount++
 			result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
@@ -278,12 +280,10 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 // absorbs both the previous buildItemFilename+slug pair AND the
 // per-item uniqueness invariant (text+lang+hash triplet).
 
-// textHashSHA256 returns the first 16 hex chars of SHA-256(Text).
-// Used as the stable per-batch identifier so every child writes the
-// same text_hash into its row, and as a component of the child
-// ActiveKey for idempotent fan-out.
-func textHashSHA256(text string) string {
-	h := sha256.New()
-	h.Write([]byte(text))
-	return hex.EncodeToString(h.Sum(nil))[:16]
-}
+// textHashSHA256 — REMOVED in PR-VO-TYPED-PRIMITIVES (July 2026).
+// The canonical impl is now voiceover.ComputeTextHash
+// (internal/application/voiceover/texthash.go). The pre-refactor
+// helper was a byte-equivalent duplicate of
+// voiceover.ComputeTextHash (per the audit-pin in the canonical
+// impl's package doc) and the consolidation collapses both
+// into the typed envelope + canonical impl.

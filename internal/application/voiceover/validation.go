@@ -54,8 +54,13 @@ func (c *GenerateVoiceoversCommand) Validate() error {
 		if strings.TrimSpace(it.Text) == "" {
 			return fmt.Errorf("items[%d].text: must be non-empty", i)
 		}
-		if !LanguageCodeValid(it.Language) {
-			return fmt.Errorf("items[%d].language: invalid code %q (only alphanumeric + hyphens allowed)", i, it.Language)
+		// PR-VO-TYPED-PRIMITIVES (July 2026): route through the
+		// canonical ParseLanguage gate (typed sentinel on failure).
+		// The underlying gate logic is identical to LanguageCodeValid
+		// (validation.go below) — ParseLanguage just wraps the
+		// typed-envelope conversion.
+		if _, err := ParseLanguage(string(it.Language)); err != nil {
+			return fmt.Errorf("items[%d].language: %w (only alphanumeric + hyphens allowed)", i, err)
 		}
 	}
 	if c.Destination != nil {
@@ -77,18 +82,12 @@ func (c *GenerateVoiceoversCommand) Validate() error {
 // Whitespace-stripped before the check so a caller sending " it-IT "
 // passes (the audioasset.AudioInput.Language field strips spaces
 // internally too; this gate is the early rejection point).
+//
+// PR-VO-TYPED-PRIMITIVES (July 2026): the canonical gate logic now
+// lives in language.go::isLanguageCodeValid (package-private, shared
+// with ParseLanguage). This function is preserved as a thin wrapper
+// for back-compat with the existing test surface
+// (validation_test.go pins LanguageCodeValid directly).
 func LanguageCodeValid(code string) bool {
-	code = strings.TrimSpace(code)
-	if code == "" {
-		return false
-	}
-	for _, r := range code {
-		if r == '-' {
-			continue
-		}
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
-			return false
-		}
-	}
-	return true
+	return isLanguageCodeValid(strings.TrimSpace(code))
 }

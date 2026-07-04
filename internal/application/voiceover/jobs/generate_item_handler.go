@@ -152,7 +152,7 @@ func (h *GenerateItemJobHandler) HandleJob(
 		}
 		h.logger.Error("voiceover.generate_item execution failure",
 			zap.String("job_id", j.ID),
-			zap.String("language", item.Language),
+			zap.String("language", string(item.Language)),
 			zap.Bool("retryable", isRetryable),
 			zap.Error(err))
 		pf(100, "voiceover.generate_item execution failed")
@@ -177,7 +177,7 @@ func (h *GenerateItemJobHandler) HandleJob(
 		}
 		h.logger.Error("voiceover.generate_item pipeline failure (P0.1 false-success gate)",
 			zap.String("job_id", j.ID),
-			zap.String("language", item.Language),
+			zap.String("language", string(item.Language)),
 			zap.String("status", string(res.Status)),
 			zap.String("error", res.Error))
 		pf(100, "voiceover.generate_item pipeline failed: "+string(res.Status))

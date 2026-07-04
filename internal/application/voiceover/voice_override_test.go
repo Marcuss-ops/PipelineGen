@@ -122,7 +122,7 @@ func TestTTSBridge_UsesPerLanguageVoice(t *testing.T) {		stub := &stubTTSProvide
 
 	req := &BatchRequest{
 		Text:         "hello world",
-		Languages:    []string{"en"},
+		Languages:    []Language{"en"},
 		VoiceOverrides: map[string]string{
 			"en": "en-US-RogerNeural",
 		},
@@ -148,7 +148,7 @@ func TestE2E_VoiceOverrideReachesPython(t *testing.T) {
 	// Step 1: wire-shape pin.
 	req := &BatchRequest{
 		Text:      "ciao mondo",
-		Languages: []string{"it"},
+		Languages: []Language{"it"},
 		VoiceOverrides: map[string]string{
 			"it": "it-IT-IsabellaNeural",
 		},

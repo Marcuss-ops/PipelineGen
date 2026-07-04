@@ -11,10 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 )
 
 // ── driveFolderMgrAdapter ─────────────────────────────────────────────
@@ -24,7 +24,7 @@ type driveFolderMgrAdapter struct {
 	log   *zap.Logger
 }
 
-func newDriveFolderMgrAdapter(admin drive.Admin, log *zap.Logger) youtubeports.DriveFolderManagerPort {
+func newDriveFolderMgrAdapter(admin driveutil.Admin, log *zap.Logger) youtubeports.DriveFolderManagerPort {
 	if admin == nil {
 		return nil
 	}

@@ -441,7 +441,7 @@ func (a *e2eLifecycleAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, t
 		DriveLink:    in.DriveLink,
 		DownloadLink: in.DownloadLink,
 		FileHash:     in.FileHash,
-		Language:     in.Language,
+		Language:     string(in.Language),
 		Status:       in.Status,
 		Metadata:     in.Metadata,
 	})
@@ -530,7 +530,7 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	// ── Stage A: drive the full voiceover pipeline ─────────────────
 	resp, err := svc.GenerateBatch(ctx, &BatchRequest{
 		Text:             "Hello world from P0.7 Step 11/12 E2E test",
-		Languages:        []string{"en"},
+		Languages:        []Language{"en"},
 		Strategy:         "replace",
 		FilenameTemplate: "{slug}_{lang}.mp3",
 		Destination: &DestinationRequest{

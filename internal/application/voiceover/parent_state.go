@@ -83,8 +83,12 @@ const (
 // In micro-commit #4 the field set is full but no caller populates
 // it durably yet — the #5 BACKFILL step wires the parent_job_id
 // index on jobs (or equivalent correlation store).
+//
+// Language is typed (voiceover.Language) per PR-VO-TYPED-PRIMITIVES —
+// JSON wire shape is byte-equivalent with the pre-refactor string
+// field (typed string serialises as the underlying string).
 type LanguageOutcome struct {
-	Language   string     `json:"language"`
+	Language   Language   `json:"language"`
 	ChildJobID string     `json:"child_job_id"`
 	Status     job.Status `json:"status"`
 	Error      string     `json:"error,omitempty"`
