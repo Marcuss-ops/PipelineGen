@@ -445,7 +445,7 @@ preflight: go-version-check node-version-check
 # Lightweight startup + error-path smoke. Use this on every deploy.
 smoke:
 	@set -e; \
-	for s in tests/operational/startup_smoke.sh tests/operational/failed_job_smoke.sh; do \
+	for s in tests/operational/startup_smoke.sh tests/operational/failed_job_smoke.sh tests/operational/fase_b_clip_pipeline_smoke.sh; do \
 	    echo "----- $$s -----"; \
 	    bash $$s; \
 	done
@@ -460,13 +460,20 @@ smoke-script:
 	@bash tests/operational/failed_job_smoke.sh
 	@echo "✅ smoke-script completed (check individual script exit codes above)"
 
+# FASE B clip-pipeline regression smoke — 4 tests covering
+# strategy=replace / folder_id pre-riso / PathBuilder canonical / duplicate.
+# Forward-pointer: architecture/current.yaml#PR-FASE-B-CLIP-SMOKE-TESTS.
+smoke-pipeline:
+	@bash tests/operational/fase_b_clip_pipeline_smoke.sh
+
 # Aggregate: every smoke script (no --dry). Use this for the full operational
 # gate; returns non-zero if ANY script exits non-zero.
 smoke-run-all:
 	@set -e; \
 	for s in tests/operational/startup_smoke.sh \
 	         tests/operational/text_script_smoke.sh \
-	         tests/operational/failed_job_smoke.sh; do \
+	         tests/operational/failed_job_smoke.sh \
+	         tests/operational/fase_b_clip_pipeline_smoke.sh; do \
 	    echo "----- $$s -----"; \
 	    bash $$s; \
 	done
