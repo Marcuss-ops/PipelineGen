@@ -4844,3 +4844,60 @@
     deadline: 2026-08-01
 - id: GODOBJ-2026-07-03
   linked_issues_count: 35 (forward-pointer for full list)
+- id: PR-BATCH-REGISTER-ASYNC
+  owner_capability: internal/application/assets/sourcing + internal/api/assets/register + tests/operational
+  status: shipped
+  exit_signal: true
+  ship_date: 2026-07-04
+  deadline: 2026-08-15
+  description: |
+    3-commit chain migrating the batch-register smoke suite from synchronous
+    ClipID extraction to async JobID polling, renaming BatchRegisterResult
+    fields, and adding async job-polling to the qdrant e2e smoke.
+
+    (a) Commit 6c97c19c (stock register-batch smoke rewrite):
+    tests/operational/stock_register_batch_boxing_smoke.sh rewritten for async
+    mode — Test 1 parses JobID from results[].JobID (PascalCase, no json tag),
+    asserts total=8 and succeeded=total (numeric comparison); Test 2 polls
+    GET /api/jobs/{JobID}/full per-clip via smoke_poll_terminal (600s timeout),
+    verifies terminal=completed, asserts result_map.clip_id populated.
+    SMOKE_API_BASE override defaults to port 8000.
+
+    (b) Commit f76507d0 (field renames):
+    BatchRegisterResult.Succeeded→Enqueued, Failed→EnqueueFailed in 6 files
+    (types.go + batch/service.go + service.go facade nil-guard + handler.go
+    response DTO + both smoke scripts). BatchClipResult.OK=false for all async
+    results (br.OK=true removed). Handler JSON: "succeeded"→"enqueued",
+    "failed"→"enqueue_failed". Zero dead references confirmed via project-wide
+    rg sweep.
+
+    (c) Commit 4044ed3d (qdrant e2e async polling):
+    tests/operational/qdrant_e2e_boxing_smoke.sh — job-polling phase between
+    Test 2 and Test 3. Polls each JobID via smoke_poll_terminal, extracts
+    clip_id from result.result_map.clip_id, populates $clip_ids_file.
+    Empty $clip_ids_file guards on Tests 3-4 prevent invalid SQL.
+    Closes PR-BATCH-REGISTER-ASYNC-CLIPID-EXTRACTION forward-pointer.
+
+    godlike/06 SSOT 3-surface lockstep: this architecture/current.yaml entry ≡
+    CHANGELOG.md ## Unreleased → ### Fixed entry ≡ AGENTS.md ## Recent
+    cross-cutting closures mirror.
+
+    godlike/07 minimum-blast-radius: 6 files across 3 commits; no
+    production-code behavior change (field renames are wire-format-only;
+    smoke tests are diagnostic-only).
+
+    Honest scope-lock (godlike/07): the pre-existing 6-item carry-forward
+    (PRE-EXISTING-BUILD-ISSUES-2026-07-04) is unchanged — NOT regressions.
+  linked_issues:
+  - id: 6c97c19c
+    owner_capability: tests/operational
+    status: shipped
+    ship_date: 2026-07-04
+  - id: f76507d0
+    owner_capability: internal/application/assets/sourcing
+    status: shipped
+    ship_date: 2026-07-04
+  - id: 4044ed3d
+    owner_capability: tests/operational
+    status: shipped
+    ship_date: 2026-07-04
