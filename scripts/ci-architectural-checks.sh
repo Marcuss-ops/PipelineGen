@@ -91,6 +91,7 @@ if [ "${1:-}" = "--self-check" ]; then
         "Check 57 (forbid ports.ScriptRecord literal outside canonical allowlist)|ports\\.ScriptRecord\\{|check_57_scriptrecord_prod_literal.go"
         "Check 55 (forbid legacy Template writes outside canonical allowlist)|Template:\\s|check_55_template_timeline_literal.go"
         "Check 55 (forbid legacy TimelineJSON writes outside canonical allowlist)|TimelineJSON:\\s|check_55_template_timeline_literal.go"
+        "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment)|t\\.Skip[a-zA-Z]*\\(|check_60_t_skip.go"
     )
 
     failed=0
@@ -3553,3 +3554,144 @@ if [ "$fail_count" -gt 0 ]; then
   exit 1
 fi
 echo "Check 59 (VLM direct-caller ban): OK (0 http.*"/vlm/" hits)"
+
+# === Check 60: forbid t.Skip without godlike/07 honest-limitation comment (forward-prevention) ===
+# PR-PR6-TEST-REACTIVATE (Wave 1 P0 #3, deadline 2026-07-15): the 2 t.Skip markers
+# in processor_persistence_test.go were removed in PR-PERSIST-PR6-CANONICAL
+# (commit d17c78ae). This gate bans NEW t.Skip(...) / t.Skipf(...) / t.SkipNow()
+# calls in that ONE test file unless preceded (within a 25-line scroll window)
+# by a `// godlike/07 honest-limitation` comment that documents the reason.
+# Scope: ONLY internal/application/scripts/adapters/processor_persistence_test.go
+# (the canonical godlike/07 zero-legacy contract test file). Other test files
+# are explicitly OUT OF SCOPE — widening the gate could block legitimate t.Skip
+# usages in unrelated packages.
+# Pattern: t\.Skip[a-zA-Z]*\( catches t.Skip(, t.Skipf(, t.SkipNow().
+# Multi-line invocations (t.Skipf(\n"long",\n"args")) are a known blind spot —
+# matches Check 55's own posture on multi-line struct literals.
+skip_hits=$(rg -n 't\.Skip[a-zA-Z]*\(' internal/application/scripts/adapters/processor_persistence_test.go 2>/dev/null || true)
+filtered_skip=""
+if [ -n "$skip_hits" ]; then
+  filtered_skip=$(echo "$skip_hits" | while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    f=$(echo "$hit" | cut -d: -f1)
+    l=$(echo "$hit" | cut -d: -f2)
+    # 25-line scroll-window lookback: check the preceding 25 lines for the
+    # godlike/07 honest-limitation marker. If found, the skip is allowed.
+    start=$((l - 25))
+    [ "$start" -lt 1 ] && start=1
+    end=$((l - 1))
+    marker=$(sed -n "${start},${end}p" "$f" 2>/dev/null | grep -c "godlike/07 honest-limitation" || true)
+    if [ "$marker" = "0" ]; then
+      echo "$hit"
+    fi
+  done)
+fi
+fail_count=0
+if [ -n "$filtered_skip" ]; then
+  echo "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment): FAIL" >&2
+  echo "  t.Skip/t.Skipf/t.SkipNow calls in processor_persistence_test.go without" >&2
+  echo "  a godlike/07 honest-limitation comment in the preceding 25 lines:" >&2
+  echo "$filtered_skip" | sed 's/^/    /' >&2
+  echo "  Fix: remove the t.Skip marker (canonical contract is zero-skip)," >&2
+  echo "  OR prepend a \`// godlike/07 honest-limitation: <reason>\` comment" >&2
+  echo "  within 25 lines before the t.Skip call." >&2
+  fail_count=$((fail_count + 1))
+fi
+if [ "$fail_count" -gt 0 ]; then
+  exit 1
+fi
+echo "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment): OK (0 unjustified t.Skip hits)"
+
+# === Check 60: forbid t.Skip without godlike/07 honest-limitation comment (forward-prevention) ===
+# PR-PR6-TEST-REACTIVATE (Wave 1 P0 #3, deadline 2026-07-15): the 2 t.Skip markers
+# in processor_persistence_test.go were removed in PR-PERSIST-PR6-CANONICAL
+# (commit d17c78ae). This gate bans NEW t.Skip(...) / t.Skipf(...) / t.SkipNow()
+# calls in that ONE test file unless preceded (within a 25-line scroll window)
+# by a `// godlike/07 honest-limitation` comment that documents the reason.
+# Scope: ONLY internal/application/scripts/adapters/processor_persistence_test.go
+# (the canonical godlike/07 zero-legacy contract test file). Other test files
+# are explicitly OUT OF SCOPE — widening the gate could block legitimate t.Skip
+# usages in unrelated packages.
+# Pattern: t\.Skip[a-zA-Z]*\( catches t.Skip(, t.Skipf(, t.SkipNow().
+# Multi-line invocations (t.Skipf(\n"long",\n"args")) are a known blind spot —
+# matches Check 55's own posture on multi-line struct literals.
+skip_hits=$(rg -n 't\.Skip[a-zA-Z]*\(' internal/application/scripts/adapters/processor_persistence_test.go 2>/dev/null || true)
+filtered_skip=""
+if [ -n "$skip_hits" ]; then
+  filtered_skip=$(echo "$skip_hits" | while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    f=$(echo "$hit" | cut -d: -f1)
+    l=$(echo "$hit" | cut -d: -f2)
+    # 25-line scroll-window lookback: check the preceding 25 lines for the
+    # godlike/07 honest-limitation marker. If found, the skip is allowed.
+    start=$((l - 25))
+    [ "$start" -lt 1 ] && start=1
+    end=$((l - 1))
+    marker=$(sed -n "${start},${end}p" "$f" 2>/dev/null | grep -c "godlike/07 honest-limitation" || true)
+    if [ "$marker" = "0" ]; then
+      echo "$hit"
+    fi
+  done)
+fi
+fail_count=0
+if [ -n "$filtered_skip" ]; then
+  echo "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment): FAIL" >&2
+  echo "  t.Skip/t.Skipf/t.SkipNow calls in processor_persistence_test.go without" >&2
+  echo "  a godlike/07 honest-limitation comment in the preceding 25 lines:" >&2
+  echo "$filtered_skip" | sed 's/^/    /' >&2
+  echo "  Fix: remove the t.Skip marker (canonical contract is zero-skip)," >&2
+  echo "  OR prepend a \`// godlike/07 honest-limitation: <reason>\` comment" >&2
+  echo "  within 25 lines before the t.Skip call." >&2
+  fail_count=$((fail_count + 1))
+fi
+if [ "$fail_count" -gt 0 ]; then
+  exit 1
+fi
+echo "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment): OK (0 unjustified t.Skip hits)"
+
+# === Check 60: forbid t.Skip without godlike/07 honest-limitation comment (forward-prevention) ===
+# PR-PR6-TEST-REACTIVATE (Wave 1 P0 #3, deadline 2026-07-15): the 2 t.Skip markers
+# in processor_persistence_test.go were removed in PR-PERSIST-PR6-CANONICAL
+# (commit d17c78ae). This gate bans NEW t.Skip(...) / t.Skipf(...) / t.SkipNow()
+# calls in that ONE test file unless preceded (within a 25-line scroll window)
+# by a `// godlike/07 honest-limitation` comment that documents the reason.
+# Scope: ONLY internal/application/scripts/adapters/processor_persistence_test.go
+# (the canonical godlike/07 zero-legacy contract test file). Other test files
+# are explicitly OUT OF SCOPE — widening the gate could block legitimate t.Skip
+# usages in unrelated packages.
+# Pattern: t\.Skip[a-zA-Z]*\( catches t.Skip(, t.Skipf(, t.SkipNow().
+# Multi-line invocations (t.Skipf(\n"long",\n"args")) are a known blind spot —
+# matches Check 55's own posture on multi-line struct literals.
+skip_hits=$(rg -n 't\.Skip[a-zA-Z]*\(' internal/application/scripts/adapters/processor_persistence_test.go 2>/dev/null || true)
+filtered_skip=""
+if [ -n "$skip_hits" ]; then
+  filtered_skip=$(echo "$skip_hits" | while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    f=$(echo "$hit" | cut -d: -f1)
+    l=$(echo "$hit" | cut -d: -f2)
+    # 25-line scroll-window lookback: check the preceding 25 lines for the
+    # godlike/07 honest-limitation marker. If found, the skip is allowed.
+    start=$((l - 25))
+    [ "$start" -lt 1 ] && start=1
+    end=$((l - 1))
+    marker=$(sed -n "${start},${end}p" "$f" 2>/dev/null | grep -c "godlike/07 honest-limitation" || true)
+    if [ "$marker" = "0" ]; then
+      echo "$hit"
+    fi
+  done)
+fi
+fail_count=0
+if [ -n "$filtered_skip" ]; then
+  echo "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment): FAIL" >&2
+  echo "  t.Skip/t.Skipf/t.SkipNow calls in processor_persistence_test.go without" >&2
+  echo "  a godlike/07 honest-limitation comment in the preceding 25 lines:" >&2
+  echo "$filtered_skip" | sed 's/^/    /' >&2
+  echo "  Fix: remove the t.Skip marker (canonical contract is zero-skip)," >&2
+  echo "  OR prepend a \`// godlike/07 honest-limitation: <reason>\` comment" >&2
+  echo "  within 25 lines before the t.Skip call." >&2
+  fail_count=$((fail_count + 1))
+fi
+if [ "$fail_count" -gt 0 ]; then
+  exit 1
+fi
+echo "Check 60 (forbid t.Skip without godlike/07 honest-limitation comment): OK (0 unjustified t.Skip hits)"
