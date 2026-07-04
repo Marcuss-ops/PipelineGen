@@ -981,7 +981,7 @@
   failure_mode: "Multipart-form upload surface verification gap. SHIPPED 2026-07-04 via Phase 9 cycle 2 closure: audit-pin disposition per godlike/06 one-canonical-owner-per-fact. 22-line ARCH-ALLOWLIST: im-001-multipart-canonical-surface audit-pin added to internal/api/images/impl.go documenting the canonical surface at clips/ingest.go::UploadVideoClip. Zero Go code changes (canonical path was already live at clips/ingest.go). The original `expected in /internal/api/images/` framing was a misattribution."
 
 - id: SEARCH-T07-LIFECYCLE-DEL
-  status: pending
+  status: done
   owner_capability: internal/application/search/ports.go
   priority: P0
   deadline: 2026-07-15

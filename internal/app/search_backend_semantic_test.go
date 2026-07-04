@@ -77,7 +77,12 @@ type mockMediaReader struct {
 	err    error
 }
 
-func (m *mockMediaReader) GetMany(_ context.Context, _ search.Actor, _ []string, _ []string) ([]search.MediaAsset, error) {
+// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the interface signature
+// changed from (ctx, actor, assetIDs, allowStates) to (ctx, actor, assetIDs).
+// The canonical ACTIVE-only filter is hardcoded at the production impl
+// (searchReadAdapter in adapters_media_search.go) — the test mock no
+// longer accepts an allowStates parameter.
+func (m *mockMediaReader) GetMany(_ context.Context, _ search.Actor, _ []string) ([]search.MediaAsset, error) {
 	return m.assets, m.err
 }
 
