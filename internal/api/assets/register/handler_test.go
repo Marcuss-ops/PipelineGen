@@ -14,15 +14,15 @@
 // results[] without invoking the orchestrator on junk input).
 //
 // Test coverage rationale:
-// - Empty URL is NOT tested here because Gin's `binding:"required"`
-//   validator intercepts `{"url": ""}` BEFORE the preflight gate, so
-//   the preflight's ExtractVideoID empty-URL branch is unreachable
-//   via the standard request flow. Gin's response surfaces the
-//   "Field validation for 'URL' failed on the 'required' tag" message
-//   (covered at the body-binding layer; not the preflight gate).
-// - Each invalid-URL test below exercises a distinct branch of
-//   pkg/urlutil/urlutil.go::ExtractVideoID that IS reachable when the
-//   URL field is non-empty but malformed.
+//   - Empty URL is NOT tested here because Gin's `binding:"required"`
+//     validator intercepts `{"url": ""}` BEFORE the preflight gate, so
+//     the preflight's ExtractVideoID empty-URL branch is unreachable
+//     via the standard request flow. Gin's response surfaces the
+//     "Field validation for 'URL' failed on the 'required' tag" message
+//     (covered at the body-binding layer; not the preflight gate).
+//   - Each invalid-URL test below exercises a distinct branch of
+//     pkg/urlutil/urlutil.go::ExtractVideoID that IS reachable when the
+//     URL field is non-empty but malformed.
 package register
 
 import (
@@ -31,6 +31,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -42,6 +43,13 @@ import (
 // nil middleware installed via r.POST("/path", h.Idempotency, handler).
 func newTestHandler() *Handler {
 	return NewHandler(nil, zap.NewNop(), nil)
+}
+
+// newTestHandlerWithSvc returns a handler with a non-nil svc. Used by
+// the invariant-pin test where svc=nil would suppress the gate that
+// fires AFTER the svc call (a regression would NOT panic on svc=nil).
+func newTestHandlerWithSvc(svc *sourcing.Service) *Handler {
+	return NewHandler(svc, zap.NewNop(), nil)
 }
 
 // newTestRouter mounts the handler's canonical routes on a fresh
@@ -142,4 +150,30 @@ func TestRegisterFromYouTube_ValidURL_YouTuBeShortURL_ReturnsSVCPassthrough(t *t
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	require.Contains(t, w.Body.String(), "not wired")
+}
+
+// TestRegisterFromYouTube_PreflightGated_BeforeSVCCall pins the canonical
+// bug surface for the pre-fix vs post-fix behavior change. The empty svc
+// is LOAD-BEARING — if a future agent regresses by moving the preflight
+// AFTER svc call, the empty Service panics on its nil deps so NotPanics
+// fails. DO NOT replace newTestHandlerWithSvc with newTestHandler (svc=nil
+// would suppress the regression signal).
+func TestRegisterFromYouTube_PreflightGated_BeforeSVCCall(t *testing.T) {
+	h := newTestHandlerWithSvc(&sourcing.Service{})
+	r := newTestRouter(h)
+
+	body := `{"url": "https://youtube.com/junk/path/that/looks/canonical"}`
+	req := httptest.NewRequest("POST", "/api/media/register-from-youtube", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	// NotPanics PROVES the preflight gate short-circuited BEFORE reaching
+	// svc.RegisterFromYouTube. If the gate ever regresses (e.g. moved after
+	// svc call), the test will FAIL with a panic from the empty service.
+	require.NotPanics(t, func() {
+		r.ServeHTTP(w, req)
+	}, "preflight must gate svc dispatch; regression would panic on dummySvc")
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "invalid YouTube URL")
 }
