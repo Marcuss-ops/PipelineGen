@@ -3579,3 +3579,29 @@ if __name__ == '__main__':
   usage_metric: "0 production callers at deprecation time; 0 active code references after removal"
   status: removed
   migration_phase: CONTRACT
+  # ── 21. PR-CrossPackage-IndexingStatus-§12-5 — sourcing.IndexingStatus alias retired ──
+  - id: PR-CrossPackage-IndexingStatus-§12-5
+    owner_capability: internal/application/assets/sourcing
+    exact_symbol: "sourcing.IndexingStatus type-alias (was: type IndexingStatus = domain.SourcingIndexStatus)"
+    file: internal/application/assets/sourcing/types.go
+    file_line: 30 (pre-CONTRACT)
+    replacement: "domain.SourcingIndexStatus (canonical typed-enum at internal/domain/sourcing/index_status.go)"
+    introduction_date: 2026-06
+    removal_date: 2026-07-04
+    tracking_issue: "architecture/current.yaml#id-29 linked_issues.PR-CrossPackage-IndexingStatus-§12-5 (deadline 2026-08-15, shipped 2026-07-04)"
+    compatibility_test: |
+      Four-layer defence:
+        (a) rg 'type IndexingStatus' internal/application/assets/sourcing/types.go returns 0.
+        (b) rg 'IndexingStatus' internal/ --glob '*.go' --glob '!*_test.go' returns only domain.SourcingIndexStatus references.
+        (c) go build ./internal/application/assets/sourcing/... exits 0.
+        (d) TestSourcingAliasCohesion expects 0 declarations (types_test.go).
+    usage_metric: "4 production sites migrated (types.go field + youtube/service.go x2 + register/handler.go); 0 alias callers remain; net delta = -1 type-alias + 1 deprecation record"
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      §12-5 cross-package IndexingStatus retirement in 4 phases:
+      EXPAND: domain.SourcingIndexStatus created as canonical typed-enum.
+      BACKFILL: RegisterClipResult.IndexingStatus field type changed to domain.SourcingIndexStatus.
+      CUTOVER: types_test.go updated, deprecation record added.
+      CONTRACT: alias physically removed from types.go.
+      Forward-pointer PR-CrossPackage-IndexingStatus-§12-5 closed.
