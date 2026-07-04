@@ -1,5 +1,9 @@
 package stockpipeline
 
+import (
+	"math/rand"
+)
+
 // InterleaveClips takes a slice of clip groups (one slice per source
 // video), shuffles each source-group internally to preserve dynamic
 // randomness, then interleaves the source-groups step-by-step so the
@@ -33,7 +37,15 @@ func InterleaveClips(clipsBySource [][]Clip) []Clip {
 		}
 		shuffled := make([]Clip, len(list))
 		copy(shuffled, list)
-		rng.Shuffle(len(shuffled), func(i, j int) {
+		// P2 fix (July 2026): deterministic per-group shuffle replaces
+		// package-level var rng (was non-deterministic time.Now().UnixNano()).
+		// Seed from first clip's SourceID for reproducibility across runs.
+		groupSeed := hashFnv64(list[0].SourceID)
+		for i := 1; i < len(list); i++ {
+			groupSeed ^= hashFnv64(list[i].SourceID)
+		}
+		localRng := rand.New(rand.NewSource(groupSeed))
+		localRng.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 		})
 		// Drop non-Succeeded entries from the active pool — the

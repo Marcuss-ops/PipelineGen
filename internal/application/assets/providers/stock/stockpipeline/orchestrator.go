@@ -510,8 +510,16 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 			// MarkFailed is best-effort: the typed sentinel is
 			// what callers errors.Is on, not the row's LastError.
 			// We still call MarkFailed so the §12-3 audit log
-			// captures the failure path.
-			_ = o.stepStore.MarkFailed(ctx, key, runErr.Error())
+			// captures the failure path. P3 fix: log MarkFailed
+			// errors at WARN rather than silently swallowing.
+			if markErr := o.stepStore.MarkFailed(ctx, key, runErr.Error()); markErr != nil {
+				if o.executorLog != nil {
+					o.executorLog.Warn("orchestrator: MarkFailed failed (checkpoint persistence lost)",
+						zap.String("step", step.Name()),
+						zap.String("job_id", o.cfg.JobId),
+						zap.Error(markErr))
+				}
+			}
 			return nil, runErr
 		}
 		if err := o.stepStore.MarkCompleted(ctx, key, nil, nil); err != nil {
