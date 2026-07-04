@@ -4751,6 +4751,36 @@
     \ entry is documentation-\nonly (no production code change in this commit). The 3-surface\nlockstep is the canonical wave-tracker surface; the per-type\nPRs (one per Path A item, mirror b8c96035) land\
     \ incrementally\non main with targeted gofmt + go vet + go build + go test\ngates per AGENTS.md Git-Lesson-2.\n"
   linked_issues:
+
+  - id: SEARCH-T07-002
+    owner_capability: internal/application/search
+    status: pending
+    deadline: 2026-07-15
+    notes: |
+      Phase 9 cycle 2 closure of the godlike/06 one-canonical-owner-per-fact
+      invariant at the search capability hydration boundary. The
+      `MediaReadRepository.GetMany` interface signature lost the
+      `allowStates []string` parameter; the canonical ACTIVE-only filter is
+      now hardcoded at the production impl via the SSOT constant
+      `search.SearchableLifecycleStates`. The interface is intentionally
+      drift-free per godlike/06 -- the search capability owns the
+      searchable-projection semantics; the constant is the SOLE canonical
+      allowlist surface. 5 new TDD tests in
+      `internal/application/search/ports_lifecycle_test.go` lock the
+      contract: 4 semantic tests (ACTIVE pass-through + 3 reject for
+      DELETED/DELETE_REQUESTED/DRIVE_DELETE_PENDING) + 1 reflection-based
+      signature lock that pins the 3-param signature (`.Elem()` +
+      `AssignableTo` for rename resilience). 1 caller updated
+      (`internal/app/search_backend_semantic.go:244`) + 1 build break
+      fixed (`internal/app/search_backend_semantic_test.go:80`
+      mockMediaReader.GetMany from 4-param to 3-param). Forward-pointer:
+      `PR-SEARCH-T07-LIFECYCLE-DEL-IMPL-LEVEL-TEST` (deadline 2026-08-15)
+      for a future impl-level test that exercises the production filter
+      logic with a stub `*assets.ClipsRepository`. Closes
+      architecture/issues.yaml#SEARCH-T07-LIFECYCLE-DEL (status: done). 2
+      atomic commits per Q16 2-PR split: PR 1 = fix + tests + 3-surface
+      lockstep with current.yaml as `status: pending`; PR 2 = tracking-flip
+      to `status: shipped` with `ship_sha`.
   - id: PR-COMPLETE-WORKER-FIX-TYPE-MEDIA-STOCK
     owner_capability: internal/application/assets/providers/stock/stockpipeline
     status: shipped
@@ -5117,14 +5147,14 @@
   exit_signal: false
   deadline: "2026-08-15"
   description: |
-    Review del 2026-07-04 (Marcuss-ops): priorità false-success-first
-    SOPRA a split estetico. 4 P0 dove il sistema può mentire
+    Review del 2026-07-04 (Marcuss-ops): prioritï¿½ false-success-first
+    SOPRA a split estetico. 4 P0 dove il sistema puï¿½ mentire
     (Qdrant outbox-completed-no-write, generated search 200-vuoto,
     monitor watermark incoerente, stock error swallow). 5 blocchi
     operativi: P0 fix (Blocco 1) + stock correctness+split (Blocco 2)
     + dead code removal (Blocco 3) + dedup endpoint (Blocco 4) +
     CI YAML fix (Blocco 5). 15 linked_issues ordinate per
-    priorità operativa. Cross-validation post-wave via
+    prioritï¿½ operativa. Cross-validation post-wave via
     PR-CUT-FALSE-SUCCESS-HOTSPOT-CROSSREF (deadline 2026-08-15)
     se emergono hotspot ad alta frequenza non catturati qui.
   linked_issues:

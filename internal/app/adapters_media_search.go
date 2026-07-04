@@ -43,7 +43,8 @@ func newSearchReadAdapter(repo *assets.ClipsRepository) search.MediaReadReposito
 
 // GetMany fetches assets by ID from SQLite. Each asset is mapped
 // into a search.MediaAsset. Rows whose LifecycleState is not
-// in allowStates are silently dropped (the Qdrant adapter already
+// in search.SearchableLifecycleStates (the canonical ACTIVE-only
+// allowlist) are silently dropped (the Qdrant adapter already
 // applies this filter upstream; the post-hydration guard is
 // defence-in-depth per godlike/07).
 //
@@ -51,20 +52,23 @@ func newSearchReadAdapter(repo *assets.ClipsRepository) search.MediaReadReposito
 // QDRANT-001 multi-tenancy but is currently unused (the
 // media_assets.workspace_id column doesn't exist yet).
 //
-// SEARCH-T07-001 fail-closed default (2026-07-04, Phase 9 closure):
-// when the caller passes an empty `allowStates`, we default to
-// `search.SearchableLifecycleStates` (the canonical search-owned
-// allowlist = []string{"ACTIVE"}) instead of bypassing the filter.
-// This closes the fail-open path where `len(allowSet) > 0` would
-// short-circuit the guard and let deleted/archived/pending rows
-// reach the semantic backend. godlike/07 no-fake-availability:
-// the canonical allowlist is the single source of truth — callers
-// that want to override MUST pass the explicit allowlist slice.
+// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the `allowStates`
+// parameter is REMOVED. The canonical ACTIVE-only filter is
+// hardcoded at the call site (this implementation). The interface
+// boundary is intentionally drift-free per godlike/06
+// one-canonical-owner-per-fact — the search capability owns
+// the searchable-projection semantics and the interface exposes
+// no knob to override the canonical ACTIVE-only filter.
+//
+// SEARCH-T07-001 fail-closed default (2026-07-04, Phase 9 closure,
+// SUPERSEDED by SEARCH-T07-LIFECYCLE-DEL): the fail-open path
+// where `len(allowSet) > 0` short-circuited the lifecycle filter
+// is now impossible at the interface level — callers cannot pass
+// an empty allowStates because there is no allowStates parameter.
 func (a *searchReadAdapter) GetMany(
 	ctx context.Context,
 	_ search.Actor,
 	assetIDs []string,
-	allowStates []string,
 ) ([]search.MediaAsset, error) {
 	if a == nil || a.repo == nil {
 		return nil, fmt.Errorf("searchReadAdapter: not wired")
@@ -73,16 +77,16 @@ func (a *searchReadAdapter) GetMany(
 		return nil, nil
 	}
 
-	// SEARCH-T07-001 fail-closed default: empty allowStates → canonical
-	// SearchableLifecycleStates. Closes the pre-PR fail-open path
-	// where `len(allowSet) > 0` short-circuited the lifecycle filter.
-	if len(allowStates) == 0 {
-		allowStates = search.SearchableLifecycleStates
-	}
-
-	// Build the allow-set for O(1) lookup.
-	allowSet := make(map[string]bool, len(allowStates))
-	for _, s := range allowStates {
+	// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the canonical
+	// ACTIVE-only filter is pinned at the call site. This is the
+	// SOLE lifecycle_state filter surface for the search capability
+	// per godlike/06 one-canonical-owner-per-fact. Implementations
+	// MUST NOT introduce a different allowlist; the constant
+	// `search.SearchableLifecycleStates` is the SSOT and is
+	// updated atomically with the lifecycle_state enum
+	// (internal/domain/asset/asset_types.go::LifecycleState).
+	allowSet := make(map[string]bool, len(search.SearchableLifecycleStates))
+	for _, s := range search.SearchableLifecycleStates {
 		allowSet[s] = true
 	}
 
@@ -98,7 +102,7 @@ func (a *searchReadAdapter) GetMany(
 		// Defence-in-depth: filter by lifecycle_state allowlist.
 		// The primary enforcement lives in the Qdrant adapter;
 		// this guard catches SQL drift or mock adapters that
-		// ignore allowStates.
+		// ignore SearchableLifecycleStates.
 		if !allowSet[string(row.LifecycleState)] {
 			continue
 		}

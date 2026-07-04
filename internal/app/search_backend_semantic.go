@@ -238,7 +238,10 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 
 	// ── 8. SQLite hydration ────────────────────────────────────
 	ws := search.Actor{WorkspaceID: scope.WorkspaceID}
-	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs, search.SearchableLifecycleStates)
+	// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the canonical ACTIVE-only
+	// filter is hardcoded at the MediaReadRepository impl. Caller no
+	// longer threads the allowStates parameter through the interface.
+	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs)
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: hydrate: %w", err)
 	}

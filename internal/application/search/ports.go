@@ -267,12 +267,24 @@ type EmbeddingChannelRegistry interface {
 // isolation needs no separate project scoping per godlike/06.
 
 // MediaReadRepository fetches canonical asset metadata from SQLite.
-// Per QDRANT-004 PR3 (June 2026): the interface takes an allowStates
-// []string argument so hydration can apply the lifecycle_state
-// allowlist at the SQL layer (primary defence). The post-query guard
-// in the search.SemanticBackend layers defence-in-depth on top —
-// without the SQL pre-filter, a future hydrate-on-read drift could
-// re-leak deleted/archived/pending rows.
+//
+// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15, Phase 9 cycle 2 closure):
+// the interface NO LONGER takes an `allowStates []string` parameter.
+// The canonical ACTIVE-only filter is owned by the search capability
+// per godlike/06 one-canonical-owner-per-fact — exposing the
+// parameter at the interface boundary re-opens the drift class that
+// SEARCH-T07-001 narrowly closed (the pre-PR fail-open path where
+// `len(allowSet) > 0` short-circuited the lifecycle filter and let
+// deleted/archived/pending rows reach the semantic backend). The
+// canonical searchable-projection semantics are pinned at the
+// implementation (see internal/app/adapters_media_search.go +
+// `SearchableLifecycleStates` for the SSOT constant) — the interface
+// is intentionally drift-free.
+//
+// The post-query guard in search.SemanticBackend layers defence-in-
+// depth on top of the SQL pre-filter — without both, a future
+// hydrate-on-read drift could re-leak DELETED/DELETE_REQUESTED/
+// DRIVE_DELETE_PENDING rows.
 //
 // Commit 3-A promotion (July 2026): the canonical interface takes
 // `search.Actor` (NOT the legacy `mediasearch.WorkspaceContext`). The
@@ -288,7 +300,6 @@ type MediaReadRepository interface {
 		ctx context.Context,
 		actor Actor,
 		assetIDs []string,
-		allowStates []string,
 	) ([]MediaAsset, error)
 }
 
@@ -319,7 +330,17 @@ type AssetDeliveryService interface {
 // The single value is ACTIVE; pre-<aural>-migrations the list carried
 // legacy lowercase values (\"active\", \"searchable\") pruned by data
 // migrations. Anything outside this set — STAGING, PROCESSING,
-// DELETE_PENDING, DELETED, ERROR — MUST be filtered both in SQL
-// (primary, via `MediaReadRepository.GetMany(allowStates=...)`) and
-// in the post-query guard (defence-in-depth, in semanticSearchBackend).
+// DELETE_PENDING, DELETE_REQUESTED, DRIVE_DELETE_PENDING,
+// INDEX_DELETE_PENDING, DELETED — MUST be filtered both in SQL
+// (primary, via the canonical MediaReadRepository.GetMany impl,
+// which hardcodes this SSOT constant at the call site) and in the
+// post-query guard (defence-in-depth, in semanticSearchBackend).
+//
+// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the constant is now the
+// SSOT for the SQL pre-filter at the call site. Implementations of
+// MediaReadRepository MUST NOT expose a `allowStates` parameter at
+// the interface boundary — the canonical ACTIVE-only semantics are
+// pinned at the implementation (composition-root adapter) so the
+// interface is intentionally drift-free per godlike/06
+// one-canonical-owner-per-fact.
 var SearchableLifecycleStates = []string{"ACTIVE"}
