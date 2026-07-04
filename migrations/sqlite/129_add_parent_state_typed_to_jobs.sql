@@ -1,0 +1,47 @@
+-- PR-VO-PARENT-STATE-COLUMN (P1.2, deadline 2026-07-25)
+-- (PR-VO-PARENT-AGGREGATOR-SPLIT, P0 #4 in VO-DECOMPOSITION-2026-07-04, deadline 2026-08-01).
+--
+-- Adds the typed parent_state_typed column to the jobs table.
+-- The column is TEXT, byte-equivalent with the voiceover.ParentState
+-- string values ("waiting_children" / "partial_success" / "failed" /
+-- "succeeded"). The DEFAULT '' (empty string) preserves forward-compat
+-- with existing rows: pre-migration rows have an empty typed column,
+-- and the SQL layer fallback reads the JSON key resultMap["parent_state"]
+-- when the typed column is empty (transition window contract).
+--
+-- EXPAND phase (this migration):
+--   1. The typed column is ADDED to the schema.
+--   2. Writers CONTINUE to write resultMap["parent_state"] in the
+--      JSON result column (back-compat with existing readers).
+--   3. The SQL layer implementation of FinalizeAggregateParent
+--      (in internal/infrastructure/database/sqlite/jobs/aggregate_parent.go)
+--      is a forward-pointer: PR-P1.2-SQL-DUAL-WRITE, deadline 2026-08-15.
+--      The follow-up PR will read resultMap["parent_state"] and write
+--      the same value to parent_state_typed in the SAME transaction.
+--
+-- BACKFILL phase (forward-pointer, deadline 2026-08-15):
+--   - A one-shot backfill CLI reads resultMap["parent_state"] from
+--     existing rows + writes the value to parent_state_typed.
+--   - Idempotent (re-runnable; no-op on already-backfilled rows where
+--     parent_state_typed != '').
+--
+-- CUTOVER phase (forward-pointer, deadline TBD):
+--   - Writers stop writing the JSON key resultMap["parent_state"].
+--   - Readers prefer the typed column; the JSON key reading is
+--     kept as a fallback for the transition window.
+--   - The JSON key is eventually removed from the wire shape.
+--
+-- godlike/07 minimum-blast-radius: pure additive migration.
+-- - No column drops.
+-- - No column renames.
+-- - DEFAULT '' ensures existing rows are valid post-migration.
+-- - The transition window contract (read JSON key when typed column
+--   is empty) preserves back-compat for ALL existing readers.
+--
+-- godlike/06 SSOT: the typed column name lives in
+-- internal/application/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn
+-- (SINGLE canonical owner per fact). This SQL file references the
+-- column by name; any future rename MUST be coordinated with the
+-- Go constant.
+
+ALTER TABLE jobs ADD COLUMN parent_state_typed TEXT NOT NULL DEFAULT '';

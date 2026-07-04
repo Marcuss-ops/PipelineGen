@@ -1,4 +1,6 @@
-// Package jobs — parent_aggregator.go (FASE 1 wiring, July 2026).
+// Package jobs — parent_aggregator.go (FASE 1 wiring, July 2026;
+// PR-VO-PARENT-AGGREGATOR-SPLIT, P0 #4 in VO-DECOMPOSITION-2026-07-04,
+// deadline 2026-08-01).
 //
 // ParentAggregator is the background poller that reads parent
 // voiceover.generate jobs with parent_state=waiting_children or
@@ -21,6 +23,16 @@
 // read a stale RUNNING/LEASED status for the triggering child.
 // A single-threaded ticker avoids the read-modify-write race
 // from concurrent child completions on SQLite.
+//
+// 4-file split (PR-VO-PARENT-AGGREGATOR-SPLIT, P0 #4):
+//   - parent_aggregator.go (this file) — THIN orchestrator: ParentAggregator
+//     struct + NewParentAggregator + Start + Tick + aggregateOne + finalizeParent.
+//   - parent_eligibility.go — cache (§15.2) + IsParentAwaitingAggregation gate
+//   - ZeroChildrenAggregateResult short-circuit.
+//   - parent_state_machine.go — domainToVoiceoverParentState
+//     (the 5-state → 4-state wire-shape mapping).
+//   - parent_aggregator_state.go — P1.2 typed column constants
+//     (JobParentStateColumn) + dual-write contract documentation.
 package jobs
 
 import (
@@ -93,17 +105,6 @@ type AggregatorJobsService interface {
 
 // Compile-time assertion: *appjobs.Service satisfies AggregatorJobsService.
 var _ AggregatorJobsService = (*appjobs.Service)(nil)
-
-// cachedChildTerminalState records the terminal state of a child
-// from the previous tick so the retry tick can skip re-querying it
-// via Get(). Only terminal children are cached; non-terminal children
-// are always re-queried. The cache is cleared when the parent is
-// finalised (via FinalizeAggregateParent) or when the aggregator restarts.
-type cachedChildTerminalState struct {
-	status   job.Status
-	required bool
-	errStr   string
-}
 
 // ParentAggregator is the background poller that re-finalises parent
 // jobs once all their children have reached terminal status.
@@ -218,7 +219,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	}
 
 	// Step 2: only process parents awaiting aggregation.
-	if !parentResult.IsAwaitingAggregation() {
+	if !IsParentAwaitingAggregation(&parentResult) {
 		return nil
 	}
 
@@ -233,11 +234,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	}
 	childIDs = filtered
 	if len(childIDs) == 0 {
-		a.finalizeParent(ctx, j.ID, VoiceoverAggregateResult{
-			ParentState:         voiceover.ParentPartialSuccess,
-			TotalChildren:       0,
-			StateMachineVersion: 0,
-		})
+		a.finalizeParent(ctx, j.ID, ZeroChildrenAggregateResult())
 		return nil
 	}
 
@@ -262,15 +259,11 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		var childErr string
 		var childRequired bool
 
-		prev, wasCached := a.previouslyTerminal[j.ID]
-		if cached, ok := prev[childID]; wasCached && ok {
+		if cached, wasCached := loadCachedTerminalChild(a.previouslyTerminal, j.ID, childID); wasCached {
 			status = cached.status
 			childErr = cached.errStr
 			childRequired = cached.required
-			a.deps.Logger.Debug("ParentAggregator: skipping Get for already-terminal child (cache hit)",
-				zap.String("parent_job_id", j.ID),
-				zap.String("child_job_id", childID),
-				zap.String("cached_status", string(status)))
+			logCacheHit(a.deps.Logger, j.ID, childID, string(status))
 		} else {
 			childJob, err := a.deps.JobsSvc.Get(ctx, childID)
 			if err != nil {
@@ -347,14 +340,11 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 			if a.previouslyTerminal == nil {
 				a.previouslyTerminal = make(map[string]map[string]cachedChildTerminalState)
 			}
-			if a.previouslyTerminal[j.ID] == nil {
-				a.previouslyTerminal[j.ID] = make(map[string]cachedChildTerminalState)
-			}
-			a.previouslyTerminal[j.ID][childID] = cachedChildTerminalState{
+			storeCachedTerminalChild(a.previouslyTerminal, j.ID, childID, cachedChildTerminalState{
 				status:   status,
 				required: childRequired,
 				errStr:   childErr,
-			}
+			})
 		}
 	}
 
@@ -421,9 +411,7 @@ func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID strin
 	// Clear the terminal-child cache unconditionally — once we attempt
 	// FinalizeAggregateParent, the cached state is no longer needed regardless of
 	// outcome (success, idempotent replay, or CAS conflict).
-	if a.previouslyTerminal != nil {
-		delete(a.previouslyTerminal, parentJobID)
-	}
+	clearCachedTerminalChildren(a.previouslyTerminal, parentJobID)
 
 	if err := a.deps.JobsSvc.FinalizeAggregateParent(ctx, parentJobID, targetStatus, resultMap, errMsg, agg.StateMachineVersion); err != nil {
 		if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
@@ -447,23 +435,6 @@ func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID strin
 		zap.Int("version", agg.StateMachineVersion))
 }
 
-// domainToVoiceoverParentState maps the domain 5-state machine result
-// to the voiceover 4-state result enum for wire-shape back-compat.
-// Succeeded with optional failures maps to partial_success so the
-// API response distinguishes "all succeeded" from "succeeded with
-// warnings".
-func domainToVoiceoverParentState(sm *job.StateMachine) voiceover.ParentState {
-	switch sm.State() {
-	case job.ParentStateSucceeded:
-		if len(sm.Failed()) > 0 {
-			// Some optional children failed — succeeded with warnings.
-			return voiceover.ParentPartialSuccess
-		}
-		return voiceover.ParentSucceeded
-	case job.ParentStateFailedTerminal:
-		return voiceover.ParentFailed
-	default:
-		// Non-terminal state passed to mapping — defensive fallback.
-		return voiceover.ParentPartialSuccess
-	}
-}
+// domainToVoiceoverParentState moved to parent_state_machine.go
+// (PR-VO-PARENT-AGGREGATOR-SPLIT, P0 #4 in VO-DECOMPOSITION-2026-07-04).
+// See parent_state_machine.go for the canonical implementation.
