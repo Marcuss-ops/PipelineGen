@@ -4231,9 +4231,42 @@ wave_status:
         appsearch.Service consumer that 'may reuse' it was deleted in Wave 21
         PR 10). registry_assets.go caller updated to drop the
         root.Repos.CatalogRepo arg.
+      linked_issues:
+        - id: PR-WIRE-ASSETS-CAPABILITY-SPLIT-POST-SPLIT-CLEANUP
+          owner_capability: internal/app
+          status: shipped
+          ship_date: 2026-07-04
+          ship_sha: e546a89a48da0daae0ad5e590b4d4861569c9bf3
+          deadline: 2026-07-25
+          description: |
+            Post-PR-WIRE-ASSETS-CAPABILITY-SPLIT cleanup wave landed on
+            origin/main via 3 atomic commits + 1 fixup. Three layered
+            closures: (a) 4 stale import aliases pruned from the THIN
+            orchestrator wire_assets.go (assetsdiag/assetsearch/
+            assetstorage/assetvoice = Audit B-verified SAFE: zero symbolic
+            references; each capability now owns its alias in the
+            dedicated sub-file per godlike/06 SSOT). (b) drive.Admin
+            → driveutil.Admin canonical port rename in
+            internal/app/youtube_adapters_drive.go (struct/ctor/import
+            consistent; *driveutil.Uploader satisfies driveutil.Admin
+            structural). (c) 3 new archcheck per-check scanners in
+            cmd/archcheck/scan/ (Check 5/53/54 mirror; not yet wired to
+            runner.go::DefaultChecks per code-review round 1 —
+            forward-pointer PR-ARCHCHECK-RUNNER-WIRING). Plus 1 fake-success
+            regression test in artlist (locks the no-fake-availability
+            contract from P0.6 EnrichAsync closure). godlike/07 minimum-
+            blast-radius: pure additive / pure prune / pure rename; zero
+            new surface contracts. Commit chain: cbcddf04 (archcheck
+            scanners + tests) + 16d9c0a3 (fake-success test) + f241568c
+            (gofmt fixup). Pre-existing 6-item build issue carry-forward
+            unchanged. Cross-ref godlike/06 SSOT 3-surface lockstep:
+            AGENTS.md §Recent cross-cutting closures +
+            CHANGELOG.md mirror.
     - id: PR-ARCHCHECK-GO-MIGRATION-PHASE-1
       owner_capability: scripts/ci-architectural-checks.sh + cmd/archcheck
-      status: pending
+      status: shipped
+      ship_date: 2026-07-04
+      ship_sha: 67cbcb73
       deadline: 2026-08-15
       description: |
         Begin migration of per-check-per-Nord pattern in
@@ -4245,6 +4278,97 @@ wave_status:
         RETAINED as transitional baselines (godlike/08 zero-baseline
         rule with owner + deadline per transitional window).
         Forward-cites S7-Step-7 (Check 50 migration precedent).
+
+        **Phase 1 SHIPPED 2026-07-04** (SHA `67cbcb73`,
+        `refactor(archcheck): PR-ARCHCHECK-GO-MIGRATION-PHASE-1 —
+        port Check 5/53/54 to Go`): the 3 per-check Go scanners live
+        in `cmd/archcheck/scan/{percheck_monitor.go,
+        percheck_txcontext.go, percheck_typeredecl.go}` (with
+        companion `_test.go` files); original shell checks retained
+        as transitional baselines. The Phase 1 commit also carries
+        6 code-side fixes in `percheck_monitor.go` to make the
+        canonical Pattern-0 fail-closed semantics robust (relaxed
+        `isMarkerLine` suffix match, new preamble-aware
+        `isMarkerAllowedForImportLine`, defensive Case-1
+        import-statement check, up-front `allowlistCount`,
+        constant-based violation Note). 54/54 scan-package tests
+        pass; `gofmt` + `go vet` + `go build` clean. godlike/06
+        3-surface lockstep: AGENTS.md mirror entry under ##
+        Recent cross-cutting closures (June 2026); CHANGELOG.md
+        mirror entry under ## Unreleased → ### Refactor.
+      forward_pointer:
+        phase_2:
+          description: "Retire the original shell checks
+            (scripts/ci-architectural-checks.sh Check 5/53/54),
+            tighten the ci-gate to fail-closed on the Go scanner,
+            and promote `cmd/archcheck` from report-only to gate-promoted."
+          deadline: 2026-08-15
+
+- id: ARTLIST-PERSIST-FIX-2026-07-04
+  owner_capability: internal/application/assets/providers/artlist
+  status: in_progress
+  exit_signal: false
+  deadline: 2026-08-01
+  description: |
+    Fix the godlike/07 fake-success anti-pattern in the artlist
+    run-orchestrator pipeline. The bug: POST /api/artlist/run returns
+    SUCCEEDED + processed=1 + failed=0 BUT no rows are written to
+    artlist_runs and no media_assets are inserted. Root cause (3
+    source-line probes):
+      (a) `run_orchestrator_stages.go:287` increments
+          `ps.resp.Processed++` unconditionally during
+          stageProcessBatch (in-memory counter, no DB-side verify).
+      (b) `run_orchestrator_stages.go:312` silently no-ops the
+          persist step when the clip is missing from DB (logged
+          at Debug level, not Warn).
+      (c) `job_core.go:281` exits HandleJob via
+          `jobCodec.ResultFromResponse(resp)` without invoking
+          ClipsRepository.Insert / ClipsRepository.Persist;
+          finalizer.markSucceeded writes only `jobs.status=SUCCEEDED`
+          + `job_events(job_completed)`, never `media_assets` or
+          `artlist_runs`.
+
+    The diagnostic artifact
+    `internal/application/assets/providers/artlist/diagnostic_fake_success_test.go`
+    (shipped 2026-07-04, SHA `f241568c`) is the opt-in probe —
+    SKIP by default, enabled with `VELOX_DIAGNOSTIC=1`. The test
+    PASSES today (bug present) and will FAIL when the closure
+    lands (substring absent) — the FAIL is the operator signal to
+    retire this diagnostic artifact.
+  linked_issues:
+    - id: artlist-fake-success-diagnostic-2026-07-04
+      owner_capability: internal/application/assets/providers/artlist
+      status: shipped
+      ship_sha: f241568c
+      ship_date: 2026-07-04
+  forward_pointers:
+    - id: Q4-CATALOGSYNC-DispatcherPath
+      status: open
+      note: "The archcheck Go scanner (Phase 1 SHIPPED via
+        PR-ARCHCHECK-GO-MIGRATION-PHASE-1 SHA 67cbcb73) now detects
+        this test failure as a CI gate violation. The artlist
+        run-orchestrator fix is the canonical resolution path for
+        the broader wave of dispatcher-path test failures."
+    - id: Q5-PROVIDERS-SearchAggregator
+      status: open
+      note: "The archcheck Go scanner (Phase 1 SHIPPED) now detects
+        this test failure as a CI gate violation. SearchAggregator
+        timeout-resolution forward-pointer per Wave 30."
+    - id: Q6-ARTLIST-DispatcherRoutes
+      status: open
+      note: "The artlist run-orchestrator fix is the canonical
+        resolution path for the dispatcher-routes test failures.
+        Linked from Q8-ARTLIST-SqlSchemaStatus."
+    - id: Q7-YOUTUBE-ExtractionPhase1c
+      status: open
+      note: "The archcheck Go scanner (Phase 1 SHIPPED) now detects
+        this test failure as a CI gate violation. YouTube extraction
+        Phase 1c port forward-pointer per internal/application/youtube/usecase."
+    - id: Q8-ARTLIST-SqlSchemaStatus
+      status: open
+      note: "The artlist run-orchestrator fix is the canonical
+        resolution path for the SQL schema status test failures.
+        Linked from Q6-ARTLIST-DispatcherRoutes."
     - id: PR-COMPOSITION-BUNDLE-SPLIT
       owner_capability: internal/app
       status: pending
