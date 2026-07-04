@@ -8,12 +8,14 @@
 //   - UpdateOrigin backfill path.
 //   - DELETE CASCADE: deleting a media_assets row drops its detail row.
 //   - Dual-write branching in AddImage (origin=generated retrieves
-//     detail row; origin='' skips; origin=retrieved routes to retrieved).
+//     detail row; origin=” skips; origin=retrieved routes to retrieved).
 package assets
 
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"reflect"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3" // AGENTS.md driver lock (mattn/go-sqlite3)
@@ -287,3 +289,187 @@ func TestUpsertAssetIDEmptyReturnsError(t *testing.T) {
 // the new helpers are transitively exercised by the round-trip + CASCADE
 // tests above, and the type system already pins their existence at compile
 // time. Removed for minimalism.
+
+// ── B6 SSOT property tests for scanImageAssetFromRow ───────────────────
+// B6 refactor: scanImageAsset (Row-shaped) + scanImageAssetRows
+// (Rows-shaped) were byte-equivalent duplicates. They collapse into one
+// typed-(structural-interface) helper, scanImageAssetFromRow, that
+// accepts any SQL scanner implementing `interface{ Scan(dest ...any)
+// error }`. The 3 property tests below pin the invariants the helper
+// must satisfy independent of the scanner concrete type, so future
+// drift on either path is a failing test instead of silent byte-drift.
+
+// errScanner is a hand-rolled test fixture that satisfies
+// `interface{ Scan(dest ...any) error }` and returns a synthetic error
+// from Scan. Used by TestScanImageAssetFromRow_ScanErrorPropagation to
+// verify the helper propagates SQL errors without silent mask.
+type errScanner struct {
+	called int
+}
+
+func (e *errScanner) Scan(dest ...any) error {
+	e.called++
+	return errors.New("synthetic scan error: scanImageAssetFromRow must propagate")
+}
+
+// selectImageAssetProjection is the canonical SELECT projection that
+// the 5 production call sites share (GetImageByHash / GetByID /
+// GetByDriveFileID / ListImagesBySubject / ListAll all use the same
+// 11-column list). DRY-ing it into a constant so the property tests
+// stay aligned with production code.
+const selectImageAssetProjection = `SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider FROM media_assets`
+
+// seedFullImageAsset inserts a media_assets row with all 11 columns
+// populated so the property tests have a non-trivial fixture. Used by
+// TestScanImageAssetFromRow_RowVsRowsEquivalence only.
+func seedFullImageAsset(t *testing.T, db *sql.DB, id, hash string) {
+	t.Helper()
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO media_assets (
+			id, source, name, url, tags, file_hash, local_path, drive_file_id,
+			metadata_json, origin, provider, lifecycle_state
+		) VALUES (
+			?, 'image', ?, 'https://example.com/x.jpg', ?, ?, ?, ?,
+			?, ?, ?, 'STAGING'
+		)
+	`, id, "Image of "+id, `["cinematic","lighting"]`, hash, "/local/"+id+".jpg", "drive-file-"+id,
+		`{"subject_id":"subject-`+id+`","status":"READY"}`, "generated", "flux-1-dev")
+	if err != nil {
+		t.Fatalf("seed full image asset: %v", err)
+	}
+}
+
+// TestScanImageAssetFromRow_RowVsRowsEquivalence pins the CORE
+// invariant of the B6 SSOT refactor: scanImageAssetFromRow is a
+// function of the underlying value sequence only — NOT of the
+// scanner concrete type. Same physical row, scanned via *sql.Row
+// (returned by QueryRowContext) and via *sql.Rows (returned by
+// QueryContext + rows.Next), MUST decode to byte-equal
+// *asset.ImageAsset values. Failing this test means the helper is no
+// longer SQL-agnostic — exactly the kind of regression the DRY
+// refactor exists to prevent.
+func TestScanImageAssetFromRow_RowVsRowsEquivalence(t *testing.T) {
+	db := testDB(t)
+	seedFullImageAsset(t, db, "img-eq-1", "hash-eq-1")
+
+	selectStmt := selectImageAssetProjection + ` WHERE id = ?`
+
+	rowDecoded, err := scanImageAssetFromRow(
+		db.QueryRowContext(context.Background(), selectStmt, "img-eq-1"),
+	)
+	if err != nil {
+		t.Fatalf("Row path decode: %v", err)
+	}
+
+	rows, err := db.QueryContext(context.Background(), selectStmt, "img-eq-1")
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("rows.Next returned false; expected 1 row")
+	}
+	rowsDecoded, err := scanImageAssetFromRow(rows)
+	if err != nil {
+		t.Fatalf("Rows path decode: %v", err)
+	}
+	if rows.Next() {
+		t.Errorf("expected exactly 1 row, got more")
+	}
+
+	if !reflect.DeepEqual(rowDecoded, rowsDecoded) {
+		t.Fatalf("byte-equivalence broken:\n  Row-decoded:  %+v\n  Rows-decoded: %+v",
+			rowDecoded, rowsDecoded)
+	}
+	// Spot-check the high-cardinality fields so a future
+	// over-permissive DeepEqual (e.g. nil-vs-empty slice) cannot pass.
+	if rowDecoded.Description != "Image of img-eq-1" {
+		t.Errorf("Description mismatch: %q", rowDecoded.Description)
+	}
+	if len(rowDecoded.Tags) != 2 || rowDecoded.Tags[0] != "cinematic" || rowDecoded.Tags[1] != "lighting" {
+		t.Errorf("Tags mismatch: %v", rowDecoded.Tags)
+	}
+	if rowDecoded.SubjectID != "subject-img-eq-1" {
+		t.Errorf("SubjectID mismatch: %q", rowDecoded.SubjectID)
+	}
+	if string(rowDecoded.Origin) != "generated" || string(rowDecoded.Provider) != "flux-1-dev" {
+		t.Errorf("Origin/Provider mismatch: %q/%q", rowDecoded.Origin, rowDecoded.Provider)
+	}
+}
+
+// TestScanImageAssetFromRow_ScanErrorPropagation pins the fail-closed
+// (godlike/07) invariant: any transport/SQL error from .Scan() must
+// bubble out as `(nil, err)`. No silent mask, no panicking on nil
+// dereference, no populated ImageAsset half-decoded. We use an
+// in-process errScanner so the test does not depend on a particular
+// SQLite error message.
+func TestScanImageAssetFromRow_ScanErrorPropagation(t *testing.T) {
+	s := &errScanner{}
+	got, err := scanImageAssetFromRow(s)
+	if err == nil {
+		t.Fatalf("expected error from synthetic scanner, got nil; asset=%+v", got)
+	}
+	if got != nil {
+		t.Fatalf("expected nil asset on error (godlike/07 fail-closed), got %+v", got)
+	}
+	if s.called != 1 {
+		t.Fatalf("expected exactly one Scan call to the underlying scanner, got %d", s.called)
+	}
+}
+
+// TestScanImageAssetFromRow_SwallowMalformedJSON pins the byte-stable
+// legacy behaviour: the in-helper json.Unmarshal calls are wrapped with
+// `_ = ...` (godlike/07: best-effort, not surfaced) on BOTH tags and
+// metadata_json. A malformed JSON column therefore produces an empty
+// tags slice + metadata_json side-effect-container, NOT an error. Both
+// Row and Rows paths must observe the same swallow. This is the
+// invariant that prevents a future "make it strict" refactor from
+// regressing callers that previously tolerated the loose decode.
+func TestScanImageAssetFromRow_SwallowMalformedJSON(t *testing.T) {
+	db := testDB(t)
+	_, err := db.ExecContext(context.Background(),
+		`INSERT INTO media_assets (id, source, file_hash, tags, metadata_json)
+		 VALUES (?, 'image', ?, '{not valid JSON', '{not valid JSON either')`,
+		"img-bad-json", "hash-bad-json")
+	if err != nil {
+		t.Fatalf("seed malformed-JSON row: %v", err)
+	}
+
+	selectStmt := selectImageAssetProjection + ` WHERE id = ?`
+
+	rowDecoded, err := scanImageAssetFromRow(
+		db.QueryRowContext(context.Background(), selectStmt, "img-bad-json"),
+	)
+	if err != nil {
+		t.Fatalf("Row decode (malformed JSON should be swallowed): %v", err)
+	}
+	if len(rowDecoded.Tags) != 0 {
+		t.Errorf("Row path: expected 0 tags (malformed JSON silent), got %v", rowDecoded.Tags)
+	}
+	if rowDecoded.MetadataJSON != "{not valid JSON either" {
+		t.Errorf("Row path: MetadataJSON should round-trip the literal string, got %q", rowDecoded.MetadataJSON)
+	}
+	if rowDecoded.SubjectID != "" {
+		t.Errorf("Row path: expected SubjectID '' (json parse failed silently), got %q", rowDecoded.SubjectID)
+	}
+
+	rows, err := db.QueryContext(context.Background(), selectStmt, "img-bad-json")
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("rows.Next false; expected 1 row")
+	}
+	rowsDecoded, err := scanImageAssetFromRow(rows)
+	if err != nil {
+		t.Fatalf("Rows decode (malformed JSON should be swallowed): %v", err)
+	}
+
+	if !reflect.DeepEqual(rowDecoded, rowsDecoded) {
+		t.Fatal("Row vs Rows (malformed JSON) diverged — byte-equivalence broken on degenerate JSON")
+	}
+	if len(rowsDecoded.Tags) != 0 {
+		t.Errorf("Rows path: expected 0 tags (malformed JSON silent), got %v", rowsDecoded.Tags)
+	}
+}
