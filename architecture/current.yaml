@@ -2785,6 +2785,7 @@ wave_status:
 # is still in migration_phase=EXPAND, status=in_progress, removal_date=
 # 2026-Q3); they remain in place until the canonical image-upload
 # migration closes. No closed TODOs to chase.
+---
 - id: PR-DRIVE-008-CUTOVER
   status: shipped
   exit_signal: true
@@ -2957,10 +2958,11 @@ wave_status:
 # Each commit is a thin, file-scoped, non-API-breaking rename-or-remove aligned to the upstream
 # `internal/application/voiceover/jobs/parent_aggregator.go` wire convention (no dispatcher contract drift).
 # Tracks: G7.5 PR-FUNCSLIM-CRAMP and the F7 P3 follow-up in P0-COMPL-5-WIRE-NAMING topology.
-status: shipped
-shipped_sha: b77e0791
-ship_via: ff55de1a -> 78a4091e -> 926b9316 -> b77e0791 (linear chain)
-linked_issues:
+- id: PR-SCRIPTS-CLEANUP-2026-07-04
+  status: shipped
+  shipped_sha: b77e0791
+  ship_via: ff55de1a -> 78a4091e -> 926b9316 -> b77e0791 (linear chain)
+  linked_issues:
   - id: PR-SCRIPTS-CLEANUP-2026-07-04-A
     subject: 'chore(scripts): artifact renames -- scene_image_consumers narrowing'
     sha: ff55de1a
@@ -2981,14 +2983,14 @@ linked_issues:
     sha: b77e0791
     status: shipped
     scope: 'consolidate conditional branches; rationale in `GenerateDocumentsJob` docstring v0.4'
-godlike_06_lockstep:
+  godlike_06_lockstep:
   - architecture/current.yaml: this entry
   - CHANGELOG.md: '## Unreleased -> ### Fixed -> PR-SCRIPTS-CLEANUP-2026-07-04 (4 bullets)'
   - AGENTS.md: explicit deferral (doc-only sweep; no agent instruction surface change)
-honest_scope_lock: |
-  Sub-issue B (dead-code removal via rg-audit) reflects pkg-scoped scan; pkg-wide rg follow-up
-  explicitly deferred to PR-SCRIPTS-RG-AUDIT-PKG-WIDE (deadline 2026-07-25). No production
-  caller broken by the 4-commit chain; canary sites all green pre-flight.
+  honest_scope_lock: |
+    Sub-issue B (dead-code removal via rg-audit) reflects pkg-scoped scan; pkg-wide rg follow-up
+    explicitly deferred to PR-SCRIPTS-RG-AUDIT-PKG-WIDE (deadline 2026-07-25). No production
+    caller broken by the 4-commit chain; canary sites all green pre-flight.
 
 # ── PR-WIRE-SCRIPT-FIX-2026-07-04 — wire_script.go 10 syntax errors (pre-existing carry-forward, NOT ART-001 regression) ──
 # Regressor (parallel-agent commit): 7388c3858cbef069133ac950bf2ec94ef17d41d6
