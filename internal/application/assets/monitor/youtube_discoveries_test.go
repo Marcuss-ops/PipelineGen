@@ -1395,13 +1395,132 @@ func TestIsTransientEnqueueError(t *testing.T) {
 		{errors.New("HTTP 429 Too Many Requests"), true},
 		{errors.New("request timeout after 30s"), true},
 		{errors.New("EOF: stream closed unexpectedly"), true},
-		{errors.New("validation: missing channel_id"), false},
-		{errors.New("payload marshal: invalid JSON"), false},
-	}
-	for _, tc := range cases {
-		got := retry.IsTransient(tc.err)
-		if got != tc.want {
-			t.Errorf("IsTransient(%q) = %v, want %v", tc.err, got, tc.want)
-		}
-	}
+		{errors.New("validation: missing channel_id"), false},        {errors.New("payload marshal: invalid JSON"), false},
+    }
+    for _, tc := range cases {
+        got := retry.IsTransient(tc.err)
+        if got != tc.want {
+            t.Errorf("IsTransient(%q) = %v, want %v", tc.err, got, tc.want)
+        }
+    }
+}
+
+// ── FASE 3.7 Sentinel alias pin tests (P0 dual-sentinel fix) ──────────────────
+//
+// FASE 3.7 follow-up to the rename commit (98e7ba41): the parallel-agent
+// landing on origin/main switched the sentinel design from a wrap-chain
+// to a thin-alias (var ErrLedgerStateConflict = assetsdb.ErrStateConflict —
+// SAME *errorString pointer per Go sentinel semantics). Three tests pin
+// the alias contract end-to-end:
+//
+//   1. TestSentinelWrap_Conflict       — wrap chain still resolves
+//      under errors.Is(wrapErr, ErrLedgerStateConflict).
+//   2. TestSentinelWrap_NonConflict    — generic errors + wrap-chains
+//      of generic errors MUST NOT spuriously match the sentinel.
+//   3. TestSentinelWrap_InfraReturnsCanonical — infra-side error from
+//      MarkEnqueued on rejected_terminal matches BOTH sentinels via
+//      errors.Is (proving the alias is upheld end-to-end).
+//
+// Drift guard: any future refactor that replaces `var X = Y` with `var X
+// = errors.New(...)` will fail Tests 1 + 3. godlike/07 "no fake
+// availability" guarantee — the sentinel is the SAME object on both
+// sides of the alias.
+
+// TestSentinelWrap_Conflict pins the FASE 3.7 thin-alias sentinel contract:
+// ErrLedgerStateConflict is the SAME *errorString as
+// sqlassets.ErrStateConflict (declared as `var ErrLedgerStateConflict =
+// assetsdb.ErrStateConflict`). Therefore an error constructed via
+// `fmt.Errorf("...: %w", sqlassets.ErrStateConflict)` MUST resolve to
+// true under `errors.Is(err, ErrLedgerStateConflict)`. Verified
+// the reverse direction too (errors.Is to the canonical sentinel).
+// Drift in the alias (any future change from `var X = Y` to `var X =
+// errors.New(...)`) breaks both assertions — godlike/07 "no fake
+// availability" invariant is upheld iff both return true.
+func TestSentinelWrap_Conflict(t *testing.T) {
+    wrapErr := fmt.Errorf("monitoring transition: %w", sqlassets.ErrStateConflict)
+    if !errors.Is(wrapErr, ErrLedgerStateConflict) {
+        t.Errorf("TestSentinelWrap_Conflict: errors.Is(wrapped sqlassets.ErrStateConflict, ErrLedgerStateConflict) = false; want true (alias contract)")
+    }
+    if !errors.Is(wrapErr, sqlassets.ErrStateConflict) {
+        t.Error("TestSentinelWrap_Conflict: errors.Is(wrapped ..., sqlassets.ErrStateConflict) = false; want true")
+    }
+}
+
+// TestSentinelWrap_NonConflict pins the negative case: a generic error
+// (sqlite I/O error, network failure, validation error) MUST NOT match
+// ErrLedgerStateConflict under errors.Is. The wrap chain is
+// tested across multiple depths to ensure no false-positive resolution.
+func TestSentinelWrap_NonConflict(t *testing.T) {
+    cases := []struct {
+        name string
+        err  error
+    }{
+        {"bare-IO-error", errors.New("sqlite: I/O error or network failure")},
+        {"wrapped-IO-error", fmt.Errorf("emit: %w", errors.New("connection refused"))},
+        {"unrelated-validation-error", errors.New("validation: missing channel_id")},
+        {"double-wrapped-IO-error", fmt.Errorf("pipeline emit: %w", fmt.Errorf("transport: %w", errors.New("EOF")))},
+    }
+    for _, tc := range cases {
+        t.Run(tc.name, func(t *testing.T) {
+            if errors.Is(tc.err, ErrLedgerStateConflict) {
+                t.Errorf("non-conflict err matched ErrLedgerStateConflict: %v", tc.err)
+            }
+            if errors.Is(tc.err, sqlassets.ErrStateConflict) {
+                t.Errorf("non-conflict err matched sqlassets.ErrStateConflict: %v", tc.err)
+            }
+        })
+    }
+}
+
+// TestSentinelWrap_InfraReturnsCanonical pins the infra-side end-to-end
+// alias contract via the canonical sentinel path:
+//
+//   - Setup: TryReserve creates the row at state='pending'; MarkRejected(false)
+//     moves it to state='rejected_terminal'.
+//   - Trigger: MarkEnqueued on rejected_terminal row hits the WHERE
+//     clause `state IN ('pending','analyzing')` → 0 rows matched → infra
+//     surfaces the canonical sqlassets.ErrStateConflict.
+//
+// The FASE 3.7 contract assertion is `errors.Is(enqErr,
+// ErrLedgerStateConflict)`. This is the NEW path: a future
+// refactor that breaks the alias (replaces `var X = Y` with `var X =
+// errors.New(...)`) leaves Test 1 green (because the infra still
+// returns the Y pointer) but flips this assertion to false. Only by
+// verifying BOTH the canonical sqlassets sentinel AND the monitor
+// alias sentinel does this test catch the regressed-state correctly.
+func TestSentinelWrap_InfraReturnsCanonical(t *testing.T) {
+    repo, _, cleanup := newInMemoryLedger(t)
+    defer cleanup()
+    ctx := context.Background()
+
+    // Step 1: TryReserve creates the row at state='pending'.
+    id, won, _, err := repo.TryReserve(ctx, "ch-sentinel", "vid-sentinel", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+    if err != nil {
+        t.Fatalf("step 1 TryReserve: %v", err)
+    }
+    if !won {
+        t.Fatal("step 1 should win on fresh ledger")
+    }
+
+    // Step 2: MarkRejected(terminal) → row at state='rejected_terminal'.
+    if err := repo.MarkRejected(ctx, id, "terminal: invalid payload", false); err != nil {
+        t.Fatalf("step 2 MarkRejected(terminal): %v", err)
+    }
+
+    // Step 3: MarkEnqueued on rejected_terminal — the WHERE clause gates
+    // on state IN ('pending','analyzing'), so UPDATE matches 0 rows and
+    // the infra surfaces the canonical sqlassets.ErrStateConflict.
+    enqErr := repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
+    if enqErr == nil {
+        t.Fatal("step 3 MarkEnqueued on rejected_terminal must fail, got nil")
+    }
+    if !errors.Is(enqErr, sqlassets.ErrStateConflict) {
+        t.Errorf("step 3: infra error NOT matching sqlassets.ErrStateConflict: %v", enqErr)
+    }
+    // FASE 3.7 contract assertion: the alias MUST resolve. If a future
+    // refactor breaks the alias (e.g. var X = errors.New(...) instead of
+    // var X = assetsdb.ErrStateConflict), only this assertion fails.
+    if !errors.Is(enqErr, ErrLedgerStateConflict) {
+        t.Errorf("step 3: infra error NOT matching ErrLedgerStateConflict (alias contract broken): %v", enqErr)
+    }
 }
