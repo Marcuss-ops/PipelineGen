@@ -5437,7 +5437,7 @@
     owner_capability: internal/application/jobs
     status: shipped
     ship_date: 2026-07-04
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: faa2a55a
     deadline: 2026-08-08
     ship_via: |
       godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY closure per
