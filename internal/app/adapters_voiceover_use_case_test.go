@@ -21,10 +21,10 @@ import (
 // recordingResolver implements asset.Resolver by capturing the
 // ResolveRequest it receives and returning a pre-configured result.
 type recordingResolver struct {
-	lastReq    *asset.ResolveRequest
-	allReqs    []*asset.ResolveRequest
-	cannedRes  *asset.ResolveResult
-	cannedErr  error
+	lastReq   *asset.ResolveRequest
+	allReqs   []*asset.ResolveRequest
+	cannedRes *asset.ResolveResult
+	cannedErr error
 }
 
 func (r *recordingResolver) Resolve(ctx context.Context, req *asset.ResolveRequest) (*asset.ResolveResult, error) {
@@ -156,9 +156,9 @@ func TestDestinationResolverEmptyFolderIDFallsBackToResolver(t *testing.T) {
 	adapter := newUseCaseDestResolverAdapter(rec)
 
 	dest := &voiceover.DestinationRequest{
-		Group:        "boxe",
+		Group:         "boxe",
 		SubfolderName: "per-script-sub",
-		StyleGroup:   "promo",
+		StyleGroup:    "promo",
 	}
 
 	result, err := adapter.Resolve(context.Background(), dest)
