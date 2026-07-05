@@ -3,15 +3,15 @@
 //
 // What this test exercises:
 //
-//   1. POST /api/script/generate with a GenerationEnvelopeV2 body AND
-//      an Idempotency-Key HTTP header.
-//   2. The handler reads the header (Stripe / AWS-SQS convention),
-//      whitespace-trims it, and stamps it onto the
-//      GenerateEnqueueRequest.ActiveKey field (which is already wired
-//      through to broker via EnqueueGenerationJob).
-//   3. fakeJobsService (defined in handler_test.go in the same
-//      package) captures the resulting *job.EnqueueRequest; the test
-//      asserts capturedActiveKey equals the original header value.
+//  1. POST /api/script/generate with a GenerationEnvelopeV2 body AND
+//     an Idempotency-Key HTTP header.
+//  2. The handler reads the header (Stripe / AWS-SQS convention),
+//     whitespace-trims it, and stamps it onto the
+//     GenerateEnqueueRequest.ActiveKey field (which is already wired
+//     through to broker via EnqueueGenerationJob).
+//  3. fakeJobsService (defined in handler_test.go in the same
+//     package) captures the resulting *job.EnqueueRequest; the test
+//     asserts capturedActiveKey equals the original header value.
 //
 // Non-trivial interior: handler_generate.go used to drop the header.
 // The test is the regression guard for the Issue 5 fix.
@@ -44,7 +44,7 @@ func captureActiveKeyFromHandler(t *testing.T, idempotencyKey string) string {
 	t.Helper()
 
 	parentSvc, fake := newTestJobsService(t)
-	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: parentSvc})
+	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(parentSvc))
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -103,10 +103,10 @@ func captureActiveKeyFromHandler(t *testing.T, idempotencyKey string) string {
 // TestHandler_AcceptsIdempotencyKey is the canonical Issue 5 / P1
 // handler-side contract pin. Footer contract:
 //
-//   * handler reads header `Idempotency-Key`;
-//   * whitespace-trims it;
-//   * sets it on GenerateEnqueueRequest.ActiveKey;
-//   * EnqueueGenerationJob forwards it into the broker's
+//   - handler reads header `Idempotency-Key`;
+//   - whitespace-trims it;
+//   - sets it on GenerateEnqueueRequest.ActiveKey;
+//   - EnqueueGenerationJob forwards it into the broker's
 //     EnqueueRequest.ActiveKey.
 //
 // The test asserts against fakeJobsService.lastReq.ActiveKey after

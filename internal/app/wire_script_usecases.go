@@ -2,11 +2,12 @@
 //
 // AZIONE 2 (July 2026): extracted from wire_script.go. This file owns:
 //
-//  1. buildScriptUseCases — canonical factory constructing all
-//     script-domain use cases (sectionRegen, cacheEvictionUC,
-//     GenerateOneUseCase, GenerateManyUseCase, genJobHandler,
-//     mediaCurator). Takes the output of buildScriptSourceResolvers
-//     plus the ppReg frozen by the orchestrator.
+//  1. buildScriptUseCases — canonical factory constructing the
+//     script-domain use cases consumed by the HTTP handler +
+//     the script.generate job handler. Returns the slim 4-tuple
+//     (oneUC, manyUC, genJobHandler, mediaCurator). Takes the
+//     output of buildScriptSourceResolvers plus the ppReg
+//     frozen by the orchestrator.
 //
 //  2. wireScriptChildJobAuditP04 — P0 #4 per-item retry pattern:
 //     registers script.generate_item handler + wires the fanout
@@ -15,6 +16,19 @@
 //  3. scriptItemFanoutBrokerAdapter — Pattern 0 adapter bridging
 //     jobs.Service.Enqueue to the canonical FanoutItemBroker port
 //     consumed by GenerateManyUseCase.ExecuteFanout.
+//
+// PR-script-deps-slim (July 2026, P1): sectionRegen +
+// cacheEvictionUC were RETIRED from buildScriptUseCases —
+// the corresponding HTTP routes (RegenerateSection +
+// EvictCache) were always 503 because the handler fields
+// were never assigned; per godlike/07 no-fake-availability
+// the dead construction is dropped from the factory return
+// tuple. The SectionRegenerator + CacheEvictionUseCase
+// constructors + their usecase files (internal/application/
+// scripts/usecase/{section_regen.go, cache_eviction_usecase.go})
+// remain on disk as forward-pointers for future re-introduction
+// (the application layer is the canonical owner; the
+// composition root just stops wiring them).
 //
 // Package boundary: same `package app` as wire_script.go. The
 // factory is a pure-builder; P04 audit wiring + broker adapter
@@ -57,15 +71,24 @@ import (
 	"go.uber.org/zap"
 )
 
-// buildScriptUseCases constructs the full script-domain use-case
-// cluster. The factory is a pure-builder — zero side effects
-// (no job registration, no module wiring). The orchestrator
-// (wireScriptFlow) is responsible for registering jobs, wiring
-// the handler, and mounting the HTTP module.
+// buildScriptUseCases constructs the script-domain use-case cluster
+// consumed by the HTTP handler + the script.generate job handler.
+// The factory is a pure-builder — zero side effects (no job
+// registration, no module wiring). The orchestrator (wireScriptFlow)
+// is responsible for registering jobs, wiring the handler, and
+// mounting the HTTP module.
+//
+// PR-script-deps-slim (July 2026, P1): returns the slim 4-tuple
+// (oneUC, manyUC, genJobHandler, mediaCurator). The pre-slim 6-tuple
+// also returned SectionRegenerator + CacheEvictionUseCase; those
+// were RETIRED because the corresponding HTTP routes
+// (RegenerateSection + EvictCache) were always 503 — the
+// ScriptFlowHandler never assigned the fields. Per godlike/07
+// no-fake-availability the dead construction is dropped; the
+// application-layer constructors remain on disk as forward-pointers.
 func buildScriptUseCases(
 	cfg *config.Config,
 	root *ComposeRoot,
-	scriptsRepoAdapter adapters.ScriptRepository,
 	normCfg adapters.NormalizationConfig,
 	sourceReg *adapters.SourceRegistry,
 	ppReg *adapters.PostProcessorRegistry,
@@ -73,8 +96,6 @@ func buildScriptUseCases(
 	clipSourceBuilder *usecase.ClipSourceBuilder,
 	log *zap.Logger,
 ) (
-	*usecase.SectionRegenerator,
-	*usecase.CacheEvictionUseCase,
 	*usecase.GenerateOneUseCase,
 	*usecase.GenerateManyUseCase,
 	*jobs.GenerateJobHandler,
@@ -83,21 +104,10 @@ func buildScriptUseCases(
 	gen := root.AI.ScriptGen
 	engine := root.AI.ScriptEngine
 
-	// ── Section regenerator ─────────────────────────────────────────
-	sectionRegen := usecase.NewSectionRegenerator(
-		scriptsRepoAdapter, gen,
-		root.Drive.DocClient, log,
-	)
-
-	// ── Cache eviction ──────────────────────────────────────────────
-	cacheEvictionUC := usecase.NewCacheEvictionUseCase(
-		gen, nil, log,
-	)
-
-	// ── GenerateOneUseCase (single-item pipeline) ───────────────────
+	// ── GenerateOneUseCase (single-item pipeline) ───────────────
 	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 
-	// ── Voiceover group → folder routing ────────────────────────────
+	// ── Voiceover group → folder routing ────────────────────────
 	voRootID := strings.TrimSpace(cfg.Drive.VoiceoverFolder())
 	if voRootID != "" && root.Search != nil && root.Search.AssetTreeService != nil {
 		if gr, grErr := voiceover.NewGroupsResolver(root.Search.AssetTreeService, log); grErr == nil {
@@ -115,10 +125,10 @@ func buildScriptUseCases(
 	_ = jobs.NewClipsFolderExtAdapter
 	log.Info("wireScriptFlow: jobs.ClipsFolderExtAdapter available at composition root (Refactor 1 adapter pre-wired)")
 
-	// ── GenerateManyUseCase (multi-item fanout) ─────────────────────
+	// ── GenerateManyUseCase (multi-item fanout) ─────────────────
 	manyUC := usecase.NewGenerateManyUseCase(oneUC, log)
 
-	// ── Media curator ───────────────────────────────────────────────
+	// ── Media curator ───────────────────────────────────────
 	var mediaCurator *scriptdto.MediaCurator
 	if root.Repos.ClipsRepo != nil && engine != nil {
 		mediaCurator = scriptdto.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, log)
@@ -127,10 +137,10 @@ func buildScriptUseCases(
 		}
 	}
 
-	// ── Generate job handler ────────────────────────────────────────
+	// ── Generate job handler ────────────────────────────────────
 	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, log)
 
-	return sectionRegen, cacheEvictionUC, oneUC, manyUC, genJobHandler, mediaCurator
+	return oneUC, manyUC, genJobHandler, mediaCurator
 }
 
 // wireScriptChildJobAuditP04 wires the P0 #4 per-item retry pattern:
