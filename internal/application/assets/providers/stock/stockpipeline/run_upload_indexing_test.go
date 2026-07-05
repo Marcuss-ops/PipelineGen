@@ -116,7 +116,7 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		fakeSucceedingCutter{}, nil,
+		fakeSucceedingCutter{}, noopRenderer{},
 		stockManifestBuilder{}, w, noopProjection{},
 	)
 	_, err := o.RunResilient(context.Background(), &RunInput{
@@ -146,7 +146,7 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		nil, nil,
+		nil, noopRenderer{},
 		stubBuilder{}, noopWriter{}, noopProjection{},
 	)
 	summary, err := o.RunResilient(context.Background(), &RunInput{
@@ -176,7 +176,7 @@ func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		nil, nil,
+		nil, noopRenderer{},
 		stockManifestBuilder{}, noopWriter{}, stubProjection{},
 	)
 	summary, err := o.RunResilient(context.Background(), &RunInput{

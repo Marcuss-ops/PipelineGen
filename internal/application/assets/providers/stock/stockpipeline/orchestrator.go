@@ -217,7 +217,7 @@ func buildStockManifest(workflowID, jobID string) *job.ArtifactManifest {
 // construction. The orchestrator cannot run with nil Planner /
 // Steps / Stager; the caller side (Service.RunOrchestrator or
 // the composition root) is expected to validate-or-default.
-var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/steps/stager must be non-nil")
+var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/stepStore must be non-nil")
 
 // Orchestrator is the canonical pipeline entrypoint (STATO ATTUALE).
 // Service.Run coexists for ServiceRunner interface back-compat
@@ -235,8 +235,8 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/steps/stager must
 // that returns the manifest component of the RunSummary for legacy
 // callers (existing run_orchestrator_test.go tests).
 type Orchestrator struct {
-	cfg      OrchestratorConfig
-	planner  ClipPlanner
+	cfg     OrchestratorConfig
+	planner ClipPlanner
 	// DEPRECATO: legacySteps is the pre-§12-5 in-process step store.
 	// PROSSIMO STEP: retire this field once Service.runOrchestrator
 	// callers migrate to runOrchestratorResilient (which uses stepStore).
@@ -292,7 +292,7 @@ type Orchestrator struct {
 	// skipped, StockFinalizeStep spine write skipped) is the canonical
 	// no-op behavior.
 	artifactPreparation finalization.ArtifactPreparationService // nil ⇒ StockPublishStep logs+skips upload
-	jobFinalizer        finalization.JobFinalizer              // nil ⇒ StockFinalizeStep logs+skips spine write
+	jobFinalizer        finalization.JobFinalizer               // nil ⇒ StockFinalizeStep logs+skips spine write
 }
 
 // NewOrchestrator returns the canonical orchestrator. Caller-side
@@ -417,18 +417,18 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 //  1. stock.plan           — ClipPlanner.Plan round-trip.
 //  2. stock.stage_sources  — SourceStager.StageSource per unique URL.
 //  3. stock.extract_clips  — VideoCutter.Cut per source group
-//                            (test (a): writer error ⇒ ErrAtomicDispatchFailed).
+//     (test (a): writer error ⇒ ErrAtomicDispatchFailed).
 //  4. stock.compose_chunks — StockRenderer.Render per cut path.
 //  5. stock.publish        — ArtifactPreparation.Prepare per chunk
-//                            + per metadata.json. Uploads Drive;
-//                            nil ArtifactPreparation ⇒ test-fixture skip.
+//     + per metadata.json. Uploads Drive;
+//     nil ArtifactPreparation ⇒ test-fixture skip.
 //  6. stock.finalize       — ManifestBuilder.Build + Validate +
-//                            ProjectionPort.Project (best-effort Qdrant
-//                            → flips FinalStatus to StatusIndexPending) +
-//                            BuildFinalizationRequest +
-//                            JobFinalizer.CompleteWithArtifacts
-//                            (single-TX spine write).
-//                            nil JobFinalizer ⇒ test-fixture skip.
+//     ProjectionPort.Project (best-effort Qdrant
+//     → flips FinalStatus to StatusIndexPending) +
+//     BuildFinalizationRequest +
+//     JobFinalizer.CompleteWithArtifacts
+//     (single-TX spine write).
+//     nil JobFinalizer ⇒ test-fixture skip.
 //
 // PROSSIMO STEP: SQLite-backed step store per §12-3 Design A for
 // crash-resume across process restarts. Currently in-memory only.
@@ -456,7 +456,21 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 // but is NOT used as the orchestrator's primary resume mechanism
 // (lex-smallest non-completed ≠ pipeline-order).
 func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunSummary, error) {
-	if o.planner == nil || o.stager == nil || o.stepStore == nil || len(o.dispatchSteps) == 0 {
+	// §12-1 (July 2026) + PR-STOCK-PRODUCTION-DEPS (P2_media,
+	// 2026-07-04): composition-time fail-closed gate. The canonical
+	// composition root (stockpipeline.NewService) already validates
+	// planner/stager/renderer/jobs/sourceStager etc. at ctor time;
+	// this gate is the defense-in-depth seam for direct Orchestrator
+	// callers (tests, internal packages that bypass Service). Per
+	// godlike/07 no-fake-availability: a production run must NOT
+	// reach the step bodies (StockStageSourcesStep.Run /
+	// StockComposeChunksStep.Run) with a nil stager or renderer —
+	// both steps assume the runner.SourceStager() / runner.Renderer()
+	// accessors return non-nil. The Service-level gate (cutter
+	// optional; stager + renderer required) is the canonical
+	// fail-closed surface; this gate mirrors the same contract
+	// for direct Orchestrator callers.
+	if o.planner == nil || o.stager == nil || o.renderer == nil || o.stepStore == nil || len(o.dispatchSteps) == 0 {
 		return nil, ErrOrchestratorNilDeps
 	}
 

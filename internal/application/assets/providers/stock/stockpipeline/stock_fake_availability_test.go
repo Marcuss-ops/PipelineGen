@@ -124,6 +124,18 @@ func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, re
 	)
 }
 
+// successNoopRenderer is a noop mapRenderer that returns success
+// (RenderResult{}, nil) on every call. Used by tests that exercise
+// the pipeline without asserting on render behavior (the test
+// focuses on stage_sources / plan / extract_clips behavior; the
+// renderer is a placeholder required by the composition-time
+// fail-closed gate per PR-STOCK-PRODUCTION-DEPS, July 2026).
+func successNoopRenderer() *mapRenderer {
+	return &mapRenderer{handler: func(req RenderRequest) (RenderResult, error) {
+		return RenderResult{}, nil
+	}}
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Test (1) — stager wired + all sources fail → ErrStockStageSourcesAllFailed
 // ─────────────────────────────────────────────────────────────────────
@@ -143,7 +155,7 @@ func TestStockStageSourcesStep_AllSourcesFailed_ReturnsTypedError(t *testing.T) 
 	stager := &mapStager{handler: func(ref assets.SourceRef) (*assets.StagedAsset, error) {
 		return nil, errors.New("simulated stage failure (yt-dlp offline)")
 	}}
-	o := newFakeAvailOrchestrator(stager, nil, nil)
+	o := newFakeAvailOrchestrator(stager, nil, successNoopRenderer())
 
 	_, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/a.mp4"},
@@ -171,7 +183,7 @@ func TestStockStageSourcesStep_AllSourcesSucceed_NoError(t *testing.T) {
 	stager := &mapStager{handler: func(ref assets.SourceRef) (*assets.StagedAsset, error) {
 		return &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", SourceID: ref.URL, Bytes: 1024}, nil
 	}}
-	o := newFakeAvailOrchestrator(stager, nil, nil)
+	o := newFakeAvailOrchestrator(stager, nil, successNoopRenderer())
 
 	_, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/a.mp4"},
@@ -211,7 +223,7 @@ func TestStockStageSourcesStep_AllSourcesNilAsset_ReturnsTypedError(t *testing.T
 		// has defensive code for this case.
 		return nil, nil
 	}}
-	o := newFakeAvailOrchestrator(stager, nil, nil)
+	o := newFakeAvailOrchestrator(stager, nil, successNoopRenderer())
 
 	_, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/a.mp4"},
@@ -277,18 +289,21 @@ func TestStockComposeChunksStep_AllRendersFailed_ReturnsTypedError(t *testing.T)
 // Test (5) — renderer nil (test-fixture compat) → nil err
 // ─────────────────────────────────────────────────────────────────────
 
-// TestStockComposeChunksStep_NilRenderer_TestFixture_NoError pins
-// the test-fixture compatibility contract: when the renderer is
-// nil (composition root hasn't wired it yet, or a test wants to
-// exercise the pipeline without rendering), the step returns nil
-// without surfacing ErrStockComposeChunksAllFailed. This preserves
-// the existing test-fixture pattern used by 15+ existing test
-// files in the stockpipeline package.
+// TestStockComposeChunksStep_NilRenderer_ReturnsErrOrchestratorNilDeps pins
+// the composition-time fail-closed contract (PR-STOCK-PRODUCTION-DEPS,
+// July 2026): when the renderer is nil, the orchestrator's
+// RunResilient gate (orchestrator.go::RunResilient) MUST surface
+// ErrOrchestratorNilDeps BEFORE any step body runs. The previous
+// runtime nil-check (StockComposeChunksStep's test-fixture compat
+// path) is RETIRED per godlike/07 no-fake-availability: a
+// production run must NOT reach the step body with a nil renderer,
+// and a test fixture that passes nil must update to wire a non-nil
+// stub (mapRenderer) per the production contract.
 //
-// A regression that tightened the fail-closed gate to fire on
-// nil renderer would break every test fixture in the package
-// that runs the pipeline without a renderer.
-func TestStockComposeChunksStep_NilRenderer_TestFixture_NoError(t *testing.T) {
+// A regression that re-introduces the runtime nil-check (silently
+// succeeding with nil renderer) would violate the fail-closed
+// composition-time contract and would be caught by this test.
+func TestStockComposeChunksStep_NilRenderer_ReturnsErrOrchestratorNilDeps(t *testing.T) {
 	stager := &mapStager{handler: func(ref assets.SourceRef) (*assets.StagedAsset, error) {
 		return &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", SourceID: ref.URL, Bytes: 1024}, nil
 	}}
@@ -304,8 +319,10 @@ func TestStockComposeChunksStep_NilRenderer_TestFixture_NoError(t *testing.T) {
 		}
 		return CutBatchResult{SourcePath: req.SourcePath, Items: items}, nil
 	}}
-	// Renderer intentionally nil — the StockComposeChunksStep's
-	// nil-renderer defensive path (test-fixture compat) must fire.
+	// Renderer intentionally nil — the orchestrator's composition-time
+	// gate MUST reject with ErrOrchestratorNilDeps before the step body
+	// runs (godlike/07 no-fake-availability: production must NOT reach
+	// StockComposeChunksStep.Run with a nil renderer).
 	o := newFakeAvailOrchestrator(stager, cutter, nil)
 
 	_, err := o.RunResilient(context.Background(), &RunInput{
@@ -315,10 +332,7 @@ func TestStockComposeChunksStep_NilRenderer_TestFixture_NoError(t *testing.T) {
 		ChunkDuration: 5,
 	})
 
-	if err != nil {
-		t.Fatalf("nil renderer (test-fixture path) should not fail, got %v (test-fixture compat violated — pipeline with nil renderer must short-circuit to nil err per the existing pattern)", err)
-	}
-	if errors.Is(err, ErrStockComposeChunksAllFailed) {
-		t.Fatalf("nil renderer must not surface ErrStockComposeChunksAllFailed (fail-closed gate only fires when renderer != nil AND all chunks fail), got %v", err)
+	if !errors.Is(err, ErrOrchestratorNilDeps) {
+		t.Fatalf("nil renderer must surface ErrOrchestratorNilDeps (composition-time fail-closed gate), got %v (fail-closed contract violated — a regression that re-introduces the runtime nil-check would silently succeed with nil renderer)", err)
 	}
 }
