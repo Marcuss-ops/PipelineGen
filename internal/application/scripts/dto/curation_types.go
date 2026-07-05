@@ -65,16 +65,25 @@ type MediaCurator struct {
 // NewMediaCurator is the canonical constructor for the scriptdto
 // MediaCurator (wave-13 owner: internal/application/scripts).
 //
-// TODO #8 (drift-fix PR, June 2026): the constructor was previously
-// inferred removed by a parallel capability refactor — re-introduced
-// here as the minimal-scope fix to unblock wire_script.go's
-// `mediaCurator = scriptdto.NewMediaCurator(...)` call site, which is
-// gated on this symbol existing (the underlying struct fields are
-// unexported, so callers cannot construct an instance via `&MediaCurator{}`).
+// backlog (drift-fix PR, June 2026) — note: previously labelled
+// "TODO #8" but the prefix was a stale audit-pin reference (the actual
+// work was the drift-fix re-introduction; not scope-aware migrations).
+// The constructor was previously inferred removed by a parallel
+// capability refactor — re-introduced here as the minimal-scope fix to
+// unblock wire_script.go's `mediaCurator = scriptdto.NewMediaCurator(...)`
+// call site, which is gated on this symbol existing (the underlying
+// struct fields are unexported, so callers cannot construct an
+// instance via `&MediaCurator{}`).
 // Field wiring matches the pre-drift shape exactly: serverURL,
 // clipsRepo, clipBuilder, log all set; generateOneUC + clipSearch are
 // late-bound via SetGenerateOneUC / SetClipSearchPort setters (the
 // composition root stamps them when those bundles are available).
+//
+// godlike/06 SSOT forward-pointer: PR-TODO-1-CLIP-DISPATCH
+// (architecture/current.yaml#PR-TODO-SWEEP-2026-07-05.linked_issues).
+// Future CLipDispatch CUTOVER will retire the legacy MediaCurator
+// entirely in favour of SourceCurate + GenerateOneUseCase (see the
+// package-header DL-CURATIONTYPES-001 deprecation countdown).
 func NewMediaCurator(serverURL string, clipsRepo interface{}, clipBuilder interface{}, log *zap.Logger) *MediaCurator {
 	return &MediaCurator{
 		serverURL:   serverURL,

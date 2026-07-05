@@ -90,7 +90,7 @@ func runBackfillMonitoredSourcesToCategoryChannels(args []string) error {
 	}
 	defer sqliteDB.Close()
 
-	// TODO #8 (June 2026): pass targetDB="primary" — this CLI
+	// scope-aware (June 2026) — pass targetDB="primary" — this CLI
 	// operates on data/media/media.db.sqlite, the canonical primary DB.
 	if err := sqliteDB.RunMigrations(log, "migrations/sqlite", "primary"); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
