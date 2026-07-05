@@ -95,6 +95,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			URL:        req.Source.URL,
 			OutputPath: dstPath,
 			Timeout:    req.Timeout,
+			UseCookies: true,
 		}
 		if req.Source.DownloadSection != "" {
 			dlReq.DownloadSections = []string{req.Source.DownloadSection}
