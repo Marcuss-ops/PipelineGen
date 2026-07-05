@@ -6089,3 +6089,23 @@
       ship_date: 2026-07-05
       ship_via: 2_COMMIT_SPLIT_PER_CODEBASE_PATTERN_PR_VO_TYPED_PRIMITIVES
       deadline: 2026-07-29
+
+- id: fix-bridges-aiohttp-314-socksite-migration
+  status: shipped
+  ship_sha: 663f3825
+  ship_date: 2026-07-05
+  owner_capability: scripts/bridges/tts_edge_server.py
+  deadline: 2026-07-15
+  description: "TTS persistent worker (scripts/bridges/tts_edge_server.py) now boots on aiohttp 3.14+ where web.TCPSite removed the sock= kwarg. 3-stage atomic fix: (1) web.TCPSite(sock=sock) -> web.SockSite(runner, sock) (canonical aiohttp 3.14+ public API; SockSite takes ownership of bound fd); (2) SO_REUSEADDR=1 preserved (godlike/07 minimum-blast-radius; critical for EADDRINUSE-on-TIME_WAIT); (3) bind-fail handler try/except OSError -> raise SystemExit(1) + sys.exit(main()) (godlike/07 NO-FAKE-AVAILABILITY; closes latent bug where pre-fix return 1 was silently dropped by bare main()). Verification: worker boots to PORT=8089 + SERVER_READY; curl :8089/health returns 200 OK; admin voiceover-health --fail-on-unreachable returns exit 0."
+  linked_issues:
+    - id: PR-VO-STEP8-FAILMODES-1-2
+      relationship: parent-commit
+      note: "commit 1b553274 shipped the admin voiceover-health CLI probe; this entry fixes the upstream Python worker so the probe reaches a healthy worker."
+    - id: PR-VO-STEP8-WORKER-BOOT
+      relationship: gates
+      note: "Fail-mode 1 (worker off) is now operationally observable + fixable; voiceover E2E plan Step[8] fail-modes chain."
+  notes: "aiohttp 3.14 removed sock= kwarg from web.TCPSite.__init__. Canonical replacement: web.SockSite(runner, sock) (stable since aiohttp 3.x). NIT (sock lifetime on KeyboardInterrupt) deferred per godlike/07 minimum-blast-radius."
+  godlike_06_ssot: one_canonical_owner_per_fact
+  godlike_07_audit_pin: "fail-fast-at-input analog: worker boot path now fails loudly on bind failure instead of crashing silently. Pre-fix return 1 from main() was silently dropped by bare main() call. The 3-line fix (import sys + raise SystemExit(1) + sys.exit(main())) is the canonical godlike/07 typed-error projection."
+  ship_via: "<!-- id:socksite-aiohttp314-fbf6e8a4 -->"
+
