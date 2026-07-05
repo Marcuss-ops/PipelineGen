@@ -225,11 +225,30 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 
 	retryable := j.CanRetry()
 
+	// PR-ERROR-SURFACING (2026-07-04): godlike/06 SSOT between `/api/jobs` (LIST)
+	// and `/api/jobs/{id}/full` (GET) — both endpoints MUST surface the canonical
+	// job.Error field at TOP-level so a polled `/full` does not silently drop
+	// typed-error strings (e.g. `scriptpkg.ErrScriptGenerationFailed` wraps
+	// accumulated through the worker → jobs.error column → j.Error struct
+	// field). The LIST endpoint already exposes each slice element's
+	// `error` JSON tag (canonical `json:"error,omitempty"` in
+	// internal/kernel/job/job.go::Job.Error); the /full response, which
+	// historically enumerated only id/type/status/progress/current_step/events/
+	// result/retryable/job in gin.H{}, DROPPED the `error` field at the
+	// top-level (operators reading `/full` saw `error=None` even when the
+	// DB column had a 123-char error string). The fix adds `error` to the
+	// gin.H literal so parity with LIST holds end-to-end.
+	//
+	// Behaviour preservation: the canonical `job: j` embedded object
+	// continues to expose `job.error` (unchanged), so callers using the
+	// nested path keep working. The new top-level `error` is the canonical
+	// surface for /full parity with /api/jobs LIST.
 	apiutil.OK(c, gin.H{
 		"id":       j.ID,
 		"type":     j.Type,
 		"status":   j.Status,
 		"progress": j.Progress,
+		"error":    j.Error,
 		// current_step is preserved as j.Status for backward compatibility with
 		// clients that already poll /full. A real "current step" (last event
 		// message or workflow node) will be wired in a follow-up; do not remove

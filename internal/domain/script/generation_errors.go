@@ -33,6 +33,45 @@ var ErrPostprocessFailed = errors.New("generation: postprocess failed")
 // constraints, conflicting flags).
 var ErrPlanInvalid = errors.New("generation: plan invalid")
 
+// ErrEntityExtractorUnavailable means the script postprocessor tried
+// to invoke an EntityExtractor but the composition root wired a noop
+// adapter (no real backend was registered). PR-NOOP-ADAPTERS-PURGE
+// (2026-07-04): godlike/07 fail-closed posture — the noop MUST surface
+// this typed sentinel instead of returning a silently-empty
+// EntityResult. Dual-%w in compat_adapters.go preserves both
+// ErrPostprocessFailed (coarse classification) AND this sentinel
+// (fine-grained diagnostic) for errors.Is walkers.
+var ErrEntityExtractorUnavailable = errors.New("generation: entity extractor unavailable")
+
+// ErrMetadataGeneratorUnavailable means the script postprocessor tried
+// to invoke a MetadataGenerator but the composition root wired a noop
+// adapter (no real backend was registered). PR-NOOP-ADAPTERS-PURGE
+// (2026-07-04): godlike/07 fail-closed posture — the noop MUST surface
+// this typed sentinel instead of returning a silently-nil
+// VideoMetadata slice. Dual-%w in compat_adapters.go preserves both
+// ErrPostprocessFailed (coarse classification) AND this sentinel
+// (fine-grained diagnostic) for errors.Is walkers.
+var ErrMetadataGeneratorUnavailable = errors.New("generation: metadata generator unavailable")
+
+// ErrScriptGenerationFailed is the canonical umbrella sentinel for any
+// unrecoverable failure of the unified script.generate pipeline.
+//
+// PR-ERROR-SURFACING (2026-07-04): used as the godlike/07 typed-error
+// root when /api/jobs/{id}/full surfaces a non-empty top-level `error`
+// field for a script.generate job that reached FAILED. The full chain
+// is preserved via fmt.Errorf with %w so callers can errors.Is walk
+// from the public error string:
+//
+//	errors.Is(err, scriptpkg.ErrScriptGenerationFailed) → umbrella match
+//	errors.Is(err, scriptpkg.ErrPostprocessFailed)       → postprocess sibling
+//	errors.Is(err, scriptpkg.ErrEntityExtractorUnavailable) or ErrMetadataGeneratorUnavailable → fine-grained
+//
+// godlike/06 SSOT (one canonical owner per fact): this sentinel lives
+// ONLY at internal/domain/script/generation_errors.go. No other
+// package declares a duplicate. Future typed-sentinel additions for
+// the script generation capability MUST be sibling entries here.
+var ErrScriptGenerationFailed = errors.New("generation: script generation failed")
+
 // ── Typed structs ───────────────────────────────────────────────────
 
 // NoSourceError carries the structured reason behind ErrNoSource.
