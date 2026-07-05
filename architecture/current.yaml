@@ -5547,6 +5547,15 @@
     ship_sha: c2ba47f7
     ship_date: 2026-07-04
     deadline: 2026-08-08
+    ship_via: |
+      godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY closure per
+      CLEANUP-PRIORITY-1-5-2026-07-25 wave. cmd/admin/qdrant_preflight.go
+      slimmed: preflight binary contract (canonical Pattern 0 dispatcher
+      + 11-entry AllTests registry + typed ErrPreflightStackDown +
+      ErrPreflightSeedMissing + ErrPreflightNotImplemented sentinels).
+      godlike/07 minimum-blast-radius: 0 production code change beyond
+      the slim surface; Tests 3-11 return typed ErrPreflightNotImplemented
+      (FAIL-closed) until per-test follow-ups land.
     priority_band: P1
   - id: PR-jobs-retry-contract
     owner_capability: internal/application/jobs
@@ -5590,6 +5599,14 @@
     ship_sha: b56014b4
     ship_date: 2026-07-04
     deadline: 2026-08-22
+    ship_via: |
+      godlike/06 SSOT + godlike/07 minimum-blast-radius closure per
+      CLEANUP-PRIORITY-1-5-2026-07-25 wave. docs/ tree consolidated
+      into the canonical 3-surface lockstep (AGENTS.md + CHANGELOG.md
+      + architecture/current.yaml); legacy docs/architecture/godlike/*
+      paths physically removed (content folded into AGENTS.md sections
+      + Qdrant Entity Associations table). godlike/07 minimum-blast-radius:
+      0 Go code change; documentation-only carry-forward.
     priority_band: P3_bassa
   - id: PR-CLEANUP-HOTSPOT-CROSSREF
     owner_capability: architecture
