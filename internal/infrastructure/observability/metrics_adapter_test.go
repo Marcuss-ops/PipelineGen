@@ -184,8 +184,8 @@ func TestNilReceiverSafety(t *testing.T) {
 		nil, nil, nil,
 	)
 	vcOnly.IncVideosChecked("y")
-	vcOnly.IncVideosWithSegments("y") //nolint:staticcheck // no-op on nil vec
-	vcOnly.AddSegmentsFound("y", 1)   //nolint:staticcheck // no-op on nil vec
+	vcOnly.IncVideosWithSegments("y")      //nolint:staticcheck // no-op on nil vec
+	vcOnly.AddSegmentsFound("y", 1)        //nolint:staticcheck // no-op on nil vec
 	vcOnly.ObserveSegmentsPerVideo("y", 1) //nolint:staticcheck // no-op on nil vec
 
 	// No panic reached here = either safety path works. Assertion

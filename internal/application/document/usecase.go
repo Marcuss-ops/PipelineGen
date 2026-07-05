@@ -57,9 +57,9 @@ type GenerateDocumentUseCase struct {
 	// When all three are non-nil, the use case publishes to Drive
 	// and finalises through the JobFinalizer. When any is nil,
 	// the pre-spine local-path-only behaviour is used.
-	DeliveryPublisher delivery.Publisher          // Drive upload (PublishRequest → PublishResult)
-	SpineDB           *sql.DB                     // for INSERT INTO jobs (lease row)
-	SpineFinalizer    finalization.JobFinalizer   // CompleteWithArtifacts
+	DeliveryPublisher delivery.Publisher        // Drive upload (PublishRequest → PublishResult)
+	SpineDB           *sql.DB                   // for INSERT INTO jobs (lease row)
+	SpineFinalizer    finalization.JobFinalizer // CompleteWithArtifacts
 }
 
 // NewGenerateDocumentUseCase wires the use case. svc MUST be
@@ -307,17 +307,18 @@ func errInvalid(s string) error         { return validationError{msg: s} }
 // canonical asset.SHA256IdempotencyKey validator godlike/06 SSOT.
 //
 // Why this helper exists (P0 #3-B residual, July 2026):
-//   Pre-migration, the spine path built the artifact idempotency key
-//   with the literal `"doc-" + info.SHA256[:16]` in Handle() (right
-//   before the CompleteWithArtifacts call) — the same panic-prone
-//   pattern that the verdict flagged on the stock side for
-//   stockpipeline/finalizer_gates.go. Stock §12-1 (July 2026)
-//   retired the runtime panic via asset.SHA256IdempotencyKey; this
-//   helper closes the same exposure on the document spine path BEFORE
-//   a malformed-SHA producer causes a slice-bounds panic at runtime.
-//   (Symbol reference preferred over hard-coded line numbers per
-//   godlike/06 audit-pinning discipline — line numbers drift across
-//   refactors; symbol references stay valid.)
+//
+//	Pre-migration, the spine path built the artifact idempotency key
+//	with the literal `"doc-" + info.SHA256[:16]` in Handle() (right
+//	before the CompleteWithArtifacts call) — the same panic-prone
+//	pattern that the verdict flagged on the stock side for
+//	stockpipeline/finalizer_gates.go. Stock §12-1 (July 2026)
+//	retired the runtime panic via asset.SHA256IdempotencyKey; this
+//	helper closes the same exposure on the document spine path BEFORE
+//	a malformed-SHA producer causes a slice-bounds panic at runtime.
+//	(Symbol reference preferred over hard-coded line numbers per
+//	godlike/06 audit-pinning discipline — line numbers drift across
+//	refactors; symbol references stay valid.)
 //
 // godlike/06 SSOT: this helper is the typed-package entry-point
 // (package document). The cross-package validator

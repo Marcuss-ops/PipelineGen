@@ -3,15 +3,15 @@
 // Exercises the post-upload gate (applyDedupeByDriveFileID) against an
 // actual SQLite database to pin the contract post-refactor:
 //
-//   1. Empty drive_file_id → returns (nil, 0) silently (no false-positive
-//      cross-dedupe of unrelated uploads).
-//   2. Matching drive_file_id + different id → returns (*existingVoiceoverRow, 1).
-//   3. Same id as the just-uploaded row → returns (nil, 0) (no self-dedupe).
-//   4. No matching row → returns (nil, 0).
-//   5. Unrelated row's drive_file_id (different value) → returns (nil, 0).
-//   6. Multiple existing rows sharing drive_file_id → returns (row, N>1)
-//      so the helper can surface ambiguity in logs.
-//   7. Cancelled context → returns (nil, 0) (no panic, no scan error).
+//  1. Empty drive_file_id → returns (nil, 0) silently (no false-positive
+//     cross-dedupe of unrelated uploads).
+//  2. Matching drive_file_id + different id → returns (*existingVoiceoverRow, 1).
+//  3. Same id as the just-uploaded row → returns (nil, 0) (no self-dedupe).
+//  4. No matching row → returns (nil, 0).
+//  5. Unrelated row's drive_file_id (different value) → returns (nil, 0).
+//  6. Multiple existing rows sharing drive_file_id → returns (row, N>1)
+//     so the helper can surface ambiguity in logs.
+//  7. Cancelled context → returns (nil, 0) (no panic, no scan error).
 //
 // Uses a temp-file SQLite database because :memory: is driver-specific
 // in mattn/go-sqlite3 and the existing voiceover test pattern (see

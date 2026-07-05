@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 	"golang.org/x/sync/singleflight"
+	driveapi "google.golang.org/api/drive/v3"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -409,4 +409,3 @@ func (u *Uploader) openReader(path string) (*os.File, error) {
 	}
 	return os.Open(path)
 }
-

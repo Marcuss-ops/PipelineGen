@@ -38,8 +38,9 @@ import (
 // `UPDATE_GOLDEN=1` to regenerate the golden file, inspect the
 // diff, and commit the new golden in the same PR. Manual
 // regeneration:
-//   $ go run ./cmd/archcheck --root=. --policy=architecture/policy.yaml --phase=0 \
-//       > cmd/archcheck/testdata/report_golden.json
+//
+//	$ go run ./cmd/archcheck --root=. --policy=architecture/policy.yaml --phase=0 \
+//	    > cmd/archcheck/testdata/report_golden.json
 //
 // Test isolation: uses t.TempDir() for the test binary so parallel
 // test runs don't collide. The test is safe to run with

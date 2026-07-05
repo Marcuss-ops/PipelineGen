@@ -50,10 +50,10 @@ import (
 
 	"go.uber.org/zap"
 
+	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -183,8 +183,8 @@ func (a *ExtractionIntentAdapter) EnqueueExtract(ctx context.Context, intent mon
 
 	// ── 3. Marshal ExtractionIntent → youtubetypes.ExtractRequest ───
 	extractReq := youtubetypes.ExtractRequest{
-		URL:         intent.URL,
-		Segments:    translateSegments(intent.Segments),
+		URL:      intent.URL,
+		Segments: translateSegments(intent.Segments),
 		Destination: &youtubetypes.DestinationRequest{
 			Group:    intent.Group,
 			FolderID: intent.DriveFolderID,
@@ -210,8 +210,8 @@ func (a *ExtractionIntentAdapter) EnqueueExtract(ctx context.Context, intent mon
 		zap.String("destination_folder_id", intent.DriveFolderID))
 
 	// ── 5. Cursor update — REMOVED in Commit D ──────────────────────
-// (No-op: cycle-end MAX(discovered_at) → category_channels.last_cursor
-// replaced this. See monitor/discovery.go::recordCycleEndWatermark.)
+	// (No-op: cycle-end MAX(discovered_at) → category_channels.last_cursor
+	// replaced this. See monitor/discovery.go::recordCycleEndWatermark.)
 	return nil
 }
 

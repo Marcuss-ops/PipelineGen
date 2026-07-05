@@ -5,10 +5,10 @@
 // clipResolverPortReadOnly interface so tests don't need a real DB.
 // These tests cover the explicit dispatch table:
 //
-//   RefTypeMediaAssetID        → ResolveByMediaAssetID
-//   RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (fan-out)
-//   RefTypeDriveFileID         → ResolveByDriveFileID    (fan-out)
-//   RefTypeExternalProviderID  → ResolveByExternalProviderID
+//	RefTypeMediaAssetID        → ResolveByMediaAssetID
+//	RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (fan-out)
+//	RefTypeDriveFileID         → ResolveByDriveFileID    (fan-out)
+//	RefTypeExternalProviderID  → ResolveByExternalProviderID
 //
 // Plus edge cases the caller (TODO #7) relies on:
 //   - empty value → empty_value reason
@@ -251,10 +251,10 @@ func TestResolve_ExternalProviderID_MalformedValue_ReportsFormatReason(t *testin
 		// `idx <= 0 || idx >= len(v) - len("::")` guard in
 		// ParseExternalProviderValue.
 		{Type: ports.RefTypeExternalProviderID, Value: "noSeparatorHere"}, // idx = -1
-		{Type: ports.RefTypeExternalProviderID, Value: ":"},              // idx = -1 (single ":" doesn't contain "::")
-		{Type: ports.RefTypeExternalProviderID, Value: "::"},             // idx = 0  (empty provider)
-		{Type: ports.RefTypeExternalProviderID, Value: "provider::"},     // idx >= len-2 (empty external_ID)
-		{Type: ports.RefTypeExternalProviderID, Value: "::ext-1"},        // idx = 0  (empty provider, non-empty ext)
+		{Type: ports.RefTypeExternalProviderID, Value: ":"},               // idx = -1 (single ":" doesn't contain "::")
+		{Type: ports.RefTypeExternalProviderID, Value: "::"},              // idx = 0  (empty provider)
+		{Type: ports.RefTypeExternalProviderID, Value: "provider::"},      // idx >= len-2 (empty external_ID)
+		{Type: ports.RefTypeExternalProviderID, Value: "::ext-1"},         // idx = 0  (empty provider, non-empty ext)
 	})
 	if err != nil {
 		t.Fatalf("Resolve returned error %v, want nil", err)

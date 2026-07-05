@@ -24,13 +24,13 @@ func (o ImageOrigin) IsValid() bool {
 type ImageProvider string
 
 const (
-	ProviderWikipedia   ImageProvider = "wikipedia"
-	ProviderDuckDuckGo  ImageProvider = "duckduckgo"
-	ProviderSearXNG     ImageProvider = "searxng"
-	ProviderDrive       ImageProvider = "drive"
+	ProviderWikipedia    ImageProvider = "wikipedia"
+	ProviderDuckDuckGo   ImageProvider = "duckduckgo"
+	ProviderSearXNG      ImageProvider = "searxng"
+	ProviderDrive        ImageProvider = "drive"
 	ProviderGoogleSlides ImageProvider = "google-slides"
-	ProviderUpload      ImageProvider = "upload"
-	ProviderUnknown     ImageProvider = "unknown"
+	ProviderUpload       ImageProvider = "upload"
+	ProviderUnknown      ImageProvider = "unknown"
 )
 
 func (p ImageProvider) IsValid() bool {

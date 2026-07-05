@@ -99,8 +99,8 @@ func (s *Scanner) ListStuckRows(now time.Time, threshold time.Duration) ([]recon
 	var out []reconciler.StuckRow
 	for rows.Next() {
 		var (
-			id       string
-			stateStr string
+			id           string
+			stateStr     string
 			updatedAtStr string
 		)
 		if err := rows.Scan(&id, &stateStr, &updatedAtStr); err != nil {

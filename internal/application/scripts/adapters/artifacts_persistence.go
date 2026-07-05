@@ -6,14 +6,14 @@
 // KILL-K1 moves ALL of those ops to this adapter.
 //
 // KILL-K1 contract (per user spec, July 2026):
-//   * handler (`internal/application/scripts/jobs/generation_handler.go`)
+//   - handler (`internal/application/scripts/jobs/generation_handler.go`)
 //     does NOT touch filesystem. It calls
 //     PersistGeneratedArtifacts(ctx, jobID, *GenerationResult)
 //     and uses the returned []scriptpkg.Artifact to build the
 //     typed *job.ArtifactManifest in generation_manifest.go.
-//   * The adapter does all FS ops: os.TempDir, os.MkdirAll,
+//   - The adapter does all FS ops: os.TempDir, os.MkdirAll,
 //     os.WriteFile, file stat, sha256 hashing.
-//   * On error, the adapter returns a typed error mapping to the
+//   - On error, the adapter returns a typed error mapping to the
 //     canonical godlike/07 typed-error contract (errors.New + %w).
 //
 // godlike/06 SSOT surface: this file is the SINGLE canonical home
@@ -56,16 +56,18 @@ import (
 // home for filesystem ops in this pipeline (PR-GODOBJ-4 KILL K1).
 //
 // Signature:
-//   ctx context.Context       — propagation context for triage
-//   jobID string              — used in artifact IDs (jobID + ":" + kind)
-//   result *GenerationResult   — the typed aggregate result
+//
+//	ctx context.Context       — propagation context for triage
+//	jobID string              — used in artifact IDs (jobID + ":" + kind)
+//	result *GenerationResult   — the typed aggregate result
 //
 // Returns []scriptpkg.Artifact (the typed pre-computed artifact
 // slice) and an error. The handler then wraps this slice into a
 // *job.ArtifactManifest via buildManifestFromArtifacts.
 //
 // Workspace convention matches the worker's Workspace.Prepare:
-//   /tmp/pipelinegen/jobs/<jobID>/output/
+//
+//	/tmp/pipelinegen/jobs/<jobID>/output/
 func PersistGeneratedArtifacts(
 	ctx context.Context,
 	jobID string,
@@ -195,7 +197,8 @@ func PersistGeneratedArtifacts(
 
 // workspaceOutputDir returns the job-workspace output directory.
 // Convention (matches worker.Workspace.Prepare):
-//   /tmp/pipelinegen/jobs/<jobID>/output/
+//
+//	/tmp/pipelinegen/jobs/<jobID>/output/
 func workspaceOutputDir(jobID string) string {
 	return filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID, "output")
 }

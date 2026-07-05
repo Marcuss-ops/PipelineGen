@@ -45,10 +45,10 @@ import (
 //   - http              : direct URL downloads (CDN, mirror, raw file)
 //   - artlist           : Artlist HLS/m3u8 + progressive MP4
 //   - drive             : existing Drive file (no download needed
-//                         because the asset is already on Drive)
+//     because the asset is already on Drive)
 //   - existing_catalog  : lookup of an already-ingested stock
-//                         asset (no download — coordinate via
-//                         the catalog index)
+//     asset (no download — coordinate via
+//     the catalog index)
 type SourceKind string
 
 const (

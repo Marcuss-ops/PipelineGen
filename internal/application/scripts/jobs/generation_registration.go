@@ -8,7 +8,7 @@
 // generation_handler.go).
 //
 // PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
-//   * FAIL-FAST typed NPE: nil receiver or nil broker surface as a
+//   - FAIL-FAST typed NPE: nil receiver or nil broker surface as a
 //     composition error, NOT a swallowed no-op per Issue 7 / P1
 //     (June 2026). The pre-Issue-7 shape silently allowed nil
 //     broker registrations, which produced a runtime "no handler
@@ -16,8 +16,8 @@
 //     job was enqueued. The new contract: composition root must
 //     wire a real broker; nil-broker tests use
 //     TestRegisterJobs_FailsWhenBrokerMissing (stub test).
-//   * NO filesystem ops in this file (KILL K1).
-//   * NO dispatch logic (split: this file = wiring, generation_handler.go
+//   - NO filesystem ops in this file (KILL K1).
+//   - NO dispatch logic (split: this file = wiring, generation_handler.go
 //     = dispatch; single + batch separation enforced by HandleSingle
 //     and HandleBatch in generation_handler.go).
 //
@@ -31,8 +31,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
 )

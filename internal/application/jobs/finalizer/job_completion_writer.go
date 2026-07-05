@@ -7,15 +7,15 @@
 //   - markSucceeded — step 9 of the orchestrator's transactional
 //     pipeline. WRITES:
 //
-//       (a) the wrapped result_json envelope
-//           ({data, completion_fingerprint}) that handleIdempotentCompletion
-//           reads back for fingerprint comparison;
-//       (b) the atomic UPDATE jobs SET status='SUCCEEDED' (with
-//           worker_id / lease_id fence — same pattern as the
-//           existing SQLiteStore.Complete in repository_lifecycle.go);
-//       (c) the job_completed job_events row;
-//       (d) the optional_artifact_report job_events sidecar row
-//           (P1.2, July 2026) — when len(optionalReport) > 0.
+//     (a) the wrapped result_json envelope
+//     ({data, completion_fingerprint}) that handleIdempotentCompletion
+//     reads back for fingerprint comparison;
+//     (b) the atomic UPDATE jobs SET status='SUCCEEDED' (with
+//     worker_id / lease_id fence — same pattern as the
+//     existing SQLiteStore.Complete in repository_lifecycle.go);
+//     (c) the job_completed job_events row;
+//     (d) the optional_artifact_report job_events sidecar row
+//     (P1.2, July 2026) — when len(optionalReport) > 0.
 //
 //   - randomHex — pure SHA-256-derived id-helper used to mint job_events
 //     event-id rows. n bytes truncated → 2n hex chars. n MUST be ≤ 32.
@@ -124,7 +124,7 @@ func (f *Finalizer) markSucceeded(
 	// cleanly through standard JSON marshaling).
 	if len(optionalReport) > 0 {
 		payload, marshalErr := json.Marshal(struct {
-			SchemaVersion string                                 `json:"schema_version"`
+			SchemaVersion string                                `json:"schema_version"`
 			Records       []finalization.OptionalArtifactRecord `json:"records"`
 		}{
 			SchemaVersion: "v1",

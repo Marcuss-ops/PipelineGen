@@ -126,4 +126,3 @@ func TestVerifyArtifact_MissingFile_Fails(t *testing.T) {
 		t.Errorf("expected error to mention 'file not found', got: %s", errStr)
 	}
 }
-

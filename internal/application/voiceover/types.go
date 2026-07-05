@@ -419,19 +419,19 @@ type BatchResponse struct {
 }
 
 type BatchItem struct {
-	ID           string   `json:"id"`
-	Voice        string   `json:"voice,omitempty"`
-	Filename     string   `json:"filename"`
-	LocalPath    string   `json:"local_path,omitempty"`
-	CleanedPath  string   `json:"cleaned_path,omitempty"`
-	DriveLink    string   `json:"drive_link,omitempty"`
-	DriveFileID  string   `json:"drive_file_id,omitempty"`
-	DownloadLink string   `json:"download_link,omitempty"`
-	FileHash     string   `json:"file_hash,omitempty"`
+	ID           string `json:"id"`
+	Voice        string `json:"voice,omitempty"`
+	Filename     string `json:"filename"`
+	LocalPath    string `json:"local_path,omitempty"`
+	CleanedPath  string `json:"cleaned_path,omitempty"`
+	DriveLink    string `json:"drive_link,omitempty"`
+	DriveFileID  string `json:"drive_file_id,omitempty"`
+	DownloadLink string `json:"download_link,omitempty"`
+	FileHash     string `json:"file_hash,omitempty"`
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire shape is
 	// byte-equivalent with the pre-refactor string field.
-	Language     Language `json:"language"`
+	Language Language `json:"language"`
 	//
 	// PR-VO-AUDIT-P01 (June 2026): the legacy checks
 	// `if strings.TrimSpace(item.Status) == "failed"` (process.go)
@@ -443,14 +443,14 @@ type BatchItem struct {
 	// + appends the specific FailureCode to item.Errors so the
 	// forensic trail is preserved without affecting the aggregate
 	// OK=false contract (ok = ok && item.Status == StatusCompleted && item.Error == "").
-	Status       Status     `json:"status"`
-	Error        string     `json:"error,omitempty"`
+	Status Status `json:"status"`
+	Error  string `json:"error,omitempty"`
 	// Errors is the structured failure history. fail() appends the
 	// call's FailureCode so callers can correlate the canonical
 	// StatusFailed with the specific failure mode. omitempty so
 	// happy-path JSON is byte-equivalent to the pre-P01 wire shape.
-	Errors       []FailureCode `json:"errors,omitempty"`
-	SearchText   string        `json:"search_text,omitempty"`
+	Errors     []FailureCode `json:"errors,omitempty"`
+	SearchText string        `json:"search_text,omitempty"`
 }
 
 type VoiceoverResult struct {

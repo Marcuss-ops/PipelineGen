@@ -17,13 +17,13 @@
 // top-level orchestration: struct + ctor + HandleJob + processOneClip
 // stitch. The 7 sections of the pipeline are:
 //
-//   1. worker       — this file (struct + ctor + orchestrator)
-//   2. scanner      — bulk_upload_scan_pipeline.go
-//   3. clip-pub     — bulk_upload_clip_pub.go
-//   4. sidecar-pub  — bulk_upload_sidecar_pub.go
-//   5. registration — bulk_upload_registration.go
-//   6. enrichment   — bulk_upload_enrichment.go
-//   7. result       — bulk_upload_result.go
+//  1. worker       — this file (struct + ctor + orchestrator)
+//  2. scanner      — bulk_upload_scan_pipeline.go
+//  3. clip-pub     — bulk_upload_clip_pub.go
+//  4. sidecar-pub  — bulk_upload_sidecar_pub.go
+//  5. registration — bulk_upload_registration.go
+//  6. enrichment   — bulk_upload_enrichment.go
+//  7. result       — bulk_upload_result.go
 //
 // No new abstractions — only top-level helper functions consumed by
 // the processOneClip stitch. The worker struct (7 typed-port fields)

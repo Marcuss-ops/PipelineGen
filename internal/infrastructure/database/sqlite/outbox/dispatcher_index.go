@@ -92,7 +92,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		}
 
 		if _, err := d.outboxEventsRepo.Enqueue(
-		
+
 			ctx, tx,
 			outboxevents.EventAssetIndexRequested,
 			clip.ID,
@@ -126,17 +126,17 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 // rationale.
 //
 // Behavioural invariants:
-//   1. Atomic single-tx UPSERT — commits or returns the wrapped error;
-//      no partial-row state is observable on failure.
-//   2. NO outbox_events row is written — explicit invariant for the
-//      "discovery does not prematurely index" property. Tests assert this
-//      via the integration_test.go fixture (no row appears in
-//      outbox_events after a SaveDiscoveredAsset call).
-//   3. lifecycle_state + index_state are stamped on the clip BEFORE the
-//      UpsertClipTx call so the dispatcher ships a coherent row to the
-//      infra writer; callers do not need to pre-set them.
-//   4. Empty clip.ID is rejected up-front, mirroring EnqueueAndIndex's
-//      pre-tx guard so failures never reach the SQL layer.
+//  1. Atomic single-tx UPSERT — commits or returns the wrapped error;
+//     no partial-row state is observable on failure.
+//  2. NO outbox_events row is written — explicit invariant for the
+//     "discovery does not prematurely index" property. Tests assert this
+//     via the integration_test.go fixture (no row appears in
+//     outbox_events after a SaveDiscoveredAsset call).
+//  3. lifecycle_state + index_state are stamped on the clip BEFORE the
+//     UpsertClipTx call so the dispatcher ships a coherent row to the
+//     infra writer; callers do not need to pre-set them.
+//  4. Empty clip.ID is rejected up-front, mirroring EnqueueAndIndex's
+//     pre-tx guard so failures never reach the SQL layer.
 //
 // Future evolvability: a future "Re-Save Discovered" path (e.g. for
 // metadata reconciliation) can extend this method to optionally emit a
@@ -213,7 +213,7 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 	}
 
 	if _, err := d.outboxEventsRepo.Enqueue(
-		
+
 		ctx, tx,
 		outboxevents.EventAssetIndexRequested,
 		assetID,

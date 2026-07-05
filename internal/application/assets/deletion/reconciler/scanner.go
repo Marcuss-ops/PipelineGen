@@ -30,10 +30,10 @@ package reconciler
 //
 // Returned values:
 //   - Row:                 the input row (passthrough for ergonomic
-//                           collector-style dispatch loops)
+//     collector-style dispatch loops)
 //   - Action:              ActionRequeueDrive | ActionRequeueIndex | ""
 //   - Skip:                "" when Action is non-empty; otherwise the
-//                           human-readable skip reason
+//     human-readable skip reason
 //
 // The classify "skipped" reason uses the lowercased lifecycle_state
 // value for unambiguous operator-dashboard grep:

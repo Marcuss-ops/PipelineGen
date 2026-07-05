@@ -109,8 +109,6 @@ func runResetVideoAI(args []string) error {
 	return nil
 }
 
-
-
 func escapeName(name string) string {
 	result := ""
 	for _, c := range name {

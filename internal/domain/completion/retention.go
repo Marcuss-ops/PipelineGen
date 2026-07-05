@@ -190,9 +190,9 @@ func (p RetentionPolicy) CapTTL(ttlHint time.Duration) time.Duration {
 // platform-side override MUST be parsed via
 // NewRetentionPolicyFromConfig so the Validate() gate runs.
 const (
-	defaultDefaultTTL     = 24 * time.Hour
-	defaultMaxTTL         = 7 * 24 * time.Hour
-	defaultSweepInterval  = 1 * time.Hour
+	defaultDefaultTTL    = 24 * time.Hour
+	defaultMaxTTL        = 7 * 24 * time.Hour
+	defaultSweepInterval = 1 * time.Hour
 )
 
 // NewDefaultRetentionPolicy returns the canonical production-default

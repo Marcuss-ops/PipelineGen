@@ -30,15 +30,15 @@ import "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 
 // Report is the JSON document printed on stdout.
 type Report struct {
-	Passed        bool            `json:"passed"`
-	Mode          string          `json:"mode"`
-	PolicyPath    string          `json:"policy_path"`
-	Root          string          `json:"scan_root"`
-	Phase         string          `json:"phase"`
-	Policy        *policy.Policy  `json:"policy_snapshot"`
-	Summary       Summary         `json:"summary"`
-	Violations    []Violation     `json:"violations"`
-	Grandfathered []string        `json:"grandfathered_known"`
+	Passed        bool           `json:"passed"`
+	Mode          string         `json:"mode"`
+	PolicyPath    string         `json:"policy_path"`
+	Root          string         `json:"scan_root"`
+	Phase         string         `json:"phase"`
+	Policy        *policy.Policy `json:"policy_snapshot"`
+	Summary       Summary        `json:"summary"`
+	Violations    []Violation    `json:"violations"`
+	Grandfathered []string       `json:"grandfathered_known"`
 	// Warnings is the per-run audit-pin residue accounting surface
 	// (godlike/07 no-fake-availability). Comment-only hits +
 	// ARCH-ALLOWLIST marker sites in per-check checks (e.g. Check 54

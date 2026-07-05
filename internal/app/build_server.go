@@ -4,15 +4,15 @@
 // `BuildServer(cfg, mode, log) (*ServerRuntime, error)` entry point
 // that lets `cmd/server/main.go` do ONLY:
 //
-//   1. flag parsing (--config + --mode)
-//   2. fail-fast mode validation against the allowed set
-//   3. config load (`config.GetFromPath` — NOT `config.Get` so typos don't
-//      silently fall back to defaults) + `cfg.Validate`
-//   4. logging.Init + defer logging.Sync
-//   5. log.Info("server starting", ...)
-//   6. `runtime, err := app.BuildServer(cfg, mode, log)`
-//   7. signal.NotifyContext ctx
-//   8. `runtime.Run(sigCtx)`
+//  1. flag parsing (--config + --mode)
+//  2. fail-fast mode validation against the allowed set
+//  3. config load (`config.GetFromPath` — NOT `config.Get` so typos don't
+//     silently fall back to defaults) + `cfg.Validate`
+//  4. logging.Init + defer logging.Sync
+//  5. log.Info("server starting", ...)
+//  6. `runtime, err := app.BuildServer(cfg, mode, log)`
+//  7. signal.NotifyContext ctx
+//  8. `runtime.Run(sigCtx)`
 //
 // The heavy composition-root work (WireServices + NewServerWithHealth
 // + qdrantProbe wiring) moves UP from main into this layer.

@@ -18,9 +18,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -822,9 +822,9 @@ func TestAssetToPoint_SearchTextBuilder_YoutubeStrategy(t *testing.T) {
 		}
 	}
 	mustContainAll(text,
-		"Cinematic Drone Footage",   // title
-		"Welcome to my drone channel", // transcript (from metadata_json)
-		"ChannelAlpha",              // channel
+		"Cinematic Drone Footage",                           // title
+		"Welcome to my drone channel",                       // transcript (from metadata_json)
+		"ChannelAlpha",                                      // channel
 		"Beautiful drone footage over mountains at sunrise", // description
 	)
 }

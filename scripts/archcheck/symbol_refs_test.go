@@ -150,11 +150,11 @@ func equalStringSlices(a, b []string) bool {
 // are NOT emitted so Go-path mentions in prose do not become
 // false-positive violations. The test mirrors the user-spec shape:
 //
-//	- `linked_issues:` list items with sub-fields (id, owner_capability,
-//	  status, deadline) are in scope.
-//	- `blocker:` list items are in scope.
-//	- block-scalar bodies under `linked_issues:` are in scope; bodies
-//	  under `exit_gate:` (or any other ancestry) are filtered out.
+//   - `linked_issues:` list items with sub-fields (id, owner_capability,
+//     status, deadline) are in scope.
+//   - `blocker:` list items are in scope.
+//   - block-scalar bodies under `linked_issues:` are in scope; bodies
+//     under `exit_gate:` (or any other ancestry) are filtered out.
 func TestScanYAMLScopedLeafScalars_FiltersToParentKeys(t *testing.T) {
 	const yaml = `
 top_key: "internal/services/pkg_a"

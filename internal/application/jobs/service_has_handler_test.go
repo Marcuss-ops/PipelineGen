@@ -50,10 +50,10 @@ func TestService_HasHandler(t *testing.T) {
 
 	// Test cases.
 	tests := []struct {
-		name      string
-		svc       *Service // override svc (e.g. nil receiver) per row
-		jobType   string
-		wantHave  bool
+		name     string
+		svc      *Service // override svc (e.g. nil receiver) per row
+		jobType  string
+		wantHave bool
 	}{
 		{
 			name:     "nil receiver returns false (defensive guard)",

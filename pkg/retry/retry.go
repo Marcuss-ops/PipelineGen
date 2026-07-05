@@ -35,7 +35,7 @@
 //   - Returns true when err is non-nil AND either:
 //     (a) err is or wraps a *TransientInfrastructureError (typed path), OR
 //     (b) err.Error() contains one of the canonical transient-substrings
-//         in (4) below (substring fallback).
+//     in (4) below (substring fallback).
 //   - Pass it to retry.Do as the IsRetryable Option. This is the SINGLE
 //     canonical retry-classifier for the whole codebase.
 //
@@ -50,29 +50,33 @@
 //
 // (4) transientSubstrings taxonomy — canonical substring fallback.
 //
-//   timeout, connection refused, connection reset, connection is already
-//   closed, eof, 429, 503, 502, 504, rate limit, quota exceeded,
-//   temporarily unavailable, resource temporarily unavailable,
-//   database is locked, sqlite busy.
+//	timeout, connection refused, connection reset, connection is already
+//	closed, eof, 429, 503, 502, 504, rate limit, quota exceeded,
+//	temporarily unavailable, resource temporarily unavailable,
+//	database is locked, sqlite busy.
 //
-//   These are the substring-path fallback. Where possible, prefer typed
-//   wrapping (1+3) for new code; the substring path is retained as a
-//   safety net for raw SDK errors not yet tagged at the typed layer.
+//	These are the substring-path fallback. Where possible, prefer typed
+//	wrapping (1+3) for new code; the substring path is retained as a
+//	safety net for raw SDK errors not yet tagged at the typed layer.
 //
 // (5) DefaultOptions + bounded jitter.
 //
 //   - MaxAttempts:     3
+//
 //   - InitialBackoff:  1 * time.Second
+//
 //   - MaxBackoff:      30 * time.Second
+//
 //   - BackoffFactor:   2.0 (exponential)
+//
 //   - JitterFraction:  0.25 (±25% uniform randomisation)
 //
-//   The default ±25% jitter kills thundering-herd retry storms when many
-//   goroutines converge on the same transient error (e.g. N workers
-//   enqueuing from a SQLite-locked hot row in lockstep). With
-//   JitterFraction=0 every retry attempt would sleep the same interval —
-//   defeating the "spread out" intent of retry. JitterFraction is clamped
-//   to [0, 1] defensively (negative or >1 values become 0 / 1 respectively).
+//     The default ±25% jitter kills thundering-herd retry storms when many
+//     goroutines converge on the same transient error (e.g. N workers
+//     enqueuing from a SQLite-locked hot row in lockstep). With
+//     JitterFraction=0 every retry attempt would sleep the same interval —
+//     defeating the "spread out" intent of retry. JitterFraction is clamped
+//     to [0, 1] defensively (negative or >1 values become 0 / 1 respectively).
 //
 // ═══════════ Usage Examples ═════════════════════════════════════════════════════════
 //
@@ -256,11 +260,11 @@ type RetryAfterError interface {
 //     substrings (timeout, connection refused, 429, 503, etc.).
 //
 // Decision order (typed wins over substring):
-//   1. nil → false
-//   2. RetryableError interface → IsRetryable() (typed authoritative path)
-//   3. *TransientInfrastructureError via errors.As → true
-//   4. Substring fallback against transientSubstrings
-//   5. Everything else → false
+//  1. nil → false
+//  2. RetryableError interface → IsRetryable() (typed authoritative path)
+//  3. *TransientInfrastructureError via errors.As → true
+//  4. Substring fallback against transientSubstrings
+//  5. Everything else → false
 //
 // This is the single canonical "should I retry this?" predicate for
 // the whole codebase. Callers that previously implemented their own
@@ -490,12 +494,12 @@ func DoWithValue[T any](ctx context.Context, fn func() (T, error), opts Options)
 					sleep = ra
 				}
 			}
-		select {
-		case <-ClockFromOptions(opts).After(sleep):
-		case <-ctx.Done():
-			var zero T
-			return zero, ctx.Err()
-		}
+			select {
+			case <-ClockFromOptions(opts).After(sleep):
+			case <-ctx.Done():
+				var zero T
+				return zero, ctx.Err()
+			}
 		}
 	}
 	var zero T

@@ -6,13 +6,13 @@
 // deterministically to HTTP status codes + Retry-After hints per
 // the user-facing spec:
 //
-//   lease_lost             → HTTP 409 (Conflict)
-//   idempotency_conflict   → HTTP 409 (Conflict)
-//   invalid_manifest       → HTTP 400 (Bad Request)
-//   artifact_missing       → HTTP 422 (Unprocessable Entity)
-//   publisher_unavailable  → HTTP 503 (Service Unavailable)
-//   rate_limited           → HTTP 429 (Too Many Requests) + Retry-After
-//   internal_db_error      → HTTP 500 (Internal Server Error)
+//	lease_lost             → HTTP 409 (Conflict)
+//	idempotency_conflict   → HTTP 409 (Conflict)
+//	invalid_manifest       → HTTP 400 (Bad Request)
+//	artifact_missing       → HTTP 422 (Unprocessable Entity)
+//	publisher_unavailable  → HTTP 503 (Service Unavailable)
+//	rate_limited           → HTTP 429 (Too Many Requests) + Retry-After
+//	internal_db_error      → HTTP 500 (Internal Server Error)
 //
 // godlike/06 SSOT (one canonical owner per fact): this file is the
 // single source of truth for the wire envelope taxonomy. The server

@@ -51,11 +51,11 @@ type Service struct {
 //	  - Clock      → time.Now
 //	  - Log        → zap.NewNop
 type ServiceDeps struct {
-	Scanner         Scanner
-	OutboxEnqueuer  OutboxEnqueuer
-	Metrics         Metrics
-	Clock           func() time.Time
-	Log             *zap.Logger
+	Scanner        Scanner
+	OutboxEnqueuer OutboxEnqueuer
+	Metrics        Metrics
+	Clock          func() time.Time
+	Log            *zap.Logger
 
 	// DefaultInterval + DefaultThreshold are the ticker sleep period
 	// and stuck-row detection cutoff respectively. Production
@@ -261,6 +261,6 @@ func (s *Service) ReconcileOnce(ctx context.Context, opts RunOptions) (*RunRepor
 type noopMetrics struct{}
 
 func (noopMetrics) RecordRepair(string, string) {}
-func (noopMetrics) RecordSkipped(string)         {}
+func (noopMetrics) RecordSkipped(string)        {}
 func (noopMetrics) RecordErrored()              {}
 func (noopMetrics) RecordRunComplete(float64)   {}

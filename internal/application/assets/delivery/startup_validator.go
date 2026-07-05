@@ -29,12 +29,13 @@
 //     and continues (soft mode, opt-in via cfg.Drive.StrictStartupValidation).
 //
 // State machine:
-//   Reachability per destination is binary (reachable | unreachable).
-//   Empty RootFolderIDs are SKIPPED, not failed — operators may
-//   intentionally leave sub-destinations unconfigured while the
-//   corresponding capability remains off. The report carries a
-//   Skipped list separately so the audit log distinguishes
-//   "intentionally unset" from "configured but broken via probe failure".
+//
+//	Reachability per destination is binary (reachable | unreachable).
+//	Empty RootFolderIDs are SKIPPED, not failed — operators may
+//	intentionally leave sub-destinations unconfigured while the
+//	corresponding capability remains off. The report carries a
+//	Skipped list separately so the audit log distinguishes
+//	"intentionally unset" from "configured but broken via probe failure".
 //
 // On error: returns the typed sentinel wrapped via fmt.Errorf (so
 // errors.Is(err, ErrDriveStartupValidationFailed) detects the umbrella
@@ -250,9 +251,9 @@ func NewDriveRootsValidator(
 // Returns:
 //   - (report, nil)         if every reachable root passed
 //   - (report, ErrXxx)      if at least one reachable root failed;
-//                           the report still carries the full per-key
-//                           outcome (success + error) so the composition
-//                           root can log the burst detail.
+//     the report still carries the full per-key
+//     outcome (success + error) so the composition
+//     root can log the burst detail.
 //
 // Sequential (not concurrent): probing 9 destinations concurrently at
 // boot would hammer Drive's quota + need a bounded goroutine pool;

@@ -30,20 +30,20 @@
 //
 //   - JobsSvc          (bulk-upload enqueue + idem bypass)
 //   - DriveAdmin    (Drive folder-name resolution when caller
-//                       omits drive_folder_id but provides
-//                       drive_folder_name)
+//     omits drive_folder_id but provides
+//     drive_folder_name)
 //   - Cfg              (storage base paths for IsLocalFolderAllowed;
-//                       Drive clips / root folder fallback)
+//     Drive clips / root folder fallback)
 //   - BulkUploadWorker (job dispatcher → BulkUploadWorker.HandleJob)
 //   - Log              (logging)
 //
 // ROUTE TABLE (2 routes, both write+idem-installed by orchestrator):
 //
-//   POST /:source/clips/bulk-upload-youtube-clips
-//                              -> BulkUploadYouTubeClips (write+idem)
-//   Job type "bulk_upload_youtube_clips"
-//                              -> HandleBulkUploadYouTubeClipsJob
-//                                 (runs the heavy worker)
+//	POST /:source/clips/bulk-upload-youtube-clips
+//	                           -> BulkUploadYouTubeClips (write+idem)
+//	Job type "bulk_upload_youtube_clips"
+//	                           -> HandleBulkUploadYouTubeClipsJob
+//	                              (runs the heavy worker)
 package clips
 
 import (
@@ -72,7 +72,7 @@ import (
 // follows the matrix in the Step 5 discovery report (June 2026).
 type BulkTransportDeps struct {
 	JobsSvc          jobservice.Service
-	DriveAdmin    drive.Admin
+	DriveAdmin       drive.Admin
 	Cfg              *config.Config
 	BulkUploadWorker *appclips.BulkUploadWorker
 	Log              *zap.Logger
@@ -85,7 +85,7 @@ type BulkTransportDeps struct {
 // orchestrator Deps.
 type BulkUploadTransport struct {
 	jobsSvc          jobservice.Service
-	driveAdmin    drive.Admin
+	driveAdmin       drive.Admin
 	cfg              *config.Config
 	bulkUploadWorker *appclips.BulkUploadWorker
 	log              *zap.Logger
@@ -101,7 +101,7 @@ func NewBulkUploadTransport(d BulkTransportDeps) *BulkUploadTransport {
 	}
 	return &BulkUploadTransport{
 		jobsSvc:          d.JobsSvc,
-		driveAdmin:    d.DriveAdmin,
+		driveAdmin:       d.DriveAdmin,
 		cfg:              d.Cfg,
 		bulkUploadWorker: d.BulkUploadWorker,
 		log:              d.Log,
@@ -337,4 +337,3 @@ type osStatInfo struct {
 }
 
 func (s *osStatInfo) IsDir() bool { return s.fi.IsDir() }
-

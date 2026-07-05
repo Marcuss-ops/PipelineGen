@@ -256,10 +256,10 @@ func TestCutBatchResultEmptyAllSucceed(t *testing.T) {
 // the canonical human-readable labels (used by dashboards / logs).
 func TestCutItemStatusString(t *testing.T) {
 	cases := map[CutItemStatus]string{
-		CutItemStatusUnknown:    "unknown",
-		CutItemStatusSucceeded:  "succeeded",
-		CutItemStatusFailed:     "failed",
-		CutItemStatusValidated:  "validated",
+		CutItemStatusUnknown:   "unknown",
+		CutItemStatusSucceeded: "succeeded",
+		CutItemStatusFailed:    "failed",
+		CutItemStatusValidated: "validated",
 	}
 	for s, want := range cases {
 		if got := s.String(); got != want {

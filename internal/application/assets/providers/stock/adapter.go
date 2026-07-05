@@ -121,11 +121,11 @@ func (a *Adapter) Capabilities() []providers.Capability {
 //   - Calls runner.StageSource (Blocco 2a, July 2026) to download the
 //     video into a staging directory WITHOUT the render/upload/index
 //     pipeline. Pre-fix, Fetch called runner.Run which:
-//       a) ran the full heavy pipeline (render chunks, upload to Drive,
-//          index into Qdrant) — overkill for a staging operation;
-//       b) deleted the temp dir via defer os.RemoveAll before returning,
-//          so the returned LocalPath pointed to a deleted file and
-//          Bytes was always 0 (stat failed silently).
+//     a) ran the full heavy pipeline (render chunks, upload to Drive,
+//     index into Qdrant) — overkill for a staging operation;
+//     b) deleted the temp dir via defer os.RemoveAll before returning,
+//     so the returned LocalPath pointed to a deleted file and
+//     Bytes was always 0 (stat failed silently).
 //   - Returns a FetchedAsset with the live LocalPath and non-zero Bytes.
 //     The caller is responsible for cleanup via the os-level temp dir
 //     (the staging directory is under cfg.Storage.TempPath()).
@@ -168,5 +168,3 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 		Bytes:     staged.Bytes,
 	}, nil
 }
-
-

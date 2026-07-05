@@ -166,7 +166,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 
 	handler := NewArtlistHandler(
 		deps.Service,
-		deps.CatalogSync,  // nil-tolerant — handler returns 503 on /sync-catalogs
+		deps.CatalogSync, // nil-tolerant — handler returns 503 on /sync-catalogs
 		deps.Jobs,
 		deps.ClipResolver, // nil-tolerant — handler returns 503 on /recommend
 		nodeScraperDir,

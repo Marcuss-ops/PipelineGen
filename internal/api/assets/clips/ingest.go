@@ -75,38 +75,38 @@ var errClipDispatcherUnavailable = errors.New("clips API write unavailable: Asse
 // less. Cluster ownership follows the matrix in the Step 5 discovery
 // report (June 2026, §4 Ingest cluster).
 type IngestDeps struct {
-	Dispatcher     appclips.ClipIndexDispatcherPort
-	AssetTreeSvc   *assettree.Service
-	JobsSvc        jobservice.Service
-	ClipsRepo *assets.ClipsRepository
-	ArtifactSvc    *artifacts.Service
-	DriveAdmin  drive.Admin
-	ProcessRunner  appassets.ProcessRunner
-	Cfg            *config.Config
-	ClipIndexer    *clipindexer.Service
-	MetaWriter     *semantic.MetadataWriter
-	EnrichUC       *appclips.EnrichUseCase
-	UploadUC       *appupload.UseCase
-	Log            *zap.Logger
+	Dispatcher    appclips.ClipIndexDispatcherPort
+	AssetTreeSvc  *assettree.Service
+	JobsSvc       jobservice.Service
+	ClipsRepo     *assets.ClipsRepository
+	ArtifactSvc   *artifacts.Service
+	DriveAdmin    drive.Admin
+	ProcessRunner appassets.ProcessRunner
+	Cfg           *config.Config
+	ClipIndexer   *clipindexer.Service
+	MetaWriter    *semantic.MetadataWriter
+	EnrichUC      *appclips.EnrichUseCase
+	UploadUC      *appupload.UseCase
+	Log           *zap.Logger
 }
 
 // IngestHandler owns the 3 ingest routes. Receiver-on-pattern-B:
 // constructed in NewHandler from an IngestDeps shape extracted from
 // the orchestrator Deps.
 type IngestHandler struct {
-	dispatcher     appclips.ClipIndexDispatcherPort
-	assetTreeSvc   *assettree.Service
-	jobsSvc        jobservice.Service
-	clipsRepo *assets.ClipsRepository
-	artifactSvc    *artifacts.Service
-	driveAdmin  drive.Admin
-	processRunner  appassets.ProcessRunner
-	cfg            *config.Config
-	clipIndexer    *clipindexer.Service
-	metaWriter     *semantic.MetadataWriter
-	enrichUC       *appclips.EnrichUseCase
-	uploadUC       *appupload.UseCase
-	log            *zap.Logger
+	dispatcher    appclips.ClipIndexDispatcherPort
+	assetTreeSvc  *assettree.Service
+	jobsSvc       jobservice.Service
+	clipsRepo     *assets.ClipsRepository
+	artifactSvc   *artifacts.Service
+	driveAdmin    drive.Admin
+	processRunner appassets.ProcessRunner
+	cfg           *config.Config
+	clipIndexer   *clipindexer.Service
+	metaWriter    *semantic.MetadataWriter
+	enrichUC      *appclips.EnrichUseCase
+	uploadUC      *appupload.UseCase
+	log           *zap.Logger
 }
 
 // NewIngestHandler constructs an IngestHandler with the supplied
@@ -115,19 +115,19 @@ type IngestHandler struct {
 // orchestrator Deps shape.
 func NewIngestHandler(d IngestDeps) *IngestHandler {
 	return &IngestHandler{
-		dispatcher:     d.Dispatcher,
-		assetTreeSvc:   d.AssetTreeSvc,
-		jobsSvc:        d.JobsSvc,
-		clipsRepo: d.ClipsRepo,
-		artifactSvc:    d.ArtifactSvc,
-		driveAdmin:  d.DriveAdmin,
-		processRunner:  d.ProcessRunner,
-		cfg:            d.Cfg,
-		clipIndexer:    d.ClipIndexer,
-		metaWriter:     d.MetaWriter,
-		enrichUC:       d.EnrichUC,
-		uploadUC:       d.UploadUC,
-		log:            d.Log,
+		dispatcher:    d.Dispatcher,
+		assetTreeSvc:  d.AssetTreeSvc,
+		jobsSvc:       d.JobsSvc,
+		clipsRepo:     d.ClipsRepo,
+		artifactSvc:   d.ArtifactSvc,
+		driveAdmin:    d.DriveAdmin,
+		processRunner: d.ProcessRunner,
+		cfg:           d.Cfg,
+		clipIndexer:   d.ClipIndexer,
+		metaWriter:    d.MetaWriter,
+		enrichUC:      d.EnrichUC,
+		uploadUC:      d.UploadUC,
+		log:           d.Log,
 	}
 }
 

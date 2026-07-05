@@ -18,9 +18,9 @@ import (
 
 // pickImagePrompt extracts the most specific prompt from a list.
 // Priority:
-//   1. prompts[0] (first non-empty)
-//   2. subject + topic combinations (cinematic-landscape suffix)
-//   3. topic, then subject, then empty
+//  1. prompts[0] (first non-empty)
+//  2. subject + topic combinations (cinematic-landscape suffix)
+//  3. topic, then subject, then empty
 //
 // Moved from generation_service.go per PR-GODOBJ-3.
 func pickImagePrompt(subject, topic string, prompts []string) string {
@@ -48,4 +48,3 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 // NOT redeclare it (PR-GODOBJ-3 closure of the previous duplicate
 // identified at code-reviewer check-in). godlike/06 SSOT: the canonical
 // shape lives in ports.go only.
-

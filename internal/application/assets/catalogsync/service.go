@@ -132,10 +132,10 @@ type Deps struct {
 }
 
 type Service struct {
-	uploader   *uploaddrive.Uploader
-	log        *zap.Logger
-	targets    []Target
-	assetTree  *assettree.Service
+	uploader  *uploaddrive.Uploader
+	log       *zap.Logger
+	targets   []Target
+	assetTree *assettree.Service
 	// dispatcher is the canonical ingestion entry point. Routes media_assets
 	// upserts + outbox enqueues through Dispatcher.EnqueueAndIndex (atomic),
 	// replacing the legacy `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)`

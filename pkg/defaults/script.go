@@ -26,9 +26,8 @@ package defaults
 //     internal/application/lessons/service.go::estimateChapterDuration
 //     (the formula `(words * 60) / 140`); and the typed constant
 //     `internal/infrastructure/ai/ollama/types/constants.go::WordsPerMinute
-//     (=140). Both are DEFERRED — see forward-pointer
-//     PR-DEFAULTS-WPM-UNIFY (registered in
-//     architecture/current.yaml); unifying them would cross
+//     (=140). Both are DEFERRED — see Blocco 2.C follow-up TODOs
+//     registered against this commit; unifying them would cross
 //     domain boundaries (lessons + ollama-internal infra) with
 //     behavior-changing value flips.
 //

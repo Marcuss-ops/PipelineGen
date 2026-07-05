@@ -90,11 +90,11 @@ type Channel struct {
 	// omitempty: hidden on wire for handlers that don't surface
 	// monitor state; visible when the Channel is returned by
 	// Service.ClaimDue (the monitor's canonical entry point).
-	LeaseOwner          string `json:"LeaseOwner,omitempty"`
-	LeaseUntil          string `json:"LeaseUntil,omitempty"`
-	LastCursor          string `json:"LastCursor,omitempty"`
-	CreatedAt           string `json:"CreatedAt,omitempty"`
-	UpdatedAt           string `json:"UpdatedAt,omitempty"`
+	LeaseOwner string `json:"LeaseOwner,omitempty"`
+	LeaseUntil string `json:"LeaseUntil,omitempty"`
+	LastCursor string `json:"LastCursor,omitempty"`
+	CreatedAt  string `json:"CreatedAt,omitempty"`
+	UpdatedAt  string `json:"UpdatedAt,omitempty"`
 }
 
 // ListAllResult is the result payload of Service.ListAll.

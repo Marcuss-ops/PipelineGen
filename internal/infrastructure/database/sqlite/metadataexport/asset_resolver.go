@@ -10,9 +10,9 @@
 //
 // DB schema references (read-only — the resolver never writes):
 //   - media_assets: id, source, name, media_type, drive_file_id,
-//                    drive_link, category, quality_score
+//     drive_link, category, quality_score
 //   - delivery_log: delivery_id, endpoint_url, status_code,
-//                   response_hash, delivered_at, note, asset_id
+//     response_hash, delivered_at, note, asset_id
 //   - outbox_events: aggregate_id (job-scope resolution)
 //
 // Missing rows are part of the contract: ResolveAssetIDs returns nil
@@ -69,7 +69,7 @@ type sqliteAssetResolver struct {
 //   - explicit asset_ids returned verbatim when supplied
 //     (producer knows the scope).
 //   - job_id route queries outbox_events for aggregate_ids whose
-//     event_type LIKE 'asset.%' AND aggregate_id != ''. Empty table
+//     event_type LIKE 'asset.%' AND aggregate_id != ”. Empty table
 //     is treated as no rows (no error surfaced). LIMIT 500 caps the
 //     scope so an over-eager job can't trigger an unbounded walk.
 //   - both empty → nil.

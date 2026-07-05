@@ -60,7 +60,8 @@ var _ ytdomain.Segment = ExtractionSegment{}
 //       makes the struct non-comparable in Go.
 
 // (a) JSON byte-equivalence + wire-fixture shape lock +
-//     Channel json:"-" round-trip lock.
+//
+//	Channel json:"-" round-trip lock.
 //
 // Wire-format note (godlike/07 honest-limitation): the pre-Fase-8
 // EnqueueExtractRequest struct had NO json tags and marshalled with
@@ -77,7 +78,7 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 		expectPrefix string // FIRST bytes of expected JSON (snake_case pin)
 	}{
 		{
-			name: "zero_value",
+			name:   "zero_value",
 			fields: ExtractionIntent{
 				// All zero values; Tags-only Channels omitted via json:"-"; segments nil → "segments":null
 			},
@@ -215,8 +216,9 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 }
 
 // (b) Field-count + JSON-tag parity — monitor.ExtractionSegment
-//     (= ytdomain.Segment via type alias) MUST have the SAME field
-//     count + JSON tags (incl. omitempty parity) as ytdomain.Segment.
+//
+//	(= ytdomain.Segment via type alias) MUST have the SAME field
+//	count + JSON tags (incl. omitempty parity) as ytdomain.Segment.
 //
 // Pin the count to EXACT 11 (ytdomain.Segment has 11 fields: Start,
 // End, Name, Tags, Summary, Topics, Speakers, MentionedPeople, Hook,
@@ -300,16 +302,17 @@ func hasOmitempty(tagValue string) bool {
 }
 
 // (c) Type-alias runtime + compile-resolution. Package-level `var _`
-//     pins above catch compile-time drift; this test complements
-//     with a runtime round-trip: assigns through both alias directions
-//     and confirms field values are preserved (no shadow-copy drift).
 //
-//     Use reflect.DeepEqual instead of struct `==` because structs
-//     with slice fields are not directly comparable in Go. The earlier
-//     draft used `if zeroER != EnqueueExtractRequest{}` which failed
-//     to compile because ExtractionIntent.Segments is
-//     `[]ExtractionSegment`; DeepEqual is the canonical Go pattern
-//     for non-comparable struct equality.
+//	pins above catch compile-time drift; this test complements
+//	with a runtime round-trip: assigns through both alias directions
+//	and confirms field values are preserved (no shadow-copy drift).
+//
+//	Use reflect.DeepEqual instead of struct `==` because structs
+//	with slice fields are not directly comparable in Go. The earlier
+//	draft used `if zeroER != EnqueueExtractRequest{}` which failed
+//	to compile because ExtractionIntent.Segments is
+//	`[]ExtractionSegment`; DeepEqual is the canonical Go pattern
+//	for non-comparable struct equality.
 func TestEnqueueExtractRequest_TypeAliasResolution(t *testing.T) {
 	t.Parallel()
 

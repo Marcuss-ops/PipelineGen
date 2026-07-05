@@ -13,7 +13,7 @@
 //
 // Cycle-break rationale (PR2.7, now historical only):
 //
-//\tartlist → ... → assets/assetop → drive → artlist  (cycle, rejected)
+// \tartlist → ... → assets/assetop → drive → artlist  (cycle, rejected)
 //
 // PR2.7 placed the DriveFileRef struct in internal/infrastructure/drive
 // (this file) so the folder_manager.go adapter could return a

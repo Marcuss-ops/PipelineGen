@@ -80,7 +80,7 @@ func (r ProcessBookFromDriveRequest) Validate() error {
 
 // ProcessBookFromDriveResponse reuses the shared generation envelope
 // so the books API matches the other text-generation endpoints.
-type ProcessBookFromDriveResponse = apiutil.Response[ProcessBookFromDriveResult] 
+type ProcessBookFromDriveResponse = apiutil.Response[ProcessBookFromDriveResult]
 
 // ErrDriveMissing is returned when the books Service is nil at
 // construction. The ErrorMapper translates to 503. Reuses the same
@@ -157,7 +157,7 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 		resp.VoiceoverDriveID = result.VoiceoverDriveID
 	}
 	resp.VoiceoverError = result.VoiceoverError
-	return apiutil.Sync("book", resp), nil 
+	return apiutil.Sync("book", resp), nil
 }
 
 // ProcessBookFromDriveErrMapper maps use-case errors to HTTP responses.

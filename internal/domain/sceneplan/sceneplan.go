@@ -281,6 +281,7 @@ type AssetMetadata struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 }
+
 // ── Fase 5 Migration walkthrough (SpecScene → ScenePlan / ResolvedScene / RenderManifest) ───
 //
 // How to migrate a single SpecScene (the canonical LLM-emitted shape

@@ -152,8 +152,8 @@ func newSweeper(repo UploadIntentsRepository, drive OrphanDriveDeleter, m *Metri
 func TestOrphanSweeper_sweep_BothStale_BothCompensated(t *testing.T) {
 	repo := &sweepMockRepo{
 		listPendingResult: []UploadIntent{
-			uploadIntentStale("vo-pending-1", "", "pending", 60*time.Minute),                  // older than pendingTTL=30m
-			uploadIntentStale("vo-uploaded-1", "drive-stuck", "uploaded", 90*time.Minute),     // older than uploadedTTL=60m
+			uploadIntentStale("vo-pending-1", "", "pending", 60*time.Minute),              // older than pendingTTL=30m
+			uploadIntentStale("vo-uploaded-1", "drive-stuck", "uploaded", 90*time.Minute), // older than uploadedTTL=60m
 		},
 		markFailedFound: true,
 	}

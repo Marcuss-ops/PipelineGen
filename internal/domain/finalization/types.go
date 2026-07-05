@@ -329,13 +329,13 @@ type ArtifactDeclaration struct {
 //
 // Why a sidecar?
 //
-//   job_completed alone tells operators "this job succeeded" but
-//   says nothing about why some optional artifacts are missing or
-//   failed (success today can paper over hidden degradation: an
-//   AI image that never generated, a metadata.json that never
-//   uploaded, etc.). The sidecar carries the EXACT per-optional
-//   outcome so dashboards can surface the degradation to operators
-//   without parsing text logs.
+//	job_completed alone tells operators "this job succeeded" but
+//	says nothing about why some optional artifacts are missing or
+//	failed (success today can paper over hidden degradation: an
+//	AI image that never generated, a metadata.json that never
+//	uploaded, etc.). The sidecar carries the EXACT per-optional
+//	outcome so dashboards can surface the degradation to operators
+//	without parsing text logs.
 type OptionalArtifactRecord struct {
 	// ArtifactID is the canonical identifier of the optional artifact.
 	ArtifactID string `json:"artifact_id"`

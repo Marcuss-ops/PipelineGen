@@ -3,54 +3,55 @@
 // UploadIntentUseCase is the application-layer use case that
 // orchestrates the upload_intents 5-step lifecycle:
 //
-//   Step 1: InsertTx     (row created in caller-owned tx as 'pending')
-//   Step 2: Drive.Upload (Drive.UploadFile with voiceover payload)
-//   Step 3: MarkUploaded (intent row → 'uploaded', drive_file_id stamped)
-//   Step 4: ProjectFinalize (local DB finalize — voiceover canonical row)
-//   Step 4.5: MarkFinalized (intent row → 'finalized' — bridges Step 4
-//             to Step 5 since MarkCompleted requires status='finalized')
-//   Step 5: MarkCompleted (intent row → 'completed')
+//	Step 1: InsertTx     (row created in caller-owned tx as 'pending')
+//	Step 2: Drive.Upload (Drive.UploadFile with voiceover payload)
+//	Step 3: MarkUploaded (intent row → 'uploaded', drive_file_id stamped)
+//	Step 4: ProjectFinalize (local DB finalize — voiceover canonical row)
+//	Step 4.5: MarkFinalized (intent row → 'finalized' — bridges Step 4
+//	          to Step 5 since MarkCompleted requires status='finalized')
+//	Step 5: MarkCompleted (intent row → 'completed')
 //
 // godlike/07 NO_FAKE_AVAILABILITY contract (semantics per step):
-//   Step 1 error → return wrapped error; row absent (UNIQUE violation or
-//                  SQL error); NO MarkFailed (the row doesn't exist to mark).
-//   Step 2 (Drive) error → emit MarkFailed("upload_failed: <cause>"), row at
-//                           'failed'. Reason: Drive upload FAILED so no Drive
-//                           file exists; orphan sweeper (B/2) does NOT need
-//                           to compensate.
-//   Step 3 (MarkUploaded) error → if row-absent, surface typed error; else
-//                                  emit MarkFailed("mark_uploaded_failed: <cause>").
-//   Step 4 (Finalize) error → emit NO MarkFailed, return wrapped error;
-//                              row STAYS AT 'uploaded' (per user-spec contract
-//                              "row resta in `uploaded`"). The orphan sweeper
-//                              (B/2) will detect this state via ListPending
-//                              (filter `WHERE status='pending' OR status='uploaded'`).
-//                              Driving reason: Drive file exists + intent row
-//                              stuck at 'uploaded' = Drive-side orphan that the
-//                              sweeper can compensate (drive.FileDelete + sync
-//                              check, or replay per policy).
-//   Step 4.5 (MarkFinalized) error → emit NO MarkFailed, return wrapped
-//                                     error; row STAYS AT 'uploaded' (same
-//                                     orphan-sweeper-visibility contract
-//                                     as Step 4). Reason: Drive file exists
-//                                     (Step 2 OK) + ProjectFinalize-port
-//                                     succeeded (Step 4 OK); only the
-//                                     upload_intents 'uploaded'→'finalized'
-//                                     stamp failed. Orphan sweeper
-//                                     (B/2) retry path will re-run
-//                                     MarkFinalized → MarkCompleted
-//                                     when the transient error resolves.
-//                                     (Audit fix: original implementation
-//                                     emitted MarkFailed here, which would
-//                                     hide the row from the orphan sweeper
-//                                     and prevent Drive-side orphan recovery.)
-//   Step 5 (MarkCompleted) error → if row state mismatch (race: already
-//                                  completed by parallel worker), treat as
-//                                  idempotent success; else emit
-//                                  MarkFailed("mark_completed_failed: <cause>")
-//                                  per user-spec hard requirement
-//                                  ("NON ritornare success se step 5 fallisce
-//                                  senza lasciare MarkFailed").
+//
+//	Step 1 error → return wrapped error; row absent (UNIQUE violation or
+//	               SQL error); NO MarkFailed (the row doesn't exist to mark).
+//	Step 2 (Drive) error → emit MarkFailed("upload_failed: <cause>"), row at
+//	                        'failed'. Reason: Drive upload FAILED so no Drive
+//	                        file exists; orphan sweeper (B/2) does NOT need
+//	                        to compensate.
+//	Step 3 (MarkUploaded) error → if row-absent, surface typed error; else
+//	                               emit MarkFailed("mark_uploaded_failed: <cause>").
+//	Step 4 (Finalize) error → emit NO MarkFailed, return wrapped error;
+//	                           row STAYS AT 'uploaded' (per user-spec contract
+//	                           "row resta in `uploaded`"). The orphan sweeper
+//	                           (B/2) will detect this state via ListPending
+//	                           (filter `WHERE status='pending' OR status='uploaded'`).
+//	                           Driving reason: Drive file exists + intent row
+//	                           stuck at 'uploaded' = Drive-side orphan that the
+//	                           sweeper can compensate (drive.FileDelete + sync
+//	                           check, or replay per policy).
+//	Step 4.5 (MarkFinalized) error → emit NO MarkFailed, return wrapped
+//	                                  error; row STAYS AT 'uploaded' (same
+//	                                  orphan-sweeper-visibility contract
+//	                                  as Step 4). Reason: Drive file exists
+//	                                  (Step 2 OK) + ProjectFinalize-port
+//	                                  succeeded (Step 4 OK); only the
+//	                                  upload_intents 'uploaded'→'finalized'
+//	                                  stamp failed. Orphan sweeper
+//	                                  (B/2) retry path will re-run
+//	                                  MarkFinalized → MarkCompleted
+//	                                  when the transient error resolves.
+//	                                  (Audit fix: original implementation
+//	                                  emitted MarkFailed here, which would
+//	                                  hide the row from the orphan sweeper
+//	                                  and prevent Drive-side orphan recovery.)
+//	Step 5 (MarkCompleted) error → if row state mismatch (race: already
+//	                               completed by parallel worker), treat as
+//	                               idempotent success; else emit
+//	                               MarkFailed("mark_completed_failed: <cause>")
+//	                               per user-spec hard requirement
+//	                               ("NON ritornare success se step 5 fallisce
+//	                               senza lasciare MarkFailed").
 //
 // Idempotency NOTE: this commit (A/2) does NOT implement replay
 // short-circuit; an idempotent re-run after success will trigger a

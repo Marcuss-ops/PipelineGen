@@ -46,10 +46,10 @@ var (
 // the lenient skip-on-fail behaviour (e.g. for hand-curated lists
 // where partial success is acceptable).
 type Request struct {
-	Text             string   `json:"text" binding:"required"`
-	DriveFolderID    string   `json:"drive_folder_id,omitempty"`
-	DryRun           bool     `json:"dry_run,omitempty"`
-	Languages        []string `json:"languages,omitempty"`
+	Text          string   `json:"text" binding:"required"`
+	DriveFolderID string   `json:"drive_folder_id,omitempty"`
+	DryRun        bool     `json:"dry_run,omitempty"`
+	Languages     []string `json:"languages,omitempty"`
 	// AllowUntranslated opts back into the lenient (legacy) behaviour:
 	// translation failures are silently dropped from the response and
 	// the corresponding language does not appear in Results. Must be

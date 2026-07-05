@@ -17,10 +17,10 @@
 //
 // Rules enforced (per user spec):
 //
-//   zero chunks finalized          → ErrStockNoChunksFinalized → job FAILED
-//   metadata required not published → ErrStockMetadataNotPublished → job FAILED
-//   required chunk not finalized    → ErrStockChunkNotFinalized → job non-SUCCEEDED
-//   chunk SHA256 empty              → ErrStockChunkHashMissing (P0 2.4 — pre-publish)
+//	zero chunks finalized          → ErrStockNoChunksFinalized → job FAILED
+//	metadata required not published → ErrStockMetadataNotPublished → job FAILED
+//	required chunk not finalized    → ErrStockChunkNotFinalized → job non-SUCCEEDED
+//	chunk SHA256 empty              → ErrStockChunkHashMissing (P0 2.4 — pre-publish)
 //
 // Idempotency: BuildFinalizationRequest is pure — it builds the SAME
 // request from the SAME inputs, so a replay (retry on transient broker

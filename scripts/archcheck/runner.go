@@ -6,7 +6,7 @@
 //   - runFocusedChecks: the "report-only" gate (always exits 0
 //     unless the smaller focused surface breaks).
 //   - runRatchetChecks: the full ratchet gate (allowlist + baseline
-//     + database/sql regressions + ...).
+//   - database/sql regressions + ...).
 //   - runPhase0Checks: the Wave 19 PR-A baseline-on-baseline rules,
 //     run only when --future-ratchet is set. Reads the committed
 //     scripts/archcheck/phase0_baseline.json (via baseline/load.go)

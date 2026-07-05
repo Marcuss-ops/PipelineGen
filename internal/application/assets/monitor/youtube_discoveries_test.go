@@ -957,11 +957,11 @@ func TestTryReserve_ExpiredLease_ExactlyOneReclaimer(t *testing.T) {
 
 // TestTryReserve_CrashAfterReservation_Reclaimable verifies the
 // crash-recovery contract:
-//   1. Worker A wins TryReserve.
-//   2. Worker A does NOT call MarkEnqueued (simulating crash).
-//   3. Before lease expires, Worker B loses.
-//   4. Clock advances past the lease.
-//   5. Worker B retries and wins (reclaims the row).
+//  1. Worker A wins TryReserve.
+//  2. Worker A does NOT call MarkEnqueued (simulating crash).
+//  3. Before lease expires, Worker B loses.
+//  4. Clock advances past the lease.
+//  5. Worker B retries and wins (reclaims the row).
 func TestTryReserve_CrashAfterReservation_Reclaimable(t *testing.T) {
 	repo, db, cleanup := newInMemoryLedger(t)
 	defer cleanup()
@@ -1395,14 +1395,14 @@ func TestIsTransientEnqueueError(t *testing.T) {
 		{errors.New("HTTP 429 Too Many Requests"), true},
 		{errors.New("request timeout after 30s"), true},
 		{errors.New("EOF: stream closed unexpectedly"), true},
-		{errors.New("validation: missing channel_id"), false},        {errors.New("payload marshal: invalid JSON"), false},
-    }
-    for _, tc := range cases {
-        got := retry.IsTransient(tc.err)
-        if got != tc.want {
-            t.Errorf("IsTransient(%q) = %v, want %v", tc.err, got, tc.want)
-        }
-    }
+		{errors.New("validation: missing channel_id"), false}, {errors.New("payload marshal: invalid JSON"), false},
+	}
+	for _, tc := range cases {
+		got := retry.IsTransient(tc.err)
+		if got != tc.want {
+			t.Errorf("IsTransient(%q) = %v, want %v", tc.err, got, tc.want)
+		}
+	}
 }
 
 // ── FASE 3.7 Sentinel alias pin tests (P0 dual-sentinel fix) ──────────────────
@@ -1437,31 +1437,31 @@ func TestIsTransientEnqueueError(t *testing.T) {
 // errors.New(...)`) breaks both assertions — godlike/07 "no fake
 // availability" invariant is upheld iff both return true.
 func TestSentinelWrap_Conflict(t *testing.T) {
-    // (i) Direct wrap chain with ErrLedgerStateConflict (canonical
-    // monitor-internal constructor pattern).
-    directWrap := fmt.Errorf("monitoring transition: %w", ErrLedgerStateConflict)
-    if !errors.Is(directWrap, ErrLedgerStateConflict) {
-        t.Errorf("TestSentinelWrap_Conflict (direct): errors.Is(direct wrap of ErrLedgerStateConflict, ErrLedgerStateConflict) = false; want true")
-    }
+	// (i) Direct wrap chain with ErrLedgerStateConflict (canonical
+	// monitor-internal constructor pattern).
+	directWrap := fmt.Errorf("monitoring transition: %w", ErrLedgerStateConflict)
+	if !errors.Is(directWrap, ErrLedgerStateConflict) {
+		t.Errorf("TestSentinelWrap_Conflict (direct): errors.Is(direct wrap of ErrLedgerStateConflict, ErrLedgerStateConflict) = false; want true")
+	}
 
-    // (ii) Adapter simulation via TranslateLedgerSentinel: the
-    // production composition-root adapter path on a manually
-    // constructed error wrapping sqlassets.ErrStateConflict. The
-    // multi-%w wiring MUST preserve BOTH sentinels (ErrLedgerStateConflict
-    // added by adapter + sqlassets.ErrStateConflict preserved via
-    // the second %w).
-    infraWrap := fmt.Errorf("infra: row state precondition failed: %w", sqlassets.ErrStateConflict)
-    translated := TranslateLedgerSentinel(infraWrap)
-    if !errors.Is(translated, ErrLedgerStateConflict) {
-        t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain)")
-    }
-    if !errors.Is(translated, sqlassets.ErrStateConflict) {
-        // NOTE: `%%w` (escaped percent) prints the literal `%w` token in
-        // the test-failure message; Go vet treats the unescaped `%w`
-        // as an error-wrapping format directive incompatible with
-        // t.Errorf (which discards the format error arg).
-        t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain)")
-    }
+	// (ii) Adapter simulation via TranslateLedgerSentinel: the
+	// production composition-root adapter path on a manually
+	// constructed error wrapping sqlassets.ErrStateConflict. The
+	// multi-%w wiring MUST preserve BOTH sentinels (ErrLedgerStateConflict
+	// added by adapter + sqlassets.ErrStateConflict preserved via
+	// the second %w).
+	infraWrap := fmt.Errorf("infra: row state precondition failed: %w", sqlassets.ErrStateConflict)
+	translated := TranslateLedgerSentinel(infraWrap)
+	if !errors.Is(translated, ErrLedgerStateConflict) {
+		t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain)")
+	}
+	if !errors.Is(translated, sqlassets.ErrStateConflict) {
+		// NOTE: `%%w` (escaped percent) prints the literal `%w` token in
+		// the test-failure message; Go vet treats the unescaped `%w`
+		// as an error-wrapping format directive incompatible with
+		// t.Errorf (which discards the format error arg).
+		t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain)")
+	}
 }
 
 // TestSentinelWrap_NonConflict pins the negative case: a generic error
@@ -1469,25 +1469,25 @@ func TestSentinelWrap_Conflict(t *testing.T) {
 // ErrLedgerStateConflict under errors.Is. The wrap chain is
 // tested across multiple depths to ensure no false-positive resolution.
 func TestSentinelWrap_NonConflict(t *testing.T) {
-    cases := []struct {
-        name string
-        err  error
-    }{
-        {"bare-IO-error", errors.New("sqlite: I/O error or network failure")},
-        {"wrapped-IO-error", fmt.Errorf("emit: %w", errors.New("connection refused"))},
-        {"unrelated-validation-error", errors.New("validation: missing channel_id")},
-        {"double-wrapped-IO-error", fmt.Errorf("pipeline emit: %w", fmt.Errorf("transport: %w", errors.New("EOF")))},
-    }
-    for _, tc := range cases {
-        t.Run(tc.name, func(t *testing.T) {
-            if errors.Is(tc.err, ErrLedgerStateConflict) {
-                t.Errorf("non-conflict err matched ErrLedgerStateConflict: %v", tc.err)
-            }
-            if errors.Is(tc.err, sqlassets.ErrStateConflict) {
-                t.Errorf("non-conflict err matched sqlassets.ErrStateConflict: %v", tc.err)
-            }
-        })
-    }
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"bare-IO-error", errors.New("sqlite: I/O error or network failure")},
+		{"wrapped-IO-error", fmt.Errorf("emit: %w", errors.New("connection refused"))},
+		{"unrelated-validation-error", errors.New("validation: missing channel_id")},
+		{"double-wrapped-IO-error", fmt.Errorf("pipeline emit: %w", fmt.Errorf("transport: %w", errors.New("EOF")))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if errors.Is(tc.err, ErrLedgerStateConflict) {
+				t.Errorf("non-conflict err matched ErrLedgerStateConflict: %v", tc.err)
+			}
+			if errors.Is(tc.err, sqlassets.ErrStateConflict) {
+				t.Errorf("non-conflict err matched sqlassets.ErrStateConflict: %v", tc.err)
+			}
+		})
+	}
 }
 
 // TestSentinelWrap_InfraReturnsCanonical pins the infra-side end-to-end
@@ -1507,48 +1507,48 @@ func TestSentinelWrap_NonConflict(t *testing.T) {
 // verifying BOTH the canonical sqlassets sentinel AND the monitor
 // alias sentinel does this test catch the regressed-state correctly.
 func TestSentinelWrap_InfraReturnsCanonical(t *testing.T) {
-    repo, _, cleanup := newInMemoryLedger(t)
-    defer cleanup()
-    ctx := context.Background()
+	repo, _, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
 
-    // Step 1: TryReserve creates the row at state='pending'.
-    id, won, _, err := repo.TryReserve(ctx, "ch-sentinel", "vid-sentinel", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
-    if err != nil {
-        t.Fatalf("step 1 TryReserve: %v", err)
-    }
-    if !won {
-        t.Fatal("step 1 should win on fresh ledger")
-    }
+	// Step 1: TryReserve creates the row at state='pending'.
+	id, won, _, err := repo.TryReserve(ctx, "ch-sentinel", "vid-sentinel", "v1", "u", "t", time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("step 1 TryReserve: %v", err)
+	}
+	if !won {
+		t.Fatal("step 1 should win on fresh ledger")
+	}
 
-    // Step 2: MarkRejected(terminal) → row at state='rejected_terminal'.
-    if err := repo.MarkRejected(ctx, id, "terminal: invalid payload", false); err != nil {
-        t.Fatalf("step 2 MarkRejected(terminal): %v", err)
-    }
+	// Step 2: MarkRejected(terminal) → row at state='rejected_terminal'.
+	if err := repo.MarkRejected(ctx, id, "terminal: invalid payload", false); err != nil {
+		t.Fatalf("step 2 MarkRejected(terminal): %v", err)
+	}
 
-    // Step 3: MarkEnqueued on rejected_terminal — the WHERE clause gates
-    // on state IN ('pending','analyzing'), so UPDATE matches 0 rows and
-    // the infra surfaces the canonical sqlassets.ErrStateConflict.
-    enqErr := repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
-    if enqErr == nil {
-        t.Fatal("step 3 MarkEnqueued on rejected_terminal must fail, got nil")
-    }
-    if !errors.Is(enqErr, sqlassets.ErrStateConflict) {
-        t.Errorf("step 3: infra error NOT matching sqlassets.ErrStateConflict: %v", enqErr)
-    }
-    // Adapter simulation: apply TranslateLedgerSentinel to mimic the
-    // production adapter. BOTH sentinels MUST resolve after translation
-    // (multi-%w preservation). This is the production-shape contract:
-    // the monitor-side pattern-match `errors.Is(err,
-    // ErrLedgerStateConflict)` only resolves correctly when the full
-    // adapter path is exercised.
-    translated := TranslateLedgerSentinel(enqErr)
-    if !errors.Is(translated, ErrLedgerStateConflict) {
-        t.Errorf("step 3 (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain): %v", translated)
-    }
-    if !errors.Is(translated, sqlassets.ErrStateConflict) {
-        // NOTE: `%%w` (escaped percent) prints the literal `%w` token in
-        // the test-failure message; see TestSentinelWrap_Conflict for
-        // the full vet rationale.
-        t.Errorf("step 3 (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain): %v", translated)
-    }
+	// Step 3: MarkEnqueued on rejected_terminal — the WHERE clause gates
+	// on state IN ('pending','analyzing'), so UPDATE matches 0 rows and
+	// the infra surfaces the canonical sqlassets.ErrStateConflict.
+	enqErr := repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
+	if enqErr == nil {
+		t.Fatal("step 3 MarkEnqueued on rejected_terminal must fail, got nil")
+	}
+	if !errors.Is(enqErr, sqlassets.ErrStateConflict) {
+		t.Errorf("step 3: infra error NOT matching sqlassets.ErrStateConflict: %v", enqErr)
+	}
+	// Adapter simulation: apply TranslateLedgerSentinel to mimic the
+	// production adapter. BOTH sentinels MUST resolve after translation
+	// (multi-%w preservation). This is the production-shape contract:
+	// the monitor-side pattern-match `errors.Is(err,
+	// ErrLedgerStateConflict)` only resolves correctly when the full
+	// adapter path is exercised.
+	translated := TranslateLedgerSentinel(enqErr)
+	if !errors.Is(translated, ErrLedgerStateConflict) {
+		t.Errorf("step 3 (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain): %v", translated)
+	}
+	if !errors.Is(translated, sqlassets.ErrStateConflict) {
+		// NOTE: `%%w` (escaped percent) prints the literal `%w` token in
+		// the test-failure message; see TestSentinelWrap_Conflict for
+		// the full vet rationale.
+		t.Errorf("step 3 (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain): %v", translated)
+	}
 }

@@ -159,9 +159,9 @@ func TestSQLiteStore_MarkStarted_RefreshLeaseOnIdempotentReCall(t *testing.T) {
 	require.NoError(t, store.MarkStarted(ctx, key))
 
 	var (
-		attempt      int
-		leaseAfter   string
-		rowCount     int
+		attempt    int
+		leaseAfter string
+		rowCount   int
 	)
 	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT attempt, lease_until FROM execution_steps WHERE job_id = ?`, key.JobID).
@@ -232,11 +232,11 @@ func TestSQLiteStore_MarkCompleted_PendingToCompleted(t *testing.T) {
 	require.NoError(t, store.MarkCompleted(ctx, key, result, refs))
 
 	var (
-		status       string
-		completedAt  string
-		resultRaw    string
-		refsRaw      string
-		leaseRaw     string
+		status      string
+		completedAt string
+		resultRaw   string
+		refsRaw     string
+		leaseRaw    string
 	)
 	require.NoError(t, db.QueryRowContext(ctx, `
 		SELECT status, completed_at, result_json, artifact_refs_json, lease_until
@@ -345,9 +345,9 @@ func TestSQLiteStore_MarkFailed_NoPriorRow_InsertsFailedRow(t *testing.T) {
 	require.NoError(t, store.MarkFailed(ctx, key, "fatal: planner returned no sources"))
 
 	var (
-		attempt    int
-		status     string
-		lastError  string
+		attempt   int
+		status    string
+		lastError string
 	)
 	require.NoError(t, db.QueryRowContext(ctx, `
 		SELECT attempt, status, last_error FROM execution_steps WHERE job_id = ?`, key.JobID).
@@ -397,10 +397,13 @@ func TestSQLiteStore_FirstNonCompleted_PartialProgress(t *testing.T) {
 	extract := StepKey{"run-11", "stock.extract_clips", "run-11|stock.extract_clips"}
 	compose := StepKey{"run-11", "stock.compose_chunks", "run-11|stock.compose_chunks"}
 
-	mustStart(plan); mustComplete(plan)
-	mustStart(stage); mustComplete(stage)
+	mustStart(plan)
+	mustComplete(plan)
+	mustStart(stage)
+	mustComplete(stage)
 	mustStart(extract) // pending
-	mustStart(compose); require.NoError(t, store.MarkFailed(ctx, compose, "boom"))
+	mustStart(compose)
+	require.NoError(t, store.MarkFailed(ctx, compose, "boom"))
 
 	got, err := store.FirstNonCompleted(ctx, "run-11")
 	require.NoError(t, err)

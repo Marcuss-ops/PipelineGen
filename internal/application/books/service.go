@@ -8,24 +8,24 @@
 //
 // What lives here now:
 //
-//	- Service struct: holds the narrow PublisherPort + drive.Reader
-//	  + voiceover.VoiceoverGenerator + books.BookTransformer ports.
-//	- ProcessRequest / ProcessResult: stable JSON types for the
-//	  /api/books/{process,generate}/{process-from-drive} wire
-//	  surface.
-//	- ProcessBook / ProcessBookWithProgress: maps the public
-//	  ProcessRequest shape to the internal TransformRequest
-//	  shape and delegates to the transformer port.
-//	- ProcessBookFromDrive (drive.go): live in drive.go for
-//	  historical reasons; downloads via drive.Reader, then calls
-//	  back into ProcessBook.
+//   - Service struct: holds the narrow PublisherPort + drive.Reader
+//   - voiceover.VoiceoverGenerator + books.BookTransformer ports.
+//   - ProcessRequest / ProcessResult: stable JSON types for the
+//     /api/books/{process,generate}/{process-from-drive} wire
+//     surface.
+//   - ProcessBook / ProcessBookWithProgress: maps the public
+//     ProcessRequest shape to the internal TransformRequest
+//     shape and delegates to the transformer port.
+//   - ProcessBookFromDrive (drive.go): live in drive.go for
+//     historical reasons; downloads via drive.Reader, then calls
+//     back into ProcessBook.
 //
 // What used to live here (pre-Fase-7) and was MOVED:
 //
-//	- exec.CommandContext(s.cfg.PythonBin, args...)         →
-//	  pythontransformer.SubprocessTransformer.Transform
-//	- buildArgs / parseOutput / parseProgressLine         →
-//	  pythontransformer (private helpers of the concrete)
+//   - exec.CommandContext(s.cfg.PythonBin, args...)         →
+//     pythontransformer.SubprocessTransformer.Transform
+//   - buildArgs / parseOutput / parseProgressLine         →
+//     pythontransformer (private helpers of the concrete)
 //
 // The user-visible pipeline behaviour is unchanged; the only
 // externally visible delta is the port boundary (apply layer

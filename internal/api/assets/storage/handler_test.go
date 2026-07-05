@@ -28,13 +28,13 @@ type fakeJobService struct{}
 func (f *fakeJobService) Enqueue(_ context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
 	return &kerneljob.Job{ID: "test-job"}, nil
 }
-func (f *fakeJobService) Get(_ context.Context, _ string) (*kerneljob.Job, error)   { return nil, nil }
-func (f *fakeJobService) Cancel(_ context.Context, _ string) error                      { return nil }
+func (f *fakeJobService) Get(_ context.Context, _ string) (*kerneljob.Job, error) { return nil, nil }
+func (f *fakeJobService) Cancel(_ context.Context, _ string) error                { return nil }
 func (f *fakeJobService) List(_ context.Context, _ kerneljob.Filter) ([]kerneljob.Job, error) {
 	return nil, nil
 }
-func (f *fakeJobService) IsTerminal(_ kerneljob.Status) bool                      { return false }
-func (f *fakeJobService) RegisterHandler(_ string, _ any) error                    { return nil }
+func (f *fakeJobService) IsTerminal(_ kerneljob.Status) bool    { return false }
+func (f *fakeJobService) RegisterHandler(_ string, _ any) error { return nil }
 func (f *fakeJobService) ListEvents(_ context.Context, _ string) ([]kerneljob.Event, error) {
 	return nil, nil
 }

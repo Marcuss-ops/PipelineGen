@@ -68,7 +68,7 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 	svc := healthapp.NewService(healthapp.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
 		Drive:  infrahealth.NewDriveChecker(), // no probe wired → applicable=false
-		Qdrant: nil,                          // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
+		Qdrant: nil,                           // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
 		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 

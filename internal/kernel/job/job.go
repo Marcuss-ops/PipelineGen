@@ -28,16 +28,16 @@ import (
 type Status string
 
 const (
-	StatusQueued              Status = "QUEUED"
-	StatusLeased              Status = "LEASED"
-	StatusRunning             Status = "RUNNING"
-	StatusFinalizing          Status = "FINALIZING"
-	StatusRetryWait           Status = "RETRY_WAIT"
-	StatusSucceeded           Status = "SUCCEEDED"
-	StatusPartiallySucceeded  Status = "PARTIALLY_SUCCEEDED"
-	StatusIndexPending        Status = "INDEX_PENDING"
-	StatusFailed              Status = "FAILED"
-	StatusCancelled           Status = "CANCELLED"
+	StatusQueued             Status = "QUEUED"
+	StatusLeased             Status = "LEASED"
+	StatusRunning            Status = "RUNNING"
+	StatusFinalizing         Status = "FINALIZING"
+	StatusRetryWait          Status = "RETRY_WAIT"
+	StatusSucceeded          Status = "SUCCEEDED"
+	StatusPartiallySucceeded Status = "PARTIALLY_SUCCEEDED"
+	StatusIndexPending       Status = "INDEX_PENDING"
+	StatusFailed             Status = "FAILED"
+	StatusCancelled          Status = "CANCELLED"
 )
 
 // IsTerminal returns true if the status is a final state.

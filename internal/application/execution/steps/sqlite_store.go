@@ -410,15 +410,15 @@ type rowScanner interface {
 // ListByJob — adding a column requires a paired SELECT-update.
 func scanStepState(row rowScanner) (*StepState, error) {
 	var (
-		state           StepState
-		statusStr       string
-		resultRaw       sql.NullString
-		artifactRaw     sql.NullString
-		startedAtRaw    sql.NullString
-		completedAtRaw  sql.NullString
-		lastErrorRaw    sql.NullString
-		idRaw           int64
-		attemptRaw      int
+		state          StepState
+		statusStr      string
+		resultRaw      sql.NullString
+		artifactRaw    sql.NullString
+		startedAtRaw   sql.NullString
+		completedAtRaw sql.NullString
+		lastErrorRaw   sql.NullString
+		idRaw          int64
+		attemptRaw     int
 	)
 	if err := row.Scan(
 		&idRaw,

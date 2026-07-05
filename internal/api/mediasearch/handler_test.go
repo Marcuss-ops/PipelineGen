@@ -21,7 +21,7 @@ import (
 func TestHandlerPropagatesWorkspaceActor(t *testing.T) {
 	workspace := search.Actor{
 		WorkspaceID: "ws-abc123",
-		UserID: "user-42",
+		UserID:      "user-42",
 		IsAdmin:     false,
 	}
 
@@ -51,7 +51,7 @@ func TestHandlerPropagatesWorkspaceActor(t *testing.T) {
 func TestHandlerPropagatesAdminActor(t *testing.T) {
 	workspace := search.Actor{
 		WorkspaceID: "ws-admin",
-		UserID: "admin-007",
+		UserID:      "admin-007",
 		IsAdmin:     true,
 	}
 
@@ -100,7 +100,7 @@ func TestSearchQueryFromRequest_ActorZeroValues(t *testing.T) {
 func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 	workspace := search.Actor{
 		WorkspaceID: "ws-preserve",
-		UserID: "user-preserve",
+		UserID:      "user-preserve",
 		IsAdmin:     false,
 	}
 
@@ -162,7 +162,7 @@ func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 func TestSearchQueryFromRequest_HandlesBuild(t *testing.T) {
 	workspace := search.Actor{
 		WorkspaceID: "ws-prod-1",
-		UserID: "worker-001",
+		UserID:      "worker-001",
 		IsAdmin:     false,
 	}
 
@@ -196,7 +196,7 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 	req := searchRequest{Query: "e2e", Mode: "ann", Limit: 10}
 	workspace := search.Actor{
 		WorkspaceID: "ws-e2e",
-		UserID: "u-e2e",
+		UserID:      "u-e2e",
 		IsAdmin:     true,
 	}
 
@@ -230,7 +230,7 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 	workspace := search.Actor{
 		WorkspaceID: "ws-mt",
-		UserID: "u-mt",
+		UserID:      "u-mt",
 		IsAdmin:     false,
 	}
 

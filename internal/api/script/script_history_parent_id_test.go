@@ -13,16 +13,16 @@
 // the bug was downstream at the JSON emit.
 //
 // The test asserts:
-//   1. No row in /scripts contains the historical literal `""` as
-//      parent_id (anti-pattern detector).
-//   2. A child script's parent_id equals the parent's id as a JSON
-//      number (positive case).
-//   3. ListScripts and GetScriptByID return the SAME parent_id for
-//      the same id (round-trip invariant — guards divergence between
-//      the two emits).
-//   4. A root script (no parent) emits `parent_id: 0` as a JSON
-//      number, not `""` — so downstream callers can distinguish
-//      root from child.
+//  1. No row in /scripts contains the historical literal `""` as
+//     parent_id (anti-pattern detector).
+//  2. A child script's parent_id equals the parent's id as a JSON
+//     number (positive case).
+//  3. ListScripts and GetScriptByID return the SAME parent_id for
+//     the same id (round-trip invariant — guards divergence between
+//     the two emits).
+//  4. A root script (no parent) emits `parent_id: 0` as a JSON
+//     number, not `""` — so downstream callers can distinguish
+//     root from child.
 //
 // Test refs:
 //   - architecture/current.yaml::DRIFT-23-4 (HC-7)

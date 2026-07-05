@@ -5,9 +5,9 @@
 // test exercises the three nil-tolerance postures that handlers
 // may invoke SafeProgressFn under:
 //
-//   1. tools == nil                     → no-op closure
-//   2. tools.Progress field == nil      → no-op closure
-//   3. tools.Progress field non-nil     → forwards 1:1
+//  1. tools == nil                     → no-op closure
+//  2. tools.Progress field == nil      → no-op closure
+//  3. tools.Progress field non-nil     → forwards 1:1
 //
 // godlike/07 fail-closed contract: SafeProgressFn MUST NOT panic
 // when invoked against a nil or partially-populated tools. The
@@ -52,10 +52,16 @@ func TestSafeProgressFn_NilTools_NoOp(t *testing.T) {
 	// Posture 3: non-nil Progress — forwards 1:1. We capture via
 	// a channel so the assertion is deterministic even under
 	// concurrent.SafeGo scheduling nondeterminism elsewhere.
-	observed := make(chan struct{ p int; m string }, 1)
+	observed := make(chan struct {
+		p int
+		m string
+	}, 1)
 	realPf := SafeProgressFn(&JobExecutionTools{
 		Progress: func(p int, msg string) {
-			observed <- struct{ p int; m string }{p, msg}
+			observed <- struct {
+				p int
+				m string
+			}{p, msg}
 		},
 	})
 	if realPf == nil {

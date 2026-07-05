@@ -30,31 +30,31 @@
 //
 // ── Migration (godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT) ────────
 //
-//   EXPAND (today, P1 #13): canonical-types declared here +
-//                          application-layer aliases sealed
-//                          (jobs.Handler = domainjob.Handler,
-//                          worker.Handler = domainjob.Handler).
-//                          3 authoritative call sites (jobs.Dispatcher,
-//                          worker.Registry, worker.Registry.Dispatch)
-//                          consume the SAME Handler literal.
-//   BACKFILL (forward-pointer): the 31 in-tree pre-P1-#13 references
-//                          that declared handler signatures as
-//                          `HandlerFunc` or typed `map[string]any`
-//                          return literal will be renamed to canonical
-//                          Handler / Result via a separate migration PR.
-//                          Today, they compile via go-type-alias
-//                          semantics with zero behaviour drift
-//                          (jobs.HandlerFunc = domainjob.Handler).
-//   CUTOVER (forward-pointer, deadline 2026-09-15): the back-compat
-//                          aliases (`jobs.HandlerFunc`, `jobs.JobTools`,
-//                          `worker.Tools` as a Handler-signature param)
-//                          are removed in a single CONTRACT commit on
-//                          a future wave once every typed literal has
-//                          been migrated to the canonical names.
-//   CONTRACT (forward-pointer, deadline 2026-10-01): physical
-//                          retirement of the legacy shapes; Check-N in
-//                          scripts/ci-architectural-checks.sh bans the
-//                          legacy literal shapes from new code.
+//	EXPAND (today, P1 #13): canonical-types declared here +
+//	                       application-layer aliases sealed
+//	                       (jobs.Handler = domainjob.Handler,
+//	                       worker.Handler = domainjob.Handler).
+//	                       3 authoritative call sites (jobs.Dispatcher,
+//	                       worker.Registry, worker.Registry.Dispatch)
+//	                       consume the SAME Handler literal.
+//	BACKFILL (forward-pointer): the 31 in-tree pre-P1-#13 references
+//	                       that declared handler signatures as
+//	                       `HandlerFunc` or typed `map[string]any`
+//	                       return literal will be renamed to canonical
+//	                       Handler / Result via a separate migration PR.
+//	                       Today, they compile via go-type-alias
+//	                       semantics with zero behaviour drift
+//	                       (jobs.HandlerFunc = domainjob.Handler).
+//	CUTOVER (forward-pointer, deadline 2026-09-15): the back-compat
+//	                       aliases (`jobs.HandlerFunc`, `jobs.JobTools`,
+//	                       `worker.Tools` as a Handler-signature param)
+//	                       are removed in a single CONTRACT commit on
+//	                       a future wave once every typed literal has
+//	                       been migrated to the canonical names.
+//	CONTRACT (forward-pointer, deadline 2026-10-01): physical
+//	                       retirement of the legacy shapes; Check-N in
+//	                       scripts/ci-architectural-checks.sh bans the
+//	                       legacy literal shapes from new code.
 package job
 
 import (

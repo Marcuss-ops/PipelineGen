@@ -114,10 +114,12 @@ type Options struct {
 // NewFilesystemStager constructs the canonical FS-backed SourceStager.
 // StagingRoot is created (MkdirAll) if missing. Fetch is called per
 // Prepare that does NOT find a cached staged file.
+//
 //	// Compile-time assertion: *FilesystemStager satisfies the canonical
-	// application-layer SourceStager port. Drift between the concrete
-	// signature and the port surface is a build-time failure rather
-	// than a runtime panic.
+//
+// application-layer SourceStager port. Drift between the concrete
+// signature and the port surface is a build-time failure rather
+// than a runtime panic.
 var _ appacq.SourceStager = (*FilesystemStager)(nil)
 
 // NewFilesystemStager wires a fully-ready FilesystemStager. The
@@ -366,16 +368,16 @@ func (f *FilesystemStager) forgetToken(token string) {
 // decode the sidecar without the runtime. New fields are added
 // in lockstep with PrepareContext additions.
 type metaFileEnvelope struct {
-	SchemaVersion string            `json:"schema_version"`
-	ID            string            `json:"id"`
-	SourceRef     appacq.SourceRef  `json:"source_ref"`
-	LocalPath     string            `json:"local_path"`
-	StorageURI    string            `json:"storage_uri,omitempty"`
-	SHA256        string            `json:"sha256"`
-	SizeBytes     int64             `json:"size_bytes"`
-	MIMEType      string            `json:"mime_type"`
-	ExpiresAt     time.Time         `json:"expires_at"`
-	CleanupToken  string            `json:"cleanup_token"`
+	SchemaVersion string           `json:"schema_version"`
+	ID            string           `json:"id"`
+	SourceRef     appacq.SourceRef `json:"source_ref"`
+	LocalPath     string           `json:"local_path"`
+	StorageURI    string           `json:"storage_uri,omitempty"`
+	SHA256        string           `json:"sha256"`
+	SizeBytes     int64            `json:"size_bytes"`
+	MIMEType      string           `json:"mime_type"`
+	ExpiresAt     time.Time        `json:"expires_at"`
+	CleanupToken  string           `json:"cleanup_token"`
 }
 
 func (f *FilesystemStager) writeMeta(metaPath string, ctx appacq.PrepareContext) error {

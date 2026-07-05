@@ -88,12 +88,12 @@ type stubDiscoveries struct{}
 func (stubDiscoveries) TryReserve(_ context.Context, _, _, _, _, _, _ string) (string, bool, int, error) {
 	return "", false, 0, nil
 }
-func (stubDiscoveries) MarkEnqueued(_ context.Context, _, _ string) error               { return nil }
-func (stubDiscoveries) MarkRejected(_ context.Context, _, _ string, _ bool) error       { return nil }
-func (stubDiscoveries) MaxDiscoveredAt(_ context.Context, _ string) (string, error)     { return "", nil }
+func (stubDiscoveries) MarkEnqueued(_ context.Context, _, _ string) error           { return nil }
+func (stubDiscoveries) MarkRejected(_ context.Context, _, _ string, _ bool) error   { return nil }
+func (stubDiscoveries) MaxDiscoveredAt(_ context.Context, _ string) (string, error) { return "", nil }
 
 // Blocco 3 (July 2026): outbox surface methods.
-func (stubDiscoveries) CommitEnqueueOutbox(_ context.Context, _, _, _, _ string) error  { return nil }
+func (stubDiscoveries) CommitEnqueueOutbox(_ context.Context, _, _, _, _ string) error { return nil }
 func (stubDiscoveries) DrainPendingOutbox(_ context.Context, _ int, _, _ string) ([]OutboxEntry, error) {
 	return nil, nil
 }

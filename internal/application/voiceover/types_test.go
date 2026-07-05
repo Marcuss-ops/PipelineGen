@@ -121,7 +121,7 @@ func TestBatchRequest_StrategyReplace_Roundtrip(t *testing.T) {
 // the drift loudly.
 func TestNormalizeBatchRequest_DefaultsVerifyWhenEmpty(t *testing.T) {
 	req := &BatchRequest{
-		Text:      "implicit-strategy",		Languages:        []Language{"en"},
+		Text: "implicit-strategy", Languages: []Language{"en"},
 	}
 	normalized := normalizeBatchRequest(req)
 	if normalized.Strategy != "verify" {

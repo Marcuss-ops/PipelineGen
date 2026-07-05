@@ -26,9 +26,10 @@ import (
 )
 
 // TestInt_RoundTrip pins the > 0 collapse-to-fallback contract:
-//   val > 0  → val is returned verbatim
-//   val == 0 → fallback is returned
-//   val < 0  → fallback is returned (negative is not a sentinel)
+//
+//	val > 0  → val is returned verbatim
+//	val == 0 → fallback is returned
+//	val < 0  → fallback is returned (negative is not a sentinel)
 func TestInt_RoundTrip(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -50,9 +51,10 @@ func TestInt_RoundTrip(t *testing.T) {
 }
 
 // TestFloat64_RoundTrip pins the > 0 contract for the float helper.
-//   val >  0 → val is returned verbatim
-//   val == 0 → fallback is returned
-//   val <  0 → fallback is returned
+//
+//	val >  0 → val is returned verbatim
+//	val == 0 → fallback is returned
+//	val <  0 → fallback is returned
 func TestFloat64_RoundTrip(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -172,14 +174,15 @@ func TestValidate_AllSSOTsPass(t *testing.T) {
 // here at the missing-substring assertion.
 //
 // Coverage matches the 25 structural checks in validateSSOTs:
-//   3 VideoConfig (ChunkDuration, EffectsDir, ParentFieldName)
-//   3 VoiceoverConfig (DefaultFilenameTemplate, DefaultStrategy, DefaultLanguage)
-//   6 MediaConfig (SearchDefaultLimit, SearchMaxLimit-cross,
-//     CurateDefaultLimit, CurateMaxLimit-cross, DefaultScore-range)
-//   8 YouTubeConfig (FallbackCategory, MaxSegments, MaxClipDuration,
-//     MinSemanticScore-range, MaxVideosPerRun, CheckInterval, Priority)
-//   5 ScriptConfig (WordsPerMinute, DefaultDuration, DefaultLanguage,
-//     DefaultTemplate, DefaultTone)
+//
+//	3 VideoConfig (ChunkDuration, EffectsDir, ParentFieldName)
+//	3 VoiceoverConfig (DefaultFilenameTemplate, DefaultStrategy, DefaultLanguage)
+//	6 MediaConfig (SearchDefaultLimit, SearchMaxLimit-cross,
+//	  CurateDefaultLimit, CurateMaxLimit-cross, DefaultScore-range)
+//	8 YouTubeConfig (FallbackCategory, MaxSegments, MaxClipDuration,
+//	  MinSemanticScore-range, MaxVideosPerRun, CheckInterval, Priority)
+//	5 ScriptConfig (WordsPerMinute, DefaultDuration, DefaultLanguage,
+//	  DefaultTemplate, DefaultTone)
 func TestValidateSSOTs_AllChecks(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -188,39 +191,89 @@ func TestValidateSSOTs_AllChecks(t *testing.T) {
 	}{
 		// ── VideoConfig (3) ──
 		// ── VideoConfig (3) ──
-		{"VideoConfig.ChunkDuration=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { v.ChunkDuration = 0 }, "VideoConfig.ChunkDuration"},
-		{"VideoConfig.EffectsDir=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { v.EffectsDir = "" }, "VideoConfig.EffectsDir"},
-		{"VideoConfig.ParentFieldName=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { v.ParentFieldName = "" }, "VideoConfig.ParentFieldName"},
+		{"VideoConfig.ChunkDuration=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			v.ChunkDuration = 0
+		}, "VideoConfig.ChunkDuration"},
+		{"VideoConfig.EffectsDir=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			v.EffectsDir = ""
+		}, "VideoConfig.EffectsDir"},
+		{"VideoConfig.ParentFieldName=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			v.ParentFieldName = ""
+		}, "VideoConfig.ParentFieldName"},
 
 		// ── VoiceoverConfig (3) ──
-		{"VoiceoverConfig.DefaultFilenameTemplate=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { vo.DefaultFilenameTemplate = "" }, "VoiceoverConfig.DefaultFilenameTemplate"},
-		{"VoiceoverConfig.DefaultStrategy=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { vo.DefaultStrategy = "" }, "VoiceoverConfig.DefaultStrategy"},
-		{"VoiceoverConfig.DefaultLanguage=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { vo.DefaultLanguage = "" }, "VoiceoverConfig.DefaultLanguage"},
+		{"VoiceoverConfig.DefaultFilenameTemplate=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			vo.DefaultFilenameTemplate = ""
+		}, "VoiceoverConfig.DefaultFilenameTemplate"},
+		{"VoiceoverConfig.DefaultStrategy=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			vo.DefaultStrategy = ""
+		}, "VoiceoverConfig.DefaultStrategy"},
+		{"VoiceoverConfig.DefaultLanguage=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			vo.DefaultLanguage = ""
+		}, "VoiceoverConfig.DefaultLanguage"},
 
 		// ── MediaConfig (5) ──
-		{"MediaConfig.SearchDefaultLimit=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { m.SearchDefaultLimit = 0 }, "MediaConfig.SearchDefaultLimit"},
-		{"MediaConfig.SearchMaxLimit<SearchDefaultLimit", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { m.SearchMaxLimit = 1 }, "MediaConfig.SearchMaxLimit"},
-		{"MediaConfig.CurateDefaultLimit=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { m.CurateDefaultLimit = 0 }, "MediaConfig.CurateDefaultLimit"},
-		{"MediaConfig.CurateMaxLimit<CurateDefaultLimit", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { m.CurateMaxLimit = 1 }, "MediaConfig.CurateMaxLimit"},
-		{"MediaConfig.DefaultScore=1.5", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { m.DefaultScore = 1.5 }, "MediaConfig.DefaultScore"},
-		{"MediaConfig.DefaultScore=-0.1", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { m.DefaultScore = -0.1 }, "MediaConfig.DefaultScore"},
+		{"MediaConfig.SearchDefaultLimit=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			m.SearchDefaultLimit = 0
+		}, "MediaConfig.SearchDefaultLimit"},
+		{"MediaConfig.SearchMaxLimit<SearchDefaultLimit", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			m.SearchMaxLimit = 1
+		}, "MediaConfig.SearchMaxLimit"},
+		{"MediaConfig.CurateDefaultLimit=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			m.CurateDefaultLimit = 0
+		}, "MediaConfig.CurateDefaultLimit"},
+		{"MediaConfig.CurateMaxLimit<CurateDefaultLimit", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			m.CurateMaxLimit = 1
+		}, "MediaConfig.CurateMaxLimit"},
+		{"MediaConfig.DefaultScore=1.5", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			m.DefaultScore = 1.5
+		}, "MediaConfig.DefaultScore"},
+		{"MediaConfig.DefaultScore=-0.1", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			m.DefaultScore = -0.1
+		}, "MediaConfig.DefaultScore"},
 
 		// ── YouTubeConfig (7) ──
-		{"YouTubeConfig.FallbackCategory=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.FallbackCategory = "" }, "YouTubeConfig.FallbackCategory"},
-		{"YouTubeConfig.MaxSegments=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.MaxSegments = 0 }, "YouTubeConfig.MaxSegments"},
-		{"YouTubeConfig.MaxClipDuration=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.MaxClipDuration = 0 }, "YouTubeConfig.MaxClipDuration"},
-		{"YouTubeConfig.MinSemanticScore=101", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.MinSemanticScore = 101 }, "YouTubeConfig.MinSemanticScore"},
-		{"YouTubeConfig.MinSemanticScore=-1", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.MinSemanticScore = -1 }, "YouTubeConfig.MinSemanticScore"},
-		{"YouTubeConfig.MaxVideosPerRun=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.MaxVideosPerRun = 0 }, "YouTubeConfig.MaxVideosPerRun"},
-		{"YouTubeConfig.CheckInterval=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.CheckInterval = "" }, "YouTubeConfig.CheckInterval"},
-		{"YouTubeConfig.Priority=-1", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { yt.Priority = -1 }, "YouTubeConfig.Priority"},
+		{"YouTubeConfig.FallbackCategory=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.FallbackCategory = ""
+		}, "YouTubeConfig.FallbackCategory"},
+		{"YouTubeConfig.MaxSegments=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.MaxSegments = 0
+		}, "YouTubeConfig.MaxSegments"},
+		{"YouTubeConfig.MaxClipDuration=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.MaxClipDuration = 0
+		}, "YouTubeConfig.MaxClipDuration"},
+		{"YouTubeConfig.MinSemanticScore=101", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.MinSemanticScore = 101
+		}, "YouTubeConfig.MinSemanticScore"},
+		{"YouTubeConfig.MinSemanticScore=-1", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.MinSemanticScore = -1
+		}, "YouTubeConfig.MinSemanticScore"},
+		{"YouTubeConfig.MaxVideosPerRun=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.MaxVideosPerRun = 0
+		}, "YouTubeConfig.MaxVideosPerRun"},
+		{"YouTubeConfig.CheckInterval=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.CheckInterval = ""
+		}, "YouTubeConfig.CheckInterval"},
+		{"YouTubeConfig.Priority=-1", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			yt.Priority = -1
+		}, "YouTubeConfig.Priority"},
 
 		// ── ScriptConfig (5) ──
-		{"ScriptConfig.WordsPerMinute=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { s.WordsPerMinute = 0 }, "ScriptConfig.WordsPerMinute"},
-		{"ScriptConfig.DefaultDuration=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { s.DefaultDuration = 0 }, "ScriptConfig.DefaultDuration"},
-		{"ScriptConfig.DefaultLanguage=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { s.DefaultLanguage = "" }, "ScriptConfig.DefaultLanguage"},
-		{"ScriptConfig.DefaultTemplate=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { s.DefaultTemplate = "" }, "ScriptConfig.DefaultTemplate"},
-		{"ScriptConfig.DefaultTone=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) { s.DefaultTone = "" }, "ScriptConfig.DefaultTone"},
+		{"ScriptConfig.WordsPerMinute=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			s.WordsPerMinute = 0
+		}, "ScriptConfig.WordsPerMinute"},
+		{"ScriptConfig.DefaultDuration=0", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			s.DefaultDuration = 0
+		}, "ScriptConfig.DefaultDuration"},
+		{"ScriptConfig.DefaultLanguage=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			s.DefaultLanguage = ""
+		}, "ScriptConfig.DefaultLanguage"},
+		{"ScriptConfig.DefaultTemplate=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			s.DefaultTemplate = ""
+		}, "ScriptConfig.DefaultTemplate"},
+		{"ScriptConfig.DefaultTone=empty", func(v *VideoConfig, vo *VoiceoverConfig, m *MediaConfig, yt *YouTubeConfig, s *ScriptConfig) {
+			s.DefaultTone = ""
+		}, "ScriptConfig.DefaultTone"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

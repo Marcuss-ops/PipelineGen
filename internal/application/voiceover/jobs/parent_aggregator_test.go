@@ -149,13 +149,13 @@ var _ AggregatorJobsService = (*stubAggregatorJobsService)(nil)
 // FanoutVoiceoversUseCase writes (via toFanoutResultMap).
 func makeParentResult(childIDs []string) []byte {
 	m := map[string]any{
-		"ok":            true,
-		"parent_job_id": "parent-1",
-		"request_id":    "vo_test",
-		"total_outputs": len(childIDs),
+		"ok":             true,
+		"parent_job_id":  "parent-1",
+		"request_id":     "vo_test",
+		"total_outputs":  len(childIDs),
 		"enqueued_count": len(childIDs),
-		"child_job_ids": childIDs,
-		"parent_state":  string(voiceover.ParentWaitingChildren),
+		"child_job_ids":  childIDs,
+		"parent_state":   string(voiceover.ParentWaitingChildren),
 	}
 	raw, _ := json.Marshal(m)
 	return raw
@@ -166,12 +166,12 @@ func makeParentResult(childIDs []string) []byte {
 // ok=false simulates a per-item pipeline failure (StatusFailed).
 func makeChildResult(ok bool, status string, errStr string) []byte {
 	m := map[string]any{
-		"ok":          ok,
-		"status":      status,
-		"language":    "en",
-		"job_id":      "child-1",
+		"ok":            ok,
+		"status":        status,
+		"language":      "en",
+		"job_id":        "child-1",
 		"parent_job_id": "parent-1",
-		"request_id":  "vo_test",
+		"request_id":    "vo_test",
 	}
 	if errStr != "" {
 		m["error"] = errStr
@@ -322,9 +322,9 @@ func TestParentHandlesChildResultWithoutOKField(t *testing.T) {
 	// Build result JSON without the "ok" key — simulates a pre-P0.1
 	// result shape or a malformed result.
 	legacyResult := map[string]any{
-		"status":    "completed",
-		"language":  "en",
-		"job_id":    "child-legacy",
+		"status":   "completed",
+		"language": "en",
+		"job_id":   "child-legacy",
 	}
 	legacyRaw, _ := json.Marshal(legacyResult)
 
@@ -520,13 +520,13 @@ func TestFinalizeAggregateParentReplayIsIdempotent_NoOp(t *testing.T) {
 // GenerateVoiceoverItemCommand payload.
 func makeChildPayloadWithRequired(required bool) []byte {
 	m := map[string]any{
-		"text":         "test text",
-		"language":     "en",
-		"voice":        "en-US-Aria",
-		"filename":     "test_en.mp3",
+		"text":          "test text",
+		"language":      "en",
+		"voice":         "en-US-Aria",
+		"filename":      "test_en.mp3",
 		"parent_job_id": "parent-1",
-		"request_id":   "vo_test",
-		"required":     required,
+		"request_id":    "vo_test",
+		"required":      required,
 	}
 	raw, _ := json.Marshal(m)
 	return raw
@@ -546,14 +546,14 @@ func makeMultiChildParentResult(childIDs []string, totalOutputs int, expectedChi
 		ps = voiceover.ParentWaitingChildren
 	}
 	m := map[string]any{
-		"ok":              true,
-		"parent_job_id":   "parent-multi",
-		"request_id":      "vo_acceptance",
-		"total_outputs":   totalOutputs,
+		"ok":                true,
+		"parent_job_id":     "parent-multi",
+		"request_id":        "vo_acceptance",
+		"total_outputs":     totalOutputs,
 		"expected_children": expectedChildren,
-		"enqueued_count":  enqueued,
-		"child_job_ids":   childIDs,
-		"parent_state":    string(ps),
+		"enqueued_count":    enqueued,
+		"child_job_ids":     childIDs,
+		"parent_state":      string(ps),
 	}
 	raw, _ := json.Marshal(m)
 	return raw

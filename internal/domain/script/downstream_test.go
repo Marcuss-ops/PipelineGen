@@ -288,9 +288,9 @@ func TestDownstreamRequestTable_VoiceoverXImages_Permutations(t *testing.T) {
 		expectedImages *ImagesRequirements
 	}{
 		{
-			name:      "voiceover-only-required",
-			kind:      DownstreamVoiceover,
-			required:  true,
+			name:     "voiceover-only-required",
+			kind:     DownstreamVoiceover,
+			required: true,
 			expectedVoice: &VoiceoverRequirements{
 				Provider: "eleven-labs", VoiceID: "EXV_default",
 			},
@@ -307,9 +307,9 @@ func TestDownstreamRequestTable_VoiceoverXImages_Permutations(t *testing.T) {
 			},
 		},
 		{
-			name:      "both-with-both-required",
-			kind:      DownstreamBoth,
-			required:  true,
+			name:     "both-with-both-required",
+			kind:     DownstreamBoth,
+			required: true,
 			expectedVoice: &VoiceoverRequirements{
 				Provider: "eleven-labs", VoiceID: "EXV_default",
 			},

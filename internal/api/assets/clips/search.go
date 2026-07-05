@@ -38,22 +38,22 @@ import (
 // less. Cluster ownership follows the matrix in the Step 5 discovery
 // report (June 2026, §4 Search cluster).
 type SearchDeps struct {
-	ClipsRepo *assets.ClipsRepository
-	AssetRepo      asset.Repository
-	VoiceoverRepo  *assets.VoiceoversRepository
-	ImagesRepo     *assets.ImagesRepository
-	SearchSvc      *search.Aggregator
+	ClipsRepo     *assets.ClipsRepository
+	AssetRepo     asset.Repository
+	VoiceoverRepo *assets.VoiceoversRepository
+	ImagesRepo    *assets.ImagesRepository
+	SearchSvc     *search.Aggregator
 }
 
 // SearchHandler owns the 4 clip-search routes. Receiver-on-pattern-B:
 // constructed in NewHandler from a SearchDeps shape extracted from
 // the orchestrator Deps.
 type SearchHandler struct {
-	clipsRepo *assets.ClipsRepository
-	assetRepo      asset.Repository
-	voiceoverRepo  *assets.VoiceoversRepository
-	imagesRepo     *assets.ImagesRepository
-	searchSvc      *search.Aggregator
+	clipsRepo     *assets.ClipsRepository
+	assetRepo     asset.Repository
+	voiceoverRepo *assets.VoiceoversRepository
+	imagesRepo    *assets.ImagesRepository
+	searchSvc     *search.Aggregator
 }
 
 // NewSearchHandler constructs a SearchHandler with the supplied
@@ -61,11 +61,11 @@ type SearchHandler struct {
 // wiring supplies all 5 via the SearchDeps shape.
 func NewSearchHandler(d SearchDeps) *SearchHandler {
 	return &SearchHandler{
-		clipsRepo: d.ClipsRepo,
-		assetRepo:      d.AssetRepo,
-		voiceoverRepo:  d.VoiceoverRepo,
-		imagesRepo:     d.ImagesRepo,
-		searchSvc:      d.SearchSvc,
+		clipsRepo:     d.ClipsRepo,
+		assetRepo:     d.AssetRepo,
+		voiceoverRepo: d.VoiceoverRepo,
+		imagesRepo:    d.ImagesRepo,
+		searchSvc:     d.SearchSvc,
 	}
 }
 

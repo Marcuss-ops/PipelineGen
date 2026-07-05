@@ -4,25 +4,25 @@
 // Fase 4 Spina Dorsale (July 2026): ports are organised into three
 // territories matching the domain separation:
 //
-//   ┌─ VoiceoverSynthesis ───────────────────────────────────────┐
-//   │  TTSProvider       — text→speech (NO database/sql, NO     │
-//   │  AudioPostProcessor  drive, NO qdrant imports)              │
-//   │  TTSInput / TTSOutput — application-layer wire shapes       │
-//   └────────────────────────────────────────────────────────────┘
-//   ┌─ VoiceoverPublication ────────────────────────────────────┐
-//   │  VoiceoverPublisher — Drive upload via delivery.Publisher  │
-//   │  VoiceoverPublishCommand — upload-only wire shape          │
-//   │  CanonicalDriveWebURL / CanonicalDriveDownloadURL helpers  │
-//   │  DestinationResolver — folder resolution (pre-upload)      │
-//   │  VoiceoverDefaultFolderResolver — config-level fallback    │
-//   └────────────────────────────────────────────────────────────┘
-//   ┌─ VoiceoverFinalization ───────────────────────────────────┐
-//   │  VoiceoverFinalizer — 6-step atomic commit (DB+lifecycle+ │
-//   │  VoiceoverPostCommitVerifier  outbox) inside caller-owned tx│
-//   │  TxOutboxEnqueuer — asset.index.requested outbox event     │
-//   │  DriveUploaderPort — post-commit cleanup (DeleteFile only) │
-//   │  VoiceoverItemExecutor — per-item pipeline orchestrator    │
-//   └────────────────────────────────────────────────────────────┘
+//	┌─ VoiceoverSynthesis ───────────────────────────────────────┐
+//	│  TTSProvider       — text→speech (NO database/sql, NO     │
+//	│  AudioPostProcessor  drive, NO qdrant imports)              │
+//	│  TTSInput / TTSOutput — application-layer wire shapes       │
+//	└────────────────────────────────────────────────────────────┘
+//	┌─ VoiceoverPublication ────────────────────────────────────┐
+//	│  VoiceoverPublisher — Drive upload via delivery.Publisher  │
+//	│  VoiceoverPublishCommand — upload-only wire shape          │
+//	│  CanonicalDriveWebURL / CanonicalDriveDownloadURL helpers  │
+//	│  DestinationResolver — folder resolution (pre-upload)      │
+//	│  VoiceoverDefaultFolderResolver — config-level fallback    │
+//	└────────────────────────────────────────────────────────────┘
+//	┌─ VoiceoverFinalization ───────────────────────────────────┐
+//	│  VoiceoverFinalizer — 6-step atomic commit (DB+lifecycle+ │
+//	│  VoiceoverPostCommitVerifier  outbox) inside caller-owned tx│
+//	│  TxOutboxEnqueuer — asset.index.requested outbox event     │
+//	│  DriveUploaderPort — post-commit cleanup (DeleteFile only) │
+//	│  VoiceoverItemExecutor — per-item pipeline orchestrator    │
+//	└────────────────────────────────────────────────────────────┘
 //
 // The package-level `database/sql` import exists ONLY for
 // Finalization-territory ports (VoiceoverFinalizer, TxOutboxEnqueuer,
@@ -313,18 +313,18 @@ type VoiceoverPublisher interface {
 //
 // Field semantics:
 //   - ID        — caller-derived canonical row ID (buildVoiceoverID
-//                 of textHash + lang + folderID); the publisher does
-//                 NOT use it for Drive-side identity, but the
-//                 downstream finalizeStage uses it for the per-row
-//                 insert. This is the value the caller threads
-//                 through so a future audit trail can correlate
-//                 upload ↔ row.
+//     of textHash + lang + folderID); the publisher does
+//     NOT use it for Drive-side identity, but the
+//     downstream finalizeStage uses it for the per-row
+//     insert. This is the value the caller threads
+//     through so a future audit trail can correlate
+//     upload ↔ row.
 //   - LocalPath — the post-TTS + post-AudioPostProcessor canonical
-//                 audio file on local FS. Publisher does NOT check
-//                 file existence; drive.UploadFile returns a clear
-//                 error message on a missing payload.
+//     audio file on local FS. Publisher does NOT check
+//     file existence; drive.UploadFile returns a clear
+//     error message on a missing payload.
 //   - Filename  — the Display Name surfaced on Drive (post-Slugify).
-//                 Used as the canonical file label.
+//     Used as the canonical file label.
 //   - FolderID  — the canonical Drive folder ID (post-DestinationResolver).
 type VoiceoverPublishCommand struct {
 	ID        string
@@ -369,11 +369,11 @@ type TransactionalOutbox = TxOutboxEnqueuer
 // Grammar (mirrors the legacy inline logic in filename.go:12 + the
 // inline copy in usecase.go's buildCommandFilename):
 //
-//   {slug} → textutil.SlugifyWithMax(text, 30)
-//   {lang} → language (verbatim)
-//   {hash} → textHash first 8 chars (or "" when shorter)
-//   {time} → time.Now().Format("150405")
-//   default template (when empty) → "{slug}_{lang}.mp3"
+//	{slug} → textutil.SlugifyWithMax(text, 30)
+//	{lang} → language (verbatim)
+//	{hash} → textHash first 8 chars (or "" when shorter)
+//	{time} → time.Now().Format("150405")
+//	default template (when empty) → "{slug}_{lang}.mp3"
 type FilenameBuilder interface {
 	BuildFilename(text, language, textHash, template string) string
 }
@@ -388,12 +388,12 @@ type FilenameBuilder interface {
 // The caller opens the tx, calls Finalize, then commits.
 //
 // Steps executed by the concrete finalizer:
-//   1. Dedupe gate (CountByDriveFileIDTx + DecideDedupe)
-//   2. DELETE old row (DeleteByIDTx)
-//   3. INSERT new row (InsertTx)
-//   4. media_assets projection (UpsertVoiceoverProjectionTx)
-//   5. asset.index.requested outbox (EnqueueIndexEvent)
-//   6. voiceover.cleanup.requested outbox (EnqueueCleanupEvent)
+//  1. Dedupe gate (CountByDriveFileIDTx + DecideDedupe)
+//  2. DELETE old row (DeleteByIDTx)
+//  3. INSERT new row (InsertTx)
+//  4. media_assets projection (UpsertVoiceoverProjectionTx)
+//  5. asset.index.requested outbox (EnqueueIndexEvent)
+//  6. voiceover.cleanup.requested outbox (EnqueueCleanupEvent)
 //
 // Optional steps are nil-safe: dedupe skipped when DriveFileID empty,
 // media_assets skipped when LifecycleService nil, outbox skipped when

@@ -592,7 +592,7 @@ func TestUploadIntentUseCase_FailFastGuards(t *testing.T) {
 		Logger:           zap.NewNop(),
 	})
 	cases := []struct {
-		name string
+		name    string
 		v, l, f string
 	}{
 		{"empty voiceoverID", "", "/tmp/in.mp3", "folder-x"},

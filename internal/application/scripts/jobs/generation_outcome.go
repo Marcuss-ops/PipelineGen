@@ -7,13 +7,14 @@
 // interprets as FAILED vs COMPLETED-with-ok=false.
 //
 // PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
-//   (1) ClassifyGenerationOutcome + ClassifySingleOutcome are PURE
-//       functions — they classify a (result, err) pair into a typed
-//       Outcome + Diagnostic. NO filesystem ops in this file.
-//   (2) Single + batch outcomes are classified via SEPARATE functions
-//       (ClassifySingleOutcome, ClassifyGenerationOutcome). The
-//       handler dispatch (generation_handler.go) routes the work; the
-//       classification is shape-typed, not branched on len(items).
+//
+//	(1) ClassifyGenerationOutcome + ClassifySingleOutcome are PURE
+//	    functions — they classify a (result, err) pair into a typed
+//	    Outcome + Diagnostic. NO filesystem ops in this file.
+//	(2) Single + batch outcomes are classified via SEPARATE functions
+//	    (ClassifySingleOutcome, ClassifyGenerationOutcome). The
+//	    handler dispatch (generation_handler.go) routes the work; the
+//	    classification is shape-typed, not branched on len(items).
 //
 // godlike/07 typed-error contract: every Outcome carries a Diagnostic
 // with a typed `Err` field. Handler callers propagate Diagnostic.Err
@@ -36,8 +37,8 @@ import (
 	"errors"
 	"fmt"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // Outcome is the canonical classification of a script.generate job
@@ -57,7 +58,7 @@ const (
 	OutcomeMultiInfraFailure Outcome = "MULTI_INFRA_FAILURE"
 	OutcomeMultiAllFailed    Outcome = "MULTI_ALL_FAILED"
 	OutcomeMultiPartial      Outcome = "MULTI_PARTIAL"
-	OutcomeMultiFullSuccess   Outcome = "MULTI_FULL_SUCCESS"
+	OutcomeMultiFullSuccess  Outcome = "MULTI_FULL_SUCCESS"
 
 	// Cancellation observed at any phase (Issue 6 / P1).
 	OutcomeCanceled Outcome = "CANCELED"
@@ -120,12 +121,12 @@ func ClassifySingleOutcome(result *domainScript.GenerationResult, err error) Dia
 func ClassifyGenerationOutcome(manyResult *usecase.GenerateManyResult, err error) Diagnostic {
 	if manyResult != nil && errors.Is(err, context.Canceled) {
 		return Diagnostic{
-			Outcome: OutcomeCanceled,
-			Err:     fmt.Errorf("script.generate cancelled mid-multi-item: %w", err),
-			Total:   manyResult.Summary.Total,
+			Outcome:   OutcomeCanceled,
+			Err:       fmt.Errorf("script.generate cancelled mid-multi-item: %w", err),
+			Total:     manyResult.Summary.Total,
 			Succeeded: manyResult.Summary.Succeeded,
-			Failed: manyResult.Summary.Failed,
-			Phase:   "multi-item",
+			Failed:    manyResult.Summary.Failed,
+			Phase:     "multi-item",
 		}
 	}
 	if manyResult == nil {

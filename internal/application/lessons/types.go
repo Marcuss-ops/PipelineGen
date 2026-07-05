@@ -12,11 +12,11 @@ type LessonRequest struct {
 	MaxChapters    int    `json:"max_chapters,omitempty"`
 	GenerateImages bool   `json:"generate_images,omitempty"`
 	ImageStyle     string `json:"image_style,omitempty"`
-	ImageWidth   int    `json:"image_width,omitempty"`
-	ImageHeight int    `json:"image_height,omitempty"`
-	GeneratePDF bool   `json:"generate_pdf,omitempty"`
-	OllamaURL   string `json:"ollama_url,omitempty"`
-	Async       bool   `json:"async,omitempty"`
+	ImageWidth     int    `json:"image_width,omitempty"`
+	ImageHeight    int    `json:"image_height,omitempty"`
+	GeneratePDF    bool   `json:"generate_pdf,omitempty"`
+	OllamaURL      string `json:"ollama_url,omitempty"`
+	Async          bool   `json:"async,omitempty"`
 }
 
 // ChapterSplit represents a source text segment to be processed as a chapter.
@@ -63,10 +63,10 @@ type LessonResult struct {
 
 // LessonsConfig holds configuration for the lessons service.
 type LessonsConfig struct {
-	Enabled          bool   `yaml:"enabled"`
-	DefaultModel     string `yaml:"default_model"`
-	DefaultTone      string `yaml:"default_tone"`
-	DefaultLanguage  string `yaml:"default_language"`
+	Enabled         bool   `yaml:"enabled"`
+	DefaultModel    string `yaml:"default_model"`
+	DefaultTone     string `yaml:"default_tone"`
+	DefaultLanguage string `yaml:"default_language"`
 	// DefaultImageModel is retained for config compatibility and is fixed to
 	// the only supported Google Slides model.
 	DefaultImageModel   string `yaml:"default_image_model"`

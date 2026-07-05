@@ -105,7 +105,8 @@ func (s *stubTTSProviderVO) Synthesize(ctx context.Context, input TTSInput) (TTS
 // for "en" + a stub TTSProvider that records the TTSInput. Asserts:
 //   - TTSInput.Voice == req.VoiceOverrides["en"]
 //   - The stub provider was invoked exactly once.
-func TestTTSBridge_UsesPerLanguageVoice(t *testing.T) {		stub := &stubTTSProviderVO{
+func TestTTSBridge_UsesPerLanguageVoice(t *testing.T) {
+	stub := &stubTTSProviderVO{
 		returnOut: TTSOutput{
 			LocalPath:   "/tmp/voice-en.mp3",
 			CleanedPath: "/tmp/voice-en-clean.mp3",
@@ -121,8 +122,8 @@ func TestTTSBridge_UsesPerLanguageVoice(t *testing.T) {		stub := &stubTTSProvide
 	svc := &Service{ttsProvider: stub}
 
 	req := &BatchRequest{
-		Text:         "hello world",
-		Languages:    []Language{"en"},
+		Text:      "hello world",
+		Languages: []Language{"en"},
 		VoiceOverrides: map[string]string{
 			"en": "en-US-RogerNeural",
 		},

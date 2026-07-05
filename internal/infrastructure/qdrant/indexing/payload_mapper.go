@@ -177,8 +177,8 @@ func isNaNOrInf(v float32) bool {
 type channelPolicy int
 
 const (
-	policyRequired    channelPolicy = iota // nil → ErrMissingRequiredVector
-	policyOptional                         // nil → silently dropped
+	policyRequired channelPolicy = iota // nil → ErrMissingRequiredVector
+	policyOptional                      // nil → silently dropped
 )
 
 // classifyChannel returns the policy for the given Qdrant vector channel.
@@ -197,11 +197,11 @@ func classifyChannel(ch string) channelPolicy {
 // dense embedding vector before it is included in the IndexDocument.
 //
 // Checks (in order, first failure returned):
-//   1. Nil check      → policyRequired → ErrMissingRequiredVector
-//   2. Zero-length    → ErrEmptyVector
-//   3. Dimension      → ErrVectorDimensionMismatch
-//   4. NaN            → ErrNaNOrInf
-//   5. Inf            → ErrNaNOrInf
+//  1. Nil check      → policyRequired → ErrMissingRequiredVector
+//  2. Zero-length    → ErrEmptyVector
+//  3. Dimension      → ErrVectorDimensionMismatch
+//  4. NaN            → ErrNaNOrInf
+//  5. Inf            → ErrNaNOrInf
 //
 // Returns nil when the vector is valid OR when it is nil AND the
 // channel is optional (policyOptional → silent skip).
@@ -527,10 +527,10 @@ func metadataStringSlice(m map[string]interface{}, key string) []string {
 //   - Language      ← asset.Language (BCP-47)
 //   - Description   ← metadata_json.$.description (when parsed)
 //   - Transcript    ← metadata_json.$.transcript ONLY (no asset.SearchText
-//                      fallback — search_text is the BM25 OUTPUT, never the
-//                      raw transcript; falling back would feed the assembled
-//                      search text back into the YouTube strategy's
-//                      transcript slot and double-count it).
+//     fallback — search_text is the BM25 OUTPUT, never the
+//     raw transcript; falling back would feed the assembled
+//     search text back into the YouTube strategy's
+//     transcript slot and double-count it).
 //   - Caption       ← metadata_json.$.caption
 //   - Prompt        ← metadata_json.$.prompt
 //   - DetectedEntities ← metadata_json.$.detected_entities

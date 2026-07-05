@@ -404,12 +404,12 @@ func TestEnqueueAndDelete_ShimIsTrashRoute(t *testing.T) {
 // (a mid-chain state the reconciler would re-emit to recover from
 // a stuck worker). Asserts:
 //
-//   (a) lifecycle_state is NOT changed (emit-only semantic).
-//   (b) updated_at IS re-stamped to current time (CIRCUIT-BREAKER
-//       rate-limit; the next reconciler tick re-fires only after
-//       `threshold` minutes, not on every reconciliationInterval).
-//   (c) outbox row emits EventAssetIndexDeleteRequested with
-//       event_key=`delete:<assetID>` + canonical v1 envelope shape.
+//	(a) lifecycle_state is NOT changed (emit-only semantic).
+//	(b) updated_at IS re-stamped to current time (CIRCUIT-BREAKER
+//	    rate-limit; the next reconciler tick re-fires only after
+//	    `threshold` minutes, not on every reconciliationInterval).
+//	(c) outbox row emits EventAssetIndexDeleteRequested with
+//	    event_key=`delete:<assetID>` + canonical v1 envelope shape.
 //
 // Pairs with TestEnqueueDriveDelete_StampsUpdatedAtOnLifecycleFlip
 // from Blocco 3.2 commit 1/2 (the CIRCUIT-BREAKER pin on the
@@ -506,10 +506,10 @@ func TestEnqueueIndexDelete_StampsUpdatedAtWithoutStateFlip(t *testing.T) {
 //
 // For each pre-existing state, asserts the same 3 invariants:
 //
-//   (i)   lifecycle_state is unchanged (no accidental state advance).
-//   (ii)  updated_at is re-stamped within +/-1s of call time
-//         (CIRCUIT-BREAKER rate-limit).
-//   (iii) outbox row emits with event_key=`delete:<assetID>`.
+//	(i)   lifecycle_state is unchanged (no accidental state advance).
+//	(ii)  updated_at is re-stamped within +/-1s of call time
+//	      (CIRCUIT-BREAKER rate-limit).
+//	(iii) outbox row emits with event_key=`delete:<assetID>`.
 //
 // Subtest-driven so a future regression pinpoints the offending state
 // directly (the failing state's name surfaces in `go test -v`).

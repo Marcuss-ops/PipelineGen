@@ -25,8 +25,8 @@ const nonTransientMessage = "validation: missing channel_id"
 //   - case-insensitive substring: "TIMEOUT", "HTTP 503", "Connection Refused"
 //   - wrapped substring: fmt.Errorf("ctx: %w", errors.New("timeout")) → true
 //     (errors.As walks the chain and finds no TransientInfrastructureError,
-//      substring fallback checks the outermost message which contains
-//      "ctx: timeout" — the substring matcher therefore catches it)
+//     substring fallback checks the outermost message which contains
+//     "ctx: timeout" — the substring matcher therefore catches it)
 //   - mixed: typed wrapper around a non-transient err → still true (typed
 //     path is authoritative)
 //   - non-transient: validation, parse — all negative substrings → false
@@ -178,7 +178,6 @@ func TestIsTransient_SQLiteMarkers(t *testing.T) {
 // errConnDone is the standard library sql.ErrConnDone, used in the
 // wrapped-ErrConnDone test case below.
 var errConnDone = sql.ErrConnDone
-
 
 // ─── TransientInfrastructureError ───────────────────────────────────────────
 
@@ -666,4 +665,3 @@ func TestDefaultOptions_Jitter25Enabled(t *testing.T) {
 		t.Errorf("DefaultOptions().BackoffFactor = %v, want 2.0", opts.BackoffFactor)
 	}
 }
-

@@ -3,18 +3,18 @@
 // Four test pins for the P0 #4 + #5 + #6 closure of
 // (*Uploader).GetOrCreateFolder:
 //
-//   #1 — fail-closed on transient lookup error (no fallthrough to Create).
-//   #2 — race-safety: singleflight deduplicates concurrent calls
-//        for the same (parentID, canonicalName); only ONE List
-//        and ONE Create observed.
-//   #3 — canonical name: input "My_Folder  " produces a Files.List
-//        query "name = 'My_Folder'" AND a Files.Create body whose
-//        Name field is "My_Folder" (the SafeFolderName output).
-//        NOT "My_Folder  " or any variant — exact canonical match.
-//   #7 — cross-process race: after a successful Create the second
-//        Files.List must return the OLDEST folder ID when multiple
-//        folders with the canonical name exist; NOT the freshly
-//        created ID we just produced.
+//	#1 — fail-closed on transient lookup error (no fallthrough to Create).
+//	#2 — race-safety: singleflight deduplicates concurrent calls
+//	     for the same (parentID, canonicalName); only ONE List
+//	     and ONE Create observed.
+//	#3 — canonical name: input "My_Folder  " produces a Files.List
+//	     query "name = 'My_Folder'" AND a Files.Create body whose
+//	     Name field is "My_Folder" (the SafeFolderName output).
+//	     NOT "My_Folder  " or any variant — exact canonical match.
+//	#7 — cross-process race: after a successful Create the second
+//	     Files.List must return the OLDEST folder ID when multiple
+//	     folders with the canonical name exist; NOT the freshly
+//	     created ID we just produced.
 //
 // Untagged (default `go test`) — these mocks don't depend on any
 // build-tagged seam. The drive SDK handles can be configured against
@@ -47,7 +47,7 @@ import (
 // and any future SDK bump could swing it on us). Tests below assert
 // behavior through the mock — not by introspecting SDK URL quirks.
 type urlRewritingTransport struct {
-	mockHost string
+	mockHost   string
 	mockScheme string
 }
 
@@ -66,11 +66,11 @@ func (t *urlRewritingTransport) RoundTrip(req *http.Request) (*http.Response, er
 // test assertions.
 type mockDriveAPIServer struct {
 	*httptest.Server
-	mu                sync.Mutex
-	listResponses     []listResponse // FIFO of canned Files.List responses
-	createResponses   []createResp   // FIFO of canned Files.Create responses
-	listBodyResponses []rawResp      // FIFO of canned raw HTTP responses for List (used to inject errors)
-	createBodyResponses []rawResp    // FIFO of canned raw HTTP responses for Create
+	mu                  sync.Mutex
+	listResponses       []listResponse // FIFO of canned Files.List responses
+	createResponses     []createResp   // FIFO of canned Files.Create responses
+	listBodyResponses   []rawResp      // FIFO of canned raw HTTP responses for List (used to inject errors)
+	createBodyResponses []rawResp      // FIFO of canned raw HTTP responses for Create
 
 	listCallCount   atomic.Int32
 	createCallCount atomic.Int32
@@ -413,9 +413,9 @@ func TestUploader_GetOrCreateFolder_CanonicalNameExactMatch(t *testing.T) {
 	// Pass criterion C: Files.Create body uses the canonical name
 	// verbatim in the Name field — not the raw input.
 	var createBody struct {
-		Name             string   `json:"name"`
-		MimeType         string   `json:"mimeType"`
-		Parents          []string `json:"parents"`
+		Name     string   `json:"name"`
+		MimeType string   `json:"mimeType"`
+		Parents  []string `json:"parents"`
 	}
 	if err := json.Unmarshal([]byte(srv.lastCreateBody), &createBody); err != nil {
 		t.Fatalf("could not decode Files.Create body: %v (body=%q)", err, srv.lastCreateBody)

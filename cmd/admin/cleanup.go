@@ -74,7 +74,6 @@ func runCleanupOrphans(args []string) error {
 		assetsDir = absDir
 	}
 
-
 	// The canonical DeletionService is pre-built by the composition
 	// root (BuildMaintBundle). The old code constructed a one-off
 	// service with three source-specific clip repos; the new code
@@ -91,7 +90,6 @@ func runCleanupOrphans(args []string) error {
 	// all three responsibilities. Maint.DeletionSvc is itself built
 	// with the right collapsed shape in BuildMaintBundle — no further
 	// constructor adaptation is required at this site.
-
 
 	if *apply {
 		fmt.Printf("Starting DEEP ORPHAN CLEANUP in %s (APPLY mode - files WILL be deleted)\n", assetsDir)

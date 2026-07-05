@@ -21,13 +21,13 @@ type ExtractionSegment = ytdomain.Segment
 
 // ExtractionIntent is the canonical extraction-enqueue intent payload.
 type ExtractionIntent struct {
-	VideoID       string             `json:"video_id"`
-	Title         string             `json:"title"`
-	URL           string             `json:"url"`
-	Group         string             `json:"group"`
-	DriveFolderID string             `json:"drive_folder_id"`
+	VideoID       string              `json:"video_id"`
+	Title         string              `json:"title"`
+	URL           string              `json:"url"`
+	Group         string              `json:"group"`
+	DriveFolderID string              `json:"drive_folder_id"`
 	Segments      []ExtractionSegment `json:"segments"`
-	Channel       channels.Channel   `json:"-"`
+	Channel       channels.Channel    `json:"-"`
 }
 
 // EnqueueExtractRequest preserves the pre-Fase-8 caller name while resolving to ExtractionIntent.

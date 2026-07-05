@@ -112,9 +112,9 @@ func TestParseRetryAfter_HeaderShapes(t *testing.T) {
 	now := time.Now()
 
 	cases := []struct {
-		name      string
-		value     string
-		want      time.Duration
+		name  string
+		value string
+		want  time.Duration
 	}{
 		// Delta-seconds: canonical for Google API.
 		{"delta-seconds 60", "60", 60 * time.Second},

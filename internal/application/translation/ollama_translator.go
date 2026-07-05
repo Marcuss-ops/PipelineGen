@@ -97,9 +97,8 @@ func NewOllamaTranslator(gen *ollama.Generator, log *zap.Logger) *OllamaTranslat
 // ── TranslationPort impl ─────────────────────────────────────────────────
 
 // Translate implements translation.TranslationPort. Reads cmd.ModelPolicy
-// to resolve the effective model (forward-pointer: PR-FASE-9-MODEL-HINTS
-// tracks cmd.ModelHints honoring as a Fase 9 step-3 follow-up; today
-// hints are accepted but ignored so
+// to resolve the effective model (TODO: cmd.ModelHints honoring is a
+// Fase 9 step-3 follow-up; today hints are accepted but ignored so
 // FUTURE adding of honour is the BACKFILL-extension and not a
 // signature-breaking surface change. Calls gen.TranslateTextWithModel
 // internally. Hydrates the TranslationResult envelope with the

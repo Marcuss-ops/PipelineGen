@@ -6,10 +6,10 @@
 // single `toMap` marshal/unmarshal bridge.
 //
 // PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
-//   * NO filesystem ops in this file (persistence moved to
+//   - NO filesystem ops in this file (persistence moved to
 //     adapters/artifacts_persistence.go per KILL K1).
-//   * NO log writers (logger concerns live in generation_handler.go).
-//   * Pure struct/marshal surface: handleSingle + handleBatch call
+//   - NO log writers (logger concerns live in generation_handler.go).
+//   - Pure struct/marshal surface: handleSingle + handleBatch call
 //     these builders, then call toMap to produce the broker
 //     map[string]any result.
 //
@@ -37,8 +37,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // buildSingleSuccessEnvelope wraps a successful single-item result

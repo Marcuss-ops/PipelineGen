@@ -150,9 +150,9 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	clipTitles := make([]string, 0, numClips)
 	jobs := make([]CutJob, 0, numClips)
 	for clipIdx := 0; clipIdx < numClips; clipIdx++ {
-	var offset float64
-	for attempt := 0; attempt < 20; attempt++ {
-		offset = videoRng.Float64() * maxStart
+		var offset float64
+		for attempt := 0; attempt < 20; attempt++ {
+			offset = videoRng.Float64() * maxStart
 			rounded := math.Round(offset)
 			if !usedOffsets[rounded] {
 				usedOffsets[rounded] = true

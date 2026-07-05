@@ -87,7 +87,8 @@ func RegisterWorkerSession(
 //
 // workspaceRoot: <TempDir>/pipelinegen/jobs (the per-job artefact root)
 // ws.Root:       <TempDir>/pipelinegen (one level up — handles
-//                transfer-client staging layout)
+//
+//	transfer-client staging layout)
 //
 // Returns the workspaceRoot path + the constructed *worker.Workspace,
 // or an error covering either failure.

@@ -29,8 +29,8 @@ import (
 	"strings"
 	"testing"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 

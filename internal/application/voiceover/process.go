@@ -79,7 +79,7 @@ func stageLog(log *zap.Logger, requestID, stage, language string) func() {
 // canonical resolver handles via its nil-dest branch.
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	req := &BatchRequest{
-		Text:             text,
+		Text: text,
 		// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string literal
 		// implicitly converts to the Language named type.
 		Languages:        []Language{Language(language)},
@@ -203,13 +203,13 @@ func (s *Service) processLanguage(
 	if req.Destination != nil && req.Destination.CreateSubfolder && req.Destination.SubfolderName != "" {
 		// PR-VO-A4 (path-traversal fix, June 2026): defense in depth.
 		safeSub, subErr := pathutil.SanitizeSubfolderSegment(req.Destination.SubfolderName)
-			if subErr != nil {
-				s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
-					zap.String("language", string(language)),
-					zap.String("subfolder_name", req.Destination.SubfolderName),
-					zap.Error(subErr))
-				return item.fail(FailureInvalidSubfolder, fmt.Errorf("path traversal rejected: %w", subErr))
-			}
+		if subErr != nil {
+			s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
+				zap.String("language", string(language)),
+				zap.String("subfolder_name", req.Destination.SubfolderName),
+				zap.Error(subErr))
+			return item.fail(FailureInvalidSubfolder, fmt.Errorf("path traversal rejected: %w", subErr))
+		}
 		outputDir = filepath.Join(s.outputDir, safeSub)
 		if werr := pathutil.EnsureWithinDir(s.outputDir, outputDir); werr != nil {
 			s.log.Error("PR-VO-A4: filepath.Rel guard tripped (sanitizer and Rel disagree — investigate)",
@@ -220,7 +220,7 @@ func (s *Service) processLanguage(
 		}
 		if err := os.MkdirAll(outputDir, 0755); err != nil { // Wave A Item 16: fail-fast on MkdirAll failure (was: log+continue)
 			return item.fail(FailureInvalidSubfolder, fmt.Errorf("failed to create local subfolder %q: %w", outputDir, err))
-			
+
 		}
 	}
 

@@ -44,9 +44,9 @@ func TestDateAfterFromCursor_LastCursorPrecedence(t *testing.T) {
 // canonical deterministic-clock anchor for this PR.
 func TestDateAfterFromCursor_LookbackDaysWithFixedClock(t *testing.T) {
 	cases := []struct {
-		name    string
-		days    int
-		want    string
+		name string
+		days int
+		want string
 	}{
 		{"1-day-lookback", 1, "20260114"},
 		{"7-day-lookback", 7, "20260108"},

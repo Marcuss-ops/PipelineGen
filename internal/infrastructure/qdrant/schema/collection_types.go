@@ -304,8 +304,8 @@ type SwitchReport struct {
 	// reindex was ABOUT TO swap away from (PR 13). Set by command
 	// pre-switch; the suffix distinguishes "currently active" from
 	// "previously active" rolling snapshots.
-	OldCollection string   `json:"old_collection,omitempty"`
-	Ready         bool     `json:"ready"`
+	OldCollection    string   `json:"old_collection,omitempty"`
+	Ready            bool     `json:"ready"`
 	Errors           []string `json:"errors,omitempty"`
 	ErrorsTruncated  bool     `json:"errors_truncated,omitempty"`
 	MissingTruncated bool     `json:"missing_truncated,omitempty"`

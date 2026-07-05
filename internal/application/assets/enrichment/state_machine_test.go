@@ -4,18 +4,18 @@
 //
 // 6 contract tests pin the canonical validEdges closed-set + the
 // godlike/07 typed-error contract (errors.Is + errors.As probe):
-//   1. TestStateMachine_MarkPending_StampsPending — happy-path: the
-//      canonical ingest stamp writes PENDING through the repo port.
-//   2. TestStateMachine_Transition_PendingToEnriching — legal edge.
-//   3. TestStateMachine_Transition_EnrichingToEnriched — legal
-//      terminal-success edge.
-//   4. TestStateMachine_Transition_EnrichingToFailed — legal
-//      terminal-failure edge.
-//   5. TestStateMachine_Transition_IllegalEnrichingToPending — illegal
-//      edge surfaces godlike/07 typed envelope; errors.Is + errors.As.
-//   6. TestStateMachine_Transition_EmptyAssetID — pre-flight guard
-//      rejects empty IDs BEFORE the SQL roundtrip (godlike/07
-//      typed-error contract).
+//  1. TestStateMachine_MarkPending_StampsPending — happy-path: the
+//     canonical ingest stamp writes PENDING through the repo port.
+//  2. TestStateMachine_Transition_PendingToEnriching — legal edge.
+//  3. TestStateMachine_Transition_EnrichingToEnriched — legal
+//     terminal-success edge.
+//  4. TestStateMachine_Transition_EnrichingToFailed — legal
+//     terminal-failure edge.
+//  5. TestStateMachine_Transition_IllegalEnrichingToPending — illegal
+//     edge surfaces godlike/07 typed envelope; errors.Is + errors.As.
+//  6. TestStateMachine_Transition_EmptyAssetID — pre-flight guard
+//     rejects empty IDs BEFORE the SQL roundtrip (godlike/07
+//     typed-error contract).
 package enrichment
 
 import (

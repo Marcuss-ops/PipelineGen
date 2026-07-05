@@ -329,9 +329,9 @@ func TestEndToEnd_DifferentInputDifferentPlan_SmokeCoverage(t *testing.T) {
 	}
 	triples := []triple{
 		{"rfp-1", "src-a", 1},
-		{"rfp-1", "src-a", 2},   // version bump
-		{"rfp-1", "src-b", 1},   // source-id change
-		{"rfp-2", "src-a", 1},   // run-fingerprint change
+		{"rfp-1", "src-a", 2}, // version bump
+		{"rfp-1", "src-b", 1}, // source-id change
+		{"rfp-2", "src-a", 1}, // run-fingerprint change
 	}
 	seeds := make([]string, len(triples))
 	for i, t0 := range triples {

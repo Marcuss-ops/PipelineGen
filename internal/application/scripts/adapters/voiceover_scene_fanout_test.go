@@ -53,11 +53,11 @@ func (f *fakeVoiceoverServiceGen) GenerateWithDestination(_ context.Context, tex
 // path.
 //
 // Checks:
-//   1. One VoiceoverService call per scene (no batching at the adapter).
-//   2. Each call uses the port (Generate OR GenerateWithDestination),
-//      NOT a legacy batch entry signature.
-//   3. The recorded text + filename threads per-scene — a scene's filename
-//      must include the scene index (the canonical scene-fanout rule).
+//  1. One VoiceoverService call per scene (no batching at the adapter).
+//  2. Each call uses the port (Generate OR GenerateWithDestination),
+//     NOT a legacy batch entry signature.
+//  3. The recorded text + filename threads per-scene — a scene's filename
+//     must include the scene index (the canonical scene-fanout rule).
 func TestScriptsFanout_NoDirectServiceReference(t *testing.T) {
 	gen := &fakeVoiceoverServiceGen{}
 

@@ -1,6 +1,7 @@
 // Package reconciler — types.go (Blocco 3.2 commit 2/2, June 2026)
 //
 // Lifecycle:
+//
 //	ACTIVE → DELETE_REQUESTED → DRIVE_DELETE_PENDING → INDEX_DELETE_PENDING → DELETED
 //
 // Blocco 3.1 (June 2026) shipped the producer side + DriveDeleteHandler
@@ -14,24 +15,26 @@
 // ticker that re-emits the correct outbox event for any media_assets
 // row stuck in a deletion-chain state past a configurable threshold:
 //   - DELETE_REQUESTED      → re-emit EventAssetDriveDeleteRequested
-//                              (Dispatcher.EnqueueDriveDelete(
-//                                  assetID, permanently=false))
-//                              The Trash route is safer because the
-//                              original permanently=true intent is
-//                              not recoverable from the row state;
-//                              operators can re-trigger permanently
-//                              manually if needed.
+//     (Dispatcher.EnqueueDriveDelete(
+//     assetID, permanently=false))
+//     The Trash route is safer because the
+//     original permanently=true intent is
+//     not recoverable from the row state;
+//     operators can re-trigger permanently
+//     manually if needed.
 //   - DRIVE_DELETE_PENDING  → re-emit EventAssetIndexDeleteRequested
-//                              (Dispatcher.EnqueueIndexDelete(assetID))
-//                              The IndexDelete handler's pre-flight
-//                              accepts INDEX_DELETE_PENDING|DELETE_PENDING
-//                              and idempotently processes.
+//     (Dispatcher.EnqueueIndexDelete(assetID))
+//     The IndexDelete handler's pre-flight
+//     accepts INDEX_DELETE_PENDING|DELETE_PENDING
+//     and idempotently processes.
 //   - INDEX_DELETE_PENDING  → re-emit EventAssetIndexDeleteRequested
-//                              (same as above)
+//     (same as above)
 //
 // The outbox event_key shape
-//   drive_delete:<permanently?>:<assetID>          (drive delete)
-//   delete:<assetID>                                (index delete)
+//
+//	drive_delete:<permanently?>:<assetID>          (drive delete)
+//	delete:<assetID>                                (index delete)
+//
 // absorbs repeat dispatches via ON CONFLICT(event_key) DO NOTHING —
 // each stuck-row replay results in at most ONE pending outbox row.
 // Since both IndexDelete and the gap between Drive and Index are
@@ -111,24 +114,24 @@ type ClassifyResult struct {
 // DeletionReconcilerStuckThreshold) so the composition root can
 // plumb the config through without depending on internal/config.
 type RunOptions struct {
-	Now             func() time.Time
-	Interval        time.Duration // logged on every tick
-	Threshold       time.Duration // rows with updated_at < Now()-Threshold are stuck
+	Now       func() time.Time
+	Interval  time.Duration // logged on every tick
+	Threshold time.Duration // rows with updated_at < Now()-Threshold are stuck
 }
 
 // RunReport is the per-tick observability surface. Counts drive the
 // deletion_reconciler_actions_total counter; Skipped rows surface in
 // operator dashboards per deletion-reconciler audit query.
 type RunReport struct {
-	StartedAt         time.Time
-	CompletedAt       time.Time
-	DurationMs        int64
-	SInterval         time.Duration
-	SThreshold        time.Duration
-	RowsScanned       int
-	RowsRequeueDrive  int
-	RowsRequeueIndex  int
-	RowsSkipped       int
-	RowsErrored       int
-	Errors            []string
+	StartedAt        time.Time
+	CompletedAt      time.Time
+	DurationMs       int64
+	SInterval        time.Duration
+	SThreshold       time.Duration
+	RowsScanned      int
+	RowsRequeueDrive int
+	RowsRequeueIndex int
+	RowsSkipped      int
+	RowsErrored      int
+	Errors           []string
 }

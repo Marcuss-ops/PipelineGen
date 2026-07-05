@@ -26,11 +26,12 @@
 //     parameter that SEARCH-T07-LIFECYCLE-DEL removed.
 //
 // (Earlier iteration included a `TestSearchableLifecycleStates_MustBeExactlyACTIVE`
-//  exact-value pin via reflect.DeepEqual. Removed per code-reviewer
-//  feedback: that lock was over-spec'd — a future legitimate
-//  extension (e.g. surfacing "STAGING" rows) would fail without
-//  indicating a contract violation. The 4 semantic tests + the
-//  signature lock are the durable contract surface.)
+//
+//	exact-value pin via reflect.DeepEqual. Removed per code-reviewer
+//	feedback: that lock was over-spec'd — a future legitimate
+//	extension (e.g. surfacing "STAGING" rows) would fail without
+//	indicating a contract violation. The 4 semantic tests + the
+//	signature lock are the durable contract surface.)
 //
 // godlike/06 SSOT (one-canonical-owner-per-fact): the constant
 // `search.SearchableLifecycleStates` is the SOLE canonical allowlist

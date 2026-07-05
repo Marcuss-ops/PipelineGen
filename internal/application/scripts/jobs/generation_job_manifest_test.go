@@ -22,9 +22,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 )
 
 // validScriptResult builds a minimal typed GenerationResult that
@@ -337,5 +337,3 @@ func TestPersistGeneratedArtifacts_ScriptJSONOnDisk(t *testing.T) {
 		}
 	}
 }
-
-

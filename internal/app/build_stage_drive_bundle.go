@@ -26,7 +26,7 @@
 //     typed sentinel rather than a nil-deref panic.
 //   - BACKFILL (forward-pointer TODO(P0-COMPL-5-SINGLE-BACKBONE),
 //     deadline 2026-08-15): production concrete for CompleteJobTxRunner
-//     + IdempotencyCachePort lands; this bundle's 5th component goes LIVE.
+//   - IdempotencyCachePort lands; this bundle's 5th component goes LIVE.
 //   - CUTOVER (forward-pointer TODO(P0-COMPL-4-PUBLISH-DEDUPE),
 //     deadline 2026-07-25): ArtifactPreparation becomes the SOLE publish
 //     seam (collapse any duplicate publisher surface); this bundle's
@@ -176,11 +176,11 @@ type StageDriveBundle struct {
 //
 // godlike/07 fail-closed:
 //   - nil lookupFn              → staged.NewResolver returns typed sentinel
-//                                 ErrStagedArtifactNotConfigured; wrapped via
-//                                 fmt.Errorf %w here; composition aborts.
+//     ErrStagedArtifactNotConfigured; wrapped via
+//     fmt.Errorf %w here; composition aborts.
 //   - nil Publisher             → bundle still constructs; ArtifactPreparation's
-//                                 Prepare returns "no publisher configured"
-//                                 at runtime (production-side runtime error).
+//     Prepare returns "no publisher configured"
+//     at runtime (production-side runtime error).
 //   - nil log                   → defaults to zap.NewNop() per convention.
 //
 // godlike/06 SSOT: this function is the SINGLE canonical entry-point for

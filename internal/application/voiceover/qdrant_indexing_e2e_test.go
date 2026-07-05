@@ -322,15 +322,15 @@ func (s *e2eDriveAdmin) GetOrCreateFolder(_ context.Context, _ string, _ string)
 func (s *e2eDriveAdmin) GetFolderName(_ context.Context, _ string) (string, error) {
 	return "stub-folder-name", nil
 }
-func (s *e2eDriveAdmin) TrashFolder(_ context.Context, _ string) error { return nil }
+func (s *e2eDriveAdmin) TrashFolder(_ context.Context, _ string) error  { return nil }
 func (s *e2eDriveAdmin) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (s *e2eDriveAdmin) TrashFile(_ context.Context, _ string) error   { return nil }
-func (s *e2eDriveAdmin) DeleteFile(_ context.Context, _ string) error  { return nil }
+func (s *e2eDriveAdmin) TrashFile(_ context.Context, _ string) error    { return nil }
+func (s *e2eDriveAdmin) DeleteFile(_ context.Context, _ string) error   { return nil }
 func (s *e2eDriveAdmin) MoveFile(_ context.Context, _ string, _ string, _ string) error {
 	return nil
 }
 func (s *e2eDriveAdmin) RenameFile(_ context.Context, _ string, _ string) error { return nil }
-func (s *e2eDriveAdmin) Ping(_ context.Context) error                          { return nil }
+func (s *e2eDriveAdmin) Ping(_ context.Context) error                           { return nil }
 
 // Publish + ResolveFolder (F2.7 / Wave 21, June 2026): added to
 // e2eDriveAdmin so it satisfies the canonical delivery.Publisher interface
@@ -510,10 +510,10 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	// write the media_assets projection through the same real
 	// lifecycleSvc used by the test.
 	e2eFinalizer := newVoiceoverFinalizer(voiceoverFinalizerDeps{
-		VoiceoverRepo: voiceoverRepo,
-		Outbox:        outboxDispatcher,
+		VoiceoverRepo:    voiceoverRepo,
+		Outbox:           outboxDispatcher,
 		LifecycleService: &e2eLifecycleAdapter{svc: lifecycleSvc},
-		Logger:        zap.NewNop(),
+		Logger:           zap.NewNop(),
 	})
 
 	svc := &Service{
@@ -682,8 +682,8 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 		t.Fatalf("MarkCompleted: %v", err)
 	}
 	var (
-		finalStatus     string
-		completedAt     sql.NullString
+		finalStatus string
+		completedAt sql.NullString
 	)
 	if err := db.QueryRowContext(ctx,
 		`SELECT status, completed_at FROM outbox_events WHERE id = ?`,

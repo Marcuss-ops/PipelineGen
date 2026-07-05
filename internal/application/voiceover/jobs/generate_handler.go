@@ -207,13 +207,13 @@ func (h *GenerateJobHandler) HandleJob(
 
 	pf(100, "voiceover.generate fan-out complete")
 
-// FASE 1 (July 2026): the parent is NOT truly terminal after fan-out.
-// Returning (resultMap, nil) tells the broker to mark SUCCEEDED — but
-// this is TEMPORARY. The parent aggregator's FinalizeAggregateParent will re-finalise
-// the parent status based on real child outcomes: preserving SUCCEEDED
-// on all-succeeded, or flipping to FAILED when all children definitively
-// failed (P0 #1 closure). The result map carries parent_state=
-// waiting_children to signal "not yet terminal at the application level".
+	// FASE 1 (July 2026): the parent is NOT truly terminal after fan-out.
+	// Returning (resultMap, nil) tells the broker to mark SUCCEEDED — but
+	// this is TEMPORARY. The parent aggregator's FinalizeAggregateParent will re-finalise
+	// the parent status based on real child outcomes: preserving SUCCEEDED
+	// on all-succeeded, or flipping to FAILED when all children definitively
+	// failed (P0 #1 closure). The result map carries parent_state=
+	// waiting_children to signal "not yet terminal at the application level".
 	return toFanoutResultMap(res, j.ID), nil
 }
 
@@ -228,15 +228,15 @@ func (h *GenerateJobHandler) HandleJob(
 // (string-encoded voiceover.ParentState). The emit shapes:
 //
 //   - res == nil   → "failed"       (validation-failure / nil-fanout
-//                                     paths; aggregator branch-inactive)
+//     paths; aggregator branch-inactive)
 //   - res.OK == false → "partial_success"
-//                                  (per-language partial fan-out; some
-//                                   children could not be enqueued but
-//                                   the ones that did are in flight)
+//     (per-language partial fan-out; some
+//     children could not be enqueued but
+//     the ones that did are in flight)
 //   - res.OK == true  → "waiting_children"
-//                                  (full enqueue success — children
-//                                   are in flight; aggregator will
-//                                   re-finalise on terminal)
+//     (full enqueue success — children
+//     are in flight; aggregator will
+//     re-finalise on terminal)
 //
 // The dispatcher still marks the parent SUCCEEDED when (resultMap,
 // nil) is returned. The application-level state is in result
@@ -246,11 +246,11 @@ func (h *GenerateJobHandler) HandleJob(
 func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 	if res == nil {
 		return map[string]any{
-			"ok":            false,
-			"parent_job_id": parentJobID,
-			"request_id":    parentJobID,
+			"ok":             false,
+			"parent_job_id":  parentJobID,
+			"request_id":     parentJobID,
 			"enqueued_count": 0,
-			"parent_state":  string(voiceover.ParentFailed),
+			"parent_state":   string(voiceover.ParentFailed),
 		}
 	}
 	pid := res.ParentJobID
@@ -260,17 +260,17 @@ func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 	ps := voiceover.ParentWaitingChildren
 	if !res.OK {
 		ps = voiceover.ParentPartialSuccess
-	}// FASE 1 (July 2026): result map carries expected_children so the
-// parent aggregator can reconstruct the domain StateMachine with
-// the correct expected count on every tick, even when the parent
-// job's result map is the only durable source of truth before the
-// parent_aggregator_state table migration (Step 12B-C2).
-//
-// expected_children = EnqueuedCount (children actually enqueued),
-// NOT TotalOutputs. On partial fan-out, TotalOutputs > EnqueuedCount
-// and the aggregator should only track children that were actually
-// created — the failed enqueue entries have empty-string child IDs
-// that extractChildJobIDs filters out.
+	} // FASE 1 (July 2026): result map carries expected_children so the
+	// parent aggregator can reconstruct the domain StateMachine with
+	// the correct expected count on every tick, even when the parent
+	// job's result map is the only durable source of truth before the
+	// parent_aggregator_state table migration (Step 12B-C2).
+	//
+	// expected_children = EnqueuedCount (children actually enqueued),
+	// NOT TotalOutputs. On partial fan-out, TotalOutputs > EnqueuedCount
+	// and the aggregator should only track children that were actually
+	// created — the failed enqueue entries have empty-string child IDs
+	// that extractChildJobIDs filters out.
 	m := map[string]any{
 		"ok":                   res.OK,
 		"parent_job_id":        pid,

@@ -328,7 +328,6 @@ func (b *OllamaClipMetadataBuilder) parseResponse(response string) (ollamaMetada
 	return out, nil
 }
 
-
 // countWordsForBuilder delegates to the metadata package's
 // exported CountWords so the word-count definition is
 // canonical. Kept as a thin local alias for code-locality

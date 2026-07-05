@@ -59,8 +59,8 @@ func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, pip
 		client:      &http.Client{Timeout: 90 * time.Second},
 		driveAdmin:  driveAdmin,
 		pipelines:   pipelines,
-		imagesDir:  cfg.Storage.ImagesPath(),
-		tempDir:    cfg.Storage.TempPath(),
+		imagesDir:   cfg.Storage.ImagesPath(),
+		tempDir:     cfg.Storage.TempPath(),
 		enrichState: enrichState,
 	}
 }

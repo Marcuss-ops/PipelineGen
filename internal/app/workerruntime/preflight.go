@@ -166,7 +166,6 @@ func PreflightMasterHealth(masterURL string) error {
 		preflightTimeout, err, healthURL)
 }
 
-
 // closeBody is an interface-typed wrapper around resp.Body.Close().
 // Moved verbatim from cmd/worker/main.go. Using `interface{ Close() error }`
 // lets us avoid importing the net/http package's Body type at the

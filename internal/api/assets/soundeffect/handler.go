@@ -39,9 +39,9 @@ const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMut
 
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
-	clipsRepo     sfxports.ClipRepositoryPort
-	metaWriter    sfxports.SemanticMetadataWriterPort
-	resolver      sfxports.DestinationResolverPort
+	clipsRepo  sfxports.ClipRepositoryPort
+	metaWriter sfxports.SemanticMetadataWriterPort
+	resolver   sfxports.DestinationResolverPort
 	// dispatcher (PR 6, June 2026, codex/qdrant-api-writers-fail-closed):
 	// the canonical narrow port sfxports.DispatcherPort wrapping the
 	// production *outbox.Dispatcher. Required for the Generate write
@@ -128,7 +128,10 @@ func (h *Handler) Generate(c *gin.Context) {
 
 	// 1. Synthesize the sound effect using the Python synth script
 	tempDir := filepath.Join("data", "tmp")
-	if err := os.MkdirAll(tempDir, 0755); err != nil { apiutil.InternalError(c, fmt.Errorf("failed to create temp directory %q: %w", tempDir, err)); return }
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		apiutil.InternalError(c, fmt.Errorf("failed to create temp directory %q: %w", tempDir, err))
+		return
+	}
 
 	tempWav := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.wav", time.Now().UnixNano()))
 	tempFile := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.mp3", time.Now().UnixNano()))
@@ -258,17 +261,17 @@ func (h *Handler) Generate(c *gin.Context) {
 		if parentFolderID != "" {
 			if _, err := os.Stat(localMetaPath); err == nil {
 				metaPubReq := delivery.PublishRequest{
-					Destination:       delivery.DestinationSoundEffect,
-					LocalPath:         localMetaPath,
-					Filename:          "metadata.json",
-					Group:             "", // folder already resolved by first publish
+					Destination:        delivery.DestinationSoundEffect,
+					LocalPath:          localMetaPath,
+					Filename:           "metadata.json",
+					Group:              "", // folder already resolved by first publish
 					RootFolderOverride: parentFolderID,
 				}
-			if _, err := h.publisher.Publish(ctx, metaPubReq); err != nil {
-				h.log.Error("failed to publish metadata.json to Drive", zap.Error(err))
-			} else {
-				h.log.Info("metadata.json published to Drive successfully")
-			}
+				if _, err := h.publisher.Publish(ctx, metaPubReq); err != nil {
+					h.log.Error("failed to publish metadata.json to Drive", zap.Error(err))
+				} else {
+					h.log.Info("metadata.json published to Drive successfully")
+				}
 			}
 		}
 	}

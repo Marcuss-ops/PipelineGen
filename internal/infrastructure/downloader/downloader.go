@@ -20,10 +20,10 @@ import (
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.
 type YTDLPDownloader struct {
-	path       string
+	path        string
 	cookiesPath string
-	cmdBuilder *ytdlp.CommandBuilder
-	verifier   *ytdlp.OutputVerifier
+	cmdBuilder  *ytdlp.CommandBuilder
+	verifier    *ytdlp.OutputVerifier
 }
 
 // NewYTDLP creates a new yt-dlp downloader.
@@ -37,10 +37,10 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		cookiesPath = "cookies.txt"
 	}
 	return &YTDLPDownloader{
-		path:       path,
+		path:        path,
 		cookiesPath: cookiesPath,
-		cmdBuilder: ytdlp.NewCommandBuilder(cfg),
-		verifier:   &ytdlp.OutputVerifier{},
+		cmdBuilder:  ytdlp.NewCommandBuilder(cfg),
+		verifier:    &ytdlp.OutputVerifier{},
 	}
 }
 

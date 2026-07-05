@@ -21,19 +21,20 @@
 // across both layers (orchestrator-level vs post-publish).
 //
 // Coverage matrix (priority order, fail-fast):
-//   nil RunSummary                  → ErrMetadataMissing
-//   nil Manifest                    → ErrMetadataMissing
-//   empty Manifest.Artifacts        → ErrMetadataMissing (priority)
-//   metadata Required:true, no video → ErrNoProducedChunk
-//   metadata Required:false + video → ErrMetadataMissing (priority)
-//   both Required:true              → nil (success)
-//   metadata Required:true, many
 //
-//	Required chunks + extras          → nil (multi-entry OK)
+//	  nil RunSummary                  → ErrMetadataMissing
+//	  nil Manifest                    → ErrMetadataMissing
+//	  empty Manifest.Artifacts        → ErrMetadataMissing (priority)
+//	  metadata Required:true, no video → ErrNoProducedChunk
+//	  metadata Required:false + video → ErrMetadataMissing (priority)
+//	  both Required:true              → nil (success)
+//	  metadata Required:true, many
 //
-//   (canary) buildStockManifest today (all
+//		Required chunks + extras          → nil (multi-entry OK)
 //
-//	Required:false entries)            → ErrMetadataMissing
+//	  (canary) buildStockManifest today (all
+//
+//		Required:false entries)            → ErrMetadataMissing
 package stockpipeline
 
 import (
@@ -166,14 +167,14 @@ func TestAssertRunSummaryArtifactsRequired_HappyPath(t *testing.T) {
 				{
 					ID: StockArtifactIdMetadata, Kind: job.ArtifactKindMetadata,
 					Filename: "metadata.json", MIMEType: "application/json",
-					Path: "/var/lib/pipelinegen/metadata.json",
+					Path:     "/var/lib/pipelinegen/metadata.json",
 					Required: true,
 				},
 				{
 					ID:       "stock:chunk:0",
 					Kind:     string(finalization.KindVideo),
 					Filename: "stock_chunk_0.mp4", MIMEType: "video/mp4",
-					Path: "/var/lib/pipelinegen/chunk_0.mp4",
+					Path:     "/var/lib/pipelinegen/chunk_0.mp4",
 					Required: true,
 				},
 			},

@@ -40,33 +40,33 @@ package storage
 // 2026, post-PR-CLIPINDEXER-FOLD-INVESTIGATE closure):
 //
 //   - clips_crud_test.go::newAlignTestDB
-//       40-col MediaAssetColumns projection-alignment test; folding
-//       would invalidate the contract assertion (the test pins the
-//       40-column EXACT count).
+//     40-col MediaAssetColumns projection-alignment test; folding
+//     would invalidate the contract assertion (the test pins the
+//     40-column EXACT count).
 //   - images_repository_test.go::fase4TestSchema
-//       FASE 4 CUTOVER dual-write minimal schema; folding would
-//       inflate the test surface beyond the FK-cascade contract.
+//     FASE 4 CUTOVER dual-write minimal schema; folding would
+//     inflate the test surface beyond the FK-cascade contract.
 //   - clip_atomic_writer_test.go::clipAtomicWriterSchema
-//       5-step tx shape minimal schema; folding would obscure the
-//       writer's narrow write-surface intent.
+//     5-step tx shape minimal schema; folding would obscure the
+//     writer's narrow write-surface intent.
 //
 // Historical audits (NOT active exemptions — recorded so future agents
 // can verify the exemption archaeology when re-reading the file):
 //
 //   - clipindexer/service_test.go::TestIndexingDoesNotSpawnPythonPerClip
-//       Was exempted through CANONICAL-DRIFT-MIG094 closure pass
-//       (July 2026) on the (incorrect at the time) hypothesis that
-//       canonical's `embedding_json TEXT NOT NULL DEFAULT '[]'`
-//       broke the indexer's CAS check treating NULL as `not yet
-//       indexed`. PR-CLIPINDEXER-FOLD-INVESTIGATE reopened the
-//       investigation and revealed the real cause was a setup-shape
-//       mismatch: the inline 10-col schema lacked the search_text
-//       column, so computeContentHash errored with `no such column`
-//       and fell back to contentHash=""; the empty hash then matched
-//       row.file_hash='' in the CAS fence and the test passed by
-//       accident. The fold + new seedFileHash helper (above the
-//       test) now exercise the production-shape CAS fence honestly.
-//       Marked closed July 2026.
+//     Was exempted through CANONICAL-DRIFT-MIG094 closure pass
+//     (July 2026) on the (incorrect at the time) hypothesis that
+//     canonical's `embedding_json TEXT NOT NULL DEFAULT '[]'`
+//     broke the indexer's CAS check treating NULL as `not yet
+//     indexed`. PR-CLIPINDEXER-FOLD-INVESTIGATE reopened the
+//     investigation and revealed the real cause was a setup-shape
+//     mismatch: the inline 10-col schema lacked the search_text
+//     column, so computeContentHash errored with `no such column`
+//     and fell back to contentHash=""; the empty hash then matched
+//     row.file_hash=” in the CAS fence and the test passed by
+//     accident. The fold + new seedFileHash helper (above the
+//     test) now exercise the production-shape CAS fence honestly.
+//     Marked closed July 2026.
 //
 // See CANONICAL.md §1 for the SSOT contract; see each exempt test
 // file's header comment for the test-specific exemption rationale.

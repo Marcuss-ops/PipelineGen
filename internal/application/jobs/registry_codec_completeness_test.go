@@ -37,9 +37,9 @@ import (
 // canonicalWiredJobTypes is the canonical list of job types whose
 // PayloadCodec + ResultCodec adapters are wired in C2. A future
 // commit adding a 5th wired family must:
-//   1. Append the constant to this list;
-//   2. Define a parallel codecFor() helper;
-//   3. Add a parallel TestCodecCompleteness_RoundTrip_* test.
+//  1. Append the constant to this list;
+//  2. Define a parallel codecFor() helper;
+//  3. Add a parallel TestCodecCompleteness_RoundTrip_* test.
 var canonicalWiredJobTypes = []string{
 	TypeScriptGenerate,
 	TypeImagesGenerate,

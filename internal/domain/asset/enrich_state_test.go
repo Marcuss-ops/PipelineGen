@@ -4,17 +4,17 @@
 //
 // 5 contract tests pin the canonical 4-state closed set per
 // godlike/06 SSOT (one owner per fact):
-//   1. TestEnrichStateChromaticValues — every named constant carries
-//      its documented wire string (PENDING/ENRICHING/ENRICHED/FAILED).
-//   2. TestCanonicalEnrichStateValues — closed-set enumeration
-//      returns exactly 4 values, in PENDING-first order.
-//   3. TestIsValidEnrichStateExhaustive — Valid() accepts only the 4
-//      canonical values + rejects empty + rejects unknown.
-//   4. TestEnrichStateIsTerminal — IsTerminal() returns true for
-//      ENRICHED + FAILED (the 2 terminal sinks).
-//   5. TestEnrichStateIsScrapeCandidate — IsScrapeCandidate() returns
-//      true for PENDING + FAILED (the 2 values the VLM 15-min sweeper
-//      can pick up — admin-reset FAILED→PENDING re-enables the row).
+//  1. TestEnrichStateChromaticValues — every named constant carries
+//     its documented wire string (PENDING/ENRICHING/ENRICHED/FAILED).
+//  2. TestCanonicalEnrichStateValues — closed-set enumeration
+//     returns exactly 4 values, in PENDING-first order.
+//  3. TestIsValidEnrichStateExhaustive — Valid() accepts only the 4
+//     canonical values + rejects empty + rejects unknown.
+//  4. TestEnrichStateIsTerminal — IsTerminal() returns true for
+//     ENRICHED + FAILED (the 2 terminal sinks).
+//  5. TestEnrichStateIsScrapeCandidate — IsScrapeCandidate() returns
+//     true for PENDING + FAILED (the 2 values the VLM 15-min sweeper
+//     can pick up — admin-reset FAILED→PENDING re-enables the row).
 package asset
 
 import "testing"
@@ -71,8 +71,8 @@ func TestIsValidEnrichStateExhaustive(t *testing.T) {
 		EnrichState("pending"),  // lowercase typo
 		EnrichState("enriched"), // lowercase typo
 		EnrichState("UNKNOWN"),
-		EnrichState("INDEXED"),  // valid IndexState but not EnrichState
-		EnrichState("DELETED"),  // valid IndexState but not EnrichState
+		EnrichState("INDEXED"), // valid IndexState but not EnrichState
+		EnrichState("DELETED"), // valid IndexState but not EnrichState
 	}
 	for _, s := range rejects {
 		if s.Valid() {
@@ -100,10 +100,10 @@ func TestEnrichStateIsTerminal(t *testing.T) {
 
 func TestEnrichStateIsScrapeCandidate(t *testing.T) {
 	cases := []struct {
-		state    EnrichState
+		state     EnrichState
 		candidate bool
 	}{
-		{EnrichStatePending, true},   // canonical scrape candidate
+		{EnrichStatePending, true},    // canonical scrape candidate
 		{EnrichStateEnriching, false}, // claim held; not scrape-eligible
 		{EnrichStateEnriched, false},  // terminal success; not scrape-eligible
 		{EnrichStateFailed, true},     // admin-reset path: eligible

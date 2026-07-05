@@ -575,5 +575,3 @@ func TestSafeCall(t *testing.T) {
 		}
 	})
 }
-
-

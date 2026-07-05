@@ -223,5 +223,3 @@ func newImageRepoAdapter(r *assets.ImagesRepository) clips.ImageRepositoryPort {
 func (a *imageRepoAdapter) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
 	return a.inner.ListAll(ctx)
 }
-
-

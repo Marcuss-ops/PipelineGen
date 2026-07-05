@@ -21,15 +21,15 @@ const DefaultPlaylistEnd = 50
 
 // CompositionDeps is the ctor payload for NewChannelMonitor.
 type CompositionDeps struct {
-	Cfg            *config.Config
-	ChannelsSvc    *channels.Service
-	Log            *zap.Logger
-	Ytdlp          MonitorDownloaderPort
-	Transcript     TranscriptProvider
-	Analyzer       VideoAnalyzer
-	Enqueuer       JobEnqueuer
-	Discoveries    YoutubeDiscoveriesPort
-	Policy         *MonitorRuntimePolicy
+	Cfg         *config.Config
+	ChannelsSvc *channels.Service
+	Log         *zap.Logger
+	Ytdlp       MonitorDownloaderPort
+	Transcript  TranscriptProvider
+	Analyzer    VideoAnalyzer
+	Enqueuer    JobEnqueuer
+	Discoveries YoutubeDiscoveriesPort
+	Policy      *MonitorRuntimePolicy
 	// MetricsRecorder (FASE 3.7 Commit 2, 2026-07-04): optional
 	// Prometheus-shaped counter/histogram recorder. nil-safe —
 	// the ctor installs a NoopMetricsRecorder default so tests
@@ -56,7 +56,7 @@ const (
 	OutcomeEnqueued         EnqueueOutcome = "enqueued"
 	OutcomeAlreadyScheduled EnqueueOutcome = "already_scheduled"
 	OutcomeRejected         EnqueueOutcome = "rejected"
-	OutcomeInfraFailure    EnqueueOutcome = "infra_failure"
+	OutcomeInfraFailure     EnqueueOutcome = "infra_failure"
 )
 
 // Analysis is the analyzer result consumed by enqueue orchestration.

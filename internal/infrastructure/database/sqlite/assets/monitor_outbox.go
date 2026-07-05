@@ -144,7 +144,7 @@ func (r *YoutubeDiscoveriesRepository) CommitEnqueueOutbox(
 			if commitErr := tx.Commit(); commitErr != nil {
 				return fmt.Errorf("monitor_outbox.CommitEnqueueOutbox: commit on dup outbox: %w", commitErr)
 			}
-			tx = nil // disable rollback in defer
+			tx = nil   // disable rollback in defer
 			return nil // already committed in a prior attempt
 		}
 		return fmt.Errorf("monitor_outbox.CommitEnqueueOutbox: insert outbox: %w", err)

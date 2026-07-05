@@ -14,7 +14,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	
+
 	"sync"
 	"testing"
 	"time"
@@ -156,19 +156,19 @@ func TestFilesystemStager_Prepare_SecondCall_HitsCache(t *testing.T) {
 	var fetchCalls int32
 	var mu sync.Mutex
 	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
-	mu.Lock()
-	fetchCalls++
-	mu.Unlock()
-	return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
-}
+		mu.Lock()
+		fetchCalls++
+		mu.Unlock()
+		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+	}
 
-stager, _ := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
-req := appacq.PrepareRequest{Source: appacq.SourceRef{URL: "https://example.com/cache.mp4"}, IdempotencyKey: "k-1"}
+	stager, _ := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
+	req := appacq.PrepareRequest{Source: appacq.SourceRef{URL: "https://example.com/cache.mp4"}, IdempotencyKey: "k-1"}
 
-first, err := stager.Prepare(context.Background(), req)
-require.NoError(t, err)
-second, err := stager.Prepare(context.Background(), req)
-require.NoError(t, err)
+	first, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	second, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
 
 	// assert.EqualValues (NOT assert.Equal): the closure-mutated
 	// counter is int32 (atomic-safe on x86_64 arm64); testify's

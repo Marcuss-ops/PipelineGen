@@ -13,22 +13,22 @@
 //
 // State machine (canonical validEdges closed-set):
 //
-//          ┌─→ ENRICHING ─┬─→ ENRICHED   (terminal success)
-//          │               └─→ FAILED     (terminal operator-must-intervene)
-//   PENDING ┤
-//          │                ...
-//          (initial sentinel stamped by canonical ingest path)
-//          │
-//   FAILED ─┴─→ ENRICHING   (admin-reindex reset; godlike/07 explicit-
-//                            retry-via-admin forward-pointer; the
-//                            VLM sweeper does NOT auto-retry on FAILED)
+//	       ┌─→ ENRICHING ─┬─→ ENRICHED   (terminal success)
+//	       │               └─→ FAILED     (terminal operator-must-intervene)
+//	PENDING ┤
+//	       │                ...
+//	       (initial sentinel stamped by canonical ingest path)
+//	       │
+//	FAILED ─┴─→ ENRICHING   (admin-reindex reset; godlike/07 explicit-
+//	                         retry-via-admin forward-pointer; the
+//	                         VLM sweeper does NOT auto-retry on FAILED)
 //
-//   ENRICHING → FAILED is invalid (only ENRICHED or terminal FAILED
-//   is allowed from ENRICHING; godlike/07 typed-error contract
-//   surfaces this as ErrIllegalEnrichTransition). MarkEnriched +
-//   MarkFailed are convenience helpers that internally call
-//   Transition(_, ENRICHING, ENRICHED) / Transition(_, ENRICHING,
-//   FAILED) respectively.
+//	ENRICHING → FAILED is invalid (only ENRICHED or terminal FAILED
+//	is allowed from ENRICHING; godlike/07 typed-error contract
+//	surfaces this as ErrIllegalEnrichTransition). MarkEnriched +
+//	MarkFailed are convenience helpers that internally call
+//	Transition(_, ENRICHING, ENRICHED) / Transition(_, ENRICHING,
+//	FAILED) respectively.
 package enrichment
 
 import (
@@ -44,10 +44,10 @@ import (
 // typed-error envelope ErrIllegalEnrichTransition surfaces rejected
 // edges). Adding a new edge requires:
 //
-//	1. Adding the entry below.
-//	2. Adding a corresponding TDD test for the now-legal edge.
-//	3. Adding a usage_metric site or godlike/07 typed-error envelope
-//	   contract justification.
+//  1. Adding the entry below.
+//  2. Adding a corresponding TDD test for the now-legal edge.
+//  3. Adding a usage_metric site or godlike/07 typed-error envelope
+//     contract justification.
 //
 // Removal of an edge is a godlike/07 CUTOVER/CONTRACT wave candidate
 // (the deprecation record must carry a removal deadline + a
@@ -196,16 +196,17 @@ func (m *EnrichStateMachine) MarkEnriched(ctx context.Context, assetID string) e
 // MarkFailed closes the failure terminal.
 //
 // godlike/07 explicit-retry-via-admin forward-pointer:
-//   MarkFailed is terminal-non-retryable. The VLM sweeper does NOT
-//   auto-flip FAILED→PENDING on the next tick; the only recovery
-//   path is operator-triggered reset via the reindex admin endpoint
-//   (OUT OF SCOPE this PR — committed as a forward-pointer to keep
-//   the wave-tracker honest).
 //
-//   RATIONALE: silently flipping FAILED→PENDING on a worker retry
-//   would defeat the no-fake-availability contract — the operator
-//   MUST see "I attempted enrich, it failed, do something about it",
-//   not "I attempted enrich, it failed, I tried again".
+//	MarkFailed is terminal-non-retryable. The VLM sweeper does NOT
+//	auto-flip FAILED→PENDING on the next tick; the only recovery
+//	path is operator-triggered reset via the reindex admin endpoint
+//	(OUT OF SCOPE this PR — committed as a forward-pointer to keep
+//	the wave-tracker honest).
+//
+//	RATIONALE: silently flipping FAILED→PENDING on a worker retry
+//	would defeat the no-fake-availability contract — the operator
+//	MUST see "I attempted enrich, it failed, do something about it",
+//	not "I attempted enrich, it failed, I tried again".
 func (m *EnrichStateMachine) MarkFailed(ctx context.Context, assetID string) error {
 	if assetID == "" {
 		return ErrEnrichAssetIDRequired

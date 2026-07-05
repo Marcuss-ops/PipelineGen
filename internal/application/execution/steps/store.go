@@ -135,17 +135,17 @@ func (s StepKey) Validated() error {
 // their domain-specific schema (the port stays out of the payload
 // shape — godlike/06 SSOT one-typed-owner-per-fact).
 type StepState struct {
-	ID            int64           `json:"id"`
-	JobID         string          `json:"job_id"`
-	StepKey       string          `json:"step_key"`
-	Fingerprint   string          `json:"input_fingerprint"`
-	Status        StepStatus      `json:"status"`
-	Attempt       int             `json:"attempt"`
-	Result        json.RawMessage `json:"result_json"`
-	ArtifactRefs  json.RawMessage `json:"artifact_refs_json"`
-	StartedAt     time.Time       `json:"started_at"`
-	CompletedAt   time.Time       `json:"completed_at"`
-	LastError     string          `json:"last_error"`
+	ID           int64           `json:"id"`
+	JobID        string          `json:"job_id"`
+	StepKey      string          `json:"step_key"`
+	Fingerprint  string          `json:"input_fingerprint"`
+	Status       StepStatus      `json:"status"`
+	Attempt      int             `json:"attempt"`
+	Result       json.RawMessage `json:"result_json"`
+	ArtifactRefs json.RawMessage `json:"artifact_refs_json"`
+	StartedAt    time.Time       `json:"started_at"`
+	CompletedAt  time.Time       `json:"completed_at"`
+	LastError    string          `json:"last_error"`
 }
 
 // Store is the canonical typed port. Pattern-0 abstraction: tests inject

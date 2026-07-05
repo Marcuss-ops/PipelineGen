@@ -100,6 +100,7 @@ func NewUseCase(d UseCaseDeps) (*UseCase, error) {
 //  7. Probe video duration (ffprobe / mediainfo)
 //  8. Save via dispatcher (atomic UPSERT + outbox)
 //  9. Upsert Asset Tree node
+//
 // 10. Enqueue async media.enrich job
 //
 // Duration is in milliseconds on the result (matches legacy contract).
@@ -234,7 +235,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	// F2.9 (June 2026): propagate Publisher-returned MD5 + action onto
 	// the constructed clip for upload-path symmetry with reupload.
 	// Empty values are skipped (preserve pre-F2.9 behaviour when the
-	// Publisher surfaces no MD5/action). Per user F2.9 spec, upload + 
+	// Publisher surfaces no MD5/action). Per user F2.9 spec, upload +
 	// reupload must BOTH populate MD5 + publish_action so the dispatched
 	// clip + DB row carries the 5-field audit contract.
 	if publishMD5 != "" {

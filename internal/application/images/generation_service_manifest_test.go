@@ -393,8 +393,9 @@ func TestImageManifest_SenderSideToRemotePreservesFields(t *testing.T) {
 // body — log fields and doc strings are forbidden too, so a future
 // contributor cannot rename the local variable back to output_path or
 // re-introduce a workspace_path tag in a zap.String call.
-func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {		path := "./generation_service.go"
-		// ZAP import removed from test (no fixture constructions left).
+func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {
+	path := "./generation_service.go"
+	// ZAP import removed from test (no fixture constructions left).
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile %q: %v", path, err)
@@ -436,5 +437,3 @@ func TestHandleJob_LegacyFileMapsRemoved(t *testing.T) {		path := "./generation_
 //     that retains the legacy params (with one-shot Warn log) —
 //     tracked for removal at PR-GODOBJ-3d-DEPRECATED-SHIM-REMOVAL
 //     (deadline 2026-08-15).
-
-

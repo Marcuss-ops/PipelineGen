@@ -15,20 +15,20 @@
 //     to port-extraction in P0-COMPL-5-PORT-EXTRACT)
 //
 // The 3 user-spec'd round-trip tests pin:
-//   1. 3 StagedArtifactReferences -> 3 canonical PublishedArtifact envelopes
-//      with DISTINCT Drive Locations (length-3 invariant + per-ref
-//      Location propagation, byte-stable)
-//   2. Use-case conversion correctness: the 10-field PublishedArtifact
-//      envelope round-trips byte-stable with Drive Location populated
-//      post-publish (FileID + WebViewLink + Action typed-envelope)
-//   3. Invalid StagedArtifacts fail via typed-error contract (regression
-//      guard: empty ArtifactID -> ErrStagedArtifactReferenceMissingFields;
-//      out-of-directory Destination -> ErrStagedArtifactReferenceInvalidDestination)
+//  1. 3 StagedArtifactReferences -> 3 canonical PublishedArtifact envelopes
+//     with DISTINCT Drive Locations (length-3 invariant + per-ref
+//     Location propagation, byte-stable)
+//  2. Use-case conversion correctness: the 10-field PublishedArtifact
+//     envelope round-trips byte-stable with Drive Location populated
+//     post-publish (FileID + WebViewLink + Action typed-envelope)
+//  3. Invalid StagedArtifacts fail via typed-error contract (regression
+//     guard: empty ArtifactID -> ErrStagedArtifactReferenceMissingFields;
+//     out-of-directory Destination -> ErrStagedArtifactReferenceInvalidDestination)
 //
 // Plus 1 supporting test:
-//   4. Wire-format byte-stability: the JSON tag `staged_artifacts` on
-//      `[]*remote.StagedArtifactReference` round-trips byte-stable through
-//      encoding/json (regression guard for any JSON-key rename).
+//  4. Wire-format byte-stability: the JSON tag `staged_artifacts` on
+//     `[]*remote.StagedArtifactReference` round-trips byte-stable through
+//     encoding/json (regression guard for any JSON-key rename).
 package completion_test
 
 import (
@@ -144,9 +144,9 @@ func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLo
 	}
 	sender := &mockSenderWithArtifacts{
 		returnResp: &remote.CompleteWithArtifactsResponse{
-			JobID:           "job-round-trip-1",
-			Status:          "SUCCEEDED",
-			JobArtifactIDs:  []string{"art-1", "art-2", "art-3"},
+			JobID:          "job-round-trip-1",
+			Status:         "SUCCEEDED",
+			JobArtifactIDs: []string{"art-1", "art-2", "art-3"},
 		},
 	}
 
@@ -159,11 +159,11 @@ func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLo
 	// LeaseID + Result + ResultHash; AssetMappings is OPTIONAL — empty
 	// for the round-trip test to avoid nil-check surface noise).
 	req := &remote.CompleteWithArtifactsRequest{
-		WorkerID: "w-round-trip",
-		JobID:    "job-round-trip-1",
-		Attempt:  1,
-		LeaseID:  "lease-round-trip",
-		Result:   []byte(`{"ok":true}`),
+		WorkerID:   "w-round-trip",
+		JobID:      "job-round-trip-1",
+		Attempt:    1,
+		LeaseID:    "lease-round-trip",
+		Result:     []byte(`{"ok":true}`),
 		ResultHash: "result-hash-round-trip",
 	}
 	staged := remote.StagedArtifacts{
@@ -455,5 +455,5 @@ func TestWireFormat_StagedArtifactsRoundTrip(t *testing.T) {
 // Silence unused imports on forward-compat-only symbols.
 var (
 	_ io.Reader = (*io.Reader)(nil)
-	_          = errors.New
+	_           = errors.New
 )

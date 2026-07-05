@@ -5,23 +5,23 @@
 // The four primary tests cover the directive's "add boot-on-empty +
 // boot-on-populated-DB tests" requirement:
 //
-//   (a) TestBoot_OnEmpty_Primary_AllExpectedTablesExist — fresh primary
-//       DB must end up with media_assets + canonical tables after first
-//       apply against targetDB="primary".
-//   (b) TestBoot_OnEmpty_Observability_OnlyApiRequests — fresh
-//       observability DB must NOT pick up primary-only migrations like
-//       109 (ALTER TABLE media_assets ...); only api_requests +
-//       schema_migrations should land.
-//   (c) TestBoot_Populated_NoDoubleApply — calling RunMigrations twice
-//       on the same DB must NOT inflate the schema_migrations ledger
-//       (the runner recognises every file as already applied).
-//   (d) TestBoot_HeaderScope_Respected — fixture migrations with
-//       explicit `-- database:` directives apply only to their declared
-//       scope, not the runner's targetDB by accident. This is the
-//       regression guard for parseMigrationScope. Includes 4 sub-tests
-//       that exercise multi-comma scope (`primary,observability`),
-//       directives after a copyright comment block, and the
-//       unknown-scope-typo fallback path.
+//	(a) TestBoot_OnEmpty_Primary_AllExpectedTablesExist — fresh primary
+//	    DB must end up with media_assets + canonical tables after first
+//	    apply against targetDB="primary".
+//	(b) TestBoot_OnEmpty_Observability_OnlyApiRequests — fresh
+//	    observability DB must NOT pick up primary-only migrations like
+//	    109 (ALTER TABLE media_assets ...); only api_requests +
+//	    schema_migrations should land.
+//	(c) TestBoot_Populated_NoDoubleApply — calling RunMigrations twice
+//	    on the same DB must NOT inflate the schema_migrations ledger
+//	    (the runner recognises every file as already applied).
+//	(d) TestBoot_HeaderScope_Respected — fixture migrations with
+//	    explicit `-- database:` directives apply only to their declared
+//	    scope, not the runner's targetDB by accident. This is the
+//	    regression guard for parseMigrationScope. Includes 4 sub-tests
+//	    that exercise multi-comma scope (`primary,observability`),
+//	    directives after a copyright comment block, and the
+//	    unknown-scope-typo fallback path.
 package storage
 
 import (

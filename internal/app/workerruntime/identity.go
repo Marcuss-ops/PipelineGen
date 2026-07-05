@@ -3,11 +3,11 @@
 // The worker identity tuple is the canonical input to
 // appjobs.RegisterWorkerCommand:
 //
-//   WorkerID     — $VELOX_WORKER_ID, fallback to os.Hostname()
-//   WorkerName   — $VELOX_WORKER_NAME, fallback to WorkerID
-//   Version      — $VELOX_WORKER_VERSION, fallback to "dev"
-//   Hostname     — os.Hostname() (NOT env-overridable — Hostname
-//                  is an infra signal, not an operator override)
+//	WorkerID     — $VELOX_WORKER_ID, fallback to os.Hostname()
+//	WorkerName   — $VELOX_WORKER_NAME, fallback to WorkerID
+//	Version      — $VELOX_WORKER_VERSION, fallback to "dev"
+//	Hostname     — os.Hostname() (NOT env-overridable — Hostname
+//	               is an infra signal, not an operator override)
 //
 // Env + Hostname are the CANONICAL public helpers — exported so
 // cmd/worker/doctor_main.go (RW-PROD-016, also `package main`,

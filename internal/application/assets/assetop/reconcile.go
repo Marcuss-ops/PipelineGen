@@ -13,10 +13,10 @@ import (
 // to drive.Reader port. Uses FileIsNotTrashed (semantically better: a trashed
 // file IS effectively missing from the user's perspective).
 type ReconcileService struct {
-	store   AssetRecordStore
-	reader  drive.Reader
-	policy  ReconcilePolicy
-	log     *zap.Logger
+	store  AssetRecordStore
+	reader drive.Reader
+	policy ReconcilePolicy
+	log    *zap.Logger
 }
 
 // NewReconcileService creates a new ReconcileService.

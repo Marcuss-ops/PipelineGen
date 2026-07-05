@@ -126,9 +126,9 @@ func TestBuildVoiceoverDestination_RoutesThroughFolderExtPort_DirectFolder(t *te
 		zap.NewNop(),
 		"Top 10 Funny Moments",
 		" raw-folder-string ", // assert TrimSpace happens inside the port adapter
-		"",     // voiceoverGroup
-		"",     // voRootID
-		nil,    // no groupsResolver
+		"",                    // voiceoverGroup
+		"",                    // voRootID
+		nil,                   // no groupsResolver
 	)
 
 	require.NotNil(t, dest)
@@ -158,7 +158,7 @@ func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonE
 		"",                  // empty folder-id
 		"Jackie Chan",       // non-empty group
 		"voiceover-root-id", // voRootID
-		nil, // groupsResolver: RESIDUE nil (stub cannot satisfy *destination.Resolver)
+		nil,                 // groupsResolver: RESIDUE nil (stub cannot satisfy *destination.Resolver)
 	)
 
 	require.NotNil(t, dest)
@@ -188,10 +188,10 @@ func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
 		nil,
 		zap.NewNop(),
 		"Fallback Title",
-		"", // folder-id
+		"",              // folder-id
 		"missing-group", // group
-		"", // voRootID
-		nil, // groupsResolver: RESIDUE nil (stub cannot satisfy *destination.Resolver)
+		"",              // voRootID
+		nil,             // groupsResolver: RESIDUE nil (stub cannot satisfy *destination.Resolver)
 	)
 
 	require.NotNil(t, dest)
@@ -212,8 +212,8 @@ func TestBuildVoiceoverDestination_NilResolverStillSucceeds(t *testing.T) {
 		zap.NewNop(),
 		"Title",
 		"raw",
-		"", // group
-		"", // voRootID
+		"",  // group
+		"",  // voRootID
 		nil, // groupsResolver
 	)
 	require.NotNil(t, dest)
@@ -235,10 +235,10 @@ func TestGenerateSceneVoiceovers_CountsSuccesses_ViaVoiceoverGenerator(t *testin
 
 	scenes := []VoiceoverSceneItem{
 		{Text: "scene 1", SceneIndex: 0},
-		{Text: "", SceneIndex: 1}, // empty -> skipped
-		{Text: "scene 2", SceneIndex: 2}, // success
+		{Text: "", SceneIndex: 1},              // empty -> skipped
+		{Text: "scene 2", SceneIndex: 2},       // success
 		{Text: "scene 3 error", SceneIndex: 3}, // failure -> not counted
-		{Text: "scene 4", SceneIndex: 4}, // success
+		{Text: "scene 4", SceneIndex: 4},       // success
 	}
 
 	count := GenerateSceneVoiceovers(

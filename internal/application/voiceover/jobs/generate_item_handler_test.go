@@ -44,14 +44,14 @@ import (
 // record/replay. Every Execute call appends to the calls slice; the
 // cannedResult + cannedErr pair are returned to the caller.
 type recordingVoiceoverItemExecutor struct {
-	calls       []*voiceover.GenerateVoiceoverItemCommand
-	cannedRes   *voiceover.VoiceoverItemResult
-	cannedErr   error
-	languages   []string
-	filenames   []string
-	hashes      []string
-	requestIDs  []string
-	voices      []string
+	calls      []*voiceover.GenerateVoiceoverItemCommand
+	cannedRes  *voiceover.VoiceoverItemResult
+	cannedErr  error
+	languages  []string
+	filenames  []string
+	hashes     []string
+	requestIDs []string
+	voices     []string
 }
 
 func (r *recordingVoiceoverItemExecutor) Execute(ctx context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
@@ -114,7 +114,7 @@ func TestChild_DoesNotRegenerateRequestID(t *testing.T) {
 	item := makeItemCmd("parent-job-001", "vo_20260101_120000_abcdef", "en", "en-US-RogerNeural", "hello_en.mp3", "abc123hash")
 
 	// Drive HandleJob via a synthetic dispatcher contract.
-	tools := &appjobs.JobTools{} // unused (no Progress callback in test)
+	tools := &appjobs.JobTools{}                      // unused (no Progress callback in test)
 	tools.Progress = func(percent int, msg string) {} // no-op progress
 
 	j := &appjobs.Job{

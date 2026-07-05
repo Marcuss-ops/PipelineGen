@@ -36,16 +36,16 @@ import (
 // ExtractionDeps is the canonical deps bundle for the extraction
 // pipeline. ProcessSeg is REQUIRED (panic fail-closed at ctor; godlike/07).
 type ExtractionDeps struct {
-	Cfg                youtubetypes.RuntimeConfig
-	Log                *zap.Logger
-	VideoPipeline      youtubeports.VideoPipelinePort // reserved: legacy wiring kept for CompositionState back-compat (not used in canonical path)
-	Clips              youtubeports.ClipStorePort     // reserved: legacy wiring kept for CompositionState back-compat
-	Cache              youtubeports.CachePort         // reserved: legacy wiring kept for CompositionState back-compat
-	Monitors           youtubeports.MonitorsStorePort // reserved: legacy wiring kept for CompositionState back-compat
-	AssetDestResolver  assetdomain.Resolver
-	FolderMemory       youtubeports.FolderMemoryPort
-	SegmentsSvc        *SegmentsService       // auto-constructed if nil (lazy-init)
-	ProcessSeg         *ProcessYouTubeSegmentUseCase // REQUIRED (godlike/07 fail-closed)
+	Cfg                 youtubetypes.RuntimeConfig
+	Log                 *zap.Logger
+	VideoPipeline       youtubeports.VideoPipelinePort // reserved: legacy wiring kept for CompositionState back-compat (not used in canonical path)
+	Clips               youtubeports.ClipStorePort     // reserved: legacy wiring kept for CompositionState back-compat
+	Cache               youtubeports.CachePort         // reserved: legacy wiring kept for CompositionState back-compat
+	Monitors            youtubeports.MonitorsStorePort // reserved: legacy wiring kept for CompositionState back-compat
+	AssetDestResolver   assetdomain.Resolver
+	FolderMemory        youtubeports.FolderMemoryPort
+	SegmentsSvc         *SegmentsService              // auto-constructed if nil (lazy-init)
+	ProcessSeg          *ProcessYouTubeSegmentUseCase // REQUIRED (godlike/07 fail-closed)
 	MaxConcurrentVideos int
 }
 
@@ -57,12 +57,12 @@ type ExtractionDeps struct {
 // wiring back-compat but not stored on Service; see PR-GODOBJ-1 honest-
 // limitation disclosure in CHANGELOG.md).
 type ExtractionService struct {
-	cfg                youtubetypes.RuntimeConfig
-	log                *zap.Logger
-	segmentsSvc        *SegmentsService
-	processSeg         *ProcessYouTubeSegmentUseCase
+	cfg                 youtubetypes.RuntimeConfig
+	log                 *zap.Logger
+	segmentsSvc         *SegmentsService
+	processSeg          *ProcessYouTubeSegmentUseCase
 	maxConcurrentVideos int
-	callbacks          ExtractionCallbacks
+	callbacks           ExtractionCallbacks
 }
 
 // NewExtractionService constructs the canonical extraction orchestrator.
@@ -80,12 +80,12 @@ func NewExtractionService(deps ExtractionDeps, cb ExtractionCallbacks) *Extracti
 		maxV = 5
 	}
 	return &ExtractionService{
-		cfg:                deps.Cfg,
-		log:                deps.Log,
-		segmentsSvc:        ensureSegmentsService(deps.SegmentsSvc),
-		processSeg:         deps.ProcessSeg,
+		cfg:                 deps.Cfg,
+		log:                 deps.Log,
+		segmentsSvc:         ensureSegmentsService(deps.SegmentsSvc),
+		processSeg:          deps.ProcessSeg,
 		maxConcurrentVideos: maxV,
-		callbacks:          cb,
+		callbacks:           cb,
 	}
 }
 

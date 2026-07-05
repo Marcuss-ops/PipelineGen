@@ -130,25 +130,25 @@ type orchestratorRunner struct {
 // Compile-time assertion: *orchestratorRunner satisfies StepRunner.
 var _ StepRunner = (*orchestratorRunner)(nil)
 
-func (a *orchestratorRunner) Cfg() OrchestratorConfig             { return a.orch.cfg }
-func (a *orchestratorRunner) RunInput() *RunInput                 { return a.in }
-func (a *orchestratorRunner) JobID() string                       { return a.orch.cfg.JobId }
-func (a *orchestratorRunner) PolicyVersion() string               { return a.orch.cfg.PolicyVersion }
-func (a *orchestratorRunner) Planner() ClipPlanner                { return a.orch.planner }
-func (a *orchestratorRunner) SourceStager() assets.SourceStager   { return a.orch.stager }
-func (a *orchestratorRunner) Cutter() VideoCutter                 { return a.orch.cutter }
-func (a *orchestratorRunner) Renderer() StockRenderer             { return a.orch.renderer }
-func (a *orchestratorRunner) Builder() ManifestBuilder            { return a.orch.builder }
-func (a *orchestratorRunner) Writer() TransactionalAssetWriter    { return a.orch.writer }
-func (a *orchestratorRunner) Projection() ProjectionPort          { return a.orch.projection }
+func (a *orchestratorRunner) Cfg() OrchestratorConfig           { return a.orch.cfg }
+func (a *orchestratorRunner) RunInput() *RunInput               { return a.in }
+func (a *orchestratorRunner) JobID() string                     { return a.orch.cfg.JobId }
+func (a *orchestratorRunner) PolicyVersion() string             { return a.orch.cfg.PolicyVersion }
+func (a *orchestratorRunner) Planner() ClipPlanner              { return a.orch.planner }
+func (a *orchestratorRunner) SourceStager() assets.SourceStager { return a.orch.stager }
+func (a *orchestratorRunner) Cutter() VideoCutter               { return a.orch.cutter }
+func (a *orchestratorRunner) Renderer() StockRenderer           { return a.orch.renderer }
+func (a *orchestratorRunner) Builder() ManifestBuilder          { return a.orch.builder }
+func (a *orchestratorRunner) Writer() TransactionalAssetWriter  { return a.orch.writer }
+func (a *orchestratorRunner) Projection() ProjectionPort        { return a.orch.projection }
 func (a *orchestratorRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return a.artifactPreparation
 }
 func (a *orchestratorRunner) JobFinalizer() finalization.JobFinalizer {
 	return a.jobFinalizer
 }
-func (a *orchestratorRunner) Log() *zap.Logger  { return a.log }
-func (a *orchestratorRunner) State() *runState  { return a.state }
+func (a *orchestratorRunner) Log() *zap.Logger { return a.log }
+func (a *orchestratorRunner) State() *runState { return a.state }
 
 // RunFingerprint returns the canonical run fingerprint for the
 // current call. Byte-stable across retries of the same logical

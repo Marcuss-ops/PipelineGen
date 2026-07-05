@@ -124,9 +124,9 @@ func RunFingerprintFor(input SeedInput) (seed string, err error) {
 // callers use the typed methods (Float64n, Shuffle, Intn) and never
 // touch math/rand directly (godlike/06 SSOT one-typed-owner-per-fact).
 type Sampler struct {
-	src      *rand.Rand
-	seedHex  string
-	seedInt  int64
+	src     *rand.Rand
+	seedHex string
+	seedInt int64
 }
 
 // NewSampler constructs a Sampler from a canonical seed hex string

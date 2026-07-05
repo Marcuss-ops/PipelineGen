@@ -79,8 +79,8 @@ func TestLifecycleState_IsValidTransitionFullTable(t *testing.T) {
 			StateDriveDeletePending: true, // DriveDeleteHandler pre-flip stamp
 		},
 		StateDeletePending: {
-			StateDriveDeletePending:  true, // legacy rewrite path → Drive hop
-			StateDeleteRequested:     true, // legacy rewrite path → new chain
+			StateDriveDeletePending: true, // legacy rewrite path → Drive hop
+			StateDeleteRequested:    true, // legacy rewrite path → new chain
 		},
 		StateDriveDeletePending: {
 			StateDriveDeleted: true, // DriveDeleteHandler post-success flip (Blocco 3.1 commit 2/3, July 2026)

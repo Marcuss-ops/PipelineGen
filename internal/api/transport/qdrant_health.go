@@ -5,16 +5,17 @@
 // generic /health and /ready endpoints that aggregate DB+Drive+Qdrant.
 //
 // /qdrant/live: fast liveness — GET /collections via HealthProbe.
-//   Returns 200 if Qdrant responds, 503 otherwise.
+//
+//	Returns 200 if Qdrant responds, 503 otherwise.
 //
 // /qdrant/ready: deep readiness — four checks:
-//   1. Alias present    → runtime alias resolves to a target collection
-//   2. Collection populated → PointTotal > 0 on the active collection
-//   3. Schema ok        → CompareActiveCollection returns diff.Compatible
-//   4. Semantic canary  → a real search query via Searcher.SearchByText
-//      proves the full pipeline (alias→collection→ANN) responds.
-//      The canary result is CACHED for 30s to avoid hammering Qdrant
-//      on every orchestration-level readiness poll.
+//  1. Alias present    → runtime alias resolves to a target collection
+//  2. Collection populated → PointTotal > 0 on the active collection
+//  3. Schema ok        → CompareActiveCollection returns diff.Compatible
+//  4. Semantic canary  → a real search query via Searcher.SearchByText
+//     proves the full pipeline (alias→collection→ANN) responds.
+//     The canary result is CACHED for 30s to avoid hammering Qdrant
+//     on every orchestration-level readiness poll.
 //
 // The handler is thin transport (AGENTS.md Pattern 8): it delegates all
 // Qdrant operations to the typed qdrant package primitives.
@@ -48,10 +49,10 @@ type QdrantHealthHandler struct {
 	// Canary cache: sampled on the first Ready call and re-sampled
 	// every canaryTTL. Prevents hammering Qdrant with the canary
 	// query on every readiness poll from the orchestrator.
-	canaryMu         sync.RWMutex
-	canaryCachedAt   time.Time
-	canaryOK         bool
-	canaryDetail     string
+	canaryMu       sync.RWMutex
+	canaryCachedAt time.Time
+	canaryOK       bool
+	canaryDetail   string
 }
 
 // NewQdrantHealthHandler constructs a handler. All params may be nil;
@@ -156,8 +157,8 @@ func (h *QdrantHealthHandler) Ready(c *gin.Context) {
 			}
 		} else {
 			checks["collection"] = map[string]any{
-				"ok":         true,
-				"target":     target,
+				"ok":          true,
+				"target":      target,
 				"point_total": info.PointTotal,
 			}
 		}
@@ -240,5 +241,3 @@ func (h *QdrantHealthHandler) sampledCanary(ctx context.Context) (bool, string) 
 	h.canaryCachedAt = time.Now()
 	return h.canaryOK, h.canaryDetail
 }
-
-

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // openChannelsTestDB opens an in-memory SQLite instance with the
@@ -25,10 +25,10 @@ import (
 //
 // Schema defensive note: Text columns scanned into plain string
 // destinations (ChannelName, DriveFolderID) are declared
-// NOT NULL DEFAULT '' even when the production migration allows
+// NOT NULL DEFAULT ” even when the production migration allows
 // NULL. scanFields reads them with `&ch.DriveFolderID` (string,
 // not sql.NullString); allowing NULL would produce a `scan error:
-// converting NULL to string` on the read path. The default ''
+// converting NULL to string` on the read path. The default ”
 // matches the practical case where production handlers always
 // upsert a non-null value (or empty). This is purely a
 // test-fixture fix; production schema is governed by the
@@ -140,8 +140,8 @@ func TestChannelsRepository_GetByID_PopulatesLastCursor(t *testing.T) {
 	insertTestChannel(t, db, &asset.CategoryChannel{
 		ID: "test-chan-1", Category: "boxe", ChannelURL: "https://www.youtube.com/@Test",
 		CreatedAt: now, UpdatedAt: now,
-		LastCursor:           "VID-ABC-123",
-		ConsecutiveFailures:  2,
+		LastCursor:          "VID-ABC-123",
+		ConsecutiveFailures: 2,
 	})
 
 	got, err := repo.GetByID(context.Background(), "test-chan-1")

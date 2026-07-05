@@ -90,8 +90,9 @@ func TestNormalizeItemPrecedencePresetBeatsConfig(t *testing.T) {
 // runtime default, the prior item value, or a fallback per
 // godlike/07 §"no fake availability") is NOT locked to a specific
 // literal — the test asserts:
-//   1. trimmed value is non-empty
-//   2. the chosen code has a sane BCP-47-ish length (2-8 chars)
+//  1. trimmed value is non-empty
+//  2. the chosen code has a sane BCP-47-ish length (2-8 chars)
+//
 // Bug-contract ADAPTERS-FAIL-PRE9-12 (Blocco 2.E, June 2026)
 // alpha path: pre-fix the test pinned the literal "en" which
 // drifted away from the implementation's actual choice under
@@ -231,7 +232,7 @@ func TestNormalizeItemDurationToWords(t *testing.T) {
 
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
-	expected := 750 // canonical duration-derived estimate at 150 wpm × 300s / 60
+	expected := 750           // canonical duration-derived estimate at 150 wpm × 300s / 60
 	tolerance := expected / 7 // ≈14% tolerance band
 	actual := item.ScriptParams.TargetWords
 	if actual < expected-tolerance || actual > expected+tolerance {

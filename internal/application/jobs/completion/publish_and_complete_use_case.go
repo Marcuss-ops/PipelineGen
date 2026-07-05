@@ -6,11 +6,11 @@
 // the wire-format rename (PublishedArtifacts -> StagedArtifacts). The HTTP
 // handler (internal/api/jobs/handler_workers.go) hands the use case:
 //
-//	1. *remote.CompleteWithArtifactsRequest  — the canonical Sender-side envelope
-//	                                          (WorkerID, JobID, Attempt, LeaseID,
-//	                                          Result, ResultHash, AssetMappings)
-//	2. remote.StagedArtifacts               — a slice of pre-publish references
-//	                                          (ArtifactID + Destination + SHA256 hint)
+//  1. *remote.CompleteWithArtifactsRequest  — the canonical Sender-side envelope
+//     (WorkerID, JobID, Attempt, LeaseID,
+//     Result, ResultHash, AssetMappings)
+//  2. remote.StagedArtifacts               — a slice of pre-publish references
+//     (ArtifactID + Destination + SHA256 hint)
 //
 // The use case converts each StagedArtifactReference into a canonical
 // finalization.PublishedArtifact envelope (7 base fields: ArtifactID, Kind,
@@ -185,6 +185,7 @@ func NewPublishAndCompleteUseCase(
 //   - Single-TX atomic write + idempotency key + outbox fanout to
 //     WithArtifactsService.CompleteWithArtifacts (canonical post-P0-COMPL-4
 //     dedup closure; completion pkg owns row-state + transaction).
+//
 // No NEW ports are introduced; this use case is a THIN ADAPTER between the
 // two canonical surfaces (godlike/06 SSOT).
 func (u *PublishAndCompleteUseCase) Execute(
@@ -298,9 +299,9 @@ func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) fi
 		Kind:           kindFromDestination(ref.Destination),
 		Filename:       ref.ArtifactID, // canonical fallback; resolver populates real filename
 		MIMEType:       "application/octet-stream",
-		LocalPath:      "",             // forward-pointer: lookup from media_assets via staged.Resolver
-		SizeBytes:      0,              // forward-pointer: lookup from media_assets
-		SHA256:         ref.SHA256,     // pre-computed hint; prepare recomputes on-disk
+		LocalPath:      "",         // forward-pointer: lookup from media_assets via staged.Resolver
+		SizeBytes:      0,          // forward-pointer: lookup from media_assets
+		SHA256:         ref.SHA256, // pre-computed hint; prepare recomputes on-disk
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: ref.ArtifactID, // minimal hint; canonical derivation post-resolver

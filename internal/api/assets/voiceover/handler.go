@@ -13,8 +13,8 @@
 // enqueues a voiceover.generate job and returns 202 Accepted with
 // the canonical body shape:
 //
-//   {"ok": true, "job_id": "...", "request_id": "...", "status":
-//   "queued", "total_outputs": N}.
+//	{"ok": true, "job_id": "...", "request_id": "...", "status":
+//	"queued", "total_outputs": N}.
 //
 // The legacy /generate-with-group /batch /promo /sync /groups routes
 // were removed from RegisterRoutes PR-VOICEOVER-RECOVERY (V1..V7,
@@ -82,13 +82,13 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 // and translates it into the canonical *GenerateVoiceoversCommand
 // for the job payload. The handler is THIN transport — no business
 // logic beyond:
-//   1. JSON binding (BindJSON → 400 on failure).
-//   2. Request-level validation (Validate → 400 with canonical
-//      "godlike/07 no fake availability" errors).
-//   3. EnqueueRequest construction with CorrelationID from
-//      request_id (so worker-side log stream and dispatcher audit
-//      carry the original caller intent).
-//   4. jobsSvc.Enqueue (canonical 5xx error path).
+//  1. JSON binding (BindJSON → 400 on failure).
+//  2. Request-level validation (Validate → 400 with canonical
+//     "godlike/07 no fake availability" errors).
+//  3. EnqueueRequest construction with CorrelationID from
+//     request_id (so worker-side log stream and dispatcher audit
+//     carry the original caller intent).
+//  4. jobsSvc.Enqueue (canonical 5xx error path).
 //
 // The worker side (jobs/generate_handler.go) is unchanged: it
 // unmarshals the Payload as *GenerateVoiceoversCommand from JSON,

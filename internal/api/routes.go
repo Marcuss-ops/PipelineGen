@@ -65,7 +65,7 @@ type Router struct {
 	ctx                context.Context
 	healthSvc          interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
 	readyChecker       *systemhealth.ReadyChecker
-	qdrantHealth       interface{} // *transport.QdrantHealthHandler; interface{} keeps the router infra-clean.
+	qdrantHealth       interface{}              // *transport.QdrantHealthHandler; interface{} keeps the router infra-clean.
 	modelsHandler      *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
 

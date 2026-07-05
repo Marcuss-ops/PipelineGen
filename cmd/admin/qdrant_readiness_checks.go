@@ -3,11 +3,12 @@
 // Extracted from qdrant_readiness.go (Fase 4 Step 2, June 2026).
 //
 // Owns: checkStatus, readinessDeps, compositionRoot, readinessCheck,
-//   all 10 check functions, noop stubs (readiNoopOutbox, readiNoopPayload),
-//   adapter types (qdrantReconcilerListerAdapter, qdrantReconcileAssetStore,
-//   qdrantAssetStoreForReconcile), cfg-derived ports (cfgAuthPort,
-//   cfgRatePort, cfgFeaturesPort), router helper (buildRouterWithProductionWiring,
-//   engineHasPath), and middleware compile-time assertions.
+//
+//	all 10 check functions, noop stubs (readiNoopOutbox, readiNoopPayload),
+//	adapter types (qdrantReconcilerListerAdapter, qdrantReconcileAssetStore,
+//	qdrantAssetStoreForReconcile), cfg-derived ports (cfgAuthPort,
+//	cfgRatePort, cfgFeaturesPort), router helper (buildRouterWithProductionWiring,
+//	engineHasPath), and middleware compile-time assertions.
 //
 // The orchestrator (qdrantReadiness), CLI entry (runQdrantReadiness),
 // bridge (appInitCompositionForReadiness), report type (qdrantReadinessReport),

@@ -26,7 +26,7 @@ import (
 //   - schema_version     (literal VoiceoverCleanupSchemaVersion)
 //   - event_id           (RFC4122 UUID or producer-chosen opaque token)
 //   - voiceover_id       (canonical voiceovers.id — shared with
-//                         media_assets.id primary key)
+//     media_assets.id primary key)
 //   - old_drive_file_id  + new_drive_file_id covered below
 //
 // Producers MUST NOT embed raw file content, base64-encoded blobs, or
@@ -35,14 +35,14 @@ import (
 // re-derive new_drive_file_id from media_assets when the producer
 // sent an empty value (test path or canonical projection missing).
 type cleanupRequestV1 struct {
-	SchemaVersion   string   `json:"schema_version"`
-	EventID         string   `json:"event_id"`
-	VoiceoverID     string   `json:"voiceover_id"`
-	OldDriveFileID  string   `json:"old_drive_file_id"`
-	NewDriveFileID  string   `json:"new_drive_file_id"`
-	OldLocalPaths   []string `json:"old_local_paths"`
-	IdempotencyKey  string   `json:"idempotency_key"`
-	RequestedAt     string   `json:"requested_at,omitempty"`
+	SchemaVersion  string   `json:"schema_version"`
+	EventID        string   `json:"event_id"`
+	VoiceoverID    string   `json:"voiceover_id"`
+	OldDriveFileID string   `json:"old_drive_file_id"`
+	NewDriveFileID string   `json:"new_drive_file_id"`
+	OldLocalPaths  []string `json:"old_local_paths"`
+	IdempotencyKey string   `json:"idempotency_key"`
+	RequestedAt    string   `json:"requested_at,omitempty"`
 }
 
 // VoiceoverCleanupSchemaVersion is the canonical, EXACT string the

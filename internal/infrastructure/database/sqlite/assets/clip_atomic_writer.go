@@ -36,7 +36,7 @@
 // to BOTH the media_assets.source_version column (via upsertClipInTx)
 // AND the outbox event envelope (BuildReindexEnvelopeV1). The CAS
 // fence in clipindexer.setIndexedAt reads source_version from the
-// column; before this fix the column was always '' (default) while
+// column; before this fix the column was always ” (default) while
 // the event carried the real value — the CAS fence starved.
 //
 // Idempotency contracts (mirrored from outboxevents.BuildReindexEnvelopeV1):

@@ -33,17 +33,18 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 // in setIndexedAt passes for the test fixture.
 //
 // Why this is necessary (PR-CLIPINDEXER-FOLD-INVESTIGATE closure):
-//   The CAS fence matches (id, source_version, file_hash, index_state='INDEXING').
-//   A test row with file_hash='' (canonical default) and source_version=''
-//   (canonical default) CAS-misses whenever computeContentHash returns a
-//   non-empty hash — production callers always pre-populate file_hash via
-//   DownloadProcessor / Drive upload / cmd/admin/backfill_hash.go before
-//   calling IndexClip, so this seed mirrors the production setup shape.
 //
-//   Computing the hash via svc.computeContentHash (rather than duplicating
-//   the hashing algorithm here) means algorithm evolution (e.g. adding a
-//   new field to contentParts) automatically stays in lockstep; the test
-//   cannot drift from production by a missing input variable.
+//	The CAS fence matches (id, source_version, file_hash, index_state='INDEXING').
+//	A test row with file_hash='' (canonical default) and source_version=''
+//	(canonical default) CAS-misses whenever computeContentHash returns a
+//	non-empty hash — production callers always pre-populate file_hash via
+//	DownloadProcessor / Drive upload / cmd/admin/backfill_hash.go before
+//	calling IndexClip, so this seed mirrors the production setup shape.
+//
+//	Computing the hash via svc.computeContentHash (rather than duplicating
+//	the hashing algorithm here) means algorithm evolution (e.g. adding a
+//	new field to contentParts) automatically stays in lockstep; the test
+//	cannot drift from production by a missing input variable.
 //
 // Mirrors the `preSeedFileHash` helper in indexing_api_audio_test.go
 // (already shipped on origin/main, July 2026, PRE-AUDIO-CHANNEL-EXTENSION)
@@ -150,4 +151,3 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, apiCalled)
 }
-

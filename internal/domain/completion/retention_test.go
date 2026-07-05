@@ -106,9 +106,9 @@ func TestRetentionPolicy_CapTTL(t *testing.T) {
 		t.Fatalf("NewDefaultRetentionPolicy: %v", err)
 	}
 	tests := []struct {
-		name   string
-		hint   time.Duration
-		want   time.Duration
+		name string
+		hint time.Duration
+		want time.Duration
 	}{
 		{"zero returns DefaultTTL", 0, 24 * time.Hour},
 		{"negative returns DefaultTTL", -1 * time.Hour, 24 * time.Hour},

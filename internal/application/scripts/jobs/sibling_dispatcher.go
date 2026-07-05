@@ -17,16 +17,16 @@
 //
 // Why pkg/concurrent.Map (not WithContext/Group):
 //
-//   pkg/concurrent.WithContext (the errgroup variant) is CANCEL-on-first-
-//   error semantics — when one sibling's enqueue fails, every other
-//   in-flight enqueue is cancelled. That is wrong for siblings: a TTS
-//   failure for voiceover[0] (e.g. transient) must NOT abort image[0..2]
-//   which are independent of voiceover's failure surface.
+//	pkg/concurrent.WithContext (the errgroup variant) is CANCEL-on-first-
+//	error semantics — when one sibling's enqueue fails, every other
+//	in-flight enqueue is cancelled. That is wrong for siblings: a TTS
+//	failure for voiceover[0] (e.g. transient) must NOT abort image[0..2]
+//	which are independent of voiceover's failure surface.
 //
-//   pkg/concurrent.Map is a bounded worker pool + per-item error
-//   sink that delivers every result regardless of failures on other
-//   items. The aggregator (Step 12B) is the canonical place for
-//   fail-closed semantics on the parent.
+//	pkg/concurrent.Map is a bounded worker pool + per-item error
+//	sink that delivers every result regardless of failures on other
+//	items. The aggregator (Step 12B) is the canonical place for
+//	fail-closed semantics on the parent.
 //
 // Each sibling carries a typed EnqueueCommand that the broker writes
 // in a single transaction (atomic enqueue per sibling per PR-VO-A3).
@@ -114,8 +114,8 @@ const (
 // (TypeScriptVoiceoverSibling / TypeScriptImageSibling), the asset
 // payload, and the originating AssetRequirements.Required flag.
 type SiblingCommand struct {
-	ParentJobID string           `json:"parent_job_id"`
-	JobType     string           `json:"job_type"` // TypeScriptVoiceoverSibling / TypeScriptImageSibling
+	ParentJobID string            `json:"parent_job_id"`
+	JobType     string            `json:"job_type"` // TypeScriptVoiceoverSibling / TypeScriptImageSibling
 	Asset       AssetRequirements `json:"asset"`
 	// Payload is the JSON-encoded sibling-specific command body
 	// (e.g. {language, voice, filename} for voiceover;

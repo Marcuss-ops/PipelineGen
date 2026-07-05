@@ -1,21 +1,21 @@
 // Package jobs — generation_handler_kill_test.go pins the three
 // PR-GODOBJ-4 KILL contracts at the test surface.
 //
-//   KILL-K1: handler does NOT touch filesystem. Source-byte grep
-//            asserts zero `os.*` calls and zero `filepath.*`
-//            calls in generation_handler.go (the handler is the
-//            canonical owner per godlike/06 SSOT).
-//   KILL-K2: single + batch MUST be 3 SEPARATE methods on the
-//            handler. Compile-time interface probe asserts both
-//            HandleSingle and HandleBatch exist as distinct
-//            receivers with the canonical signatures.
-//   KILL-K3: outcome classification treats ctx.Canceled /
-//            context.DeadlineExceeded as OutcomeCanceled BEFORE
-//            the generic OutcomeFailed bucket — required for
-//            the worker's retry-vs-cancel routing to honour the
-//            user's pressed-cancel signal (godlike/07 no-fake-
-//            availability: a cancel must NOT be re-classified as
-//            a retryable failure).
+//	KILL-K1: handler does NOT touch filesystem. Source-byte grep
+//	         asserts zero `os.*` calls and zero `filepath.*`
+//	         calls in generation_handler.go (the handler is the
+//	         canonical owner per godlike/06 SSOT).
+//	KILL-K2: single + batch MUST be 3 SEPARATE methods on the
+//	         handler. Compile-time interface probe asserts both
+//	         HandleSingle and HandleBatch exist as distinct
+//	         receivers with the canonical signatures.
+//	KILL-K3: outcome classification treats ctx.Canceled /
+//	         context.DeadlineExceeded as OutcomeCanceled BEFORE
+//	         the generic OutcomeFailed bucket — required for
+//	         the worker's retry-vs-cancel routing to honour the
+//	         user's pressed-cancel signal (godlike/07 no-fake-
+//	         availability: a cancel must NOT be re-classified as
+//	         a retryable failure).
 package jobs
 
 import (
@@ -26,9 +26,9 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
 
 // ─────────────────────────────────────────────────────────────────

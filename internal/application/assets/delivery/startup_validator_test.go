@@ -3,16 +3,16 @@
 // Tests for DriveRootsValidator.ValidateDriveRoots. Each test pins
 // ONE invariant from the file header of startup_validator.go:
 //
-//   (1) AllPass         — every reachable root succeeded → nil err
-//   (2) AllFail         — every reachable root failed → umbrella sentinel
-//   (3) PartialFail     — mixed success/failure → umbrella + per-key detail
-//   (4) EmptySkipped    — empty RootFolderID is SKIPPED, not failed
-//   (5) NilRegistry     — fail-fast on nil registry (typed sentinel)
-//   (6) NilFolders      — fail-fast on nil folders (typed sentinel)
-//   (7) RetryRecovers   — fake flip-to-nil on second call (documented
-//                         non-transient classification)
-//   (8) ReportCoversAllKeys — every registry key appears exactly once
-//                             across PerDestination ∪ Skipped
+//	(1) AllPass         — every reachable root succeeded → nil err
+//	(2) AllFail         — every reachable root failed → umbrella sentinel
+//	(3) PartialFail     — mixed success/failure → umbrella + per-key detail
+//	(4) EmptySkipped    — empty RootFolderID is SKIPPED, not failed
+//	(5) NilRegistry     — fail-fast on nil registry (typed sentinel)
+//	(6) NilFolders      — fail-fast on nil folders (typed sentinel)
+//	(7) RetryRecovers   — fake flip-to-nil on second call (documented
+//	                      non-transient classification)
+//	(8) ReportCoversAllKeys — every registry key appears exactly once
+//	                          across PerDestination ∪ Skipped
 //
 // The test registry is built via NewDestinationRegistry(&config.Config{...})
 // (the canonical public path) instead of the test-only

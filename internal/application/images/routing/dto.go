@@ -7,13 +7,13 @@
 // `routing.ImageOrigin string` into a single canonical type identity
 // with `asset.ImageOrigin` so:
 //
-//	- `var x []routing.ImageOrigin` IS the same type as
-//	  `var y []asset.ImageOrigin` — no cast loop at composition seams.
-//	- The canonical enum set (Retrieved / Generated / Uploaded) lives
-//	  at `internal/domain/asset/image_taxonomy.go` and is the SSOT
-//	  per godlike/06 "one owner per fact". `routing.OriginRetrieved`
-//	  and `routing.OriginGenerated` are REMOVED — callers must use
-//	  `asset.ImageOriginRetrieved` / `asset.ImageOriginGenerated`.
+//   - `var x []routing.ImageOrigin` IS the same type as
+//     `var y []asset.ImageOrigin` — no cast loop at composition seams.
+//   - The canonical enum set (Retrieved / Generated / Uploaded) lives
+//     at `internal/domain/asset/image_taxonomy.go` and is the SSOT
+//     per godlike/06 "one owner per fact". `routing.OriginRetrieved`
+//     and `routing.OriginGenerated` are REMOVED — callers must use
+//     `asset.ImageOriginRetrieved` / `asset.ImageOriginGenerated`.
 //
 // The composition-root adapter at internal/app/build_bundles_domain.go
 // no longer needs the element-by-element cast loop because the alias
@@ -55,18 +55,18 @@ type ImageOrigin = asset.ImageOrigin
 
 // ImageSearchResult is the common DTO returned by every searcher.
 type ImageSearchResult struct {
-	AssetID       string
-	Origin        ImageOrigin
-	Provider      string
-	Name          string
-	PreviewURL    string
-	Width         int
-	Height        int
-	Score         float64
-	StyleID       string
-	StyleVersion  string
-	License       string
-	Author        string
+	AssetID      string
+	Origin       ImageOrigin
+	Provider     string
+	Name         string
+	PreviewURL   string
+	Width        int
+	Height       int
+	Score        float64
+	StyleID      string
+	StyleVersion string
+	License      string
+	Author       string
 }
 
 // ImageFilter is the cross-territory filter for ImageSearcher.Search.

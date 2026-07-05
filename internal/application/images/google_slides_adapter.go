@@ -75,13 +75,13 @@ func (a *ImageGeneratorAdapter) Generate(ctx context.Context, req generated.Port
 		return nil, fmt.Errorf("ImageGeneratorAdapter: backend generate: %w", err)
 	}
 	return &generated.PortGeneratedImage{
-		Data:        out.Data,
-		Format:      out.Format,
-		Width:       out.Width,
-		Height:      out.Height,
-		PromptUsed:  out.PromptUsed,
-		Provider:    out.Provider,
-		SourceHash:  out.SourceHash,
-		OutputPath:  out.OutputPath,
+		Data:       out.Data,
+		Format:     out.Format,
+		Width:      out.Width,
+		Height:     out.Height,
+		PromptUsed: out.PromptUsed,
+		Provider:   out.Provider,
+		SourceHash: out.SourceHash,
+		OutputPath: out.OutputPath,
 	}, nil
 }
