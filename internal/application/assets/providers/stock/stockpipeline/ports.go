@@ -520,9 +520,9 @@ func (noOpCutter) Cut(ctx context.Context, req CutRequest) (CutBatchResult, erro
 	items := make([]CutItemResult, len(req.Jobs))
 	for i, j := range req.Jobs {
 		items[i] = CutItemResult{
-			JobID:   j.OutputPath,
-			Status:  CutItemStatusFailed,
-			Err:     ErrNoOpCutter,
+			JobID:  j.OutputPath,
+			Status: CutItemStatusFailed,
+			Err:    ErrNoOpCutter,
 		}
 	}
 	return CutBatchResult{
