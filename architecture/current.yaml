@@ -5835,6 +5835,7 @@
 - id: PR-JOBS-SQLITE3-PROBE-FIX
   owner_capability: internal/application/jobs
   status: shipped
+  ship_sha: b258b82e
   ship_date: 2026-07-05
   deadline: 2026-08-01
   description: |
