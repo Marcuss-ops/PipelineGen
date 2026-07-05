@@ -5610,9 +5610,37 @@
     priority_band: P3_bassa
   - id: PR-CLEANUP-HOTSPOT-CROSSREF
     owner_capability: architecture
-    status: pending
+    status: shipped
+    ship_sha: 7f26bf4d
+    ship_date: 2026-07-05
     deadline: 2026-08-22
+    ship_via: |
+      Post-wave git-log frequency cross-validation per user spec.
+      `git log --since=90.days --pretty=format: --name-only | sort | uniq -c
+      | sort -rn | head -30` surfaces 30 hot files on origin/main.
+      Classification (4 tiers): Tier 0 (wave-tracker bookkeeping: 7 files,
+      expected churn) + Tier 1 (composition root: 11 files, already
+      wave-tracked via PR-LIFECYCLE-SPLIT-BY-CAPABILITY +
+      PR-WIRE-ASSETS-CAPABILITY-SPLIT + PR-WIRE-ASSETS-NIL-CLASSIFICATION)
+      + Tier 2 (application code: 6 files, already covered by dedicated
+      waves: PR-IMAGES-* + PR-VO-* + PR-JOBS-* + Stock Cutover +
+      PR-MEDIASEARCH-HANDLER-SPLIT) + Tier 3 (UNCOVERED: 1 file
+      in internal/api/sources/ — the only NEW hotspot surfacing
+      post-wave). godlike/07 honest-limitation: the static priority
+      defined in CLEANUP-PRIORITY-1-5-2026-07-25 matches the
+      git-log frequency for ~73% of the top 30 (composition-root +
+      wave-tracker churn absorbed by ongoing waves). The remaining
+      27% (application code) is already saturated by dedicated
+      wave coverage. The cross-validation surfaces 1 NEW PR
+      (PR-SOURCES-CONSOLIDATION, see linked_issues) for the
+      internal/api/sources/ residue — the only "uncovered" file in
+      the top 30 that wasn't already wave-tracked.
     priority_band: P3_bassa_post_wave
+    linked_issues:
+    - id: PR-SOURCES-CONSOLIDATION
+      owner_capability: internal/api/sources
+      status: pending
+      deadline: 2026-08-15
 
 
 
