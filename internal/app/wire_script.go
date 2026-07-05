@@ -122,8 +122,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Step 2: Post-processor registration + freeze ────────────────────
+	scriptsRepoAdapter := adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	ppReg := adapters.NewPostProcessorRegistry(log)
-	if err := registerScriptPostProcessors(ppReg, root, cfg, log, nil, metaModel); err != nil {
+	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 	sourceReg.Freeze()
@@ -139,7 +140,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// always 503 because the handler fields were never assigned).
 	// scriptsRepoAdapter is no longer threaded into the factory
 	// (only sectionRegen consumed it; retired in lockstep).
-	oneUC, manyUC, genJobHandler, mediaCurator := buildScriptUseCases(
+	oneUC, manyUC, genJobHandler, _ := buildScriptUseCases(
 		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, log,
 	)
 
