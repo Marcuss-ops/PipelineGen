@@ -32,6 +32,7 @@ import json
 import os
 import socket
 import argparse
+import sys
 
 from aiohttp import web
 from edge_tts import Communicate
@@ -167,11 +168,21 @@ def main():
     args = parser.parse_args()
 
     # Pre-bind a TCP socket to discover the port before starting aiohttp.
-    # This avoids accessing private aiohttp attributes (site._server.sockets).
+    # We use web.SockSite below to pass the pre-bound socket directly to
+    # aiohttp 3.14+, preventing the EADDRINUSE-on-TIME_WAIT trap that
+    # internal socket.close + immediate rebind can hit on rapid restarts.
+    # SO_REUSEADDR=1 lets the kernel reclaim the port while the previous
+    # TCP connection is in TIME_WAIT — preserves the original behavior
+    # (godlike/07 minimum-blast-radius: same intent as the pre-fix code,
+    # different aiohttp 3.14 API path).
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((args.host, args.port))
-    actual_port = sock.getsockname()[1]
+    try:
+        sock.bind((args.host, args.port))
+    except OSError as e:
+        print(f"FATAL: bind failed on {args.host}:{args.port}: {e}", flush=True)
+        raise SystemExit(1)
+    actual_port = sock.getsockname()[1]  # e.g. (host, port) → port index 1
 
     # Print port to stdout — the Go side reads this line.
     print(f"PORT={actual_port}", flush=True)
@@ -194,7 +205,11 @@ def main():
 
     async def startup():
         await runner.setup()
-        site = web.TCPSite(runner, sock=sock)
+        # aiohttp 3.14+ removed `sock=` from web.TCPSite; the canonical
+        # api to wrap a pre-bound socket is web.SockSite (stable since
+        # aiohttp 3.x). Keeps the pre-bind free of TOCTOU (the kernel
+        # still owns the bound fd when SockSite.start() engages).
+        site = web.SockSite(runner, sock)
         await site.start()
 
         print("SERVER_READY", flush=True)
@@ -209,7 +224,11 @@ def main():
         asyncio.run(startup())
     except KeyboardInterrupt:
         pass
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    # godlike/07 NO-FAKE-AVAILABILITY: propagate main()'s return code (or
+    # any SystemExit raised inside) so CI gates + the --fail-on-unreachable
+    # probe at commit 1b553274 can detect bind/boot failures via exit code.
+    sys.exit(main())
