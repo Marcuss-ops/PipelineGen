@@ -10,14 +10,15 @@
 // Sender-side upload + media_assets persistence cycle.
 //
 // PR-GODOBJ-3 KILL LIST applied:
-//   (a) No legacy imageGen.Generate fallback — dispatch goes through
-//       registry ONLY via generation_usecase.RunUsage.
-//   (b) No inline IngestImage call — the runner's finalizer handles
-//       persistence through the manifest sidecar (per KILL LIST b:
-//       the finalizer is the SOLE owner of media_assets persistence
-//       for image-generation async paths).
-//   (c) GenerateSmartImageWithAccount REMOVED — the job payload's
-//       typed shape (imageGeneratePayload) has NO account/project fields.
+//
+//	(a) No legacy imageGen.Generate fallback — dispatch goes through
+//	    registry ONLY via generation_usecase.RunUsage.
+//	(b) No inline IngestImage call — the runner's finalizer handles
+//	    persistence through the manifest sidecar (per KILL LIST b:
+//	    the finalizer is the SOLE owner of media_assets persistence
+//	    for image-generation async paths).
+//	(c) GenerateSmartImageWithAccount REMOVED — the job payload's
+//	    typed shape (imageGeneratePayload) has NO account/project fields.
 //
 // godlike/07 honest-limitation disclosure (AGENTS.md Check 44 LoC cap):
 // This file exceeds the 66-LoC transitional cap (~120 LoC) because the
@@ -35,8 +36,8 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
@@ -70,11 +71,12 @@ type imageGeneratePayload struct {
 }
 
 // HandleJob processes an image.generate.google job. KILL LIST applied:
-//   (a) Dispatch goes through the registry ONLY via RunUsage (NO imageGen
-//       fallback). A nil registry produces ErrNoGenerationProviderWired.
-//   (b) The handler returns ONLY (payload + manifest sidecar). NO inline
-//       IngestImage — the runner's finalizer handles persistence via
-//       handlerResult[job.ManifestKey].Finalizer handles media_assets.
+//
+//	(a) Dispatch goes through the registry ONLY via RunUsage (NO imageGen
+//	    fallback). A nil registry produces ErrNoGenerationProviderWired.
+//	(b) The handler returns ONLY (payload + manifest sidecar). NO inline
+//	    IngestImage — the runner's finalizer handles persistence via
+//	    handlerResult[job.ManifestKey].Finalizer handles media_assets.
 func (h *JobHandler) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	h.log.Info("handling image.generate.google job",
 		zap.String("job_id", j.ID),

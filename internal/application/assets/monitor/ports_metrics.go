@@ -112,4 +112,3 @@ func (NoopMetricsRecorder) AddSegmentsFound(string, int) {}
 
 // ObserveSegmentsPerVideo is a no-op.
 func (NoopMetricsRecorder) ObserveSegmentsPerVideo(string, int) {}
-

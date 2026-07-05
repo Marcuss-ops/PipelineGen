@@ -48,10 +48,10 @@ import (
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
 type Deps struct {
-	ClipsRepo *assets.ClipsRepository
+	ClipsRepo        *assets.ClipsRepository
 	AssetRepo        asset.Repository
 	DeletionSvc      *deletion.DeletionService
-	DriveAdmin    drive.Admin
+	DriveAdmin       drive.Admin
 	MediaProcessor   asset.Processor
 	AssetTreeSvc     *assettree.Service
 	MetaWriter       *semantic.MetadataWriter
@@ -100,7 +100,7 @@ type Handler struct {
 	// Action cluster mirror fields (split 3 TBD).
 	assetRepo        asset.Repository
 	searchAggregator *providers.SearchAggregator
-	driveAdmin    drive.Admin
+	driveAdmin       drive.Admin
 	downloadUC       *appclips.DownloadUseCase
 	reuploadUC       *appclips.ReuploadUseCase
 	log              *zap.Logger
@@ -149,7 +149,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 
 		assetRepo:        d.AssetRepo,
 		searchAggregator: d.SearchAggregator,
-		driveAdmin:    d.DriveAdmin,
+		driveAdmin:       d.DriveAdmin,
 		downloadUC:       downloadUC,
 		reuploadUC:       d.ReuploadUC,
 		log:              d.Log,
@@ -157,27 +157,27 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 
 		// Split 1 (June 2026, override ADR 0009): Search sub-handler.
 		search: NewSearchHandler(SearchDeps{
-			ClipsRepo:      d.ClipsRepo,
-			AssetRepo:      d.AssetRepo,
-			VoiceoverRepo:  d.VoiceoverRepo,
-			ImagesRepo:     d.ImagesRepo,
-			SearchSvc:      d.SearchSvc,
+			ClipsRepo:     d.ClipsRepo,
+			AssetRepo:     d.AssetRepo,
+			VoiceoverRepo: d.VoiceoverRepo,
+			ImagesRepo:    d.ImagesRepo,
+			SearchSvc:     d.SearchSvc,
 		}),
 		// Split 2 (June 2026, override ADR 0009): Ingest sub-handler.
 		ingest: NewIngestHandler(IngestDeps{
-			Dispatcher:     d.Dispatcher,
-			AssetTreeSvc:   d.AssetTreeSvc,
-			JobsSvc:        d.JobsSvc,
-			ClipsRepo:      d.ClipsRepo,
-			ArtifactSvc:    d.ArtifactSvc,
-			DriveAdmin:  d.DriveAdmin,
-			ProcessRunner:  d.ProcessRunner,
-			Cfg:            d.Cfg,
-			ClipIndexer:    d.ClipIndexer,
-			MetaWriter:     d.MetaWriter,
-			EnrichUC:       enrichUC,
-			UploadUC:       d.UploadUC,
-			Log:            d.Log,
+			Dispatcher:    d.Dispatcher,
+			AssetTreeSvc:  d.AssetTreeSvc,
+			JobsSvc:       d.JobsSvc,
+			ClipsRepo:     d.ClipsRepo,
+			ArtifactSvc:   d.ArtifactSvc,
+			DriveAdmin:    d.DriveAdmin,
+			ProcessRunner: d.ProcessRunner,
+			Cfg:           d.Cfg,
+			ClipIndexer:   d.ClipIndexer,
+			MetaWriter:    d.MetaWriter,
+			EnrichUC:      enrichUC,
+			UploadUC:      d.UploadUC,
+			Log:           d.Log,
 		}),
 		// Step 5 Split 2 (June 2026, override ADR 0009): Ops sub-handler
 		// owns 14 routes (5 read + 9 write+idem). The 7 OpsDeps fields
@@ -189,7 +189,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			DeletionSvc:    d.DeletionSvc,
 			FolderMemSvc:   d.FolderMemSvc,
 			ClipsRepo:      d.ClipsRepo,
-			DriveAdmin:  d.DriveAdmin,
+			DriveAdmin:     d.DriveAdmin,
 			AssetTreeSvc:   d.AssetTreeSvc,
 			Log:            d.Log,
 		}),

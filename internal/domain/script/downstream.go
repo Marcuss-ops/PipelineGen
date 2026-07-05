@@ -87,9 +87,9 @@ func (k DownstreamKind) IsValid() bool {
 //
 // Wire tags:
 //   - Provider     string  (canonical e.g. "edge-tts", "eleven-labs",
-//                                 "google-cloud-tts"). Empty == fallback.
+//     "google-cloud-tts"). Empty == fallback.
 //   - VoiceID      string  (canonical per-provider voice id, e.g.
-//                                 "it-IT-IsabellaNeural").
+//     "it-IT-IsabellaNeural").
 //   - Pace         string  (optional; "" == default pace per provider).
 //   - StylePreset  string  (optional; "" == default style per provider).
 type VoiceoverRequirements struct {
@@ -110,7 +110,7 @@ type VoiceoverRequirements struct {
 //   - Count        int     (REQUIRED: positive integer).
 //   - StylePreset  string  (optional; "" == default style preset).
 //   - Provider     string  (optional; empty == canonical default
-//                                 "google_slides" per FASE 2).
+//     "google_slides" per FASE 2).
 //   - Resolution   string  (optional; "" == canonical "1920x1080").
 type ImagesRequirements struct {
 	Count       int    `json:"count"`
@@ -193,10 +193,10 @@ func NewImagesRequirements(count int, stylePreset string) *ImagesRequirements {
 //
 // Wire tags:
 //   - Kind          string  (canonical "drive_folder" | "google_doc"
-//                                  | "local"; empty == default
-//                                  "drive_folder").
+//     | "local"; empty == default
+//     "drive_folder").
 //   - FolderID      string  (Google Drive folder id; required for
-//                                  drive_folder / google_doc destinations).
+//     drive_folder / google_doc destinations).
 //   - DocumentTitle string  (Google Doc title when Kind="google_doc").
 type OutputDestination struct {
 	Kind          string `json:"kind"`
@@ -216,19 +216,19 @@ type OutputDestination struct {
 //
 // Field semantics:
 //   - Kind                       : DownstreamVoiceover | DownstreamImages
-//                                                              | DownstreamBoth
+//     | DownstreamBoth
 //   - ItemRef                    : GenerationItemV2.ID (the canonical
-//                                  per-item identifier that the
-//                                  manifest is being generated for).
+//     per-item identifier that the
+//     manifest is being generated for).
 //   - Required                   : fail-closed flag. True means the
-//                                  parent script.generate propagates
-//                                  FAILED if this downstream sibling
-//                                  cannot be produced.
+//     parent script.generate propagates
+//     FAILED if this downstream sibling
+//     cannot be produced.
 //   - AssetRequirements          : typed sub-specs (voiceover / images).
-//                                  Pointer fields preserve "user
-//                                  opted in to this kind" semantics.
+//     Pointer fields preserve "user
+//     opted in to this kind" semantics.
 //   - OutputDest                 : output destination envelope (Drive
-//                                  folder + optional DocumentTitle).
+//     folder + optional DocumentTitle).
 type DownstreamRequest struct {
 	Kind              DownstreamKind    `json:"kind"`
 	ItemRef           string            `json:"item_ref"` // GenerationItemV2.ID

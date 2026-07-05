@@ -7,8 +7,8 @@
 //
 // Cardinality (bounded, no risk):
 //   - destination: 9 DestinationKey values (YouTubeClip, Artlist,
-//                  Stock, Image, Voiceover, SoundEffect, Book,
-//                  Script, Document).
+//     Stock, Image, Voiceover, SoundEffect, Book,
+//     Script, Document).
 //   - outcome: 3 values (success, failure, skipped).
 //   - Total series: 9 × 3 = 27 per labelled metric, plus 2
 //     run-summary gauges (drive_roots_validator_last_run_*).

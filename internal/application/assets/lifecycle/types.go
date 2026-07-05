@@ -18,12 +18,12 @@ const (
 )
 
 type FinalizeInput struct {
-	ID        string
-	Name      string
-	Filename  string
-	Kind      AssetKind
-	Source    string
-	SourceID  string
+	ID       string
+	Name     string
+	Filename string
+	Kind     AssetKind
+	Source   string
+	SourceID string
 
 	// Destination is the canonical Drive destination key. Required
 	// post-F2.7 so the lifecycle service can route the upload

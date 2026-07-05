@@ -64,16 +64,16 @@ func TestDriveDeleteHandler_PreflightIdempotencyTable(t *testing.T) {
 	const (
 		idempotentSkip      outcome = "idempotent_skip_no_side_effect"
 		continueNormalChain outcome = "continue_normal_chain"
-		terminalError        outcome = "terminal_lifecycle_state"
+		terminalError       outcome = "terminal_lifecycle_state"
 	)
 
 	type tc struct {
 		name           string
 		state          asset.LifecycleState // "" → row missing
-		driveFileID    string                // "" → no Drive metadata
+		driveFileID    string               // "" → no Drive metadata
 		expect         outcome
-		expectTerminal bool   // true ⇒ handler must return wrapped terminal
-		permanently    bool   // false default; set `permanently=true` for the Delete route
+		expectTerminal bool // true ⇒ handler must return wrapped terminal
+		permanently    bool // false default; set `permanently=true` for the Delete route
 	}
 
 	cases := []tc{

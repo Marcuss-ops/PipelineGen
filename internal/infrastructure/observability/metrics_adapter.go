@@ -20,19 +20,19 @@
 //
 // Why the constructor takes CounterVecs explicitly rather than
 // referencing the package-level vars directly:
-//   1. Test injectability per Pattern 0 (AGENTS.md §Patterns):
-//      tests construct a fresh adapter with isolated CounterVecs
-//      so assertions on counter values don't race with other
-//      tests that hit the package-level collector registry.
-//   2. Compile-time drift guard: a signature mismatch between
-//      the adapter fields and the production CounterVec types
-//      is a build-time failure (the linter pins it via the
-//      `*prometheus.CounterVec`/`*prometheus.HistogramVec`
-//      parameter types in NewObservabilityMetricsRecorder).
-//   3. The package-level vars remain the production Prometheus
-//      source-of-truth (promauto registers them globally); the
-//      adapter is a typed thin wrapper that doesn't change
-//      collector registry behaviour.
+//  1. Test injectability per Pattern 0 (AGENTS.md §Patterns):
+//     tests construct a fresh adapter with isolated CounterVecs
+//     so assertions on counter values don't race with other
+//     tests that hit the package-level collector registry.
+//  2. Compile-time drift guard: a signature mismatch between
+//     the adapter fields and the production CounterVec types
+//     is a build-time failure (the linter pins it via the
+//     `*prometheus.CounterVec`/`*prometheus.HistogramVec`
+//     parameter types in NewObservabilityMetricsRecorder).
+//  3. The package-level vars remain the production Prometheus
+//     source-of-truth (promauto registers them globally); the
+//     adapter is a typed thin wrapper that doesn't change
+//     collector registry behaviour.
 //
 // All methods are nil-receiver + nil-vec safe so partial-deploy
 // paths don't panic (a nil MetricsRecorder instance returns

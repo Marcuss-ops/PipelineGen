@@ -436,7 +436,6 @@ func (s *Service) indexAudioViaAPI(
 		zap.Int("dimensions", len(embedding)))
 }
 
-
 // ── SQLite read/write helpers (Go is canonical owner) ──────────────────
 
 func (s *Service) fetchClipSearchInputs(

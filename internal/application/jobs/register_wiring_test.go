@@ -18,13 +18,13 @@
 //
 // SCOPE OF THIS FILE (deliberately narrow per AGENTS.md scope
 // discipline — see commit body):
-//   1. nil-svc contract test — covers ALL 10 refactored handlers
-//      using zero-value struct literals. Works for every handler
-//      because Register's first line is the jobsSvc == nil check,
-//      which short-circuits BEFORE dereferencing any handler field
-//      (so the unexported-field access issue doesn't apply).
-//   2. sentinel-export test — pins jobs.ErrMissingDeps as a typed
-//      sentinel value non-nil + non-empty.
+//  1. nil-svc contract test — covers ALL 10 refactored handlers
+//     using zero-value struct literals. Works for every handler
+//     because Register's first line is the jobsSvc == nil check,
+//     which short-circuits BEFORE dereferencing any handler field
+//     (so the unexported-field access issue doesn't apply).
+//  2. sentinel-export test — pins jobs.ErrMissingDeps as a typed
+//     sentinel value non-nil + non-empty.
 //
 // OUT-OF-SCOPE tests live elsewhere (per package):
 //   - valid-svc + HasHandler probe tests for voiceover.Generate(Job|Item)Handler,
@@ -47,10 +47,10 @@ import (
 	"testing"
 	"time"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	catalogsync "github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	images "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"

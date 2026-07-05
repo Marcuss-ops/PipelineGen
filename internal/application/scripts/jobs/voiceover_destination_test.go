@@ -140,10 +140,10 @@ func TestBuildVoiceoverDestinationResolvesGroupFromDB(t *testing.T) {
 		nil, // resolveFolder closure: collapsed from old folderExt+resolveFolder slots
 		zap.NewNop(),
 		"Comedy Cut",
-		"", // voiceoverFolderID
-		"Comedy", // voiceoverGroup
+		"",                  // voiceoverFolderID
+		"Comedy",            // voiceoverGroup
 		testVoiceoverRootID, // voRootID
-		nil, // groupsResolver: not yet collapsed (RESIDUE)
+		nil,                 // groupsResolver: not yet collapsed (RESIDUE)
 	)
 
 	require.NotNil(t, dest)

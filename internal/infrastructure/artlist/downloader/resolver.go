@@ -234,10 +234,10 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 type downloadPath int
 
 const (
-	downloadPathScraper downloadPath = iota // Node Puppeteer /download
-	downloadPathHTTP                        // progressive HTTP
-	downloadPathYTDLP                       // yt-dlp for HLS
-	downloadPathFallback                    // controlled ladder
+	downloadPathScraper  downloadPath = iota // Node Puppeteer /download
+	downloadPathHTTP                         // progressive HTTP
+	downloadPathYTDLP                        // yt-dlp for HLS
+	downloadPathFallback                     // controlled ladder
 )
 
 // resolvePath is the SINGLE canonical routing decision for Artlist

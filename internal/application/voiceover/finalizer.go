@@ -4,14 +4,14 @@
 // VoiceoverFinalizer port. It replaces the two divergent finalization
 // paths:
 //
-//   Path A (child pipeline, process_voiceover_item.go Stage 4):
-//     BeginTx → DeleteByIDTx → InsertTx → outbox EnqueueIndexEvent → Commit
-//     (MISSING: dedupe gate, media_assets projection, cleanup event)
+//	Path A (child pipeline, process_voiceover_item.go Stage 4):
+//	  BeginTx → DeleteByIDTx → InsertTx → outbox EnqueueIndexEvent → Commit
+//	  (MISSING: dedupe gate, media_assets projection, cleanup event)
 //
-//   Path B (legacy batch, stages.go finalizeStage):
-//     BeginTx → dedupe gate → DeleteByIDTx → InsertTx →
-//     UpsertVoiceoverProjectionTx → outbox EnqueueIndexEvent →
-//     outbox EnqueueCleanupEvent → Commit
+//	Path B (legacy batch, stages.go finalizeStage):
+//	  BeginTx → dedupe gate → DeleteByIDTx → InsertTx →
+//	  UpsertVoiceoverProjectionTx → outbox EnqueueIndexEvent →
+//	  outbox EnqueueCleanupEvent → Commit
 //
 // Post-Fase-3a BOTH paths call the same Finalize(ctx, tx, cmd) method.
 // The caller owns the transaction (BeginTx + Commit); the finalizer
@@ -21,22 +21,22 @@
 // cannot degrade Required steps into the optional bucket.
 //
 //   - Step 1 (dedupe):             OPTIONAL — skipped when DriveFileID
-//                                   is empty; dedupe-reuse short-circuits
-//                                   Step 2..6 with Reused=true.
+//     is empty; dedupe-reuse short-circuits
+//     Step 2..6 with Reused=true.
 //   - Step 2 (DeleteByIDTx):       MANDATORY — no execution-state
-//                                   variants; mandatory universe.
+//     variants; mandatory universe.
 //   - Step 3 (InsertTx):           MANDATORY — same.
 //   - Step 4 (media_assets proj.): REQUIRED — LifecycleService nil
-//                                   is a fatal wiring error (not a
-//                                   degrade). Execution-state marker
-//                                   "media_assets_projection: executed"
-//                                   is always appended on success.
+//     is a fatal wiring error (not a
+//     degrade). Execution-state marker
+//     "media_assets_projection: executed"
+//     is always appended on success.
 //   - Step 5 (index outbox):       REQUIRED — Outbox nil is a fatal
-//                                   wiring error. FileHash=="" is a
-//                                   guard-skip (data-state reason).
+//     wiring error. FileHash=="" is a
+//     guard-skip (data-state reason).
 //   - Step 6 (cleanup outbox):     REQUIRED — Outbox nil is a fatal
-//                                   wiring error. ShouldSwap==false OR
-//                                   no prior artefacts is a guard-skip.
+//     wiring error. ShouldSwap==false OR
+//     no prior artefacts is a guard-skip.
 //
 // Required-dep failures (deps.LifecycleService == nil || deps.Outbox ==
 // nil) result in a fail-fast (nil, fmt.Errorf(...)) — NEVER degraded
@@ -119,12 +119,12 @@ type FinalizeCommand struct {
 // SkippedSteps []string which conflates two semantically-distinct
 // failure modes:
 //
-//   (a) Optional step that was guard-skipped because of a data-state
-//       reason (e.g. dedupe gate not triggered because DriveFileID is
-//       empty) — recordable, OPERATOR-ACTIONABLE.
-//   (b) Required production-path step that was unwired at composition
-//       time (e.g. LifecycleService nil) — fatal wiring error that
-//       MUST propagate as a Go error.
+//	(a) Optional step that was guard-skipped because of a data-state
+//	    reason (e.g. dedupe gate not triggered because DriveFileID is
+//	    empty) — recordable, OPERATOR-ACTIONABLE.
+//	(b) Required production-path step that was unwired at composition
+//	    time (e.g. LifecycleService nil) — fatal wiring error that
+//	    MUST propagate as a Go error.
 //
 // Mixing (a) and (b) in SkippedSteps made the silent-failure mode
 // indistinguishable from the legitimate guard-skip mode. P0 #2

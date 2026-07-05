@@ -63,10 +63,10 @@ func aggregateFanOutStats(items []youtubetypes.ExtractItem) youtubetypes.Extract
 // append-in-extractFanOut path is O(1) amortized.
 func buildInitialResponse(req *youtubetypes.ExtractRequest, videoID, driveFolderID, driveFolderPath string) *youtubetypes.ExtractResponse {
 	return &youtubetypes.ExtractResponse{
-		OK:             true,
-		SourceURL:      req.URL,
-		VideoID:        videoID,
-		DriveFolderID:  driveFolderID,
+		OK:              true,
+		SourceURL:       req.URL,
+		VideoID:         videoID,
+		DriveFolderID:   driveFolderID,
 		DriveFolderPath: driveFolderPath,
 		Stats: &youtubetypes.ExtractStats{
 			Requested: len(req.Segments),

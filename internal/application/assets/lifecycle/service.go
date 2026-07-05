@@ -381,9 +381,9 @@ func (s *Service) UploadOnly(ctx context.Context, input *FinalizeInput) (*Upload
 // the *sql.Tx from BeginTx → Commit. Inside that tx, three writes
 // happen atomically:
 //
-//	1. voiceovers table UPSERT     → voiceover.persistence.Repository.InsertTx (existing)
-//	2. media_assets projection UPSERT (this method)
-//	3. asset.index.requested outbox → outboxEnqueuer.EnqueueIndexEvent (existing)
+//  1. voiceovers table UPSERT     → voiceover.persistence.Repository.InsertTx (existing)
+//  2. media_assets projection UPSERT (this method)
+//  3. asset.index.requested outbox → outboxEnqueuer.EnqueueIndexEvent (existing)
 //
 // All three commit together via tx.Commit() — partial-save is
 // impossible. Pre-fix the same canonical content was written TWICE

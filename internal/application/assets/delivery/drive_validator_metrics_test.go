@@ -2,19 +2,19 @@
 //
 // Tests for the DriveValidatorMetrics struct wrapper. They verify:
 //
-//   (1) observeProbe increments the probes counter with correct
-//       labels (destination, outcome) and observes the histogram
-//       with the elapsed duration in seconds.
-//   (2) observeRunEnd sets the run-summary gauges (timestamp +
-//       success indicator).
-//   (3) Nil-receiver tolerance — both helpers short-circuit when
-//       called on a nil *DriveValidatorMetrics (Composition-time
-//       fail-closed surface: composition roots can pass nil to
-//       disable metrics without guard boilerplate at call sites).
-//   (4) Integration with DriveRootsValidator.ValidateDriveRoots:
-//       constructing a private-registry metrics struct, running
-//       a fake-probe validator, and asserting the counter /
-//       histogram / gauge values match the simulated outcomes.
+//	(1) observeProbe increments the probes counter with correct
+//	    labels (destination, outcome) and observes the histogram
+//	    with the elapsed duration in seconds.
+//	(2) observeRunEnd sets the run-summary gauges (timestamp +
+//	    success indicator).
+//	(3) Nil-receiver tolerance — both helpers short-circuit when
+//	    called on a nil *DriveValidatorMetrics (Composition-time
+//	    fail-closed surface: composition roots can pass nil to
+//	    disable metrics without guard boilerplate at call sites).
+//	(4) Integration with DriveRootsValidator.ValidateDriveRoots:
+//	    constructing a private-registry metrics struct, running
+//	    a fake-probe validator, and asserting the counter /
+//	    histogram / gauge values match the simulated outcomes.
 //
 // Tests construct their own proma-free collectors
 // (prometheus.NewCounterVec / NewHistogramVec / NewGauge) and

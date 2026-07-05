@@ -6,16 +6,16 @@
 //     DispatcherPort.EnqueueDriveDelete; nil-dispatcher wiring fails-fast.
 //   - Blocco 3.1 commit 3/3 (July 2026): CompleteAsset adds the COMPLETED
 //     step fail-closed. Pinning:
-//       * drive_file_alive_block guard at state pre-DRIVE_DELETED
-//       * Drive-gone check failure propagates WITHOUT side-effects
-//       * Nil completionTxRunner = wiring-error fail-closed
-//       * Happy path runs the atomic SQLite TX
-//       * Idempotent re-run after success = nil, no side-effects
-//       * Resume-from-current-state: any state in {DRIVE_DELETED,
-//         INDEX_DELETE_PENDING, INDEX_DELETED, DELETED} proceeds
-//       * Asset-tree cleanup errors PROPAGATE in DeleteClip
-//         (godlike/07 NO_FAKE_AVAILABILITY; the silent `_ =` anti-pattern
-//         listed in the user spec for this commit)
+//   - drive_file_alive_block guard at state pre-DRIVE_DELETED
+//   - Drive-gone check failure propagates WITHOUT side-effects
+//   - Nil completionTxRunner = wiring-error fail-closed
+//   - Happy path runs the atomic SQLite TX
+//   - Idempotent re-run after success = nil, no side-effects
+//   - Resume-from-current-state: any state in {DRIVE_DELETED,
+//     INDEX_DELETE_PENDING, INDEX_DELETED, DELETED} proceeds
+//   - Asset-tree cleanup errors PROPAGATE in DeleteClip
+//     (godlike/07 NO_FAKE_AVAILABILITY; the silent `_ =` anti-pattern
+//     listed in the user spec for this commit)
 package deletion_test
 
 import (
@@ -133,7 +133,7 @@ func memoryDB(t *testing.T) *sql.DB {
 // — Blocco 3.1 commit 3/3, July 2026). AssetStoreSQLite.Get reads the
 // full projection; a missing column causes COMPLETED-step tests to
 // fail with `no such column: <X>`. Other columns use
-// `NOT NULL DEFAULT ''` so callers can seed a minimal row via
+// `NOT NULL DEFAULT ”` so callers can seed a minimal row via
 // seedClipRow (id + lifecycle_state only).
 func minimalMediaAssetsFixture(t *testing.T, db *sql.DB) {
 	t.Helper()

@@ -155,6 +155,7 @@ type ResolveResult struct {
 //     outbox row (PENDING/LEASED/RUNNING/RETRY_WAIT/SUCCEEDED/...).
 //   - AssetPublishStatus  = stable per-asset outcome persisted on
 //     media_assets (PUBLISHED or PUBLISH_FAILED).
+//
 // On Drive publish success, the per-attempt DeliveryStatus is
 // SUCCEEDED and the AssetPublishStatus for that asset becomes
 // PUBLISHED. They never alias — keeping them separate enforces

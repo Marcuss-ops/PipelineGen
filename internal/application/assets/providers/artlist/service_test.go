@@ -118,8 +118,8 @@ func TestArtlistServiceCreation(t *testing.T) {
 	// any promotion-renaming churn in future PR2.x waves.
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore: artlistRepo,
-			Publisher:  &stubPublisherForArtlist{},
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -150,8 +150,8 @@ func TestArtlistSearchRequest(t *testing.T) {
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore: artlistRepo,
-			Publisher:  &stubPublisherForArtlist{},
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -430,8 +430,8 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore: artlistRepo,
-			Publisher:  &stubPublisherForArtlist{},
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -514,8 +514,8 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore: artlistRepo,
-			Publisher:  &stubPublisherForArtlist{},
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -604,8 +604,8 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore: artlistRepo,
-			Publisher:  &stubPublisherForArtlist{},
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{

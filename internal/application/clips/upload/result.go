@@ -14,9 +14,11 @@ import "errors"
 // build the JSON response with a single field copy.
 //
 // Indexed is false when either:
-//   (a) the dispatcher was unavailable (503 path),
-//   (b) the enrich deps were wired but jobsSvc was nil (deliberate drift
-//       signal — S1a, June 2026).
+//
+//	(a) the dispatcher was unavailable (503 path),
+//	(b) the enrich deps were wired but jobsSvc was nil (deliberate drift
+//	    signal — S1a, June 2026).
+//
 // Duration is in milliseconds (matches the legacy `int(clip.Duration.Milliseconds())`).
 type UploadClipResult struct {
 	OK          bool

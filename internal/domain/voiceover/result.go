@@ -120,7 +120,6 @@ func (r *Result) AddWarning(msg string) {
 	r.Warnings = append(r.Warnings, msg)
 }
 
-
 // VoiceoverResult is the canonical typed alias of Result, introduced to fix
 // the undefined: domain.VoiceoverResult build break at services.go:97 per
 // architecture/current.yaml#id-26 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.

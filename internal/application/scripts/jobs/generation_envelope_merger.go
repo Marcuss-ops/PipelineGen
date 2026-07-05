@@ -6,15 +6,16 @@
 // shape round-trip into the broker map[string]any contract).
 //
 // PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
-//   (1) Type envelope assembly is PURE: no I/O, no log writes, no
-//       DB calls, no filesystem ops. The marshal/unmarshal cycle
-//       is the LEGAL boundary between the typed domain shape and
-//       the job-system map contract.
-//   (2) The handler does NOT inline the marshal/unmarshal cycle
-//       directly. It calls MergeTypedExecutionEnvelope, which
-//       keeps the dual-shape discipline in one place (so a future
-//       schema version bump on the typed envelope modifies one
-//       function, not every handler site).
+//
+//	(1) Type envelope assembly is PURE: no I/O, no log writes, no
+//	    DB calls, no filesystem ops. The marshal/unmarshal cycle
+//	    is the LEGAL boundary between the typed domain shape and
+//	    the job-system map contract.
+//	(2) The handler does NOT inline the marshal/unmarshal cycle
+//	    directly. It calls MergeTypedExecutionEnvelope, which
+//	    keeps the dual-shape discipline in one place (so a future
+//	    schema version bump on the typed envelope modifies one
+//	    function, not every handler site).
 //
 // godlike/07 typed-error contract: marshal/unmarshal errors are
 // returned via the typed Output[T] envelope (Godlike/07 fail-closed:

@@ -100,7 +100,7 @@ func TestProgressTracker_EmitOnNil(t *testing.T) {
 // the last (percent, message) pair it observed. Used by the helper
 // and happy-path tests to assert the call-through wiring.
 type recordingProgressFn struct {
-	mu     sync.Mutex
+	mu      sync.Mutex
 	percent int
 	message string
 	called  int

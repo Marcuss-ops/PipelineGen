@@ -12,7 +12,7 @@
 //     are symmetric — both resolve to the same canonical Kind.
 //
 //  2. Emits the canonical wire envelope via c.AbortWithStatusJSON:
-//        {"kind": "<kind>", "error": "<msg>", "retry_after_seconds": N}
+//     {"kind": "<kind>", "error": "<msg>", "retry_after_seconds": N}
 //     For kind=rate_limited only, emits a Retry-After header per
 //     the user-facing spec (429 + Retry-After).
 //

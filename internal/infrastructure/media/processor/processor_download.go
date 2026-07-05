@@ -32,11 +32,11 @@ import (
 // and processor.scraperURL field are RETIRED.
 //
 // Ladder:
-//   1. Direct MP4/MOV/AVI → HTTP download
-//   2. Artlist clip (IsArtlistURL / ClipPageURL / numeric ID)
-//      → ArtlistDownloader or yt-dlp
-//   3. Non-Artlist HLS (.m3u8) → FFmpeg RemuxHLS
-//   4. Everything else → yt-dlp
+//  1. Direct MP4/MOV/AVI → HTTP download
+//  2. Artlist clip (IsArtlistURL / ClipPageURL / numeric ID)
+//     → ArtlistDownloader or yt-dlp
+//  3. Non-Artlist HLS (.m3u8) → FFmpeg RemuxHLS
+//  4. Everything else → yt-dlp
 func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput, rawPath string) (actualPath string, err error) {
 	// Rule 1: Direct progressive media — HTTP download.
 	if p.httpDL != nil && artlist_dl.IsDirectMediaURL(input.SourceURL) {
@@ -141,5 +141,3 @@ func isArtlistNumericID(id string) bool {
 	}
 	return true
 }
-
-

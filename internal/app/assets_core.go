@@ -6,21 +6,21 @@
 // capability area:
 //
 //   - Core:        the canonical data layer (clips + voiceover + image
-//                  repositories, asset.Service, asset tree + index,
-//                  mediaProcessor, catalogSync). The bulk of any
-//                  Assets-module wire logic consumes these. Held by
-//                  ComposeRoot.Repos + ComposeRoot.Search.
+//     repositories, asset.Service, asset tree + index,
+//     mediaProcessor, catalogSync). The bulk of any
+//     Assets-module wire logic consumes these. Held by
+//     ComposeRoot.Repos + ComposeRoot.Search.
 //   - Search:      the search sub-system (clipIndexer, mediasearch,
-//                  SearchWorkspaceID, SearchFanOut + BackendRegistry).
-//                  SearchFanOut + BackendRegistry are stamped by
-//                  WireRegistry BEFORE WireAssets runs (PR-2 single
-//                  shared-instance invariant).
+//     SearchWorkspaceID, SearchFanOut + BackendRegistry).
+//     SearchFanOut + BackendRegistry are stamped by
+//     WireRegistry BEFORE WireAssets runs (PR-2 single
+//     shared-instance invariant).
 //   - Delivery:    the DriveClient — only used by clips upload + sfx
-//                  upload (handlers commit 4 reads this through
-//                  deps.Delivery.DriveClient).
+//     upload (handlers commit 4 reads this through
+//     deps.Delivery.DriveClient).
 //   - Background:  the singleton idempotency layer (Store + shared
-//                  Gin HandlerFunc) shared by clips + register + media
-//                  + youtubeclip + mediaingest endpoints.
+//     Gin HandlerFunc) shared by clips + register + media
+//   - youtubeclip + mediaingest endpoints.
 //
 // 4 sub-structs vs 1 mega-struct: matches AGENTS.md's capability-
 // bundle governance rule — each sub-area is a separate Go type, so a
@@ -45,10 +45,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -81,7 +81,7 @@ type CoreDeps struct {
 	CatalogSyncService *catalogsync.Service
 	// P0.1 (June 2026): the concrete artifact blob service wired
 	// from BuildDomainBundle → DomainBundle → CoreDeps.
-	ArtifactService    *artifacts.Service
+	ArtifactService *artifacts.Service
 }
 
 // SearchDeps is the Assets-module search sub-system bundle (3 fields).

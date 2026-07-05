@@ -41,8 +41,8 @@ func TestVerifyChunks_RejectsMalformedSHA256(t *testing.T) {
 		Filename: "c.mp4",
 	}
 	cases := []struct {
-		name  string
-		sha   string
+		name string
+		sha  string
 	}{
 		{"short (len=15)", strings.Repeat("a", 15)},
 		{"non-hex (g)", strings.Repeat("a", 63) + "g"},
@@ -103,7 +103,7 @@ func TestVerifyMetadata_RejectsMalformedSHA256(t *testing.T) {
 func TestVerifyChunks_AcceptsCanonicalLowercaseHex64(t *testing.T) {
 	chunk := ChunkState{
 		Index: 0, ArtifactID: "stock:run:chunk:0",
-		LocalPath:   "/tmp/c.mp4",
+		LocalPath:    "/tmp/c.mp4",
 		RemoteFileID: "drive-id-0",
 		SizeBytes:    1024,
 		Filename:     "c.mp4",

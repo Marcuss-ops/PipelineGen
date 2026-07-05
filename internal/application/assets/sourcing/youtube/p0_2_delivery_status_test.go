@@ -5,10 +5,10 @@
 // OK=true for both Drive-success and Drive-failure.
 //
 // Three canonical contracts tested:
-//   1. Drive-OK → delivery_status=PUBLISHED
-//   2. Drive-fail → delivery_status=PUBLISH_FAILED, retry_scheduled=true,
-//      asset registered (OK=true, clipID non-empty)
-//   3. RequireDrive=true + Drive-fail → error (ErrYouTubeDriveRequired)
+//  1. Drive-OK → delivery_status=PUBLISHED
+//  2. Drive-fail → delivery_status=PUBLISH_FAILED, retry_scheduled=true,
+//     asset registered (OK=true, clipID non-empty)
+//  3. RequireDrive=true + Drive-fail → error (ErrYouTubeDriveRequired)
 package youtube
 
 import (
@@ -16,9 +16,9 @@ import (
 	"errors"
 	"testing"
 
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── Test doubles ──────────────────────────────────────────────────
@@ -82,11 +82,11 @@ func (s *stubLogger) Debug(msg string, kv ...any) {}
 
 func newTestService(pub sourcing.PublisherPort, requireDrive bool) *Service {
 	return &Service{
-		fetcher:     &stubFetcher{},
-		publisher:   pub,
-		indexDisp:   &stubIndexDispatcher{},
-		enrichment:  &stubEnrichment{indexingEnabled: false},
-		log:         &stubLogger{},
+		fetcher:      &stubFetcher{},
+		publisher:    pub,
+		indexDisp:    &stubIndexDispatcher{},
+		enrichment:   &stubEnrichment{indexingEnabled: false},
+		log:          &stubLogger{},
 		RequireDrive: requireDrive,
 	}
 }

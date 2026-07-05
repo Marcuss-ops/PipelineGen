@@ -107,11 +107,11 @@ func (c *TypedCodec[T, R]) DecodeResult(raw json.RawMessage) (R, error) {
 // ScriptGeneratePayload is the canonical typed request payload for
 // script.generate. Schema version v1 (per the C2 adapter wiring).
 type ScriptGeneratePayload struct {
-	Topic            string `json:"topic"`
-	StylePreset      string `json:"style_preset,omitempty"`
-	SentencesPerImage int   `json:"sentences_per_image,omitempty"`
-	GenerateMetadata bool   `json:"generate_metadata,omitempty"`
-	ExtractEntities  bool   `json:"extract_entities,omitempty"`
+	Topic             string `json:"topic"`
+	StylePreset       string `json:"style_preset,omitempty"`
+	SentencesPerImage int    `json:"sentences_per_image,omitempty"`
+	GenerateMetadata  bool   `json:"generate_metadata,omitempty"`
+	ExtractEntities   bool   `json:"extract_entities,omitempty"`
 }
 
 // ScriptGenerateResult is the canonical typed response result for

@@ -7,19 +7,19 @@
 // Files.List / docs.v1.Documents.Create — returns a typed
 // *GoogleAPIError envelope that:
 //
-//   (1) wraps the raw error so errors.Is / errors.As continuity
-//       with the legacy transient-substring taxonomy is preserved
-//       (Unwrap surfaces Raw);
-//   (2) categorises the failure into one of 6 typed Kind sentinels
-//       so callers can match "is THIS a 429 throttling event?"
-//       specifically (vs a generic transient) via errors.Is;
-//   (3) exposes the HTTP StatusCode and the parsed Retry-After
-//       header (RFC 7231 §7.1.3) for back-pressure decisions —
-//       pkg/retry::DoWithValue honors Retry-After over the
-//       computed backoff via the RetryAfterError interface;
-//   (4) implements the canonical RetryableError interface so
-//       retry.IsTransient reaches the typed-path #1 without
-//       substring matching.
+//	(1) wraps the raw error so errors.Is / errors.As continuity
+//	    with the legacy transient-substring taxonomy is preserved
+//	    (Unwrap surfaces Raw);
+//	(2) categorises the failure into one of 6 typed Kind sentinels
+//	    so callers can match "is THIS a 429 throttling event?"
+//	    specifically (vs a generic transient) via errors.Is;
+//	(3) exposes the HTTP StatusCode and the parsed Retry-After
+//	    header (RFC 7231 §7.1.3) for back-pressure decisions —
+//	    pkg/retry::DoWithValue honors Retry-After over the
+//	    computed backoff via the RetryAfterError interface;
+//	(4) implements the canonical RetryableError interface so
+//	    retry.IsTransient reaches the typed-path #1 without
+//	    substring matching.
 //
 // Hybrid pattern (struct envelope + sentinel aliases): the canonical
 // voiceover/orphan_sweeper.go + delivery/ConflictPolicy shape. Errors.Is

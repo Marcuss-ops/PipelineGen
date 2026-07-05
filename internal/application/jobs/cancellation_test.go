@@ -2,19 +2,19 @@
 //
 // Pins the cancellation-plumbing contract:
 //
-//   1. TestStartCancelWatcher -- helper-level test of the polling
-//      goroutine in isolation. Calls startCancelWatcher with a
-//      mock isCancelled function that returns true on the 2nd
-//      poll, asserts the parent ctx becomes Done within 4 seconds
-//      (= 2 poll intervals, accounting for the worst-case
-//      boundary).
+//  1. TestStartCancelWatcher -- helper-level test of the polling
+//     goroutine in isolation. Calls startCancelWatcher with a
+//     mock isCancelled function that returns true on the 2nd
+//     poll, asserts the parent ctx becomes Done within 4 seconds
+//     (= 2 poll intervals, accounting for the worst-case
+//     boundary).
 //
-//   2. TestWorker_CancelsRunningJobOnCancelSignal -- end-to-end
-//      through Worker.runJob with a mockBroker that returns
-//      StatusCancelled on Get(jobID) (so IsCancelled polls return
-//      true) and a fakeDispatcher that registers a handler that
-//      observes ctx.Done(). Asserts the handler saw ctx.Err() ==
-//      context.Canceled within the 4-second tolerance.
+//  2. TestWorker_CancelsRunningJobOnCancelSignal -- end-to-end
+//     through Worker.runJob with a mockBroker that returns
+//     StatusCancelled on Get(jobID) (so IsCancelled polls return
+//     true) and a fakeDispatcher that registers a handler that
+//     observes ctx.Done(). Asserts the handler saw ctx.Err() ==
+//     context.Canceled within the 4-second tolerance.
 //
 // The two-tier structure lets the helper-level test pin the
 // polling cadence in isolation (no goroutine timing flakiness from
@@ -48,10 +48,10 @@ import (
 // TestStartCancelWatcher_PollsUntilCancelFires verifies the
 // goroutine polling semantics in isolation:
 //
-//   * on tick 0 (immediately after spawn): poll call recorded.
-//   * on tick 1 (after 2s): isCancelled returns true; watcher
+//   - on tick 0 (immediately after spawn): poll call recorded.
+//   - on tick 1 (after 2s): isCancelled returns true; watcher
 //     calls jobCancel; parent ctx becomes Done.
-//   * on tick 2+: no-op (watcher returned after Cancel()).
+//   - on tick 2+: no-op (watcher returned after Cancel()).
 //
 // Time tolerance: the watcher enters the select right after spawn;
 // first poll fires 2s later. Adding 1 second slack for goroutine
@@ -175,15 +175,15 @@ func TestStartCancelWatcher_ExitsOnCtxDone(t *testing.T) {
 // carry no assertions -- the load-bearing signal is the handler
 // observing ctx.Done() within the 2s poll cadence.
 type mockCancelBroker struct {
-	mu             sync.Mutex
-	jobStatus      job.Status
-	revision       int
-	progressCalls  int
-	eventCalls     int
-	finalizeOp     string // last finalize mutation observed
-	completeRev    int
-	getCalls       int
-	lastGetRev     int
+	mu            sync.Mutex
+	jobStatus     job.Status
+	revision      int
+	progressCalls int
+	eventCalls    int
+	finalizeOp    string // last finalize mutation observed
+	completeRev   int
+	getCalls      int
+	lastGetRev    int
 }
 
 func newMockCancelBroker() *mockCancelBroker {
@@ -225,7 +225,7 @@ func (m *mockCancelBroker) AddEvent(_ context.Context, _ string, _ string, _ str
 func (m *mockCancelBroker) List(_ context.Context, _ job.Filter) ([]job.Job, error) {
 	return nil, nil
 }
-func (m *mockCancelBroker) Cancel(_ context.Context, _ string) error         { return nil }
+func (m *mockCancelBroker) Cancel(_ context.Context, _ string) error            { return nil }
 func (m *mockCancelBroker) Retry(_ context.Context, _ string) (*job.Job, error) { return nil, nil }
 func (m *mockCancelBroker) ClaimNext(_ context.Context, _ string, _ time.Duration, _ []string) (*job.Job, error) {
 	// Issue 6 / P1: ClaimNext is part of job.Store but unused by

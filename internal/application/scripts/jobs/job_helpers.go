@@ -1,7 +1,6 @@
 // Package scripts — job helpers extracted from api/script/handler_jobs.go (PR2, June 2026).
 package jobs
 
-
 import (
 	"context"
 	"errors"

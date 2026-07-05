@@ -242,7 +242,7 @@ func ScanStaleProsePaths(root string, pol *policy.Policy, r *report.Report) {
 						MatchedRule: "stale_prose_paths",
 						Rule:        fmt.Sprintf("stale_prose_paths_%s", sr.stem),
 						Severity:    "warn",
-						Note: fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / internal/app/build_bundles_<lowercase_x>.go::build<X>Service", sr.stem),
+						Note:        fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / internal/app/build_bundles_<lowercase_x>.go::build<X>Service", sr.stem),
 					})
 				}
 			}

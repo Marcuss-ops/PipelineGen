@@ -76,14 +76,14 @@ func validCfg() *config.Config {
 			PollIntervalMs: 500,
 			Workers:        2,
 		},
-	Security: config.SecurityConfig{
-		DeliveryHMACSecret: "0123456789abcdef0123456789abcdef",
-	},
-	Features: config.FeaturesConfig{
-		ArtlistEnabled:     false,
-		ScriptDocsEnabled:  false,
-		ScriptClipsEnabled: false,
-	},
+		Security: config.SecurityConfig{
+			DeliveryHMACSecret: "0123456789abcdef0123456789abcdef",
+		},
+		Features: config.FeaturesConfig{
+			ArtlistEnabled:     false,
+			ScriptDocsEnabled:  false,
+			ScriptClipsEnabled: false,
+		},
 	}
 	return c
 }

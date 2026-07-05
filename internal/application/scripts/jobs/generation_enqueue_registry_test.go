@@ -6,15 +6,15 @@
 // zero.
 //
 // What this test exercises:
-//   1. fakeJobEnqueuer captures every Enqueue call's *job.EnqueueRequest
-//      so the assertion can read the MaxRetries value the helper set.
-//   2. A fresh *appjobs.Registry is composed with script.generate
-//      registered at a CUSTOM DefaultMaxRetries value (7) so the
-//      assertion is unambiguous: 7 == registry, 3 == legacy fallback.
-//   3. Two boundary contracts:
-//      a) registry attached, request MaxRetries=0 -> Enqueue gets 7
-//      b) registry==nil -> Enqueue gets 0 (delegated to JobsService
-//         fallback which now applies the new conditional logic).
+//  1. fakeJobEnqueuer captures every Enqueue call's *job.EnqueueRequest
+//     so the assertion can read the MaxRetries value the helper set.
+//  2. A fresh *appjobs.Registry is composed with script.generate
+//     registered at a CUSTOM DefaultMaxRetries value (7) so the
+//     assertion is unambiguous: 7 == registry, 3 == legacy fallback.
+//  3. Two boundary contracts:
+//     a) registry attached, request MaxRetries=0 -> Enqueue gets 7
+//     b) registry==nil -> Enqueue gets 0 (delegated to JobsService
+//     fallback which now applies the new conditional logic).
 package jobs
 
 import (
@@ -27,8 +27,8 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // fakeJobEnqueuer records every EnqueueRequest it receives. The
@@ -167,13 +167,13 @@ func TestEnqueueGenerationJob_NilRegistryPassesThroughZero(t *testing.T) {
 // can forward it to the broker without the caller re-threading it.
 //
 // Two boundary contracts covered:
-//   1. Non-empty env.CorrelationID is propagated verbatim (minus
-//      whitespace trim).
-//   2. Empty / whitespace-only env.CorrelationID stays empty — the
-//      downstream corid.FromContext(ctx) fallback (verified in the
-//      EnqueueGenerationJob log path) then kicks in at helper-time,
-//      keeping the typed-closed GenerateEnqueueRequest contract
-//      intact without growing its surface.
+//  1. Non-empty env.CorrelationID is propagated verbatim (minus
+//     whitespace trim).
+//  2. Empty / whitespace-only env.CorrelationID stays empty — the
+//     downstream corid.FromContext(ctx) fallback (verified in the
+//     EnqueueGenerationJob log path) then kicks in at helper-time,
+//     keeping the typed-closed GenerateEnqueueRequest contract
+//     intact without growing its surface.
 func TestNewGenerateEnqueueRequest_PropagatesCorrelationID(t *testing.T) {
 	env := domainScript.GenerationEnvelopeV2{
 		Version:       2,

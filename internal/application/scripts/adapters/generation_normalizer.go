@@ -113,15 +113,15 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 			dur = cfg.DefaultDurationSeconds
 		}
 		if dur > 0 {
-		// Canonical script-generation WPM. Multiply first to avoid
-		// integer truncation for short durations. Reads from the
-		// SSOT (pkg/defaults::ScriptConfig.WordsPerMinute = 150 as
-		// of June 2026 — promoted from the legacy 140 default to
-		// match the active path truth). Pre-unification this was
-		// a hardcoded `150` literal; the SSOT now matches and
-		// the test TestNormalizeItemDurationToWords (300s × 150wpm
-		// / 60 = 750 words) continues to pass.
-		item.ScriptParams.TargetWords = (dur * defaults.DefaultScriptConfig().WordsPerMinute) / 60
+			// Canonical script-generation WPM. Multiply first to avoid
+			// integer truncation for short durations. Reads from the
+			// SSOT (pkg/defaults::ScriptConfig.WordsPerMinute = 150 as
+			// of June 2026 — promoted from the legacy 140 default to
+			// match the active path truth). Pre-unification this was
+			// a hardcoded `150` literal; the SSOT now matches and
+			// the test TestNormalizeItemDurationToWords (300s × 150wpm
+			// / 60 = 750 words) continues to pass.
+			item.ScriptParams.TargetWords = (dur * defaults.DefaultScriptConfig().WordsPerMinute) / 60
 		}
 	}
 	if item.ScriptParams.Duration <= 0 && cfg.DefaultDurationSeconds > 0 {

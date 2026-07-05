@@ -6,20 +6,21 @@
 //
 //   - jobRow — the result of the lease-fenced SELECT job query.
 //     Carries status + worker_id + lease_id + revision + retry_count
-//     + lease_expiry + result_json (COALESCE → "") for downstream
+//
+//   - lease_expiry + result_json (COALESCE → "") for downstream
 //     consumption by handleIdempotentCompletion + selectJobForFinalization.
 //
 //   - selectJobForFinalization (Lease+Fence method) — runs the
 //     SQL-fenced lease-gate SELECT:
-//       (a) read job row inside the open transaction
-//       (b) reject if status ∉ {RUNNING, FINALIZING, SUCCEEDED}
-//       (c) SUCCEEDED → skip lease ownership checks (worker_id + lease_id
-//           were cleared by markSucceeded) and route to
-//           handleIdempotentCompletion which compares fingerprints.
-//       (d) worker_id / lease_id match the request's Lease
-//       (e) re-validate lease expiry against DB row (NOT request.Lease.
-//           ExpiresAt — the DB row carries the canonical value)
-//       (f) request.Attempt must equal retry_count+1 (else ErrStaleAttempt)
+//     (a) read job row inside the open transaction
+//     (b) reject if status ∉ {RUNNING, FINALIZING, SUCCEEDED}
+//     (c) SUCCEEDED → skip lease ownership checks (worker_id + lease_id
+//     were cleared by markSucceeded) and route to
+//     handleIdempotentCompletion which compares fingerprints.
+//     (d) worker_id / lease_id match the request's Lease
+//     (e) re-validate lease expiry against DB row (NOT request.Lease.
+//     ExpiresAt — the DB row carries the canonical value)
+//     (f) request.Attempt must equal retry_count+1 (else ErrStaleAttempt)
 //
 // Dedup (PR-GODOBJ-5 intentional godlike/07 no-fake-availability): the
 // pre-split monolithic `selectJobForFinalization` carried two

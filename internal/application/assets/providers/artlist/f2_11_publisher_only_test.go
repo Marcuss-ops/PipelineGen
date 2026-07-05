@@ -5,22 +5,22 @@
 // the silent `folderID = rootFolderID` fallback is gone. These tests pin
 // the three contracts that the migration MUST preserve:
 //
-//   1. NewService FAILS CLOSED at composition when Publisher is nil
-//      (`ErrPublisherUnavailable` surfaced at startup, not a silent
-//      fallback at first request time) — QDRANT-002 dispatcher guard
-//      precedent.
+//  1. NewService FAILS CLOSED at composition when Publisher is nil
+//     (`ErrPublisherUnavailable` surfaced at startup, not a silent
+//     fallback at first request time) — QDRANT-002 dispatcher guard
+//     precedent.
 //
-//   2. DestinationService.ResolveDestination is Publisher-ONLY — no
-//      legacy else-branch (driveManager.EnsureFolder), no silent
-//      `folderID = rootFolderID` fallback. The Publisher.ResolveFolder
-//      call signature is pinned (Destination + Group + RootFolderOverride).
+//  2. DestinationService.ResolveDestination is Publisher-ONLY — no
+//     legacy else-branch (driveManager.EnsureFolder), no silent
+//     `folderID = rootFolderID` fallback. The Publisher.ResolveFolder
+//     call signature is pinned (Destination + Group + RootFolderOverride).
 //
-//   3. NewDestinationService PANICS on nil publisher at construction
-//      time. Service.NewService already fails-closed on Publisher via
-//      ErrPublisherUnavailable, so the panic is a programming-defect
-//      surface (a typed-nil bypass from a test fixture). The panic
-//      surfaces the defect immediately instead of null-derefing at the
-//      first ResolveDestination call site.
+//  3. NewDestinationService PANICS on nil publisher at construction
+//     time. Service.NewService already fails-closed on Publisher via
+//     ErrPublisherUnavailable, so the panic is a programming-defect
+//     surface (a typed-nil bypass from a test fixture). The panic
+//     surfaces the defect immediately instead of null-derefing at the
+//     first ResolveDestination call site.
 //
 // These tests live next to the production files they pin (per AGENTS.md
 // Go convention: `_test.go` in the same package) so they exercise the

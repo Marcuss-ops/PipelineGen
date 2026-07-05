@@ -60,4 +60,3 @@ func appendYoutubeCatalogCriticalValidators(sync *SyncBundle, domains *DomainBun
 		)
 	}
 }
-

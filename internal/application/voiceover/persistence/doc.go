@@ -16,7 +16,7 @@
 //     usecase.go method receivers). AGENTS.md Pattern 8 — only
 //     ports for the application layer.
 //   - Back-compat hooks: voiceover/types.go re-exports Repository
-//     + VoiceoverRecord as type aliases so legacy call sites
+//   - VoiceoverRecord as type aliases so legacy call sites
 //     referencing voiceover.VoiceoverRepository / voiceover.
 //     VoiceoverRecord still compile after P1-2.
 //

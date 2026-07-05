@@ -11,15 +11,15 @@
 //
 // Canonical wire shape (JSON, snake_case):
 //
-//   {
-//     "request_id": "video-123",
-//     "items": [
-//       {"text": "...", "language": "it-IT", "voice": "...", "filename": "intro-it.mp3"},
-//       ...
-//     ],
-//     "destination": {"kind": "group", "group": "Promozionali"},
-//     "options": {"remove_silence": true, "strategy": "replace", "parallelism": 2}
-//   }
+//	{
+//	  "request_id": "video-123",
+//	  "items": [
+//	    {"text": "...", "language": "it-IT", "voice": "...", "filename": "intro-it.mp3"},
+//	    ...
+//	  ],
+//	  "destination": {"kind": "group", "group": "Promozionali"},
+//	  "options": {"remove_silence": true, "strategy": "replace", "parallelism": 2}
+//	}
 //
 // Translation contract (P0.2): items[] is collapsed into the
 // canonical GenerateVoiceoversCommand shape (1 Text + N Languages +

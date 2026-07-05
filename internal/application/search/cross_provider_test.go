@@ -5,18 +5,18 @@
 // SearchBackend (provider + local + semantic) and verifies that the
 // filter semantics are uniform:
 //
-//   1. Every registered backend receives the SAME q.Filters values
-//      (uniform propagation).
-//   2. Every filter field the canonical Filters DTO exposes (Source,
-//      MediaType, Category, Language, Tags, DurationMsMin) survives
-//      the round-trip from handler→Query→backend.Search.
-//   3. Each backend's honours/ignores contract is documented per
-//      backend in the per-backend test cases (provider backend
-//      silently drops fields its native API doesn't support;
-//      local backend forwards all fields to AdvancedSearchRequest;
-//      semantic backend honours Source/MediaType/Category/Language
-//      at the Qdrant layer per internal/app/search_backend_semantic.go
-//      ::compileSemanticFilters).
+//  1. Every registered backend receives the SAME q.Filters values
+//     (uniform propagation).
+//  2. Every filter field the canonical Filters DTO exposes (Source,
+//     MediaType, Category, Language, Tags, DurationMsMin) survives
+//     the round-trip from handler→Query→backend.Search.
+//  3. Each backend's honours/ignores contract is documented per
+//     backend in the per-backend test cases (provider backend
+//     silently drops fields its native API doesn't support;
+//     local backend forwards all fields to AdvancedSearchRequest;
+//     semantic backend honours Source/MediaType/Category/Language
+//     at the Qdrant layer per internal/app/search_backend_semantic.go
+//     ::compileSemanticFilters).
 //
 // Why a shared harness rather than per-backend test files: the
 // provider backend (providerSearchBackend) and the local backend
@@ -51,12 +51,12 @@ type filterSpyBackend struct {
 	name string
 	caps []Capability
 
-	mu             sync.Mutex
-	lastFilters    Filters
-	lastQuery      Query
-	searchCalls    int
-	returnItems    []Candidate
-	returnErr      error
+	mu          sync.Mutex
+	lastFilters Filters
+	lastQuery   Query
+	searchCalls int
+	returnItems []Candidate
+	returnErr   error
 }
 
 func (f *filterSpyBackend) Name() string { return f.name }
@@ -238,8 +238,8 @@ func TestFilterEmptyContract(t *testing.T) {
 // TestFilterLanguageEnforcedContract and the comment is replaced.
 func TestFilterLanguageHonestyContract(t *testing.T) {
 	q := Query{
-		Text:   "anything",
-		Limit:  5,
+		Text:    "anything",
+		Limit:   5,
 		Filters: Filters{Language: "en"},
 	}
 	registry := NewBackendRegistry()
@@ -288,8 +288,8 @@ func TestFilterMediaTypeSingleString(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			q := Query{
-				Text:   "x",
-				Limit:  5,
+				Text:    "x",
+				Limit:   5,
 				Filters: Filters{MediaType: tc.mediaType},
 			}
 			registry := NewBackendRegistry()

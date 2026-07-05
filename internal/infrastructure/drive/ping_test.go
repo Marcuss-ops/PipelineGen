@@ -111,8 +111,8 @@ func TestUploader_AdminInterface_TypedNilTrapGuard(t *testing.T) {
 	// (static-type Admin + dynamic-type *Uploader-nil != interface{}-
 	// nil). We use require.True/False with the Go comparison so the
 	// assertion matches the spec rather than reflection's view.
-	var nilUploader *Uploader                   // untyped nil pointer
-	var trapped Admin = nilUploader             // TRAP: (dyn-type=*Uploader, dyn=nil)
+	var nilUploader *Uploader       // untyped nil pointer
+	var trapped Admin = nilUploader // TRAP: (dyn-type=*Uploader, dyn=nil)
 	require.True(t, trapped != nil, "typed-nil *Uploader wrapped in Admin interface MUST compare != nil per Go spec (the trap)")
 	require.False(t, trapped == Admin(nil), "typed-nil Admin interface MUST compare unequal to untyped-nil Admin(nil) per Go spec (same asymmetry, same trap)")
 

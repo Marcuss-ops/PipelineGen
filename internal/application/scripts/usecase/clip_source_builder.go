@@ -365,4 +365,5 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			zap.Int("source_text_chars", sourceTextBuilder.Len()))
 	}
 
-	return ev, title, sourceTextBuilder.String(), nil}
+	return ev, title, sourceTextBuilder.String(), nil
+}

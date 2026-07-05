@@ -21,23 +21,23 @@
 // the canonical const block surfaces at review time.
 //
 // Failure mode contracts (per user spec):
-//   1. missing-policy       — a Type* in the canonical list lacks a
-//                              Compose() registration.
-//   2. empty-description    — a registered entry has Description == "".
-//   3. sub-canonical-queue  — Queue() accessor returns empty/""
-//                              when entry has been registered.
-//   4. sub-canonical-concurrency — Concurrency() accessor returns < 1.
-//   5. retries-nonzero      — DefaultMaxRetries accessor returns <= 0.
-//      (a registered entry that allows ZERO re-licks would defeat the
-//      retry contract; canonical minimum is 1 retry = the "at least
-//      one re-attempt" safety net)
-//   6. apply-Defaults-noop  — applyDefaults run twice produces the
-//      same map snapshot (idempotency).
-//   7. forward-drift        — a Type registered in Compose() is NOT
-//                              in canonicalJobTypes (inverse of #1).
-//   8. cardinality-mismatch — reg.AllTypes().len != canonicalJobTypes.len
-//      (catches asymmetry between #1 and #7 — together they pin the
-//      Compose() ingress symmetric against the canonical const block).
+//  1. missing-policy       — a Type* in the canonical list lacks a
+//     Compose() registration.
+//  2. empty-description    — a registered entry has Description == "".
+//  3. sub-canonical-queue  — Queue() accessor returns empty/""
+//     when entry has been registered.
+//  4. sub-canonical-concurrency — Concurrency() accessor returns < 1.
+//  5. retries-nonzero      — DefaultMaxRetries accessor returns <= 0.
+//     (a registered entry that allows ZERO re-licks would defeat the
+//     retry contract; canonical minimum is 1 retry = the "at least
+//     one re-attempt" safety net)
+//  6. apply-Defaults-noop  — applyDefaults run twice produces the
+//     same map snapshot (idempotency).
+//  7. forward-drift        — a Type registered in Compose() is NOT
+//     in canonicalJobTypes (inverse of #1).
+//  8. cardinality-mismatch — reg.AllTypes().len != canonicalJobTypes.len
+//     (catches asymmetry between #1 and #7 — together they pin the
+//     Compose() ingress symmetric against the canonical const block).
 package jobs
 
 import (
@@ -60,21 +60,21 @@ import (
 //
 // Sources of canonical job types:
 //
-//   internal/domain/job/job.go (Wave pre-Wave19 SSOT):
-//     - TypeMediaExtract, TypeMediaStock, TypeVoiceoverBatch,
-//       TypeSubtitleGenerate, TypeRenderVideo, TypeYouTubeUpload,
-//       TypeYouTubeClipExtract, TypeCatalogSync, TypeArtlistRun,
-//       TypeSystemCleanup, TypeMediaGenerate, TypeVideoGenerate,
-//       TypeBooksProcess, TypeLessonsProcess, TypeMediaReindex,
-//       TypeMediaEnrich, TypeYouTubeRebuildST, TypeScriptGenerate,
-//       TypeBulkUploadYouTubeClips, TypeDriveFolderSync,
-//       TypeMediaCurate, TypeVoiceoverPromo.
+//	internal/domain/job/job.go (Wave pre-Wave19 SSOT):
+//	  - TypeMediaExtract, TypeMediaStock, TypeVoiceoverBatch,
+//	    TypeSubtitleGenerate, TypeRenderVideo, TypeYouTubeUpload,
+//	    TypeYouTubeClipExtract, TypeCatalogSync, TypeArtlistRun,
+//	    TypeSystemCleanup, TypeMediaGenerate, TypeVideoGenerate,
+//	    TypeBooksProcess, TypeLessonsProcess, TypeMediaReindex,
+//	    TypeMediaEnrich, TypeYouTubeRebuildST, TypeScriptGenerate,
+//	    TypeBulkUploadYouTubeClips, TypeDriveFolderSync,
+//	    TypeMediaCurate, TypeVoiceoverPromo.
 //
-//   internal/application/jobs/registry.go (Wave 19 / P1-9 adder):
-//     - TypeImageGenerateGoogle — FASE 2 (June 2026) Chrome/Playwright
-//       AI image generation. The handler is NOT wired yet (pending
-//       FASE 6); the registry entry declares the operational
-//       parameters so the broker can accept jobs of this type.
+//	internal/application/jobs/registry.go (Wave 19 / P1-9 adder):
+//	  - TypeImageGenerateGoogle — FASE 2 (June 2026) Chrome/Playwright
+//	    AI image generation. The handler is NOT wired yet (pending
+//	    FASE 6); the registry entry declares the operational
+//	    parameters so the broker can accept jobs of this type.
 //
 // Adding a new Type* to either file means adding the string below
 // with a comment pointing to the new declaration site. The test
@@ -87,31 +87,31 @@ import (
 // Compose NOT in the slice) trips test 4. Together they make the
 // Compose() ingress symmetric against the canonical const block.
 var canonicalJobTypes = []string{
-	job.TypeMediaExtract,                 // domain/job/job.go
-	job.TypeMediaStock,                   // domain/job/job.go
-	job.TypeVoiceoverBatch,               // domain/job/job.go
-	job.TypeSubtitleGenerate,             // domain/job/job.go
-	job.TypeRenderVideo,                  // domain/job/job.go
-	job.TypeYouTubeUpload,                // domain/job/job.go
-	job.TypeYouTubeClipExtract,           // domain/job/job.go
-	job.TypeCatalogSync,                  // domain/job/job.go
-	job.TypeArtlistRun,                   // domain/job/job.go
-	job.TypeSystemCleanup,                // domain/job/job.go
-	job.TypeMediaGenerate,                // domain/job/job.go
-	job.TypeVideoGenerate,                // domain/job/job.go
-	job.TypeBooksProcess,                 // domain/job/job.go
-	job.TypeLessonsProcess,               // domain/job/job.go
-	job.TypeMediaReindex,                 // domain/job/job.go
-	job.TypeMediaEnrich,                  // domain/job/job.go
-	job.TypeYouTubeRebuildST,             // domain/job/job.go
-	job.TypeScriptGenerate,               // domain/job/job.go
-	job.TypeBulkUploadYouTubeClips,       // domain/job/job.go
-	job.TypeDriveFolderSync,              // domain/job/job.go
-	job.TypeMediaCurate,                  // domain/job/job.go
-	job.TypeVoiceoverPromo,               // domain/job/job.go
-	job.TypeVoiceoverGenerate,            // domain/job/job.go
-	job.TypeVoiceoverGenerateItem,        // domain/job/job.go
-	TypeImageGenerateGoogle,              // application/jobs/registry.go (FASE 2 / June 2026)
+	job.TypeMediaExtract,           // domain/job/job.go
+	job.TypeMediaStock,             // domain/job/job.go
+	job.TypeVoiceoverBatch,         // domain/job/job.go
+	job.TypeSubtitleGenerate,       // domain/job/job.go
+	job.TypeRenderVideo,            // domain/job/job.go
+	job.TypeYouTubeUpload,          // domain/job/job.go
+	job.TypeYouTubeClipExtract,     // domain/job/job.go
+	job.TypeCatalogSync,            // domain/job/job.go
+	job.TypeArtlistRun,             // domain/job/job.go
+	job.TypeSystemCleanup,          // domain/job/job.go
+	job.TypeMediaGenerate,          // domain/job/job.go
+	job.TypeVideoGenerate,          // domain/job/job.go
+	job.TypeBooksProcess,           // domain/job/job.go
+	job.TypeLessonsProcess,         // domain/job/job.go
+	job.TypeMediaReindex,           // domain/job/job.go
+	job.TypeMediaEnrich,            // domain/job/job.go
+	job.TypeYouTubeRebuildST,       // domain/job/job.go
+	job.TypeScriptGenerate,         // domain/job/job.go
+	job.TypeBulkUploadYouTubeClips, // domain/job/job.go
+	job.TypeDriveFolderSync,        // domain/job/job.go
+	job.TypeMediaCurate,            // domain/job/job.go
+	job.TypeVoiceoverPromo,         // domain/job/job.go
+	job.TypeVoiceoverGenerate,      // domain/job/job.go
+	job.TypeVoiceoverGenerateItem,  // domain/job/job.go
+	TypeImageGenerateGoogle,        // application/jobs/registry.go (FASE 2 / June 2026)
 }
 
 // sortedCanonicalTypes returns the canonical list sorted ascending
@@ -327,7 +327,7 @@ func TestRegistry_AllTypesAndQueueCoverage(t *testing.T) {
 //     (a Type* in the canonical slice missing from Compose()).
 //   - TestRegistry_NoForwardDrift       catches FORWARD drift
 //     (a Type* registered in Compose() but missing from the slice,
-//      i.e. someone added a registration without updating the test).
+//     i.e. someone added a registration without updating the test).
 //
 // Forward drift is the more dangerous of the two: a contributor
 // adds a new JobPolicy{...} literal in Compose() AND adds a

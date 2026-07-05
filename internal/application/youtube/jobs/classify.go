@@ -125,4 +125,3 @@ func ClassifyExtractionResult(resp *youtubetypes.ExtractResponse) error {
 	}
 	return ErrExtractionTerminal
 }
-

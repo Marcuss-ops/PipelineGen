@@ -304,7 +304,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			Description:        fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
 			AssetID:            input.ID,
 			Group:              input.Term, // artlist search term (PathBuilder input)
-			Subject:            "",         // empty by design — see doc above (forward-pointer: PR-F2.9-SUBJECT-PLUMB)
+			Subject:            "",         // empty by design — see doc above (TODO F2.9: explicit Subject plumb)
 			RootFolderOverride: input.FolderID,
 		}
 		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)

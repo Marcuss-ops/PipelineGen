@@ -27,13 +27,13 @@
 // INDEX_DELETE_PENDING, INDEX_DELETE_PENDING → DELETED) need the
 // AdvanceAndEmit primitive because:
 //
-//   (a) the state-flip is the operator-visible marker the row has
-//       progressed past a side-effect (Drive API success / Qdrant
-//       delete + SQLite soft-delete);
+//	(a) the state-flip is the operator-visible marker the row has
+//	    progressed past a side-effect (Drive API success / Qdrant
+//	    delete + SQLite soft-delete);
 //
-//   (b) the next-event emission is the durable handoff to the
-//       next-stage worker — losing it would strand the row in
-//       a permanent in-flight state without a consumer.
+//	(b) the next-event emission is the durable handoff to the
+//	    next-stage worker — losing it would strand the row in
+//	    a permanent in-flight state without a consumer.
 //
 // Pattern 0 (AGENTS.md): the application-layer handler (e.g.
 // DriveDeleteHandler in application/jobs/outbox/drive_delete.go)

@@ -7,11 +7,11 @@
 //
 // Fase 2 (June 2026): handler methods split into 4 focused files:
 //   - folder_query_handler.go    (ListFolders, FolderStatus, GetFolderChildren,
-//                                  GetTree, GetBreadcrumb, repoForSource)
+//     GetTree, GetBreadcrumb, repoForSource)
 //   - folder_command_handler.go  (RegenerateManifest, TrashFolder, DeleteFolder)
 //   - clip_integrity_handler.go  (VerifyClip, HandleFixHash, Cleanup, Reconcile,
-//                                  buildCleanupResponse, buildVerifyResponse,
-//                                  mapClipOpsError)
+//     buildCleanupResponse, buildVerifyResponse,
+//     mapClipOpsError)
 //   - clip_maintenance_handler.go (deleteClip, TrashClip, DeleteClip)
 //
 // This file retains: OpsDeps, OpsHandler, NewOpsHandler, RegisterRoutes,
@@ -56,7 +56,7 @@ type OpsDeps struct {
 	DeletionSvc    *deletion.DeletionService
 	FolderMemSvc   *foldermemory.Service
 	ClipsRepo      *assets.ClipsRepository
-	DriveAdmin  drive.Admin
+	DriveAdmin     drive.Admin
 	AssetTreeSvc   *assettree.Service
 	Log            *zap.Logger
 }
@@ -69,7 +69,7 @@ type OpsHandler struct {
 	deletionSvc    *deletion.DeletionService
 	folderMemSvc   *foldermemory.Service
 	clipsRepo      *assets.ClipsRepository
-	driveAdmin  drive.Admin
+	driveAdmin     drive.Admin
 	assetTreeSvc   *assettree.Service
 	log            *zap.Logger
 }
@@ -81,7 +81,7 @@ func NewOpsHandler(d OpsDeps) *OpsHandler {
 		deletionSvc:    d.DeletionSvc,
 		folderMemSvc:   d.FolderMemSvc,
 		clipsRepo:      d.ClipsRepo,
-		driveAdmin:  d.DriveAdmin,
+		driveAdmin:     d.DriveAdmin,
 		assetTreeSvc:   d.AssetTreeSvc,
 		log:            d.Log,
 	}

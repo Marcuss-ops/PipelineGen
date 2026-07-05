@@ -214,5 +214,3 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 	}
 	return out, nil
 }
-
-

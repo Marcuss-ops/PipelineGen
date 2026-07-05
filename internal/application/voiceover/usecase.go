@@ -100,16 +100,16 @@ type UseCaseDeps struct {
 //
 // PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body
 // (processOneLanguage) now delegates to the SHARED
-// PipelineExecutor (pipeline_executor.go) — the same neutral
+// ProcessSegmentUseCase (usecase/process_segment.go) — the same neutral
 // struct consumed by ProcessVoiceoverItemUseCase (per-item path).
 // Pre-DRY the batch path did manual TX orchestration; post-DRY
-// the batch path uses the finalizer via the PipelineExecutor,
+// the batch path uses the finalizer via the ProcessSegmentUseCase,
 // gaining the dedupe gate + media_assets projection + cleanup
 // outbox that it was missing.
 type GenerateVoiceoversUseCase struct {
-	deps            UseCaseDeps
-	executor        *Executor             // bounded parallel fan-out (worker pool)
-	pipelineExec    *PipelineExecutor     // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
+	deps         UseCaseDeps
+	executor     *Executor         // bounded parallel fan-out (worker pool)
+	processSeg *ProcessSegmentUseCase // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
 }
 
 // NewGenerateVoiceoversUseCase constructs the canonical use case.
@@ -117,7 +117,7 @@ type GenerateVoiceoversUseCase struct {
 // pattern; optional deps are nil-safe.
 //
 // PR-VO-USECASE-PROCESS-DRY: Finalizer is now a mandatory dep
-// (panics on nil). The constructor builds the PipelineExecutor
+// (panics on nil). The constructor builds the ProcessSegmentUseCase
 // from the same deps so the per-item body is shared with the
 // per-item use case.
 func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
@@ -154,9 +154,9 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 		deps.MaxParallelism = 8
 	}
 	return &GenerateVoiceoversUseCase{
-		deps:         deps,
-		executor:     NewExecutor(deps.Logger),
-		pipelineExec: NewPipelineExecutor(PipelineItemDeps{
+		deps:     deps,
+		executor: NewExecutor(deps.Logger),
+		processSeg: NewProcessSegmentUseCase(ProcessSegmentDeps{
 			TTSProvider:         deps.TTSProvider,
 			AudioPostProcessor:  deps.AudioPostProcessor,
 			Publisher:           deps.Publisher,
@@ -307,8 +307,8 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 // — those fields are shared across the whole batch.
 //
 // PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body is
-// now a THIN WRAPPER around the shared PipelineExecutor
-// (pipeline_executor.go). Pre-DRY the body did manual TX
+// now a THIN WRAPPER around the shared ProcessSegmentUseCase
+// (usecase/process_segment.go). Pre-DRY the body did manual TX
 // orchestration (BeginTx → DeleteByIDTx → InsertTx → outbox →
 // Commit) which MISSED the dedupe gate + media_assets projection
 // + cleanup outbox that the per-item path already had. Post-DRY
@@ -317,8 +317,8 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 //
 // godlike/07 minimal-blast-radius: the caller-side concerns stay
 // in processOneLanguage (buildVoiceoverID + BuildVoiceoverFilename
-// are pre-computed here, not in the PipelineExecutor, because the
-// per-item path also needs them and the PipelineExecutor trusts
+// are pre-computed here, not in the ProcessSegmentUseCase, because the
+// per-item path also needs them and the ProcessSegmentUseCase trusts
 // the inputs verbatim per the BLOC4 P0.6 pass-through invariant).
 // The cmd.RemoveSilence *bool dereference stays here (per-item
 // shape is bool; the typed-wire surface for the use case is *bool).
@@ -333,7 +333,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	textHash TextHash,
 	dest *ResolvedDestination,
 ) VoiceoverItemResult {
-	// Pre-flight: destination check. The PipelineExecutor would also
+	// Pre-flight: destination check. The ProcessSegmentUseCase would also
 	// surface this, but we check here so the per-item path can
 	// return a zero-value result with a clean error message WITHOUT
 	// invoking the TTSProvider (mirrors the pre-DRY short-circuit
@@ -370,15 +370,15 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (processOneLanguage): %v (item=%+v)", err, itemSpec))
 	}
 
-	// Derive RemoveSilence (cmd carries bool; PipelineItemInput
+	// Derive RemoveSilence (cmd carries bool; ProcessSegmentCommand
 	// carries plain bool). The TTS provider (Stage 1 of the
-	// PipelineExecutor) NEVER receives RemoveSilence=true (P0.2
+	// ProcessSegmentUseCase) NEVER receives RemoveSilence=true (P0.2
 	// Fase 2c); AudioPostProcessor (Stage 2) is the sole owner of
 	// silence removal.
 	removeSilence := cmd.RemoveSilence
 
-	// Build the neutral DTO consumed by the shared PipelineExecutor.
-	in := &PipelineItemInput{
+	// Build the neutral DTO consumed by the shared ProcessSegmentUseCase.
+	in := &ProcessSegmentCommand{
 		ID:            id,
 		RequestID:     requestID,
 		TextHash:      textHash,
@@ -398,9 +398,9 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		// here). A future CUTOVER wave can wire the swap context.
 	}
 
-	out, runErr := u.pipelineExec.RunPipeline(ctx, in)
+	out, runErr := u.processSeg.Execute(ctx, in)
 	if out == nil {
-		// Defensive: PipelineExecutor.RunPipeline returns nil out
+		// Defensive: ProcessSegmentUseCase.Execute returns nil out
 		// only for nil input (already checked above) or other
 		// catastrophic failures. Surface a typed failed result
 		// so the bounded executor's PerLanguage[] slice stays

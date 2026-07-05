@@ -142,9 +142,9 @@ type TranslationCommand struct {
 	// Unknown keys are ignored without error (forward-compat). Empty
 	// map is the default; nil is treated identically to empty.
 	//
-	// forward-pointer: PR-TRANSLATION-HINTS — the 5 documented keys above are
-	// convention only — no constants are exposed in this package yet. A
-	// future PR should add `internal/application/translation/hints.go` with
+	// TODO(hints): the 5 documented keys above are convention only —
+	// no constants are exposed in this package yet. A future PR
+	// should add `internal/application/translation/hints.go` with
 	// `HintPreserveFormatting = "preserve_formatting"` consts (and the
 	// other 4) so providers and scripts can't drift on misspelled keys.
 	// Out of scope for Fase 9 step 1 (definitions + contract only).

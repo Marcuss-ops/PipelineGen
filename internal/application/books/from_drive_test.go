@@ -13,15 +13,15 @@
 //
 // These tests lock the migration contract:
 //
-//   1. TestProcessBookFromDrive_F2_10_ReaderRoundTrip — Reader.GetFileMeta
-//      and Reader.DownloadFile MUST be called exactly once with the fileID
-//      extracted from the Drive URL (Reader port wiring).
+//  1. TestProcessBookFromDrive_F2_10_ReaderRoundTrip — Reader.GetFileMeta
+//     and Reader.DownloadFile MUST be called exactly once with the fileID
+//     extracted from the Drive URL (Reader port wiring).
 //
-//   2. TestProcessBookFromDrive_F2_10_NilReader_ReturnsConfiguredSentinel —
-//      a nil Reader preserves the pre-F2.10 contract: the canonical
-//      ErrBookReaderNotConfigured sentinel surface in lieu of the legacy
-//      "drive uploader not configured" error message (so external callers
-//      don't see surprise behaviour shifts when Drive is not wired).
+//  2. TestProcessBookFromDrive_F2_10_NilReader_ReturnsConfiguredSentinel —
+//     a nil Reader preserves the pre-F2.10 contract: the canonical
+//     ErrBookReaderNotConfigured sentinel surface in lieu of the legacy
+//     "drive uploader not configured" error message (so external callers
+//     don't see surprise behaviour shifts when Drive is not wired).
 //
 // The compile-time assertion `var _ drive.Reader = (*stubReader)(nil)` at
 // the bottom of this file pins the full Reader surface. If a future commit

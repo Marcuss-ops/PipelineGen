@@ -70,14 +70,14 @@ var ErrUploadIntentNotFound = errors.New("upload_intents_repository: row not fou
 // voiceover/persistence.VoiceoverRecord precedent on godlike/06
 // single-shape policy).
 type UploadIntent struct {
-	ID           int64
-	VoiceoverID  string
-	DriveFileID  string
-	Status       string
-	Reason       string
-	Attempts     int
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID          int64
+	VoiceoverID string
+	DriveFileID string
+	Status      string
+	Reason      string
+	Attempts    int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // UploadIntentsRepository is the SQLite concrete for upload_intents

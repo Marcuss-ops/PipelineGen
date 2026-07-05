@@ -89,12 +89,15 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 // findOrCreateFolderSerialized is the singleflight-locked body of
 // GetOrCreateFolder. It executes the canonical algorithm:
 // Stage 1 — exact-match lookup via Files.List under retry-aware seam
-//          (fail-closed on non-retryable error → no Create).
+//
+//	(fail-closed on non-retryable error → no Create).
+//
 // Stage 2 — fresh Create using the canonical name.
 // Stage 3 — cross-process race mitigation: post- Create second
-//          Files.List ordered by createdTime asc; return oldest
-//          folder if multiple match (Drive does not natively
-//          de-duplicate folder names within a parent).
+//
+//	Files.List ordered by createdTime asc; return oldest
+//	folder if multiple match (Drive does not natively
+//	de-duplicate folder names within a parent).
 func (u *Uploader) findOrCreateFolderSerialized(ctx context.Context, parentID, canonicalName string) (string, error) {
 	// ── Stage 1: exact-match lookup (fail-closed on error) ─────────
 	existingID, err := u.lookupFolderExact(ctx, parentID, canonicalName)

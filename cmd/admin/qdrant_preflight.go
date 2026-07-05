@@ -55,8 +55,8 @@ type PreflightTest struct {
 	Doc        string        // 1-line documentation
 	Timeout    time.Duration // per-test context.WithTimeout bound
 	Fn         func(ctx context.Context, deps *preflightDeps) error
-	Skippable  bool          // allowed to emit OutcomeSKIP without failing the suite
-	SkipReason string        // human-readable SKIP reason
+	Skippable  bool   // allowed to emit OutcomeSKIP without failing the suite
+	SkipReason string // human-readable SKIP reason
 }
 
 // Outcome is the per-test typed result (godlike/07 typed-error contract).
@@ -70,8 +70,8 @@ const (
 
 // Typed sentinel errors (godlike/07 NO-FAKE-AVAILABILITY).
 var (
-	ErrPreflightStackDown    = fmt.Errorf("preflight: stack not ready (server :8081 + qdrant :6333 unreachable)")
-	ErrPreflightSeedMissing  = fmt.Errorf("preflight: seed asset missing (PR-QDRANT-PREFLIGHT-DATA-SEED not shipped)")
+	ErrPreflightStackDown      = fmt.Errorf("preflight: stack not ready (server :8081 + qdrant :6333 unreachable)")
+	ErrPreflightSeedMissing    = fmt.Errorf("preflight: seed asset missing (PR-QDRANT-PREFLIGHT-DATA-SEED not shipped)")
 	ErrPreflightNotImplemented = fmt.Errorf("preflight: not yet implemented (forward-pointer to per-test PR)")
 )
 
@@ -329,14 +329,14 @@ func errOrSkipReason(t PreflightTest, oc Outcome, err error) string {
 // follow-up PRs (Tests 3-8, 10, 11 in the current ship state).
 func isStubTest(name string) bool {
 	stubs := map[string]bool{
-		"outbox-events-created":                 true,
-		"outbox-events-completed":               true,
-		"media-assets-index-state-indexed":      true,
-		"qdrant-scroll-finds-asset":             true,
-		"hybrid-search-score-gt-half":           true,
-		"supersede-gate-2-source-versions":      true,
-		"delete-tombstone":                      true,
-		"voiceover-piggyback":                   true,
+		"outbox-events-created":            true,
+		"outbox-events-completed":          true,
+		"media-assets-index-state-indexed": true,
+		"qdrant-scroll-finds-asset":        true,
+		"hybrid-search-score-gt-half":      true,
+		"supersede-gate-2-source-versions": true,
+		"delete-tombstone":                 true,
+		"voiceover-piggyback":              true,
 	}
 	return stubs[name]
 }
@@ -365,7 +365,8 @@ func testQdrantStackHealthy(ctx context.Context, deps *preflightDeps) error {
 // testSchemaV3Shipped (PR-QDRANT-PREFLIGHT-TEST-2): GET /collections + /aliases.
 //
 // Canonical Qdrant 1.18+ /collections response shape:
-//   {"result": {"collections": [{"name": "..."}], "aliases": {...}}, "status":"ok", "time":...}
+//
+//	{"result": {"collections": [{"name": "..."}], "aliases": {...}}, "status":"ok", "time":...}
 //
 // Aliases are sometimes embedded under result.aliases and sometimes served
 // only via the separate /aliases endpoint (Qdrant kernel behavior varies by

@@ -55,7 +55,7 @@ type Dependencies struct {
 // so they can drive the capability without re-constructing the use
 // case layer.
 type ChannelsDescriptor struct {
-	Module  api.Module
+	Module api.Module
 	// Service exposes the canonical use-case orchestrator to typed,
 	// non-HTTP callers registered by the composition root.
 	Service *appchannels.Service

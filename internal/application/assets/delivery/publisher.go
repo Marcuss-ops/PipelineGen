@@ -11,23 +11,23 @@ import "context"
 //
 // Fase 3 Spina Dorsale audit (July 2026) — migration status:
 //
-//   Already using delivery.Publisher:
-//     - clips/reupload_usecase.go     → Publish(DestinationYouTubeClip, ...)
-//     - clips/upload/usecase.go       → Publish(DestinationYouTubeClip, ...)
-//     - clips/bulk_upload_worker.go   → Publish(DestinationYouTubeClip, ...)
-//     - soundeffect/handler.go        → Publish(DestinationSoundEffect, ...)
-//     - books (buildBooksService)     → Publisher injected at composition
-//     - ingest lifecycle services     → Publisher injected at composition
-//     - media processor               → Publisher injected at composition
+//	Already using delivery.Publisher:
+//	  - clips/reupload_usecase.go     → Publish(DestinationYouTubeClip, ...)
+//	  - clips/upload/usecase.go       → Publish(DestinationYouTubeClip, ...)
+//	  - clips/bulk_upload_worker.go   → Publish(DestinationYouTubeClip, ...)
+//	  - soundeffect/handler.go        → Publish(DestinationSoundEffect, ...)
+//	  - books (buildBooksService)     → Publisher injected at composition
+//	  - ingest lifecycle services     → Publisher injected at composition
+//	  - media processor               → Publisher injected at composition
 //
-//   Still bypassing delivery.Publisher (TODO markers in place):
-//     - drive/store.go::UploadToDrive       → used by images package
-//     - clips_adapters_drive.go::UploadFile → clips adapter calls drive.Admin
-//     - voiceover useCasePublisherAdapter   → calls drive.Admin.UploadFile
-//     - jobs/worker/runner.go               → assetClient.UploadFile (worker artifacts, different concern)
+//	Still bypassing delivery.Publisher (TODO markers in place):
+//	  - drive/store.go::UploadToDrive       → used by images package
+//	  - clips_adapters_drive.go::UploadFile → clips adapter calls drive.Admin
+//	  - voiceover useCasePublisherAdapter   → calls drive.Admin.UploadFile
+//	  - jobs/worker/runner.go               → assetClient.UploadFile (worker artifacts, different concern)
 //
-//   DestinationKey coverage (complete):
-//     YouTubeClip, Artlist, Stock, Image, Voiceover, Book, Script, SoundEffect
+//	DestinationKey coverage (complete):
+//	  YouTubeClip, Artlist, Stock, Image, Voiceover, Book, Script, SoundEffect
 //
 // The concrete implementation lives in
 // internal/infrastructure/drive/publisher.go.

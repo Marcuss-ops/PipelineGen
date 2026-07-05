@@ -15,29 +15,30 @@
 // reapply; this test verifies the test is solvable on a clean DB only.
 //
 // Subtests:
-//   (a) ApplyFirstTime              — clean DB, apply migration, no error.
-//   (b) OriginProviderColumnsPresent — PRAGMA table_info returns the
-//                                    two new columns with DEFAULT 'retrieved'
-//                                    (origin) and '' (provider).
-//   (c) OriginProviderDefaultValues  — SELECT origin/provider on a row
-//                                    inserted WITHOUT setting them
-//                                    returns 'retrieved' for origin, '' for provider.
-//   (d) OriginProviderRoundTrip       — INSERT with origin='generated',
-//                                    provider='flux'; SELECT back, assert
-//                                    bit-identical round-trip.
-//   (e) IndexesPresent                — both idx_media_assets_origin and
-//                                    idx_media_assets_provider registered
-//                                    in sqlite_master after apply.
-//   (f) IdempotenceFailureOnSecondApply — second apply produces
-//                                    "duplicate column name" error
-//                                    (proves migration is NOT silently
-//                                    idempotent at the SQL level; the
-//                                    runner MUST intercept).
-//   (g) AntiModification_ChecksumMatches — SHA-256 of migration 115
-//                                    matches the frozen expected value
-//                                    (proves the file was not modified
-//                                    after being applied — migration
-//                                    integrity gate).
+//
+//	(a) ApplyFirstTime              — clean DB, apply migration, no error.
+//	(b) OriginProviderColumnsPresent — PRAGMA table_info returns the
+//	                                 two new columns with DEFAULT 'retrieved'
+//	                                 (origin) and '' (provider).
+//	(c) OriginProviderDefaultValues  — SELECT origin/provider on a row
+//	                                 inserted WITHOUT setting them
+//	                                 returns 'retrieved' for origin, '' for provider.
+//	(d) OriginProviderRoundTrip       — INSERT with origin='generated',
+//	                                 provider='flux'; SELECT back, assert
+//	                                 bit-identical round-trip.
+//	(e) IndexesPresent                — both idx_media_assets_origin and
+//	                                 idx_media_assets_provider registered
+//	                                 in sqlite_master after apply.
+//	(f) IdempotenceFailureOnSecondApply — second apply produces
+//	                                 "duplicate column name" error
+//	                                 (proves migration is NOT silently
+//	                                 idempotent at the SQL level; the
+//	                                 runner MUST intercept).
+//	(g) AntiModification_ChecksumMatches — SHA-256 of migration 115
+//	                                 matches the frozen expected value
+//	                                 (proves the file was not modified
+//	                                 after being applied — migration
+//	                                 integrity gate).
 //
 // Run via `go test ./migrations/sqlite/...` from the repo root.
 package migration_test

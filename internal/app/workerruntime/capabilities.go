@@ -5,8 +5,8 @@
 // verbatim from cmd/worker/main.go::parseAndValidateCaps:
 //
 //   - Empty env         → error (Creator Blocco 1.2: refusing to start
-//                          with full capability set; operators must set
-//                          a profile or explicit capabilities)
+//     with full capability set; operators must set
+//     a profile or explicit capabilities)
 //   - Malformed JSON    → error (fail-fast)
 //   - Empty job_types   → error (fail-fast)
 //   - Unknown type      → error (fail-fast)

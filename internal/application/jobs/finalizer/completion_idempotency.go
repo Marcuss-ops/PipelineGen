@@ -124,9 +124,9 @@ func (f *Finalizer) handleIdempotentCompletion(
 			zap.String("fingerprint", requestFingerprint),
 		)
 		return &finalization.FinalizationResult{
-			JobID:                 req.Result.JobID,
-			Status:                "SUCCEEDED",
-			CompletedAt:           time.Now().UTC(),
+			JobID:                  req.Result.JobID,
+			Status:                 "SUCCEEDED",
+			CompletedAt:            time.Now().UTC(),
 			OptionalArtifactReport: optionalReport,
 		}, nil
 	}
@@ -187,8 +187,8 @@ func computeCompletionFingerprint(resultData json.RawMessage, artifacts []finali
 	})
 
 	payload, _ := json.Marshal(struct {
-		Result     json.RawMessage            `json:"result"`
-		Artifacts  []artifactFingerprintEntry `json:"artifacts"`
+		Result    json.RawMessage            `json:"result"`
+		Artifacts []artifactFingerprintEntry `json:"artifacts"`
 	}{
 		Result:    resultData,
 		Artifacts: sorted,

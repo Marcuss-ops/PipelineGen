@@ -23,7 +23,8 @@
 //     → the remote file is a true orphan → ORPHANED.
 //
 // Once ORPHANED, a separate cleanup cycle (future FASE) can:
-//   ORPHANED → CLEANUP_PENDING → CLEANED (file deleted from remote).
+//
+//	ORPHANED → CLEANUP_PENDING → CLEANED (file deleted from remote).
 //
 // The reconciler is designed to run as a background ticker (e.g. every 5
 // minutes). It is safe to run concurrently with normal operations because:

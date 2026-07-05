@@ -19,6 +19,7 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
@@ -26,7 +27,6 @@ import (
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
-	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -67,9 +67,9 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 func registerJobs(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
 	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
 		Service:     root.Jobs.Service,
-		Stats:       root.Jobs.Service, // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
+		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
 		EnabledFunc: func() bool { return true }, // jobs is always on in production
-		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-13 wiring)
+		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-13 wiring)
 		Logger:      log,
 	})
 	if err != nil {

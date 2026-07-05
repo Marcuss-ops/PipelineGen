@@ -101,7 +101,7 @@ type AppDeps struct {
 	// QdrantProbe is the QDRANT-005 health probe used by /ready.
 	// nil-safe: when qdrant is disabled the probe is nil and the
 	// lifecycle readiness barrier auto-skips it.
-	QdrantProbe   interface{ Probe(context.Context) error }
+	QdrantProbe interface{ Probe(context.Context) error }
 	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
 	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
 	QdrantHealth  interface{}

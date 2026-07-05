@@ -55,7 +55,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 			"ok":         true,
 			"action":     "enqueued",
 			"job_id":     job.ID,
-			"status_url": "/api/jobs/"+job.ID+"/full",
+			"status_url": "/api/jobs/" + job.ID + "/full",
 			"clip_id":    clipID,
 			"method":     "async_enrich+index_via_jobs",
 			"message":    "enrichment + indexing dispatched to jobs system (worker will run)",
@@ -122,7 +122,7 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 			"ok":         true,
 			"action":     "batch_reindex_enqueued",
 			"job_id":     job.ID,
-			"status_url": "/api/jobs/"+job.ID+"/full",
+			"status_url": "/api/jobs/" + job.ID + "/full",
 			"message":    "Batch reindex job enqueued",
 		})
 		return

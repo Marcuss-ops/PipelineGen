@@ -93,7 +93,7 @@ type VoiceoverCleanupDriver interface {
 //   - schema_version    (literal VoiceoverCleanupSchemaVersion)
 //   - event_id          (RFC4122 UUID or producer-chosen opaque token)
 //   - voiceover_id      (canonical voiceovers.id — shared with
-//                        media_assets.id primary key)
+//     media_assets.id primary key)
 //
 // Conditional fields:
 //   - old_drive_file_id + new_drive_file_id: when both non-empty AND

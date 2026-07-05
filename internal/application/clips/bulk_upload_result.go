@@ -18,14 +18,14 @@
 //   - uploaded      — int64; count of successful .mp4 publishes
 //   - indexed       — int64; count of successful ClipIndexer.IndexClip
 //   - qdrant_pushed — int64; count of qdrant pushes (latent
-//                     unused — preserved for back-compat)
+//     unused — preserved for back-compat)
 //   - skipped       — int64; count of skipped clips (latent
-//                     unused — preserved for back-compat)
+//     unused — preserved for back-compat)
 //   - failed        — int64; count of failed clips
 //   - local_folder  — string; payload.LocalFolder (audit echo)
 //   - drive_folder  — string; payload.DriveFolderID (audit echo)
 //   - failures      — []string (≤50 entries); cap-limited
-//                     per-clip failure messages
+//     per-clip failure messages
 //
 // No new abstractions — top-level helper function.
 package clips

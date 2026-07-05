@@ -145,4 +145,3 @@ func registerClip(
 	}
 	return nil
 }
-

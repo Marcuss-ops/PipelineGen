@@ -255,8 +255,8 @@ func (a *driveAdminAdapter) ResolveFileInfo(ctx context.Context, fileID string) 
 		Size:        meta.Size,
 		Trashed:     meta.Trashed,
 	}, nil
-}	// ARCH-ALLOWLIST: noop-reconciler (forward-pointer: FASE 9 replacement with the real reconciler impl; intentional noop keeps /drive/reconcile + /drive/cleanup endpoints operationally reachable without surfacing a typed error per godlike/07 no-fake-availability)
-	// ── Reconciler (no-op placeholder) ────────────────────────────────────────────
+} // ARCH-ALLOWLIST: noop-reconciler (forward-pointer: FASE 9 replacement with the real reconciler impl; intentional noop keeps /drive/reconcile + /drive/cleanup endpoints operationally reachable without surfacing a typed error per godlike/07 no-fake-availability)
+// ── Reconciler (no-op placeholder) ────────────────────────────────────────────
 
 // noopReconciler satisfies systemapi.Reconciler with a zero-result response.
 // Previously this was backed by the now-removed drivecleanup.Service compatibility

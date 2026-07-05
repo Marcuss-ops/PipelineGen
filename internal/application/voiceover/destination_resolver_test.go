@@ -9,8 +9,8 @@
 //  2. group            → asset.Resolver call, Group required.
 //  3. auto / empty     → Group → FolderID → defaultFolderID.
 //  4. nil dest         → defaultFolderID (the inline-fallback
-//                        replacement that used to live in
-//                        `Service.Generate`).
+//     replacement that used to live in
+//     `Service.Generate`).
 //
 // `recordingResolver` (defined in `process_metadata_test.go`) is
 // reused as the asset.Resolver stub so the test body stays minimal.

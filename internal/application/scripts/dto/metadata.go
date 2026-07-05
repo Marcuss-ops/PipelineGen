@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 

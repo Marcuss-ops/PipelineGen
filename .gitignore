@@ -302,3 +302,6 @@ TODO[0-9]*.go
 # receives defensive coverage via /*.mp3 + /prima-frase-*.mp3 etc.).
 !tests/fixtures/**/*.mp3
 !internal/**/testdata/**/*.mp3
+
+# Local config backups (not source code)
+config.yaml.bak*

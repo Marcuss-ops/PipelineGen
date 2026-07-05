@@ -33,11 +33,11 @@ type Registry struct {
 func NewRegistry() *Registry {
 	r := &Registry{
 		strategies: map[string]Strategy{
-			"youtube":          youtubeStrategy,
-			"artlist":          artlistStrategy,
-			"voiceover":        voiceoverStrategy,
-			"image":            imageStrategy,
-			"generated_image":  generatedImageStrategy,
+			"youtube":         youtubeStrategy,
+			"artlist":         artlistStrategy,
+			"voiceover":       voiceoverStrategy,
+			"image":           imageStrategy,
+			"generated_image": generatedImageStrategy,
 		},
 	}
 	return r

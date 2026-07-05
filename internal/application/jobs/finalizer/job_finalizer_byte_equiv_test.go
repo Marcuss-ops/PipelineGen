@@ -5,25 +5,25 @@
 // writers must preserve across the mechanical godobject → 6-file
 // split. Each TestByteEquiv_* verifies one canonical scenario:
 //
-//   1. Happy path single required artifact → jobs.status=SUCCEEDED,
-//      1 job_completed event, 1 asset.index.requested outbox event,
-//      completion_fingerprint persisted in result_json.
-//   2. Multi-artifact (required + optional via OptionalDeclarations)
-//      → SUCCEEDED, 1 job_completed event, 1 optional_artifact_report
-//      event (FINALIZED), 1 asset.index.requested outbox event.
-//   3. Idempotent replay (same request) → 2nd call returns SUCCEEDED
-//      WITHOUT rewriting result_json or completed_at (no-rewrite
-//      godlike/07 invariant). Both result_json + completed_at from
-//      the first commit must be byte-stable into the second call.
-//   4. Conflict replay (different result data on already-SUCCEEDED)
-//      → 2nd call returns ErrCompletionConflict; jobs.status stays
-//      SUCCEEDED; result_json unchanged.
-//   5. Lease expired pre-validation (Lease.ExpiresAt in the past)
-//      → ErrLeaseExpired at validateRequest; jobs.status stays RUNNING
-//      (fence REJECTS BEFORE mutation — godlike/07 invariant).
-//   6. Stale attempt (request.Attempt != retry_count+1)
-//      → ErrStaleAttempt at selectJobForFinalization; jobs.status
-//      stays RUNNING.
+//  1. Happy path single required artifact → jobs.status=SUCCEEDED,
+//     1 job_completed event, 1 asset.index.requested outbox event,
+//     completion_fingerprint persisted in result_json.
+//  2. Multi-artifact (required + optional via OptionalDeclarations)
+//     → SUCCEEDED, 1 job_completed event, 1 optional_artifact_report
+//     event (FINALIZED), 1 asset.index.requested outbox event.
+//  3. Idempotent replay (same request) → 2nd call returns SUCCEEDED
+//     WITHOUT rewriting result_json or completed_at (no-rewrite
+//     godlike/07 invariant). Both result_json + completed_at from
+//     the first commit must be byte-stable into the second call.
+//  4. Conflict replay (different result data on already-SUCCEEDED)
+//     → 2nd call returns ErrCompletionConflict; jobs.status stays
+//     SUCCEEDED; result_json unchanged.
+//  5. Lease expired pre-validation (Lease.ExpiresAt in the past)
+//     → ErrLeaseExpired at validateRequest; jobs.status stays RUNNING
+//     (fence REJECTS BEFORE mutation — godlike/07 invariant).
+//  6. Stale attempt (request.Attempt != retry_count+1)
+//     → ErrStaleAttempt at selectJobForFinalization; jobs.status
+//     stays RUNNING.
 //
 // We test SEMANTIC invariants (error class, status flip, fingerprint
 // persistence, no-rewrite idempotent replay) rather than the
@@ -155,14 +155,14 @@ func insertRunningJobIdempotent(t *testing.T, db *sql.DB, jobID, workerID, lease
 
 func makeRequiredArtifact(artifactID, sha string) finalization.PublishedArtifact {
 	return finalization.PublishedArtifact{
-		ArtifactID:    artifactID,
-		Kind:          finalization.KindImage,
-		Filename:      "frame.png",
-		MIMEType:      "image/png",
-		SizeBytes:     1234,
-		SHA256:        sha,
-		SourceVersion: 1,
-		Requirement:   finalization.ArtifactRequirementRequired,
+		ArtifactID:     artifactID,
+		Kind:           finalization.KindImage,
+		Filename:       "frame.png",
+		MIMEType:       "image/png",
+		SizeBytes:      1234,
+		SHA256:         sha,
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: "ik-" + sha,
 		Location: finalization.AssetLocation{
 			Provider: "drive",
@@ -317,9 +317,9 @@ func TestByteEquiv_MultiArtifact_RequiredPlusOptional(t *testing.T) {
 		},
 		OptionalDeclarations: []finalization.ArtifactDeclaration{
 			{
-				ArtifactID: "art-opt",
-				Kind:       finalization.KindImage,
-				Filename:   "hint-opt.png",  // hint; canonical from PublishedArtifact wins
+				ArtifactID:  "art-opt",
+				Kind:        finalization.KindImage,
+				Filename:    "hint-opt.png", // hint; canonical from PublishedArtifact wins
 				Requirement: finalization.ArtifactRequirementOptional,
 				Status:      finalization.OptionalArtifactStatusFinalized,
 			},
@@ -554,7 +554,7 @@ func TestByteEquiv_StaleAttempt(t *testing.T) {
 	_, err := f.CompleteWithArtifacts(context.Background(), finalization.FinalizationRequest{
 		Lease: finalization.Lease{
 			LeaseID: leaseID, JobID: jobID, WorkerID: workerID,
-			Attempt: 1, // stale: expected 3 (= retry_count + 1)
+			Attempt:   1, // stale: expected 3 (= retry_count + 1)
 			ExpiresAt: expiry,
 		},
 		Result: finalization.ResultManifest{

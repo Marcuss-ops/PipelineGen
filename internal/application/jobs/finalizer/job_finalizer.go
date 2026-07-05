@@ -107,6 +107,7 @@ var _ finalization.JobFinalizer = (*Finalizer)(nil)
 //  8. Write outbox events (artifact_writer.writeOutboxEvents).
 //  9. Write result manifest + mark job SUCCEEDED + persist the
 //     optional_artifact_report audit sidecar (job_completion_writer.markSucceeded).
+//
 // 10. Commit.
 func (f *Finalizer) CompleteWithArtifacts(
 	ctx context.Context,
@@ -193,10 +194,10 @@ func (f *Finalizer) CompleteWithArtifacts(
 	)
 
 	return &finalization.FinalizationResult{
-		JobID:                 req.Result.JobID,
-		Status:                "SUCCEEDED",
-		CompletedAt:           now,
-		ArtifactRefs:          refs,
+		JobID:                  req.Result.JobID,
+		Status:                 "SUCCEEDED",
+		CompletedAt:            now,
+		ArtifactRefs:           refs,
 		OptionalArtifactReport: optionalReport,
 	}, nil
 }

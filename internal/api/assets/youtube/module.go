@@ -26,9 +26,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -41,11 +41,11 @@ import (
 //   - Jobs            jobservice.Service          (used by Extract enqueue path)
 //   - ToolChecker     appassets.ToolChecker       (used by Diagnostics; nil-safe inside NewYouTubeClipHandler)
 //   - EnabledFunc     func() bool                 (composition-root wires cfg.Features.YouTubeEnabled; keeps the
-//                                                   api package free of platform/config imports)
+//     api package free of platform/config imports)
 //
 // Optional (forward through nil; handler keeps its nil-tolerance):
 //   - ClipStorePort   ytports.ClipStorePort       (downstream uses — kept from the pre-Step-4 wiring; nil-tolerant
-//                                                   because newClipStoreAdapter(nil) returns a nil interface)
+//     because newClipStoreAdapter(nil) returns a nil interface)
 //   - Idempotency     gin.HandlerFunc             (wraps POST /clips/process; nil ⇒ no-op default handler)
 //   - SearchAggregator *providers.SearchAggregator (routes SearchAdvanced + Stats; nil ⇒ 503 from those two routes)
 //   - ModuleOpts      []api.RouteModuleOption     (typically empty for clips; bundle-specific decorators ONLY)
@@ -185,7 +185,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.Service,
 		log,
 		deps.Jobs,
-		deps.ClipStorePort,    // nil-tolerant — downstream routes that need it short-circuit
+		deps.ClipStorePort, // nil-tolerant — downstream routes that need it short-circuit
 		deps.ToolChecker,
 		deps.Idempotency,      // nil ⇒ no-op default inside NewYouTubeClipHandler
 		deps.SearchAggregator, // nil ⇒ SearchAdvanced + Stats return 503

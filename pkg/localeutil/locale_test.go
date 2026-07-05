@@ -17,120 +17,120 @@ import (
 
 func TestParse_TableDriven(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
+		name        string
+		input       string
 		wantCompact string
 		wantBCP47   string
 		wantErr     bool
 	}{
 		// ── Happy path ──
 		{
-			name: "BCP-47 canonical (hyphen)",
-			input: "en-US",
+			name:        "BCP-47 canonical (hyphen)",
+			input:       "en-US",
 			wantCompact: "enUS",
-			wantBCP47: "en-US",
-			wantErr: false,
+			wantBCP47:   "en-US",
+			wantErr:     false,
 		},
 		{
-			name: "Underscore separator (legacy/Java-style)",
-			input: "en_US",
+			name:        "Underscore separator (legacy/Java-style)",
+			input:       "en_US",
 			wantCompact: "enUS",
-			wantBCP47: "en-US",
-			wantErr: false,
+			wantBCP47:   "en-US",
+			wantErr:     false,
 		},
 		{
-			name: "Mixed-case input (EN-us)",
-			input: "EN-us",
+			name:        "Mixed-case input (EN-us)",
+			input:       "EN-us",
 			wantCompact: "enUS",
-			wantBCP47: "en-US",
-			wantErr: false,
+			wantBCP47:   "en-US",
+			wantErr:     false,
 		},
 		{
-			name: "Different language+region (pt-BR)",
-			input: "pt-BR",
+			name:        "Different language+region (pt-BR)",
+			input:       "pt-BR",
 			wantCompact: "ptBR",
-			wantBCP47: "pt-BR",
-			wantErr: false,
+			wantBCP47:   "pt-BR",
+			wantErr:     false,
 		},
 		{
-			name: "Language without region (en)",
-			input: "en",
+			name:        "Language without region (en)",
+			input:       "en",
 			wantCompact: "en",
-			wantBCP47: "en",
-			wantErr: false,
+			wantBCP47:   "en",
+			wantErr:     false,
 		},
 		{
-			name: "Language without region (uppercase EN)",
-			input: "EN",
+			name:        "Language without region (uppercase EN)",
+			input:       "EN",
 			wantCompact: "en",
-			wantBCP47: "en",
-			wantErr: false,
+			wantBCP47:   "en",
+			wantErr:     false,
 		},
 
 		// ── Rejected: wrong length ──
 		{
-			name: "3-letter ISO 639-2 code",
-			input: "eng",
+			name:        "3-letter ISO 639-2 code",
+			input:       "eng",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 		{
-			name: "1-letter language",
-			input: "e-US",
+			name:        "1-letter language",
+			input:       "e-US",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 
 		// ── Rejected: 3-letter region ──
 		{
-			name: "3-letter region",
-			input: "en-USA",
+			name:        "3-letter region",
+			input:       "en-USA",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 
 		// ── Rejected: extra suffixes / CLDR suffixes ──
 		{
-			name: "ANSI/CLDR suffix (.UTF-8)",
-			input: "en_US.UTF-8",
+			name:        "ANSI/CLDR suffix (.UTF-8)",
+			input:       "en_US.UTF-8",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 
 		// ── Rejected: 3-part locales ──
 		{
-			name: "3-part locale (lang-region-script)",
-			input: "en-US-CA",
+			name:        "3-part locale (lang-region-script)",
+			input:       "en-US-CA",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 		{
-			name: "Script subtag (zh-Hans)",
-			input: "zh-Hans",
+			name:        "Script subtag (zh-Hans)",
+			input:       "zh-Hans",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 
 		// ── Rejected: empty / digits ──
 		{
-			name: "Empty string",
-			input: "",
+			name:        "Empty string",
+			input:       "",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 		{
-			name: "Digits only",
-			input: "1234",
+			name:        "Digits only",
+			input:       "1234",
 			wantCompact: "",
-			wantBCP47: "",
-			wantErr: true,
+			wantBCP47:   "",
+			wantErr:     true,
 		},
 	}
 

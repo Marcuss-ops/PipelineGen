@@ -53,4 +53,3 @@ func (h *Handler) RegisterInternalMediaRoutes(r *gin.RouterGroup) {
 	mediaGroup := r.Group("/media")
 	mediaGroup.POST("/sync", h.InternalSyncDriveFolder)
 }
-

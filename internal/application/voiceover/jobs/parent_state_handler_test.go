@@ -39,8 +39,8 @@ import (
 // simulate a partial fan-out (e.g. failOnCall=3 with 3 items → first
 // 2 enqueue succeed, 3rd fails).
 type stubEnqueuer struct {
-	returnJob *job.Job
-	returnErr error
+	returnJob  *job.Job
+	returnErr  error
 	failOnCall int // 0 = never fail; N = fail on N-th call (1-indexed)
 	callCount  int
 	lastReq    *job.EnqueueRequest
@@ -258,8 +258,8 @@ func TestGenerateJobHandler_MixedTextsEnqueueDistinctActiveKeys(t *testing.T) {
 //     broker level, even though the result map carries partial_success)
 func TestGenerateJobHandler_PartialFanoutExpectedChildren(t *testing.T) {
 	stub := &stubEnqueuer{
-		returnJob: &job.Job{ID: "child-test", Type: job.TypeVoiceoverGenerateItem},
-		returnErr: errors.New("broker enqueue rejected: queue full"),
+		returnJob:  &job.Job{ID: "child-test", Type: job.TypeVoiceoverGenerateItem},
+		returnErr:  errors.New("broker enqueue rejected: queue full"),
 		failOnCall: 3, // fail ONLY on 3rd call (Portuguese), not the first 2
 	}
 	uc := NewFanoutVoiceoversUseCase(FanoutDeps{Enqueuer: stub, Logger: zap.NewNop()})

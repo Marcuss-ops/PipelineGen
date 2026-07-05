@@ -33,15 +33,15 @@ import (
 // broker compatibility; ToResultMap() bridges the typed struct to
 // the canonical wire representation.
 type StockJobResult struct {
-	Manifest           *jobdomain.ArtifactManifest `json:"__artifact_manifest"`
-	FinalStatus        string                      `json:"final_status"`
-	TotalClips         int                         `json:"total_clips"`
-	TotalChunks        int                         `json:"total_chunks"`
-	Chunks             []ChunkResult               `json:"chunks"`
-	MetadataLink       string                      `json:"metadata_link"`
-	MetadataFileID     string                      `json:"metadata_file_id"`
-	FinalizationStatus string                      `json:"__finalization_status,omitempty"`
-	FinalizationCompletedAt time.Time               `json:"__finalization_completed_at,omitempty"`
+	Manifest                *jobdomain.ArtifactManifest `json:"__artifact_manifest"`
+	FinalStatus             string                      `json:"final_status"`
+	TotalClips              int                         `json:"total_clips"`
+	TotalChunks             int                         `json:"total_chunks"`
+	Chunks                  []ChunkResult               `json:"chunks"`
+	MetadataLink            string                      `json:"metadata_link"`
+	MetadataFileID          string                      `json:"metadata_file_id"`
+	FinalizationStatus      string                      `json:"__finalization_status,omitempty"`
+	FinalizationCompletedAt time.Time                   `json:"__finalization_completed_at,omitempty"`
 }
 
 // ToResultMap converts the typed StockJobResult to the canonical

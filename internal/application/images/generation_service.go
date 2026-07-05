@@ -5,22 +5,22 @@
 // decomposed per godlike/06 one-owner-per-fact into:
 //
 //   - generation_request.go   (pure normalization: pickImagePrompt
-//                              + GenerateImageRequest typed surface)
+//   - GenerateImageRequest typed surface)
 //   - provider_dispatch.go    (registry-only dispatch; KILL LIST a:
-//                              ErrNoGenerationProviderWired on nil registry;
-//                              NO legacy imageGen.Generate fallback)
+//     ErrNoGenerationProviderWired on nil registry;
+//     NO legacy imageGen.Generate fallback)
 //   - image_manifest.go       (typed ArtifactManifest builder:
-//                              buildImageManifest + RunManifest envelope)
+//     buildImageManifest + RunManifest envelope)
 //   - generation_usecase.go   (deterministic 5-step pipeline: style →
-//                              compose → dispatch → manifest; persistence-
-//                              agnostic)
+//     compose → dispatch → manifest; persistence-
+//     agnostic)
 //   - sync_generation.go      (sync adapter: calls usecase → drops
-//                              manifest → calls storage.IngestImage SOLE
-//                              sync ingest path per KILL LIST b)
+//     manifest → calls storage.IngestImage SOLE
+//     sync ingest path per KILL LIST b)
 //   - generation_job.go       (async adapter: payload → usecase →
-//                              manifest sidecar to runner finalizer SOLE
-//                              async persistence path per KILL LIST b;
-//                              register + handles dispatcher binding)
+//     manifest sidecar to runner finalizer SOLE
+//     async persistence path per KILL LIST b;
+//     register + handles dispatcher binding)
 //
 // This file owns:
 //   - The GenerationService struct (registry + styles + log + storage).

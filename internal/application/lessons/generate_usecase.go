@@ -131,7 +131,7 @@ func (r GenerateLessonRequest) payload() map[string]any {
 
 // GenerateLessonResponse reuses the shared generation envelope so the
 // lessons API matches the other text-generation endpoints.
-type GenerateLessonResponse = apiutil.Response[GenerateLessonResult] 
+type GenerateLessonResponse = apiutil.Response[GenerateLessonResult]
 
 // Sentinels returned by the use case. The handler's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
@@ -264,8 +264,9 @@ func (uc *GenerateLessonUseCase) enqueueLessonJob(ctx context.Context, req Gener
 	status := ""
 	if enqueued != nil {
 		jobID = enqueued.ID
-		status = string(enqueued.Status)	}
-	return apiutil.Async[GenerateLessonResult]("lesson", jobID, status, jobType), nil  
+		status = string(enqueued.Status)
+	}
+	return apiutil.Async[GenerateLessonResult]("lesson", jobID, status, jobType), nil
 }
 
 // GenerateLessonErrMapper maps use-case errors to HTTP responses.

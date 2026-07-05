@@ -35,9 +35,9 @@ import (
 
 // Wave 19 / P1-9 typed-port SourceRepo:
 //
-//   Get(ctx, id string)                  — single asset by primary id
-//   GetByDriveFileID(ctx, driveFileID string) — single asset by Drive file id
-//   Delete(ctx, id string)               — physical row delete (NOT soft-delete)
+//	Get(ctx, id string)                  — single asset by primary id
+//	GetByDriveFileID(ctx, driveFileID string) — single asset by Drive file id
+//	Delete(ctx, id string)               — physical row delete (NOT soft-delete)
 //
 // Delete semantics (important for cross-source callers): the typed
 // port's Delete methods PHYSICALLY remove the underlying row. The
@@ -240,12 +240,12 @@ type SourceCatalog struct {
 // NewSourceCatalog wires the canonical source repositories into the
 // canonical-keyed map. Canonical keys:
 //
-//   "artlist"        -> clipsSourceAdapter(artlist)
-//   "clips"          -> clipsSourceAdapter(clips)
-//   "stock"          -> clipsSourceAdapter(stock)
-//   "voiceover"      -> voiceoverSourceAdapter(voiceover)
-//   "images"         -> imagesSourceAdapter(images)
-//   "sound_effect"   -> clipsSourceAdapter(clips)   <- alias-of-clips
+//	"artlist"        -> clipsSourceAdapter(artlist)
+//	"clips"          -> clipsSourceAdapter(clips)
+//	"stock"          -> clipsSourceAdapter(stock)
+//	"voiceover"      -> voiceoverSourceAdapter(voiceover)
+//	"images"         -> imagesSourceAdapter(images)
+//	"sound_effect"   -> clipsSourceAdapter(clips)   <- alias-of-clips
 //
 // Nil-tolerant: a panel of nils is supported; the adapter covers nil
 // fields with an explicit guard so test fixtures can wire a partial

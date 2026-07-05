@@ -4,11 +4,11 @@
 // and the async job worker path. Two consumers drive the same fanout:
 //
 //   - internal/application/scripts/adapters/processor_voiceover.go
-//       (PostProcess path; ProcessorPolicy = BestEffort — failures
-//        collect as warnings, not errors).
+//     (PostProcess path; ProcessorPolicy = BestEffort — failures
+//     collect as warnings, not errors).
 //   - internal/application/scripts/jobs/job_helpers.go
-//       (async job worker path; the same fanout feeds the canonical
-//        outbox event payload shape).
+//     (async job worker path; the same fanout feeds the canonical
+//     outbox event payload shape).
 //
 // Why pkg/concurrent.ParallelMap (over .Map or .WithContext + SafeGo):
 //

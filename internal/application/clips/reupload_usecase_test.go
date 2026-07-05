@@ -50,9 +50,9 @@ var (
 // ── Port stubs ─────────────────────────────────────────────────────────
 
 type fakeReuploadPublisher struct {
-	publishResult   *delivery.PublishResult
-	publishErr      error
-	resolveFolderID string
+	publishResult    *delivery.PublishResult
+	publishErr       error
+	resolveFolderID  string
 	resolveFolderErr error
 
 	lastPublishRequest delivery.PublishRequest

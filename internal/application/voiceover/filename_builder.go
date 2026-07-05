@@ -51,9 +51,9 @@ func NewDefaultFilenameBuilder() FilenameBuilder {
 //   - text:     source text (used for slug derivation).
 //   - language: BCP-47 lowercase code (verbatim into {lang}).
 //   - textHash: stable per-batch SHA-256 first-16-hex prefix (used
-//               via {hash} first 8 chars); may be empty.
+//     via {hash} first 8 chars); may be empty.
 //   - template: optional FanoutVoiceoverUseCase.FilenameTemplate
-//               style template. Empty → default.
+//     style template. Empty → default.
 func (b *DefaultFilenameBuilder) BuildFilename(text, language, textHash, template string) string {
 	if template == "" {
 		template = "{slug}_{lang}.mp3"

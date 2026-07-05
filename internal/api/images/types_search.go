@@ -15,25 +15,25 @@
 //
 // Field semantics:
 //   - AssetID: canonical identifier for the matching image asset.
-//              Today this maps to asset.ImageAsset.Hash (the
-//              SHA256 of the file content). Future revisions may
-//              use a UUID; the docs are pinned to Hash for now.
+//     Today this maps to asset.ImageAsset.Hash (the
+//     SHA256 of the file content). Future revisions may
+//     use a UUID; the docs are pinned to Hash for now.
 //   - Origin:  asset.ImageOrigin canonical constant
-//              ("retrieved" | "generated" | "uploaded").
+//     ("retrieved" | "generated" | "uploaded").
 //   - Provider: asset.ImageProvider constant
-//               ("wikipedia" | "duckduckgo" | "google-slides" |
-//                "flux" | "nvidia" | ...).
+//     ("wikipedia" | "duckduckgo" | "google-slides" |
+//     "flux" | "nvidia" | ...).
 //   - PreviewURL: external or relative URL for inline rendering.
-//                 Retrieved images: source_image_url or PathRel.
-//                 Generated images: source URL (GoogleSlides output)
-//                 or local PathRel.
+//     Retrieved images: source_image_url or PathRel.
+//     Generated images: source URL (GoogleSlides output)
+//     or local PathRel.
 //   - StyleID: registered style identifier (cinematic, anime, ...).
-//              Empty when the asset was retrieved (no style context).
-//              Generated assets always carry a style.
+//     Empty when the asset was retrieved (no style context).
+//     Generated assets always carry a style.
 //   - License: license tag carried from the source (Wikipedia
-//              returns "CC-BY-SA-4.0"; generated returns empty).
+//     returns "CC-BY-SA-4.0"; generated returns empty).
 //   - Author: human-readable attribution (Wikipedia returns
-//             "Wikipedia Contributors"; generated returns empty).
+//     "Wikipedia Contributors"; generated returns empty).
 package images
 
 // ImageSearchResult is the unified response DTO for territory-
@@ -60,13 +60,13 @@ type ImageSearchResults struct {
 // StyleInfo is the unified DTO for GET /api/images/generated/styles.
 // Mirrors generation.GenerationStyle fields the admin UI needs.
 type StyleInfo struct {
-	StyleID         string `json:"style_id"`
-	Name            string `json:"name"`
-	Version         int    `json:"version"`
-	PromptSuffix    string `json:"prompt_suffix,omitempty"`
-	NegativePrompt  string `json:"negative_prompt,omitempty"`
-	DestinationKey  string `json:"destination_key,omitempty"`
-	Enabled         bool   `json:"enabled"`
+	StyleID        string `json:"style_id"`
+	Name           string `json:"name"`
+	Version        int    `json:"version"`
+	PromptSuffix   string `json:"prompt_suffix,omitempty"`
+	NegativePrompt string `json:"negative_prompt,omitempty"`
+	DestinationKey string `json:"destination_key,omitempty"`
+	Enabled        bool   `json:"enabled"`
 }
 
 // StyleInfo canonical shape (surface-3, July 2026, mirror of

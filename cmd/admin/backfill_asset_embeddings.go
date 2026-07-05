@@ -210,7 +210,7 @@ func runBackfillAssetEmbeddings(args []string) error {
 
 func parseBackfillEmbeddingsArgs(args []string) (backfillEmbeddingsDeps, error) {
 	deps := backfillEmbeddingsDeps{
-		Progress:    50,  // log + checkpoint flush every 50 assets
+		Progress:    50,   // log + checkpoint flush every 50 assets
 		OnlyMissing: true, // default: skip already-complete assets
 	}
 	for _, a := range args {

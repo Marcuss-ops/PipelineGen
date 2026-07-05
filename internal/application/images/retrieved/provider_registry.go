@@ -466,9 +466,10 @@ func (p *DuckDuckGoProvider) ID() string { return string(p.Name()) }
 func (p *DriveImageProvider) ID() string { return string(p.Name()) }
 
 // Resolve implements the user-spec'd Registry.Resolve:
-//   empty input                          -> success + empty result
-//   all ids found                        -> success + ordered providers
-//   ANY id missing (or un-configured)   -> (nil, ErrProviderNotFound wrapping missing ids)
+//
+//	empty input                          -> success + empty result
+//	all ids found                        -> success + ordered providers
+//	ANY id missing (or un-configured)   -> (nil, ErrProviderNotFound wrapping missing ids)
 //
 // Fail-closed per godlike/07 §"No fake availability": callers MUST NOT
 // silently partial-resolve. Operators can read the wrapped missing-id

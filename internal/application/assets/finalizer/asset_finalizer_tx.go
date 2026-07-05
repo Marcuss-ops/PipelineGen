@@ -293,4 +293,3 @@ func kindToMediaType(k finalization.ArtifactKind) string {
 		return "other"
 	}
 }
-

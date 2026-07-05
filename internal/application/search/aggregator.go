@@ -131,6 +131,7 @@ func (a *Aggregator) Backends() *BackendRegistry {
 //   - Partial (some backends failed, some succeeded) →
 //     Result.Partial = true, ProviderErrors populated.
 //   - Cursor encoding failure → ErrCursorEncoding.
+//
 // Single-backend errors are demoted to Result.ProviderErrors +
 // Result.Partial (unchanged from PR 9).
 func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {

@@ -76,13 +76,13 @@ type FanoutDeps struct {
 // parent job's result back into a typed FanoutResult without an
 // intermediate struct.
 type FanoutResult struct {
-	OK                 bool     `json:"ok"`
-	ParentJobID        string   `json:"parent_job_id"`
-	RequestID          string   `json:"request_id"`
-	TotalOutputs       int      `json:"total_outputs"`
-	EnqueuedCount      int      `json:"enqueued_count"`
-	FailedEnqueueCount int      `json:"failed_enqueue_count"`
-	ChildJobIDs        []string    `json:"child_job_ids"`
+	OK                 bool                 `json:"ok"`
+	ParentJobID        string               `json:"parent_job_id"`
+	RequestID          string               `json:"request_id"`
+	TotalOutputs       int                  `json:"total_outputs"`
+	EnqueuedCount      int                  `json:"enqueued_count"`
+	FailedEnqueueCount int                  `json:"failed_enqueue_count"`
+	ChildJobIDs        []string             `json:"child_job_ids"`
 	PerLanguage        []voiceover.Language `json:"per_language"`
 }
 
@@ -170,7 +170,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		RequestID:    requestID,
 		TotalOutputs: total,
 		ChildJobIDs:  make([]string, 0, total),
-		PerLanguage: make([]voiceover.Language, 0, total),
+		PerLanguage:  make([]voiceover.Language, 0, total),
 	}
 
 	for idx, itemSpec := range cmd.Items {

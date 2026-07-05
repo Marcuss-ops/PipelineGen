@@ -146,7 +146,7 @@ func (r ProcessBookRequest) payload() map[string]any {
 
 // ProcessBookResponse reuses the shared generation envelope so books
 // matches the other text-generation endpoints.
-type ProcessBookResponse = apiutil.Response[ProcessBookResult] 
+type ProcessBookResponse = apiutil.Response[ProcessBookResult]
 
 // Sentinels returned by the use case. The handler's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
@@ -304,8 +304,9 @@ func (uc *ProcessBookUseCase) enqueueBookJob(ctx context.Context, req ProcessBoo
 	status := ""
 	if enqueued != nil {
 		jobID = enqueued.ID
-		status = string(enqueued.Status)	}
-	return apiutil.Async[ProcessBookResult]("book", jobID, status, jobType), nil  
+		status = string(enqueued.Status)
+	}
+	return apiutil.Async[ProcessBookResult]("book", jobID, status, jobType), nil
 }
 
 // ProcessBookErrMapper maps use-case errors to HTTP status codes. It

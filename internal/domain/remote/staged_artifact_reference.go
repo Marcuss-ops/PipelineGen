@@ -77,15 +77,15 @@ var ErrStagedArtifactReferenceInvalidDestination = errors.New(
 // delivery.DestinationKey enum is the CANONICAL source of these values;
 // this list is the PACKAGE-LOCAL projection used for wire validation.
 var CanonicalDestinationKeys = map[string]bool{
-	"youtube_clip":  true,
-	"artlist":       true,
-	"stock":         true,
-	"image":         true,
-	"voiceover":     true,
-	"book":          true,
-	"script":        true,
-	"sound_effect":  true,
-	"document":      true,
+	"youtube_clip": true,
+	"artlist":      true,
+	"stock":        true,
+	"image":        true,
+	"voiceover":    true,
+	"book":         true,
+	"script":       true,
+	"sound_effect": true,
+	"document":     true,
 }
 
 // StagedArtifactReference is the canonical 3-field wire-shape for a
@@ -96,6 +96,7 @@ var CanonicalDestinationKeys = map[string]bool{
 // Mandatory fields:
 //   - ArtifactID: canonical id (mirrors media_assets.id)
 //   - Destination: 1 of the canonical 9-key directory values
+//
 // Optional (but recommended for fast-path):
 //   - SHA256: pre-computed hash hint for the prepare-pipeline fast-path
 //     (the prepare pipeline recomputes on-disk anyway as a fail-closed gate)
@@ -138,6 +139,7 @@ type StagedArtifactReference struct {
 // godlike/07 typed-error contract:
 //   - ErrStagedArtifactReferenceMissingFields for any missing mandatory field.
 //   - ErrStagedArtifactReferenceInvalidDestination for an out-of-directory key.
+//
 // Multiple failures are aggregated into a single diagnostic message
 // (preserving the field-name list for operator diagnosis) but the
 // wrapping is a SINGLE sentinel (errors.Is probes one sentinel at a

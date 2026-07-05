@@ -78,13 +78,13 @@ type AssetResolver interface {
 //
 //   - EnsureDir  — idempotent mkdir -p with the canonical 0o755 perms.
 //   - WriteJSON  — per-asset sidecar (assetID + ".json"), atomic via
-//                  .tmp + os.Rename inside the same directory
-//                  (POSIX-atomic on linux/macos).
+//     .tmp + os.Rename inside the same directory
+//     (POSIX-atomic on linux/macos).
 //   - WriteJSONL — combine file (jobID + ".jsonl"), one encoded
-//                  object per call via json.Encoder.
+//     object per call via json.Encoder.
 //   - WriteCSV   — combine file (jobID + ".csv") with the canonical
-//                  header [asset_id, exported_at, includes| sections_json]
-//                  + caller-supplied rows.
+//     header [asset_id, exported_at, includes| sections_json]
+//   - caller-supplied rows.
 //
 // The 3 write methods are split even though they could share a single
 // AtomicWrite primitive — keeping them distinct ensures future

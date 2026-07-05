@@ -23,12 +23,12 @@ var _ providers.FetchProvider = (*stock.Adapter)(nil)
 // *stockpipeline.Service (which carries a heavy Drive+Jobs+AssetIndex
 // dependency chain).
 type fakeRunner struct {
-	lastInput  *stockpipeline.RunInput
-	result     *stockpipeline.PipelineResult
-	err        error
-	stagedURL  string
-	staged     *stockpipeline.StagedSource
-	stageErr   error
+	lastInput *stockpipeline.RunInput
+	result    *stockpipeline.PipelineResult
+	err       error
+	stagedURL string
+	staged    *stockpipeline.StagedSource
+	stageErr  error
 }
 
 func (f *fakeRunner) Run(_ context.Context, in *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error) {

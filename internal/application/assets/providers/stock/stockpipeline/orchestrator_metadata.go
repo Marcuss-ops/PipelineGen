@@ -152,27 +152,27 @@ func buildChunkedStockManifest(workflowID, jobID, fp string, chunks []ChunkState
 	}
 	if metadata.LocalPath != "" {
 		manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
-			ID:       MetadataArtifactID(fp),
-			Kind:     job.ArtifactKindMetadata,
-			Filename: "metadata.json",
-			MIMEType: "application/json",
-			Path:     metadata.LocalPath,
-			SHA256:   metadata.SHA256,
+			ID:        MetadataArtifactID(fp),
+			Kind:      job.ArtifactKindMetadata,
+			Filename:  "metadata.json",
+			MIMEType:  "application/json",
+			Path:      metadata.LocalPath,
+			SHA256:    metadata.SHA256,
 			SizeBytes: metadata.SizeBytes,
-			Required: true,
+			Required:  true,
 		})
 	}
 	if len(chunks) > 0 {
 		for _, c := range chunks {
 			manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
-				ID:       c.ArtifactID,
-				Kind:     job.ArtifactKindClipBindings, // canonical video variant
-				Filename: c.Filename,
-				MIMEType: "video/mp4",
-				Path:     c.LocalPath,
-				SHA256:   c.SHA256,
+				ID:        c.ArtifactID,
+				Kind:      job.ArtifactKindClipBindings, // canonical video variant
+				Filename:  c.Filename,
+				MIMEType:  "video/mp4",
+				Path:      c.LocalPath,
+				SHA256:    c.SHA256,
 				SizeBytes: c.SizeBytes,
-				Required: true,
+				Required:  true,
 			})
 		}
 	}

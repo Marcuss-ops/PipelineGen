@@ -109,8 +109,8 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 		return parentFolderID, fmt.Errorf("YouTubePublisherDriveAdapter.GetOrCreateFolder: publisher not wired")
 	}
 	folderID, err := a.publisher.ResolveFolder(ctx, delivery.PublishRequest{
-		Destination:       delivery.DestinationYouTubeClip,
-		Group:             channelName,
+		Destination:        delivery.DestinationYouTubeClip,
+		Group:              channelName,
 		RootFolderOverride: parentFolderID,
 	})
 	if err != nil {
@@ -124,11 +124,11 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: publisher not wired")
 	}
 	result, err := a.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:       delivery.DestinationYouTubeClip,
-		LocalPath:         localPath,
-		Filename:          filename,
+		Destination:        delivery.DestinationYouTubeClip,
+		LocalPath:          localPath,
+		Filename:           filename,
 		RootFolderOverride: folderID,
-		ConflictPolicy:    delivery.ConflictSkipByHash,
+		ConflictPolicy:     delivery.ConflictSkipByHash,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)

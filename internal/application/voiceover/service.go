@@ -55,9 +55,9 @@ type Service struct {
 	// concrete: newUseCaseTTSAdapter (in
 	// internal/app/adapters_voiceover_use_case.go) wrapping
 	// *audioasset.Processor constructed in the composition root.
-	ttsProvider       TTSProvider
-	outputDir         string
-	log               *zap.Logger
+	ttsProvider TTSProvider
+	outputDir   string
+	log         *zap.Logger
 	// (BLOC5.3 processItemUseCase field REMOVED June 2026 cutover:
 	// the canonical per-item voiceover pipeline was never committed
 	// in this branch — voiceover/promo.go now routes via legacy
@@ -165,18 +165,18 @@ type VoiceoverIntegrationDeps struct {
 // NewService constructs a voiceover.Service from grouped dependency bundles.
 func NewService(deps VoiceoverDeps) *Service {
 	return &Service{
-		cfg:               deps.Core.Cfg,
-		voiceoverRepo:     deps.Persistence.Repo,
-		ttsProvider:       deps.Generation.TTSProvider,
-		outputDir:         deps.Core.OutputDir,
-		log:               deps.Core.Log,
-		driveUploader:     deps.Integration.DriveUploader,
-		assetDestResolver: deps.Integration.AssetDestResolver,
-		lifecycleService:  deps.Integration.LifecycleService,
-		semanticTagger:    deps.Generation.SemanticTagger,
-		outboxEnqueuer:    deps.Integration.OutboxEnqueuer,
-		translator:        deps.Integration.Translator,
-		finalizer:         deps.Integration.Finalizer,
+		cfg:                deps.Core.Cfg,
+		voiceoverRepo:      deps.Persistence.Repo,
+		ttsProvider:        deps.Generation.TTSProvider,
+		outputDir:          deps.Core.OutputDir,
+		log:                deps.Core.Log,
+		driveUploader:      deps.Integration.DriveUploader,
+		assetDestResolver:  deps.Integration.AssetDestResolver,
+		lifecycleService:   deps.Integration.LifecycleService,
+		semanticTagger:     deps.Generation.SemanticTagger,
+		outboxEnqueuer:     deps.Integration.OutboxEnqueuer,
+		translator:         deps.Integration.Translator,
+		finalizer:          deps.Integration.Finalizer,
 		postCommitVerifier: deps.Integration.PostCommitVerifier,
 	}
 }
@@ -194,7 +194,7 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
 	req := &BatchRequest{
 		Text:             text,
-		Languages: []Language{Language(language)},
+		Languages:        []Language{Language(language)},
 		FilenameTemplate: filename,
 		RemoveSilence:    ptrutil.Bool(false),
 		Strategy:         "replace",

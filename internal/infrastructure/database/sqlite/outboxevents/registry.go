@@ -26,7 +26,7 @@ const (
 	// Naming follows the established asset.index.* family so a single
 	// substring search finds the producer + consumer + tests on the
 	// same grep pass.
-	EventAssetIndexRestoreRequested   = "asset.index.restore_requested"
+	EventAssetIndexRestoreRequested = "asset.index.restore_requested"
 
 	// EventAssetDriveDeleteRequested (Blocco 3.1, June 2026) — first
 	// hop of the deletion state machine

@@ -13,7 +13,7 @@
 // This file is the first half of the EXPAND-phase surface. The
 // companion file ollama_translator.go in this same directory:
 //
-//   * declares the canonical concrete that implements ALL FOUR
+//   - declares the canonical concrete that implements ALL FOUR
 //     interfaces (TranslationPort + the 3 legacy), so the
 //     composition root can swap a single OllamaTranslator in for
 //     the legacy two-concrete shape.

@@ -3,15 +3,16 @@
 //
 // godlike/06 SSOT: canonical owner of the SYNCHRONOUS path for image
 // generation. The sync adapter:
-//   (1) Calls the usecase via RunUsage (NO legacy imageGen.Generate).
-//   (2) Drops the typed *job.ArtifactManifest sidecar from RunOutput
-//       (manifest is for the async finalizer path; sync ingestion is
-//       direct).
-//   (3) Calls storage.IngestImage directly to persist the on-disk
-//       artifact — sync paths are the SOLE consumer of IngestImage
-//       per PR-GODOBJ-3 KILL LIST b. The async job NEVER calls
-//       IngestImage; persistence flows via the ArtifactManifest
-//       sidecar + the runner's finalizer (out of scope for this file).
+//
+//	(1) Calls the usecase via RunUsage (NO legacy imageGen.Generate).
+//	(2) Drops the typed *job.ArtifactManifest sidecar from RunOutput
+//	    (manifest is for the async finalizer path; sync ingestion is
+//	    direct).
+//	(3) Calls storage.IngestImage directly to persist the on-disk
+//	    artifact — sync paths are the SOLE consumer of IngestImage
+//	    per PR-GODOBJ-3 KILL LIST b. The async job NEVER calls
+//	    IngestImage; persistence flows via the ArtifactManifest
+//	    sidecar + the runner's finalizer (out of scope for this file).
 //
 // godlike/07 honest-limitation disclosure (AGENTS.md Check 44 LoC cap):
 // This file exceeds the 66-LoC transitional cap (~150 LoC) because
@@ -25,12 +26,13 @@
 // Deadline: 2026-08-15 (per zero-baseline rule).
 //
 // PR-GODOBJ-3 KILL LIST applied:
-//   (a) No legacy imageGen.Generate fallback — dispatch goes through
-//       registry ONLY (compose → generation_usecase.RunUsage →
-//       dispatchToRegistry → ErrNoGenerationProviderWired on nil).
-//   (c) GenerateSmartImageWithAccount REMOVED — SyncCommand has no
-//       Account/Project fields. Tenant identity belongs in a separate
-//       auth/tenancy port (NOT in image-generation request types).
+//
+//	(a) No legacy imageGen.Generate fallback — dispatch goes through
+//	    registry ONLY (compose → generation_usecase.RunUsage →
+//	    dispatchToRegistry → ErrNoGenerationProviderWired on nil).
+//	(c) GenerateSmartImageWithAccount REMOVED — SyncCommand has no
+//	    Account/Project fields. Tenant identity belongs in a separate
+//	    auth/tenancy port (NOT in image-generation request types).
 package images
 
 import (

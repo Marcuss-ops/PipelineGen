@@ -2,23 +2,24 @@
 // PR-REFLECT-ELIM-HANDLER-REGISTRATION (2026-07-04).
 //
 // Verifies the implementation's typed-error gate:
-//   (1) Compile-time pin: appjobs.HandlerFunc shape accepted.
-//   (2) Happy path: struct method Handle (signature matches HandlerFunc
-//       explicitly + wrapped via cast) returns no error + populates
-//       the dispatcher's handler map.
-//   (3) Type-error path (raw string): non-HandlerFunc shape returns
-//       a typed error naming the canonical `appjobs.HandlerFunc(...)`
-//       cast requirement (locks the post-refactor no-fake-availability
-//       contract per godlike/07).
-//   (4) Type-error path (anonymous func literal of structural
-//       signature): the pre-refactor reflection block silently
-//       accepted such literals at runtime; the post-refactor
-//       type-switch rejects them with a typed error. This is the
-//       canonical win — production callers MUST use the explicit
-//       cast at the call site to satisfy the compile-time contract.
-//   (5) Type-error path (*int zero value): no Func kind, post-refactor
-//       type-switch catches it; pre-refactor runtime reflection
-//       produced a different error message format.
+//
+//	(1) Compile-time pin: appjobs.HandlerFunc shape accepted.
+//	(2) Happy path: struct method Handle (signature matches HandlerFunc
+//	    explicitly + wrapped via cast) returns no error + populates
+//	    the dispatcher's handler map.
+//	(3) Type-error path (raw string): non-HandlerFunc shape returns
+//	    a typed error naming the canonical `appjobs.HandlerFunc(...)`
+//	    cast requirement (locks the post-refactor no-fake-availability
+//	    contract per godlike/07).
+//	(4) Type-error path (anonymous func literal of structural
+//	    signature): the pre-refactor reflection block silently
+//	    accepted such literals at runtime; the post-refactor
+//	    type-switch rejects them with a typed error. This is the
+//	    canonical win — production callers MUST use the explicit
+//	    cast at the call site to satisfy the compile-time contract.
+//	(5) Type-error path (*int zero value): no Func kind, post-refactor
+//	    type-switch catches it; pre-refactor runtime reflection
+//	    produced a different error message format.
 //
 // Each test operates on a fresh *Service with an empty Dispatcher
 // (no domain.Store wired) — these tests only exercise the

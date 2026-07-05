@@ -61,7 +61,7 @@ type modelProbeResult struct {
 
 // modelsResponse is the top-level /models payload.
 type modelsResponse struct {
-	OK     bool              `json:"ok"`
+	OK     bool               `json:"ok"`
 	Models []modelProbeResult `json:"models"`
 }
 

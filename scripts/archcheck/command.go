@@ -113,4 +113,3 @@ func ParseCommandLine(args []string, errSink io.Writer) (*Config, error) {
 	}
 	return cfg, nil
 }
-

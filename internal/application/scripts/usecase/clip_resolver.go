@@ -8,10 +8,10 @@
 // heuristic that silently mixed identifier layers. This adapter swaps
 // that for EXPLICIT per-ReferenceType dispatch — there is no fall-back, only:
 //
-//   RefTypeMediaAssetID        → ResolveByMediaAssetID
-//   RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (LIKE yt_<videoID>_% fan-out)
-//   RefTypeDriveFileID         → ResolveByDriveFileID   (exact drive_file_id match)
-//   RefTypeExternalProviderID  → ResolveByExternalProviderID
+//	RefTypeMediaAssetID        → ResolveByMediaAssetID
+//	RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (LIKE yt_<videoID>_% fan-out)
+//	RefTypeDriveFileID         → ResolveByDriveFileID   (exact drive_file_id match)
+//	RefTypeExternalProviderID  → ResolveByExternalProviderID
 //
 // Missing assets are reported as Unresolved references with
 // Reason="not_found" — NEVER auto-ingest (TODO #6 owns that path).

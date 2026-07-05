@@ -53,7 +53,8 @@ func (e *acquisitionError) Error() string { return e.msg }
 //
 // The caller-side message is suffixed after the sentinel's
 // canonical message so log output reads cleanly:
-//   "acquisition: Prepare failed (network or filesystem layer): <detail>"
+//
+//	"acquisition: Prepare failed (network or filesystem layer): <detail>"
 //
 // Callers MUST inspect the typed sentinel via errors.Is; the suffix
 // is for human + log enrichment only.

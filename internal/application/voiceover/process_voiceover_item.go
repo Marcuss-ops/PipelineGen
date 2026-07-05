@@ -26,13 +26,13 @@
 // caller-owned; the use case holds the *sql.Tx across the 3 calls.
 //
 // PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body is now a
-// THIN WRAPPER around the shared PipelineExecutor (pipeline_executor.go).
+// THIN WRAPPER around the shared ProcessSegmentUseCase (usecase/process_segment.go).
 // The same neutral struct is consumed by usecase.go::processOneLanguage
 // (batch path) — godlike/06 SSOT "one canonical owner per fact" for the
 // per-item pipeline. Pre-DRY the per-item body carried the full 5-stage
 // inline code; post-DRY the per-item body just (1) validates, (2)
 // resolves destination with DefaultFolderResolver fallback, (3) builds
-// a PipelineItemInput, (4) delegates to PipelineExecutor.RunPipeline,
+// a ProcessSegmentCommand, (4) delegates to ProcessSegmentUseCase.Execute,
 // and (5) wraps the plain error in a typed PipelineError based on the
 // error-message prefix (preserves the per-item path's stage
 // classification contract pinned by P0.1 Fase 1b).
@@ -77,7 +77,7 @@ type ProcessVoiceoverItemDeps struct {
 	// Pre-Fase-3a only steps 2-3 + index outbox were executed; dedupe,
 	// media_assets, and cleanup were missing from the child pipeline.
 	Finalizer VoiceoverFinalizer
-	Logger              *zap.Logger // nil-safe via zap.NewNop()
+	Logger    *zap.Logger // nil-safe via zap.NewNop()
 }
 
 // ProcessVoiceoverItemUseCase is the canonical per-item voiceover
@@ -90,12 +90,12 @@ type ProcessVoiceoverItemDeps struct {
 // migrations) can depend on the interface rather than the concrete.
 //
 // PR-VO-USECASE-PROCESS-DRY (July 2026): the per-item body delegates
-// to the SHARED PipelineExecutor (pipeline_executor.go). The
-// constructor builds a PipelineExecutor from the same deps so the
+// to the SHARED ProcessSegmentUseCase (usecase/process_segment.go). The
+// constructor builds a ProcessSegmentUseCase from the same deps so the
 // per-item body is shared with the batch use case.
 type ProcessVoiceoverItemUseCase struct {
 	deps         ProcessVoiceoverItemDeps
-	pipelineExec *PipelineExecutor // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
+	processSeg *ProcessSegmentUseCase // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
 }
 
 // NewProcessVoiceoverItemUseCase constructs the canonical use case.
@@ -104,9 +104,9 @@ type ProcessVoiceoverItemUseCase struct {
 // dep (nil-safe skip-indexing). Logger is nil-safe via zap.NewNop().
 //
 // PR-VO-USECASE-PROCESS-DRY: the constructor now builds a
-// PipelineExecutor from the same deps (TTSProvider, AudioPostProcessor,
+// ProcessSegmentUseCase from the same deps (TTSProvider, AudioPostProcessor,
 // Publisher, VoiceoverRepository, Finalizer, Logger). The
-// PipelineExecutor is the SINGLE canonical per-item pipeline
+// ProcessSegmentUseCase is the SINGLE canonical per-item pipeline
 // runner; the use case just builds the DTO and delegates.
 func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoiceoverItemUseCase {
 	if deps.TTSProvider == nil {
@@ -131,8 +131,8 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 		deps.Logger = zap.NewNop()
 	}
 	return &ProcessVoiceoverItemUseCase{
-		deps:         deps,
-		pipelineExec: NewPipelineExecutor(PipelineItemDeps{
+		deps: deps,
+		processSeg: NewProcessSegmentUseCase(ProcessSegmentDeps{
 			TTSProvider:         deps.TTSProvider,
 			AudioPostProcessor:  deps.AudioPostProcessor,
 			Publisher:           deps.Publisher,
@@ -144,7 +144,7 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 }
 
 // Execute runs the canonical per-item voiceover pipeline via the
-// shared PipelineExecutor (PR-VO-USECASE-PROCESS-DRY, July 2026).
+// shared ProcessSegmentUseCase (PR-VO-USECASE-PROCESS-DRY, July 2026).
 //
 // Pre-DRY the body carried the full 5-stage inline code (TTS →
 // AudioPost → Publish → BeginTx → Finalize → Commit). Post-DRY the
@@ -156,27 +156,27 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 //     per-item, the batch path resolves once).
 //  3. ID derivation (caller-side; the BLOC4 P0.6 pass-through
 //     invariant pins this at the caller layer).
-//  4. Builds a PipelineItemInput neutral DTO and calls
-//     u.pipelineExec.RunPipeline(ctx, in).
+//  4. Builds a ProcessSegmentCommand neutral DTO and calls
+//     u.processSeg.Execute(ctx, cmd).
 //  5. Wraps the plain error in a typed PipelineError based on the
 //     error-message prefix (preserves the per-item path's stage
 //     classification contract pinned by P0.1 Fase 1b).
 //
 // The pre-flight, destination resolution, and ID derivation are
 // caller-side concerns that BOTH the batch and per-item paths share
-// (with different inputs); the PipelineExecutor handles the 4-stage
+// (with different inputs); the ProcessSegmentUseCase handles the 4-stage
 // pipeline (TTS → AudioPost → Publish → BeginTx + Finalize + Commit)
 // for both.
 //
 // Per the BLOC4 IN-VOICEOVER PASS-THROUGH invariant (P0.6):
-//  - item.TextHash is used verbatim (no re-derivation)
-//  - item.Voice is used verbatim (no VoiceOverrides re-resolution)
-//  - item.Filename is used verbatim (no template re-substitution)
+//   - item.TextHash is used verbatim (no re-derivation)
+//   - item.Voice is used verbatim (no VoiceOverrides re-resolution)
+//   - item.Filename is used verbatim (no template re-substitution)
 //
 // The handler dispatches (result, error) per the godlike/07 contract:
 // Stage 0 failures (nil item, validate, destination resolve) return
 // (nil or *VoiceoverItemResult, *PipelineError). Stage 1-4 failures
-// (delegated to PipelineExecutor) return (out, *PipelineError) with
+// (delegated to ProcessSegmentUseCase) return (out, *PipelineError) with
 // the stage classification derived from the error-message prefix.
 func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error) {
 	// Pre-flight: nil-safe + validate gate.
@@ -219,13 +219,13 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// ID is derived deterministically from (textHash, language, folderID).
 	id := buildVoiceoverID(string(itemHash), item.Language, dest.FolderID)
 
-	// Build the neutral DTO consumed by the shared PipelineExecutor.
+	// Build the neutral DTO consumed by the shared ProcessSegmentUseCase.
 	// The StyleGroup injection (metaBuf["style_group"] if !empty) is
-	// now inside the PipelineExecutor; the per-item path's prior
+	// now inside the ProcessSegmentUseCase; the per-item path's prior
 	// meta-merge logic is preserved by passing item.Metadata
-	// through (mergeUserMetadata in the PipelineExecutor handles
+	// through (mergeUserMetadata in the ProcessSegmentUseCase handles
 	// the user-meta overlay + StyleGroup injection in one place).
-	in := &PipelineItemInput{
+	cmd := &ProcessSegmentCommand{
 		ID:            id,
 		RequestID:     item.RequestID,
 		TextHash:      itemHash,
@@ -241,12 +241,12 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		// ShouldSwap stays false (no cleanup event).
 	}
 
-	out, err := u.pipelineExec.RunPipeline(ctx, in)
+	out, err := u.processSeg.Execute(ctx, cmd)
 	if err != nil {
-		// Wrap the plain error from PipelineExecutor in a typed
-		// PipelineError based on the error prefix. The PipelineExecutor
+		// Wrap the plain error from ProcessSegmentUseCase in a typed
+		// PipelineError based on the error prefix. The ProcessSegmentUseCase
 		// sets out.Error with a stable prefix per stage (see
-		// pipeline_executor.go for the prefix table). The mapping
+		// usecase/process_segment.go for the prefix table). The mapping
 		// preserves the pre-DRY per-item path's stage classification
 		// contract (P0.1 Fase 1b, July 2026).
 		var stage Stage

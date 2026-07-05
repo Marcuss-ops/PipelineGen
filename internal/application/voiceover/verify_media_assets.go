@@ -14,7 +14,7 @@
 //
 // This file pins that contract via a single SQL verification query:
 //
-//   SELECT 1 FROM media_assets WHERE id = ? AND source = 'voiceover'.
+//	SELECT 1 FROM media_assets WHERE id = ? AND source = 'voiceover'.
 //
 // The contract:
 //

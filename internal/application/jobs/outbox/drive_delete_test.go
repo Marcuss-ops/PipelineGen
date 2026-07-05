@@ -9,7 +9,8 @@
 //
 //   - Happy path (6-step sequence): pre-flight → stamp DRIVE_DELETE_PENDING
 //     → Drive.Trash → AdvanceAndEmit (DRIVE_DELETE_PENDING → INDEX_DELETE_PENDING
-//     + emit EventAssetIndexDeleteRequested).
+//
+//   - emit EventAssetIndexDeleteRequested).
 //
 //   - Drive 404 tolerance: Drive.Delete on an already-deleted
 //     fileID is folded to idempotent success.
@@ -119,12 +120,12 @@ type mockStateAdvancer struct {
 }
 
 type advanceCall struct {
-	assetID       string
-	fromState     asset.LifecycleState
-	newState      asset.LifecycleState
-	eventType     string
-	payloadJSON   []byte
-	eventKey      string
+	assetID     string
+	fromState   asset.LifecycleState
+	newState    asset.LifecycleState
+	eventType   string
+	payloadJSON []byte
+	eventKey    string
 }
 
 func (m *mockStateAdvancer) AdvanceAndEmit(
@@ -161,12 +162,12 @@ func buildDriveDeleteEvent(t *testing.T, assetID string, permanently bool) outbo
 		t.Fatalf("marshal fixture: %v", err)
 	}
 	return outboxevents.Event{
-		ID:             1,
-		PayloadJSON:    string(payload),
-		AggregateID:    assetID,
-		AggregateType:  "media_asset",
-		AttemptCount:   0,
-		EventKey:       "drive_delete:false:" + assetID,
+		ID:            1,
+		PayloadJSON:   string(payload),
+		AggregateID:   assetID,
+		AggregateType: "media_asset",
+		AttemptCount:  0,
+		EventKey:      "drive_delete:false:" + assetID,
 	}
 }
 

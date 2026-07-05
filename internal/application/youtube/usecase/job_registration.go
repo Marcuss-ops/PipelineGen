@@ -84,4 +84,3 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobservice.
 	}
 	return ytjobs.HandleRebuildSearchTextJob(deps, ctx, j, tools)
 }
-

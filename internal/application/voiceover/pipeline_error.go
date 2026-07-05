@@ -32,16 +32,16 @@ import "fmt"
 type Stage string
 
 const (
-	StageValidate          Stage = "validate"
+	StageValidate           Stage = "validate"
 	StageDestinationResolve Stage = "destination_resolve"
-	StageTTS               Stage = "tts"
-	StageAudioPost         Stage = "audio_post"
-	StageUpload            Stage = "upload"
-	StageTxBegin           Stage = "tx_begin"
-	StageDBDelete          Stage = "db_delete"
-	StageDBInsert          Stage = "db_insert"
-	StageOutboxEnqueue     Stage = "outbox_enqueue"
-	StageTxCommit          Stage = "tx_commit"
+	StageTTS                Stage = "tts"
+	StageAudioPost          Stage = "audio_post"
+	StageUpload             Stage = "upload"
+	StageTxBegin            Stage = "tx_begin"
+	StageDBDelete           Stage = "db_delete"
+	StageDBInsert           Stage = "db_insert"
+	StageOutboxEnqueue      Stage = "outbox_enqueue"
+	StageTxCommit           Stage = "tx_commit"
 )
 
 // PipelineError is the canonical typed error for per-item pipeline

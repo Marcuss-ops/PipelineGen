@@ -229,6 +229,7 @@ func TestClient_UploadArtifactFile_CtxPreCancelled(t *testing.T) {
 		t.Log("note: handler was invoked despite pre-cancelled Ctx — likely a future refactor regression to watch")
 	}
 }
+
 // TestClient_FinalizeArtifactUpload_CtxPreCancelled — P1 #10 audit-pin
 // for the finalize command.
 func TestClient_FinalizeArtifactUpload_CtxPreCancelled(t *testing.T) {

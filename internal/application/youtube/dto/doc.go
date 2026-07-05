@@ -4,22 +4,26 @@
 // ── Surviving metadata types (CLIPS-META A6+A7, July 2026) ──────────
 //
 // CanonicalClipMetadata — single canonical output type (23 fields).
-//   Absorbed ClipRichMetadata (tags + semantic embedding fields)
-//   and ClipMetadata (was a separate type pre-Azione 1).
+//
+//	Absorbed ClipRichMetadata (tags + semantic embedding fields)
+//	and ClipMetadata (was a separate type pre-Azione 1).
 //
 // ClipMetadataInput — single canonical builder input type (11 fields).
-//   Consumed by ClipMetadataBuilder.Build() and MetadataService
-//   methods (GenerateClipMetadata, EnrichClip, FallbackMetadata).
-//   BuildClipMetadataInput (usecase/segments_service.go) was removed
-//   as dead code — zero production callers, different purpose
-//   (lifecycle.FinalizeInput construction, not metadata enrichment).
+//
+//	Consumed by ClipMetadataBuilder.Build() and MetadataService
+//	methods (GenerateClipMetadata, EnrichClip, FallbackMetadata).
+//	BuildClipMetadataInput (usecase/segments_service.go) was removed
+//	as dead code — zero production callers, different purpose
+//	(lifecycle.FinalizeInput construction, not metadata enrichment).
 //
 // ClipMetadataFile — on-disk JSON serialization DTO for per-clip
-//   metadata.json files written by WriteClipMetadataFile.
+//
+//	metadata.json files written by WriteClipMetadataFile.
 //
 // Quality score constants: QualityScoreTranscriptWeight (0.40),
-//   QualityScoreDurationWeight (0.40), QualityScoreSemanticWeight
-//   (0.20), QualityScoreSponsorPenalty (0.20).
+//
+//	QualityScoreDurationWeight (0.40), QualityScoreSemanticWeight
+//	(0.20), QualityScoreSponsorPenalty (0.20).
 //
 // ── Non-metadata types ─────────────────────────────────────────────
 //

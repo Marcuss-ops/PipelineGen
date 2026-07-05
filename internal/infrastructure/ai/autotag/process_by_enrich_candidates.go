@@ -5,7 +5,7 @@
 // ProcessByEnrichCandidates is the EXPAND-phase companion to the
 // pre-PR legacy ProcessUntagged (autotag.go). It reads the canonical
 // media_assets.enrich_state column (migration 123) instead of the
-// legacy JSON-extract "tags is null OR tags='' + no vlm_tagged flag"
+// legacy JSON-extract "tags is null OR tags=” + no vlm_tagged flag"
 // filter. The VLM 15-min sweeper
 // (internal/app/lifecycle_sweepers.go::startVLMAutoTagSweeper)
 // switched from ProcessUntagged(t) to ProcessByEnrichCandidates(t,

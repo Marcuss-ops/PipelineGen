@@ -23,10 +23,10 @@ package dto
 // to [0.0, 1.0].
 
 const (
-	QualityScoreTranscriptWeight  = 0.40
-	QualityScoreDurationWeight    = 0.40
-	QualityScoreSemanticWeight    = 0.20
-	QualityScoreSponsorPenalty    = 0.20 // subtracted from raw score when SponsorSegment=true
+	QualityScoreTranscriptWeight = 0.40
+	QualityScoreDurationWeight   = 0.40
+	QualityScoreSemanticWeight   = 0.20
+	QualityScoreSponsorPenalty   = 0.20 // subtracted from raw score when SponsorSegment=true
 )
 
 // ── ClipMetadataInput ────────────────────────────────────────────────

@@ -5,19 +5,20 @@
 // State machine (canonical 4-state closed set — godlike/06 SSOT one
 // owner per fact):
 //
-//          ┌─→ ENRICHING ─┬─→ ENRICHED  (terminal success)
-//          │               └─→ FAILED    (terminal operator-must-intervene)
-//   PENDING ┤
-//          │                ...
-//          (initial sentinel stamped by canonical ingest path)
-//          │
-//          (VLM 15-min sweeper also flips PENDING→ENRICHING on claim,
-//           as the backfill path for rows that somehow bypassed the
-//           canonical ingest stamp — see lifecycle_sweepers.go)
+//	       ┌─→ ENRICHING ─┬─→ ENRICHED  (terminal success)
+//	       │               └─→ FAILED    (terminal operator-must-intervene)
+//	PENDING ┤
+//	       │                ...
+//	       (initial sentinel stamped by canonical ingest path)
+//	       │
+//	       (VLM 15-min sweeper also flips PENDING→ENRICHING on claim,
+//	        as the backfill path for rows that somehow bypassed the
+//	        canonical ingest stamp — see lifecycle_sweepers.go)
 //
 // Companion to IndexState (index_state.go). They are orthogonal:
 //   - IndexState tracks Qdrant-side indexing progress (7 states).
 //   - EnrichState tracks VLM-side classification enrichment (4 states).
+//
 // A row can be IndexState=INDEXED AND EnrichState=PENDING simultaneously
 // (indexed for search but not yet auto-tagged); the canonical ingest
 // path stamps EnrichState=PENDING at row creation so no future row

@@ -598,13 +598,13 @@ func TestE2E_TransactionalAtomicity_DeleteFlow(t *testing.T) {
 // that audit 2026-07-03 BLOCKER #1 and #2 identified.
 //
 // Flow:
-//   1. Write a clip via ClipAtomicWriterAdapter (simulates YouTube download)
-//   2. Verify source_version is persisted in media_assets (BLOCKER #2 fix)
-//   3. Verify the outbox event carries the same source_version
-//   4. Simulate IndexClip: set index_state='INDEXING', then CAS fence
-//      UPDATE to 'INDEXED' — verifies source_version guard succeeds
-//   5. Verify stale CAS: wrong source_version → 0 rows affected
-//   6. Verify not-in-INDEXING CAS: wrong index_state → 0 rows affected
+//  1. Write a clip via ClipAtomicWriterAdapter (simulates YouTube download)
+//  2. Verify source_version is persisted in media_assets (BLOCKER #2 fix)
+//  3. Verify the outbox event carries the same source_version
+//  4. Simulate IndexClip: set index_state='INDEXING', then CAS fence
+//     UPDATE to 'INDEXED' — verifies source_version guard succeeds
+//  5. Verify stale CAS: wrong source_version → 0 rows affected
+//  6. Verify not-in-INDEXING CAS: wrong index_state → 0 rows affected
 func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 	db := youTubeQdrantDB(t)
 	box := outboxevents.NewRepository(db)

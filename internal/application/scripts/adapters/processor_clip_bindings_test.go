@@ -49,9 +49,9 @@ import (
 func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 	ev := &scriptpkg.ClipEvidence{
 		AcceptedClipIDs: []string{"clip-a"},
-		ClipCount: 1,
-		ClipNames: map[string]string{"clip-a": "Clip A"},
-		DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
+		ClipCount:       1,
+		ClipNames:       map[string]string{"clip-a": "Clip A"},
+		DriveLinks:      map[string]string{"clip-a": "https://drive.google.com/a"},
 		MissingClipIDs: []scriptpkg.MissingClipID{
 			{ClipID: "missing-b", Reason: scriptpkg.MissingClipReasonNotFound},
 			{ClipID: "missing-c", Reason: scriptpkg.MissingClipReasonDriveNotFound},
@@ -131,8 +131,8 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 	ev := &scriptpkg.ClipEvidence{
 		AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-		ClipCount:  3,
-		ClipNames:  map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
+		ClipCount:       3,
+		ClipNames:       map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
 		DriveLinks: map[string]string{
 			"clip-a": "https://drive.google.com/a",
 			"clip-b": "https://drive.google.com/b",
@@ -186,7 +186,6 @@ func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 	}
 }
 
-
 // TestClipBindings_CanonicalID_DriveFileID_PR6 pins the PR 6
 // canonical-ID contract from the binder's perspective. The user
 // may have supplied a Drive file ID as input, and the resolver
@@ -225,8 +224,8 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		// file ID), NOT the internal asset.ID. Pre-PR-6 this
 		// slice would have been [internalAssetID].
 		AcceptedClipIDs: []string{canonicalDriveFileID},
-		ClipCount:  1,
-		ClipNames:  map[string]string{canonicalDriveFileID: "Clip via Drive File ID"},
+		ClipCount:       1,
+		ClipNames:       map[string]string{canonicalDriveFileID: "Clip via Drive File ID"},
 		DriveLinks: map[string]string{
 			canonicalDriveFileID: driveURL,
 			// Defensive: ensure no one accidentally keys by

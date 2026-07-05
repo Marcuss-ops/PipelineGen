@@ -51,6 +51,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -65,7 +66,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/gin-gonic/gin"
@@ -324,7 +324,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		ClipsRepo:        deps.ClipsRepo,
 		AssetRepo:        deps.AssetRepo,
 		DeletionSvc:      deps.DeletionSvc,
-		DriveAdmin:    deps.DriveAdmin,
+		DriveAdmin:       deps.DriveAdmin,
 		MediaProcessor:   deps.MediaProcessor,
 		AssetTreeSvc:     deps.AssetTreeSvc,
 		MetaWriter:       deps.MetaWriter,

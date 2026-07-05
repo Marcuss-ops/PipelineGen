@@ -10,8 +10,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
@@ -23,10 +23,10 @@ import (
 // by ScriptGenerateItemJobHandler.HandleJob. Using a typed struct avoids
 // double-marshalling and ensures ActiveKey determinism.
 type ScriptGenerateItemPayload struct {
-	ParentJobID string                      `json:"parent_job_id"`
+	ParentJobID string                        `json:"parent_job_id"`
 	Item        domainScript.GenerationItemV2 `json:"item"`
-	Preset      domainScript.Preset          `json:"preset"`
-	ItemIndex   int                          `json:"item_index"`
+	Preset      domainScript.Preset           `json:"preset"`
+	ItemIndex   int                           `json:"item_index"`
 }
 
 // GenerateOneExecutor is the narrow Pattern-0 port the child handler

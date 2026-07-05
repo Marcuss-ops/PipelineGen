@@ -78,14 +78,15 @@ type DestinationRegistry struct {
 //
 // Per-destination ConflictPolicy mapping (P1.1, July 2026) — see
 // DestinationPolicy.ConflictPolicy for the rationale. Pure data:
-//   Skip             → immutable / versioned asset (do not overwrite
-//                       silently when an existing Drive file under the
-//                       same name is found)
-//   Overwrite        → regenerable artefact where the latest version
-//                       wins (caller can override per request, e.g. an
-//                       explicit admin reupload wants Overwrite on a
-//                       normally-Skip destination — PublishRequest is
-//                       the surface for that override)
+//
+//	Skip             → immutable / versioned asset (do not overwrite
+//	                    silently when an existing Drive file under the
+//	                    same name is found)
+//	Overwrite        → regenerable artefact where the latest version
+//	                    wins (caller can override per request, e.g. an
+//	                    explicit admin reupload wants Overwrite on a
+//	                    normally-Skip destination — PublishRequest is
+//	                    the surface for that override)
 func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 	return &DestinationRegistry{
 		policies: map[DestinationKey]DestinationPolicy{

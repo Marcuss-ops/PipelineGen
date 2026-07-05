@@ -42,9 +42,9 @@ var _ Store = (*inMemoryStore)(nil)
 
 // inMemoryStore is the canonical in-process Store impl.
 type inMemoryStore struct {
-	mu        sync.RWMutex
-	rows      map[StepKey]*StepState
-	autoIncr  int64
+	mu       sync.RWMutex
+	rows     map[StepKey]*StepState
+	autoIncr int64
 }
 
 // NewInMemoryStore returns a fresh empty inMemoryStore wrapped as
@@ -93,17 +93,17 @@ func (s *inMemoryStore) MarkStarted(_ context.Context, key StepKey) error {
 
 	s.autoIncr++
 	s.rows[key] = &StepState{
-		ID:          s.autoIncr,
-		JobID:       key.JobID,
-		StepKey:     key.StepKey,
-		Fingerprint: key.InputFingerprint,
-		Status:      StatusPending,
-		Attempt:     1,
-		StartedAt:   now,
-		CompletedAt: time.Time{},
-		Result:      nil,
+		ID:           s.autoIncr,
+		JobID:        key.JobID,
+		StepKey:      key.StepKey,
+		Fingerprint:  key.InputFingerprint,
+		Status:       StatusPending,
+		Attempt:      1,
+		StartedAt:    now,
+		CompletedAt:  time.Time{},
+		Result:       nil,
 		ArtifactRefs: nil,
-		LastError:   "",
+		LastError:    "",
 	}
 	return nil
 }

@@ -25,16 +25,16 @@
 //
 // Three properties of the canonical Handler surface are pinned:
 //
-//   1. Canonical signature — a function literal that declares the
-//      3-arg Handler shape must compile against the Handler type.
-//   2. Return-type identity — domainjob.Result is byte-equivalent
-//      to map[string]any via Go type-alias semantics; existing
-//      handlers that return `map[string]any{...}` still compile.
-//   3. Field-set shape — domainjob.JobExecutionTools carries the
-//      3-callback envelope (Progress / Event / IsCancelled). No
-//      future addition to the struct is sanctioned at this audit-
-//      pin site; a new field would require an EXPAND-then-BACKFILL
-//      godlike/07 cycle documented next to the struct definition.
+//  1. Canonical signature — a function literal that declares the
+//     3-arg Handler shape must compile against the Handler type.
+//  2. Return-type identity — domainjob.Result is byte-equivalent
+//     to map[string]any via Go type-alias semantics; existing
+//     handlers that return `map[string]any{...}` still compile.
+//  3. Field-set shape — domainjob.JobExecutionTools carries the
+//     3-callback envelope (Progress / Event / IsCancelled). No
+//     future addition to the struct is sanctioned at this audit-
+//     pin site; a new field would require an EXPAND-then-BACKFILL
+//     godlike/07 cycle documented next to the struct definition.
 package job
 
 import (
@@ -152,7 +152,6 @@ func TestJobExecutionTools_FieldSet(t *testing.T) {
 	}
 }
 
-
 // TestHandlerAliases_CompileTimeLock (P1 #13, July 2026) notes
 // that runtime-reflection pins for the cross-registry alias
 // identity (domainob.Handler == appjobs.Handler ==
@@ -161,10 +160,12 @@ func TestJobExecutionTools_FieldSet(t *testing.T) {
 // `type X = Y` makes X and Y the SAME type; a runtime
 // reflect.TypeOf check is redundant. The compile-time alias
 // declarations in
-//   internal/application/jobs/types.go (Handler, HandlerFunc,
-//     JobExecutionTools, Result = domainob.X)
-//   internal/application/jobs/worker/registry.go
-//     (type Handler = domainob.Handler)
+//
+//	internal/application/jobs/types.go (Handler, HandlerFunc,
+//	  JobExecutionTools, Result = domainob.X)
+//	internal/application/jobs/worker/registry.go
+//	  (type Handler = domainob.Handler)
+//
 // ARE the godlike/06 SSOT lock — a future rename or
 // re-declaration of the canonical Handler without updating
 // the alias declarations surfaces as a build failure at the

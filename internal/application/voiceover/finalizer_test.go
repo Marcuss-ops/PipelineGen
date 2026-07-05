@@ -287,9 +287,9 @@ func TestFinalizeStage_NilFinalizer(t *testing.T) {
 // stubPostCommitVerifier records invocations and surfaces canned
 // errors via err. The audit-P0.5 contract is:
 //
-//   err == nil                                          → CompletionState = StateCompleted
-//   errors.Is(err, ErrReconciliationRequired) == true  → CompletionState = StateReconciliationRequired
-//   any other non-nil err                                → CompletionState = StateCompletedUnverified
+//	err == nil                                          → CompletionState = StateCompleted
+//	errors.Is(err, ErrReconciliationRequired) == true  → CompletionState = StateReconciliationRequired
+//	any other non-nil err                                → CompletionState = StateCompletedUnverified
 type stubPostCommitVerifier struct {
 	verified []string
 	err      error
@@ -316,8 +316,8 @@ func TestFinalizeStage_PostCommitVerification(t *testing.T) {
 	}
 
 	item := BatchItem{
-		ID:         "vo-verify",
-		Status:     StatusUploaded,
+		ID:          "vo-verify",
+		Status:      StatusUploaded,
 		DriveFileID: "drive-1",
 	}
 	req := &BatchRequest{Text: "test", Strategy: "replace"}

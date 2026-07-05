@@ -162,9 +162,9 @@ func TestPrepareContext_Validated_EmptyURL_ReturnsTypedError(t *testing.T) {
 
 func TestPrepareContext_Validated_EmptyCleanupToken_ReturnsTypedError(t *testing.T) {
 	c := &PrepareContext{
-		SourceRef:  SourceRef{URL: "https://example.com/x.mp4"},
-		SHA256:     "abc",
-		LocalPath:  "/tmp/staged.mp4",
+		SourceRef: SourceRef{URL: "https://example.com/x.mp4"},
+		SHA256:    "abc",
+		LocalPath: "/tmp/staged.mp4",
 	}
 	err := c.Validated()
 	require.Error(t, err)
@@ -307,11 +307,11 @@ func TestDeriveStageID_DownloadSectionAppendsSuffix(t *testing.T) {
 
 func TestSafeBaseName_StripsDangerousChars(t *testing.T) {
 	cases := map[string]string{
-		"abc/def\\ghi": "abc_def_ghi",
+		"abc/def\\ghi":     "abc_def_ghi",
 		"a:b*c?d\"e<f>g|h": "a_b_c_d_e_f_g_h",
-		"hello world":     "hello_world",
-		"normal-name.mp4": "normal-name.mp4",
-		"":                "",
+		"hello world":      "hello_world",
+		"normal-name.mp4":  "normal-name.mp4",
+		"":                 "",
 	}
 	for input, want := range cases {
 		assert.Equal(t, want, safeBaseName(input), "input=%q", input)

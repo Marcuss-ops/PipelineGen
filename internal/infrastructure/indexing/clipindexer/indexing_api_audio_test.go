@@ -5,20 +5,20 @@
 // the CLAP-HTSAT audio channel added in Phase 4. The 4 tests below
 // cover the 4 canonical paths:
 //
-//	1. Happy path: sidecar returns 200 + 512d vector →
-//	   media_assets.audio_embedding is populated with the JSON-encoded
-//	   embedding. Qdrant payload_mapper.IndexDocumentToPoint picks it up
-//	   on the next upsert (case ChannelAudio).
-//	2. HTTP 501: CLAP model not loaded on the sidecar (the canonical
-//	   "model unavailable" sentinel per scripts/services/embedding_server
-//	   /audio.py). Fail-soft: log INFO, audio_embedding stays empty,
-//	   IndexClip returns nil (the clip remains valid for the other 3
-//	   channels).
-//	3. HTTP 410: endpoint retired (QDRANT-001 retirement contract).
-//	   Fail-soft: log INFO, audio_embedding stays empty, IndexClip
-//	   returns nil.
-//	4. Empty local_path: Phase 4 is skipped (no audio source on disk).
-//	   Fail-soft: audio_embedding stays empty, IndexClip returns nil.
+//  1. Happy path: sidecar returns 200 + 512d vector →
+//     media_assets.audio_embedding is populated with the JSON-encoded
+//     embedding. Qdrant payload_mapper.IndexDocumentToPoint picks it up
+//     on the next upsert (case ChannelAudio).
+//  2. HTTP 501: CLAP model not loaded on the sidecar (the canonical
+//     "model unavailable" sentinel per scripts/services/embedding_server
+//     /audio.py). Fail-soft: log INFO, audio_embedding stays empty,
+//     IndexClip returns nil (the clip remains valid for the other 3
+//     channels).
+//  3. HTTP 410: endpoint retired (QDRANT-001 retirement contract).
+//     Fail-soft: log INFO, audio_embedding stays empty, IndexClip
+//     returns nil.
+//  4. Empty local_path: Phase 4 is skipped (no audio source on disk).
+//     Fail-soft: audio_embedding stays empty, IndexClip returns nil.
 //
 // Per godlike/07 no-fake-availability, NONE of the fail-soft paths
 // must surface a typed error to the caller — the audio channel is
@@ -136,7 +136,7 @@ func readAudioEmbedding(t *testing.T, db *drive.SQLiteDB, clipID string) []float
 
 // preSeedSourceVersion computes the deterministic content hash for clipID
 // and updates the row's file_hash so the CAS fence in setIndexedAt
-// (BLOCKER #2) passes. Without this, a test row with file_hash=''
+// (BLOCKER #2) passes. Without this, a test row with file_hash=”
 // would trigger ErrIndexSuperseded on every IndexClip.
 func preSeedSourceVersion(t *testing.T, svc *Service, clipID string) {
 	t.Helper()

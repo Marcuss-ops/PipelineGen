@@ -7,16 +7,17 @@
 // os.MkdirAll / os.WriteFile / os.TempDir / ComputeSHA256-on-file).
 //
 // PR-GODOBJ-4 KILL list applied (per user spec, July 2026):
-//   (1) This file has zero filesystem ops. The handler pattern is:
-//         handler.HandleSingle → svc.PersistGeneratedArtifacts(...)
-//                              → []scriptpkg.Artifact
-//                              → buildManifestFromArtifacts(...) (this file)
-//                              → *job.ArtifactManifest
-//                              → handlerResult[job.ManifestKey] = manifest
-//       The handler does NOT call os.MkdirAll or os.WriteFile.
-//   (2) The handler injects the manifest via handlerResult[
-//       scriptpkg.ManifestKey] = manifest (the runner reads via
-//       job.Decode and uses the canonical lookup-key contract).
+//
+//	(1) This file has zero filesystem ops. The handler pattern is:
+//	      handler.HandleSingle → svc.PersistGeneratedArtifacts(...)
+//	                           → []scriptpkg.Artifact
+//	                           → buildManifestFromArtifacts(...) (this file)
+//	                           → *job.ArtifactManifest
+//	                           → handlerResult[job.ManifestKey] = manifest
+//	    The handler does NOT call os.MkdirAll or os.WriteFile.
+//	(2) The handler injects the manifest via handlerResult[
+//	    scriptpkg.ManifestKey] = manifest (the runner reads via
+//	    job.Decode and uses the canonical lookup-key contract).
 //
 // godlike/07 typed-error contract: buildManifestFromArtifacts
 // returns *job.ArtifactManifest (no error return — validation

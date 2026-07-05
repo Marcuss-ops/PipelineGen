@@ -52,8 +52,6 @@ type Config struct {
 	HTTPDownloadTimeout time.Duration
 }
 
-
-
 // mapError classifies an underlying transport error into one of the
 // centralized artapp sentinels so callers branch on intent, not on
 // transport jargon (yt-dlp stderr, http.Client codes, etc.).

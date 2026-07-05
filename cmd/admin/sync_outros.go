@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"go.uber.org/zap"
 )
 
 var supportedLanguages = []string{
@@ -98,26 +98,26 @@ func runSyncOutros(args []string) error {
 		for _, lang := range supportedLanguages {
 			langLower := strings.ToLower(lang)
 			langFolderID, exists := existingFolders[langLower]
-		if !exists {
-					if *apply {
-						// Wave C (June 2026): idempotent lookup-or-create replaces strict Files.Create.
-						// GetOrCreateFolder returns the existing folder if a folder with the same
-						// name already exists under parent — semantically slightly more lenient than
-						// the previous strict create (which would 409 on duplicates). The call is
-						// already gated behind `if !exists` so the semantic shift is benign.
-						created, err := root.Drive.Admin.GetOrCreateFolder(ctx, lang, folder.ID)
-						if err != nil {
-							log.Error("failed to create language folder on Drive", zap.String("lang", lang), zap.Error(err))
-							continue
-						}
-						langFolderID = created
-						fmt.Printf("  📁 Created language folder: %s (%s)\n", lang, langFolderID)
-					} else {
-						fmt.Printf("  [DRY RUN] Would create language folder: %s\n", lang)
+			if !exists {
+				if *apply {
+					// Wave C (June 2026): idempotent lookup-or-create replaces strict Files.Create.
+					// GetOrCreateFolder returns the existing folder if a folder with the same
+					// name already exists under parent — semantically slightly more lenient than
+					// the previous strict create (which would 409 on duplicates). The call is
+					// already gated behind `if !exists` so the semantic shift is benign.
+					created, err := root.Drive.Admin.GetOrCreateFolder(ctx, lang, folder.ID)
+					if err != nil {
+						log.Error("failed to create language folder on Drive", zap.String("lang", lang), zap.Error(err))
+						continue
 					}
+					langFolderID = created
+					fmt.Printf("  📁 Created language folder: %s (%s)\n", lang, langFolderID)
 				} else {
-					fmt.Printf("  📁 Language folder already exists: %s (%s)\n", lang, langFolderID)
+					fmt.Printf("  [DRY RUN] Would create language folder: %s\n", lang)
 				}
+			} else {
+				fmt.Printf("  📁 Language folder already exists: %s (%s)\n", lang, langFolderID)
+			}
 
 			// Sync language folder to DB
 			if *apply && langFolderID != "" {

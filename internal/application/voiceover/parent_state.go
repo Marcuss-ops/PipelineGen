@@ -174,9 +174,12 @@ func AggregateByParent(parentID string, accessor SnapshotAccessor) ParentState {
 //     judgment until ALL children are terminal).
 //
 //   - All children terminal:
-//     - failed == 0 → ParentSucceeded
-//     - succeeded == 0 → ParentFailed
-//     - succeeded > 0 && failed > 0 → ParentPartialSuccess
+//
+//   - failed == 0 → ParentSucceeded
+//
+//   - succeeded == 0 → ParentFailed
+//
+//   - succeeded > 0 && failed > 0 → ParentPartialSuccess
 //
 // Callers in micro-commit #4 (HandleJob) feed a synthetic pending-
 // only slice; callers in micro-commit #5 (aggregator tick driver)

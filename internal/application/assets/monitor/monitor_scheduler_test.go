@@ -147,8 +147,8 @@ var _ TranscriptProvider = (*stubTranscriptProvider)(nil)
 // The legacy Score / Classify / FindSegments methods were removed
 // in Step 6 (June 2026); AnalyzeFull is the single canonical method.
 type stubVideoAnalyzer struct {
-	analysis        Analysis
-	analyzeFullErr  error
+	analysis         Analysis
+	analyzeFullErr   error
 	analyzeFullCalls int
 }
 

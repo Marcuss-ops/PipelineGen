@@ -23,7 +23,7 @@
 //     status to Pending, suppressing the update when the existing
 //     row is Completed (terminal-sink immutability).
 //   - MarkCompleted: UPDATE the row's status + result + artifact_refs
-//     + completed_at. Idempotent on re-call with same payload bytes
+//   - completed_at. Idempotent on re-call with same payload bytes
 //     (no-op). Returns ErrStepAlreadyCompleted on call with different
 //     payload OR call against already-Completed row.
 //   - MarkFailed: UPDATE status=Failed + last_error + completed_at

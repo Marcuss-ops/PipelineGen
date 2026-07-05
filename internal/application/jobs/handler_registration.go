@@ -63,7 +63,9 @@ const MaxJobsPerType = 16
 //
 // To register a method like `h.HandleJob` (whose signature matches
 // HandlerFunc structurally) wrap it at the call site:
-//   jobsSvc.RegisterHandler(jobType, appjobs.HandlerFunc(h.HandleJob))
+//
+//	jobsSvc.RegisterHandler(jobType, appjobs.HandlerFunc(h.HandleJob))
+//
 // This explicit cast is canonical (cf. artlist/job_core.go:247).
 // Method values without the cast are accepted by the type-switch
 // (structural subtyping), but explicit casts are preferred for

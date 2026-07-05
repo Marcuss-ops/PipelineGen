@@ -69,23 +69,24 @@ type EnqueueRequest struct {
 // code MUST prefer to import internal/domain/job directly.
 //
 // godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT migration:
-//   EXPAND (today, P1 #13): canonical SSOT in domain/job +
-//                            sealed back-compat aliases here.
-//   BACKFILL (forward-pointer, deadline 2026-09-15): per-job-type
-//                            handlers that still type-literal
-//                            HandlerFunc / map[string]any return
-//                            migrate to Handler / Result.
-//   CUTOVER (forward-pointer, deadline 2026-10-01): aliases
-//                            HandlerFunc, JobTools retired.
-//   CONTRACT (forward-pointer): physical git-rm; Check-N in
-//                            scripts/ci-architectural-checks.sh
-//                            bans the legacy literal shapes.
+//
+//	EXPAND (today, P1 #13): canonical SSOT in domain/job +
+//	                         sealed back-compat aliases here.
+//	BACKFILL (forward-pointer, deadline 2026-09-15): per-job-type
+//	                         handlers that still type-literal
+//	                         HandlerFunc / map[string]any return
+//	                         migrate to Handler / Result.
+//	CUTOVER (forward-pointer, deadline 2026-10-01): aliases
+//	                         HandlerFunc, JobTools retired.
+//	CONTRACT (forward-pointer): physical git-rm; Check-N in
+//	                         scripts/ci-architectural-checks.sh
+//	                         bans the legacy literal shapes.
 type (
 	JobExecutionTools = domainjob.JobExecutionTools
-	JobTools           = domainjob.JobExecutionTools // back-compat alias
-	Result             = domainjob.Result
-	Handler            = domainjob.Handler
-	HandlerFunc        = domainjob.Handler // back-compat alias
+	JobTools          = domainjob.JobExecutionTools // back-compat alias
+	Result            = domainjob.Result
+	Handler           = domainjob.Handler
+	HandlerFunc       = domainjob.Handler // back-compat alias
 )
 
 // Dispatcher routes jobs to registered handlers by job type (string).

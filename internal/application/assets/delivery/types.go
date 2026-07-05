@@ -36,16 +36,16 @@ import (
 type DestinationKey string
 
 const (
-	DestinationYouTubeClip  DestinationKey = "youtube_clip"
-	DestinationArtlist      DestinationKey = "artlist"
-	DestinationStock        DestinationKey = "stock"
-	DestinationImage        DestinationKey = "image"
-	DestinationVoiceover    DestinationKey = "voiceover"
-	DestinationBook         DestinationKey = "book"
-	DestinationScript       DestinationKey = "script"
-	DestinationSoundEffect  DestinationKey = "sound_effect"
-	DestinationDocument     DestinationKey = "document"
-	DestinationAdmin        DestinationKey = "admin"
+	DestinationYouTubeClip DestinationKey = "youtube_clip"
+	DestinationArtlist     DestinationKey = "artlist"
+	DestinationStock       DestinationKey = "stock"
+	DestinationImage       DestinationKey = "image"
+	DestinationVoiceover   DestinationKey = "voiceover"
+	DestinationBook        DestinationKey = "book"
+	DestinationScript      DestinationKey = "script"
+	DestinationSoundEffect DestinationKey = "sound_effect"
+	DestinationDocument    DestinationKey = "document"
+	DestinationAdmin       DestinationKey = "admin"
 )
 
 // ConflictPolicy controls what happens when a file with the same name

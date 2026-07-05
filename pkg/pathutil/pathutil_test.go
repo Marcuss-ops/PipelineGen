@@ -25,9 +25,9 @@ import (
 
 func TestSanitizeSubfolderSegment_RejectsAttacks(t *testing.T) {
 	cases := []struct {
-		name     string
-		input    string
-		wantSub  string // substring that must appear in the error message
+		name    string
+		input   string
+		wantSub string // substring that must appear in the error message
 	}{
 		// empty / whitespace
 		{"empty", "", "empty after trim"},

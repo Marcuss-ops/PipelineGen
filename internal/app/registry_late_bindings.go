@@ -58,14 +58,14 @@ import (
 //     fail-closed for HTTP route registration + script_assets slot).
 //
 // Run AFTER all module registrations because:
-//   1. The outbox handler must NOT be registered through /api/*
-//      (separation-of-routes invariant pinned by
-//      internal/api/routes_test.go).
-//   2. The mediasearch handler depends on
-//      wiring.Assets.SearchAggregator, populated by Step 5.
-//   3. The script_assets descriptor RegisterProviders publishes
-//      into the providers.Registry; the Freeze gate (from
-//      registerProviders) MUST land AFTER this call.
+//  1. The outbox handler must NOT be registered through /api/*
+//     (separation-of-routes invariant pinned by
+//     internal/api/routes_test.go).
+//  2. The mediasearch handler depends on
+//     wiring.Assets.SearchAggregator, populated by Step 5.
+//  3. The script_assets descriptor RegisterProviders publishes
+//     into the providers.Registry; the Freeze gate (from
+//     registerProviders) MUST land AFTER this call.
 func applyLateBindings(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) ([]TrackedProviderEntry, error) {
 	// ── QDRANT-002: build canonical internal outbox handler ─────
 	// Exposes GET /internal/v1/outbox/status and /events for

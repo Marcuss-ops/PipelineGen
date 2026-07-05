@@ -20,31 +20,31 @@
 //
 // Three scenarios pinned:
 //
-//   1. TestDurableIndexing_AtomicWrite_CallbackOnce
-//      — 1 outbox_events row → ClaimNext + IndexingHandler.Handle →
-//        FakeIndexClipper.IndexClip fired EXACTLY 1 time. Replay ClaimNext
-//        returns nil (terminal), counter stays at 1. Spec's
-//        "write atomico → callback 1 volta".
+//  1. TestDurableIndexing_AtomicWrite_CallbackOnce
+//     — 1 outbox_events row → ClaimNext + IndexingHandler.Handle →
+//     FakeIndexClipper.IndexClip fired EXACTLY 1 time. Replay ClaimNext
+//     returns nil (terminal), counter stays at 1. Spec's
+//     "write atomico → callback 1 volta".
 //
-//   2. TestDurableIndexing_IdempotentReplay_CallbackOnce
-//      — 2 INSERTs of the SAME event_key → outbox_events has 1 row
-//        (UNIQUE(event_key) DO NOTHING suppresses the duplicate) →
-//        handler.Handle → IndexClip fired EXACTLY 1 time. A third
-//        post-complete INSERT is also a no-op. Spec's "2 delivery stesso
-//        aggregate_id → Qdrant riceve 1 sola chiamata".
+//  2. TestDurableIndexing_IdempotentReplay_CallbackOnce
+//     — 2 INSERTs of the SAME event_key → outbox_events has 1 row
+//     (UNIQUE(event_key) DO NOTHING suppresses the duplicate) →
+//     handler.Handle → IndexClip fired EXACTLY 1 time. A third
+//     post-complete INSERT is also a no-op. Spec's "2 delivery stesso
+//     aggregate_id → Qdrant riceve 1 sola chiamata".
 //
-//   3. TestDurableIndexing_SupersededEvent_NoCallback
-//      — stale event_payload.source_version differs from the current
-//        aggregate's source_version → handler.Handle returns typed
-//        *outboxevents.SupersedeError → IndexClip NEVER called. Pin the
-//        source_version supersede gate; without it the canonical pipeline
-//        would double-write Qdrant with stale embeddings.
+//  3. TestDurableIndexing_SupersededEvent_NoCallback
+//     — stale event_payload.source_version differs from the current
+//     aggregate's source_version → handler.Handle returns typed
+//     *outboxevents.SupersedeError → IndexClip NEVER called. Pin the
+//     source_version supersede gate; without it the canonical pipeline
+//     would double-write Qdrant with stale embeddings.
 //
 // Scope decision: the test BYPASSES the Dispatcher (`sqliteoutbox.Dispatcher`)
 // and inserts outbox_events rows directly via SQL on a :memory: SQLite.
 // Reasons:
 //   - The Dispatcher plumbing (medias_assets.upsert + clips-port interfaces
-//     + txmanager + IndexStateTxInput struct) is a separate concern.
+//   - txmanager + IndexStateTxInput struct) is a separate concern.
 //   - The "atomic write" property of `media_assets.upsert + outbox_events.insert`
 //     in a single tx is already pinned by
 //     internal/infrastructure/database/sqlite/outbox/qdrant_flow_e2e_test.go
@@ -60,8 +60,9 @@
 //
 // Pool bypass: synchronous ClaimNext + handler.Handle inline. The Pool
 // runtime contract (worker loop, retry, dead-letter) is pinned at:
-//   qdrant_flow_e2e_test.go::TestE2E_RetryAndDeadLetter
-//   qdrant_flow_e2e_test.go::TestE2E_LeaseExpiryAndReclaim_WorkerCrash
+//
+//	qdrant_flow_e2e_test.go::TestE2E_RetryAndDeadLetter
+//	qdrant_flow_e2e_test.go::TestE2E_LeaseExpiryAndReclaim_WorkerCrash
 package outbox_test
 
 import (
@@ -88,18 +89,18 @@ import (
 //
 //  1. PARTIAL UNIQUE INDEX form (CREATE UNIQUE INDEX … WHERE …) that the
 //     `outboxevents.Repository.Enqueue` SQL relies on for its
-//     `ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING` clause.
+//     `ON CONFLICT(event_key) WHERE event_key != ” DO NOTHING` clause.
 //     SQLite rejects the inline `UNIQUE(col) WHERE …` table-constraint
 //     form (parser error: `near "WHERE": syntax error`), so the partial-
 //     uniqueness predicate MUST live in a separate CREATE UNIQUE INDEX
 //     statement.
 //
-//  2. `last_error`, `worker_id`, `lease_id` are NOT NULL DEFAULT ''.
+//  2. `last_error`, `worker_id`, `lease_id` are NOT NULL DEFAULT ”.
 //     `outboxevents.scanEvent` scans these into non-pointer `string`
 //     fields on the `outboxevents.Event` struct; NULL would trigger
 //     `sql: Scan error on column index N, name "…" converting NULL to
 //     string is unsupported`. Production's migration declares these as
-//     NOT NULL DEFAULT '' for exactly this reason — test must mirror.
+//     NOT NULL DEFAULT ” for exactly this reason — test must mirror.
 //
 //  3. `lease_expiry`, `completed_at`, `next_attempt_at` are nullable.
 //     scanEvent uses `sql.NullString` for lease_expiry / completed_at
@@ -196,17 +197,17 @@ func openInMemDB_CF(t *testing.T) *sql.DB {
 // "asset.index.requested.v1"). event_key uses the {event_type}:{asset_id}:{hash}
 // key shape that mirrors what the production Dispatcher writes its UNIQUE
 // over. Spec contract: calling this twice with the SAME key results in 1 row
-// (UNIQUE(event_key) WHERE event_key != '' DO NOTHING).
+// (UNIQUE(event_key) WHERE event_key != ” DO NOTHING).
 func insertOutboxEventCF(t *testing.T, db *sql.DB, assetID, sourceVersion, idempotencyKey string) {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
-		"schema_version": outbox.IndexRequestSchemaVersion, // "asset.index.requested.v1"
-		"event_id":       idempotencyKey,
-		"asset_id":       assetID,
-		"operation":      outbox.IndexRequestOperationUPSERT,
-		"source_version": sourceVersion,
+		"schema_version":  outbox.IndexRequestSchemaVersion, // "asset.index.requested.v1"
+		"event_id":        idempotencyKey,
+		"asset_id":        assetID,
+		"operation":       outbox.IndexRequestOperationUPSERT,
+		"source_version":  sourceVersion,
 		"idempotency_key": idempotencyKey,
-		"requested_at":   time.Now().UTC().Format(time.RFC3339),
+		"requested_at":    time.Now().UTC().Format(time.RFC3339),
 	})
 	if err != nil {
 		t.Fatalf("marshal v1 envelope: %v", err)
@@ -341,7 +342,7 @@ func TestDurableIndexing_AtomicWrite_CallbackOnce(t *testing.T) {
 //  1. First INSERT of event_key=`asset.index.requested:<id>:<hash>` → 1 row
 //     in outbox_events.
 //  2. Second INSERT with SAME event_key → UNIQUE(event_key) WHERE
-//     event_key != '' DO NOTHING suppresses the duplicate at SQL level;
+//     event_key != ” DO NOTHING suppresses the duplicate at SQL level;
 //     outbox_events STILL has 1 row.
 //  3. ClaimNext + IndexingHandler.Handle → IndexClip fired EXACTLY 1 time
 //     (not 2). Qdrant receives exactly 1 upsert call. (Additional belt:

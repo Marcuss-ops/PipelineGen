@@ -86,5 +86,5 @@ func (d DriveConfig) ImagesFolder() string { return d.ResolveFolder(d.ImagesRoot
 
 func (d DriveConfig) CopertineFolder() string    { return d.ResolveFolder(d.CopertineRootFolder) }
 func (d DriveConfig) SoundEffectsFolder() string { return d.ResolveFolder(d.SoundEffectsRootFolder) }
-func (d DriveConfig) DocumentsFolder() string   { return d.ResolveFolder(d.ScriptsRootFolder) } // Documents share the scripts root
+func (d DriveConfig) DocumentsFolder() string    { return d.ResolveFolder(d.ScriptsRootFolder) } // Documents share the scripts root
 func (d DriveConfig) OutroFolder() string        { return d.ResolveFolder(d.OutroRootFolder) }

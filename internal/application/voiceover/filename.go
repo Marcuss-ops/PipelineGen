@@ -119,6 +119,7 @@ func BuildVoiceoverFilename(spec FilenameSpec) (string, error) {
 //     full SHA-256 of req.Text.
 //   - Per-item fan-out path (planner.go::Plan / process_voiceover_item.go
 //     fallback) passes the 16-char ComputeTextHash prefix.
+//
 // The inner SHA256 is stable for both lengths — labelling the param
 // as `TextHash` would be a type-system lie. The typed envelope is
 // canonical ONLY for the per-item 16-char value.

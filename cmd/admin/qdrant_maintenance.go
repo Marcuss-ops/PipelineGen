@@ -14,12 +14,12 @@
 // cleanup-qdrant-legacy subcommands into ONE entry point with a
 // mode positional arg:
 //
-//   1. audit           — classification only (dry-run, no mutations).
-//   2. repair-locators — strip legacy drive_link / local_path payload
-//                          keys via the canonical QdrantCleaner port.
-//   3. delete-invalid  — outbox-delete non-locator asset points
-//                          (EnqueueAndDelete — NEVER direct media_assets
-//                          DELETE FROM).
+//  1. audit           — classification only (dry-run, no mutations).
+//  2. repair-locators — strip legacy drive_link / local_path payload
+//     keys via the canonical QdrantCleaner port.
+//  3. delete-invalid  — outbox-delete non-locator asset points
+//     (EnqueueAndDelete — NEVER direct media_assets
+//     DELETE FROM).
 //
 // Per-mode policy (Issue 12): locator payload keys are repairable,
 // not auto-deletable. Points whose ONLY finding is LegacyLocatorPayload

@@ -15,14 +15,14 @@
 // File layout (4 per-capability files + 1 dispatching service):
 //
 //   - service.go              — Service struct + ports interface +
-//                               NewService constructor + per-mode dispatch
+//     NewService constructor + per-mode dispatch
 //   - audit.go                — Service.Audit (dry-run classify)
 //   - repair-locators.go      — Service.Repair (strip drive_link/local_path keys)
 //   - delete-invalid.go       — Service.Delete (outbox-delete non-locator assets)
 //   - scanner.go              — QdrantScannerAdapter (canonical godlike/06
-//                               translation bridge between legacyaudit.ScrollPoint
-//                               and infrastructure/qdrant.ScrollResult) +
-//                               classifyForMaintenance shared helper
+//     translation bridge between legacyaudit.ScrollPoint
+//     and infrastructure/qdrant.ScrollResult) +
+//     classifyForMaintenance shared helper
 //
 // Mode set is locked at 3 (audit / repair-locators / delete-invalid) per
 // the canonical policy on origin/main. A user spec referenced a 4th
@@ -31,8 +31,9 @@
 // honest scope-lock in the wave-tracker closure notes.
 //
 // godlike/06 SSOT audit pins (compile-time):
-//   var _ legacyaudit.QdrantScanner       = (*QdrantScannerAdapter)(nil)
-//   var _ legacyaudit.NextOffsetExtractor = (*QdrantScannerAdapter)(nil)
+//
+//	var _ legacyaudit.QdrantScanner       = (*QdrantScannerAdapter)(nil)
+//	var _ legacyaudit.NextOffsetExtractor = (*QdrantScannerAdapter)(nil)
 package maintenance
 
 import (

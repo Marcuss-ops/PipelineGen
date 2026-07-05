@@ -464,11 +464,11 @@ func TestFakeStore_ListByJob_OrdersByStepKeyThenID(t *testing.T) {
 	// IDs (in insertion order): 1=02_render/fp-A, 2=01_stage/fp-B, 3=02_render/fp-C,
 	// 4=01_stage/fp-A, 5=j-other/01_stage/fp-A (different job → filtered).
 	for _, k := range []steps.StepKey{
-		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-A"},     // id 1
-		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"},      // id 2
-		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-C"},     // id 3
-		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"},      // id 4
-		{JobID: "j-other", StepKey: "01_stage", InputFingerprint: "fp-A"},  // id 5, filtered
+		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-A"},    // id 1
+		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"},     // id 2
+		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-C"},    // id 3
+		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"},     // id 4
+		{JobID: "j-other", StepKey: "01_stage", InputFingerprint: "fp-A"}, // id 5, filtered
 	} {
 		require.NoError(t, s.MarkStarted(context.Background(), k))
 	}

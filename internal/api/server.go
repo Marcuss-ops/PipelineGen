@@ -42,11 +42,11 @@ type LifecycleManager interface {
 // Background services (maintenance, watchers, etc.) are managed externally
 // by a LifecycleManager — not by the Server.
 type Server struct {
-	cfg                *config.Config
-	router             *gin.Engine
-	appRouter          *Router // reference to the Router for cleanup
-	httpServer         *http.Server
-	lifecycle          LifecycleManager
+	cfg                 *config.Config
+	router              *gin.Engine
+	appRouter           *Router // reference to the Router for cleanup
+	httpServer          *http.Server
+	lifecycle           LifecycleManager
 	imageSearchResolver routing.ImageSearchResolver // FASE 7 singleton (server-side)
 }
 
@@ -63,9 +63,9 @@ func NewServer(
 	lifecycle LifecycleManager,
 ) *Server {
 	return NewServerWithHealth(ServerDeps{
-		Config:   cfg,
-		Registry: registry,
-		Handlers: InternalHandlers{Worker: workerHandler, Media: internalMediaHandler},
+		Config:    cfg,
+		Registry:  registry,
+		Handlers:  InternalHandlers{Worker: workerHandler, Media: internalMediaHandler},
 		Lifecycle: lifecycle,
 	})
 }

@@ -8,16 +8,16 @@
 //     user-supplied metadata onto the meta map (dropping on
 //     collision with a WARN log so callers learn about the drop).
 //
-//   2. resolveDestination — *Service thin WRAPPER over the canonical
-//      ResolveVoiceoverDestination function (declared in
-//      `destination_resolver.go`, June 2026 P0.2+P0.3 closure). The
-//      wrapper exists only to read
-//      `s.cfg.Drive.VoiceoverFolder()` nil-safe and forward it as
-//      `defaultFolderID`. All routing semantics (KindExplicit /
-//      KindGroup / KindAuto precedence, StyleGroup forwarding + MIRROR
-//      on the KindGroup branch, nil-dest fallback) live in the
-//      canonical function. See that file for the production behaviour
-//      and the audit-mandated precedence rules.
+//  2. resolveDestination — *Service thin WRAPPER over the canonical
+//     ResolveVoiceoverDestination function (declared in
+//     `destination_resolver.go`, June 2026 P0.2+P0.3 closure). The
+//     wrapper exists only to read
+//     `s.cfg.Drive.VoiceoverFolder()` nil-safe and forward it as
+//     `defaultFolderID`. All routing semantics (KindExplicit /
+//     KindGroup / KindAuto precedence, StyleGroup forwarding + MIRROR
+//     on the KindGroup branch, nil-dest fallback) live in the
+//     canonical function. See that file for the production behaviour
+//     and the audit-mandated precedence rules.
 //
 // File-placement rationale (AGENTS.md Pattern 5): metadata.go owns
 // metadata-layer concerns (mergeUserMetadata + the cfg→resolver
@@ -134,15 +134,15 @@ func mergeUserMetadata(
 // Behaviour pinned by tests (process_metadata_test.go +
 // destination_resolver_test.go):
 //
-//   1. The legacy `ForwardsAndMirrorsStyleGroup` +
-//      `StyleGroupEmpty_NoForwardOrMirror` pins continue to fire —
-//      empty Kind → auto-detect → resolver call (Group is set in
-//      those tests) → MIRROR verbatim. Back-compat preserved.
-//   2. Nil cfg is tolerated (the wrapper reads s.cfg.Drive
-//      nil-safe so test doubles and minimal Service{log:…} fixtures
-//      keep compiling without spurious panics).
-//   3. Nil dest is delegated to the resolver's nil-dest branch
-//      which consults defaultFolderID (empty in tests = ErrMissingFolder).
+//  1. The legacy `ForwardsAndMirrorsStyleGroup` +
+//     `StyleGroupEmpty_NoForwardOrMirror` pins continue to fire —
+//     empty Kind → auto-detect → resolver call (Group is set in
+//     those tests) → MIRROR verbatim. Back-compat preserved.
+//  2. Nil cfg is tolerated (the wrapper reads s.cfg.Drive
+//     nil-safe so test doubles and minimal Service{log:…} fixtures
+//     keep compiling without spurious panics).
+//  3. Nil dest is delegated to the resolver's nil-dest branch
+//     which consults defaultFolderID (empty in tests = ErrMissingFolder).
 func (s *Service) resolveDestination(
 	ctx context.Context,
 	dest *DestinationRequest,

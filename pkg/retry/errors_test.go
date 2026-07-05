@@ -3,23 +3,23 @@
 // Test coverage for the new typed ErrorCategory + Classify / Retryable
 // in errors.go, plus the 4 user-spec retry-loop scenarios:
 //
-//   (a) TestRetry_ContextCancelFast: ctx-cancel interrupts the retry
-//       loop's backoff sleep within < 1s even when MaxBackoff is 5s.
+//	(a) TestRetry_ContextCancelFast: ctx-cancel interrupts the retry
+//	    loop's backoff sleep within < 1s even when MaxBackoff is 5s.
 //
-//   (b) TestRetry_TransientRetrySuccess: a transient failure is
-//       retried up to MaxAttempts then returned on success.
+//	(b) TestRetry_TransientRetrySuccess: a transient failure is
+//	    retried up to MaxAttempts then returned on success.
 //
-//   (c) TestRetry_PermanentBail: a terminal error (Classify returns
-//       retryable=false) exits the loop immediately without consuming
-//       the backoff budget.
+//	(c) TestRetry_PermanentBail: a terminal error (Classify returns
+//	    retryable=false) exits the loop immediately without consuming
+//	    the backoff budget.
 //
-//   (d) TestRetry_JitterDesync: N=50 parallel retry.Do calls with
-//       JitterFraction=0.25 wake at independent times; the measured
-//       spread (max - min) must be >= 15ms (range-based
-//       desync guard against the global math/rand being re-seeded
-//       to a synchronised state). The original 2-sample / 1ms delta
-//       version flaked on slow CI (28µs observed) — see inline comment
-//       for the N=50 + range-based rationale.
+//	(d) TestRetry_JitterDesync: N=50 parallel retry.Do calls with
+//	    JitterFraction=0.25 wake at independent times; the measured
+//	    spread (max - min) must be >= 15ms (range-based
+//	    desync guard against the global math/rand being re-seeded
+//	    to a synchronised state). The original 2-sample / 1ms delta
+//	    version flaked on slow CI (28µs observed) — see inline comment
+//	    for the N=50 + range-based rationale.
 package retry
 
 import (

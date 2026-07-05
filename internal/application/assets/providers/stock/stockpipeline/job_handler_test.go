@@ -25,14 +25,14 @@ func TestStockJobResult_ToResultMap_AllFieldsPopulated(t *testing.T) {
 	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
 
 	r := StockJobResult{
-		Manifest:               manifest,
-		FinalStatus:            "SUCCEEDED",
-		TotalClips:             42,
-		TotalChunks:            7,
-		Chunks:                 []ChunkResult{{Index: 1, TimelineStart: 0, TimelineEnd: 25.0}},
-		MetadataLink:           "https://drive.example.com/metadata.json",
-		MetadataFileID:         "abc123def456",
-		FinalizationStatus:     "completed",
+		Manifest:                manifest,
+		FinalStatus:             "SUCCEEDED",
+		TotalClips:              42,
+		TotalChunks:             7,
+		Chunks:                  []ChunkResult{{Index: 1, TimelineStart: 0, TimelineEnd: 25.0}},
+		MetadataLink:            "https://drive.example.com/metadata.json",
+		MetadataFileID:          "abc123def456",
+		FinalizationStatus:      "completed",
 		FinalizationCompletedAt: now,
 	}
 

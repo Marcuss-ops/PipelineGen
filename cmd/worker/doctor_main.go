@@ -30,8 +30,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/workerdoctor"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/workerruntime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/workerdoctor"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

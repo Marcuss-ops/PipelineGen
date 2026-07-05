@@ -8,42 +8,42 @@
 //
 // Flow per event:
 //
-//   1. Parse + validate v1 envelope (TERMINAL on malformed JSON,
-//      schema mismatch, missing fields).
+//  1. Parse + validate v1 envelope (TERMINAL on malformed JSON,
+//     schema mismatch, missing fields).
 //
-//   2. Pre-flight read of the asset's current lifecycle_state.
-//      - {INDEX_DELETE_PENDING, DELETED} → idempotent skip (early
-//        return nil). The earlier hop already happened — this
-//        handler is being re-invoked after a lease-fence or after
-//        a previous worker crashed past the Drive side.
-//      - {DELETE_REQUESTED, DELETE_PENDING, DRIVE_DELETE_PENDING} →
-//        continue: the row is in a state DriveDeleteHandler is
-//        authorised to advance.
-//      - {} (asset row missing) → idempotent skip.
-//      - other → terminal-error (avoid silent retried-handler
-//        side-effects on rows that don't own this event).
+//  2. Pre-flight read of the asset's current lifecycle_state.
+//     - {INDEX_DELETE_PENDING, DELETED} → idempotent skip (early
+//     return nil). The earlier hop already happened — this
+//     handler is being re-invoked after a lease-fence or after
+//     a previous worker crashed past the Drive side.
+//     - {DELETE_REQUESTED, DELETE_PENDING, DRIVE_DELETE_PENDING} →
+//     continue: the row is in a state DriveDeleteHandler is
+//     authorised to advance.
+//     - {} (asset row missing) → idempotent skip.
+//     - other → terminal-error (avoid silent retried-handler
+//     side-effects on rows that don't own this event).
 //
-//   3. Stamp lifecycle_state = DRIVE_DELETE_PENDING via
-//      ClipsLifecycleStateWriter.SetLifecycleState — the BEFORE-Drive
-//      operator-visibility stamp.
+//  3. Stamp lifecycle_state = DRIVE_DELETE_PENDING via
+//     ClipsLifecycleStateWriter.SetLifecycleState — the BEFORE-Drive
+//     operator-visibility stamp.
 //
-//   4. Resolve the Drive fileID from the asset's metadata
-//      (drive_file_id, drive_link, download_link). Empty fileID is
-//      handled by skipping the Drive side-effect entirely and
-//      advancing the state machine directly to INDEX_DELETE_PENDING
-//      (the row may have been ingested without a Drive upload;
-//      orphan-Source assets still need the rest of the chain).
+//  4. Resolve the Drive fileID from the asset's metadata
+//     (drive_file_id, drive_link, download_link). Empty fileID is
+//     handled by skipping the Drive side-effect entirely and
+//     advancing the state machine directly to INDEX_DELETE_PENDING
+//     (the row may have been ingested without a Drive upload;
+//     orphan-Source assets still need the rest of the chain).
 //
-//   5. Call DriveDeleter.Trash(fileID) (or .Delete(fileID) when
-//      Permanently=true). Re-delete (404) is treated as idempotent
-//      success.
+//  5. Call DriveDeleter.Trash(fileID) (or .Delete(fileID) when
+//     Permanently=true). Re-delete (404) is treated as idempotent
+//     success.
 //
-//   6. On success: AtomicFlip via StateAdvancer.AdvanceAndEmit:
-//      lifecycle_state := INDEX_DELETE_PENDING AND emits
-//      EventAssetIndexDeleteRequested in a single tx so a worker
-//      crash mid-flow is recoverable (the next worker re-enqueues
-//      the event; the state-machine layer absorbs the re-enqueue
-//      as a no-op because the row is already in INDEX_DELETE_PENDING).
+//  6. On success: AtomicFlip via StateAdvancer.AdvanceAndEmit:
+//     lifecycle_state := INDEX_DELETE_PENDING AND emits
+//     EventAssetIndexDeleteRequested in a single tx so a worker
+//     crash mid-flow is recoverable (the next worker re-enqueues
+//     the event; the state-machine layer absorbs the re-enqueue
+//     as a no-op because the row is already in INDEX_DELETE_PENDING).
 //
 // Pattern 0 (AGENTS.md): the handler depends on narrow ports
 // (DriveDeleter, StateAdvancer, LifecycleStateReader,
@@ -53,7 +53,7 @@
 //   - DriveDeleter       ← drive.FileLifecycle (concrete: *drive.FileLifecycleAdapter)
 //   - StateAdvancer      ← *outbox.Dispatcher (AdvanceAndEmit)
 //   - LifecycleStateReader / ClipsLifecycleStateWriter
-//                        ← *assets.ClipsRepository
+//     ← *assets.ClipsRepository
 //
 // Satisfies outboxevents.Handler — the production worker pool
 // dispatches by EventType lookup.

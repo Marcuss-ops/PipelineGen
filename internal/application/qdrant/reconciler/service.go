@@ -531,12 +531,12 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 				locatorPoints = append(locatorPoints, c.QdrantPointID)
 				locatorKeysByPointID[c.QdrantPointID] = c.LocatorKeys
 			}
-		// KindDuplicate, KindMissingVectors, KindDimensionMismatch:
-		// no automated repair. Duplicates need manual operator review
-		// (which point is canonical? does the extra point carry stale
-		// vectors or a different workspace?). MissingVectors and
-		// DimensionMismatches are verifier-side gates — the reconciler
-		// scrolls with with_vector=false so it cannot detect these.
+			// KindDuplicate, KindMissingVectors, KindDimensionMismatch:
+			// no automated repair. Duplicates need manual operator review
+			// (which point is canonical? does the extra point carry stale
+			// vectors or a different workspace?). MissingVectors and
+			// DimensionMismatches are verifier-side gates — the reconciler
+			// scrolls with with_vector=false so it cannot detect these.
 		}
 	}
 

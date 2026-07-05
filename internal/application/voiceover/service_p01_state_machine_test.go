@@ -91,7 +91,7 @@ func emptyFolderResolver() *stubResolver {
 // ────────────────────────────────────────────────────────────────────────
 type stubRepo struct{}
 
-func (stubRepo) BeginTx(_ context.Context) (*sql.Tx, error)             { return nil, nil }
+func (stubRepo) BeginTx(_ context.Context) (*sql.Tx, error) { return nil, nil }
 func (stubRepo) InsertTx(_ context.Context, _ *sql.Tx, _ *persistence.VoiceoverRecord) error {
 	return nil
 }

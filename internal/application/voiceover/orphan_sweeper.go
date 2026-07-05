@@ -8,23 +8,23 @@
 //
 // COMPENSATION SEMANTICS (per stale-row status, godlike/07 typed):
 //
-//   'uploaded' stale (older than uploadedTTL):
-//     The intent row stuck at 'uploaded' (Drive file exists locally
-//     AND on Drive, but the chain didn't progress to 'finalized' /
-//     'completed'). The sweeper:
-//       1. Calls DriveDeleter.Trash on the stamp'd drive_file_id
-//          (moves to Drive trash; NOT permanent delete — operator
-//          can recover within the 30-day Drive trash retention).
-//       2. Calls Repo.MarkFailed with reason
-//          "orphan_sweep: uploaded_no_finalize".
-//     The intent row transitions to 'failed' so future sweeps
-//     skip it. The Reconciled{uploaded_cleanup} metric is bumped.
+//	'uploaded' stale (older than uploadedTTL):
+//	  The intent row stuck at 'uploaded' (Drive file exists locally
+//	  AND on Drive, but the chain didn't progress to 'finalized' /
+//	  'completed'). The sweeper:
+//	    1. Calls DriveDeleter.Trash on the stamp'd drive_file_id
+//	       (moves to Drive trash; NOT permanent delete — operator
+//	       can recover within the 30-day Drive trash retention).
+//	    2. Calls Repo.MarkFailed with reason
+//	       "orphan_sweep: uploaded_no_finalize".
+//	  The intent row transitions to 'failed' so future sweeps
+//	  skip it. The Reconciled{uploaded_cleanup} metric is bumped.
 //
-//   'pending' stale (older than pendingTTL):
-//     No Drive file exists (Step 2 hadn't completed). The sweeper
-//     ONLY emits Repo.MarkFailed with reason
-//     "orphan_sweep: pending_timeout". NO Drive action. The
-//     Reconciled{pending_timeout} metric is bumped.
+//	'pending' stale (older than pendingTTL):
+//	  No Drive file exists (Step 2 hadn't completed). The sweeper
+//	  ONLY emits Repo.MarkFailed with reason
+//	  "orphan_sweep: pending_timeout". NO Drive action. The
+//	  Reconciled{pending_timeout} metric is bumped.
 //
 // TTL PARTITION STRATEGY: Repo.ListPending returns BOTH 'pending'
 // + 'uploaded' rows in a single call (single WHERE filter, indexed
@@ -147,7 +147,7 @@ type OrphanSweeperDeps struct {
 	Repo         UploadIntentsRepository // mandatory
 	DriveDeleter OrphanDriveDeleter      // mandatory
 	Logger       *zap.Logger             // nil-safe via zap.NewNop()
-	Metrics      *Metrics               // mandatory
+	Metrics      *Metrics                // mandatory
 	Tick         time.Duration           // mandatory (>0)
 	PendingTTL   time.Duration           // mandatory (>0)
 	UploadedTTL  time.Duration           // mandatory (>0)

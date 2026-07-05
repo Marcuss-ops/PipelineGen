@@ -556,12 +556,12 @@ func TestGenerateHandler_AcceptsExplicitKindWithFolderID(t *testing.T) {
 // §1, §5).
 //
 // The check: an HTTP request POSTed to /generate MUST result in
-//   1. jobs.Service.Enqueue being called once (NOT zero, NOT twice)
-//   2. with Type == job.TypeVoiceoverGenerate (canonical job-type identifier)
-//   3. with Payload type *voiceover.GenerateVoiceoversCommand (canonical
-//      wire-shape round-trip, NOT BatchRequest or interface{})
-//   4. NOT result in any direct *voiceover.Service construction or
-//      b.svc.Generate()/Service.GenerateBatch call.
+//  1. jobs.Service.Enqueue being called once (NOT zero, NOT twice)
+//  2. with Type == job.TypeVoiceoverGenerate (canonical job-type identifier)
+//  3. with Payload type *voiceover.GenerateVoiceoversCommand (canonical
+//     wire-shape round-trip, NOT BatchRequest or interface{})
+//  4. NOT result in any direct *voiceover.Service construction or
+//     b.svc.Generate()/Service.GenerateBatch call.
 //
 // The stub JobsSvc captures the EnqueueRequest so the test asserts on
 // the canonical pipeline shape instead of the legacy wiring contract.
@@ -590,11 +590,11 @@ func TestHTTPConsumer_RoutesThroughCanonicalUseCase(t *testing.T) {
 	if jobsSvc.enqueued == nil {
 		t.Fatal("expected jobs.Service.Enqueue to be called exactly once (canonical pipeline enqueue)")
 	}
-	// (1) enqueue called EXACTLY once 
+	// (1) enqueue called EXACTLY once
 	if jobsSvc.enqueued.CorrelationID != "vo-canonical-trace" {
 		t.Errorf("CorrelationID: got %q, want vo-canonical-trace (canonical: request_id propagates)", jobsSvc.enqueued.CorrelationID)
 	}
-	// (2) canonical job-type identifier 
+	// (2) canonical job-type identifier
 	if jobsSvc.enqueued.Type != job.TypeVoiceoverGenerate {
 		t.Errorf("Type: got %q, want %q (canonical: voiceover.generate job type — NOT TypeVoiceoverBatch)", jobsSvc.enqueued.Type, job.TypeVoiceoverGenerate)
 	}

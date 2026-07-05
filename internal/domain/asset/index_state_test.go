@@ -20,7 +20,7 @@ func TestIndexState_ValidAcceptsCanonical12(t *testing.T) {
 		StateIndexDeletePending,
 		StateDELETED,
 		StateIndexPending, // deprecated, still valid
-		StateIndexFailed,   // deprecated, still valid
+		StateIndexFailed,  // deprecated, still valid
 	}
 	for _, s := range canonical {
 		t.Run(string(s), func(t *testing.T) {

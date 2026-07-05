@@ -25,17 +25,18 @@
 // FASE 1.2 (July 2026): Outbox transazionale. Il percorso non chiama più
 // direttamente broker + MarkEnqueued in due passi non atomici. Invece:
 //
-//   1. TryReserve vince → row è in stato 'pending'
-//   2. discoverys.ReserveAndEnqueueOutbox atomicamente:
-//      UPDATE youtube_discoveries SET state='pending-delivery'
-//      INSERT INTO job_outbox (discovery_id, event_key, payload_json)
-//      COMMIT
-//   3. JobOutboxDispatcher (background goroutine) polla job_outbox:
-//      claim → chiama broker.Enqueue → on success MarkCompleted
-//      (outbox+discovery atomici) → on failure MarkFailed con backoff
+//  1. TryReserve vince → row è in stato 'pending'
+//  2. discoverys.ReserveAndEnqueueOutbox atomicamente:
+//     UPDATE youtube_discoveries SET state='pending-delivery'
+//     INSERT INTO job_outbox (discovery_id, event_key, payload_json)
+//     COMMIT
+//  3. JobOutboxDispatcher (background goroutine) polla job_outbox:
+//     claim → chiama broker.Enqueue → on success MarkCompleted
+//     (outbox+discovery atomici) → on failure MarkFailed con backoff
 //
 // L'idempotency key è deterministica:
-//   "youtube-extract:{discovery_id}:{policy_version}"
+//
+//	"youtube-extract:{discovery_id}:{policy_version}"
 //
 // Questo garantisce che anche se il dispatcher crasha tra broker publish
 // e outbox ACK, il retry userà la stessa event_key e l'ActiveKey dedup

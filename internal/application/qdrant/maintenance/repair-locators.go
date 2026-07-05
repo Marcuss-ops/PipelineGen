@@ -41,7 +41,7 @@ type RepairOptions struct {
 // report without importing internal/infrastructure/qdrant directly; the
 // concrete value is fed by the QdrantCleaner adapter at composition time.
 type LocatorCleanupReport struct {
-	Collection         string
+	Collection          string
 	TotalPointsScrolled int
 	PointsWithDriveLink int
 	PointsWithLocalPath int

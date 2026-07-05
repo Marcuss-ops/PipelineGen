@@ -8,10 +8,11 @@
 // (Correttezza #7, PR-C Commit 2/6): cache-hit re-run = full success.
 //
 // Each case asserts the contract table at the top of classify.go:
-//   resp == nil | Requested == 0                     → ErrExtractionTerminal
-//   Failed == 0 && (Processed+Skipped) == Requested  → nil
-//   Processed > 0 && Failed > 0                      → *PartialSuccessError
-//   Processed == 0 && Failed == Requested            → retryable/terminal scan
+//
+//	resp == nil | Requested == 0                     → ErrExtractionTerminal
+//	Failed == 0 && (Processed+Skipped) == Requested  → nil
+//	Processed > 0 && Failed > 0                      → *PartialSuccessError
+//	Processed == 0 && Failed == Requested            → retryable/terminal scan
 package jobs
 
 import (

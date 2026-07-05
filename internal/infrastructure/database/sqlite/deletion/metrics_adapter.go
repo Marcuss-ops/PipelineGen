@@ -10,8 +10,9 @@
 // deletion.ReconcilerMetricsAdapter{} into reconciler.NewServiceFromDeps.
 //
 // Exports:
-//   ReconcilerMetricsAdapter{}  — zero-value struct that satisfies
-//                                  reconciler.Metrics
+//
+//	ReconcilerMetricsAdapter{}  — zero-value struct that satisfies
+//	                               reconciler.Metrics
 //
 // No methods (no fields requiring init); callers construct via
 // the type literal `deletion.ReconcilerMetricsAdapter{}` to avoid

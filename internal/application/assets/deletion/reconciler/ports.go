@@ -6,9 +6,10 @@
 // satisfy in production. Pattern 0 from AGENTS.md.
 //
 // Production wiring (composition root):
-//   Scanner         ← internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go
-//                      (ListStuckRows against media_assets)
-//   OutboxEnqueuer  ← *outbox.Dispatcher (EnqueueDriveDelete + EnqueueIndexDelete)
+//
+//	Scanner         ← internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go
+//	                   (ListStuckRows against media_assets)
+//	OutboxEnqueuer  ← *outbox.Dispatcher (EnqueueDriveDelete + EnqueueIndexDelete)
 //
 // Scanner is REQUIRED per ServiceDeps nil-checks. OutboxEnqueuer
 // is REQUIRED for the same nil-panic principle (production
@@ -58,11 +59,12 @@ type Clock = func() time.Time
 //     leaves lifecycle_state untouched.
 //
 // Idempotency is enforced at TWO layers:
-//   (a) outbox_events.event_key ON CONFLICT DO NOTHING absorbs
-//       repeated enqueues of the same {assetID, hop} pair.
-//   (b) The handlers (DriveDeleteHandler, IndexDeleteHandler)
-//       have idempotent pre-flights that skip rows already past
-//       the relevant state-machine hop.
+//
+//	(a) outbox_events.event_key ON CONFLICT DO NOTHING absorbs
+//	    repeated enqueues of the same {assetID, hop} pair.
+//	(b) The handlers (DriveDeleteHandler, IndexDeleteHandler)
+//	    have idempotent pre-flights that skip rows already past
+//	    the relevant state-machine hop.
 //
 // Errors are non-nil ONLY on transient infrastructure failures
 // (SQL I/O, txmgr-down, etc). On any non-nil error the

@@ -69,14 +69,14 @@ var registerCallsiteTypeRegex = regexp.MustCompile(
 // Acceptance gate: post-commit, this test MUST pass cleanly. Canonical
 // verifiable state on origin/main:
 //
-//   * rg --type go -n 'TypeYouTubeChannelSync' internal/ returns zero
+//   - rg --type go -n 'TypeYouTubeChannelSync' internal/ returns zero
 //     PRODUCTION-CODE hits. (The comment-only audit-pin residue in
 //     internal/application/assets/monitor/enqueue.go is INTENTIONAL
 //     and stays per the post-2026-07-02 cleanup-pattern preservation
 //     discipline; it cross-references this entry, NOT a live code
 //     symbol.)
 //
-//   * The archcheck Check 54 detector (formerly static
+//   - The archcheck Check 54 detector (formerly static
 //     cmd/archcheck/scan/scan_jobhandlers.go) is NOT in the canonical
 //     sequence — the static approach was rejected per the user's
 //     Option A selection on 2026-07-03 (godlike/07 §"No fake
@@ -86,7 +86,7 @@ var registerCallsiteTypeRegex = regexp.MustCompile(
 //     declarations — a static regex walk would either miss dynamic
 //     dispatch surface or invent fake provenance).
 //
-//   * The canonical composition-time REQUIRED-validator
+//   - The canonical composition-time REQUIRED-validator
 //     (internal/app/critical_handler_validator.go) continues to gate
 //     the broader wiring-completeness invariant — this test is the
 //     P0 #2-specific retirement regression pin, NOT a substitute for

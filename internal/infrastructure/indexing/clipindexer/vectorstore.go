@@ -29,5 +29,3 @@ func (s *Service) UpsertVectorStore(ctx context.Context, clipID string) error {
 		zap.String("clip_id", clipID))
 	return nil
 }
-
-

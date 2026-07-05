@@ -34,10 +34,10 @@
 //   - DispatcherPort  ← *outbox.Dispatcher (single-method port)
 //   - DriveGoneChecker  ← optional, nil-skipped; see DriveGoneChecker doc
 //   - CompletionTxRunner ← required for the COMPLETED step (can be nil
-//                            pre-commit 4/3 wiring-forward-pointer)
-//                          Production concrete: a future SQLite adapter
-//                          wrapping DELETE FROM media_assets + DELETE FROM
-//                          outbox_events WHERE aggregate_id=?
+//     pre-commit 4/3 wiring-forward-pointer)
+//     Production concrete: a future SQLite adapter
+//     wrapping DELETE FROM media_assets + DELETE FROM
+//     outbox_events WHERE aggregate_id=?
 package deletion
 
 import (
@@ -82,15 +82,15 @@ type DispatcherPort interface {
 // Semantics:
 //
 //   - (isGone=true, err=nil)   → file is gone (Trashed or Deleted);
-//                                the COMPLETED step can proceed.
+//     the COMPLETED step can proceed.
 //   - (isGone=false, err=nil)  → file is STILL present in Drive;
-//                                CompleteAsset MUST NOT proceed
-//                                ("drive_file_alive_block" guard).
+//     CompleteAsset MUST NOT proceed
+//     ("drive_file_alive_block" guard).
 //   - (isGone=_, err=non-nil)  → Drive API check itself failed
-//                                (network / auth / 5xx); CompleteAsset
-//                                MUST propagate the error WITHOUT
-//                                side-effects (no SQLite delete, no
-//                                outbox purge, state machine unchanged).
+//     (network / auth / 5xx); CompleteAsset
+//     MUST propagate the error WITHOUT
+//     side-effects (no SQLite delete, no
+//     outbox purge, state machine unchanged).
 //
 // Production concrete: a thin adapter wrapping
 // drive.FileLifecycle.FileIsNotTrashed (when wired). nil-port callers
@@ -334,25 +334,25 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 //
 // Hard contract (user audit-spec):
 //
-//   (a) Drive-delete-confirmed guard: re-checks that the Drive file
-//       is no longer present (via DriveGoneChecker if wired; falls
-//       back to lifecycle_state=DELETED stamp as proof if not wired).
-//       If the row is NOT past DRIVE_DELETED state OR if the Drive
-//       check reports the file still alive / the Drive API itself
-//       fails, CompleteAsset returns a typed error and DOES NOT touch
-//       SQLite or outbox state (no partial side-effects).
+//	(a) Drive-delete-confirmed guard: re-checks that the Drive file
+//	    is no longer present (via DriveGoneChecker if wired; falls
+//	    back to lifecycle_state=DELETED stamp as proof if not wired).
+//	    If the row is NOT past DRIVE_DELETED state OR if the Drive
+//	    check reports the file still alive / the Drive API itself
+//	    fails, CompleteAsset returns a typed error and DOES NOT touch
+//	    SQLite or outbox state (no partial side-effects).
 //
-//   (b) SQLite physical delete: hard-deletes the media_assets row
-//       (vs SoftDelete which only stamps lifecycle_state=DELETED).
+//	(b) SQLite physical delete: hard-deletes the media_assets row
+//	    (vs SoftDelete which only stamps lifecycle_state=DELETED).
 //
-//   (c) Outbox state purge: deletes outbox_events WHERE aggregate_id =
-//       assetID — the COMPLETED row no longer has any in-flight delete
-//       events; the outbox pool no longer contributes to the chain.
+//	(c) Outbox state purge: deletes outbox_events WHERE aggregate_id =
+//	    assetID — the COMPLETED row no longer has any in-flight delete
+//	    events; the outbox pool no longer contributes to the chain.
 //
-//   (d) Mark COMPLETED: writes a structured audit log entry
-//       ("asset_completed asset_id=X") + bumps a counter
-//       (operator-visible via the canonical Prometheus port).
-//       NO DB row left to mark in-place (the row was hard-deleted).
+//	(d) Mark COMPLETED: writes a structured audit log entry
+//	    ("asset_completed asset_id=X") + bumps a counter
+//	    (operator-visible via the canonical Prometheus port).
+//	    NO DB row left to mark in-place (the row was hard-deleted).
 //
 // Idempotency contract:
 //
@@ -371,7 +371,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 //   - Drive check fails (port wired) → propagate (no TX ran).
 //   - Drive check reports file still alive → typed error
 //     "drive_file_alive_block" (matches IndexDeleteHandler's guard
-//      from commit 2/3; consistent operator-dashboard surface).
+//     from commit 2/3; consistent operator-dashboard surface).
 //   - SQLite TX fails → propagate (TX rolled back; both deletes
 //     revert; cursor at the entry state).
 //   - Logging is forensically verbose (zap.String("asset_id", ...)

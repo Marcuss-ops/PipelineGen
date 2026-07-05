@@ -294,7 +294,7 @@ func TestStateMachine_AggregatingToFailedTerminal_OnAllChildrenFailed(t *testing
 	for _, childID := range []string{"c1", "c2", "c3"} {
 		require.NoError(t, sm.Transition(ChildTerminatedEvent{
 			ParentJobID: "p", ChildJobID: childID,
-			Outcome:     ChildOutcome{JobID: childID, Succeeded: false, Required: false, Error: "boom"},
+			Outcome: ChildOutcome{JobID: childID, Succeeded: false, Required: false, Error: "boom"},
 		}))
 	}
 	assert.Equal(t, ParentStateAggregating, sm.State())

@@ -91,11 +91,11 @@ type Service struct {
 	log *zap.Logger
 
 	// Heavy-init fields (Audit + Delete modes only).
-	sqliteDB  *sql.DB
-	root      *app.ComposeRoot
-	client    qdrantClient
-	activeCol string
-	scanner   *QdrantScannerAdapter
+	sqliteDB   *sql.DB
+	root       *app.ComposeRoot
+	client     qdrantClient
+	activeCol  string
+	scanner    *QdrantScannerAdapter
 	dispatcher DispatcherPort
 
 	// Port typed-injected at construction time.

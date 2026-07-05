@@ -75,8 +75,8 @@ func TestScanner_HappyPathReturnsStuckRowsASCOrderedByUpdatedAt(t *testing.T) {
 	seedRow(t, db, "a-drive-mid", "DRIVE_DELETE_PENDING", oldish)
 	seedRow(t, db, "a-index-old", "INDEX_DELETE_PENDING", veryOld)
 	seedRow(t, db, "a-recent-drive", "DELETE_REQUESTED", recent)
-	seedRow(t, db, "a-active-notstuck", "ACTIVE", veryOld)            // not deletion chain → skipped
-	seedRow(t, db, "a-deleted-terminal", "DELETED", veryOld)          // terminal → skipped
+	seedRow(t, db, "a-active-notstuck", "ACTIVE", veryOld)   // not deletion chain → skipped
+	seedRow(t, db, "a-deleted-terminal", "DELETED", veryOld) // terminal → skipped
 
 	scanner := NewScanner(db, 100)
 	got, err := scanner.ListStuckRows(now, 60*time.Minute)

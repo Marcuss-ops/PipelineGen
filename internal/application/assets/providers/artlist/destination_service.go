@@ -37,7 +37,7 @@ type PublisherPort interface {
 }
 
 type DestinationService struct {
-	publisher PublisherPort   // mandatory (F2.11): Publisher is the only Drive-write canal
+	publisher PublisherPort // mandatory (F2.11): Publisher is the only Drive-write canal
 	cfg       *config.Config
 }
 

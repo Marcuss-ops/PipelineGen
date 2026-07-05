@@ -10,11 +10,11 @@
 // for the bg-job pipeline — both are kept untouched. The exported
 // helpers added here cover the HTTP transport's dry-run preview
 // path, which has DIFFERENT semantics from the worker scan:
-//   * public pattern-glob matching (filepath.Match) (worker uses
+//   - public pattern-glob matching (filepath.Match) (worker uses
 //     substring matching),
-//   * transport-only notion of "skipped" patterns (worker uses
+//   - transport-only notion of "skipped" patterns (worker uses
 //     include-only),
-//   * explicit "limit" semantics (worker hits limit during walk;
+//   - explicit "limit" semantics (worker hits limit during walk;
 //     transport counts only for the preview).
 //
 // The transport calls ScanLocalClips + ReadManifestJSON + ReadTextFile
@@ -62,13 +62,13 @@ func (c BulkUploadCandidate) DisplayName() string {
 // to compute the candidate count before enqueueing the heavy worker.
 //
 // Parameters:
-//   * root          — absolute path to scan (caller resolves via filepath.Abs).
-//   * recursive     — true = filepath.WalkDir; false = readDir shallow only.
-//   * patterns      — glob patterns matched via filepath.Match; empty = no filter.
-//   * skipPatterns  — substring matches that cause a file to be dropped;
-//                     empty = no skip filter.
-//   * limit         — positive = stop after this many candidates (uses
-//                     filepath.SkipAll internally).
+//   - root          — absolute path to scan (caller resolves via filepath.Abs).
+//   - recursive     — true = filepath.WalkDir; false = readDir shallow only.
+//   - patterns      — glob patterns matched via filepath.Match; empty = no filter.
+//   - skipPatterns  — substring matches that cause a file to be dropped;
+//     empty = no skip filter.
+//   - limit         — positive = stop after this many candidates (uses
+//     filepath.SkipAll internally).
 //
 // Errors are returned when the walk fails (e.g. permission denied).
 // Each file's manifest + transcript siblings are read best-effort —

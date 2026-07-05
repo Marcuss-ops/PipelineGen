@@ -4,13 +4,13 @@
 // an error — e.g. SQLite transient failure, lock timeout, schema
 // mismatch — the finalizer:
 //
-//   (a) returns the error wrapped with a "dedupe lookup" marker so
-//       callers can distinguish a dedupe-gate fault from a downstream-
-//       write fault,
-//   (b) does NOT call DeleteByIDTx (atomic-swap delete step),
-//   (c) does NOT call InsertTx (atomic-swap insert step),
-//   (d) does NOT call UpsertVoiceoverProjectionTx (media_assets row),
-//   (e) does NOT call EnqueueIndexEvent / EnqueueCleanupEvent (outbox).
+//	(a) returns the error wrapped with a "dedupe lookup" marker so
+//	    callers can distinguish a dedupe-gate fault from a downstream-
+//	    write fault,
+//	(b) does NOT call DeleteByIDTx (atomic-swap delete step),
+//	(c) does NOT call InsertTx (atomic-swap insert step),
+//	(d) does NOT call UpsertVoiceoverProjectionTx (media_assets row),
+//	(e) does NOT call EnqueueIndexEvent / EnqueueCleanupEvent (outbox).
 //
 // This test closes the silent-success class flagged by the audit
 // (P0 #3): pre-fix, the dedupe lookup error was swallowed (`_ :=`),

@@ -14,8 +14,8 @@
 //  1. Walk ONLY the two yamlDir files named in the slice 4/4 spec
 //     (action P0-5 of cleanup plan, June 2026):
 //
-//	yamlDir/current.yaml  — active migration / wave tracker
-//	yamlDir/issues.yaml   — open technical-issues tracker
+//     yamlDir/current.yaml  — active migration / wave tracker
+//     yamlDir/issues.yaml   — open technical-issues tracker
 //
 //     Other yaml surfaces (policy.yaml, deprecations.yaml,
 //     ownership.generated.yaml, ownership/<split>.yaml,
@@ -32,13 +32,16 @@
 //     `status`, etc. — which often contain English prose that freely
 //     mentions `internal/...` paths for documentation — are NOT
 //     emitted, eliminating false-positive violations.
+//
 //  3. Skip full-line comments (lines starting with `#` after
 //     trim). AGENTS.md zero-legacy rule.
+//
 //  4. Find sub-tokens whose FIRST 3+ bytes match one of the
 //     canonical Go-path prefixes (`internal/`, `pkg/`, `cmd/`),
 //     extending greedily through path chars (a-z, 0-9, _, -, .,
 //     /), then trim trailing punctuation. Tokens are deduped per
 //     leaf scalar.
+//
 //  5. Route each token to one of four validators and emit one
 //     Finding per missing reference.
 //
