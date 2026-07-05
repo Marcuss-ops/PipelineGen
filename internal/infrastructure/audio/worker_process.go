@@ -37,6 +37,12 @@ import (
 //     buffer from filling and blocking the Python process)
 //  4. Validate the /health endpoint responds 200
 //  5. Store baseURL = "http://127.0.0.1:<n>" for subsequent requests
+//
+// godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): every
+// failure path wraps a typed sentinel so callers can probe with
+// errors.Is without parsing string fragments:
+//   - ErrWorkerUnavailable: script missing / Start failed / PORT line missing
+//   - ErrWorkerHealthFailed: post-startup GET /health returned non-200
 func (p *Processor) ensureStarted(ctx context.Context) error {
 	if p.started {
 		if err := p.healthCheck(); err != nil {
@@ -44,14 +50,14 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 			// of perpetually hitting the same dead health check.
 			p.started = false
 			p.baseURL = ""
-			return fmt.Errorf("tts worker health check failed: %w", err)
+			return fmt.Errorf("tts worker health check failed: %w: %w", err, ErrWorkerHealthFailed)
 		}
 		return nil
 	}
 
 	scriptPath := filepath.Join(p.pythonScriptsDir, "bridges", "tts_edge_server.py")
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		return fmt.Errorf("tts_edge_server.py not found at %s", scriptPath)
+		return fmt.Errorf("tts_edge_server.py not found at %s: %w", scriptPath, ErrWorkerUnavailable)
 	}
 
 	p.log.Info("audio.Processor: launching persistent TTS server",
@@ -63,7 +69,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	// Capture stdout to read the PORT=<n> line.
 	stdoutPipe, err := p.cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("tts server stdout pipe: %w", err)
+		return fmt.Errorf("tts server stdout pipe: %w: %w", err, ErrWorkerUnavailable)
 	}
 
 	// Route stderr to a file for post-mortem debugging.
@@ -78,7 +84,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	}
 
 	if err := p.cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start TTS server: %w", err)
+		return fmt.Errorf("failed to start TTS server: %w: %w", err, ErrWorkerUnavailable)
 	}
 
 	// Read the PORT=<n> line from stdout.
@@ -104,7 +110,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		if p.cmd.Process != nil {
 			_ = p.cmd.Process.Kill()
 		}
-		return fmt.Errorf("tts server did not print PORT line (process may have crashed on startup)")
+		return fmt.Errorf("tts server did not print PORT line (process may have crashed on startup): %w", ErrWorkerUnavailable)
 	}
 
 	// Drain remaining stdout in a background goroutine. The Python server
@@ -132,7 +138,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		if p.cmd.Process != nil {
 			_ = p.cmd.Process.Kill()
 		}
-		return fmt.Errorf("tts server health check failed after startup: %w", err)
+		return fmt.Errorf("tts server health check failed after startup: %w: %w", err, ErrWorkerHealthFailed)
 	}
 
 	p.log.Info("audio.Processor: TTS server warmup complete, ready for synthesis")

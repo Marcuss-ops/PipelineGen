@@ -46,6 +46,14 @@ type ttsSynthesizeResponse struct {
 // sendSynthesizeRequest sends a POST /synthesize to the persistent worker
 // and returns the AudioResult. Must be called while p.mu is held (the mutex
 // serialises all HTTP calls to the single-threaded Python server).
+//
+// godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): every
+// failure path wraps a typed sentinel + the underlying cause (dual %w,
+// Go 1.20+) so callers can probe with errors.Is(ErrSynthesizeFailed) AND
+// errors.As(workerErr) without parsing string fragments:
+//   - ErrSynthesizeFailed: non-200 status OR ok=false response body
+//   - ErrOutputMissing: post-synthesis file missing from disk (worker claimed
+//     success but the file is gone)
 func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput) (*AudioResult, error) {
 	reqBody := ttsSynthesizeRequest{
 		Text:  input.Text,
@@ -68,28 +76,28 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("synthesize request failed: %w", err)
+		return nil, fmt.Errorf("synthesize request failed: %w: %w", err, ErrSynthesizeFailed)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read synthesize response: %w", err)
+		return nil, fmt.Errorf("read synthesize response: %w: %w", err, ErrSynthesizeFailed)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("synthesize returned %d: %s", resp.StatusCode,
-			string(bytes.TrimSpace(respBody)))
+		return nil, fmt.Errorf("synthesize returned %d: %s: %w", resp.StatusCode,
+			string(bytes.TrimSpace(respBody)), ErrSynthesizeFailed)
 	}
 
 	var ttsOut ttsSynthesizeResponse
 	if err := json.Unmarshal(respBody, &ttsOut); err != nil {
-		return nil, fmt.Errorf("decode synthesize response: %w (body=%s)", err,
-			string(bytes.TrimSpace(respBody)))
+		return nil, fmt.Errorf("decode synthesize response: %w (body=%s): %w", err,
+			string(bytes.TrimSpace(respBody)), ErrSynthesizeFailed)
 	}
 
 	if !ttsOut.OK {
-		return nil, fmt.Errorf("TTS generation failed: %s", ttsOut.Error)
+		return nil, fmt.Errorf("TTS generation failed: %s: %w", ttsOut.Error, ErrSynthesizeFailed)
 	}
 
 	// Post-condition: output file must exist and be non-empty.
@@ -98,7 +106,7 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 		outputPath = reqBody.Out
 	}
 	if _, statErr := os.Stat(outputPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("TTS output file not found: %s", outputPath)
+		return nil, fmt.Errorf("TTS output file not found: %s: %w", outputPath, ErrOutputMissing)
 	}
 
 	result := &AudioResult{
@@ -140,4 +148,3 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 // filepathJoin is a thin wrapper for path/filepath.Join so this file
 // does not need the path/filepath import (the package-level import
 // lives in processor.go per AGENTS.md single-import-site convention).
-

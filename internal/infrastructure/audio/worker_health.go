@@ -54,11 +54,21 @@ func (p *Processor) healthCheck() error {
 // diagnostics and monitoring. The worker is lazily started on the first
 // call to Generate(); Health() before the first synthesis reports the
 // worker as not started (not an error — it's a lazy-init contract).
+//
+// godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): the
+// post-startup failure path wraps the typed ErrWorkerHealthFailed
+// sentinel via dual-%w (Go 1.20+) so callers can probe with errors.Is
+// without parsing string fragments. The pre-startup path ("not started")
+// is intentionally NOT wrapped — it is a clean lazy-init signal, not a
+// failure mode.
 func (p *Processor) Health() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.started {
 		return fmt.Errorf("tts worker not started")
 	}
-	return p.healthCheck()
+	if err := p.healthCheck(); err != nil {
+		return fmt.Errorf("audioasset.Processor.Health: %w: %w", err, ErrWorkerHealthFailed)
+	}
+	return nil
 }
