@@ -1,0 +1,23 @@
+{
+  "queries": [
+    { "q": "boxing crowd reaction slow motion", "limit": 3 },
+    { "q": "fighter training in boxing gym", "limit": 3 },
+    { "q": "boxing arena lights dramatic", "limit": 3 }
+  ],
+  "total_minutes": 2,
+  "clip_duration": 10,
+  "max_videos": 6,
+  "folder_id": "1DeDTQK0CvrteF2MO5XhiXyp64amXvRqf",
+  "folder_name": "Boxe Stock Test",
+  "subfolder": "Pacquiao Broner Stock",
+  "no_audio": false,
+  "no_effects": false,
+  "no_transitions": false,
+  "async": true,
+  "metadata": {
+    "title": "Boxing stock footage pack",
+    "description": "Stock clips for boxing storytelling, crowd reactions, gym training and dramatic fight atmosphere.",
+    "tags": ["boxing", "stock", "crowd", "training", "sports"],
+    "category": "boxing"
+  }
+}
