@@ -454,6 +454,6 @@ func TestWireFormat_StagedArtifactsRoundTrip(t *testing.T) {
 
 // Silence unused imports on forward-compat-only symbols.
 var (
-	_ io.Reader = (*io.Reader)(nil)
+	_ io.Reader = nil
 	_           = errors.New
 )
