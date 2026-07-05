@@ -5512,7 +5512,9 @@
     priority_band: P0_absolute
   - id: PR-script-deps-slim
     owner_capability: internal/api/script
-    status: pending
+    status: shipped
+    ship_sha: 756ff1e4
+    ship_date: 2026-07-04
     deadline: 2026-08-08
     priority_band: P1
   - id: PR-noop-adapters-purge
