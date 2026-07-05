@@ -1,0 +1,82 @@
+{
+  "_audit_pin_role": "v2 attempt block — FASE 11 v3 emission retry. Gate remains blocked per godlike/07 no-fake-availability. Refusing to fabricate v3 surface data. This audit-pin file is the canonical 2nd-attempt record per Option C (file:v2_v3_attempt_gate_failure.json#_attempt_outcome + file:README.md#changelogs_convention).",
+  "_audit_pin_status": "GATE_CONTINUES_BLOCKED_NO_V3_EMITTED",
+  "_attempt_id": "FASE 11 / retry-ricetta v3 re-emit (Attempt 2 — the canonical user-spec retry after sequences 1-4 ship at b3a0c954 + c7c6aadd + 2baf5a9c + cd1d5834 + 1b406cf8).",
+  "_attempt_timestamp_utc": "2026-07-05T08:16:50Z",
+  "_attempt_operator": "PipelineGen Agent (auto)",
+  "_attempt_outcome": "gate_continues_blocked — only 1 of 4 prerequisite PRs resolved via the closure wave; the canonical /api/script/generate-from-clips endpoint is RETIRED to 410-Gone; scripts/operational/lib/poll_terminal.sh does NOT exist on disk; port discovery could not identify a live PipelineGen server reachable on 8000/8080/8081 within the 30s bounded probe window. See _attempt_observed_probes below.",
+  "_attempt_seed_payload_preview": "topic=fase11-v3-retry-ricetta-smoke, language=it, save_to_db=false (POST /api/script/generate V2 — the legacy /api/script/generate-from-clips endpoint is RETIRED to 410-Gone per handler_legacy_int_stock_test.go::PR-script-legacy-contract).",
+  "_attempt_observed_probes": {
+    "port_8000": {
+      "ready_response_status": "503 (per prior repro 2026-07-05T08:00Z)",
+      "ready_response_raw_head_chars_0_200": "{\"checks\":{\"db\":{\"duration_ms\":0,\"ok\":true},\"drive\":{\"applicable\":false,\"duration_ms\":0,\"note\":\"drive checker not wired\",\"ok\":true},\"jobs\":{\"duration_ms\":0,\"error\":\"runner liveness probe failed: broke",
+      "healthz_response_status": "404",
+      "healthz_response_raw_head_chars_0_200": "404 page not found"
+    },
+    "port_8080": {
+      "ready_response_status": "404 — SearXNG HTML returned (not PipelineGen)",
+      "ready_response_raw_head_chars_0_200": "<!DOCTYPE html>\n<html class=\"no-js theme-auto center-alignment-no\" lang=\"en-EN\" >\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"endpoint\" content=\"None\">\n  <meta name=\"description\" content=\"SearXNG — ",
+      "healthz_response_status": "200 (HTML body, not PipelineGen JSON)",
+      "healthz_response_raw_head_chars_0_200": "OK"
+    },
+    "port_8081": {
+      "ready_response_status": "Connection refused",
+      "ready_response_raw_head_chars_0_200": "",
+      "healthz_response_status": "Connection refused",
+      "healthz_response_raw_head_chars_0_200": ""
+    }
+  },
+  "_attempt_seed_call_response_sketched": "POST /api/script/generate on port 8000 returned JSON {\"error\":\"Unauthorized\",\"ok\":false}; on port 8080 returned SearXNG HTML. No job_id minted; SEED_JOB_ID empty; the bounded 30s poll loop was therefore a no-op.",
+  "blocking_resolution_evidence": {
+    "PR-HEARTBEAT-TELEMETRY-BUG": {
+      "resolution_status": "resolved (1 of 4 prerequisites landed via the closure wave)",
+      "ship_sha": "489c64aa",
+      "ship_date": "2026-07-05",
+      "wave_tracker_path": "architecture/current.yaml#PR-HEARTBEAT-TELEMETRY-BUG (status:shipped + ship_sha:489c64aa + ship_date:2026-07-05)"
+    },
+    "PR-COMPLETIONPORT-WIRE-MISSING": {
+      "resolution_status": "still_pending",
+      "code_evidence": "ZERO production-code grep for CompletionPort / ErrCompletionPortNotWired in internal/",
+      "wave_tracker_path": "architecture/current.yaml#PR-COMPLETIONPORT-WIRE-MISSING (status:pending)",
+      "next_required_action": "ship the canonical CompletionPort interface + ErrCompletionPortNotWired typed sentinel."
+    },
+    "PR-RATELIMIT-UNIFIED-POLICY": {
+      "resolution_status": "still_pending",
+      "code_evidence": "internal/api/middleware/rate_limit*.go does NOT exist per ls 2026-07-05",
+      "wave_tracker_path": "architecture/current.yaml#PR-RATELIMIT-UNIFIED-POLICY (status:pending)",
+      "next_required_action": "either (a) wire canonical per-bearer-token sliding-window policy at internal/api/middleware/rate_limit.go OR (b) flip the wave-tracker entry to closed-status if policy already ships under a different surface"
+    },
+    "PR-POLL-CADENCE-DISCIPLINE": {
+      "resolution_status": "still_pending",
+      "code_evidence": "scripts/operational/lib/poll_terminal.sh does NOT exist per ls 2026-07-05 (no scripts/operational/ dir at all)",
+      "wave_tracker_path": "architecture/current.yaml#PR-POLL-CADENCE-DISCIPLINE (status:pending)",
+      "next_required_action": "ship scripts/operational/lib/poll_terminal.sh with interval jitter >= 10s + 429-driven exponential backoff + JSONL emit format (3 fix-points)"
+    }
+  },
+  "preconditions_now_blocking": [
+    "PR-COMPLETIONPORT-WIRE-MISSING",
+    "PR-RATELIMIT-UNIFIED-POLICY",
+    "PR-POLL-CADENCE-DISCIPLINE"
+  ],
+  "gate_state": "1 of 4 prerequisites resolved via the closure wave (Heartbeat/Fanout/Boxing + lockstep + fix-up). Gate STAYS BLOCKED per godlike/07 no-fake-availability.",
+  "_next_action_blocked_by": "The 3 unresolved prerequisites (CompletionPort, RateLimit, PollCadence) all require implementation-shipping work that is forward-pointer scope for the closure wave (not derivable from the existing 5-commit surface).",
+  "_next_recipe_for_future_attempt": [
+    "1. Land PR-POLL-CADENCE-DISCIPLINE first (lowest-blast-radius + required for the user-spec's literal 'new poll_terminal.sh' reference).",
+    "2. Land PR-RATELIMIT-UNIFIED-POLICY second (unblocks 429-throttle-pattern reliance in the spec'd poll cadence).",
+    "3. Land PR-COMPLETIONPORT-WIRE-MISSING third (unblocks broker-side terminal-flip dependency for non-completed terminal states).",
+    "4. Re-execute the canonical recipe: fresh-seed via /api/script/generate V2 + poll via the new poll_terminal.sh + capture terminal-state body verbatim + re-emit 02_poll_terminal.json as v3 with _terminal_body_capture.<status>.response.body_pretty sub-block.",
+    "5. DELETE this audit-pin file OR RENAME it to v2_v3_attempt_gate_resolved.json with _resolution_status:resolved cross-referenced from the new v3 fixture header."
+  ],
+  "_audit_pin_links": {
+    "prior_attempt_audit_pin": "tests/fixtures/stock_e2e/changelogs/v2_v3_attempt_gate_failure.json",
+    "wave_tracker_umbrella": "architecture/current.yaml#FASE-11-RETRY-RICETTA-FORWARD-POINTERS",
+    "closure_wave_anchors": [
+      "architecture/current.yaml#PR-VO-SUBFOLDER (shipped before closure wave)",
+      "architecture/current.yaml#PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE (shipped before closure wave)",
+      "architecture/current.yaml#PR-PERMANENT-VOICEOVER-RICETTA",
+      "architecture/current.yaml#PR-AGENTS-CONTEXT-DESCRIPTORS",
+      "architecture/current.yaml#CLOSURE-WAVE-PRE-EXISTING-FIX"
+    ],
+    "shape_mirror": "this file mirrors v1 structure (file:v2_v3_attempt_gate_failure.json) exactly per godlike/06 SSOT — each audit-pin file is canonical for its OWN attempt record, no cross-attempt state stored in any single file."
+  }
+}
