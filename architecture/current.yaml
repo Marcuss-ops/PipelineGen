@@ -5538,7 +5538,9 @@
       (audit block sibling collision unrelated to PR-noop-adapters-purge).
   - id: PR-qdrant-readiness-slim
     owner_capability: cmd/admin
-    status: pending
+    status: shipped
+    ship_sha: c2ba47f7
+    ship_date: 2026-07-04
     deadline: 2026-08-08
     priority_band: P1
   - id: PR-jobs-retry-contract
@@ -5577,7 +5579,9 @@
     priority_band: P2_media
   - id: PR-docs-archive
     owner_capability: architecture
-    status: pending
+    status: shipped
+    ship_sha: b56014b4
+    ship_date: 2026-07-04
     deadline: 2026-08-22
     priority_band: P3_bassa
   - id: PR-CLEANUP-HOTSPOT-CROSSREF
