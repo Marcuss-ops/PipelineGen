@@ -20,12 +20,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
@@ -251,12 +253,47 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		stockCutter := render.NewFFmpegCutter(ffmpegPath, log)
 		stockRenderer := render.NewFFmpegRenderer(ffmpegPath, nil, log)
 
-		// ChannelLister (optional; *YTDLPDownloader satisfies ChannelLister).
-		stockChannelLister := downloader.NewYTDLP(cfg)
+		// ChannelLister + SourceStager: share the same yt-dlp downloader.
+		// *YTDLPDownloader satisfies ChannelLister (compile-time pin in ports.go).
+		ytdlp := downloader.NewYTDLP(cfg)
+		stockChannelLister := ytdlp
 
-		// SourceStager (Fail-closed: Fetch=stub → typed-error on first Prepare;
-		// forward-pointer PR-STOCK-FETCH-WIRE-2026-Q3).
-		stockSourceStager, stagerErr := WireAcquisitionStager(cfg, log, nil)
+		// SourceStager: wire a real yt-dlp Fetch closure so Prepare
+		// downloads source videos via yt-dlp subprocess. The closure
+		// maps appacq.PrepareRequest -> downloader.DownloadRequest,
+		// then resolves the yt-dlp output file and renames it to the
+		// canonical dstPath the FilesystemStager expects.
+		ytdlpFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+			dlReq := &downloader.DownloadRequest{
+				URL:        req.Source.URL,
+				OutputPath: dstPath,
+				Timeout:    req.Timeout,
+			}
+			if req.Source.DownloadSection != "" {
+				dlReq.DownloadSections = []string{req.Source.DownloadSection}
+				dlReq.ForceKeyframes = req.Source.ForceKeyframes
+			}
+			if req.Source.MergeFormat != "" {
+				dlReq.MergeFormat = req.Source.MergeFormat
+			}
+			if err := ytdlp.Download(ctx, dlReq); err != nil {
+				return err
+			}
+			// yt-dlp writes to OutputPath.%(ext)s; resolve the actual file
+			// and rename it to the canonical dstPath.
+			outputTemplate := dstPath + ".%(ext)s"
+			resolved, resolveErr := downloader.ResolveDownloadedSegmentPath(outputTemplate)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			if resolved != dstPath {
+				if err := os.Rename(resolved, dstPath); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		stockSourceStager, stagerErr := WireAcquisitionStager(cfg, log, ytdlpFetch)
 		if stagerErr != nil {
 			log.Warn("registerInternalModules Step 8 WireAcquisitionStager failed (godlike/07 fail-closed: source staging will return typed error)",
 				zap.Error(stagerErr))
