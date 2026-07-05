@@ -3738,10 +3738,17 @@
     ship_date: 2026-07-05
     ship_via: 'commit 13ba3d96 (canonical-surface + CHANGELOG + AGENTS) per 2-commit split pattern; rebase-recovered via AGENTS.md Git-Lesson-4 + Rebase-Conflict Lesson (preserved both sides append-only)'
     deadline: 2026-07-25 (pre-deadline by 20 days)
+  - id: PR-VO-SERVICE-HOTSPOT
+    owner_capability: internal/application/voiceover
+    status: pending
+    deadline: 2026-08-22
   - id: VO-DECOMPOSITION-HOTSPOT-CROSSREF
     owner_capability: architecture
-    status: pending
-    deadline: 2026-08-15
+    status: shipped
+    ship_sha: <TBD>
+    ship_date: 2026-07-05
+    ship_via: 'commit <TBD> (single docs commit: PR-VO-SERVICE-HOTSPOT append + this-entry status:pending -> status:shipped flip)'
+    deadline: 2026-08-15 (pre-deadline by 41 days)
 - id: CLIPS-META-2026-07-04
   status: in_progress
   exit_signal: false
