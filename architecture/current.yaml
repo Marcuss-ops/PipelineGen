@@ -5999,7 +5999,7 @@
     - id: STK-E2E-D
       owner_capability: tests/operational/stock_e2e_db_assets_smoke.sh
       status: shipped
-      ship_sha: PENDING_BOOKKEEPING_COMMIT_FOLLOWUP
+      ship_sha: f32ad3cd821ea0e28cd6fd250addbf48b5a995f9
       ship_date: 2026-07-05
       ship_via: 2_COMMIT_SPLIT_PER_CODEBASE_PATTERN_PR_VO_TYPED_PRIMITIVES
       deadline: 2026-07-22
