@@ -28,6 +28,7 @@
 package jobs
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -43,9 +44,9 @@ func newWiringRegistry(t *testing.T, timeout time.Duration, maxRetries int) *Reg
 	t.Helper()
 	reg := NewRegistry()
 	if err := reg.Register(RegistryEntry{
-		Type:             wiringTestType,
-		Description:      "wiring-test entry",
-		Timeout:          timeout,
+		Type:              wiringTestType,
+		Description:       "wiring-test entry",
+		Timeout:           timeout,
 		DefaultMaxRetries: maxRetries,
 	}); err != nil {
 		t.Fatalf("register %s: %v", wiringTestType, err)
@@ -198,59 +199,59 @@ func TestRunner_WithRegistry_NilIsTolerant(t *testing.T) {
 	}
 }
 
-// ── Issue 4 (June 2026, P1) ──────────────────────────────────
-// Pin the *Service*-side MaxRetries fallback resolution. The user's
-// Issue 4 spec has two halves:
-//   - Helper layer: EnqueueGenerationJob sources MaxRetries from
-//     registry.DefaultMaxRetries when attached — pinned in
-//     internal/application/scripts/jobs/generation_enqueue_registry_test.go
-//   - Service layer: condition the legacy MaxRetries=3 fallback to
-//     fire ONLY for unregistered job types — pinned here.
+// ── Issue 4 (June 2026, P1) + PR-jobs-retry-contract (July 2026) ───
+// Pin the *Service*-side strict typed MaxRetries resolution. The
+// PR-jobs-retry-contract refactor removes the pre-PR legacy
+// hard-coded 3-retry fallback (godlike/07 NO-FAKE-AVAILABILITY) and
+// replaces it with a single typed Registry.GetMaxRetries(jobType)
+// lookup that returns ErrMaxRetriesUnknown for unregistered types.
+// resolveMaxRetries signature is now (int, error) — the caller
+// (Enqueue) propagates the error so a missing registration is loud,
+// NOT silenced by a silent default.
 //
-// The resolve path is extracted into Service.resolveMaxRetries so
-// these tests do not need a live *sqljobs.SQLiteStore or Dispatcher
-// fixture. Only the typed `*Registry` and `*zap.Logger` are required.
+// Other split of duties (helper layer for EnqueueGenerationJob): pinned
+// in internal/application/scripts/jobs/generation_enqueue_registry_test.go.
 
 // TestService_ResolveMaxRetries_RegisteredTypeUsesRegistryDefault:
-// Issue 4 / P1 service-side contract — when a registry is attached
-// AND the job type is registered, MaxRetries=0 must resolve to
-// registry.DefaultMaxRetries (5 in this fixture, not the legacy 3).
+// PR-jobs-retry-contract strict typed contract — when a registry is
+// attached AND the job type is registered, MaxRetries=0 must resolve
+// to registry.DefaultMaxRetries (5 in this fixture) via the typed
+// GetMaxRetries lookup. Returned error MUST be nil.
 func TestService_ResolveMaxRetries_RegisteredTypeUsesRegistryDefault(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
 
-	svc := &Service{log: zap.NewNop(), registry: reg}
-	got := svc.resolveMaxRetries(wiringTestType, 0)
+	svc, err := NewService(nil /* repo: typed-only test */, NewDispatcher(), zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	got, err := svc.resolveMaxRetries(wiringTestType, 0)
+	if err != nil {
+		t.Errorf("PR-jobs-retry-contract: resolveMaxRetries(registered, 0) err = %v, want nil", err)
+	}
 	if got != 5 {
-		t.Errorf("Issue 4 / P1: resolveMaxRetries(registered, 0) = %d, want registry default 5", got)
+		t.Errorf("resolveMaxRetries(registered, 0) = %d, want registry default 5", got)
 	}
 }
 
-// TestService_ResolveMaxRetries_UnregisteredTypeUsesLegacy3:
-// spec: "Rimuovi o condiziona il fallback j.MaxRetries = 3 in
-// service.go SOLO ai casi in cui il job type non è registrato".
-// Unregistered types MUST keep the legacy 3-retry safety net even
-// when the registry is attached.
-func TestService_ResolveMaxRetries_UnregisteredTypeUsesLegacy3(t *testing.T) {
+// TestService_ResolveMaxRetries_UnregisteredType_ReturnsErrMaxRetriesUnknown:
+// strict typed-error contract — unregistered jobTypes MUST return
+// ErrMaxRetriesUnknown (godlike/07 NO-FAKE-AVAILABILITY: the legacy
+// silent 3-retry fallback is REMOVED in PR-jobs-retry-contract).
+func TestService_ResolveMaxRetries_UnregisteredType_ReturnsErrMaxRetriesUnknown(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
 
-	svc := &Service{log: zap.NewNop(), registry: reg}
-	got := svc.resolveMaxRetries("totally.unknown.type", 0)
-	if got != 3 {
-		t.Errorf("resolveMaxRetries(unregistered, 0) = %d, want legacy 3", got)
+	svc, err := NewService(nil, NewDispatcher(), zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
 	}
-}
-
-// TestService_ResolveMaxRetries_NilRegistryUsesLegacy3: composition
-// fixtures that do NOT call WithRegistry(reg) must preserve the
-// pre-Issue-4 hard-coded 3-retry fallback as a safety net.
-func TestService_ResolveMaxRetries_NilRegistryUsesLegacy3(t *testing.T) {
-	t.Parallel()
-	svc := &Service{log: zap.NewNop()} // no registry attached
-	got := svc.resolveMaxRetries(wiringTestType, 0)
-	if got != 3 {
-		t.Errorf("resolveMaxRetries(nilRegistry, 0) = %d, want legacy 3", got)
+	got, err := svc.resolveMaxRetries("totally.unknown.type", 0)
+	if !errors.Is(err, ErrMaxRetriesUnknown) {
+		t.Errorf("resolveMaxRetries(unregistered, 0) err = %v, want ErrMaxRetriesUnknown", err)
+	}
+	if got != 0 {
+		t.Errorf("resolveMaxRetries(unregistered, 0) = %d, want 0 on error path", got)
 	}
 }
 
@@ -260,10 +261,17 @@ func TestService_ResolveMaxRetries_NilRegistryUsesLegacy3(t *testing.T) {
 func TestService_ResolveMaxRetries_PreservesExplicitValue(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
-	svc := &Service{log: zap.NewNop(), registry: reg}
+	svc, err := NewService(nil, NewDispatcher(), zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	for _, v := range []int{1, 2, 4, 7, 100} {
-		if got := svc.resolveMaxRetries(wiringTestType, v); got != v {
+		got, err := svc.resolveMaxRetries(wiringTestType, v)
+		if err != nil {
+			t.Errorf("resolveMaxRetries(%q, %d) err = %v, want nil", wiringTestType, v, err)
+		}
+		if got != v {
 			t.Errorf("resolveMaxRetries(%q, %d) = %d, want preserved verbatim", wiringTestType, v, got)
 		}
 	}
@@ -271,20 +279,24 @@ func TestService_ResolveMaxRetries_PreservesExplicitValue(t *testing.T) {
 
 // TestService_ResolveMaxRetries_PreservesNegativeSentinel: -1 was the
 // canonical "explicit zero retries" sentinel in the pre-Issue-4 code
-// path. The new conditional fallback MUST preserve that semantic
-// verbatim — -1 must NOT be silently turned into "use default".
+// path. The new strict typed lookup MUST preserve that semantic
+// verbatim — -1 must NOT be silently turned into "use default" nor
+// "lookup registry default".
 func TestService_ResolveMaxRetries_PreservesNegativeSentinel(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
-	svc := &Service{log: zap.NewNop(), registry: reg}
+	svc, err := NewService(nil, NewDispatcher(), zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	for _, v := range []int{-1, -7, -42} {
-		if got := svc.resolveMaxRetries(wiringTestType, v); got != 0 {
+		got, err := svc.resolveMaxRetries(wiringTestType, v)
+		if err != nil {
+			t.Errorf("resolveMaxRetries(%q, %d) err = %v, want nil", wiringTestType, v, err)
+		}
+		if got != 0 {
 			t.Errorf("resolveMaxRetries(%q, %d) = %d, want 0 (negative sentinel maps to no-retries)", wiringTestType, v, got)
 		}
-	}
-	noRegSvc := &Service{log: zap.NewNop()}
-	if got := noRegSvc.resolveMaxRetries(wiringTestType, -1); got != 0 {
-		t.Errorf("resolveMaxRetries(nilRegistry, -1) = %d, want 0", got)
 	}
 }

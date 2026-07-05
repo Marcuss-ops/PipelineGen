@@ -6,9 +6,9 @@
 //   - handler_registration.go — RegisterHandler, HasHandler, ValidateHandlerCompleteness
 //   - enqueue_service.go      — Enqueue + idempotency pipeline (MaxPayloadSize, generateJobID)
 //   - job_queries.go          — Get, List, FindActiveByKey, ListAwaitingAggregation, ListEvents,
-//                               IsTerminal, GetStats, RequeueExpiredLeases
+//     IsTerminal, GetStats, RequeueExpiredLeases
 //   - job_commands.go         — Cancel, Retry, Progress, AddEvent, Complete, Fail,
-//                               FinalizeAggregateParent
+//     FinalizeAggregateParent
 //
 // Service is the application-layer facade over the canonical job.Store
 // port (job.JobBroker). The previous shape held *sqljobs.SQLiteStore
@@ -66,28 +66,60 @@ type Service struct {
 // Composition root injects *sqljobs.SQLiteStore today; future PR-`postgres`
 // injects *pgbroker.Store (declared via `var _ job.JobBroker = (*pgbroker.Store)(nil)`).
 //
-// Issue 4 (June 2026, P1): the registry is NOT a required constructor arg
-// — attach it via the fluent WithRegistry(reg) builder. Nil-tolerant at
-// runtime: when no registry is attached the Enqueue() MaxRetries fallback
-// keeps the pre-Issue-4 hard-coded default of 3 for ANY job type (legacy
-// safety net preserved for test fixtures that don't wire the registry).
-func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger) *Service {
+// PR-jobs-retry-contract (July 2026): the registry is REQUIRED at
+// construction time (fail-closed typed contract per godlike/07
+// no-fake-availability). The 4-arg signature returns (*Service, error) so
+// composition-root misconfiguration surfaces at startup as ErrRegistryRequired
+// instead of failing silently on first Enqueue with the legacy 3-retry
+// fallback.
+//
+// Composition root wiring contract:
+//
+//	svc, err := appjobs.NewService(repo, dispatcher, log, appjobs.Compose())
+//	if err != nil {
+//	    return fmt.Errorf("build jobs bundle: %w", err)
+//	}
+//
+// (Pre-PR behavior) the legacy 3-arg NewService(repo, dispatcher, log)
+// was nil-tolerant at the registry level: a nil-registry wiring kept the
+// pre-Issue-4 hard-coded 3-retry safety net for ANY job type — a
+// godlike/07 silent-success risk if the composition root forgot the
+// WithRegistry call. The 4-arg signature eliminates that risk entirely.
+func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger, reg *Registry) (*Service, error) {
+	if reg == nil {
+		return nil, ErrRegistryRequired
+	}
+	if repo == nil {
+		return nil, ErrRepoRequired
+	}
+	if log == nil {
+		return nil, ErrLogRequired
+	}
 	return &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
 		log:        log,
-	}
+		registry:   reg,
+	}, nil
 }
 
 // WithRegistry attaches the canonical job-type *Registry to this Service.
-// When attached, the Enqueue()-side MaxRetries fallback uses the registry's
-// per-job-type DefaultMaxRetries value for any REGISTERED job type and
-// keeps the legacy hard-coded 3 only for UNREGISTERED types. Mirrors the
-// HC-1 Worker.WithRegistry(reg *Registry) precedent.
 //
-// Issue 4 (June 2026, P1): nil-tolerant. Passing nil clears the field
-// (test fixture path). Calling WithRegistry multiple times reassigns
-// (last writer wins), which is unsafe-but-tolerated composition-only.
+// Deprecated: the registry is now REQUIRED at construction time via the
+// 4-arg NewService signature (PR-jobs-retry-contract, July 2026). This
+// setter is preserved (NOT removed) for back-compat with pre-PR test
+// fixtures + composition-root code that incrementally migrates; passing
+// a non-nil registry here AFTER NewService will OVERWRITE the
+// constructor-set registry (last writer wins — unsafe-but-tolerated for
+// composition-only use).
+//
+// Mirrors HC-1 Worker.WithRegistry(reg *Registry) precedent. Nil-tolerant.
+// Calling WithRegistry(nil) clears the field (test fixture path); do NOT
+// call nil-WithRegistry in production — the 4-arg NewService enforces the
+// canonical fail-closed surface.
+//
+// Forward-pointer: future CUTOVER removes this setter entirely once all
+// composition-root callers migrate to the 4-arg signature.
 func (s *Service) WithRegistry(reg *Registry) *Service {
 	if s == nil {
 		return s

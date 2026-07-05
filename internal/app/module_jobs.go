@@ -53,7 +53,13 @@ func BuildJobsBundle(db *storage.SQLiteDB, log *zap.Logger) (*JobsBundle, error)
 	registry := appjobs.Compose()
 	repo.SetProducesArtifacts(registry.ProducesArtifactsMap())
 	dispatcher := appjobs.NewDispatcher()
-	svc := appjobs.NewService(repo, dispatcher, log).WithRegistry(registry)
+	// PR-jobs-retry-contract (July 2026): fail-closed 4-arg constructor;
+	// ErrRegistryRequired propagates here so composition wiring surfaces
+	// at startup rather than at first Enqueue.
+	svc, err := appjobs.NewService(repo, dispatcher, log, registry)
+	if err != nil {
+		return nil, fmt.Errorf("build jobs bundle: %w", err)
+	}
 
 	return &JobsBundle{
 		Repo:       repo,

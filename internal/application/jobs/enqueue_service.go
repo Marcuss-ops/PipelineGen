@@ -2,15 +2,27 @@
 //
 // PR-GODOBJ-6 (July 2026): mechanically extracted from service.go
 // per the god-object decomposition plan. Zero behavior changes.
+//
+// PR-jobs-retry-contract (July 2026): tighten the *Service*-side
+// MaxRetries resolution path to a canonical typed lookup via
+// Registry.GetMaxRetries(jobType). Removed the pre-PR legacy
+// hard-coded 3-retry fallback for unregistered types; the strict
+// typed-error contract propagates ErrMaxRetriesUnknown to the caller.
+// Also replaced the pre-PR strings.Contains(err.Error(), "UNIQUE
+// constraint") idempotency-rescue probe with a typed sqlite3.Error
+// probe (`errors.As(&sqliteErr)` + `Code==sqlite3.ErrConstraintUnique`)
+// so a future driver string change does not silently disable the
+// rescue path (godlike/07 NO-FAKE-AVAILABILITY).
 package jobs
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -21,49 +33,44 @@ import (
 // MaxPayloadSize is the maximum allowed size for a serialized job payload in bytes.
 const MaxPayloadSize = 1 << 20 // 1 MB
 
-// hasRegistry reports whether this Service has a registry attached AND
-// the registry has the given job type registered. Used by Enqueue() to
-// gate the MaxRetries fallback so the legacy 3-retry safety net still
-// fires for unregistered types.
-func (s *Service) hasRegistry(jobType string) bool {
-	if s == nil || s.registry == nil {
-		return false
-	}
-	return s.registry.IsRegistered(jobType)
-}
-
-// resolveMaxRetries encodes the Issue 4 (June 2026, P1) MaxRetries
-// fallback semantic in a single testable helper. Enqueue() delegates
-// to this helper so the logic is decoupled from repo/dispatcher
-// concerns (test fixtures only need &Service{} filled in).
+// resolveMaxRetries encodes the strict typed MaxRetries fallback
+// semantic in a single testable helper. Enqueue() delegates to this
+// helper so the logic is decoupled from repo/dispatcher concerns
+// (test fixtures only need typed Service+Registry wiring).
 //
 // Three-way semantics, in priority order:
 //
 //  1. currentMR < 0  → 0      (explicit "no retries" sentinel —
-//     pre-Issue-4 behaviour preserved verbatim; the worker treats 0
-//     as "do not retry").
+//     pre-Issue-4 behavior preserved verbatim).
 //
 //  2. currentMR > 0  → currentMR  (caller pre-set value preserved
 //     verbatim; registry is the fallback, not an override).
 //
-//  3. currentMR == 0 → registry.DefaultMaxRetries(jobType) when
-//     a registry is attached AND the type is REGISTERED; otherwise
-//     the legacy hard-coded 3-retry safety net.
+//  3. currentMR == 0 → registry.GetMaxRetries(jobType) (strict
+//     typed lookup; the registry MUST already be attached at
+//     construction time per the 4-arg NewService fail-closed
+//     constructor). Unknown jobTypes return ErrMaxRetriesUnknown —
+//     the caller (Enqueue) propagates the error so a missing
+//     registration is loud, NOT silenced by a legacy 3-retry
+//     fallback (PR-jobs-retry-contract removes the legacy
+//     `return 3` line per godlike/07 NO-FAKE-AVAILABILITY).
 //
-// Nil-service / nil-registry paths are covered by the
-// `s.hasRegistry` guard inside the third branch.
-func (s *Service) resolveMaxRetries(jobType string, currentMR int) int {
+// godlike/06 SSOT: this strict lookup supersedes the pre-PR
+// hasRegistry() guard + the legacy `return 3` line. Removing those
+// shapes eliminates two silent-success surfaces in one sweep.
+func (s *Service) resolveMaxRetries(jobType string, currentMR int) (int, error) {
 	if currentMR < 0 {
-		return 0
+		return 0, nil
 	}
 	if currentMR > 0 {
-		return currentMR
+		return currentMR, nil
 	}
-	// currentMR == 0 — resolve via registry when attached and registered.
-	if s.hasRegistry(jobType) {
-		return s.registry.DefaultMaxRetries(jobType)
+	// currentMR == 0 — single typed lookup.
+	if s.registry == nil {
+		// Defense-in-depth — should be unreachable given 4-arg NewService.
+		return 0, ErrRegistryRequired
 	}
-	return 3
+	return s.registry.GetMaxRetries(jobType)
 }
 
 // validateEnqueueRequest checks the domain EnqueueRequest for common errors.
@@ -158,23 +165,54 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		CorrelationID: req.CorrelationID,
 	}
 
-	// Issue 4 (June 2026, P1): MaxRetries fallback is now registry-aware.
-	j.MaxRetries = s.resolveMaxRetries(j.Type, j.MaxRetries)
+	// PR-jobs-retry-contract (July 2026): strict typed MaxRetries resolution
+	// via Registry.GetMaxRetries. Errors propagate (no silent fallback).
+	maxRetries, err := s.resolveMaxRetries(j.Type, j.MaxRetries)
+	if err != nil {
+		return nil, err
+	}
+	j.MaxRetries = maxRetries
 
 	if j.Payload == nil || len(j.Payload) == 0 || string(j.Payload) == "null" {
 		j.Payload = json.RawMessage("{}")
 	}
 
 	if err := s.repo.Create(ctx, j); err != nil {
-		// Idempotency safety net.
-		if j.CorrelationID != "" && strings.Contains(err.Error(), "UNIQUE constraint") {
-			if existing, findErr := s.repo.FindByTypeAndCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
-				s.log.Info("returning existing job by (type, correlation_id) — caught race on UNIQUE constraint",
-					zap.String("job_id", existing.ID),
-					zap.String("type", j.Type),
-					zap.String("correlation_id", j.CorrelationID),
-				)
-				return existing, nil
+		// PR-jobs-retry-contract (July 2026): typed sqlite3 probe replaces
+		// the pre-PR strings.Contains(err.Error(), "UNIQUE constraint")
+		// string-compare. Driver-invariant (mattn/go-sqlite3.Error.Code
+		// is an int-backed enum that does NOT depend on the error string
+		// format — a future driver string change cannot silently disable
+		// the rescue path).
+		if j.CorrelationID != "" {
+			var sqliteErr sqlite3.Error
+			if errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrConstraintUnique {
+				if existing, findErr := s.repo.FindByTypeAndCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
+					s.log.Info("returning existing job by (type, correlation_id) — caught race on SQLite UNIQUE constraint (typed sqlite3 probe)",
+						zap.String("job_id", existing.ID),
+						zap.String("type", j.Type),
+						zap.String("correlation_id", j.CorrelationID),
+					)
+					return existing, nil
+				}
+				// typed probe fired but no existing job found — propagate
+				// as typed sentinel so callers can errors.Is it.
+				// typed probe fired but no existing job found — propagate
+				// as typed sentinel so callers can errors.Is it.
+				//
+				// PR-jobs-retry-contract behavioral audit-pin: this path
+				// REPLACES the pre-PR `return nil, fmt.Errorf("failed to
+				// create job: %w", err)` wrapper. The "failed to create
+				// job" string framing has been RETIRED in favor of the
+				// typed ErrUniqueConstraintViolation sentinel (godlike/06
+				// SSOT: typed sentinels are the canonical owner of error
+				// classification). Existing callers that branched on the
+				// "failed to create job" substring MUST migrate to
+				// errors.Is(err, ErrUniqueConstraintViolation) — the
+				// pre-PR substring is now gone. The double-`%w` wrap
+				// preserves both the typed sentinel AND the underlying
+				// driver error chain for diagnostics (Go 1.20+).
+				return nil, fmt.Errorf("%w: %w", ErrUniqueConstraintViolation, err)
 			}
 		}
 		return nil, fmt.Errorf("failed to create job: %w", err)

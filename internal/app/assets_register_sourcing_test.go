@@ -12,6 +12,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -112,8 +113,21 @@ var _ jobdomain.JobBroker = (*stubJobBroker)(nil)
 
 // newTestService builds a minimal *appjobs.Service wired to a
 // stubJobBroker. The dispatcher is nil (Enqueue does not use it).
+//
+// PR-jobs-retry-contract (July 2026): the 4-arg NewService signature
+// (REGISTRY required, fail-closed) replaces the pre-PR 3-arg shape.
+// Tests that do not depend on a specific registry type use
+// appjobs.Compose() — the canonical composition root registry used
+// across production wiring. Enqueue with a non-registered jobType
+// will surface ErrMaxRetriesUnknown at Enqueue time (not at
+// construction), so tests that exercise Enqueue must wire a
+// registry whose composition knows the test jobType ("media.clip").
 func newTestService(broker *stubJobBroker) *appjobs.Service {
-	return appjobs.NewService(broker, nil, zap.NewNop())
+	svc, err := appjobs.NewService(broker, nil /* dispatcher: Enqueue does not use */, zap.NewNop(), appjobs.Compose())
+	if err != nil {
+		panic(fmt.Sprintf("newTestService: appjobs.NewService returned err=%v — test fixture should never fail construction", err))
+	}
+	return svc
 }
 
 // ── nil-svc → error ────────────────────────────────────────────────
