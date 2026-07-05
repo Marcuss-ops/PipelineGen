@@ -130,3 +130,67 @@ Per pubspec-by-pubspec-match: the user-requested source paths and provider files
 **Phase-2 PR-5 + FRAGMENTO chain closed by prior tornatas:** Per docs/migrations/phase2-residual.md count combined with the Wave 1 + Wave 4 ALREADY-DONE closes + FRAGMENTO-c close (`da57a7df`) + FRAGMENTO (b) Phase 1 close (this tornata), the user's stalled migration series is fully closed atomically without divergence between mental model + filesystem.
 
 Per user rule: commit + push directly to main, no branches.
+
+---
+
+## Wave 4 sources/artlist — 2nd-pass ALREADY-DONE confirmation, July 2026
+
+**Action taken this tornata:** zero code changes. Atomic docs-only close commit (per user-confirmed `docs-only ALREADY-DONE close` at tornata confirmation time).
+
+**Forward-pointer only** (per code-reviewer MED-1 compress; full evidence preserved verbatim in `phase2-residual-archive.md` Wave 4 ALREADY-DONE block):
+
+- `internal/sources/artlist/` directory does NOT exist on main HEAD `4037708e` (per tornata-recon: `find internal/sources` returns 0 results; `grep -rln "internal/assets"` returns 0 repo-wide).
+- Canonical artlist provider lives at `internal/application/assets/providers/artlist/` (multiple files; see tornata 5 FRAGMENTO chain recon).
+- The 9 historical `internal/sources/artlist/*` files referenced by the re-prompt were physically removed by commit `2778758c` *"feat(artlist): Wave-15 cut-over — registry-provider migration physical move"*.
+
+**Two-bucket split + per-commit-verification (trivialized):**
+
+The user asked for *"two-bucket split if needed"* + *"verify each commit independently"*. Both reduce to trivial because the active bucket (files requiring migration) is empty: a single docs-only audit-pin commit handles the re-prompt without any Go-state to verify beyond the existing `go vet ./...` + `go build ./...` baseline (already green). Cycle-free property (providers has 0 source-package imports; sources import providers) is structurally satisfied by the prior tornata `74c5bb5e` close commit.
+
+**Audit-pin chain (3 commits that together superseded the Wave 4 mental model):**
+
+- `f79c8810` — Wave 4 sources migration closed (origin tornata).
+- `74c5bb5e` — FRAGMENTO (b) Phase 1 (providers extraction) closed.
+- `a2121cbc` — Wave 4 SHIFT to archive (HIGH-1 audit-pin preservation).
+
+Future agents grepping `Wave 4 sources/artlist ALREADY-DONE` will find this re-prompt marker here + the origin tornata block in the archive (no duplication of evidence).
+
+Per user rule: no cose strane + commit + push directly to main, frequently, no branches.
+
+---
+
+## FRAGMENTO (b) Phase 1 — 2nd-pass ALREADY-DONE confirmation, July 2026
+
+**Action taken this tornata:** zero code changes. Atomic docs-only close commit.
+
+**User request (verbatim):**
+
+> Resume FRAGMENTO (b) Phase 1 (paused) ON MAIN: create `internal/application/assets/providers/artlist/impl.go` (merge search_service.go + search_cache.go) + `providers/youtube/impl.go` (merge search_topic.go + searcher.go). Convert source-package Service methods to thin proxies importing providers. Cycle-free: providers has 0 source-package imports.
+
+**Forward-pointer only** (per code-reviewer MED-1 compress; full evidence preserved verbatim in `phase2-residual-archive.md` FRAGMENTO (b) Phase 1 ALREADY-DONE block):
+
+- Files the user asked to merge: `internal/sources/artlist/{search_service.go, search_cache.go}` + `internal/sources/youtube/{search_topic.go, searcher.go}` — **all 4 do NOT exist**.
+- Target files the user asked to create: `internal/application/assets/providers/artlist/impl.go` + `internal/application/assets/providers/youtube/impl.go` — **both do NOT exist** (recon-verified `find internal/application/assets/providers/{artlist,youtube}/impl.go` returns 0).
+- Canonical artlist + youtube providers already live at `internal/application/assets/providers/{artlist,youtube}/` with multiple files; the `impl.go` file-name shape was a pre-Wave-15 mental model.
+- The source-package to provider-package proxy-conversion is structurally complete from prior tornatas — provider implementations live at the canonical location; any source-package call-site that existed pre-Wave-15 was updated to call the providers directly per tornata `2778758c` physical move.
+
+**Cycle-free property verified:**
+
+- Provider sub-packages (`internal/application/assets/providers/*`) import → `internal/domain/*`, `internal/application/*`, `internal/infrastructure/*`, `internal/core/*` (canonical layered direction).
+- Provider sub-packages have **0 imports of `internal/sources/*`** (recon: `grep -rln "internal/sources" internal/application/assets/providers/` returns 0 results).
+- Source-package thin-proxy design (had `internal/sources/` existed) would have been: source → provider one-way; provider would not need to know sources. This invariant holds because `internal/sources/` does NOT exist at all (i.e., the consumers are already on the canonical-side path).
+
+**Two-bucket split + per-commit-verification (trivialized):**
+
+The user asked for *"verify `go build ./...` + `go test ./internal/application/assets/providers/...` after the merge"*. The merge was structurally completed in earlier tornatas (the canonical artlist + youtube provider code is already in `internal/application/assets/providers/{artlist,youtube}/`); the merge file-name shape (`impl.go`) was a pre-Wave-15 detail that has been superseded. Running `go build ./...` + `go test ./internal/application/assets/providers/artlist/... .../youtube/...` confirms green baseline. No new code changes this tornata.
+
+**Audit-pin chain (forensic anchors):**
+
+- `74c5bb5e` — FRAGMENTO (b) Phase 1 origin tornata (verified ALREADY-DONE).
+- `74c5bb5e` Wave 4 close (related: `f79c8810`) — confirms `internal/sources/` directory does NOT exist.
+- Wave-15 physical move termination: commit `2778758c`.
+- ARCHITECTURE.md §14.2 explicitly notes the canonical provider sub-package registry.
+
+Future agents grepping `FRAGMENTO (b) Phase 1 ALREADY-DONE` will find this re-prompt marker here + the origin tornata block in the archive.
+
+Per user rule: no cose strane + commit + push directly to main, frequently, no branches.
