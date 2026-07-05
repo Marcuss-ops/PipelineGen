@@ -1,28 +1,64 @@
-// Package scripts — compat_adapters.go (PR 3 — May 2026).
+// Package adapters — compat_adapters.go (PR-noop-adapters-purge, 2026-07-25).
 //
 // Defines the canonical typed ports EntityExtractor + MetadataGenerator
-// that postprocessors consume at composition time, plus the noop adapters
-// used when a backend is unavailable. Production wiring injects real
-// adapters; composition-time guards fail closed if a Required
-// postprocessor is requested without a registered adapter.
+// that postprocessors consume at composition time, plus the typed-fail
+// adapters used when a real backend is not wired.
 //
-// PR 3 (June 2026): replaces the legacy PostGenFunc callback +
-// GenerationSpec bridge with typed ports. Previously entities and
-// metadata processors consumed an opaque interface{}; the PR 3
-// typed ports enable compile-time audits.
+// PR-noop-adapters-purge (2026-07-25, P0 absolute — wave
+// CLEANUP-PRIORITY-1-5-2026-07-25) replaces the noop adapters that
+// silently returned empty EntityResult{} / nil []VideoMetadata on
+// every request (godlike/07 NO-FAKE-AVAILABILITY violation). The
+// new unavailable*Adapter returns a TYPED SENTINEL on every call
+// so callers can detect the unwired condition via errors.Is and
+// fail loudly at the operator dashboard rather than shipping a
+// successful-but-incomplete postprocessor result.
+//
+// PR 3 (June 2026): the typed ports were introduced to replace the
+// legacy PostGenFunc callback + GenerationSpec bridge. Previously
+// entities and metadata processors consumed an opaque interface{};
+// the PR 3 typed ports enable compile-time audits.
+//
+// godlike/06 SSOT: the typed ports EntityExtractor +
+// MetadataGenerator live ONLY here (= the canonical owner). The
+// pre-PR duplicate definitions in dto/compat_types.go were
+// retired in this PR (same signatures, two owners violated the
+// one-canonical-owner-per-fact invariant).
 package adapters
 
 import (
 	"context"
+	"errors"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// ── Typed ports (PR 3 — May 2026) ────────────────────────────────────────
+// ── Typed error sentinels (PR-noop-adapters-purge, 2026-07-25) ────────────
+
+// ErrEntityExtractorUnavailable is returned by the unavailable entity
+// extraction typed-fail adapter when no real backend is wired at
+// composition time. Callers probe via errors.Is and surface a typed
+// "backend unavailable" diagnostic in the operator dashboard.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the pre-PR noop adapter returned
+// EntityResult{} with nil error, masking the unwired condition as
+// a successful (but empty) postprocessor result. The new typed-fail
+// adapter refuses to perform silent-success and propagates the
+// unwired condition to the caller as a typed error.
+var ErrEntityExtractorUnavailable = errors.New("adapters: EntityExtractor backend unavailable (fail-closed per godlike/07 — wire a real backend or remove the entities postprocessor)")
+
+// ErrMetadataGeneratorUnavailable mirrors ErrEntityExtractorUnavailable
+// for the metadata generation typed-fail adapter. See the doc comment
+// above for rationale.
+var ErrMetadataGeneratorUnavailable = errors.New("adapters: MetadataGenerator backend unavailable (fail-closed per godlike/07 — wire a real backend or remove the metadata postprocessor)")
+
+// ── Typed ports (PR 3 — June 2026) ────────────────────────────────────────
 
 // EntityExtractor is the canonical port for entity extraction.
 // Processors (EntitiesProcessor) consume an EntityExtractor at
 // composition time and dispatch EntityExtractionRequest → EntityResult.
+//
+// godlike/06 SSOT: the port is declared ONLY here. No other package
+// may redefine EntityExtractor.
 type EntityExtractor interface {
 	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
 }
@@ -31,32 +67,60 @@ type EntityExtractor interface {
 // generation. Processors (MetadataProcessor) consume a
 // MetadataGenerator at composition time and dispatch
 // MetadataGenerationRequest → []VideoMetadata.
+//
+// godlike/06 SSOT: see EntityExtractor above.
 type MetadataGenerator interface {
 	GenerateMetadata(ctx context.Context, req scriptpkg.MetadataGenerationRequest) ([]scriptpkg.VideoMetadata, error)
 }
 
-// ── Noop adapters (composition-time placeholder when no real backend) ───
+// ── Typed-fail adapters (PR-noop-adapters-purge, 2026-07-25) ──────────────
+//
+// The unavailable*Adapter is the canonical fail-closed adapter for
+// creator runtime (no backend per the creator-runtime package
+// contract: no DB, no Qdrant, no Scheduler — see
+// internal/app/creator_runtime.go) AND for any composition site
+// where the real backend has not yet been wired. Every call returns
+// the typed sentinel; the caller observes the unwired condition as
+// a typed error rather than a silent-success empty result.
+//
+// The pre-PR noopEntityExtractionAdapter + noopMetadataGenerationAdapter
+// were physically removed in this PR — godlike/07 MINIMUM-BLAST-RADIUS
+// disallows the construction pattern (silent-success) that wrapped
+// every request in a successful empty payload.
 
-type noopEntityExtractionAdapter struct{}
+// unavailableEntityExtractionAdapter is the canonical fail-closed
+// implementation of EntityExtractor. Returns ErrEntityExtractorUnavailable
+// on every ExtractEntities call.
+type unavailableEntityExtractionAdapter struct{}
 
-func NewEntityExtractionAdapter(_ any) EntityExtractor {
-	return noopEntityExtractionAdapter{}
+// NewUnavailableEntityExtractionAdapter returns the canonical fail-closed
+// EntityExtractor. The returned adapter is safe for concurrent use and
+// carries no state.
+func NewUnavailableEntityExtractionAdapter() EntityExtractor {
+	return unavailableEntityExtractionAdapter{}
 }
 
-func (noopEntityExtractionAdapter) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
-	_ = ctx
-	_ = req
-	return &scriptpkg.EntityResult{}, nil
+// ExtractEntities implements EntityExtractor. Returns nil EntityResult
+// + ErrEntityExtractorUnavailable on every call (fail-closed).
+func (unavailableEntityExtractionAdapter) ExtractEntities(_ context.Context, _ scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
+	return nil, ErrEntityExtractorUnavailable
 }
 
-type noopMetadataGenerationAdapter struct{}
+// unavailableMetadataGenerationAdapter is the canonical fail-closed
+// implementation of MetadataGenerator. Returns
+// ErrMetadataGeneratorUnavailable on every GenerateMetadata call.
+type unavailableMetadataGenerationAdapter struct{}
 
-func NewMetadataGenerationAdapter(_ any, _ string) MetadataGenerator {
-	return noopMetadataGenerationAdapter{}
+// NewUnavailableMetadataGenerationAdapter returns the canonical
+// fail-closed MetadataGenerator. The returned adapter is safe for
+// concurrent use and carries no state.
+func NewUnavailableMetadataGenerationAdapter() MetadataGenerator {
+	return unavailableMetadataGenerationAdapter{}
 }
 
-func (noopMetadataGenerationAdapter) GenerateMetadata(ctx context.Context, req scriptpkg.MetadataGenerationRequest) ([]scriptpkg.VideoMetadata, error) {
-	_ = ctx
-	_ = req
-	return nil, nil
+// GenerateMetadata implements MetadataGenerator. Returns nil
+// []VideoMetadata + ErrMetadataGeneratorUnavailable on every call
+// (fail-closed).
+func (unavailableMetadataGenerationAdapter) GenerateMetadata(_ context.Context, _ scriptpkg.MetadataGenerationRequest) ([]scriptpkg.VideoMetadata, error) {
+	return nil, ErrMetadataGeneratorUnavailable
 }

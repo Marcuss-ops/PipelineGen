@@ -5409,9 +5409,25 @@
     priority_band: P1
   - id: PR-noop-adapters-purge
     owner_capability: internal/application/scripts/adapters
-    status: pending
+    status: shipped
+    ship_date: 2026-07-25
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
     deadline: 2026-08-01
     priority_band: P0_absolute
+    ship_via: |
+      5-file atomic closure per godlike/07 NO-FAKE-AVAILABILITY. compat_adapters.go
+      (typed sentinels ErrEntityExtractorUnavailable + ErrMetadataGeneratorUnavailable
+      + 2 typed-fail adapters NewUnavailableEntityExtractionAdapter +
+      NewUnavailableMetadataGenerationAdapter; physically removed noop constructors + types).
+      compat_adapters_test.go (NEW 4 contract tests: 2 typed-sentinel probes +
+      2 nil-processor regression). dto/compat_types.go (godlike/06 SSOT cleanup;
+      duplicate EntityExtractor/MetadataGenerator interfaces removed). creator_runtime.go +
+      wire_script_postprocess.go (caller swaps to typed-fail; Creator keeps
+      creatorBestEffort BestEffort wrapper for no-DB/no-Qdrant contract; Sender awaits
+      real backend wiring per follow-up PR). Verification: gofmt + go vet + go build +
+      go test -short PASS. Note: deprecations.yaml record deferred to follow-up PR
+      PR-DEPRECATIONS-YAML-REPAIR due to PRE-EXISTING ParserError near line 2167
+      (audit block sibling collision unrelated to PR-noop-adapters-purge).
   - id: PR-qdrant-readiness-slim
     owner_capability: cmd/admin
     status: pending
