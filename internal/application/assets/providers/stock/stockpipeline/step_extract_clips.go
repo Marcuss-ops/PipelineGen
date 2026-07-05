@@ -154,12 +154,32 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					MediaType: asset.MediaType("video"),
 				}
 				if err := writer.WriteAndEnqueue(ctx, clip, ""); err != nil {
+					// PR-STOCK-ATLASTORCH-DISPATCH (commit-1 stock fix).
+					// Pre-fix: the loop logged + continued on writer
+					// error, leaving physical clip on disk but no
+					// DB/outbox row — silent-success false-positive.
+					// Post-fix: abort the run with the canonical
+					// ErrAtomicDispatchFailed sentinel. Surfaced as
+					// JobFailed by the broker; ledger writes roll back
+					// via the single-TX outbox + SQLite Begin-Immediate
+					// path.
+					//
+					// dual-%w (NEVER %v) preserves the underlying writer
+					// error in the typed-error chain so callers can
+					// errors.As-recover production causes (e.g.
+					// outbox.ErrDispatcherClosed, sqlite3.ErrLocked).
+					// Per AGENTS.md godlike/07 typed-error contract +
+					// compat_adapters.go precedent — %v would silently
+					// drop the chain.
 					if runner.Log() != nil {
-						runner.Log().Warn("orchestrator: stock.extract_clips: WriteAndEnqueue failed — clip cut but not persisted",
+						runner.Log().Warn("orchestrator: stock.extract_clips: WriteAndEnqueue failed — aborting atomic dispatch",
 							zap.String("logical_id", plan.OutputLogicalID),
 							zap.String("output_path", item.OutputPath),
+							zap.String("source_id", sourceID),
+							zap.Int("clip_index", clipIdx),
 							zap.Error(err))
 					}
+					return fmt.Errorf("orchestrator: stock.extract_clips: %w: %w", ErrAtomicDispatchFailed, err)
 				}
 			}
 		}
