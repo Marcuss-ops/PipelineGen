@@ -108,14 +108,26 @@ func (uc *GenerateOneUseCase) Execute(
 	tracker *ProgressTracker,
 ) (*scriptpkg.GenerationResult, error) {
 	if uc == nil {
-		return nil, fmt.Errorf("%w: use case not constructed", scriptpkg.ErrGenerationFailed)
+		// PR-ERROR-SURFACING commit-5 (2026-07-04): route the uc=nil
+		// pre-construction path through a zero-item logPhaseError
+		// variant so errors.Is(err, ErrScriptGenerationFailed)
+		// matches (was missing pre-commit-5). The construction-failure
+		// envelope shares the umbrella sentinel with every execute-
+		// time phase. uc.log is nil here (uc itself is nil) so the
+		// log entry is suppressed; the typed-error chain is still the
+		// canonical propagation surface for handlers to read via
+		// errors.Is (per godlike/07 fail-closed).
+		return generateOnePreConstructError(nil, "uc_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("use case not constructed"))
 	}
 	if uc.engine == nil {
-		if uc.log != nil {
-			uc.log.Warn("generate-one: construction failed",
-				zap.String("reason", "engine_nil"))
-		}
-		return nil, fmt.Errorf("%w: engine not configured", scriptpkg.ErrGenerationFailed)
+		// PR-ERROR-SURFACING commit-5 (2026-07-04): route the
+		// engine=nil pre-construction path through the same umbrella
+		// envelope. uc is non-nil here, so the original
+		// `uc.log.Warn("generate-one: construction failed",
+		// zap.String("reason", "engine_nil"))` diagnostic line is
+		// PRESERVED inside generateOnePreConstructError (it inspects
+		// the non-nil uc via the receiver).
+		return uc.preConstructError("engine_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("engine not configured"))
 	}
 
 	startAll := time.Now()
@@ -163,14 +175,16 @@ func (uc *GenerateOneUseCase) Execute(
 	resolvedItem, resolveVOErr := ResolveVoiceoverFolderForItem(
 		ctx, item, uc.voGroupResolver, uc.voRootID, uc.log,
 	)
+	// PR-ERROR-SURFACING commit-5 (2026-07-04): route voiceover_resolve
+	// through logPhaseError (was inline log + bare-escape). Adds the
+	// umbrella sentinel ErrScriptGenerationFailed to the chain so
+	// godlike/07 callers can `errors.Is(err, ErrScriptGenerationFailed)`
+	// uniformly across ALL phase failure paths. Phase sentinel is
+	// ErrVoiceoverResolveFailed — NOT ErrSourceResolutionFailed — to
+	// keep failure-domain classification clean (clip-search vs
+	// folder-routing are distinct domains per godlike/06 SSOT).
 	if resolveVOErr != nil {
-		if uc.log != nil {
-			uc.log.Warn("generate-one: phase failed",
-				zap.String("item_id", item.ID),
-				zap.String("phase", "voiceover_resolve"),
-				zap.Error(resolveVOErr))
-		}
-		return nil, resolveVOErr
+		return nil, uc.logPhaseError(item, "voiceover_resolve", scriptpkg.ErrVoiceoverResolveFailed, resolveVOErr)
 	}
 	item = resolvedItem
 	plan := BuildPlan(item)
@@ -226,18 +240,21 @@ func (uc *GenerateOneUseCase) Execute(
 	// The engine owns: memory gate check, ollama invocation,
 	// optional DB persistence. No WriteScriptRequest needed.
 	engineResult, engineErr := uc.engine.Generate(ctx, &plan)
+	// PR-ERROR-SURFACING commit-5 (2026-07-04): route engine
+	// errors through logPhaseError so the umbrella sentinel
+	// ErrScriptGenerationFailed + phase sentinel ErrGenerationFailed
+	// + typed *scriptpkg.GenerationError struct ALL appear in the
+	// error chain. errors.Is(err, ErrScriptGenerationFailed) ✓;
+	// errors.Is(err, ErrGenerationFailed) ✓ (via struct Unwrap);
+	// errors.As(err, &GenerationError{}) ✓ (struct itself is in the
+	// Go 1.20+ multi-`%w` chain via logPhaseError).
 	if engineErr != nil {
-		if uc.log != nil {
-			uc.log.Warn("generate-one: phase failed",
-				zap.String("item_id", item.ID),
-				zap.String("phase", "engine"),
-				zap.Error(engineErr))
-		}
-		return nil, &scriptpkg.GenerationError{
+		genErr := &scriptpkg.GenerationError{
 			ItemID: item.ID,
 			Phase:  "engine",
 			Inner:  fmt.Errorf("ollama generation failed: %w", engineErr),
 		}
+		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, genErr)
 	}
 	timings.EngineMs = time.Since(engineStart).Milliseconds()
 	tracker.PhaseGenerateDone()
@@ -267,18 +284,18 @@ func (uc *GenerateOneUseCase) Execute(
 			SourceTrace: engineResult.ClipEvidence,
 		}
 		postResult, ppErr = uc.ppReg.Run(ctx, &plan, procInput)
+		// PR-ERROR-SURFACING commit-5 (2026-07-04): route postprocess
+		// errors through logPhaseError so the umbrella sentinel
+		// ErrScriptGenerationFailed + phase sentinel ErrPostprocessFailed
+		// + typed *scriptpkg.PostprocessError struct ALL appear in the
+		// error chain. Mirror of the engine rewrap above.
 		if ppErr != nil {
-			if uc.log != nil {
-				uc.log.Warn("generate-one: phase failed",
-					zap.String("item_id", item.ID),
-					zap.String("phase", "postprocess"),
-					zap.Error(ppErr))
-			}
-			return nil, &scriptpkg.PostprocessError{
+			ppErrStruct := &scriptpkg.PostprocessError{
 				ItemID:    item.ID,
 				Processor: "registry",
 				Inner:     ppErr,
 			}
+			return nil, uc.logPhaseError(item, "postprocess", scriptpkg.ErrPostprocessFailed, ppErrStruct)
 		}
 		// Issue #3 (June 2026): stream per-processor wall-clock timing
 		// straight from the registry's StageDurations map. Upstream
@@ -590,6 +607,26 @@ func buildGenerationResult(
 // The umbrella wrap is canonical SSOT for "any script.generate failure";
 // the phase + fine-grained sentinels preserve granular classification.
 //
+// PR-ERROR-SURFACING commit-5 (2026-07-04): umbrella coverage = 7/7 paths.
+// Every error-return path inside `Execute` routes through one of three
+// canonical wrap helpers so callers can `errors.Is(err,
+// scriptpkg.ErrScriptGenerationFailed)` uniformly:
+//   - 6 phase paths → logPhaseError (Phase 2 validate, Phase 3
+//     source_resolve, Phase 4 voiceover_resolve, Phase 4
+//     registry_validate, Phase 5 engine, Phase 6 postprocess).
+//   - 2 pre-construction paths (counted as 1 "pre-construction"
+//     category in 7/7: uc=nil + engine=nil) → preConstructError /
+//     generateOnePreConstructError.
+//
+// All three helpers emit `fmt.Errorf("%w: ...: %w: %w",
+// ErrScriptGenerationFailed, <label>, phaseSentinel, innerErr)` so the
+// chain reaches the umbrella + the phase sentinel + the inner error
+// (Go 1.20+ N-ary `%w` semantics — errors.Is walks boolean OR). godlike/07
+// typed-error contract: NO path emits a plain unwrapped error.
+// Inner errors may carry their own typed structs (GenerationError,
+// PostprocessError) so `errors.As` continues to work for fine-grained
+// classification alongside the umbrella.
+//
 // Returns the wrapped error so callers can write
 //
 //	return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
@@ -614,4 +651,57 @@ func (uc *GenerateOneUseCase) logPhaseError(
 	//   "generation: script generation failed: <phase>: <inner>"
 	// which is grep-friendly for operators triaging /api/jobs/{id}/full.
 	return fmt.Errorf("%w: %w: %w", scriptpkg.ErrScriptGenerationFailed, sentinel, err)
+}
+
+// ── PR-ERROR-SURFACING commit-5 pre-construction helpers ──
+
+// preConstructError wraps a non-nil uc's pre-construction failure
+// through the canonical umbrella + phase-sentinel chain. Mirrors the
+// logPhaseError helper above but WITHOUT the per-item log fields
+// (these paths run BEFORE any item is parsed in, so there is no item
+// correlation). The receiver remains non-nil — the engine=nil check
+// runs AFTER the uc=nil test in Execute, so by the time this helper
+// is invoked for engine=nil, uc is guaranteed non-nil.
+//
+// godlike/07 minimum-blast-radius: keeps the original
+// `uc.log.Warn("generate-one: construction failed", reason="...")`
+// diagnostic line verbatim — operators reading the old log-formatting
+// string see no surprise. Only the error-construction shift changed.
+func (uc *GenerateOneUseCase) preConstructError(
+	reason string,
+	sentinel error,
+	err error,
+) error {
+	if uc.log != nil {
+		uc.log.Warn("generate-one: construction failed",
+			zap.String("reason", reason))
+	}
+	// Umbrella + reason-as-label + phase-sentinel + inner error.
+	// N-ary %w verbs (Go 1.20+) keep every %w'd error in the
+	// walkable chain; the %s reason string is JUST a label
+	// (informational string in the error output, NOT in the
+	// errors.Is chain). The chain reaches:
+	//   errors.Is(err, ErrScriptGenerationFailed)   ✓
+	//   errors.Is(err, ErrGenerationFailed)         ✓ (phase sentinel)
+	//   errors.Is(err, err)                          ✓ (or errors.As)
+	return fmt.Errorf("%w: %s: %w: %w", scriptpkg.ErrScriptGenerationFailed, reason, sentinel, err)
+}
+
+// generateOnePreConstructError is the package-level wrapper used when
+// the receiver uc is NIL itself (the first pre-construction check in
+// Execute). Cannot log because no logger accessor exists without a
+// receiver; the typed-error chain is the canonical propagation
+// surface for handlers / dashboards.
+//
+// Mirror of (uc) preConstructError but for the receiver-is-nil case.
+// Same N-ary %w chain produces the same errors.Is walkability for
+// ErrScriptGenerationFailed + phase-sentinel + inner err.
+func generateOnePreConstructError(
+	// Reserved for future "default logger" wiring — currently nil.
+	_ *GenerateOneUseCase,
+	reason string,
+	sentinel error,
+	err error,
+) error {
+	return fmt.Errorf("%w: %s: %w: %w", scriptpkg.ErrScriptGenerationFailed, reason, sentinel, err)
 }

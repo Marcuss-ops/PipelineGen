@@ -20,6 +20,19 @@ var ErrNoSource = errors.New("generation: no source specified")
 // and the caller did not opt into text-only fallback).
 var ErrSourceResolutionFailed = errors.New("generation: source resolution failed")
 
+// ErrVoiceoverResolveFailed means the voiceover_group → folder
+// resolution failed at the pre-BuildPlan step (Phase 4 of
+// GenerateOneUseCase.Execute). Distinct from ErrSourceResolutionFailed
+// — that one spans clip-search (catalog / Qdrant / drive) failures
+// while this one covers Drive folder-routing failures of the voiceover
+// destination. PR-ERROR-SURFACING commit-5 (2026-07-04): introduced as
+// the canonical phase sentinel for the voiceover_resolve escape path
+// so handlers / dashboards can fan out cleanly by failure domain
+// instead of over-broadening ErrSourceResolutionFailed to cover both.
+// godlike/06 SSOT (one canonical owner per fact): this sentinel lives
+// ONLY at internal/domain/script/generation_errors.go.
+var ErrVoiceoverResolveFailed = errors.New("generation: voiceover resolve failed")
+
 // ErrGenerationFailed wraps any failure from the engine itself
 // (Ollama call, memory-gate error, script too short).
 var ErrGenerationFailed = errors.New("generation: engine failed")
