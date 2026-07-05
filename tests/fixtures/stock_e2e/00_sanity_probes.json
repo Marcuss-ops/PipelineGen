@@ -1,0 +1,172 @@
+{
+  "_fixture_role": "FASE 0 — pre-flight sanity probes (captured real runtime state)",
+  "_fixture_status": "captured_live_and_documented",
+  "_capture_timestamp_utc": "2026-07-05T05:48:31Z",
+  "_capture_window_seconds": 1,
+  "_base_url": "http://127.0.0.1:8000",
+  "_base_url_source_of_truth": "VELOX_PORT=8000 env var (pipelinegen process listening on this port confirmed by 'ss -tln' listing)",
+  "_auth_used": {
+    "header": "Authorization: Bearer ${VELOX_ADMIN_TOKEN}",
+    "token_redaction": "FULL TOKEN NOT INCLUDED in this fixture (godlike/07 PII guard); only first 4 / last 4 chars retained for audit-trail continuity",
+    "token_preview": "d6e3....c077d",
+    "token_env_var_source": "VELOX_ADMIN_TOKEN (process env); set to a non-empty value for the live server to recognize the bearer credential"
+  },
+  "_user_spec_endpoints_requested_vs_results": {
+    "_note": "User spec asks for /api/healthz + /api/diagnostics. Both return Gin 404. Canonical substitutes documented below.",
+    "/api/healthz": {
+      "requested_method": "GET",
+      "http_code": 404,
+      "content_type": "text/plain",
+      "body_verbatim": "404 page not found",
+      "interpretation": "Route NOT registered at this path on this build. The liveness endpoint is on /health (Gin's default no-prefix root route); no /api/healthz, /api/v1/healthz, /api/health, or /api/v1/health exists in the route table of port :8000.",
+      "drift_source_of_truth_route_audit": "All candidate paths returned 404 except /health (200) and /ready (503 with full checks)"
+    },
+    "/api/diagnostics": {
+      "requested_method": "GET",
+      "http_code": 404,
+      "content_type": "text/plain",
+      "body_verbatim": "404 page not found",
+      "interpretation": "Route NOT registered at this path. The canonical diagnostics surface is /ready, which exposes per-subsystem check (db/drive/jobs/qdrant).",
+      "drift_source_of_truth_route_audit": "/ready returns 503 with checks.{db,drive,jobs,qdrant} envelope; this IS the canonical diagnostics the user wanted"
+    }
+  },
+  "_canonical_endpoint_capture_1_health": {
+    "_canonical_path": "/health",
+    "_note": "Captured verbatim — no sanitization needed (no PII, no tokens, no secrets)",
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/health",
+      "headers_sent": ["Authorization: Bearer ${VELOX_ADMIN_TOKEN}", "User-Agent: curl/7.x"]
+    },
+    "response": {
+      "http_code": 200,
+      "content_type": "application/json; charset=utf-8",
+      "headers_verbatim": [
+        "HTTP/1.1 200 OK",
+        "Content-Type: application/json; charset=utf-8",
+        "X-Request-Id: 20260705-054831-f19576be51081c74",
+        "Date: Sun, 05 Jul 2026 05:48:31 GMT",
+        "Content-Length: 30"
+      ],
+      "body_verbatim": "{\"ok\":true,\"status\":\"healthy\"}",
+      "body_pretty": {
+        "ok": true,
+        "status": "healthy"
+      },
+      "request_id": "20260705-054831-f19576be51081c74",
+      "_drift_source_of_truth": "Process-local gin route for /health (Gin's default mux root). The handler is the canonical liveness probe — returns 200 OK iff the process is running and the HTTP listener is accepting connections; does NOT check subsystem downstream dependencies.",
+      "_expected_shape_drift_caveat": "If a future build adds /api/v1/healthz with envelope {ok,status,version,uptime_seconds,...}, that file must take precedence and this fixture's drift_source_of_truth must be updated accordingly. The /health endpoint is a STABLE pipelined contract per AGENTS.md godlike/06 SSOT for survival surfaces."
+    }
+  },
+  "_canonical_endpoint_capture_2_ready": {
+    "_canonical_path": "/ready",
+    "_note": "Captured verbatim — no sanitization needed (no PII, no tokens, no secrets). This IS the canonical diagnostics endpoint per Gin convention.",
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/ready",
+      "headers_sent": ["Authorization: Bearer ${VELOX_ADMIN_TOKEN}", "User-Agent: curl/7.x"]
+    },
+    "response": {
+      "http_code": 503,
+      "content_type": "application/json; charset=utf-8",
+      "http_code_semantics": "503 Service Unavailable — the canonical 'NOT READY' contract. Per Kubernetes-style readiness probes, this means the pod is NOT eligible to receive traffic until the failures are resolved. PipelineGen mirrors this contract; a 200 from /ready means all subsystems report ok=true.",
+      "headers_verbatim": [
+        "HTTP/1.1 503 Service Unavailable",
+        "Content-Type: application/json; charset=utf-8",
+        "X-Request-Id: 20260705-054831-6781e4d7162ad66c",
+        "Date: Sun, 05 Jul 2026 05:48:31 GMT",
+        "Content-Length: 400"
+      ],
+      "body_verbatim": "{\"checks\":{\"db\":{\"duration_ms\":0,\"ok\":true},\"drive\":{\"applicable\":false,\"duration_ms\":0,\"note\":\"drive checker not wired\",\"ok\":true},\"jobs\":{\"duration_ms\":0,\"error\":\"runner liveness probe failed: broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago (threshold 60s)\",\"ok\":false,\"running_jobs\":0},\"qdrant\":{\"configured\":true,\"duration_ms\":2,\"ok\":true}},\"ok\":false,\"status\":\"not ready\"}",
+      "body_pretty": {
+        "checks": {
+          "db": {
+            "duration_ms": 0,
+            "ok": true
+          },
+          "drive": {
+            "applicable": false,
+            "duration_ms": 0,
+            "note": "drive checker not wired",
+            "ok": true
+          },
+          "jobs": {
+            "duration_ms": 0,
+            "error": "runner liveness probe failed: broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago (threshold 60s)",
+            "ok": false,
+            "running_jobs": 0
+          },
+          "qdrant": {
+            "configured": true,
+            "duration_ms": 2,
+            "ok": true
+          }
+        },
+        "ok": false,
+        "status": "not ready"
+      },
+      "request_id": "20260705-054831-6781e4d7162ad66c",
+      "_drift_source_of_truth": "/ready is the canonical Gin-root-anchored diagnostics endpoint (not /api/diagnostics per user spec). The handler emits a checks envelope with per-subsystem ok/err/duration_ms/error fields; top-level ok=false aggregates any check failure."
+    }
+  },
+  "_diagnostic_summary": {
+    "server_alive_on_port_8000": true,
+    "liveness_probe_passing": true,
+    "readiness_probe_passing": false,
+    "subsystem_status": {
+      "db": "ok=true — SQLite reachable from inside the process",
+      "drive": "applicable=false, ok=true — drive checker NOT wired in this deployment. The 'applicable' field means the subsystem check CORRECTLY reports inapplicability rather than failing; this is a godlike/07 honest no-fake-availability contract — the checker refuses to report checked when it cannot be checked.",
+      "jobs": "ok=false — runner liveness probe failed. The error is 'broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago' (the threshold is 60s). This means the jobs broker heartbeat telemetry is reporting a sentinel value (max int64 = 9223372036854775807 ns ≈ never-set). Either (a) no worker has been alive long enough to register a heartbeat, (b) the heartbeat writer is gated off in this deployment, or (c) the heartbeat storage is empty post-migration. THIS IS THE BLOCKER for FASE 2-7 (job lifecycle probes).",
+      "qdrant": "ok=true, configured=true — Qdrant reachable on this stack. Confirms user's Qdrant-reachable assumption (NOT a surprise)."
+    },
+    "user_expectation_vs_reality": "User spec assumed Qdrant + Drive both reachable. Real state: Qdrant ok, Drive applicable=false (not wired), jobs ok=false (heartbeat stale). The Drive and jobs findings are SURPRISES that must be tracked before FASE 2-7 unless the user opts to skip them as forward-blocking concerns."
+  },
+  "_drift_source_of_truth_endpoints": {
+    "_note": "These are the canonical handler paths for the two probes — for the godlike/06 SSOT one-owner-per-fact audit-pin. Pointer paths confirmed 2026-07-05 by rg against internal/api/routes.go + internal/api/transport/health.go.",
+    "/health_handler": {
+      "registration_site": "internal/api/routes.go:262",
+      "registration_verbatim": "engine.GET(\"/health\", healthHandler.Health)",
+      "handler_implementation": "internal/api/transport/health.go::HealthHandler.Health (HealthHandler struct, line 29 + func Health line 45)",
+      "behavior": "fast liveness — returns 200 OK {ok,status} iff the process is running and the HTTP listener accepts connections; does NOT check subsystem downstream dependencies. The full check envelope is on /ready.",
+      "deeper_check_query": "GET /health?deep=true → full set {db,drive,qdrant,jobs}; or GET /health?check=db&check=jobs via repeated query params (per health_test.go:164)"
+    },
+    "/ready_handler": {
+      "registration_site": "internal/api/routes.go:263",
+      "registration_verbatim": "engine.GET(\"/ready\", healthHandler.Ready)",
+      "handler_implementation": "internal/api/transport/health.go::HealthHandler.Ready (line 274+ in test surface; production wiring at internal/api/routes.go:251 via SetReadyChecker)",
+      "check_implementations": {
+        "db": "internal/infrastructure/health/sqlite_checker.go",
+        "drive": "internal/infrastructure/health/drive_checker.go (returns applicable=false with note 'drive checker not wired' when DriveChecker port is nil; per the godlike/07 inapplicability-truth contract wired in line 25 of drive_checker.go)",
+        "jobs": "internal/infrastructure/health/jobs_checker.go (produces the broker-heartbeat-stale message verbatim — see build_bundles_core.go:133 for the canonical error string)",
+        "qdrant": "internal/infrastructure/qdrant/disasterrecovery/health.go::CheckQdrant"
+      },
+      "behavior": "deep subsystem readiness — returns 503 NOT READY with checks envelope (per-subsystem ok/err/duration_ms/error); top-level ok=false aggregates any check failure. The user-spec intent maps cleanly onto /ready, simply with a different path."
+    }
+  },
+  "_no_fake_availability_audit_pin": "godlike/07: zero values in this fixture are fabricated. Every field under response.body_pretty was extracted verbatim from a real curl capture on the live port :8000 stack at 2026-07-05T05:48:31Z. The request_id fields are the canonical X-Request-Id response headers (server-issued, monotonic per-process, NOT redacted — they expose only the request correlation scope, not operator identity or auth).",
+  "_forward_pointers_to_resolution": {
+    "PR-WIRE-DRIVE-CHECKER": {
+      "what": "wire cfg.Features.DriveCheckerEnabled=true (or equivalent composition-root toggle) + restart. Drive check would then report ok=true with applicable=false → applicable=true and surface drive connectivity state in /ready envelope.",
+      "blocking_for": "FASE 4 (hybrid search with sources=stock + drive_link required) AND FASE 5 (download from /api/media/stock/clips/:id).",
+      "deadline_estimate": "operator decision in this session OR plan PR for next wave"
+    },
+    "PR-WORKER-HEARTBEAT-STALE": {
+      "what": "investigate why the jobs broker heartbeat telemetry is reporting max-int64 sentinel. Either start a worker (cmd/worker) so it registers a heartbeat, OR investigate why the writer is gated off in this deployment, OR check if the heartbeat storage table was dropped post-migration.",
+      "blocking_for": "FASE 2 (poll terminal on a submitted job_id requires an alive worker that can advance job lifecycle)",
+      "deadline_estimate": "operator decision in this session OR plan PR for next wave (worker startup is a deployment concern, not a code change)"
+    },
+    "PR-START-WORKER": {
+      "what": "start the worker process via cmd/worker (or via docker-compose up -d) so the heartbeat writer ticks. Per AGENTS.md, the worker is a separate binary listening on the same DB. Confirm cfg.Server.WorkerEnabled OR equivalent toggle.",
+      "blocking_for": "Same as PR-WORKER-HEARTBEAT-STALE",
+      "deadline_estimate": "operator decision NOW — this may be a 30-second `cmd/worker` startup",
+      "_rename_note": "previously written as 'PR-EXIT-WORKER' in fixture v1 (pre-review); reviewer feedback flagged naming ambiguity (verb confusion: 'exit' implies close). Renamed to PR-START-WORKER per PR-<verb>-<noun> convention where the verb names the operator action."
+    }
+  },
+  "_next_action_blocked_by": "User clicked FASE 0 directly. Probes succeeded (verbatim captures). Diagnostic finding: drive not wired + jobs heartbeat stale. FASE 1 retry (POST /api/stock-pipeline/search-and-run) is BLOCKED on a SEPARATE concern (the EnabledFunc silent-skip per module.go:160) but FASE 2+ are ALSO blocked on PR-WORKER-HEARTBEAT-STALE.",
+  "_retry_recipe_when_blocker_resolves": [
+    "1. Resolve PR-WORKER-HEARTBEAT-STALE: start cmd/worker (or equivalent) so jobs heartbeat ticks. Re-run FASE 0 /ready and assert checks.jobs.ok=true.",
+    "2. Resolve PR-WIRE-DRIVE-CHECKER (FASE 4+ precondition only): toggle drive checker ON + re-run /ready, assert checks.drive.applicable=true + ok=true.",
+    "3. Resolve PR-ENABLE-STOCK-PIPELINE-GATE (FASE 1+ precondition): flip cfg.Features.StockPipelineEnabled=true OR register the route group unconditionally + restart, then retry FASE 1 curl.",
+    "4. Once all three blockers resolve, retry FASE 1 → expect HTTP 200 with {job_id, status_url, message} envelope."
+  ]
+}
