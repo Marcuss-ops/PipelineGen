@@ -5411,7 +5411,7 @@
     owner_capability: internal/application/scripts/adapters
     status: shipped
     ship_date: 2026-07-25
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: 68b75b44
     deadline: 2026-08-01
     priority_band: P0_absolute
     ship_via: |
