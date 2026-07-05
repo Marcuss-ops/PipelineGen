@@ -3735,6 +3735,16 @@
     ship_date: 2026-07-05
     ship_via: 'commit 21197634 feat(jobs): activate P1.2 SQL dual-write for parent_state_typed column (PR-VO-PARENT-STATE-COLUMN)'
     deadline: 2026-08-01 (pre-deadline by 27 days)
+  - id: PR-P1.2-SQL-DUAL-WRITE
+    owner_capability: internal/application/voiceover/jobs
+    status: shipped
+    ship_sha: 1f9f7daa
+    ship_date: 2026-07-05
+    ship_via: |
+      commit 1f9f7daa feat(jobs+voiceover): PR-P1.2-SQL-DUAL-WRITE read-side
+      preference (BACKFILL phase). 5 file modifications + 1 new test file
+      (10 new TDD tests, all PASS).
+    deadline: 2026-08-15 (pre-deadline by 41 days)
   - id: PR-VO-TYPED-PRIMITIVES
     owner_capability: internal/application/voiceover
     status: shipped
