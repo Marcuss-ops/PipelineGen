@@ -31,7 +31,7 @@
 // tests/fixtures/ via the standard go tooling (it's not under any Go
 // package).
 
-package fixtures
+package fixture
 
 import "testing"
 
