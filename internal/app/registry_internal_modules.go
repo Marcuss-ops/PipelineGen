@@ -305,6 +305,12 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
 			assetTx := assetfinalizer.NewAssetTxFinalizer(log)
 			stockFinalizer = jobsfinalizer.New(stockDB, root.Outbox.EventsRepo, assetTx, log)
+		} else {
+			log.Warn("registerInternalModules Step 8 Finalizer not constructed (godlike/07: one or more required deps nil — stockDB, root.Outbox, or root.Outbox.EventsRepo). If Publisher is also non-nil, the symmetric gate will fire ErrStockProductionJobFinalizerMissing.",
+				zap.Bool("stockDB_nil", stockDB == nil),
+				zap.Bool("root_Outbox_nil", root.Outbox == nil),
+				zap.Bool("EventsRepo_nil", root.Outbox == nil || root.Outbox.EventsRepo == nil),
+			)
 		}
 
 		stockW, stockErr := BuildStockBundle(StockBundleDeps{
