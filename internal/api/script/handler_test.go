@@ -156,13 +156,16 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	// Legacy adapters enqueue as script.generate with deprecation header.
-	assert.NotNil(t, fake.lastReq)
-	assert.Equal(t, "script.generate", fake.lastReq.Type)
+	// PR-script-legacy-contract (Jul 2026, P0 ABSOLUTE): legacy route
+	// is RETIRED to canonical 410-Gone contract. Tests below pin the
+	// contract — no enqueue happens, only the deprecation increment +
+	// canonical body.
+	assert.Equal(t, http.StatusGone, w.Code)
+	assert.Nil(t, fake.lastReq, "deprecation registrar must NOT enqueue a job")
 	assert.Contains(t, w.Header().Get("X-Deprecated"), "true")
-	assert.Contains(t, w.Body.String(), `"job_id":"job-123"`)
-	assert.Contains(t, w.Body.String(), `"status_url":"/api/jobs/job-123/full"`)
+	assert.Contains(t, w.Body.String(), `"canonical_endpoint":"POST /api/script/generate"`)
+	assert.Contains(t, w.Body.String(), `"removal_date":"2026-12-31"`)
+	assert.Contains(t, w.Body.String(), `"ok":false`)
 }
 
 // ── RequireAdminToken middleware ──────────────────────────────────────────

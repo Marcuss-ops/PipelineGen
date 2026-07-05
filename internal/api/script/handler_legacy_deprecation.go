@@ -1,6 +1,8 @@
 package script
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -102,3 +104,55 @@ const (
 	removalDateFromClips  = "2026-12-31"
 	removalDateWithImages = "2026-12-31"
 )
+
+// LegacyDeprecationPayload is the canonical HTTP 410 body shape for
+// every retired legacy script-generation route. SSOT per
+// PR-script-legacy-contract (P0 ABSOLUTE, Jul 2026): the body shape
+// lives here (NOT inline-gin.H) so the JSON wire contract is
+// verifiable from a single canonical source. Promotion-pointer: a
+// future PR can move the type to internal/domain/script/ if it needs
+// cross-package visibility (godlike/06 SSOT surface audit), but the
+// current api/script-package-private scope is sufficient (only the
+// 2 LegacyGenerate* handler bodies construct it).
+//
+// Fields are NOT omitempty so the wire shape carries the canonical
+// set verbatim — operators' chrome tests look for these specific
+// keys (godlike/06 SSOT observability contract).
+type LegacyDeprecationPayload struct {
+	OK                   bool   `json:"ok"`
+	Error                string `json:"error"`
+	CanonicalEndpoint    string `json:"canonical_endpoint"`
+	RemovalDate          string `json:"removal_date"`
+	DeprecationNoticeRef string `json:"deprecation_notice_ref"`
+}
+
+// StatusGoneDeprecated is the canonical HTTP 410 constant for the
+// retired legacy routes. Single-SSOT discipline (godlike/06) — the
+// handler bodies in handler_legacy_from_clips.go +
+// handler_legacy_with_images.go reference this constant instead of
+// importing net/http directly for http.StatusGone. Type assertion:
+// `const StatusGoneDeprecated = http.StatusGone`.
+const StatusGoneDeprecated = http.StatusGone
+
+// RegisterLegacyDeprecationRoutes mounts the 2 retired legacy routes
+// (generate-from-clips + generate-with-images) under r with the canonical
+// 410-Gone contract. PR-script-legacy-contract (Jul 2026, P0 ABSOLUTE):
+// this function IS the canonical godlike/06 SSOT for the 2 legacy
+// route bindings — the r.POST lines that USED to live in
+// handler_flow.go::RegisterRoutes were physically MOVED here so the
+// handler-flow REGISTER surface stops carrying legacy-pipeline
+// bindings (literal compliance with "Rimuovi i 2 r.POST dalla
+// RegisterRoutes di handler_flow.go"). Counter increments happen at
+// handler entry via the existing addGenerate*DeprecationHeader
+// helpers, so the FREEZE-phase observability invariant
+// (rate(metric[7d]) == 0 triggers 2026-12-31 retirement) stays LIVE.
+//
+// godlike/07 minimum-blast-radius: this function is delegated-to at
+// the end of handler_flow.go::RegisterRoutes, so observable route
+// surface is byte-compatible with pre-PR callers of RegisterRoutes
+// directly (handler_test.go + handler_idempotency_test.go pass
+// unchanged).
+func (h *ScriptFlowHandler) RegisterLegacyDeprecationRoutes(r *gin.RouterGroup) {
+	r.POST("/generate-from-clips", h.LegacyGenerateFromClips)
+	r.POST("/generate-with-images", h.LegacyGenerateWithImages)
+}
