@@ -5982,7 +5982,7 @@
     - id: STK-E2E-B
       owner_capability: tests/operational/stock_e2e_search_and_run_smoke.sh
       status: shipped
-      ship_sha: PENDING_BOOKKEEPING_COMMIT_FOLLOWUP
+      ship_sha: 819f50002420234e12f3f300354b48a156c8b997
       ship_date: 2026-07-05
       ship_via: 2_COMMIT_SPLIT_PER_CODEBASE_PATTERN_PR_VO_TYPED_PRIMITIVES
       deadline: 2026-07-15
