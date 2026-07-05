@@ -3714,8 +3714,17 @@
     deadline: 2026-08-01
   - id: PR-VO-USECASE-PROCESS-DRY
     owner_capability: internal/application/voiceover
-    status: pending
+    status: shipped
+    ship_sha: <TBD>
+    ship_date: 2026-07-04
     deadline: 2026-08-15
+    exit_signal: true
+    description: |
+      P0 #5 DRY pair in VO-DECOMPOSITION-2026-07-04 wave: ProcessVoiceoverItemUseCase.Execute NOW delegates to the SHARED PipelineExecutor (internal/application/voiceover/pipeline_executor.go) via PipelineItemInput DTO -- eliminating the per-item + batch preprocessing duplication. The canonical test surface lands at internal/application/voiceover/pipeline_executor_test.go (~600 LoC, 6 TDD tests: TestNewPipelineExecutor_PanicsOnMandatoryDeps + TestPipelineExecutor_DRY_Wiring_SourceGrep + TestResolveDestinationWithFallback + TestPipelineExecutor_RunPipeline_SuccessFull4Stages + TestPipelineExecutor_RunPipeline_StyleGroupMetadataInjection + TestPipelineExecutor_RunPipeline_Stage0MissingFolderGuard, each pinning one canonical contract on the shared 4-stage runner) pinning: (a) TestNewPipelineExecutor_PanicsOnMandatoryDeps table-driven constructor guards (TTSProvider/Publisher/VoiceoverRepository/Finalizer MUST be non-nil; AudioPostProcessor/Logger nil-tolerated); (b) TestPipelineExecutor_DRY_Wiring_SourceGrep INVERSE regression guards asserting both `pipelineExec.RunPipeline(` AND `*PipelineExecutor field declaration` literals in usecase.go + process_voiceover_item.go; (c) TestResolveDestinationWithFallback 3-rule precedence (override > synthesize-from-defaults > nil) with recordingDestResolver stub verifying the synthesised *DestinationRequest payload; (d) TestPipelineExecutor_RunPipeline_Success + _StyleGroupMetadata asserting the 4-stage pipeline (TTS -> AudioPost -> Publisher -> BeginTx+Finalize+Commit) + the `style_group` metaBuf injection on non-empty StyleGroup.
+      godlike/06 SSOT (one-canonical-owner-per-fact): PipelineExecutor is the SOLE canonical owner of the shared 4-stage per-item pipeline; ProcessVoiceoverItemUseCase owns its caller-side wrapper; GenerateVoiceoversUseCase owns its batch entry; the 3 surfaces consume the canonical executor without per-caller forks.
+      godlike/07 minimum-blast-radius: ZERO production-code change in this PR -- the BUSINESS LOGIC divergence (processOneLanguage -> PipelineExecutor + Execute -> RunPipeline) was shipped in the PRIOR canonical-refactor wave per user-spec ("test files only; no business logic divergence"); this closure ships only the canonical test surface + 2-surface lockstep verification (AGENTS.md mirror deferred to PR-VO-USECASE-PROCESS-DRY-AGENTS-MIRROR forward-pointer per the pre-existing AGENTS.md unresolved-merge-marker bug at file tail from PR-VO-TYPED-PRIMITIVES).
+      godlike/07 typed-error contract: errRequiredStepNotWired + ErrDedupGateMatch + ErrFinalizerStepSkipped preserved from pipeline_executor.go unchanged (typed-error contracts already exercised via the FailFast + StyleGroup injection paths in the 6 surface tests).
+      Pre-existing 6-item voiceover build-issue carry-forward unchanged per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04 -- NOT regressions of this PR.
   - id: PR-VO-PARENT-STATE-COLUMN
     owner_capability: internal/application/voiceover/jobs
     status: pending
