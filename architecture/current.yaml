@@ -11,28 +11,45 @@
   owner_capability: internal/application/jobs/heartbeat_telemetry (heartbeat_writer.go + heartbeat_tracker.go + heartbeat_writer_test.go)
   exit_signal: false
   deadline: 2026-07-25
-  description: heartbeat_writer.go AND heartbeat_tracker.go AND heartbeat_writer_test.go exist on disk per `ls` 2026-07-05. Commit `7f81ac7c` exists in git log but has DIFFERENT subject (`feat(execution): Step 10 C1/4 - SQLite-backed steps.Store + lease_until heartbeat (Stock Cutover §12-3 SSOT extension)`) - NOT standalone attribution to the heartbeat_writer.go change. ZERO matches for `HEARTBEAT-TELEMETRY` or `heartbeat-writer` as a standalone commit subject per `git log --all --grep`. Pending a clean standalone commit referencing heartbeat_writer.go specifically. Once landed, status:pending hops to status:shipped + ship_sha populated. Pre-creates the canonical wave-tracker entry per user-spec FASE 11 retry-ricetta prerequisite (audit-pin tests/fixtures/stock_e2e/changelogs/v2_v3_attempt_gate_failure.json#_precondition_pr_status_per_canonical_surface.PR-HEARTBEAT-TELEMETRY-BUG).
+  description: |
+    heartbeat_writer.go AND heartbeat_tracker.go AND heartbeat_writer_test.go exist on disk per `ls` 2026-07-05.
+    Commit `7f81ac7c` exists in git log but has DIFFERENT subject (`feat(execution): Step 10 C1/4 - SQLite-backed steps.Store + lease_until heartbeat (Stock Cutover §12-3 SSOT extension)`) - NOT standalone attribution to the heartbeat_writer.go change.
+    ZERO matches for `HEARTBEAT-TELEMETRY` or `heartbeat-writer` as a standalone commit subject per `git log --all --grep`.
+    Pending a clean standalone commit referencing heartbeat_writer.go specifically.
+    Once landed, status:pending hops to status:shipped + ship_sha populated.
+    Pre-creates the canonical wave-tracker entry per user-spec FASE 11 retry-ricetta prerequisite (audit-pin tests/fixtures/stock_e2e/changelogs/v2_v3_attempt_gate_failure.json#_precondition_pr_status_per_canonical_surface.PR-HEARTBEAT-TELEMETRY-BUG).
 - id: PR-COMPLETIONPORT-WIRE-MISSING
   status: pending
   ship_via: FORWARD_POINTER_FOR_FUTURE_IMPLEMENTATION
   owner_capability: internal/application/jobs/completion_port (CompletionPort interface + ErrCompletionPortNotWired typed sentinel)
   exit_signal: false
   deadline: 2026-07-25
-  description: ZERO matches on commit subject (`git log --all --grep='COMPLETIONPORT\|completion_port\|completionport'`) AND ZERO matches on code grep for `ErrCompletionPortNotWired` / `CompletionPort` in `internal/`. Branch-only related work (`PR-WORKER-RUNNER-INPROCESS-MIGRATION` commits `3d738013` / `0ed94dea` / `527431e9`) is a DIFFERENT PR. Pending actual implementation + clean commit. Once landed, status:pending hops to status:shipped with ship_sha populated.
+  description: |
+    ZERO matches on commit subject (`git log --all --grep='COMPLETIONPORT\|completion_port\|completionport'`) AND ZERO matches on code grep for `ErrCompletionPortNotWired` / `CompletionPort` in `internal/`.
+    Branch-only related work (`PR-WORKER-RUNNER-INPROCESS-MIGRATION` commits `3d738013` / `0ed94dea` / `527431e9`) is a DIFFERENT PR.
+    Pending actual implementation + clean commit.
+    Once landed, status:pending hops to status:shipped with ship_sha populated.
 - id: PR-RATELIMIT-UNIFIED-POLICY
   status: pending
   ship_via: FORWARD_POINTER_FOR_FUTURE_IMPLEMENTATION
   owner_capability: internal/api/middleware/rate_limit (per-bearer-token sliding-window policy + 429 backoff contract)
   exit_signal: false
   deadline: 2026-07-25
-  description: Partial git log evidence (commit `37ed2b9e` referenced) but `internal/api/middleware/rate_limit*.go` files do NOT exist in canonical location per `ls` 2026-07-05. Pending implementation + files at the canonical paths. Once landed, status:pending hops to status:shipped with ship_sha populated.
+  description: |
+    Partial git log evidence (commit `37ed2b9e` referenced) but `internal/api/middleware/rate_limit*.go` files do NOT exist in canonical location per `ls` 2026-07-05.
+    Pending implementation + files at the canonical paths.
+    Once landed, status:pending hops to status:shipped with ship_sha populated.
 - id: PR-POLL-CADENCE-DISCIPLINE
   status: pending
   ship_via: FORWARD_POINTER_FOR_FUTURE_IMPLEMENTATION
   owner_capability: scripts/operational/poll_cadence (canonical poll_terminal.sh + JSONL emit format)
   exit_signal: false
   deadline: 2026-07-25
-  description: Referenced only in stock-e2e fixture history (commit `12d75faf` mentioned in `02_poll_terminal.json#_forward_pointers_blocking_re_run[PR-POLL-CADENCE-DISCIPLINE]` audit-pin). `scripts/operational/lib/poll_terminal.sh` does NOT exist; `scripts/operational/` dir does NOT exist per `ls` 2026-07-05. Pending canonical implementation with >=10s interval jitter + 429-driven exponential backoff + JSONL emit format (the 3 fix-points per `02_poll_terminal.json#_forward_pointers_blocking_re_run[PR-POLL-CADENCE-DISCIPLINE].what`). CRITICAL-PATH blocker for FASE 11 v3 emission per audit-pin `_precondition_pr_status_per_canonical_surface.PR-POLL-CADENCE-DISCIPLINE._critical_path_blocker`.
+  description: |
+    Referenced only in stock-e2e fixture history (commit `12d75faf` mentioned in `02_poll_terminal.json#_forward_pointers_blocking_re_run[PR-POLL-CADENCE-DISCIPLINE]` audit-pin).
+    `scripts/operational/lib/poll_terminal.sh` does NOT exist; `scripts/operational/` dir does NOT exist per `ls` 2026-07-05.
+    Pending canonical implementation with >=10s interval jitter + 429-driven exponential backoff + JSONL emit format (the 3 fix-points per `02_poll_terminal.json#_forward_pointers_blocking_re_run[PR-POLL-CADENCE-DISCIPLINE].what`).
+    CRITICAL-PATH blocker for FASE 11 v3 emission per audit-pin `_precondition_pr_status_per_canonical_surface.PR-POLL-CADENCE-DISCIPLINE._critical_path_blocker`.
 - id: PR-QDRANT-FULL-STACK-AUTOMATED
   owner_capability: cmd/admin/ (admin CLI subcommand) + .github/workflows/preflight-ci.yml + architecture/CI gate
   status: shipped
