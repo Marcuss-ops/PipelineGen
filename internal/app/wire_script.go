@@ -44,6 +44,20 @@
 // wireScriptFlow is now a pure orchestrator (~100 LOC) that calls
 // the two factories and owns ppReg freeze + job registration +
 // handler construction + module registration.
+//
+// PR-script-deps-slim (July 2026, P1): slim form of Dependencies
+// (3 small dep bags + ClipsSearcher + AdminToken + 3 build-time
+// fields, was 22+3 fields with 12 ignored). The 12 ignored
+// ScriptFlowDeps fields (Engine, Section, CacheEviction, Image,
+// Realtime, Association, Voiceover, AssetTree, ClipSourceBuilder,
+// MediaCurator, Harvest, ScriptsRepo, DriveScriptsGenFolder,
+// ClipServices) are RETIRED. The corresponding local-variable
+// construction in wireScriptFlow (engine, harvestSvc, clipServices,
+// ollamaTranslator, driveFolderClient, documentCreator) is
+// dropped in lockstep. The adapter types (driveFolderAdapterImpl,
+// docCreatorImpl) are RETAINED in wire_script_adapters.go for
+// the canonical FacadeHandler (future typed-port consumers per
+// PR-SCRIPT-FACADE-EXTRACT).
 
 package app
 
@@ -55,11 +69,9 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -79,62 +91,39 @@ import (
 // orchestrator owns ppReg construction + ppReg.Freeze() +
 // post-freeze required-processors validation; the registration
 // cluster lives in the dedicated helper.
+//
+// PR-script-deps-slim (July 2026, P1): post-slim, the function
+// no longer constructs the 12 ignored deps (Engine + Section +
+// CacheEviction + Image + Realtime + Association + Voiceover +
+// AssetTree + ClipSourceBuilder + MediaCurator + Harvest +
+// ScriptsRepo + DriveScriptsGenFolder + ClipServices). The
+// slim Dependencies is 7 fields (Generate + Jobs + Legacy +
+// ClipsSearcher + AdminToken + 3 build-time). The 2 routes that
+// depended on sectionRegen + cacheEviction (RegenerateSection +
+// EvictCache) are RETIRED in lockstep.
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
-	// Phase 2 activation (June 2026) — ImageService is now OPTIONAL.
+	// Phase 2 activation (June 2026) — root.AI / root.Domains required.
 	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil {
 		return nil
 	}
 
-	engine := root.AI.ScriptEngine
-	if engine == nil {
+	if root.AI.ScriptEngine == nil {
 		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
 		return nil
 	}
 
-	scriptsRepoAdapter := adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo)
-
 	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
 	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
 
-	// ── Harvest service ────────────────────────────────────────────────
-	var _ = artlistpkg.LoadPresets
-	var _ = cfg.Drive.ArtlistFolder()
-	var harvestSvc scriptapi.AutoHarvestService
-	harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
-
-	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
+	// ── Pre-compute metadata model (used by post-processor + AI bundle) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm
 	}
-	ollamaTranslator := root.AI.OllamaTranslator
-	clipServices := usecase.ClipServices{
-		Logger:          log,
-		DriveSvc:        root.Drive.Reader,
-		Translator:      ollamaTranslator,
-		Translation:     ollamaTranslator,
-		TranslationPort: ollamaTranslator,
-		ArtlistFolder:   cfg.Drive.ArtlistFolder(),
-		MetadataModel:   metaModel,
-	}
-
-	// ── Drive folder / document adapters (impl in wire_script_adapters.go) ──
-	driveFolderClient := &driveFolderAdapterImpl{admin: root.Drive.Admin}
-	documentCreator := &docCreatorImpl{
-		docClient:     root.Drive.DocClient,
-		log:           log,
-		driveFolderID: cfg.Drive.ScriptsGenFolder(),
-	}
-
-	// ── Admin token ────────────────────────────────────────────────────
-	adminToken := ""
-	if cfg != nil {
-		adminToken = cfg.Security.AdminToken
-	}
 
 	// ── Step 2: Post-processor registration + freeze ────────────────────
 	ppReg := adapters.NewPostProcessorRegistry(log)
-	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
+	if err := registerScriptPostProcessors(ppReg, root, cfg, log, nil, metaModel); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 	sourceReg.Freeze()
@@ -144,8 +133,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Step 3: Use cases (factory in wire_script_usecases.go) ──────────
-	sectionRegen, cacheEvictionUC, oneUC, manyUC, genJobHandler, mediaCurator := buildScriptUseCases(
-		cfg, root, scriptsRepoAdapter, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, log,
+	// PR-script-deps-slim: sectionRegen + cacheEvictionUC are
+	// RETIRED from buildScriptUseCases return tuple (the
+	// corresponding RegenerateSection + EvictCache routes were
+	// always 503 because the handler fields were never assigned).
+	// scriptsRepoAdapter is no longer threaded into the factory
+	// (only sectionRegen consumed it; retired in lockstep).
+	oneUC, manyUC, genJobHandler, mediaCurator := buildScriptUseCases(
+		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, log,
 	)
 
 	// ── Step 4: Job registration ───────────────────────────────────────
@@ -175,31 +170,30 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
 	}
 
-	// ── Step 5: Handler construction (Blocco C1-Step 14) ──────────────
+	// ── Admin token ────────────────────────────────────────────────────
+	adminToken := ""
+	if cfg != nil {
+		adminToken = cfg.Security.AdminToken
+	}
+
+	// ── Step 5: Handler construction (slim form, PR-script-deps-slim) ──
 	scriptDeps := scriptapi.Dependencies{
-		Engine:                engine,
-		Section:               sectionRegen,
-		CacheEviction:         cacheEvictionUC,
-		Image:                 root.Domains.ImageService,
-		Realtime:              root.Domains.RealtimeSearch,
-		Association:           root.Domains.AssocService,
-		Voiceover:             root.Domains.VoiceoverService,
-		AssetTree:             root.Search.AssetTreeService,
-		ClipSourceBuilder:     clipSourceBuilder,
-		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
-		ScriptsRepo:           scriptsRepoAdapter,
-		Jobs:                  root.Jobs.Facade,
-		Registry:              appjobs.Compose(),
-		ClipsSearcher:         clipsSearcher,
-		AdminToken:            adminToken,
-		DriveFolderClient:     driveFolderClient,
-		DocumentCreator:       documentCreator,
-		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
-		ClipServices:          clipServices,
-		EnabledFunc:           func() bool { return anyScriptFeatureEnabled(cfg) },
-		ModuleOpts:            nil,
-		Logger:                log,
+		Generate: scriptapi.GenerateDeps{
+			Jobs:     root.Jobs.Facade,
+			Log:      log,
+			Registry: appjobs.Compose(),
+		},
+		Jobs: scriptapi.JobsDeps{
+			Jobs:     root.Jobs.Facade,
+			Log:      log,
+			Registry: appjobs.Compose(),
+		},
+		Legacy:        scriptapi.LegacyDeps{},
+		ClipsSearcher: clipsSearcher,
+		AdminToken:    adminToken,
+		EnabledFunc:   func() bool { return anyScriptFeatureEnabled(cfg) },
+		ModuleOpts:    nil,
+		Logger:        log,
 	}
 	scriptDescriptor, err := scriptapi.Build(scriptDeps)
 	if err != nil {
@@ -211,6 +205,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Step 6: Register HTTP module ───────────────────────────────────
+	// PR-script-deps-slim: ScriptDescriptor.Handler field RETIRED;
+	// Module is the canonical owner post-PR. tryRegisterModule
+	// consumes Module only.
 	return tryRegisterModule(registry, log, sd)
 }
 

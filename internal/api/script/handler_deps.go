@@ -1,13 +1,23 @@
 // Package script (api/script) — handler_deps.go owns the construction
-// seam for ScriptFlowHandler: the typed-narrow dep bag (ScriptFlowDeps)
-// + the optional auto-harvest port interface (AutoHarvestService) +
-// the canonical constructor (NewScriptFlowHandler).
+// seam for ScriptFlowHandler: 3 typed-narrow dep bags
+// (GenerateDeps / JobsDeps / LegacyDeps) + the slim top-level
+// ScriptFlowDeps + the optional auto-harvest port interface
+// (AutoHarvestService) + the canonical constructor
+// (NewScriptFlowHandler).
 //
-// Extracted from handler_flow.go via PR-SCRIPT-DEPENDENCIES-EXTRACT
-// (architecture/current.yaml#SCRIPT-FLOW-SPLIT.linked_issues[PR-SCRIPT-DEPENDENCIES-EXTRACT]).
-// ScriptFlowDeps signature is byte-stable across this move — only the
-// file location changes, so module.go::Build + composition root +
-// any direct callers (test fixtures) compile unchanged.
+// PR-SCRIPT-DEPENDENCIES-EXTRACT (July 2026): extracted from
+// handler_flow.go.
+// PR-script-deps-slim (July 2026, P1): split the 23-field
+// ScriptFlowDeps into 3 capability-scoped dep bags
+// (GenerateDeps / JobsDeps / LegacyDeps) + dropped the 12 fields
+// that NewScriptFlowHandler never read (Engine / Image / Realtime /
+// Association / Voiceover / AssetTree / ClipSourceBuilder /
+// MediaCurator / Harvest / ScriptsRepo / DriveScriptsGenFolder /
+// ClipServices) + removed the 4 facade delegator methods on
+// ScriptFlowHandler (GetVoiceoverService + GetGroupsResolver +
+// ResolveDriveFolderID + MaybeCreateGoogleDoc) + removed the
+// ScriptDescriptor.Handler field (defensive — the 6 non-HTTP
+// methods have ZERO external callers at HEAD).
 //
 // godlike/06 SSOT rationale (one canonical owner per fact):
 // the construction seam is the ScriptFlow package's re-use seam —
@@ -20,13 +30,7 @@ package script
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
@@ -41,146 +45,126 @@ type AutoHarvestService interface {
 	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
-// ScriptFlowDeps groups all constructor inputs.
+// GenerateDeps groups the canonical constructor inputs for the
+// /generate handler. Each field is required by the canonical
+// POST /api/script/generate route:
 //
-// Signature is byte-stable: the field set, names, and types are
-// preserved verbatim from pre-PR-SCRIPT-DEPENDENCIES-EXTRACT.
-// NewScriptFlowHandler assigns the 8 essential fields onto
-// ScriptFlowHandler (gen / jobs / facade / jobsSvc / log / registry /
-// adminToken / clipsSearcher) and IGNORES the remaining 12 deps
-// (Engine / Image / Realtime / Association / Voiceover-only-via-facade /
-// AssetTree / ClipSourceBuilder / MediaCurator / Harvest / ScriptsRepo /
-// DriveFolderClient-via-facade / DocumentCreator-via-facade / ClipServices /
-// DriveScriptsGenFolder). The ignored deps survive on ScriptFlowDeps
-// because Build() (internal/api/script/module.go) still wires them from
-// the higher-level Dependencies — module-wide contract preserved.
-type ScriptFlowDeps struct {
-	Engine        *usecase.Engine
-	Section       *usecase.SectionRegenerator
-	CacheEviction *usecase.CacheEvictionUseCase
-
-	Image *images.Service
-	// Wave 16 (June 2026): typed ports — replace the `interface{}`
-	// carrier for the script-side realtime + association consumers
-	// (packages removed in commit d61068b3; fields stay typed-nil).
-	// Compile-time enforcement replaces the prior runtime safety net.
-	Realtime    usecase.RealtimeSearchService
-	Association usecase.AssocSearchService
-	Voiceover   *voiceover.Service
-	AssetTree   *assettree.Service
-
-	ClipSourceBuilder *usecase.ClipSourceBuilder
-	MediaCurator      *scriptdto.MediaCurator
-	Harvest           AutoHarvestService
-
-	ScriptsRepo adapters.ScriptRepository
-	// Commit H Phase 2 (June 2026): Memory field dropped (gemmamemory
-	// gemmamemory gate service gone).
-	Jobs jobservice.Service
-	// Issue 4 (June 2026, P1): optional canonical job-type registry
-	// used by EnqueueGenerationJob to source MaxRetries from
-	// registry.DefaultMaxRetries(jType). Optional — nil preserves
-	// the legacy hard-coded 3-retry fallback path through the
-	// JobsService. Composition root will pass appjobs.Compose().
+//   - Jobs: the async job broker (script.generate child-job fan-out).
+//   - Log: structured logger.
+//   - Registry: the canonical job-type registry used by
+//     EnqueueGenerationJob to source MaxRetries via
+//     registry.DefaultMaxRetries(jType).
+type GenerateDeps struct {
+	Jobs     jobservice.Service
+	Log      *zap.Logger
 	Registry *appjobs.Registry
+}
 
-	// PR-FIX (June 2026): optional clip-name searcher for
+// JobsDeps groups the canonical constructor inputs for the
+// /jobs/:id handler. Mirrors GenerateDeps intentionally (the 2
+// routes can evolve independently — future JobsDeps additions
+// like a status-query repo stay scoped to /jobs/* without
+// polluting /generate).
+type JobsDeps struct {
+	Jobs     jobservice.Service
+	Log      *zap.Logger
+	Registry *appjobs.Registry
+}
+
+// LegacyDeps groups the canonical constructor inputs for the
+// 2 legacy endpoints (/generate-from-clips + /generate-with-images).
+// Both endpoints are FROZEN at 410-Gone per FASE-2.1-VOICE-FREEZE
+// (July 2026, removal_date 2026-12-31) — the handlers increment a
+// Prometheus counter and return the canonical deprecation JSON;
+// no domain deps are required today. The struct is intentionally
+// empty (kept for godlike/06 SSOT + future migration back to
+// /generate when the freeze expires).
+type LegacyDeps struct{}
+
+// ScriptFlowDeps is the slim top-level bag assembled by Build.
+// Was 23 fields; now 5 (Generate + Jobs + Legacy + ClipsSearcher +
+// AdminToken). godlike/07 minimum-blast-radius: Build still
+// constructs NewScriptFlowHandler(ScriptFlowDeps{...}) so direct
+// callers (test fixtures) compile unchanged in shape — only the
+// field set slimmed.
+type ScriptFlowDeps struct {
+	// Generate is the dep bag for POST /generate.
+	Generate GenerateDeps
+	// Jobs is the dep bag for /jobs/:id.
+	Jobs JobsDeps
+	// Legacy is the dep bag for the 2 legacy 410-Gone endpoints.
+	// Empty today (FASE-2.1-VOICE-FREEZE).
+	Legacy LegacyDeps
+
+	// ClipsSearcher is the clip-name searcher for
 	// GET /script/clips/search?q= discovery endpoint.
 	// Nil → endpoint returns 503.
 	ClipsSearcher ClipSearcher
 
-	AdminToken            string
-	DriveFolderClient     DriveFolderClient
-	DocumentCreator       DocumentCreator
-	DriveScriptsGenFolder string
-	ClipServices          usecase.ClipServices // pre-built in wire_script.go
-	Log                   *zap.Logger
+	// AdminToken is the auth secret consumed by EnableAuth +
+	// AdminToken (the AdminTokenProvider interface satisfaction
+	// locked by middleware_auth.go's compile-time assertion).
+	AdminToken string
 }
 
-// NewScriptFlowHandler constructs the slim ScriptFlowHandler (8 fields
-// post-PR-SCRIPT-DEPENDENCIES-EXTRACT) from the byte-stable ScriptFlowDeps.
+// NewScriptFlowHandler constructs the slim ScriptFlowHandler from
+// the 3 small dep bags. NewScriptFlowHandler has no fail-closed
+// checks (preserves the pre-Step-14 behavior for direct callers
+// that bypass Build); Build's checks are the defensive layer.
 //
 // Field assignments dropped from the struct literal (with rationale):
-//   - engine: zero production-code readers post-trim (godlike/07
-//     no-fake-availability — drop, not preserve).
-//   - imgService: zero readers.
-//   - realtimeSvc/associationSvc: typed-nil per Wave 16 comment;
-//     godlike/07 no-fake — drop rather than keep a fake-availability
-//     field that the runtime never reads.
-//   - voService: thin delegator GetVoiceoverService hops to h.facade.X.
-//   - groupsResolver/assetTreeSvc: groupsResolver lives on facade (canonical);
-//     assetTreeSvc was used only inside the constructor body to build
-//     groupsResolver — kept as a local variable below.
-//   - clipSourceBuilder/mediaCurator/sectionRegen/cacheEviction/
-//     insightBuilder/clipServices/scriptsRepo/harvestSvc/driveFolderID:
-//     zero production-code readers post-trim.
-//
-// Kept on ScriptFlowHandler (with rationale):
-//   - log: universal logger; legacy adapter methods in
-//     handler_legacy_*.go call h.log.Warn directly.
-//   - jobsSvc: thin delegator enqueueEnvelope fallback path uses
-//     h.jobsSvc + h.log + h.registry to call enqueueEnvelopeFn
-//     directly when h.jobs is nil (godlike/07 minimum-blast-radius
-//     test-fixture contract per PR-SCRIPT-JOBS-EXTRACT).
-//   - registry: same fallback path uses h.registry; canonical
-//     plumbing for MaxRetries via registry.DefaultMaxRetries(jType).
-//   - adminToken: EnableAuth + AdminToken (script-flow
-//     AdminTokenProvider satisfaction per middleware_auth.go).
-//   - clipsSearcher: SearchClipsByName uses h.clipsSearcher.SearchByName
-//     directly (handler_clip_search.go).
-//   - gen/jobs/facade: delegation pointers to sub-handlers owned by
-//     their respective files (handler_generate_handler.go +
-//     handler_jobs.go + handler_facade.go).
-//   - driveFolderClient/documentCreator: listed by user as
-//     essential primitive primitives; thin delegators on
-//     ScriptFlowHandler hop through h.facade.X so the canonical
-//     owner is facade (godlike/06 SSOT one-owner-per-fact), but
-//     ScriptFlowHandler carries its own access path for direct
-//     use by future typed-handler call sites.
+//   - engine, section, cacheEviction, image, realtime, association,
+//     voiceover, assetTree, clipSourceBuilder, mediaCurator, harvest,
+//     scriptsRepo, driveScriptsGenFolder, clipServices: zero
+//     production-code readers post-trim (godlike/07 no-fake-
+//     availability — drop, not preserve). The 2 routes that
+//     depended on sectionRegen + cacheEviction (RegenerateSection
+//   - EvictCache) are REMOVED in lockstep (godlike/07:
+//     routes that always 503 are fake-availability).
+//   - voService + groupsResolver + driveFolderClient + documentCreator:
+//     the 4 facade delegator methods on ScriptFlowHandler had
+//     ZERO external callers per audit-pin (flow.go:88); the
+//     FacadeHandler type is preserved as the canonical owner
+//     of the 4 real impls (godlike/06 SSOT) — only the
+//     ScriptFlowHandler delegators are removed.
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
-	log := deps.Log
+	log := deps.Jobs.Log
 	if log == nil {
 		log = zap.NewNop()
 	}
 
-	// assetTreeSvc is needed ONLY inside this constructor body to
-	// build groupsResolver. The resolver lives on FacadeHandler
-	// post-extraction; the local variable below is the single
-	// re-use seam per godlike/06 SSOT.
-	var groupsResolver *voiceover.GroupsResolver
-	if deps.AssetTree != nil {
-		if gr, err := voiceover.NewGroupsResolver(deps.AssetTree, log); err != nil {
-			log.Warn("ScriptFlowHandler groups_resolver not initialized", zap.Error(err))
-		} else {
-			groupsResolver = gr
-		}
-	}
-
 	return &ScriptFlowHandler{
 		log:           log,
-		jobsSvc:       deps.Jobs,
-		registry:      deps.Registry,
+		jobsSvc:       deps.Jobs.Jobs,
+		registry:      deps.Jobs.Registry,
 		adminToken:    deps.AdminToken,
 		clipsSearcher: deps.ClipsSearcher,
 
-		// Issue 4 (June 2026, P1): plumb the typed *appjobs.Registry
-		// through the enqueue helpers.
 		// AZIONE 1 (July 2026): construct the 3-field HandlerGenerate
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c).
-		gen: NewHandlerGenerate(deps.Jobs, log, deps.Registry),
+		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
 		// JobsHandler. POST /api/script/jobs/:id mounts via
 		// JobsHandler.RegisterJobRoutes; legacy adapters' h.enqueueEnvelope
 		// thin-delegates to JobsHandler.EnqueueEnvelope.
-		jobs: NewJobsHandler(deps.Jobs, log, deps.Registry),
-
-		// PR-SCRIPT-FACADE-EXTRACT (July 2026): construct the 5-field
-		// FacadeHandler. The 4 extracted methods access voService +
-		// groupsResolver + driveFolderClient + documentCreator + log;
-		// thin delegators on ScriptFlowHandler preserve byte-stable
-		// surface for cross-package callers.
-		facade: NewFacadeHandler(deps.Voiceover, groupsResolver, deps.DriveFolderClient, deps.DocumentCreator, log),
+		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log, deps.Jobs.Registry),
 	}
 }
+
+// Compile-time guard: jobservice.Service + *appjobs.Registry
+// surface drift in NewJobsHandler / NewHandlerGenerate signatures
+// (godlike/06 SSOT — no separate sentinel needed; constructor
+// calls fail-closed at build time).
+var (
+	_ jobservice.Service = jobservice.Service(nil)
+	_ *appjobs.Registry  = (*appjobs.Registry)(nil)
+)
+
+// Compile-time guard: NewJobsHandler + NewHandlerGenerate accept
+// jobservice.Service + *appjobs.Registry; drift in either signature
+// surfaces here, not at first runtime call. The canonical Pattern 0
+// build-failure lock per AGENTS.md is satisfied by the constructor
+// calls in NewScriptFlowHandler (compile-time, no separate sentinel
+// needed).

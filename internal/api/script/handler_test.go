@@ -77,6 +77,17 @@ func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 	return fake, fake
 }
 
+// newMinimalScriptFlowDepsForTest returns the canonical minimal
+// ScriptFlowDeps for unit tests (PR-script-deps-slim, July 2026):
+// the slim 5-field bag with only Jobs populated. Other fields
+// (Generate, Legacy, ClipsSearcher, AdminToken) default to zero
+// values — tests that need a populated dep supply it explicitly.
+func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
+	return ScriptFlowDeps{
+		Jobs: JobsDeps{Jobs: jobs},
+	}
+}
+
 // stubJobStatsReader satisfies appjobs.JobStatsReader with a
 // no-op GetStats. Used in test wiring where the stats reader
 // is required by the JobsHandler ctor signature (Issue 9 / P2
@@ -104,7 +115,7 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, _ := newTestJobsService(t)
-	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc})
+	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(jobsSvc))
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -117,6 +128,11 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		routeMap[key] = true
 	}
 
+	// PR-script-deps-slim (July 2026, P1): the 2 routes that
+	// depended on sectionRegen + cacheEviction (RegenerateSection
+	// + EvictCache) are RETIRED — the fields were never populated
+	// by NewScriptFlowHandler so the routes always returned 503
+	// (godlike/07 no-fake-availability).
 	expectedRoutes := []struct {
 		method string
 		path   string
@@ -127,13 +143,26 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		{"POST", "/api/script/generate-from-clips"},
 		{"POST", "/api/script/generate-with-images"},
 		{"GET", "/api/script/jobs/:id"},
-		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
-		{"POST", "/api/script/cache/evict"},
+		{"GET", "/api/script/clips/search"},
 	}
 
 	for _, want := range expectedRoutes {
 		key := fmt.Sprintf("%s %s", want.method, want.path)
 		assert.True(t, routeMap[key], "required route %s %s must be registered", want.method, want.path)
+	}
+
+	// godlike/07 no-fake-availability: assert the 2 RETIRED routes
+	// are NOT registered (they always returned 503 pre-PR).
+	notExpectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
+		{"POST", "/api/script/cache/evict"},
+	}
+	for _, notWant := range notExpectedRoutes {
+		key := fmt.Sprintf("%s %s", notWant.method, notWant.path)
+		assert.False(t, routeMap[key], "retired route %s %s must NOT be registered (godlike/07 no-fake-availability)", notWant.method, notWant.path)
 	}
 }
 
@@ -145,7 +174,7 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, fake := newTestJobsService(t)
-	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc})
+	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(jobsSvc))
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -249,8 +278,11 @@ func TestRequireAdminToken_NilProvider_AllowAll(t *testing.T) {
 func TestNewScriptFlowHandler_NilLog_DefaultsToNoopLogger(t *testing.T) {
 	t.Parallel()
 
+	// PR-script-deps-slim (July 2026): ScriptFlowDeps is a slim 5-field
+	// bag — passing the zero value exercises the nil-Log defensive
+	// constructor (the canonical contract).
 	handler := NewScriptFlowHandler(ScriptFlowDeps{})
-	assert.NotNil(t, handler.log, "log must default to a no-op logger when ScriptFlowDeps.Log is nil")
+	assert.NotNil(t, handler.log, "log must default to a no-op logger when ScriptFlowDeps.Jobs.Log is nil")
 	// Touch a Warn call to confirm the no-op logger is functional.
 	handler.log.Warn("ping — defensive-constructor smoke test")
 }
