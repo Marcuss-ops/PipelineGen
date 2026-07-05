@@ -3729,8 +3729,11 @@
       Pre-existing 6-item voiceover build-issue carry-forward unchanged per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04 -- NOT regressions of this PR.
   - id: PR-VO-PARENT-STATE-COLUMN
     owner_capability: internal/application/voiceover/jobs
-    status: pending
-    deadline: 2026-08-01
+    status: shipped
+    ship_sha: 21197634
+    ship_date: 2026-07-05
+    ship_via: 'commit 21197634 feat(jobs): activate P1.2 SQL dual-write for parent_state_typed column (PR-VO-PARENT-STATE-COLUMN)'
+    deadline: 2026-08-01 (pre-deadline by 27 days)
   - id: PR-VO-TYPED-PRIMITIVES
     owner_capability: internal/application/voiceover
     status: shipped
