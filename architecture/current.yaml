@@ -5911,6 +5911,36 @@
       uses ExtendedCode per commit-9). godlike/06 SSOT
       consistency.
       consistency.
+- id: PR-VO-STEP8-FAILMODES-1-2
+  status: shipped
+  ship_via: 2_atomic_commits_direct_to_main
+  ship_sha_a: 1b553274
+  ship_sha_b: b1d4b2e5
+  ship_date: 2026-07-05
+  exit_signal: true
+  deadline: 2026-08-01
+  owner_capability: cmd/admin + internal/api/middleware
+  linked_issues:
+    - id: PR-VO-STEP8-COMMIT-1-CLI-PROBE
+      owner_capability: cmd/admin
+      status: shipped
+      ship_sha: 1b553274
+      deadline: 2026-08-01
+    - id: PR-VO-STEP8-COMMIT-2-ENV-BYPASS
+      owner_capability: internal/api/middleware
+      status: shipped
+      ship_sha: b1d4b2e5
+      deadline: 2026-08-01
+  description: |
+    godlike/06 3-surface SSOT lockstep for the Step[8] voiceover E2E
+    fail-mode fixes: CLI probe (PR-VO-STEP8-COMMIT-1) + env-bypass
+    middleware (PR-VO-STEP8-COMMIT-2). Both ships as 2 atomic
+    direct-to-main commits per AGENTS.md Git-Lesson-2 (no branches,
+    no --force, no --no-ff). Fail-mode 3 (parent RUNNING without
+    terminal-fail) is forward-pointer only (PR-VO-STRICT-PARENT-
+    TERMINAL-GATE; wave-tracker entry only beyond the godlike/07
+    minimum-blast-radius atomic scope).
+
 - id: FIX-ENQUEUE-SERVICE-SQLITE3-IMPORT
   owner_capability: internal/application/jobs
   status: pending
