@@ -570,15 +570,15 @@ type stockChunkDispatcher interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, fileHash string) error
 }
 
-// stockChannelLister is the narrow port for YouTube channel listing
+// ChannelLister is the narrow port for YouTube channel listing
 // (P4, July 2026). The concrete `*downloader.YTDLPDownloader` satisfies
 // this interface structurally; wiring happens at the composition root.
 // The old `s.ytdlp.ListChannel` direct call in query.go is RETIRED.
-type stockChannelLister interface {
+type ChannelLister interface {
 	ListChannel(ctx context.Context, channelURL string, limit int) ([]downloader.VideoInfo, error)
 }
 
 // Compile-time assertion: *downloader.YTDLPDownloader satisfies
-// stockChannelLister. Signature drift on ListChannel is a build
+// ChannelLister. Signature drift on ListChannel is a build
 // failure rather than a runtime panic (godlike/06 SSOT).
-var _ stockChannelLister = (*downloader.YTDLPDownloader)(nil)
+var _ ChannelLister = (*downloader.YTDLPDownloader)(nil)
