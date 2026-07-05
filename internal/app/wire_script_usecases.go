@@ -101,7 +101,6 @@ func buildScriptUseCases(
 	*jobs.GenerateJobHandler,
 	*scriptdto.MediaCurator,
 ) {
-	gen := root.AI.ScriptGen
 	engine := root.AI.ScriptEngine
 
 	// ── GenerateOneUseCase (single-item pipeline) ───────────────
