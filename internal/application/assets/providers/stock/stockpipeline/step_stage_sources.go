@@ -9,9 +9,6 @@
 // the same source download once.
 //
 // godlike/07 fail-closed contracts:
-//   - stager nil → Debug + return nil (test-fixture path; downstream
-//     extract_clips/compose_chunks handle empty StagedAssets
-//     gracefully).
 //   - stager wired + plans empty → Debug + return nil (no work to do).
 //   - stager wired + plans non-empty + all sources fail (zero
 //     *assets.StagedAsset appended) → ErrStockStageSourcesAllFailed
@@ -45,16 +42,16 @@ type StockStageSourcesStep struct{}
 func (StockStageSourcesStep) Name() string { return StepKeyStockStageSources }
 
 func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
+	// godlike/07 composition-time guarantee (PR-STOCK-PRODUCTION-DEPS,
+	// July 2026): runner.SourceStager() is non-nil. The canonical
+	// composition root (stockpipeline.NewService + orchestrator.RunResilient)
+	// rejects nil stager with ErrStockPipelineNilSourceStager /
+	// ErrOrchestratorNilDeps BEFORE the step body runs. The previous
+	// runtime nil-check (test-fixture path) is RETIRED per godlike/07
+	// no-fake-availability: a production run cannot reach here with a
+	// nil stager, and a test fixture that passes nil must update to
+	// wire a non-nil stub (mapStager / recordingStager).
 	stager := runner.SourceStager()
-	if stager == nil {
-		// Test-fixture path: no SourceStager wired → skip staging.
-		// Downstream steps (extract_clips, compose_chunks) handle
-		// empty StagedAssets gracefully.
-		if runner.Log() != nil {
-			runner.Log().Debug("orchestrator: stock.stage_sources: SourceStager nil — skipping staging (test-fixture path)")
-		}
-		return nil
-	}
 
 	plans := runner.State().Plan
 	if len(plans) == 0 {

@@ -10,9 +10,6 @@
 //
 // godlike/07 fail-closed contracts:
 //   - cutPaths empty → Debug + return nil (no work to do).
-//   - renderer nil → composed = nil, return nil (test-fixture
-//     compat; downstream stock.finalize gate fires
-//     ErrStockNoChunksFinalized).
 //   - renderer.Render returns err → graceful degradation (Warn +
 //     continue); the all-failed case is caught by
 //     ErrStockComposeChunksAllFailed at the end of the step so
@@ -55,17 +52,16 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 		return nil
 	}
 
+	// godlike/07 composition-time guarantee (PR-STOCK-PRODUCTION-DEPS,
+	// July 2026): runner.Renderer() is non-nil. The canonical
+	// composition root (stockpipeline.NewService + orchestrator.RunResilient)
+	// rejects nil renderer with ErrStockPipelineNilRenderer /
+	// ErrOrchestratorNilDeps BEFORE the step body runs. The previous
+	// runtime nil-check (test-fixture compat) is RETIRED per
+	// godlike/07 no-fake-availability: a production run cannot reach
+	// here with a nil renderer, and a test fixture that passes nil
+	// must update to wire a non-nil stub (mapRenderer).
 	renderer := runner.Renderer()
-	if renderer == nil {
-		// nil renderer → empty composed paths (test-fixture compat).
-		// The downstream stock.publish step sees zero composed paths
-		// and the stock.finalize gate fires with ErrStockNoChunksFinalized.
-		// Previously the stub passed through logical IDs as composed
-		// paths, but P6 wires real rendering — pass-through of non-file
-		// IDs would cause publish to fail on ErrStockChunkLocalMissing.
-		runner.State().ComposedPaths = nil
-		return nil
-	}
 
 	in := runner.RunInput()
 	noAudio := in != nil && in.NoAudio

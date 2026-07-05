@@ -144,6 +144,16 @@ func (r *recordingStager) Cleanup(ctx context.Context, staged *assets.StagedAsse
 // Returns the Orchestrator handle so each test can assert on stub
 // state via the returned recordingStager.
 func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
+	// PR-STOCK-PRODUCTION-DEPS (P2_media, July 2026): the orchestrator's
+	// composition-time fail-closed gate (orchestrator.go::RunResilient)
+	// rejects nil renderer with ErrOrchestratorNilDeps. Tests that
+	// exercise the pipeline must wire a non-nil renderer stub even if
+	// they don't assert on render behavior. The noopRenderer returns
+	// success on every call so StockComposeChunksStep's happy-path
+	// branch is reached (it does NOT exercise the all-failed gate;
+	// that's pinned by stock_fake_availability_test.go). The
+	// noopRenderer stub lives in stock_test_helpers.go per
+	// godlike/06 SSOT (one canonical owner per fact).
 	return NewOrchestrator(
 		OrchestratorConfig{
 			JobId:            "wiring-test",
@@ -154,7 +164,7 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		rec,
-		nil, nil, // cutter, renderer — Commit 2 does not invoke
+		nil, noopRenderer{}, // cutter nil (out of scope per PR); renderer is a noop stub required by the composition-time gate
 	)
 }
 
