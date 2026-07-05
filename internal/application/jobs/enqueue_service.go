@@ -10,9 +10,10 @@
 // typed-error contract propagates ErrMaxRetriesUnknown to the caller.
 // Also replaced the pre-PR strings.Contains(err.Error(), "UNIQUE
 // constraint") idempotency-rescue probe with a typed sqlite3.Error
-// probe (`errors.As(&sqliteErr)` + `Code==sqlite3.ErrConstraintUnique`)
-// so a future driver string change does not silently disable the
-// rescue path (godlike/07 NO-FAKE-AVAILABILITY).
+// probe (`errors.As(&sqliteErr)` +
+// `sqliteErr.ExtendedCode==sqlite3.ErrConstraintUnique`) so a future
+// driver string change does not silently disable the rescue path
+// (godlike/07 NO-FAKE-AVAILABILITY).
 package jobs
 
 import (
@@ -180,22 +181,33 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 	if err := s.repo.Create(ctx, j); err != nil {
 		// PR-jobs-retry-contract (July 2026): typed sqlite3 probe replaces
 		// the pre-PR strings.Contains(err.Error(), "UNIQUE constraint")
-		// string-compare. Driver-invariant (mattn/go-sqlite3.Error.Code
-		// is an int-backed enum that does NOT depend on the error string
-		// format — a future driver string change cannot silently disable
+		// string-compare. Driver-invariant (mattn/go-sqlite3.Error is an
+		// exported struct with int-backed Code (ErrNo) + ExtendedCode
+		// (ErrNoExtended) fields — neither depends on the error string
+		// format, so a future driver string change cannot silently disable
 		// the rescue path).
 		if j.CorrelationID != "" {
 			var sqliteErr sqlite3.Error
-			// CARRY-FORWARD FIX (commit-8, 2026-07-05): sqliteErr.Code
-			// is type sqlite3.ErrNo but sqlite3.ErrConstraintUnique is
-			// type sqlite3.ErrNoExtended — pre-existing typed comparison
-			// was a compile error. godlike/07 minimum-blast-radius: cast
-			// both sides to int so the typed equality check compiles and
-			// the driver-invariant semantics are preserved (no string-compare
-			// fallback). The probe still discriminates UNIQUE-constraint
-			// failures from generic create-job errors (the godlike/07
+			// PR-JOBS-SQLITE3-PROBE-FIX (commit-9, 2026-07-05): canonical
+			// ExtendedCode == sqlite3.ErrConstraintUnique comparison.
+			// Per mattn/go-sqlite3 idioms, ErrConstraintUnique is of
+			// type sqlite3.ErrNoExtended (= sqlite3.ErrConstraint.Extend(8),
+			// value 2067 = 19 + 8*256) and matches the ExtendedCode
+			// field. The pre-commit-9 int() cast on Code (which compared
+			// the base constraint code 19 against the UNIQUE extended
+			// code 2067 — NEVER matching) is RETIRED; the canonical
+			// pattern is direct typed equality between matching
+			// sqlite3.ErrNoExtended values, with no int() cast. The
+			// probe still discriminates UNIQUE-constraint failures
+			// from generic create-job errors (the godlike/07
 			// typed-string-compare anti-pattern is NOT reintroduced).
-			if errors.As(err, &sqliteErr) && int(sqliteErr.Code) == int(sqlite3.ErrConstraintUnique) {
+			// SILENT LOGIC BUG surfaced by this audit: the pre-commit-9
+			// int() cast compared 19 (base constraint code) against 2067
+			// (UNIQUE extended code) — these NEVER matched, so the
+			// rescue path was effectively DEAD CODE. Every UNIQUE-constraint
+			// race condition returned the generic "failed to create job"
+			// error instead of the existing job.
+			if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
 				if existing, findErr := s.repo.FindByTypeAndCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
 					s.log.Info("returning existing job by (type, correlation_id) — caught race on SQLite UNIQUE constraint (typed sqlite3 probe)",
 						zap.String("job_id", existing.ID),

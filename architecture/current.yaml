@@ -5740,3 +5740,70 @@
       deadline: 2026-08-01
     - id: PR-LEGACY-QUARANTINE
       deadline: 2026-08-22
+
+- id: PR-JOBS-SQLITE3-PROBE-FIX
+  owner_capability: internal/application/jobs
+  status: shipped
+  ship_date: 2026-07-05
+  deadline: 2026-08-01
+  description: |
+    1-line production code fix on enqueue_service.go:210 — canonical
+    `sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique` typed
+    probe. Per mattn/go-sqlite3 idioms, sqlite3.ErrConstraintUnique
+    is type sqlite3.ErrNoExtended (= ErrConstraint.Extend(8), value
+    2067) and matches the ExtendedCode field of sqlite3.Error. Direct
+    typed comparison, no int() cast needed (matching types: both
+    ErrNoExtended).
+
+    PRE-COMMIT-9 SILENT LOGIC BUG (godlike/07 NO-FAKE-AVAILABILITY
+    audit-pin): the pre-commit-9 `int(sqliteErr.Code) ==
+    int(sqlite3.ErrConstraintUnique)` was comparing the base
+    constraint code (19, type ErrNo) against the UNIQUE extended
+    code (2067, type ErrNoExtended) — these NEVER matched, so the
+    typed-probe rescue path was effectively DEAD CODE. Every
+    UNIQUE-constraint race condition in Enqueue() returned the
+    generic "failed to create job" error instead of the existing
+    job. The pre-PR strings.Contains heuristic had the same
+    dead-code hazard at the string-compare trap.
+
+    3-surface lockstep: CHANGELOG.md + AGENTS.md + this entry.
+    Comments updated in lockstep: enqueue_service.go file doc
+    (line 14) + CARRY-FORWARD comment block (lines 188-209).
+    godlike/07 minimum-blast-radius: only line 210 + the
+    directly-related comment block + file doc touched.
+
+    Two forward-pointer linked_issues for the 2 follow-ups
+    surfaced by the code-reviewer (out of scope for the 1-line
+    fix on enqueue_service.go per user spec).
+  linked_issues:
+  - id: PR-JOBS-RETRY-CONTRACT-TEST-FIX
+    owner_capability: internal/application/jobs
+    status: pending
+    deadline: 2026-07-15
+    description: |
+      Fix the 5 broken sites in enqueue_service_test.go that use
+      the pre-commit-9 wrong pattern: lines 240, 247, 264, 288,
+      336. The struct literal `sqlite3.Error{Code: sqlite3.ErrConstraintUnique, ...}`
+      is a type error (Code is ErrNo field, ErrConstraintUnique
+      is ErrNoExtended value). The probe assertions use
+      `sqliteErr.Code == sqlite3.ErrConstraintUnique` (same
+      broken pattern that never matched). Fix: use
+      `sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique`
+      (matching types) + update the synthetic Error fixtures
+      to set both `Code: sqlite3.ErrConstraint` and
+      `ExtendedCode: sqlite3.ErrConstraintUnique` (matching
+      what the real driver emits).
+  - id: PR-JOBS-RETRY-CONTRACT-ERRORS-DOC-FIX
+    owner_capability: internal/application/jobs
+    status: pending
+    deadline: 2026-07-15
+    description: |
+      Update the 2 stale doc references in errors.go to the
+      canonical ExtendedCode pattern: line 28 (package doc for
+      ErrUniqueConstraintViolation) references
+      `sqliteErr.Code == sqlite3.ErrConstraintUnique` and
+      line 117 (sentinel message string) references
+      `sqlite3.Error.Code()==SQLITE_CONSTRAINT_UNIQUE`. Both
+      are now out of sync with the production probe (which
+      uses ExtendedCode per commit-9). godlike/06 SSOT
+      consistency.
