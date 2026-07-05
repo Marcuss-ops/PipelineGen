@@ -1230,12 +1230,54 @@
     deadline: 2026-08-15
   - id: PR-ARTLIST-LIFECYCLE
     owner_capability: internal/app
-    status: pending
+    status: shipped
+    ship_date: 2026-07-25
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
     deadline: 2026-08-15
+    ship_via: |
+      0-action false-premise closure (per StyleRegistry.Register
+      precedent from PR-DEAD-CODE-PURGE-2026-07-25, 2026-07-25).
+      Audit verified: the `lifecycleService` field on artlist.Service
+      (internal/application/assets/providers/artlist/service.go::Service
+      struct) does NOT exist today. The Service struct has 26 fields
+      (cfg, mainDB, log, liveCache, searchService, runOrchestrator,
+      destinationService, jobAdapter, diagnosticsService, assetStore,
+      indexer, metadataWriter, dispatcher, publisher, scraperSearcher,
+      pixabaySearcher, pexelsSearcher, mediaProcessor, assetDestResolver,
+      jobsSvc, assetProcessing, assetVersions, assetLocRepo, stager,
+      isLiveProbe, runRepo) — no `lifecycleService` field. The AGENTS.md
+      audit-pin comment at line 1277 documenting "lifecycleService field
+      on artlist.Service is dead code" is historical residue from a prior
+      closure; the field was already physically removed. The deprecation
+      record at architecture/deprecations.yaml#PR-ARTLIST-LIFECYCLE-DEPRECATION
+      (shipped 2026-07-04) confirms the prior removal. This entry is a
+      documentation-only flip: 0 files git-rm'd, 0 callers migrated,
+      0 tests added — the surface is already retired.
   - id: PR-ARTLIST-REPOS
     owner_capability: internal/app
-    status: pending
+    status: shipped
+    ship_date: 2026-07-25
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
     deadline: 2026-08-15
+    ship_via: |
+      0-action false-premise closure (per StyleRegistry.Register
+      precedent from PR-DEAD-CODE-PURGE-2026-07-25, 2026-07-25).
+      Audit verified: there is no `Repositories` aggregate type in
+      the artlist package today. The ServiceDependencies struct uses
+      3 individual canonical asset-lifecycle repos (AssetProcRepo +
+      AssetVerRepo + AssetLocRepo) from internal/domain/asset (NOT a
+      `Repositories` aggregate). The Service struct's 3 corresponding
+      fields (assetProcessing + assetVersions + assetLocRepo) are
+      active and correctly wired. ARCHITECTURE.md line 827 documents
+      the closure scope as "AssetProcRepo + AssetVerRepo + AssetLocRepo
+      field wiring closure" — the prior wave already shipped the wiring
+      closure (per the deprecation record at architecture/deprecations.yaml
+      and the wave-tracker duplicate entry that ships at line 2504).
+      This entry is a documentation-only flip: 0 files git-rm'd,
+      0 callers migrated, 0 tests added — the surface is already
+      wired correctly per the canonical Pattern 0 ports
+      (asset.ProcessingRepository + asset.VersionRepository +
+      asset.LocationRepository).
   - id: PR-ARTLIST-SYNCSERVICE
     owner_capability: internal/app
     status: pending
@@ -5335,3 +5377,58 @@
 # Per-content recovery: git show a2121cbc:architecture/current.yaml | sed -n '5304,5373p'
 
     deadline: 2026-08-15
+
+- id: CLEANUP-PRIORITY-1-5-2026-07-25
+  status: in_progress
+  exit_signal: false
+  owner_capability: architecture
+  deadline: 2026-08-15
+  description: "Cleanup wave for the 5 priority Hard-Tech cleanup items from the
+    Italian audit (2026-07-25 user-pasted). Each priority maps to 1 per-PR
+    execution listed below in linked_issues. Per godlike/07 no-fake-availability
+    discipline: NO silent-success surfaces remain after the wave (noop adapters,
+    noop stubs, hard-coded fallbacks, deprecated-but-live routes all retired).
+    Per godlike/06 SSOT one-canonical-owner-per-fact: each priority has exactly
+    one canonical surface to retire and one canonical replacement. Per godlike/07
+    minimum-blast-radius: each per-PR lands in isolation on its own subtree with
+    targeted gofmt + go vet + go build + go test gates per AGENTS.md Git-Lesson-2.
+    Action plan narrative: architecture/action-plans/2026-07-25-cleanup-priority-1-5.md
+    (companion document covering scope decomposition + per-Priority execution +
+    band deadlines + verification gates + cross-references).
+    "
+  linked_issues:
+  - id: PR-CLEANUP-P0-NOOP-KILL
+    owner_capability: internal/application/scripts/adapters
+    status: pending
+    priority_band: P0_absolute
+    deadline: 2026-08-01
+  - id: PR-CLEANUP-P1-LEGACY-410
+    owner_capability: internal/api/script
+    status: pending
+    priority_band: P1
+    deadline: 2026-08-08
+  - id: PR-CLEANUP-P1-QDRANT-PROBE
+    owner_capability: cmd/admin/qdrant_readiness
+    status: pending
+    priority_band: P1
+    deadline: 2026-08-08
+  - id: PR-CLEANUP-P1-QDRANT-NOOP-REMOVAL
+    owner_capability: cmd/admin
+    status: pending
+    priority_band: P1
+    deadline: 2026-08-08
+  - id: PR-CLEANUP-P2-SCRIPT-DEPS
+    owner_capability: internal/api/script
+    status: pending
+    priority_band: P2
+    deadline: 2026-08-15
+  - id: PR-CLEANUP-P2-RETRIES-WIRING
+    owner_capability: internal/application/jobs
+    status: pending
+    priority_band: P2
+    deadline: 2026-08-15
+  - id: PR-CLEANUP-HOTSPOT-CROSSREF
+    owner_capability: architecture
+    status: pending
+    priority_band: forward_pointer
+    deadline: 2026-08-22
