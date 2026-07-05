@@ -2779,6 +2779,8 @@ The following 5 closure entries are the P2.4 closure pin (no new code surface; d
 ## Unreleased
 
 ### Fixed
+- **PR-VO-STEP8-FAILMODES-1-2 closure (2026-07-05)** — Step[8] voiceover E2E plan: 2 atomic fix-minimo commits on `origin/main` addressing 2 observed fail modes (worker off + HTTP 429 rate-limit). Commit 1 (`1b553274` `feat(admin): voiceover-health CLI probe`): `pipelinegen admin voiceover-health` JSON envelope ({reachable, url, status_code, latency_ms, error, probe_time_iso}) + `--fail-on-unreachable` typed-error opt-in (CI gate binary signal). Commit 2 (`b1d4b2e5` `feat(middleware): VELOX_VOICEOVER_RATE_LIMIT_BURST env-bypass`): segment-aware match (NO silent widening to lookalike routes like `/api/media/voiceovers-archive/`), ctor-time env snapshot (NO request-time read race), NO canonical `RateLimitPort` widening (5 adapters untouched per godlike/06 SSOT minimal-blast-radius). Pre-existing 6 carry-forward issues from `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` unchanged — NOT regressions. Fail-mode 3 (parent RUNNING without terminal-fail) is forward-pointer only (no commit per godlike/07 minimum-blast-radius — beyond atomic scope). godlike/06 3-surface SSOT lockstep: CHANGELOG.md (this entry) = AGENTS.md `## Recent cross-cutting closures` entry ~ `architecture/current.yaml#PR-VO-STEP8-FAILMODES-1-2`.
+
 
 - **RED-2 / JOBS-T01-001 — events Scan error closure (2026-07-04)** `fix(jobs): resolve events Scan error via strftime canonical wrap + rfc3339TimeScanner`
   - Wraps the `created_at` DATETIME column with `strftime('%Y-%m-%dT%H:%M:%fZ', created_at)` in `internal/infrastructure/database/sqlite/jobs/repository.go::ListEvents`
