@@ -101,10 +101,24 @@ var ErrUniqueConstraintViolation = errors.New("appjobs.Service.Enqueue: SQLite U
 // string-compare gymnastics. Symmetric with ErrRepoRequired +
 // ErrLogRequired's fail-closed contract.
 //
-// Pre-commit-8: this sentinel was REMOVED in commit faa2a55a (ErrXxx
-// cleanup wave) while batch.go + clipindexer + tests still referenced
-// it. Re-introduced per PR-ERROR-SURFACING commit-8 (build
-// unblock + godlike/07 typed-error contract preservation).
+// Carry-forward attribution note (verified via git pickaxe 2026-07-04):
+// `ErrMissingDeps` was NEVER previously defined — neither the original
+// `errors.go` (pre-`faa2a55a`) nor `faa2a55a`'s PR-jobs-retry-contract
+// (which replaced the file wholesale with 5 sentinels: ErrRegistryRequired,
+// ErrRepoRequired, ErrLogRequired, ErrMaxRetriesUnknown,
+// ErrUniqueConstraintViolation) declared a sentinel of this name.
+// This declaration is the FIRST introduction on the canonical SHA
+// `d6767631` (PR-ERROR-SURFACING commit-8 / refactor(app): narrow
+// assetindex import path).
+//
+// Pre-commit-8 Build failure: ~10 callsites
+// (`internal/infrastructure/indexing/clipindexer/batch.go:113`,
+// `register_wiring_test.go`, `generate_item_handler.go`,
+// `clipindexer_enqueue.go` + others) referenced `appjobs.ErrMissingDeps`
+// but the symbol did not exist in the package; `go build` rejected
+// with `undefined: appjobs.ErrMissingDeps`. Commit-8 ships this sentinel
+// to satisfy godlike/07 typed-error contract (callsites by IDENTITY via
+// `errors.Is`, not by string).
 //
 // Errors.Is(err, ErrMissingDeps) is the canonical probe.
 //
