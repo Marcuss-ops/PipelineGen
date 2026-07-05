@@ -5694,3 +5694,49 @@
     3-surface lockstep: this architecture/current.yaml entry ≡ CHANGELOG.md ## Unreleased → ### Fixed
     entry (added in commit cd1d5834) ≡ AGENTS.md ## Recent cross-cutting closures
     mirror (added in commit cd1d5834).
+
+- id: CODE-QUALITY-AUDIT-2026-07-05
+  owner_capability: architecture
+  status: pending
+  deadline: 2026-08-22
+  description: |
+    Code-quality anti-patterns audit (4 P0 hotspots + 3 P1 forward-pointers)
+    registered 2026-07-05 per user spec ("l'audit di oggi"). Lockstep surfaces:
+    action plan `architecture/action-plans/2026-07-05-code-quality-anti-patterns-audit.md`
+    + this wave-tracker entry + CHANGELOG.md `## Unreleased > ### Added` closure
+    + AGENTS.md `## Recent cross-cutting closures` mirror. 4 P0 hotspots DIAGNOSTICALLY
+    DISTINCT: P0-1 Composition Monolith (composition.go at ~661 LoC vs ≤250 cap,
+    embedded-struct-promotion topology validated in 2026-07-05 session) +
+    P0-2 Premature Metric Increment (godlike/07 fake-availability before Commit)
+    + P0-3 Wire Interface Shadowing (ad-hoc wire types dup canonical ports,
+    godlike/06 SSOT break) + P0-4 Stale Build Carry-Forwards (6 items in
+    PRE-EXISTING-BUILD-ISSUES-2026-07-04 blocking `go build ./...`). 3 P1
+    forward-pointers already covered by other waves (QDRANT-CHAIN-VERIFY + GODOBJ-2026-07-03
+    + CODE-QUALITY-CLEANUP-2026-07-04); audit confirms deferral is correct, NOT a fork.
+    Hotspot cross-validation forward-pointer: PR-CODE-QUALITY-AUDIT-2026-07-05-HOTSPOT-CROSSREF
+    (deadline 2026-08-15). godlike/07 honest scope-lock: this is a STATIC audit by
+    complexity + accumulated risk, NOT by git-log frequency.
+  linked_issues:
+    - id: PR-COMPOSITION-MONOLITH-LOCCAP-2026-07-05
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-FALSE-SUCCESS-METRICS-AUDIT-2026-07-05
+      owner_capability: internal/application/assets/providers
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-WIRE-INTERFACE-SHADOWING-AUDIT-2026-07-05
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-STALE-BUILD-CARRY-FORWARDS-AUDIT-2026-07-05
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-07-31
+  forward_pointers:
+    - id: PR-QDRANT-INDEXCLIP-GUARD
+      deadline: 2026-07-15
+    - id: PR-GODOBJ-HOTSPOT-CROSSREF
+      deadline: 2026-08-01
+    - id: PR-LEGACY-QUARANTINE
+      deadline: 2026-08-22
