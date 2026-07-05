@@ -3680,10 +3680,11 @@
 
       '
 - id: VO-DECOMPOSITION-2026-07-04
-  status: in_progress
-  exit_signal: false
+  status: done
+  exit_signal: true
   owner: 'voiceover (composition: internal/app)'
   deadline: 2026-08-15
+  shipped_shas_summary: 'all 8 original linked_issues shipped + 1 forward-pointer (PR-VO-SERVICE-HOTSPOT, deadline 2026-08-22). Canonical ship_shas: 2d850230 (HOTSPOT-CROSSREF closure, 2026-07-04) + 21197634 (PARENT-STATE-COLUMN closure, 2026-07-05) + 235cef3e (3-surface lockstep-completion, 2026-07-05) + 6 earlier shipped per the voiceover decomposition wave (PR-VO-TTS-PERSISTENT-WORKER + PR-VO-STAGES-SPLIT + PR-VO-FINALIZER-STEP6-EXTRACT + PR-VO-PARENT-AGGREGATOR-SPLIT + PR-VO-TYPED-PRIMITIVES + the typed-port + check58 surface). PR-VO-SERVICE-HOTSPOT is a forward-pointer (post-wave hotspot audit per user-spec) — NOT part of the original 8-item plan, so the wave-flip is valid per the user-spec literal "batched with closing wave-flip once all 8 PR-VO- entries reach status:shipped".' 
   exit_gate: "(a) All 8 linked_issues flip to status: shipped (one per item).\n(b) CI gate Check 58 (forward-prevention, lands with P0 #1) active in\n    scripts/ci-architectural-checks.sh: bans\n    exec.CommandContext(python3,\
     \ ...) callers in\n    internal/infrastructure/audio/ outside the canonical persistent-\n    worker surface (mirrors Check 54s posture for the\n    monitor/ infra-import ban).\n(c) rg Language|StyleGroup|TextHash\
     \ on the raw-string sites listed\n    in the action plan returns zero hits in production code\n    (post-P1.1 typed-primitive extraction).\n(d) Pre-existing 5-item build-issue carry-forward unchanged\n\
