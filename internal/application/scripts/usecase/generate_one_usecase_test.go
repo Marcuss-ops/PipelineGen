@@ -472,8 +472,8 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 			"PR-ERROR-SURFACING commit-5: errors.Is(err, ErrScriptGenerationFailed) must be true for voiceover_resolve path, got err=%v", err)
 		// Existing phase sentinel still matches (resolution-flavor sentinel).
 		require.True(t,
-			errors.Is(err, scriptpkg.ErrSourceResolutionFailed),
-			"errors.Is(err, ErrSourceResolutionFailed) must remain true for voiceover_resolve path")
+			errors.Is(err, scriptpkg.ErrVoiceoverResolveFailed),
+			"errors.Is(err, ErrVoiceoverResolveFailed) must remain true for voiceover_resolve path (PR-ERROR-SURFACING commit-5: phase sentinel updated from ErrSourceResolutionFailed to ErrVoiceoverResolveFailed — voiceover folder-routing is a distinct failure domain from clip-search resolution per godlike/06 SSOT)")
 		// Inner error preserved.
 		require.ErrorContains(t, err, "forced vo resolve error",
 			"inner resolver error must be in the chain")
@@ -619,7 +619,7 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 		// and the FIRST line of Execute (`if uc == nil`) returns before
 		// any dereference. No panic.
 		var nilUC *GenerateOneUseCase
-		require.NotNil(t, nilUC) // typed-nil IS a non-nil pointer, but logically nil
+		require.Nil(t, nilUC) // nil pointer receiver — Execute's first line returns via 'if uc == nil' before any dereference
 		item := scriptpkg.GenerationItemV2{ID: "umbrella-ucnil-item"}
 		_, err := nilUC.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 		require.Error(t, err, "uc=nil path must return error")

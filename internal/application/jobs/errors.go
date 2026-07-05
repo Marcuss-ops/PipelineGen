@@ -93,3 +93,24 @@ var ErrMaxRetriesUnknown = errors.New("appjobs.Registry: no entry for jobType (G
 // driver string changes — `sqlite3.Error.Code` is an int-backed enum,
 // not a string.
 var ErrUniqueConstraintViolation = errors.New("appjobs.Service.Enqueue: SQLite UNIQUE constraint violation (typed probe via sqlite3.Error.Code()==SQLITE_CONSTRAINT_UNIQUE)")
+
+// ErrMissingDeps marks a nil dependency detected at registration time
+// (typically RegisterHandler / RegisterJobHandler). Surfaced as a typed
+// sentinel so callers (composition root, batch wiring, clipindexer
+// batch reindex, generate-item handler) can branch reactively without
+// string-compare gymnastics. Symmetric with ErrRepoRequired +
+// ErrLogRequired's fail-closed contract.
+//
+// Pre-commit-8: this sentinel was REMOVED in commit faa2a55a (ErrXxx
+// cleanup wave) while batch.go + clipindexer + tests still referenced
+// it. Re-introduced per PR-ERROR-SURFACING commit-8 (build
+// unblock + godlike/07 typed-error contract preservation).
+//
+// Errors.Is(err, ErrMissingDeps) is the canonical probe.
+//
+// godlike/07 NO-FAKE-AVAILABILITY rationale: the surface was previously a
+// raw `fmt.Errorf("...: jobsSvc is nil")` which mixed component-namespace
+// context with dependency nil — a future cue "register before nil" would
+// silently miscategorise on a future refactor. The typed sentinel
+// preserves the canonical contract for `errors.Is` across all callers.
+var ErrMissingDeps = errors.New("appjobs: required dependency is nil (composition root must wire the dependency before calling Register)")

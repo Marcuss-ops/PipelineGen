@@ -117,7 +117,7 @@ func (uc *GenerateOneUseCase) Execute(
 		// log entry is suppressed; the typed-error chain is still the
 		// canonical propagation surface for handlers to read via
 		// errors.Is (per godlike/07 fail-closed).
-		return generateOnePreConstructError(nil, "uc_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("use case not constructed"))
+		return nil, generateOnePreConstructError(nil, "uc_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("use case not constructed"))
 	}
 	if uc.engine == nil {
 		// PR-ERROR-SURFACING commit-5 (2026-07-04): route the
@@ -127,7 +127,7 @@ func (uc *GenerateOneUseCase) Execute(
 		// zap.String("reason", "engine_nil"))` diagnostic line is
 		// PRESERVED inside generateOnePreConstructError (it inspects
 		// the non-nil uc via the receiver).
-		return uc.preConstructError("engine_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("engine not configured"))
+		return nil, uc.preConstructError("engine_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("engine not configured"))
 	}
 
 	startAll := time.Now()
