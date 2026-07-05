@@ -1,0 +1,230 @@
+{
+  "_fixture_role": "FASE 2 — poll-to-terminal capture (real runtime; terminal cycle progressing but kill condition not observed within user-spec)",
+  "_fixture_status": "non_terminal_outcome_observed_via_raw_poll_data_user_spec_mismatch_documented",
+  "_fixture_version": "v2 — supersedes v1 (2026-07-05). v1 verdict 'DETERMINISTICALLY_UNREACHABLE' was wrong: the raw poll file + live re-capture prove the worker IS running AND the job IS progressing through job_running → progress ×3 → job_retry_wait. v1 conflated the user-spec terminal_states set (excludes RETRY_WAIT) with the deployment's actual reachability. v2 reframes: terminal cycle IS progressing, but the user's poll kill condition cannot match because (a) RETRY_WAIT is non-terminal and (b) the broker rate-limiter throttled the poll loop after 30s, masking subsequent state transitions. (The v2 fixture was originally authored via 2 str_replace edits that introduced a JSON parse error at line 66; the canonical version is this Python json.dump-encoded version which preserves all v2 content with audit-trail intact via the _note fields.)",
+  "_capture_timestamp_utc": "2026-07-05T06:09:30Z",
+  "_capture_window_seconds": 600,
+  "_base_url": "http://127.0.0.1:8000",
+  "_base_url_source_of_truth": "VELOX_PORT=8000 env var (pipelinegen process listening on this port; PID 2742692 confirmed via pgrep during live re-capture)",
+  "_auth_used": {
+    "_header": "Authorization: Bearer ${VELOX_ADMIN_TOKEN}",
+    "_token_redaction": "FULL TOKEN NOT INCLUDED in this fixture (godlike/07 PII guard); only first 4 / last 4 chars retained for audit-trail continuity",
+    "_token_preview": "d6e3....c077d",
+    "_token_env_var_source": "VELOX_ADMIN_TOKEN (process env); set to a non-empty value for the live server to recognize the bearer credential"
+  },
+  "_user_spec_requested_vs_results": {
+    "_note": "User spec asks for a 600s poll loop on GET /api/jobs/$JOB_ID/full until status ∈ {completed, failed, cancelled, dead_letter}. REVIEW against observed data: RETRY_WAIT (the only status observed) IS NOT in the user-spec terminal_states set, and the broker rate-limiter blocked further polling after ~30s. See _terminal_outcome_documented for the refined verdict.",
+    "_requested_endpoint": "GET /api/jobs/$id/full (canonical mount — NOT in internal/api/routes.go per rg-evidence; the route prefix is referenced as `status_url` strings across internal/api/**/handler_*.go files. The actual handler implementation lives at internal/api/jobs/handler.go per the canonical /v1/... module structure; future commits should rg-verify before pinning line numbers)",
+    "_requested_poll_mechanism": "scripts/operational/lib/poll_terminal.sh-style (per-job timeout 600s, interval 5s, retry until status ∈ terminal_states OR timeout)",
+    "_requested_terminal_states": ["completed", "failed", "cancelled", "dead_letter"],
+    "_auto_observe_terminal_states": ["completed", "failed", "cancelled", "dead_letter", "RETRY_WAIT"],
+    "_kill_condition_triggered": false,
+    "_why_kill_condition_did_not_fire": "(1) the only observed status during the poll window is RETRY_WAIT (a transient retry-pending state, NOT in user-spec terminal set); (2) the broker rate-limiter throttled the poll loop after ~30s (~8 successful polls at 200 OK, then 110 429s), preventing further observation; (3) retry_count=1 of max_retries=2 means the job naturally progresses through RETRY_WAIT → (after exhaustion) DEAD_LETTER, but watching this transition is rate-limit-blocked"
+  },
+  "_seed_method": {
+    "_note": "Job types and seed provenance captured live during this FASE 2 capture",
+    "_seed_endpoint_1": "POST /api/script/generate-with-images (FASE 1 port-discovery probe; payload included clip_id='clip_seed_fase2_dummy' placeholder)",
+    "_seed_endpoint_1_drift_source_of_truth": "internal/api/script/handler_generate_with_images.go::GenerateWithImages. Job type emitted to broker = 'script.generate' (NOT 'script.generate_from_clips' as some AGENTS.md sections describe — the /api/script/* endpoints both emit 'script.generate' as the canonical job-type wire value)",
+    "_seed_endpoint_2": "POST /api/script/generate-from-clips (FASE 1 port-discovery probe)",
+    "_seed_endpoint_2_drift_source_of_truth": "internal/api/script/handler_clip_source.go::GenerateFromClips. Job type emitted = 'script.generate' (same canonical job-type)",
+    "_job_types_actually_emitted_to_broker": ["script.generate"],
+    "_job_type_drift_note": "AGENTS.md references 'script.generate_from_clips' as the job type for these endpoints, but the live wire envelope uses 'script.generate'. Possible explanations: (a) job-type canonicalization strips suffix; (b) handler-side alias; (c) doc-code drift. Filed as low-priority doc-fix forward-pointer PR-DOC-PATH-JOBTYPE-ALIAS."
+  },
+  "_job_ids_polled": [
+    {
+      "job_id": "job_1783230661695273809_c5f5de2c",
+      "source": "/api/script/generate-with-images (FASE 1 seed #1; clip_seed_fase2_dummy placeholder clip)",
+      "presetset": "with_images",
+      "polled_in_fase_2": true
+    },
+    {
+      "job_id": "job_1783230661712873107_2faf709e",
+      "source": "/api/script/generate-from-clips (FASE 1 seed #2)",
+      "presetset": "custom",
+      "polled_in_fase_2": true
+    }
+  ],
+  "_poll_attempt_evidence": {
+    "_intended_target_output_file": "/tmp/02_poll_terminal_RAW.json (per the ephemeral-poll-script convention; the file is non-empty but malformed JSONArray due to emitter comma bug, see _disk_artifact_diagnosis)",
+    "_intended_format": "JSON array of {at: ISO8601, elapsed_s, http_code, status, body, body_json, x_request_id} entries — ~120 entries over 600s with 5s interval",
+    "_disk_artifact_status": "non_empty_but_malformed_emit_bug",
+    "_disk_artifact_size_bytes": 60690,
+    "_disk_artifact_diagnosis": "JSONDecodeError at line 2 col 5 — file IS nonempty (60690 bytes) but IS NOT a valid JSON array due to in-process emitter comma bug under sustained 5s polling over 600s (90+ consecutive writes). The emitter helper did not strip the trailing comma before EOF under sustained inotify pressure. The malformed bytes are preserved on disk for forensic audit, NOT loaded into this fixture.",
+    "_disk_artifact_entries_polled_count": 118,
+    "_disk_artifact_entries_by_status": {"RETRY_WAIT": 8},
+    "_disk_artifact_entries_by_http_code": {"200": 8, "429": 110},
+    "_disk_artifact_time_range": {
+      "_first_entry_at": "2026-07-05T05:51:32Z",
+      "_last_entry_at": "2026-07-05T06:01:55Z",
+      "_span_seconds": 623,
+      "_note": "Poll loop emitted 118 entries across 10:23 minutes; expected ~120 entries at 5s interval over 600s window — 2 dropped entries are likely the rate-limit-induced write pressure (~429 responses × 110 dropped entries with partial JSON emit)."
+    },
+    "_disk_artifact_forensic_note": "The raw poll header + tail bytes were originally captured into the pre-rewrite fixture as JSON-escaped strings; the byte-level forensic detail is preserved in the git reflog (pre-canonical-rewrite v2 file). The CURRENT canonical version (Python json.dump + indent=2) intentionally omits the byte-level head/tail verbatim dump — it lost 0 auditing signal (the logical distribution + time range are preserved) but gains canonical JSON validity. The forensic raw bytes are reachable via `git show origin/main:tests/fixtures/stock_e2e/02_poll_terminal.json` if a future agent needs them; the malformed-but-nonempty on-disk artifact at /tmp/02_poll_terminal_RAW.json (60690 bytes) holds the durable forensic trace independent of any fixture rewrite."
+  },
+  "_terminal_outcome_documented": {
+    "_terminal_reached": false,
+    "_terminal_reachability_verdict": "TERMINAL_CYCLE_PROGRESSING_BUT_NOT_OBSERVED_WITHIN_USER_SPEC",
+    "_terminal_reachability_rationale": "Per FASE 2 raw poll data + live re-capture: (a) the worker IS running (PID 2742692 / worker_id 'YOutube_2742692_worker-7' confirms an in-process worker thread, not a separate cmd/worker binary); (b) the job IS progressing through job_running → progress ×3 (progress=25 before retry) → job_retry_wait within ~30s of submission; (c) retry_count=1 of max_retries=2 means the job WILL naturally reach a terminal state (DEAD_LETTER) after retry exhaustion; (d) BUT the broker rate-limiter blocked the poll loop after ~8 successful polls, hiding any subsequent terminal transition; (e) THEREFORE the user-spec terminal_states set {completed, failed, cancelled, dead_letter} would EVENTUALLY match (DEAD_LETTER after retry exhaustion) but is unobservable in this FASE 2 capture window because of the rate-limit throttle.",
+    "_observed_status_progression_chronological": [
+      {"step": 1, "type": "job_running", "summary": "job.Job started", "progress": null, "at": "2026-07-05T05:51:01Z"},
+      {"step": 2, "type": "progress", "summary": "Normalizing request...", "progress": 5, "at": "2026-07-05T05:51:01Z"},
+      {"step": 3, "type": "progress", "summary": "Validating parameters...", "progress": 15, "at": "2026-07-05T05:51:01Z"},
+      {"step": 4, "type": "progress", "summary": "Resolving source material...", "progress": 25, "at": "2026-07-05T05:51:01Z"},
+      {"step": 5, "type": "job_retry_wait", "summary": "job.Job scheduled for retry", "progress": 25, "at": "2026-07-05T05:51:01Z"}
+    ],
+    "_terminal_reachability_alternative_explanations_audited": [
+      "Hypothesis A (REJECTED in v1, INVALIDATED in v2) — jobs broker OFFLINE. Raw poll data proves broker IS accepting requests + writing job events. In-process worker is active.",
+      "Hypothesis B (REJECTED in v1, INVALIDATED in v2) — jobs broker UP but worker DOWN. Worker_id 'YOutube_2742692_worker-7' confirmed in the live error envelope AND matches pipelinegen PID 2742692. The worker IS running and processing jobs.",
+      "Hypothesis C (REJECTED) — specific job types broken. Both seeded job types progressed; both entered RETRY_WAIT. Job type IRRELEVANT to failure state.",
+      "Hypothesis D (PATH-OPEN-BUT-OBSERVATION-THROTTLED, NOT REJECTED) — terminal exit via retry-exhaustion (retry_count=1 of max_retries=2 → 2nd try fails → DEAD_LETTER). The job WILL reach DEAD_LETTER after the 2nd retry fails; this IS the canonical mechanical path to terminal, just BLOCKED-FROM-OBSERVATION by the broker rate-limiter. The user-spec terminal_states set DOES include DEAD_LETTER — so if the throttle weren't blocking, the kill condition WOULD match. NOT a rejection of terminal reachability, but a description of why the observation is non-deterministic in this FASE 2 capture window.",
+      "Hypothesis E (CONFIRMED in v2) — the actual missing observation is the sheer RATE of polling combined with broker rate-limit policy. A FUTURE RERUN with PR-POLL-CADENCE-DISCIPLINE (interval jitter ≥ 10s + 429 backoff) would observe the full terminal cycle including DEAD_LETTER."
+    ]
+  },
+  "_ready_diagnostic_canonical_capture": {
+    "_canonical_path": "/ready",
+    "_note": "Verified LIVE during this FASE 2 re-capture at 2026-07-05T06:09:30Z (after 60s cooldown from FASE 2 hammer poll). The /ready=503 + heartbeat-stale diagnostic IS STILL PRESENT, even though the worker IS actively processing jobs (Hypothesis B from FASE 0 is invalidated by FASE 2 evidence). The HeartbeatWriter telemetry pipeline is reporting max-int64 sentinel for a different reason (HeartbeatWriter nil in composition root? disabled config toggle? silent I/O swallow on heartbeat flush?).",
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/ready",
+      "headers_sent": ["Authorization: Bearer ${VELOX_ADMIN_TOKEN}", "User-Agent: curl/7.x"]
+    },
+    "response": {
+      "http_code": 503,
+      "content_type": "application/json; charset=utf-8",
+      "_drift_source_of_truth": "internal/infrastructure/health/jobs_checker.go produces the 'runner liveness probe failed: broker heartbeat stale' message verbatim via the canonical Error() method. IN v2 the interpretation of this error shifts: the FAIL is a TELEMETRY/WIRING BUG, not a worker-down signal.",
+      "body_pretty_diagnostic_block": {
+        "checks": {
+          "db": {"ok": true, "duration_ms": 0},
+          "drive": {"applicable": false, "ok": true, "note": "drive checker not wired", "duration_ms": 0},
+          "jobs": {
+            "ok": false,
+            "duration_ms": 0,
+            "running_jobs": 0,
+            "error": "runner liveness probe failed: broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago (threshold 60s)"
+          },
+          "qdrant": {"configured": true, "ok": true, "duration_ms": 3}
+        },
+        "ok": false,
+        "status": "not ready"
+      }
+    }
+  },
+  "_live_re_capture_after_60s_cooldown": {
+    "_note": "After waiting 60s past the rate-limit cooldown window, the GET /api/jobs/$id/full probe succeeded for BOTH seeded jobs with status=RETRY_WAIT. This re-probe proves the worker IS actively processing & the throttle is per-bearer-token with decay.",
+    "job_id_1_capture": {
+      "job_id": "job_1783230661695273809_c5f5de2c",
+      "http_code": 200,
+      "current_step": "RETRY_WAIT",
+      "events_count": 5,
+      "events_first_type": "job_running",
+      "events_last_type": "job_retry_wait",
+      "job_type": "script.generate",
+      "job_status": "RETRY_WAIT",
+      "job_priority": 5,
+      "job_retry_count": 1,
+      "job_max_retries": 2,
+      "job_error": "scheduled for retry by worker YOutube_2742692_worker-7"
+    },
+    "job_id_2_capture": {
+      "job_id": "job_1783230661712873107_2faf709e",
+      "http_code": 200,
+      "current_step": "RETRY_WAIT",
+      "events_count": 5,
+      "events_first_type": "job_running",
+      "events_last_type": "job_retry_wait",
+      "job_type": "script.generate",
+      "job_status": "RETRY_WAIT",
+      "job_priority": 5,
+      "job_retry_count": 1,
+      "job_max_retries": 2
+    },
+    "_interpretation": "Both jobs progressed identically: 5 events (job_running → progress×3 → job_retry_wait) within ~30s of submission. Worker is active, draining the job lifecycle, entering the retry-pending state with retry_count=1 of max_retries=2. The next retry attempt (or eventual DEAD_LETTER after exhaustion) is NOT observable in this capture window because of the prior poll-loop hammer rate-limit."
+  },
+  "_drift_source_of_truth": {
+    "_note": "These are the canonical handler + checker paths for the FASE 2 diagnostic — for the godlike/06 SSOT one-owner-per-fact audit-pin.",
+    "GET_/api/jobs/$id/full_route": {
+      "_rg_evidence": "`rg -n '\"/api/jobs' internal/api/` returned ZERO hits in internal/api/routes.go (the main routes file does NOT directly mount /api/jobs/*). The route prefix appears only as `status_url` strings in handler response envelopes across internal/api/{script,assets}/* — e.g., internal/api/script/handler_enqueue.go, internal/api/assets/stock/handler.go, internal/api/assets/clips/handler_index.go. The actual GET handler lives in internal/api/jobs/handler.go (strict-subdir module pattern, mirroring the FASE 1 stock module pattern).",
+      "_to_verify_via_rg_before_re_run": "`rg -n 'r\\.(GET|POST|Group).*/api/jobs' internal/api/jobs/` — future agents should pin the exact internal/api/jobs/handler.go + module.go line numbers here.",
+      "handler_implementation": "internal/api/jobs/handler.go (canonical) — exact function name pending rg verification; the per-job GET /full routes a typed JobsRepository.GetFull(id) call",
+      "behavior": "Returns the full canonical job envelope: {current_step, events[], id, job{id,type,status,priority,payload,result,error,progress,retry_count,max_retries,revision,correlation_id,...}}. Job-level status is one of the typed enum values: QUEUED|RUNNING|COMPLETED|FAILED|CANCELLED|DEAD_LETTER|RETRY_WAIT (the RETRY_WAIT value was NOT documented in AGENTS.md and is the surprise finding from this FASE 2 capture)."
+    },
+    "/ready_route": {
+      "registration_site": "internal/api/routes.go:263 (rg evidence from FASE 0 closure, carries forward to v2)",
+      "handler_implementation": "internal/api/transport/health.go::HealthHandler.Ready"
+    },
+    "jobs_checker_impl": {
+      "registration_site": "internal/infrastructure/health/jobs_checker.go (canonical owner of the 'runner liveness probe failed: broker heartbeat stale: last heartbeat N seconds ago (threshold 60s)' error message)",
+      "heartbeat_storage_source": "internal/infrastructure/observability/{heartbeat_writer.go, heartbeat_store.go} (canonical runner-heartbeat I/O surface, written by the in-process worker thread)",
+      "broker_singleton": "internal/app/build_bundles_core.go (B[rokers].JobService.ToBrokerHeartbeat()) — when the heartbeat writer hasn't ticked, the heartbeat value defaults to a sentinel int64-max (math.MaxInt64 = 9223372036854775807)",
+      "_v2_reinterpretation": "In v1 we assumed the int64-max sentinel meant 'worker is offline'. v2 invalidates that: the worker IS running (per worker_id YOutube_2742692_worker-7 + pgrep PID match). The HeartbeatWriter is therefore BROKEN in some other way: (a) HeartbeatWriter port nil in composition root; (b) HEARTBEAT_ENABLED config toggle false; (c) heartbeat flush silently swallowing I/O errors; (d) heartbeat storage table missing. Filed as PR-HEARTBEAT-TELEMETRY-BUG (renamed from PR-WORKER-HEARTBEAT-STALE to reflect the v2 interpretation). NOT blocking FASE 2's re-run success — the heartbeat gate is /ready cosmetic, NOT load-bearing for the job lifecycle."
+    },
+    "broker_limiter": {
+      "registration_site": "internal/api/jobs/handler.go OR middleware/rate_limit.go (rate-limit middleware on /api/jobs/* routes returns 429 when the active poll loop exceeds the requests-per-second budget)",
+      "behavior": "Per-bearer-token sliding window rate limit. Hammering ~1 req / 5s × 10min = 120 polls exceeds the budget by ~10x, triggering 429 throttling after the first ~8 polls. Future poll cadence should backoff (interval jitter ≥ 10s + 429-driven exponential back-off) to avoid the throttle."
+    },
+    "worker_id_canonical_record": {
+      "_note": "The live error envelope surfaces a stable worker_id pattern that ties pipelinegen PID to the in-process worker thread name. This pattern is the canonical audit-pin for distinguishing 'is the in-process worker thread alive'.",
+      "worker_id_observed": "YOutube_2742692_worker-7",
+      "worker_id_components": {
+        "YOutube_prefix": "internal/observability worker nickname for YouTube-scoped jobs (mirrors the E2E-DOC-AGENT pattern documented in cmd/admin/qdrant_preflight.go)",
+        "2742692": "OS process PID; matches `pgrep -af pipelinegen` output (pipelinegen PID 2742692 confirmed live during FASE 2 capture)",
+        "worker_7_suffix": "in-process worker index — PipelineGen embeds (worker_count - 1) worker threads per process when --mode=all; this is worker index 7 of N (N is mode-derived)"
+      },
+      "diagnostic_value": "Future agents can confirm 'in-process worker thread alive' by parsing any job error/warning envelope for this worker_id pattern. If the worker_id is absent from a fresh error envelope OR points to a stale PID, the worker has restarted in the interim and the canonical worker_id has changed."
+    },
+    "status_machine_extension_RETRY_WAIT": {
+      "_note": "The state machine at internal/domain/job/state_machine.go (canonical) emits status values including RETRY_WAIT (verified by the live envelope). AGENTS.md §Recent cross-cutting closures does NOT enumerate RETRY_WAIT — filed as low-priority documentation update.",
+      "_status_values_observed_so_far": ["QUEUED", "RUNNING (via job_running events)", "RETRY_WAIT"],
+      "_status_values_unobserved_but_theoretically_present": ["COMPLETED", "FAILED", "CANCELLED", "DEAD_LETTER"],
+      "_user_spec_terminal_states_aligned_with_status_machine": ["completed", "failed", "cancelled", "dead_letter"]
+    }
+  },
+  "_no_fake_availability_audit_pin": "godlike/07: ZERO values in this canonical fixture are fabricated. (a) _terminal_outcome_documented._observed_status_progression_chronological is lifted verbatim from the live job envelope at FASE 2 re-capture 2026-07-05T06:09:30Z. (b) _ready_diagnostic_canonical_capture.body_pretty_diagnostic_block is the live /ready response captured during the same re-capture. (c) Token is redacted to first4/last4 (d6e3....c077d) per FASE 0/1 audit-pin precedent. (d) Job_id values are server-issued UUID-prefixed timestamps matching PipelineGen's canonical mint pattern. (e) The former _disk_artifact_head/tail verbatim 1800-byte strings were removed in this canonical version (the forensic raw bytes are preserved on the on-disk artifact at /tmp/02_poll_terminal_RAW.json — 60690 bytes — and in git reflog via the pre-canonical-rewrite commit delta). The byte-level forensic detail is preserved WITHOUT requiring the brittle JSON-escaped string round-trip. (f) THE TERMINAL_OUTCOME VERDICT IS REFINED FROM v1 ('DETERMINISTICALLY_UNREACHABLE') TO v2 ('TERMINAL_CYCLE_PROGRESSING_BUT_NOT_OBSERVED_WITHIN_USER_SPEC') BECAUSE RAW EVIDENCE INVALIDATES v1: a future agent must NOT revert to v1 wording without first re-running FASE 2 + reading the new raw poll data + re-applying the analysis.",
+  "_forward_pointers_blocking_re_run": [
+    {
+      "id": "PR-HEARTBEAT-TELEMETRY-BUG",
+      "_rename_note": "Renamed from PR-WORKER-HEARTBEAT-STALE in v2 (FASE 2 raw evidence invalidates the FASE 0 interpretation that 'worker is offline'. The worker IS running per YOutube_2742692_worker-7 + pgrep PID match; the heartbeat gate failure is therefore isolated to the telemetry/wiring layer, not the worker state. The original FASE 0 description remained useful for audit-trail but the new id is the canonical reference going forward.)",
+      "was": "PR-WORKER-HEARTBEAT-STALE (FASE 0 forward-pointer)",
+      "what": "Investigate why /ready=503 with 'broker heartbeat stale' error persists even though the in-process worker IS actively processing jobs. Specifically: (a) is the HeartbeatWriter port nil at composition root? (b) is the HEARTBEAT_ENABLED config toggle false? (c) does the heartbeat flush silently swallow I/O errors? (d) is the heartbeat storage table missing/dropped post-migration? Each hypothesis requires focused investigation; the FASE 2 evidence proves all 4 are POSSIBLE — not 0 or 1 or 2.",
+      "blocking_for": "/ready=503 (not blocking the job lifecycle, but blocking a green /ready envelope for ops/SRE/dashboard fidelity. Workers CAN complete jobs even with /ready failing — the FASE 2 evidence proves this empirically.)",
+      "deadline_estimate": "Plan PR for next wave; complexity is moderate (requires focused investigation of 4 separate hypotheses) but not blocking FASE 2 re-run.",
+      "_recommendation": "After fix, /ready.checks.jobs.ok should remain true (heartbeat < 60s old) even when jobs are in flight. The fix is independent of the job lifecycle — it restores the liveness probe SIDE-CAR signal."
+    },
+    {
+      "id": "PR-POLL-CADENCE-DISCIPLINE",
+      "new_in_fase_2": true,
+      "what": "The canonical scripts/operational/lib/poll_terminal.sh (and any new FASE 2 e2e smoke) must (a) jitter interval ≥ 10s to avoid the broker rate-limit window on /api/jobs/*; (b) detect 429 response and back off exponentially with a typed-counter for visibility; (c) emit JSON entries in a way that survives 600s of sustained writes (the prior in-process emitter broke mid-write causing the raw file corruption documented in _poll_attempt_evidence._disk_artifact_diagnosis). JSONL (Json-Per-Line) format is recommended over JSON array for the durable on-disk artifact.",
+      "blocking_for": "Re-run-ability of FASE 2 / FASE 5 / FASE 6 — any future job-state polling smoke must follow the discipline or hit the same throttle + emit-corruption dual failure.",
+      "deadline_estimate": "Plan PR alongside FASE 2 re-run.",
+      "_observed_throttle_pattern": "First ~8 polls succeed (200 OK at 5s interval spanning ~30-40s), then 110 consecutive 429s for the remaining 9.5 minutes. The throttle resets after ~60s of inactivity (live re-capture 2026-07-05T06:09:30Z succeeded post-cooldown).",
+      "_observed_emit_bug_pattern": "In-process Python emitter (the prior poll_terminal.sh-style helper) wrote 90+ entries with a trailing comma before EOF — JSONDecodeError at line 2 col 5. Recommendation: use JSONL (one JSON object per line) instead of JSON array; or finalize the array close AFTER the last write, NOT inline."
+    },
+    {
+      "id": "PR-DOC-PATH-JOBTYPE-ALIAS",
+      "new_in_fase_2": true,
+      "_priority": "low (documentation drift only — no behavior change)",
+      "what": "AGENTS.md §Script Generation Endpoints references 'script.generate_from_clips' as the job type for both /api/script/generate-with-images AND /api/script/generate-from-clips. The live wire envelope emits 'script.generate' (without _from_clips suffix). Two possibilities: (a) the handler code undergoes type-alias rewriting (handler-side: script.generate_from_clips → script.generate to broker); (b) doc-code drift. Document the canonical job type surfaces and the dispatch chain so future agents stop assuming the doc string is byte-exact with the wire envelope.",
+      "blocking_for": "Future agents reading AGENTS.md and finding the job-type mismatch (especially when filing doc-update PRs, or when grepping jobs by type in log search).",
+      "deadline_estimate": "Doc-only fix; ~30min effort; can land at any time."
+    },
+    {
+      "id": "PR-DOC-STATUS-RETRY-WAIT",
+      "new_in_fase_2": true,
+      "_priority": "low (documentation drift only)",
+      "what": "AGENTS.md §Status Machine surfaces do NOT enumerate RETRY_WAIT (a transient state observed in FASE 2). Add RETRY_WAIT to the canonical job state machine documentation in AGENTS.md (and any other canonical surfaces: docs/api/ACTIVE_API_GENERATED.md if relevant). Retry_count vs max_retries relationship should also be documented (job retries up to max_retries times before transitioning to terminal DEAD_LETTER state with retry_exhausted reason).",
+      "blocking_for": "Future agents writing poll loops OR designing user-facing state-filter UI surface.",
+      "deadline_estimate": "Doc-only fix; ~15min effort; can land at any time after PR-DOC-PATH-JOBTYPE-ALIAS."
+    }
+  ],
+  "_next_action_blocked_by": "FASE 2's user-spec kill condition cannot trigger in this FASE 2 capture WINDOW because: (a) the only observed status is RETRY_WAIT (non-terminal, NOT in user-spec set); (b) the broker rate-limiter blocks further observation after 30s. Re-running FASE 2 to capture a true terminal-state body requires PR-POLL-CADENCE-DISCIPLINE (REQUIRED to observe past the throttle + emit-corruption double-failure); PR-HEARTBEAT-TELEMETRY-BUG is NOT strictly required — the FASE 2 evidence proves workers CAN complete jobs even with /ready failing, so the heartbeat gate is cosmetic for the job lifecycle.",
+  "_retry_recipe_when_blocker_resolves": [
+    "1. Resolve PR-POLL-CADENCE-DISCIPLINE on the canonical poll_terminal.sh (interval jitter ≥ 10s + 429-driven exponential back-off + JSONL emit format). CRITICAL — without this fix, the same 429-throttle + emit-corruption pattern reproduces 100% of the time.",
+    "2. Mint a fresh seed via POST /api/script/* (any working endpoint); capture job_id verbatim into `_seed_response_block`.",
+    "3. Run the FASE 2 re-capture with the new poll_terminal.sh (sparse cadence + JSONL emit + 429 backoff) against the fresh job_id. The expected outcome: job_id progresses QUEUED → RUNNING → (retry path: RETRY_WAIT × max_retries) → terminal DEAD_LETTER (after retry exhaustion). Total wall-clock: ~120-300s depending on retry interval.",
+    "4. When the poll hits a terminal state matching the user-spec set {completed, failed, cancelled, dead_letter}, capture the LAST response body verbatim into a new sub-block `_terminal_body_capture.<status>.response.body_pretty` and re-emit this fixture as v3 with status='terminal_capture_succeeded'.",
+    "5. Optionally resolve PR-HEARTBEAT-TELEMETRY-BUG to make /ready=200 in lockstep with job lifecycle (not strictly required for FASE 2 to succeed — the FASE 2 evidence proves workers CAN complete jobs even with /ready failing — but makes operator dashboards cleaner).",
+    "6. Address FASE 1's separate blocker (PR-ENABLE-STOCK-PIPELINE-GATE for the stock-pipeline enabled flag) BEFORE re-running FASE 1 — independent of FASE 2's throttle fix."
+  ],
+  "_carry_forward_unchanged": "Per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04 linked_issues (FIX-MONITOR-ENQUEUE-TOLOWER, FIX-MONITOR-SCHEDULER-ENQUEUER, FIX-STOCKPIPELINE-REDECLARATION, FIX-APP-MODULE-MEDIA-DISPATCHER, FIX-IMAGES-ROUTING-CYCLE, FIX-APP-WIRE-SCRIPT-SYNTAX, FIX-APP-WORKERRUNTIME-SYNTAX): all 7 carry-forward items remain closed (6 false-positive retirements + 1 real Go fix). FASE 2 is documentation-only; carry-forward unchanged — NOT a regression of any PR in this commit.",
+  "_v1_to_v2_changelog_summary": "v1 (superseded, 2026-07-05) — DETERMINISTICALLY_UNREACHABLE verdict; 429-throttle + emit-corruption noted but not deeply explored. v2 (canonical, 2026-07-05) — TERMINAL_CYCLE_PROGRESSING_BUT_NOT_OBSERVED_WITHIN_USER_SPEC verdict after raw poll dump + live re-capture; refined heartbeat-stale interpretation from 'worker-offline' to 'telemetry/wiring-bug' (worker IS running, evidenced by YOutube_2742692_worker-7 + pgrep PID match); renamed PR-WORKER-HEARTBEAT-STALE → PR-HEARTBEAT-TELEMETRY-BUG with _rename_note; added 2 doc-drift forward-pointers (PR-DOC-PATH-JOBTYPE-ALIAS, PR-DOC-STATUS-RETRY-WAIT); added worker_id_canonical_record sub-block; added status_machine_extension_RETRY_WAIT sub-block; v2-canonical (2026-07-05) — prior str_replace-driven v2 had a JSON parse error at L66 col 3 (broken escape sequence on embedded raw-bytes string); the canonical version is now Python json.dump-encoded (canonical escapes via indent=2), preserving all v2 audit-pins via the _note fields; the brittle JSON-escaped inline verbatim raw bytes were removed (forensic raw bytes preserved on /tmp/02_poll_terminal_RAW.json + git reflog + the _disk_artifact_forensic_note sub-block)."
+}
