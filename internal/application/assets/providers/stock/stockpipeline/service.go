@@ -115,10 +115,10 @@ type Service struct {
 	// the broker.
 	sourceStager acquisition.SourceStager
 	// channelLister is the YouTube channel listing port (P4, July 2026).
-	// The concrete `*downloader.YTDLPDownloader` satisfies stockChannelLister
+	// The concrete `*downloader.YTDLPDownloader` satisfies ChannelLister
 	// structurally. nil-tolerant at ctor time (wire-up deferred pending
 	// composition-root re-enablement).
-	channelLister stockChannelLister
+	channelLister ChannelLister
 
 	// db is the SQLite handle for the step store (Phase 2, July 2026).
 	// nil-tolerant — when nil, the orchestrator falls back to in-memory.

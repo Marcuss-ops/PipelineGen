@@ -139,8 +139,8 @@ type Deps struct {
 	// ChannelLister is the YouTube channel listing port (P4, July 2026).
 	// OPTIONAL at ctor time (nil-tolerant per §F.1 governance) — the
 	// composition root (currently retired/stubbed) wires the concrete
-	// `*downloader.YTDLPDownloader` which satisfies stockChannelLister
+	// `*downloader.YTDLPDownloader` which satisfies ChannelLister
 	// structurally. When nil, query.go's resolveQuery fails-closed with
 	// a typed nil-port error at the first search attempt.
-	ChannelLister stockChannelLister
+	ChannelLister ChannelLister
 }
