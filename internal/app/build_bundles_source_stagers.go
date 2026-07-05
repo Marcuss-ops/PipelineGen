@@ -154,7 +154,8 @@ func WireSourceStagers(
 // both opts.StagingRoot AND opts.Fetch. WireAcquisitionStager
 // derives StagingRoot from cfg.Storage.TempPath() + a stock-pipeline
 // subdirectory (created canonically by MkdirAll inside the
-// concrete). For Fetch, WireAcquisitionStager supplies a fail-closed
+// concrete). For Fetch, WireAcquisitionStager uses the supplied
+// fetch closure when non-nil; when nil it supplies a fail-closed
 // typed-error stub that returns appacq.Wrap(ErrAcquisitionPrepareFailed, ...)
 // until the yt-dlp / HTTP / Drive Downloader wrapper lands (forward-
 // pointer PR-STOCK-FETCH-WIRE-2026-Q3).
@@ -176,11 +177,13 @@ func WireSourceStagers(
 //     typed error (composition-time fail-closed).
 //   - log: zap logger; nil → falls back to zap.NewNop() per the concrete's
 //     own Option.Log default (no compositional need for a panic on nil).
+//   - fetch: optional byte-source closure; nil → fail-closed stub (typed-error
+//     on every Prepare call). Non-nil → wired to FilesystemStager's Fetch field.
 //
 // Returns:
 //   - (acquisition.SourceStager, nil) on success — the ready-to-use FilesystemStager.
 //   - (nil, %w+wrap) on construction failure (cfg nil / StagingRoot mkdir failure).
-func WireAcquisitionStager(cfg *config.Config, log *zap.Logger) (appacq.SourceStager, error) {
+func WireAcquisitionStager(cfg *config.Config, log *zap.Logger, fetch infacq.FetchFn) (appacq.SourceStager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: cfg is nil (composition root must wire *platform/config.Config from ComposeRoot)", ErrStockPipelineStagerInit)
 	}
@@ -200,23 +203,26 @@ func WireAcquisitionStager(cfg *config.Config, log *zap.Logger) (appacq.SourceSt
 	// the ctor creates the staging root).
 	stagingRoot := filepath.Join(cfg.Storage.TempPath(), "stock_pipeline_staging")
 
-	// Fail-closed typed-error Fetch stub. When a future agent lands
-	// the yt-dlp / HTTP / Drive Downgr wrappers (forward-pointer
-	// PR-STOCK-FETCH-WIRE-2026-Q3), replace this stub with a real
-	// concrete-adapter closure that calls the wrapper. The wrap with
-	// %w preserves the typed sentinel recovery via errors.Is at the
-	// call site — supervisors can branch on ErrAcquisitionPrepareFailed
+	// When the caller supplies nil fetch, fall back to a fail-closed
+	// typed-error stub. The stub is a forward-pointer: when a future
+	// agent lands the yt-dlp / HTTP / Drive downloader wrappers
+	// (forward-pointer PR-STOCK-FETCH-WIRE-2026-Q3), the caller will
+	// supply a real concrete-adapter closure. The wrap with %w
+	// preserves the typed sentinel recovery via errors.Is at the
+	// call site so supervisors can branch on ErrAcquisitionPrepareFailed
 	// without parsing the message string.
-	fetchStub := func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(string)) error {
-		return appacq.Wrap(
-			appacq.ErrAcquisitionPrepareFailed,
-			"acquisition.WireAcquisitionStager: Fetch is unwired (forward-pointer PR-STOCK-FETCH-WIRE-2026-Q3 awaiting yt-dlp/HTTP/Drive Downloader wrappers)",
-		)
+	if fetch == nil {
+		fetch = func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(string)) error {
+			return appacq.Wrap(
+				appacq.ErrAcquisitionPrepareFailed,
+				"acquisition.WireAcquisitionStager: Fetch is unwired (forward-pointer PR-STOCK-FETCH-WIRE-2026-Q3 awaiting yt-dlp/HTTP/Drive Downloader wrappers)",
+			)
+		}
 	}
 
 	fsstager, err := infacq.NewFilesystemStager(infacq.Options{
 		StagingRoot: stagingRoot,
-		Fetch:       fetchStub,
+		Fetch:       fetch,
 		Log:         log,
 	})
 	if err != nil {

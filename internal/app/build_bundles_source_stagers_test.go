@@ -220,7 +220,7 @@ func makeTestCfg(t *testing.T) *config.Config {
 // compile-time pin).
 func TestWireAcquisitionStager_HappyPath_ReturnsCanonicalFilesystemStager(t *testing.T) {
 	cfg := makeTestCfg(t)
-	stager, err := WireAcquisitionStager(cfg, zap.NewNop())
+	stager, err := WireAcquisitionStager(cfg, zap.NewNop(), nil)
 	if err != nil {
 		t.Fatalf("expected nil error on valid cfg, got: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestWireAcquisitionStager_HappyPath_ReturnsCanonicalFilesystemStager(t *tes
 // is preserved via fmt.Errorf("%w: ...", sentinel, ...) so callers
 // can either errors.Is the sentinel OR string-match for diagnostics.
 func TestWireAcquisitionStager_NilCfg_ReturnsTypedError(t *testing.T) {
-	stager, err := WireAcquisitionStager(nil, zap.NewNop())
+	stager, err := WireAcquisitionStager(nil, zap.NewNop(), nil)
 	if stager != nil {
 		t.Errorf("expected nil stager on nil cfg, got %T", stager)
 	}
@@ -268,7 +268,7 @@ func TestWireAcquisitionStager_NilCfg_ReturnsTypedError(t *testing.T) {
 // nil log; the ctor does the same.
 func TestWireAcquisitionStager_NilLog_ToleratesFallback(t *testing.T) {
 	cfg := makeTestCfg(t)
-	stager, err := WireAcquisitionStager(cfg, nil)
+	stager, err := WireAcquisitionStager(cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error on nil log (fallback to zap.NewNop), got: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestWireAcquisitionStager_NilLog_ToleratesFallback(t *testing.T) {
 // human-readable suffix.
 func TestWireAcquisitionStager_Prepare_FailsClosedOnUnwiredFetch(t *testing.T) {
 	cfg := makeTestCfg(t)
-	stager, err := WireAcquisitionStager(cfg, zap.NewNop())
+	stager, err := WireAcquisitionStager(cfg, zap.NewNop(), nil)
 	if err != nil {
 		t.Fatalf("setup: WireAcquisitionStager failed: %v", err)
 	}
