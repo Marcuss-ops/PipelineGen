@@ -5382,7 +5382,7 @@
   status: in_progress
   exit_signal: false
   owner_capability: architecture
-  deadline: 2026-08-15
+  deadline: 2026-08-22
   description: "Cleanup wave for the 5 priority Hard-Tech cleanup items from the
     Italian audit (2026-07-25 user-pasted). Each priority maps to 1 per-PR
     execution listed below in linked_issues. Per godlike/07 no-fake-availability
@@ -5397,38 +5397,50 @@
     band deadlines + verification gates + cross-references).
     "
   linked_issues:
-  - id: PR-CLEANUP-P0-NOOP-KILL
+  - id: PR-script-legacy-contract
+    owner_capability: internal/api/script
+    status: pending
+    deadline: 2026-08-01
+    priority_band: P0_absolute
+  - id: PR-script-deps-slim
+    owner_capability: internal/api/script
+    status: pending
+    deadline: 2026-08-08
+    priority_band: P1
+  - id: PR-noop-adapters-purge
     owner_capability: internal/application/scripts/adapters
     status: pending
-    priority_band: P0_absolute
     deadline: 2026-08-01
-  - id: PR-CLEANUP-P1-LEGACY-410
-    owner_capability: internal/api/script
-    status: pending
-    priority_band: P1
-    deadline: 2026-08-08
-  - id: PR-CLEANUP-P1-QDRANT-PROBE
-    owner_capability: cmd/admin/qdrant_readiness
-    status: pending
-    priority_band: P1
-    deadline: 2026-08-08
-  - id: PR-CLEANUP-P1-QDRANT-NOOP-REMOVAL
+    priority_band: P0_absolute
+  - id: PR-qdrant-readiness-slim
     owner_capability: cmd/admin
     status: pending
-    priority_band: P1
     deadline: 2026-08-08
-  - id: PR-CLEANUP-P2-SCRIPT-DEPS
-    owner_capability: internal/api/script
-    status: pending
-    priority_band: P2
-    deadline: 2026-08-15
-  - id: PR-CLEANUP-P2-RETRIES-WIRING
+    priority_band: P1
+  - id: PR-jobs-retry-contract
     owner_capability: internal/application/jobs
     status: pending
-    priority_band: P2
+    deadline: 2026-08-08
+    priority_band: P1
+  - id: PR-stock-production-deps
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: pending
     deadline: 2026-08-15
+    priority_band: P2_media
+  - id: PR-parent-state-cutover
+    owner_capability: internal/application/voiceover
+    status: pending
+    deadline: 2026-08-15
+    priority_band: P2_media
+  - id: PR-docs-archive
+    owner_capability: architecture
+    status: pending
+    deadline: 2026-08-22
+    priority_band: P3_bassa
   - id: PR-CLEANUP-HOTSPOT-CROSSREF
     owner_capability: architecture
     status: pending
-    priority_band: forward_pointer
     deadline: 2026-08-22
+    priority_band: P3_bassa_post_wave
+
+

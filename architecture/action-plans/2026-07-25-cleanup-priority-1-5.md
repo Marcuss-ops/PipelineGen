@@ -1,182 +1,279 @@
-# Cleanup Priority 1-5 — Action Plan (2026-07-25)
+# Hard-Tech Cleanup Wave — 8 Priority Action Plan (2026-07-25)
 
-**Companion narrative per `architecture/current.yaml#CLEANUP-PRIORITY-1-5-2026-07-25`.**
+> **Authority**: this file is the canonical narrative companion to the wave-tracker entry
+> `architecture/current.yaml#CLEANUP-PRIORITY-1-5-2026-07-25`. Updates to scope / IDs / bands
+> must keep the wave-tracker anchor + this file + `CHANGELOG.md ## Unreleased → ### Documentation`
+> + `AGENTS.md ## Recent cross-cutting closures` in lockstep per godlike/06 SSOT (one-canonical-
+> owner-per-fact).
 
-## §1 — Contesto e_scope
+## Context
 
-Audit Hard-Tech del 2026-07-25 prodotto dal flow di priorità marcate a caldo dall'utente.
-5 superfici con accumulo di debito tecnico rumoroso, ciascuna con un blast-radius
-distinto ma un denominatore comune: **godlike/07 no-fake-availability** (nessun silent-success,
-nessun noop-residual, nessun fallback hard-coded).
+Italian audit (2026-07-25 user-pasted) surfaced 8 concrete complexity / dead-code / false-
+success hotspots across the codebase. Scope: **shrink surface area** (less ports, less
+payload, less dependency bag, less noop fallbacks) without breaking production behaviour.
 
-## §2 — Per-Priority Decomposition
+Per godlike/07 NO-FAKE-AVAILABILITY (the load-bearing invariant of the wave):
 
-### Priority 1 — handler_legacy_* /generate-from-clips e /generate-with-images
-- **Audit-pin surface** (file canonici):
-  - `internal/api/script/handler_flow.go::RegisterRoutes` righe 113+114 (le route POST)
-  - `internal/api/script/handler_legacy_from_clips.go` (~184 LoC)
-  - `internal/api/script/handler_legacy_with_images.go` (~92 LoC)
-  - `internal/api/script/handler_legacy_deprecation.go` (counter declarations)
-  - `internal/api/script/handler_legacy_warnings.go` (~helper)
-- **Verdict**: FASE 2.1 FREEZE-phase retirement pattern (SSOT già esiste in wave-tracker entry
-  `architecture/current.yaml#FASE-2.1-VOICE-FREEZE`). Le 2 route restano vive fino al 2026-12-31
-  con Prometheus counters `legacy_generate_from_clips_total` + `legacy_generate_with_images_total`
-  che monitorano il traffico settimanale. **NON** è un git-rm secco: è un FREEZE con log.Warn
-  + audit-pin Header `X-Deprecated: true` sulle 4xx responses (additionally surfaces client
-  diagnostic).
-- **Per-PR execution**:
-  - **PR-CLEANUP-P1-LEGACY-410**: convertire le 2 route a HTTP 410 Gone con payload JSON che
-    punta a `/generate` (= V2 envelope canonical endpoint) + migration Sunset header RFC 8594.
-    Triplo path: (a) operatori attivi migrano esplicitamente; (b) clients che ignorano il
-    410 continuano sui vecchi path senza uno stack trace; (c) il counter legacy_*_total
-    decrementa naturalmente fino a 0 = trigger per git-rm finale.
+> No silent-success surface remains after the wave: noop adapters, noop stubs, hard-coded
+> fallbacks, registered-but-deprecated routes all either **fail-closed** or return **HTTP 410
+> Gone** with explicit migration target — never 200 OK with empty payload.
 
-### Priority 2 — ScriptFlowDeps / module.go (~22 fields, 18 nil-tolerant, 12 ignoti)
-- **Audit-pin surface** (file canonici):
-  - `internal/api/script/handler_deps.go::ScriptFlowDeps` (22 fields, ~12 ignored post-Build)
-  - `internal/api/script/module.go::Dependencies` (mirror, 22 fields)
-  - `internal/api/script/handler_deps.go` linee 50-100 (il docblock che ammette "12 deps
-    ignored for compatibility")
-- **Verdict**: godlike/06 SSOT splittaggera. `module.go::Build` valida SOLO `Engine +
-  EnabledFunc` (mandatory) — gli altri 18 sono nil-tolerant con 503-equivalent sentinels
-  runtime. **`ScriptFlowDeps` non può essere rimosso** (è il construction seam byte-stable
-  preservato da PR-SCRIPT-DEPENDENCIES-EXTRACT 2026-07-04) ma il suo sottoinsieme vivo
-  può essere potato dopo audit di runtime-reads.
-- **Per-PR execution**:
-  - **PR-CLEANUP-P2-SCRIPT-DEPS** (deadline 2026-08-15): rg static-read attivo per ogni
-    campo di `ScriptFlowDeps`; i campi con 0 reader attivo vengono fisicamente rimossi
-    dal struct (godlike/07 zero-legacy); NewScriptFlowHandler trims gli assignment orfani;
-    i nil-tolerant sentinels runtime restano (sono la difesa in profondità per Build).
+Per godlike/06 SSOT one-canonical-owner-per-fact: each of the 8 priorities has exactly one
+canonical surface to retire and one canonical replacement. Per godlike/07 minimum-blast-
+radius: each per-PR lands in isolation on its own subtree with targeted
+`gofmt + go vet + go build + go test -short` gates (per AGENTS.md Git-Lesson-2 direct-to-main).
 
-### Priority 3 — noopEntityExtractionAdapter + noopMetadataGenerationAdapter
-- **Audit-pin surface** (file canonico):
-  - `internal/application/scripts/adapters/compat_adapters.go` (l'intero file)
-  - 2 constructors: `NewEntityExtractionAdapter(any)` + `NewMetadataGenerationAdapter(any, string)`
-  - 2 zero-call methods: `ExtractEntities → &EntityResult{}, nil` + `GenerateMetadata → nil, nil`
-- **Verdict**: godlike/07 no-fake-availability violatione CRITICA. Silent success con payload
-  vuoto = i post-processori che li chiamano credono di aver generato metadata/entità quando
-  in realtà non è successo nulla. Pattern "ship d'un fake-availability carrier"; nessun
-  valore di compat-layer perché non c'è interop layer attivo sopra.
-- **Per-PR execution**:
-  - **PR-CLEANUP-P0-NOOP-KILL** (deadline 2026-08-01): physically git-rm del file intero.
-    Production wiring DEVE passare adapter reali (composition-root pre-costruisce i veri
-    `EntityExtractor` + `MetadataGenerator` concreti). Se qualche caller runtime li usa ancora
-    oggi, viene rilevato da `go build ./...` (le chiamate non vengono sostituite da ad-hoc
-    constructors) → fail-closed al composition time (godlike/07 fail-fast-at-boot > fail-slow-at-first-/run).
+## Per-Band Prioritization (slim-schema ratchet)
 
-### Priority 4 — Qdrant readiness double probe + noop stubs
-- **Audit-pin surface** (file canonici):
-  - `cmd/admin/qdrant_readiness.go::qdrantReadiness` (orchestrator, ~250 LoC)
-  - `cmd/admin/qdrant_readiness.go::qdrantProbeAndSchema` (probe function, ~30 LoC)
-  - `cmd/admin/qdrant_readiness_checks.go` linee 374-401 (readiNoopOutbox + readiNoopPayload
-    + 2 nil-returning methods)
-  - sempre in `qdrantReadiness`: `report.Checks["qdrant_active_collection_real"]` (linee
-    ~305+307) impostato in 2 posti (probe path + check map).
-- **Verdict**: 2 problemi distinti. (A) **Double probe**: `qdrantReadiness` chiama
-  `qdrantProbeAndSchema` (~30 LoC che fa probe + schema + comparison) E POI popola `report.Checks["qdrant_active_collection_real"]`
-  AND c'è un secondo check dedicato `checkQdrantActiveCollection` nel registry `readinessCheck`
-  map che fa di nuovo probe + schema + compare. (B) **noop stubs**: `readiNoopOutbox` +
-  `readiNoopPayload` ritornano sempre `nil` per le 3 metodi `EnqueueReindex` + `EnqueueDelete`
-  + `DeletePayloadKeys`. Se Production wiring non passa i reali outbox/payload port, la gate
-  diventa un fake `pass`.
-- **Per-PR execution**:
-  - **PR-CLEANUP-P1-QDRANT-PROBE** (deadline 2026-08-08): rimuovere il blocco probe-side
-    mapping `qdrantProbeAndSchema` + il check `checkQdrantActiveCollection` dedicato (uno dei due)
-    — consolidare il probe solo nel check dedicato; oppure rimuovere il check dedicato e tenere
-    solo il probe. Decision via `rg _ = readinessCheck` post-audit.
-  - **PR-CLEANUP-P1-QDRANT-NOOP-REMOVAL** (deadline 2026-08-08): rimuovere `readiNoopOutbox`
-    + `readiNoopPayload` types + le 3 nil-returning methods. Composition-root MUST pre-costruire
-    i reali port; il readiness gate fall-closed loudly al boot-time se nil (godlike/07).
+| Band | Items | Deadline | Pattern |
+|------|-------|----------|---------|
+| **P0_absolute** | PR-noop-adapters-purge + PR-script-legacy-contract | 2026-08-01 | Hard-kill the silent-success surface + drive-the-route-gone |
+| **P1** | PR-script-deps-slim + PR-qdrant-readiness-slim + PR-jobs-retry-contract | 2026-08-08 | Slim-source-of-truth + mandatory-DI at boot |
+| **P2_media** | PR-stock-production-deps + PR-parent-state-cutover | 2026-08-15 | Fail-fast at composition root + typed-column cutover EXPAND phase |
+| **P3_bassa** | PR-docs-archive + PR-CLEANUP-HOTSPOT-CROSSREF | 2026-08-22 | Doc-only archival + post-wave `git log` frequency cross-validation |
 
-### Priority 5 — resolveMaxRetries 3 rami legacy + Registry opzionale
-- **Audit-pin surface** (file canonici):
-  - `internal/application/jobs/enqueue_service.go::resolveMaxRetries` (~25 LoC, 3 branches:
-    `currentMR < 0 → 0` + `currentMR > 0 → currentMR` + `currentMR == 0 && hasRegistry → DefaultMaxRetries` +
-    altrimenti `return 3`)
-  - `internal/application/jobs/service.go::Service.WithRegistry` (~15 LoC, fluent setter opzionale)
-  - 4-5 `WithRegistry(reg)` callers production-side (Worker.WithRegistry, Runner.WithRegistry,
-    Dispatcher.WithRegistry, Service.WithRegistry) tutti in modalità fluent opzionale
-- **Verdict**: godlike/07 zero-legacy debt. Il fallback hard-coded `return 3` è una SSOT violatione
-  ("il fatto MaxAttempts default" ha 2 owner — il caller + il registry). `WithRegistry` opzionale
-  mantiene il legacy 3-retry path alive anche quando nessuno chiama il setter.
-- **Per-PR execution**:
-  - **PR-CLEANUP-P2-RETRIES-WIRING** (deadline 2026-08-15): (a) `NewService(...).WithRegistry(...)`
-    diventa obbligatorio al construction time (no-fluent-setter disaccoppiato); (b) quando
-    `registry.HasType(jobType) == false`, emit `log.Warn` udibile (operational dashboard visibility)
-    al primo enqueue → fail-loud, fail-fast. (c) `resolveMaxRetries` semplificato: solo 2 rami
-    (`negative sentinel` + `registry.DefaultMaxRetries(jobType)`), niente fallback hard-coded.
+## Tactical Guidance per Priority
 
-## §3 — Per-Band Execution Order
+### 1. PR-script-legacy-contract (P0_absolute, deadline 2026-08-01)
 
-3 priority band (godlike/06 slim-schema + wave-ratchet discipline):
+**Goal**: retire 2 still-live legacy routes while keeping graceful client transition.
 
-### Band A — P0 absolute (deadline 2026-08-01)
-1. **PR-CLEANUP-P0-NOOP-KILL** (Priority 3) — physically git-rm `compat_adapters.go`.
-   Rationale: godlike/07 no-fake-availability CRITICA, silent-success blooper production-blocker.
+**Surface to retire**:
+- `internal/api/script/handler_legacy_from_clips.go` (~185 LoC, `LegacyGenerateFromClips`)
+- `internal/api/script/handler_legacy_with_images.go` (~similar, `LegacyGenerateWithImages`)
+- `internal/api/script/handler_legacy_warnings.go` if used only by legacy
+- 2 `r.POST(...)` calls in `internal/api/script/handler_flow.go::RegisterRoutes`
+  (lines ~113 `/generate-from-clips`, ~?? `/generate-with-images`)
+- Prometheus counters in `internal/api/script/handler_legacy_deprecation.go`
+- `DeprecationCount` shim helper
 
-### Band B — P1 (deadline 2026-08-08)
-2. **PR-CLEANUP-P1-LEGACY-410** (Priority 1) — Freeze-pattern retired route a HTTP 410 Gone
-   con X-Deprecated header + audit counters (FASE-2.1-VOICE-FREEZE reuse pattern).
-3. **PR-CLEANUP-P1-QDRANT-PROBE** (Priority 4A) — collapse double probe + retire
-   checkQdrantActiveCollection (o il probe-side mapping).
-4. **PR-CLEANUP-P1-QDRANT-NOOP-REMOVAL** (Priority 4B) — git-rm readiNoopOutbox +
-   readiNoopPayload types + i 3 nil-returning methods.
+**Replacement contract**: HTTP **410 Gone** (NOT 404 — 404 is ambiguous "routing bug or
+missing resource"; 410 is explicit "intentionally retired, migrate to /generate V2").
 
-### Band C — P2 (deadline 2026-08-15)
-5. **PR-CLEANUP-P2-SCRIPT-DEPS** (Priority 2) — potatura `ScriptFlowDeps` + `Dependencies` dopo
-   audit runtime-reads; trim NewScriptFlowHandler assignment.
-6. **PR-CLEANUP-P2-RETRIES-WIRING** (Priority 5) — `WithRegistry` mandatory + log.Warn when
-   no registry + simplified `resolveMaxRetries` (2 branches).
+Response body JSON shape:
+```json
+{
+  "error": "endpoint_retired",
+  "message": "This endpoint was retired 2026-08-01. Use POST /api/script/generate",
+  "migration_target": "/api/script/generate",
+  "deprecation_date": "2026-12-31",
+  "docs": "https://github.com/Marcuss-ops/PipelineGen/blob/main/AGENTS.md#script-endpoints"
+}
+```
 
-## §4 — Migration Sequence (godlike/07 EXPAND→BACKFILL→CUTOVER→CONTRACT)
+**godlike/07 minimum-blast-radius**: keep `handler_legacy_*.go` source files in repo
+(FREEZE-phase, removal target 2026-12-31) — only flip the handler body to a `return 410`
+shell. Per-channel telemetry (`metrics.GenerateFromClipsDeprecationTotal`) STAYS live so
+dashboard surfaces the dead-route traffic.
 
-Per ciacun PR:
-- **EXPAND**: nuovo surface live + ci-gate forward-prevention (ban raw call sites).
-- **BACKFILL**: migrate production callers alla nuova API typed.
-- **CUTOVER**: retire legacy surface con deprecation record `architecture/deprecations.yaml`.
-- **CONTRACT**: physical git-rm del legacy surface + ci-gate tightened to "no allowlist row".
+**Verification gates**: `gofmt -l internal/api/script/` clean; `go vet ./internal/api/script/...` exit 0;
+`go build ./internal/api/script/...` exit 0; per-legacy-route 410 contract test
+(HTTP request → assert `StatusGone=410` + JSON body assertions).
 
-## §5 — Per-PR Verification Gates (godlike/07 minimum-blast-radius)
+### 2. PR-script-deps-slim (P1, deadline 2026-08-08)
 
-Per ciascuna PR:
-- `gofmt -l` clean sul targeted file subtree.
-- `go vet ./<package>/...` exit 0.
-- `go build ./<package>/...` exit 0 (subtree-only, fail-fast isolation).
-- `go test -short -count=1 ./<package>/...` PASS (TDD coverage sul contratto nuovo).
-- `rg <retired_symbol> internal/ cmd/` → 0 hits production-code (zero-legacy audit-pin).
+**Goal**: shrink `ScriptFlowDeps` (~12 fields ignored) + `module.go::Dependencies` (~22 fields, 18 nil-tolerant).
 
-## §6 — Honest Scope-Lock Disclosures (godlike/07 minimum-blast-radius)
+**Surface to slim**:
+- `internal/api/script/handler_deps.go::ScriptFlowDeps` — split into 3 typed structs
+- `internal/api/script/module.go::Dependencies` — purge `ScriptDescriptor.Handler` future-proofing (comment admits zero non-HTTP caller)
 
-- **`ScriptFlowDeps` + `Dependencies`** NON possono essere rimossi interamente (sono i construction
-  seam byte-stable preservati da PR-SCRIPT-DEPENDENCIES-EXTRACT 2026-07-04 + il C-1 module
-  precedent di 11 conversioni). Si può solo potare i campi con 0 reader attivo (Band C PR).
-- **handler_legacy_\*.go** NON vengono git-rm oggi; restano per FASE 2.1 FREEZE-phase fino al
-  2026-12-31 (wave-tracker entry `architecture/current.yaml#FASE-2.1-VOICE-FREEZE` è già shipped).
-  PR-CLEANUP-P1-LEGACY-410 eleva il freeze a 410 Gone (operator-visible migration signal).
-- **resolveMaxRetries fallback hard-coded 3** NON viene rimosso fisicamente fino a quando il
-  Registry non è mandatory al construction-time (Band C); il PR intermedio rimuove solo il
-  fluent setter opzionale, lasciando il 3-retry come fail-closed escape hatch.
-- **5-item pre-existing build issues** carry-forward unchanged per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04`
-  (workerruntime syntax + monitor tolower + monitor enqueuer + stockpipeline redeclaration +
-  module_media dispatcher literal + images routing cycle — gli ultimi 5 NON SO risolti in
-  questo wave; sono carry-forward storico).
+**Replacement contract**:
+```go
+type GenerateDeps struct {  // /generate route only
+    Engine         *scriptcore.Engine  // required
+    EnabledFunc    func() bool         // required
+}
+type JobsDeps struct {     // /jobs/* routes only
+    Service        *jobs.Service       // required
+    Logger         *zap.Logger         // required
+}
+type LegacyDeps struct {   // /generate-from-clips, /generate-with-images only — gone after 2026-12-31
+    // empty (routes are 410 stubs after PR-script-legacy-contract ships)
+}
+```
 
-## §7 — Cross-References (godlike/06 SSOT lockstep)
+**Rule per godlike/07**: **if a dependency is optional, the route that uses it is NOT mounted;
+if it is required, `Build` MUST fail-fast at composition root**. Zero "maybe will serve".
 
-- `architecture/current.yaml#CLEANUP-PRIORITY-1-5-2026-07-25` (wave-tracker anchor; questo file)
-- `architecture/current.yaml#FASE-2.1-VOICE-FREEZE` (precedent per Priority 1 FREEZE pattern)
-- `architecture/current.yaml#PR-DEAD-CODE-PURGE-2026-07-25` (precedent per StyleRegistry.Register
-  0-action false-premise closure — usato come modello per git-rm senza codice change)
-- `architecture/current.yaml#ART-001` (precedent doc-only 0-action closures per i backfill PRs)
-- AGENTS.md §Pattern 5 (canonical split-pattern per Scripts deps pruning)
-- AGENTS.md §Pattern 6 (per-file granularity per i 6 PRs).
+**Verification gates**: `gofmt -l internal/api/script/` clean; `go build ./internal/api/script/...` exit 0;
+`go test -short ./internal/api/script/...` PASS (existing 17+ tests must still pass after split).
 
-## §8 — Honest-Limitation Disclosure (godlike/07)
+### 3. PR-noop-adapters-purge (P0_absolute, deadline 2026-08-01)
 
-L'analisi STATICA (priority-by-complexity + accumulated-risk) NON sostituisce
-una validazione post-wave con `git log --since=90.days`. Forward-pointer:
-**PR-CLEANUP-HOTSPOT-CROSSREF** (deadline 2026-08-22) cross-valida via `git log --since=90.days
---pretty=format: --name-only | sort | uniq -c | sort -rn | head -30` se alti-frequency hotspots
-NON catturati dal piano corrente (slim-schema append-only ratchet li aggiungerebbe).
+**Goal**: physically `git rm` 2 noop script adapters that return success with empty payload —
+classic godlike/07 fake-availability violation.
 
-Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
+**Surface to retire**:
+- `internal/application/scripts/adapters/compat_adapters.go::noopEntityExtractionAdapter` (returns `EntityResult{}`)
+- `internal/application/scripts/adapters/compat_adapters.go::noopMetadataGenerationAdapter` (returns `nil, nil`)
+
+**Replacement contract**: typed sentinel `ErrEntityExtractorUnavailable` + `ErrMetadataGeneratorUnavailable`.
+Composition root fails-fast at boot if a backend is unwired. Hand-written test must assert:
+```go
+processor.Run(ctx, cmd) // returns errors.Is(err, ErrEntityExtractorUnavailable), NOT EntityResult{}
+```
+
+**Verification gates**: `git grep -E 'noopEntityExtractionAdapter|noopMetadataGenerationAdapter' internal/` returns 0 live hits;
+`gofmt + go vet + go build ./internal/application/scripts/...` clean;
+new fail-closed contract test PASS.
+
+### 4. PR-qdrant-readiness-slim (P1, deadline 2026-08-08)
+
+**Goal**: collapse double probe + retire noop dry-run shims.
+
+**Surface to slim**:
+- `cmd/admin/qdrant_readiness.go::qdrantReadiness` — currently runs probe+schema check AND registers `qdrant_active_collection_real` separately (which then runs probe+schema+compare AGAIN)
+- `cmd/admin/qdrant_readiness.go` reconciler — uses `readiNoopOutbox` + `readiNoopPayload` (always return nil)
+
+**Replacement contract**:
+- **One** `checkQdrantActiveCollectionReal` orchestrator that writes BOTH `report.QdrantReachable`
+  AND `report.ActiveCollectionCompatible` in a single probe cycle.
+- Drop `qdrantProbeAndSchema` (duplicate probe path) OR drop the duplicate `qdrant_active_collection_real` check.
+- Reconciler dry-run uses explicit `DryRun: true` contract — not fake ports that look real.
+
+**Verification gates**: `gofmt + go vet + go build ./cmd/admin/...` clean;
+`bash tests/operational/qdrant_e2e_boxing_smoke.sh` PASS (replaces the in-process probes).
+
+### 5. PR-jobs-retry-contract (P1, deadline 2026-08-08)
+
+**Goal**: remove 3 legacy branches + hardcoded `return 3` fallback + brittle string-match error probe.
+
+**Surface to slim**:
+- `internal/application/jobs/enqueue_service.go::resolveMaxRetries` — currently has 3 branches:
+  returns 3 (hardcoded fallback) when `Registry == nil`
+- `internal/application/jobs/enqueue_service.go::NewService(...).WithRegistry(...)` — optional by design (to keep legacy)
+- `internal/application/jobs/enqueue_service.go::enqueue` — uses `strings.Contains(err.Error(), "UNIQUE constraint")` to detect SQLite unique violations
+
+**Replacement contract**:
+- `NewService(deps ServiceDeps, reg RetryPolicyRegistry) *Service` — `reg` is **required**.
+  Racket discipline: composition root fails-fast at boot if `reg == nil`.
+- `resolveMaxRetries` is a single typed lookup: `return reg.GetMaxRetries(jobType)` (zero branches, zero fallback).
+- SQLite unique-violation probe uses typed error: `var sqliteErr *sqlite3.Error; if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE { ... }`.
+
+**Verification gates**: `gofmt + go vet + go build ./internal/application/jobs/...` clean;
+constructor nil-reg test returns `ErrRegistryRequired` (typed sentinel);
+existing enqueue tests PASS (no behavioral change for valid registry path).
+
+### 6. PR-stock-production-deps (P2_media, deadline 2026-08-15)
+
+**Goal**: composition-root fail-fast for `SourceStager` and `Renderer` deps. NO nil-tolerance in production code path.
+
+**Surface to slim**:
+- `internal/application/assets/providers/stock/stockpipeline/orchestrator_steps.go::StockStageSourcesStep` — guards `if stager == nil { return nil }` + `StockComposeChunksStep` — guards `if renderer == nil { return nil }`
+
+**Replacement contract**:
+- `internal/application/assets/providers/stock/stockpipeline/types.go` exports 2 typed sentinels:
+  `ErrStagerRequired` + `ErrRendererRequired`.
+- Constructor wires both. If nil in production: panic OR `return ErrStagerRequired` from `NewOrchestrator(deps)`.
+- Tests pass explicit fakes — no `nil` leaking into production paths.
+
+**Verification gates**: `gofmt + go vet + go build ./internal/application/assets/providers/stock/stockpipeline/...` clean;
+new constructor-nil-deps test returns typed `ErrStagerRequired` / `ErrRendererRequired`.
+
+### 7. PR-parent-state-cutover (P2_media, deadline 2026-08-15)
+
+**Goal**: complete typed-column cutover for voiceover `parent_state_typed`. JSON key only as payload.
+
+**Surface to slim**:
+- `internal/application/voiceover/jobs/parent_aggregator.go::FinalizeAggregateParent` — currently does `WHERE parent_state_typed = ?` WRITE + `WHERE json_extract(result_json,'$.parent_state') = ?` READ (dual-state fragility)
+
+**Replacement contract (EXPAND phase — LIVE, defer CUTOVER to post-2026-08-15 wave)**:
+- Today: Go reads/writes/guards ONLY on `parent_state_typed`. JSON key ignored on read.
+- Reads of legacy JSON key return zero rows in `ResultMap` query — silent gap is acceptable per EXPAND phase (no regression risk because typed column was empty for new rows anyway).
+- CUTOVER (future wave, deadline TBD): drop `result_json.parent_state` field from wire shape; backfill
+  existing rows from JSON to typed column via one-shot CLI.
+
+**Verification gates**: `gofmt + go vet + go build ./internal/application/voiceover/...` clean;
+`go test -short ./internal/application/voiceover/jobs/` PASS (4 TDD regression tests).
+
+### 8. PR-docs-archive (P3_bassa, deadline 2026-08-22)
+
+**Goal**: clean stale-doc surface. Doc-only commit.
+
+**Surface to slim**:
+- `architecture/deprecations.yaml` — contains `P0-3-GENERATION-RESPONSE` with `status: removed` (archived but still in active manifest)
+- `REPOSITORY_CLEANUP.md` — still references `git checkout -b codex/<focused-cleanup>` (contradicts AGENTS.md Git-Lesson-2 direct-to-main)
+
+**Replacement contract**:
+- Move `architecture/deprecations.yaml` records with `status: removed` (and `removal_date < 2026-07-01`) to `architecture/archive/deprecations-removed-2026.yaml` (new file). Slim down active manifest to **live** deprecations only.
+- Rewrite `REPOSITORY_CLEANUP.md` to drop the `git checkout -b` recipe + add an explicit pointer to AGENTS.md §Git-Lesson-2 + §Git-Lesson-4 + §Git-Lesson-5.
+
+**Verification gates**: `python3 -c "import yaml; yaml.safe_load(open('architecture/deprecations.yaml'))"` exit 0;
+`python3 -c "import yaml; yaml.safe_load(open('architecture/archive/deprecations-removed-2026.yaml'))"` exit 0;
+`rg "git checkout -b codex" .` returns 0 hits (excluding archive/ history-only mentions).
+
+### 9. PR-CLEANUP-HOTSPOT-CROSSREF (P3_bassa_post_wave, deadline 2026-08-22)
+
+**Goal**: post-wave `git log --since=90.days` frequency cross-validation — verify no high-
+frequency hotspots NOT captured by the 8 priorities above.
+
+**Surface**: documentation-only commit. Surfacing holes mean new `PR-CLEANUP-NEWPRIORITY-N`
+slim-schema append (NOT retroactive edit) per godlike/07 ratchet discipline.
+
+## Migration Sequence (godlike/07 EXPAND → BACKFILL → CUTOVER → CONTRACT)
+
+Per priority, in each PR:
+- **EXPAND**: new typed sentinel / new HTTP 410 contract live alongside legacy surface.
+  CI gate `check_70_legacy_410_contract` forward-prevention.
+- **BACKFILL**: per-call-site migration to typed contract (only when needed).
+- **CUTOVER**: legacy surface `git rm`'d ON OR AFTER its removal date.
+- **CONTRACT**: physical git-rm + tightened ci-gate (zero allowlist rows).
+
+## Verification Surface (per-PR gates)
+
+Each per-PR MUST, in isolation on its own subtree:
+
+```bash
+# Pre-flight
+gofmt -l <touched_files>                                      # exit 0
+go vet ./<subtree>/...                                         # exit 0
+go build ./<subtree>/...                                       # exit 0
+
+# Test
+go test -short -count=1 ./<subtree>/...                        # PASS
+
+# For per-PR verification of the new contract:
+go test -short -count=1 -run '^Test<NewContract>' ./...        # PASS
+```
+
+## Honest Scope-Lock (godlike/07 no-fake-availability)
+
+1. **Static prioritization** by complexity + accumulated risk (NOT git-log frequency at submission).
+   The forward-pointer `PR-CLEANUP-HOTSPOT-CROSSREF` is the post-wave validation surface —
+   if surfaces a high-frequency hotspot not in plan, slim-schema append-only ratchet adds new
+   linked_issues.
+2. **6 pre-existing build issues** (`workerruntime + monitor + stockpipeline + module_media +
+   images_routing + REMAINING carry-forward`) carry forward unchanged — **NOT regressions**
+   of any PR-CLEANUP-PRIORITY-N commit.
+3. **No production code change in this commit** (commit SHA post-rebase). Documentation +
+   wave-tracker only.
+4. **TDD-first**: each per-PR writes its own typed-sentinel test BEFORE the production code
+   change. No `t.Skip` markers (per PR-PERSIST-6-CANONICAL precedent + Active Concerns #10 fix).
+
+## Cross-References (3-surface godlike/06 SSOT lockstep)
+
+- `architecture/current.yaml#CLEANUP-PRIORITY-1-5-2026-07-25` — canonical wave-tracker anchor
+  (9 slim-shape `linked_issues` + parent `deadline: 2026-08-22`)
+- `architecture/action-plans/2026-07-25-cleanup-priority-1-5.md` — this file (canonical narrative)
+- `CHANGELOG.md ## Unreleased → ### Documentation` — addition entry
+- `AGENTS.md ## Recent cross-cutting closures` — mini-mirror entry
+- AGENTS.md §Git-Lesson-2 (direct-to-main, no branches, no `--force`)
+- AGENTS.md §Git-Lesson-3 (Co-authored-by trailer convention)
+- AGENTS.md §Git-Lesson-4 + §Git-Lesson-5 (recovery from non-fast-forward + byte-equivalent replay)
+
+## Pre-Existing Build Issues Carry-Forward (NOT regressions)
+
+The 6-item list per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` is
+unchanged. Each per-PR commit above MUST pass its targeted
+`gofmt + go vet + go build + go test -short` gates on its own subtree;
+the 5-item pre-existing list reproduces independently on the stashed pre-PR tree (NOT a
+regression of this wave).
+
+## Co-authored-by
+
+Each per-PR commit lands with the canonical trailer per AGENTS.md §Git-Lesson-3:
+
+```
+Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>
+```
