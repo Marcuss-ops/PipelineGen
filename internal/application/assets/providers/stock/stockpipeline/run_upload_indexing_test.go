@@ -69,11 +69,46 @@ func (stubProjection) Project(_ context.Context, _ *job.ArtifactManifest) error 
 	return errors.New("simulated qdrant offline (test stub)")
 }
 
+// fakeSucceedingCutter è il FASE-1-retry (PR-STOCK-ATLASTORCH-DISPATCH
+// commit-1, 2026-07-04) test fixture che esercita il path end-to-end
+// di stock.extract_clips: ritorna len(req.Jobs) CutItemStatusSucceeded
+// per request, garantendo che il loop downstream in
+// step_extract_clips.go raggiunga writer.WriteAndEnqueue per ogni clip
+// (senza un cutter che produca almeno 1 Succeeded Item, il loop
+// short-circuita prima della chiamata writer). Wired nel test (a)
+// per asserire l'abort tipato con ErrAtomicDispatchFailed invece del
+// silenzio log+continue.
+type fakeSucceedingCutter struct{}
+
+func (fakeSucceedingCutter) Cut(_ context.Context, req CutRequest) (CutBatchResult, error) {
+	items := make([]CutItemResult, len(req.Jobs))
+	for i, j := range req.Jobs {
+		items[i] = CutItemResult{
+			JobID:      j.OutputPath,
+			OutputPath: j.OutputPath,
+			Status:     CutItemStatusSucceeded,
+			SizeBytes:  1024,
+		}
+	}
+	return CutBatchResult{
+		SourcePath: req.SourcePath,
+		Items:      items,
+	}, nil
+}
+
 // ─── TEST (a): outbox rollback ─────────────────────────────────
 // Spec utente: "outbox not written → DB rollback"
 // Contract: writer returns error at first call => RunResilient aborts
 //
 //	immediately, surfaces ErrAtomicDispatchFailed via errors.Is.
+//
+// PR-STOCK-ATLASTORCH-DISPATCH commit-1 (2026-07-04): ora wired con
+// fakeSucceedingCutter (1 Succeeded Item per CutRequest) per esercitare
+// il path end-to-end di stock.extract_clips fino a writer.WriteAndEnqueue.
+// Pre-fix il test passava nil, nil per cutter/renderer — lo step
+// short-circuitava su cutter==nil e non chiamava mai la write, quindi
+// l'abort contract non era mai stato esercitato neanche dopo il fix
+// in step_extract_clips.go. Wired il fake cutter per chiudere il gap.
 func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 	w := &stubWriter{forceFail: true}
 	o := NewOrchestratorWithResilience(
@@ -81,7 +116,7 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		nil, nil,
+		fakeSucceedingCutter{}, nil,
 		stockManifestBuilder{}, w, noopProjection{},
 	)
 	_, err := o.RunResilient(context.Background(), &RunInput{
