@@ -52,6 +52,34 @@ type Processor struct {
 	started    bool
 }
 
+// processorShape mirrors the GENERATE-side surface of
+// voiceover.TTSProvider. The canonical port lives in
+// internal/application/voiceover/ports.go::TTSProvider (signature:
+// Synthesize(ctx, TTSInput) (TTSOutput, error)); *Processor satisfies
+// it via the useCaseTTSAdapter at
+// internal/app/adapters_voiceover_use_case.go which adapts the
+// voiceover.TTSInput → audioasset.AudioInput and AudioResult → voiceover.TTSOutput.
+//
+// godlike/06 SSOT (one canonical owner per fact): the local mirror
+// exists because importing voiceover here would create an import cycle
+// (voiceover/ports.go is un-containerised to infrastructure/audio).
+// Any drift in the Generate signature surfaces as a compile error here,
+// NOT at first panic runtime.
+//
+// Cross-reference: AGENTS.md Pattern 0 + godlike/06 SSOT (one
+// canonical owner per fact); the canonical TTSProvider pin is at
+// `var _ voiceover.TTSProvider = (*useCaseTTSAdapter)(nil)` in
+// internal/app/adapters_voiceover_use_case.go.
+type processorShape interface {
+	Generate(ctx context.Context, input *AudioInput) (*AudioResult, error)
+}
+
+// Compile-time pin (PR-VO-TTS-PERSISTENT-WORKER, July 2026): *Processor
+// must structurally satisfy processorShape. Drift between the canonical
+// voiceover.TTSProvider port and *Processor.Generate surfaces as a build
+// failure here (forward-prevention per godlike/07 + Pattern 0).
+var _ processorShape = (*Processor)(nil)
+
 // NewProcessor constructs a Processor. The previous driveUploader and
 // assetDestResolver arguments are intentionally gone — Processor
 // handles local FS only (TTS generation + optional FFmpeg silence
@@ -79,11 +107,16 @@ func NewProcessor(
 // The legacy spawn-per-call path is retained as backward-compat
 // fallback for environments where the server script is not deployed
 // or Python is unavailable.
+//
+// godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): the
+// path-traversal guard fails-closed with the typed ErrInvalidFilename
+// sentinel so a caller supplying "../foo" gets a probe-able error
+// without parsing string fragments.
 func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResult, error) {
 	// Defense-in-depth: validate filename against path traversal.
 	safeName := filepath.Base(input.Filename)
 	if safeName != input.Filename {
-		return nil, fmt.Errorf("invalid filename: path traversal detected")
+		return nil, fmt.Errorf("invalid filename: path traversal detected: %w", ErrInvalidFilename)
 	}
 	if filepath.Ext(safeName) == "" {
 		safeName += ".mp3"
