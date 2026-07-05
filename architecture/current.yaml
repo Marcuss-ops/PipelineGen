@@ -3722,8 +3722,11 @@
     deadline: 2026-08-01
   - id: PR-VO-TYPED-PRIMITIVES
     owner_capability: internal/application/voiceover
-    status: pending
-    deadline: 2026-07-25
+    status: shipped
+    ship_sha: 13ba3d96351fabed1637504abb8e07a3030cf135
+    ship_date: 2026-07-05
+    ship_via: 'commit 13ba3d96 (canonical-surface + CHANGELOG + AGENTS) per 2-commit split pattern; rebase-recovered via AGENTS.md Git-Lesson-4 + Rebase-Conflict Lesson (preserved both sides append-only)'
+    deadline: 2026-07-25 (pre-deadline by 20 days)
   - id: VO-DECOMPOSITION-HOTSPOT-CROSSREF
     owner_capability: architecture
     status: pending
