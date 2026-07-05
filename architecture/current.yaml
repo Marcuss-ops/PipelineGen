@@ -359,6 +359,13 @@
 
     '
   linked_issues:
+  - id: FIX-DEPRECATIONS-YAML-LINE-1418
+    status: shipped
+    ship_date: 2026-07-05
+    ship_sha: bc5f312cb6f286024b09f22c2ad60eae2851af34
+    exit_signal: true
+    owner_capability: architecture
+    deadline: 2026-08-01
   - id: PR-FIX-YAML-PARSE-LINE-1551
     owner_capability: architecture
     status: shipped
