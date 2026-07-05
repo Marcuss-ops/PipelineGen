@@ -66,7 +66,6 @@ pkg/                    leaf utilities
 git fetch origin
 git checkout main
 git pull --ff-only origin main
-git checkout -b codex/<focused-cleanup>
 rg '<old/import/path>' --type go
 git mv <old-path> <new-path>
 # update imports, wiring and tests
@@ -79,6 +78,13 @@ git status -sb
 git diff origin/main...HEAD
 git log -n 5 --oneline
 ```
+
+For advanced git push / rebase / coordinate-recovery scenarios (non-fast-forward
+push races after a parallel agent commit, byte-equivalent-replay acceptance,
+direct-to-main workflow without `--no-ff` or `--force`), see
+[**`AGENTS.md`** §Git-Lesson-2](./AGENTS.md#git-lesson-2-june-2026--direct-to-main-workflow)
++ [§Git-Lesson-4](./AGENTS.md#git-lesson-4-june-2026--recovery-from-non-fast-forward-push-race)
++ [§Git-Lesson-5](./AGENTS.md#git-lesson-5-june-2026--byte-equivalent-replay-race-recovery).
 
 ## Stop conditions
 
