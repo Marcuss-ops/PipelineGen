@@ -3749,10 +3749,101 @@
   - id: VO-DECOMPOSITION-HOTSPOT-CROSSREF
     owner_capability: architecture
     status: shipped
-    ship_sha: <TBD>
+    ship_sha: 75f640df
     ship_date: 2026-07-05
-    ship_via: 'commit <TBD> (single docs commit: PR-VO-SERVICE-HOTSPOT append + this-entry status:pending -> status:shipped flip)'
+    ship_via: 'commit 75f640df (single docs commit: analysis-marker + new wave VO-DECOMPOSITION-WAVE-2-HOTSPOTS opened with 6 forward-pointers per thinker pre-validation)'
     deadline: 2026-08-15 (pre-deadline by 41 days)
+    analysis_marker: |
+      git log --since=90.days --pretty=format: --name-only filtered by
+      internal/application/voiceover/ + internal/application/voiceover/jobs/ +
+      internal/infrastructure/audio/ yielded top-30 hotspots:
+        30 service.go    14 jobs/parent_aggregator.go    7 types_test.go
+        26 process.go    14 jobs/generate_handler.go     7 registry_adapter.go
+        21 types.go      13 usecase.go                   7 promo.go
+        17 ports.go      11 audio/processor.go           7 groups_resolver_test.go
+        16 stages.go     11 jobs/parent_aggregator_test  7 finalizer.go
+                          10 process_voiceover_item.go    7 command.go
+                          10 jobs/generate_item_handler  6 qdrant_indexing_e2e_test.go
+                           9 voice_override_test.go      6 jobs/generate_item_handler_test
+                           8 service_test.go             6 finalizer_test.go
+                           8 jobs/fanout.go              6 filename.go
+                                                       5 metadata.go
+                                                       5 jobs/parent_state_handler_test
+                                                       5 destination_subfolder_test
+                                                       4 sync/service.go
+      ~20 hotspots NOT covered by the 7 shipped PRs → grouped into 4 capability
+      clusters (PR-VO-HOTSPOT-CORE/USECASE/JOBS/SYNC) + 2 audit forward-pointers
+      (PR-VO-TTS-PERSISTENT-WORKER-RECOVERY + PR-VO-WAVE-TRACKER-TBD-SHIP-SHA-AUDIT)
+      under the new wave VO-DECOMPOSITION-WAVE-2-HOTSPOTS (status: in_progress).
+
+- id: VO-DECOMPOSITION-WAVE-2-HOTSPOTS
+  status: in_progress
+  exit_signal: false
+  owner: 'voiceover (composition: internal/app)'
+  deadline: 2026-08-15
+  derived_from: VO-DECOMPOSITION-HOTSPOT-CROSSREF (commit 75f640df, 2026-07-05)
+  description: |
+    Wave 2 of the voiceover decomposition, derived from the HOTSPOT-CROSSREF
+    git-log frequency analysis (90-day window). ~20 hotspots NOT covered by
+    the 7 shipped Wave-1 PRs were grouped into 4 capability clusters (tests
+    travel with their capability owner per godlike/06 SSOT) + 2 audit
+    forward-pointers addressing pre-existing Wave-1 hygiene issues.
+  linked_issues:
+    - id: PR-VO-HOTSPOT-CORE
+      owner_capability: internal/application/voiceover
+      status: pending
+      deadline: 2026-08-15
+      files_in_scope: [service.go, process.go, types.go, ports.go, command.go, metadata.go, filename.go, service_test.go, types_test.go, groups_resolver_test.go]
+      hotspot_count: 134
+    - id: PR-VO-HOTSPOT-USECASE
+      owner_capability: internal/application/voiceover
+      status: pending
+      deadline: 2026-08-15
+      files_in_scope: [usecase.go, process_voiceover_item.go, registry_adapter.go, promo.go, voice_override_test.go, qdrant_indexing_e2e_test.go, destination_subfolder_test.go]
+      hotspot_count: 57
+    - id: PR-VO-HOTSPOT-JOBS
+      owner_capability: internal/application/voiceover/jobs
+      status: pending
+      deadline: 2026-08-15
+      files_in_scope: [jobs/generate_handler.go, jobs/generate_item_handler.go, jobs/fanout.go, jobs/generate_item_handler_test.go]
+      hotspot_count: 38
+    - id: PR-VO-HOTSPOT-SYNC
+      owner_capability: internal/application/voiceover/sync
+      status: pending
+      deadline: 2026-08-15
+      files_in_scope: [sync/service.go]
+      hotspot_count: 4
+    - id: PR-VO-TTS-PERSISTENT-WORKER-RECOVERY
+      owner_capability: internal/application/audio/tts
+      status: pending
+      deadline: '2026-07-25 (URGENT: godlike/07 fake-availability)'
+      description: |
+        PR-VO-TTS-PERSISTENT-WORKER is marked status:shipped in Wave-1 with
+        ship_sha=<TBD> and ship_date=2026-07-05, BUT the actual TTS worker
+        code was never committed (the user's request to land it was interrupted
+        by the "commit everything and push" request on 2026-07-05). This is a
+        godlike/07 no-fake-availability violation. The recovery scope is to
+        either: (a) actually land the persistent TTS worker (msedge-tts Rust
+        binary, 4-port composition-root wiring per DL-006 mirror, 5 TDD tests
+        in internal/application/audio/tts/*), or (b) honestly flip the
+        status:shipped to status:pending with an honest ship_via note.
+        Canonical surface path (per original spec): internal/application/audio/tts/.
+    - id: PR-VO-WAVE-TRACKER-TBD-SHIP-SHA-AUDIT
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-07-25
+      description: |
+        Two pre-existing Wave-1 entries have ship_sha=<TBD> placeholders that
+        were never updated after commit (godlike/07 fake-availability):
+          - PR-VO-TTS-PERSISTENT-WORKER (ship_sha=<TBD>) — see HOTSPOT-RECOVERY above
+          - PR-VO-USECASE-PROCESS-DRY (ship_sha=<TBD>) — the rename DID ship
+            as commit 142d04c6 (2026-07-04, pre-deadline by 11 days), but the
+            ship_sha was never set. Also: a follow-up SPEC-COMPLIANT-RENAME
+            landed as commit 830770aa (2026-07-05) that renamed PipelineExecutor
+            to ProcessSegmentUseCase; neither ship_sha is recorded.
+        The audit scope is to walk all 7 shipped Wave-1 entries + set the
+        actual ship_sha for any that landed on origin/main but were never
+        recorded. Scope: docs-only, no code change.
 - id: CLIPS-META-2026-07-04
   status: in_progress
   exit_signal: false
