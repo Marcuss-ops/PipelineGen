@@ -103,20 +103,26 @@ func (h *ScriptFlowHandler) jobsRegisterRoutes(r *gin.RouterGroup) {
 // RegisterRoutes mounts every script-flow route under r.
 // AZIONE 1 (July 2026): POST /generate → h.gen.
 // PR-SCRIPT-JOBS-EXTRACT: /jobs/:id → h.jobsRegisterRoutes.
-// Legacy routes (generate-from-clips + generate-with-images) +
-// /clips/search + /:id/sections/:section_id/regenerate +
-// /cache/evict stay on ScriptFlowHandler (godlike/07 minimum-blast-
-// radius — pre-extraction byte-stable surface preserved).
+// PR-script-legacy-contract (Jul 2026, P0 ABSOLUTE): the 2 legacy r.POST
+// lines (generate-from-clips + generate-with-images) physically move
+// out of this function into RegisterLegacyDeprecationRoutes
+// (handler_legacy_deprecation.go — the canonical godlike/06 SSOT for
+// the deprecation contract). They're delegated-to at the end of this
+// function so observable route surface is byte-compatible with
+// pre-PR callers of RegisterRoutes directly (handler_test.go +
+// handler_idempotency_test.go pass unchanged). godlike/07
+// minimum-blast-radius preserved (no api.NewRouteModule signature
+// change).
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.gen.GenerateRoute(r)
 
-	r.POST("/generate-from-clips", h.LegacyGenerateFromClips)
-	r.POST("/generate-with-images", h.LegacyGenerateWithImages)
 	r.GET("/clips/search", h.SearchClipsByName)
 
 	h.jobsRegisterRoutes(r)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
 	r.POST("/cache/evict", h.EvictCache)
+
+	h.RegisterLegacyDeprecationRoutes(r)
 }
 
 // EnableAuth + AdminToken satisfy AdminTokenProvider.

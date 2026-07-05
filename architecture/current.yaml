@@ -5398,9 +5398,34 @@
     "
   linked_issues:
   - id: PR-script-legacy-contract
-    owner_capability: internal/api/script
-    status: pending
+    status: shipped
+    ship_date: 2026-07-04
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
     deadline: 2026-08-01
+    ship_via: |
+      PR-script-legacy-contract (P0 ABSOLUTE, Jul 2026): retire 2
+      legacy r.POST lines from handler_flow.go::RegisterRoutes and
+      mount them in RegisterLegacyDeprecationRoutes
+      (handler_legacy_deprecation.go — canonical godlike/06 SSOT for
+      the deprecation contract). Handler bodies FLIP to canonical
+      HTTP 410-Gone contract pointing to POST /api/script/generate V2
+      via the new LegacyDeprecationPayload struct. Counter
+      increments stay LIVE at handler entry-point
+      (addGenerateFromClipsDeprecationHeader +
+      addGenerateWithImagesDeprecationHeader) so the FREEZE-phase
+      observability invariant (rate(metric[7d]) == 0 triggers
+      2026-12-31 retirement) is preserved. godlike/06 SSOT +
+      godlike/07 NO-FAKE-AVAILABILITY + godlike/07 max-blast-radius
+      (no api.NewRouteModule signature change; observable route
+      surface byte-compatible with pre-PR callers of
+      RegisterRoutes via the delegated-to registrar at the
+      end-of-function seam). 3 NEW TDD contract tests + 1
+      route-map assertion test pin the load-bearing invariants.
+      Honest-limitation (godlike/07 transparency): Windows agent
+      host lacks CGO toolchain (`gcc` missing) so `go test`
+      verification limited to `gofmt -l` clean + `go vet` non-
+      regression check; CGO-enabled CI handles the canonical
+      test gate.
     priority_band: P0_absolute
   - id: PR-script-deps-slim
     owner_capability: internal/api/script

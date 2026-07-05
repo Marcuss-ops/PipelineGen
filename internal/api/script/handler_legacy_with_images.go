@@ -90,23 +90,23 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 }
 
 // LegacyGenerateWithImages handles POST /api/script/generate-with-images.
-// Removal target: 2026-12-31.
+// PR-script-legacy-contract (P0 ABSOLUTE, deadline 2026-08-01, Jul
+// 2026): endpoint retired to canonical PipelineGen 410-Gone contract.
+// The deprecation adapter increment (legacy_generate_with_images_total
+// counter via addGenerateWithImagesDeprecationHeader) stays at handler
+// entry-point so the 7-day-zero retirement trigger on removal_date
+// 2026-12-31 has the operational signal it needs (godlike/07
+// minimum-blast-radius — FREEZE-phase observability). LegacyGenerate-
+// WithImagesRequest + toEnvelope are preserved byte-stable for the same
+// external import-compile constraint as LegacyGenerateFromClips.
 func (h *ScriptFlowHandler) LegacyGenerateWithImages(c *gin.Context) {
 	addGenerateWithImagesDeprecationHeader(c, removalDateWithImages)
 
-	var req LegacyGenerateWithImagesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
-		return
-	}
-
-	if h.log != nil && strings.TrimSpace(req.TranscriptPolicy) != "" {
-		h.log.Warn("legacy_field_best_effort",
-			zap.String("field", "transcript_policy"),
-			zap.String("endpoint", "generate-with-images"),
-			zap.String("value", req.TranscriptPolicy),
-			zap.String("note", "not fully enforced; 500-char transcript excerpt always used"))
-	}
-
-	h.enqueueEnvelope(c, req.toEnvelope())
+	c.JSON(http.StatusGone, LegacyDeprecationPayload{
+		OK:                   false,
+		Error:                "endpoint retired; use POST /api/script/generate",
+		CanonicalEndpoint:    "POST /api/script/generate",
+		RemovalDate:          removalDateWithImages,
+		DeprecationNoticeRef: "See X-Deprecation-Notice header for details",
+	})
 }

@@ -1,6 +1,7 @@
 package script
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"go.uber.org/zap"
 )
+
+// ── FASE 2.1 typed-counter tests (preserved verbatim) ─────────────
 
 // TestLegacyGenerateFromClips_IncrementsCounter pins the FASE 2.1 typed-counter
 // contract: each call to addGenerateFromClipsDeprecationHeader increments
@@ -144,6 +147,167 @@ func TestLegacyCounters_AreRegisteredWithCanonicalNames(t *testing.T) {
 		}
 	}
 }
+
+// ── PR-script-legacy-contract contract tests (P0 ABSOLUTE, Jul 2026) ─────
+
+// TestLegacyGenerateFromClips_Returns410AndBody_PinContract is the
+// canonical TDD contract test for PR-script-legacy-contract (P0
+// ABSOLUTE, deadline 2026-08-01). Pins four invariants per the user
+// spec:
+//
+//  1. HTTP status code = exactly 410 (literal §user spec).
+//  2. JSON body content carries the canonical SSOT fields
+//     (ok=false, canonical_endpoint, removal_date, deprecation_notice_ref).
+//  3. legacy_generate_from_clips_total Prometheus counter increments
+//     by exactly 1 per call (godlike/07 FREEZE-phase observability).
+//  4. X-Deprecation response headers are set (godlike/07 minimum-
+//     blast-radius on the existing deprecation header contract).
+//
+// godlike/06 SSOT: the new LegacyDeprecationPayload struct
+// (handler_legacy_deprecation.go) is the canonical body shape owner;
+// this test pins it.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every assertion is a hard requirement
+// — operators' chrome tests will assert against these substrings.
+func TestLegacyGenerateFromClips_Returns410AndBody_PinContract(t *testing.T) {
+	t.Parallel()
+
+	beforeCounter := testutil.ToFloat64(legacyGenerateFromClipsTotal)
+
+	router := gin.New()
+	rg := router.Group("/api/script")
+	h := &ScriptFlowHandler{log: zap.NewNop()}
+	h.RegisterLegacyDeprecationRoutes(rg)
+
+	body := strings.NewReader(`{"topic":"observability","clip_ids":["clip-a"],"language":"it"}`)
+	req := httptest.NewRequest("POST", "/api/script/generate-from-clips", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Invariant 1: Status code is exactly 410 (literal §user spec).
+	if w.Code != http.StatusGone {
+		t.Fatalf("legacy_generate_from_clips status = %d, want %d (410 Gone)", w.Code, http.StatusGone)
+	}
+
+	// Invariant 2: body content carries the canonical SSOT JSON fields.
+	// Strong-typed round-trip via json.Unmarshal into LegacyDeprecationPayload
+	// pins the wire-shape contract for the canonical SSOT type.
+	var payload LegacyDeprecationPayload
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("body json.Unmarshal failed: %v\nbody: %s", err, w.Body.String())
+	}
+	if payload.OK != false {
+		t.Fatalf("payload.ok = %v, want false", payload.OK)
+	}
+	if !strings.Contains(payload.CanonicalEndpoint, "POST /api/script/generate") {
+		t.Fatalf("payload.canonical_endpoint = %q, want substring %q", payload.CanonicalEndpoint, "POST /api/script/generate")
+	}
+	if payload.RemovalDate != removalDateFromClips {
+		t.Fatalf("payload.removal_date = %q, want %q", payload.RemovalDate, removalDateFromClips)
+	}
+	if !strings.Contains(payload.DeprecationNoticeRef, "X-Deprecation-Notice") {
+		t.Fatalf("payload.deprecation_notice_ref = %q, want substring %q", payload.DeprecationNoticeRef, "X-Deprecation-Notice")
+	}
+
+	// Invariant 3: counter incremented by exactly 1 (godlike/07 FREEZE-phase).
+	if got := testutil.ToFloat64(legacyGenerateFromClipsTotal); got != beforeCounter+1 {
+		t.Fatalf("legacy_generate_from_clips_total = %v, want %v (delta=+1)", got, beforeCounter+1)
+	}
+
+	// Invariant 4: X-Deprecation response headers set (godlike/07
+	// minimum-blast-radius — existing chrome-verified contract).
+	if got := w.Header().Get("X-Deprecated"); got != "true" {
+		t.Fatalf("X-Deprecated = %q, want true", got)
+	}
+	if got := w.Header().Get("X-Deprecation-Notice"); !strings.Contains(got, "POST /api/script/generate is the canonical endpoint") {
+		t.Fatalf("X-Deprecation-Notice missing canonical-endpoint pointer: %q", got)
+	}
+}
+
+// TestLegacyGenerateWithImages_Returns410AndBody_PinContract is
+// the symmetric contract test for /api/script/generate-with-images.
+// Pins the same 4 invariants as TestLegacyGenerateFromClips_Returns-
+// 410AndBody_PinContract (cross-route symmetry per godlike/06 SSOT).
+func TestLegacyGenerateWithImages_Returns410AndBody_PinContract(t *testing.T) {
+	t.Parallel()
+
+	beforeCounter := testutil.ToFloat64(legacyGenerateWithImagesTotal)
+
+	router := gin.New()
+	rg := router.Group("/api/script")
+	h := &ScriptFlowHandler{log: zap.NewNop()}
+	h.RegisterLegacyDeprecationRoutes(rg)
+
+	body := strings.NewReader(`{"topic":"observability"}`)
+	req := httptest.NewRequest("POST", "/api/script/generate-with-images", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Invariant 1: Status code is exactly 410.
+	if w.Code != http.StatusGone {
+		t.Fatalf("legacy_generate_with_images status = %d, want %d (410 Gone)", w.Code, http.StatusGone)
+	}
+
+	// Invariant 2: body content — strong-typed round-trip.
+	var payload LegacyDeprecationPayload
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("body json.Unmarshal failed: %v\nbody: %s", err, w.Body.String())
+	}
+	if payload.OK != false {
+		t.Fatalf("payload.ok = %v, want false", payload.OK)
+	}
+	if !strings.Contains(payload.CanonicalEndpoint, "POST /api/script/generate") {
+		t.Fatalf("payload.canonical_endpoint = %q, want substring %q", payload.CanonicalEndpoint, "POST /api/script/generate")
+	}
+	if payload.RemovalDate != removalDateWithImages {
+		t.Fatalf("payload.removal_date = %q, want %q", payload.RemovalDate, removalDateWithImages)
+	}
+
+	// Invariant 3: counter incremented by exactly 1.
+	if got := testutil.ToFloat64(legacyGenerateWithImagesTotal); got != beforeCounter+1 {
+		t.Fatalf("legacy_generate_with_images_total = %v, want %v (delta=+1)", got, beforeCounter+1)
+	}
+
+	// Invariant 4: X-Deprecation response headers set.
+	if got := w.Header().Get("X-Deprecated"); got != "true" {
+		t.Fatalf("X-Deprecated = %q, want true", got)
+	}
+}
+
+// TestLegacyGenerateRoutes_AreRegisteredIn_RegisterLegacyDeprecationRoutes
+// pins the godlike/06 SSOT surface contract: BOTH legacy routes
+// MUST be present in the registrar output. A future refactor that
+// only registers /generate-from-clips or only registers
+// /generate-with-images would surface as a build failure here (the
+// routes ARE the canonical SSOT for the deprecation contract).
+func TestLegacyGenerateRoutes_AreRegisteredIn_RegisterLegacyDeprecationRoutes(t *testing.T) {
+	t.Parallel()
+
+	router := gin.New()
+	rg := router.Group("/api/script")
+	h := &ScriptFlowHandler{log: zap.NewNop()}
+	h.RegisterLegacyDeprecationRoutes(rg)
+
+	routes := router.Routes()
+	routeMap := make(map[string]bool)
+	for _, r := range routes {
+		routeMap[r.Method+" "+r.Path] = true
+	}
+
+	want := []string{
+		"POST /api/script/generate-from-clips",
+		"POST /api/script/generate-with-images",
+	}
+	for _, w := range want {
+		if !routeMap[w] {
+			t.Fatalf("required legacy route %q not registered (godlike/06 SSOT surface contract)", w)
+		}
+	}
+}
+
+// ── Compile-time assertions + unused-import discards (preserved) ────
 
 // Compile-time assertions pin the godlike/06 SSOT one-canonical-owner-per-fact
 // invariant: NO OTHER producer can register a counter with the same name.

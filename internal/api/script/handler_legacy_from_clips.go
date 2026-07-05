@@ -182,38 +182,26 @@ func (r *LegacyGenerateFromClipsRequest) resolveAliases() []string {
 }
 
 // LegacyGenerateFromClips handles POST /api/script/generate-from-clips.
-// Removal target: 2026-12-31.
+// PR-script-legacy-contract (P0 ABSOLUTE, deadline 2026-08-01, Jul
+// 2026): endpoint retired to canonical PipelineGen 410-Gone contract.
+// The deprecation adapter increment (legacy_generate_from_clips_total
+// counter via addGenerateFromClipsDeprecationHeader) stays at handler
+// entry-point so the 7-day-zero retirement trigger on removal_date
+// 2026-12-31 has the operational signal it needs (godlike/07
+// minimum-blast-radius — FREEZE-phase observability is the only thing
+// keeping the route alive). LegacyGenerateFromClipsRequest +
+// toEnvelope + deriveClipIDs + resolveAliases + warnIgnoredLegacyFields
+// are preserved byte-stable (godlike/07 minimum-blast-radius on the
+// surface) so external test fixtures importing the request shape
+// (handler_legacy_adapters_test.go) still compile post-flip.
 func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
 	addGenerateFromClipsDeprecationHeader(c, removalDateFromClips)
 
-	var req LegacyGenerateFromClipsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
-		return
-	}
-
-	clipIDs, derived := req.deriveClipIDs()
-	if len(clipIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "generate-from-clips requires at least one clip_id or one clips[] entry",
-		})
-		return
-	}
-
-	for _, name := range req.resolveAliases() {
-		h.log.Warn("legacy_alias_used",
-			zap.String("alias", name),
-			zap.String("endpoint", "generate-from-clips"),
-		)
-	}
-
-	if derived > 0 {
-		h.log.Info("legacy_adapter: derived clip_ids from clips array",
-			zap.Int("derived", derived), zap.Int("total", len(clipIDs)),
-		)
-	}
-
-	h.warnIgnoredLegacyFields(&req)
-	h.enqueueEnvelope(c, req.toEnvelope())
+	c.JSON(http.StatusGone, LegacyDeprecationPayload{
+		OK:                   false,
+		Error:                "endpoint retired; use POST /api/script/generate",
+		CanonicalEndpoint:    "POST /api/script/generate",
+		RemovalDate:          removalDateFromClips,
+		DeprecationNoticeRef: "See X-Deprecation-Notice header for details",
+	})
 }
