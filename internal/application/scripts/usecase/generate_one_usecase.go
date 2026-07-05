@@ -579,6 +579,17 @@ func buildGenerationResult(
 // entry (which carries the full error chain + item_id + phase). This
 // is the canonical "log+typed-propagate" pattern per godlike/07.
 //
+// PR-ERROR-SURFACING (2026-07-04): the return value is a TERTIARY
+// wrapped error (umbrella + phase-sentinel + inner) so callers can
+// errors.Is walk to ANY of the three layers:
+//
+//	errors.Is(err, scriptpkg.ErrScriptGenerationFailed)        → umbrella (script.generate capability)
+//	errors.Is(err, scriptpkg.ErrPlanInvalid|ErrSourceResolutionFailed|ErrPostprocessFailed)  → phase
+//	errors.Is(err, errAlreadyWrapped)                          → fine-grained (e.g. ErrEntityExtractorUnavailable)
+//
+// The umbrella wrap is canonical SSOT for "any script.generate failure";
+// the phase + fine-grained sentinels preserve granular classification.
+//
 // Returns the wrapped error so callers can write
 //
 //	return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
@@ -596,5 +607,11 @@ func (uc *GenerateOneUseCase) logPhaseError(
 			zap.String("phase", phase),
 			zap.Error(err))
 	}
-	return fmt.Errorf("%w: %w", sentinel, err)
+	// Tertiary wrap: umbrella (ErrScriptGenerationFailed) + phase
+	// sentinel + inner error. Go 1.20+ supports N-ary `%w` verbs via
+	// errors.Join semantics, so all three errors remain
+	// errors.Is-walkable. The string format produced is:
+	//   "generation: script generation failed: <phase>: <inner>"
+	// which is grep-friendly for operators triaging /api/jobs/{id}/full.
+	return fmt.Errorf("%w: %w: %w", scriptpkg.ErrScriptGenerationFailed, sentinel, err)
 }
