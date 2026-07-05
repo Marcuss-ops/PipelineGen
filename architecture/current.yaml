@@ -5611,7 +5611,7 @@
   - id: PR-CLEANUP-HOTSPOT-CROSSREF
     owner_capability: architecture
     status: shipped
-    ship_sha: 7f26bf4d
+    ship_sha: ab7042f0
     ship_date: 2026-07-05
     deadline: 2026-08-22
     ship_via: |
