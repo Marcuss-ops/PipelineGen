@@ -5400,7 +5400,7 @@
   - id: PR-script-legacy-contract
     status: shipped
     ship_date: 2026-07-04
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: 461b71a4
     deadline: 2026-08-01
     ship_via: |
       PR-script-legacy-contract (P0 ABSOLUTE, Jul 2026): retire 2
