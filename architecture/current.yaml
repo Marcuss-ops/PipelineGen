@@ -5807,3 +5807,80 @@
       are now out of sync with the production probe (which
       uses ExtendedCode per commit-9). godlike/06 SSOT
       consistency.
+
+# Legacy TODO/FIXME/HACK/TBD sweep umbrella (2026-07-05).
+# Per godlike/07 minimum-blast-radius + AGENTS.md Git-Lesson-2:
+# zero Go code changes required — only comment rewrites (removing
+# bare "TODO #N / TODO F2.9 / TODO(hints)" prefixes that no future
+# agent can act on without owner + deadline) + register the 7
+# canonical-scope forward-pointer wave-tracker entries below.
+# Each per-PR has owner_capability + deadline; status:pending
+# because the work is still pending — not shipped.
+# 3-surface SSOT lockstep with this umbrella + CHANGELOG.md
+# ## Unreleased -> ### Documentation entry + AGENTS.md mirror.
+- id: PR-TODO-SWEEP-2026-07-05
+  owner_capability: docs(architecture) + chore(sweep)
+  status: shipped
+  ship_via: SWEEP_OMNIBUS_DOCS_ONLY
+  exit_signal: true
+  deadline: 2026-07-25
+  description: |
+    Sweep of bare TODO/FIXME/HACK/TBD markers without defined deadlines.
+    12-15 markers across the codebase addressed per the table at
+    AGENTS.md ## Recent cross-cutting closures (audit-pin entry).
+
+    Decision tree per marker (per godlike/07 no-fake-availability):
+      (a) commit closure NOW with the fix  -> 0 markers fit this today
+                                            (most blockers are forward-
+                                            pointers needing a real caller
+                                            or cross-domain work)
+      (b) register in architecture/current.yaml with deadline + owner  -> 7
+                                            markers (ladder of forward-
+                                            pointers)
+      (c) delete if obsolete OR not a real TODO  -> ~7 markers (TODO #8
+                                            scope-aware migration call-sites
+                                            where the impl already exists;
+                                            TODO_SECRET/FIXME/XXX in
+                                            config.go = security-regex not
+                                            TODOs)
+
+    Canonical decision TABLE inline below as 7 slim-shape linked_issues
+    that future agents consume via godlike/06 SSOT one-canonical-owner-
+    per-fact. Test fixtures carrying "TODO 16 / TODO #N" prefixes in
+    comments are INTENDED audit-pin references, NOT real TODOs to fix
+    (tests assert absence of "// TODO(PR3): implement" + verify zero-
+    legacy fixture shape) — left intact per godlike/07 min-blast-radius.
+
+    godlike/06 SSOT (one-canonical-owner-per-fact): the 7 entries below
+    are the SOLE canonical owner of the sweep decision per marker;
+    AGENTS.md audit-pin entry + CHANGELOG.md closure mirror are
+    documentation-only surfaces, no production code path changed.
+  linked_issues:
+    - id: PR-F2.9-SUBJECT-PLUMB
+      owner_capability: internal/infrastructure/media/processor + internal/application/clips
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-TODO-1-CLIP-DISPATCH
+      owner_capability: internal/application/scripts/{usecase,ports}
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-TODO-3-CLIP-FANOUT
+      owner_capability: internal/infrastructure/database/sqlite/assets
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-TODO-6-ADMIN-INGEST
+      owner_capability: internal/application/scripts/{usecase,ports}
+      status: pending
+      deadline: 2026-09-01
+    - id: PR-TRANSLATION-HINTS
+      owner_capability: internal/application/translation
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-FASE-9-MODEL-HINTS
+      owner_capability: internal/application/translation (Fase 9 step-3)
+      status: pending
+      deadline: 2026-09-01
+    - id: PR-DEFAULTS-WPM-UNIFY
+      owner_capability: pkg/defaults + internal/application/lessons
+      status: pending
+      deadline: 2026-09-01

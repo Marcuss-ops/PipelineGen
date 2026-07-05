@@ -20,6 +20,7 @@
 //   - "artlist"                → delivery.DestinationArtlist
 //   - "stock"                  → delivery.DestinationStock
 //   - other / unknown          → delivery.DestinationYouTubeClip
+//
 // Rationale: a clip may have originated from artlist/stock;
 // destination-aware routing lets the canonical PathBuilder pick
 // the right folder hierarchy instead of forcing a single bucket.
@@ -249,7 +250,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 		Filename:           filename,
 		AssetID:            clip.ID,
 		Group:              strings.TrimSpace(clip.Group),
-		Subject:            "", // empty by design (TODO F2.9+: explicit Subject plumb when caller emerges; resolver.go maps to "unknown")
+		Subject:            "",                         // empty by design (forward-pointer: PR-F2.9-SUBJECT-PLUMB; caller emerges; resolver.go maps to "unknown")
 		ConflictPolicy:     delivery.ConflictOverwrite, // reupload → replace existing
 		RootFolderOverride: folderID,                   // explicit-folder caller inheritance
 	}

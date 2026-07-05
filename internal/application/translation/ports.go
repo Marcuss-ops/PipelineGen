@@ -12,11 +12,11 @@
 // `internal/domain/translation/translation.go` (Fase 0 della Spina
 // Dorsale) already declares domain-layer DTOs of overlapping concept:
 //
-//   domain.TranslationCommand  { SourceText, SourceLanguage, TargetLanguage,
-//                                ContentKind, Preserve, ModelPolicy(enum) }
-//   domain.TranslationResult   { Text, SourceLanguage, TargetLanguage,
-//                                Provider, Model, CacheStatus }
-//   domain.ModelPolicy         enum string: fast | quality | auto
+//	domain.TranslationCommand  { SourceText, SourceLanguage, TargetLanguage,
+//	                             ContentKind, Preserve, ModelPolicy(enum) }
+//	domain.TranslationResult   { Text, SourceLanguage, TargetLanguage,
+//	                             Provider, Model, CacheStatus }
+//	domain.ModelPolicy         enum string: fast | quality | auto
 //
 // Those domain types are the cross-domain canonical contract (one
 // owner per fact at the domain boundary, per godlike/06). The types
@@ -142,9 +142,9 @@ type TranslationCommand struct {
 	// Unknown keys are ignored without error (forward-compat). Empty
 	// map is the default; nil is treated identically to empty.
 	//
-	// TODO(hints): the 5 documented keys above are convention only —
-	// no constants are exposed in this package yet. A future PR
-	// should add `internal/application/translation/hints.go` with
+	// forward-pointer: PR-TRANSLATION-HINTS — the 5 documented keys above are
+	// convention only — no constants are exposed in this package yet. A
+	// future PR should add `internal/application/translation/hints.go` with
 	// `HintPreserveFormatting = "preserve_formatting"` consts (and the
 	// other 4) so providers and scripts can't drift on misspelled keys.
 	// Out of scope for Fase 9 step 1 (definitions + contract only).
@@ -183,23 +183,23 @@ type TranslationCommand struct {
 //
 // User spec listed 3 minimum fields:
 //
-//   TranslatedText / Confidence / UsedModel
+//	TranslatedText / Confidence / UsedModel
 //
 // This struct ships 7. The 4 added fields are provenance metadata
 // required for observability, audit, and cache auditing at the
 // application-layer wiring boundary:
 //
-//   UsedProvider / SourceLang / TargetLang / CacheStatus
+//	UsedProvider / SourceLang / TargetLang / CacheStatus
 //
 // Distinct from `domain.TranslationResult` (Text, SourceLanguage,
 // TargetLanguage, Provider, Model, CacheStatus). Mirror fields:
 //
-//   TranslatedText ↔ domain.Text
-//   SourceLang     ↔ domain.SourceLanguage (detected or echoed)
-//   TargetLang     ↔ domain.TargetLanguage
-//   UsedProvider   ↔ domain.Provider
-//   UsedModel      ↔ domain.Model
-//   CacheStatus    ↔ domain.CacheStatus
+//	TranslatedText ↔ domain.Text
+//	SourceLang     ↔ domain.SourceLanguage (detected or echoed)
+//	TargetLang     ↔ domain.TargetLanguage
+//	UsedProvider   ↔ domain.Provider
+//	UsedModel      ↔ domain.Model
+//	CacheStatus    ↔ domain.CacheStatus
 //
 // Confidence is application-layer only — domain doesn't track it
 // because provider scores are implementation-specific. Future
@@ -267,9 +267,9 @@ type TranslationResult struct {
 // TranslationKind metadata if any). Today the server default
 // approximates:
 //
-//   short metadata  → fast model (e.g. ollama gemma3:4b)
-//   long book/script → quality model (e.g. ollama llama3:70b)
-//   voiceover        → quality model (verbatim preservation)
+//	short metadata  → fast model (e.g. ollama gemma3:4b)
+//	long book/script → quality model (e.g. ollama llama3:70b)
+//	voiceover        → quality model (verbatim preservation)
 //
 // Distinct from the domain enum `domain.ModelPolicy` (fast|quality|auto):
 // the application-layer struct is the *implementation-level* control
@@ -357,8 +357,8 @@ func (unimplemented) Translate(context.Context, TranslationCommand) (Translation
 // Future concrete adapters should add similar assertions at the
 // bottom of their file:
 //
-//   var _ TranslationPort = (*ollamaAdapter)(nil)
-//   var _ TranslationPort = (*deeplAdapter)(nil)
+//	var _ TranslationPort = (*ollamaAdapter)(nil)
+//	var _ TranslationPort = (*deeplAdapter)(nil)
 //
 // That's the AGENTS.md Pattern 0 invariant: every provider adapter
 // pins its compile-time compatibility at its inheritance boundary.

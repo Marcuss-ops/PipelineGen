@@ -3,14 +3,14 @@
 //
 // OllamaTranslator is the canonical single-source-of-truth concrete
 // for the translation + metadata-generation surface. It satisfies:
-//   1) translation.TranslationPort           — the new canonical port
-//      (Translate(ctx, cmd TranslationCommand) (TranslationResult, error))
-//   2) translation.LegacyTextTranslationService — the 3-arg straggler
-//      (TranslateText(ctx, text, lang) (string, error))
-//   3) translation.LegacyTranslatorService — the 4-arg straggler
-//      (TranslateTextWithModel(ctx, text, lang, model) (string, error))
-//   4) translation.LegacyMetadataTranslator — the dto-level combined
-//      port (GenerateVideoMetadataWithModel + TranslateTextWithModel)
+//  1. translation.TranslationPort           — the new canonical port
+//     (Translate(ctx, cmd TranslationCommand) (TranslationResult, error))
+//  2. translation.LegacyTextTranslationService — the 3-arg straggler
+//     (TranslateText(ctx, text, lang) (string, error))
+//  3. translation.LegacyTranslatorService — the 4-arg straggler
+//     (TranslateTextWithModel(ctx, text, lang, model) (string, error))
+//  4. translation.LegacyMetadataTranslator — the dto-level combined
+//     port (GenerateVideoMetadataWithModel + TranslateTextWithModel)
 //
 // Why one concrete satisfies four interfaces: godlike/07 EXPAND phase.
 // New canonical surface lands first (TranslationPort) + the legacy
@@ -97,8 +97,9 @@ func NewOllamaTranslator(gen *ollama.Generator, log *zap.Logger) *OllamaTranslat
 // ── TranslationPort impl ─────────────────────────────────────────────────
 
 // Translate implements translation.TranslationPort. Reads cmd.ModelPolicy
-// to resolve the effective model (TODO: cmd.ModelHints honoring is a
-// Fase 9 step-3 follow-up; today hints are accepted but ignored so
+// to resolve the effective model (forward-pointer: PR-FASE-9-MODEL-HINTS
+// tracks cmd.ModelHints honoring as a Fase 9 step-3 follow-up; today
+// hints are accepted but ignored so
 // FUTURE adding of honour is the BACKFILL-extension and not a
 // signature-breaking surface change. Calls gen.TranslateTextWithModel
 // internally. Hydrates the TranslationResult envelope with the
@@ -119,9 +120,9 @@ func (o *OllamaTranslator) Translate(ctx context.Context, cmd TranslationCommand
 		// via errors.Is/As against ollama.Transient markers
 		// (canonical taxonomy in pkg/retry).
 		return TranslationResult{
-			SourceLang:  cmd.SourceLang,
-			TargetLang:  cmd.TargetLang,
-			UsedModel:   resolvedModel,
+			SourceLang:   cmd.SourceLang,
+			TargetLang:   cmd.TargetLang,
+			UsedModel:    resolvedModel,
 			UsedProvider: "ollama",
 			// CacheStatus left empty: cache hit/miss is logged at the
 			// gen layer today (see gen.TranslateTextWithModel
@@ -183,8 +184,8 @@ func (o *OllamaTranslator) GenerateVideoMetadataWithModel(ctx context.Context, t
 // drift in any of the 4 port signatures → build failure at the
 // canonical concrete site, NOT a runtime panic at the first caller.
 var (
-	_ TranslationPort           = (*OllamaTranslator)(nil)
+	_ TranslationPort              = (*OllamaTranslator)(nil)
 	_ LegacyTextTranslationService = (*OllamaTranslator)(nil)
-	_ LegacyTranslatorService   = (*OllamaTranslator)(nil)
-	_ LegacyMetadataTranslator = (*OllamaTranslator)(nil)
+	_ LegacyTranslatorService      = (*OllamaTranslator)(nil)
+	_ LegacyMetadataTranslator     = (*OllamaTranslator)(nil)
 )

@@ -53,7 +53,7 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 // and falls back to "all" when no directive is present OR when the
 // directive references an unknown scope.
 //
-// TODO #8 (June 2026): scope-aware migrations. See migrationFile.
+// scope-aware migrations (June 2026) — see migrationFile.
 //
 // Format:
 //
@@ -70,10 +70,10 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 // Anything outside the known-scope set falls back to "all" so a typo
 // can't quietly exclude a migration from one DB.
 func parseMigrationScope(content []byte) string {
-	// TODO #8 (June 2026): strip UTF-8 BOM (3 bytes EF BB BF) before
-	// scanning. Without this, files saved by Notepad or some VSCode
-	// configs silently default to scope="all" even when the author
-	// set a specific scope on the first line.
+	// scope-aware (June 2026) — strip UTF-8 BOM (3 bytes EF BB BF)
+	// before scanning. Without this, files saved by Notepad or some
+	// VSCode configs silently default to scope="all" even when the
+	// author set a specific scope on the first line.
 	if len(content) >= 3 && content[0] == 0xEF && content[1] == 0xBB && content[2] == 0xBF {
 		content = content[3:]
 	}
@@ -124,7 +124,7 @@ func parseMigrationScope(content []byte) string {
 // absent); targetDB is the canonically-named DB the runner is
 // processing ("primary", "observability", or "all").
 //
-// TODO #8 (June 2026): scope-aware migrations. See migrationFile and
+// scope-aware migrations (June 2026) — see migrationFile and
 // parseMigrationScope.
 //
 // Decision table:

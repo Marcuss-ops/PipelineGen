@@ -36,13 +36,13 @@ import (
 // to yt-dlp (Rule 4). PR-ARTLIST-SCRAPER-RETIRE (July 2026): the
 // legacy downloadViaScraper path is RETIRED.
 type Processor struct {
-	dl           YTDLP
-	httpDL       HTTPDownloader
-	ffmpeg       VideoProcessor
-	log          *zap.Logger
-	dataDir      string
-	tempDir      string
-	videoCfg     ffmpeg.NormalizeOptions
+	dl       YTDLP
+	httpDL   HTTPDownloader
+	ffmpeg   VideoProcessor
+	log      *zap.Logger
+	dataDir  string
+	tempDir  string
+	videoCfg ffmpeg.NormalizeOptions
 	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL field REMOVED.
 	// Artlist downloads now route exclusively through the
 	// ArtlistDownloader port (wired via build_bundles_artlist.go).
@@ -82,9 +82,9 @@ func (p *Processor) SetArtlistDownloader(dl ArtlistDownloader) {
 
 // ProcessorConfig holds the constructor dependencies for Processor.
 type ProcessorConfig struct {
-	DataDir            string
-	TempDir            string
-	VideoCfg           ffmpeg.NormalizeOptions
+	DataDir  string
+	TempDir  string
+	VideoCfg ffmpeg.NormalizeOptions
 	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): ScraperServerURL REMOVED.
 	EmbeddingServerURL string // Python embedding/phash server (e.g. http://127.0.0.1:8001)
 }
@@ -304,7 +304,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			Description:        fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
 			AssetID:            input.ID,
 			Group:              input.Term, // artlist search term (PathBuilder input)
-			Subject:            "",          // empty by design — see doc above (TODO F2.9: explicit Subject plumb)
+			Subject:            "",         // empty by design — see doc above (forward-pointer: PR-F2.9-SUBJECT-PLUMB)
 			RootFolderOverride: input.FolderID,
 		}
 		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
