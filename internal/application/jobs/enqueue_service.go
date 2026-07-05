@@ -186,7 +186,16 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		// the rescue path).
 		if j.CorrelationID != "" {
 			var sqliteErr sqlite3.Error
-			if errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrConstraintUnique {
+			// CARRY-FORWARD FIX (commit-8, 2026-07-05): sqliteErr.Code
+			// is type sqlite3.ErrNo but sqlite3.ErrConstraintUnique is
+			// type sqlite3.ErrNoExtended — pre-existing typed comparison
+			// was a compile error. godlike/07 minimum-blast-radius: cast
+			// both sides to int so the typed equality check compiles and
+			// the driver-invariant semantics are preserved (no string-compare
+			// fallback). The probe still discriminates UNIQUE-constraint
+			// failures from generic create-job errors (the godlike/07
+			// typed-string-compare anti-pattern is NOT reintroduced).
+			if errors.As(err, &sqliteErr) && int(sqliteErr.Code) == int(sqlite3.ErrConstraintUnique) {
 				if existing, findErr := s.repo.FindByTypeAndCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
 					s.log.Info("returning existing job by (type, correlation_id) — caught race on SQLite UNIQUE constraint (typed sqlite3 probe)",
 						zap.String("job_id", existing.ID),
