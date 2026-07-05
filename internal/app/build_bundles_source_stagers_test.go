@@ -1,43 +1,52 @@
-// Package app — build_bundles_source_stagers_test.go (ART-002 P4.3, July 2026).
+// Package app — build_bundles_source_stagers_test.go (ART-002 P4.3, July 2026
+// + PR-STOCK-ATLASTORCH-DISPATCH commit-3, July 2026).
 //
-// 1 TDD test pinning the WireSourceStagers composition-root behavior:
+// TDD coverage for the 2 composition-root helpers in
+// build_bundles_source_stagers.go:
 //
-//   - TestWireSourceStagers_RegistersAll5Kinds: happy path — passes 5
-//     real Stager instances (Artlist with nil downloader + YouTube
-//     with nil adapter + 3 skeletons), asserts no errors, asserts
-//     all 5 SourceKinds are registered, asserts Resolve returns
-//     the correct adapter for each kind.
+//   - WireSourceStagers (legacy assets.SourceStager registry, 3 TDD tests):
+//     TestWireSourceStagers_RegistersAll5Kinds +
+//     TestWireSourceStagers_NilAdapters_CarriesErrors +
+//     TestWireSourceStagers_PartialFailure.
 //
-//   - TestWireSourceStagers_NilAdapters_CarriesErrors: nil-adapter
-//     path — passes 5 nil SourceStagers, asserts the returned
-//     registry is still non-nil (fresh registry) AND the error
-//     slice carries 5 nil-adapter errors reachable via
-//     errors.Is(err, assets.ErrSourceStagerNil).
+//   - WireAcquisitionStager (canonical *acquisition.FilesystemStager
+//     construction for the stock pipeline, 4 TDD tests):
+//     TestWireAcquisitionStager_HappyPath_ReturnsCanonicalFilesystemStager +
+//     TestWireAcquisitionStager_NilCfg_ReturnsTypedError +
+//     TestWireAcquisitionStager_NilLog_ToleratesFallback +
+//     TestWireAcquisitionStager_Prepare_FailsClosedOnUnwiredFetch.
 //
-// The test uses real Stager types (not mocks) so the compile-time
-// var _ assertions on each Stager file (matching the ArtlistStager
-// precedent) are exercised at every CI run.
+// Tests use real types (not mocks) so the compile-time var _ assertions
+// on each Stager file + the concrete FilesystemStager file are exercised
+// at every CI run.
 package app
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"testing"
+
+	"go.uber.org/zap"
 
 	artliststager "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/catalog"
 	assetdrive "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/drive"
 	youtubestager "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	// httpstager package: directory path is `http`; package name is `httpstager`.
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/http"
+	infacq "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/acquisition"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // TestWireSourceStagers_RegistersAll5Kinds pins the happy path: when
 // the composition root wires 5 real Stager instances (each via its
 // canonical constructor), WireSourceStagers returns a non-nil
 // registry with all 5 SourceKinds registered, and Resolve returns
-// the exact adapter passed in.
+// the correct adapter for each kind.
 func TestWireSourceStagers_RegistersAll5Kinds(t *testing.T) {
 	// Construct 5 real Stager instances. The ArtlistStager and
 	// YouTubeStager take a parent adapter/downloader; nil is OK for
@@ -176,5 +185,143 @@ func TestWireSourceStagers_PartialFailure(t *testing.T) {
 	_, err := reg.Resolve(assets.SourceKindExistingCatalog)
 	if !errors.Is(err, assets.ErrSourceKindUnknown) {
 		t.Errorf("expected errors.Is(err, assets.ErrSourceKindUnknown) for nil catalog, got err=%v", err)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// WireAcquisitionStager TDD coverage (PR-STOCK-ATLASTORCH-DISPATCH
+// commit-3) — pins the canonical FS-backed SourceStager construction
+// contract that BuildStockBundle's caller threads into
+// StockBundleDeps.SourceStager.
+// ──────────────────────────────────────────────────────────────────────
+
+// makeTestCfg returns a config.Config fixture where cfg.Storage.TempPath()
+// returns a per-test subdirectory under t.TempDir() so MkdirAll within
+// the concrete's ctor lands on a writable path without polluting the
+// global /tmp.
+func makeTestCfg(t *testing.T) *config.Config {
+	t.Helper()
+	sub := filepath.Join(t.TempDir(), "stock_pipeline_staging")
+	// config.StorageConfig.TempPath() = FullPath(TempDir).
+	// Set TempDir to a path of the form "testtmp/<sub>" so FullPath
+	// (which joins the StorageConfig.BaseDir prefix) yields the
+	// test-owned subdirectory.
+	cfg := &config.Config{}
+	cfg.Storage.TempDir = sub
+	return cfg
+}
+
+// TestWireAcquisitionStager_HappyPath_ReturnsCanonicalFilesystemStager
+// pins the success path: a valid cfg + zap.NewNop() log returns
+// (a) a non-nil source stager, (b) the returned value satisfies the
+// canonical acquisition.SourceStager port (compile-time pinned at the
+// concrete's site), (c) the returned value is concrete *FilesystemStager
+// (so future port signature drift surfaces via the existing infra-side
+// compile-time pin).
+func TestWireAcquisitionStager_HappyPath_ReturnsCanonicalFilesystemStager(t *testing.T) {
+	cfg := makeTestCfg(t)
+	stager, err := WireAcquisitionStager(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("expected nil error on valid cfg, got: %v", err)
+	}
+	if stager == nil {
+		t.Fatalf("expected non-nil source stager, got nil")
+	}
+	// Compile-time interface satisfaction assertion — locks future
+	// port signature drift to a build failure rather than a runtime
+	// panic. Mirrors the precedent at var _ appacq.SourceStager = (*infacq.FilesystemStager)(nil)
+	// in the concrete.
+	var _ appacq.SourceStager = stager
+
+	// Concrete type assertion: the wire returns the canonical
+	// *infacq.FilesystemStager. If a future caller substitutes a
+	// different concrete, this fails loud so the wire surface is
+	// traceable to the canonical owner per godlike/06 SSOT.
+	if _, ok := stager.(*infacq.FilesystemStager); !ok {
+		t.Errorf("expected *infacq.FilesystemStager concrete, got %T", stager)
+	}
+}
+
+// TestWireAcquisitionStager_NilCfg_ReturnsTypedError pins the
+// composition-time fail-closed gate: passing nil cfg returns
+// (nil, err) where errors.Is(err, ErrStockPipelineStagerInit) is true.
+// The double-error chain (sentinel + Filename or other ctor error)
+// is preserved via fmt.Errorf("%w: ...", sentinel, ...) so callers
+// can either errors.Is the sentinel OR string-match for diagnostics.
+func TestWireAcquisitionStager_NilCfg_ReturnsTypedError(t *testing.T) {
+	stager, err := WireAcquisitionStager(nil, zap.NewNop())
+	if stager != nil {
+		t.Errorf("expected nil stager on nil cfg, got %T", stager)
+	}
+	if err == nil {
+		t.Fatalf("expected typed error on nil cfg, got nil")
+	}
+	if !errors.Is(err, ErrStockPipelineStagerInit) {
+		t.Errorf("expected errors.Is(err, ErrStockPipelineStagerInit) to be true, got err=%v", err)
+	}
+}
+
+// TestWireAcquisitionStager_NilLog_ToleratesFallback pins the
+// nil-tolerance contract: passing nil log returns a non-nil stager
+// (the wire substitutes zap.NewNop() internally). This mirrors the
+// concrete's Options.Log nil tolerance — the wire does NOT panic on
+// nil log; the ctor does the same.
+func TestWireAcquisitionStager_NilLog_ToleratesFallback(t *testing.T) {
+	cfg := makeTestCfg(t)
+	stager, err := WireAcquisitionStager(cfg, nil)
+	if err != nil {
+		t.Fatalf("expected nil error on nil log (fallback to zap.NewNop), got: %v", err)
+	}
+	if stager == nil {
+		t.Fatalf("expected non-nil stager on nil log, got nil")
+	}
+}
+
+// TestWireAcquisitionStager_Prepare_FailsClosedOnUnwiredFetch pins
+// the run-time typed-error contract: when the concrete is asked to
+// Prepare a request with a valid (URL-bearing) SourceRef, the
+// fail-closed Fetch stub returns appacq.ErrAcquisitionPrepareFailed
+// (wrapped). This proves the godlike/07 no-fake-availability surface:
+// a future real yt-dlp / HTTP / Drive wrapper must be a fresh
+// canonical construction that REPLACES the stub, NOT a patch that
+// silently returns nil.
+//
+// The stub returns a typed sentinel wrapped via appacq.Wrap so the
+// inner ErrAcquisitionPrepareFailed is recoverable via errors.Is
+// at the caller site — the foundation that lets the stock pipeline
+// `source_staging.go` propagate the failure class without parsing
+// human-readable suffix.
+func TestWireAcquisitionStager_Prepare_FailsClosedOnUnwiredFetch(t *testing.T) {
+	cfg := makeTestCfg(t)
+	stager, err := WireAcquisitionStager(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("setup: WireAcquisitionStager failed: %v", err)
+	}
+	if stager == nil {
+		t.Fatalf("setup: expected non-nil stager, got nil")
+	}
+
+	// Build a valid PrepareRequest (per appacq.PrepareRequest.Validate()).
+	req := appacq.PrepareRequest{
+		Source: appacq.SourceRef{
+			URL:           "https://example.com/test_source",
+			PolicyVersion: "test-v1",
+		},
+		IdempotencyKey: "test-idem-001",
+	}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("setup: PrepareRequest.Validate() failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5_000_000_000) // 5s
+	defer cancel()
+
+	_, prepErr := stager.Prepare(ctx, req)
+	if prepErr == nil {
+		t.Fatalf("expected Prepare to fail-closed via stub Fetch, got nil err")
+	}
+	// The stub returns appacq.Wrap(appacq.ErrAcquisitionPrepareFailed, ...).
+	if !errors.Is(prepErr, appacq.ErrAcquisitionPrepareFailed) {
+		t.Errorf("expected errors.Is(prepErr, appacq.ErrAcquisitionPrepareFailed) to be true, got err=%v", prepErr)
 	}
 }
