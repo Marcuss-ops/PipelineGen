@@ -9,7 +9,7 @@
 //   - the typed sqlite3.Error UNIQUE-constraint probe that replaces
 //     the pre-PR strings.Contains("UNIQUE constraint") heuristic
 //     (godlike/07 NO-FAKE-AVAILABILITY; driver-invariant because
-//     Code is an int-backed enum, not a string)
+//     ExtendedCode is an int-backed enum, not a string)
 //
 // Hermetic strategy split by what each test actually exercises:
 //
@@ -201,24 +201,36 @@ func TestEnqueue_ExistingCorrelationID_DedupReturnsExisting(t *testing.T) {
 // exhibits against a real driver error. They avoid the broker-mock
 // overhead of fully exercising the SQL race by constructing the
 // canonical typed error directly: sqlite3.Error is an exported struct
-// with int-backed Code field. Three cardinal cases:
+// with int-backed Code (ErrNo) and ExtendedCode (ErrNoExtended)
+// fields. Three cardinal cases:
 //
-//   - identical-match: sqlite3.Error{Code: sqlite3.ErrConstraintUnique}
-//     → probe MUST fire (positive case for the typed-error contract)
+//   - identical-match: sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique}
+//     → probe MUST fire (positive case for the typed-error contract;
+//     matches the real driver emission shape for UNIQUE-constraint
+//     failures where Code=ErrConstraint and ExtendedCode=ErrConstraintUnique)
 //   - non-sqlite3 error: errors.New("plain")
 //     → probe MUST NOT fire (errors.As rejects non-matches)
 //   - wrong-sqlite3-code: sqlite3.Error with a non-UNIQUE code
-//     → probe MUST NOT fire (Code comparison rejects the off-by-one
-//     hazard that a future refactor might introduce)
+//     → probe MUST NOT fire (ExtendedCode comparison rejects the
+//     off-by-one hazard that a future refactor might introduce)
 //
-// godlike/06 driver-invariant contract: sqlite3.Error.Code is an int
-// enum, NOT a string. The pre-PR strings.Contains(err.Error(),
-// "UNIQUE constraint") heuristic could silently break on any driver
-// string change — this typed probe cannot.
+// godlike/06 driver-invariant contract: sqlite3.Error.ExtendedCode is
+// an int enum (ErrNoExtended type), NOT a string. The pre-PR
+// strings.Contains(err.Error(), "UNIQUE constraint") heuristic could
+// silently break on any driver string change — this typed probe cannot.
+//
+// PR-JOBS-RETRY-CONTRACT-TEST-FIX (2026-07-05): the prior test
+// fixtures used `Code: sqlite3.ErrConstraintUnique` which was a
+// TYPE MISMATCH (Code is `ErrNo` int, ErrConstraintUnique is
+// `ErrNoExtended` int — different Go types). Updated to use
+// `Code: sqlite3.ErrConstraint` (ErrNo-typed primary code) for the
+// `Code` field, and `ExtendedCode: sqlite3.ErrConstraintUnique`
+// (ErrNoExtended-typed extended code) for the `ExtendedCode` field.
+// This matches the real driver emission shape.
 
 // TestEnqueue_UniqueProbe_MatchingTypedError_FiresProbe — the probe MUST
 // fire when the underlying error is a sqlite3.Error with
-// Code == sqlite3.ErrConstraintUnique. Mirrors the real driver
+// ExtendedCode == sqlite3.ErrConstraintUnique. Mirrors the real driver
 // emission shape for UNIQUE-constraint failures on the
 // (type, correlation_id) index.
 func TestEnqueue_UniqueProbe_MatchingTypedError_FiresProbe(t *testing.T) {
@@ -237,16 +249,16 @@ func TestEnqueue_UniqueProbe_MatchingTypedError_FiresProbe(t *testing.T) {
 	// Synthetic sqlite3.Error exactly as the real driver emits it
 	// for UNIQUE-constraint failures on the (type, correlation_id)
 	// index.
-	err := sqlite3.Error{Code: sqlite3.ErrConstraintUnique, ExtendedCode: sqlite3.ErrConstraintUnique}
+	err := sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique}
 
 	// Mirror the inline probe from Enqueue() — KEEP THE PROBE
 	// EXPRESSIONS IN SYNCHRONIZED VERBATIM. If a future refactor
 	// diverges from this assertion the test FAILS, pinning the
 	// contract.
 	var sqliteErr sqlite3.Error
-	probeFires := errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrConstraintUnique
+	probeFires := errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
 	if !probeFires {
-		t.Errorf("PR-jobs-retry-contract: typed probe did NOT fire on matching sqlite3.Error{Code: ErrConstraintUnique}")
+		t.Errorf("PR-jobs-retry-contract: typed probe did NOT fire on matching sqlite3.Error{ExtendedCode: ErrConstraintUnique}")
 	}
 }
 
@@ -261,7 +273,7 @@ func TestEnqueue_UniqueProbe_NonTypedError_DoesNotFire(t *testing.T) {
 	err := errors.New("some non-driver error")
 
 	var sqliteErr sqlite3.Error
-	probeFires := errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrConstraintUnique
+	probeFires := errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
 	if probeFires {
 		t.Errorf("PR-jobs-retry-contract: typed probe incorrectly fired on plain errors.New (errors.As rejected but probe still triggered)")
 	}
@@ -270,7 +282,7 @@ func TestEnqueue_UniqueProbe_NonTypedError_DoesNotFire(t *testing.T) {
 // TestEnqueue_UniqueProbe_WrongSqliteCode_DoesNotFire — when the
 // underlying error is a sqlite3.Error with a non-UNIQUE code
 // (e.g. SQLITE_CONSTRAINT_FOREIGNKEY or SQLITE_CONSTRAINT_NOTNULL),
-// the probe MUST NOT fire. Code comparison rejects the off-by-one
+// the probe MUST NOT fire. ExtendedCode comparison rejects the off-by-one
 // hazard; a future refactor that loosens the comparison would
 // silently over-fire the rescue path on non-UNIQUE constraint
 // failures (a godlike/07 NO-FAKE-AVAILABILITY regression).
@@ -285,7 +297,7 @@ func TestEnqueue_UniqueProbe_WrongSqliteCode_DoesNotFire(t *testing.T) {
 	err := sqlite3.Error{Code: sqlite3.ErrFull}
 
 	var sqliteErr sqlite3.Error
-	probeFires := errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrConstraintUnique
+	probeFires := errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
 	if probeFires {
 		t.Errorf("PR-jobs-retry-contract: typed probe incorrectly fired on sqlite3.Error{Code: ErrFull} (off-by-one hazard)")
 	}
@@ -317,7 +329,7 @@ func TestEnqueue_UniqueProbe_WrapPath_PreservesErrUniqueConstraintViolation(t *t
 	// Synthetic typed sqlite3.Error exactly as the real driver emits
 	// it for UNIQUE-constraint failures on the (type, correlation_id)
 	// index.
-	sqliteErr := sqlite3.Error{Code: sqlite3.ErrConstraintUnique, ExtendedCode: sqlite3.ErrConstraintUnique}
+	sqliteErr := sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique}
 
 	// Mirror the inline wrap expression from Enqueue() — KEEP THIS
 	// EXPRESSION IN SYNCHRONIZED VERBATIM. If a future refactor
@@ -333,7 +345,7 @@ func TestEnqueue_UniqueProbe_WrapPath_PreservesErrUniqueConstraintViolation(t *t
 	// through the wrapped chain — callers must be able to classify
 	// the failure mode via either path.
 	var resolved sqlite3.Error
-	if !errors.As(wrapped, &resolved) || resolved.Code != sqlite3.ErrConstraintUnique {
+	if !errors.As(wrapped, &resolved) || resolved.ExtendedCode != sqlite3.ErrConstraintUnique {
 		t.Errorf("PR-jobs-retry-contract: wrapped error chain must preserve sqlite3.Error probe classification")
 	}
 }

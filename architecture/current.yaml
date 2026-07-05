@@ -5869,8 +5869,9 @@
   linked_issues:
   - id: PR-JOBS-RETRY-CONTRACT-TEST-FIX
     owner_capability: internal/application/jobs
-    status: pending
+    status: shipped
     deadline: 2026-07-15
+    ship_date: 2026-07-05
     description: |
       Fix the 5 broken sites in enqueue_service_test.go that use
       the pre-commit-9 wrong pattern: lines 240, 247, 264, 288,

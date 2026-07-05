@@ -25,7 +25,7 @@
 //     SQLite UNIQUE-constraint rescue path in
 //     Enqueue(). Set when the typed
 //     `errors.As(sqlite3.Error, &sqliteErr)`
-//     && `sqliteErr.Code == sqlite3.ErrConstraintUnique`
+//     && `sqliteErr.ExtendedCode==sqlite3.ErrConstraintUnique`
 //     probe fires on the Create() error;
 //     the rescue path then attempts to
 //     surface the existing job before
