@@ -6016,7 +6016,10 @@
       deadline: 2026-07-22
     - id: STK-E2E-G
       owner_capability: tests/operational/stock_e2e_download_smoke.sh
-      status: pending
+      status: shipped
+      ship_sha: PENDING_BOOKKEEPING_COMMIT_FOLLOWUP
+      ship_date: 2026-07-05
+      ship_via: 2_COMMIT_SPLIT_PER_CODEBASE_PATTERN_PR_VO_TYPED_PRIMITIVES
       deadline: 2026-07-22
     - id: STK-E2E-H
       owner_capability: tests/operational/stock_e2e_full_battery.sh
