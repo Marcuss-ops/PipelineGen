@@ -367,6 +367,16 @@
     owner_capability: architecture
     deadline: 2026-08-01
   - id: PR-FIX-YAML-PARSE-LINE-1551
+    notes: |
+      Sibling-slot scope-lock (godlike/07 NO-FAKE-AVAILABILITY). The
+      PRE-EXISTING-YAML-PARSE-2026-07-04 UMBRELLA entry remains at status:
+      pending because a separate pre-existing defect at
+      architecture/current.yaml ~L5387 (v1 heredoc shell-leak from a prior
+      wave-tracker append cycle; per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04
+      carry-forward convention) is OUT OF SCOPE for this closure. This slot
+      documents PARTIAL closure (only the deprecations.yaml line-1418 indent fix),
+      NOT full umbrella closure. Future agents: do NOT flip the umbrella status to
+      shipped until the L~5387 heredoc defect is also separately closed.
     owner_capability: architecture
     status: shipped
     ship_sha: 2549f455d78a960c65536ef9c597113b6b1a5c9c
