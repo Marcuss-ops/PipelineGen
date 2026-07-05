@@ -107,6 +107,7 @@ CREATE TABLE jobs (
     started_at DATETIME,
     completed_at DATETIME,
     cancelled_at DATETIME,
+    parent_state_typed TEXT NOT NULL DEFAULT '',
     revision INTEGER NOT NULL DEFAULT 1
 );
 
