@@ -5435,8 +5435,27 @@
     priority_band: P1
   - id: PR-jobs-retry-contract
     owner_capability: internal/application/jobs
-    status: pending
+    status: shipped
+    ship_date: 2026-07-04
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
     deadline: 2026-08-08
+    ship_via: |
+      godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY closure per
+      CLEANUP-PRIORITY-1-5-2026-07-25 wave. 8 files touched:
+      errors.go NEW (5 typed sentinels SSOT): ErrRegistryRequired +
+      ErrRepoRequired + ErrLogRequired + ErrMaxRetriesUnknown +
+      ErrUniqueConstraintViolation. registry.go GetMaxRetries typed.
+      service.go 4-arg fail-closed NewService + WithRegistry deprecated.
+      enqueue_service.go resolveMaxRetries typed + UNIQUE probe via
+      errors.As(sqlite3.Error, &sqliteErr) + hasRegistry REMOVED.
+      module_jobs.go 4-arg migration. assets_register_sourcing_test.go
+      newTestService 4-arg. registry_wiring_test.go legacy tests
+      REMOVED. enqueue_service_test.go NEW 6 TDD tests. godlike/07
+      NO-FAKE-AVAILABILITY: legacy return 3 fallback REMOVED.
+      godlike/07 minimum-blast-radius: WithRegistry + DefaultMaxRetries
+      deprecated-not-removed. Honest scope-lock: Windows agent host
+      has no gcc (CGO toolchain missing); CI validates the build.
+      Forward-pointer: PR-JOBS-WORKER-MIGRATE + PR-PROBE-HELPER-EXTRACT.
     priority_band: P1
   - id: PR-stock-production-deps
     owner_capability: internal/application/assets/providers/stock/stockpipeline

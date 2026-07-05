@@ -200,11 +200,48 @@ func (r *Registry) Timeout(jobType string) time.Duration {
 // `SetJobTimeout` callers.
 
 // DefaultMaxRetries returns the default max retries for a job type.
+// Returns the canonical 3-retry safety net for unregistered jobTypes.
+//
+// Deprecated (PR-jobs-retry-contract, July 2026): callers that want a
+// strict typed-error contract (no silent fallback) MUST migrate to
+// GetMaxRetries(jobType) (int, error) below. This helper is retained
+// for the *Worker*-side maxRetriesFor() retry hint (PR-JOBS-WORKER-
+// MIGRATE — forward-pointer; not in scope for this PR per godlike/07
+// minimum-blast-radius).
 func (r *Registry) DefaultMaxRetries(jobType string) int {
 	if entry, ok := r.Get(jobType); ok {
 		return entry.DefaultMaxRetries
 	}
 	return 3
+}
+
+// GetMaxRetries is the typed lookup port consumed by
+// *Service.resolveMaxRetries (PR-jobs-retry-contract, July 2026).
+// Returns ErrMaxRetriesUnknown wrapped with %w on the typed jobType
+// when the jobType is not registered — callers MUST propagate the error
+// (NOT silently default to a legacy fallback per godlike/07
+// no-fake-availability).
+//
+// godlike/06 SSOT (one-canonical-owner-per-fact): the typed-error
+// contract here supersedes the pre-PR s.registry.DefaultMaxRetries
+// helper which silently returned 3 for unknown types. GetMaxRetries is
+// the load-bearing assertion for the *Service* resolution path. The
+// DefaultMaxRetries helper still exists for *Worker*.maxRetriesFor
+// (future migration tracked separately).
+//
+// nil-receiver guard: a nil Registry returns ErrRegistryRequired
+// (defense-in-depth — Service.resolveMaxRetries callers MUST have a
+// non-nil registry attached per the 4-arg NewService fail-closed
+// constructor; this guard hardens the surface for future migration).
+func (r *Registry) GetMaxRetries(jobType string) (int, error) {
+	if r == nil {
+		return 0, fmt.Errorf("%w: nil registry", ErrRegistryRequired)
+	}
+	entry, ok := r.Get(jobType)
+	if !ok {
+		return 0, fmt.Errorf("%w: %s", ErrMaxRetriesUnknown, jobType)
+	}
+	return entry.DefaultMaxRetries, nil
 }
 
 // IsRegistered returns true if the job type is registered.
