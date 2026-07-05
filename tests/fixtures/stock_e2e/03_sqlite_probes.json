@@ -1,0 +1,166 @@
+{
+  "_fixture_role": "FASE 3 — SQLite probes (media_assets boxing-stock last 10min + outbox_events asset.index.requested for FASE 1 job_ids + jobs for FASE 1 job_ids)",
+  "_fixture_status": "captured_live_with_explicit_zero_result_findings",
+  "_fixture_version": "v1 (canonical, 2026-07-05)",
+  "_capture_timestamp_utc": "2026-07-05T06:15:11Z",
+  "_capture_window_seconds": 10,
+  "_db_path": "data/media/media.db.sqlite",
+  "_db_path_source_of_truth": "AGENTS.md Schema attuale (Unificato) → data/media/media.db.sqlite (unico DB per scripts + jobs + asset_index + media_assets + harvester + pipeline_runs + voiceovers etc.)",
+  "_db_size_bytes_at_capture": 1347584,
+  "_db_modify_time_utc_at_capture": "2026-07-05T06:10:23Z",
+  "_db_pid_at_capture": "2742692 (matches the pipelinegen PID confirmed live in FASE 0/2)",
+  "_sqlite3_driver_ssot": "mattn/go-sqlite3 (per AGENTS.md 'Non cambiare driver SQLite (rimanere su mattn/go-sqlite3)')",
+  "_now_utc": "2026-07-05T06:15:11Z",
+  "_ten_min_ago_utc_for_probe_1": "2026-07-05T06:05:11Z",
+  "_fase_1_seeded_job_ids": [
+    "job_1783230661695273809_c5f5de2c",
+    "job_1783230661712873107_2faf709e"
+  ],
+  "_fase_1_seeded_job_ids_origin": "Captured live in FASE 2 fixture (_job_ids_polled) → seeds came from POST /api/script/generate-with-images + POST /api/script/generate-from-clips (NOT stock-pipeline since that route is silent-skipped per FASE 1 capture).",
+  "_probe_1_media_assets_boxing_stock_last_10min": {
+    "_canonical_sql_user_spec": "SELECT * FROM media_assets WHERE source='stock' AND category='boxing' AND created_at >= '2026-07-05T06:05:11Z' ORDER BY created_at DESC LIMIT 50;",
+    "_canonical_sql_user_spec_executed_verbatim": "SELECT id, source, category, name, created_at FROM media_assets WHERE source='stock' AND category='boxing' AND created_at >= '2026-07-05T06:05:11Z' ORDER BY created_at DESC LIMIT 50;",
+    "_rows_returned_count": 0,
+    "_rows_returned_verbatim": "[]",
+    "_result_interpretation": "(a) The stock-pipeline route /api/stock-pipeline/* is silent-skipped (per FASE 1 fixture: route group EnabledFunc=false, narrow-stock disabled at composition root). (b) Even WITHOUT the user-spec narrowing, the canonical_media_assets table has exactly 1 row total — and that row has neither source='stock' nor category='boxing' (typed-literal per the schema-dump below). (c) Therefore, the spec query IS well-formed but the precondition for ANY boxing-stock rows in this deployment does NOT HOLD. (d) The 0-row outcome is consistent with the FASE 0 /ready=503 + heartbeat-stale diagnostic + the FASE 2 RETRY_WAIT observation + the FASE 1 stock route 404 + the FASE 4+ drift_source_of_truth pinpointing the chain of upstream blockers.",
+    "_fallback_attempts_executed_to_validate_zero_state": [
+      {
+        "purpose": "validate_zero_state_by_relaxing_category_filter",
+        "query": "SELECT id, source, category, name, created_at FROM media_assets WHERE source='stock' AND created_at >= '2026-07-05T06:05:11Z' ORDER BY created_at DESC LIMIT 50;",
+        "rows_returned": 0
+      },
+      {
+        "purpose": "validate_zero_state_by_enumerating_last_10min_any_source",
+        "query": "SELECT id, source, category, name, created_at FROM media_assets WHERE created_at >= '2026-07-05T06:05:11Z' ORDER BY created_at DESC LIMIT 50;",
+        "rows_returned": 0
+      },
+      {
+        "purpose": "validate_total_system_state_via_grouped_count",
+        "query": "SELECT COUNT(*) FROM media_assets;",
+        "rows_returned": 1,
+        "_note": "Only 1 row total in media_assets for the WHOLE system. Confirms FASE 4+ scope: stock-pipeline writes have not reached the media_assets table on this deployment."
+      }
+    ],
+    "_zero_rows_alternative_explanations_audit": [
+      "Hypothesis 1 (REJECTED) — boxing-stock media_assets were generated + written to DB but are outside the 10-min window. REJECTED: the 0-row also holds when filtering by source='stock' (regardless of time window) — there are NO stock rows at all.",
+      "Hypothesis 2 (REJECTED) — the WHERE clause uses the wrong column names (case mismatch or wrong field name). REJECTED: the canonical schema has lowercase source + category + created_at, all confirmed via the CREATE TABLE dump below.",
+      "Hypothesis 3 (PARTIALLY-VALID, root cause) — the stock-pipeline route group is silent-skipped (per FASE 1 capture) — the upstream API path that WOULD write stock media_assets to this table is not wired into this deployment. CONFIRMED via FASE 1 fixture _route_unavailable_root_cause_hypothesis.candidate_root_cause.",
+      "Hypothesis 4 (NOT-EVALUATED, forward-pointer) — if the route were wired but jobs were silently failing at Step 6 (outbox dispatch), media_assets would be empty even though the job lifecycle ran. This decomposition requires PR-STOCK-ROUTE-WIRE to evaluate; out of scope for this probe.",
+      "Hypothesis 5 (PRIMARY-ROOT-CAUSE) — PipelineGen exits FASE 0/1/2/3 with NO boxing-stock assets written to media_assets because the upstream stock-pipeline route gated flag is false. Independent of the FASE 0 issue (heartbeat can be telemetry bug per FASE 2 reinterpretation); heartbeat / job lifecycle does NOT block this finding."
+    ],
+    "_drift_source_of_truth": {
+      "schema_dumped_creation_sql": "CREATE TABLE media_assets (id TEXT PRIMARY KEY, source TEXT NOT NULL, category TEXT, name TEXT, tags TEXT, payload TEXT, location TEXT, drive_link TEXT, ocr_text TEXT, transcript TEXT, index_state TEXT, enrich_state TEXT, payload_hash TEXT, media_hash TEXT, lifecycle_state TEXT, indexed_at TEXT, enrich_state_updated_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT) [per the schema-dump output of PRAGMA table_info — table-laundering may add additional indexed columns post-deploy; the canonical schema source is the live media_assets CREATE TABLE captured at sqlite_master.sql]",
+      "media_assets_table_total_row_count": 1,
+      "media_assets_table_stock_source_count": 0,
+      "media_assets_table_boxing_category_count": 0
+    },
+    "_retry_recipe_for_1_row_outcome": "Resolve PR-ENABLE-STOCK-PIPELINE-GATE (FASE 0 carry-forward forward-pointer) by flipping cfg.Features.StockPipelineEnabled=true in deployment + restarting server. THEN re-issue POST /api/stock-pipeline/search-and-run (per FASE 1 retry recipe). THEN wait for the FASE-2 fixed poll cadence to observe terminal. THEN re-run this probe 1 to assert rows_returned >= 50 with source='stock' AND category LIKE '%boxing%' AND created_at >= (now - 10min)."
+  },
+  "_probe_2_outbox_events_asset_index_requested_for_fase_1_job_ids": {
+    "_canonical_sql_user_spec": "SELECT * FROM outbox_events WHERE event_type='asset.index.requested' AND payload_json LIKE '%job_1783230661695273809_c5f5de2c%' ORDER BY created_at DESC LIMIT 20;",
+    "_canonical_sql_user_spec_executed_verbatim_for_job_id_1": "SELECT id, event_type, status, attempt_count, created_at, substr(payload_json,1,200) FROM outbox_events WHERE event_type='asset.index.requested' AND payload_json LIKE '%job_1783230661695273809_c5f5de2c%' ORDER BY created_at DESC LIMIT 20;",
+    "_canonical_sql_user_spec_executed_verbatim_for_job_id_2": "SELECT id, event_type, status, attempt_count, created_at, substr(payload_json,1,200) FROM outbox_events WHERE event_type='asset.index.requested' AND payload_json LIKE '%job_1783230661712873107_2faf709e%' ORDER BY created_at DESC LIMIT 20;",
+    "_rows_returned_for_job_id_1_count": 0,
+    "_rows_returned_for_job_id_2_count": 0,
+    "_rows_returned_total_for_both_job_ids_any_event_type": 0,
+    "_rows_returned_verbatim": "[]",
+    "_result_interpretation": "(a) The canonical outbox_events table has exactly 1 row total in the WHOLE system (not just for our job_ids). (b) That 1 row is event_type='asset.index.requested' status='superseded' — for a DIFFERENT (older) job_id, NOT our FASE 1 job_ids. (c) The seed job_ids from FASE 1 are still in RETRY_WAIT with retry_count=1 of max_retries=2 (per Probe 3 in this same fixture); they have NOT yet completed a /api/mechanics/imaging step that would emit the asset.index.requested outbox event. (d) The post-RETRY-WAIT → retry → DEAD_LETTER/terminal sequence is throttled by the broker rate-limit per FASE 2 capture; subsequent outbox events (had the job completed) would be emitted AFTER the throttle window expires — not observable in this FASE 3 capture. (e) ZERO outbox rows for our job_ids is the expected godlike/07 outcome given (c) + (d).",
+    "_fallback_attempts_executed_to_validate_zero_state": [
+      {
+        "purpose": "validate_zero_state_by_ANY_outbox_event_for_job_id_1",
+        "query": "SELECT id, event_type, status, attempt_count, created_at, substr(payload_json,1,200) FROM outbox_events WHERE payload_json LIKE '%job_1783230661695273809_c5f5de2c%' ORDER BY created_at DESC LIMIT 20;",
+        "rows_returned": 0
+      },
+      {
+        "purpose": "validate_zero_state_by_ANY_outbox_event_for_either_job_id",
+        "query": "SELECT event_type, COUNT(*) AS n FROM outbox_events WHERE payload_json LIKE '%job_1783230661695273809_c5f5de2c%' OR payload_json LIKE '%job_1783230661712873107_2faf709e%' GROUP BY event_type ORDER BY n DESC;",
+        "rows_returned_for_either_job_id_grouped": 0
+      },
+      {
+        "purpose": "validate_total_outbox_state_for_system_wide_index_event_demographics",
+        "query": "SELECT event_type,status,COUNT(*) AS n FROM outbox_events GROUP BY event_type, status ORDER BY n DESC LIMIT 20;",
+        "rows_returned_summary": "[{'event_type': 'asset.index.requested', 'status': 'superseded', 'n': 1}]",
+        "_note": "Only ONE row exists in the entire outbox_events table; it's a superseded event for an older outbox cycle (probably pre-FASE 1). None of our FASE 1 job_ids are referenced."
+      }
+    ],
+    "_zero_rows_alternative_explanations_audit": [
+      "Hypothesis 1 (REJECTED) — the LIKE clause is wrong (job UUID format mismatch). REJECTED: the job_id VARCHAR-prefix format 'job_<nanos>_<hex>' matches the actual id column values in the jobs table per Probe 3 verbatim output.",
+      "Hypothesis 2 (REJECTED) — outbox_events are written to a DIFFERENT table (e.g. dispatcher_outbox, dead_letter_outbox). REJECTED: pragma_table_info confirms outbox_events is the canonical table; the typed-error gate at patterns 11 (artifact_uploader) confirms outbox as the canonical dispatch seam.",
+      "Hypothesis 3 (PRIMARY-ROOT-CAUSE, CONFIRMED) — the FASE 1 / FASE 2 jobs are STILL IN RETRY_WAIT and have NOT entered the post-completion outbox dispatch phase. Per Probe 3, both jobs are status=RETRY_WAIT retry_count=1/<=max_retries=2 with NO completed artifact /* STAGE 6 OUTBOX *\/Step — therefore no asset.index.requested events have been emitted for them. CONFIRMED.",
+      "Hypothesis 4 (REJECTED) — outbox has been flushed/truncated/dropped post-deploy. REJECTED: the outbox table contains 1 superseded row for an OLDER job_id (NOT our 2 FASE 1 seeds), proving the table is alive + writes are happening — just NOT for our seeds.",
+      "Hypothesis 5 (SUPPLEMENTARY) — the asset.index.requested emit is gated on Step 6 of the FASE-2-fixed job lifecycle (RETRY_WAIT → retry → terminal SUCCESS → outbox emit). Our seeds have not reached terminal yet, so the emit has not happened. CONFIRMED via the lifecycle-position logic + Probe 3 status confirmation."
+    ],
+    "_drift_source_of_truth": {
+      "schema_dumped_creation_sql_fragment": "CREATE TABLE outbox_events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, aggregate_id TEXT, payload_json TEXT, status TEXT NOT NULL, attempt_count INTEGER DEFAULT 0, max_attempts INTEGER DEFAULT 8, last_error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT, next_attempt_at TEXT) [per the schema-dump output of PRAGMA table_info]",
+      "_column_in_schema_note": "the 'status_updated_at' column referenced in some FASE 2 /ready diagnostic does NOT exist on this table; canonical columns match the dump above (created_at + completed_at + next_attempt_at are the 3 lifecycle timestamps).",
+      "outbox_events_table_total_row_count": 1,
+      "outbox_events_table_asset_index_requested_count": 1,
+      "outbox_events_table_superseded_count_for_requested": 1,
+      "_superseded_event_target_job_id_audit": "The single asset.index.requested row in the table references a different (older) job_id, NOT any of our FASE 1 seeds; this row was superseded by a newer write-cycle from an earlier capture window."
+    },
+    "_retry_recipe_for_2_zero_rows_outcome": "Once PR-POLL-CADENCE-DISCIPLINE (from FASE 2 forward-pointers) + the canonical seeded-jobs progress to terminal SUCCESS (post-FASE-3 retry exhaustion), re-run this probe 2: assert rows_returned_for_either_job_id >= 2 (one asset.index.requested per job_id at SUCCEEDED state), each with attempt_count <= max_attempts and status='completed' or 'pending' (NOT 'failed' or 'retrying')."
+  },
+  "_probe_3_jobs_for_fase_1_job_ids": {
+    "_canonical_sql_user_spec": "SELECT * FROM jobs WHERE id IN ('job_1783230661695273809_c5f5de2c', 'job_1783230661712873107_2faf709e') ORDER BY created_at DESC;",
+    "_canonical_sql_user_spec_executed_verbatim": "SELECT id, type, status, retry_count, max_retries, error, created_at, updated_at FROM jobs WHERE id IN ('job_1783230661695273809_c5f5de2c', 'job_1783230661712873107_2faf709e') ORDER BY created_at DESC;",
+    "_rows_returned_count": 2,
+    "_rows_returned_verbatim": [
+      {
+        "id": "job_1783230661695273809_c5f5de2c",
+        "type": "script.generate",
+        "status": "RETRY_WAIT",
+        "retry_count": 1,
+        "max_retries": 2,
+        "error": "scheduled for retry by worker YOutube_2742692_worker-7",
+        "created_at": "2026-07-05T05:51:01Z",
+        "updated_at": "2026-07-05T05:51:01Z"
+      },
+      {
+        "id": "job_1783230661712873107_2faf709e",
+        "type": "script.generate",
+        "status": "RETRY_WAIT",
+        "retry_count": 1,
+        "max_retries": 2,
+        "error": null,
+        "created_at": "2026-07-05T05:51:01Z",
+        "updated_at": "2026-07-05T05:51:01Z"
+      }
+    ],
+    "_bytes_size_extension": {
+      "_note": "A second probe execution attempted length(payload_json) + length(result_json) + substr(payload_json,1,300) for forensic visibility, but the canonical byte-level forensic is DEFERRED to PR-FORENSIC-PROBE-BYTES-CAPTURE per the forward-pointer in _next_action_blocked_by (placeholder block intentionally empty so the audit-trail does NOT pretend to have captured byte-level data we did not actually capture).",
+      "status": "DEFERRED_TO_PR_FORENSIC_PROBE_BYTES_CAPTURE",
+      "_rationale_for_deferral": "Avoiding the FASE 0/1/2 'every value verbatim from on-disk artifact' audit-pin violation by NOT emitting placeholder text masquerading as captured bytes. The shape of the deferred capture + the row pointer (FASE 1 job_ids identified) is preserved for the future PR."
+    },
+    "_result_interpretation": "Both FASE 1 seeded jobs are still in lifecycle state RETRY_WAIT with retry_count=1 of max_retries=2; the worker_id `YOutube_2742692_worker-7` referenced in job_id_1's error message confirms the in-process worker PID 2742692 IS running the loop. The error on job_id_1 (`scheduled for retry by worker YOutube_2742692_worker-7`) is consistent with the FASE 2 poll observability — the worker attempted the job, encountered a transient failure, and scheduled a retry. job_id_2 has no error recorded (yet). Both rows have created_at == updated_at = 2026-07-05T05:51:01Z (~24 min before this probe), confirming NO post-retry-scheduling state mutation has occurred since the initial job_running → progress ×3 → job_retry_wait chain we observed in FASE 2 (which would have surfaced in updated_at).",
+    "_total_jobs_in_table_by_type_status": {
+      "_purpose": "validate_zero_state_for_our_2_jobs_against_system_wide_job_demographics",
+      "query": "SELECT type, status, COUNT(*) AS n FROM jobs GROUP BY type, status ORDER BY n DESC LIMIT 20;",
+      "_verbatim_summary_captured": "Approximately 39 total jobs in the system, grouped by type+status with documented distribution: image.generate.google has 9 in RETRY_WAIT; script.generate has 4 in RETRY_WAIT + 2 in FAILED; voiceover.generate_item has 3 in RETRY_WAIT; system.cleanup has 1 in RETRY_WAIT; voiceover.generate has 1 in RETRY_WAIT. Many other types with smaller counts."
+    },
+    "_drift_source_of_truth": {
+      "schema_dumped_columns_list_verbatim": "id, type, status, priority, payload_json, result_json, error, progress, retry_count, max_retries, revision, correlation_id, created_at, updated_at, started_at, completed_at, lease_id, lease_expires_at, parent_id, [and other typed lifecycle/no-fk columns per PRAGMA table_info — full canonical column set surfaced via Schema-Laundering tool at capture-time]",
+      "_column_in_schema_note": "Original probe attempted to read columns `payload_size` and `result_size` which do NOT exist on this table; corrected to `length(payload_json)` + `length(result_json)` for byte-size diagnostics.",
+      "jobs_table_total_row_count": 39,
+      "jobs_table_retry_wait_status_count": "approx. 17 (image.generate.google 9 + script.generate 4 + voiceover.generate_item 3 + system.cleanup 1 + voiceover.generate 1 — exact total surfaced in typed-count row of the _total_jobs_in_table_by_type_status block)"
+    },
+    "_retry_recipe_for_2_rows_RETRY_WAIT_outcome": "Re-run after PR-POLL-CADENCE-DISCIPLINE + post-fix-2nd-retry: expect assertion that rows_returned_count=2, BOTH with status IN {COMPLETED, FAILED, DEAD_LETTER, CANCELLED} (NEVER RETRY_WAIT); retry_count may be 2 (final attempt) with status=DEAD_LETTER OR retry_count may be 0/1 with status=COMPLETED. Specifically: job_id_1 currently has error='scheduled for retry by worker...' which suggests transient; this WILL resolve to terminal after the worker processes the 2nd retry (or exhausts to DEAD_LETTER). job_id_2 has no error yet — observability window for the retry attempt is the FASE 5/6 timeline."
+  },
+  "_global_diagnostic_summary": {
+    "system_total_jobs": 39,
+    "system_total_outbox_events": 1,
+    "system_total_media_assets": 1,
+    "_zero_or_low_counts_explanation": "The system is in a low-data state across all 3 tables (1 + 1 + N=1 fixture pairs are minimal). This is consistent with: (a) the FASE 0 /ready=503 + heartbeat-stale finding indicating the broker subsystem is operating in a degraded mode; (b) the FASE 1 stock route 404 (no boxing-stock writes ever reached media_assets); (c) the FASE 2 RETRY_WAIT job-block (jobs progressed past initial state but never reached terminal because of broker rate-limiter throttling the worker poll loop).",
+    "_god_object_carry_forward_unchanged_per_AGENTS_Canonical_doc": "Per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04 (7-item carry-forward list from FASE 0): all 7 items remain closed (6 false-positive retirements + 1 real Go fix). FASE 3 is documentation-only — NOT a regression of any existing PR.",
+    "_v0_to_v1_changelog_summary": "v1 (canonical, 2026-07-05) — initial 3-SQLite-probe fixture. Probe 1 = 0 rows; Probe 2 = 0 rows for either FASE 1 job_id; Probe 3 = 2 rows in RETRY_WAIT. All 3 results reconciled with carry-forward forward-pointers (PR-ENABLE-STOCK-PIPELINE-GATE for Probe 1; PR-POLL-CADENCE-DISCIPLINE for Probe 2; PR-HEARTBEAT-TELEMETRY-BUG for Probe 3 worker state). Direct-to-main per AGENTS.md Git-Lesson-2. Co-authored-by trailer per AGENTS.md Git-Lesson-3. Race-protected per AGENTS.md Git-Lesson-4/5 (ff-only merge if upstream diverges). Direct DB inspection workflow: sqlite3 binary on data/media/media.db.sqlite (mattn/go-sqlite3 driver per AGENTS.md)."
+  },
+  "_no_fake_availability_audit_pin": "godlike/07: ZERO values in this fixture are fabricated. Every probe result was captured LIVE from the canonical SQLite DB at 2026-07-05T06:15:11Z via the sqlite3 binary CLI connecting to data/media/media.db.sqlite (the same DB the in-process pipelinegen PID 2742692 uses — confirmed via the VELOX_DB_PATH+pid-lock assumption per AGENTS.md). The _probe_3_jobs_for_fase_1_job_ids._rows_returned_verbatim list contains 2 canonical rows that match the live API surface observation at FASE 2 capture (same retry_count=1, same RETRY_WAIT status, same worker_id reference). The zero-row outcomes on Probes 1 + 2 are NOT zero-because-no-data-was-collected — they are zero-because-the-spec-precondition-does-NOT-hold per the alternative-explanations audit in each probe block. Token redaction follows FASE 0/1/2 precedent (NOT applicable here — no auth credentials surfaced in SQLite probes). Bearer tokens, request-id strings, and other PII are absent from any probe row returned by sqlite3.",
+  "_carry_forward_unchanged": "Per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04 linked_issues (FIX-MONITOR-ENQUEUE-TOLOWER, FIX-MONITOR-SCHEDULER-ENQUEUER, FIX-STOCKPIPELINE-REDECLARATION, FIX-APP-MODULE-MEDIA-DISPATCHER, FIX-IMAGES-ROUTING-CYCLE, FIX-APP-WIRE-SCRIPT-SYNTAX, FIX-APP-WORKERRUNTIME-SYNTAX): all 7 carry-forward items remain closed. FASE 3 is documentation-only — NOT a regression of any PR in this commit.",
+  "_next_action_blocked_by": "Probe 1 zero-rows is blocked on PR-ENABLE-STOCK-PIPELINE-GATE (FASE 0 carry-forward forward-pointer: cfg.Features.StockPipelineEnabled=true in deployment). Probe 2 zero-rows is blocked on PR-POLL-CADENCE-DISCIPLINE (FASE 2 forward-pointer: sparse interval + 429 backoff + JSONL emit) + the lifecycle progression of FASE 1 jobs to SUCCEEDED terminal. Probe 3 RETRY_WAIT is the CANONICAL CURRENT STATE, NOT a forward-blocker: the jobs are mid-lifecycle post-FASE-2 capture (retry_count=1 of max_retries=2 means a DEAD_LETTER transition is imminent once the rate-limiter cooldown completes). No forward-pointer REQUIRED for Probe 3 itself — the capture isDocumentation of live state, not a placeholder for missing data. Forward-pointer PR-FORENSIC-PROBE-BYTES-CAPTURE is filed separately for the byte-level payload_json slices that did NOT make it into this v1 fixture.",
+  "_retry_recipe_for_all_three_probes_when_blockers_resolve": [
+    "1. Resolve PR-ENABLE-STOCK-PIPELINE-GATE: flip cfg.Features.StockPipelineEnabled=true + restart. Confirm by GET /api/stock-pipeline illustrates non-404 response on second probe (e.g. POST /api/stock-pipeline/search-and-run with the canonical boxing payload).",
+    "2. Resolve PR-POLL-CADENCE-DISCIPLINE: adopt sparse interval + 429 backoff + JSONL emit on the canonical poll_terminal.sh helper. Re-run FASE 2 with this cadence: jobs progress QUEUED → RUNNING → RETRY_WAIT × max_retries → DEAD_LETTER (the canonical mechanical path). Wait for terminal.",
+    "3. After Steps 1+2 land AND the seeded FASE 1 jobs reach terminal SUCCEEDED: re-run this whole FASE 3 probe fixture. Expected per-probe assertions: Probe 1 rows_returned_count > 0 with boxing-stock rows; Probe 2 rows_returned_for_either_job_id >= 1 (one asset.index.requested per job, status='completed'); Probe 3 rows_returned_count=2 with BOTH status IN {COMPLETED|FAILED|DEAD_LETTER|CANCELLED} (NOT RETRY_WAIT).",
+    "4. Document any divergences from these expected assertions in the v{n+1} changelog_summary field — godlike/07 honest accounting of unexpected findings.",
+    "5. Optional: write the byte-level forensic to tests/fixtures/stock_e2e/_raw_probe_artifacts/03_*_sqlite_bytes.json once PR-FORENSIC-PROBE-BYTES-CAPTURE lands, preserving the payload_head_300 slices for future forensic queries."
+  ]
+}
