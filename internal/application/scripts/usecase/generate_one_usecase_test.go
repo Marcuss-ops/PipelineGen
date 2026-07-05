@@ -368,3 +368,310 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnValidateFailure(t *testin
 	assert.Equal(t, "validate", fields["phase"],
 		"SCRIPT-T03-USECASE: log must include the phase 'validate'")
 }
+
+// ── PR-ERROR-SURFACING commit-5 (2026-07-04): umbrella coverage ──
+
+// errVoResolver is a VoiceoverGroupResolver stub that returns a fixed
+// error — used to force Phase 4 voiceover_resolve onto the
+// error path. Implements scriptports.VoiceoverGroupResolver per the
+// canonical port signature (1-method interface: ResolveGroup with
+// (ctx, parentID, name) → (folderID, err)).
+type errVoResolver struct{ inner error }
+
+func (r errVoResolver) ResolveGroup(
+	_ context.Context, _ string, _ string,
+) (string, error) {
+	return "", r.inner
+}
+
+// errPostProcessor is a postprocessor stub whose Process returns a
+// fixed error — used to force Phase 6 postprocess onto the error path.
+// Mirrors stubPostProcessor shape but ignores sleepMs and always errors.
+type errPostProcessor struct {
+	name string
+	err  error
+}
+
+func (s *errPostProcessor) Name() adapters.ProcessorName { return adapters.ProcessorName(s.name) }
+
+func (s *errPostProcessor) Policy(*scriptpkg.ResolvedGenerationPlan) adapters.ProcessorPolicy {
+	return adapters.ProcessorRequired
+}
+
+func (s *errPostProcessor) Process(
+	_ context.Context,
+	_ *scriptpkg.ResolvedGenerationPlan,
+	_ adapters.ProcessInput,
+) (*adapters.PostProcessResult, error) {
+	return nil, s.err
+}
+
+// TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths pins
+// PR-ERROR-SURFACING commit-5 (2026-07-04): every Execute phase
+// failure path's error chain MUST contain scriptpkg.ErrScriptGenerationFailed
+// as the umbrella sentinel reachable via errors.Is. Three sub-tests
+// drive each of the 3 newly-rewrapped paths to error and assert the
+// umbrella match survives the typed-struct wrap.
+//
+// Pre-commit-5: errors.Is(err, ErrScriptGenerationFailed) was FALSE
+// for paths (A) voiceover_resolve (bare resolveVOErr escape), (B)
+// engine (typed *GenerationError whose Unwrap is ErrGenerationFailed
+// not ErrScriptGenerationFailed), (C) postprocess (same pattern).
+//
+// Post-commit-5: each path's error chain gains ErrScriptGenerationFailed
+// as a top-level wrap via logPhaseError's `fmt.Errorf("%w: %w: %w",
+// ErrScriptGenerationFailed, phaseSentinel, err)` — Go 1.20+ multi-%w
+// chain. errors.Is(err, ErrScriptGenerationFailed) returns true
+// everywhere; errors.Is(err, phaseSentinel) still true; errors.As on
+// the typed struct still true.
+func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
+	t.Parallel()
+
+	// ── Sub-test A: Phase 4 voiceover_resolve ──
+	t.Run("voiceover_resolve", func(t *testing.T) {
+		t.Parallel()
+		core, recorded := observer.New(zap.WarnLevel)
+		log := zap.New(core)
+
+		gen := &fakeOllamaGen{}
+		e := buildTestEngine(gen, nil)
+		ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
+		ppReg.Freeze()
+
+		uc := NewGenerateOneUseCase(
+			adapters.NormalizationConfig{},
+			nil, e, ppReg, log,
+		)
+		// Wire a voGroupResolver that errors. Set VoiceoverGroup
+		// on the item so ResolveVoiceoverFolderForItem does NOT
+		// short-circuit on empty group (it short-circuits when
+		// item.Output.VoiceoverGroup == "").
+		uc.SetVoiceoverRouting(
+			errVoResolver{inner: errors.New("forced vo resolve error")},
+			"parent-id",
+		)
+
+		item := scriptpkg.GenerationItemV2{
+			ID:    "umbrella-vo-item",
+			Title: "Umbrella VO",
+			Source: scriptpkg.SourceSpec{
+				Type:       scriptpkg.SourceText,
+				Topic:      "umbrella vo test",
+				SourceText: "text body long enough for validator — please.",
+			},
+			Output: scriptpkg.OutputSpec{
+				VoiceoverGroup: "vo-fail-group", // non-empty → forces routing call
+			},
+		}
+
+		_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+		require.Error(t, err, "voiceover_resolve error path must return error")
+		// NEW (post-commit-5): umbrella sentinel reachable.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrScriptGenerationFailed),
+			"PR-ERROR-SURFACING commit-5: errors.Is(err, ErrScriptGenerationFailed) must be true for voiceover_resolve path, got err=%v", err)
+		// Existing phase sentinel still matches (resolution-flavor sentinel).
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrSourceResolutionFailed),
+			"errors.Is(err, ErrSourceResolutionFailed) must remain true for voiceover_resolve path")
+		// Inner error preserved.
+		require.ErrorContains(t, err, "forced vo resolve error",
+			"inner resolver error must be in the chain")
+		// Diagnostic log emitted by logPhaseError.
+		require.Equal(t, 1, recorded.Len(),
+			"exactly 1 Warn log entry must be emitted by logPhaseError")
+		fields := recorded.All()[0].ContextMap()
+		assert.Equal(t, "voiceover_resolve", fields["phase"])
+		assert.Equal(t, "umbrella-vo-item", fields["item_id"])
+	})
+
+	// ── Sub-test B: Phase 5 engine ──
+	// Drives engineErr via the canonical fakeOllamaGen's existing
+	// `returnErr error` field (engine_test.go pumps it through
+	// GenerateScript → engine.Generate surfaces it). This avoids
+	// inventing helpers (PR-ERROR-SURFACING design discipline):
+	// reuse the in-package fake rather than shadowing it.
+	t.Run("engine", func(t *testing.T) {
+		t.Parallel()
+		core, recorded := observer.New(zap.WarnLevel)
+		log := zap.New(core)
+
+		gen := &fakeOllamaGen{returnErr: errors.New("forced engine error")}
+		e := buildTestEngine(gen, nil)
+
+		ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
+		ppReg.Freeze()
+
+		uc := NewGenerateOneUseCase(
+			adapters.NormalizationConfig{},
+			nil, e, ppReg, log,
+		)
+
+		item := scriptpkg.GenerationItemV2{
+			ID:    "umbrella-engine-item",
+			Title: "Umbrella Engine",
+			Source: scriptpkg.SourceSpec{
+				Type:       scriptpkg.SourceText,
+				Topic:      "umbrella engine test",
+				SourceText: "text body long enough for validator — please.",
+			},
+		}
+
+		_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+		require.Error(t, err, "engine error path must return error")
+		// NEW (post-commit-5): umbrella sentinel reachable.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrScriptGenerationFailed),
+			"PR-ERROR-SURFACING commit-5: errors.Is(err, ErrScriptGenerationFailed) must be true for engine path, got err=%v", err)
+		// Existing phase sentinel still matches.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrGenerationFailed),
+			"errors.Is(err, ErrGenerationFailed) must remain true for engine path")
+		// Typed struct still recoverable (canonical V1 contract).
+		var genErr *scriptpkg.GenerationError
+		require.True(t,
+			errors.As(err, &genErr),
+			"errors.As(err, &GenerationError{}) must remain true for engine path")
+		require.Equal(t, "umbrella-engine-item", genErr.ItemID)
+		require.Equal(t, "engine", genErr.Phase)
+		// Inner error preserved.
+		require.ErrorContains(t, err, "forced engine error",
+			"inner engine error must be in the chain")
+		// Diagnostic log emitted by logPhaseError.
+		require.Equal(t, 1, recorded.Len())
+		fields := recorded.All()[0].ContextMap()
+		assert.Equal(t, "engine", fields["phase"])
+		assert.Equal(t, "umbrella-engine-item", fields["item_id"])
+	})
+
+	// ── Sub-test C: Phase 6 postprocess ──
+	t.Run("postprocess", func(t *testing.T) {
+		t.Parallel()
+		core, recorded := observer.New(zap.WarnLevel)
+		log := zap.New(core)
+
+		gen := &fakeOllamaGen{}
+		e := buildTestEngine(gen, nil)
+
+		// Register a Required-class postprocessor that errors.
+		ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
+		ppErrProc := &errPostProcessor{
+			name: "entities",
+			err:  errors.New("forced postprocess error"),
+		}
+		require.True(t, ppReg.Register(ppErrProc))
+		ppReg.Freeze()
+
+		uc := NewGenerateOneUseCase(
+			adapters.NormalizationConfig{},
+			nil, e, ppReg, log,
+		)
+
+		item := scriptpkg.GenerationItemV2{
+			ID:    "umbrella-pp-item",
+			Title: "Umbrella PP",
+			Source: scriptpkg.SourceSpec{
+				Type:       scriptpkg.SourceText,
+				Topic:      "umbrella pp test",
+				SourceText: "text body long enough for validator — please.",
+			},
+			Output: scriptpkg.OutputSpec{
+				ExtractEntities: true, // forces "entities" into plan.Postprocessors
+			},
+		}
+
+		_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+		require.Error(t, err, "postprocess error path must return error")
+		// NEW (post-commit-5): umbrella sentinel reachable.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrScriptGenerationFailed),
+			"PR-ERROR-SURFACING commit-5: errors.Is(err, ErrScriptGenerationFailed) must be true for postprocess path, got err=%v", err)
+		// Existing phase sentinel still matches.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrPostprocessFailed),
+			"errors.Is(err, ErrPostprocessFailed) must remain true for postprocess path")
+		// Typed struct still recoverable (canonical V1 contract).
+		var ppErrStruct *scriptpkg.PostprocessError
+		require.True(t,
+			errors.As(err, &ppErrStruct),
+			"errors.As(err, &PostprocessError{}) must remain true for postprocess path")
+		require.Equal(t, "umbrella-pp-item", ppErrStruct.ItemID)
+		require.Equal(t, "registry", ppErrStruct.Processor)
+		// Inner error preserved.
+		require.ErrorContains(t, err, "forced postprocess error",
+			"inner postprocess error must be in the chain")
+		// Diagnostic log emitted by logPhaseError.
+		require.Equal(t, 1, recorded.Len())
+		fields := recorded.All()[0].ContextMap()
+		assert.Equal(t, "postprocess", fields["phase"])
+		assert.Equal(t, "umbrella-pp-item", fields["item_id"])
+	})
+
+	// ── Sub-test D: pre-construction uc=nil path ──
+	// PR-ERROR-SURFACING commit-5: route uc=nil through
+	// generateOnePreConstructError so the umbrella sentinel
+	// ErrScriptGenerationFailed is reachable. Pre-commit-5, the
+	// chain only had ErrGenerationFailed → tests could NOT match
+	// ErrScriptGenerationFailed.
+	t.Run("uc_nil", func(t *testing.T) {
+		t.Parallel()
+		// Typed-nil pointer — Go method dispatch sees the nil receiver
+		// and the FIRST line of Execute (`if uc == nil`) returns before
+		// any dereference. No panic.
+		var nilUC *GenerateOneUseCase
+		require.NotNil(t, nilUC) // typed-nil IS a non-nil pointer, but logically nil
+		item := scriptpkg.GenerationItemV2{ID: "umbrella-ucnil-item"}
+		_, err := nilUC.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+		require.Error(t, err, "uc=nil path must return error")
+		// NEW (post-commit-5): umbrella sentinel reachable.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrScriptGenerationFailed),
+			"PR-ERROR-SURFACING commit-5: errors.Is(err, ErrScriptGenerationFailed) must be true for uc=nil path, got err=%v", err)
+		// Pre-existing phase sentinel still matches.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrGenerationFailed),
+			"errors.Is(err, ErrGenerationFailed) must remain true for uc=nil path (pre-commit-5 contract)")
+		// Inner error preserved.
+		require.ErrorContains(t, err, "use case not constructed",
+			"inner 'use case not constructed' must be in the chain")
+	})
+
+	// ── Sub-test E: pre-construction engine=nil path ──
+	// PR-ERROR-SURFACING commit-5: route engine=nil through
+	// preConstructError (method on non-nil uc) so the umbrella
+	// sentinel is reachable. Also preserves the existing
+	// `recorded.Len() == 1 + reason="engine_nil"` contract from
+	// TestGenerateOneUseCase_LogsAndReturnsTypedError_OnEngineNil.
+	t.Run("engine_nil", func(t *testing.T) {
+		t.Parallel()
+		core, recorded := observer.New(zap.WarnLevel)
+		log := zap.New(core)
+
+		uc := NewGenerateOneUseCase(
+			adapters.NormalizationConfig{},
+			nil, // SourceRegistry nil
+			nil, // Engine nil → triggers ErrGenerationFailed (typed sentinel)
+			nil, // ppReg nil
+			log,
+		)
+
+		item := scriptpkg.GenerationItemV2{ID: "umbrella-engnil-item"}
+		_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+		require.Error(t, err, "engine=nil path must return error")
+		// NEW (post-commit-5): umbrella sentinel reachable.
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrScriptGenerationFailed),
+			"PR-ERROR-SURFACING commit-5: errors.Is(err, ErrScriptGenerationFailed) must be true for engine=nil path, got err=%v", err)
+		// Pre-existing phase sentinel still matches (no regression).
+		require.True(t,
+			errors.Is(err, scriptpkg.ErrGenerationFailed),
+			"errors.Is(err, ErrGenerationFailed) must remain true for engine=nil path (pre-commit-5 contract)")
+		// Pre-existing log-shape contract preserved (one Warn entry with
+		// message="generate-one: construction failed", reason="engine_nil").
+		require.Equal(t, 1, recorded.Len())
+		entry := recorded.All()[0]
+		assert.Equal(t, "generate-one: construction failed", entry.Message)
+		fields := entry.ContextMap()
+		assert.Equal(t, "engine_nil", fields["reason"])
+	})
+}
