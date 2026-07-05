@@ -3692,7 +3692,9 @@
   linked_issues:
   - id: PR-VO-TTS-PERSISTENT-WORKER
     owner_capability: internal/infrastructure/audio
-    status: pending
+    status: shipped
+    ship_sha: <TBD>
+    ship_date: 2026-07-05
     deadline: 2026-08-15
   - id: PR-VO-STAGES-SPLIT
     owner_capability: internal/application/voiceover
