@@ -128,7 +128,7 @@ func TestValidateStockSymmetricGate_PinErrorMessages(t *testing.T) {
 			t.Fatalf("want ErrStockProductionJobFinalizerMissing, got %v", err)
 		}
 		// canonical SSOT string from upload_orchestration.go:232
-		const wantMsg = "stock: production gate — JobFinalizer nil while ArtifactPreparation wired"
+		const wantMsg = "stock: production gate — JobFinalizer nil while ArtifactPreparation wired (call WithJobFinalizer before RunResilient)"
 		if got := err.Error(); got != wantMsg {
 			t.Fatalf("message drift: want %q, got %q", wantMsg, got)
 		}
@@ -140,7 +140,7 @@ func TestValidateStockSymmetricGate_PinErrorMessages(t *testing.T) {
 			t.Fatalf("want ErrStockProductionArtifactPrepMissing, got %v", err)
 		}
 		// canonical SSOT string from upload_orchestration.go:222 (swapped-pair direction)
-		const wantMsg = "stock: production gate — ArtifactPreparation nil while JobFinalizer wired"
+		const wantMsg = "stock: production gate — ArtifactPreparation nil while JobFinalizer wired (call WithAssetPreparation before RunResilient)"
 		if got := err.Error(); got != wantMsg {
 			t.Fatalf("message drift: want %q, got %q", wantMsg, got)
 		}
