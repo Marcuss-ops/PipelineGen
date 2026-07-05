@@ -300,13 +300,21 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 	// (godlike/06 SSOT — one canonical column per fact). When the
 	// result JSON has no parent_state key, the typed column stays
 	// empty (the DEFAULT '' from the migration preserves back-compat).
+	//
+	// godlike/07 fail-closed (no-fake-availability): if the JSON is
+	// non-empty AND cannot be parsed, the write aborts with the
+	// typed ErrInvalidResultJSON sentinel (silent-swallow would
+	// let a corrupt split-brain state land on disk). The
+	// deferred tx.Rollback ensures atomicity: the typed column is
+	// NOT populated in the malformed-JSON path.
 	var parentStateTyped string
 	if len(result) > 0 {
 		var resultMap map[string]any
-		if err := json.Unmarshal(result, &resultMap); err == nil {
-			if ps, ok := resultMap["parent_state"].(string); ok {
-				parentStateTyped = ps
-			}
+		if err := json.Unmarshal(result, &resultMap); err != nil {
+			return fmt.Errorf("terminalFlip: %w: %v", ErrInvalidResultJSON, err)
+		}
+		if ps, ok := resultMap["parent_state"].(string); ok {
+			parentStateTyped = ps
 		}
 	}
 

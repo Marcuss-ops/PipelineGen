@@ -15,6 +15,17 @@ var (
 	ErrAlreadyClaimed = errors.New("job already claimed by another worker")
 	ErrJobNotFound    = errors.New("job not found")
 	ErrInvalidState   = errors.New("invalid state transition")
+	// ErrInvalidResultJSON is returned by FinalizeAggregateParent when
+	// the caller-supplied result JSON cannot be parsed to extract the
+	// `parent_state` key for the typed-column dual-write (P1.2,
+	// architecture/current.yaml#PR-VO-PARENT-STATE-COLUMN). Per
+	// godlike/07 no-fake-availability the write fails-closed: a
+	// silent-swallow would let a corrupt split-brain state land on
+	// disk (the JSON key says one thing, the typed column says
+	// another). The caller errors.Is the typed sentinel for
+	// diagnostic intake; the typed column is NOT populated in this
+	// path (the deferred tx.Rollback preserves atomicity).
+	ErrInvalidResultJSON = errors.New("finalize aggregate parent: result JSON malformed (cannot extract parent_state for typed-column dual-write)")
 	// ErrTransitionConflict and ErrLeaseLost live in store.go (Wave 17.1.2
 	// canonical home) — they are package-scope vars any file in
 	// `jobs` can reference without re-declaring or aliasing.
