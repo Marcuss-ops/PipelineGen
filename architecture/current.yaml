@@ -6,7 +6,9 @@
 # umbrella + CHANGELOG.md ## Unreleased forward-pointer entry + AGENTS.md
 # §Recent cross-cutting closures mirror.
 - id: PR-HEARTBEAT-TELEMETRY-BUG
-  status: pending
+  status: shipped
+  ship_sha: 489c64aa
+  ship_date: 2026-07-05
   ship_via: FORWARD_POINTER_FOR_CLEAN_COMMIT_ATTRIBUTION
   owner_capability: internal/application/jobs/heartbeat_telemetry (heartbeat_writer.go + heartbeat_tracker.go + heartbeat_writer_test.go)
   exit_signal: false
@@ -177,6 +179,18 @@
       project-wide exit 0; go vet exit 0; gofmt -d clean on both modified files..""
 
       '
+  - id: PR-ERROR-SURFACING-ENQUEUE-CAST
+    owner_capability: internal/application/jobs
+    status: shipped
+    ship_sha: d6767631
+    ship_date: 2026-07-04
+    deadline: 2026-07-15
+  - id: PR-ERROR-SURFACING-ERRMISSINGDEPS-REINTRO
+    owner_capability: internal/application/jobs
+    status: shipped
+    ship_sha: d6767631
+    ship_date: 2026-07-04
+    deadline: 2026-07-15
   meta_closure_2026_07_04:
     status: shipped
     ship_date: 2026-07-04
