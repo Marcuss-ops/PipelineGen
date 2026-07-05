@@ -5898,3 +5898,28 @@
       are now out of sync with the production probe (which
       uses ExtendedCode per commit-9). godlike/06 SSOT
       consistency.
+      consistency.
+- id: FIX-ENQUEUE-SERVICE-SQLITE3-IMPORT
+  owner_capability: internal/application/jobs
+  status: pending
+  deadline: 2026-08-15
+  description: |
+    7th pre-existing build issue (sibling to PRE-EXISTING-BUILD-ISSUES-2026-07-04).
+    internal/application/jobs/enqueue_service.go imports github.com/mattn/go-sqlite3
+    (a CGO package) for the typed UNIQUE-constraint probe introduced by
+    faa2a55a (PR-jobs-retry-contract) and canonicalized by
+    PR-JOBS-SQLITE3-PROBE-FIX (shipped 2026-07-05, ship_sha: b258b82e).
+
+    On hosts without CGO_ENABLED (e.g., the Windows agent host with no gcc),
+    the package fails to compile with undefined: sqlite3.Error and
+    undefined: sqlite3.ErrConstraintUnique. The probe is correct in CI
+    (CGO_ENABLED=1); the issue is the local verification gap on
+    CGO-disabled hosts.
+
+    Forward-pointer: a future PR will either (a) move the typed probe
+    to a separate file with a //go:build cgo build tag, (b) add a
+    CGO_ENABLED guard at the top of enqueue_service.go, or (c) refactor
+    the probe to use runtime type checking instead of direct sqlite3
+    type assertions. The fix must preserve the canonical
+    ExtendedCode==ErrConstraintUnique probe semantics + the typed-error
+    contract on ErrUniqueConstraintViolation (godlike/07 NO-FAKE-AVAILABILITY).
