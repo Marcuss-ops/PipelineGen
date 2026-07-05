@@ -5980,8 +5980,11 @@
       status: pending
       deadline: 2026-07-15
     - id: STK-E2E-B
-      owner_capability: tests/operational/stock_e2e_search_and_run_loop_smoke.sh
-      status: pending
+      owner_capability: tests/operational/stock_e2e_search_and_run_smoke.sh
+      status: shipped
+      ship_sha: PENDING_BOOKKEEPING_COMMIT_FOLLOWUP
+      ship_date: 2026-07-05
+      ship_via: 2_COMMIT_SPLIT_PER_CODEBASE_PATTERN_PR_VO_TYPED_PRIMITIVES
       deadline: 2026-07-15
     - id: STK-E2E-C
       owner_capability: tests/operational/stock_e2e_direct_url_smoke.sh
