@@ -221,6 +221,28 @@ type aggregateFlipper interface {
 	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
 }
 
+// parentStateTypedColumn is the SQL-side canonical constant for the
+// `parent_state_typed` column added by migration 129 (P1.2 typed-state
+// column migration, EXPAND→BACKFILL→CUTOVER sequence per
+// architecture/current.yaml#PR-VO-PARENT-STATE-COLUMN).
+//
+// godlike/06 SSOT (one-canonical-owner-per-fact): the SQL layer
+// (infrastructure/database/sqlite/jobs) cannot import the voiceover
+// application package due to canonical layering (application →
+// infrastructure is the only legal direction). So this package-private
+// constant is the SQL-side mirror of
+// voiceover.JobParentStateColumn (the cross-package canonical owner).
+// Any drift between the two is a build-failure on the application-layer
+// constant declaration (per the godlike/07 typed-error contract).
+//
+// godlike/07 minimum-blast-radius: this constant is package-private
+// (lowercase) — the application-layer canonical surface remains the
+// single source of truth for cross-package consumers (e.g.,
+// `internal/application/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn`).
+// A future cross-package audit may promote this to a shared
+// `internal/domain/job/parent_state_column.go` if the layering evolves.
+const parentStateTypedColumn = "parent_state_typed"
+
 // ── FinalizeAggregateParent (post-fan-out parent state finalisation, no-lease CAS) ───
 //
 // AUDIT 2026-07-03 P0 #1 closure. The parent voiceover.generate handler
@@ -303,11 +325,15 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 	//
 	// PR-P1.2-SQL-DUAL-WRITE (July 2026): parent_state_typed column
 	// is written atomically with result_json in the same UPDATE.
+	// godlike/06 SSOT: the column name comes from the package-private
+	// parentStateTypedColumn constant (the SQL-side mirror of
+	// voiceover.JobParentStateColumn) — the literal is NEVER repeated
+	// elsewhere in this package.
 	query := `UPDATE jobs SET status = ?,
 		completed_at = COALESCE(completed_at, ?),
 		error = CASE WHEN ? = '' THEN error ELSE ? END,
 		result_json = ?,
-		parent_state_typed = ?,
+		` + parentStateTypedColumn + ` = ?,
 		progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		revision = revision + 1, updated_at = ?
 	WHERE id = ?
