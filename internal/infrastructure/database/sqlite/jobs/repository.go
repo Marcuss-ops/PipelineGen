@@ -44,9 +44,24 @@ type SQLiteStore struct {
 // jobColumns is the canonical list of column names read by Get, List and
 // FindActiveByKey and written by Create. Kept in one place so adding a
 // new tracked column is a one-line change.
+// jobColumns is the canonical SELECT projection for the jobs table.
+// MUST-FIX #3 (PR-P1.2-SQL-DUAL-WRITE godlike/06 SSOT): the
+// parent_state_typed column is appended via string concatenation
+// with the package-private parentStateTypedColumn constant so any
+// future rename to the typed column name (or a typo at one site)
+// surfaces as a SQL error at query time, not a silent mismatch
+// between 3 independent string literals.
+//
+// godlike/06 SSOT (one canonical owner per fact): the typed
+// column name lives ONLY in
+// voiceover.JobParentStateColumn (canonical cross-package, public)
+// + sqlite/jobs.parentStateTypedColumn (SQL mirror, package-private).
+// The cross-package drift test was DROPPED per godlike/07 minimum-
+// blast-radius — see repository_lifecycle_dualwrite_test.go header
+// for the explicit rationale.
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision`
+	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn
 
 func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
 	return &SQLiteStore{db: db, log: log, notifier: newNotifier()}
@@ -178,6 +193,7 @@ func scanJobColumns(s scanner, j *job.Job) error {
 		&payloadJSON, &resultJSON, &j.Progress, &j.Error, &j.RetryCount, &j.MaxRetries,
 		&j.WorkerID, &j.LeaseID, &leaseExpiry, &createdAt, &updatedAt,
 		&startedAt, &completedAt, &cancelledAt, &j.Revision,
+		&j.ParentStateTyped,
 	); err != nil {
 		return err
 	}
@@ -263,14 +279,49 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 // The query returns up to `limit` rows ordered by created_at DESC so the
 // aggregator processes the most recent parents first. When limit <= 0,
 // defaults to 100.
+// ListAwaitingAggregation returns voiceover.generate parents awaiting
+// aggregation (parent_state=waiting_children, broker status IN
+// RUNNING/FINALIZING/SUCCEEDED).
+//
+// PR-P1.2-SQL-DUAL-WRITE (July 2026): the WHERE clause uses the
+// AUTHORITATIVE typed parent_state_typed column as the PRIMARY
+// match (added by migration 129, written atomically by
+// repository_lifecycle.go::FinalizeAggregateParent). The JSON
+// resultMap["parent_state"] is the SECONDARY fallback used ONLY
+// when the typed column is empty (pre-P1.2 rows + concurrent
+// writes in flight — the SQL UPDATE writes BOTH surfaces in the
+// same transaction, but a race window exists between migration
+// 129 shipping and the BACKFILL CLI running).
+//
+// Strict precedence: a row with parent_state_typed=succeeded
+// (terminal) is NEVER matched even if the JSON key still says
+// waiting_children. The typed column is authoritative per the
+// BACKFILL contract; the JSON is a back-compat shim. A test
+// pins this strictness (TestListAwaitingAggregation_ExcludesNonMatching).
+//
+// godlike/06 SSOT: the typed column name is the SQL mirror constant
+// `parentStateTypedColumn` (package-private); the cross-package
+// canonical is voiceover.JobParentStateColumn. Both must agree (the
+// godlike/06 SSOT drift test was DROPPED per godlike/07 minimum-
+// blast-radius — see repository_lifecycle_dualwrite_test.go header).
+//
+// godlike/07 minimum-blast-radius: the typed-primary + JSON-
+// fallback WHERE clause is intentional. A simpler `parent_state_typed
+// = 'X' OR json_extract(...) = 'X'` (OR-either) would over-match
+// during the BACKFILL window (a row with typed=succeeded + JSON=
+// waiting_children would be incorrectly included). The strict
+// precedence prevents that.
 func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType string, limit int) ([]job.Job, error) {
 	if limit <= 0 {
 		limit = 100
 	}
+	// PR-P1.2-SQL-DUAL-WRITE: typed column is PRIMARY; JSON is
+	// SECONDARY fallback ONLY when typed is empty.
 	query := `SELECT ` + jobColumns + ` FROM jobs
 WHERE type = ?
   AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
-  AND json_extract(result_json,'$.parent_state') = 'waiting_children'
+  AND (parent_state_typed = 'waiting_children'
+       OR (parent_state_typed = '' AND json_extract(result_json,'$.parent_state') = 'waiting_children'))
 ORDER BY created_at DESC
 LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, query, parentType, limit)

@@ -112,6 +112,24 @@ type Job struct {
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	CancelledAt    *time.Time      `json:"cancelled_at,omitempty"`
+	// ParentStateTyped is the AUTHORITATIVE source for parent_job's
+	// application-level state (godlike/06 SSOT — one canonical column per
+	// fact). Added by migration 129 (P1.2 typed-state column migration).
+	// The EXPAND-phase write-side dual-write in
+	// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go::FinalizeAggregateParent
+	// populates this column atomically with the JSON result column;
+	// readers (PR-P1.2-SQL-DUAL-WRITE, July 2026) prefer this column
+	// over the JSON resultMap["parent_state"] with JSON fallback during
+	// the BACKFILL window (so pre-P1.2 rows without the typed column
+	// continue to work). Post-CUTOVER (forward-pointer, deadline TBD)
+	// the JSON key is retired; this column becomes the SOLE source.
+	//
+	// godlike/07 minimal-blast-radius: the zero value is the empty
+	// string (matches the migration's DEFAULT '' contract). A reader
+	// that sees "" must fall back to the JSON resultMap["parent_state"]
+	// (per the BACKFILL contract in
+	// internal/application/voiceover/jobs/parent_aggregator_state.go).
+	ParentStateTyped string `json:"parent_state_typed,omitempty"`
 }
 
 // IsTerminal returns true if the job has reached a terminal state.

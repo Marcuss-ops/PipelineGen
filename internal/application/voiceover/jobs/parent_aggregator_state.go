@@ -43,40 +43,50 @@ const JobParentStateColumn = "parent_state_typed"
 
 // P1.2 dual-write contract (canonical):
 //
-// During the EXPAND phase (this PR + the SQL layer follow-up):
+// EXPAND phase (shipped 2026-07-04 via commit 21197634 /
+// PR-VO-PARENT-STATE-COLUMN + 2026-07-05 via commit __PENDING__ /
+// PR-P1.2-SQL-DUAL-WRITE):
 //  1. Writers (parent_aggregator.go::finalizeParent +
 //     generate_handler.go:267) CONTINUE to write
 //     resultMap["parent_state"] = string(voiceover.ParentState) in
 //     the JSON result column. This preserves back-compat for
 //     existing readers.
 //  2. The SQL layer implementation of FinalizeAggregateParent
-//     (in internal/infrastructure/database/sqlite/jobs/) MUST
-//     read resultMap["parent_state"] and write the same value to
-//     the JobParentStateColumn typed column in the SAME
-//     transaction. A mid-txn crash rolls back BOTH writes
-//     (atomicity preserved).
+//     (in internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go)
+//     reads resultMap["parent_state"] and writes the same value to
+//     the JobParentStateColumn typed column in the SAME transaction.
+//     A mid-txn crash rolls back BOTH writes (atomicity preserved).
 //  3. The typed column is the AUTHORITATIVE source going forward.
-//     Readers (forward-pointer) will prefer the typed column
-//     over the JSON key once the CUTOVER wave lands.
+//     Readers prefer the typed column over the JSON key with JSON
+//     fallback during the BACKFILL window.
 //
-// During the BACKFILL phase (forward-pointer, deadline 2026-08-15):
+// BACKFILL phase (shipped 2026-07-05 via commit __PENDING__ /
+// PR-P1.2-SQL-DUAL-WRITE):
+//   - Read-side: ListAwaitingAggregation's WHERE clause matches
+//     BOTH parent_state_typed = 'waiting_children' AND
+//     json_extract(result_json,'$.parent_state') = 'waiting_children'
+//     (OR-fallback). Aggregator's aggregateOne overrides
+//     parentResult.ParentState from j.ParentStateTyped when
+//     non-empty (prefer typed, fall back to JSON).
 //   - A one-shot backfill CLI migrates existing rows: reads
 //     resultMap["parent_state"] from the JSON column + writes
-//     the value to JobParentStateColumn.
-//   - The backfill is idempotent (re-runnable; no-op on already-
-//     backfilled rows where JobParentStateColumn is non-empty).
+//     the value to JobParentStateColumn. The CLI is forward-pointer
+//     PR-VO-PARENT-STATE-BACKFILL-CLI (deadline TBD post-CUTOVER).
+//     Until it lands, the read-side OR-fallback ensures pre-P1.2
+//     rows continue to be found by the aggregator.
 //
-// During the CUTOVER phase (forward-pointer, deadline TBD):
+// CUTOVER phase (forward-pointer, deadline TBD):
 //   - Writers stop writing the JSON key resultMap["parent_state"].
 //   - Readers prefer the typed column; the JSON key reading is
 //     kept as a fallback for the transition window.
 //   - The JSON key is eventually removed from the wire shape.
+//   - The ListAwaitingAggregation OR-fallback is REMOVED (only
+//     the typed column is matched).
 //
-// forward-pointer: the SQL layer dual-write is a separate PR
-// (PR-P1.2-SQL-DUAL-WRITE, deadline 2026-08-15). This file
-// documents the contract; the implementation lives in
-// internal/infrastructure/database/sqlite/jobs/aggregate_parent.go
-// (the FinalizeAggregateParent implementation).
+// forward-pointer: the CUTOVER wave is forward-pointer
+// PR-P1.2-CUTOVER (deadline TBD, post-backfill-CLI).
+// The backfill CLI is forward-pointer PR-VO-PARENT-STATE-BACKFILL-CLI
+// (deadline TBD, post-CUTOVER).
 //
 // Note: JobParentStateColumn is exported (capital J), so Go's
 // compiler does NOT dead-code-eliminate it. No `var _ = ...`
