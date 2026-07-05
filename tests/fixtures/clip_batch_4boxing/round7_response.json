@@ -1,0 +1,83 @@
+{
+  "_round": "round7",
+  "_index_in_payload": 0,
+  "_video_id": "9u4T_o3FxOU",
+  "_policy_version": "v1",
+  "_canonical_pipeline_path": "ProcessYouTubeSegmentUseCase::Execute (internal/application/youtube/usecase/process_segment.go)",
+  "_drift_source_of_truth": "internal/application/youtube/dto/types.go::ExtractItem + ProcessSegmentResult",
+  "_segment_input_match": "matches tests/fixtures/clip_batch_4boxing/payload.json::segments[0]",
+  "expected_status": "processed",
+  "expected_clip_id": "yt_9u4T_o3FxOU_993_1048_v1",
+  "expected_clip_id_format": "yt_<videoID>_<startSec>_<endSec>_<policyVersion>",
+  "expected_clip_id_deterministic": true,
+  "expected_clip_id_replay_byte_stable": true,
+  "expected_start": "00:16:33",
+  "expected_end": "00:17:28",
+  "expected_start_seconds": 993,
+  "expected_end_seconds": 1048,
+  "expected_duration_seconds": 55,
+  "expected_duration_gate": "Min=4s, Max=60s => PASS",
+  "expected_filename": "9u4T_o3FxOU_993_1048_v1_Round_7_Pacquiao_hurts_Broner.mp4",
+  "expected_file": {
+    "local_path_shape": "/data/clips/9u4T_o3FxOU/<expected_filename>",
+    "file_hash_algorithm": "MD5",
+    "file_hash_production_driver": "hashutil.MD5File(localPath) — runtime computed by production ProcessSegment, NOT a fixture value",
+    "file_size_check": "os.Stat localPath => size > 0 (Step 5 fail-closed)"
+  },
+  "expected_drive": {
+    "folder_id": "1JUA9sUmm7ZYSLYztLNbzLVptr1igno9H",
+    "folder_path": "boxing/pacquiao-vs-broner/",
+    "filename": "9u4T_o3FxOU_993_1048_v1_Round_7_Pacquiao_hurts_Broner.mp4",
+    "drive_link_shape": "https://drive.google.com/file/d/<DRIVE_FILE_ID_RUNTIME>/view",
+    "drive_link_production_driver": "DriveFolderMgr.UploadFileIfChanged (Step 8) — runtime computed, NOT a fixture value",
+    "upload_strategy": "ConflictSkipByHash (PR-PUBLISHER-CONFLICT-SKIP-BY-HASH) — re-running the same payload reuses the same drive_file_id"
+  },
+  "expected_ffprobe_validation": {
+    "container_readable": true,
+    "video_stream_present": true,
+    "audio_present_with_keep_audio_true": true,
+    "duration_tolerance_pct": 5,
+    "duration_tolerance_floor_seconds": 1,
+    "fps_strictly_positive": true,
+    "width_height_strictly_positive": true
+  },
+  "expected_outbox": {
+    "event_type": "asset.index.requested",
+    "aggregate_id": "yt_9u4T_o3FxOU_993_1048_v1",
+    "event_idempotency": "ON CONFLICT(event_key) DO NOTHING — replay-safe",
+    "downstream_chain": "outbox_events -> IndexingHandler -> clipindexer -> Qdrant"
+  },
+  "expected_media_assets_projection": {
+    "table": "media_assets",
+    "id": "yt_9u4T_o3FxOU_993_1048_v1",
+    "video_id": "9u4T_o3FxOU",
+    "local_path": "<runtime>",
+    "drive_file_id": "<runtime>",
+    "source_url": "https://www.youtube.com/watch?v=9u4T_o3FxOU",
+    "lifecycle_state": "ACTIVE",
+    "index_state_progression": "PENDING -> INDEXED",
+    "UPSERT_NOT_INSERT": true
+  },
+  "expected_step_notes": [
+    "Step 1: textutil.ParseTimestamp(00:16:33)=993 + ParseTimestamp(00:17:28)=1048 + SegmentPolicy.ValidDuration(55)=PASS",
+    "Step 2: ClipCachePort.GetExisting('yt_9u4T_o3FxOU_993_1048_v1') -> MISS, fall through to Step 3",
+    "Step 4: VideoPipeline.DownloadAndCutYouTubeVideo (3 retries, 2s->30s backoff, IsTransientExtractionError classifier)",
+    "Step 5: hash.MD5File(localPath) computed; OS stat size > 0 fail-closed check",
+    "Step 5a: ffprobe validates container readable, video stream present, audio present (KeepAudio=true), duration within ±5%",
+    "Step 6: SliceSubtitles (cache hit) OR Whisper fallback",
+    "Step 7: optional Whisper when 6 fails",
+    "Step 8: DriveFolderMgr.UploadFileIfChanged -> drive_file_id + drive_link (idempotent on hash)",
+    "Step 9: ClipAtomicWriter.CommitClipAndIndexEvent -> media_assets UPSERT + outbox envelope in single TX"
+  ],
+  "expected_typed_failure_codes_if_break": [
+    "FailureCodeInvalidTimestamp",
+    "FailureCodeDurationOutOfRange",
+    "FailureCodeEmptyLocalPath",
+    "FailureCodeInvalidLocalArtifact",
+    "FailureCodeHashFailed",
+    "FailureCodeFFProbeValidationFailed",
+    "FailureCodeDriveUploadFailed",
+    "FailureCodeWriterFailed"
+  ],
+  "_no_fake_availability_audit_pin": "All <runtime> placeholders are produced by production drivers (MD5 / Drive upload / outbox envelope). The fixture does NOT fabricate drive_file_id or file_hash values; the CONTRACT test verifies the SHAPE, not the runtime values."
+}
