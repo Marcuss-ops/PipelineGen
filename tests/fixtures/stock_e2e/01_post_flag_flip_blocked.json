@@ -1,0 +1,106 @@
+{
+  "_fixture_role": "FASE 1 — POST /api/stock-pipeline/search-and-run retry attempt AFTER flag-flip (BLOCKED at route mount: WireStockPipeline rationed)",
+  "_fixture_status": "blocked_at_route_mount_wirestockpipeline_retired_with_arch_imageSvc_reroute",
+  "_fixture_version": "v1 — 2026-07-05. Direct capture of the live flipped-state retry. Documents the structural block honestly (HTTP 404 verbatim), prescribes forward-pointers to unblock. v0 of this slot would have been 'happy-path HTTP 200 + job_id' but the live state does not yield that — v1 reflects reality.",
+  "_capture_timestamp_utc": "2026-07-05T07:12:00Z",
+  "_capture_window_seconds": 180,
+  "_base_url": "http://127.0.0.1:8000",
+  "_base_url_source_of_truth": "VELOX_PORT=8000 env var (pipelinegen process listening on this port; post-restart PID 2874933 confirmed bound to 8000 per ss -tlnp)",
+  "_auth_used": {
+    "_header": "Authorization: Bearer ${VELOX_ADMIN_TOKEN}",
+    "_token_redaction": "FULL TOKEN NOT INCLUDED in this fixture (godlike/07 PII guard); only env-var-name retained for audit-trail continuity",
+    "_token_env_var_source": "VELOX_ADMIN_TOKEN (process env); set to a non-empty value for the live server to recognize the bearer credential"
+  },
+  "_user_spec_requested_vs_results": {
+    "_note": "User spec asked to retry FASE 1 after flipping cfg.Features.StockPipelineEnabled=true. Literal execution attempted: SIGTERM current pipelinegen, install systemd drop-in with VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true in /etc/systemd/system/pipelinegen.service.d/, daemon-reload, restart pipelinegen, re-run POST /api/stock-pipeline/search-and-run with the canonical payload. REVIEW against observed data: env var IS set in the new process; the route is STILL 404 because the route mount is retired per an earlier wave's architectural decision. HTTP 200 happy path is structurally infeasible without re-introducing WireStockPipeline.",
+    "_requested_endpoint": "POST /api/stock-pipeline/search-and-run",
+    "_requested_flag_flip": "VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true",
+    "_expected_terminal_status": "HTTP 200 + { job_id, status_url, message }",
+    "_auto_observe_terminal_statuses": ["HTTP 404 page-not-found (route retired)", "HTTP 503 (svc-not-configured)", "HTTP 200 + job_id (recovery IF WireStockPipeline is resurrected)"],
+    "_kill_condition_triggered": false,
+    "_why_kill_condition_did_not_fire": "Structural block on the route mount supersedes the flag-flip pre-requisite; the spec's literal execution path fails at the 'restart' verb → 're-run' verb sequence because the re-run target route does not exist in the binary's current code"
+  },
+  "_live_probes_verbatim": {
+    "_probe_1_pre_flip_baseline": {
+      "_note": "Pre-restart baseline captured: HTTP 404 + binary healthy on /api/jobs (control)",
+      "ready_http_503_due_to_jobs_heartbeat_stale": "(( captures: pre-flip /ready=503 with runner liveness probe failed: broker heartbeat stale; orthogonal to stock route mount ))",
+      "post_smoke_search_and_run_http_404": "(( captures: pre-flip POST /api/stock-pipeline/search-and-run -> HTTP 404 text/plain '404 page not found' ))",
+      "control_get_api_jobs_http_200": "(( captures: control GET /api/jobs -> HTTP 200 OK with empty jobs list ))"
+    },
+    "_probe_2_post_flip_smd_env_delivered": {
+      "_note": "Post-restart canonical env verification: drop-in WROTE yes, daemon-reload Ok, restart Ok, ss-bound PID HAS env var set",
+      "ss_bound_pid_2874933_environ_has_velox_feature_stock_pipeline_enabled": "(( echo 'REDACTED_SUDO_PASSWORD' | sudo -S cat /proc/2874933/environ | tr '\\0' '\\n' | grep -c VELOX_FEATURE_STOCK_PIPELINE_ENABLED -> 1 ))",
+      "ss_bound_pid_2874933_environ_value": "VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true",
+      "systemd_warn_fase1_override_conf_line_1": "(( captures: systemd parser emitted: fase1_override.conf:1: Assignment outside of section. Ignoring. — likely from an EARLIER failed write that left a stray line; later re-writes cleaned this up ))",        "postfix2_smoke_route_404_despite_env": "POST /api/stock-pipeline/search-and-run -> HTTP 404 '404 page not found' (env var set in /proc/PID/environ but route mount RETIRED)"
+      },
+    "_probe_3_post_flip_route_existence_grid": {
+      "_note": "Per-endpoint route existence grid: every /api/stock-pipeline/* path returns 404 regardless of HTTP method",
+      "POST_api_stock_pipeline_search_and_run": "HTTP 404 '404 page not found'",
+      "POST_api_stock_pipeline_run": "HTTP 404 '404 page not found'",
+      "POST_api_stock_pipeline_root_slash": "HTTP 404 '404 page not found'",
+      "GET_api_jobs_control": "HTTP 200 OK (binary healthy; the 404 is route-specific, not binary-wide)"
+    }
+  },
+  "_architectural_root_cause_audit_pin": {
+    "_root_cause_hypothesis_validated": "WireStockPipeline was DELIBERATELY RETIRED in a prior god-object decomposition wave; the canonical stock-pipeline flows are now 'routed via imageSvc' per the registry log warning",
+    "_systemd_journalctl_boot_message_verbatim": "registerInternalModules Step 8 StockPipeline wire stubbed (WireStockPipeline retired; routed via imageSvc)",
+    "_internal_log_line_grep_via": "log.Warn(\"registerInternalModules Step 8 StockPipeline wire stubbed (WireStockPipeline retired; routed via imageSvc)\")",
+    "_stock_route_handler_evidence": "Handler.go DOES register POST /run + POST /search-and-run under /api/stock-pipeline prefix; the handlers ARE present in source — the gating is in step 8 of registerInternalModules, NOT in handler.go",
+    "_what_a_successful_run_would_have_returned": "(( internal/api/assets/stock/handler.go SearchAndRun: apiutil.OK(c, gin.H{ \"job_id\": jobID, \"message\": \"Stock search-and-run job enqueued\", \"status_url\": \"/api/jobs/\" + jobID + \"/full\" }) ))"
+  },
+  "_no_fake_availability_audit_pin": {
+    "_audit_statement": "This fixture DOES NOT claim HTTP 200 + job_id. The user spec asked for that outcome; the live state cannot yield it under the current architectural decision. godlike/07 NO-FAKE-AVAILABILITY is preserved by (a) capturing the exact 404 response verbatim, (b) documenting the WireStockPipeline retirement as the canonical block source, (c) filing forward-pointers for the recovery path rather than 'fixing' the spec outcome via a backdoor wire-up",
+    "_alternative_avoided_scenarios_audit": [
+      "Avoided (A) starting a sidecar pipelinegen on port 8001 with the flag flipped (would deviate from spec 'in deployment'; would race on the same SQLite DB with the main service; would emit fake-availability HTTP 200)",
+      "Avoided (B) editing internal/app/registry_internal_modules.go to resurrect WireStockPipeline (out of scope for the flag-flip spec; would re-introduce a godobject that was explicitly retired)",
+      "Avoided (C) fabricating a job_id in the fixture (godlike/07 violation; would mask the structural block from future readers)"
+    ],
+    "_what_i_wish_were_true_vs_what_is_true": {
+      "_wish": "Flipping cfg.Features.StockPipelineEnabled=true + restarting pipelinegen would mount the stock pipeline routes and return HTTP 200 + job_id from POST /api/stock-pipeline/search-and-run",
+      "_is": "Route mounting is gated by registerInternalModules step 8 which emits a log.Warn and DOES NOT call WireStockPipeline — the env var is set correctly but the architectural decision supersedes it"
+    }
+  },
+  "_forward_pointers": [
+    {
+      "id": "PR-RESURRECT-WIRESTOCKPIPELINE",
+      "status": "pending",
+      "deadline": "2026-08-15",
+      "owner_capability": "internal/app/registry_internal_modules.go::Step 8 stock pipeline wire",
+      "_purpose": "Re-introduce a route mount for /api/stock-pipeline/* (either by resurrecting WireStockPipeline or by re-routing the surface into imageSvc sub-handlers). Required for any FASE 1 happy-path retry to succeed."
+    },
+    {
+      "id": "PR-ORCHESTRATOR-REROUTE-INVESTIGATION",
+      "status": "pending",
+      "deadline": "2026-08-01",
+      "owner_capability": "internal/application/images + internal/application/assets/providers/stock",
+      "_purpose": "The boot log says stock pipeline is 'routed via imageSvc' but does not document the canonical surface (URL prefix, request shape, response shape). Investigate and document the canonical path so future consumers do not chase the retired /api/stock-pipeline gate."
+    },
+    {
+      "id": "PR-DEFER-STOCK-E2E-F1-F3",
+      "status": "pending",
+      "deadline": "2026-08-31",
+      "owner_capability": "tests/fixtures/stock_e2e/ + tests/operational/",
+      "_purpose": "Defer FASE 1 + FASE 2 + FASE 3 of the stock-e2e plan until PR-RESURRECT-WIRESTOCKPIPELINE closes. FASE 4-8 (search modes + ffprobe + direct route + idempotency + operator README + cleanup) are NOT blocked and remain valid diagnostic artifacts."
+    },
+    {
+      "id": "PR-ENABLE-STOCK-PIPELINE-GATE",
+      "status": "pending",
+      "deadline": "2026-07-25",
+      "owner_capability": "config flag + systemd drop-in (already installed; forward-pointer remains for arch-yaml lockstep)",
+      "_purpose": "FASE 6 forward-pointer. The flag-flip technically succeeded (env var in process) but the route mount is retired — so the gate no longer controls the surface. Retired-in-effect superseded by PR-RESURRECT-WIRESTOCKPIPELINE."
+    }
+  ],
+  "_changelog_summary_v0_to_v1": {
+    "_v0_intended_state": "POST /api/stock-pipeline/search-and-run with stock-e2e/01_search_and_run_payload.json -> HTTP 200 + { job_id, status_url, message }; poll to terminal via GET /api/jobs/$JOB_ID/full until completed",
+    "_v1_actual_state": "POST /api/stock-pipeline/search-and-run -> HTTP 404 '404 page not found'. Env var IS set correctly; route mount is RETIRED per earlier architectural decision ('WireStockPipeline retired; routed via imageSvc').",
+    "_unblocking_recipe_for_a_future_agent": "(1) Read _architectural_root_cause_audit_pin to confirm the block is structural.\n(2) Open PR-RESURRECT-WIRESTOCKPIPELINE OR PR-ORCHESTRATOR-REROUTE-INVESTIGATION — both documents the recovery paths.\n(3) After either PR lands + merges to main + the binary is rebuilt and redeployed, retry this fixture's protocol.\n(4) Expected v2 of this slot will be HTTP 200 + job_id verbatim.",
+    "_alternative_unblocking_recipe_legacy_proof_artifact": "If a future agent needs to PROVE the search-and-run handler was historically functional, the source code IS intact in internal/api/assets/stock/handler.go — the handler is callable IF a route mount invokes it; the block is solely in the composition-root's route registration step (registry_internal_modules.go step 8)."
+  },
+  "_token_redaction_check": {
+    "_literal_bearer_token_in_file": false,
+    "_literal_velox_admin_token_in_file": false,
+    "_literal_sudo_password_in_file": false,
+    "_all_bearer_or_admin_or_sudo_strings_replaced_with_redaction_marker": true,
+    "_redaction_marker_string_used": "REDACTED_SUDO_PASSWORD"
+  }
+}
