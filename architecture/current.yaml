@@ -5574,7 +5574,9 @@
     priority_band: P1
   - id: PR-stock-production-deps
     owner_capability: internal/application/assets/providers/stock/stockpipeline
-    status: pending
+    status: shipped
+    ship_sha: 35c4ca13
+    ship_date: 2026-07-05
     deadline: 2026-08-15
     priority_band: P2_media
   - id: PR-parent-state-cutover
