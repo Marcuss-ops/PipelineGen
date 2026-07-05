@@ -5587,3 +5587,32 @@
     priority_band: P3_bassa_post_wave
 
 
+
+- id: PR-VO-FANOUT-SIBLING-COLLAPSE-FIX
+  status: shipped
+  ship_sha: c7c6aadd
+  ship_date: 2026-07-05
+  owner_capability: internal/application/voiceover/jobs (fanout dedup test surface)
+  description: |
+    Canonical fanout sibling-collapse regression test landed in commit c7c6aadd.
+    Pins the contract that voiceover fanout deduplicates siblings on shared parent
+    to avoid duplicated downstream jobs per godlike/07 minimum-blast-radius.
+    3-surface lockstep: this architecture/current.yaml entry ≡ CHANGELOG.md ## Unreleased → ### Fixed
+    entry (added in commit cd1d5834) ≡ AGENTS.md ## Recent cross-cutting closures
+    mirror (added in commit cd1d5834).
+
+- id: PR-BOXING-SMOKES-MIGRATION
+  status: shipped
+  ship_sha: 2baf5a9c
+  ship_date: 2026-07-05
+  owner_capability: tests/e2e (boxing-clips hermetic test surface)
+  description: |
+    Canonical boxing-clips e2e migration landed in commit 2baf5a9c.
+    Migrates the boxing-clips smoke suite from ad-hoc shell scripts to typed Go
+    e2e test layout. Adds tests/e2e/boxing_clips_test.go (canonical TestE2E suite
+    for boxing-clips round trips) + 5 JSON fixtures under tests/fixtures/clip_batch_4boxing/
+    (payload.json + round7/9/12_response.json + verdetto_response.json for hermetic
+    test data, zero live-stack dependency per godlike/07 NO-FAKE-AVAILABILITY).
+    3-surface lockstep: this architecture/current.yaml entry ≡ CHANGELOG.md ## Unreleased → ### Fixed
+    entry (added in commit cd1d5834) ≡ AGENTS.md ## Recent cross-cutting closures
+    mirror (added in commit cd1d5834).
