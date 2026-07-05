@@ -5935,3 +5935,75 @@
     type assertions. The fix must preserve the canonical
     ExtendedCode==ErrConstraintUnique probe semantics + the typed-error
     contract on ErrUniqueConstraintViolation (godlike/07 NO-FAKE-AVAILABILITY).
+- id: STOCK-E2E-BATTERY-2026-07-05
+  status: pending
+  ship_date: 2026-07-05
+  ship_via: AUDIT_PIN_WAVE_REGISTRATION
+  owner_capability: tests/operational (stock_e2e_full_battery.sh aggregator + STK-E2E-A through STK-E2E-H smoke probes)
+  exit_signal: false
+  deadline: 2026-07-29
+  description: |
+    E2E battery wave that exhaustively verifies the stock pipeline is end-to-end
+    functional: 14-point checklist (route aliveness + search-and-run loop on the
+    9 Drive folder fixtures + direct URL path + media_assets DB projection +
+    outbox_events asset.index.requested emission + /api/media/search hybrid
+    stock-source hits + /api/media/stock/clips/:id/download MP4 + ffprobe
+    video stream + duration > 0 confirmation).
+
+    Scope: 8 hermetic smoke probes STK-E2E-A through STK-E2E-H in
+    tests/operational/ + 1 aggregator stock_e2e_full_battery.sh. Each
+    probe is bash -n syntax-clean, idempotent, auto-sufficient (no shared
+    infra dependency), zero production code change. Failure mapping per
+    godlike/07 NO-FAKE-AVAILABILITY: each probe FAIL is a forward-pointer
+    to a known PR-STOCK-* fix path (route 404 = registry mount; job no
+    SUCCEEDED = broker/composition finalizer; drive_file_id empty =
+    publisher; outbox dead_lettered = delivery retry; search empty =
+    Qdrant projection; download 404 = Drive fallback resolver).
+
+    Status flips pending -> shipped + exit_signal: true ONLY when ALL
+    14 checklist points PASS via tests/operational/stock_e2e_full_battery.sh
+    running on a live PipelineGen server (port 8000 OR 8081,
+    VELOX_ADMIN_TOKEN=test-admin-token-12345, data/media/media.db.sqlite
+    writable, yt-dlp + ffmpeg + ffprobe on PATH).
+
+    Per AGENTS.md Pattern 6 diagnostic-surface-first discipline: the
+    smoke files are the canonical diagnostic surface for the
+    'stock is end-to-end' claim - a probe PASS is the operator-facing
+    receipt; a probe FAIL is the canonical PR entry that needs to ship
+    BEFORE this wave flips. Per godlike/07 NO-FAKE-AVAILABILITY, probes
+    that pretend to green while the underlying pipeline is broken are
+    REJECTED at the closure wave; the wave-tracker entry stays
+    status:pending.
+  linked_issues:
+    - id: STK-E2E-A
+      owner_capability: tests/operational/stock_e2e_route_aliveness_smoke.sh
+      status: pending
+      deadline: 2026-07-15
+    - id: STK-E2E-B
+      owner_capability: tests/operational/stock_e2e_search_and_run_loop_smoke.sh
+      status: pending
+      deadline: 2026-07-15
+    - id: STK-E2E-C
+      owner_capability: tests/operational/stock_e2e_direct_url_smoke.sh
+      status: pending
+      deadline: 2026-07-15
+    - id: STK-E2E-D
+      owner_capability: tests/operational/stock_e2e_media_assets_query_smoke.sh
+      status: pending
+      deadline: 2026-07-22
+    - id: STK-E2E-E
+      owner_capability: tests/operational/stock_e2e_outbox_query_smoke.sh
+      status: pending
+      deadline: 2026-07-22
+    - id: STK-E2E-F
+      owner_capability: tests/operational/stock_e2e_unified_search_smoke.sh
+      status: pending
+      deadline: 2026-07-22
+    - id: STK-E2E-G
+      owner_capability: tests/operational/stock_e2e_download_smoke.sh
+      status: pending
+      deadline: 2026-07-22
+    - id: STK-E2E-H
+      owner_capability: tests/operational/stock_e2e_full_battery.sh
+      status: pending
+      deadline: 2026-07-29
