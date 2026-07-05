@@ -1,0 +1,75 @@
+{
+  "_round": "verdetto",
+  "_index_in_payload": 3,
+  "_video_id": "9u4T_o3FxOU",
+  "_policy_version": "v1",
+  "_canonical_pipeline_path": "ProcessYouTubeSegmentUseCase::Execute",
+  "_drift_source_of_truth": "internal/application/youtube/dto/types.go::ExtractItem",
+  "_segment_input_match": "matches tests/fixtures/clip_batch_4boxing/payload.json::segments[3]",
+  "expected_status": "processed",
+  "expected_clip_id": "yt_9u4T_o3FxOU_1727_1769_v1",
+  "expected_clip_id_format": "yt_<videoID>_<startSec>_<endSec>_<policyVersion>",
+  "expected_clip_id_deterministic": true,
+  "expected_clip_id_replay_byte_stable": true,
+  "expected_start": "00:28:47",
+  "expected_end": "00:29:29",
+  "expected_start_seconds": 1727,
+  "expected_end_seconds": 1769,
+  "expected_duration_seconds": 42,
+  "expected_duration_gate": "Min=4s, Max=60s => PASS",
+  "expected_filename": "9u4T_o3FxOU_1727_1769_v1_Verdetto_Finale_match.mp4",
+  "expected_file": {
+    "local_path_shape": "/data/clips/9u4T_o3FxOU/<expected_filename>",
+    "file_hash_algorithm": "MD5",
+    "file_hash_production_driver": "hashutil.MD5File(localPath)",
+    "file_size_check": "os.Stat localPath => size > 0"
+  },
+  "expected_drive": {
+    "folder_id": "1JUA9sUmm7ZYSLYztLNbzLVptr1igno9H",
+    "folder_path": "boxing/pacquiao-vs-broner/",
+    "filename": "9u4T_o3FxOU_1727_1769_v1_Verdetto_Finale_match.mp4",
+    "drive_link_shape": "https://drive.google.com/file/d/<DRIVE_FILE_ID_RUNTIME>/view",
+    "drive_link_production_driver": "DriveFolderMgr.UploadFileIfChanged",
+    "upload_strategy": "ConflictSkipByHash"
+  },
+  "expected_ffprobe_validation": {
+    "container_readable": true,
+    "video_stream_present": true,
+    "audio_present_with_keep_audio_true": true,
+    "duration_tolerance_pct": 5,
+    "fps_strictly_positive": true,
+    "width_height_strictly_positive": true
+  },
+  "expected_outbox": {
+    "event_type": "asset.index.requested",
+    "aggregate_id": "yt_9u4T_o3FxOU_1727_1769_v1",
+    "event_idempotency": "ON CONFLICT(event_key) DO NOTHING",
+    "downstream_chain": "outbox_events -> IndexingHandler -> clipindexer -> Qdrant"
+  },
+  "expected_media_assets_projection": {
+    "table": "media_assets",
+    "id": "yt_9u4T_o3FxOU_1727_1769_v1",
+    "video_id": "9u4T_o3FxOU",
+    "local_path": "<runtime>",
+    "drive_file_id": "<runtime>",
+    "source_url": "https://www.youtube.com/watch?v=9u4T_o3FxOU",
+    "lifecycle_state": "ACTIVE",
+    "UPSERT_NOT_INSERT": true
+  },
+  "expected_step_notes": [
+    "Step 1: textutil.ParseTimestamp(00:28:47)=1727 + ParseTimestamp(00:29:29)=1769 + SegmentPolicy.ValidDuration(42)=PASS",
+    "Step 2: cache MISS",
+    "Step 4-9: canonical pipeline run",
+    "Step 9: ClipAtomicWriter write+outbox"
+  ],
+  "expected_typed_failure_codes_if_break": [
+    "FailureCodeInvalidTimestamp",
+    "FailureCodeDurationOutOfRange",
+    "FailureCodeEmptyLocalPath",
+    "FailureCodeInvalidLocalArtifact",
+    "FailureCodeHashFailed",
+    "FailureCodeFFProbeValidationFailed",
+    "FailureCodeDriveUploadFailed",
+    "FailureCodeWriterFailed"
+  ]
+}
