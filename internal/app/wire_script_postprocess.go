@@ -115,19 +115,22 @@ func registerScriptPostProcessors(
 	// Voiceovers are now produced by a separate voiceover.generate
 	// downstream job (see internal/domain/job/job.go TypeVoiceoverGenerate).
 
-	// PR 3 (June 2026): Entities + Metadata are now
-	// ProcessorRequired per the user spec. Adapters are nil-
-	// tolerant at runtime (graceful-degradation) and the runtime
-	// preflight will fail-fast when a plan requests these
-	// processors without a real service wired through the
-	// composition root. Always register here — the validator in
-	// wire_script_adapters.go checks Required classification on
-	// the post-freeze registry.
-	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
+	// PR 3 (June 2026) + PR-noop-adapters-purge (2026-07-25):
+	// Entities + Metadata are ProcessorRequired per the user spec.
+	// PR 3: nil-tolerant at runtime (graceful-degradation). The
+	// runtime preflight rejects plans that request these processors
+	// without a real service wired through the composition root.
+	// PR-noop-adapters-purge: the pre-PR noop constructors (which
+	// returned EntityResult{} / nil with nil error = silent-success)
+	// were replaced by the typed-fail unavailable*Adapter
+	// constructors. Every request now returns ErrEntityExtractorUnavailable
+	// / ErrMetadataGeneratorUnavailable (godlike/07 NO-FAKE-AVAILABILITY)
+	// until a real backend is wired in a follow-up PR.
+	entityAdapter := adapters.NewUnavailableEntityExtractionAdapter()
 	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
 		return fmt.Errorf("register entities processor: composition bug")
 	}
-	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, metaModel)
+	metadataAdapter := adapters.NewUnavailableMetadataGenerationAdapter()
 	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
 		return fmt.Errorf("register metadata processor: composition bug")
 	}

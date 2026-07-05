@@ -381,10 +381,18 @@ var _ = func() any { var _ *sql.DB = nil; return nil }
 // Creator-safe postprocessors that write files instead of talking
 // to SQLite, Google Drive, or Qdrant.
 //
-//   - entities -> noop EntityExtractor (returns empty result, no
-//     backend call).
-//   - metadata -> noop MetadataGenerator (returns nil, no backend
-//     call).
+// PR-noop-adapters-purge (2026-07-25): the entities + metadata
+// processors are now backed by the TYPED-FAIL unavailable*Adapter
+// constructors (= godlike/07 NO-FAKE-AVAILABILITY — every request
+// returns ErrEntityExtractorUnavailable / ErrMetadataGeneratorUnavailable
+// instead of silent-success empty payloads).
+//
+//   - entities -> typed-fail unavailableEntityExtractionAdapter
+//     (wrapped in BestEffort policy downgrade so the Creator
+//     composes without a backend; runtime surfaces typed errors
+//     when a plan requests entities).
+//   - metadata -> typed-fail unavailableMetadataGenerationAdapter
+//     (same rationale, see entities).
 //   - clip_bindings -> canonical ClipBindingsProcessor. No-op when
 //     ClipEvidence is nil/empty (pure-text generation).
 //
@@ -399,8 +407,15 @@ var _ = func() any { var _ *sql.DB = nil; return nil }
 func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegistry {
 	ppReg := adapters.NewPostProcessorRegistry(log)
 
-	// entities -> Creator-safe noop with BestEffort policy.
-	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
+	// entities -> typed-fail adapter wrapped in BestEffort policy.
+	// PR-noop-adapters-purge (2026-07-25): the silent-success noop
+	// (which returned EntityResult{} with nil error) was replaced
+	// by NewUnavailableEntityExtractionAdapter (= fail-closed per
+	// godlike/07 NO-FAKE-AVAILABILITY). The BestEffort wrapper
+	// downgrades the processor policy so the Creator composes
+	// without a backend while the runtime surfaces typed errors
+	// when a plan requests entities.
+	entityAdapter := adapters.NewUnavailableEntityExtractionAdapter()
 	entityProc := adapters.NewEntitiesProcessor(entityAdapter)
 	if !ppReg.Register(&creatorBestEffort{inner: entityProc, name: "entities"}) {
 		if log != nil {
@@ -408,8 +423,10 @@ func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegis
 		}
 	}
 
-	// metadata -> Creator-safe noop with BestEffort policy.
-	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, "")
+	// metadata -> typed-fail adapter wrapped in BestEffort policy.
+	// PR-noop-adapters-purge (2026-07-25): see entities comment
+	// above — same godlike/07 NO-FAKE-AVAILABILITY rationale.
+	metadataAdapter := adapters.NewUnavailableMetadataGenerationAdapter()
 	metadataProc := adapters.NewMetadataProcessor(metadataAdapter)
 	if !ppReg.Register(&creatorBestEffort{inner: metadataProc, name: "metadata"}) {
 		if log != nil {
