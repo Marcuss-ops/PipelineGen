@@ -2,10 +2,8 @@ package script
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
