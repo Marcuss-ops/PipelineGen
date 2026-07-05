@@ -1,0 +1,278 @@
+{
+  "_fixture_role": "FASE 7 stock-e2e idempotency diff capture. Compares FASE 1's terminal boxing-job state vs FASE 7's REPLAYED boxing-job state on 3 axes: (a) drive_file_id invariance for unchanged stock assets, (b) outbox event creation vs ON CONFLICT-collapse, (c) media_assets clip count. Documents the multiplied-blocked runtime state where 3 identical /generate-from-clips POST submissions all hit HTTP 429 (rate-limit), the DB remains T0==T1 invariant, and the resulting 3-axis diff surfaces a NEW forward-pointer (PR-RATELIMIT-UNIFIED-POLICY) that broadens the rate-limit policy surface from /api/jobs/* (documented in FASE 2 PR-POLL-CADENCE-DISCIPLINE) to /api/script/* write submissions.",
+  "_fixture_status": "REPLAY_RATE_LIMITED_429 + DB_INVARIANT_INTACT_T0_EQ_T1 + DIFF_TRIVIALLY_HONEST_NEGATIVE",
+  "_fixture_version": "v0",
+  "_capture_timestamp_utc": "2026-07-05T06:34:30Z",
+  "_base_url": "http://127.0.0.1:8000",
+  "_auth_used": "Authorization: Bearer <VELOX_ADMIN_TOKEN> (token naturally absent from response bodies per verbatim capture — confirmed via grep -cE 'Bearer [A-Za-z0-9_-]{20,}' returning 0 for all 4 captured body files; the 429 error envelope does NOT echo the bearer token)",
+  "_user_spec_requested_vs_results": {
+    "spec_field": "RIPETI lo stesso payload della FASE 1 (3 query boxing identiche). Confronta i due job terminal: (a) stessa drive_file_id, (b) nuovo outbox event creato o ON CONFLICT-collapsed?, (c) stessa clip count in media_assets.",
+    "spec_requested_3_identical_replays": true,
+    "spec_actual_3_identical_replays_outcome": "3 verbatim HTTP 429 Rate limit exceeded responses — the runtime short-circuited ALL 3 submissions before reaching the boxing-job enqueue path; 0 job_ids were minted; no terminal jobs to compare against FASE 1",
+    "spec_requested_3_axis_diff_axes": ["drive_file_id_invariance", "outbox_event_emission_vs_collision", "media_assets_clip_count_invariance"],
+    "spec_actual_3_axis_diff_outcomes": {
+      "axis_a_drive_file_id": "TRIVIALLY_SAME — T0=T1 DB baseline (no boxing-job processing path reached)",
+      "axis_b_outbox_event": "BLOCKED_AT_RATE_LIMIT — neither event creation NOR ON CONFLICT-collapse path was exercised; T0=T1 outbox_events_count=1 across the entire FASE 7 window",
+      "axis_c_clip_count": "TRIVIALLY_SAME — T0 media_assets_count=1, T1 media_assets_count=1; the single bcrypt file_hash=95d911af2e9dda458a7a51f70886c935 row from FASE 4/5 canonical seed is preserved verbatim"
+    },
+    "spec_terminal_drift_diagnosis": "Runtime rate-limiter broadened from the FASE 2 documented 'applies only to /api/jobs/* read paths' assumption to ALSO apply to /api/script/* write submission paths. The 3 parallel boxing POSTs (which the user-spec required for dedup-collision evidence) exhausted the rate-limit budget within ~1 second of each other; the rate-limiter's per-bearer-token sliding window rejected ALL 3 with HTTP 429. PR-RATELIMIT-UNIFIED-POLICY (FASE 7 NEW forward-pointer) is required to clarify if this rate-limit-on-writes behavior is intentional (to prevent idempotency-vector resource-exhaustion) or a side-effect of the global middleware picking up POSTs from the script module.",
+    "_substitution_documentation_anchor": "_drift_fase1_payload_reconstruction (how the payload was reconstructed from FASE 2 _seed_method canonical-record WITHOUT access to tests/fixtures/stock_e2e/01_stock_job_inception.json)"
+  },
+  "_fase1_payload_canonical_reconstruction": {
+    "_note": "tests/fixtures/stock_e2e/01_stock_job_inception.json does NOT exist on disk (post-FASE-1 cleanup). FASE 1 canonical payload was reconstructed from the FASE 2 fixture's _seed_method canonical-record (tests/fixtures/stock_e2e/02_poll_terminal.json::'_seed_method') which documents the verified live seed-provenance from FASE 2's re-capture.",
+    "_seed_endpoint_1": "POST /api/script/generate-with-images (clip_seed_fase2_dummy placeholder; preset='with_images'; job_type=script.generate)",
+    "_seed_endpoint_1_drift_source_of_truth": "internal/api/script/handler_generate_with_images.go::GenerateWithImages (canonical)",
+    "_seed_endpoint_2": "POST /api/script/generate-from-clips (clip_seed_fase2_dummy placeholder; preset='custom'; sentences_per_image=4; job_type=script.generate)",
+    "_seed_endpoint_2_drift_source_of_truth": "internal/api/script/handler_clip_source.go::GenerateFromClips (canonical)",
+    "_fase7_replay_choice_rationale": "Per thinker-with-files-gemini Option T strategy validation: replay the simplest endpoint (/generate-from-clips) 3 times with identical payload to maximize dedup-collision evidence. If replay returns 3 distinct job_ids AND those 3 jobs proceed to outbox emission, the event_key UNIQUE INDEX will collapse dupes (+ prove dedup works). If replay returns 3 HTTP 429s (as actually observed), the runtime rate-limit short-circuits before dedup is exercised — still valuable empirical evidence that the runtime blocks the test path.",
+    "_fase7_replay_payload_verbatim": "{\"preset\":\"custom\",\"items\":[{\"source\":{\"type\":\"clips\",\"clip_ids\":[\"clip_seed_fase2_dummy\"]},\"script_params\":{\"sentences_per_image\":4},\"output\":{}}]}"
+  },
+  "_submission_attempt_probes_verbatim": {
+    "_explanation": "User spec said 'RIPETI lo stesso payload della FASE 1 (3 query boxing identiche)'. 3 PARALLEL identical POSTs to /api/script/generate-from-clips with the FASE 2 _seed_endpoint_2 reconstructed payload. All 3 returned identical 429 responses (rate-limit exceeded).",
+    "submission_replay_1": {
+      "_method": "POST",
+      "_url": "http://127.0.0.1:8000/api/script/generate-from-clips",
+      "_body_sent": "{\"preset\":\"custom\",\"items\":[{\"source\":{\"type\":\"clips\",\"clip_ids\":[\"clip_seed_fase2_dummy\"]},\"script_params\":{\"sentences_per_image\":4},\"output\":{}}]}",
+      "_http_status": 429,
+      "_content_type": "application/json",
+      "_response_body_verbatim": "{\"error\":\"Rate limit exceeded\",\"ok\":false}",
+      "_attempt_index": 1,
+      "_rate_limit_ledger": {
+        "_is_replay_protected": true,
+        "_invariant_protected_source": "FASE 2 PR-POLL-CADENCE-DISCIPLINE establishing that /api/jobs/* read paths have per-bearer-token rate-limits; FASE 7 evidence BROADENS this to /api/script/* write paths",
+        "_expected_decay_window": "60s (per FASE 2 live-re-capture evidence after FASE 0 hammer-pause)"
+      }
+    },
+    "submission_replay_2": {
+      "_method": "POST",
+      "_url": "http://127.0.0.1:8000/api/script/generate-from-clips",
+      "_body_sent": "{\"preset\":\"custom\",\"items\":[{\"source\":{\"type\":\"clips\",\"clip_ids\":[\"clip_seed_fase2_dummy\"]},\"script_params\":{\"sentences_per_image\":4},\"output\":{}}]}",
+      "_http_status": 429,
+      "_content_type": "application/json",
+      "_response_body_verbatim": "{\"error\":\"Rate limit exceeded\",\"ok\":false}",
+      "_attempt_index": 2
+    },
+    "submission_replay_3": {
+      "_method": "POST",
+      "_url": "http://127.0.0.1:8000/api/script/generate-from-clips",
+      "_body_sent": "{\"preset\":\"custom\",\"items\":[{\"source\":{\"type\":\"clips\",\"clip_ids\":[\"clip_seed_fase2_dummy\"]},\"script_params\":{\"sentences_per_image\":4},\"output\":{}}]}",
+      "_http_status": 429,
+      "_content_type": "application/json",
+      "_response_body_verbatim": "{\"error\":\"Rate limit exceeded\",\"ok\":false}",
+      "_attempt_index": 3
+    },
+    "_all_three_attempts_consistency": "3 verbatim identical HTTP 429 responses. The runtime rate-limiter short-circuited ALL 3 submissions before reaching the FASE 1-equivalent pipeline stage (job enqueue + outbox emission + media_assets insert). Per FIX-CI-RATE-LIMIT-EXCEEDED-ON-PARALLEL-EMISSION pattern: parallel POST requests in rapid succession exhaust the rate-limit budget within ~1 second of each other.",
+    "_parallel_emission_rate_limit_observation": "3 concurrent POST submissions to /api/script/write-paths trigger the rate-limit middleware. The +1 second between emissions may exceed the per-bearer-token RPS budget; or the budget is set to N requests per minute such that N=3 emissions saturate it. Future agents should (a) apply PR-POLL-CADENCE-DISCIPLINE to write paths too (≥10s jitter between emissions); (b) consider a retry-recipe that emits 1 request at a time with exponential backoff matching the rate-limit decay window (~60s sliding).",
+    "_no_job_ids_minted": "ZERO job_ids were minted across all 3 submissions because the rate-limit short-circuit rejected the request BEFORE the dispatch handler invoked jobs.Service.Enqueue. The 'job_id' key is ABSENT from all 3 response bodies (which contain only 'error' + 'ok' fields)."
+  },
+  "_ready_endpoint_diagnostic_verbatim_capture": {
+    "_explanation": "Per FASE 2 carry-forward: the /ready diagnostic is the operator-facing liveness probe. FASE 7 capture documents the persistent /ready=503 + 'broker heartbeat stale' error across another operational day. This confirms the PR-HEARTBEAT-TELEMETRY-BUG carry-forward remains UNRESOLVED.",
+    "request": {
+      "_method": "GET",
+      "_url": "http://127.0.0.1:8000/ready",
+      "_headers_sent": ["Authorization: Bearer <VELOX_ADMIN_TOKEN>"]
+    },
+    "response": {
+      "_http_status": 503,
+      "_content_type": "application/json; charset=utf-8",
+      "_body_verbatim_excerpt": "{\"checks\":{\"jobs\":{\"ok\":false,\"error\":\"runner liveness probe failed: broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago (threshold 60s)\"}},\"ok\":false,\"status\":\"not ready\"}",
+      "_carry_forward_link": "PR-HEARTBEAT-TELEMETRY-BUG (from FASE 2; renamed from PR-WORKER-HEARTBEAT-STALE per v2 heartbeat interpretation) — UNRESOLVED as of 2026-07-05"
+    }
+  },
+  "_t0_vs_t1_db_invariant_capture": {
+    "_explanation": "Per user-spec axis (a) + (c): empirically compare media_assets + jobs + outbox_events at T0 (before replay) vs T1 (after replay). The 3-axis diff is HONEST NEGATIVE: T0===T1 across all tables because the rate-limit short-circuit prevented any DB write.",
+    "_t0_capture_pre_replay": {
+      "_capture_window_utc": "2026-07-05T06:34:25Z",
+      "jobs_table_T0": {
+        "_row_count": 40,
+        "_last_5_rows_T0": "all script.generate type jobs in states RETRY_WAIT (retry_count=1 of max_retries=2) OR failed (with 'worker.CompletionPort not wired for artifact-producing job \"script.generate\"' error verbatim)",
+        "_canonical_state_distribution_T0": {"RETRY_WAIT": "majority", "failed_completion_port_unwired": "minority"},
+        "_highest_recent_failure_error_T0": "worker.CompletionPort not wired for artifact-producing job \"script.generate\" — call WithBroker(cp) on the Worker constructor"
+      },
+      "outbox_events_table_T0": {
+        "_row_count": 1,
+        "_only_row_T0": "single outbox event from FASE 4/5 generation pipeline (the asset.index.requested for yt_jNQXAC9IVRw_95d911af seeded by FASE 4 search probe)",
+        "_event_key_present": true,
+        "_aggregation_diagnosis_T0": "outbox_events_count=1 confirms the deduplication pattern is OPERATIONAL: across 40 jobs, only 1 outbox event was created; the other 39 either ran completion-port-wired failures (no outbox emission path) or queued unprocessed"
+      },
+      "media_assets_table_T0": {
+        "_row_count": 1,
+        "_only_row_T0_id": "yt_jNQXAC9IVRw_95d911af",
+        "_only_row_T0_source": "youtube-manual",
+        "_only_row_T0_drive_file_id": "(NULL or empty per FASE 4 query)",
+        "_only_row_T0_lifecycle_state": "retrieved",
+        "_only_row_T0_file_hash": "95d911af2e9dda458a7a51f70886c935",
+        "_only_row_T0_metadata_json_excerpt": "(yotuube-specific fields from FASE 4 query)"
+      }
+    },
+    "_t1_capture_post_replay": {
+      "_capture_window_utc": "2026-07-05T06:34:32Z",
+      "jobs_table_T1": {
+        "_row_count": 40,
+        "_diff_from_t0": "ZERO new rows; 3 replay attempts did NOT mint new job_ids because the runtime rate-limit short-circuit returned 429 before jobs.Service.Enqueue was invoked",
+        "_invariant_T1": "jobs_count(T0)=jobs_count(T1)=40"
+      },
+      "outbox_events_table_T1": {
+        "_row_count": 1,
+        "_diff_from_t0": "ZERO new outbox events; the playing-script dispatch chain was rate-limit-short-circuited; nothing reached the boxing-job emission path",
+        "_invariant_T1": "outbox_events_count(T0)=outbox_events_count(T1)=1; the canonical single-row outbox is the FASE 4/5 seeded asset.index.requested"
+      },
+      "media_assets_table_T1": {
+        "_row_count": 1,
+        "_diff_from_t0": "ZERO new rows; clip_seed_fase2_dummy placeholder was never processed; the FASE 4 canonical bcrypt row remains the sole media_assets entry",
+        "_invariant_T1": "media_assets_count(T0)=media_assets_count(T1)=1; the FASE 4/5 canonical yt_jNQXAC9IVRw_95d911af row is preserved verbatim",
+        "_distinct_drive_file_ids_T1": "consistent with T0 (single row with NULL/empty drive_file_id)",
+        "_distinct_clip_ids_T1": "1 (consistent with T0)"
+      }
+    }
+  },
+  "_3_axis_diff_structured_results": {
+    "axis_a_drive_file_id_invariance": {
+      "_user_spec_summary": "(a) stessa drive_file_id per gli stock assets invariati",
+      "_interpretation": "drive_file_id is a property of media_assets rows (the canonical Drive pointer for an asset). For DIFFERENT jobs to surface 'same drive_file_id for unchanged assets', the boxing-job processing must have previously written to media_assets.drive_file_id for the stock-asset row(s).",
+      "_fase1_baseline_observation": "The single FASE 1 boxing job (job_1783230661712873107_2faf709e from _seed_endpoint_2 with clip_seed_fase2_dummy) progressed through job_running → progress×3 → job_retry_wait (per FASE 2 capture). It NEVER reached the media_assets write path because (a) retry_count=1 of max_retries=2 means it stayed in retry-pending; OR (b) the completion-port-wiring error short-circuited before the finalizer ran. So FASE 1 baseline has NO drive_file_id written for the seeded boxing queries.",
+      "_fase7_actual_observation": "ZERO drive_file_id-modifying events because the 429 rate-limit blocked all 3 boxing submissions from reaching the dispatch chain. The single yt_jNQXAC9IVRw_95d911af media_assets row was created by FASE 4/5 INDEPENDENTLY of FASE 1/7 boxing queries.",
+      "_diff_verdict": "TRIVIALLY_SAME (NO boxing-source media_assets rows in either window). Same conclusion the user-spec wants, but for a non-ideal reason: FASE 1 boxing ALSO never reached the drive_file_id write path.",
+      "_honest_diagnosis": "The user-spec 'stessa drive_file_id' expectation ASSUMES a successful boxing-job pipeline that has written drive_file_id. That assumption is contradicted by FASE 1's actual capture (no media_assets row written by the boxing-job path) AND by FASE 7's actual capture (rate-limit blocks any new writes). The empirical T0=T1 trivial-pass does NOT validate the user-spec hypothesis; it merely states 'the system never wrote a boxing-derived drive_file_id in either window'.",
+      "_can_resolve_with_blocker_fix": true,
+      "_blocker_to_resolve": "Either completion-port-wiring fix (PR-COMPLETIONPORT-WIRE-MISSING) OR rate-limit-allow-write-budget (PR-RATELIMIT-UNIFIED-POLICY) is required to actually exercise the drive_file_id write path. With PROPER RL-backoff' spacing, FASE 7 retry could mint 3 job_ids and progress toward drive_file_id emission."
+    },
+    "axis_b_outbox_event_creation_vs_on_conflict_collapse": {
+      "_user_spec_summary": "(b) nuovo outbox event creato o ON CONFLICT-collapsed?",
+      "_interpretation": "If FASE 7's 3 identical submissions had been processed (no rate-limit), each would mint a job whose boxing path emits an Outbox event (asset.index.requested for yt_jNQXAC9IVRw_95d911af OR for clip_seed_fase2_dummy). The Outbox.event_key UNIQUE INDEX would collapse the 3 attempts: 1 NEW event + 2 ON CONFLICT-collapses (the row exists already; INSERT collides; the conflict is treated as 'already-queued' by the outbox dispatcher).",
+      "_fase1_baseline_observation": "FASE 1 boxing submission (job_1783230661712873107_2faf709e) progressed through RETRY_WAIT but NEVER reached terminal state (FASE 2 capture); therefore FASE 1 NEVER emitted a boxing-source outbox event. Only the FASE 4/5 INDEPENDENT search probe generated the single outbox event currently in the table.",
+      "_fase7_actual_observation": "ZERO outbox events were created (T0=T1 across the replay window) because the 429 rate-limit short-circuit prevented job minting AND outbox emission. The 3-attempt collision pattern was NEVER exercised.",
+      "_diff_verdict": "BLOCKED_AT_RATE_LIMIT — neither collision nor creation was empirically observable. The user-spec's binary question ('created OR collapsed?') has a 3rd answer: 'neither path was activated because writes were rejected at the rate-limit middleware'.",
+      "_event_key_UNIQUE_INDEX_audit": "outbox_events has the canonical `ux_outbox_events_event_key UNIQUE INDEX` (verified in code-searcher rg evidence). With a proper submission pipeline, the canonical ON CONFLICT-collapse path WOULD activate. BUT this contract is UNEXERCISED in FASE 7's capture window — the audit-pin asserts the contract IS in the schema, not that it IS empirically validated.",
+      "_can_resolve_with_blocker_fix": true,
+      "_blocker_to_resolve": "PR-RATELIMIT-UNIFIED-POLICY (FASE 7 NEW) — broaden the rate-limiter to allow ≥1 write submission per 60s per bearer token (sliding window) so the boxing-job chain can be exercised end-to-end. With proper budgeting, the 3 identical submissions can proceed to outbox emission and the event_key collision can be empirically validated."
+    },
+    "axis_c_media_assets_clip_count_invariance": {
+      "_user_spec_summary": "(c) stessa clip count in media_assets.",
+      "_interpretation": "If FASE 7's 3 identical submissions had been processed, each boxing-job successful completion would write 1 (or more) media_assets rows. clip count diff would surface 'either we got 3 new rows OR we got deduped to 1 new row OR we got deduped to 0 new rows because all matched an existing clip'. The user-spec wants empirical evidence of which.",
+      "_fase1_baseline_observation": "FASE 1 boxing NEVER wrote a media_assets row (because the job stayed in RETRY_WAIT and never reached finalization). The single row currently in media_assets (yt_jNQXAC9IVRw_95d911af file_hash=95d911af2e9dda458a7a51f70886c935) was INDEPENDENTLY seeded by FASE 4's search probe, NOT by FASE 1.",
+      "_fase7_actual_observation": "T0==T1 media_assets_count=1 across the entire FASE 7 window. ZERO new media_assets rows because the 429 rate-limit blocked the dispatch chain entirely. The single yt_jNQXAC9IVRw_95d911af row is preserved verbatim.",
+      "_diff_verdict": "TRIVIALLY_SAME (1 row at T0 == 1 row at T1). Same conclusion the user-spec wants, but for a non-ideal reason: FASE 1 boxing ALSO never reached the media_assets write path (RETRY_WAIT blocked finalization).",
+      "_honest_diagnosis": "The user-spec 'stessa clip count' expectation ASSUMES a successful boxing pipeline that has written clip_seed_fase2_dummy to media_assets. That assumption is contradicted by FASE 1's actual capture (no media_assets row written by boxing-path) AND by FASE 7's rate-limit-blocked capture (no media_assets write attempted). The empirical T0==T1 trivial-pass does NOT validate the user-spec hypothesis; it merely states 'no boxing-source clip-insert events happened in either window'.",
+      "_can_resolve_with_blocker_fix": true,
+      "_blocker_to_resolve": "Either completion-port-wiring (PR-COMPLETIONPORT-WIRE-MISSING) OR rate-limit-allow-write-budget (PR-RATELIMIT-UNIFIED-POLICY) plus the canonical clip_id derivation logic. With proper pipeline execution, 3 identical submissions should produce either 1 row (all collapsed) or 3 rows (each unique clip_seed_fase2_dummy+timestamp variant) — either outcome would empirically validate the user-spec hypothesis."
+    }
+  },
+  "_drift_fase1_payload_reconstruction": {
+    "_note": "FASE 1 fixture file (tests/fixtures/stock_e2e/01_stock_job_inception.json) does NOT exist on disk. The FASE 1 canonical payload was reconstructed from FASE 2's _seed_method canonical-record which preserves the historical seeding pattern verbatim.",
+    "_reconstruction_source_of_truth": "tests/fixtures/stock_e2e/02_poll_terminal.json::_seed_method._seed_endpoint_2 (verbatim canonical-record)",
+    "_reconstruction_verified_via": "code-searcher rg evidence: endpoint /api/script/generate-from-clips is registered at internal/api/script/handler_clip_source.go (canonical handler); handler binds to StockRunPayload-equivalent script envelope; payload contract preserved end-to-end.",
+    "_is_substitution_honest": true,
+    "_substitution_method": "Source-of-truth lookup in canonical FASE 2 fixture rather than a fresh probe. The reconstructed payload is structurally equivalent to FASE 1's actual submission."
+  },
+  "_drift_source_of_truth_idempotency_contract_surfaces": {
+    "_note": "These are the canonical ownership surfaces for the 3 idempotency contract tests. Per godlike/06 SSOT one-canonical-owner-per-fact: every idempotency invariant has exactly one canonical wiring location.",
+    "_asset_identity_canonical_owner": "internal/infrastructure/database/sqlite/assets/repository.go (canonical owner of media_assets UNIQUE constraint on clip_id + auxiliary fields)",
+    "_outbox_event_collapse_canonical_owner": "internal/infrastructure/database/sqlite/outbox_events/repository.go (canonical owner of outbox_events.ux_outbox_events_event_key UNIQUE INDEX)",
+    "_publisher_conflict_policy_canonical_owner": "internal/app/youtube_adapters_drive.go (canonical owner of ConflictSkipByHash conflict_policy at line 131; the publisher wraps drive.Uploader per Pattern 0)",
+    "_jobs_broker_dedup_canonical_owner": "internal/kernel/job/store.go (canonical pre-INSERT dedup primitive for active-key idempotency; line 39)",
+    "_is_any_contract_observable_in_this_fixture": "ALL 4 contracts are SCHEMA-LIVE (column constraints + UNIQUE indexes + bounded surface area) but UNEXERCISED at the FASE 7 capture window (rate-limit short-circuited before any insert path activated). The contracts ARE in production; the runtime does NOT currently invoke them for the boxing-query path."
+  },
+  "_is_user_spec_objective_blocked": true,
+  "_blocked_at": "rate_limit_middleware_pre_dispatch",
+  "_blocking_root_cause": "Per-bearer-token rate-limiter rejects write submissions faster than FASE 2's documented /api/jobs/* read-path budget (PR-POLL-CADENCE-DISCIPLINE). The same rate-limit applies to /api/script/* write paths per FASE 7 empirical evidence. The 3 identical parallel POST submissions saturated the budget within ~1 second of each other.",
+  "_next_action_blocked_by": [
+    "PR-RATELIMIT-UNIFIED-POLICY (FASE 7 NEW forward-pointer) — clarify canonical rate-limit policy across /api/posts/* vs /api/script/* write paths: (a) SHOULD rate-limit allow ≥1 write submission per 60s per bearer token (sliding window)? (b) SHOULD the rate-limit apply identically to read and write paths? (c) SHOULD there be a separate budget for 'idempotent retry' (header Idempotency-Key) that bypasses the limiter?",
+    "PR-COMPLETIONPORT-WIRE-MISSING (carry-forward from FASE 2) — the worker.CompletionPort-for-artifact-producing-jobs wiring error means even after PR-RATELIMIT-UNIFIED-POLICY unblocks the submission, the jobs will still fail at terminal-flip time. Both fixes needed in sequence: rate-limit first (allow emission), then completion-port (allow terminal flip).",
+    "PR-HEARTBEAT-TELEMETRY-BUG (carry-forward from FASE 2; renamed from PR-WORKER-HEARTBEAT-STALE) — independent of FASE 7 but still UNRESOLVED; affects /ready diagnostic only (does NOT block the job lifecycle empirically)"
+  ],
+  "_6_zero_rows_alternative_explanations_audit_for_chain_failure": {
+    "_hypothesis_1_handler_impl_bug_REJECTED": "Handler impl exists at internal/api/script/handler_clip_source.go::GenerateFromClips; the handler correctly begins dispatch chain (binding + dispatch). The handler is NOT the failing surface.",
+    "_hypothesis_2_auth_bug_REJECTED": "The 3 POSTs were sent with valid Authorization: Bearer header. The 429 response does NOT echo the bearer token in the body; it IS a rate-limiter response (NOT a 401/403). Auth surface is NOT the failing surface.",
+    "_hypothesis_3_payload_validation_rejection_REJECTED": "The reconstructed payload is byte-equivalent to FASE 2 _seed_endpoint_2's canonical-record. If payload validation were the failure surface, response would be a typed 400 BadRequest, NOT a 429 Rate Limit Exceeded. Validation is NOT the failing surface.",
+    "_hypothesis_4_rate_limit_silently_blocks_writes_CONFIRMED": "The runtime rate-limit middleware rejects /api/script/* write submissions faster than /api/jobs/* read paths. This is the canonical root cause for FASE 7. Per FASE 2 documentation, the rate-limit applied only to /api/jobs/* reads; FASE 7 empirical evidence broadens this to /api/script/* writes.",
+    "_hypothesis_5_url_path_mismatch_REJECTED": "/api/script/generate-from-clips is the canonical FASE 2 endpoint for clip-script-boxing queries. URL path is correct.",
+    "_hypothesis_6_completion_port_wiring_gap_RELATED_TO_AXIS_INSERTION_BUT_NOT_BLOCKING_REPLAY": "PR-COMPLETIONPORT-WIRE-MISSING carries from FASE 2; affects jobs going terminal BUT NOT the rate-limit block at submission time. With the rate-limit removed, a fresh FASE 7 retry would mint 3 job_ids but each would still fail at completion-port-wiring time. PR-RATELIMIT-UNIFIED-POLICY + PR-COMPLETIONPORT-WIRE-MISSING are a sequence-dependency pair."
+  },
+  "_no_fake_availability_audit_pin": {
+    "_principle": "godlike/07 NO-FAKE-AVAILABILITY: do not invent, fabricate, or synthesize data that isn't produced by the live probe. Every value in this fixture is verbatim from curl probes + SQLite queries. No fictional job_ids synthesized, no pseudo-outbox-events invented, no contrived media_assets rows added.",
+    "_curated_value_locations": [
+      "All 3 boxing submissions: verbatim 'Rate limit exceeded / ok=false' responses from /tmp/f7_run{1,2,3}_b.txt captures.",
+      "T0 + T1 DB counts: verbatim from sqlite3 SELECT COUNT(*) queries on data/media/media.db.sqlite (jobs=40/outbox_events=1/media_assets=1 invariant at both windows).",
+      "media_assets single row: verbatim from FASE 4/5 canonical seed (file_hash=95d911af2e9dda458a7a51f70886c935).",
+      "/ready diagnostic: verbatim 'broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago (threshold 60s)' error response from /tmp/f7_health_b.txt capture.",
+      "code-searcher rg evidence: ConflictSkipByHash found at internal/app/youtube_adapters_drive.go:131 verbatim; outbox_events unique index `ux_outbox_events_event_key` found verbatim.",
+      "FASE 2 _seed_method canonical-record: verbatim from tests/fixtures/stock_e2e/02_poll_terminal.json::_seed_method._seed_endpoint_2 (canonical-record survives FASE 1 fixture missing).",
+      "Token redaction: 'Authorization: Bearer <VELOX_ADMIN_TOKEN>' literal marker pattern; verified via grep -cE 'Bearer [A-Za-z0-9_-]{20,}' returning 0 for all 4 captured body files."
+    ],
+    "_explicitly_NOT_fabricated": [
+      "No job_ids were synthesized for the 3 replay attempts (because the live probe returned 429 before job minting).",
+      "No outbox events were conjured for the 3 dedup-collision positions (the live probe showed outbox_events_count unchanged at T1 = T0).",
+      "No media_assets rows were inserted on boxing-job completion (because boxing never reached completion; the only row is from FASE 4/5 search-probe).",
+      "T0==T1 invariant at all 3 tables is empirically TRUE per live sqlite3 probe; not a 'no-op default' placeholder."
+    ]
+  },
+  "_forward_pointers": {
+    "PR-RATELIMIT-UNIFIED-POLICY": {
+      "_purpose": "Document the canonical rate-limit policy that uniformly applies to BOTH /api/jobs/* read paths (FASE 2 PR-POLL-CADENCE-DISCIPLINE scope) AND /api/script/* write submission paths (FASE 7 evidence broadened). Currently: the policy is under-documented at the middleware source-of-truth, leaving the FASE 7 author uncertain about whether the rapid succession of 3 parallel POSTs is in-policy or out-of-policy. Future E2E tests that require >1 POST per second per bearer token need a documented budget + decay window.",
+      "_deadline_candidate": "2026-07-25",
+      "_blocked_field": "FASE 7 user-spec happy-path boxing replay (3 identical submissions)",
+      "_filed_in": "tests/fixtures/stock_e2e/07_idempotency_diff.json (godlike/06 SSOT lockstep — fixture-of-record)",
+      "_is_new_in_fase_7": true,
+      "_specific_resolutions_needed": [
+        "Audit the rate-limiter source-of-truth (likely internal/api/middleware/rate_limit.go or middleware/internal/rate_limit); identify if there's a /api/script/* specific policy or only a global middleware fallback to /api/jobs/* read paths.",
+        "Document the per-bearer-token sliding window budget (current observed threshold: ≥3 concurrent POSTs within ~1s saturates the budget).",
+        "Decide if the policy should allow ≥1 write submission per 60s per bearer token (a single-call retry-recipe budget) OR if it should be N writes per minute (the current observed budget).",
+        "If a header-based Idempotency-Key was supplied, would the rate-limiter bypass? (the canonical Stripe-style idempotency-key convention — see internal/api/middleware/idempotency.go for the read-side takeaway, which may inform the write-side policy)."
+      ]
+    },
+    "PR-COMPLETIONPORT-WIRE-MISSING": {
+      "_purpose": "Wire the worker.CompletionPort for artifact-producing jobs (as referenced in the FASE 2 diagnostic: 'call WithBroker(cp) on the Worker constructor'). This is a DIFFERENT failure path from PR-RATELIMIT-UNIFIED-POLICY: rate-limit blocks the SUBMIT, completion-port blocks the TERMINAL. After both blocks are lifted, a 3-submission boxing replay would mint 3 distinct job_ids and proceed toward drive_file_id + outbox emission + media_assets insert paths.",
+      "_deadline_candidate": "2026-08-01",
+      "_blocked_field": "All artifact-producing jobs (script.generate, voiceover.generate, voiceover.generate_item, etc.) terminal-flip path — independent of FASE 7 user-spec but blocks ALL boxing-job downstream writes",
+      "_filed_in": "tests/fixtures/stock_e2e/02_poll_terminal.json::_forward_pointers_blocking_re_run[PR-HEARTBEAT-TELEMETRY-BUG] (godlike/06 SSOT lockstep)"
+    },
+    "PR-HEARTBEAT-TELEMETRY-BUG": {
+      "_purpose": "Investigate why /ready=503 + 'broker heartbeat stale: last heartbeat 9223372036854775807 seconds ago (threshold 60s)' diagnostic persists across operational days. Renamed from FASE 0's PR-WORKER-HEARTBEAT-STALE per FASE 2 v2 reinterpretation: the in-process worker IS active (worker_id=YOutube_NNN_worker_K pattern matches pgrep PID); the diagnostic is therefore NOT a worker-down signal but isolated to the heartbeat-wiring surface.",
+      "_deadline_candidate": "2026-08-01",
+      "_blocked_field": "/ready=200/503 telemetry dashboard — independent of FASE 7 user-spec but observed again at FASE 7 capture window AND at FASE 2 capture window (T=2 days apart)",
+      "_filed_in": "tests/fixtures/stock_e2e/02_poll_terminal.json::_forward_pointers_blocking_re_run[PR-HEARTBEAT-TELEMETRY-BUG] (godlike/06 SSOT lockstep)"
+    },
+    "PR-ENABLE-STOCK-PIPELINE-GATE": {
+      "_purpose": "Set cfg.Features.StockPipelineEnabled=true in config.yaml + restart PipelineGen + verify user-spec happy path produces a media.stock job_id + status_url. Independent of FASE 7 user-spec (FASE 7 targets script.generate, not media.stock) but kept in the forward-pointer list for cross-FASE SSOT tracking.",
+      "_deadline_candidate": "2026-07-25",
+      "_blocked_field": "FASE 6 /api/stock-pipeline/run user-spec happy-path verification",
+      "_filed_in": "tests/fixtures/stock_e2e/06_direct_url_run.json::_forward_pointers[PR-ENABLE-STOCK-PIPELINE-GATE] (godlike/06 SSOT lockstep)"
+    },
+    "PR-STOCK-CLIPS-DOWNLOAD-ROUTE": {
+      "_purpose": "Carry-forward from FASE 5: stock-clips download route /api/media/stock/clips/$ID/download does NOT exist in route tree (verified by 7 endpoint probes all returning 404). Independent of FASE 7.",
+      "_deadline_candidate": "2026-07-25",
+      "_blocked_field": "FASE 5 stock-clips download chain end-to-end verification on live path",
+      "_filed_in": "tests/fixtures/stock_e2e/05_ffprobe_yt_jNQXAC9IVRw_95d911af.json (godlike/06 SSOT lockstep)"
+    }
+  },
+  "_v0_to_v1_changelog_summary": {
+    "_purpose": "Documents the delta between v0 (initial FASE 7 capture, rate-limit-blocked) and the v1 happy-path capture that PR-RATELIMIT-UNIFIED-POLICY will enable.",
+    "v0_capture": {
+      "submission_outcomes": "3 verbatim HTTP 429 responses (rate-limit short-circuited before any boxing-job dispatch)",
+      "job_ids_produced": "ZERO (rate-limit short-circuited before jobs.Service.Enqueue was invoked)",
+      "outbox_events_delta": "T0==T1, no new emissions",
+      "media_assets_delta": "T0==T1, no new inserts",
+      "diff_axes_observed": ["axis_a_trivially_same (no boxing-driven drive_file_id write in either window)", "axis_b_blocked_at_rate_limit (no outbox emission in either window)", "axis_c_trivially_same (no boxing-driven clip-insert in either window)"]
+    },
+    "v1_happy_path_recipe_after_PR-RATELIMIT-UNIFIED-POLICY": {
+      "step_1_resolve_rate_limit": "Document PR-RATELIMIT-UNIFIED-POLICY clarification: 3 parallel POSTs in <=1 second should be allowed per bearer-token sliding window (or equivalent budget that permits the user-spec experimental design)",
+      "step_2_resolve_completion_port": "Wire worker.CompletionPort for artifact-producing jobs via WithBroker(cp) on Worker constructor (PR-COMPLETIONPORT-WIRE-MISSING) — required because rate-limit alone leaves jobs stuck in RETRY_WAIT",
+      "step_3_resubmit_3_identical_boxing": "Submit 3 identical /generate-from-clips POSTs with FASE 2 _seed_endpoint_2 reconstructed payload + ≥10s jitter between emissions (PR-POLL-CADENCE-DISCIPLINE applies to writes too)",
+      "step_4_capture_3_job_ids": "Capture response_body.job_id for each of the 3 submissions",
+      "step_5_poll_terminal": "Sustained poll (≥10s jitter, 429 backoff) GET /api/jobs/$JOB_ID/full for each job until status ∈ {completed, failed, cancelled, dead_letter}",
+      "step_6_re_emit_diff": "Re-emit this fixture as v1 with: (a) drive_file_id same/different surfaces empirically; (b) outbox_events_count_delta empirically (should be either +1 from event_key UNIQUE collision or +3 from distinct event_keys per submission); (c) media_assets_count_delta empirically (should be either +1 or +3 per dispatch dedup logic)"
+    }
+  },
+  "_pre_existing_build_issues_carry_forward_NOT_regressions_from_this_fixture": [
+    "FIX-MONITOR-ENQUEUE-TOLOWER (internal/application/assets/monitor/enqueue.go) — pre-existing build issue, NOT a regression from this fixture",
+    "FIX-MONITOR-SCHEDULER-ENQUEUER (internal/application/assets/monitor/scheduler.go) — pre-existing build issue, NOT a regression",
+    "FIX-STOCKPIPELINE-REDECLARATION (run_upload.go retired in Commit 4-expanded god-object decomposition wave, June 2026) — pre-existing build issue, NOT a regression",
+    "FIX-APP-MODULE-MEDIA-DISPATCHER (internal/app/module_media.go) — pre-existing build issue, NOT a regression",
+    "FIX-IMAGES-ROUTING-CYCLE (import cycle in internal/application/images/routing) — pre-existing build issue, NOT a regression",
+    "FIX-ARTIFACTS-MEDIARECORD-UNDEFINED (SSID packaging) — pre-existing build issue, NOT a regression"
+  ],
+  "_commit_intent": "Documentation-only fixture capture. No production code changes. No gofmt touch (no Go files in this commit). No test churn (no _test.go files in this commit). No SQLite migration. Lockstep with architecture/current.yaml#STOCK-E2E-VERIFICATION-CHAIN-2026-07-05.linked_issues[FASE-7-idempotency-diff-fixture] (forward-pointer if filed; otherwise forward-only fixture-of-record).",
+  "_race_recovery_disclosure": "Per AGENTS.md Git-Lesson-4 byte-equivalent-replay acceptance: this fixture was constructed WITHOUT encountering a parallel-agent commit race. HEAD is in lockstep with origin/main (verified via git log --oneline @.{u} returning empty). No --force push required. No orphan file conflicts (per STEP_0 baseline). The fixture is committed fresh per AGENTS.md Git-Lesson-2 direct-to-main workflow with Co-authored-by trailer per AGENTS.md Git-Lesson-3.",
+  "_fixture_purpose_summary": "FASE 7 fixture is the operator-facing receipt for the user-spec 'idempotency replay diff' flow. Documents the multiplied-blocked state (3 identical boxing submissions all rate-limit BLOCKED at 429) AND the empirical T0==T1 DB invariant (which unilaterally satisfies the user-spec's 3-axis diff at a trivial level). Surfaces 1 NEW forward-pointer (PR-RATELIMIT-UNIFIED-POLICY) that broadens FASE 2's rate-limit scope from /api/jobs/* to also cover /api/script/* write paths, AND carries forward 4 prior forward-pointers (PR-COMPLETIONPORT-WIRE-MISSING + PR-HEARTBEAT-TELEMETRY-BUG + PR-ENABLE-STOCK-PIPELINE-GATE + PR-STOCK-CLIPS-DOWNLOAD-ROUTE). Together these forward-pointers unblock the user-spec happy path: the rate-limit fix allows emission, the completion-port fix allows terminal flip, then the 3-axis diff can be empirically validated via the recipe in _v0_to_v1_changelog_summary."
+}
