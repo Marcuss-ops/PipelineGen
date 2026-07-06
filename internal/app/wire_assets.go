@@ -120,7 +120,7 @@ func WireAssets(
 			// mutation; either way, dereferencing adapter.Uploader would
 			// nil-panic on the first port call.
 			if adapter.Uploader == nil {
-				return nil, fmt.Errorf("WireAssets: drive.Admin: %w", driveutil.WrapDriveAdminError(driveutil.ErrAdminAdapterUploaderNil))
+				return nil, driveutil.WrapDriveAdminError(driveutil.ErrAdminAdapterUploaderNil)
 			}
 			driveUploader = adapter.Uploader
 		} else {
@@ -132,7 +132,7 @@ func WireAssets(
 			// composition root with a typed sentinel rather than leave
 			// driveUploader nil silently — the failure would otherwise
 			// surface later as a panic mid-flight on the first port call.
-			return nil, fmt.Errorf("WireAssets: drive.Admin: %w", driveutil.WrapDriveAdminError(driveutil.ErrAdminUnknownType))
+			return nil, driveutil.WrapDriveAdminError(driveutil.ErrAdminUnknownType)
 		}
 	}
 	var assetRepo asset.Repository
