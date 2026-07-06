@@ -24,6 +24,16 @@ import (
 // Service is the SourcingService façade. After P0-1 / commit 5 the ctor
 // takes 5 args — 4 sub-services + Logger. The god Service's 14-dep ctor
 // is now fully distributed across 4 typed use-case packages.
+//
+// PR-RESOLVER-PORT-EXTRACT (SEMANTIC-LOCATION-API Wave 7, July 2026):
+// the façade gains a 6th optional handle — locationResolver — wired via
+// the canonical godlike/07 minimum-blast-radius fluent setter
+// WithLocationResolver. The ctor itself stays 5-arg so the 1 existing
+// caller (internal/app/assets_register_sourcing.go::newAssetRegisterService)
+// compiles without modification. When locationResolver is nil AND
+// RegisterClipCommand carries a non-empty Location with an empty
+// FolderID, the service fail-closed-resolves via ErrLocationResolverEmpty
+// rather than silently dropping the request (godlike/07 NO-FAKE-AVAILABILITY).
 type Service struct {
 	// P0-1 / commit 1: YouTube sub-service.
 	youtube YouTubeRegistrar
@@ -37,6 +47,14 @@ type Service struct {
 	// P0-1 / commit 4: LocalImporter sub-service.
 	localimport LocalImporter
 
+	// PR-RESOLVER-PORT-EXTRACT (Wave 7, SEMANTIC-LOCATION-API-2026-07-06):
+	// canonical Pattern-0 typed port that resolves a semantic-location
+	// AssetLocationInput into a concrete Drive folder-id. Nil-resolver +
+	// empty-folder-id + non-empty-location is the fail-closed surface;
+	// the resolver is the SOLE canonical owner of the location→folder
+	// translation for the UNINITIALIZED resolver case (godlike/06 SSOT).
+	locationResolver LocationResolverPort
+
 	log Logger
 }
 
@@ -44,6 +62,13 @@ type Service struct {
 // takes 5 args: youtube + batch + drivesync + localimport sub-services +
 // Logger. JobsPort + FileScannerPort live with the sub-packages that
 // need them (drivesync + localimport) and are no longer proxied here.
+//
+// PR-RESOLVER-PORT-EXTRACT (Wave 7): the 5-arg signature is preserved
+// (godlike/07 minimum-blast-radius) — the resolver is added via the
+// fluent WithLocationResolver setter rather than as a 6th ctor arg.
+// The fluent setter is the canonical "additive dependency injection"
+// pattern at the existing composition sites; a future PR may promote
+// it to a true ctor arg once the resolver wiring is mandatory.
 func NewService(
 	yt YouTubeRegistrar,
 	batch BatchRegistrar,
@@ -60,11 +85,116 @@ func NewService(
 	}
 }
 
+// WithLocationResolver wires the Pattern-0 LocationResolverPort into the
+// façade via a fluent setter (godlike/07 minimum-blast-radius additive
+// DI). Once wired, the resolver is invoked by registerFromYouTube /
+// batchRegisterFromYouTube fallback paths (resolveLocationFallback) to
+// derive a folder-id when RegisterClipCommand.Location is non-empty AND
+// FolderID is empty.
+//
+// The setter returns *Service so callers can chain it inline at the
+// existing 5-arg composition sites without introducing a second call:
+//
+//	return sourcing.NewService(yt, b, d, l, log).WithLocationResolver(r)
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: the resolver
+// integration point lives ONLY here. Each call to WithLocationResolver
+// REPLACES (does not append) the previous resolver — composition root
+// wiring is the canonical one-time setup per process boot.
+func (s *Service) WithLocationResolver(r LocationResolverPort) *Service {
+	if s == nil {
+		return nil
+	}
+	s.locationResolver = r
+	return s
+}
+
+// resolveLocationFallback implements the F3 service-layer fallback
+// contract (PR-RESOLVER-PORT-EXTRACT Wave 7):
+//
+//  1. cmd.FolderID non-empty → return as-is, no resolver call.
+//  2. cmd.Location.IsEmpty() → return cmd.FolderID (legacy bare call).
+//  3. s.locationResolver nil → typed error ErrLocationResolverEmpty
+//     at the by-call-site surface so misconfigured compositions
+//     fail loudly rather than silently pass through empty locations.
+//  4. otherwise → resolver.Resolve; on err wrap with the typed sentinel.
+//     The resolver returns the canonical folder-id; merged into
+//     cmd.FolderID before downstream YouTubeRegistrar.Register
+//     consumes the cmd.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: this helper either returns a
+// non-empty folder-id or returns nil+error. There is no
+// silent-fail-closed pass-through to the orchestrator.
+func (s *Service) resolveLocationFallback(ctx context.Context, cmd RegisterClipCommand) (string, error) {
+	if cmd.FolderID != "" {
+		return cmd.FolderID, nil
+	}
+	if cmd.Location.IsEmpty() {
+		return cmd.FolderID, nil
+	}
+	if s == nil || s.locationResolver == nil {
+		return "", fmt.Errorf(
+			"%w (composition site must call sourcing.NewService(...).WithLocationResolver(r) per PR-RESOLVER-PORT-EXTRACT Wave 7 fail-closed contract)",
+			ErrLocationResolverEmpty,
+		)
+	}
+	folderID, err := s.locationResolver.Resolve(ctx, cmd.Location, "")
+	if err != nil {
+		return "", fmt.Errorf("sourcing.Service.resolveLocationFallback: resolver error: %w", err)
+	}
+	if folderID == "" {
+		return "", fmt.Errorf(
+			"%w: resolver returned empty folder-id for non-empty Location",
+			ErrLocationResolverDestinationUnsupported,
+		)
+	}
+	if s.log != nil {
+		s.log.Info(
+			"sourcing: resolved semantic-location to folder",
+			"folder_id", folderID,
+			"category", cmd.Location.Category,
+			"subject", cmd.Location.Subject,
+		)
+	}
+	return folderID, nil
+}
+
 // RegisterFromYouTube delegates to the YouTube sub-package service.
 // The legacy method body has moved to
 // internal/application/assets/sourcing/youtube/service.go::Service.Register.
 // Behavior is identical — the façade only changes the lookup direction.
+//
+// PR-RESOLVER-PORT-EXTRACT (SEMANTIC-LOCATION-API Wave 7, July 2026):
+// F3 service-layer fallback. The resolution step runs FIRST (godlike/07
+// fail-fast-at-input > fail-slow-at-orchestration): when cmd.Location
+// is non-empty AND cmd.FolderID is empty, the resolveLocationFallback
+// returns a typed sentinel if the resolver is misconfigured — callers
+// see the resolver-error surface BEFORE the youtube-not-wired surface,
+// preserving typed-error probing on a per missing-component basis.
+//
+// Per godlike/07 minimum-blast-radius, callers that pre-Wave-7 set only
+// cmd.FolderID continue to work byte-identically: resolveLocationFallback
+// returns cmd.FolderID as-is at step 1 and never invokes the resolver.
+// When BOTH cmd.FolderID AND cmd.Location are non-empty, the cmd.FolderID
+// wins (legacy precedence preserved) and a Warn log is emitted for
+// operator visibility.
 func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipCommand) (*RegisterClipResult, error) {
+	// F3 service-layer fallback runs FIRST so resolver-misconfig failures
+	// surface at the typed sentinel rather than the orchestrator-nil one.
+	resolved, err := s.resolveLocationFallback(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if cmd.FolderID == "" && resolved != "" {
+		cmd.FolderID = resolved
+	} else if cmd.FolderID != "" && !cmd.Location.IsEmpty() && s.log != nil {
+		s.log.Warn(
+			"sourcing: cmd.FolderID takes precedence over cmd.Location (legacy precedence preserved per F3 / PR-RESOLVER-PORT-EXTRACT)",
+			"folder_id", cmd.FolderID,
+			"category", cmd.Location.Category,
+			"subject", cmd.Location.SubjectOrName(),
+		)
+	}
 	if s == nil || s.youtube == nil {
 		return nil, fmt.Errorf("sourcing.RegisterFromYouTube: youtube registrar not wired (compose-time bug — check newAssetRegisterService)")
 	}

@@ -4,9 +4,11 @@ package sourcing
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 )
 
 // ── Fetch ports ────────────────────────────────────────────────────────
@@ -239,4 +241,71 @@ type Logger interface {
 	Warn(msg string, keysAndValues ...any)
 	Error(msg string, keysAndValues ...any)
 	Debug(msg string, keysAndValues ...any)
+}
+
+// ── Location resolver ports (PR-RESOLVER-PORT-EXTRACT, SEMANTIC-LOCATION-API Wave 7) ──
+
+// Typed-error contract (godlike/07 NO-FAKE-AVAILABILITY): the port is the
+// canonical owner of the three sentinel error values below. downstream
+// callers MUST probe via errors.Is(err, ErrLocationResolverEmpty) etc.
+// — never via raw string matches.
+var (
+	// ErrLocationResolverEmpty surfaces when the resolver is asked to
+	// resolve a zero-value AssetLocationInput. Empty inputs cannot be
+	// resolved to a Drive folder because the resolver has zero
+	// discriminators (category / subject / project etc.). The caller
+	// MUST pre-check via AssetLocationInput.IsEmpty() before invoking
+	// Resolve — this sentinel surfaces late as a sanity guard against
+	// gates that were bypassed.
+	ErrLocationResolverEmpty = errors.New(
+		"sourcing: LocationResolver.Resolve called with empty AssetLocationInput",
+	)
+
+	// ErrLocationResolverDestinationUnsupported surfaces when the
+	// resolver is asked to resolve a (Location, DestinationKey) pair
+	// for which the canonical per-destination mapping table does not
+	// define a segment shape. Future destination registrations MUST
+	// extend the table here AND extend BuildPublishRequest's switch
+	// statement in lockstep (godlike/06 2-surface lockstep).
+	ErrLocationResolverDestinationUnsupported = errors.New(
+		"sourcing: LocationResolver.Resolve: destination does not support semantic-location mapping",
+	)
+
+	// ErrLocationResolverIncompatibleFields surfaces when the
+	// input carries a field that is mutually-exclusive with the
+	// destination (e.g. Style on DestinationYouTubeClip which
+	// does not consume it under BuildPublishRequest's mapping).
+	// The caller MUST drop the non-applicable fields rather than
+	// hoping the resolver silently ignores them (godlike/07
+	// typed-error contract: no silent fallback to a half-formed
+	// PublishRequest).
+	ErrLocationResolverIncompatibleFields = errors.New(
+		"sourcing: LocationResolver.Resolve: location carries fields incompatible with destination",
+	)
+)
+
+// LocationResolverPort resolves a canonical semantic-location DTO
+// into a concrete Drive folder ID for a given destination.
+//
+// SEMANTIC-LOCATION-API-2026-07-06 Wave 7 (PR-RESOLVER-PORT-EXTRACT):
+// the port is the canonical Pattern-0 typed contract that consumes
+// internal/domain/delivery.AssetLocationInput (godlike/06 SSOT owner:
+// internal/domain/delivery/location.go) and returns a folder-id string.
+// Downstream YouTubeRegistrar / BatchRegistrar sub-services MUST NOT
+// build a folder-id from raw Location fields directly — they invoke
+// this port and merge the resolved id into RegisterClipCommand.FolderID
+// per the F3 service-layer fallback contract.
+//
+// godlike/07 typed-error contract: implementations MUST return one of
+// the typed sentinels above (or wrap them via dual-%w per Go 1.20+)
+// when the input is empty, the destination is unsupported, or the
+// input carries incompatible fields. Returning a raw `fmt.Errorf` is
+// a godlike/07 violation — callers cannot probe typed errors.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this port lives
+// ONLY in internal/application/assets/sourcing/ports.go. Concrete
+// adapters live in internal/infrastructure/drive/resolver/ (C3
+// hybrid — interface in app, adapter in infra).
+type LocationResolverPort interface {
+	Resolve(ctx context.Context, loc domaindelivery.AssetLocationInput, dest delivery.DestinationKey) (folderID string, err error)
 }

@@ -31,6 +31,7 @@ import (
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive/resolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -167,7 +168,28 @@ func newAssetRegisterService(
 	// localimport sub-packages directly (composition site passes nil
 	// to both today; future sites inject real JobsPort + FileScannerPort
 	// adapters into the respective NewService call sites above).
-	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log})
+	//
+	// PR-RESOLVER-PORT-EXTRACT (SEMANTIC-LOCATION-API Wave 7, July 2026):
+	// the 5-arg NewService signature is preserved (godlike/07
+	// minimum-blast-radius) — the resolver is appended via the canonical
+	// fluent setter WithLocationResolver. The composition-root adapter
+	// is the canonical SOLE owner of the resolver wiring per process boot;
+	// when the resolver becomes mandatory, the fluent setter is
+	// promoted to a 6-arg ctor (forward-pointer, godlike/06 lockstep).
+	//
+	// fail-closed-at-construction: NewAdapter returns (*Adapter, error)
+	// so a malformed rootFolder surfaces at composition time rather than
+	// silently passing through and failing at first /api/media/register
+	// call. The error is logged + the fluent setter is skipped so the
+	// process boots; future PR may flip this to a hard-fail
+	// (forward-pointer: validate-drive-bundle-gate at boot).
+	resolverAdapter, resolverErr := resolver.NewAdapter(cfg.Drive.RootFolder, &zapSourcingLogger{log: log})
+	if resolverErr != nil {
+		log.Warn("PR-RESOLVER-PORT-EXTRACT: failed to construct resolver adapter; fluent setter will be skipped and a non-empty Location will fail-closed via ErrLocationResolverEmpty at runtime", zap.Error(resolverErr))
+		return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log})
+	}
+	log.Info("PR-RESOLVER-PORT-EXTRACT: canonical LocationResolverPort wired into sourcing façade (Wave 7 SEMANTIC-LOCATION-API deliverable)")
+	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log}).WithLocationResolver(resolverAdapter)
 }
 
 // clipJobEnqueuerAdapter bridges batch.ClipJobEnqueuer → appjobs.Service.Enqueue.
