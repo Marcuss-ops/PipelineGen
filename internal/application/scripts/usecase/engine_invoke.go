@@ -1,3 +1,7 @@
+// Package usecase — engine_invoke.go: engine-phase error helpers.
+//
+// Extracted from generate_one_usecase_execute.go (July 2026).
+// Owns: logPhaseError, preConstructError, generateOnePreConstructError.
 package usecase
 
 import (
@@ -71,12 +75,6 @@ func (uc *GenerateOneUseCase) logPhaseError(
 			zap.String("phase", phase),
 			zap.Error(err))
 	}
-	// Tertiary wrap: umbrella (ErrScriptGenerationFailed) + phase
-	// sentinel + inner error. Go 1.20+ supports N-ary `%w` verbs via
-	// errors.Join semantics, so all three errors remain
-	// errors.Is-walkable. The string format produced is:
-	//   "generation: script generation failed: <phase>: <inner>"
-	// which is grep-friendly for operators triaging /api/jobs/{id}/full.
 	return fmt.Errorf("%w: %w: %w", scriptpkg.ErrScriptGenerationFailed, sentinel, err)
 }
 
@@ -89,11 +87,6 @@ func (uc *GenerateOneUseCase) logPhaseError(
 // correlation). The receiver remains non-nil — the engine=nil check
 // runs AFTER the uc=nil test in Execute, so by the time this helper
 // is invoked for engine=nil, uc is guaranteed non-nil.
-//
-// godlike/07 minimum-blast-radius: keeps the original
-// `uc.log.Warn("generate-one: construction failed", reason="...")`
-// diagnostic line verbatim — operators reading the old log-formatting
-// string see no surprise. Only the error-construction shift changed.
 func (uc *GenerateOneUseCase) preConstructError(
 	reason string,
 	sentinel error,
@@ -103,14 +96,6 @@ func (uc *GenerateOneUseCase) preConstructError(
 		uc.log.Warn("generate-one: construction failed",
 			zap.String("reason", reason))
 	}
-	// Umbrella + reason-as-label + phase-sentinel + inner error.
-	// N-ary %w verbs (Go 1.20+) keep every %w'd error in the
-	// walkable chain; the %s reason string is JUST a label
-	// (informational string in the error output, NOT in the
-	// errors.Is chain). The chain reaches:
-	//   errors.Is(err, ErrScriptGenerationFailed)   ✓
-	//   errors.Is(err, ErrGenerationFailed)         ✓ (phase sentinel)
-	//   errors.Is(err, err)                          ✓ (or errors.As)
 	return fmt.Errorf("%w: %s: %w: %w", scriptpkg.ErrScriptGenerationFailed, reason, sentinel, err)
 }
 
@@ -119,12 +104,7 @@ func (uc *GenerateOneUseCase) preConstructError(
 // Execute). Cannot log because no logger accessor exists without a
 // receiver; the typed-error chain is the canonical propagation
 // surface for handlers / dashboards.
-//
-// Mirror of (uc) preConstructError but for the receiver-is-nil case.
-// Same N-ary %w chain produces the same errors.Is walkability for
-// ErrScriptGenerationFailed + phase-sentinel + inner err.
 func generateOnePreConstructError(
-	// Reserved for future "default logger" wiring — currently nil.
 	_ *GenerateOneUseCase,
 	reason string,
 	sentinel error,
