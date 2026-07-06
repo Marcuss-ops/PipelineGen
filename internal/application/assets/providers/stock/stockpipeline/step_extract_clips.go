@@ -18,7 +18,9 @@
 //     successfully cut clip.
 //
 // godlike/07 fail-closed contracts:
-//   - Cutter nil → test-fixture path (CutPaths = nil, no error).
+//   - Cutter nil + plans empty → test-fixture path (CutPaths = nil,
+//     no error).
+//   - Cutter nil + plans non-empty → ErrStockExtractClipsCutterRequired.
 //   - plans empty → Debug + return nil (no work to do).
 //   - Source not staged → Warn + skip (graceful degradation; other
 //     sources may still have staged files).
@@ -52,9 +54,19 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 
 	// Test-fixture path: no cutter wired → skip (downstream
 	// compose_chunks handles empty CutPaths gracefully).
+	//
+	// godlike/07 fail-closed gate (PR-STOCK-FAKE-AVAILABILITY-REMOVAL
+	// follow-up, July 2026): when plans is non-empty (the step has
+	// work to do) BUT cutter is nil, surface ErrStockExtractClipsCutterRequired
+	// instead of silently returning CutPaths=nil. A nil cutter with
+	// zero plans is still a valid test-fixture skip (empty plans →
+	// zero cutPaths is the correct outcome).
 	if cutter == nil {
+		if len(plans) > 0 {
+			return ErrStockExtractClipsCutterRequired
+		}
 		if runner.Log() != nil {
-			runner.Log().Debug("orchestrator: stock.extract_clips: VideoCutter nil — skipping cut (test-fixture path)")
+			runner.Log().Debug("orchestrator: stock.extract_clips: VideoCutter nil + empty plan — skipping cut (test-fixture path)")
 		}
 		runner.State().CutPaths = nil
 		return nil

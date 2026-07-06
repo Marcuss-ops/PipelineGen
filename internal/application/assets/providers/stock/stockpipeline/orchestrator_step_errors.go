@@ -73,6 +73,17 @@ var (
 	// (Wave 1 P0 #2, deadline 2026-07-15).
 	ErrStockStageSourcesAllFailed = errors.New("stock.stage_sources: all sources failed to stage")
 
+	// ErrStockExtractClipsCutterRequired is raised when StockExtractClipsStep.Run
+	// detects a nil VideoCutter AND non-empty plans — the step has work to do
+	// but no cutter to do it with. This closes the godlike/07 no-fake-availability
+	// class where a nil cutter silently produced CutPaths=nil, cascading through
+	// compose→publish→finalize into an empty manifest.
+	//
+	// Test-fixture compat: when plans is empty (no work to do), the nil-cutter
+	// path still returns nil (zero-clips → zero-cut-paths is the correct outcome).
+	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2, follow-up July 2026).
+	ErrStockExtractClipsCutterRequired = errors.New("stock.extract_clips: VideoCutter nil but plans non-empty — cutter must be wired for production runs")
+
 	// ErrStockComposeChunksAllFailed is raised when StockComposeChunksStep.Run
 	// was wired with a non-nil Renderer AND had non-empty CutPaths AND
 	// every chunk failed to render (zero string paths appended to the

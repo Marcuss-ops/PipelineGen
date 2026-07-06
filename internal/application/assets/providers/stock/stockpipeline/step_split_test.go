@@ -78,21 +78,23 @@ func TestSplit_SentinelsLiveInOrchestratorStepErrors(t *testing.T) {
 		ErrStockFinalizeLeaseMissing,
 		ErrStockFnRequired,
 		ErrStockStageSourcesAllFailed,
+		ErrStockExtractClipsCutterRequired,
 		ErrStockComposeChunksAllFailed,
 	}
-	if got, want := len(sentinels), 6; got != want {
+	if got, want := len(sentinels), 7; got != want {
 		t.Fatalf("step-level sentinel count: got %d, want %d", got, want)
 	}
 	// Every sentinel's message MUST name its step (godlike/07
 	// typed-error contract). Drift to bare messages would break
 	// operator log scanability + dashboard errors.Is routing.
 	wantSubstrings := map[string]string{
-		"ErrStockPublishArtifactFailed":  "stock.publish",
-		"ErrStockFinalizeSpineFailed":    "stock.finalize",
-		"ErrStockFinalizeLeaseMissing":   "stock.finalize",
-		"ErrStockFnRequired":             "stock.finalize",
-		"ErrStockStageSourcesAllFailed":  "stock.stage_sources",
-		"ErrStockComposeChunksAllFailed": "stock.compose_chunks",
+		"ErrStockPublishArtifactFailed":    "stock.publish",
+		"ErrStockFinalizeSpineFailed":      "stock.finalize",
+		"ErrStockFinalizeLeaseMissing":     "stock.finalize",
+		"ErrStockFnRequired":               "stock.finalize",
+		"ErrStockStageSourcesAllFailed":    "stock.stage_sources",
+		"ErrStockExtractClipsCutterRequired": "stock.extract_clips",
+		"ErrStockComposeChunksAllFailed":   "stock.compose_chunks",
 	}
 	for i, s := range sentinels {
 		if s == nil {
@@ -112,6 +114,8 @@ func TestSplit_SentinelsLiveInOrchestratorStepErrors(t *testing.T) {
 			s = ErrStockFnRequired
 		case "ErrStockStageSourcesAllFailed":
 			s = ErrStockStageSourcesAllFailed
+		case "ErrStockExtractClipsCutterRequired":
+			s = ErrStockExtractClipsCutterRequired
 		case "ErrStockComposeChunksAllFailed":
 			s = ErrStockComposeChunksAllFailed
 		}
