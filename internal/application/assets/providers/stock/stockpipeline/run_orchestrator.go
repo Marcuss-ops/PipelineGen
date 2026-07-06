@@ -15,12 +15,14 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -164,6 +166,50 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 // rimossi.
 //
 // DEPRECATO: tenere solo per back-compat ServiceRunner.
+
+// runSyncPersist (July 2026) routes the sync path through the
+// resilient orchestrator (RunResilient) with a synthetic broker
+// lease, so StockFinalizeStep writes to media_assets via the
+// single-TX spine. This is the canonical path when the operator
+// passes persist=true on a sync-mode stock pipeline request.
+//
+// godlike/07 no-fake-availability: the synthetic lease uses
+// deterministic identifiers (sync-stock-<nanos>) so every call
+// produces a distinct lease — the finalizer's CAS-fence won't
+// conflate two sync-mode calls that happen to share a jobID.
+//
+// The §12-1 P0 #2 gate (in Orchestrator.RunResilient) fires
+// typed errors when either publisher or finalizer is nil — the
+// caller converts those to the ServiceRunner error surface without
+// special-casing.
+func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*PipelineResult, error) {
+	// Generate synthetic identifiers for sync-mode persistence.
+	// The lease uses deterministic JobID/WorkerID so the finalizer's
+	// CAS-fence (revision-match on jobs table) is still meaningful
+	// even without a real broker — the sync mode holds the "lease"
+	// for the duration of this call; concurrent sync requests get
+	// distinct leases and won't CAS-fence each other.
+	jobID := fmt.Sprintf("sync-stock-%d", time.Now().UnixNano())
+	input.FinalizationLease = finalization.Lease{
+		LeaseID:   jobID + "-lease",
+		JobID:     jobID,
+		WorkerID:  "sync-mode",
+		Attempt:   1,
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+
+	// Delegate to the canonical resilient path — runOrchestratorResilient
+	// resolves queries, builds the orchestrator with finalizer + asset
+	// preparation, and invokes RunResilient. godlike/06 SSOT: the
+	// orchestrator construction lives in exactly one method.
+	summary, err := s.runOrchestratorResilient(ctx, input, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: %w", err)
+	}
+
+	return projectManifestToPipelineResult(summary.Manifest), nil
+}
+
 func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineResult {
 	if manifest == nil {
 		return &PipelineResult{}

@@ -142,6 +142,7 @@ func commandToRunInput(cmd *StockCommand) *RunInput {
 		FolderName:    cmd.FolderName,
 		FolderID:      cmd.FolderID,
 		Metadata:      cmd.Metadata,
+		Persist:       cmd.Persist,
 	}
 }
 

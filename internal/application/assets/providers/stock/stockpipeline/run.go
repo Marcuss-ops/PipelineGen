@@ -38,6 +38,11 @@ import (
 // delegates to runOrchestrator, then projects the typed manifest
 // back to the legacy PipelineResult shape.
 //
+// When input.Persist is true, the sync path routes through the
+// resilient orchestrator (RunResilient) with a synthetic broker
+// lease, so StockFinalizeStep writes to media_assets via the
+// single-TX spine (same contract as production broker jobs).
+//
 // On error the underlying orchestrator.Run error is wrapped via %w
 // so callers can errors.Is/As inspect the orchestrator's signal
 // class (ErrOrchestratorNilDeps etc.).
@@ -48,6 +53,11 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	if input == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.Run: nil *RunInput")
 	}
+
+	if input.Persist {
+		return s.runSyncPersist(ctx, input)
+	}
+
 	manifest, err := s.runOrchestrator(ctx, input, "")
 	if err != nil {
 		return nil, fmt.Errorf("stockpipeline.Service.Run: orchestrator delegate: %w", err)

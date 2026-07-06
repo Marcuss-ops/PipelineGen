@@ -25,6 +25,13 @@ type StockRunPayload struct {
 	// forces Async=true before JSON binding so existing clients
 	// preserve the async-by-default production behaviour.
 	Async bool `json:"async,omitempty"`
+	// Persist enables media_assets writing in sync mode. When true
+	// AND async=false, the sync path wires the finalizer (the same
+	// single-TX spine write used by production broker jobs) so
+	// STK-E2E tests can verify the full chain without depending on
+	// the broker. Defaults to false — existing sync-mode callers are
+	// unaffected.
+	Persist bool `json:"persist,omitempty"`
 }
 
 // StockRunPayloadMetadata mirrors ChunkMetadataInput for JSON compatibility.

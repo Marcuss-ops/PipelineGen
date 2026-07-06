@@ -41,6 +41,13 @@ type RunInput struct {
 	// §12-7 (July 2026).
 	FinalizationLease finalization.Lease // broker lease for StockFinalizeStep spine write
 	PolicyVersion     string             // run-fingerprint salt used by orchestrator + metadata.json
+
+	// Persist (July 2026) enables media_assets writing in sync mode.
+	// When true, the Service routes through the resilient orchestrator
+	// path (RunResilient) with a synthetic broker lease, so the
+	// StockFinalizeStep writes to media_assets via the single-TX spine.
+	// Defaults to false — existing sync-mode callers are unaffected.
+	Persist bool
 }
 
 // ChunkMetadataInput holds user-provided metadata for chunks.

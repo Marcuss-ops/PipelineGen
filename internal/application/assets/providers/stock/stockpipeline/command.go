@@ -34,6 +34,9 @@ type StockSearchAndRunRequest struct {
 	// existing clients see no behaviour change. With "async":false on
 	// the wire, use case.Submit runs synchronously via the runner.
 	Async bool `json:"async,omitempty"`
+	// Persist enables media_assets writing in sync mode (only when
+	// Async=false). See StockRunPayload.Persist for the rationale.
+	Persist bool `json:"persist,omitempty"`
 }
 
 // StockCommand is the canonical internal command the API layer hands to
@@ -58,6 +61,11 @@ type StockCommand struct {
 	// Mirrors the same field on StockSearchAndRunRequest + StockRunPayload
 	// for end-to-end wire-shape audit trail.
 	Async bool
+	// Persist enables media_assets writing in sync mode (only when
+	// Async=false). Threaded through to RunInput so the Service can
+	// route the sync path through the resilient orchestrator with a
+	// synthetic broker lease.
+	Persist bool
 	// Progress, when non-nil, is invoked by the runner with percent +
 	// message at each pipeline stage boundary. Mirrors RunInput.Progress
 	// (post-S2a unification — see docs/operations/06 note).
@@ -86,6 +94,7 @@ func FromRunPayload(p *StockRunPayload) (*StockCommand, error) {
 		FolderID:      p.FolderID,
 		Metadata:      metadata,
 		Async:         p.Async,
+		Persist:       p.Persist,
 	}, nil
 }
 
@@ -131,6 +140,7 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 		FolderID:      r.FolderID,
 		Metadata:      metadata,
 		Async:         r.Async,
+		Persist:       r.Persist,
 	}, nil
 }
 
@@ -151,7 +161,7 @@ func chunkMetadataFromRunPayload(m *StockRunPayloadMetadata) *ChunkMetadataInput
 // ToRunInput projects a StockCommand onto the runner's internal input
 // shape. Single-step metadata conversion (StockCommand.Metadata and
 // RunInput.Metadata share the underlying ChunkMetadataInput type), plus
-// the Progress callback mapping.
+// the Progress callback mapping and the Persist flag.
 func (c *StockCommand) ToRunInput() *RunInput {
 	if c == nil {
 		return nil
@@ -171,6 +181,7 @@ func (c *StockCommand) ToRunInput() *RunInput {
 		FolderID:      c.FolderID,
 		Metadata:      c.Metadata,
 		Progress:      c.Progress,
+		Persist:       c.Persist,
 	}
 }
 
