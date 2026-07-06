@@ -6438,3 +6438,76 @@
     Documentation-only closure per godlike/07 slim-schema append-only ratchet.
   deadline: 2026-08-01
   exit_signal: true
+||||||| constructed merge base
+
+- id: IMAGES-TERRITORY-SPLIT-2026-07-06
+  status: in_progress
+  exit_signal: false
+  owner_capability: internal/api/images + internal/application/images
+  deadline: 2026-08-15
+  exit_gate: |
+    All 5 PR-IMG-SPLIT-* linked_issues reach status: shipped.
+    gofmt + go vet + go build + go test -short clean on all targeted
+    subtrees (api/images, application/images, application/images/retrieved,
+    application/images/generated). Pre-existing build issues from
+    PRE-EXISTING-BUILD-ISSUES-2026-07-04 carry forward unchanged.
+  description: |
+    Mechanical capability-driven decomposition of image-related
+    "bridge" files that mix generated (AI), retrieved (stock), and
+    legacy concerns. The architectural separation already exists at
+    the registry level (generated/ vs retrieved/ subpackages), but
+    the API and service layers still have monolithic files that need
+    splitting per the golden rule:
+      generated = AI-created images
+      retrieved = found/downloaded/ingested images from normal sources
+      all       = aggregator only, never own business logic
+      legacy    = old endpoints kept for compat
+    Companion action plan: architecture/action-plans/2026-07-06-images-territory-split.md
+  linked_issues:
+  - id: PR-IMG-SPLIT-1
+    owner_capability: internal/api/images
+    status: pending
+    deadline: 2026-07-15
+    description: |
+      Split territory_handlers.go (479 LoC) → 7 capability files:
+      territory_router.go / retrieved_search_handler.go /
+      generated_search_handler.go / generated_generate_handler.go /
+      generated_styles_handler.go / all_territories_handler.go /
+      search_result_mapper.go. Fixes stale forward-pointer comment
+      about generated search returning empty list.
+  - id: PR-IMG-SPLIT-2
+    owner_capability: internal/api/images
+    status: pending
+    deadline: 2026-07-15
+    description: |
+      Split impl.go (338 LoC) → ~10 capability files:
+      handler.go / request_types.go / upload_handler.go /
+      sync_handler.go / legacy_generate_handler.go /
+      batch_generate_handler.go / diagnostics_handler.go /
+      animate_handler.go.
+  - id: PR-IMG-SPLIT-3
+    owner_capability: internal/application/images/retrieved
+    status: pending
+    deadline: 2026-07-25
+    description: |
+      Split retrieved/provider_registry.go (538 LoC) → 7 files:
+      provider.go / storage_bridge.go / provider_wikipedia.go /
+      provider_searxng.go / provider_duckduckgo.go /
+      provider_drive.go / provider_registry.go.
+  - id: PR-IMG-SPLIT-4
+    owner_capability: internal/application/images
+    status: pending
+    deadline: 2026-07-25
+    description: |
+      Split service.go (304 LoC) → ~7 files:
+      deps.go / service.go (thin ctor) / service_generated.go /
+      service_retrieved.go / service_generated_read.go /
+      service_storage.go / service_diagnostics.go.
+  - id: PR-IMG-SPLIT-5
+    owner_capability: internal/application/images/generated
+    status: pending
+    deadline: 2026-08-01
+    description: |
+      Split generated/provider_registry.go (277 LoC) → 5 files:
+      types.go / errors.go / provider.go /
+      provider_google_slides.go / provider_registry.go.
