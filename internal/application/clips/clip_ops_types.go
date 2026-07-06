@@ -93,12 +93,6 @@ type CleanupItem struct {
 
 // ── Verify DTOs ─────────────────────────────────────────────────────
 
-// VerifyInput captures the request shape for VerifyClip.
-type VerifyInput struct {
-	Source string
-	ClipID string
-}
-
 // VerifyReport mirrors the pre-PR2 api-output keys for VerifyClip.
 //
 // S1c (June 2026) — VerifyClip is now strictly read-only.
