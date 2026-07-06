@@ -534,7 +534,6 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 		outputDir:         outputDir,
 		voiceoverRepo:     voiceoverRepo,
 		finalizer:         e2eFinalizer,
-		lifecycleService:  lifecycleSvc,
 		outboxEnqueuer:    outboxDispatcher,
 		ttsProvider:       &e2eTTSProvider{localPath: filepath.Join(outputDir, "stub.mp3"), fileHash: fileHash},
 		assetDestResolver: &e2eAssetResolver{folderID: folderID, folderPath: outputDir},

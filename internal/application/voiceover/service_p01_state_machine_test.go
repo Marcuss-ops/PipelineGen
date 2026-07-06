@@ -44,7 +44,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/stretchr/testify/assert"
@@ -258,7 +257,6 @@ func TestGenerateBatch_MissingFolderDoesNotComplete(t *testing.T) {
 		// lifecycle.Service bypasses the nil check. The short-circuit
 		// returns before ProcessAsset is called, so the zero-value
 		// lifecycle is never exercised.
-		lifecycleService: &lifecycle.Service{},
 	}
 
 	req := &BatchRequest{
