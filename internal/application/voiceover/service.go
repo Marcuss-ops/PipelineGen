@@ -64,12 +64,6 @@ type Service struct {
 	// Service.GenerateWithDestination. The VoiceoverItemExecutor
 	// interface in ports.go is retained for the BLOC5.4 follow-up
 	// that will land the concrete pipeline.)
-	// driveUploader is a narrow structural port (PR-VO-B1, June 2026):
-	// voiceover no longer imports infrastructure/drive. DeleteFile
-	// is the only method the service uses today (post-commit cleanup
-	// of OLD voiceover Drive files in replace-mode). The production
-	// concrete *drive.Uploader is wrapped by app/voiceoverDriveAdapter.
-	driveUploader     DriveUploaderPort
 	assetDestResolver asset.Resolver
 	lifecycleService  *lifecycle.Service
 	semanticTagger    SemanticTaggerFunc
@@ -141,9 +135,11 @@ type VoiceoverGenerationDeps struct {
 	SemanticTagger SemanticTaggerFunc
 }
 
-// VoiceoverIntegrationDeps — Drive, lifecycle, destination resolver, outbox, translator, finalizer, verifier.
+// VoiceoverIntegrationDeps — lifecycle, destination resolver, outbox, translator, finalizer, verifier.
+// Azione #9 (July 2026): DriveUploader removed from VoiceoverIntegrationDeps
+// (replaced by Publisher in ProcessSegmentUseCase; cleanup now flows through
+// the outbox cleanup handler which reaches DriveUploaderPort independently).
 type VoiceoverIntegrationDeps struct {
-	DriveUploader     DriveUploaderPort
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
 	OutboxEnqueuer    TxOutboxEnqueuer
@@ -182,7 +178,6 @@ func NewService(deps VoiceoverDeps) *Service {
 		ttsProvider:        deps.Generation.TTSProvider,
 		outputDir:          deps.Core.OutputDir,
 		log:                deps.Core.Log,
-		driveUploader:      deps.Integration.DriveUploader,
 		assetDestResolver:  deps.Integration.AssetDestResolver,
 		lifecycleService:   deps.Integration.LifecycleService,
 		semanticTagger:     deps.Generation.SemanticTagger,
