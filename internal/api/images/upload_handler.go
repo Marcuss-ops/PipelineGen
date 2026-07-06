@@ -26,6 +26,7 @@
 package images
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -34,12 +35,37 @@ import (
 )
 
 // Upload handles POST /api/images/upload — legacy image-asset URL
-// ingestion. Accepts JSON with image_url; delegates to the ingest
-// service when available, falling back to SearchAndDownload.
+// ingestion. Accepts JSON with image_url; delegates to the canonical
+// ingest service.
+//
+// PR-IMG-LEGACY-2 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
+// EXPAND phase, deadline 2026-08-08): the pre-PR fallback to
+// h.service.SearchAndDownload when ingestSvc was unwired was a
+// cross-domain silent semantic switch — POST /upload (ingest intent)
+// would return a SearchAndDownload response (search intent) with the
+// wrong shape. The fallback is RETIRED per godlike/07 NO-FAKE-AVAILABILITY.
+// When ingestSvc is nil the handler now fails closed with 503
+// ServiceUnavailable and an actionable error message naming both
+// escape hatches (wire ingestSvc vs call SearchAndDownload via the
+// canonical /api/images/retrieved/search route).
+//
+// godlike/06 SSOT: ingest.Service is the SOLE canonical owner of
+// image-asset URL ingestion on this package. The /upload route does
+// NOT delegate to imgservice.Service.SearchAndDownload under any
+// condition (the two services are distinct bounded contexts).
 func (h *ImagesHandler) Upload(c *gin.Context) {
 	var req UploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	// Fail-closed at composition seam: without ingestSvc, the request
+	// is structurally unable to perform an ingest (vs a search). 503
+	// is the canonical typed-error status for unwired dependencies.
+	if h.ingestSvc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable,
+			"image upload requires the ingest service; /upload cannot fallback to search")
 		return
 	}
 
@@ -49,29 +75,18 @@ func (h *ImagesHandler) Upload(c *gin.Context) {
 
 	slug := strings.ReplaceAll(strings.ToLower(req.Subject), " ", "-")
 
-	if h.ingestSvc != nil && req.URL != "" {
-		res, err := h.ingestSvc.Ingest(c.Request.Context(), &ingest.Request{
-			Kind:   string(ingest.KindImage),
-			URL:    req.URL,
-			Name:   req.Name,
-			Group:  slug,
-			Tags:   req.Tags,
-			Source: "upload",
-		})
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-		apiutil.OK(c, res)
-		return
-	}
-
-	// Fallback
-	asset, err := h.service.SearchAndDownload(c.Request.Context(), slug, req.Name, req.URL, req.Lang, req.Tags)
+	res, err := h.ingestSvc.Ingest(c.Request.Context(), &ingest.Request{
+		Kind:   string(ingest.KindImage),
+		URL:    req.URL,
+		Name:   req.Name,
+		Group:  slug,
+		Tags:   req.Tags,
+		Source: "upload",
+	})
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, asset)
+	apiutil.OK(c, res)
 }
