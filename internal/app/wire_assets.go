@@ -95,6 +95,14 @@ func WireAssets(
 	if deps.Delivery.Admin != nil {
 		if up, ok := deps.Delivery.Admin.(*driveutil.Uploader); ok {
 			driveUploader = up
+		} else if adapter, ok := deps.Delivery.Admin.(*driveutil.AdminAdapter); ok && adapter.Uploader != nil {
+			// DRIVE-005 (FASE 9): Admin is now *AdminAdapter (embedding *Uploader) since
+			// PR-DRIVECLIENT-RAW-RETIRE (2026-07-04). The type-assertion above
+			// (*Uploader) fails because the concrete type is now *AdminAdapter;
+			// we unwrap the embedded *Uploader so the downstream driveUploader
+			// consumers (deletionSvc, buildClipsBundle, buildRegisterBundle)
+			// receive the canonical concrete uploader they expect.
+			driveUploader = adapter.Uploader
 		}
 	}
 	var assetRepo asset.Repository
