@@ -178,9 +178,7 @@ func (u *Uploader) firstFolderIDByCreatedTimeAsc(ctx context.Context, parentID, 
 	var oldestID string
 	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
 		list, lerr := u.Service.Files.List().
-			Q(fmt.Sprintf("name = '%s' and trashed = false and mimeType = 'application/vnd.google-apps.folder' and '%s' in parents",
-				strings.ReplaceAll(canonicalName, "'", "\\'"),
-				strings.ReplaceAll(parentID, "'", "\\'"))).
+			Q(buildFolderLookupQuery(parentID, canonicalName)).
 			Fields("files(id, name, createdTime)").
 			OrderBy("createdTime asc").
 			Context(ctx).
