@@ -41,7 +41,7 @@ import (
 	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
 
 // QdrantScannerAdapter (FASE 1.2 PR-GODOBJ-12 — verbatim migration from
@@ -56,7 +56,7 @@ import (
 // ScrollPoints and NextOffset from one goroutine), so lastNextOffset
 // is a plain field — no sync/atomic needed.
 type QdrantScannerAdapter struct {
-	client         *qdrant.Client
+	client         *transport.Client
 	activeCol      string
 	pageSize       int
 	lastNextOffset string
@@ -69,7 +69,7 @@ type QdrantScannerAdapter struct {
 // This clamping is the single source of truth for the scan-limit
 // invariants; the orchestrator passes deps.Limit directly without
 // pre-clamping.
-func NewQdrantScannerAdapter(client *qdrant.Client, activeCol string, pageSize int) *QdrantScannerAdapter {
+func NewQdrantScannerAdapter(client *transport.Client, activeCol string, pageSize int) *QdrantScannerAdapter {
 	if pageSize <= 0 {
 		pageSize = 500
 	}

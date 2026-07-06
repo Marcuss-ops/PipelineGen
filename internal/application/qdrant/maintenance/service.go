@@ -37,7 +37,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -252,18 +253,18 @@ func (s *Service) initHeavy(ctx context.Context, limit int) error {
 	}
 	defer rootCleanup()
 
-	client := qdrant.NewClient(&qdrant.Config{
+	client := transport.NewClient(&schema.Config{
 		BaseURL: s.cfg.Qdrant.BaseURL,
 		APIKey:  s.cfg.Qdrant.APIKey,
 		Timeout: s.cfg.Qdrant.Timeout,
 	}, s.log)
-	schema := qdrant.DefaultV3Schema()
-	active, err := client.GetAliasTarget(ctx, schema.RuntimeAlias)
+	idxSchema := schema.DefaultV3Schema()
+	active, err := client.GetAliasTarget(ctx, idxSchema.RuntimeAlias)
 	if err != nil {
 		return fmt.Errorf("resolve active collection: %w", err)
 	}
 	if active == "" {
-		return fmt.Errorf("runtime alias %q has no target; run EnsureSchema first", schema.RuntimeAlias)
+		return fmt.Errorf("runtime alias %q has no target; run EnsureSchema first", idxSchema.RuntimeAlias)
 	}
 
 	s.sqliteDB = sqliteDB.DB
