@@ -29,6 +29,40 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
+// TranscriptReader reads the on-disk transcript file for a clip.
+// Pattern 0 port (P1.3): extracts os.ReadFile behind a typed interface
+// so tests can inject an in-memory reader without touching the filesystem.
+type TranscriptReader interface {
+	ReadTranscript(clip *asset.Asset) (string, error)
+}
+
+// OSTranscriptReader is the concrete filesystem-backed TranscriptReader.
+// Uses os.ReadFile on the canonical transcript path derived from the
+// clip's LocalPath (same file, .txt extension).
+type OSTranscriptReader struct{}
+
+// Compile-time assertion: OSTranscriptReader satisfies TranscriptReader.
+var _ TranscriptReader = (*OSTranscriptReader)(nil)
+
+// ReadTranscript reads the transcript file at <clip.LocalPath without ext>.txt.
+// Returns the trimmed content (max 5000 chars). A missing file returns ("", nil) —
+// the caller treats an empty transcript as a legitimate "no transcript" state.
+func (OSTranscriptReader) ReadTranscript(clip *asset.Asset) (string, error) {
+	if clip == nil || clip.LocalPath() == "" {
+		return "", nil
+	}
+	transcriptPath := strings.TrimSuffix(clip.LocalPath(), filepath.Ext(clip.LocalPath())) + ".txt"
+	data, err := os.ReadFile(transcriptPath)
+	if err != nil {
+		return "", nil // missing transcript is not an error
+	}
+	text := strings.TrimSpace(string(data))
+	if len(text) > 5000 {
+		text = text[:5000]
+	}
+	return text, nil
+}
+
 // skipMetadataKeysForSearchText is the canonical deny-list
 // for metadata entries that would otherwise bloat the
 // assembled SearchText beyond the 1024-byte budget.
@@ -100,13 +134,11 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 
 	cleanedDescription := tagutil.CleanYouTubeDescription(ym.Description)
 
-	// Read transcript
+	// Read transcript via Pattern 0 port (P1.3).
 	var clipTranscript string
-	transcriptPath := strings.TrimSuffix(existing.LocalPath(), filepath.Ext(existing.LocalPath())) + ".txt"
-	if transcriptBytes, err := os.ReadFile(transcriptPath); err == nil && len(transcriptBytes) > 0 {
-		clipTranscript = strings.TrimSpace(string(transcriptBytes))
-		if len(clipTranscript) > 5000 {
-			clipTranscript = clipTranscript[:5000]
+	if s.transcriptReader != nil {
+		if text, err := s.transcriptReader.ReadTranscript(existing); err == nil && text != "" {
+			clipTranscript = text
 		}
 	}
 	cleanedTranscript := tagutil.CleanClipTranscript(clipTranscript)
