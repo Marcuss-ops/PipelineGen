@@ -226,8 +226,8 @@ func TestAssetPublished_EventType_Canonical(t *testing.T) {
 //
 //	stock video about Mike Tyson in category Boxe from provider pexels tags boxing training
 func TestAssetPublished_ComposeSearchText_UserSpecExample(t *testing.T) {
-	got := ComposeSearchText("stock", "video", "Mike Tyson", "Boxe", "pexels", []string{"boxing", "training"})
-	want := "stock video about Mike Tyson in category Boxe from provider pexels tags boxing training"
+	got := ComposeSearchText("stock", "video", "Mike Tyson", "Boxe", "pexels", []string{"boxing", "training"}, "stock/Boxe/pexels/Mike-Tyson", "video")
+	want := "stock video about Mike Tyson in category Boxe from provider pexels tags boxing training in drive stock/Boxe/pexels/Mike-Tyson content_type video"
 	if got != want {
 		t.Errorf("ComposeSearchText:\n got  = %q\n want = %q", got, want)
 	}
@@ -236,8 +236,8 @@ func TestAssetPublished_ComposeSearchText_UserSpecExample(t *testing.T) {
 // TestAssetPublished_ComposeSearchText_ImageVariant verifies the
 // destination + origin + subject segments for image variant.
 func TestAssetPublished_ComposeSearchText_ImageVariant(t *testing.T) {
-	got := ComposeSearchText("image", "generated", "Realistic portrait of Mike Tyson", "Realistic", "google-slides", []string{"boxing", "portrait"})
-	want := "image generated about Realistic portrait of Mike Tyson in category Realistic from provider google-slides tags boxing portrait"
+	got := ComposeSearchText("image", "generated", "Realistic portrait of Mike Tyson", "Realistic", "google-slides", []string{"boxing", "portrait"}, "images/Realistic/Mike-Tyson", "image")
+	want := "image generated about Realistic portrait of Mike Tyson in category Realistic from provider google-slides tags boxing portrait in drive images/Realistic/Mike-Tyson content_type image"
 	if got != want {
 		t.Errorf("ComposeSearchText:\n got  = %q\n want = %q", got, want)
 	}
@@ -246,7 +246,7 @@ func TestAssetPublished_ComposeSearchText_ImageVariant(t *testing.T) {
 // TestAssetPublished_ComposeSearchText_EmptyOptionalSegments silently
 // drops empty category / provider / tags.
 func TestAssetPublished_ComposeSearchText_EmptyOptionalSegments(t *testing.T) {
-	got := ComposeSearchText("voiceover", "", "Mike Tyson documentary", "", "", nil)
+	got := ComposeSearchText("voiceover", "", "Mike Tyson documentary", "", "", nil, "", "")
 	want := "voiceover about Mike Tyson documentary"
 	if got != want {
 		t.Errorf("ComposeSearchText:\n got  = %q\n want = %q", got, want)
@@ -259,7 +259,7 @@ func TestAssetPublished_ComposeSearchText_EmptyOptionalSegments(t *testing.T) {
 // can route by destination without re-querying SQLite. All optional
 // segments intentionally blank to test the absolute minimal form.
 func TestAssetPublished_ComposeSearchText_EmptySubject(t *testing.T) {
-	got := ComposeSearchText("stock", "retrieved", "", "", "", nil)
+	got := ComposeSearchText("stock", "retrieved", "", "", "", nil, "", "")
 	want := "stock retrieved about"
 	if got != want {
 		t.Errorf("ComposeSearchText:\n got  = %q\n want = %q", got, want)
@@ -269,13 +269,50 @@ func TestAssetPublished_ComposeSearchText_EmptySubject(t *testing.T) {
 // TestAssetPublished_ComposeSearchText_TagsWhitespaceStripped ensures
 // tags with leading/trailing whitespace are silently dropped.
 func TestAssetPublished_ComposeSearchText_TagsWhitespaceStripped(t *testing.T) {
-	got := ComposeSearchText("stock", "retrieved", "Mike Tyson", "Boxe", "pexels", []string{"  boxing  ", "", "training"})
+	got := ComposeSearchText("stock", "retrieved", "Mike Tyson", "Boxe", "pexels", []string{"  boxing  ", "", "training"}, "", "")
 	if !strings.Contains(got, "boxing") || !strings.Contains(got, "training") {
 		t.Errorf("expected boxing + training tags to survive whitespace strip, got %q", got)
 	}
 }
 
-// ── Test 14 — happy path composes the correct SearchText for the canonical Mike Tyson example ──
+// ── Tests 16..17 — DoD #9: drive_path + content_type in composed text ──
+
+// TestAssetPublished_ComposeSearchText_DrivePathAndContentType pins
+// the DoD #9 contract: when drive_path and content_type are non-empty,
+// they appear in the composed search text after the tags segment so
+// the Qdrant embedding vector can discriminate by canonical Drive
+// folder path and media-type.
+func TestAssetPublished_ComposeSearchText_DrivePathAndContentType(t *testing.T) {
+	got := ComposeSearchText("stock", "retrieved", "Mike Tyson", "Boxe", "pexels", []string{"boxing"}, "stock/Boxe/pexels/Mike-Tyson", "video")
+	want := "stock retrieved about Mike Tyson in category Boxe from provider pexels tags boxing in drive stock/Boxe/pexels/Mike-Tyson content_type video"
+	if got != want {
+		t.Errorf("ComposeSearchText:\n got  = %q\n want = %q", got, want)
+	}
+}
+
+// TestAssetPublished_ComposeSearchText_EmptyDrivePathAndContentType
+// pins: when drive_path and content_type are empty, they are silently
+// dropped from the composed text (backward-compat with pre-DoD-#9
+// payloads).
+func TestAssetPublished_ComposeSearchText_EmptyDrivePathAndContentType(t *testing.T) {
+	got := ComposeSearchText("stock", "retrieved", "Mike Tyson", "", "", nil, "", "")
+	want := "stock retrieved about Mike Tyson"
+	if got != want {
+		t.Errorf("ComposeSearchText:\n got  = %q\n want = %q", got, want)
+	}
+	// Also verify: non-empty drive_path with empty content_type
+	got2 := ComposeSearchText("stock", "retrieved", "Mike Tyson", "", "", nil, "stock/Boxe/Mike", "")
+	want2 := "stock retrieved about Mike Tyson in drive stock/Boxe/Mike"
+	if got2 != want2 {
+		t.Errorf("ComposeSearchText (drive_path only):\n got  = %q\n want = %q", got2, want2)
+	}
+	// And: empty drive_path with non-empty content_type
+	got3 := ComposeSearchText("stock", "retrieved", "Mike Tyson", "", "", nil, "", "video")
+	want3 := "stock retrieved about Mike Tyson content_type video"
+	if got3 != want3 {
+		t.Errorf("ComposeSearchText (content_type only):\n got  = %q\n want = %q", got3, want3)
+	}
+}
 
 func TestAssetPublished_HappyPath_ComposesCorrectSearchText(t *testing.T) {
 	stub := &assetPublisherStub{}
@@ -306,7 +343,7 @@ func TestAssetPublished_HappyPath_ComposesCorrectSearchText(t *testing.T) {
 
 	// Direct ComposeSearchText call to verify the user-spec format
 	// end-to-end via the same handler inputs:
-	searchText := ComposeSearchText("stock", "retrieved", "Mike Tyson", "Boxe", "pexels", []string{"boxing", "training"})
+	searchText := ComposeSearchText("stock", "retrieved", "Mike Tyson", "Boxe", "pexels", []string{"boxing", "training"}, "", "")
 	if !strings.Contains(searchText, "stock") || !strings.Contains(searchText, "Mike Tyson") ||
 		!strings.Contains(searchText, "Boxe") || !strings.Contains(searchText, "pexels") ||
 		!strings.Contains(searchText, "boxing") || !strings.Contains(searchText, "training") {

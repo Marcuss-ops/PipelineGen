@@ -153,24 +153,37 @@ var ErrAssetPublishedPublisherNotWired = errors.New("asset.published: publisher 
 // missing-or-malformed):
 //
 //   - schema_version   (literal AssetPublishedSchemaVersion)
+//
 //   - event_id         (RFC4122 UUID or producer-chosen opaque token)
+//
 //   - asset_id         (canonical media_assets.id)
+//
 //   - destination      (delivery.DestinationKey canonical string;
 //     "stock", "image", "voiceover", etc.)
-//   - idempotency_key  (mirrors event_key for audit)
 //
-// Optional (used by ComposeSearchText for rich embedding text):
+//   - idempotency_key  (mirrors event_key for audit)
+//     // Optional (used by ComposeSearchText for rich embedding text):
 //
 //   - origin           ("generated", "retrieved", or "live" —
 //     distinguishes where the asset came from)
+//
 //   - category         (Boxe / Personaggi / etc.)
+//
 //   - subject          (Mike Tyson / abc123 / etc. — same field
 //     as PublishRequest.Subject)
+//
 //   - provider         (pexels / pixabay / wikipedia / dall-e)
+//
 //   - drive_file_id    (canonical Drive file id)
+//
 //   - drive_path       (slash-joined human form, e.g.
 //     "stock/Boxe/pexels/Mike-Tyson")
+//
+//   - content_type     (DoD #9, July 2026: video / image / audio /
+//     document — discriminates embedding vectors by media kind)
+//
 //   - tags             (canonical tag list)
+//
 //   - requested_at     (RFC3339 UTC; logged for audit only)
 type assetPublishedRequestV1 struct {
 	SchemaVersion  string   `json:"schema_version"`
@@ -183,6 +196,7 @@ type assetPublishedRequestV1 struct {
 	Provider       string   `json:"provider,omitempty"`
 	DriveFileID    string   `json:"drive_file_id,omitempty"`
 	DrivePath      string   `json:"drive_path,omitempty"`
+	ContentType    string   `json:"content_type,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	IdempotencyKey string   `json:"idempotency_key"`
 	RequestedAt    string   `json:"requested_at,omitempty"`
@@ -261,6 +275,13 @@ func (h *AssetPublishedHandler) EventType() string {
 //
 //	stock video about Mike Tyson in category Boxe from provider pexels tags boxing training
 //
+// DoD #9 (July 2026): drive_path and content_type are added as
+// optional segments so the Qdrant embedding vector can discriminate
+// by content-type (video / image / audio / document) and by the
+// canonical Drive folder path (e.g. "stock/Boxe/pexels/Mike-Tyson").
+// Both are silently dropped when empty — existing payloads without
+// content_type continue to embed identically.
+//
 // All empty optional segments are silently dropped (the upsert
 // still works, just with a leaner line). At minimum, the output
 // always carries the destination label + the literal "about +
@@ -277,7 +298,7 @@ func (h *AssetPublishedHandler) EventType() string {
 // with a destination label so a Qdrant-only operator dashboard can
 // always distinguish "stock" from "voiceover" without re-querying
 // SQLite.
-func ComposeSearchText(destination, origin, subject, category, provider string, tags []string) string {
+func ComposeSearchText(destination, origin, subject, category, provider string, tags []string, drivePath, contentType string) string {
 	if destination == "" {
 		// Defensive fallback — but the production path's terminal
 		// ErrAssetPublishedDestinationMissing gate ensures this
@@ -312,6 +333,15 @@ func ComposeSearchText(destination, origin, subject, category, provider string, 
 			parts = append(parts, "tags")
 			parts = append(parts, strings.Join(kept, " "))
 		}
+	}
+	// DoD #9: drive_path and content_type are optional segments
+	// appended AFTER tags so the embedding vector always ends with
+	// the canonical Drive folder path and content-type discriminator.
+	if drivePath != "" {
+		parts = append(parts, "in", "drive", drivePath)
+	}
+	if contentType != "" {
+		parts = append(parts, "content_type", contentType)
 	}
 	return strings.Join(parts, " ")
 }
@@ -412,6 +442,7 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 		zap.String("provider", p.Provider),
 		zap.String("drive_file_id", p.DriveFileID),
 		zap.String("drive_path", p.DrivePath),
+		zap.String("content_type", p.ContentType),
 		zap.Int("tags", len(p.Tags)),
 		zap.String("idempotency_key", p.IdempotencyKey),
 		zap.Int("attempt", evt.AttemptCount),
@@ -422,7 +453,7 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 
 	// Compose the canonical SearchText (godlike/06 SSOT one
 	// canonical owner per fact).
-	searchText := ComposeSearchText(p.Destination, p.Origin, p.Subject, p.Category, p.Provider, p.Tags)
+	searchText := ComposeSearchText(p.Destination, p.Origin, p.Subject, p.Category, p.Provider, p.Tags, p.DrivePath, p.ContentType)
 
 	if h.publisher == nil {
 		// No-publisher branch is unusual in production. We log
