@@ -6470,7 +6470,7 @@
 
 - id: IMAGES-TERRITORY-SPLIT-2026-07-06
   status: in_progress
-  exit_signal: false
+  exit_signal: true
   owner_capability: internal/api/images + internal/application/images
   deadline: 2026-08-15
   exit_gate: |
@@ -6494,7 +6494,9 @@
   linked_issues:
   - id: PR-IMG-SPLIT-1
     owner_capability: internal/api/images
-    status: pending
+    status: shipped
+    ship_sha: 4d70d024
+    ship_date: 2026-07-06
     deadline: 2026-07-15
     description: |
       Split territory_handlers.go (479 LoC) → 7 capability files:
@@ -6505,7 +6507,9 @@
       about generated search returning empty list.
   - id: PR-IMG-SPLIT-2
     owner_capability: internal/api/images
-    status: pending
+    status: shipped
+    ship_sha: c236d6e0
+    ship_date: 2026-07-06
     deadline: 2026-07-15
     description: |
       Split impl.go (338 LoC) → ~10 capability files:
@@ -6515,7 +6519,9 @@
       animate_handler.go.
   - id: PR-IMG-SPLIT-3
     owner_capability: internal/application/images/retrieved
-    status: pending
+    status: shipped
+    ship_sha: 23f1a880
+    ship_date: 2026-07-06
     deadline: 2026-07-25
     description: |
       Split retrieved/provider_registry.go (538 LoC) → 7 files:
@@ -6524,7 +6530,9 @@
       provider_drive.go / provider_registry.go.
   - id: PR-IMG-SPLIT-4
     owner_capability: internal/application/images
-    status: pending
+    status: shipped
+    ship_sha: b0400459
+    ship_date: 2026-07-06
     deadline: 2026-07-25
     description: |
       Split service.go (304 LoC) → ~7 files:
@@ -6533,7 +6541,9 @@
       service_storage.go / service_diagnostics.go.
   - id: PR-IMG-SPLIT-5
     owner_capability: internal/application/images/generated
-    status: pending
+    status: shipped
+    ship_sha: 27e5f1a3
+    ship_date: 2026-07-06
     deadline: 2026-08-01
     description: |
       Split generated/provider_registry.go (277 LoC) → 5 files:
