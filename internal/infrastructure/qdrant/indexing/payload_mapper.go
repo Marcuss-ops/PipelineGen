@@ -87,8 +87,8 @@ func (m *PayloadMapper) FetchAssetBatch(ctx context.Context, afterID string, lim
 // QDRANT-001 (June 2026): this is still the only legal site that derives a
 // Qdrant point ID from a media_assets.id (via the canonical
 // schema.AssetIDToQdrantPointID call inside IndexDocumentToPoint).
-func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *schema.IndexSchema) (*schema.Point, error) {
-	doc, err := m.AssetToIndexDocument(asset, schema)
+func (m *PayloadMapper) AssetToPoint(ctx context.Context, asset *AssetData, schema *schema.IndexSchema) (*schema.Point, error) {
+	doc, err := m.AssetToIndexDocument(ctx, asset, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -629,7 +629,7 @@ func (m *PayloadMapper) resolveSearchText(ctx context.Context, asset *AssetData)
 // CanonicalTypes) AND dynamically (wire-shape test in
 // payload_mapper_test.go::TestBuildPayloadFromDocument_NoForbidden
 // LocatorKeys).
-func (m *PayloadMapper) AssetToIndexDocument(asset *AssetData, schema *schema.IndexSchema) (*IndexDocument, error) {
+func (m *PayloadMapper) AssetToIndexDocument(ctx context.Context, asset *AssetData, schema *schema.IndexSchema) (*IndexDocument, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset is nil")
 	}
@@ -642,7 +642,7 @@ func (m *PayloadMapper) AssetToIndexDocument(asset *AssetData, schema *schema.In
 	// helper falls back to asset.SearchText when the builder is nil
 	// or returns empty — the contract preserves the pre-existing DB
 	// pre-build path for legacy rows.
-	doc.SearchText = m.resolveSearchText(context.Background(), asset)
+	doc.SearchText = m.resolveSearchText(ctx, asset)
 	for _, spec := range schema.DenseVectors {
 		channel := VectorChannel(spec.Channel)
 		vec := m.getVectorForChannel(asset, spec.Channel)
