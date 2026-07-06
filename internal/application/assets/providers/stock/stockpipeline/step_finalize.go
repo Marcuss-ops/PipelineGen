@@ -114,6 +114,20 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		return nil
 	}
 	if len(runner.State().Published) == 0 {
+		// godlike/07 fail-closed (PR-STOCK-RESUME-STATE-LOSS, July 2026):
+		// if JobFinalizer is wired (production mode) but state.Published
+		// is empty, the runState was lost on resume (or stock.publish
+		// short-circuited). Returning nil here would be a silent-success
+		// false-positive — the job would declare SUCCEEDED without
+		// writing to media_assets. The leniency is preserved ONLY for
+		// test-fixture mode (JobFinalizer nil) where empty Published
+		// is the expected outcome of a stub run.
+		if runner.JobFinalizer() != nil {
+			if runner.Log() != nil {
+				runner.Log().Error("orchestrator: stock.finalize: JobFinalizer wired but Published empty — fail-closed on resume state-loss")
+			}
+			return ErrStockFinalizeStateLost
+		}
 		// No chunks prepared → preserve the INDEX_PENDING flip from
 		// Phase 2 and skip the spine write. This is the canonical
 		// path tested by run_upload_indexing_test.go case (c) (Qdrant

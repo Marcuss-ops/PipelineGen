@@ -128,6 +128,20 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// è sempre wired in produzione. Oggi il renderer può essere nil
 	// in test-fixture mode, quindi il guard è ancora necessario.
 	if len(chunks) == 0 {
+		// godlike/07 fail-closed (PR-STOCK-RESUME-STATE-LOSS, July 2026):
+		// if AssetPreparation is wired (production mode) but ComposedPaths
+		// was empty (zero chunks prepared), the runState was lost on resume
+		// (or compose_chunks short-circuited). Returning nil here would be
+		// a silent-success false-positive — the job would declare SUCCEEDED
+		// without uploading anything. The leniency is preserved ONLY for
+		// test-fixture mode (AssetPreparation nil) where empty chunks is
+		// the expected outcome of a stub run.
+		if runner.ArtifactPreparation() != nil {
+			if runner.Log() != nil {
+				runner.Log().Error("orchestrator: stock.publish: ArtifactPreparation wired but ComposedPaths empty — fail-closed on resume state-loss")
+			}
+			return ErrStockPublishStateLost
+		}
 		if runner.Log() != nil {
 			runner.Log().Debug("orchestrator: stock.publish: zero chunks prepared — skipping metadata publication (pre-Commit-7 stub)")
 		}
