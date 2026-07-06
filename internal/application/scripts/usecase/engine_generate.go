@@ -1,0 +1,228 @@
+package usecase
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+
+	"go.uber.org/zap"
+)
+
+// ── Generate: the canonical engine entry point ────────────────────────
+
+// Generate executes the full generation pipeline for a resolved plan.
+// It owns: memory gate check, ollama invocation, and payload decoding.
+// It is the ONLY engine entry point for new code.
+//
+// PR 5 (June 2026): DB persistence is NO LONGER an engine ownership.
+// The engine never writes to SQLite; the single writer is
+// PersistenceProcessor (registered in the plan's Postprocessors
+// list). The engine no longer takes a ScriptRepository constructor
+// arg.
+//
+// Callers: GenerateOneUseCase (canonical — the sole permitted caller).
+// Do NOT call Generate from HTTP handlers, source resolvers, or
+// postprocessors.
+func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan) (*EngineResult, error) {
+	if e == nil || e.ollamaGen == nil {
+		return nil, fmt.Errorf("engine: ollama generator not configured")
+	}
+	if plan == nil {
+		return nil, fmt.Errorf("engine: plan is nil")
+	}
+
+	// AZIONE 4 (July 2026): ollamaGen is typed (scriptOllamaGenerator);
+	// the nil check above covers the only runtime failure mode.
+	// No type assertion needed — the compiler enforces the contract.
+
+	// Extract parameters from the resolved plan.
+	title := plan.Title
+	topic := plan.Topic
+	language := plan.Language
+	tone := plan.Tone
+	model := plan.Model
+	mode := plan.Mode
+	sourceText := plan.SourceText
+	// PR 2: engine reads RenderedPrompt (editorial instructions).
+	// The legacy plan.Prompt field was removed — it conflated
+	// fingerprint with model input. RenderedPrompt never contains
+	// a fingerprint hash.
+	renderedPrompt := plan.RenderedPrompt
+	minWords := plan.TargetWords
+	useMemory := plan.UseMemory
+	saveToDB := plan.SaveToDB
+	// PR 2: plan.CacheKey is the canonical memory-gate cache key.
+	// It is NEVER sent to the model.
+	cacheKey := plan.CacheKey
+
+	// ForceRefresh bypasses the memory gate read.
+	skipMemory := plan.ForceRefresh
+
+	if topic == "" {
+		topic = title
+	}
+	if title == "" {
+		title = topic
+	}
+	// cfg is the canonical script-generation SSOT (language, tone, WPM).
+	// All defaults flow from a single call so the intent is visible at a
+	// glance and the struct is stack-allocated once per generation.
+	cfg := defaults.DefaultScriptConfig()
+
+	if language == "" {
+		language = cfg.DefaultLanguage
+	}
+	if tone == "" {
+		tone = cfg.DefaultTone
+	}
+
+	if e.log != nil {
+		e.log.Info("engine: dispatching script generation",
+			zap.String("title", title),
+			zap.String("topic", topic),
+			zap.String("language", language),
+			zap.String("tone", tone),
+			zap.String("model", model),
+			zap.String("mode", mode),
+			zap.Int("min_words", minWords),
+			zap.Bool("use_memory", useMemory),
+			zap.Bool("force_refresh", skipMemory),
+			zap.Bool("save_to_db", saveToDB))
+	}
+
+	// Memory gate: check if we have a cached result.
+	// ForceRefresh bypasses the cache read even when UseMemory is true.
+	// AZIONE 4 (July 2026): memorySvc is typed (memoryGateChecker);
+	// no type assertion needed — the compiler enforces the contract.
+	if useMemory && !skipMemory && e.memorySvc != nil {
+		memoryReq := memoryGateRequest{
+			Title:    title,
+			Language: language,
+			Mode:     mode,
+			// PR 2: feed the canonical cache key alongside the
+			// legacy Title/Language/Mode lookup. The gemmamemory
+			// stub still returns nil; production wiring uses
+			// CacheKey when the real Service lands.
+			CacheKey: cacheKey,
+		}
+		if result, memErr := e.memorySvc.CheckGate(ctx, memoryReq); memErr == nil && result != nil && result.Output != "" {
+			if e.log != nil {
+				e.log.Info("engine: memory gate cache hit",
+					zap.String("title", title),
+					zap.Int("word_count", result.WordCount))
+			}
+			// P0.8 (June 2026): jsonextract.Scanner in ModeCompatibility —
+			// cascading fallback: V1 → legacy array → plain-text wrapper.
+			// All fallbacks are declared and measured via Prometheus counters.
+			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
+			output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			// PR 3 (June 2026): stamp engine-side provenance
+			// fields onto the canonical typed MSOV1 so post-
+			// processors (notably PersistenceProcessor) read
+			// WordCount / ModelUsed / CacheStatus uniformly on
+			// the cache-hit path. Without this stamp, replay
+			// rows would persist FinalWordCount=0 + empty
+			// ModelUsed.
+			output.WordCount = result.WordCount
+			output.ModelUsed = result.Model
+			output.CacheStatus = "exact_hit"
+			return &EngineResult{
+				Output:       *output,
+				WordCount:    result.WordCount,
+				Model:        result.Model,
+				CacheStatus:  "exact_hit",
+				EstDuration:  (result.WordCount * 60) / cfg.WordsPerMinute,
+				ClipEvidence: plan.ClipEvidence,
+			}, nil
+		}
+	}
+
+	// Build ollama request from the resolved plan.
+	clipIDs := extractPlanClipIDs(plan)
+
+	builtPrompt := renderedPrompt
+	if clipRules := buildClipGroundingInstructions(plan); clipRules != "" {
+		if builtPrompt != "" {
+			builtPrompt += "\n\n"
+		}
+		builtPrompt += clipRules
+	}
+	builtPrompt += v1OutputInstruction
+
+	ollamaReq := ollamatypes.TextGenerationRequest{
+		Language:    language,
+		Tone:        tone,
+		Model:       model,
+		Prompt:      builtPrompt,
+		SourceText:  sourceText,
+		Title:       title,
+		MinWords:    minWords,
+		MaxChars:    plan.MaxChars,
+		ClipIDs:     clipIDs,
+		Temperature: plan.Temperature,
+		OutputMode:  ollamatypes.OutputModeScriptV1,
+	}
+
+	genResult, err := e.ollamaGen.GenerateScript(ctx, ollamaReq)
+	if err != nil {
+		return nil, fmt.Errorf("engine: ollama generation failed: %w", err)
+	}
+
+	if e.log != nil {
+		e.log.Info("engine: script generated",
+			zap.Int("word_count", genResult.WordCount),
+			zap.String("model", genResult.Model),
+			zap.Int("est_duration_s", genResult.EstDuration))
+	}
+
+	// P0.8 (June 2026): jsonextract.Scanner in ModeStrict — no
+	// fallbacks. Bare prose and legacy arrays both produce
+	// ErrModelOutputMalformed. The cache-replay path uses
+	// ModeCompatibility (declared fallback with Prometheus metrics).
+	scanner := &jsonextract.Scanner{Mode: jsonextract.ModeStrict}
+	output, decodeErr := scanner.Scan([]byte(genResult.Script), "fresh")
+	if decodeErr != nil {
+		if e.log != nil {
+			e.log.Warn("engine: ModeStrict decode failed, retrying with ModeCompatibility",
+				zap.Error(decodeErr))
+		}
+		scanner.Mode = jsonextract.ModeCompatibility
+		output, decodeErr = scanner.Scan([]byte(genResult.Script), "fresh-fallback")
+		if decodeErr != nil {
+			return nil, fmt.Errorf("engine: model output decode failed (strict + compatibility): %w", decodeErr)
+		}
+		if e.log != nil {
+			e.log.Info("engine: ModeCompatibility fallback succeeded",
+				zap.Int("word_count", genResult.WordCount))
+		}
+	}
+
+	// PR 3 (June 2026): stamp engine-side provenance fields onto
+	// the canonical typed ModelScriptOutputV1 in-place so the
+	// typed walk (ppReg.Run with &engineResult.Output) reads
+	// WordCount / ModelUsed / CacheStatus directly from the
+	// model. Pre-PR-3 ProcessInput envelope carried these as
+	// separate fields; PR 3 collapses them onto MSOV1 itself.
+	output.WordCount = genResult.WordCount
+	output.ModelUsed = genResult.Model
+	output.CacheStatus = "generated"
+
+	// PR 5 (June 2026): persistence removed from the engine.
+	_ = saveToDB
+
+	return &EngineResult{
+		Output:       *output,
+		WordCount:    genResult.WordCount,
+		Model:        genResult.Model,
+		CacheStatus:  "generated",
+		EstDuration:  genResult.EstDuration,
+		ClipEvidence: plan.ClipEvidence,
+	}, nil
+}
