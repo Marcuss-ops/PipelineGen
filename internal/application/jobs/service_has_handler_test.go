@@ -46,7 +46,10 @@ func TestService_HasHandler(t *testing.T) {
 	if err := dispatcher.Register(job.TypeScriptGenerate, fakeHandler); err != nil {
 		t.Fatalf("register fake handler: %v", err)
 	}
-	svc := NewService(nil, dispatcher, nil) // repo nil-tolerant for HasHandler; we only read dispatcher
+	svc, err := NewService(nil, dispatcher, nil, nil)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	// Test cases.
 	tests := []struct {
@@ -112,8 +115,11 @@ func TestService_HasHandler(t *testing.T) {
 func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	t.Parallel()
 
-	dispatcher := NewDispatcher()
-	svc := NewService(nil, dispatcher, nil)
+	dispatcher2 := NewDispatcher()
+	svc, err := NewService(nil, dispatcher2, nil, nil)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	// Pre-condition: unregistered.
 	if svc.HasHandler(job.TypeMediaExtract) {
@@ -124,7 +130,7 @@ func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	fakeHandler := HandlerFunc(func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
 		return nil, nil
 	})
-	if err := dispatcher.Register(job.TypeMediaExtract, fakeHandler); err != nil {
+	if err := dispatcher2.Register(job.TypeMediaExtract, fakeHandler); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 

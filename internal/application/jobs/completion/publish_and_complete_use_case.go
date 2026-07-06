@@ -64,6 +64,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
 
+// Sender is the Pattern 0 port for the canonical Sender-side single-TX
+// atomic terminal. The concrete *WithArtifactsService satisfies this port.
+// Extracted in July 2026 (FIX-PRE-EXISTING-VET-ERRORS) to allow hermetic
+// test injection without depending on the concrete struct's unexported fields.
+type Sender interface {
+	CompleteWithArtifacts(ctx context.Context, req *remote.CompleteWithArtifactsRequest, published []*finalization.PublishedArtifact) (*remote.CompleteWithArtifactsResponse, error)
+}
+
+// Compile-time pin: *WithArtifactsService satisfies the Sender port.
+var _ Sender = (*WithArtifactsService)(nil)
+
 // ErrPublishAndCompleteUseCaseNotConfigured is the godlike/07 typed sentinel
 // returned by NewPublishAndCompleteUseCase when mandatory ports are nil.
 // Production wire-up-bug surfacing (godlike/07 fail-fast at composition root,
@@ -101,35 +112,22 @@ type PublishAndCompleteUseCase struct {
 	// the future finalizer.PublisherPort adapter swap doesn't ripple
 	// surface changes here.
 	preparation finalization.ArtifactPreparationService
-	// sender is the canonical Sender-side single-TX atomic terminal.
-	// Forward-pointer TODO(port-extract): the canonical PackagingService
-	// port for sender-side is not yet extracted (the WithArtifactsService
-	// surface is concrete + map-coupled to legacy FinalizerTx path).
-	// Future P0-COMPL-5-PORT-EXTRACT commits will land a typed
-	// SenderPort interface so this side mirrors the preparation side.
-	sender *WithArtifactsService
+	// sender is the canonical Sender-side single-TX atomic terminal
+	// (Pattern 0 port — Sender interface, satisfied by *WithArtifactsService).
+	sender Sender
 	log    *zap.Logger
 }
-
-// Compile-time pin (AGENTS.md Pattern 0): the package satisfies the
-// canonical Sender-side entry-point; a future surface change to
-// WithArtifactsService.CompleteWithArtifacts is a build failure, not
-// a runtime panic.
-var _ *WithArtifactsService = (*WithArtifactsService)(nil)
 
 // NewPublishAndCompleteUseCase constructs the use case with fail-fast nil
 // guards on all mandatory ports. Returns wrapped ErrPublishAndCompleteUseCase
 // NotConfigured if any mandatory port is nil — surfaces wire-up bugs at
 // composition root, NOT at first-request time (godlike/07 fail-closed posture).
 //
-// P0-COMPL-5-WIRE-NAMING PORT-EXTRACTION: the preparation slot takes the
-// finalization.ArtifactPreparationService port (NOT the concrete
-// *finalizer.ArtifactPreparation) so tests can inject mocks without
-// depending on the publisher adapter wiring. This aligns with
-// AGENTS.md Pattern 0.
+// Both preparation and sender are Pattern 0 ports so tests can inject
+// mocks without depending on concrete implementation details.
 func NewPublishAndCompleteUseCase(
 	prep finalization.ArtifactPreparationService,
-	sender *WithArtifactsService,
+	sender Sender,
 	log *zap.Logger,
 ) (*PublishAndCompleteUseCase, error) {
 	if prep == nil {
@@ -140,7 +138,7 @@ func NewPublishAndCompleteUseCase(
 	}
 	if sender == nil {
 		return nil, fmt.Errorf(
-			"NewPublishAndCompleteUseCase: sender (WithArtifactsService) is required: %w",
+			"NewPublishAndCompleteUseCase: sender (Sender port) is required: %w",
 			ErrPublishAndCompleteUseCaseNotConfigured,
 		)
 	}
