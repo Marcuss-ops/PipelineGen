@@ -311,29 +311,46 @@ func (a *DriveFolderManagerAdapter) WithReLookup(fn folderReLookupFunc) *DriveFo
 	return a
 }
 
-// newDefaultFolderLookup returns the production-default folderLookupFunc
+// buildFolderLookupQuery returns the canonical Drive Files.List query
+// for folder-existence checks. P0-1 (July 2026): extracted from the
+// three duplicated query-construction sites (newDefaultFolderLookup,
+// newAdminDefaultLookup, lookupFolderExact) into a single SSOT helper.
+//
+// The query matches non-trashed folders with the exact name, optionally
+// scoped to a parent folder when non-empty. Callers MUST pre-sanitize
+// the name — this helper does NOT apply CleanFolderName / SafeFolderName.
+// Single quotes in the name are escaped via SQL-style backslash.
+func buildFolderLookupQuery(parent, name string) string {
+	queryParts := []string{
+		fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
+		"trashed = false",
+		"mimeType = 'application/vnd.google-apps.folder'",
+	}
+	if parent != "" {
+		queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parent))
+	}
+	return strings.Join(queryParts, " and ")
+}
+
+// lookupFolderCanonical returns the production-default folderLookupFunc
 // wiring the SDK's Files.List through pkg/retry with the P0.4 spec
 // (retry-with-jitter on transient errors, abort-on-error-after-retry).
-// Tests that need to inject custom lookup behaviour use WithLookup;
-// this default is what production code runs.
+//
+// P0-1 (July 2026): this is the canonical SSOT for the folder-existence
+// query + retry + firstFolderID pipeline. The three previously-
+// duplicated implementations (newDefaultFolderLookup, newAdminDefaultLookup,
+// lookupFolderExact) now delegate to this single function.
 //
 // The closure captures (svc, log) so the seam-signature stays context-only.
-func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookupFunc {
+// Tests that need to inject custom lookup behaviour use WithLookup;
+// this default is what production code runs.
+func lookupFolderCanonical(svc *driveapi.Service, log *zap.Logger) folderLookupFunc {
 	return func(ctx context.Context, parent, name string) (string, error) {
-		queryParts := []string{
-			fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
-			"trashed = false",
-			"mimeType = 'application/vnd.google-apps.folder'",
+		if svc == nil {
+			return "", fmt.Errorf("drive service not configured")
 		}
-		if parent != "" {
-			queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parent))
-		}
-		query := strings.Join(queryParts, " and ")
+		query := buildFolderLookupQuery(parent, name)
 
-		// result is the first match ID; the retry-loop's second return
-		// carries the SDK error so pkg/retry.DoWithValue predicates on
-		// it via retry.IsTransient. Returning ("", nil) on a successful
-		// empty List is what surfaces "doesn't exist" to the caller.
 		id, err := retry.DoWithValue(ctx, func() (string, error) {
 			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 			if lerr != nil {
@@ -361,6 +378,12 @@ func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookup
 		}
 		return id, nil
 	}
+}
+
+// newDefaultFolderLookup returns the production-default folderLookupFunc.
+// P0-1 (July 2026): delegates to the canonical lookupFolderCanonical SSOT.
+func newDefaultFolderLookup(svc *driveapi.Service, log *zap.Logger) folderLookupFunc {
+	return lookupFolderCanonical(svc, log)
 }
 
 // firstFolderID returns the single folder ID from a Drive List result.
