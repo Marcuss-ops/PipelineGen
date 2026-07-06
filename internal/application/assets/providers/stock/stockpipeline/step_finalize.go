@@ -9,6 +9,19 @@
 // (pre-§12-7: build → validate → project; post-§12-7: build →
 // validate → project → spine write).
 //
+// Phase 0 — Fail-closed gate (PR-STOCK-FINALIZE-PHASE-0-GATE, July 2026).
+// If JobFinalizer is wired (production mode) BUT state.Published is
+// empty, the upstream stock.publish step short-circuited without
+// uploading chunks (or the runState was lost on resume). Returning
+// nil here would be a silent-success false-positive — the job would
+// declare SUCCEEDED via the broker without writing to media_assets.
+// The gate fires BEFORE Phase 1's manifest.Validate so the typed
+// sentinel surfaces the upstream state-loss specifically (rather
+// than the generic "manifest has zero artifacts" ErrManifestIncomplete
+// error which would mask the diagnosis). Test-fixture mode
+// (JobFinalizer nil) bypasses the gate, preserving wire-shape
+// compat for stock_test fixtures that call Step.Run directly.
+//
 // Phase 1 — Build + Validate manifest. The manifest is the wire
 // artefact (SchemaVersion=1, JobID + per-chunk Artifacts). Build
 // path: ManifestBuilder.Build when wired (production) else
@@ -62,6 +75,19 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		workflowID = in.FolderName
 	}
 
+	// ── Phase 0: fail-closed on state-loss (production mode only) ──
+	// godlike/07 NO-FAKE-AVAILABILITY: if the spine writer is wired
+	// but state.Published is empty, the upstream publish step did not
+	// upload anything — declaring SUCCEEDED here would be a silent-
+	// success false-positive. The gate is bypassed in test-fixture mode
+	// (JobFinalizer nil) so existing stock_test fixtures remain green.
+	if runner.JobFinalizer() != nil && len(runner.State().Published) == 0 {
+		if runner.Log() != nil {
+			runner.Log().Error("orchestrator: stock.finalize: JobFinalizer wired but Published empty — fail-closed on upstream publish state-loss")
+		}
+		return ErrStockFinalizeStateLost
+	}
+
 	// ── Phase 1: Build + Validate manifest ─────────────────────────
 	fp := runner.RunFingerprint()
 	if fp == "" {
@@ -108,37 +134,26 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 	// ── Phase 3+4: single-TX spine write (optional) ────────────────
 	if runner.JobFinalizer() == nil {
 		// Test-fixture / §F.1 back-compat: no JobFinalizer wired.
+		// Phase-0 gate above bypassed on JobFinalizer==nil so test
+		// fixtures calling Step.Run directly with empty state.Published
+		// still reach this skip path (no spine write, no error).
+		//
+		// NOTE: the original Phase-4 `len(Published)==0` block (which
+		// returned ErrStockFinalizeStateLost OR preserved INDEX_PENDING)
+		// is REMOVED here. It was unreachable in production (Phase 0
+		// gate fires first) AND unreachable in test-fixture mode
+		// (the outer `JobFinalizer()==nil` skip returns BEFORE this
+		// check). Removing it eliminates the silent-success trap
+		// without breaking any test fixture.
 		if runner.Log() != nil {
 			runner.Log().Debug("orchestrator: stock.finalize JobFinalizer NOT wired — single-TX spine write skipped (test-fixture path)")
 		}
 		return nil
 	}
-	if len(runner.State().Published) == 0 {
-		// godlike/07 fail-closed (PR-STOCK-RESUME-STATE-LOSS, July 2026):
-		// if JobFinalizer is wired (production mode) but state.Published
-		// is empty, the runState was lost on resume (or stock.publish
-		// short-circuited). Returning nil here would be a silent-success
-		// false-positive — the job would declare SUCCEEDED without
-		// writing to media_assets. The leniency is preserved ONLY for
-		// test-fixture mode (JobFinalizer nil) where empty Published
-		// is the expected outcome of a stub run.
-		if runner.JobFinalizer() != nil {
-			if runner.Log() != nil {
-				runner.Log().Error("orchestrator: stock.finalize: JobFinalizer wired but Published empty — fail-closed on resume state-loss")
-			}
-			return ErrStockFinalizeStateLost
-		}
-		// No chunks prepared → preserve the INDEX_PENDING flip from
-		// Phase 2 and skip the spine write. This is the canonical
-		// path tested by run_upload_indexing_test.go case (c) (Qdrant
-		// offline + nil chunks → FinalStatus=StatusIndexPending,
-		// spine writes intentionally skipped).
-		if runner.Log() != nil {
-			runner.Log().Warn("orchestrator: stock.finalize: zero chunks published — single-TX spine write skipped (preserve INDEX_PENDING flip)")
-		}
-		return nil
-	}
 
+	// At this point: JobFinalizer is wired (production mode) AND
+	// state.Published is non-empty (Phase-0 gate would have fired
+	// otherwise). The spine write proceeds.
 	lease := runner.Cfg().Lease
 	if lease.JobID == "" || lease.WorkerID == "" || lease.LeaseID == "" {
 		return fmt.Errorf("%w: lease.JobID=%q WorkerID=%q LeaseID=%q (HandleJob must thread extractLease)",
