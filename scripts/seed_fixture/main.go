@@ -84,7 +84,7 @@ func main() {
 // clearAndReapply wipes schema_migrations for the fixture, then runs
 // RunMigrationsOnDB to re-apply every migration in order.
 func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := storage.OpenSQLiteDB(dbPath, logger)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dbPath, err)
 	}
@@ -112,7 +112,7 @@ func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
 	// single primary-key column is enough to make the test green. If a
 	// future migration author materialises one of these as a real table,
 	// the IF NOT EXISTS guard makes this a no-op.
-	if err := bootstrapUnmigratedTables(db, logger); err != nil {
+	if err := bootstrapUnmigratedTables(db.DB, logger); err != nil {
 		return fmt.Errorf("bootstrap unmigrated tables: %w", err)
 	}
 	return nil
@@ -152,7 +152,7 @@ func bootstrapUnmigratedTables(db *sql.DB, logger *zap.Logger) error {
 // assertTablesPresent queries sqlite_master for each expected table and
 // returns an error if any is missing.
 func assertTablesPresent(dbPath string, expected []string) error {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := storage.OpenSQLiteDB(dbPath, nil)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dbPath, err)
 	}
