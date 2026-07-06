@@ -31,24 +31,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 )
 
-// TestVoiceoverDriveAdapter_NilUploaderReturnsNil: the factory
-// returns nil when no drive.Admin is wired. Test name preserved
-// across the gdrive.Service -> drive.Admin migration (post-FASE 9 Step 6);
-// the behavioural contract (factory returns nil when input port is nil)
-// is unchanged.
-func TestVoiceoverDriveAdapter_NilUploaderReturnsNil(t *testing.T) {
-	if got := newVoiceoverDriveAdapter(nil); got != nil {
-		t.Errorf("newVoiceoverDriveAdapter(nil) = %v, want nil", got)
-	}
-}
-
 // TestVoiceoverDriveAdapter_DeleteFileUnwiredError: when the
-// adapter is invoked via a wrapped-nil (a programming error —
-// newVoiceoverDriveAdapter already returns nil for that case), the
-// wrapper still surfaces the canonical "not wired" error rather
-// than a panic. This is a defense-in-depth: any future refactor
-// that introduces a wrapped-nil construction path cannot silently
-// swallow cleanup calls.
+// adapter is invoked via a wrapped-nil, the wrapper surfaces the
+// canonical "not wired" error rather than a panic.
 func TestVoiceoverDriveAdapter_DeleteFileUnwiredError(t *testing.T) {
 	// drive: nil (post-FASE 9; was up: nil when port type was *drive.Uploader).
 	a := &voiceoverDriveAdapter{drive: nil}
