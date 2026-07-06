@@ -117,7 +117,14 @@ func (r *SQLiteStore) queueChanged() {
 	r.Broadcast()
 }
 
-// DB returns the underlying *sql.DB for direct query access in tests + migrations.
+// DB returns the underlying *sql.DB for direct query access.
+//
+// Deprecated: prefer the typed methods on *SQLiteStore (Get, List, Create,
+// Transition, ClaimNext, etc.) over raw *sql.DB access. Direct access
+// bypasses the optimistic-lock guards, lease fencing, and queue-notifier
+// broadcasts that make the store concurrency-safe. This method is kept for
+// test fixtures and admin one-shot commands only. Scheduled for removal in
+// 2026-Q4; new production callers will fail code review.
 func (r *SQLiteStore) DB() *sql.DB { return r.db }
 
 // Compile-time check: SQLiteStore satisfies the canonical job.Store contract.
