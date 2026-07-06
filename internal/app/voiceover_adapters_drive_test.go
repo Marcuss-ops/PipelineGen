@@ -27,8 +27,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 )
 
 // TestVoiceoverDriveAdapter_DeleteFileUnwiredError: when the
@@ -66,12 +64,7 @@ func TestVoiceoverDriveAdapter_DeleteFileEmptyFileID(t *testing.T) {
 	}
 }
 
-// TestVoiceoverDriveAdapter_InterfaceSatisfactionPin: add a
-// runtime check that the adapter satisfies the voiceover port
-// interface, so a future refactor that drops the compile-time
-// assertion in voiceover_adapters_drive.go still fails this test
-// loudly. Build-time assertion is the primary defense; this is
-// belt-and-braces.
-func TestVoiceoverDriveAdapter_InterfaceSatisfactionPin(t *testing.T) {
-	var _ voiceover.DriveUploaderPort = (*voiceoverDriveAdapter)(nil)
-}
+// Azione #9 follow-up (July 2026): InterfaceSatisfactionPin removed.
+// voiceover.DriveUploaderPort was removed from ports.go; structural
+// conformance is now checked at composition.go where
+// &voiceoverDriveAdapter{...} is assigned to jobsoutbox.VoiceoverCleanupDriver.
