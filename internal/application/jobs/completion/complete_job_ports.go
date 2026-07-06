@@ -12,6 +12,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
@@ -107,6 +108,20 @@ type IdempotencyCachePort interface {
 }
 
 // ── JobTypeRegistry (Pattern 0 port for SSOT policy lookup) ───────────
+
+// CompleteWithArtifactsSender is the Pattern 0 port (godlike/06 SSOT)
+// for the Sender-side atomic terminal surface consumed by
+// PublishAndCompleteUseCase. The single method mirrors
+// WithArtifactsService.CompleteWithArtifacts — the canonical
+// post-P0-COMPL-4 dedup-closure surface.
+type CompleteWithArtifactsSender interface {
+	CompleteWithArtifacts(ctx context.Context, req *remote.CompleteWithArtifactsRequest, published []*finalization.PublishedArtifact) (*remote.CompleteWithArtifactsResponse, error)
+}
+
+// Compile-time pin (AGENTS.md Pattern 0): drift in the concrete
+// WithArtifactsService.CompleteWithArtifacts signature is a build
+// failure (the interface anchor catches signature drift at compile).
+var _ CompleteWithArtifactsSender = (*WithArtifactsService)(nil)
 
 // JobTypeRegistry is the typed port for "does this job type produce
 // artifacts". godlike/06 SSOT: the application-layer JobRegistry
