@@ -1,0 +1,37 @@
+// cmd/admin/cleanup_test_youtube.go — test YouTube service wiring
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/app"
+)
+
+func runTestYouTube(args []string) error {
+	cfg, log, cleanup, err := appLogger()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	deps, err := app.WireServices(cfg, log, "")
+	if err != nil {
+		log.Error("Failed to wire services", zap.Error(err))
+		return err
+	}
+
+	fmt.Println("Services wired successfully!")
+	fmt.Printf("Registry: %v\n", deps.Registry != nil)
+
+	if deps.Lifecycle != nil {
+		// AGENTS.md §7 post-write save ctx — admin one-shot composition
+		// root; deferred lifecycle.Stop drains pending work and must
+		// survive the deferred caller-cancel scope so all teardown
+		// work runs to completion.
+		defer deps.Lifecycle.Stop(context.Background())
+	}
+	return nil
+}
