@@ -15,8 +15,10 @@
 // `&evt.CreatedAt` Scan targets against strftime columns will fail.
 //
 // godlike/07 minimum-blast-radius: scanner lives in its own file so
-// it does not bloat repository.go (already 580+ lines). Only caller
-// is ListEvents (below in repository.go). Forward-pointer:
+// it does not bloat repository.go (already 580+ lines; now slim
+// orchestrator ~143 LOC post-PR-SPLIT-JOBS-REPO-RESIDUAL). Only caller
+// is ListEvents (now in repository_events.go per the post-split
+// topology). Forward-pointer:
 // PR-SCAN-ADAPTER-DRY if more time.Time scan sites emerge.
 package jobs
 
