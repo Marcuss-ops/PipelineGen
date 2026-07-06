@@ -30,7 +30,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 )
 
 // canaryTTL is how long the semantic canary result stays cached.
@@ -41,10 +43,10 @@ const canaryTTL = 30 * time.Second
 // All dependencies are nil-safe — nil deps return 503 with a clear
 // "not configured" error.
 type QdrantHealthHandler struct {
-	probe    *qdrant.HealthProbe
-	collMgr  *qdrant.CollectionManager
-	searcher *qdrant.Searcher
-	embedder qdrant.TextEmbedder
+	probe    *disasterrecovery.HealthProbe
+	collMgr  *collections.CollectionManager
+	searcher *search.Searcher
+	embedder search.TextEmbedder
 
 	// Canary cache: sampled on the first Ready call and re-sampled
 	// every canaryTTL. Prevents hammering Qdrant with the canary
@@ -58,10 +60,10 @@ type QdrantHealthHandler struct {
 // NewQdrantHealthHandler constructs a handler. All params may be nil;
 // nil deps are handled gracefully at request time.
 func NewQdrantHealthHandler(
-	probe *qdrant.HealthProbe,
-	collMgr *qdrant.CollectionManager,
-	searcher *qdrant.Searcher,
-	embedder qdrant.TextEmbedder,
+	probe *disasterrecovery.HealthProbe,
+	collMgr *collections.CollectionManager,
+	searcher *search.Searcher,
+	embedder search.TextEmbedder,
 ) *QdrantHealthHandler {
 	return &QdrantHealthHandler{
 		probe:    probe,

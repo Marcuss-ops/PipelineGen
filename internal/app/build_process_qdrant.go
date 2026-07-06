@@ -39,6 +39,13 @@ import (
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -129,7 +136,7 @@ func BuildProcessBundle(
 // ── Qdrant port assertions + subsystem init (moved from build_qdrant_runtime.go, Phase 5 consolidation, June 2026) ──
 
 var (
-	_ clipindexer.VectorStoreIndexer = (*qdrant.IndexWriter)(nil)
+	_ clipindexer.VectorStoreIndexer = (*indexing.IndexWriter)(nil)
 	_ jobsoutbox.AssetDeleter        = (*sqassets.ClipsRepository)(nil)
 )
 
@@ -138,12 +145,12 @@ func initQdrantProcessSubsystems(
 	cfg *config.Config,
 	log *zap.Logger,
 ) (
-	collectionMgr *qdrant.CollectionManager,
+	collectionMgr *collections.CollectionManager,
 	vectorSvc assetsearch.VectorStorePort,
-	qdrantClient *qdrant.Client,
-	qdrantHealthProbe *qdrant.HealthProbe,
-	locatorCleaner *qdrant.LocatorCleaner,
-	qdrantSearcher *qdrant.Searcher,
+	qdrantClient *qdranttransport.Client,
+	qdrantHealthProbe *disasterrecovery.HealthProbe,
+	locatorCleaner *qdrantmaintenance.LocatorCleaner,
+	qdrantSearcher *qdrantsearch.Searcher,
 ) {
 	if qd.Runtime == nil {
 		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired (BuildProcessBundle)")
@@ -195,7 +202,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	if cfg.Qdrant.Enabled {
 		var rerr error
 		runtime, rerr = qdrant.NewRuntime(qdrant.RuntimeConfig{
-			QdrantCfg: &qdrant.Config{
+			QdrantCfg: &schema.Config{
 				BaseURL: cfg.Qdrant.BaseURL,
 				APIKey:  cfg.Qdrant.APIKey,
 				Timeout: cfg.Qdrant.Timeout,

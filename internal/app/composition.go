@@ -64,6 +64,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -166,7 +171,7 @@ type ProcessBundle struct {
 	// QDRANT-003 (June 2026): canonical Qdrant adapters. All fields
 	// are sourced from qd.Runtime in BuildProcessBundle (PR 4) — there
 	// is exactly ONE *qdrant.Client per process.
-	CollectionManager *qdrant.CollectionManager
+	CollectionManager *collections.CollectionManager
 	// QdrantDeleter is the outbox.VectorPointDeleter port satisfied by
 	// qd.Runtime.Writer. Renamed from qdrant.QdrantDeleter in PR 4
 	// (was a duplicate infra-side interface; consolidated to the
@@ -189,7 +194,7 @@ type ProcessBundle struct {
 	VectorSvc assetsearch.VectorStorePort
 	// QDRANT-005 Fase 1 (June 2026): direct *qdrant.Client for diagnostics
 	// (CountPoints). Populated by BuildProcessBundle when Qdrant is enabled.
-	QdrantClient *qdrant.Client
+	QdrantClient *qdranttransport.Client
 	// QDRANT-005 Fase 2 (June 2026): canonical QdrantHealthProbe.
 	// Concretely typed (PR 4, June 2026, refactor/single-qdrant-runtime)
 	// as *qdrant.HealthProbe — compile-time assertions at
@@ -199,17 +204,17 @@ type ProcessBundle struct {
 	// the pre-PR4 ProcessBundle field had is replaced. nil-safe when
 	// Qdrant is disabled (use IsNil-checks at call sites; see
 	// wire_services.go::WireServices which assigns into AppDeps).
-	QdrantHealthProbe *qdrant.HealthProbe
+	QdrantHealthProbe *disasterrecovery.HealthProbe
 	// QDRANT-005 Fase 3 (June 2026): canonical LocatorCleaner for
 	// scrubbing legacy drive_link / local_path payload keys from
 	// historical Qdrant points. Constructed alongside the client
 	// when Qdrant is enabled; nil-safe when Qdrant is disabled.
-	LocatorCleaner *qdrant.LocatorCleaner
+	LocatorCleaner *qdrantmaintenance.LocatorCleaner
 
 	// QdrantSearcher is the canonical ANN searcher. Exposed so
 	// wire_script.go can construct ClipSearchPort adapters without
 	// importing qdrant infrastructure directly.
-	QdrantSearcher *qdrant.Searcher
+	QdrantSearcher *qdrantsearch.Searcher
 }
 
 // QdrantDeps is the tiny pre-phase bundle of canonical Qdrant adapters

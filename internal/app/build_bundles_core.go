@@ -33,7 +33,9 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -122,8 +124,8 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 	// via the upstream registry path.
 	_ = validateQdrantIndexerCompatibility(cfg)
 	if cfg.Qdrant.Enabled {
-		qdrantCfg := &qdrant.Config{BaseURL: cfg.Qdrant.BaseURL, APIKey: cfg.Qdrant.APIKey, Timeout: cfg.Qdrant.Timeout}
-		qdrantChecker = qdrant.NewHealthProbe(qdrant.NewClient(qdrantCfg, zap.NewNop()))
+		qdrantCfg := &schema.Config{BaseURL: cfg.Qdrant.BaseURL, APIKey: cfg.Qdrant.APIKey, Timeout: cfg.Qdrant.Timeout}
+		qdrantChecker = disasterrecovery.NewHealthProbe(qdranttransport.NewClient(qdrantCfg, zap.NewNop()))
 	}
 	jobsChecker := infrahealth.NewJobsChecker(db)
 	const heartbeatStaleness = 60 * time.Second

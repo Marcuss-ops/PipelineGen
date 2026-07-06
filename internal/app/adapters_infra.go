@@ -24,7 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -323,7 +323,7 @@ var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
 
 // ── Search query embedder adapter (Fase 6 Spina Dorsale) ───────────────────
 //
-// searchEmbedAdapter bridges the infrastructure-layer qdrant.TextEmbedder
+// searchEmbedAdapter bridges the infrastructure-layer search.TextEmbedder
 // to the application-layer search.QueryEmbedder port. The shape is
 // identical (`Embed(ctx, text) -> ([]float32, error)`), so the adapter
 // is a one-method delegation.
@@ -334,13 +334,13 @@ var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
 // EmbedTextForVector directly via the qdrant concrete. THIS adapter
 // is the Fase 6 path: orchestrator code that asks for
 // `search.QueryEmbedder` will get this adapter wrapped around the
-// same qdrant.TextEmbedder concrete — zero behavioural drift, plus
+// same search.TextEmbedder concrete — zero behavioural drift, plus
 // the canonical split.
 type searchEmbedAdapter struct {
-	embedder qdrant.TextEmbedder
+	embedder search.TextEmbedder
 }
 
-// Embed delegates to the underlying qdrant.TextEmbedder. The method
+// Embed delegates to the underlying search.TextEmbedder. The method
 // name matches the application port shape so compile-time assertion
 // `var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)` is
 // non-trivial — drift in either signature is a build failure.
@@ -354,7 +354,7 @@ func (a *searchEmbedAdapter) Embed(ctx context.Context, text string) ([]float32,
 // newSearchEmbedAdapter is the canonical composition-root constructor.
 // Returns a nil interface when embedder is nil so the wiring site
 // preserves the `embedPort != nil` discipline callers can rely on.
-func newSearchEmbedAdapter(embedder qdrant.TextEmbedder) searchpkg.QueryEmbedder {
+func newSearchEmbedAdapter(embedder search.TextEmbedder) searchpkg.QueryEmbedder {
 	if embedder == nil {
 		return nil
 	}
@@ -379,7 +379,7 @@ func newSearchEmbedAdapter(embedder qdrant.TextEmbedder) searchpkg.QueryEmbedder
 //
 // Channel status (July 2026):
 //
-//	text        LIVE   routes to qdrant.TextEmbedder via textChannelEncoderAdapter.
+//	text        LIVE   routes to search.TextEmbedder via textChannelEncoderAdapter.
 //	transcript  LIVE   SAME adapter (transcript content is text).
 //	visual      forward-pointer  SigLIP-text encoder (PR-CROSS-MODAL-TEXT-TO-VISUAL)
 //	                     returns search.ErrChannelNotConfigured.
@@ -397,7 +397,7 @@ type embeddingRegistryAdapter struct {
 
 // newEmbeddingRegistryAdapter wires the 5 canonical channels at composition
 // root. text+transcript map to a textChannelEncoderAdapter wrapping the
-// passed qdrant.TextEmbedder; visual maps to a passed siglipEncoder (the
+// passed search.TextEmbedder; visual maps to a passed siglipEncoder (the
 // PR-CROSS-MODAL-TEXT-TO-VISUAL live path); audio/sparse are forward-pointer
 // stubs returning the documented godlike/07 typed-error sentinels. The
 // returned registry is the single source-of-truth for the semantic
@@ -413,11 +413,11 @@ type embeddingRegistryAdapter struct {
 // notConfiguredAdapter typed-error carrier so the failure surfaces
 // with the documented sentinel rather than a panic-nil dereference.
 //
-// textEmbedder nil-tolerance: when the underlying qdrant.TextEmbedder is
+// textEmbedder nil-tolerance: when the underlying search.TextEmbedder is
 // not wired (composition root deferred), text + transcript channels ship
 // as notConfiguredAdapter stubs so the failure surfaces with the documented
 // sentinel rather than a panic-nil dereference.
-func newEmbeddingRegistryAdapter(textEmbedder qdrant.TextEmbedder, siglipEncoder searchpkg.ChannelEncoder) searchpkg.EmbeddingChannelRegistry {
+func newEmbeddingRegistryAdapter(textEmbedder search.TextEmbedder, siglipEncoder searchpkg.ChannelEncoder) searchpkg.EmbeddingChannelRegistry {
 	adapters := make(map[string]searchpkg.ChannelEncoder, len(searchpkg.CanonicalChannelNames()))
 
 	// text + transcript: same text-channel encoder; transcript content is text.
@@ -490,19 +490,19 @@ func (r *embeddingRegistryAdapter) EmbedQuery(ctx context.Context, channel strin
 	return adapter.EmbedTextQuery(ctx, text)
 }
 
-// textChannelEncoderAdapter wraps the qdrant.TextEmbedder as a
+// textChannelEncoderAdapter wraps the search.TextEmbedder as a
 // search.ChannelEncoder. Same shape (Embed(ctx, text) -> []float32, error);
 // the adapter is a one-method delegation matching the canonical port.
 type textChannelEncoderAdapter struct {
-	textEmbedder qdrant.TextEmbedder
+	textEmbedder search.TextEmbedder
 }
 
-// EmbedTextQuery delegates to the underlying qdrant.TextEmbedder.
+// EmbedTextQuery delegates to the underlying search.TextEmbedder.
 // Nil-tolerant: a nil underlying qdrant embedder returns a typed-error
 // wrapped via %w so callers can errors.Is the canonical sentinel.
 func (a *textChannelEncoderAdapter) EmbedTextQuery(ctx context.Context, text string) ([]float32, error) {
 	if a == nil || a.textEmbedder == nil {
-		return nil, fmt.Errorf("textChannelEncoderAdapter: underlying qdrant.TextEmbedder not wired: %w",
+		return nil, fmt.Errorf("textChannelEncoderAdapter: underlying search.TextEmbedder not wired: %w",
 			searchpkg.ErrChannelNotConfigured)
 	}
 	return a.textEmbedder.Embed(ctx, text)

@@ -92,7 +92,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
@@ -180,9 +179,9 @@ func Classify(ctx context.Context, scanner QdrantScanner, collection string, max
 	if collection == "" {
 		return nil, errors.New("legacyaudit.Classify: collection is required")
 	}
-	schema := qdrant.DefaultV3Schema()
-	specByChannel := make(map[string]qdrant.EmbeddingSpec, len(schema.DenseVectors))
-	for _, s := range schema.DenseVectors {
+	sch := schema.DefaultV3Schema()
+	specByChannel := make(map[string]schema.EmbeddingSpec, len(sch.DenseVectors))
+	for _, s := range sch.DenseVectors {
 		specByChannel[s.Channel] = s
 	}
 
@@ -266,8 +265,8 @@ func Classify(ctx context.Context, scanner QdrantScanner, collection string, max
 // ClassifierForTesting exports classifyPoint so unit tests can exercise
 // per-point logic without standing up a scanner.
 func ClassifierForTesting(pt ScrollPoint) (Categories, map[string]int) {
-	specByChannel := make(map[string]qdrant.EmbeddingSpec)
-	for _, s := range qdrant.DefaultV3Schema().DenseVectors {
+	specByChannel := make(map[string]schema.EmbeddingSpec)
+	for _, s := range schema.DefaultV3Schema().DenseVectors {
 		specByChannel[s.Channel] = s
 	}
 	return classifyPoint(pt, specByChannel)
@@ -277,7 +276,7 @@ func ClassifierForTesting(pt ScrollPoint) (Categories, map[string]int) {
 // pure (no I/O, no maps with non-deterministic iteration order on the
 // outside); the per-category decision rules are documented on the
 // package doc above.
-func classifyPoint(pt ScrollPoint, specByChannel map[string]qdrant.EmbeddingSpec) (Categories, map[string]int) {
+func classifyPoint(pt ScrollPoint, specByChannel map[string]schema.EmbeddingSpec) (Categories, map[string]int) {
 	var (
 		cats   Categories
 		dimObs map[string]int
@@ -401,7 +400,7 @@ func isHiddenOrTemp(s string) bool {
 // wrong-dim vector bumps WrongDimensions; channels with malformed
 // tokens (non-numeric) bump InvalidVectors under the sentinel key
 // "__invalid_token".
-func vectorShapeHit(payload map[string]any, specByChannel map[string]qdrant.EmbeddingSpec) map[string]int {
+func vectorShapeHit(payload map[string]any, specByChannel map[string]schema.EmbeddingSpec) map[string]int {
 	dimObs := make(map[string]int)
 
 	// Canonical Qdrant REST pattern: payload carries "vectors":
