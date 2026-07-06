@@ -150,6 +150,60 @@ var (
 		Help:    "Duration of deletion-reconciler ticks (Phase 1 + Phase 2 + Phase 3 + Phase 4)",
 		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
 	})
+
+	// ── Finalizer Spine Metrics (PR-FINALIZER-METRICS, July 2026) ─
+	//
+	// Three counters capture the canonical per-event outcome of the
+	// JobFinalizer.CompleteWithArtifacts spine (the SINGLE writer of
+	// terminal SUCCEEDED per godlike/06 SSOT). Together they let
+	// operators alert on gate-filter drift without grepping stderr.
+	//
+	// Convention (per AGENTS.md observability + this file's existing
+	// metrics): CamelCase Go identifier, snake_case prom Name,
+	// lowercase snake_case label values.
+	//
+	// Bump-once-per-event semantics: each counter increments exactly
+	// once per outcome, NOT once per retry. Retry-induced duplicate
+	// events are routed through `idempotency` counters in the
+	// jobs-complete lifecycle, NOT these per-outcome counters.
+
+	// FinalizerMediaAssetsInsertTotal — bumped once per
+	// upsertMediaAsset result, mapping the SQLite rows-affected
+	// outcome into a 5-state classifier:
+	//   * insert             — rows_affected=1 (new row written)
+	//   * update_on_conflict — rows_affected=2 (ON CONFLICT DO UPDATE fired)
+	//   * no_op_silent       — rows_affected=0 (idempotent-retry, no diff)
+	//   * rows_affected_err  — RowsAffected() itself returned non-nil (driver-divergence)
+	//   * failed             — tx.ExecContext returned non-nil error before rows-affected
+	FinalizerMediaAssetsInsertTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "finalizer_media_assets_insert_total",
+		Help: "Total number of media_assets UPSERTs attempted by the JobFinalizer spine, by SQLite rows-affected outcome",
+	}, []string{"outcome"})
+
+	// FinalizerWriteArtifactsIterTotal — bumped once per-iteration
+	// (per artifact) inside writeArtifacts. NOT per-call: 1 call
+	// iterates over N artifact slots and produces N increments.
+	// outcome=ok when FinalizeAsset returned (ArtifactRef, events, nil);
+	// outcome=err when FinalizeAsset returned a non-nil error (which
+	// causes writeArtifacts to early-return with the wrapped error).
+	FinalizerWriteArtifactsIterTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "finalizer_write_artifacts_iter_total",
+		Help: "Total number of FinalizeAsset iterations invoked from writeArtifacts, by per-iteration outcome (ok=FinalizeAsset succeeded, err=FinalizeAsset returned non-nil)",
+	}, []string{"outcome"})
+
+	// FinalizerCompleteArtifactsTotal — bumped exactly once per
+	// CompleteWithArtifacts call (NOT per artifact). outcome=ok when
+	// the named-return err was nil at defer-time; outcome=err when
+	// any of the 8 typed-error sentinels fired (validation / begin_tx
+	// / lease_fence / idempotent / write_artifacts / write_outbox /
+	// mark_succeeded / commit). Per-error-class cardinality is
+	// intentionally NOT surface in this counter; future per-class
+	// metrics should be added in a follow-up wave if alert precision
+	// requires it.
+	FinalizerCompleteArtifactsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "finalizer_complete_artifacts_total",
+		Help: "Total number of JobFinalizer.CompleteWithArtifacts calls, by terminal outcome (ok=spine returned nil error, err=any of the 8 typed-error sentinels fired)",
+	}, []string{"outcome"})
 )
 
 // Note (Blocco 3.2 commit 2/2 — package boundary)

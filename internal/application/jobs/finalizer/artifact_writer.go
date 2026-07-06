@@ -31,9 +31,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
 )
 
@@ -52,30 +52,24 @@ func (f *Finalizer) writeArtifacts(
 	domainTx finalization.Transaction,
 	artifacts []finalization.PublishedArtifact,
 ) ([]finalization.ArtifactRef, []finalization.OutboxEvent, error) {
-	// ── PR-FINALIZER-DIAG-COUNTER (July 2026) ──────────────────────
-	// Diagnostic wrap around the artifact-write loop. Goal: surface
-	// which gate is filtering out rows (e.g. 7 manifest entries -> 0
-	// media_assets rows). Ordering of stderr prints:
-	//   "writeArtifacts input_count=N"  — at function entry
-	//   "writeArtifacts artifact[i] (id) ok refs_so_far=R events_so_far=E"
-	//                                    — per successful iter
-	//   "writeArtifacts artifact[i] (id) FAILED err=..." — per failed iter
-	//   "writeArtifacts EXITS ok refs=R events=E"  — at function exit
-	// This lets operators see manifest-vs-persisted delta without
-	// having to dereference stack frames: every filter gate that
-	// drops below the input_count surfaces as a missing-iter line.
-	fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts input_count=%d\n", len(artifacts))
+	// ── PR-FINALIZER-METRICS (July 2026) ──────────────────────────
+	// Increment FinalizerWriteArtifactsIterTotal per iteration.
+	// outcome=ok per successful FinalizeAsset; outcome=err when
+	// the iteration returned a non-nil error (writeArtifacts then
+	// early-returns with the wrapped error, propagating to the
+	// parent FinalizerCompleteArtifactsTotal{outcome="err"} bump).
+	// Per-iteration cardinality (NOT per-call) so an operator can
+	// alert on `ratio(err/ok) > X` regardless of batch size.
+	refs := make([]finalization.ArtifactRef, 0, len(artifacts))
+	artifactEvents := make([]finalization.OutboxEvent, 0, len(artifacts))
 	if f.log != nil {
 		f.log.Info("finalizer: writeArtifacts enter",
 			zap.Int("input_count", len(artifacts)))
 	}
-	refs := make([]finalization.ArtifactRef, 0, len(artifacts))
-	artifactEvents := make([]finalization.OutboxEvent, 0, len(artifacts))
 	for i, a := range artifacts {
 		ref, events, err := f.assetTx.FinalizeAsset(ctx, domainTx, a)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts artifact[%d] (%s) FAILED err=%v\n",
-				i, a.ArtifactID, err)
+			metrics.FinalizerWriteArtifactsIterTotal.WithLabelValues("err").Inc()
 			if f.log != nil {
 				f.log.Warn("finalizer: writeArtifacts iteration failed",
 					zap.Int("i", i),
@@ -84,13 +78,17 @@ func (f *Finalizer) writeArtifacts(
 			}
 			return nil, nil, fmt.Errorf("finalizer: artifact[%d] (%s): %w", i, a.ArtifactID, err)
 		}
+		metrics.FinalizerWriteArtifactsIterTotal.WithLabelValues("ok").Inc()
 		refs = append(refs, ref)
 		artifactEvents = append(artifactEvents, events...)
-		fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts artifact[%d] (%s) ok refs_so_far=%d events_so_far=%d\n",
-			i, a.ArtifactID, len(refs), len(artifactEvents))
+		if f.log != nil {
+			f.log.Debug("finalizer: writeArtifacts iter ok",
+				zap.Int("i", i),
+				zap.String("artifact_id", a.ArtifactID),
+				zap.Int("refs_so_far", len(refs)),
+				zap.Int("events_so_far", len(artifactEvents)))
+		}
 	}
-	fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts EXITS ok refs_returned=%d events_returned=%d\n",
-		len(refs), len(artifactEvents))
 	if f.log != nil {
 		f.log.Info("finalizer: writeArtifacts exit",
 			zap.Int("refs_returned", len(refs)),

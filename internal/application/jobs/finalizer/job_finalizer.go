@@ -51,7 +51,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"time"
 
 	"go.uber.org/zap"
@@ -59,6 +58,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // Finalizer is the concrete implementation of finalization.JobFinalizer.
@@ -114,50 +114,22 @@ func (f *Finalizer) CompleteWithArtifacts(
 	ctx context.Context,
 	req finalization.FinalizationRequest,
 ) (result *finalization.FinalizationResult, err error) {
-	// ── PR-FINALIZER-SPINE-DEBUG-LOG (July 2026) ───────────────────
-	// Diagnostic instrumentation: surface whether the spine is being
-	// CALLED by callers (per-step stub bypass, downstream silent-
-	// success class) + whether the artifacts slice is non-empty
-	// (the chunkless / metadata-only silent-success class). stderr
-	// forward-print guarantees operator visibility regardless of log
-	// level; the parallel zap.Info keeps the message in the
-	// structured log stream for scanner correlation. The named
-	// return parameter `err` is required so the defer closure can
-	// observe the final return tuple's error value (Go semantics:
-	// unnamed-return locals are declared at each `return` statement,
-	// not at function entry; named returns are in scope from start).
-	fmt.Fprintf(os.Stderr, "[finalizer][debug] CompleteWithArtifacts phase=enter job_id=%s attempt=%d artifacts=%d\n",
-		req.Result.JobID, req.Result.Attempt, len(req.Artifacts))
-	f.log.Info("finalizer: CompleteWithArtifacts enter",
-		zap.String("job_id", req.Result.JobID),
-		zap.Int("attempt", req.Result.Attempt),
-		zap.Int("artifacts_count", len(req.Artifacts)),
-		zap.String("phase", "enter"),
-	)
-
-	// Defer captures `err` from the named-return parameter. flag is
-	// set to OK on the closing return of the function (default) OR to
-	// the explicit error class when err != nil. The outcome flag is
-	// the canonical godlike/07 typed-error classification:
-	// SPINE_WRITE_OK when no error; SPINE_WRITE_ERR when any of the
-	// 8 typed-error sentinels fires (validation / begin_tx /
-	// lease_fence / idempotent / write_artifacts / write_outbox /
-	// mark_succeeded / commit).
+	// ── PR-FINALIZER-METRICS (July 2026) ──────────────────────────
+	// The named-return parameter `err` is required so the defer can
+	// observe the terminal error value (Go semantics: unnamed-return
+	// locals are declared at each `return` statement, not at function
+	// entry; named returns are in scope from start). The defer
+	// increments the canonical FinalizerCompleteArtifactsTotal
+	// counter with outcome=ok when err at defer-time is nil;
+	// outcome=err when any of the 8 typed-error sentinels fired
+	// (validation / begin_tx / lease_fence / idempotent /
+	// write_artifacts / write_outbox / mark_succeeded / commit).
 	defer func() {
-		flag := "SPINE_WRITE_OK"
+		outcome := "ok"
 		if err != nil {
-			flag = "SPINE_WRITE_ERR"
+			outcome = "err"
 		}
-		fmt.Fprintf(os.Stderr, "[finalizer][debug] CompleteWithArtifacts phase=exit job_id=%s attempt=%d artifacts=%d spine_write_outcome=%s err=%v\n",
-			req.Result.JobID, req.Result.Attempt, len(req.Artifacts), flag, err)
-		f.log.Info("finalizer: CompleteWithArtifacts exit",
-			zap.String("job_id", req.Result.JobID),
-			zap.Int("attempt", req.Result.Attempt),
-			zap.Int("artifacts_count", len(req.Artifacts)),
-			zap.String("phase", "exit"),
-			zap.String("spine_write_outcome", flag),
-			zap.Error(err),
-		)
+		metrics.FinalizerCompleteArtifactsTotal.WithLabelValues(outcome).Inc()
 	}()
 
 	// 1. Pre-validation (outside transaction — fail-fast).
