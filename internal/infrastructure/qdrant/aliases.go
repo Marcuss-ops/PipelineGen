@@ -1,12 +1,15 @@
 // Package qdrant — aliases.go forwards types moved to sub-packages during
-// HIGH #10 (July 2026) so external importers (internal/app/*, internal/api/*,
-// cmd/admin/*, internal/application/qdrant/*) continue to compile without
-// import-path changes.
+// HIGH #10 (July 2026).
 //
-// Each alias below mirrors the original single-package surface. When a
-// future migration removes the last external reference to a particular
-// type, the corresponding alias SHOULD be deleted in the same commit
-// so the tree shrinks monotonically (godlike/07 forward-contract).
+// DEPRECATED (July 2026): audit on 2026-07-06 confirmed ZERO external
+// consumers importing the root qdrant package (rg audit across
+// internal/app/, internal/api/, cmd/, internal/application/ — zero
+// "infrastructure/qdrant\"" imports, zero "qdrant." prefixed references).
+// All external callers already import the sub-packages directly
+// (e.g. qdrant/indexing, qdrant/schema, qdrant/search).
+//
+// Every alias below is retained for test-file backwards-compatibility
+// only. Remove the entire file after 2026-08-01.
 package qdrant
 
 import (
@@ -20,7 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
 )
 
-// ── transport ────────────────────────────────────────────────────────
+// ── transport (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type Client = transport.Client
 type Config = schema.Config
@@ -43,7 +46,7 @@ var DefaultConfig = schema.DefaultConfig
 var IsRetryable = transport.IsRetryable
 var NewErrSchemaIncompatible = transport.NewErrSchemaIncompatible
 
-// ── schema (already a sub-package, re-export for convenience) ────────
+// ── schema (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type IndexSchema = schema.IndexSchema
 type EmbeddingSpec = schema.EmbeddingSpec
@@ -61,7 +64,7 @@ var DefaultV3Schema = schema.DefaultV3Schema
 var AssetIDToQdrantPointID = schema.AssetIDToQdrantPointID
 var PipelineGenQdrantNamespace = schema.PipelineGenQdrantNamespace
 
-// ── search ───────────────────────────────────────────────────────────
+// ── search (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type Searcher = search.Searcher
 type TextEmbedder = search.TextEmbedder
@@ -80,7 +83,7 @@ var NewClipSearchAdapter = search.NewClipSearchAdapter
 var NewStockSearchAdapter = search.NewStockSearchAdapter
 var NewOutboxEventsDeadLetterAdapter = search.NewOutboxEventsDeadLetterAdapter
 
-// ── indexing ─────────────────────────────────────────────────────────
+// ── indexing (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type IndexWriter = indexing.IndexWriter
 type PayloadMapper = indexing.PayloadMapper
@@ -94,14 +97,14 @@ var NewPayloadMapper = indexing.NewPayloadMapper
 var NewSQLiteAssetStore = indexing.NewSQLiteAssetStore
 var ValidatePoint = indexing.ValidatePoint
 
-// ── collections ──────────────────────────────────────────────────────
+// ── collections (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type CollectionManager = collections.CollectionManager
 type RetentionConfig = collections.RetentionConfig
 
 var NewCollectionManager = collections.NewCollectionManager
 
-// ── verification ─────────────────────────────────────────────────────
+// ── verification (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type ReindexVerifier = verification.ReindexVerifier
 type SchemaRegistry = verification.SchemaRegistry
@@ -115,7 +118,7 @@ var RegisteredVersions = verification.RegisteredVersions
 
 var NewReindexVerifier = verification.NewReindexVerifier
 
-// ── maintenance ──────────────────────────────────────────────────────
+// ── maintenance (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type LocatorCleaner = maintenance.LocatorCleaner
 type Reaper = maintenance.Reaper
@@ -128,13 +131,13 @@ var NewRetentionExecutorAdapter = maintenance.NewRetentionExecutorAdapter
 var NewCollectionCreatorAdapter = maintenance.NewCollectionCreatorAdapter
 var NewPromDRMetricsAdapter = maintenance.NewPromDRMetricsAdapter
 
-// ── disasterrecovery ─────────────────────────────────────────────────
+// ── disasterrecovery (DEPRECATED: no external consumers; remove after 2026-08-01) ──
 
 type HealthProbe = disasterrecovery.HealthProbe
 
 var NewHealthProbe = disasterrecovery.NewHealthProbe
 
-// ── root (runtime.go — stays in the root package) ────────────────────
+// ── root (runtime.go — stays in the root package; no aliases) ────────
 
 // QdrantRuntime and RuntimeConfig are defined directly in runtime.go
 // (same package qdrant). No aliases needed.
