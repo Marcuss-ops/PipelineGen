@@ -66,8 +66,29 @@ const (
 	// retries per its config.
 	EventVoiceoverCleanupRequested = "voiceover.cleanup.requested"
 
+	// EventAssetPublished (SEMANTIC-LOCATION-API-2026-07-06 Wave 5,
+	// July 2026). Emitted by the CALLER of Publisher.Publish() —
+	// outbox.Dispatcher gets a typed EnqueueAssetPublished(port,
+	// payload) in Wave 6. Carries the rich payload — destination,
+	// origin, category, subject, provider, drive_file_id, drive_path,
+	// tags — so the consumer (application/jobs/outbox.AssetPublishedHandler)
+	// composes a richer Qdrant embed text WITHOUT re-loading these
+	// semantic fields from media_assets.
+	//
+	// Coexist with EventAssetIndexRequested (pre-existing
+	// Qdrant-incoming ingestion): each event is independent and a
+	// caller can emit one OR both. Per godlike/07 minimum-blast-radius
+	// the new event is purely ADDITIVE — no existing producer or
+	// consumer is rewritten.
 	EventAssetPublished = "asset.published"
 )
+
+// SchemaVersionAssetPublished is the canonical v1 schema string.
+// The consumer (AssetPublishedHandler) fails-fast with a typed
+// Terminal sentinel if the inbound envelope's schema_version
+// does not match this string literally; mismatch cannot be cured
+// by retry, so producers must upgrade.
+const SchemaVersionAssetPublished = "asset.published.v1"
 
 type Handler interface {
 	EventType() string
@@ -107,15 +128,4 @@ func (r *HandlerRegistry) Get(eventType string) (Handler, bool) {
 	return h, ok
 }
 
-// SchemaVersionAssetPublished is the canonical v1 schema string for
-// asset.published events. The consumer (AssetPublishedHandler) fails-fast
-// with a typed Terminal sentinel if the inbound envelope's
-// schema_version does not match this string literally; mismatch cannot
-// be cured by retry, so producers must upgrade.
-//
-// godlike/06 SSOT: parallel user-friendly mirror const
-// `outbox.AssetPublishedSchemaVersion` lives at
-// internal/application/jobs/outbox/asset_published.go (handler-side
-// ergonomic short name). Both MUST resolve to the same literal
-// "asset.published.v1" string — drift surfaces as a build failure.
-const SchemaVersionAssetPublished = "asset.published.v1"
+
