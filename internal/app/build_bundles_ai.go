@@ -1,0 +1,89 @@
+// Package app — build_bundles_ai.go (split July 2026).
+//
+// This file owns the AI bundle construction. Extracted from
+// build_bundles_domain.go per AGENTS.md Pattern 5.
+//
+// godlike/06 SSOT: BuildAIBundle is the single canonical owner of the
+// Ollama + script-gen + translation stack construction.
+package app
+
+import (
+	"context"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+)
+
+// BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
+// and Drive.DriveUploader (which were constructed earlier).
+// PR4.A (June 2026): MemoryRepo is created here (dbs.main.DB), not in BuildRepoBundle,
+// so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
+// without going through RepoBundle.
+func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
+	_ = ctx
+	_ = drive
+	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
+	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
+
+	if cfg.External.SearxngURL != "" {
+		ws := client.NewWebSearcher(cfg.External.SearxngURL, cfg.External.SearxngMaxResults)
+		ollamaClient.SetWebSearcher(ws)
+		log.Info("SearXNG web search enabled for LLM context",
+			zap.String("searxng_url", cfg.External.SearxngURL),
+			zap.Int("max_results", cfg.External.SearxngMaxResults),
+		)
+	}
+
+	scriptGen := ollama.NewGenerator(ollamaClient)
+	translationCache := sqlitescripts.NewCache(dbs.main.DB)
+	scriptGen.SetTranslationCache(translationCache)
+	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
+
+	// Fase 9 step 2 (Spina Dorsale, July 2026): construct the
+	// canonical OllamaTranslator — the single application-layer
+	// concrete that satisfies translation.TranslationPort + the
+	// three legacy port surfaces (LegacyTextTranslationService +
+	// LegacyTranslatorService + LegacyMetadataTranslator). The
+	// composition root constructs ONE OllamaTranslator per process
+	// (godlike/06 SSOT for the translation logic); every consumer
+	// field on ClipServices (Translation, Translator,
+	// TranslationPort + any future metadata-translator dependency)
+	// routes through this instance. Wrap the scriptGen (a
+	// *ollama.Generator) — the canonical `TranslationCache` is
+	// already wired into scriptGen by the SetTranslationCache call
+	// above, so the OllamaTranslator's underlying gen.TranslateTextWithModel
+	// call respects the same SQLite-backed cache lookup as the
+	// legacy direct-call path. Per godlike/06 "one owner per fact",
+	// the *ollama.Generator translation logic is owned by ONE
+	// canonical Pyt-path (translation.ollama_translator.go) reachable
+	// via all 4 ports. Tracking entry:
+	// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION
+	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
+	log.Info("Fase 9 step 2: OllamaTranslator wired (translation.TranslationPort + 3 legacy port surfaces)")
+
+	// Commit H Phase 2 (June 2026): gemmamemory gemmamemory gate service + the
+	// MemoryCacheAdapter wrapper are gone. The canonical engine no
+	// longer consumes the gemmamemory cross-package type — the in-package
+	// memoryCache interface (defined in cache_eviction_usecase.go) is
+	// satisfied by nil here so the engine's `memoryGateChecker` type
+	// assertion returns false at runtime and the cache path is skipped.
+	// MemoryRepo (Repository struct, still in gemmamemory.go) is retained
+	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
+	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
+	engine := usecase.NewEngine(scriptGen, nil, log)
+
+	return &AIBundle{
+		OllamaClient:     ollamaClient,
+		ScriptGen:        scriptGen,
+		OllamaTranslator: ollamaTranslator,
+		MemoryRepo:       adapters.NewRepository(dbs.main.DB),
+		ScriptEngine:     engine,
+	}, nil
+}

@@ -4,38 +4,25 @@ import (
 	"context"
 	"fmt"
 
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
@@ -47,6 +34,13 @@ import (
 )
 
 // BuildDomainBundle builds the media-domain services.
+//
+// Split-topology: companion files own the standalone bundle builders:
+//   - build_bundles_ai.go: BuildAIBundle (Ollama/script-gen/translation)
+//   - build_bundles_maint.go: BuildMaintBundle (deletion + maintenance)
+//   - build_bundles_sync.go: BuildSyncBundle + buildYouTubeRuntimeConfig
+//   - build_bundles_ingest.go: buildIngestService + imageListRepoAdapter
+//   - buildImageSearchResolver
 //
 // PR-12d (June 2026): takes the OutboxBundle as the LAST positional
 // argument so the canonical outbox.Dispatcher is available for
@@ -227,7 +221,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// constructed above. Wired into NewExtractionService via
 		// NewService so Extract fans out through the 9-step
 		// pipeline + ClipAtomicWriter.CommitClipAndIndexEvent.
-		ProcessSeg: processSeg,
+		ProcessSeg:       processSeg,
 		TranscriptReader: &youtube.OSTranscriptReader{},
 	}
 	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
@@ -390,306 +384,5 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// block + future EnrichClip migration (PR-4.7).
 		ImageSearchResolver: imageSearchResolver, // FASE 7
 		AudioProcessor:      audioProcessor,      // VO-DECOMPOSITION P0 #1: persistent TTS worker
-	}, nil
-}
-
-// imageListRepoAdapter bridges *assets.ImagesRepository (the infra
-// producer of routing.RepositoryListFilter + []routing.RepositoryImageRow)
-// to the canonical routing.ImageListRepository interface expected by
-// the FASE 7 ImageSearchResolver (which accepts routing.ImageFilter +
-// []routing.ImageSearchResult). The two structs are structurally
-// identical — different package names only — so the adapter does a
-// field-for-field rebind with no data loss.
-type imageListRepoAdapter struct {
-	repo *assets.ImagesRepository
-}
-
-// ListImages satisfies routing.ImageListRepository. Repository-only
-// fields (Subject/Slug/Description/Tags/CreatedAt on the row) are
-// dropped since the canonical ImageSearchResult does not expose
-// them; field-for-field bind for the rest.
-func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.ImageFilter) ([]routing.ImageSearchResult, error) {
-	if a == nil || a.repo == nil {
-		return nil, nil
-	}
-	// FASE 7 image-territories cleanup (July 2026, godlike/06 SSOT):
-	// routing.ImageOrigin is a Go 1.9+ type alias for
-	// asset.ImageOrigin (declared in internal/domain/asset/image_taxonomy.go).
-	// Same type identity → []routing.ImageOrigin flows directly into
-	// the []asset.ImageOrigin slot on routing.RepositoryListFilter
-	// without conversion. The previous element-by-element cast loop
-	// (a third knowledge site that the code-reviewer flagged) is
-	// collapsed — there is no conversion at all.
-	dbRows, err := a.repo.ListImages(ctx, routing.RepositoryListFilter{
-		SubjectID: filter.SubjectID,
-		Origins:   filter.Origins,
-		Providers: filter.Providers,
-		StyleIDs:  filter.StyleIDs,
-		Tags:      filter.Tags,
-		Limit:     filter.Limit,
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]routing.ImageSearchResult, 0, len(dbRows))
-	for _, r := range dbRows {
-		out = append(out, routing.ImageSearchResult{
-			AssetID:      r.AssetID,
-			Origin:       r.Origin, // routing.ImageOrigin alias = asset.ImageOrigin, no conversion
-			Provider:     r.Provider,
-			Name:         r.Name,
-			PreviewURL:   r.PreviewURL,
-			Width:        r.Width,
-			Height:       r.Height,
-			Score:        r.Score,
-			StyleID:      r.StyleID,
-			StyleVersion: r.StyleVersion,
-			License:      r.License,
-		})
-	}
-	return out, nil
-}
-
-// Compile-time assertion: imageListRepoAdapter satisfies the
-// canonical routing ImageListRepository.
-var _ routing.ImageListRepository = (*imageListRepoAdapter)(nil)
-
-// buildImageSearchResolver wires the FASE 7 routing layer
-// (routing.ImageSearchResolver) from the canonical image-side deps.
-// Fail-closed (godlike/07): if either input is nil we surface the
-// composition error so NewComposition aborts rather than silently
-// mounting a half-wired resolver.
-func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *assets.ImagesRepository, log *zap.Logger) (routing.ImageSearchResolver, error) {
-	if imageSvc == nil || imageSvc.RetrievalRegistry() == nil {
-		return nil, fmt.Errorf("routing.NewImageSearchResolver: retrieval backend is nil \u2014 image service must be constructed first")
-	}
-	if imageRepo == nil {
-		return nil, fmt.Errorf("routing.NewImageSearchResolver: image list repository is nil \u2014 repos.ImageRepo required")
-	}
-	resolver, err := routing.NewImageSearchResolver(
-		routing.WithRetrievalBackend(imageSvc.RetrievalRegistry()),
-		routing.WithImageListRepository(&imageListRepoAdapter{repo: imageRepo}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("routing.NewImageSearchResolver: %w", err)
-	}
-	log.Info("FASE 7: ImageSearchResolver wired (retrieval backend + image list repo)")
-	return resolver, nil
-}
-
-// buildIngestService constructs the ingest.Service from the same deps
-// that WireMediaIngest uses.
-//
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
-// is the 7th positional arg so the four
-// artifacts.NewClipsRegistry + ingest.NewClipStoreAdapter ctor calls
-// inside this function route their media_assets UPSERT through the
-// canonical outbox+tx writer. mutationsDisp is constructed once in
-// BuildDomainBundle and reused so the same SSOT instance flows into
-// every caller without raising the boot-time cost of repeated
-// newMutationsDispatcherAdapter wraps. The buildIngestService signature
-// drops the previously-threaded *OutboxBundle arg (it was never read
-// inside the function body) — the caller still constructs mutationsDisp
-// from outbox.Dispatcher, so the Site-1 wiring is unchanged.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
-	if driveUploader == nil {
-		return nil
-	}
-	if repos.ImageRepo == nil || repos.VoiceoverRepo == nil || repos.ClipsRepo == nil || search.AssetIndexService == nil {
-		return nil
-	}
-	if mutationsDisp == nil {
-		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
-	}
-	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
-	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
-	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
-	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
-	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
-	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
-	return ingest.NewService(cfg, log, driveUploader.Admin(), map[ingest.Kind]*ingest.Pipeline{
-		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
-		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
-		ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},
-		ingest.KindStock:     {Kind: ingest.KindStock, DefaultSource: "stock", RootFolderID: cfg.Drive.StockFolder(), Lifecycle: stockLifecycle},
-		// PR-ENRICHMENT-STATE-MACHINE EXPAND phase: enrichState
-		// passed as nil. The ingest service flips PENDING on every
-		// freshly-ingested row only when the typed state-machine
-		// wrapper is wired (canonical godlike/06 SSOT). Until the
-		// composition root wires the state machine at boot, the VLM
-		// 15-min sweeper still recovers via the typed-state filter
-		// (backfill path per godlike/07). BACKFILL wave forward-
-		// pointer wires the live state-machine here.
-	}, nil /* enrichState: nil for EXPAND phase */)
-}
-
-// buildYouTubeRuntimeConfig resolves the flat RuntimeConfig consumed by the
-// YouTube application layer from the infrastructure *config.Config. All
-// nested config paths are flattened here so the application layer has zero
-// dependency on `internal/platform/config`.
-func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
-	if cfg == nil {
-		return youtubetypes.RuntimeConfig{}
-	}
-	return youtubetypes.RuntimeConfig{
-		MaxConcurrentVideoExtracts: cfg.Concurrency.MaxConcurrentVideoExtracts,
-		MaxConcurrentOllamaCalls:   cfg.Concurrency.MaxConcurrentOllamaCalls,
-		YouTubeExtractTimeout:      cfg.Jobs.YouTubeExtractTimeout,
-		DataDir:                    cfg.Storage.DataDir,
-		YtdlpPath:                  cfg.External.ResolvedYtdlpPath(),
-		ClipsFolderID:              cfg.Drive.ClipsFolder(),
-		OllamaModel:                cfg.External.OllamaModel,
-		OllamaMetadataModel:        cfg.External.OllamaMetadataModel,
-		YouTubeCookiesPath:         cfg.External.YouTubeCookiesPath,
-		YouTubeJSRuntimePath:       cfg.External.YouTubeJSRuntimePath,
-		YouTubeEnabled:             cfg.Features.YouTubeEnabled,
-	}
-}
-
-// BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
-// and Drive.DriveUploader (which were constructed earlier).
-// PR4.A (June 2026): MemoryRepo is created here (dbs.main.DB), not in BuildRepoBundle,
-// so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
-// without going through RepoBundle.
-func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
-	_ = ctx
-	_ = drive
-	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
-	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
-
-	if cfg.External.SearxngURL != "" {
-		ws := client.NewWebSearcher(cfg.External.SearxngURL, cfg.External.SearxngMaxResults)
-		ollamaClient.SetWebSearcher(ws)
-		log.Info("SearXNG web search enabled for LLM context",
-			zap.String("searxng_url", cfg.External.SearxngURL),
-			zap.Int("max_results", cfg.External.SearxngMaxResults),
-		)
-	}
-
-	scriptGen := ollama.NewGenerator(ollamaClient)
-	translationCache := sqlitescripts.NewCache(dbs.main.DB)
-	scriptGen.SetTranslationCache(translationCache)
-	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
-
-	// Fase 9 step 2 (Spina Dorsale, July 2026): construct the
-	// canonical OllamaTranslator — the single application-layer
-	// concrete that satisfies translation.TranslationPort + the
-	// three legacy port surfaces (LegacyTextTranslationService +
-	// LegacyTranslatorService + LegacyMetadataTranslator). The
-	// composition root constructs ONE OllamaTranslator per process
-	// (godlike/06 SSOT for the translation logic); every consumer
-	// field on ClipServices (Translation, Translator,
-	// TranslationPort + any future metadata-translator dependency)
-	// routes through this instance. Wrap the scriptGen (a
-	// *ollama.Generator) — the canonical `TranslationCache` is
-	// already wired into scriptGen by the SetTranslationCache call
-	// above, so the OllamaTranslator's underlying gen.TranslateTextWithModel
-	// call respects the same SQLite-backed cache lookup as the
-	// legacy direct-call path. Per godlike/06 "one owner per fact",
-	// the *ollama.Generator translation logic is owned by ONE
-	// canonical Pyt-path (translation.ollama_translator.go) reachable
-	// via all 4 ports. Tracking entry:
-	// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION
-	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
-	log.Info("Fase 9 step 2: OllamaTranslator wired (translation.TranslationPort + 3 legacy port surfaces)")
-
-	// Commit H Phase 2 (June 2026): gemmamemory gemmamemory gate service + the
-	// MemoryCacheAdapter wrapper are gone. The canonical engine no
-	// longer consumes the gemmamemory cross-package type — the in-package
-	// memoryCache interface (defined in cache_eviction_usecase.go) is
-	// satisfied by nil here so the engine's `memoryGateChecker` type
-	// assertion returns false at runtime and the cache path is skipped.
-	// MemoryRepo (Repository struct, still in gemmamemory.go) is retained
-	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
-	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
-	engine := usecase.NewEngine(scriptGen, nil, log)
-
-	return &AIBundle{
-		OllamaClient:     ollamaClient,
-		ScriptGen:        scriptGen,
-		OllamaTranslator: ollamaTranslator,
-		MemoryRepo:       adapters.NewRepository(dbs.main.DB),
-		ScriptEngine:     engine,
-	}, nil
-}
-
-// BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle, outboxBundle *OutboxBundle) (*MaintBundle, error) {
-	_ = ctx
-	deletionSvc := deletion.NewDeletionService(
-		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo,
-		repos.VoiceoverRepo, repos.ImageRepo,
-		drive.driveUploader, search.AssetTreeService, search.AssetIndexService,
-		outboxBundle.Dispatcher,
-		nil, // driveGoneChecker (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
-		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
-		log,
-	)
-	maintenanceSvc := maintenance.NewService(cfg, log,
-		search.AssetIndexService, search.AssetTreeService, deletionSvc,
-		jobs.Service, dbs.main.DB,
-	)
-	// Registries-and-SSOT (June 2026): this is the canonical site for
-	// the `system.cleanup` job-type registration. Spec §"Uniqueness"
-	// requires composition to fail on duplicate job types; the previous
-	// log-Warn-and-continue pattern silently absorbed any second-call
-	// attempt (a latent bug that manifested after WireRegistry's
-	// duplicate call was removed). Propagate so any future second-call
-	// path fails composition rather than masking the underlying
-	// Dispatcher error.
-	if err := maintenanceSvc.RegisterHandler(); err != nil {
-		return nil, fmt.Errorf("compose: register maintenance job handler (BuildMaintBundle): %w", err)
-	}
-
-	return &MaintBundle{
-		MaintenanceSvc: maintenanceSvc,
-		DeletionSvc:    deletionSvc,
-	}, nil
-}
-
-// BuildSyncBundle constructs ONLY the catalog→Drive sync. ProviderRegistry
-// moved to BuildSearchBundle (PR4 review).
-//
-// PR-D (June 2026): catalogsync.NewService now takes Deps{} + returns
-// (*Service, error). The legacy late-bind SetDispatcher call is gone;
-// the dispatcher is captured at construction time. Composition-root
-// pre-rejection lives here so a nil outbox dispatcher fails the bundle
-// build with an explicit error instead of racing the late-bind sequence.
-func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle) (*SyncBundle, error) {
-	_ = ctx
-	_ = cfg
-	_ = dbs
-	_ = repos
-	syncTargets := buildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
-
-	// PR-D composition-root pre-rejection is relaxed for the no-Drive
-	// test path: when Drive is disabled the sync bundle still builds
-	// with a nil-service uploader so the bootstrap tests can complete.
-	// The catalogsync service itself remains fail-closed if it is ever
-	// invoked without a real Drive client.
-	uploader := drive.driveUploader
-	if uploader == nil {
-		uploader = &driveutil.Uploader{Log: log}
-		log.Warn("BuildSyncBundle: drive uploader missing; using nil-service placeholder for disabled-drive bootstrap")
-	}
-	if outbox == nil || outbox.Dispatcher == nil {
-		return nil, fmt.Errorf("BuildSyncBundle: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
-	}
-
-	catalogSync, err := catalogsync.NewService(catalogsync.Deps{
-		Uploader:   uploader,
-		Targets:    syncTargets,
-		AssetTree:  search.AssetTreeService,
-		Dispatcher: outbox.Dispatcher,
-		Log:        log,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("BuildSyncBundle: catalogsync.NewService: %w", err)
-	}
-
-	return &SyncBundle{
-		CatalogSync: catalogSync,
 	}, nil
 }
