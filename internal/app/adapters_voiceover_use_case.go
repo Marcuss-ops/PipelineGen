@@ -13,7 +13,7 @@
 //
 //   - adapters_voiceover_use_case.go   → this file (orchestrator landmark: package doc only)
 //   - adapters_voiceover_tts.go        → TTSProvider + AudioPostProcessor (AUDIO synthesis cluster)
-//   - adapters_voiceover_publisher.go  → VoiceoverPublisher + DriveUploaderPort (DRIVE cluster)
+//   - adapters_voiceover_publisher.go  → VoiceoverPublisher + voiceoverDriveAdapter (DRIVE cluster)
 //   - adapters_voiceover_repo.go       → VoiceoverRepository + DestinationResolver +
 //     VoiceoverDefaultFolderResolver (REPO/RESOLVER cluster;
 //     sole canonical owner of heavy *sql.DB / *sql.Tx /
@@ -33,7 +33,7 @@
 // See internal/application/voiceover/ports.go for the canonical 9-port
 // surface layout (TTSProvider, AudioPostProcessor, VoiceoverPublisher,
 // VoiceoverRepository, DestinationResolver, VoiceoverDefaultFolderResolver,
-// LifecycleProjectionUpserter, VoiceoverPostCommitVerifier, DriveUploaderPort).
+// LifecycleProjectionUpserter, VoiceoverPostCommitVerifier).
 //
 // Production wiring sites: internal/app/build_bundles_voiceover.go
 // (BuildVoiceoverBundle + VoiceoverUseCaseDeps construction).
