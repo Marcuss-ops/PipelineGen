@@ -195,11 +195,13 @@ func checkWorkerRealState(_ context.Context, deps readinessDeps) checkStatus {
 	if deps.Root == nil {
 		return checkStatus{Err: "production composition root is nil — cannot verify worker state"}
 	}
-	if deps.Root.EventsPool == nil {
-		return checkStatus{Err: "outbox events pool is nil — production worker pool missing"}
-	}
+	// Check config validity before derived objects: zero workers is a
+	// configuration error that should fire regardless of pool state.
 	if deps.Cfg != nil && deps.Cfg.Outbox.Workers <= 0 {
 		return checkStatus{Err: fmt.Sprintf("outbox.workers=%d (must be > 0)", deps.Cfg.Outbox.Workers)}
+	}
+	if deps.Root.EventsPool == nil {
+		return checkStatus{Err: "outbox events pool is nil — production worker pool missing"}
 	}
 	return checkStatus{Pass: true}
 }

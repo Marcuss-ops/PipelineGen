@@ -168,7 +168,10 @@ func timestampedTargetCollection(base string, now time.Time) string {
 	if base == "" {
 		base = "media_assets_v3"
 	}
-	return fmt.Sprintf("%s_%s", base, now.UTC().Format("20060102_150405_000000000"))
+	utc := now.UTC()
+	// Go's time.Format does not recognise "000000000" without a leading dot;
+	// nanosecond field must be extracted via .Nanosecond() and formatted with %09d.
+	return fmt.Sprintf("%s_%s_%09d", base, utc.Format("20060102_150405"), utc.Nanosecond())
 }
 
 // runReindexQdrant is the entry point registered in cmd/admin/main.go.
