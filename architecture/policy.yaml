@@ -232,7 +232,7 @@ lint_gates:
     allowlist: docs/architecture/godlike/duplicate-types-allowlist.txt
     log_line_on_pass: "Check 5: 0 same-package type-redeclarations detected across internal/"
     references_business_rule: QDRANT-RECOVERY-001 forward-prevention
-    references_ticket: docs/operations/05-qdrant-redeclaration-recovery.md
+    references_ticket: "QDRANT-RECOVERY-001 (resolved by commits 2b67d701 + 38187ded; runbook 05 removed July 2026)"
     owner_wave: 20
     rationale: |
       Go cannot distinguish file-level types from package-level types —
@@ -277,7 +277,7 @@ wave_qdrant_005d_hygiene:
           from package-level type and the wire-mirror + canonical-
           in-application cycle-break requires lint enforcement.
   blocked_by: ["16"]
-  follow_up_ticket: docs/operations/05-qdrant-redeclaration-recovery.md
+  follow_up_ticket: "QDRANT-RECOVERY-001 (resolved; runbook 05 removed July 2026)"
   cross_refs:
     wave: architecture/current.yaml#id-20
     lint_gates_entry: lint_gates[check=5]
