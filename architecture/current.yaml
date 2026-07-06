@@ -5717,8 +5717,11 @@
     deadline: 2026-08-15
 
 - id: CLEANUP-PRIORITY-1-5-2026-07-25
-  status: in_progress
-  exit_signal: false
+  status: shipped
+  ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+  ship_date: 2026-07-06
+  ship_via: WAVE_FLIP_PER_ALL_LINKED_ISSUES_SHIPPED
+  exit_signal: true
   owner_capability: architecture
   deadline: 2026-08-22
   description: "Cleanup wave for the 5 priority Hard-Tech cleanup items from the
