@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -88,7 +89,43 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 // operator-diagnostic "what stage is currently in-flight?" query
 // but is NOT used as the orchestrator's primary resume mechanism
 // (lex-smallest non-completed ≠ pipeline-order).
-func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunSummary, error) {
+func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summary *RunSummary, err error) {
+	// ── Entry log ──────────────────────────────────────────
+	start := time.Now()
+	log := o.executorLogOrNop()
+	log.Info("orchestrator: RunResilient: starting",
+		zap.String("job_id", o.cfg.JobId),
+		zap.Int("explicit_clips", len(input.Clips)),
+		zap.Int("search_queries", len(input.SearchQueries)),
+		zap.Int("direct_urls", len(input.DirectURLs)),
+	)
+
+	// ── Exit log (deferred) ───────────────────────────────
+	// Named return values let the deferred closure inspect
+	// whether RunResilient succeeded or failed.
+	// This defer fires before the cleanup defer below (LIFO order),
+	// so the SUCCEEDED/FAILED verdict is logged before staged-source
+	// cleanup runs.
+	defer func() {
+		elapsed := time.Since(start)
+		if recov := recover(); recov != nil {
+			log.Error("orchestrator: RunResilient: PANIC",
+				zap.String("job_id", o.cfg.JobId),
+				zap.Duration("elapsed", elapsed),
+				zap.Any("panic_value", recov))
+			panic(recov)
+		}
+		if err != nil {
+			log.Warn("orchestrator: RunResilient: FAILED",
+				zap.String("job_id", o.cfg.JobId),
+				zap.Duration("elapsed", elapsed),
+				zap.Error(err))
+			return
+		}
+		log.Info("orchestrator: RunResilient: SUCCEEDED",
+			zap.String("job_id", o.cfg.JobId),
+			zap.Duration("elapsed", elapsed))
+	}()
 	// §12-1 (July 2026) + PR-STOCK-PRODUCTION-DEPS (P2_media,
 	// 2026-07-04): composition-time fail-closed gate. The canonical
 	// composition root (stockpipeline.NewService) already validates
@@ -231,7 +268,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 	// dedicated Step type) because the gate checks RunSummary state, not
 	// per-step progress; threading it through a Step would duplicate
 	// state and break the §12-5 typed-slice ingress invariant.
-	summary := &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}
+	summary = &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}
 
 	// §12-1 P0 #1 gate: enforce manifest-completeness BEFORE
 	// returning nil. The gate fires in production mode (JobFinalizer

@@ -145,7 +145,76 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		logger = req.Logger
 	}
 
-	internalJobs := toInternalCutJobs(req.Jobs)
+	// ── Probe source duration for pre-flight validation ──────────────
+	// If the source is shorter than the clip timestamps, FFmpeg's
+	// trim filter silently produces empty 262-byte MP4 containers.
+	// Probe first so we can fail-fast with a clear, actionable error
+	// instead of producing 11 identical empty files.
+	var srcDuration float64
+	if info, probeErr := c.proc.Probe(ctx, req.SourcePath); probeErr == nil && info != nil {
+		srcDuration = info.Duration.Seconds()
+		logger.Info("stock extractor: source duration probed",
+			zap.String("source", req.SourcePath),
+			zap.Float64("duration_sec", srcDuration),
+		)
+	} else if probeErr != nil {
+		logger.Warn("stock extractor: source duration probe failed — proceeding without validation",
+			zap.String("source", req.SourcePath),
+			zap.Error(probeErr),
+		)
+	}
+
+	// Filter out clips whose timestamps are entirely beyond the
+	// source duration. If we have the source duration and a clip's
+	// StartSec >= duration, skip it with a clear error. For clips
+	// where only EndSec exceeds duration, clamp to source end.
+	//
+	// validToOrig maps validJobs[i] → original req.Jobs index so
+	// we can write results back to the correct items[] slot after
+	// the batch/fallback cut. Without this mapping, skipped clips
+	// cause the indices to desynchronise (e.g. items[1] gets C's
+	// output when B was skipped and A,C,E are the valid jobs).
+	validJobs := make([]stockpipeline.CutJob, 0, len(req.Jobs))
+	validToOrig := make([]int, 0, len(req.Jobs))
+	skipped := 0
+	for origIdx, j := range req.Jobs {
+		if srcDuration > 0 && j.StartSec >= srcDuration {
+			skipped++
+			logger.Warn("stock extractor: clip skipped — start timestamp beyond source duration",
+				zap.String("output", j.OutputPath),
+				zap.Float64("start_sec", j.StartSec),
+				zap.Float64("end_sec", j.EndSec),
+				zap.Float64("source_duration", srcDuration),
+			)
+			items[origIdx].Status = stockpipeline.CutItemStatusFailed
+			items[origIdx].Err = fmt.Errorf("clip start %.2fs beyond source duration %.2fs", j.StartSec, srcDuration)
+			continue
+		}
+		clamped := j
+		if srcDuration > 0 && clamped.EndSec > srcDuration {
+			logger.Info("stock extractor: clip end clamped to source duration",
+				zap.String("output", j.OutputPath),
+				zap.Float64("original_end", j.EndSec),
+				zap.Float64("clamped_end", srcDuration),
+			)
+			clamped.EndSec = srcDuration
+		}
+		validJobs = append(validJobs, clamped)
+		validToOrig = append(validToOrig, origIdx)
+	}
+	if skipped > 0 {
+		logger.Warn("stock extractor: clips skipped due to timestamp overflow",
+			zap.Int("skipped", skipped),
+			zap.Int("remaining", len(validJobs)),
+			zap.Float64("source_duration_sec", srcDuration),
+		)
+	}
+	if len(validJobs) == 0 {
+		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items},
+			fmt.Errorf("cutter: all %d clips skipped — timestamps beyond source duration %.2fs", len(req.Jobs), srcDuration)
+	}
+
+	internalJobs := toInternalCutJobs(validJobs)
 	producedIdx := make([]int, 0, len(internalJobs)) // indices into items where a file is on disk
 
 	// ── Attempt 1: single-pass batch cut ──────────────────────────────
@@ -164,19 +233,15 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	if batchErr == nil {
 		// Batch succeeded — verify on disk + record produced indices.
 		for i, j := range internalJobs {
+			origIdx := validToOrig[i]
 			if info, statErr := os.Stat(j.Output); statErr == nil {
-				producedIdx = append(producedIdx, i)
-				items[i].OutputPath = j.Output
-				items[i].SizeBytes = info.Size()
-				items[i].Status = stockpipeline.CutItemStatusSucceeded
+				producedIdx = append(producedIdx, origIdx)
+				items[origIdx].OutputPath = j.Output
+				items[origIdx].SizeBytes = info.Size()
+				items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
 			} else {
-				// ffmpeg exited 0 but the file is missing — this is
-				// a partial-success: the batch cmd "succeeded" but
-				// the produced file is gone (simulated cleanup race,
-				// disk full, antivirus deletion). Mark Failed for
-				// honesty; the top-level err stays nil.
-				items[i].Status = stockpipeline.CutItemStatusFailed
-				items[i].Err = fmt.Errorf("batch reported success but file missing: %w", statErr)
+				items[origIdx].Status = stockpipeline.CutItemStatusFailed
+				items[origIdx].Err = fmt.Errorf("batch reported success but file missing: %w", statErr)
 			}
 		}
 		c.runProbe(ctx, logger, items, producedIdx)
@@ -195,14 +260,16 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 
 	var lastErr error
 	for i, j := range internalJobs {
+		origIdx := validToOrig[i]
 		select {
 		case <-ctx.Done():
 			// Context cancelled: mark every still-unprocessed item as
 			// failed with ctx.Err; iterate only over the un-cut suffix.
-			for k := i; k < len(items); k++ {
-				if items[k].Status == stockpipeline.CutItemStatusUnknown {
-					items[k].Status = stockpipeline.CutItemStatusFailed
-					items[k].Err = ctx.Err()
+			for k := i; k < len(internalJobs); k++ {
+				ok := validToOrig[k]
+				if items[ok].Status == stockpipeline.CutItemStatusUnknown {
+					items[ok].Status = stockpipeline.CutItemStatusFailed
+					items[ok].Err = ctx.Err()
 				}
 			}
 			return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, ctx.Err()
@@ -219,19 +286,19 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 				zap.Int("clip_index", i),
 				zap.Error(cutErr),
 			)
-			items[i].Status = stockpipeline.CutItemStatusFailed
-			items[i].Err = cutErr
+			items[origIdx].Status = stockpipeline.CutItemStatusFailed
+			items[origIdx].Err = cutErr
 			lastErr = cutErr
 			continue
 		}
 		if info, statErr := os.Stat(j.Output); statErr == nil {
-			items[i].OutputPath = j.Output
-			items[i].SizeBytes = info.Size()
-			items[i].Status = stockpipeline.CutItemStatusSucceeded
-			producedIdx = append(producedIdx, i)
+			items[origIdx].OutputPath = j.Output
+			items[origIdx].SizeBytes = info.Size()
+			items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
+			producedIdx = append(producedIdx, origIdx)
 		} else {
-			items[i].Status = stockpipeline.CutItemStatusFailed
-			items[i].Err = fmt.Errorf("fallback reported success but file missing: %w", statErr)
+			items[origIdx].Status = stockpipeline.CutItemStatusFailed
+			items[origIdx].Err = fmt.Errorf("fallback reported success but file missing: %w", statErr)
 			lastErr = statErr
 		}
 	}

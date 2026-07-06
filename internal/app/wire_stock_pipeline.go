@@ -141,6 +141,18 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		)
 	}
 
+	// ── Diagnostic: wiring status summary ────────────────────
+	// Emitted at Info so operators see it even without --debug.
+	// Uses zap.Bool (same pattern as the Finalizer Warn above)
+	// so every field is a simple true/false the operator can
+	// scan in one line: "are Publisher and Finalizer wired?"
+	log.Info("WireStockPipeline: wiring summary",
+		zap.Bool("publisher_wired", root.Drive != nil && root.Drive.Publisher != nil),
+		zap.Bool("finalizer_wired", stockFinalizer != nil),
+		zap.Bool("source_stager_wired", stockSourceStager != nil),
+		zap.String("ffmpeg_path", ffmpegPath),
+	)
+
 	return BuildStockBundle(StockBundleDeps{
 		Cfg:                  cfg,
 		Log:                  log,
