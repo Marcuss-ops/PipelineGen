@@ -28,145 +28,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ── Composition-time fail-fast sentinels (P0 #3, June 2026) ────────────────
-//
-// NewPublisher used to nil-deref any unset Pattern 0 port at the first
-// downstream call (`p.registry.Resolve(...)` from Publish, etc.). The
-// composition root (internal/app/build_bundles_drive.go) had no way to
-// distinguish "deps wired correctly" from "deps wired to nil because
-// Drive auth failed at boot". Pre-P0 #3, a `driveClient == nil` Drive
-// block at composition would still produce a `var publisher delivery.Publisher
-// = drive.NewPublisher(registry, folderMgr, driveUploader, log)` literal
-// at build_bundles_drive.go:85 — the typed-NIL interface trap from
-// godlike/06 would hand callers a non-nil interface holding a nil
-// concrete, whose first call site exploded at runtime without a clean
-// composition-time indicator.
-//
-// The three sentinels below close that gap. Each is exported so callers
-// (cmd/admin/, internal/app/composition.go, future health-barrier checks)
-// can errors.Is / errors.As against the verbatim sentinel — the same
-// pattern godlike/07 §"Compatibility test" uses for the pre-existing
-// outbox typed-port contract.
-
-// ErrMissingDestinationRegistry is the fail-fast sentinel when the
-// composition root hands a nil DestinationRegistry to NewPublisher.
-// Per AGENTS.md Pattern 8 (thin API transport only) + godlike/06
-// "one owner per fact", the registry MUST be non-nil at construction
-// time so downstream code paths (`p.registry.Resolve(...)` from Publish,
-// ResolveFolder, resolveDestination) can dereference the pointer without
-// producing a runtime nil-panic at first call site.
-var ErrMissingDestinationRegistry = errors.New("drive: NewPublisher: DestinationRegistry dependency is required (composition-time fail-fast)")
-
-// ErrMissingFolderManager is the fail-fast sentinel when the
-// FolderManagerPort dependency is nil. Per AGENTS.md Pattern 0
-// (port abstraction layer), the FolderManagerPort is the canonical
-// compile-time boundary between Publisher and DriveFolderManagerAdapter;
-// a nil port at construction indicates a ComposeRoot misconfiguration
-// (typed-nil interface trap that would otherwise surface only at first
-// EnsureFolder call site).
-var ErrMissingFolderManager = errors.New("drive: NewPublisher: FolderManagerPort dependency is required (composition-time fail-fast)")
-
-// ErrMissingFileUploader is the fail-fast sentinel when the
-// FileUploaderPort dependency is nil. Per AGENTS.md Pattern 0, the
-// FileUploaderPort is the canonical boundary for FileUploaderPort.PutFile
-// (the P0 #1 conflict-aware uploader seam); a nil port at construction
-// indicates a ComposeRoot misconfiguration.
-var ErrMissingFileUploader = errors.New("drive: NewPublisher: FileUploaderPort dependency is required (composition-time fail-fast)")
-
-// FolderManagerPort is the narrow port for creating nested Drive folders.
-// Satisfied by *DriveFolderManagerAdapter.EnsureFolder.
-//
-// P1.3 (July 2026): adds ProbeFolderAccess(ctx, rootID) for the
-// composition-time StartupDriveRootsValidator. ProbeFolderAccess
-// verifies that a configured root folder is reachable on Drive WITHOUT
-// creating any folder — it uses Files.Get with retry-with-jitter and
-// is the canonical fail-closed surface for the registry-driven
-// startup validation. The probe is side-effect-free (read-only) so
-// even validators that loop across dozens of destinations do not
-// produce spurious Drive-side folder creation.
-type FolderManagerPort interface {
-	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
-	ProbeFolderAccess(ctx context.Context, rootID string) error
-}
-
-// PutAction describes what the uploader actually did on Drive. It is
-// the typed replacement for unspecified "did we overwrite or create?"
-// return values — callers can branch on Action to update their audit
-// trail, emit events, or skip DB writes for skips. Mirrors the
-// project convention of typed string enums (delivery.ConflictPolicy,
-// delivery.DeliveryStatus, asset.LifecycleState).
-type PutAction string
-
-const (
-	PutActionCreated PutAction = "created" // fresh Drive file (no existing match)
-	PutActionUpdated PutAction = "updated" // existing Drive file updated in place
-	PutActionSkipped PutAction = "skipped" // existing Drive file preserved (ConflictSkip; no upload performed)
-	PutActionRenamed PutAction = "renamed" // new Drive file with conflict-rename suffix
-)
-
-// PutFileRequest is the single low-level op the Publisher must route
-// conflict-aware uploads through. Carrying ConflictPolicy at this
-// seam eliminates the dead-enum failure mode (P0 #1): every caller
-// MUST pick Overwrite/Skip/Rename explicitly. Zero-value policy
-// resolves to delivery.ConflictOverwrite to match legacy behaviour.
-//
-// P0.6 (July 2026): IdempotencyKey replaces folderID+filename as the
-// authoritative identity for conflict detection. When non-empty, the
-// uploader uses Drive appProperties lookup instead of filename match.
-// ContentHash and SourceVersion are carried for idempotency-key
-// derivation and future audit surfaces.
-type PutFileRequest struct {
-	LocalPath      string
-	FolderID       string
-	Filename       string
-	Description    string                  // optional; empty means "no description"
-	ConflictPolicy delivery.ConflictPolicy // zero = ConflictOverwrite (legacy default)
-	IdempotencyKey string                  // P0.6: Drive appProperties key for conflict detection
-	ContentHash    string                  // P0.6: hex-encoded SHA-256 of file content
-	SourceVersion  int64                   // P0.6: logical source version
-}
-
-// PutFileResult is the structured return value. Action tells callers
-// what actually happened on Drive; all metadata fields are present in
-// every successful case (including the skip branch, where the
-// existing file's metadata is returned so the caller does not have
-// to re-issue FindFileByName).
-type PutFileResult struct {
-	FileID       string
-	WebViewLink  string
-	DownloadLink string
-	MD5Checksum  string
-	Action       PutAction
-}
-
-// FileUploaderPort is the narrow port for uploading files to Drive.
-// Satisfied by *Uploader.PutFile (see uploader_put.go).
-//
-// P0 #1 (June 2026): the legacy UploadFileWithDescription method was
-// removed from this port. The PutFile method carries the
-// ConflictPolicy at the seam so callers cannot bypass it. Raw callers
-// that need the unconditional-overwrite shape should depend on
-// drive.Admin.UploadFileWithDescription (kept for cmd/admin and
-// similar raw contexts).
-type FileUploaderPort interface {
-	PutFile(ctx context.Context, req PutFileRequest) (*PutFileResult, error)
-}
-
-// CatalogFolderLookup is the narrow port for consulting the local
-// drive_folder_catalog before making Drive API calls (DoD item 6,
-// SEMANTIC-LOCATION-API-2026-07-06). When a matching catalog entry
-// exists with status=active and a non-empty folder_id, the Publisher
-// uses the cached folder ID directly — no Drive EnsureFolder API
-// call needed.
-//
-// Returns ("", nil) when no catalog entry exists or the entry is
-// not in active state — the Publisher falls back to EnsureFolder.
-// Returns an error only on infrastructure failures (DB down, etc.)
-// — the Publisher logs the error and falls back to EnsureFolder.
-type CatalogFolderLookup interface {
-	LookupFolder(ctx context.Context, destination, path string) (string, error)
-}
-
+// FolderManagerPort, PutAction, PutFileRequest, PutFileResult, FileUploaderPort,
+// CatalogFolderLookup, and composition-time sentinels have moved to
+// publisher_types.go (Pattern 5 split, July 2026).
 // Publisher implements delivery.Publisher. It resolves the destination,
 // builds the folder hierarchy, normalises the filename, and uploads.
 type Publisher struct {
@@ -231,43 +95,9 @@ func NewPublisher(
 	}, nil
 }
 
-// ResolvedDriveDestination is the outcome of the canonical destination
-// resolution pipeline shared by Publish and ResolveFolder. It marks the
-// boundary between registration-time resolution (registry + overrides
-// + path builder + RequireSubpath enforcement) and Drive-time mutation
-// (folder hierarchy creation).
-//
-// Both Publish AND ResolveFolder MUST go through resolveDestination so
-// RequireSubpath is enforced symmetrically across callers. P0 #2 (June
-// 2026) identified that ResolveFolder used a near-duplicate of the
-// Steps 1-4 block but skipped the RequireSubpath check, allowing a
-// caller to "resolve" a folder that Publish would have rejected.
-// Centralising the pipeline makes that misroute impossible.
-type ResolvedDriveDestination struct {
-	// Destination echoes the requested DestinationKey for audit /
-	// projection layers (so callers don't need to thread req through
-	// alongside the result).
-	Destination delivery.DestinationKey
-	// RootFolderID is the resolved root folder after RootFolderOverride
-	// has been applied. Empty iff registry.RootFolderID is also empty
-	// (callers should treat that as an upstream misconfiguration,
-	// already rejected by resolveDestination itself).
-	RootFolderID string
-	// FolderID is the leaf folder ID after FolderManager.EnsureFolder
-	// has built the segment hierarchy. If PathSegments was empty,
-	// FolderID == RootFolderID; otherwise it is the deepest nested ID.
-	FolderID string
-	// PathSegments are the resolved segments used to build the
-	// hierarchy. Empty iff the resolved policy's RequireSubpath is
-	// false; resolveDestination rejects such a state when the policy
-	// requires a subpath so downstream code never sees an empty
-	// PathSegments when one was contractually required.
-	PathSegments []string
-}
-
-// resolveDestination lives in publisher_resolve.go
-// (PR-PUBLISHER-SPLIT, July 2026).
-
+// ResolvedDriveDestination has moved to publisher_types.go
+// (Pattern 5 split, July 2026).
+// resolveDestination lives in publisher_resolve.go.
 // Publish resolves the destination, builds the folder path, creates folders,
 // normalises the filename, and uploads the file. This is the single canal
 // for all Drive writes.
