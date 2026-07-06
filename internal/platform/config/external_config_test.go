@@ -40,3 +40,39 @@ features:
 		t.Fatal("expected stock_pipeline_enabled to be true")
 	}
 }
+
+// TestConfigUnmarshalReadsArtlistCookiesPath verifies the canonical
+// external_config_test for cfg.External.ArtlistCookiesPath (added
+// 2026-07-06 in PR-ARTLIST-COOKIES-CONFIG).
+//
+// Contract (godlike/07 fail-closed empty default):
+//  1. When yaml does NOT set the field, applyDefaults populates it
+//     with the canonical empty default (NOT a hardcoded `/tmp/...` path).
+//  2. When yaml sets the field, the value is bound verbatim to
+//     cfg.External.ArtlistCookiesPath.
+//
+// The downloader (internal/infrastructure/downloader/downloader.go) reads
+// the field via NewYTDLP; when empty it SKIPS the --cookies flag entirely
+// so operators see a visible 403 from Artlist instead of a silent failure
+// on a non-existent cookies file.
+func TestConfigUnmarshalReadsArtlistCookiesPath(t *testing.T) {
+	// Case 1: empty default (godlike/07 fail-closed).
+	emptyCfg := &Config{}
+	applyDefaults(emptyCfg)
+	if got := emptyCfg.External.ArtlistCookiesPath; got != "" {
+		t.Fatalf("expected empty default for ArtlistCookiesPath, got %q", got)
+	}
+
+	// Case 2: custom value via yaml binding.
+	raw := []byte(`external:
+  artlist_cookies_path: "/var/lib/pipelinegen/artlist_cookies.txt"
+`)
+	customCfg := &Config{}
+	applyDefaults(customCfg)
+	if err := yaml.Unmarshal(raw, customCfg); err != nil {
+		t.Fatalf("yaml unmarshal failed: %v", err)
+	}
+	if got, want := customCfg.External.ArtlistCookiesPath, "/var/lib/pipelinegen/artlist_cookies.txt"; got != want {
+		t.Fatalf("expected ArtlistCookiesPath %q, got %q", want, got)
+	}
+}

@@ -79,6 +79,15 @@ type ExternalConfig struct {
 	// Artlist scraper optimizations
 	ArtlistScraperServerURL        string `yaml:"artlist_scraper_server_url" env:"ARTLIST_SCRAPER_SERVER_URL" default:""`
 	ArtlistLiveSearchCacheTTLHours int    `yaml:"artlist_live_search_cache_ttl_hours" env:"ARTLIST_CACHE_TTL_HOURS" default:"24"`
+
+	// Artlist cookies path for yt-dlp (July 2026): replaces the hardcoded
+	// `/tmp/artlist_cookies.txt` in internal/infrastructure/downloader/downloader.go.
+	// Empty default (godlike/07 fail-closed): when unset, the downloader SKIPS the
+	// `--cookies` flag entirely so operators see a visible 403 from Artlist instead
+	// of a silent `--cookies /nonexistent/path` failure. Operators who need
+	// authenticated Artlist downloads set ARTLIST_COOKIES_PATH to a real file
+	// (typically produced by `yt-dlp --cookies-from-browser chrome`).
+	ArtlistCookiesPath string `yaml:"artlist_cookies_path" env:"ARTLIST_COOKIES_PATH" default:""`
 }
 
 // ResolvedYtdlpPath returns the configured yt-dlp path, falling back to "yt-dlp" if empty.

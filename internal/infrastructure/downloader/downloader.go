@@ -20,10 +20,11 @@ import (
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.
 type YTDLPDownloader struct {
-	path        string
-	cookiesPath string
-	cmdBuilder  *ytdlp.CommandBuilder
-	verifier    *ytdlp.OutputVerifier
+	path               string
+	cookiesPath        string
+	artlistCookiesPath string // July 2026 (PR-ARTLIST-COOKIES-CONFIG): empty = skip --cookies flag (godlike/07 fail-closed)
+	cmdBuilder         *ytdlp.CommandBuilder
+	verifier           *ytdlp.OutputVerifier
 }
 
 // NewYTDLP creates a new yt-dlp downloader.
@@ -37,10 +38,11 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		cookiesPath = "cookies.txt"
 	}
 	return &YTDLPDownloader{
-		path:        path,
-		cookiesPath: cookiesPath,
-		cmdBuilder:  ytdlp.NewCommandBuilder(cfg),
-		verifier:    &ytdlp.OutputVerifier{},
+		path:               path,
+		cookiesPath:        cookiesPath,
+		artlistCookiesPath: cfg.External.ArtlistCookiesPath,
+		cmdBuilder:         ytdlp.NewCommandBuilder(cfg),
+		verifier:           &ytdlp.OutputVerifier{},
 	}
 }
 
@@ -128,9 +130,16 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	// Dynamically use aria2c to accelerate downloads if available
 	args = d.addExternalDownloaderArgs(args)
 
-	// Add Artlist-specific args (cookies, headers, impersonation)
+	// Add Artlist-specific args (cookies, headers, impersonation).
+	// July 2026 (PR-ARTLIST-COOKIES-CONFIG): the --cookies path is now
+	// config-driven (cfg.External.ArtlistCookiesPath, env ARTLIST_COOKIES_PATH).
+	// When empty (the godlike/07 fail-closed default), the --cookies flag is
+	// SKIPPED entirely so operators see a visible 403 from Artlist instead of
+	// a silent `--cookies /nonexistent/path` failure on a hardcoded path.
 	if strings.Contains(req.URL, "artlist") {
-		args = append(args, "--cookies", "/tmp/artlist_cookies.txt")
+		if d.artlistCookiesPath != "" {
+			args = append(args, "--cookies", d.artlistCookiesPath)
+		}
 		args = append(args, "--add-header", "Referer:https://artlist.io/")
 		args = append(args, "--add-header", "Origin:https://artlist.io/")
 		args = append(args, "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
