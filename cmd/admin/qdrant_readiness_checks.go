@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
