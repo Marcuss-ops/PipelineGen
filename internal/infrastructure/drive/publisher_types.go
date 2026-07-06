@@ -1,0 +1,98 @@
+// Package drive — publisher_types.go: composition-time typed contracts for the Publisher.
+//
+// 2026-07-06 (Pattern 5 split): extracted from publisher.go. Owns the canonical
+// fail-fast sentinels, Pattern 0 port interfaces, PutAction/Request/Result types,
+// and ResolvedDriveDestination. These are shared across publisher.go,
+// publisher_resolve.go, and all callers that wire the uploader seam.
+package drive
+
+import (
+	"context"
+	"errors"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+)
+
+// ── Composition-time fail-fast sentinels (P0 #3, June 2026) ────────────────
+
+// ErrMissingDestinationRegistry is the fail-fast sentinel when the
+// composition root hands a nil DestinationRegistry to NewPublisher.
+var ErrMissingDestinationRegistry = errors.New("drive: NewPublisher: DestinationRegistry dependency is required (composition-time fail-fast)")
+
+// ErrMissingFolderManager is the fail-fast sentinel when the
+// FolderManagerPort dependency is nil.
+var ErrMissingFolderManager = errors.New("drive: NewPublisher: FolderManagerPort dependency is required (composition-time fail-fast)")
+
+// ErrMissingFileUploader is the fail-fast sentinel when the
+// FileUploaderPort dependency is nil.
+var ErrMissingFileUploader = errors.New("drive: NewPublisher: FileUploaderPort dependency is required (composition-time fail-fast)")
+
+// FolderManagerPort is the narrow port for creating nested Drive folders.
+// Satisfied by *DriveFolderManagerAdapter.EnsureFolder.
+//
+// P1.3 (July 2026): adds ProbeFolderAccess(ctx, rootID) for the
+// composition-time StartupDriveRootsValidator.
+type FolderManagerPort interface {
+	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
+	ProbeFolderAccess(ctx context.Context, rootID string) error
+}
+
+// PutAction describes what the uploader actually did on Drive.
+type PutAction string
+
+const (
+	PutActionCreated PutAction = "created" // fresh Drive file (no existing match)
+	PutActionUpdated PutAction = "updated" // existing Drive file updated in place
+	PutActionSkipped PutAction = "skipped" // existing Drive file preserved (ConflictSkip; no upload performed)
+	PutActionRenamed PutAction = "renamed" // new Drive file with conflict-rename suffix
+)
+
+// PutFileRequest is the single low-level op the Publisher must route
+// conflict-aware uploads through.
+type PutFileRequest struct {
+	LocalPath      string
+	FolderID       string
+	Filename       string
+	Description    string                  // optional; empty means "no description"
+	ConflictPolicy delivery.ConflictPolicy // zero = ConflictOverwrite (legacy default)
+	IdempotencyKey string                  // P0.6: Drive appProperties key for conflict detection
+	ContentHash    string                  // P0.6: hex-encoded SHA-256 of file content
+	SourceVersion  int64                   // P0.6: logical source version
+}
+
+// PutFileResult is the structured return value.
+type PutFileResult struct {
+	FileID       string
+	WebViewLink  string
+	DownloadLink string
+	MD5Checksum  string
+	Action       PutAction
+}
+
+// FileUploaderPort is the narrow port for uploading files to Drive.
+// Satisfied by *Uploader.PutFile (see uploader_put.go).
+type FileUploaderPort interface {
+	PutFile(ctx context.Context, req PutFileRequest) (*PutFileResult, error)
+}
+
+// CatalogFolderLookup is the narrow port for consulting the local
+// drive_folder_catalog before making Drive API calls (DoD item 6,
+// SEMANTIC-LOCATION-API-2026-07-06).
+type CatalogFolderLookup interface {
+	LookupFolder(ctx context.Context, destination, path string) (string, error)
+}
+
+// ResolvedDriveDestination is the outcome of the canonical destination
+// resolution pipeline shared by Publish and ResolveFolder.
+//
+// Both Publish AND ResolveFolder MUST go through resolveDestination so
+// RequireSubpath is enforced symmetrically across callers. P0 #2 (June
+// 2026) identified that ResolveFolder used a near-duplicate of the
+// Steps 1-4 block but skipped the RequireSubpath check, allowing a
+// caller to "resolve" a folder that Publish would have rejected.
+type ResolvedDriveDestination struct {
+	Destination  delivery.DestinationKey
+	RootFolderID string
+	FolderID     string
+	PathSegments []string
+}
