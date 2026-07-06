@@ -6708,3 +6708,147 @@
       + GODOBJ-2026-07-03). Documentation-only closure per godlike/07
       slim-schema append-only ratchet.
     deadline: 2026-08-01
+
+- id: LONG-FILES-DECOMPOSITION-V2-2026-07-06
+  status: pending
+  exit_signal: false
+  deadline: 2026-09-01
+  description: >-
+    V2 wave-tracker for Go-audit 2026-07-06 (35 files >500 LOC on origin/main).
+    EXCLUDES 4 user-tollerated files (test harness + 1-shot CLI + gate executable + codegen).
+    TARGETS 31 files split into 4 priority bands: P0 CRITICAL (>=600 LOC, 6 files,
+    deadline 2026-07-15), P1 ALTA (550-599, 11 files, 2026-07-25), P2 MEDIA (525-549,
+    7 files, 2026-08-08), P3 BASSA (500-524, 7 files, 2026-08-22). Coexists with V1
+    LONG-FILES-SPLIT-2026-07-06 (now mostly retired by recent splits) per slim-schema
+    append-only ratchet. Per AGENTS.md Git-Lesson-2: every per-PR lands directly on
+    main (no branches, no --force) with per-subtree gofmt + go vet + go build + go
+    test -short gates. Companion action plan: architecture/action-plans/2026-07-06-long-files-decomposition-v2.md.
+  linked_issues:
+    - id: PR-SPLIT-FINALIZE-TYPES-V2
+      owner_capability: internal/domain/finalization
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-SPLIT-LEGACYAUDIT-V2
+      owner_capability: internal/application/qdrant/legacyaudit
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-SPLIT-JOBS-REPO-RESIDUAL
+      owner_capability: internal/infrastructure/database/sqlite/jobs
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-SPLIT-WORKERDOCTOR-PROBES
+      owner_capability: internal/application/workerdoctor
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-SPLIT-ARCHCHECK-CHECKS-V2
+      owner_capability: scripts/archcheck
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-SPLIT-QDRANT-RECONCILER-V2
+      owner_capability: internal/application/qdrant/reconciler
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-SPLIT-STOCK-PORTS
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-SEARCH-BACKENDS
+      owner_capability: internal/app
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-DRIVE-UPLOADER-OPS
+      owner_capability: internal/infrastructure/drive
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-QDRANT-READINESS-CHECKS
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-JOBS-REGISTRY-AUDIT-PIN
+      owner_capability: internal/application/jobs
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-CLIPS-HANDLER
+      owner_capability: internal/api/assets/clips
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-IMAGES-SEARCH-QUERIES
+      owner_capability: internal/application/images
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-RETRY-PKG
+      owner_capability: pkg/retry
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-QDRANT-READINESS
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-LIFECYCLE-SERVICE
+      owner_capability: internal/application/assets/lifecycle
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-CLIPINDEXER-API
+      owner_capability: internal/infrastructure/indexing/clipindexer
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SPLIT-ADMIN-CLEANUP
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-PROVIDER-REGISTRY
+      owner_capability: internal/application/assets/providers
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-QDRANT-RECONCILE
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-VO-PARENT-AGG-AUDIT-PIN
+      owner_capability: internal/application/voiceover
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-VO-FINALIZER
+      owner_capability: internal/application/voiceover
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-QDRANT-PREFLIGHT
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-CONFIG-TYPES
+      owner_capability: internal/platform/config
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-CLIPS-INGEST
+      owner_capability: internal/api/assets/clips
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-FILESYSTEM-STAGER
+      owner_capability: internal/infrastructure/acquisition
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-ASSET-TYPES
+      owner_capability: internal/domain/asset
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-ARTLIST-ENRICHER
+      owner_capability: internal/application/assets/providers/artlist
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-QDRANT-REINDEX
+      owner_capability: cmd/admin
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-DRIVE-FOLDER-MANAGER
+      owner_capability: internal/infrastructure/drive
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-OUTBOX-INDEXING
+      owner_capability: internal/application/jobs/outbox
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-LONG-FILES-HOTSPOT-CROSSREF-V2
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-09-01
