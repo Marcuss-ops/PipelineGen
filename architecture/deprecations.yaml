@@ -133,6 +133,43 @@ deprecations:
   # embedded fields automatically.
   # ──────────────────────────────────────────────────────────────────
 
+  # ── P1-3-BACKFILL — DRIVE-UPLOAD-ANALYSIS-2026-07-06: migrate 4 adapters from deprecated Admin.TrashFile/DeleteFile/RenameFile to FileLifecycle ──
+  - id: DRIVE-ADMIN-TO-FILELIFECYCLE-MIGRATION
+    owner_capability: internal/infrastructure/drive
+    exact_symbol: |
+      Admin.TrashFile / Admin.DeleteFile / Admin.RenameFile — deprecated call sites
+      in 4 application-layer adapters migrated to drive.FileLifecycle.{Trash,Delete,Rename}.
+    file: |
+      internal/app/clips_adapters_drive.go + internal/app/adapters_voiceover_publisher.go +
+      internal/app/adapters_infra.go + internal/app/module_media_ingest.go
+    file_line: "various (4 adapters + 3 construction sites)"
+    replacement: |
+      drive.FileLifecycle.{Trash,Delete,Rename} — the canonical Pattern 0 port for
+      file-lifecycle Drive ops. All 4 adapters now route through FileLifecycle
+      with graceful nil→Admin fallback for sites where FileLifecycle is not
+      accessible from composition context.
+    introduction_date: 2026-07-06
+    removal_date: never
+    tracking_issue: "DRIVE-UPLOAD-ANALYSIS-2026-07-06 P1-3 (shipped 2026-07-06)"
+    compatibility_test: |
+      rg 'clipsDriveAdapter\.TrashFile|driveAdminAdapter\.RenameFile|storageDriveAdapter\.RenameFile' --type go internal/app/
+      returns the new FileLifecycle-first routes with graceful Admin fallback.
+      rg 'voiceoverDriveAdapter' --type go internal/app/ returns 0 hits (removed upstream).
+    usage_metric: |
+      Pre-migration: 4 adapters calling Admin.{TrashFile,DeleteFile,RenameFile} directly.
+      Post-migration: 4 adapters calling FileLifecycle.{Trash,Delete,Rename} with nil→Admin fallback.
+      voiceoverDriveAdapter removed entirely by upstream ce0c6396.
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      Graceful fallback (nil lifecycle → legacy Admin method) allows gradual
+      migration. Construction sites where DeliveryDeps does not expose
+      FileLifecycle (e.g. newAssetRegisterService) pass nil lifecycle —
+      the fallback preserves backward compatibility. Full CUTOVER requires
+      adding FileLifecycle to DeliveryDeps so all construction sites can
+      wire the canonical port. Forward-pointer: P1-3-CUTOVER (deadline 2026-Q4).
+      Cross-refs: CHANGELOG.md P1-3-BACKFILL + AGENTS.md mirror.
+
   - id: VOICEOVER-RESULT-FLAT-SYNTHESIS
     owner_capability: internal/domain/voiceover
     exact_symbol: "Result struct flat synthesis fields (Locale, Text, Voice, Filename, LocalPath, FileHash, FileSize, Duration) moved to VoiceoverSynthesisResult embedded sub-field"
