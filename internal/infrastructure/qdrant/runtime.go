@@ -32,6 +32,14 @@ import (
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
 )
 
 // RuntimeConfig is the bundle NewRuntime consumes. Avoiding a direct
@@ -41,7 +49,7 @@ import (
 type RuntimeConfig struct {
 	// QdrantCfg is the canonical wire/auth configuration (base URL,
 	// api key, timeout). Required.
-	QdrantCfg *Config
+	QdrantCfg *schema.Config
 	// DB is the main SQLite handle used by the asset store for
 	// mapper fetches. Optional — nil disables the mapper (e.g. admin
 	// tools that only need schema inspection).
@@ -52,7 +60,7 @@ type RuntimeConfig struct {
 	// Schema overrides the default V3 schema when the caller needs a
 	// different version for diagnostics / DR tests. Optional; nil
 	// falls back to DefaultV3Schema().
-	Schema *IndexSchema
+	Schema *schema.IndexSchema
 }
 
 // QdrantRuntime composes every Qdrant infrastructure subsystem behind
@@ -69,35 +77,35 @@ type QdrantRuntime struct {
 	// below. There is ONE schema instance for the whole runtime; the
 	// previous duplication (composition.go + build_bundles_process.go
 	// each calling DefaultV3Schema() independently) is gone.
-	Schema *IndexSchema
+	Schema *schema.IndexSchema
 	// Client is the canonical *qdrant.Client used for every HTTP
 	// round-trip. ONE Client for the whole runtime — wire-step
 	// invariants (api-key header, retry policy, timeout) cannot drift
 	// between subsystems.
-	Client *Client
+	Client *transport.Client
 	// Writer is the canonical IndexWriter; satisfies
 	// outbox.VectorPointDeleter and clipindexer.VectorStoreIndexer.
-	Writer *IndexWriter
+	Writer *indexing.IndexWriter
 	// Searcher is the canonical ANN searcher.
-	Searcher *Searcher
+	Searcher *search.Searcher
 	// Manager is the canonical CollectionManager (EnsureSchema +
 	// alias switch). Used by wire_services.go's qdrant-collection
 	// startup step.
-	Manager *CollectionManager
+	Manager *collections.CollectionManager
 	// Health is the canonical readiness probe. Replaces the previous
 	// `QdrantHealthProbe any` carrier field on ProcessBundle.
-	Health *HealthProbe
+	Health *disasterrecovery.HealthProbe
 	// Cleaner is the canonical LocatorCleaner (QDRANT-005 Fase 3).
-	Cleaner *LocatorCleaner
+	Cleaner *maintenance.LocatorCleaner
 	// Mapper is the canonical PayloadMapper used by the Writer.
 	// nil when RuntimeConfig.DB was nil at NewRuntime call time.
-	Mapper *PayloadMapper
+	Mapper *indexing.PayloadMapper
 	// Store is the canonical SQLiteAssetStore used by Mapper.
 	// nil when RuntimeConfig.DB was nil at NewRuntime call time.
-	Store *SQLiteAssetStore
+	Store *indexing.SQLiteAssetStore
 	// SearchAdapter is the canonical appsearch.VectorStorePort
-	// surface wired through NewSearchAdapter (in same-package
-	// search_adapter.go). Composition root reads this field via
+	// surface wired through search.NewSearchAdapter (sub-package
+	// internal/infrastructure/qdrant/search). Composition root reads this field via
 	// qd.Runtime.SearchAdapter to populate ProcessBundle.VectorSvc
 	// (build_bundles_process.go:290). The interface — not the
 	// concrete *searchAdapter — is the field type so the
@@ -138,19 +146,19 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 		if cfg.QdrantCfg != nil && cfg.QdrantCfg.CollectionVersion != "" {
 			version = cfg.QdrantCfg.CollectionVersion
 		}
-		resolved, err := ResolveSchema(version)
+		resolved, err := verification.ResolveSchema(version)
 		if err != nil {
 			return nil, fmt.Errorf("qdrant.NewRuntime: %w", err)
 		}
 		schema = resolved
 	}
 
-	client := NewClient(cfg.QdrantCfg, log)
+	client := transport.NewClient(cfg.QdrantCfg, log)
 
 	// DB precondition is enforced above (returns nil, error) — this
 	// block is now unconditional: mapper+store are always non-nil.
-	store := NewSQLiteAssetStore(cfg.DB)
-	mapper := NewPayloadMapper(store, log)
+	store := indexing.NewSQLiteAssetStore(cfg.DB)
+	mapper := indexing.NewPayloadMapper(store, log)
 	// Task 5 (July 2026): wire the canonical SearchTextBuilder
 	// registry into the mapper so each AssetToIndexDocument call
 	// routes BM25 search-text through per-source strategies
@@ -170,16 +178,16 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	// SetSearchTextBuilder.
 	mapper.SetSearchTextBuilder(searchtext.NewRegistry())
 
-	writer := NewIndexWriter(client, schema, mapper, log)
-	searcher := NewSearcher(client, schema, log)
-	manager := NewCollectionManager(client, schema, log)
+	writer := indexing.NewIndexWriter(client, schema, mapper, log)
+	searcher := search.NewSearcher(client, schema, log)
+	manager := collections.NewCollectionManager(client, schema, log)
 	// QDRANT-ALIAS-CACHE (July 2026): wire the cache invalidation so
 	// PromoteCandidate resets the Searcher's alias-target cache
 	// atomically with every alias switch.
 	manager.OnAliasSwitch = searcher.ResetSearchCache
-	health := NewHealthProbe(client)
-	cleaner := NewLocatorCleaner(client, schema, log)
-	searchAdapter := NewSearchAdapter(searcher, log)
+	health := disasterrecovery.NewHealthProbe(client)
+	cleaner := maintenance.NewLocatorCleaner(client, schema, log)
+	searchAdapter := search.NewSearchAdapter(searcher, log)
 
 	log.Info("QdrantRuntime constructed",
 		zap.String("schema_version", schema.Version),
