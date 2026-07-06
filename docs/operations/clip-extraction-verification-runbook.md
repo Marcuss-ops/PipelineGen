@@ -102,11 +102,17 @@ WHERE id = '<clip_id>';
 | `index_state` | `EMBEDDING_FAILED` or `INDEXING_SKIPPED_NO_INDEXER` when Qdrant/indexer unavailable |
 
 **Known issue (2026-07-06)**: `folder_path` is NOT populated by the ClipAtomicWriter
-for YouTube extractions. The `ClipAssetDrive.FolderPath` field is set from
-`cmd.DriveFolderPath` in `process_segment_helpers.go::buildClipAsset`, but the
-ProcessSegmentCommand carries it from `extraction_destination.go::resolveDestination`
-which only populates `FolderPath` when the destination resolver returns it. When
-a raw `folder_id` is passed via the API (as in direct calls), `FolderPath` stays empty.
+for YouTube extractions when a raw `folder_id` is passed directly via the API.
+The `ClipAssetDrive.FolderPath` field is set from `cmd.DriveFolderPath` in
+`process_segment_helpers.go::buildClipAsset`, but the ProcessSegmentCommand
+carries it from `extraction_destination.go::resolveDestination` which only
+populates `FolderPath` when the destination resolver resolves it (e.g., via
+group-based channel subfolder creation). When a raw `folder_id` is passed
+via the API (as in direct calls), `FolderPath` stays empty.
+
+**This is accepted behavior for direct API calls** — the `folder_id` is
+sufficient for Drive upload. `folder_path` is a display-only field used by
+the search/UI layer. NOT an alert signal.
 
 ### 4.2 outbox_events
 
@@ -145,6 +151,17 @@ curl -s 'http://127.0.0.1:6333/collections/media_assets/points/scroll' \
 `IndexClip` call fails, `index_state` is set to `EMBEDDING_FAILED` and the
 outbox event stays `pending`. The Qdrant point will NOT exist until the
 indexer processes the event.
+
+**Recovery paths:**
+1. **Indexer disabled**: Set `clipindexer.enabled=true` in config and restart.
+   The outbox dispatcher will re-process pending events on next tick.
+2. **Transient embedding failure**: The outbox retries automatically (up to
+   `max_attempts`). Check `outbox_events.attempt_count` and `last_error`.
+3. **Manual re-trigger**: `POST /api/media/:source/clips/:id/reindex` forces
+   a new `asset.index.requested` event for the clip.
+4. **Expected vs problematic**: `EMBEDDING_FAILED` with `last_error` containing
+   "connection refused" or "timeout" = transient (will retry). Same state with
+   "model not found" or "invalid dimensions" = config error (fix config first).
 
 ### 4.4 Drive Verification
 
