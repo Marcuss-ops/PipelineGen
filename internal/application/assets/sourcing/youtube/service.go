@@ -255,6 +255,37 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 	}, nil
 }
 
+// clipIndexerAdapter wraps IndexDispatcherPort for usecase.ClipIndexer.
+// PR-CLIP-DECOM-6 (July 2026): bridges the legacy atomic EnqueueAndIndex
+// to the use-case-owned ClipIndexer port per Pattern 0.
+type clipIndexerAdapter struct {
+	inner IndexDispatcherPort
+}
+
+func (a *clipIndexerAdapter) EnqueueAndIndex(ctx context.Context, clip usecase.ClipRecord, contentHash string) error {
+	if a.inner == nil {
+		return fmt.Errorf("usecase.clipIndexerAdapter: inner dispatcher is nil")
+	}
+	return a.inner.EnqueueAndIndex(ctx, &sourcing.ExistingClip{
+		ID:              clip.ID,
+		Name:            clip.Name,
+		Filename:        clip.Filename,
+		Source:          clip.Source,
+		Category:        clip.Category,
+		Tags:            clip.Tags,
+		Duration:        clip.Duration,
+		LocalPath:       clip.LocalPath,
+		FileHash:        clip.FileHash,
+		DriveLink:       clip.DriveLink,
+		DriveFileID:     clip.DriveFileID,
+		Summary:         clip.Summary,
+		Topics:          clip.Topics,
+		Speakers:        clip.Speakers,
+		MentionedPeople: clip.MentionedPeople,
+		Hook:            clip.Hook,
+	}, contentHash)
+}
+
 // ── Private helpers ─────────────────────────────────────────────────────────
 
 // dedupCheck returns a pre-built RegisterClipResult when the clip already
@@ -382,26 +413,34 @@ func (s *Service) uploadCumulativeMetadata(ctx context.Context, cmd sourcing.Reg
 	_ = s.metadata.UpdateCumulativeJSON(ctx, "", targetFolderID, clipID, entry)
 }
 
-// saveClipToDB persists the clip in media_assets via the index dispatcher.
+// saveClipToDB persists the clip in media_assets via PersistClipAndIndex.
+// PR-CLIP-DECOM-6 (July 2026): delegates to the use case via clipIndexerAdapter
+// instead of calling IndexDispatcherPort.EnqueueAndIndex directly.
 func (s *Service) saveClipToDB(ctx context.Context, cmd sourcing.RegisterClipCommand, clipID string, md *usecase.ResolvedMetadata, driveFilename, fileHash, localPath string, uploadResult *sourcing.DriveUploadResult) error {
-	if s.indexDisp == nil {
-		return fmt.Errorf("youtube.Register: dispatcher is required (QDRANT-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
-	}
-	clip := &sourcing.ExistingClip{
-		ID: clipID, Name: md.Name, Filename: driveFilename,
-		Source: md.Source, Category: cmd.Category, Tags: cmd.Tags,
-		Duration: time.Duration(md.Duration) * time.Second, LocalPath: localPath,
-		FileHash: fileHash,
-		Summary:  cmd.Summary, Topics: append([]string(nil), cmd.Topics...),
-		Speakers:        append([]string(nil), cmd.Speakers...),
-		MentionedPeople: append([]string(nil), cmd.MentionedPeople...),
+	adapter := &clipIndexerAdapter{inner: s.indexDisp}
+
+	persistCmd := usecase.PersistClipCommand{
+		ClipID:          clipID,
+		Name:            md.Name,
+		Filename:        driveFilename,
+		Source:          md.Source,
+		Category:        cmd.Category,
+		Tags:            cmd.Tags,
+		DurationSec:     md.Duration,
+		LocalPath:       localPath,
+		FileHash:        fileHash,
+		Summary:         cmd.Summary,
+		Topics:          cmd.Topics,
+		Speakers:        cmd.Speakers,
+		MentionedPeople: cmd.MentionedPeople,
 		Hook:            cmd.Hook,
 	}
 	if uploadResult != nil {
-		clip.DriveLink = uploadResult.WebViewLink
-		clip.DriveFileID = uploadResult.FileID
+		persistCmd.DriveLink = uploadResult.WebViewLink
+		persistCmd.DriveFileID = uploadResult.FileID
 	}
-	if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
+
+	if err := usecase.PersistClipAndIndex(ctx, adapter, persistCmd); err != nil {
 		return fmt.Errorf("save clip via dispatcher: %w", err)
 	}
 	s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", true)
