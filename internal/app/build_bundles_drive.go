@@ -179,20 +179,10 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 			drive.DriveRoot(dests.RootFolder()),
 		)
 
-		// Construct the StoreOptions at the ctor boundary — no post-ctor
-		// SetAssetTree / SetTreeSource calls. TreeSources maps Drive folder
-		// IDs to their logical tree source names.
-		storeOpts := drive.StoreOptions{}
-		if search != nil && search.AssetTreeService != nil {
-			storeOpts.AssetTree = search.AssetTreeService
-			storeOpts.TreeSources = map[string]string{
-				dests.ImagesFolder(): "image",
-			}
-			log.Info("mediaStore: Drive roots configured",
-				zap.String("images_folder_id", dests.ImagesFolder()))
-		}
-
-		mediaStore = drive.NewStoreWithOptions(
+		// AssetTree + TreeSources removed July 2026 (dead code — the
+		// fields on Store were assigned but never read by any Store
+		// method; EnsureDriveFolder routes on MediaType alone).
+		mediaStore = drive.NewStore(
 			storageResolver,
 			driveUploader,
 			dests.RootFolder(),
@@ -200,7 +190,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 			"", // VideoAIRoot removed (PR June 2026) — pass empty string
 			dests.SoundEffectsRoot,
 			log,
-			storeOpts,
 		)
 
 		destResolver = drive.NewDestinationResolver(mediaStore)
