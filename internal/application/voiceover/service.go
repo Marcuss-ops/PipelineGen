@@ -65,7 +65,6 @@ type Service struct {
 	// interface in ports.go is retained for the BLOC5.4 follow-up
 	// that will land the concrete pipeline.)
 	assetDestResolver asset.Resolver
-	lifecycleService  *lifecycle.Service
 	semanticTagger    SemanticTaggerFunc
 	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
 	// previous ClipIndexFunc callback (fire-and-forget goroutine)
@@ -179,7 +178,6 @@ func NewService(deps VoiceoverDeps) *Service {
 		outputDir:          deps.Core.OutputDir,
 		log:                deps.Core.Log,
 		assetDestResolver:  deps.Integration.AssetDestResolver,
-		lifecycleService:   deps.Integration.LifecycleService,
 		semanticTagger:     deps.Generation.SemanticTagger,
 		outboxEnqueuer:     deps.Integration.OutboxEnqueuer,
 		translator:         deps.Integration.Translator,
