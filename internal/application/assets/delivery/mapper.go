@@ -181,6 +181,7 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 		AssetID:       input.AssetID,
 		ContentHash:   input.ContentHash,
 		SourceVersion: input.SourceVersion,
+		Tags:          input.Tags, // DoD #3: propagated to Qdrant payload downstream
 	}
 
 	loc := input.Location
@@ -224,10 +225,10 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 				input.Destination, ErrAssetPublishNameCannotReplaceSubject,
 			)
 		}
-		req.Category = loc.Category  // primary field for StockPath (DoD item 4)
-		req.Group = loc.Category     // backward-compat fallback for legacy callers
+		req.Category = loc.Category // primary field for StockPath (DoD item 4)
+		req.Group = loc.Category    // backward-compat fallback for legacy callers
 		req.Subject = subject
-		req.Provider = loc.Provider   // required; validated above
+		req.Provider = loc.Provider // required; validated above
 
 	case DestinationYouTubeClip:
 		if loc.Category == "" {

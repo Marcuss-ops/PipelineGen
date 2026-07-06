@@ -365,6 +365,43 @@ func TestBuildPublishRequest_IdempotencyKey_EmptyWhenNoIdentityInputs(t *testing
 	}
 }
 
+// ── DoD #3: Tags round-trip propagation ─────────────────────────────────
+
+func TestBuildPublishRequest_TagsPropagatedToPublishRequest(t *testing.T) {
+	in := imgInput(DestinationStock, func(a *AssetPublishInput) {
+		a.Location.Category = "Boxe"
+		a.Location.Subject = "Mike-Tyson"
+		a.Location.Provider = "pexels"
+		a.Tags = []string{"boxing", "training", "knockout"}
+	})
+	req, err := BuildPublishRequest(in)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if len(req.Tags) != 3 {
+		t.Fatalf("Tags len = %d, want 3", len(req.Tags))
+	}
+	if req.Tags[0] != "boxing" || req.Tags[1] != "training" || req.Tags[2] != "knockout" {
+		t.Errorf("Tags = %v, want [boxing training knockout]", req.Tags)
+	}
+}
+
+func TestBuildPublishRequest_TagsNilWhenNotSet(t *testing.T) {
+	in := imgInput(DestinationStock, func(a *AssetPublishInput) {
+		a.Location.Category = "Boxe"
+		a.Location.Subject = "Mike-Tyson"
+		a.Location.Provider = "pexels"
+		// Tags intentionally left nil
+	})
+	req, err := BuildPublishRequest(in)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if req.Tags != nil {
+		t.Errorf("Tags = %v, want nil (unset)", req.Tags)
+	}
+}
+
 // ── universality: ADMIN destination is intentionally unsup ──────────────
 
 func TestBuildPublishRequest_DestinationAdmin_NotInMapper(t *testing.T) {

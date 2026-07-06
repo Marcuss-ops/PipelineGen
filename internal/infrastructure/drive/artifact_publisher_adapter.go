@@ -134,6 +134,19 @@ func (a *ArtifactPublisherAdapter) Publish(
 	// and becomes the authoritative identity for Drive conflict detection.
 	// Description carries human-readable context for the Drive UI (no longer
 	// a hash workaround — P0.4 deprecated).
+	//
+	// DoD #3 (July 2026): Tags + ProjectID + Language are threaded
+	// through PublishRequest for downstream Qdrant indexing. The
+	// adapter does NOT derive Tags from VerifiedArtifact fields
+	// (VerifiedArtifact has no tags surface) — forward-pointer to
+	// the per-capability finalizer that populates Tags before
+	// VerifiedArtifact reaches this adapter. Today Tags is nil
+	// (the outbox handler tolerates an empty slice as "no keywords
+	// yet"). ProjectID is empty because VerifiedArtifact carries
+	// ArtifactID (per-artifact identity, not project grouping);
+	// Language is empty because VerifiedArtifact has no BCP-47 field.
+	// Both propagate when the upstream finalizer adds them to the
+	// VerifiedArtifact envelope.
 	idemKey := delivery.DeriveIdempotencyKey(destKey, artifact.ArtifactID, artifact.SHA256, artifact.SourceVersion)
 	req := delivery.PublishRequest{
 		Destination:    destKey,
@@ -148,6 +161,7 @@ func (a *ArtifactPublisherAdapter) Publish(
 		Group:          "stock",
 		Subject:        artifact.ArtifactID,
 		Provider:       "stock",
+		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.

@@ -151,6 +151,18 @@ type PublishRequest struct {
 	// Wave 10.
 	Category string `json:"category,omitempty"`
 
+	// Tags are semantic keywords for the Qdrant payload (DoD #3,
+	// July 2026). Carried downstream to asset_published events for
+	// hybrid BM25 lexical search. Optional; empty Tags slice means
+	// "no keywords assigned yet" — distinct from nil (unset).
+	//
+	// godlike/06 SSOT: the canonical owner of Tags is the
+	// AssetPublishInput.Tags field propagated through BuildPublishRequest.
+	// Downstream consumers (Publisher, outbox handler) MUST NOT
+	// re-derive Tags from other PublishRequest fields — callers
+	// populate Tags once at the publish seam.
+	Tags []string `json:"tags,omitempty"`
+
 	// ConflictPolicy controls duplicate-file behaviour for this call.
 	//
 	// Semantics (P1.1, July 2026):
