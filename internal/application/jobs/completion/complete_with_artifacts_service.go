@@ -388,7 +388,7 @@ func (s *WithArtifactsService) completeWithArtifactsInTx(
 	}, nil
 }
 
-// ── In-TX helpers (extracted for testability) ─────────────────────
+// ── In-TX helpers extracted to complete_with_artifacts_helpers.go ──
 
 // lookupInTxCanonicalResponse is the typed accessor for the prior
 // canonical response in-TX (mirror of C7's
