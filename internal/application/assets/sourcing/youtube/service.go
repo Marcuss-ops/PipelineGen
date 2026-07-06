@@ -4,23 +4,14 @@
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per file):
 // the YouTubeRegistrar owns the single-clip YouTube flow as a focused service
-// with 8 narrow ports (Fetcher, Clips, Publisher, Transcriber, Metadata,
-// IndexDispatcher, Enrichment, Log — the latter two are v2 ports that merge
-// AssetTree + Jobs + Search + Config + legacy Enrichment into a single surface,
-// and have adapters built in the composition root). Pre-extraction the ctor
-// took 13 deps; v2 port-merging lands at 8 per
-// architecture/policy.yaml::max_constructor_deps.
+// with 8 narrow ports. PR-CLIP-DECOM-5 (July 2026) refactored the 450-line
+// Register() god method into a thin orchestrator (~75 lines) that delegates
+// metadata resolution, download+hash, and Drive publish to 3 use cases in the
+// subpackage usecase/.
 //
 // PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): the legacy
 // `sourcing.DrivePort` field is retired — Publisher is the canonical
-// Drive upload canal since FASE 5 and the field had zero production
-// reads. Ctor dropped from 9 to 8 positional args; the composition
-// root (internal/app/assets_register_sourcing.go) no longer passes
-// a sourcingDriveAdapter. Forward-pointer: PR-YT-DRIVE-LEGACY-RETIRE
-// will git-rm the sourcingDriveAdapter struct + remove the
-// sourcing.DrivePort interface once the 3 active call sites of
-// the legacy surface are migrated (tracked in
-// architecture/deprecations.yaml#DRIVE-008 migration_required).
+// Drive upload canal since FASE 5.
 //
 // The façade sourcing.Service.RegisterFromYouTube delegates to
 // *Service.Register for API stability. Composition root
@@ -37,6 +28,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -49,23 +41,19 @@ var ErrYouTubeDriveRequired = errors.New("youtube.Register: Drive upload is requ
 // Service is the YouTubeRegistrar implementation. 8-port surface
 // (Fetcher, Clips, Publisher, Transcriber, Metadata, IndexDispatcher,
 // Enrichment, Log). Publisher is the canonical Drive upload canal
-// since FASE 5; the legacy `sourcing.DrivePort` field is retired
-// (PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP, July 2026) and the
-// sourcingDriveAdapter wiring was removed from the composition root.
+// since FASE 5.
 type Service struct {
 	fetcher     sourcing.FetchProviderPort
 	clips       sourcing.ClipStorePort
 	publisher   sourcing.PublisherPort // FASE 5: canonical Drive upload canal
 	transcriber sourcing.TranscriptionPort
 	metadata    sourcing.MetadataUploadPort
-	indexDisp   IndexDispatcherPort // v2: merges IndexDisp + AssetTree
-	enrichment  EnrichmentPort      // v2: merges Jobs + Search + Config + legacy Enrichment
+	indexDisp   IndexDispatcherPort
+	enrichment  EnrichmentPort
 	log         sourcing.Logger
 
 	// RequireDrive, when true, causes Register to return an error if the
-	// Drive Publisher fails (P0.2, July 2026). Default is false: Drive
-	// failure returns PUBLISH_FAILED + RetryScheduled without blocking
-	// the registration.
+	// Drive Publisher fails (P0.2, July 2026).
 	RequireDrive bool
 }
 
@@ -73,11 +61,6 @@ type Service struct {
 // (QDRANT-asset-mutation isolation June 2026 forbids the legacy UpsertClip
 // fallback). All other ports are best-effort: nil causes the corresponding
 // sub-operation to be skipped gracefully.
-//
-// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): ctor signature
-// dropped from 9 to 8 positional args after retiring the legacy
-// `sourcing.DrivePort` field (Publisher is the canonical Drive
-// upload canal since FASE 5; the field had zero production reads).
 func NewService(
 	fetcher sourcing.FetchProviderPort,
 	clips sourcing.ClipStorePort,
@@ -103,301 +86,313 @@ func NewService(
 // Register downloads a YouTube clip, uploads to Drive, saves to DB, and
 // triggers enrichment/indexing. All sub-operations are best-effort except
 // the indexDisp save which is REQUIRED (QDRANT-asset-mutation isolation).
-// Behaviour mirrors the historical sourcing.Service.RegisterFromYouTube.
+//
+// PR-CLIP-DECOM-5 (July 2026): refactored from 450+ lines to a thin
+// orchestrator that delegates to 3 use cases in the subpackage usecase/:
+//
+//	ResolveClipMetadata   — URL parsing, validation, metadata fallback
+//	DownloadAndHashClip   — yt-dlp fetch, MD5 hash, clipID derivation
+//	PublishClipToDrive    — Drive folder resolution + upload
 func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand) (*sourcing.RegisterClipResult, error) {
-	// ── 1. Sanitize URL + extract video ID ─────────────────────────────────
-	rawURL := cmd.URL
-	videoID := ExtractVideoIDFromURL(rawURL)
-	if videoID == "" {
-		videoID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	if videoID != "" && !strings.HasPrefix(rawURL, "https://www.youtube.com/watch?v="+videoID) {
-		rawURL = "https://www.youtube.com/watch?v=" + videoID
-	}
-	if cmd.StartSec == 0 {
-		cmd.StartSec = ExtractURLParam(rawURL, "start")
-	}
-	if cmd.EndSec == 0 {
-		cmd.EndSec = ExtractURLParam(rawURL, "end")
-	}
-
-	// ── 2. Basic validation ─────────────────────────────────────────────────
-	if cmd.EndSec > 0 && cmd.StartSec >= cmd.EndSec {
-		return nil, fmt.Errorf("invalid segment: start (%.1f) must be less than end (%.1f)", cmd.StartSec, cmd.EndSec)
-	}
-	if cmd.StartSec < 0 || cmd.EndSec < 0 {
-		return nil, fmt.Errorf("start and end must be non-negative")
-	}
-
-	source := strings.TrimSpace(cmd.Source)
-	if source == "" {
-		source = "youtube-manual"
-	}
-
-	// ── 3. Dedup pre-check ──────────────────────────────────────────────────
-	if !cmd.Force && s.clips != nil {
-		if existing, err := s.clips.FindExisting(ctx, videoID, rawURL, cmd.StartSec, cmd.EndSec); err == nil && existing != "" {
-			if existingClip, gerr := s.clips.GetClip(ctx, existing); gerr == nil && existingClip != nil {
-				s.log.Debug("dedup hit", "existing_id", existing, "video_id", videoID)
-				indexed := s.enrichment != nil && s.enrichment.IndexingEnabled()
-				publishStatus := asset.AssetPublishLocalOnly
-				if existingClip.DriveFileID != "" {
-					publishStatus = asset.AssetPublishPublished
-				}
-				return &sourcing.RegisterClipResult{
-					OK: true, Duplicate: true, ClipID: existingClip.ID, VideoID: videoID,
-					Name: existingClip.Name, Filename: existingClip.Filename,
-					DurationSec: int(existingClip.Duration.Seconds()),
-					DriveLink:   existingClip.DriveLink, DriveFileID: existingClip.DriveFileID,
-					FileHash: existingClip.FileHash, Source: existingClip.Source,
-					Category: existingClip.Category, Tags: existingClip.Tags,
-					LocalPath: existingClip.LocalPath, Indexed: indexed,
-					IndexingStatus: IndexStatus(indexed),
-					Message:        "clip already registered for this YouTube video",
-					DeliveryStatus: publishStatus,
-				}, nil
-			}
-		}
-	}
-
-	// ── 4. Fetch video via provider ─────────────────────────────────────
-	if s.fetcher == nil {
-		return nil, fmt.Errorf("fetch provider not configured")
-	}
-	s.log.Info("fetching YouTube video", "video_id", videoID, "start", cmd.StartSec, "end", cmd.EndSec)
-	fetched, err := s.fetcher.Fetch(ctx, sourcing.FetchRequest{
-		AssetID:      videoID,
-		SourceRef:    rawURL,
-		SegmentStart: time.Duration(cmd.StartSec * float64(time.Second)),
-		SegmentEnd:   time.Duration(cmd.EndSec * float64(time.Second)),
+	// ── 1. Resolve metadata (URL + validation + name/desc/duration) ──
+	md, err := usecase.ResolveClipMetadata(usecase.ResolveMetadataCommand{
+		URL: cmd.URL, Name: cmd.Name, Description: cmd.Description,
+		Source: cmd.Source, StartSec: cmd.StartSec, EndSec: cmd.EndSec,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("fetch video: %w", err)
+		return nil, err
 	}
 
-	// ── 5. Populate metadata ─────────────────────────────────────────────────
-	name := strings.TrimSpace(cmd.Name)
-	if name == "" {
-		name = fetched.Name
-	}
-	if name == "" {
-		name = videoID
-	}
-
-	description := strings.TrimSpace(cmd.Description)
-	if description == "" {
-		if d := fetched.Metadata["youtube_description"]; d != "" {
-			description = textutil.Truncate(d, 1000)
+	// ── 2. Dedup pre-check ──────────────────────────────────────────
+	if !cmd.Force && s.clips != nil {
+		if result := s.dedupCheck(ctx, cmd, md); result != nil {
+			return result, nil
 		}
 	}
 
-	durationSec := 0.0
-	if fetched.Duration > 0 {
-		durationSec = fetched.Duration.Seconds()
-	} else if cmd.EndSec > cmd.StartSec {
-		durationSec = cmd.EndSec - cmd.StartSec
+	// ── 3. Download + hash via use case ─────────────────────────────
+	s.log.Info("fetching YouTube video", "video_id", md.VideoID, "start", md.StartSec, "end", md.EndSec)
+	fetched, err := usecase.DownloadAndHashClip(ctx,
+		&fetcherAdapter{inner: s.fetcher},
+		&hasherAdapter{},
+		usecase.DownloadAndHashCommand{
+			VideoID:      md.VideoID,
+			SourceRef:    md.RawURL,
+			SegmentStart: time.Duration(md.StartSec * float64(time.Second)),
+			SegmentEnd:   time.Duration(md.EndSec * float64(time.Second)),
+		})
+	if err != nil {
+		return nil, err
 	}
-	duration := int(durationSec)
-
-	if durationSec > 0 {
-		if cmd.StartSec > 0 && cmd.StartSec >= durationSec {
-			return nil, fmt.Errorf("start (%.1f) exceeds video duration (%.1f)", cmd.StartSec, durationSec)
-		}
-		if cmd.EndSec > durationSec {
-			s.log.Warn("end exceeds video duration, clip was truncated", "end", cmd.EndSec, "duration", durationSec)
-		}
+	if fetched.FileHash == "" {
+		s.log.Warn("file hash empty; proceeding with best-effort clip_id derivation", "video_id", md.VideoID)
 	}
 
+	// ── 4. Enrich metadata with fetched data ────────────────────────
+	// Pass already-resolved fields to avoid re-parsing the URL; only the
+	// fetched metadata enriches name/description/duration.
+	md2, enrichErr := usecase.ResolveClipMetadata(usecase.ResolveMetadataCommand{
+		URL: md.RawURL, Name: cmd.Name, Description: cmd.Description,
+		Source: md.Source, StartSec: md.StartSec, EndSec: md.EndSec,
+		FetchedName: fetched.Name, FetchedDescription: fetched.Metadata["youtube_description"],
+		FetchedDuration: fetched.Duration,
+	})
+	if enrichErr != nil {
+		s.log.Warn("metadata enrichment failed (using pre-fetch metadata)", "error", enrichErr)
+	} else {
+		md = md2
+	}
+	s.warnNameCollision(ctx, md.Name)
+	if md.DurationSec > 0 && md.EndSec > md.DurationSec {
+		s.log.Warn("end exceeds video duration, clip was truncated", "end", md.EndSec, "duration", md.DurationSec)
+	}
+
+	// ── 5. Drive: build params + publish via use case ───────────────
+	driveFilename, driveDesc, videoSlug, group := s.buildDriveParams(cmd, md)
+	var pubResult *usecase.PublishClipResult
+	var pubErr error
+	if s.publisher != nil {
+		pubResult, pubErr = usecase.PublishClipToDrive(ctx,
+			&publisherAdapter{inner: s.publisher},
+			usecase.PublishClipCommand{
+				AssetID: fetched.ClipID, Group: group, Subject: videoSlug,
+				RootFolder: strings.TrimSpace(cmd.FolderID), LocalPath: fetched.LocalPath,
+				Filename: driveFilename, Description: driveDesc,
+			})
+	}
+	uploadResult, targetFolderID, deliveryStatus := s.processPublishResult(md.VideoID, pubResult, pubErr)
+	if s.RequireDrive && deliveryStatus == asset.AssetPublishFailed {
+		return nil, fmt.Errorf("%w: publisher returned %v", ErrYouTubeDriveRequired, deliveryStatus)
+	}
+
+	clipID, fileHash := fetched.ClipID, fetched.FileHash
+
+	// ── 6. Transcribe (best-effort) ─────────────────────────────────
+	transcript, detectedLang := "", ""
+	if s.transcriber != nil {
+		transcript, detectedLang, _ = s.transcriber.Transcribe(ctx, fetched.LocalPath)
+	}
+
+	// ── 7. Upload cumulative metadata.json ──────────────────────────
+	s.uploadCumulativeMetadata(ctx, cmd, clipID, md, fetched, uploadResult, targetFolderID, group, driveFilename, fileHash, transcript, detectedLang)
+
+	// ── 8. Save to DB via IndexDispatcherPort ───────────────────────
+	if err := s.saveClipToDB(ctx, cmd, clipID, md, driveFilename, fileHash, fetched.LocalPath, uploadResult); err != nil {
+		return nil, err
+	}
+
+	// ── 9. Enrichment + related clips ───────────────────────────────
+	indexed := s.dispatchEnrichment(ctx, clipID, md.Source, fetched.LocalPath)
+	related := s.findRelated(ctx, md.Name, cmd.Category, cmd.Tags)
+
+	// ── 10. Build result ────────────────────────────────────────────
+	return s.buildResult(md, clipID, fileHash, driveFilename, fetched.LocalPath, uploadResult, deliveryStatus, indexed, transcript, detectedLang, related, cmd), nil
+}
+
+// ── Adapters (use case port ← service port) ──────────────────────────────────
+
+// fetcherAdapter wraps sourcing.FetchProviderPort for usecase.Fetcher.
+type fetcherAdapter struct {
+	inner sourcing.FetchProviderPort
+}
+
+func (a *fetcherAdapter) Fetch(ctx context.Context, req usecase.FetchRequest) (*usecase.FetchedAsset, error) {
+	if a.inner == nil {
+		return nil, fmt.Errorf("usecase.fetcherAdapter: inner fetch provider is nil")
+	}
+	result, err := a.inner.Fetch(ctx, sourcing.FetchRequest{
+		AssetID:      req.AssetID,
+		SourceRef:    req.SourceRef,
+		SegmentStart: req.SegmentStart,
+		SegmentEnd:   req.SegmentEnd,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &usecase.FetchedAsset{
+		LocalPath: result.LocalPath,
+		AssetID:   result.AssetID,
+		Name:      result.Name,
+		Duration:  result.Duration,
+		Bytes:     result.Bytes,
+		Metadata:  result.Metadata,
+	}, nil
+}
+
+// hasherAdapter wraps hashutil.MD5File for usecase.FileHasher.
+type hasherAdapter struct{}
+
+func (a *hasherAdapter) MD5File(path string) (string, error) {
+	return hashutil.MD5File(path)
+}
+
+// publisherAdapter wraps sourcing.PublisherPort for usecase.DrivePublisher.
+type publisherAdapter struct {
+	inner sourcing.PublisherPort
+}
+
+func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishRequest) (*usecase.PublishResult, error) {
+	if a.inner == nil {
+		return nil, fmt.Errorf("usecase.publisherAdapter: inner publisher is nil")
+	}
+	result, err := a.inner.Publish(ctx, delivery.PublishRequest{
+		Destination:        delivery.DestinationYouTubeClip,
+		LocalPath:          req.LocalPath,
+		Filename:           req.Filename,
+		Description:        req.Description,
+		AssetID:            req.AssetID,
+		Group:              req.Group,
+		Subject:            req.Subject,
+		RootFolderOverride: req.RootFolderOverride,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &usecase.PublishResult{
+		FileID:      result.FileID,
+		WebViewLink: result.WebViewLink,
+		FolderID:    result.FolderID,
+	}, nil
+}
+
+// ── Private helpers ─────────────────────────────────────────────────────────
+
+// dedupCheck returns a pre-built RegisterClipResult when the clip already
+// exists in the database, or nil when registration should proceed.
+func (s *Service) dedupCheck(ctx context.Context, cmd sourcing.RegisterClipCommand, md *usecase.ResolvedMetadata) *sourcing.RegisterClipResult {
+	existing, err := s.clips.FindExisting(ctx, md.VideoID, md.RawURL, md.StartSec, md.EndSec)
+	if err != nil || existing == "" {
+		return nil
+	}
+	existingClip, gerr := s.clips.GetClip(ctx, existing)
+	if gerr != nil || existingClip == nil {
+		return nil
+	}
+	s.log.Debug("dedup hit", "existing_id", existing, "video_id", md.VideoID)
+	indexed := s.enrichment != nil && s.enrichment.IndexingEnabled()
+	publishStatus := asset.AssetPublishLocalOnly
+	if existingClip.DriveFileID != "" {
+		publishStatus = asset.AssetPublishPublished
+	}
+	return &sourcing.RegisterClipResult{
+		OK: true, Duplicate: true, ClipID: existingClip.ID, VideoID: md.VideoID,
+		Name: existingClip.Name, Filename: existingClip.Filename,
+		DurationSec: int(existingClip.Duration.Seconds()),
+		DriveLink:   existingClip.DriveLink, DriveFileID: existingClip.DriveFileID,
+		FileHash: existingClip.FileHash, Source: existingClip.Source,
+		Category: existingClip.Category, Tags: existingClip.Tags,
+		LocalPath: existingClip.LocalPath, Indexed: indexed,
+		IndexingStatus: IndexStatus(indexed),
+		Message:        "clip already registered for this YouTube video",
+		DeliveryStatus: publishStatus,
+	}
+}
+
+// warnNameCollision logs a warning when another clip shares the same name.
+func (s *Service) warnNameCollision(ctx context.Context, name string) {
 	if s.clips != nil {
 		if existingNameID, _ := s.clips.FindByName(ctx, name); existingNameID != "" {
 			s.log.Warn("name collision", "existing_id", existingNameID, "name", name)
 		}
 	}
+}
 
-	// ── 6+9. Drive: resolve folder + upload via Publisher (FASE 5) ──────
-	// The Publisher replaces the legacy 3-call sequence:
-	//   GetOrCreateFolder(group) → GetOrCreateFolder(videoSlug) → UploadFileWithDescription
-	// with a single Publish call that resolves the path and uploads atomically.
-	// cmd.FolderID (backward compat) is passed as RootFolderOverride.
-	group := strings.TrimSpace(cmd.Group)
-	videoSlug := videoID
+// buildDriveParams derives the Drive filename, description, video slug, and
+// group from the resolved metadata and command.
+func (s *Service) buildDriveParams(cmd sourcing.RegisterClipCommand, md *usecase.ResolvedMetadata) (driveFilename, driveDesc, videoSlug, group string) {
+	group = strings.TrimSpace(cmd.Group)
+	videoSlug = md.VideoID
 	if cmd.Name != "" {
 		if titleSlug := textutil.SlugifyWithMax(cmd.Name, 60); titleSlug != "" {
-			videoSlug = videoID + "-" + titleSlug
+			videoSlug = md.VideoID + "-" + titleSlug
 		}
 	}
+	driveFilename = fmt.Sprintf("%s - %s.mp4", md.VideoID, md.Name)
+	driveDesc = BuildDriveDescription(md.Name, cmd.Description, md.Description, cmd.Tags, cmd.Category, md.Source, md.RawURL, md.VideoID)
+	return
+}
 
-	// ── 7. Compute MD5 hash (HashPort dropped; pkg/hashutil inlined) ────
-	// Pre-extraction the YouTubeRegistrar exposed a HashPort dep that took
-	// 1 of the 13 ctor slots; collapsing to pkg/hashutil.MD5File is a
-	// test-suite delta (test fixtures that mocked the port lose their
-	// mock surface) but production behaviour is identical.
-	fileHash := ""
-	if h, ferr := hashutil.MD5File(fetched.LocalPath); ferr == nil {
-		fileHash = h
+// processPublishResult translates the use case outcome into the concrete
+// upload result, folder ID, and delivery status used by downstream steps.
+func (s *Service) processPublishResult(videoID string, pubResult *usecase.PublishClipResult, pubErr error) (*sourcing.DriveUploadResult, string, asset.AssetPublishStatus) {
+	if pubErr != nil {
+		s.log.Warn("Drive upload via Publisher failed", "error", pubErr, "delivery_status", asset.AssetPublishFailed)
+		return nil, "", asset.AssetPublishFailed
 	}
-	if fileHash == "" {
-		s.log.Warn("file hash empty; proceeding with best-effort clip_id derivation", "video_id", videoID)
+	if pubResult == nil || !pubResult.Published {
+		s.log.Warn("Drive Publisher unwired", "video_id", videoID)
+		return nil, "", asset.AssetPublishLocalOnly
 	}
-	clipID := fmt.Sprintf("yt_%s_%s", videoID, fileHash[:min(8, len(fileHash))])
+	s.log.Info("uploaded to Drive via Publisher", "file_id", pubResult.FileID, "link", pubResult.WebViewLink)
+	return &sourcing.DriveUploadResult{FileID: pubResult.FileID, WebViewLink: pubResult.WebViewLink}, pubResult.FolderID, asset.AssetPublishPublished
+}
 
-	// ── 8. Transcribe audio (best-effort) ───────────────────────────────
-	var transcript, detectedLang string
-	if s.transcriber != nil {
-		transcript, detectedLang, _ = s.transcriber.Transcribe(ctx, fetched.LocalPath)
+// uploadCumulativeMetadata writes the aggregate clip metadata JSON to Drive.
+func (s *Service) uploadCumulativeMetadata(ctx context.Context, cmd sourcing.RegisterClipCommand, clipID string, md *usecase.ResolvedMetadata, fetched *usecase.DownloadAndHashResult, uploadResult *sourcing.DriveUploadResult, targetFolderID, group, driveFilename, fileHash, transcript, detectedLang string) {
+	if s.metadata == nil || targetFolderID == "" {
+		return
 	}
-
-	// ── 9. Upload to Google Drive via Publisher (FASE 5) ───────────────
-	ext := ".mp4"
-	driveFilename := fmt.Sprintf("%s - %s%s", videoID, name, ext)
-	driveDesc := BuildDriveDescription(name, cmd.Description, description, cmd.Tags, cmd.Category, source, rawURL, videoID)
-
-	var uploadResult *sourcing.DriveUploadResult
-	targetFolderID := ""
-	deliveryStatus := asset.AssetPublishLocalOnly
-
-	if s.publisher != nil {
-		// Canonical path: Publisher resolves folder + uploads.
-		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-			Destination:        delivery.DestinationYouTubeClip,
-			LocalPath:          fetched.LocalPath,
-			Filename:           driveFilename,
-			Description:        driveDesc,
-			AssetID:            clipID,
-			Group:              group,
-			Subject:            videoSlug,
-			RootFolderOverride: strings.TrimSpace(cmd.FolderID),
-		})
-		if err != nil {
-			s.log.Warn("Drive upload via Publisher failed", "error", err, "delivery_status", asset.AssetPublishFailed)
-			deliveryStatus = asset.AssetPublishFailed
-		} else {
-			targetFolderID = result.FolderID
-			uploadResult = &sourcing.DriveUploadResult{
-				FileID:      result.FileID,
-				WebViewLink: result.WebViewLink,
-			}
-			deliveryStatus = asset.AssetPublishPublished
-			s.log.Info("uploaded to Drive via Publisher", "file_id", result.FileID, "link", result.WebViewLink)
-		}
-	} else {
-		// P2.6 closure (DRIVE-CUTOVER-P0-1): the pre-FASE-9 dead-path
-		// fallback block (which routed Drive uploads through a
-		// deprecated `sourcing.DrivePort` field) has been retired.
-		// The composition root
-		// (`internal/app/assets_register_sourcing.go::newAssetRegisterService`)
-		// wires `&sourcingPublisherAdapter{publisher: publisher}` non-nil at
-		// all production sites — a nil `s.publisher` here is a wiring bug
-		// (no test harness relies on the dead-path branch post-CUTOVER).
-		// This branch only logs + falls through to the local-only
-		// delivery path; no Drive-side recovery is attempted here.
-		//
-		// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): the
-		// `sourcing.DrivePort` field itself is now retired (no
-		// longer in the Service struct). The historical
-		// `s.drive.UploadFileWithDescription(...)` call site this
-		// comment block previously documented no longer exists
-		// in this file.
-		s.log.Warn("Drive Publisher unwired — wiring bug or pre-CUTOVER composition site; recording local-only deliveryStatus; investigate composition wiring",
-			"video_id", videoID, "delivery_status", asset.AssetPublishLocalOnly)
+	entry := map[string]any{
+		"clip_id": clipID, "name": md.Name, "description": md.Description,
+		"category": cmd.Category, "source": md.Source, "group": group, "tags": cmd.Tags,
+		"youtube_url": md.RawURL, "youtube_id": md.VideoID, "filename": driveFilename,
+		"file_hash": fileHash, "duration_sec": md.Duration, "created_at": time.Now().UTC().Format(time.RFC3339),
+		"drive_file_id": "", "drive_link": "",
 	}
-
-	// ── 9a. Mandatory-Drive check (P0.2, July 2026) ──────────────
-	// When RequireDrive is set and the Publisher failed, fail the
-	// entire operation BEFORE saving to DB. The asset is downloaded
-	// but not registered; the caller can retry.
-	if s.RequireDrive && deliveryStatus == asset.AssetPublishFailed {
-		return nil, fmt.Errorf("%w: publisher returned %v", ErrYouTubeDriveRequired, deliveryStatus)
+	if cmd.Summary != "" {
+		entry["clip_summary"] = cmd.Summary
 	}
-
-	// ── 10. Upload cumulative metadata.json to Drive ────────────
-	if s.metadata != nil && targetFolderID != "" {
-		clipEntry := map[string]any{
-			"clip_id":       clipID,
-			"name":          name,
-			"description":   description,
-			"category":      cmd.Category,
-			"source":        source,
-			"group":         group,
-			"tags":          cmd.Tags,
-			"youtube_url":   rawURL,
-			"youtube_id":    videoID,
-			"filename":      driveFilename,
-			"file_hash":     fileHash,
-			"duration_sec":  duration,
-			"created_at":    time.Now().UTC().Format(time.RFC3339),
-			"drive_file_id": "",
-			"drive_link":    "",
-		}
-		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
-		if cmd.Summary != "" {
-			clipEntry["clip_summary"] = cmd.Summary
-		}
-		if len(cmd.Topics) > 0 {
-			clipEntry["topics"] = cmd.Topics
-		}
-		if len(cmd.Speakers) > 0 {
-			clipEntry["speakers"] = cmd.Speakers
-		}
-		if len(cmd.MentionedPeople) > 0 {
-			clipEntry["mentioned_people"] = cmd.MentionedPeople
-		}
-		if cmd.Hook != "" {
-			clipEntry["hook"] = cmd.Hook
-		}
-		if title := fetched.Metadata["youtube_title"]; title != "" {
-			clipEntry["youtube_title"] = title
-		}
-		if uploader := fetched.Metadata["youtube_uploader"]; uploader != "" {
-			clipEntry["youtube_uploader"] = uploader
-		}
-		if uploadDate := fetched.Metadata["youtube_upload_date"]; uploadDate != "" {
-			clipEntry["youtube_upload_date"] = uploadDate
-		}
-		if transcript != "" {
-			clipEntry["clean_transcript"] = transcript
-		}
-		if detectedLang != "" {
-			clipEntry["language"] = detectedLang
-		}
-		if cmd.StartSec > 0 {
-			clipEntry["start_sec"] = cmd.StartSec
-		}
-		if cmd.EndSec > 0 {
-			clipEntry["end_sec"] = cmd.EndSec
-		}
-		if uploadResult != nil {
-			clipEntry["drive_file_id"] = uploadResult.FileID
-			clipEntry["drive_link"] = uploadResult.WebViewLink
-		}
-		_ = s.metadata.UpdateCumulativeJSON(ctx, "", targetFolderID, clipID, clipEntry)
+	if len(cmd.Topics) > 0 {
+		entry["topics"] = cmd.Topics
 	}
+	if len(cmd.Speakers) > 0 {
+		entry["speakers"] = cmd.Speakers
+	}
+	if len(cmd.MentionedPeople) > 0 {
+		entry["mentioned_people"] = cmd.MentionedPeople
+	}
+	if cmd.Hook != "" {
+		entry["hook"] = cmd.Hook
+	}
+	if title := fetched.Metadata["youtube_title"]; title != "" {
+		entry["youtube_title"] = title
+	}
+	if uploader := fetched.Metadata["youtube_uploader"]; uploader != "" {
+		entry["youtube_uploader"] = uploader
+	}
+	if uploadDate := fetched.Metadata["youtube_upload_date"]; uploadDate != "" {
+		entry["youtube_upload_date"] = uploadDate
+	}
+	if transcript != "" {
+		entry["clean_transcript"] = transcript
+	}
+	if detectedLang != "" {
+		entry["language"] = detectedLang
+	}
+	if md.StartSec > 0 {
+		entry["start_sec"] = md.StartSec
+	}
+	if md.EndSec > 0 {
+		entry["end_sec"] = md.EndSec
+	}
+	if uploadResult != nil {
+		entry["drive_file_id"] = uploadResult.FileID
+		entry["drive_link"] = uploadResult.WebViewLink
+	}
+	_ = s.metadata.UpdateCumulativeJSON(ctx, "", targetFolderID, clipID, entry)
+}
 
-	// ── 11. Save to database via IndexDispatcherPort v2 ────────────────
-	// QDRANT-asset-mutation isolation (June 2026): the legacy
-	// `s.clips.UpsertClip` fallback is REMOVED. Sourcing callers MUST
-	// route every media_assets write through IndexDispatcherPort (which
-	// atomically upserts + emits an outbox event in a single tx). When
-	// the dispatcher is not wired (test fixture with a nil
-	// IndexDispatcherPort) we record the failure clearly rather than
-	// silently dropping the write into the legacy bypass path —
-	// fail-closed is the only safe behaviour here. The composition root
-	// adapter additionally performs an asset-tree upsert post-dispatcher
-	// (warn-only; swallowed at the adapter boundary so callers see
-	// "dispatcher ok").
+// saveClipToDB persists the clip in media_assets via the index dispatcher.
+func (s *Service) saveClipToDB(ctx context.Context, cmd sourcing.RegisterClipCommand, clipID string, md *usecase.ResolvedMetadata, driveFilename, fileHash, localPath string, uploadResult *sourcing.DriveUploadResult) error {
+	if s.indexDisp == nil {
+		return fmt.Errorf("youtube.Register: dispatcher is required (QDRANT-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
+	}
 	clip := &sourcing.ExistingClip{
-		ID:        clipID,
-		Name:      name,
-		Filename:  driveFilename,
-		Source:    source,
-		Category:  cmd.Category,
-		Tags:      cmd.Tags,
-		Duration:  time.Duration(duration) * time.Second,
-		LocalPath: fetched.LocalPath,
-		FileHash:  fileHash,
-		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
-		Summary:         cmd.Summary,
-		Topics:          append([]string(nil), cmd.Topics...),
+		ID: clipID, Name: md.Name, Filename: driveFilename,
+		Source: md.Source, Category: cmd.Category, Tags: cmd.Tags,
+		Duration: time.Duration(md.Duration) * time.Second, LocalPath: localPath,
+		FileHash: fileHash,
+		Summary:  cmd.Summary, Topics: append([]string(nil), cmd.Topics...),
 		Speakers:        append([]string(nil), cmd.Speakers...),
 		MentionedPeople: append([]string(nil), cmd.MentionedPeople...),
 		Hook:            cmd.Hook,
@@ -406,66 +401,60 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		clip.DriveLink = uploadResult.WebViewLink
 		clip.DriveFileID = uploadResult.FileID
 	}
-
-	if s.indexDisp == nil {
-		return nil, fmt.Errorf("youtube.Register: dispatcher is required (QDRANT-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
-	}
 	if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-		return nil, fmt.Errorf("save clip via dispatcher: %w", err)
+		return fmt.Errorf("save clip via dispatcher: %w", err)
 	}
 	s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", true)
+	return nil
+}
 
-	// ── 12. Trigger async enrichment + indexing via jobs dispatch ──────────
-	// S1a (June 2026): media.enrich is enqueued via the canonical jobs
-	// system rather than the prior context.WithoutCancel goroutine.
-	// The v2 EnrichmentPort.DispatchPostRegister wraps Jobs.Enqueue with
-	// the canonical media.enrich payload; nil port or nil internal
-	// JobsPort is a Warn-level no-op rather than a goroutine detach
-	// (which Wave 22 forbids).
+// dispatchEnrichment enqueues the media.enrich job. Returns whether indexing
+// is enabled (used by the result builder).
+func (s *Service) dispatchEnrichment(ctx context.Context, clipID, source, localPath string) bool {
 	indexed := s.enrichment != nil && s.enrichment.IndexingEnabled()
 	if indexed && s.enrichment != nil {
-		if err := s.enrichment.DispatchPostRegister(ctx, clipID, source, fetched.LocalPath); err != nil {
+		if err := s.enrichment.DispatchPostRegister(ctx, clipID, source, localPath); err != nil {
 			s.log.Warn("failed to enqueue media.enrich job; clip is saved (operator can reindex via POST /api/media/clips/:id/reindex)",
 				"clip_id", clipID, "error", err)
 		}
 	}
+	return indexed
+}
 
-	// ── 13. Related clips via search providers ────────────────────────
-	relatedClips := map[string]any{}
+// findRelated searches for clips related to the newly registered asset.
+func (s *Service) findRelated(ctx context.Context, name, category string, tags []string) map[string]any {
+	related := map[string]any{}
 	if s.enrichment != nil {
-		query := BuildRelatedClipsQuery(name, cmd.Category, cmd.Tags)
+		query := BuildRelatedClipsQuery(name, category, tags)
 		if candidates, err := s.enrichment.SearchRelated(ctx, query, 5); err == nil && len(candidates) > 0 {
-			relatedClips["search"] = map[string]any{
+			related["search"] = map[string]any{
 				"count":   len(candidates),
 				"results": candidates,
 			}
 		}
 	}
+	return related
+}
 
-	// ── 14. Build result ──────────────────────────────────────────────────────
+// buildResult assembles the final RegisterClipResult.
+func (s *Service) buildResult(md *usecase.ResolvedMetadata, clipID, fileHash, driveFilename, localPath string, uploadResult *sourcing.DriveUploadResult, deliveryStatus asset.AssetPublishStatus, indexed bool, transcript, detectedLang string, related map[string]any, cmd sourcing.RegisterClipCommand) *sourcing.RegisterClipResult {
 	res := &sourcing.RegisterClipResult{
-		OK: true, ClipID: clipID, VideoID: videoID,
-		Name: name, Filename: driveFilename, DurationSec: duration,
-		FileHash: fileHash, Source: source, Category: cmd.Category,
-		Tags: cmd.Tags, LocalPath: fetched.LocalPath,
+		OK: true, ClipID: clipID, VideoID: md.VideoID,
+		Name: md.Name, Filename: driveFilename, DurationSec: md.Duration,
+		FileHash: fileHash, Source: md.Source, Category: cmd.Category,
+		Tags: cmd.Tags, LocalPath: localPath,
 		Indexed: indexed, IndexingStatus: IndexStatus(indexed),
 		Transcribed: transcript != "", Language: detectedLang,
-		RelatedClips: relatedClips,
+		RelatedClips: related,
 	}
 	if uploadResult != nil {
 		res.DriveLink = uploadResult.WebViewLink
 		res.DriveFileID = uploadResult.FileID
 	}
-
-	// ── 15. Delivery status (P0.2, July 2026) ────────────────────
-	// Eliminates the pre-P0.2 ambiguous "OK=true for both Drive-success
-	// and Drive-failure". The caller can now distinguish:
-	//   - delivery_status: PUBLISHED → Drive upload succeeded
-	//   - delivery_status: PUBLISH_FAILED → Drive failed, retry scheduled
 	res.DeliveryStatus = deliveryStatus
 	if deliveryStatus == asset.AssetPublishFailed {
 		res.RetryScheduled = true
 		res.Message = "asset registered locally; Drive upload failed — retry scheduled"
 	}
-	return res, nil
+	return res
 }
