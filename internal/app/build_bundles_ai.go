@@ -32,6 +32,21 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
 
+	// Dedicated embedding client: uses a separate model (nomic-embed-text by
+	// default, configurable via OLLAMA_EMBED_MODEL / ollama_embed_model).
+	// Ollama returns 500 when a chat model (gemma4:e4b) is used for
+	// /api/embeddings — the embed model MUST be an embedding model.
+	// Fall back to OllamaModel for backward compat when unset.
+	embedModel := cfg.External.OllamaEmbedModel
+	if embedModel == "" {
+		embedModel = cfg.External.OllamaModel
+	}
+	ollamaEmbedClient := client.NewClient(cfg.External.OllamaURL, embedModel, cfg.External.OllamaTimeoutSeconds)
+	log.Info("embedding client configured",
+		zap.String("ollama_url", cfg.External.OllamaURL),
+		zap.String("embed_model", embedModel),
+	)
+
 	if cfg.External.SearxngURL != "" {
 		ws := client.NewWebSearcher(cfg.External.SearxngURL, cfg.External.SearxngMaxResults)
 		ollamaClient.SetWebSearcher(ws)
@@ -80,10 +95,11 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	engine := usecase.NewEngine(scriptGen, nil, log)
 
 	return &AIBundle{
-		OllamaClient:     ollamaClient,
-		ScriptGen:        scriptGen,
-		OllamaTranslator: ollamaTranslator,
-		MemoryRepo:       adapters.NewRepository(dbs.main.DB),
-		ScriptEngine:     engine,
+		OllamaClient:      ollamaClient,
+		OllamaEmbedClient: ollamaEmbedClient,
+		ScriptGen:         scriptGen,
+		OllamaTranslator:  ollamaTranslator,
+		MemoryRepo:        adapters.NewRepository(dbs.main.DB),
+		ScriptEngine:      engine,
 	}, nil
 }
