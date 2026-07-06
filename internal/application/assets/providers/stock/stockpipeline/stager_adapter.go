@@ -4,12 +4,11 @@
 // canonical assets.SourceStager port so callers can stage stock
 // source media without depending on the full stockpipeline.Service.
 //
-// July 2026 (BYPASS fix): StockStager now downloads directly via
+// July 2026 (DIRECT-YTDLP): StockStager downloads directly via
 // yt-dlp instead of routing through Service.StageSource →
-// acquisition.SourceStager.Prepare. The acquisition chain was
-// failing at the FilesystemStager fetch closure (OutputPath template
-// mismatch AND IdempotencyKey validation). The yt-dlp direct path
-// is the production-tested download path used by processSingleVideo.
+// acquisition.SourceStager.Prepare. The acquisition chain causes
+// nil-deref when sourceStager is not wired at composition root;
+// the yt-dlp direct path is the production-tested download path.
 package stockpipeline
 
 import (
@@ -25,9 +24,9 @@ import (
 // Compile-time assertion: *StockStager satisfies assets.SourceStager.
 var _ assets.SourceStager = (*StockStager)(nil)
 
-// StockStager adapts a stockpipeline.Service (or any stockRunner) to
-// the shared assets.SourceStager port. It downloads directly via yt-dlp
-// (bypassing the acquisition.SourceStager chain) for reliability.
+// StockStager adapts a stockpipeline.Service to the shared
+// assets.SourceStager port. It downloads directly via yt-dlp,
+// bypassing the acquisition.SourceStager chain.
 type StockStager struct {
 	svc   *Service
 	ytdlp *downloader.YTDLPDownloader
@@ -46,23 +45,21 @@ func NewStockStager(svc *Service) *StockStager {
 
 // StageSource implements assets.SourceStager. Downloads the source video
 // directly via yt-dlp (bypassing the acquisition.SourceStager chain).
-// When DownloadSection is set, it downloads a time-slice via
-// yt-dlp's --download-sections.
 func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
 	if s.svc == nil {
-		return nil, fmt.Errorf("stock stagervc: service not wired")
+		return nil, fmt.Errorf("stock stager: service not wired")
 	}
 	if ref.URL == "" {
-		return nil, fmt.Errorf("stock stagervc: empty URL")
+		return nil, fmt.Errorf("stock stager: empty URL")
 	}
 	if s.ytdlp == nil {
-		return nil, fmt.Errorf("stock stagervc: yt-dlp downloader not wired (cfg nil)")
+		return nil, fmt.Errorf("stock stager: yt-dlp downloader not wired (cfg nil)")
 	}
 
 	// Create a temp staging directory under the service's temp path.
 	tmpDir, err := os.MkdirTemp(s.svc.cfg.Storage.TempPath(), "stock_stage_")
 	if err != nil {
-		return nil, fmt.Errorf("stock stagervc: create temp dir: %w", err)
+		return nil, fmt.Errorf("stock stager: create temp dir: %w", err)
 	}
 
 	outputPath := filepath.Join(tmpDir, "source.mp4")
@@ -71,7 +68,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		URL:        ref.URL,
 		OutputPath: outputPath,
 		NoPlaylist: true,
-		UseCookies: false, // godlike/07: cookies force web-only extraction → n-challenge block on public YT videos
+		UseCookies: false,
 	}
 	if ref.DownloadSection != "" {
 		dlReq.DownloadSections = []string{ref.DownloadSection}
@@ -83,20 +80,20 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 
 	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
 		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("stock stagervc: yt-dlp download %q: %w", ref.URL, err)
+		return nil, fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, err)
 	}
 
 	// Resolve the actual downloaded file path.
 	resolved, resolveErr := downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s")
 	if resolveErr != nil {
 		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("stock stagervc: resolve downloaded file: %w", resolveErr)
+		return nil, fmt.Errorf("stock stager: resolve downloaded file: %w", resolveErr)
 	}
 
 	fi, statErr := os.Stat(resolved)
 	if statErr != nil {
 		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("stock stagervc: stat %q: %w", resolved, statErr)
+		return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
 	}
 
 	return &assets.StagedAsset{
@@ -106,7 +103,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 }
 
 // Cleanup removes the staged file's parent temp directory.
-func (s *StockStager) Cleanup(ctx context.Context, staged *assets.StagedAsset) error {
+func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) error {
 	if staged == nil || staged.LocalPath == "" {
 		return nil
 	}

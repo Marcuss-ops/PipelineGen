@@ -1,16 +1,11 @@
 package voiceover
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
