@@ -102,7 +102,7 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 			})
 			continue
 		}
-		point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
+		point, err := w.mapper.AssetToPoint(ctx, asset, w.idxSchema)
 		if err != nil {
 			w.log.Warn("failed to map asset to qdrant point",
 				zap.String("asset_id", clipID),
@@ -282,7 +282,7 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 		for _, asset := range batch {
 			afterID = asset.ID // advance cursor
 
-			point, err := w.mapper.AssetToPoint(asset, w.idxSchema)
+			point, err := w.mapper.AssetToPoint(ctx, asset, w.idxSchema)
 			if err != nil {
 				result.FailedAssets++
 				result.FailedAssetIDs = append(result.FailedAssetIDs, asset.ID)

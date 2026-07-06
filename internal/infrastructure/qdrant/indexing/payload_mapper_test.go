@@ -107,7 +107,7 @@ func TestAssetToPoint_SparseVector_HasServerSideShape(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint error: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestAssetToPoint_SparseVector_EmptySearchText_DropsChannel(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint error: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestAssetToPoint_TranscriptChannel_DroppedWhenAbsent(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestAssetToPoint_TranscriptChannel_PreservedWhenPresent(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint error: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
 		LocalPath:      "/tmp/leak",
 	}
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	doc, err := mapper.AssetToIndexDocument(asset, schema)
+	doc, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
 	if err != nil {
 		// Audio is missing + transcript missing but text is required;
 		// provide a TextVector so the validation path doesn't fail.
@@ -617,7 +617,7 @@ func TestAssetToIndexDocument_MissingRequiredTextVector(t *testing.T) {
 		// TextVector intentionally nil — required channel.
 	}
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(asset, schema)
+	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
 	if err == nil {
 		t.Fatal("missing required text vector must error")
 	}
@@ -639,7 +639,7 @@ func TestAssetToIndexDocument_ZeroLengthTextVector(t *testing.T) {
 		TextVector:     make([]float32, 0), // non-nil, zero-length
 	}
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(asset, schema)
+	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
 	if err == nil {
 		t.Fatal("zero-length text vector must error")
 	}
@@ -662,7 +662,7 @@ func TestAssetToIndexDocument_OptionalChannelsNilAllowed(t *testing.T) {
 		// AudioVector, TranscriptVector, VisualVector all nil — OK.
 	}
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	doc, err := mapper.AssetToIndexDocument(asset, schema)
+	doc, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("nil optional channels must not error; got %v", err)
 	}
@@ -691,7 +691,7 @@ func TestAssetToIndexDocument_NaNInVector(t *testing.T) {
 		TextVector:     vec,
 	}
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(asset, schema)
+	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
 	if err == nil {
 		t.Fatal("NaN in vector must error")
 	}
@@ -712,7 +712,7 @@ func TestAssetToIndexDocument_DimensionMismatch(t *testing.T) {
 		TextVector:     makeFloat32Slice(512), // wrong dim
 	}
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(asset, schema)
+	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
 	if err == nil {
 		t.Fatal("dimension mismatch must error")
 	}
@@ -766,7 +766,7 @@ func TestAssetToPoint_NilSearchTextBuilder_BitForBitPassThrough(t *testing.T) {
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
 	// Explicit: no SetSearchTextBuilder call.
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint: %v", err)
 	}
@@ -801,7 +801,7 @@ func TestAssetToPoint_SearchTextBuilder_YoutubeStrategy(t *testing.T) {
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
 	mapper.SetSearchTextBuilder(searchtext.NewRegistry())
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint: %v", err)
 	}
@@ -851,7 +851,7 @@ func TestAssetToPoint_SearchTextBuilder_FallbackToAssetSearchText(t *testing.T) 
 
 	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
 	mapper.SetSearchTextBuilder(searchtext.NewRegistry())
-	point, err := mapper.AssetToPoint(asset, schema)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
 	if err != nil {
 		t.Fatalf("AssetToPoint: %v", err)
 	}
