@@ -1,15 +1,14 @@
-// Package app — voiceover VoiceoverPublisher + DriveUploaderPort
-// adapters (PR-VO-ADAPTERS-SPLIT, July 2026).
+// Package app — voiceover VoiceoverPublisher adapter
+// (PR-VO-ADAPTERS-SPLIT, July 2026).
 //
 // Capability cluster: DRIVE external I/O bridges.
 //
 // VoiceoverPublisher ← delivery.Publisher.Publish (P1-5 cutover, July 2026)
-// DriveUploaderPort  ← drive.Admin.DeleteFile (post-commit cleanup)
 //
-// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter removed
-// (zero callers after DriveUploader removal from VoiceoverIntegrationDeps).
-// voiceoverDriveAdapter stays — used by composition.go for the outbox
-// cleanup handler.
+// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter removed;
+// DriveUploaderPort interface removed from ports.go. voiceoverDriveAdapter
+// stays — used by composition.go for the outbox cleanup handler via
+// jobsoutbox.VoiceoverCleanupDriver.
 package app
 
 import (
@@ -94,16 +93,13 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 var _ voiceover.VoiceoverPublisher = (*useCasePublisherAdapter)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
-// voiceoverDriveAdapter - Drive port adapter for voiceover (moved from
-// voiceover_adapters_drive.go, Phase 5 consolidation, June 2026).
-// Wraps drive.Admin to satisfy voiceover.DriveUploaderPort.
+// voiceoverDriveAdapter - Drive port adapter for voiceover.
+// Wraps drive.Admin to satisfy jobsoutbox.VoiceoverCleanupDriver.
 // ─────────────────────────────────────────────────────────────────────
 
 type voiceoverDriveAdapter struct {
 	drive drive.Admin
 }
-
-var _ voiceover.DriveUploaderPort = (*voiceoverDriveAdapter)(nil)
 
 func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
 	if fileID == "" {

@@ -20,7 +20,6 @@
 //	│  VoiceoverFinalizer — 6-step atomic commit (DB+lifecycle+ │
 //	│  VoiceoverPostCommitVerifier  outbox) inside caller-owned tx│
 //	│  TxOutboxEnqueuer — asset.index.requested outbox event     │
-//	│  DriveUploaderPort — post-commit cleanup (DeleteFile only) │
 //	│  VoiceoverItemExecutor — per-item pipeline orchestrator    │
 //	└────────────────────────────────────────────────────────────┘
 //
@@ -94,39 +93,11 @@ type TxOutboxEnqueuer interface {
 	EnqueueCleanupEvent(ctx context.Context, tx *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error
 }
 
-// DriveUploaderPort is the narrow Drive surface the voiceover service
-// uses directly. PR-VO-B1 (June 2026): voiceover previously held a
-// *drive.Uploader field; the constructor now takes this port. The
-// production concrete is *drive.Uploader (wrapped by
-// app/voiceoverDriveAdapter because the canonical layering rule
-// forbids infrastructure/drive from importing
-// internal/application/voiceover).
-//
-// Today's single exposure is DeleteFile: swapVoiceoverRow's
-// post-commit cleanup goroutine (processLanguage's
-// replace-mode orphan eviction) routes an OLD voiceover's Drive
-// file through this port. Adding new methods is permitted but
-// should follow the same narrow-target practice — one method per
-// Drive operation the voiceover service actually calls, no
-// pre-emptive methods.
-//
-// Behavior shift note (PR-VO-B1): the previous audioasset.Processor
-// ran an inline Drive upload with **log-warn best-effort** semantics
-// (failure swallowed, status remained "generated"/"cleaned"). The
-// new design routes the upload through Lifecycle.ProcessAsset
-// (Step 2 in internal/application/assets/lifecycle/service.go)
-// which **fails-fast** with `lifecycle_failed`. This is an
-// intentional hardening of the obsolete silent-upload path — the
-// caller now sees Drive upload failures instead of an orphan file
-// that the rest of the pipeline silently passed.
-//
-// Nil-safe: processLanguage guards nil at the call site and
-// short-circuits the cleanup goroutine. The production wiring in
-// internal/app/build_bundles_voiceover.go always supplies a
-// non-nil adapter.
-type DriveUploaderPort interface {
-	DeleteFile(ctx context.Context, fileID string) error
-}
+// Azione #9 follow-up (July 2026): DriveUploaderPort interface removed.
+// Post-commit cleanup now flows through jobsoutbox.VoiceoverCleanupDriver
+// (a separate interface in outbox/voiceover_cleanup.go). The same
+// voiceoverDriveAdapter satisfies both structurally, but only
+// VoiceoverCleanupDriver is consumed.
 
 // VoiceoverGenerator is the BACKFILL typed-port (Wave 21
 // PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2, B-2 step closure, per
