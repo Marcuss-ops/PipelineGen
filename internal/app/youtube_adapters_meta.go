@@ -19,10 +19,11 @@ import (
 // ── sourcingMetadataAdapter ───────────────────────────────────────────
 
 type sourcingMetadataAdapter struct {
-	cfg    *config.Config
-	admin  driveutil.Admin
-	reader driveutil.Reader
-	log    *zap.Logger
+	cfg       *config.Config
+	admin     driveutil.Admin
+	reader    driveutil.Reader
+	lifecycle driveutil.FileLifecycle // P1-3-BACKFILL (July 2026): routed through FileLifecycle where available
+	log       *zap.Logger
 }
 
 func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
@@ -30,7 +31,9 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 		return nil
 	}
 	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
-	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
+	// P1-3-BACKFILL: pass lifecycle through so TrashFile routes via FileLifecycle.Trash.
+	// When lifecycle is nil (legacy construction), the graceful fallback to Admin.TrashFile applies.
+	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader, a.lifecycle), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
 	return nil
 }
 
