@@ -91,6 +91,10 @@ func newAssetRegisterService(
 		&sourcingClipStoreAdapter{repo: clipsRepo},
 		&sourcingPublisherAdapter{publisher: publisher},
 		&sourcingTranscriberAdapter{cfg: cfg, log: log},
+		// P1-3-BACKFILL: lifecycle is nil here — this composition site
+		// doesn't have access to FileLifecycle (DeliveryDeps has Admin+Publisher
+		// only). The graceful fallback to Admin.TrashFile applies when lifecycle
+		// is nil inside clipsDriveAdapter.
 		&sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, log: log},
 		ytIndex,
 		ytEnrich,
