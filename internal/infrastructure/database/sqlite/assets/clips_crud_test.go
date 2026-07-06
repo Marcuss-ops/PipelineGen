@@ -52,7 +52,7 @@ import (
 var canonicalMediaAssetColumns = []string{
 	"id", "source", "name", "tags", "tags_norm",
 	"embedding_json", "duration_ms", "url",
-	"media_type", "status", "local_path", "relative_path",
+	"media_type", "local_path", "relative_path",
 	"drive_file_id", "drive_folder_id", "drive_link", "download_link",
 	"file_hash", "metadata_json", "visual_embedding", "transcript_embedding",
 	"created_at", "updated_at", "width", "height",

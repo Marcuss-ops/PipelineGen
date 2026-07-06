@@ -1,0 +1,1353 @@
+{
+  "_meta": {
+    "description": "Pacquiao vs Broner \u2014 stock pipeline test payloads",
+    "video_id": "vdC5GXxS-qU",
+    "video_url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+    "drive_folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+    "project_subfolder": "Pacquiao_Vs_Broner",
+    "clip_duration_sec": 5,
+    "total_rounds": 8,
+    "total_clips": 177,
+    "no_audio": false,
+    "no_effects": true,
+    "no_transitions": true,
+    "endpoint": "POST /api/stock/run",
+    "generated_at": "2026-07-06T18:15:31Z"
+  },
+  "rounds": [
+    {
+      "index": 0,
+      "label": "Round_1_La_fase_di_studio",
+      "start": "00:00:32",
+      "end": "00:03:51",
+      "description": "Pacquiao mobility, jab work. Broner wide guard.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_32s-37s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 32.0,
+            "end_sec": 37.0
+          },
+          {
+            "title": "clip_001_37s-42s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 37.0,
+            "end_sec": 42.0
+          },
+          {
+            "title": "clip_002_42s-47s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 42.0,
+            "end_sec": 47.0
+          },
+          {
+            "title": "clip_003_47s-52s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 47.0,
+            "end_sec": 52.0
+          },
+          {
+            "title": "clip_004_52s-57s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 52.0,
+            "end_sec": 57.0
+          },
+          {
+            "title": "clip_005_57s-62s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 57.0,
+            "end_sec": 62.0
+          },
+          {
+            "title": "clip_006_62s-67s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 62.0,
+            "end_sec": 67.0
+          },
+          {
+            "title": "clip_007_67s-72s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 67.0,
+            "end_sec": 72.0
+          },
+          {
+            "title": "clip_008_72s-77s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 72.0,
+            "end_sec": 77.0
+          },
+          {
+            "title": "clip_009_77s-82s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 77.0,
+            "end_sec": 82.0
+          },
+          {
+            "title": "clip_010_82s-87s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 82.0,
+            "end_sec": 87.0
+          },
+          {
+            "title": "clip_011_87s-92s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 87.0,
+            "end_sec": 92.0
+          },
+          {
+            "title": "clip_012_92s-97s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 92.0,
+            "end_sec": 97.0
+          },
+          {
+            "title": "clip_013_97s-102s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 97.0,
+            "end_sec": 102.0
+          },
+          {
+            "title": "clip_014_102s-107s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 102.0,
+            "end_sec": 107.0
+          },
+          {
+            "title": "clip_015_107s-112s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 107.0,
+            "end_sec": 112.0
+          },
+          {
+            "title": "clip_016_112s-117s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 112.0,
+            "end_sec": 117.0
+          },
+          {
+            "title": "clip_017_117s-122s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 117.0,
+            "end_sec": 122.0
+          },
+          {
+            "title": "clip_018_122s-127s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 122.0,
+            "end_sec": 127.0
+          },
+          {
+            "title": "clip_019_127s-132s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 127.0,
+            "end_sec": 132.0
+          },
+          {
+            "title": "clip_020_132s-137s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 132.0,
+            "end_sec": 137.0
+          },
+          {
+            "title": "clip_021_137s-142s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 137.0,
+            "end_sec": 142.0
+          },
+          {
+            "title": "clip_022_142s-147s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 142.0,
+            "end_sec": 147.0
+          },
+          {
+            "title": "clip_023_147s-152s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 147.0,
+            "end_sec": 152.0
+          },
+          {
+            "title": "clip_024_152s-157s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 152.0,
+            "end_sec": 157.0
+          },
+          {
+            "title": "clip_025_157s-162s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 157.0,
+            "end_sec": 162.0
+          },
+          {
+            "title": "clip_026_162s-167s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 162.0,
+            "end_sec": 167.0
+          },
+          {
+            "title": "clip_027_167s-172s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 167.0,
+            "end_sec": 172.0
+          },
+          {
+            "title": "clip_028_172s-177s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 172.0,
+            "end_sec": 177.0
+          },
+          {
+            "title": "clip_029_177s-182s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 177.0,
+            "end_sec": 182.0
+          },
+          {
+            "title": "clip_030_182s-187s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 182.0,
+            "end_sec": 187.0
+          },
+          {
+            "title": "clip_031_187s-192s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 187.0,
+            "end_sec": 192.0
+          },
+          {
+            "title": "clip_032_192s-197s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 192.0,
+            "end_sec": 197.0
+          },
+          {
+            "title": "clip_033_197s-202s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 197.0,
+            "end_sec": 202.0
+          },
+          {
+            "title": "clip_034_202s-207s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 202.0,
+            "end_sec": 207.0
+          },
+          {
+            "title": "clip_035_207s-212s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 207.0,
+            "end_sec": 212.0
+          },
+          {
+            "title": "clip_036_212s-217s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 212.0,
+            "end_sec": 217.0
+          },
+          {
+            "title": "clip_037_217s-222s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 217.0,
+            "end_sec": 222.0
+          },
+          {
+            "title": "clip_038_222s-227s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 222.0,
+            "end_sec": 227.0
+          },
+          {
+            "title": "clip_039_227s-231s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 227.0,
+            "end_sec": 231.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_1_La_fase_di_studio/00-00-32_to_00-03-51",
+        "folder_name": "Round_1_La_fase_di_studio",
+        "total_minutes": 4,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 1 La fase di studio",
+          "description": "Pacquiao mobility, jab work. Broner wide guard.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 1,
+      "label": "Round_2_Posizionamento_e_scambi",
+      "start": "00:04:07",
+      "end": "00:05:45",
+      "description": "Both fighters seeking position. Pacquiao quick combinations.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_247s-252s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 247.0,
+            "end_sec": 252.0
+          },
+          {
+            "title": "clip_001_252s-257s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 252.0,
+            "end_sec": 257.0
+          },
+          {
+            "title": "clip_002_257s-262s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 257.0,
+            "end_sec": 262.0
+          },
+          {
+            "title": "clip_003_262s-267s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 262.0,
+            "end_sec": 267.0
+          },
+          {
+            "title": "clip_004_267s-272s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 267.0,
+            "end_sec": 272.0
+          },
+          {
+            "title": "clip_005_272s-277s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 272.0,
+            "end_sec": 277.0
+          },
+          {
+            "title": "clip_006_277s-282s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 277.0,
+            "end_sec": 282.0
+          },
+          {
+            "title": "clip_007_282s-287s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 282.0,
+            "end_sec": 287.0
+          },
+          {
+            "title": "clip_008_287s-292s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 287.0,
+            "end_sec": 292.0
+          },
+          {
+            "title": "clip_009_292s-297s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 292.0,
+            "end_sec": 297.0
+          },
+          {
+            "title": "clip_010_297s-302s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 297.0,
+            "end_sec": 302.0
+          },
+          {
+            "title": "clip_011_302s-307s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 302.0,
+            "end_sec": 307.0
+          },
+          {
+            "title": "clip_012_307s-312s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 307.0,
+            "end_sec": 312.0
+          },
+          {
+            "title": "clip_013_312s-317s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 312.0,
+            "end_sec": 317.0
+          },
+          {
+            "title": "clip_014_317s-322s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 317.0,
+            "end_sec": 322.0
+          },
+          {
+            "title": "clip_015_322s-327s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 322.0,
+            "end_sec": 327.0
+          },
+          {
+            "title": "clip_016_327s-332s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 327.0,
+            "end_sec": 332.0
+          },
+          {
+            "title": "clip_017_332s-337s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 332.0,
+            "end_sec": 337.0
+          },
+          {
+            "title": "clip_018_337s-342s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 337.0,
+            "end_sec": 342.0
+          },
+          {
+            "title": "clip_019_342s-345s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 342.0,
+            "end_sec": 345.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_2_Posizionamento_e_scambi/00-04-07_to_00-05-45",
+        "folder_name": "Round_2_Posizionamento_e_scambi",
+        "total_minutes": 2,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 2 Posizionamento e scambi",
+          "description": "Both fighters seeking position. Pacquiao quick combinations.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 2,
+      "label": "Round_5_Miglior_momento_Broner",
+      "start": "00:10:28",
+      "end": "00:12:47",
+      "description": "Broner finds right hand. Pacquiao left hook to body.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_628s-633s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 628.0,
+            "end_sec": 633.0
+          },
+          {
+            "title": "clip_001_633s-638s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 633.0,
+            "end_sec": 638.0
+          },
+          {
+            "title": "clip_002_638s-643s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 638.0,
+            "end_sec": 643.0
+          },
+          {
+            "title": "clip_003_643s-648s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 643.0,
+            "end_sec": 648.0
+          },
+          {
+            "title": "clip_004_648s-653s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 648.0,
+            "end_sec": 653.0
+          },
+          {
+            "title": "clip_005_653s-658s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 653.0,
+            "end_sec": 658.0
+          },
+          {
+            "title": "clip_006_658s-663s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 658.0,
+            "end_sec": 663.0
+          },
+          {
+            "title": "clip_007_663s-668s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 663.0,
+            "end_sec": 668.0
+          },
+          {
+            "title": "clip_008_668s-673s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 668.0,
+            "end_sec": 673.0
+          },
+          {
+            "title": "clip_009_673s-678s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 673.0,
+            "end_sec": 678.0
+          },
+          {
+            "title": "clip_010_678s-683s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 678.0,
+            "end_sec": 683.0
+          },
+          {
+            "title": "clip_011_683s-688s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 683.0,
+            "end_sec": 688.0
+          },
+          {
+            "title": "clip_012_688s-693s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 688.0,
+            "end_sec": 693.0
+          },
+          {
+            "title": "clip_013_693s-698s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 693.0,
+            "end_sec": 698.0
+          },
+          {
+            "title": "clip_014_698s-703s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 698.0,
+            "end_sec": 703.0
+          },
+          {
+            "title": "clip_015_703s-708s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 703.0,
+            "end_sec": 708.0
+          },
+          {
+            "title": "clip_016_708s-713s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 708.0,
+            "end_sec": 713.0
+          },
+          {
+            "title": "clip_017_713s-718s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 713.0,
+            "end_sec": 718.0
+          },
+          {
+            "title": "clip_018_718s-723s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 718.0,
+            "end_sec": 723.0
+          },
+          {
+            "title": "clip_019_723s-728s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 723.0,
+            "end_sec": 728.0
+          },
+          {
+            "title": "clip_020_728s-733s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 728.0,
+            "end_sec": 733.0
+          },
+          {
+            "title": "clip_021_733s-738s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 733.0,
+            "end_sec": 738.0
+          },
+          {
+            "title": "clip_022_738s-743s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 738.0,
+            "end_sec": 743.0
+          },
+          {
+            "title": "clip_023_743s-748s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 743.0,
+            "end_sec": 748.0
+          },
+          {
+            "title": "clip_024_748s-753s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 748.0,
+            "end_sec": 753.0
+          },
+          {
+            "title": "clip_025_753s-758s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 753.0,
+            "end_sec": 758.0
+          },
+          {
+            "title": "clip_026_758s-763s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 758.0,
+            "end_sec": 763.0
+          },
+          {
+            "title": "clip_027_763s-767s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 763.0,
+            "end_sec": 767.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_5_Miglior_momento_Broner/00-10-28_to_00-12-47",
+        "folder_name": "Round_5_Miglior_momento_Broner",
+        "total_minutes": 3,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 5 Miglior momento Broner",
+          "description": "Broner finds right hand. Pacquiao left hook to body.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 3,
+      "label": "Round_7_Broner_barcolla",
+      "start": "00:16:33",
+      "end": "00:17:28",
+      "description": "Spectacular round. Pacquiao series of heavy shots, Broner nearly KO.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_993s-998s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 993.0,
+            "end_sec": 998.0
+          },
+          {
+            "title": "clip_001_998s-1003s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 998.0,
+            "end_sec": 1003.0
+          },
+          {
+            "title": "clip_002_1003s-1008s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1003.0,
+            "end_sec": 1008.0
+          },
+          {
+            "title": "clip_003_1008s-1013s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1008.0,
+            "end_sec": 1013.0
+          },
+          {
+            "title": "clip_004_1013s-1018s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1013.0,
+            "end_sec": 1018.0
+          },
+          {
+            "title": "clip_005_1018s-1023s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1018.0,
+            "end_sec": 1023.0
+          },
+          {
+            "title": "clip_006_1023s-1028s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1023.0,
+            "end_sec": 1028.0
+          },
+          {
+            "title": "clip_007_1028s-1033s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1028.0,
+            "end_sec": 1033.0
+          },
+          {
+            "title": "clip_008_1033s-1038s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1033.0,
+            "end_sec": 1038.0
+          },
+          {
+            "title": "clip_009_1038s-1043s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1038.0,
+            "end_sec": 1043.0
+          },
+          {
+            "title": "clip_010_1043s-1048s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1043.0,
+            "end_sec": 1048.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-16-33_to_00-17-28",
+        "folder_name": "Round_7_Broner_barcolla",
+        "total_minutes": 1,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 7 Broner barcolla",
+          "description": "Spectacular round. Pacquiao series of heavy shots, Broner nearly KO.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 4,
+      "label": "Round_9_Pacquiao_all_attacco",
+      "start": "00:21:16",
+      "end": "00:22:10",
+      "description": "Pacquiao left hook intercept, Broner retreats to ropes.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_1276s-1281s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1276.0,
+            "end_sec": 1281.0
+          },
+          {
+            "title": "clip_001_1281s-1286s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1281.0,
+            "end_sec": 1286.0
+          },
+          {
+            "title": "clip_002_1286s-1291s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1286.0,
+            "end_sec": 1291.0
+          },
+          {
+            "title": "clip_003_1291s-1296s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1291.0,
+            "end_sec": 1296.0
+          },
+          {
+            "title": "clip_004_1296s-1301s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1296.0,
+            "end_sec": 1301.0
+          },
+          {
+            "title": "clip_005_1301s-1306s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1301.0,
+            "end_sec": 1306.0
+          },
+          {
+            "title": "clip_006_1306s-1311s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1306.0,
+            "end_sec": 1311.0
+          },
+          {
+            "title": "clip_007_1311s-1316s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1311.0,
+            "end_sec": 1316.0
+          },
+          {
+            "title": "clip_008_1316s-1321s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1316.0,
+            "end_sec": 1321.0
+          },
+          {
+            "title": "clip_009_1321s-1326s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1321.0,
+            "end_sec": 1326.0
+          },
+          {
+            "title": "clip_010_1326s-1330s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1326.0,
+            "end_sec": 1330.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_9_Pacquiao_all_attacco/00-21-16_to_00-22-10",
+        "folder_name": "Round_9_Pacquiao_all_attacco",
+        "total_minutes": 1,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 9 Pacquiao all attacco",
+          "description": "Pacquiao left hook intercept, Broner retreats to ropes.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 5,
+      "label": "Round_10_11_Controllo_Pacquiao",
+      "start": "00:23:02",
+      "end": "00:27:06",
+      "description": "Pacquiao dominates volume. Broner low output, suspected hand injury.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_1382s-1387s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1382.0,
+            "end_sec": 1387.0
+          },
+          {
+            "title": "clip_001_1387s-1392s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1387.0,
+            "end_sec": 1392.0
+          },
+          {
+            "title": "clip_002_1392s-1397s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1392.0,
+            "end_sec": 1397.0
+          },
+          {
+            "title": "clip_003_1397s-1402s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1397.0,
+            "end_sec": 1402.0
+          },
+          {
+            "title": "clip_004_1402s-1407s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1402.0,
+            "end_sec": 1407.0
+          },
+          {
+            "title": "clip_005_1407s-1412s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1407.0,
+            "end_sec": 1412.0
+          },
+          {
+            "title": "clip_006_1412s-1417s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1412.0,
+            "end_sec": 1417.0
+          },
+          {
+            "title": "clip_007_1417s-1422s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1417.0,
+            "end_sec": 1422.0
+          },
+          {
+            "title": "clip_008_1422s-1427s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1422.0,
+            "end_sec": 1427.0
+          },
+          {
+            "title": "clip_009_1427s-1432s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1427.0,
+            "end_sec": 1432.0
+          },
+          {
+            "title": "clip_010_1432s-1437s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1432.0,
+            "end_sec": 1437.0
+          },
+          {
+            "title": "clip_011_1437s-1442s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1437.0,
+            "end_sec": 1442.0
+          },
+          {
+            "title": "clip_012_1442s-1447s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1442.0,
+            "end_sec": 1447.0
+          },
+          {
+            "title": "clip_013_1447s-1452s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1447.0,
+            "end_sec": 1452.0
+          },
+          {
+            "title": "clip_014_1452s-1457s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1452.0,
+            "end_sec": 1457.0
+          },
+          {
+            "title": "clip_015_1457s-1462s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1457.0,
+            "end_sec": 1462.0
+          },
+          {
+            "title": "clip_016_1462s-1467s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1462.0,
+            "end_sec": 1467.0
+          },
+          {
+            "title": "clip_017_1467s-1472s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1467.0,
+            "end_sec": 1472.0
+          },
+          {
+            "title": "clip_018_1472s-1477s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1472.0,
+            "end_sec": 1477.0
+          },
+          {
+            "title": "clip_019_1477s-1482s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1477.0,
+            "end_sec": 1482.0
+          },
+          {
+            "title": "clip_020_1482s-1487s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1482.0,
+            "end_sec": 1487.0
+          },
+          {
+            "title": "clip_021_1487s-1492s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1487.0,
+            "end_sec": 1492.0
+          },
+          {
+            "title": "clip_022_1492s-1497s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1492.0,
+            "end_sec": 1497.0
+          },
+          {
+            "title": "clip_023_1497s-1502s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1497.0,
+            "end_sec": 1502.0
+          },
+          {
+            "title": "clip_024_1502s-1507s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1502.0,
+            "end_sec": 1507.0
+          },
+          {
+            "title": "clip_025_1507s-1512s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1507.0,
+            "end_sec": 1512.0
+          },
+          {
+            "title": "clip_026_1512s-1517s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1512.0,
+            "end_sec": 1517.0
+          },
+          {
+            "title": "clip_027_1517s-1522s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1517.0,
+            "end_sec": 1522.0
+          },
+          {
+            "title": "clip_028_1522s-1527s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1522.0,
+            "end_sec": 1527.0
+          },
+          {
+            "title": "clip_029_1527s-1532s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1527.0,
+            "end_sec": 1532.0
+          },
+          {
+            "title": "clip_030_1532s-1537s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1532.0,
+            "end_sec": 1537.0
+          },
+          {
+            "title": "clip_031_1537s-1542s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1537.0,
+            "end_sec": 1542.0
+          },
+          {
+            "title": "clip_032_1542s-1547s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1542.0,
+            "end_sec": 1547.0
+          },
+          {
+            "title": "clip_033_1547s-1552s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1547.0,
+            "end_sec": 1552.0
+          },
+          {
+            "title": "clip_034_1552s-1557s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1552.0,
+            "end_sec": 1557.0
+          },
+          {
+            "title": "clip_035_1557s-1562s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1557.0,
+            "end_sec": 1562.0
+          },
+          {
+            "title": "clip_036_1562s-1567s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1562.0,
+            "end_sec": 1567.0
+          },
+          {
+            "title": "clip_037_1567s-1572s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1567.0,
+            "end_sec": 1572.0
+          },
+          {
+            "title": "clip_038_1572s-1577s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1572.0,
+            "end_sec": 1577.0
+          },
+          {
+            "title": "clip_039_1577s-1582s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1577.0,
+            "end_sec": 1582.0
+          },
+          {
+            "title": "clip_040_1582s-1587s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1582.0,
+            "end_sec": 1587.0
+          },
+          {
+            "title": "clip_041_1587s-1592s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1587.0,
+            "end_sec": 1592.0
+          },
+          {
+            "title": "clip_042_1592s-1597s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1592.0,
+            "end_sec": 1597.0
+          },
+          {
+            "title": "clip_043_1597s-1602s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1597.0,
+            "end_sec": 1602.0
+          },
+          {
+            "title": "clip_044_1602s-1607s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1602.0,
+            "end_sec": 1607.0
+          },
+          {
+            "title": "clip_045_1607s-1612s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1607.0,
+            "end_sec": 1612.0
+          },
+          {
+            "title": "clip_046_1612s-1617s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1612.0,
+            "end_sec": 1617.0
+          },
+          {
+            "title": "clip_047_1617s-1622s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1617.0,
+            "end_sec": 1622.0
+          },
+          {
+            "title": "clip_048_1622s-1626s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1622.0,
+            "end_sec": 1626.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_10_11_Controllo_Pacquiao/00-23-02_to_00-27-06",
+        "folder_name": "Round_10_11_Controllo_Pacquiao",
+        "total_minutes": 5,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 10 11 Controllo Pacquiao",
+          "description": "Pacquiao dominates volume. Broner low output, suspected hand injury.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 6,
+      "label": "Round_12_Finale",
+      "start": "00:27:37",
+      "end": "00:28:18",
+      "description": "Last 30 seconds, Broner shows no urgency. Pacquiao controls to bell.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_1657s-1662s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1657.0,
+            "end_sec": 1662.0
+          },
+          {
+            "title": "clip_001_1662s-1667s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1662.0,
+            "end_sec": 1667.0
+          },
+          {
+            "title": "clip_002_1667s-1672s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1667.0,
+            "end_sec": 1672.0
+          },
+          {
+            "title": "clip_003_1672s-1677s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1672.0,
+            "end_sec": 1677.0
+          },
+          {
+            "title": "clip_004_1677s-1682s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1677.0,
+            "end_sec": 1682.0
+          },
+          {
+            "title": "clip_005_1682s-1687s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1682.0,
+            "end_sec": 1687.0
+          },
+          {
+            "title": "clip_006_1687s-1692s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1687.0,
+            "end_sec": 1692.0
+          },
+          {
+            "title": "clip_007_1692s-1697s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1692.0,
+            "end_sec": 1697.0
+          },
+          {
+            "title": "clip_008_1697s-1698s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1697.0,
+            "end_sec": 1698.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Round_12_Finale/00-27-37_to_00-28-18",
+        "folder_name": "Round_12_Finale",
+        "total_minutes": 1,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Round 12 Finale",
+          "description": "Last 30 seconds, Broner shows no urgency. Pacquiao controls to bell.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    },
+    {
+      "index": 7,
+      "label": "Verdetto_Unanime",
+      "start": "00:28:47",
+      "end": "00:29:29",
+      "description": "Judges: 117-111, 116-112, 116-112. Pacquiao retains WBA welterweight.",
+      "payload": {
+        "direct_urls": [
+          "https://www.youtube.com/watch?v=vdC5GXxS-qU"
+        ],
+        "clips": [
+          {
+            "title": "clip_000_1727s-1732s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1727.0,
+            "end_sec": 1732.0
+          },
+          {
+            "title": "clip_001_1732s-1737s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1732.0,
+            "end_sec": 1737.0
+          },
+          {
+            "title": "clip_002_1737s-1742s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1737.0,
+            "end_sec": 1742.0
+          },
+          {
+            "title": "clip_003_1742s-1747s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1742.0,
+            "end_sec": 1747.0
+          },
+          {
+            "title": "clip_004_1747s-1752s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1747.0,
+            "end_sec": 1752.0
+          },
+          {
+            "title": "clip_005_1752s-1757s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1752.0,
+            "end_sec": 1757.0
+          },
+          {
+            "title": "clip_006_1757s-1762s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1757.0,
+            "end_sec": 1762.0
+          },
+          {
+            "title": "clip_007_1762s-1767s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1762.0,
+            "end_sec": 1767.0
+          },
+          {
+            "title": "clip_008_1767s-1769s",
+            "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+            "start_sec": 1767.0,
+            "end_sec": 1769.0
+          }
+        ],
+        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "subfolder": "Pacquiao_Vs_Broner/Verdetto_Unanime/00-28-47_to_00-29-29",
+        "folder_name": "Verdetto_Unanime",
+        "total_minutes": 1,
+        "clip_duration": 5,
+        "no_audio": false,
+        "no_effects": true,
+        "no_transitions": true,
+        "metadata": {
+          "title": "Pacquiao vs Broner \u2014 Verdetto Unanime",
+          "description": "Judges: 117-111, 116-112, 116-112. Pacquiao retains WBA welterweight.",
+          "tags": [
+            "boxing",
+            "pacquiao",
+            "broner",
+            "highlights"
+          ],
+          "category": "sport"
+        },
+        "async": true
+      }
+    }
+  ]
+}
