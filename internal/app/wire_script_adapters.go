@@ -75,6 +75,7 @@ import (
 	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -103,13 +104,13 @@ func (a *driveFolderAdapterImpl) GetOrCreateFolder(ctx context.Context, name, pa
 	return a.admin.GetOrCreateFolder(ctx, name, parentID)
 }
 
-// docCreatorImpl wraps drive.DocClient as scriptapi.DocumentCreator.
+// docCreatorImpl wraps delivery.DocPublisher as scriptapi.DocumentCreator.
 // Composition-time build of DocumentsService is deferred to CreateDoc
 // (the service constructor reads the canonical Drive folder at call
 // time, which lets the folder ID propagate from cfg.Drive.ScriptsGenFolder()
 // without binding at struct-init time).
 type docCreatorImpl struct {
-	docClient     drive.DocClient
+	docClient     delivery.DocPublisher
 	log           *zap.Logger
 	driveFolderID string
 }

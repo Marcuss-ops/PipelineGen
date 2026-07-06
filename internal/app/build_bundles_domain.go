@@ -306,6 +306,18 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	var assocService usecase.AssocSearchService
 	log.Info("association service unavailable — package removed from remote")
 
+	// P1-6 (July 2026): drive.DocClient is an interface value whose
+	// concrete (*drive.DocClientImpl) now satisfies delivery.DocPublisher
+	// (compile-time assertion in delivery/doc_publisher.go). Go cannot
+	// implicitly convert between two interface types with identical method
+	// sets, so we type-assert here. The assertion is safe because
+	// NewDocClient always returns *DocClientImpl, and the compile-time
+	// pin var _ delivery.DocPublisher = (*drive.DocClientImpl)(nil) locks
+	// the conformance at build time.
+	docPublisher, ok := drive.DocClient.(delivery.DocPublisher)
+	if !ok {
+		return nil, fmt.Errorf("compose domains: lessons: drive.DocClient does not satisfy delivery.DocPublisher (P1-6 migration incomplete)")
+	}
 	lessonsS := lessonsSvc.NewService(
 		&lessonsSvc.LessonsConfig{
 			Enabled:             cfg.Lessons.Enabled,
@@ -316,7 +328,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 			MaxParallelChapters: cfg.Lessons.MaxParallelChapters,
 			OllamaURL:           cfg.External.OllamaURL,
 		},
-		ai.ScriptGen, imageSvc, drive.DocClient, log,
+		ai.ScriptGen, imageSvc, docPublisher, log,
 	)
 	log.Info("Lessons service initialized", zap.Bool("enabled", cfg.Lessons.Enabled))
 
