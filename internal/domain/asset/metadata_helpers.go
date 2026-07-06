@@ -66,6 +66,10 @@ func MetadataFloat(meta map[string]any, key string) float64 {
 		return float64(v)
 	case int64:
 		return float64(v)
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
 	case string:
 		f, _ := strconv.ParseFloat(strings.TrimSpace(v), 64)
 		return f
@@ -107,6 +111,39 @@ func MetadataStringSlice(meta map[string]any, key string) []string {
 		}
 	}
 	return nil
+}
+
+// MetadataInt extracts an int-typed value from a metadata map.
+// Accepts int, int32, int64, float64 (truncated), json.Number, and string
+// (via strconv.Atoi). Returns 0 when the map is nil, the key is absent,
+// or the value cannot be interpreted as an integer.
+func MetadataInt(meta map[string]any, key string) int {
+	if meta == nil {
+		return 0
+	}
+	raw, ok := meta[key]
+	if !ok || raw == nil {
+		return 0
+	}
+	switch v := raw.(type) {
+	case int:
+		return v
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+		}
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i
+		}
+	}
+	return 0
 }
 
 // MetadataStringSliceText joins a metadata string slice into a single
