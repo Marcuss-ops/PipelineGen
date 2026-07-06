@@ -267,7 +267,7 @@ func newClipsAdapterBundle(
 		ArtlistRepo:    artPort,
 		VoiceoverRepo:  newVoiceoverRepoAdapter(voiceoverRepo),
 		ImagesRepo:     newImageRepoAdapter(imagesRepo),
-		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp, nil), // P1-3-BACKFILL: nil lifecycle — graceful fallback to Admin.TrashFile
+		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp), // P1-3-BACKFILL: nil lifecycle removed per signature change
 		MetaWriter:     newClipMetaWriterAdapter(metaWriter),
 		ClipIndexer:    newClipsIndexerAdapter(clipIndexer),
 		FolderMemSvc:   newClipsFolderMemoryAdapter(folderMemSvc),
