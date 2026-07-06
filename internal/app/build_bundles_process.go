@@ -86,7 +86,7 @@ import (
 // wiring: the new voiceoverCleanup arg threads the *voiceoverDriveAdapter
 // (production concrete for jobsoutbox.VoiceoverCleanupDriver, satisfied
 // structurally by the same struct that already satisfies
-// voiceover.DriveUploaderPort.DeleteFile) into the outbox Deps so
+// jobsoutbox.VoiceoverCleanupDriver.DeleteFile) into the outbox Deps so
 // VoiceoverCleanupHandler.register runs with a non-nil Drive delete
 // surface. nil voiceoverCleanup is tolerated — the handler still
 // handles local file removal (stdlib os.Remove, no port ceremony)
