@@ -68,6 +68,9 @@ var availableCommands = []string{
 	"db",
 	"delete-specific-folders",
 	"dr-qdrant",
+	"drive-bootstrap",
+	"drive-doctor",
+	"drive-reconcile",
 	"gen-api-docs",
 	"list-drive-folder",
 	"list-styles",
@@ -159,6 +162,12 @@ func main() {
 		err = runDB(args)
 	case "dr-qdrant":
 		err = runDrQdrant(args)
+	case "drive-bootstrap":
+		err = runDriveBootstrap(args)
+	case "drive-doctor":
+		err = runDriveDoctor(args)
+	case "drive-reconcile":
+		err = runDriveReconcile(args)
 	case "gen-api-docs":
 		err = runGenAPIDocs(args)
 	default:
