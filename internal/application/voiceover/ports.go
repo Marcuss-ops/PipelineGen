@@ -333,12 +333,8 @@ type VoiceoverPublishCommand struct {
 	FolderID  string
 }
 
-// Azione #6 (July 2026): TransactionalOutbox type alias removed.
-// It was a back-compat alias for TxOutboxEnqueuer, never used by
-// Execute (the finalizer owns the outbox, PR-VO-B3 June 2026).
-// The last consumer (ProcessVoiceoverItemDeps.TransactionalOutbox)
-// was removed in Azione #6; the canonical TxOutboxEnqueuer interface
-// is the single SSOT for outbox callers.
+// Azione #6/#10 (July 2026): TransactionalOutbox type alias removed;
+// FilenameBuilder interface removed (zero consumers after Azione #6).
 
 // Logger is intentionally NOT defined as an interface here — the
 // canonical codebase-wide logging surface is *zap.Logger (used across
@@ -347,33 +343,6 @@ type VoiceoverPublishCommand struct {
 // at this layer would only add drift surface; we keep the canonical
 // concrete type so the use case is consistent with the rest of the
 // codebase.
-
-// ────────────────────────────────────────────────────────────────────────
-// BLOC4_ssot_cutover (micro-commit #6, June 2026): FilenameBuilder port.
-// ────────────────────────────────────────────────────────────────────────
-//
-// Extracted from the legacy *Service.buildFilename + the inline
-// buildCommandFilename in usecase.go so the new canonical per-item
-// use case ProcessVoiceoverItemUseCase (process_voiceover_item.go)
-// composes it via a narrow typed port (AGENTS.md Pattern 0).
-//
-// The production concrete DefaultFilenameBuilder lives in
-// filename_builder.go (single implementation for the deployment).
-// Tests inject stubs that record invocations.
-//
-// Signature: BuildFilename(text, language, textHash, template).
-//
-// Grammar (mirrors the legacy inline logic in filename.go:12 + the
-// inline copy in usecase.go's buildCommandFilename):
-//
-//	{slug} → textutil.SlugifyWithMax(text, 30)
-//	{lang} → language (verbatim)
-//	{hash} → textHash first 8 chars (or "" when shorter)
-//	{time} → time.Now().Format("150405")
-//	default template (when empty) → "{slug}_{lang}.mp3"
-type FilenameBuilder interface {
-	BuildFilename(text, language, textHash, template string) string
-}
 
 // ────────────────────────────────────────────────────────────────────────
 // VoiceoverFinalizer — unified finalization (P0.4 Fase 3a, July 2026)
