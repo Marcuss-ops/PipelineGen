@@ -50,6 +50,7 @@ pipelinegen
 /server
 /admin
 /worker
+/seed_fixture
 *.exe
 *.dll
 *.so
