@@ -172,29 +172,8 @@ func (s *Service) processLanguage(
 
 	id := buildVoiceoverID(textHash, language, folderID)
 
-	// Pre-read old record for replace-mode swap context.
-	shouldSwap := req.Strategy == "replace"
-	oldDriveFileID := ""
-	oldLocalPath := ""
-	oldCleanedPath := ""
-	var existingDriveLink string
-
-	oldRec, preReadErr := s.voiceoverRepo.PreReadByID(ctx, id)
-	if preReadErr != nil {
-		s.log.Warn("processLanguage: pre-read of existing voiceover failed",
-			zap.String("id", id), zap.Error(preReadErr))
-		oldRec = nil
-	}
-	if oldRec != nil {
-		oldDriveFileID = oldRec.DriveFileID
-		existingDriveLink = oldRec.DriveLink
-		oldLocalPath = oldRec.LocalPath
-		oldCleanedPath = oldRec.CleanedPath
-	}
-	if !shouldSwap && folderID != "" && oldRec != nil && existingDriveLink == "" {
-		s.log.Info("processLanguage: existing record has no drive link, forcing swap", zap.String("id", id))
-		shouldSwap = true
-	}
+	// Pre-read old record for replace-mode swap context (Azione #9).
+	shouldSwap, oldDriveFileID, oldLocalPath, oldCleanedPath := s.readSwapContext(ctx, id, req.Strategy, folderID)
 
 	item = BatchItem{
 		ID:       id,
@@ -203,27 +182,10 @@ func (s *Service) processLanguage(
 		Status:   StatusProcessing,
 	}
 
-	outputDir := s.outputDir
-	if req.Destination != nil && req.Destination.CreateSubfolder && req.Destination.SubfolderName != "" {
-		safeSub, subErr := pathutil.SanitizeSubfolderSegment(req.Destination.SubfolderName)
-		if subErr != nil {
-			s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
-				zap.String("language", string(language)),
-				zap.String("subfolder_name", req.Destination.SubfolderName),
-				zap.Error(subErr))
-			return item.fail(FailureInvalidSubfolder, fmt.Errorf("path traversal rejected: %w", subErr))
-		}
-		outputDir = filepath.Join(s.outputDir, safeSub)
-		if werr := pathutil.EnsureWithinDir(s.outputDir, outputDir); werr != nil {
-			s.log.Error("PR-VO-A4: filepath.Rel guard tripped (sanitizer and Rel disagree — investigate)",
-				zap.String("output_dir", outputDir),
-				zap.String("root", s.outputDir),
-				zap.Error(werr))
-			return item.fail(FailureInvalidSubfolder, fmt.Errorf("path escape rejected: %w", werr))
-		}
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			return item.fail(FailureInvalidSubfolder, fmt.Errorf("failed to create local subfolder %q: %w", outputDir, err))
-		}
+	// Resolve output directory with optional subfolder (Azione #9).
+	outputDir, subErr := s.ensureOutputDir(s.outputDir, req.Destination, language)
+	if subErr != nil {
+		return item.fail(FailureInvalidSubfolder, subErr)
 	}
 
 	// Sanitize the filename against path traversal and enforce .mp3.
@@ -321,6 +283,75 @@ func (s *Service) processLanguage(
 	}
 
 	return item
+}
+
+// readSwapContext pre-reads the existing voiceover record for replace-mode
+// swap context. Returns the swap flag and old-row identifiers (empty when
+// no prior row exists). Logs pre-read failures as warnings without aborting
+// (the batch path tolerates a missing pre-read — it just loses the swap
+// context and treats it as a fresh insert on the next finalize).
+//
+// Azione #9 (July 2026): extracted from processLanguage to reduce
+// cyclomatic complexity.
+func (s *Service) readSwapContext(ctx context.Context, id, strategy, folderID string) (shouldSwap bool, oldDriveFileID, oldLocalPath, oldCleanedPath string) {
+	shouldSwap = strategy == "replace"
+
+	oldRec, preReadErr := s.voiceoverRepo.PreReadByID(ctx, id)
+	if preReadErr != nil {
+		s.log.Warn("processLanguage: pre-read of existing voiceover failed",
+			zap.String("id", id), zap.Error(preReadErr))
+		return
+	}
+	if oldRec == nil {
+		return
+	}
+
+	oldDriveFileID = oldRec.DriveFileID
+	oldLocalPath = oldRec.LocalPath
+	oldCleanedPath = oldRec.CleanedPath
+
+	if !shouldSwap && folderID != "" && oldRec.DriveLink == "" {
+		s.log.Info("processLanguage: existing record has no drive link, forcing swap", zap.String("id", id))
+		shouldSwap = true
+	}
+	return
+}
+
+// ensureOutputDir resolves the local output directory for a per-language
+// batch item, applying subfolder sanitization when req.Destination specifies
+// CreateSubfolder + SubfolderName. Returns the resolved output directory
+// or an error (path traversal rejected, guard mismatch, or mkdir failure).
+//
+// Azione #9 (July 2026): extracted from processLanguage to reduce
+// cyclomatic complexity.
+func (s *Service) ensureOutputDir(baseOutputDir string, dest *DestinationRequest, language Language) (string, error) {
+	if dest == nil || !dest.CreateSubfolder || dest.SubfolderName == "" {
+		return baseOutputDir, nil
+	}
+
+	safeSub, subErr := pathutil.SanitizeSubfolderSegment(dest.SubfolderName)
+	if subErr != nil {
+		s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
+			zap.String("language", string(language)),
+			zap.String("subfolder_name", dest.SubfolderName),
+			zap.Error(subErr))
+		return "", fmt.Errorf("path traversal rejected: %w", subErr)
+	}
+
+	outputDir := filepath.Join(baseOutputDir, safeSub)
+	if werr := pathutil.EnsureWithinDir(baseOutputDir, outputDir); werr != nil {
+		s.log.Error("PR-VO-A4: filepath.Rel guard tripped (sanitizer and Rel disagree — investigate)",
+			zap.String("output_dir", outputDir),
+			zap.String("root", baseOutputDir),
+			zap.Error(werr))
+		return "", fmt.Errorf("path escape rejected: %w", werr)
+	}
+
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create local subfolder %q: %w", outputDir, err)
+	}
+
+	return outputDir, nil
 }
 
 // hasPrefix returns true when s starts with prefix. Inline helper to
