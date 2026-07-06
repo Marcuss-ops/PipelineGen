@@ -3,21 +3,21 @@
 // OVERRIDE ADR 0009 (clips.Handler capability-split) — user override
 // recorded in commit messages; this commit extracts the 3 ingest
 // routes (CreateClip + UpdateClip + UploadVideoClip) into a dedicated
-// *IngestHandler receiver. IngestDeps carries only the 12 deps these
+// *IngestHandler receiver. IngestDeps carries only the 6 deps these
 // methods consume (cluster × deps matrix §4):
 //
 //   - Dispatcher     (CreateClip + UpdateClip + UploadVideoClip — atomic UPSERT + outbox)
 //   - AssetTreeSvc   (CreateClip + UpdateClip + UploadVideoClip — tree upsert)
 //   - JobsSvc        (CreateClip + UploadVideoClip — media.enrich enqueue)
-//   - ClipsRepo (UpdateClip — repoForSource gate)
-//   - ArtifactSvc    (UploadVideoClip — CreateAndVerify / LocalPath)
-//   - DriveAdmin  (UploadVideoClip — group folder + UploadFileWithDescription)
-//   - ProcessRunner  (UploadVideoClip — probeDuration via ffprobe/mediainfo)
-//   - Cfg            (UploadVideoClip — Drive.RootFolder, Storage.TempPath)
-//   - ClipIndexer    (UploadVideoClip — null-check pre media.enrich gate)
-//   - MetaWriter     (UploadVideoClip — null-check pre media.enrich gate)
+//   - ClipsRepo      (UpdateClip — repoForSource gate)
 //   - EnrichUC       (CreateClip + UploadVideoClip — null-check pre media.enrich gate)
+//   - UploadUC       (UploadVideoClip — P1.5 CUTOVER: uploadUC.Execute handles artifact,
+//     Drive, ffprobe, metadata, and indexing internally)
 //   - Log            (all methods)
+//
+// 6 fields removed July 2026 (dead code — ArtifactSvc, DriveAdmin,
+// ProcessRunner, Cfg, ClipIndexer, MetaWriter were assigned but
+// never read after UploadVideoClip migrated to uploadUC.Execute).
 //
 // Pattern B (per-cluster RegisterRoutes with idem fn as parameter):
 // the orchestrator Handler.RegisterRoutes single-calls
@@ -34,7 +34,6 @@ import (
 	"strings"
 	"time"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
@@ -42,11 +41,7 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -70,43 +65,34 @@ import (
 // Moved from clip_create.go (deleted in Split 2, June 2026).
 var errClipDispatcherUnavailable = errors.New("clips API write unavailable: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via clipsDispatcherAdapter)")
 
-// IngestDeps is the constructor bag for IngestHandler. The 12 fields
+// IngestDeps is the constructor bag for IngestHandler. The 7 fields
 // below are exactly the deps the 3 moved methods touch — no more, no
-// less. Cluster ownership follows the matrix in the Step 5 discovery
-// report (June 2026, §4 Ingest cluster).
+// less. 6 fields removed July 2026 (dead code — UploadVideoClip was
+// migrated to uploadUC.Execute which handles artifact staging, Drive
+// folder resolve, ffprobe, metadata, and indexing internally).
 type IngestDeps struct {
-	Dispatcher    appclips.ClipIndexDispatcherPort
-	AssetTreeSvc  *assettree.Service
-	JobsSvc       jobservice.Service
-	ClipsRepo     *assets.ClipsRepository
-	ArtifactSvc   *artifacts.Service
-	DriveAdmin    drive.Admin
-	ProcessRunner appassets.ProcessRunner
-	Cfg           *config.Config
-	ClipIndexer   *clipindexer.Service
-	MetaWriter    *semantic.MetadataWriter
-	EnrichUC      *appclips.EnrichUseCase
-	UploadUC      *appupload.UseCase
-	Log           *zap.Logger
+	Dispatcher   appclips.ClipIndexDispatcherPort
+	AssetTreeSvc *assettree.Service
+	JobsSvc      jobservice.Service
+	ClipsRepo    *assets.ClipsRepository
+	EnrichUC     *appclips.EnrichUseCase
+	UploadUC     *appupload.UseCase
+	Log          *zap.Logger
 }
 
 // IngestHandler owns the 3 ingest routes. Receiver-on-pattern-B:
 // constructed in NewHandler from an IngestDeps shape extracted from
 // the orchestrator Deps.
+// 6 fields removed July 2026 (dead code — UploadVideoClip was migrated
+// to uploadUC.Execute).
 type IngestHandler struct {
-	dispatcher    appclips.ClipIndexDispatcherPort
-	assetTreeSvc  *assettree.Service
-	jobsSvc       jobservice.Service
-	clipsRepo     *assets.ClipsRepository
-	artifactSvc   *artifacts.Service
-	driveAdmin    drive.Admin
-	processRunner appassets.ProcessRunner
-	cfg           *config.Config
-	clipIndexer   *clipindexer.Service
-	metaWriter    *semantic.MetadataWriter
-	enrichUC      *appclips.EnrichUseCase
-	uploadUC      *appupload.UseCase
-	log           *zap.Logger
+	dispatcher   appclips.ClipIndexDispatcherPort
+	assetTreeSvc *assettree.Service
+	jobsSvc      jobservice.Service
+	clipsRepo    *assets.ClipsRepository
+	enrichUC     *appclips.EnrichUseCase
+	uploadUC     *appupload.UseCase
+	log          *zap.Logger
 }
 
 // NewIngestHandler constructs an IngestHandler with the supplied
@@ -115,19 +101,13 @@ type IngestHandler struct {
 // orchestrator Deps shape.
 func NewIngestHandler(d IngestDeps) *IngestHandler {
 	return &IngestHandler{
-		dispatcher:    d.Dispatcher,
-		assetTreeSvc:  d.AssetTreeSvc,
-		jobsSvc:       d.JobsSvc,
-		clipsRepo:     d.ClipsRepo,
-		artifactSvc:   d.ArtifactSvc,
-		driveAdmin:    d.DriveAdmin,
-		processRunner: d.ProcessRunner,
-		cfg:           d.Cfg,
-		clipIndexer:   d.ClipIndexer,
-		metaWriter:    d.MetaWriter,
-		enrichUC:      d.EnrichUC,
-		uploadUC:      d.UploadUC,
-		log:           d.Log,
+		dispatcher:   d.Dispatcher,
+		assetTreeSvc: d.AssetTreeSvc,
+		jobsSvc:      d.JobsSvc,
+		clipsRepo:    d.ClipsRepo,
+		enrichUC:     d.EnrichUC,
+		uploadUC:     d.UploadUC,
+		log:          d.Log,
 	}
 }
 

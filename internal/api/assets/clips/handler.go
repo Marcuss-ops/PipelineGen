@@ -164,20 +164,16 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			SearchSvc:     d.SearchSvc,
 		}),
 		// Split 2 (June 2026, override ADR 0009): Ingest sub-handler.
+		// 6 fields removed July 2026 (dead code — UploadVideoClip was
+		// migrated to uploadUC.Execute).
 		ingest: NewIngestHandler(IngestDeps{
-			Dispatcher:    d.Dispatcher,
-			AssetTreeSvc:  d.AssetTreeSvc,
-			JobsSvc:       d.JobsSvc,
-			ClipsRepo:     d.ClipsRepo,
-			ArtifactSvc:   d.ArtifactSvc,
-			DriveAdmin:    d.DriveAdmin,
-			ProcessRunner: d.ProcessRunner,
-			Cfg:           d.Cfg,
-			ClipIndexer:   d.ClipIndexer,
-			MetaWriter:    d.MetaWriter,
-			EnrichUC:      enrichUC,
-			UploadUC:      d.UploadUC,
-			Log:           d.Log,
+			Dispatcher:   d.Dispatcher,
+			AssetTreeSvc: d.AssetTreeSvc,
+			JobsSvc:      d.JobsSvc,
+			ClipsRepo:    d.ClipsRepo,
+			EnrichUC:     enrichUC,
+			UploadUC:     d.UploadUC,
+			Log:          d.Log,
 		}),
 		// Step 5 Split 2 (June 2026, override ADR 0009): Ops sub-handler
 		// owns 14 routes (5 read + 9 write+idem). The 7 OpsDeps fields
