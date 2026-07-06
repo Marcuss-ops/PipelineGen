@@ -6423,3 +6423,18 @@
     owner_capability: scripts/archcheck
     status: pending
     deadline: 2026-07-25
+- id: PR-DRIVE-UPLOAD-HOTSPOT-CROSSREF
+  owner_capability: architecture
+  status: shipped
+  ship_date: 2026-07-06
+  ship_via: |-
+    Post-wave git-log frequency cross-validation per user spec.
+    `git log --since=90.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30`
+    surfaced 30 hot files on origin/main. After manual cross-validation
+    against all 6 PRs in the DRIVE-UPLOAD-ANALYSIS-2026-07-06 action plan:
+    **0 NEW hotspots**. Tier-3 (UNCOVERED) is empty — no
+    internal/infrastructure/drive/ or internal/application/assets/delivery/
+    files appear in the top 30. The 6-PR action plan is fully comprehensive.
+    Documentation-only closure per godlike/07 slim-schema append-only ratchet.
+  deadline: 2026-08-01
+  exit_signal: true
