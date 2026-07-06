@@ -72,6 +72,21 @@ func (d DriveConfig) resolveSubfolder(parentFolder, specificFolder string) strin
 	return d.ResolveFolder(parentFolder)
 }
 
+// IsUsingMediaRoot reports whether a destination whose nominal root is
+// specificRoot is effectively using the global MediaRootFolder (i.e. the
+// destination has no dedicated root folder configured and falls back to
+// the unified root). Callers use this to decide whether to prepend the
+// destination's namespace (e.g. "clips", "stock") so the unified root
+// stays organized with canonical subdirectories.
+//
+// Example: cfg.Drive.IsUsingMediaRoot(cfg.Drive.ClipsRootFolder) returns
+// true when MediaRootFolder is "ABC" and ClipsRootFolder is "". The
+// publisher should then build the path as "clips/{group}/{video_id}"
+// under the unified root, rather than "{group}/{video_id}" directly.
+func (d DriveConfig) IsUsingMediaRoot(specificRoot string) bool {
+	return strings.TrimSpace(d.MediaRootFolder) != "" && strings.TrimSpace(specificRoot) == ""
+}
+
 // Convenience resolvers — each returns MediaRootFolder if set, else its own root.
 func (d DriveConfig) StockFolder() string     { return d.ResolveFolder(d.StockRootFolder) }
 func (d DriveConfig) ClipsFolder() string     { return d.ResolveFolder(d.ClipsRootFolder) }
