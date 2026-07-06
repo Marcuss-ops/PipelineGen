@@ -364,6 +364,13 @@ func (a *FileLifecycleAdapter) Cleanup(ctx context.Context, req CleanupRequest) 
 		if err != nil {
 			return result, fmt.Errorf("cleanup list (page=%q): %w", pageToken, err)
 		}
+		// PR-DRIVE-LIST-NIL-GUARD (July 2026): guard against the
+		// (nil, nil) edge case in google-api-go-client Files.List
+		// — same guard already present in ListFiles and SearchFiles
+		// (uploader_ops.go) using the canonical ErrDriveListNil sentinel.
+		if res == nil {
+			return result, fmt.Errorf("cleanup: %w", ErrDriveListNil)
+		}
 		for _, f := range res.Files {
 			result.Matched++
 			if err := a.Trash(ctx, f.Id); err != nil {
