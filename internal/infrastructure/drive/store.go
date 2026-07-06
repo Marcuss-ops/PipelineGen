@@ -48,9 +48,12 @@ type StoreOptions struct {
 // callers now route through delivery.Publisher.Publish. The remaining
 // methods (EnsureDriveFolder, ResolveDest) are still used by the
 // images package for folder resolution and path-only destination
-// lookups. The driveUploader field is retained for backward compat
-// with existing callers that still construct Store with an Uploader;
-// a future PR can slim the struct further.
+// lookups via the tree-source-map cache and the root/ images/ videoAI
+// / soundEffects folder IDs populated at construction.
+//
+// P0-2 slim (July 2026): driveUploader was REMOVED from the struct —
+// it was dead weight post-UploadToDrive removal (no remaining method
+// referenced it).
 //
 // Construction now takes all required inputs at the ctor boundary:
 // the 7 historical positionals PLUS `StoreOptions` carrying the
@@ -63,7 +66,6 @@ type StoreOptions struct {
 // prefer NewStoreWithOptions.
 type Store struct {
 	resolver         *Resolver
-	driveUploader    *Uploader
 	rootFolder       string
 	imagesFolder     string
 	videoAIRoot      string
@@ -82,7 +84,6 @@ type Store struct {
 // Arguments:
 //
 //	resolver         — path-only Resolver (for ResolveDest)
-//	driveUploader    — concrete uploader; may be nil in tests
 //	rootFolder       — Drive root folder ID
 //	imagesFolder     — Drive images sub-folder (or "")
 //	videoAIRoot      — Drive video-AI sub-folder (or "")
@@ -90,11 +91,10 @@ type Store struct {
 //	log              — zap logger
 func NewStore(
 	resolver *Resolver,
-	driveUploader *Uploader,
 	rootFolder, imagesFolder, videoAIRoot, soundEffectsRoot string,
 	log *zap.Logger,
 ) *Store {
-	return NewStoreWithOptions(resolver, driveUploader, rootFolder, imagesFolder, videoAIRoot, soundEffectsRoot, log, StoreOptions{})
+	return NewStoreWithOptions(resolver, rootFolder, imagesFolder, videoAIRoot, soundEffectsRoot, log, StoreOptions{})
 }
 
 // NewStoreWithOptions builds a Store with all 7 positionals PLUS the
@@ -104,7 +104,6 @@ func NewStore(
 // explicit at the ctor boundary.
 func NewStoreWithOptions(
 	resolver *Resolver,
-	driveUploader *Uploader,
 	rootFolder, imagesFolder, videoAIRoot, soundEffectsRoot string,
 	log *zap.Logger,
 	opts StoreOptions,
@@ -115,7 +114,6 @@ func NewStoreWithOptions(
 	}
 	return &Store{
 		resolver:         resolver,
-		driveUploader:    driveUploader,
 		rootFolder:       rootFolder,
 		imagesFolder:     imagesFolder,
 		videoAIRoot:      videoAIRoot,

@@ -184,7 +184,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// method; EnsureDriveFolder routes on MediaType alone).
 		mediaStore = drive.NewStore(
 			storageResolver,
-			driveUploader,
 			dests.RootFolder(),
 			dests.ImagesFolder(),
 			"", // VideoAIRoot removed (PR June 2026) — pass empty string
