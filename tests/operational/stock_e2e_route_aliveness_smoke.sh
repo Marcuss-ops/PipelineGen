@@ -103,7 +103,8 @@ HTTP=$(curl -sS -X POST "$BASE/api/stock-pipeline/run" \
     -H "Content-Type: application/json" \
     --data "$PAYLOAD" \
     -o "$OUT_JSON" \
-    -w '%{http_code}')
+    -w '%{http_code}' \
+    --max-time 30)
 
 echo
 echo "POST $BASE/api/stock-pipeline/run (empty payload) -> HTTP $HTTP"

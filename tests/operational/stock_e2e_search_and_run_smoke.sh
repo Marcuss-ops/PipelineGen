@@ -186,7 +186,8 @@ for FOLDER_ID in "${FOLDERS[@]}"; do
         -H "Content-Type: application/json" \
         --data "$PAYLOAD" \
         -o "$OUT_JSON" \
-        -w '%{http_code}')
+        -w '%{http_code}' \
+        --max-time 30)
 
     echo "POST HTTP=$HTTP"
 
@@ -234,7 +235,7 @@ for FOLDER_ID in "${FOLDERS[@]}"; do
     # ---- Poll loop ----
     PASS=false
     for i in $(seq 1 "$MAX_POLL_ITERATIONS"); do
-        POLL_JSON=$(curl -sS "$BASE/api/jobs/$JOB_ID/full" -H "$AUTH")
+        POLL_JSON=$(curl -sS --max-time 10 "$BASE/api/jobs/$JOB_ID/full" -H "$AUTH")
         STATUS=$(echo "$POLL_JSON" | jq -r '.status // empty')
         ERROR=$(echo "$POLL_JSON" | jq -r '.error // empty')
 
