@@ -113,6 +113,12 @@ func (m *PayloadMapper) getVectorForChannel(asset *AssetData, channel string) []
 
 // BuildPayload constructs the Qdrant payload from an AssetData and schema.
 //
+// DEPRECATED (July 2026): zero production consumers — all callers route
+// through AssetToPoint → AssetToIndexDocument → IndexDocumentToPoint
+// (the canonical path with vector validation + SearchTextBuilder).
+// Retained for test backwards-compatibility only. Remove after 2026-08-15
+// if no new consumers emerge.
+//
 // PR 6 (refactor/qdrant-index-document): BuildPayload now delegates to
 // BuildPayloadFromDocument via the IndexDocument airlock so production
 // writes satisfy verdict §11 (OBSERVED provenance). The wire shape is
