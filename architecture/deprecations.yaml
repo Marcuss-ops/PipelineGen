@@ -278,7 +278,7 @@ deprecations:
       Post-CONTRACT metric: zero callers of the translator,
       zero construction of the legacy DTO in the API layer,
       zero X-Deprecation headers on the mediasearch route.
-    migration_phase: CUTOVER
+    migration_phase: BACKFILL
     status: in_progress
     notes: |
       Per godlike/07 §"Migration sequence", this entry is at CUTOVER.
@@ -1760,7 +1760,7 @@ deprecations:
     tracking_issue: "PR-DB-AUDIT-ACTION-5 (commit 5f06d328, July 2026). Zero production callers confirmed via rg audit."
     compatibility_test: "rg '\\.DB\\(\\)' internal/infrastructure/database/sqlite/jobs/ --include='*.go' returns 1 hit (the declaration itself). Zero production callers."
     usage_metric: "Zero production callers. Test fixtures: 2 sites. Admin one-shot commands: 2 sites. Will trend to 0 before CONTRACT."
-    migration_phase: CUTOVER
+    migration_phase: BACKFILL
     status: in_progress
     notes: "Deprecated comment added in commit 5f06d328. Physical removal gates on migrating the 4 test/admin callers to typed repository methods. CHANGELOG entry: PR-DB-AUDIT-ACTION-5."
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
