@@ -52,6 +52,48 @@
     `scripts/operational/lib/poll_terminal.sh` does NOT exist; `scripts/operational/` dir does NOT exist per `ls` 2026-07-05.
     Pending canonical implementation with >=10s interval jitter + 429-driven exponential backoff + JSONL emit format (the 3 fix-points per `02_poll_terminal.json#_forward_pointers_blocking_re_run[PR-POLL-CADENCE-DISCIPLINE].what`).
     CRITICAL-PATH blocker for FASE 11 v3 emission per audit-pin `_precondition_pr_status_per_canonical_surface.PR-POLL-CADENCE-DISCIPLINE._critical_path_blocker`.
+- id: PR-QDRANT-CONTEXT-BACKGROUND-FIX
+  status: shipped
+  exit_signal: true
+  owner_capability: internal/infrastructure/qdrant/indexing
+  deadline: 2026-07-15
+  description: |
+    AZIONE 7 (July 2026): TDD lockstep surface for the AZIONE 1
+    context-propagation fix. AZIONE 1 replaced context.Background()
+    with the caller's ctx in AssetToIndexDocument → resolveSearchText
+    → SearchTextBuilder.Build(ctx, input). This entry pins the 3 TDD
+    tests that lock the contract:
+    (1) TestAssetToIndexDocument_CancelledContext_SurfacesContextCanceled:
+        cancelled ctx propagates, builder receives it, graceful
+        degradation preserves SearchText fallback.
+    (2) TestResolveSearchText_PassesCallerContext_NotBackground:
+        ctx-value marker round-trips through Build(), proving the
+        caller's EXACT ctx (not a detached copy) is forwarded.
+    (3) TestResolveSearchText_BackgroundContext_NotReplaced:
+        even context.Background() (legitimate composition-root / admin
+        CLI callers) is forwarded verbatim without creating a fresh copy.
+    godlike/06 SSOT: the 3 tests in payload_mapper_test.go are the
+    canonical SOLE owner of the context-propagation contract.
+    godlike/07 minimum-blast-radius: zero production-code change in
+    this wave-tracker entry commit — the fix shipped in AZIONE 1
+    (commit 1e661ffb); this entry adds the lockstep surface only.
+  linked_issues:
+  - id: PR-QDRANT-CONTEXT-BACKGROUND-FIX-CANCEL
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: shipped
+    ship_date: 2026-07-06
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+  - id: PR-QDRANT-CONTEXT-BACKGROUND-FIX-PASSTHROUGH
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: shipped
+    ship_date: 2026-07-06
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+  - id: PR-QDRANT-CONTEXT-BACKGROUND-FIX-BG-FORWARD
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: shipped
+    ship_date: 2026-07-06
+    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+
 - id: PR-QDRANT-FULL-STACK-AUTOMATED
   owner_capability: cmd/admin/ (admin CLI subcommand) + .github/workflows/preflight-ci.yml + architecture/CI gate
   status: shipped

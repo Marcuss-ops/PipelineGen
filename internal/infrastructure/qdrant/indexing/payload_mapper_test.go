@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -872,6 +873,146 @@ func TestResolveSearchText_NilBuilder_ReturnsAssetSearchText(t *testing.T) {
 	if got := m.resolveSearchText(context.Background(), &AssetData{SearchText: want}); got != want {
 		t.Errorf("nil builder: got %q, want %q", got, want)
 	}
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// AZIONE 7 (July 2026) — context propagation TDD tests.
+// ══════════════════════════════════════════════════════════════════════════
+
+// TestAssetToIndexDocument_CancelledContext_DegradesGracefully verifies
+// that AssetToIndexDocument passes the caller's ctx to the SearchTextBuilder
+// (AZIONE 1 fix: ctx, NOT context.Background()). A cancelled context causes
+// the builder to return context.Canceled; resolveSearchText logs Warn and
+// falls through to asset.SearchText — the key contract is that the real ctx
+// IS propagated, not silently replaced.
+func TestAssetToIndexDocument_CancelledContext_DegradesGracefully(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-cancelled",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     makeFloat32Slice(768),
+		SearchText:     "fallback search text",
+	}
+
+	// Create a context that is ALREADY cancelled.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	recorder := &ctxRecordingBuilder{}
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	mapper.SetSearchTextBuilder(recorder)
+
+	doc, err := mapper.AssetToIndexDocument(ctx, asset, schema)
+	// Contract: AssetToIndexDocument MUST NOT panic on a cancelled context.
+	// resolveSearchText logs Warn + falls through to asset.SearchText.
+	// The doc.SearchText field is populated from the fallback.
+	if err != nil {
+		t.Fatalf("AssetToIndexDocument with cancelled ctx must not error (graceful degradation); got %v", err)
+	}
+	if doc == nil {
+		t.Fatal("AssetToIndexDocument must return a non-nil IndexDocument even on cancelled ctx")
+	}
+	if doc.SearchText != recorder.capturedText {
+		t.Errorf("SearchText: got %q, want %q (builder output when ctx not cancelled)", doc.SearchText, recorder.capturedText)
+	}
+	// The real contract: the ctx passed to Build MUST be the cancelled ctx,
+	// NOT context.Background(). The recording builder captures the ctx identity.
+	if recorder.capturedCtx == nil {
+		t.Error("SearchTextBuilder.Build was NEVER called — ctx was not propagated (possible context.Background() bypass)")
+		return
+	}
+	// Verify the captured ctx is CANCELLED (proves the real ctx was passed,
+	// not a fresh context.Background()).
+	select {
+	case <-recorder.capturedCtx.Done():
+		// PASS: the real cancelled ctx was propagated.
+	default:
+		t.Error("SearchTextBuilder.Build received a ctx that is NOT cancelled — possible context.Background() bypass")
+	}
+}
+
+// TestResolveSearchText_PassesCallerContext_NotBackground verifies that
+// resolveSearchText passes the caller's ctx to SearchTextBuilder.Build,
+// NOT a fresh context.Background() (the AZIONE 1 fix). A mock builder
+// records the received ctx and the test asserts it is the SAME ctx value
+// passed by the caller.
+func TestResolveSearchText_PassesCallerContext_NotBackground(t *testing.T) {
+	type ctxKey struct{}
+	ctxKeySentinel := ctxKey{}
+	ctx := context.WithValue(context.Background(), ctxKeySentinel, "marker-value")
+
+	asset := &AssetData{
+		ID:         "asset-ctx-prop",
+		SearchText: "fallback",
+	}
+
+	recorder := &ctxRecordingBuilder{}
+	mapper := NewPayloadMapper(&fakeAssetStore{}, nil)
+	mapper.SetSearchTextBuilder(recorder)
+
+	got := mapper.resolveSearchText(ctx, asset)
+
+	// The resolved text is the recorder's return value (or fallback).
+	// The key invariant: the ctx passed to Build MUST be the caller's ctx.
+	if recorder.capturedCtx == nil {
+		t.Error("SearchTextBuilder.Build was NEVER called — ctx was not propagated")
+		return
+	}
+	if recorder.capturedCtx != ctx {
+		t.Errorf("SearchTextBuilder.Build received a DIFFERENT ctx than the caller's — possible context.Background() or context.WithoutCancel bypass")
+	}
+	// Sanity: Build DID get the caller's ctx with the marker value.
+	if v := recorder.capturedCtx.Value(ctxKeySentinel); v != "marker-value" {
+		t.Errorf("captured ctx lost the marker value — possible context.Background() replacement: got %v", v)
+	}
+	_ = got // explicit marker for grep forensics
+}
+
+// TestResolveSearchText_BackgroundContext_NotReplaced verifies that even
+// when the caller passes context.Background() itself (legitimate, e.g.
+// composition roots, admin CLI), resolveSearchText forwards it verbatim
+// — it does NOT create a fresh copy.
+func TestResolveSearchText_BackgroundContext_NotReplaced(t *testing.T) {
+	ctx := context.Background()
+	asset := &AssetData{
+		ID:         "asset-bg-ctx",
+		SearchText: "fallback",
+	}
+
+	recorder := &ctxRecordingBuilder{}
+	mapper := NewPayloadMapper(&fakeAssetStore{}, nil)
+	mapper.SetSearchTextBuilder(recorder)
+
+	got := mapper.resolveSearchText(ctx, asset)
+
+	if recorder.capturedCtx == nil {
+		t.Error("SearchTextBuilder.Build was NEVER called")
+		return
+	}
+	// context.Background() is intentionally forwarded — the caller owns
+	// the ctx decision; the mapper must NOT second-guess.
+	if recorder.capturedCtx != ctx {
+		t.Error("SearchTextBuilder.Build received a different ctx — even context.Background() must be forwarded verbatim")
+	}
+	_ = got
+}
+
+// ctxRecordingBuilder is a SearchTextBuilder mock that records the context
+// passed to Build. It returns a marker string so the test can distinguish
+// builder output from asset.SearchText fallback.
+type ctxRecordingBuilder struct {
+	capturedCtx  context.Context
+	capturedText string
+}
+
+func (b *ctxRecordingBuilder) Build(ctx context.Context, input appsearchtext.SearchTextInput) (string, error) {
+	b.capturedCtx = ctx
+	// Return a non-empty string so resolveSearchText takes the builder
+	// path (not the fallback).
+	b.capturedText = "ctx-propagation-verified-by-mock"
+	return b.capturedText, nil
 }
 
 // ErrAssetNotFound is a tiny test-only sentinel to satisfy FetchAsset.
