@@ -63,11 +63,5 @@ func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 	r.POST("/batch-generate", h.GenerateBatch)
 	r.POST("/animate", h.Animate)
-	// surface-2 (July 2026): POST /webhook/remote retired. The remote
-	// worker ingest pipeline collapsed into the canonical async job
-	// system (job type image.generate.google) post-NVIDIA-cutover; the
-	// legacy webhook handler that bypassed the workers and went
-	// straight to ingest.Service.IngestImage is gone. See
-	// middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404
-	// for the audit-pin test that locks the retirement.
+	// POST /webhook/remote retired; see docs/archive/image-legacy.md §1
 }
