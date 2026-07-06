@@ -1,19 +1,18 @@
-// Package jobs — enqueue_service.go: Enqueue + idempotency pipeline.
+// Package jobs — enqueue_service.go: Enqueue orchestrator + idempotency pipeline.
 //
 // PR-GODOBJ-6 (July 2026): mechanically extracted from service.go
-// per the god-object decomposition plan. Zero behavior changes.
+// per the god-object decomposition plan.
 //
-// PR-jobs-retry-contract (July 2026): tighten the *Service*-side
-// MaxRetries resolution path to a canonical typed lookup via
-// Registry.GetMaxRetries(jobType). Removed the pre-PR legacy
-// hard-coded 3-retry fallback for unregistered types; the strict
-// typed-error contract propagates ErrMaxRetriesUnknown to the caller.
-// Also replaced the pre-PR strings.Contains(err.Error(), "UNIQUE
-// constraint") idempotency-rescue probe with a typed sqlite3.Error
-// probe (`errors.As(&sqliteErr)` +
-// `sqliteErr.ExtendedCode==sqlite3.ErrConstraintUnique`) so a future
-// driver string change does not silently disable the rescue path
-// (godlike/07 NO-FAKE-AVAILABILITY).
+// 2026-07-06 (Phase 1 decomposition): further split per Pattern 5:
+//   enqueue_validate.go — validateEnqueueRequest + MaxPayloadSize (input validation)
+//   enqueue_retry.go    — resolveMaxRetries (typed lookup contract)
+//   enqueue_id.go       — generateJobID (identity)
+//
+// Zero behavior changes. Same-package visibility preserves all caller paths.
+//
+// PR-jobs-retry-contract (July 2026): the typed sqlite3.Error UNIQUE-constraint
+// rescue probe replaces the pre-PR strings.Contains("UNIQUE constraint")
+// heuristic (godlike/07 driver-invariant typed-error contract).
 package jobs
 
 import (
@@ -27,69 +26,8 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
-
-// MaxPayloadSize is the maximum allowed size for a serialized job payload in bytes.
-const MaxPayloadSize = 1 << 20 // 1 MB
-
-// resolveMaxRetries encodes the strict typed MaxRetries fallback
-// semantic in a single testable helper. Enqueue() delegates to this
-// helper so the logic is decoupled from repo/dispatcher concerns
-// (test fixtures only need typed Service+Registry wiring).
-//
-// Three-way semantics, in priority order:
-//
-//  1. currentMR < 0  → 0      (explicit "no retries" sentinel —
-//     pre-Issue-4 behavior preserved verbatim).
-//
-//  2. currentMR > 0  → currentMR  (caller pre-set value preserved
-//     verbatim; registry is the fallback, not an override).
-//
-//  3. currentMR == 0 → registry.GetMaxRetries(jobType) (strict
-//     typed lookup; the registry MUST already be attached at
-//     construction time per the 4-arg NewService fail-closed
-//     constructor). Unknown jobTypes return ErrMaxRetriesUnknown —
-//     the caller (Enqueue) propagates the error so a missing
-//     registration is loud, NOT silenced by a legacy 3-retry
-//     fallback (PR-jobs-retry-contract removes the legacy
-//     `return 3` line per godlike/07 NO-FAKE-AVAILABILITY).
-//
-// godlike/06 SSOT: this strict lookup supersedes the pre-PR
-// hasRegistry() guard + the legacy `return 3` line. Removing those
-// shapes eliminates two silent-success surfaces in one sweep.
-func (s *Service) resolveMaxRetries(jobType string, currentMR int) (int, error) {
-	if currentMR < 0 {
-		return 0, nil
-	}
-	if currentMR > 0 {
-		return currentMR, nil
-	}
-	// currentMR == 0 — single typed lookup.
-	if s.registry == nil {
-		// Defense-in-depth — should be unreachable given 4-arg NewService.
-		return 0, ErrRegistryRequired
-	}
-	return s.registry.GetMaxRetries(jobType)
-}
-
-// validateEnqueueRequest checks the domain EnqueueRequest for common errors.
-func validateEnqueueRequest(req *job.EnqueueRequest) error {
-	if req == nil {
-		return fmt.Errorf("enqueue request is nil")
-	}
-	if req.Type == "" {
-		return fmt.Errorf("job type is required")
-	}
-	if req.Priority < 0 {
-		return fmt.Errorf("priority must be non-negative, got %d", req.Priority)
-	}
-	if req.MaxRetries < -1 {
-		return fmt.Errorf("max_retries must be >= -1, got %d", req.MaxRetries)
-	}
-	return nil
-}
 
 // Enqueue enqueues a job from a domain request. Implements job.Service.
 func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
@@ -245,8 +183,4 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		zap.String("correlation_id", j.CorrelationID),
 	)
 	return j, nil
-}
-
-func generateJobID() string {
-	return fmt.Sprintf("job_%d_%s", time.Now().UnixNano(), hashutil.RandomString(8))
 }
