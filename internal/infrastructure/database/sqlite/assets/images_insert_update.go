@@ -237,3 +237,28 @@ func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, emb
 	`, status, assetID)
 	return err
 }
+
+// ── Subject helpers ─────────────────────────────────────────────────────────
+
+// GetSubjectBySlugOrAlias recupera un soggetto tramite ID (slug).
+func (r *ImagesRepository) GetSubjectBySlugOrAlias(ctx context.Context, id string) (*asset.Subject, error) {
+	var s asset.Subject
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, name, COALESCE(description, ''), created_at, updated_at
+		FROM subjects WHERE id = ?
+	`, id).Scan(&s.Slug, &s.DisplayName, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// CreateSubject crea un nuovo soggetto.
+func (r *ImagesRepository) CreateSubject(ctx context.Context, s *asset.Subject) (int64, error) {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO subjects (id, name, description, metadata_json)
+		VALUES (?, ?, ?, ?)
+	`, s.Slug, s.DisplayName, s.Notes, "{}")
+	return 0, err
+}
