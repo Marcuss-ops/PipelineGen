@@ -15,6 +15,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -166,7 +167,7 @@ func buildChunkedStockManifest(workflowID, jobID, fp string, chunks []ChunkState
 		for _, c := range chunks {
 			manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
 				ID:        c.ArtifactID,
-				Kind:      job.ArtifactKindClipBindings, // canonical video variant
+				Kind:      string(finalization.KindVideo), // canonical video variant
 				Filename:  c.Filename,
 				MIMEType:  "video/mp4",
 				Path:      c.LocalPath,
