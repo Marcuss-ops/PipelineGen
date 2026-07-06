@@ -102,6 +102,14 @@ type ExistingClip struct {
 	Speakers        []string `json:"speakers,omitempty"`
 	MentionedPeople []string `json:"mentioned_people,omitempty"`
 	Hook            string   `json:"hook,omitempty"`
+
+	// DoD #8 (July 2026): Drive folder metadata surfaced to API callers.
+	// Forward-pointer PR-EXISTINGCLIP-DB-POPULATE: the SQLite adapter
+	// (ClipStorePort.GetClip / FindExisting) must read these columns
+	// from media_assets to populate dedup-check responses. Until then,
+	// dedup hits return empty strings — honest limitation (godlike/07).
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
+	DrivePath     string `json:"drive_path,omitempty"`
 }
 
 // ClipStorePort persists and queries clip metadata.

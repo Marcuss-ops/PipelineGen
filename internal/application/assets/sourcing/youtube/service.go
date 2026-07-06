@@ -186,7 +186,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	related := s.findRelated(ctx, md.Name, cmd.Category, cmd.Tags)
 
 	// ── 10. Build result ────────────────────────────────────────────
-	return s.buildResult(md, clipID, fileHash, driveFilename, fetched.LocalPath, uploadResult, deliveryStatus, indexed, transcript, detectedLang, related, cmd), nil
+	return s.buildResult(md, clipID, fileHash, driveFilename, fetched.LocalPath, uploadResult, deliveryStatus, indexed, transcript, detectedLang, related, cmd, targetFolderID, group, videoSlug), nil
 }
 
 // ── Adapters (use case port ← service port) ──────────────────────────────────
@@ -316,6 +316,10 @@ func (s *Service) dedupCheck(ctx context.Context, cmd sourcing.RegisterClipComma
 		IndexingStatus: IndexStatus(indexed),
 		Message:        "clip already registered for this YouTube video",
 		DeliveryStatus: publishStatus,
+		// DoD #8 (July 2026): dedup-hit already has the canonical
+		// folder metadata from the prior registration.
+		DriveFolderID: existingClip.DriveFolderID,
+		DrivePath:     existingClip.DrivePath,
 	}
 }
 
@@ -476,7 +480,7 @@ func (s *Service) findRelated(ctx context.Context, name, category string, tags [
 }
 
 // buildResult assembles the final RegisterClipResult.
-func (s *Service) buildResult(md *usecase.ResolvedMetadata, clipID, fileHash, driveFilename, localPath string, uploadResult *sourcing.DriveUploadResult, deliveryStatus asset.AssetPublishStatus, indexed bool, transcript, detectedLang string, related map[string]any, cmd sourcing.RegisterClipCommand) *sourcing.RegisterClipResult {
+func (s *Service) buildResult(md *usecase.ResolvedMetadata, clipID, fileHash, driveFilename, localPath string, uploadResult *sourcing.DriveUploadResult, deliveryStatus asset.AssetPublishStatus, indexed bool, transcript, detectedLang string, related map[string]any, cmd sourcing.RegisterClipCommand, targetFolderID, group, videoSlug string) *sourcing.RegisterClipResult {
 	res := &sourcing.RegisterClipResult{
 		OK: true, ClipID: clipID, VideoID: md.VideoID,
 		Name: md.Name, Filename: driveFilename, DurationSec: md.Duration,
@@ -489,6 +493,14 @@ func (s *Service) buildResult(md *usecase.ResolvedMetadata, clipID, fileHash, dr
 	if uploadResult != nil {
 		res.DriveLink = uploadResult.WebViewLink
 		res.DriveFileID = uploadResult.FileID
+	}
+	// DoD #8 (July 2026): populate Drive folder metadata so API
+	// callers see where the asset landed on Drive without re-querying
+	// media_assets. targetFolderID comes from the Publisher (PublishClipToDrive
+	// returns the resolved folder_id).
+	res.DriveFolderID = targetFolderID
+	if targetFolderID != "" && group != "" && videoSlug != "" {
+		res.DrivePath = fmt.Sprintf("clips/%s/%s", group, videoSlug)
 	}
 	res.DeliveryStatus = deliveryStatus
 	if deliveryStatus == asset.AssetPublishFailed {
