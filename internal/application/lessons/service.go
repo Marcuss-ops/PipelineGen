@@ -9,10 +9,10 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -23,7 +23,7 @@ type Service struct {
 	cfg        *LessonsConfig
 	generator  *ollama.Generator
 	imgService *imgservice.Service
-	docClient  drive.DocClient
+	docClient  delivery.DocPublisher
 	log        *zap.Logger
 }
 
@@ -33,7 +33,7 @@ func NewService(
 	cfg *LessonsConfig,
 	generator *ollama.Generator,
 	imgService *imgservice.Service,
-	docClient drive.DocClient,
+	docClient delivery.DocPublisher,
 	log *zap.Logger,
 ) *Service {
 	if cfg == nil {
