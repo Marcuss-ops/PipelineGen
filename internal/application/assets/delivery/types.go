@@ -138,6 +138,19 @@ type PublishRequest struct {
 	// Language is an optional BCP-47 language tag.
 	Language string `json:"language,omitempty"`
 
+	// Provider (SEMANTIC-LOCATION-API-2026-07-06 Wave 1) categorises
+	// the upstream source (e.g. "pexels", "pixabay", "wikipedia").
+	// Optional at PublishRequest level; required by StockPath in Wave 4
+	// stock migration. Carries to Qdrant payload in Wave 10.
+	Provider string `json:"provider,omitempty"`
+
+	// Category (SEMANTIC-LOCATION-API-2026-07-06 Wave 1) groups assets
+	// under a logical taxonomy bucket (e.g. "Boxe", "Personaggi").
+	// Optional at PublishRequest level; required by StockPath / Stock
+	// surface in Wave 4 stock migration. Carries to Qdrant payload in
+	// Wave 10.
+	Category string `json:"category,omitempty"`
+
 	// ConflictPolicy controls duplicate-file behaviour for this call.
 	//
 	// Semantics (P1.1, July 2026):
