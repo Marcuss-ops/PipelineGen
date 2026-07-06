@@ -188,7 +188,13 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 	if cmd.FolderID == "" && resolved != "" {
 		cmd.FolderID = resolved
 	} else if cmd.FolderID != "" && !cmd.Location.IsEmpty() && s.log != nil {
-		s.log.Warn(
+		// Round-2 SHOULD-FIX (2026-07-06, debounced): the precedence
+		// override fired Warn per call, spamming hot-path request
+		// streams. Down-level to Debug per godlike/07 minimum-blast-radius
+		// (stateless, no sync.Once map, no atomic counter) so operators
+		// running --log-level=info see no signal but log-level=debug
+		// captures the structural override context for forensics.
+		s.log.Debug(
 			"sourcing: cmd.FolderID takes precedence over cmd.Location (legacy precedence preserved per F3 / PR-RESOLVER-PORT-EXTRACT)",
 			"folder_id", cmd.FolderID,
 			"category", cmd.Location.Category,

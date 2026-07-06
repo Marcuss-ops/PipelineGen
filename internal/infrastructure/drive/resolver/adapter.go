@@ -122,6 +122,14 @@ func NewAdapter(rootFolder string, log resolverLogger) (*Adapter, error) {
 			)
 		}
 	}
+	// Round-2 SHOULD-FIX (2026-07-06): nil-logger fail-closed default.
+	// Without this, a nil log into a non-nil receiver swallows subsequent
+	// a.log.Info/Warn/Error/Debug calls (dead-call hazard). Symmetric
+	// nil-defense with WithLogger below so wire-at-construction and
+	// wire-at-setter yield the same fail-closed surface.
+	if log == nil {
+		log = nopResolverLogger{}
+	}
 	return &Adapter{
 		rootFolder: rootFolder,
 		log:        log,
@@ -129,9 +137,19 @@ func NewAdapter(rootFolder string, log resolverLogger) (*Adapter, error) {
 }
 
 // WithLogger overrides the adapter's logger (fluent setter for tests).
+//
+// Round-2 SHOULD-FIX (2026-07-06): nil-logger fail-closed default. A
+// nil-resolverLog passed in is replaced with nopResolverLogger{} so
+// subsequent a.log.Warn / .Info / .Error calls do not silently dead-
+// panic on Go's nil-interface receiver. Symmetric with NewAdapter's
+// nil-defense (godlike/06 SSOT: same fail-closed contract on both
+// construction paths).
 func (a *Adapter) WithLogger(log resolverLogger) *Adapter {
 	if a == nil {
 		return nil
+	}
+	if log == nil {
+		log = nopResolverLogger{}
 	}
 	a.log = log
 	return a
@@ -228,6 +246,34 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 		)
 	}
 
+	// Round-2 SHOULD-FIX (2026-07-06): soft-ignored metadata probe.
+	// Fields retained for downstream Qdrant indexing but OFF the
+	// per-destination Drive subpath mapping emit a per-call Warn
+	// log (via a.log.Warn) rather than hard-rejecting as
+	// ErrLocationResolverIncompatibleFields. godlike/06 SSOT:
+	// BuildPublishRequest in delivery/mapper.go also ignores these
+	// fields without raising typed-sentinels — the resolver soft-ignores
+	// to mirror that semantic (warn-only observability, no caller
+	// rejection).
+	//
+	// godlike/07 typed-error contract: NONE of the soft-ignored fields
+	// can flip the typed-sentinel returned by Resolve. The hard-
+	// rejection list (style / provider / subject / name) is unchanged
+	// for Voiceover/Book/Script destinations per the SHOULD-FIX scope.
+	var softIgnoredFields []string
+	for _, f := range softIgnoredFieldProbe(dest) {
+		if f == "category" && loc.Category != "" {
+			softIgnoredFields = append(softIgnoredFields, "category")
+		}
+	}
+	if len(softIgnoredFields) > 0 {
+		a.log.Warn(
+			"resolver: soft-ignoring off-channel metadata fields (carried downstream for indexing, not used in folder-id)",
+			"destination", string(dest),
+			"soft_ignored_fields", strings.Join(softIgnoredFields, ","),
+		)
+	}
+
 	// Per-destination segment-shape mapping (mirrors BuildPublishRequest
 	// in delivery/mapper.go). The table-driven form keeps the two
 	// canonical surfaces synchronize-able in future extensions.
@@ -283,8 +329,21 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 
 // incompatibleFieldProbe returns the per-destination field labels
 // that the resolver REFUSES to consume (because they are not used by
-// BuildPublishRequest's mapping). Mirrors the per-destination case
-// labels in delivery/mapper.go.
+// BuildPublishRequest's mapping AND are not downstream-indexing
+// metadata). Mirrors the per-destination case labels in
+// delivery/mapper.go.
+//
+// Round-2 SHOULD-FIX (2026-07-06, category softened): "category" was
+// REMOVED from the Voiceover/Book/Script hard-reject list because
+// BuildPublishRequest ignores it silently for project-language
+// destinations AND it carries "metadata for downstream Qdrant indexing"
+// semantics per location.go godoc. The resolver now soft-warns instead
+// of hard-rejecting (see softIgnoredFieldProbe below).
+//
+// godlike/07 typed-error contract: the typed sentinel
+// ErrLocationResolverIncompatibleFields fires ONLY for these
+// hard-rejection fields. A future drift that removes a hard-reject
+// field MUST also update the corresponding TDD test surface.
 func incompatibleFieldProbe(dest delivery.DestinationKey) []string {
 	switch dest {
 	case delivery.DestinationImage,
@@ -297,7 +356,35 @@ func incompatibleFieldProbe(dest delivery.DestinationKey) []string {
 	case delivery.DestinationVoiceover,
 		delivery.DestinationBook,
 		delivery.DestinationScript:
-		return []string{"style", "provider", "category", "subject", "name"}
+		// style/provider/subject/name are TRULY off-channel for project-
+		// language destinations — not consumed by BuildPublishRequest AND
+		// not metadata for downstream indexing. Hard-rejection preserves
+		// godlike/07 typed-error contract; "category" moved to softIgnored.
+		return []string{"style", "provider", "subject", "name"}
+	default:
+		return nil
+	}
+}
+
+// softIgnoredFieldProbe returns per-destination fields that the
+// resolver does NOT use in the Drive folder-id but that callers may
+// legitimately set (e.g. Category as Qdrant-indexing metadata for
+// Voiceover tracks). The corresponding Resolve pass emits a per-call
+// Warn log via a.log.Warn but does NOT raise the typed sentinel —
+// the resolver proceeds with the canonical segment-shape mapping.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this probe lives ONLY
+// here. Future CUTOVER C9 (Drive.EnsureFolder wiring) extends this
+// probe in lockstep with location.go field additions; godlike/07
+// no-fake-availability guarantees the warn-log remains a real
+// observable signal (not a swallowed dead-call) by the WithLogger
+// + NewAdapter nil-default nopResolverLogger{} guard.
+func softIgnoredFieldProbe(dest delivery.DestinationKey) []string {
+	switch dest {
+	case delivery.DestinationVoiceover,
+		delivery.DestinationBook,
+		delivery.DestinationScript:
+		return []string{"category"}
 	default:
 		return nil
 	}
