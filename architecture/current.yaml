@@ -6580,3 +6580,102 @@
       Split generated/provider_registry.go (277 LoC) → 5 files:
       types.go / errors.go / provider.go /
       provider_google_slides.go / provider_registry.go.
+
+- id: IMAGES-LEGACY-CLEANUP-2026-07-06
+  status: shipped
+  exit_signal: true
+  ship_sha: 2bdb619a
+  ship_date: 2026-07-06
+  owner_capability: internal/api/images (legacy handlers) + internal/api/fullimages (CUTOVER canonical package) + internal/application/images
+  deadline: 2026-08-22
+  description: |
+    IMAGES-LEGACY-CLEANUP-2026-07-06 wave closure (6/6 PR shipped, 2026-07-06).
+    The 6 per-PR closures retire the legacy image-handler surfaces to canonical
+    packages per godlike/07 zero-legacy discipline. Each PR is a per-file
+    auto-sufficient closure (mirrors PR-CHROME-PROVIDER-SPLIT +
+    PR-WIRE-ASSETS-CAPABILITY-SPLIT precedent). Direct-to-main per AGENTS.md
+    Git-Lesson-2 (no branches, no --force).
+
+    6 per-PR closures (slim-shape: id / owner_capability / status / ship_sha / ship_date / phase):
+
+    1. PR-IMG-LEGACY-1 (ship_sha 471c5efa, CUTOVER, 2026-07-06): retire /api/images/legacy/* + /api/images/experimental/* surfaces; canonical internal/api/images/legacy_handlers.go removed; routes return 410 Gone with Sunset header. owner: internal/api/images.
+
+    2. PR-IMG-LEGACY-2 (ship_sha ed8c859e, BACKFILL, 2026-07-06): migrate FullImagesHandler.request canonical wire-shape from internal/api/images/handler_full.go to the new internal/api/fullimages/ handler.go (forward-pointer to PR-IMG-LEGACY-6). owner: internal/api/images + internal/api/fullimages (CUTOVER).
+
+    3. PR-IMG-LEGACY-3 (ship_sha 3e2090f9, CUTOVER, 2026-07-06): retire legacy generated_styles_list handler in internal/api/images/styles.go; canonical surfaces migrated to internal/api/images/territory_handlers.go. owner: internal/api/images.
+
+    4. PR-IMG-LEGACY-4 (ship_sha 25d58e51, CUTOVER, 2026-07-06): retire legacy soundeffect-images surfaces from internal/api/images; canonical routing migrated to internal/api/soundeffect/. owner: internal/api/images + internal/api/soundeffect.
+
+    5. PR-IMG-LEGACY-5 (ship_sha 0793ce91, CUTOVER, 2026-07-06): retire legacy animate handler in internal/api/images/animate.go; canonical surface migrated to internal/api/images/animate_handlers.go (capability-split). owner: internal/api/images.
+
+    6. PR-IMG-LEGACY-6 (ship_sha 2bdb619a, CUTOVER, 2026-07-06): move FullImagesHandler to canonical /api/fullimages package; composition root updated (cfg gate + enabledFunc); imagesapi import removed; ffmpeg.NewFromConfig reuse forward-pointer documented. owner: internal/api/fullimages (CUTOVER) + internal/app/composition.
+
+    godlike/06 SSOT: each of the 6 per-PR closures is the canonical SOLE owner of its retired surface; no duplicate routing exists post-wave.
+
+    godlike/07 NO-FAKE-AVAILABILITY: all retired routes return 410 Gone + Sunset header (not 404; not silent-success); composition-root gates fail-closed at boot (cfg == nil, bundle == nil, ImageService == nil, FfmpegProc == nil, Publisher == nil, ImagesDir == "").
+
+    3-surface lockstep: architecture/current.yaml#IMAGES-LEGACY-CLEANUP-2026-07-06 (this entry) = CHANGELOG.md ## Unreleased > ### Documentation mirror = AGENTS.md ## Recent cross-cutting closures mirror.
+
+    Pre-existing 5-item voiceover + app build-issue carry-forward unchanged (NOT regressions of any closure).
+  linked_issues:
+  - id: PR-IMG-LEGACY-1
+    owner_capability: internal/api/images
+    status: shipped
+    ship_sha: 471c5efa
+    ship_date: 2026-07-06
+    deadline: 2026-07-15
+    phase: CUTOVER
+  - id: PR-IMG-LEGACY-2
+    owner_capability: internal/api/images + internal/api/fullimages
+    status: shipped
+    ship_sha: ed8c859e
+    ship_date: 2026-07-06
+    deadline: 2026-07-15
+    phase: BACKFILL
+  - id: PR-IMG-LEGACY-3
+    owner_capability: internal/api/images
+    status: shipped
+    ship_sha: 3e2090f9
+    ship_date: 2026-07-06
+    deadline: 2026-07-15
+    phase: CUTOVER
+  - id: PR-IMG-LEGACY-4
+    owner_capability: internal/api/images + internal/api/soundeffect
+    status: shipped
+    ship_sha: 25d58e51
+    ship_date: 2026-07-06
+    deadline: 2026-07-15
+    phase: CUTOVER
+  - id: PR-IMG-LEGACY-5
+    owner_capability: internal/api/images
+    status: shipped
+    ship_sha: 0793ce91
+    ship_date: 2026-07-06
+    deadline: 2026-07-22
+    phase: CUTOVER
+  - id: PR-IMG-LEGACY-6
+    owner_capability: internal/api/fullimages + internal/app/composition
+    status: shipped
+    ship_sha: 2bdb619a
+    ship_date: 2026-07-06
+    deadline: 2026-08-22
+    phase: CUTOVER
+  - id: PR-IMG-LEGACY-HOTSPOT-CROSSREF
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-06
+    ship_via: |
+      Post-wave git-log frequency cross-validation per user spec.
+      `git log --since=90.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30`
+      surfaced the top-30 hot files in the last 90 days. After manual
+      cross-validation against all 6 PR-IMG-LEGACY-* closures: **0 NEW
+      hotspots**. No internal/api/images/legacy/* or internal/api/images/experimental/*
+      or internal/api/images/handler_full.go file appears in the top 30.
+      All 14 candidate files are either expected composition-root churn
+      (composition.go, registry_internal_modules.go, build_bundles_*.go),
+      3-surface lockstep mirrors (CHANGELOG.md, AGENTS.md, architecture/current.yaml),
+      or already covered by other wave-tracker entries
+      (IMAGES-TERRITORY-SPLIT-2026-07-06 + LONG-FILES-DECOMPOSITION-2026-07-06
+      + GODOBJ-2026-07-03). Documentation-only closure per godlike/07
+      slim-schema append-only ratchet.
+    deadline: 2026-08-01
