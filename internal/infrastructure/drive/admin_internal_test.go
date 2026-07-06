@@ -3,6 +3,7 @@ package drive
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -63,5 +64,68 @@ func TestAdmin_GetOrCreateFolder_NoDuplicate_OnLookupError(t *testing.T) {
 	// is what callers see, NOT a derivative Create error).
 	if !errors.Is(err, lookupErr) {
 		t.Fatalf("expected errors.Is(err, lookupErr) = true (proving lookup err propagated verbatim), got: %v", err)
+	}
+}
+
+// TestErrAdminAdapterUploaderNil_TypedErrorContract pins the godlike/07
+// typed-error contract for the PR-ADAPTER-NIL-GUARD sentinel + the
+// canonical wrap helper WrapDriveAdminError (admin.go:67).
+//
+// Why this matters: a future refactor that silently drops the %w wrap
+// (e.g., switches to %s formatting) breaks the composition-root
+// fail-closed pathway without any test catching the regression —
+// callers would receive a string-only error and lose the errors.Is
+// probe surface. The fix is to make the test invoke the canonical wrap
+// helper (WrapDriveAdminError) rather than re-declare the wrap shape
+// inline. Drift in WrapDriveAdminError's body surfaces as a test
+// failure here.
+//
+// Four checks:
+//
+//  1. Sentinel is non-nil (compile-time guard already var-resolves the
+//     declaration; this asserts runtime reachability).
+//
+//  2. Self errors.Is — sanity baseline (same pointer trivially probes).
+//
+//  3. Load-bearing probe: WrapDriveAdminError(ErrAdminAdapterUploaderNil)
+//     MUST preserve the sentinel in its %w chain so callers can probe
+//     via errors.Is. This is the SAME helper the production call site
+//     (wire_assets.go) invokes — drift in either branch surfaces here.
+//
+//  4. Negative control: a %s (string-formatter) wrap on the sentinel
+//     MUST NOT yield errors.Is=true — if it does, somebody broke
+//     unwrapping semantics or the chain has been spuriously collapsed.
+func TestDriveAdminSentinels_TypedErrorContract(t *testing.T) {
+	sentinels := []struct {
+		name     string
+		sentinel error
+	}{
+		{"ErrAdminAdapterUploaderNil", error(ErrAdminAdapterUploaderNil)},
+		{"ErrAdminUnknownType", error(ErrAdminUnknownType)},
+	}
+
+	for _, tc := range sentinels {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.sentinel == nil {
+				t.Fatalf("%s must be non-nil (declare sentinel via errors.New)", tc.name)
+			}
+
+			// Load-bearing probe: invoke the canonical wrap helper. Drift
+			// in WrapDriveAdminError's body (%w -> %s, prefix change, etc.)
+			// surfaces as a test failure here AND in the production call
+			// site (wire_assets.go).
+			productionWrap := WrapDriveAdminError(tc.sentinel)
+			if !errors.Is(productionWrap, tc.sentinel) {
+				t.Fatalf("WrapDriveAdminError %%w chain did NOT preserve sentinel probe (typed-error contract broken): wrap=%v, sentinel=%v",
+					productionWrap, tc.sentinel)
+			}
+
+			// Negative control: a string-formatter wrap MUST NOT yield
+			// errors.Is=true. Rephrased to avoid vet's %s-as-Printf flag.
+			stringWrap := fmt.Errorf("drive.Admin: %s", tc.sentinel.Error())
+			if errors.Is(stringWrap, tc.sentinel) {
+				t.Fatal("string-formatter wrap falsely probed as sentinel — sentinel chain spurious")
+			}
+		})
 	}
 }
