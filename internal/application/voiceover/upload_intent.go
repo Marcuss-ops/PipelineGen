@@ -71,7 +71,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"go.uber.org/zap"
 )
 
@@ -156,20 +155,29 @@ type UploadIntent struct {
 	UpdatedUnix int64
 }
 
+// ErrUploadIntentNotFound is the canonical application-layer sentinel
+// surfaced by every UploadIntentsRepository Mark* method when the
+// voiceover_id has no row. The concrete adapter in
+// internal/app/lifecycle_adapters.go translates the infra-level
+// sentinel (scripts.ErrUploadIntentNotFound) to this application-layer
+// sentinel so voiceover never imports the infra package directly.
+var ErrUploadIntentNotFound = errors.New("upload_intents_repository: row not found (no intent for voiceover_id)")
+
 // isMarkNotFoundError detects whether an error from any Repo.Mark*
 // call is the canonical "row not found" sentinel. The production
-// concrete (scripts.UploadIntentsRepository) emits errors that wrap
-// scripts.ErrUploadIntentNotFound via fmt.Errorf("%w", ...). The
-// substring fallback covers test mocks that emit the canonical
-// message text without preserving the sentinel pointer chain.
+// adapter (in internal/app/lifecycle_adapters.go) translates the
+// infra-level sentinel to voiceover.ErrUploadIntentNotFound, so
+// errors.Is works end-to-end. The substring fallback covers test
+// mocks that emit the canonical message text without preserving
+// the sentinel pointer chain.
 func isMarkNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, scripts.ErrUploadIntentNotFound) {
+	if errors.Is(err, ErrUploadIntentNotFound) {
 		return true
 	}
-	return strings.Contains(err.Error(), scripts.ErrUploadIntentNotFound.Error())
+	return strings.Contains(err.Error(), ErrUploadIntentNotFound.Error())
 }
 
 // ProjectFinalizer is the narrow port for the local DB-finalize

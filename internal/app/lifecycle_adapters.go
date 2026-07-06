@@ -383,6 +383,69 @@ func newUploadIntentsAdapter(repo *scripts.UploadIntentsRepository) voiceover.Up
 	return &uploadIntentsAdapter{UploadIntentsRepository: repo}
 }
 
+// MarkUploaded overrides the promoted method to translate the infra
+// sentinel (scripts.ErrUploadIntentNotFound) to the application-layer
+// sentinel (voiceover.ErrUploadIntentNotFound) so callers in the
+// voiceover package never import the infra package directly.
+func (a *uploadIntentsAdapter) MarkUploaded(ctx context.Context, voiceoverID, driveFileID string) error {
+	if a == nil || a.UploadIntentsRepository == nil {
+		return fmt.Errorf("uploadIntentsAdapter: nil repository")
+	}
+	return translateUploadIntentErr(a.UploadIntentsRepository.MarkUploaded(ctx, voiceoverID, driveFileID))
+}
+
+// MarkFinalized overrides the promoted method to translate the infra
+// sentinel (scripts.ErrUploadIntentNotFound) to the application-layer
+// sentinel (voiceover.ErrUploadIntentNotFound).
+func (a *uploadIntentsAdapter) MarkFinalized(ctx context.Context, voiceoverID string) error {
+	if a == nil || a.UploadIntentsRepository == nil {
+		return fmt.Errorf("uploadIntentsAdapter: nil repository")
+	}
+	return translateUploadIntentErr(a.UploadIntentsRepository.MarkFinalized(ctx, voiceoverID))
+}
+
+// MarkCompleted overrides the promoted method to translate the infra
+// sentinel (scripts.ErrUploadIntentNotFound) to the application-layer
+// sentinel (voiceover.ErrUploadIntentNotFound).
+func (a *uploadIntentsAdapter) MarkCompleted(ctx context.Context, voiceoverID string) error {
+	if a == nil || a.UploadIntentsRepository == nil {
+		return fmt.Errorf("uploadIntentsAdapter: nil repository")
+	}
+	return translateUploadIntentErr(a.UploadIntentsRepository.MarkCompleted(ctx, voiceoverID))
+}
+
+// MarkFailed overrides the promoted method to translate the infra
+// sentinel (scripts.ErrUploadIntentNotFound) to the application-layer
+// sentinel (voiceover.ErrUploadIntentNotFound).
+func (a *uploadIntentsAdapter) MarkFailed(ctx context.Context, voiceoverID, reason string) error {
+	if a == nil || a.UploadIntentsRepository == nil {
+		return fmt.Errorf("uploadIntentsAdapter: nil repository")
+	}
+	return translateUploadIntentErr(a.UploadIntentsRepository.MarkFailed(ctx, voiceoverID, reason))
+}
+
+// translateUploadIntentErr translates the infra-level
+// scripts.ErrUploadIntentNotFound sentinel to the application-layer
+// voiceover.ErrUploadIntentNotFound so the voiceover package never
+// imports the infra package directly. The multi-%w wrap preserves the
+// original error for audit while surfacing the application-layer
+// sentinel for errors.Is matching.
+//
+// Intentionally narrow: only ErrUploadIntentNotFound is translated.
+// Other infra sentinels (SQL errors, constraint violations) pass
+// through unchanged because the voiceover package's callers only
+// pattern-match on ErrUploadIntentNotFound for idempotent-skip
+// decisions.
+func translateUploadIntentErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, scripts.ErrUploadIntentNotFound) {
+		return fmt.Errorf("%w: %w", voiceover.ErrUploadIntentNotFound, err)
+	}
+	return err
+}
+
 // Compile-time assertion: uploadIntentsAdapter satisfies the
 // canonical voiceover UploadIntentsRepository.
 var _ voiceover.UploadIntentsRepository = (*uploadIntentsAdapter)(nil)
