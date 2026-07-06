@@ -6750,7 +6750,9 @@
       deadline: 2026-07-15
     - id: PR-SPLIT-ARCHCHECK-CHECKS-V2
       owner_capability: scripts/archcheck
-      status: pending
+      status: shipped
+      ship_sha: 7b5ff5efaf64764b0585941e354a84bb1d4b44f3
+      ship_date: 2026-07-06
       deadline: 2026-07-15
     - id: PR-SPLIT-QDRANT-RECONCILER-V2
       owner_capability: internal/application/qdrant/reconciler
