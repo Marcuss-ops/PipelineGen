@@ -61,29 +61,21 @@ type TextHash string
 const EmptyTextHash TextHash = ""
 
 // ComputeTextHash returns the canonical 16-hex-char SHA-256 prefix
-// of text. Byte-stable across retries with the same input (per
-// godlike/07 no-fake-availability: re-computing the same text MUST
-// produce the same TextHash).
+// of text. Delegates to ComputeFullTextHash for the full hash, then
+// truncates to textHashLen (16 chars). Byte-stable across retries
+// with the same input (per godlike/07 no-fake-availability).
 //
 // Single source of truth — replaces both planner.go::truncationHash
 // (which used hashutil.SHA256String) AND jobs/fanout.go::
-// textHashSHA256 (which used crypto/sha256 + encoding/hex). The two
-// pre-PR-VO-TYPED-PRIMITIVES implementations were byte-equivalent
-// per the audit-pin comment; this canonical impl uses the stdlib
-// path so the voiceover package stays free of any hashutil dep.
+// textHashSHA256 (which used crypto/sha256 + encoding/hex).
 //
-// Empty-text input returns EmptyTextHash (defensive: an empty text
-// should not produce a hash that collides with a non-empty text's
-// first 16 chars). Callers that need to enforce non-empty text
-// should call BuildVoiceoverFilename / use the higher-layer
-// Validate gates first.
+// Empty-text input returns EmptyTextHash.
 func ComputeTextHash(text string) TextHash {
-	if text == "" {
+	full := ComputeFullTextHash(text)
+	if full == "" {
 		return EmptyTextHash
 	}
-	h := sha256.New()
-	h.Write([]byte(text))
-	return TextHash(hex.EncodeToString(h.Sum(nil))[:textHashLen])
+	return TextHash(full[:textHashLen])
 }
 
 // String returns the underlying string form. Useful for fmt
@@ -95,6 +87,37 @@ func ComputeTextHash(text string) TextHash {
 // and the audit's minimal-blast-radius discipline avoids
 // opportunistic Stringer additions.
 func (t TextHash) String() string { return string(t) }
+
+// Full returns the full 64-char SHA-256 hex digest for this text.
+// Only valid when the TextHash was produced by ComputeTextHash
+// (which stores only the 16-char prefix). For callers that need
+// the full 64-char hash (e.g., the legacy batch path in stages.go),
+// use ComputeFullTextHash instead — it returns the full hash
+// without the 16-char truncation.
+//
+// This method exists as a forward-pointer for the godlike/07 EXPAND
+// phase: a future wave may widen TextHash to store the full hash
+// internally, at which point Full() returns it directly and
+// ComputeFullTextHash becomes an alias. Until then, Full() returns
+// the stored prefix (same as String()) — honest about its
+// limitation per godlike/07 no-fake-availability.
+func (t TextHash) Full() string { return string(t) }
+
+// ComputeFullTextHash returns the full 64-char SHA-256 hex digest
+// of text. Uses crypto/sha256 directly so the voiceover package
+// stays free of any internal/infrastructure/files import (Pattern 0,
+// AGENTS.md). Replaces hashutil.SHA256String for the legacy batch
+// path in stages.go.
+//
+// Empty-text input returns empty string (defensive).
+func ComputeFullTextHash(text string) string {
+	if text == "" {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte(text))
+	return hex.EncodeToString(h.Sum(nil))
+}
 
 // IsEmpty returns true when t is the canonical zero value.
 // Convenience predicate for `if !hash.IsEmpty()` checks (more
