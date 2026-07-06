@@ -655,7 +655,7 @@ func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 			EndSec:   60,
 			Duration: 50,
 		},
-		Metadata: youtubetypes.ClipMetadata{
+		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         "E2E Qdrant CAS Probe",
 			NormalizedGroup: "general",
 		},
