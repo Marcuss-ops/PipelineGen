@@ -302,6 +302,16 @@ TODO[0-9]*.go
 # without restoring untracked root-level test output (the latter still
 # receives defensive coverage via /*.mp3 + /prima-frase-*.mp3 etc.).
 !tests/fixtures/**/*.mp3
+
+# Allow canonical-path media fixtures (mirror the .mp3 pattern above) +
+# prevent repo-root pollution per AGENTS.md #8 housekeeping rules:
+# per godlike/07 honest scope-lock, binary media fixtures (e.g.
+# test_*.mp4, sample_*.mp4) MUST live at tests/fixtures/<domain>/,
+# NEVER at the repo root.
+/test_*.mp4
+/sample_*.mp4
+/*.mp4
+!tests/fixtures/**/*.mp4
 !internal/**/testdata/**/*.mp3
 
 # Local config backups (not source code)
