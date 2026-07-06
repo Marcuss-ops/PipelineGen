@@ -605,6 +605,74 @@
       yaml.safe_load on origin/main HEAD. PART-3 is the canonical
       forward-pointer to attempt verified-zero; PART-4+ are
       further-tier forward-pointers if PART-3 alone unmasked more.
+  - id: PR-CURRENT-YAML-PARSE-FIX-PART-3
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-06
+    exit_signal: false
+    deadline: 2026-08-01
+    ship_via: |
+      PARTIAL CLOSURE (godlike/07 minimum-blast-radius + user-spec scope-lock):
+      PART-3 attempted to address the L6756-class structural indent-drift
+      offender that PART-2 unmasked. The user spec hint identified the
+      pattern as "umbrella entries stick at col 3 while siblings drift
+      to col 1 across the LONG-FILES-DECOMPOSITION-2026-07-06 /
+      PRE-EXISTING-BUILD-ISSUES-2026-07-04 / rest-of-file
+      block-collection boundaries". PART-3 surgical scope:
+
+      (1) L6618-class catchup wrap (PART-2 follow-up): the 4 lines
+          originally wrapped by PART-2 (L6568 + L6575 + L6601 + L6685)
+          were extended to also cover L6618 col 98 + L6625 (already
+          wrapped in working tree at diagnosis time), which folded the
+          LONG-FILES-DECOMPOSITION-2026-07-06 umbrella block-collection
+          boundary into a partial-coverage state.
+
+      (2) L6756 col 2 indent-drift investigation: binary-search
+          diagnostic narrowed the minimal failing chunk to L118..L147
+          intervals (description block boundaries in the
+          PRE-EXISTING-BUILD-ISSUES-2026-07-04 umbrella area), NOT L6756
+          as the user-spec literal cited. The L6756 col 2 line itself
+          ('  - id: PR-ARCHCHECK-MAIN-SPLIT') appears structurally
+          correct per canonical SSOT (indent=2 for sub-list items
+          under linked_issues block), but the parser's
+          'expected <block end>, but found -' error is triggered
+          by a SEPARATE description-block-closure issue upstream
+          (likely an unterminated `description: |` block in the
+          PRE-EXISTING-BUILD-ISSUES-2026-07-04 umbrella nesting).
+
+      Verification (godlike/07 typed-no-fake-availability):
+      yaml.safe_load does NOT yet succeed end-to-end on the file
+      post-PART-3. The L6756-class structural indent-drift error
+      remains UNRESOLVED at this commit; PART-3 represents what
+      was attempted within user-spec scope but is necessary-not-
+      sufficient for umbrella status: shipped. archcheck Check 19
+      (yaml.safe_load gate) flips green ONLY after PART-4 +
+      future waves land collectively.
+
+      Forward-pointer (godlike/07 NO-FAKE-AVAILABILITY):
+      PR-CURRENT-YAML-PARSE-FIX-PART-4 (deadline 2026-08-15)
+      addresses the L118..L147-class description-block-closure
+      offender class -- the deeper structural offender that PART-3
+      diagnostic surfaced via binary-search but left as PARTIAL.
+      PART-4 is OUT OF SCOPE for PART-3 per godlike/07
+      scope-lock discipline (minimum-blast-radius mirrors
+      PART-1 + PART-2 exactly). PART-4 is operator-only a
+      forward-pointer until a future agent can land the full
+      description-block-closure fix without exposing the file
+      to broader breakage.
+
+      Honest audit-pin discipline (godlike/06 one-owner-per-fact):
+      the PRE-EXISTING-YAML-PARSE-2026-07-04 umbrella status
+      REMAINS at pending after this PART-3 commit. PART-3
+      represents what was attempted in user spec (catch-up
+      PART-2-class wraps + L6756 indent-drift investigation) but
+      is necessary-not-sufficient for umbrella status: shipped.
+      PART-N (any future) flips the umbrella to status: shipped
+      ONLY after verified-zero end-to-end yaml.safe_load on
+      origin/main HEAD. PART-4 is the canonical forward-pointer
+      to attempt verified-zero; PART-5+ are further-tier
+      forward-pointers if PART-4 alone unmasked more.
+
 - id: 0
   status: done
   exit_gate: All artifacts present; archcheck focused gate passes.
