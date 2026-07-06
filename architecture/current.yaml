@@ -5718,7 +5718,7 @@
 
 - id: CLEANUP-PRIORITY-1-5-2026-07-25
   status: shipped
-  ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+  ship_sha: 00b82cc5e75d6421ea2bc39cfc3dab7e80681182
   ship_date: 2026-07-06
   ship_via: WAVE_FLIP_PER_ALL_LINKED_ISSUES_SHIPPED
   exit_signal: true
