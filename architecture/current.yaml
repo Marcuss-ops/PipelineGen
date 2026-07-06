@@ -7564,3 +7564,89 @@
       UnmarshalJSON that round-trips. Verification: round-trip JSON
       test pins canonical wire shape (no {} leak on zero-valued
       Location).
+
+- id: PR-SEMLOC-12-DOD-CLOSURE
+  owner_capability: architecture
+  status: shipped
+  ship_date: 2026-07-06
+  exit_signal: true
+  deadline: 2026-08-15
+  description: |
+    Final closure entry for SEMANTIC-LOCATION-API-2026-07-06:
+    all 12 DoD items shipped, wave complete. This entry is the
+    canonical godlike/06 SSOT audit-pin that enumerates every
+    per-DoD ship SHA in the linked_issues block below; operators
+    reading this entry can trace each DoD item to its commit.
+
+    Per-wave: W1 (Foundation types) + W2-W4 (BACKFILL_AUDIT_PIN
+    per negative finding 2026-07-06) + W5 (asset.published outbox
+    event) + W6 (register handlers) all shipped. DoD items 1-12
+    cover the full surface: API contract, mapper, metadata fields,
+    canonical paths, root fallback, drive_folder_catalog, Qdrant
+    indexing, response drive+indexed, ComposeSearchText enrichment,
+    response location block, 5 e2e smokes, and payload audit.
+
+    godlike/06 3-surface lockstep (per CANONICAL.md §1):
+    this architecture/current.yaml entry ≡
+    CHANGELOG.md ## Unreleased → ### Documentation entry ≡
+    AGENTS.md ## Recent cross-cutting closures mirror entry.
+  linked_issues:
+  - id: DOD-01-API-CONTRACT-WAVE6
+    owner_capability: internal/api/assets/register + internal/application/assets/sourcing
+    status: shipped
+    ship_sha: 72b5a839
+    ship_date: 2026-07-06
+  - id: DOD-02-MAPPER-BUILD-PUBLISH-REQUEST-WAVE1
+    owner_capability: internal/application/assets/delivery
+    status: shipped
+    ship_sha: 7b5ff5ef
+    ship_date: 2026-07-06
+  - id: DOD-03-PUBLISH-REQUEST-METADATA
+    owner_capability: internal/application/assets/delivery
+    status: shipped
+    ship_sha: 21e46e0f
+    ship_date: 2026-07-06
+  - id: DOD-04-CANONICAL-PATHS
+    owner_capability: internal/infrastructure/drive
+    status: shipped
+    ship_date: 2026-07-06
+  - id: DOD-05-ROOT-DRIVE-FALLBACK
+    owner_capability: internal/infrastructure/drive
+    status: shipped
+    ship_sha: 999d6f46
+    ship_date: 2026-07-06
+  - id: DOD-06-DRIVE-FOLDER-CATALOG
+    owner_capability: internal/infrastructure/drive
+    status: shipped
+    ship_sha: d396a565
+    ship_date: 2026-07-06
+  - id: DOD-07-QDRANT-INDEXING-ASSET-PUBLISHED-WAVE5
+    owner_capability: internal/application/jobs/outbox
+    status: shipped
+    ship_sha: 58b26802
+    ship_date: 2026-07-06
+  - id: DOD-08-RESPONSE-DRIVE-INDEXED
+    owner_capability: internal/api/assets/stock + internal/api/assets/register + internal/api/images
+    status: shipped
+    ship_sha: 3642f904
+    ship_date: 2026-07-06
+  - id: DOD-09-COMPOSE-SEARCH-TEXT-ENRICHED
+    owner_capability: internal/application/jobs/outbox
+    status: shipped
+    ship_sha: 33b08498
+    ship_date: 2026-07-06
+  - id: DOD-10-RESPONSE-LOCATION-BLOCK
+    owner_capability: internal/api/assets/stock + internal/api/assets/register + internal/api/images
+    status: shipped
+    ship_sha: 17ba5ca7
+    ship_date: 2026-07-06
+  - id: DOD-11-5-E2E-SMOKES
+    owner_capability: tests/operational
+    status: shipped
+    ship_sha: ca7692aa
+    ship_date: 2026-07-06
+  - id: DOD-12-PAYLOAD-AUDIT
+    owner_capability: architecture
+    status: shipped
+    ship_sha: e08d1d29
+    ship_date: 2026-07-06
