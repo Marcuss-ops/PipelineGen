@@ -91,4 +91,28 @@ var (
 	// preserved so partial successes still produce partial artifacts.
 	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2).
 	ErrStockComposeChunksAllFailed = errors.New("stock.compose_chunks: all chunks failed to render")
+
+	// ErrStockPublishStateLost is raised when StockPublishStep.Run
+	// is wired with a non-nil ArtifactPreparation BUT state.ComposedPaths
+	// is empty — meaning the upstream compose step produced zero composed
+	// chunks (or the runState was lost on resume). This closes the
+	// godlike/07 no-fake-availability class where a production run
+	// (ArtifactPreparation wired) silently declared SUCCEEDED with zero
+	// uploaded chunks because the lenient "len(chunks) == 0 → return nil"
+	// guard masked a real state-loss bug. The guard is bypassed ONLY in
+	// test-fixture mode (ArtifactPreparation nil) so existing fixture tests
+	// remain green. PR-STOCK-RESUME-STATE-LOSS (July 2026).
+	ErrStockPublishStateLost = errors.New("stock.publish: ArtifactPreparation wired but ComposedPaths empty — upstream state lost (likely resume-after-crash)")
+
+	// ErrStockFinalizeStateLost is raised when StockFinalizeStep.Run
+	// is wired with a non-nil JobFinalizer BUT state.Published is empty —
+	// meaning the upstream publish step did not upload any chunks (or the
+	// runState was lost on resume). This closes the godlike/07
+	// no-fake-availability class where a production run (JobFinalizer
+	// wired) silently declared SUCCEEDED without writing to media_assets
+	// because the lenient "len(Published) == 0 → return nil" guard masked
+	// a real state-loss bug. The guard is bypassed ONLY in test-fixture
+	// mode (JobFinalizer nil) so existing fixture tests remain green.
+	// PR-STOCK-RESUME-STATE-LOSS (July 2026).
+	ErrStockFinalizeStateLost = errors.New("stock.finalize: JobFinalizer wired but Published empty — upstream state lost (likely resume-after-crash)")
 )
