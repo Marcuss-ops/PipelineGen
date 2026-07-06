@@ -211,6 +211,12 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 				input.Destination, "category",
 			)
 		}
+		if loc.Provider == "" {
+			return PublishRequest{}, fmt.Errorf(
+				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,
+				input.Destination, "provider",
+			)
+		}
 		subject := loc.SubjectOrName()
 		if subject == "" {
 			return PublishRequest{}, fmt.Errorf(
@@ -218,9 +224,10 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 				input.Destination, ErrAssetPublishNameCannotReplaceSubject,
 			)
 		}
-		req.Group = loc.Category
+		req.Category = loc.Category  // primary field for StockPath (DoD item 4)
+		req.Group = loc.Category     // backward-compat fallback for legacy callers
 		req.Subject = subject
-		req.Provider = loc.Provider // required-by-Wave-4 stock migration; optional in Wave 1
+		req.Provider = loc.Provider   // required; validated above
 
 	case DestinationYouTubeClip:
 		if loc.Category == "" {
