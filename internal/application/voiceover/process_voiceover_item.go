@@ -94,7 +94,7 @@ type ProcessVoiceoverItemDeps struct {
 // constructor builds a ProcessSegmentUseCase from the same deps so the
 // per-item body is shared with the batch use case.
 type ProcessVoiceoverItemUseCase struct {
-	deps         ProcessVoiceoverItemDeps
+	deps       ProcessVoiceoverItemDeps
 	processSeg *ProcessSegmentUseCase // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
 }
 
@@ -121,8 +121,14 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	if deps.VoiceoverRepository == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: VoiceoverRepository is required")
 	}
+	// Azione #5 (July 2026): FilenameBuilder is nil-safe — the per-item
+	// body trusts item.Filename pre-computed by the fanout (BLOC4 P0.6
+	// pass-through invariant). Log a warn so operators can see the wire
+	// is empty, but don't block composition.
 	if deps.FilenameBuilder == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: FilenameBuilder is required (port surface kept stable for future BACKFILL stages)")
+		if deps.Logger != nil {
+			deps.Logger.Warn("voiceover.NewProcessVoiceoverItemUseCase: FilenameBuilder is nil — per-item path trusts item.Filename pre-computed by fanout")
+		}
 	}
 	if deps.Finalizer == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)")
