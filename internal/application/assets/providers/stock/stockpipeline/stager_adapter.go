@@ -3,6 +3,13 @@
 // StockStager wraps stockpipeline.Service.StageSource behind the
 // canonical assets.SourceStager port so callers can stage stock
 // source media without depending on the full stockpipeline.Service.
+//
+// July 2026 (BYPASS fix): StockStager now downloads directly via
+// yt-dlp instead of routing through Service.StageSource →
+// acquisition.SourceStager.Prepare. The acquisition chain was
+// failing at the FilesystemStager fetch closure (OutputPath template
+// mismatch AND IdempotencyKey validation). The yt-dlp direct path
+// is the production-tested download path used by processSingleVideo.
 package stockpipeline
 
 import (
@@ -12,28 +19,35 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
 // Compile-time assertion: *StockStager satisfies assets.SourceStager.
 var _ assets.SourceStager = (*StockStager)(nil)
 
 // StockStager adapts a stockpipeline.Service (or any stockRunner) to
-// the shared assets.SourceStager port. It delegates to the service's
-// existing StageSource method.
+// the shared assets.SourceStager port. It downloads directly via yt-dlp
+// (bypassing the acquisition.SourceStager chain) for reliability.
 type StockStager struct {
-	svc *Service
+	svc   *Service
+	ytdlp *downloader.YTDLPDownloader
 }
 
 // NewStockStager wraps a stockpipeline.Service as an assets.SourceStager.
 // svc must be non-nil; nil produces a runtime error on StageSource.
+// The yt-dlp downloader is constructed from the service's config.
 func NewStockStager(svc *Service) *StockStager {
-	return &StockStager{svc: svc}
+	var ytdlp *downloader.YTDLPDownloader
+	if svc != nil && svc.cfg != nil {
+		ytdlp = downloader.NewYTDLP(svc.cfg)
+	}
+	return &StockStager{svc: svc, ytdlp: ytdlp}
 }
 
-// StageSource implements assets.SourceStager. When DownloadSection is
-// set, it downloads a time-slice of the video via yt-dlp's
-// --download-sections. Otherwise it delegates to the service's
-// StageSource method for a full-asset download.
+// StageSource implements assets.SourceStager. Downloads the source video
+// directly via yt-dlp (bypassing the acquisition.SourceStager chain).
+// When DownloadSection is set, it downloads a time-slice via
+// yt-dlp's --download-sections.
 func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
 	if s.svc == nil {
 		return nil, fmt.Errorf("stock stagervc: service not wired")
@@ -41,22 +55,54 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	if ref.URL == "" {
 		return nil, fmt.Errorf("stock stagervc: empty URL")
 	}
-
-	// Non-section path: delegate to existing StageSource.
-	if ref.DownloadSection == "" {
-		staged, err := s.svc.StageSource(ctx, ref.URL)
-		if err != nil {
-			return nil, fmt.Errorf("stock stagervc: stage source %q: %w", ref.URL, err)
-		}
-		return &assets.StagedAsset{
-			LocalPath: staged.LocalPath,
-			Bytes:     staged.Bytes,
-		}, nil
+	if s.ytdlp == nil {
+		return nil, fmt.Errorf("stock stagervc: yt-dlp downloader not wired (cfg nil)")
 	}
 
-	// Section path: download via yt-dlp directly (same path
-	// processSingleVideo uses).
-	return s.svc.stageSection(ctx, ref)
+	// Create a temp staging directory under the service's temp path.
+	tmpDir, err := os.MkdirTemp(s.svc.cfg.Storage.TempPath(), "stock_stage_")
+	if err != nil {
+		return nil, fmt.Errorf("stock stagervc: create temp dir: %w", err)
+	}
+
+	outputPath := filepath.Join(tmpDir, "source.mp4")
+
+	dlReq := &downloader.DownloadRequest{
+		URL:        ref.URL,
+		OutputPath: outputPath,
+		NoPlaylist: true,
+		UseCookies: true,
+	}
+	if ref.DownloadSection != "" {
+		dlReq.DownloadSections = []string{ref.DownloadSection}
+		dlReq.ForceKeyframes = ref.ForceKeyframes
+	}
+	if ref.MergeFormat != "" {
+		dlReq.MergeFormat = ref.MergeFormat
+	}
+
+	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("stock stagervc: yt-dlp download %q: %w", ref.URL, err)
+	}
+
+	// Resolve the actual downloaded file path.
+	resolved, resolveErr := downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s")
+	if resolveErr != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("stock stagervc: resolve downloaded file: %w", resolveErr)
+	}
+
+	fi, statErr := os.Stat(resolved)
+	if statErr != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("stock stagervc: stat %q: %w", resolved, statErr)
+	}
+
+	return &assets.StagedAsset{
+		LocalPath: resolved,
+		Bytes:     fi.Size(),
+	}, nil
 }
 
 // Cleanup removes the staged file's parent temp directory.
