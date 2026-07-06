@@ -1157,6 +1157,8 @@ the snapshot table above.
   transitions, identity drift, path safety, accounting correctness),
   per-PR contract details, tests pinned, and future-work pointers
   (PR-VO-B1+B2, PR-VO-B3, PR-VO-C1).
+- **[PR-QDRANT-ALIASES-REMOVAL closure (commit 203cb1ad, 2026-07-06) — physical removal of aliases.go (~110 type aliases + ~30 var aliases) from internal/infrastructure/qdrant/]** `refactor(qdrant)` — ZERO external consumers confirmed (AZIONE 8 audit, 2026-07-06). All callers now import sub-packages directly (qdrant/indexing, qdrant/schema, qdrant/search, etc.). runtime.go migrated to qualified sub-package imports. **godlike/06 SSOT:** each caller resolves types through direct sub-package imports — no intermediary aliases layer. **godlike/07 minimum-blast-radius:** zero behavior change; same concrete types, same constructors, just resolved directly. **3-surface lockstep:** this AGENTS.md entry ≡ `CHANGELOG.md ## Unreleased → ### Fixed` entry ≡ `architecture/current.yaml#PR-QDRANT-ALIASES-REMOVAL` (status: shipped, ship_sha: 203cb1ad, exit_signal: true). **Post-removal regression fix (11 files):** commit `e1ffa2b7` resolved all bare `qdrant.*` alias references across internal/app/, internal/api/, internal/application/. **Verification:** gofmt/vet/build on internal/... exit 0 (modulo pre-existing ttsProvider carry-forward). Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
+
 - **PR-VO-B1-C1 P0→P1 hardening (`73c44aca` → `c2867b90`)** — voiceover
   P1 closure across B1, B2, B3, C1. The "Future P1/P2 work" pointer
   in `docs/voiceover/p0-bundle-A1-A6.md` is fully resolved by this
