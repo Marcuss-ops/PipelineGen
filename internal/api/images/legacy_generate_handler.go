@@ -62,5 +62,32 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	apiutil.OK(c, asset)
+	// DoD #8 (July 2026): response includes drive block + indexed
+	// alongside the full asset. ImageAsset carries DriveFileID and
+	// PathRel; DriveLink is derived, DriveFolderID is empty (images
+	// upload directly to the configured root, no subfolder).
+	apiutil.OK(c, gin.H{
+		"id":            asset.ID,
+		"hash":          asset.Hash,
+		"subject_id":    asset.SubjectID,
+		"slug_id":       asset.SlugID,
+		"path_rel":      asset.PathRel,
+		"source_url":    asset.SourceURL,
+		"license":       asset.License,
+		"width":         asset.Width,
+		"height":        asset.Height,
+		"size_bytes":    asset.SizeBytes,
+		"quality_score": asset.QualityScore,
+		"description":   asset.Description,
+		"drive_file_id": asset.DriveFileID,
+		"status":        asset.Status,
+		"error":         asset.Error,
+		"metadata_json": asset.MetadataJSON,
+		"created_at":    asset.CreatedAt,
+		"tags":          asset.Tags,
+		"origin":        asset.Origin,
+		"provider":      asset.Provider,
+		"drive":         imageDriveBlock(asset),
+		"indexed":       false,
+	})
 }

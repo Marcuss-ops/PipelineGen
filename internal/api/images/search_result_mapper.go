@@ -9,7 +9,11 @@
 package images
 
 import (
+	"fmt"
+
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+
+	"github.com/gin-gonic/gin"
 )
 
 // assetToResult projects an asset.ImageAsset to a unified
@@ -46,4 +50,30 @@ func previewURLForAsset(a domain.ImageAsset) string {
 		return a.PathRel
 	}
 	return a.SourceURL
+}
+
+// imageDriveBlock constructs the canonical drive response block for an
+// image asset (DoD #8, July 2026). ImageAsset carries DriveFileID and
+// PathRel but no DriveFolderID or DriveLink — the link is derived from
+// the file ID, and folder_id is empty (images upload directly to the
+// configured Drive root folder, no subfolder hierarchy).
+func imageDriveBlock(a *domain.ImageAsset) gin.H {
+	if a == nil {
+		return gin.H{
+			"path":      "",
+			"folder_id": "",
+			"file_id":   "",
+			"link":      "",
+		}
+	}
+	link := ""
+	if a.DriveFileID != "" {
+		link = fmt.Sprintf("https://drive.google.com/file/d/%s/view", a.DriveFileID)
+	}
+	return gin.H{
+		"path":      a.PathRel,
+		"folder_id": "",
+		"file_id":   a.DriveFileID,
+		"link":      link,
+	}
 }

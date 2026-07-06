@@ -61,6 +61,19 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		return
 	}
 
+	// DoD #8 (July 2026): response includes drive block + indexed
+	// alongside the unified search-result shape. ImageAsset carries
+	// DriveFileID and PathRel; DriveLink is derived.
 	res := assetToResult(asset)
-	apiutil.OK(c, res)
+	apiutil.OK(c, gin.H{
+		"asset_id":    res.AssetID,
+		"origin":      res.Origin,
+		"provider":    res.Provider,
+		"preview_url": res.PreviewURL,
+		"style_id":    res.StyleID,
+		"license":     res.License,
+		"author":      res.Author,
+		"drive":       imageDriveBlock(asset),
+		"indexed":     false,
+	})
 }
