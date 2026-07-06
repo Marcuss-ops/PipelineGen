@@ -179,6 +179,15 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 	// zero-affected child delete on a present parent IS the orphan
 	// condition the WARN log line surfaces.
 	for _, ct := range hardDeleteChildTables {
+		// SAFETY: fmt.Sprintf is safe here — ct.table and ct.column are drawn
+		// exclusively from the hardDeleteChildTables package-level var, a typed
+		// []childDelete literal with explicit string constants. No user input,
+		// no dynamic column names, no API-surface interpolation. This is the
+		// third and final fmt.Sprintf SQL site in the database layer; it is
+		// intentionally exempt from the column-allowlist gate (allowedJobColumns
+		// in transition.go / allowedSortColumns in search_queries.go) because
+		// the table+column source is a compile-time constant list, not an
+		// external caller payload.
 		res, derr := tx.ExecContext(ctx,
 			fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, ct.table, ct.column), id)
 		if derr != nil {
