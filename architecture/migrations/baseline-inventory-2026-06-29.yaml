@@ -78,7 +78,7 @@ totals_legacy:
       subtotal_test: 117
       target_zone: capabilities  # each subpkg maps to a capability subzone
       migration_phase: pending_phase_deferred  # blocked_by W21 PR-G.2
-      notes: "Largest legacy subtree; 18 subpkgs + 4 EMPTY placeholders (qdrant, scripts, system, workflow, youtube). Migration is the Phase B subject."
+      notes: "Largest legacy subtree; 18 subpkgs + 3 EMPTY placeholders (scripts, system, workflow, youtube) + 1 active (qdrant: 16 productive across dr/reconciler/legacyaudit/maintenance). Migration is the Phase B subject."
 
     - name: domain
       root_files_productive: 0
@@ -247,15 +247,20 @@ per_directory_mapping:
         owner_capability: internal/platform/httpserver
         notes: "RESOLVED OQ-1 (2026-06-29): middleware ports migrate to platform/httpserver/middleware. AuthSecurity + Idempotency + RequestLogSink + RateLimit concrete adapters stay in internal/infrastructure/database/sqlite/{idempotency,logsink} (platform adapters); ports themselves relocate."
 
-      - legacy_path: internal/application/qdrant  # EMPTY TREE today
-        productive: 0
-        test: 0
+      - legacy_path: internal/application/qdrant  # NOT EMPTY (corrected 2026-07-04)
+        productive: 16
+        test: 6
+        subdirs:
+          - dr: { productive: 5, test: 1, concern: "DR/snapshot/retention typed ports + adapters" }
+          - reconciler: { productive: 5, test: 3, concern: "Reconciler Service (~450 LOC: scanner, classification, repair, persistence)" }
+          - legacyaudit: { productive: 1, test: 2, concern: "Legacy audit tooling (seed UUID, pre-migration inventory audits)" }
+          - maintenance: { productive: 5, test: 0, concern: "Maintenance service + scanner + audit + delete-invalid + repair-locators" }
         target_zone: platform/qdrant
         target_path: internal/platform/qdrant
         migration_phase: pending_phase_deferred
         blocked_by: ["W21.PR-G.2 (BACKFILL window)"]
         owner_capability: internal/platform/qdrant (target owner)
-        notes: "Empty placeholder; physical qdrant code lives under internal/infrastructure/qdrant (46 productive). When application/qdrant/ is populated it goes to platform/qdrant not capabilities."
+        notes: "Active application-layer Qdrant code (16 productive, 6 test across 4 subpackages) — NOT an empty placeholder. DR ports, reconciler, maintenance, and legacy audit tooling are live and wired. Physical qdrant code also lives under internal/infrastructure/qdrant (46 productive). When application/qdrant/ migrates it goes to platform/qdrant per target-zone mapping."
 
       - legacy_path: internal/application/scriptassets
         productive: 4
