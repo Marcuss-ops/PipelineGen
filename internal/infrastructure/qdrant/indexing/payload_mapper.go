@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
@@ -395,8 +395,8 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		ContentHash:    asset.ContentHash,
 		SearchText:     asset.SearchText, // legacy pass-through (BuildPayload entry); mapper receivers override via AssetToIndexDocument
 		Metadata: IndexedMetadata{
-			Title:        metadataString(asset.Metadata, "title"),
-			Description:  metadataString(asset.Metadata, "description"),
+		Title:        assetpkg.MetadataString(asset.Metadata, "title"),
+		Description:  assetpkg.MetadataString(asset.Metadata, "description"),
 			Tags:         asset.Tags,
 			Source:       asset.Source,
 			MediaType:    asset.MediaType,
@@ -457,67 +457,15 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 // domainAssetLifecycle converts a media_assets.lifecycle_state string
 // to the canonical asset.LifecycleState. Empty → ACTIVE (legacy rows
 // post-migration 101 fall through to ACTIVE; canonical fallback).
-func domainAssetLifecycle(raw string) asset.LifecycleState {
+func domainAssetLifecycle(raw string) assetpkg.LifecycleState {
 	const fallback = "ACTIVE"
 	if raw == "" {
-		return asset.LifecycleState(fallback)
+		return assetpkg.LifecycleState(fallback)
 	}
-	return asset.LifecycleState(raw)
+	return assetpkg.LifecycleState(raw)
 }
 
-// metadataString extracts a string-typed field from a parsed JSON
-// metadata map. Returns "" when absent or non-string.
-func metadataString(m map[string]interface{}, key string) string {
-	if m == nil {
-		return ""
-	}
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
-}
 
-// metadataStringSlice extracts a string-slice-typed field from a parsed
-// JSON metadata map (used for "tags" arrays and "detected_entities").
-// Returns nil when absent, non-array, or contains non-string elements.
-// Filters out empty/whitespace-only strings so downstream joinTags
-// helpers behave correctly.
-func metadataStringSlice(m map[string]interface{}, key string) []string {
-	if m == nil {
-		return nil
-	}
-	raw, ok := m[key]
-	if !ok {
-		return nil
-	}
-	arr, ok := raw.([]any)
-	if !ok {
-		// Also handle []string as a defensive fallback.
-		if ss, ok := raw.([]string); ok {
-			out := make([]string, 0, len(ss))
-			for _, s := range ss {
-				if s != "" {
-					out = append(out, s)
-				}
-			}
-			if len(out) == 0 {
-				return nil
-			}
-			return out
-		}
-		return nil
-	}
-	out := make([]string, 0, len(arr))
-	for _, v := range arr {
-		if s, ok := v.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
 
 // buildSearchTextInput maps an AssetData row to the canonical
 // SearchTextInput that the per-source strategies consume. The mapping
@@ -555,16 +503,16 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 		Source:           asset.Source,
 		MediaType:        asset.MediaType,
 		Title:            asset.Name,
-		Description:      metadataString(asset.Metadata, "description"),
-		Transcript:       metadataString(asset.Metadata, "transcript"),
-		Prompt:           metadataString(asset.Metadata, "prompt"),
-		Caption:          metadataString(asset.Metadata, "caption"),
+		Description:      assetpkg.MetadataString(asset.Metadata, "description"),
+		Transcript:       assetpkg.MetadataString(asset.Metadata, "transcript"),
+		Prompt:           assetpkg.MetadataString(asset.Metadata, "prompt"),
+		Caption:          assetpkg.MetadataString(asset.Metadata, "caption"),
 		Tags:             asset.Tags,
 		Category:         asset.Category,
 		Language:         asset.Language,
 		Channel:          asset.ChannelID,
-		DetectedEntities: metadataStringSlice(asset.Metadata, "detected_entities"),
-		OriginProvider:   metadataString(asset.Metadata, "origin_provider"),
+		DetectedEntities: assetpkg.MetadataStringSlice(asset.Metadata, "detected_entities"),
+		OriginProvider:   assetpkg.MetadataString(asset.Metadata, "origin_provider"),
 	}
 }
 

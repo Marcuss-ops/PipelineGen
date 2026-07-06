@@ -7,29 +7,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// metadataStringSlice reads a []string from Asset.Metadata, handling the
-// []interface{} intermediate that json.Unmarshal produces for JSON arrays.
+// metadataStringSlice reads a []string from Asset.Metadata via the canonical
+// asset.MetadataStringSlice accessor. Preserved as a thin wrapper for type
+// compatibility (callers pass *asset.Asset, not map[string]any).
 func metadataStringSlice(m *asset.Asset, key string) []string {
-	if m.Metadata == nil {
-		return nil
-	}
-	v, ok := m.Metadata[key]
-	if !ok {
-		return nil
-	}
-	switch arr := v.(type) {
-	case []string:
-		return append([]string(nil), arr...)
-	case []interface{}:
-		result := make([]string, len(arr))
-		for i, item := range arr {
-			if s, ok := item.(string); ok {
-				result[i] = s
-			}
-		}
-		return result
-	}
-	return nil
+	return asset.MetadataStringSlice(m.Metadata, key)
 }
 
 func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {

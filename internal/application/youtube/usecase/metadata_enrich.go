@@ -278,18 +278,18 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 // existing metadata only.
 func (s *Service) resolveExistingMetadata(existing *asset.Asset, cleanedTranscript string) *tagutil.CanonicalClipMetadata {
 	hasUserSummary := existing.GetMetadataString("clip_summary") != ""
-	hasUserTopics := len(metadataStringSlice(existing.Metadata, "topics")) > 0
+	hasUserTopics := len(asset.MetadataStringSlice(existing.Metadata, "topics")) > 0
 
 	if hasUserSummary && hasUserTopics {
 		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment",
 			zap.String("clip_id", existing.ID))
 		cm := &tagutil.CanonicalClipMetadata{
 			Summary:          existing.GetMetadataString("clip_summary"),
-			Topics:           metadataStringSlice(existing.Metadata, "topics"),
-			Speakers:         metadataStringSlice(existing.Metadata, "speakers"),
-			MentionedPeople:  metadataStringSlice(existing.Metadata, "mentioned_people"),
+		Topics:           asset.MetadataStringSlice(existing.Metadata, "topics"),
+		Speakers:         asset.MetadataStringSlice(existing.Metadata, "speakers"),
+		MentionedPeople:  asset.MetadataStringSlice(existing.Metadata, "mentioned_people"),
 			Hook:             existing.GetMetadataString("hook"),
-			QualityScore:     metadataFloat64(existing.Metadata, "quality_score"),
+			QualityScore:     asset.MetadataFloat(existing.Metadata, "quality_score"),
 			CleanTitle:       existing.GetMetadataString("clean_title"),
 			ShortTitle:       existing.GetMetadataString("short_title"),
 			SearchVisibility: existing.GetMetadataString("search_visibility"),
@@ -430,38 +430,4 @@ func buildVideoURL(clipID string, existing *asset.Asset) string {
 	return ""
 }
 
-func metadataStringSlice(m map[string]any, key string) []string {
-	if m == nil {
-		return nil
-	}
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case []string:
-			return val
-		case []any:
-			out := make([]string, 0, len(val))
-			for _, item := range val {
-				if s, ok := item.(string); ok {
-					out = append(out, s)
-				}
-			}
-			return out
-		}
-	}
-	return nil
-}
 
-func metadataFloat64(m map[string]any, key string) float64 {
-	if m == nil {
-		return 0
-	}
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case float64:
-			return val
-		case int:
-			return float64(val)
-		}
-	}
-	return 0
-}

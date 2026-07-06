@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-func metadataString(meta map[string]any, key string) string {
+// MetadataString extracts a string-typed value from a metadata map.
+// Returns "" when the map is nil, the key is absent, or the value is not a string.
+// Trims whitespace from the result.
+func MetadataString(meta map[string]any, key string) string {
 	if meta == nil {
 		return ""
 	}
@@ -20,7 +23,11 @@ func metadataString(meta map[string]any, key string) string {
 	return ""
 }
 
-func metadataBool(meta map[string]any, key string) bool {
+// MetadataBool extracts a bool-typed value from a metadata map.
+// Accepts both bool and string ("true"/"false", case-insensitive).
+// Returns false when the map is nil, the key is absent, or the value
+// cannot be interpreted as a boolean.
+func MetadataBool(meta map[string]any, key string) bool {
 	if meta == nil {
 		return false
 	}
@@ -37,7 +44,12 @@ func metadataBool(meta map[string]any, key string) bool {
 	return false
 }
 
-func metadataFloat(meta map[string]any, key string) float64 {
+// MetadataFloat extracts a float64-typed value from a metadata map.
+// Accepts float64, float32, int, int64, and string (via strconv.ParseFloat).
+// Also handles json.Number (fmt.Stringer) via the string path.
+// Returns 0 when the map is nil, the key is absent, or the value
+// cannot be interpreted as a float.
+func MetadataFloat(meta map[string]any, key string) float64 {
 	if meta == nil {
 		return 0
 	}
@@ -61,7 +73,12 @@ func metadataFloat(meta map[string]any, key string) float64 {
 	return 0
 }
 
-func metadataStringSlice(meta map[string]any, key string) []string {
+// MetadataStringSlice extracts a []string-typed value from a metadata map.
+// Accepts []string (direct), []any (each element cast to string), and string
+// (JSON-encoded array, e.g. `["a","b"]`).
+// Returns nil when the map is nil, the key is absent, or the value
+// cannot be interpreted as a string slice.
+func MetadataStringSlice(meta map[string]any, key string) []string {
 	if meta == nil {
 		return nil
 	}
@@ -92,7 +109,21 @@ func metadataStringSlice(meta map[string]any, key string) []string {
 	return nil
 }
 
-func metadataStringSliceText(meta map[string]any, key string) string {
-	values := metadataStringSlice(meta, key)
+// MetadataStringSliceText joins a metadata string slice into a single
+// space-separated string. Convenience wrapper around MetadataStringSlice.
+func MetadataStringSliceText(meta map[string]any, key string) string {
+	values := MetadataStringSlice(meta, key)
 	return strings.Join(values, " ")
+}
+
+// ── Internal aliases (keep existing unexported callers working) ──────────
+
+func metadataString(meta map[string]any, key string) string  { return MetadataString(meta, key) }
+func metadataBool(meta map[string]any, key string) bool      { return MetadataBool(meta, key) }
+func metadataFloat(meta map[string]any, key string) float64  { return MetadataFloat(meta, key) }
+func metadataStringSlice(meta map[string]any, key string) []string {
+	return MetadataStringSlice(meta, key)
+}
+func metadataStringSliceText(meta map[string]any, key string) string {
+	return MetadataStringSliceText(meta, key)
 }
