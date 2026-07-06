@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -83,16 +84,18 @@ func (a *MetadataFetcherAdapter) GetVideoMetadata(ctx context.Context, videoURL 
 	}
 
 	path := a.cfg.External.ResolvedYtdlpPath()
-	args := []string{
-		videoURL,
-		"--dump-json",
-		"--no-playlist",
-		"--no-warnings",
-	}
-	if a.cfg.External.YouTubeJSRuntimePath != "" {
-		args = append(args, "--js-runtime", a.cfg.External.YouTubeJSRuntimePath)
-	}
-	args = append(args, "--extractor-args", "youtube:player_client=android,web")
+	// Delegate to ytdlp.BaseArgs — the canonical SOLE owner of the
+	// yt-dlp argv prefix (godlike/06 SSOT). PR-PLAYER-CLIENT-DRIFT-FIX
+	// (2026-07-06): the previous inline `youtube:player_client=android,web`
+	// literal was the REVERSED order vs the canonical web,android
+	// centralized in cmd_builder.go by f3f1ee90 (android-first returns
+	// wrong durations + missing formats for some videos). Delegating
+	// also fixes a latent bug where --js-runtime was injected without
+	// --remote-components ejs:github (BaseArgs always injects both).
+	// useCookies=false: metadata reads public data, no auth required.
+	b := ytdlp.NewCommandBuilder(a.cfg)
+	args := b.BaseArgs(videoURL, false)
+	args = append(args, "--dump-json", "--no-playlist", videoURL)
 
 	stdout, stderr, err := a.runner.Run(ctx, path, args)
 	if err != nil {
