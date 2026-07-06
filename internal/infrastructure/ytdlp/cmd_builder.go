@@ -14,6 +14,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+// DefaultYouTubeFormatSelectors is the canonical yt-dlp `-f` selector — the
+// single source of truth (godlike/06 SSOT) for every YouTube download path.
+// Combined-first fall-through matches YouTube videos that expose only format
+// 18 (640x360 mp4). Do NOT re-declare this literal elsewhere; both
+// FormatArg and the processor downloader reference this constant so yt-dlp's
+// "last -f wins" rule stays in lockstep. Verified against dtpF3BrSOto
+// (2026-07-06) — previous bv*+ba-first order failed with "Requested format
+// is not available".
+const DefaultYouTubeFormatSelectors = "b[height<=1080][ext=mp4]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
+
 // CommandBuilder centralizes yt-dlp CLI argument construction. The builder
 // owns the resolved binary path plus the cookie and JS-runtime locations;
 // callers append their operation-specific flags to BaseArgs or FormatArgs.
@@ -91,7 +101,10 @@ func (b *CommandBuilder) FormatArg(addFormat bool) []string {
 	if !addFormat {
 		return nil
 	}
+	// Reference the canonical constant — see DefaultYouTubeFormatSelectors
+	// godoc for the full rationale. Duplicating the literal here would
+	// drift from the processor's selector the next time one side is edited.
 	return []string{
-		"-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+		"-f", DefaultYouTubeFormatSelectors,
 	}
 }

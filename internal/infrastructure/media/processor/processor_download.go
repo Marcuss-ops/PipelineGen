@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	artlist_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 )
 
 // downloadStep downloads the asset from the source URL.
@@ -104,7 +105,12 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 		StreamCopy:       input.StreamCopy,
 	}
 	if len(input.DownloadSections) > 0 {
-		dlReq.Format = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080]"
+		// Combined-first fall-through set — single canonical owner is
+		// ytdlp.DefaultYouTubeFormatSelectors. Do NOT inline the literal
+		// here; doing so would let the two -f args drift apart and
+		// reintroduce the "last -f wins" inconsistency surfaced by
+		// the dtpF3BrSOto format-not-available bug (2026-07-06).
+		dlReq.Format = ytdlp.DefaultYouTubeFormatSelectors
 		dlReq.MergeFormat = "mp4"
 		dlReq.NoPlaylist = true
 		dlReq.Timeout = 10 * time.Minute
