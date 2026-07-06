@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -180,56 +180,39 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		nowStr,
 		nowStr,
 	)
-	// ── PR-FINALIZER-DIAG-COUNTER (July 2026, v2 — nil-deref fix) ─
-	// Diagnostic RowsAffected print at the canonical media_assets
-	// UPSERT site. Goal: surface why 7 manifest entries become 0
-	// actual rows. SQLite semantics: rows=1 → INSERT, rows=2 →
-	// ON CONFLICT DO UPDATE fired (the existing-id case), rows=0 →
-	// silent no-op (rare but observable on idempotent retries).
-	// stderr forward-print guarantees operator visibility; zap.Warn
-	// records failures for scanner correlation.
-	//
-	// ORDER INVARIANT (post-v1 review): err-check MUST run BEFORE
-	// res.RowsAffected(). Per database/sql semantics the returned
-	// sql.Result can be nil when ExecContext fails at the
+	// ── PR-FINALIZER-METRICS (July 2026) ──────────────────────────
+	// Increment FinalizerMediaAssetsInsertTotal per SQLite
+	// rows-affected outcome. ORDER INVARIANT: err-check MUST run
+	// BEFORE res.RowsAffected(). Per database/sql semantics the
+	// returned sql.Result can be nil when ExecContext fails at the
 	// connection level (e.g. driver-side bad connection, mid-stmt
-	// context cancel). v1 called RowsAffected() before the err
-	// check, which would panic with nil-pointer dereference on any
-	// DB regression — defeating the diagnostic purpose. The fix
-	// reorders the two so err short-circuits before any res.* call.
+	// context cancel). Calling RowsAffected() on a nil Result panics
+	// with nil-pointer dereference. The err check short-circuits
+	// BEFORE any res.* call.
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[asset-finalizer][debug] upsertMediaAsset artifact_id=%s sha=%s path=ERR res=nil-or-partial err=%v\n",
-			a.ArtifactID, a.SHA256, err)
-		s.log.Warn("asset finalizer: upsertMediaAsset FAILED",
-			zap.String("artifact_id", a.ArtifactID),
-			zap.String("sha256", a.SHA256),
-			zap.Error(err))
+		metrics.FinalizerMediaAssetsInsertTotal.WithLabelValues("failed").Inc()
 		return fmt.Errorf("asset finalizer: upsert media_asset %s: %w", a.ArtifactID, err)
 	}
 	resRows, rowsErr := res.RowsAffected()
-	outcome := "UNKNOWN"
 	if rowsErr != nil {
-		// ROWS_AFFECTED_ERR: rare driver-implementation-divergence
-		// case (e.g. driver doesn't implement RowsAffected). Typed
-		// sentinel makes future grep-based alerts possible.
-		outcome = "ROWS_AFFECTED_ERR"
-	} else {
-		switch resRows {
-		case 1:
-			outcome = "INSERT"
-		case 2:
-			outcome = "UPDATE_ON_CONFLICT"
-		case 0:
-			outcome = "NO_OP_SILENT"
-		}
+		// driver-implementation-divergence case (rare; e.g. driver
+		// doesn't implement RowsAffected). One increment captures
+		// the entire divergence class so an alert on
+		// finalizer_media_assets_insert_total{outcome="rows_affected_err"}
+		// becomes the canonical SRE surface.
+		metrics.FinalizerMediaAssetsInsertTotal.WithLabelValues("rows_affected_err").Inc()
+		return nil
 	}
-	fmt.Fprintf(os.Stderr, "[asset-finalizer][debug] upsertMediaAsset artifact_id=%s sha=%s rows_affected=%d outcome=%s\n",
-		a.ArtifactID, a.SHA256, resRows, outcome)
-	s.log.Info("asset finalizer: upsertMediaAsset",
-		zap.String("artifact_id", a.ArtifactID),
-		zap.String("sha256", a.SHA256),
-		zap.Int64("rows_affected", resRows),
-		zap.String("outcome", outcome))
+	var outcome string
+	switch resRows {
+	case 1:
+		outcome = "insert"
+	case 2:
+		outcome = "update_on_conflict"
+	case 0:
+		outcome = "no_op_silent"
+	}
+	metrics.FinalizerMediaAssetsInsertTotal.WithLabelValues(outcome).Inc()
 	return nil
 }
 
