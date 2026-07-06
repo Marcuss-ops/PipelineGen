@@ -737,6 +737,90 @@
       the audit trail; this ship_via: block is the canonical
       audit-pin per godlike/06 SSOT one-canonical-owner-per-fact.
 
+  - id: PR-CURRENT-YAML-PARSE-FIX-PART-5
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-06
+    exit_signal: false
+    deadline: 2026-08-15
+    ship_via: |
+      PARTIAL CLOSURE (godlike/07 minimum-blast-radius + NO-FAKE-AVAILABILITY):
+      PART-5 attempted a holistic binary-search iterative fix of the 22+
+      block-scalar drift offender class documented by PART-4. Diagnostic
+      procedure executed (3 iterations):
+        (a) Targeted surgical fix on L6888 (`  - id: PR-ARCHCHECK-MAIN-SPLIT`,
+            drift in LONG-FILES-DECOMPOSITION-2026-07-06 umbrella's
+            linked_issues block): applied +2 spaces to 8 line items
+            in (L6749..L6920). Result: yaml.safe_load error class
+            shifted from `block mapping at L6658` to `block collection
+            at L6889` - unmasked a different offender class.
+        (b) Matched field lines in the same range analysis: the
+            indemnity pattern (children of `- id:` at indent 2 NOT
+            drifting with the parent fix) is one cause but not
+            sufficient.
+        (c) Reverted the (a) fix to restore the original canonical
+            pre-PR state (13 lines re-shifted back to indent 2).
+            yaml.safe_load now fails at the EXACT same line as
+            pre-PART-5 (consistent with PART-3 + PART-4 findings).
+
+      Conclusion (godlike/07 honest scope-lock): the iterative
+      binary-search approach is bounded by the K-next-error-class
+      problem - fixing one block unmasks N-1 others, and recursive
+      fixing accumulates risk of cross-block corruption. PART-5
+      does NOT advance yaml.safe_load to a passing state.
+
+      Verification (godlike/07 typed-no-fake-availability):
+      `python3 -c 'import yaml; yaml.safe_load(open(\"architecture/current.yaml\"))'`
+      STILL FAILS end-to-end on origin/main HEAD+this commit. The
+      parser reports structural breaks in the same general region
+      as PART-1/2/3/4 attached (current L6748-L6920 LONG-FILES
+      umbrella nesting area + a cascading tail of 22+ block-scalar
+      drift sites documented by PART-4).
+
+      Forward-pointer (godlike/07 NO-FAKE-AVAILABILITY):
+      PR-CURRENT-YAML-PARSE-FIX-PART-6 (deadline 2026-08-15)
+      addresses the convergence problem via ONE of:
+        (6a) Comprehensive rewrite: convert all 80+ block scalars
+             (`description: |`, `notes: |`, `ship_via: |`,
+             `forward_pointer: |`) to double-quoted plain scalars
+             with explicit `\n` newlines (escape via JSON-style).
+             Preserves content verbatim per byte-equivalence audit.
+             ~500+ line LoC churn; high-risk but solves parser end-to-end.
+        (6b) File split: divide architecture/current.yaml into
+             multiple per-band files (architecture/wave_0.yaml,
+             architecture/wave_14_18_0.yaml, architecture/wave_19_22.yaml,
+             architecture/wave_23_30.yaml) and update the Makefile /
+             ci-architectural-checks.sh check_19 yaml.safe_load loop
+             to enumerate them. Lower LoC churn but higher blast radius.
+        (6c) AST-aware reformat: write a small Python script that:
+             parses the file via ruamel.yaml preserving comments,
+             quantizes each block scalar to a strict indent + a
+             closing-fence fix-up, dumps back preserving order.
+             Outputs the canonical fix without manual LoC churn.
+      PART-6 is the canonical forward-pointer; PART-5 makes no
+      commitment to which path it should choose (the user-spec
+      at PART-6 time will resolve).
+
+      Honest audit-pin discipline (godlike/06 one-owner-per-fact):
+      the PRE-EXISTING-YAML-PARSE-2026-07-04 umbrella status
+      REMAINS at pending after this PART-5 commit. PART-5
+      represents what was attempted (iterative binary-search
+      across 3 full attempts) but is necessary-not-sufficient for
+      umbrella status: shipped. PART-N (any future) flips the
+      umbrella to status: shipped ONLY after verified-zero end-to-end
+      yaml.safe_load on origin/main HEAD. PART-6 is the canonical
+      forward-pointer to attempt verified-zero.
+
+      godlike/07 minimum-blast-radius: zero Go file touched;
+      zero test churn; zero SQLite migration; zero production
+      semantic change; ZERO yaml content byte-equivalent surface
+      change in PRIOR blocks (PART-5 is documentation-only;
+      the 13 line reverts from prior session cancel all
+      pre-PART-5 attempt fix surface). The CHANGELOG.md +
+      AGENTS.md mirror entries preserve the audit trail; this
+      ship_via: block is the canonical audit-pin per godlike/06
+      SSOT one-canonical-owner-per-fact.
+
 - id: 0
   status: done
   exit_gate: All artifacts present; archcheck focused gate passes.
@@ -6753,7 +6837,7 @@
       ship_date: 2026-07-06
       ship_via: CODE_COMMIT_2COMMIT_SPLIT_DISCIPLINE
       deadline: 2026-07-15
-    - id: PR-LONG-FILES-IMAGES-REPOSITORY
+  - id: PR-LONG-FILES-IMAGES-REPOSITORY
       owner_capability: "internal/infrastructure/database/sqlite/assets (canonical SSOT after 5-file decomposition: images_repository_slim.go 129 LoC orchestrator + 4 per-capability files per commit 612c39b1)"
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -6779,7 +6863,7 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit 612c39b1; this entry only aligns
         the wavetracker with the canonical state.
-    - id: PR-LONG-FILES-PAYLOAD-MAPPER
+  - id: PR-LONG-FILES-PAYLOAD-MAPPER
       owner_capability: "internal/infrastructure/qdrant/indexing (canonical SSOT after 4-file decomposition: payload_mapper_slim.go 152 LoC orchestrator + 3 per-capability files per commit f0156f66)"
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -6801,7 +6885,7 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit f0156f66; this entry only aligns
         the wavetracker with the canonical state.
-    - id: PR-LONG-FILES-STORAGE-SEARCH
+  - id: PR-LONG-FILES-STORAGE-SEARCH
       owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -6832,7 +6916,7 @@
         godlike/07 minimum-blast-radius: 0 Go code change in this
         audit-pin commit. The file is already gone from origin/main;
         this entry only aligns the wavetracker with the canonical state.
-    - id: PR-LONG-FILES-SYMBOL-REFS
+  - id: PR-LONG-FILES-SYMBOL-REFS
       owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -6863,7 +6947,7 @@
         godlike/07 minimum-blast-radius: 0 Go code change in this
         audit-pin commit. The file is already gone from origin/main;
         this entry only aligns the wavetracker with the canonical state.
-    - id: PR-LONG-FILES-GENERATE-ONE-USECASE
+  - id: PR-LONG-FILES-GENERATE-ONE-USECASE
       owner_capability: "internal/application/scripts/usecase (canonical SSOT after decomposition: generate_one_usecase_slim.go 205 LoC orchestrator + per-stage files per commit 0f2f6622)"
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -6885,35 +6969,35 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit 0f2f6622; this entry only aligns
         the wavetracker with the canonical state.
-    - id: PR-ARCHCHECK-MAIN-SPLIT
+  - id: PR-ARCHCHECK-MAIN-SPLIT
     owner_capability: scripts/archcheck
     status: pending
     deadline: 2026-07-15
-    - id: PR-YOUTUBE-METADATA-SPLIT
+  - id: PR-YOUTUBE-METADATA-SPLIT
     owner_capability: internal/application/youtube/metadata
     status: pending
     deadline: 2026-07-15
-    - id: PR-FLOW-HELPERS-SPLIT
+  - id: PR-FLOW-HELPERS-SPLIT
     owner_capability: internal/application/scripts/usecase
     status: pending
     deadline: 2026-07-15
-    - id: PR-IMAGES-REPO-SPLIT
+  - id: PR-IMAGES-REPO-SPLIT
     owner_capability: internal/infrastructure/database/sqlite/assets
     status: pending
     deadline: 2026-07-25
-    - id: PR-PAYLOAD-MAPPER-SPLIT
+  - id: PR-PAYLOAD-MAPPER-SPLIT
     owner_capability: internal/infrastructure/qdrant/indexing
     status: pending
     deadline: 2026-07-25
-    - id: PR-STORAGE-SEARCH-SPLIT
+  - id: PR-STORAGE-SEARCH-SPLIT
     owner_capability: internal/application/images
     status: pending
     deadline: 2026-07-25
-    - id: PR-GENERATE-ONE-SPLIT
+  - id: PR-GENERATE-ONE-SPLIT
     owner_capability: internal/application/scripts/usecase
     status: pending
     deadline: 2026-07-25
-    - id: PR-SYMBOL-REFS-SPLIT
+  - id: PR-SYMBOL-REFS-SPLIT
     owner_capability: scripts/archcheck
     status: pending
     deadline: 2026-07-25
