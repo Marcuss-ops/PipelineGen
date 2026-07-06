@@ -125,9 +125,19 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggrega
 	// ON CONFLICT suppressed the insert — query the existing row's
 	// status so the producer knows whether the event was squelched
 	// by a completed, dead_letter, or superseded row.
+	//
+	// IMPORTANT: use the same handle as the INSERT (tx when provided,
+	// db otherwise). A detached r.db.QueryRowContext can open a NEW
+	// connection to :memory:, which sees an entirely different database.
+	// With SetMaxOpenConns(1) this deadlocks (the only connection is
+	// already held by the caller's tx).
 	var existingID int64
 	var existingStatus string
-	if scanErr := r.db.QueryRowContext(ctx,
+	queryRow := r.db.QueryRowContext
+	if tx != nil {
+		queryRow = tx.QueryRowContext
+	}
+	if scanErr := queryRow(ctx,
 		`SELECT id, status FROM outbox_events WHERE event_key = ?`, eventKey,
 	).Scan(&existingID, &existingStatus); scanErr != nil {
 		return nil, fmt.Errorf("outboxevents.Enqueue(%s, %s): ON CONFLICT suppressed, but query existing row: %w", eventType, aggregateID, scanErr)

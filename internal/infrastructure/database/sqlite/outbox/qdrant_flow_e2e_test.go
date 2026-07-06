@@ -57,6 +57,9 @@ func qdrantFlowDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open sqlite3 memory: %v", err)
 	}
+	// :memory: is per-connection in SQLite; without SetMaxOpenConns(1)
+	// different pool connections see entirely different databases.
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	ensureOutboxSchema(t, db)
 	return db
@@ -71,6 +74,9 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open sqlite3 memory: %v", err)
 	}
+	// :memory: is per-connection in SQLite; without SetMaxOpenConns(1)
+	// different pool connections see entirely different databases.
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	// Combined schema: writer columns + clipindexer columns + outbox.
@@ -349,11 +355,16 @@ func TestE2E_LeaseExpiryAndReclaim_WorkerCrash(t *testing.T) {
 	}
 	assertStatus(t, db, claim.Event.EventKey, "processing")
 
-	// ── Stage 3: Simulate worker crash — wait for lease to expire ──
-	// Use a sub-millisecond lease + immediate requeue to avoid timing races.
-	// The RequeueExpiredLeases WHERE clause compares lease_expiry < now(),
-	// so a 0-duration lease is immediately eligible.
-	time.Sleep(5 * time.Millisecond) // ensure lease_expiry is in the past
+	// ── Stage 3: Simulate worker crash — expire the lease directly ──
+	// Instead of relying on wall-clock timing (which can race on slow
+	// CI runners), directly set lease_expiry to a past timestamp so the
+	// RequeueExpiredLeases WHERE clause immediately matches.
+	if _, err := db.Exec(
+		`UPDATE outbox_events SET lease_expiry = ? WHERE event_key = ?`,
+		"2000-01-01T00:00:00Z", claim.Event.EventKey,
+	); err != nil {
+		t.Fatalf("expire lease directly: %v", err)
+	}
 
 	// ── Stage 4: Reaper requeues expired leases ──
 	affected, err := repo.RequeueExpiredLeases(ctx)
@@ -392,14 +403,19 @@ func TestE2E_LeaseExpiryAndReclaim_WorkerCrash(t *testing.T) {
 	}
 	assertStatus(t, db, claim2.Event.EventKey, "completed")
 
-	// Verify lease_id from crashed worker was cleared.
+	// Verify worker-B received a fresh lease_id (different from worker-A's).
+	// After RequeueExpiredLeases clears worker-A's lease_id, ClaimNext for
+	// worker-B assigns a NEW lease_id — it should NOT be empty.
 	var leaseID string
 	db.QueryRow(
 		"SELECT lease_id FROM outbox_events WHERE event_key = ?",
 		claim2.Event.EventKey,
 	).Scan(&leaseID)
-	if leaseID != "" {
-		t.Errorf("lease_id should be empty after requeue, got %q", leaseID)
+	if leaseID == "" {
+		t.Error("worker-B must have a non-empty lease_id after claim")
+	}
+	if leaseID == claim.LeaseID {
+		t.Errorf("worker-B lease_id must differ from crashed worker-A lease_id; both are %q", leaseID)
 	}
 }
 
@@ -544,20 +560,31 @@ func TestE2E_TransactionalAtomicity_DeleteFlow(t *testing.T) {
 
 	// ── Stage 1: EnqueueAndDelete ──
 	assetID := "yt_delete_flow_006"
+
+	// Seed a media_assets row — EnqueueDriveDelete UPDATEs an existing
+	// row; without a seed the UPDATE is a silent no-op.
+	if _, err := db.Exec(
+		`INSERT INTO media_assets (id, lifecycle_state, updated_at, created_at) VALUES (?, 'ACTIVE', '', '')`,
+		assetID,
+	); err != nil {
+		t.Fatalf("seed media_assets: %v", err)
+	}
+
 	if err := d.EnqueueAndDelete(ctx, assetID); err != nil {
 		t.Fatalf("EnqueueAndDelete: %v", err)
 	}
 
-	// ── Stage 2: Verify state writer was called with DELETE_PENDING ──
-	if len(clips.stateLog) != 1 {
-		t.Fatalf("expected 1 SetIndexStateTx call, got %d", len(clips.stateLog))
+	// ── Stage 2: Verify lifecycle_state was stamped as DELETE_REQUESTED ──
+	// EnqueueDriveDelete stamps lifecycle_state via raw SQL
+	// (tx.ExecContext UPDATE media_assets), not via stateWriter.SetIndexStateTx.
+	var lifecycle string
+	if err := db.QueryRow(
+		`SELECT lifecycle_state FROM media_assets WHERE id = ?`, assetID,
+	).Scan(&lifecycle); err != nil {
+		t.Fatalf("read lifecycle_state: %v", err)
 	}
-	st := clips.stateLog[0]
-	if st.State != asset.StateIndexDeletePending {
-		t.Errorf("SetIndexStateTx state: want DELETE_PENDING got %q", st.State)
-	}
-	if st.ID != assetID {
-		t.Errorf("SetIndexStateTx id: want %q got %q", assetID, st.ID)
+	if lifecycle != "DELETE_REQUESTED" {
+		t.Errorf("lifecycle_state: want DELETE_REQUESTED got %q", lifecycle)
 	}
 
 	// ── Stage 3: Verify outbox event was inserted ──
@@ -569,9 +596,9 @@ func TestE2E_TransactionalAtomicity_DeleteFlow(t *testing.T) {
 	db.QueryRow(
 		"SELECT event_type, aggregate_id FROM outbox_events LIMIT 1",
 	).Scan(&eventType, &aggID)
-	if eventType != outboxevents.EventAssetIndexDeleteRequested {
+	if eventType != outboxevents.EventAssetDriveDeleteRequested {
 		t.Errorf("event_type: want %q got %q",
-			outboxevents.EventAssetIndexDeleteRequested, eventType)
+			outboxevents.EventAssetDriveDeleteRequested, eventType)
 	}
 	if aggID != assetID {
 		t.Errorf("aggregate_id: want %q got %q", assetID, aggID)
