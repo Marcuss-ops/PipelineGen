@@ -37,7 +37,6 @@ package app
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -160,7 +159,9 @@ type YouTubeClipWiring struct {
 // contract per PR3 spec. The sub-path `/video/generate` is unchanged
 // (no collision with `ImagesHandler.Generate` which mounts at
 // `/generate` under the `/images` prefix).
+// FullImagesWiring holds the FullImages module wiring.
+// Handler field removed (June 2026): FullImagesHandler was retired during the
+// LONG-FILES-SPLIT-2026-07-06; zero callers accessed the field.
 type FullImagesWiring struct {
-	Handler *imagesapi.FullImagesHandler
-	Module  module.Module
+	Module module.Module
 }
