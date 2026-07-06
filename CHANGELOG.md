@@ -3058,3 +3058,39 @@ Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesso
 - **PR-ARTLIST-COOKIES-CONFIG closure (2026-07-06)** `feat(downloader)` — extract the hardcoded `/tmp/artlist_cookies.txt` from `internal/infrastructure/downloader/downloader.go:133` to a new `cfg.External.ArtlistCookiesPath` field (yaml: `artlist_cookies_path`, env: `ARTLIST_COOKIES_PATH`, default: `""`). Closes the improvement-opportunity drift surfaced by the YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06 (the hardcoded path silently failed on every Artlist download since the file does not exist on most installations). 3 files modified (+64 / -10 LOC): `internal/platform/config/types_external.go` (add field at end of Artlist block) + `internal/infrastructure/downloader/downloader.go` (add `artlistCookiesPath` struct field + populate in `NewYTDLP(cfg)` + conditional `--cookies` injection in `Download()` wrapped in `if d.artlistCookiesPath != "" { ... }`) + `internal/platform/config/external_config_test.go` (add `TestConfigUnmarshalReadsArtlistCookiesPath` with 2 cases: empty default + yaml binding). godlike/06 SSOT: `cfg.External.ArtlistCookiesPath` is the SOLE canonical source for the Artlist cookies path. godlike/07 NO-FAKE-AVAILABILITY: empty default + skip-the-flag semantics — operators who need authenticated Artlist downloads set `ARTLIST_COOKIES_PATH` to a real file (typically produced by `yt-dlp --cookies-from-browser chrome`); without it the download attempt surfaces a visible 403 from Artlist. godlike/07 minimum-blast-radius: 3 files modified, no new files, no composition-root wiring change needed; all 7+ `NewYTDLP(cfg)` call sites auto-pick-up the new field. godlike/07 honest scope-lock: downloader integration test OUT OF SCOPE per user spec. Verification: gofmt + go vet + go build clean; 1/1 new test PASS; code-reviewer returned SHIP. Wave-tracker cross-reference: `architecture/current.yaml#YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06.linked_issues[PR-ARTLIST-COOKIES-CONFIG]` flipped `status: shipped` + `ship_sha: de057b65` + `ship_date: 2026-07-06`. Forward-pointer: `PR-CHECK-N-2-BASEARGS-BYPASS` (future archcheck gate). Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>.
 ### Documentation
 - PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS documentation: register the canonical 5-outcome taxonomy of `finalizer_media_assets_insert_total` (insert / update_on_conflict / no_op_silent / rows_affected_err / failed). Documents the H7 silent-no-op cascade (deterministic `RunFingerprint` → identical chunk `ArtifactID` → byte-identical UPSERT → `rows_affected=0` → row IS in table — NOT a missing-gate mystery). Discriminator verified live on `data/media/media.db.sqlite` via 13-row `asset_versions` dupes + 15-row duplicate `file_hash` rows + 67 chunk-prefix rows. H5 (orphan worker) + H6 (resume-skip) falsified by evidence. NO Go code change. See AGENTS.md "Recent cross-cutting closures" mirror entry + `architecture/current.yaml#PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS` for 3-surface godlike/06 SSOT lockstep per CANONICAL.md §1. Forward-pointers: `PR-FINALIZER-NOOP-INFO-LOG` (INFO log alongside the `no_op_silent` metric increment, deadline 2026-08-15) + `PR-OPS-H7-DIAGNOSTIC-SQL` (commit the H7 discriminator SQL files, deadline 2026-07-13). Co-authored-by trailer per AGENTS.md Git-Lesson-3.
+
+## Unreleased (PR-WIRE-SUBTITLE-FETCHER-ADAPTER — July 2026)
+
+### Added
+
+- **PR-WIRE-SUBTITLE-FETCHER-ADAPTER** (commit `6a108ee2`, 2026-07-06) — wire the `SubtitleFetcherAdapter` (infrastructure-layer, post PR-SUBTITLES-BASEARGS-MIGRATION) into the production composition root for the YouTube use case; migrate the wired `YTDLPSubtitleAdapter` (application-layer, used by the monitor) to use `ytdlp.BaseArgs` (the same canonical 4-5 anti-bot flags that PR-SUBTITLES-BASEARGS-MIGRATION migrated to the infrastructure adapter). Closes the silent-failure-on-n-challenge-videos surface for BOTH the monitor AND the YouTube segmentation use case. 5 files / +258 / -17 LOC:
+  - `internal/application/transcripts/ytdlp_subtitles.go` — `Deps` struct grows 2 fields (`CmdBuilder *ytdlp.CommandBuilder` + `UseCookies bool`); `NewYTDLPSubtitleAdapter` constructs a `ytdlp.NewCommandBuilder(&ytcfg.Config{})` fallback when `CmdBuilder == nil` (godlike/07 minimum-blast-radius); extracted `buildSubtitleArgs(videoURL, outputTemplate) []string` pure helper for hermetic TDD testability; `fetchTimedTranscript` now calls `exec.CommandContext(ctx, a.ytdlp.Path(), a.buildSubtitleArgs(videoURL, outputTemplate)...)` which prepends `BaseArgs` (the canonical 4-5 anti-bot flags) before the operation-specific flags.
+  - `internal/application/transcripts/ytdlp_subtitles_test.go` (NEW, ~265 LoC) — 5 hermetic TDD tests: `TestNewYTDLPSubtitleAdapter_DelegatesToBaseArgs` (locks the canonical delegation contract), `_NilCmdBuilderFallsBackToDefault` (2-case split per godlike/06 SSOT), `_WithCookiesEnabled` (locks the monitor wiring), `_NChallengeReachable` (the critical regression guard), `_BuildSubtitleArgs_PreservesOrder` (locks BaseArgs-first ordering).
+  - `internal/app/lifecycle_scheduler.go` — added `internal/infrastructure/ytdlp` import; updated `transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{...})` call site to inject `CmdBuilder: ytdlp.NewCommandBuilder(deps.cfg)` + `UseCookies: true` (monitor sweeps the full channel feed including age-restricted videos).
+  - `internal/platform/config/types_storage.go` — added `SubtitlesPath() string` SSOT method on `*StorageConfig` returning `<DataDir>/subtitles` (mirrors the existing `TempPath()` / `DataDir()` pattern).
+  - `internal/app/build_bundles_domain.go` — added `youtube_subtitles` + `ytdlp` imports; wired the `SubtitleFetcherAdapter` inline in the YouTube use case construction block with `useCookies=false` (YouTube segmentation is for public video clips, not age-restricted).
+
+### godlike/06 SSOT
+
+- `ytdlp.BaseArgs` is the SOLE canonical emitter of `--no-warnings` + `--extractor-args youtube:player_client=web,android` for YouTube URLs.
+- `SubtitleFetcherAdapter` (infrastructure) + `YTDLPSubtitleAdapter` (application) are TWO distinct ports serving TWO distinct consumers (`monitor.TranscriptProvider` vs `SubtitleFetcherPort`) with TWO distinct return shapes (`TranscriptDocument` vs `[]TimedEntry`) — NOT duplicates, NOT swappable.
+
+### godlike/07 NO-FAKE-AVAILABILITY
+
+- The monitor's `UseCookies=true` means the channel sweep can now reach age-restricted videos (n-challenge + age-restricted YouTube videos previously failed silently).
+- The YouTube use case's `useCookies=false` means the segmentation works for public videos (the per-call trade-off is explicit, not hidden).
+
+### Pre-existing build issues (carry-forward, NOT regressions)
+
+- The 6-item voiceover + app build-issue list per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` is UNCHANGED — NOT regressions of this closure.
+
+### Cross-references (godlike/06 SSOT umbrella)
+
+- `architecture/current.yaml#YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06` (parent audit that surfaced the drift).
+- `architecture/current.yaml#PR-SUBTITLES-BASEARGS-MIGRATION` (the prior commit `543ae5b7` that fixed the infrastructure adapter).
+- `architecture/current.yaml#VO-DECOMPOSITION-2026-07-04` (transcripts subtree wave).
+- `architecture/current.yaml#SEMANTIC-LOCATION-API-2026-07-06` (sister wave, same ship-date).
+
+### Honest scope-lock (godlike/07)
+
+- The `SubtitleFetcherAdapter.FetchFullVTT` method (the OTHER method on the infrastructure adapter, NOT `SliceSubtitles`) is wired but never called via the YouTube use case path — it's dead code in the current call graph, forward-pointer `PR-SUBTITLE-FETCHER-FETCHFULLVTT-AUDIT` (deadline 2026-08-15) will resolve whether to retire or wire.
