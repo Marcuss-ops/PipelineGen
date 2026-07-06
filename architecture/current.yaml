@@ -6526,7 +6526,7 @@
     - id: PR-LONG-FILES-IMAGES-REPOSITORY
       owner_capability: internal/infrastructure/database/sqlite/assets (canonical SSOT after 5-file decomposition: images_repository_slim.go 129 LoC orchestrator + 4 per-capability files per commit 612c39b1)
       status: shipped
-      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_sha: 
       ship_date: 2026-07-06
       ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
       deadline: 2026-07-25
@@ -6552,7 +6552,7 @@
     - id: PR-LONG-FILES-PAYLOAD-MAPPER
       owner_capability: internal/infrastructure/qdrant/indexing (canonical SSOT after 4-file decomposition: payload_mapper_slim.go 152 LoC orchestrator + 3 per-capability files per commit f0156f66)
       status: shipped
-      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_sha: 
       ship_date: 2026-07-06
       ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
       deadline: 2026-07-25
@@ -6574,7 +6574,7 @@
     - id: PR-LONG-FILES-STORAGE-SEARCH
       owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
       status: shipped
-      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_sha: 
       ship_date: 2026-07-06
       ship_via: 0-action false-premise closure (file not found on disk)
       deadline: 2026-07-25
@@ -6605,7 +6605,7 @@
     - id: PR-LONG-FILES-SYMBOL-REFS
       owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
       status: shipped
-      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_sha: 
       ship_date: 2026-07-06
       ship_via: 0-action false-premise closure (file not found on disk)
       deadline: 2026-07-25
@@ -6636,7 +6636,7 @@
     - id: PR-LONG-FILES-GENERATE-ONE-USECASE
       owner_capability: internal/application/scripts/usecase (canonical SSOT after decomposition: generate_one_usecase_slim.go 205 LoC orchestrator + per-stage files per commit 0f2f6622)
       status: shipped
-      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_sha: 
       ship_date: 2026-07-06
       ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
       deadline: 2026-07-25
