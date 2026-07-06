@@ -3094,3 +3094,29 @@ Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesso
 ### Honest scope-lock (godlike/07)
 
 - The `SubtitleFetcherAdapter.FetchFullVTT` method (the OTHER method on the infrastructure adapter, NOT `SliceSubtitles`) is wired but never called via the YouTube use case path — it's dead code in the current call graph, forward-pointer `PR-SUBTITLE-FETCHER-FETCHFULLVTT-AUDIT` (deadline 2026-08-15) will resolve whether to retire or wire.
+
+## Unreleased (PR-ARTLIST-COOKIES-DOWNLOADER-INTEGRATION-TEST — July 2026)
+
+### Added
+
+- **PR-ARTLIST-COOKIES-DOWNLOADER-INTEGRATION-TEST** (commit `745ef965`, 2026-07-06) — add hermetic integration test for the Artlist cookies conditional in `Download()`. Closes the test-surface gap surfaced by PR-ARTLIST-COOKIES-CONFIG (commit `de057b65`): the previous test only covered the config layer (`TestConfigUnmarshalReadsArtlistCookiesPath`) — the conditional injection in `Download()` was untested. Also adds the canonical `ProcessRunner` port (mirrors the metadata/subtitle adapter pattern) so the test can capture argv without spawning a real yt-dlp subprocess. 2 files / +343 / -3 LOC:
+  - `internal/infrastructure/downloader/downloader.go` (modified, +60 / -6 LOC) — added `ProcessRunner` interface (mirrors `process.Run` signature) + `defaultRunner` struct that wraps `process.Run` + `runner ProcessRunner` field on `YTDLPDownloader` + NewYTDLP sets `runner: defaultRunner{}` (production default) + replaced 3 `process.Run` calls with `d.runner.Run` in `Download`/`DownloadRange`/`DownloadSections` + compile-time pin `var _ ProcessRunner = defaultRunner{}`.
+  - `internal/infrastructure/downloader/downloader_test.go` (NEW, ~340 LoC) — `captureRunner` mock + 4 hermetic TDD tests (empty path skips flag, custom path injects flag, non-Artlist URL no Artlist args, BaseArgs delegation) + `writeDummyOutputFile` helper + `hasFlagArg` + `flagValueIndex` helpers + `setupTestAllowlist` helper + compile-time pin `var _ ProcessRunner = (*captureRunner)(nil)`.
+
+### godlike/06 SSOT
+
+- `ProcessRunner` interface lives ONLY in `downloader.go`; `defaultRunner` lives ONLY in `downloader.go`; `captureRunner` is test-only (defined in `downloader_test.go`, same package).
+
+### godlike/07 NO-FAKE-AVAILABILITY
+
+- The 4 tests lock the actual contract — future refactors that accidentally inject `--cookies` when artlistCookiesPath is empty (or skip it when set) will surface as test failures BEFORE the regression reaches production.
+
+### godlike/07 minimum-blast-radius
+
+- 0 surface contract changes (NewYTDLP signature unchanged; public API unchanged).
+- Production behavior identical (defaultRunner wraps process.Run byte-equivalently).
+- Test surface is hermetic (no real yt-dlp subprocess; no network; t.TempDir cleanup).
+
+### Pre-existing build issues (carry-forward, NOT regressions)
+
+- The 6-item voiceover + app build-issue list per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` is UNCHANGED.

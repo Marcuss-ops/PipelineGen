@@ -7772,3 +7772,37 @@ PR-WIRE-SUBTITLE-FETCHER-ADAPTER:
       deadline: 2026-08-15
       owner_capability: internal/infrastructure/youtube
       summary: Resolve whether to retire or wire the SubtitleFetcherAdapter.FetchFullVTT method (the OTHER method, NOT SliceSubtitles) — currently dead code in the call graph.
+PR-ARTLIST-COOKIES-DOWNLOADER-INTEGRATION-TEST:
+  ship_date: 2026-07-06
+  ship_sha: 745ef965
+  type: feat_migration_3surface_lockstep
+  status: shipped
+  ship_via: 0_go_touch_audit_pin
+  description: |
+    Add hermetic integration test for the Artlist cookies conditional
+    in Download(). Closes the test-surface gap surfaced by
+    PR-ARTLIST-COOKIES-CONFIG (commit de057b65): the previous test
+    only covered the config layer (TestConfigUnmarshalReadsArtlistCookiesPath)
+    — the conditional injection in Download() was untested. Also
+    adds the canonical ProcessRunner port (mirrors the metadata/subtitle
+    adapter pattern) so the test can capture argv without spawning
+    a real yt-dlp subprocess. 2 files / +343 / -3 LOC. The 4 tests
+    lock the godlike/07 fail-closed contract: empty path skips
+    --cookies (visible 403 from Artlist), custom path injects
+    --cookies <path>, non-Artlist URL never gets Artlist args,
+    BaseArgs delegation is honored.
+  cross_references:
+    parent_audit:
+      - architecture/current.yaml#YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06
+    sister_wave:
+      - architecture/current.yaml#PR-ARTLIST-COOKIES-CONFIG
+    canonical_surface:
+      - internal/infrastructure/downloader/downloader.go::ProcessRunner
+      - internal/infrastructure/downloader/downloader.go::defaultRunner
+      - internal/infrastructure/downloader/downloader_test.go::captureRunner
+  godlike_06_ssot:
+    - ProcessRunner interface lives ONLY in downloader.go (no duplicate in test or other packages).
+    - defaultRunner lives ONLY in downloader.go.
+    - captureRunner is test-only (defined in downloader_test.go, same package).
+  godlike_07_no_fake_availability:
+    - The 4 tests lock the actual contract — future refactors that accidentally inject --cookies when artlistCookiesPath is empty (or skip it when set) will surface as test failures BEFORE the regression reaches production.
