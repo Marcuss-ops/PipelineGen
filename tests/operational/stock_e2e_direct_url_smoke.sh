@@ -35,7 +35,7 @@
 #
 # Overridable env vars:
 #   BASE          = http://127.0.0.1:8000  (PipelineGen API root)
-#   AUTH          = "Authorization: Bearer test-admin-token-12345"
+#   AUTH          = "Authorization: Bearer <VELOX_ADMIN_TOKEN or test-admin-token-12345>"
 #   FOLDER_ID     = ${FOLDERS[0]}        (9 Drive folder fixtures from
 #                                          architecture/action-plans/
 #                                          2026-07-05-stock-e2e-battery.md)
@@ -48,7 +48,7 @@ set -euo pipefail
 
 # ---- Configuration --------------------------------------------------------
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer test-admin-token-12345}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
 
 # 9 Drive folder fixtures from architecture/action-plans/
 # 2026-07-05-stock-e2e-battery.md §1 (canonical test scope-limit).
@@ -95,8 +95,7 @@ mkdir -p "$OUT_DIR"
 # a generic /healthz probe misses (middleware mismatch, route-not-registered).
 
 PROBE_ENDPOINTS=(
-    "$BASE/healthz"
-    "$BASE/api/healthz"
+    "$BASE/health"
     "$BASE/api/stock-pipeline/run"
 )
 

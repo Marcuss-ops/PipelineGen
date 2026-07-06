@@ -89,7 +89,7 @@
 # Overridable env vars:
 #   DB_PATH = data/media/media.db.sqlite
 #   BASE    = http://127.0.0.1:8000
-#   AUTH    = "Authorization: Bearer test-admin-token-12345"
+#   AUTH    = "Authorization: Bearer <VELOX_ADMIN_TOKEN or test-admin-token-12345>"
 #   OUT_DIR = /tmp/stock-tests
 
 set -euo pipefail
@@ -97,7 +97,7 @@ set -euo pipefail
 # ---- Configuration --------------------------------------------------------
 DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer test-admin-token-12345}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
 OUT_DIR="${OUT_DIR:-/tmp/stock-tests}"
 MIN_BYTES="${MIN_BYTES:-100000}"
 
