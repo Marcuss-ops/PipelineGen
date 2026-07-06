@@ -2,8 +2,6 @@ package drive
 
 import (
 	"context"
-	"fmt"
-	"path/filepath"
 
 	"go.uber.org/zap"
 )
@@ -46,6 +44,14 @@ type StoreOptions struct {
 //   - an asset-tree service for style-aware folder resolution (optional);
 //   - a zap logger.
 //
+// P0-2 (July 2026): UploadToDrive was REMOVED — all application-layer
+// callers now route through delivery.Publisher.Publish. The remaining
+// methods (EnsureDriveFolder, ResolveDest) are still used by the
+// images package for folder resolution and path-only destination
+// lookups. The driveUploader field is retained for backward compat
+// with existing callers that still construct Store with an Uploader;
+// a future PR can slim the struct further.
+//
 // Construction now takes all required inputs at the ctor boundary:
 // the 7 historical positionals PLUS `StoreOptions` carrying the
 // previously-setter-injected `AssetTree` and `TreeSources` map.
@@ -55,20 +61,6 @@ type StoreOptions struct {
 // is preserved as a thin wrapper for callers that still want default-empty
 // options (e.g. tests that never use the tree wiring); new code SHOULD
 // prefer NewStoreWithOptions.
-//
-// Migration path:
-//
-//	new(code):
-//	  store := drive.NewStore(resolver, uploader, root, images, videoai, sfx, log, drive.StoreOptions{
-//	      AssetTree:   treeSvc,
-//	      TreeSources: map[string]string{images: "image", videoai: "videoai"},
-//	  })
-//
-//	old(code) — DEPRECATED, will be removed in commit 6 of the refactor:
-//	  store := drive.NewStore(resolver, uploader, root, images, videoai, sfx, log)
-//	  store.SetAssetTree(treeSvc)
-//	  store.SetTreeSource(images, "image")
-//	  store.SetTreeSource(videoai, "videoai")
 type Store struct {
 	resolver         *Resolver
 	driveUploader    *Uploader
@@ -156,111 +148,6 @@ func (s *Store) EnsureDriveFolder(_ context.Context, req AssetDestinationRequest
 		return s.imagesFolder, nil
 	}
 	return s.rootFolder, nil
-}
-
-// UploadToDrive resolves the destination folder via EnsureDriveFolder and
-// then calls s.driveUploader.UploadFile on the local filePath. Returns the
-// (fileID, webViewLink) pair from the Drive API.
-//
-// Deprecated: Fase 3 Spina Dorsale (July 2026). This method calls
-// s.driveUploader.UploadFile() directly instead of going through the
-// canonical delivery.Publisher.Publish() canal. Migration path:
-// callers (images/storage_drive.go, images/storage_ingest.go,
-// images/metadata_service.go) should adopt delivery.Publisher with
-// DestinationImage / DestinationVoiceover keys and let the Publisher
-// resolve the folder + normalise the filename + apply ConflictPolicy.
-//
-// P0-2 (July 2026): the legacy silent-success nil-uploader path
-// (return "", "", nil on nil driveUploader) is RETIRED per godlike/07
-// no-fake-availability. Callers that need a no-op upload path MUST
-// nil-check the Store receiver BEFORE calling UploadToDrive. A nil
-// driveUploader now returns a typed error — the legacy contract that
-// silently swallowed the missing uploader and returned empty IDs
-// (which downstream consumers then treated as "upload skipped")
-// was the canonical godlike/07 fake-availability surface this
-// closure eliminates.
-//
-// TODO(Fase 3.3): replace Store.UploadToDrive with delivery.Publisher.Publish
-// in the images package. The legacy Store is kept during the EXPAND
-// window to avoid breaking existing image upload flows.
-//
-// Behaviour contract (P0-2 godlike/07 closure):
-//
-//   - Store nil  → silent no-op (`"", "", nil`). Callers explicitly nil-check
-//     the receiver to skip uploads in offline / test paths.
-//   - driveUploader nil → typed error (`ErrDriveUploaderNotConfigured`).
-//     The legacy silent-success path (returning "", "", nil) was the
-//     canonical godlike/07 fake-availability violation — callers that
-//     received empty IDs silently skipped downstream indexing/audit.
-//   - real Drive client → call EnsureDriveFolder, derive filename from
-//     filePath (or req.Ext when filePath has no extension), and dispatch to
-//     driveUploader.UploadFile. Errors are propagated verbatim.
-//
-// The Drive API call itself is delegated to internal/upload/drive (which
-// owns retry, mime detection, and Drive metadata upload). This Store is
-// only the routing layer: which folder + which filename.
-func (s *Store) UploadToDrive(ctx context.Context, req AssetDestinationRequest, filePath string) (string, string, error) {
-	if s == nil {
-		return "", "", nil
-	}
-	if s.driveUploader == nil {
-		return "", "", fmt.Errorf("storage.UploadToDrive: %w", ErrDriveUploaderNotConfigured)
-	}
-
-	folderID, err := s.EnsureDriveFolder(ctx, req)
-	if err != nil {
-		if s.log != nil {
-			s.log.Warn("storage.UploadToDrive: EnsureDriveFolder failed",
-				zap.String("subject", req.Subject),
-				zap.Error(err))
-		}
-		return "", "", fmt.Errorf("resolve destination folder: %w", err)
-	}
-
-	if s.rootFolder != "" && folderID == s.rootFolder {
-		return "", "", fmt.Errorf("upload: uploading directly to the Media root folder (%s) is not permitted; files must be uploaded to a specific subdirectory", s.rootFolder)
-	}
-
-	filename := driveFilename(filePath, req.Ext)
-	if filename == "" {
-		return "", "", fmt.Errorf("storage.UploadToDrive: cannot derive filename from filePath=%q ext=%q", filePath, req.Ext)
-	}
-
-	result, err := s.driveUploader.UploadFile(ctx, filePath, folderID, filename)
-	if err != nil {
-		if s.log != nil {
-			s.log.Warn("storage.UploadToDrive: driveUploader.UploadFile failed",
-				zap.String("file_path", filePath),
-				zap.String("folder_id", folderID),
-				zap.Error(err))
-		}
-		return "", "", fmt.Errorf("drive upload: %w", err)
-	}
-	if result == nil {
-		// drive.Uploader returned no error AND no result — treat as silent
-		// no-op so callers that propagate empty IDs downstream keep working.
-		return "", "", nil
-	}
-	return result.FileID, result.WebViewLink, nil
-}
-
-// driveFilename resolves the Drive-side filename for an upload. We prefer
-// the basename of filePath when it carries an extension. We deliberately
-// do NOT synthesise a fallback from reqExt — generating "upload"+ext
-// risks Drive-side collisions when two callers hit the same root with
-// the same ext. If the input is unusable, return "" so UploadToDrive
-// errors out and forces the caller to fix the filePath rather than
-// generating colliding Drive paths in production.
-func driveFilename(filePath, reqExt string) string {
-	_ = reqExt // intentionally unused: see comment above.
-	base := filepath.Base(filePath)
-	if base == "" || base == "." || base == "/" {
-		return ""
-	}
-	if filepath.Ext(base) == "" {
-		return ""
-	}
-	return base
 }
 
 // ResolveDest is the path-only side of Resolve — it MUST NOT call Drive.

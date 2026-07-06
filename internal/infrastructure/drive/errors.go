@@ -112,4 +112,4 @@ var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incompl
 // fail-closed path protects from silent-skip but a nil Store
 // guard is the cleaner design — it surfaces the gap at
 // composition time rather than at first upload).
-var ErrDriveUploaderNotConfigured = errors.New("drive: uploader not configured (nil *Uploader passed to Store ctor — upload-capable callers must nil-check the Store receiver before calling UploadToDrive)")
+var	ErrDriveUploaderNotConfigured = errors.New("drive: uploader not configured (nil *Uploader passed to Store ctor — P0-2: application-layer callers route through delivery.Publisher.Publish, not Store.UploadToDrive)")
