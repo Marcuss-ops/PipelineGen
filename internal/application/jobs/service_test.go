@@ -80,7 +80,10 @@ func setupTestService(t *testing.T) (*Service, *sqljobs.SQLiteStore, func()) {
 	t.Helper()
 	db := setupTestDB(t)
 	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	svc := NewService(store, nil, zap.NewNop())
+	svc, err := NewService(store, nil, zap.NewNop(), nil)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 	return svc, store, func() {}
 }
 
@@ -497,8 +500,10 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	// but NOT the in-process enqueueMu.
 	storeA := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	storeB := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	svcA := NewService(storeA, nil, zap.NewNop())
-	svcB := NewService(storeB, nil, zap.NewNop())
+	svcA, errA := NewService(storeA, nil, zap.NewNop(), nil)
+	require.NoError(t, errA)
+	svcB, errB := NewService(storeB, nil, zap.NewNop(), nil)
+	require.NoError(t, errB)
 
 	// Both contexts carry the same correlation_id so the (type, correlation_id)
 	// UNIQUE index is the gatekeeper — not the per-Service mutex.

@@ -69,8 +69,9 @@ func (m *mockArtifactPreparationService) Prepare(ctx context.Context, va finaliz
 	m.calls.Add(1)
 	// append to recordedInputs (best-effort; tests don't depend on
 	// exact ordering, only on count)
-	if existing, ok := m.recordedInputs.Load().(*[]finalization.VerifiedArtifact); ok && existing != nil {
-		tmp := append(*existing, va)
+	recorded := m.recordedInputs.Load()
+	if recorded != nil {
+		tmp := append(*recorded, va)
 		m.recordedInputs.Store(&tmp)
 	} else {
 		first := []finalization.VerifiedArtifact{va}
@@ -165,6 +166,11 @@ func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLo
 		LeaseID:    "lease-round-trip",
 		Result:     []byte(`{"ok":true}`),
 		ResultHash: "result-hash-round-trip",
+		AssetMappings: map[string]string{
+			"art-1": "asset-1",
+			"art-2": "asset-2",
+			"art-3": "asset-3",
+		},
 	}
 	staged := remote.StagedArtifacts{
 		{ArtifactID: "art-1", Destination: "image", SHA256: "sha-1"},
@@ -266,6 +272,7 @@ func TestPublishAndCompleteUseCase_ConversionCorrectness(t *testing.T) {
 	req := &remote.CompleteWithArtifactsRequest{
 		WorkerID: "w-conv", JobID: "job-conv-correctness", Attempt: 1,
 		LeaseID: "lease-conv", Result: []byte(`{}`), ResultHash: "rh-conv",
+		AssetMappings: map[string]string{"art-conv-correctness-001": "asset-conv-1"},
 	}
 	staged := remote.StagedArtifacts{
 		{ArtifactID: "art-conv-correctness-001", Destination: "image", SHA256: "abc123-conv-correctness"},
@@ -344,6 +351,10 @@ func TestPublishAndCompleteUseCase_InvalidStagedFailsTypedError(t *testing.T) {
 	req := &remote.CompleteWithArtifactsRequest{
 		WorkerID: "w", JobID: "j", Attempt: 1, LeaseID: "l",
 		Result: []byte(`{}`), ResultHash: "rh",
+		AssetMappings: map[string]string{
+			"":       "asset-empty",  // for empty ArtifactID test
+			"art-x":  "asset-x",
+		},
 	}
 
 	// (1) Empty ArtifactID -> ErrStagedArtifactReferenceMissingFields.
