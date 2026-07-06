@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -19,12 +21,21 @@ import (
 //     MOVED from internal/application/youtube/subtitles.go;
 //   - a process runner for the yt-dlp --write-auto-subs download;
 //   - a per-cacheDir store so SliceSubtitles can locate the
-//     previously downloaded .vtt for a videoID.
+//     previously downloaded .vtt for a videoID;
+//   - a *ytdlp.CommandBuilder + useCookies flag for the canonical
+//     BaseArgs prefix delegation (PR-SUBTITLES-BASEARGS-MIGRATION,
+//     2026-07-06). Pre-PR the adapter manually appended --no-warnings
+//     and bypassed the BaseArgs helper entirely, dropping the
+//     canonical --cookies/--js-runtime/--remote-components/--extractor-args
+//     prefix — this caused subtitle extraction to fail silently on
+//     age-restricted and n-challenge-protected YouTube videos.
 type SubtitleFetcherAdapter struct {
-	ytdlpPath string
-	cacheDir  string
-	langs     string
-	runner    ProcessRunnerPort
+	ytdlpPath  string
+	cacheDir   string
+	langs      string
+	runner     ProcessRunnerPort
+	cmdBuilder *ytdlp.CommandBuilder
+	useCookies bool
 }
 
 // SubtitleCacheConfig configures the adapter.
@@ -38,18 +49,43 @@ type SubtitleCacheConfig struct {
 var _ SubtitleFetcher = (*SubtitleFetcherAdapter)(nil)
 
 // NewSubtitleFetcherAdapter wires the adapter. cacheDir must be set.
-func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort) *SubtitleFetcherAdapter {
+// cmdBuilder is the canonical owner of the yt-dlp argv prefix (godlike/06
+// SSOT, see internal/infrastructure/ytdlp/cmd_builder.go); nil falls back
+// to ytdlp.NewCommandBuilder(&ytcfg.Config{}) (empty config — Path will
+// be empty, no cookies, no JS runtime) so the adapter degrades gracefully
+// rather than nil-dereferencing. useCookies=true is required for
+// age-restricted and n-challenge-protected YouTube videos (the canonical
+// n-challenge case the PR closes); false for public auto-generated
+// subtitles. The flag is set at wire-time per the user spec.
+//
+// godlike/07 honest scope-lock: as of 2026-07-06 this adapter is NOT
+// wired in the production composition root (only the application-layer
+// YTDLPSubtitleAdapter in internal/application/transcripts/ytdlp_subtitles.go
+// is wired via internal/app/lifecycle_scheduler.go:88). This migration
+// is future-proofing + drift prevention per godlike/06 SSOT — the
+// SubtitleFetcher port in internal/infrastructure/youtube/ports.go is
+// tested via internal/application/youtube/usecase/service_validate_test.go
+// but the infrastructure adapter is not yet selected by any production
+// wire. Re-introduction of the legacy manual --no-warnings literal here
+// would now surface as a test failure (TestSubtitles_DelegatesToBaseArgs_
+// CanonicalPlayerClient) BEFORE the regression reaches production.
+func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort, cmdBuilder *ytdlp.CommandBuilder, useCookies bool) *SubtitleFetcherAdapter {
 	if runner == nil {
 		runner = NewProcessRunnerAdapter()
 	}
 	if cfg.DefaultLangs == "" {
 		cfg.DefaultLangs = "en,en-US"
 	}
+	if cmdBuilder == nil {
+		cmdBuilder = ytdlp.NewCommandBuilder(&ytcfg.Config{})
+	}
 	return &SubtitleFetcherAdapter{
-		ytdlpPath: cfg.YTDLPPath,
-		cacheDir:  cfg.CacheDir,
-		langs:     cfg.DefaultLangs,
-		runner:    runner,
+		ytdlpPath:  cfg.YTDLPPath,
+		cacheDir:   cfg.CacheDir,
+		langs:      cfg.DefaultLangs,
+		runner:     runner,
+		cmdBuilder: cmdBuilder,
+		useCookies: useCookies,
 	}
 }
 
@@ -73,17 +109,37 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	if err := os.MkdirAll(a.cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("subtitles: mkdir cache: %w", err)
 	}
-	args := []string{
-		videoURL,
+	// PR-SUBTITLES-BASEARGS-MIGRATION (2026-07-06): delegate the
+	// canonical yt-dlp argv prefix to a.cmdBuilder.BaseArgs. Pre-PR
+	// this slice manually appended --no-warnings and bypassed the
+	// helper entirely, dropping --cookies (required for n-challenge
+	// + age-restricted videos), --js-runtime + --remote-components
+	// ejs:github (required for node-based signature resolution), and
+	// --extractor-args youtube:player_client=web,android (the f3f1ee90
+	// web-first policy). Mirror metadata.go: BaseArgs returns the
+	// prefix WITHOUT the URL, so the URL is appended at the end
+	// alongside the -o output template (yt-dlp accepts global options
+	// before OR after the positional URL).
+	//
+	// godlike/07 honest scope-lock: as of 2026-07-06 the adapter is
+	// NOT wired in the production composition root (see the
+	// NewSubtitleFetcherAdapter godoc for the full dead-code note).
+	// The BaseArgs delegation is the load-bearing SSOT contract that
+	// future re-introduction will inherit — the pre-PR drift would
+	// be the default if a future agent reverts the manual --no-warnings
+	// + bypass pattern, but Test 1 in subtitles_test.go now catches
+	// the regression at unit-test time.
+	args := a.cmdBuilder.BaseArgs(videoURL, a.useCookies)
+	args = append(args,
 		"--write-auto-subs",
 		"--write-subs",
 		"--skip-download",
 		"--sub-langs", a.langs,
 		"--sub-format", "vtt",
 		"--convert-subs", "vtt",
-		"--no-warnings",
-		"-o", filepath.Join(a.cacheDir, "%(id)s.%(ext)s"),
-	}
+	)
+	args = append(args, videoURL)
+	args = append(args, "-o", filepath.Join(a.cacheDir, "%(id)s.%(ext)s"))
 	// best-effort: no error if yt-dlp can't fetch subs.
 	_, _, _ = a.runner.Run(ctx, a.ytdlpPath, args)
 	return parseVTTEntries(cachedPath, 0, 0)
