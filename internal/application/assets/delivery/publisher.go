@@ -21,9 +21,7 @@ import "context"
 //	  - media processor               → Publisher injected at composition
 //
 //	Still bypassing delivery.Publisher (TODO markers in place):
-//	  - drive/store.go::UploadToDrive       → used by images package
-//	  - clips_adapters_drive.go::UploadFile → clips adapter calls drive.Admin
-//	  - voiceover useCasePublisherAdapter   → calls drive.Admin.UploadFile
+//	  - drive/store.go::UploadToDrive       → used by images package (P0-2 added Publisher fallback chain)
 //	  - jobs/worker/runner.go               → assetClient.UploadFile (worker artifacts, different concern)
 //
 //	DestinationKey coverage (complete):

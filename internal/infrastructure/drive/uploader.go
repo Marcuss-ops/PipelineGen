@@ -115,6 +115,8 @@ var ErrAmbiguousDriveFile = errors.New("drive: ambiguous file match: multiple no
 // UploadFile uploads a file to the specified Drive folder.
 // This properly uses .Media(f) to upload the file content (unlike the broken artlist/drive_uploader.go).
 // Retries up to 3 times with exponential backoff on transient errors (429, 503, timeouts).
+//
+// Deprecated: use delivery.Publisher.Publish instead.
 func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename string) (*UploadResult, error) {
 	return u.UploadFileWithDescription(ctx, localPath, folderID, filename, "")
 }
@@ -127,6 +129,8 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 // uniform with the other call sites in the codebase that already use pkg/retry
 // (segment.go, veloxclient, ollama client, script batch QA/coherence, engine.go).
 // Non-retryable errors short-circuit immediately via the IsRetryable predicate.
+//
+// Deprecated: use delivery.Publisher.Publish instead.
 func (u *Uploader) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error) {
 	result, err := retry.DoWithValue(ctx, func() (*UploadResult, error) {
 		return u.doUploadFile(ctx, localPath, folderID, filename, description)
@@ -341,6 +345,8 @@ func (u *Uploader) FindFileByIdempotencyKey(ctx context.Context, folderID, idemK
 }
 
 // UploadFileIfChanged uploads a file only when the Drive file does not already exist with the same hash.
+//
+// Deprecated: use delivery.Publisher.Publish instead.
 func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error) {
 	localHash, err := hashutil.MD5File(localPath)
 	if err != nil {
