@@ -145,6 +145,9 @@ func (a *ArtifactPublisherAdapter) Publish(
 		IdempotencyKey: idemKey,
 		ContentHash:    artifact.SHA256,
 		SourceVersion:  artifact.SourceVersion,
+		Group:          "stock",
+		Subject:        artifact.ArtifactID,
+		Provider:       "stock",
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.

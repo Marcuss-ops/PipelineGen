@@ -268,6 +268,8 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if err != nil {
 		return nil, fmt.Errorf("wire broker: %w", err)
 	}
+	root.Jobs.Broker = broker
+
 	assetSvc := assetsjobs.NewService(
 		root.Search.AssetIndexService,
 		root.Repos.Assets,

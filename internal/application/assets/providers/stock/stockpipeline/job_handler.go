@@ -141,18 +141,19 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	)
 
 	input := &RunInput{
-		SearchQueries: payload.SearchQueries,
-		DirectURLs:    payload.DirectURLs,
-		TotalMinutes:  payload.TotalMinutes,
-		ChunkDuration: payload.ChunkDuration,
-		ClipDuration:  payload.ClipDuration,
-		NoAudio:       payload.NoAudio,
-		NoEffects:     payload.NoEffects,
-		NoTransitions: payload.NoTransitions,
-		MaxVideos:     payload.MaxVideos,
-		Subfolder:     payload.Subfolder,
-		FolderName:    payload.FolderName,
-		FolderID:      payload.FolderID,
+		SearchQueries:     payload.SearchQueries,
+		DirectURLs:        payload.DirectURLs,
+		TotalMinutes:      payload.TotalMinutes,
+		ChunkDuration:     payload.ChunkDuration,
+		ClipDuration:      payload.ClipDuration,
+		NoAudio:           payload.NoAudio,
+		NoEffects:         payload.NoEffects,
+		NoTransitions:     payload.NoTransitions,
+		MaxVideos:         payload.MaxVideos,
+		Subfolder:         payload.Subfolder,
+		FolderName:        payload.FolderName,
+		FolderID:          payload.FolderID,
+		FinalizationLease: extractLease(job),
 	}
 	if payload.Metadata != nil {
 		input.Metadata = &ChunkMetadataInput{

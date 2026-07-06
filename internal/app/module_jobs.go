@@ -21,6 +21,7 @@ type JobsBundle struct {
 	Dispatcher *appjobs.Dispatcher
 	Service    *appjobs.Service
 	Facade     job.Service // canonical domain interface satisfied by *appjobs.Service
+	Broker     appjobs.CompletionPort
 }
 
 // BuildJobsBundle constructs the Job runtime pieces in the canonical order:
