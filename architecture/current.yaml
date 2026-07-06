@@ -7665,3 +7665,58 @@
 # Slim-shape: id + owner_capability + status + ship_sha + ship_date + forward_pointer
 # Per godlike/06 SSOT: appended to the existing YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06 umbrella linked_issues[]
 # (This is a documentation-only bookkeeping entry; the production code change landed in commit de057b65.)
+# PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS (2026-07-06)
+# Documentation-only closure; zero Go code change.
+# Lockstepped with metric-promotion commit 2e444fa1 (PR-FINALIZER-METRICS).
+# Canonical registry of the 5-outcome taxonomy for
+# finalizer_media_assets_insert_total Prometheus counter
+# so future agents stop re-deriving the H7 false-positive
+# diagnostic on subsequent runs.
+PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS:
+  ship_date: 2026-07-06
+  type: documentation_only_3surface_lockstep
+  status: shipped
+  ship_via: 0_go_touch_audit_pin
+  description: |
+    Canonical 5-outcome taxonomy for
+    finalizer_media_assets_insert_total Prometheus counter
+    (lockstepped with metric promotion in commit 2e444fa1).
+    Identifies the silent-no-op cascade (H7 root-cause class)
+    as a previously-misclassified H5/H6 mystery: deterministic
+    RunFingerprint inputs across retries/replays produce identical
+    chunk ArtifactIDs; media_assets.id ON CONFLICT fires with
+    byte-identical UPDATE SET values; SQLite returns rows_affected=0;
+    metric fires outcome="no_op_silent"; the row IS in the table.
+    Discriminator verified live 2026-07-06:
+      Q1 asset_versions dupes-via-artifact_id = 13 (all stock chunks)
+      Q2 media_assets chunk_rows = 67
+      Q3 duplicate-file_hash rows = 15 (canonical UPSERT signature)
+    H5 (orphan worker) + H6 (resume-skip) FALSIFIED by evidence.
+  cross_references:
+    canonical_surface:
+      - internal/infrastructure/observability/metrics_media.go::FinalizerMediaAssetsInsertTotal
+      - internal/application/assets/finalizer/asset_finalizer_tx.go::upsertMediaAsset
+      - internal/application/assets/providers/stock/stockpipeline/step_runner.go::RunFingerprint
+    diagnostic_sql_artifacts_untracked:
+      - tests/operational/h7_discriminator.sql
+      - tests/operational/h7_close_loop.sql
+  outcomes_taxonomy:
+    insert:             rows_affected=1 (fresh row written; new asset_id inserted)
+    update_on_conflict: rows_affected=2 (ON CONFLICT fired + non-key column actually changed)
+    no_op_silent:       rows_affected=0 (row EXISTS in media_assets with byte-identical columns — SQLite skip-write optimization per godlike/07 idempotency. Row IS in the table; do NOT read as "row vanished")
+    rows_affected_err:  RowsAffected() itself returned non-nil (driver-divergence; rare)
+    failed:             tx.ExecContext returned non-nil err BEFORE the rows-affected probe (canonical fail-closed sentinel for SQL errors)
+  ordering_invariant: |
+    godlike/07 ordering invariant in upsertMediaAsset: tx.ExecContext err MUST be checked
+    BEFORE any res.* call. database/sql Result may be nil on conn failure; calling
+    RowsAffected() on a nil Result panics with nil-pointer dereference. The v2 fixup
+    of the prior v1 instrumentation commit hardened this contract.
+  forward_pointers:
+    - id: PR-FINALIZER-NOOP-INFO-LOG
+      deadline: 2026-08-15
+      owner_capability: internal/application/assets/finalizer
+      summary: Add INFO log alongside WithLabelValues("no_op_silent").Inc() so operators see the silent no-op explicitly instead of triangulating via stderr/metrics.
+    - id: PR-OPS-H7-DIAGNOSTIC-SQL
+      deadline: 2026-07-13
+      owner_capability: tests/operational
+      summary: Commit the 2 untracked H7 discriminator SQL files (tests/operational/h7_*.sql) as a small operational-tests wave-tracker entry + add docs/operations/finalizer-no-op-runbook.md describing when to run + how to interpret.
