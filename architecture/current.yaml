@@ -6726,7 +6726,9 @@
   linked_issues:
     - id: PR-SPLIT-FINALIZE-TYPES-V2
       owner_capability: internal/domain/finalization
-      status: pending
+      status: shipped
+      ship_sha: 
+      ship_date: 2026-07-06
       deadline: 2026-07-15
     - id: PR-SPLIT-LEGACYAUDIT-V2
       owner_capability: internal/application/qdrant/legacyaudit
