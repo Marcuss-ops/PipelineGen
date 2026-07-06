@@ -6450,6 +6450,13 @@
     current.yaml (wave-tracker) + CHANGELOG.md (closure meta-entry) +
     AGENTS.md (mirror entry).
   linked_issues:
+    - id: PR-LONG-FINALIZATION-TYPES-SPLIT
+      owner_capability: internal/domain/finalization (godlike/06 SSOT one-canonical-owner-per-fact: 15 type-specific files + doc.go canonical preamble)
+      status: shipped
+      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_date: 2026-07-06
+      ship_via: CODE_COMMIT_2COMMIT_SPLIT_DISCIPLINE
+      deadline: 2026-07-15
   - id: PR-ARCHCHECK-MAIN-SPLIT
     owner_capability: scripts/archcheck
     status: pending
