@@ -170,6 +170,18 @@ func buildVoiceoverService(
 		log,               // *zap.Logger
 	)
 
+	// P1-2 (June 2026): the application layer no longer constructs
+	// the production *audioasset.Processor. Construction moves UP to
+	// the composition root (this file) so the voiceover package can
+	// stay free of any internal/infrastructure/* import. The
+	// processor is wrapped by newUseCaseTTSAdapter so the
+	// voiceover.Service only sees the canonical TTSProvider port.
+	if cfg.Paths.PythonScriptsDir == "" {
+		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
+	}
+	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
+	ttsProvider := newUseCaseTTSAdapter(audioProcessor)
+
 	// Azione #1 (July 2026): construct the shared per-item pipeline
 	// runner. The legacy batch path (process.go::processLanguage) now
 	// delegates to ProcessSegmentUseCase.Execute instead of calling
@@ -183,17 +195,7 @@ func buildVoiceoverService(
 		Logger:              log,
 	})
 
-	// P1-2 (June 2026): the application layer no longer constructs
-	// the production *audioasset.Processor. Construction moves UP to
-	// the composition root (this file) so the voiceover package can
-	// stay free of any internal/infrastructure/* import. The
-	// processor is wrapped by newUseCaseTTSAdapter so the
-	// voiceover.Service only sees the canonical TTSProvider port.
-	if cfg.Paths.PythonScriptsDir == "" {
-		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
-	}
-	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
-	ttsProvider := newUseCaseTTSAdapter(audioProcessor) // (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
+	// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
 	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
 	// top of the same adapter surface the legacy service consumes.
 	// All 7 ports are mandatory (panic on nil per AGENTS.md WireUp
