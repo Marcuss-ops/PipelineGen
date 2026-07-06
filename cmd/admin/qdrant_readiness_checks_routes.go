@@ -9,7 +9,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"

@@ -67,3 +67,11 @@ func testDeleteTombstone(ctx context.Context, deps *preflightDeps) error {
 func testVoiceoverPiggyback(ctx context.Context, deps *preflightDeps) error {
 	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-11-IMPL (forward-pointer)", ErrPreflightNotImplemented)
 }
+
+// testChaosDayScheduling (Test 9): SKIP-allowed stub for chaos-day retry-recovery
+// scheduling. Already shipped as scheduling entry SHA 17df7fb3 per the canonical
+// Test 9 entry in AllTests. Returns a skip-prefix error so the runner emits SKIP
+// rather than FAIL (Skippable=true on the test entry).
+func testChaosDayScheduling(ctx context.Context, deps *preflightDeps) error {
+	return fmt.Errorf("skip: PR-QDRANT-PREFLIGHT-TEST-9-RETRY-RECOVERY requires manual Qdrant teardown (godlike/07 honest-limitation); SKIP-allowed")
+}
