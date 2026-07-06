@@ -1,7 +1,6 @@
 package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

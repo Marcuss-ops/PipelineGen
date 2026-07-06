@@ -215,6 +215,7 @@ type Runner struct {
 	config     RunnerConfig
 	registry   *Registry
 	workers    []*Worker
+	broker     CompletionPort
 }
 
 func NewRunner(repo domainjob.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
@@ -236,13 +237,18 @@ func NewRunner(repo domainjob.Store, dispatcher *Dispatcher, log *zap.Logger, co
 // fixtures that don't build a registry. Mirrors Worker.WithRegistry.
 //
 // Returns the receiver for builder-style chaining.
-//
-// Issue 2 / P0 (June 2026): this is the canonical wire-up point.
-// Composition root chains appjobs.NewRunner(...).WithRegistry(appjobs.Compose()).
 func (r *Runner) WithRegistry(reg *Registry) *Runner {
 	r.registry = reg
 	return r
 }
+
+// WithBroker attaches a CompletionPort narrow port (like the local Broker)
+// to the Runner so that local workers can complete artifact-producing jobs.
+func (r *Runner) WithBroker(cp CompletionPort) *Runner {
+	r.broker = cp
+	return r
+}
+
 
 // buildWorkers constructs the worker pool with the attached Registry
 // wired onto each Worker (via Worker.WithRegistry). Called by Start;
@@ -259,6 +265,9 @@ func (r *Runner) buildWorkers() []*Worker {
 		w := NewWorker(workerID, r.repo, r.dispatcher, r.config.Notifier,
 			r.log, r.config.LeaseTTL, r.config.PollEvery, r.config.Backoff, r.config.JobTypes)
 		w.WithRegistry(r.registry)
+		if r.broker != nil {
+			w.WithBroker(r.broker)
+		}
 		workers = append(workers, w)
 	}
 	return workers

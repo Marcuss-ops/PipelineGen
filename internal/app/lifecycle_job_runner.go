@@ -171,6 +171,9 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		cfg,
 	)
 	runner.WithRegistry(appjobs.Compose())
+	if deps.root.Jobs.Broker != nil {
+		runner.WithBroker(deps.root.Jobs.Broker)
+	}
 	return runner
 }
 
