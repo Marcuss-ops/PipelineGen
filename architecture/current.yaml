@@ -82,17 +82,45 @@
     owner_capability: internal/infrastructure/qdrant/indexing
     status: shipped
     ship_date: 2026-07-06
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: 60956310
   - id: PR-QDRANT-CONTEXT-BACKGROUND-FIX-PASSTHROUGH
     owner_capability: internal/infrastructure/qdrant/indexing
     status: shipped
     ship_date: 2026-07-06
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: 60956310
   - id: PR-QDRANT-CONTEXT-BACKGROUND-FIX-BG-FORWARD
     owner_capability: internal/infrastructure/qdrant/indexing
     status: shipped
     ship_date: 2026-07-06
-    ship_sha: <TO_BE_POPULATED_POST_PUSH>
+    ship_sha: 60956310
+
+- id: PR-QDRANT-ALIASES-REMOVAL
+  owner_capability: internal/infrastructure/qdrant
+  status: shipped
+  ship_sha: 203cb1ad
+  ship_date: 2026-07-06
+  exit_signal: true
+  deadline: 2026-07-15
+  description: |
+    Physically remove aliases.go (~110 type aliases + ~30 var aliases)
+    from internal/infrastructure/qdrant/.
+
+    Pre-removal audit (AZIONE 8, 2026-07-06): ZERO external consumers
+    of the root qdrant package in internal/app/, internal/api/, cmd/,
+    internal/application/. All callers import sub-packages directly
+    (qdrant/indexing, qdrant/schema, qdrant/search, etc.).
+
+    runtime.go migrated to use qualified sub-package imports instead
+    of bare alias names (transport.Client, indexing.IndexWriter,
+    search.Searcher, collections.CollectionManager, etc.).
+
+    godlike/06 SSOT: each caller now resolves types through direct
+    sub-package imports — no intermediary aliases layer.
+    godlike/07 minimum-blast-radius: zero behavior change; same
+    concrete types, same constructors, just resolved directly.
+
+    Verification: gofmt/vet/build on internal/infrastructure/qdrant/...
+    all exit 0.
 
 - id: PR-QDRANT-FULL-STACK-AUTOMATED
   owner_capability: cmd/admin/ (admin CLI subcommand) + .github/workflows/preflight-ci.yml + architecture/CI gate
