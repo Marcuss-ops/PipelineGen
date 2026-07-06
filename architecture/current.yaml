@@ -6976,7 +6976,7 @@
   owner_capability: internal/domain/delivery/location.go (canonical AssetLocationInput DTO) + internal/application/assets/delivery/ (BuildPublishRequest mapper) + per-wave linked_issues
   deadline: 2026-12-31
   ship_date: 2026-07-06
-  exit_gate: all 6 waves shipped (Wave 1 + W2..W4 audit-backfill + Wave 5 + Wave 6 trio)
+  exit_gate: all 6 wave-tracker slots filed (W1+W5+W6 SHAs canonical-verified; W2-W4 ship_sha: TBD-AUDIT-PIN until PR-SEMANTIC-LOCATION-SHA-AUDIT promotes on 2026-08-15)
   description: |
     SEMANTIC-LOCATION-API umbrella closure (Wave 7 doc-lockstep, 2026-07-06).
     6 sequential waves migrate every media-publishing endpoint from
@@ -7027,6 +7027,10 @@
   forward_pointers:
   - id: PR-SEMANTIC-LOCATION-SHA-AUDIT
     owner_capability: architecture
+    status: pending
+    deadline: 2026-08-15
+  - id: PR-LOCATION-OMITZERO-MARSHAL
+    owner_capability: internal/domain/delivery/location.go
     status: pending
     deadline: 2026-08-15
 

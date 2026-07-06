@@ -1281,9 +1281,9 @@ Se l'utility che cerchi **non è nella sezione 🧰 Utilities**: probabilmente d
 
 **Regola**: `internal/api/**` non deve contenere business orchestration né passare raw `drive_folder_id` / `root_folder` / `drive_link` come string literals. Ogni location semantica DEVE consumare `internal/domain/delivery.AssetLocationInput` (typed-location DTO, canonical SOLE owner = `internal/domain/delivery/location.go`) oppure la mapper canonical `internal/application/assets/delivery/BuildPublishRequest`. VIETATO `os/exec` diretti nei pattern di folder resolution.
 
-**Vehicle inconsistency lesson (Wave 7 audit-pin)**: il DTO `AssetLocationInput` ha `omitempty` struct tag ma Go's encoding/json NON skippa zero-valued struct (`{}` serializza come `{}` literal). Per produzione wire-shape strict, forward-pointer `PR-LOCATION-OMITZERO-MARSHAL` (deadline TBD) aggiungerà custom MarshalJSON.
 
 
+**Vehicle inconsistency lesson (Wave 7 audit-pin)**: il DTO `AssetLocationInput` ha `omitempty` struct tag ma Go's encoding/json NON skippa zero-valued struct (`{}` serializza come `{}` literal). Per produzione wire-shape strict, forward-pointer `PR-LOCATION-OMITZERO-MARSHAL` (deadline 2026-08-15) aggiungerà custom MarshalJSON.
 
 **Vietato importare in `internal/api/**`:**
 - `database/sql`
