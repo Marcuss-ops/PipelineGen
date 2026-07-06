@@ -6952,3 +6952,169 @@
       AssetPublishedSchemaVersion (handler-side ergonomic short
       name) + SchemaVersionAssetPublished (registry canonical
       owner). Verbose godoc already cross-references the pair.
+
+
+# SEMANTIC-LOCATION-API-2026-07-06 wave 6 migration.
+# Per Q16 2-PR split: code+tests ship as commit 72b5a839 (Group B),
+# this bookkeeping commit (CHANGELOG + AGENTS + current.yaml) is
+# the canonical metadata-flip (status: shipped + ship_sha anchored
+# at 72b5a839 per godlike/06 SSOT 3-surface lockstep convention).
+- id: WAVE-6-REGISTER-LOCATION-MIGRATION
+  owner_capability: internal/application/assets/sourcing + internal/api/assets/register + docs/architecture/
+  status: shipped
+  ship_sha: 72b5a839
+  ship_date: 2026-07-06
+  deadline: 2026-08-15
+  exit_signal: false
+  description: |
+    Wave 6 of SEMANTIC-LOCATION-API-2026-07-06 (Wave 1 SSOT at
+    internal/domain/delivery/location.go). Migrate legacy
+    drive_folder_id / root_folder / drive_link callers to the
+    canonical AssetLocationInput DTO. Per godlike/07 minimum-blast-
+    radius each migration is additive (legacy fields stay byte-stable
+    until 2026-12-31 per FASE-2.1-VOICE-FREEZE).
+
+    3 GROUPS:
+    * Group A (handler_legacy_*.go - internal/api/script/) - NO-OP
+      audit-pin. The 4 files are FROZEN per FASE-2.1-VOICE-FREEZE
+      with deadline 2026-12-31; the 410-Gone contract already short-
+      circuits any attempt at DTO migration. The audit-pin lives in
+      internal/api/script/handler_legacy_deprecation.go (cross-ref).
+    * Group B (register/handler.go + sourcing/types.go +
+      handler_test.go - LIVE surface migration). Both
+      RegisterFromYouTubeRequest + BatchRegisterRequest accept
+      Location additively; threading in toRegisterClipCommand. 3 NEW
+      TDD tests + panicIfCalledDriveChecker helper. 13/13 tests PASS.
+      Ship_sha: 72b5a839 (post-rebase from 72b5a839 onto origin/main).
+    * Group C (docs/architecture/PR-W6-SMOKE-DOC.md - forward-
+      pointer doc). Reserves SMOKE_DRIVE_PROJECT_ID + SMOKE_DRIVE_LANGUAGE
+      envs for legacy operational smokes (intentionally test
+      destination: {kind: "explicit"}). Mutating the smokes would BREAK
+      the legacy verification safety net per FASE-2.1-VOICE-FREEZE;
+      the doc also outlines the future kind: semantic smoke variant
+      to be implemented in Wave 7.
+
+    godlike/06 SSOT (one canonical owner per fact):
+    AssetLocationInput lives in internal/domain/delivery/location.go
+    (Wave 1). The Wave 6 commit only ACCEPTS the typed contract at
+    the handler seam; the resolver-port + composition-root wiring is
+    the canonical Wave 7 deliverable.
+  linked_issues:
+    # Group B migration (LIVE)
+  - id: PR-W6-REGISTER-HANDLER-LOCATION-FIELD
+    owner_capability: internal/api/assets/register
+    status: shipped
+    ship_sha: 72b5a839
+    ship_date: 2026-07-06
+    deadline: 2026-08-15
+    description: |
+      Additive Location field on RegisterFromYouTubeRequest +
+      BatchRegisterRequest. Threads through to
+      sourcing.RegisterClipCommand.Location in toRegisterClipCommand.
+      godlike/07 minimum-blast-radius: zero service-layer behavior
+      change; legacy FolderID callers byte-identical.
+  - id: PR-W6-REGISTER-HANDLER-TESTS
+    owner_capability: internal/api/assets/register
+    status: shipped
+    ship_sha: 72b5a839
+    ship_date: 2026-07-06
+    deadline: 2026-08-15
+    description: |
+      3 NEW TDD tests + panicIfCalledDriveChecker helper. Pins:
+      (1) Location field accepted on wire; (2) pre-existing folder_id
+      caller byte-identical (PR-DRIVE-AVAILABILITY-GATE still fires
+      on FolderID); (3) mutually-exclusive FolderID+Location resolves
+      to FolderID gate (matches today's pre-Wave-7 behavior; future
+      Wave 7 Location precedence will surface as test breakage per
+      godlike/07 minimum-blast-radius).
+  - id: PR-W6-SOURCING-TYPES-LOCATION-FIELD
+    owner_capability: internal/application/assets/sourcing
+    status: shipped
+    ship_sha: 72b5a839
+    ship_date: 2026-07-06
+    deadline: 2026-08-15
+    description: |
+      Additive Location field on sourcing.RegisterClipCommand.
+      Domain delivery import + verbose godlike/06 SSOT godoc pointing
+      to canonical owner at internal/domain/delivery/location.go.
+
+    # Group A audit-pin (NO-OP, FALSE_POSITIVE_FROZEN_BY_FASE_2_1)
+  - id: AUDIT-PIN-W6-GROUP-A-LEGACY-FREEZE
+    owner_capability: internal/api/script/handler_legacy_deprecation.go
+    status: shipped
+    ship_via: FALSE_POSITIVE_FROZEN_BY_FASE_2_1
+    ship_date: 2026-07-06
+    deadline: 2026-12-31
+    description: |
+      Audit-pin documenting WHY Group A is NO-OP: the 4 legacy
+      handlers in internal/api/script/handler_legacy_*.go are FROZEN
+      per FASE-2.1-VOICE-FREEZE (entry expires 2026-12-31 with both
+      7-day Prometheus counter rates == 0). Mutating their request
+      DTOs would break the legacy-client safety net AND pollute logs
+      with 400s instead of the intended 410-Gone.
+
+    # Group C forward-pointer
+  - id: PR-W6-SMOKE-DOC
+    owner_capability: docs/architecture/PR-W6-SMOKE-DOC.md
+    status: pending
+    deadline: 2026-08-15
+    description: |
+      Forward-pointer doc reserving SMOKE_DRIVE_PROJECT_ID +
+      SMOKE_DRIVE_LANGUAGE envs for legacy operational smokes.
+      Mutating them would break the legacy verification safety net.
+      Also documents the future kind: semantic smoke variant to be
+      implemented in Wave 7.
+
+    # Wave 7 forward-pointers (godlike/06 SSOT discipline - each
+    # linked to a producer; future PRs land their SHAs in matching
+    # slot)
+  - id: PR-RESOLVER-PORT-EXTRACT
+    owner_capability: internal/application/assets/sourcing
+    status: pending
+    deadline: 2026-08-15
+    description: |
+      Extract the LocationResolver Pattern 0 port in
+      internal/application/assets/sourcing/ per AGENTS.md Pattern 0.
+      Composition root injects the concrete (Wave 7 wiring). Replace
+      today's nil-tolerant fallback (silently reverts to legacy
+      FolderID when Location is set) with explicit resolveLocation(input)
+      -> (folderID, projectID, languageID) (string, string, string,
+      error) typed contract. godlike/07 typed-error:
+      ErrLocationUnresolved + ErrLocationResolverNotWired +
+      ErrLocationAmbiguousProject.
+  - id: PR-DRIVE-AVAILABILITY-GATE-CONSUMER-MIRROR
+    owner_capability: internal/application/assets/sourcing
+    status: pending
+    deadline: 2026-08-15
+    description: |
+      The handler-level PR-DRIVE-AVAILABILITY-GATE only fires when
+      FolderID is non-empty. Once Wave 7 makes Location -> FolderID
+      the canonical path, the gate must ALSO fire when Location is
+      non-empty (even with empty FolderID, the resolver will reach
+      the *drive.Uploader.Service dereference path). Mirror the
+      existing pre-flight probe in sourcing.Service so nil-drive
+      surfaces 503 BEFORE any subprocess spawn.
+  - id: PR-LOCATION-DRIVE-BACKFILL-PARITY
+    owner_capability: internal/api/assets/register + internal/application/assets/sourcing
+    status: pending
+    deadline: 2026-08-15
+    description: |
+      The legacy FolderID has request-level -> per-clip backfill
+      semantics (BatchRegisterFromYouTube propagates req.FolderID to
+      per-clip empty FolderIDs). The Wave 6 Location field does NOT
+      get the same backfill. Add the asymmetric Location backfill so
+      request-level Location propagates to per-clip empty Locations
+      (resolved via Wave 7 resolver) when the per-clip override is
+      empty.
+  - id: PR-LOCATION-OMITZERO-MARSHAL
+    owner_capability: internal/domain/delivery/location.go
+    status: pending
+    deadline: 2026-08-15
+    description: |
+      godlike/07 no-fake-availability: the omitempty struct tag on
+      Location is a Go no-op (zero-valued struct is NOT considered
+      empty by Go encoding rules). Add custom MarshalJSON that omits
+      the field if all 5 typed sub-fields are zero; add custom
+      UnmarshalJSON that round-trips. Verification: round-trip JSON
+      test pins canonical wire shape (no {} leak on zero-valued
+      Location).
