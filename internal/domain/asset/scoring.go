@@ -112,8 +112,9 @@ func scoreClipsInternal(clips []*Asset, keywords []string) []*Asset {
 			score += float64(len(metadataStringSlice(clip.Metadata, "mentioned_people"))) * 0.012
 		}
 
-		// Sponsor penalty (-0.2)
-		if isSponsorSegment(clip) {
+		// Sponsor penalty (-0.2). Reads the pre-computed metadata flag
+		// that was set by metadata.IsSponsorSegment during enrichment.
+		if isSponsorFlagged(clip) {
 			score -= 0.2
 		}
 		if isDuplicateClip(clip) {
@@ -146,8 +147,12 @@ func scoreClipsInternal(clips []*Asset, keywords []string) []*Asset {
 	return result
 }
 
-// isSponsorSegment checks if a clip is a sponsor segment based on metadata.
-func isSponsorSegment(clip *Asset) bool {
+// isSponsorFlagged checks whether a clip was flagged as a sponsor segment
+// during enrichment. The flag is set by metadata.IsSponsorSegment (regex
+// scanning) in the enrichment pipeline and persisted in
+// Metadata["is_sponsor_segment"]. This function is the consumer side —
+// it reads the pre-computed flag rather than re-scanning transcript text.
+func isSponsorFlagged(clip *Asset) bool {
 	if clip.Metadata == nil {
 		return false
 	}
