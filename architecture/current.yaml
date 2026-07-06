@@ -7720,3 +7720,55 @@ PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS:
       deadline: 2026-07-13
       owner_capability: tests/operational
       summary: Commit the 2 untracked H7 discriminator SQL files (tests/operational/h7_*.sql) as a small operational-tests wave-tracker entry + add docs/operations/finalizer-no-op-runbook.md describing when to run + how to interpret.
+PR-WIRE-SUBTITLE-FETCHER-ADAPTER:
+  ship_date: 2026-07-06
+  ship_sha: 6a108ee2
+  type: feat_migration_3surface_lockstep
+  status: shipped
+  ship_via: 0_go_touch_audit_pin
+  description: |
+    Wire the SubtitleFetcherAdapter (infrastructure-layer, post
+    PR-SUBTITLES-BASEARGS-MIGRATION) into the production composition
+    root for the YouTube use case; migrate the wired
+    YTDLPSubtitleAdapter (application-layer, used by the monitor) to
+    use ytdlp.BaseArgs (the same canonical 4-5 anti-bot flags that
+    PR-SUBTITLES-BASEARGS-MIGRATION migrated to the infrastructure
+    adapter). Closes the silent-failure-on-n-challenge-videos
+    surface for BOTH the monitor AND the YouTube segmentation
+    use case. 5 files / +258 / -17 LOC. The 2 adapters are
+    NOT duplicates and NOT swappable: SubtitleFetcherAdapter
+    (infrastructure) + YTDLPSubtitleAdapter (application) serve
+    2 distinct consumers (SubtitleFetcherPort vs
+    monitor.TranscriptProvider) with 2 distinct return shapes
+    ([]TimedEntry vs TranscriptDocument).
+  cross_references:
+    parent_audit:
+      - architecture/current.yaml#YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06
+    sister_wave:
+      - architecture/current.yaml#PR-SUBTITLES-BASEARGS-MIGRATION
+      - architecture/current.yaml#VO-DECOMPOSITION-2026-07-04
+      - architecture/current.yaml#SEMANTIC-LOCATION-API-2026-07-06
+    canonical_surface:
+      - internal/application/transcripts/ytdlp_subtitles.go::YTDLPSubtitleAdapter.buildSubtitleArgs
+      - internal/infrastructure/youtube/subtitles.go::SubtitleFetcherAdapter
+      - internal/app/build_bundles_domain.go (YouTube use case wiring)
+      - internal/app/lifecycle_scheduler.go (monitor wiring)
+      - internal/platform/config/types_storage.go::StorageConfig.SubtitlesPath
+  godlike_06_ssot:
+    - ytdlp.BaseArgs is the SOLE canonical emitter of --no-warnings
+      + --extractor-args youtube:player_client=web,android for
+      YouTube URLs.
+    - SubtitlesPath() SSOT method lives ONLY at
+      internal/platform/config/types_storage.go (mirrors the existing
+      TempPath() / DataDir() pattern).
+  godlike_07_no_fake_availability:
+    - Monitor UseCookies=true: channel sweep can now reach
+      age-restricted videos (n-challenge + age-restricted YouTube
+      videos previously failed silently).
+    - YouTube use case useCookies=false: segmentation works for
+      public videos (per-call trade-off is explicit, not hidden).
+  forward_pointers:
+    - id: PR-SUBTITLE-FETCHER-FETCHFULLVTT-AUDIT
+      deadline: 2026-08-15
+      owner_capability: internal/infrastructure/youtube
+      summary: Resolve whether to retire or wire the SubtitleFetcherAdapter.FetchFullVTT method (the OTHER method, NOT SliceSubtitles) — currently dead code in the call graph.
