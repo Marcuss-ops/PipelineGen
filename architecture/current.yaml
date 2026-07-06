@@ -6660,6 +6660,35 @@
     ship_date: 2026-07-06
     deadline: 2026-08-22
     phase: CUTOVER
+  - id: PR-IMG-LEGACY-6-FIX
+    owner_capability: internal/api/fullimages + internal/app/composition + internal/app
+    status: shipped
+    ship_sha: 246c095f
+    ship_date: 2026-07-06
+    deadline: 2026-08-22
+    phase: CUTOVER
+    notes: |
+      Closes the godlike/07 zero-legacy gap that 2bdb619a left open: 2bdb619a
+      DELETED internal/api/images/handler_full.go (the OLD location of
+      FullImagesHandler) but did NOT create the 3 NEW files. The deletion
+      landed without the replacement, leaving /api/fullimages/video/generate
+      effectively dead on origin/main. PR-IMG-LEGACY-6-FIX (this entry)
+      ships the 3 NEW files (internal/api/fullimages/handler.go +
+      handler_test.go + build_bundles_fullimages.go) + 1 MODIFIED file
+      (internal/app/composition.go: 2 surgical changes — removed unused
+      `delivery` import, aliased `outbox` import as `jobsoutbox` to fix the
+      pre-existing FASE 6 June 2026 retirement residue at line 134).
+      4 files in one atomic commit per AGENTS.md Git-Lesson-2 (direct-to-main,
+      no branches, no --force, Co-authored-by trailer per Git-Lesson-3).
+      godlike/06 SSOT: internal/api/fullimages/ is the SOLE owner of the
+      public fullimages wire-shape; composition root is the SOLE owner of
+      the wire-up. Option (a) chosen for the struct literal (Module-only
+      *FullImagesWiring matches the canonical ArtlistWiring precedent; no
+      godlike/06 SSOT violation from a duplicate public surface for the
+      same routes). godlike/07 NO-FAKE-AVAILABILITY: 4 mandatory gates +
+      cfg==nil gate fail-closed at composition; engine gate fail-closed
+      at request time; nil service -> 503. Pre-existing 5-item voiceover
+      + app build-issue carry-forward unchanged (NOT regressions).
   - id: PR-IMG-LEGACY-HOTSPOT-CROSSREF
     owner_capability: architecture
     status: shipped
