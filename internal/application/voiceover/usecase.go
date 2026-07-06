@@ -66,18 +66,15 @@ import (
 // finalizer instance used by the per-item path so both call
 // paths share a single canonical finalization port.
 //
-// godlike/07 minimal-blast-radius: TransactionalOutbox is
-// RETAINED as a field (nil-safe, currently unused by the use case
-// body post-DRY) so the composition root call site can keep the
-// same UseCaseDeps shape. A future CONTRACT-phase PR will
-// physically remove the field.
+// godlike/07 minimal-blast-radius: TransactionalOutbox is REMOVED
+// (Azione #4, July 2026). The Finalizer owns the outbox path now;
+// this field was RETAINED-but-unused since the DRY migration.
 type UseCaseDeps struct {
 	TTSProvider           TTSProvider
 	DestinationResolver   DestinationResolver
 	AudioPostProcessor    AudioPostProcessor
 	Publisher             VoiceoverPublisher
 	VoiceoverRepository   VoiceoverRepository
-	TransactionalOutbox   TransactionalOutbox // RETAINED but unused post-DRY (forward-pointer for CONTRACT removal)
 	Logger                *zap.Logger
 	DefaultFolderResolver VoiceoverDefaultFolderResolver
 	// Finalizer is the unified finalization port (P0.4 Fase 3a).
@@ -107,8 +104,8 @@ type UseCaseDeps struct {
 // gaining the dedupe gate + media_assets projection + cleanup
 // outbox that it was missing.
 type GenerateVoiceoversUseCase struct {
-	deps         UseCaseDeps
-	executor     *Executor         // bounded parallel fan-out (worker pool)
+	deps       UseCaseDeps
+	executor   *Executor              // bounded parallel fan-out (worker pool)
 	processSeg *ProcessSegmentUseCase // SINGLE canonical per-item pipeline runner (PR-VO-USECASE-PROCESS-DRY)
 }
 
@@ -133,14 +130,9 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	if deps.VoiceoverRepository == nil {
 		panic("GenerateVoiceoversUseCase: VoiceoverRepository is required (UseCaseDeps.VoiceoverRepository)")
 	}
-	// PR-VO-USECASE-PROCESS-DRY: TransactionalOutbox is RETAINED
-	// as a field (composition root call site unchanged) but
-	// unused post-DRY. The Finalizer owns the outbox path now.
-	// Keep the nil-check for back-compat — a missing wire-up is
-	// still a hard fail.
-	if deps.TransactionalOutbox == nil {
-		panic("GenerateVoiceoversUseCase: TransactionalOutbox is required (UseCaseDeps.TransactionalOutbox — RETAINED for back-compat with composition root)")
-	}
+	// PR-VO-USECASE-PROCESS-DRY: TransactionalOutbox is REMOVED
+	// (Azione #4, July 2026). The Finalizer owns the outbox path now;
+	// this field was RETAINED-but-unused since the DRY migration.
 	if deps.Finalizer == nil {
 		panic("GenerateVoiceoversUseCase: Finalizer is required (PR-VO-USECASE-PROCESS-DRY — post-DRY the per-item body delegates to the finalizer)")
 	}
