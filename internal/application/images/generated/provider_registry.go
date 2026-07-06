@@ -75,18 +75,8 @@ type GeneratedImage struct {
 // temporarily unavailable.
 var ErrProviderUnavailable = errors.New("generated image provider unavailable")
 
-// ErrUnsupportedModel is retained as an audit-pin sentinel. surface-4
-// (July 2026) removed the caller-facing surface that could select a
-// non-canonical model — the AI backend routes through the canonical
-// CanonicalGoogleSlidesModel only. No call site raises this error
-// any more; the sentinel exists for godlike/07 "no silent resurrection"
-// discipline so a future contributor who re-introduces model-routing
-// has a typed error to compare against.
-//
-// Deprecated: model selection is retired. Image generation has a single
-// canonical backend (Google Slides via "nano-banana-pro").
-var ErrUnsupportedModel = errors.New("generated image model unsupported; only nano-banana-pro via google-slides is available")
-
+// ErrUnsupportedModel retired in PR-IMG-LEGACY-1 (2026-07-06); see docs/archive/image-legacy.md §3
+// for full narrative. CanonicalStringResultPath: go-sl-prod only via CanonicalGoogleSlidesModel.
 // GoogleSlidesProvider wraps the canonical images.ImageGenerator port. The
 // production delegate is ChromeImageProvider, which drives Playwright →
 // slides.new → Nano Banana Pro.

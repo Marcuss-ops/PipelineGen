@@ -5,13 +5,12 @@
 // The full-images endpoint (/images/video/generate) lives alongside the
 // canonical image endpoints (search/diagnostics/upload/sync/generate/animate)
 // inside the same package. Two siblings coexist:
-//   - ImagesHandler    (ImagesHandler.RegisterRoutes mounts /images/{*, /search/diagnostics/upload/sync/generate/animate})
-//     surface-2 (July 2026): /webhook/remote entry was retired; see
-//     middleware/middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404.
+//   - ImagesHandler     (ImagesHandler.RegisterRoutes mounts /images/{*, /search/diagnostics/upload/sync/generate/animate})
 //   - FullImagesHandler (FullImagesHandler.RegisterRoutes mounts /images/video/*)
 //
 // The router module (registry.go) registers both through the same /images
 // prefix module so the resulting public URLs are /api/images/...
+// /webhook/remote retired; see docs/archive/image-legacy.md §1
 package images
 
 import (
