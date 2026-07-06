@@ -137,8 +137,8 @@ type VoiceoverGenerationDeps struct {
 
 // VoiceoverIntegrationDeps — lifecycle, destination resolver, outbox, translator, finalizer, verifier.
 // Azione #9 (July 2026): DriveUploader removed from VoiceoverIntegrationDeps
-// (replaced by Publisher in ProcessSegmentUseCase; cleanup now flows through
-// the outbox cleanup handler which reaches DriveUploaderPort independently).
+// (replaced by Publisher in ProcessSegmentUseCase; post-commit cleanup now
+// flows through the outbox handler via jobsoutbox.VoiceoverCleanupDriver).
 type VoiceoverIntegrationDeps struct {
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver

@@ -23,7 +23,7 @@ import (
 // and liveness probing.
 //
 // Consumers: driveAdminAdapter, storageDriveAdapter, clipsDriveAdapter,
-// sfxDriveUploaderAdapter, voiceoverDriveAdapter, sourcingDriveAdapter,
+// sfxDriveUploaderAdapter, sourcingDriveAdapter,
 // driveFolderMgrAdapter (YouTube), driveFolderAdapterImpl (Script).
 type Admin interface {
 	// Folder operations
