@@ -235,8 +235,8 @@ func DeriveSearchVisibility(qualityScore float64) string {
 	}
 }
 
-// FallbackClipRichMetadata builds a CanonicalClipMetadata from text heuristics.
-func FallbackClipRichMetadata(title, transcript, description string) *CanonicalClipMetadata {
+// FallbackClipMetadata builds a CanonicalClipMetadata from text heuristics.
+func FallbackClipMetadata(title, transcript, description string) *CanonicalClipMetadata {
 	summary := DeriveFallbackClipSummary(transcript, description)
 	cleanTitle := DeriveFallbackClipTitle(title, transcript, description)
 	shortTitle := DeriveFallbackShortTitle(cleanTitle)
@@ -259,11 +259,11 @@ func FallbackClipRichMetadata(title, transcript, description string) *CanonicalC
 	}
 }
 
-// NormalizeClipRichMetadata normalizes and fills gaps in a ClipRichMetadata
-// (which is a CanonicalClipMetadata alias). Returns the canonical type.
-func NormalizeClipRichMetadata(meta *CanonicalClipMetadata, title, transcript, description string) *CanonicalClipMetadata {
+// NormalizeClipMetadata normalizes and fills gaps in a CanonicalClipMetadata.
+// Returns the canonical type.
+func NormalizeClipMetadata(meta *CanonicalClipMetadata, title, transcript, description string) *CanonicalClipMetadata {
 	if meta == nil {
-		return FallbackClipRichMetadata(title, transcript, description)
+		return FallbackClipMetadata(title, transcript, description)
 	}
 	meta.Summary = strings.TrimSpace(meta.Summary)
 	meta.CleanTitle = strings.TrimSpace(meta.CleanTitle)

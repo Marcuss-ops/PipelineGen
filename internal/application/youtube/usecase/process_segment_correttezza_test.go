@@ -322,7 +322,7 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 			EndSec:   60,
 			Duration: 50,
 		},
-		Metadata: youtubetypes.ClipMetadata{
+		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         "Test clip",
 			Topics:          []string{"test"},
 			Speakers:        []string{"Alice"},
