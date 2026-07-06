@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixtures (zero_legacy/check_50_void_register.go):
 // Self-check fixture for scripts/ci-architectural-checks.sh::Check 50.
 // The forbidden pattern is a void-returning Register* method whose

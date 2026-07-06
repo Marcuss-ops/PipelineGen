@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 10 (TODO 16).
 //
 // This file (check_10_upsert.go) demonstrates the asset-repo

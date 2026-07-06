@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 13 (TODO 16, TODO 2).
 //
 // This file (check_13_listassets_placeholder.go) demonstrates the

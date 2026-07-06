@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package zero_legacy — Check 62 self-check fixture
 // (architecture/current.yaml#AUDIT-RESIDUE-2026-07-04.linked_issues[PR-CHECK-58-INLINE-MIDDLEWARE]).
 //

@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package zero_legacy — fixture for Check 57 (forbid ports.ScriptRecord
 // literal outside canonical allowlist).
 //

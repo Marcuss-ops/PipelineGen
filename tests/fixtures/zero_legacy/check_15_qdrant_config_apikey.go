@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 15 (QDRANT-005A, June 2026).
 //
 // This file (check_15_qdrant_config_apikey.go) demonstrates the

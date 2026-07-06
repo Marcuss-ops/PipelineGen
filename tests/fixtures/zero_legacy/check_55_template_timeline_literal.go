@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — fixture for Check 55 (forbid legacy Template/TimelineJSON
 // writes outside canonical allowlist).
 //

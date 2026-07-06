@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Self-check fixture for Check 55: forbid CompletePartially on Store interface.
 //
 // This file intentionally contains the forbidden pattern so the CI
