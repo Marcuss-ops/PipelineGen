@@ -6453,7 +6453,7 @@
     - id: PR-LONG-FINALIZATION-TYPES-SPLIT
       owner_capability: internal/domain/finalization (godlike/06 SSOT one-canonical-owner-per-fact: 15 type-specific files + doc.go canonical preamble)
       status: shipped
-      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_sha: d460f881d76b38f87b448d1551ac73144839e7f4
       ship_date: 2026-07-06
       ship_via: CODE_COMMIT_2COMMIT_SPLIT_DISCIPLINE
       deadline: 2026-07-15
