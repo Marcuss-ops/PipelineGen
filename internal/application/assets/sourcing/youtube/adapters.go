@@ -48,6 +48,9 @@ func (a *fetcherAdapter) Fetch(ctx context.Context, req usecase.FetchRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, fmt.Errorf("fetcherAdapter: inner Fetch returned nil result")
+	}
 	return &usecase.FetchedAsset{
 		LocalPath: result.LocalPath,
 		AssetID:   result.AssetID,
@@ -86,6 +89,9 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 	})
 	if err != nil {
 		return nil, err
+	}
+	if result == nil {
+		return nil, fmt.Errorf("publisherAdapter: inner Publish returned nil result")
 	}
 	return &usecase.PublishResult{
 		FileID:      result.FileID,

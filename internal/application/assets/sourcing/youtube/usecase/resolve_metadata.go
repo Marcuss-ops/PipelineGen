@@ -124,17 +124,22 @@ func ResolveClipMetadata(cmd ResolveMetadataCommand) (*ResolvedMetadata, error) 
 	}
 
 	durationSec := 0.0
+	hasRealDuration := false
 	if cmd.FetchedDuration > 0 {
 		durationSec = cmd.FetchedDuration.Seconds()
+		hasRealDuration = true
 	} else if endSec > startSec {
 		durationSec = endSec - startSec
 	}
 	duration := int(durationSec)
 
-	if durationSec > 0 {
-		if startSec > 0 && startSec >= durationSec {
-			return nil, fmt.Errorf("start (%.1f) exceeds video duration (%.1f)", startSec, durationSec)
-		}
+	// Only validate start vs. video duration when we have the REAL fetched
+	// duration from the provider. When durationSec was derived from
+	// (endSec - startSec), comparing start against it is meaningless —
+	// it would always fail because start >= (end - start) for any clip
+	// that starts past the midpoint of its own segment.
+	if hasRealDuration && startSec > 0 && startSec >= durationSec {
+		return nil, fmt.Errorf("start (%.1f) exceeds video duration (%.1f)", startSec, durationSec)
 	}
 
 	return &ResolvedMetadata{
