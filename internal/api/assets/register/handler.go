@@ -251,6 +251,12 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		"drive_path":      res.DrivePath,
 		"file_hash":       res.FileHash,
 		"source":          res.Source,
+		"location": gin.H{
+			"category": res.Category,
+			"subject":  req.Location.Subject,
+			"provider": req.Location.Provider,
+			"style":    req.Location.Style,
+		},
 		"category":        res.Category,
 		"tags":            res.Tags,
 		"local_path":      res.LocalPath,
