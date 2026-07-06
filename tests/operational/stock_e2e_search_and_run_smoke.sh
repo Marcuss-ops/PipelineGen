@@ -41,7 +41,7 @@
 #
 # Overridable env vars:
 #   BASE         = http://127.0.0.1:8000
-#   AUTH         = "Authorization: Bearer test-admin-token-12345"
+#   AUTH         = "Authorization: Bearer <VELOX_ADMIN_TOKEN or test-admin-token-12345>"
 #   OUT_DIR      = /tmp/stock-tests
 #   MAX_POLL_ITERATIONS  = 60
 #   POLL_INTERVAL_SECONDS = 3
@@ -75,7 +75,7 @@ fi
 
 # ---- Configuration --------------------------------------------------------
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer test-admin-token-12345}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
 OUT_DIR="${OUT_DIR:-/tmp/stock-tests}"
 MAX_POLL_ITERATIONS="${MAX_POLL_ITERATIONS:-60}"
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-3}"
@@ -100,8 +100,7 @@ mkdir -p "$OUT_DIR"
 # registered).
 
 PROBE_ENDPOINTS=(
-    "$BASE/healthz"
-    "$BASE/api/healthz"
+    "$BASE/health"
     "$BASE/api/stock-pipeline/search-and-run"
 )
 
