@@ -60,12 +60,9 @@ package voiceover
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -419,19 +416,11 @@ func isStale(updatedUnix int64, now time.Time, ttl time.Duration) bool {
 	return updatedUnix < now.Add(-ttl).Unix()
 }
 
-// isUploadIntentNotFound detects the canonical "row not found"
-// sentinel from Repository.Mark*. Mirrors the helper in
-// upload_intent.go for consistency. Substring fallback covers
-// test doubles that emit the canonical message text without
-// preserving the sentinel pointer chain.
+// isUploadIntentNotFound delegates to the canonical helper in
+// upload_intent.go (isMarkNotFoundError) — both check the same
+// ErrUploadIntentNotFound sentinel declared there.
 func isUploadIntentNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, scripts.ErrUploadIntentNotFound) {
-		return true
-	}
-	return strings.Contains(err.Error(), scripts.ErrUploadIntentNotFound.Error())
+	return isMarkNotFoundError(err)
 }
 
 // minDuration returns the smaller of two durations.
