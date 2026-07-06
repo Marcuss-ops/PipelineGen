@@ -23,7 +23,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"go.uber.org/zap"
 )
 
 // ── Compile-time satisfaction pins ──────────────────────────────────
@@ -52,11 +51,11 @@ type Service struct {
 	Store      *ImageStorageService
 	Meta       *MetadataService
 	Diag       *DiagnosticsService
-	Styles     *generation.StyleRegistry
+	Styles     *generated.StyleRegistry
 }
 
 // StylesRegistry returns the held generation.StyleRegistry, or nil.
-func (s *Service) StylesRegistry() *generation.StyleRegistry {
+func (s *Service) StylesRegistry() *generated.StyleRegistry {
 	if s == nil {
 		return nil
 	}
