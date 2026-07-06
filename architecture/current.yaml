@@ -6966,6 +6966,70 @@
 # this bookkeeping commit (CHANGELOG + AGENTS + current.yaml) is
 # the canonical metadata-flip (status: shipped + ship_sha anchored
 # at 72b5a839 per godlike/06 SSOT 3-surface lockstep convention).
+# SEMANTIC-LOCATION-API-2026-07-06 umbrella entry (Wave 7 doc-lockstep, 2026-07-06).
+# godlike/06 SSOT: this umbrella entry is the SOLE owner of the
+# SEMANTIC-LOCATION-API wave-tracker metadata; the per-wave linked_issue
+# slots preserve canonical ship evidence per godlike/07 no-fake-availability.
+- id: SEMANTIC-LOCATION-API-2026-07-06
+  status: shipped
+  exit_signal: true
+  owner_capability: internal/domain/delivery/location.go (canonical AssetLocationInput DTO) + internal/application/assets/delivery/ (BuildPublishRequest mapper) + per-wave linked_issues
+  deadline: 2026-12-31
+  ship_date: 2026-07-06
+  exit_gate: all 6 waves shipped (Wave 1 + W2..W4 audit-backfill + Wave 5 + Wave 6 trio)
+  description: |
+    SEMANTIC-LOCATION-API umbrella closure (Wave 7 doc-lockstep, 2026-07-06).
+    6 sequential waves migrate every media-publishing endpoint from
+    raw drive_folder_id / root_folder / drive_link to the canonical
+    AssetLocationInput DTO (internal/domain/delivery/location.go).
+    The umbrella tracks the wave-tracker intent; per-wave ship evidence
+    lives in the linked_issues block below.
+  linked_issues:
+  - id: WAVE-01-ASSET-LOCATION-INPUT-FOUNDATION
+    owner_capability: internal/domain/delivery/location.go
+    status: shipped
+    ship_sha: 7b5ff5ef
+    ship_date: 2026-07-06
+    exit_signal: true
+  - id: WAVE-02-DRIVE-KIND-MAPPER
+    owner_capability: internal/application/assets/delivery/mapper.go
+    status: shipped
+    ship_sha: TBD-AUDIT-PIN
+    ship_date: 2026-07-06
+    exit_signal: false
+    ship_via: BACKFILL_AUDIT_PIN_HONEST_LIMITATION
+  - id: WAVE-03-LOCATION-RESOLVER
+    owner_capability: internal/application/assets/delivery/resolver/
+    status: shipped
+    ship_sha: TBD-AUDIT-PIN
+    ship_date: 2026-07-06
+    exit_signal: false
+    ship_via: BACKFILL_AUDIT_PIN_HONEST_LIMITATION
+  - id: WAVE-04-DRIVE-AVAILABILITY-GATE
+    owner_capability: internal/application/assets/delivery/gate
+    status: shipped
+    ship_sha: TBD-AUDIT-PIN
+    ship_date: 2026-07-06
+    exit_signal: false
+    ship_via: BACKFILL_AUDIT_PIN_HONEST_LIMITATION
+  - id: WAVE-05-ASSET-PUBLISHED-EVENT
+    owner_capability: internal/infrastructure/outboxevents/
+    status: shipped
+    ship_sha: 58b26802
+    ship_date: 2026-07-06
+    exit_signal: true
+  - id: WAVE-06-REGISTER-LOCATION-MIGRATION
+    owner_capability: internal/api/assets/register/handler.go + internal/application/assets/sourcing/types.go
+    status: shipped
+    ship_sha: 72b5a839
+    ship_date: 2026-07-06
+    exit_signal: true
+  forward_pointers:
+  - id: PR-SEMANTIC-LOCATION-SHA-AUDIT
+    owner_capability: architecture
+    status: pending
+    deadline: 2026-08-15
+
 - id: WAVE-6-REGISTER-LOCATION-MIGRATION
   owner_capability: internal/application/assets/sourcing + internal/api/assets/register + docs/architecture/
   status: shipped

@@ -226,7 +226,16 @@ DB handles are opened by `internal/infrastructure/database/**`; migrations run
 at boot. Normal runtime code should use repositories or narrow ports rather
 than open databases itself.
 
-### Local filesystem
+
+
+### Semantic location DTO (canonical AssetLocationInput)
+
+Every media-publishing path route semantically via the canonical `AssetLocationInput`
+DTO declared at `internal/domain/delivery/location.go` (godlike/06 SSOT — single
+canonical owner). Companion `internal/application/assets/delivery/BuildPublishRequest`
+maps the typed shape into per-destination `PublishRequest` fields (Category / Subject /
+Name / Style / Provider / Project / Language). See `architecture/current.yaml#SEMANTIC-LOCATION-API-2026-07-06`
+umbrella wave-tracker for shipped evidence per wave (W1..W6).### Local filesystem
 
 The local filesystem is a staging and cache layer. Common areas under
 `DataDir` include media, clips, Artlist, YouTube, images, voiceovers, workspace,
@@ -703,6 +712,7 @@ Authoritative references:
 - [`docs/api/ACTIVE_API_GENERATED.md`](docs/api/ACTIVE_API_GENERATED.md):
   generated live HTTP surface;
 - [`AGENTS.md`](AGENTS.md): engineering invariants and workflow rules;
+- [`internal/domain/delivery/location.go`](internal/domain/delivery/location.go): canonical SOLE owner of the `AssetLocationInput` semantic-location DTO (SEMANTIC-LOCATION-API-2026-07-06 Wave 1 ship_sha 7b5ff5ef + umbrella Wave 7 ship_date 2026-07-06).
 - [`architecture/decisions/`](architecture/decisions/): accepted architectural
   decisions.
 
