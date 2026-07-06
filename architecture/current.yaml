@@ -6109,3 +6109,107 @@
   godlike_07_audit_pin: "fail-fast-at-input analog: worker boot path now fails loudly on bind failure instead of crashing silently. Pre-fix return 1 from main() was silently dropped by bare main() call. The 3-line fix (import sys + raise SystemExit(1) + sys.exit(main())) is the canonical godlike/07 typed-error projection."
   ship_via: "<!-- id:socksite-aiohttp314-fbf6e8a4 -->"
 
+
+- id: CLIP-PIPELINE-CONSOLIDATION-2026-07-06
+  status: pending
+  exit_signal: false
+  owner_capability: internal/application/assets/sourcing
+  deadline: 2026-08-22
+  description: |
+    Consolidamento delle due pipeline di caricamento clip YouTube che
+    convivono nel codebase con contratti, formati clipID e strategie
+    di dedup diversi. L''audit architetturale del 2026-07-06 ha rivelato
+    8 problemi (P1 duplicazione pipeline CRITICAL, P2 god method 450+ linee,
+    P3 primitive obsession, P4 21+ siti strings.Contains su errori,
+    P5 stato globale package-level, P6 legacy accumulation, P7 I/O
+    bloccante, P8 import cycle). 17 PR in 5 wave (A→E) con ordine
+    prioritario: decomponi Register → unifica pipeline → typed primitives
+    → typed errors → stato globale + legacy cleanup. Action plan canonico:
+    architecture/action-plans/2026-07-06-clip-pipeline-consolidation.md.
+  exit_gate: |
+    All 17 linked_issues across 5 waves reach status: shipped per
+    godlike/07 slim-schema ratchet. Wave-flip a status: done /
+    exit_signal: true quando tutti i linked_issues sono shipped
+    E PR-CLIP-HOTSPOT-CROSSREF ha completato la cross-validation
+    git-log senza nuovi hotspot non coperti.
+  linked_issues:
+  - id: PR-CLIP-DECOM-1
+    owner_capability: internal/application/assets/sourcing/youtube/usecase
+    status: pending
+    deadline: 2026-07-13
+  - id: PR-CLIP-DECOM-2
+    owner_capability: internal/application/assets/sourcing/youtube/usecase
+    status: pending
+    deadline: 2026-07-13
+  - id: PR-CLIP-DECOM-3
+    owner_capability: internal/application/assets/sourcing/youtube/usecase
+    status: pending
+    deadline: 2026-07-13
+  - id: PR-CLIP-DECOM-4
+    owner_capability: internal/application/assets/sourcing/youtube/usecase
+    status: pending
+    deadline: 2026-07-13
+  - id: PR-CLIP-DECOM-5
+    owner_capability: internal/application/assets/sourcing/youtube
+    status: pending
+    deadline: 2026-07-13
+  - id: PR-CLIP-UNIFY-1
+    owner_capability: internal/domain/asset
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-CLIP-UNIFY-2
+    owner_capability: internal/application/assets/sourcing/youtube
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-CLIP-UNIFY-3
+    owner_capability: internal/application/assets/sourcing/youtube
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-CLIP-UNIFY-4
+    owner_capability: internal/application/assets/sourcing/youtube
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-CLIP-TYPE-1
+    owner_capability: internal/domain/asset
+    status: pending
+    deadline: 2026-07-27
+  - id: PR-CLIP-TYPE-2
+    owner_capability: internal/domain/asset
+    status: pending
+    deadline: 2026-07-27
+  - id: PR-CLIP-TYPE-3
+    owner_capability: internal/domain/asset
+    status: pending
+    deadline: 2026-07-27
+  - id: PR-CLIP-ERR-1
+    owner_capability: internal/infrastructure/drive
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-CLIP-ERR-2
+    owner_capability: internal/infrastructure/artlist
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-CLIP-ERR-3
+    owner_capability: internal/api
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-CLIP-ERR-4
+    owner_capability: scripts/ci-architectural-checks.sh
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-CLIP-CLEAN-1
+    owner_capability: internal/application/assets/providers/artlist
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-CLIP-CLEAN-2
+    owner_capability: internal/application/search
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-CLIP-CLEAN-3
+    owner_capability: internal/application/assets/sourcing
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-CLIP-HOTSPOT-CROSSREF
+    owner_capability: architecture
+    status: pending
+    deadline: 2026-08-22
