@@ -333,15 +333,12 @@ type VoiceoverPublishCommand struct {
 	FolderID  string
 }
 
-// TransactionalOutbox is the canonical port for emitting the
-// asset.index.requested.v1 envelope inside the caller's tx.
-//
-// Functionally identical to the existing TxOutboxEnqueuer interface
-// (single EnqueueIndexEvent method) — declared here as a
-// back-compat alias so the new use case can type-assert against the
-// same production concrete *outbox.Dispatcher already wired in
-// build_bundles_voiceover.go.
-type TransactionalOutbox = TxOutboxEnqueuer
+// Azione #6 (July 2026): TransactionalOutbox type alias removed.
+// It was a back-compat alias for TxOutboxEnqueuer, never used by
+// Execute (the finalizer owns the outbox, PR-VO-B3 June 2026).
+// The last consumer (ProcessVoiceoverItemDeps.TransactionalOutbox)
+// was removed in Azione #6; the canonical TxOutboxEnqueuer interface
+// is the single SSOT for outbox callers.
 
 // Logger is intentionally NOT defined as an interface here — the
 // canonical codebase-wide logging surface is *zap.Logger (used across

@@ -203,15 +203,17 @@ func buildVoiceoverService(
 	// pattern); the composition root owns this construction so any
 	// missing wire-up fails fast at boot rather than mid-job.	// Step 8/12 closure (June 2026 — BLOC5.4): wire the canonical
 	// per-item use case ProcessVoiceoverItemUseCase on top of the
-	// 7-port typed seam (Pattern 0 — AGENTS.md). The 7 mandatory deps
-	// mirror the surface the legacy Service consumes (TTSProvider for
-	// Stage 1, DestinationResolver for Stage 0, AudioPostProcessor for
-	// Stage 2, AssetLifecycle for Stage 3 Drive upload, VoiceoverRepository
-	// for Stage 4 atomic-swap tx, TransactionalOutbox for Stage 4
-	// matching outbox enqueue, FilenameBuilder for forward BACKFILL
-	// surface stability). NewProcessVoiceoverItemUseCase panics on nil
-	// per fail-fast WireUp pattern so a partial wire-up surfaces at
-	// boot, not at handler dispatch.
+	// typed seam (Pattern 0 — AGENTS.md). The mandatory deps
+	// mirror the surface the legacy Service consumes.
+	// NewProcessVoiceoverItemUseCase panics on nil per fail-fast
+	// WireUp pattern so a partial wire-up surfaces at boot, not at
+	// handler dispatch.
+	//
+	// Azione #6 (July 2026): TransactionalOutbox and FilenameBuilder
+	// removed from ProcessVoiceoverItemDeps. TransactionalOutbox was
+	// a type-alias never used by Execute (finalizer owns the outbox,
+	// PR-VO-B3). FilenameBuilder was nil-safe per Azione #5.
+	//
 	//
 	// Nil-tolerant construction (mirrors the in-file outboxDispatcher
 	// block above: ~line 110). When destResolver is NOT supplied (typical
@@ -247,17 +249,6 @@ func buildVoiceoverService(
 		// at the use case boundary (only invoked when RemoveSilence == true).
 		audioAdapter := newUseCaseAudioAdapter(log)
 
-		// Concrete: FilenameBuilder port (single shared stateless instance).
-		filenameBuilder := voiceover.NewDefaultFilenameBuilder()
-
-		// Cast: TransactionalOutbox is a type-alias for TxOutboxEnqueuer;
-		// the production *outbox.Dispatcher satisfies the structural
-		// contract without a wrapper. See process_voiceover_item.go.
-		var txOutbox voiceover.TransactionalOutbox
-		if outboxDispatcher != nil {
-			txOutbox = outboxDispatcher
-		}
-
 		// The use case satisfies voiceover.VoiceoverItemExecutor
 		// structurally — compile-time assertion in process_voiceover_item.go
 		// pins the conformance.
@@ -279,8 +270,6 @@ func buildVoiceoverService(
 			AudioPostProcessor:    audioAdapter,
 			Publisher:             publisherAdapter,
 			VoiceoverRepository:   voRepoAdapter,
-			TransactionalOutbox:   txOutbox,
-			FilenameBuilder:       filenameBuilder,
 			DefaultFolderResolver: defaultFolderResolver,
 			Finalizer:             finalizer,
 			Logger:                log,
