@@ -159,7 +159,7 @@ func buildImagesService(
 	ctx context.Context, cfg *config.Config, log *zap.Logger,
 	driveUploader *drive.Uploader, clipsRepo *sqassets.ClipsRepository, artlistRepo *sqassets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
-	mediaStore *drive.Store, imageRepo *sqassets.ImagesRepository,
+	mediaStore *drive.Store, publisher delivery.Publisher, imageRepo *sqassets.ImagesRepository,
 	voMetaWriter *semantic.MetadataWriter, ingestSvc *ingest.Service, dispatcher *outbox.Dispatcher,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
 	_ = ctx
@@ -175,7 +175,7 @@ func buildImagesService(
 		Core: imgservice.ImagesCoreDeps{Cfg: cfg, Log: log},
 		Storage: imgservice.ImagesStorageDeps{
 			ImageRepo: imageRepo, ClipsRepo: clipsRepo, DriveReader: driveUploader,
-			MediaStore: mediaStore, DestResolver: destResolver,
+			MediaStore: mediaStore, Publisher: publisher, DestResolver: destResolver,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: scriptGen, MetaWriter: voMetaWriter, StyleRegistry: styleRegistry,

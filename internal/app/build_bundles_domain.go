@@ -284,7 +284,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
 		drive.driveUploader, repos.ClipsRepo, repos.ClipsRepo,
 		drive.StyleRegistry, ai.ScriptGen,
-		drive.MediaStore, repos.ImageRepo,
+		drive.MediaStore, drive.Publisher, repos.ImageRepo,
 		voMetaWriter, ingestSvc,
 		outbox.Dispatcher,
 	)

@@ -93,3 +93,23 @@ var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil
 // migration is the typed-error contract that user-spec asked for in the
 // PR-VO-SUBFOLDER follow-up.
 var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incomplete but RootFolderOverride is set (direct-to-root fallback)")
+
+// ErrDriveUploaderNotConfigured is the canonical sentinel returned by
+// Store.UploadToDrive when the legacy Store was constructed without a
+// driveUploader (nil *Uploader).
+//
+// P0-2 (July 2026, godlike/07 no-fake-availability): the pre-P0-2
+// path silently returned ("", "", nil) when driveUploader was nil —
+// callers that received empty IDs from a nil uploader skipped
+// downstream Drive-side indexing/audit without any signal. The new
+// contract returns this typed sentinel so callers can errors.Is to
+// distinguish "uploader not configured" from "upload succeeded with
+// empty IDs" (the former is a configuration gap, the latter is a
+// Drive API edge case).
+//
+// Production sites that hit this sentinel should be audited for
+// Store nil-receiver guards BEFORE the UploadToDrive call (the
+// fail-closed path protects from silent-skip but a nil Store
+// guard is the cleaner design — it surfaces the gap at
+// composition time rather than at first upload).
+var ErrDriveUploaderNotConfigured = errors.New("drive: uploader not configured (nil *Uploader passed to Store ctor — upload-capable callers must nil-check the Store receiver before calling UploadToDrive)")
