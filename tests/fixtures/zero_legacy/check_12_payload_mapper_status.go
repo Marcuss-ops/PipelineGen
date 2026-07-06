@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 12 (TODO 16).
 //
 // This file (check_12_payload_mapper_status.go) demonstrates the

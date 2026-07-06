@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Test fixture for Check 60 (ci-architectural-checks.sh).
 //
 // PR-PR6-TEST-REACTIVATE (Wave 1 P0 #3, CODE-QUALITY-CLEANUP-2026-07-04,

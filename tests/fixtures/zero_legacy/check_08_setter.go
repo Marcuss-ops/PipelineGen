@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture contains the forbidden patterns that each CI check
 // (scripts/ci-architectural-checks.sh) is designed to catch. The file
 // lives in tests/fixtures/zero_legacy/ so the standard CI mode

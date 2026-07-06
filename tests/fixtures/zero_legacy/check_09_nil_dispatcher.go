@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 9 (TODO 16).
 //
 // This file (check_09_nil_dispatcher.go) demonstrates the

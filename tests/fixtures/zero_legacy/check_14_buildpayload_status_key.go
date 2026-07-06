@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 14 (TODO 16).
 //
 // This file (check_14_buildpayload_status_key.go) demonstrates the

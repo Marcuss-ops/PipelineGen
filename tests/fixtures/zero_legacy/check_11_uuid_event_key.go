@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package fixture — self-check fixture for Check 11 (TODO 16 follow-up,
 // June 2026).
 //
