@@ -6870,3 +6870,44 @@
       owner_capability: architecture
       status: pending
       deadline: 2026-09-01
+- id: SEMANTIC-LOCATION-API-2026-07-06
+  owner_capability: architecture
+  status: shipped
+  exit_signal: true
+  deadline: 2026-08-15
+  description: |
+    SEMANTIC-LOCATION-API-2026-07-06 wave-tracker: introduce canonical
+    AssetLocationInput + BuildPublishRequest mapper so ALL API endpoints
+    ricevono SOLO dati semantici (category/subject/style/provider/...)
+    and NEVER drive_folder_id / manual path. Backend resolves destination
+    via DestinationRegistry (godic/06 SSOT: one canonical owner per fact).
+
+    Wave 1 SHIPPED (current commit 7b5ff5ef): foundation types + mapper.
+    - internal/domain/delivery/location.go: AssetLocationInput + IsEmpty + SubjectOrName (godlike/06 SSOT owner).
+    - internal/application/assets/delivery/types.go: PublishRequest +Provider +Category (omitempty, additive only).
+    - internal/application/assets/delivery/mapper.go: BuildPublishRequest + 5 typed sentinels (ErrAssetPublishDestinationUnknown / ErrAssetPublishDestinationRequired / ErrAssetPublishLocationIncompleteForDestination / ErrAssetPublishNameCannotReplaceSubject / ErrAssetPublishIdempotencyKeyRequired).
+    - internal/application/assets/delivery/mapper_test.go: 20 TDD tests, all PASS.
+    NO callers yet (Wave 2..N thread mapper into 9 endpoint families).
+
+    Per godlike/07 typed-error contract: all 5 sentinels reachable via errors.Is;
+    Go 1.20+ dual-%w chains preserve both errors. Per godlike/07 minimum-blast-radius:
+    PublishRequest new fields are omitempty + additive-only (NO existing call sites drift).
+
+    godlike/06 4-surface SSOT lockstep (per CANONICAL.md §1):
+    action plan narrative + current.yaml (this entry) + CHANGELOG.md (closure entry)
+    + AGENTS.md (mirror entry under ## Recent cross-cutting closures).
+
+    Forward-pointers (Wave 2 prep, NOT Wave 1 blockers):
+    1) ENUM-CONNECTIVITY TEST: TestBuildPublishRequest_AllDestinationKeysHaveMappingBranch
+       (loop over hardcoded list of 10 DestinationKey consts, assert non-default branch).
+    2) Tags propagation: AssetPublishInput.Tags exists but NOT propagated to PublishRequest.
+       Add it to PublishRequest in Wave 2 (1 line + 1 test).
+    3) IdempotencyKey byte-equivalence: verify the mapper falls through (req.IdempotencyKey = input.IdempotencyKey)
+       with NO re-derivation that would break existing assets.
+  linked_issues:
+  - id: PR-SEMLOC-W1-FOUNDATION
+    owner_capability: internal/application/assets/delivery + internal/domain/delivery
+    status: shipped
+    deadline: 2026-07-06
+    ship_sha: 7b5ff5ef
+    ship_date: 2026-07-06
