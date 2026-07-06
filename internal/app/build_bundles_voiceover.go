@@ -173,6 +173,19 @@ func buildVoiceoverService(
 		log,               // *zap.Logger
 	)
 
+	// Azione #1 (July 2026): construct the shared per-item pipeline
+	// runner. The legacy batch path (process.go::processLanguage) now
+	// delegates to ProcessSegmentUseCase.Execute instead of calling
+	// synthesizeStage/destinationStage/finalizeStage inline.
+	processSeg := voiceover.NewProcessSegmentUseCase(voiceover.ProcessSegmentDeps{
+		TTSProvider:         ttsProvider,
+		AudioPostProcessor:  newUseCaseAudioAdapter(log),
+		Publisher:           newUseCasePublisherAdapter(publisher),
+		VoiceoverRepository: voRepoAdapter,
+		Finalizer:           finalizer,
+		Logger:              log,
+	})
+
 	// P1-2 (June 2026): the application layer no longer constructs
 	// the production *audioasset.Processor. Construction moves UP to
 	// the composition root (this file) so the voiceover package can
@@ -298,6 +311,7 @@ func buildVoiceoverService(
 			Translator:         translator,
 			Finalizer:          finalizer,
 			PostCommitVerifier: postCommitVerifier,
+			ProcessSegment:     processSeg,
 		},
 	})
 	// pylint: disable=unused
