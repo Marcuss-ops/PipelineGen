@@ -98,6 +98,12 @@ type Service struct {
 	// and the media_assets projection exist. Nil-safe: when unwired,
 	// verification is skipped entirely.
 	postCommitVerifier VoiceoverPostCommitVerifier
+	// processSeg is the shared per-item pipeline runner (Azione #1,
+	// July 2026). The legacy batch path (process.go::processLanguage)
+	// now delegates to ProcessSegmentUseCase.Execute instead of calling
+	// synthesizeStage/destinationStage/finalizeStage inline. The same
+	// runner is shared with the per-item use case path.
+	processSeg *ProcessSegmentUseCase
 }
 
 // ALIAS REMOVED Fase 9 step 3: see architecture/deprecations.yaml#TRANSLATION-UNIFY (migration_phase: BACKFILL / status: contract-half)
@@ -160,6 +166,12 @@ type VoiceoverIntegrationDeps struct {
 	// port (P0.4 Fase 4a, July 2026). After tx commit, finalizeStage
 	// calls Verify to confirm durability. Nil-safe: skip verification.
 	PostCommitVerifier VoiceoverPostCommitVerifier
+	// ProcessSegment is the shared per-item pipeline runner (Azione #1,
+	// July 2026). Wired in build_bundles_voiceover.go from the same
+	// deps used by the per-item use case path. MANDATORY — the legacy
+	// batch path delegates to ProcessSegmentUseCase.Execute instead of
+	// calling synthesizeStage/destinationStage/finalizeStage inline.
+	ProcessSegment *ProcessSegmentUseCase
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
@@ -178,6 +190,7 @@ func NewService(deps VoiceoverDeps) *Service {
 		translator:         deps.Integration.Translator,
 		finalizer:          deps.Integration.Finalizer,
 		postCommitVerifier: deps.Integration.PostCommitVerifier,
+		processSeg:         deps.Integration.ProcessSegment,
 	}
 }
 

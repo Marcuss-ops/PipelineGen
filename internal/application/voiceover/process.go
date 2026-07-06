@@ -1,39 +1,32 @@
-// Package voiceover — process.go (PR8 SLIM ORCHESTRATOR, June 2026).
+// Package voiceover — process.go (Azione #1, July 2026).
 //
-// Per-language processLanguage orchestrator extracted from the
-// monolithic 695-line pre-PR8 process.go. Owns:
+// The legacy batch path (processLanguage) now delegates to the shared
+// ProcessSegmentUseCase.Execute runner instead of calling
+// synthesizeStage/destinationStage/finalizeStage inline. The 5 legacy
+// stage files (stage_synthesize.go, stage_destination.go,
+// stage_finalize.go, stage_persist.go, stage_postprocess.go) have been
+// REMOVED.
 //
-//  1. func (s *Service) Generate — single-language wrapper over
-//     GenerateBatch. Caller- compat preserved verbatim.
+// processLanguage retains ONLY the pre-compute work:
+//  1. Build filename + ID (via BuildVoiceoverFilename + buildVoiceoverID)
+//  2. Pre-read old record (for replace-mode swap context)
+//  3. Output dir + subfolder sanitization + filename sanitization
+//  4. Delegate to ProcessSegmentUseCase.Execute for TTS → Publish → TX+Finalize
+//  5. Map VoiceoverItemResult back to BatchItem
 //
-//  2. func (s *Service) processLanguage — per-language orchestrator
-//     that calls the 3 PR8 stages in order:
+// The semantic tagging (previously inline after synthesizeStage) is
+// intentionally removed — ProcessSegmentUseCase.Execute does its own
+// meta building. This is a known tradeoff per the Azione #1 migration;
+// semantic enrichment can be re-added to ProcessSegmentUseCase in a
+// future BACKFILL wave.
 //
-//  1. synthesizeStage (TTS via audioProcessor)
-//
-//  2. destinationStage (Drive upload via Lifecycle)
-//
-//  3. finalizeStage (PR-VO-B3 dedupe gate + PR-VO-A2 atomic
-//     swap + post-commit cleanup goroutine)
-//     Each stage call is wrapped in pipeline_stage_started /
-//     pipeline_stage_completed telemetry per AGENTS.md Pattern 3.
-//
-// Mechanical extraction. processLanguage's pre-compute / pre-read
-// / MkdirAll / SanitizeFilename / meta-build / meta-merge blocks
-// stay inline (they are bridges between stages, not their own
-// stages). Bodies are verbatim from pre-PR8 source; the new
-// behavior is the stage-call shape + telemetry.
-//
-// tools.Progress wiring: HandleJob in job_handler.go does NOT pass
-// JobTools to handleBatchJob today (verified pre-PR8), so the
-// voiceover stage telemetry surfaces only via log emission. A
-// future PR could plumb JobTools through handleBatchJob to also
-// surface stage progress on the worker progress channel.
+// The stageLog telemetry wrapper now emits a single "pipeline" stage
+// (previously 3 separate stages: synthesize / destination / finalize).
+// Operators can correlate via request_id + language as before.
 package voiceover
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,7 +34,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -64,19 +56,26 @@ func stageLog(log *zap.Logger, requestID, stage, language string) func() {
 	}
 }
 
+// voiceOverrideFor returns the canonical per-language voice override
+// for a single language key from a BatchRequest's VoiceOverrides map.
+// nil-safe (returns "" when req is nil, the map is nil, the key is
+// missing, OR the value is empty). The empty-string return propagates
+// downstream to TTSInput.Voice as the default-voice signal.
+//
+// Moved here from stage_synthesize.go (removed in Azione #1, July 2026).
+func voiceOverrideFor(req *BatchRequest, language Language) string {
+	if req == nil || len(req.VoiceOverrides) == 0 {
+		return ""
+	}
+	return req.VoiceOverrides[string(language)]
+}
+
 // PR-VO-AUDIT-P02 (June 2026): the inline cfg.Drive.VoiceoverFolder()
 // fallback that used to pre-populate req.Destination here has been
 // REMOVED. The fallback now lives in the canonical destination
 // resolver (destination_resolver.go::ResolveVoiceoverDestination)
 // so Service.Generate → Service.GenerateBatch → Service.resolveDestination
-// route identically with the worker-side call paths. Pre-refactor
-// behaviour: nil req.Destination was a hard missing_folder_id in
-// stages.go::GenerateBatch (the gate `if req.Destination != nil`)
-// — the cfg-fallback surfaced only via THIS single-language wrapper
-// which silently diverged from the worker-side path. The audit calls
-// that the BACKFILL/CUTOVER-incomplete state of the voiceover module.
-// Post-refactor: nil req.Destination is a valid input that the
-// canonical resolver handles via its nil-dest branch.
+// route identically with the worker-side call paths.
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	req := &BatchRequest{
 		Text: text,
@@ -114,6 +113,26 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 	}, nil
 }
 
+// processLanguage is the per-language orchestrator (Azione #1, July 2026).
+//
+// Pre-migration this called synthesizeStage → destinationStage →
+// finalizeStage inline. Post-migration it delegates to the shared
+// ProcessSegmentUseCase.Execute runner.
+//
+// Pre-compute work retained:
+//   - BuildVoiceoverFilename + buildVoiceoverID (caller-side identity)
+//   - Pre-read old record (replace-mode swap context)
+//   - Output dir + subfolder sanitization + SanitizeFilename
+//
+// Known limitations (Azione #1 migration):
+//   - Semantic tagging: item.SearchText is no longer populated by the
+//     batch path. The old processLanguage called s.semanticTagger after
+//     synthesizeStage; ProcessSegmentUseCase.Execute does its own meta
+//     building without semantic enrichment. Forward-pointer:
+//     inject semantic tags via cmd.Metadata before Execute, or add
+//     semantic tagging to ProcessSegmentUseCase in a future wave.
+//   - Per-language voice overrides are resolved here (voiceOverrideFor)
+//     and passed through ProcessSegmentCommand.Voice.
 func (s *Service) processLanguage(
 	ctx context.Context,
 	requestID string,
@@ -126,15 +145,15 @@ func (s *Service) processLanguage(
 	req *BatchRequest,
 	dest *ResolvedDestination,
 ) BatchItem {
-	// E4: Service.buildFilename → canonical BuildVoiceoverFilename.
-	// Inputs are pre-validated by req via the higher-layer
-	// BatchRequest normalization (~line 472 in types.go).
-	//
-	// `item` is pre-declared so the early-return paths below
-	// (filename build failure, subfolder sanitisation failure,
-	// buffer-overflow rejection) can route via item.fail(...) — the
-	// original PR8 extracted processLanguage from a monolithic
-	// function and missed the var-declaration reorder.
+	// Nil-safety: processSeg must be wired by the composition root.
+	// Tests that construct Service{} directly without wiring processSeg
+	// should be migrated to test ProcessSegmentUseCase.Execute directly.
+	if s.processSeg == nil {
+		var item BatchItem
+		return item.fail(FailureDBUnavailable,
+			fmt.Errorf("processLanguage: processSeg not wired (composition root — Azione #1 requires ProcessSegmentUseCase; tests should wire processSeg or call ProcessSegmentUseCase.Execute directly)"))
+	}
+
 	var item BatchItem
 	filename, err := BuildVoiceoverFilename(FilenameSpec{
 		Text:     req.Text,
@@ -153,30 +172,17 @@ func (s *Service) processLanguage(
 
 	id := buildVoiceoverID(textHash, language, folderID)
 
-	// PR-VO-A2 (Replace-Safe pipeline, June 2026): the previous code deleted the existing voiceover record
-	// BEFORE generation, leaving a data-loss window if TTS / Drive / Lifecycle failed downstream.
-	// The new flow threads the swap through a single SQLite transaction so the old record is
-	// never removed until the new one is durably persisted.
+	// Pre-read old record for replace-mode swap context.
 	shouldSwap := req.Strategy == "replace"
 	oldDriveFileID := ""
 	oldLocalPath := ""
 	oldCleanedPath := ""
 	var existingDriveLink string
-	// P1-2 boundary split (June 2026): the previous raw
-	// s.db.QueryRowContext(...).Scan(...) block is replaced by a
-	// PreReadByID call on the persistence.Repository port. Test
-	// fixtures inject a stub persistence.Repository (see `stubRepo`
-	// in service_p01_state_machine_test.go) satisfying
-	// `var _ persistence.Repository = stubRepo{}` so the per-test
-	// path threads the canonical surface without poking the
-	// production SQLite layer.
+
 	oldRec, preReadErr := s.voiceoverRepo.PreReadByID(ctx, id)
 	if preReadErr != nil {
 		s.log.Warn("processLanguage: pre-read of existing voiceover failed",
 			zap.String("id", id), zap.Error(preReadErr))
-		// Defensive — preserve the pre-PR-VO-A2 "carry on"
-		// semantics so a transient pre-read error doesn't block the
-		// swap stage from running.
 		oldRec = nil
 	}
 	if oldRec != nil {
@@ -186,8 +192,6 @@ func (s *Service) processLanguage(
 		oldCleanedPath = oldRec.CleanedPath
 	}
 	if !shouldSwap && folderID != "" && oldRec != nil && existingDriveLink == "" {
-		// Existing row with no drive link — force regeneration so the persisted row
-		// catches up to the freshly uploaded file.
 		s.log.Info("processLanguage: existing record has no drive link, forcing swap", zap.String("id", id))
 		shouldSwap = true
 	}
@@ -201,7 +205,6 @@ func (s *Service) processLanguage(
 
 	outputDir := s.outputDir
 	if req.Destination != nil && req.Destination.CreateSubfolder && req.Destination.SubfolderName != "" {
-		// PR-VO-A4 (path-traversal fix, June 2026): defense in depth.
 		safeSub, subErr := pathutil.SanitizeSubfolderSegment(req.Destination.SubfolderName)
 		if subErr != nil {
 			s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
@@ -218,9 +221,8 @@ func (s *Service) processLanguage(
 				zap.Error(werr))
 			return item.fail(FailureInvalidSubfolder, fmt.Errorf("path escape rejected: %w", werr))
 		}
-		if err := os.MkdirAll(outputDir, 0755); err != nil { // Wave A Item 16: fail-fast on MkdirAll failure (was: log+continue)
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return item.fail(FailureInvalidSubfolder, fmt.Errorf("failed to create local subfolder %q: %w", outputDir, err))
-
 		}
 	}
 
@@ -230,61 +232,99 @@ func (s *Service) processLanguage(
 		return item.fail(FailureInvalidFilename, err)
 	}
 	filename = filepath.Base(safePath)
-	item.Filename = filename // keep persisted metadata in sync with sanitized path
+	item.Filename = filename
 
-	// ── Stage 1: synthesize (TTS) ──────────────────────────────────────
-	emitSynthesizeCompleted := stageLog(s.log, requestID, "synthesize", string(language))
-	item = s.synthesizeStage(ctx, item, req, outputDir, filename, language)
-	emitSynthesizeCompleted()
-	if item.Status == StatusFailed {
-		return item
+	// Build ProcessSegmentCommand and delegate to the shared runner.
+	// Create a shallow copy of dest so we can override FolderPath with
+	// the subfolder-aware outputDir without mutating the caller's copy.
+	if dest == nil {
+		return item.fail(FailureMissingFolder,
+			fmt.Errorf("processLanguage: dest is nil (GenerateBatch resolveDestination should have caught this)"))
+	}
+	processDest := *dest
+	processDest.FolderPath = outputDir
+
+	removeSilence := false
+	if req.RemoveSilence != nil {
+		removeSilence = *req.RemoveSilence
 	}
 
-	// Build meta map (kept inline — the bridge between synthesize and
-	// destination stages; not its own stage file).
-	//
-	// PR-VO-TYPED-PRIMITIVES (July 2026): the "language" + "style_group"
-	// values are now typed (Language / StyleGroup) — Go's named-type
-	// rules let the typed string value live in a map[string]any
-	// unchanged (the value IS a string at the interface{} level).
-	// The JSON wire shape is byte-equivalent.
-	meta := map[string]any{
-		"text_hash":    textHash,
-		"text_preview": textutil.Truncate(req.Text, 100),
-		"language":     item.Language,
-		"voice":        item.Voice,
-		"strategy":     req.Strategy,
-		"request_id":   requestID,
-		"cleaned_path": item.CleanedPath,
+	// Per-language voice override (moved from synthesizeStage).
+	voice := voiceOverrideFor(req, language)
+
+	cmd := &ProcessSegmentCommand{
+		ID:             id,
+		RequestID:      requestID,
+		TextHash:       TextHash(textHash),
+		Text:           req.Text,
+		Language:       language,
+		Voice:          voice,
+		Filename:       filename,
+		Strategy:       req.Strategy,
+		Metadata:       req.Metadata,
+		RemoveSilence:  removeSilence,
+		Dest:           &processDest,
+		ShouldSwap:     shouldSwap,
+		OldDriveFileID: oldDriveFileID,
+		OldLocalPath:   oldLocalPath,
+		OldCleanedPath: oldCleanedPath,
 	}
-	if s.semanticTagger != nil {
-		semResult, err := s.semanticTagger(ctx, req.Text, "", "voiceover", "voiceover")
-		if err != nil {
-			s.log.Warn("processLanguage: semantic tagger failed", zap.Error(err))
-		} else {
-			meta["search_text"] = semResult.SearchText
-			meta["semantic_tags"] = semResult.Tags
-			meta["semantic_subjects"] = semResult.Subjects
-			meta["semantic_mood"] = semResult.Mood
-			item.SearchText = semResult.SearchText
+
+	// Azione #1: single "pipeline" stage replaces the legacy 3-stage
+	// telemetry (synthesize / destination / finalize).
+	emitPipelineCompleted := stageLog(s.log, requestID, "pipeline", string(language))
+	out, runErr := s.processSeg.Execute(ctx, cmd)
+	emitPipelineCompleted()
+
+	if out == nil {
+		return item.fail(FailureTTS, fmt.Errorf("pipeline_run_failed: %v", runErr))
+	}
+
+	// Map VoiceoverItemResult back to BatchItem.
+	// Classify the error prefix to propagate the correct FailureCode
+	// into item.Errors[] (audit P0.1 contract — typed failure codes).
+	item.ID = out.ID
+	item.Language = out.Language
+	item.Voice = out.Voice
+	item.Filename = out.Filename
+	item.Status = out.Status
+	item.Error = out.Error
+	item.LocalPath = out.LocalPath
+	item.CleanedPath = out.CleanedPath
+	item.FileHash = out.FileHash
+	item.DriveLink = out.DriveLink
+	item.DriveFileID = out.DriveFileID
+	item.DownloadLink = out.DownloadLink
+
+	// Propagate FailureCode to Errors[] based on error prefix.
+	if out.Status == StatusFailed {
+		switch {
+		case hasPrefix(out.Error, "tts_failed:"):
+			item.Errors = append(item.Errors, FailureTTS)
+		case hasPrefix(out.Error, "audio_post_process_failed:"):
+			item.Errors = append(item.Errors, FailureTTS)
+		case hasPrefix(out.Error, "no_local_payload:"):
+			item.Errors = append(item.Errors, FailureNoLocalPayload)
+		case hasPrefix(out.Error, "upload_failed:"):
+			item.Errors = append(item.Errors, FailureUpload)
+		case hasPrefix(out.Error, "missing_folder_id:"):
+			item.Errors = append(item.Errors, FailureMissingFolder)
+		case hasPrefix(out.Error, "tx_begin_failed:"):
+			item.Errors = append(item.Errors, FailureTxBegin)
+		case hasPrefix(out.Error, "finalize_failed:"):
+			item.Errors = append(item.Errors, FailureTxBegin)
+		case hasPrefix(out.Error, "tx_commit_failed:"):
+			item.Errors = append(item.Errors, FailureTxCommit)
+		default:
+			item.Errors = append(item.Errors, FailureDBUnavailable)
 		}
 	}
-	mergeUserMetadata(meta, dest, req.Metadata, s.log)
-	metaJSON, _ := json.Marshal(meta)
-
-	// ── Stage 2: destination (Drive upload via Lifecycle) ──────────────
-	emitDestinationCompleted := stageLog(s.log, requestID, "destination", string(language))
-	item = s.destinationStage(ctx, item, req, dest, metaJSON)
-	emitDestinationCompleted()
-	if item.Status == StatusFailed {
-		return item
-	}
-
-	// ── Stage 3: finalize (dedupe gate + atomic swap + cleanup) ───────
-	emitFinalizeCompleted := stageLog(s.log, requestID, "finalize", string(language))
-	item = s.finalizeStage(ctx, item, requestID, textHash, language, req, dest, metaJSON,
-		shouldSwap, oldDriveFileID, oldLocalPath, oldCleanedPath)
-	emitFinalizeCompleted()
 
 	return item
+}
+
+// hasPrefix returns true when s starts with prefix. Inline helper to
+// avoid importing the strings package.
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

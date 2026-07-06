@@ -449,6 +449,19 @@ func (a *e2eLifecycleAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, t
 
 var _ LifecycleProjectionUpserter = (*e2eLifecycleAdapter)(nil)
 
+// e2ePublisherStub satisfies VoiceoverPublisher for the E2E test.
+// Azione #1 (July 2026): the batch path now delegates to
+// ProcessSegmentUseCase.Execute which requires a Publisher port.
+type e2ePublisherStub struct {
+	fileID string
+}
+
+func (p *e2ePublisherStub) Publish(_ context.Context, _ VoiceoverPublishCommand) (string, error) {
+	return p.fileID, nil
+}
+
+var _ VoiceoverPublisher = (*e2ePublisherStub)(nil)
+
 // ─────────────────────────────────────────────────────────────────────
 //
 //   voiceover.GenerateBatch
@@ -525,6 +538,17 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 		outboxEnqueuer:    outboxDispatcher,
 		ttsProvider:       &e2eTTSProvider{localPath: filepath.Join(outputDir, "stub.mp3"), fileHash: fileHash},
 		assetDestResolver: &e2eAssetResolver{folderID: folderID, folderPath: outputDir},
+		// Azione #1 (July 2026): wire the shared ProcessSegmentUseCase
+		// so processLanguage delegates to it instead of calling the
+		// removed stage methods.
+		processSeg: NewProcessSegmentUseCase(ProcessSegmentDeps{
+			TTSProvider:         &e2eTTSProvider{localPath: filepath.Join(outputDir, "stub.mp3"), fileHash: fileHash},
+			AudioPostProcessor:  nil, // nil-safe
+			Publisher:           &e2ePublisherStub{fileID: driveFileID},
+			VoiceoverRepository: voiceoverRepo,
+			Finalizer:           e2eFinalizer,
+			Logger:              zap.NewNop(),
+		}),
 	}
 
 	// ── Stage A: drive the full voiceover pipeline ─────────────────

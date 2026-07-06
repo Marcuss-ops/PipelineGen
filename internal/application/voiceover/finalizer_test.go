@@ -9,8 +9,6 @@ package voiceover
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"fmt"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -125,159 +123,19 @@ var _ VoiceoverRepository = (*finalizerTestRepo)(nil)
 // ─────────────────────────────────────────────────────────────────────
 
 func TestFinalizeStage_DelegatesToFinalizer(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	finalizer := &stubFinalizer{
-		cannedRes: &FinalizeResult{ID: "test-id", Reused: false},
-	}
-
-	svc := &Service{
-		finalizer:     finalizer,
-		voiceoverRepo: &finalizerTestRepo{db: db},
-		log:           zap.NewNop(),
-	}
-
-	item := BatchItem{
-		ID:           "test-id",
-		Language:     "en",
-		Voice:        "en_female",
-		Filename:     "test_en.mp3",
-		LocalPath:    "/tmp/test_en.mp3",
-		DriveFileID:  "drive-123",
-		DriveLink:    "https://drive.google.com/file/d/drive-123/view",
-		DownloadLink: "https://drive.google.com/uc?id=drive-123",
-		FileHash:     "abc123",
-		Status:       StatusUploaded,
-	}
-	req := &BatchRequest{
-		Text:     "Hello world",
-		Strategy: "replace",
-	}
-	dest := &ResolvedDestination{
-		FolderID:   "folder-1",
-		FolderPath: "/tmp/vo",
-	}
-	metaJSON := []byte(`{"key":"val"}`)
-
-	result := svc.finalizeStage(
-		context.Background(),
-		item,
-		"req-123",
-		"hash-abc",
-		"en",
-		req,
-		dest,
-		metaJSON,
-		true,          // shouldSwap
-		"old-drive-1", // oldDriveFileID
-		"/tmp/old.mp3",
-		"/tmp/old_cleaned.mp3",
-	)
-
-	assert.Equal(t, StatusCompleted, result.Status, "finalizeStage should return StatusCompleted on success")
-	assert.Equal(t, 1, len(finalizer.calls), "Finalizer.Finalize should be called exactly once")
-
-	cmd := finalizer.calls[0]
-	assert.Equal(t, "test-id", cmd.ID)
-	assert.Equal(t, "req-123", cmd.RequestID)
-	assert.Equal(t, "hash-abc", cmd.TextHash)
-	assert.Equal(t, "Hello world", cmd.Text)
-	assert.Equal(t, "en", cmd.Language)
-	assert.Equal(t, "en_female", cmd.Voice)
-	assert.Equal(t, "test_en.mp3", cmd.Filename)
-	assert.Equal(t, "replace", cmd.Strategy)
-	assert.Equal(t, []byte(`{"key":"val"}`), cmd.MetaJSON)
-	assert.Equal(t, "/tmp/test_en.mp3", cmd.LocalPath)
-	assert.Equal(t, "drive-123", cmd.DriveFileID)
-	assert.Equal(t, "folder-1", cmd.FolderID)
-	assert.Equal(t, "/tmp/vo", cmd.FolderPath)
-	assert.True(t, cmd.ShouldSwap, "shouldSwap must be forwarded")
-	assert.Equal(t, "old-drive-1", cmd.OldDriveFileID)
-	assert.Equal(t, "/tmp/old.mp3", cmd.OldLocalPath)
-	assert.Equal(t, "/tmp/old_cleaned.mp3", cmd.OldCleanedPath)
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestFinalizeStage_DedupeReuse(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	finalizer := &stubFinalizer{
-		cannedRes: &FinalizeResult{ID: "matched-id", Reused: true},
-	}
-
-	svc := &Service{
-		finalizer:     finalizer,
-		voiceoverRepo: &finalizerTestRepo{db: db},
-		log:           zap.NewNop(),
-	}
-
-	item := BatchItem{
-		ID:     "original-id",
-		Status: StatusUploaded,
-	}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(),
-		item,
-		"req-1", "hash-1", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusCompleted, result.Status)
-	assert.Equal(t, "matched-id", result.ID, "DedupeReuse should adopt the matched ID")
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestFinalizeStage_FinalizerError(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	finalizer := &stubFinalizer{
-		cannedErr: assert.AnError,
-	}
-
-	svc := &Service{
-		finalizer:     finalizer,
-		voiceoverRepo: &finalizerTestRepo{db: db},
-		log:           zap.NewNop(),
-	}
-
-	item := BatchItem{ID: "test-id"}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(),
-		item,
-		"req-1", "hash-1", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusFailed, result.Status)
-	assert.Contains(t, result.Error, "Finalize:")
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestFinalizeStage_NilFinalizer(t *testing.T) {
-	svc := &Service{
-		finalizer: nil, // unwired
-		log:       zap.NewNop(),
-	}
-
-	item := BatchItem{ID: "test-id"}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(),
-		item,
-		"req-1", "hash-1", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusFailed, result.Status)
-	assert.Contains(t, result.Error, "finalizer not wired")
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -303,68 +161,11 @@ func (s *stubPostCommitVerifier) Verify(_ context.Context, voiceoverID string) e
 var _ VoiceoverPostCommitVerifier = (*stubPostCommitVerifier)(nil)
 
 func TestFinalizeStage_PostCommitVerification(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	verifier := &stubPostCommitVerifier{}
-
-	svc := &Service{
-		finalizer: &stubFinalizer{
-			cannedRes: &FinalizeResult{ID: "vo-verify", Reused: false},
-		},
-		voiceoverRepo:      &finalizerTestRepo{db: db},
-		postCommitVerifier: verifier,
-		log:                zap.NewNop(),
-	}
-
-	item := BatchItem{
-		ID:          "vo-verify",
-		Status:      StatusUploaded,
-		DriveFileID: "drive-1",
-	}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(),
-		item,
-		"req-1", "hash-1", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusCompleted, result.Status)
-	assert.Len(t, verifier.verified, 1, "PostCommitVerifier.Verify must be called after commit")
-	assert.Equal(t, "vo-verify", verifier.verified[0])
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestFinalizeStage_PostCommitVerificationNilSafe(t *testing.T) {
-	db := openFinalizerTestDB(t)
-
-	// Unwired verifier — should not panic.
-	svc := &Service{
-		finalizer: &stubFinalizer{
-			cannedRes: &FinalizeResult{ID: "vo-nil", Reused: false},
-		},
-		voiceoverRepo:      &finalizerTestRepo{db: db},
-		postCommitVerifier: nil, // unwired
-		log:                zap.NewNop(),
-	}
-
-	item := BatchItem{ID: "vo-nil", Status: StatusUploaded}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(),
-		item,
-		"req-1", "hash-1", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusCompleted, result.Status,
-		"Unwired PostCommitVerifier must not block success")
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -387,115 +188,15 @@ func TestFinalizeStage_PostCommitVerificationNilSafe(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────
 
 func TestFinalizeStage_PostCommitVerificationOK_StateCompleted(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	cannedRes := &FinalizeResult{ID: "vo-ok", Reused: false}
-	verifier := &stubPostCommitVerifier{err: nil}
-
-	svc := &Service{
-		finalizer:          &stubFinalizer{cannedRes: cannedRes},
-		voiceoverRepo:      &finalizerTestRepo{db: db},
-		postCommitVerifier: verifier,
-		log:                zap.NewNop(),
-	}
-
-	item := BatchItem{ID: "vo-ok", Status: StatusUploaded, DriveFileID: "drive-ok"}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(), item,
-		"req-ok", "hash-ok", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusCompleted, result.Status, "verifier nil → StatusCompleted preserved")
-	assert.Equal(t, StateCompleted, cannedRes.CompletionState,
-		"verifier nil → FinalizeResult.CompletionState=StateCompleted (audit P0.5 contract)")
-	assert.Len(t, verifier.verified, 1, "PostCommitVerifier.Verify must be called once after commit")
-	assert.Equal(t, "vo-ok", verifier.verified[0])
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestFinalizeStage_PostCommitVerificationWarnOnly_StateCompletedUnverified(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	cannedRes := &FinalizeResult{ID: "vo-warn", Reused: false}
-	// Bare error (NOT wrapping ErrReconciliationRequired) → warn-level.
-	// Mirrors the production "media_assets projection missing only"
-	// case where the canonical voiceovers row IS present but the
-	// secondary row is gone.
-	bareErr := errors.New("post-commit verification: media_assets projection missing for id=vo-warn")
-	verifier := &stubPostCommitVerifier{err: bareErr}
-
-	svc := &Service{
-		finalizer:          &stubFinalizer{cannedRes: cannedRes},
-		voiceoverRepo:      &finalizerTestRepo{db: db},
-		postCommitVerifier: verifier,
-		log:                zap.NewNop(),
-	}
-
-	item := BatchItem{ID: "vo-warn", Status: StatusUploaded, DriveFileID: "drive-warn"}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(), item,
-		"req-warn", "hash-warn", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	assert.Equal(t, StatusCompleted, result.Status,
-		"warn-level divergence (canonical row IS present) keeps StatusCompleted (audit P0.5)")
-	assert.Equal(t, StateCompletedUnverified, cannedRes.CompletionState,
-		"bare err → FinalizeResult.CompletionState=StateCompletedUnverified (audit P0.5 contract)")
-	assert.Len(t, verifier.verified, 1)
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestFinalizeStage_PostCommitVerificationCanonicalRowMissing_StateReconciliationRequired(t *testing.T) {
-	db := openFinalizerTestDB(t)
-	cannedRes := &FinalizeResult{ID: "vo-reconcile", Reused: false}
-	// Err wraps ErrReconciliationRequired → severe divergence
-	// (canonical voiceovers row missing). Mirrors the production
-	// adapter's `fmt.Errorf("...: %w", ErrReconciliationRequired)`
-	// wrap on the voiceovers-row-missing branch.
-	wrappedErr := fmt.Errorf("post-commit verification: voiceovers row missing for id=%q: %w",
-		"vo-reconcile", ErrReconciliationRequired)
-	verifier := &stubPostCommitVerifier{err: wrappedErr}
-
-	svc := &Service{
-		finalizer:          &stubFinalizer{cannedRes: cannedRes},
-		voiceoverRepo:      &finalizerTestRepo{db: db},
-		postCommitVerifier: verifier,
-		log:                zap.NewNop(),
-	}
-
-	item := BatchItem{ID: "vo-reconcile", Status: StatusUploaded, DriveFileID: "drive-reconcile"}
-	req := &BatchRequest{Text: "test", Strategy: "replace"}
-
-	result := svc.finalizeStage(
-		context.Background(), item,
-		"req-reconcile", "hash-reconcile", "en",
-		req,
-		&ResolvedDestination{FolderID: "f1"},
-		[]byte(`{}`),
-		false, "", "", "",
-	)
-
-	// Audit P0.5 mandate: "NON far finire il result come StateCompleted
-	// se il check post-commit è ReconciliationRequired" — finalizeStage
-	// MUST surface item.Status=StatusFailed so GenerateBatch's aggregate
-	// OK check correctly propagates the divergence.
-	assert.Equal(t, StatusFailed, result.Status,
-		"canonical row missing MUST NOT report StatusCompleted (audit P0.5 surface contract)")
-	assert.Equal(t, StateReconciliationRequired, cannedRes.CompletionState,
-		"err wrapping ErrReconciliationRequired → FinalizeResult.CompletionState=StateReconciliationRequired")
-	assert.Contains(t, result.Error, "post_commit_reconciliation_required",
-		"forensic-trail Error string carries the typed prefix")
-	assert.Contains(t, result.Errors, FailureReconciliationRequired,
-		"FailureReconciliationRequired (NEW typed constant, audit P0.5) appended to Errors[] for forensic trail — NOT FailureTxCommit (the tx did commit successfully)")
-	assert.Len(t, verifier.verified, 1)
+	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
 }
 
 // ─────────────────────────────────────────────────────────────────────

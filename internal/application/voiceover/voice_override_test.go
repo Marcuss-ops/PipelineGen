@@ -1,27 +1,13 @@
+// Package voiceover — voice_override_test.go (Azione #1, July 2026).
+//
+// synthesizeStage removed from Service. TestTTSBridge_UsesPerLanguageVoice
+// is skipped — the voice-override behavior is now tested via
+// ProcessSegmentUseCase.Execute (which passes cmd.Voice through to
+// TTSProvider.Synthesize). voiceOverrideFor free function preserved in
+// process.go — the 4 unit-level tests below still pin the lookup contract.
 package voiceover
 
-// PR-VO-AUDIT-P04 micro-commit #3 (June 2026) — voice override
-// propagation audit-pin tests.
-//
-// Three audit-pinned tests pin the canonical VoiceOverrides flow:
-//   - TestProcessOneVoiceoverUseCase_PropagatesVoiceOverrideToTTSInput:
-//     asserts the child → canonical → TTSInput.Voice end-to-end.
-//   - TestTTSBridge_UsesPerLanguageVoice:
-//     asserts synthesizeStage reads the canonical map via
-//     voiceOverrideFor().
-//   - TestE2E_VoiceOverrideReachesPython:
-//     asserts the canonical VoiceOverrides map lands in the payload
-//     emitted to the Python tts_edge.py bridge. The test reads the
-//     BatchRequest.PayloadMap output and pins that the JSON wire
-//     carries the override so the subprocess invocation (handled by
-//     useCaseTTSAdapter) is fed --voice=<resolved voice>.
-//
-// All three tests live in package voiceover (white-box) so they
-// can reach process_one.go::Execute, stages.go::synthesizeStage,
-// and voiceOverrideFor without round-tripping through a public API.
-
 import (
-	"context"
 	"encoding/json"
 	"os/exec"
 	"testing"
@@ -68,81 +54,11 @@ func TestVoiceOverrideFor_NilReq_ReturnsEmptyNoPanic(t *testing.T) {
 		"P0.4: nil BatchRequest must not panic (nil-safety)")
 }
 
-// ── Audit-pinned #2: synthesizeStage reads VoiceOverrides[language] ──
-//
-// stubTTSProviderVO is the P0.4 voice-override-specific recording
-// TTSProvider for the audit-pinned tests below. Carrier of a calls
-// counter + lastInput observation surface — distinct schema from the
-// same-named `stubTTSProvider` declared in regression_test.go (which
-// just records `input` and returns fixed `out, err`, no counter).
-// Originally introduced by 2ae1bf1f (PR-VO-AUDIT-P04 micro-commit #3)
-// under the same name, which produced a "redeclared in this block"
-// build break because the two structs (assumed byte-equivalent at
-// commit time; actually NOT) share the identifier. Renamed VO-
-// suffixed here so both stubs coexist in `package voiceover`, with
-// the P0.4 audit-pin semantic (calls counter exactly-once + lastInput
-// observation) preserved intact. A `git revert 2ae1bf1f` was rejected
-// because it would lose the canonical P0.4 work (BatchRequest.
-// VoiceOverrides struct-field promotion + process_one.go metadata-
-// hack removal + stages.go voiceOverrideFor helper + these audit-pin
-// tests).
-type stubTTSProviderVO struct {
-	returnOut TTSOutput
-	returnErr error
-	lastInput TTSInput
-	calls     int
-}
-
-func (s *stubTTSProviderVO) Synthesize(ctx context.Context, input TTSInput) (TTSOutput, error) {
-	s.calls++
-	s.lastInput = input
-	return s.returnOut, s.returnErr
-}
-
-// TestTTSBridge_UsesPerLanguageVoice — audit-pinned.
-//
-// Drives synthesizeStage directly with req.VoiceOverrides populated
-// for "en" + a stub TTSProvider that records the TTSInput. Asserts:
-//   - TTSInput.Voice == req.VoiceOverrides["en"]
-//   - The stub provider was invoked exactly once.
+// TestTTSBridge_UsesPerLanguageVoice — SKIPPED (Azione #1, July 2026).
+// synthesizeStage removed from Service; the voice-override propagation is
+// now tested via ProcessSegmentUseCase.Execute (cmd.Voice → TTSProvider).
 func TestTTSBridge_UsesPerLanguageVoice(t *testing.T) {
-	stub := &stubTTSProviderVO{
-		returnOut: TTSOutput{
-			LocalPath:   "/tmp/voice-en.mp3",
-			CleanedPath: "/tmp/voice-en-clean.mp3",
-			Voice:       "en-US-RogerNeural",
-			FileHash:    "abc123",
-		},
-	}
-	// Construct a minimal Service with just ttsProvider wired. The
-	// synthesizeStage call only touches s.ttsProvider + s.log; nil-safe
-	// for the rest. outputDir is unused at the synthesize stage (the
-	// drive upload consumes it later); Filename test fixture passes
-	// the audit invariant.
-	svc := &Service{ttsProvider: stub}
-
-	req := &BatchRequest{
-		Text:      "hello world",
-		Languages: []Language{"en"},
-		VoiceOverrides: map[string]string{
-			"en": "en-US-RogerNeural",
-		},
-	}
-
-	item := svc.synthesizeStage(
-		context.Background(),
-		BatchItem{ID: "test-id-en", Language: "en", Filename: "voice-en.mp3"},
-		req,
-		"/tmp",
-		"voice-en.mp3",
-		"en",
-	)
-	require.Equal(t, 1, stub.calls,
-		"P0.4: synthesizeStage must invoke the TTSProvider exactly once per language")
-	assert.Equal(t, StatusGenerated, item.Status,
-		"P0.4: synthesizeStage success must set StatusGenerated on the BatchItem")
-	assert.Equal(t, "en-US-RogerNeural", stub.lastInput.Voice,
-		"P0.4 audit pin: TTSInput.Voice MUST be populated from req.VoiceOverrides[language] (pre-P0.4 silently dropped)")
+	t.Skip("Azione #1 (July 2026): synthesizeStage removed — voice override propagation now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestE2E_VoiceOverrideReachesPython(t *testing.T) {
@@ -180,10 +96,5 @@ func TestE2E_VoiceOverrideReachesPython(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skipf("P0.4 E2E: python3 not available in PATH (%v) — wire-shape assertion above is the canonical pin; the live subprocess smoke is environment-gated", err)
 	}
-	// Per-language voice flag presence in the wired subprocess invocation
-	// is verified by reading scripts/bridges/tts_edge.py's argparse
-	// surface at this commit. A runtime subprocess call is intentionally
-	// NOT executed in this test (TTS audio generation is noisy + slow);
-	// the wire-shape assertion above is the canonical audit-pin.
 	t.Log("P0.4 E2E: wire-shape audit pin complete; runtime subprocess smoke environment-gated (see scripts/bridges/tts_edge.py for the --voice flag surface)")
 }
