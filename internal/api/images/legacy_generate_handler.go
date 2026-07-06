@@ -89,5 +89,11 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		"provider":      asset.Provider,
 		"drive":         imageDriveBlock(asset),
 		"indexed":       false,
+		"location": gin.H{
+			"category": "",
+			"subject":  asset.SubjectID,
+			"provider": string(asset.Provider),
+			"style":    req.Style,
+		},
 	})
 }

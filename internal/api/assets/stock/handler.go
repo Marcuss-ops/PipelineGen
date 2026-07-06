@@ -149,6 +149,7 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 	// shape is stable across both async and sync modes.
 	resp["drive"] = stockDrivePlaceholder()
 	resp["indexed"] = false
+	resp["location"] = stockLocationPlaceholder()
 	apiutil.OK(c, resp)
 }
 
@@ -229,6 +230,7 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 	// the caller polls the job status via status_url.
 	resp["drive"] = stockDrivePlaceholder()
 	resp["indexed"] = false
+	resp["location"] = stockLocationPlaceholder()
 	apiutil.OK(c, resp)
 }
 
@@ -242,5 +244,17 @@ func stockDrivePlaceholder() gin.H {
 		"folder_id": "",
 		"file_id":   "",
 		"link":      "",
+	}
+}
+
+// stockLocationPlaceholder returns the canonical empty location response
+// block (DoD #10, July 2026). Stock endpoints are async — the location
+// is populated when the caller polls the job status via status_url.
+func stockLocationPlaceholder() gin.H {
+	return gin.H{
+		"category": "",
+		"subject":  "",
+		"provider": "",
+		"style":    "",
 	}
 }
