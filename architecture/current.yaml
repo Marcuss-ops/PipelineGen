@@ -7056,14 +7056,22 @@
     # Group C forward-pointer
   - id: PR-W6-SMOKE-DOC
     owner_capability: docs/architecture/PR-W6-SMOKE-DOC.md
-    status: pending
+    status: shipped
+    ship_via: DOC_DELIVERY_FORWARD_POINTER
+    ship_date: 2026-07-06
     deadline: 2026-08-15
     description: |
-      Forward-pointer doc reserving SMOKE_DRIVE_PROJECT_ID +
-      SMOKE_DRIVE_LANGUAGE envs for legacy operational smokes.
-      Mutating them would break the legacy verification safety net.
-      Also documents the future kind: semantic smoke variant to be
-      implemented in Wave 7.
+      Forward-pointer doc landed at docs/architecture/PR-W6-SMOKE-DOC.md
+      (§1..§7). Reserves SMOKE_DRIVE_PROJECT_ID + SMOKE_DRIVE_LANGUAGE
+      envs for the Wave 7 kind: semantic smoke variant. Documents WHY
+      legacy operational smokes (destination: {kind: "explicit"}) stay
+      byte-stable until 2026-12-31 per FASE-2.1-VOICE-FREEZE. Mutating
+      them would (a) break the legacy-client safety net, (b) pollute
+      operator logs with NEW failure signatures that complicate the
+      rate(legacy_*) == 0 retreat-to-CONTRACT trigger, (c) violate
+      godlike/07 minimum-blast-radius. The future smoke lives as a
+      PARALLEL rail under tests/operational/semantic_*.sh once
+      PR-RESOLVER-PORT-EXTRACT (Wave 7) lands.
 
     # Wave 7 forward-pointers (godlike/06 SSOT discipline - each
     # linked to a producer; future PRs land their SHAs in matching
