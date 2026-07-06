@@ -190,10 +190,12 @@ func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	return nil
 }
 
-// buildDriveAdminForCLI constructs a drive.Admin for admin CLI commands.
+// buildDriveAdminForCLI constructs a *drive.Uploader for admin CLI commands.
 // Mirrors the pattern in internal/app/build_bundles_drive.go:
 // NewDriveServiceFromFiles + &drive.Uploader{Service, Log}.
-func buildDriveAdminForCLI(ctx context.Context, cfg *config.Config, log *zap.Logger) (drive.Admin, error) {
+// Returns the concrete *Uploader so callers can use methods from both
+// drive.Admin (folder CRUD) and drive.Reader (ListFiles, SearchFiles).
+func buildDriveAdminForCLI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*drive.Uploader, error) {
 	svc, err := drive.NewDriveServiceFromFiles(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("NewDriveServiceFromFiles: %w", err)
