@@ -196,15 +196,23 @@ func sourceFromClipID(clipID string) string {
 // UPDATE in error.
 func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash, sourceVersion string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
+	// BLOCKER #1 closure (audit 2026-07-03): the CAS fence guards on
+	// (id, source_version, index_state='INDEXING') ONLY — file_hash is no
+	// longer compared. file_hash stores the video file MD5 (32 hex chars)
+	// while contentHash is the SHA-256 of searchable text (64 hex chars);
+	// they can never match, so the prior `AND file_hash = ?` caused
+	// ErrIndexSuperseded on EVERY asset, preventing any from reaching
+	// INDEXED. The test TestSetIndexedAt_SucceedsWhenContentHashDiffers-
+	// ButSourceVersionMatches pins this contract.
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE media_assets SET
 			index_state = ?,
 			index_state_updated_at = ?,
 			metadata_json = json_set(json_set(json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?)
-		 WHERE id = ? AND source_version = ? AND file_hash = ? AND index_state = 'INDEXING'`,
+		 WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
 		string(asset.StateIndexed), now,
 		now, contentHash, embeddingModel, embeddingModelVersion,
-		clipID, sourceVersion, contentHash)
+		clipID, sourceVersion)
 	if err != nil {
 		return fmt.Errorf("set indexed_at for %s: %w", clipID, err)
 	}
