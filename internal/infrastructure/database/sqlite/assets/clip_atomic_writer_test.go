@@ -154,7 +154,7 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 			EndSec:   60,
 			Duration: 50,
 		},
-		Metadata: youtubetypes.ClipMetadata{
+		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         "Funny Moment",
 			Topics:          []string{"humor"},
 			SourceURL:       "https://www.youtube.com/watch?v=abc123",
@@ -265,7 +265,7 @@ func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 			EndSec:   30,
 			Duration: 25,
 		},
-		Metadata: youtubetypes.ClipMetadata{
+		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         "Idempotent Clip",
 			NormalizedGroup: "general",
 		},
@@ -316,7 +316,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 		VideoID:       "supersede_001",
 		FileHash:      sha256Hex("content-A"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
-		Metadata:      youtubetypes.ClipMetadata{Summary: "Supersede A", NormalizedGroup: "general"},
+		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Supersede A", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
 		PolicyVersion: "v1",
 	}
@@ -325,7 +325,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 		VideoID:       "supersede_001",
 		FileHash:      sha256Hex("content-B"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
-		Metadata:      youtubetypes.ClipMetadata{Summary: "Supersede B", NormalizedGroup: "general"},
+		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Supersede B", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
 		PolicyVersion: "v1",
 	}
@@ -395,7 +395,7 @@ func TestClipAtomicWriter_TerminalConflictReturnsError(t *testing.T) {
 			EndSec:   60,
 			Duration: 50,
 		},
-		Metadata: youtubetypes.ClipMetadata{
+		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         "Terminal Conflict Probe",
 			NormalizedGroup: "general",
 		},
@@ -488,7 +488,7 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 		VideoID:       "closed_db_001",
 		FileHash:      sha256Hex("closed-db-content"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
-		Metadata:      youtubetypes.ClipMetadata{Summary: "Closed DB Probe", NormalizedGroup: "general"},
+		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Closed DB Probe", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
 		PolicyVersion: "v1",
 	}
