@@ -25,7 +25,38 @@ type YTDLPDownloader struct {
 	artlistCookiesPath string // July 2026 (PR-ARTLIST-COOKIES-CONFIG): empty = skip --cookies flag (godlike/07 fail-closed)
 	cmdBuilder         *ytdlp.CommandBuilder
 	verifier           *ytdlp.OutputVerifier
+	// runner is the Pattern 0 port for executing external processes
+	// (godlike/07 minimum-blast-radius + testability). The production
+	// default is `defaultRunner{}` which wraps process.Run; tests inject
+	// a `captureRunner` mock to capture argv without spawning yt-dlp.
+	// See downloader_test.go for the canonical captureRunner pattern.
+	runner ProcessRunner
 }
+
+// ProcessRunner is the Pattern 0 port for executing external processes.
+// godlike/06 SSOT: this port lives in the downloader package (mirrors
+// the metadata/subtitle adapter's ProcessRunnerPort pattern); the
+// canonical default implementation (defaultRunner) wraps process.Run.
+// Tests inject a mock (captureRunner) to capture argv without spawning
+// an actual subprocess.
+type ProcessRunner interface {
+	Run(ctx context.Context, name string, args []string, opts process.Options) (*process.Result, error)
+}
+
+// defaultRunner is the production ProcessRunner that delegates to
+// process.Run. It is the canonical SSOT for "what the downloader
+// actually executes in production" — tests that inject a different
+// ProcessRunner are validating the argv contract, NOT the exec contract.
+type defaultRunner struct{}
+
+func (defaultRunner) Run(ctx context.Context, name string, args []string, opts process.Options) (*process.Result, error) {
+	return process.Run(ctx, name, args, opts)
+}
+
+// Compile-time pin (godlike/06 SSOT): defaultRunner MUST satisfy the
+// ProcessRunner port. Drift in the Run signature surfaces as a build
+// failure rather than a runtime panic.
+var _ ProcessRunner = defaultRunner{}
 
 // NewYTDLP creates a new yt-dlp downloader.
 // Blocco 5 (July 2026): constructs the shared ytdlp.CommandBuilder once
@@ -43,6 +74,7 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		artlistCookiesPath: cfg.External.ArtlistCookiesPath,
 		cmdBuilder:         ytdlp.NewCommandBuilder(cfg),
 		verifier:           &ytdlp.OutputVerifier{},
+		runner:             defaultRunner{},
 	}
 }
 
@@ -177,7 +209,7 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		timeout = 10 * time.Minute
 	}
 
-	_, err := process.Run(ctx, d.path, args, process.Options{
+	_, err := d.runner.Run(ctx, d.path, args, process.Options{
 		Timeout:        timeout,
 		CombinedOutput: true,
 	})
@@ -246,7 +278,7 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	args = append(args, "-o", outputTemplate)
 	args = append(args, req.URL)
 
-	_, err := process.Run(ctx, d.path, args, process.Options{
+	_, err := d.runner.Run(ctx, d.path, args, process.Options{
 		Timeout:        10 * time.Minute,
 		CombinedOutput: true,
 	})
@@ -325,7 +357,7 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		args = append(args, "-o", outputTemplate)
 		args = append(args, req.URL)
 
-		_, err := process.Run(ctx, d.path, args, process.Options{
+		_, err := d.runner.Run(ctx, d.path, args, process.Options{
 			Timeout:        10 * time.Minute,
 			CombinedOutput: true,
 		})
