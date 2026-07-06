@@ -8,6 +8,8 @@ package assets
 
 import (
 	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // GetImageByHash recupera un'immagine tramite il suo hash.
