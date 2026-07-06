@@ -33,7 +33,7 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
 	// P1-3-BACKFILL: pass lifecycle through so TrashFile routes via FileLifecycle.Trash.
 	// When lifecycle is nil (legacy construction), the graceful fallback to Admin.TrashFile applies.
-	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader, a.lifecycle), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
+	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
 	return nil
 }
 

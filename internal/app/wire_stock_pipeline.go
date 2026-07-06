@@ -93,7 +93,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	ytdlpFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
 		dlReq := &downloader.DownloadRequest{
 			URL:        req.Source.URL,
-			OutputPath: dstPath,
+			OutputPath: dstPath + ".%(ext)s",
 			Timeout:    req.Timeout,
 			UseCookies: true,
 		}
