@@ -66,6 +66,16 @@ type StockFinalizeStep struct{}
 func (StockFinalizeStep) Name() string { return StepKeyStockFinalize }
 
 func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
+	if runner.Log() != nil {
+		finalizerWired := "no"
+		if runner.JobFinalizer() != nil {
+			finalizerWired = "yes"
+		}
+		runner.Log().Info("orchestrator: stock.finalize: starting",
+			zap.Int("published_count", len(runner.State().Published)),
+			zap.String("job_finalizer_wired", finalizerWired))
+	}
+
 	in := runner.RunInput()
 	if in == nil {
 		return errors.New("orchestrator: stock.finalize: nil RunInput")
@@ -146,7 +156,7 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		// check). Removing it eliminates the silent-success trap
 		// without breaking any test fixture.
 		if runner.Log() != nil {
-			runner.Log().Debug("orchestrator: stock.finalize JobFinalizer NOT wired — single-TX spine write skipped (test-fixture path)")
+			runner.Log().Debug("orchestrator: stock.finalize: SUCCEEDED (test-fixture, no spine write)")
 		}
 		return nil
 	}
@@ -187,7 +197,7 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 	runner.State().FinalizationResult = finResult
 
 	if runner.Log() != nil {
-		runner.Log().Info("orchestrator: stock.finalize: JobFinalizer spine write SUCCEEDED",
+		runner.Log().Info("orchestrator: stock.finalize: SUCCEEDED (spine write)",
 			zap.String("job_id", runner.JobID()),
 			zap.Int("attempt", lease.Attempt),
 			zap.Int("artifact_ref_count", len(finResult.ArtifactRefs)))

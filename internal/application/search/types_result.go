@@ -13,9 +13,10 @@ package search
 // ── Candidate ──────────────────────────────────────────────────────
 //
 // Candidate is the universal search hit. JSON tags deliberately avoid
-// server-internal locators — QDRANT-004 invariant. Only signed delivery
-// URLs or external provider references (YouTube VideoID, etc.) survive
-// to clients.
+// server-internal locators in Qdrant payload — QDRANT-004 invariant.
+// DriveLink is the exception: populated from SQLite hydration (not Qdrant)
+// per PR-SEARCH-DRIVELINK (July 2026). Only signed delivery URLs or
+// external provider references (YouTube VideoID, etc.) survive to clients.
 //
 // Score is normalised [0,1] across backends. Hash is a content hash
 // when known (used by dedup policy rank-order 4).
@@ -28,6 +29,7 @@ type Candidate struct {
 	Name         string  `json:"name,omitempty"` // canonical asset name; may differ from Title when localizations differ
 	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	PreviewURL   string  `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
+	DriveLink    string  `json:"drive_link,omitempty"`  // PR-SEARCH-DRIVELINK: from SQLite, NOT Qdrant
 	Score        float64 `json:"score"`
 	Hash         string  `json:"hash,omitempty"`
 }

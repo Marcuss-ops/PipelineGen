@@ -45,6 +45,12 @@ func (StockComposeChunksStep) Name() string { return StepKeyStockComposeChunks }
 
 func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error {
 	cutPaths := runner.State().CutPaths
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.compose_chunks: starting",
+			zap.Int("cut_paths", len(cutPaths)))
+	}
+
 	if len(cutPaths) == 0 {
 		if runner.Log() != nil {
 			runner.Log().Debug("orchestrator: stock.compose_chunks: empty cut paths — nothing to compose")
@@ -138,5 +144,11 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 	}
 
 	runner.State().ComposedPaths = composed
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.compose_chunks: SUCCEEDED",
+			zap.Int("composed_count", len(composed)),
+			zap.Int("cut_paths", len(cutPaths)))
+	}
 	return nil
 }

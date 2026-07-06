@@ -54,6 +54,12 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 	stager := runner.SourceStager()
 
 	plans := runner.State().Plan
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.stage_sources: starting",
+			zap.Int("plan_count", len(plans)))
+	}
+
 	if len(plans) == 0 {
 		if runner.Log() != nil {
 			runner.Log().Debug("orchestrator: stock.stage_sources: empty plan — nothing to stage")
@@ -128,5 +134,11 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	runner.State().StagedAssets = staged
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.stage_sources: SUCCEEDED",
+			zap.Int("staged_count", len(staged)),
+			zap.Int("plan_count", len(plans)))
+	}
 	return nil
 }

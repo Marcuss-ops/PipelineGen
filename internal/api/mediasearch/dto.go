@@ -67,6 +67,7 @@ type searchResultItem struct {
 	Title      string  `json:"title"`
 	Source     string  `json:"source"`
 	MediaType  string  `json:"media_type"`
+	DriveLink  string  `json:"drive_link,omitempty"` // PR-SEARCH-DRIVELINK: from SQLite hydration
 	PreviewURL string  `json:"preview_url"`
 }
 

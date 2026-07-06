@@ -27,6 +27,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"go.uber.org/zap"
 )
 
 // StockPlanStep is the canonical implementation of stock.plan.
@@ -38,6 +40,13 @@ func (StockPlanStep) Name() string { return StepKeyStockPlan }
 
 func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	in := runner.RunInput()
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.plan: starting",
+			zap.Int("explicit_clips", len(in.Clips)),
+			zap.Int("search_queries", len(in.SearchQueries)),
+			zap.Int("direct_urls", len(in.DirectURLs)))
+	}
 
 	// When explicit clips are provided, bypass the deterministic
 	// planner and use the timestamp ranges directly. Each clip
@@ -94,6 +103,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 			return fmt.Errorf("orchestrator: stock.plan: explicit planner: %w", err)
 		}
 		runner.State().Plan = plans
+
+		if runner.Log() != nil {
+			runner.Log().Info("orchestrator: stock.plan: SUCCEEDED (explicit clips)",
+				zap.Int("plan_count", len(plans)))
+		}
 		return nil
 	}
 
@@ -114,5 +128,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 		return fmt.Errorf("orchestrator: stock.plan: planner.Plan: %w", err)
 	}
 	runner.State().Plan = plans
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.plan: SUCCEEDED",
+			zap.Int("plan_count", len(plans)),
+			zap.String("source_url", src.URL))
+	}
 	return nil
 }

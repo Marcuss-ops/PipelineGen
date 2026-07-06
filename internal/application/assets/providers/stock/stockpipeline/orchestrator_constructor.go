@@ -11,6 +11,8 @@
 package stockpipeline
 
 import (
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -130,6 +132,16 @@ func (o *Orchestrator) WithAssetPreparation(svc finalization.ArtifactPreparation
 // receiver for fluent chaining.
 func (o *Orchestrator) WithJobFinalizer(svc finalization.JobFinalizer) *Orchestrator {
 	o.jobFinalizer = svc
+	return o
+}
+
+// WithLogger threads a real zap.Logger into the Orchestrator so
+// step-level logs (download sizes, FFmpeg errors, cut results)
+// appear in the journal instead of being silently swallowed by
+// defaultStepRunnerLog()'s no-op fallback. Returns the receiver
+// for fluent chaining.
+func (o *Orchestrator) WithLogger(log *zap.Logger) *Orchestrator {
+	o.executorLog = log
 	return o
 }
 

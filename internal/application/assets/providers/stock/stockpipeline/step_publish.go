@@ -65,6 +65,8 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.publish: starting",
+			zap.Int("composed_paths", len(runner.State().ComposedPaths)))
 		runner.Log().Info("orchestrator: stock.publish: AssetPreparation wired — preparing chunks + metadata")
 	}
 
@@ -196,7 +198,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	if runner.Log() != nil {
-		runner.Log().Info("orchestrator: stock.publish: AssetPreparation completed",
+		runner.Log().Info("orchestrator: stock.publish: SUCCEEDED",
 			zap.Int("chunk_count", len(chunks)),
 			zap.String("metadata_artifact_id", MetadataArtifactID(fp)),
 			zap.String("metadata_remote_file_id", metaPublished.Location.FileID))

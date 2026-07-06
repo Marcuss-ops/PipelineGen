@@ -125,11 +125,11 @@ func (d SearchDocument) AsPayloadMap() map[string]any {
 
 // MediaAsset is the canonical typed envelope for SQLite hydration.
 // Shape mirrors the legacy `mediasearch.MediaAsset` 1:1
-// (gofmt-stable, JSON-tag-stable) but carries NO server-internal
-// locator (the QDRANT-004 acceptance criterion "Nessun path locale
-// o secret esposto"). Adapters that map *asset.Asset → MediaAsset
-// MUST NOT propagate LocalPath/DriveLink; clients needing those
-// fields consume `duplicates.DuplicateMatch` instead.
+// (gofmt-stable, JSON-tag-stable). Server-internal locators
+// (DriveLink, LocalPath) are guarded by `json:"-"` tags so they
+// never leak through default serialisation; the search result
+// mapper explicitly copies DriveLink to searchResultItem.DriveLink
+// per PR-SEARCH-DRIVELINK (July 2026).
 //
 // LifecycleState is `json:"-"` because clients have no business
 // knowing internal lifecycle semantics; if a row reaches a Candidate
@@ -147,5 +147,6 @@ type MediaAsset struct {
 	Width          int      `json:"width,omitempty"`
 	Height         int      `json:"height,omitempty"`
 	SearchText     string   `json:"search_text,omitempty"`
+	DriveLink      string   `json:"-"` // PR-SEARCH-DRIVELINK: in-memory enrichment only
 	LifecycleState string   `json:"-"`
 }

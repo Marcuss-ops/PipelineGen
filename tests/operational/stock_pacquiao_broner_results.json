@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-07-06T18:31:05Z",
+  "run_at": "2026-07-06T18:50:00Z",
   "base_url": "http://localhost:8000",
   "drive_folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
   "results": [
@@ -7,7 +7,7 @@
       "round": 3,
       "label": "Round_7_Broner_barcolla",
       "http_status": 200,
-      "job_id": "job_1783362485084986273_42fd93fb",
+      "job_id": "job_1783363800355432955_3a7627d9",
       "response": {
         "drive": {
           "file_id": "",
@@ -16,7 +16,7 @@
           "path": ""
         },
         "indexed": false,
-        "job_id": "job_1783362485084986273_42fd93fb",
+        "job_id": "job_1783363800355432955_3a7627d9",
         "location": {
           "category": "",
           "provider": "",
@@ -24,9 +24,8 @@
           "subject": ""
         },
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783362485084986273_42fd93fb/full"
-      },
-      "final_status": "TIMEOUT"
+        "status_url": "/api/jobs/job_1783363800355432955_3a7627d9/full"
+      }
     }
   ]
 }
