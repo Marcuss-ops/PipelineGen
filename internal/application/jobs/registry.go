@@ -529,6 +529,18 @@ const (
 // Callers wire handlers via the Dispatcher; the registry only holds
 // operational parameters (timeout, retries, queue, concurrency, capabilities).
 //
+// LONG-FILES-SPLIT-2026-07-06 Band A #7: job-type registration has
+// been decomposed into 5 per-family files per AGENTS.md Pattern 5:
+//
+//	registry_voiceover.go  — Voiceover + subtitles
+//	registry_script.go     — Script generation + curation
+//	registry_extraction.go — Extraction + YouTube
+//	registry_stock.go      — Stock media pipeline
+//	registry_media.go      — Video, catalog, content, system, AI images
+//
+// Each family file exports a register<Family>Entries(r *Registry)
+// helper called below.
+//
 // Wave 19 / P1-9 (June 2026): Queue + Concurrency fields are filled
 // with the canonical defaults by Compose(); the applyDefaults()
 // pass at the end re-asserts normalisation so future contributors
@@ -540,182 +552,11 @@ const (
 func Compose() *Registry {
 	r := NewRegistry()
 
-	// ── Script generation ──
-	r.Register(JobPolicy{Type: TypeScriptGenerate, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeMediaCurate, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
-
-	// ── Media processing ──
-	r.Register(JobPolicy{Type: TypeMediaExtract, Description: "Media extraction", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	// PR-COMPLETE-WORKER-FIX-TYPE-MEDIA-STOCK (July 2026):
-	// ProducesArtifacts=true RETAINED. The entry is closed as
-	// "verified-canonical-spine-surface" rather than as a flip.
-	// The stock pipeline uses the canonical JobFinalizer.CompleteWithArtifacts
-	// SPINE (not a per-item tx like voiceover/YouTube) for the terminal-flip
-	// + artifact write: Service.runOrchestratorResilient → Orchestrator.RunResilient
-	// step 6 stock.finalize calls BuildFinalizationRequest + ApplyFinalizationSpine
-	// → JobFinalizer.CompleteWithArtifacts which does the SINGLE-TX spine write
-	// (UpdateJobToSucceededCAS + InsertResultOnConflict + PersistArtifactMap +
-	// InsertOutboxEnvelope per Pattern 11 in AGENTS.md). The spine call IS the
-	// terminal-flip seam for this job type — NOT the legacy SQLiteStore.Complete.
-	// Mirrors the voiceover/YouTube audit-pin discipline but inverts the
-	// semantic (voiceover/YouTube flipped to ProducesArtifacts=false because
-	// their worker writes artifacts in a per-item/per-segment tx and relies
-	// on the broker's legacy Complete for the terminal-flip; stock's worker
-	// does BOTH the artifact write AND the terminal-flip in one TX via the
-	// spine). Flipping to ProducesArtifacts=false would (a) corrupt the
-	// godlike/06 SSOT (the job DOES produce artifacts — chunks, metadata.json,
-	// thumbnail.png, bindings.json, report.json, summary.txt per the C12
-	// 5-artifact envelope in buildStockManifest), AND (b) silently introduce
-	// a double-write race (the spine call would still do the terminal-flip;
-	// the now-allowed legacy Complete would either no-op on already-terminal
-	// rows or fail with ErrInvalidState on the CAS fence), AND (c) break the
-	// operator-dashboard cardinality (the gate's view of "this job type
-	// produces artifacts" is the registry flag). godlike/07 fail-closed: a
-	// future contributor who flips ProducesArtifacts=false on this entry
-	// would NOT re-introduce the SQL-layer ErrCompleteJobPathViolation gate
-	// (the spine path doesn't go through legacy Complete) — they would
-	// silently corrupt the SSOT and break the registry-driven operator
-	// dashboards. The verified-canonical-spine-surface contract is locked
-	// via internal/application/assets/providers/stock/stockpipeline/
-	// registry_contract_test.go (2 TDD tests + compile-time pin on
-	// Orchestrator.jobFinalizer + Orchestrator.WithJobFinalizer).
-	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
-	r.Register(JobPolicy{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
-
-	// ── Video ──
-	r.Register(JobPolicy{Type: TypeVideoGenerate, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeRenderVideo, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
-
-	// ── YouTube ──
-	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	// PR-COMPLETE-WORKER-YT-FIX (July 2026): ProducesArtifacts REMOVED.
-	// The pre-fix youtube_clip.extract entry declared ProducesArtifacts=true,
-	// which causes the SQL-layer SQLiteStore.Complete reject at
-	// repository_lifecycle.go:108-115 (ErrCompleteJobPathViolation typed
-	// sentinel) AND the typed-service gate at
-	// application/jobs/completion/complete_job_service.go (the same
-	// sentinel). The YouTube pipeline already persists ALL clip
-	// artifacts (media_assets row + outbox events for asset.index +
-	// voiceover_cleanup) atomically inside the per-segment caller-owned
-	// tx via process_segment + ClipAtomicWriter.CommitClipAndIndexEvent
-	// (internal/application/youtube/usecase/callbacks.go +
-	// application/youtube/ports/ports.go::ClipAtomicWriter) — distinct
-	// from the JobFinalizer.CompleteWithArtifacts spine that
-	// script.generate uses. Marking ProducesArtifacts=false re-routes
-	// the broker's "mark SUCCEEDED" path through the legacy
-	// SQLiteStore.Complete which is the CANONICAL terminal-flip seam
-	// for this job type today. godlike/07 minimal-blast-radius: zero
-	// surface contract changes; per-segment persistence stays unchanged.
-	// Forward-pointer: if a future godlike/06 SSOT-tighten requires the
-	// YouTube pipeline to ALSO emit job_artifacts rows (i.e. the
-	// canonical Sender-side artifact envelope), migrate through a
-	// JobFinalizer port — today's UNIQUE registry policy must remain
-	// ProducesArtifacts=false until that port exists.
-	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction (per-segment artifacts persisted inside the per-segment caller-owned tx via process_segment + ClipAtomicWriter; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeYouTubeRebuildST, Description: "Rebuild YouTube search text", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
-	// ── Voiceover / subtitles ──
-	// PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH (July 2026):
-	// ProducesArtifacts REMOVED. The voiceover batch pipeline persists ALL
-	// voiceover artifacts (voiceovers row + media_assets projection +
-	// asset.index outbox event + voiceover.cleanup outbox event) atomically
-	// inside the per-item caller-owned tx through
-	// VoiceoverFinalizer.Finalize (internal/application/voiceover/finalizer.go)
-	// — distinct from the JobFinalizer.CompleteWithArtifacts spine that
-	// script.generate uses. Marking ProducesArtifacts=false re-routes the
-	// broker's "mark SUCCEEDED" path through the legacy SQLiteStore.Complete
-	// which is the CANONICAL terminal-flip seam for this job type today.
-	// Mirrors the voiceover.generate db2f3b1e + the YouTube
-	// youtube_clip.extract b8c96035 fixes. godlike/07 minimal-blast-radius:
-	// zero surface contract changes; per-item persistence stays unchanged.
-	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation (per-item artifacts persisted inside the per-item caller-owned tx via Service.GenerateBatch → finalizeStage → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	// PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO (July 2026):
-	// ProducesArtifacts REMOVED. Mirrors the voiceover batch fix above.
-	// The promo pipeline routes through Service.GeneratePromo →
-	// promo.NewGenerator → voiceoverGenBridge → Service.GenerateWithDestination
-	// → per-item path → voiceover.Finalizer.Finalize → tx.Commit — the
-	// artifact-persistence contract is therefore IDENTICAL to the batch
-	// pipeline: voiceovers + media_assets + outbox events written INSIDE
-	// the caller's tx BEFORE the broker's mark-SUCCEEDED call.
-	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate) (per-item artifacts persisted inside the per-item caller-owned tx via Service.GeneratePromo → promo.NewGenerator → voiceoverGenBridge → Service.GenerateWithDestination → per-item path → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	// PR-VO-COMPLETEPATH-FIX (July 2026): ProducesArtifacts REMOVED.
-	// The pre-fix voiceover.generate entry declared ProducesArtifacts=true,
-	// which causes the SQL-layer SQLiteStore.Complete reject at
-	// repository_lifecycle.go:56-67 (ErrCompleteJobPathViolation typed
-	// sentinel) AND the typed-service gate at
-	// application/jobs/completion/complete_job_service.go (the same
-	// sentinel). The voiceover pipeline already persists ALL voiceover
-	// artifacts (voiceovers row + media_assets projection + asset.index +
-	// cleanup outbox events) atomically inside the per-item caller-owned tx
-	// through VoiceoverFinalizer.Finalize (internal/application/voiceover/
-	// finalizer.go) — distinct from the JobFinalizer.CompleteWithArtifacts
-	// spine that script.generate uses. Marking ProducesArtifacts=false on
-	// BOTH voiceover job types re-routes the broker's "mark SUCCEEDED" path
-	// through the legacy SQLiteStore.Complete which is the CANONICAL
-	// terminal-flip seam for these types today. godlike/07 minimal-blast-
-	// radius: zero surface contract changes; per-item persistence stays
-	// unchanged. Forward-pointer: if a future godlike/06 SSOT-tighten
-	// requires the voiceover pipeline to ALSO emit job_artifacts rows
-	// (i.e. the canonical Sender-side artifact envelope), migrate BOTH job
-	// types through a JobFinalizer port — today's UNIQUE registry policy
-	// must remain ProducesArtifacts=false until that port exists.
-	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover); artifact persistence delegated to voiceover.Finalizer inside the per-item tx — broker's legacy Complete is the canonical mark-SUCCEEDED seam", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	// PR-VO-COMPLETEPATH-FIX (July 2026): ProducesArtifacts REMOVED.
-	// Mirrors the parent voiceover.generate entry above. Each per-language
-	// child job persists its own voiceovers row + media_assets projection +
-	// outbox events inside its own per-item tx via the unified finalizer.
-	// The broker's legacy SQLiteStore.Complete path is the canonical
-	// mark-SUCCEEDED seam for this child type as well.
-	r.Register(JobPolicy{Type: TypeVoiceoverGenerateItem, Description: "Voiceover per-language child (P0.3 fan-out: parent voiceover.generate schedules 1 job per (language, voice) pair; concurrency 4 = sibling throttle); artifact persistence delegated to voiceover.Finalizer inside the per-item tx — broker's legacy Complete is the canonical mark-SUCCEEDED seam", Timeout: 10 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
-	r.Register(JobPolicy{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
-
-	// ── Catalog / sync ──
-	r.Register(JobPolicy{Type: TypeCatalogSync, Description: "Catalog synchronization", Timeout: 2 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeArtlistRun, Description: "Artlist run", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
-	r.Register(JobPolicy{Type: TypeDriveFolderSync, Description: "Drive folder sync", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
-
-	// ── Content processing ──
-	r.Register(JobPolicy{Type: TypeBooksProcess, Description: "Book processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeLessonsProcess, Description: "Lesson processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
-
-	// ── System ──
-	r.Register(JobPolicy{Type: TypeSystemCleanup, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
-
-	// ── AI Image Generation ──
-	// FASE 2 (June 2026): ChromeImageProvider → Playwright → slides.new → Nano Banana Pro.
-	// The handler is NOT wired yet (pending FASE 6); the registry entry declares
-	// the operational parameters so the broker can accept jobs of this type.
-	// RequiredCapabilities["image_gen_chrome"] mirrors internal/application/images/capability.go::CapImageGenChrome.
-	// Keep both declaration sites in sync.
-	r.Register(JobPolicy{Type: TypeImageGenerateGoogle, Description: "Google Slides AI image generation (Chrome + Playwright)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, RequiredCapabilities: []string{"image_gen_chrome"}, ProducesArtifacts: true})
-
-	// Step 11B sibling types (script.generate -> voiceover / image fan-out).
-	// Concurrency=4 per user spec bounds per-worker sibling fan-out. Both
-	// sibling classes produce canonical asset rows via JobFinalizer.
-	// CompleteWithArtifacts (PR-VO-A3) so ProducesArtifacts=true.
-	// AssetRequirements.Required drives the parent's fail-closed policy
-	// (Step 11B (d)).
-	r.Register(JobPolicy{Type: TypeScriptVoiceoverSibling, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeScriptImageSibling, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
-
-	// ── P0 #4 script.generate_item child-job ──
-	// Per-item retry via broker-emitted child jobs. The parent aggregator
-	// reads child outcomes and finalizes the parent.
-	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
-
-	// ── Clip registration (async batch, PR-BATCH-REGISTER-ASYNC) ──
-	// Each clip from POST /api/media/register-batch becomes one media.clip
-	// job. The worker handler (registered inline in
-	// internal/app/assets_register_sourcing.go) decodes RegisterClipCommand
-	// and calls YouTubeRegistrar.Register off the request thread.
-	// ProducesArtifacts=false: registration persists its own media_assets
-	// row + outbox events inside a per-clip tx (mirror of youtube_clip.extract
-	// with the same rationale — the broker's legacy Complete is the canonical
-	// mark-SUCCEEDED seam). Timeout=30min covers yt-dlp download (~10min) +
-	// Drive upload (~5min) + transcoding + DB write.
-	r.Register(JobPolicy{Type: TypeClipRegister, Description: "Async clip registration (PR-BATCH-REGISTER-ASYNC: yt-dlp download + cut + Drive upload + DB write off the request thread)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	registerScriptEntries(r)
+	registerExtractionEntries(r)
+	registerStockEntries(r)
+	registerMediaEntries(r)
+	registerVoiceoverEntries(r)
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency
