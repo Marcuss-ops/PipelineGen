@@ -92,7 +92,9 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jo
 }
 
 // RegisterRoutes wires the YouTube clip endpoints onto the supplied
-// gin router group. Mounts on /api/media/clips/* in production.
+// gin router group. Mounts on /api/clips/* in production (the assets
+// module registers this descriptor on the parent /api group with
+// prefix "/clips", producing /api/clips/process, /api/clips/info, etc.).
 //
 // PR8 (June 2026): POST /process (the YouTube clip extraction job
 // enqueue endpoint) installs h.Idempotency so Idempotency-Key replay
