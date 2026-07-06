@@ -29,7 +29,8 @@ import (
 
 // storageDriveAdapter adapts drive.Uploader to storage.DrivePort.
 type storageDriveAdapter struct {
-	up *driveutil.Uploader
+	up        *driveutil.Uploader
+	lifecycle driveutil.FileLifecycle
 }
 
 var _ appstorage.DrivePort = (*storageDriveAdapter)(nil)
@@ -55,7 +56,10 @@ func (a *storageDriveAdapter) GetOrCreateFolder(ctx context.Context, name, paren
 }
 
 func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
-	return a.up.RenameFile(ctx, fileID, newName)
+	if a.lifecycle == nil {
+		return fmt.Errorf("storageDriveAdapter: lifecycle not wired (P1-5 CUTOVER requires FileLifecycle)")
+	}
+	return a.lifecycle.Rename(ctx, fileID, newName)
 }
 
 // zapLogAdapter adapts *zap.Logger to storage.Logger.
@@ -85,6 +89,7 @@ type MediaIngestBundle struct {
 	DB                *storage.SQLiteDB
 	Assets            *asset.Service
 	DriveUploader     *driveutil.Uploader
+	Lifecycle         driveutil.FileLifecycle
 	Publisher         delivery.Publisher
 	ImageRepo         *sqassets.ImagesRepository
 	VoiceoverRepo     *sqassets.VoiceoversRepository

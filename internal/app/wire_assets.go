@@ -82,6 +82,7 @@ func WireAssets(
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
 	jobs *JobsBundle,
+	lifecycle driveutil.FileLifecycle,
 	voiceoverSvc *voiceoverpkg.Service, // legacy, retained per godlike/07 framework
 	voiceoverSync *voiceoverreconcile.Service, // legacy, retained per godlike/07 framework
 	realtimeSvc assetsapi.RealtimeMatcher, // legacy, retained per godlike/07 framework
@@ -121,7 +122,7 @@ func WireAssets(
 
 	// (2) Build capability bundles (linear pipeline; order matches the
 	// canonical *Descriptor flow used by assetsapi.NewModule below)
-	clipsDesc, err := buildClipsBundle(cfg, log, deps, jobs, dispatcher, driveUploader, assetRepo, searchAggregator, metaWriter, folderMemSvc, deletionSvc, idemHandler)
+	clipsDesc, err := buildClipsBundle(cfg, log, deps, jobs, dispatcher, driveUploader, lifecycle, assetRepo, searchAggregator, metaWriter, folderMemSvc, deletionSvc, idemHandler)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: clips: %w", err)
 	}
@@ -156,7 +157,7 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: soundeffect: %w", err)
 	}
 
-	rd, err := buildRegisterBundle(cfg, log, deps, driveUploader, providerRegistry, clipsDesc, idemHandler, dispatcher, jobs)
+	rd, err := buildRegisterBundle(cfg, log, deps, lifecycle, driveUploader, providerRegistry, clipsDesc, idemHandler, dispatcher, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: register: %w", err)
 	}
@@ -254,6 +255,7 @@ func buildRegisterBundle(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
+	lifecycle driveutil.FileLifecycle,
 	driveUploader *driveutil.Uploader,
 	providerRegistry *providers.Registry,
 	clipsDesc *clipsapi.ClipsDescriptor,
@@ -261,7 +263,7 @@ func buildRegisterBundle(
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher, jobs.Service)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, lifecycle, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher, jobs.Service)
 
 	// PR-DRIVE-AVAILABILITY-GATE: compose the canonical driveChecker
 	// closure. Two-state probe (godlike/06 SSOT one-canonical-owner-per-fact):

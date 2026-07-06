@@ -171,6 +171,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		DB:                root.DB,
 		Assets:            root.Repos.Assets,
 		DriveUploader:     root.Drive.driveUploader,
+		Lifecycle:         root.Drive.Lifecycle,
 		Publisher:         root.Drive.Publisher,
 		ImageRepo:         root.Repos.ImageRepo,
 		VoiceoverRepo:     root.Repos.VoiceoverRepo,

@@ -109,7 +109,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 	// appsearch.Service consumer that "may reuse" catalogRepo was
 	// deleted in Wave 21 PR 10 (June 2026) and the param survived as
 	// dead code until this split.
-	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
+	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, root.Drive.Lifecycle, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
 	if err != nil || aw == nil {
 		return nil
 	}
