@@ -14,6 +14,21 @@
 // and allTerritoriesAggregate all route through it. The
 // listGeneratedTerritoryResults data helper never writes to the
 // response (pure data helper contract).
+//
+// PR-IMG-LEGACY-3 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
+// CONTRACT phase, deadline 2026-08-08): the route intrinsically
+// returns only the generated territory by URL contract —
+// /api/images/generated/search is canonically a generated-territory
+// read seam (path /generated/ = territory = generated). The
+// vestigial `?origin=` query-parameter affordance read in
+// listGeneratedTerritoryResults is RETIRED (the territory is no
+// longer a caller-supplied knob). The service call now hardcodes
+// domain.ImageOriginGenerated regardless of query params; any
+// `?origin=X` value is silently coerced to generated per
+// godlike/06 SSOT (the route is the territory, not the query param).
+// Cross-domain territory switching routes via the canonical
+// /api/images/aggregate?territory=all or /api/images/aggregate?territory=retrieved
+// surfaces, NOT via ?origin=.
 package images
 
 import (
@@ -26,6 +41,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
+
+// domain import retained: the canonical ImageOriginGenerated
+// constant lives in internal/domain/asset/image_taxonomy.go.
 
 // ErrInvalidGeneratedSearchLimit is the typed sentinel returned by
 // the data-only listGeneratedTerritoryResults helper when the
@@ -41,11 +59,16 @@ var ErrInvalidGeneratedSearchLimit = errors.New("invalid generated-search limit 
 // GeneratedSearch handles GET /api/images/generated/search.
 //
 // PR-GENERATED-SEARCH-FIX (July 2026): the underlying SQLite-backed
-// read seam is live. Query parameters:
+// read seam is live. PR-IMG-LEGACY-3 (2026-07-06, CONTRACT phase):
+// the `?origin=` query parameter is RETIRED — the route's territory
+// is fixed by URL contract (path /generated/ = ImageOriginGenerated).
+// The vestigial parameter still being accepted at the gin layer
+// (silently ignored) is the explicit godlike/06 SSOT choice: the
+// route, not the caller, owns the territory. Query parameters:
 //
-//	?origin=<asset.ImageOrigin>  default "generated" (canonical
-//	                              generated-territory territory)
 //	?limit=<int>                 default + cap = 200
+//
+// (No ?origin= — retired; territory is fixed at ImageOriginGenerated.)
 //
 // Returns matching media_assets rows projected to the unified
 // ImageSearchResult DTO, ordered by created_at DESC. Per godlike/07
@@ -99,20 +122,25 @@ func (h *ImagesHandler) searchGeneratedTerritory(c *gin.Context) {
 //
 // godlike/07 input validation: invalid limit wraps the typed
 // sentinel ErrInvalidGeneratedSearchLimit so callers probe via
-// errors.Is. Unknown origin is intentionally tolerated (the SQL
-// returns 0 rows for `WHERE origin = 'garbage'` — the fail-closed
-// surface is the empty-list itself, not a 400 on unknown origin).
+// errors.Is. PR-IMG-LEGACY-3 (2026-07-06, CONTRACT phase): the
+// territory is fixed at ImageOriginGenerated (route contract);
+// any caller-supplied ?origin= is silently coerced since the
+// route is the territory, not the query param (godlike/06 one
+// canonical owner per fact).
 func (h *ImagesHandler) listGeneratedTerritoryResults(c *gin.Context) ([]ImageSearchResult, error) {
-	origin := c.DefaultQuery("origin", string(domain.ImageOriginGenerated))
 	limitStr := c.DefaultQuery("limit", "200")
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 0 {
 		return nil, fmt.Errorf("invalid limit=%q: %w", limitStr, ErrInvalidGeneratedSearchLimit)
 	}
 
+	// PR-IMG-LEGACY-3: territory is hardcoded to ImageOriginGenerated.
+	// The route contract is /generated/search = generated territory;
+	// any ?origin=X caller-supplied value is silently discarded
+	// (godlike/06 SSOT: route, not query param, owns territory).
 	assets, err := h.service.ListImagesByOrigin(
 		c.Request.Context(),
-		domain.ImageOrigin(origin),
+		domain.ImageOriginGenerated,
 		limit,
 	)
 	if err != nil {

@@ -70,5 +70,5 @@ type RepositoryImageRow struct {
 // DefaultResolvedLimit is the canonical cap applied when a caller
 // passes limit <= 0 or omits the limit entirely. Mirrors the
 // historical 25-row cap that the storage_service.go path used to
-// hardcode before the territory split (Step 9 forward-pointer).
+// hardcode before PR-GENERATED-SEARCH-FIX closed the territory split.
 const DefaultResolvedLimit = 25
