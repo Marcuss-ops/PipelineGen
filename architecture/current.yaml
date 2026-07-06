@@ -6911,3 +6911,42 @@
     deadline: 2026-07-06
     ship_sha: 7b5ff5ef
     ship_date: 2026-07-06
+
+- id: WAVE-5-ASSET-PUBLISHED
+  owner_capability: application/jobs/outbox
+  status: shipped
+  exit_signal: true
+  deadline: 2026-08-15
+  description: |
+    SEMANTIC-LOCATION-API-2026-07-06 Wave 5 — Qdrant auto-indexing via
+    asset.published outbox event + canonical ComposeSearchText +
+    AssetPublishedHandler. goal: dopo Publisher.Publish(), emittere
+    evento outbox asset.published con payload {asset_id, destination,
+    origin, category, subject, provider, drive_file_id, drive_path,
+    tags}; worker outbox consuma evento + compone embedding text
+    semanticamente ricco + upsert in Qdrant.
+
+    shipped (per-commit bf2f8b15, 2026-07-06): canonical types +
+    handler + 15 hermetic TDD tests. NO existing producer or consumer
+    rewritten (additive; coexist with asset.index.requested).
+
+    forward-pointers (Wave 5 → Wave 6):
+    - PR-WAVE-5-E2E-SMOKE (deadline 2026-07-15): bash smoke against
+      live stack via curl + jq; requires Wave 6 producer-side emit
+      at caller-of-Publisher.Publish (post-publish tx, NOT in
+      Publisher itself — keep Drive I/O out of DB tx per godlike/07
+      fail-fast-at-input).
+    - PR-WAVE-5-TYPED-STATE (medium-term): SetIndexState literal
+      "INDEXED" should be typed asset.StateIndexed constant from
+      internal/domain/asset/index_state.go for godlike/06 SSOT.
+    - PR-WAVE-5-SUPERSEDE-GATE (FP-D): AssetPublisher.UpsertFromClip
+      (assetID) needs tuple (assetID, sourceVersion) when supersede
+      gate moves to typed; source-version equality is the precedence
+      invariant in PR-QDRANT-INDEXCLIP-GUARD precedent path.
+    - PR-WAVE-5-MEDIA-KIND (FP-A): origin slot overloaded as
+      media-kind in user-spec literal ("video"). Future explicit
+      media_kind field when locales expand (en-US + it-IT + es-ES).
+    - PR-WAVE-5-MIRROR-CONST (FP-E): consolidate
+      AssetPublishedSchemaVersion (handler-side ergonomic short
+      name) + SchemaVersionAssetPublished (registry canonical
+      owner). Verbose godoc already cross-references the pair.
