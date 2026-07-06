@@ -55,8 +55,9 @@ func TestSplit_TTSAdapter_PanicInvariants(t *testing.T) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Cluster 2 — DRIVE external I/O (publisher.go).
-// Pins: newUseCasePublisherAdapter (nil publisher → panic);
-// newVoiceoverDriveAdapter (nil admin → returns nil port — interface nil-safe).
+// Pins: newUseCasePublisherAdapter (nil publisher → panic).
+// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter removed
+// (zero production callers); voiceoverDriveAdapter stays for outbox cleanup.
 // ─────────────────────────────────────────────────────────────────────
 
 func TestSplit_PublisherAdapter_PanicInvariants(t *testing.T) {
@@ -65,14 +66,6 @@ func TestSplit_PublisherAdapter_PanicInvariants(t *testing.T) {
 			"app.adapters_voiceover_use_case: newUseCasePublisherAdapter: publisher is required (delivery.Publisher)",
 			func() { _ = newUseCasePublisherAdapter(nil) },
 			"newUseCasePublisherAdapter must panic with the canonical message when publisher is nil")
-	})
-	t.Run("Drive_NilAdmin_ReturnsNilPort", func(t *testing.T) {
-		// newVoiceoverDriveAdapter returns nil port (NOT panic) when
-		// admin is unconfigured — the consumer
-		// (process_voiceover_item.go::Execute) guards nil at the
-		// call site. Capture this behavior as a contract.
-		port := newVoiceoverDriveAdapter(nil)
-		require.Nil(t, port, "newVoiceoverDriveAdapter must return nil port when admin is nil (call-site nil-safe)")
 	})
 }
 

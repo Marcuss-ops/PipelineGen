@@ -6,10 +6,10 @@
 // VoiceoverPublisher ← delivery.Publisher.Publish (P1-5 cutover, July 2026)
 // DriveUploaderPort  ← drive.Admin.DeleteFile (post-commit cleanup)
 //
-// Fail-closed: nil admin panics at constructor time (fail-fast per
-// AGENTS.md WireUp pattern), returning nil from newVoiceoverDriveAdapter
-// when admin is unconfigured is acceptable because the consumer guards nil
-// at the call site (process_voiceover_item.go::Execute).
+// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter removed
+// (zero callers after DriveUploader removal from VoiceoverIntegrationDeps).
+// voiceoverDriveAdapter stays — used by composition.go for the outbox
+// cleanup handler.
 package app
 
 import (
@@ -104,13 +104,6 @@ type voiceoverDriveAdapter struct {
 }
 
 var _ voiceover.DriveUploaderPort = (*voiceoverDriveAdapter)(nil)
-
-func newVoiceoverDriveAdapter(admin drive.Admin) voiceover.DriveUploaderPort {
-	if admin == nil {
-		return nil
-	}
-	return &voiceoverDriveAdapter{drive: admin}
-}
 
 func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
 	if fileID == "" {
