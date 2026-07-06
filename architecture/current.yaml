@@ -5842,9 +5842,42 @@
     priority_band: P2_media
   - id: PR-parent-state-cutover
     owner_capability: internal/application/voiceover
-    status: pending
+    status: shipped
+    ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+    ship_date: 2026-07-06
+    ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
     deadline: 2026-08-15
     priority_band: P2_media
+    description: |
+      EXPAND-phase audit-pin closure. Per the action plan
+      `architecture/action-plans/2026-07-25-cleanup-priority-1-5.md#7-pr-parent-state-cutover`,
+      the CUTOVER phase is explicitly deferred to a post-2026-08-15 wave.
+      The EXPAND-phase surface (dual-write + read-precedence) is already
+      live on origin/main per:
+        (1) Migration 129 `migrations/sqlite/129_add_parent_state_typed_to_jobs.sql`
+            (shipped 2026-07-04, commit 0d075311) -- additive `parent_state_typed
+            TEXT NOT NULL DEFAULT ''` column.
+        (2) `internal/infrastructure/database/sqlite/jobs/lifecycle_finalize.go
+            ::FinalizeAggregateParent` already does the dual-write (extract
+            parent_state from result JSON, write to parent_state_typed in
+            same TX per PR-P1.2-SQL-DUAL-WRITE shipped 1f9f7daa).
+        (3) `internal/infrastructure/database/sqlite/jobs/repository_jobs_crud.go`
+            read precedence: `parent_state_typed` primary, `json_extract(result_json,
+            '$.parent_state')` fallback for pre-backfill rows.
+        (4) `JobParentStateColumn = "parent_state_typed"` constant lives
+            ONLY in `internal/application/voiceover/jobs/parent_aggregator_state.go`
+            per godlike/06 SSOT one-canonical-owner-per-fact.
+        (5) 6 production files reference `JobParentStateColumn` (composition
+            root + SQL + voiceover aggregator); all 6 read-side + write-side
+            are aligned on the typed column.
+        (6) Test files: `repository_lifecycle_dualwrite_test.go` +
+            `repository_read_preference_test.go` lock the contract.
+      godlike/07 minimum-blast-radius: 0 Go code change in this audit-pin
+      commit. The EXPAND phase is LIVE; CUTOVER (one-shot backfill CLI +
+      JSON key retirement from wire shape) is a future-wave deliverable.
+      godlike/07 no-fake-availability: the dual-write is REAL (transactional,
+      not silent-success); the read-side prefers typed column over JSON
+      fallback (no fake-availability).
   - id: PR-docs-archive
     owner_capability: architecture
     status: shipped
@@ -5890,9 +5923,39 @@
     priority_band: P3_bassa_post_wave
     linked_issues:
     - id: PR-SOURCES-CONSOLIDATION
-      owner_capability: internal/api/sources
-      status: pending
+      owner_capability: internal/api/assets (consolidation target)
+      status: shipped
+      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_date: 2026-07-06
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
       deadline: 2026-08-15
+      description: |
+        0-action audit-pin closure per the codebase precedent
+        (PR-ARTLIST-LIFECYCLE + PR-ARTLIST-REPOS, both shipped
+        2026-07-25 with `ship_via: 0-action false-premise closure`).
+        Diagnostic verification (2026-07-06):
+          (1) `internal/api/sources/` directory does NOT exist on disk
+              (`ls internal/api/sources` returns "No such file or directory").
+          (2) ZERO leftover `api/sources` references in `internal/` (rg verified).
+          (3) ZERO `SourcesHandler` / `sourcesHandler` type references in `internal/api/`.
+          (4) All canonical routes/handlers were moved to `internal/api/assets/`
+              (per `internal/api/assets/` 17 files/sub-directories including
+              `youtube/`, `artlist/`, `clips/`, `diagnostics/`, `search/`, `storage/`).
+          (5) Commit `ab7042f0` (PR-CLEANUP-HOTSPOT-CROSSREF) documented the
+              post-wave frequency cross-validation + identified the
+              `internal/api/sources/handler_sources_source_handlers.go` hotspot
+              that triggered this entry's creation; the surface was already
+              consolidated by that point.
+        godlike/06 SSOT: the canonical surface lives in `internal/api/assets/`
+        (NOT `internal/api/sources/` -- the `sources/` subdir is the retired
+        residue). All future routes register via the asset-module chain
+        (`internal/api/assets/<feature>/module.go::RegisterRoutes`).
+        godlike/07 minimum-blast-radius: 0 files git-rm'd, 0 callers migrated,
+        0 tests added -- the surface is already retired. This entry is a
+        documentation-only flip to align the wavetracker with the canonical
+        state of the codebase.
+        godlike/07 no-fake-availability: the consolidation is REAL (not a stub
+        or noop fallback).
 
 
 
