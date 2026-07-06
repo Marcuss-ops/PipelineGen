@@ -183,7 +183,7 @@ func newAssetRegisterService(
 	// call. The error is logged + the fluent setter is skipped so the
 	// process boots; future PR may flip this to a hard-fail
 	// (forward-pointer: validate-drive-bundle-gate at boot).
-	resolverAdapter, resolverErr := resolver.NewAdapter(cfg.Drive.RootFolder, &zapSourcingLogger{log: log})
+	resolverAdapter, resolverErr := resolver.NewAdapter(cfg.Drive, &zapSourcingLogger{log: log})
 	if resolverErr != nil {
 		log.Warn("PR-RESOLVER-PORT-EXTRACT: failed to construct resolver adapter; fluent setter will be skipped and a non-empty Location will fail-closed via ErrLocationResolverEmpty at runtime", zap.Error(resolverErr))
 		return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log})
