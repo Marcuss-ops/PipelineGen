@@ -315,3 +315,100 @@ func TestBatchRegister_PreflightPasses_SvcNilReturns503(t *testing.T) {
 	require.Contains(t, w.Body.String(), "register service not wired",
 		"svc=nil surface (NOT drive-gate surface) MUST reach the client when wiring is correct")
 }
+
+// ── PR-W6-LOCATION-FIELD (July 2026, Wave 6) — Group B regression tests ─────
+
+// TestBatchRegister_AcceptsLocationField_WithoutFolderID: the canonical
+// godlike/07 NO-FAKE-AVAILABILITY test pin. A request carrying only the
+// new typed `location` field (no `folder_id`) MUST NOT trigger the
+// PR-DRIVE-AVAILABILITY-GATE driveChecker probe — the gate fires ONLY
+// on FolderID per godlike/07 fail-fast-at-input semantics; the typed
+// Location field is accepted at the handler seam without committing to
+// Drive routing until Wave 7 attaches the resolver port. svc=nil
+// returns the canonical 503 (NOT a BindJSON 400).
+func TestBatchRegister_AcceptsLocationField_WithoutFolderID(t *testing.T) {
+	h := newTestHandlerWithChecker(nil /*svc=nil*/, panicIfCalledDriveChecker(t, "driveChecker must NOT fire for location-only requests"))
+	r := newTestRouter(h)
+
+	body := `{
+		"location": {"category": "Boxe", "subject": "mike-tyson"},
+		"clips": [{"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU"}]
+	}`
+	req := httptest.NewRequest("POST", "/api/media/register-batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"location-only request: preflight skipped, downstream svc=nil short-circuits to 503 register service not wired")
+	require.Contains(t, w.Body.String(), "register service not wired",
+		"svc=nil surface MUST reach the client; the new Location field is accepted at BindJSON without 400")
+}
+
+// TestBatchRegister_BothFolderIDAndLocation_FolderIDGateFires: pinned
+// backward-compat contract. When BOTH the legacy `folder_id` AND the
+// new `location` field are non-empty, the Drive-availability gate MUST
+// still fire on FolderID (per godlike/07 input-fail-closed semantics);
+// the resolver's Location-wins precedence is a Wave 7 composition-root
+// concern. The test pins today's pre-Wave-7 behavior so future Location
+// precedence logic lands as a behavior change rather than silent drift.
+func TestBatchRegister_BothFolderIDAndLocation_FolderIDGateFires(t *testing.T) {
+	h := newTestHandler() // canonical fail-closed default checker
+	r := newTestRouter(h)
+
+	body := `{
+		"folder_id": "1Bxv-LdrldSkYu4jOfYQ3j4TnPvA3Rv0x",
+		"location": {"category": "Boxe", "subject": "mike-tyson"},
+		"clips": [{"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU"}]
+	}`
+	req := httptest.NewRequest("POST", "/api/media/register-batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"folder_id non-empty: preflight gate MUST fail-closed 503 (forward-pointer: Location precedence lands in Wave 7)")
+	require.Contains(t, w.Body.String(), "Drive service not configured",
+		"the canonical PR-DRIVE-AVAILABILITY-GATE message MUST surface when FolderID is non-empty + driveChecker fails")
+	require.NotContains(t, w.Body.String(), "register service not wired",
+		"preflight fires BEFORE svc=nil check; svc surface MUST NOT win here")
+}
+
+// TestRegisterFromYouTube_AcceptsLocationField: single-clip endpoint
+// in Wave 6 also accepts the typed `location` field. The new field
+// threads through toRegisterClipCommand -> sourcing.RegisterClipCommand
+// without breaking BindJSON. svc=nil returns the canonical 503 (NOT
+// 400 from BindJSON failure on the new field).
+func TestRegisterFromYouTube_AcceptsLocationField(t *testing.T) {
+	h := newTestHandler() // svc=nil default
+	r := newTestRouter(h)
+
+	body := `{
+		"url": "https://www.youtube.com/watch?v=9u4T_o3FxOU",
+		"location": {"category": "Boxe", "subject": "mike-tyson"}
+	}`
+	req := httptest.NewRequest("POST", "/api/media/register-from-youtube", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"location-only single-clip: tv preflight passes, downstream svc=nil short-circuits to 503")
+	require.Contains(t, w.Body.String(), "register service not wired",
+		"svc=nil surface MUST reach the client; the new Location field is accepted at BindJSON without 400")
+}
+
+// panicIfCalledDriveChecker is the typed-stub helper for the
+// PR-DRIVE-AVAILABILITY-GATE forward-prevention audit-pin tests. It
+// returns a closure that calls t.Fatal with the given message if
+// invoked. Used in TestBatchRegister_AcceptsLocationField_WithoutFolderID
+// (PR-W6-LOCATION-FIELD) to assert that the gate is NEVER reached
+// for location-only requests — a defensive fail-fast at the test
+// surface mirrors the production fail-closed contract.
+func panicIfCalledDriveChecker(t *testing.T, msg string) func() error {
+	return func() error {
+		t.Helper()
+		t.Fatal(msg)
+		return nil
+	}
+}

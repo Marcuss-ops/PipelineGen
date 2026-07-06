@@ -6,6 +6,7 @@ package sourcing
 
 import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
 )
 
@@ -33,10 +34,23 @@ type RegisterClipCommand struct {
 	Source          string
 	Category        string
 	Group           string
-	FolderID        string
-	StartSec        float64
-	EndSec          float64
-	Force           bool
+	// Location (SEMANTIC-LOCATION-API-2026-07-06 Wave 6) is the
+	// canonical semantic-location DTO (godlike/06 SSOT owner:
+	// internal/domain/delivery/location.go). When non-empty,
+	// the service-layer LocationResolver port (forward-pointer to
+	// Wave 7) is intended to resolve this into a concrete FolderID.
+	// Today the resolver port is out of scope so the service falls
+	// back to the legacy FolderID when Location is set without a
+	// FolderID — the typed contract is accepted at the handler
+	// seam; the routing logic lands in Wave 7 composition-root
+	// wiring. Per godlike/07 minimum-blast-radius the field is
+	// additive: existing callers that set only FolderID continue
+	// working byte-identical.
+	Location domaindelivery.AssetLocationInput
+	FolderID string
+	StartSec float64
+	EndSec   float64
+	Force    bool
 	// PR-YT-SECONDS-PER-SEGMENT-WIRE (July 2026, handler-side fan-out):
 	// documentary on the service layer; after handler-side fan-out in
 	// expandClipsBySegments each child has SecondsPerSegment=0 (stripped

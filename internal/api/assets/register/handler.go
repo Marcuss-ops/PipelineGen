@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -34,10 +35,20 @@ type RegisterFromYouTubeRequest struct {
 	Source          string   `json:"source"`
 	Category        string   `json:"category"`
 	Group           string   `json:"group"`
-	FolderID        string   `json:"folder_id"`
-	Start           float64  `json:"start"`
-	End             float64  `json:"end"`
-	Force           bool     `json:"force"`
+	// Location (SEMANTIC-LOCATION-API-2026-07-06 Wave 6) is the
+	// canonical semantic-location DTO (godlike/06 SSOT owner:
+	// internal/domain/delivery/location.go). When non-empty, the
+	// service-layer LocationResolver port (forward-pointer to Wave
+	// 7) is intended to resolve this into a concrete FolderID. Today
+	// only the typed contract is accepted at the handler seam; the
+	// resolver port + composition-root wiring lands in Wave 7. The
+	// legacy FolderID field below is DEPRECATED and stays for
+	// backward-compat until 2026-12-31 (per FASE 2.1 freeze).
+	Location domaindelivery.AssetLocationInput `json:"location,omitempty"`
+	FolderID string                            `json:"folder_id"`
+	Start    float64                           `json:"start"`
+	End      float64                           `json:"end"`
+	Force    bool                              `json:"force"`
 	// PR-YT-SECONDS-PER-SEGMENT-WIRE (July 2026): when > 0, the
 	// handler expands this clip into N children matching
 	// [start, end] partitioned into N-second slices. Each child is
@@ -69,9 +80,17 @@ type RegisterFromYouTubeRequest struct {
 }
 
 // BatchRegisterRequest is the JSON body for batch registering clips from YouTube.
+//
+// PR-W6-LOCATION-FIELD (July 2026, Wave 6): added Location field
+// (semantic-location DTO). Same canonical SSOT contract as the
+// single-clip endpoint above. Future Wave 7 ports the
+// service-layer LocationResolver so request-level Location
+// backfills per-clip empty Locations (mirroring the existing
+// FolderID backfill semantics below).
 type BatchRegisterRequest struct {
-	FolderID string                       `json:"folder_id"`
-	Clips    []RegisterFromYouTubeRequest `json:"clips" binding:"required"`
+	Location domaindelivery.AssetLocationInput `json:"location,omitempty"`
+	FolderID string                            `json:"folder_id"`
+	Clips    []RegisterFromYouTubeRequest      `json:"clips" binding:"required"`
 }
 
 // BatchRegisterResponse is the response for batch registration.
@@ -390,19 +409,26 @@ func effectiveFolderID(req *BatchRegisterRequest) string {
 
 func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClipCommand {
 	return sourcing.RegisterClipCommand{
-		URL:               strings.TrimSpace(req.URL),
-		Name:              strings.TrimSpace(req.Name),
-		Description:       strings.TrimSpace(req.Description),
-		Summary:           strings.TrimSpace(req.Summary),
-		Topics:            append([]string(nil), req.Topics...),
-		Speakers:          append([]string(nil), req.Speakers...),
-		MentionedPeople:   append([]string(nil), req.MentionedPeople...),
-		Hook:              strings.TrimSpace(req.Hook),
-		Tags:              append([]string(nil), req.Tags...),
-		Source:            strings.TrimSpace(req.Source),
-		Category:          strings.TrimSpace(req.Category),
-		Group:             strings.TrimSpace(req.Group),
-		FolderID:          strings.TrimSpace(req.FolderID),
+		URL:             strings.TrimSpace(req.URL),
+		Name:            strings.TrimSpace(req.Name),
+		Description:     strings.TrimSpace(req.Description),
+		Summary:         strings.TrimSpace(req.Summary),
+		Topics:          append([]string(nil), req.Topics...),
+		Speakers:        append([]string(nil), req.Speakers...),
+		MentionedPeople: append([]string(nil), req.MentionedPeople...),
+		Hook:            strings.TrimSpace(req.Hook),
+		Tags:            append([]string(nil), req.Tags...),
+		Source:          strings.TrimSpace(req.Source),
+		Category:        strings.TrimSpace(req.Category),
+		Group:           strings.TrimSpace(req.Group),
+		FolderID:        strings.TrimSpace(req.FolderID),
+		// PR-W6-LOCATION-FIELD (July 2026, Wave 6): thread the
+		// typed semantic-location DTO from the wire through to the
+		// service-layer RegisterClipCommand.Location field. Today the
+		// service does NOT resolve Location -> FolderID — the resolver
+		// port lands in Wave 7 composition wiring; this commit only
+		// accepts the typed contract at the handler seam.
+		Location:          req.Location,
 		StartSec:          req.Start,
 		EndSec:            req.End,
 		Force:             req.Force,
