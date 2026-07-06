@@ -65,6 +65,8 @@ const (
 	// transient Drive failures so the pool's exponential backoff
 	// retries per its config.
 	EventVoiceoverCleanupRequested = "voiceover.cleanup.requested"
+
+	EventAssetPublished = "asset.published"
 )
 
 type Handler interface {
@@ -104,3 +106,16 @@ func (r *HandlerRegistry) Get(eventType string) (Handler, bool) {
 	h, ok := r.handlers[eventType]
 	return h, ok
 }
+
+// SchemaVersionAssetPublished is the canonical v1 schema string for
+// asset.published events. The consumer (AssetPublishedHandler) fails-fast
+// with a typed Terminal sentinel if the inbound envelope's
+// schema_version does not match this string literally; mismatch cannot
+// be cured by retry, so producers must upgrade.
+//
+// godlike/06 SSOT: parallel user-friendly mirror const
+// `outbox.AssetPublishedSchemaVersion` lives at
+// internal/application/jobs/outbox/asset_published.go (handler-side
+// ergonomic short name). Both MUST resolve to the same literal
+// "asset.published.v1" string — drift surfaces as a build failure.
+const SchemaVersionAssetPublished = "asset.published.v1"
