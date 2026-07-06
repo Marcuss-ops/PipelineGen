@@ -18,27 +18,20 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
-)
-
-// GeneratedGenerateRequest is the body for POST
-// /api/images/generated/generate. Mirrors the existing
-// GenerateImageRequest shape but is mounted under /generated/*
-// to emphasise territory separation.
-type GeneratedGenerateRequest struct {
-	Prompt string   `json:"prompt" binding:"required"`
-	Width  int      `json:"width"`
-	Height int      `json:"height"`
-	Style  string   `json:"style" example:"medievale"`
-	Tags   []string `json:"tags"`
-}
-
-// GeneratedGenerate handles POST /api/images/generated/generate.
+) // GeneratedGenerate handles POST /api/images/generated/generate.
 // Equivalent to the legacy POST /api/images/generate — same
 // service method, same payload shape. Territory=matters for
 // the URL: callers using /generated/* opt into the Step-10
 // territory scope explicitly.
+//
+// PR-IMG-LEGACY-5 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
+// CUTOVER phase, deadline 2026-08-22): the handler now binds the
+// canonical ImageGenerationRequest (declared in request_types.go)
+// instead of the pre-PR local duplicate of the same shape. The
+// wire-shape is unchanged; only the type identity collapsed per
+// godlike/06 SSOT (one canonical owner per fact).
 func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
-	var req GeneratedGenerateRequest
+	var req ImageGenerationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
