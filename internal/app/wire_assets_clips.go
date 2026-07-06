@@ -56,6 +56,7 @@ func buildClipsBundle(
 	jobs *JobsBundle,
 	dispatcher *outbox.Dispatcher,
 	driveUploader *driveutil.Uploader,
+	lifecycle driveutil.FileLifecycle,
 	assetRepo asset.Repository,
 	searchAggregator *search.Aggregator,
 	metaWriter *semantic.MetadataWriter,
@@ -187,7 +188,7 @@ func buildClipsBundle(
 		cfg, log,
 		deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo,
 		deps.Core.VoiceoverRepo, deps.Core.ImageRepo,
-		driveUploader, metaWriter, deps.Search.ClipIndexerService,
+		driveUploader, lifecycle, metaWriter, deps.Search.ClipIndexerService,
 		folderMemSvc, deps.Core.AssetTreeService,
 		nil, // vectorSvc removed PG-034
 		appjobs.Compose(),

@@ -53,6 +53,7 @@ func newAssetRegisterService(
 	log *zap.Logger,
 	clipsRepo *assetsrepo.ClipsRepository,
 	driveUploader *driveutil.Uploader,
+	lifecycle driveutil.FileLifecycle,
 	assetTreeSvc *assettree.Service,
 	providerRegistry *providers.Registry,
 	clipsHandler *clipsapi.Handler,
@@ -91,11 +92,9 @@ func newAssetRegisterService(
 		&sourcingClipStoreAdapter{repo: clipsRepo},
 		&sourcingPublisherAdapter{publisher: publisher},
 		&sourcingTranscriberAdapter{cfg: cfg, log: log},
-		// P1-3-BACKFILL: lifecycle is nil here — this composition site
-		// doesn't have access to FileLifecycle (DeliveryDeps has Admin+Publisher
-		// only). The graceful fallback to Admin.TrashFile applies when lifecycle
-		// is nil inside clipsDriveAdapter.
-		&sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, log: log},
+		// P1-5 CUTOVER (July 2026): lifecycle wired through from composition root.
+		// TrashFile now routes via FileLifecycle.Trash (no Admin fallback).
+		&sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, log: log},
 		ytIndex,
 		ytEnrich,
 		&zapSourcingLogger{log: log},

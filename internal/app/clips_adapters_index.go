@@ -243,6 +243,7 @@ func newClipsAdapterBundle(
 	voiceoverRepo *assets.VoiceoversRepository,
 	imagesRepo *assets.ImagesRepository,
 	driveUp *drive.Uploader,
+	lifecycle drive.FileLifecycle,
 	metaWriter *semantic.MetadataWriter,
 	clipIndexer *clipindexer.Service,
 	folderMemSvc *foldermemory.Service,
@@ -267,7 +268,7 @@ func newClipsAdapterBundle(
 		ArtlistRepo:    artPort,
 		VoiceoverRepo:  newVoiceoverRepoAdapter(voiceoverRepo),
 		ImagesRepo:     newImageRepoAdapter(imagesRepo),
-		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp), // P1-3-BACKFILL: nil lifecycle removed per signature change
+		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp, lifecycle), // P1-5 CUTOVER: FileLifecycle.Trash replaces Admin.TrashFile
 		MetaWriter:     newClipMetaWriterAdapter(metaWriter),
 		ClipIndexer:    newClipsIndexerAdapter(clipIndexer),
 		FolderMemSvc:   newClipsFolderMemoryAdapter(folderMemSvc),

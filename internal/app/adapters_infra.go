@@ -181,20 +181,21 @@ func (a *sfxDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *asset.
 // *drive.Uploader to Pattern 0 ports. ResolveFileInfo now uses
 // Reader.GetFileMeta (eliminates raw SDK access).
 type driveAdminAdapter struct {
-	admin  drive.Admin
-	reader drive.Reader
-	log    *zap.Logger
+	admin     drive.Admin
+	reader    drive.Reader
+	lifecycle drive.FileLifecycle
+	log       *zap.Logger
 }
 
 // newDriveAdminAdapter constructs the DriveAdminOps port adapter. If the
 // underlying admin port is nil (e.g. Drive OAuth not configured), this
 // returns nil so the handler-side `h.driveOps == nil` check fires the
 // documented 503 "drive uploader not configured".
-func newDriveAdminAdapter(admin drive.Admin, reader drive.Reader, log *zap.Logger) systemapi.DriveAdminOps {
+func newDriveAdminAdapter(admin drive.Admin, reader drive.Reader, lifecycle drive.FileLifecycle, log *zap.Logger) systemapi.DriveAdminOps {
 	if admin == nil {
 		return nil
 	}
-	return &driveAdminAdapter{admin: admin, reader: reader, log: log}
+	return &driveAdminAdapter{admin: admin, reader: reader, lifecycle: lifecycle, log: log}
 }
 
 func (a *driveAdminAdapter) GetOrCreateFolder(ctx context.Context, folderName, parentID string) (string, error) {
@@ -225,7 +226,10 @@ func (a *driveAdminAdapter) ListFiles(ctx context.Context, folderID string) ([]s
 }
 
 func (a *driveAdminAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
-	return a.admin.RenameFile(ctx, fileID, newName)
+	if a.lifecycle == nil {
+		return fmt.Errorf("driveAdminAdapter: lifecycle not wired (P1-5 CUTOVER requires FileLifecycle)")
+	}
+	return a.lifecycle.Rename(ctx, fileID, newName)
 }
 
 // ResolveFileInfo performs a metadata lookup via Reader.GetFileMeta

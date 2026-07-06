@@ -17,18 +17,19 @@ import (
 // now uses Reader.SearchFiles (query-based listing). Both eliminate
 // raw *gdrive.Service SDK access.
 type clipsDriveAdapter struct {
-	admin  drive.Admin
-	reader drive.Reader
+	admin     drive.Admin
+	reader    drive.Reader
+	lifecycle drive.FileLifecycle
 }
 
 // Compile-time assertion: clipsDriveAdapter satisfies clips.ClipDriveUploaderPort.
 var _ clips.ClipDriveUploaderPort = (*clipsDriveAdapter)(nil)
 
-func newClipsDriveAdapter(admin drive.Admin, reader drive.Reader) clips.ClipDriveUploaderPort {
+func newClipsDriveAdapter(admin drive.Admin, reader drive.Reader, lifecycle drive.FileLifecycle) clips.ClipDriveUploaderPort {
 	if admin == nil {
 		return nil
 	}
-	return &clipsDriveAdapter{admin: admin, reader: reader}
+	return &clipsDriveAdapter{admin: admin, reader: reader, lifecycle: lifecycle}
 }
 
 func (a *clipsDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentFolderID string) (string, error) {
@@ -92,10 +93,10 @@ func (a *clipsDriveAdapter) GetFileMeta(ctx context.Context, fileID string) (*cl
 }
 
 func (a *clipsDriveAdapter) TrashFile(ctx context.Context, fileID string) error {
-	if a.admin == nil {
-		return fmt.Errorf("clipsDriveAdapter: drive not wired")
+	if a.lifecycle == nil {
+		return fmt.Errorf("clipsDriveAdapter: lifecycle not wired (P1-5 CUTOVER requires FileLifecycle)")
 	}
-	return a.admin.TrashFile(ctx, fileID)
+	return a.lifecycle.Trash(ctx, fileID)
 }
 
 // ListFiles uses Reader.SearchFiles (query-based listing) and projects
