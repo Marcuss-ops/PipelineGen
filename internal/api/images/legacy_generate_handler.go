@@ -24,8 +24,15 @@ import (
 // Generate handles POST /api/images/generate — legacy synchronous
 // AI image generation via Chrome/Playwright (Google Slides). Routes
 // through GenerateSmartImage with empty subject/topic defaults.
+//
+// PR-IMG-LEGACY-5 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
+// CUTOVER phase, deadline 2026-08-22): the handler now binds the
+// canonical ImageGenerationRequest (unified with the /generated/generate
+// route) instead of the pre-PR local-literal of the same shape. The
+// wire-shape is unchanged; only the type identity collapsed per
+// godlike/06 SSOT (one canonical owner per fact).
 func (h *ImagesHandler) Generate(c *gin.Context) {
-	var req GenerateImageRequest
+	var req ImageGenerationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return

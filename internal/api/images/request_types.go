@@ -19,10 +19,34 @@ type UploadRequest struct {
 	Tags    []string `json:"tags"`
 }
 
-// GenerateImageRequest is the request type for POST /api/images/generate
-// (legacy synchronous AI image generation). PR-IMAGES-SHIM-REMOVAL
-// (2026-07-04) retired Account/ProjectID fields (fake-availability).
-type GenerateImageRequest struct {
+// ImageGenerationRequest is the CANONICAL wire-shape for BOTH
+// AI image-generation endpoints on the /api/images prefix:
+//
+//   - POST /api/images/generate          (legacy synchronous subset)
+//   - POST /api/images/generated/generate (generated-territory subset)
+//
+// PR-IMG-LEGACY-5 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
+// CUTOVER phase, deadline 2026-08-22): the pre-PR api-layer state
+// carried two byte-identical duplicate DTOs with the same field
+// shape. The duplicate was a godlike/06 SSOT violation (two
+// canonical owners for the same wire-shape intent). CUTOVER unifies
+// both endpoints onto a single canonical type so a future field
+// rename only touches ONE type definition instead of two.
+//
+// godlike/06 SSOT: ImageGenerationRequest is the SOLE canonical
+// request DTO for AI image generation on the /api/images prefix.
+// The DISTINCT service-port type living at
+// internal/application/images/ports.go:28 is the service-layer port
+// signature, NOT an alias to this wire-shape. The conversion
+// (api-layer DTO → application-layer DTO) lives in the generation
+// service dispatcher.
+//
+// PR-IMAGES-SHIM-REMOVAL (2026-07-04): Account/ProjectID fields were
+// RETIRED (fake-availability — silently dropped by the legacy shim).
+// The unified ImageGenerationRequest does NOT carry those fields;
+// forward-pointer for any auth/tenancy migration lives in a separate
+// auth/tenancy port (NOT in image-generation request types).
+type ImageGenerationRequest struct {
 	Prompt string   `json:"prompt" binding:"required"`
 	Width  int      `json:"width"`
 	Height int      `json:"height"`
