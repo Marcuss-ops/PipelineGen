@@ -38,6 +38,12 @@ func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("storage: ping %s: %w", path, err)
 	}
+
+	// SQLite serialises writes; a single connection avoids "database is locked"
+	// under concurrent workloads (WAL mode allows concurrent readers).
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
 	return &SQLiteDB{DB: db, path: path, log: log}, nil
 }
 
@@ -90,6 +96,11 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 		db.Close()
 		return nil, fmt.Errorf("storage: enable foreign keys on %s: %w", dbName, err)
 	}
+
+	// SQLite serialises writes; a single connection avoids "database is locked"
+	// under concurrent workloads (WAL mode allows concurrent readers).
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	log.Info("SQLite database opened",
 		zap.String("path", fullPath),
