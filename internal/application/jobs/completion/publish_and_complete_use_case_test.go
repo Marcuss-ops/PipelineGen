@@ -352,8 +352,8 @@ func TestPublishAndCompleteUseCase_InvalidStagedFailsTypedError(t *testing.T) {
 		WorkerID: "w", JobID: "j", Attempt: 1, LeaseID: "l",
 		Result: []byte(`{}`), ResultHash: "rh",
 		AssetMappings: map[string]string{
-			"":       "asset-empty",  // for empty ArtifactID test
-			"art-x":  "asset-x",
+			"":      "asset-empty", // for empty ArtifactID test
+			"art-x": "asset-x",
 		},
 	}
 
