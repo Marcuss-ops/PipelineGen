@@ -125,7 +125,7 @@ func buildScriptUseCases(
 	log.Info("wireScriptFlow: jobs.ClipsFolderExtAdapter available at composition root (Refactor 1 adapter pre-wired)")
 
 	// ── GenerateManyUseCase (multi-item fanout) ─────────────────
-	manyUC := usecase.NewGenerateManyUseCase(oneUC, log)
+	manyUC := usecase.NewGenerateManyUseCase(log)
 
 	// ── Media curator ───────────────────────────────────────
 	var mediaCurator *scriptdto.MediaCurator
