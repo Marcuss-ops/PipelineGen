@@ -29,12 +29,9 @@ package drive
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
-
-	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // AdminAdapter is the canonical Pattern 0 port-adapter implementation
@@ -42,6 +39,9 @@ import (
 // GetOrCreateFolder. Methods inherited from *Uploader promote through
 // embedding; GetOrCreateFolder is shadowed with the seam-applied
 // version below.
+//
+// P0-1 (July 2026): added reLookup seam for post-create duplicate
+// detection, mirroring DriveFolderManagerAdapter's P0.7 contract.
 type AdminAdapter struct {
 	*Uploader // method promotion: all 11 other Admin port methods inherited
 	log       *zap.Logger
@@ -50,6 +50,11 @@ type AdminAdapter struct {
 	// (id, nil) exists, ("", nil) doesn't exist, ("", err) propagate
 	// without fallthrough to Create.
 	lookup folderLookupFunc
+	// reLookup is the P0.7 seam for post-create duplicate detection.
+	// Production wiring performs a Drive Files.List (no retry) and
+	// returns the count of matching folders. Tests inject a stub via
+	// WithReLookup.
+	reLookup folderReLookupFunc
 }
 
 // NewAdminAdapter constructs the adapter from a *Uploader + logger.
@@ -62,11 +67,16 @@ func NewAdminAdapter(u *Uploader, log *zap.Logger) *AdminAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &AdminAdapter{
+	a := &AdminAdapter{
 		Uploader: u,
 		log:      log,
 		lookup:   newAdminDefaultLookup(u.Service, log),
 	}
+	// P0-7 (July 2026): wire the default production re-lookup so the
+	// post-create duplicate detection fires in production — not just
+	// when tests inject a stub via WithReLookup.
+	a.reLookup = a.reLookupProduction
+	return a
 }
 
 // WithLookup overrides the default folder lookup. Production code
@@ -80,71 +90,23 @@ func (a *AdminAdapter) WithLookup(fn folderLookupFunc) *AdminAdapter {
 	return a
 }
 
-// newAdminDefaultLookup returns the production-default lookup wiring.
-// pkg/retry.DoWithValue wraps the SDK Files.List with P0.4 spec:
-//
-//	3 attempts, ±30% jitter, 200ms initial backoff,
-//	IsRetryable gates on transient errors (429/503/timeout).
-//
-// Returning ("", nil) when List is empty surfaces "doesn't exist" to
-// the caller; returning transient-failure-after-retries surfaces the
-// propagated error WITHOUT a soft-error fallback.
-//
-// Defence-in-depth (June 2026): if svc is nil, the closure returns
-// "drive service not configured" upfront instead of nil-panicking on
-// the SDK call. The composition root already guards against nil
-// service (driveUploader is constructed only when driveClient != nil);
-// this is belt-and-braces against future constructor misuse.
-//
-// DRY reuse: reuses folderLookupRetry* constants from folder_manager.go
-// (same package). The seam spec is the same — tighter retry on a
-// lightweight metadata query vs the 2s used by upload/download paths.
-func newAdminDefaultLookup(svc *driveapi.Service, log *zap.Logger) folderLookupFunc {
-	return func(ctx context.Context, parent, name string) (string, error) {
-		if svc == nil {
-			return "", fmt.Errorf("admin adapter: drive service not configured")
-		}
-		// Same query body as DriveFolderManagerAdapter.newDefaultFolderLookup
-		// (folder_manager.go). Future refactor: hoist to a shared helper
-		// (godlike/06 §one-owner-per-fact — for now the inline shape is
-		// small and verbatim-equal so audit-by-grep is trivial).
-		queryParts := []string{
-			fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
-			"trashed = false",
-			"mimeType = 'application/vnd.google-apps.folder'",
-		}
-		if parent != "" {
-			queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parent))
-		}
-		query := strings.Join(queryParts, " and ")
-
-		id, err := retry.DoWithValue(ctx, func() (string, error) {
-			list, lerr := svc.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-			if lerr != nil {
-				return "", lerr
-			}
-			return firstFolderID(list)
-		}, retry.Options{
-			MaxAttempts:    folderLookupMaxAttempts,
-			InitialBackoff: folderLookupInitialBackoff,
-			MaxBackoff:     folderLookupMaxBackoff,
-			BackoffFactor:  2.0,
-			JitterFraction: folderLookupJitterFraction,
-			IsRetryable:    retry.IsTransient,
-			OnRetry: func(attempt int, err error) {
-				if log != nil {
-					log.Warn("transient drive list error, retrying (P0.4 admin scope)",
-						zap.String("folder_name", name),
-						zap.Int("attempt", attempt+1),
-						zap.Error(err))
-				}
-			},
-		})
-		if err != nil {
-			return "", fmt.Errorf("lookup existing folder %q under %q: %w", name, parent, err)
-		}
-		return id, nil
+// WithReLookup overrides the default post-create re-lookup function.
+// P0-7 (July 2026): tests inject a stub via this seam to simulate
+// duplicate-detected scenarios without spinning up a httptest server.
+// Mirrors DriveFolderManagerAdapter.WithReLookup.
+func (a *AdminAdapter) WithReLookup(fn folderReLookupFunc) *AdminAdapter {
+	if a == nil {
+		return nil
 	}
+	a.reLookup = fn
+	return a
+}
+
+// newAdminDefaultLookup returns the production-default lookup wiring.
+// P0-1 (July 2026): delegates to the canonical lookupFolderCanonical SSOT
+// in folder_manager.go, retiring the duplicated query construction.
+func newAdminDefaultLookup(svc *driveapi.Service, log *zap.Logger) folderLookupFunc {
+	return lookupFolderCanonical(svc, log)
 }
 
 // GetOrCreateFolder (Admin port, P0.4 admin scope): looks up the folder
@@ -177,6 +139,43 @@ func (a *AdminAdapter) GetOrCreateFolder(ctx context.Context, name, parentID str
 		return "", fmt.Errorf("admin adapter: folder name required")
 	}
 	return a.findOrCreateFolder(ctx, parentID, name)
+}
+
+// doReLookup performs the P0.7 post-create re-lookup. Delegates to
+// the reLookup seam if injected (test path), otherwise does a
+// production Drive Files.List. Mirrors DriveFolderManagerAdapter.doReLookup.
+func (a *AdminAdapter) doReLookup(ctx context.Context, parent, name string) (count int, oldestID string, err error) {
+	if a == nil {
+		return 0, "", fmt.Errorf("admin adapter: nil receiver")
+	}
+	if a.reLookup != nil {
+		return a.reLookup(ctx, parent, name)
+	}
+	return a.reLookupProduction(ctx, parent, name)
+}
+
+// reLookupProduction performs a Drive Files.List query for folders
+// matching (name, parent, non-trashed, folder mimeType), ordered by
+// createdTime ascending. Returns (count, oldestID, nil).
+// P0-7 (July 2026): mirrors DriveFolderManagerAdapter.reLookupProduction.
+func (a *AdminAdapter) reLookupProduction(ctx context.Context, parent, name string) (count int, oldestID string, err error) {
+	if a.Uploader == nil || a.Uploader.Service == nil {
+		return 0, "", fmt.Errorf("admin adapter: drive service not configured")
+	}
+	query := buildFolderLookupQuery(parent, name)
+	list, lerr := a.Uploader.Service.Files.List().
+		Q(query).
+		Fields("files(id, name, createdTime)").
+		OrderBy("createdTime asc").
+		Context(ctx).
+		Do()
+	if lerr != nil {
+		return 0, "", lerr
+	}
+	if list == nil || len(list.Files) == 0 {
+		return 0, "", nil
+	}
+	return len(list.Files), list.Files[0].Id, nil
 }
 
 // findOrCreateFolder is the Admin port's P0.4 helper. Mirrors
@@ -214,6 +213,25 @@ func (a *AdminAdapter) findOrCreateFolder(ctx context.Context, parentID, name st
 		Do()
 	if err != nil {
 		return "", fmt.Errorf("findOrCreateFolder (admin): create %q under %q: %w", name, parentID, err)
+	}
+
+	// ── P0.7 (July 2026): cross-process race re-lookup ─────────
+	// If our Create raced with another process's Create, the re-lookup
+	// will see >1 folder with the same name+parent. Fail-closed via
+	// ErrAmbiguousDriveFolder — mirrors DriveFolderManagerAdapter.
+	count, oldestID, reLookupErr := a.doReLookup(ctx, parentID, name)
+	if reLookupErr != nil {
+		// Defensive: re-lookup failed transiently → return created.ID.
+		a.log.Warn("post-create re-lookup failed, returning freshly-created ID (P0.7 admin defensive)",
+			zap.String("folder_name", name),
+			zap.String("parent_id", parentID),
+			zap.String("created_id", created.Id),
+			zap.Error(reLookupErr))
+		return created.Id, nil
+	}
+	if count > 1 {
+		return "", fmt.Errorf("findOrCreateFolder (admin): post-create re-lookup for %q under %q found %d matching folders (oldest=%q, created=%q): %w",
+			name, parentID, count, oldestID, created.Id, ErrAmbiguousDriveFolder)
 	}
 	return created.Id, nil
 }

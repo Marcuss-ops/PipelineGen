@@ -154,30 +154,12 @@ func (u *Uploader) findOrCreateFolderSerialized(ctx context.Context, parentID, c
 //
 // Returns ("", nil) when no match is found vs ("", err) on real failures.
 // The fail-closed contract lives one frame up in findOrCreateFolderSerialized.
+//
+// P0-1 (July 2026): body simplified to delegate to the canonical
+// buildFolderLookupQuery + lookupFolderCanonical SSOT in folder_manager.go.
 func (u *Uploader) lookupFolderExact(ctx context.Context, parentID, canonicalName string) (string, error) {
-	var id string
-	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
-		list, lerr := u.Service.Files.List().
-			Q(fmt.Sprintf("name = '%s' and trashed = false and mimeType = 'application/vnd.google-apps.folder' and '%s' in parents",
-				strings.ReplaceAll(canonicalName, "'", "\\'"),
-				strings.ReplaceAll(parentID, "'", "\\'"))).
-			Fields("files(id, name, createdTime)").
-			Context(ctx).
-			Do()
-		if lerr != nil {
-			return struct{}{}, lerr
-		}
-		if list == nil || len(list.Files) == 0 {
-			id = ""
-			return struct{}{}, nil
-		}
-		id = list.Files[0].Id
-		return struct{}{}, nil
-	}, folderLookupRetryOpts())
-	if err != nil {
-		return "", fmt.Errorf("lookup folder: %w", err)
-	}
-	return id, nil
+	fn := lookupFolderCanonical(u.Service, u.Log)
+	return fn(ctx, parentID, canonicalName)
 }
 
 // firstFolderIDByCreatedTimeAsc returns the OLDEST folder ID matching the
