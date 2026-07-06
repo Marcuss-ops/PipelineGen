@@ -7042,7 +7042,7 @@
   owner_capability: internal/domain/delivery/location.go (canonical AssetLocationInput DTO) + internal/application/assets/delivery/ (BuildPublishRequest mapper) + per-wave linked_issues
   deadline: 2026-12-31
   ship_date: 2026-07-06
-  exit_gate: all 6 wave-tracker slots filed (W1+W5+W6 SHAs canonical-verified; W2-W4 ship_sha: TBD-AUDIT-PIN until PR-SEMANTIC-LOCATION-SHA-AUDIT promotes on 2026-08-15)
+  exit_gate: all 6 wave-tracker slots filed (W1+W5+W6 SHAs canonical-verified; W2-W4 demoted to status: pending pending implementation per PR-SEMANTIC-LOCATION-SHA-AUDIT negative finding 2026-07-06)
   description: |
     SEMANTIC-LOCATION-API umbrella closure (Wave 7 doc-lockstep, 2026-07-06).
     6 sequential waves migrate every media-publishing endpoint from
@@ -7059,25 +7059,22 @@
     exit_signal: true
   - id: WAVE-02-DRIVE-KIND-MAPPER
     owner_capability: internal/application/assets/delivery/mapper.go
-    status: shipped
-    ship_sha: TBD-AUDIT-PIN
-    ship_date: 2026-07-06
+    status: pending
+    deadline: 2026-08-15
     exit_signal: false
-    ship_via: BACKFILL_AUDIT_PIN_HONEST_LIMITATION
+    ship_via: AUDIT_PIN_NEGATIVE_FINDING_2026_07_06
   - id: WAVE-03-LOCATION-RESOLVER
     owner_capability: internal/application/assets/delivery/resolver/
-    status: shipped
-    ship_sha: TBD-AUDIT-PIN
-    ship_date: 2026-07-06
+    status: pending
+    deadline: 2026-08-15
     exit_signal: false
-    ship_via: BACKFILL_AUDIT_PIN_HONEST_LIMITATION
+    ship_via: AUDIT_PIN_NEGATIVE_FINDING_2026_07_06
   - id: WAVE-04-DRIVE-AVAILABILITY-GATE
     owner_capability: internal/application/assets/delivery/gate
-    status: shipped
-    ship_sha: TBD-AUDIT-PIN
-    ship_date: 2026-07-06
+    status: pending
+    deadline: 2026-08-15
     exit_signal: false
-    ship_via: BACKFILL_AUDIT_PIN_HONEST_LIMITATION
+    ship_via: AUDIT_PIN_NEGATIVE_FINDING_2026_07_06
   - id: WAVE-05-ASSET-PUBLISHED-EVENT
     owner_capability: internal/infrastructure/outboxevents/
     status: shipped
