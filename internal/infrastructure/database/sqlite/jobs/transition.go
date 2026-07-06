@@ -68,8 +68,15 @@ type TransitionRequest struct {
 	WorkerID string
 	LeaseID  string
 
-	// Updates is a map of column → value pairs appended to the SET clause.
-	Updates map[string]any
+	// Updates carries typed optional column updates. Nil means "none";
+	// each non-nil pointer field in JobUpdates is applied to the
+	// corresponding column. Prefer this over the legacy Updates map.
+	Updates *JobUpdates
+
+	// LegacyUpdates is the pre-Azione-6 untyped map. Deprecated; new
+	// callers must use Updates (*JobUpdates) instead. Kept for
+	// backward compatibility with callers that have not yet migrated.
+	LegacyUpdates map[string]any
 
 	// ExtraSets are raw SQL snippets appended to the SET clause.
 	ExtraSets []string
@@ -84,6 +91,53 @@ type TransitionRequest struct {
 	Progress *int
 }
 
+// JobUpdates carries typed optional column updates for a Transition.
+// Every field is a pointer — nil means "skip this column"; non-nil means
+// "set this column to the pointed-at value". This gives compile-time type
+// safety where the legacy Updates map[string]any gave runtime panics.
+type JobUpdates struct {
+	StartedAt   *time.Time // → started_at
+	CompletedAt *time.Time // → completed_at
+	CancelledAt *time.Time // → cancelled_at
+	LeaseExpiry *time.Time // → lease_expiry
+	RetryCount  *int       // → retry_count
+	Priority    *int       // → priority
+}
+
+// toSetClauses converts non-nil JobUpdates fields into (column = ?) pairs
+// with their typed argument values. Time pointers are formatted via
+// timeutil.FormatPtrRFC3339.
+func (u *JobUpdates) toSetClauses() (clauses []string, args []any) {
+	if u == nil {
+		return nil, nil
+	}
+	if u.StartedAt != nil {
+		clauses = append(clauses, "started_at = ?")
+		args = append(args, timeutil.FormatPtrRFC3339(u.StartedAt))
+	}
+	if u.CompletedAt != nil {
+		clauses = append(clauses, "completed_at = ?")
+		args = append(args, timeutil.FormatPtrRFC3339(u.CompletedAt))
+	}
+	if u.CancelledAt != nil {
+		clauses = append(clauses, "cancelled_at = ?")
+		args = append(args, timeutil.FormatPtrRFC3339(u.CancelledAt))
+	}
+	if u.LeaseExpiry != nil {
+		clauses = append(clauses, "lease_expiry = ?")
+		args = append(args, timeutil.FormatPtrRFC3339(u.LeaseExpiry))
+	}
+	if u.RetryCount != nil {
+		clauses = append(clauses, "retry_count = ?")
+		args = append(args, *u.RetryCount)
+	}
+	if u.Priority != nil {
+		clauses = append(clauses, "priority = ?")
+		args = append(args, *u.Priority)
+	}
+	return
+}
+
 // Transition atomically executes a guarded status change on the jobs table.
 func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*job.Job, error) {
 	now := time.Now()
@@ -92,8 +146,15 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	setClauses := []string{"status = ?", "updated_at = ?", "revision = revision + 1"}
 	args := []any{req.NewStatus, timeutil.FormatRFC3339(now)}
 
-	// Handle Updates map.
-	for col, val := range req.Updates {
+	// Handle typed Updates (preferred path).
+	if req.Updates != nil {
+		clauses, upArgs := req.Updates.toSetClauses()
+		setClauses = append(setClauses, clauses...)
+		args = append(args, upArgs...)
+	}
+
+	// Handle legacy Updates map (backward compat; deprecated).
+	for col, val := range req.LegacyUpdates {
 		if _, err := validateSetColumn(col + " = ?"); err != nil {
 			return nil, fmt.Errorf("transition %s: %w", req.JobID, err)
 		}
