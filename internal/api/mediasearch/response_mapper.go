@@ -45,6 +45,7 @@ func resultToResponse(r *search.Result, query string, mode search.SearchMode, in
 				Title:     c.Title,
 				Source:    c.Source,
 				MediaType: c.MediaType,
+				DriveLink: c.DriveLink,
 				// PreviewURL passes through UNCHANGED:
 				// search.Candidate.PreviewURL is the canonical
 				// signed delivery URL produced by the only

@@ -52,6 +52,12 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	cutter := runner.Cutter()
 	plans := runner.State().Plan
 
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.extract_clips: starting",
+			zap.Int("plan_count", len(plans)),
+			zap.Int("staged_sources", len(runner.State().StagedAssets)))
+	}
+
 	// Test-fixture path: no cutter wired → skip (downstream
 	// compose_chunks handles empty CutPaths gracefully).
 	//
@@ -220,5 +226,11 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	runner.State().CutPaths = cutPaths
+
+	if runner.Log() != nil {
+		runner.Log().Info("orchestrator: stock.extract_clips: SUCCEEDED",
+			zap.Int("cut_paths", len(cutPaths)),
+			zap.Int("sources_processed", sourceIdx))
+	}
 	return nil
 }

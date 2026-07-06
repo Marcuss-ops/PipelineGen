@@ -113,13 +113,9 @@ func (a *searchReadAdapter) GetMany(
 
 // assetToMediaAsset maps *asset.Asset → search.MediaAsset.
 // Optional fields (Language, Width, Height) are left zero when the
-// domain asset doesn't carry them; the semanticSearchBackend doesn't
-// consume these today. The canonical target (search.MediaAsset)
-// deliberately carries NO server-internal locator (no LocalPath,
-// no DriveLink, no RawDriveFileID) per the QDRANT-004 invariant;
-// operator/admin surfaces needing those fields consume
-// duplicates.DuplicateMatch from
-// internal/application/assets/duplicates/types.go (godlike/06 SSOT).
+// domain asset doesn't carry them. PR-SEARCH-DRIVELINK (July 2026):
+// DriveLink is populated from the domain asset's metadata_json for
+// in-memory enrichment of search.Candidate in the semantic backend.
 func assetToMediaAsset(a *asset.Asset) search.MediaAsset {
 	if a == nil {
 		return search.MediaAsset{}
@@ -137,6 +133,7 @@ func assetToMediaAsset(a *asset.Asset) search.MediaAsset {
 		Tags:           append([]string(nil), a.Tags...),
 		SearchText:     a.SearchText,
 		DurationMs:     durMs,
+		DriveLink:      a.DriveLink(),
 		LifecycleState: string(a.LifecycleState),
 	}
 }

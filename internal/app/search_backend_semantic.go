@@ -278,6 +278,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			MediaType:  a.MediaType,
 			Title:      a.Name,
 			Name:       a.Name,
+			DriveLink:  a.DriveLink,
 			PreviewURL: url,
 			Score:      scoreByID[a.ID],
 		})

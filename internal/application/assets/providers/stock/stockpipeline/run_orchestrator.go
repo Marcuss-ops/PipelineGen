@@ -135,6 +135,9 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	// the single canonical upload surface (godlike/06 SSOT one-owner-
 	// per-fact). JobFinalizer is the canonical single-TX spine-write
 	// service that StockFinalizeStep.CompleteWithArtifacts invokes.
+	if s.log != nil {
+		o.WithLogger(s.log)
+	}
 	if s.publisher != nil {
 		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
 			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))

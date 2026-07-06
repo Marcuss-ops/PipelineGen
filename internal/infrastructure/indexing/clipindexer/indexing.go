@@ -18,8 +18,8 @@ const (
 	// track the *content schema* version, whereas these track the
 	// *model identity* (which model produced the vector).
 	// Bump these when switching models to force re-indexing of all assets.
-	embeddingModel        = "multilingual-e5-base"
-	embeddingModelVersion = "2026-06-16-v1"
+	embeddingModel        = "nomic-embed-text"
+	embeddingModelVersion = "2026-07-06-v1"
 
 	// collectionVersion tracks the Qdrant collection schema/alias binding.
 	// When the collection schema changes (e.g. new named vector, payload
