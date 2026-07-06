@@ -5843,7 +5843,7 @@
   - id: PR-parent-state-cutover
     owner_capability: internal/application/voiceover
     status: shipped
-    ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+    ship_sha: 8c7667d565bc457be6c68bb78411796c0da1de8f
     ship_date: 2026-07-06
     ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
     deadline: 2026-08-15
@@ -5925,7 +5925,7 @@
     - id: PR-SOURCES-CONSOLIDATION
       owner_capability: internal/api/assets (consolidation target)
       status: shipped
-      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_sha: 8c7667d565bc457be6c68bb78411796c0da1de8f
       ship_date: 2026-07-06
       ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
       deadline: 2026-08-15
