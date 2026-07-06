@@ -15,6 +15,44 @@ import (
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
+// allowedSortColumns maps user-facing sort keys to the canonical
+// media_assets column name used in the ORDER BY clause. Unknown keys
+// are rejected (ErrInvalidSortColumn) instead of silently falling back
+// to created_at, so a typo in an API client is surfaced at request
+// time rather than silently producing wrong-but-valid results.
+var allowedSortColumns = map[string]string{
+	"duration": "duration_ms",
+	"name":     "name",
+	"source":   "source",
+}
+
+// ErrInvalidSortColumn is returned when req.SortBy is not in
+// allowedSortColumns.
+var ErrInvalidSortColumn = fmt.Errorf("invalid sort column: not in allowedSortColumns")
+
+// resolveSortColumn returns the canonical media_assets column name for
+// the given user-facing sort key. An empty key returns the default
+// ("created_at") for backward compatibility; an unknown non-empty key
+// returns an error.
+func resolveSortColumn(key string) (string, error) {
+	if key == "" {
+		return "created_at", nil
+	}
+	col, ok := allowedSortColumns[key]
+	if !ok {
+		return "", fmt.Errorf("%w: %q (allowed: duration, name, source)", ErrInvalidSortColumn, key)
+	}
+	return col, nil
+}
+
+// resolveSortDir returns "ASC" or "DESC".
+func resolveSortDir(asc bool) string {
+	if asc {
+		return "ASC"
+	}
+	return "DESC"
+}
+
 // ── SQL receivers (migrated from search_core.go) ─────────────────────
 
 // SearchClips searches clips by tag or name.
@@ -260,21 +298,11 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 		return nil, fmt.Errorf("count query: %w", err)
 	}
 
-	sortField := "created_at"
-	if req.SortBy != "" {
-		switch req.SortBy {
-		case "duration":
-			sortField = "duration_ms"
-		case "name":
-			sortField = "name"
-		case "source":
-			sortField = "source"
-		}
+	sortField, err := resolveSortColumn(req.SortBy)
+	if err != nil {
+		return nil, err
 	}
-	sortDir := "DESC"
-	if req.SortAsc {
-		sortDir = "ASC"
-	}
+	sortDir := resolveSortDir(req.SortAsc)
 
 	dataQuery := fmt.Sprintf("SELECT %s FROM media_assets WHERE %s ORDER BY %s %s LIMIT ? OFFSET ?",
 		MediaAssetColumns, whereClause, sortField, sortDir)
