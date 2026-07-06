@@ -72,7 +72,7 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 // (cfg.Drive.StrictStartupValidation=false) bypasses the gate; the
 // handler-level preflight at BatchRegisterFromYouTube still
 // fail-closed 503 at request time per godlike/07 defense-in-depth.
-func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, search *SearchBundle) (*DriveBundle, IOpaqueStartFunc, error) {
+func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*DriveBundle, IOpaqueStartFunc, error) {
 	// PR-DRIVE-AVAILABILITY-GATE: boot-time fail-closed gate. Surfaces a
 	// typed error with an actionable fix hint when the operator has
 	// strict-mode on but credentials.json + token.json are missing
@@ -188,7 +188,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 			dests.ImagesFolder(),
 			"", // VideoAIRoot removed (PR June 2026) — pass empty string
 			dests.SoundEffectsRoot,
-			log,
 		)
 
 		destResolver = drive.NewDestinationResolver(mediaStore)

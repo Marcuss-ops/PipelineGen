@@ -68,7 +68,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose search: %w", err)
 	}
 
-	driveBundle, driveStart, err := BuildDriveBundle(ctx, cfg, dbs, log, search)
+	driveBundle, driveStart, err := BuildDriveBundle(ctx, cfg, dbs, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
