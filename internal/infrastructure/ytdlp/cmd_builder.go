@@ -42,10 +42,14 @@ func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
 	if cookiesPath == "" {
 		cookiesPath = "cookies.txt"
 	}
+	jsRuntimePath := cfg.External.YouTubeJSRuntimePath
+	if jsRuntimePath == "" {
+		jsRuntimePath = "node"
+	}
 	return &CommandBuilder{
 		Path:          cfg.External.ResolvedYtdlpPath(),
 		cookiesPath:   cookiesPath,
-		jsRuntimePath: cfg.External.YouTubeJSRuntimePath,
+		jsRuntimePath: jsRuntimePath,
 	}
 }
 

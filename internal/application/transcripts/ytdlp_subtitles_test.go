@@ -111,11 +111,12 @@ func TestYTDLPSubtitleAdapter_PlayerClientNeverWebOnly(t *testing.T) {
 	}
 }
 
-// TestYTDLPSubtitleAdapter_NoJSRuntime asserts that --js-runtime is
-// NOT injected when YouTubeJSRuntimePath is empty (the negative case
-// for the JS-runtime path; per the cmd_builder BaseArgs contract,
-// --js-runtime only appears when a runtime path is configured).
-func TestYTDLPSubtitleAdapter_NoJSRuntime(t *testing.T) {
+// TestYTDLPSubtitleAdapter_EmptyConfigDefaultsToNode asserts that
+// --js-runtime IS injected with value "node" when
+// YouTubeJSRuntimePath is empty (the NewCommandBuilder fallback
+// contract: empty → "node" so yt-dlp always gets JS runtime for
+// signature extraction, preventing 262-byte empty downloads).
+func TestYTDLPSubtitleAdapter_EmptyConfigDefaultsToNode(t *testing.T) {
 	a := &YTDLPSubtitleAdapter{
 		ytdlp:      &downloader.YTDLPDownloader{},
 		cmdBuilder: newMinimalCmdBuilder(t, "", false), // empty JS runtime path
@@ -126,8 +127,19 @@ func TestYTDLPSubtitleAdapter_NoJSRuntime(t *testing.T) {
 	videoURL := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 	args := a.buildSubtitleArgs(videoURL, "/tmp/test/subs.%(ext)s")
 
-	if containsFlag(args, "--js-runtime") {
-		t.Fatalf("--js-runtime must NOT appear when YouTubeJSRuntimePath is empty; got %v", args)
+	if !containsFlag(args, "--js-runtime") {
+		t.Fatalf("--js-runtime must appear when YouTubeJSRuntimePath is empty (defaults to 'node'); got %v", args)
+	}
+	// Verify the defaulted value is "node"
+	runtimeIdx := -1
+	for i, a := range args {
+		if a == "--js-runtime" && i+1 < len(args) {
+			runtimeIdx = i + 1
+			break
+		}
+	}
+	if runtimeIdx == -1 || args[runtimeIdx] != "node" {
+		t.Fatalf("--js-runtime value must be 'node' when YouTubeJSRuntimePath is empty; got %v", args)
 	}
 }
 
@@ -202,14 +214,14 @@ func TestNewYTDLPSubtitleAdapter_NilCmdBuilderFallsBackToDefault(t *testing.T) {
 		t.Fatalf("empty-config fallback should not inject --cookies (useCookies=false); got %v", args)
 	}
 	if containsFlag(args, "--js-runtime") {
-		t.Fatalf("empty-config fallback should not inject --js-runtime (empty cfg); got %v", args)
+		t.Fatalf("empty-config fallback should not inject --js-runtime for non-YouTube URL; got %v", args)
 	}
 
-	// Case 2: YouTube URL — the canonical anti-bot args are still
+	// Case 2: YouTube URL — the canonical anti-bot args are
 	// present (godlike/06 SSOT contract: ytdlp.BaseArgs is the SOLE
 	// emitter of --no-warnings + --extractor-args for YouTube URLs,
-	// regardless of the cfg content). But --cookies + --js-runtime
-	// are NOT injected (empty cfg has no paths; useCookies=false).
+	// regardless of the cfg content). --js-runtime defaults to
+	// "node" when cfg is empty (the fallback contract).
 	ytURL := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 	args2 := a.buildSubtitleArgs(ytURL, "/tmp/test/subs.%(ext)s")
 	if !containsFlag(args2, "--no-warnings") {
@@ -221,8 +233,20 @@ func TestNewYTDLPSubtitleAdapter_NilCmdBuilderFallsBackToDefault(t *testing.T) {
 	if containsFlag(args2, "--cookies") {
 		t.Fatalf("empty-config fallback should not inject --cookies (useCookies=false + empty cfg); got %v", args2)
 	}
-	if containsFlag(args2, "--js-runtime") {
-		t.Fatalf("empty-config fallback should not inject --js-runtime (empty cfg); got %v", args2)
+	// --js-runtime defaults to "node" when cfg is empty
+	if !containsFlag(args2, "--js-runtime") {
+		t.Fatalf("empty-config fallback should inject --js-runtime with default 'node' for YouTube URL; got %v", args2)
+	}
+	// Verify the defaulted value is "node"
+	runtimeIdx := -1
+	for i, a := range args2 {
+		if a == "--js-runtime" && i+1 < len(args2) {
+			runtimeIdx = i + 1
+			break
+		}
+	}
+	if runtimeIdx == -1 || args2[runtimeIdx] != "node" {
+		t.Fatalf("--js-runtime value must be 'node' when cfg is empty; got %v", args2)
 	}
 }
 

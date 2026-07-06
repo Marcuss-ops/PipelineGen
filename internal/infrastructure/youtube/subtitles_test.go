@@ -155,29 +155,29 @@ func TestSubtitles_PlayerClientNeverWebOnly(t *testing.T) {
 	}
 }
 
-// TestSubtitles_NoJSRuntime_NoJSRuntimeFlags verifies the conditional
-// behaviour: when YouTubeJSRuntimePath is empty, the subtitle adapter
-// MUST NOT inject --js-runtime or --remote-components. (The pre-PR
-// adapter had a buggy conditional that DID inject --js-runtime when
-// the path was set but FORGOT --remote-components — the canonical
-// BaseArgs() now always injects both flags together or neither.)
-func TestSubtitles_NoJSRuntime_NoJSRuntimeFlags(t *testing.T) {
+// TestSubtitles_EmptyConfigDefaultsToNode verifies the fallback
+// behaviour: when YouTubeJSRuntimePath is empty, the NewCommandBuilder
+// defaults to "node" so yt-dlp always gets JS runtime for signature
+// extraction (preventing 262-byte empty downloads). Both --js-runtime
+// and --remote-components MUST be present.
+func TestSubtitles_EmptyConfigDefaultsToNode(t *testing.T) {
 	a := newSubtitlesCmdBuilder(t, "" /*empty JS runtime path*/, false)
 	runner := a.runner.(*subtitleCaptureRunner)
 
 	_, err := a.FetchFullVTT(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 	require.NoError(t, err)
 
-	for _, arg := range runner.argv {
-		assert.NotEqual(t, "--js-runtime", arg,
-			"--js-runtime must NOT appear when YouTubeJSRuntimePath is empty")
-		assert.NotEqual(t, "--remote-components", arg,
-			"--remote-components must NOT appear when YouTubeJSRuntimePath is empty")
-	}
+	// --js-runtime MUST be present with value "node" (the fallback)
+	assert.Contains(t, runner.argv, "--js-runtime",
+		"--js-runtime must appear when YouTubeJSRuntimePath is empty (defaults to 'node')")
+	assert.Contains(t, runner.argv, "node",
+		"--js-runtime value must be 'node' when YouTubeJSRuntimePath is empty")
+	assert.Contains(t, runner.argv, "--remote-components",
+		"--remote-components must co-present with --js-runtime (the canonical BaseArgs contract)")
 
 	// Canonical web,android must still be present (unconditional policy)
 	assert.Contains(t, runner.argv, "youtube:player_client=web,android",
-		"canonical web,android must be present even without JS runtime")
+		"canonical web,android must be present even without explicit JS runtime")
 
 	// --no-warnings must also still be present (unconditional policy)
 	noWarningsCount := 0
@@ -187,7 +187,7 @@ func TestSubtitles_NoJSRuntime_NoJSRuntimeFlags(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, noWarningsCount,
-		"--no-warnings must still appear once even without JS runtime")
+		"--no-warnings must still appear once")
 }
 
 // TestSubtitles_NChallengeReachable is the unique value-add test for

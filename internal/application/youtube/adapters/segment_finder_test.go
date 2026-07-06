@@ -126,11 +126,13 @@ func TestBuildSubtitleArgs_PublicVideoSemantics(t *testing.T) {
 	assert.False(t, containsFlag(args, "--cookies"),
 		"--cookies must NOT be present (useCookies=false: segment finder operates on public videos only)")
 
-	// --js-runtime MUST NOT be present (empty config: no JS runtime path)
-	assert.False(t, containsFlag(args, "--js-runtime"),
-		"--js-runtime must NOT be present (empty config: no JS runtime path)")
+	// --js-runtime MUST be present with value "node" (the fallback)
+	assert.True(t, containsFlag(args, "--js-runtime"),
+		"--js-runtime must be present (empty config defaults to 'node')")
+	assert.True(t, containsFlagValue(args, "--js-runtime", "node"),
+		"--js-runtime value must be 'node' when config is empty")
 
-	// --remote-components MUST NOT be present (empty config: no JS runtime)
-	assert.False(t, containsFlag(args, "--remote-components"),
-		"--remote-components must NOT be present (empty config: no JS runtime)")
+	// --remote-components MUST be present (co-injected with --js-runtime)
+	assert.True(t, containsFlag(args, "--remote-components"),
+		"--remote-components must be present (co-injected with --js-runtime)")
 }

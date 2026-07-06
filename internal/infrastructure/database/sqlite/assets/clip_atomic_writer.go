@@ -285,7 +285,7 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		asset.LocalPath,
 		asset.FileHash,
 		asset.Drive.FolderID,
-		asset.Drive.FolderPath,
+		routeEmpty(asset.Drive.FolderPath, asset.Drive.FolderID),
 		sourceVersion,
 		nowStr,
 		nowStr,

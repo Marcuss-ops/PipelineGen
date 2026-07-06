@@ -57,7 +57,7 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 		embeddingJSON                                              SqlNullString
 		duration                                                   SqlNullInt64
 		urlNull                                                    SqlNullString
-		mediaTypeNull, statusNull, localPathNull                   SqlNullString
+		mediaTypeNull, localPathNull                               SqlNullString
 		relativePathNull, driveFileIDNull                          SqlNullString
 		driveFolderID                                              SqlNullString
 		driveLinkNull, downloadLinkNull                            SqlNullString
@@ -79,7 +79,7 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 	err := s.Scan(
 		&idNull, &sourceNull, &nameNull, &tagsNull, &tagsNormNull,
 		&embeddingJSON, &duration, &urlNull,
-		&mediaTypeNull, &statusNull, &localPathNull, &relativePathNull,
+		&mediaTypeNull, &localPathNull, &relativePathNull,
 		&driveFileIDNull, &driveFolderID, &driveLinkNull, &downloadLinkNull,
 		&fileHashNull, &metadataStr, &visualEmb, &transcriptEmb,
 		&createdAtStr, &updatedAtStr, &widthNull, &heightNull,

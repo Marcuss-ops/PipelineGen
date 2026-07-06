@@ -97,7 +97,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	staged, err := s.stageSection(ctx, assets.SourceRef{
 		URL:             vs.URL,
 		DownloadSection: section,
-		ForceKeyframes:  true,
+		ForceKeyframes:  false,
 		MergeFormat:     "mp4",
 	})
 	if err != nil {

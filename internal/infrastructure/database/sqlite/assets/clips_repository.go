@@ -76,20 +76,21 @@ var _ jobsoutbox.SourceVersionQuerier = (*ClipsRepository)(nil)
 // ScanMediaAsset's `s.Scan(&dest...)` argument list.
 //
 // FASE 4 (June 2026): re-aligned from a drifted 38-column version to
-// 40 columns matching ScanMediaAsset. The previous version was missing
-// six columns (media_type, status, drive_folder_id, drive_link,
-// download_link, group_name) and contained three ghost columns no
+// 39 columns matching ScanMediaAsset. The previous version was missing
+// six columns (media_type, drive_folder_id, drive_link,
+// download_link, group_name, status) and contained three ghost columns no
 // longer in the canonical schema (web_view_link, is_folder, depth —
-// removed by migration 059's json_remove).
+// removed by migration 059's json_remove). `status` was later removed
+// (July 2026) because migration 101 dropped the DB column.
 //
 // If you change this constant, update scans in lockstep:
 //   - scan_helpers.go::ScanMediaAsset  (consumes the AS aliases)
 //   - clips_crud_test.go::canonicalMediaAssetColumns  (pins the order)
 //
-// `status` is intentionally KEPT despite migration 101 reportedly
-// removing the DB column — ScanMediaAsset's signature still expects a
-// `status` scan target and SqlNullString makes it NULL-safe; removing
-// it here would require a paired ScanMediaAsset edit.
+// `status` column was REMOVED (PR-search-handler-provider-errors, July 2026):
+// migration 101 removed the DB column but the SELECT still referenced it,
+// causing "no such column: status" on every SearchClipsAdvanced query.
+// The paired ScanMediaAsset edit removed the corresponding scan target.
 const MediaAssetColumns = `
 	id,
 	COALESCE(source, '') AS source,
@@ -100,7 +101,6 @@ const MediaAssetColumns = `
 	COALESCE(duration_ms, 0) AS duration_ms,
 	COALESCE(url, '') AS url,
 	COALESCE(media_type, '') AS media_type,
-	COALESCE(status, '') AS status,
 	COALESCE(local_path, '') AS local_path,
 	COALESCE(relative_path, '') AS relative_path,
 	COALESCE(drive_file_id, '') AS drive_file_id,

@@ -17,6 +17,7 @@
 package search
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -122,9 +123,41 @@ func (h *Handler) Search(c *gin.Context) {
 		},
 	})
 	if err != nil {
-		switch err {
-		case search.ErrInvalidCursor:
+		// Use errors.Is because the Aggregator wraps sentinels with fmt.Errorf("%w: ...").
+		// A bare switch on the error value would miss wrapped forms (e.g. ErrAllBackendsFailed
+		// is wrapped as "%w: N backend(s) failed").
+		switch {
+		case errors.Is(err, search.ErrInvalidCursor):
 			apiutil.Error(c, http.StatusUnprocessableEntity, "invalid cursor")
+		case errors.Is(err, search.ErrCursorEncoding):
+			h.log.Error("search cursor encoding failed", zap.Error(err))
+			apiutil.InternalError(c, err)
+		case errors.Is(err, search.ErrAllBackendsFailed):
+			// 502 Bad Gateway — every eligible backend errored.
+			// res.ProviderErrors carries per-backend diagnostics (e.g.
+			// {"semantic":"embed channel ...", "local":"no such column: status"}).
+			// Expose them so the caller can diagnose without server-log access.
+			h.log.Error("search: all backends failed",
+				zap.Error(err),
+				zap.Any("provider_errors", func() map[string]string {
+					if res != nil {
+						return res.ProviderErrors
+					}
+					return nil
+				}()))
+			providerErrs := map[string]string{}
+			if res != nil {
+				providerErrs = res.ProviderErrors
+			}
+			c.JSON(http.StatusBadGateway, gin.H{
+				"ok":              false,
+				"error":           err.Error(),
+				"provider_errors": providerErrs,
+			})
+		case errors.Is(err, search.ErrNoEligibleBackends),
+			errors.Is(err, search.ErrSemanticBackendUnavailable):
+			// 503 Service Unavailable — no backend matches the query filters.
+			apiutil.Error(c, http.StatusServiceUnavailable, err.Error())
 		default:
 			h.log.Error("search failed", zap.Error(err))
 			apiutil.InternalError(c, err)

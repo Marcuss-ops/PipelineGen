@@ -6885,35 +6885,35 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit 0f2f6622; this entry only aligns
         the wavetracker with the canonical state.
-  - id: PR-ARCHCHECK-MAIN-SPLIT
+    - id: PR-ARCHCHECK-MAIN-SPLIT
     owner_capability: scripts/archcheck
     status: pending
     deadline: 2026-07-15
-  - id: PR-YOUTUBE-METADATA-SPLIT
+    - id: PR-YOUTUBE-METADATA-SPLIT
     owner_capability: internal/application/youtube/metadata
     status: pending
     deadline: 2026-07-15
-  - id: PR-FLOW-HELPERS-SPLIT
+    - id: PR-FLOW-HELPERS-SPLIT
     owner_capability: internal/application/scripts/usecase
     status: pending
     deadline: 2026-07-15
-  - id: PR-IMAGES-REPO-SPLIT
+    - id: PR-IMAGES-REPO-SPLIT
     owner_capability: internal/infrastructure/database/sqlite/assets
     status: pending
     deadline: 2026-07-25
-  - id: PR-PAYLOAD-MAPPER-SPLIT
+    - id: PR-PAYLOAD-MAPPER-SPLIT
     owner_capability: internal/infrastructure/qdrant/indexing
     status: pending
     deadline: 2026-07-25
-  - id: PR-STORAGE-SEARCH-SPLIT
+    - id: PR-STORAGE-SEARCH-SPLIT
     owner_capability: internal/application/images
     status: pending
     deadline: 2026-07-25
-  - id: PR-GENERATE-ONE-SPLIT
+    - id: PR-GENERATE-ONE-SPLIT
     owner_capability: internal/application/scripts/usecase
     status: pending
     deadline: 2026-07-25
-  - id: PR-SYMBOL-REFS-SPLIT
+    - id: PR-SYMBOL-REFS-SPLIT
     owner_capability: scripts/archcheck
     status: pending
     deadline: 2026-07-25
