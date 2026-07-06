@@ -54,8 +54,33 @@ var (
 // composition root is normally reached, but a future caller — e.g. a
 // test fixture — may bypass admin and still want the package to be
 // safe to log from).
+//
+// Also validates hardDeleteChildTables against the column allowlist
+// (allowedHardDeleteChildColumns) — a mismatch panics at startup so
+// a typo in the package-level var never reaches the SQL layer.
 func init() {
 	logger.Store(zap.NewNop())
+	validateHardDeleteChildTables()
+}
+
+// validateHardDeleteChildTables panics if any entry in
+// hardDeleteChildTables has a (table, column) pair not present in
+// the allowedHardDeleteChildColumns allowlist. Called at init() so
+// the panic fires at process startup, well before any SQL is executed.
+//
+// Pattern: mirrors the column-allowlist gates in transition.go
+// (allowedJobColumns) and search_queries.go (allowedSortColumns).
+func validateHardDeleteChildTables() {
+	for _, ct := range hardDeleteChildTables {
+		key := ct.table + "." + ct.column
+		if !allowedHardDeleteChildColumns[key] {
+			panic(fmt.Sprintf(
+				"txmutation: hardDeleteChildTables entry (%q, %q) not in allowedHardDeleteChildColumns allowlist. "+
+					"Add the pair to the allowlist before using it in the delete loop.",
+				ct.table, ct.column,
+			))
+		}
+	}
 }
 
 // SetLogger atomically replaces the package-level *zap.Logger. Safe to
@@ -116,10 +141,27 @@ type childDelete struct {
 // deletion order within the tx — fail-fast on the first broken FK.
 // NEW CHILD TABLES go here, not in HardDeleteTx's body, so the audit
 // trail of the child's existence is reviewable in one place.
+//
+// Each entry is validated at init() against allowedHardDeleteChildColumns.
+// A mismatch panics at startup so a typo never reaches the SQL layer.
 var hardDeleteChildTables = []childDelete{
 	{table: "asset_locations", column: "asset_id"},
 	{table: "asset_processing", column: "asset_id"},
 	{table: "asset_versions", column: "asset_id"},
+}
+
+// allowedHardDeleteChildColumns is the column-allowlist gate for
+// HardDeleteTx. Every (table, column) pair in hardDeleteChildTables
+// must appear here; init() panics on mismatch so a typo in the
+// package-level var surfaces at startup rather than at first purge.
+//
+// Pattern: mirrors allowedJobColumns (transition.go) and
+// allowedSortColumns (search_queries.go) — one canonical allowlist
+// per fmt.Sprintf SQL site. Keys are "<table>.<column>".
+var allowedHardDeleteChildColumns = map[string]bool{
+	"asset_locations.asset_id":  true,
+	"asset_processing.asset_id": true,
+	"asset_versions.asset_id":   true,
 }
 
 // HardDeleteTx physically removes the media_assets row AND its dependent
@@ -180,13 +222,12 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 	// condition the WARN log line surfaces.
 	for _, ct := range hardDeleteChildTables {
 		// SAFETY: fmt.Sprintf is safe here — ct.table and ct.column are drawn
-		// exclusively from the hardDeleteChildTables package-level var, a typed
-		// []childDelete literal with explicit string constants. No user input,
-		// no dynamic column names, no API-surface interpolation. This is one of the few remaining
-		// fmt.Sprintf SQL sites in the database layer; it is intentionally exempt from the column-allowlist gate (allowedJobColumns
-		// in transition.go / allowedSortColumns in search_queries.go) because
-		// the table+column source is a compile-time constant list, not an
-		// external caller payload.
+		// exclusively from the hardDeleteChildTables package-level var. Each
+		// entry is validated at init() against allowedHardDeleteChildColumns;
+		// an invalid entry panics at startup, not at SQL bind time. No user
+		// input, no dynamic column names, no API-surface interpolation.
+		// Exempt from the column-allowlist gate pattern used in transition.go
+		// and search_queries.go because the source is compile-time constants.
 		res, derr := tx.ExecContext(ctx,
 			fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, ct.table, ct.column), id)
 		if derr != nil {
