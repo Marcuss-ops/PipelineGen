@@ -69,9 +69,10 @@ const VoiceoverCleanupSchemaVersion = "voiceover.cleanup.requested.v1"
 // 2026): sibling application-layer packages communicate through
 // narrow ports, not cross-package concrete sharing.
 //
-// Production concrete: *voiceoverDriveAdapter from
-// internal/app/adapters_voiceover_use_case.go (it already satisfies
-// voiceover.DriveUploaderPort.DeleteFile structurally; the bare
+// Production concrete: drive.Admin from the composition root (it
+// satisfies VoiceoverCleanupDriver.DeleteFile structurally — the bare
+// DeleteFile method here has the exact same signature, so Go's
+// implicit-interface rule pins conformance at wire time).
 // DeleteFile method here is the same signature, so Go's
 // implicit-interface rule pins conformance at wire time).
 //
@@ -128,9 +129,9 @@ type voiceoverCleanupRequestV1 struct {
 // voiceover.cleanup.requested.v1.
 //
 // driver is required for production wiring (BuildOutboxBundle
-// populates it from *voiceoverDriveAdapter — the same adapter that
-// already satisfies voiceover.DriveUploaderPort.DeleteFile, so a
-// single adapter instance can be shared between the BOTH port
+// populates it from drive.Admin — the same instance that already
+// satisfies VoiceoverCleanupDriver.DeleteFile structurally, so a
+// single adapter instance can be shared across both port
 // surfaces). Nil-safe: handler logs+skips when driver is nil (test
 // path only; production wires non-nil).
 //

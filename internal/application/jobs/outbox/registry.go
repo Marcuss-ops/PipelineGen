@@ -96,10 +96,9 @@ import (
 // consumes voiceover.cleanup.requested events durably emitted from
 // voiceover.finalizeStage's caller-owned tx and translates them
 // into Drive file delete + local file remove side-effects.
-// Production concrete is *voiceoverDriveAdapter (structurally
-// satisfies both voiceover.DriveUploaderPort.DeleteFile and the
-// handler's local port — same instance is shared between both
-// surfaces, no double-adapter). nil → VoiceoverCleanupHandler
+// Production concrete is drive.Admin (structurally satisfies
+// VoiceoverCleanupDriver via its DeleteFile method — same surface,
+// same instance, no wrapper needed). nil → VoiceoverCleanupHandler
 // registered WITHOUT Drive delete capability (test-path-only; the
 // local file removal branch still runs because os.Remove is
 // stdlib, no port ceremony needed).
