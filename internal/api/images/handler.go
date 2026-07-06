@@ -1,0 +1,73 @@
+// Package images (api/images) — handler.go is the thin route map.
+// Per PR-IMG-SPLIT-2 (July 2026), every handler method lives in its
+// own capability file; this file owns ONLY the struct, constructor,
+// and route registration. No business logic lives here.
+//
+// Golden rule: generated = AI, retrieved = stock, all = aggregator
+// only, legacy = backward-compat. Each handler file documents which
+// territory it belongs to.
+package images
+
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/gin-gonic/gin"
+)
+
+// ImagesHandler is the HTTP transport for the /api/images route group.
+// Fields are nil-safe at construction time; nil-tolerant handlers
+// return 503 ServiceUnavailable for unwired dependencies.
+type ImagesHandler struct {
+	service   *imgservice.Service
+	ingestSvc *ingest.Service
+	jobsSvc   domainjob.Service
+}
+
+// NewImagesHandler constructs the handler with the application-layer
+// services it delegates to.
+func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jobsSvc domainjob.Service) *ImagesHandler {
+	return &ImagesHandler{service: service, ingestSvc: ingestSvc, jobsSvc: jobsSvc}
+}
+
+// RegisterRoutes mounts every /api/images route on the given router
+// group. Territory-separated search + generate endpoints (Step 10)
+// delegate to the territory router + per-territory handler files.
+//
+//	GET  /search                 → TerritorySearch (defaults to retrieved)
+//	GET  /retrieved/search       → RetrievedSearch
+//	GET  /generated/search       → GeneratedSearch
+//	POST /generated/generate     → GeneratedGenerate
+//	GET  /generated/styles       → GeneratedStyles
+//	GET  /diagnostics            → Diagnostics
+//	POST /upload                 → Upload (legacy JSON image_url)
+//	POST /sync                   → Sync
+//	POST /generate               → Generate (legacy compatibility)
+//	POST /batch-generate         → GenerateBatch (async job system)
+//	POST /animate                → Animate (not implemented)
+func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
+	// Step 10 (territory-separated search + generate endpoints).
+	// /search is REPLACED by TerritorySearch (defaults to
+	// territory=retrieved for back-compat with callers that used
+	// /search?q=X).
+	r.GET("/search", h.TerritorySearch)
+	r.GET("/retrieved/search", h.RetrievedSearch)
+	r.GET("/generated/search", h.GeneratedSearch)
+	r.POST("/generated/generate", h.GeneratedGenerate)
+	r.GET("/generated/styles", h.GeneratedStyles)
+
+	// Existing endpoints (unchanged).
+	r.GET("/diagnostics", h.Diagnostics)
+	r.POST("/upload", h.Upload)
+	r.POST("/sync", h.Sync)
+	r.POST("/generate", h.Generate)
+	r.POST("/batch-generate", h.GenerateBatch)
+	r.POST("/animate", h.Animate)
+	// surface-2 (July 2026): POST /webhook/remote retired. The remote
+	// worker ingest pipeline collapsed into the canonical async job
+	// system (job type image.generate.google) post-NVIDIA-cutover; the
+	// legacy webhook handler that bypassed the workers and went
+	// straight to ingest.Service.IngestImage is gone. See
+	// middleware_auth_test.go::TestAuth_RetiredWebhookPathReturns404
+	// for the audit-pin test that locks the retirement.
+}
