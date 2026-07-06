@@ -78,17 +78,17 @@ func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
 	args = append(args, "--no-warnings")
 
 	if isYouTube {
-		// When cookies are enabled, yt-dlp falls back to web-only extraction.
-		// Android client and cookies are a brittle combination for YouTube.
-		if useCookies {
-			args = append(args, "--extractor-args", "youtube:player_client=web")
-		} else {
-			// July 2026 fix: web first, android as fallback. The android
-			// client returns wrong duration (7s instead of 126s) and missing
-			// formats for some videos when tried first. web,android order
-			// tries web first (correct metadata) with android as fallback.
-			args = append(args, "--extractor-args", "youtube:player_client=web,android")
-		}
+		// player_client=web,android (web first, android fallback).
+		// The android client returns wrong durations + missing formats for
+		// some videos when tried first; web,android order tries web first
+		// (correct metadata) with android as fallback for videos like
+		// dtpF3BrSOto that have no video formats with web-only.
+		//
+		// Pre-July-2026: cookies switched to web-only because android+
+		// cookies was a brittle combination. YouTube now accepts cookies
+		// with the combined client list, and web-only causes regressions
+		// (no video formats) on several videos. Always use both.
+		args = append(args, "--extractor-args", "youtube:player_client=web,android")
 	}
 
 	return args
