@@ -168,22 +168,38 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		rawFile = segments[0].Path
 	}
 
-	// 4. Normalize the downloaded clip with the shared ffmpeg clip processor.
-	videoCfg := p.cfg.Video.WithDefaults()
+	// 4. Process the downloaded clip with ffmpeg.
+	//
+	// Normalize=false (raw fetch) → stream-copy only: no re-encoding,
+	// no scaling — the yt-dlp download-sections segment is already the
+	// correct bitstream. This avoids the "Invalid NAL unit size" / exit-69
+	// ffmpeg failure that occurs when CutAndNormalize tries to re-encode
+	// segments from videos like RRJvrDKunyA that have codec quirks.
+	//
+	// Normalize=true (stock/upload pipeline) → full CutAndNormalize
+	// re-encode to the canonical resolution/fps/codec profile.
 	if p.clipProcess == nil {
 		return nil, fmt.Errorf("ffmpeg clip processor not configured")
 	}
 
 	renderTimer := time.Now()
-	normalizeErr := p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "", "", pkgffmpeg.CutAndNormalizeOptions{
-		Width:   videoCfg.Width,
-		Height:  videoCfg.Height,
-		FPS:     videoCfg.FPS,
-		Codec:   videoCfg.Codec,
-		Preset:  videoCfg.Preset,
-		CRF:     videoCfg.CRF,
-		NoAudio: !req.KeepAudio,
-	})
+	var normalizeErr error
+	if req.Normalize {
+		videoCfg := p.cfg.Video.WithDefaults()
+		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "", "", pkgffmpeg.CutAndNormalizeOptions{
+			Width:   videoCfg.Width,
+			Height:  videoCfg.Height,
+			FPS:     videoCfg.FPS,
+			Codec:   videoCfg.Codec,
+			Preset:  videoCfg.Preset,
+			CRF:     videoCfg.CRF,
+			NoAudio: !req.KeepAudio,
+		})
+	} else {
+		// Raw fetch: stream-copy the already-cut segment — no re-encode.
+		// CutCopy with empty start/end is a pure container remux.
+		normalizeErr = p.clipProcess.CutCopy(ctx, rawFile, outputPath, "", "")
+	}
 
 	status := "success"
 	if normalizeErr != nil {
