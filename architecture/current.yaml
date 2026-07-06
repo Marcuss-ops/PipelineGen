@@ -6762,11 +6762,15 @@
       deadline: 2026-07-25
     - id: PR-SPLIT-SEARCH-BACKENDS
       owner_capability: internal/app
-      status: pending
+      status: shipped
+      ship_sha: f55304447414b8c202494c87dfd0528b706b0e59
+      ship_date: 2026-07-06
       deadline: 2026-07-25
     - id: PR-SPLIT-DRIVE-UPLOADER-OPS
       owner_capability: internal/infrastructure/drive
-      status: pending
+      status: shipped
+      ship_sha: f55304447414b8c202494c87dfd0528b706b0e59
+      ship_date: 2026-07-06
       deadline: 2026-07-25
     - id: PR-SPLIT-QDRANT-READINESS-CHECKS
       owner_capability: cmd/admin
@@ -6778,11 +6782,15 @@
       deadline: 2026-07-25
     - id: PR-SPLIT-CLIPS-HANDLER
       owner_capability: internal/api/assets/clips
-      status: pending
+      status: shipped
+      ship_sha: f55304447414b8c202494c87dfd0528b706b0e59
+      ship_date: 2026-07-06
       deadline: 2026-07-25
     - id: PR-SPLIT-IMAGES-SEARCH-QUERIES
       owner_capability: internal/application/images
-      status: pending
+      status: shipped
+      ship_sha: f55304447414b8c202494c87dfd0528b706b0e59
+      ship_date: 2026-07-06
       deadline: 2026-07-25
     - id: PR-SPLIT-RETRY-PKG
       owner_capability: pkg/retry
