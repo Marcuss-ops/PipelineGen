@@ -151,11 +151,13 @@ type DeadLetterChecker interface {
 	CountOpen(ctx context.Context) (int, error)
 }
 
-// GoldenQueryRunner is the port verifier.go uses to gate the "golden queries" block in the
-// SwitchReport. It is intentionally an empty-marker interface here so callers can pass `nil`
-// when no runner is wired yet, AND so a real concrete (e.g. http-based runner) can be added
-// in a follow-up without touching verifier.go's signature again. See verifier_test.go for the
-// canonical nil-passing usage.
+// GoldenQueryRunner is the port verifier.go uses for the "golden queries" block in the
+// SwitchReport. It was previously an empty-marker interface (IsEmptyMarker()) — the marker
+// was removed in July 2026 (YAGNI: zero implementations, zero callers). The verifier already
+// nil-checks the goldenQueries field; callers can pass nil when no runner is wired.
+//
+// Future: when a concrete golden-query runner is added (e.g. http-based), define methods
+// on this interface and wire them in runGoldenQuerySmoke.
 type GoldenQueryRunner interface {
-	IsEmptyMarker()
+	// (empty — was IsEmptyMarker() before July 2026)
 }
