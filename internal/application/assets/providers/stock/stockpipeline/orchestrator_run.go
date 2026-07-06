@@ -245,6 +245,17 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (*RunS
 	// steps all ran in stub mode). See run_success_gate_test.go for
 	// the gate's TDD contract; see "§12-7 test-fixture path" in
 	// orchestrator_steps.go for the skip rationale.
+	//
+	// godlike/07 no-fake-availability note (July 2026): the silent-
+	// success class (both ArtifactPreparation AND JobFinalizer nil
+	// + work attempted → orchestrator declares SUCCEEDED) is closed
+	// at step_finalize.go Phase 1's call to manifest.Validate()
+	// (returns ErrManifestIncomplete on empty manifest). The P0 #1
+	// gate at the bottom of RunResilient is the second line of
+	// defence: it fires the typed ErrMetadataMissing / ErrNoProducedChunk
+	// when a manifest with Required:false entries slips through
+	// step_finalize (which only happens when step_finalize is
+	// bypassed or its validation is removed in a future refactor).
 	if o.jobFinalizer != nil {
 		if gateErr := AssertRunSummaryArtifactsRequired(summary); gateErr != nil {
 			// Wrap with stage prefix so log scanners trace to the
