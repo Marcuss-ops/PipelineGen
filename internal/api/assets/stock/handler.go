@@ -85,6 +85,9 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 
 	h.log.Info("stock search-and-run request received",
 		zap.Int("queries", len(req.Queries)),
+		zap.Int("direct_urls", len(req.DirectURLs)),
+		zap.Int("drive_urls", len(req.DriveURLs)),
+		zap.Int("clips", len(req.Clips)),
 		zap.Int("total_minutes", req.TotalMinutes),
 		zap.Int("chunk_duration", req.ChunkDuration),
 		zap.Int("clip_duration", req.ClipDuration),
@@ -170,6 +173,8 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 	h.log.Info("stock run request received",
 		zap.Int("search_queries", len(req.SearchQueries)),
 		zap.Int("direct_urls", len(req.DirectURLs)),
+		zap.Int("drive_urls", len(req.DriveURLs)),
+		zap.Int("clips", len(req.Clips)),
 		zap.Int("total_minutes", req.TotalMinutes),
 		zap.Int("chunk_duration", req.ChunkDuration),
 		zap.Int("clip_duration", req.ClipDuration),
@@ -183,9 +188,22 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 	)
 
 	// HTTP validation (same shape as SearchAndRun).
-	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 {
-		apiutil.BadRequest(c, "search_queries or direct_urls required")
+	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
+		apiutil.BadRequest(c, "search_queries, direct_urls, drive_urls, or clips required")
 		return
+	}
+	if len(req.Clips) > 0 {
+		hasURL := false
+		for _, clip := range req.Clips {
+			if clip.URL != "" {
+				hasURL = true
+				break
+			}
+		}
+		if !hasURL {
+			apiutil.BadRequest(c, "clips require at least one clip with a non-empty url")
+			return
+		}
 	}
 	if req.TotalMinutes <= 0 {
 		req.TotalMinutes = 5

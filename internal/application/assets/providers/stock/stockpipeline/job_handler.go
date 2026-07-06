@@ -133,6 +133,8 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 		zap.String("job_id", job.ID),
 		zap.Int("search_queries", len(payload.SearchQueries)),
 		zap.Int("direct_urls", len(payload.DirectURLs)),
+		zap.Int("drive_urls", len(payload.DriveURLs)),
+		zap.Int("clips", len(payload.Clips)),
 		zap.Int("total_minutes", payload.TotalMinutes),
 		zap.Int("chunk_duration", payload.ChunkDuration),
 		zap.String("subfolder", payload.Subfolder),
@@ -143,6 +145,8 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	input := &RunInput{
 		SearchQueries:     payload.SearchQueries,
 		DirectURLs:        payload.DirectURLs,
+		DriveURLs:         payload.DriveURLs,
+		Clips:             append([]ClipSpec(nil), payload.Clips...),
 		TotalMinutes:      payload.TotalMinutes,
 		ChunkDuration:     payload.ChunkDuration,
 		ClipDuration:      payload.ClipDuration,

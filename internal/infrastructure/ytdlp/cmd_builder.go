@@ -73,7 +73,11 @@ func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
 		if useCookies {
 			args = append(args, "--extractor-args", "youtube:player_client=web")
 		} else {
-			args = append(args, "--extractor-args", "youtube:player_client=android,web")
+			// July 2026 fix: web first, android as fallback. The android
+			// client returns wrong duration (7s instead of 126s) and missing
+			// formats for some videos when tried first. web,android order
+			// tries web first (correct metadata) with android as fallback.
+			args = append(args, "--extractor-args", "youtube:player_client=web,android")
 		}
 	}
 

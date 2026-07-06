@@ -38,9 +38,35 @@ func (StockPlanStep) Name() string { return StepKeyStockPlan }
 
 func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	in := runner.RunInput()
+
+	// When explicit clips are provided, bypass the deterministic
+	// planner and use the timestamp ranges directly. Each clip
+	// carries its own source URL; the first non-empty URL is used
+	// for the VideoSource.
+	if len(in.Clips) > 0 {
+		srcURL := ""
+		for _, clip := range in.Clips {
+			if clip.URL != "" {
+				srcURL = clip.URL
+				break
+			}
+		}
+		if srcURL == "" {
+			return errors.New("orchestrator: stock.plan: explicit clips require at least one clip with a non-empty URL")
+		}
+		src := VideoSource{URL: srcURL, Title: in.Clips[0].Title, Source: srcURL}
+		explicit := NewExplicitPlanner(in.Clips)
+		plans, err := explicit.Plan(ctx, src, 0, 0, runner.Cfg().PolicyVersion)
+		if err != nil {
+			return fmt.Errorf("orchestrator: stock.plan: explicit planner: %w", err)
+		}
+		runner.State().Plan = plans
+		return nil
+	}
+
 	src, ok := firstSource(in)
 	if !ok {
-		return errors.New("orchestrator: stock.plan: no sources to plan (DirectURLs and SearchQueries are empty)")
+		return errors.New("orchestrator: stock.plan: no sources to plan (DirectURLs, DriveURLs, and SearchQueries are empty)")
 	}
 
 	planBudget := in.TotalMinutes * 60
