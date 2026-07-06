@@ -31,8 +31,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"go.uber.org/zap"
 )
 
 // writeArtifacts delegates each request artifact to AssetFinalizerTx
@@ -50,15 +52,49 @@ func (f *Finalizer) writeArtifacts(
 	domainTx finalization.Transaction,
 	artifacts []finalization.PublishedArtifact,
 ) ([]finalization.ArtifactRef, []finalization.OutboxEvent, error) {
+	// ── PR-FINALIZER-DIAG-COUNTER (July 2026) ──────────────────────
+	// Diagnostic wrap around the artifact-write loop. Goal: surface
+	// which gate is filtering out rows (e.g. 7 manifest entries -> 0
+	// media_assets rows). Ordering of stderr prints:
+	//   "writeArtifacts input_count=N"  — at function entry
+	//   "writeArtifacts artifact[i] (id) ok refs_so_far=R events_so_far=E"
+	//                                    — per successful iter
+	//   "writeArtifacts artifact[i] (id) FAILED err=..." — per failed iter
+	//   "writeArtifacts EXITS ok refs=R events=E"  — at function exit
+	// This lets operators see manifest-vs-persisted delta without
+	// having to dereference stack frames: every filter gate that
+	// drops below the input_count surfaces as a missing-iter line.
+	fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts input_count=%d\n", len(artifacts))
+	if f.log != nil {
+		f.log.Info("finalizer: writeArtifacts enter",
+			zap.Int("input_count", len(artifacts)))
+	}
 	refs := make([]finalization.ArtifactRef, 0, len(artifacts))
 	artifactEvents := make([]finalization.OutboxEvent, 0, len(artifacts))
 	for i, a := range artifacts {
 		ref, events, err := f.assetTx.FinalizeAsset(ctx, domainTx, a)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts artifact[%d] (%s) FAILED err=%v\n",
+				i, a.ArtifactID, err)
+			if f.log != nil {
+				f.log.Warn("finalizer: writeArtifacts iteration failed",
+					zap.Int("i", i),
+					zap.String("artifact_id", a.ArtifactID),
+					zap.Error(err))
+			}
 			return nil, nil, fmt.Errorf("finalizer: artifact[%d] (%s): %w", i, a.ArtifactID, err)
 		}
 		refs = append(refs, ref)
 		artifactEvents = append(artifactEvents, events...)
+		fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts artifact[%d] (%s) ok refs_so_far=%d events_so_far=%d\n",
+			i, a.ArtifactID, len(refs), len(artifactEvents))
+	}
+	fmt.Fprintf(os.Stderr, "[finalizer][debug] writeArtifacts EXITS ok refs_returned=%d events_returned=%d\n",
+		len(refs), len(artifactEvents))
+	if f.log != nil {
+		f.log.Info("finalizer: writeArtifacts exit",
+			zap.Int("refs_returned", len(refs)),
+			zap.Int("events_returned", len(artifactEvents)))
 	}
 	return refs, artifactEvents, nil
 }
