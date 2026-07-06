@@ -70,7 +70,7 @@ func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin asset.
 	}
 	defer rows.Close()
 
-	var images []asset.ImageAsset
+	images := make([]asset.ImageAsset, 0)
 	for rows.Next() {
 		img, err := scanImageAssetFromRow(rows)
 		if err != nil {
