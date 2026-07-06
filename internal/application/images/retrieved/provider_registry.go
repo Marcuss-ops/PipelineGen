@@ -1,28 +1,18 @@
-// Package retrieved — provider_registry.go declares Step 8's
-// RetrievalProvider interface and the canonical provider list for
-// the retrieved-image territory.
+// Package retrieved (application/images/retrieved) — provider_registry.go
+// holds the RetrievalProviderRegistry — the canonical composition of
+// RetrievalProviders. Per PR-IMG-SPLIT-3 (July 2026), the registry is
+// now in its own file, separate from the concrete provider implementations.
 //
-// Per the July 2026 image-restructuring plan, retrieval sources fall
-// into four named providers per the ImageProvider taxonomy in
-// internal/domain/asset/image_taxonomy.go:
+// Iteration order is the fallback chain: the FIRST non-empty result wins.
+// Default order is Wikipedia → SearXNG → DuckDuckGo → Drive, mirroring
+// the historical storage_search.go cascade (Wikipedia first because it
+// carries license metadata; SearXNG next because it honours a configured
+// site policy; DuckDuckGo last because it returns the widest but
+// lowest-quality results; DriveImageProvider is the pre-search
+// short-circuit).
 //
-//   - Wikipedia  (provider.ProviderWikipedia)
-//   - SearXNG    (provider.ProviderSearXNG)
-//   - DuckDuckGo (provider.ProviderDuckDuckGo)
-//   - Drive      (provider.ProviderDrive)
-//
-// Each provider owns one network/disk round-trip for a given query.
-// The RetrievalProviderRegistry composes them in fallback order and
-// exposes SearchAll — so callers can request a query once and let
-// the registry orchestrate the Wikipedia → SearXNG → DuckDuckGo →
-// Drive fallback chain. Step 8 replaces the imperative if-cascade
-// in storage_search.go with this registry.
-//
-// FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
-// RetrievalSearchResult) moved to internal/application/images/routing
-// to break the routing↔retrieved import cycle. The retrieved
-// subpackage keeps the concrete provider implementations and the
-// registry; provider Search methods now accept routing types directly.
+// FASE 8 (July 2026): the per-call DTOs moved to routing to break
+// the routing↔retrieved import cycle.
 package retrieved
 
 import (
@@ -30,303 +20,13 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
-	nethttp "net/http"
 )
 
-// RetrievalProvider is one named retrieval source. Implementations
-// live in this package (WikipediaProvider, SearXNGProvider,
-// DuckDuckGoProvider, DriveImageProvider) and are wired via
-// NewDefaultProviderRegistry at composition time.
-//
-// FASE 8: Search takes routing.RetrievalSearchOptions + returns
-// []routing.RetrievalSearchResult (the canonical home of those types
-// after the routing↔retrieved cycle break).
-type RetrievalProvider interface {
-	// Search runs the provider-specific query and returns the
-	// candidates for ingestion. Returns nil + nil when the source
-	// is unconfigured or produces no hits (NOT an error).
-	Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error)
-	// Name returns the ImageProvider taxonomy constant for this provider.
-	Name() asset.ImageProvider
-	// Healthy reports whether the provider is reachable in the current
-	// environment (config presence + reachable probe). Used by the
-	// diagnostics surface to surface "SearXNG unavailable" state.
-	Healthy(ctx context.Context) error
-}
-
-// ── StorageBridge — minimal dependency surface for cross-package access ──
-//
-// The image-storage search methods (searchWikipedia, searchSearXNGImages,
-// searchDDGWide) are intentionally private on *ImageStorageService in
-// the parent images/ package. To keep them encapsulated while letting
-// providers in this subpackage call them, the parent package constructs
-// each provider with an opaque StorageBridge. The interface below
-// declares only the methods providers need.
-type StorageBridge interface {
-	SearchWikipedia(ctx context.Context, query, lang string) (imgURL string, wikiTitle string)
-	SearchSearXNGImages(ctx context.Context, query string) string
-	SearchDDGWide(ctx context.Context, query string) string
-	// SearchBySlug is the Drive-side list look-up; returns up to limit
-	// previously-ingested image URLs for the given subject slug. The
-	// registry uses it to short-circuit DriveProvider when the asset is
-	// already on disk.
-	SearchBySlug(ctx context.Context, slug string, limit int) []string
-}
-
-// httpDoer is the minimal interface over *http.Client that providers
-// need. Splitting it out keeps tests focusable.
-type httpDoer interface {
-	Do(req *nethttp.Request) (*nethttp.Response, error)
-}
-
-// ── WikipediaProvider ──────────────────────────────────────────────────
-
-// WikipediaProvider searches the Wikimedia API for an exact or fuzzy
-// match and returns the page-image URL (original preferred,
-// thumbnail fallback). License defaults to CC-BY-SA-4.0 with
-// "Wikipedia Contributors" as author.
-type WikipediaProvider struct {
-	bridge   StorageBridge
-	client   httpDoer
-	log      *zap.Logger
-	baseHost string // e.g. "en.wikipedia.org"
-}
-
-// NewWikipediaProvider constructs a WikipediaProvider wired to the
-// parent ImageStorageService via StorageBridge. lang tag defaults to
-// "en" when empty.
-func NewWikipediaProvider(bridge StorageBridge, client httpDoer, log *zap.Logger, lang string) *WikipediaProvider {
-	if client == nil {
-		client = &nethttp.Client{Timeout: 10 * time.Second}
-	}
-	if lang == "" {
-		lang = "en"
-	}
-	return &WikipediaProvider{
-		bridge:   bridge,
-		client:   client,
-		log:      log,
-		baseHost: lang + ".wikipedia.org",
-	}
-}
-
-func (p *WikipediaProvider) Name() asset.ImageProvider { return asset.ProviderWikipedia }
-
-func (p *WikipediaProvider) Healthy(ctx context.Context) error {
-	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	req, _ := nethttp.NewRequestWithContext(probeCtx, "GET", "https://"+p.baseHost+"/w/api.php?action=query&format=json", nil)
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("wikipedia unreachable: %w", err)
-	}
-	resp.Body.Close()
-	return nil
-}
-
-func (p *WikipediaProvider) Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
-	if strings.TrimSpace(query) == "" {
-		return nil, nil
-	}
-	lang := opts.Lang
-	if lang == "" {
-		lang = "en"
-	}
-	// baseHost reflects the requested lang so per-call overrides work.
-	p.baseHost = lang + ".wikipedia.org"
-	imgURL, wikiTitle := p.bridge.SearchWikipedia(ctx, query, lang)
-	if imgURL == "" {
-		return nil, nil
-	}
-	pageURL := ""
-	if wikiTitle != "" {
-		pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
-	}
-	return []routing.RetrievalSearchResult{{
-		Provider:   asset.ProviderWikipedia,
-		Origin:     asset.ImageOriginRetrieved,
-		PreviewURL: imgURL,
-		PageURL:    pageURL,
-		Title:      wikiTitle,
-		License:    "CC-BY-SA-4.0",
-		Author:     "Wikipedia Contributors",
-	}}, nil
-}
-
-// ── SearXNGProvider ───────────────────────────────────────────────────
-
-// SearXNGProvider searches the configured SearXNG instance for
-// images. Healthy() probes /healthz; Search returns 0 results when
-// the instance is unreachable or unconfigured.
-type SearXNGProvider struct {
-	bridge    StorageBridge
-	client    httpDoer
-	log       *zap.Logger
-	baseURL   string // resolved from cfg.External.SearxngURL; empty = unconfigured
-	probePath string
-}
-
-// NewSearXNGProvider constructs a SearXNGProvider. baseURL is the
-// canonical SearXNG root (e.g. http://localhost:18080); empty means
-// provider is unconfigured and will be skipped at Search/Healthy time.
-func NewSearXNGProvider(bridge StorageBridge, client httpDoer, log *zap.Logger, baseURL string) *SearXNGProvider {
-	if client == nil {
-		client = &nethttp.Client{Timeout: 10 * time.Second}
-	}
-	return &SearXNGProvider{
-		bridge:    bridge,
-		client:    client,
-		log:       log,
-		baseURL:   strings.TrimRight(baseURL, "/"),
-		probePath: "/healthz",
-	}
-}
-
-func (p *SearXNGProvider) Name() asset.ImageProvider { return asset.ProviderSearXNG }
-
-func (p *SearXNGProvider) Healthy(ctx context.Context) error {
-	if p.baseURL == "" {
-		return errors.New("searxng: base URL not configured")
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	req, _ := nethttp.NewRequestWithContext(probeCtx, "GET", p.baseURL+p.probePath, nil)
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("searxng unreachable: %w", err)
-	}
-	resp.Body.Close()
-	return nil
-}
-
-func (p *SearXNGProvider) Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
-	if p.baseURL == "" || strings.TrimSpace(query) == "" {
-		return nil, nil
-	}
-	imgURL := p.bridge.SearchSearXNGImages(ctx, query)
-	if imgURL == "" {
-		return nil, nil
-	}
-	return []routing.RetrievalSearchResult{{
-		Provider:   asset.ProviderSearXNG,
-		Origin:     asset.ImageOriginRetrieved,
-		PreviewURL: imgURL,
-		PageURL:    imgURL,
-		License:    "Unknown",
-		Author:     "Unknown",
-	}}, nil
-}
-
-// ── DuckDuckGoProvider ────────────────────────────────────────────────
-
-// DuckDuckGoProvider scrapes DuckDuckGo image search via the public
-// /i.js endpoint. Healthy() returns nil (DDG has no health endpoint
-// in the same way).
-type DuckDuckGoProvider struct {
-	bridge  StorageBridge
-	client  httpDoer
-	log     *zap.Logger
-	baseURL string
-}
-
-func NewDuckDuckGoProvider(bridge StorageBridge, client httpDoer, log *zap.Logger) *DuckDuckGoProvider {
-	if client == nil {
-		client = &nethttp.Client{Timeout: 10 * time.Second}
-	}
-	return &DuckDuckGoProvider{
-		bridge:  bridge,
-		client:  client,
-		log:     log,
-		baseURL: "https://duckduckgo.com",
-	}
-}
-
-func (p *DuckDuckGoProvider) Name() asset.ImageProvider { return asset.ProviderDuckDuckGo }
-
-func (p *DuckDuckGoProvider) Healthy(_ context.Context) error {
-	// DDG is always "reachable" in the sense that requests will go out;
-	// the registry caller still relies on per-query success to detect
-	// rate-limits. Surface a soft-warn rather than failing Healthy.
-	return nil
-}
-
-func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
-	if strings.TrimSpace(query) == "" {
-		return nil, nil
-	}
-	imgURL := p.bridge.SearchDDGWide(ctx, query)
-	if imgURL == "" {
-		return nil, nil
-	}
-	return []routing.RetrievalSearchResult{{
-		Provider:   asset.ProviderDuckDuckGo,
-		Origin:     asset.ImageOriginRetrieved,
-		PreviewURL: imgURL,
-		PageURL:    imgURL,
-		License:    "Unknown",
-		Author:     "Unknown",
-	}}, nil
-}
-
-// ── DriveImageProvider ─────────────────────────────────────────────────
-
-// DriveImageProvider surfaces images already ingested into the
-// project's Google Drive asset tree by previous runs. It's a
-// short-circuit step: if we already have an image for the slug,
-// don't bother with the web search fallback.
-//
-// The provider also serves as the canonical migration target for
-// Step 9 (Style-aware assets) and beyond, when the on-disk index
-// must be queried before any network round-trip.
-type DriveImageProvider struct {
-	bridge StorageBridge
-	log    *zap.Logger
-}
-
-func NewDriveImageProvider(bridge StorageBridge, log *zap.Logger) *DriveImageProvider {
-	return &DriveImageProvider{bridge: bridge, log: log}
-}
-
-func (p *DriveImageProvider) Name() asset.ImageProvider { return asset.ProviderDrive }
-
-func (p *DriveImageProvider) Healthy(_ context.Context) error { return nil }
-
-func (p *DriveImageProvider) Search(_ context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
-	slug := strings.TrimSpace(query)
-	if slug == "" {
-		return nil, nil
-	}
-	hits := p.bridge.SearchBySlug(context.Background(), slug, 1)
-	out := make([]routing.RetrievalSearchResult, 0, len(hits))
-	for _, url := range hits {
-		out = append(out, routing.RetrievalSearchResult{
-			Provider:   asset.ProviderDrive,
-			Origin:     asset.ImageOriginRetrieved,
-			PreviewURL: url,
-			PageURL:    url,
-			License:    "Unknown",
-			Author:     "Unknown",
-		})
-	}
-	return out, nil
-}
-
-// ── Registry ───────────────────────────────────────────────────────────
-
 // RetrievalProviderRegistry is the canonical composition of RetrievalProviders.
-// Iteration order is the fallback chain: the FIRST non-empty result wins.
-// Default order is Wikipedia → SearXNG → DuckDuckGo → Drive, mirroring
-// the historical storage_search.go cascade (Wikidata disambig + Wikipedia
-// first because they carry license metadata; SearXNG next because it
-// honours a configured site policy; DuckDuckGo last because it returns
-// the widest but lowest-quality results; DriveImageProvider is the
-// pre-search short-circuit).
 type RetrievalProviderRegistry struct {
 	providers []RetrievalProvider
 	log       *zap.Logger
@@ -441,37 +141,13 @@ func (r *RetrievalProviderRegistry) Diagnostics(ctx context.Context) map[asset.I
 	return out
 }
 
-// ── FASE 5 spec alignment (July 2026) ────────────────────────────────
-//
-// This block adds the user-spec ID() string method on each concrete
-// retrieval provider plus the literal-spec Registry.Resolve(ids []string)
-// ([]RetrievalProvider, error) method on *RetrievalProviderRegistry.
-//
-// Existing callers (storage_search.go::runRetrievalFallback,
-// internal/app/service.go registry instantiation, the existing
-// provider_registry_test.go file) are UNCHANGED — these are pure
-// additive methods satisfying the FASE 5 user spec shape without
-// rewriting the Step 8 implementation.
-//
-// Companion spec_aliases.go declares the Provider/Registry/aliased
-// types that this file's methods satisfy.
-
-// ID returns the canonical string ID of a retrieval provider.
-// Existing Name() returns the asset.ImageProvider taxonomy constant;
-// ID() is its string-coercion so the user-spec `ID() string` shape
-// is satisfied without disrupting the typed-Name contract.
-func (p *WikipediaProvider) ID() string  { return string(p.Name()) }
-func (p *SearXNGProvider) ID() string    { return string(p.Name()) }
-func (p *DuckDuckGoProvider) ID() string { return string(p.Name()) }
-func (p *DriveImageProvider) ID() string { return string(p.Name()) }
-
 // Resolve implements the user-spec'd Registry.Resolve:
 //
 //	empty input                          -> success + empty result
 //	all ids found                        -> success + ordered providers
 //	ANY id missing (or un-configured)   -> (nil, ErrProviderNotFound wrapping missing ids)
 //
-// Fail-closed per godlike/07 §"No fake availability": callers MUST NOT
+// Fail-closed per godlike/07 "No fake availability": callers MUST NOT
 // silently partial-resolve. Operators can read the wrapped missing-id
 // list to compute the next action (register the provider, update the
 // call site, etc.). Returns ErrProviderNotFound via fmt.Errorf("%w ...")
@@ -511,11 +187,9 @@ func (r *RetrievalProviderRegistry) Resolve(ids []string) ([]RetrievalProvider, 
 // RetrievalProviderRegistry does not spawn goroutines today — every
 // provider.Search is invoked synchronously from the caller goroutine.
 // The Stop method is present so the compose-side lifecycle surface
-// (internal/api/server.go::Server.StartWithContext calling
-// lifecycle.Stop after GracefulShutdown) has a forward-compatible
-// endpoint for future background workers (planned: health probes,
-// provider-list refresh tick, etc.) without every owner re-adding
-// the contract on each new addition.
+// has a forward-compatible endpoint for future background workers
+// (planned: health probes, provider-list refresh tick, etc.) without
+// every owner re-adding the contract on each new addition.
 //
 // Both nil-receiver (defensive against typed-nil registry handles
 // passed through composition) and nil-ctx (defensive against startup
