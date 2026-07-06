@@ -30,6 +30,157 @@ func NewSQLiteAssetStore(db *sql.DB) *SQLiteAssetStore {
 // Compile-time assertion: SQLiteAssetStore satisfies AssetStore.
 var _ AssetStore = (*SQLiteAssetStore)(nil)
 
+// ── Shared row scanner ───────────────────────────────────────────────
+//
+// assetRowScanner bundles every sql.Null* variable needed to scan a
+// media_assets row. Both FetchAsset (single row via QueryRowContext)
+// and FetchAssetBatch (cursor-based loop via QueryContext) declare the
+// same scanner variables and call the same Scan pointer list. The
+// populate method extracts the post-Scan parsing logic (tags JSON,
+// metadata JSON, embedding vectors, optional fields) so the two
+// methods share one canonical parser.
+
+type assetRowScanner struct {
+	tagsJSON, metaJSON, textEmbJSON, transcriptEmbJSON, visualEmbJSON, audioEmbJSON sql.NullString
+	durationMs                                                                      sql.NullInt64
+	sourceVersionStr                                                                sql.NullString
+	language, category, style, channelID, lic                                       sql.NullString
+	workspaceID, youtubeVideoID, youtubeURL, startTime, endTime                     sql.NullString
+	createdAt, updatedAt, deletedAt                                                 sql.NullString
+	lifecycleState                                                                  sql.NullString
+}
+
+// scanArgs returns the pointer list passed to rows.Scan / QueryRowContext.Scan.
+// Order MUST match the SELECT column order in the canonical query below.
+func (r *assetRowScanner) scanArgs(a *AssetData) []any {
+	return []any{
+		&a.ID, &a.Name, &a.Source, &a.MediaType,
+		&r.lifecycleState,
+		&r.tagsJSON,
+		&a.SearchText,
+		&a.DriveLink,
+		&a.LocalPath,
+		&r.metaJSON,
+		&r.textEmbJSON,
+		&r.transcriptEmbJSON,
+		&r.visualEmbJSON,
+		&r.audioEmbJSON,
+		&r.language, &r.category, &r.style,
+		&r.youtubeVideoID, &r.youtubeURL,
+		&r.startTime, &r.endTime,
+		&r.durationMs,
+		&r.workspaceID, &r.channelID, &r.lic,
+		&r.sourceVersionStr,
+		&r.createdAt, &r.updatedAt, &r.deletedAt,
+	}
+}
+
+// populate fills the derived fields on a from the scanned row values.
+// Call AFTER a successful Scan.
+func (r *assetRowScanner) populate(a *AssetData) {
+	if r.lifecycleState.Valid {
+		a.LifecycleState = r.lifecycleState.String
+	}
+
+	// Parse tags JSON.
+	if r.tagsJSON.Valid && r.tagsJSON.String != "" && r.tagsJSON.String != "[]" {
+		json.Unmarshal([]byte(r.tagsJSON.String), &a.Tags)
+	}
+
+	// Parse metadata JSON.
+	a.MetadataJSON = r.metaJSON.String
+	if a.MetadataJSON != "" && a.MetadataJSON != "{}" {
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(a.MetadataJSON), &m); err == nil {
+			a.Metadata = m
+		}
+	}
+
+	// Parse embedding vectors.
+	if r.textEmbJSON.Valid && r.textEmbJSON.String != "" && r.textEmbJSON.String != "[]" && r.textEmbJSON.String != "{}" {
+		json.Unmarshal([]byte(r.textEmbJSON.String), &a.TextVector)
+	}
+	if r.transcriptEmbJSON.Valid && r.transcriptEmbJSON.String != "" && r.transcriptEmbJSON.String != "[]" && r.transcriptEmbJSON.String != "{}" {
+		json.Unmarshal([]byte(r.transcriptEmbJSON.String), &a.TranscriptVector)
+	}
+	if r.visualEmbJSON.Valid && r.visualEmbJSON.String != "" && r.visualEmbJSON.String != "[]" && r.visualEmbJSON.String != "{}" {
+		json.Unmarshal([]byte(r.visualEmbJSON.String), &a.VisualVector)
+	}
+	if r.audioEmbJSON.Valid && r.audioEmbJSON.String != "" && r.audioEmbJSON.String != "[]" && r.audioEmbJSON.String != "{}" {
+		json.Unmarshal([]byte(r.audioEmbJSON.String), &a.AudioVector)
+	}
+
+	// Optional fields.
+	if r.language.Valid {
+		a.Language = r.language.String
+	}
+	if r.category.Valid {
+		a.Category = r.category.String
+	}
+	if r.style.Valid {
+		a.Style = r.style.String
+	}
+	if r.channelID.Valid {
+		a.ChannelID = r.channelID.String
+	}
+	if r.lic.Valid {
+		a.License = r.lic.String
+	}
+	if r.youtubeVideoID.Valid {
+		a.YouTubeVideoID = r.youtubeVideoID.String
+	}
+	if r.youtubeURL.Valid {
+		a.YouTubeURL = r.youtubeURL.String
+	}
+	if r.startTime.Valid {
+		a.StartTime = r.startTime.String
+	}
+	if r.endTime.Valid {
+		a.EndTime = r.endTime.String
+	}
+	if r.durationMs.Valid {
+		a.DurationMs = r.durationMs.Int64
+	}
+	if r.workspaceID.Valid {
+		a.WorkspaceID = r.workspaceID.String
+	}
+	if r.sourceVersionStr.Valid {
+		a.SourceVersion = r.sourceVersionStr.String
+	}
+	if r.createdAt.Valid {
+		a.CreatedAt = r.createdAt.String
+	}
+	if r.updatedAt.Valid {
+		a.UpdatedAt = r.updatedAt.String
+	}
+	if r.deletedAt.Valid {
+		a.DeletedAt = r.deletedAt.String
+	}
+}
+
+// canonicalQuery is the SELECT column list shared by FetchAsset and
+// FetchAssetBatch. Column order MUST match assetRowScanner.scanArgs.
+const canonicalQuery = `
+		id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
+		COALESCE(lifecycle_state, 'ACTIVE'),
+		COALESCE(tags, '[]'),
+		COALESCE(search_text, ''),
+		COALESCE(drive_link, ''),
+		COALESCE(local_path, ''),
+		COALESCE(metadata_json, '{}'),
+		COALESCE(embedding_json, '[]'),
+		COALESCE(transcript_embedding, '[]'),
+		COALESCE(visual_embedding, '[]'),
+		COALESCE(audio_embedding, '[]'),
+		language, category, style,
+		youtube_video_id, youtube_url,
+		start_time, end_time,
+		duration_ms,
+		workspace_id, channel_id, license,
+		source_version,
+		created_at, updated_at, deleted_at
+	FROM media_assets`
+
 // FetchAsset reads one row from media_assets and populates an AssetData.
 //
 // PR 1 / QDRANT-005 closure (June 2026): AssetData.LifecycleState
@@ -43,60 +194,9 @@ var _ AssetStore = (*SQLiteAssetStore)(nil)
 // `status`, so the row layout shrinks by one column.
 func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*AssetData, error) {
 	a := &AssetData{}
+	var row assetRowScanner
 
-	var tagsJSON, metaJSON, textEmbJSON, transcriptEmbJSON, visualEmbJSON, audioEmbJSON sql.NullString
-	var durationMs sql.NullInt64
-	var sourceVersionStr sql.NullString
-	var language, category, style, channelID, lic sql.NullString
-	var workspaceID, youtubeVideoID, youtubeURL, startTime, endTime sql.NullString
-	var createdAt, updatedAt, deletedAt sql.NullString
-	var lifecycleState sql.NullString
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT
-			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
-			COALESCE(lifecycle_state, 'ACTIVE'),
-			COALESCE(tags, '[]'),
-			COALESCE(search_text, ''),
-			COALESCE(drive_link, ''),
-			COALESCE(local_path, ''),
-			COALESCE(metadata_json, '{}'),
-			COALESCE(embedding_json, '[]'),
-			COALESCE(transcript_embedding, '[]'),
-			COALESCE(visual_embedding, '[]'),
-			COALESCE(audio_embedding, '[]'),
-			language, category, style,
-			youtube_video_id, youtube_url,
-			start_time, end_time,
-			duration_ms,
-			workspace_id, channel_id, license,
-			source_version,
-			created_at, updated_at, deleted_at
-		FROM media_assets
-		WHERE id = ?
-	`, assetID).Scan(
-		&a.ID, &a.Name, &a.Source, &a.MediaType,
-		&lifecycleState,
-		&tagsJSON,
-		&a.SearchText,
-		&a.DriveLink,
-		&a.LocalPath,
-		&metaJSON,
-		&textEmbJSON,
-		&transcriptEmbJSON,
-		&visualEmbJSON,
-		&audioEmbJSON,
-		&language, &category, &style,
-		&youtubeVideoID, &youtubeURL,
-		&startTime, &endTime,
-		&durationMs,
-		&workspaceID, &channelID, &lic,
-		&sourceVersionStr,
-		&createdAt, &updatedAt, &deletedAt,
-	)
-	if lifecycleState.Valid {
-		a.LifecycleState = lifecycleState.String
-	}
+	err := s.db.QueryRowContext(ctx, `SELECT `+canonicalQuery+` WHERE id = ?`, assetID).Scan(row.scanArgs(a)...)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset %q not found in media_assets", assetID)
@@ -104,81 +204,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 		return nil, fmt.Errorf("fetch asset %q: %w", assetID, err)
 	}
 
-	// Parse tags JSON.
-	if tagsJSON.Valid && tagsJSON.String != "" && tagsJSON.String != "[]" {
-		json.Unmarshal([]byte(tagsJSON.String), &a.Tags)
-	}
-
-	// Parse metadata JSON.
-	a.MetadataJSON = metaJSON.String
-	if a.MetadataJSON != "" && a.MetadataJSON != "{}" {
-		var m map[string]interface{}
-		if err := json.Unmarshal([]byte(a.MetadataJSON), &m); err == nil {
-			a.Metadata = m
-		}
-	}
-
-	// Parse embedding vectors.
-	if textEmbJSON.Valid && textEmbJSON.String != "" && textEmbJSON.String != "[]" && textEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(textEmbJSON.String), &a.TextVector)
-	}
-	if transcriptEmbJSON.Valid && transcriptEmbJSON.String != "" && transcriptEmbJSON.String != "[]" && transcriptEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(transcriptEmbJSON.String), &a.TranscriptVector)
-	}
-	if visualEmbJSON.Valid && visualEmbJSON.String != "" && visualEmbJSON.String != "[]" && visualEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(visualEmbJSON.String), &a.VisualVector)
-	}
-	if audioEmbJSON.Valid && audioEmbJSON.String != "" && audioEmbJSON.String != "[]" && audioEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(audioEmbJSON.String), &a.AudioVector)
-	}
-
-	// Optional fields.
-	if language.Valid {
-		a.Language = language.String
-	}
-	if category.Valid {
-		a.Category = category.String
-	}
-	if style.Valid {
-		a.Style = style.String
-	}
-	if channelID.Valid {
-		a.ChannelID = channelID.String
-	}
-	if lic.Valid {
-		a.License = lic.String
-	}
-	if youtubeVideoID.Valid {
-		a.YouTubeVideoID = youtubeVideoID.String
-	}
-	if youtubeURL.Valid {
-		a.YouTubeURL = youtubeURL.String
-	}
-	if startTime.Valid {
-		a.StartTime = startTime.String
-	}
-	if endTime.Valid {
-		a.EndTime = endTime.String
-	}
-	if durationMs.Valid {
-		a.DurationMs = durationMs.Int64
-	}
-	if workspaceID.Valid {
-		a.WorkspaceID = workspaceID.String
-	}
-	if sourceVersionStr.Valid {
-		a.SourceVersion = sourceVersionStr.String
-	}
-	if createdAt.Valid {
-		a.CreatedAt = createdAt.String
-	}
-	if updatedAt.Valid {
-		a.UpdatedAt = updatedAt.String
-	}
-	if deletedAt.Valid {
-		a.DeletedAt = deletedAt.String
-	}
-
+	row.populate(a)
 	return a, nil
 }
 
@@ -221,30 +247,9 @@ func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, 
 		limit = 500
 	}
 
-	query := `
-		SELECT
-			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
-			COALESCE(lifecycle_state, 'ACTIVE'),
-			COALESCE(tags, '[]'),
-			COALESCE(search_text, ''),
-			COALESCE(drive_link, ''),
-			COALESCE(local_path, ''),
-			COALESCE(metadata_json, '{}'),
-			COALESCE(embedding_json, '[]'),
-			COALESCE(transcript_embedding, '[]'),
-			COALESCE(visual_embedding, '[]'),
-			COALESCE(audio_embedding, '[]'),
-			language, category, style,
-			youtube_video_id, youtube_url,
-			start_time, end_time,
-			duration_ms,
-			workspace_id, channel_id, license,
-			source_version,
-			created_at, updated_at, deleted_at
-		FROM media_assets
+	query := `SELECT ` + canonicalQuery + `
 		WHERE media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')
-	`
+		  AND (deleted_at IS NULL OR deleted_at = '')`
 
 	var args []any
 	if afterID != "" {
@@ -263,117 +268,13 @@ func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, 
 	var out []*AssetData
 	for rows.Next() {
 		a := &AssetData{}
-		var tagsJSON, metaJSON, textEmbJSON, transcriptEmbJSON, visualEmbJSON, audioEmbJSON sql.NullString
-		var durationMs sql.NullInt64
-		var sourceVersionStr sql.NullString
-		var language, category, style, channelID, lic sql.NullString
-		var workspaceID, youtubeVideoID, youtubeURL, startTime, endTime sql.NullString
-		var createdAt, updatedAt, deletedAt sql.NullString
-		var lifecycleState sql.NullString
+		var row assetRowScanner
 
-		err := rows.Scan(
-			&a.ID, &a.Name, &a.Source, &a.MediaType,
-			&lifecycleState,
-			&tagsJSON,
-			&a.SearchText,
-			&a.DriveLink,
-			&a.LocalPath,
-			&metaJSON,
-			&textEmbJSON,
-			&transcriptEmbJSON,
-			&visualEmbJSON,
-			&audioEmbJSON,
-			&language, &category, &style,
-			&youtubeVideoID, &youtubeURL,
-			&startTime, &endTime,
-			&durationMs,
-			&workspaceID, &channelID, &lic,
-			&sourceVersionStr,
-			&createdAt, &updatedAt, &deletedAt,
-		)
-		if err != nil {
+		if err := rows.Scan(row.scanArgs(a)...); err != nil {
 			return nil, fmt.Errorf("scan asset in batch (after %q): %w", afterID, err)
 		}
 
-		if lifecycleState.Valid {
-			a.LifecycleState = lifecycleState.String
-		}
-
-		// Parse tags JSON.
-		if tagsJSON.Valid && tagsJSON.String != "" && tagsJSON.String != "[]" {
-			json.Unmarshal([]byte(tagsJSON.String), &a.Tags)
-		}
-
-		// Parse metadata JSON.
-		a.MetadataJSON = metaJSON.String
-		if a.MetadataJSON != "" && a.MetadataJSON != "{}" {
-			var m map[string]interface{}
-			if err := json.Unmarshal([]byte(a.MetadataJSON), &m); err == nil {
-				a.Metadata = m
-			}
-		}
-
-		// Parse embedding vectors.
-		if textEmbJSON.Valid && textEmbJSON.String != "" && textEmbJSON.String != "[]" && textEmbJSON.String != "{}" {
-			json.Unmarshal([]byte(textEmbJSON.String), &a.TextVector)
-		}
-		if transcriptEmbJSON.Valid && transcriptEmbJSON.String != "" && transcriptEmbJSON.String != "[]" && transcriptEmbJSON.String != "{}" {
-			json.Unmarshal([]byte(transcriptEmbJSON.String), &a.TranscriptVector)
-		}
-		if visualEmbJSON.Valid && visualEmbJSON.String != "" && visualEmbJSON.String != "[]" && visualEmbJSON.String != "{}" {
-			json.Unmarshal([]byte(visualEmbJSON.String), &a.VisualVector)
-		}
-		if audioEmbJSON.Valid && audioEmbJSON.String != "" && audioEmbJSON.String != "[]" && audioEmbJSON.String != "{}" {
-			json.Unmarshal([]byte(audioEmbJSON.String), &a.AudioVector)
-		}
-
-		// Optional fields.
-		if language.Valid {
-			a.Language = language.String
-		}
-		if category.Valid {
-			a.Category = category.String
-		}
-		if style.Valid {
-			a.Style = style.String
-		}
-		if channelID.Valid {
-			a.ChannelID = channelID.String
-		}
-		if lic.Valid {
-			a.License = lic.String
-		}
-		if youtubeVideoID.Valid {
-			a.YouTubeVideoID = youtubeVideoID.String
-		}
-		if youtubeURL.Valid {
-			a.YouTubeURL = youtubeURL.String
-		}
-		if startTime.Valid {
-			a.StartTime = startTime.String
-		}
-		if endTime.Valid {
-			a.EndTime = endTime.String
-		}
-		if durationMs.Valid {
-			a.DurationMs = durationMs.Int64
-		}
-		if workspaceID.Valid {
-			a.WorkspaceID = workspaceID.String
-		}
-		if sourceVersionStr.Valid {
-			a.SourceVersion = sourceVersionStr.String
-		}
-		if createdAt.Valid {
-			a.CreatedAt = createdAt.String
-		}
-		if updatedAt.Valid {
-			a.UpdatedAt = updatedAt.String
-		}
-		if deletedAt.Valid {
-			a.DeletedAt = deletedAt.String
-		}
-
+		row.populate(a)
 		out = append(out, a)
 	}
 	return out, rows.Err()
