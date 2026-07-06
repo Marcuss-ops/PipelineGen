@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -14,6 +15,45 @@ import (
 // guard (WHERE revision = ?) fails — another worker or operation modified
 // the job row between the read and this write.
 var ErrOptimisticLockFailed = fmt.Errorf("optimistic lock failed: revision or status changed")
+
+// ErrInvalidColumn is returned by Transition when a caller-supplied column
+// name (req.Updates or req.ExtraSets) is not in the allowlist of known
+// columns for the jobs table.
+var ErrInvalidColumn = fmt.Errorf("invalid column: not in jobs table allowlist")
+
+// allowedJobColumns is the allowlist of column names that can legally appear
+// in a Transition SET clause (req.Updates keys and req.ExtraSets snippets).
+// Adding a column to the jobs table MUST be mirrored here so the Transition
+// guard catches typos and missing-migration gaps at call time rather than
+// surfacing a silent "no rows affected" or a SQL syntax error.
+var allowedJobColumns = map[string]bool{
+	"id": true, "type": true, "status": true, "priority": true,
+	"project": true, "video_name": true, "active_key": true,
+	"correlation_id": true, "payload_json": true, "result_json": true,
+	"progress": true, "error": true, "retry_count": true, "max_retries": true,
+	"worker_id": true, "lease_id": true, "lease_expiry": true,
+	"created_at": true, "updated_at": true, "started_at": true,
+	"completed_at": true, "cancelled_at": true, "revision": true,
+}
+
+// validateSetColumn returns the bare column name extracted from a SET clause
+// like "col = ?", "col = datetime('now')", or "col = excluded.col", and an
+// error when the column is not in allowedJobColumns.
+func validateSetColumn(clause string) (string, error) {
+	// Extract everything before the first '='.
+	idx := strings.IndexByte(clause, '=')
+	if idx < 0 {
+		return "", fmt.Errorf("%w: %q (no '=' separator)", ErrInvalidColumn, clause)
+	}
+	col := strings.TrimSpace(clause[:idx])
+	if col == "" {
+		return "", fmt.Errorf("%w: empty column name in %q", ErrInvalidColumn, clause)
+	}
+	if !allowedJobColumns[col] {
+		return col, fmt.Errorf("%w: %q (not in jobs table allowlist)", ErrInvalidColumn, col)
+	}
+	return col, nil
+}
 
 // TransitionRequest carries all the parameters for an atomic job status
 // transition. Every field except JobID, ExpectedStatus, and NewStatus is
@@ -54,6 +94,9 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 
 	// Handle Updates map.
 	for col, val := range req.Updates {
+		if _, err := validateSetColumn(col + " = ?"); err != nil {
+			return nil, fmt.Errorf("transition %s: %w", req.JobID, err)
+		}
 		switch v := val.(type) {
 		case *time.Time:
 			setClauses = append(setClauses, col+" = ?")
@@ -80,6 +123,11 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	}
 
 	// Handle raw ExtraSets.
+	for _, clause := range req.ExtraSets {
+		if _, err := validateSetColumn(clause); err != nil {
+			return nil, fmt.Errorf("transition %s: ExtraSet %w", req.JobID, err)
+		}
+	}
 	setClauses = append(setClauses, req.ExtraSets...)
 
 	// Build the SET clause string.
