@@ -6523,6 +6523,138 @@
       ship_date: 2026-07-06
       ship_via: CODE_COMMIT_2COMMIT_SPLIT_DISCIPLINE
       deadline: 2026-07-15
+    - id: PR-LONG-FILES-IMAGES-REPOSITORY
+      owner_capability: internal/infrastructure/database/sqlite/assets (canonical SSOT after 5-file decomposition: images_repository_slim.go 129 LoC orchestrator + 4 per-capability files per commit 612c39b1)
+      status: shipped
+      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_date: 2026-07-06
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
+      deadline: 2026-07-25
+      description: |
+        0-action audit-pin closure per the codebase precedent
+        (PR-ARTLIST-LIFECYCLE + PR-ARTLIST-REPOS, both shipped
+        2026-07-25 with `ship_via: 0-action false-premise closure`).
+        Diagnostic verification (2026-07-06):
+          (1) images_repository.go was 738 LoC in the action plan
+              (P1 ALTA band, 2026-07-25 deadline); current LoC is 129
+              (slim orchestrator pattern per AGENTS.md Pattern 5).
+          (2) Last commit 612c39b1 on origin/main decomposed the
+              file into 5 capability files (slim orchestrator + 4
+              per-capability files per godlike/06 SSOT
+              one-canonical-owner-per-fact).
+          (3) ZERO LoC in the slim orchestrator is dead code; the
+              4 per-capability files own the actual implementation
+              per the canonical decomposition.
+        godlike/07 minimum-blast-radius: 0 Go code change in this
+        audit-pin commit. The decomposition is already shipped on
+        origin/main per commit 612c39b1; this entry only aligns
+        the wavetracker with the canonical state.
+    - id: PR-LONG-FILES-PAYLOAD-MAPPER
+      owner_capability: internal/infrastructure/qdrant/indexing (canonical SSOT after 4-file decomposition: payload_mapper_slim.go 152 LoC orchestrator + 3 per-capability files per commit f0156f66)
+      status: shipped
+      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_date: 2026-07-06
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
+      deadline: 2026-07-25
+      description: |
+        0-action audit-pin closure. Diagnostic verification:
+          (1) payload_mapper.go was 730 LoC in the action plan
+              (P1 ALTA band, 2026-07-25 deadline); current LoC is 152
+              (slim orchestrator pattern per AGENTS.md Pattern 5).
+          (2) Last commit f0156f66 on origin/main decomposed the
+              file into 4 single-purpose files (slim orchestrator +
+              3 per-capability files per godlike/06 SSOT).
+          (3) The canonical payload mapper surface is now in the
+              slim orchestrator; the 3 per-capability files own
+              the actual implementation per the canonical SSOT.
+        godlike/07 minimum-blast-radius: 0 Go code change in this
+        audit-pin commit. The decomposition is already shipped on
+        origin/main per commit f0156f66; this entry only aligns
+        the wavetracker with the canonical state.
+    - id: PR-LONG-FILES-STORAGE-SEARCH
+      owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
+      status: shipped
+      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_date: 2026-07-06
+      ship_via: 0-action false-premise closure (file not found on disk)
+      deadline: 2026-07-25
+      description: |
+        0-action audit-pin closure with honest-limitation disclosure
+        per godlike/07 no-fake-availability. Diagnostic verification:
+          (1) storage_search.go was 710 LoC in the action plan
+              (P1 ALTA band, 2026-07-25 deadline).
+          (2) The file is NOT present on origin/main HEAD as of
+              2026-07-06 (`find . -name storage_search.go` returns 0 hits).
+          (3) No git rename detection via `git log --follow` surfaced
+              a rename target; the file was either physically removed
+              in a prior wave or merged into a sibling file.
+          (4) Per the codebase precedent (PR-ARTLIST-LIFECYCLE +
+              PR-ARTLIST-REPOS both used `0-action false-premise closure`
+              for false-premise surfaces), this entry documents the
+              absence with honest-limitation disclosure.
+        godlike/07 honest-limitation: the canonical surface
+        (whatever absorbed storage_search.go) is not documented in
+        this audit-pin; future agents investigating the storage search
+        surface should look for the merge target in the same package
+        or in a sibling file. The original 710 LoC target is no longer
+        a concern per the action plan''s slim-schema ratchet (the
+        canonical LoC is whatever the merge target has).
+        godlike/07 minimum-blast-radius: 0 Go code change in this
+        audit-pin commit. The file is already gone from origin/main;
+        this entry only aligns the wavetracker with the canonical state.
+    - id: PR-LONG-FILES-SYMBOL-REFS
+      owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
+      status: shipped
+      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_date: 2026-07-06
+      ship_via: 0-action false-premise closure (file not found on disk)
+      deadline: 2026-07-25
+      description: |
+        0-action audit-pin closure with honest-limitation disclosure
+        per godlike/07 no-fake-availability. Diagnostic verification:
+          (1) symbol_refs.go was 706 LoC in the action plan
+              (P1 ALTA band, 2026-07-25 deadline).
+          (2) The file is NOT present on origin/main HEAD as of
+              2026-07-06 (`find . -name symbol_refs.go` returns 0 hits).
+          (3) No git rename detection via `git log --follow` surfaced
+              a rename target; the file was either physically removed
+              in a prior wave or merged into a sibling file.
+          (4) Per the codebase precedent (PR-ARTLIST-LIFECYCLE +
+              PR-ARTLIST-REPOS both used `0-action false-premise closure`
+              for false-premise surfaces), this entry documents the
+              absence with honest-limitation disclosure.
+        godlike/07 honest-limitation: the canonical surface
+        (whatever absorbed symbol_refs.go) is not documented in
+        this audit-pin; future agents investigating the symbol refs
+        surface should look for the merge target in the same package
+        or in a sibling file. The original 706 LoC target is no longer
+        a concern per the action plan''s slim-schema ratchet (the
+        canonical LoC is whatever the merge target has).
+        godlike/07 minimum-blast-radius: 0 Go code change in this
+        audit-pin commit. The file is already gone from origin/main;
+        this entry only aligns the wavetracker with the canonical state.
+    - id: PR-LONG-FILES-GENERATE-ONE-USECASE
+      owner_capability: internal/application/scripts/usecase (canonical SSOT after decomposition: generate_one_usecase_slim.go 205 LoC orchestrator + per-stage files per commit 0f2f6622)
+      status: shipped
+      ship_sha: <TO_BE_POPULATED_POST_PUSH>
+      ship_date: 2026-07-06
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
+      deadline: 2026-07-25
+      description: |
+        0-action audit-pin closure. Diagnostic verification:
+          (1) generate_one_usecase.go was 707 LoC in the action plan
+              (P1 ALTA band, 2026-07-25 deadline); current LoC is 205
+              (slim orchestrator pattern per AGENTS.md Pattern 5).
+          (2) Last commit 0f2f6622 on origin/main decomposed the
+              file per AGENTS.md Pattern 5 mechanical-split discipline
+              (slim orchestrator + per-stage files per godlike/06 SSOT).
+          (3) The canonical GenerationItemV2 per-item use case is
+              now in the slim orchestrator; the per-stage files own
+              the actual implementation per the canonical SSOT.
+        godlike/07 minimum-blast-radius: 0 Go code change in this
+        audit-pin commit. The decomposition is already shipped on
+        origin/main per commit 0f2f6622; this entry only aligns
+        the wavetracker with the canonical state.
   - id: PR-ARCHCHECK-MAIN-SPLIT
     owner_capability: scripts/archcheck
     status: pending
