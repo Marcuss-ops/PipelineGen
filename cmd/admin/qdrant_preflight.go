@@ -463,66 +463,7 @@ func testSchemaV3Shipped(ctx context.Context, deps *preflightDeps) error {
 	return nil
 }
 
-// testOutboxEventsCreated (PR-QDRANT-PREFLIGHT-TEST-3):
-// Stub gate. Real implementation lands in PR-QDRANT-PREFLIGHT-TEST-3-IMPL
-// forward-pointer (per per-test PR granularity). Returns ErrPreflightNotImplemented
-// so the CI gate FAIL-closes loudly per godlike/07 NO-FAKE-AVAILABILITY.
-// A future Test 3 implementation will: POST /api/script/generate-from-clips with
-// admin token; capture asset_id + job_id; assert SELECT outbox_events WHERE
-// aggregate_id=<id> AND event_type='asset.index.requested' exists.
-func testOutboxEventsCreated(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-3-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testOutboxEventsCompleted (PR-QDRANT-PREFLIGHT-TEST-4):
-// Stub gate. See Test 3 forward-pointer note.
-func testOutboxEventsCompleted(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-4-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testMediaAssetsIndexStateIndexed (PR-QDRANT-PREFLIGHT-TEST-5):
-// Stub gate.
-func testMediaAssetsIndexStateIndexed(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-5-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testQdrantScrollFindsAsset (PR-QDRANT-PREFLIGHT-TEST-6):
-// Stub gate. Will POST /points/scroll with filter asset_id=<seed>.
-func testQdrantScrollFindsAsset(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-6-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testHybridSearchScore (PR-QDRANT-PREFLIGHT-TEST-7):
-// Stub gate. Will GET /internal/v1/media/search?q=<seed desc>.
-func testHybridSearchScore(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-7-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testSupersedeGate (PR-QDRANT-PREFLIGHT-TEST-8):
-// Stub gate. Will ingest 2nd copy of asset with different source_version
-// + verify 2 outbox events with same aggregate_id but different source_version.
-func testSupersedeGate(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-8-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testChaosDayScheduling (PR-QDRANT-PREFLIGHT-TEST-9-RETRY-RECOVERY):
-// SKIP-allowed per scheduling-entry ship (SHA 17df7fb3). The chaos sequence
-// requires manual Qdrant teardown; CI never executes it inline. Returns
-// ErrPreflightNotImplemented wrapped as "skip: chaos-day scheduling forward-pointer".
-func testChaosDayScheduling(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("skip: chaos-day scheduling forward-pointer (PR-QDRANT-PREFLIGHT-TEST-9 requires manual Qdrant teardown; SKIP allowed per godlike/07 honest-limitation)")
-}
-
-// testDeleteTombstone (PR-QDRANT-PREFLIGHT-TEST-10-DELETE-TOMBSTONE):
-// Stub gate. Will DELETE /api/assets/clips/<sandbox-id> + verify
-// media_assets.lifecycle_state='DELETED' + GET /points/<id> returns 404.
-func testDeleteTombstone(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-10-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
-
-// testVoiceoverPiggyback (PR-QDRANT-PREFLIGHT-TEST-11-VOICEOVER):
-// Stub gate. Will SubmitAsync voiceover.generate + wait 3 min + assert
-// outbox_events asset.index.requested completed + Qdrant scroll finds vo asset.
-func testVoiceoverPiggyback(ctx context.Context, deps *preflightDeps) error {
-	return fmt.Errorf("%w: PR-QDRANT-PREFLIGHT-TEST-11-IMPL (forward-pointer)", ErrPreflightNotImplemented)
-}
+// Tests 3-8, 10, 11 — extracted to qdrant_preflight_stubs.go
+// (PR-PREFLIGHT-SPLIT, July 2026).
+// testChaosDayScheduling (Test 9) — extracted to qdrant_preflight_stubs.go
+// (PR-PREFLIGHT-SPLIT, July 2026).
