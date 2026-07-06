@@ -31,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -78,10 +79,27 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 		// YTDLPSubtitleAdapter (os/exec + VTT regex) and
 		// OllamaAnalyzer (Score + Classify + FindSegments) as the
 		// monitor's Transcript + Analyzer ports.
+		//
+		// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): inject
+		// ytdlp.NewCommandBuilder(deps.cfg) + UseCookies: true so
+		// the monitor's subtitle fetch delegates the canonical
+		// yt-dlp argv prefix to ytdlp.BaseArgs (same Pattern 0
+		// port the infrastructure-layer SubtitleFetcherAdapter
+		// uses post PR-SUBTITLES-BASEARGS-MIGRATION). Pre-PR the
+		// adapter manually appended --write-auto-subs / --write-subs
+		// / --skip-download and bypassed the helper, dropping
+		// --cookies (required for n-challenge + age-restricted
+		// videos), --js-runtime + --remote-components ejs:github,
+		// --no-warnings, and --extractor-args
+		// youtube:player_client=web,android. UseCookies=true is
+		// the right default for the monitor (it processes the full
+		// channel feed including age-restricted videos).
 		ytdlpForSubtitles := downloader.NewYTDLP(deps.cfg)
 		ytdlpSubtitleAdapter := transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
-			Ytdlp: ytdlpForSubtitles,
-			Log:   deps.log,
+			Ytdlp:      ytdlpForSubtitles,
+			CmdBuilder: ytdlp.NewCommandBuilder(deps.cfg),
+			UseCookies: true,
+			Log:        deps.log,
 		})
 		ollamaAnalyzer := semantic.NewOllamaAnalyzer(semantic.Deps{
 			OllamaClient:    deps.root.AI.OllamaClient,
