@@ -1,0 +1,117 @@
+package adapters
+
+import (
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+// ── mergePostProcessResult: aggregate helper ──────────────────────────
+
+// mergePostProcessResult copies non-zero fields from a processor
+// result into the aggregate PipelineResult, and writes back the
+// synthesised Scene slice into the registry-local ProcessInput so
+// subsequent postprocessors see the populated input.SpecScene.Scenes
+// (document/persistence stop reading empty scenes downstream of
+// the prose-fallback clip-bindings heuristic).
+//
+// Issue #1 (June 2026): the canonical pipeline-level SpecScene
+// surface lives on PipelineResult.FinalSpecScene. mergePostProcessResult
+// captures the post-walk SpecScene after every processor (in
+// last-writer-wins order — there's only ever one synthesizer at a
+// time so a copy is sufficient) so buildGenerationResult reads the
+// post-walk envelope via the empty-aware fallback in
+// generate_one_usecase.go.
+//
+// P1 #10 (June 2026) wall-clock timing — keep the per-processor
+// StageDurations map hot so the outer use case can stream it into
+// GenerationTimings.PostprocessMs (canonical Issue #3 plumbing).
+//
+// currentInput is the by-value copy of the ProcessInput that Run()
+// passes to processors; nil-safe so callers that pre-Issue-1 wiring
+// (eg. in older tests) keep working.
+func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
+	// P1 #10 (June 2026): record per-processor wall-clock timing.
+	if dst.StageDurations == nil {
+		dst.StageDurations = make(map[string]int64)
+	}
+	if src.Entities != nil {
+		dst.Entities = src.Entities
+	}
+	if len(src.Metadata) > 0 {
+		dst.VideoMetadata = append(dst.VideoMetadata, src.Metadata...)
+	}
+	if len(src.Voiceovers) > 0 {
+		dst.Voiceovers = append(dst.Voiceovers, src.Voiceovers...)
+		if currentInput != nil {
+			for _, v := range src.Voiceovers {
+				if v.SceneIndex < 0 || v.SceneIndex >= len(currentInput.SpecScene.Scenes) {
+					continue
+				}
+				sc := &currentInput.SpecScene.Scenes[v.SceneIndex]
+				if sc.Bindings.Voiceover == nil {
+					sc.Bindings.Voiceover = &scriptpkg.VoiceoverBinding{}
+				}
+				sc.Bindings.Voiceover.Status = v.Status
+				sc.Bindings.Voiceover.Link = v.Link
+				sc.Bindings.Voiceover.LocalPath = v.LocalPath
+			}
+		}
+	}
+	if len(src.SceneImages) > 0 {
+		dst.Scenes = append(dst.Scenes, src.SceneImages...)
+		if currentInput != nil {
+			for _, s := range src.SceneImages {
+				if s.Index < 0 || s.Index >= len(currentInput.SpecScene.Scenes) {
+					continue
+				}
+				sc := &currentInput.SpecScene.Scenes[s.Index]
+				if sc.Bindings.Image == nil {
+					sc.Bindings.Image = &scriptpkg.ImageBinding{}
+				}
+				sc.Bindings.Image.URL = s.URL
+				sc.Bindings.Image.Status = "generated"
+			}
+		}
+	}
+	if src.DocLink != "" {
+		dst.DocLink = src.DocLink
+		dst.DocID = src.DocID
+	}
+	if src.ScriptID > 0 {
+		dst.ScriptID = src.ScriptID
+		dst.AlreadyPersisted = src.AlreadyPersisted
+	}
+	// FASE 3 (June 2026): prose-fallback clip_bindings emits
+	// SynthesizedScenes. Last-wins semantics: only one processor
+	// synthesises scenes at a time, so a simple overwrite keeps the
+	// invariant simple.
+	if len(src.SynthesizedScenes) > 0 {
+		dst.SynthesizedScenes = src.SynthesizedScenes
+		// Issue #1 (June 2026) WRITE-BACK. The registry passes
+		// the same `input` ProcessInput to every processor in
+		// the loop, so updating its SpecScene.Scenes here means
+		// every subsequent processor (document, persistence,
+		// voiceover, images) sees the synthesised bundle instead
+		// of the original empty specscene. Without this the
+		// prose-fallback heuristic could declare success
+		// (PipelineResult.SynthesizedScenes populated +
+		// IsEmpty == false) while downstream processors still
+		// received an envelope with empty SpecScene.Scenes —
+		// document got an empty storyboard, persistence stored
+		// an empty SpecScene row.
+		if currentInput != nil {
+			currentInput.SpecScene.Scenes = src.SynthesizedScenes
+		}
+	}
+	// Issue #1 (June 2026) FINAL SURFACE. Capture the post-walk
+	// SpecScene envelope so buildGenerationResult can read it
+	// instead of the pre-walk engineResult.Output.SpecScene.
+	// Set unconditionally (NOT inside the SynthesizedScenes
+	// branch) because the post-walk envelope is meaningful even
+	// when no synthesizer ran: in that case currentInput.SpecScene
+	// already mirrors engineResult.Output.SpecScene and the
+	// downstream consumer's empty-aware fallback decides whether
+	// to use it.
+	if currentInput != nil {
+		dst.FinalSpecScene = currentInput.SpecScene
+	}
+}
