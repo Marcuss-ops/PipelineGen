@@ -1,11 +1,13 @@
 package youtube
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	// DTOs (VideoThumbnail, etc.) now live in ports/.
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -142,4 +144,153 @@ func TestMetadataFetcherAdapter_PreservesThumbnailsArray(t *testing.T) {
 	assert.Equal(t, "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", raw.Thumbnails[2].URL)
 
 	t.Logf("NOTE: full GetVideoMetadata round-trip test deferred until ProcessRunnerPort supports injection (see PR1 follow-up in docs/POST_CASCADE_OPERATIONAL_READINESS.md)")
+}
+
+// captureRunner is a mock ProcessRunnerPort that captures the argv passed
+// to Run() so the regression-guard tests can inspect the constructed
+// metadata command without spawning an actual yt-dlp subprocess.
+//
+// Pre-PR-PLAYER-CLIENT-DRIFT-FIX (2026-07-06): the metadata adapter
+// constructed its argv inline, so the test surface had no way to verify
+// the canonical web,android policy was honored (the drift to android,web
+// went undetected for several months). This mock is the load-bearing
+// seam for the regression guards below.
+type captureRunner struct {
+	argv   []string
+	path   string
+	calls  int
+	stdout string
+	stderr string
+	err    error
+}
+
+func (r *captureRunner) Run(_ context.Context, name string, args []string) (string, string, error) {
+	r.calls++
+	r.path = name
+	r.argv = args
+	return r.stdout, r.stderr, r.err
+}
+
+// newMinimalConfig builds a ytcfg.Config with a JS runtime path set so
+// the regression tests can verify the --js-runtime + --remote-components
+// co-injection contract (the latent bug fixed by this PR — pre-PR the
+// metadata adapter injected --js-runtime without --remote-components
+// ejs:github, breaking node-based signature resolution for some videos).
+func newMinimalConfig(jsRuntimePath string) *ytcfg.Config {
+	return &ytcfg.Config{
+		External: ytcfg.ExternalConfig{
+			YouTubeJSRuntimePath: jsRuntimePath,
+		},
+	}
+}
+
+// TestGetVideoMetadata_DelegatesToBaseArgs_CanonicalPlayerClient is the
+// load-bearing regression guard for PR-PLAYER-CLIENT-DRIFT-FIX. It pins
+// the godlike/06 SSOT contract that the metadata adapter MUST delegate
+// to ytdlp.BaseArgs() for the player_client literal (not re-declare
+// its own). Drift (e.g., reverting to android,web) surfaces as a test
+// failure here BEFORE the regression reaches production.
+//
+// Failure modes this test catches:
+//  1. Re-introduction of `youtube:player_client=android,web` (the
+//     pre-PR drift — wrong order, android-first policy).
+//  2. Re-introduction of `youtube:player_client=web` (the pre-f3f1ee90
+//     web-only behaviour that broke dtpF3BrSOto and similar videos).
+//  3. Double-add of --no-warnings (would happen if the metadata adapter
+//     kept its own `--no-warnings` AND delegated to BaseArgs).
+//  4. Loss of --js-runtime + --remote-components co-injection (the
+//     latent bug fixed by this PR).
+func TestGetVideoMetadata_DelegatesToBaseArgs_CanonicalPlayerClient(t *testing.T) {
+	cfg := newMinimalConfig("/usr/bin/node")
+	runner := &captureRunner{stdout: realisticYDLPDumpJSON}
+	a := NewMetadataFetcherAdapter(cfg, runner)
+
+	_, err := a.GetVideoMetadata(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+	require.NoError(t, err)
+	require.Equal(t, 1, runner.calls, "ProcessRunner.Run must be invoked exactly once")
+	require.NotEmpty(t, runner.argv, "argv must not be empty")
+
+	// 1. Canonical web,android is present (the f3f1ee90 web-first policy)
+	require.Contains(t, runner.argv, "youtube:player_client=web,android",
+		"metadata adapter must use the canonical web,android order centralized in cmd_builder.go")
+
+	// 2. The drift (reversed order) MUST NOT appear anywhere in argv
+	for _, arg := range runner.argv {
+		assert.NotEqual(t, "youtube:player_client=android,web", arg,
+			"reversed-order drift leaked into metadata argv (PR-PLAYER-CLIENT-DRIFT-FIX regression)")
+	}
+
+	// 3. --no-warnings must appear EXACTLY ONCE (no double-add from
+	// BaseArgs() + a hypothetical re-declared manual append)
+	noWarningsCount := 0
+	for _, arg := range runner.argv {
+		if arg == "--no-warnings" {
+			noWarningsCount++
+		}
+	}
+	assert.Equal(t, 1, noWarningsCount,
+		"--no-warnings must appear exactly once (BaseArgs() is the SOLE owner; no manual re-declaration)")
+
+	// 4. --js-runtime + --remote-components ejs:github co-injection
+	//    (the latent bug fixed by this PR — pre-PR metadata adapter
+	//    injected --js-runtime WITHOUT --remote-components, breaking
+	//    node-based signature resolution for some videos)
+	assert.Contains(t, runner.argv, "--js-runtime",
+		"--js-runtime must be present when YouTubeJSRuntimePath is set")
+	assert.Contains(t, runner.argv, "/usr/bin/node",
+		"--js-runtime value must be the configured JS runtime path")
+	assert.Contains(t, runner.argv, "--remote-components",
+		"--remote-components must co-present with --js-runtime (the canonical BaseArgs contract)")
+	assert.Contains(t, runner.argv, "ejs:github",
+		"--remote-components value must be 'ejs:github' (the canonical remote-component source)")
+}
+
+// TestGetVideoMetadata_PlayerClientNeverWebOnly mirrors the regression
+// guard from cmd_builder_test.go (TestBaseArgs_PlayerClientNeverWebOnly)
+// but for the metadata adapter's argv. If a future refactor re-declares
+// the player_client literal in metadata.go and someone accidentally
+// reverts to web-only, this test catches it.
+//
+// The check is: the substring "youtube:player_client=web" (web alone,
+// no comma-and-android) MUST never appear. If it does, the policy
+// silently reverted to the pre-f3f1ee90 web-only behaviour.
+func TestGetVideoMetadata_PlayerClientNeverWebOnly(t *testing.T) {
+	cfg := newMinimalConfig("/usr/bin/node")
+	runner := &captureRunner{stdout: realisticYDLPDumpJSON}
+	a := NewMetadataFetcherAdapter(cfg, runner)
+
+	_, err := a.GetVideoMetadata(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+	require.NoError(t, err)
+
+	for _, arg := range runner.argv {
+		assert.NotEqual(t, "youtube:player_client=web", arg,
+			"player_client=web-only leaked into metadata argv (regression to pre-f3f1ee90 policy)")
+	}
+}
+
+// TestGetVideoMetadata_NoJSRuntime_NoJSRuntimeFlags verifies the
+// conditional behaviour: when YouTubeJSRuntimePath is empty, the
+// metadata adapter MUST NOT inject --js-runtime or --remote-components.
+// (The pre-PR adapter had a buggy conditional that DID inject
+// --js-runtime when the path was set but FORGOT --remote-components —
+// the canonical BaseArgs() now always injects both flags together or
+// neither.)
+func TestGetVideoMetadata_NoJSRuntime_NoJSRuntimeFlags(t *testing.T) {
+	cfg := newMinimalConfig("") // empty JS runtime path
+	runner := &captureRunner{stdout: realisticYDLPDumpJSON}
+	a := NewMetadataFetcherAdapter(cfg, runner)
+
+	_, err := a.GetVideoMetadata(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+	require.NoError(t, err)
+
+	for _, arg := range runner.argv {
+		assert.NotEqual(t, "--js-runtime", arg,
+			"--js-runtime must NOT appear when YouTubeJSRuntimePath is empty")
+		assert.NotEqual(t, "--remote-components", arg,
+			"--remote-components must NOT appear when YouTubeJSRuntimePath is empty")
+	}
+
+	// Canonical web,android must still be present (unconditional policy)
+	assert.Contains(t, runner.argv, "youtube:player_client=web,android",
+		"canonical web,android must be present even without JS runtime")
 }
