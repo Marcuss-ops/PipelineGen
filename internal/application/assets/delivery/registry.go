@@ -42,6 +42,20 @@ type DestinationPolicy struct {
 	// This prevents accidental pollution of top-level Drive folders.
 	RequireSubpath bool
 
+	// Namespace is the canonical top-level directory name for this
+	// destination when the unified media_root_folder is active (see
+	// config.DriveConfig.IsUsingMediaRoot). When empty, the namespace
+	// is not prepended — the destination either has its own dedicated
+	// root folder or does not require namespace isolation.
+	//
+	// Canonical namespace values:
+	//   clips, stock, artlist, images, voiceovers, books, scripts,
+	//   sound_effects, documents, admin
+	//
+	// Per godlike/06 SSOT (one canonical owner per fact): the namespace
+	// is assigned ONCE at registry construction and never mutated.
+	Namespace string
+
 	// ConflictPolicy is the registry-driven default for filename
 	// collisions in the resolved Drive folder. The publisher applies
 	// this when PublishRequest.ConflictPolicy is the zero value (the
@@ -92,66 +106,90 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 		policies: map[DestinationKey]DestinationPolicy{
 			DestinationYouTubeClip: {
 				RootFolderID:   cfg.Drive.ClipsFolder(),
-				PathBuilder:    YouTubeClipPath,
+				Namespace:      "clips",
+				PathBuilder:    maybeWrapNamespace(cfg, "clips", cfg.Drive.ClipsRootFolder, YouTubeClipPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // immutable uploaded clip
 			},
 			DestinationArtlist: {
 				RootFolderID:   cfg.Drive.ArtlistFolder(),
-				PathBuilder:    ArtlistPath,
+				Namespace:      "artlist",
+				PathBuilder:    maybeWrapNamespace(cfg, "artlist", cfg.Drive.ArtlistRootFolder, ArtlistPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // curated artlist asset
 			},
 			DestinationStock: {
 				RootFolderID:   cfg.Drive.StockFolder(),
-				PathBuilder:    StockPath,
+				Namespace:      "stock",
+				PathBuilder:    maybeWrapNamespace(cfg, "stock", cfg.Drive.StockRootFolder, StockPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // licensed stock asset
 			},
 			DestinationImage: {
 				RootFolderID:   cfg.Drive.ImagesFolder(),
-				PathBuilder:    ImagePath,
+				Namespace:      "images",
+				PathBuilder:    maybeWrapNamespace(cfg, "images", cfg.Drive.ImagesRootFolder, ImagePath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkipByHash, // P1: skip when content hash matches
 			},
 			DestinationVoiceover: {
 				RootFolderID:   cfg.Drive.VoiceoverFolder(),
-				PathBuilder:    VoiceoverPath,
+				Namespace:      "voiceovers",
+				PathBuilder:    maybeWrapNamespace(cfg, "voiceovers", cfg.Drive.VoiceoverRootFolder, VoiceoverPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // P1: skip-or-create-version (hash-based)
 			},
 			DestinationBook: {
 				RootFolderID:   cfg.Drive.BooksFolder(),
-				PathBuilder:    BookPath,
+				Namespace:      "books",
+				PathBuilder:    maybeWrapNamespace(cfg, "books", cfg.Drive.BooksRootFolder, BookPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictOverwrite, // regenerable summary
 			},
 			DestinationScript: {
 				RootFolderID:   cfg.Drive.ScriptsFolder(),
-				PathBuilder:    ScriptPath,
+				Namespace:      "scripts",
+				PathBuilder:    maybeWrapNamespace(cfg, "scripts", cfg.Drive.ScriptsRootFolder, ScriptPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictOverwrite, // regenerable script output
 			},
 			DestinationSoundEffect: {
 				RootFolderID:   cfg.Drive.SoundEffectsFolder(),
-				PathBuilder:    SoundEffectPath,
+				Namespace:      "sound_effects",
+				PathBuilder:    maybeWrapNamespace(cfg, "sound_effects", cfg.Drive.SoundEffectsRootFolder, SoundEffectPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // licensed sound effect
 			},
 			DestinationDocument: {
 				RootFolderID:   cfg.Drive.DocumentsFolder(),
-				PathBuilder:    DocumentPath,
+				Namespace:      "documents",
+				PathBuilder:    maybeWrapNamespace(cfg, "documents", cfg.Drive.ScriptsRootFolder, DocumentPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
 			},
 			DestinationAdmin: {
 				RootFolderID:   cfg.Drive.RootFolder(),
-				PathBuilder:    AdminPath,
+				Namespace:      "admin",
+				PathBuilder:    maybeWrapNamespace(cfg, "admin", "", AdminPath),
 				RequireSubpath: false,
 				ConflictPolicy: ConflictOverwrite, // P1: admin CLI always overwrites
 			},
 		},
 	}
+}
+
+// maybeWrapNamespace wraps the PathBuilder with the given namespace when
+// the destination is effectively using the unified media_root_folder. When
+// the destination has its own dedicated root folder, the inner PathBuilder
+// is returned unchanged — no double-namespace risk.
+//
+// Use specificRoot="" for destinations that have no dedicated root field
+// (e.g. DestinationAdmin always resolves to MediaRootFolder).
+func maybeWrapNamespace(cfg *config.Config, namespace, specificRoot string, inner PathBuilder) PathBuilder {
+	if cfg.Drive.IsUsingMediaRoot(specificRoot) {
+		return withNamespace(namespace, inner)
+	}
+	return inner
 }
 
 // Has reports whether the registry contains a policy for the given key.
@@ -187,6 +225,22 @@ func (r *DestinationRegistry) Keys() []DestinationKey {
 // to FolderManager.EnsurePath(rootID, segments...). Every segment is
 // sanitised via pathutil.SafeFolderName to prevent path traversal,
 // OS-unsafe characters, and empty folder names.
+
+// withNamespace wraps a PathBuilder to prepend a canonical namespace
+// segment. Used when the destination falls back to the unified
+// media_root_folder (see config.DriveConfig.IsUsingMediaRoot). The
+// namespace ensures the unified root stays organized with canonical
+// subdirectories (clips, stock, artlist, etc.) instead of having every
+// destination write directly into the root.
+func withNamespace(namespace string, inner PathBuilder) PathBuilder {
+	return func(req PublishRequest) ([]string, error) {
+		segs, err := inner(req)
+		if err != nil {
+			return nil, err
+		}
+		return append([]string{namespace}, segs...), nil
+	}
+}
 
 // YouTubeClipPath builds the path for YouTube clips:
 //
