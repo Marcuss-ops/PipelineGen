@@ -9,32 +9,59 @@
 // acquisition.SourceStager.Prepare. The acquisition chain causes
 // nil-deref when sourceStager is not wired at composition root;
 // the yt-dlp direct path is the production-tested download path.
+//
+// Google Drive download (July 2026): when a URL points to Drive
+// (drive.google.com), the stager routes through DriveDownloaderPort
+// instead of yt-dlp. The port mirrors drive.Reader.DownloadFile so
+// the concrete *drive.Uploader satisfies it without an adapter.
+// Composition root wires the port via WithDriveDownloader.
 package stockpipeline
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // Compile-time assertion: *StockStager satisfies assets.SourceStager.
 var _ assets.SourceStager = (*StockStager)(nil)
 
+// DriveDownloaderPort is the Pattern 0 port for downloading files
+// from Google Drive. The port mirrors drive.Reader.DownloadFile so
+// the concrete *drive.Uploader satisfies it without an adapter.
+//
+// godlike/06 SSOT: this port lives in the stockpipeline package
+// (application layer); the concrete implementation lives in
+// internal/infrastructure/drive/ and is injected via
+// WithDriveDownloader at composition time.
+type DriveDownloaderPort interface {
+	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+}
+
 // StockStager adapts a stockpipeline.Service to the shared
-// assets.SourceStager port. It downloads directly via yt-dlp,
-// bypassing the acquisition.SourceStager chain.
+// assets.SourceStager port. It downloads directly via yt-dlp
+// (YouTube/DirectURLs) and via DriveDownloaderPort (Google Drive
+// URLs), bypassing the acquisition.SourceStager chain.
 type StockStager struct {
-	svc   *Service
-	ytdlp *downloader.YTDLPDownloader
+	svc             *Service
+	ytdlp           *downloader.YTDLPDownloader
+	driveDownloader DriveDownloaderPort
 }
 
 // NewStockStager wraps a stockpipeline.Service as an assets.SourceStager.
 // svc must be non-nil; nil produces a runtime error on StageSource.
 // The yt-dlp downloader is constructed from the service's config.
+//
+// Google Drive download support is wired separately via
+// WithDriveDownloader (optional — nil means Drive URLs fall through
+// to yt-dlp, which will fail with a descriptive error).
 func NewStockStager(svc *Service) *StockStager {
 	var ytdlp *downloader.YTDLPDownloader
 	if svc != nil && svc.cfg != nil {
@@ -43,17 +70,32 @@ func NewStockStager(svc *Service) *StockStager {
 	return &StockStager{svc: svc, ytdlp: ytdlp}
 }
 
+// WithDriveDownloader threads a Google Drive downloader into the
+// stager. When non-nil, StageSource routes drive.google.com URLs
+// through the Drive API instead of yt-dlp. Returns the receiver for
+// fluent chaining.
+//
+// The canonical concrete implementation is *drive.Uploader (which
+// satisfies DriveDownloaderPort structurally via its DownloadFile
+// method). Composition root injects it via the DriveBundle.
+func (s *StockStager) WithDriveDownloader(dl DriveDownloaderPort) *StockStager {
+	s.driveDownloader = dl
+	return s
+}
+
 // StageSource implements assets.SourceStager. Downloads the source video
-// directly via yt-dlp (bypassing the acquisition.SourceStager chain).
+// directly via yt-dlp (YouTube/DirectURLs) or via DriveDownloaderPort
+// (Google Drive file URLs), bypassing the acquisition.SourceStager chain.
+//
+// URL detection: if the URL contains "drive.google.com", the stager
+// extracts the file ID and downloads via the Drive API. All other URLs
+// flow through yt-dlp.
 func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
 	if s.svc == nil {
 		return nil, fmt.Errorf("stock stager: service not wired")
 	}
 	if ref.URL == "" {
 		return nil, fmt.Errorf("stock stager: empty URL")
-	}
-	if s.ytdlp == nil {
-		return nil, fmt.Errorf("stock stager: yt-dlp downloader not wired (cfg nil)")
 	}
 
 	// Create a temp staging directory under the service's temp path.
@@ -64,6 +106,17 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 
 	outputPath := filepath.Join(tmpDir, "source.mp4")
 
+	// Google Drive URL → download via Drive API.
+	if isDriveURL(ref.URL) {
+		sa, driveErr := s.stageFromDrive(ctx, ref, outputPath)
+		if driveErr != nil {
+			os.RemoveAll(tmpDir)
+			return nil, driveErr
+		}
+		return sa, nil
+	}
+
+	// Test-only short-circuit for the known black video URL.
 	if ref.URL == "https://youtube.com/watch?v=RRJvrDKunyA" {
 		blackPath := "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/test_black.mp4"
 		if _, err := os.Stat(blackPath); err == nil {
@@ -74,7 +127,6 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 				if err == nil {
 					defer dstFile.Close()
 					var ioCopyErr error
-					// Using custom copy loop or io.Copy. Let's write manually to avoid import changes
 					buf := make([]byte, 32*1024)
 					for {
 						n, readErr := srcFile.Read(buf)
@@ -101,6 +153,10 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 				}
 			}
 		}
+	}
+
+	if s.ytdlp == nil {
+		return nil, fmt.Errorf("stock stager: yt-dlp downloader not wired (cfg nil)")
 	}
 
 	dlReq := &downloader.DownloadRequest{
@@ -151,4 +207,75 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 		return nil
 	}
 	return os.RemoveAll(dir)
+}
+
+// ── Drive download helpers ─────────────────────────────────────────────
+
+// isDriveURL reports whether rawURL points to a Google Drive file
+// (as opposed to a YouTube URL or any other source). The check is
+// a simple host match so callers can route Drive URLs through the
+// Drive API without inspecting the full URL scheme.
+func isDriveURL(rawURL string) bool {
+	return strings.Contains(rawURL, "drive.google.com")
+}
+
+// extractDriveFileID extracts the canonical Google Drive file ID
+// from a Drive file URL. Delegates to pkg/urlutil.FileIDFromDriveLink
+// which supports the 5 canonical URL shapes (file/d/<id>/view,
+// file/d/<id>/edit, uc?id=<id>, open?id=<id>, bare <id>).
+func extractDriveFileID(rawURL string) (string, error) {
+	return urlutil.FileIDFromDriveLink(rawURL)
+}
+
+// stageFromDrive downloads a file from Google Drive via the
+// DriveDownloaderPort and writes it to outputPath. Returns a
+// *StagedAsset pointing at the downloaded file on success.
+//
+// godlike/07 typed-error contract: fileID extraction failure,
+// unwired drive downloader, Drive API errors, and local I/O
+// errors each surface as typed wraps (%w) so callers can
+// errors.Is/As probe the underlying cause.
+func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, outputPath string) (*assets.StagedAsset, error) {
+	if s.driveDownloader == nil {
+		return nil, fmt.Errorf("stock stager: drive downloader not wired (use WithDriveDownloader at composition time)")
+	}
+
+	fileID, err := extractDriveFileID(ref.URL)
+	if err != nil {
+		return nil, fmt.Errorf("stock stager: extract drive file ID from %q: %w", ref.URL, err)
+	}
+	if fileID == "" {
+		return nil, fmt.Errorf("stock stager: empty file ID extracted from %q", ref.URL)
+	}
+
+	body, _, dlErr := s.driveDownloader.DownloadFile(ctx, fileID)
+	if dlErr != nil {
+		return nil, fmt.Errorf("stock stager: drive download file %q: %w", fileID, dlErr)
+	}
+	defer body.Close()
+
+	f, createErr := os.Create(outputPath)
+	if createErr != nil {
+		return nil, fmt.Errorf("stock stager: create output file %q: %w", outputPath, createErr)
+	}
+
+	if _, copyErr := io.Copy(f, body); copyErr != nil {
+		f.Close()
+		return nil, fmt.Errorf("stock stager: write downloaded file to %q: %w", outputPath, copyErr)
+	}
+
+	// Close explicitly so the stat below sees the full file size.
+	if closeErr := f.Close(); closeErr != nil {
+		return nil, fmt.Errorf("stock stager: close output file: %w", closeErr)
+	}
+
+	fi, statErr := os.Stat(outputPath)
+	if statErr != nil {
+		return nil, fmt.Errorf("stock stager: stat downloaded file %q: %w", outputPath, statErr)
+	}
+
+	return &assets.StagedAsset{
+		LocalPath: outputPath,
+		Bytes:     fi.Size(),
+	}, nil
 }
