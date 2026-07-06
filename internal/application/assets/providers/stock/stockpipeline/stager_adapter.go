@@ -71,7 +71,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		URL:        ref.URL,
 		OutputPath: outputPath,
 		NoPlaylist: true,
-		UseCookies: true,
+		UseCookies: false, // godlike/07: cookies force web-only extraction → n-challenge block on public YT videos
 	}
 	if ref.DownloadSection != "" {
 		dlReq.DownloadSections = []string{ref.DownloadSection}
