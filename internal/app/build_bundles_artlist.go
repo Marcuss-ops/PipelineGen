@@ -341,12 +341,11 @@ func WireArtlist(
 		// WIRED via the new clipResolverRecommendAdapter (built
 		// above) — no longer an unset forward-pointer. /recommend
 		// returns real recommendations when canonical is available.
-		ClipResolver:   bundle.ClipResolver,
-		NodeScraperDir: cfg.External.NodeScraperDir,
-		CfgPort:        newArtlistConfigAdapter(cfg),
-		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },
-		ModuleOpts:     nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
-		Logger:         log,
+		ClipResolver: bundle.ClipResolver,
+		CfgPort:      newArtlistConfigAdapter(cfg),
+		EnabledFunc:  func() bool { return cfg.Features.ArtlistEnabled },
+		ModuleOpts:   nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
+		Logger:       log,
 	})
 	if err != nil {
 		_ = service.Close()

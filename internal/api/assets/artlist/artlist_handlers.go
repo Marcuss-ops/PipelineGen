@@ -58,38 +58,35 @@ type ClipResolverRecommendResult struct {
 // package stays free of infrastructure-layer imports
 // (AGENTS.md Pattern 0).
 type ArtlistHandler struct {
-	service        *artlist.Service
-	catalogSync    *catalogsync.Service
-	jobsService    jobservice.Service
-	clipResolver   ClipResolverPort
-	nodeScraperDir string
-	log            *zap.Logger
-	cfg            artlist.ArtlistConfigPort
+	service      *artlist.Service
+	catalogSync  *catalogsync.Service
+	jobsService  jobservice.Service
+	clipResolver ClipResolverPort
+	log          *zap.Logger
+	cfg          artlist.ArtlistConfigPort
 }
 
 // NewArtlistHandler builds the ArtlistHandler. service is the domain
 // Artlist service; catalogSync handles catalog reconciliation; jobsSvc
 // enqueues the artlist.run job; clipResolver is used by /recommend;
-// nodeScraperDir is the path to the persistent Node scraper dir;
 // cfgPort exposes the artlist-side config defaults the handler reads
 // during request normalization (e.g. the default Artlist root folder).
+// nodeScraperDir removed July 2026 (dead code — assigned but never read).
 func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
 	jobsService jobservice.Service,
 	clipResolver ClipResolverPort,
-	nodeScraperDir string,
 	log *zap.Logger,
 	cfgPort artlist.ArtlistConfigPort,
 ) *ArtlistHandler {
 	return &ArtlistHandler{
-		service:        service,
-		catalogSync:    catalogSync,
-		jobsService:    jobsService,
-		clipResolver:   clipResolver,
-		nodeScraperDir: nodeScraperDir,
-		log:            log,
-		cfg:            cfgPort,
+		service:      service,
+		catalogSync:  catalogSync,
+		jobsService:  jobsService,
+		clipResolver: clipResolver,
+		log:          log,
+		cfg:          cfgPort,
 	}
 }
 

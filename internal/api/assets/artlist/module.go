@@ -63,10 +63,6 @@ type Dependencies struct {
 	// OPTIONAL — nil is forwarded and the handler returns 503.
 	ClipResolver ClipResolverPort
 
-	// NodeScraperDir is the path to the persistent Node scraper
-	// directory. OPTIONAL — empty defaults to "node-scraper".
-	NodeScraperDir string
-
 	// CfgPort is the typed narrow port that exposes only the artlist
 	// root folder the handler reads during request normalization
 	// (RunTagRequest → normalized RootFolderID). MANDATORY — Build
@@ -131,9 +127,7 @@ func (d *ArtlistDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 
 // Build composes the Artlist HTTP capability from the typed narrow
 // dependencies. Returns a fail-closed error when any mandatory dep
-// is nil. Logger nil → zap.NewNop(). NodeScraperDir "" → "node-scraper"
-// (compile-time constant fallback so wiring sites do not need a
-// default-args pass).
+// is nil. Logger nil → zap.NewNop().
 //
 // The returned Descriptor carries the Module (routes) + Service
 // (non-HTTP use cases). The HTTP Handler is constructed here and
@@ -159,17 +153,11 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	nodeScraperDir := deps.NodeScraperDir
-	if nodeScraperDir == "" {
-		nodeScraperDir = "node-scraper"
-	}
-
 	handler := NewArtlistHandler(
 		deps.Service,
 		deps.CatalogSync, // nil-tolerant — handler returns 503 on /sync-catalogs
 		deps.Jobs,
 		deps.ClipResolver, // nil-tolerant — handler returns 503 on /recommend
-		nodeScraperDir,
 		log,
 		deps.CfgPort,
 	)
