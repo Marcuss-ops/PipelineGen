@@ -106,6 +106,16 @@ func DefaultChecks() []CheckSpec {
 		{"percheck_type_redecl", scan.ScanTypeRedeclarations},
 		{"percheck_txcontext_ban", scan.ScanTxContextBan},
 		{"percheck_monitor_infra_import", scan.ScanMonitorInfraImport},
+		// Check N (PR-PLAYER-CLIENT-DRIFT-FIX, 2026-07-06):
+		// forward-prevention gate for the `player_client=`
+		// literal centralization in
+		// internal/infrastructure/ytdlp/cmd_builder.go (per
+		// godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY).
+		// Fails if any production .go file outside the
+		// canonical SSOT + *_test.go (regression-guard
+		// allowlist) re-declares the literal. Comment-only
+		// hits are WARNed (residue accounting).
+		{"percheck_player_client_centralization", scan.ScanPlayerClientCentralization},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in
