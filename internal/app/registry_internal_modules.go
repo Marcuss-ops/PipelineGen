@@ -89,11 +89,19 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		vectorStoreForSearch = root.Process.VectorSvc
 	}
 
-	// EmbeddingChannelRegistry: Ollama → ollamaEmbedder → qdrant.TextEmbedder → embeddingRegistryAdapter
+	// EmbeddingChannelRegistry: Ollama embed client → ollamaEmbedder → qdrant.TextEmbedder → embeddingRegistryAdapter.
+	// Uses a dedicated embedding client (OllamaEmbedClient, model=nomic-embed-text) so chat and embedding
+	// can use different Ollama models — Ollama returns 500 when a chat model is sent to /api/embeddings.
 	var embeddingReg search.EmbeddingChannelRegistry
-	if root.AI != nil && root.AI.OllamaClient != nil {
-		ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
-		embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(ollamaEmb), nil)
+	if root.AI != nil {
+		embedClient := root.AI.OllamaEmbedClient
+		if embedClient == nil {
+			embedClient = root.AI.OllamaClient // backward compat: fall back to chat client
+		}
+		if embedClient != nil {
+			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(embedClient)
+			embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(ollamaEmb), nil)
+		}
 	}
 
 	// MediaReadRepository: ClipsRepository → search.MediaReadRepository

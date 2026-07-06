@@ -156,11 +156,12 @@ type QdrantDeps struct {
 
 // AIBundle owns script generation, engine, and gemmamemory Repository.
 type AIBundle struct {
-	OllamaClient     *client.Client
-	ScriptGen        *ollama.Generator
-	OllamaTranslator *translation.OllamaTranslator
-	MemoryRepo       *adapters.Repository
-	ScriptEngine     *scriptcore.Engine
+	OllamaClient      *client.Client
+	OllamaEmbedClient *client.Client // dedicated embedding client (separate model from chat)
+	ScriptGen         *ollama.Generator
+	OllamaTranslator  *translation.OllamaTranslator
+	MemoryRepo        *adapters.Repository
+	ScriptEngine      *scriptcore.Engine
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.
