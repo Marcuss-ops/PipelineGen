@@ -507,6 +507,54 @@
       entries carry the audit-trail. Forward-pointer PR-REMOVE-CI-AWK-SED-FALLBACKS
       (deadline 2026-08-08) carries the 2/2 lockstep.
     deadline: 2026-08-01
+
+  - id: PR-CURRENT-YAML-PARSE-FIX-PART-1
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-06
+    exit_signal: false
+    deadline: 2026-08-01
+    ship_via: |
+      PARTIAL CLOSURE (godlike/07 minimum-blast-radius + user-spec scope-lock):
+      re-indent 2 specific lines (L5560 + L5565) within the
+      QDRANT-CHAIN-VERIFY-2026-07-04 umbrella's `linked_issues:`
+      block from 4-space (broken) to 6-space (convention for
+      list-item child fields). Pre-PR the underlying pre-existing
+      parse error was reported AT L5560 col 5 (the umbrella entry
+      description for PRE-EXISTING-YAML-PARSE-2026-07-04 cited
+      "stray '?' character around line 1551" -- a DIFFERENT
+      historical parse error site that was addressed by
+      PR-FIX-YAML-PARSE-LINE-1551 ship_sha 2549f455; the L5560
+      error is yet ANOTHER parse error that has accumulated in
+      the wave-tracker since the prior closure landed).
+
+      Verification (godlike/07 typed-no-fake-availability):
+      yaml.safe_load has NOT YET fully succeeded on the file
+      post-this-fix. The parser still FAILS at L6520 col 99
+      ("owner_capability: internal/domain/finalization (godlike/06 SSOT
+      one-canonical-owner-per-fact: 15 type-specific..." -- unquoted
+      scalar containing embedded ": " in inner block-collection
+      content; treated as a nested mapping key).
+
+      Forward-pointer: PR-CURRENT-YAML-PARSE-FIX-PART-2 (deadline
+      2026-08-01) addresses the L6520+ class of parse errors
+      (unquoted-scalar-with-embedded-": " wrap or block-scalar
+      rewrite of the long owner_capability values that span
+      multi-line content compressed to inline scalars). PART-2
+      is OUT OF SCOPE for this commit per godlike/07
+      scope-lock discipline.
+
+      Honest audit-pin discipline (godlike/06 one-owner-per-fact):
+      the PRE-EXISTING-YAML-PARSE-2026-07-04 umbrella status
+      REMAINS at pending after this commit. The previous
+      closure pattern (PR-FIX-YAML-PARSE-LINE-1551 ship_sha
+      2549f455 marked shipped but file STILL didn't parse)
+      surfaced an audit-pin overuse pattern -- this entry
+      explicitly does NOT repeat that mistake: the umbrella
+      stays at status: pending until ALL downstream parse
+      errors are fixed (PART-2 + future waves). archcheck
+      Check 19 (yaml.safe_load gate) remains green ONLY
+      after PART-2 + PART-N land collectively.
 - id: 0
   status: done
   exit_gate: All artifacts present; archcheck focused gate passes.
@@ -5557,12 +5605,12 @@
     - id: PR-QDRANT-CONFIG-MISMATCH-GATE
       owner_capability: internal/app
       status: shipped
-    ship_date: 2026-07-06
+      ship_date: 2026-07-06
       deadline: "2026-07-15"
     - id: PR-QDRANT-INDEXCLIP-GUARD
       owner_capability: internal/application/jobs/outbox
       status: shipped
-    ship_date: 2026-07-06
+      ship_date: 2026-07-06
       deadline: "2026-07-15"
     - id: PR-GENERATED-SEARCH-FIX
       owner_capability: internal/api/images
