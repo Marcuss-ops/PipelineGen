@@ -228,6 +228,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// NewService so Extract fans out through the 9-step
 		// pipeline + ClipAtomicWriter.CommitClipAndIndexEvent.
 		ProcessSeg: processSeg,
+		TranscriptReader: &youtube.OSTranscriptReader{},
 	}
 	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
 		return nil, fmt.Errorf("compose youtube: %w", err)

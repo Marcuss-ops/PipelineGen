@@ -59,6 +59,12 @@ type ServiceDeps struct {
 	DriveFolderMgr  youtubeports.DriveFolderManagerPort
 	HashSvc         youtubeports.HashServicePort
 
+	// P1.3: TranscriptReader is the Pattern 0 port for reading on-disk
+	// transcript files. When nil, enrichment skips transcript-based
+	// features (sponsor detection, quality scoring). Tests inject an
+	// in-memory reader; production wires OSTranscriptReader.
+	TranscriptReader TranscriptReader
+
 	// PR1.5 — port-backed store/cache/index collaborators.
 	Clips        youtubeports.ClipStorePort
 	Cache        youtubeports.CachePort
@@ -114,8 +120,11 @@ type Service struct {
 	ollama       youtubeports.OllamaClientPort
 
 	// Capacity-bound semaphores configured via ConcurrencyConfig.
-	videoExtractSem chan struct{}
-	ollamaSem       chan struct{}
+	videoExtractSem  chan struct{}
+	ollamaSem        chan struct{}
+
+	// P1.3: Pattern 0 port for reading on-disk transcript files.
+	transcriptReader TranscriptReader
 }
 
 // NewService is the sole canonical constructor. Pass every dependency a
@@ -157,6 +166,8 @@ func NewService(deps ServiceDeps) *Service {
 		indexer:      deps.Indexer,
 		folderMemory: deps.FolderMemory,
 		ollama:       deps.Ollama,
+
+		transcriptReader: deps.TranscriptReader,
 
 		videoExtractSem: make(chan struct{}, maxVideo),
 		ollamaSem:       make(chan struct{}, maxOllama),
