@@ -6915,7 +6915,9 @@
       deadline: 2026-08-08
     - id: PR-SPLIT-CLIPS-INGEST
       owner_capability: internal/api/assets/clips
-      status: pending
+      status: shipped
+      ship_sha: dbfc6a19
+      ship_date: 2026-07-06
       deadline: 2026-08-22
     - id: PR-SPLIT-FILESYSTEM-STAGER
       owner_capability: internal/infrastructure/acquisition
