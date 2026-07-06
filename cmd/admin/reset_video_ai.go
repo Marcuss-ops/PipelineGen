@@ -50,13 +50,14 @@ func runResetVideoAI(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("drive admin/reader ports are not available")
+	if root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil || root.Drive.Lifecycle == nil {
+		return fmt.Errorf("drive admin/reader/lifecycle ports are not available")
 	}
 
 	ctx := cmdContext()
 	driveReader := root.Drive.Reader
 	driveAdmin := root.Drive.Admin
+	driveLifecycle := root.Drive.Lifecycle
 	stockRootFolder := cfg.Drive.RootFolder()
 
 	// Step 1: List and delete all items in the source folder
@@ -75,7 +76,7 @@ func runResetVideoAI(args []string) error {
 	if *apply && len(list) > 0 {
 		fmt.Println("\nDeleting items...")
 		for _, f := range list {
-			if err := driveAdmin.DeleteFile(ctx, f.ID); err != nil {
+			if err := driveLifecycle.Delete(ctx, f.ID); err != nil {
 				log.Warn("Failed to delete file", zap.String("name", f.Name), zap.String("id", f.ID), zap.Error(err))
 			} else {
 				fmt.Printf("  ✅ Deleted: %s\n", f.Name)

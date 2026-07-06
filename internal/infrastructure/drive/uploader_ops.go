@@ -235,6 +235,8 @@ func (u *Uploader) GetFolderName(ctx context.Context, folderID string) (string, 
 
 // TrashFile moves a file to the trash in Google Drive.
 // This is safer than permanent deletion as files can be recovered.
+//
+// Deprecated: use FileLifecycle.Trash instead.
 func (u *Uploader) TrashFile(ctx context.Context, fileID string) error {
 	if u.Service == nil {
 		return fmt.Errorf("drive service not configured")
@@ -258,6 +260,8 @@ func (u *Uploader) TrashFile(ctx context.Context, fileID string) error {
 
 // DeleteFile permanently deletes a file from Google Drive.
 // Use TrashFile instead for safer operations.
+//
+// Deprecated: use FileLifecycle.Delete instead.
 func (u *Uploader) DeleteFile(ctx context.Context, fileID string) error {
 	if u.Service == nil {
 		return fmt.Errorf("drive service not configured")
@@ -276,6 +280,8 @@ func (u *Uploader) DeleteFile(ctx context.Context, fileID string) error {
 }
 
 // RenameFile renames a file or folder on Google Drive.
+//
+// Deprecated: use FileLifecycle.Rename instead.
 func (u *Uploader) RenameFile(ctx context.Context, fileID, newName string) error {
 	if u.Service == nil {
 		return fmt.Errorf("drive service not configured")

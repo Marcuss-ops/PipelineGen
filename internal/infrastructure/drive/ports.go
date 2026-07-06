@@ -33,14 +33,22 @@ type Admin interface {
 	DeleteFolder(ctx context.Context, folderID string) error
 
 	// File lifecycle
+	//
+	// Deprecated: use FileLifecycle.Trash instead.
 	TrashFile(ctx context.Context, fileID string) error
+	// Deprecated: use FileLifecycle.Delete instead.
 	DeleteFile(ctx context.Context, fileID string) error
 	MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error
+	// Deprecated: use FileLifecycle.Rename instead.
 	RenameFile(ctx context.Context, fileID, newName string) error
 
 	// Upload (raw path-based, bypassing DestinationRegistry)
+	//
+	// Deprecated: use delivery.Publisher.Publish instead.
 	UploadFile(ctx context.Context, localPath, folderID, filename string) (*UploadResult, error)
+	// Deprecated: use delivery.Publisher.Publish instead.
 	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error)
+	// Deprecated: use delivery.Publisher.Publish instead.
 	UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error)
 
 	// Liveness probe (replaces direct About.Get on *gdrive.Service)
