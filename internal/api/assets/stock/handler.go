@@ -134,11 +134,16 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		return
 	}
 
-	apiutil.OK(c, gin.H{
-		"job_id":     jobID,
-		"message":    "Stock search-and-run job enqueued",
-		"status_url": "/api/jobs/" + jobID + "/full",
-	})
+	resp := gin.H{
+		"job_id": jobID,
+	}
+	if jobID != "" {
+		resp["message"] = "Stock search-and-run job enqueued"
+		resp["status_url"] = "/api/jobs/" + jobID + "/full"
+	} else {
+		resp["message"] = "Stock pipeline run completed"
+	}
+	apiutil.OK(c, resp)
 }
 
 // 200/202 rationale: see comment block above SearchAndRun.
@@ -205,9 +210,14 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		return
 	}
 
-	apiutil.OK(c, gin.H{
-		"job_id":     jobID,
-		"message":    "Stock pipeline job enqueued",
-		"status_url": "/api/jobs/" + jobID + "/full",
-	})
+	resp := gin.H{
+		"job_id": jobID,
+	}
+	if jobID != "" {
+		resp["message"] = "Stock pipeline job enqueued"
+		resp["status_url"] = "/api/jobs/" + jobID + "/full"
+	} else {
+		resp["message"] = "Stock pipeline run completed"
+	}
+	apiutil.OK(c, resp)
 }
