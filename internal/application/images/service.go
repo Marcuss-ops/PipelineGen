@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
@@ -51,11 +52,11 @@ type Service struct {
 	Store      *ImageStorageService
 	Meta       *MetadataService
 	Diag       *DiagnosticsService
-	Styles     *generated.StyleRegistry
+	Styles     *generation.StyleRegistry
 }
 
 // StylesRegistry returns the held generation.StyleRegistry, or nil.
-func (s *Service) StylesRegistry() *generated.StyleRegistry {
+func (s *Service) StylesRegistry() *generation.StyleRegistry {
 	if s == nil {
 		return nil
 	}
