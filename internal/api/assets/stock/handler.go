@@ -103,9 +103,22 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 	// HTTP validation — must run before FromSearchAndRunRequest so the
 	// converter sees a valid shape (per the S2b design: validation in
 	// the api layer, defaulting in the api layer).
-	if len(req.Queries) == 0 {
-		apiutil.BadRequest(c, "queries required")
+	if len(req.Queries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
+		apiutil.BadRequest(c, "queries, direct_urls, drive_urls, or clips required")
 		return
+	}
+	if len(req.Clips) > 0 {
+		hasURL := false
+		for _, clip := range req.Clips {
+			if clip.URL != "" {
+				hasURL = true
+				break
+			}
+		}
+		if !hasURL {
+			apiutil.BadRequest(c, "clips require at least one clip with a non-empty url")
+			return
+		}
 	}
 	if req.TotalMinutes <= 0 {
 		req.TotalMinutes = 5
