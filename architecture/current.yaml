@@ -6745,7 +6745,7 @@
     - id: PR-SPLIT-WORKERDOCTOR-PROBES
       owner_capability: internal/application/workerdoctor
       status: shipped
-      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_sha: 4f3e0468
       ship_date: 2026-07-06
       deadline: 2026-07-15
     - id: PR-SPLIT-ARCHCHECK-CHECKS-V2
