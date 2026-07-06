@@ -169,7 +169,8 @@ HTTP_BODY=$(curl -sS -X POST "$BASE/api/stock-pipeline/run" \
     -H "Content-Type: application/json" \
     --data "$PAYLOAD_JSON" \
     -o "$OUT_JSON" \
-    -w "%{http_code}")
+    -w "%{http_code}" \
+    --max-time 30)
 
 echo "HTTP=$HTTP_BODY"
 echo "--- response body ---"
@@ -203,7 +204,7 @@ echo
 echo ">>> Polling $BASE/api/jobs/$JOB_ID/full every ${POLL_INTERVAL_SECONDS}s for ${MAX_POLL_ITERATIONS} iter"
 
 for i in $(seq 1 "$MAX_POLL_ITERATIONS"); do
-    POLL_JSON=$(curl -sS "$BASE/api/jobs/$JOB_ID/full" -H "$AUTH")
+    POLL_JSON=$(curl -sS --max-time 10 "$BASE/api/jobs/$JOB_ID/full" -H "$AUTH")
     STATUS=$(echo "$POLL_JSON" | jq -r '.status // empty')
     ERROR=$(echo "$POLL_JSON" | jq -r '.error // empty')
 
