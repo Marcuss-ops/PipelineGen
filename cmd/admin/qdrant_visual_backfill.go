@@ -22,7 +22,9 @@ import (
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -139,8 +141,8 @@ func backfillVisualEmbeddings(ctx context.Context, db *sql.DB, cfg *config.Confi
 	defer rows.Close()
 
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
-	schema := qdrant.DefaultV3Schema()
-	imageEmbedder := qdrant.NewImageEmbedderAdapter(qdrant.ImageEmbedderConfig{
+	schema := qdrantschema.DefaultV3Schema()
+	imageEmbedder := search.NewImageEmbedderAdapter(search.ImageEmbedderConfig{
 		ServerURL: cfg.ClipIndexer.ServerURL,
 		Timeout:   90 * time.Second,
 	}, schema, log)
@@ -241,7 +243,7 @@ func backfillVisualEmbeddings(ctx context.Context, db *sql.DB, cfg *config.Confi
 	return report, nil
 }
 
-func regenerateVisualEmbedding(ctx context.Context, ffmpegProc *ffmpeg.Processor, embedder qdrant.ImageEmbedder, assetID, mediaType, localPath string) ([]float32, error) {
+func regenerateVisualEmbedding(ctx context.Context, ffmpegProc *ffmpeg.Processor, embedder search.ImageEmbedder, assetID, mediaType, localPath string) ([]float32, error) {
 	switch strings.ToLower(strings.TrimSpace(mediaType)) {
 	case "image":
 		vecs, err := embedder.EmbedImages(ctx, []string{localPath})

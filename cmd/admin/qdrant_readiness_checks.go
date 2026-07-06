@@ -32,7 +32,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -80,7 +84,7 @@ type readinessDeps struct {
 //   - OutboxHandler     ← WireRegistry().OutboxHandler (api.InternalOutboxRouter)
 //   - MediasearchHandler← WireRegistry().MediasearchHandler (api.InternalMediaSearchRouter)
 //   - ClipsRepo         ← root.Repos.ClipsRepo     *assets.ClipsRepository
-//   - QdrantClient      ← root.Process.QdrantClient  *qdrant.Client
+//   - QdrantClient      ← root.Process.QdrantClient  *transport.Client
 //   - SemanticSearch    ← registryWiring.SearchFanOut (search.SearchFanOut)
 type compositionRoot struct {
 	Dispatcher         *outbox.Dispatcher
@@ -88,7 +92,7 @@ type compositionRoot struct {
 	OutboxHandler      api.InternalOutboxRouter
 	MediasearchHandler api.InternalMediaSearchRouter
 	ClipsRepo          *assets.ClipsRepository
-	QdrantClient       *qdrant.Client
+	QdrantClient       *transport.Client
 	SemanticSearch     searchpkg.SearchFanOut
 }
 
@@ -216,7 +220,7 @@ func checkSQLiteReader(_ context.Context, deps readinessDeps) checkStatus {
 
 // checkQdrantActiveCollection: production-shaped. Replaces the old
 // stub pattern (NewHealthProbe stub + no-op reconciler). Builds a
-// real *qdrant.Client from cfg and runs the canonical GetAliasTarget
+// real *transport.Client from cfg and runs the canonical GetAliasTarget
 // + CompareActiveCollection flow.
 func checkQdrantActiveCollection(ctx context.Context, deps readinessDeps) checkStatus {
 	if deps.Cfg == nil || deps.Cfg.Qdrant.BaseURL == "" {
@@ -225,17 +229,17 @@ func checkQdrantActiveCollection(ctx context.Context, deps readinessDeps) checkS
 	if !deps.Cfg.Qdrant.Enabled {
 		return checkStatus{Err: "qdrant.enabled=false (enable to pass production-shaped readiness)"}
 	}
-	client := qdrant.NewClient(&qdrant.Config{
+	client := transport.NewClient(&qdrantschema.Config{
 		BaseURL: deps.Cfg.Qdrant.BaseURL,
 		Timeout: deps.Cfg.Qdrant.Timeout,
 		APIKey:  deps.Cfg.Qdrant.APIKey,
 	}, deps.Log)
-	probe := qdrant.NewHealthProbe(client)
+	probe := disasterrecovery.NewHealthProbe(client)
 	if err := probe.Probe(ctx); err != nil {
 		return checkStatus{Err: "qdrant health probe failed: " + err.Error()}
 	}
-	schema := qdrant.DefaultV3Schema()
-	mgr := qdrant.NewCollectionManager(client, schema, deps.Log)
+	schema := qdrantschema.DefaultV3Schema()
+	mgr := collections.NewCollectionManager(client, schema, deps.Log)
 	active, err := mgr.GetActiveCollection(ctx)
 	if err != nil {
 		return checkStatus{Err: "GetActiveCollection failed: " + err.Error()}
@@ -353,7 +357,7 @@ func checkReconcilerProduction(ctx context.Context, deps readinessDeps) checkSta
 		return checkStatus{Err: "production composition root is nil — reconciler check requires real Client + assetStore"}
 	}
 	if deps.Root.QdrantClient == nil {
-		return checkStatus{Err: "production *qdrant.Client is nil — reconciler cannot run its real scroll path"}
+		return checkStatus{Err: "production *transport.Client is nil — reconciler cannot run its real scroll path"}
 	}
 	if deps.DB == nil {
 		return checkStatus{Err: "raw *sql.DB is nil — reconciler assetStore consumer missing"}
@@ -362,7 +366,7 @@ func checkReconcilerProduction(ctx context.Context, deps readinessDeps) checkSta
 		return checkStatus{Err: "qdrant.base_url is empty — reconciler cannot open the alias"}
 	}
 
-	schema := qdrant.DefaultV3Schema()
+	schema := qdrantschema.DefaultV3Schema()
 	assetStore := qdrantAssetStoreForReconcile(deps.DB)
 	rec := reconciler.NewServiceFromDeps(reconciler.ServiceDeps{
 		Schema: reconciler.SchemaVersions{
@@ -406,7 +410,7 @@ func (readiNoopPayload) DeletePayloadKeys(context.Context, string, []string, []s
 // ── Production-shaped dependencies shims ───────────────────────────────
 
 type qdrantReconcilerListerAdapter struct {
-	Client *qdrant.Client
+	Client *transport.Client
 }
 
 func (a qdrantReconcilerListerAdapter) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (reconciler.Points, error) {
@@ -431,20 +435,20 @@ func (a qdrantReconcilerListerAdapter) ScrollPoints(ctx context.Context, collect
 }
 
 func qdrantAssetStoreForReconcile(db *sql.DB) qdrantReconcileAssetStore {
-	return qdrantReconcileAssetStore{Store: qdrant.NewSQLiteAssetStore(db)}
+	return qdrantReconcileAssetStore{Store: indexing.NewSQLiteAssetStore(db)}
 }
 
 type qdrantReconcileAssetStore struct {
-	Store *qdrant.SQLiteAssetStore
+	Store *indexing.SQLiteAssetStore
 }
 
 func (s qdrantReconcileAssetStore) ListForReconcile(ctx context.Context, includeLifecycleStates []string) ([]reconciler.AssetSnapshot, error) {
 	if s.Store == nil {
-		return nil, fmt.Errorf("readiness: qdrant.SQLiteAssetStore is nil — cannot run reconciler SQLite path")
+		return nil, fmt.Errorf("readiness: indexing.SQLiteAssetStore is nil — cannot run reconciler SQLite path")
 	}
 	assets, err := s.Store.ListAssetsForReconcile(ctx, includeLifecycleStates)
 	if err != nil {
-		return nil, fmt.Errorf("readiness: qdrant.SQLiteAssetStore.ListAssetsForReconcile failed: %w", err)
+		return nil, fmt.Errorf("readiness: indexing.SQLiteAssetStore.ListAssetsForReconcile failed: %w", err)
 	}
 	out := make([]reconciler.AssetSnapshot, len(assets))
 	for i, a := range assets {

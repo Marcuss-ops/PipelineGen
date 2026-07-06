@@ -15,7 +15,7 @@
 //     below for rationale on bypassing outbox.Dispatcher).
 //   - orphan → outbox_events DELETE event.
 //   - lifecycle_key_legacy / locator_legacy →
-//     qdrant.Client.DeletePayloadKeys (canonical for legacy key
+//     transport.Client.DeletePayloadKeys (canonical for legacy key
 //     stripping; no outbox primitive for partial payload mutation).
 //
 // Usage:
@@ -45,9 +45,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
 
 // (database/sql is required for outboxRepairAdapter.db which is *sql.DB — the OpenSQLiteDB return type)
@@ -117,7 +119,7 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 // Pipeline:
 //  1. Load config; require qdrant.enabled=true.
 //  2. Open the media DB.
-//  3. Build canonical stack: DefaultV3Schema, asset store, qdrant.Client.
+//  3. Build canonical stack: DefaultV3Schema, asset store, transport.Client.
 //  4. Resolve target collection (override > runtime alias target).
 //  5. Wire service ports from the canonical concrete adapters.
 //  6. Run Service.Reconcile.
@@ -160,9 +162,9 @@ func runReconcileQdrant(args []string) error {
 	defer sqliteDB.Close()
 
 	// 2. Build canonical stack.
-	schema := qdrant.DefaultV3Schema()
-	assetStore := qdrant.NewSQLiteAssetStore(sqliteDB.DB)
-	client := qdrant.NewClient(&qdrant.Config{
+	schema := qdrantschema.DefaultV3Schema()
+	assetStore := indexing.NewSQLiteAssetStore(sqliteDB.DB)
+	client := transport.NewClient(&qdrantschema.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
 		APIKey:  cfg.Qdrant.APIKey,
 		Timeout: cfg.Qdrant.Timeout,
@@ -301,11 +303,11 @@ func modeLabel(d reconcileQdrantDeps) string {
 
 // ── Port adapters (cmd/admin glue) ────────────────────────────────────
 
-// qdrantListerAdapter wraps qdrant.Client.ScrollPoints to satisfy
+// qdrantListerAdapter wraps transport.Client.ScrollPoints to satisfy
 // reconciler.QdrantLister. The reconciler sees only PointSnapshot (no
 // leak of qdrant.ScrollPoint into the application layer).
 type qdrantListerAdapter struct {
-	client *qdrant.Client
+	client *transport.Client
 }
 
 func (a *qdrantListerAdapter) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (reconciler.Points, error) {
@@ -323,11 +325,11 @@ func (a *qdrantListerAdapter) ScrollPoints(ctx context.Context, collection strin
 	return out, nil
 }
 
-// qdrantPayloadAdapter wraps qdrant.Client.DeletePayloadKeys. The
+// qdrantPayloadAdapter wraps transport.Client.DeletePayloadKeys. The
 // collection is captured at construction so the reconciler call sites
 // stay simple.
 type qdrantPayloadAdapter struct {
-	client *qdrant.Client
+	client *transport.Client
 }
 
 func (a *qdrantPayloadAdapter) DeletePayloadKeys(ctx context.Context, collection string, keys []string, pointIDs []string) error {
@@ -518,9 +520,9 @@ func (a *outboxRepairAdapter) EnqueueDelete(ctx context.Context, assetID string)
 	return tx.Commit()
 }
 
-// reconcileReaderAdapter wraps qdrant.SQLiteAssetStore.ListAssetsForReconcile.
+// reconcileReaderAdapter wraps indexing.SQLiteAssetStore.ListAssetsForReconcile.
 type reconcileReaderAdapter struct {
-	store *qdrant.SQLiteAssetStore
+	store *indexing.SQLiteAssetStore
 }
 
 func (a *reconcileReaderAdapter) ListForReconcile(ctx context.Context, includeLifecycleStates []string) ([]reconciler.AssetSnapshot, error) {

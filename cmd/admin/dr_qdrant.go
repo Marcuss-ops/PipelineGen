@@ -17,7 +17,7 @@
 // Wire-up pattern (mirrors reconcile_qdrant.go):
 //  1. parseDrQdrantDispatcher — peel subcommand
 //  2. appLogger / qdrant cfg — same heat path as reconcile_qdrant
-//  3. Build canonical stack: qdrant.Client + CollectionManager +
+//  3. Build canonical stack: transport.Client + CollectionManager +
 //     SQLiteAssetStore + ReindexVerifier
 //  4. Construct dr service via ServiceDeps struct (PR2-style)
 //  5. Run + pretty-print; --json switches to JSON-only output
@@ -40,8 +40,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/dr"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -69,7 +72,7 @@ func parseDrQdrantDispatcher(args []string) (drQdrantDispatcher, error) {
 }
 
 // runDrQdrant is the cmd/admin/main.go entry point for dr-qdrant.
-// The qdrant.Client is constructed here and shared by all 4 subcommands.
+// The transport.Client is constructed here and shared by all 4 subcommands.
 // SQLite is opened lazily in runDrRestore (the only subcommand that
 // needs the asset store for the verifier).
 //
@@ -96,12 +99,12 @@ func runDrQdrant(args []string) error {
 		zap.String("subcommand", deps.Sub),
 		zap.String("qdrant_url", cfg.Qdrant.BaseURL))
 
-	client := qdrant.NewClient(&qdrant.Config{
+	client := transport.NewClient(&qdrantschema.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
 		APIKey:  cfg.Qdrant.APIKey,
 		Timeout: cfg.Qdrant.Timeout,
 	}, log)
-	schema := qdrant.DefaultV3Schema()
+	schema := qdrantschema.DefaultV3Schema()
 
 	switch deps.Sub {
 	case "list-snapshots":
@@ -119,11 +122,11 @@ func runDrQdrant(args []string) error {
 // resolveActiveCollection resolves the active alias target unless the
 // operator passes --collection=NAME explicitly. Shared helper used by
 // ListSnapshots + TakeSnapshot + RestoreSnapshot.
-func resolveActiveCollection(ctx context.Context, client *qdrant.Client, override string, log *zap.Logger) (string, error) {
+func resolveActiveCollection(ctx context.Context, client *transport.Client, override string, log *zap.Logger) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-	alias := qdrant.DefaultV3Schema().RuntimeAlias
+	alias := qdrantschema.DefaultV3Schema().RuntimeAlias
 	target, err := client.GetAliasTarget(ctx, alias)
 	if err != nil {
 		return "", fmt.Errorf("resolve alias %q target: %w", alias, err)
@@ -159,7 +162,7 @@ func parseListSnapshotsFlags(args []string) (listSnapshotsFlags, error) {
 	return d, nil
 }
 
-func runDrListSnapshots(ctx context.Context, client *qdrant.Client, log *zap.Logger, args []string) error {
+func runDrListSnapshots(ctx context.Context, client *transport.Client, log *zap.Logger, args []string) error {
 	flags, err := parseListSnapshotsFlags(args)
 	if err != nil {
 		return err
@@ -170,7 +173,7 @@ func runDrListSnapshots(ctx context.Context, client *qdrant.Client, log *zap.Log
 	}
 
 	svc := dr.NewSnapshotServiceFromDeps(dr.SnapshotServiceDeps{
-		Store: qdrant.NewSnapshotStoreAdapter(client),
+		Store: qdrantmaintenance.NewSnapshotStoreAdapter(client),
 		Log:   log,
 	})
 	snaps, err := svc.List(ctx, collection)
@@ -219,7 +222,7 @@ func parseTakeSnapshotFlags(args []string) (takeSnapshotFlags, error) {
 	return d, nil
 }
 
-func runDrTakeSnapshot(ctx context.Context, client *qdrant.Client, log *zap.Logger, args []string) error {
+func runDrTakeSnapshot(ctx context.Context, client *transport.Client, log *zap.Logger, args []string) error {
 	flags, err := parseTakeSnapshotFlags(args)
 	if err != nil {
 		return err
@@ -230,7 +233,7 @@ func runDrTakeSnapshot(ctx context.Context, client *qdrant.Client, log *zap.Logg
 	}
 
 	svc := dr.NewSnapshotServiceFromDeps(dr.SnapshotServiceDeps{
-		Store: qdrant.NewSnapshotStoreAdapter(client),
+		Store: qdrantmaintenance.NewSnapshotStoreAdapter(client),
 		Log:   log,
 	})
 	snap, err := svc.Take(ctx, collection)
@@ -305,7 +308,7 @@ func parseRestoreSnapshotFlags(args []string) (restoreSnapshotFlags, error) {
 // The cfg parameter is the same shape appLogger returns in this
 // package; runDrQdrant forwards it. Sub-restore needs cfg.Storage
 // to open the SQLite DB for the verifier's asset store.
-func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *qdrant.Client, schema *qdrant.IndexSchema, log *zap.Logger, args []string) error {
+func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
 	flags, err := parseRestoreSnapshotFlags(args)
 	if err != nil {
 		return err
@@ -334,15 +337,15 @@ func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *qdran
 	}
 	defer sqliteDB.Close()
 
-	cm := qdrant.NewCollectionManager(client, schema, log)
-	assetStore := qdrant.NewSQLiteAssetStore(sqliteDB.DB)
+	cm := collections.NewCollectionManager(client, schema, log)
+	assetStore := indexing.NewSQLiteAssetStore(sqliteDB.DB)
 
 	svc := dr.NewRestoreServiceFromDeps(dr.RestoreServiceDeps{
-		Store:    qdrant.NewSnapshotStoreAdapter(client),
+		Store:    qdrantmaintenance.NewSnapshotStoreAdapter(client),
 		Switcher: qdrantmaintenance.NewAliasSwitcherAdapter(client),
-		Creator:  qdrant.NewCollectionCreatorAdapter(cm),
-		Verifier: qdrant.NewVerifierAdapter(client, assetStore, schema, log),
-		Metrics:  qdrant.NewPromDRMetricsAdapter(),
+		Creator:  qdrantmaintenance.NewCollectionCreatorAdapter(cm),
+		Verifier: qdrantmaintenance.NewVerifierAdapter(client, assetStore, schema, log),
+		Metrics:  qdrantmaintenance.NewPromDRMetricsAdapter(),
 		Log:      log,
 	})
 
@@ -431,18 +434,18 @@ func parseApplyRetentionFlags(args []string) (applyRetentionFlags, error) {
 	return d, nil
 }
 
-func runDrApplyRetention(ctx context.Context, client *qdrant.Client, schema *qdrant.IndexSchema, log *zap.Logger, args []string) error {
+func runDrApplyRetention(ctx context.Context, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
 	flags, err := parseApplyRetentionFlags(args)
 	if err != nil {
 		return err
 	}
-	cm := qdrant.NewCollectionManager(client, schema, log)
+	cm := collections.NewCollectionManager(client, schema, log)
 	// Cycle break (June 2026): the executor port takes dr-local
 	// RetentionConfig/RetentionResult; cm.CleanupWithConfig takes
 	// qdrant-local types. RetentionExecutorAdapter bridges the two
 	// without exposing the qdrant types to the dr application layer.
 	svc := dr.NewRetentionServiceFromDeps(dr.RetentionServiceDeps{
-		Executor: qdrant.NewRetentionExecutorAdapter(cm),
+		Executor: qdrantmaintenance.NewRetentionExecutorAdapter(cm),
 		Log:      log,
 	})
 
