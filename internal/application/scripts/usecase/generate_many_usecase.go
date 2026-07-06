@@ -42,6 +42,11 @@ func (uc *GenerateManyUseCase) SetFanoutBroker(broker FanoutItemBroker) {
 }
 
 // FanoutResult carries the outcome of a fan-out operation.
+type FanoutResult struct {
+	TotalItems         int
+	FailedEnqueueCount int
+	ChildJobIDs        []string
+	TotalEnqueued      int
 }
 
 // ExecuteFanout emits each item as a separate script.generate_item child
