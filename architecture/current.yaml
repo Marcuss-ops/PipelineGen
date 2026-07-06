@@ -7650,3 +7650,8 @@
     status: shipped
     ship_sha: e08d1d29
     ship_date: 2026-07-06
+  - id: PR-CHECK-N-PLAYER-CLIENT-CENTRALIZATION
+    owner_capability: cmd/archcheck/scan
+    status: shipped
+    ship_sha: db35ed52
+    ship_date: 2026-07-06
