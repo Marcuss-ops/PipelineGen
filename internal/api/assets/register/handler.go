@@ -247,6 +247,8 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		"duration_sec":    res.DurationSec,
 		"drive_link":      res.DriveLink,
 		"drive_file_id":   res.DriveFileID,
+		"drive_folder_id": res.DriveFolderID,
+		"drive_path":      res.DrivePath,
 		"file_hash":       res.FileHash,
 		"source":          res.Source,
 		"category":        res.Category,

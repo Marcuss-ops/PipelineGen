@@ -89,10 +89,16 @@ type RegisterClipResult struct {
 	LocalPath      string
 	Indexed        bool
 	IndexingStatus domain.SourcingIndexStatus `json:"indexing_status"`
-	Transcribed    bool
-	Language       string
-	RelatedClips   map[string]any
-	Message        string
+
+	// DoD #8 (July 2026): canonical Drive folder path and folder ID
+	// returned to API callers so they can see where the asset landed
+	// on Drive without re-querying media_assets.
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
+	DrivePath     string `json:"drive_path,omitempty"`
+	Transcribed   bool
+	Language      string
+	RelatedClips  map[string]any
+	Message       string
 
 	// DeliveryStatus tracks the Drive publishing outcome (P0.2, July 2026).
 	// Replaces the pre-P0.2 ambiguous "OK=true for both Drive-success and
