@@ -3120,3 +3120,29 @@ Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesso
 ### Pre-existing build issues (carry-forward, NOT regressions)
 
 - The 6-item voiceover + app build-issue list per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` is UNCHANGED.
+
+## Unreleased (PR-SEGMENT-FINDER-BASEARGS-MIGRATION — July 2026)
+
+### Added
+
+- **PR-SEGMENT-FINDER-BASEARGS-MIGRATION** (commit `4f1a1591`, 2026-07-06) — migrate `internal/application/youtube/adapters/segment_finder.go::findSegmentsFromSubtitles` (line 137) to use `ytdlp.BaseArgs`. Closes the LAST remaining drift surface in the YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06 parent wave. The drift (pre-PR): `exec.CommandContext` manually appended `--write-auto-subs --write-subs --skip-download --sub-langs en --sub-format vtt -o <path> <url>` and bypasses `ytdlp.BaseArgs` entirely, dropping `--cookies` (required for n-challenge + age-restricted YouTube videos), `--js-runtime`, `--remote-components`, `--no-warnings`, and `--extractor-args youtube:player_client=web,android`. 2 files / +200 / -7 LOC:
+  - `internal/application/youtube/adapters/segment_finder.go` (modified, +47 / -7 LOC) — added 2 imports (ytdlp + ytcfg); extracted pure helper `buildSubtitleArgs(ytdlpPath, videoURL, outputTemplate string) []string`; updated execution site; `useCookies` hardcoded to false (public video segmentation domain).
+  - `internal/application/youtube/adapters/segment_finder_test.go` (NEW, ~155 LoC) — 2 hermetic TDD tests: `_DelegatesToBaseArgs` (locks canonical delegation) + `_PublicVideoSemantics` (locks `useCookies=false` contract).
+
+### godlike/06 SSOT
+
+- `ytdlp.BaseArgs` is the SOLE canonical emitter of `--no-warnings` + `--extractor-args youtube:player_client=web,android` for YouTube URLs.
+
+### godlike/07 NO-FAKE-AVAILABILITY
+
+- The 2 tests lock the actual contract — future refactors that bypass BaseArgs will surface as test failures BEFORE the regression reaches production.
+
+### godlike/07 minimum-blast-radius
+
+- 0 surface contract changes (Service struct unchanged; public API unchanged).
+- 0 new dependencies.
+- 0 new test infrastructure (pure helper testable directly).
+
+### Pre-existing build issues (carry-forward, NOT regressions)
+
+- The 6-item voiceover + app build-issue list per `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` is UNCHANGED.

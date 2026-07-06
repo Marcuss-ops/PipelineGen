@@ -7806,3 +7806,43 @@ PR-ARTLIST-COOKIES-DOWNLOADER-INTEGRATION-TEST:
     - captureRunner is test-only (defined in downloader_test.go, same package).
   godlike_07_no_fake_availability:
     - The 4 tests lock the actual contract — future refactors that accidentally inject --cookies when artlistCookiesPath is empty (or skip it when set) will surface as test failures BEFORE the regression reaches production.
+PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
+  ship_date: 2026-07-06
+  ship_sha: 4f1a1591
+  type: feat_migration_3surface_lockstep
+  status: shipped
+  ship_via: 0_go_touch_audit_pin
+  description: |
+    Migrate internal/application/youtube/adapters/segment_finder.go::findSegmentsFromSubtitles
+    (line 137) to use ytdlp.BaseArgs. Closes the LAST remaining
+    drift surface in the YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06
+    parent wave. The drift (pre-PR): exec.CommandContext manually
+    appended --write-auto-subs --write-subs --skip-download --sub-langs en
+    --sub-format vtt -o <path> <url> and bypassed ytdlp.BaseArgs
+    entirely, dropping --cookies (required for n-challenge + age-restricted
+    YouTube videos), --js-runtime, --remote-components, --no-warnings,
+    and --extractor-args youtube:player_client=web,android. 2 files /
+    +200 / -7 LOC. The pure helper pattern (NOT captureRunner interface)
+    is the godlike/07 minimum-blast-radius move for an application-layer
+    drift surface (no Service struct change, no captureRunner plumbing
+    overhead). useCookies hardcoded to false (public video segmentation
+    domain; monitor is a separate adapter).
+  cross_references:
+    parent_audit:
+      - architecture/current.yaml#YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06
+    sister_wave:
+      - architecture/current.yaml#PR-PLAYER-CLIENT-DRIFT-FIX
+      - architecture/current.yaml#PR-SUBTITLES-BASEARGS-MIGRATION
+      - architecture/current.yaml#PR-ARTLIST-COOKIES-DOWNLOADER-INTEGRATION-TEST
+    canonical_surface:
+      - internal/application/youtube/adapters/segment_finder.go::buildSubtitleArgs
+      - internal/infrastructure/ytdlp/cmd_builder.go::BaseArgs
+  godlike_06_ssot:
+    - ytdlp.BaseArgs is the SOLE canonical emitter of --no-warnings + --extractor-args youtube:player_client=web,android for YouTube URLs.
+  godlike_07_no_fake_availability:
+    - The 2 tests lock the actual contract — future refactors that bypass BaseArgs will surface as test failures BEFORE the regression reaches production.
+  forward_pointers:
+    - id: PR-SEGMENT-FINDER-COMMANDBUILDER-CACHE
+      deadline: 2026-08-15
+      owner_capability: internal/application/youtube/adapters
+      summary: Cache the ytdlp.NewCommandBuilder(cfg) in a package-level sync.Once value to avoid per-call construction. Per-call overhead is negligible today (called once per video) but a future optimization for hot-loop callers.
