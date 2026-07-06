@@ -227,7 +227,7 @@ func buildVoiceoverService(
 		// retired; Publisher does NOT write to SQLite, does NOT run a
 		// dedupe gate, does NOT touch media_assets (finalizeStage
 		// owns the per-item tx).
-		publisherAdapter := newUseCasePublisherAdapter(driveUploader)
+		publisherAdapter := newUseCasePublisherAdapter(publisher)
 
 		// Adapter: AudioPostProcessor port — silence-removal bridge
 		// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe

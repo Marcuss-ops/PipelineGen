@@ -1,13 +1,10 @@
 // Package app — voiceover VoiceoverPublisher + DriveUploaderPort
 // adapters (PR-VO-ADAPTERS-SPLIT, July 2026).
 //
-// Capability cluster: DRIVE external I/O bridges. Both adapters wrap
-// drive.Admin (the canonical 4-port Drive surface from DRIVE-005) to
-// satisfy the narrow ports declared in
-// internal/application/voiceover/ports.go:
+// Capability cluster: DRIVE external I/O bridges.
 //
-// VoiceoverPublisher   ← drive.Admin.UploadFile (E1 cutover, June 2026)
-// DriveUploaderPort    ← drive.Admin.DeleteFile (post-commit cleanup)
+// VoiceoverPublisher ← delivery.Publisher.Publish (P1-5 cutover, July 2026)
+// DriveUploaderPort  ← drive.Admin.DeleteFile (post-commit cleanup)
 //
 // Fail-closed: nil admin panics at constructor time (fail-fast per
 // AGENTS.md WireUp pattern), returning nil from newVoiceoverDriveAdapter
@@ -19,27 +16,24 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // ─────────────────────────────────────────────────────────────────────
-// VoiceoverPublisher adapter (E1 cutover, June 2026).
+// VoiceoverPublisher adapter (P1-5 cutover, July 2026).
 //
-// Bridges *drive.Uploader (which satisfies drive.Admin via the
-// compile-time assertion in internal/infrastructure/drive/ports.go)
-// → voiceover.VoiceoverPublisher.Publish. The upload-only port
-// replaces the pre-E1 voiceover.AssetLifecycle.Upload (which
-// delegated to lifecycle.Service.ProcessAsset and bundled Drive
-// upload + dedupe + asset-record persistence). The new Publisher
-// is upload-only:
-//   - no SQLite write (process_voiceover_item.go::Execute owns
-//     the canonical row INSERT inside its atomic-swap tx),
-//   - no dedupe gate (Executor paths already pre-resolve the
-//     canonical voiceover ID via buildVoiceoverID),
-//   - no asset-record projection (media_assets projection is
-//     written by lifecycle.Service.UpsertVoiceoverProjectionTx
-//     inside the same tx).
+// Bridges delivery.Publisher → voiceover.VoiceoverPublisher.Publish.
+// The legacy drive.Admin.UploadFile call-through (E1 cutover, June 2026)
+// is retired; the adapter now routes all voiceover Drive writes through
+// the canonical Publisher seam shared by YouTube clips, stock, images,
+// sound effects, and books.
+//
+// VoiceoverPublishCommand.FolderID is passed as PublishRequest.RootFolderOverride
+// so the Publisher bypasses DestinationRegistry root-folder resolution
+// (the voiceover use case already resolved the canonical folder via
+// DestinationResolver).
 //
 // Publish returns the canonical Drive file ID; downstream callers
 // (process_voiceover_item.go::Execute + usecase.go::processOneLanguage)
@@ -47,28 +41,30 @@ import (
 // CanonicalDriveWebURL / CanonicalDriveDownloadURL helpers in
 // voiceover/ports.go.
 //
-// Fail-closed: nil admin panics at construction (fail-fast per
-// AGENTS.md WireUp pattern). The UploadFile retry policy itself
-// is owned by the production drive.Uploader (3-attempt exponential
-// backoff via pkg/retry; see internal/infrastructure/drive/uploader.go).
+// Fail-closed: nil publisher panics at construction (fail-fast per
+// AGENTS.md WireUp pattern).
 // ─────────────────────────────────────────────────────────────────────
 
 type useCasePublisherAdapter struct {
-	admin drive.Admin
+	publisher delivery.Publisher
 }
 
-func newUseCasePublisherAdapter(admin drive.Admin) *useCasePublisherAdapter {
-	if admin == nil {
-		panic("app.adapters_voiceover_use_case: newUseCasePublisherAdapter: admin is required (*drive.Uploader implementing drive.Admin)")
+func newUseCasePublisherAdapter(publisher delivery.Publisher) *useCasePublisherAdapter {
+	if publisher == nil {
+		panic("app.adapters_voiceover_use_case: newUseCasePublisherAdapter: publisher is required (delivery.Publisher)")
 	}
-	return &useCasePublisherAdapter{admin: admin}
+	return &useCasePublisherAdapter{publisher: publisher}
 }
 
-// TODO(Fase 3.5): migrate from drive.Admin.UploadFile to delivery.Publisher.Publish.
-// The useCasePublisherAdapter currently calls a.admin.UploadFile() through the
-// drive.Admin Pattern 0 port. The canonical upload path is
-// delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationVoiceover, ...})
-// which adds conflict policy, filename normalisation, and structured PublishResult.
+// Publish routes the voiceover upload through the canonical delivery.Publisher
+// (P1-5 cutover, July 2026). The legacy drive.Admin.UploadFile call-through is
+// retired; all voiceover Drive writes now flow through the same Publisher seam
+// as YouTube clips, stock, images, sound effects, and books.
+//
+// VoiceoverPublishCommand carries a pre-resolved FolderID — the
+// publisher's RootFolderOverride field receives it so the Publisher bypasses
+// DestinationRegistry root-folder resolution (the voiceover use case already
+// resolved the canonical folder via DestinationResolver).
 func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.VoiceoverPublishCommand) (string, error) {
 	if cmd.LocalPath == "" {
 		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty LocalPath (use case supplied no local payload)")
@@ -79,12 +75,18 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 	if cmd.Filename == "" {
 		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty Filename (use case supplied no display name)")
 	}
-	res, err := a.admin.UploadFile(ctx, cmd.LocalPath, cmd.FolderID, cmd.Filename)
+	res, err := a.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:        delivery.DestinationVoiceover,
+		LocalPath:          cmd.LocalPath,
+		Filename:           cmd.Filename,
+		AssetID:            cmd.ID,
+		RootFolderOverride: cmd.FolderID,
+	})
 	if err != nil {
-		return "", fmt.Errorf("useCasePublisherAdapter.Publish: drive.UploadFile: %w", err)
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: %w", err)
 	}
-	if res == nil {
-		return "", fmt.Errorf("useCasePublisherAdapter.Publish: drive.UploadFile returned nil UploadResult")
+	if res.FileID == "" {
+		return "", fmt.Errorf("useCasePublisherAdapter.Publish: publisher returned empty FileID")
 	}
 	return res.FileID, nil
 }
