@@ -6255,3 +6255,111 @@
     owner_capability: architecture
     status: pending
     deadline: 2026-08-22
+- id: LONG-FILES-SPLIT-2026-07-06
+  owner_capability: architecture
+  status: pending
+  ship_date: 2026-07-06
+  exit_signal: false
+  deadline: 2026-08-31
+  description: |
+    Wave-tracker anchor for the long-files split action plan (July 2026).
+    Audit on 2026-07-06 surfaced 239 files >= 300 LOC, 62 >= 500 LOC,
+    12 >= 700 LOC, 4 >= 1000 LOC. This wave targets the top 20 files
+    across 3 priority bands (A: >700 LOC deadline 2026-07-20, B: 600-700
+    deadline 2026-08-03, C: 500-650 deadline 2026-08-17). Each per-file
+    PR lands directly on main per AGENTS.md Git-Lesson-2 with targeted
+    gofmt + go vet + go build + go test -short gates on the split subtree.
+    Canonical action plan: architecture/action-plans/2026-07-06-long-files-split.md.
+    godlike/06 4-surface SSOT lockstep (per CANONICAL.md Section 1): this
+    entry = CHANGELOG.md ## Unreleased -> ### Documentation mirror = AGENTS.md
+    ## Recent cross-cutting closures mirror = the action plan file.
+    Pre-existing 6-item build issue carry-forward unchanged (NOT regressions).
+  linked_issues:
+  - id: PR-LONG-FILES-A1-ARCHCHECK-MAIN
+    owner_capability: scripts/archcheck
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A2-YOUTUBE-METADATA-SERVICE
+    owner_capability: internal/application/youtube/metadata
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A3-FLOW-HELPERS
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A4-IMAGES-REPOSITORY
+    owner_capability: internal/infrastructure/database/sqlite/assets
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A5-JOBS-REGISTRY
+    owner_capability: internal/application/jobs
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A6-PAYLOAD-MAPPER
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A7-STORAGE-SEARCH
+    owner_capability: internal/application/images
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A8-GENERATE-ONE-USECASE
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A9-SYMBOL-REFS
+    owner_capability: scripts/archcheck
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-A10-POSTPROCESSOR-REGISTRY
+    owner_capability: internal/application/scripts/adapters
+    status: pending
+    deadline: 2026-07-20
+  - id: PR-LONG-FILES-B1-STOCK-ORCHESTRATOR
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-B2-COMPLETE-JOB-SERVICE
+    owner_capability: internal/application/jobs/completion
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-B3-FINALIZATION-TYPES
+    owner_capability: internal/domain/finalization
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-B4-WORKER-RUNNER
+    owner_capability: internal/application/jobs/worker
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-B5-YT-DISCOVERIES-REPO
+    owner_capability: internal/infrastructure/database/sqlite/assets
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-B6-LEGACY-AUDIT
+    owner_capability: internal/application/qdrant/legacyaudit
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-B7-REPO-LIFECYCLE
+    owner_capability: internal/infrastructure/database/sqlite/jobs
+    status: pending
+    deadline: 2026-08-03
+  - id: PR-LONG-FILES-C1-DELETION
+    owner_capability: internal/application/assets/deletion
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-LONG-FILES-C2-VOICEOVER-TYPES
+    owner_capability: internal/application/voiceover
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-LONG-FILES-C3-COMPLETE-WITH-ARTIFACTS
+    owner_capability: internal/application/jobs/completion
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-LONG-FILES-C4-ADAPTERS-INFRA
+    owner_capability: internal/app
+    status: pending
+    deadline: 2026-08-17
+  - id: PR-LONG-FILES-HOTSPOT-CROSSREF
+    owner_capability: architecture
+    status: pending
+    deadline: 2026-08-22
