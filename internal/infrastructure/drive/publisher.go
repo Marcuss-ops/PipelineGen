@@ -152,17 +152,45 @@ type FileUploaderPort interface {
 	PutFile(ctx context.Context, req PutFileRequest) (*PutFileResult, error)
 }
 
+// CatalogFolderLookup is the narrow port for consulting the local
+// drive_folder_catalog before making Drive API calls (DoD item 6,
+// SEMANTIC-LOCATION-API-2026-07-06). When a matching catalog entry
+// exists with status=active and a non-empty folder_id, the Publisher
+// uses the cached folder ID directly — no Drive EnsureFolder API
+// call needed.
+//
+// Returns ("", nil) when no catalog entry exists or the entry is
+// not in active state — the Publisher falls back to EnsureFolder.
+// Returns an error only on infrastructure failures (DB down, etc.)
+// — the Publisher logs the error and falls back to EnsureFolder.
+type CatalogFolderLookup interface {
+	LookupFolder(ctx context.Context, destination, path string) (string, error)
+}
+
 // Publisher implements delivery.Publisher. It resolves the destination,
 // builds the folder hierarchy, normalises the filename, and uploads.
 type Publisher struct {
-	registry *delivery.DestinationRegistry
-	folders  FolderManagerPort
-	files    FileUploaderPort
-	log      *zap.Logger
+	registry      *delivery.DestinationRegistry
+	folders       FolderManagerPort
+	files         FileUploaderPort
+	log           *zap.Logger
+	catalogLookup CatalogFolderLookup // optional — nil when catalog not wired
 }
 
 // Compile-time assertion: Publisher satisfies delivery.Publisher.
 var _ delivery.Publisher = (*Publisher)(nil)
+
+// SetCatalogLookup wires the local catalog lookup port into the Publisher.
+// When set, resolveDestination consults the catalog before calling
+// FolderManagerPort.EnsureFolder — if a matching entry exists with
+// status=active and a non-empty folder_id, the Publisher uses the
+// cached folder ID directly (no Drive API call).
+//
+// Nil-tolerant: passing nil disables catalog lookups. Callers that
+// don't have a catalog wired (tests, smoke-env) leave it nil.
+func (p *Publisher) SetCatalogLookup(lookup CatalogFolderLookup) {
+	p.catalogLookup = lookup
+}
 
 // NewPublisher constructs the canonical Drive publisher. Fails-fast at
 // composition time on any nil Pattern 0 dependency (the three sentinels

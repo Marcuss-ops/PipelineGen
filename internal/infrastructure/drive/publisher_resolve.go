@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"go.uber.org/zap"
 )
 
 // ── resolveDestination: canonical resolution pipeline ────────────────
@@ -62,12 +63,21 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 		)
 	}
 
-	// Step 6: Folder hierarchy creation.
+	// Step 6: Folder hierarchy creation (catalog-first, DoD item 6).
+	// Before calling Drive's EnsureFolder API, consult the local
+	// drive_folder_catalog for a cached folder ID. If a matching
+	// entry exists with status=active and a non-empty folder_id,
+	// use it directly — no Drive API call needed.
 	folderID := rootFolderID
 	if len(segments) > 0 {
-		folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
-		if err != nil {
-			return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
+		pathKey := strings.Join(segments, "/")
+		if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey); cachedID != "" {
+			folderID = cachedID
+		} else {
+			folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
+			if err != nil {
+				return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
+			}
 		}
 	}
 
@@ -77,4 +87,35 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 		FolderID:     folderID,
 		PathSegments: segments,
 	}, err
+}
+
+// lookupCatalogFolder consults the local drive_folder_catalog for a
+// cached folder ID. Returns "" when no active catalog entry exists,
+// the catalog is not wired, or a lookup error occurs — the Publisher
+// falls back to EnsureFolder in all those cases.
+//
+// Catalog lookups are best-effort: an infrastructure error (DB down)
+// is logged at Warn and returns "" so the Publisher falls back to
+// the Drive API path rather than failing the Publish call.
+func (p *Publisher) lookupCatalogFolder(ctx context.Context, dest delivery.DestinationKey, path string) string {
+	if p.catalogLookup == nil {
+		return ""
+	}
+	folderID, err := p.catalogLookup.LookupFolder(ctx, string(dest), path)
+	if err != nil {
+		p.log.Warn("delivery: catalog lookup failed, falling back to Drive",
+			zap.String("destination", string(dest)),
+			zap.String("path", path),
+			zap.Error(err),
+		)
+		return ""
+	}
+	if folderID != "" {
+		p.log.Debug("delivery: using cached folder from catalog",
+			zap.String("destination", string(dest)),
+			zap.String("path", path),
+			zap.String("folder_id", folderID),
+		)
+	}
+	return folderID
 }

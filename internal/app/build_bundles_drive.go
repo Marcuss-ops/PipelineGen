@@ -31,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -159,6 +160,14 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 			return nil, nil, err
 		}
 		publisher = pub
+
+		// DoD item 6 (SEMANTIC-LOCATION-API-2026-07-06): wire the local
+		// drive_folder_catalog into the Publisher so it consults cached
+		// folder IDs before making Drive API calls. Nil-tolerant: when
+		// the catalog table doesn't exist yet (fresh DB), the adapter
+		// returns nil and SetCatalogLookup becomes a no-op.
+		catalogRepo := sqlitedelivery.NewRepository(dbs.main.DB)
+		pub.SetCatalogLookup(drive.NewCatalogFolderLookup(catalogRepo))
 	}
 
 	// DEV-STUB (July 2026): when Drive is not configured, inject a stub
