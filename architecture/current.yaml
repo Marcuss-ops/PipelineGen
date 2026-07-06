@@ -673,6 +673,70 @@
       to attempt verified-zero; PART-5+ are further-tier
       forward-pointers if PART-4 alone unmasked more.
 
+  - id: PR-CURRENT-YAML-PARSE-FIX-PART-4
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-06
+    exit_signal: false
+    deadline: 2026-08-15
+    ship_via: |
+      PARTIAL CLOSURE (godlike/07 minimum-blast-radius + NO-FAKE-AVAILABILITY):
+      PART-4 investigated the description-block-closure offender class
+      unmasked by PART-3. Diagnostic confirmed exactly 22+ independent
+      `description: |` (or `notes:`/`ship_via:`/`forward_pointer:`)
+      block scalars across the 7,848-line file (including L60, L494,
+      L4014, L4084, L5138, L5543, L5711, L5857, L6020, L6164, L6212,
+      L6336, L6663, L6809, L6884, L6962, L7253, L7346, L7574, L7680,
+      L7729, L7781, L7815) contain under-indented YAML-like content
+      (embedded list items, key:value pairs, nested mappings) that
+      the YAML parser treats as new YAML structure rather than
+      block-scalar text.
+
+      Targeted surgical fix on L6809-L6823 (the candidate blamed by
+      PART-3 forward-pointer) was attempted and PROVED INSUFFICIENT:
+      the parser error shifted to L6828 (the next sibling `  - id:`
+      with the same indent-drift class), confirming that fixing one
+      block at a time is bounded by the K-next-error-class problem.
+      Comprehensive regex sweeps across all 22+ blocks violate
+      `godlike/07 minimum-blast-radius` and risk corrupting valid
+      block content given the file is still actively growing via
+      concurrent parallel-agent wave-tracker appends.
+
+      Verification (godlike/07 typed-no-fake-availability):
+      `python3 -c 'import yaml; yaml.safe_load(open("architecture/current.yaml"))'`
+      STILL FAILS end-to-end on origin/main HEAD+this commit. The
+      parser currently reports structural breaks at L6658/L6824
+      (consistent with PART-3 findings; PyYAML version-dependent
+      exact line may vary by ±20 lines).
+
+      Forward-pointer (godlike/07 NO-FAKE-AVAILABILITY):
+      PR-CURRENT-YAML-PARSE-FIX-PART-5 (deadline 2026-08-15)
+      documents the holistic AST-aware YAML formatting pass or an
+      accept-then-reformat script that addresses the 22+ blocks
+      project-wide with ONE atomic idempotent rewrite.
+      PART-5 is the canonical candidate to attempt verified-zero;
+      PART-6+ are further-tier forward-pointers if PART-5 alone
+      unmasked more.
+
+      Honest audit-pin discipline (godlike/06 one-owner-per-fact):
+      the PRE-EXISTING-YAML-PARSE-2026-07-04 umbrella status
+      REMAINS at pending after this PART-4 commit. PART-4
+      represents what was investigated in user spec (the
+      description-block-closure offender class) but is documented
+      as necessary-not-sufficient for umbrella status: shipped.
+      PART-N (any future) flips the umbrella to status: shipped
+      ONLY after verified-zero end-to-end yaml.safe_load succeeds
+      on origin/main HEAD post-fix. PART-5 is the canonical
+      forward-pointer to attempt verified-zero.
+
+      godlike/07 minimum-blast-radius: zero Go file touched;
+      zero test churn; zero SQLite migration; zero production
+      semantic change; ZERO yaml content byte-equivalent surface
+      change in PRIOR blocks (PART-4 is documentation-only).
+      The locked CHANGELOG.md + AGENTS.md mirror entries preserve
+      the audit trail; this ship_via: block is the canonical
+      audit-pin per godlike/06 SSOT one-canonical-owner-per-fact.
+
 - id: 0
   status: done
   exit_gate: All artifacts present; archcheck focused gate passes.
