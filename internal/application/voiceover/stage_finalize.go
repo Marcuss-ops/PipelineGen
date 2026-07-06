@@ -167,61 +167,79 @@ func (s *Service) finalizeStage(
 	}
 
 	// P0.4 Fase 4a + Audit P0.5 (July 2026): post-commit SQL verification.
-	// The tx has committed — this is purely diagnostic. We confirm
-	// that both the voiceovers row and the media_assets projection
-	// are durably present. A missing row after a successful commit
-	// signals a silent schema/driver bug (e.g. a trigger that
-	// drops rows, a WAL checkpoint race, a silent constraint
-	// violation).
-	//
-	// Audit P0.5: the verifier outcome surfaces on
-	// FinalizeResult.CompletionState (typed enum) so callers can
-	// react without parsing log lines. The mapping contract is the
-	// SINGLE source of truth for the typed CompletionState field.
-	if s.postCommitVerifier != nil {
-		if verifyErr := s.postCommitVerifier.Verify(ctx, item.ID); verifyErr != nil {
-			if errors.Is(verifyErr, ErrReconciliationRequired) {
-				if finalizeRes != nil {
-					finalizeRes.CompletionState = StateReconciliationRequired
-				}
-				if s.log != nil {
-					s.log.Warn("finalizeStage: post-commit verification: canonical row missing — REQUIRES RECONCILIATION (will not report StatusCompleted)",
-						zap.String("restored", restoreIdent),
-						zap.String("voiceover_id", item.ID),
-						zap.String("language", string(language)),
-						zap.String("request_id", requestID),
-						zap.String("completion_state", string(StateReconciliationRequired)),
-						zap.Error(verifyErr))
-				}
-				item.Status = StatusFailed
-				item.Error = "post_commit_reconciliation_required: " + verifyErr.Error()
-				// Audit P0.5 typed-constant surface: FailureReconciliationRequired
-				// (NOT FailureTxCommit — the tx did commit successfully; the
-				// divergence is post-commit. API consumers reading
-				// BatchItem.Errors[] can now distinguish reconciliation-required
-				// from actually-failed-commit via the typed literal.).
-				item.Errors = append(item.Errors, FailureReconciliationRequired)
-				return item
-			}
-			if finalizeRes != nil {
-				finalizeRes.CompletionState = StateCompletedUnverified
-			}
-			if s.log != nil {
-				s.log.Warn("finalizeStage: post-commit verification failed — row(s) missing after successful commit (warn-level — secondary projection missing only)",
-					zap.String("restored", restoreIdent),
-					zap.String("voiceover_id", item.ID),
-					zap.String("language", string(language)),
-					zap.String("request_id", requestID),
-					zap.String("completion_state", string(StateCompletedUnverified)),
-					zap.Error(verifyErr))
-			}
-		} else if finalizeRes != nil {
-			finalizeRes.CompletionState = StateCompleted
-		}
+	// Extracted to verifyPostCommit for reduced cyclomatic complexity
+	// (Azione #7, July 2026).
+	item, shouldReturn := s.verifyPostCommit(ctx, item, finalizeRes, language, requestID)
+	if shouldReturn {
+		return item
 	}
 
 	item.Status = StatusCompleted
 	return item
+}
+
+// verifyPostCommit runs the post-commit SQL verification (P0.4 Fase 4a +
+// Audit P0.5, July 2026). The tx has committed — this is purely diagnostic.
+// We confirm that both the voiceovers row and the media_assets projection
+// are durably present. A missing row after a successful commit signals a
+// silent schema/driver bug.
+//
+// Returns (item, true) when the caller should return immediately
+// (reconciliation required — item.Status is already set to StatusFailed).
+// Returns (item, false) otherwise (verifier passed, absent, or succeeded
+// with warn-level divergence — caller should set StatusCompleted).
+func (s *Service) verifyPostCommit(
+	ctx context.Context,
+	item BatchItem,
+	finalizeRes *FinalizeResult,
+	language Language,
+	requestID string,
+) (BatchItem, bool) {
+	if s.postCommitVerifier == nil {
+		return item, false
+	}
+
+	verifyErr := s.postCommitVerifier.Verify(ctx, item.ID)
+	if verifyErr == nil {
+		if finalizeRes != nil {
+			finalizeRes.CompletionState = StateCompleted
+		}
+		return item, false
+	}
+
+	if errors.Is(verifyErr, ErrReconciliationRequired) {
+		if finalizeRes != nil {
+			finalizeRes.CompletionState = StateReconciliationRequired
+		}
+		if s.log != nil {
+			s.log.Warn("finalizeStage: post-commit verification: canonical row missing — REQUIRES RECONCILIATION (will not report StatusCompleted)",
+				zap.String("restored", restoreIdent),
+				zap.String("voiceover_id", item.ID),
+				zap.String("language", string(language)),
+				zap.String("request_id", requestID),
+				zap.String("completion_state", string(StateReconciliationRequired)),
+				zap.Error(verifyErr))
+		}
+		item.Status = StatusFailed
+		item.Error = "post_commit_reconciliation_required: " + verifyErr.Error()
+		item.Errors = append(item.Errors, FailureReconciliationRequired)
+		return item, true
+	}
+
+	// Non-severe divergence: secondary projection missing only.
+	if finalizeRes != nil {
+		finalizeRes.CompletionState = StateCompletedUnverified
+	}
+	if s.log != nil {
+		s.log.Warn("finalizeStage: post-commit verification failed — row(s) missing after successful commit (warn-level — secondary projection missing only)",
+			zap.String("restored", restoreIdent),
+			zap.String("voiceover_id", item.ID),
+			zap.String("language", string(language)),
+			zap.String("request_id", requestID),
+			zap.String("completion_state", string(StateCompletedUnverified)),
+			zap.Error(verifyErr))
+	}
+	return item, false
 }
 
 // NOTE (P0.7 Step 10/12, June 2026): the pre-fix
