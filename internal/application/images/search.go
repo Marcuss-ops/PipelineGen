@@ -1,27 +1,5 @@
 package images
 
-import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"math/rand"
-	"net/http"
-	"net/url"
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"go.uber.org/zap"
-)
-
 // ── Typed image-operation errors (FASE 2.3, July 2026) ───────────────
 //
 // Each sentinel wraps a specific failure category so callers can
