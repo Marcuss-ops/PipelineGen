@@ -14,12 +14,36 @@
 package images
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
+
+// ErrEngineRetired is the canonical typed sentinel returned when a
+// caller asks for a retired generation engine on a section (the only
+// known retired engine today is "google-vids"; the video_ai capability
+// was removed per FASE_2.1 in June 2026).
+//
+// PR-IMG-LEGACY-4 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
+// EXPAND phase, deadline 2026-08-15): the pre-PR silent-fall-through
+// to the ken-burns path was a godlike/07 fake-availability surface —
+// a /images/video/generate caller asking engine="google-vids" was
+// silently coerced to engine="ken-burns" with no error envelope.
+// The canonical 400 BadRequest surfaces an actionable hint naming
+// the two valid replacement engines (ken-burns + ai-image-N) so an
+// operator can migrate without guessing.
+//
+// godlike/06 SSOT: ErrEngineRetired lives ONLY in this package
+// (where the public fullimages surface is). godlike/07 typed-error
+// contract: callers probe via errors.Is(err, ErrEngineRetired).
+// The diagnostic surfaced in the 400 body is ErrEngineRetired.Error()
+// — there is no separate const; one canonical owner per fact.
+var ErrEngineRetired = errors.New("engine=google-vids retired; use ken-burns or ai-image-N explicitly")
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
 // Generates one image per section — no entity extraction, no asset
@@ -76,9 +100,29 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 		}
 	}
 
-	// Google Vids engine: the video_ai capability was removed (PR June 2026).
-	// Sections requesting engine="google-vids" will fall through to the
-	// ken-burns path inside fullimages.Service.generateOneVideo.
+	// PR-IMG-LEGACY-4 — engine retirement gate. The video_ai capability
+	// (FASE_2.1, June 2026) was removed and "google-vids" is RETIRED.
+	// Case-insensitive match (strings.EqualFold + TrimSpace) so
+	// "google-vids" / "Google-Vids" / " GOOGLE-VIDS " all surface
+	// the same canonical rejection.
+	//
+	// godlike/06 SSOT: the engine contract lives in
+	// mediafullimages.Section.Engine; this handler is the SOLE gater
+	// of retired-engine callers on the /images/video/generate route.
+	// (Composition-root path is the next gate layer, out of scope for
+	// this PR per godlike/07 minimum-blast-radius — forward-pointer
+	// PR-INGEST-SOURCE-VALIDATE-SSOT.)
+	for _, sec := range req.Sections {
+		if strings.EqualFold(strings.TrimSpace(sec.Engine), "google-vids") {
+			apiutil.BadRequest(c, ErrEngineRetired.Error())
+			return
+		}
+	}
+
+	// Sections requesting engine values other than "google-vids" pass
+	// through to the canonical ken-burns path inside
+	// fullimages.Service.generateOneVideo (Section.Engine marked
+	// Deprecated: generation always uses Google Slides + Ken Burns).
 
 	zap.L().Info("fullimages: request received",
 		zap.Int("sections", len(req.Sections)),
