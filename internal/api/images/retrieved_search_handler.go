@@ -1,0 +1,87 @@
+// Package images (api/images) — retrieved_search_handler.go holds
+// the retrieved-territory handlers: RetrievedSearch (standalone
+// GET /api/images/retrieved/search) and retrievedAggregate (the
+// territory=retrieved branch of TerritorySearch).
+//
+// Per the golden rule: retrieved = found/downloaded/ingested images
+// from normal sources (stock, Wikipedia, SearXNG, DuckDuckGo, Drive).
+// These handlers use the SearchAndDownload pipeline — never the
+// generated/AI read seam.
+package images
+
+import (
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/gin-gonic/gin"
+)
+
+// ── GET /api/images/retrieved/search ────────────────────────────────
+
+// RetrievedSearch handles GET /api/images/retrieved/search?q=...&lang=...
+// Mirrors the pre-Step-10 /api/images/search semantics but is
+// scoped explicitly to the Retrieved territory. Single-result
+// response (search-then-download pipeline today; multi-result
+// listing is a follow-up).
+func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
+	query := c.Query("q")
+	lang := c.DefaultQuery("lang", "en")
+	if query == "" {
+		apiutil.BadRequest(c, "missing query parameter 'q'")
+		return
+	}
+
+	slug := textutil.Slugify(query)
+	if slug == "" {
+		slug = textutil.Slugify(query)
+	}
+
+	asset, err := h.service.SearchAndDownload(
+		c.Request.Context(),
+		slug, query, query, lang, nil,
+	)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	if asset == nil {
+		apiutil.OK(c, ImageSearchResults{
+			Results: []ImageSearchResult{},
+			Count:   0,
+		})
+		return
+	}
+
+	res := assetToResult(asset)
+	apiutil.OK(c, ImageSearchResults{
+		Results: []ImageSearchResult{res},
+		Count:   1,
+	})
+}
+
+// retrievedAggregate is the territory=retrieved branch of
+// TerritorySearch. Mirrors RetrievedSearch's body; declared
+// separately so the aggregator can call it without recursion.
+func (h *ImagesHandler) retrievedAggregate(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		apiutil.BadRequest(c, "missing query parameter 'q' (required for territory=retrieved)")
+		return
+	}
+	lang := c.DefaultQuery("lang", "en")
+	slug := textutil.Slugify(query)
+
+	asset, err := h.service.SearchAndDownload(
+		c.Request.Context(),
+		slug, query, query, lang, nil,
+	)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	out := ImageSearchResults{Results: []ImageSearchResult{}, Count: 0}
+	if asset != nil {
+		out.Results = append(out.Results, assetToResult(asset))
+		out.Count = 1
+	}
+	apiutil.OK(c, out)
+}
