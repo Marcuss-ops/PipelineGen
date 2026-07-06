@@ -555,6 +555,56 @@
       errors are fixed (PART-2 + future waves). archcheck
       Check 19 (yaml.safe_load gate) remains green ONLY
       after PART-2 + PART-N land collectively.
+
+  - id: PR-CURRENT-YAML-PARSE-FIX-PART-2
+    owner_capability: architecture
+    status: shipped
+    ship_date: 2026-07-06
+    exit_signal: false
+    deadline: 2026-08-01
+    ship_via: |
+      PARTIAL CLOSURE (godlike/07 minimum-blast-radius + user-spec scope-lock):
+      wrap 4 specific lines (L6568 + L6575 + L6601 + L6685) within the
+      LONG-FILES-DECOMPOSITION-2026-07-06 umbrella's `linked_issues:`
+      block by enclosing each `owner_capability:` value in double-quoted
+      plain scalar form. The unquoted scalars contained embedded `": "`
+      (colon-space) sequences inside prose tails -- e.g.
+      `one-canonical-owner-per-fact: 15 type-specific files` -- that the
+      YAML scanner previously interpreted as nested-mapping keys,
+      triggering `yaml.scanner.ScannerError: mapping values are not
+      allowed here` at column 99 of line 6568. Post-PART-2-fix the
+      original L6568-class error is RESOLVED on those 4 specific lines.
+
+      Verification (godlike/07 typed-no-fake-availability):
+      yaml.safe_load does NOT yet succeed end-to-end. The 4-line wrap
+      unmasked a SEPARATE second-order structural offender class at
+      L6706 col 3 (indent drift accumulated across many prior waves;
+      umbrella entries shift between col 1 and col 3 indents without
+      consistent alignment). The parser now fails with
+      `expected <block end>, but found '-'` -- a different
+      class of offense that PART-1's pre-PR analysis documented
+      as forward-pointer PART-3 (godlike/07 NO-FAKE-AVAILABILITY:
+      PART-2 is necessary but not sufficient for full umbrella status:
+      shipped). archcheck Check 19 (yaml.safe_load gate) flips green
+      ONLY after PART-3 + future waves land collectively.
+
+      Forward-pointer: PR-CURRENT-YAML-PARSE-FIX-PART-3 (deadline
+      2026-08-01) addresses the L6706+ class of structural indent-drift
+      errors (umbrella entries stuck at col 3 while siblings drift to
+      col 1, accumulating via wave-tracker append cycles). PART-3
+      is OUT OF SCOPE for PART-2 per godlike/07 scope-lock
+      discipline (minimum-blast-radius mirrors PART-1 exactly).
+
+      Honest audit-pin discipline (godlike/06 one-owner-per-fact):
+      the PRE-EXISTING-YAML-PARSE-2026-07-04 umbrella status
+      REMAINS at pending after this PART-2 commit. PART-2
+      represents what was specified in user spec (fix the L6520+
+      parse error class) but is necessary-not-sufficient for
+      umbrella status: shipped. PART-N (any future) flips the
+      umbrella to status: shipped ONLY after verified-zero end-to-end
+      yaml.safe_load on origin/main HEAD. PART-3 is the canonical
+      forward-pointer to attempt verified-zero; PART-4+ are
+      further-tier forward-pointers if PART-3 alone unmasked more.
 - id: 0
   status: done
   exit_gate: All artifacts present; archcheck focused gate passes.
