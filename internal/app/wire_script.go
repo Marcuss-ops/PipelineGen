@@ -154,7 +154,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("wireScriptFlow: jobs broker is required (Issue 7 / P1 fail-fast)")
 	}
-	if err := wireScriptFanout(root.Jobs.Service, oneUC, manyUC, log); err != nil {
+	if err := wireScriptChildJobAuditP04(root.Jobs.Service, oneUC, manyUC, normCfg, log); err != nil {
 		return fmt.Errorf("wireScriptFlow: P0 #4 audit wiring: %w", err)
 	}
 	if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
@@ -216,112 +216,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// Module is the canonical owner post-PR. tryRegisterModule
 	// consumes Module only.
 	return tryRegisterModule(registry, log, sd)
-}
-
-// wireScriptFanout wires the P0 #4 per-item retry pattern:
-// child handler registration + fanout broker adapter.
-func wireScriptFanout(
-	jobsSvc *appjobs.Service,
-	oneUC *usecase.GenerateOneUseCase,
-	manyUC *usecase.GenerateManyUseCase,
-	log *zap.Logger,
-) error {
-	if jobsSvc == nil {
-		return fmt.Errorf("P0 #4 audit wiring: jobs service is required (nil-broken composition root)")
-	}
-	if oneUC == nil {
-		return fmt.Errorf("P0 #4 audit wiring: GenerateOneUseCase is required (nil-broken composition)")
-	}
-	if manyUC == nil {
-		return fmt.Errorf("P0 #4 audit wiring: GenerateManyUseCase is required (nil-broken composition)")
-	}
-
-	// 1. Construct the per-item child worker.
-	itemHandler := jobs.NewScriptGenerateItemJobHandler(
-		oneUC, // satisfies GenerateOneExecutor port via Go interface satisfaction
-		log,
-	)
-	if err := itemHandler.Register(jobsSvc); err != nil {
-		return fmt.Errorf("register script.generate_item handler: %w", err)
-	}
-
-	// 2. Wire the FanoutItemBroker adapter (emits N child jobs to the
-	//    broker when the multi-item path fans out).
-	broker := newScriptItemFanoutBrokerAdapter(jobsSvc, log)
-	manyUC.SetFanoutBroker(broker)
-	if log != nil {
-		log.Info("P0 #4 audit wiring: FanoutItemBroker wired to GenerateManyUseCase")
-	}
-
-	// 3. ScriptParentAggregator is constructed + lifecycle-owned in
-	//    startBackgroundJobs (lifecycle.go) — NOT here. The aggregator
-	//    ticker uses the server's runtime context (signal.NotifyContext),
-	//    not context.Background(). See Commit 4 (P0 #9 lifecycle ownership).
-
-	return nil
-}
-
-// scriptItemFanoutBrokerAdapter is the thin Pattern-0 adapter that
-// bridges jobs.Service.Enqueue to the canonical FanoutItemBroker port
-// consumed by GenerateManyUseCase.ExecuteFanout.
-type scriptItemFanoutBrokerAdapter struct {
-	jobsSvc *appjobs.Service
-	log     *zap.Logger
-}
-
-// newScriptItemFanoutBrokerAdapter constructs the adapter.
-func newScriptItemFanoutBrokerAdapter(jobsSvc *appjobs.Service, log *zap.Logger) *scriptItemFanoutBrokerAdapter {
-	return &scriptItemFanoutBrokerAdapter{jobsSvc: jobsSvc, log: log}
-}
-
-// EnqueueScriptItem satisfies the FanoutItemBroker port. Marshals
-// the item to JSON inside a typed ScriptGenerateItemPayload, builds
-// a typed EnqueueRequest for the per-item child type, and returns the
-// broker-assigned job ID.
-func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
-	ctx context.Context,
-	parentJobID string,
-	itemIndex int,
-	item scriptpkg.GenerationItemV2,
-	preset scriptpkg.Preset,
-) (string, error) {
-	// Build typed payload (avoids double-marshalling). The child
-	// handler decodes ScriptGenerateItemPayload directly.
-	typedPayload := jobs.ScriptGenerateItemPayload{
-		ParentJobID: parentJobID,
-		Item:        item,
-		Preset:      preset,
-		ItemIndex:   itemIndex,
-	}
-	payloadBytes, err := json.Marshal(typedPayload)
-	if err != nil {
-		return "", fmt.Errorf("marshal item payload: %w", err)
-	}
-
-	// Deterministic ActiveKey: parentJobID + itemIndex + item.ID.
-	// itemIndex guards against collisions when item.ID is empty or
-	// duplicated across items in the same batch.
-	activeKey := fmt.Sprintf("script:item:%s:%d:%s", parentJobID, itemIndex, item.ID)
-
-	req := &domainjob.EnqueueRequest{
-		Type:      domainjob.TypeScriptGenerateItem,
-		Payload:   json.RawMessage(payloadBytes),
-		ActiveKey: activeKey,
-	}
-	ret, err := a.jobsSvc.Enqueue(ctx, req)
-	if err != nil {
-		return "", fmt.Errorf("enqueue script.generate_item: %w", err)
-	}
-	if ret == nil || ret.ID == "" {
-		return "", fmt.Errorf("enqueue script.generate_item returned empty ID")
-	}
-	if a.log != nil {
-		a.log.Info("P0 #4 audit: child job enqueued",
-			zap.String("child_job_id", ret.ID),
-			zap.String("parent_job_id", parentJobID),
-			zap.String("item_id", item.ID))
-	}
-	return ret.ID, nil
 }
 
 // anyScriptFeatureEnabled returns true when at least one script feature flag
