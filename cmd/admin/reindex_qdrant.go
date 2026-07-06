@@ -16,7 +16,7 @@
 // half-written or schema-broken collection into service. The new
 // implementation builds a SwitchReport (point counts, schema match, dead-
 // letter, golden-query placeholders) and only calls SwitchAlias when
-// `Ready` is true. On failure it returns *qdrant.ErrAliasSwitchNotReady
+// `Ready` is true. On failure it returns *transport.ErrAliasSwitchNotReady
 // and never touches the alias.
 //
 // PR 13 (June 2026) closure — Blue-green reindex (the user spec):
@@ -66,7 +66,12 @@ import (
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
 )
 
 // reindexQdrantDeps holds the parsed flags for runReindexQdrant.
@@ -188,7 +193,7 @@ func timestampedTargetCollection(base string, now time.Time) string {
 // QDRANT-003 closed (June 2026): count mismatch is now a HARD error
 // (detected by the verifier, blocks Ready). The previous implementation
 // logged a warning and continued; the new flow aborts the alias switch
-// and returns *qdrant.ErrAliasSwitchNotReady.
+// and returns *transport.ErrAliasSwitchNotReady.
 func runReindexQdrant(args []string) error {
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
@@ -225,16 +230,16 @@ func runReindexQdrant(args []string) error {
 	defer sqliteDB.Close()
 
 	// Build canonical Qdrant stack.
-	schema := qdrant.DefaultV3Schema()
-	assetStore := qdrant.NewSQLiteAssetStore(sqliteDB.DB)
-	mapper := qdrant.NewPayloadMapper(assetStore, log)
-	client := qdrant.NewClient(&qdrant.Config{
+	schema := qdrantschema.DefaultV3Schema()
+	assetStore := indexing.NewSQLiteAssetStore(sqliteDB.DB)
+	mapper := indexing.NewPayloadMapper(assetStore, log)
+	client := transport.NewClient(&qdrantschema.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
 		APIKey:  cfg.Qdrant.APIKey,
 		Timeout: cfg.Qdrant.Timeout,
 	}, log)
-	writer := qdrant.NewIndexWriter(client, schema, mapper, log)
-	collectionMgr := qdrant.NewCollectionManager(client, schema, log)
+	writer := indexing.NewIndexWriter(client, schema, mapper, log)
+	collectionMgr := collections.NewCollectionManager(client, schema, log)
 
 	targetCollection := deps.TargetCollection
 	if targetCollection == "" && !deps.Apply {
@@ -365,8 +370,8 @@ func runReindexQdrant(args []string) error {
 	// one (`media_assets_v3_<UTC>`) or the explicit recovery
 	// override. The verifier runs on the NEW collection only; the
 	// old alias target is untouched.
-	deadLetter := qdrant.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
-	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, nil, log)
+	deadLetter := search.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
+	verifier := verification.NewReindexVerifier(client, assetStore, deadLetter, schema, nil, log)
 	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
 
 	// PR 13: populate rollback metadata on the report regardless
@@ -420,7 +425,7 @@ func runReindexQdrant(args []string) error {
 			zap.Bool("complete_scan", report.CompleteScan),
 			zap.Int("scrolled", report.TotalScrolled),
 			zap.Strings("errors", report.Errors))
-		return &qdrant.ErrAliasSwitchNotReady{Report: report}
+		return &transport.ErrAliasSwitchNotReady{Report: report}
 	}
 	if verifyErr != nil {
 		// Belt-and-braces: Ready could be true while an unrecoverable
@@ -432,7 +437,7 @@ func runReindexQdrant(args []string) error {
 		log.Error("PR 12: verifyErr is non-nil while Ready=true (defence-in-depth block)",
 			zap.String("target", targetCollection),
 			zap.Error(verifyErr))
-		return &qdrant.ErrAliasSwitchNotReady{Report: report}
+		return &transport.ErrAliasSwitchNotReady{Report: report}
 	}
 	log.Info("switch gate PASSED (Ready=true)",
 		zap.String("target", targetCollection),

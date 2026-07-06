@@ -43,7 +43,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
 
 // qdrantMaintenanceModes are the valid first-positional-arg values.
@@ -95,7 +97,7 @@ func runQdrantMaintenance(args []string) error {
 		zap.String("mode", deps.Mode),
 		zap.Int("limit", deps.Limit))
 
-	qdrantClient := qdrant.NewClient(&qdrant.Config{
+	qdrantClient := transport.NewClient(&schema.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
 		APIKey:  cfg.Qdrant.APIKey,
 		Timeout: cfg.Qdrant.Timeout,
@@ -123,9 +125,10 @@ func runQdrantMaintenance(args []string) error {
 // into the maintenance.QdrantCleaner port. Compile-time pin at struct
 // declaration (godlike/06 SSOT one-canonical-owner-per-fact).
 //
-// FASE 1.2 PR-GODOBJ-12: cmd/admin no longer imports
-// internal/infrastructure/qdrant for orchestration purposes — only the
-// QdrantCleaner port adapter remains as the typed-injected port.
+// FASE 1.2 PR-GODOBJ-12 + PR4 qdrant refactor (July 2026): cmd/admin
+// no longer imports the top-level internal/infrastructure/qdrant
+// package. All concrete qdrant types now route through the PR4
+// sub-packages (transport, schema, maintenance).
 //
 // FASE 1.2 honest mapping note: the canonical concrete LocatorCleaner
 // produces an internal/infrastructure/qdrant-defined report type. We
@@ -139,12 +142,12 @@ func runQdrantMaintenance(args []string) error {
 // contract drift-detection (compile-time pin `var _ maintenance.QdrantCleaner`
 // catches port-signature drift, NOT field-shape drift).
 type qdrantCleanerAdapter struct {
-	client *qdrant.Client
+	client *transport.Client
 	log    *zap.Logger
 }
 
 func (a *qdrantCleanerAdapter) CleanLocators(ctx context.Context, apply bool) (*maintenance.LocatorCleanupReport, error) {
-	cleaner := qdrant.NewLocatorCleaner(a.client, qdrant.DefaultV3Schema(), a.log)
+	cleaner := qdrantmaintenance.NewLocatorCleaner(a.client, schema.DefaultV3Schema(), a.log)
 	res, err := cleaner.CleanLocators(ctx, apply)
 	if err != nil {
 		return nil, err

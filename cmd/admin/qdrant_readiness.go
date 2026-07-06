@@ -27,8 +27,8 @@
 //     constructed from cfg.Security
 //   - stubFeaturesPort        — replaced by a real FeatureFlagsPort
 //     constructed from cfg.FeatureFlags//   - noOpQdrantLister        — replaced by qdrantReconcilerListerAdapter
-//     backed by production *qdrant.Client
-//     and *qdrant.SQLiteAssetStore
+//     backed by production *transport.Client
+//     and *indexing.SQLiteAssetStore
 //     (PR 7 #7.1: old *qdrant.Reconciler deleted;
 //     canonical path is internal/application/qdrant/reconciler/)
 //   - noOpSQLiteReconcileReader — replaced by repository.ClipsRepo
@@ -53,7 +53,10 @@ import (
 
 	app "github.com/Marcuss-ops/PipelineGen/internal/app"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -476,20 +479,20 @@ func collectReadinessCounters(ctx context.Context, db *sql.DB, report *qdrantRea
 }
 
 func qdrantProbeAndSchema(ctx context.Context, cfg *config.Config, log *zap.Logger, report *qdrantReadinessReport) error {
-	client := qdrant.NewClient(&qdrant.Config{
+	client := transport.NewClient(&qdrantschema.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
 		Timeout: cfg.Qdrant.Timeout,
 		APIKey:  cfg.Qdrant.APIKey,
 	}, log)
-	probe := qdrant.NewHealthProbe(client)
+	probe := disasterrecovery.NewHealthProbe(client)
 	if err := probe.Probe(ctx); err != nil {
 		report.QdrantReachable = false
 		return fmt.Errorf("qdrant health probe failed: %w", err)
 	}
 	report.QdrantReachable = true
 
-	schema := qdrant.DefaultV3Schema()
-	mgr := qdrant.NewCollectionManager(client, schema, log)
+	schema := qdrantschema.DefaultV3Schema()
+	mgr := collections.NewCollectionManager(client, schema, log)
 	active, err := mgr.GetActiveCollection(ctx)
 	if err != nil {
 		return fmt.Errorf("resolve active collection: %w", err)
