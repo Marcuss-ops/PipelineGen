@@ -47,23 +47,20 @@ import (
 )
 
 // ProcessVoiceoverItemDeps wires dependencies for the canonical per-item
-// pipeline (Pattern 0, AGENTS.md). All 7 required ports are mandatory —
+// pipeline (Pattern 0, AGENTS.md). All required ports are mandatory —
 // the constructor panics on nil per fail-fast WireUp pattern.
-// TransactionalOutbox is optional (nil-safe → indexes are silently
-// skipped, matching the legacy Pattern 0 tolerance).
 //
-// FilenameBuilder is required even though Execute trusts item.Filename:
-// composition roots use NewDefaultFilenameBuilder when needed, but a
-// future BACKFILL stage (idempotency, namespace derivation) will depend
-// on the port's surface. Mandatory now keeps the port surface stable.
+// Azione #6 (July 2026): TransactionalOutbox and FilenameBuilder removed.
+// TransactionalOutbox was a type-alias for TxOutboxEnqueuer, never used
+// by Execute (the finalizer owns the outbox, PR-VO-B3). FilenameBuilder
+// was nil-safe per Azione #5; Execute trusts item.Filename pre-computed
+// by the fanout (BLOC4 P0.6 pass-through invariant).
 type ProcessVoiceoverItemDeps struct {
 	TTSProvider         TTSProvider
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
 	Publisher           VoiceoverPublisher
 	VoiceoverRepository VoiceoverRepository
-	TransactionalOutbox TransactionalOutbox // nil-safe (skip indexing)
-	FilenameBuilder     FilenameBuilder
 	// DefaultFolderResolver is OPTIONAL (nil-safe). When item.Destination
 	// is nil, Execute calls DefaultFolderResolver.Resolve(ctx) to obtain
 	// the configured default Voiceover folder. When nil OR the resolver
@@ -100,8 +97,7 @@ type ProcessVoiceoverItemUseCase struct {
 
 // NewProcessVoiceoverItemUseCase constructs the canonical use case.
 // All required deps are mandatory (panic on nil — fail-fast per
-// AGENTS.md WireUp pattern). TransactionalOutbox is the only optional
-// dep (nil-safe skip-indexing). Logger is nil-safe via zap.NewNop().
+// AGENTS.md WireUp pattern). Logger is nil-safe via zap.NewNop().
 //
 // PR-VO-USECASE-PROCESS-DRY: the constructor now builds a
 // ProcessSegmentUseCase from the same deps (TTSProvider, AudioPostProcessor,
@@ -120,15 +116,6 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	}
 	if deps.VoiceoverRepository == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: VoiceoverRepository is required")
-	}
-	// Azione #5 (July 2026): FilenameBuilder is nil-safe — the per-item
-	// body trusts item.Filename pre-computed by the fanout (BLOC4 P0.6
-	// pass-through invariant). Log a warn so operators can see the wire
-	// is empty, but don't block composition.
-	if deps.FilenameBuilder == nil {
-		if deps.Logger != nil {
-			deps.Logger.Warn("voiceover.NewProcessVoiceoverItemUseCase: FilenameBuilder is nil — per-item path trusts item.Filename pre-computed by fanout")
-		}
 	}
 	if deps.Finalizer == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)")

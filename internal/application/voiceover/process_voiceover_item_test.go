@@ -202,7 +202,6 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 		AudioPostProcessor:  audioPost,
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		FilenameBuilder:     NewDefaultFilenameBuilder(),
 		Finalizer:           finalizer,
 		Logger:              zap.NewNop(),
 	})
@@ -265,7 +264,6 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 		AudioPostProcessor:  audioPost,
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		FilenameBuilder:     NewDefaultFilenameBuilder(),
 		Finalizer:           finalizer,
 		Logger:              zap.NewNop(),
 	})
@@ -323,7 +321,6 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 		AudioPostProcessor:  nil,
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		FilenameBuilder:     NewDefaultFilenameBuilder(),
 		Finalizer:           finalizer,
 		Logger:              zap.NewNop(),
 	})
