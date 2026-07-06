@@ -598,7 +598,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		return
 	}
 
-	startSec, endSec := parseClipTimestampsCanonical(clip.ID)
+	startSec, endSec := parseClipTimestamps(clip.ID)
 
 	durationSec := endSec - startSec
 	if durationSec <= 0 {
@@ -635,13 +635,13 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 	shortTitle := clip.GetMetadataString("short_title")
 	clipSummary := clip.GetMetadataString("clip_summary")
 	hook := clip.GetMetadataString("hook")
-	topics := metadataStringSliceCanonical(clip.Metadata, "topics")
-	speakers := metadataStringSliceCanonical(clip.Metadata, "speakers")
-	mentionedPeople := metadataStringSliceCanonical(clip.Metadata, "mentioned_people")
-	people := metadataStringSliceCanonical(clip.Metadata, "people")
-	sourceTags := metadataStringSliceCanonical(clip.Metadata, "source_tags")
-	clipTags := metadataStringSliceCanonical(clip.Metadata, "clip_tags")
-	searchKeywords := metadataStringSliceCanonical(clip.Metadata, "search_keywords")
+	topics := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "topics"))
+	speakers := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "speakers"))
+	mentionedPeople := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "mentioned_people"))
+	people := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "people"))
+	sourceTags := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "source_tags"))
+	clipTags := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "clip_tags"))
+	searchKeywords := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "search_keywords"))
 	embeddingText := clip.GetMetadataString("embedding_text")
 	rawTranscript := clip.GetMetadataString("raw_transcript")
 	if rawTranscript == "" {
@@ -683,7 +683,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 	if embeddingText == "" {
 		embeddingText = tagutil.BuildEmbeddingText(cleanTitle, clipSummary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, storedCleanTranscript)
 	}
-	qualityScore := metadataFloat64Canonical(clip.Metadata, "quality_score")
+	qualityScore := asset.MetadataFloat(clip.Metadata, "quality_score")
 	searchVisibility := clip.GetMetadataString("search_visibility")
 	if searchVisibility == "" {
 		searchVisibility = tagutil.DeriveSearchVisibility(qualityScore)
@@ -713,14 +713,14 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		SearchKeywords:    searchKeywords,
 		DuplicateGroupID:  clip.GetMetadataString("duplicate_group_id"),
 		DuplicateOf:       clip.GetMetadataString("duplicate_of"),
-		IsDuplicate:       metadataBoolCanonical(clip.Metadata, "is_duplicate"),
-		IsBestVersion:     metadataBoolCanonical(clip.Metadata, "is_best_version"),
+		IsDuplicate:       asset.MetadataBool(clip.Metadata, "is_duplicate"),
+		IsBestVersion:     asset.MetadataBool(clip.Metadata, "is_best_version"),
 		DuplicateReason:   clip.GetMetadataString("duplicate_reason"),
-		DuplicateScore:    metadataFloat64Canonical(clip.Metadata, "duplicate_score"),
+		DuplicateScore:    asset.MetadataFloat(clip.Metadata, "duplicate_score"),
 		TopicClusterID:    clip.GetMetadataString("topic_cluster_id"),
 		TopicClusterLabel: clip.GetMetadataString("topic_cluster_label"),
-		TopicClusterSize:  metadataIntCanonical(clip.Metadata, "topic_cluster_size"),
-		TopicClusterRank:  metadataIntCanonical(clip.Metadata, "topic_cluster_rank"),
+		TopicClusterSize:  asset.MetadataInt(clip.Metadata, "topic_cluster_size"),
+		TopicClusterRank:  asset.MetadataInt(clip.Metadata, "topic_cluster_rank"),
 		Language:          clip.GetMetadataString("youtube_language"),
 		DurationSec:       durationSec,
 		StartSec:          startSec,
@@ -765,19 +765,6 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 }
 
 // ── Inline helpers for WriteClipMetadataFile ──────────────────────────
-
-func parseClipTimestampsCanonical(clipID string) (startSec, endSec int) {
-	parts := strings.Split(clipID, "_")
-	if len(parts) >= 4 && parts[0] == "yt" {
-		if s, err := strconv.Atoi(parts[len(parts)-2]); err == nil {
-			startSec = s
-		}
-		if e, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
-			endSec = e
-		}
-	}
-	return
-}
 
 func ymDescriptionCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.Description != "" {
@@ -847,108 +834,4 @@ func ymThumbnailURLCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.As
 	return clip.GetMetadataString("youtube_thumbnail")
 }
 
-func metadataStringSliceCanonical(meta map[string]any, key string) []string {
-	if meta == nil {
-		return nil
-	}
-	raw, ok := meta[key]
-	if !ok || raw == nil {
-		return nil
-	}
-	switch v := raw.(type) {
-	case []string:
-		return tagutil.NormalizeClipTagList(v)
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok {
-				out = append(out, s)
-			}
-		}
-		return tagutil.NormalizeClipTagList(out)
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return nil
-		}
-		var out []string
-		if err := json.Unmarshal([]byte(v), &out); err == nil {
-			return tagutil.NormalizeClipTagList(out)
-		}
-	}
-	return nil
-}
 
-func metadataFloat64Canonical(meta map[string]any, key string) float64 {
-	if meta == nil {
-		return 0
-	}
-	raw, ok := meta[key]
-	if !ok || raw == nil {
-		return 0
-	}
-	switch v := raw.(type) {
-	case float64:
-		return v
-	case float32:
-		return float64(v)
-	case int:
-		return float64(v)
-	case int64:
-		return float64(v)
-	case json.Number:
-		if f, err := v.Float64(); err == nil {
-			return f
-		}
-	case string:
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
-		}
-	}
-	return 0
-}
-
-func metadataBoolCanonical(meta map[string]any, key string) bool {
-	if meta == nil {
-		return false
-	}
-	raw, ok := meta[key]
-	if !ok || raw == nil {
-		return false
-	}
-	switch v := raw.(type) {
-	case bool:
-		return v
-	case string:
-		return strings.EqualFold(strings.TrimSpace(v), "true")
-	}
-	return false
-}
-
-func metadataIntCanonical(meta map[string]any, key string) int {
-	if meta == nil {
-		return 0
-	}
-	raw, ok := meta[key]
-	if !ok || raw == nil {
-		return 0
-	}
-	switch v := raw.(type) {
-	case int:
-		return v
-	case int32:
-		return int(v)
-	case int64:
-		return int(v)
-	case float64:
-		return int(v)
-	case json.Number:
-		if i, err := v.Int64(); err == nil {
-			return int(i)
-		}
-	case string:
-		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			return i
-		}
-	}
-	return 0
-}
