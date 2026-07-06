@@ -266,9 +266,9 @@ deprecations:
       may import it without forming an import cycle.
     introduction_date: 2026-06
     removal_date: 2026-Q4
-    tracking_issue: "docs/operations/06-qdrant-wire-mirror-review.md (QDRANT-REVIEW-001)"
+    tracking_issue: "PR-QDRANT-WIRE-MIRROR (deprecation ID self-reference; runbook 06 removed July 2026 — superseded by Check 5 CI gate + duplicate-types-allowlist.txt)"
     compatibility_test: |
-      See docs/operations/06 §"Criteri di accettazione" for full canonical-evidence list.
+      See architecture/policy.yaml Check 5 for full canonical-evidence list (superseded runbook 06, removed July 2026).
     usage_metric: |
       Today: 0 direct callers of canonical dr.<Mirror> struct outside dr package.
       After BACKFILL the bridge becomes thin; after CUTOVER becomes passthrough;
