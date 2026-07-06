@@ -491,18 +491,8 @@ func (a *DriveFolderManagerAdapter) doReLookup(ctx context.Context, parent, name
 // matching (name, parent, non-trashed, folder mimeType), ordered by
 // createdTime ascending. Returns (count, oldestID, nil).
 func (a *DriveFolderManagerAdapter) reLookupProduction(ctx context.Context, parent, name string) (count int, oldestID string, err error) {
-	queryParts := []string{
-		fmt.Sprintf("name = '%s'", strings.ReplaceAll(name, "'", "\\'")),
-		"trashed = false",
-		"mimeType = 'application/vnd.google-apps.folder'",
-	}
-	if parent != "" {
-		queryParts = append(queryParts, fmt.Sprintf("'%s' in parents", parent))
-	}
-	query := strings.Join(queryParts, " and ")
-
 	list, lerr := a.svc.Files.List().
-		Q(query).
+		Q(buildFolderLookupQuery(parent, name)).
 		Fields("files(id, name, createdTime)").
 		OrderBy("createdTime asc").
 		Context(ctx).
