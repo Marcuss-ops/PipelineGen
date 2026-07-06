@@ -71,9 +71,16 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 	var manifest *job.ArtifactManifest
 	var buildErr error
 	if runner.Builder() != nil {
-		manifest, buildErr = runner.Builder().Build(workflowID, runner.JobID())
-		if buildErr != nil {
-			return fmt.Errorf("orchestrator: stock.finalize: ManifestBuilder.Build: %w", buildErr)
+		if _, isDefault := runner.Builder().(stockManifestBuilder); isDefault {
+			manifest = buildChunkedStockManifest(
+				workflowID, runner.JobID(), fp,
+				runner.State().Published, runner.State().MetadataPublished,
+			)
+		} else {
+			manifest, buildErr = runner.Builder().Build(workflowID, runner.JobID())
+			if buildErr != nil {
+				return fmt.Errorf("orchestrator: stock.finalize: ManifestBuilder.Build: %w", buildErr)
+			}
 		}
 	} else {
 		manifest = buildChunkedStockManifest(
