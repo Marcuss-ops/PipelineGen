@@ -6733,7 +6733,7 @@
     - id: PR-SPLIT-LEGACYAUDIT-V2
       owner_capability: internal/application/qdrant/legacyaudit
       status: shipped
-      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_sha: 2a38378d39dd4963e4361fab27799c6dcfd2a4ce
       ship_date: 2026-07-06
       deadline: 2026-07-15
     - id: PR-SPLIT-JOBS-REPO-RESIDUAL
