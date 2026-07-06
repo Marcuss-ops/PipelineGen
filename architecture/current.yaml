@@ -261,6 +261,31 @@
     ship_sha: d6767631
     ship_date: 2026-07-04
     deadline: 2026-07-15
+  - id: FIX-IMAGES-IMPORT-BLOCK
+    owner_capability: internal/application/images
+    status: shipped
+    ship_sha: d3e08678
+    ship_date: '2026-07-06'
+    deadline: '2026-07-15'
+    notes: |
+      Pre-existing build error in search.go (entire import block missing).
+      Resolved by parallel-agent commit 5c6c56cf (split + imports)
+      + fixup d3e08678 (corrected search_queries.go import path:
+      internal/infrastructure/images/retrieved -> internal/application/images/retrieved).
+      go build ./internal/application/images/... OK.
+      go test ./internal/application/images/... PASS (8/8).
+  - id: FIX-APP-ADAPTER-3RD-ARG
+    owner_capability: internal/app
+    status: shipped
+    ship_sha: 6cd87085
+    ship_date: '2026-07-06'
+    deadline: '2026-07-15'
+    notes: |
+      Pre-existing build error: 2 call sites of newClipsDriveAdapter
+      passed a 3rd arg after the function signature was reduced to 2 params
+      (Admin, Reader). Removed trailing nil arg from clips_adapters_index.go:270
+      and a.lifecycle arg from youtube_adapters_meta.go:36.
+      go build ./... OK (exit 0).
   meta_closure_2026_07_04:
     status: shipped
     ship_date: 2026-07-04
