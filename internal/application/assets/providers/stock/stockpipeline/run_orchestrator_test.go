@@ -285,25 +285,18 @@ func TestService_Run_LegacySignature_ReturnsPipelineResult(t *testing.T) {
 // Service.HandleJob end-to-end tests
 // ─────────────────────────────────────────────────────────────────────
 
-// TestService_HandleJob_GateFailClosed_OnEmptyChunks (Stock Cutover
-// §12-1 §F, July 2026) — the gate-fail-closed contract: today's
-// orchestrator emits a typed *job.ArtifactManifest but the
-// per-chunk states are EMPTY (pre-Commit-4-7 chunk-rendering
-// ladder) and per-metadata state is EMPTY (pre-Commit-7 metadata
-// publication). BuildFinalizationRequest's VerifyChunks gate
-// raises ErrStockNoChunksFinalized BEFORE any finalizer call,
-// and Service.HandleJob propagates the typed error so the
-// broker's downstream runner marks the job FAILED. The silent-
-// success class is closed (P0 2.1): no manifest emitted in the
-// "happy path" shape, no Publisher side-effects.
+// TestService_HandleJob_DelegatesToRunOrchestratorResilient (Stock Cutover
+// §12-1 §F post-cleanup, July 2026) — after removing the duplicate
+// finalization block from HandleJob, the handler delegates entirely to
+// runOrchestratorResilient. When the test Service has no cutter/renderer
+// wired, the orchestrator's RunResilient gate fires ErrOrchestratorNilDeps
+// BEFORE any step body runs, closing the silent-success class. The
+// gate-fail-closed contract now lives inside the orchestrator, not in a
+// duplicate HandleJob-level BuildFinalizationRequest with empty chunks.
 //
-// The pre-§F expectation (this test's obsolete version, retained
-// in CHANGELOG and git log) was C12-emit-success which is
-// verbatim false under §F. Commit 4-7 (chunk-rendering ladder)
-// flips this test back to the emit-success shape once
-// OrchestrationResult.Chunks is populated by the orchestrator
-// and metadata.json publication runs in Commit 7.
-func TestService_HandleJob_GateFailClosed_OnEmptyChunks(t *testing.T) {
+// The Publisher remains untouched because the orchestrator never reaches
+// stock.publish (it fails at the entry gate before dispatching any steps).
+func TestService_HandleJob_DelegatesToRunOrchestratorResilient(t *testing.T) {
 	rec := &recordingPublisher{}
 	svc := &Service{log: zap.NewNop(), publisher: rec}
 
@@ -324,19 +317,19 @@ func TestService_HandleJob_GateFailClosed_OnEmptyChunks(t *testing.T) {
 		Payload: payload,
 	}, &appjobs.JobTools{})
 
-	// Gate-fail-closed contract: today (Commit 2 + §F.1) the
-	// Chunks=[] state triggers ErrStockNoChunksFinalized, NOT
-	// a successful return. errors.Is reaches the wrapped sentinel
-	// via the typed-error wrap pattern (godlike/07).
+	// Post-cleanup contract (July 2026): HandleJob delegates to
+	// runOrchestratorResilient, which builds an orchestrator and calls
+	// RunResilient. The orchestrator's entry gate rejects nil deps
+	// (planner/stager/renderer/stepStore) before any step runs.
+	// errors.Is reaches the wrapped sentinel via the typed-error chain
+	// (godlike/07).
 	if err == nil {
-		t.Fatalf("HandleJob expected gate-fail error (ErrStockNoChunksFinalized), got nil + result=%v (pre-Commit-4-7 silent-success regression — §12-1 §F closes this class)", res)
+		t.Fatalf("HandleJob expected orchestrator gate-fail error (ErrOrchestratorNilDeps), got nil + result=%v", res)
 	}
-	if !errors.Is(err, ErrStockNoChunksFinalized) {
-		t.Fatalf("HandleJob err = %v; want ErrStockNoChunksFinalized (gates must fail-closed today pre-Commit-4-7)", err)
+	if !errors.Is(err, ErrOrchestratorNilDeps) {
+		t.Fatalf("HandleJob err = %v; want ErrOrchestratorNilDeps (orchestrator gate fires on unwired deps)", err)
 	}
-	// Gate fires BEFORE any finalizer call, so Publisher remains
-	// untouched — that part of the legacy-path-unreachable
-	// contract is preserved across the gate-fail rewrite.
+	// Gate fires BEFORE any step runs, so Publisher remains untouched.
 	if rec.publishCalls != 0 {
 		t.Errorf("recordingPublisher.Publish called %d times (must be zero — gate fires before any Drive write)", rec.publishCalls)
 	}
@@ -345,24 +338,13 @@ func TestService_HandleJob_GateFailClosed_OnEmptyChunks(t *testing.T) {
 	}
 }
 
-// TestService_HandleJob_GateFailClosed_HydrationPendingBothGates
-// (Stock Cutover §12-1 §F, July 2026) — companion to
-// GateFailClosed_OnEmptyChunks; the test name reflects the actual
-// OR-semantic it exercises: today BOTH gates fail (chunks empty
-// AND metadata empty), and whichever gate fires first wins, so
-// the assertion accepts either sentinel. The semantic invariant
-// being pinned is "HandleJob is fail-closed when the orchestrator's
-// state is empty on EITHER input axis", not "which specific gate
-// fires first" — the latter is documented in `BuildFinalizationRequest`'s
-// own doc-comment and is a separate concern.
-//
-// Splitting this into two physically-isolated gates tests would
-// require mocking the orchestrator to emit populated chunks with
-// empty metadata (or vice versa), but `OrchestrationResult.Chunks`
-// and `MetadataState` are not injectable today (the orchestrator
-// is a method, not a port — §F.2 forward-pointer: lift to a
-// port so per-axis testing is possible).
-func TestService_HandleJob_GateFailClosed_HydrationPendingBothGates(t *testing.T) {
+// TestService_HandleJob_DelegatesToRunOrchestratorResilient_Companion
+// (Stock Cutover §12-1 §F post-cleanup, July 2026) — companion to
+// DelegatesToRunOrchestratorResilient. Pins the same contract with
+// a different input shape. The orchestrator's entry gate is the
+// single canonical fail-closed surface; HandleJob no longer has an
+// independent gate.
+func TestService_HandleJob_DelegatesToRunOrchestratorResilient_Companion(t *testing.T) {
 	svc := &Service{log: zap.NewNop(), publisher: &recordingPublisher{}}
 
 	payload, _ := json.Marshal(&StockRunPayload{
@@ -375,31 +357,24 @@ func TestService_HandleJob_GateFailClosed_HydrationPendingBothGates(t *testing.T
 		ID:      "job-fields",
 		Payload: payload,
 	}, &appjobs.JobTools{})
-	// Today (pre-Commit-4-7 + pre-Commit-7) BOTH gates fail; the
-	// first gate to fire per `BuildFinalizationRequest`'s order
-	// wins, but the test asserts the "fail-closed on empty state"
-	// invariant regardless of which gate actually fires first.
+	// Post-cleanup: HandleJob delegates to runOrchestratorResilient.
+	// Without cutter/renderer wired, the orchestrator's entry gate fires
+	// ErrOrchestratorNilDeps before any step runs.
 	if err == nil {
-		t.Fatalf("HandleJob expected gate-fail error, got nil (silent-success class reopened)")
+		t.Fatalf("HandleJob expected orchestrator gate-fail error, got nil (silent-success class reopened)")
 	}
-	if !errors.Is(err, ErrStockNoChunksFinalized) && !errors.Is(err, ErrStockMetadataNotPublished) {
-		t.Fatalf("HandleJob err = %v; want ErrStockNoChunksFinalized OR ErrStockMetadataNotPublished (both gates are fail-closed semantically — whichever gate's precondition fires first is implementation detail)", err)
+	if !errors.Is(err, ErrOrchestratorNilDeps) {
+		t.Fatalf("HandleJob err = %v; want ErrOrchestratorNilDeps (orchestrator gate fires on unwired deps)", err)
 	}
 }
 
-// TestService_HandleJob_GateFailClosed_PublisherUnreached (Stock
-// Cutover §12-1 §F, July 2026) — preserved semantic from the
-// pre-§F LegacyPathUnreachable test: the Publisher (Drive-write
-// canal) MUST NOT be invoked by HandleJob. The gate-fail path
-// preserves this contract because the gate fires before any
-// publisher side-effect would be plausible — the orchestrator
-// doesn't touch Drive today (pre-Commit-4-7 / pre-Commit-7), and
-// the gate fails before we'd ever get to Drive publication if
-// it did. This narrows the contract to "either path: Publisher
-// untouched", which is a stronger invariant that future
-// Commit-4-7 / Commit-7 hydration MUST preserve (a single Drive
-// write pre-gate fired = regression).
-func TestService_HandleJob_GateFailClosed_PublisherUnreached(t *testing.T) {
+// TestService_HandleJob_DelegatesToRunOrchestratorResilient_PublisherUnreached
+// (Stock Cutover §12-1 §F post-cleanup, July 2026) — the Publisher
+// (Drive-write canal) MUST NOT be invoked by HandleJob. The orchestrator's
+// entry gate (ErrOrchestratorNilDeps) fires before any step runs, so the
+// Publisher is never reached. This contract is preserved across the
+// duplicate-finalization cleanup.
+func TestService_HandleJob_DelegatesToRunOrchestratorResilient_PublisherUnreached(t *testing.T) {
 	rec := &recordingPublisher{}
 	svc := &Service{log: zap.NewNop(), publisher: rec}
 
@@ -413,13 +388,15 @@ func TestService_HandleJob_GateFailClosed_PublisherUnreached(t *testing.T) {
 		ID:      "job-no-drive",
 		Payload: payload,
 	}, &appjobs.JobTools{})
-	// Gate-fail is expected (pre-Commit-4-7) but the Publisher
-	// assertion is the load-bearing assertion: zero Drive writes.
-	if err != nil && !errors.Is(err, ErrStockNoChunksFinalized) && !errors.Is(err, ErrStockMetadataNotPublished) {
-		t.Fatalf("HandleJob err = %v; want ErrStockNoChunksFinalized OR ErrStockMetadataNotPublished", err)
+	// Post-cleanup: orchestrator gate fires with ErrOrchestratorNilDeps.
+	if err == nil {
+		t.Fatalf("HandleJob expected orchestrator gate-fail error, got nil")
+	}
+	if !errors.Is(err, ErrOrchestratorNilDeps) {
+		t.Fatalf("HandleJob err = %v; want ErrOrchestratorNilDeps", err)
 	}
 	if rec.publishCalls != 0 {
-		t.Errorf("recordingPublisher.Publish called %d times (must be zero — gates fire before any Drive write)", rec.publishCalls)
+		t.Errorf("recordingPublisher.Publish called %d times (must be zero — gate fires before any Drive write)", rec.publishCalls)
 	}
 	if rec.resolveFolderCalls != 0 {
 		t.Errorf("recordingPublisher.ResolveFolder called %d times (must be zero)", rec.resolveFolderCalls)
