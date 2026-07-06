@@ -8,7 +8,6 @@ package drive
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 

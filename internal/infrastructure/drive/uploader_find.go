@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	driveapi "google.golang.org/api/drive/v3"
 )
 
 // FindFileByName returns ALL non-trashed files in a folder with the
