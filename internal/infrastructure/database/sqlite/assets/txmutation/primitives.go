@@ -182,9 +182,8 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 		// SAFETY: fmt.Sprintf is safe here — ct.table and ct.column are drawn
 		// exclusively from the hardDeleteChildTables package-level var, a typed
 		// []childDelete literal with explicit string constants. No user input,
-		// no dynamic column names, no API-surface interpolation. This is the
-		// third and final fmt.Sprintf SQL site in the database layer; it is
-		// intentionally exempt from the column-allowlist gate (allowedJobColumns
+		// no dynamic column names, no API-surface interpolation. This is one of the few remaining
+		// fmt.Sprintf SQL sites in the database layer; it is intentionally exempt from the column-allowlist gate (allowedJobColumns
 		// in transition.go / allowedSortColumns in search_queries.go) because
 		// the table+column source is a compile-time constant list, not an
 		// external caller payload.
