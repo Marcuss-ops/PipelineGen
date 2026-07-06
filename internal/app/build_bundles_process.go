@@ -83,10 +83,9 @@ import (
 // to call buildQdrantDeps first?).
 //
 // P0.7 Wave 21 Step 10/12 (June 2026) — voiceover cleanup handler
-// wiring: the new voiceoverCleanup arg threads the *voiceoverDriveAdapter
-// (production concrete for jobsoutbox.VoiceoverCleanupDriver, satisfied
-// structurally by the same struct that already satisfies
-// jobsoutbox.VoiceoverCleanupDriver.DeleteFile) into the outbox Deps so
+// wiring: the voiceoverCleanup arg passes drive.Admin directly (it
+// satisfies jobsoutbox.VoiceoverCleanupDriver structurally via its
+// DeleteFile method) into the outbox Deps so
 // VoiceoverCleanupHandler.register runs with a non-nil Drive delete
 // surface. nil voiceoverCleanup is tolerated — the handler still
 // handles local file removal (stdlib os.Remove, no port ceremony)
@@ -207,9 +206,9 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		outboxDeps.AssetDeleter = repos.ClipsRepo
 	}
 	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
-	// driver (production concrete = *voiceoverDriveAdapter from
-	// adapters_voiceover_use_case.go, which saturates the narrow
-	// VoiceoverCleanupDriver port via its DeleteFile method). nil is
+	// driver (production concrete = drive.Admin, which saturates the
+	// narrow VoiceoverCleanupDriver port via its DeleteFile method
+	// — structural conformance, no wrapper needed). nil is
 	// tolerated — RegisterOptionalHandlers unconditionally registers
 	// the handler, and the handler's driver==nil branch logs+skips
 	// the Drive delete step (local file removal still runs via

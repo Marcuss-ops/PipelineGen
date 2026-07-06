@@ -56,8 +56,9 @@ func TestSplit_TTSAdapter_PanicInvariants(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────
 // Cluster 2 — DRIVE external I/O (publisher.go).
 // Pins: newUseCasePublisherAdapter (nil publisher → panic).
-// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter removed
-// (zero production callers); voiceoverDriveAdapter stays for outbox cleanup.
+// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter + DriveUploaderPort
+// removed. drive.Admin now satisfies VoiceoverCleanupDriver structurally;
+// composition.go passes it directly, no wrapper needed.
 // ─────────────────────────────────────────────────────────────────────
 
 func TestSplit_PublisherAdapter_PanicInvariants(t *testing.T) {

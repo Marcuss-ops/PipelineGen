@@ -55,11 +55,10 @@ import (
 // implicit-interface rules.
 //
 // Azione #9 follow-up (July 2026): DriveUploaderPort interface removed
-// from ports.go. Post-commit Drive cleanup now flows exclusively through
-// the outbox via jobsoutbox.VoiceoverCleanupDriver — voiceoverDriveAdapter
-// (adapters_voiceover_publisher.go) satisfies that port structurally.
-// The driveUploader parameter below stays for lifecycle DriveReader
-// (line 98) and is NOT related to the retired DriveUploaderPort.
+// from ports.go; voiceoverDriveAdapter struct also removed from
+// adapters_voiceover_publisher.go. Post-commit Drive cleanup now flows
+// directly through drive.Admin → jobsoutbox.VoiceoverCleanupDriver
+// (structural conformance, no wrapper needed).
 func buildVoiceoverService(
 	ctx context.Context,
 	cfg *config.Config,

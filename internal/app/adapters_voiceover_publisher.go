@@ -5,10 +5,10 @@
 //
 // VoiceoverPublisher ← delivery.Publisher.Publish (P1-5 cutover, July 2026)
 //
-// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter removed;
-// DriveUploaderPort interface removed from ports.go. voiceoverDriveAdapter
-// stays — used by composition.go for the outbox cleanup handler via
-// jobsoutbox.VoiceoverCleanupDriver.
+// Azione #9 follow-up (July 2026): newVoiceoverDriveAdapter + DriveUploaderPort
+// interface removed from ports.go. voiceoverDriveAdapter struct also removed —
+// drive.Admin now satisfies jobsoutbox.VoiceoverCleanupDriver structurally,
+// passed directly from composition.go.
 package app
 
 import (
@@ -17,7 +17,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -91,22 +90,3 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 }
 
 var _ voiceover.VoiceoverPublisher = (*useCasePublisherAdapter)(nil)
-
-// ─────────────────────────────────────────────────────────────────────
-// voiceoverDriveAdapter - Drive port adapter for voiceover.
-// Wraps drive.Admin to satisfy jobsoutbox.VoiceoverCleanupDriver.
-// ─────────────────────────────────────────────────────────────────────
-
-type voiceoverDriveAdapter struct {
-	drive drive.Admin
-}
-
-func (a *voiceoverDriveAdapter) DeleteFile(ctx context.Context, fileID string) error {
-	if fileID == "" {
-		return fmt.Errorf("voiceoverDriveAdapter.DeleteFile: fileID is required")
-	}
-	if a == nil || a.drive == nil {
-		return fmt.Errorf("voiceoverDriveAdapter: drive not wired")
-	}
-	return a.drive.DeleteFile(ctx, fileID)
-}
