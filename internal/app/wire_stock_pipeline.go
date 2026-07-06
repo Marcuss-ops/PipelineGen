@@ -95,7 +95,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			URL:        req.Source.URL,
 			OutputPath: dstPath + ".%(ext)s",
 			Timeout:    req.Timeout,
-			UseCookies: true,
+			UseCookies: false, // godlike/07: cookies force web-only extraction → n-challenge block on public YT videos
 		}
 		if req.Source.DownloadSection != "" {
 			dlReq.DownloadSections = []string{req.Source.DownloadSection}
