@@ -55,16 +55,16 @@ func TestSplit_TTSAdapter_PanicInvariants(t *testing.T) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Cluster 2 — DRIVE external I/O (publisher.go).
-// Pins: newUseCasePublisherAdapter (nil admin → panic);
+// Pins: newUseCasePublisherAdapter (nil publisher → panic);
 // newVoiceoverDriveAdapter (nil admin → returns nil port — interface nil-safe).
 // ─────────────────────────────────────────────────────────────────────
 
 func TestSplit_PublisherAdapter_PanicInvariants(t *testing.T) {
-	t.Run("Publisher_NilAdmin_Panics", func(t *testing.T) {
+	t.Run("Publisher_NilPublisher_Panics", func(t *testing.T) {
 		require.PanicsWithValue(t,
-			"app.adapters_voiceover_use_case: newUseCasePublisherAdapter: admin is required (*drive.Uploader implementing drive.Admin)",
+			"app.adapters_voiceover_use_case: newUseCasePublisherAdapter: publisher is required (delivery.Publisher)",
 			func() { _ = newUseCasePublisherAdapter(nil) },
-			"newUseCasePublisherAdapter must panic with the canonical message when admin is nil")
+			"newUseCasePublisherAdapter must panic with the canonical message when publisher is nil")
 	})
 	t.Run("Drive_NilAdmin_ReturnsNilPort", func(t *testing.T) {
 		// newVoiceoverDriveAdapter returns nil port (NOT panic) when
