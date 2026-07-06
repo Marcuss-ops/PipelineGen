@@ -3,9 +3,7 @@ package drive
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-	"strings"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
