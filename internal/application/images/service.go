@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/catalog"
@@ -72,6 +73,7 @@ type ImagesStorageDeps struct {
 	ClipsRepo    *assets.ClipsRepository
 	DriveReader  drive.Reader
 	MediaStore   *drive.Store
+	Publisher    delivery.Publisher
 	DestResolver destinations.DestinationResolver
 }
 
@@ -127,6 +129,7 @@ func NewService(deps ImagesDeps) *Service {
 	meta := &MetadataService{
 		metaWriter: deps.GenAI.MetaWriter,
 		mediaStore: deps.Storage.MediaStore,
+		publisher:  deps.Storage.Publisher,
 		tempDir:    cfg.Storage.TempPath(),
 		log:        log,
 	}
@@ -135,6 +138,7 @@ func NewService(deps ImagesDeps) *Service {
 		repo:          deps.Storage.ImageRepo,
 		stockRepo:     deps.Storage.ClipsRepo,
 		mediaStore:    deps.Storage.MediaStore,
+		publisher:     deps.Storage.Publisher,
 		driveReader:   deps.Storage.DriveReader,
 		cfg:           cfg,
 		imagesDir:     cfg.Storage.ImagesPath(),

@@ -3,9 +3,11 @@ package images
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -18,8 +20,35 @@ import (
 type MetadataService struct {
 	metaWriter *semantic.MetadataWriter
 	mediaStore *drive.Store
+	publisher  delivery.Publisher
 	tempDir    string
 	log        *zap.Logger
+}
+
+// publishMetadata is the P0-2 canonical bridge for metadata JSON uploads.
+// Routes through delivery.Publisher when wired, falls back to legacy
+// mediaStore path for backward compat (tests / partial wiring).
+func (m *MetadataService) publishMetadata(ctx context.Context, req drive.AssetDestinationRequest, filePath string) error {
+	if m == nil {
+		return fmt.Errorf("MetadataService.publishMetadata: nil receiver")
+	}
+	if m.publisher != nil {
+		_, err := m.publisher.Publish(ctx, delivery.PublishRequest{
+			Destination:    delivery.DestinationImage,
+			LocalPath:      filePath,
+			Filename:       filepath.Base(filePath),
+			Style:          req.Style,
+			Subject:        req.Subject,
+			Group:          req.Subject,
+			ConflictPolicy: delivery.ConflictOverwrite,
+		})
+		return err
+	}
+	if m.mediaStore == nil {
+		return fmt.Errorf("MetadataService.publishMetadata: neither publisher nor mediaStore configured")
+	}
+	_, _, err := m.mediaStore.UploadToDrive(ctx, req, filePath)
+	return err
 }
 
 var ccLicenseRegex = regexp.MustCompile(`(?i)(cc-by|creative\s*commons|public\s*domain|pd|gfdl|copyright\s*free|creative-commons)`)
@@ -142,7 +171,7 @@ func (m *MetadataService) uploadImageMetadata(ctx context.Context, req drive.Ass
 	metaReq.Ext = ".json"
 	metaReq.Hash = "metadata"
 
-	if _, _, err := m.mediaStore.UploadToDrive(ctx, metaReq, result.LocalPath); err != nil {
+	if err := m.publishMetadata(ctx, metaReq, result.LocalPath); err != nil {
 		m.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}
@@ -209,7 +238,7 @@ func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, 
 		Hash:         "metadata",
 	}
 
-	if _, _, err := m.mediaStore.UploadToDrive(ctx, req, result.LocalPath); err != nil {
+	if err := m.publishMetadata(ctx, req, result.LocalPath); err != nil {
 		m.log.Warn("UploadBatchMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}

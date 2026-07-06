@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -47,16 +48,18 @@ type Service struct {
 	imgService *imgservice.Service
 	ffmpegProc *ffmpeg.Processor
 	mediaStore *drive.Store
+	publisher  delivery.Publisher
 	imagesDir  string
 	log        *zap.Logger
 }
 
 // NewService creates a FullImages video-generation service.
-func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, mediaStore *drive.Store, imagesDir string, log *zap.Logger) *Service {
+func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, mediaStore *drive.Store, publisher delivery.Publisher, imagesDir string, log *zap.Logger) *Service {
 	return &Service{
 		imgService: imgService,
 		ffmpegProc: ffmpegProc,
 		mediaStore: mediaStore,
+		publisher:  publisher,
 		imagesDir:  imagesDir,
 		log:        log,
 	}
@@ -279,7 +282,10 @@ func (s *Service) processGeneratedVideo(ctx context.Context, sec Section, idx in
 
 // uploadAndFinish handles the final Drive upload and result packaging.
 func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, videoPath, videoName, genID, style, prompt string) SectionVideo {
-	if s.mediaStore == nil {
+	// P0-2 (July 2026): check both publisher and mediaStore —
+	// the Publisher is the canonical path, mediaStore is the
+	// legacy fallback for tests/partial wiring.
+	if s.mediaStore == nil && s.publisher == nil {
 		return SectionVideo{
 			SectionIndex: idx,
 			Title:        sec.Title,
@@ -297,7 +303,7 @@ func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, vid
 		Ext:       filepath.Ext(videoName),
 	}
 
-	fileID, webLink, err := s.mediaStore.UploadToDrive(ctx, req, videoPath)
+	fileID, webLink, err := s.publishToDrive(ctx, req, videoPath)
 	if err != nil {
 		s.log.Error("fullimages: Drive upload failed", zap.Int("section", idx), zap.Error(err))
 		saveCacheSidecar(videoPath, "", "")
@@ -355,4 +361,33 @@ func loadCacheSidecar(videoPath string) (string, string) {
 		return "", ""
 	}
 	return m.DriveLink, m.DriveFileID
+}
+
+// publishToDrive is the P0-2 canonical bridge for fullimages video uploads.
+// Routes through delivery.Publisher when wired, falls back to the legacy
+// ImageStorageService.publishToDrive path (which itself falls back to
+// mediaStore.UploadToDrive for backward compat).
+func (s *Service) publishToDrive(ctx context.Context, req drive.AssetDestinationRequest, filePath string) (string, string, error) {
+	if s == nil {
+		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: nil receiver")
+	}
+	if s.publisher != nil {
+		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+			Destination:    delivery.DestinationImage,
+			LocalPath:      filePath,
+			Filename:       filepath.Base(filePath),
+			Style:          req.Style,
+			Subject:        req.Subject,
+			Group:          req.Subject,
+			ConflictPolicy: delivery.ConflictSkip,
+		})
+		if err != nil {
+			return "", "", fmt.Errorf("fullimages publishToDrive: %w", err)
+		}
+		return result.FileID, result.WebViewLink, nil
+	}
+	if s.mediaStore == nil {
+		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: neither publisher nor mediaStore configured")
+	}
+	return s.mediaStore.UploadToDrive(ctx, req, filePath)
 }

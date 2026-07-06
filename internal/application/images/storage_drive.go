@@ -39,7 +39,7 @@ func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *
 	}
 	imagePath := filepath.Join(s.imagesDir, imgAsset.PathRel)
 
-	fileID, webLink, err := s.mediaStore.UploadToDrive(ctx, req, imagePath)
+	fileID, webLink, err := s.publishToDrive(ctx, req, imagePath)
 	if err != nil {
 		return "", "", fmt.Errorf("style-based Drive upload: %w", err)
 	}
@@ -112,7 +112,7 @@ func (s *ImageStorageService) RegisterVideoAsset(ctx context.Context, filePath, 
 	if existingDriveFileID != "" {
 		driveFileID = existingDriveFileID
 		driveLink = existingDriveLink
-	} else if s.mediaStore != nil {
+	} else if s.mediaStore != nil || s.publisher != nil {
 		req := drive.AssetDestinationRequest{
 			Source:    drive.SourceImage,
 			MediaType: drive.MediaTypeImageVideo,
@@ -122,7 +122,7 @@ func (s *ImageStorageService) RegisterVideoAsset(ctx context.Context, filePath, 
 			Style:     style,
 		}
 		folderID, _ = s.mediaStore.EnsureDriveFolder(ctx, req)
-		fid, wl, err := s.mediaStore.UploadToDrive(ctx, req, filePath)
+		fid, wl, err := s.publishToDrive(ctx, req, filePath)
 		if err != nil {
 			s.log.Warn("RegisterVideoAsset: Drive upload failed (non fatale)", zap.Error(err))
 		} else {
@@ -213,7 +213,7 @@ func (s *ImageStorageService) uploadVideoMetadata(ctx context.Context, req drive
 	metaReq := req
 	metaReq.Hash = "metadata"
 	metaReq.Ext = ".json"
-	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, result.LocalPath); err != nil {
+	if _, _, err := s.publishToDrive(ctx, metaReq, result.LocalPath); err != nil {
 		s.log.Warn("uploadVideoMetadata: failed to upload metadata.json", zap.Error(err))
 		return result.Payload
 	}
@@ -253,7 +253,7 @@ func (s *ImageStorageService) registerAudioClip(ctx context.Context, videoPath, 
 		return
 	}
 
-	fileID, webLink, err := s.mediaStore.UploadToDrive(ctx, req, audioPath)
+	fileID, webLink, err := s.publishToDrive(ctx, req, audioPath)
 	if err != nil {
 		s.log.Warn("registerAudioClip: Drive upload failed", zap.Error(err))
 		return
@@ -279,7 +279,7 @@ func (s *ImageStorageService) registerAudioClip(ctx context.Context, videoPath, 
 		audioReq := req
 		audioReq.Hash = "metadata"
 		audioReq.Ext = ".json"
-		if _, _, err := s.mediaStore.UploadToDrive(ctx, audioReq, result.LocalPath); err != nil {
+		if _, _, err := s.publishToDrive(ctx, audioReq, result.LocalPath); err != nil {
 			s.log.Warn("registerAudioClip: metadata upload failed", zap.Error(err))
 		}
 	} else {

@@ -170,18 +170,28 @@ func (s *Store) EnsureDriveFolder(_ context.Context, req AssetDestinationRequest
 // DestinationImage / DestinationVoiceover keys and let the Publisher
 // resolve the folder + normalise the filename + apply ConflictPolicy.
 //
+// P0-2 (July 2026): the legacy silent-success nil-uploader path
+// (return "", "", nil on nil driveUploader) is RETIRED per godlike/07
+// no-fake-availability. Callers that need a no-op upload path MUST
+// nil-check the Store receiver BEFORE calling UploadToDrive. A nil
+// driveUploader now returns a typed error — the legacy contract that
+// silently swallowed the missing uploader and returned empty IDs
+// (which downstream consumers then treated as "upload skipped")
+// was the canonical godlike/07 fake-availability surface this
+// closure eliminates.
+//
 // TODO(Fase 3.3): replace Store.UploadToDrive with delivery.Publisher.Publish
 // in the images package. The legacy Store is kept during the EXPAND
 // window to avoid breaking existing image upload flows.
 //
-// Behaviour contract:
+// Behaviour contract (P0-2 godlike/07 closure):
 //
 //   - Store nil  → silent no-op (`"", "", nil`). Callers explicitly nil-check
 //     the receiver to skip uploads in offline / test paths.
-//   - driveUploader nil → silent no-op when no Drive client has been wired.
-//     This matches the historical contract — the legacy wiring builds a
-//     Store with no uploader when the Drive flow is disabled, and callers
-//     expect empty IDs rather than an error.
+//   - driveUploader nil → typed error (`ErrDriveUploaderNotConfigured`).
+//     The legacy silent-success path (returning "", "", nil) was the
+//     canonical godlike/07 fake-availability violation — callers that
+//     received empty IDs silently skipped downstream indexing/audit.
 //   - real Drive client → call EnsureDriveFolder, derive filename from
 //     filePath (or req.Ext when filePath has no extension), and dispatch to
 //     driveUploader.UploadFile. Errors are propagated verbatim.
@@ -194,12 +204,7 @@ func (s *Store) UploadToDrive(ctx context.Context, req AssetDestinationRequest, 
 		return "", "", nil
 	}
 	if s.driveUploader == nil {
-		if s.log != nil {
-			s.log.Debug("storage.UploadToDrive: driveUploader not configured; skipping",
-				zap.String("file_path", filePath),
-				zap.String("subject", req.Subject))
-		}
-		return "", "", nil
+		return "", "", fmt.Errorf("storage.UploadToDrive: %w", ErrDriveUploaderNotConfigured)
 	}
 
 	folderID, err := s.EnsureDriveFolder(ctx, req)

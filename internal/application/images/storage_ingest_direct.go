@@ -81,7 +81,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 
 	var driveFileID string
 	if s.mediaStore != nil && !skipDrive {
-		fileID, _, uploadErr := s.mediaStore.UploadToDrive(ctx, req, dest.LocalPath)
+		fileID, _, uploadErr := s.publishToDrive(ctx, req, dest.LocalPath)
 		if uploadErr != nil {
 			s.log.Warn("Drive upload failed", zap.Error(uploadErr))
 		} else {
