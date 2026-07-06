@@ -1,0 +1,27 @@
+// Package images (application/images) — service_retrieved.go holds
+// the retrieved-territory search methods on Service. Per PR-IMG-SPLIT-4
+// (July 2026), retrieved = images found, downloaded, or retrieved
+// from normal sources (NOT AI-generated).
+//
+// Golden rule: these methods delegate to the Store sub-service and
+// never touch the Gen (generation) or JobHandler surfaces.
+package images
+
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
+
+// SearchAndDownload searches for and downloads an image using the
+// retrieved-territory fallback chain (Wikipedia → SearXNG → DuckDuckGo
+// → Drive). Delegates to the Store sub-service.
+func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error) {
+	return s.Store.SearchAndDownload(ctx, subjectSlug, displayName, query, lang, tags)
+}
+
+// SearchWebImage performs a web image search (retrieved territory)
+// for a given prompt and slug. Delegates to the Store sub-service.
+func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {
+	return s.Store.SearchWebImage(ctx, prompt, slug, tags)
+}
