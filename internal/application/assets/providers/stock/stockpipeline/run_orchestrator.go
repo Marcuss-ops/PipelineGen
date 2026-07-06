@@ -41,6 +41,11 @@ func (s *Service) runOrchestrator(ctx context.Context, input *RunInput, jobID st
 	if input == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestrator: nil *RunInput")
 	}
+
+	// Resolve text search queries to YouTube URLs before passing to
+	// the orchestrator, which only understands DirectURLs.
+	s.resolveInputQueries(ctx, input)
+
 	cfg := OrchestratorConfig{
 		JobId:            jobID,
 		PolicyVersion:    "v1",
@@ -92,6 +97,11 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	if input == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil *RunInput")
 	}
+
+	// Resolve text search queries to YouTube URLs before passing to
+	// the orchestrator, which only understands DirectURLs.
+	s.resolveInputQueries(ctx, input)
+
 	cfg := OrchestratorConfig{
 		JobId:            jobID,
 		Lease:            input.FinalizationLease,
@@ -166,6 +176,54 @@ func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineRe
 		MetadataLink:   "",  // Commit 4-7 hydrates from Manifest.Artifacts[0].RemoteAssetID (metadata Artifact)
 		MetadataFileID: "",  // Commit 4-7 hydrates from Manifest.Artifacts[0].RemoteAssetID (metadata Artifact)
 	}
+}
+
+// resolveInputQueries converts text search queries in input.SearchQueries
+// to resolved YouTube URLs via s.resolveQuery(), appending them to
+// input.DirectURLs. This is the bridge between the user-facing
+// search-and-run endpoint (which accepts text queries like
+// "boxing training gym") and the orchestrator (which only understands
+// DirectURLs and SearchQueries as raw video source strings).
+//
+// Each query is resolved independently; a single failure logs a warning
+// and continues so other queries in the same run can still succeed.
+// After resolution input.SearchQueries is cleared to prevent the
+// orchestrator from trying to use raw text as a URL.
+//
+// godlike/07 no-fake-availability: nil receiver, nil input, and empty
+// SearchQueries are no-ops (not silent-success — the orchestrator will
+// still fail loudly later if no sources are available).
+func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) {
+	if s == nil || input == nil || len(input.SearchQueries) == 0 {
+		return
+	}
+	for _, query := range input.SearchQueries {
+		sources, err := s.resolveQuery(ctx, query)
+		if err != nil {
+			if s.log != nil {
+				s.log.Warn("stock: failed to resolve search query, skipping",
+					zap.String("query", query), zap.Error(err))
+			}
+			continue
+		}
+		for _, src := range sources {
+			input.DirectURLs = append(input.DirectURLs, src.URL)
+		}
+		if s.log != nil {
+			if len(sources) > 0 {
+				s.log.Info("stock: resolved search query to URLs",
+					zap.String("query", query),
+					zap.Int("urls", len(sources)))
+			} else {
+				s.log.Warn("stock: search query returned no results",
+					zap.String("query", query))
+			}
+		}
+	}
+	// Clear resolved queries so the orchestrator doesn't try to use
+	// raw text as a URL (firstSource checks SearchQueries after
+	// DirectURLs — the resolved URLs are already in DirectURLs).
+	input.SearchQueries = nil
 }
 
 // effectiveChunkDurationSec resolves the per-run chunk duration
