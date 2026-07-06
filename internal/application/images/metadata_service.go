@@ -19,35 +19,30 @@ import (
 // all metadata-related operations for images, videos, and audio clips.
 type MetadataService struct {
 	metaWriter *semantic.MetadataWriter
-	mediaStore *drive.Store
 	publisher  delivery.Publisher
 	tempDir    string
 	log        *zap.Logger
 }
 
 // publishMetadata is the P0-2 canonical bridge for metadata JSON uploads.
-// Routes through delivery.Publisher when wired, falls back to legacy
-// mediaStore path for backward compat (tests / partial wiring).
+// Routes through delivery.Publisher.Publish. The legacy mediaStore.UploadToDrive
+// fallback was RETIRED per P0-2 godlike/07 closure (July 2026).
 func (m *MetadataService) publishMetadata(ctx context.Context, req drive.AssetDestinationRequest, filePath string) error {
 	if m == nil {
 		return fmt.Errorf("MetadataService.publishMetadata: nil receiver")
 	}
-	if m.publisher != nil {
-		_, err := m.publisher.Publish(ctx, delivery.PublishRequest{
-			Destination:    delivery.DestinationImage,
-			LocalPath:      filePath,
-			Filename:       filepath.Base(filePath),
-			Style:          req.Style,
-			Subject:        req.Subject,
-			Group:          req.Subject,
-			ConflictPolicy: delivery.ConflictOverwrite,
-		})
-		return err
+	if m.publisher == nil {
+		return fmt.Errorf("MetadataService.publishMetadata: publisher not configured (P0-2 godlike/07: nil publisher fail-closed)")
 	}
-	if m.mediaStore == nil {
-		return fmt.Errorf("MetadataService.publishMetadata: neither publisher nor mediaStore configured")
-	}
-	_, _, err := m.mediaStore.UploadToDrive(ctx, req, filePath)
+	_, err := m.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    delivery.DestinationImage,
+		LocalPath:      filePath,
+		Filename:       filepath.Base(filePath),
+		Style:          req.Style,
+		Subject:        req.Subject,
+		Group:          req.Subject,
+		ConflictPolicy: delivery.ConflictOverwrite,
+	})
 	return err
 }
 
@@ -162,8 +157,8 @@ func (m *MetadataService) uploadImageMetadata(ctx context.Context, req drive.Ass
 		m.log.Warn("uploadImageMetadata: nil result or empty local path")
 		return
 	}
-	if m.mediaStore == nil {
-		m.log.Warn("uploadImageMetadata: media store not configured")
+	if m.publisher == nil {
+		m.log.Warn("uploadImageMetadata: publisher not configured")
 		return
 	}
 
@@ -189,8 +184,8 @@ func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, 
 		m.log.Warn("UploadBatchMetadata: metadata writer not configured")
 		return
 	}
-	if m.mediaStore == nil {
-		m.log.Warn("UploadBatchMetadata: mediaStore is nil")
+	if m.publisher == nil {
+		m.log.Warn("UploadBatchMetadata: publisher not configured")
 		return
 	}
 	if genID == "" {

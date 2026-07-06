@@ -54,12 +54,10 @@ type ImageStorageService struct {
 
 // publishToDrive is the P0-2 canonical bridge from the legacy
 // AssetDestinationRequest shape to delivery.Publisher.Publish.
-// When publisher is wired (production path), the call routes through
-// Publisher.Publish with proper ConflictPolicy and DestinationKey
-// resolution. When publisher is nil (tests / partial wiring), the
-// call falls back to the legacy mediaStore.UploadToDrive path
-// (which now fail-closes on nil uploader per the P0-2 godlike/07
-// closure of the silent-success path).
+// The call routes through Publisher.Publish with proper ConflictPolicy
+// and DestinationKey resolution. The legacy mediaStore.UploadToDrive
+// fallback was RETIRED per P0-2 godlike/07 closure (July 2026) — nil
+// publisher at construction time now fails-closed.
 //
 // Returns the (fileID, webViewLink) pair for backward compat with
 // existing call sites that use the Store.UploadToDrive triple-return
@@ -68,28 +66,22 @@ func (s *ImageStorageService) publishToDrive(ctx context.Context, req drive.Asse
 	if s == nil {
 		return "", "", fmt.Errorf("ImageStorageService.publishToDrive: nil receiver")
 	}
-	if s.publisher != nil {
-		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-			Destination:    mapMediaTypeToDestination(req.MediaType),
-			LocalPath:      filePath,
-			Filename:       filepath.Base(filePath),
-			Style:          req.Style,
-			Subject:        req.Subject,
-			Group:          req.Subject,
-			ConflictPolicy: mapMediaTypeToConflictPolicy(req),
-		})
-		if err != nil {
-			return "", "", fmt.Errorf("publishToDrive: %w", err)
-		}
-		return result.FileID, result.WebViewLink, nil
+	if s.publisher == nil {
+		return "", "", fmt.Errorf("ImageStorageService.publishToDrive: publisher not configured (P0-2 godlike/07: nil publisher fail-closed)")
 	}
-	// Fallback to legacy mediaStore path (backward compat for tests.
-	// The mediaStore's nil-uploader path now returns a typed error
-	// per P0-2 godlike/07 closure.)
-	if s.mediaStore == nil {
-		return "", "", fmt.Errorf("ImageStorageService.publishToDrive: neither publisher nor mediaStore configured")
+	result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    mapMediaTypeToDestination(req.MediaType),
+		LocalPath:      filePath,
+		Filename:       filepath.Base(filePath),
+		Style:          req.Style,
+		Subject:        req.Subject,
+		Group:          req.Subject,
+		ConflictPolicy: mapMediaTypeToConflictPolicy(req),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("publishToDrive: %w", err)
 	}
-	return s.mediaStore.UploadToDrive(ctx, req, filePath)
+	return result.FileID, result.WebViewLink, nil
 }
 
 // mapMediaTypeToDestination resolves a drive.MediaType to the canonical
