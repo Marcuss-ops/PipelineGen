@@ -28,6 +28,7 @@ import (
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
@@ -132,6 +133,32 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// in process_segment.go). A future commit wires YTDLPSubtitleAdapter
 	// for Subtitles and the canonical Whisper bridge for Transcriber;
 	// for Commit 1 the post-cut step degrades to a no-op path.
+	//
+	// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): construct the
+	// infrastructure-layer SubtitleFetcherAdapter (post
+	// PR-SUBTITLES-BASEARGS-MIGRATION the canonical Pattern-0 port
+	// consumer) so application/youtube/usecase.Service.SliceSubtitles
+	// stops silently erroring at runtime with `youtube: subtitle
+	// fetcher port not wired`. The adapter satisfies the
+	// application-side SubtitleFetcherPort (internal/application/youtube/ports/ports.go:160)
+	// structurally via Go's implicit interface satisfaction (it
+	// implements the SliceSubtitles method). UseCookies=false here
+	// because the YouTube segmentation path is invoked for public
+	// auto-generated content (n-challenge / age-restricted videos
+	// route through the monitor's YTDLPSubtitleAdapter, not the
+	// YouTube use case's SliceSubtitles). The cacheDir is the
+	// canonical cfg.Storage.SubtitlesPath() (added in this PR for
+	// godlike/06 SSOT consistency with VoiceoversPath/AssetsPath/etc).
+	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
+		ytinfra.SubtitleCacheConfig{
+			YTDLPPath:    cfg.External.ResolvedYtdlpPath(),
+			DefaultLangs: "en,en-US",
+			CacheDir:     cfg.Storage.SubtitlesPath(),
+		},
+		nil, // runner=nil → NewProcessRunnerAdapter() per the nil-fallback in the ctor
+		ytdlp.NewCommandBuilder(cfg),
+		false, // UseCookies=false (public segmentation; n-challenge path is via the monitor)
+	)
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
 	clipWriter := assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
 	// Commit 4/6 (PR-C-YouTube-Cutover, June 2026, P1 #15 + #16):
@@ -223,6 +250,19 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// pipeline + ClipAtomicWriter.CommitClipAndIndexEvent.
 		ProcessSeg:       processSeg,
 		TranscriptReader: &youtube.OSTranscriptReader{},
+		// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): wire the
+		// infrastructure-layer SubtitleFetcherAdapter as the
+		// application-side SubtitleFetcherPort. The port is
+		// optional (service_validate_test.go:130 sets it nil to
+		// verify the validator tolerates missing optional ports);
+		// pre-PR wiring left it nil so callbacks.go:110-112
+		// surfaced a runtime "youtube: subtitle fetcher port not
+		// wired" error. Post-PR the Service.SliceSubtitles
+		// callback routes through the adapter, which delegates
+		// the canonical yt-dlp argv prefix to ytdlp.BaseArgs
+		// (same Pattern-0 port the monitor's YTDLPSubtitleAdapter
+		// uses post PR-WIRE-SUBTITLE-FETCHER-ADAPTER migration).
+		SubtitleFetcher: subtitleFetcherAdapter,
 	}
 	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
 		return nil, fmt.Errorf("compose youtube: %w", err)

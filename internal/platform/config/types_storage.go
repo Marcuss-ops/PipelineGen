@@ -82,6 +82,12 @@ func (s StorageConfig) ArtlistPath() string { return s.mediaSubPath("artlist") }
 // ImagesPath returns the full path to the images directory.
 func (s StorageConfig) ImagesPath() string { return s.mediaSubPath("images") }
 
+// SubtitlesPath returns the full path to the YouTube subtitle cache
+// directory. Used by the wired SubtitleFetcherAdapter (infrastructure
+// layer) at PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06) to cache
+// per-videoID .vtt files for SliceSubtitles lookups.
+func (s StorageConfig) SubtitlesPath() string { return s.mediaSubPath("subtitles") }
+
 func (s StorageConfig) ToDatabaseStorageConfig() interface {
 	DataDir() string
 	PrimaryDBPath() string

@@ -51,6 +51,8 @@ import (
 
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // Deps is the ctor payload for NewYTDLPSubtitleAdapter. The ytdlp
@@ -58,9 +60,29 @@ import (
 // is no intermediate port for it because the channel-monitor and the
 // subtitles adapter share the same binary path / cookies / JS-runtime
 // config; abstracting this further would only add plumbing.
+//
+// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): CmdBuilder + UseCookies
+// added so the adapter delegates the canonical yt-dlp argv prefix to
+// ytdlp.BaseArgs (same Pattern 0 port the infrastructure-layer
+// SubtitleFetcherAdapter uses post PR-SUBTITLES-BASEARGS-MIGRATION).
+// Pre-PR the adapter manually appended --write-auto-subs / --write-subs
+// / --skip-download / --sub-langs / --sub-format / -o / <url> via
+// exec.CommandContext, DROPPING --cookies (required for n-challenge +
+// age-restricted YouTube videos), --js-runtime + --remote-components
+// ejs:github, --no-warnings, and --extractor-args
+// youtube:player_client=web,android. CmdBuilder is the canonical
+// owner of those 4-5 args (godlike/06 SSOT, see
+// internal/infrastructure/ytdlp/cmd_builder.go); nil falls back to
+// ytdlp.NewCommandBuilder(&ytcfg.Config{}) so the adapter degrades
+// gracefully rather than nil-dereferencing. UseCookies=true is
+// required for age-restricted and n-challenge-protected YouTube
+// videos (the canonical n-challenge case); false for public
+// auto-generated subtitles. Both flags are set at wire-time.
 type Deps struct {
-	Ytdlp *downloader.YTDLPDownloader
-	Log   *zap.Logger
+	Ytdlp      *downloader.YTDLPDownloader
+	CmdBuilder *ytdlp.CommandBuilder
+	UseCookies bool
+	Log        *zap.Logger
 }
 
 // YTDLPSubtitleAdapter implements monitor.TranscriptProvider. Holds the
@@ -71,6 +93,8 @@ type Deps struct {
 // the ctor.
 type YTDLPSubtitleAdapter struct {
 	ytdlp              *downloader.YTDLPDownloader
+	cmdBuilder         *ytdlp.CommandBuilder
+	useCookies         bool
 	log                *zap.Logger
 	maxTranscriptLen   int
 	minTranscriptWords int
@@ -84,8 +108,13 @@ func NewYTDLPSubtitleAdapter(d Deps) *YTDLPSubtitleAdapter {
 	if d.Log == nil {
 		d.Log = zap.NewNop()
 	}
+	if d.CmdBuilder == nil {
+		d.CmdBuilder = ytdlp.NewCommandBuilder(&ytcfg.Config{})
+	}
 	return &YTDLPSubtitleAdapter{
 		ytdlp:              d.Ytdlp,
+		cmdBuilder:         d.CmdBuilder,
+		useCookies:         d.UseCookies,
 		log:                d.Log,
 		maxTranscriptLen:   8000,
 		minTranscriptWords: 10,
@@ -284,6 +313,37 @@ func inheritOrWithTimeout(parent context.Context, timeout time.Duration) (contex
 	return context.WithTimeout(parent, timeout)
 }
 
+// buildSubtitleArgs assembles the canonical yt-dlp argv for a subtitle
+// fetch. Extracted from fetchTimedTranscript so hermetic TDD tests
+// can assert the BaseArgs delegation contract WITHOUT spawning a
+// real yt-dlp subprocess.
+//
+// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): the canonical
+// yt-dlp argv is built in 3 layers —
+//  1. baseArgs (the canonical 4-5 anti-bot flags from ytdlp.BaseArgs)
+//  2. operation-specific flags (--write-auto-subs / --write-subs /
+//     --skip-download / --sub-langs en / --sub-format vtt / -o)
+//  3. positional URL (appended last; yt-dlp accepts global options
+//     before OR after the positional URL)
+//
+// outputTemplate is the -o flag value (e.g.
+// `<tempDir>/subs.%(ext)s`). Test callers pass a placeholder
+// string to avoid filesystem dependencies.
+func (a *YTDLPSubtitleAdapter) buildSubtitleArgs(videoURL, outputTemplate string) []string {
+	baseArgs := a.cmdBuilder.BaseArgs(videoURL, a.useCookies)
+	args := append([]string{}, baseArgs...)
+	args = append(args,
+		"--write-auto-subs",
+		"--write-subs",
+		"--skip-download",
+		"--sub-langs", "en",
+		"--sub-format", "vtt",
+		"-o", outputTemplate,
+		videoURL,
+	)
+	return args
+}
+
 // fetchTimedTranscript downloads the VTT file via os/exec and parses
 // the timed entries (start + end + cleaned-text). Used by both
 // port-facing methods.
@@ -306,21 +366,30 @@ func (a *YTDLPSubtitleAdapter) fetchTimedTranscript(ctx context.Context, videoUR
 	}
 	defer os.RemoveAll(tempDir)
 
-	// yt-dlp subprocess invocation. The args match the pre-Step-9
-	// semantic_matcher.go and segment_finder.go invocations verbatim
-	// (--write-auto-subs covers ASR-generated subs when manual subs
-	// are missing; --sub-langs en is the only language we analyze;
-	// --skip-download is the key optimization that turns this into
-	// a 1-2 second subprocess instead of a 30-second video download).
-	subCmd := exec.CommandContext(ctx, a.ytdlp.Path(),
-		"--write-auto-subs",
-		"--write-subs",
-		"--skip-download",
-		"--sub-langs", "en",
-		"--sub-format", "vtt",
-		"-o", filepath.Join(tempDir, "subs"),
-		videoURL,
-	)
+	// yt-dlp subprocess invocation.
+	//
+	// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): prepend the
+	// canonical yt-dlp argv prefix via a.cmdBuilder.BaseArgs. Pre-PR
+	// this slice manually appended --write-auto-subs / --write-subs /
+	// --skip-download and bypassed the helper entirely, dropping
+	// --cookies (required for n-challenge + age-restricted videos),
+	// --js-runtime + --remote-components ejs:github (required for
+	// node-based signature resolution), --no-warnings, and
+	// --extractor-args youtube:player_client=web,android (the
+	// f3f1ee90 web-first policy). Mirror internal/infrastructure/youtube/subtitles.go:128
+	// + metadata.go:97 patterns: BaseArgs returns the prefix WITHOUT
+	// the URL, so the URL is appended at the end alongside the -o
+	// output template (yt-dlp accepts global options before OR after
+	// the positional URL).
+	//
+	// The --write-auto-subs / --write-subs / --skip-download /
+	// --sub-langs en / --sub-format vtt flags are caller-specific
+	// (per the cmd_builder.go godoc: "Callers MUST append their
+	// operation-specific flags... to the returned slice."), so they
+	// stay inline — they are NOT drift, they are the subtitle
+	// adapter's operation-specific args.
+	subArgs := a.buildSubtitleArgs(videoURL, filepath.Join(tempDir, "subs"))
+	subCmd := exec.CommandContext(ctx, a.ytdlp.Path(), subArgs...)
 	if out, err := subCmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("subtitle download failed: %w, output: %s", err, string(out))
 	}
