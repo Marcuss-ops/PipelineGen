@@ -46,6 +46,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -241,5 +242,122 @@ func TestErrInvalidGeneratedSearchLimit_DefaultLimitAccepted(t *testing.T) {
 			"the data helper wrote a response body on the happy path — "+
 			"this is the double-write bug fixed in PR-GENERATED-SEARCH-FIX round 2 (body=%q)",
 			rec.Body.Len(), rec.Body.String())
+	}
+}
+
+// TestGeneratedSearch_OriginParamIgnored_ReturnsGeneratedRows — locks
+// the PR-IMG-LEGACY-3 (CONTRACT phase, IMAGES-LEGACY-CLEANUP-2026-07-06
+// wave, deadline 2026-08-08) behavior: the `?origin=` query parameter
+// is RETIRED on /api/images/generated/search. The route's territory is
+// fixed by URL contract (path /generated/ = ImageOriginGenerated), NOT
+// by the caller. ANY caller-supplied `?origin=` value must produce
+// BYTE-IDENTICAL helper behavior to no `?origin=` being supplied.
+//
+// godlike/06 SSOT (one-canonical-owner-per-fact): the route, not the
+// query parameter, owns the territory. A future refactor that
+// re-introduces a caller-side origin override would break the SSOT
+// invariant AND re-open the silent cross-territory leakage surface
+// (godlike/07 NO-FAKE-AVAILABILITY: a /generated/search caller
+// asking `?origin=retrieved` and getting retrieved-territory rows
+// would be a cross-domain silent semantic switch — the same anti-pattern
+// retired in PR-IMG-LEGACY-2 for the /upload route).
+//
+// Test surface: 4 sub-cases — baseline (no origin param), adversarial
+// `?origin=retrieved` (try to switch territory), adversarial
+// `?origin=garbage` (silent garbage tolerance), adversarial
+// `?origin=Generated` (case mismatch). All four MUST produce
+// byte-identical helper output. The test uses the canonical
+// `&ImagesHandler{}` nil-safe pattern from
+// TestErrInvalidGeneratedSearchLimit_DefaultLimitAccepted — the
+// nil-safe service contract returns (nil, nil) so the helper
+// always returns the canonical empty-slice envelope, which is the
+// stable pattern for byte-equality comparison.
+func TestGeneratedSearch_OriginParamIgnored_ReturnsGeneratedRows(t *testing.T) {
+	t.Parallel()
+
+	run := func(query string) ([]ImageSearchResult, error) {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		req := httptest.NewRequest(http.MethodGet, "/api/images/generated/search"+query, nil)
+		c.Request = req
+		h := &ImagesHandler{}
+		return h.listGeneratedTerritoryResults(c)
+	}
+
+	// Baseline: no ?origin= supplied. This is the canonical-NULL
+	// territory-owner case: the gin layer doesn't see the param,
+	// the handler hardcodes ImageOriginGenerated, the nil-safe
+	// service returns (nil, nil), the helper wraps in a
+	// non-nil empty slice. All other sub-cases must produce
+	// byte-identical output to this baseline.
+	baselineResults, baselineErr := run("")
+
+	// Sub-assertion #1: baseline invariants must hold (no panic,
+	// no error, empty non-nil slice envelope, no response writer writes).
+	if baselineErr != nil {
+		t.Fatalf("baseline (?origin omitted) returned err = %v; the canonical "+
+			"hardcoded-ImageOriginGenerated path must be error-free on nil-safe service", baselineErr)
+	}
+	if baselineResults == nil {
+		t.Fatal("baseline (?origin omitted) returned nil results; the helper " +
+			"must always wrap in make() for the canonical non-nil-empty-slice envelope " +
+			"(see TestErrInvalidGeneratedSearchLimit_DefaultLimitAccepted)")
+	}
+	if len(baselineResults) != 0 {
+		t.Fatalf("baseline (?origin omitted) returned %d results; expect 0 from nil-safe service",
+			len(baselineResults))
+	}
+
+	// Adversarial: ?origin=retrieved — caller tries to switch territory.
+	// The handler MUST silently coerce this to ImageOriginGenerated per
+	// godlike/06 SSOT (the route is the territory, not the param).
+	retrResults, retrErr := run("?origin=retrieved")
+	if retrErr != baselineErr {
+		t.Errorf("?origin=retrieved: err changed; got %v, want %v "+
+			"(the param is RETIRED per PR-IMG-LEGACY-3 CONTRACT phase; territory is hardcoded)",
+			retrErr, baselineErr)
+	}
+	if !reflect.DeepEqual(retrResults, baselineResults) {
+		t.Errorf("?origin=retrieved: results changed; got %#v, want %#v "+
+			"(the param is RETIRED — territory is fixed at ImageOriginGenerated; "+
+			"silent cross-territory leakage is the failure mode; "+
+			"PR-IMG-LEGACY-2 retired the same anti-pattern on /upload)",
+			retrResults, baselineResults)
+	}
+
+	// Adversarial: ?origin=garbage — silent garbage tolerance per
+	// godlike/06 SSOT (the route never returned 400 on unknown origin
+	// even pre-PR — pre-PR, garbage would silently pass through to the
+	// SQL `WHERE origin = 'garbage'` which returns 0 rows; post-PR,
+	// garbage is silently coerced to ImageOriginGenerated).
+	garbageResults, garbageErr := run("?origin=garbage")
+	if garbageErr != baselineErr {
+		t.Errorf("?origin=garbage: err changed; got %v, want %v "+
+			"(the param is RETIRED; silent garbage tolerance preserved)",
+			garbageErr, baselineErr)
+	}
+	if !reflect.DeepEqual(garbageResults, baselineResults) {
+		t.Errorf("?origin=garbage: results changed; got %#v, want %#v "+
+			"(the param is RETIRED; silent garbage tolerance preserved)",
+			garbageResults, baselineResults)
+	}
+
+	// Adversarial: ?origin=Generated (capitalized) — case mismatch.
+	// Pre-PR, this would have passed `domain.ImageOrigin("Generated")`
+	// directly to the SQL, which would have returned 0 rows (the
+	// canonical ImageOrigin values are lowercased: "generated",
+	// "retrieved", "uploaded"). Post-PR, the param is silently
+	// coerced — same byte-identical output as baseline.
+	capResults, capErr := run("?origin=Generated")
+	if capErr != baselineErr {
+		t.Errorf("?origin=Generated (capitalized): err changed; got %v, want %v "+
+			"(the param is RETIRED; case-mismatch is silently tolerated)",
+			capErr, baselineErr)
+	}
+	if !reflect.DeepEqual(capResults, baselineResults) {
+		t.Errorf("?origin=Generated: results changed; got %#v, want %#v "+
+			"(the param is RETIRED; case-mismatch silently tolerated)",
+			capResults, baselineResults)
 	}
 }

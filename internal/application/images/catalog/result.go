@@ -47,7 +47,9 @@ type CatalogSearchResult struct {
 //
 // NOTE: AssetSummary only carries fields that exist on
 // asset.ImageAsset today. Style / Author / UpdatedAt are derived
-// from MetadataJSON in a follow-up step (Step 9 forward-pointer).
+// from MetadataJSON in a follow-up step (tracked separately under
+// catalog-followups in architecture/issues.yaml; this is NOT the
+// territory-split concern that PR-GENERATED-SEARCH-FIX closed).
 type AssetSummary struct {
 	Hash        string              // canonical asset hash (primary key)
 	SubjectID   string              // canonical subject ID (slug)
@@ -63,6 +65,11 @@ type AssetSummary struct {
 	// UIs and audit dashboards need to verifyDrive-side presence
 	// without going through the full asset payload.
 	DriveFileID string
+	// Style/Author/UpdatedAt are intentionally omitted at the
+	// summary layer (they're tracked as future-work under
+	// catalog-followups in architecture/issues.yaml, separate
+	// from the territory-split concern addressed in
+	// PR-GENERATED-SEARCH-FIX).
 }
 
 // SummaryFromAsset projects an asset.ImageAsset down to an
