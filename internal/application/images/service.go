@@ -128,7 +128,6 @@ func NewService(deps ImagesDeps) *Service {
 
 	meta := &MetadataService{
 		metaWriter: deps.GenAI.MetaWriter,
-		mediaStore: deps.Storage.MediaStore,
 		publisher:  deps.Storage.Publisher,
 		tempDir:    cfg.Storage.TempPath(),
 		log:        log,

@@ -47,18 +47,16 @@ type Result struct {
 type Service struct {
 	imgService *imgservice.Service
 	ffmpegProc *ffmpeg.Processor
-	mediaStore *drive.Store
 	publisher  delivery.Publisher
 	imagesDir  string
 	log        *zap.Logger
 }
 
 // NewService creates a FullImages video-generation service.
-func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, mediaStore *drive.Store, publisher delivery.Publisher, imagesDir string, log *zap.Logger) *Service {
+func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, publisher delivery.Publisher, imagesDir string, log *zap.Logger) *Service {
 	return &Service{
 		imgService: imgService,
 		ffmpegProc: ffmpegProc,
-		mediaStore: mediaStore,
 		publisher:  publisher,
 		imagesDir:  imagesDir,
 		log:        log,
@@ -282,10 +280,9 @@ func (s *Service) processGeneratedVideo(ctx context.Context, sec Section, idx in
 
 // uploadAndFinish handles the final Drive upload and result packaging.
 func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, videoPath, videoName, genID, style, prompt string) SectionVideo {
-	// P0-2 (July 2026): check both publisher and mediaStore —
-	// the Publisher is the canonical path, mediaStore is the
-	// legacy fallback for tests/partial wiring.
-	if s.mediaStore == nil && s.publisher == nil {
+	// P0-2 (July 2026): check publisher — the canonical path.
+	// The legacy mediaStore fallback was retired per godlike/07.
+	if s.publisher == nil {
 		return SectionVideo{
 			SectionIndex: idx,
 			Title:        sec.Title,
@@ -364,30 +361,26 @@ func loadCacheSidecar(videoPath string) (string, string) {
 }
 
 // publishToDrive is the P0-2 canonical bridge for fullimages video uploads.
-// Routes through delivery.Publisher when wired, falls back to the legacy
-// ImageStorageService.publishToDrive path (which itself falls back to
-// mediaStore.UploadToDrive for backward compat).
+// Routes through delivery.Publisher.Publish. The legacy mediaStore.UploadToDrive
+// fallback was RETIRED per P0-2 godlike/07 closure (July 2026).
 func (s *Service) publishToDrive(ctx context.Context, req drive.AssetDestinationRequest, filePath string) (string, string, error) {
 	if s == nil {
 		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: nil receiver")
 	}
-	if s.publisher != nil {
-		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-			Destination:    delivery.DestinationImage,
-			LocalPath:      filePath,
-			Filename:       filepath.Base(filePath),
-			Style:          req.Style,
-			Subject:        req.Subject,
-			Group:          req.Subject,
-			ConflictPolicy: delivery.ConflictSkip,
-		})
-		if err != nil {
-			return "", "", fmt.Errorf("fullimages publishToDrive: %w", err)
-		}
-		return result.FileID, result.WebViewLink, nil
+	if s.publisher == nil {
+		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: publisher not configured (P0-2 godlike/07: nil publisher fail-closed)")
 	}
-	if s.mediaStore == nil {
-		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: neither publisher nor mediaStore configured")
+	result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    delivery.DestinationImage,
+		LocalPath:      filePath,
+		Filename:       filepath.Base(filePath),
+		Style:          req.Style,
+		Subject:        req.Subject,
+		Group:          req.Subject,
+		ConflictPolicy: delivery.ConflictSkip,
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("fullimages publishToDrive: %w", err)
 	}
-	return s.mediaStore.UploadToDrive(ctx, req, filePath)
+	return result.FileID, result.WebViewLink, nil
 }

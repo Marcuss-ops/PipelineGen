@@ -114,13 +114,13 @@ deprecations:
     file_line: 180
     replacement: "delivery.Publisher.Publish(ctx, PublishRequest{Destination: DestinationImage, LocalPath: filePath, Filename: filename, ...})"
     introduction_date: 2026-07-01
-    removal_date: 2026-Q3
-    tracking_issue: "Spina Dorsale Fase 3 — Piano d'Azione § Fase 3"
-    compatibility_test: "rg 'Store\\.UploadToDrive' internal/application/images/ returns 0 hits after migration. Images package uses delivery.Publisher.Publish exclusively."
-    usage_metric: "Pre-migration: 6 call sites in images package (storage_drive.go x5, storage_ingest.go x1, metadata_service.go x2). Post-migration: 0."
-    migration_phase: EXPAND
-    status: in_progress
-    notes: "The Store.UploadToDrive legacy path is kept during the EXPAND window to avoid breaking existing image upload flows. TODO(Fase 3.3) markers point callers to delivery.Publisher."
+    removal_date: 2026-07-06
+    tracking_issue: "DRIVE-UPLOAD-ANALYSIS-2026-07-06 P0-2 (shipped 2026-07-06)"
+    compatibility_test: "rg 'Store\\.UploadToDrive' internal/application/images/ returns 0 production hits. All 3 bridge methods (ImageStorageService.publishToDrive, fullimages.Service.publishToDrive, MetadataService.publishMetadata) now route exclusively through delivery.Publisher.Publish. Fail-closed on nil publisher."
+    usage_metric: "Pre-migration: 3 call sites in images package (storage_service.go x1, fullimages/service.go x1, metadata_service.go x1) — all in bridge-method fallback paths. Post-migration: 0 production callers; bridge methods fail-closed on nil publisher."
+    migration_phase: CONTRACT
+    status: removed
+    notes: "P0-2 (July 2026): all 3 bridge methods migrated to delivery.Publisher.Publish exclusively. mediaStore.UploadToDrive fallback removed from all 3. MetadataService.mediaStore field removed; fullimages.Service.mediaStore field removed. ImageStorageService.mediaStore kept (used elsewhere: storage_drive.go, storage_ingest_direct.go). Store.UploadToDrive method preserved (non-images callers may exist)."
 
   # ── Fase 4 Spina Dorsale (July 2026): domain/voiceover Result struct refactoring ──
   # Result previously had flat synthesis fields (Locale, Text, Voice,
