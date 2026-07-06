@@ -3,7 +3,8 @@
 // Provides concrete adapters that wrap the existing embedding infrastructure
 // (HTTPTextEmbedder from internal/infrastructure/embeddings, plus HTTP clients
 // for the Python sidecar's visual/audio endpoints) behind the canonical
-// TextEmbedder / ImageEmbedder / AudioEmbedder interfaces declared in searcher.go.
+// TextEmbedder / ImageEmbedder interfaces declared in searcher.go.
+// (AudioEmbedder is commented out — YAGNI, July 2026).
 //
 // QDRANT-003 compliance:
 //   - Every embedding is produced by a real model, never synthesized.
@@ -198,14 +199,14 @@ func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string
 
 // ── AudioEmbedder adapter ─────────────────────────────────────────────
 
-// AudioEmbedderConfig holds the sidecar URL and timeout for the audio
-// embedding server (scripts/services/embedding_server/audio.py).
-type AudioEmbedderConfig struct {
-	// ServerURL is the base URL of the Python embedding sidecar.
-	ServerURL string
-	// Timeout is the HTTP client timeout. Zero means 30s.
-	Timeout time.Duration
-}
+// YAGNI (July 2026): AudioEmbedder interface is commented out
+// (searcher.go). Uncomment when audio embedding is wired.
+// type AudioEmbedderConfig struct {
+// 	// ServerURL is the base URL of the Python embedding sidecar.
+// 	ServerURL string
+// 	// Timeout is the HTTP client timeout. Zero means 30s.
+// 	Timeout time.Duration
+// }
 
 // audioEmbedderAdapter calls the Python sidecar's /embed_audio_from_file endpoint
 // to generate real CLAP embeddings from audio files. Audio is optional — when the sidecar
@@ -221,21 +222,25 @@ type audioEmbedderAdapter struct {
 // NewAudioEmbedderAdapter creates an AudioEmbedder pointing at a sidecar.
 // Pass serverURL="" to signal that audio embeddings are unavailable.
 // schema may be nil in tests where schema.IndexSchema validation is not needed.
-func NewAudioEmbedderAdapter(cfg AudioEmbedderConfig, schema *schema.IndexSchema, log *zap.Logger) AudioEmbedder {
-	timeout := cfg.Timeout
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
-	return &audioEmbedderAdapter{
-		serverURL:  cfg.ServerURL,
-		httpClient: &http.Client{Timeout: timeout},
-		log:        log,
-		schema:     schema,
-	}
-}
+// YAGNI (July 2026): AudioEmbedder interface is commented out
+// (searcher.go). Uncomment when audio embedding is wired.
+// func NewAudioEmbedderAdapter(cfg AudioEmbedderConfig, schema *schema.IndexSchema, log *zap.Logger) AudioEmbedder {
+// 	timeout := cfg.Timeout
+// 	if timeout <= 0 {
+// 		timeout = 30 * time.Second
+// 	}
+// 	return &audioEmbedderAdapter{
+// 		serverURL:  cfg.ServerURL,
+// 		httpClient: &http.Client{Timeout: timeout},
+// 		log:        log,
+// 		schema:     schema,
+// 	}
+// }
 
 // Compile-time assertion.
-var _ AudioEmbedder = (*audioEmbedderAdapter)(nil)
+// YAGNI (July 2026): AudioEmbedder interface is commented out
+// (searcher.go). Uncomment when audio embedding is wired.
+// var _ AudioEmbedder = (*audioEmbedderAdapter)(nil)
 
 // EmbedAudio calls /embed_audio for each audio path and returns the
 // generated embeddings. Returns transport.ErrChannelUnavailable when no sidecar

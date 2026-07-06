@@ -49,14 +49,19 @@ func DefaultV3Schema() *IndexSchema {
 				Distance:     "Cosine",
 				Normalized:   true,
 			},
-			{
-				Channel:      "audio",
-				Model:        "clap-htsat-fused",
-				ModelVersion: "2026-06-16-v1",
-				Dimensions:   512,
-				Distance:     "Cosine",
-				Normalized:   true,
-			},
+			// YAGNI (July 2026): CLAP-HTSAT audio embedding model is not
+			// available in production. The code infrastructure exists
+			// (clipindexer.indexAudioViaAPI, search.AudioEmbedder adapter,
+			// media_assets.audio_embedding column) but the runtime service
+			// is not deployed. Uncomment when audio embedding is wired.
+			// {
+			// 	Channel:      "audio",
+			// 	Model:        "clap-htsat-fused",
+			// 	ModelVersion: "2026-06-16-v1",
+			// 	Dimensions:   512,
+			// 	Distance:     "Cosine",
+			// 	Normalized:   true,
+			// },
 		},
 		SparseVectors: []SparseSpec{
 			// PR2 (fix/qdrant-bm25-indexing): Model name is now

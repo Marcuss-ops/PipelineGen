@@ -66,7 +66,10 @@ var PipelineGenQdrantNamespace = schema.PipelineGenQdrantNamespace
 type Searcher = search.Searcher
 type TextEmbedder = search.TextEmbedder
 type ImageEmbedder = search.ImageEmbedder
-type AudioEmbedder = search.AudioEmbedder
+
+// YAGNI (July 2026): AudioEmbedder interface is commented out
+// (searcher.go). Uncomment when audio embedding is wired.
+// type AudioEmbedder = search.AudioEmbedder
 type ImageEmbedderConfig = search.ImageEmbedderConfig
 
 var NewSearcher = search.NewSearcher

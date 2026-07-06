@@ -322,6 +322,11 @@ type ImageEmbedder interface {
 }
 
 // AudioEmbedder generates audio embeddings from audio data.
-type AudioEmbedder interface {
-	EmbedAudio(ctx context.Context, audioPaths []string) ([][]float32, error)
-}
+//
+// YAGNI (July 2026): CLAP-HTSAT audio embedding model is not available
+// in production. The adapter (embedders.go audioEmbedderAdapter) and
+// the clipindexer.indexAudioViaAPI path exist but the runtime service
+// is not deployed. Uncomment when audio embedding is wired.
+// type AudioEmbedder interface {
+// 	EmbedAudio(ctx context.Context, audioPaths []string) ([][]float32, error)
+// }
